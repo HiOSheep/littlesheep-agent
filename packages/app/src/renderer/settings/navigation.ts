@@ -8,6 +8,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     items: [
       { page: 'home', title: '总览', desc: '系统状态与基础入口' },
       { page: 'application', title: '应用与后台', desc: '窗口关闭方式与活动任务控制' },
+      { page: 'appearance', title: '界面', desc: '对话显示密度与显示偏好' },
       { page: 'agent', title: 'Agent 行为', desc: '通用与编程两套系统提示词' },
       { page: 'api', title: '模型供应商', desc: 'API 密钥与可用模型' },
       { page: 'web', title: '网络检索', desc: '公开资料、来源与缓存策略' },
@@ -19,7 +20,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   {
     title: '工作',
     items: [
-      { page: 'scheduled', title: '已安排', desc: '计划任务与自动执行' },
+      { page: 'scheduled', title: '已安排', desc: '计划任务尚未接入' },
       { page: 'archive', title: '归档', desc: '归档项目和对话管理' },
     ],
   },

@@ -284,6 +284,11 @@ button.agent-flow-row.no-details:focus-visible,
   line-height: 22px;
 }
 
+/* Compact mode keeps the facts that need a decision or a fix (UX-16). */
+.agent-transcript-attention {
+  color: var(--feedback-danger-text);
+}
+
 .turn-usage-footer {
   max-width: min(820px, 100%);
   margin-top: 5px;
@@ -567,7 +572,7 @@ button.agent-flow-row.no-details:focus-visible,
 }
 
 .agent-tool-detail-section.error pre {
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
 }
 
 .agent-tool-details-empty {
@@ -751,7 +756,7 @@ button.agent-flow-row.no-details:focus-visible,
 
 .activity-tool-error {
   min-width: 0;
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -790,7 +795,7 @@ button.agent-flow-row.no-details:focus-visible,
 
 .tool-live-err {
   min-width: 0;
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;

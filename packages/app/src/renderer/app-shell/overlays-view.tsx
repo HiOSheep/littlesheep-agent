@@ -32,6 +32,7 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
     refreshSessions,
     refreshProjects,
     applyRuntimePatch,
+    applyRuntimePatchReporting,
     chooseProjectFolder,
     createProjectInFolder,
     beginSidebarResize,
@@ -60,9 +61,9 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
           onOpenPage={openSettingsPage}
           onCloseSettings={closeSettingsFromEntry}
           onProfileChange={(profile) => void applyRuntimePatch({ profile })}
-          onContextCompressionThresholdChange={async (ratio) => {
-            await applyRuntimePatch({ contextCompressionThresholdRatio: ratio })
-          }}
+          onContextCompressionThresholdChange={(ratio) => (
+            applyRuntimePatchReporting({ contextCompressionThresholdRatio: ratio })
+          )}
           onClosePolicyChange={(closePolicy) => applyRuntimePatch({ closePolicy })}
           onArchiveChanged={() => {
             void refreshProjects()

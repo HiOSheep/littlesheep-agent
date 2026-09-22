@@ -49,6 +49,21 @@
   font-size: 11px;
 }
 
+/* A failed discovery or unreadable records must stay quiet but visible. */
+.checkpoint-recovery-trigger.discovery-failed,
+.checkpoint-recovery-trigger.damaged,
+.checkpoint-recovery-trigger.waiting-input {
+  color: #f1d48b;
+  border-color: rgba(216, 180, 92, 0.42);
+}
+
+.checkpoint-recovery-trigger.discovery-failed strong,
+.checkpoint-recovery-trigger.damaged strong,
+.checkpoint-recovery-trigger.waiting-input strong {
+  color: #2a2208;
+  background: var(--warning);
+}
+
 .checkpoint-recovery-presence {
   z-index: 2100;
 }
@@ -255,7 +270,7 @@
 
 .checkpoint-recovery-error {
   border-left-color: var(--danger);
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   background: var(--danger-soft);
 }
 
@@ -397,7 +412,7 @@
 
 .checkpoint-scene-steps p {
   margin-top: 3px;
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
 }
 
 .checkpoint-scene-effects {
@@ -465,7 +480,7 @@
 }
 
 .checkpoint-recovery-actions button.danger {
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   background: var(--danger-soft);
   border-color: rgba(239, 104, 104, 0.42);
 }

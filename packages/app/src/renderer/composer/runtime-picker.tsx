@@ -12,6 +12,7 @@ import { REASONING_OPTIONS } from '../runtime/options'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { RuntimeProvider } from './context-usage-indicator'
+import { describeRuntimeAvailability } from './runtime-availability'
 
 
 export interface SelectedRuntimeModel {
@@ -33,16 +34,26 @@ function clamp(value: number, min: number, max: number): number {
 
 export function RuntimePicker({
   runtime,
+  runtimeError,
   providers,
   selected,
   onModelChange,
   onReasoningChange,
+  onConfigureModel,
+  onRetryModelConfig,
 }: {
   runtime: RuntimeState | null
+  /** Composer-level Runtime error; with a null runtime it means the
+   *  configuration could not be read. */
+  runtimeError: string | null
   providers: RuntimeProvider[]
   selected: SelectedRuntimeModel | null
   onModelChange: (model: string) => void
   onReasoningChange: (value: RuntimeReasoning) => void
+  /** Opens 设置 → 模型供应商 without dropping the current draft. */
+  onConfigureModel: () => void
+  /** Re-reads the Runtime configuration after a failed load. */
+  onRetryModelConfig: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [activeProviderId, setActiveProviderId] = useState('')
@@ -54,7 +65,15 @@ export function RuntimePicker({
   const menuPositionFrameRef = useRef<number>()
   const [menuPosition, setMenuPosition] = useState<RuntimeMenuPosition | null>(null)
   const [closedWidth, setClosedWidth] = useState<number | null>(null)
-  const disabled = !runtime
+  // A failed configuration load stays clickable: the menu is where the retry
+  // and the path to the provider settings live.
+  const availability = describeRuntimeAvailability({
+    runtime,
+    runtimeError,
+    selectableProviderCount: providers.length,
+    hasSelectableModel: selected !== null,
+  })
+  const disabled = !runtime && availability.kind === 'loading'
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []
   const selectedEntry = selected?.provider.models.find((model) => model.id === selected.model)
@@ -73,13 +92,14 @@ export function RuntimePicker({
     ? selectedEntry?.declared && selectedEntry.name !== selectedEntry.id
       ? selectedEntry.name
       : formatRuntimeModelLabel(selected.model, selected.provider.id, selected.provider.name)
-    : providers.length === 0 ? '无可用模型' : '选择模型'
+    : availability.kind === 'ready' ? '选择模型' : availability.label
 
   useEffect(() => {
     if (providers.length === 0) {
       setActiveProviderId('')
       setActiveSubmenu(null)
-      setOpen(false)
+      // The empty menu stays openable: it is the only place that offers the
+      // "配置模型" / "重试读取" action. Outside click and Escape still close it.
       return
     }
     const selectedProviderId = selected?.provider.id
@@ -255,7 +275,24 @@ export function RuntimePicker({
         </div>
         <div className="runtime-menu-divider" />
         {providers.length === 0 ? (
-          <div className="runtime-empty">没有已配置的可用模型</div>
+          <div className="runtime-empty">
+            <span>{availability.label}</span>
+            <small>{availability.detail}</small>
+            {availability.action !== 'none' && (
+              <button
+                type="button"
+                className="runtime-menu-item runtime-configure-action"
+                role="menuitem"
+                onClick={() => {
+                  closePicker()
+                  if (availability.action === 'retry') onRetryModelConfig()
+                  else onConfigureModel()
+                }}
+              >
+                {availability.actionLabel}
+              </button>
+            )}
+          </div>
         ) : (
           <button
             type="button"
@@ -370,7 +407,7 @@ export function RuntimePicker({
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={`模型 ${modelLabel}, 推理 ${reasoningOption?.label ?? effectiveReasoning}`}
-          title={providers.length === 0 ? '在 设置 → 模型供应商 里添加供应商和模型' : undefined}
+          title={availability.kind === 'ready' ? undefined : availability.detail}
           onClick={() => {
             if (open) {
               closePicker()

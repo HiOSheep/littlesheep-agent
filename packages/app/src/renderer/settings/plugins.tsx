@@ -9,6 +9,7 @@ import {
   type PluginStatus
 } from '../api'
 import { PluginIcon, RefreshIcon, SearchIcon } from '../ui/icons'
+import { FeedbackNotice } from '../ui/feedback-notice'
 
 
 export type PluginListFilter = 'all' | 'builtin' | 'local' | 'channel' | 'tool' | 'skill'
@@ -273,9 +274,8 @@ export function SettingsPluginsPage() {
           </span>
         )}
       </div>
-
-      {notice && <div className="plugin-page-notice" role="status">{notice}</div>}
-      {error && <div className="plugin-page-error" role="alert">{error}</div>}
+      <FeedbackNotice className="plugin-page-notice" feedback={notice ? { tone: 'success', message: notice, detail: null } : null} />
+      <FeedbackNotice className="plugin-page-error" feedback={error ? { tone: 'error', message: '插件操作未完成', detail: error } : null} busy={operationBusy} onRetry={error ? () => void loadStatus() : undefined} />
 
       {loading && (
         <div className="plugin-list-loading">

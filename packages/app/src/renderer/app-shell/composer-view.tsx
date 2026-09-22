@@ -1,6 +1,6 @@
 // Stable composer surface shared by every conversation.
 // Conversation switching updates the message viewport, not this component's DOM.
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import {
   coerceReasoningForModelRef,
 } from '../../shared/model-capabilities'
@@ -11,6 +11,7 @@ import { AttachmentPreviewCard } from '../composer/message-files'
 import { ModePicker } from '../composer/mode-picker'
 import { RuntimePicker } from '../composer/runtime-picker'
 import { WorkspaceChip } from '../composer/workspace-chip'
+import { createImeCompositionState, resolveEnterAction } from '../ui/enter-confirm'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SendRunIcon, StopRunIcon } from '../ui/icons'
 import { TaskProgressPresence } from '../chat/task-progress-indicator'
@@ -51,6 +52,8 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     setControlTip,
     applyRuntimePatch,
     applyModelPatch,
+    openSettingsPage,
+    refreshRuntime,
     addAttachments,
     chooseWorkspace,
     resetWorkspace,
@@ -65,8 +68,30 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
   } = controller
 
   const composerShellRef = useRef<HTMLElement>(null)
-  const showStop = loading && !input.trim()
-  const runActionTip = showStop ? stopTip : sendTip
+  // Enter sends and Shift+Enter keeps the line break; an input method that
+  // confirms candidates with Enter keeps its own key. See ui/enter-confirm.
+  const imeComposition = useRef(createImeCompositionState()).current
+  // A requested stop stays labelled until the run itself settles: the run's
+  // end is the runtime confirmation, and `run-actions` already refuses a
+  // second interrupt for the same run.
+  const [stopping, setStopping] = useState(false)
+  useEffect(() => {
+    if (!loading) setStopping(false)
+  }, [loading])
+  const hasPendingInput = input.trim().length > 0 || attachments.length > 0
+  // Running keeps a stop entry that never depends on the draft, plus a
+  // supplementary send once there is something new to hand to the run.
+  const stopActionTip = stopping ? '正在停止当前任务' : stopTip
+
+  function runActionTipHandlers(tip: string) {
+    return {
+      onMouseEnter: (event: ReactMouseEvent<HTMLButtonElement>) => setControlTip(buildFloatingHelpTip(tip, event.clientX, event.clientY)),
+      onMouseMove: (event: ReactMouseEvent<HTMLButtonElement>) => setControlTip(buildFloatingHelpTip(tip, event.clientX, event.clientY)),
+      onMouseLeave: () => setControlTip(null),
+      onFocus: (event: ReactFocusEvent<HTMLButtonElement>) => setControlTip(buildFloatingHelpTipFromElement(tip, event.currentTarget)),
+      onBlur: () => setControlTip(null),
+    }
+  }
 
   useLayoutEffect(() => {
     const shell = composerShellRef.current
@@ -168,11 +193,12 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             syncComposerInputHeight(event.currentTarget)
           }}
           onPaste={handleComposerPaste}
+          onCompositionStart={() => imeComposition.start()}
+          onCompositionEnd={() => imeComposition.end()}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void send()
-            }
+            if (resolveEnterAction(event.nativeEvent, imeComposition.composing) !== 'confirm') return
+            event.preventDefault()
+            void send()
           }}
           placeholder="给 LittleSheep 一个任务，或上传文件后直接发送"
           rows={1}
@@ -199,6 +225,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             <ContextUsageIndicator usage={contextUsage} />
             <RuntimePicker
               runtime={runtime}
+              runtimeError={runtimeError}
               providers={selectableProviders}
               selected={selectedModel}
               onModelChange={(model) => {
@@ -208,25 +235,39 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                 })
               }}
               onReasoningChange={(reasoning) => void applyRuntimePatch({ reasoning })}
+              onConfigureModel={() => openSettingsPage('api')}
+              onRetryModelConfig={refreshRuntime}
             />
             <div className="composer-run-actions">
-              <button
-                className={`send-round${showStop ? ' stop' : ''}`}
-                onClick={() => {
-                  setControlTip(null)
-                  if (showStop) stop()
-                  else void send()
-                }}
-                disabled={!loading && !input.trim() && attachments.length === 0}
-                aria-label={runActionTip}
-                onMouseEnter={(event) => setControlTip(buildFloatingHelpTip(runActionTip, event.clientX, event.clientY))}
-                onMouseMove={(event) => setControlTip(buildFloatingHelpTip(runActionTip, event.clientX, event.clientY))}
-                onMouseLeave={() => setControlTip(null)}
-                onFocus={(event) => setControlTip(buildFloatingHelpTipFromElement(runActionTip, event.currentTarget))}
-                onBlur={() => setControlTip(null)}
-              >
-                {showStop ? <StopRunIcon /> : <SendRunIcon />}
-              </button>
+              {loading && (
+                <button
+                  className="send-round stop"
+                  onClick={() => {
+                    setControlTip(null)
+                    setStopping(true)
+                    stop()
+                  }}
+                  disabled={stopping}
+                  aria-label={stopActionTip}
+                  {...runActionTipHandlers(stopActionTip)}
+                >
+                  <StopRunIcon />
+                </button>
+              )}
+              {(!loading || hasPendingInput) && (
+                <button
+                  className="send-round"
+                  onClick={() => {
+                    setControlTip(null)
+                    void send()
+                  }}
+                  disabled={!loading && !hasPendingInput}
+                  aria-label={sendTip}
+                  {...runActionTipHandlers(sendTip)}
+                >
+                  <SendRunIcon />
+                </button>
+              )}
             </div>
           </div>
         </div>

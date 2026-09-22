@@ -36,20 +36,30 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
   }
 
   async function applyRuntimePatch(patch: RuntimePatch): Promise<boolean> {
+    return (await applyRuntimePatchReporting(patch)) === null
+  }
+
+  /**
+   * Same transaction, but the failure text is also returned to the caller so a
+   * settings page can show it where the change was made instead of leaving the
+   * user to find it in the composer error line.
+   */
+  async function applyRuntimePatchReporting(patch: RuntimePatch): Promise<string | null> {
     try {
       const next = await updateRuntime(patch)
-      if (!options.appMountedRef.current) return false
+      if (!options.appMountedRef.current) return null
       options.setRuntime(next)
       options.setRuntimeError(null)
       if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) options.alignWorkspacePanelToWorkspaceRoot(next.workspace)
       void options.refreshProjects()
       await options.notifyRuntimeSettingChanges(patch, next)
-      return true
+      return null
     } catch (error) {
-      if (!options.appMountedRef.current) return false
-      options.setRuntimeError((error as Error).message)
+      if (!options.appMountedRef.current) return null
+      const message = (error as Error).message
+      options.setRuntimeError(message)
       await refreshRuntime()
-      return false
+      return message
     }
   }
 
@@ -121,5 +131,5 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     return { provider, model, ref: options.runtime.model }
   }
 
-  return { refreshRuntime, applyRuntimePatch, applyModelPatch, selectableProviders, selectedModel }
+  return { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, selectableProviders, selectedModel }
 }

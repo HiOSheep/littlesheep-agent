@@ -15,6 +15,7 @@ const SESSION_ID_MAX_CHARS = 512
 const SETTINGS_PAGES = new Set<SettingsPage>([
   'home',
   'application',
+  'appearance',
   'agent',
   'api',
   'web',

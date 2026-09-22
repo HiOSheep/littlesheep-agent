@@ -10,6 +10,7 @@ import { ArchiveManager } from '../ArchiveManager'
 import { ChannelConnections } from '../ChannelConnections'
 import { MemorySkills } from '../MemorySkills'
 import { SettingsAgentProfilePage } from './agent-profile'
+import { SettingsAppearancePage } from './appearance'
 import { SettingsApplicationBackgroundPage } from './application-background'
 import { DirectModulePageContent } from './direct-module'
 import { SettingsHome } from './home'
@@ -48,7 +49,7 @@ export function SettingsWorkspace({
   onOpenPage: (page: SettingsPage) => void
   onCloseSettings: () => void
   onProfileChange: (profile: AgentProfileId) => void
-  onContextCompressionThresholdChange: (ratio: number) => Promise<void>
+  onContextCompressionThresholdChange: (ratio: number) => Promise<string | null>
   onClosePolicyChange: (policy: RuntimeState['closePolicy']) => Promise<boolean>
   onArchiveChanged: () => void | Promise<void>
 }) {
@@ -167,6 +168,7 @@ export function SettingsWorkspace({
                 onClosePolicyChange={onClosePolicyChange}
               />
             )}
+            {page === 'appearance' && <SettingsAppearancePage />}
             {page === 'agent' && (
               <SettingsAgentProfilePage
                 profile={runtime?.profile ?? 'general'}

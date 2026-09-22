@@ -9,6 +9,7 @@ import {
   type ApprovalDecision
 } from '../approval-grants'
 import { FadePresence } from '../ui/presence'
+import { useModalSurface } from '../ui/modal-surface'
 import { PendingApprovalPrompt } from './types'
 
 export const APPROVAL_PROMPT_MOTION_MS = 220
@@ -27,7 +28,11 @@ export function ApprovalPrompt({
   return createPortal(
     <FadePresence show={Boolean(prompt)} exitMs={APPROVAL_PROMPT_MOTION_MS} className="approval-presence">
       {displayedPrompt && (
-        <ApprovalPromptSurface prompt={displayedPrompt} onResolve={onResolve} />
+        <ApprovalPromptSurface
+          prompt={displayedPrompt}
+          active={Boolean(prompt)}
+          onResolve={onResolve}
+        />
       )}
     </FadePresence>,
     document.body,
@@ -37,24 +42,38 @@ export function ApprovalPrompt({
 
 export function ApprovalPromptSurface({
   prompt,
+  active = true,
   onResolve,
 }: {
   prompt: PendingApprovalPrompt
+  /** False while the prompt only animates out; it must not take keys then. */
+  active?: boolean
   onResolve: (decision: ApprovalDecision) => void
 }) {
   const { request } = prompt
   const source = request.source ?? 'agent'
+  const dialogRef = useRef<HTMLElement>(null)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  // Escape keeps its rejection meaning. The dialog itself takes the initial
+  // focus, so a held Enter cannot authorize anything: granting still requires
+  // moving to a specific action button.
+  useModalSurface(dialogRef, {
+    active,
+    onEscape: () => onResolve('deny'),
+    initialFocusRef: headingRef,
+  })
   return (
-    <div
-      className="approval-layer"
-      role="presentation"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onResolve('deny')
-      }}
-    >
-      <section className="approval-prompt" role="dialog" aria-modal="true" aria-label="权限确认">
+    <div className="approval-layer" role="presentation">
+      <section
+        ref={dialogRef}
+        className="approval-prompt"
+        role="dialog"
+        aria-modal="true"
+        aria-label="权限确认"
+        tabIndex={-1}
+      >
         <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
-        <h2>{approvalActionTitle(request.action)}</h2>
+        <h2 ref={headingRef} tabIndex={-1}>{approvalActionTitle(request.action)}</h2>
         <p>{approvalModeDescription(request.permissionMode)}</p>
         <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary)}</p>
         <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
@@ -67,7 +86,7 @@ export function ApprovalPromptSurface({
           <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
             本对话允许
           </button>
-          <button type="button" className="approval-action primary" autoFocus onClick={() => onResolve('once')}>
+          <button type="button" className="approval-action primary" onClick={() => onResolve('once')}>
             仅本次
           </button>
         </div>

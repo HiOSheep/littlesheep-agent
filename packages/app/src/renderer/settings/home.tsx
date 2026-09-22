@@ -9,7 +9,7 @@ export function SettingsHome({ onOpenPage }: { onOpenPage: (page: SettingsPage) 
     <div className="settings-home">
       <div className="settings-home-heading">
         <h2>设置</h2>
-        <p>系统能力、渠道、记忆和后续功能模块都会归入这里。</p>
+        <p>系统能力、渠道、记忆和工作模块的设置入口。</p>
       </div>
       <div className="settings-overview-list">
         {SETTINGS_NAV_GROUPS.map((group) => {

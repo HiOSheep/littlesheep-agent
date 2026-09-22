@@ -1,8 +1,9 @@
 // Startup recovery dialog with progressive checkpoint inspection.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CloseIcon, RefreshIcon } from '../ui/icons'
+import { useModalSurface } from '../ui/modal-surface'
 import { FadePresence } from '../ui/presence'
 import {
   checkpointBlockerLabel,
@@ -15,20 +16,30 @@ const RECOVERY_MOTION_MS = 360
 
 export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryController }) {
   const [confirmAbandon, setConfirmAbandon] = useState(false)
+  const dialogRef = useRef<HTMLElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
   const selected = recovery.selected
   useEffect(() => setConfirmAbandon(false), [selected?.id])
 
+  // Escape means "later", never "abandon": closing the dialog only hides it, and
+  // the layer is released as soon as the surface starts animating out.
+  useModalSurface(dialogRef, {
+    active: recovery.visible,
+    onEscape: recovery.dismiss,
+    initialFocusRef: closeRef,
+  })
+
   return createPortal(<>
-    {recovery.checkpoints.length > 0 && !recovery.visible && (
+    {recovery.entry.kind !== 'none' && !recovery.visible && (
       <button
         type="button"
-        className="checkpoint-recovery-trigger"
-        title={recovery.busy === 'resuming' ? '查看正在恢复的任务' : '查看未完成任务'}
-        onClick={recovery.open}
+        className={`checkpoint-recovery-trigger ${recovery.entry.kind}`}
+        title={recovery.entry.title}
+        onClick={recovery.entry.action === 'retry' ? recovery.retryDiscovery : recovery.open}
       >
         <RefreshIcon />
-        <span>{recovery.stopRequested ? '正在停止恢复' : recovery.busy === 'resuming' ? '任务恢复中' : '待恢复任务'}</span>
-        <strong>{recovery.checkpoints.length}</strong>
+        <span>{recovery.entry.label}</span>
+        {recovery.entry.count > 0 && <strong>{recovery.entry.count}</strong>}
       </button>
     )}
     <FadePresence show={recovery.visible} exitMs={RECOVERY_MOTION_MS} className="checkpoint-recovery-presence">
@@ -39,13 +50,20 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
           if (event.target === event.currentTarget) recovery.dismiss()
         }}
       >
-        <section className="checkpoint-recovery-dialog" role="dialog" aria-modal="true" aria-label="未完成任务恢复">
+        <section
+          ref={dialogRef}
+          className="checkpoint-recovery-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-label="未完成任务恢复"
+          tabIndex={-1}
+        >
           <header className="checkpoint-recovery-header">
             <span>
               <small>启动恢复</small>
               <h2>未完成任务</h2>
             </span>
-            <button type="button" aria-label="稍后处理" onClick={recovery.dismiss}>
+            <button ref={closeRef} type="button" aria-label="稍后处理" onClick={recovery.dismiss}>
               <CloseIcon />
             </button>
           </header>
@@ -115,8 +133,8 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
               )}
 
               {recovery.error && <div className="checkpoint-recovery-error">{recovery.error}</div>}
-              {(recovery.diagnostics.invalidFiles > 0 || recovery.diagnostics.warningCount > 0) && (
-                <p className="checkpoint-recovery-diagnostic">另有无法读取的恢复记录，LS 已保留原文件并停止自动处理。</p>
+              {recovery.diagnosticText && (
+                <p className="checkpoint-recovery-diagnostic">{recovery.diagnosticText}</p>
               )}
 
               <div className={`checkpoint-recovery-detail ${recovery.detailsOpen ? 'open' : ''}`}>
@@ -162,7 +180,30 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
               </footer>
             </div>
           ) : (
-            <p className="checkpoint-recovery-empty">没有待处理的执行现场。</p>
+            <div className="checkpoint-recovery-content">
+              {recovery.discoveryFailed ? (
+                <div className="checkpoint-recovery-error" role="alert">
+                  未能读取未完成任务：{recovery.error ?? '原因未知'}
+                </div>
+              ) : null}
+              {recovery.diagnosticText && (
+                <p className="checkpoint-recovery-diagnostic">{recovery.diagnosticText}</p>
+              )}
+              <p className="checkpoint-recovery-empty">
+                {recovery.discoveryFailed
+                  ? '这次没有读取成功，未完成任务的当前状态未知。'
+                  : '没有待处理的执行现场。'}
+              </p>
+              <footer className="checkpoint-recovery-actions">
+                <button
+                  type="button"
+                  onClick={() => void recovery.retryDiscovery()}
+                  disabled={Boolean(recovery.busy)}
+                >
+                  重新检查
+                </button>
+              </footer>
+            </div>
           )}
         </section>
       </div>

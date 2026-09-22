@@ -123,7 +123,7 @@ export function WorkspacePanel({
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
     { id: 'terminal', label: '终端', desc: '直接使用 LS 内置 PowerShell' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
-    { id: 'sideChat', label: '侧边聊天', desc: '后续承载与当前文件或产物相关的局部对话' },
+    { id: 'sideChat', label: '侧边聊天', desc: '尚未接入的局部对话' },
   ]
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
@@ -291,8 +291,8 @@ export function WorkspacePanel({
     if (tab === 'sideChat') {
       return (
         <WorkspacePlaceholder
-          title="侧边聊天"
-          text="后续会承载与当前文件、命令或产物绑定的局部对话，不挤占主对话区。"
+          title="侧边聊天尚未接入"
+          text="当前版本还不能在这里进行局部对话；请在主对话区说明要处理的文件和产物。"
         />
       )
     }

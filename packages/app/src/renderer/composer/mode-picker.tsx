@@ -6,6 +6,7 @@ import {
 } from '../api'
 import { MODE_OPTIONS } from '../runtime/options'
 import { ModeRiskIcon } from '../ui/icons'
+import { useModalSurface } from '../ui/modal-surface'
 import { FadePresence, useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 
@@ -97,8 +98,7 @@ export function ModePicker({
           setConfirmingFullAccess(false)
           onChange('full')
         }}
-      />
-    </div>
+      />    </div>
   )
 }
 
@@ -118,16 +118,27 @@ function FullAccessWarning({
   onCancel: () => void
   onConfirm: () => void
 }) {
+  const dialogRef = useRef<HTMLElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  // A confirm on top of the open picker: Escape belongs to this layer only, so
+  // one press cancels the warning instead of collapsing the picker with it. The
+  // red confirmation keeps its deliberate initial focus.
+  useModalSurface(dialogRef, {
+    active: show,
+    onEscape: onCancel,
+    initialFocusRef: confirmRef,
+  })
   return createPortal(
     <FadePresence show={show} exitMs={220} className="approval-presence full-access-warning-presence">
-      <div
-        className="approval-layer"
-        role="presentation"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onCancel()
-        }}
-      >
-        <section className="approval-prompt full-access-warning" role="alertdialog" aria-modal="true" aria-label="启用完全访问">
+      <div className="approval-layer" role="presentation">
+        <section
+          ref={dialogRef}
+          className="approval-prompt full-access-warning"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="启用完全访问"
+          tabIndex={-1}
+        >
           <div className="approval-kicker">最高权限警告</div>
           <h2>启用完全访问？</h2>
           <p>启用后，LittleSheep 无需逐次询问即可访问容器内外及范围不明的资源。</p>
@@ -141,7 +152,7 @@ function FullAccessWarning({
             <button type="button" className="approval-action" onClick={onCancel}>
               取消
             </button>
-            <button type="button" className="approval-action primary danger" autoFocus onClick={onConfirm}>
+            <button ref={confirmRef} type="button" className="approval-action primary danger" onClick={onConfirm}>
               启用完全访问
             </button>
           </div>

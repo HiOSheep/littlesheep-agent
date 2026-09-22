@@ -42,6 +42,20 @@
   --success-soft: rgba(111, 208, 140, 0.12);
   --warning: #d8b45c;
   --warning-soft: rgba(216, 180, 92, 0.12);
+  /* Shared state roles. The state sample and its contract live in ui/README.md
+     and ui-state-consistency.test.ts: same role, same tokens, no per-page
+     re-invention of the danger color, notice geometry or control height. */
+  --feedback-danger-text: #ffd2d2;
+  --feedback-danger-border: rgba(239, 104, 104, 0.28);
+  /* Danger controls sit on --danger-soft and use a brighter text tone. */
+  --danger-control-text: #ffd8d8;
+  --notice-padding-block: 8px;
+  --notice-padding-inline: 10px;
+  --notice-font-size: 12px;
+  --control-height-md: 32px;
+  --control-height-sm: 26px;
+  --control-font-size: 12px;
+  --control-font-size-strong: 13px;
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
   --radius-ui: 10px;
   --radius-floating-panel: 14px;

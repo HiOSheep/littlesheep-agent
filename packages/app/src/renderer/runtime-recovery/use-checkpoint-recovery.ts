@@ -20,6 +20,8 @@ import { sessionApprovalScopeKey, type ApprovalDecision } from '../approval-gran
 import type { PermissionModeId } from '../../shared/permission-modes'
 import { buildContextUsageSnapshot, type ContextUsageSnapshot } from '../context-usage'
 import {
+  checkpointRecoveryDiagnosticText,
+  checkpointRecoveryEntry,
   checkpointRecoveryProgressForEvent,
   INITIAL_CHECKPOINT_RECOVERY_PROGRESS,
   type CheckpointRecoveryProgress,
@@ -80,6 +82,8 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const [clarificationText, setClarificationText] = useState('')
   const [progress, setProgress] = useState<CheckpointRecoveryProgress>(INITIAL_CHECKPOINT_RECOVERY_PROGRESS)
   const [stopRequested, setStopRequested] = useState(false)
+  /** Startup discovery failure is a fact of its own, not an empty result. */
+  const [discoveryFailed, setDiscoveryFailed] = useState(false)
   const inspectionRequestRef = useRef(0)
   const pendingRecoveryTurnRef = useRef<CheckpointRecoveryTurnIdentity | null>(null)
   const startupRecoveryAttemptedRef = useRef(false)
@@ -108,6 +112,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     try {
       const response = await listRunCheckpoints()
       if (!appMountedRef.current) return []
+      setDiscoveryFailed(false)
       setCheckpoints(response.checkpoints)
       setDiagnostics(response.diagnostics)
       setSelectedId((current) => (
@@ -125,7 +130,10 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       }
       return response.checkpoints
     } catch (cause) {
-      if (appMountedRef.current) setError((cause as Error).message)
+      if (appMountedRef.current) {
+        setDiscoveryFailed(true)
+        setError((cause as Error).message)
+      }
       return []
     } finally {
       if (appMountedRef.current && !preserveBusy) setBusy(null)
@@ -269,6 +277,23 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     }
   }
 
+  // A failed discovery wins over everything else: while it lasts the pending
+  // list is unknown, so the surface must not claim there is nothing to resume.
+  // A retry only re-reads checkpoints; it never re-runs settled operations.
+  function retryDiscovery() {
+    if (busy) return
+    void refreshCheckpoints(false)
+  }
+
+  const entry = checkpointRecoveryEntry({
+    checkpoints,
+    diagnostics,
+    discoveryFailed,
+    resuming: busy === 'resuming',
+    stopRequested,
+  })
+  const diagnosticText = checkpointRecoveryDiagnosticText(diagnostics)
+
   function stopRecovery() {
     if (stopRequested) return
     setStopRequested(true)
@@ -289,6 +314,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   return {
     checkpoints,
     diagnostics,
+    diagnosticText,
+    discoveryFailed,
+    entry,
     selected,
     detail,
     visible,
@@ -300,6 +328,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     stopRequested,
     open: () => setVisible(true),
     dismiss: () => setVisible(false),
+    retryDiscovery,
     selectCheckpoint,
     setClarificationText,
     toggleDetails,

@@ -914,15 +914,15 @@ body.is-resizing-column .settings-sidebar-resizer {
 .plugin-page-error {
   width: min(680px, 100%);
   margin: -12px 0 10px;
-  padding: 7px 9px;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
   color: var(--muted);
   border-left: 2px solid var(--success);
-  font-size: 11px;
+  font-size: var(--notice-font-size);
   animation: content-fade-in var(--motion-base) var(--motion-ease) both;
 }
 
 .plugin-page-error {
-  color: #f2b6b6;
+  color: var(--feedback-danger-text);
   border-left-color: var(--danger);
 }
 
@@ -1080,7 +1080,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .web-settings-notice.error {
-  color: #f2b6b6;
+  color: var(--feedback-danger-text);
 }
 
 .plugin-list-item {
@@ -1162,7 +1162,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-list-error {
   overflow: hidden;
-  color: #f0a9a9;
+  color: var(--feedback-danger-text);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1191,7 +1191,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-runtime-state.failed,
 .plugin-runtime-state.failed::before {
-  color: #f0a9a9;
+  color: var(--feedback-danger-text);
 }
 
 .plugin-runtime-state.failed::before {
@@ -1380,6 +1380,22 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 8px;
   width: min(560px, 100%);
   margin-top: 24px;
+}
+
+/* Advanced configuration stays collapsed until the user asks for it. */
+.settings-advanced {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-advanced > summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-advanced[open] > summary {
+  color: var(--text);
 }
 
 .settings-policy-heading {
@@ -1891,16 +1907,16 @@ body.is-resizing-column .settings-sidebar-resizer {
 .storage-settings-notice {
   width: min(720px, 100%);
   margin-top: 10px;
-  padding: 8px 10px;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
   color: var(--muted);
   background: rgba(255, 255, 255, 0.025);
   border-left: 2px solid var(--border-strong);
-  font-size: 11px;
+  font-size: var(--notice-font-size);
   line-height: 1.5;
 }
 
 .storage-settings-notice[data-tone='error'] {
-  color: #e8c5bd;
+  color: var(--feedback-danger-text);
   background: rgba(154, 67, 48, 0.08);
   border-left-color: #a85845;
 }
@@ -2589,11 +2605,85 @@ body.is-resizing-column .settings-sidebar-resizer {
 .dialog-error {
   margin-bottom: 12px;
   padding: 10px 12px;
-  color: #ffd2d2;
+  color: var(--feedback-danger-text);
   background: var(--danger-soft);
-  border: 1px solid rgba(239, 104, 104, 0.28);
+  border: 1px solid var(--feedback-danger-border);
   border-radius: var(--radius-ui);
   font-size: 13px;
+}
+
+/* Shared feedback structure: the tone field picks the color, callers never do. */
+.feedback-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.feedback-notice[data-tone="error"] {
+  color: var(--feedback-danger-text);
+  background: var(--danger-soft);
+  border-color: var(--feedback-danger-border);
+}
+
+.feedback-notice[data-tone="warning"] {
+  color: #f1d48b;
+  background: var(--warning-soft);
+  border-color: rgba(216, 180, 92, 0.28);
+}
+
+.feedback-notice[data-tone="success"] {
+  color: #b8f2c9;
+}
+
+.feedback-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.feedback-action {
+  flex: 0 0 auto;
+  min-height: var(--control-height-sm);
+  padding: 0 10px;
+  color: var(--text);
+  background: var(--control-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-ui);
+  font-size: var(--control-font-size);
+  font-weight: 700;
+}
+
+.feedback-action:hover:not(:disabled) {
+  background: var(--control-active);
+}
+
+.feedback-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.feedback-detail {
+  flex: 1 0 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.feedback-detail summary {
+  font-weight: 700;
+}
+
+.feedback-detail pre {
+  max-height: 160px;
+  margin-top: 6px;
+  padding: 8px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-ui);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .provider-row {
@@ -2688,13 +2778,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 .toggle-btn,
 .close-btn,
 .refresh-btn {
-  min-height: 32px;
+  min-height: var(--control-height-md);
   padding: 0 12px;
   color: var(--text);
   background: var(--control);
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 12px;
+  font-size: var(--control-font-size);
   white-space: nowrap;
 }
 
@@ -2707,13 +2797,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .save-btn,
 .reload-btn {
-  min-height: 32px;
+  min-height: var(--control-height-md);
   padding: 0 14px;
   color: var(--bg);
   background: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius-ui);
-  font-size: 13px;
+  font-size: var(--control-font-size-strong);
   font-weight: 800;
   white-space: nowrap;
 }
@@ -2744,6 +2834,71 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-top: 1px solid var(--border);
 }
 
+.danger-confirm-dialog {
+  width: min(92vw, 460px);
+}
+
+.danger-confirm-name {
+  margin: 4px 0 10px;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.danger-confirm-list,
+.danger-confirm-preserved {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.danger-confirm-list {
+  color: var(--text);
+}
+
+.danger-confirm-preserved {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.danger-confirm-inuse {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  color: #f1d48b;
+  background: var(--warning-soft);
+  border: 1px solid rgba(216, 180, 92, 0.28);
+  border-radius: var(--radius-ui);
+  font-size: 12px;
+}
+
+.danger-confirm-dialog .dialog-footer {
+  gap: 10px;
+}
+
+.danger-btn {
+  min-height: var(--control-height-md);
+  padding: 0 14px;
+  color: var(--danger-control-text);
+  background: var(--danger-soft);
+  border: 1px solid rgba(239, 104, 104, 0.42);
+  border-radius: var(--radius-ui);
+  font-size: var(--control-font-size-strong);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-soft) 65%, var(--control-active));
+  border-color: rgba(239, 104, 104, 0.62);
+}
+
+.danger-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .channel-overall {
   display: flex;
   align-items: center;
@@ -2756,7 +2911,15 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .channel-badge {
+  display: grid;
+  gap: 2px;
   font-size: 14px;
+  font-weight: 700;
+}
+
+.channel-badge small {
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -2764,7 +2927,12 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--success);
 }
 
-.channel-badge.stopped {
+.channel-badge.partial {
+  color: var(--warning);
+}
+
+.channel-badge.stopped,
+.channel-badge.unconfigured {
   color: var(--muted);
 }
 
@@ -2836,7 +3004,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .channel-row.failure .channel-name small {
-  color: #e5a6a6;
+  color: var(--feedback-danger-text);
   font-size: 10px;
   line-height: 1.4;
 }
@@ -2966,7 +3134,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   font-size: 12px;
 }
 
-/* 模型供应商：自定义提供方、模型列表与编辑器 */
+/* 模型供应商：自定义供应商、模型列表与编辑器 */
 .provider-cards {
   display: flex;
   flex-direction: column;
@@ -3108,6 +3276,18 @@ body.is-resizing-column .settings-sidebar-resizer {
   flex-direction: column;
   gap: 12px;
   padding: 4px 0 12px;
+}
+
+.provider-editor-status {
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.provider-editor-key-note {
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .settings-inline-field {
