@@ -1,6 +1,5 @@
 // Owns the bounded model loop and persisted messages; ToolExecutionService
 // owns invocation validation, approval, execution, events, and evidence.
-import { createHash } from 'node:crypto';
 import {
   type ChatMessage,
   type ChatResponse,
@@ -26,10 +25,13 @@ import {
   runTranscriptModelTurn,
 } from './model-transcript.js';
 import { upsertToolInvocationEvidence } from '../../execution-evidence-state.js';
-import { writeRuntimeState } from '../../runtime-state.js';
 import { conversationHistoryForModel } from '../_shared.js';
 import { toolToSpec } from '../../provider-tool-spec.js';
-import { evaluateUserInputRequestRound } from '../../user-input-request.js';
+import {
+  evaluateUserInputRequestRound,
+  USER_INPUT_REQUEST_SIBLING_REFUSAL,
+  USER_INPUT_REQUEST_TOOL_NAME,
+} from '../../user-input-request.js';
 import { ingestMemoryKnownState } from '../../memory-known-state.js';
 import { ingestMemoryContextToolResult } from '../../memory-context-working-set.js';
 import {
@@ -42,7 +44,6 @@ import {
   persistVerifyGapControl,
   recordDurableToolCalls,
   RUNTIME_CONTROL_MESSAGES,
-  safeStringify,
   sentToolOutputs,
 } from './tool-result-persistence.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
@@ -59,6 +60,10 @@ import {
   MAX_TOOL_LOOP_ITERATIONS,
   reserveToolLoopIteration,
 } from './iteration-budget.js';
+import {
+  persistToolLoopProgress,
+  registerEvidenceFingerprint,
+} from './evidence-progress.js';
 
 const MAX_ITERATIONS = MAX_TOOL_LOOP_ITERATIONS;
 /**
@@ -67,7 +72,6 @@ const MAX_ITERATIONS = MAX_TOOL_LOOP_ITERATIONS;
  * run as before.
  */
 const MAX_FORCED_TOOL_REFUSALS = 2;
-const MAX_EVIDENCE_FINGERPRINTS = 128;
 const MAX_WEB_CITATION_REPAIRS = 2;
 const executionServices = new WeakMap<RunContext, ToolExecutionService>();
 
@@ -326,6 +330,56 @@ export async function runToolLoop(
       if (round.kind === 'invalid') {
         return { ok: false, content: '', toolResults, iterations: iteration, error: round.error };
       }
+      if (round.kind === 'mixed') {
+        // The question is real, the calls beside it are not run: work that may
+        // depend on the answer has to wait for it. They are refused with a
+        // recorded reason instead of failing the turn, so the model's own wording
+        // still reaches the user and the next run can see which calls never ran.
+        // The question itself gets no tool result — the turn's outcome is the
+        // question, exactly as when it is asked alone.
+        messages.push({
+          role: 'assistant',
+          content: response.content,
+          reasoning_content: response.reasoningContent,
+          tool_calls: response.toolCalls.map((call) => ({
+            id: call.id,
+            type: 'function' as const,
+            function: { name: call.function.name, arguments: call.function.arguments },
+          })),
+        });
+        const siblings = response.toolCalls.filter(
+          (call) => call.function.name !== USER_INPUT_REQUEST_TOOL_NAME,
+        );
+        persistToolCalls(
+          ctx,
+          produced,
+          response.toolCalls.map(convertToolCall),
+          response.reasoningContent,
+          response.content,
+        );
+        await recordDurableToolCalls(ctx, siblings.map(convertToolCall), stepId);
+        for (const call of siblings) {
+          const converted = convertToolCall(call);
+          finalizeToolResult(
+            ctx,
+            produced,
+            messages,
+            toolResults,
+            converted.name,
+            failureResult(converted.id, stepId, USER_INPUT_REQUEST_SIBLING_REFUSAL),
+            sentPayloads,
+          );
+        }
+        return {
+          ok: true,
+          content: '',
+          toolResults,
+          iterations: iteration,
+          usage: response.usage,
+          userInputRequest: round.request,
+          modelRequestId: modelRequestIdFor(request),
+        };
+      }
       if (round.kind === 'request') {
         return {
           ok: true,
@@ -461,76 +515,6 @@ export async function runToolLoop(
     iterations: MAX_ITERATIONS,
     error: `tool loop exceeded ${MAX_ITERATIONS} iterations`,
   };
-}
-
-function registerEvidenceFingerprint(
-  ctx: RunContext,
-  fingerprints: Set<string>,
-  state: { saturated: boolean },
-  toolName: string,
-  result: ToolResult,
-): boolean {
-  const invocation = [...(ctx.toolInvocations ?? [])]
-    .reverse()
-    .find((candidate) => candidate.callId === result.callId);
-  const sideEffect = result.ok
-    ? ctx.sideEffects?.find((effect) => effect.callId === result.callId && effect.status === 'succeeded')
-    : undefined;
-  const normalizedOutput = normalizeEvidenceOutput(safeStringify(result.ok ? result.output : result.error));
-  const fingerprint = createHash('sha256')
-    .update(toolName)
-    .update('\0')
-    .update(invocation?.toolSource ?? 'unknown-source')
-    .update('\0')
-    .update(invocation?.resourceKeys?.length
-      ? invocation.resourceKeys.join('\0')
-      : invocation?.inputHash ?? 'unknown-input')
-    .update('\0')
-    .update(invocation?.outputTruncated === true || result.sanitized === true ? 'partial' : 'complete')
-    .update('\0')
-    .update(sideEffect ? 'side-effect' : result.ok ? 'ok' : 'error')
-    .update('\0')
-    .update(sideEffect?.idempotencyKey ?? normalizedOutput)
-    .digest('hex');
-  if (fingerprints.has(fingerprint)) return false;
-  if (state.saturated || fingerprints.size >= MAX_EVIDENCE_FINGERPRINTS) {
-    state.saturated = true;
-    return false;
-  }
-  fingerprints.add(fingerprint);
-  return true;
-}
-
-function persistToolLoopProgress(
-  ctx: RunContext,
-  fingerprints: ReadonlySet<string>,
-  saturated: boolean,
-  noProgressRounds: number,
-): void {
-  writeRuntimeState(ctx, 'execute', {
-    loopBudget: {
-      ...(ctx.loopBudget ?? {
-        attemptsUsed: ctx.modelCallCount ?? 0,
-        maxAttempts: ctx.maxModelCalls ?? 0,
-        elapsedMs: 0,
-        maxElapsedMs: 0,
-        noProgressRounds: 0,
-        maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
-      }),
-      noProgressRounds,
-      maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
-      evidenceFingerprints: [...fingerprints],
-      evidenceFingerprintSaturated: saturated,
-    },
-  });
-}
-
-function normalizeEvidenceOutput(value: string): string {
-  return value
-    .replace(/\b\d{4}-\d{2}-\d{2}[T ][0-9:.+-]+Z?\b/gu, '<timestamp>')
-    .replace(/\b(duration|elapsed|time)\s*[:=]\s*\d+(?:\.\d+)?\s*(?:ms|s)?\b/giu, '$1=<duration>')
-    .replace(/\s+/gu, ' ')
-    .trim();
 }
 
 function finalizeToolResult(

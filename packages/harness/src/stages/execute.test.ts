@@ -503,7 +503,11 @@ describe('executeStage', () => {
     expect(ctx.toolResults ?? []).toHaveLength(0);
   });
 
-  it('rejects a user input request mixed with other tool calls', async () => {
+  // CE-10: work that may depend on a pending answer must wait for it — but the
+  // question itself is not the error. Failing the whole turn threw the model's
+  // own wording away and spent recovery attempts on a round that only had to drop
+  // the calls beside the question.
+  it('refuses the calls beside a user input request and still asks the question', async () => {
     const tool = makeTool('lookup', { ok: true, output: 'unused' });
     const llm = createMockLlm(toolCallResponse([
       { id: 'q1', name: 'request_user_input', args: { field: 'target', prompt: '哪个？' } },
@@ -514,9 +518,52 @@ describe('executeStage', () => {
 
     const res = await stage(ctx);
 
+    // Nothing that shared the round with the question ran.
+    expect(tool.calls).toHaveLength(0);
+    // The model's question is the turn's outcome, exactly as when asked alone.
+    expect(res.ok).toBe(true);
+    expect(res.next).toBe('ask_user');
+    expect(ctx.clarificationRequest?.copySource).toBe('model');
+    expect(ctx.clarificationRequest?.questions[0]).toMatchObject({ field: 'target', prompt: '哪个？' });
+    // The refused call is recorded as a result the model can read, and the
+    // question itself still gets no fabricated result.
+    const refused = (ctx.toolResults ?? []).filter((result) => result.callId === 'c1');
+    expect(refused).toHaveLength(1);
+    expect(refused[0]?.ok).toBe(false);
+    expect(refused[0]?.error).toMatch(/must wait for it/);
+    expect((ctx.toolResults ?? []).some((result) => result.callId === 'q1')).toBe(false);
+    // The round is in the transcript with its assistant call, so the next run can
+    // replay it: a tool result without its assistant tool_calls would make the
+    // replayed request invalid.
+    const produced = ctx.produced ?? [];
+    expect(produced.some((message) => message.content.some((block) => (
+      block.type === 'tool_calls' && block.calls.some((call) => call.id === 'c1')
+    )))).toBe(true);
+    expect(produced.some((message) => message.content.some((block) => (
+      block.type === 'tool_result' && block.result.callId === 'c1'
+    )))).toBe(true);
+    // Only the refused call is recorded as an invocation; the question is not a
+    // tool execution at all.
+    // A refused call leaves a result, not an execution record — the same shape the
+    // loop's other refusals have, so VERIFY never reads it as a missing result.
+    expect(ctx.toolInvocations ?? []).toHaveLength(0);
+  });
+
+  it('still rejects two questions in one round', async () => {
+    const llm = createMockLlm(toolCallResponse([
+      { id: 'q1', name: 'request_user_input', args: { field: 'a', prompt: '哪个？' } },
+      { id: 'q2', name: 'request_user_input', args: { field: 'b', prompt: '还有哪个？' } },
+    ]));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', '改一下') });
+
+    const res = await stage(ctx);
+
+    // Two questions leave the Runtime choosing which one the user is answering;
+    // that is a protocol error, not a deliverable question.
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/standalone tool call/);
-    expect(tool.calls).toHaveLength(0);
+    expect(ctx.clarificationRequest).toBeUndefined();
   });
 
   it('keeps every tool-loop round a strict extension of the previous request', async () => {

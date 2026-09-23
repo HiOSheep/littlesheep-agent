@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-24 03:15:07
+最后更新：2026-09-24 03:41:26
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -8,6 +8,7 @@
 
 - `classify.ts`：确定性活动路由，不发出模型请求，只产出 `execute`（能力/状态询问以外的所有请求）与 `reply`（能力/状态询问）；`clarify` 不再可路由，缺少信息由回复本身追问。
 - `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把"不可用证据"（调用被拒/校验失败/未知工具、结果缺失、输出截断、未结算副作用）交给恢复，把"已记录的负结果"（失败/超时/中止的调用）留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。
+- 提问那一轮（`user-input-request.ts`）：模型调用 `request_user_input` 即结束本轮，提问成为本轮结果——"依赖答案的操作必须等待"由结构保证，不靠约定。同一轮里与提问同批的其它调用**不执行**（可能依赖尚未给出的答案），但也不再让整轮失败：它们以带原因的拒绝结果写进转录，提问照常交给 `ask_user`；两个提问或读不懂的提问才是协议错误。轮内证据身份与无进展账本下沉在 `execute/evidence-progress.ts`。
 - `reply.ts`（含 `reply/continuity-repair.ts`）、`ask_user.ts`（含 `clarification-message.ts`）、`finalize.ts`：能力/状态回复、澄清与最终装配。`reply.ts` 与 `execute/prompt.ts` 读同一个 run 级工作区事实（`ctx.cwd`）渲染 `# Workspace`；`reply.ts` 在回复发布成功后才把本轮投递过的环境简报记入 transcript，失败的回合不记，因为模型可能从未读到它。
 - `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成压缩路径写入时用的 Runtime 认识论元数据。
 - 升级到用户时（`recover/escalation.ts`）必须带上原因类别、已完成部分与所需动作三件事实，而不是把同一句三选一原样再问一遍；`ask_user.ts` 仍用真实模型调用组织可见文案，Runtime 只提供事实。**两类重试是不可能的，命中即不再空转**：上限记录在 run 上的预算耗尽直接升级（实机一次白跑 4 轮 execute）；结构性证据缺口也一样——VERIFY 是已记录证据的纯函数，重试它只会复现同一结论（实机一次出现 4 条完全相同的 `structural` 失败记录、相隔 174 ms、期间无任何新调用），所以第一次缺口回到 `execute` 让模型闭合它，第二次才升级。主循环在因缺口重入时补一条 Runtime 控制消息说明缺口，避免盲重试。

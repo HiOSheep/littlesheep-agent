@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-24 02:57:55
+最后更新：2026-09-24 03:41:26
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -28,6 +28,7 @@
 - **结构性证据缺口也不再重试 VERIFY**（同族规则的第二个实例）：VERIFY 是已记录证据的纯函数，重试它只会得到同一结论。实机一次真实运行里出现 4 条内容完全相同的 `source: 'structural'` 失败记录、相隔 174 ms、期间没有任何新工具调用，而那个 run 其实已经写完产物并给出了回答，最后却以"请用户决定"结束。现在的规则是 `isStructuralVerifyGap()`：第一次缺口回到 `execute`（缺口只会被"同一步骤里更晚的成功调用"顶掉，`stages/verify/task-state.ts` 的 supersede 规则），第二次相同缺口直接升级为 `unrecoverable_evidence_gap`。重新进入循环时由 `persistVerifyGapControl()` 把缺口作为 Runtime 控制消息（`RUNTIME_CONTROL_MESSAGES.verifyGap`）持久化，避免模型盲重试；该消息只在"`lastError.stage === 'verify'` 且最后一条验证记录是结构性 fail"时出现。回归在 `stages/recover.test.ts`、`stages/verify/evidence-gap.test.ts` 与 `stages/execute/tool-result-persistence.test.ts`。
 - 用户语言与声音边界（CE-10）：用户读到的过程叙述与最终交付由主循环授权，所以语言规则必须同时覆盖两条路径——`reply`/`ask_user` 走 `profile-prompt.ts` 的 `buildUserFacingVoiceAddon`（明确"措辞归模型、事实归 Runtime"），主循环走提示自带的 `# Assistant Output Directives`（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工）。SOUL.md 对两者都经 bootstrap 进入同一提示，`stages/execute/prompt.test.ts` 断言语言规则与 SOUL 正文同时在场。
 - 对话区的回复、澄清和交付表达必须由实时 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 发布：发布前在会话级持久注册表原子占用 settlement 身份（run + 规范化文案指纹），同一 settlement 不得发布不同文案；模型已通过 `request_user_input` 写好的提问按原样发布并绑定产出它的请求 id，重复措辞同样按原样发布、不再调用模型改写，也不存在任何重新生成路径。文案为空、缺少真实 model request 证据或注册表不可用时失败可见，Runtime 不伪造人格文案。
+- 提问那一轮的边界（`user-input-request.ts` 的 `evaluateUserInputRequestRound`）：一轮里正好一个提问 → 原样交给 `ask_user`；提问与别的调用同批 → 那些调用**不执行**（可能依赖尚未给出的答案）但也不让整轮失败，它们以带原因的拒绝结果记录进转录，提问照常发布；两个提问或读不懂的提问才是协议错误。判定与回归在 `user-input-request.test.ts` 与 `stages/execute.test.ts`。
 - 禁止依赖 Electron、CLI、具体渠道或 App 私有实现，也不直接拥有文件系统生命周期。
 
 ## 依赖与数据
