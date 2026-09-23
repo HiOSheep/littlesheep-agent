@@ -3,7 +3,6 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { buildProviderRegistry, createPolicyHostResolver, validatePublicUrl, WebRetrievalRuntime } from '../packages/web/dist/index.js';
-import { synthesizeFinalReply } from '../packages/harness/dist/stages/execute/final-reply.js';
 import { validateWebCitations } from '../packages/harness/dist/web-citation-validation.js';
 import { createLlmClient } from '../packages/llm/dist/index.js';
 import { DEFAULT_CONFIG } from '../packages/config/dist/index.js';
@@ -109,6 +108,19 @@ async function main() {
     const model = process.env.LS_DEEPSEEK_MODEL?.trim() || process.env.DEEPSEEK_MODEL?.trim() || 'deepseek-v4-flash';
     const baseURL = process.env.LS_DEEPSEEK_BASE_URL?.trim() || process.env.DEEPSEEK_BASE_URL?.trim() || 'https://api.deepseek.com';
     const ctx = buildContext(evidence, `deepseek/${model}`);
+    // The single-loop runtime has no separate final-reply synthesizer: the
+    // module this call used (`stages/execute/final-reply.js`) was deleted with
+    // the TaskBook step executor. The import is deferred so the no-key path can
+    // still report `skipped`, and so a live run fails with the actual reason
+    // instead of an opaque module-resolution crash. Replacing it means driving
+    // the main loop (or a bounded direct call plus the citation contract) here.
+    const { synthesizeFinalReply } = await import('../packages/harness/dist/stages/execute/final-reply.js')
+      .catch(() => ({}));
+    if (typeof synthesizeFinalReply !== 'function') {
+      throw new Error(
+        'this live check needs a replacement for the deleted final-reply synthesizer before it can run',
+      );
+    }
     const reply = await synthesizeFinalReply(
       { model, config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, llm: createLlmClient({ baseURL, apiKey: deepseekKey, timeoutMs: 120_000 }, { retry: { maxAttempts: 1 } }) },
       ctx,

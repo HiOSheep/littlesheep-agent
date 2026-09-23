@@ -6,7 +6,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BRANDING, loadBranding, resolveDataDir } from '../packages/branding/dist/index.js';
 import { DEFAULT_CONFIG, getProvider, loadConfig, resolveApiKey, withProviderPresets } from '../packages/config/dist/index.js';
-import { synthesizeFinalReply } from '../packages/harness/dist/stages/execute/final-reply.js';
 import { createLlmClient } from '../packages/llm/dist/index.js';
 import { textMessage } from '../packages/types/dist/index.js';
 
@@ -75,6 +74,14 @@ async function main() {
   await app.whenReady();
 
   const { provider, model, llm } = await resolveLiveLlm();
+  // The single-loop runtime has no separate final-reply synthesizer: the module
+  // this check used was deleted with the TaskBook step executor. Failing here
+  // with that reason is better than an opaque module-resolution crash at import.
+  const { synthesizeFinalReply } = await import('../packages/harness/dist/stages/execute/final-reply.js')
+    .catch(() => ({}));
+  if (typeof synthesizeFinalReply !== 'function') {
+    throw new Error('this check needs a replacement for the deleted final-reply synthesizer before it can run');
+  }
   const results = [];
   for (const scenario of SCENARIOS) {
     const startedAt = Date.now();

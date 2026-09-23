@@ -1,6 +1,6 @@
 # 对话执行可靠性修复任务清单 2026-09-23
 
-最后更新：2026-09-23 22:50:00
+最后更新：2026-09-23 23:05:00
 
 ## 目标与证据边界
 
@@ -273,6 +273,12 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 
 - 中文样本的实际措辞、"不再先问游戏类型"的行为结果都属 CE-12 真实模型验收，本轮只把合同补齐并核实来源，**不预先判定模型是否照做**。
 - "必需澄清发出后，同轮内仍可继续独立安全工作"未实现也未改变：当前架构里模型一旦发起 `request_user_input` 就结束本轮。
+
+### 顺带修好的验证环境（不属本清单任务，但影响后续验收）
+
+全量测试此前长期有 1 项失败（`scripts/verify-web-live-llm-evidence.test.mjs`），根因是第二执行体系删除后留下的两处过期引用：`scripts/verify-web-live-llm-evidence.mjs` 与 `scripts/verify-web-llm-evidence.mjs` 仍在 import 已删除的 `packages/harness/dist/stages/execute/final-reply.js`，因此在 import 阶段就崩溃，连"无密钥时报告 skipped"这条契约都到不了；本机 `packages/harness/dist/` 里还留着 2026-09-21 的过期产物（`compact-explicit-tool-decision.js`、`compact-autonomous-read-task.js` 等，对应源码均已删除）。
+
+处理：把两处 import 改成**惰性**并在缺失时抛出准确原因（不再以模块解析崩溃收场），并重建 `packages/harness/dist`（删除 `dist/` 与 `tsconfig.tsbuildinfo` 后由 `ensure:workspace-build` 重新生成），使构建产物与源码一致。**仍未做**：这两个脚本的 `llm-final-reply` 阶段需要一个新的实现（驱动主循环，或有界直接调用 + citation 契约）才能在**有密钥**时真正跑通；本轮只让它们在无密钥时按契约 skip、在有密钥时给出准确失败原因，没有假装该路径可用。修复后全量 `pnpm.cmd exec vitest run` → **494 文件 / 3536 项通过，2 跳过，0 失败**。
 
 ## 实施记录｜2026-09-23 第四轮（CE-09）
 
