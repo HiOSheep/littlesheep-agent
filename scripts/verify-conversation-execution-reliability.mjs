@@ -182,6 +182,31 @@ async function main() {
     }))
     progress(`research write denied: status=${deniedRun.result.status} approvals=${deniedRun.approvals.denied} file absent`)
 
+    // CE-08: "再尝试一次" after that escalation. The turn has to stay bound to the
+    // task, artifact, directory and permission it is retrying — the objective
+    // evidence is the artifact itself: the write that was blocked lands in the
+    // same directory, under the same permission, without the Agent re-asking
+    // which file the user meant.
+    const retryAfterDenial = await runStream(locator, {
+      text: '再尝试一次，这次请批准写入。',
+      permissionMode: 'research',
+      workspace: insideWorkspace,
+      sessionId: deniedRun.result.sessionId,
+    }, { approval: 'approve' })
+    assertSuccessfulRun(retryAfterDenial.result, 'retry after denied write', { permission: 'research' })
+    assertNoEscalation(retryAfterDenial.result, 'retry after denied write')
+    const retriedProbe = join(insideWorkspace, 'denied-probe.txt')
+    if (!existsSync(retriedProbe)) {
+      throw new Error('the retry did not perform the write the denial had blocked')
+    }
+    scenarios.push(describeScenario('retry_after_denied_write', retryAfterDenial.result, [], {
+      ...retryAfterDenial.transport,
+      approvals: retryAfterDenial.approvals,
+      sameSession: retryAfterDenial.result.sessionId === deniedRun.result.sessionId,
+      blockedWorkDelivered: true,
+    }))
+    progress(`retry after denial: status=${retryAfterDenial.result.status} approvals=${retryAfterDenial.approvals.granted} delivered=${existsSync(retriedProbe)}`)
+
     // CE-08's continuation path is deliberately NOT exercised here. A denied
     // write escalates, the escalation is published as a normal reply, so the run
     // ends `ok` and its checkpoint is recorded as completed — `inspectCheckpoint`
