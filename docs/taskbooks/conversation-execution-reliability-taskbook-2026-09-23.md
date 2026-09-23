@@ -143,7 +143,7 @@
 **工作范围**：明确自动恢复预算、用户授权的一次重试、原目标与已完成证据的续接关系；复用已有 continuation coordinator。用户选择重试后应执行一次有意义的恢复尝试，或说明仍缺哪项条件，不能用清零所有预算掩盖循环。
 
 - [ ] “再尝试一次 / 继续做吧”正确绑定原任务、产物、工作区和权限，不重新询问已经回答的目标。（Runtime 侧的一次性绑定重试已有实现与用例；**2026-09-24 第十二轮**修掉了它的前提缺口：绑定续跑的历史投影此前把被续跑的原请求整个排除，模型只拿到 Runtime 的提问和"再尝试一次"，看不到自己在重试什么——现在只排除本 run 自己那一轮 inbound，原请求与提问都在请求里且回答只出现一次。绑定判断本身的实机确认仍属 CE-12，故本行不打勾。）
-- [ ] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。（`recover.test.ts` 断言绑定重试恰好消费一次、第二次回到耗尽路径。**2026-09-24 第十二轮**：续跑不再继承来源轮已花掉的额度与失败——`continuationLoopBudget` 归零模型调用数、工具循环次数、无进展闩与证据指纹，并按当前配置取上限，`lastError`/`recoveryAttempts` 清空，来源轮的花费与失败改写进 `handoff` 证据。真实 Runner 样本（全耗尽检查点）此前轨迹 `[recover, execute, recover, ask_user]`、无副作用无产物，现在交付回答并真实写盘、轨迹 `[recover, execute, verify, finalize]`。**仍未实机**：逼出"预算耗尽且已发布提问"的真实状态需要恢复额度耗尽的真跑，见第十二轮"剩余限制"；故本行不打勾。）
+- [ ] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。（`recover.test.ts` 断言绑定重试恰好消费一次、第二次回到耗尽路径。**2026-09-24 第十二轮**：续接不再继承来源轮已花掉的额度与失败——`continuationLoopBudget` 归零模型调用数、工具循环次数、无进展闩与证据指纹，并按当前配置取上限，`lastError`/`recoveryAttempts` 清空，来源轮的花费与失败改写进 `handoff` 证据；真实 Runner 样本（全耗尽检查点）此前轨迹 `[recover, execute, recover, ask_user]`、无副作用无产物，现在交付回答并真实写盘、轨迹 `[recover, execute, verify, finalize]`。核对同时确认：**升级后的普通下一条消息本来就开新 run**（当前没有 `waiting_user` 检查点生产者），本轮修的是恢复接口与遗留检查点这两条续接路径。**仍未实机**；故本行不打勾。）
 - [x] 同一阻塞未改变时不再只给原样三选一：呈现具体原因、已完成部分和所需动作；保持旧回复的发布幂等，不靠强制改写文案去重。（`recover/escalation.ts` 给出原因类别、已完成部分与所需动作三件事实并写进 `clarificationRequest`；选项集合与发布 settlement 未改，重复措辞仍按原样发布。**实机**：真实运行里预算耗尽后的回复确实写出了原因类别、23 次工具调用中 17 次成功、8 次副作用已成功等具体事实，而不是同一句三选一。）
 - [x] 权限不足、资源缺失和证据不可恢复分开处理；用户取消立即停止，成功副作用不重放。（`recordedFailureKinds` 在无 TaskBook 步骤时改读 invocation 状态与 `lastError`：权限拒绝第一次就升级而不是烧掉重试预算，`aborted` 直接停止，`verify` 阶段的缺口归为"证据不可恢复"；未结算副作用仍由 `policy.ts` 直接 abort。）
 - [x] CE-07 若发现证据缺口，先修缺口再验收本项，不仅修改追问措辞。（CE-07 的恢复投影缺陷已在本轮先修并有先失败后通过的用例，之后才改升级事实。）
@@ -254,12 +254,20 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 
 `- [ ]` CE-08 第二条要求"预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致"。Runtime 侧的一次性绑定重试（`recover.ts` 的 `isBoundContinuationRetry`）已经存在，所以问题不在"要不要重试"，而在**重试的 run 继承了什么**。
 
-`restoreContinuationContext` 把检查点的 `loopBudget` 整份还原，并把 `modelCallCount` 设为 `checkpoint.loopBudget.attemptsUsed`。于是一个因撞上限而升级的 run 留下的检查点，其 `attemptsUsed` 等于 `maxAttempts`、`toolLoopIterationsUsed` 等于 `maxToolLoopIterations`：用户下一次说"再尝试一次"时，新 run 一进主循环就在**第一次模型请求之前**撞回同一道墙。占位式复现（把本轮改动从 `runner.ts` 暂时移出后跑新用例）：轨迹 `[recover, execute, recover, ask_user]`，副作用为空，"工作"文件不存在，用户在每次重试后拿到的是**同一句**升级提问。
+`restoreContinuationContext` 把检查点的 `loopBudget` 整份还原，并把 `modelCallCount` 设为 `checkpoint.loopBudget.attemptsUsed`。于是一个因撞上限而升级的 run 留下的检查点，其 `attemptsUsed` 等于 `maxAttempts`、`toolLoopIterationsUsed` 等于 `maxToolLoopIterations`：下一次续接一进主循环就在**第一次模型请求之前**撞回同一道墙。占位式复现（把本轮改动从 `runner.ts` 暂时移出后跑新用例）：轨迹 `[recover, execute, recover, ask_user]`，副作用为空，"工作"文件不存在，用户拿到的是**同一句**升级提问。（这条续接在真实窗口里由下面那两条路径走到，不是升级后的普通下一条消息——见"这条路径现在怎么被走到"。）
 
 同一份还原还带来两个同源问题：
 
 - `resumeState.lastError` 被还原成"本轮已发生的失败"。`decideRecovery` 会据此分类，于是续跑 run 还没失败就已经被判为预算耗尽；`durable-harness` 的 `!ctx.lastError || ctx.lastError.stage !== stageName` 守卫还会让**同 stage 的新失败**不被记录，真实失败被旧文案顶替。
 - 历史投影同时排除了检查点的原始 inbound（`historyExcludeMessageIds: [state.inboundMessageId, ...]`）。等待用户回答的续跑里，本 run 的 inbound 是"用户的回答"，被续跑的原请求于是从模型上下文里消失：模型只看到 Runtime 的提问和"再尝试一次"，看不到自己在重试什么。
+
+### 这条路径现在怎么被走到（本轮核对出的边界，避免把影响面写大）
+
+改完之后专门核对了"哪些真实路径会走 `restoreContinuationContext`"，结论要写清楚：
+
+- **升级后的普通下一条消息不走续接**。`buildRunCheckpoint` 只写 `paused` 或 `recoverable`（三元的两个分支都是 `recoverable`），而 `resolveWaitingUserHead` 只认 `status: 'waiting_user'`，当前版本没有任何生产者写这个状态（该函数注释也这么写：提问按普通回复发布，下一条消息开新任务）。所以真实升级之后用户再说"再尝试一次"，得到的是一个**全新 run**：自己的额度、完整会话历史、不绑定检查点。这条路径本来就没有"空转墙"，本轮改动不改变它。
+- **会走到的是另外两条**：①检查点恢复接口 `POST /run-checkpoints/:id/resume/stream`（UI 的恢复入口，`restoreState` 未置 false 的绑定续跑），②磁盘上遗留的 `waiting_user` 检查点经 `resolveWaitingUserHead` 绑定。两条都经过 `restoreContinuationContext`，也就是本轮修的那段：以前会把上一轮已花掉的额度当成本轮已用额度、把上一轮的失败当成本轮已发生的失败。
+- 因此本轮的真实价值是：**恢复/遗留续接路径从"必然立刻撞墙或按旧失败升级"变成"一轮有界、看得见原任务的工作"**，并把这次交接写进证据；不是"修好了用户重试"这么宽的说法。
 
 ### 改动
 
@@ -276,8 +284,9 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 
 ### 剩余限制（不把本条写成"实机验收完成"）
 
-- 本条的端到端证据止于"真实 Runner + 真实检查点 + 真实工具执行、仅 LLM 客户端为脚本替身"。**没有**真实模型证据，原因具体：要逼出"预算耗尽且已发布提问"的真实状态，需要一次真跑撞上模型调用上限或恢复上限，而 `/runtime` 路由不接受 `maxModelCallsPerRun`，只能改隔离数据根的 `config.json` 再重启；且真撞上模型调用上限后，`ask_user` 的措辞调用同样被上限拒绝，run 不会留下 `waiting_user` 检查点（走 CE-11 的可见失败路径），所以这条真实状态本身要靠**恢复额度耗尽**那条升级路径产生。CE-12 的人工/真实窗口验收仍是唯一交付门。
-- CE-08 第一条（"再尝试一次 / 继续做吧"端到端绑定原任务、产物、工作区与权限）不因本轮改动打勾：本轮只修了它的前提（重试 run 能看到原请求并真的能干活），绑定判断本身的实机确认仍归 CE-12。
+- 本条的端到端证据止于"真实 Runner + 真实检查点 + 真实工具执行、仅 LLM 客户端为脚本替身"。**没有**真实模型证据：要逼出"额度耗尽且已发布提问"的真实检查点，需要一次真跑撞上恢复额度上限（模型调用上限那条会连带拒掉 `ask_user` 的措辞调用，run 不会留下可续接的提问），而 `/runtime` 路由不接受 `maxModelCallsPerRun`，只能改隔离数据根的 `config.json` 再重启。样本里那个检查点（`waiting_user` + `recovery_decision` + 全耗尽）正是这条升级路径留下的形状，但它是构造的，不是跑出来的。CE-12 的人工/真实窗口验收仍是唯一交付门。
+- 走真实窗口验证本条需要**重建 app 再跑 Electron 验收**（改动落在 runner/types/harness 的 dist 上），并且要用恢复接口那条路径；本轮未做，留作下一轮的候选场景：research 模式下拒绝一次写入 → 真跑留下可恢复检查点 → 经 `POST /run-checkpoints/:id/resume/stream` 恢复并批准 → 断言产物真的写出来、没有二次升级、结果里带 `handoff`。
+- CE-08 第一条（"再尝试一次 / 继续做吧"端到端绑定原任务、产物、工作区与权限）不因本轮改动打勾：本轮只修了它的前提（续接 run 能看到原请求并真的能干活），绑定判断本身的实机确认仍归 CE-12。
 
 ## 实施记录｜2026-09-24 第十一轮（CE-13 发送失败 + 收尾三条验收）
 
