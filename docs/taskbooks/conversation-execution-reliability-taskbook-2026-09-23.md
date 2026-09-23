@@ -73,7 +73,7 @@
 **工作范围**：消除 Runner 长期引用旧配置造成的事实漂移。优先让新 run 获取最新、不可变的有效配置及目录快照；是否重建 Runner 以最小改动和并发正确性决定，不把“每次切目录都重建”预设为唯一方案。
 
 - [x] 不重启应用，保存默认工作区 A→B 后，新建且未绑定目录的 run 使用 B。（变更检测与重建触发由 `runtime-config-change.test.ts` 覆盖到字段级；**实机**：`POST /runtime {workspace: <新目录>}` 保存后，**请求里不指定任何目录**再发一次，产物落在新目录、旧默认目录无同名文件、`write` 的 `resourceKeys` 解析到新工作区——说明提示、工具 cwd 与产物归属都跟着换了，不只是配置文件写了。）
-- [ ] 已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换；显式切换会话目录后，新 run 使用新目录。（**2026-09-24 第十四轮：合同/API 侧已修并有端到端证据，真实窗口点击仍待 CE-12，故不打勾。** 这条原本只写到"待 CE-12"，本轮读到底后发现是真缺陷——`run-routes.ts` 用请求里的 `workspace`（渲染器随每次请求下发的 `runtime.workspace`）压过一切，项目会话因此会被保存的默认目录搬走，而收尾的 `updateSessionIndex` 又把这次搬迁写成会话自己的目录。现在 `resolveOwnedRunWorkspace` 先解析归属、项目会话用会话记录目录（无记录用项目目录），独立会话维持"请求 → 默认 → workplace"；显式换目录由 `PATCH /sessions/:id { workspacePath }` 表达（已存在的绝对目录，独立会话请求该字段被拒），渲染器的目录选择器经 `chooseWorkspacePath` 同时写入项目会话。先失败后通过的端到端用例在 `run-stream-api.test.ts`（旧代码两次 run 的 `cwd` 是 `[A, B]`、会话索引也被改写成 B；现在 `[A, A]`，显式切换后第三次才是 B）。**剩余**：目录选择器那三行只在渲染器里，脚本无法替用户点它，窗口内行为属 CE-12。）
+- [x] 已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换；显式切换会话目录后，新 run 使用新目录。（**2026-09-24 第十四轮修，第十六轮补齐渲染器侧证据。** 这条原本只写到"待 CE-12"，读到底后发现是真缺陷——`run-routes.ts` 用请求里的 `workspace`（渲染器随每次请求下发的 `runtime.workspace`）压过一切，项目会话因此会被保存的默认目录搬走，而收尾的 `updateSessionIndex` 又把这次搬迁写成会话自己的目录。现在 `resolveOwnedRunWorkspace` 先解析归属、项目会话用会话记录目录（无记录用项目目录），独立会话维持"请求 → 默认 → workplace"；显式换目录由 `PATCH /sessions/:id { workspacePath }` 表达（已存在的绝对目录，独立会话请求该字段被拒）。证据：先失败后通过的端到端用例在 `run-stream-api.test.ts`（旧代码两次 run 的 `cwd` 是 `[A, B]`、会话索引也被改写成 B；现在 `[A, A]`，显式切换后第三次才是 B）；渲染器侧由 `runtime-actions.test.ts` 固定——项目会话同时写会话与默认目录（且先写会话，避免半应用）、独立会话只改默认目录、取消选择或窗口已卸载则什么都不做、会话写入失败时把错误报出来且不改默认目录。**剩余**：目录选择器的原生对话框只有人能点，属 CE-12 的通用人工门。）
 - [x] 正在执行的 run 保留启动时目录；切换设置不把执行中的命令或产物改派到另一目录。（Runner 在 `executeRun` 入口解析一次 `cwd`，整轮工具上下文与提示共用该值；重建采用"先建后换 + 延迟关闭旧 Runner"。）
 - [x] 配置持久化失败不显示保存成功；连续更新和并发启动不混用两份配置。（`runtime-config-change.test.ts` 新增三条：`createRuntimeConfigUpdater` 先持久化再重建，且只在真正有变化时重建；**持久化抛错时 promise 拒绝、Runner 不替换、当前配置仍是磁盘上那一份**（调用方因此拿到错误而不是"已保存"）；两个并发更新被串行化，按序落盘、不会互相看到半应用状态。渲染器侧 `applyRuntimePatchReporting` 把该错误显示在设置页并在失败后重读配置——既有 `api` 用例覆盖。）
 - [x] 覆盖 Main→Runner→提示→工具 cwd 的集成断言，不能只检查 config 文件已写入。（`packages/runner/src/run-workspace-fact.test.ts` 走真实 Runner + 真实工具调用，断言提示、工具 `ctx.cwd` 与环境简报一致。）
@@ -283,6 +283,10 @@ history boundary:      probe=ok report=missing intact=true outsideApprovals=1/1
 ```
 
 CE-08 第一条因此打勾；行内写明生产路径下这次重试是**同会话的新 run**（转录携带原请求），遗留 `waiting_user` 检查点的绑定仍由 `runner-continuation.test.ts` 覆盖。
+
+### CE-02 第一条：把渲染器侧的最后一环也固定下来
+
+第十四轮把路由修好、并用真实 Local App API 的端到端用例固定了行为，但渲染器那三行（项目会话换目录时同时写会话记录）没有自动化覆盖。本轮补 `packages/app/src/renderer/app-shell/runtime-actions.test.ts` 四条：项目会话**同时**写会话与默认目录、且**先写会话**（失败时不会留下"默认目录换了、会话还在原处"的半应用状态）；独立会话只改默认目录、不碰会话记录；取消选择或窗口已卸载时什么都不做；会话写入失败时把错误交给调用方且不改默认目录。CE-02 该行因此打勾，行内注明剩余的人工部分只有原生目录选择对话框本身（CE-12 的通用人工门）。
 
 ## 实施记录｜2026-09-24 第十五轮（CE-10 提问轮的边界：等待是对的，整轮失败是错的）
 
