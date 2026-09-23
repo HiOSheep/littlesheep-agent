@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-23 21:05:00
+最后更新：2026-09-23 21:20:00
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -17,7 +17,8 @@
 - 用户显式点名工具时，`explicit-tool-instruction.ts` 解析出有界的已注册工具集（最多 4 个、schema 有大小上限）交给同一主循环，执行仍逐项经过统一 Tool Execution Service 的权限门；缺少副作用声明的工具由 Runtime 保守判定为 `external`/`unknown`。
 - `context.ts` 的 `buildRunContext` 把宿主提供的 `versioning`（run 级回滚 preimage）与 `observation`（会话级"模型读过哪个文件版本"端口）一并放进 `ToolContext`；两个端口都由 Runner 注入，模型无法通过工具参数伪造。
 - 失败分类（`stages/execute/failure-policy.ts`）先看工具声明的 `meta.errorKind`：写工具因观察过期/缺失或目标已存在而返回的拒绝文案里常含 "refused" 一类词，只按文本正则会被误判成权限问题；声明了 `observation_*` / `target_exists` 的失败统一归为 `tool_error`，其余仍按原有正则分类。
-- 主循环的失败处置（`stages/execute/tool-failure-disposition.ts`）把"能改的错"和"权威边界"分开：只有权限/硬安全拒绝、未知工具、schema 校验失败、被中止，或副作用仍不settled（`planned`/`in_progress`/`unknown`）才进入强制收尾；普通执行失败（路径不存在、参数错、命令非零退出但已确定性结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。失败的副作用调用会追加一条 Runtime 控制消息，要求先观察实际状态而不是原样重放。
+- 主循环的失败处置（`stages/execute/tool-failure-disposition.ts`）把"能改的错"和"权威边界"分开：只有权限/硬安全拒绝、核心源码只读保护（`core_source_read_only`）、schema 校验失败、未知工具、执行服务的重复调用护栏（`repeated_call`）、被中止，或副作用仍不 settled（`planned`/`in_progress`/`unknown`）才进入强制收尾；普通执行失败（路径不存在、参数错、命令非零退出但已确定性结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。重复成功调用的拒绝（`side_effect_replay`）对这次调用是终局、对整轮不是：什么都没执行也没有未知，run 继续，模型可以换结构化只读工具。失败的副作用调用会追加一条 Runtime 控制消息，要求先观察实际状态而不是原样重放。
+- 重复观察不是重放（CE-06）：账本只看 Runtime 能证明的事实——只声明读资源或属于 Runtime 只读名单的调用根本不进账本，因此"列目录 → 创建产物 → 再列目录"能拿到新观察；不透明 `exec` 不声明资源，无论命令首词多像列举都记为 `external`，重复成功调用仍被拒。拒绝文案点名 `glob`/`read` 作为结构化替代入口。回归在 `stages/execute/read-observation-loop.test.ts` 与 `side-effect-ledger.test.ts`。
 - 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。
 - 对话区的回复、澄清和交付表达必须由实时 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 发布：发布前在会话级持久注册表原子占用 settlement 身份（run + 规范化文案指纹），同一 settlement 不得发布不同文案；模型已通过 `request_user_input` 写好的提问按原样发布并绑定产出它的请求 id，重复措辞同样按原样发布、不再调用模型改写，也不存在任何重新生成路径。文案为空、缺少真实 model request 证据或注册表不可用时失败可见，Runtime 不伪造人格文案。
@@ -31,6 +32,6 @@
 ## 测试与修改定位
 
 - 总体回归在 `src/default-harness.test.ts`、`src/e2e.test.ts`；追加式前缀与固定工具目录由 `src/run-tail-ledger.test.ts`、`src/request-prefix-append-only.test.ts`、`src/tool-catalog-stability.test.ts` 覆盖；回答级连续性与摘要字段解析分别在 `src/response-continuity.test.ts`、`src/session-summary-fidelity-text.test.ts`，各阶段测试与实现同目录。
-- 环境简报在 `src/runtime-context-notice.test.ts`；prompt 工作区事实与 shell 披露在 `src/stages/execute/prompt.test.ts`；失败处置与循环行为在 `src/stages/execute/tool-failure-disposition.test.ts`。
+- 环境简报在 `src/runtime-context-notice.test.ts`；prompt 工作区事实与 shell 披露在 `src/stages/execute/prompt.test.ts`；失败处置与循环行为在 `src/stages/execute/tool-failure-disposition.test.ts`；重复观察与不透明命令的分流在 `src/stages/execute/read-observation-loop.test.ts`、`src/stages/execute/side-effect-ledger.test.ts`。
 - 路由必须指向驱动实际注册的 stage：`src/stage-routing-registry.test.ts` 扫描 `src/stages/` 的 `next` 目标并与 `default-harness.ts` 的注册表比对，退役 stage 名（`decide`/`evolve`/`capture`）既不能作为路由目标，也不能重新注册。
 - 修改状态转移先更新 stage 契约和特征测试，再调整实现。

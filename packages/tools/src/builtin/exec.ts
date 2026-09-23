@@ -7,8 +7,9 @@ import type { AgentTool } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
 import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
 import {
-  CORE_SOURCE_READ_ONLY_ERROR,
+  CORE_SOURCE_READ_ONLY_KIND,
   commandReferencesProtectedRoot,
+  coreSourceReadOnlyMessage,
   findProtectedWriteRoot,
   isReadOnlyCoreCommand,
 } from '../path-protection.js';
@@ -83,6 +84,11 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         : 'Runs: /bin/sh -c "<command>" (POSIX sh, not bash). '
           + 'Use POSIX sh syntax, quote paths containing spaces, and do not rely on bash-only constructs.',
       'Whitelisted commands auto-approve; others require approval.',
+      // The ledger treats every exec as opaque, so an identical successful call
+      // is refused as a replay. Saying so here is what lets the model pick the
+      // structured tool *before* it burns a round on a refusal.
+      'One command per call; an identical successful call is refused as a replay. '
+        + 'For read-only inspection prefer the `glob`, `grep` and `read` tools, which the Runtime can prove are observations.',
     ].join(' '),
     inputSchema: ExecInput,
     requiresApproval: true,
@@ -93,7 +99,14 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
       const protectedRoot = findProtectedWriteRoot(workDir, ctx)
         ?? commandReferencesProtectedRoot(command, ctx.protectedWriteRoots);
       if (protectedRoot && !isReadOnlyCoreCommand(command)) {
-        return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: command execution denied` };
+        return {
+          ok: false,
+          error: coreSourceReadOnlyMessage(command),
+          // A declared kind, not error text: the loop classifies this as an
+          // authoritative boundary and stops instead of letting the model probe
+          // around a host-level protection that approval cannot lift.
+          meta: { errorKind: CORE_SOURCE_READ_ONLY_KIND },
+        };
       }
 
       const authorization = await authorizeToolAccess('exec', { command, cwd: workDir }, ctx);

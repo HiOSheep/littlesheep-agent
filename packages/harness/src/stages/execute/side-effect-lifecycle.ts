@@ -44,7 +44,13 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
             callId: invocation.request.callId,
             ok: false,
             error: begin.kind === 'duplicate'
-              ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}`
+              // The refusal names what still works. A repeated opaque command is
+              // the exact case the model reaches when it wants a *fresh
+              // observation* after writing something; without a next step it
+              // retries variations of the same call instead.
+              ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}. `
+                + 'The Runtime never re-runs an opaque command: for a fresh view of the workspace use the '
+                + 'read-only tools (`glob` lists a directory, `read` reads a file).'
               : begin.reason,
           },
           status: begin.kind === 'duplicate' ? 'repeated_call_blocked' : 'failed',

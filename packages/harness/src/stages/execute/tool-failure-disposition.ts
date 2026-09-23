@@ -16,6 +16,7 @@
 // error text; a call the Runtime cannot identify stays authoritative, because
 // the safe direction for an unknown outcome is to stop rather than to retry.
 import type { RunContext, ToolInvocationStatus, ToolResult } from '@littlesheep/types';
+import { CORE_SOURCE_READ_ONLY_KIND } from '@littlesheep/tools';
 
 export type ToolFailureDisposition =
   /** The Runtime refused, or cannot prove what happened: stop and report it. */
@@ -53,12 +54,33 @@ const AUTHORITATIVE_ERROR_KINDS = new Set([
   'approval_aborted',
   'side_effect_replay',
   'side_effect_blocked',
+  // The execution service's own runaway guard: the same call has now been
+  // proposed more times than any legitimate retry, so the loop stops rather than
+  // letting the model keep re-issuing it. Distinct from `side_effect_replay`,
+  // which refuses one specific re-run of an operation that already applied.
+  'repeated_call',
   'effect_intent_persistence',
   'effect_settlement_persistence',
   'checkpoint_before_effect',
   'checkpoint_after_effect',
   'run_aborted_before_effect',
+  // Host-level read-only protection on the LS core source. It is declared by the
+  // tools that refuse inside a protected root, and it is exactly the boundary the
+  // model must not probe around with a different tool: approval cannot lift it.
+  CORE_SOURCE_READ_ONLY_KIND,
 ]);
+
+/**
+ * Refusals that are final for the call but not for the run.
+ *
+ * A duplicate rejection says the operation already succeeded and the Runtime
+ * will not run it again. Nothing executed and nothing is unknown, so the safe
+ * direction is to continue: the model can observe the result with a read-only
+ * tool or take a different action. It is not a way around the boundary — the
+ * call is refused either way — whereas an `unknown` effect stays authoritative,
+ * because there the Runtime cannot say what happened.
+ */
+const REPLAY_REFUSAL_ERROR_KINDS = new Set(['side_effect_replay']);
 
 /** Side-effect settlements that leave the real outcome unknown. */
 const UNSETTLED_EFFECT_STATUSES = new Set(['planned', 'in_progress', 'unknown']);
@@ -86,6 +108,9 @@ export function classifyToolFailure(ctx: RunContext, result: ToolResult): ToolFa
     // (a withheld capability) or produced by a path that keeps no record. The
     // Runtime cannot say what happened, so the model must not keep probing.
     return { disposition: 'authoritative', reason: 'no_invocation_record', effectful };
+  }
+  if (errorKind && REPLAY_REFUSAL_ERROR_KINDS.has(errorKind)) {
+    return { disposition: 'correctable', reason: errorKind, effectful: true };
   }
   if (errorKind && AUTHORITATIVE_ERROR_KINDS.has(errorKind)) {
     return { disposition: 'authoritative', reason: errorKind, effectful };

@@ -2,7 +2,12 @@ import { z } from 'zod'
 import type { AgentTool } from '@littlesheep/types'
 import { authorizeToolAccess } from '@littlesheep/safety'
 import { parallelFilePolicy } from '../execution-policy.js'
-import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js'
+import {
+  CORE_SOURCE_READ_ONLY_KIND,
+  coreSourceReadOnlyMessage,
+  findProtectedWriteRoot,
+  resolveToolPath,
+} from '../path-protection.js'
 import { withToolTiming } from '../wrapper.js'
 import { observationFailure } from '../file-observation.js'
 
@@ -43,7 +48,13 @@ export const documentCreateTool: AgentTool = {
     const parsed = DocumentCreateInput.parse(input)
     const targetPath = resolveToolPath(parsed.file_path, ctx.cwd)
     const protectedRoot = findProtectedWriteRoot(targetPath, ctx)
-    if (protectedRoot) return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: ${targetPath}` }
+    if (protectedRoot) {
+      return {
+        ok: false,
+        error: coreSourceReadOnlyMessage(targetPath),
+        meta: { errorKind: CORE_SOURCE_READ_ONLY_KIND },
+      }
+    }
     const authorization = await authorizeToolAccess('document_create', { file_path: targetPath }, ctx, {
       defaultRequiresApproval: true,
     })

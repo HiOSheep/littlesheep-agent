@@ -90,9 +90,33 @@ describe('tool failure disposition', () => {
     const ctx = makeCtx({}) as RunContext;
     ctx.toolInvocations = [invocation('call-1', 'failed', 'side_effect_replay')];
 
+    // CE-06: a replay refusal is final for the call but not for the run. Nothing
+    // executed and nothing is unknown, so the model may observe with a structured
+    // tool instead of the turn ending here.
+    expect(classifyToolFailure(ctx, failed('call-1'))).toMatchObject({
+      disposition: 'correctable',
+      reason: 'side_effect_replay',
+      effectful: true,
+    });
+  });
+
+  it('stops on the host-level read-only protection of the core source', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [invocation('call-1', 'failed', 'core_source_read_only')];
+
     expect(classifyToolFailure(ctx, failed('call-1'))).toMatchObject({
       disposition: 'authoritative',
-      reason: 'side_effect_replay',
+      reason: 'core_source_read_only',
+    });
+  });
+
+  it('stops on a repeated-call guard that is not a replay refusal', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [invocation('call-1', 'repeated_call_blocked', 'repeated_call')];
+
+    expect(classifyToolFailure(ctx, failed('call-1'))).toMatchObject({
+      disposition: 'authoritative',
+      reason: 'repeated_call',
     });
   });
 

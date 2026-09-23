@@ -1,9 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createExecTool } from './exec.js';
 import { readTool } from './read.js';
+import {
+  describeToolAccess,
+  resolvePermissionDecision,
+  shouldRequestPermissionApproval,
+} from '@littlesheep/safety';
 import type { ToolContext } from '@littlesheep/types';
 import { createInMemoryFileObservationPort } from '../file-observation.js';
 
@@ -116,10 +121,92 @@ describe('execTool approval gate', () => {
       );
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/core source is read-only/i);
+      // The refusal names itself so the loop treats it as an authoritative
+      // boundary instead of an execution failure the model may work around.
+      expect(result.meta?.errorKind).toBe('core_source_read_only');
+      expect(result.error).toContain('Write into a writable workspace');
       await expect(stat(file)).rejects.toThrow();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  // CE-05: reading a protected root is allowed; only the probe form was missing.
+  it('answers existence and listing questions about a protected root', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-core-read-'));
+    const nested = join(root, 'with space');
+    const file = join(nested, 'notes.txt');
+    try {
+      await mkdir(nested, { recursive: true });
+      await writeFile(file, 'hello', 'utf8');
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+      });
+      const protectedCtx: ToolContext = { ...baseCtx, cwd: root, protectedWriteRoots: [root] };
+
+      const list = await exec.execute({ command: `Get-ChildItem '${nested}'` }, protectedCtx);
+      expect(list.ok, list.error).toBe(true);
+      expect(String(list.output)).toContain('notes.txt');
+
+      const exists = await exec.execute({ command: `Test-Path -LiteralPath '${file}'` }, protectedCtx);
+      expect(exists.ok, exists.error).toBe(true);
+      expect(String(exists.output)).toMatch(/True/i);
+
+      const missing = await exec.execute({ command: `Test-Path -LiteralPath '${join(nested, 'nope.txt')}'` }, protectedCtx);
+      expect(missing.ok, missing.error).toBe(true);
+      expect(String(missing.output)).toMatch(/False/i);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('still refuses a composed probe inside a protected root', async () => {    const root = await mkdtemp(join(tmpdir(), 'ls-core-compose-'));
+    try {
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+      });
+      const protectedCtx: ToolContext = { ...baseCtx, cwd: root, protectedWriteRoots: [root] };
+      const attack = join(root, 'created.txt');
+
+      for (const command of [
+        `Test-Path '${root}'; New-Item -ItemType File '${attack}'`,
+        `Test-Path '${root}' && New-Item -ItemType File '${attack}'`,
+        `Get-ChildItem '${root}' > '${attack}'`,
+        `mkdir '${attack}'`,
+      ]) {
+        const result = await exec.execute({ command }, protectedCtx);
+        expect(result.ok, command).toBe(false);
+        expect(result.meta?.errorKind).toBe('core_source_read_only');
+      }
+      await expect(stat(attack)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  // CE-05: a read-only command shape is a statement about the *effect*, not about
+  // the container. It must not classify an outside directory as inside, and it
+  // must not waive the approval a research or restricted run still owes.
+  it('keeps the container boundary and approval decision unchanged for read-only commands', () => {
+    const containerRoot = join(tmpdir(), 'ls-container');
+    const outside = join(tmpdir(), 'ls-outside-elsewhere');
+    const context = { cwd: containerRoot, containerRoot };
+
+    const inside = describeToolAccess('exec', { command: `Get-ChildItem '${containerRoot}'` }, context);
+    const beyond = describeToolAccess('exec', { command: `Test-Path -LiteralPath '${outside}'` }, context);
+    const opaque = describeToolAccess('exec', { command: `node -e "console.log(1)"` }, context);
+
+    expect(inside.boundary).toBe('inside');
+    expect(beyond.boundary).toBe('outside');
+    // A whitelisted read-only shape is still an outside read that research mode
+    // must approve, and an opaque command stays unknown-boundary as before.
+    expect(shouldRequestPermissionApproval('research', beyond)).toBe(true);
+    expect(shouldRequestPermissionApproval('research', inside)).toBe(true);
+    expect(opaque.boundary).toBe('unknown');
+    expect(resolvePermissionDecision('full', beyond)).toBe('allow');
+    expect(resolvePermissionDecision('restricted', inside)).toBe('approval');
   });
 
   it('does not start a mutating command when the workspace preimage fails', async () => {

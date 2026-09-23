@@ -4,7 +4,12 @@ import { writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { AgentTool } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
-import { CORE_SOURCE_READ_ONLY_ERROR, findProtectedWriteRoot, resolveToolPath } from '../path-protection.js';
+import {
+  CORE_SOURCE_READ_ONLY_KIND,
+  coreSourceReadOnlyMessage,
+  findProtectedWriteRoot,
+  resolveToolPath,
+} from '../path-protection.js';
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
 import { observationFailure, observedRangeCoversMatch, readVerifiedFile } from '../file-observation.js';
@@ -26,7 +31,11 @@ export const editTool: AgentTool = {
     const targetPath = resolveToolPath(file_path, ctx.cwd);
     const protectedRoot = findProtectedWriteRoot(targetPath, ctx);
     if (protectedRoot) {
-      return { ok: false, error: `${CORE_SOURCE_READ_ONLY_ERROR}: ${targetPath}` };
+      return {
+        ok: false,
+        error: coreSourceReadOnlyMessage(targetPath),
+        meta: { errorKind: CORE_SOURCE_READ_ONLY_KIND },
+      };
     }
     const authorization = await authorizeToolAccess('edit', { file_path: targetPath }, ctx, {
       defaultRequiresApproval: true,

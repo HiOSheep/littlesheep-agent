@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTool, DurableHarnessEventAppendInput } from '@littlesheep/types'
+import type { AgentTool, DurableHarnessEventAppendInput, ToolExecutionLifecycleContext } from '@littlesheep/types'
 import { makeCtx } from '../../tests/helpers.js'
 import {
   beginSideEffect,
@@ -7,12 +7,14 @@ import {
   finishSideEffect,
   settlementForResult,
 } from './side-effect-ledger.js'
+import { createSideEffectLifecycle } from './side-effect-lifecycle.js'
 
 const writeResource = [{ key: 'workspace:ledger', mode: 'write' as const }]
+const readResource = [{ key: 'fs:workspace', mode: 'read' as const }]
 
-function probeTool(reconciliationKey?: AgentTool['reconciliationKey']): AgentTool {
+function probeTool(reconciliationKey?: AgentTool['reconciliationKey'], name = 'mutate_probe'): AgentTool {
   return {
-    name: 'mutate_probe',
+    name,
     description: 'ledger probe',
     inputSchema: { parse: (input: unknown) => input, jsonSchema: { type: 'object' } },
     async execute() {
@@ -125,5 +127,68 @@ describe('effect settlement', () => {
     expect(afterCancel.kind).toBe('started')
     if (afterCancel.kind !== 'started') throw new Error('expected the retry to start')
     expect(afterCancel.descriptor.idempotencyKey).toBe(`${base.idempotencyKey}:retry1`)
+  })
+})
+
+// CE-06: a repeated *observation* is not a replay. The exemption is not a
+// heuristic about the command text: a tool the Runtime can prove is read-only
+// (it declared only read resources) never reaches the ledger at all, while an
+// opaque command stays opaque however harmless its first word looks.
+describe('observations versus effects', () => {
+  it('keeps a proven read-only tool out of the ledger entirely', () => {
+    // Declared read-only resources are proof, whatever the tool is called.
+    for (const name of ['glob', 'grep', 'read', 'inspect_probe']) {
+      expect(describeSideEffect(probeTool(undefined, name), { path: '.' }, readResource, undefined, 'call-1'))
+        .toBeUndefined()
+    }
+    // The Runtime's own read-only names need no declaration at all.
+    for (const name of ['glob', 'grep', 'read', 'memory_tree', 'session_status']) {
+      expect(describeSideEffect(probeTool(undefined, name), {}, [], undefined, 'call-1'))
+        .toBeUndefined()
+    }
+    // Anything the Runtime cannot place stays conservative.
+    expect(describeSideEffect(probeTool(undefined, 'inspect_probe'), {}, [], undefined, 'call-1'))
+      .toMatchObject({ effectKind: 'unknown' })
+  })
+
+  it('treats an opaque command as an effect even when it reads like a listing', async () => {
+    const { ctx } = recordingCtx()
+    const descriptor = describeSideEffect(
+      probeTool(undefined, 'exec'),
+      { command: 'Get-ChildItem -LiteralPath .' },
+      [],
+      undefined,
+      'call-1',
+    )
+
+    expect(descriptor).toMatchObject({ effectKind: 'external', resourceKeys: [] })
+    // Succeeding once is what makes the repeat a replay; the command *text* is
+    // never consulted, so `dir` gets no more credit than any other command.
+    expect((await beginSideEffect(ctx, descriptor!)).kind).toBe('started')
+    await finishSideEffect(ctx, descriptor!, { callId: 'call-1', ok: true })
+    const repeated = await beginSideEffect(ctx, { ...descriptor!, callId: 'call-2' })
+    expect(repeated.kind).toBe('duplicate')
+  })
+
+  it('names the structured alternative when it refuses a replay', async () => {
+    const ctx = makeCtx()
+    const lifecycle = createSideEffectLifecycle(ctx)
+    const tool = probeTool(undefined, 'exec')
+    const first: ToolExecutionLifecycleContext = {
+      request: { callId: 'call-1', name: 'exec' },
+      tool,
+      toolSource: 'builtin',
+      input: { command: 'Get-ChildItem .' },
+      resources: [],
+    }
+
+    expect(await lifecycle.beforeInvoke?.(first)).toBeUndefined()
+    await lifecycle.afterInvoke?.(first, { callId: 'call-1', ok: true }, { status: 'succeeded' })
+
+    const second = await lifecycle.beforeInvoke?.({ ...first, request: { callId: 'call-2', name: 'exec' } })
+    expect(second?.errorKind).toBe('side_effect_replay')
+    expect(second?.result.ok).toBe(false)
+    expect(String(second?.result.error)).toContain('refusing to replay')
+    expect(String(second?.result.error)).toContain('`glob`')
   })
 })
