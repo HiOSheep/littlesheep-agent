@@ -162,13 +162,31 @@ export async function appendAgentArtifacts(
   return artifacts
 }
 
+/**
+ * The one workspace fact for this run.
+ *
+ * Normalized here, at the run entry, because everything downstream reads this
+ * single value: the prompt's `# Workspace` section, the tool working directory,
+ * permission classification, artifact ownership and the workspace resource
+ * index. Resolving it twice — once from the request and once from
+ * `agents.defaults.workspace` — is what let the model describe one directory
+ * while its tools wrote into another.
+ */
 export function resolveRunWorkspace(
   body: Record<string, unknown>,
   config: Config,
   workplaceDir: string,
 ): string {
   const bodyWorkspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
-  return bodyWorkspace || config.agents.defaults.workspace || workplaceDir
+  const configured = typeof config.agents?.defaults?.workspace === 'string'
+    ? config.agents.defaults.workspace.trim()
+    : ''
+  const selected = bodyWorkspace || configured || workplaceDir
+  try {
+    return resolve(selected)
+  } catch {
+    return selected
+  }
 }
 
 function extractWorkspaceArtifactsFromMessages(

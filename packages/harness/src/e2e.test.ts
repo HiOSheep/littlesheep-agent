@@ -72,8 +72,15 @@ describe('e2e agent loop', () => {
 
     expect(result.ok, result.error).toBe(true);
     expect(result.next).toBe('exit');
-    expect(ctx.produced).toHaveLength(1);
-    expect(ctx.produced[0]?.content).toEqual([{ type: 'text', text: '当前只根据 Runtime 能力快照回答，尚未执行网络查询。' }]);
+    // The published reply plus the environment brief the turn delivered: the
+    // brief is Runtime context recorded for the next replay, not conversational
+    // content, and it carries no stage or progress detail.
+    const conversational = ctx.produced.filter((message) => message.runtimeTail !== true);
+    expect(conversational).toHaveLength(1);
+    expect(conversational[0]?.content).toEqual([{ type: 'text', text: '当前只根据 Runtime 能力快照回答，尚未执行网络查询。' }]);
+    expect(ctx.produced.filter((message) => message.runtimeTail === true)
+      .map((message) => message.content.map((part) => (part.type === 'text' ? part.text : '')).join('')))
+      .toEqual([expect.stringContaining('[Runtime context; effective for this request]')]);
     expect(ctx.replyProvenance?.purpose).toBe('capability_reply');
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
     expect(events.filter((event) => event.type === 'model_activity').map((event) => event.activityStatus))

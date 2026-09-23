@@ -2003,11 +2003,22 @@ describe('createRunner run', () => {
       }],
     });
     // The covered record range ends at the last record before the kept turn, which
-    // is one of this turn's Runtime tail records.
-    expect(metadata?.compaction?.sourceEndMessageId).toBe(allMessages[10]?.id);
+    // is one of this turn's Runtime tail records. It is located rather than
+    // hard-coded: the number of Runtime tail records a turn writes is Runtime
+    // policy, and a positional index would silently pin it.
+    let lastConversationalIndex = -1;
+    for (let index = allMessages.length - 1; index >= 0; index -= 1) {
+      if (allMessages[index]!.runtimeTail !== true) {
+        lastConversationalIndex = index;
+        break;
+      }
+    }
+    const expectedRangeEnd = allMessages[lastConversationalIndex - 1]?.id;
+    expect(expectedRangeEnd).toBeDefined();
+    expect(metadata?.compaction?.sourceEndMessageId).toBe(expectedRangeEnd);
     const compaction = metadata?.compaction;
     if (compaction?.version === 2) {
-      expect(compaction.sourceRanges[0]?.sourceEndMessageId).toBe(allMessages[10]?.id);
+      expect(compaction.sourceRanges[0]?.sourceEndMessageId).toBe(expectedRangeEnd);
     }
     const summary = metadata!.compaction!;
     expect(await runner.infra.memoryRepository.getResource(summary.id)).toMatchObject({

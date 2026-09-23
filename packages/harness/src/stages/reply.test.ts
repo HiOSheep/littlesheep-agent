@@ -7,6 +7,30 @@ import { createMockLlm, makeCtx, textResponse, allText } from '../tests/helpers.
 import { createReplyStage } from './reply.js';
 
 describe('replyStage', () => {
+  // CE-01: a capability or chat answer must describe the directory the run
+  // executes in, not the configured default. The two used to differ whenever a
+  // session was bound to a project or the user switched workspace.
+  it('names the run workspace in the reply prompt', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse('当前工作区已生效。');
+    });
+    const ctx = makeCtx({ inbound: textMessage('user', '当前工作区是哪个？') });
+    ctx.cwd = 'D:\\projects\\with space';
+    ctx.classification = { activity: 'respond', type: 'chat', confidence: 0.9, source: 'llm', reason: 'workspace question' };
+    const stage = createReplyStage({ llm, model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING });
+
+    const result = await stage(ctx);
+
+    expect(result.ok, result.error).toBe(true);
+    const system = String(requests[0]?.messages[0]?.content ?? '');
+    expect(system).toContain('Working directory: `D:\\projects\\with space`');
+    if (DEFAULT_CONFIG.agents.defaults.workspace !== ctx.cwd) {
+      expect(system).not.toContain(`Working directory: \`${DEFAULT_CONFIG.agents.defaults.workspace}\``);
+    }
+  });
+
   it('HA-01-01 rejects provider DSML from a respond turn without upgrading tool authority', async () => {
     const dsml = '<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name="exec"><｜｜DSML｜｜ parameter name="cmd" string="true">pwd</｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>';
     const llm = createMockLlm(textResponse(dsml));
@@ -90,11 +114,12 @@ describe('replyStage', () => {
     expect(result.ok, result.error).toBe(true);
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'capability_reply', rewriteCount: 0 });
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('capability_reply');
-    // The fixed prompt, then the runtime facts block the recorder injects after
-    // it, then the inbound user input; the remaining below-boundary sections
-    // follow as their own messages instead of inside the system prompt.
+    // The fixed prompt, then the runtime facts block and the environment brief
+    // the recorder injects after it, then the inbound user input; the remaining
+    // below-boundary sections follow as their own messages instead of inside the
+    // system prompt.
     expect(requests[0]?.messages[0]?.role).toBe('system');
-    expect(requests[0]?.messages[2]?.role).toBe('user');
+    expect(requests[0]?.messages[3]?.role).toBe('user');
     expect(requests[0]?.messages.filter((message) => message.role === 'system').length)
       .toBeGreaterThanOrEqual(2);
     expect(requests[0]?.messages.filter((message) => message.role === 'user')).toHaveLength(1);

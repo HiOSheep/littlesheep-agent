@@ -28,6 +28,10 @@ import {
 } from './memory-context-working-set.js';
 import { renderKnownStateText, knownStateRulesSection } from './memory-known-state.js';
 import { renderRuntimeFacts, renderVolatileRunState } from './runtime-awareness.js';
+import {
+  RUNTIME_CONTEXT_TAIL_ID,
+  renderRuntimeContextNotice,
+} from './runtime-context-notice.js';
 
 export interface RunTailEntry {
   id: string;
@@ -118,6 +122,22 @@ export function renderTailEntries(
     },
     scope: 'run',
   });
+  // The current execution environment, appended only when the effective state
+  // moved. It sits directly after the capability facts so the model reads "what
+  // this run can do" and "what this run is actually routed to" together. An
+  // unchanged environment renders nothing, which is why the same state is never
+  // announced twice.
+  const runtimeContext = renderRuntimeContextNotice(ctx);
+  if (runtimeContext) {
+    entries.push({
+      id: RUNTIME_CONTEXT_TAIL_ID,
+      order: 0.25,
+      text: runtimeContext,
+      kind: 'runtime_event',
+      source: { kind: 'runtime_event', id: RUNTIME_CONTEXT_TAIL_ID, runId: ctx.runId },
+      scope: 'run',
+    });
+  }
   // Sections the prompt placed below the cache boundary, in the order the prompt
   // rendered them. The retrieval contract is one of these; so are the output
   // directives, the workspace bootstrap files and the run/runtime disclosure.

@@ -58,11 +58,13 @@ describe('RunTailLedger', () => {
     const first = ledger.update(ctx);
     const second = ledger.update(ctx);
 
-    // Runtime facts and the KnownState reading rules are interval policy: one
-    // copy each, sent once, never repeated.
-    expect(first.messages).toHaveLength(2);
+    // Runtime facts, the current execution environment and the KnownState
+    // reading rules are interval policy: one copy each, sent once, never
+    // repeated.
+    expect(first.messages).toHaveLength(3);
     const firstText = first.messages.map((message) => String(message.content)).join('\n');
     expect(firstText).toContain('# Runtime Facts');
+    expect(firstText).toContain('[Runtime context; effective for this request]');
     expect(firstText).toContain('KnownState rules:');
     expect(second.messages).toEqual([]);
   });
@@ -99,7 +101,7 @@ describe('RunTailLedger', () => {
     const second = ledger.update(ctx);
     const third = ledger.update(ctx);
 
-    expect(first.messages).toHaveLength(3);
+    expect(first.messages).toHaveLength(4);
     expect(first.messages.map((message) => String(message.content)).join('\n'))
       .toContain('[atom-1@1]');
     // A revision bump alone is Runtime bookkeeping, not a change the model can

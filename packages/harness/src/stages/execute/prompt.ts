@@ -24,6 +24,10 @@ export async function buildExecuteSystemPrompt(
 ): Promise<SystemPromptBundle> {
   const resolved = resolvePromptConfig(deps.config, deps.branding);
   const base = await assembleSystemPromptBundle(resolved, {
+    // The run-scoped workspace fact, not the configured default: the tool context
+    // was built from `ctx.cwd`, so the prompt has to name the same directory the
+    // next tool call will resolve relative paths against.
+    workspace: ctx.cwd,
     // The capability summary names the registered catalog, which is what the
     // model is shown; a per-turn restriction travels as the retrieval contract
     // below the cache boundary instead of changing the fixed prompt.

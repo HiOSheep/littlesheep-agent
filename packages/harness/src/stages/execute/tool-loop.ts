@@ -51,6 +51,7 @@ import type {
   ToolLoopResult,
 } from './contracts.js';
 import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
+import { toolRoundFailurePolicy } from './tool-failure-disposition.js';
 
 const MAX_ITERATIONS = 20;
 const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
@@ -394,14 +395,13 @@ export async function runToolLoop(
         finalizeToolResult(ctx, produced, messages, toolResults, converted.name, result, sentPayloads);
       }
 
-      // A failed Runtime/tool boundary is authoritative for this step. Allow
-      // one final text response with tools disabled, but do not let the model
-      // probe around an unknown tool, denied permission, invalid input or
-      // blocked side effect inside the same step.
-      if (executedResults.size > 0
-        && [...executedResults.values()].some((result) => !result.ok)) {
-        forceFinalResponse = true;
-        persistRuntimeControlMessage(ctx, produced, messages, control.boundaryFailure);
+      // Only an authoritative boundary (a refusal, an unprovable outcome) closes
+      // the run's ability to act; a determinate execution failure stays in this
+      // loop for the model to correct, under the same budgets as any other round.
+      const failurePolicy = toolRoundFailurePolicy(ctx, [...executedResults.values()], control);
+      if (failurePolicy.forceFinalResponse) forceFinalResponse = true;
+      if (failurePolicy.controlMessage) {
+        persistRuntimeControlMessage(ctx, produced, messages, failurePolicy.controlMessage);
       }
 
       // Tool results are now authoritative for the active step. Every later

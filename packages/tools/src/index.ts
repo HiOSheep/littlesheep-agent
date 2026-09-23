@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
 
 export { ToolRegistry } from './registry.js';
 export { checkApproval, interactiveApprove, DEFAULT_APPROVAL, type ApprovalConfig } from './approval.js';
@@ -43,7 +43,13 @@ export {
 export { readTool } from './builtin/read.js';
 export { writeTool } from './builtin/write.js';
 export { editTool } from './builtin/edit.js';
-export { execTool, createExecTool, type ExecToolOptions } from './builtin/exec.js';
+export {
+  execTool,
+  createExecTool,
+  describeExecutionShell,
+  type ExecToolOptions,
+  type ExecutionShellDescriptor,
+} from './builtin/exec.js';
 export { grepTool } from './builtin/grep.js';
 export { globTool } from './builtin/glob.js';
 export { documentReadTool } from './builtin/document-read.js';

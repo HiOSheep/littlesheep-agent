@@ -42,12 +42,13 @@ function expectCommonPayloadShape(
   expect(request.model).toBe('test-model');
   const roles = request.messages.map((message) => message.role);
   // The main system prompt, then the conversation in its stable order. The
-  // Runtime facts and the retrieval contract follow, either as the main loop's
-  // append-only tail after the user turn (EXECUTE) or as the stable injected
-  // facts directly after the system prompt (single-request stages such as
-  // REPLY). Both keep the conversation itself contiguous and in order.
+  // Runtime facts and the environment brief, plus the retrieval contract, follow
+  // either as the main loop's append-only tail after the user turn (EXECUTE) or
+  // as the stable injected facts directly after the system prompt
+  // (single-request stages such as REPLY). Both keep the conversation itself
+  // contiguous and in order.
   const appendOnly = options.tail !== 'injected';
-  const conversationStart = appendOnly ? 1 : 2;
+  const conversationStart = appendOnly ? 1 : 3;
   expect(roles.slice(conversationStart, conversationStart + 4))
     .toEqual(['user', 'assistant', 'user', 'user']);
   expect(roles.slice(conversationStart + 4).every((role) => role === 'system')).toBe(true);

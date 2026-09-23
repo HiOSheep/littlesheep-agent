@@ -18,10 +18,17 @@ import type { ContextMessageCandidate } from '@littlesheep/context';
 import type { ChatMessage, ChatRequest } from '@littlesheep/llm';
 import { CACHE_BOUNDARY_MARKER } from '@littlesheep/prompt';
 import type { LlmCallPurpose, RunContext } from '@littlesheep/types';
+import { describeExecutionShell } from '@littlesheep/tools';
 import { isExecutionContinuationRequest } from './continuation-intent.js';
+import {
+  RUNTIME_CONTEXT_TAIL_ID,
+  renderRuntimeContextNotice,
+} from './runtime-context-notice.js';
 
 /** Sorts immediately after the primary system prompt (order 0) and before any history. */
 const STABLE_FACTS_ORDER = 0.5;
+/** Sorts after the capability facts, which it must not displace. */
+const RUNTIME_CONTEXT_ORDER = 0.6;
 
 export interface RuntimeAwarenessInjection {
   request: ChatRequest;
@@ -42,10 +49,23 @@ export function injectRuntimeAwareness(
   const compact = shouldUseCompactRuntime(ctx, purpose);
   const stableText = compact ? renderCompactCapabilityFacts(ctx) : renderCapabilitySnapshot(ctx);
   const volatileText = renderVolatileRunState(ctx);
+  // The environment brief: only present when the model has not already been told
+  // this exact state. Because the last observed notice is read from the replayed
+  // transcript as well as from this run's own output, an unchanged environment
+  // adds nothing here — the replayed copy is the current fact.
+  const runtimeContextText = renderRuntimeContextNotice(ctx);
 
   const stableMessage: ChatMessage = { role: 'system', content: stableText };
+  const runtimeContextMessage: ChatMessage | undefined = runtimeContextText
+    ? { role: 'system', content: runtimeContextText }
+    : undefined;
   const messages = [...request.messages];
-  messages.splice(systemIndex + 1, 0, stableMessage);
+  messages.splice(
+    systemIndex + 1,
+    0,
+    stableMessage,
+    ...(runtimeContextMessage ? [runtimeContextMessage] : []),
+  );
   const volatileMessage: ChatMessage | undefined = volatileText
     ? { role: 'system', content: `${CACHE_BOUNDARY_MARKER}\n\n${volatileText}` }
     : undefined;
@@ -70,6 +90,24 @@ export function injectRuntimeAwareness(
     sensitive: true,
     scope: 'run',
   };
+  const runtimeContextCandidate: ContextMessageCandidate | undefined = runtimeContextMessage
+    ? {
+        id: `runtime-awareness:${requestIndex}:${RUNTIME_CONTEXT_TAIL_ID}`,
+        order: RUNTIME_CONTEXT_ORDER,
+        message: runtimeContextMessage,
+        kind: 'runtime_event',
+        source: {
+          kind: 'runtime_event',
+          id: `${RUNTIME_CONTEXT_TAIL_ID}:${ctx.runId}:${requestIndex}`,
+          runId: ctx.runId,
+          ...(ctx.startedAt ? { generatedAt: ctx.startedAt } : {}),
+        },
+        priority: 100,
+        required: true,
+        sensitive: true,
+        scope: 'run',
+      }
+    : undefined;
   const volatileCandidate: ContextMessageCandidate | undefined = volatileMessage
     ? {
         id: `runtime-awareness:${requestIndex}`,
@@ -94,6 +132,7 @@ export function injectRuntimeAwareness(
     candidates: [
       ...candidates,
       stableCandidate,
+      ...(runtimeContextCandidate ? [runtimeContextCandidate] : []),
       ...(volatileCandidate ? [volatileCandidate] : []),
     ],
   };
@@ -180,8 +219,12 @@ function capabilityProbeLine(ctx: RunContext): string | undefined {
 
 function capabilityFactLines(ctx: RunContext): string[] {
   const snapshot = ctx.capabilitySnapshot;
+  const shell = executionShellFactLines();
   if (!snapshot) {
-    return ['- capability_snapshot: unavailable (no Runtime snapshot was supplied)'];
+    return [
+      '- capability_snapshot: unavailable (no Runtime snapshot was supplied)',
+      ...shell,
+    ];
   }
   const toolSummary = snapshot.tools
     .map((tool) => `${cleanInline(tool.name)}=${tool.status}`)
@@ -192,7 +235,26 @@ function capabilityFactLines(ctx: RunContext): string[] {
     `- workspace_access: ${snapshot.workspace}`,
     `- network: ${snapshot.network.enabled ? 'enabled' : 'disabled'} (${snapshot.network.status})${snapshot.network.providerId ? ` provider=${cleanInline(snapshot.network.providerId)}` : ''}`,
     `- registered_tools: ${toolSummary || 'none'}`,
+    ...shell,
   ];
+}
+
+/**
+ * The real shell, disclosed from the executor's own descriptor.
+ *
+ * The model's first command is where a wrong assumption about the interpreter
+ * shows up, and neither the workspace's TOOLS.md nor the repository copy is a
+ * Runtime-owned fact: a user may replace or empty its runtime copy. So the value
+ * comes from the code that spawns the process, and the syntax note that follows
+ * from it travels with the same line.
+ */
+function executionShellFactLines(): string[] {
+  const shell = describeExecutionShell();
+  const invocation = `${shell.binary} ${shell.args.join(' ')} "<command>"`;
+  const syntax = shell.family === 'windows-powershell'
+    ? 'Windows PowerShell, not PowerShell 7/pwsh; `;` separates statements, Get-ChildItem/Test-Path list and test paths, quote paths containing spaces, cmd.exe `&&` is unavailable'
+    : 'POSIX sh, not bash; quote paths containing spaces, do not rely on bash-only syntax';
+  return [`- shell: ${invocation} (${syntax})`];
 }
 
 function taskProgress(ctx: RunContext): {

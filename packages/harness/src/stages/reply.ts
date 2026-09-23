@@ -30,6 +30,7 @@ import { buildRunRequestCandidates } from '../context-candidates.js';
 import { publishUserFacingReply } from '../user-facing-reply.js';
 import { clearReplyState } from '../reply-state.js';
 import { recordFailure } from '../failure-state.js';
+import { renderRuntimeContextNotice, recordRuntimeContextNotice } from '../runtime-context-notice.js';
 import { repairDiscontinuousReply } from './reply/continuity-repair.js';
 
 export interface ReplyStageDeps {
@@ -57,12 +58,22 @@ export function createReplyStage(deps: ReplyStageDeps) {
     // from a checkpoint is read-only history, so this stage answers the current
     // request (or the capability question) like any other turn.
     const resolved = resolvePromptConfig(deps.config, deps.branding);
+    // The environment brief this turn will deliver, if the model has not already
+    // been told this exact state. It is recorded in the transcript once the reply
+    // is published, so a later run replays it as current instead of re-announcing
+    // it. Reading it before the request is built keeps the bounded empty-output
+    // retry on the same bytes.
+    const runtimeContextNotice = renderRuntimeContextNotice(ctx);
     const isCapabilityReply = ctx.classification?.retrievalIntent === 'capability_question'
       || ctx.classification?.retrievalIntent === 'capability_probe';
     const replyPurpose: UserFacingReplyPurpose = isCapabilityReply ? 'capability_reply' : 'reply';
     // RESPOND keeps continuity, selected memory, voice and runtime capabilities,
     // but omits execution-only workflow, memory-navigation and tool discipline.
     const baseSystemPrompt = await assembleSystemPromptBundle(resolved, {
+      // Same run-scoped workspace fact as the main loop: a capability answer that
+      // names a different directory than the executing run is a false statement
+      // about the Runtime, not a wording difference.
+      workspace: ctx.cwd,
       tools: ctx.tools,
       bootstrap: respondBootstrap(ctx.bootstrap),
       sessionSummary: isCapabilityReply ? undefined : ctx.sessionSummary,
@@ -276,6 +287,10 @@ export function createReplyStage(deps: ReplyStageDeps) {
       // Streamed text is provisional. Replace it with the text that was
       // actually reserved under this run's settlement identity.
       if (reply !== streamed.trim()) ctx.onAssistantReplace?.(reply);
+      // The reply is published, so the environment brief it carried is now a fact
+      // the session has observed: record it in the transcript. A failed turn does
+      // not record it, because the model may never have read it.
+      recordRuntimeContextNotice(ctx, runtimeContextNotice);
     } catch (err) {
       if (streamed) ctx.onAssistantReplace?.('');
       const message = `user-facing reply generation failed: ${(err as Error).message}`;

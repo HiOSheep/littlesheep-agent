@@ -360,6 +360,14 @@ function promptSegment(
 export interface ResolvedPromptConfig {
   branding: BrandingConfig;
   model: string;
+  /**
+   * Configured default workspace. It is only the fallback for a caller that has
+   * no run-scoped workspace fact: the directory a run actually executes in is
+   * Runtime state, not a config knob, and must travel through
+   * {@link RuntimeFacts.workspace} instead. Reading this value into the
+   * `# Workspace` section while the tools ran somewhere else is what made the
+   * model describe, probe and target the configured default directory.
+   */
   workspace: string;
   timezone?: string;
   timeFormat: 'auto' | '12' | '24';
@@ -393,6 +401,14 @@ export interface RuntimeFacts {
    * be a second copy of schemas the model already receives.
    */
   includeToolingText?: boolean;
+  /**
+   * The directory this run actually executes in, resolved by the Runtime at the
+   * run entry point. Every consumer of the workspace fact (the `# Workspace`
+   * prompt section, the tool working directory, permission classification and
+   * artifact ownership) has to read the same value; a caller that omits it falls
+   * back to the configured default, which is only correct when the two coincide.
+   */
+  workspace?: string;
   tools: AgentTool[];
   skills?: { name: string; description: string }[];
   bootstrap: Record<string, string>;
@@ -420,7 +436,10 @@ export async function assembleSystemPromptBundle(
     branding: resolved.branding,
     tools: facts.tools,
     skills: facts.skills,
-    workspace: resolved.workspace,
+    // The run's own workspace wins over the configured default. Both callers in
+    // the harness pass the directory the tools will use, so the model's idea of
+    // "where am I" and the working directory of its next call are one fact.
+    workspace: facts.workspace ?? resolved.workspace,
     timezone: resolved.timezone,
     runtime: facts.runtime ?? (mode === 'respond' ? undefined : {
       model: resolved.model,

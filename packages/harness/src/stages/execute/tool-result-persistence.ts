@@ -209,6 +209,7 @@ export function persistRuntimeTailMessages(
  */
 export const RUNTIME_CONTROL_MESSAGES = {
   boundaryFailure: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
+  effectfulFailure: 'Runtime control: the failed call may already have changed the workspace, so the Runtime will not replay it. Observe the actual state (read or list what the call was supposed to change) before deciding what to do next.',
   noProgressBound: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
 } as const;
 

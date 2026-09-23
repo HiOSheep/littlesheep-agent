@@ -38,6 +38,7 @@ import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { prepareRuntimeConfig } from './runtime-config-preparation.js'
+import { createRuntimeConfigUpdater } from './runtime-config-change.js'
 import { createExecutionRetryController } from './execution-retry.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { loadPluginHost } from './plugin-host-startup.js'
@@ -91,7 +92,6 @@ let currentConfig: Config | null = null
 let currentBranding: BrandingConfig | null = null
 let currentModel: string = ''
 let currentDataDir: string = ''
-let runtimeConfigUpdateQueue: Promise<void> = Promise.resolve()
 let currentBootstrapDir: string = ''
 let currentWorkplaceDir: string = ''
 let providerCalibrationToken = ''
@@ -221,18 +221,19 @@ async function persistRuntimeConfig(config: Config): Promise<void> {
   pluginHost?.setConfig(config)
 }
 
-async function updateRuntimeConfig(config: Config): Promise<Config> {
-  const operation = runtimeConfigUpdateQueue.then(async () => {
-    const normalized = prepareRuntimeConfig(config, currentWorkplaceDir).config
-    const modelChanged = normalized.agents.defaults.model !== currentConfig?.agents.defaults.model
-    const webChanged = JSON.stringify(normalized.web) !== JSON.stringify(currentConfig?.web)
-    await persistRuntimeConfig(normalized)
-    if (modelChanged || webChanged) await rebuildRunner()
-    return normalized
-  })
-  runtimeConfigUpdateQueue = operation.then(() => undefined, () => undefined)
-  return operation
-}
+/**
+ * The accepted configuration is what the next run resolves policy from, and the
+ * Runner captures one immutable copy at construction — so the updater replaces it
+ * whenever the saved revision differs in any field the run reads. Owning the
+ * transaction in `runtime-config-change.ts` keeps the composition root out of the
+ * normalize/persist/rebuild ordering.
+ */
+const updateRuntimeConfig = createRuntimeConfigUpdater({
+  current: () => currentConfig,
+  prepare: (config) => prepareRuntimeConfig(config, currentWorkplaceDir).config,
+  persist: persistRuntimeConfig,
+  rebuild: rebuildRunner,
+})
 
 async function bootstrap(): Promise<void> {
   let stageStartedAt = recordBootstrapTiming('bootstrap-start')

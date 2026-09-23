@@ -25,6 +25,41 @@ const MAX_CAPTURED_STREAM_CHARS = 64 * 1024;
 const FORCE_KILL_DELAY_MS = 5_000;
 const FORCE_SETTLE_DELAY_MS = 1_000;
 
+/**
+ * The shell this tool really starts.
+ *
+ * Declared once and used by both the spawn below and the model-facing
+ * disclosure, so the described interpreter cannot drift from the executed one.
+ * Windows runs `powershell.exe` (Windows PowerShell) with `-NoProfile
+ * -Command`; Unix runs `/bin/sh -c`. Neither is PowerShell 7 (`pwsh`) and
+ * neither accepts the other family's chaining syntax by default.
+ */
+const EXEC_SHELL_BINARY = process.platform === 'win32' ? 'powershell.exe' : '/bin/sh';
+const EXEC_SHELL_ARGS: readonly string[] = process.platform === 'win32'
+  ? ['-NoProfile', '-Command']
+  : ['-c'];
+const EXEC_SHELL_FAMILY: 'windows-powershell' | 'posix-sh'
+  = process.platform === 'win32' ? 'windows-powershell' : 'posix-sh';
+
+/** Model-facing description of the real executor, generated from its own constants. */
+export interface ExecutionShellDescriptor {
+  readonly platform: NodeJS.Platform;
+  readonly family: 'windows-powershell' | 'posix-sh';
+  /** Executable actually spawned, exactly as written in the argv. */
+  readonly binary: string;
+  /** Arguments placed before the command string. */
+  readonly args: readonly string[];
+}
+
+export function describeExecutionShell(): ExecutionShellDescriptor {
+  return {
+    platform: process.platform,
+    family: EXEC_SHELL_FAMILY,
+    binary: EXEC_SHELL_BINARY,
+    args: [...EXEC_SHELL_ARGS],
+  };
+}
+
 export interface ExecToolOptions {
   approvalConfig?: ApprovalConfig;
   /** Whether to prompt interactively for escalated approvals. */
@@ -35,7 +70,20 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
   const approvalConfig = opts.approvalConfig ?? DEFAULT_APPROVAL;
   return {
     name: 'exec',
-    description: 'Execute a shell command. Whitelisted commands auto-approve; others require approval.',
+    description: [
+      'Execute one shell command line.',
+      EXEC_SHELL_FAMILY === 'windows-powershell'
+        // Naming the real executable is the fact the model needs before its first
+        // command: `powershell.exe` is Windows PowerShell, not PowerShell 7
+        // (`pwsh`), and it does not accept cmd.exe or Bash chaining.
+        ? 'Runs: powershell.exe -NoProfile -Command "<command>" (Windows PowerShell, not pwsh/PowerShell 7). '
+          + 'Use PowerShell syntax: `;` separates statements, `Get-ChildItem`/`Test-Path` for listing and existence, '
+          + 'and quote paths containing spaces (for example Get-ChildItem -LiteralPath \'D:\\My Folder\'). '
+          + 'cmd.exe `&&` and Bash syntax are not available.'
+        : 'Runs: /bin/sh -c "<command>" (POSIX sh, not bash). '
+          + 'Use POSIX sh syntax, quote paths containing spaces, and do not rely on bash-only constructs.',
+      'Whitelisted commands auto-approve; others require approval.',
+    ].join(' '),
     inputSchema: ExecInput,
     requiresApproval: true,
     execution: { concurrency: 'exclusive' },
@@ -84,10 +132,8 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
       ctx.log?.('info', `exec: ${command} (cwd: ${workDir})`);
 
       // Use PowerShell on Windows (per TOOLS.md convention), sh on Unix
-      const shell = process.platform === 'win32' ? 'powershell.exe' : '/bin/sh';
-      const shellArgs: string[] = process.platform === 'win32'
-        ? ['-NoProfile', '-Command', command]
-        : ['-c', command];
+      const shell = EXEC_SHELL_BINARY;
+      const shellArgs: string[] = [...EXEC_SHELL_ARGS, command];
 
       return await new Promise((resolve) => {
         const proc = spawn(shell, shellArgs, {

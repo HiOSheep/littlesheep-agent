@@ -1,6 +1,6 @@
 # @littlesheep/prompt
 
-最后更新：2026-09-22 12:40:16
+最后更新：2026-09-23 21:05:00
 
 装配稳定的系统提示、行为 profile、工作区说明和有界记忆索引片段，并公布缓存边界。
 
@@ -8,6 +8,7 @@
 
 - 公开入口是 `src/index.ts`；`builder.ts` 负责装配并给出 `stableText`/`stableSegments` 与 `trailingSegments` 两半；`cache-boundary.ts` 只定义 `CACHE_BOUNDARY_MARKER`；`profiles.ts` 定义通用/编程行为，`sections.ts` 提供分段，`runtime-time.ts` 负责运行时时钟格式。
 - system 消息恰好是边界以上的 sections；边界以下的 bootstrap、Runtime facts 和会话摘要由调用方的追加式尾部各自成消息，Prompt 不替调用方决定消息位置。
+- `# Workspace` 段落是 run 级事实，不是配置项：`RuntimeFacts.workspace`（调用方传入的实际执行目录）优先于 `resolvePromptConfig` 的 `agents.defaults.workspace`，只有未提供运行时事实时才回退到配置默认值。同一目录同时决定提示、工具 cwd、权限分类与产物归属。
 - Prompt 表达原则和输出约束，不承担状态机、工具实现或全部业务逻辑。
 - 禁止把完整长期记忆、用户项目正文或权限绕过规则常驻系统提示。
 
