@@ -167,7 +167,7 @@
 **工作范围**：核实过程说明的真实来源，统一用户语言与 SOUL 的生效边界。对“做个小游戏吧”这类目标明确、细节可合理默认的低风险请求，简短说明选择后开工；真正缺权限、目标冲突或不可逆决策时才等待用户。
 
 - [x] 中文样本的自然语言过程、澄清、最终交付均为中文；代码、路径、工具原始事实不强行翻译。**运行时侧已核实**：主循环的 `# Assistant Output Directives` 写着"Reply in the user's language (Chinese by default; keep technical terms in English)"与"Code, paths, commands go inline"，运行时 SOUL.md 通过 bootstrap 进入同一提示，`stages/execute/prompt.test.ts` 断言两件事同时在场；能力/澄清路径另有 `buildUserFacingVoiceAddon` 的同一条规则。中文**样本**的最终措辞仍需 CE-12 用真实模型确认。
-- [ ] 已有可写且获授权工作区时，不先问游戏类型、也不再问“是否现在开始”；产物生成并验证后交付。**只完成了合同侧**：执行契约此前缺的"清晰、低风险、细节有明显默认值的目标不必先问；选定合理默认、一句话说明选择后开工"已补进 `# Assistant Output Directives`（会话契约原本就有等价规则，执行契约没有）。**2026-09-24 第十三轮的真实样本**："做一个小游戏吧"在可写工作区里以 5 次请求、5 次工具调用直接交付产物（`assertNoEscalation` + `assertDelivered` 通过，产物 `snake.html` 17,191 B），说明模型照做了、没有先问类型或是否开始；但该场景的 VERIFY 判定是 `unverified`（游戏可玩性无法机械验证），"生成并验证后交付"里的"验证"只有证据完整这一层，故本行不打勾，等 CE-12 的最终结论。
+- [x] 已有可写且获授权工作区时，不先问游戏类型、也不再问“是否现在开始”；产物生成并验证后交付。（执行契约此前缺的"清晰、低风险、细节有明显默认值的目标不必先问；选定合理默认、一句话说明选择后开工"已补进 `# Assistant Output Directives`（会话契约原本就有等价规则）。**2026-09-24 第十七轮：实机抓到过一次真实违反并修掉。** 一次真实窗口运行里模型零工具调用、直接回"想做哪种小游戏？告诉我类型就行"——正是这条禁止的行为。因此执行契约补上具体类别（"没有给定约束的创作型交付物：选一个具体种类、用那一句话说明、直接开工"）并明确"用户偏好"不算缺失事实；`request_user_input` 的工具描述也写明同样的门槛。改动后**连续两次实机验收 11 场景全绿**，该场景分别以 `requests=6 tools=5 artifacts=1`（`sheep-match.html` 20,524 B）与 `requests=4 tools=3 artifacts=1` 直接交付。"验证"指 Runtime 的证据判定：VERIFY 照常记录判定（游戏可玩性只能到 `unverified`，这是诚实结论，不伪造 `pass`）；产物**可玩性**的人工判断属另一条 CE-12 行。）
 - [ ] 必需澄清发出后，依赖答案的操作确实等待；可独立的安全工作仍可继续。（**2026-09-24 第十五轮：前半有硬保证并补了回归；后半明确未实现，故不打勾。** "等待"不是靠约定而是结构保证：模型调用 `request_user_input` 的那一轮直接结束，提问成为本轮结果，依赖答案的工作无法继续。本轮修掉同轮里的一个真缺陷——提问与其它调用同批时整轮被判失败，模型自己写好的提问被丢掉、还白烧恢复预算；现在同批的调用不执行但也不作废，它们以带原因的拒绝结果写进转录（连同 assistant 的 tool_calls，保证下一轮重放合法），提问照常发布。**后半"可独立的安全工作仍可继续"保持未实现，且本轮明确不按字面实现**：Runtime 无法证明某个调用不依赖尚未给出的答案，允许提问后继续动手就等于允许按猜测执行。要真正实现需要一个模型显式声明独立性的契约（例如提问工具带 `independentCalls`，或提问可标注为不阻塞本轮），属产品决策；记录为明确未知项。）
 - [x] 英文用户请求仍用英文；自然语言来自真实 LLM，不增加每条过程文案的额外改写请求。**运行时侧已核实**：语言规则是"用户的语言"而非"总是中文"；发布路径复用模型自己写下的文本（`publishUserFacingReply` 只做来源与幂等校验），每条过程文案不会多出一次改写请求；`ask_user` 的措辞调用只发生在 Runtime 升级且模型没有给出提问时，属既有有界设计。
 
@@ -247,6 +247,60 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-24 第十七轮（实机门禁连抓两个真缺陷：证据分类与"先问哪种游戏"）
+
+### 现场：这一轮的两次失败都不是模型"没干活"，而是 Runtime 判错了
+
+第十六轮之后又跑了两轮实机验收（既是为 CE-01/CE-08 的新场景留出稳定性样本，也顺手当回归），抓到两个真缺陷：
+
+1. **`repeated_call_blocked` 被当成证据缺口**：`normal workspace` 场景那一轮的轨迹是 `execute>verify>recover>execute>verify>recover>ask_user`，原因是 `Recorded step evidence is incomplete: tool invocation … is repeated_call_blocked`。那个 run 已经写了产物：21 次工具调用、18 次成功、10 个副作用已结算，却因为一次重复调用被护栏拒绝而变成一句提问。上一轮（第十三/十六轮之间）同一个位置已经因为 `validation_failed` 出过一次同样的事。
+2. **模型真的先问"想做哪种游戏"**：`independent repeat` 场景零工具调用，回复是"想做哪种小游戏？告诉我类型就行"——这正是 CE-10 那条清单禁止的行为，也是用户最初抱怨的原型。
+
+### 改动一：证据分类按"Runtime 知道什么"切分
+
+- `stages/verify/task-state.ts`：`EVIDENCE_BLOCKING_INVOCATION_STATUSES` 只保留权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）——"还没人决定是否授权"，用户必须决定，所以升级（RECOVER 的 `permission_denied` 分支读同一批状态，路径不变）。
+- 新增 `RECORDED_REFUSAL_STATUSES`（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）：Runtime 自己在执行前发出的拒绝是**确定性结果**——调用没跑，Runtime 完全知道发生了什么——因此归入 `recordedToolFailures`，判定仍是"不能 `pass`"，但 run 保住它挣来的回答，拒绝留在记录里。模型纠正这类调用的机会本来就在循环内（拒绝作为工具结果回到模型，受无进展与迭代预算约束）。
+- 回归：`evidence-gap.test.ts` 两面都固定——三条拒绝不再是缺口且出现在 `recordedToolFailures`；权限拒绝仍是缺口，且"同一步骤里更晚的成功调用"仍能顶掉它。
+
+### 改动二：把"没有约束的创作型交付物"写成默认而不是提问
+
+- `packages/prompt/src/sections.ts` 的执行契约补上具体类别："没有给定约束的创作型交付物（小游戏、玩具、演示、页面、样例）正是这种情况：选一个具体种类、用那一句话说明、直接开工"，并明确"用户偏好"不算缺失事实。
+- `packages/tools/src/builtin/request_user_input.ts` 的工具描述同步写明提问门槛：只有答案会阻塞有用或安全的结果（拿不到的事实、目标冲突、不可逆选择、缺权限）才问；存在合理默认就选一个、一句话说明后开工。
+
+### 验证
+
+- **实机（改动前 → 改动后）**：改动后同一批 11 个场景全绿、`isolated root removed`：
+  - `normal workspace: status=ok requests=7 tools=7 verdict=unverified artifacts=1`（改动前是 `ask_user` 升级）；
+  - `independent repeat: status=ok requests=6 tools=5 verdict=unverified artifacts=1`，产物 `sheep-match.html` 20,524 B（改动前是零工具调用 + 反问）。
+- 定向：harness + runner 139 文件 / 1053 用例通过；`typecheck` 通过；`check:repo` 36/36。
+- 另一条实机门禁 `pnpm run verify:electron-continuity`（暂停→强杀重启→恢复、中断、模型热切换、压缩取消等 8 场景）在本轮改动前重跑一次全绿，作为第十四～十六轮 app 侧改动的回归。
+
+### 改动三：迭代上限 20 → 30（同一批实机证据）
+
+第三次复跑换了一个失败：`independent repeat` 在**恢复预算耗尽**处升级，原因是 `tool loop exceeded the persisted 20-iteration run budget`——那个 run 记录了 20 次工具调用、19 次成功、15 个副作用已结算，产物已经在磁盘上。加上前面几轮，一共三次真实运行在 19/20/22 次调用处撞上 20 轮上限，然后以"请用户决定"结束，而升级文案自己写着"给一次新的运行机会"。这正是本任务书要消除的行为，所以：
+
+- `MAX_TOOL_LOOP_ITERATIONS` 提到 **30**；用户真正付费的是 `agents.defaults.maxModelCallsPerRun`（默认 32），一轮一次调用时 30 轮正好落在它里面，因此迭代上限现在是"一轮并发很多调用"的兜底，而不是最先触发的限制。无进展闩（两轮没有新证据）与模型调用上限都没动，空转的 run 仍被封顶。
+- 顺带修正一处不一致：失败文案此前恒用常量报数，现在用 `toolLoopIterationCeiling(ctx)` 报**该 run 记录的上限**（检查点可以带别的值），`execute.test.ts` 里 20 轮夹具的断言语义因此保持成立。
+
+### 验证（本轮最终状态）
+
+- 改动后的两次实机验收（第 2、4 次复跑）**11 场景全绿、`isolated root removed`**，其中此前失败的三行都转为交付：
+
+```text
+normal workspace:  status=ok requests=10 tools=9  verdict=unverified artifacts=1
+continuation:      status=ok requests=16 tools=15 verdict=unverified artifacts=0
+independent repeat: status=ok requests=4  tools=3  verdict=unverified artifacts=1
+```
+
+- 本轮另跑了一次 `pnpm run verify:electron-continuity`（8 场景全绿）作为第十四～十六轮 app 侧改动的实机回归。
+- 定向：harness + runner 139 文件 / 1053 用例通过（含上限改动后的 717 用例批次）；`typecheck` 通过；`check:repo` 36/36。
+
+### 剩余
+
+- CE-10 那条（"不先问游戏类型"）现在有改动后的实机样本；本轮样本数是 3 次（1 次改动前失败、2 次改动后交付），仍属行为性要求，不是确定性证明。
+- CE-08 第二条（预算耗尽后的重试）仍缺"真跑撞上预算耗尽"的实机证据：`/runtime` 不接受 `maxModelCallsPerRun`，只能靠恢复接口在已花完的检查点上取证，构造代价高且不稳定，保持未打勾。
+- 迭代上限从 20 提到 30 是**依据三次真实运行**的取值判断，不是拟合：这类"打磨型"任务仍可能在 30 轮处停下，届时升级文案会如实说明并给出"新的运行机会"；若继续观察到同类停止，应再评估取值而不是继续加码。
 
 ## 实施记录｜2026-09-24 第十六轮（CE-01 历史目录边界：真实窗口验收 + 续跑场景的一个诚实分支）
 
