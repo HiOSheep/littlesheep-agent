@@ -1,12 +1,25 @@
 // Markdown rendering, safe links, streaming partitions, code blocks, and Mermaid diagrams for chat and previews.
-import { memo, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { lazy, memo, Suspense, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useLinkNavigation } from './link-navigation'
 import { StreamingMarkdownPartitioner } from './streaming-markdown'
 import { CheckIcon, CopyIcon } from './ui/icons'
+
+/**
+ * Syntax highlighting is loaded on demand.
+ *
+ * Measured: importing the full Prism build costs ~380 ms in Node (300 language
+ * modules plus 47 styles). Having it in the entry chunk spent that on every
+ * cold start for chat surfaces that rarely show a code block at first paint, so
+ * the highlighter moved to its own chunk and renders plain code until it
+ * arrives. `Prism` (not `PrismLight`) is kept so any language still highlights
+ * once the chunk is present.
+ */
+const SyntaxHighlighter = lazy(async () => ({
+  default: (await import('react-syntax-highlighter')).Prism,
+}))
 
 interface MarkdownProps {
   text: string
@@ -232,29 +245,20 @@ function MarkdownLink({ href, children }: { href?: string; children: ReactNode }
   )
 }
 
-function CodeBlock({ code, language }: { code: string; language: string }) {
+/**
+ * Plain, layout-stable fallback for the moments before the highlighter chunk
+ * arrives. It reuses the highlighter's own class names and inline styles so the
+ * swap does not move the surrounding layout.
+ */
+function PlainCodeFallback({ code, language }: { code: string; language: string }) {
   return (
     <div className="code-block">
       <div className="code-toolbar">
         <CopyButton text={code} label="代码" />
       </div>
-      <SyntaxHighlighter
+      <pre
         className="code-block-source"
-        language={language}
-        style={oneDark}
-        PreTag="div"
-        wrapLongLines
-        codeTagProps={{
-          className: `language-${language}`,
-          style: {
-            background: 'transparent',
-            backgroundColor: 'transparent',
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'anywhere',
-            wordBreak: 'break-word',
-          },
-        }}
-        customStyle={{
+        style={{
           margin: 0,
           maxWidth: '100%',
           overflow: 'hidden',
@@ -267,9 +271,52 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           paddingRight: 'calc(var(--code-block-inset) + var(--code-copy-button-size) + var(--code-copy-safe-gap))',
         }}
       >
-        {code}
-      </SyntaxHighlighter>
+        <code className={`language-${language}`} style={{ background: 'transparent' }}>{code}</code>
+      </pre>
     </div>
+  )
+}
+
+function CodeBlock({ code, language }: { code: string; language: string }) {
+  return (
+    <Suspense fallback={<PlainCodeFallback code={code} language={language} />}>
+      <div className="code-block">
+        <div className="code-toolbar">
+          <CopyButton text={code} label="代码" />
+        </div>
+        <SyntaxHighlighter
+          className="code-block-source"
+          language={language}
+          style={oneDark}
+          PreTag="div"
+          wrapLongLines
+          codeTagProps={{
+            className: `language-${language}`,
+            style: {
+              background: 'transparent',
+              backgroundColor: 'transparent',
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+              wordBreak: 'break-word',
+            },
+          }}
+          customStyle={{
+            margin: 0,
+            maxWidth: '100%',
+            overflow: 'hidden',
+            overflowWrap: 'anywhere',
+            background: 'transparent',
+            backgroundColor: 'transparent',
+            padding: 'var(--code-block-inset)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            paddingRight: 'calc(var(--code-block-inset) + var(--code-copy-button-size) + var(--code-copy-safe-gap))',
+          }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      </div>
+    </Suspense>
   )
 }
 
