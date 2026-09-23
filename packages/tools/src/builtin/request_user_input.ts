@@ -28,7 +28,12 @@ export function createRequestUserInputTool(): AgentTool {
     name: REQUEST_USER_INPUT_TOOL_NAME,
     description:
       'Ask the user for one missing fact you need in order to continue, instead of guessing or failing. '
-      + 'The question is published as your reply and the task waits for the answer.',
+      + 'The question is published as your reply and the task waits for the answer. '
+      + 'Use it only when the answer blocks a useful or safe result: a fact you cannot obtain, a conflict '
+      + 'between goals, an irreversible choice, or a permission. When a reasonable default exists — which '
+      + 'kind of small game, toy or demo to build, a file name, a layout — pick it, say so in one line and '
+      + 'start; the user can redirect after seeing the result. Asking which option the user prefers is not '
+      + 'a missing fact.',
     inputSchema: RequestInput,
     execute: withToolTiming(async (input) => {
       const request = RequestInput.parse(input);

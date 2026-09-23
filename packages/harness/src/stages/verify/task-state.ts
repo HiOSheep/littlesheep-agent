@@ -9,15 +9,38 @@ import { writeReplanState } from '../../replan-state.js';
 
 /**
  * Invocation statuses that make the recorded evidence unusable rather than
- * merely negative: a refused, invalid or unresolvable call leaves the runtime
- * unable to say what happened, so it still needs bounded recovery. A call that
- * ran and came back `failed`, `timed_out` or `aborted` is a recorded outcome
- * instead — see {@link recordedToolFailures}.
+ * merely negative.
+ *
+ * The distinction is *what the Runtime knows*, not how bad the outcome was:
+ *
+ * - A permission outcome (`approval_denied`, `approval_unavailable`,
+ *   `hard_denied`) is unresolved in the sense that matters — the user has to
+ *   decide whether the access is granted — so the run escalates with that fact
+ *   instead of publishing an answer (RECOVER's `permission_denied` branch reads
+ *   the same invocation statuses).
+ * - A refusal the *model* can correct (`validation_failed`, `unknown_tool`,
+ *   `repeated_call_blocked`) is a recorded outcome, not a gap: the call was
+ *   refused before it ran, so the Runtime knows exactly what happened — nothing.
+ *   Treating those as gaps cost real runs their delivery: measured twice in the
+ *   real window, a run that had written its artifact and settled ten effects was
+ *   turned into a question because one incidental call was schema-invalid, and
+ *   again because one repeated call was blocked. The loop already gives the model
+ *   its chance to correct such a call (the refusal travels back as a tool result,
+ *   under the no-progress and iteration bounds), so the verdict must stay
+ *   `unverified` with the refusal in the record rather than `fail`.
  */
 const EVIDENCE_BLOCKING_INVOCATION_STATUSES = new Set<ToolInvocationStatus>([
   'approval_denied',
   'approval_unavailable',
   'hard_denied',
+]);
+
+/**
+ * Refusals the Runtime itself issued before the call ran: determinate outcomes
+ * like any other failure, so they keep the verdict away from `pass` without
+ * making the evidence unusable.
+ */
+const RECORDED_REFUSAL_STATUSES = new Set<ToolInvocationStatus>([
   'validation_failed',
   'unknown_tool',
   'repeated_call_blocked',
@@ -147,7 +170,12 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
 export function recordedToolFailures(ctx: RunContext, limit = 5): string[] {
   const failures: string[] = [];
   for (const invocation of ctx.toolInvocations ?? []) {
-    if (invocation.status === 'failed' || invocation.status === 'timed_out' || invocation.status === 'aborted') {
+    if (
+      invocation.status === 'failed'
+      || invocation.status === 'timed_out'
+      || invocation.status === 'aborted'
+      || RECORDED_REFUSAL_STATUSES.has(invocation.status)
+    ) {
       failures.push(`tool invocation ${invocation.callId} is ${invocation.status}`);
     }
   }

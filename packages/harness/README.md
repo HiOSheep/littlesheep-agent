@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-24 03:41:26
+最后更新：2026-09-24 04:25:40
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -24,6 +24,7 @@
 - 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。
 - 续跑的证据投影（`stages/verify/task-state.ts` 的 `inheritedEffectEvidence` 与计划证据条件）：检查点持久化 `sideEffects` 与 `taskExecution`，但不持久化 `toolInvocations`，续跑 run 的 invocation 列表只属于本轮。两处判定因此都以"这是本轮产生的吗"为前提——继承的终态副作用由检查点自身作证；**步骤证据只对本次 run 执行过的计划成立**，续跑带进来的旧计划不再被当成缺口（此前会把 run 打回去重规划一个没有执行器能跑的步骤集）。没有 callId、仍未结算、本 run 未续跑，或计划属于本 run 时，缺口照旧上报。
+- **不可用证据与已记录的负结果按"Runtime 知道什么"分界**（`stages/verify/task-state.ts`）：权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）是"还没人决定是否授权"，用户必须决定，所以升级；**Runtime 自己在执行前发出的拒绝（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）是确定性结果——调用没跑，Runtime 完全知道发生了什么**，连同 `failed`/`timed_out`/`aborted` 一起留在记录里，让 run 停在 `unverified`。此前它们被算作缺口，实测两次让已经写好产物、结算了 10 个副作用的 run 变成一句提问（一次是附带调用 schema 非法，一次是重复调用被护栏拒绝）。模型纠正这类调用的机会在循环内（拒绝作为工具结果回到模型，受无进展与迭代预算约束）。
 - 恢复分类与升级（`stages/recover/policy.ts`、`stages/recover/escalation.ts`）：TaskBook 步骤执行器删除后没有东西再写 `taskExecution`，`recordedFailureKinds` 于是对所有普通 run 都返回空，权限拒绝与取消分支永久失效——现在它在步骤为空时改读 invocation 状态与 `lastError` 文本。**预算耗尽的失败不再重试**：`isExhaustedBudgetFailure()` 只匹配 Runtime 自己写下的上限文案，命中即第一次升级为 `execution_budget_exhausted`；上限记录在 run 上，重试同一轮必然再次撞上（实机一次白跑 4 轮 execute 才升级），而临时的 Provider 故障仍保留一次重试。升级给用户的 `clarificationRequest` 带上原因类别、已完成部分与所需动作三件事实（只含计数与状态），可见文案仍由 `ask_user` 的真实模型调用撰写。
 - **结构性证据缺口也不再重试 VERIFY**（同族规则的第二个实例）：VERIFY 是已记录证据的纯函数，重试它只会得到同一结论。实机一次真实运行里出现 4 条内容完全相同的 `source: 'structural'` 失败记录、相隔 174 ms、期间没有任何新工具调用，而那个 run 其实已经写完产物并给出了回答，最后却以"请用户决定"结束。现在的规则是 `isStructuralVerifyGap()`：第一次缺口回到 `execute`（缺口只会被"同一步骤里更晚的成功调用"顶掉，`stages/verify/task-state.ts` 的 supersede 规则），第二次相同缺口直接升级为 `unrecoverable_evidence_gap`。重新进入循环时由 `persistVerifyGapControl()` 把缺口作为 Runtime 控制消息（`RUNTIME_CONTROL_MESSAGES.verifyGap`）持久化，避免模型盲重试；该消息只在"`lastError.stage === 'verify'` 且最后一条验证记录是结构性 fail"时出现。回归在 `stages/recover.test.ts`、`stages/verify/evidence-gap.test.ts` 与 `stages/execute/tool-result-persistence.test.ts`。
 - 用户语言与声音边界（CE-10）：用户读到的过程叙述与最终交付由主循环授权，所以语言规则必须同时覆盖两条路径——`reply`/`ask_user` 走 `profile-prompt.ts` 的 `buildUserFacingVoiceAddon`（明确"措辞归模型、事实归 Runtime"），主循环走提示自带的 `# Assistant Output Directives`（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工）。SOUL.md 对两者都经 bootstrap 进入同一提示，`stages/execute/prompt.test.ts` 断言语言规则与 SOUL 正文同时在场。

@@ -18,7 +18,7 @@ import type {
 import { textMessage } from '@littlesheep/types';
 import { makeCtx } from '../../tests/helpers.js';
 import { createVerifyStage } from '../verify.js';
-import { runtimeExecutionEvidenceGap } from './task-state.js';
+import { recordedToolFailures, runtimeExecutionEvidenceGap } from './task-state.js';
 
 function invocation(
   callId: string,
@@ -134,33 +134,43 @@ describe('the evidence gap a completed run reports', () => {
     expect(runtimeExecutionEvidenceGap(ctx)).toBe('side effect tool:exec:call-1 is unknown');
   });
 
-  // CE-09: a refused call is a gap only while it is the run's last word on that
-  // step. RECOVER sends the first structural gap back to the loop precisely
-  // because this is how the gap closes — measured on the real acceptance run, the
-  // invalid call was the *last* one, so nothing could supersede it and the run
-  // ended by asking the user how to proceed.
-  it('lets a later successful call in the same step supersede a refused one', () => {
-    const refused = invocation('call-1', 'validation_failed', 'input_validation');
+  // CE-07/CE-09: which refusals are unusable evidence and which are recorded
+  // outcomes. The question is what the Runtime knows, not how bad the outcome was.
+  it('treats a Runtime-issued refusal as a recorded outcome, not a gap', () => {
+    for (const status of ['validation_failed', 'unknown_tool', 'repeated_call_blocked'] as const) {
+      const ctx = context();
+      ctx.toolInvocations = [invocation('call-1', status, 'input_validation')];
+      ctx.toolResults = [result('call-1', false)];
+
+      // The call was refused before it ran, so the Runtime knows exactly what
+      // happened — nothing. The run keeps its delivery; the refusal keeps the
+      // verdict away from `pass`.
+      expect(runtimeExecutionEvidenceGap(ctx), status).toBeUndefined();
+      expect(recordedToolFailures(ctx), status).toEqual([`tool invocation call-1 is ${status}`]);
+    }
+  });
+
+  it('keeps a permission outcome a gap the user has to resolve, and lets a later success supersede it', () => {
+    const refused = invocation('call-1', 'approval_denied', 'approval_denied');
     refused.stepId = 'step-1';
+    const stranded = context();
+    stranded.toolInvocations = [refused];
+    stranded.toolResults = [result('call-1', false)];
+    // Nobody decided whether the access is granted, so the run escalates with it.
+    expect(runtimeExecutionEvidenceGap(stranded)).toBe('tool invocation call-1 is approval_denied');
+
+    // Once a later call in the same step succeeded, that outcome is the run's
+    // word on the step and the refusal is superseded.
     const superseded = context();
     superseded.toolInvocations = [refused, { ...invocation('call-2', 'succeeded'), stepId: 'step-1' }];
     superseded.toolResults = [result('call-1', false), result('call-2', true)];
     expect(runtimeExecutionEvidenceGap(superseded)).toBeUndefined();
 
-    // The same refusal with nothing after it stays a gap: the model never got the
-    // chance to correct the call, so the run cannot claim the evidence is whole.
-    const stranded = context();
-    stranded.toolInvocations = [refused];
-    stranded.toolResults = [result('call-1', false)];
-    expect(runtimeExecutionEvidenceGap(stranded))
-      .toBe('tool invocation call-1 is validation_failed');
-
     // A later call recorded for a *different* step does not supersede it.
     const otherStep = context();
     otherStep.toolInvocations = [refused, { ...invocation('call-2', 'succeeded'), stepId: 'step-2' }];
     otherStep.toolResults = [result('call-1', false), result('call-2', true)];
-    expect(runtimeExecutionEvidenceGap(otherStep))
-      .toBe('tool invocation call-1 is validation_failed');
+    expect(runtimeExecutionEvidenceGap(otherStep)).toBe('tool invocation call-1 is approval_denied');
   });
 });
 

@@ -2,12 +2,13 @@
 
 提供内置工具、注册表，以及所有宿主工具共享的统一执行服务。
 
-最后更新：2026-09-24 02:03:44
+最后更新：2026-09-24 04:25:40
 
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；注册表在 `registry.ts`，统一服务在 `tool-execution-service.ts`，调度、中断、记录摘要和结果处理分别在 `tool-execution-scheduler.ts`、`tool-execution-control.ts`、`tool-execution-records.ts` 和 `tool-execution-result.ts`，审批、清洗、计时包装和并发策略在 `approval.ts`、`sanitize.ts`、`wrapper.ts`、`execution-policy.ts`，路径只读策略在 `path-protection.ts`，内置工具在 `src/builtin/`。
 - Tool Execution Service 是所有宿主工具（内置、插件、run-scoped）唯一的执行边界，统一负责查找与来源、schema 校验、权限与单次批准、超时/中断、资源冲突调度、执行、结果清洗、事件和有界 `ToolInvocationRecord`。调用超时由 `tools.invocationTimeoutMs` 统一配置，默认 120 秒、范围 1 秒到 24 小时，并继续受 run 总超时约束（服务自身在未传超时时回落到 `DEFAULT_TOOL_TIMEOUT_MS` 60 秒）；超时或中断后最多等待 1.5 秒让工具清理，再向上层返回确定的控制错误。并行 TaskBook 分支必须传入已校验的资源封套，实际工具访问越界或选择独占工具时由服务拒绝。
+- `builtin/request_user_input.ts` 是模型唯一能主动提问的入口：调用本身不做 IO，问题由 Harness 作为本轮回复发布并记录一条等待事实。它的描述写明**提问的门槛**——只有答案会阻塞有用或安全的结果时才用；存在合理默认时（做哪种小游戏/玩具/演示、文件名、布局）选一个、用一句话说明并开工，用户看到结果后再改；"用户偏好哪个选项"不算缺失事实。这条措辞是 2026-09-24 实机验收里真实模型在该场景提问后的直接修订（见 `packages/prompt/README.md`）。
 - 模型可见的工具目录在一个会话区间内固定，不随轮次增删；某一轮不得使用的能力通过 `executeBatch` 的 `allowedToolNames` 在执行时拒绝（`admittedTools` 是执行范围，不是可见性），拒绝照常写入调用记录并回报给模型（记录状态 `validation_failed`、错误类别 `step_tool_not_allowed`，文案说明是"已注册但本请求未准入"，不再提已删除的 TaskBook 步骤）。
 - `file-observation.ts` 是"模型只能覆盖自己读过的版本"这一约定的宿主半边：它提供原始字节的 sha256、规范路径键（拒绝符号链接与非普通文件，Windows 折叠大小写）、同路径互斥表，以及**有界、内存内、不持久化**的观察登记表。它自己既不读写用户文件也不替调用方决定能做什么；表随 Runner 退出，淘汰或重启只意味着模型需要重读。冻结端口期间不登记新观察、已有观察也不得授权写入（供 `exec` 这类不透明修改使用）。写工具的公共校验入口是 `readVerifiedFile()`：按内容哈希而非 size/mtime 判定版本，覆盖已有文件时要求整文件观察，失败一律以 `ok: false` 返回而不抛异常。
 - 工具可以在 `meta.errorKind` 里声明一个**有界**的小写原因（如 `observation_stale`、`target_exists`）；Tool Execution Service 会把它写进 `ToolInvocationRecord.errorKind`，因此审计与失败分类看到的是真实原因而不是笼统的 `failed`。插件共享这条通道，所以格式被限制为 `^[a-z][a-z0-9_]{0,63}$`，不合格的值被忽略。

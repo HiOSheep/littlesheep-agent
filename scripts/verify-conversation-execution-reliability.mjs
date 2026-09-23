@@ -17,10 +17,34 @@ import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
  * data is never touched, and every artifact is written into a temporary
  * workspace whose name contains a space.
  *
- * What it can decide: whether a plain "做一个小游戏吧" produces a playable
- * artifact in the right directory, whether the model's own process language is
- * Chinese, whether the runtime context brief reached the real request, and
- * whether a natural-language continuation binds to the same work.
+ * What it decides, in order, with the artifact or the recorded fact each row is
+ * judged on:
+ * - `normal_workspace` — "做一个小游戏吧" delivers a playable file in the
+ *   requested directory, without stopping to ask; the process language is the
+ *   user's; the environment brief reached the real request.
+ * - `continuation` — "继续做吧" keeps working in the same session/workspace. A
+ *   turn that hits the tool timeout leaves an effect the Runtime cannot settle,
+ *   and then the documented outcome is a terminal stop with no model prose, which
+ *   `continuation_terminal_unsettled_effect` records on its own terms instead of
+ *   being counted as a delivery or as a failure.
+ * - `independent_repeat` — a second, independent request is not answered from the
+ *   first one's evidence.
+ * - `research_write_approved` / `research_write_denied` — the approval gate is
+ *   real in research mode: an approved write lands, a denied one leaves no file
+ *   and no claim.
+ * - `retry_after_denied_write` — "再尝试一次" after that escalation stays bound to
+ *   the task, artifact, directory and permission: the blocked file appears, under
+ *   the same permission, without re-asking which file.
+ * - `protected_core_write` — full access does not lift the read-only core source
+ *   boundary, and the refusal is explained.
+ * - `runtime_change_brief` — the brief is sent when the environment changes and
+ *   not repeated when it does not.
+ * - `default_workspace_switch` — a saved default workspace reaches the next run
+ *   that names no directory.
+ * - `workspace_history_boundary` — with the history pointing at another
+ *   directory: the turn's tools run in the current one, the file that lives in the
+ *   other one is reported missing instead of claimed present, that file is left
+ *   alone, and reaching for it in research mode asks for approval and gets none.
  *
  * What it cannot decide: whether the game is fun. That stays a human step.
  */

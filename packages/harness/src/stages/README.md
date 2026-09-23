@@ -1,13 +1,13 @@
 # Harness Stages
 
-最后更新：2026-09-24 03:41:26
+最后更新：2026-09-24 04:25:40
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
 ## 所有权
 
 - `classify.ts`：确定性活动路由，不发出模型请求，只产出 `execute`（能力/状态询问以外的所有请求）与 `reply`（能力/状态询问）；`clarify` 不再可路由，缺少信息由回复本身追问。
-- `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把"不可用证据"（调用被拒/校验失败/未知工具、结果缺失、输出截断、未结算副作用）交给恢复，把"已记录的负结果"（失败/超时/中止的调用）留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。
+- `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把**不可用证据**交给恢复，把**已记录的负结果**留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。两者的分界是"Runtime 知道什么"——权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）是"还没人决定是否授权"，用户必须决定，所以升级；Runtime 自己在执行前发出的拒绝（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）是确定性结果（调用没跑），连同 `failed`/`timed_out`/`aborted` 与结果缺失、输出截断、未结算副作用一起按各自的证据类别处理。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。
 - 提问那一轮（`user-input-request.ts`）：模型调用 `request_user_input` 即结束本轮，提问成为本轮结果——"依赖答案的操作必须等待"由结构保证，不靠约定。同一轮里与提问同批的其它调用**不执行**（可能依赖尚未给出的答案），但也不再让整轮失败：它们以带原因的拒绝结果写进转录，提问照常交给 `ask_user`；两个提问或读不懂的提问才是协议错误。轮内证据身份与无进展账本下沉在 `execute/evidence-progress.ts`。
 - `reply.ts`（含 `reply/continuity-repair.ts`）、`ask_user.ts`（含 `clarification-message.ts`）、`finalize.ts`：能力/状态回复、澄清与最终装配。`reply.ts` 与 `execute/prompt.ts` 读同一个 run 级工作区事实（`ctx.cwd`）渲染 `# Workspace`；`reply.ts` 在回复发布成功后才把本轮投递过的环境简报记入 transcript，失败的回合不记，因为模型可能从未读到它。
 - `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成压缩路径写入时用的 Runtime 认识论元数据。
