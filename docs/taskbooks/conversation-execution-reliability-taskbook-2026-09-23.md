@@ -73,7 +73,7 @@
 **工作范围**：消除 Runner 长期引用旧配置造成的事实漂移。优先让新 run 获取最新、不可变的有效配置及目录快照；是否重建 Runner 以最小改动和并发正确性决定，不把“每次切目录都重建”预设为唯一方案。
 
 - [x] 不重启应用，保存默认工作区 A→B 后，新建且未绑定目录的 run 使用 B。（变更检测与重建触发由 `runtime-config-change.test.ts` 覆盖到字段级；**实机**：`POST /runtime {workspace: <新目录>}` 保存后，**请求里不指定任何目录**再发一次，产物落在新目录、旧默认目录无同名文件、`write` 的 `resourceKeys` 解析到新工作区——说明提示、工具 cwd 与产物归属都跟着换了，不只是配置文件写了。）
-- [ ] 已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换；显式切换会话目录后，新 run 使用新目录。（`resolveRunWorkspaceContext` 的项目归属已断言；渲染器侧仍以 `runtime.workspace` 下发请求目录，实机行为待 CE-12。）
+- [ ] 已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换；显式切换会话目录后，新 run 使用新目录。（**2026-09-24 第十四轮：合同/API 侧已修并有端到端证据，真实窗口点击仍待 CE-12，故不打勾。** 这条原本只写到"待 CE-12"，本轮读到底后发现是真缺陷——`run-routes.ts` 用请求里的 `workspace`（渲染器随每次请求下发的 `runtime.workspace`）压过一切，项目会话因此会被保存的默认目录搬走，而收尾的 `updateSessionIndex` 又把这次搬迁写成会话自己的目录。现在 `resolveOwnedRunWorkspace` 先解析归属、项目会话用会话记录目录（无记录用项目目录），独立会话维持"请求 → 默认 → workplace"；显式换目录由 `PATCH /sessions/:id { workspacePath }` 表达（已存在的绝对目录，独立会话请求该字段被拒），渲染器的目录选择器经 `chooseWorkspacePath` 同时写入项目会话。先失败后通过的端到端用例在 `run-stream-api.test.ts`（旧代码两次 run 的 `cwd` 是 `[A, B]`、会话索引也被改写成 B；现在 `[A, A]`，显式切换后第三次才是 B）。**剩余**：目录选择器那三行只在渲染器里，脚本无法替用户点它，窗口内行为属 CE-12。）
 - [x] 正在执行的 run 保留启动时目录；切换设置不把执行中的命令或产物改派到另一目录。（Runner 在 `executeRun` 入口解析一次 `cwd`，整轮工具上下文与提示共用该值；重建采用"先建后换 + 延迟关闭旧 Runner"。）
 - [x] 配置持久化失败不显示保存成功；连续更新和并发启动不混用两份配置。（`runtime-config-change.test.ts` 新增三条：`createRuntimeConfigUpdater` 先持久化再重建，且只在真正有变化时重建；**持久化抛错时 promise 拒绝、Runner 不替换、当前配置仍是磁盘上那一份**（调用方因此拿到错误而不是"已保存"）；两个并发更新被串行化，按序落盘、不会互相看到半应用状态。渲染器侧 `applyRuntimePatchReporting` 把该错误显示在设置页并在失败后重读配置——既有 `api` 用例覆盖。）
 - [x] 覆盖 Main→Runner→提示→工具 cwd 的集成断言，不能只检查 config 文件已写入。（`packages/runner/src/run-workspace-fact.test.ts` 走真实 Runner + 真实工具调用，断言提示、工具 `ctx.cwd` 与环境简报一致。）
@@ -247,6 +247,36 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-24 第十四轮（CE-02 项目会话不再被默认目录偷换）
+
+### 现场：缺陷确实存在，而且会被"收尾"写成永久事实
+
+CE-02 第一条断言的是"已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换"，此前的记录只写到"`resolveRunWorkspaceContext` 的项目归属已断言；渲染器侧仍以 `runtime.workspace` 下发请求目录，实机行为待 CE-12"。本轮把这条读到底，发现它不只是"待实机"：
+
+- `run-routes.ts` 两个入口都是 `cwd = resolveRunWorkspace(effectiveBody, config, workplaceDir)`，取值顺序是**请求目录 → 配置默认 → workplace**；请求里的 `workspace` 来自渲染器的 `runtime.workspace`（`chat/run-actions.ts` 每次发送都带），而会话索引里的 `workspacePath` 从未参与解析。
+- 于是保存一次默认目录（或在另一个窗口切换会话）之后，项目 A 的会话下一条消息就落在 B 里运行；run 结束时的 `finishRunResources` → `updateSessionIndex` 又把 `workspacePath` 改写成 B，**把这次偷换固化成会话自己的目录**——此后即使发现问题，会话的"家"也已经变了。
+- 归属标签倒是没变：`resolveRunWorkspaceContext` 仍返回 `boundaryKind: 'project'` + `projectId`，所以缺陷不会被权限分类察觉（既有的"项目会话目录不同也仍属该项目"用例正是这个状态）。
+
+复现（本轮新增用例，先失败后通过）：注册项目 A、用 `sessionScope: 'project'` 建会话并把首次 run 落在 A，然后带 `workspace: <新默认>` 再发一次 → 旧代码里两次 run 的 `cwd` 是 `[A, B]`，会话索引也被改写成 B；修好后是 `[A, A]`，会话索引仍是 A。
+
+### 改动
+
+- `run-support.ts`：`resolveRunWorkspace` 增加 `RunWorkspaceFacts`（`projectPath` / `sessionWorkspacePath`），项目会话用**会话记录的目录**、没有记录时用**项目目录**；新增 `resolveOwnedRunWorkspace` 先解析归属再解析目录，两个 run 入口都改用它。独立会话一字未改：请求 → 配置默认 → workplace，所以"保存新默认目录后普通会话跟着走"这条既有行为不变。
+- `session-routes.ts`：`PATCH /sessions/:id` 新增 `workspacePath`，作为**项目会话显式换目录的唯一入口**——必须是已存在的绝对目录（有界长度、`stat` 校验），独立会话请求该字段直接 400，因为它没有自己的目录可比。
+- 渲染器：`api/sessions.ts` 新增 `updateSessionWorkspace`；目录选择器的动作下沉到 `runtime-actions.ts` 的 `chooseWorkspacePath`（`use-app-controller.ts` 的软上限说明写着"禁止继续增长"，所以这次不是把 7 行塞回控制器，而是把整个动作搬出去，控制器因此从 656 行降到 **653** 行），项目会话在选择目录时同时写入会话目录，独立会话仍只跟随默认目录。
+
+### 验证
+
+- `packages/app/src/main/local-app-api/run-support.test.ts`：三条新用例固定优先级（请求目录压不过项目目录；会话记录的目录优先于项目目录；没有绑定的会话仍跟随请求），另加 `resolveOwnedRunWorkspace` 的两条（项目会话忽略被搬走的默认目录；独立会话跟随请求）。
+- `packages/app/src/main/local-app-api/session-routes.test.ts`：三条新用例覆盖显式切换的两面——项目会话换到用户选的目录（索引同步更新）；不存在的目录、相对路径被拒且不改索引；独立会话请求该字段被拒。
+- `packages/app/src/main/run-stream-api.test.ts`：一条端到端用例走真实 Local App API——注册项目、建项目会话、第一次 run 落在 A，随后带"新默认目录"的第二次 run 仍在 A，会话索引仍是 A；再用 `PATCH /sessions/:id` 显式换到 B，第三次 run 才落在 B。该用例在临时移除规则后失败（`[A, B]`），恢复后通过。
+- 定向：app 全量 185 文件 / 906 用例通过；`pnpm run typecheck` 通过；全量 `pnpm test` 495 文件 / 3566 通过（2 跳过）；`pnpm run check:repo` 36/36；`pnpm run check:cache-acceptance` = met。
+
+### 剩余限制
+
+- 本条的**真实窗口**验收仍归 CE-12：`chooseWorkspacePath` 的那三行只在渲染器里，脚本无法替用户点目录选择器；项目会话的端到端行为已由 Local App API 层用例固定（渲染器发送的就是它发的那一份请求）。
+- 边界标签不动：项目会话被显式换到项目外的目录时仍是 `boundaryKind: 'project'`（既有用例写明的现状），这是"项目归属"与"运行目录"两件事，本轮只解决后者。
 
 ## 实施记录｜2026-09-24 第十三轮（实机跑出"证据缺口空转四轮"，CE-09 复查）
 

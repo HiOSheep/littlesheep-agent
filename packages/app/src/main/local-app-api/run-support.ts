@@ -171,17 +171,65 @@ export async function appendAgentArtifacts(
  * index. Resolving it twice — once from the request and once from
  * `agents.defaults.workspace` — is what let the model describe one directory
  * while its tools wrote into another.
+ *
+ * A **project-bound session runs where its project is**, so its own directory
+ * outranks the request: the renderer sends the runtime's current workspace with
+ * every run, and that value is a *default* for sessions that have no binding of
+ * their own. Without this a saved default (or a session switch in another
+ * window) silently moved a project's session into another directory, and the
+ * run-completion bookkeeping then rewrote the session's recorded directory to
+ * match. Switching a project session's directory stays possible, but as an
+ * explicit act on the session (or on the project, which rebinds its sessions).
  */
+export interface RunWorkspaceFacts {
+  /** The directory the session's project lives in. */
+  projectPath?: string
+  /** The directory this session last worked in. */
+  sessionWorkspacePath?: string
+}
+
 export function resolveRunWorkspace(
   body: Record<string, unknown>,
   config: Config,
   workplaceDir: string,
+  facts: RunWorkspaceFacts = {},
 ): string {
+  const bound = facts.sessionWorkspacePath?.trim() || facts.projectPath?.trim() || ''
+  if (bound) return normalizeWorkspacePath(bound)
   const bodyWorkspace = typeof body.workspace === 'string' ? body.workspace.trim() : ''
   const configured = typeof config.agents?.defaults?.workspace === 'string'
     ? config.agents.defaults.workspace.trim()
     : ''
-  const selected = bodyWorkspace || configured || workplaceDir
+  return normalizeWorkspacePath(bodyWorkspace || configured || workplaceDir)
+}
+
+/**
+ * Resolve the run's directory together with the session's ownership.
+ *
+ * Only a project-bound session has a directory of its own; a standalone session
+ * keeps following the request and then the configured default, so saving a new
+ * default still moves an ordinary chat.
+ */
+export async function resolveOwnedRunWorkspace(
+  context: RunResourceContext,
+  body: Record<string, unknown>,
+  ownership: { scope: SessionScope; projectId?: string },
+  config: Config,
+  workplaceDir: string,
+): Promise<string> {
+  if (!ownership.projectId) return resolveRunWorkspace(body, config, workplaceDir)
+  const project = (await context.projectIndex.list()).find((item) => item.id === ownership.projectId)
+  const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
+  const session = sessionId
+    ? (await context.sessionIndex.list()).find((item) => item.id === sessionId)
+    : undefined
+  return resolveRunWorkspace(body, config, workplaceDir, {
+    projectPath: project?.path,
+    sessionWorkspacePath: session?.workspacePath,
+  })
+}
+
+function normalizeWorkspacePath(selected: string): string {
   try {
     return resolve(selected)
   } catch {

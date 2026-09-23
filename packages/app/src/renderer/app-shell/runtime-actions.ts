@@ -1,7 +1,9 @@
 // Runtime refresh and model-patch actions used by the top-level app controller.
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { getRuntime, updateRuntime, type RuntimePatch, type RuntimeState } from '../api'
+import { updateSessionWorkspace } from '../api/sessions'
 import { splitModelRef } from '../composer/runtime-picker'
+import type { SessionScope } from '../../shared/session-scope'
 
 export type PendingModelPatch = {
   requestId: number
@@ -131,5 +133,37 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     return { provider, model, ref: options.runtime.model }
   }
 
-  return { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, selectableProviders, selectedModel }
+  /**
+   * Pick a directory for the current session.
+   *
+   * A project session runs where its project is, so saving the default alone
+   * would not move it: the user's explicit pick is also this session's new
+   * directory. A standalone session keeps following the default.
+   */
+  async function chooseWorkspacePath(input: {
+    selectDirectory: () => Promise<string | null | undefined>
+    sessionId?: string
+    sessionScope: SessionScope
+  }): Promise<void> {
+    try {
+      const path = await input.selectDirectory()
+      if (!options.appMountedRef.current || !path) return
+      if (input.sessionId && input.sessionScope === 'project') {
+        await updateSessionWorkspace(input.sessionId, path)
+      }
+      await applyRuntimePatch({ workspace: path })
+    } catch (error) {
+      if (options.appMountedRef.current) options.setRuntimeError((error as Error).message)
+    }
+  }
+
+  return {
+    refreshRuntime,
+    applyRuntimePatch,
+    applyRuntimePatchReporting,
+    applyModelPatch,
+    chooseWorkspacePath,
+    selectableProviders,
+    selectedModel,
+  }
 }

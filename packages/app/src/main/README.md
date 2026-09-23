@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-24 03:15:07
+最后更新：2026-09-24 03:25:57
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -21,7 +21,8 @@
 - `execution-retry.ts`：执行阶段的有界重试（连续 3 次失败、成功即重置、并发请求被拒），由 preload 的 `retryExecution()` 经 `RUNTIME_RETRY_EXECUTION_CHANNEL` 触达；每次尝试**先重读 `config.json`** 再调 `startExecution`，因此"改好模型设置后不用重启"，失败时用 `readiness.fail(message, { retryable })` 决定窗口是否继续提供入口。`runtime-config-preparation.ts` 是它与启动路径共用的配置归一化，不要各自实现一份。
 - `plugin-host-startup.ts`：可选插件宿主的一次性启动，由 `index.ts` 在执行就绪之后动态导入。插件包会带出全部内置渠道实现，静态导入会把它算进"首条业务日志之前的模块求值"；实测其动态导入 + 创建只占约 2.8 ms，因此它既不进静态图，也不阻塞 `readiness.ready()`（渠道晚几毫秒连接，核心 API 在宿主缺失时仍可用）。
 - `run-activity-monitor.ts`、`run-policy.ts`：聚合当前与正在退场的 Runner 活动快照；解析权限模式和行为 profile，并在执行前重算容器边界与审批，启动期恢复读取只经 `createRecoveryReadAuthorizer`。
-- `local-app-api/session-routes.ts` 的 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量，产出**会话累计缓存命中**（`cachedPromptTokens / promptTokens`，含冷启动、不含分离调用），与验收账本同源同公式；`requestsWithoutUsage > 0` 时标注为局部读数。
+- `local-app-api/session-routes.ts` 的 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量，产出**会话累计缓存命中**（`cachedPromptTokens / promptTokens`，含冷启动、不含分离调用），与验收账本同源同公式；`requestsWithoutUsage > 0` 时标注为局部读数。同一个文件的 `PATCH /sessions/:id` 还拥有**项目会话的显式目录切换**：项目会话按项目（或它自己记录的目录）运行，保存默认工作区不会搬动它，因此换目录必须是针对该会话的显式操作。
+- `local-app-api/run-support.ts` 的 `resolveOwnedRunWorkspace` 在解析目录前先解析会话归属：只有没有自身绑定的会话才吃请求里的 `workspace`（渲染器随每次请求下发的是 Runtime 当前工作区）。判定与取舍见该目录 README；回归在 `local-app-api/run-support.test.ts` 与 `run-stream-api.test.ts`。
 - `session-index.ts`、`project-index.ts`、`archive-index.ts`、`workspace-layout-index.ts`、`workspace-artifact-index.ts`、`terminal-activity-index.ts`：UI 元数据索引。
 - `attachment-cache.ts`、`data-root-*.ts`、`workspace-*.ts`：各自受管数据和资源生命周期。
 - `development-environment-definitions.ts`、`development-environment-files.ts`、`development-environments.ts`：LS 工具链定义、版本检测、导入/移除事务、版本偏好和终端派生环境；设置页面通过 Local App API 访问，不直接触碰文件系统。

@@ -4,7 +4,9 @@ import { isAbsolute, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '@littlesheep/config'
 import { SessionIndex } from '../session-index.js'
+import { ProjectIndex } from '../project-index.js'
 import {
+  resolveOwnedRunWorkspace,
   resolveRunWorkspace,
   resolveRunWorkspaceContext,
   updateSessionIndex,
@@ -133,6 +135,40 @@ describe('resolveRunWorkspace', () => {
     expect(resolved).toContain('项目')
     expect(resolved).toContain('我的 游戏')
   })
+
+  // CE-02: the renderer sends the runtime's current workspace with every run, so
+  // without this a saved default (or another window's session switch) moved a
+  // project's session into another directory — and the completion bookkeeping
+  // then rewrote the session's recorded directory to match, making the move
+  // permanent. A project session runs where its project is.
+  it('keeps a project session in its own directory when the request names another', () => {
+    expect(resolveRunWorkspace(
+      { workspace: 'D:\\elsewhere\\saved-default' },
+      config('D:\\elsewhere\\saved-default'),
+      workplace,
+      { projectPath: 'D:\\projects\\alpha' },
+    )).toBe(resolve('D:\\projects\\alpha'))
+  })
+
+  it('prefers the directory this session last worked in over the project directory', () => {
+    expect(resolveRunWorkspace(
+      { workspace: 'D:\\elsewhere' },
+      config('D:\\elsewhere'),
+      workplace,
+      { projectPath: 'D:\\projects\\alpha', sessionWorkspacePath: 'D:\\projects\\alpha\\sub' },
+    )).toBe(resolve('D:\\projects\\alpha\\sub'))
+  })
+
+  it('still follows the request for a session with no binding of its own', () => {
+    // A standalone session has no facts to pass, so saving a new default keeps
+    // moving it — only a bound session is pinned.
+    expect(resolveRunWorkspace(
+      { workspace: 'D:\\elsewhere' },
+      config('D:\\default'),
+      workplace,
+      {},
+    )).toBe(resolve('D:\\elsewhere'))
+  })
 })
 
 describe('resolveRunWorkspaceContext', () => {
@@ -148,5 +184,66 @@ describe('resolveRunWorkspaceContext', () => {
       scope: 'project',
       projectId: 'project-a',
     }, workplace)).toEqual({ boundaryKind: 'project', projectId: 'project-a' })
+  })
+})
+
+// The route-level rule: ownership is resolved first, and a project-bound session
+// then runs in its project's directory no matter what the request names.
+describe('resolveOwnedRunWorkspace', () => {
+  async function contextWithProject(dataDir: string, workplaceDir: string) {
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    const projectIndex = new ProjectIndex({ dataDir })
+    const project = await projectIndex.ensure(resolve('D:\\projects\\alpha'))
+    await sessionIndex.upsert('session-a', {
+      title: 'Alpha session',
+      mode: 'research',
+      scope: 'project',
+      projectId: project.id,
+      workspacePath: project.path,
+    })
+    return {
+      sessionIndex,
+      projectIndex,
+      workspaceArtifactIndex: {} as never,
+      project,
+    }
+  }
+
+  it('ignores a saved default that would move a project session', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-owned-workspace-'))
+    try {
+      const workplaceDir = join(dataDir, 'workplace')
+      const context = await contextWithProject(dataDir, workplaceDir)
+      const moved = join(dataDir, 'saved-default')
+
+      await expect(resolveOwnedRunWorkspace(
+        context,
+        { sessionId: 'session-a', workspace: moved },
+        { scope: 'project', projectId: context.project.id },
+        config(moved),
+        workplaceDir,
+      )).resolves.toBe(resolve('D:\\projects\\alpha'))
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('follows the request for a standalone session', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-owned-workspace-'))
+    try {
+      const workplaceDir = join(dataDir, 'workplace')
+      const context = await contextWithProject(dataDir, workplaceDir)
+      const chosen = join(dataDir, 'chosen')
+
+      await expect(resolveOwnedRunWorkspace(
+        context,
+        { sessionId: 'session-standalone', workspace: chosen },
+        { scope: 'standalone' },
+        config(join(dataDir, 'other')),
+        workplaceDir,
+      )).resolves.toBe(resolve(chosen))
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
   })
 })

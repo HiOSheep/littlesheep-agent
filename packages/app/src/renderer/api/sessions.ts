@@ -117,6 +117,29 @@ export async function updateSessionPermissionMode(
   return res.json() as Promise<{ session: SessionMeta }>
 }
 
+/**
+ * Move one project session to another directory.
+ *
+ * A project session normally runs where its project is, so the saved default
+ * workspace cannot move it. This is the deliberate switch: the user picked a
+ * directory for this session, and the next run uses it.
+ */
+export async function updateSessionWorkspace(
+  id: string,
+  workspacePath: string,
+): Promise<{ session: SessionMeta }> {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspacePath }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<{ session: SessionMeta }>
+}
+
 export async function listArchive(): Promise<ArchivePayload> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.archive)
   if (!res.ok) throw localApiStatusError(res.status)

@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-24 02:03:44
+最后更新：2026-09-24 03:25:57
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -12,11 +12,11 @@
 | `contracts.ts` | Server 构造参数和生命周期公共契约；`getRunner()` 返回 `AgentRunner \| undefined`，`getExecutionReadiness()` / `respondReadiness()` 提供 `/runtime/readiness`。 |
 | `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。`RuntimeNotReadyError`（503 `runtime-not-ready`）与 `resolveRunner()` 是"执行未就绪"的唯一失败语义。 |
 | `bearer-auth.ts` | 验收与校准类接口的 bearer token 校验。 |
-| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。`resolveRunWorkspace` 是每次 run 的**唯一工作区事实**：请求目录优先于 `agents.defaults.workspace`，再回落到 workplace，并在此归一化成绝对路径交给 Runner，因此提示、工具 cwd、权限分类和产物归属读的是同一个值。归一化保留非 ASCII 目录名与其中的空格（`run-support.test.ts` 断言中文路径既不转写也不转义），只统一分隔符与相对段。 |
+| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。`resolveRunWorkspace` 是每次 run 的**唯一工作区事实**：请求目录优先于 `agents.defaults.workspace`，再回落到 workplace，并在此归一化成绝对路径交给 Runner，因此提示、工具 cwd、权限分类和产物归属读的是同一个值。归一化保留非 ASCII 目录名与其中的空格（`run-support.test.ts` 断言中文路径既不转写也不转义），只统一分隔符与相对段。**项目会话只看自己的目录**：`resolveOwnedRunWorkspace` 先解析归属，项目会话用会话记录的目录（没有记录时用项目目录），渲染器随每次请求下发的 `runtime.workspace` 只是"没有自身绑定的会话"的默认值——否则保存一次默认目录、或在另一个窗口切换会话，就会把项目会话搬走，而收尾时的会话索引又会把这个搬迁写成永久事实（先失败后通过的回归在 `run-stream-api.test.ts`）。 |
 | `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；只把内部状态投影成有界诊断。 |
 | `run-lifecycle-routes.ts` / `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制和 `/application/acceptance` 验收入口；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
-| `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。 |
+| `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。`PATCH /sessions/:id` 另接受 `workspacePath`，作为**项目会话显式换目录**的唯一入口（必须是已存在的绝对目录；独立会话没有自己的目录，请求该字段会被拒绝，因为它跟随请求与默认目录）。 |
 | `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。 |
 | `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
 | `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |

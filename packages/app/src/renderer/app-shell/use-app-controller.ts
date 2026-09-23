@@ -500,14 +500,11 @@ export function useAppController() {
   }
 
   async function chooseWorkspace() {
-    try {
-      const path = await selectWorkspace()
-      if (!appMountedRef.current) return
-      if (!path) return
-      await applyRuntimePatch({ workspace: path })
-    } catch (e) {
-      if (appMountedRef.current) setRuntimeError((e as Error).message)
-    }
+    await runtimeActions.chooseWorkspacePath({
+      selectDirectory: selectWorkspace,
+      sessionId: currentSessionRef.current,
+      sessionScope: sessionOwnership.scope,
+    })
   }
 
   function openFileInWorkspace(path: string) {

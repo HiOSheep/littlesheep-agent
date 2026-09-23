@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http'
 import { once } from 'node:events'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentRunner, ExecutionLog } from '@littlesheep/runner'
+import { SessionIndex } from '../session-index.js'
 import { buildSessionContextUsageRecord, routeSessions, type SessionRouteContext } from './session-routes.js'
 import { localAppApiItemPath, LOCAL_APP_API_PREFIXES } from '../../shared/local-app-api-routes.js'
 
@@ -337,3 +341,121 @@ async function close(server: Server): Promise<void> {
   server.close()
   await once(server, 'close')
 }
+
+// CE-02: a project session runs where its project is, so the saved default cannot
+// move it. This PATCH is the deliberate switch, and it is the only thing that may
+// write a session's own directory while that session has a project.
+describe('explicit session workspace switch', () => {
+  async function patchSession(
+    sessionIndex: SessionIndex,
+    sessionId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+      void routeSessions({
+        req,
+        res,
+        url,
+        path: url.pathname,
+        method: req.method ?? 'GET',
+      }, {
+        getRunner: () => ({}) as AgentRunner,
+        sessionIndex,
+        projectIndex: {} as SessionRouteContext['projectIndex'],
+        archiveIndex: {} as SessionRouteContext['archiveIndex'],
+      }).catch((error: unknown) => {
+        if (res.writableEnded) return
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+      })
+    })
+    await listen(server)
+    try {
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('test server did not expose a TCP address')
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, sessionId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      )
+      return { status: response.status, body: await response.json() as Record<string, unknown> }
+    } finally {
+      await close(server)
+    }
+  }
+
+  async function projectSession(dataDir: string): Promise<SessionIndex> {
+    const workplaceDir = join(dataDir, 'workplace')
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    mkdirSync(join(dataDir, 'alpha'), { recursive: true })
+    mkdirSync(join(dataDir, 'moved'), { recursive: true })
+    await sessionIndex.upsert('session-project', {
+      title: 'Alpha',
+      mode: 'research',
+      scope: 'project',
+      projectId: 'project-alpha',
+      workspacePath: join(dataDir, 'alpha'),
+    })
+    return sessionIndex
+  }
+
+  it('moves one project session to the directory the user picked', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-workspace-'))
+    try {
+      const sessionIndex = await projectSession(dataDir)
+      const moved = join(dataDir, 'moved')
+
+      const response = await patchSession(sessionIndex, 'session-project', { workspacePath: moved })
+
+      expect(response.status).toBe(200)
+      expect(response.body.session).toMatchObject({ id: 'session-project', workspacePath: moved })
+      await expect(sessionIndex.list()).resolves.toEqual([
+        expect.objectContaining({ id: 'session-project', workspacePath: moved }),
+      ])
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a directory that does not exist instead of recording it', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-workspace-'))
+    try {
+      const sessionIndex = await projectSession(dataDir)
+      const missing = join(dataDir, 'not-here')
+
+      const response = await patchSession(sessionIndex, 'session-project', { workspacePath: missing })
+
+      expect(response.status).toBe(400)
+      expect(String(response.body.error)).toContain('not an existing directory')
+      await expect(sessionIndex.list()).resolves.toEqual([
+        expect.objectContaining({ workspacePath: join(dataDir, 'alpha') }),
+      ])
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses a relative path and a session that has no workspace of its own', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-workspace-'))
+    try {
+      const sessionIndex = await projectSession(dataDir)
+      await sessionIndex.upsert('session-standalone', { title: 'Chat', mode: 'research', scope: 'standalone' })
+
+      const relative = await patchSession(sessionIndex, 'session-project', { workspacePath: 'moved' })
+      expect(relative.status).toBe(400)
+      expect(String(relative.body.error)).toContain('must be absolute')
+
+      const standalone = await patchSession(sessionIndex, 'session-standalone', {
+        workspacePath: join(dataDir, 'moved'),
+      })
+      expect(standalone.status).toBe(400)
+      expect(String(standalone.body.error)).toContain('only a project session')
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+})

@@ -320,6 +320,114 @@ describe('run stream Local App API', () => {
     }
   })
 
+  it('runs a project session in its project directory when the request names another', async () => {
+    const sessionId = asSessionId('project-session')
+    const seen: Array<{ cwd?: string }> = []
+    const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0]) => {
+      seen.push({ cwd: input.cwd })
+      return {
+        runId: input.runId!,
+        sessionId,
+        status: 'ok' as const,
+        reply: '好',
+        messages: [],
+        trace: [],
+        durationMs: 3,
+      }
+    })
+    const { dataDir, workplaceDir, server } = await createFixture(runStream, makeRuntimeEvents(sessionId))
+
+    try {
+      const projectDir = join(dataDir, 'project-alpha')
+      const savedDefault = join(dataDir, 'saved-default')
+      mkdirSync(projectDir, { recursive: true })
+      mkdirSync(savedDefault, { recursive: true })
+      const registered = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.projectRegister}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: projectDir }),
+      })
+      expect(registered.status).toBe(200)
+      const projectId = String(((await registered.json()) as { project: { id: string } }).project.id)
+
+      // The first run binds the session to the project.
+      const first = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '开始',
+          sessionId,
+          requestKey: 'project-turn-1',
+          sessionScope: 'project',
+          projectId,
+          permissionMode: 'full',
+          workspace: projectDir,
+        }),
+      })
+      expect(first.status).toBe(200)
+      await first.text()
+
+      // Then the saved default moves: the renderer sends it with every run, and
+      // the project session must keep running in its project.
+      const second = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '继续',
+          sessionId,
+          requestKey: 'project-turn-2',
+          permissionMode: 'full',
+          workspace: savedDefault,
+        }),
+      })
+      expect(second.status).toBe(200)
+      await second.text()
+
+      expect(seen.map((input) => input.cwd)).toEqual([projectDir, projectDir])
+      // The completion bookkeeping records where the run actually was, so the
+      // session's own directory is not rewritten to the moved default either.
+      expect(await new SessionIndex({ dataDir, workplaceDir }).list()).toEqual([
+        expect.objectContaining({
+          id: sessionId,
+          scope: 'project',
+          projectId,
+          workspacePath: projectDir,
+        }),
+      ])
+
+      // The explicit switch is the one thing that moves it, and the next run
+      // follows it.
+      const switched = await fetch(
+        `http://127.0.0.1:${server.port}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, sessionId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspacePath: savedDefault }),
+        },
+      )
+      expect(switched.status).toBe(200)
+      await switched.text()
+
+      const third = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '换到这里继续',
+          sessionId,
+          requestKey: 'project-turn-3',
+          permissionMode: 'full',
+          workspace: projectDir,
+        }),
+      })
+      expect(third.status).toBe(200)
+      await third.text()
+      expect(seen.map((input) => input.cwd)).toEqual([projectDir, projectDir, savedDefault])
+    } finally {
+      await server.stop()
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('publishes the durable settled reply instead of the provisional stream result in next mode', async () => {
     const sessionId = asSessionId('next-settled-session')
     const runStream = vi.fn(async (

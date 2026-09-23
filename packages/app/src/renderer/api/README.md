@@ -1,6 +1,6 @@
 # Renderer API 客户端
 
-最后更新：2026-09-23 17:20:30
+最后更新：2026-09-24 03:25:57
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。
 
@@ -12,7 +12,7 @@
 | `run.ts` | Agent run、流式事件和权限批准。 |
 | `run-checkpoints.ts` | RunCheckpoint 列表、详情、续跑流和放弃。 |
 | `application-lifecycle.ts` | 活动任务快照、`active_runs` SSE 订阅和暂停/继续/中断控制；目前由设置页直接导入。 |
-| `sessions.ts` | 会话、项目、归档和历史消息分页。 |
+| `sessions.ts` | 会话、项目、归档和历史消息分页；`updateSessionWorkspace` 是项目会话显式换目录的调用入口（独立会话跟随默认目录，不走这里）。 |
 | `runtime.ts` | Provider、Runtime、API key、Web Provider 检查、数据根和应用重启。 |
 | `attachments.ts` | 附件选择、浏览器文件导入和本地路径解析。 |
 | `workspace-files.ts` | 工作区选择、目录、预览、保存、布局、产物和外部打开。 |

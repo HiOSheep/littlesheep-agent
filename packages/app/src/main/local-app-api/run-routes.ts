@@ -31,8 +31,8 @@ import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiReque
 import { resolveReasoning } from './runtime-routes.js'
 import {
   finishRunResources,
+  resolveOwnedRunWorkspace,
   resolveRunSessionOwnership,
-  resolveRunWorkspace,
   resolveRunWorkspaceContext,
   withPersistedSessionPermissionMode,
 } from './run-support.js'
@@ -301,8 +301,15 @@ export class RunRouter {
       // attachment preparation continues asynchronously below.
       writeSse(res, 'start', { ok: true, runId })
       try {
-        const cwd = resolveRunWorkspace(effectiveBody, context.getConfig(), context.workplaceDir)
         const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
+        // Ownership first, then the directory: see `resolveOwnedRunWorkspace`.
+        const cwd = await resolveOwnedRunWorkspace(
+          context,
+          effectiveBody,
+          ownership,
+          context.getConfig(),
+          context.workplaceDir,
+        )
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
         const attachmentOptions = {
           managedCache: context.attachmentCache,
@@ -377,8 +384,16 @@ export class RunRouter {
       const body = await readJson(req)
       const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
       const runner = resolveRunner(context.getRunner)
-      const cwd = resolveRunWorkspace(effectiveBody, context.getConfig(), context.workplaceDir)
       const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
+      // Ownership first: a project-bound session's directory is its project's, so
+      // the request's workspace cannot move it.
+      const cwd = await resolveOwnedRunWorkspace(
+        context,
+        effectiveBody,
+        ownership,
+        context.getConfig(),
+        context.workplaceDir,
+      )
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
       const attachmentOptions = {
         managedCache: context.attachmentCache,

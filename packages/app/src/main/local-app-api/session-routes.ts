@@ -1,5 +1,7 @@
 // Session, archive and execution-log replay routes.
 
+import { statSync } from 'node:fs'
+import { isAbsolute, resolve } from 'node:path'
 import { prepareAuthoritativeExecutionLog, type AgentRunner, type ExecutionLog } from '@littlesheep/runner'
 import { asSessionId, type Message } from '@littlesheep/types'
 import { buildHistoryMessages } from '../../shared/history-activity.js'
@@ -26,6 +28,9 @@ import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
 import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
+
+/** Bounded like the other session fields: a path, not a document. */
+const SESSION_WORKSPACE_PATH_MAX_LENGTH = 4_096
 
 export interface SessionRouteContext {
   getRunner: () => AgentRunner | undefined
@@ -134,8 +139,9 @@ export async function routeSessions(
       }
       const hasTitle = Object.prototype.hasOwnProperty.call(body, 'title')
       const hasMode = Object.prototype.hasOwnProperty.call(body, 'mode')
-      if (!hasTitle && !hasMode) {
-        json(res, 400, { error: 'session title or permission mode is required' })
+      const hasWorkspace = Object.prototype.hasOwnProperty.call(body, 'workspacePath')
+      if (!hasTitle && !hasMode && !hasWorkspace) {
+        json(res, 400, { error: 'session title, permission mode or workspace path is required' })
         return true
       }
       const title = hasTitle
@@ -164,7 +170,39 @@ export async function routeSessions(
         }
         mode = normalizePermissionModeId(requestedMode)
       }
-      if (title === existing.title && mode === existing.mode) {
+      // The explicit switch of where one session works. A project-bound session
+      // otherwise follows its project, so this is the deliberate way to move it;
+      // a standalone session already follows the request and the saved default,
+      // and recording a directory for it here would claim a binding runs ignore.
+      let workspacePath = existing.workspacePath
+      if (hasWorkspace) {
+        if (existing.scope !== 'project') {
+          json(res, 400, { error: 'only a project session has a workspace of its own' })
+          return true
+        }
+        const requested = typeof body.workspacePath === 'string' ? body.workspacePath.trim() : ''
+        if (!requested || !isAbsolute(requested)) {
+          json(res, 400, { error: 'session workspace path must be absolute' })
+          return true
+        }
+        const normalized = resolve(requested)
+        if (normalized.length > SESSION_WORKSPACE_PATH_MAX_LENGTH) {
+          json(res, 400, { error: 'session workspace path is too long' })
+          return true
+        }
+        let directory = false
+        try {
+          directory = statSync(normalized).isDirectory()
+        } catch {
+          directory = false
+        }
+        if (!directory) {
+          json(res, 400, { error: `session workspace is not an existing directory: ${normalized}` })
+          return true
+        }
+        workspacePath = normalized
+      }
+      if (title === existing.title && mode === existing.mode && workspacePath === existing.workspacePath) {
         json(res, 200, { session: existing })
         return true
       }
@@ -176,6 +214,7 @@ export async function routeSessions(
         await sessionIndex.upsert(sessionUpdateId, {
           ...(titleChanged ? { title } : {}),
           ...(mode !== existing.mode ? { mode } : {}),
+          ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
         })
       } catch (error) {
         if (runner) {
@@ -184,7 +223,7 @@ export async function routeSessions(
         throw error
       }
       const persisted = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
-      json(res, 200, { session: persisted ?? { ...existing, title, mode } })
+      json(res, 200, { session: persisted ?? { ...existing, title, mode, workspacePath } })
       return true
     })
   }
