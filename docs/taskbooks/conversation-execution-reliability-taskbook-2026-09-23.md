@@ -143,7 +143,12 @@
 **工作范围**：明确自动恢复预算、用户授权的一次重试、原目标与已完成证据的续接关系；复用已有 continuation coordinator。用户选择重试后应执行一次有意义的恢复尝试，或说明仍缺哪项条件，不能用清零所有预算掩盖循环。
 
 - [x] “再尝试一次 / 继续做吧”正确绑定原任务、产物、工作区和权限，不重新询问已经回答的目标。（Runtime 侧的一次性绑定重试已有实现与用例；**2026-09-24 第十二轮**修掉了它的前提缺口：绑定续跑的历史投影此前把被续跑的原请求整个排除，模型只拿到 Runtime 的提问和"再尝试一次"，看不到自己在重试什么——现在只排除本 run 自己那一轮 inbound，原请求与提问都在请求里且回答只出现一次。**2026-09-24 第十六轮：真实窗口、真实模型已验收。** 新场景 `retry_after_denied_write`：同会话里先跑一次research 模式的写入并被拒绝审批（升级），随后 `再尝试一次，这次请批准写入。` 并批准——产物 `denied-probe.txt` 真的落在同一个目录、同一权限下，没有升级、也没有重新追问是哪个文件（若它重问，文件就不会存在）。实机输出：`retry after denial: status=ok approvals=1 delivered=true`。同批次 `继续做吧` 场景也在同一会话同一工作区产出 2 个新产物。**说明**：生产路径下这次重试是一个新 run（同会话转录携带原请求），绑定体现在转录、目录与权限上；遗留 `waiting_user` 检查点的绑定由 `runner-continuation.test.ts` 覆盖。）
-- [ ] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。（`recover.test.ts` 断言绑定重试恰好消费一次、第二次回到耗尽路径。**2026-09-24 第十二轮**：续接不再继承来源轮已花掉的额度与失败——`continuationLoopBudget` 归零模型调用数、工具循环次数、无进展闩与证据指纹，并按当前配置取上限，`lastError`/`recoveryAttempts` 清空，来源轮的花费与失败改写进 `handoff` 证据；真实 Runner 样本（全耗尽检查点）此前轨迹 `[recover, execute, recover, ask_user]`、无副作用无产物，现在交付回答并真实写盘、轨迹 `[recover, execute, verify, finalize]`。核对同时确认：**升级后的普通下一条消息本来就开新 run**（当前没有 `waiting_user` 检查点生产者），本轮修的是恢复接口与遗留检查点这两条续接路径。**仍未实机**；故本行不打勾。）
+- [x] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。（**2026-09-24 第十八轮：真实窗口、真实模型已验收。** 新场景 `budget_exhaustion_and_retry` 把"真跑撞上预算耗尽"造了出来：每轮模型调用上限不在设置 API 上，所以脚本把 `agents.defaults.maxModelCallsPerRun` 改成 4、重启应用，再跑"做一个小游戏吧"。实机结果（`budget exhaustion: calls=4 tools=4 resumable=true resumedCalls=1 retryCalls=5 retryArtifacts=1`）：
+  - **耗尽可见**：run `status=error`，失败文案点名预算，4 次 provider 调用（上限生效）、4 次工具调用（停之前确实在干活），没有伪造成功文案；
+  - **检查点可续**：失败 run 留下的检查点 `resumable=true`（失败的 run 不像成功 run 那样被标成 `completed`）；
+  - **续接拿到新额度**（第十二轮那支修复的判别点）：在**上限仍是 4** 的情况下经 `POST /run-checkpoints/:id/resume/stream` 续跑，`providerCalls=1` —— 修复前 `modelCallCount` 会被设成来源轮的 4，续跑在**第一次请求之前**就被 `model call budget exhausted` 拒掉、请求数为 0；
+  - **用户自己的重试保留历史并真的完成**：把上限恢复成正常值、重启应用后，同会话同工作区再发一次"再尝试一次…"，`status=ok`、`providerCalls=5`（超过耗尽那轮的 4，说明拿到的是新额度而不是继承的）、产出新文件、无升级；
+  - **重启语义一致**：整段场景经历两次应用重启（写配置→重启→耗尽→续跑→恢复配置→重启→重试），续接与重试的行为不变。）
 - [x] 同一阻塞未改变时不再只给原样三选一：呈现具体原因、已完成部分和所需动作；保持旧回复的发布幂等，不靠强制改写文案去重。（`recover/escalation.ts` 给出原因类别、已完成部分与所需动作三件事实并写进 `clarificationRequest`；选项集合与发布 settlement 未改，重复措辞仍按原样发布。**实机**：真实运行里预算耗尽后的回复确实写出了原因类别、23 次工具调用中 17 次成功、8 次副作用已成功等具体事实，而不是同一句三选一。）
 - [x] 权限不足、资源缺失和证据不可恢复分开处理；用户取消立即停止，成功副作用不重放。（`recordedFailureKinds` 在无 TaskBook 步骤时改读 invocation 状态与 `lastError`：权限拒绝第一次就升级而不是烧掉重试预算，`aborted` 直接停止，`verify` 阶段的缺口归为"证据不可恢复"；未结算副作用仍由 `policy.ts` 直接 abort。）
 - [x] CE-07 若发现证据缺口，先修缺口再验收本项，不仅修改追问措辞。（CE-07 的恢复投影缺陷已在本轮先修并有先失败后通过的用例，之后才改升级事实。）
@@ -247,6 +252,37 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-24 第十八轮（CE-08 第二条：把"真跑撞上预算耗尽"造出来并验收）
+
+### 为什么之前一直没做成
+
+这条一直缺"真跑撞上预算耗尽"的实机证据，第十二轮的记录写着原因：`/runtime` 设置路由不接受 `maxModelCallsPerRun`，只能改隔离数据根的 `config.json` 再重启；而且真撞上模型调用上限后，`ask_user` 的措辞调用同样被上限拒绝，run 不会留下 `waiting_user` 检查点（走 CE-11 的可见失败路径）。这一轮把两个障碍都绕过去了。
+
+### 场景 `budget_exhaustion_and_retry`（12 个场景里的最后一个）
+
+脚本先按正常配置跑完前 11 个场景，然后：把隔离配置的 `agents.defaults.maxModelCallsPerRun` 改成 **4**、重启应用（新增 `writeIsolatedConfig` / `restartApp` 两个 helper，`prepareIsolatedDataRoot` 现在把写下的配置留在 `isolatedConfig` 里供改写）→ 跑"做一个小游戏吧" → 读 `GET /run-checkpoints` 找到该会话的检查点 → **在上限仍是 4 的情况下**经 `POST /run-checkpoints/:id/resume/stream` 续跑 → 把上限恢复成 40、再重启 → 同会话同工作区发"再尝试一次，把刚才没做完的做完。"
+
+四段断言都对得上这一条的字面要求：
+
+```text
+budget exhaustion: calls=4 tools=4 resumable=true resumedCalls=1 retryCalls=5 retryArtifacts=1
+```
+
+1. **耗尽可见**：`status=error`、失败文案点名预算、4 次 provider 调用（上限真的生效）、4 次工具调用（停之前确实在干活），没有伪造成功文案。
+2. **检查点可续**：失败 run 留下的检查点 `resumable=true`（成功的 run 会被标成 `completed` 而不可续，失败的不会）。
+3. **续接拿到新额度——第十二轮那支修复的判别点**：上限仍是 4 时续跑得到 `providerCalls=1`。修复前 `restoreContinuationContext` 会把 `modelCallCount` 设成来源轮的 `attemptsUsed`（=4），续跑在**第一次请求之前**就被 `model call budget exhausted` 拒掉，请求数为 0。这一条因此第一次有了真实窗口里的判别证据。
+4. **用户重试保留历史并完成**：恢复上限并重启后，同会话重试 `status=ok`、`providerCalls=5`（超过耗尽那轮的 4，说明是新额度）、产出新文件、无升级。
+5. **重启语义一致**：整段场景经历两次应用重启，续接与重试行为不变。
+
+### 验证
+
+- 一次完整实机验收 12 场景全绿、`isolated root removed`：前 11 个场景保持绿（`normal workspace requests=16 tools=16 artifacts=1`、`continuation requests=29 tools=28 verdict=unverified`、`independent repeat requests=8 tools=8 artifacts=1`、`history boundary report=missing outsideApprovals=1/1`…），第 12 个即上面的预算场景。
+- 本轮无产品代码改动，只有验收脚本与文档：`node --check` 通过；`check:repo` 36/36。
+
+### 剩余
+
+- 任务书现在只剩两条不打勾：CE-10 那条的**后半**（"可独立的安全工作仍可继续"——Runtime 无法证明独立性，属产品决策，前半"等待"有结构保证与回归），以及 **CE-12 人工试玩**（唯一必须由人完成的一行）。
 
 ## 实施记录｜2026-09-24 第十七轮（实机门禁连抓两个真缺陷：证据分类与"先问哪种游戏"）
 

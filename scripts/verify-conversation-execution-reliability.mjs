@@ -45,6 +45,14 @@ import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
  *   directory: the turn's tools run in the current one, the file that lives in the
  *   other one is reported missing instead of claimed present, that file is left
  *   alone, and reaching for it in research mode asks for approval and gets none.
+ * - `budget_exhaustion_and_retry` — the per-run provider-call ceiling written to
+ *   four calls and the app restarted, because the settings API does not expose it:
+ *   the exhausted run fails visibly (no fabricated reply) after real tool work,
+ *   its checkpoint is resumable, resuming it while the ceiling is still tiny gets a
+ *   *fresh* allowance (one provider request where inheriting the previous run's
+ *   spend would refuse before the first), and the user's own retry with the ceiling
+ *   restored keeps the session and workspace, exceeds the exhausted run's call
+ *   count, and delivers.
  *
  * What it cannot decide: whether the game is fun. That stays a human step.
  */
@@ -64,6 +72,12 @@ const MAX_ARTIFACT_BYTES = 512 * 1024
 /** Evidence paths a failed run keeps, so the error report can point at them. */
 let keptRoot
 let keptAppLog
+/**
+ * The configuration the isolated root was started with. The budget-exhaustion
+ * scenario rewrites one field of it and restarts, because the settings API does
+ * not expose a per-run provider-call ceiling.
+ */
+let isolatedConfig
 
 async function main() {
   const branding = await loadBranding(join(repoRoot, 'branding.config.json'))
@@ -454,6 +468,132 @@ async function main() {
     })
     progress(`history boundary: probe=${probeRun.result.status} report=missing intact=${existsSync(markerPath)} outsideApprovals=${outsideRun.approvals.requested}/${outsideRun.approvals.denied}`)
 
+    // CE-08 second row: a real budget exhaustion and the retry that follows it.
+    //
+    // The per-run provider-call ceiling is not on the settings API, so the only
+    // honest way to exhaust the real thing is to write it into the isolated
+    // configuration and restart. With four calls a game run cannot finish, and a
+    // ceiling hit before the escalation can be worded ends in the visible Runtime
+    // failure path instead of a published question — which is the state the row is
+    // about: failure visible, history kept, and the user's own retry given a real
+    // bounded chance. The resume endpoint is exercised on the same checkpoint
+    // while the ceiling is still tiny: that is the path where a continuation used
+    // to inherit the previous run's spend and fail before its first request.
+    const budgetWorkspace = join(root, 'budget work space')
+    await mkdir(budgetWorkspace, { recursive: true })
+    const tinyBudget = { agents: { defaults: { ...isolatedConfig.agents.defaults, maxModelCallsPerRun: 4 } } }
+    await writeIsolatedConfig(dataDir, tinyBudget)
+    {
+      const restarted = await restartApp({ locator, electron, dataDir, chromiumDir, logPath: appLogPath })
+      electron = restarted.electron
+      locator = restarted.locator
+    }
+
+    const exhausted = await runStream(locator, {
+      text: GAME_PROMPT,
+      permissionMode: 'full',
+      workspace: budgetWorkspace,
+    })
+    const exhaustedText = `${exhausted.result.error ?? ''} ${JSON.stringify(exhausted.result.runtimeStatus ?? {})}`
+    if (exhausted.result.status === 'ok' && String(exhausted.result.reply ?? '').trim() !== '') {
+      throw new Error('a four-call ceiling still published a model reply; the budget did not bind')
+    }
+    if (!/budget|预算/i.test(exhaustedText)) {
+      throw new Error(`the exhausted run did not report the budget: ${exhaustedText.slice(0, 300)}`)
+    }
+    const exhaustedRequests = (exhausted.result.modelRequests ?? []).length
+    if (exhaustedRequests > 5) {
+      throw new Error(`the run made ${exhaustedRequests} provider calls under a four-call ceiling`)
+    }
+    const exhaustedTools = (exhausted.result.toolInvocations ?? []).length
+    if (exhaustedTools === 0) {
+      throw new Error('the exhausted run recorded no tool work before the ceiling stopped it')
+    }
+    // What the exhausted run already left on disk, so "the retry delivered" is
+    // measured against its own work rather than the earlier run's partial files.
+    const exhaustedArtifacts = await collectNewArtifacts(budgetWorkspace, [])
+    const checkpoints = await getJson(locator, '/run-checkpoints')
+    const exhaustedCheckpoint = (checkpoints.checkpoints ?? [])
+      .find((item) => item.sessionId === exhausted.result.sessionId)
+    if (!exhaustedCheckpoint) {
+      throw new Error(`the exhausted run left no checkpoint: ${JSON.stringify(checkpoints.checkpoints ?? [])}`)
+    }
+
+    // Resume that checkpoint with the ceiling still tiny. Before the continuation
+    // budget reset this failed with "model call budget exhausted" and zero
+    // requests, because the new run started with the previous run's spend.
+    const resumedExhausted = await readSse(
+      locator,
+      `/run-checkpoints/${encodeURIComponent(exhaustedCheckpoint.id)}/resume/stream`,
+      {
+        text: '再尝试一次，把刚才没做完的做完。',
+        reason: 'acceptance: retry after the per-run budget was exhausted',
+        requestKey: 'ce08-budget-retry',
+        permissionMode: 'full',
+      },
+      { approval: 'approve' },
+    )
+    const resumedRequests = (resumedExhausted.result.modelRequests ?? []).length
+    const resumedFreshAllowance = resumedRequests > 0
+    if (exhaustedCheckpoint.resumable && !resumedFreshAllowance) {
+      throw new Error(`the resumed run was refused before its first provider request: ${safeResult(resumedExhausted.result)}`)
+    }
+
+    // The user's own retry, with the ceiling back to normal: same session, same
+    // workspace, and enough of a chance to actually deliver.
+    await writeIsolatedConfig(dataDir, {
+      agents: { defaults: { ...isolatedConfig.agents.defaults, maxModelCallsPerRun: 40 } },
+    })
+    {
+      const restarted = await restartApp({ locator, electron, dataDir, chromiumDir, logPath: appLogPath })
+      electron = restarted.electron
+      locator = restarted.locator
+    }
+    const retryAfterExhaustion = await runStream(locator, {
+      text: '再尝试一次，把刚才没做完的做完。',
+      sessionId: exhausted.result.sessionId,
+      permissionMode: 'full',
+      workspace: budgetWorkspace,
+    })
+    assertSuccessfulRun(retryAfterExhaustion.result, 'retry after budget exhaustion')
+    assertNoEscalation(retryAfterExhaustion.result, 'retry after budget exhaustion')
+    const retryArtifacts = await collectNewArtifacts(
+      budgetWorkspace,
+      exhaustedArtifacts.map((artifact) => artifact.relativePath),
+    )
+    if (retryArtifacts.length === 0) {
+      throw new Error('the retry after budget exhaustion delivered no artifact')
+    }
+    const retryRequests = (retryAfterExhaustion.result.modelRequests ?? []).length
+    if (retryRequests <= exhaustedRequests) {
+      throw new Error(`the retry made ${retryRequests} provider calls, no more than the exhausted run's ${exhaustedRequests}`)
+    }
+
+    scenarios.push({
+      name: 'budget_exhaustion_and_retry',
+      sessionId: exhausted.result.sessionId,
+      exhausted: {
+        status: exhausted.result.status,
+        providerCalls: exhaustedRequests,
+        toolCalls: exhaustedTools,
+        reportedBudget: true,
+      },
+      checkpointId: exhaustedCheckpoint.id,
+      checkpointResumable: Boolean(exhaustedCheckpoint.resumable),
+      resumed: {
+        status: resumedExhausted.result.status,
+        providerCalls: resumedRequests,
+        freshAllowance: resumedFreshAllowance,
+      },
+      retry: {
+        status: retryAfterExhaustion.result.status,
+        providerCalls: retryRequests,
+        artifacts: retryArtifacts.map((artifact) => artifact.relativePath),
+        escalated: false,
+      },
+    })
+    progress(`budget exhaustion: calls=${exhaustedRequests} tools=${exhaustedTools} resumable=${Boolean(exhaustedCheckpoint.resumable)} resumedCalls=${resumedRequests} retryCalls=${retryRequests} retryArtifacts=${retryArtifacts.length}`)
+
     await desktopAction(locator, 'quit')
     await waitForExit(electron, EXIT_TIMEOUT_MS)
     await waitForMissing(join(dataDir, locatorRelativePath), EXIT_TIMEOUT_MS)
@@ -551,7 +691,7 @@ async function prepareIsolatedDataRoot(options) {
   await mkdir(configDir, { recursive: true })
   await copyFile(options.sourceKeys, join(configDir, 'keys.json'))
   await cp(options.sourceTokenizer, tokenizerDir, { recursive: true, force: true })
-  await writeFile(join(options.dataDir, 'config.json'), JSON.stringify({
+  isolatedConfig = {
     version: 1,
     providers: [{
       id: 'deepseek',
@@ -592,7 +732,47 @@ async function prepareIsolatedDataRoot(options) {
     mcp: { servers: [] },
     channels: { channels: [] },
     versioning: { enabled: false },
+  }
+  await writeIsolatedConfig(options.dataDir)
+}
+
+/** Rewrite the isolated configuration, e.g. to shrink the per-run call ceiling. */
+async function writeIsolatedConfig(dataDir, overrides = {}) {
+  await writeFile(join(dataDir, 'config.json'), JSON.stringify({
+    ...isolatedConfig,
+    ...overrides,
+    agents: {
+      ...isolatedConfig.agents,
+      ...(overrides.agents ?? {}),
+      defaults: {
+        ...isolatedConfig.agents.defaults,
+        ...(overrides.agents?.defaults ?? {}),
+      },
+    },
   }, null, 2), 'utf8')
+}
+
+/** Stop the app and start it again on the same isolated root. */
+async function restartApp(current) {
+  await desktopAction(current.locator, 'quit')
+  await waitForExit(current.electron, EXIT_TIMEOUT_MS)
+  await waitForMissing(join(current.dataDir, locatorRelativePath), EXIT_TIMEOUT_MS)
+  await delay(1_500)
+  const electron = startElectron({
+    dataDir: current.dataDir,
+    chromiumDir: current.chromiumDir,
+    logPath: current.logPath,
+  })
+  const locator = await waitForLocator(current.dataDir, electron.pid)
+  await waitForDesktop(locator)
+  // The locator file appears before the Runner is wired, and the checkpoint route
+  // answers 503 until it is; the checkpoint list is served by the same runtime
+  // object, so a 200 from it is the honest readiness signal.
+  await waitFor(async () => {
+    const response = await fetch(apiUrl(locator, '/run-checkpoints')).catch(() => undefined)
+    return response?.ok === true
+  }, START_TIMEOUT_MS, 'runner checkpoint control readiness')
+  return { electron, locator }
 }
 
 function resolveSourceChromiumDir() {
@@ -1007,6 +1187,13 @@ async function postJson(locator, path, body, authenticated = false) {
   })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(`POST ${path} failed (${response.status}): ${payload.error ?? 'unknown error'}`)
+  return payload
+}
+
+async function getJson(locator, path) {
+  const response = await fetch(apiUrl(locator, path))
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(`GET ${path} failed (${response.status}): ${payload.error ?? 'unknown error'}`)
   return payload
 }
 
