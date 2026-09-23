@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 09:20:43
+最后更新：2026-09-23 11:12:00
 
 ## 1. 目标与当前状态
 
@@ -128,3 +128,48 @@
 每项完成时填写：改动文件、前后测量、验证环境、测试及实机证据、剩余缺口。实现完成但尚未实机验证时记录为“实现完成，待验收”，复选框保持未勾选。
 
 方法参考：[Electron 官方性能指南](https://www.electronjs.org/docs/latest/tutorial/performance)。其测量、延迟非必要初始化和避免阻塞主线程的建议用于指导实验，不替代本项目的实际测量。
+
+## 7. 验收记录
+
+最后更新：2026-09-23 11:12:00
+
+### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
+
+- 改动文件：`scripts/measure-desktop-cold-start.mjs`（新）、`scripts/lib/electron-cdp-harness.mjs`（新，从 `verify-workspace-performance.mjs` 抽出共用）、`packages/app/src/main/bootstrap-timing.ts`、`packages/app/src/main/desktop-shell.ts`、`packages/app/src/renderer/main.tsx`、`packages/app/src/renderer/runtime-readiness/renderer-timing.ts`（新）、`packages/app/src/shared/runtime-readiness-ipc.ts`、`scripts/verify-workspace-performance.mjs`（改为复用公共库）。
+- 五个时间点与时钟来源：见[桌面冷启动基线 2026-09-23](../reference/cold-start-baseline/README.md)。`spawnToMainModuleMs` 用子进程 `process.uptime()`——实测发现 Electron 的 `process.getCreationTime()` 不在同一时间轴（会把 195ms 记成 304ms），因此明确禁用。
+- 前后测量：无对照版本；本次是当前实现的首个基线（20/20 成功，empty/normal/large/recovery 各 5 次），中位数与区间已记入上述基线文档与机器可读账本。
+- 验证环境：win32 x64 / Windows 10.0.26200 / AMD Ryzen 9 7945HX / Electron 36.9.5 / 开发版构建（`packages/app/out`）。
+- 测试及实机证据：真实 Electron 进程逐次采样；主进程阶段计时与渲染器自报首帧互相交叉校验。
+- 剩余缺口：未覆盖系统重启后的完全冷启动、打包版样本与更高样本量；**未**据此声称稳定的高分位统计。第 5 项“为五项指标确定验收预算”仍待基于更多样本决定。
+
+### CS-02｜统一启动视觉 —— 实现完成，待实机截图验收
+
+- 改动文件：`packages/app/src/main/desktop-startup-page.ts`、`packages/app/src/main/desktop-shell.ts`、`desktop-startup-page.test.ts`、`desktop-shell.test.ts`、`packages/app/src/renderer/chat-layout-stability.test.ts`。
+- 做法：启动页、`titleBarOverlay` 与渲染器 `.window-titlebar` 统一为不透明 `#101010`（共享常量 `DESKTOP_STARTUP_SURFACE` / `DESKTOP_TITLEBAR_HEIGHT`）；移除启动页的 `backdrop-filter` 与半透明 `rgba(16,16,16,0.72)`；移除叠在原生按钮区上的 `backgroundMaterial: 'acrylic'`。原生最小化/最大化/关闭/缩放/厚边框/阴影/圆角保持不变。
+- 验证环境与证据：源码级断言已更新并通过；真实 Electron 启动可正常显示与拖动。
+- 剩余缺口：**明暗桌面背景 × 100%/125%/150%/200% 缩放的截图对比、失焦/最大化/还原/最小化恢复/错误页状态尚未逐项拍摄**；CS-02 的复选框因此保持未勾选。
+
+### CS-03｜提前呈现可交互界面 —— 实现完成，部分待验收
+
+- 改动文件：`packages/app/src/main/index.ts`、`runtime-readiness.ts`（新）、`plugin-host-startup.ts`（新）、`local-app-api-server.ts`、`local-app-api/*`（`contracts.ts`、`http.ts`、`run-lifecycle-routes.ts`、`session-routes.ts`、`project-routes.ts`、`runtime-routes.ts`、`workspace-routes.ts`、`memory-routes.ts`、`run-routes.ts`、`run-checkpoint-routes.ts`、`provider-calibration-route.ts`）、`packages/app/src/preload/index.ts`、`packages/app/src/renderer/api/*`、`packages/app/src/renderer/App.tsx`、`packages/app/src/renderer/runtime-readiness/*`（新）、`packages/app/src/shared/runtime-readiness-{contracts,ipc}.ts`（新）。
+- 做法：启动拆为三段（数据前置 → UI 索引与监听 → Runner 与就绪发布）；Local App API 在 Runner 之前监听，仅 Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；preload 提供 `localApiBase()` / `getRuntimeReadiness()` / `onRuntimeReadiness()`，渲染器侧统一经 `localApiFetch` 在就绪前等待端口。
+- 证据：真实 Electron 探针确认未就绪时 `/runtime/readiness`、`/sessions`、`/projects`、`/runtime`、`/application/acceptance` 均 200，`/state`、`/run`、`/run-checkpoints` 为 503，就绪后全部 200；`local-app-api-readiness.test.ts` 覆盖同一契约。
+- 剩余缺口：慢初始化期间“连续输入、草稿与焦点在交接后不变”尚未做逐帧实机验证；“未就绪时不假报已发送”由 transport 等待与错误回灌路径保证，但未在真实 Provider 缺失场景下截图复现。
+
+### CS-06｜保护续接与故障体验 —— 部分实现
+
+- 已实现：启动恢复等执行就绪后才做检查点发现（`use-checkpoint-recovery.ts` + `runtime-readiness-state.ts`）；就绪状态经 `RuntimeReadinessNotice` 呈现真实阶段与原因，失败态可区分；`readiness.fail()` 带可重试标记。
+- 验收记录：主进程与渲染器测试通过；恢复结果归属与“不抢焦点/不覆盖草稿”沿用既有实现，本轮未改动其归属逻辑。
+- 剩余缺口：初始化失败/超时的有界重试入口、启动期间关闭/最小化/重新激活/重试并发的实机场景未验证。
+
+### CS-04 / CS-05 / CS-07 —— 未实施
+
+- 依据本次基线：执行准备（`startExecution` 内约 400 ms）是首个可执行时间的决定项，UI 索引与会话规模不是瓶颈；主模块求值约 205 ms，是首帧前固定开销的全部来源。
+- CS-04 的下一步是拆分 `startExecution` 并测量 Runner 构建各段成本，且必须先证明收益、保持迁移与一致性顺序；CS-05 的下一步是先做静态导入链测量再决定是否拆包——现已试做的插件包延迟导入实测落在噪声内（199–220 ms vs 197–216 ms），**不作为提速结论**。
+- CS-07 的截图矩阵、打包版回归与文档收口待前两项有了可对照的改动后再执行。
+
+### 文档同步
+
+- 更新：`packages/app/README.md`、`packages/app/src/main/README.md`、`packages/app/src/preload/README.md`、`packages/app/src/renderer/README.md`、`packages/app/src/renderer/api/README.md`、`packages/app/src/renderer/app-shell/README.md`、`packages/app/src/renderer/runtime-recovery/README.md`、`packages/app/src/renderer/runtime-readiness/README.md`（新）、`packages/app/src/main/local-app-api/README.md`、`packages/app/src/shared/README.md`。
+- 新增常驻参考：[桌面冷启动基线 2026-09-23](../reference/cold-start-baseline/README.md)，并由 `docs/README.md` 收录。
+
