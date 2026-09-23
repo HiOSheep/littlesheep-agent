@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 16:02:56
+最后更新：2026-09-23 16:12:46
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -221,6 +221,27 @@
 
 尚未核验：在未就绪期间切换会话，以及需要活跃任务才可达的隐藏/恢复周期。
 
+### CS-06 恢复归属：真实模型配置下的实机取证
+
+启动恢复的发现是**等执行就绪之后**才做的，所以没有可用模型引用时只能观察到失败路径（见上一版记录）。`scripts/verify-desktop-cold-start-recovery.mjs`（`pnpm run verify:desktop-cold-start-recovery`）补上了另一半：用**真实 Provider 凭据**（环境变量透传，凭据不写入数据根）让执行真正就绪，再把**真实检查点文件**复制进隔离数据根后观察。逐项事实见 [`cold-start-recovery.json`](cold-start-recovery.json)。最近一次运行（真实 DeepSeek 配置 + 两个来自不同会话的真实检查点）：
+
+| 步骤 | 观察 |
+| --- | --- |
+| 执行就绪 | `state = "ready"`、`phase = "execution"`（这正是此前无法到达的前置条件） |
+| 就绪后发现 | `/run-checkpoints` 返回 200，两个检查点都在，且各自保留**自己的** `sessionId`（`c33f8d40…` 与 `64990330…`），未被归到当前活动会话 |
+| 界面入口 | `.checkpoint-recovery-trigger` 显示「待恢复任务 2」，草稿仍在输入框、焦点仍在输入框、**没有启动任何 run**（发现不等于执行） |
+| 打开列表 | 对话框列出 2 项；选中项显示「可以继续 / 整理交付 / 9/23 10:47」，工作区为 `<user-home>\.littlesheep\workplace`，无阻塞项 |
+| 切换选中 | 点第二项后摘要换成它自己的内容（工作区 `<repo>`、状态「需要处理」），即每个检查点各自归属 |
+| 打开恢复后 | 草稿仍是「恢复探针草稿」、焦点仍在输入框、`activeRunCount = 0` |
+
+口径与边界（同一文件里也写明）：
+
+- **只验证发现与归属，不验证续接执行本身**。脚本不会点"继续"：恢复会在检查点记录的工作区里真正执行工具，而那属于本机真实数据根，需要用户决定。
+- 第二个检查点因模型与夹具不同而显示「需要处理」，脚本把 `resumable: false` 如实记录，不因此判失败。
+- 检查点文件按原样复制、未修改；夹具里为它们的会话 id 建了同名会话（没有对应历史），因此这验证的是"发现与归属"，不是"恢复后对话内容正确"。
+- 证据文件中会话 id 只保留 8 位前缀，用户目录与仓库路径分别替换为 `<user-home>` / `<repo>`：仓库不收录会话 id 与本机路径（AGENTS.md 的仓库边界），而"两个检查点各自归属"仍可从不同前缀读出。
+- 没有凭据时脚本会**跳过并说明原因**（`skipped: true`），不产生任何结论。
+
 ## 打包版冷启动（release/win-unpacked）
 
 `--app=packaged` 让同一脚本驱动 `release/win-unpacked/LittleSheep.exe`（`pnpm run package:win` 产物，未签名）。逐次账本见 [`desktop-cold-start-packaged-2026-09-23.json`](desktop-cold-start-packaged-2026-09-23.json)，6 次运行全部成功，且通过同一份回归护栏。
@@ -290,4 +311,7 @@ pnpm run ensure:app-build
 node scripts/measure-desktop-cold-start.mjs --samples=5 --label=baseline-2026-09-23
 # 冷启动 + 稳态（同一数据根连续启动 3 次，并把两条护栏都跑一遍）
 node scripts/measure-desktop-cold-start.mjs --profiles=normal,recovery --samples=3 --launches=3 --label=warm-2026-09-23 --no-send
+# 恢复归属（需要真实 Provider 凭据；无凭据时脚本跳过并说明原因）
+$env:DEEPSEEK_API_KEY = '<credential>'
+pnpm run verify:desktop-cold-start-recovery
 ```

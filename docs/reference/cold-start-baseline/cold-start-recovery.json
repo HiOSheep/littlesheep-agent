@@ -1,0 +1,141 @@
+{
+  "check": "desktop-cold-start-recovery",
+  "capturedAt": "2026-09-23T08:12:18.327Z",
+  "redaction": "session ids are 8-character prefixes; user-profile and repository path prefixes are replaced with <user-home> and <repo>",
+  "ok": true,
+  "skipped": false,
+  "keyEnvName": "DEEPSEEK_API_KEY",
+  "fixtureModel": "deepseek/deepseek-flash",
+  "checkpointSources": [
+    "<user-home>\\.littlesheep\\run-checkpoints\\d6f120d64884f6655f99ba12fa5aa485801fca94f85df1990dea68a28cd7c825.json",
+    "<user-home>\\.littlesheep\\run-checkpoints\\6f0852879bde4cb9c63839a36ba7c516b70506e5182afd84a9c2f7d124e82b12.json"
+  ],
+  "checkpoints": [
+    {
+      "id": "run-checkpoint-a33f2ea9-f395-4bdc-b254-c9a3ae27c662",
+      "sessionId": "c33f8d40…",
+      "status": "recoverable",
+      "model": "deepseek/deepseek-flash",
+      "workspace": "<user-home>/.littlesheep/workplace"
+    },
+    {
+      "id": "run-checkpoint-9d9846ec-0f67-4252-a449-d694ce7fdccf",
+      "sessionId": "64990330…",
+      "status": "recoverable",
+      "model": "openai/gpt-test",
+      "workspace": "<repo>"
+    }
+  ],
+  "seededSessions": [
+    "c33f8d40…",
+    "64990330…",
+    "session-recovery-probe-other"
+  ],
+  "observations": [
+    {
+      "step": "readiness",
+      "state": "ready",
+      "phase": "execution"
+    },
+    {
+      "step": "discovery",
+      "status": 200,
+      "checkpoints": [
+        {
+          "id": "run-checkpoint-a33f2ea9-f395-4bdc-b254-c9a3ae27c662",
+          "sessionId": "c33f8d40…",
+          "status": "recoverable",
+          "resumable": true,
+          "waitingForInput": false,
+          "workspace": "<user-home>/.littlesheep/workplace"
+        },
+        {
+          "id": "run-checkpoint-9d9846ec-0f67-4252-a449-d694ce7fdccf",
+          "sessionId": "64990330…",
+          "status": "recoverable",
+          "resumable": false,
+          "waitingForInput": false,
+          "workspace": "<repo>"
+        }
+      ],
+      "expected": [
+        {
+          "id": "run-checkpoint-a33f2ea9-f395-4bdc-b254-c9a3ae27c662",
+          "sessionId": "c33f8d40…"
+        },
+        {
+          "id": "run-checkpoint-9d9846ec-0f67-4252-a449-d694ce7fdccf",
+          "sessionId": "64990330…"
+        }
+      ]
+    },
+    {
+      "step": "trigger",
+      "triggerPresent": true,
+      "triggerText": "待恢复任务2",
+      "triggerClasses": "checkpoint-recovery-trigger pending",
+      "draft": "恢复探针草稿",
+      "focusedTag": "TEXTAREA",
+      "focusedIsComposer": true,
+      "currentSessionId": null,
+      "url": "file:///<repo>/packages/app/out/renderer/index.html",
+      "activeRunCount": 0
+    },
+    {
+      "step": "dialog",
+      "opened": true,
+      "dialogPresent": true,
+      "listLength": 2,
+      "listTexts": [
+        "未命名任务9/23 10:47",
+        "未命名任务9/23 02:01"
+      ],
+      "selectedIndex": 0,
+      "summaryText": "可以继续整理交付9/23 10:47run is waiting for user clarification<user-home>\\.littlesheep\\workplace0/0 步完成1/1 项操作有完成证据deepseek/deepseek-flash",
+      "stateLine": "可以继续整理交付9/23 10:47",
+      "workspacePath": "<user-home>\\.littlesheep\\workplace",
+      "blockers": null,
+      "resumeLabel": null,
+      "expectedCheckpointIds": [
+        "run-checkpoint-a33f2ea9-f395-4bdc-b254-c9a3ae27c662",
+        "run-checkpoint-9d9846ec-0f67-4252-a449-d694ce7fdccf"
+      ]
+    },
+    {
+      "step": "selection",
+      "clicked": true,
+      "itemText": "未命名任务9/23 02:01",
+      "dialogPresent": true,
+      "listLength": 2,
+      "listTexts": [
+        "未命名任务9/23 10:47",
+        "未命名任务9/23 02:01"
+      ],
+      "selectedIndex": 1,
+      "summaryText": "需要处理整理交付9/23 02:01run is waiting for user clarification<repo>0/0 步完成0/0 项操作有完成证据openai/gpt-test",
+      "stateLine": "需要处理整理交付9/23 02:01",
+      "workspacePath": "<repo>",
+      "blockers": "当前模型与创建检查点时使用的模型不同。",
+      "resumeLabel": null
+    },
+    {
+      "step": "after-opening",
+      "triggerPresent": false,
+      "triggerText": null,
+      "triggerClasses": null,
+      "draft": "恢复探针草稿",
+      "focusedTag": "TEXTAREA",
+      "focusedIsComposer": true,
+      "currentSessionId": null,
+      "url": "file:///<repo>/packages/app/out/renderer/index.html",
+      "activeRunCount": 0
+    }
+  ],
+  "failures": [],
+  "limits": [
+    "Discovery and attribution only: the probe never resumes, so the continuation itself is not exercised (resuming would run tools against the workspace recorded in the checkpoint, which belongs to this machine's real data root).",
+    "The seeded sessions carry the checkpoints' ids but not their conversation history; the checkpoint files themselves are copied unmodified.",
+    "The checkpoint files come from this machine's real data root, so this is real evidence from one machine, not a distribution over models or workspaces.",
+    "A credential is required, so this probe skips itself (and says so) wherever none is provided."
+  ]
+}

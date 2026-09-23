@@ -85,6 +85,7 @@
     "verify:workspace-performance": "pnpm run assert:app-build && node scripts/verify-workspace-performance.mjs",
     "verify:desktop-cold-start": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-visuals.mjs",
     "verify:desktop-cold-start-interaction": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-interaction.mjs",
+    "verify:desktop-cold-start-recovery": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-recovery.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs"
   },
   "devDependencies": {
