@@ -283,6 +283,14 @@ async function main() {
         : closePolicy.activeRunCount > 0 ? 'hide' : 'quit',
     })
 
+    // 4b. Window lifecycle after startup: hiding and restoring the window, then
+    //     minimizing and restoring it, must not reload the renderer or lose the
+    //     draft. Requires `always-background`, so it runs as its own launch with
+    //     its own data root.
+    const lifecycle = await runWindowLifecycleCase(outDir)
+    observations.push({ step: 'window-lifecycle', ...lifecycle.observation })
+    failures.push(...lifecycle.failures)
+
     await writeFile(join(outDir, 'cold-start-interaction.json'), `${JSON.stringify({
       check: 'desktop-cold-start-interaction',
       ok: failures.length === 0,
@@ -290,8 +298,8 @@ async function main() {
       failures,
       gaps: [
         'a deliberately slow initialization (no product knob exists to delay it)',
-        'switching conversations while the Runtime is still starting',
         'typing continuously for the whole not-ready window (that window is ~300 ms here)',
+        'external display changes (monitor unplug, DPI change) while the window is hidden',
         'close-to-background is only reachable while a run is active, so the live close/restore cycle is not exercised',
       ],
     }, null, 2)}\n`, 'utf8')
@@ -314,6 +322,109 @@ async function main() {
 }
 
 /** Two seeded conversations make "the handoff must not switch session" testable. */
+/**
+ * Hide/restore and minimize/restore around a startup.
+ *
+ * Both are window operations the user can perform while the Runtime is still
+ * starting. What must hold: the process stays alive under `always-background`,
+ * the renderer is not reloaded, the draft and the conversation survive, and
+ * readiness keeps progressing to `ready` afterwards.
+ */
+async function runWindowLifecycleCase(dir) {
+  const failures = []
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-cold-start-lifecycle-'))
+  const dataDir = join(root, 'data')
+  const chromiumDir = join(root, 'chromium')
+  const logPath = join(root, 'electron.log')
+  const debuggingPort = await harness.reservePort()
+  let client
+  let child
+  const observation = { steps: [] }
+
+  try {
+    await mkdir(dataDir, { recursive: true })
+    await seedSessions(dataDir)
+    // `always-background` is what makes hiding reachable without an active run.
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify({
+      version: 1,
+      desktop: { closePolicy: 'always-background' },
+    }, null, 2)}\n`, 'utf8')
+
+    child = await harness.startElectron({
+      dataDir,
+      chromiumDir,
+      debuggingPort,
+      logPath,
+      extraEnv: {
+        LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
+        LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS: String(NOT_READY_WINDOW_MS),
+      },
+    })
+    const locator = await harness.waitForLocator(dataDir, child.pid)
+    client = await harness.connectRenderer(debuggingPort)
+    await client.send('Runtime.enable')
+    await client.send('Page.enable')
+    await harness.waitForVisible(client, '.composer textarea', 0, harness.actionTimeoutMs)
+    await typeComposerDraft(client, '生命周期草稿')
+    const before = await readComposerIdentity(client)
+    observation.steps.push({ step: 'prepared', draft: before.draft, session: before.currentSession })
+
+    // Hide → the process must survive and the window must come back intact.
+    await harness.desktopAction(locator, 'close')
+    await delay(700)
+    const hidden = await harness.desktopSnapshot(locator).catch(() => undefined)
+    const aliveWhileHidden = !child.killed && child.exitCode === null
+    await harness.desktopAction(locator, 'show')
+    await delay(700)
+    const afterShow = await readComposerIdentity(client)
+    observation.steps.push({ step: 'hide-show', aliveWhileHidden, windowVisible: hidden?.windowVisible, draft: afterShow.draft, focused: afterShow.focused })
+    if (!aliveWhileHidden) {
+      failures.push({ check: 'closing under always-background keeps the process alive', detail: { aliveWhileHidden, hidden } })
+    }
+    if (afterShow.draft !== '生命周期草稿') {
+      failures.push({ check: 'hiding and restoring the window keeps the draft', detail: afterShow })
+    }
+    if (afterShow.currentSession !== before.currentSession) {
+      failures.push({ check: 'hiding and restoring does not switch the conversation', detail: { before: before.currentSession, after: afterShow.currentSession } })
+    }
+
+    // Minimize → restore. A minimized window cannot be captured, so this checks
+    // the DOM state the user gets back.
+    await harness.desktopAction(locator, 'minimize', { minimized: true })
+    await delay(700)
+    const minimized = await readComposerIdentity(client)
+    await harness.desktopAction(locator, 'minimize', { minimized: false })
+    await delay(700)
+    const afterRestore = await readComposerIdentity(client)
+    observation.steps.push({ step: 'minimize-restore', minimizedHasComposer: minimized.hasComposer, draft: afterRestore.draft, focused: afterRestore.focused })
+    if (afterRestore.draft !== '生命周期草稿') {
+      failures.push({ check: 'minimizing and restoring the window keeps the draft', detail: afterRestore })
+    }
+    if (afterRestore.hasComposer !== true) {
+      failures.push({ check: 'the composer is back after restoring the window', detail: afterRestore })
+    }
+
+    // Readiness must still arrive after all of that.
+    const readiness = await waitForReady(locator)
+    observation.steps.push({ step: 'ready', state: readiness?.state })
+    if (readiness?.state !== 'ready') {
+      failures.push({ check: 'readiness still arrives after the window was hidden and minimized', detail: readiness })
+    }
+    const afterReady = await readComposerIdentity(client)
+    observation.steps.push({ step: 'after-ready', draft: afterReady.draft, notice: afterReady.readinessNotice })
+    if (afterReady.draft !== '生命周期草稿') {
+      failures.push({ check: 'the draft survives the whole lifecycle to readiness', detail: afterReady })
+    }
+  } catch (error) {
+    failures.push({ check: 'the window lifecycle case ran', detail: error instanceof Error ? error.message : String(error) })
+  } finally {
+    client?.close()
+    if (child?.exitCode === null) await harness.forceTerminate(child)
+    await harness.removeTemporaryRoot(root)
+  }
+  return { observation, failures }
+}
+
 async function seedSessions(dataDir) {
   const { mkdir: makeDir } = await import('node:fs/promises')
   await makeDir(join(dataDir, 'sessions'), { recursive: true })

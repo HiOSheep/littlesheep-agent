@@ -9,7 +9,13 @@
 
 import type { BrowserWindow } from 'electron'
 import type { LocalAppApiServerOptions } from './local-app-api/contracts.js'
-import { resizeWindowForAcceptance, setWindowMaximizedForAcceptance, showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
+import {
+  resizeWindowForAcceptance,
+  setWindowMaximizedForAcceptance,
+  setWindowMinimizedForAcceptance,
+  showStartupErrorPageForAcceptance,
+  showStartupPageForAcceptance,
+} from './desktop-visual-acceptance.js'
 
 /** The window facts these actions need; `LittleSheepDesktopShell` satisfies it. */
 export interface DesktopAcceptanceShell {
@@ -28,7 +34,7 @@ type ContractActions = NonNullable<LocalAppApiServerOptions['desktopAcceptance']
  * they are present, so callers do not have to re-check them.
  */
 export type DesktopAcceptanceActions = ContractActions & Required<
-  Pick<ContractActions, 'resizeForAcceptance' | 'setMaximizedForAcceptance' | 'showStartupErrorForAcceptance' | 'showStartupPageForAcceptance'>
+  Pick<ContractActions, 'resizeForAcceptance' | 'setMaximizedForAcceptance' | 'setMinimizedForAcceptance' | 'showStartupErrorForAcceptance' | 'showStartupPageForAcceptance'>
 >
 
 export function createDesktopAcceptanceActions(input: {
@@ -50,6 +56,9 @@ export function createDesktopAcceptanceActions(input: {
     // ...and in the maximized state, where the overlay meets a different width.
     setMaximizedForAcceptance: (maximized) =>
       setWindowMaximizedForAcceptance(input.shell.currentWindow(), maximized),
+    // ...and for minimize/restore, where the question is what the window keeps.
+    setMinimizedForAcceptance: (minimized) =>
+      setWindowMinimizedForAcceptance(input.shell.currentWindow(), minimized),
     showStartupErrorForAcceptance: (message) =>
       showStartupErrorPageForAcceptance(
         input.shell.currentWindow(),

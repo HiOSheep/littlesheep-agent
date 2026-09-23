@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 17:17:18
+最后更新：2026-09-23 17:26:18
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -270,6 +270,12 @@
 | 把 `config.json` 改成可用配置后点重试 | `/runtime/readiness` 变为 **`ready`**、失败提示消失，`/run-checkpoints` 从 503 变为 **200**（Runner 依赖路由解锁） |
 
 预算与并发由单元测试固定（`execution-retry.test.ts`：连续三次失败后拒绝并标记不可重试；成功一次即重置预算，使之后另一次失败仍有自己的机会；并发点击返回 `in-flight`；非 Error 抛出保留文本），渲染器侧的可重试判定由 `execution-retry-state.test.ts` 固定；窗口探针负责"真实失败 → 重试仍失败 → 修好后重试成功"这条端到端路径。两者分工写在证据文件的 `limits` 里。
+
+**重试的并发也在窗口级确认**：同一时刻发出两次 `retryExecution()`，实测第一次 `accepted: true`（`attemptsUsed: 2`、`attemptsRemaining: 1`，并带真实失败原因），第二次 `accepted: false`、`refusedBecause: "in-flight"`——拒绝发生在 Main，而不是靠界面把按钮变灰；随后"修好配置后点重试"用掉最后一次预算并成功转为 `ready`。
+
+### CS-03 / CS-06 启动期间的窗口生命周期
+
+`verify-desktop-cold-start-interaction.mjs` 的窗口生命周期用例（同一脚本内第二次隔离启动，配置 `always-background` 使"隐藏"可达）在加宽的未就绪窗口内逐项确认：输入草稿后**关闭窗口**——进程存活、验收快照显示窗口确实不可见、`show` 回来后草稿与当前会话都没变、焦点仍在输入框；随后**最小化再还原**——输入区仍在、草稿仍在；最后就绪仍到达 `ready`，提示消失、草稿保留。结论：启动期间隐藏或最小化窗口不会重载渲染器，也不会丢用户已经输入的内容。最小化后的窗口不参与截图，因此这条只断言 DOM 状态，不冒充像素证据。
 
 ## 打包版冷启动（release/win-unpacked）
 

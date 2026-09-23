@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 17:17:18
+最后更新：2026-09-23 17:26:18
 
 ## 1. 目标与当前状态
 
@@ -131,7 +131,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 17:17:18
+最后更新：2026-09-23 17:26:18
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -178,7 +178,8 @@
 - **失败态也已用真实故障取证**（新增 `scripts/verify-desktop-cold-start-readiness-failure.mjs` + 同名 npm 脚本，证据 `docs/reference/cold-start-baseline/cold-start-readiness-failure.json`，**不挂载验收面**）：③ 执行准备失败（config 指向不存在的 provider）时**保留活动外壳**——`运行能力启动失败：runner: no provider …`、`aria-live="assertive"`、发送入口禁用、输入区仍在（改配置的设置可达）、无错误横幅、未启动 run；① 数据前置失败（config.json 非法 JSON）时落到**独立启动失败页**（含解析错误原文、品牌图标、`#101010` 表面与错误卡片）。同批确认失败时的接口契约：readiness 200 且 `state=failed`/`retryable=true`、`/sessions` 200、`/run-checkpoints` 503 失败关闭。
 - 该批证据促成一处显式化改动：`desktop-shell.ts` 新增 `hasLoadedRenderer()`，bootstrap 失败分支只在渲染器尚未接管时才切到独立失败页；此前该分支无条件切换，而实测 ③ 阶段的最终可见状态是渲染器外壳（等于"切过去又被接管"），现在两个阶段的可见状态都是写在代码里的契约，并各有实机证据与 `desktop-shell.test.ts` 断言。
 - **有界重试已实现并实机验证**（`execution-retry.ts` + `RUNTIME_RETRY_EXECUTION_CHANNEL` + preload `retryExecution()` + `RuntimeReadinessNotice` 的 `.runtime-readiness-retry` 入口）：失败态提供重试，Main **先重读 `config.json` 再重建执行阶段**；同一真实窗口内实测"配置仍错误时重试 → 仍 failed 且仍可重试"，随后"改好 config.json → 重试 → readiness 变 `ready`、失败提示消失、`/run-checkpoints` 从 503 变 200"。预算为连续 3 次失败（成功一次即重置，之后的另一次失败仍有自己的机会），并发点击由 Main 拒绝（`in-flight`）；规则各有单元测试（`execution-retry.test.ts` 5 例、`execution-retry-state.test.ts` 4 例），窗口探针覆盖端到端恢复路径。
-- 剩余缺口：启动期间关闭/最小化/重新激活与重试并发的**窗口级**场景未验证（重试自身的并发已有单元测试）；**续接执行本身**（真正点"继续"并完成一次恢复）需要用户在真实数据根上决定。
+- **启动期间的窗口生命周期与重试并发也已实机覆盖**：①交互脚本新增窗口生命周期用例（`always-background` 配置的第二次隔离启动）——加宽窗口内输入草稿 → 关闭窗口（进程存活、验收快照显示窗口不可见）→ `show` 回来后草稿/当前会话/焦点不变；再最小化 → 还原后输入区与草稿仍在；最终就绪仍到达 `ready`、提示消失、草稿保留。②失败态探针同时发两次 `retryExecution()`：第一次 `accepted: true`（`attemptsUsed: 2`、`attemptsRemaining: 1`），第二次 `accepted: false`、`refusedBecause: "in-flight"`——并发拒绝发生在 Main，而不是界面把按钮变灰；随后修好配置的那次重试（预算最后一次）成功转为 `ready`。
+- 剩余缺口：**续接执行本身**（真正点"继续"并完成一次恢复）需要用户在真实数据根上决定；系统重启后的完全冷启动、125%/150%/200% 缩放与明暗桌面实拍、安装包实机仍需人工。
 
 ### CS-04｜缩短首次可执行路径 —— 预算已测量，改动待后续
 

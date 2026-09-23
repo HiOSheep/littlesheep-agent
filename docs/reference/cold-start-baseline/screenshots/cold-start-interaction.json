@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 50675
+        "port": 24687
       },
       "notices": {
         "errorText": null,
@@ -56,7 +56,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 50675
+        "port": 24687
       }
     },
     {
@@ -90,7 +90,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 50675
+        "port": 24687
       }
     },
     {
@@ -119,10 +119,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 50675,
+        "port": 24687,
         "retryable": false
       },
-      "notReadyWindowMs": 7818,
+      "notReadyWindowMs": 7797,
       "requiredWindowMs": 6000
     },
     {
@@ -160,13 +160,45 @@
       "activeRunCount": 0,
       "closePolicy": "background-while-active",
       "expectedAction": "quit"
+    },
+    {
+      "step": "window-lifecycle",
+      "steps": [
+        {
+          "step": "prepared",
+          "draft": "生命周期草稿",
+          "session": null
+        },
+        {
+          "step": "hide-show",
+          "aliveWhileHidden": true,
+          "windowVisible": false,
+          "draft": "生命周期草稿",
+          "focused": true
+        },
+        {
+          "step": "minimize-restore",
+          "minimizedHasComposer": true,
+          "draft": "生命周期草稿",
+          "focused": true
+        },
+        {
+          "step": "ready",
+          "state": "ready"
+        },
+        {
+          "step": "after-ready",
+          "draft": "生命周期草稿",
+          "notice": null
+        }
+      ]
     }
   ],
   "failures": [],
   "gaps": [
     "a deliberately slow initialization (no product knob exists to delay it)",
-    "switching conversations while the Runtime is still starting",
     "typing continuously for the whole not-ready window (that window is ~300 ms here)",
+    "external display changes (monitor unplug, DPI change) while the window is hidden",
     "close-to-background is only reachable while a run is active, so the live close/restore cycle is not exercised"
   ]
 }

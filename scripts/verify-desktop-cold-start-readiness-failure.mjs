@@ -189,8 +189,28 @@ async function runExecutionFailureCase() {
       failures.push({ check: 'a failed retry starts no run', detail: noticeAfterFailedRetry })
     }
 
-    // 1c. Fix the configuration the way a user would (the file is what the retry
+    // 1c. Two retries at once: Main owns the single-flight rule, so exactly one
+    //     attempt may be accepted and the other must say it was refused. Observed
+    //     through the same bridge the notice uses.
+    const concurrent = await client.evaluate(`(async () => {
+      const bridge = window.littlesheep;
+      if (!bridge?.retryExecution) return { available: false };
+      const [first, second] = await Promise.all([bridge.retryExecution(), bridge.retryExecution()]);
+      return { available: true, first, second };
+    })()`)
+    if (concurrent.available !== true) {
+      failures.push({ check: 'the retry bridge is reachable from the window', detail: concurrent })
+    } else {
+      const accepted = [concurrent.first, concurrent.second].filter((outcome) => outcome?.accepted === true)
+      const refused = [concurrent.first, concurrent.second].filter((outcome) => outcome?.accepted === false)
+      if (accepted.length !== 1 || refused.length !== 1 || refused[0]?.refusedBecause !== 'in-flight') {
+        failures.push({ check: 'a concurrent retry is refused instead of running twice', detail: concurrent })
+      }
+    }
+
+    // 1d. Fix the configuration the way a user would (the file is what the retry
     //     re-reads), then retry again: this is the whole point of the control.
+    //     This is the last attempt the budget allows, which is the interesting one.
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildRecoverableConfig(workspaceDir), null, 2)}\n`, 'utf8')
     const recoveredRetry = await clickRetry(client)
     const readinessAfterRecovery = await waitForReadiness(locator, 'ready')
@@ -221,6 +241,7 @@ async function runExecutionFailureCase() {
         notice: noticeStates,
         screenshot: capture.file,
         retry: {
+          concurrent: concurrent,
           failedAttempt: {
             click: failedRetry,
             readiness: readinessAfterFailedRetry?.state,

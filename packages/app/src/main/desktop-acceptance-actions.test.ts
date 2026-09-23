@@ -20,8 +20,11 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
   const close = vi.fn(() => true)
   const show = vi.fn()
   let maximized = false
+  let minimized = false
   const maximize = vi.fn(() => { maximized = true })
   const unmaximize = vi.fn(() => { maximized = false })
+  const minimize = vi.fn(() => { minimized = true })
+  const restore = vi.fn(() => { minimized = false })
   const currentWindow = vi.fn(() => (
     window
       ? ({
@@ -30,11 +33,14 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
         isMaximized: () => maximized,
         maximize,
         unmaximize,
+        isMinimized: () => minimized,
+        minimize,
+        restore,
       } as unknown as NonNullable<AcceptanceWindow>)
       : undefined
   ))
   const shell = { close, show, currentWindow, showStartupError, showStartupPage } satisfies DesktopAcceptanceShell
-  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow, maximize, unmaximize }
+  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow, maximize, unmaximize, minimize, restore }
 }
 
 function createActions(shell: DesktopAcceptanceShell, quit = vi.fn()) {
@@ -73,6 +79,8 @@ describe('desktop acceptance actions', () => {
     expect(setSize).toHaveBeenCalledWith(1580, 900)
     expect(actions.setMaximizedForAcceptance(true)).toBe(true)
     expect(actions.setMaximizedForAcceptance(false)).toBe(true)
+    expect(actions.setMinimizedForAcceptance(true)).toBe(true)
+    expect(actions.setMinimizedForAcceptance(false)).toBe(true)
     expect(actions.showStartupErrorForAcceptance('bootstrap failed as requested')).toBe(true)
     expect(showStartupError).toHaveBeenCalledTimes(1)
     expect(showStartupError.mock.calls[0]?.[0]).toBeInstanceOf(Error)

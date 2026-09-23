@@ -1,6 +1,6 @@
 {
   "check": "desktop-cold-start-readiness-failure",
-  "capturedAt": "2026-09-23T09:22:59.487Z",
+  "capturedAt": "2026-09-23T09:28:23.981Z",
   "redaction": "user-profile and repository path prefixes are replaced with <user-home> / <repo> / <temp>",
   "ok": true,
   "acceptanceSurfaceMounted": false,
@@ -14,7 +14,7 @@
         "reason": "runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"",
         "apiVersion": 1,
         "retryable": true,
-        "port": 7727
+        "port": 24729
       },
       "metadataStatus": 200,
       "runnerBackedStatus": 503,
@@ -32,6 +32,21 @@
       },
       "screenshot": "<repo>\\docs\\reference\\cold-start-baseline\\readiness-failure-execution.png",
       "retry": {
+        "concurrent": {
+          "available": true,
+          "first": {
+            "accepted": true,
+            "attemptsUsed": 2,
+            "attemptsRemaining": 1,
+            "reason": "runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\""
+          },
+          "second": {
+            "accepted": false,
+            "attemptsUsed": 2,
+            "attemptsRemaining": 1,
+            "refusedBecause": "in-flight"
+          }
+        },
         "failedAttempt": {
           "click": {
             "clicked": true,
@@ -58,7 +73,7 @@
       "userVisibleState": "standalone startup failure page",
       "page": {
         "isFailureDocument": true,
-        "errorText": "LittleSheep 无法启动config: failed to parse <user-home>\\AppData\\Local\\Temp\\littlesheep-readiness-failure-bootstrap-jTssvQ\\data\\config.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)",
+        "errorText": "LittleSheep 无法启动config: failed to parse <user-home>\\AppData\\Local\\Temp\\littlesheep-readiness-failure-bootstrap-SY2pGV\\data\\config.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)",
         "hasIcon": true
       },
       "surface": {

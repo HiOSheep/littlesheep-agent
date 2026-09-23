@@ -106,3 +106,21 @@ export function setWindowMaximizedForAcceptance(
   else window.unmaximize()
   return true
 }
+
+/**
+ * Minimize or restore a live window.
+ *
+ * A minimized window produces no capturable frame, so this exists for the
+ * interaction contract instead: the window must come back without reloading the
+ * renderer or losing what the user typed. Only the isolated acceptance run uses it.
+ */
+export function setWindowMinimizedForAcceptance(
+  window: BrowserWindow | undefined,
+  minimized: boolean,
+): boolean {
+  if (!window || window.isDestroyed()) return false
+  if (minimized === window.isMinimized()) return true
+  if (minimized) window.minimize()
+  else window.restore()
+  return true
+}

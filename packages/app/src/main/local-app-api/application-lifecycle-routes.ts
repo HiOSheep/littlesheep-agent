@@ -105,6 +105,16 @@ export async function routeApplicationLifecycle(
       json(res, accepted ? 202 : 409, { accepted })
       return true
     }
+    if (body.action === 'minimize') {
+      const setMinimized = context.desktopAcceptance.setMinimizedForAcceptance
+      if (!setMinimized) {
+        json(res, 501, { error: 'Desktop acceptance minimize is not available.' })
+        return true
+      }
+      const accepted = setMinimized(body.minimized !== false)
+      json(res, accepted ? 202 : 409, { accepted })
+      return true
+    }
     if (body.action === 'startup-page') {
       const showStartupPage = context.desktopAcceptance.showStartupPageForAcceptance
       if (!showStartupPage) {
@@ -115,7 +125,7 @@ export async function routeApplicationLifecycle(
       json(res, accepted ? 202 : 409, { accepted })
       return true
     }
-    json(res, 400, { error: 'Desktop acceptance action must be close, maximize, show, resize, startup-page, startup-error, or quit.' })
+    json(res, 400, { error: 'Desktop acceptance action must be close, maximize, minimize, show, resize, startup-page, startup-error, or quit.' })
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {
