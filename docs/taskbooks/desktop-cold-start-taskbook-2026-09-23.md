@@ -143,12 +143,12 @@
 - 剩余缺口：未覆盖系统重启后的完全冷启动、打包版样本与更高样本量；**未**据此声称稳定的高分位统计。
 - 第 5 项验收预算已确定：`docs/reference/cold-start-baseline/budgets.json` 保存五个时间点的回归护栏，脚本在输出目录找到它时按观测最大值判定并给出非零退出码；口径与来源见基线文档的"回归护栏"一节。护栏是回退报警线，不是性能达标线。
 
-### CS-02｜统一启动视觉 —— 实现完成，待实机截图验收
+### CS-02｜统一启动视觉 —— 实现完成，实机证据已采一部分
 
 - 改动文件：`packages/app/src/main/desktop-startup-page.ts`、`packages/app/src/main/desktop-shell.ts`、`desktop-startup-page.test.ts`、`desktop-shell.test.ts`、`packages/app/src/renderer/chat-layout-stability.test.ts`。
 - 做法：启动页、`titleBarOverlay` 与渲染器 `.window-titlebar` 统一为不透明 `#101010`（共享常量 `DESKTOP_STARTUP_SURFACE` / `DESKTOP_TITLEBAR_HEIGHT`）；移除启动页的 `backdrop-filter` 与半透明 `rgba(16,16,16,0.72)`；移除叠在原生按钮区上的 `backgroundMaterial: 'acrylic'`。原生最小化/最大化/关闭/缩放/厚边框/阴影/圆角保持不变。
-- 验证环境与证据：源码级断言已更新并通过；真实 Electron 启动可正常显示与拖动。
-- 剩余缺口：**明暗桌面背景 × 100%/125%/150%/200% 缩放的截图对比、失焦/最大化/还原/最小化恢复/错误页状态尚未逐项拍摄**；CS-02 的复选框因此保持未勾选。
+- 新增实机证据：`scripts/verify-desktop-cold-start-visuals.mjs`（`pnpm run verify:desktop-cold-start`）在三种窗口宽度下逐像素核对渲染器标题栏、标题栏右段与背景为同一实色且下方 60 CSS px 无断层；原生覆盖区与窗口背景的 `#101010` 由验收快照的 `visual` 字段核对；截图见 `docs/reference/cold-start-baseline/screenshots/`。
+- 剩余缺口：启动页自身的实机截图（窗口出现到渲染器接管仅约 90 ms，无头调试器赶不上；一次尝试性抓取拿到的是窗口未绘制文档时的 `#121212` 表面，已删除该文件并给脚本加了"底色必须等于声明值"的防线，不把抓到的任意一帧当证据）；失焦/最小化/还原/最大化恢复；125%/150%/200% 缩放与明暗桌面；打包版。**因此 CS-02 复选框保持未勾选。**
 
 ### CS-03｜提前呈现可交互界面 —— 实现完成，部分待验收
 

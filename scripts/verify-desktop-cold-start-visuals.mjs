@@ -18,7 +18,7 @@
 // Usage:
 //   node scripts/verify-desktop-cold-start-visuals.mjs [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
 
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, CdpClient, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
@@ -84,6 +84,10 @@ async function main() {
 
   try {
     await mkdir(outDir, { recursive: true })
+    // A previous run's startup capture may have caught a mid-composite frame;
+    // never leave it behind to be mistaken for a measurement of this run.
+    const staleStartupShot = join(outDir, 'startup-page.png')
+    await rm(staleStartupShot, { force: true }).catch(() => undefined)
     child = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
     // The startup document is replaced within a few hundred milliseconds, so the
     // debugger attach races the locator handshake instead of following it.
@@ -222,6 +226,11 @@ async function captureStartupPage(port, dir) {
       }))()`).catch(() => undefined)
       if (!pageState?.url.startsWith('data:text/html') || pageState.hasRoot) return undefined
       if (pageState.readyState !== 'complete' || !pageState.hasStartupIcon) { await delay(5); continue }
+      // Reject the window's own pre-paint surface. It is a different colour from
+      // the document and would otherwise be recorded as the startup page's
+      // background, which is exactly the kind of unverified claim CS-02 forbids.
+      const bodyHex = hexAt(image, Math.round(image.width / 2), Math.round(image.height / 2))
+      if (bodyHex !== EXPECTED_SURFACE) { await delay(5); continue }
       const file = join(dir, 'startup-page.png')
       await writeFile(file, Buffer.from(shot.data, 'base64'))
       const dpr = pageState.devicePixelRatio || 1
