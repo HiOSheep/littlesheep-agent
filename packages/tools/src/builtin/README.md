@@ -2,7 +2,7 @@
 
 这里保存 LS 随核心发布的受控工具实现。
 
-最后更新：2026-09-24 02:03:44
+最后更新：2026-09-24 04:25:40
 
 ## 分类
 
@@ -24,7 +24,7 @@
 - 受保护根内的读/写分界在 `../path-protection.ts`：单条 `Test-Path`（存在性）与 `Get-ChildItem`/`dir`（列举）等窄形态可执行，写入类与任何组合语法被拒；`exec.ts`、`write.ts`、`edit.ts`、`document-create.ts` 的拒绝共用 `coreSourceReadOnlyMessage()` 并声明 `meta.errorKind: 'core_source_read_only'`，主循环据此按权威边界停手而不是让模型换工具试探。
 - `exec.ts` 的显式 `cwd` 属于**这一次调用**：命令在那个目录里运行、边界也按那个目录判定（容器内 `inside`、容器外 `outside` 且研究模式仍需批准），但不会改写会话自己的工作区（`ctx.cwd` 保持不变）。`exec.test.ts` 逐条断言这四件事。
 - `exec.ts` 把不透明命令的失效做在观察端口上：审批通过后、进程启动前 `suspend()`（期间不登记新观察，已有观察也不得授权写入），结算时 `invalidateAll()` 清空该会话的全部观察——**不依赖只读启发式**，命令名不是"没有写入"的证据。只有确认进程已关闭才解除冻结；进程可能仍在写时保持冻结直到 `close`。非零退出、超时、取消都按"可能已改动"处理；命令未真正启动（审批拒绝、spawn 失败）时不清空观察。因此 `exec` 之后模型通常要重读一次文件，这是任务书接受的代价。
-- `request_user_input` 不做 IO：它把缺失事实的问题交给 Runtime 发布为本轮回复，并留下一个有界的等待事实。
+- `request_user_input` 不做 IO：它把缺失事实的问题交给 Runtime 发布为本轮回复，并留下一个有界的等待事实。它的**描述**同时写明提问门槛：只有答案会阻塞有用或安全的结果时才问；存在合理默认时（做哪种小游戏/玩具/演示、文件名、布局）选一个、一句话说明后开工，"用户偏好哪个选项"不算缺失事实。这条措辞来自 2026-09-24 的实机验收——真实模型在"做一个小游戏吧"上零工具调用、直接反问"想做哪种小游戏？"。
 - 网络工具只通过每轮注入的 `WebRetrievalRuntime` 执行：`web_search` 只能使用 Runtime 选定的 Provider，`web_fetch` 只能匿名读取已校验的公共 HTTP(S) URL。它们不接收 endpoint、method、header、Cookie、Authorization、body、proxy 或输出路径；搜索/网页内容一律是 `external_untrusted`，持久化边界只接受 `WebEvidenceProjection`。
 - 网络关闭、Provider 未配置、敏感 query、私网/危险 URL、超时、取消和 citation 不一致必须默认拒绝或保留 partial/blocked 状态，不能由工具隐式 fallback 到 HTML scraping、浏览器或长期 Memory 写入。
 - 禁止工具自行持久化审批或绕过 Registry/Wrapper；测试与实现同目录。
