@@ -31,6 +31,9 @@ const START_TIMEOUT_MS = 60_000
 const RUN_TIMEOUT_MS = 600_000
 const EXIT_TIMEOUT_MS = 20_000
 const MODEL = 'deepseek-v4-flash'
+const ALTERNATE_PROVIDER = 'deepseek-alt'
+const ALTERNATE_MODEL = 'deepseek-v4-pro'
+const ALTERNATE_MODEL_REF = `${ALTERNATE_PROVIDER}/${ALTERNATE_MODEL}`
 const GAME_PROMPT = '做一个小游戏吧'
 const CONTINUATION_PROMPT = '继续做吧'
 const MAX_ARTIFACT_BYTES = 512 * 1024
@@ -187,6 +190,64 @@ async function main() {
     }))
     progress(`protected core: refusal=${coreRefusal.errorKind} targetAbsent=${!probeCreated} replyChars=${String(coreRun.result.reply ?? '').length}`)
 
+    // CE-13: the environment brief has to reach the real request when the model
+    // actually changes, and it must not be re-announced once the state is stable.
+    // Three requests in one session: establish, switch, stay.
+    const ping = '只回复 OK，不要调用工具，也不要解释。'
+    const established = await runStream(locator, {
+      text: ping,
+      permissionMode: 'full',
+      workspace: insideWorkspace,
+      sessionId: undefined,
+    })
+    assertSuccessfulRun(established.result, 'pre-switch request', { provider: 'deepseek' })
+    const establishedBrief = briefItem(established.result)
+    if (!establishedBrief) throw new Error('the first request of a session carried no runtime-context brief')
+
+    const switched = await postJson(locator, '/runtime', { model: ALTERNATE_MODEL_REF })
+    if (!String(switched.model ?? '').includes('deepseek-v4-pro')) {
+      throw new Error(`the runtime did not accept the model switch: ${JSON.stringify(switched.model)}`)
+    }
+
+    const afterSwitch = await runStream(locator, {
+      text: ping,
+      permissionMode: 'full',
+      workspace: insideWorkspace,
+      sessionId: established.result.sessionId,
+    })
+    assertSuccessfulRun(afterSwitch.result, 'post-switch request', { provider: ALTERNATE_PROVIDER, model: ALTERNATE_MODEL })
+    const afterSwitchBrief = briefItem(afterSwitch.result)
+    if (!afterSwitchBrief) {
+      throw new Error('the first request after the model switch carried no runtime-context brief')
+    }
+
+    const steady = await runStream(locator, {
+      text: ping,
+      permissionMode: 'full',
+      workspace: insideWorkspace,
+      sessionId: established.result.sessionId,
+    })
+    assertSuccessfulRun(steady.result, 'steady-state request', { provider: ALTERNATE_PROVIDER, model: ALTERNATE_MODEL })
+    if (briefItem(steady.result)) {
+      throw new Error('an unchanged environment was announced again')
+    }
+    scenarios.push({
+      name: 'runtime_change_brief',
+      sessionId: established.result.sessionId,
+      providerBefore: established.result.replyProvenance?.provider,
+      providerAfter: afterSwitch.result.replyProvenance?.provider,
+      modelAfter: afterSwitch.result.replyProvenance?.model,
+      briefOnEstablishment: true,
+      briefOnChange: true,
+      briefWhenUnchanged: false,
+      requests: [
+        established.result.modelRequests?.length ?? 0,
+        afterSwitch.result.modelRequests?.length ?? 0,
+        steady.result.modelRequests?.length ?? 0,
+      ],
+    })
+    progress(`runtime change brief: ${established.result.replyProvenance?.provider} -> ${afterSwitch.result.replyProvenance?.provider}/${afterSwitch.result.replyProvenance?.model}, repeated=${false}`)
+
     await desktopAction(locator, 'quit')
     await waitForExit(electron, EXIT_TIMEOUT_MS)
     await waitForMissing(join(dataDir, locatorRelativePath), EXIT_TIMEOUT_MS)
@@ -293,6 +354,15 @@ async function prepareIsolatedDataRoot(options) {
       apiKey: options.sourceProvider.apiKey ?? '$DEEPSEEK_API_KEY',
       timeoutSeconds: 180,
       models: [MODEL],
+    }, {
+      // Same endpoint, a different provider/model id: the runtime-change scenario
+      // needs a second listed model to switch to, and one that really answers.
+      id: ALTERNATE_PROVIDER,
+      name: 'DeepSeek (alternate model)',
+      baseURL: options.sourceProvider.baseURL,
+      apiKey: options.sourceProvider.apiKey ?? '$DEEPSEEK_API_KEY',
+      timeoutSeconds: 180,
+      models: [ALTERNATE_MODEL],
     }],
     agents: {
       defaults: {
@@ -383,9 +453,13 @@ async function collectNewArtifacts(workspaceDir, known) {
 
 function assertSuccessfulRun(result, label, options = {}) {
   const expectedPermission = options.permission ?? 'full'
+  const expectedProvider = options.provider ?? 'deepseek'
   if (result?.status !== 'ok') throw new Error(`${label} failed: ${safeResult(result)}`)
-  if (result.replyProvenance?.source !== 'llm' || result.replyProvenance.provider !== 'deepseek') {
-    throw new Error(`${label} did not publish a traceable DeepSeek reply`)
+  if (result.replyProvenance?.source !== 'llm' || result.replyProvenance.provider !== expectedProvider) {
+    throw new Error(`${label} did not publish a traceable ${expectedProvider} reply: ${JSON.stringify(result.replyProvenance)}`)
+  }
+  if (options.model !== undefined && result.replyProvenance?.model !== options.model) {
+    throw new Error(`${label} was answered by ${result.replyProvenance?.model} instead of ${options.model}`)
   }
   const applied = result.resolvedRunConfig?.permissionPolicyId
   if (applied !== undefined && applied !== expectedPermission) {
@@ -435,17 +509,24 @@ function writeRecoveryPattern(result) {
 /**
  * CE-13 evidence from a real outbound request: the environment brief has to be
  * part of the request the Provider saw, not something the UI claims.
+ *
+ * A brief is appended only when the effective state moved, so its presence means
+ * "this request announced the current environment" and its absence in a steady
+ * state is the no-repeat guarantee — not a missing feature.
  */
-function assertRuntimeContextBrief(result, label) {
+function briefItem(result) {
   const items = (result.contextSnapshots ?? []).flatMap((snapshot) => snapshot.items ?? [])
-  const brief = items.find((item) => (
+  return items.find((item) => (
     String(item.source?.id ?? '').includes('runtime-context')
     || String(item.id ?? '').includes('runtime-context')
   ))
-  if (!brief) {
+}
+
+function assertRuntimeContextBrief(result, label) {
+  if (!briefItem(result)) {
+    const items = (result.contextSnapshots ?? []).flatMap((snapshot) => snapshot.items ?? [])
     throw new Error(`${label} sent no runtime-context brief; snapshot items: ${JSON.stringify(items.map((item) => [item.id, item.source?.id]))}`)
   }
-  return brief
 }
 
 async function inspectPlayableArtifact(workspaceDir) {
