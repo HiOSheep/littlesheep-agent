@@ -157,7 +157,8 @@
 - 证据：真实 Electron 探针确认未就绪时 `/runtime/readiness`、`/sessions`、`/projects`、`/runtime`、`/application/acceptance` 均 200，`/state`、`/run`、`/run-checkpoints` 为 503，就绪后全部 200；`local-app-api-readiness.test.ts` 覆盖同一契约。
 - 新增交互实机证据：`scripts/verify-desktop-cold-start-interaction.mjs` 在真实窗口上确认——未就绪期间可输入草稿且焦点留在输入框、**发送入口被禁用**、按 Enter 不会被当成已发送；就绪后草稿/焦点/`#root`/`location` 均不变、就绪提示消失、发送入口原地启用。逐项观察见 `docs/reference/cold-start-baseline/screenshots/cold-start-interaction.json`。
 - 该验证同时发现并修掉一个真实回归：发送按钮原先只判断草稿是否为空，未就绪时仍可点击；现在它由 Runtime 的就绪事实直接禁用，入口文案使用同一真实原因（`composer-view.tsx` + `control-surface-style.test.ts`）。
-- 剩余缺口：故意拉慢的初始化（产品无此开关，未就绪窗口只有约 300 ms）、未就绪期间切换会话的实机复现。
+- 恢复门的一次实测尝试：把真实检查点文件复制进隔离数据根后，未配置模型时执行能力为 `failed`，因此启动发现按设计**不执行**（`/run-checkpoints` 仍返回 503，界面无恢复入口、无自动弹窗）。这确认了"发现等依赖就绪"的失败路径，但**无法**验证"就绪后发现并归属原会话"。
+- 剩余缺口：故意拉慢的初始化（产品无此开关，未就绪窗口只有约 300 ms）、未就绪期间切换会话的实机复现、**需要真实模型配置才能完成的恢复归属验证**（执行就绪依赖有效模型引用，无模型的自动化运行只能走到失败路径）。
 
 ### CS-06｜保护续接与故障体验 —— 部分实现
 
