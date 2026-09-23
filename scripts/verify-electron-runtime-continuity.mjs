@@ -108,6 +108,12 @@ async function main() {
     await forceTerminate(electron.child)
     electron = await startElectron({ dataDir, chromiumDir, logPath })
     locator = await waitForLocator(dataDir, electron.child.pid)
+    // The locator file appears before the Runner is wired, and the resume route
+    // answers 503 ("runtime checkpoint continuation is unavailable") until it is.
+    // The checkpoint list is served by the same runtime object the resume route
+    // needs, so a 200 from it is the honest readiness signal; without this wait
+    // the forced-restart resume raced startup and failed the acceptance.
+    await waitForRunnerReady(locator)
     const resumed = await resumeCheckpoint(locator, checkpointId)
     assertResultOk(resumed.result, 'checkpoint recovery after forced restart')
     assertIncludes(resumed.result.reply, ACCEPTANCE_ANCHOR, 'resumed reply')
@@ -499,8 +505,15 @@ function parseSseBlock(block) {
   return { event, data: JSON.parse(data.join('\n')) }
 }
 
-async function getJson(locator, path) {
-  const response = await fetch(apiUrl(locator, path), {
+/** Wait until the Runner's checkpoint control answers, not just the window. */
+async function waitForRunnerReady(locator) {
+  await waitFor(async () => {
+    const response = await fetch(apiUrl(locator, '/run-checkpoints')).catch(() => undefined)
+    return response?.ok === true
+  }, START_TIMEOUT_MS, 'runner checkpoint control readiness')
+}
+
+async function getJson(locator, path) {  const response = await fetch(apiUrl(locator, path), {
     headers: path === '/application/acceptance' ? authHeaders(locator) : undefined,
   })
   const payload = await response.json().catch(() => ({}))

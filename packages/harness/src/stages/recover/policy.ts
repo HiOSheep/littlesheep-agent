@@ -7,6 +7,9 @@
 // - An unresolved or in-progress side effect ends the run with an explicit
 //   Runtime status; the operation must never be executed again automatically.
 // - A recorded permission denial stops and asks the user.
+// - A structural VERIFY gap re-enters the loop once — a verdict computed from
+//   recorded evidence cannot change by re-running VERIFY — and escalates if the
+//   gap survives that attempt.
 // - Everything else is retried at the failed stage under the recovery cap; when
 //   the cap is exhausted the caller escalates to the user.
 import type { RunContext, StageName, TaskStepFailureKind } from '@littlesheep/types';
@@ -56,11 +59,44 @@ export function decideRecovery(ctx: RunContext, recoveryAttempts: number): Recov
   if (isExhaustedBudgetFailure(lastError)) {
     return { action: 'escalate', next: 'ask_user', reasonCode: 'execution_budget_exhausted' };
   }
+  // VERIFY is a pure function of the evidence already recorded, so retrying it
+  // recomputes the same verdict. Measured on a real acceptance run: four
+  // identical structural `fail` records 174 ms apart, no new tool call in
+  // between, and a run that had already written its artifact and produced its
+  // answer ended by asking the user how to proceed. A gap is closed by acting —
+  // a later successful call in the same step supersedes the invalid one — so the
+  // first gap re-enters the loop and a second identical gap escalates instead of
+  // spinning. The bound is unchanged: one chance to close it, then the user.
+  if (isStructuralVerifyGap(ctx)) {
+    return structuralGapFailures(ctx) > 1
+      ? { action: 'escalate', next: 'ask_user', reasonCode: 'unrecoverable_evidence_gap' }
+      : { action: 'retry', next: 'execute', reasonCode: 'structural_gap_retry' };
+  }
   return {
     action: 'retry',
     next: retryStageFor(lastError?.stage),
     reasonCode: kinds.length > 0 ? `retryable_${kinds[0]!}` : 'retryable_failure',
   };
+}
+
+/**
+ * True when the run failed on a VERIFY verdict computed from recorded evidence.
+ *
+ * Such a verdict cannot change by re-running VERIFY. It changes when the model
+ * closes the gap (the next successful call in the same step supersedes the
+ * invalid one), or not at all.
+ */
+export function isStructuralVerifyGap(ctx: RunContext): boolean {
+  if (ctx.lastError?.stage !== 'verify') return false;
+  const record = ctx.verificationHistory?.at(-1);
+  return record?.verdict === 'fail' && record.source === 'structural';
+}
+
+/** How many structural VERIFY failures this run recorded, continuations included. */
+function structuralGapFailures(ctx: RunContext): number {
+  return (ctx.verificationHistory ?? []).filter((record) => (
+    record.verdict === 'fail' && record.source === 'structural'
+  )).length;
 }
 
 /**

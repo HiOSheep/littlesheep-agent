@@ -248,6 +248,77 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
 
+## 实施记录｜2026-09-24 第十三轮（实机跑出"证据缺口空转四轮"，CE-09 复查）
+
+### 现场：第十二轮之后的实机验收在第一幕就挂了
+
+第十二轮改完后重建 app 跑真实窗口验收（同时给验收脚本加了"经恢复接口重试被拒写入"这一场景）。结果**第一个场景**（"做一个小游戏吧"）就升级了：
+
+```text
+trace=enter>classify>execute>verify>recover>verify>recover>verify>recover>verify>recover>ask_user>finalize
+原因类别：证据不可恢复
+具体原因：Recorded step evidence is incomplete: tool invocation call_00_zY00G6L9WXk5hzlkiPFm2414 is validation_failed
+已完成：16 次工具调用，12 次成功；副作用 8 成功、3 失败、0 未结算
+```
+
+从保留的 execution log（`keptRoot` 里的 743 KB 记录）逐条核对，这一轮实际发生的是：
+
+1. 模型把游戏写完了（4 次 `write`、4 次 `exec` 成功，8 个副作用已结算），还产出了 231 字的回答，run 状态 `ok`；
+2. 过程中它想覆盖 `browser-test.js` 却没先读 → `observation_missing`（**可纠正**，循环内已让它纠正：它去 `read`，又被"只读了一部分"拒绝）；
+3. 最后一次调用是 `read` 带 `offset: 0` → 工具输入校验失败（`too_small`，`offset` 必须大于 0），状态 `validation_failed`；
+4. 按当前处置契约，schema 校验失败是**权威边界**，于是循环强制收尾，模型给出回答，run 以 `ok` 结束；
+5. 接着 VERIFY 的结构化规则把这条 `validation_failed` 记为证据缺口 → `fail`；RECOVER 连续重试 **verify 本身** 4 次（4 条 `fail` 记录相隔 174 ms、没有任何新证据）→ 升级提问。
+
+两个缺陷都在"对话执行可靠性"范围内，且都是真实模型触发的：
+
+- **缺陷 A（CE-09"恢复不再空转"）**：`verify` 是已记录证据的纯函数，重试它必然得到同一结论。四轮重试没有一次模型调用、没有一条新证据，只是把"已经交付的 run"改成"请用户决定"。
+- **缺陷 B（CE-04"可纠正的工具错误"）**：`read(offset: 0)` 是模型自己能改的参数错误，却被当成权威边界停止行动；如果循环再给它一轮，它会用合法参数重读，而 VERIFY 的既有规则（同一步骤里更晚的成功调用会顶掉先前失败调用）本来就能让缺口自动消失。
+
+**这两条与第十二轮的改动无关**：出问题的 run 是全新 run（轨迹里没有 recover 续接、没有 `resumedFromCheckpointId`），改动只落在 `restoreContinuationContext`（续接）与历史投影上。所以第十二轮那支改动不被这次失败牵连；被牵连的是任务书里**已打勾**的 CE-09/CE-04——它们漏掉了"结构性证据缺口 + 单循环无重规划目标"这个组合。
+
+### 这一轮的改动（先修缺口，再谈验收）
+
+- `stages/recover/policy.ts` 新增结构性缺口分支：当失败阶段是 `verify`、且最后一条验证记录是 `source: 'structural'` 的 `fail` 时，**第一次**回到 `execute`（给模型一次真正能闭合缺口的机会，因为缺口只会被"同一步骤里更晚的成功调用"顶掉），**第二次**相同缺口直接升级（`unrecoverable_evidence_gap`），不再重试 verify。上限不变、不会自转：一次 execute 机会 + 一次升级。
+- `stages/recover/escalation.ts` 的原因分类保持原样：`unrecoverable_evidence_gap` 仍归"证据不可恢复"，用户看到的三件事实与选项集合不变。
+- 主循环在"因 VERIFY 缺口重新进入"时把缺口反馈作为 Runtime 控制消息持久化（`RUNTIME_CONTROL_MESSAGES.verifyGap`），避免盲重试；消息只含判定原因，不含内部诊断标识。
+
+### 验证
+
+- `packages/harness/src/stages/recover.test.ts` 新增三条：结构性缺口第一次回 `execute`（`structural_gap_retry`）、缺口活过一次机会后升级（`unrecoverable_evidence_gap`）、非结构性 verify 失败仍按原样重试 verify。
+- `packages/harness/src/stages/verify/evidence-gap.test.ts` 新增"同一步骤里更晚的成功调用顶掉被拒调用"：被顶掉后 `runtimeExecutionEvidenceGap` 为 `undefined`（这就是缺口能被闭合的机制），同一个被拒调用后面没有成功调用时仍是缺口，成功调用落在**别的**步骤时不顶掉。
+- `packages/harness/src/stages/execute/tool-result-persistence.test.ts` 新增控制消息的两面：因缺口重入时持久化 `verifyGap` 控制消息（同时在 `produced` 里、下一轮请求也会带上）；普通 run、`degraded` 验证记录、`lastError.stage !== 'verify'` 三种情况都不输出，避免这条消息在别的路径上变成谎话。
+- 定向：harness 全量 80 文件 / 675 用例通过；`pnpm run typecheck` 通过。
+- 全量 `pnpm test`：495 文件、3556 通过、1 失败——失败的是 `packages/runner/src/session-compaction-input.test.ts` 的"counts attempts that never reached a response into the operation cost"，全量并发下 42.2 s 撞超时，单独跑 20.5 s 通过（该文件已知需要 90 s 超时，属并发争用，与本次改动无关）。
+
+### 结果
+
+**实机复跑（本轮改动 + 第十三轮修复，`pnpm run verify:conversation-execution-reliability`，9 场景全绿、`isolated root removed: true`）**：
+
+```text
+normal workspace:        status=ok requests=5  tools=5  verdict=unverified artifacts=1
+continuation:            status=ok requests=19 tools=21 verdict=unverified artifacts=1
+independent repeat:      status=ok requests=10 tools=10 verdict=unverified artifacts=1
+playable artifact:       snake.html 17191 B，signals=[canvas,game_loop,keyboard_input,score,restart]
+research write approved: status=ok approvals=1
+research write denied:   status=ok approvals=1 file absent
+protected core:          refusal=core_source_read_only targetAbsent=true replyChars=552
+runtime change brief:    deepseek -> deepseek-alt/deepseek-v4-pro, repeated=false
+default workspace switch: delivered=workspace-probe.txt underCount=2 staleAbsent=true
+```
+
+第一幕（"做一个小游戏吧"）从上一轮的"证据缺口空转四轮后升级"变成正常交付（5 次请求、1 个产物、`verdict=unverified`），证明第十三轮的规则确实修掉了那个真实缺陷。
+
+**续接路径的实机证据（另一个既有门禁）**：`pnpm run verify:electron-continuity` 8 场景全绿，其中 `paused_checkpoint_forced_restart_resume`（暂停 → 强杀进程 → 重启 → 经 `/run-checkpoints/:id/resume/stream` 恢复）与 `interrupt_checkpoint` 正是会走 `restoreContinuationContext` 的真实路径，恢复后的 run `status=ok`、回复含锚点、连续性 `supported`、原始用户消息不重不漏。第十二轮那支改动因此有了真实窗口证据。
+
+**顺带修掉的验收脚本竞态**：`verify-electron-runtime-continuity.mjs` 在强杀重启后只等 locator 文件就调用恢复接口，而 Runner 的检查点控制尚未就绪，接口返回 503 → 首次复跑失败。现在先等 `GET /run-checkpoints` 返回 200（同一运行对象的就绪信号）再恢复，断言未放宽。
+
+### 仍未关闭的观察（不写成缺陷，但也别当成已验证）
+
+- **续跑样本的"继续做吧"会撞工具循环上限**：上一轮那次运行里，续跑用了 19 次工具调用、22 次模型请求，撞上 20 次迭代上限 → 一次收尾请求 → 再次越界 → `execution_budget_exhausted` 升级，消息如实说明"给一次新的运行机会，或保留现状停止"。这条升级之后用户说"再尝试一次"会开一个全新 run（当前没有 `waiting_user` 检查点生产者），额度是新的，所以没有墙；但 **20 次迭代对"继续打磨一个游戏"这类请求是否偏紧，是产品取值问题**，本轮不改，只记录：本轮的复跑里同一场景用了 19 次请求就正常交付，说明它就在边界上。
+- **`tool result ... is missing`**：上一轮那次运行的 VERIFY 报过这条结构性缺口。19 条 invocation 里有 4 条（1 次 `exec failed`、3 次 `edit observation_missing`）在日志投影里没有对应的 `toolResults` 条目，同时 `modelRequests=22`。为什么投影里没有、是投影本身不保存还是那次调用真的没等到结果，本轮未查清；第十三轮的规则让这类缺口先拿到一次 execute 机会、再升级，行为上是安全的，但根因仍是未解项。
+
+## 实施记录｜2026-09-24 第十二轮（CE-08 预算耗尽的用户重试获得真实有界机会）
+
 ## 实施记录｜2026-09-24 第十二轮（CE-08 预算耗尽的用户重试获得真实有界机会）
 
 ### 先看现场：这条到底怎么坏

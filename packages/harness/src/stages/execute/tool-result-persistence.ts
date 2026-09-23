@@ -212,7 +212,28 @@ export const RUNTIME_CONTROL_MESSAGES = {
   effectfulFailure: 'Runtime control: the failed call may already have changed the workspace, so the Runtime will not replay it. Observe the actual state (read or list what the call was supposed to change) before deciding what to do next.',
   noProgressBound: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
   iterationBudgetExhausted: 'Runtime control: this run\'s tool-loop iteration budget is spent, so no further tool call will run. Report what is already done, what the recorded evidence shows, and what still remains.',
+  verifyGap: 'Runtime control: VERIFY found that the recorded evidence cannot settle this run, and this loop was re-entered so the gap can be closed. A call that was refused before it ran leaves no usable evidence; repeating it with the same arguments will be refused again. Fix the call or take the missing observation with a valid one, then report what the evidence now shows.',
 } as const;
+
+/**
+ * Tell the model why the loop was re-entered after a VERIFY gap.
+ *
+ * RECOVER sends a structural VERIFY gap back to the loop once, so the model can
+ * close it; the failed call's own error is in the transcript, but nothing there
+ * says the run was sent back for it. The gap closes when a later successful call
+ * in the same step supersedes the refused one, so the message names that rather
+ * than ordering a retry. A loop that was not re-entered emits nothing.
+ */
+export function persistVerifyGapControl(
+  ctx: RunContext,
+  produced: RunContext['produced'],
+  messages: ChatMessage[],
+): void {
+  if (ctx.lastError?.stage !== 'verify') return;
+  const record = ctx.verificationHistory?.at(-1);
+  if (record?.verdict !== 'fail' || record.source !== 'structural') return;
+  persistRuntimeControlMessage(ctx, produced, messages, RUNTIME_CONTROL_MESSAGES.verifyGap);
+}
 
 /** Append one Runtime control message to the live request and to the transcript. */
 export function persistRuntimeControlMessage(

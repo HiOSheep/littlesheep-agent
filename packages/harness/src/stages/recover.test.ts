@@ -267,7 +267,84 @@ describe('recoverStage', () => {
     expect(ctx.recoveryAttempts).toBe(2);
     expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
+
+  // CE-09: VERIFY is a pure function of the recorded evidence. A real acceptance
+  // run produced four identical structural `fail` records 174 ms apart with no
+  // new tool call between them, and a run that had already written its artifact
+  // and produced its answer ended by asking the user how to proceed.
+  it('re-enters the loop for a structural VERIFY gap instead of re-running VERIFY', async () => {
+    const ctx = structuralGapContext();
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({
+      next: 'execute',
+      ok: true,
+      meta: { deterministicRetry: true, reasonCode: 'structural_gap_retry' },
+    });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+    expect(ctx.clarificationRequest).toBeUndefined();
+  });
+
+  it('escalates a structural VERIFY gap that survived the chance to close it', async () => {
+    const ctx = structuralGapContext();
+    ctx.verificationHistory = [
+      ...(ctx.verificationHistory ?? []),
+      {
+        verdict: 'fail',
+        reason: 'tool invocation call-1 is validation_failed',
+        feedback: 'Recorded step evidence is incomplete: tool invocation call-1 is validation_failed',
+        source: 'structural',
+        attempt: 2,
+        verifiedAt: '2026-09-23T18:54:27.160Z',
+      },
+    ];
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({
+      next: 'ask_user',
+      ok: true,
+      meta: { action: 'escalate', reasonCode: 'unrecoverable_evidence_gap' },
+    });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+    expect(ctx.clarificationRequest?.blockingReason ?? '').toContain('证据');
+  });
+
+  it('still retries the failing stage for a non-structural VERIFY failure', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'verify', message: 'verification could not be recorded' },
+      inbound: textMessage('user', 'go'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'verify', ok: true, meta: { deterministicRetry: true } });
+  });
 });
+
+function structuralGapContext(): RunContext {
+  const ctx = makeCtx({
+    recoveryAttempts: 0,
+    maxRecoveryAttempts: 5,
+    lastError: {
+      stage: 'verify',
+      message: 'Recorded step evidence is incomplete: tool invocation call-1 is validation_failed',
+    },
+    inbound: textMessage('user', '做一个小游戏吧'),
+  });
+  ctx.verificationHistory = [{
+    verdict: 'fail',
+    reason: 'tool invocation call-1 is validation_failed',
+    feedback: 'Recorded step evidence is incomplete: tool invocation call-1 is validation_failed',
+    source: 'structural',
+    attempt: 1,
+    verifiedAt: '2026-09-23T18:54:26.986Z',
+  }];
+  return ctx;
+}
 
 // CE-08: the single loop writes no TaskBook steps, so the classification that
 // decided retry-versus-escalate had nothing to read and every failure was

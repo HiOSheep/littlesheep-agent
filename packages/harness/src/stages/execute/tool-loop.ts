@@ -39,6 +39,7 @@ import {
   persistRuntimeTailMessages,
   persistToolCalls,
   persistToolResult,
+  persistVerifyGapControl,
   recordDurableToolCalls,
   RUNTIME_CONTROL_MESSAGES,
   safeStringify,
@@ -158,6 +159,9 @@ export async function runToolLoop(
     // and only learn from the refusal.
     persistRuntimeControlMessage(ctx, produced, messages, control.noProgressBound);
   }
+  // RECOVER re-enters this loop when VERIFY found a structural gap; the model was
+  // not in that stage, so it has to be told what the run was sent back for.
+  persistVerifyGapControl(ctx, produced, messages);
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     if (!reserveToolLoopIteration(ctx)) {

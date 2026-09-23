@@ -133,6 +133,35 @@ describe('the evidence gap a completed run reports', () => {
 
     expect(runtimeExecutionEvidenceGap(ctx)).toBe('side effect tool:exec:call-1 is unknown');
   });
+
+  // CE-09: a refused call is a gap only while it is the run's last word on that
+  // step. RECOVER sends the first structural gap back to the loop precisely
+  // because this is how the gap closes — measured on the real acceptance run, the
+  // invalid call was the *last* one, so nothing could supersede it and the run
+  // ended by asking the user how to proceed.
+  it('lets a later successful call in the same step supersede a refused one', () => {
+    const refused = invocation('call-1', 'validation_failed', 'input_validation');
+    refused.stepId = 'step-1';
+    const superseded = context();
+    superseded.toolInvocations = [refused, { ...invocation('call-2', 'succeeded'), stepId: 'step-1' }];
+    superseded.toolResults = [result('call-1', false), result('call-2', true)];
+    expect(runtimeExecutionEvidenceGap(superseded)).toBeUndefined();
+
+    // The same refusal with nothing after it stays a gap: the model never got the
+    // chance to correct the call, so the run cannot claim the evidence is whole.
+    const stranded = context();
+    stranded.toolInvocations = [refused];
+    stranded.toolResults = [result('call-1', false)];
+    expect(runtimeExecutionEvidenceGap(stranded))
+      .toBe('tool invocation call-1 is validation_failed');
+
+    // A later call recorded for a *different* step does not supersede it.
+    const otherStep = context();
+    otherStep.toolInvocations = [refused, { ...invocation('call-2', 'succeeded'), stepId: 'step-2' }];
+    otherStep.toolResults = [result('call-1', false), result('call-2', true)];
+    expect(runtimeExecutionEvidenceGap(otherStep))
+      .toBe('tool invocation call-1 is validation_failed');
+  });
 });
 
 // CE-09's compatibility question: the deleted step executor cannot refuse a tool

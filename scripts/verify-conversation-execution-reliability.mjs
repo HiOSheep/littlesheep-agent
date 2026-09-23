@@ -163,6 +163,16 @@ async function main() {
     }))
     progress(`research write denied: status=${deniedRun.result.status} approvals=${deniedRun.approvals.denied} file absent`)
 
+    // CE-08's continuation path is deliberately NOT exercised here. A denied
+    // write escalates, the escalation is published as a normal reply, so the run
+    // ends `ok` and its checkpoint is recorded as completed — `inspectCheckpoint`
+    // then reports "checkpoint source run has already completed" and the resume
+    // endpoint answers 409. The live continuation paths are an interrupted run and
+    // a paused run, and `scripts/verify-electron-runtime-continuity.mjs` covers
+    // both (pause → forced restart → resume, and interrupt). The next message
+    // after an escalation is an ordinary new run, which is what the scenarios
+    // above already measure.
+
     // CE-05 / CE-12: full access does not lift the host-level read-only
     // protection on the LS core source. The request names one exact file so the
     // assertion (and any cleanup) is unambiguous.
