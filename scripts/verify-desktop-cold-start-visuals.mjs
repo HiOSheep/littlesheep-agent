@@ -16,7 +16,11 @@
 // rotated display, and they stay unchecked in the taskbook.
 //
 // Usage:
-//   node scripts/verify-desktop-cold-start-visuals.mjs [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
+//   node scripts/verify-desktop-cold-start-visuals.mjs [--app=dev|packaged] [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
+//
+// `--app=packaged` drives `release/win-unpacked/LittleSheep.exe` instead of the
+// development entry, and writes its captures with a `-packaged` suffix so a
+// packaged run cannot overwrite the development evidence.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -24,19 +28,33 @@ import { join, resolve } from 'node:path'
 import { createElectronHarness, CdpClient, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
 import { columnColors, decodePng, hexAt } from './lib/png-pixels.mjs'
 
-const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 30_000 })
-
-/** Must equal DESKTOP_STARTUP_SURFACE in `packages/app/src/main/desktop-startup-page.ts`. */
-const EXPECTED_SURFACE = '#101010'
-
-/** Distinctive so the captured page cannot accidentally contain it. */
-const STARTUP_ERROR_MESSAGE = 'cold-start acceptance: bootstrap failed as requested'
+const PACKAGED_EXECUTABLE_RELATIVE = 'release/win-unpacked/LittleSheep.exe'
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`
   const found = process.argv.slice(2).find((argument) => argument.startsWith(prefix))
   return found === undefined ? fallback : found.slice(prefix.length)
 }
+
+const appKind = readOption('app', 'dev')
+if (appKind !== 'dev' && appKind !== 'packaged') {
+  throw new Error(`--app must be dev or packaged, received ${appKind}`)
+}
+const packagedExecutable = appKind === 'packaged' ? resolve(repoRoot, PACKAGED_EXECUTABLE_RELATIVE) : undefined
+const captureSuffix = appKind === 'packaged' ? '-packaged' : ''
+const ledgerName = appKind === 'packaged' ? 'cold-start-visuals-packaged.json' : 'cold-start-visuals.json'
+
+const harness = createElectronHarness({
+  startTimeoutMs: 90_000,
+  actionTimeoutMs: 30_000,
+  ...(packagedExecutable === undefined ? {} : { packagedExecutable }),
+})
+
+/** Must equal DESKTOP_STARTUP_SURFACE in `packages/app/src/main/desktop-startup-page.ts`. */
+const EXPECTED_SURFACE = '#101010'
+
+/** Distinctive so the captured page cannot accidentally contain it. */
+const STARTUP_ERROR_MESSAGE = 'cold-start acceptance: bootstrap failed as requested'
 
 const outDir = resolve(repoRoot, readOption('out', 'docs/reference/cold-start-baseline/screenshots'))
 
@@ -89,7 +107,7 @@ async function main() {
     await mkdir(outDir, { recursive: true })
     // A previous run's startup capture may have caught a mid-composite frame;
     // never leave it behind to be mistaken for a measurement of this run.
-    const staleStartupShot = join(outDir, 'startup-page.png')
+    const staleStartupShot = join(outDir, `startup-page${captureSuffix}.png`)
     await rm(staleStartupShot, { force: true }).catch(() => undefined)
     child = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
     // The startup document is replaced within a few hundred milliseconds, so the
@@ -141,7 +159,7 @@ async function main() {
     for (const size of [{ width: 1280, height: 820 }, { width: 980, height: 700 }, { width: 1580, height: 900 }]) {
       await setAcceptanceWindowSize(locator, size)
       await delay(450)
-      const capture = await captureRenderer(client, outDir, `renderer-${size.width}x${size.height}`)
+      const capture = await captureRenderer(client, outDir, `renderer-${size.width}x${size.height}${captureSuffix}`)
       screenshots.push(capture)
       const label = `${size.width}x${size.height}`
       record(failures, `${label}: titlebar row is the unified surface`, capture.titlebar === EXPECTED_SURFACE, capture)
@@ -162,7 +180,7 @@ async function main() {
     // instead of the action being a no-op.
     await harness.desktopAction(locator, 'maximize', { maximized: true })
     await delay(700)
-    const maximized = await captureRenderer(client, outDir, 'renderer-maximized')
+    const maximized = await captureRenderer(client, outDir, `renderer-maximized${captureSuffix}`)
     screenshots.push(maximized)
     record(failures, 'maximized: titlebar row is the unified surface', maximized.titlebar === EXPECTED_SURFACE, maximized)
     record(failures, 'maximized: application background matches the titlebar', maximized.body === maximized.titlebar, maximized)
@@ -171,7 +189,7 @@ async function main() {
 
     await harness.desktopAction(locator, 'maximize', { maximized: false })
     await delay(700)
-    const restored = await captureRenderer(client, outDir, 'renderer-restored')
+    const restored = await captureRenderer(client, outDir, `renderer-restored${captureSuffix}`)
     screenshots.push(restored)
     record(failures, 'restored: titlebar row is the unified surface', restored.titlebar === EXPECTED_SURFACE, restored)
     record(failures, 'restored: application background matches the titlebar', restored.body === restored.titlebar, restored)
@@ -213,8 +231,10 @@ async function main() {
     // only evidence that something painted over the surface.
     errorPage.cardOverSurface = errorPage.cardSurface !== EXPECTED_SURFACE
 
-    await writeFile(join(outDir, 'cold-start-visuals.json'), `${JSON.stringify({
+    await writeFile(join(outDir, ledgerName), `${JSON.stringify({
       check: 'desktop-cold-start-visuals',
+      app: appKind,
+      appExecutable: appKind === 'packaged' ? PACKAGED_EXECUTABLE_RELATIVE : 'packages/app/out (dev entry)',
       ok: failures.length === 0,
       expectedSurface: EXPECTED_SURFACE,
       screenshots,
@@ -222,7 +242,8 @@ async function main() {
       gaps: [
         ...startupGaps.map((gap) => `${gap.check}: ${gap.detail}`),
         'DPR other than the host default, and 125%/150%/200% display scaling',
-        'minimized / restored / blurred states, and window transitions',
+        'focus and minimized states (minimize produces no capturable window)',
+        'the hand-over instant between the startup page and the renderer',
         'desktop wallpaper variation behind the window',
       ],
     }, null, 2)}\n`, 'utf8')
@@ -291,7 +312,7 @@ async function captureStartupPage(port, dir) {
       // background, which is exactly the kind of unverified claim CS-02 forbids.
       const bodyHex = hexAt(image, Math.round(image.width / 2), Math.round(image.height / 2))
       if (bodyHex !== EXPECTED_SURFACE) { await delay(5); continue }
-      const file = join(dir, 'startup-page.png')
+      const file = join(dir, `startup-page${captureSuffix}.png`)
       await writeFile(file, Buffer.from(shot.data, 'base64'))
       const dpr = pageState.devicePixelRatio || 1
       const titlebarY = Math.round(16 * dpr)
@@ -384,7 +405,7 @@ async function captureStartupErrorPage(client, dir) {
   })()`)
   const shot = await screenshot(client)
   const buffer = Buffer.from(shot.data, 'base64')
-  const file = join(dir, 'startup-error.png')
+  const file = join(dir, `startup-error${captureSuffix}.png`)
   await writeFile(file, buffer)
   const image = decodePng(buffer)
   const dpr = state.devicePixelRatio || 1
@@ -433,7 +454,7 @@ async function captureStartupPageDocument(client, dir) {
   })()`)
   const shot = await screenshot(client)
   const buffer = Buffer.from(shot.data, 'base64')
-  const file = join(dir, 'startup-page.png')
+  const file = join(dir, `startup-page${captureSuffix}.png`)
   await writeFile(file, buffer)
   const image = decodePng(buffer)
   const dpr = state.devicePixelRatio || 1

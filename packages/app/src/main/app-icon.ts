@@ -14,12 +14,20 @@ export interface AppIconPathOptions {
  * Resolve the icon from both the repository layout and a packaged Electron
  * resources directory. The PNG fallback keeps development startup usable if
  * a packaging step only carries raster assets.
+ *
+ * The packaged layout needs both forms of the resources root: electron-builder
+ * copies the app's `resources/` directory into `<resourcesPath>/resources`, while
+ * a package that spreads extra files directly into `resources/` is also valid.
+ * Missing the nested form is what made the packaged startup page ship without its
+ * brand mark while the development build showed it (found by running the visual
+ * acceptance against `release/win-unpacked`).
  */
 export function appIconCandidates(options: AppIconPathOptions): string[] {
   const roots = [
     options.appPath ? join(options.appPath, 'resources') : undefined,
     options.moduleDir ? join(options.moduleDir, '../../resources') : undefined,
     options.resourcesPath,
+    options.resourcesPath ? join(options.resourcesPath, 'resources') : undefined,
   ].filter((root): root is string => Boolean(root))
 
   return [...new Set(roots.flatMap((root) => ICON_FILES.map((file) => join(root, file))))]

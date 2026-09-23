@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 16:31:35
+最后更新：2026-09-23 16:45:36
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -247,20 +247,22 @@
 
 ## 打包版冷启动（release/win-unpacked）
 
-`--app=packaged` 让同一脚本驱动 `release/win-unpacked/LittleSheep.exe`（`pnpm run package:win` 产物，未签名）。逐次账本见 [`desktop-cold-start-packaged-2026-09-23.json`](desktop-cold-start-packaged-2026-09-23.json)，6 次运行全部成功，且通过同一份回归护栏。
+`--app=packaged` 让同一脚本驱动 `release/win-unpacked/LittleSheep.exe`（`pnpm run package:win` 产物，未签名）。逐次账本见 [`desktop-cold-start-packaged-2026-09-23.json`](desktop-cold-start-packaged-2026-09-23.json)（重新打包后的 18 次运行：empty / normal 各 3 个样本 × 3 次启动，全部成功并通过 `packagedBudgetsMs`）。
 
-| 指标（ms，中位） | 开发版 empty | 打包版 empty | 开发版 normal | 打包版 normal |
-| --- | ---: | ---: | ---: | ---: |
-| 进程启动 → 主模块加载 | 208.4 | 200.8 | 205.0 | 212.8 |
-| 进程启动 → Local App API 就绪文件 | 896.4 | 925.8 | 875.1 | 948.8 |
-| 进程启动 → 真实首帧 | 1317.9 | 1259.6 | 1402.1 | 1297.1 |
-| 输入区可输入 | 389.5 | 318.2 | 373.5 | 293.8 |
-| 当前会话可读 | — | — | 378.3 | 319.6 |
-| 首次可执行 | 1891.1 | 2120.7 | 1771.2 | 1727.8 |
+| 指标（ms，中位） | 开发版 empty（n=5） | 打包版 empty 冷（n=3） | 开发版 normal（n=5） | 打包版 normal 冷（n=3） | 打包版 normal 稳态（n=6） |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 进程启动 → 主模块加载 | 208.4 | 189.5 | 205.0 | 188.5 | 188.6 |
+| 进程启动 → Local App API 就绪文件 | 896.4 | 870.1 | 875.1 | 879.6 | 867.9 |
+| 进程启动 → 真实首帧 | 1317.9 | 1196.2 | 1402.1 | 1176.1 | 1145.8 |
+| 输入区可输入 | 389.5 | 313.2 | 373.5 | 302.0 | 253.6 |
+| 当前会话可读 | — | — | 378.3 | 307.2 | 277.5 |
+| 首次可执行 | 1891.1 | 1976.1 | 1771.2 | 1444.5 | 1391.9 |
 
-口径：开发版 n=5、打包版 n=3，两者都是热缓存重复。差异多数在样本波动内，**不据此声称打包版更快或更慢**；可确认的是打包版没有出现量级回退，且真实窗口、渲染器首帧与执行就绪三条路径都能走通。安装包（NSIS）实机安装、干净机器首次运行仍未验证。
+口径：开发版来自 20 次基线账本，打包版来自重新打包后的账本（每个样本第 1 次为冷启动，第 2–3 次为稳态）。差异多数在样本波动内，**不据此声称打包版更快或更慢**；可确认的是打包版没有量级回退，真实窗口、渲染器首帧与执行就绪三条路径都能走通。安装包（NSIS）实机安装、干净机器首次运行仍未验证。
 
-打包版的稳态也有了样本（[`desktop-cold-start-packaged-warm-2026-09-23.json`](desktop-cold-start-packaged-warm-2026-09-23.json)，normal，3 个样本 × 3 次启动）：冷启动（各样本第 1 次）中位 输入可用 288.5 / 当前会话可读 294.2 / 首次可执行 1456.1 / 首帧 1235.5 ms；稳态（第 2–3 次）中位 298.4 / 304.9 / 1491.0 / 1247.1 ms，即稳态比本批冷启动慢 10–35 ms，但全部落在 `warmVsColdMs` 余量内，**没有出现"每次启动都重做首次工作"的回退**。bootstrap 资源注册同样是首次落盘：第 1 次 45.7–50.3 ms，第 2 次及以后 12.0–21.2 ms。真正需要单独看的是**会话内第一次启动**：它读的是冷磁盘，实测出现 输入可用 829.1 / 当前会话可读 835.6 / 首次可执行 2167.8 / 首帧 1524.1 ms 的一次读数（该次账本已被同 label 重跑覆盖，数值记在 `budgets.json` 的 `packagedNote` 里），因此打包版有独立的一组上限（`packagedBudgetsMs`），不与开发版的紧上限混用。
+**打包版视觉也已取证**（`node scripts/verify-desktop-cold-start-visuals.mjs --app=packaged`，结论见 [`screenshots/cold-start-visuals-packaged.json`](screenshots/cold-start-visuals-packaged.json)）：三种宽度、最大化/还原、启动页与启动失败页在打包版里全部通过，截图带 `-packaged` 后缀，不会覆盖开发版证据。**这一步发现并修掉一个只在打包产物里出现的真实缺陷**：启动页没有品牌标记（`hasIcon: false`，中心像素是背景色）——`app-icon.ts` 的候选路径只找 `<resourcesPath>/<file>`，而 electron-builder 把 `packages/app/resources/` 复制到 `<resourcesPath>/resources/`，于是打包后原生窗口图标与启动页图标都取不到；现在候选里补上这一层嵌套目录，并有单测固定（`app-icon.test.ts` 的 "finds the icon in the packaged nested resources directory"）。修复后打包版启动页中心像素为 `#ccbcb0`（图标本身），全部断言通过。
+
+打包版的稳态另有一份早期样本（[`desktop-cold-start-packaged-warm-2026-09-23.json`](desktop-cold-start-packaged-warm-2026-09-23.json)，normal，3 个样本 × 3 次启动，重新打包前的产物）：当时冷启动中位 输入可用 288.5 / 当前会话可读 294.2 / 首次可执行 1456.1 / 首帧 1235.5 ms，稳态 298.4 / 304.9 / 1491.0 / 1247.1 ms，即稳态比那批冷启动慢 10–35 ms，但全部落在 `warmVsColdMs` 余量内，**没有出现"每次启动都重做首次工作"的回退**；bootstrap 资源注册同样是首次落盘（第 1 次 45.7–50.3 ms，之后 12.0–21.2 ms）。该文件保留的是重新打包前的读数，跨文件比较需注意产物差异。真正需要单独看的是**会话内第一次启动**：它读的是冷磁盘，实测出现 输入可用 829.1 / 当前会话可读 835.6 / 首次可执行 2167.8 / 首帧 1524.1 ms 的一次读数（该次账本已被同 label 重跑覆盖，数值记在 `budgets.json` 的 `packagedNote` 里），因此打包版有独立的一组上限（`packagedBudgetsMs`），不与开发版的紧上限混用。
 
 ## 首次启动与稳态启动（同一数据根，`--launches`）
 

@@ -15,10 +15,23 @@ describe('app icon resolution', () => {
       join('/app', 'resources', 'littlesheep.ico'),
       join('/app', 'resources', 'littlesheep-icon.png'),
     ])
-    expect(candidates.slice(-2)).toEqual([
-      join('/packaged/resources', 'littlesheep.ico'),
-      join('/packaged/resources', 'littlesheep-icon.png'),
-    ])
+    expect(candidates).toContain(join('/packaged/resources', 'littlesheep.ico'))
+    expect(candidates).toContain(join('/packaged/resources', 'resources', 'littlesheep-icon.png'))
+  })
+
+  it('finds the icon in the packaged nested resources directory', () => {
+    // electron-builder copies the app's resources/ into <resourcesPath>/resources,
+    // where the earlier candidate list did not look - the packaged startup page
+    // shipped without its brand mark because of it.
+    const packagedRoot = join('/release', 'win-unpacked', 'resources')
+    const resolved = resolveAppPngIconPath({
+      appPath: join(packagedRoot, 'app.asar'),
+      moduleDir: join(packagedRoot, 'app.asar', 'out', 'main'),
+      resourcesPath: packagedRoot,
+      exists: (path) => path === join(packagedRoot, 'resources', 'littlesheep-icon.png'),
+    })
+
+    expect(resolved).toBe(join(packagedRoot, 'resources', 'littlesheep-icon.png'))
   })
 
   it('falls back to the PNG when the ICO is unavailable', () => {
