@@ -95,7 +95,17 @@ export async function routeApplicationLifecycle(
       json(res, accepted ? 202 : 409, { accepted })
       return true
     }
-    json(res, 400, { error: 'Desktop acceptance action must be close, show, resize, startup-error, or quit.' })
+    if (body.action === 'startup-page') {
+      const showStartupPage = context.desktopAcceptance.showStartupPageForAcceptance
+      if (!showStartupPage) {
+        json(res, 501, { error: 'Desktop acceptance startup-page is not available.' })
+        return true
+      }
+      const accepted = showStartupPage()
+      json(res, accepted ? 202 : 409, { accepted })
+      return true
+    }
+    json(res, 400, { error: 'Desktop acceptance action must be close, show, resize, startup-page, startup-error, or quit.' })
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {

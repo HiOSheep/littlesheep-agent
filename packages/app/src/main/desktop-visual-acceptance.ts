@@ -69,3 +69,22 @@ export function showStartupErrorPageForAcceptance(
   showStartupError(new Error(message))
   return true
 }
+
+/**
+ * Render the standalone startup document on a live window.
+ *
+ * Same reasoning as the failure page: the real startup path replaces this
+ * document within roughly 90 ms, so the only way to check the pixels the user
+ * briefly sees is to render that exact document on purpose. What this proves is
+ * the page's appearance, not how long it stays on screen - the transition window
+ * itself still needs a human with a camera. Gated on the acceptance environment.
+ */
+export function showStartupPageForAcceptance(
+  window: BrowserWindow | undefined,
+  showStartupPage: () => void,
+): boolean {
+  if (process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] !== '1') return false
+  if (!window || window.isDestroyed()) return false
+  showStartupPage()
+  return true
+}

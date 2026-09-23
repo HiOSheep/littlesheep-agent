@@ -178,6 +178,22 @@ export class LittleSheepDesktopShell {
     return desktopVisualContract()
   }
 
+  /**
+   * Put the standalone startup document back into the live window.
+   *
+   * CS-02 needs the startup page's own pixels, and the real path replaces that
+   * document after roughly 90 ms, which no external observer can catch. This
+   * renders the same document through the same loader; the acceptance gate lives
+   * in `desktop-visual-acceptance.ts`, so a production run cannot reach it.
+   */
+  showStartupPage(): boolean {
+    const win = this.resolveWindow()
+    if (!win || win.isDestroyed()) return false
+    this.rendererLoadedWindows.delete(win)
+    void this.loadStartupPage(win)
+    return true
+  }
+
   async prepareToQuit(): Promise<void> {
     const window = this.resolveWindow()
     if (window) this.captureWindowState(window)

@@ -5,7 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDesktopAcceptanceActions, type DesktopAcceptanceShell } from './desktop-acceptance-actions.js'
-import { showStartupErrorPageForAcceptance } from './desktop-visual-acceptance.js'
+import { showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
 
 type AcceptanceWindow = Parameters<typeof showStartupErrorPageForAcceptance>[0]
 
@@ -15,6 +15,7 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
   const { destroyed = false, window = true } = overrides
   const setSize = vi.fn()
   const showStartupError = vi.fn()
+  const showStartupPage = vi.fn(() => true)
   const close = vi.fn(() => true)
   const show = vi.fn()
   const currentWindow = vi.fn(() => (
@@ -22,8 +23,8 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
       ? ({ isDestroyed: () => destroyed, setSize } as unknown as NonNullable<AcceptanceWindow>)
       : undefined
   ))
-  const shell = { close, show, currentWindow, showStartupError } satisfies DesktopAcceptanceShell
-  return { shell, setSize, showStartupError, close, show, currentWindow }
+  const shell = { close, show, currentWindow, showStartupError, showStartupPage } satisfies DesktopAcceptanceShell
+  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow }
 }
 
 function createActions(shell: DesktopAcceptanceShell, quit = vi.fn()) {
@@ -53,7 +54,7 @@ describe('desktop acceptance actions', () => {
 
   it('drives the live window when the acceptance run asks for it', () => {
     vi.stubEnv(ACCEPTANCE_ENV, '1')
-    const { shell, setSize, showStartupError, close, show } = createShell()
+    const { shell, setSize, showStartupError, showStartupPage, close, show } = createShell()
     const { actions, quit } = createActions(shell)
     if (!actions) throw new Error('acceptance actions were not created')
 
@@ -64,6 +65,8 @@ describe('desktop acceptance actions', () => {
     expect(showStartupError).toHaveBeenCalledTimes(1)
     expect(showStartupError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
     expect((showStartupError.mock.calls[0]?.[0] as Error).message).toBe('bootstrap failed as requested')
+    expect(actions.showStartupPageForAcceptance()).toBe(true)
+    expect(showStartupPage).toHaveBeenCalledTimes(1)
 
     expect(actions.close()).toBe(true)
     expect(close).toHaveBeenCalledTimes(1)
@@ -77,27 +80,34 @@ describe('desktop acceptance actions', () => {
     vi.stubEnv(ACCEPTANCE_ENV, '1')
 
     for (const overrides of [{ window: false }, { destroyed: true }]) {
-      const { shell, setSize, showStartupError } = createShell(overrides)
+      const { shell, setSize, showStartupError, showStartupPage } = createShell(overrides)
       const { actions } = createActions(shell)
       if (!actions) throw new Error('acceptance actions were not created')
 
       expect(actions.resizeForAcceptance({ width: 1280, height: 820 })).toBe(false)
       expect(actions.showStartupErrorForAcceptance('boom')).toBe(false)
+      expect(actions.showStartupPageForAcceptance()).toBe(false)
       expect(setSize).not.toHaveBeenCalled()
       expect(showStartupError).not.toHaveBeenCalled()
+      expect(showStartupPage).not.toHaveBeenCalled()
     }
   })
 
-  it('keeps the failure-page renderer gated even when called directly', () => {
+  it('keeps both page renderers gated even when called directly', () => {
     vi.stubEnv(ACCEPTANCE_ENV, '')
     const showStartupError = vi.fn()
+    const showStartupPage = vi.fn()
     const request = { isDestroyed: () => false } as unknown as NonNullable<AcceptanceWindow>
 
     expect(showStartupErrorPageForAcceptance(request, 'boom', showStartupError)).toBe(false)
+    expect(showStartupPageForAcceptance(request, showStartupPage)).toBe(false)
     expect(showStartupError).not.toHaveBeenCalled()
+    expect(showStartupPage).not.toHaveBeenCalled()
 
     vi.stubEnv(ACCEPTANCE_ENV, '1')
     expect(showStartupErrorPageForAcceptance(undefined, 'boom', showStartupError)).toBe(false)
+    expect(showStartupPageForAcceptance(undefined, showStartupPage)).toBe(false)
     expect(showStartupError).not.toHaveBeenCalled()
+    expect(showStartupPage).not.toHaveBeenCalled()
   })
 })

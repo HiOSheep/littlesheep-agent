@@ -156,10 +156,19 @@ async function main() {
       record(failures, `${label}: renderer background variable matches the pixels`, capture.computedBackground === EXPECTED_SURFACE, capture)
     }
 
-    // The bootstrap-failure page is the one startup surface that cannot be
-    // reached by waiting, so the isolated acceptance run asks for it. It renders
-    // through the same `showStartupError` path a real failure uses; the renderer
-    // load is already complete by now, so nothing navigates away from it.
+    // The standalone startup document is normally replaced within ~90 ms, which
+    // no external observer can catch, and the failure page is reachable only by
+    // asking for it. Both are rendered here through the same loaders the product
+    // uses, so the captures are evidence about those pages' pixels - not about
+    // how long the startup page stays on screen.
+    await harness.desktopAction(locator, 'startup-page')
+    await delay(600)
+    const startupPage = await captureStartupPageDocument(client, outDir)
+    screenshots.push(startupPage)
+    record(failures, 'startup page paints the unified surface', startupPage.titlebar === EXPECTED_SURFACE && startupPage.leftGutter === EXPECTED_SURFACE && startupPage.rightGutter === EXPECTED_SURFACE, startupPage)
+    record(failures, 'startup page keeps one surface down the gutter', startupPage.gutterFlat, startupPage)
+    record(failures, 'startup page shows the brand mark and no failure text', startupPage.hasIcon && startupPage.errorBox === null, startupPage)
+
     await harness.desktopAction(locator, 'startup-error', { message: STARTUP_ERROR_MESSAGE })
     await delay(600)
     const errorPage = await captureStartupErrorPage(client, outDir)
@@ -371,6 +380,53 @@ async function captureStartupErrorPage(client, dir) {
     gutterColors: pixels.slice(0, 4),
     // rgba(0,0,0,0.42) over the surface: composites darker if the card painted.
     cardSurface: hexAt(image, Math.round(image.width / 2), Math.max(0, image.height - Math.round(40 * dpr))),
+  }
+}
+
+/**
+ * Read and pixel-check the standalone startup document.
+ *
+ * It shares the failure page's geometry (centred brand mark, flat surface), but
+ * must have no error card: the two documents are the same template with and
+ * without a message.
+ */
+async function captureStartupPageDocument(client, dir) {
+  const state = await evaluate(client, `(() => {
+    const error = document.querySelector('.startup-error');
+    const icon = document.querySelector('.startup-icon');
+    return {
+      url: location.href,
+      isStartupDocument: location.href.startsWith('data:text/html'),
+      hasIcon: Boolean(icon),
+      errorBox: error ? error.getBoundingClientRect().height : null,
+      bodyBackground: getComputedStyle(document.body).backgroundColor,
+      devicePixelRatio: window.devicePixelRatio,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    };
+  })()`)
+  const shot = await screenshot(client)
+  const buffer = Buffer.from(shot.data, 'base64')
+  const file = join(dir, 'startup-page.png')
+  await writeFile(file, buffer)
+  const image = decodePng(buffer)
+  const dpr = state.devicePixelRatio || 1
+  const gutterX = Math.max(1, Math.round(12 * dpr))
+  const probeY = Math.round((32 + 40) * dpr)
+  const column = columnColors(image, gutterX, 0, image.height - 1, Math.max(1, Math.round(dpr)))
+  const pixels = [...new Set(column)]
+  return {
+    file,
+    kind: 'startup-page',
+    imageSize: { width: image.width, height: image.height },
+    ...state,
+    titlebar: hexAt(image, Math.round(image.width * 0.45), Math.round(16 * dpr)),
+    leftGutter: hexAt(image, gutterX, probeY),
+    rightGutter: hexAt(image, image.width - gutterX, probeY),
+    gutterFlat: pixels.length === 1,
+    gutterColors: pixels.slice(0, 4),
+    // What the user briefly sees while the Runtime starts, before the renderer
+    // document replaces it in the same window.
+    center: hexAt(image, Math.round(image.width / 2), Math.round(image.height / 2)),
   }
 }
 

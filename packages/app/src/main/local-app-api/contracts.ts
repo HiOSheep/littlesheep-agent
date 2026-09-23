@@ -98,6 +98,8 @@ export interface LocalAppApiServerOptions {
     resizeForAcceptance?: (size: { width: number; height: number }) => boolean
     /** Renders the bootstrap-failure page so CS-02 can capture that state. */
     showStartupErrorForAcceptance?: (message: string) => boolean
+    /** Renders the standalone startup document so CS-02 can capture its pixels. */
+    showStartupPageForAcceptance?: () => boolean
   }
 }
 

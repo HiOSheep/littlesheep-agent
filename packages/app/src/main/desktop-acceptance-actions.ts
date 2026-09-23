@@ -9,7 +9,7 @@
 
 import type { BrowserWindow } from 'electron'
 import type { LocalAppApiServerOptions } from './local-app-api/contracts.js'
-import { resizeWindowForAcceptance, showStartupErrorPageForAcceptance } from './desktop-visual-acceptance.js'
+import { resizeWindowForAcceptance, showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
 
 /** The window facts these actions need; `LittleSheepDesktopShell` satisfies it. */
 export interface DesktopAcceptanceShell {
@@ -17,6 +17,7 @@ export interface DesktopAcceptanceShell {
   show(): void
   currentWindow(): BrowserWindow | undefined
   showStartupError(error: unknown): void
+  showStartupPage(): boolean
 }
 
 type ContractActions = NonNullable<LocalAppApiServerOptions['desktopAcceptance']>
@@ -27,7 +28,7 @@ type ContractActions = NonNullable<LocalAppApiServerOptions['desktopAcceptance']
  * they are present, so callers do not have to re-check them.
  */
 export type DesktopAcceptanceActions = ContractActions & Required<
-  Pick<ContractActions, 'resizeForAcceptance' | 'showStartupErrorForAcceptance'>
+  Pick<ContractActions, 'resizeForAcceptance' | 'showStartupErrorForAcceptance' | 'showStartupPageForAcceptance'>
 >
 
 export function createDesktopAcceptanceActions(input: {
@@ -52,5 +53,7 @@ export function createDesktopAcceptanceActions(input: {
         message,
         (error) => input.shell.showStartupError(error),
       ),
+    showStartupPageForAcceptance: () =>
+      showStartupPageForAcceptance(input.shell.currentWindow(), () => input.shell.showStartupPage()),
   }
 }

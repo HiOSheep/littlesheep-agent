@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 48348
+        "port": 40026
       }
     },
     {
@@ -39,7 +39,7 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 48348,
+        "port": 40026,
         "retryable": false
       }
     },
