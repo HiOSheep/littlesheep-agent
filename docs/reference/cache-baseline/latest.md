@@ -1,8 +1,8 @@
 # Cache request-shape baseline
 
-最后更新：2026-09-23 17:49:31
+最后更新：2026-09-23 18:01:20
 
-Freeze: git 5192433
+Freeze: git 3f23d33
 
 本文件由 `packages/harness/src/probe/baseline.test.ts` 在每次 harness 测试运行时重新生成：
 只统计请求字符数、共享前缀字符数与工具目录摘要，不调用供应商，也不含提示词正文或会话内容。

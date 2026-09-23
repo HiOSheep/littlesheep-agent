@@ -1,6 +1,6 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-24 02:05:00
+最后更新：2026-09-24 02:03:44
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
@@ -12,6 +12,6 @@
 - `runners.ts`：单一主循环执行入口；把 `historyChatCount` 交给请求装配器，使"历史占用的请求消息数"与 `history` 条目数不一致时（回放的工具配对会多出消息）主用户回合仍被标在正确位置。可见目录固定为 `ctx.tools`，显式工具指令只与 Runtime 检索范围取交集后收窄 `admittedTools`，既不改变模型所见 schema，也不再放宽检索范围；收窄的成因决定拒绝文案（`renderExplicitToolScopeContract` 或 `renderRetrievalIntentContract`）。
 - `side-effect-ledger.ts`、`side-effect-lifecycle.ts`：Runtime 自有的副作用账本及其生命周期适配；只读工具不记账，写能力或未知工具先记账再执行，未结算不得重放。`settlementForResult` 只在工具**返回**失败结果时结算为 `failed`（命令跑完返回非零是已知结果）；服务自己合成的状态（工具抛错、超时/中断、生命周期钩子失败）说明工具从未报告结果、可能已部分生效，仍留在 `unknown` 并阻塞重试与完成。同一次运行内重试已结算失败会得到 `:retryN` 的独立 attempt id（durable kernel 每个 effect id 只允许一次结算），而任何一次成功之后同一操作都会被拒为重复。**判定的依据是 Runtime 能证明的事实，不是命令文本**：只声明了读资源（或属于 Runtime 自己的只读名单）的调用根本不进账本，所以重复观察不会被当成重放；不透明命令（`exec` 不声明任何资源）无论首词看起来多像列举都仍记为 `external` 效果，重复成功调用照样被拒。拒绝文案点名结构化替代入口（`glob`/`read`），让模型能换路而不是重试同一个调用。
 - `failure-policy.ts`：阻断失败识别、失败分类和稳定结果排序。分类时**先看工具声明的 `meta.errorKind`**：写工具因观察过期/缺失或目标已存在而返回的拒绝文案里常含 "refused" 一类词，若只按文本正则会被误判成权限问题；声明了 `observation_*` / `target_exists` 的失败统一归为 `tool_error`，其余仍按原有正则分类（`permission_denied` / `not_found` / `aborted` / `model_error`）。
-- `tool-failure-disposition.ts`：一轮工具失败对循环意味着什么。`classifyToolFailure` 只依据 Runtime 已记录的事实（该 callId 的 invocation 记录与副作用账本条目），不看错误文本：权限/硬安全拒绝、schema 校验失败、未知工具、被中止、核心源码只读保护（`core_source_read_only`）、执行服务的重复调用护栏（`repeated_call`）、副作用仍未结算（`planned`/`in_progress`/`unknown`）以及**没有 invocation 记录**的结果都是权威边界，进入强制收尾；已确定性结算的普通失败（路径不存在、参数错、命令非零退出后已结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。**重复成功调用的拒绝（`side_effect_replay`）是"对这次调用终局、对整轮不终局"**：什么都没执行、也没有任何未知，所以 run 继续，模型可以改用结构化只读工具观察或换一个动作——这不是绕过边界，调用无论如何都被拒。`toolRoundFailurePolicy` 把这一判定收敛成循环里的三行，并给出要持久化的 Runtime 控制消息；失败的副作用调用会要求先观察实际状态再决定，Runtime 自身从不重放。
+- `tool-failure-disposition.ts`：一轮工具失败对循环意味着什么。`classifyToolFailure` 只依据 Runtime 已记录的事实（该 callId 的 invocation 记录与副作用账本条目），不看错误文本：权限/硬安全拒绝、schema 校验失败、未知工具、被中止、核心源码只读保护（`core_source_read_only`）、执行服务的重复调用护栏（`repeated_call`）、副作用仍未结算（`planned`/`in_progress`/`unknown`）以及**没有 invocation 记录**的结果都是权威边界，进入强制收尾；已确定性结算的普通失败（路径不存在、参数错、命令非零退出后已结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。**同批部分成功、部分失败时保留成功的一半**：两条结果按序都进账本，模型只重做失败的那条，Runtime 不会重发已经成功的调用。**重复成功调用的拒绝（`side_effect_replay`）是"对这次调用终局、对整轮不终局"**：什么都没执行、也没有任何未知，所以 run 继续，模型可以改用结构化只读工具观察或换一个动作——这不是绕过边界，调用无论如何都被拒。`toolRoundFailurePolicy` 把这一判定收敛成循环里的三行，并给出要持久化的 Runtime 控制消息；失败的副作用调用会要求先观察实际状态再决定，Runtime 自身从不重放。
 
 `../execute.ts` 只负责清除回复状态、请求运行提示并把控制权交给单一主循环。TaskBook 步骤执行器（`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts`、`final-reply.ts`、`direct-tool-proposal.ts`）与自动并行波次、资源冲突打包、按波次降级、bounded_loop 升级入口、自动记忆沉淀一起随第二执行体系删除：已持久化的 TaskBook 现在是只读历史，多步骤工作在同一个循环内串行完成。工具不能绕过权限门，失败不能被子循环重试掩盖，已完成副作用不得重放。

@@ -189,8 +189,45 @@ describe('execTool approval gate', () => {
   // CE-05: a read-only command shape is a statement about the *effect*, not about
   // the container. It must not classify an outside directory as inside, and it
   // must not waive the approval a research or restricted run still owes.
-  it('keeps the container boundary and approval decision unchanged for read-only commands', () => {
-    const containerRoot = join(tmpdir(), 'ls-container');
+  // CE-01: an explicit per-call `cwd` is re-evaluated for that call — the
+  // command runs there and the boundary is judged there — but it must not
+  // quietly change which workspace the session belongs to.
+  it('honours an explicit per-call cwd without changing the session workspace', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-exec-cwd-'));
+    const inside = join(root, 'inside dir');
+    const outside = await mkdtemp(join(tmpdir(), 'ls-exec-outside-'));
+    try {
+      await mkdir(inside, { recursive: true });
+      const exec = createExecTool({
+        interactive: false,
+        approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'auto-approve' },
+      });
+      const ctx: ToolContext = { ...baseCtx, cwd: root, containerRoot: root };
+
+      const result = await exec.execute({ command: 'Get-Location', cwd: inside }, ctx);
+
+      expect(result.ok, result.error).toBe(true);
+      expect(String(result.output)).toContain('inside dir');
+      // The session workspace is untouched.
+      expect(ctx.cwd).toBe(root);
+
+      // The same call is judged where it will actually run.
+      expect(describeToolAccess('exec', { command: 'Get-Location', cwd: inside }, { cwd: root, containerRoot: root }).boundary)
+        .toBe('inside');
+      expect(describeToolAccess('exec', { command: 'Get-Location', cwd: outside }, { cwd: root, containerRoot: root }).boundary)
+        .toBe('outside');
+      expect(shouldRequestPermissionApproval('research', describeToolAccess(
+        'exec',
+        { command: 'Get-Location', cwd: outside },
+        { cwd: root, containerRoot: root },
+      ))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the container boundary and approval decision unchanged for read-only commands', () => {    const containerRoot = join(tmpdir(), 'ls-container');
     const outside = join(tmpdir(), 'ls-outside-elsewhere');
     const context = { cwd: containerRoot, containerRoot };
 

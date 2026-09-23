@@ -2,7 +2,7 @@
 
 这里保存 LS 随核心发布的受控工具实现。
 
-最后更新：2026-09-23 21:20:00
+最后更新：2026-09-24 02:03:44
 
 ## 分类
 
@@ -22,6 +22,7 @@
 - `document_create` 首版只创建新文件：目标已存在时返回 `target_exists` 并保持原文件不变，不为了覆盖二进制文档扩展观察协议。它用 `resolveToolPath` 做路径复核，并把 create-only 保证下沉到 `@littlesheep/documents` 的写盘入口（独占创建），因此"检查不存在 → 覆盖写"的竞态窗口不存在。
 - `exec.ts` 用同一组常量既启动进程也披露解释器：`describeExecutionShell()` 返回实际 spawn 的 `powershell.exe -NoProfile -Command`（Windows）或 `/bin/sh -c`（Unix），供 Runtime facts 与工具目录描述生成模型可见契约。披露值不会与执行值漂移，也不读 TOOLS.md；Windows 明确说明它是 Windows PowerShell 而非 PowerShell 7（`pwsh`），并给出 PowerShell 的分隔符、`Get-ChildItem`/`Test-Path` 与含空格路径的引用方式，不把 cmd 的 `&&` 或 Bash 语法当作默认语法；Unix 说明是 POSIX sh 而非 bash。工具描述同时说明"每次调用一条命令、相同成功调用会被拒为重放"，并指向 `glob`/`grep`/`read`——模型在烧掉一轮之前就知道该用哪个入口。
 - 受保护根内的读/写分界在 `../path-protection.ts`：单条 `Test-Path`（存在性）与 `Get-ChildItem`/`dir`（列举）等窄形态可执行，写入类与任何组合语法被拒；`exec.ts`、`write.ts`、`edit.ts`、`document-create.ts` 的拒绝共用 `coreSourceReadOnlyMessage()` 并声明 `meta.errorKind: 'core_source_read_only'`，主循环据此按权威边界停手而不是让模型换工具试探。
+- `exec.ts` 的显式 `cwd` 属于**这一次调用**：命令在那个目录里运行、边界也按那个目录判定（容器内 `inside`、容器外 `outside` 且研究模式仍需批准），但不会改写会话自己的工作区（`ctx.cwd` 保持不变）。`exec.test.ts` 逐条断言这四件事。
 - `exec.ts` 把不透明命令的失效做在观察端口上：审批通过后、进程启动前 `suspend()`（期间不登记新观察，已有观察也不得授权写入），结算时 `invalidateAll()` 清空该会话的全部观察——**不依赖只读启发式**，命令名不是"没有写入"的证据。只有确认进程已关闭才解除冻结；进程可能仍在写时保持冻结直到 `close`。非零退出、超时、取消都按"可能已改动"处理；命令未真正启动（审批拒绝、spawn 失败）时不清空观察。因此 `exec` 之后模型通常要重读一次文件，这是任务书接受的代价。
 - `request_user_input` 不做 IO：它把缺失事实的问题交给 Runtime 发布为本轮回复，并留下一个有界的等待事实。
 - 网络工具只通过每轮注入的 `WebRetrievalRuntime` 执行：`web_search` 只能使用 Runtime 选定的 Provider，`web_fetch` 只能匿名读取已校验的公共 HTTP(S) URL。它们不接收 endpoint、method、header、Cookie、Authorization、body、proxy 或输出路径；搜索/网页内容一律是 `external_untrusted`，持久化边界只接受 `WebEvidenceProjection`。

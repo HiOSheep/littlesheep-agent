@@ -121,6 +121,17 @@ describe('resolveRunWorkspace', () => {
       config('D:\\projects\\bound'),
       workplace,
     )).toBe(resolve('D:\\projects\\bound'))
+  });
+
+  it('keeps a directory whose name is not ASCII intact', () => {
+    const selected = 'D:\\项目\\我的 游戏'
+    const resolved = resolveRunWorkspace({ workspace: selected }, config('D:\\elsewhere'), workplace)
+
+    expect(resolved).toBe(resolve(selected))
+    // Normalization must not transliterate, escape or drop the name: the model,
+    // the shell and the artifact index all have to see the same characters.
+    expect(resolved).toContain('项目')
+    expect(resolved).toContain('我的 游戏')
   })
 })
 

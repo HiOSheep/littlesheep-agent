@@ -239,8 +239,55 @@ describe('the main loop after a failed call', () => {
     expect(exec.calls).toHaveLength(1);
   });
 
-  it('bounds a model that repeats the same failing observation', async () => {
-    const llm = createMockLlm(() => toolCallResponse([{ id: `read-${Math.random()}`, name: 'read', args: { file_path: 'notes.md' } }]));
+  // CE-04: a batch that half succeeds must keep the half that worked. The
+  // failure is not allowed to discard the batch, and the succeeded effect must
+  // not be replayed when the model fixes the other part.
+  it('keeps the successful half of a mixed batch and only reworks what failed', async () => {
+    const requests: ChatRequest[] = [];
+    let turn = 0;
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      turn += 1;
+      if (turn === 1) {
+        return toolCallResponse([
+          { id: 'write-ok', name: 'write', args: { file_path: 'kept.txt' } },
+          { id: 'write-missing', name: 'write', args: { file_path: 'missing/thing.txt' } },
+        ]);
+      }
+      if (turn === 2) return toolCallResponse([{ id: 'write-retry', name: 'write', args: { file_path: 'missing/thing.txt' } }]);
+      return textResponse('kept.txt was written; the second file is there now too.');
+    });
+    const write = makeTool('write', { ok: true, output: 'written' });
+    let attempts = 0;
+    (write as { execute: unknown }).execute = async () => {
+      attempts += 1;
+      write.calls.push({});
+      // Only the first call of the first round fails.
+      return attempts === 2
+        ? { callId: '', ok: false, error: 'Path not found: missing/thing.txt' }
+        : { callId: '', ok: true, output: 'written' };
+    };
+    write.execution = {
+      concurrency: 'exclusive',
+      resources: (input) => [{ key: `fs:${String((input as { file_path?: string }).file_path ?? '')}`, mode: 'write' as const }],
+    };
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [write], inbound: textMessage('user', '写两个文件') });
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    // Both results of the mixed round are preserved, in order.
+    const round = (ctx.toolResults ?? []).slice(0, 2);
+    expect(round.map((entry) => entry.ok)).toEqual([true, false]);
+    expect(round[1]?.error).toContain('Path not found');
+    // The model reworked only the failed path, and the succeeded write was not
+    // re-issued by the Runtime.
+    expect(attempts).toBe(3);
+    expect(ctx.reply).toBe('kept.txt was written; the second file is there now too.');
+  });
+
+  it('bounds a model that repeats the same failing observation', async () => {    const llm = createMockLlm(() => toolCallResponse([{ id: `read-${Math.random()}`, name: 'read', args: { file_path: 'notes.md' } }]));
     const read = makeTool('read', { ok: false, error: 'Path not found: notes.md' });
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [read], inbound: textMessage('user', 'read notes.md') });
