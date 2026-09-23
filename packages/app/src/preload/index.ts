@@ -20,6 +20,7 @@ import {
   RENDERER_TIMING_CHANNEL,
   RUNTIME_READINESS_CHANNEL,
   RUNTIME_READINESS_QUERY_CHANNEL,
+  RUNTIME_RETRY_EXECUTION_CHANNEL,
   type RendererTimingStage,
 } from '../shared/runtime-readiness-ipc'
 import {
@@ -95,6 +96,14 @@ contextBridge.exposeInMainWorld('littlesheep', {
     ipcRenderer.on(RUNTIME_READINESS_CHANNEL, handler)
     return () => ipcRenderer.removeListener(RUNTIME_READINESS_CHANNEL, handler)
   },
+  /**
+   * Ask Main to run the execution stage again after a failure the user fixed.
+   * Main owns the bound and the single-flight rule; this forwards its answer so a
+   * refused retry is never presented as a new attempt.
+   */
+  retryExecution: (): Promise<unknown> => (
+    ipcRenderer.invoke(RUNTIME_RETRY_EXECUTION_CHANNEL).catch(() => undefined)
+  ),
   /** Report a startup timing mark. Only closed stage names and bounded durations. */
   reportRendererTiming: (stage: RendererTimingStage, durationMs: number) => {
     if (!isRendererTimingStage(stage)) return

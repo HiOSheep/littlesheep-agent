@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-23 17:09:03
+最后更新：2026-09-23 17:17:18
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 

@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-23 17:09:03
+最后更新：2026-09-23 17:17:18
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -17,6 +17,7 @@
 - 启动页 / 启动失败页取证（`desktop-acceptance-actions.ts` 装配、`desktop-visual-acceptance.ts` 的 `showStartupPageForAcceptance` / `showStartupErrorPageForAcceptance` 渲染，经应用生命周期路由的 `startup-page` / `startup-error` 动作触达）：把生产同一份启动文档交回窗口、把真实失败文案交给与生产同一份 `showStartupError` 文档，供隔离验收捕获像素。这两页都无法靠等待到达（启动页只停留约 90 ms），因此这是唯一能对它们取证的入口；`desktop-acceptance-actions.ts` 在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 之外整体返回 `undefined`，渲染函数自身也再判一次，生产路径不受影响。捕获证明的是页面外观，不证明启动页的停留时长——交接时序仍属人工验收项。
 - 就绪窗口的验收拉长（`desktop-acceptance-actions.ts` 的 `acceptanceReadyDelayMs()` / `waitForAcceptanceReadyDelay()`，`index.ts` 在发布就绪前调用）：只推迟**发布**，Runner 照常构建，被拉长的只是渲染器看到的未就绪窗口，用以在真实窗口上验证"先可用界面"的交互契约（草稿、发送禁用、真实阶段文案）。仅 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 且 `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS` 为正整数时生效，上限 60 s，生效时打出 `acceptance-ready-delay` 阶段标以免被误读成初始化变慢；正常启动为 0。
 - 启动失败的两个阶段各有明确的可见状态（实机取证见基线文档的"失败态"一节）：渲染器尚未接管时由独立启动失败页承载错误，渲染器已在屏上时由 `RuntimeReadinessNotice` 原地陈述同一原因，并保留可修复配置的设置入口。`desktop-shell.ts` 的 `hasLoadedRenderer()` 是这条分支的唯一判据，不要改回无条件切换文档。
+- `execution-retry.ts`：执行阶段的有界重试（连续 3 次失败、成功即重置、并发请求被拒），由 preload 的 `retryExecution()` 经 `RUNTIME_RETRY_EXECUTION_CHANNEL` 触达；每次尝试**先重读 `config.json`** 再调 `startExecution`，因此"改好模型设置后不用重启"，失败时用 `readiness.fail(message, { retryable })` 决定窗口是否继续提供入口。`runtime-config-preparation.ts` 是它与启动路径共用的配置归一化，不要各自实现一份。
 - `plugin-host-startup.ts`：可选插件宿主的一次性启动，由 `index.ts` 在执行就绪之后动态导入。插件包会带出全部内置渠道实现，静态导入会把它算进"首条业务日志之前的模块求值"；实测其动态导入 + 创建只占约 2.8 ms，因此它既不进静态图，也不阻塞 `readiness.ready()`（渠道晚几毫秒连接，核心 API 在宿主缺失时仍可用）。
 - `run-activity-monitor.ts`、`run-policy.ts`：聚合当前与正在退场的 Runner 活动快照；解析权限模式和行为 profile，并在执行前重算容器边界与审批，启动期恢复读取只经 `createRecoveryReadAuthorizer`。
 - `local-app-api/session-routes.ts` 的 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量，产出**会话累计缓存命中**（`cachedPromptTokens / promptTokens`，含冷启动、不含分离调用），与验收账本同源同公式；`requestsWithoutUsage > 0` 时标注为局部读数。

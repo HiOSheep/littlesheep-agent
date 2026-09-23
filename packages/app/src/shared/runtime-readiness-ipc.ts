@@ -14,6 +14,15 @@ export const RENDERER_TIMING_CHANNEL = 'littlesheep:renderer-timing'
 export const RUNTIME_READINESS_QUERY_CHANNEL = 'littlesheep:runtime-readiness-query'
 
 /**
+ * Renderer → Main: retry the execution stage after a failure the user fixed.
+ *
+ * Answers with `{ accepted, attemptsUsed, attemptsRemaining, refusedBecause?, reason? }`;
+ * a refused call means another attempt is in flight or the bounded budget is
+ * spent, and the window must not present it as a new attempt.
+ */
+export const RUNTIME_RETRY_EXECUTION_CHANNEL = 'littlesheep:runtime-retry-execution'
+
+/**
  * Timing stages the Renderer may report. Closed on purpose: bootstrap timing is
  * a diagnostic surface and must not become an arbitrary log channel.
  */

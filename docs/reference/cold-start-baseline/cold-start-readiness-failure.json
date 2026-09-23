@@ -1,6 +1,6 @@
 {
   "check": "desktop-cold-start-readiness-failure",
-  "capturedAt": "2026-09-23T09:04:44.046Z",
+  "capturedAt": "2026-09-23T09:18:29.287Z",
   "redaction": "user-profile and repository path prefixes are replaced with <user-home> / <repo> / <temp>",
   "ok": true,
   "acceptanceSurfaceMounted": false,
@@ -14,14 +14,14 @@
         "reason": "runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"",
         "apiVersion": 1,
         "retryable": true,
-        "port": 48753
+        "port": 50639
       },
       "metadataStatus": 200,
       "runnerBackedStatus": 503,
       "runnerBackedError": "The runtime is still starting; execution is not available yet.",
       "userVisibleState": "live shell + failed readiness notice",
       "notice": {
-        "noticeText": "运行能力启动失败：runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"",
+        "noticeText": "运行能力启动失败：runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"重试启动运行能力",
         "noticeClasses": "runtime-readiness-notice failed",
         "noticeLive": "assertive",
         "sendDisabled": true,
@@ -30,7 +30,27 @@
         "startupErrorPage": false,
         "activeRunCount": 0
       },
-      "screenshot": "<repo>\\docs\\reference\\cold-start-baseline\\readiness-failure-execution.png"
+      "screenshot": "<repo>\\docs\\reference\\cold-start-baseline\\readiness-failure-execution.png",
+      "retry": {
+        "failedAttempt": {
+          "click": {
+            "clicked": true,
+            "label": "重试启动运行能力"
+          },
+          "readiness": "failed",
+          "retryable": true,
+          "notice": "运行能力启动失败：runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"正在重试…"
+        },
+        "recoveredAttempt": {
+          "click": {
+            "clicked": true,
+            "label": "重试启动运行能力"
+          },
+          "readiness": "ready",
+          "noticeCleared": true,
+          "runnerBackedStatus": 200
+        }
+      }
     },
     {
       "id": "bootstrap-failure",
@@ -38,7 +58,7 @@
       "userVisibleState": "standalone startup failure page",
       "page": {
         "isFailureDocument": true,
-        "errorText": "LittleSheep 无法启动config: failed to parse <user-home>\\AppData\\Local\\Temp\\littlesheep-readiness-failure-bootstrap-gL1B7U\\data\\config.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)",
+        "errorText": "LittleSheep 无法启动config: failed to parse <user-home>\\AppData\\Local\\Temp\\littlesheep-readiness-failure-bootstrap-mskMH6\\data\\config.json: Expected double-quoted property name in JSON at position 16 (line 1 column 17)",
         "hasIcon": true
       },
       "surface": {

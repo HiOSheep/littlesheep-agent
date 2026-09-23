@@ -168,6 +168,47 @@ async function runExecutionFailureCase() {
       failures.push({ check: 'the failed shell could be captured', detail: capture })
     }
 
+    // 1b. Retrying while the configuration is still broken must stay a failure
+    //     and keep offering another attempt; nothing may look like progress.
+    const failedRetry = await clickRetry(client)
+    if (failedRetry.clicked !== true) {
+      failures.push({ check: 'the failed state offers a retry control', detail: failedRetry })
+    }
+    const readinessAfterFailedRetry = await waitForReadiness(locator, 'failed')
+    if (readinessAfterFailedRetry?.state !== 'failed') {
+      failures.push({ check: 'retrying a broken configuration stays failed', detail: readinessAfterFailedRetry })
+    }
+    if (readinessAfterFailedRetry?.retryable !== true) {
+      failures.push({ check: 'a failed retry still offers another attempt', detail: readinessAfterFailedRetry })
+    }
+    const noticeAfterFailedRetry = await readFailureState(client)
+    if (noticeAfterFailedRetry.noticeText === null || !noticeAfterFailedRetry.noticeText.includes('启动失败')) {
+      failures.push({ check: 'the shell still states the failure after a failed retry', detail: noticeAfterFailedRetry })
+    }
+    if (noticeAfterFailedRetry.activeRunCount !== 0) {
+      failures.push({ check: 'a failed retry starts no run', detail: noticeAfterFailedRetry })
+    }
+
+    // 1c. Fix the configuration the way a user would (the file is what the retry
+    //     re-reads), then retry again: this is the whole point of the control.
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildRecoverableConfig(workspaceDir), null, 2)}\n`, 'utf8')
+    const recoveredRetry = await clickRetry(client)
+    const readinessAfterRecovery = await waitForReadiness(locator, 'ready')
+    if (recoveredRetry.clicked !== true) {
+      failures.push({ check: 'the retry control is still offered before the budget is spent', detail: recoveredRetry })
+    }
+    if (readinessAfterRecovery?.state !== 'ready') {
+      failures.push({ check: 'retrying after fixing the configuration makes execution ready', detail: readinessAfterRecovery })
+    }
+    const noticeAfterRecovery = await harness.waitFor(async () => {
+      const state = await readFailureState(client).catch(() => undefined)
+      return state?.noticeText === null ? state : undefined
+    }, 20_000, 'readiness notice cleared').catch(() => undefined)
+    if (noticeAfterRecovery?.noticeText !== null) {
+      failures.push({ check: 'the failure notice clears once the retry succeeds', detail: noticeAfterRecovery ?? 'notice stayed on screen' })
+    }
+    const runnerBackedAfterRecovery = await harness.fetchJson(locator, '/run-checkpoints')
+
     return {
       case: {
         id: 'execution-failure',
@@ -179,6 +220,20 @@ async function runExecutionFailureCase() {
         userVisibleState: 'live shell + failed readiness notice',
         notice: noticeStates,
         screenshot: capture.file,
+        retry: {
+          failedAttempt: {
+            click: failedRetry,
+            readiness: readinessAfterFailedRetry?.state,
+            retryable: readinessAfterFailedRetry?.retryable,
+            notice: noticeAfterFailedRetry.noticeText,
+          },
+          recoveredAttempt: {
+            click: recoveredRetry,
+            readiness: readinessAfterRecovery?.state,
+            noticeCleared: noticeAfterRecovery?.noticeText === null,
+            runnerBackedStatus: runnerBackedAfterRecovery?.status,
+          },
+        },
       },
       failures,
     }
@@ -311,6 +366,41 @@ function buildConfig(workspaceDir) {
     channels: { channels: [] },
     versioning: { enabled: false },
   }
+}
+
+/** A config the Runner can build: one declared provider with a local dummy key. */
+function buildRecoverableConfig(workspaceDir) {
+  const config = buildConfig(workspaceDir)
+  return {
+    ...config,
+    providers: [{
+      id: 'fixture',
+      name: 'Fixture Provider',
+      baseURL: 'http://127.0.0.1:9/v1',
+      apiKey: 'fixture-key-not-a-credential',
+      models: [{ id: 'fixture-model', name: 'Fixture Model', contextWindow: 128_000 }],
+    }],
+    agents: {
+      ...config.agents,
+      defaults: { ...config.agents.defaults, model: 'fixture/fixture-model' },
+    },
+  }
+}
+
+/**
+ * Clicks the notice's retry control.
+ *
+ * Only the click is issued here: the attempt's effect is read from the readiness
+ * state the user also sees, not from a second call that would race the first one.
+ */
+async function clickRetry(client) {
+  return client.evaluate(`(() => {
+    const button = document.querySelector('.runtime-readiness-retry');
+    if (!button) return { clicked: false, reason: 'no retry control' };
+    const label = button.textContent.trim();
+    button.click();
+    return { clicked: true, label };
+  })()`)
 }
 
 async function readFailureState(client) {

@@ -20,13 +20,8 @@ import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import {
   loadConfig,
-  registerConfiguredModelCapabilities,
   saveConfig,
-  selectDefaultModelForAvailableProvider,
-  withProviderPresets,
-  resolveApiKey,
   type Config,
-  type ModelProvider,
 } from '@littlesheep/config'
 import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/branding'
 import { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
@@ -42,7 +37,8 @@ import { ArchiveIndex } from './archive-index.js'
 import { TerminalActivityIndex } from './terminal-activity-index.js'
 import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
-import { resolveRuntimeWorkspaceDefault } from './runtime-config.js'
+import { prepareRuntimeConfig } from './runtime-config-preparation.js'
+import { createExecutionRetryController } from './execution-retry.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
 import { loadPluginHost } from './plugin-host-startup.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
@@ -67,6 +63,7 @@ import {
   isRendererTimingStage,
   RENDERER_TIMING_CHANNEL,
   RUNTIME_READINESS_QUERY_CHANNEL,
+  RUNTIME_RETRY_EXECUTION_CHANNEL,
 } from '../shared/runtime-readiness-ipc.js'
 
 let runner: AgentRunner | null = null
@@ -126,8 +123,36 @@ const readiness = createRuntimeReadinessController({
   onWarning: (message) => console.warn(`[readiness] ${message}`),
 })
 
+/**
+ * Retrying execution after a failed start.
+ *
+ * The attempt re-reads `config.json` first, so fixing the model in settings (or
+ * restoring a missing key) is enough - no restart. Attempts are bounded: three
+ * failed tries mean the problem is outside what the app can fix by retrying.
+ */
+const executionRetry = createExecutionRetryController({
+  onBegin: () => readiness.begin('execution', '正在重试启动运行能力', { port: server?.port }),
+  onFailure: (message, retryable) => readiness.fail(message, { retryable }),
+  attempt: async () => {
+    if (!currentBranding || !currentDataDir) throw new Error('启动尚未完成，暂时无法重试。')
+    const reloaded = prepareRuntimeConfig(await loadConfig({ dataDir: currentDataDir }), currentWorkplaceDir)
+    currentConfig = reloaded.config
+    currentModel = reloaded.model
+    await startExecution({
+      branding: currentBranding,
+      config: reloaded.config,
+      model: reloaded.model,
+      dataDir: currentDataDir,
+    })
+  },
+  log: (message) => console.warn(`[retry] ${message}`),
+})
+
 function installReadinessHandlers(): void {
   ipcMain.handle(RUNTIME_READINESS_QUERY_CHANNEL, () => readiness.current())
+  // The window offers this only in a retryable failed state; the controller
+  // refuses extra calls itself, so a second click cannot start a second start.
+  ipcMain.handle(RUNTIME_RETRY_EXECUTION_CHANNEL, () => executionRetry.retry())
   ipcMain.on(RENDERER_TIMING_CHANNEL, (_event, stage: unknown, durationMs: unknown) => {
     if (!isRendererTimingStage(stage)) return
     if (!isRendererTimingDuration(durationMs)) return
@@ -135,33 +160,6 @@ function installReadinessHandlers(): void {
     // duration cross the bridge, and both are recorded as-is.
     recordBootstrapTiming(stage, undefined, { durationMs })
   })
-}
-
-function providerHasKey(provider: ModelProvider): boolean {
-  return !provider.apiKey || !!resolveApiKey(provider.apiKey)
-}
-
-function prepareRuntimeConfig(config: Config, workplaceDir?: string): { config: Config; model: string; migratedDefaultWorkspace: boolean } {
-  const prepared = withProviderPresets(config)
-  const defaultWorkspace = prepared.agents.defaults.workspace
-  const workspaceResolution = resolveRuntimeWorkspaceDefault(defaultWorkspace, workplaceDir)
-  const workspace = workspaceResolution.workspace
-  const normalized: Config = {
-    ...prepared,
-    agents: {
-      ...prepared.agents,
-      defaults: {
-        ...prepared.agents.defaults,
-        workspace,
-      },
-    },
-  }
-  const model = selectDefaultModelForAvailableProvider(normalized, providerHasKey)
-  // User-declared model metadata is the only authority LS has for models the
-  // built-in registry does not know; register it before the first run so that
-  // context window, reasoning options and tokenizer honesty follow the config.
-  registerConfiguredModelCapabilities(normalized)
-  return { config: normalized, model, migratedDefaultWorkspace: workspaceResolution.migrated }
 }
 
 // Single-instance lock: prevent multiple Electron instances from opening the

@@ -21,3 +21,24 @@
 .runtime-readiness-notice.failed {
   color: var(--danger, #ff9d9d);
 }
+
+/* Bounded retry for a failed start. Same surface as the strip it lives in, with
+ * the danger role for the action - it repeats work that just failed. Ordinary
+ * controls keep the default cursor and a semantic radius token (renderer rules). */
+.runtime-readiness-retry {
+  margin-left: 8px;
+  padding: 1px 8px;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-ui);
+}
+
+.runtime-readiness-retry:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.runtime-readiness-retry:disabled {
+  opacity: 0.7;
+}

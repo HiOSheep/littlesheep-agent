@@ -18,6 +18,17 @@ declare global {
       localApiBase?: () => Promise<string>
       getRuntimeReadiness?: () => Promise<RuntimeReadiness | undefined>
       onRuntimeReadiness?: (listener: (state: RuntimeReadiness) => void) => () => void
+      /**
+       * Bounded retry of the execution stage after a failure the user fixed.
+       * Main decides whether an attempt is allowed; the answer says what it did.
+       */
+      retryExecution?: () => Promise<{
+        accepted: boolean
+        attemptsUsed: number
+        attemptsRemaining: number
+        refusedBecause?: 'in-flight' | 'exhausted'
+        reason?: string
+      } | undefined>
       reportRendererTiming?: (stage: RendererTimingStage, durationMs: number) => void
       getPathForFile?: (file: unknown) => string
       onBrowserOpenNewTab?: (listener: (event: { url: string; disposition?: string }) => void) => () => void

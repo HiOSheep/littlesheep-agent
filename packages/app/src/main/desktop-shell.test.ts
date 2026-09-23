@@ -80,7 +80,9 @@ describe('desktop shell window cleanup', () => {
   it('shows the shell before the Runner is published so the window is usable early', async () => {
     const entry = await readFile(new URL('./index.ts', import.meta.url), 'utf8')
     const shellInitialized = entry.indexOf('desktopShell.initialize()')
-    const executionStarted = entry.indexOf('await startExecution(')
+    // The startup path's own call, not the retry controller's reference to the
+    // same function: the retry wiring is declared above the window on purpose.
+    const executionStarted = entry.indexOf('await startExecution({ branding, config, model, dataDir: dataDir.root })')
 
     expect(shellInitialized).toBeGreaterThanOrEqual(0)
     expect(executionStarted).toBeGreaterThan(shellInitialized)
