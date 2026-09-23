@@ -9,8 +9,8 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| `contracts.ts` | Server 构造参数和生命周期公共契约。 |
-| `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。 |
+| `contracts.ts` | Server 构造参数和生命周期公共契约；`getRunner()` 返回 `AgentRunner \| undefined`，`getExecutionReadiness()` / `respondReadiness()` 提供 `/runtime/readiness`。 |
+| `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。`RuntimeNotReadyError`（503 `runtime-not-ready`）与 `resolveRunner()` 是"执行未就绪"的唯一失败语义。 |
 | `bearer-auth.ts` | 验收与校准类接口的 bearer token 校验。 |
 | `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。 |
 | `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；只把内部状态投影成有界诊断。 |
@@ -35,12 +35,22 @@
 
 - Run：`/run`、`/run/stream`、`/approvals/:id`、`/run-checkpoints`（`/:id` 详情、`/:id/resume/stream` 续跑、`/:id/abandon` 放弃）。
 - 会话：`/sessions`、`/projects`、`/archive`、`/runs/:id`。
-- Runtime：`/state`、`/runtime`、`/runtime/web/*`、`/runtime/cache-quality`、`/runtime/provider-calibration`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/acceptance`、`/application/active-runs`（含 `/stream` 与 `/:id/control`）。
+- Runtime：`/state`、`/runtime`、`/runtime/readiness`、`/runtime/web/*`、`/runtime/cache-quality`、`/runtime/provider-calibration`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/acceptance`、`/application/active-runs`（含 `/stream` 与 `/:id/control`）。
 - 工作区：`/workspace/*`（含 `/workspace/review/*`、`/workspace/terminal/*`）、`/attachments/*`、`/external/open`。
 - 记忆：`/skills/*`、`/memory/*`。
 - 扩展与其余控制面：`/plugins/*`、`/channels/*`、`/browser/*`、`/development-environments/*`。
 
 静态路由、动态前缀和 ID 编解码只以 `../../shared/local-app-api-routes.ts` 为准。
+
+## 执行未就绪时的行为
+
+监听在 Runner 之前建立（窗口要早于执行能力可用），因此路由分成三类：
+
+- **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。
+- **失败关闭为 503 `runtime-not-ready`**：所有真正需要 Runner 的分支。它们必须用 `resolveRunner(context.getRunner)` **在用到该 Runner 的分支内**惰性解析——不得把 `getRunner()` 提到函数开头，否则 `/sessions` 这类元数据路由会在 Runner 未发布时一起失败（这正是实测中发现的缺陷：Runner 构建失败时侧栏会空白）。
+- **Runner 发布后启用**：`setRunner()` 同时构建 RunRouter 并初始化附件缓存，调用方在它 settle 之前不发布执行就绪，因此没有请求会看到半成品 router。
+
+`getRunner()` 返回 `undefined` 表示"执行不可用"，由组合根持有该状态（`packages/app/src/main/index.ts` 的 `runner` 引用只在 `startExecution()` 中赋值）。
 
 ## 维护规则
 

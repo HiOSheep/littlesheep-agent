@@ -24,6 +24,14 @@
 | `memory.ts` | 记忆树查询、资源管理和项目记忆投影。 |
 | `workspace.ts` | 工作区与终端的兼容 barrel。 |
 
+## 就绪与基址
+
+窗口早于 Local App API 出现，因此本目录不再假设"import 时端口已存在"：
+
+- `localApiBase()` 向 preload 求解基址并有界等待（90 秒）；`localApiFetch()` 是唯一对外请求入口，未就绪时等待而不是请求端口 `0`。
+- `localApiUrl` / `localApiUrlSync` 只服务已确认就绪的纯 URL 调用点，不得用于新请求。
+- 未就绪或失败以真实错误抛出，由既有的 `runtimeError` 回灌路径呈现；`run.ts` 恢复草稿的既有语义不变，不伪造成功。
+
 ## 依赖与数据边界
 
 - 路由只从 `../../shared/local-app-api-routes.ts` 读取，禁止在客户端重复硬编码 URL。

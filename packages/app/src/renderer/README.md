@@ -5,11 +5,12 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 
 ## 入口与所有权
 
-- `main.tsx`：React 挂载。
-- `App.tsx`：7 行兼容入口，只装配 `app-shell` 控制器和视图。
+- `main.tsx`：React 挂载；同时启动渲染器自报的首帧观察（`runtime-readiness/renderer-timing.ts`，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出）。
+- `App.tsx`：16 行兼容入口，装配 `app-shell` 控制器与就绪提示，不承载业务逻辑。
 - `app-shell/`：顶层视图、导航历史和控制器组合。
+- `runtime-readiness/`：执行就绪的唯一渲染器侧事实源（查询+订阅+补读）、未就绪提示与渲染器自报首帧计时。窗口早于 Runner 出现，能力是否可用必须来自这里，不得由视图猜测（详见该目录 README）。
 - `ui/display-frame.ts`、`ui/display-synced-settle.ts`：合并重复失效请求，并基于 `requestAnimationFrame` 时间戳进行有界布局收敛；当前显示器 VSync 是有效 FPS 上限，稳定后不再申请帧。
-- `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
+- `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`runtime-readiness/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
 - `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。
 - `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
 - `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。
