@@ -10,6 +10,7 @@
 // - Everything else is retried at the failed stage under the recovery cap; when
 //   the cap is exhausted the caller escalates to the user.
 import type { RunContext, StageName, TaskStepFailureKind } from '@littlesheep/types';
+import { classifyStepFailure } from '../execute/failure-policy.js';
 
 export type RecoveryAction = 'retry' | 'escalate' | 'abort';
 
@@ -60,12 +61,43 @@ export function hasUnsettledSideEffect(ctx: RunContext): boolean {
   ));
 }
 
+/**
+ * The failure kinds a run actually recorded.
+ *
+ * TaskBook step results were the only source until the step executor was
+ * deleted. Nothing writes `taskExecution` in the single main loop any more, so
+ * this returned an empty list for every ordinary run — which silently disabled
+ * the permission and cancellation branches below and made every failure retry
+ * until the budget ran out. The fallback reads the evidence the loop does record:
+ * the invocation statuses the tool boundary published and the latest failure text.
+ */
 export function recordedFailureKinds(ctx: RunContext): TaskStepFailureKind[] {
   const kinds: TaskStepFailureKind[] = [];
   for (const step of ctx.taskExecution?.steps ?? []) {
     if (step.failureKind) kinds.push(step.failureKind);
   }
-  return kinds;
+  if (kinds.length > 0) return kinds;
+  return recordedFailureKindsFromEvidence(ctx);
+}
+
+function recordedFailureKindsFromEvidence(ctx: RunContext): TaskStepFailureKind[] {
+  const kinds: TaskStepFailureKind[] = [];
+  const invocations = ctx.toolInvocations ?? [];
+  if (invocations.some((invocation) => (
+    invocation.status === 'approval_denied'
+    || invocation.status === 'hard_denied'
+    || invocation.status === 'approval_unavailable'
+    || invocation.errorKind === 'core_source_read_only'
+  ))) {
+    kinds.push('permission_denied');
+  }
+  if (invocations.some((invocation) => invocation.status === 'aborted')) kinds.push('aborted');
+  // Only the latest failure text is classified. Scanning every recorded failure
+  // would let a fixed problem from earlier in the run decide how the *current*
+  // one is handled.
+  const message = ctx.lastError?.message;
+  if (message) kinds.push(classifyStepFailure(message, []));
+  return [...new Set(kinds)];
 }
 
 export function isStructuredDecodeFailure(error: RunContext['lastError']): boolean {

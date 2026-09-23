@@ -1,6 +1,7 @@
 import type {
   PartialReplanRequest,
   RunContext,
+  SideEffectCheckpoint,
   TaskStepFailureKind,
   ToolInvocationStatus,
 } from '@littlesheep/types';
@@ -117,7 +118,7 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
       return `side effect ${effect.idempotencyKey} is ${effect.status}`;
     }
     if (!effect.callId || !callIds.has(effect.callId)) {
-      if (!hasLegacyCheckpointToolResult(ctx, effect.callId)) {
+      if (!inheritedEffectEvidence(ctx, effect)) {
         return `side effect ${effect.idempotencyKey} has no matching tool invocation`;
       }
       continue;
@@ -150,12 +151,37 @@ export function recordedToolFailures(ctx: RunContext, limit = 5): string[] {
   return failures.slice(0, limit);
 }
 
-function hasLegacyCheckpointToolResult(ctx: RunContext, callId: string | undefined): boolean {
-  if (!callId || !ctx.resumedFromCheckpointId || (ctx.toolInvocations?.length ?? 0) > 0) return false;
-  return (ctx.taskExecution?.steps ?? []).some((step) => (
-    step.toolResults.some((result) => result.callId === callId && result.ok)
-    && step.toolCallIds.includes(callId)
+/**
+ * Evidence for an effect this run did not itself invoke.
+ *
+ * A continuation restores the checkpoint's side-effect ledger but not the
+ * previous run's invocation records: the invocation list belongs to the new run,
+ * so an inherited call id can never match one. Reading that as "no evidence"
+ * made every resumed run that settled an effect before the interruption report
+ * incomplete evidence about work the Runtime had already settled — the resumed
+ * run could not finish truthfully.
+ *
+ * The attestation therefore comes from what the checkpoint itself carried:
+ *
+ * - a legacy TaskBook checkpoint recorded the call and its outcome on the step,
+ *   and a *failed* outcome is as recorded as a successful one — the requirement
+ *   is that an outcome exists, not that it was positive;
+ * - the restored ledger entry is terminal, which means the Runtime settled it
+ *   before the interruption.
+ *
+ * Anything else — no call id, a non-terminal status, a different run's step
+ * evidence — still reports the gap.
+ */
+function inheritedEffectEvidence(ctx: RunContext, effect: SideEffectCheckpoint): boolean {
+  if (!ctx.resumedFromCheckpointId) return false;
+  const callId = effect.callId;
+  if (!callId) return false;
+  const recordedOnStep = (ctx.taskExecution?.steps ?? []).some((step) => (
+    step.toolCallIds.includes(callId)
+    && step.toolResults.some((result) => result.callId === callId)
   ));
+  if (recordedOnStep) return true;
+  return effect.status === 'succeeded' || effect.status === 'failed' || effect.status === 'cancelled';
 }
 
 export function installPartialReplan(

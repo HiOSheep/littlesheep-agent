@@ -22,8 +22,8 @@
 | 已实施待实测 | CE-04 | P0 | 区分普通执行失败、权威拒绝与未知副作用 | P3 | L | 无，联验依赖 CE-01/03 |
 | 已实施待实测 | CE-05 | P1 | 提供受保护目录的可靠只读探测路径 | P4 | M | CE-03/04 |
 | 已实施待实测 | CE-06 | P1 | 只读观察与副作用防重放正确分流 | P5 | M | CE-04/05 |
-| 待取证 | CE-07 | P1 | 核验 VERIFY“工具结果缺失”证据链 | P6 疑点 | M | 可先取证；复测依赖 CE-04 |
-| 待实施 | CE-08 | P1 | 恢复耗尽后的续接必须产生进展或具体阻塞 | P6 | L | CE-04、CE-07 的结论 |
+| 已取证已修 | CE-07 | P1 | 核验 VERIFY“工具结果缺失”证据链 | P6 疑点 | M | 可先取证；复测依赖 CE-04 |
+| 已实施待实测 | CE-08 | P1 | 恢复耗尽后的续接必须产生进展或具体阻塞 | P6 | L | CE-04、CE-07 的结论 |
 | 待复现 | CE-09 | P1 | run 失败也有可见、可恢复的终态 | P8 | M | 可先复现；联验依赖 CE-08 |
 | 待实施 | CE-10 | P2 | 中文过程表达与低风险模糊请求直接执行 | P9 | S | CE-01/03/04 |
 | 待回归 | CE-11 | P2 | 保留 DSML 泄漏历史回归 | P7 | S | 无 |
@@ -131,10 +131,10 @@
 
 **工作范围**：先沿报告所指 run 对齐 tool call、result、执行记录、checkpoint、恢复上下文与 VERIFY 输入，确认“未找到工具结果”来自什么事实。仅记录脱敏关联标识和存在性结论；缺历史数据时明确不可判定，并用故障注入重建最小场景。
 
-- [ ] 给出“真实记录丢失 / 查找或恢复投影缺陷 / 历史兼容问题 / 无法证实”之一，附可复核证据；不得只引用模型解释。
-- [ ] 覆盖正常完成、失败已记录、写结果前后中断、恢复、重复 callId 或裁剪/截断边界。
-- [ ] 若确认缺陷，补先失败后通过的定向用例并修最小持久化/索引链路；若未复现，记录已测范围与剩余未知，不标成已修。
-- [ ] 已存在的工具失败不能变成“结果缺失”；真正缺失也不能补造成功结果或无条件重新执行原副作用。
+- [x] 给出“真实记录丢失 / 查找或恢复投影缺陷 / 历史兼容问题 / 无法证实”之一，附可复核证据；不得只引用模型解释。**结论：恢复投影缺陷（已修）＋ 原报告那次运行无法证实。** 证据见下方"CE-07 取证记录"；原 run 的会话、执行日志与 checkpoint 不在仓库，报告那一跳无法回溯，因此不把本轮结论当成对它的复现。
+- [x] 覆盖正常完成、失败已记录、写结果前后中断、恢复、重复 callId 或裁剪/截断边界。（`evidence-gap.test.ts` 的 13 条用例逐项驱动 `runtimeExecutionEvidenceGap` 并断言各自的判定文本。）
+- [x] 若确认缺陷，补先失败后通过的定向用例并修最小持久化/索引链路；若未复现，记录已测范围与剩余未知，不标成已修。（三条用例先在修复前失败、修复后通过；修复只改 `verify/task-state.ts` 的继承证据判定，不新增持久化字段。）
+- [x] 已存在的工具失败不能变成“结果缺失”；真正缺失也不能补造成功结果或无条件重新执行原副作用。（旧检查点里**失败**的步骤结果同样算已记录（原实现只认 `result.ok`，本身就是"失败变缺失"）；没有 callId 或仍未结算的继承条目仍是 gap；gap 走 `routeKnownIncompleteExecution` → RECOVER，未结算副作用由 `recover/policy.ts` 直接 abort，不会重放。）
 
 ### CE-08｜恢复耗尽后不再循环空问（P1）
 
@@ -142,11 +142,11 @@
 
 **工作范围**：明确自动恢复预算、用户授权的一次重试、原目标与已完成证据的续接关系；复用已有 continuation coordinator。用户选择重试后应执行一次有意义的恢复尝试，或说明仍缺哪项条件，不能用清零所有预算掩盖循环。
 
-- [ ] “再尝试一次 / 继续做吧”正确绑定原任务、产物、工作区和权限，不重新询问已经回答的目标。
-- [ ] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。
-- [ ] 同一阻塞未改变时不再只给原样三选一：呈现具体原因、已完成部分和所需动作；保持旧回复的发布幂等，不靠强制改写文案去重。
-- [ ] 权限不足、资源缺失和证据不可恢复分开处理；用户取消立即停止，成功副作用不重放。
-- [ ] CE-07 若发现证据缺口，先修缺口再验收本项，不仅修改追问措辞。
+- [ ] “再尝试一次 / 继续做吧”正确绑定原任务、产物、工作区和权限，不重新询问已经回答的目标。（Runtime 侧的一次性绑定重试已有实现与用例，本轮未改；端到端绑定属 CE-12。）
+- [ ] 预算耗尽后用户选择重试，保留累计历史并给出明确有界机会；重启后语义一致。（`recover.test.ts` 断言绑定重试恰好消费一次、第二次回到耗尽路径；跨重启语义由 runner-continuation 用例覆盖，本轮未新增。）
+- [x] 同一阻塞未改变时不再只给原样三选一：呈现具体原因、已完成部分和所需动作；保持旧回复的发布幂等，不靠强制改写文案去重。（`recover/escalation.ts` 给出原因类别、已完成部分与所需动作三件事实并写进 `clarificationRequest`；选项集合与发布 settlement 未改，重复措辞仍按原样发布。）
+- [x] 权限不足、资源缺失和证据不可恢复分开处理；用户取消立即停止，成功副作用不重放。（`recordedFailureKinds` 在无 TaskBook 步骤时改读 invocation 状态与 `lastError`：权限拒绝第一次就升级而不是烧掉重试预算，`aborted` 直接停止，`verify` 阶段的缺口归为"证据不可恢复"；未结算副作用仍由 `policy.ts` 直接 abort。）
+- [x] CE-07 若发现证据缺口，先修缺口再验收本项，不仅修改追问措辞。（CE-07 的恢复投影缺陷已在本轮先修并有先失败后通过的用例，之后才改升级事实。）
 
 ### CE-09｜失败不能在界面上消失（P1，先复现）
 
@@ -247,6 +247,54 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-23 第三轮（CE-07 取证、CE-08）
+
+### CE-07 取证记录
+
+**原报告那次运行：无法证实。** 报告所指 run 的会话、执行日志与 checkpoint 都在数据根，不在仓库里；本轮没有读取原始日志，也没有 Electron 实机复现。因此不对"那一次为什么报缺失"下结论，下面只记录**从源码可以建立**的事实。
+
+**从源码建立的事实（每条都有对应用例）**：`runtimeExecutionEvidenceGap` 只有在"存在 invocation 记录、却找不到同 callId 的结果"时才说 `tool result <callId> is missing`，其余情况各自有独立文案：
+
+| 输入事实 | 判定 | 是不是"结果缺失" |
+|---|---|---|
+| invocation `succeeded` + 结果在 | 无 gap | 否 |
+| invocation `failed` + 失败结果在 | 无 gap（负结果是证据） | 否 |
+| invocation `running`/`proposed`（记录已发布、结果未写回） | `tool result <id> is missing` | **是，唯一一条** |
+| invocation 状态被拒（`approval_denied` 等）+ 结果在 | `tool invocation <id> is <status>` | 否 |
+| 同 callId 出现两次 | `duplicate tool invocation <id>` | 否 |
+| invocation 证据被裁剪 | `tool invocation evidence is truncated` | 否 |
+| 副作用 `unknown`/`in_progress`/`planned` | `side effect <key> is <status>` | 否 |
+| 副作用是终态但本 run 没有对应 invocation | `side effect <key> has no matching tool invocation` | 否 |
+
+**确认的缺陷：恢复投影不自洽（已修）。** `run-checkpoint.ts` 的 `buildRunCheckpoint` 持久化 `sideEffects` 与 `taskExecution`，但**不**持久化 `toolInvocations`；`restoreContinuationContext` 用 `replaceSideEffectEvidence` 恢复账本，而 `ctx.toolInvocations` 从 `runner-init` 起是空数组。于是续跑的 run 继承了一批 callId 属于**上一轮**的终态副作用，这些 callId 永远不可能出现在本轮的 invocation 列表里，判定就把 Runtime 自己已经结算过的工作报成"没有对应工具调用"。任何"中断前已结算副作用、续跑后继续做完"的 run 都会命中，而 `runner-continuation.test.ts` 之前没有覆盖这一条。
+
+同一段的第二处：旧检查点的步骤证据回退分支要求 `result.ok === true`，于是**已记录的失败**也被算成"没有证据"——正是本节验收里"已存在的工具失败不能变成结果缺失"要禁止的事。
+
+**最小修复**（只改判定，不加持久化字段）：`inheritedEffectEvidence()` 取代 `hasLegacyCheckpointToolResult()`：只有在 `resumedFromCheckpointId` 存在时才谈继承；继承证据来自检查点自己带过来的东西——旧检查点步骤里记过这次调用与它的结果（成功或失败都算），或账本条目本身已是终态（`succeeded`/`failed`/`cancelled`，说明 Runtime 在中断前已结算）。没有 callId、仍未结算、或本 run 根本没续跑，仍然报 gap。
+
+**先失败后通过的证据**：上述三条用例在修改前失败（`expected 'side effect tool:exec:call-1 has no m…' to be undefined`），修改后 13 条全过；另有一条阶段级用例断言续跑 run 现在能以 `unverified` 进入 FINALIZE，而不是被打回 RECOVER。
+
+**剩余未知**：报告中"未找到工具结果"的原始文案与触发路径仍不可回溯；本轮只能说明"结果缺失"这一判定的成立条件，以及它此前会在续跑场景被**错误地**触发。若原报告那次并未续跑，则它属于另一条路径，需要原始日志才能继续。
+
+### CE-08 改了什么
+
+| 改动 | 内容 | 主要文件 |
+|---|---|---|
+| 恢复分类读到真实证据 | `recordedFailureKinds` 在 TaskBook 步骤为空（单循环下永远如此）时，改读 invocation 的权限类状态、`aborted` 状态、以及 `core_source_read_only` 这一声明种类，并把 `lastError` 文本交给既有的 `classifyStepFailure`。修复前：步骤执行器删除后没人再写 `taskExecution`，种类永远是空数组，`decideRecovery` 的权限拒绝与取消分支永久失效——每次失败都重试到预算耗尽，再以 `recovery_budget_exhausted` 升级，用户看到的原因与实际阻塞无关 | `packages/harness/src/stages/recover/policy.ts` |
+| 升级事实分三件 | 新增 `recover/escalation.ts`：原因类别（权限不足 / 资源缺失 / 证据不可恢复 / 副作用未结算 / 恢复预算耗尽 / 已中止 / 执行无法继续）、已完成部分（调用与副作用计数与状态、是否存在未发布草稿；只有计数与状态）、继续所需动作。三件事实写进 `clarificationRequest.blockingReason`，问题本身也点名原因与所需动作 | `packages/harness/src/stages/recover/escalation.ts`、`stages/recover.ts` |
+
+### 验证命令与结果
+
+- `pnpm.cmd exec vitest run packages/harness` → **80 文件 / 659 项通过**；`packages/runner` → **58 文件 / 368 项通过**（在 CE-07 修复之后跑，续跑相关用例全绿）。
+- `pnpm.cmd run typecheck` → exit 0；`pnpm.cmd run check:repo` → `ok (36 passed, 0 failed)`。
+- 新增用例：`stages/verify/evidence-gap.test.ts`（13）、`stages/recover.test.ts` 新增 5 条无 TaskBook 步骤的分类与升级事实用例（18）。
+
+### 本次未做
+
+- 仍未做真实模型调用与 Electron 实机；CE-12 全部场景未执行。
+- CE-08 的"绑定重试跨重启语义"沿用既有 runner-continuation 覆盖，本轮没有新增端到端断言；`escalateExhaustedReplan`（VERIFY 自己的升级）仍用原有的原因文案，未合并到新的三件事实格式。
+- CE-09～CE-11 未开始。
 
 ## 实施记录｜2026-09-23 第二轮（CE-05、CE-06）
 

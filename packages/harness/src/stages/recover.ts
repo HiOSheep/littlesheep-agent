@@ -7,6 +7,12 @@
 import type { RunContext, StageResult } from '@littlesheep/types';
 import { textOf } from './_shared.js';
 import { decideRecovery } from './recover/policy.js';
+import {
+  blockingCauseLabel,
+  classifyBlockingCause,
+  completedWorkSummary,
+  requiredActionFor,
+} from './recover/escalation.js';
 import { writeDecisionState } from '../decision-state.js';
 import { incrementRecoveryAttempts, recordFailure } from '../failure-state.js';
 
@@ -89,11 +95,25 @@ export function createRecoverStage() {
 /**
  * Runtime-authored clarification facts. ASK_USER composes the user-visible
  * wording from a real model call; RECOVER never authors reply text.
+ *
+ * What RECOVER does owe the user is the three facts that make the same question
+ * answerable: which cause it stopped for, what the run already finished, and what
+ * would have to change to continue. Without them the same three-way question came
+ * back for a permission refusal, a missing file and an unrecoverable evidence
+ * gap alike, and the model composing the message had nothing to separate them
+ * with.
  */
 function writeEscalationRequest(ctx: RunContext, reasonCode: string, recoveryAttempts: number): void {
   const originalRequest = textOf(ctx.inbound);
   const chinese = /[\u3400-\u9fff]/u.test(originalRequest);
   const detail = ctx.lastError?.message ?? 'execution could not continue safely';
+  const cause = classifyBlockingCause(ctx, reasonCode);
+  const causeLabel = blockingCauseLabel(cause, chinese);
+  const requiredAction = requiredActionFor(cause, chinese);
+  const completed = completedWorkSummary(ctx, chinese);
+  const blockingReason = chinese
+    ? `已在第 ${recoveryAttempts} 次恢复尝试后停止（原因类别：${causeLabel}）。具体原因：${detail}。已完成：${completed}。继续所需：${requiredAction}。`
+    : `Stopped after recovery attempt ${recoveryAttempts} (cause: ${causeLabel}). Reason: ${detail}. Already finished: ${completed}. Needed to continue: ${requiredAction}.`;
   writeDecisionState(ctx, 'recover', { clarificationRequest: {
     id: `${ctx.runId}:clarification`,
     kind: 'recovery_decision',
@@ -101,13 +121,13 @@ function writeEscalationRequest(ctx: RunContext, reasonCode: string, recoveryAtt
     createdAt: new Date().toISOString(),
     originalRequest,
     copySource: 'runtime_fallback',
-    blockingReason: `${ctx.lastError?.stage ?? 'recover'}: ${detail}`,
+    blockingReason,
     questions: [{
       id: 'question-1',
       field: 'recoveryDecision',
       prompt: chinese
-        ? `执行在第 ${recoveryAttempts} 次恢复后仍无法安全继续（${reasonCode}）。你希望我接下来如何处理？`
-        : `Execution could not continue safely after recovery attempt ${recoveryAttempts} (${reasonCode}). How would you like me to proceed?`,
+        ? `执行因「${causeLabel}」停下：${requiredAction}。你希望我接下来如何处理？`
+        : `Execution stopped for one reason — ${causeLabel}: ${requiredAction}. How would you like me to proceed?`,
       required: true,
       options: chinese
         ? ['再尝试一次', '保留已完成部分并说明现状', '停止任务']

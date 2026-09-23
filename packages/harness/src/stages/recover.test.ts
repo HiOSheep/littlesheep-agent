@@ -231,3 +231,129 @@ describe('recoverStage', () => {
     expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 });
+
+// CE-08: the single loop writes no TaskBook steps, so the classification that
+// decided retry-versus-escalate had nothing to read and every failure was
+// retried until the budget ran out. These use only the evidence an ordinary run
+// records: invocation statuses and the latest failure text.
+describe('recoverStage classification without TaskBook steps', () => {
+  function withInvocations(ctx: RunContext, statuses: NonNullable<RunContext['toolInvocations']>[number]['status'][]): RunContext {
+    ctx.toolInvocations = statuses.map((status, index) => ({
+      version: 1 as const,
+      id: `record-${index}`,
+      callId: `call-${index}`,
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName: 'write',
+      toolSource: 'builtin',
+      status,
+      proposedAt: '2026-09-23T00:00:00.000Z',
+      approval: { required: true as const, decision: 'denied' as const },
+      evidenceIds: [],
+    }));
+    return ctx;
+  }
+
+  it('escalates a permission denial immediately instead of spending the retry budget', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'execute', message: 'tool invocation call-0 is approval_denied' },
+      inbound: textMessage('user', '把生成的文件写进核心源码目录'),
+    });
+    withInvocations(ctx, ['approval_denied']);
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'ask_user', ok: true, meta: { reasonCode: 'permission_denied' } });
+    // One attempt consumed, not the whole budget.
+    expect(ctx.recoveryAttempts).toBe(1);
+    const reason = ctx.clarificationRequest?.blockingReason ?? '';
+    expect(reason).toContain('权限不足');
+    expect(reason).toContain('授予缺失的权限');
+    expect(reason).toContain('已完成');
+  });
+
+  it('stops instead of retrying when the run recorded a cancellation', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'execute', message: 'run aborted by the user' },
+      inbound: textMessage('user', 'go'),
+    });
+    withInvocations(ctx, ['aborted']);
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'exit', ok: false, meta: { action: 'abort', reasonCode: 'run_aborted' } });
+  });
+
+  it('escalates a poisoned core-source write as a permission cause, not a budget one', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'execute', message: 'LittleSheep core source is read-only in this version: D:\\core\\game.html' },
+      inbound: textMessage('user', '把游戏写进核心源码目录'),
+    });
+    ctx.toolInvocations = [{
+      version: 1,
+      id: 'record-0',
+      callId: 'call-0',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      toolName: 'write',
+      toolSource: 'builtin',
+      status: 'failed',
+      errorKind: 'core_source_read_only',
+      proposedAt: '2026-09-23T00:00:00.000Z',
+      approval: { required: false, decision: 'not_required' },
+      evidenceIds: [],
+    }];
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'ask_user', meta: { reasonCode: 'permission_denied' } });
+    expect(ctx.clarificationRequest?.blockingReason ?? '').toContain('权限不足');
+  });
+
+  it('names an unrecoverable evidence gap as its own cause', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 3,
+      maxRecoveryAttempts: 2,
+      lastError: { stage: 'verify', message: 'tool result call-1 is missing' },
+      inbound: textMessage('user', '继续做完'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'ask_user', meta: { forcedEscalate: true } });
+    const request = ctx.clarificationRequest!;
+    expect(request.blockingReason).toContain('证据不可恢复');
+    expect(request.blockingReason).toContain('无法自动修复');
+    // The facts the user needs, not only the option list.
+    expect(request.blockingReason).toContain('本次运行没有记录到工具调用');
+    expect(request.questions[0]?.prompt).toContain('证据不可恢复');
+  });
+
+  it('reports what the run already finished in the escalation facts', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 3,
+      maxRecoveryAttempts: 2,
+      lastError: { stage: 'execute', message: 'still failing' },
+      inbound: textMessage('user', '继续做完'),
+    });
+    ctx.sideEffects = [
+      { idempotencyKey: 'tool:write:a', status: 'succeeded' },
+      { idempotencyKey: 'tool:exec:b', status: 'failed' },
+    ] as RunContext['sideEffects'];
+    ctx.reply = 'draft that was never published';
+
+    await stage(ctx);
+
+    const reason = ctx.clarificationRequest?.blockingReason ?? '';
+    expect(reason).toContain('副作用：1 次已成功、1 次已失败、0 次未结算');
+    expect(reason).toContain('已有一份未发布的回答草稿');
+    // Redacted by construction: identifiers and counts only.
+    expect(reason).not.toContain('tool:write:a');
+  });
+});
