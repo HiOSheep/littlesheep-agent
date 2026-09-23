@@ -151,7 +151,8 @@ describe('run stream Local App API', () => {
       runtimeEvents,
       ...runnerOverrides,
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -165,6 +166,7 @@ describe('run stream Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
     return { dataDir, workplaceDir, server }
   }
 
@@ -210,7 +212,8 @@ describe('run stream Local App API', () => {
         clarificationRequest,
       }),
     ])
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -224,6 +227,7 @@ describe('run stream Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
     return {
       dataDir,
       workplaceDir,
@@ -567,7 +571,8 @@ describe('run stream Local App API', () => {
         reason: 'waiting for permission',
       }
       await runner.infra.runCheckpointStore!.write(checkpoint)
-      server = await startLocalAppApiServer(runner, {
+      server = await startLocalAppApiServer({
+        getRunner: () => runner,
         port: 0,
         sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
         projectIndex: new ProjectIndex({ dataDir }),
@@ -581,6 +586,7 @@ describe('run stream Local App API', () => {
         rebuildRunner: vi.fn(async () => undefined),
         updateRuntimeConfig: vi.fn(async () => undefined),
       })
+      await server.setRunner(runner)
 
       const requestBody = JSON.stringify({
         text: 'Permission is enabled. Try the original task again.',

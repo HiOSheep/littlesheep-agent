@@ -2,20 +2,27 @@ import { describe, expect, it } from 'vitest'
 import {
   createDesktopStartupPageHtml,
   createDesktopStartupPageUrl,
+  DESKTOP_STARTUP_SURFACE,
   DESKTOP_STARTUP_WINDOW_BACKGROUND,
+  DESKTOP_TITLEBAR_HEIGHT,
 } from './desktop-startup-page.js'
 
 describe('desktop startup page', () => {
-  it('renders only the centered LS icon on the translucent application surface', () => {
+  it('renders only the centered LS icon on the unified opaque surface', () => {
     const iconDataUrl = 'data:image/png;base64,AA=='
     const html = createDesktopStartupPageHtml(iconDataUrl)
 
-    expect(DESKTOP_STARTUP_WINDOW_BACKGROUND).toBe('#00000000')
-    expect(html).toContain('background: transparent')
-    expect(html).toContain('background: rgba(16, 16, 16, 0.72)')
-    expect(html).toContain('backdrop-filter: blur(24px) saturate(90%)')
+    expect(DESKTOP_STARTUP_SURFACE).toBe('#101010')
+    expect(DESKTOP_STARTUP_WINDOW_BACKGROUND).toBe(DESKTOP_STARTUP_SURFACE)
+    expect(DESKTOP_TITLEBAR_HEIGHT).toBe(32)
+    expect(html).toContain(`background: ${DESKTOP_STARTUP_SURFACE}`)
+    // A translucent material over the native caption buttons is the seam this
+    // page must not reintroduce.
+    expect(html).not.toContain('backdrop-filter')
+    expect(html).not.toMatch(/rgba\(16, 16, 16/u)
     expect(html).toContain('<div class="startup-drag-region" aria-hidden="true"></div>')
     expect(html).toContain('right: 150px')
+    expect(html).toContain('height: 32px')
     expect(html).toContain('-webkit-app-region: drag')
     expect(html).toContain('-webkit-app-region: no-drag')
     expect(html).toContain("bridge.startWindowDrag({ screenX: event.screenX, screenY: event.screenY })")

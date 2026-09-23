@@ -172,7 +172,8 @@ async function createFixture(
     },
   } as unknown as AgentRunner
   const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
-  const server = await startLocalAppApiServer(runner, {
+  const server = await startLocalAppApiServer({
+    getRunner: () => runner,
     port: 0,
     sessionIndex,
     projectIndex: new ProjectIndex({ dataDir }),
@@ -186,6 +187,7 @@ async function createFixture(
     rebuildRunner: vi.fn(async () => undefined),
     updateRuntimeConfig: vi.fn(async () => undefined),
   })
+  await server.setRunner(runner)
   return {
     abandon,
     dataDir,
@@ -395,7 +397,8 @@ describe('run checkpoint Local App API', () => {
         reason: 'waiting for permission',
       }
       await runner.infra.runCheckpointStore!.write(checkpoint)
-      server = await startLocalAppApiServer(runner, {
+      server = await startLocalAppApiServer({
+        getRunner: () => runner,
         port: 0,
         sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
         projectIndex: new ProjectIndex({ dataDir }),
@@ -409,6 +412,7 @@ describe('run checkpoint Local App API', () => {
         rebuildRunner: vi.fn(async () => undefined),
         updateRuntimeConfig: vi.fn(async () => undefined),
       })
+      await server.setRunner(runner)
 
       const path = localAppApiItemPath(
         LOCAL_APP_API_PREFIXES.runCheckpoints,

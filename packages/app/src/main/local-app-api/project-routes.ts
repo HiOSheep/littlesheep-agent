@@ -15,11 +15,11 @@ import type { ArchiveIndex } from '../archive-index.js'
 import { ProjectPathConflictError, type ProjectIndex } from '../project-index.js'
 import type { ProjectRebindingService } from '../project-rebinding.js'
 import type { SessionIndex } from '../session-index.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { buildRuntimePayload } from './runtime-routes.js'
 
 export interface ProjectRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   workplaceDir: string
   sessionIndex: SessionIndex
@@ -112,7 +112,7 @@ export async function routeProjects(
     const sessions = await sessionIndex.list()
     const projectSessions = sessions.filter((session) => sessionBelongsToProject(session, removed.id))
     if (url.searchParams.get('hard') === '1') {
-      const runner = context.getRunner()
+      const runner = resolveRunner(context.getRunner)
       for (const session of projectSessions) {
         await sessionIndex.remove(session.id)
         await runner.sessionManager.delete(asSessionId(session.id))

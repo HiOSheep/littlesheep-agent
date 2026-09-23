@@ -10,7 +10,8 @@ import { ProjectRebindingService } from './project-rebinding.js'
 import { sameBoundPath } from './path-rebinding.js'
 import { ManagedAttachmentCache } from './attachment-cache.js'
 import type { PluginHost } from '@littlesheep/plugins'
-import { HttpError, json, type LocalAppApiRequest } from './local-app-api/http.js'
+import { HttpError, RuntimeNotReadyError, json, type LocalAppApiRequest } from './local-app-api/http.js'
+import { LOCAL_APP_API_ROUTES } from '../shared/local-app-api-routes.js'
 import { routeExtensions } from './local-app-api/extension-routes.js'
 import { routeRuntime } from './local-app-api/runtime-routes.js'
 import { routeMemory } from './local-app-api/memory-routes.js'
@@ -29,17 +30,22 @@ import { DevelopmentEnvironmentManager } from './development-environments.js'
 
 export type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 export async function startLocalAppApiServer(
-  initialRunner: AgentRunner,
   opts: LocalAppApiServerOptions,
 ): Promise<LocalAppApiServer> {
-  // Mutable runner reference — allows hot-swapping without restarting the
-  // Local API server (port stays the same, renderer's apiBase remains valid).
-  let currentRunner = initialRunner
-  // The core API remains usable while the optional plugin host is absent or loading.
+  // The Runner may not exist yet: the listener starts first so the desktop
+  // window can show real session metadata while execution is still starting.
+  // `opts.getRunner()` returns undefined until the composition root publishes
+  // one; every Runner-backed route then fails with 503 runtime-not-ready.
   let currentPluginHost: PluginHost | null = null
+  const requireRunner = (): AgentRunner => {
+    const current = opts.getRunner()
+    if (!current) throw new RuntimeNotReadyError()
+    return current
+  }
   let currentConfig: Config = opts.config
   let sessionMutationQueue: Promise<void> = Promise.resolve()
   let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
+  let runRouterPromise: Promise<RunRouter> | undefined
   const mutateSession = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = sessionMutationQueue.then(operation)
     sessionMutationQueue = result.then(() => undefined, () => undefined)
@@ -50,7 +56,7 @@ export async function startLocalAppApiServer(
     runtimeConfigMutationQueue = result.then(() => undefined, () => undefined)
     return result
   }
-  const webProviderCheck = new WebProviderCheckCoordinator(() => currentRunner, () => currentConfig)
+  const webProviderCheck = new WebProviderCheckCoordinator(requireRunner, () => currentConfig)
   const projectRebinding = new ProjectRebindingService({
     dataDir: opts.dataDir,
     projectIndex: opts.projectIndex,
@@ -59,7 +65,7 @@ export async function startLocalAppApiServer(
     workspaceArtifactIndex: opts.workspaceArtifactIndex,
     terminalActivityIndex: opts.terminalActivityIndex,
     workspaceLayoutIndex: opts.workspaceLayoutIndex,
-    rebindMemory: (previous, project) => currentRunner.infra.memoryService.rebindProjectPath(previous, project),
+    rebindMemory: (previous, project) => requireRunner().infra.memoryService.rebindProjectPath(previous, project),
     rebindRuntimeWorkspace: (fromPath, toPath) => mutateRuntimeConfig(async () => {
       const currentWorkspace = currentConfig.agents.defaults.workspace || opts.workplaceDir
       if (!sameBoundPath(currentWorkspace, fromPath)) return
@@ -79,24 +85,12 @@ export async function startLocalAppApiServer(
   } catch (error) {
     console.error(`[projects] pending path rebind recovery failed: ${(error as Error).message}`)
   }
-  const attachmentCache = new ManagedAttachmentCache({
-    rootDir: join(opts.dataDir, 'attachment-cache'),
-  })
-  const embeddingModelManager = opts.memoryEmbeddingModelManager ?? new MemoryEmbeddingModelManager({ dataDir: opts.dataDir })
-  const developmentEnvironmentManager = opts.developmentEnvironmentManager ?? new DevelopmentEnvironmentManager({
-    dataDir: opts.dataDir,
-    electronExecutable: process.execPath,
-  })
-  const routeOptions = {
-    ...opts,
-    memoryEmbeddingModelManager: embeddingModelManager,
-    ...webProviderCheck.routeBindings(),
-  }
-  const runRouter = await RunRouter.create(initialRunner)
-  const terminalRouter = new TerminalRouter()
-  try {
+  const initializeForRunner = async (runner: AgentRunner): Promise<void> => {
     const protectedAttachmentIds = new Set<string>()
-    for (const inspection of await initialRunner.runCheckpoints?.list(128) ?? []) {
+    const inspections = typeof runner.runCheckpoints?.list === 'function'
+      ? await runner.runCheckpoints.list(128)
+      : []
+    for (const inspection of inspections) {
       if (inspection.disposition?.status === 'resumed'
         || inspection.disposition?.status === 'completed'
         || inspection.disposition?.status === 'abandoned') continue
@@ -105,9 +99,29 @@ export async function startLocalAppApiServer(
       }
     }
     await attachmentCache.initialize(protectedAttachmentIds)
-  } catch (error) {
-    console.error(`[attachments] managed cache initialization failed: ${(error as Error).message}`)
+    webProviderCheck.invalidate()
   }
+  const attachmentCache = new ManagedAttachmentCache({
+    rootDir: join(opts.dataDir, 'attachment-cache'),
+  })
+  const embeddingModelManager = opts.memoryEmbeddingModelManager ?? new MemoryEmbeddingModelManager({ dataDir: opts.dataDir })
+  const respondReadinessToPath = (requestPath: string): { payload: unknown } | undefined => (
+    requestPath === LOCAL_APP_API_ROUTES.readiness
+      ? { payload: opts.getExecutionReadiness?.() }
+      : undefined
+  )
+  const developmentEnvironmentManager = opts.developmentEnvironmentManager ?? new DevelopmentEnvironmentManager({
+    dataDir: opts.dataDir,
+    electronExecutable: process.execPath,
+  })
+  const routeOptions = {
+    ...opts,
+    getRunner: requireRunner,
+    respondReadiness: respondReadinessToPath,
+    memoryEmbeddingModelManager: embeddingModelManager,
+    ...webProviderCheck.routeBindings(),
+  }
+  const terminalRouter = new TerminalRouter()
   await developmentEnvironmentManager.initialize()
 
   const server = createServer((req, res) => {
@@ -120,25 +134,33 @@ export async function startLocalAppApiServer(
       return
     }
 
-    route(
-      req,
-      res,
-      () => currentRunner,
-      () => currentPluginHost,
-      () => currentConfig,
-      (c: Config) => {
-        webProviderCheck.invalidateIfWebChanged(c)
-        currentConfig = c
-      },
-      routeOptions,
-      mutateSession,
-      mutateRuntimeConfig,
-      projectRebinding,
-      attachmentCache,
-      runRouter,
-      terminalRouter,
-      developmentEnvironmentManager,
-    ).catch((err) => {
+    void (async () => {
+      const readiness = routeOptions.respondReadiness?.(req.url ?? '/')
+      if (readiness) {
+        json(res, 200, readiness.payload)
+        return
+      }
+      if (runRouterPromise === undefined) throw new RuntimeNotReadyError()
+      return route(
+        req,
+        res,
+        requireRunner,
+        () => currentPluginHost,
+        () => currentConfig,
+        (c: Config) => {
+          webProviderCheck.invalidateIfWebChanged(c)
+          currentConfig = c
+        },
+        routeOptions,
+        mutateSession,
+        mutateRuntimeConfig,
+        projectRebinding,
+        attachmentCache,
+        await runRouterPromise,
+        terminalRouter,
+        developmentEnvironmentManager,
+      )
+    })().catch((err) => {
       const status = err instanceof HttpError ? err.status : 500
       if (!res.headersSent) {
         json(res, status, { error: (err as Error).message })
@@ -152,9 +174,10 @@ export async function startLocalAppApiServer(
 
   return {
     port,
-    setRunner: (r: AgentRunner) => {
-      currentRunner = r
-      webProviderCheck.invalidate()
+    setRunner: async (r: AgentRunner) => {
+      runRouterPromise = RunRouter.create(r)
+      await initializeForRunner(r)
+      await runRouterPromise
     },
     setPluginHost: (host: PluginHost) => {
       currentPluginHost = host
@@ -164,7 +187,8 @@ export async function startLocalAppApiServer(
       currentConfig = c
     },
     stop: async () => {
-      runRouter.stop()
+      const router = await runRouterPromise?.catch(() => undefined)
+      router?.stop()
       terminalRouter.stop()
       await embeddingModelManager.shutdown()
       await closeHttpServer(server)
@@ -172,7 +196,7 @@ export async function startLocalAppApiServer(
   }
 }
 
-type RunnerGetter = () => AgentRunner
+type RunnerGetter = () => AgentRunner | undefined
 type PluginHostGetter = () => PluginHost | null
 
 async function route(

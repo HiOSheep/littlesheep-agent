@@ -9,7 +9,7 @@ import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import type { ProjectIndex } from '../project-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
-import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
+import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { openInVSCode } from './vscode-launcher.js'
 import {
   listWorkspaceDirectory,
@@ -33,7 +33,7 @@ const MAX_ATTACHMENT_IMPORT_BODY_BYTES = 36 * 1024 * 1024
 const MAX_WORKSPACE_SAVE_BODY_BYTES = MAX_TEXT_SAVE_BYTES + 64 * 1024
 
 export interface WorkspaceRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   workplaceDir: string
   projectIndex: ProjectIndex
@@ -129,7 +129,7 @@ export async function routeWorkspace(
       root,
       context.workplaceDir,
     )
-    await syncWorkspaceResourceChanges(context.getRunner(), root, {
+    await syncWorkspaceResourceChanges(resolveRunner(context.getRunner), root, {
       ...workspaceContext,
       changes: [{ path: target, source: 'user' }],
     })

@@ -12,18 +12,18 @@ import type {
   LocalAppRunCheckpointListResponse,
   LocalAppRunCheckpointResumeRequest,
 } from '../../shared/run-checkpoint-contracts'
-import { localApiResponseError, localApiUrl } from './common'
+import { localApiFetch, localApiResponseError } from './common'
 import { consumeRunStream, type RunResult, type RunStreamHandlers } from './run'
 
 export async function listRunCheckpoints(): Promise<LocalAppRunCheckpointListResponse> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.runCheckpoints))
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.runCheckpoints)
   if (!response.ok) throw await localApiResponseError(response)
   return response.json() as Promise<LocalAppRunCheckpointListResponse>
 }
 
 export async function inspectRunCheckpoint(checkpointId: string): Promise<LocalAppRunCheckpointDetail> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, checkpointId)
-  const response = await fetch(localApiUrl(path))
+  const response = await localApiFetch(path)
   if (!response.ok) throw await localApiResponseError(response)
   const payload = await response.json() as LocalAppRunCheckpointInspectResponse
   return payload.checkpoint
@@ -34,7 +34,7 @@ export async function abandonRunCheckpoint(
   reason = 'user abandoned checkpoint from the desktop app',
 ): Promise<LocalAppRunCheckpointAbandonResponse> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, checkpointId, '/abandon')
-  const response = await fetch(localApiUrl(path), {
+  const response = await localApiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reason }),
@@ -49,7 +49,7 @@ export async function resumeRunCheckpointStream(
   handlers: RunStreamHandlers,
 ): Promise<RunResult> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, checkpointId, '/resume/stream')
-  const response = await fetch(localApiUrl(path), {
+  const response = await localApiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),

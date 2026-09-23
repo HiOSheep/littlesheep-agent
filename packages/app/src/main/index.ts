@@ -13,7 +13,7 @@
 //   9. Expose port to renderer via env var (preload reads it)
 //  10. Create BrowserWindow
 
-import { app, dialog, net } from 'electron'
+import { app, dialog, ipcMain, net } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
@@ -32,7 +32,7 @@ import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/bra
 import { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
 import { createRunner, type AgentRunner, type LogFn } from '@littlesheep/runner'
 import { createPluginHost, type PluginHost } from '@littlesheep/plugins'
-import { startLocalAppApiServer, type LocalAppApiServer } from './local-app-api-server.js'
+import { startLocalAppApiServer, type LocalAppApiServer, type LocalAppApiServerOptions } from './local-app-api-server.js'
 import { BUILTIN_PLUGIN_SOURCES } from './builtin-plugins.js'
 import { BOOTSTRAP_TEMPLATES } from './bootstrap-templates.js'
 import { classifyAttachment } from './attachments.js'
@@ -60,6 +60,12 @@ import {
   getEmbeddedBrowserSession,
 } from './embedded-browser.js'
 import { recordBootstrapTiming } from './bootstrap-timing.js'
+import { createRuntimeReadinessController } from './runtime-readiness.js'
+import {
+  isRendererTimingStage,
+  RENDERER_TIMING_CHANNEL,
+  RUNTIME_READINESS_QUERY_CHANNEL,
+} from '../shared/runtime-readiness-ipc.js'
 
 let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
@@ -74,7 +80,12 @@ let shutdownStarted = false
 let quitRequested = false
 const runActivity = new RunActivityMonitor()
 
+// Startup timing anchor for cold-start measurement. `process.uptime()` is the
+// honest origin: module loading before the first business log is already
+// included in it. The explicit `process-start` entry exists so a harness can
+// read the origin without parsing the module-load entry.
 recordBootstrapTiming('main-module-ready')
+recordBootstrapTiming('process-start')
 
 // Module-level state for runner rebuild (triggered by API key change).
 let currentConfig: Config | null = null
@@ -104,6 +115,22 @@ const desktopAcceptanceSnapshot = createDesktopAcceptanceSnapshotProvider({
   getCurrentRunner: () => runner,
   getRetiredRunnerCount: () => retiredRunners.size,
 })
+
+// Execution readiness is published to the visible window so the Renderer can
+// show the real stage instead of an empty shell. The window is resolved per
+// publish: close-to-background can replace it while startup is still running.
+const readiness = createRuntimeReadinessController({
+  getWindow: () => desktopShell.currentWindow(),
+  onWarning: (message) => console.warn(`[readiness] ${message}`),
+})
+
+function installReadinessHandlers(): void {
+  ipcMain.handle(RUNTIME_READINESS_QUERY_CHANNEL, () => readiness.current())
+  ipcMain.on(RENDERER_TIMING_CHANNEL, (_event, stage: unknown) => {
+    if (!isRendererTimingStage(stage)) return
+    recordBootstrapTiming(stage)
+  })
+}
 
 function providerHasKey(provider: ModelProvider): boolean {
   return !provider.apiKey || !!resolveApiKey(provider.apiKey)
@@ -206,6 +233,10 @@ async function updateRuntimeConfig(config: Config): Promise<Config> {
 
 async function bootstrap(): Promise<void> {
   let stageStartedAt = recordBootstrapTiming('bootstrap-start')
+  // Stage 1 — durable prerequisites. Data-root migration, the Memory v3
+  // locator and the API-key injection must finish before any writer starts, so
+  // none of them may be deferred or reordered for the sake of an earlier window.
+  readiness.begin('data-root', '正在准备本机数据目录')
   // 1. Load branding and complete any registered data-root operation before
   //    creating a writer, opening SQLite, or materializing the user layout.
   const branding = await loadBranding()
@@ -234,6 +265,7 @@ async function bootstrap(): Promise<void> {
   stageStartedAt = recordBootstrapTiming('keychain-ready', stageStartedAt)
 
   // 3. Load config (env vars are now set, $VAR references resolve correctly).
+  readiness.begin('config', '正在读取本机配置')
   const runtime = prepareRuntimeConfig(await loadConfig({ dataDir: dataDir.root }), dataDir.workplace)
   stageStartedAt = recordBootstrapTiming('config-ready', stageStartedAt)
   let config = runtime.config
@@ -255,25 +287,19 @@ async function bootstrap(): Promise<void> {
   if (runtime.migratedDefaultWorkspace || memoryPreparation.configChanged) {
     await saveConfig(config, join(dataDir.root, 'config.json'))
   }
+  currentConfig = config
+  currentBranding = branding
+  currentModel = model
   stageStartedAt = recordBootstrapTiming('durable-config-ready', stageStartedAt)
 
-  // 4. Any registered Memory v3 operation has now completed or failed closed;
-  //    config follows the durable locator before the first runtime writer starts.
+  // Stage 2 — UI metadata + the Local App API listener. These do not need the
+  // Runner, so the window can become readable and interactive while execution
+  // is still being built. Any registered Memory v3 operation has already
+  // completed or failed closed, and `config` already follows the durable
+  // locator, so the reads below cannot observe an inconsistent data root.
 
-  // 5. Create embedded runner.
-  runner = await createRunner({
-    config,
-    branding,
-    model,
-    bootstrapDir: dataDir.root,
-    containerRoot: dataDir.root,
-    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, dataDir.root),
-    tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
-  })
-  stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
-  runActivity.setRunners([runner])
-
-  // 6. Project + session + archive indexes for UI sidebar and settings.
+  // 4. Project + session + archive indexes for UI sidebar and settings.
+  readiness.begin('ui-indexes', '正在读取会话与项目索引')
   projectIndex = new ProjectIndex({ dataDir: dataDir.root })
   await projectIndex.removeManagedWorkspaceShells(dataDir.workplace)
   stageStartedAt = recordBootstrapTiming('project-index-ready', stageStartedAt)
@@ -289,14 +315,12 @@ async function bootstrap(): Promise<void> {
   getEmbeddedBrowserSession()
   stageStartedAt = recordBootstrapTiming('ui-indexes-ready', stageStartedAt)
 
-  // Save module-level state for rebuildRunner.
-  currentConfig = config
-  currentBranding = branding
-  currentModel = model
-
-  // 7. Start local app API server on loopback (random free port).
+  // 5. Start the local app API listener before the Runner exists. Runner-backed
+  //    routes answer 503 runtime-not-ready until `startExecution()` finishes;
+  //    metadata routes (sessions, projects, config, readiness) serve normally.
+  readiness.begin('api', '正在启动本地接口')
   providerCalibrationToken = randomBytes(32).toString('base64url')
-  server = await startLocalAppApiServer(runner, {
+  const apiOptions: LocalAppApiServerOptions = {
     port: 0,
     sessionIndex,
     projectIndex,
@@ -308,6 +332,10 @@ async function bootstrap(): Promise<void> {
     dataDir: dataDir.root,
     workplaceDir: dataDir.workplace,
     providerCalibrationToken,
+    getExecutionReadiness: () => readiness.current(),
+    // The Runner is published later by `startExecution()`; until then every
+    // Runner-backed route answers 503 runtime-not-ready.
+    getRunner: () => runner ?? undefined,
     desktopAcceptance: process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] === '1'
       ? {
           token: providerCalibrationToken,
@@ -387,7 +415,8 @@ async function bootstrap(): Promise<void> {
       })
       return result.canceled ? null : result.filePaths[0] ?? null
     },
-  })
+  }
+  server = await startLocalAppApiServer(apiOptions)
   stageStartedAt = recordBootstrapTiming('local-api-ready', stageStartedAt)
   await writeLocalAppApiLocator(dataDir.root, {
     version: 1,
@@ -398,33 +427,74 @@ async function bootstrap(): Promise<void> {
     startedAt: new Date().toISOString(),
   })
   stageStartedAt = recordBootstrapTiming('locator-written', stageStartedAt)
+  readiness.begin('api', '正在准备运行能力', { port: server.port })
 
-  // 8. Start the optional plugin host. Built-in channel implementations use
-  //    dynamic imports and are activated only when their channel type is enabled.
+  // 6. Show the application shell now: configuration and session metadata are
+  //    consistent, so the window can be read and typed into while the Runner
+  //    finishes starting.
+  desktopShell.initialize()
+  recordBootstrapTiming('desktop-shell-initialized', stageStartedAt)
+
+  // Stage 3 — execution. The plugin host is created first so the Runner can be
+  // handed to it in the same step that makes execution available.
+  readiness.begin('execution', '正在准备运行能力', { port: server.port })
+  await startExecution({ branding, config, model, dataDir: dataDir.root })
+}
+
+/**
+ * Build the embedded Runner and publish execution readiness.
+ *
+ * Only the steps that truly need the Runner live here; the window and the
+ * metadata API are already usable when this runs. A failure is a reported
+ * readiness state, never a frame that pretends the app is working.
+ */
+async function startExecution(input: {
+  branding: BrandingConfig
+  config: Config
+  model: string
+  dataDir: string
+}): Promise<void> {
+  const dataDir = input.dataDir
+  let stageStartedAt = recordBootstrapTiming('execution-start')
+  const created = await createRunner({
+    config: input.config,
+    branding: input.branding,
+    model: input.model,
+    bootstrapDir: dataDir,
+    containerRoot: dataDir,
+    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, dataDir),
+    tokenizerFetch: (fetchInput, init) => net.fetch(fetchInput instanceof URL ? fetchInput.href : fetchInput, init),
+  })
+  // Publish the Runner before the run router is built: every Runner-backed
+  // route reads this reference, and it stays undefined until now on purpose.
+  runner = created
+  stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
+  runActivity.setRunners([created])
+
+  // The run router owns interrupted-run recovery, so it is created together
+  // with the Runner rather than with the listener. Execution readiness is
+  // published after it settles, so no request observes a half-built router.
+  await server?.setRunner(created)
+
+  // Built-in channel implementations use dynamic imports and are activated only
+  // when their channel type is enabled.
   pluginHost = createPluginHost({
-    runner,
-    bindingsFile: join(dataDir.channels, 'bindings.json'),
-    pluginInstallDir: dataDir.plugins,
-    pluginDataDir: dataDir.pluginData,
-    config,
+    runner: created,
+    bindingsFile: join(dataSubdirs(input.branding).channels, 'bindings.json'),
+    pluginInstallDir: dataSubdirs(input.branding).plugins,
+    pluginDataDir: dataSubdirs(input.branding).pluginData,
+    config: input.config,
     builtinSources: BUILTIN_PLUGIN_SOURCES,
     log: ((level: 'info' | 'warn' | 'error', msg: string) =>
       console.log(`[plugins:${level}] ${msg}`)) as LogFn,
   })
-  server.setPluginHost(pluginHost)
+  server?.setPluginHost(pluginHost)
   stageStartedAt = recordBootstrapTiming('plugin-host-ready', stageStartedAt)
   void pluginHost.start().catch((err) => {
     console.error('[plugins] host failed to start:', err)
   })
-
-  // 9. Expose server port to renderer via env (preload reads it).
-  process.env['LITTLESHEEP_API_PORT'] = String(server.port)
-
-  // 10. Create the visible shell and its explicit background control surface.
-  desktopShell.initialize()
-  recordBootstrapTiming('desktop-shell-initialized', stageStartedAt)
+  readiness.ready()
 }
-
 /**
  * Rebuild the runner after an API key change.
  *
@@ -531,11 +601,13 @@ async function shutdownRetiredRunners(): Promise<void> {
 // The losing instance calls app.quit() above and never reaches here.
 if (gotLock) {
   app.whenReady().then(() => {
+    installReadinessHandlers()
     recordBootstrapTiming('electron-app-ready')
     desktopShell.showStartup()
     recordBootstrapTiming('desktop-startup-visible')
     void bootstrap().catch((error: unknown) => {
       console.error('[bootstrap] failed:', error)
+      readiness.fail(error instanceof Error ? error.message : String(error), { retryable: true })
       desktopShell.showStartupError(error)
     })
   })

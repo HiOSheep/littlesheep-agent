@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-22 20:21:00
+最后更新：2026-09-23 10:20:43
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 

@@ -56,7 +56,7 @@ describe('chat layout stability', () => {
     expect(titlebar).toContain('height: var(--window-titlebar-height)')
     expect(titlebar).toContain('min-height: var(--window-titlebar-height)')
     expect(titlebar).toContain('max-height: var(--window-titlebar-height)')
-    expect(desktopShell).toContain('export const WINDOW_TITLEBAR_HEIGHT = 32')
+    expect(desktopShell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
     expect(desktopShell).toContain('height: WINDOW_TITLEBAR_HEIGHT')
   })
 
@@ -294,9 +294,13 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('mask-image')
     expect(styles).not.toContain('sidebar-corner-mask')
     expect(desktopShell).toContain("transparent: false")
-    expect(desktopShell).toContain("backgroundMaterial: 'acrylic'")
-    expect(desktopShell).toContain("color: '#101010'")
-    expect(desktopShell).toContain("process.platform === 'win32' ? '#00000000' : '#101010'")
+    // 2026-09-23 cold-start unification: the window no longer layers acrylic
+    // over the native caption buttons. Acrylic plus a translucent page painted
+    // the visible seam, so the unified opaque #101010 surface is the verified
+    // scheme and the material flag must stay absent.
+    expect(desktopShell).not.toContain('backgroundMaterial')
+    expect(desktopShell).toContain('color: DESKTOP_STARTUP_SURFACE')
+    expect(desktopShell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
     expect(desktopShell).toContain('roundedCorners: true')
     expect(desktopShell).toContain('thickFrame: true')
     expect(desktopShell).toContain('win.setAccentColor(false)')

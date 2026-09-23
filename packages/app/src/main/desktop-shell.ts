@@ -19,8 +19,11 @@ import {
 } from './desktop-window-state.js'
 import {
   createDesktopStartupPageUrl,
+  DESKTOP_STARTUP_SURFACE,
+  DESKTOP_TITLEBAR_HEIGHT,
 } from './desktop-startup-page.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
+import { recordBootstrapTiming } from './bootstrap-timing.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepTrayController } from './tray-controller.js'
 import {
@@ -33,8 +36,10 @@ import {
 
 // Keep the renderer titlebar row and Electron's native caption buttons on the
 // same CSS-pixel height. The native overlay is outside the DOM, so this
-// explicit contract prevents the two rows from drifting independently.
-export const WINDOW_TITLEBAR_HEIGHT = 32
+// explicit contract prevents the two rows from drifting independently. The
+// value is owned by `desktop-startup-page.ts` because the startup document
+// reserves exactly this row for the drag region.
+export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT
 
 export interface LittleSheepDesktopShellOptions {
   activity: RunActivityMonitor
@@ -111,6 +116,17 @@ export class LittleSheepDesktopShell {
     this.mainWindow = window
     this.restoreWindowState()
     this.loadRenderer(window)
+  }
+
+  /**
+   * The live application window, or undefined when none exists.
+   *
+   * Callers that push state into the visible window (readiness transitions)
+   * must resolve it per publish: close-to-background and `show()` can replace
+   * or hide the window while the Runtime is still starting.
+   */
+  currentWindow(): BrowserWindow | undefined {
+    return this.resolveWindow()
   }
 
   /** Show a lightweight branding surface while the Runtime is still starting. */
@@ -206,11 +222,12 @@ export class LittleSheepDesktopShell {
       title: 'LittleSheep',
       icon: resolveDesktopIcon(),
       titleBarStyle: 'hidden',
-      // Keep the primary Electron surface opaque. On this Windows/Electron
-      // combination transparent top-level windows can lose their WebContents
-      // paint layer entirely; acrylic still supplies the system material.
+      // One opaque surface for the startup page, the renderer titlebar and the
+      // native caption buttons. Acrylic composites the native overlay against a
+      // differently-lit backdrop than the page paints, which is the seam the
+      // cold-start screenshots showed; the unified solid surface is the
+      // verified scheme.
       transparent: false,
-      backgroundMaterial: 'acrylic',
       roundedCorners: true,
       // Keep the native thick frame so Windows resizing, shadow, and window
       // animations remain available. The active frame highlight is disabled
@@ -218,7 +235,7 @@ export class LittleSheepDesktopShell {
       thickFrame: true,
       hasShadow: true,
       titleBarOverlay: {
-        color: '#101010',
+        color: DESKTOP_STARTUP_SURFACE,
         symbolColor: '#e8e8e8',
         height: WINDOW_TITLEBAR_HEIGHT,
       },
@@ -304,6 +321,7 @@ export class LittleSheepDesktopShell {
     win.once('ready-to-show', markRendererReadyForInitialShow)
     win.webContents.once('did-finish-load', () => {
       if (win.isDestroyed()) return
+      recordBootstrapTiming('renderer-did-finish-load')
       markRendererReadyForInitialShow()
       win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
       win.setBackgroundColor(applicationWindowBackgroundColor())
@@ -410,6 +428,7 @@ export class LittleSheepDesktopShell {
   private loadRenderer(win: BrowserWindow): void {
     if (win.isDestroyed() || this.rendererLoadedWindows.has(win)) return
     this.rendererLoadedWindows.add(win)
+    recordBootstrapTiming('renderer-load-started')
     // The standalone startup page can remain loading on some Electron/Windows
     // combinations. End that navigation before handing the same WebContents
     // to the application renderer, otherwise loadFile can be reported as an
@@ -539,11 +558,11 @@ function resolveDesktopStartupIconDataUrl(): string | undefined {
 }
 
 function applicationWindowBackgroundColor(): string {
-  return process.platform === 'win32' ? '#00000000' : '#101010'
+  return DESKTOP_STARTUP_SURFACE
 }
 
 function startupWindowBackgroundColor(): string {
-  return process.platform === 'win32' ? '#00000000' : '#101010'
+  return DESKTOP_STARTUP_SURFACE
 }
 
 function isNavigationAbortedError(error: unknown): boolean {

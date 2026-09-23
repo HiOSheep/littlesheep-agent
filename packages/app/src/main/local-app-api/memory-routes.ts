@@ -17,7 +17,7 @@ import {
   type MemoryNodeManagementAction,
   type MemoryResourceManagementAction,
 } from '../memory-tree-control.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { routeMemoryAtom } from './memory-atom-routes.js'
 import type { MemoryEmbeddingModelController } from '../memory-embedding-model-control.js'
 import { routeMemoryMigration } from './memory-migration-routes.js'
@@ -32,7 +32,7 @@ import type {
 } from '../../shared/memory-control-contracts.js'
 
 export interface MemoryRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   projectIndex: ProjectIndex
   getConfig: () => Config
   setConfig: (config: Config) => void
@@ -66,7 +66,7 @@ export async function routeMemory(
   context: MemoryRouteContext,
 ): Promise<boolean> {
   const { req, res, url, path, method } = request
-  const runner = context.getRunner()
+  const runner = resolveRunner(context.getRunner)
   const mutateRuntimeConfig = context.mutateRuntimeConfig ?? (<T>(operation: () => Promise<T>) => operation())
 
   if (await routeMemoryAtom(request, {

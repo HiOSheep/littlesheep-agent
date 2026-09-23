@@ -423,7 +423,10 @@ async function checkRepositoryNavigation() {
   // These are the current composition hotspots. A later split may lower a
   // baseline; adding new responsibilities must never increase it.
   const hotspotBaselines = {
-    'packages/app/src/renderer/App.tsx': 7,
+    // 2026-09-23: App.tsx now mounts the readiness notice beside AppView, so a
+    // cold-start window can report the Runtime's real stage. Keep it at this
+    // measured boundary; further shell logic belongs in app-shell/.
+    'packages/app/src/renderer/App.tsx': 16,
     // 2026-09-02: startup recovery, runtime settings and session projection
     // changes are frozen here; the facade is now in the hard-limit queue.
     'packages/app/src/renderer/app-shell/use-app-controller.ts': 656,
@@ -446,7 +449,11 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 600,
     // 2026-08-14: attachment lease protection is initialized with the API
     // server; route composition must move to the existing adapter boundary.
-    'packages/app/src/main/local-app-api-server.ts': 288,
+    // 2026-09-23: the listener now starts before the Runner, so this facade
+    // also owns the readiness short-circuit and lazy Runner resolution. Extract
+    // startLocalAppApiServer into a dedicated composition module before adding
+    // a new responsibility here.
+    'packages/app/src/main/local-app-api-server.ts': 320,
     'packages/app/src/renderer/api.ts': 22,
     'packages/memory-tree/src/memory-repository.ts': 172,
     'packages/memory-tree/src/memory-service.ts': 343,

@@ -27,7 +27,7 @@ import type { ProjectIndex } from '../project-index.js'
 import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
-import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiRequest } from './http.js'
 import { resolveReasoning } from './runtime-routes.js'
 import {
   finishRunResources,
@@ -79,7 +79,8 @@ interface DurableRecoveryInfrastructure {
 }
 
 export interface RunRouteContext {
-  getRunner: () => AgentRunner
+  /** Undefined until the composition root publishes the Runner; fail closed. */
+  getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   /** Active movable application-data root; defines the logical LS container. */
   dataDir?: string
@@ -291,7 +292,7 @@ export class RunRouter {
         return true
       }
       const controller = new AbortController()
-      const runner = existingActive?.runner ?? context.getRunner()
+      const runner = existingActive?.runner ?? resolveRunner(context.getRunner)
       const active: ActiveStreamRun = existingActive ?? { controller, runner }
       const ownsActiveRun = !existingActive
       if (ownsActiveRun) this.activeStreams.set(runId, active)
@@ -375,7 +376,7 @@ export class RunRouter {
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.run) {
       const body = await readJson(req)
       const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
-      const runner = context.getRunner()
+      const runner = resolveRunner(context.getRunner)
       const cwd = resolveRunWorkspace(effectiveBody, context.getConfig(), context.workplaceDir)
       const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)

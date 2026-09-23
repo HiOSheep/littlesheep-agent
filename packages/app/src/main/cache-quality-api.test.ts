@@ -70,7 +70,8 @@ describe('cache quality Local App API', () => {
         cacheObservationKey: 'cache-quality-api-key',
       },
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -84,6 +85,7 @@ describe('cache quality Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
 
     try {
       const query = new URLSearchParams({

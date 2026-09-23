@@ -52,7 +52,8 @@ describe('workspace terminal authority API', () => {
       initialize: vi.fn(async () => undefined),
       terminalEnvironment: vi.fn(async () => process.env),
     } as unknown as DevelopmentEnvironmentManager
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -67,6 +68,7 @@ describe('workspace terminal authority API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
 
     try {
       const base = `http://127.0.0.1:${server.port}`

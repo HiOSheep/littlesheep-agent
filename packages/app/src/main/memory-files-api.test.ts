@@ -51,7 +51,8 @@ describe('memory file Local App API', () => {
         sessionManager: { semanticCacheActivationOverview },
       },
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -65,6 +66,7 @@ describe('memory file Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async (_next: Config) => undefined),
     })
+    await server.setRunner(runner)
     servers.push(server)
     const origin = `http://127.0.0.1:${server.port}`
 

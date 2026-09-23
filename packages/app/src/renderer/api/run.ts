@@ -33,7 +33,7 @@ import type {
   LocalAppRuntimeTaskEventRequest,
   LocalAppRuntimeTaskEventResponse,
 } from '../../shared/runtime-event-contracts'
-import { localApiResponseError, localApiStatusError, localApiUrl, parseSseFrame } from './common'
+import { localApiFetch, localApiResponseError, localApiStatusError, parseSseFrame } from './common'
 
 export interface RunResult {
   runId: string
@@ -125,7 +125,7 @@ export async function runAgent(
   permissionMode?: PermissionModeId,
   profile?: AgentProfileId,
 ): Promise<RunResult> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.run), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.run, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, sessionId, permissionMode, profile }),
@@ -185,7 +185,7 @@ export async function runAgentStream(
   handlers: RunStreamHandlers,
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.runStream), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.runStream, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, sessionId, permissionMode, ...options }),
@@ -313,7 +313,7 @@ export async function sendRuntimeControlEvent(
   reason?: string,
 ): Promise<RuntimeEventIngressOutcome> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId, '/events')
-  const res = await fetch(localApiUrl(path), {
+  const res = await localApiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type, ...(reason ? { reason } : {}) }),
@@ -327,7 +327,7 @@ export async function sendRuntimeTaskEvent(
   request: LocalAppRuntimeTaskEventRequest,
 ): Promise<RuntimeEventIngressOutcome> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId, '/events')
-  const res = await fetch(localApiUrl(path), {
+  const res = await localApiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -349,7 +349,7 @@ async function readRuntimeEventOutcome<T extends { outcome: RuntimeEventIngressO
 }
 
 async function respondApproval(id: string, approved: boolean): Promise<void> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.approvals, id)), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.approvals, id), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approved }),

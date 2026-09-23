@@ -7,7 +7,7 @@ import {
   LOCAL_APP_API_ROUTES,
   localAppApiItemPath,
 } from '../../shared/local-app-api-routes'
-import { localApiStatusError, localApiUrl, parseSseFrame } from './common'
+import { localApiFetch, localApiStatusError, parseSseFrame } from './common'
 
 export interface WorkspaceCommandResult {
   command: string
@@ -27,7 +27,7 @@ export async function runWorkspaceCommand(
   sessionId?: string,
   options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<WorkspaceCommandResult> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalRun), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.terminalRun, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, command, sessionId, ...options }),
@@ -54,7 +54,7 @@ export async function runWorkspaceCommandStream(
   handlers: WorkspaceCommandStreamHandlers = {},
   options: { permissionMode?: PermissionModeId; approved?: boolean } = {},
 ): Promise<WorkspaceCommandResult> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalStream), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.terminalStream, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, command, sessionId, ...options }),
@@ -108,7 +108,7 @@ export async function listWorkspaceTerminalActivity(
 ): Promise<TerminalActivityRecord[]> {
   const params = new URLSearchParams({ root, limit: String(limit) })
   if (sessionId) params.set('sessionId', sessionId)
-  const res = await fetch(`${localApiUrl(LOCAL_APP_API_ROUTES.terminalActivity)}?${params.toString()}`)
+  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.terminalActivity)}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw localApiStatusError(res.status, (data as { error: string }).error)
@@ -140,7 +140,7 @@ export async function createWorkspaceTerminalSession(
   root: string,
   size?: { cols: number; rows: number },
 ): Promise<WorkspaceTerminalSession> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.terminalSession), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.terminalSession, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows }),
@@ -156,7 +156,7 @@ export async function streamWorkspaceTerminalSession(
   terminalSessionId: string,
   handlers: WorkspaceTerminalSessionHandlers,
 ): Promise<void> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/stream')), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/stream'), {
     signal: handlers.signal,
   })
   if (!res.ok) {
@@ -198,7 +198,7 @@ export async function writeWorkspaceTerminalSession(
   command: string,
   appSessionId?: string,
 ): Promise<void> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, sessionId: appSessionId }),
@@ -215,7 +215,7 @@ export async function writeWorkspaceTerminalInput(
   data: string,
   appSessionId?: string,
 ): Promise<{ completed: number }> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input')), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/input'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ data, sessionId: appSessionId }),
@@ -233,7 +233,7 @@ export async function resizeWorkspaceTerminalSession(
   cols: number,
   rows: number,
 ): Promise<WorkspaceTerminalSession> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/resize')), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/resize'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cols, rows }),
@@ -246,7 +246,7 @@ export async function resizeWorkspaceTerminalSession(
 }
 
 export async function interruptWorkspaceTerminalSession(terminalSessionId: string): Promise<void> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/interrupt')), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId, '/interrupt'), {
     method: 'POST',
   })
   if (!res.ok) {
@@ -256,7 +256,7 @@ export async function interruptWorkspaceTerminalSession(terminalSessionId: strin
 }
 
 export async function closeWorkspaceTerminalSession(terminalSessionId: string): Promise<void> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId)), {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.terminalSessions, terminalSessionId), {
     method: 'DELETE',
   })
   if (!res.ok) {

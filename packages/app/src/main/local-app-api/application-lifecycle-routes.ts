@@ -19,7 +19,7 @@ const ACTIVE_RUN_ACTIONS: ReadonlySet<RuntimeActiveRunAction> = new Set(['pause'
 const MAX_CONTROL_REASON_LENGTH = 1_024
 
 export interface ApplicationLifecycleRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   listActiveRuns?: () => RuntimeActiveRunSnapshot[]
   subscribeActiveRuns?: (
     listener: (runs: RuntimeActiveRunSnapshot[]) => void,
@@ -73,12 +73,12 @@ export async function routeApplicationLifecycle(
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {
-    const runs = context.listActiveRuns?.() ?? context.getRunner().activeRuns?.list() ?? []
+    const runs = context.listActiveRuns?.() ?? context.getRunner()?.activeRuns?.list() ?? []
     json(res, 200, { runs })
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRunsStream) {
-    const activeRuns = context.getRunner().activeRuns
+    const activeRuns = context.getRunner()?.activeRuns
     const subscribe = context.subscribeActiveRuns
       ?? (activeRuns ? activeRuns.subscribe.bind(activeRuns) : undefined)
     if (!subscribe) {
@@ -128,7 +128,7 @@ export async function routeApplicationLifecycle(
       ? body.reason.replace(/\s+/g, ' ').trim().slice(0, MAX_CONTROL_REASON_LENGTH)
       : undefined
     const outcome = context.controlActiveRun?.(runId, action as RuntimeActiveRunAction, reason)
-      ?? context.getRunner().activeRuns?.request(runId, action as RuntimeActiveRunAction, reason)
+      ?? context.getRunner()?.activeRuns?.request(runId, action as RuntimeActiveRunAction, reason)
       ?? inactiveOutcome(runId, action as RuntimeActiveRunAction)
     const status = outcome.kind === 'accepted'
       ? 202

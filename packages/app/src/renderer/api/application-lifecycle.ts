@@ -8,10 +8,10 @@ import {
   LOCAL_APP_API_ROUTES,
   localAppApiItemPath,
 } from '../../shared/local-app-api-routes'
-import { localApiResponseError, localApiUrl, parseSseFrame } from './common'
+import { localApiFetch, localApiResponseError, parseSseFrame } from './common'
 
 export async function listActiveRuns(signal?: AbortSignal): Promise<RuntimeActiveRunSnapshot[]> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.activeRuns), { signal })
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.activeRuns, { signal })
   if (!response.ok) throw await localApiResponseError(response)
   const payload = await response.json() as { runs: RuntimeActiveRunSnapshot[] }
   return payload.runs
@@ -21,7 +21,7 @@ export async function subscribeActiveRuns(
   signal: AbortSignal,
   onRuns: (runs: RuntimeActiveRunSnapshot[]) => void,
 ): Promise<void> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.activeRunsStream), { signal })
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.activeRunsStream, { signal })
   if (!response.ok) throw await localApiResponseError(response)
   if (!response.body) throw new Error('Active run stream has no body')
   const reader = response.body.getReader()
@@ -57,7 +57,7 @@ export async function controlActiveRun(
   reason?: string,
 ): Promise<RuntimeActiveRunActionOutcome> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.activeRuns, runId, '/control')
-  const response = await fetch(localApiUrl(path), {
+  const response = await localApiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, ...(reason ? { reason } : {}) }),

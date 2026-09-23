@@ -409,7 +409,8 @@ describe('memory-tree control plane', () => {
       }),
       shutdown: vi.fn(async () => undefined),
     }
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -426,6 +427,7 @@ describe('memory-tree control plane', () => {
       memoryV3MigrationManager: new MemoryV2ToV3MigrationManager({ dataDir }),
       memoryEmbeddingModelManager: embeddingModelManager,
     })
+    await server.setRunner(runner)
     try {
       const detail = await fetch(`http://127.0.0.1:${server.port}/memory/tree/nodes/node-1?disclosure=D3`)
       expect(detail.status).toBe(200)
@@ -535,7 +537,8 @@ describe('memory-tree control plane', () => {
     const project = await projectIndex.ensure(projectDir)
     const runner = runnerWith()
     const exportPath = join(dataDir, 'exports', 'memory.md')
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex,
@@ -550,6 +553,7 @@ describe('memory-tree control plane', () => {
       updateRuntimeConfig: vi.fn(async () => undefined),
       selectProjectMemoryExport: vi.fn(async () => exportPath),
     })
+    await server.setRunner(runner)
     try {
       const enabled = await fetch(`http://127.0.0.1:${server.port}/memory/projects/${encodeURIComponent(project.id)}/projection`, {
         method: 'POST',
@@ -600,7 +604,8 @@ describe('memory-tree control plane', () => {
     const updateRuntimeConfig = vi.fn(async () => undefined)
     const config = structuredClone(DEFAULT_CONFIG)
     config.agents.defaults.workspace = originalPath
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex,
       projectIndex,
@@ -614,6 +619,7 @@ describe('memory-tree control plane', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig,
     })
+    await server.setRunner(runner)
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/projects/${encodeURIComponent(project.id)}/rebind`, {
         method: 'POST',

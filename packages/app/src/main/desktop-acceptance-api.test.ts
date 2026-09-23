@@ -119,7 +119,7 @@ describe('desktop Electron acceptance Local App API', () => {
 })
 
 async function createFixture(
-  overrides: Partial<Parameters<typeof startLocalAppApiServer>[1]> = {},
+  overrides: Partial<Parameters<typeof startLocalAppApiServer>[0]> = {},
 ): Promise<{ baseUrl: string }> {
   const dataDir = mkdtempSync(join(tmpdir(), 'ls-desktop-acceptance-api-'))
   const workplaceDir = join(dataDir, 'workplace')
@@ -129,7 +129,7 @@ async function createFixture(
     infra: { memoryService: { rebindProjectPath: vi.fn() } },
     runCheckpoints: { recoverInterruptedResumes: vi.fn(async () => 0) },
   } as unknown as AgentRunner
-  const server: LocalAppApiServer = await startLocalAppApiServer(runner, {
+  const server: LocalAppApiServer = await startLocalAppApiServer({
     port: 0,
     sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
     projectIndex: new ProjectIndex({ dataDir }),
@@ -142,8 +142,10 @@ async function createFixture(
     workplaceDir,
     rebuildRunner: vi.fn(async () => undefined),
     updateRuntimeConfig: vi.fn(async (_next: Config) => undefined),
+    getRunner: () => runner,
     ...overrides,
   })
+  await server.setRunner(runner)
   cleanup.push(async () => {
     await server.stop()
     rmSync(dataDir, { recursive: true, force: true })

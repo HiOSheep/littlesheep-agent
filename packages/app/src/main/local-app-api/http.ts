@@ -26,6 +26,37 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * A route that needs the embedded Runner was called while it is still starting.
+ *
+ * The Local App API listens before the Runner exists so the window can show real
+ * session metadata first. Runner-backed routes must answer with this error
+ * instead of dereferencing a missing Runner, and the Renderer shows the reported
+ * readiness reason rather than a generic failure.
+ */
+export class RuntimeNotReadyError extends HttpError {
+  constructor(message = 'The runtime is still starting; execution is not available yet.') {
+    super(503, message)
+  }
+}
+
+export function isRuntimeNotReadyError(error: unknown): error is RuntimeNotReadyError {
+  return error instanceof RuntimeNotReadyError
+}
+
+/**
+ * Resolve the Runner inside a route branch that needs it.
+ *
+ * Call it lazily, at the branch that actually uses the Runner: metadata routes
+ * must keep answering while it is still undefined. Returning `undefined` from a
+ * branch is always a bug, and failing closed with 503 is the only honest answer.
+ */
+export function resolveRunner<T>(getRunner: () => T | undefined): T {
+  const runner = getRunner()
+  if (!runner) throw new RuntimeNotReadyError()
+  return runner
+}
+
 export function json(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify(data))

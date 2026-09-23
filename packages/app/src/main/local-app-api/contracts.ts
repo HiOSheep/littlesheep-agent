@@ -22,6 +22,7 @@ import type {
   RuntimeActiveRunSnapshot,
 } from '@littlesheep/types'
 import type { RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
+import type { RuntimeReadiness } from '../../shared/runtime-readiness-contracts.js'
 
 export interface LocalAppApiServerOptions {
   /** Port to listen on. 0 selects a random free loopback port. */
@@ -35,6 +36,24 @@ export interface LocalAppApiServerOptions {
   config: Config
   dataDir: string
   workplaceDir: string
+  /**
+   * Current Runner. Undefined while the composition root is still building it;
+   * every Runner-backed route must then answer 503 runtime-not-ready instead of
+   * dereferencing it. Metadata routes never call this.
+   */
+  getRunner: () => AgentRunner | undefined
+  /**
+   * Execution readiness reported by the composition root. It is the one fact
+   * that separates "the window is usable" from "a task can be sent".
+   */
+  getExecutionReadiness?: () => RuntimeReadiness
+  /**
+   * Answers the `/runtime/readiness` request when it matches, and returns
+   * undefined for every other path. The listener exists before the Runner does,
+   * so the Renderer can read the real startup stage from the API as well as
+   * from the preload channel.
+   */
+  respondReadiness?: (requestPath: string) => { payload: unknown } | undefined
   rebuildRunner: () => Promise<void>
   updateRuntimeConfig: (config: Config) => Promise<Config | void>
   selectWorkspace?: () => Promise<string | null>

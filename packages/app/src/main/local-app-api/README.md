@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-22 20:21:00
+最后更新：2026-09-23 10:20:43
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 

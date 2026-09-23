@@ -6,7 +6,7 @@ import {
   runProviderCalibration,
   type ProviderCalibrationCheck,
 } from '../provider-calibration.js'
-import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
+import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { hasBearerToken } from './bearer-auth.js'
 
 const MAX_CALIBRATION_BODY_BYTES = 16 * 1024
@@ -15,7 +15,7 @@ const REASONING_LEVELS = ['auto', 'low', 'medium', 'high', 'ultra'] as const
 export async function routeProviderCalibration(
   request: LocalAppApiRequest,
   input: {
-    getRunner: () => AgentRunner
+    getRunner: () => AgentRunner | undefined
     getConfig: () => Config
     token?: string
   },
@@ -35,7 +35,7 @@ export async function routeProviderCalibration(
   }
 
   const body = await readJson(request.req, MAX_CALIBRATION_BODY_BYTES)
-  const runner = input.getRunner()
+  const runner = resolveRunner(input.getRunner)
   const active = parseModelRef(runner.model)
   const provider = optionalString(body.provider) ?? active.provider
   if (provider !== active.provider) {

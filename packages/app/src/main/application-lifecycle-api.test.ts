@@ -74,7 +74,8 @@ describe('application lifecycle Local App API', () => {
         summary: vi.fn(() => null),
       },
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -95,6 +96,7 @@ describe('application lifecycle Local App API', () => {
       },
       controlActiveRun,
     })
+    await server.setRunner(runner)
     const base = `http://127.0.0.1:${server.port}`
 
     try {

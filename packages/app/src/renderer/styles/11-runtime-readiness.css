@@ -1,0 +1,23 @@
+/* Startup readiness strip.
+ *
+ * Shown only while the Runtime is not executable. It sits under the shell's
+ * titlebar as a single text line: the Main process owns the wording, this file
+ * only owns its surface. */
+.runtime-readiness-notice {
+  position: fixed;
+  top: var(--window-titlebar-height);
+  right: 0;
+  left: 0;
+  z-index: 40;
+  padding: 4px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--floating-panel-frame-color, transparent);
+}
+
+.runtime-readiness-notice.failed {
+  color: var(--danger, #ff9d9d);
+}

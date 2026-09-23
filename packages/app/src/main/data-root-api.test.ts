@@ -38,7 +38,8 @@ describe('data-root Local App API', () => {
     })
     const restartApplication = vi.fn()
     const runner = { state: { model: DEFAULT_CONFIG.agents.defaults.model } } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir: sourceDir, workplaceDir: join(sourceDir, 'workplace') }),
       projectIndex: new ProjectIndex({ dataDir: sourceDir }),
@@ -55,6 +56,7 @@ describe('data-root Local App API', () => {
       selectDataRootTarget: vi.fn(async () => targetDir),
       restartApplication,
     })
+    await server.setRunner(runner)
 
     try {
       const base = `http://127.0.0.1:${server.port}`

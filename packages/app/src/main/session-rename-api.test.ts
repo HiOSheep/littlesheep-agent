@@ -46,7 +46,8 @@ describe('session rename Local App API', () => {
       state: { model: config.agents.defaults.model },
       sessionManager: { updateMetadata },
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex,
       projectIndex: new ProjectIndex({ dataDir }),
@@ -60,6 +61,7 @@ describe('session rename Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
     const base = `http://127.0.0.1:${server.port}`
 
     try {
@@ -160,7 +162,8 @@ describe('session rename Local App API', () => {
       state: { model: config.agents.defaults.model },
       sessionManager: { updateMetadata },
     } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex,
       projectIndex: new ProjectIndex({ dataDir }),
@@ -174,6 +177,7 @@ describe('session rename Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async () => undefined),
     })
+    await server.setRunner(runner)
 
     try {
       const base = `http://127.0.0.1:${server.port}`

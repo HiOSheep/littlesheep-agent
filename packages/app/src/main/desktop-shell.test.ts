@@ -40,5 +40,37 @@ describe('desktop shell window cleanup', () => {
     expect(shell).toContain('{ errorMessage: message }')
     expect(entry).toContain("void bootstrap().catch((error: unknown) => {")
     expect(entry).toContain('desktopShell.showStartupError(error)')
+    expect(entry).toContain('readiness.fail(')
+  })
+
+  it('localizes one #101010 surface instead of a translucent startup overlay', async () => {
+    const [startup, shell] = await Promise.all([
+      readFile(new URL('./desktop-startup-page.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./desktop-shell.ts', import.meta.url), 'utf8'),
+    ])
+
+    // The startup page must not paint a translucent material over the native
+    // caption buttons: that is the visible seam CS-02 removes.
+    expect(startup).toContain("export const DESKTOP_STARTUP_SURFACE = '#101010'")
+    expect(startup).toContain('background: ${DESKTOP_STARTUP_SURFACE}')
+    expect(startup).not.toContain('backdrop-filter')
+    expect(startup).toContain('export const DESKTOP_TITLEBAR_HEIGHT = 32')
+    // The native titlebar overlay byte-identically matches the renderer's
+    // --workspace-code-surface through that shared constant.
+    expect(shell).toContain('color: DESKTOP_STARTUP_SURFACE')
+    expect(shell).toContain('height: WINDOW_TITLEBAR_HEIGHT')
+    expect(shell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
+  })
+
+  it('shows the shell before the Runner is published so the window is usable early', async () => {
+    const entry = await readFile(new URL('./index.ts', import.meta.url), 'utf8')
+    const shellInitialized = entry.indexOf('desktopShell.initialize()')
+    const executionStarted = entry.indexOf('await startExecution(')
+
+    expect(shellInitialized).toBeGreaterThanOrEqual(0)
+    expect(executionStarted).toBeGreaterThan(shellInitialized)
+    // Execution readiness is published only after the Runner and its run router
+    // exist, so no request observes a half-built runtime.
+    expect(entry).toContain('await server?.setRunner(created)')
   })
 })

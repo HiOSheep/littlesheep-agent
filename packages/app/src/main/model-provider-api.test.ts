@@ -37,7 +37,8 @@ async function startServer(providers: Config['providers'] = []) {
   const config: Config = { ...structuredClone(DEFAULT_CONFIG), providers }
   const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
   const rebuildRunner = vi.fn(async () => undefined)
-  const server = await startLocalAppApiServer(runner, {
+  const server = await startLocalAppApiServer({
+    getRunner: () => runner,
     port: 0,
     sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
     projectIndex: new ProjectIndex({ dataDir }),
@@ -54,6 +55,7 @@ async function startServer(providers: Config['providers'] = []) {
       return next
     }),
   })
+  await server.setRunner(runner)
   return { server, dataDir, updates, rebuildRunner }
 }
 

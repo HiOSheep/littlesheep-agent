@@ -1,7 +1,22 @@
-export const DESKTOP_STARTUP_WINDOW_BACKGROUND = '#00000000'
-export const DESKTOP_STARTUP_TITLEBAR_BACKGROUND = '#101010D6'
+// Standalone first-frame document for the desktop window.
+//
+// The window appears before the Runtime starts, so this page must not depend on
+// the renderer bundle, the Local App API, or the Vite development server. It is
+// intentionally icon-only: no progress claim may be shown before a real fact
+// exists.
+//
+// Surface contract (CS-02): this page, `BrowserWindow.titleBarOverlay` and the
+// renderer's `.window-titlebar` all paint the same opaque `#101010`. A
+// translucent overlay over the native caption buttons produced the visible seam
+// in the cold-start screenshots, so no material is layered here.
 
-const STARTUP_SURFACE = 'rgba(16, 16, 16, 0.72)'
+/** Opaque application surface shared by the startup page and the native overlay. */
+export const DESKTOP_STARTUP_SURFACE = '#101010'
+/** Kept for callers that only need the window's initial background color. */
+export const DESKTOP_STARTUP_WINDOW_BACKGROUND = DESKTOP_STARTUP_SURFACE
+/** Must stay equal to `WINDOW_TITLEBAR_HEIGHT` in `./desktop-shell.js`. */
+export const DESKTOP_TITLEBAR_HEIGHT = 32
+
 const STARTUP_ICON_SIZE_PX = 112
 
 export interface DesktopStartupPageOptions {
@@ -34,7 +49,7 @@ export function createDesktopStartupPageHtml(
     <style>
       :root {
         color-scheme: dark;
-        background: transparent;
+        background: ${DESKTOP_STARTUP_SURFACE};
       }
 
       * { box-sizing: border-box; }
@@ -48,8 +63,7 @@ export function createDesktopStartupPageHtml(
       }
 
       body {
-        background: ${STARTUP_SURFACE};
-        backdrop-filter: blur(24px) saturate(90%);
+        background: ${DESKTOP_STARTUP_SURFACE};
       }
 
       .startup-drag-region {
@@ -58,14 +72,14 @@ export function createDesktopStartupPageHtml(
         right: 150px;
         left: 0;
         z-index: 1;
-        height: 32px;
+        height: ${DESKTOP_TITLEBAR_HEIGHT}px;
         -webkit-app-region: drag;
         user-select: none;
       }
 
       main {
         position: fixed;
-        inset: 32px 0 0;
+        inset: ${DESKTOP_TITLEBAR_HEIGHT}px 0 0;
         z-index: 1;
         display: grid;
         place-items: center;

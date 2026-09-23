@@ -18,7 +18,8 @@ describe('development environment Local App API', () => {
     const workplaceDir = join(dataDir, 'workplace')
     const config = structuredClone(DEFAULT_CONFIG)
     const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -33,6 +34,7 @@ describe('development environment Local App API', () => {
       updateRuntimeConfig: vi.fn(async () => undefined),
       selectDevelopmentEnvironmentSource: vi.fn(async () => null),
     })
+    await server.setRunner(runner)
 
     try {
       const base = `http://127.0.0.1:${server.port}`

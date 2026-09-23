@@ -68,14 +68,15 @@ describe('Provider calibration Local App API', () => {
   })
 })
 
-function createServer(
+async function createServer(
   runner: AgentRunner,
   dataDir: string,
   workplaceDir: string,
   providerCalibrationToken: string,
 ): Promise<LocalAppApiServer> {
   const config = withProviderPresets(structuredClone(DEFAULT_CONFIG))
-  return startLocalAppApiServer(runner, {
+  const server = await startLocalAppApiServer({
+    getRunner: () => runner,
     port: 0,
     sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
     projectIndex: new ProjectIndex({ dataDir }),
@@ -90,4 +91,6 @@ function createServer(
     rebuildRunner: vi.fn(async () => undefined),
     updateRuntimeConfig: vi.fn(async (_next: Config) => undefined),
   })
+  await server.setRunner(runner)
+  return server
 }

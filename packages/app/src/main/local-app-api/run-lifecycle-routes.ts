@@ -10,7 +10,7 @@ import type { RunRouter } from './run-routes.js'
 
 export interface RunLifecycleRouteContext {
   runRouter: RunRouter
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   options: LocalAppApiServerOptions
   attachmentCache: ManagedAttachmentCache
@@ -21,7 +21,18 @@ export async function routeRunLifecycle(
   context: RunLifecycleRouteContext,
 ): Promise<boolean> {
   const { options } = context
-  if (await context.runRouter.route(request, {
+  // Desktop lifecycle and active-run status must answer while the Runner is
+  // still starting: the isolated Electron acceptance surface polls window
+  // visibility from the moment the listener exists, and the sidebar shows the
+  // aggregated activity of retired runs.
+  if (await routeApplicationLifecycle(request, {
+    getRunner: context.getRunner,
+    listActiveRuns: options.listActiveRuns,
+    subscribeActiveRuns: options.subscribeActiveRuns,
+    controlActiveRun: options.controlActiveRun,
+    desktopAcceptance: options.desktopAcceptance,
+  })) return true
+  return context.runRouter.route(request, {
     getRunner: context.getRunner,
     getConfig: context.getConfig,
     dataDir: options.dataDir,
@@ -30,13 +41,5 @@ export async function routeRunLifecycle(
     projectIndex: options.projectIndex,
     workspaceArtifactIndex: options.workspaceArtifactIndex,
     attachmentCache: context.attachmentCache,
-  })) return true
-
-  return routeApplicationLifecycle(request, {
-    getRunner: context.getRunner,
-    listActiveRuns: options.listActiveRuns,
-    subscribeActiveRuns: options.subscribeActiveRuns,
-    controlActiveRun: options.controlActiveRun,
-    desktopAcceptance: options.desktopAcceptance,
   })
 }

@@ -25,10 +25,10 @@ import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 
 export interface SessionRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   sessionIndex: SessionIndex
   projectIndex: ProjectIndex
   archiveIndex: ArchiveIndex
@@ -40,9 +40,10 @@ export async function routeSessions(
   context: SessionRouteContext,
 ): Promise<boolean> {
   const { res, url, path, method } = request
-  const runner = context.getRunner()
   const { sessionIndex, projectIndex, archiveIndex } = context
 
+  // Session metadata comes from the UI index and must stay readable while the
+  // Runner is still starting; only the branches below resolve it, lazily.
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.sessions) {
     json(res, 200, { sessions: await sessionIndex.list() })
     return true
@@ -50,6 +51,7 @@ export async function routeSessions(
 
   const sessionMessagesId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions, '/messages')
   if (method === 'GET' && sessionMessagesId !== null) {
+    const runner = resolveRunner(context.getRunner)
     const limit = boundedHistoryLimit(url.searchParams.get('limit'))
     const beforeId = url.searchParams.get('before')?.trim() || undefined
     const window = await runner.sessionManager.readWindow(asSessionId(sessionMessagesId), limit, beforeId)
@@ -74,6 +76,7 @@ export async function routeSessions(
     '/compaction-operations',
   )
   if (method === 'GET' && sessionCompactionOpsId !== null) {
+    const runner = resolveRunner(context.getRunner)
     if (!runner.compactionOperationHistory) {
       json(res, 503, { error: 'compaction operation history is unavailable' })
       return true
@@ -93,6 +96,7 @@ export async function routeSessions(
       json(res, 400, { error: 'sessionId is required for durable final-reply replay' })
       return true
     }
+    const runner = resolveRunner(context.getRunner)
     if (!runner.replayDurableFinalReply) {
       json(res, 503, { error: 'durable final-reply replay is unavailable' })
       return true
@@ -108,6 +112,7 @@ export async function routeSessions(
     return true
   }
   if (method === 'GET' && replayRunId !== null) {
+    const runner = resolveRunner(context.getRunner)
     const log = await runner.replay(replayRunId)
     if (!log) {
       json(res, 404, { error: `run not found: ${replayRunId}` })
@@ -165,14 +170,15 @@ export async function routeSessions(
       }
 
       const titleChanged = title !== existing.title
-      if (titleChanged) await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title })
+      const runner = titleChanged ? resolveRunner(context.getRunner) : undefined
+      if (runner) await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title })
       try {
         await sessionIndex.upsert(sessionUpdateId, {
           ...(titleChanged ? { title } : {}),
           ...(mode !== existing.mode ? { mode } : {}),
         })
       } catch (error) {
-        if (titleChanged) {
+        if (runner) {
           await runner.sessionManager.updateMetadata(asSessionId(sessionUpdateId), { title: existing.title }).catch(() => undefined)
         }
         throw error
@@ -187,7 +193,7 @@ export async function routeSessions(
   if (method === 'DELETE' && sessionDeleteId !== null) {
     const removed = await sessionIndex.remove(sessionDeleteId)
     if (url.searchParams.get('hard') === '1') {
-      await runner.sessionManager.delete(asSessionId(sessionDeleteId))
+      await resolveRunner(context.getRunner).sessionManager.delete(asSessionId(sessionDeleteId))
     } else if (removed) {
       await archiveIndex.archiveSession(removed)
     }
@@ -250,7 +256,7 @@ export async function routeSessions(
       json(res, 404, { error: `archived session not found: ${archivedSessionDeleteId}` })
       return true
     }
-    await runner.sessionManager.delete(asSessionId(archivedSessionDeleteId))
+    await resolveRunner(context.getRunner).sessionManager.delete(asSessionId(archivedSessionDeleteId))
     res.writeHead(204)
     res.end()
     return true
@@ -264,6 +270,7 @@ export async function routeSessions(
       return true
     }
     const sessions = await archiveIndex.removeSessionsForProject(project)
+    const runner = resolveRunner(context.getRunner)
     for (const session of sessions) {
       await runner.sessionManager.delete(asSessionId(session.id))
     }

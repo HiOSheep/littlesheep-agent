@@ -18,7 +18,8 @@ describe('managed attachment Local App API', () => {
     const workplaceDir = join(dataDir, 'workplace')
     const config = structuredClone(DEFAULT_CONFIG)
     const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -32,6 +33,7 @@ describe('managed attachment Local App API', () => {
       rebuildRunner: vi.fn(async () => undefined),
       updateRuntimeConfig: vi.fn(async (_next: Config) => undefined),
     })
+    await server.setRunner(runner)
 
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/attachments/import`, {

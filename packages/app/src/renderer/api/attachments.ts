@@ -2,14 +2,14 @@
 
 import type { AttachmentRef } from '../../shared/attachment-contracts'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes'
-import { localApiStatusError, localApiUrl } from './common'
+import { localApiFetch, localApiStatusError } from './common'
 
 export function getPathForFile(file: File): string {
   return window.littlesheep?.getPathForFile?.(file) ?? ''
 }
 
 export async function selectAttachments(): Promise<AttachmentRef[]> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.attachmentSelect), { method: 'POST' })
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.attachmentSelect, { method: 'POST' })
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { files: AttachmentRef[] }
   return data.files
@@ -17,7 +17,7 @@ export async function selectAttachments(): Promise<AttachmentRef[]> {
 
 export async function importAttachment(file: File): Promise<AttachmentRef> {
   const dataUrl = await readFileAsDataUrl(file)
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.attachmentImport), {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.attachmentImport, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

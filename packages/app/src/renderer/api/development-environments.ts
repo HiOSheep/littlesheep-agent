@@ -5,7 +5,7 @@ import type {
   DevelopmentEnvironmentSnapshot,
 } from '../../shared/development-environment-contracts'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes'
-import { localApiResponseError, localApiStatusError, localApiUrl } from './common'
+import { localApiFetch, localApiResponseError, localApiStatusError } from './common'
 
 export type {
   DevelopmentEnvironmentId,
@@ -17,7 +17,7 @@ export type {
 } from '../../shared/development-environment-contracts'
 
 export async function getDevelopmentEnvironments(force = false): Promise<DevelopmentEnvironmentSnapshot> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.developmentEnvironments), {
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.developmentEnvironments, {
     method: force ? 'POST' : 'GET',
   })
   if (!response.ok) throw localApiStatusError(response.status)
@@ -27,7 +27,7 @@ export async function getDevelopmentEnvironments(force = false): Promise<Develop
 export async function saveDevelopmentEnvironmentPreference(
   patch: DevelopmentEnvironmentPreferencePatch,
 ): Promise<DevelopmentEnvironmentSnapshot> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.developmentEnvironmentPreferences), {
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.developmentEnvironmentPreferences, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -39,7 +39,7 @@ export async function saveDevelopmentEnvironmentPreference(
 export async function importDevelopmentEnvironment(
   patch: DevelopmentEnvironmentPreferencePatch,
 ): Promise<DevelopmentEnvironmentSnapshot> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.developmentEnvironmentImport), {
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.developmentEnvironmentImport, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -51,7 +51,7 @@ export async function importDevelopmentEnvironment(
 export async function removeDevelopmentEnvironment(
   patch: DevelopmentEnvironmentPreferencePatch,
 ): Promise<DevelopmentEnvironmentSnapshot> {
-  const response = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.developmentEnvironmentRemove), {
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.developmentEnvironmentRemove, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),

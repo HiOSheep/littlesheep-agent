@@ -16,12 +16,12 @@ import {
 import type { DataRootMigrationManager } from '../data-root-migration.js'
 import { injectKeysIntoEnv, normalizeApiKey, saveApiKey } from '../keychain.js'
 import { getAgentProfile, normalizeAgentProfileId } from '../modes.js'
-import { json, readJson, type LocalAppApiRequest } from './http.js'
+import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { routeProviderCalibration } from './provider-calibration-route.js'
 export { runWebProviderCheck } from './web-provider-check.js'
 
 export interface RuntimeRouteContext {
-  getRunner: () => AgentRunner
+  getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   setConfig: (config: Config) => void
   workplaceDir: string
@@ -50,7 +50,7 @@ export async function routeRuntime(
   })) return true
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.state) {
-    json(res, 200, context.getRunner().state)
+    json(res, 200, resolveRunner(context.getRunner).state)
     return true
   }
 
@@ -168,14 +168,14 @@ export async function routeRuntime(
   }
 
   if (method === 'DELETE' && path === LOCAL_APP_API_ROUTES.webCache) {
-    const cache = context.getRunner().infra.webCache
+    const cache = resolveRunner(context.getRunner).infra.webCache
     if (cache) await cache.clear()
     json(res, 200, { ok: true, cleared: Boolean(cache), stats: cache?.stats() ?? { entries: 0, bytes: 0, hits: 0, misses: 0 } })
     return true
   }
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.cacheQuality) {
-    const runner = context.getRunner()
+    const runner = resolveRunner(context.getRunner)
     const store = runner.infra.cacheObservationStore
     const key = runner.infra.cacheObservationKey
     const sessionId = request.url.searchParams.get('sessionId')?.trim()

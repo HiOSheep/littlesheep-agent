@@ -1,12 +1,13 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { createServer } from 'node:net'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { inflateSync } from 'node:zlib'
 import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
-import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+// Process launch, the CDP client and the polling primitives live in the shared
+// real-window harness so the cold-start benchmark measures the same way.
+import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
@@ -14,6 +15,20 @@ const locatorRelativePath = join('runtime', 'local-app-api.json')
 const startTimeoutMs = 60_000
 const actionTimeoutMs = 20_000
 const idleSampleMs = 5_000
+const harness = createElectronHarness({ startTimeoutMs, actionTimeoutMs })
+const waitFor = harness.waitFor
+const waitForLocator = harness.waitForLocator
+const delay = harness.delay
+const roundMs = harness.roundMs
+const waitForDesktop = harness.waitForDesktop
+const forceTerminate = harness.forceTerminate
+const removeTemporaryRoot = harness.removeTemporaryRoot
+const desktopSnapshot = harness.desktopSnapshot
+const desktopAction = harness.desktopAction
+const apiUrl = harness.apiUrl
+const authHeaders = harness.authHeaders
+const reservePort = harness.reservePort
+const CdpClient = harness.CdpClient
 // Keep this aligned with the renderer directory cache contract. The benchmark
 // intentionally waits past the TTL so the next mount exercises stale-while-
 // revalidate instead of only measuring a hot cache hit.
@@ -352,138 +367,22 @@ function buildConfig(workspaceDir) {
 }
 
 async function startElectron({ dataDir, chromiumDir, debuggingPort, mainDebuggingPort, logPath }) {
-  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
-  const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
-  const env = {
-    ...process.env,
-    LITTLESHEEP_DATA_DIR: dataDir,
-    LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
-    LITTLESHEEP_BOOTSTRAP_TIMING: '1',
-  }
-  delete env.ELECTRON_RUN_AS_NODE
-  const child = spawn(executable, [
-    '.',
-    `--user-data-dir=${chromiumDir}`,
-    ...(debuggingPort ? [`--remote-debugging-port=${debuggingPort}`] : []),
-    ...(mainDebuggingPort ? [`--inspect=${mainDebuggingPort}`] : []),
-  ], {
-    cwd: appRoot,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
+  return harness.startElectron({
+    dataDir,
+    chromiumDir,
+    debuggingPort,
+    mainDebuggingPort,
+    logPath,
+    extraEnv: { LITTLESHEEP_BOOTSTRAP_TIMING: '1' },
   })
-  child.stdout.pipe(log, { end: false })
-  child.stderr.pipe(log, { end: false })
-  child.once('exit', () => log.end())
-  return child
 }
 
 async function connectRenderer(port) {
-  return waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
-    if (!response?.ok) return undefined
-    const values = await response.json()
-    // The window becomes visible on the lightweight data: startup page before
-    // the real React renderer is ready. Only attach after the production
-    // renderer page has replaced that transient document.
-    const target = values.find((candidate) => (
-      candidate.type === 'page'
-      && candidate.webSocketDebuggerUrl
-      && /\/renderer\/index\.html(?:[?#]|$)/u.test(candidate.url ?? '')
-    ))
-    if (!target) return undefined
-
-    const client = new CdpClient(target.webSocketDebuggerUrl)
-    try {
-      const state = await client.evaluate(`(() => ({
-        url: location.href,
-        readyState: document.readyState,
-        hasRoot: Boolean(document.querySelector('#root')),
-      }))()`)
-      if (
-        state?.readyState === 'complete'
-        && state.hasRoot
-        && /\/renderer\/index\.html(?:[?#]|$)/u.test(state.url ?? '')
-      ) {
-        await delay(80)
-        const stable = await client.evaluate(`(() => ({
-          url: location.href,
-          readyState: document.readyState,
-          hasRoot: Boolean(document.querySelector('#root')),
-        }))()`)
-        if (
-          stable?.readyState === 'complete'
-          && stable.hasRoot
-          && /\/renderer\/index\.html(?:[?#]|$)/u.test(stable.url ?? '')
-        ) return client
-      }
-    } catch {
-      // The target may still be navigating from the startup page.
-    }
-    client.close()
-    return undefined
-  }, startTimeoutMs, 'renderer debug target')
+  return harness.connectRenderer(port)
 }
 
 async function connectDebugger(port, label) {
-  const target = await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
-    if (!response?.ok) return undefined
-    const values = await response.json()
-    return values.find((candidate) => candidate.webSocketDebuggerUrl)
-  }, startTimeoutMs, label)
-  return new CdpClient(target.webSocketDebuggerUrl)
-}
-
-class CdpClient {
-  constructor(url) {
-    this.nextId = 1
-    this.pending = new Map()
-    this.events = []
-    this.socket = new WebSocket(url)
-    this.opened = new Promise((resolvePromise, reject) => {
-      this.socket.addEventListener('open', resolvePromise, { once: true })
-      this.socket.addEventListener('error', reject, { once: true })
-    })
-    this.socket.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data)
-      if (!message.id) {
-        this.events.push(message)
-        if (this.events.length > 2_000) this.events.shift()
-        return
-      }
-      const pending = this.pending.get(message.id)
-      if (!pending) return
-      this.pending.delete(message.id)
-      if (message.error) pending.reject(new Error(message.error.message))
-      else pending.resolve(message.result)
-    })
-  }
-
-  async send(method, params = {}) {
-    await this.opened
-    const id = this.nextId++
-    const response = new Promise((resolvePromise, reject) => this.pending.set(id, { resolve: resolvePromise, reject }))
-    this.socket.send(JSON.stringify({ id, method, params }))
-    return response
-  }
-
-  async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-    if (result.exceptionDetails) {
-      const details = result.exceptionDetails
-      const description = details.exception?.description ?? details.text ?? 'Renderer evaluation failed'
-      const location = [details.url, details.lineNumber, details.columnNumber]
-        .filter((value) => value !== undefined && value !== '')
-        .join(':')
-      throw new Error(location ? `${description} (${location})` : description)
-    }
-    return result.result.value
-  }
-
-  close() {
-    this.socket.close()
-  }
+  return harness.connectDebugger(port, label)
 }
 
 function summarizeRendererDiagnostics(events) {
@@ -1994,40 +1893,6 @@ function pixelRgba(buffer, offset, colorType) {
   return [buffer[offset], buffer[offset], buffer[offset], 255]
 }
 
-async function waitForLocator(dataDir, expectedPid) {
-  const path = join(dataDir, locatorRelativePath)
-  return waitFor(async () => {
-    try {
-      const locator = JSON.parse(await readFile(path, 'utf8'))
-      return locator.pid === expectedPid && locator.host === '127.0.0.1' && locator.token ? locator : undefined
-    } catch {
-      return undefined
-    }
-  }, startTimeoutMs, 'Local App API locator')
-}
-
-async function waitForDesktop(locator) {
-  return waitFor(async () => {
-    const snapshot = await desktopSnapshot(locator).catch(() => undefined)
-    return snapshot?.windowExists && snapshot.windowVisible ? snapshot : undefined
-  }, startTimeoutMs, 'desktop window')
-}
-
-async function desktopSnapshot(locator) {
-  const response = await fetch(apiUrl(locator, '/application/acceptance'), { headers: authHeaders(locator) })
-  if (!response.ok) throw new Error(`desktop snapshot failed: ${response.status}`)
-  return (await response.json()).snapshot
-}
-
-async function desktopAction(locator, action) {
-  const response = await fetch(apiUrl(locator, '/application/acceptance'), {
-    method: 'POST',
-    headers: { ...authHeaders(locator), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action }),
-  })
-  if (!response.ok) throw new Error(`desktop action ${action} failed: ${response.status}`)
-}
-
 function resourceDelta(start, end, elapsedMs) {
   return {
     sampledMs: elapsedMs,
@@ -2039,14 +1904,6 @@ function resourceDelta(start, end, elapsedMs) {
     activeRequestDelta: end.process.activeRequestCount - start.process.activeRequestCount,
     processCountDelta: end.electron.processCount - start.electron.processCount,
   }
-}
-
-function apiUrl(locator, path) {
-  return `http://${locator.host}:${locator.port}${path}`
-}
-
-function authHeaders(locator) {
-  return { Authorization: `Bearer ${locator.token}` }
 }
 
 function runGit(cwd, args) {
@@ -2262,18 +2119,6 @@ function numeric(value) {
   return Number.isFinite(number) ? number : 0
 }
 
-async function reservePort() {
-  return new Promise((resolvePromise, reject) => {
-    const server = createServer()
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address()
-      if (!address || typeof address === 'string') return reject(new Error('failed to reserve port'))
-      server.close(() => resolvePromise(address.port))
-    })
-  })
-}
-
 async function directoryBytes(path) {
   const { readdir, stat } = await import('node:fs/promises')
   let total = 0
@@ -2285,62 +2130,12 @@ async function directoryBytes(path) {
 }
 
 async function readBootstrapTimings(logPath) {
-  const contents = await readFile(logPath, 'utf8').catch(() => '')
-  const prefix = '[bootstrap-timing] '
-  return contents.split(/\r?\n/u).flatMap((line) => {
-    const offset = line.indexOf(prefix)
-    if (offset < 0) return []
-    try {
-      const entry = JSON.parse(line.slice(offset + prefix.length))
-      if (!entry || typeof entry.stage !== 'string') return []
-      return [{
-        stage: entry.stage,
-        processUptimeMs: roundMs(entry.processUptimeMs),
-        ...(Number.isFinite(Number(entry.durationMs)) ? { durationMs: roundMs(entry.durationMs) } : {}),
-      }]
-    } catch {
-      return []
-    }
-  })
-}
-
-async function waitFor(read, timeoutMs, label) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    const value = await read()
-    if (value !== undefined && value !== null && value !== false) return value
-    await delay(25)
-  }
-  throw new Error(`timed out waiting for ${label}`)
-}
-
-function delay(ms) {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms))
-}
-
-function roundMs(value) {
-  return Math.round(value * 10) / 10
-}
-
-async function forceTerminate(child) {
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
-    await waitFor(() => child.exitCode === null ? undefined : true, 10_000, 'Electron process exit').catch(() => undefined)
-    return
-  }
-  child.kill('SIGKILL')
-}
-
-async function removeTemporaryRoot(path) {
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    try {
-      await rm(path, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 })
-      return
-    } catch (error) {
-      if (!['EBUSY', 'EPERM'].includes(error?.code) || attempt === 7) throw error
-      await delay(150 * (attempt + 1))
-    }
-  }
+  const entries = await harness.readBootstrapTimings(logPath)
+  return entries.map((entry) => ({
+    stage: entry.stage,
+    processUptimeMs: roundMs(entry.processUptimeMs),
+    ...(Number.isFinite(Number(entry.durationMs)) ? { durationMs: roundMs(entry.durationMs) } : {}),
+  }))
 }
 
 async function runIdleBaselineDiagnostic() {

@@ -19,7 +19,8 @@ describe('runtime config Local App API', () => {
     const config = structuredClone(DEFAULT_CONFIG)
     const updates: Config[] = []
     const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -35,6 +36,7 @@ describe('runtime config Local App API', () => {
         updates.push(next)
       }),
     })
+    await server.setRunner(runner)
 
     try {
       const initial = await fetch(`http://127.0.0.1:${server.port}/runtime`)
@@ -98,7 +100,8 @@ describe('runtime config Local App API', () => {
     const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve })
     const firstStarted = new Promise<void>((resolve) => { signalFirstStarted = resolve })
     const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
-    const server = await startLocalAppApiServer(runner, {
+    const server = await startLocalAppApiServer({
+    getRunner: () => runner,
       port: 0,
       sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
       projectIndex: new ProjectIndex({ dataDir }),
@@ -118,6 +121,7 @@ describe('runtime config Local App API', () => {
         }
       }),
     })
+    await server.setRunner(runner)
 
     try {
       const firstRequest = fetch(`http://127.0.0.1:${server.port}/runtime`, {

@@ -15,7 +15,7 @@ import type {
 } from '../../shared/run-checkpoint-contracts.js'
 import { createCheckpointResourceResolver } from '../attachments.js'
 import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
-import { json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
+import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiRequest } from './http.js'
 import type { RunRouteContext } from './run-routes.js'
 import {
   finishRunResources,
@@ -51,7 +51,7 @@ export async function routeRunCheckpoints(
   host: RunCheckpointRouteHost,
 ): Promise<boolean> {
   const { req, res, path, method } = request
-  const runner = context.getRunner()
+  const runner = resolveRunner(context.getRunner)
   const control = runner.runCheckpoints
 
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.runCheckpoints) {

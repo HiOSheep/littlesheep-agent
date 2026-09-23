@@ -11,7 +11,7 @@ import {
   LOCAL_APP_API_ROUTES,
   localAppApiItemPath,
 } from '../../shared/local-app-api-routes'
-import { localApiStatusError, localApiUrl } from './common'
+import { localApiFetch, localApiStatusError } from './common'
 
 export interface SkillMeta {
   name: string
@@ -25,14 +25,14 @@ export interface SkillDetail {
 }
 
 export async function listSkills(): Promise<SkillMeta[]> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.skills))
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.skills)
   if (!res.ok) throw localApiStatusError(res.status)
   const data = await res.json() as { skills: SkillMeta[] }
   return data.skills
 }
 
 export async function readSkill(name: string): Promise<SkillDetail> {
-  const res = await fetch(localApiUrl(localAppApiItemPath(LOCAL_APP_API_PREFIXES.skills, name)))
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.skills, name))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<SkillDetail>
 }
@@ -42,21 +42,21 @@ export async function listMemoryFiles(): Promise<MemoryFileOverview[]> {
 }
 
 export async function getMemoryFilesPayload(): Promise<MemoryFilesPayload> {
-  const res = await fetch(localApiUrl(LOCAL_APP_API_ROUTES.memoryFiles))
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.memoryFiles)
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<MemoryFilesPayload>
 }
 
 export async function readMemoryFile(name: MemoryFileName, signal?: AbortSignal): Promise<MemoryFileDetail> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryFiles, name)
-  const res = await fetch(localApiUrl(path), { signal })
+  const res = await localApiFetch(path, { signal })
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<MemoryFileDetail>
 }
 
 export async function writeMemoryFile(name: MemoryFileName, content: string): Promise<MemoryFileDetail> {
   const path = localAppApiItemPath(LOCAL_APP_API_PREFIXES.memoryFiles, name)
-  const res = await fetch(localApiUrl(path), {
+  const res = await localApiFetch(path, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
