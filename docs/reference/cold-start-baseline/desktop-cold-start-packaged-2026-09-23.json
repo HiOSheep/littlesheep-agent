@@ -1,0 +1,1310 @@
+{
+  "check": "desktop-cold-start",
+  "label": "packaged-2026-09-23",
+  "app": "packaged",
+  "appExecutable": "release/win-unpacked/LittleSheep.exe",
+  "startedAt": "2026-09-23T05:34:02.254Z",
+  "samples": 3,
+  "profiles": [
+    "empty",
+    "normal"
+  ],
+  "note": [
+    "Hot-cache repeats are not a full cold start: a rebooted machine and a",
+    "first-ever binary read are outside what this harness can automate.",
+    "Each repeat uses a fresh isolated data root, so the data layout is cold",
+    "while the OS file cache for the application bundle is warm from the",
+    "previous repeat. Treat the first repeat of a session as the coldest."
+  ],
+  "machine": {
+    "platform": "win32",
+    "arch": "x64",
+    "release": "10.0.26200",
+    "cpuModel": "AMD Ryzen 9 7945HX with Radeon Graphics        ",
+    "cpuCount": 32,
+    "totalMemoryGb": 15.7,
+    "electronVersion": "36.9.5",
+    "appBuildInputDigest": "91425b69be4b6f07284bf2b9378eed13c937b9c1349a2fef3dd13c38cd1a4a36"
+  },
+  "runs": [
+    {
+      "profile": "empty",
+      "index": 0,
+      "ok": true,
+      "pid": 67124,
+      "processCreatedAt": 1790141642080,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 199.7
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 200.8
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 461.6
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 500.4
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 500.9
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 519.2,
+          "durationMs": 18.3
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 520.8,
+          "durationMs": 1.6
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 534.9,
+          "durationMs": 14.2
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 535.3,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 541.3,
+          "durationMs": 6
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 542.3,
+          "durationMs": 1
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 542.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 542.8,
+          "durationMs": 0.5
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 543.2,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 546.7,
+          "durationMs": 3.4
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 548.7,
+          "durationMs": 2
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 563.1,
+          "durationMs": 14.4
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 565.3,
+          "durationMs": 2.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 565.9
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 571.6,
+          "durationMs": 6.3
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 571.8
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 582.4,
+          "durationMs": 8.1
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 804.3
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 864.1
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 199.7,
+        "processStartRecordedAtMs": 200.8,
+        "spawnToMainModuleMs": 200.8,
+        "spawnToLocatorMs": 925.8,
+        "locatorToCdpAttachedMs": 574,
+        "inputUsableMs": 318.2,
+        "inputAcceptedCharacter": true,
+        "rendererFirstFrameMs": 264.5,
+        "processCreateToFirstFrameMs": 1272,
+        "executionReadyMs": 2167.8,
+        "firstSendPreparationMs": 19.6
+      }
+    },
+    {
+      "profile": "empty",
+      "index": 1,
+      "ok": true,
+      "pid": 71440,
+      "processCreatedAt": 1790141644640,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 189.4
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 190.5
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 443.8
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 484
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 484.3
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 498.2,
+          "durationMs": 13.8
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 499.1,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 508.7,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 509,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 517.8,
+          "durationMs": 8.8
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 518.6,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 518.7,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 518.9,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 519.2,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 521.6,
+          "durationMs": 2.4
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 523.6,
+          "durationMs": 2.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 544.6,
+          "durationMs": 21
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 562.4,
+          "durationMs": 17.8
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 563.1
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 566.2,
+          "durationMs": 3.8
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 566.4
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 573.8,
+          "durationMs": 5
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 783
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 848.4
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 189.4,
+        "processStartRecordedAtMs": 190.5,
+        "spawnToMainModuleMs": 190.5,
+        "spawnToLocatorMs": 913.5,
+        "locatorToCdpAttachedMs": 522,
+        "inputUsableMs": 319.6,
+        "inputAcceptedCharacter": true,
+        "rendererFirstFrameMs": 271.1,
+        "processCreateToFirstFrameMs": 1244.9,
+        "executionReadyMs": 2105.5,
+        "firstSendPreparationMs": 18.9
+      }
+    },
+    {
+      "profile": "empty",
+      "index": 2,
+      "ok": true,
+      "pid": 65764,
+      "processCreatedAt": 1790141647082,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 216.6
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 217.7
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 477.8
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 520.8
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 521.2
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 540.1,
+          "durationMs": 18.9
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 541,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 549.4,
+          "durationMs": 8.4
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 549.8,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 556.8,
+          "durationMs": 7
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 557.9,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 558,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 558.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 558.6,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 560.6,
+          "durationMs": 2
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 562.6,
+          "durationMs": 2
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 579.1,
+          "durationMs": 16.5
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 584.9,
+          "durationMs": 5.8
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 585.5
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 588.9,
+          "durationMs": 4
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 589.1
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 597.1,
+          "durationMs": 5.5
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 802.4
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 858.2
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 216.6,
+        "processStartRecordedAtMs": 217.7,
+        "spawnToMainModuleMs": 217.7,
+        "spawnToLocatorMs": 966.7,
+        "locatorToCdpAttachedMs": 528,
+        "inputUsableMs": 298.3,
+        "inputAcceptedCharacter": true,
+        "rendererFirstFrameMs": 238.4,
+        "processCreateToFirstFrameMs": 1259.6,
+        "executionReadyMs": 2120.7,
+        "firstSendPreparationMs": 15.8
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 0,
+      "ok": true,
+      "pid": 52320,
+      "processCreatedAt": 1790141649598,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 216.5
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 217.8
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 465.2
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 528.9
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 529.3
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 561.8,
+          "durationMs": 32.5
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 563.1,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 572.1,
+          "durationMs": 9
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 572.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 574.8,
+          "durationMs": 2.5
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 575.7,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 575.8,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 576,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 578,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 580.9,
+          "durationMs": 2.9
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 583,
+          "durationMs": 2.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 598.2,
+          "durationMs": 15.2
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 601.1,
+          "durationMs": 2.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 601.7
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 610.8,
+          "durationMs": 9.7
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 611.1
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 622,
+          "durationMs": 8.5
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 701.5,
+          "durationMs": 79.4
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 704,
+          "durationMs": 2.4
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 704.3,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 715.1,
+          "durationMs": 10.8
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 747.8,
+          "durationMs": 32.7
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 751.4,
+          "durationMs": 3.5
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 771.7,
+          "durationMs": 20.2
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 772.2,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 772.5,
+          "durationMs": 161.4
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 832.3
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 883.3
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 902.6,
+          "durationMs": 130.1
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 903.2
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 216.5,
+        "processStartRecordedAtMs": 217.8,
+        "spawnToMainModuleMs": 217.8,
+        "spawnToLocatorMs": 969.8,
+        "locatorToCdpAttachedMs": 460,
+        "inputUsableMs": 212.5,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 319.6,
+        "rendererFirstFrameMs": 305.7,
+        "processCreateToFirstFrameMs": 1321.6,
+        "executionReadyMs": 1787.8,
+        "firstSendPreparationMs": 23.2
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 1,
+      "ok": true,
+      "pid": 48328,
+      "processCreatedAt": 1790141651888,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 191.9
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 193
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 455.7
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 502.8
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 503.2
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 523.3,
+          "durationMs": 20.1
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 524.3,
+          "durationMs": 1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 530,
+          "durationMs": 5.7
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 530.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 533.6,
+          "durationMs": 3.3
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 534.3,
+          "durationMs": 0.7
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 534.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 534.6,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 535.4,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 539.4,
+          "durationMs": 4
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 541.5,
+          "durationMs": 2.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 552.1,
+          "durationMs": 10.6
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 553.8,
+          "durationMs": 1.7
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 554.3
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 558.5,
+          "durationMs": 4.8
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 558.7
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 568.3,
+          "durationMs": 7.1
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 594.9,
+          "durationMs": 26.5
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 597.8,
+          "durationMs": 2.9
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 598.2,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 612.5,
+          "durationMs": 14.3
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 651.2,
+          "durationMs": 38.6
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 663.8,
+          "durationMs": 12.5
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 684.8,
+          "durationMs": 21
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 685.3,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 685.6,
+          "durationMs": 126.9
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 742.7,
+          "durationMs": 57.1
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 743.2
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 787.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 806.3
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 191.9,
+        "processStartRecordedAtMs": 193,
+        "spawnToMainModuleMs": 193,
+        "spawnToLocatorMs": 918,
+        "locatorToCdpAttachedMs": 501,
+        "inputUsableMs": 317.3,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 334.9,
+        "rendererFirstFrameMs": 241.1,
+        "processCreateToFirstFrameMs": 1210.5,
+        "executionReadyMs": 1593,
+        "firstSendPreparationMs": 21.4
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 2,
+      "ok": true,
+      "pid": 54680,
+      "processCreatedAt": 1790141653873,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 211.7
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 212.8
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 484.4
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 530.2
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 530.6
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 562,
+          "durationMs": 31.4
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 563.6,
+          "durationMs": 1.6
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 569.5,
+          "durationMs": 5.9
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 569.8,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 572.5,
+          "durationMs": 2.7
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 575.9,
+          "durationMs": 3.4
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 576,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 576.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 577.3,
+          "durationMs": 1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 579.6,
+          "durationMs": 2.2
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 581.7,
+          "durationMs": 2.2
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 601.9,
+          "durationMs": 20.1
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 605.8,
+          "durationMs": 3.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 606.4
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 620.1,
+          "durationMs": 14.4
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 620.4
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 639.9,
+          "durationMs": 17
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 709.4,
+          "durationMs": 69.5
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 712.5,
+          "durationMs": 3
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 712.8,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 722.3,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 749,
+          "durationMs": 26.7
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 752.1,
+          "durationMs": 3
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 767.5,
+          "durationMs": 15.4
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 768,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 768.2,
+          "durationMs": 147.9
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 826,
+          "durationMs": 57.7
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 826.6
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 842.4
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 863.8
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/release/win-unpacked/resources/app.asar/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 211.7,
+        "processStartRecordedAtMs": 212.8,
+        "spawnToMainModuleMs": 212.8,
+        "spawnToLocatorMs": 948.8,
+        "locatorToCdpAttachedMs": 527,
+        "inputUsableMs": 293.8,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 300,
+        "rendererFirstFrameMs": 280.5,
+        "processCreateToFirstFrameMs": 1297.1,
+        "executionReadyMs": 1727.8,
+        "firstSendPreparationMs": 25.2
+      }
+    }
+  ],
+  "summary": {
+    "empty": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 190.5,
+          "max": 217.7,
+          "values": [
+            200.8,
+            190.5,
+            217.7
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 913.5,
+          "max": 966.7,
+          "values": [
+            925.8,
+            913.5,
+            966.7
+          ]
+        },
+        "rendererFirstFrameMs": {
+          "samples": 3,
+          "min": 238.4,
+          "max": 271.1,
+          "values": [
+            264.5,
+            271.1,
+            238.4
+          ]
+        },
+        "processCreateToFirstFrameMs": {
+          "samples": 3,
+          "min": 1244.9,
+          "max": 1272,
+          "values": [
+            1272,
+            1244.9,
+            1259.6
+          ]
+        },
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 298.3,
+          "max": 319.6,
+          "values": [
+            318.2,
+            319.6,
+            298.3
+          ]
+        },
+        "sessionReadableMs": null,
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 2105.5,
+          "max": 2167.8,
+          "values": [
+            2167.8,
+            2105.5,
+            2120.7
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 15.8,
+          "max": 19.6,
+          "values": [
+            19.6,
+            18.9,
+            15.8
+          ]
+        }
+      }
+    },
+    "normal": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 193,
+          "max": 217.8,
+          "values": [
+            217.8,
+            193,
+            212.8
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 918,
+          "max": 969.8,
+          "values": [
+            969.8,
+            918,
+            948.8
+          ]
+        },
+        "rendererFirstFrameMs": {
+          "samples": 3,
+          "min": 241.1,
+          "max": 305.7,
+          "values": [
+            305.7,
+            241.1,
+            280.5
+          ]
+        },
+        "processCreateToFirstFrameMs": {
+          "samples": 3,
+          "min": 1210.5,
+          "max": 1321.6,
+          "values": [
+            1321.6,
+            1210.5,
+            1297.1
+          ]
+        },
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 212.5,
+          "max": 317.3,
+          "values": [
+            212.5,
+            317.3,
+            293.8
+          ]
+        },
+        "sessionReadableMs": {
+          "samples": 3,
+          "min": 300,
+          "max": 334.9,
+          "values": [
+            319.6,
+            334.9,
+            300
+          ]
+        },
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 1593,
+          "max": 1787.8,
+          "values": [
+            1787.8,
+            1593,
+            1727.8
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 21.4,
+          "max": 25.2,
+          "values": [
+            23.2,
+            21.4,
+            25.2
+          ]
+        }
+      }
+    }
+  },
+  "budgets": {
+    "note": [
+      "桌面冷启动的回归护栏，不是提速目标。数值来自 2026-09-23 的基线样本（每 profile n=5，另有一次 normal n=15 的复测），",
+      "取整到 10 ms 并留出约 1.3-1.5 倍余量，用于发现明显回退；样本量不足以支撑高分位统计，因此不能用它宣称性能达标。",
+      "spawnToLocatorMs 不设护栏：基线本身在 640-990 ms 之间波动，这个量级内无法区分回退与噪声。"
+    ],
+    "measured": "2026-09-23",
+    "sample": {
+      "profiles": [
+        "empty",
+        "normal",
+        "large",
+        "recovery"
+      ],
+      "runsPerProfile": 5,
+      "extra": "normal n=15"
+    },
+    "budgetsMs": {
+      "spawnToMainModuleMs": 250,
+      "processCreateToFirstFrameMs": 1800,
+      "inputUsableMs": 500,
+      "sessionReadableMs": 550,
+      "executionReadyMs": 2200,
+      "firstSendPreparationMs": 50
+    },
+    "unmeasured": [
+      "系统重启后的完全冷启动",
+      "打包版（release/win-unpacked 或安装包）",
+      "125% / 150% / 200% 缩放与明暗桌面背景"
+    ]
+  },
+  "assertions": {
+    "ok": true,
+    "checks": {
+      "empty.spawnToMainModuleMs": {
+        "observedMax": 217.7,
+        "budget": 250,
+        "ok": true
+      },
+      "empty.processCreateToFirstFrameMs": {
+        "observedMax": 1272,
+        "budget": 1800,
+        "ok": true
+      },
+      "empty.inputUsableMs": {
+        "observedMax": 319.6,
+        "budget": 500,
+        "ok": true
+      },
+      "empty.executionReadyMs": {
+        "observedMax": 2167.8,
+        "budget": 2200,
+        "ok": true
+      },
+      "empty.firstSendPreparationMs": {
+        "observedMax": 19.6,
+        "budget": 50,
+        "ok": true
+      },
+      "normal.spawnToMainModuleMs": {
+        "observedMax": 217.8,
+        "budget": 250,
+        "ok": true
+      },
+      "normal.processCreateToFirstFrameMs": {
+        "observedMax": 1321.6,
+        "budget": 1800,
+        "ok": true
+      },
+      "normal.inputUsableMs": {
+        "observedMax": 317.3,
+        "budget": 500,
+        "ok": true
+      },
+      "normal.sessionReadableMs": {
+        "observedMax": 334.9,
+        "budget": 550,
+        "ok": true
+      },
+      "normal.executionReadyMs": {
+        "observedMax": 1787.8,
+        "budget": 2200,
+        "ok": true
+      },
+      "normal.firstSendPreparationMs": {
+        "observedMax": 25.2,
+        "budget": 50,
+        "ok": true
+      }
+    }
+  }
+}

@@ -35,13 +35,22 @@ export const DEFAULT_ACTION_TIMEOUT_MS = 20_000
 export function createElectronHarness({
   startTimeoutMs = DEFAULT_START_TIMEOUT_MS,
   actionTimeoutMs = DEFAULT_ACTION_TIMEOUT_MS,
+  /**
+   * Absolute path to a packaged executable. When set, the harness launches it
+   * with its own app bundle instead of the repository's `.` entry, which is what
+   * makes the packaged cold-start scenarios measurable.
+   */
+  packagedExecutable,
+  /** Packaged builds carry no app-build manifest, so freshness is not asserted. */
+  requireAppBuildManifest = packagedExecutable === undefined,
 } = {}) {
   async function assertBuildFresh() {
+    if (packagedExecutable !== undefined) return { status: 'packaged' }
     return assertAppBuildFresh(repoRoot)
   }
 
   function resolveExecutable() {
-    return resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
+    return packagedExecutable ?? resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest })
   }
 
   /**
@@ -71,7 +80,8 @@ export function createElectronHarness({
     delete env.ELECTRON_RUN_AS_NODE
     const spawnRequestedAt = Date.now()
     const child = spawn(executable, [
-      '.',
+      // A packaged app owns its bundle, so only the repository entry needs `.`.
+      ...(packagedExecutable === undefined ? ['.'] : []),
       `--user-data-dir=${chromiumDir}`,
       ...(debuggingPort ? [`--remote-debugging-port=${debuggingPort}`] : []),
       ...(mainDebuggingPort ? [`--inspect=${mainDebuggingPort}`] : []),

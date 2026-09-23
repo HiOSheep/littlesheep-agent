@@ -30,16 +30,27 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, repoRoot } from './lib/electron-cdp-harness.mjs'
 
-const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 30_000 })
-const PROFILES = ['empty', 'normal', 'large', 'recovery']
-const READINESS_TIMEOUT_MS = 90_000
-const SESSION_READABLE_TIMEOUT_MS = 60_000
+const PACKAGED_EXECUTABLE_RELATIVE = 'release/win-unpacked/LittleSheep.exe'
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`
   const found = process.argv.slice(2).find((argument) => argument.startsWith(prefix))
   return found === undefined ? fallback : found.slice(prefix.length)
 }
+
+const appKind = readOption('app', 'dev')
+if (appKind !== 'dev' && appKind !== 'packaged') {
+  throw new Error(`--app must be dev or packaged, received ${appKind}`)
+}
+const packagedExecutable = appKind === 'packaged' ? resolve(repoRoot, PACKAGED_EXECUTABLE_RELATIVE) : undefined
+const harness = createElectronHarness({
+  startTimeoutMs: 90_000,
+  actionTimeoutMs: 30_000,
+  ...(packagedExecutable === undefined ? {} : { packagedExecutable }),
+})
+const PROFILES = ['empty', 'normal', 'large', 'recovery']
+const READINESS_TIMEOUT_MS = 90_000
+const SESSION_READABLE_TIMEOUT_MS = 60_000
 
 const samples = Number.parseInt(readOption('samples', '3'), 10)
 const label = readOption('label', 'unlabeled')
@@ -72,6 +83,8 @@ async function main() {
   const ledger = {
     check: 'desktop-cold-start',
     label,
+    app: appKind,
+    appExecutable: appKind === 'packaged' ? PACKAGED_EXECUTABLE_RELATIVE : 'packages/app/out (dev entry)',
     startedAt: startedAt.toISOString(),
     samples,
     profiles,
@@ -204,9 +217,6 @@ async function runOneSample({ profile, index }) {
     const rendererFrame = await waitForRendererFrame(logPath)
     timings.rendererFirstFrameMs = rendererFrame?.durationMs
     timings.processCreateToFirstFrameMs = rendererFrame?.processUptimeMs
-    // `performance.timeOrigin + first-contentful-paint` is a wall-clock instant;
-    // kept as a cross-check for the reported frame.
-    timings.firstContentfulPaintMs = await readFirstContentfulPaint(client)
 
     const readiness = await waitForExecutionReady(locator, processCreatedAt)
     timings.executionReadyMs = readiness.elapsedMs
@@ -232,20 +242,6 @@ async function runOneSample({ profile, index }) {
     if (!keepRoots && diagnostics.ok) await harness.removeTemporaryRoot(root)
     else if (keepRoots) console.log(`[cold-start] kept ${root}`)
   }
-}
-
-/**
- * Chromium's first contentful paint as a wall-clock instant. Kept as a
- * cross-check for the renderer's own report: it may be unavailable when the
- * entry was evicted, and is then reported as absent rather than guessed.
- */
-async function readFirstContentfulPaint(client) {
-  const value = await client.evaluate(`(() => {
-    const entry = performance.getEntriesByType('paint').find((item) => item.name === 'first-contentful-paint');
-    if (!entry) return null;
-    return performance.timeOrigin + entry.startTime;
-  })()`)
-  return typeof value === 'number' ? round(value) : undefined
 }
 
 /**

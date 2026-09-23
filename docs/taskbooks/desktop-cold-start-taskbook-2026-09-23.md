@@ -186,9 +186,10 @@
 
 ### CS-07｜真实回归与文档收口 —— 部分
 
-- 已运行：`pnpm run check:repo`、`pnpm run typecheck`、`pnpm exec vitest run packages/app/src`（896 用例）、`pnpm run build:app`、20 次真实 Electron 冷启动采样、真实 Electron 探针。
+- 已运行：`pnpm run check:repo`、`pnpm run typecheck`、`pnpm exec vitest run packages/app/src`（896 用例）、`pnpm run build:app`、`pnpm run package:win`（未签名 `release/win-unpacked`）、20 次开发版冷启动采样、6 次打包版冷启动采样（`--app=packaged`，全部成功并通过同一份回归护栏）、真实 Electron 视觉与交互验收。
+- 打包版与开发版对比见[基线文档](../reference/cold-start-baseline/README.md#打包版冷启动releasewin-unpacked)：多数差异在样本波动内，可确认打包版无量级回退。
 - 已发现并记录一个**与本专项无关**的既有失败：`verify:electron-ui-state-continuity` 的 `bounded tool activity was not observable`，在改动前的 `df66ed9` 上可复现（见上）。
-- 剩余：截图矩阵、打包版回归、启动中输入/切换会话/关闭窗口/各 DPI 的实机场景、任务书退役收口。
+- 剩余：NSIS 安装包实机安装与干净机器首次运行；失焦/最小化/还原/最大化恢复与各 DPI；启动中输入、切换会话、关闭窗口的完整场景矩阵；任务书退役收口。
 
 ### CS-07 前置观察（不属于本专项改动）
 
