@@ -1,6 +1,6 @@
 # Electron Preload
 
-最后更新：2026-09-23 10:04:39
+最后更新：2026-09-23 17:20:30
 
 Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小运行时信息。
 
@@ -9,6 +9,7 @@ Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小�
 - 入口是 `index.ts`；暴露面是固定形状的 `window.littlesheep`。
 - 就绪契约：`localApiBase()` 等待 Main 报告 Local App API 端口（有界 90 秒）后返回 `http://127.0.0.1:<port>`，不再在加载时快照 `LITTLESHEEP_API_PORT`——启动页与正式 renderer 共用同一 preload，端口当时还不存在。
 - 只读就绪桥：`getRuntimeReadiness()` 查询当前快照（订阅后补读，补回错过的通知），`onRuntimeReadiness()` 返回退订函数；载荷由 `../shared/runtime-readiness-contracts.ts` 的 `isRuntimeReadiness` 复核，仅接受 `apiVersion === 1`。
+- `retryExecution()`：转达 Main 对失败执行阶段的有界重试**决定**（`accepted` / `attemptsUsed` / `attemptsRemaining` / `refusedBecause`）。preload 不实现预算、不重试、不缓存结果，只把 Main 的回答原样交给 renderer，避免出现"界面显示重试了、Main 其实拒绝了"。
 - `reportRendererTiming(stage, durationMs)` 只转发 `../shared/runtime-readiness-ipc.ts` 白名单内的阶段名与有界毫秒数，用于启动计时，不接收任意字符串或任意数值。
 - `getPathForFile` 经 Electron `webUtils` 取本地路径，失败返回空串。
 - 只读事件桥：`onBrowserOpenNewTab`（只转发 HTTP(S) 载荷，返回退订函数）和 `onApplicationStateFlush`（监听器返回后回发 ACK；500 ms 超时归 `../main/desktop-shell.ts`）。
