@@ -26,6 +26,10 @@ export {
 // EXECUTE-stage helper exposed for tests / custom EXECUTE stages.
 export { convertToolCall } from './stages/execute.js';
 
+// The environment brief's tail-entry id, so a caller can tell apart the records
+// this run actually delivered from the ones it only rendered.
+export { RUNTIME_CONTEXT_TAIL_ID } from './runtime-context-notice.js';
+
 // LLM helpers (JSON extraction + retry-on-parse-failure). Reused by the CLI
 // import-repo command and other LLM-backed utilities outside the harness loop.
 export { callLlmForJson, extractJson } from './stages/_shared.js';

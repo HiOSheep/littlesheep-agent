@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-23 22:38:00
+最后更新：2026-09-24 02:45:00
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 
@@ -29,3 +29,4 @@
 - 运行行为和摘要接续在 `src/runner.test.ts`，摘要精确字段保真在 `src/session-summary-fidelity.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，压缩压力触发与候选结算在 `src/session-compaction-scheduler.test.ts` 与 `src/session-compaction-input.test.ts`，durable 恢复在 `src/durable-*.test.ts`，负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。涉及会话转录的断言先过滤 `runtimeTail` 记录：它们为按字节回放而持久化，但不是对话。`session-compaction-input.test.ts` 的用例会驱动真实 run 与真实压缩调用，因此该文件显式把测试超时设为 90 秒——并行跑全量测试时它们曾因默认超时而失败，那与它们断言的行为无关。
 - 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。
 - 续跑样本的断言必须按**当前**行为写：旧检查点的 `taskBook`/`taskExecution` 是只读历史，VERIFY 不再把它当成缺口，因此"预算耗尽后授予完全访问并重试"这一样本交付的是模型自己写的回答（2 次请求、轨迹 `[recover, execute, verify, finalize]`）。它此前断言的那次额外请求其实是 `ask_user` 的措辞调用——即工作已经做完却又问了一遍用户。
+- `run-context-notice-delivery.test.ts` 守住"没送到就不算送达"：FINALIZE 的每条失败路径都不写 `produced`，所以传输层失败的 run 不会把环境简报留在转录里，下一次 run 必然重新投递。

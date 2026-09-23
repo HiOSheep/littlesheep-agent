@@ -197,8 +197,24 @@ describe('runtime context brief', () => {
     expect(second.entries.filter((entry) => entry.id === RUNTIME_CONTEXT_TAIL_ID)).toHaveLength(0);
   });
 
-  it('reaches a capability reply from the same Runtime facts the main loop uses', () => {
-    const ctx = runContext({ config: resolvedConfig({ provider: 'provider-b', model: 'model-b' }) });
+  it('reads each session environment from its own facts', () => {
+    // Two sessions alive at once must not borrow each other's directory or
+    // model: the brief is rendered per run, from that run's own effective state.
+    const first = runContext({ cwd: 'D:\\sessions\\first', config: resolvedConfig({ provider: 'provider-a', model: 'model-a' }) });
+    const second = runContext({ cwd: 'D:\\sessions\\second', config: resolvedConfig({ provider: 'provider-b', model: 'model-b' }) });
+
+    const firstNotice = renderRuntimeContextNotice(first)!;
+    const secondNotice = renderRuntimeContextNotice(second)!;
+
+    expect(firstNotice).toContain('- workspace: D:\\sessions\\first');
+    expect(firstNotice).toContain('- model: provider-a/model-a');
+    expect(secondNotice).toContain('- workspace: D:\\sessions\\second');
+    expect(secondNotice).toContain('- model: provider-b/model-b');
+    expect(firstNotice).not.toContain('second');
+    expect(secondNotice).not.toContain('first');
+  });
+
+  it('reaches a capability reply from the same Runtime facts the main loop uses', () => {    const ctx = runContext({ config: resolvedConfig({ provider: 'provider-b', model: 'model-b' }) });
     const raw: ChatRequest = {
       model: 'provider-b/model-b',
       messages: [
