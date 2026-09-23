@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-23 17:20:30
+最后更新：2026-09-23 22:30:00
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
@@ -27,6 +27,8 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `workspace/preview-pane.tsx`、`workspace/code-editor.tsx` 与主进程 Office 预览服务：代码和普通文本使用共享内置编辑器；普通 Markdown 文件默认渲染，查看源码或编辑时才挂载共享 Monaco，而 Git 审阅中的 Markdown 仍显示源代码 Diff。普通文件和审阅主表面铺满拓展工作区的可用宽度与底部，不绘制外围圆角、边框或整面 hover 反馈；右侧文件导航贴边并仅保留左分隔线。普通查看和审阅统一保留舒适的行号/代码间距；审阅行号、增删计数与连续 5px 左缘使用不透明的 `#02A243` / `#DE352E`，代码行使用在 `#101010` 上合成为 `#1A2B1C` / `#371D17` 的单层 50% 透明底色；单列内联删除视图区也绘制整段连续红色左缘，字符级背景、整块 gutter 背景及会形成方块伪影的 Diff text border 均不绘制；Office/OpenDocument 以有界只读文本预览呈现，二进制正文不进入 Renderer。
 
 Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项目、密钥或工作区文件的权威数据。
+
+**失败不会在界面上消失**（CE-09 的现行契约，回归在 `chat/run-actions.test.ts`、`chat/run-result-reducer.test.ts`、`shared/history-activity.test.ts`）：一次 run 的终态由 `finally` 复位 `loading`，所以输入框不会永久停在运行中；确定性的流拒绝、流结束却没有 result、`ok` 却没有已结算回复都变成当前回合的 `failed` 且原样带上 Runtime 原因，中止走 `aborted`；失败回合的正文为空，流式预览被撤回，Runtime 状态行是唯一的用户可见陈述。刷新或重开会话时由 `shared/history-activity.ts` 从持久化消息与执行日志重建同一状态，没有 assistant 消息的 run 也会得到一行不写入转录的 Runtime 状态行；启动恢复只重读列表、不自动弹窗（见 `runtime-recovery/README.md`）。
 
 用户可见的 Agent 自然语言也不由 Renderer 拼装：回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须来自真实 LLM 调用，并结合运行时 `SOUL.md`、用户语言与已验证事实。Renderer 只呈现 Runtime 下发的最终文案，以及按钮、状态枚举、进度、路径、权限结果等机器事实；发布身份、幂等和去重由 Runtime 的持久化会话注册表负责，Renderer 不因措辞与上一回合相同而合并、改写或抑制消息，也不在回复为空时套用固定人格文案，只显示 Runtime 错误/状态。
 

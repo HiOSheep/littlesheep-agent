@@ -1140,9 +1140,14 @@ describe('runner checkpoint continuation', () => {
         continuationDisposition: 'retry',
       })
       await expect(runner.runCheckpoints!.resolveWaitingUserHead(session.id)).resolves.toEqual({ kind: 'none' })
-      // HC-01: under the default compaction-only policy the verified retry makes
-      // no automatic EVOLVE request, and VERIFY spends no model request.
-      expect(requests).toHaveLength(3)
+      // The retried run delivers the answer it produced. It used to end here by
+      // escalating instead: VERIFY read the *inherited* plan as an incomplete
+      // step execution, sent the run to RECOVER, and the exhausted budget turned
+      // that into a synthetic "how should I proceed?" question one round after
+      // the user had already answered it.
+      expect(requests).toHaveLength(2)
+      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'verify', 'finalize'])
+      expect(result.reply).toBe('The translated PDF was created from the preserved source evidence.')
     } finally {
       executeDocumentCreate.mockRestore()
       await runner.shutdown()

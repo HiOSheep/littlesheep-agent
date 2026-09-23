@@ -77,11 +77,19 @@ export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined
   // Step evidence is only owed for a plan this run actually executed. A plan
   // restored from a checkpoint is read-only history, so its untouched steps are
   // not an execution gap.
-  if (ctx.taskBook && ctx.taskExecution && hasIncompleteTaskExecution(ctx)) {
-    return 'failed or missing task step evidence';
-  }
-  if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {
-    return `task execution status is ${ctx.taskExecution.status}`;
+  //
+  // The condition is what makes that true. Nothing executes steps any more, so a
+  // resumed run can only ever see the plan it inherited: judging it turned
+  // inherited history into a gap, sent the run back to re-plan steps no executor
+  // can run, and spent the whole replan budget before asking the user.
+  const planOwedByThisRun = ctx.resumedFromCheckpointId === undefined;
+  if (planOwedByThisRun) {
+    if (ctx.taskBook && ctx.taskExecution && hasIncompleteTaskExecution(ctx)) {
+      return 'failed or missing task step evidence';
+    }
+    if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {
+      return `task execution status is ${ctx.taskExecution.status}`;
+    }
   }
   if (ctx.toolInvocationsTruncated) return 'tool invocation evidence is truncated';
 

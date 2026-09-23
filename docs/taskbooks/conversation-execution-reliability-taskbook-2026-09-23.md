@@ -1,6 +1,6 @@
 # 对话执行可靠性修复任务清单 2026-09-23
 
-最后更新：2026-09-23 21:22:00
+最后更新：2026-09-23 22:35:00
 
 ## 目标与证据边界
 
@@ -24,7 +24,7 @@
 | 已实施待实测 | CE-06 | P1 | 只读观察与副作用防重放正确分流 | P5 | M | CE-04/05 |
 | 已取证已修 | CE-07 | P1 | 核验 VERIFY“工具结果缺失”证据链 | P6 疑点 | M | 可先取证；复测依赖 CE-04 |
 | 已实施待实测 | CE-08 | P1 | 恢复耗尽后的续接必须产生进展或具体阻塞 | P6 | L | CE-04、CE-07 的结论 |
-| 待复现 | CE-09 | P1 | run 失败也有可见、可恢复的终态 | P8 | M | 可先复现；联验依赖 CE-08 |
+| 已核查已修 | CE-09 | P1 | run 失败也有可见、可恢复的终态 | P8 | M | 可先复现；联验依赖 CE-08 |
 | 待实施 | CE-10 | P2 | 中文过程表达与低风险模糊请求直接执行 | P9 | S | CE-01/03/04 |
 | 已回归 | CE-11 | P2 | 保留 DSML 泄漏历史回归 | P7 | S | 无 |
 | 待验收 | CE-12 | P0 交付门 | 三类工作区的真实完整流程验收 | P1～P9 | L | 对应实现与调查关闭后 |
@@ -154,11 +154,11 @@
 
 **工作范围**：检查普通输入到 run 终态、事件流、持久化和重新打开会话的链路。先核实旧 TaskBook step 的工具拒绝在当前单循环/旧 checkpoint 兼容路径上能否发生，不重新引入已删除的步骤执行器。
 
-- [ ] 模型失败、工具拒绝、无可发布模型正文、断流和终态持久化异常均有可见 Runtime 状态，输入框不永久停留在运行中。
-- [ ] 无合法 LLM 回复时允许只有 Runtime 错误/状态，不能生成固定“Agent 道歉”冒充模型回复。
-- [ ] 同一失败刷新、重开会话后仍可识别，已有模型回复不重复发布；确实未持久化时不得暗示已保存。
-- [ ] 待决定状态可在原对话发现与继续；启动自动恢复不新增阻塞式提示，与既有静默恢复约定一致。
-- [ ] 如果原 P8 已不可复现，记录环境、覆盖范围与结果，按回归保护关闭调查，不能声称找到了历史根因。
+- [x] 模型失败、工具拒绝、无可发布模型正文、断流和终态持久化异常均有可见 Runtime 状态，输入框不永久停留在运行中。（源码核对 + 新增回归：`run-actions.ts` 的 `finally` 在每条退出路径复位 `loading`；确定性流拒绝、流结束却没有 result、`ok` 却没有已结算回复分别变为 `failed`，中止为 `aborted`，两者都带上 Runtime 原因并把输入/附件还给输入栏。`run-actions.test.ts` 新增三条参数化用例逐项断言 `text === ''`、`activity.status === 'failed'`、`error` 等于 Runtime 消息、`setLoading(false)`。）
+- [x] 无合法 LLM 回复时允许只有 Runtime 错误/状态，不能生成固定“Agent 道歉”冒充模型回复。（`run-result-reducer.ts` 在非 `ok` 时把正文置空、只保留 Runtime 错误行；新增用例断言失败回合的序列化消息里不含流式预览，也不含道歉式模板。发布侧边界本就只接受有 `ReplyProvenance` 的 Provider 文案。）
+- [x] 同一失败刷新、重开会话后仍可识别，已有模型回复不重复发布；确实未持久化时不得暗示已保存。（`shared/history-activity.ts` 的 `buildHistoryMessages` 每次从持久化消息与执行日志重建同一状态，没有 assistant 消息的 run 得到一行不写入转录的 Runtime 状态行；未结算的终稿提案一律不显示为历史回答。既有 `history-activity.test.ts` 13 条覆盖，本轮未改该投影。）
+- [x] 待决定状态可在原对话发现与继续；启动自动恢复不新增阻塞式提示，与既有静默恢复约定一致。（`runActivityOutcome` 把 `waiting_user` 映成同一状态并带 `runCheckpointId`，历史用例断言实时与重载一致；启动恢复在 `RunRouter.create` 里只做租约恢复与完成对账，只写 `console` 日志，不产生任何 UI 提示。）
+- [x] 如果原 P8 已不可复现，记录环境、覆盖范围与结果，按回归保护关闭调查，不能声称找到了历史根因。**结论：从源码不可复现原 P8（空回复），按回归保护关闭；不声称找到历史根因。** 环境与覆盖范围见下方"CE-09 核查记录"。
 
 ### CE-10｜过程中文与合理默认执行（P2）
 
@@ -247,6 +247,45 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-23 第四轮（CE-09）
+
+### CE-09 核查记录
+
+**环境与覆盖范围（先说边界）**：本轮只做源码核对与自动化回归，**没有** Electron 实机窗口、没有真实模型、没有读取任何历史会话或执行日志（它们在数据根，不在仓库）。因此下面区分"源码可以证明"和"只有实机能证"。
+
+**原 P8（空回复）：从源码不可复现，按回归保护关闭，不声称找到历史根因。** 现在每一条终态路径都有明确出口：
+
+| 失败形态 | 用户可见结果 | 依据 |
+|---|---|---|
+| 模型请求失败 / 工具边界失败 | 回合 `failed`，`error` = Runtime 原因；输入与附件还给输入栏 | `run-actions.ts` catch 分支 + `finally` 复位 `loading` |
+| 无合法 LLM 正文 | 正文为空，只有 Runtime 错误行 | `run-result-reducer.ts` 非 `ok` 时 `text: ''`；`reply.ts` 两次空输出即失败关闭 |
+| 断流（SSE 结束但没有 result） | 抛错 → 同上 `failed` | `consumeRunStream` 末尾 `stream ended without result` |
+| 服务端 `error` 帧 | `RunStreamServerError` → 同上 `failed` | `consumeRunStream` 的 error 分支 |
+| `ok` 却没有已结算终稿 | 就地改成 `status: 'error'` + 明确原因 | `consumeRunStream` 的 settlement 校验 |
+| 终态持久化异常 | Runner 返回 `runtimeStatus.status === 'failed'` 与具体 reason | `authoritative-reply.ts` / `run-failure-result.ts`，runner 用例已覆盖 |
+| 刷新或重开会话 | 从持久化消息 + 执行日志重建同一状态；没有 assistant 消息的 run 也有一行状态 | `shared/history-activity.ts` 的 `buildHistoryMessages` + `history-activity.test.ts` |
+
+没有任何一条会以"空 assistant 消息且界面无状态"结束——这正是原报告描述的现象，所以它**不可从当前源码复现**。**只有在真实窗口里才能排掉的残余风险**（本轮未测）：React 渲染层异常、SSE 心跳期间的界面卡顿、以及"用户看到的状态行是否足够醒目"。这些属于 CE-12。
+
+**旧 TaskBook step 的工具拒绝能否发生**：不能。`task-execution` 的步骤执行器已随第二执行体系删除，当前只有单一主循环；旧检查点的 `taskBook`/`taskExecution` 是只读历史。但核查中发现**代码与自己写下的规则相反**：`runtimeExecutionEvidenceGap` 的两条步骤分支的注释写着"步骤证据只对本次 run 实际执行过的计划成立"，实现却对任何存在的 `taskBook`/`taskExecution` 生效。后果是旧检查点续跑时，继承来的计划被当成缺口，run 被打回 `execute` 去重规划一个没有执行器能跑的步骤集，直到重规划预算耗尽再升级成用户决策——属于本专项要消除的反复空转，而且先失败后通过的用例证明它确实会触发。
+
+**修复**：两条步骤分支加上 `ctx.resumedFromCheckpointId === undefined` 前提（恢复的计划是只读历史），没有引入任何步骤执行器，也没有放宽其他缺口判定。三条用例先在修复前失败（`expected 'failed or missing task step evidence' to be undefined` / `expected 'task execution status is failed' to be undefined`），修复后 16 条全过；"计划属于本 run" 的那条仍照旧报缺口。
+
+**修复在真实续跑用例上的可见结果**：`runner-continuation.test.ts` 的"预算耗尽后授予完全访问并重试"样本原先把请求数固定为 3 并断言 `status: ok` —— 那第 3 次请求其实是 `ask_user` 的措辞调用：VERIFY 把**继承的计划**判成缺口、交给 RECOVER，而已耗尽的预算立刻把它升级成一句"你希望我接下来如何处理？"。也就是说：用户刚回答过、工作也已经做完，run 却又问了一遍。修复后同一样本变成 2 次请求、轨迹 `[recover, execute, verify, finalize]`、交付模型自己写的回答。这条断言是按新事实**加强**（新增轨迹与回答断言），不是把失败改成通过。
+
+**剩余未知**：原 P8 的空回复到底发生在哪一层（Runner 未落盘、事件流未送达、还是渲染层丢弃）无法回溯；本轮只能说明当前代码不存在这条路径。
+
+### 验证命令与结果
+
+- `pnpm.cmd exec vitest run packages/harness packages/app packages/runner packages/tools packages/llm packages/prompt` → **354 文件 / 2237 项通过，1 跳过，0 失败**。
+- 新增/扩展用例：`packages/app/src/renderer/chat/run-actions.test.ts` 三条终态失败形态；`run-result-reducer.test.ts` 一条预览撤回；`packages/harness/src/stages/verify/evidence-gap.test.ts` 三条计划证据前提；`packages/runner/src/runner-continuation.test.ts` 把预算耗尽重试样本从"3 次请求"改为按新事实断言（2 次请求 + 轨迹 + 交付回答）。
+- `pnpm.cmd run typecheck` → exit 0；`pnpm.cmd run check:repo` → ok。
+
+### 本次未做
+
+- 仍未做真实模型调用与 Electron 实机；CE-12 全部场景未执行，CE-09 的界面醒目度与渲染层异常不在本轮结论内。
+- CE-10 未开始。
 
 ## 实施记录｜2026-09-23 第三轮（CE-07 取证、CE-08）
 

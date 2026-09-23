@@ -217,6 +217,45 @@ describe('run actions active-run updates', () => {
       expect.objectContaining({ phaseId: 'request:dispatch', activityKind: 'request_dispatch', status: 'aborted', endedAt: expect.any(Number) }),
     ])
   })
+
+  // CE-09: a failure has to stay visible. The composer must leave the running
+  // state and the turn must carry the Runtime's own reason — never a canned
+  // Agent apology, and never a streamed preview left standing as if it were the
+  // answer.
+  it.each([
+    ['a definitive stream rejection', (() => {
+      const error = new Error('provider request failed: 502')
+      error.name = 'RunStreamServerError'
+      return error
+    })()],
+    ['a stream that ended without a result', new Error('Local app API stream ended without result')],
+    ['a runtime error frame', (() => {
+      const error = new Error('runtime could not settle the final reply')
+      error.name = 'RunStreamServerError'
+      return error
+    })()],
+  ])('surfaces %s as a terminal failure without inventing an answer', async (_label, failure) => {
+    apiMocks.runAgentStream.mockImplementation(async (_text, _session, _mode, handlers: { onDelta: (delta: string) => void }) => {
+      handlers.onDelta('partial preview ')
+      throw failure
+    })
+    const fixture = contextFixture('做一个小游戏吧', null, { loading: false })
+
+    await createRunActions(fixture.context).send()
+
+    const message = fixture.messages().at(-1)
+    expect(message?.text).toBe('')
+    expect(message?.activity).toMatchObject({
+      status: 'failed',
+      error: (failure as Error).message,
+    })
+    expect(message?.activity?.endedAt).toBeTypeOf('number')
+    // Serialized form carries no apology-style substitute for a model reply.
+    expect(JSON.stringify(message)).not.toMatch(/抱歉|sorry,/i)
+    // The turn is not lost and the composer is usable again.
+    expect(fixture.input()).toBe('做一个小游戏吧')
+    expect(fixture.context.setLoading).toHaveBeenLastCalledWith(false)
+  })
 })
 
 

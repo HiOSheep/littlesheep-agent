@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-23 21:34:00
+最后更新：2026-09-23 22:30:00
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -21,7 +21,7 @@
 - 重复观察不是重放（CE-06）：账本只看 Runtime 能证明的事实——只声明读资源或属于 Runtime 只读名单的调用根本不进账本，因此"列目录 → 创建产物 → 再列目录"能拿到新观察；不透明 `exec` 不声明资源，无论命令首词多像列举都记为 `external`，重复成功调用仍被拒。拒绝文案点名 `glob`/`read` 作为结构化替代入口。回归在 `stages/execute/read-observation-loop.test.ts` 与 `side-effect-ledger.test.ts`。
 - 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。
-- 续跑的证据投影（`stages/verify/task-state.ts` 的 `inheritedEffectEvidence`）：检查点持久化 `sideEffects` 但不持久化 `toolInvocations`，续跑 run 的 invocation 列表只属于本轮，所以上一轮结算过的副作用永远匹配不到它。判定改以检查点自己带过来的东西为据（旧检查点步骤记过的调用与结果——成功或失败都算——或账本条目已是终态）；没有 callId、仍未结算或本 run 未续跑时仍报缺口。这修掉了"任何中断前结算过副作用、续跑后做完的 run 都报证据不完整"。
+- 续跑的证据投影（`stages/verify/task-state.ts` 的 `inheritedEffectEvidence` 与计划证据条件）：检查点持久化 `sideEffects` 与 `taskExecution`，但不持久化 `toolInvocations`，续跑 run 的 invocation 列表只属于本轮。两处判定因此都以"这是本轮产生的吗"为前提——继承的终态副作用由检查点自身作证；**步骤证据只对本次 run 执行过的计划成立**，续跑带进来的旧计划不再被当成缺口（此前会把 run 打回去重规划一个没有执行器能跑的步骤集）。没有 callId、仍未结算、本 run 未续跑，或计划属于本 run 时，缺口照旧上报。
 - 恢复分类与升级（`stages/recover/policy.ts`、`stages/recover/escalation.ts`）：TaskBook 步骤执行器删除后没有东西再写 `taskExecution`，`recordedFailureKinds` 于是对所有普通 run 都返回空，权限拒绝与取消分支永久失效——现在它在步骤为空时改读 invocation 状态与 `lastError` 文本。升级给用户的 `clarificationRequest` 带上原因类别、已完成部分与所需动作三件事实（只含计数与状态），可见文案仍由 `ask_user` 的真实模型调用撰写。
 - 对话区的回复、澄清和交付表达必须由实时 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 发布：发布前在会话级持久注册表原子占用 settlement 身份（run + 规范化文案指纹），同一 settlement 不得发布不同文案；模型已通过 `request_user_input` 写好的提问按原样发布并绑定产出它的请求 id，重复措辞同样按原样发布、不再调用模型改写，也不存在任何重新生成路径。文案为空、缺少真实 model request 证据或注册表不可用时失败可见，Runtime 不伪造人格文案。
 - 禁止依赖 Electron、CLI、具体渠道或 App 私有实现，也不直接拥有文件系统生命周期。

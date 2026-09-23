@@ -55,6 +55,21 @@ describe('completed assistant message metadata', () => {
     expect(activity.tools[0]?.endedAt).toBeTypeOf('number')
     expect(activity.tools[0]?.error).toBeTruthy()
   })
+
+  // CE-09: the failure must replace the preview, not sit next to it. A run that
+  // settled as an error publishes no model text at all — the Runtime error row is
+  // the whole user-visible statement, and no wording is invented to soften it.
+  it('retracts a streamed preview when the run settles as a failure', () => {
+    const message = reduceCompletedRunMessages(preview(), {
+      runId: 'r', sessionId: 's', status: 'error', reply: '', durationMs: 10,
+      error: 'provider request failed: 502',
+    })[0]!
+
+    expect(message.text).toBe('')
+    expect(message.activity).toMatchObject({ status: 'failed', error: 'provider request failed: 502' })
+    expect(JSON.stringify(message)).not.toContain('preview')
+    expect(JSON.stringify(message)).not.toMatch(/抱歉|sorry,/i)
+  })
   it('records the assistant completion time separately from the user turn time', () => {
     const messages = reduceCompletedRunMessages([
       {

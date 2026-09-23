@@ -135,6 +135,82 @@ describe('the evidence gap a completed run reports', () => {
   });
 });
 
+// CE-09's compatibility question: the deleted step executor cannot refuse a tool
+// any more, but a checkpoint written before it was deleted still carries a plan
+// and its step results. The documented rule is that step evidence is owed only
+// for a plan this run executed — and the code did not implement it, so a resumed
+// legacy run was judged incomplete on history it had not touched and was sent
+// back into the loop to re-plan steps no executor can run.
+function legacyPlanContext(status: 'failed' | 'done'): RunContext {
+  const ctx = context();
+  ctx.resumedFromCheckpointId = 'checkpoint-legacy';
+  ctx.taskBook = {
+    assessment: {
+      userNeed: 'do the work',
+      complexity: 'standard',
+      goal: 'do the work',
+      successCriteria: ['work is done'],
+      requiresTaskBook: true,
+      maxExtraScopeRatio: 1.5,
+    },
+    goal: 'do the work',
+    complexity: 'standard',
+    successCriteria: ['work is done'],
+    steps: [
+      { id: 'step-1', description: 'first' },
+      { id: 'step-2', description: 'second' },
+    ],
+    overdeliveryPolicy: { maxExtraScopeRatio: 1.5, guidance: 'stay focused' },
+  } as NonNullable<RunContext['taskBook']>;
+  ctx.taskExecution = {
+    goal: 'do the work',
+    complexity: 'standard',
+    status,
+    startedAt: '2026-09-23T00:00:00.000Z',
+    steps: [
+      stepWithResults(['call-1'], [result('call-1', true)]),
+      {
+        stepId: 'step-2',
+        description: 'second',
+        status: status === 'done' ? 'done' : 'failed',
+        startedAt: '2026-09-23T00:00:01.000Z',
+        endedAt: '2026-09-23T00:00:02.000Z',
+        failureKind: status === 'done' ? undefined : 'tool_error',
+        toolCallIds: [],
+        toolResults: [],
+      },
+    ],
+  } as NonNullable<RunContext['taskExecution']>;
+  return ctx;
+}
+
+describe('step evidence for a plan this run did not execute', () => {
+  it('does not owe step evidence for a plan restored from a checkpoint', () => {
+    const ctx = legacyPlanContext('failed');
+    ctx.sideEffects = [effect('call-1', 'succeeded')];
+
+    expect(runtimeExecutionEvidenceGap(ctx)).toBeUndefined();
+  });
+
+  it('does not owe it for a restored plan whose execution status is not done either', () => {
+    const ctx = legacyPlanContext('failed');
+    // No steps at all, only the inherited execution header: the second branch of
+    // the old check fired on the status alone.
+    ctx.taskBook = undefined;
+
+    expect(runtimeExecutionEvidenceGap(ctx)).toBeUndefined();
+  });
+
+  it('still owes it for a plan this run executed', () => {
+    const ctx = legacyPlanContext('failed');
+    // No resume marker: the plan belongs to this run, so an incomplete execution
+    // is a real gap and the verdict must not pass.
+    ctx.resumedFromCheckpointId = undefined;
+
+    expect(runtimeExecutionEvidenceGap(ctx)).toBe('failed or missing task step evidence');
+  });
+});
+
 // The defect this investigation confirmed: a resumed run inherits the ledger it
 // was checkpointed with, but the restored context starts with an empty
 // invocation list, so every inherited settled effect looked unattested. Any
