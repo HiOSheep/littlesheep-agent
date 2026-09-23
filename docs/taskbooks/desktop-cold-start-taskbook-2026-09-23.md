@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 11:45:00
+最后更新：2026-09-23 14:21:56
 
 ## 1. 目标与当前状态
 
@@ -131,7 +131,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 11:45:00
+最后更新：2026-09-23 14:21:56
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -148,7 +148,8 @@
 - 改动文件：`packages/app/src/main/desktop-startup-page.ts`、`packages/app/src/main/desktop-shell.ts`、`desktop-startup-page.test.ts`、`desktop-shell.test.ts`、`packages/app/src/renderer/chat-layout-stability.test.ts`。
 - 做法：启动页、`titleBarOverlay` 与渲染器 `.window-titlebar` 统一为不透明 `#101010`（共享常量 `DESKTOP_STARTUP_SURFACE` / `DESKTOP_TITLEBAR_HEIGHT`）；移除启动页的 `backdrop-filter` 与半透明 `rgba(16,16,16,0.72)`；移除叠在原生按钮区上的 `backgroundMaterial: 'acrylic'`。原生最小化/最大化/关闭/缩放/厚边框/阴影/圆角保持不变。
 - 新增实机证据：`scripts/verify-desktop-cold-start-visuals.mjs`（`pnpm run verify:desktop-cold-start`）在三种窗口宽度下逐像素核对渲染器标题栏、标题栏右段与背景为同一实色且下方 60 CSS px 无断层；原生覆盖区与窗口背景的 `#101010` 由验收快照的 `visual` 字段核对；截图见 `docs/reference/cold-start-baseline/screenshots/`。
-- 剩余缺口：启动页自身的实机截图（窗口出现到渲染器接管仅约 90 ms，无头调试器赶不上；一次尝试性抓取拿到的是窗口未绘制文档时的 `#121212` 表面，已删除该文件并给脚本加了"底色必须等于声明值"的防线，不把抓到的任意一帧当证据）；失焦/最小化/还原/最大化恢复；125%/150%/200% 缩放与明暗桌面；打包版。**因此 CS-02 复选框保持未勾选。**
+- 启动失败页也已取证：该页无法靠等待到达，脚本改用 `/application/acceptance` 的 `startup-error` 动作（`desktop-shell.ts` 的 `showStartupErrorForAcceptance`，只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时挂载）把真实失败文案交给生产同一份 `showStartupError` 文档，再截图 `screenshots/startup-error.png`。实测标题栏行、左侧竖向通道整列、右侧同高度通道都是 `#101010`，错误卡片与表面合成后为 `#090909`，屏幕上确实是传入的文案；三条断言已进入脚本门禁。
+- 剩余缺口：启动页自身的实机截图（窗口出现到渲染器接管仅约 90 ms，无头调试器赶不上；一次尝试性抓取拿到的是窗口未绘制文档时的 `#121212` 表面，已删除该文件并给脚本加了"底色必须等于声明值"的防线，不把抓到的任意一帧当证据）；失焦、最小化、还原、最大化恢复；125%/150%/200% 缩放与明暗桌面；打包版。**因此 CS-02 复选框保持未勾选。**
 
 ### CS-03｜提前呈现可交互界面 —— 实现完成，部分待验收
 
@@ -173,6 +174,7 @@
 - 已做的顺序调整：插件宿主从就绪路径移出（`readiness.ready()` 先发布）。实测该段只有 2.8 ms，因此**不构成有意义的提速**，保留原因是语义正确。
 - 一处需要更正的早期读数：先前按 `plugin-host-ready - runner-ready` 得到的"插件约 50 ms"是测量错误，该区间实际包含 RunRouter 创建；已在基线文档中更正并说明。
 - 未做且不应在没有独立设计的情况下做：durable harness 与 bootstrap 文件加载的进一步压缩；迁移、持久化一致性与权限前置检查的顺序保持不变。
+- 补充测量（新增 `runner-infra-returned` 标点，n=3）：`buildInfrastructure` 覆盖 Runner 构建的全部成本（111.9/127.8/123.9 ms，与 `runner-ready - execution-start` 仅差 0.2 ms），构建之后无隐藏工作；RunRouter 创建（约 95–123 ms）与渲染器加载在时间上重叠，因此执行准备对首帧的可见影响小于其绝对耗时。**压在关键路径上的主体是渲染器自身的求值与绘制（首帧前约 500–700 ms）**，而"减少入口字节"已被证明不是改善它的有效手段。
 - 首次发送准备耗时（13–34 ms，与启动前的基线同量级）说明启动等待没有被转移到发送之后。
 - 剩余缺口：预算已确定，但"首次可执行"的实质缩短尚未发生；下一步需要针对 durable harness 初始化单独设计与验证。
 

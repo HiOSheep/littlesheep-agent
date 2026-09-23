@@ -29,6 +29,9 @@ const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs:
 /** Must equal DESKTOP_STARTUP_SURFACE in `packages/app/src/main/desktop-startup-page.ts`. */
 const EXPECTED_SURFACE = '#101010'
 
+/** Distinctive so the captured page cannot accidentally contain it. */
+const STARTUP_ERROR_MESSAGE = 'cold-start acceptance: bootstrap failed as requested'
+
 function readOption(name, fallback) {
   const prefix = `--${name}=`
   const found = process.argv.slice(2).find((argument) => argument.startsWith(prefix))
@@ -152,6 +155,27 @@ async function main() {
       record(failures, `${label}: no colour break below the titlebar`, capture.columnFlat, capture)
       record(failures, `${label}: renderer background variable matches the pixels`, capture.computedBackground === EXPECTED_SURFACE, capture)
     }
+
+    // The bootstrap-failure page is the one startup surface that cannot be
+    // reached by waiting, so the isolated acceptance run asks for it. It renders
+    // through the same `showStartupError` path a real failure uses; the renderer
+    // load is already complete by now, so nothing navigates away from it.
+    await harness.desktopAction(locator, 'startup-error', { message: STARTUP_ERROR_MESSAGE })
+    await delay(600)
+    const errorPage = await captureStartupErrorPage(client, outDir)
+    screenshots.push(errorPage)
+    record(failures, 'bootstrap-failure page shows the real message', errorPage.errorText?.includes(STARTUP_ERROR_MESSAGE) === true, errorPage)
+    record(
+      failures,
+      'bootstrap-failure page renders the error card inside the window',
+      errorPage.errorBox !== null && errorPage.errorBox.height > 0 && errorPage.errorBox.bottom <= errorPage.viewport.height,
+      errorPage,
+    )
+    record(failures, 'bootstrap-failure page paints the unified surface', errorPage.titlebar === EXPECTED_SURFACE && errorPage.leftGutter === EXPECTED_SURFACE, errorPage)
+    record(failures, 'bootstrap-failure page keeps one surface down the gutter', errorPage.gutterFlat && errorPage.rightGutter === EXPECTED_SURFACE, errorPage)
+    // Reported, not gated: the card is translucent, so its composited colour is
+    // only evidence that something painted over the surface.
+    errorPage.cardOverSurface = errorPage.cardSurface !== EXPECTED_SURFACE
 
     await writeFile(join(outDir, 'cold-start-visuals.json'), `${JSON.stringify({
       check: 'desktop-cold-start-visuals',
@@ -300,6 +324,54 @@ async function setAcceptanceWindowSize(locator, size) {
     body: JSON.stringify({ action: 'resize', width: size.width, height: size.height }),
   })
   if (!response.ok) throw new Error(`acceptance resize failed: ${response.status}`)
+}
+
+/**
+ * Read the bootstrap-failure document through the same debugger that is attached
+ * to the window: the failure page replaces the renderer document in place.
+ */
+async function captureStartupErrorPage(client, dir) {
+  const state = await evaluate(client, `(() => {
+    const error = document.querySelector('.startup-error');
+    const icon = document.querySelector('.startup-icon');
+    const box = error ? error.getBoundingClientRect() : null;
+    return {
+      url: location.href,
+      isFailureDocument: location.href.startsWith('data:text/html'),
+      hasIcon: Boolean(icon),
+      errorText: error ? error.textContent : null,
+      bodyBackground: getComputedStyle(document.body).backgroundColor,
+      devicePixelRatio: window.devicePixelRatio,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      errorBox: box ? { top: box.top, bottom: box.bottom, left: box.left, right: box.right, height: box.height } : null,
+    };
+  })()`)
+  const shot = await screenshot(client)
+  const buffer = Buffer.from(shot.data, 'base64')
+  const file = join(dir, 'startup-error.png')
+  await writeFile(file, buffer)
+  const image = decodePng(buffer)
+  const dpr = state.devicePixelRatio || 1
+  // The logo is centred and the error card is pinned to the bottom, so the flat
+  // surface is probed where neither paints: the titlebar row and a narrow gutter
+  // just inside the left edge, left of the card's 24px inset.
+  const gutterX = Math.max(1, Math.round(12 * dpr))
+  const probeY = Math.round((32 + 40) * dpr)
+  const column = columnColors(image, gutterX, 0, image.height - 1, Math.max(1, Math.round(dpr)))
+  const pixels = [...new Set(column)]
+  return {
+    file,
+    kind: 'startup-error',
+    imageSize: { width: image.width, height: image.height },
+    ...state,
+    titlebar: hexAt(image, Math.round(image.width * 0.45), Math.round(16 * dpr)),
+    leftGutter: hexAt(image, gutterX, probeY),
+    rightGutter: hexAt(image, image.width - gutterX, probeY),
+    gutterFlat: pixels.length === 1,
+    gutterColors: pixels.slice(0, 4),
+    // rgba(0,0,0,0.42) over the surface: composites darker if the card painted.
+    cardSurface: hexAt(image, Math.round(image.width / 2), Math.max(0, image.height - Math.round(40 * dpr))),
+  }
 }
 
 function record(failures, check, ok, detail) {

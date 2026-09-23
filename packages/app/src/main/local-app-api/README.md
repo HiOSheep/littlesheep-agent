@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-23 13:15:56
+最后更新：2026-09-23 14:21:56
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -46,7 +46,7 @@
 
 监听在 Runner 之前建立（窗口要早于执行能力可用），因此路由分成三类：
 
-- **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。`/application/acceptance` 另提供仅隔离验收使用的 `resize` 动作（CS-02 需要在多个窗口宽度下核对原生覆盖区），无对应能力时返回 501。
+- **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。`/application/acceptance` 另提供仅隔离验收使用的 `resize` 与 `startup-error` 动作（前者供 CS-02 在多个窗口宽度下核对原生覆盖区，后者把真实失败文案渲染成启动失败页以便捕获像素），无对应能力时返回 501。
 - **失败关闭为 503 `runtime-not-ready`**：所有真正需要 Runner 的分支。它们必须用 `resolveRunner(context.getRunner)` **在用到该 Runner 的分支内**惰性解析——不得把 `getRunner()` 提到函数开头，否则 `/sessions` 这类元数据路由会在 Runner 未发布时一起失败（这正是实测中发现的缺陷：Runner 构建失败时侧栏会空白）。
 - **Runner 发布后启用**：`setRunner()` 同时构建 RunRouter 并初始化附件缓存，调用方在它 settle 之前不发布执行就绪，因此没有请求会看到半成品 router。
 

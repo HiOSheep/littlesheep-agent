@@ -521,7 +521,7 @@ export async function buildInfrastructure(
   });
   mark('runner-infra-harness-ready');
 
-  return {
+  const infrastructure: Infrastructure = {
     llm,
     sessionManager,
     memoryStore,
@@ -555,4 +555,6 @@ export async function buildInfrastructure(
     cacheObservationStore,
     state: opts.state,
   };
+  mark('runner-infra-returned');
+  return infrastructure;
 }

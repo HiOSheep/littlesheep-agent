@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 12:53:39
+最后更新：2026-09-23 14:21:56
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -76,6 +76,8 @@
 同一份样本的"进程启动 → 执行就绪"为 748.6 ms，构成为：进程启动 → `bootstrap-start` 290.7 ms（其中主模块求值约 209 ms，剩余约 80 ms 是 Electron 自身启动）、bootstrap 到就绪文件 53.2 ms、就绪文件到窗口初始化 18.5 ms、窗口初始化到执行就绪 170.9 ms。
 
 结论：**Runner 构建与 RunRouter 创建合计约 171 ms，是唯一还有量级的执行准备成本**；其中 durable harness（55 ms）与 bootstrap 文件加载（30 ms）是最大两项。两者都在"数据一致性优先"的边界内，不能简单并行化；要再压只能改这两条初始化路径本身，属于需要独立设计的工作，不在本轮改动范围。
+
+补充测量（新增 `runner-infra-returned` 标点，n=3）：`buildInfrastructure` 覆盖了 Runner 构建的**全部**成本（111.9 / 127.8 / 123.9 ms，与 `runner-ready - execution-start` 的 112.1 / 128.0 / 124.1 ms 只差 0.2 ms），因此构建之后没有隐藏工作。同一批样本还显示 RunRouter 创建（`runner-ready` → `execution-ready` 约 123 / 95 / 104 ms）与渲染器加载（`renderer-load-started` 570–575 ms → `renderer-did-finish-load` 716–736 ms）在时间上重叠，所以执行准备对首帧的可见影响小于其绝对耗时。真正压在关键路径上的是渲染器自身的求值与绘制（首帧前的约 500–700 ms），而上一节已证明"减少入口字节"不是改善它的有效手段。
 
 ## 已试做的改动及其真实结论
 
@@ -154,6 +156,8 @@
 - 三张截图里都能看到小羊品牌标记位于标题栏，交接后没有位置/尺寸跳变。
 
 口径说明：`Page.captureScreenshot` 只截取 web contents，**原生最小化/最大化/关闭按钮不在这张图里**，它们的颜色由上面的验收快照字段核对。
+
+启动失败页同样有实机像素证据。它无法靠等待到达（产品只在真实失败时渲染它），所以隔离验收运行经 `/application/acceptance` 的 `startup-error` 动作把一段真实失败文案交给**生产同一份** `showStartupError` 文档，再对窗口截图（[`screenshots/startup-error.png`](screenshots/startup-error.png)）。实测：标题栏行、左侧 12 CSS px 竖向通道整列、以及同高度的右侧通道都是 `#101010`（声明表面，整列只有一种颜色），底部半透明错误卡片与表面合成后为 `#090909`，并且屏幕上确实是传入的失败文案。该动作只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 的验收运行中挂载，生产运行不受影响。
 
 尚未核验（需要人工在实机上逐项拍摄，本任务书对应复选框保持未勾选）：
 

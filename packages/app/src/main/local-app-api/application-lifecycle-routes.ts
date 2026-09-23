@@ -84,7 +84,18 @@ export async function routeApplicationLifecycle(
       })
       return true
     }
-    json(res, 400, { error: 'Desktop acceptance action must be close, show, resize, or quit.' })
+    if (body.action === 'startup-error') {
+      const showStartupError = context.desktopAcceptance.showStartupErrorForAcceptance
+      const message = typeof body.message === 'string' ? body.message.slice(0, 500) : ''
+      if (!showStartupError || !message) {
+        json(res, 501, { error: 'Desktop acceptance startup-error is not available.' })
+        return true
+      }
+      const accepted = showStartupError(message)
+      json(res, accepted ? 202 : 409, { accepted })
+      return true
+    }
+    json(res, 400, { error: 'Desktop acceptance action must be close, show, resize, startup-error, or quit.' })
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {

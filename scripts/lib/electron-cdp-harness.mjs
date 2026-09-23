@@ -124,11 +124,12 @@ export function createElectronHarness({
     return (await response.json()).snapshot
   }
 
-  async function desktopAction(locator, action) {
+  /** Extra fields are forwarded as-is; the route validates each action's body. */
+  async function desktopAction(locator, action, extra = {}) {
     const response = await fetch(apiUrl(locator, '/application/acceptance'), {
       method: 'POST',
       headers: { ...authHeaders(locator), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, ...extra }),
     })
     if (!response.ok) throw new Error(`desktop action ${action} failed: ${response.status}`)
   }

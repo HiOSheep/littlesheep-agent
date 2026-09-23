@@ -24,7 +24,6 @@ import {
 } from './desktop-startup-page.js'
 import {
   desktopVisualContract,
-  resizeWindowForAcceptance,
   type DesktopVisualContract,
 } from './desktop-visual-acceptance.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
@@ -172,15 +171,6 @@ export class LittleSheepDesktopShell {
     if (!window) return false
     window.close()
     return true
-  }
-
-  /**
-   * Resize the live window to an explicit size. Only the isolated acceptance
-   * run uses this: the CS-02 seam check needs the native caption buttons
-   * rendered at more than one width, which the renderer cannot drive.
-   */
-  resizeForAcceptance(size: { width: number; height: number }): boolean {
-    return resizeWindowForAcceptance(this.resolveWindow(), size)
   }
 
   /** Native window facts the visual acceptance cannot read from the DOM. */

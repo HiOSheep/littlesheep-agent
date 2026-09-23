@@ -49,6 +49,7 @@ import { runShutdownSequence } from './shutdown-sequence.js'
 import { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepDesktopShell } from './desktop-shell.js'
 import { createDesktopAcceptanceSnapshotProvider } from './desktop-acceptance-snapshot.js'
+import { createDesktopAcceptanceActions } from './desktop-acceptance-actions.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 import { removeLocalAppApiLocator, writeLocalAppApiLocator } from './local-app-api-locator.js'
@@ -340,18 +341,12 @@ async function bootstrap(): Promise<void> {
     // The Runner is published later by `startExecution()`; until then every
     // Runner-backed route answers 503 runtime-not-ready.
     getRunner: () => runner ?? undefined,
-    desktopAcceptance: process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] === '1'
-      ? {
-          token: providerCalibrationToken,
-          snapshot: desktopAcceptanceSnapshot,
-          close: () => desktopShell.close(),
-          show: () => desktopShell.show(),
-          quit: requestApplicationQuit,
-          // Only exercised by an isolated acceptance run; the CS-02 seam check
-          // needs the native caption buttons at more than one window width.
-          resizeForAcceptance: (size: { width: number; height: number }) => desktopShell.resizeForAcceptance(size),
-        }
-      : undefined,
+    desktopAcceptance: createDesktopAcceptanceActions({
+      token: providerCalibrationToken,
+      snapshot: desktopAcceptanceSnapshot,
+      shell: desktopShell,
+      quit: requestApplicationQuit,
+    }),
     rebuildRunner,
     updateRuntimeConfig,
     listActiveRuns: () => runActivity.snapshot(),

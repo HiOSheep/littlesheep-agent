@@ -49,3 +49,23 @@ export function resizeWindowForAcceptance(
   )
   return true
 }
+
+/**
+ * Render the bootstrap-failure page on a live window.
+ *
+ * The failure page is the one startup surface that cannot be reached by waiting
+ * for a real failure, so the isolated acceptance run asks for it explicitly. It
+ * renders through the same `showStartupError` the failure path uses; nothing
+ * about the failure path is bypassed. Gated on the acceptance environment, so a
+ * production run can never be driven into it by an HTTP action.
+ */
+export function showStartupErrorPageForAcceptance(
+  window: BrowserWindow | undefined,
+  message: string,
+  showStartupError: (error: unknown) => void,
+): boolean {
+  if (process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] !== '1') return false
+  if (!window || window.isDestroyed()) return false
+  showStartupError(new Error(message))
+  return true
+}

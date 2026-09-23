@@ -96,6 +96,8 @@ export interface LocalAppApiServerOptions {
     quit: () => void
     /** Present only when the shell can act on it; used by the CS-02 seam check. */
     resizeForAcceptance?: (size: { width: number; height: number }) => boolean
+    /** Renders the bootstrap-failure page so CS-02 can capture that state. */
+    showStartupErrorForAcceptance?: (message: string) => boolean
   }
 }
 
