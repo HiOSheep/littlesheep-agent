@@ -16,6 +16,21 @@
     "executionReadyMs": 2200,
     "firstSendPreparationMs": 50
   },
+  "packagedBudgetsMs": {
+    "spawnToMainModuleMs": 300,
+    "processCreateToFirstFrameMs": 2100,
+    "inputUsableMs": 1100,
+    "sessionReadableMs": 1100,
+    "executionReadyMs": 2900,
+    "firstSendPreparationMs": 80
+  },
+  "packagedNote": [
+    "打包版使用单独一组上限：它读的是 release/win-unpacked 的完整解包树，会话内第一次启动是磁盘冷读。",
+    "依据的观测：现账本 desktop-cold-start-packaged-warm-2026-09-23.json（9 次，中位 inputUsable 288-298 / sessionReadable 294-305 / executionReady 1456-1491 / 首帧 1236-1247），",
+    "以及该 label 首次运行时的会话首次启动读数（inputUsableMs 829.1 / sessionReadableMs 835.6 / executionReadyMs 2167.8 / 首帧 1524.1）——那次账本已被同 label 重跑覆盖，数值仅保留在此说明中。",
+    "这组上限按观测最大值留出约 1.3 倍余量，用于发现打包产物的整体回退；开发版的 budgetsMs 才是紧的那一组，两者不可互换。",
+    "缺少 packagedBudgetsMs 时脚本回退到 budgetsMs，并在断言里标明使用的集合。"
+  ],
   "warmVsColdMs": {
     "spawnToMainModuleMs": 60,
     "processCreateToFirstFrameMs": 250,

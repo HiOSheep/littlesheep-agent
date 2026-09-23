@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 15:53:12
+最后更新：2026-09-23 15:56:48
 
 ## 1. 目标与当前状态
 
@@ -131,7 +131,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 15:53:12
+最后更新：2026-09-23 15:56:48
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -144,6 +144,7 @@
 - 第 5 项验收预算已确定：`docs/reference/cold-start-baseline/budgets.json` 保存五个时间点的回归护栏，脚本在输出目录找到它时按观测最大值判定并给出非零退出码；口径与来源见基线文档的"回归护栏"一节。护栏是回退报警线，不是性能达标线。
 - 第 5 项补充：预算现在同时约束**冷启动**（每次样本的第 1 次启动）与**稳态启动**（`--launches` 的第 2 次及以后），并新增 `warmVsColdMs` 中位数差护栏（稳态不得比首次启动慢超过余量）。稳态基线见[基线文档的对应一节](../reference/cold-start-baseline/README.md)，账本 `desktop-cold-start-warm-2026-09-23.json`（18 次启动，30 项检查全部通过）：normal 输入可用 295.6 → 285.3 ms、当前会话可读 302.0 → 289.8 ms、首次可执行 1291.6 → 1294.5 ms（差异落在噪声内）；bootstrap 资源注册冷启动 38.8 / 42.2 ms、稳态 12.8 / 18.0 ms。
 - 本批同时修正两处测量缺陷：①`executionReadyMs` 原先等完渲染器首帧报告（15 s 上限）才开始轮询就绪，报告缺失时会把它记成"首次可执行"的一部分（实测出现 16415.4 ms 假尖峰，而同一轮 `execution-ready` 距 `runner-ready` 仅 98.5 ms），现改为并发观测并把缺失记为 `rendererFrameReported: false`；②`warmVsColdMs` 原先按 profile 解析导致静默不生效（检查项数为 0），现按指标解析并逐 profile 产出检查项。两份历史账本没有缺失帧样本，故不受 ① 影响。
+- 护栏的环境敏感性也已记录：紧接 `build:app` 的一次 `empty` 单跑触发 主模块 253.2（上限 250）与 首次可执行 2854.2（上限 2200），同轮 `spawnToLocatorMs`/首帧同样偏高；稍后空闲重跑（2×2 次）全部通过（主模块 221–238、首次可执行 1509.9–1969.6）。结论已写入基线文档：护栏应在机器空闲时单独运行、不要紧跟构建，非零退出码先排除环境因素再当回退证据。
 
 ### CS-02｜统一启动视觉 —— 实现完成，实机证据已采一部分
 
@@ -199,10 +200,10 @@
 
 ### CS-07｜真实回归与文档收口 —— 部分
 
-- 已运行：`pnpm run check:repo`、`pnpm run typecheck`、`pnpm exec vitest run packages/app/src`（896 用例）、`pnpm run build:app`、`pnpm run package:win`（未签名 `release/win-unpacked`）、20 次开发版冷启动采样、6 次打包版冷启动采样（`--app=packaged`，全部成功并通过同一份回归护栏）、真实 Electron 视觉与交互验收。
-- 打包版与开发版对比见[基线文档](../reference/cold-start-baseline/README.md#打包版冷启动releasewin-unpacked)：多数差异在样本波动内，可确认打包版无量级回退。
+- 已运行：`pnpm run check:repo`、`pnpm run typecheck`、`pnpm exec vitest run packages/app/src`（当前 903 用例）、`pnpm run build:app`、`pnpm run package:win`（未签名 `release/win-unpacked`）、开发版冷启动采样（20 次基线 + 18 次冷/稳态）、打包版采样（6 次冷启动 + 9 次冷/稳态）、真实 Electron 视觉验收（三种宽度 + 启动页 + 启动失败页）与交互验收。
+- 打包版与开发版对比见[基线文档](../reference/cold-start-baseline/README.md#打包版冷启动releasewin-unpacked)：多数差异在样本波动内，可确认打包版无量级回退。打包版另有独立护栏 `packagedBudgetsMs`（会话内首次启动是磁盘冷读，实测最慢一次 输入可用 829.1 / 首次可执行 2167.8 ms），不与开发版的紧上限混用。
 - 已发现并记录一个**与本专项无关**的既有失败：`verify:electron-ui-state-continuity` 的 `bounded tool activity was not observable`，在改动前的 `df66ed9` 上可复现（见上）。
-- 剩余：NSIS 安装包实机安装与干净机器首次运行；失焦/最小化/还原/最大化恢复与各 DPI；启动中输入、切换会话、关闭窗口的完整场景矩阵；任务书退役收口。
+- 剩余：NSIS 安装包实机安装与干净机器首次运行；失焦/最小化/还原/最大化恢复与各 DPI；启动中输入、切换会话、关闭窗口的完整场景矩阵；任务书退役收口（复选框未勾选前不得退役）。
 
 ### CS-07 前置观察（不属于本专项改动）
 

@@ -166,7 +166,12 @@ async function readBudgets(dir) {
  * sitting under an absolute limit.
  */
 function evaluateBudgets({ summary, warmSummary }, budgets) {
-  const budgetsMs = budgets?.budgetsMs
+  // The packaged build reads a full unpacked tree, so a session's first launch is
+  // disk-cold and much slower than the dev build ever is; it gets its own limits
+  // instead of loosening the dev guard. A missing packaged set falls back to the
+  // dev limits, and the set actually used is reported either way.
+  const budgetSet = appKind === 'packaged' && budgets?.packagedBudgetsMs ? 'packagedBudgetsMs' : 'budgetsMs'
+  const budgetsMs = budgets?.[budgetSet]
   if (!budgetsMs) return { ok: true, checks: {}, note: 'no budgets file; baseline only' }
   const checks = {}
   let ok = true
@@ -199,7 +204,7 @@ function evaluateBudgets({ summary, warmSummary }, budgets) {
       if (!passed) ok = false
     }
   }
-  return { ok, checks }
+  return { ok, checks, budgetSet }
 }
 
 function median(values) {
