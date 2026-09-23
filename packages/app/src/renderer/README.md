@@ -1,9 +1,9 @@
 # Electron Renderer
-最后更新：2026-09-23 13:34:46
+最后更新：2026-09-23 14:02:49
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
-首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。
+首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。`inline-markdown.tsx` 负责活动行的单行标签（有界扫描器，不引入解析器）。**注意：入口字节数在本应用里不是首帧的可靠代理**——Markdown 解析管线整条按需（入口 −400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须以成对实测证明收益，详见 `docs/reference/cold-start-baseline/`。
 
 ## 入口与所有权
 

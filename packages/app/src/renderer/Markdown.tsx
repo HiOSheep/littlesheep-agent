@@ -7,6 +7,10 @@ import { useLinkNavigation } from './link-navigation'
 import { StreamingMarkdownPartitioner } from './streaming-markdown'
 import { CheckIcon, CopyIcon } from './ui/icons'
 
+// Single-line activity labels are rendered by a bounded scanner instead of the
+// parser below, so an activity row never depends on the Markdown plugin chain.
+export { InlineMarkdown, type InlineMarkdownProps } from './inline-markdown'
+
 /**
  * Syntax highlighting is loaded on demand.
  *
@@ -59,25 +63,6 @@ const MarkdownFragment = memo(function MarkdownFragment({ source }: { source: st
   )
 })
 
-
-/**
- * Markdown for a single activity row. Block elements are deliberately
- * unwrapped so the result remains valid phrasing content inside a button.
- */
-export const InlineMarkdown = memo(function InlineMarkdown({ text }: MarkdownProps) {
-  return (
-    <span className="markdown markdown-inline">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        allowedElements={['p', 'strong', 'em', 'del', 'code', 'a', 'br']}
-        unwrapDisallowed
-        components={inlineComponents}
-      >
-        {text}
-      </ReactMarkdown>
-    </span>
-  )
-})
 
 const MERMAID_LANGUAGE_ALIASES = new Set([
   'mermaid',
@@ -193,23 +178,6 @@ const components: Components = {
       return <MermaidBlock code={code} />
     }
     return <CodeBlock code={code} language={language ?? 'text'} />
-  },
-}
-
-const inlineComponents: Components = {
-  p({ children }) {
-    return <>{children}</>
-  },
-  a({ children }) {
-    // Activity summaries are labels, not navigation targets. Keeping links
-    // as spans also avoids nested interactive elements inside the row button.
-    return <span className="markdown-inline-link">{children}</span>
-  },
-  br() {
-    return <span aria-hidden="true"> </span>
-  },
-  code({ children }) {
-    return <code className="markdown-inline-code">{children}</code>
   },
 }
 

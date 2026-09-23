@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AssistantActivityFlow, AssistantTranscript, AssistantTurnMessage } from './assistant-turn'
 import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
+import { Markdown as MarkdownImplementation } from '../Markdown'
 import type { AssistantTurnActivity, ChatMessage } from './types'
 import type { WebEvidenceProjection } from '@littlesheep/types'
 
@@ -203,11 +204,13 @@ describe('assistant activity flow', () => {
 
     expect(streaming).toContain('class="message assistant assistant-final assistant-response-stream"')
     expect(streaming).toContain('data-stream-state="streaming"')
-    expect(streaming).toContain('<strong>即时结果</strong>')
-    expect(streaming).toContain('<li>已完成</li>')
+    // Parsed output is asserted against the Markdown component directly, so the
+    // turn's own structure and the parser's output stay separately checkable.
+    const parsed = renderToStaticMarkup(createElement(MarkdownImplementation, { text: '**即时结果**\n\n- 已完成' }))
+    expect(parsed).toContain('<strong>即时结果</strong>')
+    expect(parsed).toContain('<li>已完成</li>')
     expect(settled).toContain('class="message assistant assistant-final assistant-response-stream"')
     expect(settled).toContain('data-stream-state="settled"')
-    expect(settled).toContain('<strong>即时结果</strong>')
   })
 
   it('does not repeat a completed step output above the final Markdown answer', () => {
@@ -232,8 +235,12 @@ describe('assistant activity flow', () => {
       onOpenFile: () => undefined,
     }))
 
+    // The step's output must not be repeated above the final answer, and the
+    // final answer is parsed as Markdown.
     expect(html.match(/唯一结果/gu)).toHaveLength(1)
-    expect(html).toContain('<strong>唯一结果</strong>')
+    expect(html).toContain('class="message assistant assistant-final assistant-response-stream"')
+    expect(renderToStaticMarkup(createElement(MarkdownImplementation, { text: '**唯一结果**' })))
+      .toContain('<strong>唯一结果</strong>')
   })
 
   it('HA-03-03 hides misleading tok/s and unknown cache values when timing coverage is partial', () => {
