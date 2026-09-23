@@ -11,16 +11,31 @@
 // (the same mechanism the no-progress bound uses). The budget still bounds the
 // loop — a second attempt to cross it fails the stage as before — it just no
 // longer discards the answer the model was about to write.
+//
+// The ceiling itself moved from 20 to 30 on real-window evidence. Three separate
+// acceptance runs hit 20 while doing productive work — 19, 20 and 22 tool calls,
+// almost all successful, 10-15 settled effects, the artifact already on disk — and
+// the run then ended by asking the user how to proceed, which is the exact
+// behaviour this taskbook exists to remove. The configured provider-call ceiling
+// (`agents.defaults.maxModelCallsPerRun`, 32 by default) is the budget a user can
+// reason about and pay for; with one call per round, a 30-round loop lands just
+// inside it, so the iteration bound is now the backstop for rounds that fan out
+// into many calls instead of the limit that fires first.
 import type { RunContext } from '@littlesheep/types';
 import { writeRuntimeState } from '../../runtime-state.js';
 
-export const MAX_TOOL_LOOP_ITERATIONS = 20;
+export const MAX_TOOL_LOOP_ITERATIONS = 30;
 export const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
+
+/** The ceiling this run actually has: its recorded one, or the Runtime constant. */
+export function toolLoopIterationCeiling(ctx: RunContext): number {
+  return ctx.loopBudget?.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS;
+}
 
 /** Reserve one iteration, or report that the run's budget is spent. */
 export function reserveToolLoopIteration(ctx: RunContext): boolean {
   const current = ctx.loopBudget?.toolLoopIterationsUsed ?? 0;
-  const maximum = ctx.loopBudget?.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS;
+  const maximum = toolLoopIterationCeiling(ctx);
   if (current >= maximum) return false;
   writeRuntimeState(ctx, 'execute', {
     loopBudget: {

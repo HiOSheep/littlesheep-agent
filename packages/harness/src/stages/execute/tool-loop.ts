@@ -59,6 +59,7 @@ import {
   MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
   MAX_TOOL_LOOP_ITERATIONS,
   reserveToolLoopIteration,
+  toolLoopIterationCeiling,
 } from './iteration-budget.js';
 import {
   persistToolLoopProgress,
@@ -180,7 +181,9 @@ export async function runToolLoop(
         toolResultCount: toolResults.length,
         finalAnswerAlreadyRequested: budgetFinalAnswerRequested,
         controlMessage: control.iterationBudgetExhausted,
-        maxIterations: MAX_ITERATIONS,
+        // The run's own ceiling, so the failure names the budget that actually
+        // ran out — a restored checkpoint can carry a different one.
+        maxIterations: toolLoopIterationCeiling(ctx),
       });
       if (spent.kind === 'fail') {
         return { ok: false, content: '', toolResults, iterations: iteration - 1, error: spent.error };
