@@ -19,9 +19,16 @@
 // history, a large history and a pending-recovery data root are separate
 // samples. Every raw sample is kept; no percentile is claimed from too few runs.
 //
+// `--launches=N` starts the application N times against the *same* data root
+// before moving to the next sample. Launch 1 is the cold start; every later
+// launch is a steady-state start of the same installation, which is a different
+// measurement: the bootstrap resource registration and any first-run layout work
+// are already done. Both kinds are recorded separately and both are guarded.
+//
 // Usage:
 //   node scripts/measure-desktop-cold-start.mjs [--samples=3] [--profiles=empty,normal,large,recovery]
-//                                               [--label=before] [--out=docs/reference/cold-start-baseline]
+//                                               [--launches=1] [--label=before]
+//                                               [--out=docs/reference/cold-start-baseline]
 //                                               [--keep] [--no-send]
 
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -53,6 +60,7 @@ const READINESS_TIMEOUT_MS = 90_000
 const SESSION_READABLE_TIMEOUT_MS = 60_000
 
 const samples = Number.parseInt(readOption('samples', '3'), 10)
+const launches = Math.max(1, Number.parseInt(readOption('launches', '1'), 10))
 const label = readOption('label', 'unlabeled')
 const outDir = resolve(repoRoot, readOption('out', 'docs/reference/cold-start-baseline'))
 const keepRoots = process.argv.includes('--keep')
@@ -71,15 +79,21 @@ async function main() {
 
   for (const profile of profiles) {
     for (let index = 0; index < samples; index += 1) {
-      const sample = await runOneSample({ profile, index })
-      runs.push(sample)
-      console.log(`[cold-start] ${profile} #${index + 1}: ${JSON.stringify(sample.timings)}`)
+      const family = await runSampleFamily({ profile, index, launches })
+      for (const sample of family) {
+        runs.push(sample)
+        const suffix = launches > 1 ? ` launch ${sample.launch}/${launches}` : ''
+        console.log(`[cold-start] ${profile} #${index + 1}${suffix}: ${JSON.stringify(sample.timings)}`)
+      }
     }
   }
 
-  const summary = summarizeRuns(runs)
+  const coldRuns = runs.filter((run) => (run.launch ?? 1) === 1)
+  const warmRuns = runs.filter((run) => (run.launch ?? 1) > 1)
+  const summary = summarizeRuns(coldRuns)
+  const warmSummary = warmRuns.length === 0 ? undefined : summarizeRuns(warmRuns)
   const budgets = await readBudgets(outDir)
-  const assertions = evaluateBudgets(summary, budgets)
+  const assertions = evaluateBudgets({ summary, warmSummary }, budgets)
   const ledger = {
     check: 'desktop-cold-start',
     label,
@@ -87,17 +101,22 @@ async function main() {
     appExecutable: appKind === 'packaged' ? PACKAGED_EXECUTABLE_RELATIVE : 'packages/app/out (dev entry)',
     startedAt: startedAt.toISOString(),
     samples,
+    launches,
     profiles,
     note: [
       'Hot-cache repeats are not a full cold start: a rebooted machine and a',
       'first-ever binary read are outside what this harness can automate.',
-      'Each repeat uses a fresh isolated data root, so the data layout is cold',
+      'Each sample uses a fresh isolated data root, so the data layout is cold',
       'while the OS file cache for the application bundle is warm from the',
       'previous repeat. Treat the first repeat of a session as the coldest.',
+      launches > 1
+        ? `Launch 1 of each sample is the cold start; launches 2-${launches} reuse that data root and are steady-state starts (first-run layout and bootstrap registration already done).`
+        : 'Only one launch per sample was taken, so the ledger has no steady-state numbers.',
     ],
     machine,
     runs,
     summary,
+    ...(warmSummary === undefined ? {} : { warmSummary }),
     budgets,
     assertions,
   }
@@ -137,37 +156,122 @@ async function readBudgets(dir) {
  * Compare each metric's observed maximum against its budget.
  *
  * The maximum, not the median: one slow run is what a user notices, and a small
- * sample cannot support a percentile claim.
+ * sample cannot support a percentile claim. Cold (`launch 1`) and steady-state
+ * (`launch 2+`) samples are checked separately against the same limits, because
+ * a regression can appear in either one.
+ *
+ * `warmVsColdMs` adds the one thing the shared limits cannot express: the second
+ * launch of an installation must not become *slower* than the first, which is
+ * what a start-up path that redoes first-run work would look like while still
+ * sitting under an absolute limit.
  */
-function evaluateBudgets(summary, budgets) {
+function evaluateBudgets({ summary, warmSummary }, budgets) {
   const budgetsMs = budgets?.budgetsMs
   if (!budgetsMs) return { ok: true, checks: {}, note: 'no budgets file; baseline only' }
   const checks = {}
   let ok = true
-  for (const [profile, group] of Object.entries(summary)) {
+  const groups = [
+    ...Object.entries(summary ?? {}).map(([profile, group]) => [profile, group]),
+    ...Object.entries(warmSummary ?? {}).map(([profile, group]) => [`${profile}~warm`, group]),
+  ]
+  for (const [name, group] of groups) {
     for (const [metric, budget] of Object.entries(budgetsMs)) {
       const values = group.metrics?.[metric]?.values
       if (!values || values.length === 0) continue
       const observedMax = Math.max(...values)
-      checks[`${profile}.${metric}`] = { observedMax, budget, ok: observedMax <= budget }
+      checks[`${name}.${metric}`] = { observedMax, budget, ok: observedMax <= budget }
       if (observedMax > budget) ok = false
+    }
+  }
+  // Keyed by metric, not by profile: the same drift is worth watching in every
+  // profile, and a missing entry means "not compared" rather than "no limit".
+  const margins = budgets.warmVsColdMs ?? {}
+  for (const [profile, cold] of Object.entries(summary ?? {})) {
+    const warm = warmSummary?.[profile]?.metrics
+    if (!warm) continue
+    for (const [metric, margin] of Object.entries(margins)) {
+      const coldMedian = median(cold.metrics?.[metric]?.values)
+      const warmMedian = median(warm[metric]?.values)
+      if (coldMedian === undefined || warmMedian === undefined) continue
+      const delta = round(warmMedian - coldMedian)
+      const passed = delta <= margin
+      checks[`${profile}.warm-vs-cold.${metric}`] = { coldMedian, warmMedian, delta, budget: margin, ok: passed }
+      if (!passed) ok = false
     }
   }
   return { ok, checks }
 }
 
-async function runOneSample({ profile, index }) {
+function median(values) {
+  const sorted = (values ?? []).filter((value) => typeof value === 'number').sort((left, right) => left - right)
+  if (sorted.length === 0) return undefined
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
+}
+
+/**
+ * One sample = one data root, launched `launches` times.
+ *
+ * The fixture is written once, before the first launch: later launches see the
+ * layout the first launch produced, which is exactly what separates a steady
+ * state from a cold one. A fixture failure is recorded as a failed first launch
+ * instead of aborting the whole run.
+ */
+async function runSampleFamily({ profile, index, launches }) {
   const root = await mkdtemp(join(tmpdir(), `littlesheep-cold-start-${profile}-`))
   const dataDir = join(root, 'data')
-  const chromiumDir = join(root, 'chromium')
   const workspaceDir = join(root, 'workspace')
-  const logPath = join(root, 'electron.log')
+  const collected = []
+  let fixtureError
+  try {
+    await prepareFixture({ profile, dataDir, workspaceDir })
+  } catch (error) {
+    fixtureError = error
+  }
+  try {
+    if (fixtureError !== undefined) {
+      collected.push({
+        profile,
+        index,
+        launch: 1,
+        launchCount: launches,
+        warm: false,
+        ok: false,
+        error: `fixture preparation failed: ${fixtureError instanceof Error ? fixtureError.message : String(fixtureError)}`,
+        timings: {},
+      })
+      return collected
+    }
+    for (let launch = 1; launch <= launches; launch += 1) {
+      collected.push(await runOneLaunch({ profile, index, launch, launchCount: launches, root, dataDir, workspaceDir }))
+    }
+  } finally {
+    const allOk = collected.length === launches && collected.every((run) => run.ok)
+    if (keepRoots) console.log(`[cold-start] kept ${root}`)
+    else if (allOk) await harness.removeTemporaryRoot(root)
+    else console.log(`[cold-start] kept ${root} after a failed launch`)
+  }
+  return collected
+}
+
+async function runOneLaunch({ profile, index, launch, launchCount, root, dataDir, workspaceDir }) {
+  // Each launch gets its own Chromium profile: a lock left by the previous
+  // process would otherwise block or redirect the next start, and that would
+  // measure the harness rather than the application.
+  const chromiumDir = launch === 1 ? join(root, 'chromium') : join(root, `chromium-${launch}`)
+  const logPath = launch === 1 ? join(root, 'electron.log') : join(root, `electron-${launch}.log`)
   let electron
   let client
   const timings = {}
-  const diagnostics = { profile, index, ok: false }
+  const diagnostics = {
+    profile,
+    index,
+    launch,
+    launchCount,
+    warm: launch > 1,
+    ok: false,
+  }
   try {
-    await prepareFixture({ profile, dataDir, workspaceDir })
     const debuggingPort = await harness.reservePort()
     let spawnRequestedAt = 0
     electron = await harness.startElectron({
@@ -214,11 +318,17 @@ async function runOneSample({ profile, index }) {
     // arrival as `processUptimeMs`, which is the same origin the other metrics
     // use, so the two together give both the renderer-relative duration and the
     // process-relative instant without comparing two different clocks.
+    //
+    // Readiness is observed concurrently: the frame wait has its own timeout, and
+    // a report that never arrives must be recorded as a missing frame rather than
+    // charged to "first executable" as 15 extra seconds.
+    const readinessObservation = waitForExecutionReady(locator, processCreatedAt)
     const rendererFrame = await waitForRendererFrame(logPath)
     timings.rendererFirstFrameMs = rendererFrame?.durationMs
     timings.processCreateToFirstFrameMs = rendererFrame?.processUptimeMs
+    diagnostics.rendererFrameReported = rendererFrame !== undefined
 
-    const readiness = await waitForExecutionReady(locator, processCreatedAt)
+    const readiness = await readinessObservation
     timings.executionReadyMs = readiness.elapsedMs
     diagnostics.readinessPhase = readiness.state?.phase
 
@@ -239,8 +349,6 @@ async function runOneSample({ profile, index }) {
   } finally {
     client?.close()
     if (electron?.exitCode === null) await harness.forceTerminate(electron)
-    if (!keepRoots && diagnostics.ok) await harness.removeTemporaryRoot(root)
-    else if (keepRoots) console.log(`[cold-start] kept ${root}`)
   }
 }
 
@@ -554,10 +662,13 @@ function renderMarkdown(ledger) {
     `- 机器：${ledger.machine.platform} ${ledger.machine.arch}，CPU ${ledger.machine.cpuModel}（${ledger.machine.cpuCount} 逻辑核），内存 ${ledger.machine.totalMemoryGb} GB`,
     `- Electron：${ledger.machine.electronVersion}，App 构建输入摘要 ${ledger.machine.appBuildInputDigest?.slice(0, 16) ?? 'unknown'}`,
     `- 样本：每个 profile ${ledger.samples} 次，数据根每次隔离`,
+    ledger.launches > 1
+      ? `- 每次样本启动 ${ledger.launches} 次：第 1 次是冷启动，${ledger.launches === 2 ? '第 2 次' : `第 2–${ledger.launches} 次`}复用同一数据根，属稳态启动`
+      : '- 每次样本只启动一次，本账本没有稳态启动数据（用 `--launches=N` 采集）',
     '- 锚点：`spawnToMainModuleMs` 取子进程 `process.uptime()`（Electron 的 `process.getCreationTime()` 不在同一时间轴，故不使用）；其余为父进程墙钟与渲染器 `performance.now()`',
     `- 冷启动口径：${ledger.note.join(' ')}`,
     '',
-    '## 逐 profile 汇总（ms）',
+    '## 逐 profile 汇总（ms，冷启动 = 每次样本的第 1 次启动）',
     '',
     '| 指标 | ' + ledger.profiles.join(' | ') + ' |',
     '| --- | ' + ledger.profiles.map(() => '---:').join(' | ') + ' |',
@@ -580,9 +691,29 @@ function renderMarkdown(ledger) {
     })
     lines.push(`| ${text} | ${cells.join(' | ')} |`)
   }
+  if (ledger.warmSummary) {
+    lines.push(
+      '',
+      `## 稳态启动汇总（ms，同一数据根的第 ${ledger.launches === 2 ? '2' : `2–${ledger.launches}`} 次启动）`,
+      '',
+      '同样按"观测最大值"受 `budgets.json` 的同一组上限约束，另有 `warmVsColdMs` 约束"稳态不得比首次启动更慢"。',
+      '',
+      '| 指标 | ' + ledger.profiles.join(' | ') + ' |',
+      '| --- | ' + ledger.profiles.map(() => '---:').join(' | ') + ' |',
+    )
+    for (const [key, text] of Object.entries(metricLabels)) {
+      const cells = ledger.profiles.map((profile) => {
+        const metric = ledger.warmSummary?.[profile]?.metrics?.[key]
+        if (!metric) return '—'
+        return metric.min === metric.max ? `${metric.min}` : `${metric.min}–${metric.max}`
+      })
+      lines.push(`| ${text} | ${cells.join(' | ')} |`)
+    }
+  }
   lines.push('', '## 逐次原始样本', '')
   for (const run of ledger.runs) {
-    lines.push(`### ${run.profile} #${run.index + 1}${run.ok ? '' : '（失败）'}`, '')
+    const launchLabel = ledger.launches > 1 ? ` launch ${run.launch ?? 1}/${ledger.launches}` : ''
+    lines.push(`### ${run.profile} #${run.index + 1}${launchLabel}${run.ok ? '' : '（失败）'}`, '')
     if (!run.ok) lines.push(`- 错误：${run.error}`, '')
     lines.push('```json', JSON.stringify(run.timings, null, 2), '```', '')
   }
