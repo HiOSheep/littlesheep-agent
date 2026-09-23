@@ -33,6 +33,7 @@ export function createDesktopAcceptanceSnapshotProvider(
     return {
       ...options.desktopShell.snapshot(),
       sampledAt: new Date().toISOString(),
+      visual: options.desktopShell.visualContract(),
       process: {
         rssBytes: finiteBytes(processMemory.rss),
         heapUsedBytes: finiteBytes(processMemory.heapUsed),

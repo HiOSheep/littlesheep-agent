@@ -347,6 +347,9 @@ async function bootstrap(): Promise<void> {
           close: () => desktopShell.close(),
           show: () => desktopShell.show(),
           quit: requestApplicationQuit,
+          // Only exercised by an isolated acceptance run; the CS-02 seam check
+          // needs the native caption buttons at more than one window width.
+          resizeForAcceptance: (size: { width: number; height: number }) => desktopShell.resizeForAcceptance(size),
         }
       : undefined,
     rebuildRunner,

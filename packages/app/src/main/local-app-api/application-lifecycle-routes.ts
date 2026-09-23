@@ -69,7 +69,22 @@ export async function routeApplicationLifecycle(
       setImmediate(() => context.desktopAcceptance?.quit())
       return true
     }
-    json(res, 400, { error: 'Desktop acceptance action must be close, show, or quit.' })
+    if (body.action === 'resize') {
+      const resize = context.desktopAcceptance.resizeForAcceptance
+      const width = Number(body.width)
+      const height = Number(body.height)
+      if (!resize || !Number.isFinite(width) || !Number.isFinite(height)) {
+        json(res, 501, { error: 'Desktop acceptance resize is not available.' })
+        return true
+      }
+      const accepted = resize({ width, height })
+      json(res, accepted ? 200 : 409, {
+        accepted,
+        snapshot: context.desktopAcceptance.snapshot(),
+      })
+      return true
+    }
+    json(res, 400, { error: 'Desktop acceptance action must be close, show, resize, or quit.' })
     return true
   }
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.activeRuns) {

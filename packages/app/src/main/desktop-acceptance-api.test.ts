@@ -36,6 +36,12 @@ describe('desktop Electron acceptance Local App API', () => {
       closePolicy: 'always-background' as const,
       activeRunCount: 1,
       sampledAt: '2026-08-03T06:30:00.000Z',
+      visual: {
+        titlebarHeight: 32,
+        titlebarOverlayColor: '#101010',
+        startupSurface: '#101010',
+        backgroundColor: '#101010',
+      },
       process: {
         rssBytes: 100,
         heapUsedBytes: 40,

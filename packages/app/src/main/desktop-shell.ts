@@ -22,6 +22,11 @@ import {
   DESKTOP_STARTUP_SURFACE,
   DESKTOP_TITLEBAR_HEIGHT,
 } from './desktop-startup-page.js'
+import {
+  desktopVisualContract,
+  resizeWindowForAcceptance,
+  type DesktopVisualContract,
+} from './desktop-visual-acceptance.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
 import { recordBootstrapTiming } from './bootstrap-timing.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
@@ -62,6 +67,8 @@ export interface DesktopShellSnapshot {
 
 export interface DesktopAcceptanceSnapshot extends DesktopShellSnapshot {
   sampledAt: string
+  /** Native window surface facts the DOM cannot report (CS-02 seam check). */
+  visual: DesktopVisualContract
   process: {
     rssBytes: number
     heapUsedBytes: number
@@ -165,6 +172,20 @@ export class LittleSheepDesktopShell {
     if (!window) return false
     window.close()
     return true
+  }
+
+  /**
+   * Resize the live window to an explicit size. Only the isolated acceptance
+   * run uses this: the CS-02 seam check needs the native caption buttons
+   * rendered at more than one width, which the renderer cannot drive.
+   */
+  resizeForAcceptance(size: { width: number; height: number }): boolean {
+    return resizeWindowForAcceptance(this.resolveWindow(), size)
+  }
+
+  /** Native window facts the visual acceptance cannot read from the DOM. */
+  visualContract(): DesktopVisualContract {
+    return desktopVisualContract()
   }
 
   async prepareToQuit(): Promise<void> {
