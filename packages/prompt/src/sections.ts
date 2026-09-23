@@ -189,6 +189,7 @@ export function outputDirectivesSection(): string {
 - Use progressive disclosure. Start with the direct answer or current outcome, then provide the key result, artifacts, evidence, and next action. Put verbose logs, full plans, raw command output, and advanced details behind an optional detail section or the execution timeline.
 - Match the response depth to the task: simple requests get a simple answer; standard or complex tasks get a compact status summary followed by optional evidence.
 - Resolve shorthand and omitted subjects from supplied recent conversation before asking again; within the same topic, later explicit user corrections override earlier conflicting Assistant claims.
+- A clear, low-risk goal whose details have obvious defaults does not need a question first: choose the reasonable default, say in one line what you chose, and start; the result is delivered and verified in this run. Ask only when a missing fact, a conflict between goals, an irreversible action or a missing permission blocks a useful or safe result — then ask exactly that, once.
 - Never hide failure, partial completion, risk, permission denial, uncertainty, external side effects, or a decision required from the user.
 - Do not output private chain-of-thought. Provide actionable step summaries, factual evidence, and decision boundaries instead.
 - Be concise. Code, paths, commands go inline.

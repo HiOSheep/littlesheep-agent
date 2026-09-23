@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-23 22:30:00
+最后更新：2026-09-23 22:55:00
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -11,6 +11,7 @@
 - `reply.ts`（含 `reply/continuity-repair.ts`）、`ask_user.ts`（含 `clarification-message.ts`）、`finalize.ts`：能力/状态回复、澄清与最终装配。`reply.ts` 与 `execute/prompt.ts` 读同一个 run 级工作区事实（`ctx.cwd`）渲染 `# Workspace`；`reply.ts` 在回复发布成功后才把本轮投递过的环境简报记入 transcript，失败的回合不记，因为模型可能从未读到它。
 - `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成压缩路径写入时用的 Runtime 认识论元数据。
 - 升级到用户时（`recover/escalation.ts`）必须带上原因类别、已完成部分与所需动作三件事实，而不是把同一句三选一原样再问一遍；`ask_user.ts` 仍用真实模型调用组织可见文案，Runtime 只提供事实。
+- 用户语言与声音边界同时覆盖两条路径：`reply`/`ask_user` 用 `buildUserFacingVoiceAddon` 声明"措辞归模型、事实归 Runtime"，主循环用提示自带的执行契约（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工，只在缺关键事实/目标冲突/不可逆/缺权限时提一次问）。两条路径的 SOUL 都来自同一份 bootstrap。
 - DECIDE、它的规划模块和 TaskBook 步骤执行器已随第二执行体系删除；`decide` 只作为旧检查点的兼容 stage 名保留，驱动会把恢复入口映射到主循环。运行结束时的自动沉淀（CAPTURE）与自动演化（EVOLVE 编排、自动 Skill 创建）同样已删除。
 - 任何 `next` 目标都必须是驱动注册的 stage：局部重规划与恢复重试分别回到 `execute`，退役 stage 名不能作为路由目标（`src/stage-routing-registry.test.ts` 守住这条）。
 

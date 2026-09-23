@@ -1,6 +1,6 @@
 {
   "probe": "tool-loop",
-  "freeze": "git 590bd1d",
+  "freeze": "git 63d635a",
   "model": "test",
   "toolNames": [
     "read",
@@ -12,7 +12,7 @@
     {
       "index": 1,
       "label": "loop.call1",
-      "characters": 7641,
+      "characters": 8024,
       "messages": 12,
       "stableHeadCharacters": 3444,
       "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
@@ -20,9 +20,9 @@
     {
       "index": 2,
       "label": "loop.call2",
-      "characters": 7897,
+      "characters": 8280,
       "messages": 14,
-      "sharedPrefixCharacters": 7641,
+      "sharedPrefixCharacters": 8024,
       "sharedPrefixRatio": 1,
       "stableHeadCharacters": 3444,
       "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
@@ -30,9 +30,9 @@
     {
       "index": 3,
       "label": "loop.call3",
-      "characters": 8153,
+      "characters": 8536,
       "messages": 16,
-      "sharedPrefixCharacters": 7897,
+      "sharedPrefixCharacters": 8280,
       "sharedPrefixRatio": 1,
       "stableHeadCharacters": 3444,
       "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
@@ -40,9 +40,9 @@
     {
       "index": 4,
       "label": "loop.call4",
-      "characters": 8409,
+      "characters": 8792,
       "messages": 18,
-      "sharedPrefixCharacters": 8153,
+      "sharedPrefixCharacters": 8536,
       "sharedPrefixRatio": 1,
       "stableHeadCharacters": 3444,
       "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"

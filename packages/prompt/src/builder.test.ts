@@ -90,6 +90,12 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Resolve shorthand and omitted subjects from supplied recent conversation');
     expect(prompt).toContain('later explicit user corrections override earlier conflicting Assistant claims');
     expect(prompt).toContain('Never hide failure, partial completion, risk');
+    // CE-10: the main loop is where "做一个小游戏吧" is answered, so the
+    // proceed-with-reasonable-defaults rule has to live in this contract — the
+    // conversational contract already carried it and the executing one did not.
+    expect(prompt).toContain('does not need a question first');
+    expect(prompt).toContain('choose the reasonable default');
+    expect(prompt).toContain('irreversible action or a missing permission blocks');
     // Time facts are no longer injected, so the prompt points at session_status
     // instead of describing precision rules for a clock the model never sees.
     expect(prompt).toContain('No clock or elapsed time is injected into your context');

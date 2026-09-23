@@ -1,10 +1,10 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-23 21:20:00
+最后更新：2026-09-23 22:50:00
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。
-- `prompt.ts`：装配 EXECUTE System Prompt，不拥有工具执行权；`# Workspace` 取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具上下文同源，配置默认目录只是没有运行时事实时的回退。
+- `prompt.ts`：装配 EXECUTE System Prompt，不拥有工具执行权；`# Workspace` 取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具上下文同源，配置默认目录只是没有运行时事实时的回退。用户语言与运行时 SOUL 也必须到达这里——主循环授权过程叙述与最终交付，而声音边界声明只在 `reply`/`ask_user` 上，因此 `prompt.test.ts` 断言语言规则与 SOUL 正文同时在场。
 - `tool-loop.ts`：唯一主循环——模型工具循环，把调用交给统一 Tool Execution Service，并保留本轮请求消息与工具目录供有界纠正复用。Runtime 控制消息（引用修复、工具边界失败、无进展上限）与 Runtime 尾部一样按位置持久化：它们属于被缓存的请求字节，不记录就会让下一轮回放停在上一条请求的最后一个消息（实测冻结 A2 diff@19/20）。**强制收尾不得改写工具可见性或 `tool_choice`**：provider 在 `tool_choice: none` 下不把工具目录渲染进提示词，收尾请求会少 1.8k–2.0k tokens 且缓存从第 0 个 token 起失效；现在收尾请求保留目录与 `auto`，被忽略的调用由本地拒绝（`MAX_FORCED_TOOL_REFUSALS`）处理，恢复的 no-progress 闩锁也会补发同样的控制消息。
 - `model-transcript.ts`：有序 thinking/tool/text 转录行的发布、重置与关闭。
 - `tool-result-persistence.ts`：单轮工具提议与结果的持久化和有界投影，输入先过工具自己的 projector；`toolResultForModel` 只给模型可据以决策的字段（`ok`/`output`/`error`/`sanitized`/`stepId`），不再发送 `status` 与 `durationMs`——实测冻结清单里 43.6k 工具结果字符中有 8.7k（20%）是这类包装文本；成功与失败都保留有界输出（命令执行器失败时只给 `exit code 1` 会让模型无法诊断）。`sentToolOutputs`/`modelContentForResult` 让重复的相同 payload（实测占 7% 字符，重复读大文件时是整份）改为引用会话里仍在的早先结果，小于 400 字符的 payload 仍按原样发送。为了让下一次 run 能按字节回放这次请求，`persistToolCalls` 在工具没有 `persistence.projectInput` 时保存 Provider 的原始参数串（`ToolCall.rawArguments`）、assistant 的文本前言与 `reasoning`，`persistToolResult` 保存模型当时看到的有界文本（`tool_result.modelContent`），`persistRuntimeTailMessages`/`persistRuntimeControlMessage` 把 Runtime 尾部与控制消息按发送位置存为 `runtimeTail` 记录；带 `webEvidence` 的结果永不保存该文本，网页正文只在本轮进入模型上下文。

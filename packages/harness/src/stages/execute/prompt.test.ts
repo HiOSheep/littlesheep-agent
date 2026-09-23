@@ -46,8 +46,28 @@ describe('the execute prompt workspace fact', () => {
   });
 });
 
-describe('the disclosed execution shell', () => {
-  it('matches the interpreter the exec tool actually starts', () => {
+// CE-10: the main loop authors most of what a user reads — the process
+// narration and the delivered result — so the language rule and the active SOUL
+// have to reach it too, not only the conversational reply stage.
+describe('the language and voice contract of the main loop', () => {
+  it('carries the user-language rule and the runtime SOUL in the same prompt', async () => {
+    const ctx = makeCtx({
+      inbound: textMessage('user', '做一个小游戏吧'),
+      tools: [makeTool('read', { ok: true, output: '' })],
+      bootstrap: { 'SOUL.md': 'Speak plainly and never over-promise.' },
+    });
+
+    const bundle = await buildExecuteSystemPrompt(deps as never, ctx);
+
+    expect(bundle.text).toContain("Reply in the user's language (Chinese by default; keep technical terms in English)");
+    expect(bundle.text).toContain('Speak plainly and never over-promise.');
+    // The runtime does not translate facts or ship fixed wording: code and paths
+    // stay as they are, and the process text is the model's own.
+    expect(bundle.text).toContain('Code, paths, commands go inline');
+  });
+});
+
+describe('the disclosed execution shell', () => {  it('matches the interpreter the exec tool actually starts', () => {
     const shell = describeExecutionShell();
     const facts = renderCapabilitySnapshot(makeCtx({}));
 

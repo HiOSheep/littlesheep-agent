@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-23 22:30:00
+最后更新：2026-09-23 22:55:00
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -23,6 +23,7 @@
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。
 - 续跑的证据投影（`stages/verify/task-state.ts` 的 `inheritedEffectEvidence` 与计划证据条件）：检查点持久化 `sideEffects` 与 `taskExecution`，但不持久化 `toolInvocations`，续跑 run 的 invocation 列表只属于本轮。两处判定因此都以"这是本轮产生的吗"为前提——继承的终态副作用由检查点自身作证；**步骤证据只对本次 run 执行过的计划成立**，续跑带进来的旧计划不再被当成缺口（此前会把 run 打回去重规划一个没有执行器能跑的步骤集）。没有 callId、仍未结算、本 run 未续跑，或计划属于本 run 时，缺口照旧上报。
 - 恢复分类与升级（`stages/recover/policy.ts`、`stages/recover/escalation.ts`）：TaskBook 步骤执行器删除后没有东西再写 `taskExecution`，`recordedFailureKinds` 于是对所有普通 run 都返回空，权限拒绝与取消分支永久失效——现在它在步骤为空时改读 invocation 状态与 `lastError` 文本。升级给用户的 `clarificationRequest` 带上原因类别、已完成部分与所需动作三件事实（只含计数与状态），可见文案仍由 `ask_user` 的真实模型调用撰写。
+- 用户语言与声音边界（CE-10）：用户读到的过程叙述与最终交付由主循环授权，所以语言规则必须同时覆盖两条路径——`reply`/`ask_user` 走 `profile-prompt.ts` 的 `buildUserFacingVoiceAddon`（明确"措辞归模型、事实归 Runtime"），主循环走提示自带的 `# Assistant Output Directives`（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工）。SOUL.md 对两者都经 bootstrap 进入同一提示，`stages/execute/prompt.test.ts` 断言语言规则与 SOUL 正文同时在场。
 - 对话区的回复、澄清和交付表达必须由实时 LLM 调用结合运行时 `SOUL.md` 构思并由 Harness 发布：发布前在会话级持久注册表原子占用 settlement 身份（run + 规范化文案指纹），同一 settlement 不得发布不同文案；模型已通过 `request_user_input` 写好的提问按原样发布并绑定产出它的请求 id，重复措辞同样按原样发布、不再调用模型改写，也不存在任何重新生成路径。文案为空、缺少真实 model request 证据或注册表不可用时失败可见，Runtime 不伪造人格文案。
 - 禁止依赖 Electron、CLI、具体渠道或 App 私有实现，也不直接拥有文件系统生命周期。
 
