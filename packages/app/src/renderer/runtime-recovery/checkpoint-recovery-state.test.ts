@@ -192,7 +192,13 @@ describe('checkpoint recovery wiring', () => {
     expect(hook).toContain('function retryDiscovery()')
     // Retrying re-reads the list; it must not resume anything by itself.
     expect(hook).not.toContain('resumeSelected(checkpoint)\n    void refreshCheckpoints')
-    // Startup discovery stays silent: it never opens the dialog by itself.
-    expect(hook).toContain('void refreshCheckpoints(false)\n  }, [])')
+    // Startup discovery stays silent (it never opens the dialog by itself) and
+    // waits for real execution readiness instead of failing against a Runtime
+    // that is merely still starting.
+    expect(hook).toContain('void refreshCheckpoints(false)\n    }')
+    expect(hook).toContain('subscribeRuntimeReadiness((state) => {')
+    expect(hook).toContain("if (state.state === 'ready') runDiscovery()")
+    expect(hook).toContain('if (isExecutionReady()) runDiscovery()')
+    expect(hook).not.toContain('void refreshCheckpoints(false)\n  }, [])')
   })
 })

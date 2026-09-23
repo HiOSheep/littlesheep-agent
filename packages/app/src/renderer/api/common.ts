@@ -18,7 +18,7 @@ declare global {
       localApiBase?: () => Promise<string>
       getRuntimeReadiness?: () => Promise<RuntimeReadiness | undefined>
       onRuntimeReadiness?: (listener: (state: RuntimeReadiness) => void) => () => void
-      reportRendererTiming?: (stage: RendererTimingStage) => void
+      reportRendererTiming?: (stage: RendererTimingStage, durationMs: number) => void
       getPathForFile?: (file: unknown) => string
       onBrowserOpenNewTab?: (listener: (event: { url: string; disposition?: string }) => void) => () => void
       onApplicationStateFlush?: (listener: () => void) => () => void

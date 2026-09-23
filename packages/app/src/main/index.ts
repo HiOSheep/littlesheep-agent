@@ -30,10 +30,9 @@ import {
 } from '@littlesheep/config'
 import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/branding'
 import { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
-import { createRunner, type AgentRunner, type LogFn } from '@littlesheep/runner'
-import { createPluginHost, type PluginHost } from '@littlesheep/plugins'
+import { createRunner, type AgentRunner } from '@littlesheep/runner'
+import type { PluginHost } from '@littlesheep/plugins'
 import { startLocalAppApiServer, type LocalAppApiServer, type LocalAppApiServerOptions } from './local-app-api-server.js'
-import { BUILTIN_PLUGIN_SOURCES } from './builtin-plugins.js'
 import { BOOTSTRAP_TEMPLATES } from './bootstrap-templates.js'
 import { classifyAttachment } from './attachments.js'
 import { SessionIndex } from './session-index.js'
@@ -62,6 +61,7 @@ import {
 import { recordBootstrapTiming } from './bootstrap-timing.js'
 import { createRuntimeReadinessController } from './runtime-readiness.js'
 import {
+  isRendererTimingDuration,
   isRendererTimingStage,
   RENDERER_TIMING_CHANNEL,
   RUNTIME_READINESS_QUERY_CHANNEL,
@@ -126,9 +126,12 @@ const readiness = createRuntimeReadinessController({
 
 function installReadinessHandlers(): void {
   ipcMain.handle(RUNTIME_READINESS_QUERY_CHANNEL, () => readiness.current())
-  ipcMain.on(RENDERER_TIMING_CHANNEL, (_event, stage: unknown) => {
+  ipcMain.on(RENDERER_TIMING_CHANNEL, (_event, stage: unknown, durationMs: unknown) => {
     if (!isRendererTimingStage(stage)) return
-    recordBootstrapTiming(stage)
+    if (!isRendererTimingDuration(durationMs)) return
+    // The renderer measures its own deltas; only the stage name and the bounded
+    // duration cross the bridge, and both are recorded as-is.
+    recordBootstrapTiming(stage, undefined, { durationMs })
   })
 }
 
@@ -476,23 +479,16 @@ async function startExecution(input: {
   // published after it settles, so no request observes a half-built router.
   await server?.setRunner(created)
 
-  // Built-in channel implementations use dynamic imports and are activated only
-  // when their channel type is enabled.
-  pluginHost = createPluginHost({
+  // Built-in channel implementations are needed only once execution starts, so
+  // the plugin package is loaded here instead of in the entry's static graph.
+  const { startPluginHost } = await import('./plugin-host-startup.js')
+  pluginHost = startPluginHost({
     runner: created,
-    bindingsFile: join(dataSubdirs(input.branding).channels, 'bindings.json'),
-    pluginInstallDir: dataSubdirs(input.branding).plugins,
-    pluginDataDir: dataSubdirs(input.branding).pluginData,
+    branding: input.branding,
     config: input.config,
-    builtinSources: BUILTIN_PLUGIN_SOURCES,
-    log: ((level: 'info' | 'warn' | 'error', msg: string) =>
-      console.log(`[plugins:${level}] ${msg}`)) as LogFn,
   })
   server?.setPluginHost(pluginHost)
   stageStartedAt = recordBootstrapTiming('plugin-host-ready', stageStartedAt)
-  void pluginHost.start().catch((err) => {
-    console.error('[plugins] host failed to start:', err)
-  })
   readiness.ready()
 }
 /**

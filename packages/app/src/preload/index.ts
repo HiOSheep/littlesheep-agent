@@ -15,10 +15,11 @@ import {
 } from '../shared/application-state-contracts'
 import { BROWSER_OPEN_NEW_TAB_CHANNEL, type BrowserOpenNewTabEvent } from '../shared/browser-control-contracts'
 import {
+  isRendererTimingDuration,
+  isRendererTimingStage,
   RENDERER_TIMING_CHANNEL,
   RUNTIME_READINESS_CHANNEL,
   RUNTIME_READINESS_QUERY_CHANNEL,
-  isRendererTimingStage,
   type RendererTimingStage,
 } from '../shared/runtime-readiness-ipc'
 import {
@@ -94,10 +95,11 @@ contextBridge.exposeInMainWorld('littlesheep', {
     ipcRenderer.on(RUNTIME_READINESS_CHANNEL, handler)
     return () => ipcRenderer.removeListener(RUNTIME_READINESS_CHANNEL, handler)
   },
-  /** Report a startup timing mark. Only closed stage names are forwarded. */
-  reportRendererTiming: (stage: RendererTimingStage) => {
+  /** Report a startup timing mark. Only closed stage names and bounded durations. */
+  reportRendererTiming: (stage: RendererTimingStage, durationMs: number) => {
     if (!isRendererTimingStage(stage)) return
-    ipcRenderer.send(RENDERER_TIMING_CHANNEL, stage)
+    if (!isRendererTimingDuration(durationMs)) return
+    ipcRenderer.send(RENDERER_TIMING_CHANNEL, stage, durationMs)
   },
   getPathForFile: (file: unknown) => {
     try {

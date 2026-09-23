@@ -22,12 +22,16 @@ afterEach(async () => {
   for (const dispose of cleanup.splice(0)) await dispose()
 })
 
-async function createServer(): Promise<{ server: LocalAppApiServer; runner: AgentRunner; base: string }> {
+async function createServer(): Promise<{ server: LocalAppApiServer; runner: AgentRunner; base: string; publish: () => AgentRunner }> {
   const dataDir = mkdtempSync(join(tmpdir(), 'ls-readiness-api-'))
   const workplaceDir = join(dataDir, 'workplace')
+  // The composition root owns publication: `getRunner()` reports nothing until
+  // the Runner exists, exactly like the desktop bootstrap does.
+  let published: AgentRunner | undefined
   const runner = {
     state: { model: 'readiness/model' },
-    runCheckpoints: { recoverInterruptedResumes: vi.fn(async () => 0) },
+    activeRuns: { list: () => [], subscribe: () => () => undefined },
+    runCheckpoints: { recoverInterruptedResumes: vi.fn(async () => 0), list: vi.fn(async () => []) },
   } as unknown as AgentRunner
   const server = await startLocalAppApiServer({
     port: 0,
@@ -40,7 +44,7 @@ async function createServer(): Promise<{ server: LocalAppApiServer; runner: Agen
     config: structuredClone(DEFAULT_CONFIG) as Config,
     dataDir,
     workplaceDir,
-    getRunner: () => runner,
+    getRunner: () => published,
     getExecutionReadiness: () => ({
       state: 'starting',
       phase: 'execution',
@@ -69,7 +73,15 @@ async function createServer(): Promise<{ server: LocalAppApiServer; runner: Agen
     await server.stop()
     rmSync(dataDir, { recursive: true, force: true })
   })
-  return { server, runner, base: `http://127.0.0.1:${server.port}` }
+  return {
+    server,
+    runner,
+    base: `http://127.0.0.1:${server.port}`,
+    publish: () => {
+      published = runner
+      return runner
+    },
+  }
 }
 
 describe('Local App API execution readiness', () => {
@@ -86,16 +98,11 @@ describe('Local App API execution readiness', () => {
     })
   })
 
-  it('serves session and project metadata once the Runner is published', async () => {
-    const { server, base } = await createServer()
-    await server.setRunner({
-      state: { model: 'readiness/model' },
-      activeRuns: { list: () => [], subscribe: () => () => undefined },
-      runCheckpoints: { recoverInterruptedResumes: vi.fn(async () => 0), list: vi.fn(async () => []) },
-    } as unknown as AgentRunner)
+  it('keeps session metadata readable when the Runner never becomes available', async () => {
+    const { server, base, publish } = await createServer()
 
-    // Metadata routes own the window's first content and read the UI indexes,
-    // not the Runner.
+    // The listener exists before the Runner does, so the sidebar must be able
+    // to read this data root even when execution is unavailable.
     const sessions = await fetch(`${base}${LOCAL_APP_API_ROUTES.sessions}`)
     expect(sessions.status).toBe(200)
     await expect(sessions.json()).resolves.toEqual({ sessions: [] })
@@ -105,10 +112,15 @@ describe('Local App API execution readiness', () => {
 
     const runtime = await fetch(`${base}${LOCAL_APP_API_ROUTES.runtime}`)
     expect(runtime.status).toBe(200)
+
+    await server.setRunner(publish())
+
+    const readySessions = await fetch(`${base}${LOCAL_APP_API_ROUTES.sessions}`)
+    expect(readySessions.status).toBe(200)
   })
 
   it('fails Runner-backed routes closed with 503 until a Runner is published', async () => {
-    const { server, base } = await createServer()
+    const { server, base, publish } = await createServer()
 
     const state = await fetch(`${base}${LOCAL_APP_API_ROUTES.state}`)
     expect(state.status).toBe(503)
@@ -126,11 +138,7 @@ describe('Local App API execution readiness', () => {
     const checkpoints = await fetch(`${base}${LOCAL_APP_API_ROUTES.runCheckpoints}`)
     expect(checkpoints.status).toBe(503)
 
-    await server.setRunner({
-      state: { model: 'readiness/model' },
-      activeRuns: { list: () => [], subscribe: () => () => undefined },
-      runCheckpoints: { recoverInterruptedResumes: vi.fn(async () => 0), list: vi.fn(async () => []) },
-    } as unknown as AgentRunner)
+    await server.setRunner(publish())
 
     const readyState = await fetch(`${base}${LOCAL_APP_API_ROUTES.state}`)
     expect(readyState.status).toBe(200)

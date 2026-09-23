@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-22 23:49:24
+最后更新：2026-09-23 09:20:43
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -36,6 +36,7 @@
 
 ## 已决定方向后再看任务书
 
+- [桌面冷启动体验与加载策略优化任务书 2026-09-23](taskbooks/desktop-cold-start-taskbook-2026-09-23.md)：CS-01～CS-07 覆盖启动计时、视觉统一、界面提前可用、执行准备提速、按需加载、续接保护和真实 Electron 验收；当前为待实施清单，尚无实测提速结论。
 - [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：16 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态及视觉一致性；区分源码确认与待实机验证，作为独立排期清单。
 - [真实长任务缓存红线任务书 2026-09-22](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)：对齐 DeepSeek Harness 会话累计值的长任务 >=95% 红线，LT-00～LT-08 的真实样本、损失归因、跨 run 续接、输入精简、压缩、能力收缩与逐任务验收。
 
@@ -48,6 +49,7 @@
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：把极简执行与缓存 95% 方案的实测步骤写成可重复规程——冻结任务集/模型/配置/轮数与会话组织、旧新两组对比流程、`hit = sum(cached)/sum(input)` 测量规则、未知 usage 处理、禁止做法与完成条件；当前实测记录见 §7。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前/改后两个 checkout 上跑同一冻结负载的逐请求字符数、共享前缀与工具目录摘要对比；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)与[改后冻结副本](reference/cache-baseline/baseline-git-0af62a7.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
+- [桌面冷启动基线 2026-09-23](reference/cold-start-baseline/README.md)：CS-01 的五时间点基线（进程启动、真实首帧、输入可用、当前会话可读、首次可执行）× 空/普通/大历史/待恢复四档隔离数据，含逐次原始机器可读账本与"执行准备是首个可执行决定项"的实测结论；[原始账本](reference/cold-start-baseline/desktop-cold-start-baseline-2026-09-23.json)。
 - [真实长任务缓存基线 2026-09-22](reference/cache-baseline/real-long-task-baseline-2026-09-22.md)：六个冻结真实任务各跑两次（12 次运行，真实 Provider）的会话累计 H_ui、逐节点值、未缓存三类分解与派生上界；改动前 0/12 达标、4/12 功能失败，[原始机器可读账本](reference/cache-baseline/real-long-task-baseline-2026-09-22.json)同步提交。
 - [改动后基线（任务区间回放）2026-09-22](reference/cache-baseline/real-long-task-baseline-post-lt02-2026-09-22.md)：跨 run 回放修复后的复测——平均 H_ui 73.4%→84.2%，功能失败 4/12→1/12，9/12 次运行的回合边界逐消息一致；仍 0/12 达标，[机器可读账本](reference/cache-baseline/real-long-task-baseline-post-lt02-2026-09-22.json)同步提交。
 - [回放与压缩修复后基线 2026-09-22](reference/cache-baseline/real-long-task-baseline-after-replay-fixes-2026-09-22.md)：平均 H_ui 85.96%（敏感性视图 87.2%），功能失败 1/12，仍 0/12 达标；该批随后被查出 `tool_choice` 收尾改写的真实损失，[机器可读账本](reference/cache-baseline/real-long-task-baseline-after-replay-fixes-2026-09-22.json)同步提交。

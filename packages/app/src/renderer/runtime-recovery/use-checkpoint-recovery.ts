@@ -17,6 +17,7 @@ import type {
   LocalAppRunCheckpointSummary,
 } from '../../shared/run-checkpoint-contracts'
 import { sessionApprovalScopeKey, type ApprovalDecision } from '../approval-grants'
+import { isExecutionReady, subscribeRuntimeReadiness } from '../runtime-readiness/runtime-readiness-state'
 import type { PermissionModeId } from '../../shared/permission-modes'
 import { buildContextUsageSnapshot, type ContextUsageSnapshot } from '../context-usage'
 import {
@@ -89,7 +90,20 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const startupRecoveryAttemptedRef = useRef(false)
 
   useEffect(() => {
-    void refreshCheckpoints(false)
+    // Startup discovery needs the Local App API, which exists before the Runner
+    // does. Running it earlier reported a discovery failure for a Runtime that
+    // was merely still starting, so wait for the real readiness fact.
+    let started = false
+    const runDiscovery = () => {
+      if (started) return
+      started = true
+      void refreshCheckpoints(false)
+    }
+    const unsubscribe = subscribeRuntimeReadiness((state) => {
+      if (state.state === 'ready') runDiscovery()
+    })
+    if (isExecutionReady()) runDiscovery()
+    return unsubscribe
   }, [])
 
   useEffect(() => {

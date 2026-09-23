@@ -9,7 +9,8 @@ import { routeApplicationLifecycle } from './application-lifecycle-routes.js'
 import type { RunRouter } from './run-routes.js'
 
 export interface RunLifecycleRouteContext {
-  runRouter: RunRouter
+  /** Undefined while execution is unavailable: the run router only exists once a Runner does. */
+  runRouter: RunRouter | undefined
   getRunner: () => AgentRunner | undefined
   getConfig: () => Config
   options: LocalAppApiServerOptions
@@ -32,6 +33,7 @@ export async function routeRunLifecycle(
     controlActiveRun: options.controlActiveRun,
     desktopAcceptance: options.desktopAcceptance,
   })) return true
+  if (!context.runRouter) return false
   return context.runRouter.route(request, {
     getRunner: context.getRunner,
     getConfig: context.getConfig,

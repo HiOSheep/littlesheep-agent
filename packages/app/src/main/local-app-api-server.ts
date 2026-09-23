@@ -140,7 +140,10 @@ export async function startLocalAppApiServer(
         json(res, 200, readiness.payload)
         return
       }
-      if (runRouterPromise === undefined) throw new RuntimeNotReadyError()
+      // A missing run router means execution is still starting, or it failed
+      // before the router existed. Metadata routes keep answering; every
+      // Runner-backed route fails closed through `requireRunner`.
+      const runRouter = runRouterPromise === undefined ? undefined : await runRouterPromise
       return route(
         req,
         res,
@@ -156,7 +159,7 @@ export async function startLocalAppApiServer(
         mutateRuntimeConfig,
         projectRebinding,
         attachmentCache,
-        await runRouterPromise,
+        runRouter,
         terminalRouter,
         developmentEnvironmentManager,
       )
@@ -211,7 +214,7 @@ async function route(
   mutateRuntimeConfig: <T>(operation: () => Promise<T>) => Promise<T>,
   projectRebinding: ProjectRebindingService,
   attachmentCache: ManagedAttachmentCache,
-  runRouter: RunRouter,
+  runRouter: RunRouter | undefined,
   terminalRouter: TerminalRouter,
   developmentEnvironmentManager: DevelopmentEnvironmentManager,
 ): Promise<void> {
