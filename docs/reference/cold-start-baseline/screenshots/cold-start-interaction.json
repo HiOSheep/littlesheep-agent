@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 24687
+        "port": 33446
       },
       "notices": {
         "errorText": null,
@@ -56,7 +56,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 24687
+        "port": 33446
       }
     },
     {
@@ -90,7 +90,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 24687
+        "port": 33446
       }
     },
     {
@@ -119,10 +119,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 24687,
+        "port": 33446,
         "retryable": false
       },
-      "notReadyWindowMs": 7797,
+      "notReadyWindowMs": 7857,
       "requiredWindowMs": 6000
     },
     {
@@ -180,7 +180,7 @@
           "step": "minimize-restore",
           "minimizedHasComposer": true,
           "draft": "生命周期草稿",
-          "focused": true
+          "focused": false
         },
         {
           "step": "ready",

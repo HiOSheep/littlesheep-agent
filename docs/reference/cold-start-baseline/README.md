@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 17:26:18
+最后更新：2026-09-23 17:30:37
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -336,7 +336,13 @@
 
 ## 未覆盖与待验收
 
-- 系统重启后的完全冷启动、125% / 150% / 200% 缩放、明暗桌面截图矩阵、安装包实机：需要人工执行，本次没有样本。
+自动化部分到此为止：所有能由脚本在真实 Electron 里取证的条目都已落地并留下账本（五份证据文件：开发版视觉、打包版视觉、交互、恢复归属、失败态与重试）。以下只能在真实机器上由人完成，做完之前任务书对应复选框保持未勾选、任务书不退役：
+
+- **系统重启后的完全冷启动**：本机所有样本都是热缓存重复，重启后的首次启动（含首次读二进制）无法自动化。
+- **125% / 150% / 200% 显示缩放与明暗桌面背景**：需要人工在实机上逐项拍摄；脚本只覆盖宿主默认 DPR。
+- **失焦、最小化状态的观感与启动页→渲染器的交接瞬间**：最小化后窗口不参与截图（脚本只断言 DOM 状态），交接瞬间约 90 ms，需要人眼或高速拍摄。
+- **安装包（NSIS）实机安装与干净机器首次运行**：会写系统（安装目录、开始菜单、卸载登记），需要用户授权。
+- **真实续接执行**：现有证据到"发现 + 归属"为止；点"继续"会在检查点记录的真实工作区执行工具，需用户在自有数据上确认。
 - 逐项改动的成对前后对比尚无稳定的统计功效：在 n=5 下 `executionReadyMs` 的最小–最大区间约 200 ms，小于该区间内的差异不构成证据。
 - durable harness 与 bootstrap 文件注册两条路径已分别定论：前者改为并行初始化并取得阶段级净收益（约 14 ms），后者一半是首次注册（稳态不再支付）、另一半是读取与哈希，已明确不再作为优化目标。
 
@@ -348,6 +354,13 @@ pnpm run ensure:app-build
 node scripts/measure-desktop-cold-start.mjs --samples=5 --label=baseline-2026-09-23
 # 冷启动 + 稳态（同一数据根连续启动 3 次，并把两条护栏都跑一遍）
 node scripts/measure-desktop-cold-start.mjs --profiles=normal,recovery --samples=3 --launches=3 --label=warm-2026-09-23 --no-send
+# 打包版（同一脚本驱动 release/win-unpacked；需先 pnpm run package:win）
+node scripts/measure-desktop-cold-start.mjs --app=packaged --profiles=normal,empty --samples=3 --launches=3 --label=packaged-2026-09-23 --no-send
+# 真实窗口验收（开发版 / 打包版视觉、交互与窗口生命周期、失败态与重试）
+pnpm run verify:desktop-cold-start
+node scripts/verify-desktop-cold-start-visuals.mjs --app=packaged
+pnpm run verify:desktop-cold-start-interaction
+pnpm run verify:desktop-cold-start-readiness-failure
 # 恢复归属（需要真实 Provider 凭据；无凭据时脚本跳过并说明原因）
 $env:DEEPSEEK_API_KEY = '<credential>'
 pnpm run verify:desktop-cold-start-recovery

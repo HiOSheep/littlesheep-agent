@@ -1,6 +1,6 @@
 {
   "check": "desktop-cold-start-recovery",
-  "capturedAt": "2026-09-23T08:12:18.327Z",
+  "capturedAt": "2026-09-23T09:33:03.402Z",
   "redaction": "session ids are 8-character prefixes; user-profile and repository path prefixes are replaced with <user-home> and <repo>",
   "ok": true,
   "skipped": false,
