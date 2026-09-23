@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 40026
+        "port": 45985
       }
     },
     {
@@ -34,14 +34,33 @@
       }
     },
     {
+      "step": "notice-while-not-ready",
+      "notice": {
+        "text": "正在准备运行能力",
+        "visible": true,
+        "sendDisabled": true,
+        "draft": "冷启动草稿"
+      },
+      "readiness": {
+        "state": "starting",
+        "phase": "execution",
+        "reason": "正在准备运行能力",
+        "apiVersion": 1,
+        "retryable": false,
+        "port": 45985
+      }
+    },
+    {
       "step": "ready",
       "readiness": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 40026,
+        "port": 45985,
         "retryable": false
-      }
+      },
+      "notReadyWindowMs": 8028,
+      "requiredWindowMs": 6000
     },
     {
       "step": "after-ready",

@@ -4,12 +4,13 @@
 // document through an HTTP action.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createDesktopAcceptanceActions, type DesktopAcceptanceShell } from './desktop-acceptance-actions.js'
+import { acceptanceReadyDelayMs, createDesktopAcceptanceActions, type DesktopAcceptanceShell, waitForAcceptanceReadyDelay } from './desktop-acceptance-actions.js'
 import { showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
 
 type AcceptanceWindow = Parameters<typeof showStartupErrorPageForAcceptance>[0]
 
 const ACCEPTANCE_ENV = 'LITTLESHEEP_ELECTRON_ACCEPTANCE'
+const READY_DELAY_ENV = 'LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS'
 
 function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) {
   const { destroyed = false, window = true } = overrides
@@ -109,5 +110,29 @@ describe('desktop acceptance actions', () => {
     expect(showStartupPageForAcceptance(undefined, showStartupPage)).toBe(false)
     expect(showStartupError).not.toHaveBeenCalled()
     expect(showStartupPage).not.toHaveBeenCalled()
+  })
+
+  it('holds back the readiness publish only in a bounded acceptance window', async () => {
+    vi.stubEnv(ACCEPTANCE_ENV, '')
+    vi.stubEnv(READY_DELAY_ENV, '6000')
+    expect(acceptanceReadyDelayMs()).toBe(0)
+    expect(await waitForAcceptanceReadyDelay()).toBe(0)
+
+    vi.stubEnv(ACCEPTANCE_ENV, '1')
+    vi.stubEnv(READY_DELAY_ENV, '0')
+    expect(acceptanceReadyDelayMs()).toBe(0)
+
+    vi.stubEnv(READY_DELAY_ENV, 'not-a-number')
+    expect(acceptanceReadyDelayMs()).toBe(0)
+
+    // Bounded: a bad value must not be able to hang a run for minutes.
+    vi.stubEnv(READY_DELAY_ENV, '600000')
+    expect(acceptanceReadyDelayMs()).toBe(60_000)
+
+    // A small real value is honoured end to end.
+    vi.stubEnv(READY_DELAY_ENV, '40')
+    const startedAt = Date.now()
+    expect(await waitForAcceptanceReadyDelay()).toBe(40)
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(35)
   })
 })

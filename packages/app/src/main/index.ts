@@ -49,7 +49,7 @@ import { runShutdownSequence } from './shutdown-sequence.js'
 import { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepDesktopShell } from './desktop-shell.js'
 import { createDesktopAcceptanceSnapshotProvider } from './desktop-acceptance-snapshot.js'
-import { createDesktopAcceptanceActions } from './desktop-acceptance-actions.js'
+import { createDesktopAcceptanceActions, waitForAcceptanceReadyDelay } from './desktop-acceptance-actions.js'
 import { DataRootMigrationManager } from './data-root-migration.js'
 import { prepareMemoryV3Bootstrap } from './memory-v3-bootstrap.js'
 import { removeLocalAppApiLocator, writeLocalAppApiLocator } from './local-app-api-locator.js'
@@ -482,6 +482,11 @@ async function startExecution(input: {
   // it: measured, the plugin host costs only ~2.8 ms, but it is an optional
   // capability and the core API stays usable while it is absent (see
   // `local-app-api-server.ts`), so nothing waits on it.
+  //
+  // An isolated acceptance run can hold the publish back to widen the window the
+  // renderer sees; that is 0 in every normal start.
+  const acceptanceDelayMs = await waitForAcceptanceReadyDelay()
+  if (acceptanceDelayMs > 0) recordBootstrapTiming('acceptance-ready-delay', stageStartedAt)
   readiness.ready()
   recordBootstrapTiming('execution-ready', stageStartedAt)
   void loadPluginHost(

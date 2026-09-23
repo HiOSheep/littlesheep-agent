@@ -6,14 +6,19 @@
 //   1. the composer accepts typing and window operations while execution is
 //      still unavailable;
 //   2. a send attempt in that window is refused in place and never reported as
-//      accepted;
+//      accepted, and the window states the Runtime's own phase while the send
+//      entry stays disabled;
 //   3. when readiness arrives, the draft, the focused element and the current
 //      conversation are exactly what the user left — enabling capability must be
 //      an in-place transition, not a reload;
 //   4. no page navigation happens across the handoff.
 //
-// The not-ready window is short on a normal start, so every step records what it
-// actually observed instead of assuming it caught the transient state.
+// The not-ready window is about 300 ms on a normal start, which is too short to
+// type into and read a notice, so this script asks the app to hold back the
+// readiness *publish* (`LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS`, acceptance-only;
+// the Runner is still built normally). The measured window is asserted to have
+// been open, so these steps cannot pass by accident against a ready runtime. Every
+// step still records what it actually observed.
 //
 // Usage:
 //   node scripts/verify-desktop-cold-start-interaction.mjs [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
@@ -33,6 +38,9 @@ function readOption(name, fallback) {
 
 const outDir = resolve(repoRoot, readOption('out', 'docs/reference/cold-start-baseline/screenshots'))
 
+/** Acceptance-only readiness delay; also the window this script needs. */
+const NOT_READY_WINDOW_MS = 6_000
+
 async function main() {
   await harness.assertBuildFresh()
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-cold-start-interaction-'))
@@ -44,6 +52,7 @@ async function main() {
   const failures = []
   let client
   let child
+  let spawnRequestedAt = 0
 
   try {
     await mkdir(outDir, { recursive: true })
@@ -53,7 +62,15 @@ async function main() {
       chromiumDir,
       debuggingPort,
       logPath,
-      extraEnv: { LITTLESHEEP_ELECTRON_ACCEPTANCE: '1' },
+      extraEnv: {
+        LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
+        // The real not-ready window is about 300 ms, which is too short to type
+        // into, refuse a send and read the notice before it closes. The Runner is
+        // still built normally; only the readiness publish is held back, so this
+        // widens the window instead of faking a slow or failed start.
+        LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS: String(NOT_READY_WINDOW_MS),
+      },
+      onSpawn: ({ spawnRequestedAt: at }) => { spawnRequestedAt = at },
     })
     const locator = await harness.waitForLocator(dataDir, child.pid)
     client = await harness.connectRenderer(debuggingPort)
@@ -115,9 +132,52 @@ async function main() {
       })
     }
 
+    // 2b. While execution is unavailable the window must say so with the
+    //     Runtime's own words, and it must still be unavailable when this step
+    //     runs - otherwise the assertions above proved nothing about a wider
+    //     window. The notice is read from the DOM, not from the API.
+    const noticeWhileNotReady = await client.evaluate(`(() => {
+      const notice = document.querySelector('.runtime-readiness-notice');
+      const input = document.querySelector('.composer textarea');
+      return {
+        text: notice ? notice.textContent.trim() : null,
+        visible: notice ? notice.getBoundingClientRect().height > 0 : false,
+        sendDisabled: (() => {
+          const button = document.querySelector('.composer-run-actions .send-round');
+          return button ? button.disabled : null;
+        })(),
+        draft: input ? input.value : null,
+      };
+    })()`)
+    const stillNotReady = await readReadiness(locator)
+    observations.push({ step: 'notice-while-not-ready', notice: noticeWhileNotReady, readiness: stillNotReady })
+    if (stillNotReady?.state === 'ready') {
+      failures.push({ check: 'the widened not-ready window is still open when the notice is read', detail: stillNotReady })
+    }
+    if (noticeWhileNotReady.visible !== true || !noticeWhileNotReady.text) {
+      failures.push({ check: 'the not-ready window states the Runtime phase on screen', detail: noticeWhileNotReady })
+    }
+    if (noticeWhileNotReady.sendDisabled !== true) {
+      failures.push({ check: 'the send entry stays disabled while the notice is shown', detail: noticeWhileNotReady })
+    }
+    if (noticeWhileNotReady.draft !== '冷启动草稿') {
+      failures.push({ check: 'the draft is still in the composer during the widened window', detail: noticeWhileNotReady })
+    }
+
     // 3. Wait for execution readiness and confirm the transition was in place.
+    //    The widened window is measured rather than assumed: if the delay did not
+    //    apply, the pre-ready steps above ran against an almost-ready runtime and
+    //    the evidence would be worth much less. The window ends when readiness is
+    //    observed, so the timestamp is taken after the wait, not before it.
     const readiness = await waitForReady(locator)
-    observations.push({ step: 'ready', readiness })
+    const notReadyWindowMs = spawnRequestedAt === 0 ? null : Date.now() - spawnRequestedAt
+    observations.push({ step: 'ready', readiness, notReadyWindowMs, requiredWindowMs: NOT_READY_WINDOW_MS })
+    if (typeof notReadyWindowMs !== 'number' || notReadyWindowMs < NOT_READY_WINDOW_MS - 1_500) {
+      failures.push({
+        check: 'the not-ready window was actually widened before these steps ran',
+        detail: { notReadyWindowMs, requiredWindowMs: NOT_READY_WINDOW_MS },
+      })
+    }
     const afterReady = await readComposerIdentity(client)
     observations.push({ step: 'after-ready', before: markupBefore, after: afterReady })
     if (afterReady.draft !== '冷启动草稿') {

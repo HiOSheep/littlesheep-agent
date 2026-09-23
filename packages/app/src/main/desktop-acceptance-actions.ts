@@ -57,3 +57,32 @@ export function createDesktopAcceptanceActions(input: {
       showStartupPageForAcceptance(input.shell.currentWindow(), () => input.shell.showStartupPage()),
   }
 }
+
+/** Upper bound on the acceptance delay, so a bad value cannot hang a run. */
+const MAX_ACCEPTANCE_READY_DELAY_MS = 60_000
+
+/**
+ * How long to hold back the *publication* of execution readiness, in an
+ * acceptance run only.
+ *
+ * A real start keeps the window not-ready for roughly 300 ms, which is too short
+ * to check the pre-ready contract (draft accepted, send refused, notice shown)
+ * by hand or by script. The Runner is built exactly as usual and only the publish
+ * is delayed, so what this widens is the window the renderer sees - it does not
+ * fake a slow or failed start. Outside an acceptance run it is always 0, and
+ * `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS` is bounded.
+ */
+export function acceptanceReadyDelayMs(): number {
+  if (process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] !== '1') return 0
+  const requested = Number.parseInt(process.env['LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS'] ?? '', 10)
+  if (!Number.isFinite(requested) || requested <= 0) return 0
+  return Math.min(requested, MAX_ACCEPTANCE_READY_DELAY_MS)
+}
+
+/** Await the configured acceptance delay; returns how long it actually waited. */
+export async function waitForAcceptanceReadyDelay(): Promise<number> {
+  const delayMs = acceptanceReadyDelayMs()
+  if (delayMs === 0) return 0
+  await new Promise((resolve) => setTimeout(resolve, delayMs))
+  return delayMs
+}
