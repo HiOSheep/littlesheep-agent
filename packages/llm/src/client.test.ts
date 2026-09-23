@@ -558,8 +558,69 @@ describe('OpenAIClient.chatStream', () => {
     expect(chunks.every((chunk, index) => chunk.sequence === index + 1)).toBe(true);
   });
 
-  it('aggregates streamed reasoning separately from visible answer deltas', async () => {
+  // CE-11: the malformed and truncated shapes have to fail closed too. A marker
+  // that never completes, or an `invoke` with no envelope around it, cannot be
+  // recovered as a tool call — and it must not reach the stream or the transcript
+  // as if the model had written it.
+  it.each([
+    ['truncated before the closing tags', '<｜DSML｜ calls><｜DSML｜ invoke name="exec"><｜DSML｜ parameter name="cmd" string="true">pwd'],
+    ['an invoke with no envelope', '<｜DSML｜ invoke name="exec"><｜DSML｜ parameter name="cmd" string="true">pwd</｜DSML｜ parameter></｜DSML｜ invoke>'],
+    ['a parameter with no invoke', '<｜DSML｜ parameter name="cmd" string="true">pwd</｜DSML｜ parameter>'],
+    ['an envelope whose tool is not registered', '<｜DSML｜ calls><｜DSML｜ invoke name="rm_rf"><｜DSML｜ parameter name="cmd" string="true">x</｜DSML｜ parameter></｜DSML｜ invoke></｜DSML｜ calls>'],
+  ])('retracts and fails closed on %s', async (_label, content) => {
     const sse = [
+      `data: ${JSON.stringify({ model: 'deepseek-flash', choices: [{ index: 0, delta: { content: `answer so far ${content}` } }] })}`,
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch: mockFetch([{ body: sse }]) });
+    const chunks: import('./types.js').StreamChunk[] = [];
+
+    await expect(client.chatStream({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'inspect' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    }, (chunk) => chunks.push(chunk))).rejects.toMatchObject({ status: 502 });
+
+    // Whatever was streamed before the marker is retracted, so no consumer keeps
+    // control text as model text. The reset is what does it: a truncated
+    // envelope is switched out of the visible stream the moment its `calls`
+    // marker arrives, while an `invoke` with no envelope around it streams like
+    // ordinary prose and is retracted here at the end.
+    expect(chunks.at(-1)).toMatchObject({ type: 'reset' });
+    expect(chunks.some((chunk) => chunk.type === 'done')).toBe(false);
+    let visibleAfterRetractions = '';
+    for (const chunk of chunks) {
+      if (chunk.type === 'reset') visibleAfterRetractions = '';
+      else if (chunk.type === 'delta') visibleAfterRetractions += (chunk as { delta?: string }).delta ?? '';
+    }
+    expect(visibleAfterRetractions).not.toContain('DSML');
+  });
+
+  it('keeps a documented DSML example as ordinary streamed text', async () => {
+    const content = 'Here is the shape:\n\n```xml\n<｜DSML｜ calls><｜DSML｜ invoke name="exec"><｜DSML｜ parameter name="cmd" string="true">pwd</｜DSML｜ parameter></｜DSML｜ invoke></｜DSML｜ calls>\n```\n\nThat is all.';
+    const sse = [
+      `data: ${JSON.stringify({ model: 'deepseek-flash', choices: [{ index: 0, delta: { content } }] })}`,
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch: mockFetch([{ body: sse }]) });
+    const chunks: import('./types.js').StreamChunk[] = [];
+
+    const response = await client.chatStream({
+      model: 'deepseek-flash',
+      messages: [{ role: 'user', content: 'explain DSML' }],
+      tools: [{ type: 'function', function: { name: 'exec', description: 'run', parameters: { type: 'object' } } }],
+    }, (chunk) => chunks.push(chunk));
+
+    expect(response).toMatchObject({ content, finishReason: 'stop' });
+    expect(response.toolCalls).toHaveLength(0);
+    expect(chunks.some((chunk) => chunk.type === 'reset')).toBe(false);
+    expect(chunks.filter((chunk) => chunk.type === 'delta').map((chunk) => (chunk as { delta?: string }).delta).join(''))
+      .toBe(content);
+  });
+
+  it('aggregates streamed reasoning separately from visible answer deltas', async () => {    const sse = [
       'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"reasoning_content":"plan "}}]}',
       'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"reasoning_content":"step"}}]}',
       'data: {"model":"glm-5.2","choices":[{"index":0,"delta":{"content":"answer"}}]}',

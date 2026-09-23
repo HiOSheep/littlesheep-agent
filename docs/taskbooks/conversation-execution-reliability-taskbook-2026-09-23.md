@@ -26,7 +26,7 @@
 | 已实施待实测 | CE-08 | P1 | 恢复耗尽后的续接必须产生进展或具体阻塞 | P6 | L | CE-04、CE-07 的结论 |
 | 待复现 | CE-09 | P1 | run 失败也有可见、可恢复的终态 | P8 | M | 可先复现；联验依赖 CE-08 |
 | 待实施 | CE-10 | P2 | 中文过程表达与低风险模糊请求直接执行 | P9 | S | CE-01/03/04 |
-| 待回归 | CE-11 | P2 | 保留 DSML 泄漏历史回归 | P7 | S | 无 |
+| 已回归 | CE-11 | P2 | 保留 DSML 泄漏历史回归 | P7 | S | 无 |
 | 待验收 | CE-12 | P0 交付门 | 三类工作区的真实完整流程验收 | P1～P9 | L | 对应实现与调查关闭后 |
 | 已实施待实测 | CE-13 | P0 | 注入简短的运行时变更上下文 | 用户追加：模型、工作区等即时信息 | M | CE-01/02/03 的有效事实来源 |
 
@@ -175,10 +175,10 @@
 
 **定位**：[dsml-tool-calls.test.ts](../../packages/llm/src/dsml-tool-calls.test.ts)、[dsml-stream-scanner.test.ts](../../packages/llm/src/dsml-stream-scanner.test.ts)、[user-facing-reply.test.ts](../../packages/harness/src/user-facing-reply.test.ts)。
 
-- [ ] 合法 DSML 工具控制文本恢复为结构化调用，不作为普通答案发布。
-- [ ] 畸形、分片、截断控制标记不会泄漏到流式界面或历史回复；失败时与 CE-09 的 Runtime 状态衔接。
-- [ ] 用户要求解释 DSML 的合法引用/代码示例不会被过度拦截。
-- [ ] 现有回归已覆盖则直接复用，仅补真正缺失用例；无新失败不安排解析器重写。
+- [x] 合法 DSML 工具控制文本恢复为结构化调用，不作为普通答案发布。（既有 `dsml-tool-calls.test.ts`、`client.test.ts` 的"retracts streamed DSML text after recovering it as a tool call"与逐字符切分用例；本轮未改解析器。）
+- [x] 畸形、分片、截断控制标记不会泄漏到流式界面或历史回复；失败时与 CE-09 的 Runtime 状态衔接。（补了四种畸形形态的流式用例：截断在闭合标签之前、没有信封的 `invoke`、没有 `invoke` 的 `parameter`、未注册工具 —— 均以 `reset` + `LlmError(502)` 失败关闭，重放 chunk 序列后可见文本里不含控制标记；分片由既有逐字符用例覆盖。**与 CE-09 的衔接仍待 CE-09 完成后联验**：这里证明的是不发布，不是界面如何呈现该失败。）
+- [x] 用户要求解释 DSML 的合法引用/代码示例不会被过度拦截。（补了流式文档示例用例：围栏内的完整信封按普通文本流出与返回，无 `reset`、无工具调用；既有解析器用例覆盖行内与转义形式。）
+- [x] 现有回归已覆盖则直接复用，仅补真正缺失用例；无新失败不安排解析器重写。（只新增用例，未改 `dsml-tool-calls.ts` / `dsml-stream-scanner.ts`。扫描器仍只认 `calls`/`tool_calls` 开头，因此正文先流、随后到达的 `invoke` 在流结束时统一撤回——两种路径的最终状态一致。）
 
 ### CE-12｜真实对话完整验收（P0 交付门）
 
@@ -294,7 +294,8 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 
 - 仍未做真实模型调用与 Electron 实机；CE-12 全部场景未执行。
 - CE-08 的"绑定重试跨重启语义"沿用既有 runner-continuation 覆盖，本轮没有新增端到端断言；`escalateExhaustedReplan`（VERIFY 自己的升级）仍用原有的原因文案，未合并到新的三件事实格式。
-- CE-09～CE-11 未开始。
+- CE-09、CE-10 未开始。
+- CE-11 只补用例：畸形/截断标记的流式回归（四种形态）与文档示例惰性各一条，解析器与扫描器代码未动。与 CE-09 的界面衔接待 CE-09 完成后联验。
 
 ## 实施记录｜2026-09-23 第二轮（CE-05、CE-06）
 
