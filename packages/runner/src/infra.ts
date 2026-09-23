@@ -196,13 +196,19 @@ export async function buildInfrastructure(
    * a cold-start measurement needs to know which wait actually dominates before
    * any reordering is attempted. Same shape as the composition root's
    * `[bootstrap-timing]` entries: a stage name and milliseconds, no user text.
+   *
+   * `explicitDurationMs` is for stages that overlap each other: the shared timer
+   * can only measure the gap between two marks, so a caller that runs work in
+   * parallel passes the elapsed time it measured itself.
    */
-  const mark = (stage: string): void => {
+  const mark = (stage: string, explicitDurationMs?: number): void => {
     if (timingEnabled) {
       console.log(`[bootstrap-timing] ${JSON.stringify({
         stage,
         processUptimeMs: Math.round(process.uptime() * 1_000 * 10) / 10,
-        durationMs: Math.round((performance.now() - timingStartedAt) * 10) / 10,
+        durationMs: explicitDurationMs === undefined
+          ? Math.round((performance.now() - timingStartedAt) * 10) / 10
+          : Math.round(explicitDurationMs * 10) / 10,
       })}`);
     }
     timingStartedAt = performance.now();
@@ -274,7 +280,7 @@ export async function buildInfrastructure(
 
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
-  const durableHarnessInfrastructure = await buildDurableHarnessInfrastructure(dirs.root, opts.log);
+  const durableHarnessInfrastructure = await buildDurableHarnessInfrastructure(dirs.root, opts.log, mark);
   mark('runner-infra-durable-ready');
   const { durableEventStore } = durableHarnessInfrastructure;
   const loadSessionDurableProjectionFor = (sessionId: string) =>
