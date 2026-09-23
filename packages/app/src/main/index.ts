@@ -617,7 +617,11 @@ if (gotLock) {
     void bootstrap().catch((error: unknown) => {
       console.error('[bootstrap] failed:', error)
       readiness.fail(error instanceof Error ? error.message : String(error), { retryable: true })
-      desktopShell.showStartupError(error)
+      // Two failure stages, two visible states (both measured on a real window):
+      // before the renderer loads, the standalone failure page carries the error;
+      // after it, the shell states the same reason in its readiness notice and
+      // keeps the settings that fix the configuration reachable.
+      if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error)
     })
   })
 

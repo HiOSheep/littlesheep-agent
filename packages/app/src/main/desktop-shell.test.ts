@@ -43,6 +43,21 @@ describe('desktop shell window cleanup', () => {
     expect(entry).toContain('readiness.fail(')
   })
 
+  it('keeps the standalone failure page for failures that precede the renderer', async () => {
+    const [shell, entry] = await Promise.all([
+      readFile(new URL('./desktop-shell.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./index.ts', import.meta.url), 'utf8'),
+    ])
+
+    // Measured on a real window: a stage-3 (execution) failure leaves the live
+    // shell showing the readiness notice, and only a failure before the renderer
+    // loads lands on the standalone page. The guard makes that choice explicit
+    // instead of depending on which navigation wins a race.
+    expect(shell).toContain('hasLoadedRenderer(): boolean')
+    expect(shell).toContain('this.rendererLoadedWindows.has(window)')
+    expect(entry).toContain('if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error)')
+  })
+
   it('localizes one #101010 surface instead of a translucent startup overlay', async () => {
     const [startup, shell] = await Promise.all([
       readFile(new URL('./desktop-startup-page.ts', import.meta.url), 'utf8'),

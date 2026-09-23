@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 52276
+        "port": 8195
       },
       "notices": {
         "errorText": null,
@@ -56,7 +56,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 52276
+        "port": 8195
       }
     },
     {
@@ -90,7 +90,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 52276
+        "port": 8195
       }
     },
     {
@@ -119,10 +119,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 52276,
+        "port": 8195,
         "retryable": false
       },
-      "notReadyWindowMs": 7670,
+      "notReadyWindowMs": 7759,
       "requiredWindowMs": 6000
     },
     {

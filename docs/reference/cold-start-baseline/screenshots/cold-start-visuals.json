@@ -1,5 +1,7 @@
 {
   "check": "desktop-cold-start-visuals",
+  "app": "dev",
+  "appExecutable": "packages/app/out (dev entry)",
   "ok": true,
   "expectedSurface": "#101010",
   "screenshots": [
@@ -323,7 +325,8 @@
   "gaps": [
     "startup page screenshot: the debugger attached after the renderer had already replaced the startup document",
     "DPR other than the host default, and 125%/150%/200% display scaling",
-    "minimized / restored / blurred states, and window transitions",
+    "focus and minimized states (minimize produces no capturable window)",
+    "the hand-over instant between the startup page and the renderer",
     "desktop wallpaper variation behind the window"
   ]
 }

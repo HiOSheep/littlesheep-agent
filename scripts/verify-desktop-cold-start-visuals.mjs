@@ -85,6 +85,32 @@ const screenshot = (client) => withTimeout(
   'Page.captureScreenshot',
 )
 
+/**
+ * Capture with a bounded retry.
+ *
+ * A frame that Chromium has not produced *yet* is not a defect, and an occluded
+ * window can delay one; both were observed as a bare 10 s timeout that failed the
+ * whole run. The retry keeps the assertion honest (three failed attempts still
+ * fail, with the attempt count recorded) while removing the flake.
+ */
+async function capturePng(client, label, attempts = 3) {
+  let lastError
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      // Bringing the page to the front is what unblocks capture for an occluded
+      // window; a failure here is not fatal by itself.
+      await client.send('Page.bringToFront').catch(() => undefined)
+      const shot = await screenshot(client)
+      if (shot?.data) return { ...shot, attempts: attempt }
+      lastError = new Error('empty capture payload')
+    } catch (error) {
+      lastError = error
+    }
+    await delay(250)
+  }
+  throw new Error(`${label}: ${lastError instanceof Error ? lastError.message : 'no frame'} (after ${attempts} attempts)`)
+}
+
 const evaluate = (client, expression) => withTimeout(
   client.evaluate(expression),
   EVALUATE_TIMEOUT_MS,
@@ -337,7 +363,7 @@ async function captureStartupPage(port, dir) {
 }
 
 async function captureRenderer(client, dir, name) {
-  const shot = await screenshot(client)
+  const shot = await capturePng(client, `${name} capture`)
   const buffer = Buffer.from(shot.data, 'base64')
   const file = join(dir, `${name}.png`)
   await writeFile(file, buffer)
@@ -403,7 +429,7 @@ async function captureStartupErrorPage(client, dir) {
       errorBox: box ? { top: box.top, bottom: box.bottom, left: box.left, right: box.right, height: box.height } : null,
     };
   })()`)
-  const shot = await screenshot(client)
+  const shot = await capturePng(client, 'startup failure page capture')
   const buffer = Buffer.from(shot.data, 'base64')
   const file = join(dir, `startup-error${captureSuffix}.png`)
   await writeFile(file, buffer)
@@ -452,7 +478,7 @@ async function captureStartupPageDocument(client, dir) {
       viewport: { width: window.innerWidth, height: window.innerHeight },
     };
   })()`)
-  const shot = await screenshot(client)
+  const shot = await capturePng(client, 'startup page capture')
   const buffer = Buffer.from(shot.data, 'base64')
   const file = join(dir, `startup-page${captureSuffix}.png`)
   await writeFile(file, buffer)

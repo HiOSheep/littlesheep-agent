@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 16:45:36
+最后更新：2026-09-23 17:09:03
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -244,6 +244,24 @@
 - 检查点文件按原样复制、未修改；夹具里为它们的会话 id 建了同名会话（没有对应历史），因此这验证的是"发现与归属"，不是"恢复后对话内容正确"。
 - 证据文件中会话 id 只保留 8 位前缀，用户目录与仓库路径分别替换为 `<user-home>` / `<repo>`：仓库不收录会话 id 与本机路径（AGENTS.md 的仓库边界），而"两个检查点各自归属"仍可从不同前缀读出。
 - 没有凭据时脚本会**跳过并说明原因**（`skipped: true`），不产生任何结论。
+
+### CS-06 失败态：两个阶段的真实取证
+
+`scripts/verify-desktop-cold-start-readiness-failure.mjs`（`pnpm run verify:desktop-cold-start-readiness-failure`）用**真实故障**（不是验收动作或桩）观察失败态，且不挂载验收面（`LITTLESHEEP_ELECTRON_ACCEPTANCE` 为空）。逐项事实见 [`cold-start-readiness-failure.json`](cold-start-readiness-failure.json)：
+
+| 阶段 | 制造方式 | 用户实际看到的状态 |
+| --- | --- | --- |
+| ③ 执行准备失败 | config 指向 `missing-provider/missing-model`，没有任何 provider 声明它 | **保留活动外壳**：`.runtime-readiness-notice.failed` 逐字显示 `运行能力启动失败：runner: no provider "missing-provider" for model ref …`，`aria-live="assertive"`；发送入口 `disabled`；输入区仍在（改模型所需的设置仍可打开）；无错误横幅；未启动 run |
+| ① 数据前置失败 | `config.json` 是非法 JSON，失败发生在渲染器加载之前 | **独立启动失败页**：`data:text/html` 文档、`无法启动` + 解析错误原文（含出错的 config 路径）、品牌图标在位、表面 `#101010` 整列单色、错误卡片已绘制（`cardPainted: true`） |
+
+同一批测量还确认了失败时的接口契约：`/runtime/readiness` 返回 200 且 `state=failed`、`retryable=true`；元数据路由 `/sessions` 仍 200；Runner 依赖路由 `/run-checkpoints` 503 失败关闭（原因文案「The runtime is still starting; execution is not available yet.」）。
+
+口径与边界：
+
+- 只覆盖两种成因（未知模型引用、无法解析的 config）；其余成因共用同一批代码路径，但本轮没有采样。
+- **不验证重试**：有界重试入口是 CS-06 的已知缺口，这里只断言失败态本身展示了什么。
+- 截图证明的是页面像素，不测文档切换的时刻。
+- 该批证据促成一处显式化改动：`desktop-shell.ts` 新增 `hasLoadedRenderer()`，`index.ts` 的 bootstrap 失败分支只在渲染器**尚未**接管时才切到独立失败页。此前同一位置无条件切换，实测结果是渲染器文档最终仍在屏上（③ 阶段），即"切过去又被接管"这一结果并未写在代码里；现在两个阶段的可见状态都是显式契约，并各有实机证据。
 
 ## 打包版冷启动（release/win-unpacked）
 

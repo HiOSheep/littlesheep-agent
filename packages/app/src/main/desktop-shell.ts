@@ -179,6 +179,18 @@ export class LittleSheepDesktopShell {
   }
 
   /**
+   * True when the window is already showing the application renderer.
+   *
+   * A startup failure before this point has no renderer to report it, so the
+   * standalone failure page owns that state; afterwards the renderer states the
+   * Runtime's reason in place and keeps the settings that fix it reachable.
+   */
+  hasLoadedRenderer(): boolean {
+    const window = this.resolveWindow()
+    return window !== undefined && this.rendererLoadedWindows.has(window)
+  }
+
+  /**
    * Put the standalone startup document back into the live window.
    *
    * CS-02 needs the startup page's own pixels, and the real path replaces that
