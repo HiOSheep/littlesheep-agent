@@ -1,6 +1,6 @@
 {
   "probe": "tool-loop",
-  "freeze": "git 410d109",
+  "freeze": "git 424151a",
   "model": "test",
   "toolNames": [
     "read",

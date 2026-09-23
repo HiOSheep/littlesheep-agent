@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-24 01:25:00
+最后更新：2026-09-24 02:05:00
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -18,6 +18,7 @@
 - `context.ts` 的 `buildRunContext` 把宿主提供的 `versioning`（run 级回滚 preimage）与 `observation`（会话级"模型读过哪个文件版本"端口）一并放进 `ToolContext`；两个端口都由 Runner 注入，模型无法通过工具参数伪造。
 - 失败分类（`stages/execute/failure-policy.ts`）先看工具声明的 `meta.errorKind`：写工具因观察过期/缺失或目标已存在而返回的拒绝文案里常含 "refused" 一类词，只按文本正则会被误判成权限问题；声明了 `observation_*` / `target_exists` 的失败统一归为 `tool_error`，其余仍按原有正则分类。
 - 主循环的失败处置（`stages/execute/tool-failure-disposition.ts`）把"能改的错"和"权威边界"分开：只有权限/硬安全拒绝、核心源码只读保护（`core_source_read_only`）、schema 校验失败、未知工具、执行服务的重复调用护栏（`repeated_call`）、被中止，或副作用仍不 settled（`planned`/`in_progress`/`unknown`）才进入强制收尾；普通执行失败（路径不存在、参数错、命令非零退出但已确定性结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。重复成功调用的拒绝（`side_effect_replay`）对这次调用是终局、对整轮不是：什么都没执行也没有未知，run 继续，模型可以换结构化只读工具。失败的副作用调用会追加一条 Runtime 控制消息，要求先观察实际状态而不是原样重放。
+- 迭代预算耗尽（`stages/execute/tool-loop.ts`）：预算用尽**不再直接判失败**——若本轮已有工具结果，允许恰好一次收尾请求（复用强制收尾机制，工具调用被本地拒绝），让模型说出已交付的内容；第二次越界仍判失败，预算依旧封顶。实机依据：一次真实运行已把游戏写到磁盘，却因为循环在第 20 轮停下而只回了一句"预算耗尽，你想怎么办"。
 - 重复观察不是重放（CE-06）：账本只看 Runtime 能证明的事实——只声明读资源或属于 Runtime 只读名单的调用根本不进账本，因此"列目录 → 创建产物 → 再列目录"能拿到新观察；不透明 `exec` 不声明资源，无论命令首词多像列举都记为 `external`，重复成功调用仍被拒。拒绝文案点名 `glob`/`read` 作为结构化替代入口。回归在 `stages/execute/read-observation-loop.test.ts` 与 `side-effect-ledger.test.ts`。
 - 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。

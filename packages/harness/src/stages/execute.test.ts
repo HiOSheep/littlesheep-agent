@@ -775,6 +775,63 @@ describe('executeStage', () => {
     expect(llm.chat).not.toHaveBeenCalled();
   });
 
+  it('asks for one final answer when the iteration budget runs out mid-run', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      const told = request.messages.some((message) => typeof message.content === 'string'
+        && message.content.includes('iteration budget is spent'));
+      // The delivered work still exists; the model only needs the chance to say so.
+      return told
+        ? textResponse('游戏已经写好并通过自测；工具预算用完了，后续打磨需要新的一次运行。')
+        : toolCallResponse([{ id: `read-${requests.length}`, name: 'read', args: { file_path: 'x' } }]);
+    });
+    const read = makeTool('read', { ok: true, output: 'file' });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [read], inbound: textMessage('user', '做一个小游戏吧') });
+    // One iteration left: the first round spends it, the next hits the budget.
+    ctx.loopBudget = {
+      attemptsUsed: 19,
+      maxAttempts: 64,
+      elapsedMs: 1_000,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 19,
+      maxToolLoopIterations: 20,
+    };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(ctx.reply).toBe('游戏已经写好并通过自测；工具预算用完了，后续打磨需要新的一次运行。');
+    // Exactly one request past the budget, and it ran no tool.
+    expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(read.calls).toHaveLength(1);
+  });
+
+  it('still fails the stage when a spent budget has no work to report', async () => {
+    const llm = createMockLlm(textResponse('must not run'));
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ inbound: textMessage('user', 'loop') });
+    ctx.loopBudget = {
+      attemptsUsed: 20,
+      maxAttempts: 64,
+      elapsedMs: 1_000,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 20,
+      maxToolLoopIterations: 20,
+    };
+
+    const result = await stage(ctx);
+
+    expect(result).toMatchObject({ next: 'recover', ok: false });
+    expect(result.error).toContain('persisted 20-iteration run budget');
+    expect(llm.chat).not.toHaveBeenCalled();
+  });
+
   it('treats identical content from different Runtime resources as distinct evidence', async () => {
     let turn = 0;
     const llm = createMockLlm((request) => {

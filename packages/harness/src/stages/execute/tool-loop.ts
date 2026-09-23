@@ -52,9 +52,14 @@ import type {
 } from './contracts.js';
 import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
 import { toolRoundFailurePolicy } from './tool-failure-disposition.js';
+import {
+  decideSpentIterationBudget,
+  MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
+  MAX_TOOL_LOOP_ITERATIONS,
+  reserveToolLoopIteration,
+} from './iteration-budget.js';
 
-const MAX_ITERATIONS = 20;
-const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
+const MAX_ITERATIONS = MAX_TOOL_LOOP_ITERATIONS;
 /**
  * How many tool calls the loop refuses after a final answer was forced. The first
  * refusal carries the instruction back; a model that keeps calling tools ends the
@@ -144,6 +149,8 @@ export async function runToolLoop(
   let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
   let forcedRefusals = 0;
+  /** Guards the single final-answer request allowed past the iteration budget. */
+  let budgetFinalAnswerRequested = false;
   if (forceFinalResponse) {
     // A restored latch forces the answer too, so the model has to be told. The
     // instruction travels as a persisted Runtime control message (the request keeps
@@ -154,13 +161,25 @@ export async function runToolLoop(
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     if (!reserveToolLoopIteration(ctx)) {
-      return {
-        ok: false,
-        content: '',
-        toolResults,
-        iterations: iteration - 1,
-        error: `tool loop exceeded the persisted ${MAX_ITERATIONS}-iteration run budget`,
-      };
+      // A spent budget ends the loop, not the turn: one bounded final-answer
+      // request is allowed so the model can report the work it already did.
+      // Measured on a real acceptance run, the game was written to disk and the
+      // user still got a three-way "how should I proceed?" question because the
+      // loop stopped mid-polish with no chance to say what it had delivered.
+      // `decideSpentIterationBudget` owns the rule, including the case where
+      // there is no work to report.
+      const spent = decideSpentIterationBudget({
+        toolResultCount: toolResults.length,
+        finalAnswerAlreadyRequested: budgetFinalAnswerRequested,
+        controlMessage: control.iterationBudgetExhausted,
+        maxIterations: MAX_ITERATIONS,
+      });
+      if (spent.kind === 'fail') {
+        return { ok: false, content: '', toolResults, iterations: iteration - 1, error: spent.error };
+      }
+      budgetFinalAnswerRequested = true;
+      forceFinalResponse = true;
+      persistRuntimeControlMessage(ctx, produced, messages, spent.controlMessage);
     }
     let response: ChatResponse;
     let request: import('@littlesheep/llm').ChatRequest;
@@ -475,27 +494,6 @@ function registerEvidenceFingerprint(
     return false;
   }
   fingerprints.add(fingerprint);
-  return true;
-}
-
-function reserveToolLoopIteration(ctx: RunContext): boolean {
-  const current = ctx.loopBudget?.toolLoopIterationsUsed ?? 0;
-  const maximum = ctx.loopBudget?.maxToolLoopIterations ?? MAX_ITERATIONS;
-  if (current >= maximum) return false;
-  writeRuntimeState(ctx, 'execute', {
-    loopBudget: {
-      ...(ctx.loopBudget ?? {
-        attemptsUsed: ctx.modelCallCount ?? 0,
-        maxAttempts: ctx.maxModelCalls ?? 0,
-        elapsedMs: 0,
-        maxElapsedMs: 0,
-        noProgressRounds: 0,
-        maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
-      }),
-      toolLoopIterationsUsed: current + 1,
-      maxToolLoopIterations: maximum,
-    },
-  });
   return true;
 }
 
