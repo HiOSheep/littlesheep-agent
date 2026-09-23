@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-24 02:03:44
+最后更新：2026-09-24 03:15:07
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -10,7 +10,7 @@
 - `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把"不可用证据"（调用被拒/校验失败/未知工具、结果缺失、输出截断、未结算副作用）交给恢复，把"已记录的负结果"（失败/超时/中止的调用）留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。
 - `reply.ts`（含 `reply/continuity-repair.ts`）、`ask_user.ts`（含 `clarification-message.ts`）、`finalize.ts`：能力/状态回复、澄清与最终装配。`reply.ts` 与 `execute/prompt.ts` 读同一个 run 级工作区事实（`ctx.cwd`）渲染 `# Workspace`；`reply.ts` 在回复发布成功后才把本轮投递过的环境简报记入 transcript，失败的回合不记，因为模型可能从未读到它。
 - `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成压缩路径写入时用的 Runtime 认识论元数据。
-- 升级到用户时（`recover/escalation.ts`）必须带上原因类别、已完成部分与所需动作三件事实，而不是把同一句三选一原样再问一遍；`ask_user.ts` 仍用真实模型调用组织可见文案，Runtime 只提供事实。**预算耗尽的失败不重试**：上限记录在 run 上，重试同一轮只会再次撞上它（实机一次白跑 4 轮 execute），所以 `recover/policy.ts` 命中 Runtime 自己的上限文案时第一次就升级。
+- 升级到用户时（`recover/escalation.ts`）必须带上原因类别、已完成部分与所需动作三件事实，而不是把同一句三选一原样再问一遍；`ask_user.ts` 仍用真实模型调用组织可见文案，Runtime 只提供事实。**两类重试是不可能的，命中即不再空转**：上限记录在 run 上的预算耗尽直接升级（实机一次白跑 4 轮 execute）；结构性证据缺口也一样——VERIFY 是已记录证据的纯函数，重试它只会复现同一结论（实机一次出现 4 条完全相同的 `structural` 失败记录、相隔 174 ms、期间无任何新调用），所以第一次缺口回到 `execute` 让模型闭合它，第二次才升级。主循环在因缺口重入时补一条 Runtime 控制消息说明缺口，避免盲重试。
 - 用户语言与声音边界同时覆盖两条路径：`reply`/`ask_user` 用 `buildUserFacingVoiceAddon` 声明"措辞归模型、事实归 Runtime"，主循环用提示自带的执行契约（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工，只在缺关键事实/目标冲突/不可逆/缺权限时提一次问）。两条路径的 SOUL 都来自同一份 bootstrap。
 - DECIDE、它的规划模块和 TaskBook 步骤执行器已随第二执行体系删除；`decide` 只作为旧检查点的兼容 stage 名保留，驱动会把恢复入口映射到主循环。运行结束时的自动沉淀（CAPTURE）与自动演化（EVOLVE 编排、自动 Skill 创建）同样已删除。
 - 任何 `next` 目标都必须是驱动注册的 stage：局部重规划与恢复重试分别回到 `execute`，退役 stage 名不能作为路由目标（`src/stage-routing-registry.test.ts` 守住这条）。
