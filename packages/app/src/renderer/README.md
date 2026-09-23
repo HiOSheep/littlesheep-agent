@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-23 14:02:49
+最后更新：2026-09-23 16:31:35
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
@@ -10,7 +10,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `main.tsx`：React 挂载；同时启动渲染器自报的首帧观察（`runtime-readiness/renderer-timing.ts`，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出）。
 - `App.tsx`：16 行兼容入口，装配 `app-shell` 控制器与就绪提示，不承载业务逻辑。
 - `app-shell/`：顶层视图、导航历史和控制器组合。
-- `runtime-readiness/`：执行就绪的唯一渲染器侧事实源（查询+订阅+补读）、未就绪提示与渲染器自报首帧计时。窗口早于 Runner 出现，能力是否可用必须来自这里，不得由视图猜测（详见该目录 README）。
+- `runtime-readiness/`：执行就绪的唯一渲染器侧事实源（查询+订阅+补读）、未就绪提示与渲染器自报首帧计时。窗口早于 Runner 出现，能力是否可用必须来自这里，不得由视图猜测（详见该目录 README）。需要 Runner 才能做的工作（例如加载某段对话的历史）用 `runtime-readiness-state.ts` 的 `waitForExecutionReady()` 等待，而不是在未就绪窗口里发请求、再把 503 渲染成失败。
 - `ui/display-frame.ts`、`ui/display-synced-settle.ts`：合并重复失效请求，并基于 `requestAnimationFrame` 时间戳进行有界布局收敛；当前显示器 VSync 是有效 FPS 上限，稳定后不再申请帧。
 - `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`runtime-readiness/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
 - `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。

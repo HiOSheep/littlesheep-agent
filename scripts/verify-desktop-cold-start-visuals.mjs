@@ -156,6 +156,33 @@ async function main() {
       record(failures, `${label}: renderer background variable matches the pixels`, capture.computedBackground === EXPECTED_SURFACE, capture)
     }
 
+    // The maximized state is where a user sits for hours, and the native overlay
+    // meets the renderer at a different width there, so it is checked the same
+    // way as the explicit sizes. Restoring afterwards proves the state changed
+    // instead of the action being a no-op.
+    await harness.desktopAction(locator, 'maximize', { maximized: true })
+    await delay(700)
+    const maximized = await captureRenderer(client, outDir, 'renderer-maximized')
+    screenshots.push(maximized)
+    record(failures, 'maximized: titlebar row is the unified surface', maximized.titlebar === EXPECTED_SURFACE, maximized)
+    record(failures, 'maximized: application background matches the titlebar', maximized.body === maximized.titlebar, maximized)
+    record(failures, 'maximized: titlebar is one colour across the row', maximized.titlebarUniform, maximized)
+    record(failures, 'maximized: no colour break below the titlebar', maximized.columnFlat, maximized)
+
+    await harness.desktopAction(locator, 'maximize', { maximized: false })
+    await delay(700)
+    const restored = await captureRenderer(client, outDir, 'renderer-restored')
+    screenshots.push(restored)
+    record(failures, 'restored: titlebar row is the unified surface', restored.titlebar === EXPECTED_SURFACE, restored)
+    record(failures, 'restored: application background matches the titlebar', restored.body === restored.titlebar, restored)
+    record(failures, 'restored: no colour break below the titlebar', restored.columnFlat, restored)
+    record(
+      failures,
+      'the maximize action really changed the window size',
+      maximized.imageSize.width > restored.imageSize.width || maximized.imageSize.height > restored.imageSize.height,
+      { maximized: maximized.imageSize, restored: restored.imageSize },
+    )
+
     // The standalone startup document is normally replaced within ~90 ms, which
     // no external observer can catch, and the failure page is reachable only by
     // asking for it. Both are rendered here through the same loaders the product

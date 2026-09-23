@@ -9,7 +9,7 @@
 
 import type { BrowserWindow } from 'electron'
 import type { LocalAppApiServerOptions } from './local-app-api/contracts.js'
-import { resizeWindowForAcceptance, showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
+import { resizeWindowForAcceptance, setWindowMaximizedForAcceptance, showStartupErrorPageForAcceptance, showStartupPageForAcceptance } from './desktop-visual-acceptance.js'
 
 /** The window facts these actions need; `LittleSheepDesktopShell` satisfies it. */
 export interface DesktopAcceptanceShell {
@@ -28,7 +28,7 @@ type ContractActions = NonNullable<LocalAppApiServerOptions['desktopAcceptance']
  * they are present, so callers do not have to re-check them.
  */
 export type DesktopAcceptanceActions = ContractActions & Required<
-  Pick<ContractActions, 'resizeForAcceptance' | 'showStartupErrorForAcceptance' | 'showStartupPageForAcceptance'>
+  Pick<ContractActions, 'resizeForAcceptance' | 'setMaximizedForAcceptance' | 'showStartupErrorForAcceptance' | 'showStartupPageForAcceptance'>
 >
 
 export function createDesktopAcceptanceActions(input: {
@@ -47,6 +47,9 @@ export function createDesktopAcceptanceActions(input: {
     // CS-02 needs the native caption buttons rendered at more than one width,
     // which the renderer cannot drive.
     resizeForAcceptance: (size) => resizeWindowForAcceptance(input.shell.currentWindow(), size),
+    // ...and in the maximized state, where the overlay meets a different width.
+    setMaximizedForAcceptance: (maximized) =>
+      setWindowMaximizedForAcceptance(input.shell.currentWindow(), maximized),
     showStartupErrorForAcceptance: (message) =>
       showStartupErrorPageForAcceptance(
         input.shell.currentWindow(),

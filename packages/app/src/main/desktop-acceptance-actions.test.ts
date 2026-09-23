@@ -19,13 +19,22 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
   const showStartupPage = vi.fn(() => true)
   const close = vi.fn(() => true)
   const show = vi.fn()
+  let maximized = false
+  const maximize = vi.fn(() => { maximized = true })
+  const unmaximize = vi.fn(() => { maximized = false })
   const currentWindow = vi.fn(() => (
     window
-      ? ({ isDestroyed: () => destroyed, setSize } as unknown as NonNullable<AcceptanceWindow>)
+      ? ({
+        isDestroyed: () => destroyed,
+        setSize,
+        isMaximized: () => maximized,
+        maximize,
+        unmaximize,
+      } as unknown as NonNullable<AcceptanceWindow>)
       : undefined
   ))
   const shell = { close, show, currentWindow, showStartupError, showStartupPage } satisfies DesktopAcceptanceShell
-  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow }
+  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow, maximize, unmaximize }
 }
 
 function createActions(shell: DesktopAcceptanceShell, quit = vi.fn()) {
@@ -62,6 +71,8 @@ describe('desktop acceptance actions', () => {
     expect(actions.token).toBe('acceptance-token')
     expect(actions.resizeForAcceptance({ width: 1580, height: 900 })).toBe(true)
     expect(setSize).toHaveBeenCalledWith(1580, 900)
+    expect(actions.setMaximizedForAcceptance(true)).toBe(true)
+    expect(actions.setMaximizedForAcceptance(false)).toBe(true)
     expect(actions.showStartupErrorForAcceptance('bootstrap failed as requested')).toBe(true)
     expect(showStartupError).toHaveBeenCalledTimes(1)
     expect(showStartupError.mock.calls[0]?.[0]).toBeInstanceOf(Error)

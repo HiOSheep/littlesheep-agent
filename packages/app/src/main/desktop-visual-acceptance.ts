@@ -88,3 +88,21 @@ export function showStartupPageForAcceptance(
   showStartupPage()
   return true
 }
+
+/**
+ * Maximize or restore a live window.
+ *
+ * The CS-02 seam is a property of the window at every size and state, and the
+ * maximized state is the one a user sits in for hours. Only the isolated
+ * acceptance run uses this; the window keeps its own lifecycle.
+ */
+export function setWindowMaximizedForAcceptance(
+  window: BrowserWindow | undefined,
+  maximized: boolean,
+): boolean {
+  if (!window || window.isDestroyed()) return false
+  if (maximized === window.isMaximized()) return true
+  if (maximized) window.maximize()
+  else window.unmaximize()
+  return true
+}

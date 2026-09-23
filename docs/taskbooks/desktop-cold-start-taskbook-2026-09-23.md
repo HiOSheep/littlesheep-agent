@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 16:28:09
+最后更新：2026-09-23 16:31:35
 
 ## 1. 目标与当前状态
 
@@ -131,7 +131,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 16:28:09
+最后更新：2026-09-23 16:31:35
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -153,7 +153,8 @@
 - 新增实机证据：`scripts/verify-desktop-cold-start-visuals.mjs`（`pnpm run verify:desktop-cold-start`）在三种窗口宽度下逐像素核对渲染器标题栏、标题栏右段与背景为同一实色且下方 60 CSS px 无断层；原生覆盖区与窗口背景的 `#101010` 由验收快照的 `visual` 字段核对；截图见 `docs/reference/cold-start-baseline/screenshots/`。
 - 启动失败页也已取证：该页无法靠等待到达，脚本改用 `/application/acceptance` 的 `startup-error` 动作（`desktop-visual-acceptance.ts` 的 `showStartupErrorPageForAcceptance`，只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时挂载）把真实失败文案交给生产同一份 `showStartupError` 文档，再截图 `screenshots/startup-error.png`。实测标题栏行、左侧竖向通道整列、右侧同高度通道都是 `#101010`，错误卡片与表面合成后为 `#090909`，屏幕上确实是传入的文案；三条断言已进入脚本门禁。
 - 启动页本身也已取证：同一入口的 `startup-page` 动作让窗口重新加载生产同一份启动文档并截图 `screenshots/startup-page.png`（`loadStartupPage` 的同一个模板，异步加载用一个同步断言`.startup-icon` 与无错误卡片来确认文档确实是启动页）。实测标题栏行与左右通道都是 `#101010`、通道整列单色、品牌图标在位、无错误卡片；三条断言已进入脚本门禁。**边界**：这证明启动页的外观，不证明它停留的约 90 ms，因此交接瞬间仍留在未核验清单里，复选框不因它而勾选。
-- 剩余缺口：启动页到渲染器的交接瞬间（文档像素已覆盖，时序未覆盖）、失焦、最小化、还原、最大化恢复、125%/150%/200% 缩放、明暗桌面、打包版。**因此 CS-02 复选框保持未勾选。**
+- 最大化与还原也已自动化（新增 `/application/acceptance` 的 `maximize` 动作 + `setWindowMaximizedForAcceptance`）：最大化后 1920×1032、还原回 1580×900，两态都满足"标题栏整行与背景同色、标题栏下方无断层"，并断言两态尺寸确实不同，避免把空操作当通过；截图 `renderer-maximized.png` / `renderer-restored.png`。
+- 剩余缺口：启动页到渲染器的交接瞬间（文档像素已覆盖，时序未覆盖）、失焦与最小化（最小化不参与截图、失焦只改原生按钮激活态，两者需人眼确认）、125%/150%/200% 缩放、明暗桌面、打包版。**因此 CS-02 复选框保持未勾选。**
 
 ### CS-03｜提前呈现可交互界面 —— 实现完成，部分待验收
 
