@@ -109,6 +109,25 @@
 
 对照样本 `[1341.7, 1414.5, 1289.0, 1296.2, 1289.5]`，改动后 `[1145.0, 1147.2, 1172.6, 1153.0, 1148.1]`：两组不重叠，因此这一项**是有证据的提速**，而不是噪声。
 
+## CS-05 首屏依赖：入口 chunk 的实际构成
+
+源码级 import 阅读无法回答"谁占了入口 chunk"：Vite 会把所有静态可达模块提升进入口，只对动态导入分块。`scripts/report-renderer-chunks.mjs`（`node scripts/report-renderer-chunks.mjs`）用真实构建产出逐模块归属报告，输出 `renderer-module-report.json`。
+
+最近一次实测（入口 `assets/index-DyJBQYWc.js`，1,728,325 字节，433 个模块）：
+
+| 归属 | 入口内字节 | 说明 |
+| --- | ---: | --- |
+| react-dom | 133,319 | 首次渲染必需，不可后移 |
+| Markdown 解析管线（micromark / mdast / hast / unified / vfile / remark-gfm） | 约 250,000（top-40 内已计 200,000+） | 只在渲染 Markdown 正文时需要 |
+| renderer/workspace/*（top-40 内） | 181,455 | 右侧拓展工作区整棵树 |
+| use-app-controller / assistant-turn / 图标等应用代码 | 约 120,000 | 壳必需 |
+| dompurify（经 `workspace/preview-pane` → `html-preview`） | 121,812 | 只在预览 HTML 时使用 |
+| react-syntax-highlighter 语言定义 | 0 | 已于上一轮按需加载 |
+
+结论与下一步：入口里还剩两块**可后移**的大块——Markdown 解析管线与整个拓展工作区树。两者都需要先解耦才能安全后移（Markdown 需要把活动行用的轻量 `InlineMarkdown` 与完整解析器拆开；工作区需要把 `use-workspace-layout-controller` 持有的草稿/评论状态从树的导入路径上移走），因此各自需要独立设计与验证，不能顺手改。
+
+**已被实测证伪的一项**：把 `WorkspaceHtmlPreview`（携带 dompurify）改为按需导入，入口 chunk 从 1,747,930 降到 1,678,860 字节（−49 KB），但成对实测没有收益——首次可执行中位 1536.7 → 1606.4 ms、真实首帧 1172.7 → 1214.7 ms（两组样本区间重叠，一次运行甚至更慢）。因为既没有测到收益又要引入加载态，该改动已回退。这也说明**入口字节数不是首帧的可靠代理**，后续按需加载必须以成对实测为准。
+
 ## CS-02 真实窗口视觉证据
 
 `scripts/verify-desktop-cold-start-visuals.mjs`（`pnpm run verify:desktop-cold-start`）在真实 Electron 窗口上驱动三种窗口宽度并逐像素检查，截图保存在 [`screenshots/`](screenshots/)，逐项结论见 `screenshots/cold-start-visuals.json`。

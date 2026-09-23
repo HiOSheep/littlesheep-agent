@@ -58,6 +58,9 @@ yarn-error.log*
 # One-off local diagnostics
 scripts/debug-sidebar-corner.mjs
 
+# Renderer bundle attribution report (regenerate with scripts/report-renderer-chunks.mjs)
+renderer-module-report.json
+
 # Env
 .env
 .env.local
