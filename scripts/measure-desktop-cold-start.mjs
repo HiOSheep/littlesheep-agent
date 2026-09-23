@@ -67,6 +67,8 @@ async function main() {
   }
 
   const summary = summarizeRuns(runs)
+  const budgets = await readBudgets(outDir)
+  const assertions = evaluateBudgets(summary, budgets)
   const ledger = {
     check: 'desktop-cold-start',
     label,
@@ -83,6 +85,8 @@ async function main() {
     machine,
     runs,
     summary,
+    budgets,
+    assertions,
   }
   await mkdir(outDir, { recursive: true })
   const jsonPath = join(outDir, `desktop-cold-start-${label}.json`)
@@ -90,12 +94,53 @@ async function main() {
   // The human-readable summary is printed and rendered on demand; only the raw
   // ledger is written so a run cannot silently overwrite a curated report.
   const markdown = renderMarkdown(ledger)
-  console.log(JSON.stringify({ ok: true, jsonPath, summary }, null, 2))
+  console.log(JSON.stringify({ ok: assertions.ok, jsonPath, summary, assertions: assertions.checks }, null, 2))
   if (process.argv.includes('--markdown')) {
     const markdownPath = join(outDir, `desktop-cold-start-${label}.md`)
     await writeFile(markdownPath, markdown, 'utf8')
     console.log(`[cold-start] wrote ${markdownPath}`)
   }
+  if (!assertions.ok) process.exitCode = 1
+}
+
+/**
+ * Optional regression guard. A missing budgets file means the run is a pure
+ * baseline: the numbers are still recorded, and nothing is asserted.
+ */
+async function readBudgets(dir) {
+  const explicit = readOption('budgets', '')
+  const path = explicit || join(dir, 'budgets.json')
+  const text = await readFile(path, 'utf8').catch(() => undefined)
+  if (text === undefined) return undefined
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    console.warn(`[cold-start] ignoring unreadable budgets file ${path}: ${error.message}`)
+    return undefined
+  }
+}
+
+/**
+ * Compare each metric's observed maximum against its budget.
+ *
+ * The maximum, not the median: one slow run is what a user notices, and a small
+ * sample cannot support a percentile claim.
+ */
+function evaluateBudgets(summary, budgets) {
+  const budgetsMs = budgets?.budgetsMs
+  if (!budgetsMs) return { ok: true, checks: {}, note: 'no budgets file; baseline only' }
+  const checks = {}
+  let ok = true
+  for (const [profile, group] of Object.entries(summary)) {
+    for (const [metric, budget] of Object.entries(budgetsMs)) {
+      const values = group.metrics?.[metric]?.values
+      if (!values || values.length === 0) continue
+      const observedMax = Math.max(...values)
+      checks[`${profile}.${metric}`] = { observedMax, budget, ok: observedMax <= budget }
+      if (observedMax > budget) ok = false
+    }
+  }
+  return { ok, checks }
 }
 
 async function runOneSample({ profile, index }) {

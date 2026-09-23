@@ -44,6 +44,7 @@ import { WorkspaceArtifactIndex } from './workspace-artifact-index.js'
 import { WorkspaceLayoutIndex } from './workspace-layout-index.js'
 import { resolveRuntimeWorkspaceDefault } from './runtime-config.js'
 import { loadApiKeys, injectKeysIntoEnv } from './keychain.js'
+import { loadPluginHost } from './plugin-host-startup.js'
 import { runShutdownSequence } from './shutdown-sequence.js'
 import { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepDesktopShell } from './desktop-shell.js'
@@ -479,18 +480,27 @@ async function startExecution(input: {
   // published after it settles, so no request observes a half-built router.
   await server?.setRunner(created)
 
-  // Built-in channel implementations are needed only once execution starts, so
-  // the plugin package is loaded here instead of in the entry's static graph.
-  const { startPluginHost } = await import('./plugin-host-startup.js')
-  pluginHost = startPluginHost({
-    runner: created,
-    branding: input.branding,
-    config: input.config,
-  })
-  server?.setPluginHost(pluginHost)
-  stageStartedAt = recordBootstrapTiming('plugin-host-ready', stageStartedAt)
+  // Execution is available now. Everything below is optional and must not delay
+  // it: measured, the plugin host costs only ~2.8 ms, but it is an optional
+  // capability and the core API stays usable while it is absent (see
+  // `local-app-api-server.ts`), so nothing waits on it.
   readiness.ready()
+  recordBootstrapTiming('execution-ready', stageStartedAt)
+  void loadPluginHost(
+    { runner: created, branding: input.branding, config: input.config },
+    { isCurrent: (candidate) => !shutdownStarted && runner === candidate },
+  )
+    .then((host) => {
+      if (!host) return
+      pluginHost = host
+      server?.setPluginHost(host)
+      recordBootstrapTiming('plugin-host-ready')
+    })
+    .catch((error) => {
+      console.error('[plugins] host failed to start:', error)
+    })
 }
+
 /**
  * Rebuild the runner after an API key change.
  *

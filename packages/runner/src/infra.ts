@@ -187,6 +187,26 @@ export function resolveLlm(
 export async function buildInfrastructure(
   opts: BuildInfrastructureOptions,
 ): Promise<Infrastructure> {
+  const timingEnabled = process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] === '1';
+  let timingStartedAt = performance.now();
+  /**
+   * Stage cost inside the Runner build, opt-in and diagnostics-only.
+   *
+   * Runner construction is about half of "process start → first executable", so
+   * a cold-start measurement needs to know which wait actually dominates before
+   * any reordering is attempted. Same shape as the composition root's
+   * `[bootstrap-timing]` entries: a stage name and milliseconds, no user text.
+   */
+  const mark = (stage: string): void => {
+    if (timingEnabled) {
+      console.log(`[bootstrap-timing] ${JSON.stringify({
+        stage,
+        processUptimeMs: Math.round(process.uptime() * 1_000 * 10) / 10,
+        durationMs: Math.round((performance.now() - timingStartedAt) * 10) / 10,
+      })}`);
+    }
+    timingStartedAt = performance.now();
+  };
   const dirs = dataSubdirs(opts.branding);
   const cacheObservationKey = await loadCacheObservationKey(dirs.root);
   const cacheObservationStore = new CacheObservationStore({
@@ -197,6 +217,7 @@ export async function buildInfrastructure(
   } catch (error) {
     opts.log?.('warn', `runner: cache observation store initialization degraded: ${(error as Error).message}`);
   }
+  mark('runner-infra-observability-ready');
   const lazyTokenCounter: LazyExactContextTokenCounter | undefined = createLazyLocalExactContextTokenCounter({
     modelRef: opts.model,
     modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
@@ -254,6 +275,7 @@ export async function buildInfrastructure(
   // M3: execution log store — one JSON file per run, for replay/audit.
   const executionLogStore = new ExecutionLogStore({ rootDir: dirs.executionLogs });
   const durableHarnessInfrastructure = await buildDurableHarnessInfrastructure(dirs.root, opts.log);
+  mark('runner-infra-durable-ready');
   const { durableEventStore } = durableHarnessInfrastructure;
   const loadSessionDurableProjectionFor = (sessionId: string) =>
     loadSessionDurableProjection(durableEventStore, sessionId);
@@ -285,6 +307,7 @@ export async function buildInfrastructure(
   } catch (error) {
     opts.log?.('warn', `runner: run checkpoint store initialization degraded: ${(error as Error).message}`);
   }
+  mark('runner-infra-checkpoint-store-ready');
 
   const sessionManager = new SessionManager({
     sessionsDir: dirs.sessions,
@@ -333,6 +356,7 @@ export async function buildInfrastructure(
     embeddingEngine = localEngine;
     disposeEmbedding = () => localEngine.dispose();
   }
+  mark('runner-infra-embedding-ready');
 
   // One memory runtime per Runner. Prompt, read tools and autonomous writes all
   // share this instance, so cache invalidation and run ledgers cannot diverge.
@@ -345,6 +369,7 @@ export async function buildInfrastructure(
   });
   await memoryRepository.initialize();
   await memoryRepository.retryRecoveryQueue();
+  mark('runner-infra-memory-ready');
   let legacyMigrationCompleted = false;
   try {
     const migration = await migrateLegacyMemorySources({
@@ -405,6 +430,7 @@ export async function buildInfrastructure(
   if (opts.bootstrapDir) {
     await memoryService.loadBootstrapFiles(opts.bootstrapDir);
   }
+  mark('runner-infra-bootstrap-files-loaded');
 
   // Skills loader: built-in + data dir + extra dirs from config.
   const builtinSkillsDir = findBuiltinSkillsDir();
@@ -427,7 +453,9 @@ export async function buildInfrastructure(
     sources: skillSources,
     disabled: opts.config.skills.disabled,
   });
+  mark('runner-infra-skills-ready');
   await memoryService.syncSkillResources(skillLoader.index.discovered, skillLoader.index.sources);
+  mark('runner-infra-skill-resources-synced');
 
   // Tool registry: builtins + skills + memory + session_status.
   // Only use_skill is registered: skills are loaded on demand, and the agent no
@@ -491,6 +519,7 @@ export async function buildInfrastructure(
     log: opts.log,
     onSettled: (record) => compactionOperationStore.append(record),
   });
+  mark('runner-infra-harness-ready');
 
   return {
     llm,

@@ -1,8 +1,12 @@
 # @littlesheep/runner
 
-最后更新：2026-09-23 01:50:40
+最后更新：2026-09-23 11:20:18
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
+
+## 冷启动计时
+
+`infra.ts` 的 `buildInfrastructure` 在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时输出以 `runner-infra-` 开头的 `[bootstrap-timing]` 阶段标（可观测性存储、durable harness、检查点存储、embedding、memory、bootstrap 文件、skill loader、harness 装配）。Runner 构建是"进程启动 → 首次可执行"里唯一还有量级的成本，实测中位约 121 ms（其中 durable harness 约 55 ms、bootstrap 文件加载约 30 ms）；这些阶段标只做诊断，正常启动不输出、不轮询，也不改变任何初始化顺序。
 
 ## 职责与边界
 

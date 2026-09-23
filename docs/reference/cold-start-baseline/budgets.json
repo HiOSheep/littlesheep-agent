@@ -1,0 +1,22 @@
+{
+  "note": [
+    "桌面冷启动的回归护栏，不是提速目标。数值来自 2026-09-23 的基线样本（每 profile n=5，另有一次 normal n=15 的复测），",
+    "取整到 10 ms 并留出约 1.3-1.5 倍余量，用于发现明显回退；样本量不足以支撑高分位统计，因此不能用它宣称性能达标。",
+    "spawnToLocatorMs 不设护栏：基线本身在 640-990 ms 之间波动，这个量级内无法区分回退与噪声。"
+  ],
+  "measured": "2026-09-23",
+  "sample": { "profiles": ["empty", "normal", "large", "recovery"], "runsPerProfile": 5, "extra": "normal n=15" },
+  "budgetsMs": {
+    "spawnToMainModuleMs": 250,
+    "processCreateToFirstFrameMs": 1800,
+    "inputUsableMs": 500,
+    "sessionReadableMs": 550,
+    "executionReadyMs": 2200,
+    "firstSendPreparationMs": 50
+  },
+  "unmeasured": [
+    "系统重启后的完全冷启动",
+    "打包版（release/win-unpacked 或安装包）",
+    "125% / 150% / 200% 缩放与明暗桌面背景"
+  ]
+}
