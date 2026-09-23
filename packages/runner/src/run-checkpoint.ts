@@ -3,7 +3,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
+import { MAX_TOOL_LOOP_ITERATIONS } from '@littlesheep/harness';
 import type {
+  LoopBudgetSnapshot,
   RunCheckpoint,
   RunContext,
   RuntimeEventQueueSnapshot,
@@ -155,6 +157,48 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
     },
     createdAt: now.toISOString(),
     reason: options.reason.trim().slice(0, 4_096) || (options.interrupted ? 'run interrupted' : 'run requires recovery'),
+  };
+}
+
+/**
+ * The run-scoped half of a checkpoint's loop budget, reset for a new run.
+ *
+ * A checkpoint carries two kinds of fact and they must not travel together. Task
+ * progress — the task book, executed steps, settled side effects, verification
+ * history, the workspace and the permissions — belongs to the work and is
+ * restored. The ceilings that bound *one* run's autonomous work (provider calls,
+ * tool-loop iterations, consecutive no-progress rounds, evidence fingerprints)
+ * belong to the run that spent them.
+ *
+ * Restoring the spend against the new run's ceiling is what made an explicit
+ * user retry impossible: a run that escalated because it hit a ceiling left a
+ * checkpoint whose `attemptsUsed` equalled `maxAttempts` and whose
+ * `toolLoopIterationsUsed` was at `maxToolLoopIterations`, so the continuation
+ * re-entered already exhausted and failed before its first provider request —
+ * every time the user asked again, with the same escalation and no new work.
+ * The user's next turn is a new run with its own bounded allowance. The bounds
+ * themselves are unchanged, so a continuation still cannot spin: it gets one
+ * run's worth of work, and the next retry is again the user's decision.
+ *
+ * `maxAttempts` is taken from the *current* configuration rather than the
+ * recorded one, so a changed `maxModelCallsPerRun` applies to the continuation.
+ */
+export function continuationLoopBudget(
+  previous: LoopBudgetSnapshot,
+  maxModelCalls: number,
+): LoopBudgetSnapshot {
+  return {
+    attemptsUsed: 0,
+    maxAttempts: maxModelCalls,
+    elapsedMs: 0,
+    maxElapsedMs: previous.maxElapsedMs,
+    noProgressRounds: 0,
+    maxNoProgressRounds: previous.maxNoProgressRounds,
+    toolLoopIterationsUsed: 0,
+    maxToolLoopIterations: previous.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS,
+    ...(previous.costUsed === undefined && previous.maxCost === undefined
+      ? {}
+      : { costUsed: 0, ...(previous.maxCost === undefined ? {} : { maxCost: previous.maxCost }) }),
   };
 }
 

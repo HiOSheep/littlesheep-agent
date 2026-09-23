@@ -59,8 +59,13 @@ import { discoverLittleSheepCoreRoots } from './core-source-protection.js';
 import type { RunGitCheckpoint } from '@littlesheep/snapshot';
 import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
-import { buildRunCheckpoint } from './run-checkpoint.js';
-import { RunCheckpointController, type WaitingUserHeadResolution } from './run-checkpoint-controller.js';
+import { buildRunCheckpoint, continuationLoopBudget } from './run-checkpoint.js';
+import {
+  buildConversationContinuationEvidence,
+  continuationFailureEvidence,
+  shadowContinuationEvidence,
+} from './continuation-evidence.js';
+import { RunCheckpointController } from './run-checkpoint-controller.js';
 import { createRunCheckpointControl, type RunCheckpointControl } from './run-checkpoint-control.js';
 import { createRunAbortControl, resolveRunTimeoutMs } from './run-abort-control.js';
 import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
@@ -1463,10 +1468,19 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }, {
         checkpoint: recoveryCheckpoint,
         inbound: continuationInbound,
-        historyExcludeMessageIds: [
-          state.inboundMessageId,
-          ...(existingAnswer ? [existingAnswer.id] : []),
-        ],
+        // Only the message this run renders as its own inbound turn is excluded,
+        // so the replayed history never repeats it.
+        //
+        // A waiting-user turn answers a question, so its inbound is the answer
+        // and the request being continued must stay in the history: it is the
+        // task. Excluding it left the retried run unable to see what it was
+        // retrying — the model received the Runtime's question and "再尝试一次"
+        // and nothing else, which is how a retry turns into "what would you like
+        // me to do?". An interrupted run is the other way round: it resumes on
+        // its own original message, which then is this run's inbound turn.
+        historyExcludeMessageIds: isClarification
+          ? [...(existingAnswer ? [existingAnswer.id] : [])]
+          : [state.inboundMessageId],
         persistInbound: isClarification && !existingAnswer,
         resumeStage,
         ...(dispositionDecision?.kind === 'revise_goal'
@@ -1497,6 +1511,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         currentPermission: options.permissionPolicyId ?? 'research',
         answerMessageAlreadyPersisted: Boolean(existingAnswer),
         restoredCheckpoint: recoveryCheckpoint,
+        modelCallsAllowed: opts.config.agents.defaults.maxModelCallsPerRun,
       }))
       await checkpointController.completeResume(
         checkpoint.id,
@@ -2366,157 +2381,6 @@ function resolvedResumeTurnInputDigest(
   })
 }
 
-function continuationFailureEvidence(input: {
-  input: RunInput
-  resolution: 'blocked' | 'conflict'
-  checkpoint?: RunCheckpoint
-  candidateCheckpointIds?: string[]
-  requestId?: string
-  answerMessageId?: string
-  code: NonNullable<ConversationContinuationEvidence['failure']>['code']
-  detail: string
-  recoverable: boolean
-  resourceStatus?: NonNullable<ConversationContinuationEvidence['resources']>['status']
-  inputDigest?: string
-}): ConversationContinuationEvidence {
-  const checkpoint = input.checkpoint
-  const state = checkpoint?.resumeState
-  const taskSteps = checkpoint?.taskExecution?.steps ?? []
-  const sideEffects = checkpoint?.sideEffects ?? []
-  const turnId = input.input.sessionId
-    ? conversationTurnMessageId(input.input.sessionId, input.input.requestKey)
-    : undefined
-  return {
-    version: 1,
-    resolution: input.resolution,
-    ...(turnId ? { turnId } : {}),
-    ...(input.inputDigest ? { inputDigest: input.inputDigest } : {}),
-    ...(checkpoint ? { checkpointId: checkpoint.id, sourceRunId: String(checkpoint.runId) } : {}),
-    ...(input.candidateCheckpointIds ? { candidateCheckpointIds: [...input.candidateCheckpointIds] } : {}),
-    ...(input.requestId ? { requestId: input.requestId } : {}),
-    ...(input.answerMessageId ? { answerMessageId: input.answerMessageId } : {}),
-    ...(input.input.runId ? { resumeRunId: input.input.runId } : {}),
-    ...(state ? {
-      resources: {
-        status: input.resourceStatus ?? 'not_required',
-        attachmentCount: state.attachmentCount,
-        toolRecipeCount: state.toolRecipes?.length ?? 0,
-        restoredToolCount: 0,
-      },
-      permissions: {
-        checkpoint: state.permissionPolicyId,
-        current: input.input.permissionPolicyId ?? 'research',
-      },
-      replayPrevention: {
-        completedStepCountPreserved: taskSteps.filter((step) => step.status === 'done').length,
-        succeededSideEffectCountPreserved: sideEffects.filter((effect) => effect.status === 'succeeded').length,
-        uncertainSideEffectCount: sideEffects.filter((effect) => (
-          effect.status === 'in_progress' || effect.status === 'unknown'
-        )).length,
-        answerMessageAlreadyPersisted: false,
-      },
-    } : {}),
-    failure: {
-      code: input.code,
-      detail: input.detail.slice(0, 4_096),
-      recoverable: input.recoverable,
-    },
-  }
-}
-
-function shadowContinuationEvidence(
-  base: ConversationContinuationEvidence,
-  resolution: WaitingUserHeadResolution,
-  currentPermission: PermissionPolicyId,
-): ConversationContinuationEvidence {
-  if (resolution.kind === 'none') return base
-  if (resolution.kind === 'conflict') {
-    return {
-      ...base,
-      resolution: 'conflict',
-      candidateCheckpointIds: [...resolution.checkpointIds],
-    }
-  }
-  const checkpoint = resolution.inspection.checkpoint
-  const state = checkpoint.resumeState
-  return {
-    ...base,
-    resolution: resolution.kind === 'eligible' ? 'eligible' : 'blocked',
-    checkpointId: checkpoint.id,
-    sourceRunId: String(checkpoint.runId),
-    ...(state?.continuation?.requestId ? { requestId: state.continuation.requestId } : {}),
-    ...(state ? {
-      resources: {
-        status: resolution.kind === 'blocked' && state.attachmentCount > 0 ? 'failed' : 'not_required',
-        attachmentCount: state.attachmentCount,
-        toolRecipeCount: state.toolRecipes?.length ?? 0,
-        restoredToolCount: 0,
-      },
-      permissions: {
-        checkpoint: state.permissionPolicyId,
-        current: currentPermission,
-      },
-    } : {}),
-  }
-}
-
-function buildConversationContinuationEvidence(input: {
-  checkpoint: RunCheckpoint
-  restoredCheckpoint?: RunCheckpoint
-  turnId?: string
-  inputDigest?: string
-  resolution: Extract<ConversationContinuationEvidence['resolution'], 'bound' | 'deferred' | 'abandoned'>
-  requestId?: string
-  answerMessageId?: string
-  resumeRunId: string
-  decision?: ContinuationDispositionDecision
-  resumeStage: StageName
-  resumeRule: string
-  resourceStatus: NonNullable<ConversationContinuationEvidence['resources']>['status']
-  restoredAttachmentCount?: number
-  restoredToolCount?: number
-  currentPermission: PermissionPolicyId
-  answerMessageAlreadyPersisted: boolean
-}): ConversationContinuationEvidence {
-  const restored = input.restoredCheckpoint ?? input.checkpoint
-  const taskSteps = restored.taskExecution?.steps ?? []
-  const sideEffects = restored.sideEffects
-  return {
-    version: 1,
-    resolution: input.resolution,
-    ...(input.turnId ? { turnId: input.turnId } : {}),
-    ...(input.inputDigest ? { inputDigest: input.inputDigest } : {}),
-    checkpointId: input.checkpoint.id,
-    sourceRunId: String(input.checkpoint.runId),
-    ...(input.requestId ? { requestId: input.requestId } : {}),
-    ...(input.answerMessageId ? { answerMessageId: input.answerMessageId } : {}),
-    resumeRunId: input.resumeRunId,
-    ...(input.decision && input.decision.kind !== 'ambiguous'
-      ? { disposition: input.decision.kind, dispositionSource: input.decision.source }
-      : {}),
-    resumeStage: input.resumeStage,
-    resumeRule: input.resumeRule.slice(0, 256),
-    resources: {
-      status: input.resourceStatus,
-      attachmentCount: input.restoredAttachmentCount ?? 0,
-      toolRecipeCount: restored.resumeState?.toolRecipes?.length ?? 0,
-      restoredToolCount: input.restoredToolCount ?? 0,
-    },
-    permissions: {
-      checkpoint: input.checkpoint.resumeState?.permissionPolicyId ?? 'research',
-      current: input.currentPermission,
-    },
-    replayPrevention: {
-      completedStepCountPreserved: taskSteps.filter((step) => step.status === 'done').length,
-      succeededSideEffectCountPreserved: sideEffects.filter((effect) => effect.status === 'succeeded').length,
-      uncertainSideEffectCount: sideEffects.filter((effect) => (
-        effect.status === 'in_progress' || effect.status === 'unknown'
-      )).length,
-      answerMessageAlreadyPersisted: input.answerMessageAlreadyPersisted,
-    },
-  }
-}
-
 function restoreContinuationContext(
   ctx: RunContext,
   checkpoint: RunCheckpoint,
@@ -2548,15 +2412,25 @@ function restoreContinuationContext(
   writeRuntimeState(ctx, 'runner-restore', {
     deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
     deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
-    loopBudget: structuredClone(checkpoint.loopBudget),
+    // Task state is inherited; the run-scoped allowance is not. See
+    // `continuationLoopBudget` — restoring the previous run's spend against this
+    // run's ceiling is what made an explicit user retry impossible.
+    loopBudget: continuationLoopBudget(checkpoint.loopBudget, ctx.maxModelCalls ?? checkpoint.loopBudget.maxAttempts),
   });
   replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
   writeModelObservabilityState(ctx, 'runner-restore', {
-    modelCallCount: checkpoint.loopBudget.attemptsUsed,
+    modelCallCount: 0,
   });
+  // The source run's failure is history, not this run's state. Restoring it made
+  // RECOVER classify a failure this run never hit: a checkpoint whose last error
+  // was a spent budget escalated again on entry, before execute had run, and
+  // `durable-harness` skipped recording a *new* failure of the same stage
+  // because the stale one already named it. The fact is preserved for the record
+  // by the continuation evidence instead, as is the recovery allowance this run
+  // does not inherit.
   writeFailureState(ctx, 'runner-restore', {
-    recoveryAttempts: state.recoveryAttempts,
-    lastError: state.lastError ? structuredClone(state.lastError) : undefined,
+    lastError: undefined,
+    recoveryAttempts: 0,
   });
   ctx.maxReplanAttempts = state.maxReplanAttempts;
   ctx.verificationHistory = structuredClone(state.verificationHistory);

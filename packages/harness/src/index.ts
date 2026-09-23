@@ -167,6 +167,10 @@ export {
   writeProviderUsageState,
   type UsageStateUpdate,
 } from './usage-state.js';
+// The main loop's iteration ceiling is a Runtime constant, not per-run config:
+// a continuation restores task state but starts its own allowance, and the
+// runner reports both numbers, so it needs the same constant.
+export { MAX_TOOL_LOOP_ITERATIONS } from './stages/execute/iteration-budget.js';
 export {
   applyTaskBookPatch,
   applyTaskBookPatchToContext,

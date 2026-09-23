@@ -7,6 +7,7 @@ import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } fro
 import type { CacheObservation, ContextReuseEvent } from './cache-observability.js';
 import type { NetworkReadPolicy, WebEvidenceProjection, WebProviderRuntimeSnapshot } from './web-retrieval.js';
 export * from './token-ledger.js';
+export * from './conversation-continuation.js';
 
 export const CONTEXT_SNAPSHOT_VERSION = 1 as const;
 export const ATTACHMENT_MANIFEST_VERSION = 1 as const;
@@ -23,7 +24,6 @@ export const LLM_CALL_CONTRACT_VERSION = 1 as const;
 export const MEMORY_INTENT_DECISION_VERSION = 1 as const;
 export const TOOL_INVOCATION_RECORD_VERSION = 1 as const;
 export const EXECUTION_EVIDENCE_VERSION = 1 as const;
-export const CONVERSATION_CONTINUATION_EVIDENCE_VERSION = 1 as const;
 
 export type PermissionPolicyId = 'full' | 'research' | 'restricted';
 export type ReasoningLevel = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
@@ -34,56 +34,6 @@ export interface RuntimeFinalStatus {
   readonly version: 1;
   readonly status: 'waiting_user' | 'failed' | 'interrupted';
   readonly reason?: string;
-}
-
-/** Redacted audit evidence for one authoritative conversation-turn decision. */
-export interface ConversationContinuationEvidence {
-  version: typeof CONVERSATION_CONTINUATION_EVIDENCE_VERSION;
-  resolution: 'none' | 'eligible' | 'bound' | 'blocked' | 'conflict' | 'deferred' | 'abandoned';
-  /** Stable, hashed identity shared by HTTP/SSE retries of the same turn. */
-  turnId?: string;
-  /** Digest used to reject reuse of the same key for different turn content. */
-  inputDigest?: string;
-  checkpointId?: string;
-  candidateCheckpointIds?: string[];
-  sourceRunId?: string;
-  requestId?: string;
-  answerMessageId?: string;
-  resumeRunId?: string;
-  disposition?: RunCheckpointContinuationDisposition;
-  dispositionSource?: 'directive' | 'model' | 'runtime_fallback';
-  resumeStage?: StageName;
-  resumeRule?: string;
-  resources?: {
-    status: 'not_required' | 'restored' | 'failed' | 'skipped_for_disposition';
-    attachmentCount: number;
-    toolRecipeCount: number;
-    restoredToolCount: number;
-  };
-  permissions?: {
-    checkpoint: PermissionPolicyId;
-    current: PermissionPolicyId;
-  };
-  replayPrevention?: {
-    completedStepCountPreserved: number;
-    succeededSideEffectCountPreserved: number;
-    uncertainSideEffectCount: number;
-    answerMessageAlreadyPersisted: boolean;
-  };
-  /** Present when the authoritative coordinator rejected the turn before execution. */
-  failure?: {
-    code:
-      | 'multiple_waiting_heads'
-      | 'checkpoint_not_resumable'
-      | 'ambiguous_disposition'
-      | 'resource_restore_failed'
-      | 'required_tool_unavailable'
-      | 'claim_conflict'
-      | 'turn_identity_conflict'
-      | 'continuation_runtime_error';
-    detail: string;
-    recoverable: boolean;
-  };
 }
 
 /** Declarative behavior-mode contract. Permission is intentionally excluded. */

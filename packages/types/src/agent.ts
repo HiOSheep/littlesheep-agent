@@ -214,7 +214,7 @@ export interface RunContext {
   /** Original checkpoint identity when this context is a continuation run. */
   resumedFromCheckpointId?: string;
   /** Redacted structural evidence for the authoritative conversation-turn decision. */
-  conversationContinuation?: import('./runtime-contracts.js').ConversationContinuationEvidence;
+  conversationContinuation?: import('./conversation-continuation.js').ConversationContinuationEvidence;
   /** Persist a bounded runtime checkpoint before/after an effectful tool call. */
   persistRuntimeCheckpoint?: (reason: string) => Promise<string | undefined>;
   /** Deterministic control state applied by the Harness at a safe boundary. */
@@ -535,7 +535,7 @@ export interface AgentResult {
   /** Previous clarification answered by this run's inbound message. */
   clarificationResponse?: ClarificationResponse;
   /** Redacted structural evidence for conversation-task continuity. */
-  conversationContinuation?: import('./runtime-contracts.js').ConversationContinuationEvidence;
+  conversationContinuation?: import('./conversation-continuation.js').ConversationContinuationEvidence;
   /** Linked local data/workspace rollback point created for this run. */
   versionCheckpoint?: import('./versioning.js').VersionCheckpointSummary;
 }

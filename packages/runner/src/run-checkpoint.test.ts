@@ -7,7 +7,8 @@ import {
   type TaskStepResult,
 } from '@littlesheep/types';
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
-import { buildRunCheckpoint } from './run-checkpoint.js';
+import { MAX_TOOL_LOOP_ITERATIONS } from '@littlesheep/harness';
+import { buildRunCheckpoint, continuationLoopBudget } from './run-checkpoint.js';
 
 function contextWithSteps(steps: TaskStepResult[]): RunContext {
   const sessionId = asSessionId('session-checkpoint');
@@ -247,5 +248,59 @@ describe('buildRunCheckpoint', () => {
     expect(durable).not.toContain('CHECKPOINT_PRIVATE_QUERY');
     expect(durable).not.toContain('CHECKPOINT_WEB_BODY');
     expect(checkpoint.webEvidence?.citationIds).toEqual(['web-run-1-source']);
+  });
+});
+
+describe('continuationLoopBudget', () => {
+  it('resets the run-scoped spend and keeps the current run\'s ceilings', () => {
+    const reset = continuationLoopBudget({
+      attemptsUsed: 9,
+      maxAttempts: 9,
+      elapsedMs: 12_000,
+      maxElapsedMs: 60_000,
+      noProgressRounds: 2,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: MAX_TOOL_LOOP_ITERATIONS,
+      maxToolLoopIterations: MAX_TOOL_LOOP_ITERATIONS,
+      evidenceFingerprints: ['previous-run-read'],
+      evidenceFingerprintSaturated: false,
+      costUsed: 4,
+      maxCost: 10,
+    }, 24);
+
+    expect(reset).toEqual({
+      attemptsUsed: 0,
+      // The ceiling comes from the configuration this run resolved, not from the
+      // recorded one: a changed maxModelCallsPerRun applies to the continuation.
+      maxAttempts: 24,
+      elapsedMs: 0,
+      maxElapsedMs: 60_000,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+      toolLoopIterationsUsed: 0,
+      maxToolLoopIterations: MAX_TOOL_LOOP_ITERATIONS,
+      costUsed: 0,
+      maxCost: 10,
+    });
+    // Rediscovered evidence is progress again in a new run; a saturated or
+    // carried fingerprint set would make the first re-read of the same file trip
+    // the no-progress bound the run just reset.
+    expect(reset.evidenceFingerprints).toBeUndefined();
+    expect(reset.evidenceFingerprintSaturated).toBeUndefined();
+  });
+
+  it('defaults a checkpoint without a recorded iteration ceiling to the Runtime constant', () => {
+    const reset = continuationLoopBudget({
+      attemptsUsed: 1,
+      maxAttempts: 4,
+      elapsedMs: 0,
+      maxElapsedMs: 0,
+      noProgressRounds: 0,
+      maxNoProgressRounds: 2,
+    }, 4);
+
+    expect(reset.maxToolLoopIterations).toBe(MAX_TOOL_LOOP_ITERATIONS);
+    expect(reset.costUsed).toBeUndefined();
+    expect(reset.maxCost).toBeUndefined();
   });
 });

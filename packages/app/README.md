@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-24 02:06:13
+最后更新：2026-09-24 02:48:25
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -51,6 +51,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 5. Electron 主进程并列装配 Runner 与 `@littlesheep/plugins` 宿主；插件工具经校验后迁移进 Runner，插件 Skill 通过 owner-scoped 来源进入 SkillLoader 和记忆注册表，外部渠道以插件贡献形式接入且不是本地 UI 的必要依赖。插件 API v1 的边界和本地代码信任规则见 [插件开发说明](../../docs/reference/plugin-development.md)。
 
 网络设置页的 Provider 检查是用户主动触发的 Main-owned 一次性搜索：只有当前已配置 Provider 的真实检查成功才显示 `ready`；检查结果只保存在当前运行时，配置变化、Runner 重建或重启后重新回到 `configured_unchecked`。启动过程不会为健康状态隐式联网。
+
+`src/main/runtime-config-change.ts` 的保存事务（normalize → persist → 重建 Runner）按顺序串行化，保存失败时拒绝调用方并保留旧版本；它的测试夹具始终持有一份已载入的配置，因此 `current()` 在该用例里不返回 `null`（null 仍属 Main 尚未读取配置时的契约）。
 
 ### 权限容器
 

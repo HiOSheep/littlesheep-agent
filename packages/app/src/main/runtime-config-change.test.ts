@@ -73,7 +73,9 @@ describe('createRuntimeConfigUpdater', () => {
   function updater(options: { failPersist?: boolean } = {}) {
     const events: string[] = []
     const persisted: Config[] = []
-    let current: Config | null = config()
+    // This harness always holds a loaded revision; the updater's own contract
+    // still allows null for a Main process that has not read one yet.
+    let current: Config = config()
     const update = createRuntimeConfigUpdater({
       current: () => current,
       prepare: (next) => next,

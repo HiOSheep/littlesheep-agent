@@ -206,7 +206,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'finalize', 'post-run'],
     writeStages: [...coreStages, 'runner-restore', 'post-run'],
     lifecycle: 'run-local',
-    purpose: 'Latest bounded failure evidence consumed by RECOVER and final status assembly.',
+    purpose: 'Latest bounded failure evidence consumed by RECOVER and final status assembly; a continuation starts without the source run\'s failure.',
   }),
   field({
     field: 'recoveryAttempts',
@@ -215,7 +215,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['recover', 'evolve', 'finalize', 'runner-restore'],
     writeStages: ['runner-init', 'recover', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Bounded RECOVER attempt counter carried through resumable checkpoints.',
+    purpose: 'Bounded RECOVER attempt counter; a continuation starts its own allowance instead of inheriting a spent one.',
   }),
   field({
     field: 'toolResults',
@@ -260,7 +260,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['execute', 'recover', 'finalize', 'runner-restore', 'post-run'],
     writeStages: ['runner-init', 'classify', 'decide', 'execute', 'recover', 'verify', 'evolve', 'capture', 'reply', 'ask_user', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Monotonic provider-call budget counter restored from the checkpoint loop budget.',
+    purpose: 'Monotonic provider-call counter for this run; a continuation records the source run\'s spend as hand-off evidence and starts at zero.',
   }),
   field({
     field: 'modelRequests',
@@ -350,7 +350,7 @@ export const runContextFieldOwnership: readonly RunContextFieldContract[] = Obje
     readStages: ['execute', 'recover', 'runner-restore'],
     writeStages: ['runner-init', 'execute', 'runner-restore'],
     lifecycle: 'checkpoint-carried',
-    purpose: 'Provider/tool loop budget snapshot used by recovery diagnostics.',
+    purpose: 'Provider/tool loop budget for this run: task state is restored from a checkpoint, the run-scoped spend and ceilings are not.',
   }),
   field({
     field: 'conversationContinuation',

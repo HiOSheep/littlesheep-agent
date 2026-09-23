@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { mkdir, rm } from 'node:fs/promises'
+import { mkdir, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -1150,6 +1150,138 @@ describe('runner checkpoint continuation', () => {
       expect(result.reply).toBe('The translated PDF was created from the preserved source evidence.')
     } finally {
       executeDocumentCreate.mockRestore()
+      await runner.shutdown()
+    }
+  })
+
+  it('gives a user retry its own run budget instead of the exhausted one it inherited', async () => {
+    const workspace = join(dataDir, 'workspace')
+    await mkdir(workspace, { recursive: true })
+    const requests: ChatRequest[] = []
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: queuedLlm([
+        {
+          content: '',
+          finishReason: 'tool_calls',
+          toolCalls: [{
+            id: 'write-game',
+            type: 'function',
+            function: {
+              name: 'write',
+              arguments: JSON.stringify({
+                file_path: join(workspace, 'game.html'),
+                content: '<html>playable game</html>',
+              }),
+            },
+          }],
+        },
+        textResponse('已经重新尝试，game.html 写好了。'),
+        textResponse('game.html 已经写好，可以直接打开试玩。'),
+        textResponse('{"memories":[],"createSkill":null}'),
+      ], requests),
+      skillsDirs: [],
+      containerRoot: dataDir,
+    })
+    try {
+      const session = await runner.sessionManager.create('test/model')
+      const original = textMessage('user', '写一个小游戏给我玩', { sessionId: session.id })
+      const request = recoveryRequest('spent-budget-request', 'recover')
+      await runner.sessionManager.append(session.id, [
+        original,
+        textMessage('assistant', request.questions[0]!.prompt, {
+          sessionId: session.id,
+          clarificationRequest: request,
+        }),
+      ])
+      const checkpoint = waitingCheckpoint({
+        id: 'spent-budget-checkpoint',
+        sessionId: session.id,
+        inboundMessageId: original.id,
+        request,
+        workspace,
+        withTaskBook: true,
+      })
+      checkpoint.taskBook!.steps = [{
+        id: 'write-game',
+        description: 'Write the game file.',
+        tools: ['write'],
+        acceptanceCriteria: ['A playable game file exists.'],
+        status: 'pending',
+      }]
+      // Exactly what a run that escalated on its ceilings leaves behind: both
+      // run-scoped allowances spent, the no-progress latch closed, the recovery
+      // allowance at its cap and the ceiling failure recorded as the last error.
+      checkpoint.loopBudget = {
+        attemptsUsed: 9,
+        maxAttempts: 9,
+        elapsedMs: 12_000,
+        maxElapsedMs: 60_000,
+        noProgressRounds: 2,
+        maxNoProgressRounds: 2,
+        toolLoopIterationsUsed: 20,
+        maxToolLoopIterations: 20,
+        evidenceFingerprints: ['previous-run-read'],
+        evidenceFingerprintSaturated: false,
+      }
+      checkpoint.resumeState!.recoveryAttempts = DEFAULT_CONFIG.agents.defaults.maxRecoveryAttempts
+      checkpoint.resumeState!.lastError = {
+        stage: 'execute',
+        message: 'tool loop exceeded the persisted 20-iteration run budget',
+      }
+      await runner.infra.runCheckpointStore!.write(checkpoint)
+
+      const result = await runner.run({
+        sessionId: session.id,
+        text: '再尝试一次',
+        requestKey: 'spent-budget-turn',
+        continuationDirective: 'retry',
+        permissionPolicyId: 'full',
+      })
+
+      // The retry inherits the task, not the spent allowance. Restoring the spend
+      // against the new run's ceiling failed the continuation before its first
+      // provider request and handed the user the same escalation for every retry.
+      //
+      // An escalation is published as `ok` and is composed with a real model
+      // call, so the status alone does not separate the two outcomes: the trace,
+      // the settled effect and the artifact do.
+      expect(result.status, result.error).toBe('ok')
+      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'verify', 'finalize'])
+      expect(result.sideEffects).toEqual([
+        expect.objectContaining({ toolName: 'write', status: 'succeeded' }),
+      ])
+      expect(await readFile(join(workspace, 'game.html'), 'utf8')).toBe('<html>playable game</html>')
+      // The work happened because the run reached the model at all.
+      expect(requests.length).toBeGreaterThan(0)
+      // The accumulated history is retained: the retried run sees the request it
+      // is continuing and the question it is answering, and its own answer once.
+      const firstRequest = JSON.stringify(requests[0]!.messages)
+      expect(firstRequest).toContain('写一个小游戏给我玩')
+      expect(firstRequest).toContain('Provide the missing condition or choose how to continue.')
+      expect(firstRequest.match(/再尝试一次/gu)).toHaveLength(1)
+      expect(result.conversationContinuation).toMatchObject({
+        resolution: 'bound',
+        checkpointId: checkpoint.id,
+        disposition: 'retry',
+        resumeStage: 'recover',
+        handoff: {
+          previousFailure: {
+            stage: 'execute',
+            message: 'tool loop exceeded the persisted 20-iteration run budget',
+          },
+          runBudget: {
+            previousModelCallsUsed: 9,
+            previousToolLoopIterationsUsed: 20,
+            modelCallsAllowed: DEFAULT_CONFIG.agents.defaults.maxModelCallsPerRun,
+            toolLoopIterationsAllowed: 20,
+          },
+        },
+      })
+      await expect(runner.runCheckpoints!.resolveWaitingUserHead(session.id)).resolves.toEqual({ kind: 'none' })
+    } finally {
       await runner.shutdown()
     }
   })
