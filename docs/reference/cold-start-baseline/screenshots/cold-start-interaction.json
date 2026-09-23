@@ -10,7 +10,16 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 45985
+        "port": 52276
+      },
+      "notices": {
+        "errorText": null,
+        "readinessNotice": "正在准备运行能力",
+        "activeRunCount": 0,
+        "sessionTitles": [
+          "交互验证会话 00分",
+          "交互验证会话 10分"
+        ]
       }
     },
     {
@@ -47,7 +56,61 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 45985
+        "port": 52276
+      }
+    },
+    {
+      "step": "switch-session-while-not-ready",
+      "attempt": {
+        "opened": true,
+        "title": "交互验证会话 10分",
+        "from": "交互验证会话 00分",
+        "activeKnown": false,
+        "rows": 2,
+        "titles": [
+          "交互验证会话 00分",
+          "交互验证会话 10分"
+        ]
+      },
+      "before": null,
+      "after": "交互验证会话 10分",
+      "draftAfterSwitch": "冷启动草稿",
+      "notices": {
+        "errorText": null,
+        "readinessNotice": "正在准备运行能力",
+        "activeRunCount": 0,
+        "sessionTitles": [
+          "交互验证会话 00分",
+          "交互验证会话 10分"
+        ]
+      },
+      "readiness": {
+        "state": "starting",
+        "phase": "execution",
+        "reason": "正在准备运行能力",
+        "apiVersion": 1,
+        "retryable": false,
+        "port": 52276
+      }
+    },
+    {
+      "step": "return-to-first-session",
+      "attempt": {
+        "opened": true,
+        "title": "交互验证会话 00分",
+        "rows": 2
+      },
+      "currentSession": "交互验证会话 00分",
+      "draftSurvivedSwitch": true,
+      "draftRetyped": false,
+      "notices": {
+        "errorText": null,
+        "readinessNotice": "正在准备运行能力",
+        "activeRunCount": 0,
+        "sessionTitles": [
+          "交互验证会话 00分",
+          "交互验证会话 10分"
+        ]
       }
     },
     {
@@ -56,10 +119,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 45985,
+        "port": 52276,
         "retryable": false
       },
-      "notReadyWindowMs": 8028,
+      "notReadyWindowMs": 7670,
       "requiredWindowMs": 6000
     },
     {
@@ -67,9 +130,9 @@
       "before": {
         "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
         "hasComposer": true,
-        "draft": "",
-        "focused": false,
-        "currentSession": null,
+        "draft": "冷启动草稿",
+        "focused": true,
+        "currentSession": "交互验证会话 00分",
         "readinessNotice": "正在准备运行能力"
       },
       "after": {
@@ -77,9 +140,19 @@
         "hasComposer": true,
         "draft": "冷启动草稿",
         "focused": true,
-        "currentSession": null,
+        "currentSession": "交互验证会话 00分",
         "readinessNotice": null
       }
+    },
+    {
+      "step": "notices-after-ready",
+      "errorText": null,
+      "readinessNotice": null,
+      "activeRunCount": 0,
+      "sessionTitles": [
+        "交互验证会话 00分",
+        "交互验证会话 10分"
+      ]
     },
     {
       "step": "close-policy",

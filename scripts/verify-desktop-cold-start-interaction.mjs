@@ -80,27 +80,19 @@ async function main() {
 
     const markupBefore = await readComposerIdentity(client)
     const readinessAtAttach = await readReadiness(locator)
-    observations.push({ step: 'attached', readiness: readinessAtAttach })
+    // The window must not greet the user with a failure for work it simply cannot
+    // do yet (history comes from the Runner), so the error surfaces are read
+    // before any interaction.
+    const noticesAtAttach = await readNoticeSurfaces(client)
+    observations.push({ step: 'attached', readiness: readinessAtAttach, notices: noticesAtAttach })
+    if (noticesAtAttach.errorText !== null) {
+      failures.push({ check: 'the not-ready window opens without an error banner', detail: noticesAtAttach })
+    }
 
     // 1. Type while execution may still be unavailable. `beforeinput` is
     //    dispatched so the assertion exercises the same handler a real keypress
     //    would, instead of only assigning `value` from the outside.
-    const typed = await client.evaluate(`(() => {
-      const input = document.querySelector('.composer textarea');
-      if (!(input instanceof HTMLTextAreaElement)) return null;
-      input.focus();
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-      setter.call(input, '冷启动草稿');
-      input.dispatchEvent(new InputEvent('input', { bubbles: true, data: '冷启动草稿', inputType: 'insertText' }));
-      return {
-        value: input.value,
-        focused: document.activeElement === input,
-        sendDisabled: (() => {
-          const button = document.querySelector('.composer-run-actions .send-round');
-          return button ? button.disabled : null;
-        })(),
-      };
-    })()`)
+    const typed = await typeComposerDraft(client, '冷启动草稿')
     observations.push({ step: 'typed-while-not-ready', typed, readinessWasReady: readinessAtAttach?.state === 'ready' })
     if (!typed || typed.value !== '冷启动草稿' || !typed.focused) {
       failures.push({ check: 'composer accepts a draft before execution is ready', detail: typed })
@@ -164,6 +156,72 @@ async function main() {
       failures.push({ check: 'the draft is still in the composer during the widened window', detail: noticeWhileNotReady })
     }
 
+    // 2c. Opening another conversation while execution is unavailable must not
+    //     start a run, must not raise an error banner, and must not be read as a
+    //     send. What the composer holds afterwards is recorded rather than
+    //     assumed: the live draft is a single text slot, so this observation is
+    //     the evidence for how it behaves across a switch (the persisted draft is
+    //     tagged with its conversation and is only restored into that one).
+    const activeBeforeSwitch = await readComposerIdentity(client)
+    const switchAttempt = await openOtherSession(client)
+    await delay(700)
+    const afterSwitch = await readComposerIdentity(client)
+    const noticeAfterSwitch = await readNoticeSurfaces(client)
+    const readinessDuringSwitch = await readReadiness(locator)
+    observations.push({
+      step: 'switch-session-while-not-ready',
+      attempt: switchAttempt,
+      before: activeBeforeSwitch.currentSession,
+      after: afterSwitch.currentSession,
+      draftAfterSwitch: afterSwitch.draft,
+      notices: noticeAfterSwitch,
+      readiness: readinessDuringSwitch,
+    })
+    if (switchAttempt.opened !== true) {
+      failures.push({ check: 'a conversation can be opened while execution is unavailable', detail: switchAttempt })
+    }
+    if (switchAttempt.opened === true && afterSwitch.currentSession !== switchAttempt.title) {
+      failures.push({
+        check: 'opening another conversation actually switches the active one',
+        detail: { expected: switchAttempt.title, after: afterSwitch.currentSession },
+      })
+    }
+    if (readinessDuringSwitch?.state === 'ready') {
+      failures.push({ check: 'the widened window is still open across the switch', detail: readinessDuringSwitch })
+    }
+    if (noticeAfterSwitch.errorText !== null) {
+      failures.push({ check: 'switching conversation while unavailable raises no error banner', detail: noticeAfterSwitch })
+    }
+    if (noticeAfterSwitch.activeRunCount !== 0) {
+      failures.push({ check: 'switching conversation starts no run', detail: noticeAfterSwitch })
+    }
+    // Back to the conversation the window opened with, then type the draft again:
+    // the handoff assertions below must be about the handoff, not about the
+    // switch. Whether the text had to be re-typed is itself recorded.
+    const returnAttempt = await openSessionByTitle(client, switchAttempt.from)
+    await delay(700)
+    const afterReturn = await readComposerIdentity(client)
+    const draftSurvivedSwitch = afterReturn.draft === '冷启动草稿'
+    if (returnAttempt.opened !== true || afterReturn.currentSession !== switchAttempt.from) {
+      failures.push({
+        check: 'the first conversation can be reopened',
+        detail: { attempt: returnAttempt, current: afterReturn.currentSession, expected: switchAttempt.from },
+      })
+    }
+    if (!draftSurvivedSwitch) await typeComposerDraft(client, '冷启动草稿')
+    const beforeHandoff = await readComposerIdentity(client)
+    observations.push({
+      step: 'return-to-first-session',
+      attempt: returnAttempt,
+      currentSession: afterReturn.currentSession,
+      draftSurvivedSwitch,
+      draftRetyped: !draftSurvivedSwitch,
+      notices: await readNoticeSurfaces(client),
+    })
+    if (beforeHandoff.draft !== '冷启动草稿') {
+      failures.push({ check: 'the draft is in the composer before the handoff', detail: beforeHandoff })
+    }
+
     // 3. Wait for execution readiness and confirm the transition was in place.
     //    The widened window is measured rather than assumed: if the delay did not
     //    apply, the pre-ready steps above ran against an almost-ready runtime and
@@ -179,7 +237,10 @@ async function main() {
       })
     }
     const afterReady = await readComposerIdentity(client)
-    observations.push({ step: 'after-ready', before: markupBefore, after: afterReady })
+    // Compared against the state right before the wait, not against the first
+    // read: the sidebar can still be empty when the debugger attaches, and a
+    // comparison against that would pass for the wrong reason.
+    observations.push({ step: 'after-ready', before: beforeHandoff, after: afterReady })
     if (afterReady.draft !== '冷启动草稿') {
       failures.push({ check: 'the draft survives the readiness handoff', detail: afterReady })
     }
@@ -189,14 +250,22 @@ async function main() {
     if (afterReady.hasComposer !== true) {
       failures.push({ check: 'the composer is not remounted by the handoff', detail: afterReady })
     }
-    if (afterReady.url !== markupBefore.url) {
+    if (afterReady.url !== beforeHandoff.url) {
       failures.push({ check: 'no page navigation happens across the handoff', detail: afterReady })
     }
-    if (afterReady.currentSession !== markupBefore.currentSession) {
-      failures.push({ check: 'the current conversation is not switched by the handoff', detail: afterReady })
+    if (afterReady.currentSession !== beforeHandoff.currentSession) {
+      failures.push({
+        check: 'the current conversation is not switched by the handoff',
+        detail: { before: beforeHandoff.currentSession, after: afterReady.currentSession },
+      })
     }
     if (afterReady.readinessNotice !== null) {
       failures.push({ check: 'the readiness notice clears once execution is available', detail: afterReady })
+    }
+    const noticesAfterReady = await readNoticeSurfaces(client)
+    observations.push({ step: 'notices-after-ready', ...noticesAfterReady })
+    if (noticesAfterReady.errorText !== null) {
+      failures.push({ check: 'no error banner survives the handoff', detail: noticesAfterReady })
     }
 
     // 4. Window close follows the configured policy. With the default
@@ -272,6 +341,66 @@ async function readComposerIdentity(client) {
       currentSession: active ? active.textContent : null,
       readinessNotice: document.querySelector('.runtime-readiness-notice')?.textContent ?? null,
     };
+  })()`)
+}
+
+/** Types into the composer through the same handler a real keypress reaches. */
+async function typeComposerDraft(client, text) {
+  return client.evaluate(`(() => {
+    const input = document.querySelector('.composer textarea');
+    if (!(input instanceof HTMLTextAreaElement)) return null;
+    input.focus();
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(text)});
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ${JSON.stringify(text)}, inputType: 'insertText' }));
+    return {
+      value: input.value,
+      focused: document.activeElement === input,
+      sendDisabled: (() => {
+        const button = document.querySelector('.composer-run-actions .send-round');
+        return button ? button.disabled : null;
+      })(),
+    };
+  })()`)
+}
+
+/** Error and status surfaces that must stay quiet while a conversation is opened. */
+async function readNoticeSurfaces(client) {
+  return client.evaluate(`(() => {
+    const errors = [...document.querySelectorAll('.composer-error, .runtime-event-notice, .runtime-notice-error')];
+    return {
+      errorText: errors.length === 0 ? null : errors.map((node) => node.textContent.trim()).join(' | '),
+      readinessNotice: document.querySelector('.runtime-readiness-notice')?.textContent?.trim() ?? null,
+      activeRunCount: document.querySelector('.run-activity-indicator, .composer-stop') ? 1 : 0,
+      sessionTitles: [...document.querySelectorAll('.session-item')].map((node) => node.textContent.trim()),
+    };
+  })()`)
+}
+
+/** Opens the first conversation that is not the active one. */
+async function openOtherSession(client) {
+  return client.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.session-item')];
+    const titles = rows.map((row) => row.textContent.trim());
+    const activeRow = rows.find((row) => row.classList.contains('active'));
+    // The active marker can lag the row list by a frame, so the fallback is the
+    // first row: that is the conversation the window opened with.
+    const from = activeRow ? activeRow.textContent.trim() : (titles[0] ?? null);
+    const target = rows.find((row) => row.textContent.trim() !== from) ?? null;
+    if (!target) return { opened: false, reason: 'no other conversation row', rows: rows.length, titles, from, activeKnown: Boolean(activeRow) };
+    target.click();
+    return { opened: true, title: target.textContent.trim(), from, activeKnown: Boolean(activeRow), rows: rows.length, titles };
+  })()`)
+}
+
+/** Opens the conversation row whose text matches `title`. */
+async function openSessionByTitle(client, title) {
+  return client.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.session-item')];
+    const target = rows.find((row) => row.textContent.trim() === ${JSON.stringify(title)});
+    if (!target) return { opened: false, reason: 'no conversation row with that title', rows: rows.length };
+    target.click();
+    return { opened: true, title: target.textContent.trim(), rows: rows.length };
   })()`)
 }
 

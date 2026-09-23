@@ -18,6 +18,7 @@ import {
   type ApprovalDecision
 } from '../approval-grants'
 import { historyMessageToChatMessage } from '../chat/assistant-turn'
+import { waitForExecutionReady } from '../runtime-readiness/runtime-readiness-state'
 import { projectCompactionOperations } from '../chat/context-projections'
 import { ChatMessage } from '../chat/types'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts'
@@ -192,6 +193,19 @@ export function createSessionActions(context: SessionActionContext) {
     // and make the input surface jump on every session switch.
     setMessages([])
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: true })
+    // History is served by the Runner, so opening a conversation during the
+    // deliberately interactive not-ready window used to answer 503 and surface as
+    // "加载历史失败". Wait for execution instead: the viewport keeps its loading
+    // state, and the conversation appears as soon as the capability exists.
+    // Readiness that is unknown (no bridge) resolves immediately, so this is not
+    // a new gate for unit tests or non-Electron hosts.
+    const readiness = await waitForExecutionReady()
+    if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
+    if (readiness?.state === 'failed') {
+      setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
+      setRuntimeError('执行能力启动失败，这段对话暂时无法加载。')
+      return
+    }
     try {
       const history = await getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return

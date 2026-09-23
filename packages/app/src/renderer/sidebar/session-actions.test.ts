@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteSession, getSessionMessagePage } from '../api'
+import { waitForExecutionReady } from '../runtime-readiness/runtime-readiness-state'
 import { createSessionActions, type SessionActionContext } from './session-actions'
 
 vi.mock('../api', () => ({
@@ -8,8 +9,13 @@ vi.mock('../api', () => ({
   updateRuntime: vi.fn(),
 }))
 
+vi.mock('../runtime-readiness/runtime-readiness-state', () => ({
+  waitForExecutionReady: vi.fn(),
+}))
+
 const mockedGetSessionMessagePage = vi.mocked(getSessionMessagePage)
 const mockedDeleteSession = vi.mocked(deleteSession)
+const mockedWaitForExecutionReady = vi.mocked(waitForExecutionReady)
 
 function createSwitchContext(overrides: Partial<SessionActionContext> = {}): SessionActionContext {
   return {
@@ -55,6 +61,55 @@ describe('session switching', () => {
     vi.clearAllMocks()
     mockedGetSessionMessagePage.mockResolvedValue({ messages: [], hasMore: false })
     mockedDeleteSession.mockResolvedValue(undefined)
+    mockedWaitForExecutionReady.mockResolvedValue({
+      apiVersion: 1,
+      state: 'ready',
+      phase: 'execution',
+      retryable: false,
+    })
+  })
+
+  it('waits for execution before requesting a conversation history', async () => {
+    const context = createSwitchContext()
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-2',
+      title: '第二个会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    })
+
+    expect(mockedWaitForExecutionReady).toHaveBeenCalledTimes(1)
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 120 })
+  })
+
+  it('reports a failed Runtime instead of a history-load error', async () => {
+    const context = createSwitchContext()
+    mockedWaitForExecutionReady.mockResolvedValue({
+      apiVersion: 1,
+      state: 'failed',
+      phase: 'execution',
+      reason: '没有可用模型',
+      retryable: true,
+    })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-2',
+      title: '第二个会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    })
+
+    expect(mockedGetSessionMessagePage).not.toHaveBeenCalled()
+    expect(context.setRuntimeError).toHaveBeenCalledWith('执行能力启动失败，这段对话暂时无法加载。')
+    expect(context.setRuntimeError).not.toHaveBeenCalledWith(expect.stringContaining('加载历史失败'))
+    expect(context.setHistoryWindow).toHaveBeenLastCalledWith({ hasMore: false, beforeId: undefined, loading: false })
   })
 
   it('keeps history loading out of the shared composer error surface', async () => {

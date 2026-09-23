@@ -70,4 +70,45 @@ export function isExecutionReady(): boolean {
   return currentRuntimeReadiness()?.state === 'ready'
 }
 
+/**
+ * Resolve once execution is available, or once it has failed, or on timeout.
+ *
+ * Callers whose work needs the Runner - loading a conversation's history, for
+ * example - await this instead of attempting the call during the deliberately
+ * interactive not-ready window and rendering its 503 as a failure. It queries the
+ * bridge first, because the cached state is populated asynchronously and would
+ * otherwise look "unknown" on the very first call. An environment without a
+ * bridge (a unit test, a non-Electron host) resolves immediately: it cannot
+ * report readiness, so it must not block, and the caller keeps its old behaviour.
+ */
+export async function waitForExecutionReady(timeoutMs = 30_000): Promise<RuntimeReadiness | undefined> {
+  const bridge = readBridge()
+  if (!bridge?.getRuntimeReadiness) return undefined
+  ensureBridgeSubscription()
+  const snapshot = await bridge.getRuntimeReadiness().catch(() => undefined)
+  if (snapshot) publish(snapshot)
+  const settled = currentReadiness
+  if (settled === undefined) return undefined
+  if (settled.state === 'ready' || settled.state === 'failed') return settled
+  return new Promise((resolve) => {
+    let unsubscribe = () => {}
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let finished = false
+    const finish = (state: RuntimeReadiness | undefined) => {
+      if (finished) return
+      finished = true
+      unsubscribe()
+      if (timer !== undefined) clearTimeout(timer)
+      resolve(state)
+    }
+    timer = setTimeout(() => finish(undefined), timeoutMs)
+    unsubscribe = subscribeRuntimeReadiness((state) => {
+      if (state.state === 'ready' || state.state === 'failed') finish(state)
+    })
+    // `subscribeRuntimeReadiness` publishes the current state synchronously, so
+    // the wait can already be over before the real unsubscribe was returned.
+    if (finished) unsubscribe()
+  })
+}
+
 export type { RuntimeReadiness }

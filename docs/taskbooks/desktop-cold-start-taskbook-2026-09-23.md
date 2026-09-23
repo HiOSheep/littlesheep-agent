@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 16:12:46
+最后更新：2026-09-23 16:28:09
 
 ## 1. 目标与当前状态
 
@@ -131,7 +131,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 16:12:46
+最后更新：2026-09-23 16:28:09
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -161,10 +161,11 @@
 - 做法：启动拆为三段（数据前置 → UI 索引与监听 → Runner 与就绪发布）；Local App API 在 Runner 之前监听，仅 Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；preload 提供 `localApiBase()` / `getRuntimeReadiness()` / `onRuntimeReadiness()`，渲染器侧统一经 `localApiFetch` 在就绪前等待端口。
 - 证据：真实 Electron 探针确认未就绪时 `/runtime/readiness`、`/sessions`、`/projects`、`/runtime`、`/application/acceptance` 均 200，`/state`、`/run`、`/run-checkpoints` 为 503，就绪后全部 200；`local-app-api-readiness.test.ts` 覆盖同一契约。
 - 新增交互实机证据：`scripts/verify-desktop-cold-start-interaction.mjs` 在真实窗口上确认——未就绪期间可输入草稿且焦点留在输入框、**发送入口被禁用**、按 Enter 不会被当成已发送；就绪后草稿/焦点/`#root`/`location` 均不变、就绪提示消失、发送入口原地启用。逐项观察见 `docs/reference/cold-start-baseline/screenshots/cold-start-interaction.json`。
-- 该验证同时发现并修掉一个真实回归：发送按钮原先只判断草稿是否为空，未就绪时仍可点击；现在它由 Runtime 的就绪事实直接禁用，入口文案使用同一真实原因（`composer-view.tsx` + `control-surface-style.test.ts`）。
+- 该验证同时发现并修掉两个真实回归：①发送按钮原先只判断草稿是否为空，未就绪时仍可点击；现在它由 Runtime 的就绪事实直接禁用，入口文案使用同一真实原因（`composer-view.tsx` + `control-surface-style.test.ts`）。②在未就绪窗口里打开另一段对话会显示 `加载历史失败: Local app API error: 503`（历史由 Runner 提供，未发布时本就该 503，却被渲染成失败横幅，与"窗口刻意可交互"矛盾）；现在 `switchSession` 取历史前先 `await waitForExecutionReady()`（`runtime-readiness-state.ts` 新增；就绪未知时立即返回，不影响单测与非 Electron 宿主），等待期间消息区保持加载态，真正 `failed` 时给出 Runtime 的原因。单元测试：`runtime-readiness-state.test.ts`（4 例，覆盖未知/已就绪/已失败/超时/转移）+ `session-actions.test.ts` 两例（先等就绪再取历史、失败态不报"加载历史失败"）。
 - 恢复门的一次实测尝试：把真实检查点文件复制进隔离数据根后，未配置模型时执行能力为 `failed`，因此启动发现按设计**不执行**（`/run-checkpoints` 仍返回 503，界面无恢复入口、无自动弹窗）。这确认了"发现等依赖就绪"的失败路径，但**无法**验证"就绪后发现并归属原会话"。
 - 故意拉慢的初始化现已覆盖（新增仅验收使用的 `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS`，`desktop-acceptance-actions.ts` 读取并**上限 60 s**，`index.ts` 在发布就绪前 `await`，生效时打出 `acceptance-ready-delay` 阶段标）：正常启动的未就绪窗口只有约 300 ms，短到无法在其中输入并读提示，因此交互脚本要求应用**推迟发布**就绪——Runner 照常构建，被拉长的只是渲染器看到的窗口，不是伪造的慢启动或失败启动。最近一次运行窗口 **7.8 s**（要求 ≥ 6 s），在这段窗口内实测：就绪提示可见且文案为 Runtime 自己的「正在准备运行能力」、同一时刻发送入口仍 `disabled`、草稿仍在输入框、`/runtime/readiness` 仍为 `starting`、按 Enter 未被当成已发送且无错误横幅；就绪后草稿/焦点/页面均不变、提示消失。脚本会断言窗口确实还开着，否则该批证据判为无效。
-- 剩余缺口：未就绪期间切换会话的实机复现、**需要真实模型配置才能完成的恢复归属验证**（执行就绪依赖有效模型引用，无模型的自动化运行只能走到失败路径）。
+- 未就绪期间的会话切换也已覆盖：在加宽窗口内 `会话 0 → 会话 1 → 会话 0` 往返成功，草稿全程仍在输入框、无错误横幅、未启动 run、`/runtime/readiness` 全程 `starting`，就绪后仍无错误横幅；草稿实际行为（单一文本槽，往返后仍在）如实记录为 `draftSurvivedSwitch`。
+- 剩余缺口：需要活跃任务才可达的隐藏/恢复周期（关闭到后台只在有活跃任务时发生）。
 
 ### CS-06｜保护续接与故障体验 —— 实现完成，恢复归属已实机取证
 
