@@ -49,8 +49,8 @@ const REQUIRED_ACTIONS: Record<RecoveryBlockingCause, { zh: string; en: string }
     en: 'first confirm what the unsettled side effect actually did; nothing will run again before that',
   },
   budget: {
-    zh: '给出一次明确的继续机会，或改为保留现状停止；两种选择都不会重放已成功的副作用',
-    en: 'give one explicit chance to continue, or stop with the current state; neither replays a succeeded side effect',
+    zh: '本次运行的调用/循环预算已经用尽，重试同一个 run 不会再有任何进展；给一次新的运行机会，或保留现状停止',
+    en: 'this run\'s call and loop budget is spent, and retrying the same run cannot make progress; give it a new run, or stop with the current state',
   },
   aborted: {
     zh: '取消已经生效，Runtime 不会自行恢复；需要时请重新发起任务',
@@ -67,6 +67,7 @@ export function classifyBlockingCause(ctx: RunContext, reasonCode: string): Reco
   if (reasonCode === 'permission_denied' || reasonCode.endsWith('_permission_denied')) return 'permission';
   if (reasonCode === 'unsettled_side_effect') return 'side_effect';
   if (reasonCode === 'run_aborted' || reasonCode.endsWith('_aborted')) return 'aborted';
+  if (reasonCode === 'execution_budget_exhausted') return 'budget';
   if (reasonCode === 'recovery_budget_exhausted') {
     // The budget ran out while retrying something; what it was retrying is the
     // cause the user needs, so the stage that failed decides it.

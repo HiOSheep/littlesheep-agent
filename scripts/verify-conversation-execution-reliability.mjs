@@ -84,6 +84,7 @@ async function main() {
 
     const first = await runStream(locator, { text: GAME_PROMPT, permissionMode: 'full', workspace: workspaceDir })
     assertSuccessfulRun(first.result, 'normal workspace run')
+    assertNoEscalation(first.result, 'normal workspace run')
     const firstArtifacts = await collectNewArtifacts(workspaceDir, [])
     assertDelivered(first.result, firstArtifacts, 'normal workspace run')
     assertRuntimeContextBrief(first.result, 'normal workspace run')
@@ -105,13 +106,14 @@ async function main() {
     }))
     progress(`continuation: ${progressLine(continued.result, continuedArtifacts)} ${transportLine(continued.transport)}`)
 
-    const repeated = await runStream(locator, { text: GAME_PROMPT, permissionMode: 'full', workspace: workspaceDir })
+    const repeatedDir = join(root, 'repeat work space')
+    await mkdir(repeatedDir, { recursive: true })
+    const repeated = await runStream(locator, { text: GAME_PROMPT, permissionMode: 'full', workspace: repeatedDir })
     assertSuccessfulRun(repeated.result, 'independent repeat')
-    const repeatedArtifacts = await collectNewArtifacts(
-      workspaceDir,
-      [...beforeContinuation, ...continuedArtifacts.map((artifact) => artifact.relativePath)],
-    )
+    assertNoEscalation(repeated.result, 'independent repeat')
+    const repeatedArtifacts = await collectNewArtifacts(repeatedDir, [])
     assertDelivered(repeated.result, repeatedArtifacts, 'independent repeat')
+    assertRuntimeContextBrief(repeated.result, 'independent repeat')
     scenarios.push(describeScenario('independent_repeat', repeated.result, repeatedArtifacts, repeated.transport))
     progress(`independent repeat: ${progressLine(repeated.result, repeatedArtifacts)} ${transportLine(repeated.transport)}`)
 
@@ -247,6 +249,51 @@ async function main() {
       ],
     })
     progress(`runtime change brief: ${established.result.replyProvenance?.provider} -> ${afterSwitch.result.replyProvenance?.provider}/${afterSwitch.result.replyProvenance?.model}, repeated=${false}`)
+
+    // Switch back, so the reverse direction is covered too and the scenarios
+    // that follow run under the provider they expect.
+    const switchedBack = await postJson(locator, '/runtime', { model: `deepseek/${MODEL}` })
+    if (!String(switchedBack.model ?? '').includes(MODEL)) {
+      throw new Error(`the runtime did not accept the switch back: ${JSON.stringify(switchedBack.model)}`)
+    }
+
+    // CE-02 / CE-01: saving a different default workspace must reach the next
+    // run without a restart AND without the request naming a directory. The tool
+    // evidence is what proves it: the write's resolved resource key carries the
+    // directory the tools actually ran in.
+    const switchedWorkspace = join(root, 'switched work space')
+    await mkdir(switchedWorkspace, { recursive: true })
+    await postJson(locator, '/runtime', { workspace: switchedWorkspace })
+    const workspaceProbeName = 'workspace-probe.txt'
+    const workspaceRun = await runStream(locator, {
+      text: `请在当前目录创建文件 ${workspaceProbeName}，内容为 B。`,
+      permissionMode: 'full',
+    })
+    assertSuccessfulRun(workspaceRun.result, 'workspace-switch run')
+    const workspaceProbe = join(switchedWorkspace, workspaceProbeName)
+    const staleProbe = join(workspaceDir, workspaceProbeName)
+    if (!existsSync(workspaceProbe)) {
+      throw new Error('a run that named no directory did not use the saved default workspace')
+    }
+    if (existsSync(staleProbe)) {
+      throw new Error('the run used the previous default workspace instead of the saved one')
+    }
+    const resolvedKeys = (workspaceRun.result.toolInvocations ?? [])
+      .flatMap((invocation) => invocation.resourceKeys ?? [])
+      .filter((key) => key.includes('workspace-probe'))
+    if (!resolvedKeys.some((key) => key.toLowerCase().includes('switched work space'))) {
+      throw new Error(`no tool resource key resolved under the new workspace: ${JSON.stringify(resolvedKeys)}`)
+    }
+    scenarios.push({
+      name: 'default_workspace_switch',
+      runId: workspaceRun.result.runId,
+      status: workspaceRun.result.status,
+      requestNamedDirectory: false,
+      deliveredUnderNewWorkspace: true,
+      deliveredUnderPreviousWorkspace: false,
+      resolvedResourceKeyMatchesNewWorkspace: true,
+    })
+    progress(`default workspace switch: delivered=${workspaceProbeName} underCount=${resolvedKeys.length} staleAbsent=${!existsSync(staleProbe)}`)
 
     await desktopAction(locator, 'quit')
     await waitForExit(electron, EXIT_TIMEOUT_MS)
@@ -489,6 +536,28 @@ function assertDelivered(result, artifacts, label) {
   if (!/[\u3400-\u9fff]/u.test(reply)) {
     throw new Error(`${label} replied without Chinese text: ${reply.slice(0, 120)}`)
   }
+}
+
+/**
+ * A delivery scenario has to deliver, not ask. The runtime's escalation wording
+ * is a separate contract (CE-08) and is verified elsewhere; here an escalation
+ * means the turn did not finish the job it was given.
+ *
+ * The escalation facts are carried into the failure so the reason stays visible:
+ * a bare "it asked something" would hide whether the run hit a real boundary.
+ */
+function assertNoEscalation(result, label) {
+  const stages = (result.trace ?? []).map((entry) => entry.name)
+  const escalated = stages.includes('ask_user') || Boolean(result.clarificationRequest)
+  if (!escalated) return
+  const request = result.clarificationRequest
+  throw new Error([
+    `${label} escalated instead of delivering`,
+    request ? `kind=${request.kind}` : 'kind=unknown',
+    request?.blockingReason ? `reason=${String(request.blockingReason).slice(0, 240)}` : undefined,
+    `trace=${stages.join('>')}`,
+    `toolCalls=${(result.toolInvocations ?? []).length}`,
+  ].filter(Boolean).join('; '))
 }
 
 /** A failure the same run corrected: direct evidence for the CE-04 contract. */

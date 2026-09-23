@@ -216,6 +216,43 @@ describe('recoverStage', () => {
     expect(ctx.modelRequests ?? []).toHaveLength(0);
   });
 
+  it('escalates a spent run budget on the first detection instead of retrying execute', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'execute', message: 'tool loop exceeded the persisted 20-iteration run budget' },
+      inbound: textMessage('user', '做一个小游戏吧'),
+    });
+
+    const res = await stage(ctx);
+
+    // Retrying cannot change a ceiling recorded on the run: the retried stage
+    // re-enters it already exhausted. Measured on a real acceptance run, the
+    // retry cost four execute rounds before the same escalation.
+    expect(res).toMatchObject({
+      next: 'ask_user',
+      ok: true,
+      meta: { action: 'escalate', reasonCode: 'execution_budget_exhausted' },
+    });
+    expect(ctx.modelRequests ?? []).toHaveLength(0);
+    const reason = ctx.clarificationRequest?.blockingReason ?? '';
+    expect(reason).toContain('恢复预算耗尽');
+    expect(reason).toContain('预算已经用尽');
+  });
+
+  it('still retries a transient provider failure that only reads like a model error', async () => {
+    const ctx = makeCtx({
+      recoveryAttempts: 0,
+      maxRecoveryAttempts: 5,
+      lastError: { stage: 'execute', message: 'llm call failed: 502 bad gateway' },
+      inbound: textMessage('user', 'go'),
+    });
+
+    const res = await stage(ctx);
+
+    expect(res).toMatchObject({ next: 'execute', ok: true, meta: { deterministicRetry: true } });
+  });
+
   it('increments recoveryAttempts on every call', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,

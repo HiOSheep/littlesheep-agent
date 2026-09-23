@@ -47,11 +47,32 @@ export function decideRecovery(ctx: RunContext, recoveryAttempts: number): Recov
   if (kinds.includes('permission_denied')) {
     return { action: 'escalate', next: 'ask_user', reasonCode: 'permission_denied' };
   }
+  // A spent budget is the one failure retrying cannot change: the ceiling is
+  // recorded on the run, so the retried stage re-enters it already exhausted and
+  // fails again. Measured on a real acceptance run, that produced four whole
+  // execute rounds — each with its own model calls — that could not have
+  // succeeded, and only then the same escalation. Escalate on the first
+  // detection instead, and let the escalation name the budget.
+  if (isExhaustedBudgetFailure(lastError)) {
+    return { action: 'escalate', next: 'ask_user', reasonCode: 'execution_budget_exhausted' };
+  }
   return {
     action: 'retry',
     next: retryStageFor(lastError?.stage),
     reasonCode: kinds.length > 0 ? `retryable_${kinds[0]!}` : 'retryable_failure',
   };
+}
+
+/**
+ * Failures that a bounded retry cannot fix because the run's own budget is gone.
+ *
+ * Only the wording the Runtime itself writes for a ceiling counts here: a
+ * transient provider error carries different text and still deserves its retry.
+ */
+export function isExhaustedBudgetFailure(error: RunContext['lastError']): boolean {
+  const message = error?.message;
+  if (!message) return false;
+  return /(tool loop exceeded|model call budget exhausted|tool loop iteration budget|run budget)/iu.test(message);
 }
 
 /** True when a recorded effect may still have taken place without a settlement. */
