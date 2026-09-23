@@ -22,9 +22,15 @@ import {
 } from '../chat/chat-scroll-anchor'
 import { syncComposerInputHeight } from '../composer/input-size'
 import { WINDOW_RESIZE_END_EVENT } from '../ui/resize'
+import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
 import type { ComposerViewController } from './app-controller-projections'
 
 export function ComposerView({ controller }: { controller: ComposerViewController }) {
+  // Execution availability comes from the Runtime, not from local state: the
+  // composer renders before the Runner exists, and only the readiness fact may
+  // decide whether sending is possible yet.
+  const { reason: readinessReason } = useRuntimeReadiness()
+  const executionUnavailable = readinessReason
   const {
     input,
     setInput,
@@ -255,15 +261,19 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                 </button>
               )}
               {(!loading || hasPendingInput) && (
+                // The window is usable before the Runtime is ready, so a send in
+                // that window is limited on purpose. The draft and the focus stay
+                // untouched, and the reason comes from the Runtime rather than a
+                // generic "please wait".
                 <button
                   className="send-round"
                   onClick={() => {
                     setControlTip(null)
                     void send()
                   }}
-                  disabled={!loading && !hasPendingInput}
-                  aria-label={sendTip}
-                  {...runActionTipHandlers(sendTip)}
+                  disabled={executionUnavailable !== null || (!loading && !hasPendingInput)}
+                  aria-label={executionUnavailable ? executionUnavailable : sendTip}
+                  {...runActionTipHandlers(executionUnavailable ?? sendTip)}
                 >
                   <SendRunIcon />
                 </button>

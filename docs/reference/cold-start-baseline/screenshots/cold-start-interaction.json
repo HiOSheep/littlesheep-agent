@@ -1,0 +1,80 @@
+{
+  "check": "desktop-cold-start-interaction",
+  "ok": true,
+  "observations": [
+    {
+      "step": "attached",
+      "readiness": {
+        "state": "starting",
+        "phase": "execution",
+        "reason": "正在准备运行能力",
+        "apiVersion": 1,
+        "retryable": false,
+        "port": 1257
+      }
+    },
+    {
+      "step": "typed-while-not-ready",
+      "typed": {
+        "value": "冷启动草稿",
+        "focused": true,
+        "sendDisabled": true
+      },
+      "readinessWasReady": false
+    },
+    {
+      "step": "send-after-not-ready",
+      "attempted": {
+        "value": "冷启动草稿"
+      },
+      "after": {
+        "value": "冷启动草稿",
+        "notice": null,
+        "loading": false
+      }
+    },
+    {
+      "step": "ready",
+      "readiness": {
+        "state": "ready",
+        "phase": "execution",
+        "apiVersion": 1,
+        "port": 1257,
+        "retryable": false
+      }
+    },
+    {
+      "step": "after-ready",
+      "before": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "hasComposer": true,
+        "draft": "",
+        "focused": false,
+        "currentSession": null,
+        "readinessNotice": "正在准备运行能力"
+      },
+      "after": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "hasComposer": true,
+        "draft": "冷启动草稿",
+        "focused": true,
+        "currentSession": null,
+        "readinessNotice": null
+      }
+    },
+    {
+      "step": "close-policy",
+      "trayAvailable": true,
+      "activeRunCount": 0,
+      "closePolicy": "background-while-active",
+      "expectedAction": "quit"
+    }
+  ],
+  "failures": [],
+  "gaps": [
+    "a deliberately slow initialization (no product knob exists to delay it)",
+    "switching conversations while the Runtime is still starting",
+    "typing continuously for the whole not-ready window (that window is ~300 ms here)",
+    "close-to-background is only reachable while a run is active, so the live close/restore cycle is not exercised"
+  ]
+}

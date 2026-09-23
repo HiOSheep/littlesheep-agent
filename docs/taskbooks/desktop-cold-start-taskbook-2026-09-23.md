@@ -155,7 +155,9 @@
 - 改动文件：`packages/app/src/main/index.ts`、`runtime-readiness.ts`（新）、`plugin-host-startup.ts`（新）、`local-app-api-server.ts`、`local-app-api/*`（`contracts.ts`、`http.ts`、`run-lifecycle-routes.ts`、`session-routes.ts`、`project-routes.ts`、`runtime-routes.ts`、`workspace-routes.ts`、`memory-routes.ts`、`run-routes.ts`、`run-checkpoint-routes.ts`、`provider-calibration-route.ts`）、`packages/app/src/preload/index.ts`、`packages/app/src/renderer/api/*`、`packages/app/src/renderer/App.tsx`、`packages/app/src/renderer/runtime-readiness/*`（新）、`packages/app/src/shared/runtime-readiness-{contracts,ipc}.ts`（新）。
 - 做法：启动拆为三段（数据前置 → UI 索引与监听 → Runner 与就绪发布）；Local App API 在 Runner 之前监听，仅 Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；preload 提供 `localApiBase()` / `getRuntimeReadiness()` / `onRuntimeReadiness()`，渲染器侧统一经 `localApiFetch` 在就绪前等待端口。
 - 证据：真实 Electron 探针确认未就绪时 `/runtime/readiness`、`/sessions`、`/projects`、`/runtime`、`/application/acceptance` 均 200，`/state`、`/run`、`/run-checkpoints` 为 503，就绪后全部 200；`local-app-api-readiness.test.ts` 覆盖同一契约。
-- 剩余缺口：慢初始化期间“连续输入、草稿与焦点在交接后不变”尚未做逐帧实机验证；“未就绪时不假报已发送”由 transport 等待与错误回灌路径保证，但未在真实 Provider 缺失场景下截图复现。
+- 新增交互实机证据：`scripts/verify-desktop-cold-start-interaction.mjs` 在真实窗口上确认——未就绪期间可输入草稿且焦点留在输入框、**发送入口被禁用**、按 Enter 不会被当成已发送；就绪后草稿/焦点/`#root`/`location` 均不变、就绪提示消失、发送入口原地启用。逐项观察见 `docs/reference/cold-start-baseline/screenshots/cold-start-interaction.json`。
+- 该验证同时发现并修掉一个真实回归：发送按钮原先只判断草稿是否为空，未就绪时仍可点击；现在它由 Runtime 的就绪事实直接禁用，入口文案使用同一真实原因（`composer-view.tsx` + `control-surface-style.test.ts`）。
+- 剩余缺口：故意拉慢的初始化（产品无此开关，未就绪窗口只有约 300 ms）、未就绪期间切换会话的实机复现。
 
 ### CS-06｜保护续接与故障体验 —— 部分实现
 
