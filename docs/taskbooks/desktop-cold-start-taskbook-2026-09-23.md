@@ -168,6 +168,10 @@
 - CS-04 的下一步是拆分 `startExecution` 并测量 Runner 构建各段成本，且必须先证明收益、保持迁移与一致性顺序；CS-05 的下一步是先做静态导入链测量再决定是否拆包——现已试做的插件包延迟导入实测落在噪声内（199–220 ms vs 197–216 ms），**不作为提速结论**。
 - CS-07 的截图矩阵、打包版回归与文档收口待前两项有了可对照的改动后再执行。
 
+### CS-07 前置观察（不属于本专项改动）
+
+`pnpm run verify:electron-ui-state-continuity` 当前失败，断言为 `bounded tool activity was not observable`。已在本次改动之前的提交 `df66ed9` 上复现同一失败（同一环境、重新构建后再跑），因此**不是**本专项引入的回归。该失败的实际含义是：真实 Electron 下该脚本没能在最近一轮渲染出 `glob` 工具行，需要独立排查（脚本期望、模型回合或渲染时序），不属于冷启动任务书范围，此处只记录事实，不据此判定本专项通过或失败。
+
 ### 文档同步
 
 - 更新：`packages/app/README.md`、`packages/app/src/main/README.md`、`packages/app/src/preload/README.md`、`packages/app/src/renderer/README.md`、`packages/app/src/renderer/api/README.md`、`packages/app/src/renderer/app-shell/README.md`、`packages/app/src/renderer/runtime-recovery/README.md`、`packages/app/src/renderer/runtime-readiness/README.md`（新）、`packages/app/src/main/local-app-api/README.md`、`packages/app/src/shared/README.md`。
