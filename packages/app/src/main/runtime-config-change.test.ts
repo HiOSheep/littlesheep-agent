@@ -6,7 +6,7 @@
 // was the previous rule.
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_CONFIG, type Config } from '@littlesheep/config'
-import { changedRuntimeConfigKeys } from './runtime-config-change.js'
+import { changedRuntimeConfigKeys, createRuntimeConfigUpdater } from './runtime-config-change.js'
 
 function config(): Config {
   return structuredClone(DEFAULT_CONFIG)
@@ -63,5 +63,75 @@ describe('changedRuntimeConfigKeys', () => {
     ) as unknown as Config
 
     expect(changedRuntimeConfigKeys(previous, reordered)).toEqual([])
+  })
+})
+
+// CE-02: a save that did not persist is not a save. The updater owns the order
+// (normalize, persist, then replace the Runner), so a persistence failure has to
+// reject before anything reads the new revision.
+describe('createRuntimeConfigUpdater', () => {
+  function updater(options: { failPersist?: boolean } = {}) {
+    const events: string[] = []
+    const persisted: Config[] = []
+    let current: Config | null = config()
+    const update = createRuntimeConfigUpdater({
+      current: () => current,
+      prepare: (next) => next,
+      persist: async (next) => {
+        events.push('persist')
+        if (options.failPersist) throw new Error('disk is read-only')
+        persisted.push(next)
+        current = next
+      },
+      rebuild: async () => {
+        events.push('rebuild')
+      },
+    })
+    return { update, events, persisted, current: () => current }
+  }
+
+  it('persists before replacing the Runner, and only when something changed', async () => {
+    const harness = updater()
+    const next = config()
+    next.agents.defaults.workspace = 'D:\\moved'
+
+    await harness.update(next)
+
+    expect(harness.events).toEqual(['persist', 'rebuild'])
+    expect(harness.persisted).toHaveLength(1)
+
+    const unchanged = updater()
+    await unchanged.update(structuredClone(DEFAULT_CONFIG))
+    expect(unchanged.events).toEqual(['persist'])
+  })
+
+  it('rejects a failed save without replacing the Runner or reporting success', async () => {
+    const harness = updater({ failPersist: true })
+    const before = harness.current()
+    const next = config()
+    next.agents.defaults.workspace = 'D:\\moved'
+
+    await expect(harness.update(next)).rejects.toThrow('disk is read-only')
+
+    // The caller sees the failure, the Runner keeps the previous revision, and
+    // the next read still describes what is actually on disk.
+    expect(harness.events).toEqual(['persist'])
+    expect(harness.current()).toEqual(before)
+  })
+
+  it('serializes concurrent updates so they cannot mix two revisions', async () => {
+    const harness = updater()
+    const first = config()
+    first.agents.defaults.workspace = 'D:\\first'
+    const second = config()
+    second.agents.defaults.workspace = 'D:\\second'
+
+    await Promise.all([harness.update(first), harness.update(second)])
+
+    // Both saves are applied in order; the last one is the current revision and
+    // neither was normalized against a half-applied state.
+    expect(harness.persisted.map((entry) => entry.agents.defaults.workspace))
+      .toEqual(['D:\\first', 'D:\\second'])
+    expect(harness.current().agents.defaults.workspace).toBe('D:\\second')
   })
 })

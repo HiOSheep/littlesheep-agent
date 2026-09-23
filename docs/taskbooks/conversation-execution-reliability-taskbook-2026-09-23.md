@@ -75,7 +75,7 @@
 - [x] 不重启应用，保存默认工作区 A→B 后，新建且未绑定目录的 run 使用 B。（变更检测与重建触发由 `runtime-config-change.test.ts` 覆盖到字段级；**实机**：`POST /runtime {workspace: <新目录>}` 保存后，**请求里不指定任何目录**再发一次，产物落在新目录、旧默认目录无同名文件、`write` 的 `resourceKeys` 解析到新工作区——说明提示、工具 cwd 与产物归属都跟着换了，不只是配置文件写了。）
 - [ ] 已绑定项目 A 的会话仍按项目归属运行，不被全局默认 B 偷换；显式切换会话目录后，新 run 使用新目录。（`resolveRunWorkspaceContext` 的项目归属已断言；渲染器侧仍以 `runtime.workspace` 下发请求目录，实机行为待 CE-12。）
 - [x] 正在执行的 run 保留启动时目录；切换设置不把执行中的命令或产物改派到另一目录。（Runner 在 `executeRun` 入口解析一次 `cwd`，整轮工具上下文与提示共用该值；重建采用"先建后换 + 延迟关闭旧 Runner"。）
-- [ ] 配置持久化失败不显示保存成功；连续更新和并发启动不混用两份配置。
+- [x] 配置持久化失败不显示保存成功；连续更新和并发启动不混用两份配置。（`runtime-config-change.test.ts` 新增三条：`createRuntimeConfigUpdater` 先持久化再重建，且只在真正有变化时重建；**持久化抛错时 promise 拒绝、Runner 不替换、当前配置仍是磁盘上那一份**（调用方因此拿到错误而不是"已保存"）；两个并发更新被串行化，按序落盘、不会互相看到半应用状态。渲染器侧 `applyRuntimePatchReporting` 把该错误显示在设置页并在失败后重读配置——既有 `api` 用例覆盖。）
 - [x] 覆盖 Main→Runner→提示→工具 cwd 的集成断言，不能只检查 config 文件已写入。（`packages/runner/src/run-workspace-fact.test.ts` 走真实 Runner + 真实工具调用，断言提示、工具 `ctx.cwd` 与环境简报一致。）
 
 ### CE-03｜披露真实 shell（P0）
