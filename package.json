@@ -56,6 +56,7 @@
     "verify:electron-ui-state-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-ui-state-continuity.mjs",
     "verify:electron-documents": "pnpm run ensure:app-build && node scripts/run-verified-electron.mjs scripts/verify-electron-document-runtime.mjs",
     "verify:electron-deepseek-reply-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-reply-continuity.mjs",
+    "verify:conversation-execution-reliability": "pnpm run ensure:app-build && node scripts/verify-conversation-execution-reliability.mjs",
     "verify:electron-deepseek-compaction-continuity": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-compaction-continuity.mjs",
     "verify:electron-deepseek-background-task": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-background-task.mjs",
     "verify:electron-deepseek-parallel-load": "pnpm run ensure:app-build && node scripts/verify-electron-deepseek-parallel-load.mjs",
