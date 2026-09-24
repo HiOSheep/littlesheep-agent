@@ -387,9 +387,21 @@
 
 **定位**：[ui/README.md](../../packages/app/src/renderer/ui/README.md)、[03-shell-sidebar.css](../../packages/app/src/renderer/styles/03-shell-sidebar.css)、[07-overlays-settings.css](../../packages/app/src/renderer/styles/07-overlays-settings.css)、[09-projects-archive.css](../../packages/app/src/renderer/styles/09-projects-archive.css)。
 
-- [ ] 建立小范围状态样本：主/次/危险按钮、输入、空态、错误、pending、只读；复用现有 token，补必要的字号/间距角色。
-- [ ] 优先随 UX-04/07/09 抽取 AsyncFeedback、Dialog 等确有复用收益的基元，不全仓机械替换样式。
-- [ ] 验收：同类控件的高度、文字层级、聚焦、禁用、等待和危险样式一致；保留既有黑灰主题、紧凑布局、reduced-motion 与圆角例外。
+- [x] 建立小范围状态样本：主/次/危险按钮、输入、空态、错误、pending、只读；复用现有 token，补必要的字号/间距角色。
+- [x] 优先随 UX-04/07/09 抽取 AsyncFeedback、Dialog 等确有复用收益的基元，不全仓机械替换样式。
+- [x] 验收：同类控件的高度、文字层级、聚焦、禁用、等待和危险样式一致；保留既有黑灰主题、紧凑布局、reduced-motion 与圆角例外。
+
+**实施记录（2026-09-25 06:51:16）｜状态：实机验收通过，三项勾选**
+
+- 实机走查：新增 `pnpm run verify:shared-ui-roles`（[scripts/verify-shared-ui-roles.mjs](../../scripts/verify-shared-ui-roles.mjs)）。1280×840 真实窗口 + 确定性 Provider 桩，**47 项断言全部通过（failures 为空）**，24 个观测步骤，12 张截图（`%TEMP%\littlesheep-shared-ui-roles\screenshots\`，含设置页、插件通知/失败、渠道失败与忙态、存储错误、归档错误、对话框保存中、键盘聚焦、策略行）。
+- **① 五处浅红统一（真实渲染面测量）**：`dialog-error`（清空 API 地址触发真实校验错误「API 地址必须是 http(s) URL。」）、`plugin-page-error`、`storage-settings-notice[data-tone=error]`、`web-settings-notice.error`、渠道失败明细（配置里放一个类型没有插件提供的渠道 `littlesheep-channel-role-fixture`，页面真实渲染 `channel type "…" is not provided by an active plugin`）全部测到 `color: rgb(255, 210, 210)`。本轮夹具到不了的 `web-source-errors`、`plugin-list-error`、`plugin-runtime-state.failed`、`runtime-event-notice.error`、`composer-error`、`activity-tool-error`、`tool-live-err`、`agent-transcript-attention`、`project-creator-error` 用**在活动设置页里挂真实类名**的样本读级联，同样是 `rgb(255, 210, 210)`；同批的中性样本 `dialog-hint` 仍是 `rgb(160, 160, 160)`，所以“到处都是危险色”不会让这条断言通过。
+- **② 插件通知几何**：真实成功通知「插件已重新发现并加载」与真实失败通知「插件操作未完成」都测得 `padding 8px / 10px`、`font-size 12px`（原 `7px 9px` / `11px`）；失败通知的重试动作 `.feedback-action` 26px / 12px / 圆角 10px。
+- **尺寸角色（本轮新增收敛，均为实机测量）**：页头动作统一 32px（`.plugin-reload-button` 原 30px、`.development-environments-refresh` 原 30px、`.archive-refresh` 32px 改为同一 token），段内紧凑动作统一 30px（`.settings-policy-row button` 原 29px，`.storage-settings-row button`、`.storage-settings-actions button`、`.web-cache-clear`、`.ms-feedback-action`、`.memory-file-save`、`.provider-remove` 由 30px 字面值改为 `--control-height-row`），行内通知动作 26px，提交控件 32px/13px，常规控件 32px/12px；对话框关闭 30px 与 `archive-action` 26px、`approval-action` 34px、48px 大块选择仍按角色保留。
+- **禁用与等待**：新增 `--control-disabled-opacity: 0.42`（大块选择保留 `--choice-disabled-opacity: 0.58`），补齐此前**完全没有禁用样式**的 `close-btn`、`toggle-btn`、`refresh-btn`、`danger-btn`、`dialog-close`（供应商编辑器的取消/关闭在保存中确实带 `disabled`，此前看不出区别）。实测进行中的控件全部 `disabled=true` 且 `opacity: 0.42`：保存中的保存/取消/关闭（保存按钮文案变为“保存中…”，编辑器状态行同步）、插件重载（“加载中”）、插件开关与通知重试按钮、渠道刷新与重载（“重新加载中...”）、存储动作（“清除中”）、归档刷新；未在忙碌但确实禁用的策略行保存按钮同样是 0.42。
+- **聚焦**：键盘 Tab 在真实对话框里测到两种可见聚焦——设置字段 1px solid `rgb(226, 226, 226)`（offset 2px），模型胶囊按钮 2px solid `rgba(226, 226, 226, 0.32)`（offset 2px，全局规则）；`settings-sidebar-exit` 这类页面级控件用背景/边框/文字同时变化的表面反馈。没有测到“聚焦但看不出”的样本。
+- **保留项（逐条测量）**：黑灰主题 token 全为灰阶（`#141414`/`#1c1c1c`/`#202020`/`#252525`/`#2a2a2a`/`#e8e8e8`/`#343434`/`#474747` 等 r=g=b）；紧凑布局保持 32/30/26px 家族；`--radius-ui: 10px` 与 `--radius-icon: 3px` 未被破坏；`prefers-reduced-motion: reduce` 下 0.14s 过渡与 0.18s `content-fade-in` 全部塌到 0.001s。
+- 源侧契约：`ui-state-consistency.test.ts` 从 5 个用例扩到 7 个（新增“一种动作角色一个高度”“一种角色一个禁用色调”，后者要求样式里不得再出现 `opacity: 0.42` 字面值、`--choice-disabled-opacity` 必须成对声明）。`pnpm exec vitest run packages/app/src/renderer` 114 文件 / 625 用例全部通过。
+- 未覆盖项：① 密集行/工具条/选择器角色（侧栏导航与树行、工作区文件树与浏览器工具条、聊天历史“加载更早”、输入栏选择器）仍各自使用 0.3–0.72 的禁用透明度，本轮**没有**收敛，取值与理由记在 `ui/README.md`——任务书明确要求不做全仓机械替换，收敛它们需要各自的实机对照；② 输入、空态、只读三类只做清点与记录，未改取值；③ 上文的合成样本只能证明样式级联，不替代这些表面的真实交互走查；④ 失败/等待/禁用态由页面内注入的传输故障（hold/fail 一次请求）驱动，视图、标记与样式是真实的，注入本身不是产品行为。
 
 **实施记录（2026-09-22 23:57:19）｜状态：实现完成，实机验收未做，保持未勾选**
 
@@ -767,7 +779,7 @@
 | 9 | UX-09 | 本任务实施记录 + `pnpm run verify:async-feedback` | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
 | 10 | UX-11 | 本任务实施记录 + `pnpm run verify:no-model-config-loop` | 新数据根从空状态配置完成并回到原草稿；加载失败重试；保存后选择器从 Runtime 刷新 | |
 | 11 | UX-12 / UX-13 | 本任务实施记录 + `pnpm run verify:settings-navigation-terminology` | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |
-| 12 | UX-14 | 本任务实施记录 | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px） | |
+| 12 | UX-14 | 本任务实施记录 + `pnpm run verify:shared-ui-roles` | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px），并实测同类控件的高度/文字层级/聚焦/禁用/等待/危险一致与主题、紧凑布局、reduced-motion、圆角例外 | |
 | 13 | UX-15 | 本任务实施记录 + `pnpm run verify:narrow-high-dpi-forms` | 最小窗口与常用窗口 + 125%/150%/200% 缩放下的模型表单、设置侧栏、审批长路径、运行时选择器 | |
 | 14 | UX-16 | 本任务实施记录 | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |
 | 15 | UX-18 | 本任务实施记录 + `pnpm run verify:review-navigator-width` | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动与不可达按钮 | |

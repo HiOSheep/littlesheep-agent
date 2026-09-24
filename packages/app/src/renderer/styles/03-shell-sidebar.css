@@ -54,8 +54,16 @@
   --notice-font-size: 12px;
   --control-height-md: 32px;
   --control-height-sm: 26px;
+  /* Row-level compact action inside a settings section. */
+  --control-height-row: 30px;
   --control-font-size: 12px;
   --control-font-size-strong: 13px;
+  /* One disabled tone for the shared control roles and the settings/dialog
+     action buttons. Dense row, toolbar and picker roles keep their own scale
+     (see ui/README.md) — this is a role token, not a blanket opacity. */
+  --control-disabled-opacity: 0.42;
+  /* Large selection blocks keep more presence than a button when disabled. */
+  --choice-disabled-opacity: 0.58;
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
   --radius-ui: 10px;
   --radius-floating-panel: 14px;

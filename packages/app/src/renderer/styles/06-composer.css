@@ -735,7 +735,7 @@
 }
 
 .icon-btn:disabled {
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -2070,7 +2070,7 @@
 }
 
 .send-round:disabled {
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 

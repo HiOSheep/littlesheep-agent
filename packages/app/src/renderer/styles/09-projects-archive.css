@@ -133,7 +133,7 @@
 .project-creator-option:disabled,
 .project-parent-picker:disabled {
   cursor: default;
-  opacity: 0.58;
+  opacity: var(--choice-disabled-opacity);
 }
 
 .project-creator-option-icon {
@@ -248,7 +248,7 @@
 
 .project-create-submit:disabled {
   cursor: default;
-  opacity: 0.5;
+  opacity: var(--control-disabled-opacity);
 }
 
 .project-creator-error {
@@ -290,7 +290,7 @@
 }
 
 .archive-refresh {
-  min-height: 32px;
+  min-height: var(--control-height-md);
   padding: 0 10px;
   color: var(--muted);
   background: transparent;
@@ -314,7 +314,7 @@
 
 .archive-refresh:disabled {
   cursor: default;
-  opacity: 0.56;
+  opacity: var(--control-disabled-opacity);
 }
 
 .archive-error {
@@ -514,7 +514,7 @@
 
 .archive-action:disabled {
   cursor: default;
-  opacity: 0.54;
+  opacity: var(--control-disabled-opacity);
 }
 
 .archive-glyph {
@@ -681,7 +681,7 @@
 
 .ms-feedback-action {
   flex: 0 0 auto;
-  min-height: 30px;
+  min-height: var(--control-height-row);
   padding: 0 12px;
   color: var(--text);
   background: var(--control-hover);

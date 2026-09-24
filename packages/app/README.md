@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 06:53:48
+最后更新：2026-09-25 06:56:12
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -28,7 +28,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - 异步反馈：`renderer/ui/feedback.ts` / `feedback-notice.tsx` 是唯一结构，色调来自结果字段而不是解析文案；失败留在发起操作处、可重试、长错误折叠呈现。设置页的写操作必须把结果带回本页，包括 `applyRuntimePatchReporting` 返回的 Runtime 失败文本。
 - 不可逆操作：永久删除先经 `renderer/ui/danger-confirm.tsx` 确认，影响文案由 `renderer/deletion-impact.ts` 按真实 API 行为生成；可恢复的归档恢复保持单次点击。删除事务的防重复必须是**同步的 ref**（`ArchiveManager.tsx` 的 `deletingRef`）：同一 task 内连点两次时 React state 仍是旧值，真实窗口实测会向 API 发出两次 DELETE。
 - 显示密度：紧凑模式只折叠无需关注的行，失败、权限拒绝、未验证、部分完成与待用户事项必须继续可见（`renderer/chat/activity-visibility.ts`）。
-- 视觉角色：危险文本、通知几何与控件高度使用 `03-shell-sidebar.css` 中的角色 token，同类控件不得重新写回字面值；`ui-state-consistency.test.ts` 直接测量样式源。
+- 视觉角色：危险文本、通知几何、控件高度与禁用态使用 `03-shell-sidebar.css` 中的角色 token（`--feedback-danger-text`、`--notice-padding-*`、`--control-height-md|sm|row`、`--control-disabled-opacity`、`--choice-disabled-opacity`），同类控件不得重新写回字面值；`ui-state-consistency.test.ts` 直接测量样式源，`pnpm run verify:shared-ui-roles` 在真实窗口里测量渲染结果（错误文本 `rgb(255, 210, 210)`、通知 8px/10px/12px、页头动作 32px、段内动作 30px、进行中 0.42、reduced-motion 下 0.001s），角色清单与未收敛范围见 `src/renderer/ui/README.md`。
 
 真实窗口验收（最小窗口、系统缩放、输入法、失败注入与场景连续性）仍是未完成项，逐项脚本见 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`。
 

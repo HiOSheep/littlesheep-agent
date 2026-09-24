@@ -92,6 +92,85 @@ describe('shared state sample', () => {
     expect(declarations('.approval-action', 'height: 34px')).toBe(true)
   })
 
+  it('gives each action role one height instead of a per-page value', () => {
+    const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
+    expect(root).toContain('--control-height-row: 30px;')
+
+    // Page header actions share the regular control height...
+    for (const selector of [
+      '.plugin-reload-button',
+      '.development-environments-refresh',
+      '.archive-refresh',
+      '.refresh-btn',
+      '.reload-btn',
+    ]) {
+      expect(declarations(selector, 'min-height: var(--control-height-md)'), selector).toBe(true)
+    }
+
+    // ...and compact actions inside a section share the row height.
+    for (const selector of [
+      '.settings-policy-row button',
+      '.storage-settings-row button',
+      '.storage-settings-actions button',
+      '.web-cache-clear',
+      '.ms-feedback-action',
+      '.memory-file-save',
+      '.provider-remove',
+    ]) {
+      expect(declarations(selector, 'min-height: var(--control-height-row)'), selector).toBe(true)
+    }
+  })
+
+  it('gives the same role one disabled tone instead of a per-page opacity', () => {
+    const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
+    expect(root).toContain('--control-disabled-opacity: 0.42;')
+    expect(root).toContain('--choice-disabled-opacity: 0.58;')
+
+    // Shared control roles, settings-page action buttons and dialog actions.
+    for (const selector of [
+      '.toggle-btn',
+      '.close-btn',
+      '.refresh-btn',
+      '.danger-btn',
+      '.dialog-close',
+      '.save-btn',
+      '.reload-btn',
+      '.feedback-action',
+      '.icon-btn',
+      '.send-round',
+      '.plugin-reload-button',
+      '.plugin-switch',
+      '.settings-policy-row button',
+      '.application-background-refresh',
+      '.active-run-actions button',
+      '.storage-settings-row button',
+      '.storage-settings-actions button',
+      '.development-environments-refresh',
+      '.development-environment-version-remove',
+      '.development-environment-action-row button',
+      '.development-environment-controls > button',
+      '.checkpoint-recovery-header button',
+      '.checkpoint-recovery-actions button',
+      '.memory-files-icon-button',
+      '.memory-file-save',
+      '.project-create-submit',
+      '.archive-refresh',
+      '.archive-action',
+    ]) {
+      expect(declarations(selector, 'opacity: var(--control-disabled-opacity)'), selector).toBe(true)
+    }
+
+    // Large selection blocks keep the stronger disabled tone through their own
+    // token, so the exception is declarative instead of a stray literal.
+    expect(declarations('.application-close-policy-list .profile-choice', 'opacity: var(--choice-disabled-opacity)')).toBe(true)
+    expect(declarations('.project-parent-picker', 'opacity: var(--choice-disabled-opacity)')).toBe(true)
+
+    // The converged role must not drift back to a literal 0.42. Keyframe
+    // animations use their own opacity steps and are not a disabled tone.
+    const declarationsOnly = styles.replace(/@keyframes[\s\S]*?\n\}\n/gu, '\n')
+    expect(declarationsOnly).not.toMatch(/(?:^|[\s;{])opacity:\s*0\.42;/u)
+  })
+
   it('keeps the existing theme, motion and radius exceptions intact', () => {
     const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
 

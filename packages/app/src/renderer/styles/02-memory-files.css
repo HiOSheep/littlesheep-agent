@@ -44,7 +44,7 @@
 }
 
 .memory-files-icon-button:disabled {
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -265,7 +265,7 @@
 }
 
 .memory-file-save {
-  min-height: 30px;
+  min-height: var(--control-height-row);
   border: 0;
   border-radius: var(--radius-ui);
   background: transparent;
@@ -284,7 +284,7 @@
 }
 
 .memory-file-save:disabled {
-  opacity: 0.4;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 

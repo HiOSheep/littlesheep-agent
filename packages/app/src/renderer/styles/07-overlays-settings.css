@@ -682,7 +682,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: var(--control-height-md);
   gap: 6px;
   padding: 0 8px;
   color: var(--muted);
@@ -710,7 +710,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-reload-button:disabled {
-  opacity: 0.5;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -804,7 +804,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-switch:disabled {
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -1055,7 +1055,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .web-egress-confirmation button,
 .web-cache-clear {
-  min-height: 30px;
+  min-height: var(--control-height-row);
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
@@ -1458,7 +1458,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-policy-row button {
   width: max-content;
-  min-height: 29px;
+  min-height: var(--control-height-row);
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
@@ -1483,7 +1483,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-policy-row button:disabled {
   cursor: default;
-  opacity: 0.38;
+  opacity: var(--control-disabled-opacity);
 }
 
 .application-background-page {
@@ -1530,7 +1530,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .application-close-policy-list .profile-choice:disabled {
   cursor: default;
-  opacity: 0.58;
+  opacity: var(--choice-disabled-opacity);
 }
 
 .application-background-refresh,
@@ -1569,7 +1569,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .application-background-refresh:disabled,
 .active-run-actions button:disabled {
   cursor: default;
-  opacity: 0.38;
+  opacity: var(--control-disabled-opacity);
 }
 
 .application-background-refresh .workspace-panel-svg-icon,
@@ -1858,7 +1858,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .storage-settings-actions button {
   justify-self: end;
   width: max-content;
-  min-height: 30px;
+  min-height: var(--control-height-row);
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
@@ -1892,7 +1892,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .storage-settings-row button:disabled,
 .storage-settings-actions button:disabled {
   cursor: default;
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
 }
 
 .storage-settings-actions {
@@ -1948,7 +1948,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   justify-content: center;
   flex: 0 0 auto;
   gap: 6px;
-  min-height: 30px;
+  min-height: var(--control-height-md);
   padding: 0 9px;
   color: var(--muted);
   background: transparent;
@@ -1980,7 +1980,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environments-refresh:disabled {
   cursor: default;
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
 }
 
 .development-environments-root {
@@ -2122,7 +2122,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-version-remove:disabled {
   cursor: default;
-  opacity: 0.4;
+  opacity: var(--control-disabled-opacity);
 }
 
 .development-environment-main > p {
@@ -2242,7 +2242,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-action-row button:disabled {
   cursor: default;
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
 }
 
 .development-environment-controls > button:hover:not(:disabled),
@@ -2255,7 +2255,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-controls > button:disabled {
   cursor: default;
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
 }
 
 .development-environments-empty {
@@ -2659,7 +2659,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .feedback-action:disabled {
-  opacity: 0.5;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -2816,7 +2816,18 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .save-btn:disabled,
 .reload-btn:disabled {
-  opacity: 0.5;
+  opacity: var(--control-disabled-opacity);
+  cursor: default;
+}
+
+/* The regular controls answer a disabled state too: before this rule the
+   cancel button of a dialog stayed fully opaque while a save was in flight. */
+.toggle-btn:disabled,
+.close-btn:disabled,
+.refresh-btn:disabled,
+.danger-btn:disabled,
+.dialog-close:disabled {
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -3238,7 +3249,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .provider-remove {
-  min-height: 30px;
+  min-height: var(--control-height-row);
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);

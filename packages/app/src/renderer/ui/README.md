@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-22 23:57:19
+最后更新：2026-09-25 06:56:12
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -26,12 +26,17 @@
 | 行内通知几何 | `storage-settings-notice`、`plugin-page-notice`、`plugin-page-error`、`archive-error`、`project-creator-error` | `--notice-padding-block` / `--notice-padding-inline` / `--notice-font-size` |
 | 常规控件 | `toggle-btn`、`close-btn`、`refresh-btn` | `--control-height-md` + `--control-font-size` |
 | 提交控件 | `save-btn`、`reload-btn`、`danger-btn` | `--control-height-md` + `--control-font-size-strong` |
+| 页头动作 | `plugin-reload-button`、`development-environments-refresh`、`archive-refresh` | `--control-height-md` + `--control-font-size`（UX-14 实机验收时 30px 与 32px 混用，已统一） |
+| 段内紧凑动作 | `settings-policy-row button`、`storage-settings-row button`、`storage-settings-actions button`、`web-cache-clear`、`ms-feedback-action`、`memory-file-save`、`provider-remove` | `--control-height-row` + `--control-font-size`（29px 与 30px 混用，已统一） |
 | 行内小动作 | `feedback-action` | `--control-height-sm` + `--control-font-size` |
+| 禁用态 | 上面所有角色 + `dialog-close`，以及设置页/恢复页/记忆文件页的动作按钮 | `--control-disabled-opacity`；大块选择用 `--choice-disabled-opacity` |
 | 空态与只读 | `dialog-hint`、`settings-module-empty`、`provider-empty`、`WorkspacePlaceholder` | 沿用既有 token；本轮未改动 |
 
-**已知例外（不是漂移）**：`archive-action` 26px 与 `approval-action` 34px 是紧凑行操作和对话框主操作，`.provider-remove` 是 30px 胶囊，`.provider-add` / `.profile-choice` 是 48px 大块选择；圆角例外仍是 `--radius-icon: 3px`（`sidebar-toggle-btn`、`app-nav-btn`）。
+**已知例外（不是漂移）**：`archive-action` 26px 与 `approval-action` 34px 是紧凑行操作和对话框主操作，`.provider-remove` 是 30px 胶囊（高度归段内动作，圆角仍是胶囊），`.provider-add` / `.profile-choice` 是 48px 大块选择；`.plugin-switch` 18px 是开关、`.provider-chip` 24px 是胶囊；圆角例外仍是 `--radius-icon: 3px`（`sidebar-toggle-btn`、`app-nav-btn`）。`.application-close-policy-list .profile-choice:disabled` 与 `.project-parent-picker:disabled` 保留更强的 `--choice-disabled-opacity`。
 
-**UX-14 收敛的取值变化（需要实机确认，未截图验证）**：`storage-settings-notice[data-tone=error]` 的 `#e8c5bd`、`web-source-errors` 与 `web-settings-notice.error` 的 `#f2b6b6`、`plugin-runtime-state.failed` 的 `#f0a9a9`、渠道失败明细的 `#e5a6a6` 统一为 `--feedback-danger-text`（即对话框错误一直在用的 `#ffd2d2`）；`plugin-page-notice/.plugin-page-error` 的 `7px 9px` 内边距统一为行内通知角色的 `8px 10px`，字号 `11px` 统一为 `12px`。其余替换都是零计算变化的 token 化。
+**未收敛范围（如实记录，不是已完成）**：侧栏导航/树行、工作区文件树与浏览器工具条、聊天历史“加载更早”、输入栏选择器这些密集行/工具条角色仍各自使用 0.3–0.72 的禁用透明度。它们与上面按钮角色的层级不同，任务书要求不做全仓机械替换，因此本轮没有改；要收敛需要各自的实机对照。
+
+**UX-14 的取值变化与实机证据**：五处危险文本（`storage-settings-notice` 错误色 `#e8c5bd`、`web-source-errors` 与 `web-settings-notice.error` 的 `#f2b6b6`、`plugin-runtime-state.failed` 的 `#f0a9a9`、渠道失败明细 `#e5a6a6`）统一为 `--feedback-danger-text`（即对话框错误一直在用的 `#ffd2d2`）；`plugin-page-notice/.plugin-page-error` 的内边距 `7px 9px` → `8px 10px`、字号 `11px` → `12px`；页头动作 30px → 32px；段内动作 29px → 30px；共享控件与设置/对话框动作按钮的禁用态统一为 `--control-disabled-opacity: 0.42`，并补上此前完全没有禁用样式的 `close-btn`/`toggle-btn`/`refresh-btn`/`danger-btn`/`dialog-close`。以上均由 `pnpm run verify:shared-ui-roles` 在真实窗口里测量（对话框错误 13px 文本为 `rgb(255,210,210)`、插件通知 8px/10px/12px、禁用态 0.42、reduced-motion 下 0.14s/0.18s 动效塌到 0.001s）；源侧契约见 `ui-state-consistency.test.ts`。
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 

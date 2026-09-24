@@ -149,7 +149,7 @@
 }
 
 .checkpoint-recovery-header button:disabled {
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
@@ -486,7 +486,7 @@
 }
 
 .checkpoint-recovery-actions button:disabled {
-  opacity: 0.42;
+  opacity: var(--control-disabled-opacity);
   cursor: default;
 }
 
