@@ -72,6 +72,25 @@ describe('workspace review layout unification', () => {
     expect(styles).not.toContain('.workspace-tree-size {')
   })
 
+  it('gives the review leading column its own persisted width (UX-18)', async () => {
+    const panel = await source('./panel.tsx')
+    const sessionLayouts = await source('./use-workspace-session-layouts.ts')
+    const persistence = await source('../workspace-persistence.ts')
+    const dockView = await source('../app-shell/workspace-dock-view.tsx')
+
+    // Review gets the review width and writes back to the review field; the shared file
+    // navigator keeps the file-navigator field, so the two can never move each other.
+    expect(panel).toContain('fileNavigatorWidth={reviewNavigatorWidth}')
+    expect(panel).toContain('onFileNavigatorWidthChange={onReviewNavigatorWidthChange}')
+    expect(panel).toContain('navigatorWidth={fileNavigatorWidth}')
+    expect(panel).toContain('onNavigatorWidthChange={onFileNavigatorWidthChange}')
+    expect(sessionLayouts).toContain("setField('reviewNavigatorWidth', update)")
+    expect(persistence).toContain('reviewNavigatorWidth: WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT')
+    expect(persistence).toContain('reviewNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.reviewNavigatorWidth)')
+    expect(dockView).toContain('reviewNavigatorWidth={workspaceReviewNavigatorWidth}')
+    expect(dockView).toContain('onReviewNavigatorWidthChange={setWorkspaceReviewNavigatorWidth}')
+  })
+
   it('draws the same depth guides for expanded review folders as the file navigator', async () => {
     const reviewTree = await source('./review-tree.tsx')
     const styles = await readRendererStyleSource()

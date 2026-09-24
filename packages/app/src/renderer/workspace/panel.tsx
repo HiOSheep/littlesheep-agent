@@ -46,7 +46,7 @@ export function WorkspacePanel({
   artifactVersion,
   fileDrafts,
   fileNavigatorCollapsed,
-  fileNavigatorWidth,
+  fileNavigatorWidth, reviewNavigatorWidth,
   expandedPaths,
   onTabChange,
   onTabsReorder,
@@ -63,7 +63,7 @@ export function WorkspacePanel({
   onLineCommentDelete,
   attachmentRemoval,
   onFileNavigatorCollapsedChange,
-  onFileNavigatorWidthChange,
+  onFileNavigatorWidthChange, onReviewNavigatorWidthChange,
   onExpandedPathsChange,
   onOpenFile, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
   onTipChange,
@@ -84,6 +84,7 @@ export function WorkspacePanel({
   fileDrafts: Record<string, WorkspaceFileDraftState>
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth: number
+  /** Same bounds as the file navigator, independent value (UX-18). */ reviewNavigatorWidth: number
   expandedPaths: string[]
   onTabChange: (tab: WorkspacePanelTabId) => void
   onTabsReorder: (tabs: WorkspacePanelTabId[]) => void
@@ -105,7 +106,7 @@ export function WorkspacePanel({
   onLineCommentDelete: (scope: string, comment: WorkspaceLineComment) => void
   attachmentRemoval: LineCommentAttachmentRemoval | null
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
-  onFileNavigatorWidthChange: (width: number) => void
+  onFileNavigatorWidthChange: (width: number) => void; onReviewNavigatorWidthChange: (width: number) => void
   onExpandedPathsChange: (update: StringListUpdater) => void
   onOpenFile: (path: string) => void
   onBrowserNavigate: (url: string, mode?: 'push' | 'replace') => void
@@ -202,10 +203,9 @@ export function WorkspacePanel({
           workspacePath={workspacePath}
           artifactVersion={artifactVersion}
           fileNavigatorCollapsed={fileNavigatorCollapsed}
-          fileNavigatorWidth={fileNavigatorWidth}
+          fileNavigatorWidth={reviewNavigatorWidth}
           lineCommentsByScope={lineCommentsByScope}
-          onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-          onFileNavigatorWidthChange={onFileNavigatorWidthChange}
+          onFileNavigatorCollapsedChange={onFileNavigatorCollapsedChange} onFileNavigatorWidthChange={onReviewNavigatorWidthChange}
           onLineCommentsChange={updateLineComments}
           onLineCommentUpdate={onLineCommentUpdate}
           onLineCommentDelete={onLineCommentDelete}

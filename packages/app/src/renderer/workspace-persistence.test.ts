@@ -32,6 +32,16 @@ describe('workspace persistence helpers', () => {
     expect(normalizeWorkspaceFileNavigatorWidth(900)).toBe(520)
   })
 
+  it('keeps the review leading column independent from the file navigator (UX-18)', () => {
+    // Old snapshots have no review width: it falls back to the shared default instead of
+    // inheriting whatever the file navigator happens to be.
+    const restored = normalizeWorkspaceSessionLayout({ fileNavigatorWidth: 318 })
+    expect(restored.fileNavigatorWidth).toBe(318)
+    expect(restored.reviewNavigatorWidth).toBe(214)
+    expect(normalizeWorkspaceSessionLayout({ reviewNavigatorWidth: 900 }).reviewNavigatorWidth).toBe(520)
+    expect(normalizeWorkspaceSessionLayout({ reviewNavigatorWidth: 40 }).reviewNavigatorWidth).toBe(160)
+  })
+
   it('roundtrips Windows file tab ids without losing path characters', () => {
     const root = 'D:\\tools\\Little Sheep'
     const path = 'D:\\tools\\Little Sheep\\src\\带 空格.tsx'
@@ -77,6 +87,7 @@ describe('workspace persistence helpers', () => {
         openRequest: { id: 1, root, path: `${root}\\first.ts` },
         fileNavigatorCollapsed: false,
         fileNavigatorWidth: 246,
+        reviewNavigatorWidth: 302,
         expandedPaths: [root, `${root}\\src`],
         drafts: {
           [firstFile]: {
@@ -101,6 +112,7 @@ describe('workspace persistence helpers', () => {
         openRequest: { id: 2, root, path: `${root}\\second.ts` },
         fileNavigatorCollapsed: true,
         fileNavigatorWidth: 318,
+        reviewNavigatorWidth: 178,
         expandedPaths: [`${root}\\other`],
         drafts: {},
         browserTabs: [],
@@ -112,6 +124,7 @@ describe('workspace persistence helpers', () => {
       activeTab: firstFile,
       openTabs: ['review', firstFile],
       fileNavigatorWidth: 246,
+      reviewNavigatorWidth: 302,
       expandedPaths: [root, `${root}\\src`],
     })
     expect(restored[workspaceSessionKey('session-a')]?.browserTabs[0]?.url).toBe('https://a.example/')
@@ -122,6 +135,7 @@ describe('workspace persistence helpers', () => {
       activeTab: secondFile,
       openTabs: [secondFile],
       fileNavigatorWidth: 318,
+      reviewNavigatorWidth: 178,
       expandedPaths: [`${root}\\other`],
     })
     expect(restored[workspaceSessionKey('session-b')]?.drafts[firstFile]).toBeUndefined()

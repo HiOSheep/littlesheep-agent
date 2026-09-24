@@ -43,6 +43,8 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
     setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth,
     setWorkspaceFileNavigatorWidth,
+    workspaceReviewNavigatorWidth,
+    setWorkspaceReviewNavigatorWidth,
     workspaceExpandedPaths,
     setWorkspaceExpandedPaths,
     workspaceArtifactVersion,
@@ -153,6 +155,7 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
         fileDrafts={workspaceFileDrafts}
         fileNavigatorCollapsed={workspaceFileNavigatorCollapsed}
         fileNavigatorWidth={workspaceFileNavigatorWidth}
+        reviewNavigatorWidth={workspaceReviewNavigatorWidth}
         expandedPaths={workspaceExpandedPaths}
         onTabChange={openWorkspacePanelTab}
         onTabsReorder={setWorkspacePanelOpenTabs}
@@ -172,6 +175,7 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
          ))}
         onFileNavigatorCollapsedChange={setWorkspaceFileNavigatorCollapsed}
         onFileNavigatorWidthChange={setWorkspaceFileNavigatorWidth}
+        onReviewNavigatorWidthChange={setWorkspaceReviewNavigatorWidth}
         onExpandedPathsChange={(update) => setWorkspaceExpandedPaths((paths) =>
           boundStringList(update(paths), MAX_NAVIGATION_EXPANDED_PATHS),
         )}

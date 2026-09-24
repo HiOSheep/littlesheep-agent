@@ -20,6 +20,7 @@ describe('WorkspaceLayoutIndex', () => {
         openRequest: { root: 'D:\\work', path: 'D:\\work\\a.ts' },
         fileNavigatorCollapsed: true,
         fileNavigatorWidth: 286.7,
+        reviewNavigatorWidth: 331.2,
         drafts: {
           dirty: {
             path: 'D:\\work\\a.ts',
@@ -37,6 +38,8 @@ describe('WorkspaceLayoutIndex', () => {
 
       expect(snapshot.width).toBe(512)
       expect(snapshot.fileNavigatorWidth).toBe(287)
+      // UX-18: the review leading column survives a restart on its own value.
+      expect(snapshot.reviewNavigatorWidth).toBe(331)
       expect(snapshot.openTabs).toEqual(['files', 'terminal'])
       expect(Object.keys(snapshot.drafts)).toEqual(['dirty'])
 
@@ -47,6 +50,7 @@ describe('WorkspaceLayoutIndex', () => {
         fullscreen: true,
         fileNavigatorCollapsed: true,
         fileNavigatorWidth: 287,
+        reviewNavigatorWidth: 331,
       })
     } finally {
       await rm(dir, { recursive: true, force: true })

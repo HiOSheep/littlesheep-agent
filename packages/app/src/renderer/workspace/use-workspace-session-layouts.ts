@@ -238,6 +238,7 @@ export function useWorkspaceSessionLayouts({
         openRequest,
         fileNavigatorCollapsed: activeLayout.fileNavigatorCollapsed,
         fileNavigatorWidth: activeLayout.fileNavigatorWidth,
+        reviewNavigatorWidth: activeLayout.reviewNavigatorWidth,
         expandedPaths: activeLayout.expandedPaths,
         drafts: serializeWorkspaceFileDrafts(activeLayout.drafts, activeLayout.openTabs),
         browserTabs: activeLayout.browserTabs,
@@ -286,6 +287,7 @@ export function useWorkspaceSessionLayouts({
   const setWorkspaceOpenRequest = (update: SetStateAction<WorkspaceOpenRequest | null>) => setField('openRequest', update)
   const setWorkspaceFileNavigatorCollapsed = (update: SetStateAction<boolean>) => setField('fileNavigatorCollapsed', update)
   const setWorkspaceFileNavigatorWidth = (update: SetStateAction<number>) => setField('fileNavigatorWidth', update)
+  const setWorkspaceReviewNavigatorWidth = (update: SetStateAction<number>) => setField('reviewNavigatorWidth', update)
   const setWorkspaceExpandedPaths = (update: SetStateAction<string[]>) => setField('expandedPaths', update)
   const setWorkspaceBrowserTabs = (update: SetStateAction<WorkspaceBrowserTab[]>) => setField('browserTabs', update)
 
@@ -366,6 +368,7 @@ export function useWorkspaceSessionLayouts({
     workspaceFileDrafts: activeLayout.drafts,
     workspaceFileNavigatorCollapsed: activeLayout.fileNavigatorCollapsed,
     workspaceFileNavigatorWidth: activeLayout.fileNavigatorWidth,
+    workspaceReviewNavigatorWidth: activeLayout.reviewNavigatorWidth,
     workspaceExpandedPaths: activeLayout.expandedPaths,
     workspaceBrowserTabs: activeLayout.browserTabs,
     setWorkspacePanelCollapsed,
@@ -377,6 +380,7 @@ export function useWorkspaceSessionLayouts({
     setWorkspaceSessionFileDrafts,
     setWorkspaceFileNavigatorCollapsed,
     setWorkspaceFileNavigatorWidth,
+    setWorkspaceReviewNavigatorWidth,
     setWorkspaceExpandedPaths,
     setWorkspaceBrowserTabs,
     commitWorkspaceSessionLayout: commitLayout,

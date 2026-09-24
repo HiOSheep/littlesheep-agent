@@ -58,6 +58,12 @@ export interface WorkspaceSessionLayout {
   openRequest: WorkspaceOpenRequest | null
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth: number
+  /**
+   * Width of the review view's own leading column (UX-18). It shares the file navigator's
+   * bounds but never its value, so widening the change list in review cannot move the file
+   * navigator. Absent in snapshots written before that split.
+   */
+  reviewNavigatorWidth: number
   expandedPaths: string[]
   drafts: Record<string, WorkspaceFileDraftState>
   browserTabs: WorkspaceBrowserTab[]
@@ -80,6 +86,7 @@ export function createDefaultWorkspaceSessionLayout(): WorkspaceSessionLayout {
     openRequest: null,
     fileNavigatorCollapsed: false,
     fileNavigatorWidth: WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+    reviewNavigatorWidth: WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
     expandedPaths: [],
     drafts: {},
     browserTabs: [],
@@ -133,6 +140,7 @@ export interface WorkspaceLayoutFallbackSnapshot {
   openRequest: WorkspaceOpenRequest | null
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth?: number
+  reviewNavigatorWidth?: number
   expandedPaths?: string[]
   drafts: Record<string, WorkspaceFileDraftState>
   browserTabs?: WorkspaceBrowserTab[]
@@ -283,6 +291,7 @@ export function normalizeWorkspaceSessionLayout(value: unknown): WorkspaceSessio
     openRequest,
     fileNavigatorCollapsed: item.fileNavigatorCollapsed === true,
     fileNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.fileNavigatorWidth),
+    reviewNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.reviewNavigatorWidth),
     expandedPaths,
     drafts,
     browserTabs,
@@ -343,7 +352,7 @@ export function normalizeWorkspaceExpandedPaths(value: unknown): string[] {
 }
 
 export function workspaceSessionLayoutFromSnapshot(
-  snapshot: Pick<WorkspaceLayoutFallbackSnapshot, 'collapsed' | 'fullscreen' | 'activeTab' | 'openTabs' | 'openRequest' | 'fileNavigatorCollapsed' | 'fileNavigatorWidth' | 'drafts'> & {
+  snapshot: Pick<WorkspaceLayoutFallbackSnapshot, 'collapsed' | 'fullscreen' | 'activeTab' | 'openTabs' | 'openRequest' | 'fileNavigatorCollapsed' | 'fileNavigatorWidth' | 'reviewNavigatorWidth' | 'drafts'> & {
     expandedPaths?: unknown
     browserTabs?: unknown
   },
@@ -356,6 +365,7 @@ export function workspaceSessionLayoutFromSnapshot(
     openRequest: snapshot.openRequest,
     fileNavigatorCollapsed: snapshot.fileNavigatorCollapsed,
     fileNavigatorWidth: snapshot.fileNavigatorWidth,
+    reviewNavigatorWidth: snapshot.reviewNavigatorWidth,
     expandedPaths: snapshot.expandedPaths,
     drafts: snapshot.drafts,
     browserTabs: snapshot.browserTabs,
@@ -426,6 +436,7 @@ export function hydrateWorkspaceLayoutFallbackSnapshot(value: unknown): Workspac
     openRequest: state.openRequest,
     fileNavigatorCollapsed: item.fileNavigatorCollapsed === true,
     fileNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.fileNavigatorWidth),
+    reviewNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.reviewNavigatorWidth),
     expandedPaths: normalizeWorkspaceExpandedPaths(item.expandedPaths),
     drafts: state.drafts,
     browserTabs: hydrateWorkspaceBrowserTabs(item.browserTabs),

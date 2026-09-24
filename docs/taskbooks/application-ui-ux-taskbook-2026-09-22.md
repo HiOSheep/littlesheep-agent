@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-24 22:32:00
+最后更新：2026-09-24 22:52:40
 
 ## 1. 范围与结论
 
@@ -346,6 +346,12 @@
 
 - 折入来源：同 UX-17；对标记录原写"仍可后续补审阅侧栏独立宽度"。
 - 现状锚点：`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 存在于 `app-shell/preferences.ts`，`review.tsx` 默认双列（`true`）。
+
+**实施记录（2026-09-24 22:52:40）｜状态：实现完成，持久化与接线有回归；真实窗口验收未做，保持未勾选**
+
+- 实现范围：会话现场新增 `reviewNavigatorWidth`，与 `fileNavigatorWidth` **共用同一组上下限**（`WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN/MAX` = 160/520，默认都是 214）但**不共用取值**。`workspace-persistence.ts` 负责 hydrate/serialize，旧快照缺该字段时回落到默认值而不是继承文件导航宽度；`use-workspace-session-layouts.ts` 暴露 `workspaceReviewNavigatorWidth` 与 setter；`panel.tsx` 把审阅标签接到审阅宽度与审阅写回回调（`fileNavigatorWidth={reviewNavigatorWidth}` / `onFileNavigatorWidthChange={onReviewNavigatorWidthChange}`），侧边共享的文件导航继续用 `fileNavigatorWidth`；Main 侧 `workspace-layout-index.ts` 在恢复镜像里同样 clamp 并接受该字段，旧镜像缺字段时回落默认值。审阅折叠状态按第 2 条要求继续与文件导航共用（本轮只分离宽度）。
+- 验证方式：`workspace-persistence.test.ts` 新增"审阅列独立于文件导航"用例（旧快照给 214、`900→520`、`40→160`），并把双会话往返断言扩成两组宽度各自保留（`246/302`、`318/178`）；`workspace-layout-index.test.ts` 断言 `331.2 → 331` 且跨 `WorkspaceLayoutIndex` 重建后读回；`review-layout-unification.test.ts` 新增接线用例（审阅拿审阅宽度与审阅写回、共享导航仍用文件宽度、两处不交叉）。相关 4 个测试文件 35 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
+- 未覆盖项：真实窗口里的拖拽手感、窄窗口下不出现横向滚动、`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变，这三条仍需实机验收（第 3 条复选框保持未勾选）。
 
 ### UX-19｜对话区阅读位置和上下定位
 

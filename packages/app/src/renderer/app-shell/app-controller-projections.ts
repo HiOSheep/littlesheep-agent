@@ -165,6 +165,8 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'setWorkspaceFileNavigatorCollapsed',
     'workspaceFileNavigatorWidth',
     'setWorkspaceFileNavigatorWidth',
+    'workspaceReviewNavigatorWidth',
+    'setWorkspaceReviewNavigatorWidth',
     'workspaceExpandedPaths',
     'setWorkspaceExpandedPaths',
     'workspaceArtifactVersion',

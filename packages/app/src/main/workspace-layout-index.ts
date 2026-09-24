@@ -203,6 +203,12 @@ function normalizeWorkspaceLayoutSnapshot(input: unknown): WorkspaceLayoutSnapsh
       WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
       WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
     ),
+    reviewNavigatorWidth: clampNumber(
+      item.reviewNavigatorWidth,
+      WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
+      WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
+      WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+    ),
     expandedPaths: normalizeStringArray(item.expandedPaths, 256, 4096),
     drafts,
     browserTabs: normalizeBrowserTabs(item.browserTabs),
@@ -378,6 +384,7 @@ function isWorkspaceLayoutSnapshot(value: unknown): value is WorkspaceLayoutSnap
     Array.isArray(item.openTabs) &&
     typeof item.fileNavigatorCollapsed === 'boolean' &&
     (item.fileNavigatorWidth === undefined || typeof item.fileNavigatorWidth === 'number') &&
+    (item.reviewNavigatorWidth === undefined || typeof item.reviewNavigatorWidth === 'number') &&
     (item.expandedPaths === undefined || Array.isArray(item.expandedPaths)) &&
     Boolean(item.drafts) &&
     typeof item.drafts === 'object' &&

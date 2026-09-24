@@ -59,6 +59,8 @@ export interface WorkspaceLayoutSnapshot {
   openRequest: WorkspaceLayoutOpenRequest | null
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth?: number
+  /** Review's own leading-column width (UX-18); optional for snapshots written before the split. */
+  reviewNavigatorWidth?: number
   expandedPaths?: string[]
   drafts: Record<string, WorkspaceLayoutFileDraft>
   browserTabs?: WorkspaceLayoutBrowserTab[]
