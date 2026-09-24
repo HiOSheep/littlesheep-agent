@@ -1409,6 +1409,27 @@ body.is-resizing-column .workspace-shared-file-navigator {
   border-left: 0;
 }
 
+/* The Git review mounts its own navigator as a direct child of the review
+   surface, while the ordinary directory navigator lives inside
+   `.workspace-shared-file-navigator`, which already owns the flex basis. With
+   only the absolute rule below, the review navigator left the flex row and was
+   painted on top of the diff: the diff surface kept the full width (so its code
+   ran under the tree) and the diff header's two icon buttons landed under the
+   navigator, where a pointer could no longer reach them (measured: the
+   side-by-side toggle and the navigator's refresh button shared one rect).
+   Keeping it in the row lets the diff reserve the navigator's width; the
+   collapsed rule mirrors the rail overlay the shared wrapper documents. */
+.workspace-files > .workspace-files-navigator {
+  position: relative;
+  inset: auto;
+  flex: 0 0 var(--workspace-files-navigator-width);
+}
+
+.workspace-files:has(> .workspace-files-navigator.navigator-collapsed) > .workspace-files-navigator {
+  flex-basis: var(--workspace-files-control-rail-width);
+  margin-left: calc(0px - var(--workspace-files-control-rail-width));
+}
+
 .workspace-files-navigator-resizer {
   position: absolute;
   z-index: 4;

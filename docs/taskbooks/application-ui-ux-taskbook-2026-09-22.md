@@ -435,9 +435,9 @@
 
 **定位**：[review.tsx](../../packages/app/src/renderer/workspace/review.tsx)、[app-shell/preferences.ts](../../packages/app/src/renderer/app-shell/preferences.ts) 的 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY`、[workspace/README.md](../../packages/app/src/renderer/workspace/README.md)、[ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)（窗口级偏好与对话级现场的边界）。
 
-- [ ] 为审阅侧栏增加独立宽度偏好：持久化、有上下限、与文件导航宽度互不覆盖。
-- [ ] 保持单列/双列持久化与共享折叠状态不变；不重新引入第二套目录扫描或活动页面。
-- [ ] 验收：拖宽审阅侧栏后文件导航宽度不变；重开应用后宽度恢复；窄窗口下不出现横向滚动或不可达按钮；`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变。
+- [x] 为审阅侧栏增加独立宽度偏好：持久化、有上下限、与文件导航宽度互不覆盖。
+- [x] 保持单列/双列持久化与共享折叠状态不变；不重新引入第二套目录扫描或活动页面。
+- [x] 验收：拖宽审阅侧栏后文件导航宽度不变；重开应用后宽度恢复；窄窗口下不出现横向滚动或不可达按钮；`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变。
 
 **实施记录（2026-09-24 21:52:00）｜状态：未开始（2026-09-24 从对标记录折入）**
 
@@ -449,6 +449,19 @@
 - 实现范围：会话现场新增 `reviewNavigatorWidth`，与 `fileNavigatorWidth` **共用同一组上下限**（`WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN/MAX` = 160/520，默认都是 214）但**不共用取值**。`workspace-persistence.ts` 负责 hydrate/serialize，旧快照缺该字段时回落到默认值而不是继承文件导航宽度；`use-workspace-session-layouts.ts` 暴露 `workspaceReviewNavigatorWidth` 与 setter；`panel.tsx` 把审阅标签接到审阅宽度与审阅写回回调（`fileNavigatorWidth={reviewNavigatorWidth}` / `onFileNavigatorWidthChange={onReviewNavigatorWidthChange}`），侧边共享的文件导航继续用 `fileNavigatorWidth`；Main 侧 `workspace-layout-index.ts` 在恢复镜像里同样 clamp 并接受该字段，旧镜像缺字段时回落默认值。审阅折叠状态按第 2 条要求继续与文件导航共用（本轮只分离宽度）。
 - 验证方式：`workspace-persistence.test.ts` 新增"审阅列独立于文件导航"用例（旧快照给 214、`900→520`、`40→160`），并把双会话往返断言扩成两组宽度各自保留（`246/302`、`318/178`）；`workspace-layout-index.test.ts` 断言 `331.2 → 331` 且跨 `WorkspaceLayoutIndex` 重建后读回；`review-layout-unification.test.ts` 新增接线用例（审阅拿审阅宽度与审阅写回、共享导航仍用文件宽度、两处不交叉）。相关 4 个测试文件 35 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
 - 未覆盖项：真实窗口里的拖拽手感、窄窗口下不出现横向滚动、`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变，这三条仍需实机验收（第 3 条复选框保持未勾选）。
+
+**实施记录（2026-09-25 05:36:40）｜状态：三条验收已在真实窗口跑通，并在过程中发现并修掉“审阅导航盖住 Diff 表面与其标题按钮”的真实布局缺陷；三项勾选**
+
+- 新增真实窗口门 `pnpm run verify:review-navigator-width`（[verify-review-navigator-width.mjs](../../scripts/verify-review-navigator-width.mjs)）：真实 Git 工作区（1 个已改文件 + 1 个未跟踪文件）、真实指针拖动与键盘、真实重启（走应用自己的 quit 路径，避免 SIGKILL 丢掉未落盘的偏好）。
+- 实测（1280×840 全屏面板、800×600 应用最小窗口）：
+  - **宽度互不覆盖**：先在文件标签把文件导航拖到 250，再切到审阅把审阅导航拖宽 120（214 → 334）；切回文件标签，文件导航仍是 250（`aria-valuenow` 与渲染宽度都未变）；会话现场里 `fileNavigatorWidth: 250`、`reviewNavigatorWidth: 334` 各存各的。
+  - **重启恢复**：退出应用重开后，审阅标签渲染 334、文件标签渲染 250，两者仍互不覆盖；`workspaceReviewSideBySide` 偏好也按设置值恢复。
+  - **共享折叠不变**：在审阅折叠后切到文件标签，普通目录树同样是折叠态（同一状态）；重新展开后审阅导航回到 334、文件导航仍是 250（折叠与重开不改写宽度）。
+  - **单列/双列偏好不变**：默认双列；切换后 `littlesheep.ui.workspaceReviewSideBySide` 立即写为 `false`，切回写回 `true`，两次切换都不动任何宽度。
+  - **无第二套目录扫描**：审阅标签空闲 2.5 秒期间页面探针记录到 0 次 `/workspace/list`（只有 `/workspace/review` 读取），折叠/切换也没有触发目录扫描。
+  - **窄窗口（800×600，面板 296）**：文档与面板的横向溢出都是 0；审阅导航由现场值 334 被夹到 183（`aria-valuemin/max` 同为 183 一侧），Diff 表面仍保留 ≥96px；审阅导航拖拽条、Diff 标题行的单列/双列按钮、刷新与筛选都在视口内且 `elementFromPoint` 命中自身（可达）；把窗口放大回 1280 并恢复全屏面板后，审阅导航重新渲染 334 —— 窄窗口的夹取没有写回偏好。
+- **顺带修掉的真实缺陷（本门实机发现）**：审阅标签的导航此前是 `.workspace-review` 的直接子元素，而 `.workspace-files-navigator` 只有 `position: absolute`（这是给 `.workspace-shared-file-navigator` 这个 flex 占位项内部的普通目录导航准备的），于是它被画出 flex 行、盖在整个 Diff 表面上：实测 Diff 标题行的“切换为单列/双列差异”和“在文件工作台中打开”两个按钮，与审阅导航自己的“刷新 Git 更改”落在**同一个矩形**（1280 宽下面板 359 时同为 `x=1211,y=88,25×25`），指针点不到（只有键盘/程序化点击有效）；Diff 代码区右侧也被更改树压住。修法：`04-workspace.css` 让 `.workspace-files > .workspace-files-navigator` 回到行内（`position: relative` + `flex: 0 0 var(--workspace-files-navigator-width)`），Diff 表面因此按导航宽度让位；折叠时按共享外壳的既有规则收缩到折叠轨宽度（`flex-basis: var(--workspace-files-control-rail-width)` + 负 `margin-left`），复用 `.workspace-files:has(...)` 的既有 leading-row 预留规则。回归由本门的“Diff 表面在导航左侧结束”“Diff 标题按钮可达”两条断言守住（修前两条均为假）。
+- 仍未覆盖：真实拖动只覆盖指针路径（键盘方向键/Home/End 已有单元覆盖，未在本门逐键走查）；窄窗口只测应用最小尺寸 800×600，125%/150%/200% 系统缩放属于 UX-15；本门不衡量 Diff 代码在窄窗口下的可读行宽（只保证 ≥96px 与不横向滚动），可读性属于 UX-22。
 
 ### UX-19｜对话区阅读位置和上下定位
 
@@ -694,7 +707,7 @@
 | 12 | UX-14 | 本任务实施记录 | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px） | |
 | 13 | UX-15 | 本任务实施记录 | 最小窗口与常用窗口 + 125%/150%/200% 缩放下的模型表单、设置侧栏、审批长路径、运行时选择器 | |
 | 14 | UX-16 | 本任务实施记录 | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |
-| 15 | UX-18 | 本任务实施记录 | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动 | |
+| 15 | UX-18 | 本任务实施记录 + `pnpm run verify:review-navigator-width` | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动与不可达按钮 | |
 | 16 | UX-17 | 本任务实施记录 + `pnpm run verify:workspace-large-directory` | 1,000 / 10,000 行目录的成对基准 + 滚动帧间隔与筛选可达性 | |
 | 17 | UX-20 | 本任务实施记录 + `pnpm run verify:chat-streaming-rendering` | 分块流式文本逐层比对 + 断流/畸形帧/最终结算 + 真实窗口 DOM/结算比对与取色 | |
 | 18 | UX-21 | 本任务实施记录 + `pnpm run verify:retry-feedback` / `verify:local-stream-disconnect` | 429/503/超时/断流/401/400/取消/本地 SSE 断线共九类，安全重试最多 5 次 | |
