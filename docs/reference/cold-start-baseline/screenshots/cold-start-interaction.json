@@ -582,7 +582,7 @@
   ],
   "failures": [],
   "gaps": [
-    "a deliberately slow initialization (no product knob exists to delay it)",
+    "a genuinely slow bootstrap: the not-ready window is lengthened through the acceptance-only readiness-delay knob (LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS), which postpones publication instead of slowing the real initialization",
     "typing continuously for the whole not-ready window (that window is ~300 ms here)",
     "external display changes (monitor unplug, DPI change) while the window is hidden",
     "close-to-background is only reachable while a run is active, so the live close/restore cycle is not exercised"

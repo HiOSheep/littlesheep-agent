@@ -88,7 +88,7 @@
   "failures": [],
   "limits": [
     "Two failure causes are staged (an unknown model reference and an unparseable config). Other causes share these code paths but are not sampled.",
-    "Retrying is not exercised: the bounded retry entry is a known open gap for CS-06, so only what the failure states show is asserted.",
+    "Retry is exercised in this run: the ledger records a concurrent first attempt (attemptsUsed 2), an in-flight refusal, and the recovered attempt reaching ready, so the bounded retry entry is asserted rather than left open.",
     "The screenshots prove the painted pixels; the timing of the document swap is not measured."
   ]
 }

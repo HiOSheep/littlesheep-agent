@@ -260,8 +260,9 @@ async function main() {
       observations,
       failures,
       gaps: [
-        'Display scaling above 100% and dark/light wallpaper are not driven here; the',
-        'taskbook keeps those as human checks (CS-02).',
+        'Display scaling above 100% and dark/light wallpaper are not driven here; only the',
+        'DPR proxy runs, and the proxy changes device pixel ratio alone. Real scaling was',
+        'confirmed by the user on 2026-09-24 (docs/README.md retirement record), not by this script.',
       ],
     }, null, 2)}\n`, 'utf8')
     console.log(JSON.stringify({ ok: failures.length === 0, failures, screenshots }, null, 2))
