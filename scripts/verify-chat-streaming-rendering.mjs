@@ -246,6 +246,57 @@ async function main() {  await harness.assertBuildFresh()
     if (!submitted) throw new Error('streaming fixture could not submit the composer')
     const sessionAtSend = await evaluate(client, `localStorage.getItem('littlesheep.ui.activeSession')`)
 
+    // Frame-level style recorder. The user report is "some characters change colour": a change
+    // that happens while the answer is still arriving can be missed by polling, so this samples
+    // the computed style of one heading, paragraph and code block on every animation frame and
+    // keeps only the distinct signatures with when they appeared.
+    const recorderInstalled = await evaluate(client, `(() => {
+      const signatures = new Map()
+      const readStyle = (element) => {
+        if (!(element instanceof HTMLElement)) return null
+        const style = getComputedStyle(element)
+        return [style.color, style.fontSize, style.fontWeight, style.backgroundColor].join('|')
+      }
+      const record = (kind, element, characters) => {
+        const signature = readStyle(element)
+        if (!signature) return
+        const previous = signatures.get(kind)
+        if (previous && previous.signature === signature) {
+          previous.lastSeenAt = performance.now()
+          return
+        }
+        const entries = signatures.get(kind)?.history ?? []
+        entries.push({ signature, firstSeenAt: Math.round(performance.now()), characters })
+        signatures.set(kind, { signature, lastSeenAt: performance.now(), history: entries })
+      }
+      let running = true
+      const tick = () => {
+        if (!running) return
+        const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
+        const response = turn?.querySelector('.assistant-response-stream')
+        if (response) {
+          const characters = (response.textContent ?? '').length
+          record('heading', response.querySelector('h2'), characters)
+          record('paragraph', response.querySelector('p'), characters)
+          record('link', response.querySelector('a'), characters)
+          record('inlineCode', response.querySelector('p code'), characters)
+          record('codeBlock', response.querySelector('pre code, .code-block-source'), characters)
+        }
+        requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+      window.__lsStyleRecorder = {
+        stop: () => {
+          running = false
+          const summary = {}
+          for (const [kind, entry] of signatures) summary[kind] = entry.history
+          return summary
+        },
+      }
+      return true
+    })()`)
+    if (!recorderInstalled) throw new Error('the frame-level style recorder could not be installed')
+
     // --- 1. monotonic growth while streaming -------------------------------------------------
     // Markdown syntax becomes structure as it completes, so the DOM text can legitimately
     // shrink by the marker characters of one inline span (`` `x` `` → `x`). Anything beyond
@@ -390,6 +441,10 @@ async function main() {  await harness.assertBuildFresh()
     // and again here, which is the comparison that matters for the "text changed colour" report.
     const colorsSettled = await evaluate(client, COLOR_EXPRESSION)
     if (!colorsSettled) throw new Error('the settled answer had no measurable blocks')
+    // The frame-level recorder answers the same question at display resolution: a signature
+    // that appears more than once per block kind is a change the reader could have seen.
+    const styleTimeline = await evaluate(client, `window.__lsStyleRecorder ? window.__lsStyleRecorder.stop() : null`)
+    const styleChanges = Object.fromEntries(Object.entries(styleTimeline ?? {}).map(([kind, history]) => [kind, history.length]))
     const codeRendering = {
       duringStreamCodeClass: codeDuringStream.codeClass,
       duringStreamChildElementCount: codeDuringStream.childElementCount,
@@ -417,6 +472,8 @@ async function main() {  await harness.assertBuildFresh()
         colorsDuringStream,
         colorsSettled,
         colorChanges: compareColors(colorsDuringStream, colorsSettled),
+        styleTimeline,
+        styleChanges,
         screenshots: { streamingCode: codeScreenshot, settled: settledScreenshot, readingAway: awayScreenshot },
         providerRequests: provider.requests.length,
       },
