@@ -163,6 +163,7 @@ async function createFixture(
         readFiles: 1,
         validFiles: 1,
         invalidFiles: 0,
+        warningFindings: [],
         diagnostics: [],
       }),
     },

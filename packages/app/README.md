@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 05:00:07
+最后更新：2026-09-25 05:09:12
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -9,7 +9,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **首屏按需加载**：Monaco、mermaid 与 `react-syntax-highlighter` 都不得进入入口 chunk。完整 Prism 构建单独求值约 380 ms，改为按需后入口 chunk −936 KB、真实首帧早约 148 ms（成对实测见 `docs/reference/cold-start-baseline/`）。**入口字节数在本应用里不是首帧的可靠代理**：Markdown 解析管线整条按需（−400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须用成对实测证明收益。
 - **就绪是唯一事实**：`src/shared/runtime-readiness-{contracts,ipc}.ts` 定义载荷与通道，`src/main/runtime-readiness.ts` 拥有状态，renderer 经 `src/renderer/runtime-readiness/` 消费。未就绪时 metadata 路由照常应答、Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；具体边界见 `src/main/local-app-api/README.md`。正常启动的阶段文字只在发送按钮旁就地显示（`composer-readiness-hint`），横跨整窗的条带只用于失败态与重试（CS-09）。
 - **恢复期仍可使用**：当前租约与收件箱里的待恢复任务先完成安全检查；对旧版事件分区的完整兼容扫描随后异步进行。事件存储初始化只确保根目录存在，分区内容在读取、写入或后台恢复时逐段严格验证。真实数据根的历史扫描可能耗时数十秒，Local App API 不在所有请求前等待它；会话索引、配置和工作区接口在恢复期间继续应答，执行入口在路由尚未建成时明确返回 503。
-- **启动恢复的诊断计数按最近一次扫描**：`src/main/local-app-api/run-checkpoint-view.ts` 把 store 的扫描结果投影成两个互斥计数（`invalidFiles` = 读不出来的记录数，`warningCount` = 不属于这些记录的目录级发现），`src/renderer/runtime-recovery/` 只负责如实展示。计数不再按进程生命周期累加，因此用户反复点"重新检查"不会把同一份坏记录越算越多（实机验收见 `pnpm run verify:recovery-states`，领域实现见 `@littlesheep/runner` 的 `run-checkpoint-scan.ts`）。
+- **启动恢复的诊断计数按最近一次扫描**：`src/main/local-app-api/run-checkpoint-view.ts` 把 store 的扫描结果投影成两个互斥计数（`invalidFiles` = 读不出来的记录数，`warningCount` = 不属于这些记录的目录级发现），`src/renderer/runtime-recovery/` 只负责如实展示。计数不再按进程生命周期累加，因此用户反复点"重新检查"不会把同一份坏记录越算越多（实机验收见 `pnpm run verify:recovery-states`，领域实现见 `@littlesheep/runner` 的 `run-checkpoint-scan.ts`；HTTP 契约与假 Runner 夹具见 `src/main/README.md` 的"测试与修改定位"）。
 - **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。
 - **启动失败页可取证**：`src/main/desktop-acceptance-actions.ts` 只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时装配隔离验收动作（`/application/acceptance` 的 `resize` / `startup-error` 等），后者把真实失败文案交给生产同一份 `showStartupError` 文档，使 CS-02 能对"启动失败"这一无法靠等待到达的状态取像素证据；生产运行不挂载这些动作。
 - **会话累计缓存命中**：composer 的上下文指示器除窗口占用外，还显示**本会话累计**的缓存命中率与 `缓存读取 / 输入` 原值。该值由主进程 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量（`cachedPromptTokens / promptTokens`，**含冷启动**、不含压缩等分离调用），与验收账本、`check:cache-acceptance` 用的是同一组字段与同一公式；`requestsWithoutUsage > 0` 时明确标注"usage 未上报"，不把局部读数当成完整读数。展示层四舍五入，判定层一律用精确值。
