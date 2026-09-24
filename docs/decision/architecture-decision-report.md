@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-09-24 17:52:04
+最后更新：2026-09-24 21:29:06
 评估范围：当前源码、常驻文档与已记录的验证结果
-执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**当前未闭环的是缓存 95% 红线（实机负载未达标）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
+执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**真实长任务的缓存红线已按现行会话累计口径达成（判定入口 `pnpm run check:cache-acceptance`），仍未闭环的是 3 回合短负载的结构上限（87–89%，只能靠更长的会话摊薄）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
 
 ## 当前开发方向（2026-09-22，待实施）
 
@@ -26,7 +26,7 @@ LittleSheep 当前不是"只有 Prompt 的聊天壳"：它已经具备代码控�
 2. **请求装配有唯一所有者。** system 消息就是缓存边界之上的 prompt 段；边界之下的段（bootstrap、runtime facts、检索意图契约、压缩摘要）各自作为独立消息追加，由 append-only 尾部账本持有，工具循环的第 N 次请求是第 N+1 次的字节前缀。工具目录在会话区间内固定，越权能力在**执行**边界被拒绝；上下文淘汰按 `appended-only` 作用域运行，已发送前缀超窗时请求显式失败。
 3. **写入与判定各自只有一个权威。** 压缩路径是持久记忆的唯一写入方（摘要与覆盖区间原子提交，带 predecessor/source-hash 前置条件，失败保留上一份有效摘要）；模型侧 `memory_tree` 只读；VERIFY 不调用模型；用户可见文案必须来自真实模型调用并携带 provenance。
 4. **权限与容器是独立 ceiling。** 三档模式只改变授权；容器是 Main 的路径分类与审批闸门（`inside`/`outside`/`unknown`），不是 OS 进程沙箱；核心源码是宿主级只读边界，完全访问与单次批准都不能绕过。
-5. **缓存红线按稳态口径判定，实测未达标。** 红线数字、判定口径与冻结负载规程只在 [项目状态](project-status.md) 与 [缓存 95% 验收规程](../reference/cache-95-acceptance.md) 维护。
+5. **缓存红线按会话累计口径在真实长任务验收节点判定，当前 `met`。** 3 回合短负载有结构上限（87–89%），不以红线判定；红线数字、判定口径与冻结负载规程只在 [项目状态](project-status.md) 与 [缓存 95% 验收规程](../reference/cache-95-acceptance.md) 维护。
 
 ## 2. 评估口径
 
@@ -83,7 +83,7 @@ React Renderer
 | 公共契约 | 稳定基础 | `packages/types/` | 内部 v1 契约已齐，Context 与 Tools 已有实际所有者；Mode Registry 仍未收敛 | 保持内部版本，迁移剩余生产者和消费者后再考虑公开 API |
 | Workflow/Harness | 稳定基础；控制流已收敛为单一主循环 | `packages/harness/src/default-harness.ts`、`stages/`、`packages/types/src/agent.ts` | 兼容 stage 名与旧检查点读取路径仍在；权限、VERIFY 与 FINALIZE 仍是不可绕过的核心 | 保持兼容边界与单循环，不开放任意工作流图 |
 | Runner | 基础可用 | `packages/runner/src/runner.ts`、`infra.ts` | 同时承担生命周期、核心装配和子系统启动 | 保持为应用服务，逐步下沉子系统内部逻辑 |
-| Context | 基础可用；装配契约已收敛，命中率未达标 | `packages/context/`、`harness/context-candidates.ts`、`harness/run-tail-ledger.ts`、`harness/cache-prefix-split.ts`、`types/token-ledger.ts`、`model-observability.ts` | 缓存边界、尾部账本、固定工具目录、`appended-only` 淘汰与双账本已接通；实机命中率仍低于红线，Pro/其他 Provider 校准与持续成本基线未建 | 在安全契约不退化时继续压缩不可缓存部分，并按实际启用范围建立模型专用校准 |
+| Context | 基础可用；装配契约已收敛，长任务红线 `met`、短负载有结构上限 | `packages/context/`、`harness/context-candidates.ts`、`harness/run-tail-ledger.ts`、`harness/cache-prefix-split.ts`、`types/token-ledger.ts`、`model-observability.ts` | 缓存边界、尾部账本、固定工具目录、`appended-only` 淘汰与双账本已接通；真实长任务会话累计命中率已过红线（99%+，`pnpm run check:cache-acceptance`），3 回合短负载上限 87–89%；Pro/其他 Provider 校准与持续成本基线未建 | 保持红线回归门，按实际启用范围建立模型专用校准；不再为短负载比例裁剪能力 |
 | Prompt | 基础可用；缓存边界即 system 消息边界 | `packages/prompt/`、stage prompt、`harness/stages/reply.ts`、`harness/runtime-awareness.ts` | 边界之下的段全部改为独立追加消息；逐请求时钟、耗时和上一轮执行摘要已删除，时间由 `session_status` 按需返回 | 保持渐进披露：只向模型投影完成当前决策所需信息，并让边界之下的段保持追加语义 |
 | Behavior Mode | 职责分散 | `prompt/profiles.ts`、Runner、config、App | 不是统一配置组合，新增 Mode 仍需跨模块修改 | 建立类型化 Mode registry，并与权限正交 |
 | Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、`ToolContext`、`packages/tools/src/tool-execution-service.ts` | 统一服务已消费权限决议并执行单次批准；网络资源和更强授权 token 尚未建模 | 权限作为独立 ceiling，不进入行为 profile |
@@ -221,7 +221,7 @@ src/renderer/shared/
 
 - 保持 DeepSeek V4 官方 tokenizer、固定资源校验、最终请求 framing 和同请求 Provider 差值回归；其余模型只有在具备同等级证据时才注册 exact，否则保持 unavailable；
 - 只在 OpenAI/GLM 实际配置并进入用户选择范围后，使用真实请求校准上下文窗口、reasoning、usage 与模型专用本地 ledger 差异；
-- 按稳态口径追踪缓存红线，不用填充、预热或排除调用调整读数。
+- 按会话累计口径在真实长任务验收节点追踪缓存红线（`pnpm run check:cache-acceptance`），不用填充、预热或排除调用调整读数。
 
 ### 阶段 2：Tool Execution Service
 
@@ -338,7 +338,7 @@ src/renderer/shared/
 
 ### 现在做
 
-- 先用冻结负载与稳态口径把缓存红线做成可复算判定，再据此决定压缩前缀的下一步。
+- 缓存红线已完成冻结负载与会话累计口径的可复算判定（`pnpm run check:cache-acceptance`，长任务 `met`）；后续只在安全契约不退化时继续优化可缓存部分，并把 3 回合短负载的结构上限记为已知边界而不是待修缺陷。
 - 按实际启用范围为 Pro 与其他 Provider 建立模型专用校准与成本基线。
 - 在正式 V3 上继续验收真实会话写入、索引导航、验证反馈、向量维护与重启连续性。
 - 给跨模块职责建立类型、来源和特征测试。
@@ -372,7 +372,7 @@ src/renderer/shared/
 | 过度拆包 | 依赖和版本管理复杂度超过收益 | 新包准入标准；优先包内模块化 |
 | Mode 与权限混合 | 行为切换意外扩大权限 | 独立类型、独立 UI、最终权限 ceiling |
 | Context 来源不透明 | "不失忆"不可验证、token 显示失真 | ContextSnapshot、来源账本、Provider usage 分层 |
-| 缓存命中率长期不达标 | 成本与延迟高于预期，且容易用填充或预热掩盖 | 冻结负载、稳态口径、禁止做法清单与逐请求归因 |
+| 缓存命中率回退（长任务验收节点跌破 95%） | 成本与延迟高于预期，且容易用填充或预热掩盖 | 冻结负载、会话累计口径、禁止做法清单与逐请求归因；回归门 `pnpm run check:cache-acceptance` |
 | 请求前缀被逐轮改写 | 会话永远无法复用前缀，缓存收益归零 | 边界之上为 system 消息、边界之下走追加账本、工具目录会话内固定 |
 | 记忆自动写入失控 | 错误事实长期固化 | 写入只经压缩路径、来源与认识状态校验、原子提交与失败保留上一份摘要 |
 | 实体/关系误合并 | 跨项目、跨用户或跨权限信息污染 | 稳定实体 id、owner/scope、关系证据、D0-D3 披露和跨边界默认不传播 |
@@ -386,7 +386,7 @@ src/renderer/shared/
 
 以下工程能力已完成既定验收，不再是阻塞项：仓库基元化阶段 0-7、Memory v3 阶段 0-26、单一主循环与两路径活动路由、缓存边界与 append-only 尾部账本、固定工具目录与执行期拒绝、统一 Tool Execution Service、原子压缩与唯一记忆写入方、无模型调用的 VERIFY 判定、运行时事件与 `TaskBookPatch`、检查点续跑与应用启动恢复、活动任务控制、设置页"应用与后台"、托盘与三档关闭策略。
 
-当前首要验收项：缓存 95% 红线（实机负载未达标，压缩用途与主循环前缀互不通用）、Pro 与其他 Provider 的模型专用校准、非字段事实的普遍连续性、外部系统副作用、长期真实用户负载。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
+当前首要验收项：Pro 与其他 Provider 的模型专用校准、非字段事实的普遍连续性、外部系统副作用、长期真实用户负载。缓存红线在真实长任务上已 `met`（保留 `pnpm run check:cache-acceptance` 作为回归门，3 回合短负载的 87–89% 结构上限与"压缩在大窗口下不触发"作为已知边界记录，不作为待修缺陷）。在这些契约稳定前不扩张新插件类型或无关 UI 范围。推进时持续遵守：
 
 - 以 [架构原则](../principles/architecture-principles.md) 作为最高层工程规范；
 - Behavior Mode 与 Permission Policy 保持正交；

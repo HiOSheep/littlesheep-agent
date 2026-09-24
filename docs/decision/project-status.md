@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-24 20:07:40
+最后更新：2026-09-24 21:29:06
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -102,7 +102,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 | --- | --- | --- | --- |
 | 架构治理 | 仓库基元化阶段 0-7 已完成 | 所有 workspace package 与领域目录均有所有权 README；关键组合入口收敛为 facade；`check:repo` 校验文档、模块与 TypeScript references；`verify:changed` / `verify:core` / `verify:full` 提供三级验证 | `docs/reference/repository-guide.md`、`docs/reference/module-split-map.md`、`scripts/check-repository-hygiene.mjs` |
 | 核心流程与状态机 | 已收敛为单一主循环 | 活动路由只产出 `execute` 与能力/状态 `reply`；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除；`classify` 仅作历史标签与检查点兼容；ASK_USER 由主循环或 RECOVER 升级到达 | `packages/harness/src/stages/classify.ts`、`stages/execute/tool-loop.ts`、`stages/verify.ts`、`stages/recover.ts`、`packages/types/src/stage-transitions.ts` |
-| Context 与请求装配 | 主要数据链已实现；命中率未达标 | 边界之上为 system 消息、边界之下由 append-only 尾部账本追加；工具目录会话内固定；淘汰按 `appended-only` 作用域；tokenizer 能力矩阵与双账本已接通 | `packages/context/src/engine.ts`、`packages/harness/src/run-tail-ledger.ts`、`packages/harness/src/cache-prefix-split.ts`、`packages/types/src/token-ledger.ts` |
+| Context 与请求装配 | 主要数据链已实现；真实长任务红线 `met`、3 回合短负载有结构上限 | 边界之上为 system 消息、边界之下由 append-only 尾部账本追加；工具目录会话内固定；淘汰按 `appended-only` 作用域；tokenizer 能力矩阵与双账本已接通；会话累计命中率见"缓存命中率现状" | `packages/context/src/engine.ts`、`packages/harness/src/run-tail-ledger.ts`、`packages/harness/src/cache-prefix-split.ts`、`packages/types/src/token-ledger.ts` |
 | 工具执行 | 工程基线已完成 | `ToolExecutionService` 是查找、schema 校验、权限/单次批准、超时、中断、调度、清洗、事件与调用记录的唯一宿主边界；内置、插件和 run-scoped 工具共享该服务 | `packages/tools/src/tool-execution-service.ts`、`packages/runner/src/run-tools.ts` |
 | 权限与数据边界 | 已实现基础闭环 | 三档权限与行为 profile 正交；容器是 Main 的路径分类与审批闸门；核心源码宿主级只读 | `packages/safety/src/permission-boundary.ts`、`packages/app/src/main/run-policy.ts`、`packages/runner/src/core-source-protection.ts` |
 | 记忆树与 Memory v3 | 正式 backend 已切换；长尾验收进行中 | 索引优先检索、稳定实体与有向关系、动态 activation、写入认识边界与压缩后任务锚点恢复均已落地；`memory_tree` 只读，写入只经压缩路径 | `packages/memory-tree/`、`packages/memory-tree/src/memory-tool.ts`、`packages/runner/src/session-continuity.ts` |
@@ -116,7 +116,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 
 ## 当前验证结果
 
-- 仓库卫生门 `node scripts/check-repository-hygiene.mjs`：通过（36 项通过，0 项失败）；缓存验收门 `pnpm run check:cache-acceptance`：通过（长任务达标 2/2，冻结 12 次运行通过回归口径）。
+- 仓库卫生门 `node scripts/check-repository-hygiene.mjs`：通过（38 项通过，0 项失败，含模块拆分地图计数比对与受控超限复查到期）；缓存验收门 `pnpm run check:cache-acceptance`：通过（长任务达标 2/2，冻结 12 次运行通过回归口径）。
 - 全量证据命令固定为 `pnpm.cmd test`、`pnpm.cmd run typecheck`、`pnpm.cmd run build`、`pnpm.cmd run verify:app-recovery`，按影响范围还有 `pnpm.cmd run verify:changed`、`verify:core`、`verify:full`。
 - 会随每次运行变化的测试数量、耗时与 token 读数不写入本文件；它们以命令输出、[缓存 95% 验收规程](../reference/cache-95-acceptance.md) 与 [缓存请求形状基线](../reference/cache-baseline/README.md) 为准。
 - 真实供应商冒烟、真实 Electron 场景、Memory v3 隔离门与缓存冻结负载是独立验收门：本地质量检查全绿不代表它们已完成。
