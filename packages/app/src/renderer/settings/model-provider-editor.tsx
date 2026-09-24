@@ -22,8 +22,12 @@ interface ModelProviderEditorProps {
   restored: boolean
   /** Last save failure, kept next to the actions that can retry it. */
   saveError: string | null
+  /** The close entry was used with unsaved edits and is waiting for a decision. */
+  discardConfirm: boolean
   onChange: (draft: ProviderEditorDraft) => void
   onCancel: () => void
+  onKeepEditing: () => void
+  onDiscard: () => void
   onSave: () => void
 }
 
@@ -34,8 +38,11 @@ export function ModelProviderEditor({
   dirty,
   restored,
   saveError,
+  discardConfirm,
   onChange,
   onCancel,
+  onKeepEditing,
+  onDiscard,
   onSave,
 }: ModelProviderEditorProps) {
   const validation = validateProviderDraft(draft, existingIds)
@@ -183,6 +190,15 @@ export function ModelProviderEditor({
             : null}
         />
         {stateText && <p className="provider-editor-status" role="status">{stateText}</p>}
+        {discardConfirm && (
+          // The close entry cannot silently drop edits: the editor is a modal, so this is the
+          // only way out and the decision belongs to the user.
+          <div className="provider-editor-discard" role="alertdialog" aria-label="有未保存的修改">
+            <span>有未保存的修改，关闭后会丢弃。</span>
+            <button type="button" className="close-btn" onClick={onKeepEditing}>继续编辑</button>
+            <button type="button" className="danger-btn" onClick={onDiscard}>丢弃修改</button>
+          </div>
+        )}
         <p className="provider-editor-key-note">
           密钥只会以内存草稿的形式随本页暂时保留，保存或取消后立即丢弃；它不会写入浏览器存储或日志。
         </p>

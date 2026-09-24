@@ -109,7 +109,7 @@
 | `packages/app/src/renderer/app-shell/preferences.ts` | 378 | Renderer 本地偏好键、基础 codec、旧工作区布局迁移与镜像应用判定 | 保持兼容偏好入口；后续将旧布局迁移下沉到 workspace persistence adapter | B |
 | `packages/prompt/src/builder.ts` | 499 | Prompt 分段、缓存边界之上的稳定装配（`stableText`/`stableSegments`）与边界之下尾段的渲染 | 保留 builder facade；缓存边界常量与判定见 `prompt/src/cache-boundary.ts`，复杂 section 继续移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
-| `packages/app/src/renderer/settings/models.tsx` | 344 | 供应商卡片、编辑/删除事务与会话草稿接线 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
+| `packages/app/src/renderer/settings/models.tsx` | 368 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 600 | 布局尺寸交互、标签命令、草稿编辑与关闭前保存编排 | 会话布局持久化已下沉到 `use-workspace-session-layouts.ts`；保持交互 controller，冻结期间不得继续吸收新职责 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 592 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |

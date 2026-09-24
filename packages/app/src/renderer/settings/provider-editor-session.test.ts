@@ -77,4 +77,24 @@ describe('provider editor draft wiring', () => {
     expect(editor).toContain('onClick={onCancel} disabled={saving}')
     expect(editor).toContain('provider-editor-key-note')
   })
+
+  it('asks before discarding unsaved edits instead of dropping them silently', async () => {
+    const [models, editor] = await Promise.all([
+      readSettingsFile('models.tsx'),
+      readSettingsFile('model-provider-editor.tsx'),
+    ])
+
+    // The editor is a modal, so the close entry is the only way out: it must ask.
+    // Measured in the real window by `verify:provider-editor-draft`: the page switch and the
+    // settings exit are both unreachable while it is open.
+    expect(models).toMatch(/function closeEditor\(\) \{[\s\S]*?if \(draftDirty\) \{[\s\S]*?setDiscardConfirm\(true\)[\s\S]*?return[\s\S]*?\n  \}/u)
+    expect(models).toContain('function keepEditing()')
+    expect(models).toContain('function discardDraft()')
+    expect(models).toContain('discardConfirm={discardConfirm}')
+    expect(models).toContain('onDiscard={discardDraft}')
+    expect(editor).toContain('role="alertdialog" aria-label="有未保存的修改"')
+    expect(editor).toContain('有未保存的修改，关闭后会丢弃。')
+    expect(editor).toContain('继续编辑')
+    expect(editor).toContain('丢弃修改')
+  })
 })

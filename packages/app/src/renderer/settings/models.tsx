@@ -34,6 +34,8 @@ export function SettingsModelsPage() {
   const [draft, setDraft] = useState<ProviderEditorDraft | null>(() => readProviderEditorSession()?.draft ?? null)
   const [baseline, setBaseline] = useState<ProviderEditorDraft | null>(() => readProviderEditorSession()?.baseline ?? null)
   const [draftRestored, setDraftRestored] = useState(() => readProviderEditorSession() !== null)
+  /** True while the close entry asks whether unsaved edits may be discarded. */
+  const [discardConfirm, setDiscardConfirm] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -104,6 +106,25 @@ export function SettingsModelsPage() {
   function closeEditor() {
     // Leaving mid-save would strand the result on an unmounted page.
     if (saving) return
+    // Closing with unsaved edits discards them, and that must be the user's decision rather than
+    // a silent loss: the editor is a modal, so the page switch and the settings exit are both
+    // unreachable while it is open (measured in the real window by `verify:provider-editor-draft`),
+    // which leaves the close entry as the only way out.
+    if (draftDirty) {
+      setDiscardConfirm(true)
+      return
+    }
+    applyEditorSession(null)
+    setDraftRestored(false)
+    setSaveError(null)
+  }
+
+  function keepEditing() {
+    setDiscardConfirm(false)
+  }
+
+  function discardDraft() {
+    setDiscardConfirm(false)
     applyEditorSession(null)
     setDraftRestored(false)
     setSaveError(null)
@@ -190,8 +211,11 @@ export function SettingsModelsPage() {
             dirty={draftDirty}
             restored={draftRestored}
             saveError={saveError}
+            discardConfirm={discardConfirm}
             onChange={changeDraft}
             onCancel={closeEditor}
+            onKeepEditing={keepEditing}
+            onDiscard={discardDraft}
             onSave={() => void handleSave()}
           />
         </div>

@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-25 03:19:01
+最后更新：2026-09-25 03:44:12
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -21,7 +21,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `MemorySkills.tsx`、`skill-catalog-state.ts`：技能页的加载中、成功为空、成功有数据和失败是四种不同结果；重新加载失败保留已有列表并标注未刷新，详情读取失败保留列表与当前选择并提供重试。状态规则是纯 reducer，可在无窗口环境下回归。**页头必须有可点的刷新入口**（`dialog-header` 里的"刷新"，复用 `ms-feedback-action` 样式）：否则"保留列表并标注未刷新"这条分支在界面上不可达——此前只有失败后才出现重载按钮，加载成功的页面无法再刷新（`verify:skills-catalog-states` 实机验收发现）。
 - `deletion-impact.ts`：不可逆删除的对象、影响和保留项的唯一文案来源；供应商删除只描述配置条目移除，密钥仍留在系统密钥库，并提示当前选中模型是否来自该供应商。
 - `channel-status.ts`：渠道总体状态的唯一派生口。总体标签由已加载渠道的真实 `running` 与失败项计数得出（未配置/未运行/部分运行/运行中），不把“列表非空”或“已配置”当成连接健康；列表标题与逐项标签使用同一批事实。
-- `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义供应商使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。
+- `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义供应商使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。**编辑会话与离开保护**（UX-06）：草稿放在模块内存的 `provider-editor-session.ts`（不落盘、不写日志），所以切页再回来时它还在——回到该页会**直接带着草稿重新打开编辑器**；`关闭/取消` 在有未保存修改时**先问再丢**（`provider-editor-discard`：继续编辑 / 丢弃修改），不会静默丢失，保存中则两者都禁用。真实窗口实测（`verify:provider-editor-draft`）：切页后草稿名仍在（脏状态标签优先于"已恢复…"），丢弃不发任何保存请求，注入 500 后失败原因与可修正内容都留在编辑器里。
 - `composer/context-usage-indicator.tsx` 除上下文窗口占用外，还显示**会话累计缓存命中率**与 `缓存读取 / 输入` 原值（含冷启动，与验收账本同源）；展示层 `toFixed(1)` 四舍五入，判定层始终用精确值。
 - `chat/assistant-turn.tsx`：一轮 Agent 的思考摘要、真实执行过程、验证和最终结果渐进披露。
 - `Markdown.tsx`、`link-navigation.tsx`、`workspace/browser.tsx`：全局链接单击进入 LS 内置预览；网页由独立的有界 URL 历史驱动前进、后退和刷新，网页内部跳转不会污染全局应用导航。

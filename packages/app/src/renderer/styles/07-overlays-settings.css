@@ -3290,6 +3290,25 @@ body.is-resizing-column .settings-sidebar-resizer {
   line-height: 1.5;
 }
 
+/* The close entry asks before dropping unsaved edits; the editor is a modal, so this is the
+   only way out and its answer must be explicit. */
+.provider-editor-discard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--control-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: 12px;
+}
+
+.provider-editor-discard > span {
+  flex: 1 1 auto;
+}
+
 .settings-inline-field {
   display: flex;
   flex-direction: column;
