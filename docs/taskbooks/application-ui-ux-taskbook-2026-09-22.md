@@ -531,6 +531,16 @@
 - **本轮的第二个真实缺陷（已修）**：`callApi` / `embed` 的自家 deadline 与调用方取消都表现为同一个 `AbortError`，于是"Provider 挂起超过超时"被归为 `cancelled` 而**永不重试**——与"重试传输故障、尊重取消"正好相反，超时在界面上只会得到一次失败。现在只有自家 deadline 触发且调用方未取消时才翻译成可重放的 `LlmError(408, 'Request timed out after <ms>ms', true)`；调用方的 `AbortSignal` 中止仍是 `AbortError`。契约写进 `packages/llm/README.md`，单元回归两条（挂起→重放成功；取消→只发一次请求）。
 - 仍未覆盖：**本地 SSE 断线**（Renderer 与 Local App API 之间的观察流断开，需要在窗口里断开本地连接并断言不重复文本、工具副作用不重放）；运行界面录屏与普通/紧凑模式下的活动行可见性。第 1、3 条复选框保持未勾选。
 
+**实施记录（2026-09-25 02:55:00）｜状态：错误注入表最后一类（本地 SSE 断线）已实机跑通，八类加这一类共九类齐了；仅剩录屏与紧凑模式可见性，保持未勾选**
+
+- 新增真实窗口门 `pnpm run verify:local-stream-disconnect`（`scripts/verify-local-stream-disconnect.mjs`）：在页面里包一层 `fetch`，让 `/run/stream` 的响应体在 1.2 s 后**报错**（这正是 `consumeRunStream` 眼里"本地连接断了"的样子），其余请求原样透传，并记录注入时刻以便证明它确实触发过。
+- 实测（1024×640，长 Markdown 夹具，Provider 分块 24 字符 / 60 ms）：
+  - **界面**：断线后该回合以 `failed` 结束，错误行原文就是注入的失败原因（"local app API stream disconnected (acceptance fixture)"），停止入口消失（`stopping: false`，输入栏回到空闲），**用户输入被还回输入栏**（草稿恢复为原提示）。
+  - **Main 继续跑**：断线后 **2.29 s** 会话里出现了完整结算（1145 字符，与夹具逐字节相同，两个哨兵各一次），而 Provider **总共只收到 1 次请求**——断线既没有取消 Main 的任务，也没有触发重跑。
+  - **重连不重复**：重载渲染器后从侧边栏打开这段被中断的会话，答案**只出现一次**（哨兵各一次），DOM 文本与夹具的纯文本投影完全一致（1014 字符）。
+- 顺带记录一处观察（**未断言、未修改**）：被本地断线打断的 run 不会写下 `localStorage['littlesheep.ui.activeSession']`，因此重载后应用停在草稿视图（两处读到的值都是 `null`），被中断的会话在侧边栏里、一次点击可达。是否应改为自动回到被中断的会话属产品判断，本轮不改；夹具因此按用户的做法从侧边栏打开它。
+- 至此 UX-21 的错误注入表覆盖：503、429（含 `Retry-After`）、401、400、预算耗尽、Provider 挂起超时、用户取消、答案中途断流、本地 SSE 断线，共九类。仍未覆盖：运行界面录屏、普通/紧凑模式下的重试文案可见性（长文案截断、刷新后是否保留）。第 1、3 条复选框保持未勾选。
+
 ### UX-22｜对话输出层级与可读性
 
 **问题与边界**：在 UX-19~UX-21 的正确性问题定位后，再实机审查活动行、模型正文、失败提示、来源、工具结果及消息操作。现有普通/紧凑模式与 UX-16 的失败可见性修复是基础，不新增一套输出信息架构。
@@ -605,7 +615,7 @@
 | 15 | UX-18 | 本任务实施记录 | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动 | |
 | 16 | UX-17 | 本任务实施记录 + `pnpm run verify:workspace-large-directory` | 1,000 / 10,000 行目录的成对基准 + 滚动帧间隔与筛选可达性 | |
 | 17 | UX-20 | 本任务实施记录 + `pnpm run verify:chat-streaming-rendering` | 分块流式文本逐层比对 + 断流/畸形帧/最终结算 + 真实窗口 DOM/结算比对与取色 | |
-| 18 | UX-21 | 本任务实施记录 + `pnpm run verify:retry-feedback` | 429/503/超时/断流/401/400/取消/SSE 断线分类，安全重试最多 5 次 | |
+| 18 | UX-21 | 本任务实施记录 + `pnpm run verify:retry-feedback` / `verify:local-stream-disconnect` | 429/503/超时/断流/401/400/取消/本地 SSE 断线共九类，安全重试最多 5 次 | |
 | 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 
