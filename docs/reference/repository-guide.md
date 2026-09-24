@@ -14,7 +14,7 @@
 | L1 当前依据 | `docs/decision/` | 需要核实现状或理解推荐顺序时 | [项目状态](../decision/project-status.md) 维护当前事实与验证；[架构决策报告](../decision/architecture-decision-report.md) 维护演进顺序与风险 |
 | L2 稳定原则 | `docs/principles/` | 修改产品方向、流程或交互规则时 | [架构原则](../principles/architecture-principles.md)、[核心流程规范](../principles/core-agent-flow-guidelines.md) 和 [UI 交互规范](../principles/ui-interaction-guidelines.md) |
 | L3 执行细节 | `docs/taskbooks/` | 方向已确定并准备实施具体阶段时 | 版本化任务书、阶段验收标准和历史完成证据 |
-| L4 工程参考 | `docs/reference/` | 定位代码、维护仓库或开发插件时 | 本指南、[模块拆分地图](module-split-map.md)、[Core Flow 状态契约](core-flow-state-contract.md)、[插件开发说明](plugin-development.md) 和 [自定义模型供应商](custom-model-providers.md)；`docs/paper/` 的论文材料见[论文材料入口](../paper/README.md) |
+| L4 工程参考 | `docs/reference/` | 定位代码、维护仓库或开发插件时 | 本指南、[模块拆分地图](module-split-map.md)、[Core Flow 状态契约](core-flow-state-contract.md)、[插件开发说明](plugin-development.md) 和 [自定义模型供应商](custom-model-providers.md)；`docs/paper/` 的论文材料是本机未跟踪文件（`git ls-files docs/paper` 为空），只按路径引用，不做文档链接 |
 
 同一事实只在其责任文档中维护，其他文档使用链接引用。冲突时，长期约束看架构原则，当前事实和验证数字看项目状态，演进顺序看架构决策报告，目录归属看本指南，专项交互和流程看对应规范。任务书不维护全局最新状态，也不要创建另一份一次性总结复制决策入口。
 

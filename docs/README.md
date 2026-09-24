@@ -86,7 +86,7 @@
 - [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
 - [自定义模型供应商](reference/custom-model-providers.md)：Provider/模型配置字段、密钥存放、未声明能力的未知语义，以及只支持 OpenAI 兼容接口的边界。
-- [论文材料入口](paper/README.md)：论文正文、图表和复核材料的范围及提交前边界；正文源稿见 [LittleSheep 论文初稿](paper/littlesheep-thesis.md)。
+- 论文材料：论文正文、图表和复核材料的范围及提交前边界见 `docs/paper/README.md`，正文源稿为 `docs/paper/littlesheep-thesis.md`。**这两份是本机材料、未纳入版本库**（`git ls-files docs/paper` 为空），因此这里只给路径而不做文档链接——链接会让仓库门禁依赖不存在于版本库中的文件。
 
 ## 文档冲突规则
 
