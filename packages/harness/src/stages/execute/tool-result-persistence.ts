@@ -211,7 +211,7 @@ export const RUNTIME_CONTROL_MESSAGES = {
   boundaryFailure: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
   effectfulFailure: 'Runtime control: the failed call may already have changed the workspace, so the Runtime will not replay it. Observe the actual state (read or list what the call was supposed to change) before deciding what to do next.',
   noProgressBound: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
-  iterationBudgetExhausted: 'Runtime control: this run\'s tool-loop iteration budget is spent, so no further tool call will run. Report what is already done, what the recorded evidence shows, and what still remains.',
+  iterationBudgetExhausted: 'Runtime control: this run\'s tool-loop iteration budget is spent and NO further tool call will run — calling one anyway fails the whole run instead of being refused. Stop calling tools now and answer with what is already done: what the recorded evidence shows, what was delivered, and what still remains.',
   verifyGap: 'Runtime control: VERIFY found that the recorded evidence cannot settle this run, and this loop was re-entered so the gap can be closed. A call that was refused before it ran leaves no usable evidence; repeating it with the same arguments will be refused again. Fix the call or take the missing observation with a valid one, then report what the evidence now shows.',
 } as const;
 

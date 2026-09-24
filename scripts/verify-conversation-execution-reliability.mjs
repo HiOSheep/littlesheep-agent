@@ -8,6 +8,7 @@ import { createContext, Script } from 'node:vm'
 import { loadBranding, resolveDataDir } from '../packages/branding/dist/index.js'
 import { getProvider, loadConfig, withProviderPresets } from '../packages/config/dist/index.js'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+import { createGameArtifactProbe } from './lib/game-artifact-probe.mjs'
 
 /**
  * CE-12 acceptance for the conversation-execution-reliability taskbook.
@@ -481,7 +482,10 @@ async function main() {
     // to inherit the previous run's spend and fail before its first request.
     const budgetWorkspace = join(root, 'budget work space')
     await mkdir(budgetWorkspace, { recursive: true })
-    const tinyBudget = { agents: { defaults: { ...isolatedConfig.agents.defaults, maxModelCallsPerRun: 4 } } }
+    // Two calls: the delivery norm from the same round made a game run finish in
+    // four provider calls, so a four-call ceiling no longer reliably binds.
+    const tinyBudgetCalls = 2
+    const tinyBudget = { agents: { defaults: { ...isolatedConfig.agents.defaults, maxModelCallsPerRun: tinyBudgetCalls } } }
     await writeIsolatedConfig(dataDir, tinyBudget)
     {
       const restarted = await restartApp({ locator, electron, dataDir, chromiumDir, logPath: appLogPath })
@@ -496,14 +500,14 @@ async function main() {
     })
     const exhaustedText = `${exhausted.result.error ?? ''} ${JSON.stringify(exhausted.result.runtimeStatus ?? {})}`
     if (exhausted.result.status === 'ok' && String(exhausted.result.reply ?? '').trim() !== '') {
-      throw new Error('a four-call ceiling still published a model reply; the budget did not bind')
+      throw new Error(`a ${tinyBudgetCalls}-call ceiling still published a model reply; the budget did not bind`)
     }
     if (!/budget|预算/i.test(exhaustedText)) {
       throw new Error(`the exhausted run did not report the budget: ${exhaustedText.slice(0, 300)}`)
     }
     const exhaustedRequests = (exhausted.result.modelRequests ?? []).length
-    if (exhaustedRequests > 5) {
-      throw new Error(`the run made ${exhaustedRequests} provider calls under a four-call ceiling`)
+    if (exhaustedRequests > tinyBudgetCalls + 1) {
+      throw new Error(`the run made ${exhaustedRequests} provider calls under a ${tinyBudgetCalls}-call ceiling`)
     }
     const exhaustedTools = (exhausted.result.toolInvocations ?? []).length
     if (exhaustedTools === 0) {
@@ -561,8 +565,28 @@ async function main() {
       budgetWorkspace,
       exhaustedArtifacts.map((artifact) => artifact.relativePath),
     )
-    if (retryArtifacts.length === 0) {
-      throw new Error('the retry after budget exhaustion delivered no artifact')
+    // The exhausted run normally leaves the artifact behind, so the retry's job is
+    // to finish or verify it, not necessarily to write it again: measured here, the
+    // retry ran a dozen checks and reported the delivered file. What must hold is
+    // that it did real work, that the workspace holds an artifact that runs, and
+    // that it did not escalate.
+    const retryCalls = (retryAfterExhaustion.result.toolInvocations ?? []).length
+    if (retryCalls === 0) {
+      throw new Error('the retry after budget exhaustion made no tool call at all')
+    }
+    const deliveredArtifacts = await collectNewArtifacts(budgetWorkspace, [])
+    if (deliveredArtifacts.length === 0) {
+      throw new Error('no artifact exists in the workspace the retry was resuming')
+    }
+    const deliveredHtml = deliveredArtifacts
+      .filter((artifact) => /\.html?$/iu.test(artifact.relativePath))
+      .sort((left, right) => right.bytes - left.bytes)[0]
+    if (!deliveredHtml) {
+      throw new Error(`the workspace holds no HTML artifact: ${JSON.stringify(deliveredArtifacts.map((artifact) => artifact.relativePath))}`)
+    }
+    const deliveredRuntime = await probeArtifactAtRuntime(join(budgetWorkspace, deliveredHtml.relativePath))
+    if (deliveredRuntime.verdict === 'broken') {
+      throw new Error(`the artifact the retry delivered does not run: ${deliveredRuntime.problems.join('; ')}`)
     }
     const retryRequests = (retryAfterExhaustion.result.modelRequests ?? []).length
     if (retryRequests <= exhaustedRequests) {
@@ -588,11 +612,14 @@ async function main() {
       retry: {
         status: retryAfterExhaustion.result.status,
         providerCalls: retryRequests,
-        artifacts: retryArtifacts.map((artifact) => artifact.relativePath),
+        toolCalls: retryCalls,
+        newArtifacts: retryArtifacts.map((artifact) => artifact.relativePath),
+        deliveredArtifact: deliveredHtml.relativePath,
+        deliveredArtifactRuntime: deliveredRuntime.verdict,
         escalated: false,
       },
     })
-    progress(`budget exhaustion: calls=${exhaustedRequests} tools=${exhaustedTools} resumable=${Boolean(exhaustedCheckpoint.resumable)} resumedCalls=${resumedRequests} retryCalls=${retryRequests} retryArtifacts=${retryArtifacts.length}`)
+    progress(`budget exhaustion: calls=${exhaustedRequests} tools=${exhaustedTools} resumable=${Boolean(exhaustedCheckpoint.resumable)} resumedCalls=${resumedRequests} retryCalls=${retryRequests} retryTools=${retryCalls} delivered=${deliveredHtml.relativePath} runtime=${deliveredRuntime.verdict}`)
 
     await desktopAction(locator, 'quit')
     await waitForExit(electron, EXIT_TIMEOUT_MS)
@@ -967,6 +994,17 @@ async function inspectPlayableArtifact(workspaceDir) {
     /score|得分|计分/iu.test(html.text) ? 'score' : undefined,
     /restart|重新开始|再来一局|reset/iu.test(html.text) ? 'restart' : undefined,
   ].filter(Boolean)
+
+  // Parsing is not running. The artifact is opened in the Electron engine the app
+  // ships, driven through its start affordance and arrow keys, and judged on what
+  // a machine can observe: does it draw at all, does input reach it, does anything
+  // throw. A game that never draws is a broken delivery and fails the scenario;
+  // anything milder (a load-time exception, a console error) is reported so it is
+  // visible without pretending the game is unusable.
+  const runtime = await probeArtifactAtRuntime(join(workspaceDir, html.relativePath))
+  if (runtime.verdict === 'broken') {
+    throw new Error(`the delivered artifact does not run: ${runtime.problems.join('; ')}`)
+  }
   return {
     relativePath: html.relativePath,
     bytes: html.bytes,
@@ -975,7 +1013,26 @@ async function inspectPlayableArtifact(workspaceDir) {
     externalScripts: external.length,
     remoteScripts: remote.length,
     signals,
+    runtime: {
+      verdict: runtime.verdict,
+      animates: runtime.animates,
+      canvas: runtime.canvas,
+      loadExceptions: runtime.loadExceptions,
+      runtimeExceptions: runtime.runtimeExceptions,
+      consoleErrors: runtime.consoleErrors,
+    },
     otherFiles: artifacts.map((artifact) => artifact.relativePath).filter((path) => path !== html.relativePath),
+  }
+}
+
+/** One Electron host for the duration of the artifact check. */
+async function probeArtifactAtRuntime(artifactPath) {
+  const probe = await createGameArtifactProbe()
+  try {
+    const [report] = await probe.probeAll([artifactPath])
+    return report
+  } finally {
+    await probe.close()
   }
 }
 

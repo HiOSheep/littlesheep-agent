@@ -253,6 +253,65 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
 
+## 实施记录｜2026-09-24 第十九轮（把"产物能不能跑"变成机器能判的事 + 交货规范）
+
+### 现场：静态校验放过了一个会抛异常的产物
+
+CE-12 的最后一行要人玩一局，但那一行里"启动、输入、计分/胜负、重新开始"四件事其实大部分是机器可判的——只是门禁从未判过。验收脚本的 `inspectPlayableArtifact` 只做静态检查：脚本能解析、无远程脚本、源码里出现 canvas/game_loop/keyboard_input/score/restart 五个信号。**能解析不等于能跑**。
+
+本轮新增运行时探针（`scripts/lib/game-artifact-probe.mjs` + `scripts/probe-game-artifacts.mjs` + Electron 宿主 `game-artifact-host.cjs`）：把产物真的放进桌面版同一个 Electron 引擎里，驱动启动键/开始按钮、方向键、重启，报告加载期与运行期的异常、canvas 尺寸、帧有没有在动（菜单期/开始后/首次输入后分别记）、输入后画面是否变化、计分读数、重启方式。八个已交付游戏的结果：
+
+```text
+runs          breakout-A.html   canvas=760x480 animates=after start score=0->0   restart=key:R
+runs          breakout-B.html   canvas=720x520 animates=after start score=0->0   restart=key:R
+runs          breakout-C.html   canvas=880x560 animates=after start score=0->200 restart=key:R
+runs          breakout-D.html   canvas=640x480 animates=after start score=0->20  restart=key:R
+runs          snake-A.html      canvas=780x600 animates=on first input           restart=key:R
+runs          snake-B.html      canvas=520x520 animates=immediately  restart=button:再来一局
+needs-a-look  snake-C.html      load: TypeError: Cannot read properties of undefined (reading 'length')
+runs          snake-D.html      canvas=440x440 animates=on first input  restart=button:再来一局
+```
+
+`snake-C.html` 是真实缺陷：`resize()` 在 `reset()` 之前调用，第一次 `draw()` 读 `snake.length` 时 `snake` 还是 `undefined`；加载事件随后重跑 `resize()`，所以之后能玩——静态检查放过了它，运行时探针抓到了它。七个正常，一个"加载时抛异常、之后可用"。
+
+探针过程中自己也踩了两个坑，都记进了实现注释：隐藏窗口不合成，`Page.captureScreenshot` 会**永久不回**（第一次跑挂了十分钟）；而把窗口放到可视桌面之外又会让 Chromium 认为它被遮挡、暂停 `requestAnimationFrame`，于是三个用 rAF 的游戏被误判成"从不绘制"（`setInterval` 的那几个照常跑）。现在宿主显式关掉原生遮挡检测，判定也按"菜单期/开始后/首次输入"三阶段分别记录——**哪个阶段开始动是游戏的设计，不是缺陷**。
+
+### 门禁：交付的产物必须真的能跑
+
+`inspectPlayableArtifact` 在静态检查之后直接调用探针：`verdict === 'broken'`（从不绘制、或运行期抛异常、或没有 canvas）会让该场景**失败**；较轻的情况（加载期异常、console error）记录进报告而不谎称不可用。实机验证：本轮最后一次完整验收里
+
+```text
+playable artifact: {"relativePath":"neon-breakout.html", ..., "runtime":{"verdict":"runs","animates":"after start","canvas":{"width":880,"height":560},"loadExceptions":[],"runtimeExceptions":[],"consoleErrors":[]}}
+```
+
+### 交货规范：别把预算烧在反复自测上
+
+同一天的实机运行又暴露另一件事：一次 run 用了 **32 次调用（21 次是 `exec` 自测）**，写完游戏后一直在跑自己的测试脚本，最后撞上 30 轮上限；Runtime 给了"恰好一次收尾请求"的机会，模型却又调了两次工具（被拒），整轮失败并升级——已经写好的游戏没有交付。两手改动：
+
+- 执行契约新增交货规范（`packages/prompt/src/sections.ts`）："在这一轮的预算内交货：做完、用一次聚焦的检查验证、然后回答；反复重测同一份产物不是验证——Runtime 会记录证据，用户要的是结果而不是测试套件"，并要求收到"预算已用尽"的控制消息时停止调用工具、直接汇报。
+- 收尾控制消息（`RUNTIME_CONTROL_MESSAGES.iterationBudgetExhausted`）明说代价：**预算已花完，再调用工具会让整轮失败**（不是被拒绝），所以要立刻停止并汇报。
+
+实机效果（同一批 12 场景）：首幕从 16–32 次请求降到 **3–4 次**并直接交付；`independent repeat` 20 次、`continuation` 31 次（后者刚好落在 30 轮上限内、正常交付）。
+
+### 预算场景的相应调整
+
+上限提到 30、交货规范生效之后，原来"四调用上限必然撞墙"的前提不再成立（模型 4 次调用就把游戏做完了）——这正是想要的趋势。场景因此把上限收紧到 **2**，并在断言上改成"重试必须真的做了工具工作 + 工作区里有一个能跑的产物"，而不是"必须再写一次文件"：实机里那次重试跑了 13 次工具调用去验证并汇报已交付的 `sheep-game/index.html`，这才是这一行要的"有界机会"。
+
+实机终局（12 场景全绿、`isolated root removed`）：
+
+```text
+normal workspace: status=ok requests=4  artifacts=2
+continuation:     status=ok requests=31 verdict=none
+independent repeat: status=ok requests=20 artifacts=1
+budget exhaustion: calls=2 tools=2 resumable=true resumedCalls=1 retryCalls=13 retryTools=13 delivered=sheep-game/index.html runtime=runs
+```
+
+### 验证与产物
+
+- 探针独立运行：`node scripts/probe-game-artifacts.mjs .codex_tmp/ce12-games` → 7 runs / 1 needs-a-look / 0 broken（结论已写进 `.codex_tmp/ce12-games/CHECKLIST.md`，人工试玩只需判手感）。
+- 完整验收：12 场景全绿，含新的 `runtime` 产物检查与收紧后的预算场景。
+- 定向：`packages/prompt/src`、`packages/harness/src/stages/execute` 用例通过；`typecheck` 通过；`check:repo` 36/36。
+
 ## 实施记录｜2026-09-24 第十八轮（CE-08 第二条：把"真跑撞上预算耗尽"造出来并验收）
 
 ### 为什么之前一直没做成
