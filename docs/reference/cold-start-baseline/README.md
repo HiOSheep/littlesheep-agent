@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 19:30:33
+最后更新：2026-09-24 19:58:12
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -436,7 +436,7 @@ adopt  { draft: {tabs:2, request:yes, expanded:1, drafts:1}, target: {tabs:1, re
 
 边界与未覆盖：正常启动的未就绪窗口只有约 300 ms，调试器附加往往已经落在 `ready` 之后，所以"正常启动不长出全局条"由**同一状态的拉长版本**测量，而不是靠抢帧；显示缩放只做了 DPR 代理，而代理**只在设备像素比这一维**上近似真机——窗口的 CSS 像素尺寸、原生标题栏/caption 按钮与字体度量都不会跟着变，所以它证明的是"在这三档 DPR 下渲染无溢出、无重叠、无条带"，不证明真实 125%/150%/200% 缩放下的观感，那一项仍是人工验收。另外两处与本项无关、但在 800 px 窗口下顺带记录的现象：控制行本身已很拥挤（就绪后同样存在），右侧预览列在面板与文件树夹挤下会变成一行一个字——都属既有布局，未在本次改动范围内处理。
 
-## CS-10 大历史数据根下的执行就绪与会话加载（观察值，尚无账本）
+## CS-10 大历史数据根下的执行就绪与会话加载
 
 2026-09-24 的真实数据复现指出：窗口先出现，但**旧事件分区的全量校验/扫描**和旧任务恢复把执行就绪拖到分钟级，Local App API 又在每个请求前等待 RunRouter，于是会话切换、发送与右侧工作区一起显得不可用。机制与契约由实现拥有，这里只记录口径与观察值：
 
@@ -444,9 +444,26 @@ adopt  { draft: {tabs:2, request:yes, expanded:1, drafts:1}, target: {tabs:1, re
 - 会话加载：只有被选中的会话才发起首屏历史请求，读取属于会话本身（切走不取消、切回复用进行中或已完成的结果），缓存按 `lastMessageAt` 校验且最多 6 个会话；会话选择只改当前视图的工作区，不再落盘全局默认目录或重建 Runner。
 - 单测（本次重跑 6 个文件 38 例全通过）：`local-app-api-readiness.test.ts`、`local-app-api/run-routes.test.ts`、`packages/runner/src/durable-event-store.test.ts`、`durable-harness-infrastructure.test.ts`、`renderer/sidebar/session-actions.test.ts`、`renderer/app-shell/runtime-actions.test.ts`。
 
-观察值（**只来自任务书记录，仓库内没有对应账本**，因此不是分位数）：真实数据根约 399 个事件分区 / 13,769 个事件文件；修复前两次执行就绪约 **55.7 s / 84.5 s**；修复后一次重复启动：Renderer 首帧约 1.30 s、工作区目录条目约 1.17 s、执行就绪约 **5.67 s**；两段已有会话首屏历史 29 / 34 ms；一次新会话真实模型发送 HTTP 200 `ok`、约 4.68 s。
+观察值（**来自任务书记录的真实数据根，仓库内没有对应账本**，因此不是分位数）：真实数据根约 399 个事件分区 / 13,769 个事件文件；修复前两次执行就绪约 **55.7 s / 84.5 s**；修复后一次重复启动：Renderer 首帧约 1.30 s、工作区目录条目约 1.17 s、执行就绪约 **5.67 s**；两段已有会话首屏历史 29 / 34 ms；一次新会话真实模型发送 HTTP 200 `ok`、约 4.68 s。
 
-要把这些数字变成常驻证据，需要补一个脚本：在**合成**的大分区数据根（可造出数百个合法事件分区）上跑真实窗口，记录启动→首帧/目录条目/执行就绪与首屏历史耗时并落账本。合成数据根能证明"恢复不再阻塞元数据与工作区路由"这一机制，但复现不了真实磁盘与真实历史的规模，因此两者要分开陈述。当前该脚本**不存在**，这也是本项仍留在任务书里的直接原因。
+### 合成大历史数据根上的测量（`measure:desktop-large-history-startup`）
+
+真实数据根不能进仓库，所以机制由 `scripts/measure-desktop-large-history-startup.mjs` 在**合成**数据根上测量，逐项事实见 [`desktop-large-history-startup-2026-09-24.json`](desktop-large-history-startup-2026-09-24.json) 与 [`desktop-large-history-startup-2026-09-24-large.json`](desktop-large-history-startup-2026-09-24-large.json)。夹具按磁盘格式逐个写入历史分区（`durable-events/<sha256(sessionId\0runId)>/<cursor>-<sha256(eventId)>.json`，version 1，游标连续），每条 run 是一条**已结算完成**的合法事件流（`run_accepted` → `final_reply_proposed` → `final_reply_settled` → `run_completed`）。这一点是必须的：只写 `run_accepted` + `run_completed` 时，400 条 run 会被恢复流程全部以"run completion requires a settled final reply"拒绝，夹具就变成了 400 次真实失败；app 自己的读取器与恢复流程通过，就是夹具格式正确的证据。
+
+| 指标（进程启动起算） | 400 分区 / 1,600 文件 | 1,200 分区 / 4,800 文件 |
+| --- | --- | --- |
+| API 开始监听 | 703 ms | 698 ms |
+| **执行就绪** | **1277 ms** | **1269 ms** |
+| 渲染器首帧 | 1191.7 ms | 1172.8 ms |
+| 首个目录条目 | 1152.7 ms | 1134.6 ms |
+| 恢复期 `/sessions`、`/workspace/list`、`/runtime`（最慢一次） | 16 / 16 / 7 ms，全部 200 | 19 / 18 / 9 ms，全部 200 |
+| 就绪后所选会话首屏历史（3 次 × 2 会话） | 0–16 ms，全部 200 | 1–17 ms，全部 200 |
+| 就绪后 20 次 `/runtime`（后台扫描仍在跑） | 中位 17 ms，最大 18 ms | 中位 17 ms，最大 20 ms |
+| 恢复失败 / 发现失败 | 0 / 0 | 0 / 0 |
+
+**结论**：历史分区数三倍（400 → 1,200）而执行就绪基本不变（1277 → 1269 ms），即这条路径上的就绪**不再随历史规模增长**；恢复期间元数据、Runtime 与会话/工作区路由都在毫秒级应答，就绪后也没有出现后台扫描拖慢轻量请求的迹象。
+
+边界：合成数据根只证明机制，不证明真实磁盘与真实历史规模（任务书里 5.67 s 那批观察值来自真实数据根）；本脚本拿不到后台扫描的完成信号（router 不暴露），"扫描结束后继续交互"只由就绪后 20 次采样间接支持；打包版未覆盖；恢复期采样只有 2 轮（就绪来得很快，这也正是结论本身）。`--partitions` 可调规模，`--keep` 保留数据根以便复查。
 
 ## 复现
 
@@ -465,6 +482,9 @@ pnpm run verify:desktop-cold-start-interaction
 pnpm run verify:desktop-cold-start-readiness-failure
 # 启动阶段文字的摆放（正常 / 拉慢 / 失败启动，窄窗与 DPR 代理）
 pnpm run verify:desktop-readiness-placement
+# 大历史数据根下的执行就绪与会话加载（合成 400 / 1200 个历史事件分区）
+pnpm run measure:desktop-large-history-startup
+node scripts/measure-desktop-large-history-startup.mjs --partitions=1200 --label=2026-09-24-large
 # 恢复归属（需要真实 Provider 凭据；无凭据时脚本跳过并说明原因）
 $env:DEEPSEEK_API_KEY = '<credential>'
 pnpm run verify:desktop-cold-start-recovery

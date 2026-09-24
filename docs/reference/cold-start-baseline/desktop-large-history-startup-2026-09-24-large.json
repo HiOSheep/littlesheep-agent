@@ -1,0 +1,164 @@
+{
+  "check": "desktop-large-history-startup",
+  "ok": true,
+  "label": "2026-09-24-large",
+  "measuredAt": "2026-09-24T11:53:50.163Z",
+  "environment": {
+    "platform": "win32 x64",
+    "node": "v26.4.0",
+    "electron": "see packages/app/package.json"
+  },
+  "fixture": {
+    "partitions": 1200,
+    "eventFiles": 4800,
+    "synthesizeMs": 3338,
+    "sessions": 2,
+    "eventsPerRun": 4
+  },
+  "steps": [
+    {
+      "step": "during-recovery",
+      "apiListeningMs": 698,
+      "executionReadyMs": 1269,
+      "readinessState": "ready",
+      "samples": 2,
+      "slowest": [
+        {
+          "atMs": 745,
+          "path": "/sessions",
+          "ms": 19,
+          "status": 200,
+          "bodyBytes": 294
+        },
+        {
+          "atMs": 745,
+          "path": "/workspace/list",
+          "ms": 18,
+          "status": 200,
+          "bodyBytes": 662
+        },
+        {
+          "atMs": 745,
+          "path": "/runtime",
+          "ms": 9,
+          "status": 200,
+          "bodyBytes": 3685
+        },
+        {
+          "atMs": 1005,
+          "path": "/sessions",
+          "ms": 5,
+          "status": 200,
+          "bodyBytes": 294
+        },
+        {
+          "atMs": 745,
+          "path": "/runtime/readiness",
+          "ms": 4,
+          "status": 200,
+          "bodyBytes": 106
+        }
+      ]
+    },
+    {
+      "step": "renderer",
+      "workspaceRows": 2
+    },
+    {
+      "step": "after-ready",
+      "history": [
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 13,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 1,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 14,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 15,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 17,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 14,
+          "status": 200,
+          "bodyBytes": 57
+        }
+      ],
+      "responsiveness": {
+        "samples": 20,
+        "minMs": 10,
+        "medianMs": 17,
+        "maxMs": 20
+      }
+    }
+  ],
+  "marks": {
+    "rendererFirstFrame": {
+      "stage": "renderer-first-frame",
+      "processUptimeMs": 1172.8,
+      "durationMs": 261.4
+    },
+    "rendererWorkspaceEntries": {
+      "stage": "renderer-workspace-entries",
+      "processUptimeMs": 1134.6,
+      "durationMs": 230.5
+    },
+    "executionStart": {
+      "stage": "execution-start",
+      "processUptimeMs": 605
+    },
+    "runnerReady": {
+      "stage": "runner-ready",
+      "processUptimeMs": 720.6,
+      "durationMs": 115.6
+    },
+    "durableEventsReady": {
+      "stage": "runner-infra-durable-events-ready",
+      "processUptimeMs": 619.3,
+      "durationMs": 1
+    }
+  },
+  "recoveryLogLines": {
+    "recovered": 0,
+    "failed": 0,
+    "discoveryFailed": 0
+  },
+  "failures": [],
+  "gaps": [
+    "The data root is synthetic: 400 partitions of completed 2-event runs written in the",
+    "store format, not the user data root that produced the taskbook observations",
+    "(about 399 partitions / 13,769 event files). It proves the mechanism - recovery no",
+    "longer gates readiness and the light routes answer during it - and cannot prove",
+    "real-disk behaviour at that scale.",
+    "The background compatibility scan runs after readiness by design; this ledger times",
+    "the light routes across it but does not observe a completion signal for the scan",
+    "itself, because the router exposes none.",
+    "Packaged builds are not covered here."
+  ]
+}
