@@ -365,6 +365,16 @@
 
 **状态**：未开始；源码可确认当前控制分支，实际误定位仍待 Electron 复现。
 
+**实施记录（2026-09-25 00:26:40）｜状态：已离开底部的锚点策略与回到底部入口实现完成并有单元/接线证据；真实窗口位移测量未做，保持未勾选**
+
+- 修掉的分支（本轮唯一改动的判定逻辑）：`resolveChatResizeScrollTop` 此前只要"宽度变了、或高度变了"就对**任何**读者调用 `resolveBottomAnchoredScrollTop`。对已离开底部的读者，那等于把 `scrollTop` 移动 `Δ(scrollHeight - clientHeight)`——视口每变多少像素，读者就被推走多少像素，正是"文字跳离当前阅读段"的算术来源（输入框增高、窗口缩放、分栏拖动都命中）。现在该函数**只回答贴底情形**（底边确实是它的锚点）；离开底部的修正改由消息锚点给出。
+- 新增的锚点策略（第 2 条要求）：`chat-scroll-anchor.ts` 新增纯函数 `selectChatVisibleAnchor`（视口内第一条仍可见的 `data-message-key` 及其视口内位置）与 `resolveAnchoredScrollTop`（按该消息的新位置回推 `scrollTop`，锚点已不在时返回 `null` 表示"不猜、不改动"），DOM 读取隔离在 `readChatAnchorProbes`。`chat/use-chat-scroll-controller.ts` 在 resize burst 的第一个通知里同时记录几何与锚点：贴底按底边修复，否则把正在读的消息放回原处。
+- 滚动状态下沉：滚动位置、底部吸附、锚点与提示状态从 `app-shell/chat-view.tsx` 移到 `chat/use-chat-scroll-controller.ts`——视图从 **299 行降到 112 行**，不再接近 300 行软上限；`chat-scroll-anchor.ts` 158 行、新 hook 312 行（已登记进模块拆分地图的软上限审查队列）。
+- 回到底部入口与新消息提示（第 2 条后半）：`readingAway` 由实测位置得出（`onScroll` 与每次消息更新后重算），新输出到达而读者不在底部时只置 `hasNewContent` 并保持阅读位置不动；此时渲染 `.chat-jump-to-latest`（文案"回到最新"／"有新内容 · 回到最新"），点击后重新贴底并清空提示。按钮浮在**实测的** `--composer-overlay-height` 之上，不遮挡输入栏，也不占用消息流的高度。"有新内容"用**内容签名**（消息数 + 末条 id + 末条正文长度）判定而非消息条数：流式输出只增长当前回合而不新增消息，那种增长正是离开底部的读者需要知道的。
+- 一处容易写错并已用测试钉住的接线：会话切换的 layout effect 只能依赖 `sessionKey`。把消息列表（或它的长度）加进依赖，会让**每一条新消息**都重新贴底并清空提示，锚点策略随即失效——`chat-scroll-controller-wiring.test.ts` 专门断言该依赖里没有 `messageCount`。
+- 验证方式：`chat-scroll-anchor.test.ts` 扩到 14 例——离开底部时高度变化不再产生位移（原断言 460 改为 `null`，并把旧行为写成注释说明它为什么是缺陷）、贴底读者仍按底边修复、锚点选择/漂移修正/锚点消失拒绝猜测/不产生负偏移；新增 `chat-scroll-controller-wiring.test.ts` 5 例，从源码层固定"滚动所有权在 hook 而非视图""锚点分支与贴底分支并存""按钮只在 `readingAway` 时渲染且带新内容标记""只有读者自己的位置能清除两个提示标志""会话切换不因新消息重新贴底"，并断言 CSS 定位契约。`chat-layout-stability.test.ts` 的两条接线断言同步改指 hook（原意图不变）。`vitest run packages/app/src/renderer`：113 个文件 619 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
+- 未覆盖项：**第 1、3 条复选框保持未勾选**——真实窗口里的位移测量（短/长会话的顶部/中部/底部起点，流式增量、加载更早消息、展开工具详情、输入框增高、分栏拖动、窗口缩放、切换会话与返回）尚未录制，因此"修复前后 `scrollTop`、可见消息键与截图/视频"没有数据；切换会话仍直接跳到底部（会话现场是否应恢复上次阅读位置属产品判断，未在无实机证据时改动）；普通/紧凑模式、窄窗口与高 DPI 下的按钮可达性同样待实机确认。
+
 ### UX-20｜流式文字外观变化与内容缺失
 
 **问题与边界**：用户报告部分字色突然变化、部分文字像被吞掉。`Markdown.tsx` 对正在输出的尾部反复解析，完成后切换成整篇渲染；CSS 对标题、链接、引用、行内代码设有不同颜色，代码块还会从纯文本 fallback 切到按需加载的高亮组件。这些能解释潜在的视觉变化，**尚未证明就是用户看到的那一处**。另一个已确认的状态分支是 `run-result-reducer.ts` 在 `status !== 'ok'` 时清空流式回答预览；底层 SSE 解析对无效 JSON 数据行直接跳过，且 `parseStream` 目前以流结束作为完成条件，需核对异常截断是否被识别。不得把未校验的预览直接当作 Agent 最终回复保留下来。

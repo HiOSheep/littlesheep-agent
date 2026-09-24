@@ -58,6 +58,49 @@
   opacity: 0.55;
 }
 
+/* The reachable way back to the newest message, shown only while the reader is above the
+   sticky-bottom band. It floats above the composer overlay (whose height is measured at
+   runtime), so it never covers the input surface or the line being read. */
+.chat-jump-to-latest {
+  position: absolute;
+  bottom: calc(var(--composer-overlay-height) + var(--composer-message-gap) / 2);
+  left: 50%;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  transform: translateX(-50%);
+  color: var(--text);
+  background: var(--control-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.chat-jump-to-latest:hover,
+.chat-jump-to-latest:focus-visible {
+  background: var(--control-active);
+  border-color: var(--border-strong);
+}
+
+/* New output while away is a fact the reader must be able to notice without scrolling;
+   the label already says it, the marker makes it findable at a glance. */
+.chat-jump-to-latest[data-new-content="true"]::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--accent);
+}
+
 .messages.is-empty {
   display: block;
   padding: clamp(24px, 5vh, 64px) var(--chat-content-gutter)

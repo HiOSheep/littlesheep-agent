@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-24 23:13:22
+最后更新：2026-09-25 00:26:40
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -101,6 +101,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 应用表面圆角使用统一 token：普通表面为 `10px`，圆形和胶囊单独处理；输入栏使用 `12px`，与固定 `24px` 圆形发送键的实际半径一致。侧边栏与拓展工作区共用的折叠图标使用 `3px` 小圆角、`18 x 14` SVG 视口、半像素坐标和 `1px` 非缩放描边，分隔线只做整数位移动画，以保证高 DPI 与窗口缩放下的边缘清晰度。
 
 流式回答的文字边界有一条硬规则：SSE 帧解析（`src/renderer/api/common.ts`）对无法解析的 `data:` 行**只跳过该帧**，不再抛出——此前一个畸形帧会中断整条流的读取，连带丢掉它之后的全部增量与 `result`（UX-20 分层定位确认的整段丢失路径）。"始终没有可解析结果"的失败关闭由 `src/renderer/api/run.ts` 的 `consumeRunStream` 承担，坏帧不得被当成静默成功；分层探针在 `src/renderer/chat/stream-text-integrity.test.ts`。
+
+对话区的阅读位置由 `src/renderer/chat/use-chat-scroll-controller.ts` 单独拥有（UX-19）：贴底时按底边跟随新内容，离开底部后锚定"正在读的那条消息"（`chat-scroll-anchor.ts` 的纯算术），视口或分栏变化不再按"离底部的距离"推移读者；新输出到达而读者不在底部时只提示，并提供 `.chat-jump-to-latest` 作为可达的返回入口。
 
 ## 开发环境管理
 

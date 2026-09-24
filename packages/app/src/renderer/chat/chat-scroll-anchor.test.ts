@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
   CHAT_COMPOSER_OVERLAY_RESIZE_EVENT,
+  CHAT_MESSAGE_ANCHOR_ATTRIBUTE,
   CHAT_STICKY_BOTTOM_THRESHOLD,
   CHAT_GEOMETRY_EPSILON,
   didChatViewportHeightChange,
   didChatViewportResize,
   didChatViewportWidthChange,
   isChatNearBottom,
+  resolveAnchoredScrollTop,
   resolveChatResizeScrollTop,
   resolveBottomAnchoredScrollTop,
+  selectChatVisibleAnchor,
+  type ChatAnchorProbe,
   type ChatScrollGeometry,
 } from './chat-scroll-anchor'
 
@@ -100,6 +104,57 @@ describe('chat bottom scroll anchor', () => {
     const previous = geometry({ scrollTop: 420 })
     const current = geometry({ clientHeight: 360, viewportHeight: 360 })
 
-    expect(resolveChatResizeScrollTop(previous, current, false)).toBe(460)
+    // UX-19: the composer growing or the window shrinking must not move a reader
+    // who is above the bottom. Preserving their bottom gap moved them by exactly
+    // the viewport delta; their anchor is the message they were reading, and the
+    // content coordinates of that message do not change here.
+    expect(resolveChatResizeScrollTop(previous, current, false)).toBeNull()
+    // A pinned reader still follows the edge its anchor really is.
+    expect(resolveChatResizeScrollTop(geometry({ scrollTop: 600 }), current, true)).toBe(640)
+  })
+})
+
+describe('chat visible anchor', () => {
+  const probes: ChatAnchorProbe[] = [
+    { key: 'm1', top: -640, bottom: -520 },
+    { key: 'm2', top: -120, bottom: 40 },
+    { key: 'm3', top: 40, bottom: 260 },
+    { key: 'm4', top: 260, bottom: 420 },
+  ]
+
+  it('names the first message still on screen as the reader position', () => {
+    expect(selectChatVisibleAnchor(probes, 400)).toEqual({ key: 'm2', top: -120 })
+  })
+
+  it('returns nothing when no keyed message is on screen', () => {
+    expect(selectChatVisibleAnchor([{ key: 'm1', top: -900, bottom: -700 }], 400)).toBeNull()
+    expect(selectChatVisibleAnchor([], 400)).toBeNull()
+    expect(selectChatVisibleAnchor([{ key: 'm1', top: 900, bottom: 1_100 }], 400)).toBeNull()
+  })
+
+  it('corrects the scroll position by the anchor drift after a reflow', () => {
+    const anchor = { key: 'm2', top: -120 }
+    // Narrowing the pane re-wrapped the paragraphs above, pushing the anchor down 60px.
+    const reflowed: ChatAnchorProbe[] = [
+      { key: 'm1', top: -700, bottom: -560 },
+      { key: 'm2', top: -60, bottom: 100 },
+      { key: 'm3', top: 100, bottom: 320 },
+    ]
+
+    expect(resolveAnchoredScrollTop(anchor, reflowed, 620)).toBe(680)
+  })
+
+  it('refuses to guess when the anchored message is gone', () => {
+    const anchor = { key: 'm2', top: -120 }
+    expect(resolveAnchoredScrollTop(anchor, [{ key: 'm9', top: 0, bottom: 40 }], 620)).toBeNull()
+  })
+
+  it('never resolves to a negative scroll offset', () => {
+    const anchor = { key: 'm2', top: -120 }
+    expect(resolveAnchoredScrollTop(anchor, [{ key: 'm2', top: -400, bottom: -200 }], 100)).toBe(0)
+  })
+
+  it('uses the message key attribute the transcript actually renders', () => {
+    expect(CHAT_MESSAGE_ANCHOR_ATTRIBUTE).toBe('data-message-key')
   })
 })
