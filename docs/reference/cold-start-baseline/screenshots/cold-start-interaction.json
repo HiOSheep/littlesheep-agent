@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6483
+        "port": 27356
       },
       "notices": {
         "errorText": null,
@@ -60,7 +60,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6483
+        "port": 27356
       }
     },
     {
@@ -95,7 +95,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6483
+        "port": 27356
       }
     },
     {
@@ -125,10 +125,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 6483,
+        "port": 27356,
         "retryable": false
       },
-      "notReadyWindowMs": 7605,
+      "notReadyWindowMs": 7494,
       "requiredWindowMs": 6000
     },
     {
@@ -542,6 +542,42 @@
         }
       ],
       "raceWinner": "the second file"
+    },
+    {
+      "step": "browser-tab-while-not-ready",
+      "steps": [
+        {
+          "step": "tab-opened",
+          "menuOpened": {
+            "opened": true
+          },
+          "openedTab": {
+            "opened": true,
+            "menuVisible": "workspace-add-panel visible"
+          },
+          "browserShown": true,
+          "readiness": "starting"
+        },
+        {
+          "step": "guest-loaded",
+          "submitted": "http://127.0.0.1:2791/",
+          "guest": {
+            "state": "loaded",
+            "url": "http://127.0.0.1:2791/",
+            "text": "MARKER-BROWSER-GUEST-PAGE"
+          },
+          "readiness": "starting"
+        },
+        {
+          "step": "after-ready",
+          "readiness": "ready",
+          "guest": {
+            "state": "loaded",
+            "url": "http://127.0.0.1:2791/",
+            "text": "MARKER-BROWSER-GUEST-PAGE"
+          }
+        }
+      ]
     }
   ],
   "failures": [],

@@ -24,6 +24,7 @@
 //   node scripts/verify-desktop-cold-start-interaction.mjs [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
 
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
@@ -313,6 +314,13 @@ async function main() {
     const workspacePreview = await runWorkspacePreviewCase()
     observations.push({ step: 'workspace-preview-robustness', ...workspacePreview.observation })
     failures.push(...workspacePreview.failures)
+
+    // 4d. The embedded browser is the third thing CS-08 claims is usable before
+    //     the Runner exists. It is checked against a loopback page this script
+    //     serves itself, so "it works" means the guest really rendered the page.
+    const browserTab = await runBrowserTabCase()
+    observations.push({ step: 'browser-tab-while-not-ready', ...browserTab.observation })
+    failures.push(...browserTab.failures)
 
     await writeFile(join(outDir, 'cold-start-interaction.json'), `${JSON.stringify({
       check: 'desktop-cold-start-interaction',
@@ -691,6 +699,156 @@ async function runWorkspacePreviewCase() {
   } finally {
     client?.close()
     if (child?.exitCode === null) await harness.forceTerminate(child)
+    await harness.removeTemporaryRoot(root)
+  }
+  return { observation, failures }
+}
+
+/** Marker the served page carries, so the guest's own content is checkable. */
+const BROWSER_PAGE_MARKER = 'MARKER-BROWSER-GUEST-PAGE'
+
+/**
+ * The embedded browser inside the not-ready window (CS-08).
+ *
+ * Serving the page from this process is what makes the assertion honest: the
+ * guest's URL and its rendered text are read back through the webview API, so a
+ * tab that merely exists cannot pass. The loopback page is http on 127.0.0.1,
+ * which the URL normalizer accepts.
+ */
+async function runBrowserTabCase() {
+  const failures = []
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-cold-start-browser-'))
+  const dataDir = join(root, 'data')
+  const workspaceDir = join(root, 'workspace')
+  const chromiumDir = join(root, 'chromium')
+  const logPath = join(root, 'electron.log')
+  const debuggingPort = await harness.reservePort()
+  let client
+  let child
+  let server
+  const observation = { steps: [] }
+  try {
+    await mkdir(workspaceDir, { recursive: true })
+    await mkdir(dataDir, { recursive: true })
+    await writeFile(join(workspaceDir, 'README.md'), '# workspace\n', 'utf8')
+    await seedSessions(dataDir)
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify({
+      version: 1,
+      agents: { defaults: { workspace: workspaceDir } },
+      desktop: { closePolicy: 'always-background' },
+    }, null, 2)}\n`, 'utf8')
+
+    server = createServer((_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      response.end(`<!doctype html><html><head><title>LS acceptance page</title></head><body><h1>${BROWSER_PAGE_MARKER}</h1></body></html>`)
+    })
+    await new Promise((resolvePromise) => server.listen(0, '127.0.0.1', resolvePromise))
+    const pageUrl = `http://127.0.0.1:${server.address().port}/`
+
+    child = await harness.startElectron({
+      dataDir,
+      chromiumDir,
+      debuggingPort,
+      logPath,
+      extraEnv: {
+        LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
+        LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS: String(NOT_READY_WINDOW_MS),
+      },
+    })
+    const locator = await harness.waitForLocator(dataDir, child.pid)
+    client = await harness.connectRenderer(debuggingPort)
+    await client.send('Runtime.enable')
+    await harness.waitForVisible(client, '.composer textarea', 0, harness.actionTimeoutMs)
+
+    await openPanel(client)
+    await harness.waitForVisible(client, '.workspace-add-trigger', 0, harness.actionTimeoutMs)
+    const menuOpened = await client.evaluate(`(() => {
+      const trigger = document.querySelector('.workspace-add-trigger');
+      if (!trigger) return { opened: false, reason: 'no add trigger' };
+      trigger.click();
+      return { opened: true };
+    })()`)
+    await delay(300)
+    const openedTab = await client.evaluate(`(() => {
+      const panel = document.querySelector('.workspace-add-panel');
+      const items = [...document.querySelectorAll('.workspace-add-item')];
+      const item = items.find((node) => node.textContent.includes('浏览器'));
+      if (!item) {
+        return { opened: false, reason: 'no browser entry', menuVisible: panel ? panel.className : null, items: items.map((node) => node.textContent.trim()) };
+      }
+      item.click();
+      return { opened: true, menuVisible: panel ? panel.className : null };
+    })()`)
+    const browserShown = await harness.waitForVisible(client, '.workspace-browser-address input', 0, harness.actionTimeoutMs)
+      .then(() => true)
+      .catch(async () => {
+        const diagnostic = await client.evaluate(`(() => ({
+          panelClass: document.querySelector('.workspace-panel')?.className ?? null,
+          viewTabs: [...document.querySelectorAll('.workspace-active-label, .workspace-add-label')].map((node) => node.textContent.trim()),
+          hasBrowserSurface: Boolean(document.querySelector('.workspace-browser, .workspace-browser-body')),
+          menuClass: document.querySelector('.workspace-add-panel')?.className ?? null,
+        }))()`).catch(() => null)
+        observation.steps.push({ step: 'browser-surface-missing', menuOpened, openedTab, diagnostic })
+        return false
+      })
+    const readinessAtOpen = await readReadiness(locator)
+    observation.steps.push({ step: 'tab-opened', menuOpened, openedTab, browserShown, readiness: readinessAtOpen?.state ?? null })
+    if (openedTab?.opened !== true || browserShown !== true) {
+      failures.push({ check: 'a browser tab can be opened while execution is unavailable', detail: { menuOpened, openedTab, browserShown } })
+    }
+
+    const submitted = await client.evaluate(`(() => {
+      const form = document.querySelector('.workspace-browser-address');
+      const input = form ? form.querySelector('input') : null;
+      if (!form || !input) return null;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(input, ${JSON.stringify(pageUrl)});
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ${JSON.stringify(pageUrl)}, inputType: 'insertText' }));
+      form.requestSubmit();
+      return input.value;
+    })()`)
+    const guest = await harness.waitFor(async () => {
+      const state = await client.evaluate(`(async () => {
+        const node = document.querySelector('.workspace-browser-body webview');
+        if (!node) return { state: 'no-webview' };
+        const url = await node.getURL();
+        if (!url || url === 'about:blank') return { state: 'blank', url };
+        const text = await node.executeJavaScript('document.body ? document.body.innerText : ""').catch(() => '');
+        return { state: 'loaded', url, text: String(text).slice(0, 200) };
+      })()`).catch(() => null)
+      return state?.state === 'loaded' && state.text?.includes(BROWSER_PAGE_MARKER) ? state : undefined
+    }, harness.actionTimeoutMs, 'browser guest page').catch((error) => ({ state: 'timeout', error: String(error) }))
+    const readinessAtGuest = await readReadiness(locator)
+    observation.steps.push({ step: 'guest-loaded', submitted, guest, readiness: readinessAtGuest?.state ?? null })
+    if (guest?.state !== 'loaded' || !guest.text?.includes(BROWSER_PAGE_MARKER)) {
+      failures.push({ check: 'the browser guest renders the page while execution is unavailable', detail: guest })
+    }
+    if (readinessAtGuest?.state !== 'starting') {
+      failures.push({ check: 'the browser tab was used inside the not-ready window', detail: { readiness: readinessAtGuest } })
+    }
+
+    const ready = await waitForReady(locator)
+    await delay(400)
+    const guestAfterReady = await client.evaluate(`(async () => {
+      const node = document.querySelector('.workspace-browser-body webview');
+      if (!node) return { state: 'no-webview' };
+      const url = await node.getURL();
+      const text = await node.executeJavaScript('document.body ? document.body.innerText : ""').catch(() => '');
+      return { state: 'loaded', url, text: String(text).slice(0, 200) };
+    })()`).catch(() => null)
+    observation.steps.push({ step: 'after-ready', readiness: ready?.state ?? null, guest: guestAfterReady })
+    if (ready?.state !== 'ready') {
+      failures.push({ check: 'the browser case still reaches readiness', detail: { readiness: ready } })
+    }
+    if (!guestAfterReady?.text?.includes(BROWSER_PAGE_MARKER)) {
+      failures.push({ check: 'the readiness handoff does not reload the browser tab', detail: guestAfterReady })
+    }
+  } catch (error) {
+    failures.push({ check: 'the browser tab case ran', detail: error instanceof Error ? error.message : String(error) })
+  } finally {
+    client?.close()
+    if (child?.exitCode === null) await harness.forceTerminate(child)
+    if (server) await new Promise((resolvePromise) => server.close(resolvePromise))
     await harness.removeTemporaryRoot(root)
   }
   return { observation, failures }
