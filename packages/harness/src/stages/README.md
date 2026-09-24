@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-24 04:41:04
+最后更新：2026-09-24 10:54:10
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -25,4 +25,5 @@
 - 每个复杂 stage 必须有同名测试；跨阶段行为由 Harness e2e 覆盖。
 - 工具结果对模型的投影只保留可据以决策的字段（无 `status`/`durationMs` 包装），重复的相同 payload 改为引用会话里仍在的早先结果；这两项按冻结真实任务实测分别占工具结果字符的 20% 与 7%。
 - 请求字节的稳定性是各 stage 的共同责任：Runtime 尾部与控制消息按位置持久化，强制收尾不得改写工具可见性或 `tool_choice`（provider 在 `none` 下不渲染工具目录，实测少 1.8k–2.0k tokens 且缓存从第 0 个 token 起失效）。可见工具目录就是本次会话的注册目录（`execute/runners.ts` 的 `catalogTools = ctx.tools`）：用户显式点名的工具只与 Runtime 检索范围取交集后收窄本轮的 `admittedTools`，既不改变模型所见 schema，也不放宽检索范围；越权调用在执行边界被拒，拒绝文案按收窄成因选择。
+- 预算与交货：主循环上限 30（`execute/iteration-budget.ts`），花完时允许恰好一次收尾请求；该控制消息明说"再调用工具会让整轮失败"，因为实测有一次模型无视它又调了两次工具、把已经写好的交付变成提问。执行契约（`@littlesheep/prompt`）同时写明"在这一轮的预算内交货：做完、一次聚焦检查、然后回答"，同一批实机里首幕请求数从 16–32 降到 3–4。
 - 跨 run 的请求装配由 `cross-run-continuation.test.ts` 守住：`modelHistory` 存在时，新 run 的请求必须先在字节上重复上一 run 的请求（工具配对含原始参数串与模型看到的工具结果文本），`historyChatCount` 负责把主用户回合标在正确位置。
