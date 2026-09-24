@@ -148,12 +148,21 @@ export function toCheckpointDetail(
   }
 }
 
+/**
+ * Counts the two facts the desktop surface states, without stating either twice.
+ *
+ * `invalidFiles` is the latest scan's unreadable records, counted once per file.
+ * `warningCount` deliberately excludes the findings that belong to those records:
+ * they are already named by `invalidFiles`, and counting them again made one
+ * unreadable file read as "1 份恢复记录无法读取、1 处恢复记录不完整" - the same file
+ * described as two different problems.
+ */
 export function toCheckpointDiagnostics(
   diagnostics: RunCheckpointStoreDiagnostics,
 ): LocalAppRunCheckpointDiagnostics {
   return {
     invalidFiles: diagnostics.invalidFiles,
-    warningCount: diagnostics.diagnostics.length,
+    warningCount: diagnostics.warningFindings.length,
   }
 }
 

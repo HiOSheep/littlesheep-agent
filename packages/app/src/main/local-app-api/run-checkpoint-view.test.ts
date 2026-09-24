@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { RunCheckpointInspection } from '@littlesheep/runner'
+import type { RunCheckpointInspection, RunCheckpointStoreDiagnostics } from '@littlesheep/runner'
 import { asSessionId, type RunCheckpoint } from '@littlesheep/types'
 import {
   pendingCheckpointHeads,
+  toCheckpointDiagnostics,
   toCheckpointDetail,
   toCheckpointSummary,
 } from './run-checkpoint-view.js'
@@ -107,5 +108,37 @@ describe('run checkpoint renderer view', () => {
     expect(summary.progress.activeStepTitles).toEqual(['step-a', 'step-b'])
     expect(detail.pendingEventCount).toBe(2)
     expect(detail).not.toHaveProperty('context')
+  })
+
+  it('counts an unreadable record once instead of naming it as two problems', () => {
+    const findings = (count: number, kind: 'corrupt' | 'temporary') => Array.from({ length: count }, (_, index) => ({
+      kind,
+      file: `checkpoint-${index}.json`,
+      message: 'fixture',
+      recordedAt: '2026-07-29T10:00:00.000Z',
+    }))
+    const diagnostics = (
+      invalidFiles: number,
+      warningFindings: RunCheckpointStoreDiagnostics['warningFindings'],
+      all: RunCheckpointStoreDiagnostics['diagnostics'],
+    ): RunCheckpointStoreDiagnostics => ({
+      rootDir: 'C:\\data\\run-checkpoints',
+      scannedFiles: 3,
+      readFiles: 3,
+      validFiles: 2,
+      invalidFiles,
+      warningFindings,
+      diagnostics: all,
+    })
+
+    // One broken file: the corrupt finding belongs to the record the store already
+    // counted, so it must not be reported a second time as an incomplete record.
+    expect(toCheckpointDiagnostics(diagnostics(1, [], findings(1, 'corrupt'))))
+      .toEqual({ invalidFiles: 1, warningCount: 0 })
+    // A stale temporary file is a finding of its own and is counted as one.
+    expect(toCheckpointDiagnostics(diagnostics(0, findings(1, 'temporary'), findings(1, 'temporary'))))
+      .toEqual({ invalidFiles: 0, warningCount: 1 })
+    expect(toCheckpointDiagnostics(diagnostics(2, [], findings(3, 'corrupt'))))
+      .toEqual({ invalidFiles: 2, warningCount: 0 })
   })
 })

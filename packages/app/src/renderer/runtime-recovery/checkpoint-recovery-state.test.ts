@@ -168,11 +168,14 @@ describe('checkpoint recovery entry', () => {
     expect(entry).toEqual({ kind: 'none', label: '', title: '', count: 0, action: 'none' })
   })
 
-  it('names both kinds of unreadable records', () => {
+  it('names unreadable records and directory findings without describing one file twice', () => {
     expect(checkpointRecoveryDiagnosticText(CLEAN_DIAGNOSTICS)).toBeNull()
-    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 1, warningCount: 0 })).toContain('1 份恢复记录无法读取')
-    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 0, warningCount: 3 })).toContain('3 处恢复记录不完整')
-    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 2, warningCount: 1 })).toContain('2 份恢复记录无法读取、1 处恢复记录不完整')
+    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 1, warningCount: 0 }))
+      .toBe('另有 1 份恢复记录无法读取；LS 已保留原文件并停止自动处理。')
+    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 0, warningCount: 3 })).toContain('3 处恢复目录读写异常')
+    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 2, warningCount: 1 })).toContain('2 份恢复记录无法读取、1 处恢复目录读写异常')
+    // The counts are disjoint: one unreadable file is one problem, never two.
+    expect(checkpointRecoveryDiagnosticText({ invalidFiles: 1, warningCount: 0 })).not.toContain('不完整')
   })
 })
 

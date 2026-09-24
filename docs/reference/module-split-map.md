@@ -22,7 +22,6 @@
 | `packages/runner/src/runner.ts` | 2462 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
 | `packages/harness/src/durable-kernel.ts` | 930 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/types/src/runtime-contracts.ts` | 872 | Context、事件、检查点、活动任务控制、执行证据、请求前缀变化原因和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`，effect ownership port 已迁入 `effect-lease.ts`，会话续接证据已迁入 `conversation-continuation.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
-| `packages/runner/src/run-checkpoint-store.ts` | 891 | 检查点 store、通用 codec、原子存储、查询、容量、保留期和 conversation-turn 查询 | work-policy upgrade codec 与错误类型已下沉；继续分离通用 schema/codec、store、query 与 retention policy | E |
 | `packages/channels/qqbot/src/plugin.ts` | 799 | QQ 协议、连接、消息、发送和生命周期 | transport、protocol、message-mapper、sender、lifecycle | C |
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/runner/src/runtime-event-queue.ts` | 729 | run/session 隔离、有界事件、幂等、租约、结算和快照恢复 | `RunContext` 顶层 runtime state 已由 Harness `runtime-state.ts` 统一批次写入；本文件继续独占 queue codec、lease/settle、registry 和快照恢复内部状态，保持 facade 稳定 | E |
@@ -50,6 +49,8 @@
 
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
+| `packages/runner/src/run-checkpoint-codec.ts` | 471 | 检查点 schema 校验、有界 codec、序列化与文件名哈希（含 64 条写入窗口与 128 条历史兼容读取窗口） | 从 `run-checkpoint-store.ts` 拆出的 codec 边界；若继续增长，按 checkpoint 主体、resumeState、附件/工具 recipe 分组 | E |
+| `packages/runner/src/run-checkpoint-store.ts` | 381 | 检查点目录的文件与原子写入、容量/保留期、诊断账本，以及"最近一次扫描"报告的组合 | codec 与目录扫描已分别下沉到 `run-checkpoint-codec.ts` 与 `run-checkpoint-scan.ts`；store 只保留文件所有权与容量策略，计数不得再回到进程生命周期累加 | E |
 | `packages/tools/src/builtin/exec.ts` | 375 | 受控命令执行：黑名单与审批、工作区回滚点、进程树终止、有界流捕获，以及不透明修改前后的观察冻结/失效 | 保持"命令执行 + 结算"边界；若继续增长，先拆出进程终止与流捕获（`exec-process.ts`），再考虑观察冻结策略 | E |
 | `packages/tools/src/file-observation.ts` | 323 | 文件观察的宿主半边：sha256 revision、规范路径键、同路径互斥表与有界观察表，以及写工具的 `readVerifiedFile()` 校验入口 | 保持"只登记与校验、不读写用户文件、不做策略决定"的边界；若继续增长，拆出路径键/互斥表（`observation-key.ts`）与校验入口（`observation-guard.ts`） | E |
 | `packages/memory-tree/src/types.ts` | 584 | 记忆树内部和持久化类型 | 按 node、resource、audit、projection 分组 | D |
@@ -186,7 +187,7 @@
 
 `packages/harness/src/default-harness.ts` 现在是 91 行的状态机 facade：Checkpoint 证据归一与恢复入口位于 `checkpoint-resume.ts`，回答连续性保持在 `response-continuity*.ts` 领域模块；Runtime 摘要精确字段的文本封套与重建逻辑分别位于 `session-summary-fidelity-text.ts` 与 `runner/src/session-summary-fidelity.ts`。这些文件均未越过各自登记上限，后续新增验收维度应继续进入独立采样器或领域服务。
 
-模型观测与执行日志的截断窗口责任保持在现有模块：`packages/runner/src/run-checkpoint.ts` 负责 checkpoint snapshot ID 的最近 64 条引用窗口，`packages/runner/src/execution-log.ts` 负责 execution log 持久化边界的最近 64 条 request/context snapshot 窗口，`packages/runner/src/run-checkpoint-store.ts` 负责 64 条写入窗口与 128 条历史兼容读取窗口；两者共享 `@littlesheep/context` 的上限常量，不新增 facade 或 ownership group。
+模型观测与执行日志的截断窗口责任保持在现有模块：`packages/runner/src/run-checkpoint.ts` 负责 checkpoint snapshot ID 的最近 64 条引用窗口，`packages/runner/src/execution-log.ts` 负责 execution log 持久化边界的最近 64 条 request/context snapshot 窗口，`packages/runner/src/run-checkpoint-codec.ts` 负责 64 条写入窗口与 128 条历史兼容读取窗口；两者共享 `@littlesheep/context` 的上限常量，不新增 facade 或 ownership group。检查点目录的"当前状态"由 `run-checkpoint-scan.ts` 每次扫描重新给出，`run-checkpoint-store.ts` 只保留扫描看不到的常驻发现（残留 `.tmp`、裁剪失败、定向读写失败），因此计数不随进程存活时间增长。
 
 ## 拆分顺序
 
@@ -228,7 +229,6 @@
 | `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 同上 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点、执行证据、请求前缀变化原因仍共享版本边界；会话续接证据已迁入 `conversation-continuation.ts`，其余拆分时必须保持现有 barrel 与持久化兼容 | 925 | 同上 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 同上 |
-| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 同上 |
 | `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 同上 |
 | `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 同上 |
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 同上 |

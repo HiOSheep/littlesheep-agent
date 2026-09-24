@@ -91,7 +91,9 @@ export interface LocalAppRunCheckpointDetail extends LocalAppRunCheckpointSummar
 }
 
 export interface LocalAppRunCheckpointDiagnostics {
+  /** Recovery records the latest scan could not read or validate; one per file. */
   invalidFiles: number
+  /** Findings that are not one of those records: stale temporary files, directory I/O. */
   warningCount: number
 }
 

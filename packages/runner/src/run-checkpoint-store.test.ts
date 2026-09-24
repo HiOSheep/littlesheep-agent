@@ -320,6 +320,51 @@ describe('RunCheckpointStore', () => {
     }
   });
 
+  it('reports one unreadable record once, however often the directory is checked', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      await store.write(checkpoint('readable'));
+      await writeFile(join(dir, 'unreadable.json'), '{not-json', 'utf8');
+
+      // Three checks of the same directory: the counts used to accumulate for the
+      // whole process, so a user who retried the startup discovery was told there
+      // were two, then three, unreadable records for one broken file.
+      for (let check = 0; check < 3; check += 1) {
+        expect(await store.list()).toHaveLength(1);
+        expect(store.diagnostics().invalidFiles).toBe(1);
+      }
+      const diagnostics = store.diagnostics();
+      expect(diagnostics.readFiles).toBe(2);
+      expect(diagnostics.validFiles).toBe(1);
+      expect(diagnostics.warningFindings).toEqual([]);
+      expect(diagnostics.diagnostics.filter((item) => item.kind === 'corrupt')).toHaveLength(1);
+      expect(await store.read('readable')).not.toBeNull();
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps startup and pruning findings out of the per-record counts', async () => {
+    const { dir, store } = await tempStore();
+    try {
+      await writeFile(join(dir, 'leftover.tmp'), 'partial', 'utf8');
+      const reloaded = new RunCheckpointStore({ rootDir: dir });
+      await reloaded.initialize();
+      const diagnostics = reloaded.diagnostics();
+
+      expect(diagnostics.invalidFiles).toBe(0);
+      expect(diagnostics.warningFindings.some((item) => item.kind === 'temporary')).toBe(true);
+      // A stale temporary file is not a recovery record, so it must not appear as
+      // one of the unreadable records the desktop surface counts.
+      expect(diagnostics.diagnostics.some((item) => item.kind === 'temporary')).toBe(true);
+      reloaded.dispose();
+    } finally {
+      store.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('serializes concurrent writes and leaves no unbounded write registry', async () => {
     const { dir, store } = await tempStore({ maxCheckpoints: 32, maxPerRun: 32 });
     try {

@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-25 01:18:46
+最后更新：2026-09-25 04:22:05
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 
@@ -24,6 +24,7 @@
 
 - Runner 可以组合基础设施，但跨领域只使用公开入口。
 - 拥有 execution log 与 run checkpoint 生命周期协调；检查点保存最多 4 个 `activeStepIds`（单循环内串行步骤的当前活动集，不再是并行执行器）并保留 `currentStepId` 兼容入口。会话、记忆、配置和 shadow Git 存储仍由各自服务拥有。Runner 关闭时先释放 SQLite/Embedding，再请求版本服务执行退出冻结。
+- **检查点持久化按 codec / scan / store 分层**：`run-checkpoint-codec.ts` 拥有 schema、序列化与文件名哈希（含 64 条写入窗口与 128 条历史兼容读取窗口），`run-checkpoint-scan.ts` 拥有"一次目录报告"（记录、计数、逐文件发现），`run-checkpoint-store.ts` 只拥有文件、原子写入、容量、保留期和账本。**计数按最近一次扫描给出**：`scannedFiles/readFiles/validFiles/invalidFiles` 与逐记录发现曾按进程生命周期累加，于是同一份坏文件在用户每重试一次发现后就被多算一份（实机复现：一份坏文件在第一次检查显示 1、点"重新检查"后显示 2）。扫描看不到的事实（启动时的残留 `.tmp`、裁剪失败、定向读写的失败）保留在 store 的常驻账本里，并作为与记录无关的 `warningFindings` 暴露；两者不重叠，所以一份坏记录不会被同时说成"无法读取"和"目录异常"。
 - 精确 tokenizer 不属于桌面启动前置条件。Runner 创建只装配轻量惰性代理，首次真实 run 与会话装配并行预热经过校验的本地资源；准备中的请求由 Context Engine 保守估算保护，重复准备合并，失败重试退避，关闭时取消未完成准备。
 - **验收专用退避覆盖（`acceptanceRetryOptions`）**：`resolveLlm` 构造客户端时会在**验收构建**（`LITTLESHEEP_ELECTRON_ACCEPTANCE=1`）里读取 `LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS`，只把基数缩到 1–250 ms 并关掉抖动，**重试预算、可重试状态码与其余策略仍取自生产默认**。真实窗口的重试验收必须让 Provider 连续失败，生产退避（500 ms × 2 + 抖动）会把 5 次重试拉成几十秒，既慢又不稳定。该开关在验收构建之外完全不生效，回归在 `src/infra-acceptance-retry.test.ts`（含"越界值被夹紧"与"预算仍是 6 次尝试"）。
 

@@ -185,13 +185,18 @@ export function checkpointRecoveryEntry(input: CheckpointRecoveryEntryInput): Ch
   return { kind: 'none', label: '', title: '', count: 0, action: 'none' }
 }
 
-/** Shared wording for unreadable or incomplete recovery records. */
+/**
+ * Shared wording for unreadable or incomplete recovery records.
+ *
+ * The two counts are disjoint by contract (see `LocalAppRunCheckpointDiagnostics`),
+ * so one unreadable file is never described as two different problems.
+ */
 export function checkpointRecoveryDiagnosticText(
   diagnostics: LocalAppRunCheckpointDiagnostics,
 ): string | null {
   const parts: string[] = []
   if (diagnostics.invalidFiles > 0) parts.push(`${diagnostics.invalidFiles} 份恢复记录无法读取`)
-  if (diagnostics.warningCount > 0) parts.push(`${diagnostics.warningCount} 处恢复记录不完整`)
+  if (diagnostics.warningCount > 0) parts.push(`${diagnostics.warningCount} 处恢复目录读写异常`)
   if (parts.length === 0) return null
   return `另有 ${parts.join('、')}；LS 已保留原文件并停止自动处理。`
 }
