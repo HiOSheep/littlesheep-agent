@@ -1,6 +1,6 @@
 # Cache request-shape comparison: pre-fix vs post-fix
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-24 21:42:08
 
 本目录记录"系统提示词与请求前缀精简"任务书的结构基线与前后对比。除本文件外，`latest.md`
 由探针在每次 harness 测试运行时重新生成（同样只含字符数、共享前缀与工具目录摘要，
@@ -120,10 +120,12 @@ stable.
   through the app (`scripts/verify-harness-path-comparison.mjs`, audited with
   `scripts/audit-cache-usage.mjs`): 78.098% / 78.182% overall on a shared
   20-task conversation session, 83.690% / 84.523% on continuous tool work, and
-  62.827% / 63.228% with compaction enabled. They are recorded in
-  [`../cache-95-acceptance.md`](../cache-95-acceptance.md) §7 (with the current
-  state in [`../../decision/project-status.md`](../../decision/project-status.md)),
-  and none of them reaches 95%.
+  62.827% / 63.228% with compaction enabled. They were recorded under the deleted
+  shadow/next dual drive, so they describe that implementation only; the current
+  criterion and readings are in
+  [`../cache-95-acceptance.md`](../cache-95-acceptance.md) ("现行实测") and
+  [`../../decision/project-status.md`](../../decision/project-status.md), and none
+  of the three reaches 95%.
 - **No usage completeness.** The probe's requests have no Provider usage, so the
   usage-completeness dimension SP-08 asks for is recorded as `unavailable` rather
   than reported as zero.

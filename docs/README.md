@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-24 20:56:17
+最后更新：2026-09-24 21:42:08
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -46,7 +46,7 @@
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
-- [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：把极简执行与缓存 95% 方案的实测步骤写成可重复规程——冻结任务集/模型/配置/轮数与会话组织、旧新两组对比流程、`hit = sum(cached)/sum(input)` 测量规则、未知 usage 处理、禁止做法与完成条件；当前实测记录见 §7。
+- [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：现行红线口径（会话累计、真实长任务节点、`pnpm run check:cache-acceptance`）、当前实测、冻结输入、测量规则、禁止做法、完成条件与仍未汇总项；仍然承重的历史结论集中在附录 A，逐轮测量日志已移出、只留在 git 历史。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前/改后两个 checkout 上跑同一冻结负载的逐请求字符数、共享前缀与工具目录摘要对比；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)与[改后冻结副本](reference/cache-baseline/baseline-git-0af62a7.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
 - [桌面冷启动基线 2026-09-23](reference/cold-start-baseline/README.md)：CS-01 的五时间点基线（进程启动、真实首帧、输入可用、当前会话可读、首次可执行）× 空/普通/大历史/待恢复四档隔离数据，含逐次原始机器可读账本、CS-04 执行准备预算拆解（Runner 构建 121 ms / RunRouter 50 ms / 插件宿主 2.8 ms）与两项已被实测证伪的"提速"改动记录；[原始账本](reference/cold-start-baseline/desktop-cold-start-baseline-2026-09-23.json)。
 - [真实长任务缓存基线 2026-09-22](reference/cache-baseline/real-long-task-baseline-2026-09-22.md)：六个冻结真实任务各跑两次（12 次运行，真实 Provider）的会话累计 H_ui、逐节点值、未缓存三类分解与派生上界；改动前 0/12 达标、4/12 功能失败，[原始机器可读账本](reference/cache-baseline/real-long-task-baseline-2026-09-22.json)同步提交。
