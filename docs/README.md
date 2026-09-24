@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-24 20:25:45
+最后更新：2026-09-24 20:56:17
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -58,10 +58,8 @@
 - [长区间任务 L1 重启连续性 2026-09-22](reference/cache-baseline/long-interval-task-L1-restart-2026-09-22.md)：同一 28 回合任务在第 14 回合**重启应用进程**后继续——H_ui **98.99%**（169 请求、usage 完整、0 失败尝试），后段节点 96.81/97.67/98.19/98.42%，产物验收 6/6；重启本身不损失前缀（缓存属服务端），[机器可读账本](reference/cache-baseline/long-interval-task-L1-restart-2026-09-22.json)同步提交。
 - [长区间任务 L1 空闲停顿连续性 2026-09-22](reference/cache-baseline/long-interval-task-L1-idle-pause-2026-09-22.md)：第 14 回合前**空闲 45 分钟**再继续——暂停后首个请求 `in=56,372 / cached=56,192`（99.7% 命中），整会话 H_ui **99.05%**，后段节点 97.34/97.91/98.44/98.80%，产物验收 6/6；结论为**有界**陈述（至少 45 分钟内缓存有效），[机器可读账本](reference/cache-baseline/long-interval-task-L1-idle-pause-2026-09-22.json)同步提交。
 - [网络检索冻结契约与威胁模型](reference/web-retrieval-security-contract.md)：固定 safe read、网络配置、Tavily 首个 Provider、SSRF/DNS/注入/外发威胁、引用和日志语义；原实施任务书已于 2026-09-22 退役，实现状态与发布门改由验收报告维护。
-- [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描和仍阻断 ready 的实际 Provider/正式渠道门。
-- [网络检索供应链审查 2026-08-29](reference/web-retrieval-supply-chain-review-2026-08-29.md)：记录 Web 包依赖、许可证、漏洞快照、发布扫描边界与复核条件。
-- [网络检索发布清单 2026-08-29](reference/web-retrieval-release-checklist-2026-08-29.md)：列出离线门、发布当天实际 Provider/渠道/release 包验证和明确的禁止发布条件。
-- [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，避免安全修复变成无所有者的永久配置。
+- [网络检索安全合并验收 2026-08-29](reference/web-retrieval-security-acceptance-2026-08-29.md)：记录离线安全矩阵、迁移/回退、构建产物扫描、仍阻断 ready 的实际 Provider/正式渠道门，以及发布日复核清单、阻断条件、已知限制与供应链/许可证边界（后三块由同日退役的发布清单与供应链审查并入）。
+- [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，以及需要持续保留的组合/替代许可证清单，避免安全修复变成无所有者的永久配置。
 
 ### 任务书生命周期
 
@@ -78,6 +76,8 @@
 2026-09-24 同日退役《Agent Runtime 连续性任务书 2026-07-14》。它的退役理由不是"阶段全部完成"，而是**机制已被后续架构取代**：DECIDE 与工具提议路径、TaskBook 步骤执行器与步骤级并行、逐请求时钟注入、记忆管理页都已删除或改义，旧阶段计划无法再执行，其阶段号也不再对应任何运行路径。退役前逐条复核了 2026-09-22 审查列为"保留"理由的五项未完成方向，全部由常驻文档承接：Pro/其它 Provider 模型专用校准、非字段事实普遍连续性、外部系统副作用与真实网络中断、长期真实用户负载见[项目状态](decision/project-status.md) 的"未完成方向"P0，数据根迁移真实场景见同文件"桌面应用与数据版本"，原先唯一没有所有者的**任务效率基线**新写入项目状态的"P1：效率基线"（四档任务集、十项指标、与裸模型及成熟 Agent 对比）。其余仍然成立的事实分别由[架构原则](principles/architecture-principles.md)、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)、[UI 交互规范](principles/ui-interaction-guidelines.md)、[仓库指南](reference/repository-guide.md) 与各 package README 拥有，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。同日从 `check:repo` 的 `required` 列表移除该文件，`required` 不再固定任何任务书；[文档退役审查记录](reference/document-retirement-review-2026-09-22.md) 中该项的原"保留"判定已标注后续改判。
 
 2026-09-24 同日退役《真实长任务缓存红线任务书 2026-09-22》（LT-00～LT-08）。退役依据是交付物已达成且有机器可判定的入口：`pnpm run check:cache-acceptance` 当前结论 **met**（长任务 2/2、冻结清单 12 次运行通过回归口径），用户此前已确认该缓存专项完成。退役前把仍然成立的事实分别归入常驻文档：[缓存 95% 验收规程](reference/cache-95-acceptance.md)（指标定义、验收规程、实测边界，以及可核对费用与两类 usage 缺口的未汇总项）、[项目状态](decision/project-status.md)（使前缀可复用的架构事实、压缩不触发导致记忆不写入、休眠但未修复的前缀稳定性问题）与 harness README（`tool_choice` 必须保留目录与 `auto`）；逐次原始数字留在[缓存基线](reference/cache-baseline/README.md)，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`）。原任务书列为退役前置的两份文档（项目状态、缓存验收规程）已提交定稿，不再构成阻塞。
+
+2026-09-24 同日退役两份网络检索参考文档：《网络检索发布清单 2026-08-29》与《网络检索供应链审查 2026-08-29》。两者是同一专项下与验收报告重叠的派生记录，且各自的头部结论已被后续事实推翻（漏洞读数已被 2026-09-22 修复取代、依赖数与 DNS 机制已变、发布门与验收报告重复）。退役前把仍然成立的独有事实并入[网络检索安全合并验收](reference/web-retrieval-security-acceptance-2026-08-29.md)（环境限制、发布当天复核清单、发布阻断条件、已知限制、Web 包依赖边界、许可证缺口、Tavily 公开条款快照、发布扫描规则）与[生产依赖安全记录](reference/production-dependency-security.md)（组合/替代许可证清单），实现状态与发布门仍由契约 + 验收报告维护；原文保留在 git 历史（`git log --follow -- docs/reference/web-retrieval-release-checklist-2026-08-29.md`、`git log --follow -- docs/reference/web-retrieval-supply-chain-review-2026-08-29.md`）。
 
 任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径：`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点、LLM Call Contract 和兼容字段里，不得再作为新的产品概念使用。
 

@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-09-22 13:02:59
+最后更新：2026-09-24 20:56:17
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -109,7 +109,7 @@
 | `packages/tools/` | 内置工具、注册表和统一 Tool Execution Service；统一拥有工具来源、输入 schema、权限与单次批准、超时/中断、调用级资源调度、结果清洗、流式事件和有界调用记录。超时或中断后只等待 1.5 秒有界清理；内置 `exec` 对 stdout/stderr 分别保留最多 64 KiB 首尾内容，记录原始/保留长度、截断和进程关闭证据，并在 Windows 关闭进程树。容器边界与核心源码只读仍由宿主权限判定和工具动作前二次复核共同保护；Harness 只保留 TaskBook 编排及副作用检查点生命周期。 |
 | `packages/plugins/` | 插件 API v1、插件发现、信任校验、生命周期宿主，以及渠道、工具和 owner-scoped Skill 贡献。它是扩展运行时，不是 Agent 任务核心。 |
 | `packages/skills/` | 技能索引加载与 `use_skill` 使用；自动创建技能已随极简方案删除，技能只由用户或技能来源提供。 |
-| `packages/web/` | provider 无关的网络检索领域包：SearchProvider 契约与 registry、受控匿名 HTTP 抓取（scheme、DNS/IP、重定向、响应/解压大小、超时和取消校验）、citation 生成、网页正文的 `external_untrusted` 标记和有界进程内缓存；不拥有 Agent 权限判定、记忆写入或渠道协议。 |
+| `packages/web/` | provider 无关的网络检索领域包：SearchProvider 契约与 registry、受控匿名 HTTP 抓取（scheme、DNS/IP、重定向、响应/解压大小、超时和取消校验）、citation 生成、网页正文的 `external_untrusted` 标记和有界进程内缓存；不拥有 Agent 权限判定、记忆写入或渠道协议。只依赖 `@littlesheep/types` 与 Node 内建模块，**没有第三方 HTTP 客户端或 HTML 抽取依赖**；引入这类依赖必须重做许可证、漏洞与 SSRF 审查。 |
 | `packages/documents/` | 共享文档处理内核：PDF、DOCX、XLS/XLSX、CSV/TSV 与 PPTX 的有界读取，以及 PDF、DOCX、XLSX 和 CSV 产物的生成与重新校验；不处理 Agent 权限，调用方必须先完成路径校验与授权检查。 |
 | `packages/cli/` | 命令行入口、参数解析、REPL 和管理命令。 |
 

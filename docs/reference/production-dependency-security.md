@@ -1,6 +1,6 @@
 # 生产依赖安全记录
 
-最后更新：2026-09-22 12:20:11
+最后更新：2026-09-24 20:56:17
 本次复核执行：2026-09-22（命令与结果见下）
 复查日期：2026-10-06，所有者：Embedding / Electron runtime（`@xmldom/xmldom` 条目另需 Documents 所有者）
 
@@ -44,6 +44,19 @@
 | `@xmldom/xmldom` | `0.8.15` | npm registry；lockfile integrity `sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==` | MIT；Node `>=10.0.0` | mammoth 的 `^0.8.6` 允许已修复版本，但 lockfile 曾长期停在 0.8.13 | mammoth 的自然解析稳定落在已修复的 0.8.x（或上游迁到 0.9+ 并通过文档回归） |
 
 **已删除的 pin**：`adm-zip`（原 0.6.0）与 `sharp`（原 0.35.0）。删除依据是 Transformers 4.3.0 的声明范围自然解析到 `adm-zip@0.6.1`（经 onnxruntime-node 1.30.0）与 `sharp@0.35.4`，并且上面的离线向量与 Electron 推理回归已通过。守卫测试会阻止它们被重新钉住。
+
+## 需要持续保留的许可证记录（原《网络检索供应链审查 2026-08-29》并入，2026-09-24）
+
+`pnpm.cmd licenses list --prod` 除常见 MIT/Apache/BSD/ISC 外，还包含以下组合或替代许可证，发布材料与依赖升级时必须持续保留记录：
+
+| 依赖 | 清单中的许可证表达 | 处理要求 |
+| --- | --- | --- |
+| `pako` | MIT AND Zlib | 保留两份通知要求，升级时复核 |
+| `jszip` | MIT OR GPL-3.0-or-later | 选择并记录实际分发所依据的许可路径，发布包附带 notices |
+| `dompurify` | MPL-2.0 OR Apache-2.0 | 记录采用的许可路径并保留相应通知 |
+| `@img/sharp-win32-x64` | Apache-2.0 AND LGPL-3.0-or-later | 评估平台可选依赖是否进入发布包，保留 LGPL 履行材料 |
+
+唯一已知识别缺口是 `khroma@2.1.0`：其 manifest 缺 `license` 字段，工具报 `Unknown`，已从包内 `license` 文件核验为 MIT（由 `@littlesheep/app → mermaid@11.17.2` 引入）。该核验只澄清当前依赖的许可证文本，最终发行包仍须包含所需 notices 并由发布责任人核对。`@littlesheep/web` 本身没有引入第三方 HTTP 客户端或 HTML 抽取依赖（边界与复核条件见[网络检索安全合并验收](web-retrieval-security-acceptance-2026-08-29.md)）。
 
 兼容约束：根清单最低 Node 版本为 `>=20.9.0`，与 `sharp@0.35.x` 的真实 engine 要求一致（0.35.4 同样声明 `>=20.9.0`）；Electron 打包继续包含 `onnxruntime-node`、`sharp` 与 `@huggingface/transformers`。任何原生依赖变更都必须重跑本节的离线向量与 Electron 推理两项。
 
