@@ -107,7 +107,7 @@ async function main() {
       ],
     }
     const jsonPath = join(outDir, `desktop-workspace-availability-${label}.json`)
-    await writeFile(jsonPath, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8')
+    await writeFile(jsonPath, `${JSON.stringify(scrub(ledger), null, 2)}\n`, 'utf8')
     console.log(JSON.stringify({ ok: true, jsonPath, summary, runs }, null, 2))
   } catch (error) {
     console.error(JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2))
@@ -245,15 +245,20 @@ async function launch({ dataDir, workspaceDir, chromiumDir, index, measure }) {
         const entries = parsed ? Object.entries(parsed) : [];
         const withFileTab = entries.find(([, layout]) => Array.isArray(layout?.openTabs)
           && layout.openTabs.some((tab) => typeof tab === 'string' && tab.startsWith('file:')));
+        // Derived facts only: tab ids are percent-encoded absolute paths and the
+        // ledger is published, so it records shapes rather than identifiers.
         return {
-          layoutKeys: entries.map(([key]) => key),
-          openTabCount: entries.map(([, layout]) => layout?.openTabs?.length ?? 0),
-          collapsed: withFileTab?.[1]?.collapsed ?? null,
-          activeTab: withFileTab?.[1]?.activeTab ?? null,
+          layoutCount: entries.length,
+          openTabCounts: entries.map(([, layout]) => layout?.openTabs?.length ?? 0),
+          hasFileTab: Boolean(withFileTab),
+          panelCollapsed: withFileTab?.[1]?.collapsed ?? null,
+          activeTabKind: typeof withFileTab?.[1]?.activeTab === 'string'
+            ? withFileTab[1].activeTab.split(':')[0]
+            : null,
         };
       })()`)
       run.dom = { opened, fileOpened, previewVisible, persisted }
-      run.ok = previewVisible === true && typeof persisted.activeTab === 'string' && persisted.activeTab.startsWith('file:')
+      run.ok = previewVisible === true && persisted.hasFileTab === true
       if (!run.ok) run.note = 'the warm-up did not persist a file tab to restore'
       return { ok: run.ok, run }
     }
@@ -459,6 +464,34 @@ function summarize(runs) {
     processCreateToExecutionReadyMs: metric(measured.map((run) => run.timings.processCreateToExecutionReadyMs)),
     clickToPreviewMs: metric(clicks.map((run) => run.clickToPreviewMs)),
   }
+}
+
+/**
+ * Public evidence keeps no machine-local path or account name: the fixture lives
+ * under the temporary directory, and the repository rule is that published docs
+ * and scripts carry neither (AGENTS.md, "不把 API key、会话、记忆、执行日志或工作区产物复制进源码仓库").
+ */
+function scrub(value) {
+  const home = process.env.USERPROFILE ?? process.env.HOME ?? ''
+  const scrubText = (text) => {
+    let result = String(text)
+    for (const [from, to] of [[repoRoot, '<repo>'], [home, '<user-home>']]) {
+      if (!from) continue
+      result = result.split(from).join(to).split(from.replace(/\\/gu, '/')).join(to)
+    }
+    return result
+      .replace(/[A-Za-z]:\\Users\\[^\\\s"']+/gu, '<user-home>')
+      .replace(/[A-Za-z]:\\Temp\\[^\\\s"']+/gu, '<temp>')
+      .replace(/AppData\\Local\\Temp\\[^\\\s"']+/gu, '<temp>')
+      .replace(/[A-Za-z]%3A(?:%5C|\\){1,2}Users(?:%5C|\\){1,2}[^%\\\s"']+/giu, '<user-home>')
+      .replace(/[A-Za-z]%3A(?:%5C|\\){1,2}Temp(?:%5C|\\){1,2}[^%\\\s"']+/giu, '<temp>')
+  }
+  if (typeof value === 'string') return scrubText(value)
+  if (Array.isArray(value)) return value.map(scrub)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, scrub(item)]))
+  }
+  return value
 }
 
 await main()

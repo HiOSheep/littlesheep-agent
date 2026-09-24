@@ -1,10 +1,11 @@
 # @littlesheep/app
 
-最后更新：2026-09-24 12:08:32
+最后更新：2026-09-24 13:45:55
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
 - **冷启动三段式**：窗口早于执行能力出现。①数据根迁移、用户布局、keychain、config、Memory v3（顺序是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口加载渲染器；③Runner 与 RunRouter 建成后发布执行就绪。可选插件宿主在就绪之后异步加载，不阻塞执行能力。
+- **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。
 - **首屏按需加载**：Monaco、mermaid 与 `react-syntax-highlighter` 都不得进入入口 chunk。完整 Prism 构建单独求值约 380 ms，改为按需后入口 chunk −936 KB、真实首帧早约 148 ms（成对实测见 `docs/reference/cold-start-baseline/`）。**入口字节数在本应用里不是首帧的可靠代理**：Markdown 解析管线整条按需（−400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须用成对实测证明收益。
 - **就绪是唯一事实**：`src/shared/runtime-readiness-{contracts,ipc}.ts` 定义载荷与通道，`src/main/runtime-readiness.ts` 拥有状态，renderer 经 `src/renderer/runtime-readiness/` 消费。未就绪时 metadata 路由照常应答、Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；具体边界见 `src/main/local-app-api/README.md`。
 - **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。

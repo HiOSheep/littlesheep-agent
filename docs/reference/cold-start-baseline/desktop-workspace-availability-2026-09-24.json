@@ -1,11 +1,11 @@
 {
   "check": "desktop-workspace-availability",
   "label": "2026-09-24",
-  "startedAt": "2026-09-24T05:34:15.252Z",
+  "startedAt": "2026-09-24T05:43:36.142Z",
   "samples": 2,
   "fixture": {
-    "workspaceDir": "C:\\Users\\28971\\AppData\\Local\\Temp\\littlesheep-workspace-availability-yOjspp\\workspace",
-    "dataDir": "C:\\Users\\28971\\AppData\\Local\\Temp\\littlesheep-workspace-availability-yOjspp\\data",
+    "workspaceDir": "<user-home>\\<temp>\\workspace",
+    "dataDir": "<user-home>\\<temp>\\data",
     "previewFile": "README.md",
     "previewBytes": 16313,
     "clickFile": "docs/guide.md",
@@ -40,14 +40,13 @@
         },
         "previewVisible": true,
         "persisted": {
-          "layoutKeys": [
-            "__draft__"
-          ],
-          "openTabCount": [
+          "layoutCount": 1,
+          "openTabCounts": [
             2
           ],
-          "collapsed": false,
-          "activeTab": "file:C%3A%5CUsers%5C28971%5CAppData%5CLocal%5CTemp%5Clittlesheep-workspace-availability-yOjspp%5Cworkspace|C%3A%5CUsers%5C28971%5CAppData%5CLocal%5CTemp%5Clittlesheep-workspace-availability-yOjspp%5Cworkspace%5CREADME.md"
+          "hasFileTab": true,
+          "panelCollapsed": false,
+          "activeTabKind": "file"
         }
       },
       "timings": {}
@@ -57,9 +56,9 @@
       "kind": "measured",
       "ok": false,
       "marks": {
-        "entriesProcessUptimeMs": 1122.7,
-        "entriesRendererMs": 222.1,
-        "executionReadyProcessUptimeMs": 699.2
+        "entriesProcessUptimeMs": 1219.1,
+        "entriesRendererMs": 296.2,
+        "executionReadyProcessUptimeMs": 809.8
       },
       "dom": {
         "panelPresent": true,
@@ -72,14 +71,14 @@
         "treeNotice": "正在读取 Git 更改..."
       },
       "timings": {
-        "processCreateToEntriesMs": 1122.7,
-        "processCreateToExecutionReadyMs": 699.2
+        "processCreateToEntriesMs": 1219.1,
+        "processCreateToExecutionReadyMs": 809.8
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 51830,
+        "port": 30656,
         "retryable": false
       },
       "note": "the restored file never published visible content"
@@ -89,9 +88,9 @@
       "kind": "measured",
       "ok": false,
       "marks": {
-        "entriesProcessUptimeMs": 1077.2,
-        "entriesRendererMs": 207.9,
-        "executionReadyProcessUptimeMs": 684
+        "entriesProcessUptimeMs": 1145.1,
+        "entriesRendererMs": 220.3,
+        "executionReadyProcessUptimeMs": 820.1
       },
       "dom": {
         "panelPresent": true,
@@ -104,14 +103,14 @@
         "treeNotice": "正在读取 Git 更改..."
       },
       "timings": {
-        "processCreateToEntriesMs": 1077.2,
-        "processCreateToExecutionReadyMs": 684
+        "processCreateToEntriesMs": 1145.1,
+        "processCreateToExecutionReadyMs": 820.1
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 18583,
+        "port": 38196,
         "retryable": false
       },
       "note": "the restored file never published visible content"
@@ -123,11 +122,11 @@
       "clicked": {
         "clicked": true,
         "label": "MREADME.md",
-        "at": 280.40000000037253
+        "at": 310.40000000037253
       },
-      "clickToPreviewMs": 19.9,
+      "clickToPreviewMs": 15.2,
       "previewTextLength": 12,
-      "previewMarkProcessUptimeMs": 1100.1,
+      "previewMarkProcessUptimeMs": 1121.7,
       "previewMarkEmitted": true
     }
   ],
@@ -140,9 +139,9 @@
     "processCreateToExecutionReadyMs": null,
     "clickToPreviewMs": {
       "samples": 1,
-      "min": 19.9,
-      "median": 19.9,
-      "max": 19.9
+      "min": 15.2,
+      "median": 15.2,
+      "max": 15.2
     }
   },
   "note": [
