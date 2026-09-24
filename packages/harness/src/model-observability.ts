@@ -44,7 +44,7 @@ import {
   type CacheObservationPersistenceState,
 } from './cache-observation-persistence.js';
 import { emitSystemPromptTranscript } from './system-prompt-transcript.js';
-import { settleModelRequestActivity, startModelRequestActivity } from './model-activity.js';
+import { emitModelRequestRetryActivity, settleModelRequestActivity, startModelRequestActivity } from './model-activity.js';
 import { acceptProviderUsageState, providerTransportProjection, type ProviderUsageAcceptanceState } from './usage-state.js';
 export {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -154,7 +154,7 @@ export async function callModelChat(
   const lifecycle = requestLifecycles.get(request);
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
-    const response = await llm.chat(request);
+    const response = await llm.chat(withTransportRetryActivity(ctx, request));
     recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
@@ -173,13 +173,34 @@ export async function callModelChatStream(
   const lifecycle = requestLifecycles.get(request);
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
-    const response = await llm.chatStream(request, onDelta);
+    const response = await llm.chatStream(withTransportRetryActivity(ctx, request), onDelta);
     recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
     await recordModelRequestFailure(ctx, request, error, ctx.signal);
     throw error;
   }
+}
+
+/**
+ * Let the reader see a transport retry instead of only its side effects.
+ *
+ * The client owns the replay decision, so the only place that knows a retry is happening is
+ * its progress callback. The callback is attached to a copy: the caller's request object is
+ * shared with the durable snapshots and must not gain per-run observer state, and a caller
+ * that already passed its own observer keeps it (it is chained, not replaced).
+ */
+function withTransportRetryActivity(ctx: RunContext, request: ChatRequest): ChatRequest {
+  const lifecycle = requestLifecycles.get(request);
+  if (!lifecycle) return request;
+  const callerObserver = request.onTransportRetry;
+  return {
+    ...request,
+    onTransportRetry: (progress) => {
+      emitModelRequestRetryActivity(ctx, lifecycle.snapshot, progress);
+      callerObserver?.(progress);
+    },
+  };
 }
 
 /** Best-effort error settlement helper for transport and cancellation paths. */

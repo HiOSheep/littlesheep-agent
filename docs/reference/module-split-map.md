@@ -27,7 +27,7 @@
 | `packages/memory-tree/src/project-memory-projection.ts` | 780 | 投影生成、同步、冲突、恢复和删除 | projection facade + render、sync、conflict、lifecycle | D |
 | `packages/runner/src/runtime-event-queue.ts` | 729 | run/session 隔离、有界事件、幂等、租约、结算和快照恢复 | `RunContext` 顶层 runtime state 已由 Harness `runtime-state.ts` 统一批次写入；本文件继续独占 queue codec、lease/settle、registry 和快照恢复内部状态，保持 facade 稳定 | E |
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | 683 | waiting-user disposition、claim、恢复租约与有界审计持久化 | 分离 disposition codec、query 与 retention；保持原子 claim facade | E |
-| `packages/harness/src/model-observability.ts` | 669 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
+| `packages/harness/src/model-observability.ts` | 690 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影（含传输重试进度）已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 656 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/memory-tree/src/memory-tree.ts` | 654 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
 | `packages/tools/src/tool-execution-service.ts` | 660 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权。**已到受控上限 660**：结果收尾逻辑已移入 `tool-execution-result.ts`，下一次改动必须先完成 invocation lifecycle 拆分，不能再往上加行 | E |

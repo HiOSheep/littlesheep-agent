@@ -406,6 +406,14 @@
 - 顺带修掉的测试漂移：`client.test.ts` 的固定装置此前不声明重试参数，失败路径会睡满生产退避（默认 3 次尝试时整文件 106.5 s）；现在固定装置显式传 `retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false }`，同一文件降到 0.21 s。回归上限不依赖生产默认值的这一条应继续保持。
 - 未覆盖项：**运行界面尚未显示"第 n 次重试 / 最多 5 次"**（hook、`retryAfterMs` 与 usage 账本已就绪，消费端未接）；流中断前后的重发去重目前只有客户端的 `reset` 语义，未针对真实断流取证；本地 SSE 断线、真实 Provider 的前 1~5 次恢复与最终失败文案仍需错误注入与真实窗口验收。第 1、3 条复选框因此保持未勾选。
 
+**实施记录（2026-09-25 00:16:31）｜状态：重试进度已接进运行界面数据流并有单元证据；真实 Provider 注入与窗口录屏未做，保持未勾选**
+
+- 实现范围（`packages/harness`）：`model-activity.ts` 新增 `emitModelRequestRetryActivity`，`callModelChat` / `callModelChatStream` 把 `onTransportRetry` 观察者挂到请求的**副本**上——调用方自带的回调被链式保留，原请求对象不被写入（它同时被持久快照引用，不该承载 per-run 观察者状态）。进度写进**这次逻辑请求自己的活动行**（`phaseId = model-request:<id>`、`model_activity` + `running`），文案为"第 n 次重试 / 最多 m 次：<原因>（HTTP …），x 秒后重发"（限流与瞬时两类可重放原因，中文与英文入站各一套）；正常结算的已完成/失败摘要随后就地替换回来，所以一行仍只对应一次逻辑请求，不会留下永久 running 的行。
+- 这条同时回答了 UX-20 里"重试清空可见回答却没有说明"的那一项：客户端流式重试会发 `{ type: 'reset' }`（`packages/llm/src/client.ts` 的 `retryRound > 1` 分支），Harness 把它变成 `replace ''`，此前读者只看到文字消失又重来；现在同一活动行会先说明正在第 n 次重试及原因。**Renderer 未新增代码**：`chat/run-event-handlers.ts` 既有的 `model_activity` 渲染路径直接消费该摘要。
+- 验证方式：`packages/harness/src/model-observability.test.ts` 新增 2 例——中文入站时三条摘要依次为"模型正在生成回复 → 第 2 次重试 / 最多 5 次：Provider 限流（HTTP 429），2.0 秒后重发 → 模型已完成：生成回复"，三条共用同一 `phaseId`，且调用方自带的观察者仍被调用、原请求对象未被改写；流式路径断言重试活动在 `reset` **之前**发出、chunk 序列为 `['reset', 'delta']` 且请求副本不修改原对象。`pnpm exec vitest run packages/harness`：80 个文件 686 例通过。
+- 用量账本：重试次数经响应的 `transportAttempt` / `observedAttemptCount` 进入会话账本（`packages/harness/src/usage-state.ts` 及其测试已断言），不隐藏在"单次调用"统计里；本轮未改动该层。
+- 未覆盖项：错误注入表所需的真实 Provider 故障（429/503/超时/断流/401/400/取消/本地 SSE 断线各一次）与运行界面录屏仍未做；摘要文字在普通/紧凑模式活动行里的实际可见性（长文案截断、刷新后是否保留）需要实机确认。第 1、3 条复选框保持未勾选。
+
 ### UX-22｜对话输出层级与可读性
 
 **问题与边界**：在 UX-19~UX-21 的正确性问题定位后，再实机审查活动行、模型正文、失败提示、来源、工具结果及消息操作。现有普通/紧凑模式与 UX-16 的失败可见性修复是基础，不新增一套输出信息架构。

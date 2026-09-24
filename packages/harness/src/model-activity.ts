@@ -5,7 +5,7 @@ import type {
   ObservableActivityStatus,
   RunContext,
 } from '@littlesheep/types';
-import type { ChatRequest } from '@littlesheep/llm';
+import type { ChatRequest, RetryFailureClass, RetryProgress } from '@littlesheep/llm';
 
 interface ModelActivityState {
   snapshot: ModelRequestSnapshot;
@@ -79,6 +79,63 @@ export function emitModelRequestActivity(
     });
   } catch (error) {
     ctx.toolContext.log?.('warn', `model activity delivery failed: ${(error as Error).message}`);
+  }
+}
+
+const ZH_RETRY_REASON: Record<RetryFailureClass, string> = {
+  transient: 'Provider 暂时不可用',
+  rate_limited: 'Provider 限流',
+  auth: '认证失败',
+  request: '请求被拒绝',
+  cancelled: '调用已取消',
+  unknown: '原因未知',
+};
+
+const EN_RETRY_REASON: Record<RetryFailureClass, string> = {
+  transient: 'the provider is temporarily unavailable',
+  rate_limited: 'the provider is rate limiting',
+  auth: 'authentication failed',
+  request: 'the request was rejected',
+  cancelled: 'the call was cancelled',
+  unknown: 'the cause is unknown',
+};
+
+/**
+ * Announce a transport retry on the request's own activity phase.
+ *
+ * The LLM client replays replay-safe transport failures itself. Without this the reader only
+ * sees the streamed answer disappear (a streaming retry resets the preview) and then reappear
+ * with no stated reason, and a retried request looks like a single Provider call. Reusing
+ * `model-request:<id>` keeps exactly one row per logical request: the retry wording replaces
+ * the running summary in place, and the normal settlement replaces it again.
+ */
+export function emitModelRequestRetryActivity(
+  ctx: RunContext,
+  snapshot: ModelRequestSnapshot,
+  progress: RetryProgress,
+): void {
+  const chinese = /[\u3400-\u9fff]/u.test(inboundText(ctx));
+  const reason = (chinese ? ZH_RETRY_REASON : EN_RETRY_REASON)[progress.failureClass];
+  const status = progress.status === undefined ? '' : chinese ? `（HTTP ${progress.status}）` : ` (HTTP ${progress.status})`;
+  const delay = Math.max(1, Math.round(progress.delayMs));
+  const wait = delay >= 1000
+    ? chinese ? `${(delay / 1000).toFixed(1)} 秒` : `${(delay / 1000).toFixed(1)}s`
+    : chinese ? `${delay} 毫秒` : `${delay}ms`;
+  const summary = chinese
+    ? `第 ${progress.retry} 次重试 / 最多 ${progress.maxRetries} 次：${reason}${status}，${wait}后重发`
+    : `Retry ${progress.retry} of ${progress.maxRetries}: ${reason}${status}; resending in ${wait}`;
+  try {
+    ctx.onToolEvent?.({
+      type: 'model_activity',
+      visibility: 'progress',
+      phaseId: `model-request:${snapshot.id}`,
+      requestId: snapshot.id,
+      activityKind: 'model_request',
+      activityStatus: 'running',
+      summary,
+    });
+  } catch (error) {
+    ctx.toolContext.log?.('warn', `model retry activity delivery failed: ${(error as Error).message}`);
   }
 }
 

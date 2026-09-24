@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatRequest } from '@littlesheep/llm';
+import type { ChatRequest, LlmClient } from '@littlesheep/llm';
+import { textMessage } from '@littlesheep/types';
+import type { ToolStreamEvent } from '@littlesheep/types';
 import { makeCtx, makeTool } from './tests/helpers.js';
 import {
   MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN,
@@ -7,6 +9,8 @@ import {
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
   bindExactContextTokenCounter,
+  callModelChat,
+  callModelChatStream,
   preferDirectModelOutput,
   prepareModelRequest,
   recordModelRequest,
@@ -357,5 +361,81 @@ describe('recordModelRequest', () => {
     })).toThrow(/exceeds budget 200/);
     expect(ctx.modelRequests).toBeUndefined();
     expect(ctx.contextSnapshots).toBeUndefined();
+  });
+});
+
+/** UX-21: a retried Provider call must be visible while it is being retried. */
+describe('transport retry visibility', () => {
+  function retryingLlm(onRetry: (request: ChatRequest) => void, streaming: boolean): LlmClient {
+    const response = { content: '结算正文', toolCalls: [], finishReason: 'stop' as const };
+    return {
+      chat: async (req: ChatRequest) => {
+        onRetry(req);
+        return response;
+      },
+      chatStream: async (req: ChatRequest, onDelta: (chunk: { type: 'reset' } | { type: 'delta'; delta: string }) => void) => {
+        onRetry(req);
+        onDelta({ type: 'reset' });
+        onDelta({ type: 'delta', delta: '结算正文' });
+        return response;
+      },
+    } as unknown as LlmClient;
+  }
+
+  const progress = {
+    retry: 2,
+    maxRetries: 5,
+    delayMs: 2000,
+    failureClass: 'rate_limited' as const,
+    status: 429,
+    error: new Error('HTTP 429'),
+  };
+
+  it('announces the retry on the request activity phase and keeps the caller request untouched', async () => {
+    const events: ToolStreamEvent[] = [];
+    const callerProgress: number[] = [];
+    const ctx = makeCtx({ inbound: textMessage('user', '请重试刚才的请求') });
+    ctx.onToolEvent = (event) => events.push(event);
+    const prepared = prepareModelRequest(ctx, 'reply', request(2, 0));
+    prepared.onTransportRetry = (info) => callerProgress.push(info.retry);
+
+    await callModelChat(ctx, retryingLlm((req) => req.onTransportRetry?.(progress), false), prepared);
+
+    const requestId = ctx.modelRequests?.[0]?.id;
+    const summaries = events
+      .filter((event) => event.type === 'model_activity')
+      .map((event) => event.summary);
+    expect(summaries).toEqual([
+      '模型正在生成回复',
+      '第 2 次重试 / 最多 5 次：Provider 限流（HTTP 429），2.0 秒后重发',
+      '模型已完成：生成回复',
+    ]);
+    // One row per logical request: the retry reuses the request's own phase.
+    expect(events.filter((event) => event.type === 'model_activity').map((event) => event.phaseId))
+      .toEqual([`model-request:${requestId}`, `model-request:${requestId}`, `model-request:${requestId}`]);
+    // The caller's own observer still runs, and the request object it owns is not rewritten.
+    expect(callerProgress).toEqual([2]);
+    expect(prepared.onTransportRetry).toBeInstanceOf(Function);
+  });
+
+  it('reports the retry on the streaming path too, before the streamed text restarts', async () => {
+    const events: ToolStreamEvent[] = [];
+    const ctx = makeCtx({ inbound: textMessage('user', '继续输出') });
+    ctx.onToolEvent = (event) => events.push(event);
+    const prepared = prepareModelRequest(ctx, 'reply', request(2, 0));
+    const deltas: string[] = [];
+
+    await callModelChatStream(
+      ctx,
+      retryingLlm((req) => req.onTransportRetry?.(progress), true),
+      prepared,
+      (chunk) => deltas.push(chunk.type),
+    );
+
+    const retry = events.find((event) => event.type === 'model_activity' && event.summary?.includes('次重试'));
+    expect(retry).toMatchObject({ activityStatus: 'running', activityKind: 'model_request' });
+    // The retry is announced before the preview is reset and re-streamed.
+    expect(deltas).toEqual(['reset', 'delta']);
+    expect(prepared.onTransportRetry).toBeUndefined();
   });
 });
