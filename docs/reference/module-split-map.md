@@ -40,9 +40,9 @@
 | `packages/safety/src/permission-boundary.ts` | 614 | 三档权限矩阵、网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定 | 先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | C |
 | `packages/harness/src/cache-observability.ts` | 610 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因；可缓存头的切分与消息规范化已迁至 `cache-prefix-split.ts` | 保持观测适配器边界；实际 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
 | `packages/app/src/main/index.ts` | 659 | Electron 启动和组合；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样与内置浏览器宿主已下沉；启动文件模板下沉到 `bootstrap-templates.ts` | 继续抽取 bootstrap 服务，入口只保留装配顺序；按规则（超过 600 行必须进入本表）从软上限队列移入 | C |
-| `packages/llm/src/client.ts` | E / Runtime | 请求生命周期、错误分类、流式解析与重试接线共享同一状态机；先冻结协议解码与观察者接线的特征测试，再拆 request builder、stream parser、response mapper 与 retry observer 接线 | 666 | 同上 |
+| `packages/llm/src/client.ts` | E / Runtime | 请求生命周期、错误分类、流式解析与重试接线共享同一状态机；先冻结协议解码与观察者接线的特征测试，再拆 request builder、stream parser、response mapper 与 retry observer 接线 | 660 | 同上 |
 | `packages/app/src/main/desktop-shell.ts` | 609 | Electron 窗口、托盘、关闭策略、窗口状态和退出前刷新 | 保持 DesktopShell 生命周期边界；状态 codec 留在 `desktop-window-state.ts`，隔离验收动作（缩放、最大化/还原、启动页、启动失败页）留在 `desktop-acceptance-actions.ts` + `desktop-visual-acceptance.ts`；按规则从软上限队列移入 | C |
-| `packages/llm/src/client.ts` | 666 | 请求构造、流式解析、reasoning/usage 归属、`Retry-After` 解析、重试接线、完成信号判定与 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper 与 retry observer 接线；协议解码不向 Harness/Renderer 扩散。按规则（超过 600 行必须进入本表）从软上限队列移入 | E |
+| `packages/llm/src/client.ts` | 624 | 请求构造、流式解析、reasoning/usage 归属、`Retry-After` 解析、重试接线、完成信号判定与 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper 与 retry observer 接线；请求 deadline 与"超时 ≠ 取消"的判定已下沉到 `request-deadline.ts`；协议解码不向 Harness/Renderer 扩散 | E |
 
 ## 软上限审查队列
 

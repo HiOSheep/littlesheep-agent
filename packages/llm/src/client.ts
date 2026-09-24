@@ -12,6 +12,7 @@ import type {
 } from './types.js';
 import { LlmError } from './types.js';
 import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions, type RetryProgress } from './retry.js';
+import { createRequestDeadline } from './request-deadline.js';
 import {
   attachTransportUsage,
   monotonicNow,
@@ -247,24 +248,14 @@ export class OpenAIClient implements LlmClient {
         if (req.dimensions !== undefined) body.dimensions = req.dimensions;
 
         const timeout = req.timeoutMs ?? this.timeoutMs;
-        const controller = new AbortController();
-        let timedOut = false;
-        const timer = setTimeout(() => {
-          timedOut = true;
-          controller.abort();
-        }, timeout);
-        const onAbort = () => controller.abort();
-        if (req.signal) {
-          if (req.signal.aborted) controller.abort();
-          else req.signal.addEventListener('abort', onAbort, { once: true });
-        }
+        const deadline = createRequestDeadline(timeout, req.signal);
 
         try {
           const res = await this.fetchFn(`${this.baseURL}/embeddings`, {
             method: 'POST',
             headers: this.buildHeaders(),
             body: JSON.stringify(body),
-            signal: controller.signal,
+            signal: deadline.signal,
           });
           if (!res.ok) {
             let errMsg = `HTTP ${res.status}`;
@@ -288,10 +279,9 @@ export class OpenAIClient implements LlmClient {
             usage: { promptTokens: json.usage?.prompt_tokens ?? 0 },
           };
         } catch (err) {
-          throw this.timeoutAwareError(err, timedOut, req.signal, timeout);
+          throw deadline.translate(err);
         } finally {
-          clearTimeout(timer);
-          req.signal?.removeEventListener('abort', onAbort);
+          deadline.cleanup();
         }
       },
       // Embeddings take the client-level retry options: only chat/stream requests carry a
@@ -329,33 +319,7 @@ export class OpenAIClient implements LlmClient {
     const body = buildOpenAICompatibleChatCompletionsBody(req, stream, opts);
 
     const timeout = req.timeoutMs ?? this.timeoutMs;
-    const controller = new AbortController();
-    /**
-     * Our own deadline is not the caller's cancellation.
-     *
-     * Both interrupt the same fetch with the same `AbortError`, so a Provider that hangs past
-     * the timeout used to be classified as `cancelled` and never retried — the opposite of
-     * "respect cancellation, retry transport faults". The flag is what keeps them apart: a
-     * deadline that fired becomes a retryable 408, a caller abort stays an abort.
-     */
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeout);
-    let cleaned = false;
-    const onAbort = () => controller.abort();
-    const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
-      clearTimeout(timer);
-      req.signal?.removeEventListener('abort', onAbort);
-    };
-    // Chain with caller's signal
-    if (req.signal) {
-      if (req.signal.aborted) controller.abort();
-      else req.signal.addEventListener('abort', onAbort, { once: true });
-    }
+    const deadline = createRequestDeadline(timeout, req.signal);
 
     const startedAtMs = monotonicNow();
     try {
@@ -363,7 +327,7 @@ export class OpenAIClient implements LlmClient {
         method: 'POST',
         headers: this.buildHeaders(),
         body: JSON.stringify(body),
-        signal: controller.signal,
+        signal: deadline.signal,
       });
       if (!res.ok) {
         let errMsg = `HTTP ${res.status}`;
@@ -375,17 +339,11 @@ export class OpenAIClient implements LlmClient {
         if (this.retry.retryableStatuses.includes(res.status)) retryable = true;
         throw new LlmError(res.status, errMsg, retryable, parseRetryAfterMs(res.headers));
       }
-      return { response: res, cleanup, attempt: opts.transportAttempt, startedAtMs };
+      return { response: res, cleanup: () => deadline.cleanup(), attempt: opts.transportAttempt, startedAtMs };
     } catch (err) {
-      cleanup();
-      throw this.timeoutAwareError(err, timedOut, req.signal, timeout);
+      deadline.cleanup();
+      throw deadline.translate(err);
     }
-  }
-
-  /** Translate our own deadline into a retryable timeout, leaving a caller abort alone. */
-  private timeoutAwareError(err: unknown, timedOut: boolean, callerSignal: AbortSignal | undefined, timeoutMs: number): unknown {
-    if (!timedOut || callerSignal?.aborted) return err;
-    return new LlmError(408, `Request timed out after ${timeoutMs}ms`, true);
   }
   /** Parse a non-streaming choice into ChatResponse. */
   private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse, request: ChatRequest): ChatResponse {
