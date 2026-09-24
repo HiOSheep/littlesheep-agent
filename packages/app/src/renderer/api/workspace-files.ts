@@ -94,7 +94,7 @@ function workspaceQuery(root: string, path?: string): string {
 }
 
 export async function listWorkspaceDirectory(root: string, path?: string): Promise<WorkspaceDirectory> {
-  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.workspaceList)}?${workspaceQuery(root, path)}`)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceList}?${workspaceQuery(root, path)}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -103,7 +103,7 @@ export async function listWorkspaceDirectory(root: string, path?: string): Promi
 }
 
 export async function previewWorkspaceFile(root: string, path: string): Promise<WorkspacePreview> {
-  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.workspacePreview)}?${workspaceQuery(root, path)}`)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspacePreview}?${workspaceQuery(root, path)}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -134,7 +134,7 @@ export async function readWorkspaceLayoutSnapshot(sessionId?: string): Promise<W
   const params = new URLSearchParams()
   if (sessionId) params.set('sessionId', sessionId)
   const query = params.size > 0 ? `?${params.toString()}` : ''
-  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.workspaceLayout)}${query}`)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceLayout}${query}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)
@@ -166,7 +166,7 @@ export async function listWorkspaceArtifacts(
 ): Promise<WorkspaceArtifactRecord[]> {
   const params = new URLSearchParams({ root, limit: String(limit) })
   if (sessionId) params.set('sessionId', sessionId)
-  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.workspaceArtifacts)}?${params.toString()}`)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceArtifacts}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)

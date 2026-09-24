@@ -12,6 +12,7 @@ import { updateWorkspaceDirectoryCache, workspaceDirectoryCache, type WorkspaceD
 import { compactPath, isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'
 import { WorkspaceNavigatorFrame } from './navigator-frame'
 import { isMissingWorkspacePathError } from './workspace-errors'
+import { reportWorkspaceEntriesVisible } from './workspace-timing'
 import { WorkspaceTreeNotice, WorkspaceTreeRows, normalizeWorkspaceFilter, workspaceEntryMatchesFilter, MAX_WORKSPACE_DIR_ENTRIES_LABEL } from './workspace-tree-rows'
 
 export { MAX_WORKSPACE_DIR_ENTRIES_LABEL, WorkspaceTreeNotice, WorkspaceTreeRows, normalizeWorkspaceFilter, workspaceDirectoryHasFilterMatch, workspaceEntryMatchesFilter } from './workspace-tree-rows'
@@ -219,6 +220,15 @@ export function WorkspaceFileNavigator({
   const rootHasVisibleEntries = rootInfo
     ? rootInfo.entries.some((entry) => workspaceEntryMatchesFilter(entry, directories, normalizedFilter))
     : false
+
+  // CS-08: the navigator is only "available" once a row is actually painted, so
+  // the mark is taken after the frame that shows it - never when a request
+  // resolves, and never while the root is still a loading placeholder.
+  useEffect(() => {
+    if (!rootHasVisibleEntries) return
+    const frame = window.requestAnimationFrame(() => reportWorkspaceEntriesVisible())
+    return () => window.cancelAnimationFrame(frame)
+  }, [rootHasVisibleEntries])
 
   return (
     <WorkspaceNavigatorFrame

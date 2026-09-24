@@ -1,12 +1,12 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-23 17:30:37
+最后更新：2026-09-24 13:36:51
 
 ## 1. 目标与当前状态
 
 目标：统一冷启动页、标题栏和原生窗口按钮的视觉表现，缩短用户等待，并让用户尽早输入、浏览和操作窗口。采用“界面先可用，运行能力分阶段就绪”的策略。
 
-状态：已完成源码检查与任务拆解，尚未实施本任务书中的优化，也未完成真实冷启动测量。下列任务全部待验收，不能据此声称已经提速。
+状态：阶段计时、Runner 就绪前挂载界面、就绪门和部分实机验收已有记录，详见本文件后部及[冷启动基线](../reference/cold-start-baseline/README.md)。2026-09-24 收到新的体验反馈：右侧拓展工作区在刚进入时没有完成能力加载，用户无法立刻预览和操作。这是实际可用性问题，不能描述为仅被加载画面遮挡。CS-08、CS-09 已据此排为当前优先项，尚未实施或完成实机验收。
 
 本任务书是桌面启动专项，不替代全局开发顺序。与[应用层 UI / UX 优化任务书](application-ui-ux-taskbook-2026-09-22.md)共享恢复反馈、草稿保护和真实窗口验收要求，避免重复实现。
 
@@ -14,14 +14,15 @@
 
 | 项目 | 源码检查结论 | 定位 |
 | --- | --- | --- |
-| 启动视觉 | 启动页正文采用半透明背景与模糊；原生按钮覆盖区域使用不透明 `#101010`；窗口同时启用 acrylic 材质。背景策略不一致，与截图中的区域割裂相符，最终合成效果仍需实机验证。 | `packages/app/src/main/desktop-startup-page.ts`、`desktop-shell.ts` |
-| 界面加载顺序 | 数据准备、记忆迁移检查、Runner、项目/会话/归档索引和 Local App API 初始化后，才加载正式 Renderer。 | `packages/app/src/main/index.ts` |
-| 就绪通信 | preload 在加载时读取 `LITTLESHEEP_API_PORT`，未设置时使用 `0`；提前挂载正式界面需要同步改造该契约。 | `packages/app/src/preload/index.ts` |
-| 本地 API 依赖 | `startLocalAppApiServer` 当前要求已创建的 Runner，提前提供界面数据不能只调整调用顺序。 | `packages/app/src/main/local-app-api-server.ts` |
+| 启动视觉 | 启动页和原生按钮覆盖区已统一为实色 `#101010`；正式界面正常准备时仍在标题栏下方显示横跨整窗的提示。 | `packages/app/src/main/desktop-startup-page.ts`、`desktop-shell.ts`、`renderer/styles/11-runtime-readiness.css` |
+| 界面加载顺序 | 当前先显示独立启动页；数据根、记忆迁移、UI 索引与 Local App API 就绪后才加载正式 Renderer，Runner 之后才允许执行。右侧真正读取文件还须等待界面挂载、路径和目录/预览请求。 | `packages/app/src/main/index.ts` |
+| 右侧能力加载 | 文件树和预览路由不依赖 Runner，但默认根路径取自 `/runtime`；组件随后恢复会话布局、请求目录或文件。必须度量“文件内容可见且可操作”的时间，不能用“面板已绘制”代替。 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts`、`use-workspace-session-layouts.ts`、`packages/app/src/main/local-app-api/workspace-routes.ts` |
+| 就绪通信 | preload 已提供动态本地接口地址和执行就绪通知；渲染器请求在监听端口可用前等待，不发送到端口 `0`。 | `packages/app/src/preload/index.ts`、`renderer/api/common.ts` |
+| 本地 API 依赖 | Local App API 已可在 Runner 之前监听；工作区目录和文件预览使用配置及文件服务，Runner 依赖路由继续返回 503。 | `packages/app/src/main/local-app-api-server.ts`、`local-app-api/workspace-routes.ts` |
 | 已有优化 | 插件宿主启动已经异步化；Monaco 核心与语言已有按需加载，不重复建设。 | `main/index.ts`、`renderer/workspace/code-editor.tsx` |
-| 已有计时 | `LITTLESHEEP_BOOTSTRAP_TIMING=1` 可启用主进程阶段计时，但“调用显示窗口”不等于真实首帧，尚缺完整交互可用指标。 | `packages/app/src/main/bootstrap-timing.ts` |
+| 已有计时 | `LITTLESHEEP_BOOTSTRAP_TIMING=1` 已用于主进程、Runner 与 Renderer 首帧计时；现有基线没有“右侧首个目录条目”和“首个文件内容可见”两个指标。 | `packages/app/src/main/bootstrap-timing.ts`、`docs/reference/cold-start-baseline/` |
 
-待测量：静态模块加载、Runner 内部初始化、索引准备、Renderer 解析与首屏渲染各自占比。不能仅凭串行调用就认定某一模块是主要瓶颈，也不预先承诺提速秒数。
+已有各启动阶段的实测拆解见[基线](../reference/cold-start-baseline/README.md)；新增重点是从进程启动到右侧真实可用的时间与失败路径。不能仅凭右侧壳体出现就认定已经可用，也不预先承诺提速秒数。
 
 ## 3. 体验与实施约束
 
@@ -37,10 +38,12 @@
 
 ## 4. 任务总表
 
-优先级仅表示本专项实施顺序：P0 为基线与视觉基础，P1 为交互和加载路径，P2 为最终回归收口；不覆盖全局正确性问题的优先级。
+优先级仅表示本专项实施顺序：P0 为当前阻碍直接使用的体验与其基线，P1 为后续路径优化，P2 为最终回归收口；不覆盖全局正确性问题的优先级。以下复选框只有在所列真实窗口验收全部完成后才勾选，后部记录中的“实现完成”不等于验收完成。
 
 | 状态 | ID | 优先级 | 任务 | 前置依赖 |
 | --- | --- | --- | --- | --- |
+| [ ] | CS-08 | P0 | 右侧拓展工作区进入即能预览和操作 | CS-01、CS-03；与 CS-07 共用实机验收 |
+| [ ] | CS-09 | P0 | 正常加载信息不占据整窗顶部 | CS-02、CS-03；失败状态保留全局可见 |
 | [ ] | CS-01 | P0 | 建立可重复的启动基线 | 无 |
 | [ ] | CS-02 | P0 | 统一启动页、标题栏与按钮区域视觉 | 无；使用 CS-01 记录前后表现 |
 | [ ] | CS-03 | P1 | 提前呈现可交互界面并建立就绪契约 | CS-01 |
@@ -119,19 +122,37 @@
 - [ ] 修改行为或依赖时同步更新对应 package / 领域 README，并按系统时钟填写更新时间；同一变更提交中包含实现与说明。
 - [ ] 完成后将稳定事实归入常驻文档，再按文档生命周期规则退役任务书。
 
-验收：CS-01～CS-06 的证据齐备，真实窗口交互无回归；无法验证的场景保持未勾选并说明缺口，不以单元测试替代实机结论。
+验收：CS-01～CS-06、CS-08、CS-09 的证据齐备，真实窗口交互无回归；无法验证的场景保持未勾选并说明缺口，不以单元测试替代实机结论。
+
+### CS-08｜右侧拓展工作区进入即能预览和操作
+
+- [ ] 为“右侧真正可用”建立独立指标：进程启动 → 首个目录条目出现、进程启动 → 恢复的文件内容可见、点击文件 → 预览内容可见。由真实 Renderer DOM 与成功的 Local App API 响应共同确认，不把壳体绘制或请求发出当作完成。
+- [ ] 在保留默认工作区、最近文件标签、展开目录和普通会话布局的隔离数据根中实测。分别覆盖首次启动和同一数据根的后续启动；记录目录规模、文件类型与预览大小。
+- [ ] 检查 `runtime` 初值为空、默认根路径恢复、布局镜像读取、目录预热和文件预览请求的时间顺序。只有测得的关键等待才进一步调整，保持 Main 对当前真实根路径和目标路径的校验。
+- [ ] 验证 Runner 尚未就绪时，目录、普通文件预览与浏览器标签能使用；发送和 Runner 依赖动作仍由原有就绪门管理。终端、Git、产物等各自依赖另列，不把“右侧已可用”泛化为全部功能已就绪。
+- [ ] 验证启动中点击文件、切换会话、选择新目录、关闭/恢复窗口均不会把预览复位到空白，也不会把旧请求结果写进新会话。
+
+验收：用户进入右侧后可以看到真实目录与文件内容并执行只读浏览；正常路径不等待 Runner，失效路径给出局部可恢复状态。前后耗时应配对测量并记录原始证据；未完成此项实机验收前不得声称“右侧即刻可用”。
+
+### CS-09｜收敛正常启动提示的视觉占用
+
+- [ ] 正常启动的阶段文字只在发送能力相关位置就近显示，不在标题栏下方横跨整窗；状态由 Main 的真实就绪事实提供。
+- [ ] 启动失败和可重试状态保持明显可见；重试预算与失败原因仍由 Main 决定。
+- [ ] 在正常、故意拉慢和故障启动中实拍，检查输入区焦点、草稿、右侧预览、窄窗和高缩放下的布局。
+
+验收：正常启动没有占据视野的全局加载条；用户仍能理解何时可以发送；失败状态可见、可按既有规则重试。
 
 ## 6. 执行顺序与记录方式
 
-建议分三批：第一批完成 CS-01、CS-02；第二批完成 CS-03 并同步落实 CS-06 的交互保护；第三批根据测量执行 CS-04、CS-05，最后完成 CS-07。
+当前优先处理 CS-08 和 CS-09，并用 CS-01 的计时方法配对比较。随后仅针对实际瓶颈继续 CS-04、CS-05；CS-07 收口真实窗口与异常路径验收。此前 CS-02、CS-03、CS-06 已有实现及部分证据，剩余项目见下方验收记录。
 
 每项完成时填写：改动文件、前后测量、验证环境、测试及实机证据、剩余缺口。实现完成但尚未实机验证时记录为“实现完成，待验收”，复选框保持未勾选。
 
-方法参考：[Electron 官方性能指南](https://www.electronjs.org/docs/latest/tutorial/performance)。其测量、延迟非必要初始化和避免阻塞主线程的建议用于指导实验，不替代本项目的实际测量。
+方法参考：[Electron 官方性能指南](https://www.electronjs.org/docs/latest/tutorial/performance)强调测量、延迟非必要初始化和避免阻塞主线程；[DeepSeek Harness 桌面端](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md)在后端启动前加载打包 Web 入口，[VS Code](https://code.visualstudio.com/api/advanced-topics/extension-host)按使用时机激活非首屏能力。参考的是依赖分层与就绪契约，不能把别的产品仍在使用的全屏加载页当作本产品的体验目标。
 
 ## 7. 验收记录
 
-最后更新：2026-09-23 17:30:37
+最后更新：2026-09-24 13:36:51
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -238,3 +259,11 @@
 - 更新：`packages/app/README.md`、`packages/app/src/main/README.md`、`packages/app/src/preload/README.md`、`packages/app/src/renderer/README.md`、`packages/app/src/renderer/api/README.md`、`packages/app/src/renderer/app-shell/README.md`、`packages/app/src/renderer/runtime-recovery/README.md`、`packages/app/src/renderer/runtime-readiness/README.md`（新）、`packages/app/src/main/local-app-api/README.md`、`packages/app/src/shared/README.md`。
 - 新增常驻参考：[桌面冷启动基线 2026-09-23](../reference/cold-start-baseline/README.md)，并由 `docs/README.md` 收录。
 
+### CS-08｜右侧拓展工作区进入即能预览和操作 —— 定位到阻塞缺陷并修复，指标已建立（进行中）
+
+- **指标已建立**（渲染器只上报封闭阶段名，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时产出）：`renderer-workspace-entries`（首个目录行被绘制后上报）、`renderer-workspace-preview`（首个文件正文被绘制后上报，占位/错误/空面板都**不会**发布）。两者与首帧共用同一渲染器时间轴，Main 记录到达时的 `processUptimeMs`。
+- **配对测量脚本**：`scripts/measure-workspace-availability.mjs`（新）——同一数据根 + 同一 Chromium profile 的"预热一次 → 多次冷启动"结构，夹具含 60 个目录条目、Markdown 预览正文与 `docs/guide.md`；产物 `docs/reference/cold-start-baseline/desktop-workspace-availability-2026-09-24.json`（记录目录规模、预览大小与逐次原始样本）。
+- **找到并修掉阻塞缺陷（真实缺陷，非体验偏好）**：渲染器的工作区客户端把 URL 写成 `` `LOCAL_APP_API_ROUTES.workspaceList)}?...` ``——模板字符串缺少 `${`，于是每个请求都是 `http://127.0.0.1:<port>LOCAL_APP_API_ROUTES.workspaceList)}?...`，`fetch` 直接以 `TypeError: Failed to parse URL` 拒绝。后果是**右侧永远读不到任何目录与任何文件预览**：目录树显示"文件夹暂时无法读取，请点击刷新重试。"，点刷新也不会再发请求（渲染器侧根本没有请求发出），而同一个路由被直接调用时返回 200。共 5 处同类错误：`workspaceList`、`workspacePreview`、`workspaceLayout`、`workspaceArtifacts`（`api/workspace-files.ts`）与 `terminalActivity`（`api/terminal.ts`）。
+- 修复与回归护栏：五处模板字符串改正；新增 `packages/app/src/renderer/api/workspace-client-paths.test.ts`，断言客户端**实际发出的路径**以文档化路由开头、且不含 `LOCAL_APP_API_ROUTES` 字面量——这类"URL 拼错但类型通过"的缺陷从此由测试拦下。
+- 修复后实测（同一夹具与脚本）：首个目录行可见 **1100.1 / 1100.9 ms**（进程启动起算，两次冷启动）；点击文件 → 正文可见 **18.2 / 19.9 ms**，且 `renderer-workspace-preview` 标点确认发布（证明指标本身有效）；目录加载与预览在 Runner 就绪前即可用（实测就绪 681.9 / 681.0 ms）。
+- **仍未完成**：冷启动时的**布局恢复**路径还没走通——持久化的文件标签在新进程里没有被恢复成活动标签（实测活动标签仍是"审阅"，预览面板未挂载），因此"进程启动 → 恢复的文件内容可见"目前**没有**数据，脚本如实记为失败并给出原因。下一步是查 `use-workspace-session-layouts` / `use-workspace-layout-controller` 的恢复与 `__draft__` 采纳顺序，并在修复后重跑配对测量。CS-08 复选框保持未勾选。

@@ -52,6 +52,21 @@ function findFirstContentfulPaint(): number | undefined {
   return entry ? entry.startTime : undefined
 }
 
+/**
+ * Milliseconds since this script started evaluating.
+ *
+ * Every renderer-reported stage shares this reference, so marks can be compared
+ * with each other without comparing clocks from different origins.
+ */
+export function rendererElapsedMs(): number {
+  return performance.now() - rendererStartedAt
+}
+
+/** Report a closed-stage mark measured from the same reference as the first frame. */
+export function reportRendererStage(stage: RendererTimingStage, elapsedMs = rendererElapsedMs()): void {
+  report(stage, elapsedMs)
+}
+
 function report(stage: RendererTimingStage, durationMs: number): void {
   const bridge = window.littlesheep
   if (!bridge?.reportRendererTiming) return

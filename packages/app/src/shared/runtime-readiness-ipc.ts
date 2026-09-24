@@ -25,9 +25,16 @@ export const RUNTIME_RETRY_EXECUTION_CHANNEL = 'littlesheep:runtime-retry-execut
 /**
  * Timing stages the Renderer may report. Closed on purpose: bootstrap timing is
  * a diagnostic surface and must not become an arbitrary log channel.
+ *
+ * The two `renderer-workspace-*` stages are the "right side is really usable"
+ * moments CS-08 measures: the first directory row the user can see, and the first
+ * file content painted in the preview. "The panel was drawn" is deliberately not
+ * a stage - that would let a skeleton pass as availability.
  */
 export const RENDERER_TIMING_STAGES = [
   'renderer-first-frame',
+  'renderer-workspace-entries',
+  'renderer-workspace-preview',
 ] as const
 
 export type RendererTimingStage = typeof RENDERER_TIMING_STAGES[number]

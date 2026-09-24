@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-23 17:30:37
+最后更新：2026-09-24 13:36:51
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -345,6 +345,22 @@
 - **真实续接执行**：现有证据到"发现 + 归属"为止；点"继续"会在检查点记录的真实工作区执行工具，需用户在自有数据上确认。
 - 逐项改动的成对前后对比尚无稳定的统计功效：在 n=5 下 `executionReadyMs` 的最小–最大区间约 200 ms，小于该区间内的差异不构成证据。
 - durable harness 与 bootstrap 文件注册两条路径已分别定论：前者改为并行初始化并取得阶段级净收益（约 14 ms），后者一半是首次注册（稳态不再支付）、另一半是读取与哈希，已明确不再作为优化目标。
+
+## CS-08 右侧拓展工作区的可用性（进行中）
+
+右侧面板"进入即可预览和操作"由 `scripts/measure-workspace-availability.mjs` 度量，指标是渲染器自己上报的两个封闭阶段（`renderer-workspace-entries` = 首个目录行被绘制；`renderer-workspace-preview` = 首个文件正文被绘制；占位与错误状态都不会发布），逐次样本见 [`desktop-workspace-availability-2026-09-24.json`](desktop-workspace-availability-2026-09-24.json)。
+
+2026-09-24 第一次测量就找到阻塞缺陷：渲染器工作区客户端的 URL 模板字符串缺少 `${`，五个请求（`workspaceList`、`workspacePreview`、`workspaceLayout`、`workspaceArtifacts`、`terminalActivity`）实际发往 `http://127.0.0.1:<port>LOCAL_APP_API_ROUTES.…)}`，`fetch` 以 `TypeError: Failed to parse URL` 拒绝。**结果是右侧永远读不到目录与预览**，界面停在"文件夹暂时无法读取，请点击刷新重试。"，而同一路由直接调用返回 200——这类缺陷只在真实渲染器里出现，单测与直接 API 探针都看不到。修复后新增 `workspace-client-paths.test.ts` 断言客户端实际发出的路径。
+
+修复后实测（同一数据根与 profile 的冷启动）：
+
+| 指标 | 结果 |
+| --- | --- |
+| 进程启动 → 首个目录行可见 | **1100.1 / 1100.9 ms**（两次冷启动） |
+| 点击文件 → 正文可见 | **18.2 / 19.9 ms**，并确认 `renderer-workspace-preview` 标点发布 |
+| 执行就绪（对照） | 681.9 / 681.0 ms，即目录与预览**不等待 Runner** |
+
+仍未完成：**布局恢复路径**。把面板与文件标签持久化后重新启动，活动标签仍停在"审阅"，预览面板没有挂载，因此"进程启动 → 恢复的文件内容可见"目前没有任何数据；脚本把这两次运行如实记为失败并给出原因。在这一项走通之前，不得声称"右侧进入即可用"。
 
 ## 复现
 

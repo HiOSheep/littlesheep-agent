@@ -108,7 +108,7 @@ export async function listWorkspaceTerminalActivity(
 ): Promise<TerminalActivityRecord[]> {
   const params = new URLSearchParams({ root, limit: String(limit) })
   if (sessionId) params.set('sessionId', sessionId)
-  const res = await localApiFetch(`LOCAL_APP_API_ROUTES.terminalActivity)}?${params.toString()}`)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.terminalActivity}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw localApiStatusError(res.status, (data as { error: string }).error)

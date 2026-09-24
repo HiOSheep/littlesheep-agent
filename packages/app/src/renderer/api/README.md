@@ -1,6 +1,6 @@
 # Renderer API 客户端
 
-最后更新：2026-09-24 03:25:57
+最后更新：2026-09-24 13:36:51
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。
 
@@ -8,6 +8,7 @@
 
 | 文件 | 职责 |
 | --- | --- |
+| `workspace-files.ts` / `terminal.ts` | 工作区选择、目录读取、文件预览、布局、产物与终端活动的客户端。请求路径必须由 `LOCAL_APP_API_ROUTES` 插值构造；`workspace-client-paths.test.ts` 断言实际发出的路径以文档化路由开头且不含常量字面量（2026-09-24 曾因模板字符串缺少 `${` 使右侧目录与预览全部失效，只在真实渲染器里可见）。 |
 | `common.ts` | Local App API 基址、通用错误、SSE frame 解析和 `window.littlesheep` 桥接类型声明（含就绪查询/订阅与失败后的 `retryExecution()`）。基址按需向 preload 求解（`localApiBase()`）；`localApiFetch()` 在就绪前等待端口，绝不请求端口 0，`localApiUrl`/`localApiUrlSync` 只服务已确认就绪的纯 URL 调用点。 |
 | `run.ts` | Agent run、流式事件和权限批准。 |
 | `run-checkpoints.ts` | RunCheckpoint 列表、详情、续跑流和放弃。 |

@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-23 00:04:00
+最后更新：2026-09-24 13:36:51
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -16,6 +16,7 @@
 - `resize-interaction.ts`、`use-workspace-layout-controller.ts`、`use-workspace-session-layouts.ts`：独立于左侧栏的布局、拖动、折叠和恢复；按会话分桶、草稿采纳和镜像恢复由 `use-workspace-session-layouts.ts` 拥有。
 - `path-utils.ts`、`types.ts`：纯数据与路径边界；`WorkspaceArtifactRef` 仍供聊天和产物入口使用，审阅活动聚合类型已删除。
 
+`workspace-timing.ts`：CS-08 的两个可用性指标——`reportWorkspaceEntriesVisible()`（首个目录行绘制后）与 `reportWorkspacePreviewVisible()`（首个文件正文绘制后，占位/错误/空面板不发布）；每个渲染器只发布一次，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出。
 文件读写、终端进程和产物索引必须通过 Local App API；从文件树打开文件要创建标签，重启恢复只使用用户数据中的受控快照。
 
 关闭当前标签时激活最近的剩余标签；关闭最后一个标签不会折叠面板，而是显示审查、产物、终端、空白浏览器和侧边聊天快捷启动空态。面板折叠后同时保留对话区右上角固定入口和右侧全高悬浮感应入口，二者共享同一折叠状态与过渡。

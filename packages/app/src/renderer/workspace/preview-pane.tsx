@@ -21,6 +21,7 @@ import { resolveWorkspacePreviewEditorState } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
 import { workspaceErrorMessage } from './workspace-errors'
+import { reportWorkspacePreviewVisible } from './workspace-timing'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 
@@ -77,6 +78,14 @@ export function WorkspacePreviewPane({
       : ''
   const editorLanguageLabel = formatEditorLanguageLabel(editorLanguage)
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
+  // CS-08: first file body on screen. Placeholders, errors and an empty pane are
+  // explicitly excluded, so a "读取中" state cannot be mistaken for availability.
+  const previewContentVisible = !loading && !error && preview !== null
+  useEffect(() => {
+    if (!previewContentVisible) return
+    const frame = window.requestAnimationFrame(() => reportWorkspacePreviewVisible())
+    return () => window.cancelAnimationFrame(frame)
+  }, [previewContentVisible])
   const initialEditorState = resolveWorkspacePreviewEditorState(preview, draft)
   const [editing, setEditing] = useState(initialEditorState.editing)
   const [showMarkdownSource, setShowMarkdownSource] = useState(

@@ -1,0 +1,154 @@
+{
+  "check": "desktop-workspace-availability",
+  "label": "2026-09-24",
+  "startedAt": "2026-09-24T05:34:15.252Z",
+  "samples": 2,
+  "fixture": {
+    "workspaceDir": "C:\\Users\\28971\\AppData\\Local\\Temp\\littlesheep-workspace-availability-yOjspp\\workspace",
+    "dataDir": "C:\\Users\\28971\\AppData\\Local\\Temp\\littlesheep-workspace-availability-yOjspp\\data",
+    "previewFile": "README.md",
+    "previewBytes": 16313,
+    "clickFile": "docs/guide.md",
+    "directoryEntries": 60,
+    "totalFiles": 65
+  },
+  "options": {
+    "directoryEntries": 60,
+    "previewFile": "README.md",
+    "clickFile": "docs/guide.md"
+  },
+  "marks": {
+    "entries": "renderer-workspace-entries: process start -> first directory row painted",
+    "preview": "renderer-workspace-preview: process start -> restored file body painted",
+    "click": "click -> that file body painted (renderer timeline, not process start)"
+  },
+  "runs": [
+    {
+      "index": 0,
+      "kind": "warmup",
+      "ok": true,
+      "marks": {},
+      "dom": {
+        "opened": {
+          "opened": true,
+          "label": "打开拓展工作区"
+        },
+        "fileOpened": {
+          "opened": true,
+          "label": "MREADME.md",
+          "rows": 1
+        },
+        "previewVisible": true,
+        "persisted": {
+          "layoutKeys": [
+            "__draft__"
+          ],
+          "openTabCount": [
+            2
+          ],
+          "collapsed": false,
+          "activeTab": "file:C%3A%5CUsers%5C28971%5CAppData%5CLocal%5CTemp%5Clittlesheep-workspace-availability-yOjspp%5Cworkspace|C%3A%5CUsers%5C28971%5CAppData%5CLocal%5CTemp%5Clittlesheep-workspace-availability-yOjspp%5Cworkspace%5CREADME.md"
+        }
+      },
+      "timings": {}
+    },
+    {
+      "index": 1,
+      "kind": "measured",
+      "ok": false,
+      "marks": {
+        "entriesProcessUptimeMs": 1122.7,
+        "entriesRendererMs": 222.1,
+        "executionReadyProcessUptimeMs": 699.2
+      },
+      "dom": {
+        "panelPresent": true,
+        "navigatorPresent": true,
+        "entryRows": 4,
+        "fileRows": 1,
+        "previewPanePresent": false,
+        "previewTextLength": 0,
+        "placeholderText": null,
+        "treeNotice": "正在读取 Git 更改..."
+      },
+      "timings": {
+        "processCreateToEntriesMs": 1122.7,
+        "processCreateToExecutionReadyMs": 699.2
+      },
+      "readinessAtAttach": {
+        "state": "ready",
+        "phase": "execution",
+        "apiVersion": 1,
+        "port": 51830,
+        "retryable": false
+      },
+      "note": "the restored file never published visible content"
+    },
+    {
+      "index": 2,
+      "kind": "measured",
+      "ok": false,
+      "marks": {
+        "entriesProcessUptimeMs": 1077.2,
+        "entriesRendererMs": 207.9,
+        "executionReadyProcessUptimeMs": 684
+      },
+      "dom": {
+        "panelPresent": true,
+        "navigatorPresent": true,
+        "entryRows": 4,
+        "fileRows": 1,
+        "previewPanePresent": false,
+        "previewTextLength": 0,
+        "placeholderText": null,
+        "treeNotice": "正在读取 Git 更改..."
+      },
+      "timings": {
+        "processCreateToEntriesMs": 1077.2,
+        "processCreateToExecutionReadyMs": 684
+      },
+      "readinessAtAttach": {
+        "state": "ready",
+        "phase": "execution",
+        "apiVersion": 1,
+        "port": 18583,
+        "retryable": false
+      },
+      "note": "the restored file never published visible content"
+    },
+    {
+      "index": 3,
+      "kind": "click-to-preview",
+      "ok": true,
+      "clicked": {
+        "clicked": true,
+        "label": "MREADME.md",
+        "at": 280.40000000037253
+      },
+      "clickToPreviewMs": 19.9,
+      "previewTextLength": 12,
+      "previewMarkProcessUptimeMs": 1100.1,
+      "previewMarkEmitted": true
+    }
+  ],
+  "summary": {
+    "measuredRuns": 0,
+    "failedRuns": 2,
+    "processCreateToFirstFrameMs": null,
+    "processCreateToEntriesMs": null,
+    "processCreateToPreviewMs": null,
+    "processCreateToExecutionReadyMs": null,
+    "clickToPreviewMs": {
+      "samples": 1,
+      "min": 19.9,
+      "median": 19.9,
+      "max": 19.9
+    }
+  },
+  "note": [
+    "Cold starts reuse one data root and one Chromium profile, so the persisted",
+    "workspace layout is restored exactly as a returning user would see it.",
+    "The marks are only emitted when LITTLESHEEP_BOOTSTRAP_TIMING=1, and only",
+    "after the frame that shows real content - a placeholder cannot publish them."
+  ]
+}
