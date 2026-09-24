@@ -1,6 +1,6 @@
 # Renderer 运行就绪
 
-最后更新：2026-09-24 13:36:51
+最后更新：2026-09-24 14:04:58
 
 窗口在 Runner 存在之前就已经可见，本目录只回答一个问题：现在能不能执行任务，如果不能，Main 报告的原因是什么。它不是进度条，也不拥有任何调度能力。
 
@@ -8,7 +8,8 @@
 
 - `runtime-readiness-state.ts`：非 React 的就绪事实与订阅（`currentRuntimeReadiness` / `subscribeRuntimeReadiness` / `isExecutionReady`），以及 `waitForExecutionReady(timeoutMs)`：给"必须有 Runner 才能做"的调用者用（例如加载某段对话的历史），先查一次 bridge（缓存是异步填充的，否则首次调用会误判为未知），再进行等待；已就绪/已失败立即返回，就绪**未知**（无 bridge，如单测或非 Electron 宿主）也立即返回，不新增阻塞。先订阅再补读，保证挂载前发生的状态变化不会丢失。启动恢复等非视图消费者订阅它，避免把就绪沿组件属性链传递。
 - `use-runtime-readiness.ts`：React 视图，返回 `{ readiness, executable, reason }`，`executable` 只在 `state === 'ready'` 时为真。
-- `runtime-readiness-notice.tsx`：未就绪时在标题栏下方显示一行真实状态，失败态改为 `role="assertive"`。没有百分比、没有预计时间、没有固定等待文案。失败且可重试时附一个重试入口（`.runtime-readiness-retry`），它调用 preload 的 `retryExecution()`；**是否允许重试由 Main 决定**，渲染器只按下面的规则决定是否展示，不自行放宽预算。
+- `runtime-readiness-notice.tsx`：**只承载失败**。只有 `state === 'failed'` 才在标题栏下方显示整窗一行：失败必须停留可见，直到用户读完原因并决定是否重试，`role="assertive"`。没有百分比、没有预计时间、没有固定等待文案。失败且可重试时附一个重试入口（`.runtime-readiness-retry`），它调用 preload 的 `retryExecution()`；**是否允许重试由 Main 决定**，渲染器只按下面的规则决定是否展示，不自行放宽预算。
+- `composer-readiness-hint.tsx`：正常启动的阶段文字，就地渲染在发送按钮左侧的 `.composer-right` 里，只在 `state === 'starting'` 出现，文案就是 Main 给的阶段原因（无自有等待文案），就绪后消失。它不占整窗：普通启动没有横跨视野的全局加载条（CS-09，实拍与几何断言见 `scripts/verify-desktop-readiness-placement.mjs`）。窄窗下用省略号截断但保留 `7ch` 下限，不允许被压成零宽。
 - `execution-retry-state.ts`：重试入口的纯状态（`canRetry` / `pending` / 剩余次数）。只有 `state === 'failed' && retryable` 且预算未耗尽才展示；重试进行中显示进度而不是邀请第二次点击。
 - `renderer-timing.ts`：除首帧外还提供 `rendererElapsedMs()` 与 `reportRendererStage()`，供工作区上报 `renderer-workspace-entries` / `renderer-workspace-preview` 两个阶段（CS-08 的可用性指标）。仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 下有产出的启动计时标（`renderer-first-mount`、`renderer-first-frame`）。真实首帧由渲染器自己上报：调试器在导航后附加时 Chromium 的 paint 条目可能已被回收，实测第一版基线因此拿不到 FCP。载荷只含白名单阶段名与有界毫秒数。
 - 载荷类型与校验来自 `../../shared/runtime-readiness-contracts.ts`，通道名与阶段白名单来自 `../../shared/runtime-readiness-ipc.ts`；本目录不新增协议。
@@ -17,5 +18,5 @@
 ## 验证
 
 - 修改后运行 `pnpm.cmd --filter @littlesheep/app run typecheck` 与 App 测试。
-- 真实窗口下验证：慢初始化期间可连续输入、草稿保留；在未就绪窗口里打开另一段对话不产生错误横幅（`pnpm run verify:desktop-cold-start-interaction` 覆盖）；失败态显示 Runtime 给出的原因而不是通用错误页。
+- 真实窗口下验证：慢初始化期间可连续输入、草稿保留；在未就绪窗口里打开另一段对话不产生错误横幅（`pnpm run verify:desktop-cold-start-interaction` 覆盖）；失败态显示 Runtime 给出的原因而不是通用错误页；阶段文字的摆放、窄窗截断与三档设备像素比见 `pnpm run verify:desktop-readiness-placement`。
 - 五指标计时与逐次原始样本见 `docs/reference/cold-start-baseline/`。

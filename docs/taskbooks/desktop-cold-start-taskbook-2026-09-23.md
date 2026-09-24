@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-24 13:53:20
+最后更新：2026-09-24 14:04:58
 
 ## 1. 目标与当前状态
 
@@ -152,7 +152,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-24 13:53:20
+最后更新：2026-09-24 14:04:58
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -241,8 +241,8 @@
 任务书里每一项能自动化的验收都已落地并留下账本；下面三类必须在真实机器上由人完成。逐项做完后勾选对应复选框，任务书才可按文档生命周期退役。
 
 1. **视觉状态（需要人眼，含系统重启后的真冷启动）**
-   - 先跑一次自动化基线：`pnpm run build:app`，然后 `pnpm run verify:desktop-cold-start`（三种宽度 + 最大化/还原 + 启动页 + 启动失败页）与 `pnpm run verify:desktop-cold-start-visuals -- --app=packaged`（打包版同一批检查）。
-   - 人工确认：①启动页→渲染器的**交接瞬间**有无可见跳变；②**失焦**时原生标题栏按钮的激活态与统一表面是否冲突；③**最小化/还原**后的观感；④**125% / 150% / 200%** 显示缩放下标题栏与原生按钮区是否仍无缝；⑤**明/暗壁纸**下窗口边缘是否干净；⑥**系统重启后**的第一次启动（本机热缓存样本不能代表它）。
+   - 先跑一次自动化基线：`pnpm run build:app`，然后 `pnpm run verify:desktop-cold-start`（三种宽度 + 最大化/还原 + 启动页 + 启动失败页）、`pnpm run verify:desktop-cold-start-visuals -- --app=packaged`（打包版同一批检查）与 `pnpm run verify:desktop-readiness-placement`（正常/拉慢/失败三档启动 + 窄窗 + DPR 代理，截图 `readiness-*.png`）。
+   - 人工确认：①启动页→渲染器的**交接瞬间**有无可见跳变；②**失焦**时原生标题栏按钮的激活态与统一表面是否冲突；③**最小化/还原**后的观感；④**125% / 150% / 200%** 显示缩放下标题栏与原生按钮区是否仍无缝（脚本的 DPR 代理只覆盖渲染器布局，覆盖不到原生合成）；⑤**明/暗壁纸**下窗口边缘是否干净；⑥**系统重启后**的第一次启动（本机热缓存样本不能代表它）。
    - 参考图与逐项结论在 `docs/reference/cold-start-baseline/screenshots/`。
 2. **打包与安装（需要授权，会写系统）**
    - `pnpm run package:win` 已产出未签名 `release/win-unpacked` 并做过冷/稳态与视觉采样；仍需：运行 NSIS 安装包 → 确认安装目录、开始菜单与卸载登记 → 在干净机器或干净用户下首次运行，确认数据根初始化、图标、启动页与就绪提示。
@@ -265,7 +265,19 @@
 - **配对测量脚本**：`scripts/measure-workspace-availability.mjs`（新）——同一数据根 + 同一 Chromium profile 的"预热一次 → 多次冷启动"结构，夹具含 60 个目录条目、Markdown 预览正文与 `docs/guide.md`；产物 `docs/reference/cold-start-baseline/desktop-workspace-availability-2026-09-24.json`（记录目录规模、预览大小与逐次原始样本）。
 - **找到并修掉阻塞缺陷（真实缺陷，非体验偏好）**：渲染器的工作区客户端把 URL 写成 `` `LOCAL_APP_API_ROUTES.workspaceList)}?...` ``——模板字符串缺少 `${`，于是每个请求都是 `http://127.0.0.1:<port>LOCAL_APP_API_ROUTES.workspaceList)}?...`，`fetch` 直接以 `TypeError: Failed to parse URL` 拒绝。后果是**右侧永远读不到任何目录与任何文件预览**：目录树显示"文件夹暂时无法读取，请点击刷新重试。"，点刷新也不会再发请求（渲染器侧根本没有请求发出），而同一个路由被直接调用时返回 200。共 5 处同类错误：`workspaceList`、`workspacePreview`、`workspaceLayout`、`workspaceArtifacts`（`api/workspace-files.ts`）与 `terminalActivity`（`api/terminal.ts`）。
 - 修复与回归护栏：五处模板字符串改正；新增 `packages/app/src/renderer/api/workspace-client-paths.test.ts`，断言客户端**实际发出的路径**以文档化路由开头、且不含 `LOCAL_APP_API_ROUTES` 字面量——这类"URL 拼错但类型通过"的缺陷从此由测试拦下。
-- 修复后实测（同一夹具与脚本，n=3 冷启动，0 失败）：进程启动 → **首个目录行可见 1085.9 / 1112.3 / 1117.5 ms**，→ **恢复的文件内容可见 1085.7 / 1112.2 / 1117.3 ms**（两者同帧：恢复的预览与目录树一起出现），**点击文件 → 预览可见 3.0 ms**（并确认 `renderer-workspace-preview` 标点发布）；对照的执行就绪为 645.1 / 669.6 / 674.8 ms，即**目录与预览都早于执行就绪**，不等待 Runner。
+- 修复后实测（同一夹具与脚本，n=3 冷启动，0 失败；账本含 `warmup`、3 次冷启动、`click-to-preview` 与 `while-not-ready`）：进程启动 → **首个目录行可见 1194.9 / 1202.0 / 1261.4 ms**，→ **恢复的文件内容可见 1194.8 / 1201.8 / 1261.7 ms**（两者同帧：恢复的预览与目录树一起出现），**点击文件 → 预览可见 2.8 ms**（并确认 `renderer-workspace-preview` 标点发布）；对照的执行就绪为 691.7 / 748.1 / 775.2 ms，即**目录与预览都早于执行就绪**，不等待 Runner。
 - 一处需要更正的中间结论：先前两次测量报告"布局恢复路径不通"（活动标签停在"审阅"、预览未挂载），根因在**测量脚本**而不在产品——预热阶段用强制结束进程收尾，而持久布局镜像（`<data-root>/workspace/layout.json`）是在**正常退出路径**上刷新的，于是被测量的那次启动恢复的是更早的"只有审阅"快照。把预热改成走 `quit` 验收动作（等同用户关闭应用）后，同一个构建三次冷启动全部恢复出文件正文。这也解释了为什么独立诊断（等待更久、未强杀）当时就能复现恢复成功。
-- **Runner 未就绪期间可用已实测**（探针新增 `while-not-ready` 用例，用仅验收的 `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS` 拉长窗口）：读取目录与点击文件时 `/runtime/readiness` 都是 **`starting`**，此刻目录行 4 条、文件正文 15210 字符已可读（标点 1114.8 / 1114.6 ms），就绪到达后正文仍是 15210 字符——**没有被就绪交接复位**。这直接支持"目录与普通文件预览不等待 Runner"。
+- **Runner 未就绪期间可用已实测**（探针新增 `while-not-ready` 用例，用仅验收的 `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS` 拉长窗口；该用例已作为同一账本的一类运行留档）：读取目录与点击文件时 `/runtime/readiness` 都是 **`starting`**，此刻目录行 4 条、文件正文 15210 字符已可读（标点 1142.2 / 1142.0 ms），就绪到达后正文仍是 15210 字符——**没有被就绪交接复位**。这直接支持"目录与普通文件预览不等待 Runner"。
 - CS-08 仍未完成的部分：**切换会话**后预览不被复位/不出现旧会话陈旧内容、**改选目录**（走系统目录选择对话框，无法在无头环境驱动，需人工或改走可注入的选择器）以及关闭/恢复窗口后的预览保持；浏览器标签在未就绪期间的显式断言也还没做。复选框保持未勾选。
+
+### CS-09｜收敛正常启动提示的视觉占用 —— 实现完成，三档启动已实拍（进行中）
+
+- **改动文件**：`packages/app/src/renderer/runtime-readiness/composer-readiness-hint.tsx`（新）、`runtime-readiness-notice.tsx`、`packages/app/src/renderer/app-shell/composer-view.tsx`、`packages/app/src/renderer/styles/11-runtime-readiness.css`、`packages/app/src/renderer/runtime-readiness/readiness-placement.test.ts`（新，7 例）。
+- **做法**：把启动提示拆成两个各管一件事的表面，事实仍只有一份（Main 的就绪状态与原因）。**正常启动**由 `.composer-readiness-hint` 把 Main 给的那句话就地渲染在 `.composer-right` 内、发送按钮左侧，只在 `state === 'starting'` 出现，就绪即消失，不写渲染器自己的等待文案；**只有失败**才回到整窗条带 `runtime-readiness-notice`（`aria-live="assertive"` + 既有 `.runtime-readiness-retry` 重试入口），因此"失败与可重试状态保持可见"没有被削弱——它现在独占那条最显眼的表面。窄窗用省略号截断但保留 `7ch` 下限：被压成零宽等于没有提示，这正是本项要收敛的问题。
+- **实机取证**：新增 `scripts/verify-desktop-readiness-placement.mjs`（`pnpm run verify:desktop-readiness-placement`，逐项事实 `docs/reference/cold-start-baseline/cold-start-readiness-placement.json`，截图 `screenshots/readiness-*.png`），三档启动都在真实窗口里驱动：
+  - 正常启动 ×3（1580×900）：条带**从未出现**；三次附加调试器时都已 `ready`，所以这一档只证明正常路径没有回退，摆放本身由下一档测量（边界已写进证据文件的 `gaps`）。
+  - 故意拉慢启动（仅验收用的就绪延迟 7 s，Runner 照常构建，被拉长的只是渲染器看到的窗口）：`/runtime/readiness` = `starting`，阶段文字 = Main 的原因「正在准备运行能力」，位于控制行内、占窗口宽度 **7.5%**，条带为 `null`，发送入口 `disabled` 且 `aria-label` 与原因一致，草稿与焦点保持，右侧预览正文 4398 字符可读。
+  - 同一次启动缩到窗口下限 800×660：阶段文字 45 px（截断但不为零宽）、与发送按钮不重叠、`scrollWidth - innerWidth = 0`、条带为 `null`、预览未丢；DPR 1.25 / 1.5 / 2 的代理下同样无溢出、无重叠、无条带（该代理只改设备像素比，窗口 CSS 像素尺寸与原生合成不变，因此它不能替代真实缩放下的目视检查）。
+  - 就绪交接后：两个表面都 `null`，发送恢复可用，草稿、焦点与预览不变。启动失败档：条带占满整行（`left/right = 0`，标题栏下方 32–62 px）且文案就是 Runtime 原因 + 重试入口，阶段文字为 `null`。
+- 既有真实窗口脚本同步改到新表面并全部通过：`scripts/verify-desktop-cold-start-interaction.mjs` 现在断言"阶段文字在控制行内（宽度占比 0.075）、条带为 `null`、发送禁用、草稿保持"，就绪后两个表面都消失；失败档探针不变，仍然通过。
+- 剩余缺口：**真实显示缩放**（125% / 150% / 200% 的 Windows 缩放与明暗桌面背景）仍是人工项，脚本只做了 DPR 代理；正常启动未就绪窗口只有约 300 ms，"正常启动不长出全局条"由同一状态的拉长版本测量。另在 800 px 窗口下顺带记录两处**既有**布局现象（与本项改动无关）：控制行本身已很拥挤（就绪后同样存在），右侧预览列在面板与文件树夹挤下一行只剩一个字。复选框保持未勾选。

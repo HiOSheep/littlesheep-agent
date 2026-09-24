@@ -23,13 +23,14 @@ import {
 import { syncComposerInputHeight } from '../composer/input-size'
 import { WINDOW_RESIZE_END_EVENT } from '../ui/resize'
 import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
+import { ComposerReadinessHint } from '../runtime-readiness/composer-readiness-hint'
 import type { ComposerViewController } from './app-controller-projections'
 
 export function ComposerView({ controller }: { controller: ComposerViewController }) {
   // Execution availability comes from the Runtime, not from local state: the
   // composer renders before the Runner exists, and only the readiness fact may
   // decide whether sending is possible yet.
-  const { reason: readinessReason } = useRuntimeReadiness()
+  const { readiness, reason: readinessReason } = useRuntimeReadiness()
   const executionUnavailable = readinessReason
   const {
     input,
@@ -228,6 +229,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             )}
           </div>
           <div className="composer-right">
+            <ComposerReadinessHint readiness={readiness} reason={readinessReason} />
             <ContextUsageIndicator usage={contextUsage} />
             <RuntimePicker
               runtime={runtime}

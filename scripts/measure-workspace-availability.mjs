@@ -83,6 +83,11 @@ async function main() {
     const click = await measureClickToPreview({ dataDir, workspaceDir, chromiumDir, index: samples + 1 })
     runs.push(click.run)
 
+    // 4. The same two things while execution is deliberately unavailable: the
+    //    taskbook's claim is that the right side does not wait for the Runner.
+    const notReady = await measureWhileNotReady({ dataDir, workspaceDir, chromiumDir, index: samples + 2 })
+    runs.push(notReady.run)
+
     const summary = summarize(runs)
     await mkdir(outDir, { recursive: true })
     const ledger = {
@@ -305,6 +310,86 @@ async function launch({ dataDir, workspaceDir, chromiumDir, index, measure }) {
   }
 }
 
+/**
+ * Directory and preview while execution is still starting (CS-08).
+ *
+ * The acceptance-only readiness delay widens that window so the assertions can
+ * run inside it: the panel must show real rows and a real file body while
+ * `/runtime/readiness` still says `starting`, and readiness must still arrive
+ * afterwards without the content being reset.
+ */
+async function measureWhileNotReady({ dataDir, workspaceDir, chromiumDir, index }) {
+  const logPath = join(dataDir, '..', `electron-not-ready-${index}.log`)
+  const debuggingPort = await harness.reservePort()
+  const run = { index, kind: 'while-not-ready', ok: false, requiredWindowMs: 6_000 }
+  let client
+  let child
+  try {
+    child = await harness.startElectron({
+      dataDir,
+      chromiumDir,
+      debuggingPort,
+      logPath,
+      extraEnv: {
+        LITTLESHEEP_BOOTSTRAP_TIMING: '1',
+        LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS: String(run.requiredWindowMs),
+      },
+    })
+    const locator = await harness.waitForLocator(dataDir, child.pid)
+    client = await harness.connectRenderer(debuggingPort)
+    await client.send('Runtime.enable')
+    await harness.waitForVisible(client, '.composer textarea', 0, harness.actionTimeoutMs)
+
+    await client.evaluate(`(() => {
+      const toggle = document.querySelector('.workspace-panel-corner-toggle, .workspace-panel-reopen-target');
+      if (toggle && document.querySelector('.workspace-panel.collapsed')) toggle.click();
+      return true;
+    })()`)
+    await waitForDom(client, 'entries')
+    const readinessAtEntries = await readReadiness(locator)
+    const domAtEntries = await readWorkspaceDom(client)
+
+    await client.evaluate(`(() => {
+      const rows = [...document.querySelectorAll('.workspace-tree-row.file')];
+      const target = rows.find((row) => row.textContent.includes(${JSON.stringify(CLICK_FILE.split('/').at(-1))})) ?? rows[0];
+      target?.click();
+      return Boolean(target);
+    })()`)
+    await waitForDom(client, 'preview')
+    const readinessAtPreview = await readReadiness(locator)
+    const domAtPreview = await readWorkspaceDom(client)
+
+    run.marks = {
+      entriesProcessUptimeMs: (await waitForMark(logPath, 'renderer-workspace-entries').catch(() => undefined))?.processUptimeMs,
+      previewProcessUptimeMs: (await waitForMark(logPath, 'renderer-workspace-preview').catch(() => undefined))?.processUptimeMs,
+    }
+    const ready = await waitForReadiness(locator, 'ready')
+    const domAfterReady = await readWorkspaceDom(client)
+    run.observations = {
+      readinessAtEntries: readinessAtEntries?.state,
+      readinessAtPreview: readinessAtPreview?.state,
+      rowsAtEntries: domAtEntries.entryRows,
+      previewTextAtPreview: domAtPreview.previewTextLength,
+      readinessAfterWait: ready?.state,
+      previewTextAfterReady: domAfterReady.previewTextLength,
+    }
+    run.ok = readinessAtEntries?.state === 'starting'
+      && readinessAtPreview?.state === 'starting'
+      && domAtEntries.entryRows > 0
+      && domAtPreview.previewTextLength > 0
+      && ready?.state === 'ready'
+      && domAfterReady.previewTextLength > 0
+    if (!run.ok) run.note = 'directory or preview content was not readable inside the not-ready window'
+    return { ok: run.ok, run }
+  } catch (error) {
+    run.error = error instanceof Error ? error.message : String(error)
+    return { ok: false, run }
+  } finally {
+    client?.close()
+    if (child?.exitCode === null) await harness.forceTerminate(child)
+  }
+}
+
 /** Click a file row in the live panel and time it to painted content. */
 async function measureClickToPreview({ dataDir, workspaceDir, chromiumDir, index }) {
   const logPath = join(dataDir, '..', `electron-click-${index}.log`)
@@ -464,6 +549,14 @@ async function waitForMark(logPath, stage, timeoutMs = MARK_TIMEOUT_MS) {
     const marks = await harness.readBootstrapTimings(logPath).catch(() => [])
     return marks.find((entry) => entry.stage === stage)
   }, timeoutMs, stage)
+}
+
+/** Poll readiness until it reaches `state` (used to bracket the not-ready case). */
+async function waitForReadiness(locator, state, timeoutMs = 60_000) {
+  return harness.waitFor(async () => {
+    const readiness = await readReadiness(locator)
+    return readiness?.state === state ? readiness : undefined
+  }, timeoutMs, `readiness ${state}`)
 }
 
 function summarize(runs) {

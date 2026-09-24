@@ -88,6 +88,7 @@
     "verify:desktop-cold-start-interaction": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-interaction.mjs",
     "verify:desktop-cold-start-recovery": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-recovery.mjs",
     "verify:desktop-cold-start-readiness-failure": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-readiness-failure.mjs",
+    "verify:desktop-readiness-placement": "pnpm run assert:app-build && node scripts/verify-desktop-readiness-placement.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs"
   },
   "devDependencies": {

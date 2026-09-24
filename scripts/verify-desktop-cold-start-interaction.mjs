@@ -127,13 +127,20 @@ async function main() {
     // 2b. While execution is unavailable the window must say so with the
     //     Runtime's own words, and it must still be unavailable when this step
     //     runs - otherwise the assertions above proved nothing about a wider
-    //     window. The notice is read from the DOM, not from the API.
+    //     window. The surfaces are read from the DOM, not from the API.
+    //     Placement is part of the contract: a normal start states its stage next
+    //     to the send control, and only a failure may span the window.
     const noticeWhileNotReady = await client.evaluate(`(() => {
       const notice = document.querySelector('.runtime-readiness-notice');
+      const hint = document.querySelector('.composer-readiness-hint');
       const input = document.querySelector('.composer textarea');
+      const hintBox = hint ? hint.getBoundingClientRect() : null;
       return {
-        text: notice ? notice.textContent.trim() : null,
-        visible: notice ? notice.getBoundingClientRect().height > 0 : false,
+        text: hint ? hint.textContent.trim() : null,
+        hintInsideControlRow: hint ? Boolean(hint.closest('.composer-right')) : false,
+        hintSpanRatio: hintBox && window.innerWidth > 0 ? hintBox.width / window.innerWidth : null,
+        stripText: notice ? notice.textContent.trim() : null,
+        visible: hintBox ? hintBox.height > 0 : false,
         sendDisabled: (() => {
           const button = document.querySelector('.composer-run-actions .send-round');
           return button ? button.disabled : null;
@@ -148,6 +155,12 @@ async function main() {
     }
     if (noticeWhileNotReady.visible !== true || !noticeWhileNotReady.text) {
       failures.push({ check: 'the not-ready window states the Runtime phase on screen', detail: noticeWhileNotReady })
+    }
+    if (noticeWhileNotReady.hintInsideControlRow !== true) {
+      failures.push({ check: 'the startup stage text sits in the composer control row', detail: noticeWhileNotReady })
+    }
+    if (noticeWhileNotReady.stripText !== null) {
+      failures.push({ check: 'a normal start does not raise the window-wide strip', detail: noticeWhileNotReady })
     }
     if (noticeWhileNotReady.sendDisabled !== true) {
       failures.push({ check: 'the send entry stays disabled while the notice is shown', detail: noticeWhileNotReady })
@@ -259,8 +272,8 @@ async function main() {
         detail: { before: beforeHandoff.currentSession, after: afterReady.currentSession },
       })
     }
-    if (afterReady.readinessNotice !== null) {
-      failures.push({ check: 'the readiness notice clears once execution is available', detail: afterReady })
+    if (afterReady.readinessNotice !== null || afterReady.readinessHint !== null) {
+      failures.push({ check: 'the readiness surfaces clear once execution is available', detail: afterReady })
     }
     const noticesAfterReady = await readNoticeSurfaces(client)
     observations.push({ step: 'notices-after-ready', ...noticesAfterReady })
@@ -451,6 +464,7 @@ async function readComposerIdentity(client) {
       focused: input ? document.activeElement === input : false,
       currentSession: active ? active.textContent : null,
       readinessNotice: document.querySelector('.runtime-readiness-notice')?.textContent ?? null,
+      readinessHint: document.querySelector('.composer-readiness-hint')?.textContent?.trim() ?? null,
     };
   })()`)
 }
@@ -482,6 +496,7 @@ async function readNoticeSurfaces(client) {
     return {
       errorText: errors.length === 0 ? null : errors.map((node) => node.textContent.trim()).join(' | '),
       readinessNotice: document.querySelector('.runtime-readiness-notice')?.textContent?.trim() ?? null,
+      readinessHint: document.querySelector('.composer-readiness-hint')?.textContent?.trim() ?? null,
       activeRunCount: document.querySelector('.run-activity-indicator, .composer-stop') ? 1 : 0,
       sessionTitles: [...document.querySelectorAll('.session-item')].map((node) => node.textContent.trim()),
     };

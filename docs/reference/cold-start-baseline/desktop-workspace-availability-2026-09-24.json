@@ -1,7 +1,7 @@
 {
   "check": "desktop-workspace-availability",
   "label": "2026-09-24",
-  "startedAt": "2026-09-24T05:50:49.668Z",
+  "startedAt": "2026-09-24T06:03:36.350Z",
   "samples": 3,
   "fixture": {
     "workspaceDir": "<user-home>\\<temp>\\workspace",
@@ -66,11 +66,11 @@
       "kind": "measured",
       "ok": true,
       "marks": {
-        "entriesProcessUptimeMs": 1112.3,
-        "entriesRendererMs": 253.2,
-        "previewProcessUptimeMs": 1112.2,
-        "previewRendererMs": 253.1,
-        "executionReadyProcessUptimeMs": 674.8
+        "entriesProcessUptimeMs": 1194.9,
+        "entriesRendererMs": 323.9,
+        "previewProcessUptimeMs": 1194.8,
+        "previewRendererMs": 323.7,
+        "executionReadyProcessUptimeMs": 691.7
       },
       "dom": {
         "panelPresent": true,
@@ -83,15 +83,15 @@
         "treeNotice": null
       },
       "timings": {
-        "processCreateToEntriesMs": 1112.3,
-        "processCreateToPreviewMs": 1112.2,
-        "processCreateToExecutionReadyMs": 674.8
+        "processCreateToEntriesMs": 1194.9,
+        "processCreateToPreviewMs": 1194.8,
+        "processCreateToExecutionReadyMs": 691.7
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 2450,
+        "port": 54185,
         "retryable": false
       }
     },
@@ -100,11 +100,11 @@
       "kind": "measured",
       "ok": true,
       "marks": {
-        "entriesProcessUptimeMs": 1117.5,
-        "entriesRendererMs": 260.2,
-        "previewProcessUptimeMs": 1117.3,
-        "previewRendererMs": 260,
-        "executionReadyProcessUptimeMs": 669.6
+        "entriesProcessUptimeMs": 1202,
+        "entriesRendererMs": 257.3,
+        "previewProcessUptimeMs": 1201.8,
+        "previewRendererMs": 257.1,
+        "executionReadyProcessUptimeMs": 748.1
       },
       "dom": {
         "panelPresent": true,
@@ -117,15 +117,15 @@
         "treeNotice": null
       },
       "timings": {
-        "processCreateToEntriesMs": 1117.5,
-        "processCreateToPreviewMs": 1117.3,
-        "processCreateToExecutionReadyMs": 669.6
+        "processCreateToEntriesMs": 1202,
+        "processCreateToPreviewMs": 1201.8,
+        "processCreateToExecutionReadyMs": 748.1
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 5325,
+        "port": 54198,
         "retryable": false
       }
     },
@@ -134,11 +134,11 @@
       "kind": "measured",
       "ok": true,
       "marks": {
-        "entriesProcessUptimeMs": 1085.9,
-        "entriesRendererMs": 244.9,
-        "previewProcessUptimeMs": 1085.7,
-        "previewRendererMs": 244.7,
-        "executionReadyProcessUptimeMs": 645.1
+        "entriesProcessUptimeMs": 1261.4,
+        "entriesRendererMs": 271.7,
+        "previewProcessUptimeMs": 1261.7,
+        "previewRendererMs": 271.8,
+        "executionReadyProcessUptimeMs": 775.2
       },
       "dom": {
         "panelPresent": true,
@@ -151,15 +151,15 @@
         "treeNotice": null
       },
       "timings": {
-        "processCreateToEntriesMs": 1085.9,
-        "processCreateToPreviewMs": 1085.7,
-        "processCreateToExecutionReadyMs": 645.1
+        "processCreateToEntriesMs": 1261.4,
+        "processCreateToPreviewMs": 1261.7,
+        "processCreateToExecutionReadyMs": 775.2
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 5338,
+        "port": 43612,
         "retryable": false
       }
     },
@@ -170,12 +170,30 @@
       "clicked": {
         "clicked": true,
         "label": "MREADME.md",
-        "at": 303.09999999962747
+        "at": 327.40000000037253
       },
-      "clickToPreviewMs": 3,
+      "clickToPreviewMs": 2.8,
       "previewTextLength": 15210,
-      "previewMarkProcessUptimeMs": 1102.3,
+      "previewMarkProcessUptimeMs": 1237.7,
       "previewMarkEmitted": true
+    },
+    {
+      "index": 5,
+      "kind": "while-not-ready",
+      "ok": true,
+      "requiredWindowMs": 6000,
+      "marks": {
+        "entriesProcessUptimeMs": 1142.2,
+        "previewProcessUptimeMs": 1142
+      },
+      "observations": {
+        "readinessAtEntries": "starting",
+        "readinessAtPreview": "starting",
+        "rowsAtEntries": 4,
+        "previewTextAtPreview": 15210,
+        "readinessAfterWait": "ready",
+        "previewTextAfterReady": 15210
+      }
     }
   ],
   "summary": {
@@ -184,27 +202,27 @@
     "processCreateToFirstFrameMs": null,
     "processCreateToEntriesMs": {
       "samples": 3,
-      "min": 1085.9,
-      "median": 1112.3,
-      "max": 1117.5
+      "min": 1194.9,
+      "median": 1202,
+      "max": 1261.4
     },
     "processCreateToPreviewMs": {
       "samples": 3,
-      "min": 1085.7,
-      "median": 1112.2,
-      "max": 1117.3
+      "min": 1194.8,
+      "median": 1201.8,
+      "max": 1261.7
     },
     "processCreateToExecutionReadyMs": {
       "samples": 3,
-      "min": 645.1,
-      "median": 669.6,
-      "max": 674.8
+      "min": 691.7,
+      "median": 748.1,
+      "max": 775.2
     },
     "clickToPreviewMs": {
       "samples": 1,
-      "min": 3,
-      "median": 3,
-      "max": 3
+      "min": 2.8,
+      "median": 2.8,
+      "max": 2.8
     }
   },
   "note": [

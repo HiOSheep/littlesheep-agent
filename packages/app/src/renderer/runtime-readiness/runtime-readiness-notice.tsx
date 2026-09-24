@@ -1,8 +1,12 @@
-// Thin startup status strip.
+// Startup failure strip.
 //
-// It reports the Runtime's own readiness fact while execution is unavailable.
-// It is not a progress bar: there is no percentage and no estimated time, only
-// the stage the Main process is actually in and the reason it reported.
+// It carries exactly one case: the Runtime reported that execution cannot start.
+// A normal start states its stage next to the send control instead
+// (`composer-readiness-hint`), so ordinary startup does not put a bar across the
+// window; a failure keeps the full-width surface because it must stay visible
+// while the user reads the reason and decides whether to retry. It is not a
+// progress bar: there is no percentage and no estimated time, only the reason
+// Main reported.
 //
 // A retryable failure also offers the bounded retry Main owns. The renderer never
 // invents the bound: it counts what Main answered and stops offering the control
@@ -27,8 +31,9 @@ export function RuntimeReadinessNotice({
 }) {
   const [pending, setPending] = useState(false)
   const [attemptsUsed, setAttemptsUsed] = useState(0)
-  if (!reason) return null
-  const failed = readiness?.state === 'failed'
+  // Only a real failure earns the window-wide surface. `reason` is also set while
+  // the Runtime is still starting, and that case belongs to the composer hint.
+  if (!reason || readiness?.state !== 'failed') return null
   const retry = executionRetryUiState({ readiness, pending, attemptsUsed })
 
   async function retryExecution(): Promise<void> {
@@ -44,11 +49,11 @@ export function RuntimeReadinessNotice({
 
   return (
     <div
-      className={`runtime-readiness-notice${failed ? ' failed' : ''}`}
+      className="runtime-readiness-notice failed"
       role="status"
-      aria-live={failed ? 'assertive' : 'polite'}
+      aria-live="assertive"
     >
-      <span>{failed ? `运行能力启动失败：${reason}` : reason}</span>
+      <span>{`运行能力启动失败：${reason}`}</span>
       {(retry.canRetry || retry.pending) && (
         <button
           type="button"

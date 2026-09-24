@@ -10,11 +10,12 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 33446
+        "port": 43297
       },
       "notices": {
         "errorText": null,
-        "readinessNotice": "正在准备运行能力",
+        "readinessNotice": null,
+        "readinessHint": "正在准备运行能力",
         "activeRunCount": 0,
         "sessionTitles": [
           "交互验证会话 00分",
@@ -46,6 +47,9 @@
       "step": "notice-while-not-ready",
       "notice": {
         "text": "正在准备运行能力",
+        "hintInsideControlRow": true,
+        "hintSpanRatio": 0.075,
+        "stripText": null,
         "visible": true,
         "sendDisabled": true,
         "draft": "冷启动草稿"
@@ -56,7 +60,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 33446
+        "port": 43297
       }
     },
     {
@@ -77,7 +81,8 @@
       "draftAfterSwitch": "冷启动草稿",
       "notices": {
         "errorText": null,
-        "readinessNotice": "正在准备运行能力",
+        "readinessNotice": null,
+        "readinessHint": "正在准备运行能力",
         "activeRunCount": 0,
         "sessionTitles": [
           "交互验证会话 00分",
@@ -90,7 +95,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 33446
+        "port": 43297
       }
     },
     {
@@ -105,7 +110,8 @@
       "draftRetyped": false,
       "notices": {
         "errorText": null,
-        "readinessNotice": "正在准备运行能力",
+        "readinessNotice": null,
+        "readinessHint": "正在准备运行能力",
         "activeRunCount": 0,
         "sessionTitles": [
           "交互验证会话 00分",
@@ -119,10 +125,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 33446,
+        "port": 43297,
         "retryable": false
       },
-      "notReadyWindowMs": 7857,
+      "notReadyWindowMs": 7698,
       "requiredWindowMs": 6000
     },
     {
@@ -133,7 +139,8 @@
         "draft": "冷启动草稿",
         "focused": true,
         "currentSession": "交互验证会话 00分",
-        "readinessNotice": "正在准备运行能力"
+        "readinessNotice": null,
+        "readinessHint": "正在准备运行能力"
       },
       "after": {
         "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
@@ -141,13 +148,15 @@
         "draft": "冷启动草稿",
         "focused": true,
         "currentSession": "交互验证会话 00分",
-        "readinessNotice": null
+        "readinessNotice": null,
+        "readinessHint": null
       }
     },
     {
       "step": "notices-after-ready",
       "errorText": null,
       "readinessNotice": null,
+      "readinessHint": null,
       "activeRunCount": 0,
       "sessionTitles": [
         "交互验证会话 00分",
@@ -180,7 +189,7 @@
           "step": "minimize-restore",
           "minimizedHasComposer": true,
           "draft": "生命周期草稿",
-          "focused": false
+          "focused": true
         },
         {
           "step": "ready",

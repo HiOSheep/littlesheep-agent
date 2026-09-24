@@ -1,0 +1,392 @@
+{
+  "check": "desktop-readiness-placement",
+  "ok": true,
+  "launches": 3,
+  "notReadyWindowMs": 7000,
+  "narrowWindow": {
+    "width": 800,
+    "height": 660
+  },
+  "marks": {
+    "hint": ".composer-readiness-hint - the stage sentence next to the send control",
+    "strip": ".runtime-readiness-notice - the failure surface under the titlebar"
+  },
+  "screenshots": {
+    "normal": {
+      "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-normal-start.png",
+      "attempts": 1
+    },
+    "slowed": {
+      "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-start.png",
+      "attempts": 1
+    },
+    "slowedNarrow": {
+      "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-narrow.png",
+      "attempts": 1
+    },
+    "slowedScale": [
+      {
+        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_25.png",
+        "attempts": 1
+      },
+      {
+        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_5.png",
+        "attempts": 1
+      },
+      {
+        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-2.png",
+        "attempts": 1
+      }
+    ],
+    "slowedReady": {
+      "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-ready.png",
+      "attempts": 1
+    },
+    "failure": {
+      "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-failure-strip.png",
+      "attempts": 1
+    }
+  },
+  "observations": [
+    {
+      "step": "normal-launches",
+      "launches": [
+        {
+          "index": 0,
+          "observedAtAttach": "ready",
+          "stripSeen": false,
+          "hintWhileStarting": null,
+          "samples": [
+            {
+              "readiness": "ready",
+              "hint": null,
+              "strip": null
+            }
+          ],
+          "readinessAfterReady": "ready",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-normal-start.png",
+            "attempts": 1
+          }
+        },
+        {
+          "index": 1,
+          "observedAtAttach": "ready",
+          "stripSeen": false,
+          "hintWhileStarting": null,
+          "samples": [
+            {
+              "readiness": "ready",
+              "hint": null,
+              "strip": null
+            }
+          ],
+          "readinessAfterReady": "ready",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-normal-start.png",
+            "attempts": 1
+          }
+        },
+        {
+          "index": 2,
+          "observedAtAttach": "ready",
+          "stripSeen": false,
+          "hintWhileStarting": null,
+          "samples": [
+            {
+              "readiness": "ready",
+              "hint": null,
+              "strip": null
+            }
+          ],
+          "readinessAfterReady": "ready",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-normal-start.png",
+            "attempts": 1
+          }
+        }
+      ]
+    },
+    {
+      "step": "slowed-start",
+      "requiredWindowMs": 7000,
+      "atDefault": {
+        "surfaces": {
+          "hintText": "正在准备运行能力",
+          "hintBox": {
+            "top": 855,
+            "bottom": 871,
+            "left": 867,
+            "right": 963,
+            "width": 96,
+            "height": 17
+          },
+          "hintInsideControlRow": true,
+          "stripText": null,
+          "stripBox": null,
+          "sendDisabled": true,
+          "sendLabel": "正在准备运行能力",
+          "composerBox": {
+            "top": 792,
+            "bottom": 888,
+            "left": 445,
+            "right": 1185,
+            "width": 740,
+            "height": 96
+          },
+          "draft": "启动期间的草稿",
+          "focused": true,
+          "viewport": {
+            "width": 1580,
+            "height": 900
+          },
+          "overflowX": 0,
+          "previewTextLength": 4398,
+          "hintOverlapsSend": false
+        },
+        "readiness": "starting",
+        "draft": {
+          "value": "启动期间的草稿",
+          "focused": true
+        },
+        "preview": {
+          "opened": true,
+          "clicked": "MREADME.md"
+        }
+      },
+      "atNarrow": {
+        "surfaces": {
+          "hintText": "正在准备运行能力",
+          "hintBox": {
+            "top": 615,
+            "bottom": 631,
+            "left": 269,
+            "right": 315,
+            "width": 45,
+            "height": 17
+          },
+          "hintInsideControlRow": true,
+          "stripText": null,
+          "stripBox": null,
+          "sendDisabled": true,
+          "sendLabel": "正在准备运行能力",
+          "composerBox": {
+            "top": 552,
+            "bottom": 648,
+            "left": 246,
+            "right": 493,
+            "width": 247,
+            "height": 96
+          },
+          "draft": "启动期间的草稿",
+          "focused": true,
+          "viewport": {
+            "width": 800,
+            "height": 660
+          },
+          "overflowX": 0,
+          "previewTextLength": 4398,
+          "hintOverlapsSend": false
+        },
+        "readiness": "starting"
+      },
+      "scaling": [
+        {
+          "deviceScaleFactor": 1.25,
+          "surfaces": {
+            "hintText": "正在准备运行能力",
+            "hintBox": {
+              "top": 855,
+              "bottom": 871,
+              "left": 774,
+              "right": 857,
+              "width": 82,
+              "height": 17
+            },
+            "hintInsideControlRow": true,
+            "stripText": null,
+            "stripBox": null,
+            "sendDisabled": true,
+            "sendLabel": "正在准备运行能力",
+            "composerBox": {
+              "top": 792,
+              "bottom": 888,
+              "left": 397,
+              "right": 1079,
+              "width": 682,
+              "height": 96
+            },
+            "draft": "启动期间的草稿",
+            "focused": true,
+            "viewport": {
+              "width": 1580,
+              "height": 900
+            },
+            "overflowX": 0,
+            "previewTextLength": 4398,
+            "hintOverlapsSend": false
+          },
+          "readiness": "starting",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_25.png",
+            "attempts": 1
+          }
+        },
+        {
+          "deviceScaleFactor": 1.5,
+          "surfaces": {
+            "hintText": "正在准备运行能力",
+            "hintBox": {
+              "top": 855,
+              "bottom": 871,
+              "left": 774,
+              "right": 857,
+              "width": 82,
+              "height": 17
+            },
+            "hintInsideControlRow": true,
+            "stripText": null,
+            "stripBox": null,
+            "sendDisabled": true,
+            "sendLabel": "正在准备运行能力",
+            "composerBox": {
+              "top": 792,
+              "bottom": 888,
+              "left": 397,
+              "right": 1079,
+              "width": 682,
+              "height": 96
+            },
+            "draft": "启动期间的草稿",
+            "focused": true,
+            "viewport": {
+              "width": 1580,
+              "height": 900
+            },
+            "overflowX": 0,
+            "previewTextLength": 4398,
+            "hintOverlapsSend": false
+          },
+          "readiness": "starting",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_5.png",
+            "attempts": 1
+          }
+        },
+        {
+          "deviceScaleFactor": 2,
+          "surfaces": {
+            "hintText": "正在准备运行能力",
+            "hintBox": {
+              "top": 855,
+              "bottom": 871,
+              "left": 774,
+              "right": 857,
+              "width": 82,
+              "height": 17
+            },
+            "hintInsideControlRow": true,
+            "stripText": null,
+            "stripBox": null,
+            "sendDisabled": true,
+            "sendLabel": "正在准备运行能力",
+            "composerBox": {
+              "top": 792,
+              "bottom": 888,
+              "left": 397,
+              "right": 1079,
+              "width": 682,
+              "height": 96
+            },
+            "draft": "启动期间的草稿",
+            "focused": true,
+            "viewport": {
+              "width": 1580,
+              "height": 900
+            },
+            "overflowX": 0,
+            "previewTextLength": 4398,
+            "hintOverlapsSend": false
+          },
+          "readiness": "starting",
+          "screenshot": {
+            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-2.png",
+            "attempts": 1
+          }
+        }
+      ],
+      "afterReady": {
+        "surfaces": {
+          "hintText": null,
+          "hintBox": null,
+          "hintInsideControlRow": false,
+          "stripText": null,
+          "stripBox": null,
+          "sendDisabled": false,
+          "sendLabel": "发送",
+          "composerBox": {
+            "top": 552,
+            "bottom": 648,
+            "left": 246,
+            "right": 493,
+            "width": 247,
+            "height": 96
+          },
+          "draft": "启动期间的草稿",
+          "focused": true,
+          "viewport": {
+            "width": 800,
+            "height": 660
+          },
+          "overflowX": 0,
+          "previewTextLength": 4398,
+          "hintOverlapsSend": null
+        },
+        "readiness": "ready"
+      }
+    },
+    {
+      "step": "failing-start",
+      "readiness": "failed",
+      "reason": "runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"",
+      "surfaces": {
+        "hintText": null,
+        "hintBox": null,
+        "hintInsideControlRow": false,
+        "stripText": "运行能力启动失败：runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"重试启动运行能力",
+        "stripBox": {
+          "top": 32,
+          "bottom": 62,
+          "left": 0,
+          "right": 800,
+          "width": 800,
+          "height": 30
+        },
+        "sendDisabled": true,
+        "sendLabel": "runner: no provider \"missing-provider\" for model ref \"missing-provider/missing-model\"",
+        "composerBox": {
+          "top": 552,
+          "bottom": 648,
+          "left": 246,
+          "right": 493,
+          "width": 247,
+          "height": 96
+        },
+        "draft": "启动期间的草稿",
+        "focused": false,
+        "viewport": {
+          "width": 800,
+          "height": 660
+        },
+        "overflowX": 0,
+        "previewTextLength": 4398,
+        "hintOverlapsSend": null
+      }
+    }
+  ],
+  "failures": [],
+  "gaps": [
+    "Display scaling above 100% and dark/light wallpaper are not driven here; the",
+    "taskbook keeps those as human checks (CS-02)."
+  ]
+}

@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 13:53:20
+最后更新：2026-09-24 14:04:58
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -339,7 +339,7 @@
 自动化部分到此为止：所有能由脚本在真实 Electron 里取证的条目都已落地并留下账本（五份证据文件：开发版视觉、打包版视觉、交互、恢复归属、失败态与重试）。以下只能在真实机器上由人完成，做完之前任务书对应复选框保持未勾选、任务书不退役：
 
 - **系统重启后的完全冷启动**：本机所有样本都是热缓存重复，重启后的首次启动（含首次读二进制）无法自动化。
-- **125% / 150% / 200% 显示缩放与明暗桌面背景**：需要人工在实机上逐项拍摄；脚本只覆盖宿主默认 DPR。
+- **125% / 150% / 200% 显示缩放与明暗桌面背景**：需要人工在实机上逐项拍摄。CS-09 的脚本用 `Emulation.setDeviceMetricsOverride` 做了 DPR 1.25 / 1.5 / 2 的**代理**测量（这三档 DPR 下渲染器不溢出、阶段文字不与发送按钮重叠、不出现整窗条带），但代理只改设备像素比，不改窗口的 CSS 像素尺寸、原生标题栏/caption 按钮与字体度量，也不改 acrylic 合成——真实缩放下的观感仍以人眼为准。
 - **失焦、最小化状态的观感与启动页→渲染器的交接瞬间**：最小化后窗口不参与截图（脚本只断言 DOM 状态），交接瞬间约 90 ms，需要人眼或高速拍摄。
 - **安装包（NSIS）实机安装与干净机器首次运行**：会写系统（安装目录、开始菜单、卸载登记），需要用户授权。
 - **真实续接执行**：现有证据到"发现 + 归属"为止；点"继续"会在检查点记录的真实工作区执行工具，需用户在自有数据上确认。
@@ -352,22 +352,44 @@
 
 2026-09-24 第一次测量就找到阻塞缺陷：渲染器工作区客户端的 URL 模板字符串缺少 `${`，五个请求（`workspaceList`、`workspacePreview`、`workspaceLayout`、`workspaceArtifacts`、`terminalActivity`）实际发往 `http://127.0.0.1:<port>LOCAL_APP_API_ROUTES.…)}`，`fetch` 以 `TypeError: Failed to parse URL` 拒绝。**结果是右侧永远读不到目录与预览**，界面停在"文件夹暂时无法读取，请点击刷新重试。"，而同一路由直接调用返回 200——这类缺陷只在真实渲染器里出现，单测与直接 API 探针都看不到。修复后新增 `workspace-client-paths.test.ts` 断言客户端实际发出的路径。
 
-修复后实测（同一数据根与 profile 的冷启动）：
+修复后实测（同一数据根与 profile 的冷启动；账本现含 `warmup`、3 次冷启动、`click-to-preview` 与 `while-not-ready` 四类运行）：
 
 | 指标（进程启动起算，n=3，0 失败） | 最小 / 中位 / 最大 |
 | --- | --- |
-| 首个目录行可见 | 1085.9 / **1112.3** / 1117.5 ms |
-| 恢复的文件内容可见 | 1085.7 / **1112.2** / 1117.3 ms |
-| 点击文件 → 预览可见 | 3.0 ms（单次实测，并确认 `renderer-workspace-preview` 标点发布） |
-| 执行就绪（对照） | 645.1 / 669.6 / 674.8 ms |
+| 首个目录行可见 | 1194.9 / **1202.0** / 1261.4 ms |
+| 恢复的文件内容可见 | 1194.8 / **1201.8** / 1261.7 ms |
+| 点击文件 → 预览可见 | 2.8 ms（单次实测，并确认 `renderer-workspace-preview` 标点发布） |
+| 执行就绪（对照） | 691.7 / 748.1 / 775.2 ms |
 
 目录与恢复的预览同帧出现，并且都**早于执行就绪**——右侧不等待 Runner。
 
 一处被更正的中途结论：先前两次测量报告"布局恢复不通"，根因在测量脚本本身——预热阶段用强制结束进程收尾，而布局镜像 `<data-root>/workspace/layout.json` 只在**正常退出路径**上刷新，于是被测启动恢复的是更早的"只有审阅"快照。预热改走 `quit` 验收动作后同一构建三次冷启动全部恢复出正文。
 
-Runner **未就绪期间**也已实测（探针的 `while-not-ready` 用例把未就绪窗口拉长到 6 s）：读到目录行与点击文件时 `/runtime/readiness` 均为 `starting`，当时目录 4 行、正文 15210 字符可读，就绪到达后正文未变——右侧不等待 Runner，也不在就绪交接时复位。
+Runner **未就绪期间**也已实测（探针的 `while-not-ready` 用例把未就绪窗口拉长到 6 s，并作为同一账本的一类运行留档）：读到目录行与点击文件时 `/runtime/readiness` 均为 `starting`，当时目录 4 行、正文 15210 字符可读（标点 1142.2 / 1142.0 ms），就绪到达后正文仍是 15210 字符——右侧不等待 Runner，也不在就绪交接时复位。同一次运行里 `while-not-ready` 的标点早于冷启动样本的标点，但它复用同一个已预热的数据根，因此只用于"未就绪即可用"这一条，不参与上面的冷启动中位数。
 
 仍未完成：切换会话后预览的归属（不出现旧会话内容）、改选目录（系统目录选择对话框无法在无头环境驱动）、关闭/恢复窗口后的预览保持，以及浏览器标签在未就绪期间的显式断言。
+
+## CS-09 正常启动的阶段文字不再横跨整窗
+
+启动提示拆成两个各管一件事的表面，事实仍只有一份（Main 的就绪状态与原因）：
+
+- **正常启动**：`composer-readiness-hint` 把 Main 给的那句话就地显示在 `.composer-right` 里、发送按钮左侧，只在 `state === 'starting'` 出现，就绪即消失；必要时用省略号截断，但有 `7ch` 下限，不允许被压成零宽。渲染器不写自己的等待文案。
+- **启动失败**：`runtime-readiness-notice` 独占整窗条带（标题栏下方、`aria-live="assertive"`），原因与 `retryable` 仍由 Main 决定，重试入口 `.runtime-readiness-retry` 不变。
+
+实机取证见 `scripts/verify-desktop-readiness-placement.mjs`（新 npm 脚本 `verify:desktop-readiness-placement`，逐项事实 `cold-start-readiness-placement.json`，截图 `screenshots/readiness-*.png`）：
+
+| 场景（真实窗口） | 观测 |
+| --- | --- |
+| 正常启动 ×3（1580×900） | 条带从未出现（`stripSeen: false`）；三次附加调试器时都已是 `ready`，因此这一档只证明正常路径没有回退，阶段文字本身的摆放由下一档测量 |
+| 故意拉慢启动（仅验收用的就绪延迟 7 s，1580×900） | `/runtime/readiness` = `starting`，阶段文字 = Main 的原因「正在准备运行能力」，位于控制行内、窗口宽度的 **7.5%**，条带为 `null`；发送入口 `disabled` 且 `aria-label` 与原因一致；草稿与焦点保持；右侧预览正文 4398 字符可读 |
+| 同一次启动缩到窗口下限 800×660 | 阶段文字 45 px（截断但不为零宽）、与发送按钮**不重叠**、`scrollWidth - innerWidth = 0`，条带仍为 `null`，预览未丢 |
+| DPR 1.25 / 1.5 / 2（`Emulation.setDeviceMetricsOverride` 代理） | 无横向溢出、无与发送按钮的重叠、无整窗条带（阶段文字 82 px） |
+| 就绪交接后 | 阶段文字与条带都为 `null`，发送入口恢复可用，草稿、焦点与预览都不变 |
+| 启动失败（config 指向不存在的 provider） | 条带占满整行（`left/right = 0`，标题栏下方 32–62 px），文案 = Runtime 原因 + 重试入口；阶段文字为 `null` |
+
+`scripts/verify-desktop-cold-start-interaction.mjs` 的同一条契约也已改到新表面并全部通过：加宽窗口内阶段文字在控制行内（宽度占比 0.075）、条带为 `null`、发送禁用、草稿保持；就绪后两个表面都消失。
+
+边界与未覆盖：正常启动的未就绪窗口只有约 300 ms，调试器附加往往已经落在 `ready` 之后，所以"正常启动不长出全局条"由**同一状态的拉长版本**测量，而不是靠抢帧；显示缩放只做了 DPR 代理，而代理**只在设备像素比这一维**上近似真机——窗口的 CSS 像素尺寸、原生标题栏/caption 按钮与字体度量都不会跟着变，所以它证明的是"在这三档 DPR 下渲染无溢出、无重叠、无条带"，不证明真实 125%/150%/200% 缩放下的观感，那一项仍是人工验收。另外两处与本项无关、但在 800 px 窗口下顺带记录的现象：控制行本身已很拥挤（就绪后同样存在），右侧预览列在面板与文件树夹挤下会变成一行一个字——都属既有布局，未在本次改动范围内处理。
 
 ## 复现
 
@@ -384,6 +406,8 @@ pnpm run verify:desktop-cold-start
 node scripts/verify-desktop-cold-start-visuals.mjs --app=packaged
 pnpm run verify:desktop-cold-start-interaction
 pnpm run verify:desktop-cold-start-readiness-failure
+# 启动阶段文字的摆放（正常 / 拉慢 / 失败启动，窄窗与 DPR 代理）
+pnpm run verify:desktop-readiness-placement
 # 恢复归属（需要真实 Provider 凭据；无凭据时脚本跳过并说明原因）
 $env:DEEPSEEK_API_KEY = '<credential>'
 pnpm run verify:desktop-cold-start-recovery

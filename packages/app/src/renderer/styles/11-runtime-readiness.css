@@ -1,8 +1,29 @@
-/* Startup readiness strip.
+/* Startup readiness surfaces.
  *
- * Shown only while the Runtime is not executable. It sits under the shell's
- * titlebar as a single text line: the Main process owns the wording, this file
- * only owns its surface. */
+ * Two placements, one fact (the Runtime's own stage/reason):
+ * - a normal start states its stage inline next to the send control, so ordinary
+ *   startup never puts a bar across the window;
+ * - a failure keeps the window-wide strip, because it must stay visible while the
+ *   user reads the reason and decides whether to retry.
+ * Main owns the wording; this file only owns the surfaces. */
+
+.composer-readiness-hint {
+  /* A floor, not a fixed width: the sentence may ellipsize, but it must not be
+   * squeezed to nothing when the window is at its minimum width and the right
+   * workspace panel is open. The disabled send entry carries the same reason in
+   * its accessible name, so the visible sentence may shorten - it may not vanish. */
+  flex: 0 1 auto;
+  min-width: 7ch;
+  max-width: 34ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Failure surface: the one case that spans the window, under the titlebar. */
 .runtime-readiness-notice {
   position: fixed;
   top: var(--window-titlebar-height);
@@ -20,6 +41,7 @@
 
 .runtime-readiness-notice.failed {
   color: var(--danger, #ff9d9d);
+  background: color-mix(in srgb, var(--danger, #ff9d9d) 10%, var(--surface-2));
 }
 
 /* Bounded retry for a failed start. Same surface as the strip it lives in, with
