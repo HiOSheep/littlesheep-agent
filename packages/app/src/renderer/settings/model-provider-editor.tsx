@@ -127,29 +127,47 @@ export function ModelProviderEditor({
           )}
           {draft.models.map((row, index) => (
             <div key={index} className="provider-model-row">
-              <input
-                className="provider-model-id"
-                value={row.id}
-                placeholder="模型 ID（发送给该接口的名字）"
-                onChange={(event) => patchModel(index, { id: event.target.value })}
-              />
-              <input
-                value={row.name}
-                placeholder="显示名称"
-                onChange={(event) => patchModel(index, { name: event.target.value })}
-              />
-              <input
-                value={row.contextWindow}
-                inputMode="numeric"
-                placeholder="上下文窗口"
-                onChange={(event) => patchModel(index, { contextWindow: event.target.value })}
-              />
-              <input
-                value={row.maxOutputTokens}
-                inputMode="numeric"
-                placeholder="最大输出"
-                onChange={(event) => patchModel(index, { maxOutputTokens: event.target.value })}
-              />
+              {/* Each field owns its label. The wide layout shows one column header
+                  instead (and hides these), the stacked layout shows them. */}
+              <div className="provider-model-field">
+                <span className="provider-model-field-label">模型 ID</span>
+                <input
+                  className="provider-model-id"
+                  value={row.id}
+                  placeholder="模型 ID（发送给该接口的名字）"
+                  aria-label="模型 ID"
+                  onChange={(event) => patchModel(index, { id: event.target.value })}
+                />
+              </div>
+              <div className="provider-model-field">
+                <span className="provider-model-field-label">显示名称</span>
+                <input
+                  value={row.name}
+                  placeholder="显示名称"
+                  aria-label="显示名称"
+                  onChange={(event) => patchModel(index, { name: event.target.value })}
+                />
+              </div>
+              <div className="provider-model-field">
+                <span className="provider-model-field-label">上下文窗口</span>
+                <input
+                  value={row.contextWindow}
+                  inputMode="numeric"
+                  placeholder="上下文窗口"
+                  aria-label="上下文窗口"
+                  onChange={(event) => patchModel(index, { contextWindow: event.target.value })}
+                />
+              </div>
+              <div className="provider-model-field">
+                <span className="provider-model-field-label">最大输出</span>
+                <input
+                  value={row.maxOutputTokens}
+                  inputMode="numeric"
+                  placeholder="最大输出"
+                  aria-label="最大输出"
+                  onChange={(event) => patchModel(index, { maxOutputTokens: event.target.value })}
+                />
+              </div>
               <button
                 type="button"
                 className="provider-model-remove"

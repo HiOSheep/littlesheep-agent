@@ -1,5 +1,5 @@
 # Renderer 设置
-最后更新：2026-09-25 04:31:07
+最后更新：2026-09-25 06:26:12
 
 这里负责设置侧边栏、设置页和直接打开的记忆树/插件/已安排页面。设置与主页共用全局导航和侧边栏交互，但不复制运行时数据。
 
@@ -36,5 +36,7 @@
 网络检索页（`web.tsx`、`web-state.ts`）的 Tavily 配置通过 Main-owned `/config/web-provider` 路由完成：密钥进入 Electron `safeStorage`，配置文件只保存 `$TAVILY_API_KEY` 引用；保存密钥不会自动打开网络总开关。
 
 页面中的“检查 Tavily 连接”调用固定的 Main-owned provider-check 路由，只在网络已启用且用户主动点击时执行一次受限搜索；成功后 Web 状态才显示 `ready`。检查结果只存在进程内、不写入配置，网络检索策略变化即失效；设置页不会自行判断或伪造 Provider 健康状态。
+
+**模型行的宽度契约（UX-15 实测）**：`provider-model-row` 在宽布局下是四字段一行（`minmax(0,1.4fr) minmax(0,1fr) 150px 150px 26px`），列名由共享的 `provider-model-columns` 表头给出；当**设置内容宽度 ≤560px**（`provider-editor` 上的容器查询）时改为堆叠布局：字段各占一行、`provider-model-columns` 表头隐藏、每个字段显示自己的 `provider-model-field-label`。实测（800×600 最小窗口，内容宽 474px）此前两个弹性字段只剩 62px 与 44px，堆叠后四个字段各 425px；宽布局（1280×840，内容宽 760px）仍是一行、最小字段 150px。每个模型输入都带 `aria-label`，所以两种布局都有可访问名称。
 
 `plugins.tsx` 为 394 行，暂处 300-600 行软上限区间，原因是发现状态、筛选、启停、来源确认和本地代码授权共同组成一个插件管理事务；新增插件能力应进入插件宿主或独立设置组件，不能继续堆入该页。

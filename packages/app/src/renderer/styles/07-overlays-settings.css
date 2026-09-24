@@ -3358,6 +3358,19 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
 }
 
+/* Each field owns a label; the wide layout shows the shared column header instead,
+   and `display: contents` keeps the inputs in this row's grid. */
+.provider-model-field {
+  display: contents;
+}
+
+.provider-model-field-label {
+  display: none;
+  color: var(--muted-2);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .provider-model-columns {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 150px 150px 26px;
@@ -3395,6 +3408,40 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 6px;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* Below this width the fixed 150px rows squeeze the two flexible fields to 62px and
+   44px (measured at the 800x600 minimum window: columns 62/44/150/150/26), which is
+   unusable for a model id. Stack the fields instead, one per row with its own label. */
+.provider-editor {
+  container-type: inline-size;
+}
+
+@container (max-width: 560px) {
+  .provider-model-columns {
+    display: none;
+  }
+
+  .provider-model-row {
+    grid-template-columns: minmax(0, 1fr) 26px;
+    align-items: start;
+    row-gap: 8px;
+  }
+
+  .provider-model-field {
+    display: grid;
+    grid-column: 1;
+    gap: 4px;
+  }
+
+  .provider-model-field-label {
+    display: block;
+  }
+
+  .provider-model-remove {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }
 
 .provider-chip {
