@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-23 00:11:00
+最后更新：2026-09-24 21:52:08
 
 ## 1. 范围与结论
 
@@ -39,6 +39,8 @@
 | [ ] | UX-14 | 收敛反馈、按钮、表单的共享视觉与语义 | 体验建议 | M |
 | [ ] | UX-15 | 验证并修复窄窗口及高 DPI 下的表单可用性 | 待实机验证 | M |
 | [ ] | UX-16 | 补齐主对话与拓展工作区的场景验收 | 待实机验证 | L |
+| [ ] | UX-17 | 大仓库文件树虚拟化（先建基准，再选实现） | 对标记录 + 体验建议 | L |
+| [ ] | UX-18 | 为审阅侧栏提供独立宽度 | 对标记录 + 体验建议 | S |
 
 ## 3. 可执行任务
 
@@ -308,11 +310,43 @@
   3. 紧凑模式下分别构造一次失败、一次权限拒绝、一次未验证、一次部分完成与一次等待用户，确认五类状态都仍可读；切回普通模式重复确认。
   4. 每个真实失败附复现步骤、截图与修复记录；正常场景只记“通过”，不新增“重设计”任务。
 
+### UX-17｜大仓库文件树虚拟化（先建基准，再选实现）
+
+**问题**：文件树展开后**递归挂载全部行**（`workspace-tree-rows.tsx` 是递归实现，仓库内没有任何 virtualizer 引用，也没有 `overscan`/`useVirtualizer` 之类代码）。大目录下的滚动、筛选与切换成本随行数线性增长。OpenCode 的做法是目录按需 list + TanStack virtual 只挂可视行（稳定 28px 行高、overscan 10），这是它在大仓库上最重要的结构性优势。
+
+**定位**：[workspace-tree-rows.tsx](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx)、[file-navigator.tsx](../../packages/app/src/renderer/workspace/file-navigator.tsx)、`workspace/directory-cache.ts`（现有 128 条 / 5 秒 stale-while-revalidate 缓存）。对标依据与上游 commit 见 [OpenCode VS Code 对标记录](../reference/opencode-vscode-comparison-2026-08-13.md)。
+
+- [ ] 先建立展开基准：1,000 行与 10,000 行目录下的首帧、滚动流畅度、展开/折叠与筛选耗时，作为改动前证据（没有基准不改实现）。
+- [ ] 再选实现：自实现固定行高虚拟化，或在体积与许可证可接受时引入轻量库；**不得**为一个列表引入完整 Solid 运行时、第二套目录扫描或新的活动页。
+- [ ] 保持键盘导航、展开状态、筛选时保留目录祖先、可访问性与现有持久化语义不变。
+- [ ] 验收：改前/改后成对基准对比；大目录滚动不丢帧、不跳动；键盘与筛选行为逐项不变；小目录不因虚拟化变慢。
+
+**实施记录（2026-09-24 21:52:00）｜状态：未开始（2026-09-24 从对标记录折入）**
+
+- 折入来源：2026-08-13 的 OpenCode 对标记录把"大规模文件树虚拟化"列为待办，但当时既未进任务书也未排期；按用户 2026-09-24 的要求折入本任务书，成为可独立排期的 UX 项。
+- 与冷启动专项的边界：[桌面冷启动基线](../reference/cold-start-baseline/README.md) 的 CS-08 证明的是"右侧进入即可预览/操作"（目录行与预览可见时间），**不是**大目录下的行级渲染成本；两者不互相替代，也不重复排期。
+
+### UX-18｜审阅侧栏独立宽度
+
+**问题**：审阅导航已接入工作区导航的共享折叠状态，Diff 标题行提供单列/双列切换（`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY`，默认双列），但**审阅侧栏宽度仍沿用工作区导航状态**：用户无法为大 Diff 单独加宽审阅面板，加宽审阅必然同时改掉文件导航宽度。
+
+**定位**：[review.tsx](../../packages/app/src/renderer/workspace/review.tsx)、[app-shell/preferences.ts](../../packages/app/src/renderer/app-shell/preferences.ts) 的 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY`、[workspace/README.md](../../packages/app/src/renderer/workspace/README.md)、[ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)（窗口级偏好与对话级现场的边界）。
+
+- [ ] 为审阅侧栏增加独立宽度偏好：持久化、有上下限、与文件导航宽度互不覆盖。
+- [ ] 保持单列/双列持久化与共享折叠状态不变；不重新引入第二套目录扫描或活动页面。
+- [ ] 验收：拖宽审阅侧栏后文件导航宽度不变；重开应用后宽度恢复；窄窗口下不出现横向滚动或不可达按钮；`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变。
+
+**实施记录（2026-09-24 21:52:00）｜状态：未开始（2026-09-24 从对标记录折入）**
+
+- 折入来源：同 UX-17；对标记录原写"仍可后续补审阅侧栏独立宽度"。
+- 现状锚点：`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 存在于 `app-shell/preferences.ts`，`review.tsx` 默认双列（`true`）。
+
 ## 4. 实施顺序与依赖
 
 1. **第一批：可靠性**。UX-01、UX-02、UX-03、UX-04、UX-05；UX-02 需要的最小确认层可与 UX-07 共用，不等整套 UI 抽象完成再修复。
 2. **第二批：一致性**。UX-06、UX-07、UX-08、UX-09、UX-10、UX-11。草稿离开、模态焦点和异步反馈应共同验收；无模型引导依赖草稿保留和错误表达。
 3. **第三批：收口**。UX-12、UX-13、UX-14；UX-15/16 从第一批就开始记录基线，最终跨批回归。视觉修改必须以真实窗口证据收尾。
+4. **按需排期（2026-09-24 折入）**。UX-17 必须先出 1,000/10,000 行基准、再决定自实现或引库，不与本轮收口绑定；UX-18 很小，可与 UX-07 的导航/模态冻结一起做，避免两次改同一片布局状态。
 
 不以“重做前端”为一个大任务，不为清单新增调度、记忆写入或另一个权限体系。不自动改变既定开发主线；本任务书是可独立排期的应用层 backlog。
 
@@ -346,5 +380,14 @@
 | 12 | UX-14 | 本任务实施记录 | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px） | |
 | 13 | UX-15 | 本任务实施记录 | 最小窗口与常用窗口 + 125%/150%/200% 缩放下的模型表单、设置侧栏、审批长路径、运行时选择器 | |
 | 14 | UX-16 | 本任务实施记录 | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |
+| 15 | UX-18 | 本任务实施记录 | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动 | |
+| 16 | UX-17 | 本任务实施记录 | 1,000 / 10,000 行目录的改前改后成对基准 + 键盘/筛选行为回归 | |
 
-**自动门当前结果（2026-09-23 00:11）**：`check:repo` 36/36 通过（含 TypeScript project references）；全量测试 **476 个文件 / 3358 通过、2 失败、1 跳过**，两个失败均不在本任务改动面内——`packages/runner/src/runner.test.ts` 的压缩范围断言（该文件最后一次修改来自更早的提交）与 `scripts/verify-web-live-llm-evidence.test.mjs` 解析被管道捕获的子进程 stdout（本沙箱不允许管道捕获，属环境边界）；全 workspace typecheck 通过；App 构建通过；`verify:app-recovery` 只读检查通过（另有 2 条关于真实数据根的信息性 warning）。
+**自动门快照（记录于 2026-09-23 00:11，会随每次运行变化，不作为常驻结论）**：`check:repo` 当时 36/36 通过（2026-09-24 增补两条检查后为 38/38）；全量测试 **476 个文件 / 3358 通过、2 失败、1 跳过**，两个失败均不在本任务改动面内——`packages/runner/src/runner.test.ts` 的压缩范围断言与 `scripts/verify-web-live-llm-evidence.test.mjs` 解析被管道捕获的子进程 stdout（本沙箱不允许管道捕获，属环境边界）；全 workspace typecheck、App 构建与 `verify:app-recovery` 当时均通过。**测试数量与耗时以命令输出为准**，本任务书不复述为当前结果。
+
+## 7. 对标记录里不在本轮 UI 范围的两项
+
+以下两项来自 [OpenCode VS Code 对标记录](../reference/opencode-vscode-comparison-2026-08-13.md)，**不排进 UX-xx 清单**，因为它们是产品面或数据模型决定，不是界面修正；记录在此是为了让那份对标记录的待办有明确归属，而不是继续悬空：
+
+- **行级评论的持久性**：LS 已有行/范围手势、view zone 与附件式发布（`workspace/line-comments.tsx`、`review-line-comments.ts`、`line-comment-attachments.ts`），但**没有独立评论存储或 Runtime 评论合约**——评论只作为本轮附件进入对话；OpenCode 是持久评论模型。是否引入持久评论、以及它与会话/行范围的绑定协议，需单独立项并按 Runtime 合约评审。
+- **真正的 LS VS Code 扩展**：OpenCode 的扩展是约 10.8 KB 的薄终端桥（复用 VS Code 原生终端、文件树、编辑器，把当前文件/选区转成 `@relative/path#Lstart-end` 注入 TUI），LS 的"内置 VS Code 模块"其实是自有 Monaco 工作台，两者是两个产品面。若要做，应新建 VS Code SDK 项目并保持 MIT/自有许可边界清晰，不能通过嵌入 OpenCode Desktop 替代。当前为"记录在案、不排期"的待产品选择项。

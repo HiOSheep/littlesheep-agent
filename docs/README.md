@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-24 21:42:08
+最后更新：2026-09-24 21:52:08
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -37,14 +37,14 @@
 ## 已决定方向后再看任务书
 
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
-- [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：16 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态及视觉一致性；区分源码确认与待实机验证，作为独立排期清单。
+- [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：18 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态、视觉一致性，以及 2026-09-24 从对标记录折入的文件树虚拟化（UX-17，基准先行）与审阅侧栏独立宽度（UX-18）；区分源码确认与待实机验证，作为独立排期清单。
 
 ### 当前主线
 
 - [文档退役审查记录 2026-09-22](reference/document-retirement-review-2026-09-22.md)：本轮集中审查的逐条结论与执行动作（保留并重述对话连续性 P0、退役状态机重设计/开发反馈环/网络检索/原子记忆四份任务书、对标记录改判为保留、模块图 1 条真实修正、解除一份门禁固定），并记录三处原始证据的更正。
 - [Runtime 状态一致性与必要记忆任务书 2026-09-22](taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)：合并原记忆写入专项；RS-00～08 覆盖内核冻结、文件观察与写前校验、exec 失效、压缩解绑、明确要求或必要时写入，以及真实流程/缓存回归。Memory 审查的相似合并、截断与来源绑定复现已并入 RS-05/06/07；新增 RS-06A 修复普通展开提前调用向量检索的边界。Memory 部分仍待实施与真实验收。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
-- [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互，以及待产品选择的虚拟化、评论和真正 VS Code 扩展路线。
+- [OpenCode VS Code 对标记录 2026-08-13](reference/opencode-vscode-comparison-2026-08-13.md)：记录官方源码、许可证、LS 差异、已直接吸收的缓存/模型/审阅交互；**待办已折入 UI/UX 任务书**（虚拟化 → UX-17、审阅侧栏宽度 → UX-18；行级评论持久性与真正的 VS Code 扩展记在该任务书第 7 节），本文只保留上游证据。
 - [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：现行红线口径（会话累计、真实长任务节点、`pnpm run check:cache-acceptance`）、当前实测、冻结输入、测量规则、禁止做法、完成条件与仍未汇总项；仍然承重的历史结论集中在附录 A，逐轮测量日志已移出、只留在 git 历史。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前/改后两个 checkout 上跑同一冻结负载的逐请求字符数、共享前缀与工具目录摘要对比；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)与[改后冻结副本](reference/cache-baseline/baseline-git-0af62a7.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
