@@ -60,9 +60,12 @@ describe('chat scroll controller wiring', () => {
   it('never re-pins a session on the arrival of a message', async () => {
     const hook = await source('./use-chat-scroll-controller.ts')
 
-    // The session effect re-pins on purpose; adding the message list (or its length) to
-    // its dependencies would re-pin on every new message and defeat the anchor entirely.
-    expect(hook).toMatch(/Opening a conversation starts at its newest message[\s\S]*?\}, \[sessionKey, rememberScrollGeometry, scrollRef, writeScrollTop\]\)/)
+    // The session effect re-pins on purpose, but only for a real conversation change:
+    // a message arriving, the draft gaining its id, and older history being prepended must
+    // all leave the reader alone. The real window caught the draft case pulling a reader
+    // who had scrolled up back to the bottom.
+    expect(hook).toContain('const materializedDraft = !previousSessionKey && Boolean(sessionKey) && previousIdentity === identity')
+    expect(hook).toContain('if (!firstRun && (!sessionChanged || materializedDraft)) return')
     expect(hook).not.toMatch(/\}, \[sessionKey, messageCount,/)
   })
 

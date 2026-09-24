@@ -72,6 +72,9 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   const observedContentRef = useRef(chatContentSignature(messages))
   /** The scrollTop this hook wrote last, so `onScroll` can tell its own correction from the reader. */
   const writtenScrollTopRef = useRef<number | null>(null)
+  /** Which conversation the transcript belongs to; see the session effect below. */
+  const sessionKeyRef = useRef<string | undefined>(undefined)
+  const transcriptIdentityRef = useRef<string | null | undefined>(undefined)
   const [readingAway, setReadingAway] = useState(false)
   const [hasNewContent, setHasNewContent] = useState(false)
 
@@ -171,9 +174,21 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   }, [])
 
   useLayoutEffect(() => {
-    // Opening a conversation starts at its newest message. The message count is
-    // deliberately NOT a dependency: a new message must never re-pin a reader who
-    // is reading above the bottom, which is the whole point of the anchor below.
+    // Opening a conversation starts at its newest message — but only a *conversation* change
+    // may do that. Two measured cases must not:
+    //   - the draft conversation gaining its persistent id while its transcript keeps
+    //     streaming (real window: it pulled a reader who had scrolled up back to the bottom
+    //     the moment the answer settled);
+    //   - older history being prepended, which also changes the first message id.
+    const identity = messages[0]?.id ?? null
+    const previousIdentity = transcriptIdentityRef.current
+    const previousSessionKey = sessionKeyRef.current
+    const firstRun = previousIdentity === undefined
+    const sessionChanged = previousSessionKey !== sessionKey
+    const materializedDraft = !previousSessionKey && Boolean(sessionKey) && previousIdentity === identity
+    transcriptIdentityRef.current = identity
+    sessionKeyRef.current = sessionKey
+    if (!firstRun && (!sessionChanged || materializedDraft)) return
     stickToBottomRef.current = true
     scrollRepairRef.current = null
     resizeRepairRef.current = null
@@ -185,7 +200,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
       rememberScrollGeometry(container)
     }
-  }, [sessionKey, rememberScrollGeometry, scrollRef, writeScrollTop])
+  }, [sessionKey, messages, rememberScrollGeometry, scrollRef, writeScrollTop])
 
   useLayoutEffect(() => {
     const container = scrollRef.current

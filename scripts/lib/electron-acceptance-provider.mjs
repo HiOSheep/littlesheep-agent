@@ -133,6 +133,11 @@ function buildResponse(body, requestIndex, model) {
 }
 
 function classifyResponse({ body, system, user, messages, model, requestIndex }) {
+  // Deterministic long Markdown answer for the streamed-rendering fixture. Checked before
+  // every other branch so the fixture always streams text and never turns into a tool call.
+  if (user.includes(LONG_MARKDOWN_MARKER)) {
+    return textChoice(longMarkdownAnswer())
+  }
   if (system.includes('Choose the next LittleSheep activity')) {
     const activity = /使用\s*glob\s*工具|use\s+the\s+glob\s+tool/iu.test(user) ? 'execute' : 'respond'
     return textChoice(JSON.stringify({ activity, confidence: 0.99, reason: 'deterministic acceptance route' }))
@@ -189,8 +194,79 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
   return textChoice(`已记录本轮目标 runtime-continuity-anchor-4827，下一轮只说“继续”时我会承接这个目标。验收回合 ${requestIndex}。`)
 }
 
+/**
+ * The text a correct Markdown renderer must leave in the DOM for {@link longMarkdownAnswer}.
+ *
+ * The source string and the rendered DOM cannot be compared directly: headings, list and
+ * quote markers, emphasis, inline-code backticks and code-fence delimiters are syntax, not
+ * text. This projection is deliberately small and fixture-shaped — it is an expectation for
+ * one fixed document, not a Markdown parser.
+ */
+export function projectMarkdownToText(markdown) {
+  return markdown
+    .replace(/^```[^\n]*$/gmu, '')
+    .replace(/^#{1,6}\s+/gmu, '')
+    .replace(/^>\s?/gmu, '')
+    .replace(/^[-*]\s+/gmu, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1')
+    .replace(/\*\*([^*\n]+)\*\*/gu, '$1')
+    .replace(/`([^`\n]+)`/gu, '$1')
+}
+
 function textChoice(content) {
   return { message: { role: 'assistant', content }, finishReason: 'stop' }
+}
+
+/**
+ * Marker a script puts in its prompt to receive {@link longMarkdownAnswer} instead of the
+ * short continuity reply. Exported so a fixture and this provider cannot drift apart.
+ */
+export const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
+
+/** Sentinels the fixture asserts on: the answer is only complete if both survive the stream. */
+export const LONG_MARKDOWN_START = 'FIXTURE-START-4c1d'
+export const LONG_MARKDOWN_END = 'FIXTURE-END-7f3a'
+
+/**
+ * One deterministic Markdown document covering every block the chat renderer treats
+ * differently: heading, list, link, quote, inline code, a fenced code block (whose renderer
+ * swaps from the plain fallback to the lazy highlighter), Chinese punctuation and long
+ * paragraphs. It is long enough that the settled transcript scrolls in a normal window, which
+ * is what lets the fixture measure a reading position. The fixture compares it against the DOM
+ * and the persisted settlement text, so any edit here is an edit to the expected result.
+ */
+export function longMarkdownAnswer() {
+  const paragraphs = [
+    '这一段是较长的中文正文，用来确认流式尾部反复解析之后仍然完整；这里刻意放上省略号……以及括号（含中文括号）、全角逗号，以及数字 1,234.56 和英文 mixed content，避免只验证单一语言。',
+    '第二段把答案推向需要滚动的位置，并继续检查行内代码 `resolveAnchoredScrollTop`、路径 `packages/app/src/renderer/chat/use-chat-scroll-controller.ts` 与反引号内外的空格是否原样保留。',
+    '第三段用于确认新内容到达时不会把仍在阅读的读者拉到底部：段落之间保持空行，列表前后不与正文合并，引用块保持自己的行首符号。',
+    '第四段继续延长正文，让流式增量跨越多个显示帧，从而在真实窗口里同时存在"正在输出"与"已经结算"两种可比较的渲染状态；这段文字不承担语义，只承担高度。',
+  ]
+  return [
+    `## 流式渲染验收 ${LONG_MARKDOWN_START}`,
+    '',
+    '缓存命中率已达标：`99.13%`，详见 [验收规程](https://example.test/acceptance)。',
+    '',
+    ...paragraphs.flatMap((paragraph, index) => [
+      `### 第 ${index + 1} 节`,
+      '',
+      paragraph,
+      '',
+      `- 第 ${index + 1} 节第一项：中文标点（，。；：「」）必须逐字保留`,
+      `- 第 ${index + 1} 节第二项：行内代码 \`createLlmClient\` 与**加粗**混排`,
+      `- 第 ${index + 1} 节第三项：列表后的段落不能与列表合并`,
+      '',
+    ]),
+    '> 引用段落用于检查行首符号与左侧竖线。',
+    '',
+    '```ts',
+    "// 高亮组件到达前后，这一行的颜色必须一致",
+    "const fixture: RetryProgress = { retry: 3, maxRetries: 5, delayMs: 2_000, failureClass: 'rate_limited' }",
+    "console.log('流式代码块', fixture.maxRetries)",
+    '```',
+    '',
+    `#### 结算标记 ${LONG_MARKDOWN_END}`,
+  ].join('\n')
 }
 
 function toolChoice(id, name, input) {
