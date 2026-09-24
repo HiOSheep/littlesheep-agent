@@ -1,6 +1,8 @@
 # 对话执行可靠性修复任务清单 2026-09-23
 
-最后更新：2026-09-24 03:05:00
+最后更新：2026-09-24 11:53:05
+
+**状态（2026-09-24 第二十一轮）：本清单 65 条验收项全部勾选，CE-01～CE-13 共 13 项任务完成。** 每条的当前证据写在对应行里，逐轮的实测过程与原始读数在文末"实施记录"里；第 11 行那句"待实施清单"是首次交付时的原话，保留为历史。本轮收尾时复核过：`pnpm run verify:conversation-execution-reliability` 12 场景 exit 0、`pnpm test` 496 文件 / 3578 用例全绿、`typecheck` 与 `check:repo`（36 passed）通过、8 个暂存游戏产物探针 7 `runs` / 1 `needs-a-look` / 0 `broken`。仍**不在**本清单内的一条已知失败：`pnpm run verify:electron-deepseek-parallel-load` 在"强杀重启后并发恢复检查点"处报 `active resume lease`（第二十轮记录，属运行时状态一致性那条线）。
 
 ## 目标与证据边界
 
