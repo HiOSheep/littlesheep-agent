@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6809
+        "port": 26701
       },
       "notices": {
         "errorText": null,
@@ -60,7 +60,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6809
+        "port": 26701
       }
     },
     {
@@ -95,7 +95,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 6809
+        "port": 26701
       }
     },
     {
@@ -125,10 +125,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 6809,
+        "port": 26701,
         "retryable": false
       },
-      "notReadyWindowMs": 7557,
+      "notReadyWindowMs": 7661,
       "requiredWindowMs": 6000
     },
     {
