@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 14:17:40
+最后更新：2026-09-24 14:26:26
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -382,6 +382,14 @@ Runner **未就绪期间**也已实测（探针的 `while-not-ready` 用例把�
 | **启动期间打开的文件（缺陷）** | 窗口此时是**草稿**会话，文件被记进 `__draft__=[review+file]`；用户点进任一会话后，启动时被高亮的那一行再点回来时是 `session:<id>=[review]`，**启动时打开的文件不再回来** |
 
 缺陷的性质与不修的理由：启动期草稿布局在用户点进任何会话后没有被并入"当初高亮的那一段会话"，而 `adoptWorkspaceDraftSessionLayout` 只在草稿被赋予**新**会话 id 时迁移。修它先要定一条产品规则（启动期草稿布局该归属哪一段会话，或点进会话时是否应把草稿布局带过去），因此本次只记录、不改行为；该失败项**故意留在红**，失败文案即缺陷描述，不要读成 CS-09 的回归。
+
+#### 已按决定尝试修复，未生效（如实记录）
+
+产品决定：启动期草稿布局**并入用户进入的第一段会话**。据此实现并单测通过了两条纯规则（`adoptStartupDraftSessionLayout` + `hasWorkspaceLayoutContent`：草稿为空不带、目标会话已有自己的内容不覆盖、只由"什么都没产生过"的会话认领），并在 `use-workspace-session-layouts.ts` 里把认领从"只在 `__draft__ → session` 那一次键变化"改成"会话键未被用户碰过期间持续认领"。
+
+**实机结果：无效，镜像与改动前逐字节相同**（`__draft__=[review+file]`、`session:<id>=[review]`，见同一账本）。因此该改动**已回滚**，不留未经证实的行为变更。它同时排除了一个假设：丢失不是"认领发生在键变化那一刻、而文件写入更晚"这么简单——持续认领同样没有触发，说明文件标签进入 `__draft__` 桶的时机/路径与 `layoutsRef` 的状态更新不在这个 hook 的观察范围内。
+
+下一步的诊断方向（未做）：在 `openWorkspaceFile` 路径（`setWorkspaceOpenRequest` → `updateActiveLayout`）与 `commitLayout`/`writeWorkspaceSessionLayoutsPreference` 上加一次性观测，记录每次布局写入时的 `activeWorkspaceSessionKey`、`currentSession`、以及 `touchedKeysRef` 的内容，看清"文件标签到底是在哪一帧、以哪个键写进去的"，再决定认领应该挂在哪一级；在此之前不要重复猜顺序。
 
 ## CS-09 正常启动的阶段文字不再横跨整窗
 
