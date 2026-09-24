@@ -11,7 +11,8 @@ import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 import { createGameArtifactProbe } from './lib/game-artifact-probe.mjs'
 
 /**
- * CE-12 acceptance for the conversation-execution-reliability taskbook.
+ * Conversation-execution delivery gate: the acceptance the retired CE-12
+ * checklist asked for, kept as a standing gate.
  *
  * Real model, real Windows shell, real Electron window, isolated data root:
  * the Provider credentials are copied into a temporary root so the user's own

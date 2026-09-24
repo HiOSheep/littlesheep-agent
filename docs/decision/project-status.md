@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-22 22:01:48
+最后更新：2026-09-24 12:09:24
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -20,13 +20,20 @@ ENTER → 活动路由 → ┬─ execute（唯一主循环：常规会话、工
 - **EXECUTE 是唯一主循环**：模型在同一循环内选择"直接回答"或"请求工具"，Runtime 负责权限、校验、执行与结果追加；多步骤工作在循环内串行推进。
 - **持久化 TaskBook 是只读历史**：步骤执行器与调度器已删除，持久化的 `task_book` 策略降级为 `bounded_loop` 并保留原 reason code；已存在的计划不再触发第二个执行器。
 - **VERIFY 不调用验证模型**：只断言 Runtime 证据能证明的事实。窄结构形态（单只读步骤、写后读回）判定为 `pass`；其余已完成的 run 记录为 `unverified`——证据完整、调用成功、存在模型回复，但需要人工判断的验收标准未经验证。记录到的失败、缺失步骤或截断证据不能变成 `pass`。
+- **"不可用证据"与"已记录的负结果"按 Runtime 知道什么分界**：权限结果（`approval_denied` / `approval_unavailable` / `hard_denied`）是"还没人决定是否授权"，只有用户能决定，因此升级到 `ASK_USER`；Runtime 自己在执行前发出的拒绝（`validation_failed` / `unknown_tool` / `repeated_call_blocked`）是确定性结果——调用根本没跑——连同 `failed` / `timed_out` / `aborted` 一起留在记录里，让已交付的 run 停在 `unverified`，不把交付过的工作变成一句提问。
 - **RECOVER 由 Runtime 路由，不调用恢复模型**：可重试失败回到产生失败的阶段（受次数上限约束）；权限拒绝升级到 `ASK_USER`；副作用未结算或运行被中止时显式停止并只呈现 Runtime 状态；已完成步骤不重复执行。
+- **两类重试是不可能的，命中即不空转**：run 上的模型调用预算耗尽直接升级，不再重试同一件事；VERIFY 对已记录证据给出的结构性缺口（`structural` fail）第一次回到主循环让模型闭合它，第二次直接升级——重试 VERIFY 只会得到同一结论，缺口只能被"同一步骤里更晚的成功调用"顶掉。
+- **一次越权调用不再废掉整轮**：请求准入范围以外的工具调用（`tool_not_admitted`）照样被拒并记进转录，但它是 Runtime 自己刚做出的范围决定，属可纠正失败——被准入的工具在下一轮仍然可用。此前这类调用因为"没有 invocation 记录"被判成未知边界，触发强制收尾，连本该可用工具也被锁死，两步任务的产物根本没生成。
+- **迭代上限属于 run 自己的账**：单轮工具循环上限为 30 次迭代，耗尽时写入转录的收尾指令明确说明"不会再有任何工具调用执行，再调一次会让整个 run 失败"；执行契约同时规定交付优先——在本次 run 的额度内交付、反复重测同一个产物不算验证。
+- **提问轮里的兄弟调用不执行**：模型在同一批里既提问又调用其它工具时，与提问同批的调用以带原因的拒绝结果记入转录，提问本身照常发布；不会因为同批带了别的调用就把整轮判失败。
 - **CAPTURE 与自动记忆演化已删除**：运行结束不再自动沉淀，自动 merge/move/revise 编排与自动 Skill 创建一并移除。
 - **ASK_USER 不是可路由活动**：它只由主循环内模型发起的 `request_user_input`，或 RECOVER 的权限拒绝/恢复预算耗尽升级到达。
 
 ## 请求装配与上下文
 
 - **system 消息就是缓存边界之上的 prompt 段**（`stableText`/`stableSegments`）。边界之下的段——bootstrap、runtime facts、检索意图契约、压缩后的会话摘要——各自作为独立消息追加，由 append-only 尾部账本（`packages/harness/src/run-tail-ledger.ts`）持有。
+- **尾部账本的"变化"按同 id 上一次发出的值判定，不按"这个值以前是否发过"**：反复切换 A→B→A→B 时最后那次 B 与更早的 B 字节相同，用"见过就不再发"的集合去重会丢掉它，模型读到的仍是被切回 A 的那一版，而 Runtime 早已在 B 上运行。
+- **每次请求附带一块 ≤6 行的运行时环境简报**（`packages/harness/src/runtime-context-notice.ts`）：provider/model、工作区、真实 shell、权限与网络开关、可用工具数，取自本次请求实际生效的状态。它是纯函数：与上一次已观察状态相同就完全不输出，`Changed:` 行只列出真正变化的字段；上一次状态从转录里最后一条 `runtime-context` 记录解析，所以重启、检查点续接和压缩后仍是同一份事实。模型/工作区/权限切换因此对模型可见，而不是靠它猜。
 - **工具循环的第 N 次请求是第 N+1 次请求的字节前缀**：迭代只追加，不重排、不改写本次 run 已经发出的内容。
 - **上下文淘汰按 `appended-only` 作用域运行**（`packages/harness/src/stages/execute/tool-loop.ts`）：主循环只能丢弃本次请求追加的内容，绝不丢弃本次 run 已经发出的消息；若已发送前缀本身就超出模型窗口，请求显式失败，而不是被静默重编号。
 - **任务区间本身不可被预算淘汰**（候选 `pinned`，`packages/context/src/context-engine/eviction.ts` + `packages/harness/src/context-candidates.ts`）：契约仍可按 kind 过滤，但预算淘汰不得动已发出的历史——`execute_tool_loop` 的阶段软目标（`maxPromptTokens: 24k`）曾让每回合静默剪掉一点历史，使跨 run 的请求不再是上一条的扩展（实测长任务修复前后 80.03% → 99.13%）。
@@ -113,6 +120,9 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 全量证据命令固定为 `pnpm.cmd test`、`pnpm.cmd run typecheck`、`pnpm.cmd run build`、`pnpm.cmd run verify:app-recovery`，按影响范围还有 `pnpm.cmd run verify:changed`、`verify:core`、`verify:full`。
 - 会随每次运行变化的测试数量、耗时与 token 读数不写入本文件；它们以命令输出、[缓存 95% 验收规程](../reference/cache-95-acceptance.md) 与 [缓存请求形状基线](../reference/cache-baseline/README.md) 为准。
 - 真实供应商冒烟、真实 Electron 场景、Memory v3 隔离门与缓存冻结负载是独立验收门：本地质量检查全绿不代表它们已完成。
+- **对话执行交付门**（`pnpm run verify:conversation-execution-reliability`）在隔离数据根上启动真实 Electron 窗口、经 Local App API 发真实模型请求，覆盖正常交付与自然语言续接、独立重跑、工作区切换与历史目录边界、研究模式下批准与拒绝、受保护核心目录拒绝、审批拒绝后的重试、预算耗尽后重启再续接、未结算副作用的诚实终态等场景，并**把生成的游戏产物放进随包 Electron 引擎里真跑一遍**（`pnpm run probe:game-artifacts` 同源探针：启动、等帧、按键、重开、加载期与运行期异常），产物只有在"能跑"时才算通过。
+- **交付门中的人工项已完成**：真实产物在真实窗口里人工试玩过 5 局（4 款贪吃蛇 + 1 款小羊快跑类），启动、输入、计分/核心规则、重新开始均正常。探针另检出 1 个模型产物自身的加载期异常（`snake-C.html`：`resize()` 早于 `reset()`，第一次 `draw()` 抛 `TypeError`）——人工游玩未看到可见症状，但它作为产物缺陷留在记录里，不是 Runtime 路径问题。
+- **本文件涉及的两条修复的定向证据**：尾部账本按"上一次发出的值"判变化、配置保存事务区分"已保存/已生效"，各有在旧实现下失败的回归用例（`packages/harness/src/run-tail-ledger.test.ts`、`packages/app/src/main/runtime-config-change.test.ts`）。
 
 ## 能力明细
 
@@ -140,6 +150,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 聊天支持流式回复、Markdown、附件、工作区选择、权限审批与中断；过程按渐进式披露展开，失败、风险与权限拒绝始终可见。
 - 活动任务控制面：有界活动快照、暂停/继续/中断、Runner 显式续跑、应用启动恢复/放弃/查看现场、托盘与三档关闭策略。
 - LS 数据根与用户工作区使用不污染既有 `.git` 的独立 shadow Git；`RunCheckpoint` 有界保存 TaskBook、步骤、事件、权限与副作用状态。
+- **每个 run 的工作区事实只有一个来源**：Runtime 在 run 入口解析一次规范工作区，提示、工具 `cwd`、权限分类与产物归属共用同一个值。独立会话按"请求指定 → 保存的默认目录 → `workplace`"解析，项目会话固定用它自己的（或项目的）目录，不会因为保存的默认目录变化被搬走；显式换目录走 `PATCH /sessions/:id { workspacePath }`。历史记忆里指向旧目录的路径只是历史来源，不覆盖当前目录，也不成为跨目录操作授权。
+- **保存配置与生效配置是两件事**：配置保存事务按 `normalize → persist → 重建 Runner` 串行执行，字段比较在持久化**之前**完成；持久化失败拒绝调用方并保留旧 Runner。一次 Runner 重建失败会被记成"已落盘但未生效"，**再次保存同一个版本仍会重建**，不会对着已保存的副本比较出"无变化"并返回一个没人使用的"保存成功"。
 - 完整数据根迁移由外部 locator 登记并在启动阶段原子提交，失败继续使用旧目录；正式用户数据的迁移仍需用户明确确认后执行。
 
 ### 插件、渠道与网络检索
@@ -170,6 +182,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 ### P0：运行连续性与数据边界
 
 - 外部系统副作用对账、真实网络中断和更长期真实用户负载待验收；正式数据根迁移待用户确认。
+- **并发负载门在"强杀重启后并发恢复检查点"处仍失败**：3 个并发真实 run 强杀重启后恢复时报 `run checkpoint resume conflict: checkpoint has an active resume lease`，而检查点在恢复前刚被判为 `resumable`。这是重启后租约状态的竞态/未释放问题，属运行状态一致性方向，不是对话执行路径的缺陷。
+- **受限模式的批准对话框仍未在真实窗口里走过**：三档权限的判定矩阵与"研究模式批准/拒绝"已有真实窗口证据，受限模式只有自动化覆盖。
 
 ### P1：桌面与生态
 

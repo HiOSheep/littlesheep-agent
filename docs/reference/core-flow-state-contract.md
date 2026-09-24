@@ -1,6 +1,6 @@
 # Core Flow 状态契约
 
-最后更新：2026-09-22 23:05:46
+最后更新：2026-09-24 12:09:53
 
 本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
 
@@ -36,6 +36,8 @@ manifest 另外保留以下**兼容边**，它们只服务旧检查点读取与�
 活动路由只产出 `execute` 与能力/状态询问 `reply` 两条路径。`ASK_USER` 不是可路由活动：它由主循环内模型发起的 `request_user_input` 到达，或由 `RECOVER` 在权限拒绝 / 恢复预算耗尽时升级到达。`clarify` 不是活动，`classify` 只是历史 stage id 与检查点兼容标签。
 
 模型提问不产生续跑停放：A 方案下问题作为正常回复发布、run 正常结束，下一条消息按新任务处理，生产代码不会因“模型提问”创建 waiting-user 检查点。`waiting_user` 状态与旧等待头解析只作为旧版本遗留的兼容路径保留；显式续跑、应用启动恢复与 `RunCheckpoint` 仍是现行能力，恢复入口不会重放已结算的副作用。
+
+提问轮里的兄弟调用不执行：同一批里与 `request_user_input` 一起到达的其它工具调用以带原因的拒绝结果记入转录（它们可能依赖尚未给出的答案），提问本身照常发布，整轮不因此判失败。升级（权限拒绝、预算耗尽）同样走 `ask_user` 后 `finalize`：普通 run 升级后其检查点被标记为 `completed`（不再可恢复，再次恢复会得到冲突），失败 run 则保留 `resumable`；升级之后用户的下一条普通消息是一个**新 run**，不存在 waiting-user 生产者。
 
 `decide`、`capture` 与 `evolve` 仍出现在 `allowedTransitions` 与 `stageNames` 中，但已没有注册实现：驱动把恢复入口的 `decide` 映射到 `execute`，规划层、自动记忆演化编排与运行结束时的自动沉淀都已删除。
 
