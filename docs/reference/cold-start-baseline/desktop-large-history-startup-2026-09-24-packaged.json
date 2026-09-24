@@ -1,0 +1,260 @@
+{
+  "check": "desktop-large-history-startup",
+  "ok": true,
+  "label": "2026-09-24-packaged",
+  "measuredAt": "2026-09-24T12:22:02.955Z",
+  "environment": {
+    "app": "packaged",
+    "executable": "release/win-unpacked/LittleSheep.exe",
+    "platform": "win32 x64",
+    "node": "v26.4.0",
+    "electron": "see packages/app/package.json"
+  },
+  "fixture": {
+    "partitions": 400,
+    "eventFiles": 1600,
+    "synthesizeMs": 1200,
+    "sessions": 3,
+    "eventsPerRun": 4
+  },
+  "steps": [
+    {
+      "step": "during-recovery",
+      "apiListeningMs": 911,
+      "executionReadyMs": 1497,
+      "readinessState": "ready",
+      "samples": 2,
+      "slowest": [
+        {
+          "atMs": 959,
+          "path": "/workspace/list",
+          "ms": 19,
+          "status": 200,
+          "bodyBytes": 664
+        },
+        {
+          "atMs": 959,
+          "path": "/sessions",
+          "ms": 7,
+          "status": 200,
+          "bodyBytes": 434
+        },
+        {
+          "atMs": 959,
+          "path": "/runtime",
+          "ms": 6,
+          "status": 200,
+          "bodyBytes": 3685
+        },
+        {
+          "atMs": 959,
+          "path": "/runtime/readiness",
+          "ms": 5,
+          "status": 200,
+          "bodyBytes": 106
+        },
+        {
+          "atMs": 1232,
+          "path": "/workspace/list",
+          "ms": 4,
+          "status": 200,
+          "bodyBytes": 664
+        }
+      ]
+    },
+    {
+      "step": "renderer",
+      "workspaceRows": 2
+    },
+    {
+      "step": "after-ready",
+      "history": [
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 8,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 15,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-0",
+          "path": "/sessions/history-session-0/messages?limit=30",
+          "ms": 16,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 15,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 15,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-1",
+          "path": "/sessions/history-session-1/messages?limit=30",
+          "ms": 17,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 1,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 2,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 1,
+          "status": 200,
+          "bodyBytes": 57
+        }
+      ],
+      "responsiveness": {
+        "samples": 20,
+        "minMs": 2,
+        "medianMs": 17,
+        "maxMs": 18
+      }
+    },
+    {
+      "step": "session-history-cache",
+      "steps": [
+        {
+          "step": "history-first",
+          "session": "history-session-0",
+          "click": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "settleMs": 65,
+          "issuedRequests": 1,
+          "totalRequests": 1,
+          "settled": {
+            "session": "大历史会话 00分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        },
+        {
+          "step": "history-revisit",
+          "session": "history-session-0",
+          "click": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "settleMs": 12,
+          "issuedRequests": 0,
+          "totalRequests": 1,
+          "settled": {
+            "session": "大历史会话 00分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        },
+        {
+          "step": "history-rapid-switch",
+          "session": "history-session-1",
+          "first": {
+            "clicked": true,
+            "title": "大历史会话 10分"
+          },
+          "away": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "back": {
+            "clicked": true,
+            "title": "大历史会话 10分"
+          },
+          "issuedRequests": 1,
+          "settled": {
+            "session": "大历史会话 10分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        }
+      ],
+      "skipped": [],
+      "aborted": 0,
+      "requestedUrls": [
+        "http://127.0.0.1:28633/sessions/history-session-0/messages?limit=120",
+        "http://127.0.0.1:28633/sessions/history-session-1/messages?limit=120"
+      ],
+      "totalNetworkEvents": 33
+    }
+  ],
+  "marks": {
+    "rendererFirstFrame": {
+      "stage": "renderer-first-frame",
+      "processUptimeMs": 1525.5,
+      "durationMs": 258.6
+    },
+    "rendererWorkspaceEntries": {
+      "stage": "renderer-workspace-entries",
+      "processUptimeMs": 1486.7,
+      "durationMs": 225.2
+    },
+    "executionStart": {
+      "stage": "execution-start",
+      "processUptimeMs": 631.6
+    },
+    "runnerReady": {
+      "stage": "runner-ready",
+      "processUptimeMs": 745.3,
+      "durationMs": 113.8
+    },
+    "durableEventsReady": {
+      "stage": "runner-infra-durable-events-ready",
+      "processUptimeMs": 642.8,
+      "durationMs": 0.9
+    }
+  },
+  "recoveryLogLines": {
+    "recovered": 0,
+    "failed": 0,
+    "discoveryFailed": 0
+  },
+  "failures": [],
+  "gaps": [
+    "The data root is synthetic: 400 partitions of completed 2-event runs written in the",
+    "store format, not the user data root that produced the taskbook observations",
+    "(about 399 partitions / 13,769 event files). It proves the mechanism - recovery no",
+    "longer gates readiness and the light routes answer during it - and cannot prove",
+    "real-disk behaviour at that scale.",
+    "The background compatibility scan runs after readiness by design; this ledger times",
+    "the light routes across it but does not observe a completion signal for the scan",
+    "itself, because the router exposes none.",
+    "This ledger was produced by the packaged artifact; its freshness depends on when release/win-unpacked was built.",
+    "The cache case counts requests and settle times on fixture sessions with no",
+    "messages: it proves one request for a first visit, none for a revisit and none",
+    "cancelled, but the payload-driven timing difference needs a data root with real",
+    "conversation history."
+  ]
+}

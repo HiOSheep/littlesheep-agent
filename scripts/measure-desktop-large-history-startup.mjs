@@ -30,9 +30,18 @@ function readOption(name, fallback) {
   return found === undefined ? fallback : found.slice(prefix.length)
 }
 
-const harness = createElectronHarness({ startTimeoutMs: 120_000, actionTimeoutMs: 30_000 })
+const appKind = readOption('app', 'dev')
+if (appKind !== 'dev' && appKind !== 'packaged') throw new Error(`--app must be dev or packaged, received ${appKind}`)
+const packagedExecutable = appKind === 'packaged'
+  ? resolve(repoRoot, 'release/win-unpacked/LittleSheep.exe')
+  : undefined
+const harness = createElectronHarness({
+  startTimeoutMs: 120_000,
+  actionTimeoutMs: 30_000,
+  ...(packagedExecutable === undefined ? {} : { packagedExecutable }),
+})
 const partitions = Number.parseInt(readOption('partitions', '400'), 10)
-const label = readOption('label', '2026-09-24')
+const label = readOption('label', appKind === 'packaged' ? '2026-09-24-packaged' : '2026-09-24')
 const outDir = resolve(repoRoot, readOption('out', 'docs/reference/cold-start-baseline'))
 const keepRoots = process.argv.includes('--keep')
 const POST_READY_SAMPLES = 20
@@ -492,6 +501,8 @@ async function main() {
       label,
       measuredAt: new Date().toISOString(),
       environment: {
+        app: appKind,
+        executable: appKind === 'packaged' ? 'release/win-unpacked/LittleSheep.exe' : 'repository entry (packages/app)',
         platform: `${process.platform} ${process.arch}`,
         node: process.version,
         electron: 'see packages/app/package.json',
@@ -510,7 +521,9 @@ async function main() {
         'The background compatibility scan runs after readiness by design; this ledger times',
         'the light routes across it but does not observe a completion signal for the scan',
         'itself, because the router exposes none.',
-        'Packaged builds are not covered here.',
+        appKind === 'packaged'
+          ? 'This ledger was produced by the packaged artifact; its freshness depends on when release/win-unpacked was built.'
+          : 'Packaged builds are not covered by this run (use --app=packaged after pnpm run package:win).',
         'The cache case counts requests and settle times on fixture sessions with no',
         'messages: it proves one request for a first visit, none for a revisit and none',
         'cancelled, but the payload-driven timing difference needs a data root with real',
