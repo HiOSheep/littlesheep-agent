@@ -13,6 +13,7 @@ import { textMessage } from '@littlesheep/types';
 import type { RunContext, SideEffectCheckpoint, ToolResult } from '@littlesheep/types';
 import { createExecuteStage } from '../execute.js';
 import { classifyToolFailure } from './tool-failure-disposition.js';
+import { notAdmittedResult } from './tool-result-persistence.js';
 import { createMockLlm, makeCtx, makeTool, textResponse, toolCallResponse } from '../../tests/helpers.js';
 
 const deps = { model: 'test', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING };
@@ -149,6 +150,24 @@ describe('tool failure disposition', () => {
     expect(classifyToolFailure(ctx, failed('call-1'))).toMatchObject({
       disposition: 'authoritative',
       reason: 'no_invocation_record',
+    });
+  });
+
+  // A capability the Runtime withheld has no invocation record either, but it is a
+  // scope decision the model can correct. Measured on the parallel-load gate: an
+  // opening `use_skill` call on a request restricted to `write`/`read` disabled
+  // every tool, and the task's file was never written.
+  it('treats a declared scope refusal as correctable despite the missing record', () => {
+    const ctx = makeCtx({}) as RunContext;
+
+    expect(classifyToolFailure(ctx, notAdmittedResult(
+      'call-1',
+      'step-1',
+      'Runtime scope: use write or read for this request.',
+    ))).toMatchObject({
+      disposition: 'correctable',
+      reason: 'tool_not_admitted',
+      effectful: false,
     });
   });
 });

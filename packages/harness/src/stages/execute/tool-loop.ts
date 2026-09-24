@@ -37,6 +37,7 @@ import { ingestMemoryContextToolResult } from '../../memory-context-working-set.
 import {
   failureResult,
   modelContentForResult,
+  notAdmittedResult,
   persistRuntimeControlMessage,
   persistRuntimeTailMessages,
   persistToolCalls,
@@ -449,20 +450,25 @@ export async function runToolLoop(
         admittedNames,
         maxParallelTools,
       ));
-      // A withheld call is refused before it reaches the tool: nothing runs, no
-      // side effect is attempted, and the model gets an authoritative denial it
-      // must not retry.
+      // A withheld call is refused before it reaches the tool: nothing runs and no
+      // side effect is attempted. While a final answer is forced the refusal is
+      // the boundary itself ("tools are unavailable in this run"); otherwise it is
+      // a scope decision the model can correct by using an admitted tool, and it
+      // is declared as such so one over-scope call does not disable the tools the
+      // request did admit.
       for (const request of withheld) {
         const index = requests.indexOf(request);
-        executedResults.set(index, failureResult(
-          request.callId,
-          stepId,
+        const refusal = forceFinalResponse
+          ? 'Runtime control: tools are unavailable in this run; answer from the evidence already present.'
+          : withheldToolContract
+            ? `Runtime scope: ${withheldToolContract}`
+            : 'Runtime scope: this tool is not admitted for the current request.';
+        executedResults.set(
+          index,
           forceFinalResponse
-            ? 'Runtime control: tools are unavailable in this run; answer from the evidence already present.'
-            : withheldToolContract
-              ? `Runtime scope: ${withheldToolContract}`
-              : 'Runtime scope: this tool is not admitted for the current request.',
-        ));
+            ? failureResult(request.callId, stepId, refusal)
+            : notAdmittedResult(request.callId, stepId, refusal),
+        );
       }
       let addedEvidence = false;
       for (const [index, call] of response.toolCalls.entries()) {

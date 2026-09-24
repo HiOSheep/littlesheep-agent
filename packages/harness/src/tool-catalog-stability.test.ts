@@ -152,6 +152,36 @@ describe('the tool catalog is fixed for the session', () => {
     expect(ctx.toolResults?.[0]?.ok).toBe(true);
   });
 
+  it('keeps the admitted tools usable after one over-scope call', async () => {
+    const tools = webTools();
+    const webSearch = tools.find((tool) => tool.name === 'web_search') as AgentTool & { calls: unknown[] };
+    const read = tools.find((tool) => tool.name === 'read') as AgentTool & { calls: unknown[] };
+    let turn = 0;
+    const llm = createMockLlm(() => {
+      turn += 1;
+      if (turn === 1) {
+        return toolCallResponse([{ id: 'c1', name: 'web_search', args: { query: 'latest news' } }]);
+      }
+      if (turn === 2) {
+        return toolCallResponse([{ id: 'c2', name: 'read', args: { file_path: 'notes.md' } }]);
+      }
+      return textResponse('local answer only');
+    });
+    const ctx = contextFor('搜索我的项目文件里有哪些 web_search 调用', tools);
+
+    const outcome = await createExecuteStage({ ...deps, llm })(ctx);
+
+    // The over-scope call is refused, and the run keeps the tools the request did
+    // admit: the read lands in the very next round. Treating the refusal as an
+    // authoritative boundary froze every tool instead — measured on the
+    // parallel-load gate, where a two-step write/read task lost its file to one
+    // opening call for a tool outside its scope.
+    expect(webSearch.calls).toHaveLength(0);
+    expect(read.calls).toHaveLength(1);
+    expect(outcome.ok).toBe(true);
+    expect(ctx.toolResults?.map((result) => result.ok)).toEqual([false, true]);
+  });
+
   it('still refuses a Web call when the network is off, even though the tool is visible', async () => {
     const tools = webTools();
     const webSearch = tools.find((tool) => tool.name === 'web_search') as

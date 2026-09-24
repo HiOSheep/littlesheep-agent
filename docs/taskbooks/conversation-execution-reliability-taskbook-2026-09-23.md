@@ -253,6 +253,51 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
 
+## 实施记录｜2026-09-24 第二十轮（换一条实机门禁跑，抓到一个"一次越权调用废掉整轮"的真缺陷）
+
+这一轮的起点是回归：第十九轮改的是**全局**行为（执行契约的交货规范、迭代上限 30、收尾文案），所以把另外几条真实门禁也跑一遍。
+
+### 回归结果
+
+- `pnpm run verify:electron-continuity` 8 场景全绿（跨重启回复连续性、活跃 SSE、托盘、暂停/继续、强杀重启后恢复、模型热切换、中断检查点、压缩取消）。
+- `pnpm run verify:electron-deepseek-reply-continuity` 绿（`answerContainedPriorValue: true`，两次各 1 次模型调用、token 校准 `exact_match`）。
+- `pnpm run verify:electron-deepseek-parallel-load` **失败**——而它抓到的不是我的改动，是一个真缺陷。
+
+### 真缺陷：一次越权调用让整轮再也用不了任何工具
+
+那三个并行任务里 A 的失败现场（门禁报错 + 执行日志）：
+
+```text
+parallel task A ended before all expected tools completed: {"expected":["write","read"],"observed":[]}
+模型回复：步骤 1 … ❌ 失败: Runtime control: tools are unavailable in this run
+         步骤 2 … ⏸ 未执行（步骤 1 未成功，且工具在本轮不可用）
+```
+
+模型开局先调了一次 `use_skill`（那个请求按提示只准入 `write`/`read`）→ 循环在到达工具前拒绝它 → **该结果没有 invocation 记录** → `classifyToolFailure` 的"没有记录 = Runtime 无法说明发生了什么"规则把它判成权威边界 → `forceFinalResponse` → 此后**连被准入的 `write` 也被拒**（"tools are unavailable in this run"）→ 两步任务的产物根本没生成。
+
+这条规则本身是对的（未知结果必须停），错的是没区分"Runtime 自己刚做出的范围决定"：越权调用本来就没有 invocation 记录。改动：
+
+- `tool-result-persistence.ts` 新增 `TOOL_NOT_ADMITTED_ERROR_KIND = 'tool_not_admitted'` 与 `notAdmittedResult()`；循环的 withheld 分支在**非强制收尾**时用它构造拒绝结果（强制收尾那支保持原样，那时工具本来就该全停）。
+- `tool-failure-disposition.ts` 在读"无记录"规则**之前**判定该 kind 为 `correctable`：这次调用照样被拒，但请求准入的工具仍然可用，模型下一轮就能改用它们。
+- 回归：`tool-catalog-stability.test.ts` 新增"一次越权调用之后准入的工具仍可用"（两次工具轮：第一次 `web_search` 被拒、第二次 `read` 必须真的执行）；`tool-failure-disposition.test.ts` 新增该 kind 的单元判定，并保留"无记录且无 kind 仍是权威边界"的旧断言。两条在移回旧规则后都会失败（`read` 调用数为 0），已验证。
+
+### 顺带修掉的两处门禁陈旧断言与一处诊断缺口
+
+同一条门禁继续跑下去又暴露三件事，都属于"门禁与当前内核不一致"，不属于本任务书，但留着会让门禁永远红：
+
+1. `assertCompletedTwoStepTask` 要求 `taskBook.steps` 与 `taskExecution.steps` 都 ≥2 且 `done`、还要求每步带 `toolProposal`——这些是**已删除的步骤执行器**的账目，当前单循环内核没有任何东西写它们，所以这条断言永远不可能通过（实测：run 本身已经把两步做完了）。改为用仍然存在的证据判定：恰好一次成功的 `write`、一次成功的 `read`、无其他工具、无审批、有已结算副作用，外加**直接读产物**并核对内容等于验收代号。
+2. 该门禁的 fixture 提示还写着"请在 TaskBook 中保留两个可分别验证的步骤"——内核没有这条通道，只会诱导模型去调一个本请求不准入的工具（正是上面那个缺陷的触发点）。提示改为直接陈述两个步骤。
+3. 共享 SSE 读取器在非 2xx 时只报状态码，丢掉 Runtime 的原因。现在把响应体带上（截断 400 字符），下一条门禁失败时能直接读出"为什么拒绝"。
+
+### 仍未解决的一条（记录，不在本任务书范围）
+
+修完之后该门禁推进到"强杀重启后并发恢复两个检查点"，报 `run checkpoint resume conflict: checkpoint has an active resume lease`。两个检查点在恢复前刚被 inspection 判为 `resumable: true`，所以这是重启后租约状态的竞态/未释放问题，与第十二轮修的续接额度无关；留给运行时状态一致性那条线。已把原因文本带进错误信息，下次跑就能直接定位。
+
+### 验证
+
+- 定向：harness 80 文件 / 683 用例通过（含两条新用例，且两条都验证过"旧规则下失败"）；`typecheck` 通过。
+- 并行负载门禁的**工具屏障断言已通过**（失败点从 `observed: []` 推进到后续阶段），即修复在真实窗口里生效。
+
 ## 实施记录｜2026-09-24 第十九轮（把"产物能不能跑"变成机器能判的事 + 交货规范）
 
 ### 现场：静态校验放过了一个会抛异常的产物

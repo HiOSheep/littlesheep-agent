@@ -197,7 +197,14 @@ export async function readSse(locator, path, body, timeoutMs = DEFAULT_RUN_TIMEO
       body: JSON.stringify(body),
       signal: controller.signal,
     })
-    if (!response.ok || !response.body) throw new Error(`SSE ${path} failed: ${response.status}`)
+    if (!response.ok || !response.body) {
+      // The body carries the Runtime's reason ("run checkpoint cannot be resumed:
+      // …"). Without it a 409 is undiagnosable — measured on the parallel-load
+      // gate, which failed on a resume with no way to tell which inspection
+      // reason refused it.
+      const detail = await response.text().catch(() => '')
+      throw new Error(`SSE ${path} failed: ${response.status}${detail ? ` ${detail.slice(0, 400)}` : ''}`)
+    }
     const events = []
     let result
     let error

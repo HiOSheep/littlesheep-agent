@@ -97,8 +97,31 @@ export function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
   return { ...result, meta: { ...(result.meta ?? {}), stepId } };
 }
 
+/**
+ * A Runtime scope refusal: the call was registered but not admitted for this
+ * request.
+ *
+ * Declared as an error kind so the failure disposition can tell it apart from a
+ * result with no execution evidence at all. Measured on the parallel-load gate: a
+ * model that opened with `use_skill` (not admitted for a two-step task restricted
+ * to `write` and `read`) had *every* tool disabled for the rest of the run — the
+ * file was never written and the task failed, from one call the model could have
+ * corrected by using an admitted tool.
+ */
+export const TOOL_NOT_ADMITTED_ERROR_KIND = 'tool_not_admitted';
+
 export function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {
   return stampStepMeta({ callId, ok: false, error }, stepId);
+}
+
+/** A refusal for a capability the Runtime withheld from this request. */
+export function notAdmittedResult(callId: string, stepId: string | undefined, error: string): ToolResult {
+  return stampStepMeta({
+    callId,
+    ok: false,
+    error,
+    meta: { errorKind: TOOL_NOT_ADMITTED_ERROR_KIND },
+  }, stepId);
 }
 
 export function persistToolCalls(

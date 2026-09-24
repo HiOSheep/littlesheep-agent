@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -139,8 +139,8 @@ async function main() {
     ])
     assertRecoverableStop(initialA.result, 'paused parallel task A')
     assertRecoverableStop(initialB.result, 'interrupted parallel task B')
-    assertCompletedTwoStepTask(initialA.result, TASK_A, 'parallel task A before pause')
-    assertCompletedTwoStepTask(initialB.result, TASK_B, 'parallel task B before interrupt')
+    assertCompletedTwoStepTask(initialA.result, TASK_A, 'parallel task A before pause', environment.workplaceDir)
+    assertCompletedTwoStepTask(initialB.result, TASK_B, 'parallel task B before interrupt', environment.workplaceDir)
     assertSuccessfulRun(globRun.result, 'deepseek', environment.model, 'parallel glob task')
     assertSingleGlob(globRun.result)
     assertSuccessfulRun(hotRun.result, 'deepseek', hotReloadModel, 'hot-reloaded task')
@@ -346,7 +346,11 @@ function taskFixture(fileName, code) {
   return {
     fileName,
     code,
-    prompt: `这是一个标准复杂度的两步验收任务，请在 TaskBook 中保留两个可分别验证的步骤。文件名称是 ${fileName}，验收代号是 ${code}。第一步只使用 write 工具创建该文件，文件内容必须恰好等于验收代号；第二步只使用 read 工具重新读取该文件并核对内容。不要使用 exec、edit、glob 或其他工具。最终回答分别说明文件名称、验收代号和核对结果。`,
+    // No TaskBook instruction: the second execution system is gone, so nothing
+    // writes TaskBook steps for an ordinary run and asking the model to keep them
+    // only invites a call to a tool this request does not admit. The two steps are
+    // named explicitly instead, and the gate judges them by their artifacts.
+    prompt: `这是一个标准复杂度的两步验收任务。文件名称是 ${fileName}，验收代号是 ${code}。第一步只使用 write 工具创建该文件，文件内容必须恰好等于验收代号；第二步只使用 read 工具重新读取该文件并核对内容。不要使用 exec、edit、glob 或其他工具。最终回答分别说明文件名称、验收代号和核对结果。`,
     recallPrompt: '你还记得上一轮保存的文件名称和验收代号吗？请分别回答，不要调用工具。',
   }
 }
@@ -589,15 +593,18 @@ function assertSuccessfulRun(result, provider, model, label) {
   }
 }
 
-function assertCompletedTwoStepTask(result, fixture, label) {
-  if ((result.taskBook?.steps?.length ?? 0) < 2
-    || (result.taskExecution?.steps?.length ?? 0) < 2
-    || result.taskExecution.steps?.some((step) => step.status !== 'done' || step.error)) {
-    throw new Error(`${label} did not finish both TaskBook steps before stopping: ${safe({
-      taskBook: result.taskBook,
-      taskExecution: result.taskExecution,
-    })}`)
-  }
+/**
+ * The two fixture steps completed, judged by what the run actually did.
+ *
+ * This used to require `taskBook.steps` and `taskExecution.steps` with a
+ * `toolProposal` per step. The TaskBook step executor and its proposal
+ * bookkeeping were deleted with the second execution system, so nothing writes
+ * those records for an ordinary run any more and the assertion could never pass —
+ * measured when this gate was re-run: every clause was unsatisfiable while the
+ * run itself had done the work. The evidence that survives is the artifact and the
+ * invocation record, which is what a concurrency check needs anyway.
+ */
+function assertCompletedTwoStepTask(result, fixture, label, workspaceRoot) {
   const invocations = result.toolInvocations ?? []
   const successfulNames = invocations
     .filter((record) => record.status === 'succeeded')
@@ -613,9 +620,13 @@ function assertCompletedTwoStepTask(result, fixture, label) {
   if (!(result.sideEffects ?? []).some((effect) => effect.status === 'succeeded')) {
     throw new Error(`${label} lacks a completed side-effect record: ${safe(result.sideEffects)}`)
   }
-  if (!result.taskBook.steps.some((step) => step.toolProposal?.name === 'write')
-    || !result.taskBook.steps.some((step) => step.toolProposal?.name === 'read')) {
-    throw new Error(`${label} did not retain direct write/read proposals: ${safe(result.taskBook)}`)
+  const written = join(workspaceRoot, fixture.fileName)
+  if (!existsSync(written)) {
+    throw new Error(`${label} never created ${fixture.fileName}`)
+  }
+  const content = readFileSync(written, 'utf8').trim()
+  if (content !== fixture.code) {
+    throw new Error(`${label} wrote ${JSON.stringify(content)} instead of the fixture code`)
   }
   if (!fixture.fileName || !fixture.code) throw new Error(`${label} fixture is invalid`)
 }

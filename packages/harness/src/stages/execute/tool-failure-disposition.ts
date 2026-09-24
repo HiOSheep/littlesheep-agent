@@ -17,6 +17,7 @@
 // the safe direction for an unknown outcome is to stop rather than to retry.
 import type { RunContext, ToolInvocationStatus, ToolResult } from '@littlesheep/types';
 import { CORE_SOURCE_READ_ONLY_KIND } from '@littlesheep/tools';
+import { TOOL_NOT_ADMITTED_ERROR_KIND } from './tool-result-persistence.js';
 
 export type ToolFailureDisposition =
   /** The Runtime refused, or cannot prove what happened: stop and report it. */
@@ -79,8 +80,14 @@ const AUTHORITATIVE_ERROR_KINDS = new Set([
  * tool or take a different action. It is not a way around the boundary — the
  * call is refused either way — whereas an `unknown` effect stays authoritative,
  * because there the Runtime cannot say what happened.
+ *
+ * A capability withheld from this request is the same shape: the Runtime decided
+ * the scope, nothing ran, and the model can correct itself by using a tool the
+ * request *did* admit. Treating it as authoritative disabled every tool for the
+ * rest of the run — measured on the parallel-load gate, where one opening
+ * `use_skill` call cost a two-step `write`/`read` task its file entirely.
  */
-const REPLAY_REFUSAL_ERROR_KINDS = new Set(['side_effect_replay']);
+const REPLAY_REFUSAL_ERROR_KINDS = new Set(['side_effect_replay', TOOL_NOT_ADMITTED_ERROR_KIND]);
 
 /** Side-effect settlements that leave the real outcome unknown. */
 const UNSETTLED_EFFECT_STATUSES = new Set(['planned', 'in_progress', 'unknown']);
@@ -103,6 +110,13 @@ export function classifyToolFailure(ctx: RunContext, result: ToolResult): ToolFa
   const declared = (result.meta as Record<string, unknown> | undefined)?.['errorKind'];
   const errorKind = typeof declared === 'string' ? declared : invocation?.errorKind;
 
+  // A declared scope refusal is a decision the Runtime made before any execution,
+  // so it is read before the "no invocation record" rule below — the withheld call
+  // legitimately has none, and that rule would otherwise disable every tool the
+  // request admitted.
+  if (errorKind === TOOL_NOT_ADMITTED_ERROR_KIND) {
+    return { disposition: 'correctable', reason: errorKind, effectful: false };
+  }
   if (!invocation) {
     // A result with no invocation record was refused before the tool boundary
     // (a withheld capability) or produced by a path that keeps no record. The
