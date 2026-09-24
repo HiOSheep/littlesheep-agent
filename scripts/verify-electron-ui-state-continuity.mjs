@@ -57,8 +57,8 @@ async function main() {
       ? `session:${encodeURIComponent(activeSessionId.trim())}`
       : '__draft__'
     const firstWindow = await readWindowGeometry(client)
-    const chatBottomGap = await verifyChatBottomAnchor(client)
-    const fileNavigatorWidth = await verifyFileNavigatorResize(client)
+    const chatReadingPosition = await verifyChatReadingPosition(client)
+    const navigatorResize = await verifyFileNavigatorResize(client)
 
     const changed = await client.evaluate(`(() => {
       const textarea = document.querySelector('.composer textarea')
@@ -142,14 +142,18 @@ async function main() {
     if (restored.persisted?.composerDraft !== COMPOSER_DRAFT || restored.persisted?.route?.page !== 'browser') {
       throw new Error(`persisted application shell snapshot is incomplete: ${JSON.stringify(restored.persisted)}`)
     }
-    if (restored.workspaceLayouts?.[workspaceLayoutKey]?.fileNavigatorWidth !== fileNavigatorWidth) {
-      throw new Error(`file navigator width snapshot was not restored: ${JSON.stringify(restored.workspaceLayouts)}`)
+    const restoredNavigator = restored.workspaceLayouts?.[workspaceLayoutKey]
+    const restoredNavigatorWidth = navigatorResize.kind === 'review'
+      ? restoredNavigator?.reviewNavigatorWidth
+      : restoredNavigator?.fileNavigatorWidth
+    if (restoredNavigatorWidth !== navigatorResize.width) {
+      throw new Error(`navigator width snapshot was not restored: ${JSON.stringify(restored.workspaceLayouts)}`)
     }
     assertGeometryNear(secondWindow, firstWindow, 'restored native window')
 
     const renderedNavigatorWidth = await revealWorkspaceAndReadNavigatorWidth(client)
-    if (renderedNavigatorWidth !== fileNavigatorWidth) {
-      throw new Error(`file navigator rendered at ${renderedNavigatorWidth}, expected ${fileNavigatorWidth}`)
+    if (renderedNavigatorWidth !== navigatorResize.width) {
+      throw new Error(`navigator rendered at ${renderedNavigatorWidth}, expected ${navigatorResize.width}`)
     }
 
     client.close()
@@ -165,8 +169,8 @@ async function main() {
         conversationCollapsed: true,
         projectCollapsed: true,
         sidebarWidth: expectedRestoredSidebarWidth,
-        chatBottomGap,
-        fileNavigatorWidth,
+        chatReadingPosition,
+        navigatorResize,
         settingsPage: 'browser',
         nativeWindow: true,
         observableActivity: activityEvidence,
@@ -193,6 +197,22 @@ async function main() {
 
 async function verifyLeanBoundedExecution(client, provider) {
   const before = provider.requests.length
+  // Start a fresh conversation first. The acceptance Provider only answers with a tool
+  // call while its transcript still has no tool result, so reusing the previous
+  // fixture's session would be answered directly and this fixture could observe no tool
+  // activity at all — it would then fail on the fixture's own state, not on the product.
+  const startedConversation = await client.evaluate(`(() => {
+    const button = document.querySelector('.sidebar-quick-nav .sidebar-nav-button[aria-label="新对话"]')
+    if (!(button instanceof HTMLElement)) return false
+    button.click()
+    return true
+  })()`)
+  if (!startedConversation) throw new Error('lean Harness fixture could not start a new conversation')
+  await waitFor(
+    () => client.evaluate(`document.querySelectorAll('.assistant-turn').length === 0 || null`),
+    START_TIMEOUT_MS,
+    'empty transcript for the lean fixture',
+  )
   const submitted = await client.evaluate(`(() => {
     const textarea = document.querySelector('.composer textarea')
     if (!(textarea instanceof HTMLTextAreaElement)) return false
@@ -210,7 +230,9 @@ async function verifyLeanBoundedExecution(client, provider) {
     const rows = [...turn.querySelectorAll('.agent-flow-row')]
     return {
       text: response.textContent.trim(),
-      toolRows: rows.filter((row) => row.textContent?.includes('glob')).length,
+      // Tool rows are titled in the user's language ("搜索" for glob), so the row class is
+      // the stable identity; matching the raw tool name in the text checked a translation.
+      toolRows: rows.filter((row) => row.classList.contains('agent-tool-row')).length,
     }
   })()`), START_TIMEOUT_MS, 'lean bounded execution')
   const requests = provider.requests.slice(before)
@@ -386,73 +408,150 @@ async function readWindowGeometry(client) {
   return client.evaluate(`({ x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight, innerWidth: window.innerWidth })`)
 }
 
-async function verifyChatBottomAnchor(client) {
-  const result = await client.evaluate(`new Promise((resolvePromise) => {
+/**
+ * UX-19: two readers, two anchors, measured in the real window.
+ *
+ * A bottom-pinned reader is anchored to the bottom edge, so a viewport height change
+ * must leave the gap at ~0. A reader who scrolled up is anchored to the message they
+ * are reading: its position on screen must not move. The check this replaced compared
+ * only the bottom gap, which is exactly the arithmetic that moved a reading user by
+ * the viewport delta — it would now pass on the bug and fail on the fix.
+ */
+async function verifyChatReadingPosition(client) {
+  const result = await client.evaluate(`(async () => {
+    const raf = () => new Promise((done) => requestAnimationFrame(() => done()))
+    const settle = async (frames) => { for (let index = 0; index < frames; index += 1) await raf() }
     const messages = document.querySelector('.messages')
     const content = document.querySelector('.messages-content')
-    if (!(messages instanceof HTMLElement) || !(content instanceof HTMLElement)) {
-      resolvePromise(null)
-      return
-    }
+    const chat = document.querySelector('.chat')
+    if (!(messages instanceof HTMLElement) || !(content instanceof HTMLElement)) return null
 
     const probe = document.createElement('div')
-    probe.dataset.chatBottomAnchorProbe = 'true'
-    probe.style.height = '1800px'
+    probe.dataset.messageKey = 'reading-position-fixture'
+    probe.style.height = '2400px'
     probe.style.pointerEvents = 'none'
     content.append(probe)
+    const originalFlex = messages.style.flex
+    const originalChatFlex = chat instanceof HTMLElement ? chat.style.flex : ''
     messages.style.flex = '0 0 480px'
 
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const expectedGap = 137
-      const setReadingPosition = () => {
-        messages.scrollTop = messages.scrollHeight - messages.clientHeight - expectedGap
-        // Programmatic scrollTop assignment does not reliably emit a native
-        // scroll event in every Electron/Chromium build. Tell the renderer that
-        // this fixture represents an intentional reading position, not a
-        // bottom-pinned chat waiting for new content.
-        messages.dispatchEvent(new Event('scroll', { bubbles: true }))
+    const viewportTop = () => messages.getBoundingClientRect().top
+    const gap = () => messages.scrollHeight - messages.scrollTop - messages.clientHeight
+    const anchorTop = () => probe.getBoundingClientRect().top - viewportTop()
+    const jumpButton = () => document.querySelector('.chat-jump-to-latest')
+    const visibleKey = () => {
+      const height = messages.clientHeight
+      for (const element of messages.querySelectorAll('[data-message-key]')) {
+        const bounds = element.getBoundingClientRect()
+        const top = bounds.top - viewportTop()
+        if (bounds.bottom - viewportTop() > 0 && top < height) return element.getAttribute('data-message-key')
       }
-      setReadingPosition()
-      // Registering the reading position is asynchronous in the renderer, and a
-      // single event was not enough under load: the renderer then treated the
-      // resize below as "new content" and re-pinned to the bottom, which failed
-      // this check intermittently. Re-assert the position until the renderer
-      // holds it, within a bounded window, and only then measure.
-      const registerStartedAt = performance.now()
-      const registerReadingPosition = () => {
-        const gap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
-        if (Math.abs(gap - expectedGap) <= 1) return measure()
-        if (performance.now() - registerStartedAt > 750) return measure()
-        setReadingPosition()
-        requestAnimationFrame(registerReadingPosition)
+      return null
+    }
+    const scrollTo = (top) => {
+      messages.scrollTop = top
+      // A programmatic scrollTop assignment does not reliably emit a native scroll
+      // event in every Electron/Chromium build, and the renderer learns the reader's
+      // position from that event.
+      messages.dispatchEvent(new Event('scroll', { bubbles: true }))
+    }
+    const waitFor = async (predicate, timeoutMs) => {
+      const startedAt = performance.now()
+      while (performance.now() - startedAt < timeoutMs) {
+        if (predicate()) return true
+        await raf()
       }
-      const measure = () => {
-        requestAnimationFrame(() => {
-          const beforeGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
-          messages.style.flexBasis = '360px'
-          const startedAt = performance.now()
-          const deadline = startedAt + 2_000
-          const readSettledGap = () => {
-            const afterGap = messages.scrollHeight - messages.scrollTop - messages.clientHeight
-            if (Math.abs(beforeGap - afterGap) > 1 && performance.now() < deadline) {
-              requestAnimationFrame(readSettledGap)
-              return
-            }
-            messages.style.removeProperty('flex')
-            messages.style.removeProperty('flex-basis')
-            probe.remove()
-            resolvePromise({ beforeGap, afterGap, settleMs: performance.now() - startedAt })
-          }
-          requestAnimationFrame(() => requestAnimationFrame(readSettledGap))
-        })
+      return false
+    }
+
+    try {
+      // Reading reader: put the fixture at the viewport top and register the position.
+      scrollTo(probe.offsetTop + 520)
+      const readingRegistered = await waitFor(() => jumpButton() !== null, 2000)
+      await settle(3)
+      const readingGapBefore = gap()
+      const readingAnchorTopBefore = anchorTop()
+      const readingAnchorKey = visibleKey()
+
+      // Viewport height change (composer growth, window resize) while reading.
+      messages.style.flexBasis = '360px'
+      await settle(5)
+      const readingGapAfterResize = gap()
+      const readingAnchorTopAfterResize = anchorTop()
+
+      // Width reflow (workspace panel drag) while reading: the same message stays put.
+      if (chat instanceof HTMLElement) chat.style.flex = '0 0 620px'
+      await settle(6)
+      const readingGapAfterReflow = gap()
+      const readingAnchorTopAfterReflow = anchorTop()
+      const readingAnchorKeyAfterReflow = visibleKey()
+      if (chat instanceof HTMLElement) chat.style.flex = originalChatFlex
+      await settle(4)
+
+      // Reachable way back to the newest message.
+      const jumpButtonRendered = jumpButton() !== null
+      jumpButton()?.click()
+      const returnedToBottom = await waitFor(() => gap() <= 1, 2000)
+      await settle(3)
+      const gapAfterReturn = gap()
+      const jumpButtonHiddenAfterReturn = jumpButton() === null
+
+      // Pinned reader: the bottom edge is its anchor, so it must stay at the bottom.
+      scrollTo(messages.scrollHeight)
+      await settle(3)
+      const pinnedGapBefore = gap()
+      messages.style.flexBasis = '420px'
+      await settle(5)
+      const pinnedGapAfter = gap()
+
+      return {
+        readingRegistered,
+        readingAnchorKey,
+        readingAnchorTopBefore,
+        readingAnchorTopAfterResize,
+        readingAnchorTopAfterReflow,
+        readingAnchorKeyAfterReflow,
+        readingGapBefore,
+        readingGapAfterResize,
+        readingGapAfterReflow,
+        jumpButtonRendered,
+        returnedToBottom,
+        gapAfterReturn,
+        jumpButtonHiddenAfterReturn,
+        pinnedGapBefore,
+        pinnedGapAfter,
       }
-      requestAnimationFrame(registerReadingPosition)
-    }))
-  })`)
-  if (!result || Math.abs(result.beforeGap - result.afterGap) > 1) {
-    throw new Error(`chat viewport lost its bottom anchor: ${JSON.stringify(result)}`)
+    } finally {
+      probe.remove()
+      messages.style.flex = originalFlex
+      if (chat instanceof HTMLElement) chat.style.flex = originalChatFlex
+    }
+  })()`)
+  if (!result) throw new Error('chat reading position fixture could not attach to the transcript')
+  const moved = (before, after) => Math.abs(after - before)
+  if (!result.readingRegistered) {
+    throw new Error(`reading position was never registered: ${JSON.stringify(result)}`)
   }
-  return result.afterGap
+  if (moved(result.readingAnchorTopBefore, result.readingAnchorTopAfterResize) > 1) {
+    throw new Error(`viewport resize moved the message being read: ${JSON.stringify(result)}`)
+  }
+  if (moved(result.readingAnchorTopBefore, result.readingAnchorTopAfterReflow) > 2) {
+    throw new Error(`width reflow moved the message being read: ${JSON.stringify(result)}`)
+  }
+  if (moved(result.readingGapBefore, result.readingGapAfterResize) < 60) {
+    // The old contract preserved this gap; preserving it is the defect.
+    throw new Error(`reading gap was preserved across the resize: ${JSON.stringify(result)}`)
+  }
+  if (!result.jumpButtonRendered || !result.returnedToBottom || !result.jumpButtonHiddenAfterReturn) {
+    throw new Error(`the way back to the newest message did not work: ${JSON.stringify(result)}`)
+  }
+  if (result.gapAfterReturn > 1) {
+    throw new Error(`returning to the bottom did not reach the bottom: ${JSON.stringify(result)}`)
+  }
+  if (result.pinnedGapAfter > 1) {
+    throw new Error(`a pinned chat left the bottom: ${JSON.stringify(result)}`)
+  }
+  return result
 }
 
 async function verifyFileNavigatorResize(client) {
@@ -483,7 +582,7 @@ async function verifyFileNavigatorResize(client) {
     const parentWidth = resizer.parentElement?.parentElement?.getBoundingClientRect().width ?? 0
     return rect.width > 0 && rect.height > 0 && Number.isFinite(width)
       && Number.isFinite(maxWidth) && maxWidth >= width + 72 && parentWidth >= 600
-      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width }
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, width, kind: resizer.closest('.workspace-review') ? 'review' : 'file' }
       : null
   })()`), START_TIMEOUT_MS, 'file navigator resizer')
 
@@ -513,7 +612,10 @@ async function verifyFileNavigatorResize(client) {
   if (reopenedWidth !== resized.width) {
     throw new Error(`file navigator did not restore its open width: ${reopenedWidth} !== ${resized.width}`)
   }
-  return resized.width
+  // Which width this drag wrote depends on the tab that owns the visible navigator:
+  // the review tab has had its own persisted width since UX-18, and the restore
+  // assertions below must read the same field the drag actually changed.
+  return { width: resized.width, kind: initial.kind }
 }
 
 async function revealWorkspaceAndReadNavigatorWidth(client) {

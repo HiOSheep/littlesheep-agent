@@ -70,11 +70,30 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   // adding one, and that growth is exactly what a reader who scrolled away must
   // be told about.
   const observedContentRef = useRef(chatContentSignature(messages))
+  /** The scrollTop this hook wrote last, so `onScroll` can tell its own correction from the reader. */
+  const writtenScrollTopRef = useRef<number | null>(null)
   const [readingAway, setReadingAway] = useState(false)
   const [hasNewContent, setHasNewContent] = useState(false)
 
   const rememberScrollGeometry = useCallback((container: HTMLElement) => {
     scrollGeometryRef.current = readChatScrollGeometry(container)
+  }, [])
+
+  /**
+   * A repair loop writes scrollTop on every frame, and Chromium answers with a scroll
+   * event for each write. Remembering the value we wrote is what lets `onScroll` tell a
+   * real user scroll from our own correction: the loop must survive its own writes and
+   * must yield immediately to the reader.
+   */
+  const writeScrollTop = useCallback((container: HTMLElement, top: number) => {
+    writtenScrollTopRef.current = top
+    container.scrollTop = top
+  }, [])
+
+  const cancelRepairFrames = useCallback(() => {
+    if (repairFrameRef.current === null) return
+    window.cancelAnimationFrame(repairFrameRef.current)
+    repairFrameRef.current = null
   }, [])
 
   /** The reader's own position decides both flags; nothing else may clear them. */
@@ -92,12 +111,13 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     stickToBottomRef.current = true
     scrollRepairRef.current = null
     resizeRepairRef.current = null
+    cancelRepairFrames()
     setReadingAway(false)
     setHasNewContent(false)
     if (!container) return
-    container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+    writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
     rememberScrollGeometry(container)
-  }, [rememberScrollGeometry, scrollRef])
+  }, [cancelRepairFrames, rememberScrollGeometry, scrollRef, writeScrollTop])
 
   useLayoutEffect(() => {
     const container = scrollRef.current
@@ -113,7 +133,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       const apply = (timestamp: number) => {
         settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
         const nextTop = resolveBottomAnchoredScrollTop(repair, readChatScrollGeometry(container))
-        if (Math.abs(container.scrollTop - nextTop) > 0.5) container.scrollTop = nextTop
+        if (Math.abs(container.scrollTop - nextTop) > 0.5) writeScrollTop(container, nextTop)
         rememberScrollGeometry(container)
         settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
         if (shouldContinueDisplaySettle(settleState, timestamp)) {
@@ -135,7 +155,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     const grew = chatContentSignature(messages) !== observedContentRef.current
     observedContentRef.current = chatContentSignature(messages)
     if (shouldStickToBottom) {
-      container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+      writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
       setReadingAway(false)
       setHasNewContent(false)
     } else {
@@ -162,10 +182,10 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     setHasNewContent(false)
     const container = scrollRef.current
     if (container) {
-      container.scrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+      writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
       rememberScrollGeometry(container)
     }
-  }, [sessionKey, rememberScrollGeometry, scrollRef])
+  }, [sessionKey, rememberScrollGeometry, scrollRef, writeScrollTop])
 
   useLayoutEffect(() => {
     const container = scrollRef.current
@@ -174,23 +194,38 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     if (typeof ResizeObserver === 'undefined') return
 
     const applyResizeRepair = (repair: ChatResizeRepair) => {
-      const current = readChatScrollGeometry(container)
       if (repair.stickToBottom) {
-        const nextTop = resolveChatResizeScrollTop(repair.geometry, current, true)
+        const nextTop = resolveChatResizeScrollTop(repair.geometry, readChatScrollGeometry(container), true)
         if (nextTop !== null && Math.abs(container.scrollTop - nextTop) > 0.5) {
           // ResizeObserver runs before the next paint. Applying the anchor here
           // keeps a bottom-pinned chat at the bottom from the first compressed
           // layout instead of visibly correcting it on a later timer.
-          container.scrollTop = nextTop
+          writeScrollTop(container, nextTop)
         }
-      } else if (repair.anchor) {
-        // The reader is above the bottom, so the message they were reading is the
-        // anchor. Width changes re-wrap every paragraph above them, and the old
-        // bottom-gap arithmetic moved them by the viewport delta instead.
-        const nextTop = resolveAnchoredScrollTop(repair.anchor, readChatAnchorProbes(container), container.scrollTop)
-        if (nextTop !== null && Math.abs(container.scrollTop - nextTop) > 0.5) container.scrollTop = nextTop
+        rememberScrollGeometry(container)
+        return
       }
-      rememberScrollGeometry(container)
+      if (!repair.anchor) return
+      // The reader is above the bottom, so the message they were reading is the anchor.
+      // A width change re-wraps every paragraph above them, and the container's own size
+      // stops changing while its content is still settling — measuring once leaves the
+      // tail of that reflow as a visible jump. Re-apply the anchor each frame until the
+      // layout signature stops changing, using the same bounded settle as the
+      // older-history repair.
+      const { anchor } = repair
+      let settleState: DisplaySettleState | null = null
+      const readLayoutSignature = () => `${container.scrollHeight}:${container.clientHeight}`
+      const apply = (timestamp: number) => {
+        settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
+        const nextTop = resolveAnchoredScrollTop(anchor, readChatAnchorProbes(container), container.scrollTop)
+        if (nextTop !== null && Math.abs(container.scrollTop - nextTop) > 0.5) writeScrollTop(container, nextTop)
+        rememberScrollGeometry(container)
+        settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
+        repairFrameRef.current = shouldContinueDisplaySettle(settleState, timestamp)
+          ? window.requestAnimationFrame(apply)
+          : null
+      }
+      apply(window.performance.now())
     }
 
     const scheduleResizeRepair = (previous: ChatScrollGeometry) => {
@@ -276,9 +311,14 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget
     resizeRepairRef.current = null
+    // A scroll event we did not write is the reader taking over: stop correcting
+    // immediately instead of fighting them for the rest of the settle window.
+    const written = writtenScrollTopRef.current
+    writtenScrollTopRef.current = null
+    if (written === null || Math.abs(element.scrollTop - written) > 1) cancelRepairFrames()
     readReaderPosition(element)
     rememberScrollGeometry(element)
-  }, [readReaderPosition, rememberScrollGeometry])
+  }, [cancelRepairFrames, readReaderPosition, rememberScrollGeometry])
 
   const onClickCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement

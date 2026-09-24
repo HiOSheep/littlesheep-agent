@@ -27,8 +27,11 @@ describe('chat scroll controller wiring', () => {
     const hook = await source('./use-chat-scroll-controller.ts')
 
     expect(hook).toContain('anchor: selectChatVisibleAnchor(readChatAnchorProbes(container), previous.viewportHeight)')
-    expect(hook).toContain('resolveAnchoredScrollTop(repair.anchor, readChatAnchorProbes(container), container.scrollTop)')
-    expect(hook).toMatch(/if \(repair\.stickToBottom\)[\s\S]*?resolveChatResizeScrollTop\(repair\.geometry, current, true\)/)
+    expect(hook).toContain('resolveAnchoredScrollTop(anchor, readChatAnchorProbes(container), container.scrollTop)')
+    expect(hook).toMatch(/if \(repair\.stickToBottom\)[\s\S]*?resolveChatResizeScrollTop\(repair\.geometry, readChatScrollGeometry\(container\), true\)/)
+    // A reflow keeps settling after the ResizeObserver notification, so the anchor is
+    // re-applied on the bounded display-settle clock rather than measured once.
+    expect(hook).toMatch(/const apply = \(timestamp: number\) => \{[\s\S]*?shouldContinueDisplaySettle\(settleState, timestamp\)/)
   })
 
   it('offers a reachable way back with a new-content hint', async () => {
@@ -59,7 +62,18 @@ describe('chat scroll controller wiring', () => {
 
     // The session effect re-pins on purpose; adding the message list (or its length) to
     // its dependencies would re-pin on every new message and defeat the anchor entirely.
-    expect(hook).toMatch(/Opening a conversation starts at its newest message[\s\S]*?\}, \[sessionKey, rememberScrollGeometry, scrollRef\]\)/)
+    expect(hook).toMatch(/Opening a conversation starts at its newest message[\s\S]*?\}, \[sessionKey, rememberScrollGeometry, scrollRef, writeScrollTop\]\)/)
     expect(hook).not.toMatch(/\}, \[sessionKey, messageCount,/)
+  })
+
+  it('yields the settle loop to the reader but not to its own writes', async () => {
+    const hook = await source('./use-chat-scroll-controller.ts')
+
+    // A real-window run proved this is load-bearing: the anchored settle loop kept
+    // re-applying the old reading position after "回到最新" was clicked, so the button
+    // stayed visible and the chat never stayed at the bottom.
+    expect(hook).toContain('writtenScrollTopRef.current = top')
+    expect(hook).toMatch(/const written = writtenScrollTopRef\.current[\s\S]*?if \(written === null \|\| Math\.abs\(element\.scrollTop - written\) > 1\) cancelRepairFrames\(\)/)
+    expect(hook).toMatch(/const scrollToLatest = useCallback\(\(\) => \{[\s\S]*?cancelRepairFrames\(\)/)
   })
 })

@@ -160,7 +160,7 @@
 | `packages/harness/src/cache-observation-store.ts` | 353 | scope-authorized cache observation 存储、查询与时间窗质量报告 | 保持脱敏存储与 scope 边界；后续按 codec、查询和报告拆分 | E |
 | `packages/app/src/renderer/workspace/line-comments.tsx` | 584 | 普通文件与双列 diff 的行号映射、手势、装饰、共享评论 surface 装配和附件发布 | 保留 Monaco 映射与交互 adapter；draft、表单、卡片、几何和通用 view-zone 生命周期由共享模块维护 | B |
 | `packages/skills/src/loader.ts` | 320 | skill 索引与正文装载；新增 per-run 生成的动态正文注册（如 taskbook）后越过 300 行 | 后续按索引构建、正文装载、动态注册分离 | D |
-| `packages/app/src/renderer/chat/use-chat-scroll-controller.ts` | 312 | 对话区滚动位置的唯一所有者：底部吸附、阅读锚点、resize burst 修复队列与"回到最新"状态 | 保持"位置状态只有这一个所有者"的边界，`app-shell/chat-view.tsx` 只渲染；若继续增长，把 resize burst（观测器 + 事件 + 逐帧收敛）拆成独立模块，锚点算术必须留在 `chat-scroll-anchor.ts` 的纯函数里 | B |
+| `packages/app/src/renderer/chat/use-chat-scroll-controller.ts` | 352 | 对话区滚动位置的唯一所有者：底部吸附、阅读锚点、resize burst 修复队列与"回到最新"状态 | 保持"位置状态只有这一个所有者"的边界，`app-shell/chat-view.tsx` 只渲染；若继续增长，把 resize burst（观测器 + 事件 + 逐帧收敛）拆成独立模块，锚点算术必须留在 `chat-scroll-anchor.ts` 的纯函数里 | B |
 
 ## 已完成拆分
 

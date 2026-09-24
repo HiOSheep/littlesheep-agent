@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 00:26:40
+最后更新：2026-09-25 00:42:54
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -102,7 +102,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 
 流式回答的文字边界有一条硬规则：SSE 帧解析（`src/renderer/api/common.ts`）对无法解析的 `data:` 行**只跳过该帧**，不再抛出——此前一个畸形帧会中断整条流的读取，连带丢掉它之后的全部增量与 `result`（UX-20 分层定位确认的整段丢失路径）。"始终没有可解析结果"的失败关闭由 `src/renderer/api/run.ts` 的 `consumeRunStream` 承担，坏帧不得被当成静默成功；分层探针在 `src/renderer/chat/stream-text-integrity.test.ts`。
 
-对话区的阅读位置由 `src/renderer/chat/use-chat-scroll-controller.ts` 单独拥有（UX-19）：贴底时按底边跟随新内容，离开底部后锚定"正在读的那条消息"（`chat-scroll-anchor.ts` 的纯算术），视口或分栏变化不再按"离底部的距离"推移读者；新输出到达而读者不在底部时只提示，并提供 `.chat-jump-to-latest` 作为可达的返回入口。
+对话区的阅读位置由 `src/renderer/chat/use-chat-scroll-controller.ts` 单独拥有（UX-19）：贴底时按底边跟随新内容，离开底部后锚定"正在读的那条消息"（`chat-scroll-anchor.ts` 的纯算术），视口或分栏变化不再按"离底部的距离"推移读者；新输出到达而读者不在底部时只提示，并提供 `.chat-jump-to-latest` 作为可达的返回入口。真实窗口实测（`verify:electron-ui-state-continuity`）：视口高度变化后锚点位移 0.00 px、宽度重排后 0.29 px，底边距离按视口变化量改变，"回到最新"把底边距离恢复到 0。
 
 ## 开发环境管理
 
