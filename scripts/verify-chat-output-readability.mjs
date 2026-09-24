@@ -327,6 +327,23 @@ async function main() {
     const longAnswer = await evaluate(client, MEASURE_EXPRESSION)
     const longAnswerScreenshot = await writePng(client, 'long-answer')
 
+    // A2. the same transcript in compact display: completed activity folds away, so this checks
+    // that folding changes density and not legibility.
+    await evaluate(client, `(() => {
+      localStorage.setItem('littlesheep.ui.conversationDisplayMode', 'compact')
+      window.dispatchEvent(new CustomEvent('littlesheep:conversation-display-mode', { detail: 'compact' }))
+      return true
+    })()`)
+    await delay(500)
+    const longAnswerCompact = await evaluate(client, MEASURE_EXPRESSION)
+    const compactScreenshot = await writePng(client, 'long-answer-compact')
+    await evaluate(client, `(() => {
+      localStorage.setItem('littlesheep.ui.conversationDisplayMode', 'normal')
+      window.dispatchEvent(new CustomEvent('littlesheep:conversation-display-mode', { detail: 'normal' }))
+      return true
+    })()`)
+    await delay(400)
+
     // B. an ordinary bounded run: the tool activity row and its disclosure.
     await startNewConversation(client)
     await submitPrompt(client, '请使用 glob 工具列出当前工作区顶层条目')
@@ -351,11 +368,30 @@ async function main() {
     const narrow = await evaluate(client, MEASURE_EXPRESSION)
     const narrowScreenshot = await writePng(client, 'failure-narrow')
 
+    // E. high device-pixel-ratio at the working size. This emulates the rasterisation half of
+    // Windows display scaling; the half that shrinks the CSS viewport is covered by D above,
+    // because the window manager keeps a window at least MINIMUM_WINDOW CSS pixels wide.
+    await harness.desktopAction(locator, 'resize', WORKING_WINDOW)
+    await delay(400)
+    await client.send('Emulation.setDeviceMetricsOverride', {
+      width: WORKING_WINDOW.width,
+      height: WORKING_WINDOW.height,
+      deviceScaleFactor: 2,
+      mobile: false,
+    }).catch(() => undefined)
+    await delay(600)
+    const highDpi = await evaluate(client, MEASURE_EXPRESSION)
+    const highDpiScreenshot = await writePng(client, 'failure-high-dpi')
+    await client.send('Emulation.clearDeviceMetricsOverride').catch(() => undefined)
+    await delay(300)
+
     const fixtures = {
       longAnswer: { measurement: longAnswer, samples: summarize(longAnswer) },
+      longAnswerCompact: { measurement: longAnswerCompact, samples: summarize(longAnswerCompact) },
       toolRun: { measurement: toolRun, samples: summarize(toolRun) },
       failureRun: { measurement: failureRun, samples: summarize(failureRun) },
       narrowFailure: { measurement: narrow, samples: summarize(narrow) },
+      highDpiFailure: { measurement: highDpi, samples: summarize(highDpi) },
     }
 
     const failures = []
@@ -402,15 +438,35 @@ async function main() {
     expect(narrow.transcriptOverflowPx <= 1, `the transcript overflows horizontally by ${narrow.transcriptOverflowPx}px at the minimum width`)
     expect(narrow.contentWidthPx <= MINIMUM_WINDOW.width, 'the transcript content is wider than the minimum window')
 
+    // 6. Compact display keeps the same legibility contract as normal display.
+    const compactSamples = Object.fromEntries(fixtures.longAnswerCompact.samples.map((sample) => [sample.key, sample]))
+    expect(compactSamples.body !== undefined, 'compact display rendered no measurable body text')
+    expect((compactSamples.body?.contrast ?? 0) >= AA_NORMAL, `compact body contrast ${compactSamples.body?.contrast}`)
+    expect(compactSamples.body?.fontSizePx === longSamples.body?.fontSizePx,
+      `compact display changed the body font size (${compactSamples.body?.fontSizePx} vs ${longSamples.body?.fontSizePx})`)
+    expect(longAnswerCompact.transcriptOverflowPx <= 1, `compact display overflows horizontally by ${longAnswerCompact.transcriptOverflowPx}px`)
+    expect(longAnswerCompact.selectedCharacters > 400, 'compact display made the answer unselectable')
+
+    // 7. High DPI must not change the CSS layout contract at all.
+    expect(highDpi.documentOverflowPx <= 1, `the document overflows horizontally by ${highDpi.documentOverflowPx}px at deviceScaleFactor 2`)
+    expect(highDpi.transcriptOverflowPx <= 1, `the transcript overflows horizontally by ${highDpi.transcriptOverflowPx}px at deviceScaleFactor 2`)
+    const highDpiFailure = fixtures.highDpiFailure.samples.find((sample) => sample.key === 'failure')
+    const normalFailure = fixtures.failureRun.samples.find((sample) => sample.key === 'failure')
+    expect(highDpiFailure?.fontSizePx === normalFailure?.fontSizePx,
+      `deviceScaleFactor 2 changed the failure notice font size (${highDpiFailure?.fontSizePx} vs ${normalFailure?.fontSizePx})`)
+    expect((highDpiFailure?.contrast ?? 0) >= AA_NORMAL, `failure contrast at deviceScaleFactor 2 is ${highDpiFailure?.contrast}`)
+
     const evidence = {
       window: WORKING_WINDOW,
       minimumWindow: MINIMUM_WINDOW,
       fixtures,
       screenshots: {
         longAnswer: longAnswerScreenshot,
+        longAnswerCompact: compactScreenshot,
         toolRun: toolRunScreenshot,
         failure: failureScreenshot,
         narrowFailure: narrowScreenshot,
+        highDpiFailure: highDpiScreenshot,
       },
       failures,
     }
