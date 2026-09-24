@@ -1,5 +1,5 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import {
   type AttachmentRef,
@@ -99,6 +99,8 @@ export function WorkspacePreviewPane({
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  /** Path whose save confirmation must survive the preview refresh it caused. */
+  const savedStatusPathRef = useRef<string | null>(null)
   const [editorHandle, setEditorHandle] = useState<{
     editor: Monaco.editor.IStandaloneCodeEditor
     monaco: typeof Monaco
@@ -186,8 +188,16 @@ export function WorkspacePreviewPane({
     setShowMarkdownSource(isMarkdown && nextEditing)
     setShowHtmlSource(isHtml && nextEditing)
     setSaving(false)
-    setSaveMessage('')
-    setSaveError('')
+    // A successful save reloads the preview (its modifiedAt changes), and this reset
+    // ran in the same tick: the "已保存" line was cleared before it could be seen.
+    // The status now survives exactly the refresh the save itself caused — the ref is
+    // consumed here, so switching files or an external change still clears it.
+    if (savedStatusPathRef.current === preview?.path) {
+      savedStatusPathRef.current = null
+    } else {
+      setSaveMessage('')
+      setSaveError('')
+    }
     if (editable && preview && (preview.kind === 'text' || preview.kind === 'markdown' || preview.kind === 'html')) {
       if (tabId && onDraftChange) onDraftChange(tabId, {
         path: preview.path,
@@ -223,6 +233,8 @@ export function WorkspacePreviewPane({
         emitDraft({ savedText: editorText })
       }
       setSaveMessage('已保存')
+      // Keep the confirmation on screen across the refresh this save triggers.
+      savedStatusPathRef.current = preview.path
     } catch (err) {
       console.debug('[workspace-preview-pane] file save failed', err)
       setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))

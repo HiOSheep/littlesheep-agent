@@ -105,6 +105,7 @@
     "verify:recovery-states": "pnpm run ensure:app-build && node scripts/verify-recovery-states.mjs",
     "verify:review-navigator-width": "pnpm run ensure:app-build && node scripts/verify-review-navigator-width.mjs",
     "verify:no-model-config-loop": "pnpm run ensure:app-build && node scripts/verify-no-model-config-loop.mjs",
+    "verify:async-feedback": "pnpm run ensure:app-build && node scripts/verify-async-feedback.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },

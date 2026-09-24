@@ -261,15 +261,27 @@
 
 **定位**：[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)、[models.tsx](../../packages/app/src/renderer/settings/models.tsx)、[storage.tsx](../../packages/app/src/renderer/settings/storage.tsx)、[plugins.tsx](../../packages/app/src/renderer/settings/plugins.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)、[runtime-actions.ts](../../packages/app/src/renderer/app-shell/runtime-actions.ts)。
 
-- [ ] 建立小型反馈结构：状态、用户可读事实、可选重试/定位动作、可展开详情；tone 由结构字段决定，不解析文案。
-- [ ] 保存中锁定同一事务；成功轻量提示；失败留在发起操作处并保留输入，长错误有界呈现；重新加载失败不能仍只显示旧成功提示。
-- [ ] 验收：供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败；用户在当前页面能看到失败及下一步，不必返回聊天区找错误。补充合适的 status/alert 语义。
+- [x] 建立小型反馈结构：状态、用户可读事实、可选重试/定位动作、可展开详情；tone 由结构字段决定，不解析文案。
+- [x] 保存中锁定同一事务；成功轻量提示；失败留在发起操作处并保留输入，长错误有界呈现；重新加载失败不能仍只显示旧成功提示。
+- [x] 验收：供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败；用户在当前页面能看到失败及下一步，不必返回聊天区找错误。补充合适的 status/alert 语义。
 
 **实施记录（2026-09-22 23:29:56）｜状态：实现完成，实机验收未做，保持未勾选**
 
 - 实现范围：新增 `ui/feedback.ts`（`Feedback { tone, message, detail }`；`feedbackRole` 把色调映射为 `status`/`alert`；`boundedDetail` 把 Runtime 文本规范化并限制为 400 字符；`successFeedback`/`warningFeedback`/`failureFeedback` 由结果字段构造）与 `ui/feedback-notice.tsx`（统一渲染色调、可选重试动作与折叠的“技术详情”，`busy` 时禁用重试）。接入面：`ChannelConnections.tsx` 删除 `reloadMsg.includes('失败')` 的文案嗅探，改为结构化反馈并给出重试；读取失败会替换旧提示（不再留下旧成功行）并清空列表状态。`settings/agent-profile.tsx` 的压缩阈值保存把失败留在该页：`runtime-actions.ts` 新增 `applyRuntimePatchReporting`（与 `applyRuntimePatch` 同一事务，额外把失败文本返回），经 `overlays-view.tsx` → `settings/workspace.tsx` 传到页面，失败时显示“压缩阈值未保存，仍在使用原来的比例”+“重试保存”。`settings/plugins.tsx` 的通知与错误改由共享组件渲染（保留 `plugin-page-notice`/`plugin-page-error` 外观与 `status`/`alert` 语义、失败带重试）。`settings/models.tsx` 的读取失败/成功提示改用同一结构，读取失败会先清掉旧成功提示；`model-provider-editor.tsx` 的保存失败也改为“保存失败，内容仍保留在编辑器里 + 有界详情”。文件保存路径经源码核对已在原地显示失败（`workspace/preview-pane.tsx` 的 `workspace-editor-status error`），本轮不改动。
 - 验证方式：`ui/feedback.test.ts` 11 个用例（色调为字段而非文案解析、色调到 ARIA 角色与失败判定、长文本有界与空白规范化、用户事实与技术详情分离、无详情时不留空披露，以及渠道/模型/插件/编辑器/阈值链路与阈值失败回传的接线断言）；`pnpm exec vitest run packages/app/src/renderer` 100 个文件 / 531 个用例全部通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
 - 未覆盖项：五类失败注入（供应商保存、阈值保存、渠道重载、插件启停、文件保存）仍未在真实窗口中逐项执行；插件页因处于 394 行冻结基线，采用内联反馈对象而非辅助工厂以保持行数不增长。`storage.tsx` 继续使用它既有的 `data-tone` 结构化通知（已是同一模式），未在本轮改写。
+
+**实施记录（2026-09-25 06:05:12）｜状态：五类失败注入已在真实窗口逐项跑通，过程中修掉"文件保存成功提示被自己触发的刷新清掉"；三项勾选**
+
+- 新增真实窗口门 `pnpm run verify-async-feedback`（[verify-async-feedback.mjs](../../scripts/verify-async-feedback.mjs)）：同一个窗口里按请求路径逐个注入 HTTP 500（`POST /config/providers`、`POST /runtime`、`POST /channels/reload`、`POST /plugins/<id>/enabled`、`POST /workspace/save`），每次注入后清掉并重试，全部走真实控件。
+- 实测（1280×840，隔离数据根；失败注入期间 `.composer-error` 始终为空，即五类都不必回到聊天区找错误）：
+  - **供应商保存**：编辑器内改名后保存失败 → 原地出现 `role="alert"` 的 `保存失败，内容仍保留在编辑器里` + 技术详情（含注入的 500），**草稿仍在**（输入框仍是新名字）、编辑器不关闭；清掉注入再点保存 → 成功提示 `已保存供应商 "acceptance-gw"。`，旧失败被替换。
+  - **阈值保存**：改比例后保存失败 → 原地 `role="alert"` 的 `压缩阈值未保存，仍在使用原来的比例` + 注入详情 + 动作 `重试保存`；同时核对 Runtime 里的比例**没有被改写**；清掉注入后重试成功，Runtime 比例变为新值。
+  - **渠道重载**：先成功一次（`外部渠道已重新加载`），再注入失败 → 成功行**已被替换**（旧的“已重新加载”不再显示），出现 `重新加载外部渠道失败` + `重试`。
+  - **插件启停**：对第一个渠道插件注入失败 → `插件操作未完成` + 技术详情 + `重试`，并且开关**没有移动**（`aria-checked` 与点击前一致）。
+  - **文件保存**：在真实 Monaco 里输入标记（Monaco 0.5x 走 `EditContext`，合成 DOM 事件无效，必须真实点击 + 带 `text` 的键盘/插入事件），Ctrl+S 触发 `允许保存工作区文件？` 审批，点“仅本次”后保存请求失败 → 编辑器状态行原地显示 `文件保存失败，请稍后重试。`（错误色调）、输入内容保留、**磁盘文件未被改写**；清掉注入重试并再次批准 → 磁盘写入新内容。
+- **顺带修掉的真实缺陷（本门实机发现）**：文件保存成功后的 `已保存` 提示**看不到**——一次成功的保存会重新读取文件（`modifiedAt` 变化），而同一个重置 effect 会在同一 tick 把状态行清空。修法是 `preview-pane.tsx` 记住"这次刷新是自己的保存引起的"（`savedStatusPathRef` 只豁免紧接的那一次刷新；切换文件或外部改动仍会清空状态行）；本门新增断言：重试保存后等待 1.5 秒，状态行仍是 `已保存` 且无错误色调（修前为 `null`）。回归：`workspace/preview-save-status.test.ts`。
+- 仍未覆盖：注入都在页面层按路径完成，证明的是"失败落在哪、下一步是什么"，不等价于真实后端故障的每一种形状；插件启停用发现的第一个渠道插件（不指定哪一个）；`storage.tsx` 沿用既有 `data-tone` 结构未改写，其失败路径本门未注入。
 
 ### UX-10｜渠道状态汇总准确
 
@@ -716,7 +728,7 @@
 | 6 | UX-06 | 本任务实施记录 + `pnpm run verify:provider-editor-draft` | 编辑后切页返回、取消、保存失败注入、保存中关闭 | |
 | 7 | UX-07 | 本任务实施记录 + `pnpm run verify:keyboard-modal-focus` | 仅键盘打开/循环 Tab/取消/返回原位；两层 UI 一次 Escape 只收一层 | |
 | 8 | UX-08 / UX-10 | 本任务实施记录 | 三个入口状态一致；“每个可点击控件有可见结果”；四种渠道 fixture 的标签与颜色 | |
-| 9 | UX-09 | 本任务实施记录 | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
+| 9 | UX-09 | 本任务实施记录 + `pnpm run verify:async-feedback` | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
 | 10 | UX-11 | 本任务实施记录 + `pnpm run verify:no-model-config-loop` | 新数据根从空状态配置完成并回到原草稿；加载失败重试；保存后选择器从 Runtime 刷新 | |
 | 11 | UX-12 / UX-13 | 本任务实施记录 | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |
 | 12 | UX-14 | 本任务实施记录 | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px） | |

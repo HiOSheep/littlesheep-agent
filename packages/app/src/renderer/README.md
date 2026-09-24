@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-25 05:48:26
+最后更新：2026-09-25 06:02:54
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -13,6 +13,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `app-shell/`：顶层视图、导航历史和控制器组合。
 - `runtime-readiness/`：执行就绪的唯一渲染器侧事实源（查询+订阅+补读）、启动阶段文字与渲染器自报首帧计时。窗口早于 Runner 出现，能力是否可用必须来自这里，不得由视图猜测（详见该目录 README）。正常启动的阶段文字由 `composer-readiness-hint` 就地显示在发送按钮旁，整窗条带只服务失败态（CS-09：不再有横跨整窗的启动状态条）。需要 Runner 才能做的工作（例如加载某段对话的历史）用 `runtime-readiness-state.ts` 的 `waitForExecutionReady()` 等待，而不是在未就绪窗口里发请求、再把 503 渲染成失败。
 - `ui/display-frame.ts`、`ui/display-synced-settle.ts`：合并重复失效请求，并基于 `requestAnimationFrame` 时间戳进行有界布局收敛；当前显示器 VSync 是有效 FPS 上限，稳定后不再申请帧。
+- `ui/feedback.ts`、`ui/feedback-notice.tsx`：异步操作反馈的唯一结构（`tone` 字段决定色调与 `status`/`alert`，长错误有界并折叠在“技术详情”里，重试动作在 pending 时禁用）。五类写操作的失败必须留在发起处：供应商保存、阈值保存、渠道重载、插件启停、文件保存——工作区文件保存的状态行还要跨过它自己触发的那次预览刷新（`已保存` 曾被同一次重置清掉）。真实窗口注入见 `pnpm run verify:async-feedback`。
 - `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`runtime-readiness/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
 - `styles/`：跨领域样式。共享外壳的定位契约要当成布局事实读：`.workspace-files-navigator` 的 `position: absolute` 只适用于 `.workspace-shared-file-navigator` 这个 flex 占位项内部的普通目录导航；审阅标签的导航是 `.workspace-review` 的直接子元素，必须留在 flex 行内（`04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则），否则它会盖住 Diff 表面和标题行按钮（UX-18 实机验收记录：两个图标按钮与导航刷新按钮落在同一矩形，指针不可达）。
 - `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。诊断文案的两个计数互斥：`invalidFiles` 是最近一次扫描读不出来的记录数，`warningCount` 只统计残留临时文件、目录读写异常等不属于这些记录的发现，因此一份坏记录不会被同时说成“无法读取”和“不完整”。
