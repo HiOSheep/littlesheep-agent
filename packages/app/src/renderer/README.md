@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-25 03:44:12
+最后更新：2026-09-25 04:58:20
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -14,7 +14,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `runtime-readiness/`：执行就绪的唯一渲染器侧事实源（查询+订阅+补读）、启动阶段文字与渲染器自报首帧计时。窗口早于 Runner 出现，能力是否可用必须来自这里，不得由视图猜测（详见该目录 README）。正常启动的阶段文字由 `composer-readiness-hint` 就地显示在发送按钮旁，整窗条带只服务失败态（CS-09：不再有横跨整窗的启动状态条）。需要 Runner 才能做的工作（例如加载某段对话的历史）用 `runtime-readiness-state.ts` 的 `waitForExecutionReady()` 等待，而不是在未就绪窗口里发请求、再把 503 渲染成失败。
 - `ui/display-frame.ts`、`ui/display-synced-settle.ts`：合并重复失效请求，并基于 `requestAnimationFrame` 时间戳进行有界布局收敛；当前显示器 VSync 是有效 FPS 上限，稳定后不再申请帧。
 - `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`runtime-readiness/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
-- `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。
+- `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。诊断文案的两个计数互斥：`invalidFiles` 是最近一次扫描读不出来的记录数，`warningCount` 只统计残留临时文件、目录读写异常等不属于这些记录的发现，因此一份坏记录不会被同时说成“无法读取”和“不完整”。
 - `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
 - `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。
 - `ArchiveManager.tsx`：归档项目的永久删除先经 `ui/danger-confirm.tsx` 确认，文案由 `deletion-impact.ts` 按 Local App API 的真实行为生成（删除项目记录会连同其归档对话和本地消息记录，磁盘项目文件夹保留）。删除期间确认动作单次提交，失败留在确认层内。可恢复的归档操作保持单次点击。**防重复必须是同步的 `deletingRef`，不能只靠 `deleting` state**：同一 task 内的两次点击都读到 state 的旧值，实测会在确认层上发出两次 DELETE（`verify:deletion-confirmation` 连点断言，回归在 `deletion-impact.test.ts`）。

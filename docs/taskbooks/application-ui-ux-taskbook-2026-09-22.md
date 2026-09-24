@@ -163,15 +163,28 @@
 
 **定位**：[use-checkpoint-recovery.ts](../../packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts) 的启动 effect、`refreshCheckpoints`；[checkpoint-recovery.tsx](../../packages/app/src/renderer/runtime-recovery/checkpoint-recovery.tsx) 的 trigger、error 和 diagnostics 条件。
 
-- [ ] 将发现失败、有效待恢复、等待用户、损坏记录分开，提供安静的状态入口和受控重试；无有效 checkpoint 也能看到故障。
-- [ ] 安全可续跑任务继续静默处理，结果归原会话；不要把本任务实现为启动自动打开恢复弹窗。
-- [ ] 验收：发现接口失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类场景；失败默认可发现、聊天可用、重试不重复执行已结算操作。
+- [x] 将发现失败、有效待恢复、等待用户、损坏记录分开，提供安静的状态入口和受控重试；无有效 checkpoint 也能看到故障。
+- [x] 安全可续跑任务继续静默处理，结果归原会话；不要把本任务实现为启动自动打开恢复弹窗。
+- [x] 验收：发现接口失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类场景；失败默认可发现、聊天可用、重试不重复执行已结算操作。
 
 **实施记录（2026-09-22 22:18:43）｜状态：实现完成，实机验收未做，保持未勾选**
 
 - 实现范围：`checkpoint-recovery-state.ts` 新增 `checkpointRecoveryEntry`（把发现失败、正在恢复/正在停止、等待补充信息、待恢复任务、损坏记录、完全干净收敛成一个入口）与 `checkpointRecoveryDiagnosticText`（统一“N 份恢复记录无法读取 / N 处不完整”的说明）。`use-checkpoint-recovery.ts` 单独记录 `discoveryFailed`（发现失败不再等同于空列表）并提供只重读列表的 `retryDiscovery`。`checkpoint-recovery.tsx` 的入口按钮改为按派发结果渲染，发现失败时点击即重试；对话框在没有有效 checkpoint 时也显示诊断说明、失败原因和“重新检查”，且失败态的空文案改为“这次没有读取成功，未完成任务的当前状态未知”，不再显示“没有待处理的执行现场”。启动发现仍调用 `refreshCheckpoints(false)`，不自动打开弹窗；安全可续跑的启动静默续跑路径未改动。
 - 验证方式：`packages/app/src/renderer/runtime-recovery/checkpoint-recovery-state.test.ts` 10 个用例（发现失败优先于损坏记录与已有 checkpoint、仅损坏记录可见、等待补充与普通待恢复分开、不可续跑的等待项不冒充“待补充”、恢复中/停止中文案、完全干净才静默、诊断文案组合，以及视图/钩子接线）；`pnpm exec vitest run packages/app/src/renderer/runtime-recovery/checkpoint-recovery-state.test.ts` 通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
 - 未覆盖项：五类场景（发现接口失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑）尚未在真实 Electron 中逐项走查；本轮只验证了状态派生与接线，“聊天保持可用”与“重试不重复执行已结算操作”在实机上的表现仍需 UX-16 的验收记录。新增 `runtime-recovery/README.md` 记录该领域边界与验证方式。
+
+**实施记录（2026-09-25 04:44:12）｜状态：五类场景已在真实窗口逐项跑通，顺带修掉“重试一次同一份坏记录就被多算一份”的计数缺陷；三项勾选**
+
+- 新增真实窗口门 `pnpm run verify:recovery-states`（[verify-recovery-states.mjs](../../scripts/verify-recovery-states.mjs)）：四个隔离数据根、四个真实窗口，全部走真实 Local App API、真实检查点 store 与真实 Renderer；只注入两处：`GET /run-checkpoints` 返回 500（发现失败类），以及验收 Provider 全 500（自动续跑失败类）。
+- 实测（1180×780，隔离数据根）：
+  - **发现失败**：注入 500 → 入口 `恢复检查失败`（class `discovery-failed`，title「未能读取未完成任务；点击重试」），不自动打开弹窗、composer 仍可输入（注入后输入的草稿保留）、0 次 run、0 次模型请求；点入口即重试（页面探针记录到第 2 次列表请求）后入口消失，仍 0 次模型请求 —— 即“失败可发现、聊天可用、重试不执行任何已结算操作”。
+  - **仅损坏记录**：真实坏文件 → 入口 `恢复记录异常`（计数 1）；弹窗内为 `另有 1 份恢复记录无法读取；LS 已保留原文件并停止自动处理。`、空态「没有待处理的执行现场。」、动作「重新检查」；点「重新检查」后弹窗收起，**计数仍是 1**、重开弹窗文案一致、原文件仍在磁盘上、0 次执行。
+  - **需要输入**（旧版兼容形状，见下方边界）：入口 `待补充信息`（计数 1），不会静默续跑（3 秒内 0 次模型请求）；弹窗答案框自动聚焦；不填直接点「继续执行」得到「这个任务正在等待补充信息，请填写后再继续。」且 **0 次 resume 请求、0 次模型请求**；填好后点一次 → 恰好 1 次 `POST /run-checkpoints/:id/resume/stream`（请求体含 `"continuationDirective":"answer"` 与答案原文），续跑完成、回复落在原会话、disposition 记为 `resumed/ok`、弹窗关闭、入口消失。
+  - **自动续跑失败**：启动即全 500 → 12 次请求后失败；入口 `待恢复任务`（1 条）即可发现，不自动打开弹窗；4 秒后请求数与检查点文件数都不再增长（不会自行重试）；源检查点文件字节未被改写；disposition 记为 `resumed/error` 且带 `nextCheckpointId`，留下的正是续跑自己的现场（stage `ask_user`、resumable、claim 恰好 1 次）；弹窗里能读到失败原因与「可以继续」状态；随后清掉注入，普通消息正常得到回答（2 次请求、同一会话、未新增 Runtime 失败行）。
+  - **正常自动续跑**：新数据根里只有该检查点与其会话 → 启动即静默续跑：入口短暂显示 `任务恢复中`，**从未打开恢复弹窗**，2 次模型请求全部来自 runtime 自己（全程没有任何用户输入），回复落在检查点原会话（`activeSessionTitle` 与会话索引一致），完成后入口消失、无待恢复记录，续跑自己那一轮 `settled` 且无 Runtime 失败。
+- **顺带修掉的真实缺陷（实机发现）**：同一份坏记录的计数会随检查次数增长。`run-checkpoint-store.ts` 的 `scannedFiles/readFiles/validFiles/invalidFiles` 与诊断条目按**进程生命周期**累加，用户点一次「重新检查」后同一份坏文件就从“1 份”变成“2 份”；同时 `toCheckpointDiagnostics` 的 `warningCount` 直接取诊断条目总数，而每条坏记录自己也贡献一条，于是同一份文件被同时说成“无法读取”和“不完整”（实机原文：`另有 1 份恢复记录无法读取、1 处恢复记录不完整`）。
+- 修法（同一次改动）：把检查点 schema/序列化拆到 `run-checkpoint-codec.ts`、把“一次目录报告”拆到 `run-checkpoint-scan.ts`，store 只保留文件、原子写入、容量、保留期与常驻账本（891 → 381 行，已低于 600 行，按规则从受控超限清单与强制拆分队列移除；codec 471 行登记进软上限队列）。**计数与逐记录发现改为每次扫描重新给出**；扫描看不到的发现（残留 `.tmp`、裁剪失败、定向读写失败）留在常驻账本，并作为与记录无关的 `warningFindings` 暴露；`invalidFiles` 与 `warningCount` 从此互斥，文案改为「N 处恢复目录读写异常」。回归：`run-checkpoint-store.test.ts` 新增「重复扫描同一份坏记录只算一次」「启动/裁剪发现不进记录计数」两个用例，`run-checkpoint-view.test.ts` 新增互斥计数用例。
+- 仍未覆盖（复选框已勾选，但这三条边界要记住）：①`waiting_user` 形状当前运行时不产出（模型提问按普通回复发布，run 不再停在问题上），该场景用的是**真实检查点改写成旧版兼容形状 + 会话里补上它回答的那条澄清消息**；②窗口 3 只走到“失败可发现 + 聊天可用 + 续跑现场保留”，没有再点一次「继续执行」去续跑那个新现场（同一条点击路径已在窗口 4 用等待输入场景端到端走通）；③四类续跑都用验收 Provider 的确定性桩，不是真实模型，因此本门只证明恢复 UI/状态与 Runtime 续跑的接线，不衡量模型质量。
 
 ### UX-06｜设置草稿和离开保护
 
@@ -671,7 +684,7 @@
 | 2 | UX-02 | 本任务实施记录 + `pnpm run verify:deletion-confirmation` | 取消 / Escape / 请求失败 / 连点各一次；确认前不发生删除、失败留在确认层 | |
 | 3 | UX-03 | 本任务实施记录 + `pnpm run verify:composer-stop-append` | 带草稿与附件时直接停止且草稿不丢；补充发送只提交一次；“正在停止”持续到 run 结束 | |
 | 4 | UX-04 | 本任务实施记录 + `pnpm run verify:skills-catalog-states` | 慢请求、空响应、列表失败、详情失败、快速切换各一次 | |
-| 5 | UX-05 | 本任务实施记录 | 发现失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类 | |
+| 5 | UX-05 | 本任务实施记录 + `pnpm run verify:recovery-states` | 发现失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类 | |
 | 6 | UX-06 | 本任务实施记录 + `pnpm run verify:provider-editor-draft` | 编辑后切页返回、取消、保存失败注入、保存中关闭 | |
 | 7 | UX-07 | 本任务实施记录 + `pnpm run verify:keyboard-modal-focus` | 仅键盘打开/循环 Tab/取消/返回原位；两层 UI 一次 Escape 只收一层 | |
 | 8 | UX-08 / UX-10 | 本任务实施记录 | 三个入口状态一致；“每个可点击控件有可见结果”；四种渠道 fixture 的标签与颜色 | |
