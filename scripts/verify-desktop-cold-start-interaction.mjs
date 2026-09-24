@@ -529,20 +529,28 @@ async function runWorkspacePreviewCase() {
       failures.push({ check: 'the workspace was usable inside the not-ready window', detail: { readiness: readinessAtDraft } })
     }
 
-    // B. Leave the startup conversation and come back to the same sidebar row.
-    //    The taskbook asks exactly this: the file must not be reset to blank.
-    //    The two layout mirrors are recorded with the observation, because the
-    //    answer depends on which conversation bucket the app filed the file under.
+    // B. Enter a conversation. The decided rule (baseline document, CS-08
+    //    supplement) is that the layout produced before any conversation was
+    //    chosen belongs to the first conversation the user enters, so the file must
+    //    come along - and it must leave the draft bucket behind, not linger there
+    //    where nothing can reach it.
     const awayAttempt = await openOtherSession(client)
     await delay(700)
     const away = await readWorkspacePreview(client, markers)
     const noticesAway = await readNoticeSurfaces(client)
-    observation.steps.push({ step: 'switched-away', attempt: awayAttempt, preview: away, notices: noticesAway })
+    const layoutsAfterEnter = await readLayoutState(dataDir, client)
+    observation.steps.push({ step: 'conversation-entered', attempt: awayAttempt, preview: away, notices: noticesAway, layouts: layoutsAfterEnter })
     if (awayAttempt.opened !== true) {
       failures.push({ check: 'the other conversation can be opened', detail: awayAttempt })
     }
-    if (away.marker === 'readme') {
-      failures.push({ check: 'the other conversation does not show the first one\'s file', detail: { draft: inDraft, away } })
+    if (!samePreview(away, inDraft)) {
+      failures.push({
+        check: 'the entered conversation carries the file opened during startup',
+        detail: { draft: inDraft, entered: away, layouts: layoutsAfterEnter },
+      })
+    }
+    if (layoutFileTabs(layoutsAfterEnter, 'draft') > 0) {
+      failures.push({ check: 'the claimed layout leaves the draft bucket', detail: layoutsAfterEnter })
     }
     if (noticesAway.errorText !== null) {
       failures.push({ check: 'switching conversation raises no error banner', detail: noticesAway })
@@ -551,12 +559,30 @@ async function runWorkspacePreviewCase() {
       failures.push({ check: 'switching conversation starts no run', detail: noticesAway })
     }
 
-    const backAttempt = await openSessionByTitle(client, awayAttempt.from)
+    // B2. A conversation that was not entered first keeps its own default layout:
+    //     the claim is one conversation's, not a global "the panel follows you".
+    const otherAttempt = await openSessionByTitle(client, awayAttempt.from)
+    await delay(700)
+    const other = await readWorkspacePreview(client, markers)
+    const noticesOther = await readNoticeSurfaces(client)
+    observation.steps.push({ step: 'second-conversation-opened', attempt: otherAttempt, preview: other, notices: noticesOther })
+    if (otherAttempt?.opened !== true) {
+      failures.push({ check: 'the other conversation row can be opened', detail: otherAttempt })
+    }
+    if (other.marker === 'readme' || other.marker === 'notes') {
+      failures.push({ check: 'a conversation that was not entered first does not inherit the file', detail: { entered: away, other } })
+    }
+    if (noticesOther.errorText !== null) {
+      failures.push({ check: 'the second switch raises no error banner', detail: noticesOther })
+    }
+
+    // B3. Back to the conversation that claimed it: the file must return exactly.
+    const backAttempt = await openSessionByTitle(client, awayAttempt.title)
     await delay(700)
     const returned = await reopenAndReadPreview(client, markers, true)
     const afterReturn = returned.preview
     observation.steps.push({
-      step: 'returned-to-startup-conversation',
+      step: 'returned-to-claiming-conversation',
       attempt: backAttempt,
       panel: returned.panel,
       restore: returned.restore,
@@ -564,11 +590,11 @@ async function runWorkspacePreviewCase() {
       layouts: await readLayoutState(dataDir, client),
     })
     if (backAttempt?.opened !== true) {
-      failures.push({ check: 'the startup conversation row can be reopened', detail: backAttempt })
+      failures.push({ check: 'the claiming conversation row can be reopened', detail: backAttempt })
     }
     if (!samePreview(afterReturn, inDraft)) {
       failures.push({
-        check: 'returning to the startup conversation restores the file opened during startup',
+        check: 'returning to the claiming conversation restores the file opened during startup',
         detail: { before: inDraft, after: afterReturn, layouts: await readLayoutState(dataDir, client) },
       })
     }
@@ -668,6 +694,13 @@ async function runWorkspacePreviewCase() {
     await harness.removeTemporaryRoot(root)
   }
   return { observation, failures }
+}
+
+/** How many file tabs a layout mirror holds for one bucket. */
+function layoutFileTabs(layouts, bucket) {
+  const shapes = layouts?.renderer ?? {}
+  const entry = bucket === 'draft' ? shapes.__draft__ : shapes[bucket]
+  return (entry?.openTabKinds ?? []).filter((kind) => kind === 'file').length
 }
 
 /** The body must carry the marker of the file the breadcrumb names. */

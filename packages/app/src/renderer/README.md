@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-24 14:18:28
+最后更新：2026-09-24 14:40:38
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。
 
@@ -7,7 +7,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 
 ## 入口与所有权
 
-- `workspace/workspace-timing.ts`：CS-08 的两个可用性阶段（首个目录行、首个文件正文被绘制）上报；`api/workspace-files.ts` 的请求路径由 `LOCAL_APP_API_ROUTES` 插值构造并有 `workspace-client-paths.test.ts` 护栏（2026-09-24 曾因缺少 `${` 导致右侧完全不可用）。
+- `workspace/workspace-timing.ts`：CS-08 的两个可用性阶段（首个目录行、首个文件正文被绘制）上报；`api/workspace-files.ts` 的请求路径由 `LOCAL_APP_API_ROUTES` 插值构造并有 `workspace-client-paths.test.ts` 护栏（2026-09-24 曾因缺少 `${` 导致右侧完全不可用）。`workspace/layout-ownership.ts` 决定启动期草稿布局归属哪一段会话（由进入的第一段会话认领），判据见该目录 README。
 - `main.tsx`：React 挂载；同时启动渲染器自报的首帧观察（`runtime-readiness/renderer-timing.ts`，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出）。
 - `App.tsx`：16 行兼容入口，装配 `app-shell` 控制器与就绪提示，不承载业务逻辑。
 - `app-shell/`：顶层视图、导航历史和控制器组合。

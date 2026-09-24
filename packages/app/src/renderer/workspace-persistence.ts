@@ -86,21 +86,6 @@ export function createDefaultWorkspaceSessionLayout(): WorkspaceSessionLayout {
   }
 }
 
-/** Move the unsaved conversation workspace into its newly assigned session id once. */
-export function adoptWorkspaceDraftSessionLayout(
-  layouts: WorkspaceSessionLayouts,
-  sessionId: string,
-): WorkspaceSessionLayouts {
-  const targetKey = workspaceSessionKey(sessionId)
-  const draftLayout = layouts[WORKSPACE_DRAFT_SESSION_KEY]
-  if (!draftLayout || layouts[targetKey]) return layouts
-  return {
-    ...layouts,
-    [targetKey]: draftLayout,
-    [WORKSPACE_DRAFT_SESSION_KEY]: createDefaultWorkspaceSessionLayout(),
-  }
-}
-
 export interface WorkspacePanelRecoveryState {
   openRequest: WorkspaceOpenRequest | null
   openTabs: WorkspacePanelTabId[]

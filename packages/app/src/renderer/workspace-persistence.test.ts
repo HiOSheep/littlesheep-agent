@@ -2,9 +2,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  adoptWorkspaceDraftSessionLayout,
   alignWorkspacePanelStateToRoot,
   buildWorkspaceRecoverySnapshot,
+  createDefaultWorkspaceSessionLayout,
   hydrateWorkspaceLayoutFallbackSnapshot,
   hydrateWorkspaceFileDrafts,
   hydrateWorkspacePanelTabs,
@@ -22,6 +22,7 @@ import {
   WORKSPACE_PANEL_OPEN_TABS_MAX,
 } from './workspace-persistence'
 import { LEGACY_WORKSPACE_BROWSER_TAB_ID } from './workspace/browser-tabs'
+import { adoptWorkspaceDraftSessionLayout, hasWorkspaceLayoutContent } from './workspace/layout-ownership'
 
 describe('workspace persistence helpers', () => {
   it('restores old navigator snapshots and bounds custom widths', () => {
@@ -156,6 +157,51 @@ describe('workspace persistence helpers', () => {
 
     expect(adoptWorkspaceDraftSessionLayout(layouts, 'session-a')).toBe(layouts)
     expect(layouts[workspaceSessionKey('session-a')]).toBe(restoredLayout)
+  })
+
+  it('claims a session bucket that is only the default the switch just created', () => {
+    // Measured ordering: entering a conversation commits that conversation's
+    // default layout before the adoption effect runs, so the empty bucket must
+    // not block the move - it used to swallow the file opened during startup.
+    const fileTab = workspaceFileTabId('D:\\work', 'D:\\work\\README.md')
+    const draftLayout = normalizeWorkspaceSessionLayout({ collapsed: false, openTabs: ['review', fileTab] })
+    const layouts = {
+      [workspaceSessionKey()]: draftLayout,
+      [workspaceSessionKey('session-entered')]: createDefaultWorkspaceSessionLayout(),
+    }
+
+    const adopted = adoptWorkspaceDraftSessionLayout(layouts, 'session-entered')
+
+    expect(adopted).not.toBe(layouts)
+    expect(adopted[workspaceSessionKey('session-entered')]).toBe(draftLayout)
+    expect(hasWorkspaceLayoutContent(adopted[workspaceSessionKey()])).toBe(false)
+  })
+
+  it('never carries an empty draft and never claims the draft key itself', () => {
+    const emptyDraft = createDefaultWorkspaceSessionLayout()
+    const layouts = { [workspaceSessionKey()]: emptyDraft }
+    expect(adoptWorkspaceDraftSessionLayout(layouts, 'session-a')).toBe(layouts)
+    expect(adoptWorkspaceDraftSessionLayout({}, undefined)).toEqual({})
+
+    const fileTab = workspaceFileTabId('D:\\work', 'D:\\work\\a.ts')
+    const withFile = { [workspaceSessionKey()]: normalizeWorkspaceSessionLayout({ openTabs: ['review', fileTab] }) }
+    expect(adoptWorkspaceDraftSessionLayout(withFile, undefined)).toBe(withFile)
+  })
+
+  it('counts what the user produced, not the tree alignment the switch creates', () => {
+    const fileTab = workspaceFileTabId('D:\\work', 'D:\\work\\a.ts')
+    expect(hasWorkspaceLayoutContent(undefined)).toBe(false)
+    expect(hasWorkspaceLayoutContent(createDefaultWorkspaceSessionLayout())).toBe(false)
+    expect(hasWorkspaceLayoutContent(normalizeWorkspaceSessionLayout({ openTabs: ['review', fileTab] }))).toBe(true)
+    expect(hasWorkspaceLayoutContent(normalizeWorkspaceSessionLayout({ openRequest: { root: 'D:\\work', path: 'D:\\work\\a.ts' } }))).toBe(true)
+    // Measured on the real window: entering a conversation leaves exactly this
+    // behind, so it must not block the startup draft from being claimed.
+    expect(hasWorkspaceLayoutContent(normalizeWorkspaceSessionLayout({ expandedPaths: ['D:\\work'] }))).toBe(false)
+    expect(hasWorkspaceLayoutContent(normalizeWorkspaceSessionLayout({ openRequest: { root: 'D:\\work' } }))).toBe(false)
+    expect(hasWorkspaceLayoutContent({
+      ...createDefaultWorkspaceSessionLayout(),
+      browserTabs: [{ id: 'browser-1' }] as never,
+    })).toBe(true)
   })
 
   it('recovers only dirty drafts that match their file tab', () => {

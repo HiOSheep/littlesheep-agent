@@ -23,7 +23,6 @@ import {
 } from '../workspace-layout'
 import {
   WORKSPACE_PANEL_OPEN_TABS_MAX,
-  adoptWorkspaceDraftSessionLayout,
   alignWorkspacePanelStateToRoot,
   createDefaultWorkspaceSessionLayout,
   dedupeWorkspacePanelTabs,
@@ -42,6 +41,7 @@ import {
   type WorkspaceSessionLayouts,
 } from '../workspace-persistence'
 import { readWorkspaceBrowserTabsPreference } from './browser-persistence'
+import { adoptWorkspaceDraftSessionLayout } from './layout-ownership'
 import type { WorkspaceBrowserTab } from './browser-tabs'
 import { isPathInsideOrSameClient } from './path-utils'
 
@@ -62,6 +62,8 @@ interface WorkspaceSessionLayoutOptions {
   setWorkspacePanelWidthPreference: Dispatch<SetStateAction<number>>
   setWorkspacePanelReopenActive: Dispatch<SetStateAction<boolean>>
 }
+
+
 
 export function useWorkspaceSessionLayouts({
   runtime,

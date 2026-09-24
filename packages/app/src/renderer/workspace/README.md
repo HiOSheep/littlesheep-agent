@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-24 13:36:51
+最后更新：2026-09-24 14:40:38
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -14,6 +14,7 @@
 - `monaco-language-support.ts`、`monaco-language-loaders.ts`、`monaco-theme.ts`：Monaco 的 worker-free 语言着色注册、按需 tokenizer 映射和 LS 中性黑灰高对比主题；主题底色、加载占位和状态栏必须保持一致且不引入蓝色背景偏向，普通代码、审阅差异、注释、行号和主要语法色不得退化为低对比或低饱和灰色。审阅的变化行号、增删计数和连续 5px 左缘使用不透明的 `#02A243` 与 `#DE352E`；代码行表面分别使用 `#23452780` 与 `#5D291D80`，在 `#101010` 编辑器底色上合成为参考图的 `#1A2B1C` 与 `#371D17`。字符级背景和整块 gutter 背景透明，避免同一代码行叠出多重色块。生产构建只从 Monaco 官方基础语言模块保留 `conf`/`language` 词法定义，隔离其附带的完整编辑器贡献副作用，并硬拒绝语言 worker、建议记忆与代码动作服务回流，避免惰性语言加载增大产物或在已初始化的服务容器中产生未知服务错误；隔离 Electron 性能验收还会监听真实 Renderer 控制台并拒绝任何未知服务错误，并校验文件/审阅主表面的边到边几何、无外围框计算样式、文件导航单一左分隔线、真实 Diff 行号、单层底色及单列删除左缘。
 - `tab-strip.tsx`：拓展工作区标签条；`use-browser-controller.ts`、`browser-persistence.ts` 和 `browser-tabs.ts`：浏览器标签状态、恢复元数据和有界导航历史。
 - `resize-interaction.ts`、`use-workspace-layout-controller.ts`、`use-workspace-session-layouts.ts`：独立于左侧栏的布局、拖动、折叠和恢复；按会话分桶、草稿采纳和镜像恢复由 `use-workspace-session-layouts.ts` 拥有。
+- `layout-ownership.ts`：**启动期草稿布局归属哪一段会话**的纯规则。窗口在会话选定前就可用，此时打开的文件落在 `__draft__` 桶，而侧栏已经高亮某段会话，所以"进入的第一段会话"要把它认领过去（CS-08 实机缺陷的修复）；判据是**用户真正产生的内容**——默认标签之外的新标签、指向文件的 `openRequest`、未保存草稿或浏览器标签；切换会话时应用自己写入的那一个 `expandedPaths` 对齐项不算内容（实机实测形状见基线文档的 CS-08 补充），空草稿永不带过去，已有自己内容的会话永不被覆盖。
 - `path-utils.ts`、`types.ts`：纯数据与路径边界；`WorkspaceArtifactRef` 仍供聊天和产物入口使用，审阅活动聚合类型已删除。
 
 `workspace-timing.ts`：CS-08 的两个可用性指标——`reportWorkspaceEntriesVisible()`（首个目录行绘制后）与 `reportWorkspacePreviewVisible()`（首个文件正文绘制后，占位/错误/空面板不发布）；每个渲染器只发布一次，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出。

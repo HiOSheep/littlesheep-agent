@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 14:26:26
+最后更新：2026-09-24 14:40:38
 
 本文件记录冷启动任务书 CS-01 的第一次完整基线。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -379,17 +379,29 @@ Runner **未就绪期间**也已实测（探针的 `while-not-ready` 用例把�
 | 点第二个文件后立刻切走再切回（竞争） | 面板显示 `notes.md` 且正文是 notes 的标记——新响应胜出，没有串味 |
 | 隐藏窗口再显示、以及就绪交接 | 正文一字不变 |
 | 其他会话不继承当前文件 | 切过去的会话拿到自己的空桶（`collapsed` + 只有审阅标签），没有旧文件内容，也没有错误横幅、没有启动 run |
-| **启动期间打开的文件（缺陷）** | 窗口此时是**草稿**会话，文件被记进 `__draft__=[review+file]`；用户点进任一会话后，启动时被高亮的那一行再点回来时是 `session:<id>=[review]`，**启动时打开的文件不再回来** |
+| **启动期间打开的文件** | 窗口此时是**草稿**会话，文件被记进 `__draft__=[review+file]`；进入会话后它**跟着用户进入那段会话**（`session:<id>=[review+file]`），草稿桶被清空，切回来正文逐字恢复（见下节：该缺陷已修复） |
 
-缺陷的性质与不修的理由：启动期草稿布局在用户点进任何会话后没有被并入"当初高亮的那一段会话"，而 `adoptWorkspaceDraftSessionLayout` 只在草稿被赋予**新**会话 id 时迁移。修它先要定一条产品规则（启动期草稿布局该归属哪一段会话，或点进会话时是否应把草稿布局带过去），因此本次只记录、不改行为；该失败项**故意留在红**，失败文案即缺陷描述，不要读成 CS-09 的回归。
+#### 缺陷的定位与修复（CS-08 最后一项）
 
-#### 已按决定尝试修复，未生效（如实记录）
+产品决定：启动期草稿布局**并入用户进入的第一段会话**。第一次尝试（把认领从"只在 `__draft__ → session` 那一次键变化"改成"会话键未被用户碰过期间持续认领"）在实机上无效，已回滚。真正的原因由**应用内一次性追踪**给出（`performance.now()` 时间线 + 每次 `commitLayout` 的键与标签形状）：进入会话时，`switchSession` 先为该会话写入一个**看起来非空**的桶——
 
-产品决定：启动期草稿布局**并入用户进入的第一段会话**。据此实现并单测通过了两条纯规则（`adoptStartupDraftSessionLayout` + `hasWorkspaceLayoutContent`：草稿为空不带、目标会话已有自己的内容不覆盖、只由"什么都没产生过"的会话认领），并在 `use-workspace-session-layouts.ts` 里把认领从"只在 `__draft__ → session` 那一次键变化"改成"会话键未被用户碰过期间持续认领"。
+```
+commit { key: session:<id>, markTouched: true, tabs: "review", ... }
+adopt  { draft: {tabs:2, request:yes, expanded:1, drafts:1}, target: {tabs:1, request:null, expanded:1, drafts:0}, adopted: false }
+```
 
-**实机结果：无效，镜像与改动前逐字节相同**（`__draft__=[review+file]`、`session:<id>=[review]`，见同一账本）。因此该改动**已回滚**，不留未经证实的行为变更。它同时排除了一个假设：丢失不是"认领发生在键变化那一刻、而文件写入更晚"这么简单——持续认领同样没有触发，说明文件标签进入 `__draft__` 桶的时机/路径与 `layoutsRef` 的状态更新不在这个 hook 的观察范围内。
+目标桶带着切换时**应用自己写入的一个 `expandedPaths` 对齐项**，而旧判据把"任何已存在的桶"当成"这段会话有自己的布局"，于是认领直接放弃，文件永远留在草稿桶里。修复把判据改成**只认用户真正产生的内容**（默认标签之外的新标签、指向文件的 `openRequest`、未保存草稿、浏览器标签；`expandedPaths` 单独不算，因为切换本身就会写一条），并保留了"空草稿不带"和"已有自己内容的会话不覆盖"两条规则。规则落在 `packages/app/src/renderer/workspace/layout-ownership.ts`（从 `workspace-persistence.ts` 拆出，保持该文件在 600 行硬上限内），单测 18 例。
 
-下一步的诊断方向（未做）：在 `openWorkspaceFile` 路径（`setWorkspaceOpenRequest` → `updateActiveLayout`）与 `commitLayout`/`writeWorkspaceSessionLayoutsPreference` 上加一次性观测，记录每次布局写入时的 `activeWorkspaceSessionKey`、`currentSession`、以及 `touchedKeysRef` 的内容，看清"文件标签到底是在哪一帧、以哪个键写进去的"，再决定认领应该挂在哪一级；在此之前不要重复猜顺序。
+修复后同一夹具的实机结果（`screenshots/cold-start-interaction.json`，整份用例 0 失败）：
+
+| 场景 | 结果 |
+| --- | --- |
+| 启动期间打开文件 → 进入第一段会话 | 正文跟着进入（753 字符、标记 readme），草稿桶只剩审阅标签 |
+| 再切到另一段会话 | 不继承该文件（`marker: unknown`），无错误横幅、无 run |
+| 切回认领它的会话 | 正文逐字恢复 |
+| 就绪后的同一往返、竞争、隐藏/显示、就绪交接 | 全部与修复前一致（通过） |
+
+边界（仍然成立）：认领只发生在**进入的第一段会话**，之后切换会话不再搬运布局；如果那段会话此前已经有自己产生的布局内容，草稿里的启动文件仍会留在草稿桶（本次未处理，也无实测需求）；`layout-ownership.ts` 的判据改动会影响所有"草稿 → 会话"迁移，回归落在 `workspace-persistence.test.ts` 的 18 例与该实机用例上。
 
 ## CS-09 正常启动的阶段文字不再横跨整窗
 
