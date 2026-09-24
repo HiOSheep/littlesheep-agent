@@ -85,8 +85,30 @@ describe('channel connection summary', () => {
     }))
 
     expect(overall).toMatchObject({ kind: 'stopped', label: '外部渠道未运行', counts: '运行 0/1 · 已配置 1 · 失败 1' })
-    expect(overall.detail).toContain('全部未运行')
+    expect(overall.detail).toContain('当前没有渠道在运行')
     expect(overall.detail).toContain('1 项启动失败')
+  })
+
+  it('states the configuration facts when every configured channel is disabled', () => {
+    // The reachable "all stopped" fixture: the channel is configured but
+    // disabled, so nothing was started, nothing is loaded and nothing failed.
+    // The sentence must describe that instead of calling a never-started
+    // channel "未运行" (measured in a real window by verify:channel-entry-states).
+    const overall = summarizeChannelConnections(status({
+      configured: [configured('webhook', false)],
+    }))
+
+    expect(overall).toMatchObject({
+      kind: 'stopped',
+      label: '外部渠道未运行',
+      counts: '运行 0/0 · 已配置 1',
+      loadedCount: 0,
+      runningCount: 0,
+      enabledCount: 0,
+    })
+    expect(overall.detail).toContain('已配置 1 个渠道（0 个启用）')
+    expect(overall.detail).toContain('当前没有渠道在运行')
+    expect(overall.detail).not.toContain('全部未运行')
   })
 
   it('never counts a stopped channel as running in the detail sentence', () => {

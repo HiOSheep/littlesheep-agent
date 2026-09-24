@@ -2,14 +2,14 @@
 
 这里实现渠道插件的会话绑定、准入策略、生命周期和消息调度。
 
-最后更新：2026-09-22 12:43:39
+最后更新：2026-09-25 07:12:30
 
 ## 所有权
 
 - `types.ts`：渠道运行时内部契约（`ChannelPlugin`、`ChannelContext`、进出站消息）。
 - `session-binding.ts`：外部会话到 LS 会话的稳定映射，支持按渠道级联解绑。
 - `policy.ts`：会话准入策略（open/allowlist/pairing/disabled）与内存配对状态。
-- `manager.ts`：注册、启动、停止、移除（含级联删除会话）与 `runAgent`；`lifecycle.ts` 只提供插件退避用的 `abortableDelay`。
+- `manager.ts`：注册、启动、停止、移除（含级联删除会话）与 `runAgent`；`lifecycle.ts` 只提供插件退避用的 `abortableDelay`。`list()` **只返回正在运行的实例**（`stop()` 会把条目移出运行表），因此 `/channels/status` 的 `channels` 里不会出现"已加载但已停止"的条目——启动失败的渠道进的是失败列表。这条契约决定设置页只能按 `running` 计数、不能把列表长度当成连接健康（用例见同目录 `manager.test.ts` 的 `list` 分组；消费方见 `packages/app/src/shared/channel-control-contracts.ts`）。
 
 ## 边界与测试
 

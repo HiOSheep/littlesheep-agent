@@ -258,7 +258,12 @@ export class DefaultChannelManager {
     );
   }
 
-  /** List all running channel plugins. */
+  /**
+   * List all running channel plugins. `stop()` removes the entry, so a plugin
+   * returned here is running: the status payload never carries a
+   * loaded-but-stopped channel, and a channel that failed to start is a
+   * failure entry instead (contract pinned in manager.test.ts).
+   */
   list(): ChannelPlugin[] {
     return Array.from(this.running.values()).map((r) => r.plugin);
   }

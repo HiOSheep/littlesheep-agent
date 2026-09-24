@@ -245,15 +245,23 @@
 
 **定位**：[scheduled.tsx](../../packages/app/src/renderer/settings/scheduled.tsx)、[navigation.ts](../../packages/app/src/renderer/settings/navigation.ts)、[direct-module.tsx](../../packages/app/src/renderer/settings/direct-module.tsx)。
 
-- [ ] 当前基线移除无效筛选控件；选择隐藏入口或明确显示功能尚不可用，统一所有入口的状态。
-- [ ] 不为填满页面而在本清单中新增调度后端；只有真实能力接通后才引入数据空态和筛选。
-- [ ] 验收：每个可点击控件有可见结果；“尚不可用”与“暂无数据”不会互相替代。
+- [x] 当前基线移除无效筛选控件；选择隐藏入口或明确显示功能尚不可用，统一所有入口的状态。
+- [x] 不为填满页面而在本清单中新增调度后端；只有真实能力接通后才引入数据空态和筛选。
+- [x] 验收：每个可点击控件有可见结果；“尚不可用”与“暂无数据”不会互相替代。
 
 **实施记录（2026-09-22 22:28:19）｜状态：实现完成，实机验收未做，保持未勾选**
 
 - 实现范围：`settings/scheduled.tsx` 删除没有状态与回调的“全部/提醒/自动任务”筛选条，改为只声明“计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用”和“功能尚未接入 / 当前版本不能创建或查看计划任务，因此这里没有可显示的数据，也没有筛选可用”，不再出现“暂无已安排任务”这类数据空态文案。`settings/navigation.ts` 的入口描述由“计划任务与自动执行”改为“计划任务尚未接入”，设置总览（复用同一分组表）、设置侧边栏和侧边栏直接模块页因此显示同一状态；三者渲染的都是同一个 `SettingsScheduledPage`。未新增任何调度后端。
 - 验证方式：`packages/app/src/renderer/settings/scheduled.test.ts` 3 个用例（页面不含任何 `<button>`/`onClick`/toolbar/筛选类名、不含“暂无”式空态文案且明确声明未接入、三个入口的描述与页面来源一致）；`pnpm exec vitest run packages/app/src/renderer/settings/scheduled.test.ts` 通过。
 - 未覆盖项：未在真实窗口中确认三个入口的跳转表现；把“已安排”入口整体隐藏仍是备选方案，本轮选择保留入口并明确不可用，等信息架构任务（UX-12）统一决定入口去留。
+
+**实施记录（2026-09-25 07:09:54）｜状态：三个入口的真实窗口走查通过，三项勾选**
+
+- 实机走查（`pnpm run verify:channel-entry-states` 的第一部分，1280×840，隔离数据根）：三个入口逐一点开——设置总览行「已安排」（描述实测为「计划任务尚未接入」）、设置侧边栏条目、应用侧边栏直入模块页——三处渲染的页面文本**完全相同**，标题都是「已安排」。
+- 每个入口的页面实测：`interactiveCount = 0`（`button`/`a[href]`/`input`/`select`/`textarea`/`summary`/`[role=button|switch|tab]`/`contenteditable` 全为 0）、`toolbarCount = 0`（无 `.settings-module-toolbar`/`.settings-filter-pill`/`[role=toolbar]`），即页面上没有任何"点了没反应"的控件；正文同时给出「计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用。」与空态标题「功能尚未接入」+「当前版本不能创建或查看计划任务，因此这里没有可显示的数据，也没有筛选可用。」。
+- 「尚不可用」与「暂无数据」不互相替代：三处页面文本都不含「暂无」式数据空态措辞（`noDataPhrase = false`），同时明确写出"没有可显示的数据"的原因。
+- 每个入口的点击都有可见结果：从总览进入后聊天区被设置页替换（`composerVisible = false`），侧边栏直入页渲染 `main.direct-module-workspace[aria-label="已安排"]`，页面可见且标题为「已安排」。
+- 未覆盖项：只走查了这三个入口能到达的页面本身，未覆盖其它设置页；未评估"是否应该隐藏该入口"这一产品取舍（信息架构任务 UX-12 已决定保留入口并标注不可用）。
 
 ### UX-09｜异步反馈与错误恢复统一
 
@@ -289,15 +297,32 @@
 
 **定位**：[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx) 的 `channel-overall`、渠道列表、failures。
 
-- [ ] 按真实运行项和失败项派生“运行中/部分异常/未运行/未配置”，保留“已配置”“已启用”“运行中”的区别。
-- [ ] 总体状态与逐项状态对齐，不能把配置存在或数量大于零当成连接健康。
-- [ ] 验收：空配置、全部停止、部分运行且部分失败、全部运行四种 fixture；标签、数量和颜色一致。若后端保证不会返回停止项，应先明确契约再简化 UI。
+- [x] 按真实运行项和失败项派生“运行中/部分异常/未运行/未配置”，保留“已配置”“已启用”“运行中”的区别。
+- [x] 总体状态与逐项状态对齐，不能把配置存在或数量大于零当成连接健康。
+- [x] 验收：空配置、全部停止、部分运行且部分失败、全部运行四种 fixture；标签、数量和颜色一致。若后端保证不会返回停止项，应先明确契约再简化 UI。
 
 **实施记录（2026-09-22 22:28:19）｜状态：实现完成，实机验收未做，保持未勾选**
 
 - 实现范围：新增 `renderer/channel-status.ts` 的 `summarizeChannelConnections`：按已加载渠道的真实 `running` 计数和 `failures` 计数派生 `unconfigured / stopped / partial / running` 四种总体状态，并同时给出 `运行 N/M · 已配置 K [· 失败 F]` 的计数与一句话事实（用于 title/无障碍说明）。`ChannelConnections.tsx` 的总体徽章改为该派生结果（含 partial 的警示色），列表标题由“运行中的渠道”改为“已加载渠道”，逐项新增“运行中/未运行”标签，使总体与单项使用同一批事实；`status.channels.length > 0 ? 'running' : 'stopped'` 的判断已删除。后端契约未保证 `channels` 只含运行项，因此保留逐项 `running` 判定，不简化 UI。
 - 验证方式：`packages/app/src/renderer/channel-status.test.ts` 7 个用例（空配置、全部运行且无失败、已配置但全部停止（不因配置存在判健康）、部分运行且部分失败、全部未运行但有失败记录、混合运行不得把停止项算作运行，以及视图接线断言：不再出现“运行中的渠道”与旧三元判断）；`pnpm exec vitest run packages/app/src/renderer/channel-status.test.ts` 通过。
 - 未覆盖项：四种 fixture 尚未在真实窗口中核对颜色与排版；`started` 字段当前未参与总体状态（它描述插件宿主是否启动过），如后续需要区分“未启动”与“未运行”，需先明确后端契约再扩展。
+
+**实施记录（2026-09-25 07:09:54）｜状态：四种 fixture 在同一真实窗口里逐项核对通过；后端契约已写明，三项勾选**
+
+- 实机走查（`pnpm run verify:channel-entry-states` 的第二部分，同一个窗口、同一个 外部渠道页）：每个 fixture 由脚本改写真实 `config.json`，再用页面自己的「重新加载」控件应用（实测确认按钮在重载进行中是 disabled，必须先等它可用，否则点击会被吞掉——这条时序坑已写进门内注释）。运行中的渠道是内置 webhook 插件，监听 OS 分配的 loopback 端口，不依赖任何外部服务。
+- 四个 fixture 的实测（徽章类名/文案/计数/取色 + 分区标题 + 逐行标签与圆点颜色，括号内为主进程真实载荷计数）：
+
+| fixture | 配置 | 载荷（加载/运行/已配置/失败） | 徽章 | 计数 | 徽章取色 |
+| --- | --- | --- | --- | --- | --- |
+| 空配置 | `channels: []` | 0 / 0 / 0 / 0 | `unconfigured`「未配置外部渠道」 | 空 | `rgb(160, 160, 160)` |
+| 全部停止 | webhook，`enabled: false` | 0 / 0 / 1 / 0 | `stopped`「外部渠道未运行」 | 运行 0/0 · 已配置 1 | `rgb(160, 160, 160)` |
+| 部分运行且部分失败 | webhook（enabled）+ 未安装类型的渠道 | 1 / 1 / 2 / 1 | `partial`「部分渠道运行中」 | 运行 1/1 · 已配置 2 · 失败 1 | `rgb(216, 180, 92)` |
+| 全部运行 | webhook（enabled） | 1 / 1 / 1 / 0 | `running`「外部渠道运行中」 | 运行 1/1 · 已配置 1 | `rgb(111, 208, 140)` |
+
+- 逐项与总体一致：全部停止时「已配置渠道 (1)」的圆点是 `channel-dot disabled`（`rgb(133,133,133)`）且带「已禁用」标签、页面**不出现**任何「运行中」字样；部分失败时「已加载渠道 (1)」是 `channel-dot on`（`rgb(111,208,140)`）+「运行中」，「需要处理 (1)」的失败行圆点是 `channel-dot off`（`rgb(239,104,104)`）、失败明细是危险色 `rgb(255,210,210)`，文本是真实后端原因 `channel type "littlesheep-channel-not-installed" is not provided by an active plugin`；空配置时显示「还没有配置外部渠道…」并把 `channels.channels` 放进可展开说明，其余三个 fixture 不再显示这条空态。
+- **后端契约（本项要求"先明确契约"）**：载荷里的 `channels` **只含正在运行的实例**——`PluginHost.listChannels()` 读的是 `channelManager` 的运行表，`stop()` 会把条目移出该表，启动失败的渠道进的是 `failures`。四个 fixture 实测 `loaded === running` 恒成立（门内逐项断言），契约因此写进 `shared/channel-control-contracts.ts`、`packages/plugins` 的 `host.ts`/`channel/manager.ts` 注释，并由 `manager.test.ts` 新增用例（停止后 `list()` 为空且 `running` 为 false）钉住。
+- **据此做的简化**：总体状态里"已加载 N 个渠道，全部未运行"这类句子在后端契约下不可达（`loaded > 0` 且无失败即 `running`），已改成陈述真实事实的「已配置 N 个渠道（M 个启用），当前没有渠道在运行」；逐项的 `running` 判定与失败计数保留为防御路径，不用它渲染后端不会给出的停止项——因为"已配置/列表非空不等于健康"正是本项要守住的判据。`channel-status.test.ts` 由 7 个用例扩到 8 个（新增"全部配置但停用"的可达状态与其文案断言）。
+- 未覆盖项：① 「全部停止」只能由"已配置但停用"构造，`loaded` 非空的停止项在当前后端不可达（这正是契约的内容）；② 未测试网速/插件崩溃等造成的运行中掉线；③ `started` 字段仍未参与总体状态，需要先明确"宿主未启动"与"没有渠道在运行"的区别；④ 失败文案里的渠道名来自 `.channel-name` 的 `strong`+`small` 拼接，未做排版核对。
 
 ### UX-11｜无模型到可用模型的配置闭环
 
@@ -775,7 +800,7 @@
 | 5 | UX-05 | 本任务实施记录 + `pnpm run verify:recovery-states` | 发现失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类 | |
 | 6 | UX-06 | 本任务实施记录 + `pnpm run verify:provider-editor-draft` | 编辑后切页返回、取消、保存失败注入、保存中关闭 | |
 | 7 | UX-07 | 本任务实施记录 + `pnpm run verify:keyboard-modal-focus` | 仅键盘打开/循环 Tab/取消/返回原位；两层 UI 一次 Escape 只收一层 | |
-| 8 | UX-08 / UX-10 | 本任务实施记录 | 三个入口状态一致；“每个可点击控件有可见结果”；四种渠道 fixture 的标签与颜色 | |
+| 8 | UX-08 / UX-10 | 本任务实施记录 + `pnpm run verify:channel-entry-states` | 三个入口状态一致；“每个可点击控件有可见结果”；空配置/全部停止/部分运行且部分失败/全部运行四种渠道 fixture 的标签、数量与颜色 | |
 | 9 | UX-09 | 本任务实施记录 + `pnpm run verify:async-feedback` | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
 | 10 | UX-11 | 本任务实施记录 + `pnpm run verify:no-model-config-loop` | 新数据根从空状态配置完成并回到原草稿；加载失败重试；保存后选择器从 Runtime 刷新 | |
 | 11 | UX-12 / UX-13 | 本任务实施记录 + `pnpm run verify:settings-navigation-terminology` | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |

@@ -479,6 +479,26 @@ describe('DefaultChannelManager', () => {
       expect(manager.list()).toHaveLength(2);
       expect(manager.list()).toEqual(expect.arrayContaining([p1, p2]));
     });
+
+    it('lists only running plugins, so the status payload cannot carry a stopped entry', async () => {
+      // Contract behind ChannelConnectionsStatus.channels: the settings page
+      // counts `running` items instead of treating the list length as health,
+      // and the real window walkthrough (verify:channel-entry-states) checks the
+      // four reachable fixtures against this: nothing loaded, running with
+      // failures, all running, and configured-but-disabled.
+      const { manager } = makeManager();
+      const { factory } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+
+      const plugin = await manager.start(makeRuntimeConfig({ id: 'ch-1' }));
+      expect(plugin.running).toBe(true);
+      expect(manager.list().every((entry) => entry.running)).toBe(true);
+
+      await manager.stop('ch-1');
+
+      expect(plugin.running).toBe(false);
+      expect(manager.list()).toEqual([]);
+    });
   });
 
   describe('stopAll', () => {

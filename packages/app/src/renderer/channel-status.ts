@@ -4,6 +4,14 @@
 // instances the plugin host created, and each one reports `running`. The
 // summary therefore counts running items and failures instead of treating
 // "configured exists" or "the list is not empty" as connection health.
+//
+// Contract: the host lists only *running* instances (a stopped channel leaves
+// the manager's running table, a channel that never started becomes a failure
+// entry) — see `shared/channel-control-contracts.ts` and the `list` cases in
+// `packages/plugins/src/channel/manager.test.ts`. The running count therefore
+// cannot be replaced by the list length even though both agree today: the
+// count is what tells the user how many configured channels are actually up,
+// and the per-item `running` branch stays as a defensive path.
 import type { ChannelConnectionsStatus } from '../shared/channel-control-contracts'
 
 export type ChannelOverallKind = 'unconfigured' | 'stopped' | 'partial' | 'running'
@@ -67,14 +75,25 @@ export function summarizeChannelConnections(status: ChannelConnectionsStatus): C
     }
   }
 
+  // Nothing is running. In the reachable case that means every configured
+  // channel is disabled and none was started, so the sentence states the
+  // configuration facts instead of calling never-started channels "未运行".
+  if (failureCount > 0) {
+    return {
+      ...counts,
+      kind: 'stopped',
+      label: '外部渠道未运行',
+      counts: counter,
+      detail: `已配置 ${configuredCount} 个渠道（${enabledCount} 个启用），当前没有渠道在运行，另有 ${failureCount} 项启动失败。`,
+    }
+  }
+
   return {
     ...counts,
     kind: 'stopped',
     label: '外部渠道未运行',
     counts: counter,
-    detail: failureCount > 0
-      ? `已加载 ${loadedCount} 个渠道，全部未运行，另有 ${failureCount} 项启动失败。`
-      : `已加载 ${loadedCount} 个渠道，全部未运行；已配置 ${configuredCount} 个（${enabledCount} 个启用）。`,
+    detail: `已配置 ${configuredCount} 个渠道（${enabledCount} 个启用），当前没有渠道在运行。`,
   }
 }
 

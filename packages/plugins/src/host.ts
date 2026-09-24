@@ -60,6 +60,11 @@ export interface PluginHost {
   setConfig(config: Config): void
   listPlugins(): PluginStatus[]
   diagnostics(): PluginDiagnostic[]
+  /**
+   * Channel instances the manager currently runs. A stopped channel is removed
+   * from the running table, so every returned plugin reports `running: true`;
+   * a channel that never started is not here at all — it is a failure entry.
+   */
   listChannels(): ChannelPlugin[]
   channelFailures(): ChannelStartFailure[]
 }
