@@ -1,5 +1,6 @@
 // Frozen manifest of the *real* long tasks used to judge the session-cumulative
-// cache red line (acceptance "真实长任务现行红线", 2026-09-22; taskbook LT-00).
+// cache red line (acceptance "真实长任务现行红线", 2026-09-22; taskbook LT-00, retired
+// 2026-09-24 — `git log --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`).
 //
 // The red line is the ratio the DeepSeek Harness front end shows for one session:
 //

@@ -3,7 +3,9 @@
 // Reads the per-run reports written by scripts/run-real-long-task.mjs (plus the
 // kept isolated data roots for the loss decomposition) and emits the LT-00
 // baseline: every run, every frozen node, the measured H_ui, the uncached split
-// and the derived bounds. Nothing is averaged into a headline, no failing run is
+// and the derived bounds. (LT-xx ids are from the retired taskbook: `git log
+// --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`.)
+// Nothing is averaged into a headline, no failing run is
 // dropped, and a run whose usage is incomplete is reported as unavailable.
 //
 // Usage: node scripts/report-real-long-task-baseline.mjs [--dir .codex_tmp] [--json <path>] [--markdown <path>]

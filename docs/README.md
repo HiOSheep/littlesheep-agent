@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-24 20:03:13
+最后更新：2026-09-24 20:03:35
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -8,7 +8,7 @@
 
 **当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，持久记忆的唯一写入方是会话压缩路径。
 
-**推荐下一步**：执行[Runtime 状态一致性与必要记忆任务书](taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。Harness / Runner 冻结为 stable kernel，仅因真实 correctness bug、删除复杂度或已证明缺失的硬 invariant 做最小修改；Runtime 优先补齐 read observation → 写前 revision 校验 → checkpoint → mutate 及 exec 后失效。Memory 采用用户最新方向“明确要求或必要时写入”，与上下文压缩解耦；这仍是待实现方向，当前写入事实见上段。上一份缓存专项按用户确认已完成，后续只保留[现行缓存验收约束](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)，不重复安排原清单。[对话连续性 P0](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)与 UI 专项的未完成验收仍独立保留。
+**推荐下一步**：执行[Runtime 状态一致性与必要记忆任务书](taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。Harness / Runner 冻结为 stable kernel，仅因真实 correctness bug、删除复杂度或已证明缺失的硬 invariant 做最小修改；Runtime 优先补齐 read observation → 写前 revision 校验 → checkpoint → mutate 及 exec 后失效。Memory 采用用户最新方向“明确要求或必要时写入”，与上下文压缩解耦；这仍是待实现方向，当前写入事实见上段。上一份缓存专项按用户确认已完成，其任务书已于 2026-09-24 退役，后续只保留[现行缓存验收约束](reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)，不重复安排原清单。[对话连续性 P0](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)与 UI 专项的未完成验收仍独立保留。
 
 **此刻需要你决定或知晓的事项**：
 
@@ -39,7 +39,6 @@
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
 - [桌面冷启动体验与加载策略优化任务书 2026-09-23](taskbooks/desktop-cold-start-taskbook-2026-09-23.md)：CS-01～CS-10 覆盖启动计时、视觉统一、界面提前可用、执行准备提速、按需加载、续接保护、右侧工作区即刻可用、启动提示摆放，以及按选中会话加载与后台续载。自动化能做的部分都已有实机证据并汇总在[桌面冷启动基线](reference/cold-start-baseline/README.md)：五时间点基线与冷/稳态回归护栏、三种窗口宽度的真实像素证据（含启动失败页）、未就绪期间目录/普通文件/浏览器标签的可用性、会话切换与陈旧响应健壮性（含一处启动期布局缺陷的定位与修复）、CS-09 三档启动的摆放实拍、按需加载的**唯一**一项成对实测提速（语法高亮，首次可执行 1750.7 → 1517.0 ms），以及 durable 存储并行初始化的阶段级收益（Runner 构建净约 14 ms，**未**在首次可执行上测出稳定改善）。CS-10 的真实数据根数字仍只有任务书里的观察值（**没有账本**），但机制已由 `pnpm run measure:desktop-large-history-startup` 在合成的大历史数据根上落账本：400 → 1200 个历史事件分区（1,600 → 4,800 文件）时执行就绪 1277 → 1269 ms，恢复期间元数据/工作区路由最慢 19 ms，因为历史扫描已移出就绪关键路径。未完成的复选框都需要人工或实机条件：缩放/壁纸/失焦等视觉状态、需真实模型配置的恢复归属验证、改选目录、安装包实机，以及 CS-10 的缓存复用量化与打包版复验。
 - [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：16 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态及视觉一致性；区分源码确认与待实机验证，作为独立排期清单。
-- [真实长任务缓存红线任务书 2026-09-22](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)：对齐 DeepSeek Harness 会话累计值的长任务 >=95% 红线，LT-00～LT-08 的真实样本、损失归因、跨 run 续接、输入精简、压缩、能力收缩与逐任务验收。
 
 ### 当前主线
 
@@ -76,6 +75,8 @@
 2026-09-24 按同一规则退役《对话执行可靠性修复任务清单 2026-09-23》（CE-01～CE-13）：65 条验收项全部完成，含真实模型 + 真实 Electron 窗口的交付门与 5 局人工试玩。仍然成立的事实已归入[项目状态](decision/project-status.md)（核心流程与状态边语义、尾部账本与运行时简报、工作区事实与配置保存事务、交付门与探针、未完成方向）、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)（验证分界、不可重试的恢复、交付优先、越权调用与提问轮的边界）与 [Core Flow 状态契约](reference/core-flow-state-contract.md)（提问轮与升级后的终态），实现细节落在各 package/领域 README。仍未闭环的两条写在项目状态的"未完成方向"里：受限模式的批准对话框未在真实窗口走过；`verify:electron-deepseek-parallel-load` 在强杀重启后并发恢复检查点时报 `active resume lease`（属运行状态一致性方向）。
 
 2026-09-24 同日退役《Agent Runtime 连续性任务书 2026-07-14》。它的退役理由不是"阶段全部完成"，而是**机制已被后续架构取代**：DECIDE 与工具提议路径、TaskBook 步骤执行器与步骤级并行、逐请求时钟注入、记忆管理页都已删除或改义，旧阶段计划无法再执行，其阶段号也不再对应任何运行路径。退役前逐条复核了 2026-09-22 审查列为"保留"理由的五项未完成方向，全部由常驻文档承接：Pro/其它 Provider 模型专用校准、非字段事实普遍连续性、外部系统副作用与真实网络中断、长期真实用户负载见[项目状态](decision/project-status.md) 的"未完成方向"P0，数据根迁移真实场景见同文件"桌面应用与数据版本"，原先唯一没有所有者的**任务效率基线**新写入项目状态的"P1：效率基线"（四档任务集、十项指标、与裸模型及成熟 Agent 对比）。其余仍然成立的事实分别由[架构原则](principles/architecture-principles.md)、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)、[UI 交互规范](principles/ui-interaction-guidelines.md)、[仓库指南](reference/repository-guide.md) 与各 package README 拥有，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。同日从 `check:repo` 的 `required` 列表移除该文件，`required` 不再固定任何任务书；[文档退役审查记录](reference/document-retirement-review-2026-09-22.md) 中该项的原"保留"判定已标注后续改判。
+
+2026-09-24 同日退役《真实长任务缓存红线任务书 2026-09-22》（LT-00～LT-08）。退役依据是交付物已达成且有机器可判定的入口：`pnpm run check:cache-acceptance` 当前结论 **met**（长任务 2/2、冻结清单 12 次运行通过回归口径），用户此前已确认该缓存专项完成。退役前把仍然成立的事实分别归入常驻文档：[缓存 95% 验收规程](reference/cache-95-acceptance.md)（指标定义、验收规程、实测边界，以及可核对费用与两类 usage 缺口的未汇总项）、[项目状态](decision/project-status.md)（使前缀可复用的架构事实、压缩不触发导致记忆不写入、休眠但未修复的前缀稳定性问题）与 harness README（`tool_choice` 必须保留目录与 `auto`）；逐次原始数字留在[缓存基线](reference/cache-baseline/README.md)，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`）。原任务书列为退役前置的两份文档（项目状态、缓存验收规程）已提交定稿，不再构成阻塞。
 
 任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径：`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点、LLM Call Contract 和兼容字段里，不得再作为新的产品概念使用。
 

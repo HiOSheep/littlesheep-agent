@@ -1,5 +1,7 @@
 // Frozen real-long-task driver for the session-cumulative cache red line
-// (docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md, LT-00 / LT-07).
+// (docs/reference/cache-95-acceptance.md). The LT-xx ids below come from
+// docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md, retired 2026-09-24:
+// `git log --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`.
 //
 // It runs one frozen task (scripts/lib/real-long-task-manifest.mjs) against the real
 // DeepSeek provider inside an isolated data root: the frozen business turns run
