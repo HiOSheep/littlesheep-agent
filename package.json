@@ -92,6 +92,7 @@
     "verify:chat-streaming-rendering": "pnpm run ensure:app-build && node scripts/verify-chat-streaming-rendering.mjs",
     "verify:retry-feedback": "pnpm run ensure:app-build && node scripts/verify-transport-retry-feedback.mjs",
     "verify:chat-readability": "pnpm run ensure:app-build && node scripts/verify-chat-output-readability.mjs",
+    "verify:chat-reading-scenarios": "pnpm run ensure:app-build && node scripts/verify-chat-reading-scenarios.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },

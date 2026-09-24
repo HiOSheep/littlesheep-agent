@@ -279,9 +279,9 @@ async function waitForSettledTurn(client, timeoutMs) {
   return harness.waitFor(() => evaluate(client, `(() => {
     const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
     const response = turn?.querySelector('.assistant-response-stream')
-    const error = turn?.querySelector('.run-status-error')
+    const failureRow = turn?.querySelector('.run-status-error')
     if (response?.getAttribute('data-stream-state') === 'settled') return 'settled'
-    if (error?.textContent?.trim()) return 'failed'
+    if (failureRow?.textContent?.trim()) return 'failed'
     return null
   })()`), timeoutMs, 'settled turn')
 }
