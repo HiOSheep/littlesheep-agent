@@ -6,7 +6,8 @@
   "expectedSurface": "#101010",
   "screenshots": [
     {
-      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\renderer-1280x820-packaged.png",
+      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\renderer-1280x820.png",
+      "removedDuplicate": "打包版截图与开发版逐字节相同（SHA-256 3d36b5ee894f713a30e6e5dd788e19b9f446bf5677da96a9e2493875085752f6），重复副本已删除；本行指向保留的那一份",
       "kind": "renderer",
       "imageSize": {
         "width": 1280,
@@ -57,7 +58,8 @@
       ]
     },
     {
-      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\renderer-980x700-packaged.png",
+      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\renderer-980x700.png",
+      "removedDuplicate": "打包版截图与开发版逐字节相同（SHA-256 4a3d38ce61933c3720d6ce5534d7ca3c5a9ac7de5af0da64380f42da2b197d93），重复副本已删除；本行指向保留的那一份",
       "kind": "renderer",
       "imageSize": {
         "width": 980,
@@ -261,7 +263,8 @@
       ]
     },
     {
-      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\startup-page-packaged.png",
+      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\startup-page.png",
+      "removedDuplicate": "打包版截图与开发版逐字节相同（SHA-256 fc19e06d4b4e446f95ccb8b30d35804d91f97d5f68644437cc608f619300784d），重复副本已删除；本行指向保留的那一份",
       "kind": "startup-page",
       "imageSize": {
         "width": 1580,
@@ -287,7 +290,8 @@
       "center": "#ccbcb0"
     },
     {
-      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\startup-error-packaged.png",
+      "file": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\startup-error.png",
+      "removedDuplicate": "打包版截图与开发版逐字节相同（SHA-256 174da3d9af156b70cd52960971f93c479b38524f74e94baf65ad5f219734f4be），重复副本已删除；本行指向保留的那一份",
       "kind": "startup-error",
       "imageSize": {
         "width": 1580,

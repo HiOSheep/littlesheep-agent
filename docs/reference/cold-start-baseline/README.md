@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 20:59:07
+最后更新：2026-09-24 21:45:37
 
 本文件是桌面冷启动专项的常驻基线与该专项事实的唯一所有者（原《桌面冷启动体验与加载策略优化任务书 2026-09-23》已于 2026-09-24 退役，原文见 `git log --follow -- docs/taskbooks/desktop-cold-start-taskbook-2026-09-23.md`）。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -466,6 +466,17 @@ adopt  { draft: {tabs:2, request:yes, expanded:1, drafts:1}, target: {tabs:1, re
 打包版在同一夹具与同一脚本下复验通过（`desktop-large-history-startup-2026-09-24-packaged.json`，`--app=packaged`；产物由 `pnpm run package:win` 于同日重新构建，未签名），其就绪比开发版略慢（1497 vs 1191 ms），缓存与轻量路由行为一致。
 
 边界：合成数据根只证明机制，不证明真实磁盘与真实历史规模（上一节的 5.67 s 那批观察值来自真实数据根）；缓存用例的夹具会话**没有真实消息**，因此它证明的是请求次数与往返耗时，不是"有真实历史负载时能省多少毫秒"；本脚本拿不到后台扫描的完成信号（router 不暴露），"扫描结束后继续交互"只由就绪后的响应性采样间接支持；打包版已由上表末行与 `desktop-large-history-startup-2026-09-24-packaged.json` 覆盖（同一夹具、同一脚本），但"就绪不随历史规模增长"仍以两个开发版规模点为准。`--partitions` 可调规模，`--keep` 保留数据根以便复查。
+
+## 证据精简（2026-09-24）
+
+删除了 7 张逐字节重复或只作代理说明的截图（约 0.75 MB），没有断言因此失去证据：
+
+| 删除 | 依据 |
+| --- | --- |
+| `renderer-1280x820-packaged.png`、`renderer-980x700-packaged.png`、`startup-page-packaged.png`、`startup-error-packaged.png` | 与同名开发版**逐字节相同**（SHA-256 依次为 `3d36b5ee894f713a30e6e5dd788e19b9f446bf5677da96a9e2493875085752f6`、`4a3d38ce61933c3720d6ce5534d7ca3c5a9ac7de5af0da64380f42da2b197d93`、`fc19e06d4b4e446f95ccb8b30d35804d91f97d5f68644437cc608f619300784d`、`174da3d9af156b70cd52960971f93c479b38524f74e94baf65ad5f219734f4be`）。打包版账本里这四行改指保留的开发版副本并带 `removedDuplicate` 说明；打包版**哈希不同**的三张（`renderer-1580x900-packaged.png`、`renderer-maximized-packaged.png`、`renderer-restored-packaged.png`）全部保留。 |
+| `readiness-slowed-scale-1_25.png`、`-1_5.png`、`-2.png` | 是本文件两次声明"只近似设备像素比"的 DPR 代理图；同一账本已用 `hintBox`/`composerBox`/`overflowX`/`hintOverlapsSend` 记录这三档的数值断言，真实缩放由用户 2026-09-24 人工确认。账本对应行的 `path` 置为 `null` 并带 `removedProxy` 说明。 |
+
+其余 17 张截图（失败态两张、未就绪期间的交互证据、DPR 之外的三档摆放实拍、开发版与打包版各尺寸渲染器、启动页、最大化/还原）都是各自断言的唯一像素证据，未删除。
 
 ## 复现
 

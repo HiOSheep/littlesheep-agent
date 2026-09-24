@@ -26,15 +26,18 @@
     },
     "slowedScale": [
       {
-        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_25.png",
+        "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
         "attempts": 1
       },
       {
-        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_5.png",
+        "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
         "attempts": 1
       },
       {
-        "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-2.png",
+        "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
         "attempts": 1
       }
     ],
@@ -228,7 +231,8 @@
           },
           "readiness": "starting",
           "screenshot": {
-            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_25.png",
+            "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
             "attempts": 1
           }
         },
@@ -269,7 +273,8 @@
           },
           "readiness": "starting",
           "screenshot": {
-            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-1_5.png",
+            "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
             "attempts": 1
           }
         },
@@ -310,7 +315,8 @@
           },
           "readiness": "starting",
           "screenshot": {
-            "path": "D:\\Repositories\\littlesheep\\docs\\reference\\cold-start-baseline\\screenshots\\readiness-slowed-scale-2.png",
+            "path": null,
+        "removedProxy": "DPR 代理截图已删除（代理只在设备像素比这一维近似真机，真实缩放由用户 2026-09-24 人工确认）；像素断言见同一账本的 box/overflow 字段",
             "attempts": 1
           }
         }
