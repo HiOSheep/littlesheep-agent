@@ -1,6 +1,6 @@
 # 文档退役审查记录 2026-09-22（已执行）
 
-最后更新：2026-09-22 23:49:24
+最后更新：2026-09-24 17:52:58
 
 本文件记录 2026-09-22 对 `docs/reference/**` 与 `docs/taskbooks/**` 的一次集中审查：先由实现者直接退役证据充分的文档，其余逐条列出、经用户批准后执行。每条给出**结论、执行动作与更正后的证据**；证据与本文件最初版本不一致的地方已明确标注更正。
 
@@ -65,6 +65,7 @@
 
 - **复核结论**：`agent-runtime-continuity-taskbook-2026-07-14` 确有未完成项（外部系统副作用与真实网络故障、非字段事实连续性、Pro/其它 Provider 模型专用校准、数据根迁移真实场景、阶段 7 效率评测），保留；`memory-atom-vector-catalog-taskbook-2026-07-17` 的设计事实已全部落在架构原则、Core Flow 指南、`packages/memory-tree/README.md` 与项目状态中，仍开放的只是长期真实负载/Provider 质量门（已由项目状态与架构决策报告跟踪）。
 - **执行**：从 `scripts/check-repository-hygiene.mjs` 的 `required` 列表移除并退役该任务书。**注意**：它的“已完成首版工程闭环”措辞与当前实现不符——模型提案类合并/重组/修订/纠正与非叶子子树移动、daily 提升目前只有契约、校验与边界测试，runtime 没有调用方；该事实已在 [memory-tree README](../../packages/memory-tree/README.md) 中记录，并由新建的[记忆写入专项（现合并为 Runtime 状态一致性与必要记忆任务书）](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)承接后续裁定。
+- **2026-09-24 后续**：`agent-runtime-continuity-taskbook-2026-07-14` 已按同一规则退役（原文可取回：`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。理由不是“阶段全部完成”，而是该任务书的机制已被后续架构取代（DECIDE 与工具提议路径、TaskBook 步骤执行器与步骤级并行、逐请求时钟注入、记忆管理页均已删除或改义），继续保留一份无法执行的旧阶段计划只会分散事实来源。它列出的未完成项经复核全部由常驻文档承接：Pro/其它 Provider 模型专用校准与缓存红线见[项目状态](../decision/project-status.md) 的 P0；非字段事实普遍连续性、外部系统副作用、真实网络中断与长期真实用户负载见同处 P0；数据根迁移真实场景见“桌面应用与数据版本”；**阶段 7 的效率评测原先是唯一没有所有者的方向，已新写入项目状态的“P1：效率基线”**（四档任务集、十项指标、与裸模型/成熟 Agent 对比，并注明原文可取回）。`required` 列表因此不再固定任何任务书。
 
 ## 三、本轮退役清单汇总
 

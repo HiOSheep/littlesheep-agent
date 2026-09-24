@@ -8,6 +8,37 @@ afterEach(() => {
 })
 
 describe('RunRouter durable recovery', () => {
+  it('does not hold modern startup behind a historical event scan', async () => {
+    let releaseScan: (() => void) | undefined
+    const scan = new Promise<Array<{ sessionId: string; runId: string }>>((resolve) => {
+      releaseScan = () => resolve([{ sessionId: 'legacy-session', runId: 'legacy-run' }])
+    })
+    const recoverDurableRun = vi.fn().mockResolvedValue({ actions: [], projection: {} })
+    const runner = {
+      infra: {
+        durableEventStore: { listRuns: vi.fn(() => scan) },
+        durableInboxStore: {
+          listActiveClaimedRuns: vi.fn().mockResolvedValue([]),
+          listRecoverableRuns: vi.fn().mockResolvedValue([]),
+          nextClaimLeaseExpiry: vi.fn().mockResolvedValue(undefined),
+        },
+        durableRunLeaseStore: {
+          read: vi.fn().mockResolvedValue(null),
+          listActiveRuns: vi.fn().mockResolvedValue([]),
+          listRecoverableRuns: vi.fn().mockResolvedValue([]),
+          nextLeaseExpiry: vi.fn().mockResolvedValue(undefined),
+        },
+      },
+      recoverDurableRun,
+    } as unknown as AgentRunner
+
+    const router = await RunRouter.create(runner)
+    expect(recoverDurableRun).not.toHaveBeenCalled()
+    releaseScan?.()
+    await vi.waitFor(() => expect(recoverDurableRun).toHaveBeenCalledWith('legacy-session', 'legacy-run'))
+    router.stop()
+  })
+
   it('retries recovery when an inherited inbox claim lease expires', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-10T00:00:00.000Z'))
@@ -63,6 +94,7 @@ describe('RunRouter durable recovery', () => {
       infra: {
         durableEventStore: { listRuns: vi.fn().mockResolvedValue([{ sessionId: 'session-a', runId: 'run-a' }]) },
         durableRunLeaseStore: {
+          read: vi.fn().mockResolvedValue({ status: 'active' }),
           listActiveRuns: activeRuns,
           listRecoverableRuns: recoverableRuns,
           nextLeaseExpiry,

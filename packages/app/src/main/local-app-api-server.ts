@@ -46,6 +46,8 @@ export async function startLocalAppApiServer(
   let sessionMutationQueue: Promise<void> = Promise.resolve()
   let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
   let runRouterPromise: Promise<RunRouter> | undefined
+  let activeRunRouter: RunRouter | undefined
+  let runRouterGeneration = 0
   const mutateSession = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = sessionMutationQueue.then(operation)
     sessionMutationQueue = result.then(() => undefined, () => undefined)
@@ -140,10 +142,9 @@ export async function startLocalAppApiServer(
         json(res, 200, readiness.payload)
         return
       }
-      // A missing run router means execution is still starting, or it failed
-      // before the router existed. Metadata routes keep answering; every
-      // Runner-backed route fails closed through `requireRunner`.
-      const runRouter = runRouterPromise === undefined ? undefined : await runRouterPromise
+      // Recovery can take much longer than the listener startup on an existing
+      // data root. Never make metadata and workspace requests wait for it.
+      const runRouter = activeRunRouter
       return route(
         req,
         res,
@@ -174,13 +175,16 @@ export async function startLocalAppApiServer(
   })
 
   const port = await bindFetchCompatibleHttpServer(server, opts.port ?? 0)
-
   return {
     port,
     setRunner: async (r: AgentRunner) => {
-      runRouterPromise = RunRouter.create(r)
+      const generation = ++runRouterGeneration
+      const pending = RunRouter.create(r)
+      runRouterPromise = pending
       await initializeForRunner(r)
-      await runRouterPromise
+      const next = await pending
+      if (generation === runRouterGeneration) activeRunRouter = next
+      else next.stop()
     },
     setPluginHost: (host: PluginHost) => {
       currentPluginHost = host
@@ -192,6 +196,7 @@ export async function startLocalAppApiServer(
     stop: async () => {
       const router = await runRouterPromise?.catch(() => undefined)
       router?.stop()
+      if (activeRunRouter !== router) activeRunRouter?.stop()
       terminalRouter.stop()
       await embeddingModelManager.shutdown()
       await closeHttpServer(server)

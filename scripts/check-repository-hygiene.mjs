@@ -194,10 +194,9 @@ async function checkCanonicalFiles() {
     'docs/decision/project-status.md',
     'docs/reference/repository-guide.md',
     'docs/reference/plugin-development.md',
-    // Taskbooks are execution-time working documents. A finished one is retired
-    // after its still-true facts move into the document that owns them, so only
-    // the active baselines are canonical here (see checkTaskbookBudget).
-    'docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md',
+    // Taskbooks are execution-time working documents. A finished or superseded
+    // one is retired after its still-true facts move into the document that owns
+    // them, so none of them is canonical here (see checkTaskbookBudget).
     'scripts/build-app.ps1',
     'scripts/start-littlesheep.ps1',
     'scripts/prepare-littlesheep-runtime.mjs',

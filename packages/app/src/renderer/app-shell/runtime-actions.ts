@@ -22,16 +22,25 @@ interface RuntimeActionOptions {
   refreshProjects: () => Promise<void>
   modelPatchSequenceRef: MutableRefObject<number>
   pendingModelPatchRef: MutableRefObject<PendingModelPatch | null>
+  selectedSessionWorkspaceRef: MutableRefObject<string | undefined>
+  defaultWorkspaceRef: MutableRefObject<string | undefined>
 }
 
 export function createRuntimeActions(options: RuntimeActionOptions) {
+  const forSelectedSession = (next: RuntimeState): RuntimeState => (
+    options.selectedSessionWorkspaceRef.current
+      ? { ...next, workspace: options.selectedSessionWorkspaceRef.current }
+      : next
+  )
+
   async function refreshRuntime() {
     try {
       const next = await getRuntime()
       if (!options.appMountedRef.current) return
-      options.setRuntime(next)
+      options.defaultWorkspaceRef.current = next.workspace
+      options.setRuntime(forSelectedSession(next))
       options.setRuntimeError(null)
-      options.alignWorkspacePanelToWorkspaceRoot(next.workspace)
+      options.alignWorkspacePanelToWorkspaceRoot(forSelectedSession(next).workspace)
     } catch (error) {
       if (options.appMountedRef.current) options.setRuntimeError((error as Error).message)
     }
@@ -50,7 +59,11 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     try {
       const next = await updateRuntime(patch)
       if (!options.appMountedRef.current) return null
-      options.setRuntime(next)
+      options.defaultWorkspaceRef.current = next.workspace
+      if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) {
+        options.selectedSessionWorkspaceRef.current = next.workspace
+      }
+      options.setRuntime(forSelectedSession(next))
       options.setRuntimeError(null)
       if (Object.prototype.hasOwnProperty.call(patch, 'workspace')) options.alignWorkspacePanelToWorkspaceRoot(next.workspace)
       void options.refreshProjects()
@@ -73,6 +86,7 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     try {
       const next = await updateRuntime(patch)
       if (!options.appMountedRef.current) return
+      options.defaultWorkspaceRef.current = next.workspace
       void options.notifyRuntimeSettingChanges(patch, next)
       const latest = options.pendingModelPatchRef.current
       if (!latest || latest.requestId !== requestId) {
@@ -84,7 +98,7 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
         return
       }
       options.pendingModelPatchRef.current = null
-      options.setRuntime(next)
+      options.setRuntime(forSelectedSession(next))
       options.setRuntimeError(null)
     } catch (error) {
       if (!options.appMountedRef.current) return
@@ -97,7 +111,7 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
         return
       }
       options.pendingModelPatchRef.current = null
-      options.setRuntime(latest.baseline)
+      options.setRuntime(forSelectedSession(latest.baseline))
       options.setRuntimeError((error as Error).message)
     }
   }

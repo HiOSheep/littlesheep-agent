@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 27356
+        "port": 15337
       },
       "notices": {
         "errorText": null,
@@ -60,7 +60,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 27356
+        "port": 15337
       }
     },
     {
@@ -95,7 +95,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 27356
+        "port": 15337
       }
     },
     {
@@ -125,10 +125,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 27356,
+        "port": 15337,
         "retryable": false
       },
-      "notReadyWindowMs": 7494,
+      "notReadyWindowMs": 8136,
       "requiredWindowMs": 6000
     },
     {
@@ -560,10 +560,10 @@
         },
         {
           "step": "guest-loaded",
-          "submitted": "http://127.0.0.1:2791/",
+          "submitted": "http://127.0.0.1:50221/",
           "guest": {
             "state": "loaded",
-            "url": "http://127.0.0.1:2791/",
+            "url": "http://127.0.0.1:50221/",
             "text": "MARKER-BROWSER-GUEST-PAGE"
           },
           "readiness": "starting"
@@ -573,7 +573,7 @@
           "readiness": "ready",
           "guest": {
             "state": "loaded",
-            "url": "http://127.0.0.1:2791/",
+            "url": "http://127.0.0.1:50221/",
             "text": "MARKER-BROWSER-GUEST-PAGE"
           }
         }

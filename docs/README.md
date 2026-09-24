@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-24 12:10:20
+最后更新：2026-09-24 17:53:40
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -36,6 +36,7 @@
 
 ## 已决定方向后再看任务书
 
+- [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
 - [桌面冷启动体验与加载策略优化任务书 2026-09-23](taskbooks/desktop-cold-start-taskbook-2026-09-23.md)：CS-01～CS-07 覆盖启动计时、视觉统一、界面提前可用、执行准备提速、按需加载、续接保护和真实 Electron 验收。CS-01～CS-06 的实现与自动化验收已完成，事实汇总在[桌面冷启动基线](reference/cold-start-baseline/README.md)：五时间点基线与冷/稳态回归护栏、三种窗口宽度的真实像素证据（含启动失败页）、未就绪期间的真实交互证据、按需加载的**唯一**一项成对实测提速（语法高亮，首次可执行 1750.7 → 1517.0 ms），以及 durable 存储并行初始化的阶段级收益（Runner 构建净约 14 ms，**未**在首次可执行上测出稳定改善）。未完成的复选框都需要人工或实机条件：缩放/壁纸/失焦等视觉状态、需真实模型配置的恢复归属验证、安装包实机。
 - [应用层 UI / UX 优化与统一任务书 2026-09-22](taskbooks/application-ui-ux-taskbook-2026-09-22.md)：16 项应用层待办，覆盖输入、删除、停止、恢复反馈、设置草稿、键盘、能力空态及视觉一致性；区分源码确认与待实机验证，作为独立排期清单。
 - [真实长任务缓存红线任务书 2026-09-22](taskbooks/real-long-task-cache-taskbook-2026-09-22.md)：对齐 DeepSeek Harness 会话累计值的长任务 >=95% 红线，LT-00～LT-08 的真实样本、损失归因、跨 run 续接、输入精简、压缩、能力收缩与逐任务验收。
@@ -63,7 +64,6 @@
 - [网络检索供应链审查 2026-08-29](reference/web-retrieval-supply-chain-review-2026-08-29.md)：记录 Web 包依赖、许可证、漏洞快照、发布扫描边界与复核条件。
 - [网络检索发布清单 2026-08-29](reference/web-retrieval-release-checklist-2026-08-29.md)：列出离线门、发布当天实际 Provider/渠道/release 包验证和明确的禁止发布条件。
 - [生产依赖安全记录](reference/production-dependency-security.md)：记录临时间接依赖 override 的固定版本、来源、许可证、移除条件与复查日期，避免安全修复变成无所有者的永久配置。
-- [Agent Runtime 连续性任务书 2026-07-14](taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md)：Provider 校准、Context、附件、运行中重入、检查点、后台执行和有界并行。
 
 ### 任务书生命周期
 
@@ -74,6 +74,8 @@
 2026-09-22 已按此规则退役第一批已完成/已失效文档（7 份任务书 + 1 份参考），其中事实已分别归入 `AGENTS.md`、项目状态与遗留参考；退役理由、逐份去向和仍待用户裁定的处置见[文档退役待审清单 2026-09-22](reference/document-retirement-review-2026-09-22.md)。因判定依据不足而**未**退役的文档一律在该清单中列出，不得由实现者直接删除。
 
 2026-09-24 按同一规则退役《对话执行可靠性修复任务清单 2026-09-23》（CE-01～CE-13）：65 条验收项全部完成，含真实模型 + 真实 Electron 窗口的交付门与 5 局人工试玩。仍然成立的事实已归入[项目状态](decision/project-status.md)（核心流程与状态边语义、尾部账本与运行时简报、工作区事实与配置保存事务、交付门与探针、未完成方向）、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)（验证分界、不可重试的恢复、交付优先、越权调用与提问轮的边界）与 [Core Flow 状态契约](reference/core-flow-state-contract.md)（提问轮与升级后的终态），实现细节落在各 package/领域 README。仍未闭环的两条写在项目状态的"未完成方向"里：受限模式的批准对话框未在真实窗口走过；`verify:electron-deepseek-parallel-load` 在强杀重启后并发恢复检查点时报 `active resume lease`（属运行状态一致性方向）。
+
+2026-09-24 同日退役《Agent Runtime 连续性任务书 2026-07-14》。它的退役理由不是"阶段全部完成"，而是**机制已被后续架构取代**：DECIDE 与工具提议路径、TaskBook 步骤执行器与步骤级并行、逐请求时钟注入、记忆管理页都已删除或改义，旧阶段计划无法再执行，其阶段号也不再对应任何运行路径。退役前逐条复核了 2026-09-22 审查列为"保留"理由的五项未完成方向，全部由常驻文档承接：Pro/其它 Provider 模型专用校准、非字段事实普遍连续性、外部系统副作用与真实网络中断、长期真实用户负载见[项目状态](decision/project-status.md) 的"未完成方向"P0，数据根迁移真实场景见同文件"桌面应用与数据版本"，原先唯一没有所有者的**任务效率基线**新写入项目状态的"P1：效率基线"（四档任务集、十项指标、与裸模型及成熟 Agent 对比）。其余仍然成立的事实分别由[架构原则](principles/architecture-principles.md)、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)、[UI 交互规范](principles/ui-interaction-guidelines.md)、[仓库指南](reference/repository-guide.md) 与各 package README 拥有，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。同日从 `check:repo` 的 `required` 列表移除该文件，`required` 不再固定任何任务书；[文档退役审查记录](reference/document-retirement-review-2026-09-22.md) 中该项的原"保留"判定已标注后续改判。
 
 任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径：`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点、LLM Call Contract 和兼容字段里，不得再作为新的产品概念使用。
 

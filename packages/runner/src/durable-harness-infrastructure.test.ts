@@ -48,10 +48,9 @@ describe('durable harness infrastructure startup', () => {
 
   it('records the first declared failure and still attempts the later stores', async () => {
     const root = await createRoot()
-    // Two stores fail here: the event partition name is invalid, and the lease
-    // directory holds a file the store does not own. The event store is declared
-    // first, so its failure is the one reported.
-    await mkdir(join(root, 'durable-events', 'not-a-partition'), { recursive: true })
+    // Two stores fail here: the event root is a file, and the lease directory
+    // holds a file the store does not own. The event store is declared first.
+    await writeFile(join(root, 'durable-events'), 'not a directory', 'utf8')
     await mkdir(join(root, 'durable-run-leases'), { recursive: true })
     await writeFile(join(root, 'durable-run-leases', 'not-a-lease.txt'), 'x', 'utf8')
     const log = vi.fn()
@@ -59,9 +58,9 @@ describe('durable harness infrastructure startup', () => {
 
     const infrastructure = await buildDurableHarnessInfrastructure(root, log, (stage) => marks.push(stage))
 
-    expect(infrastructure.durableHarnessInitializationError?.message).toMatch(/invalid event partition/)
+    expect(infrastructure.durableHarnessInitializationError?.message).toMatch(/EEXIST/)
     expect(infrastructure.durableEventStore.isInitialized).toBe(false)
-    await expect(infrastructure.durableEventStore.initialize()).rejects.toThrow(/invalid event partition/)
+    await expect(infrastructure.durableEventStore.initialize()).rejects.toThrow(/EEXIST/)
     // The documented difference from sequential startup: the stores after the
     // failure have already started, and the ones that are sound complete.
     expect(infrastructure.durableInboxStore.isInitialized).toBe(true)

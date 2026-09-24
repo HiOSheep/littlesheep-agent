@@ -119,6 +119,28 @@ describe('Local App API execution readiness', () => {
     expect(readySessions.status).toBe(200)
   })
 
+  it('keeps metadata responsive while startup recovery is still running', async () => {
+    const { server, runner, base, publish } = await createServer()
+    let releaseRecovery: (() => void) | undefined
+    const recovery = new Promise<void>((resolve) => { releaseRecovery = resolve })
+    vi.mocked(runner.runCheckpoints!.recoverInterruptedResumes).mockImplementation(async () => {
+      await recovery
+      return 0
+    })
+    const settingRunner = server.setRunner(publish())
+    try {
+      const sessions = await fetch(`${base}${LOCAL_APP_API_ROUTES.sessions}`)
+      expect(sessions.status).toBe(200)
+      const runtime = await fetch(`${base}${LOCAL_APP_API_ROUTES.runtime}`)
+      expect(runtime.status).toBe(200)
+      const run = await fetch(`${base}${LOCAL_APP_API_ROUTES.run}`, { method: 'POST' })
+      expect(run.status).toBe(503)
+    } finally {
+      releaseRecovery?.()
+      await settingRunner
+    }
+  })
+
   it('fails Runner-backed routes closed with 503 until a Runner is published', async () => {
     const { server, base, publish } = await createServer()
 

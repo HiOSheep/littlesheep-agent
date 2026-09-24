@@ -19,7 +19,7 @@ import { createRunActions, type RunActionContext } from '../chat/run-actions'
 import { ChatMessage } from '../chat/types'
 import { buildContextUsage, type ContextUsageSnapshot } from '../context-usage'
 import { createProjectActions } from '../sidebar/project-actions'
-import { createSessionActions, type SessionHistoryWindow } from '../sidebar/session-actions'
+import { createSessionActions, type CachedSessionHistory, type SessionHistoryWindow } from '../sidebar/session-actions'
 import { useRuntimeTaskEvents } from '../runtime-events/use-runtime-task-events'
 import { useCheckpointRecovery } from '../runtime-recovery/use-checkpoint-recovery'
 import { FloatingHelpTip } from '../ui/floating-help'
@@ -109,6 +109,9 @@ export function useAppController() {
   const appMountedRef = useRef(true)
   const sessionLoadRequestRef = useRef(0)
   const historyLoadRequestRef = useRef(0)
+  const sessionHistoryCacheRef = useRef(new Map<string, CachedSessionHistory>())
+  const selectedSessionWorkspaceRef = useRef<string | undefined>(undefined)
+  const defaultWorkspaceRef = useRef<string | undefined>(undefined)
   const currentSessionRef = useRef(currentSession)
   const sessionsRef = useRef<SessionMeta[]>(sessions)
   const restoredLastSessionRef = useRef(false)
@@ -416,6 +419,7 @@ export function useAppController() {
   const runtimeActions = createRuntimeActions({
     appMountedRef, runtime, setRuntime, setRuntimeError, alignWorkspacePanelToWorkspaceRoot,
     notifyRuntimeSettingChanges, refreshProjects, modelPatchSequenceRef, pendingModelPatchRef,
+    selectedSessionWorkspaceRef, defaultWorkspaceRef,
   })
   const { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch } = runtimeActions
   const selectableProviders = useMemo(() => runtimeActions.selectableProviders(), [runtime])
@@ -560,10 +564,9 @@ export function useAppController() {
     beginDraftApprovalScope,
     currentSession,
     historyLoadRequestRef,
+    sessionHistoryCacheRef, selectedSessionWorkspaceRef, defaultWorkspaceRef,
     historyWindow,
     pushRoute,
-    refreshProjects,
-    refreshRuntime,
     refreshSessions,
     removeWorkspaceSessionLayout,
     resetWorkspaceSessionLayout,

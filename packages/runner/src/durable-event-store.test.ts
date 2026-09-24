@@ -186,7 +186,10 @@ describe('DurableEventStore', () => {
     await expect(store.read('session-a', 'run-a')).rejects.toBeInstanceOf(DurableEventStoreError);
 
     await writeFile(join(partition, 'invalid.json'), '{}', 'utf8');
-    await expect(new DurableEventStore({ rootDir: root }).initialize()).rejects.toBeInstanceOf(DurableEventStoreError);
+    const reloaded = new DurableEventStore({ rootDir: root });
+    await reloaded.initialize();
+    await expect(reloaded.read('session-a', 'run-a')).rejects.toBeInstanceOf(DurableEventStoreError);
+    await expect(reloaded.listRuns()).rejects.toBeInstanceOf(DurableEventStoreError);
   });
 
   // Next-mode runs hold DurableRunOwnership, so their partition needs no

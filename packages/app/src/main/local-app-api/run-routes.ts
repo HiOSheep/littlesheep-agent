@@ -69,6 +69,7 @@ interface DurableInboxRecoveryStore {
 }
 
 interface DurableRunLeaseRecoveryStore {
+  read?: (sessionId: string, runId: string) => Promise<unknown | null>
   listActiveRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
   listRecoverableRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
   nextLeaseExpiry?: () => Promise<string | undefined>
@@ -99,7 +100,17 @@ export class RunRouter {
 
   static async create(initialRunner: AgentRunner): Promise<RunRouter> {
     const router = new RunRouter()
-    await router.recoverDurableRuns(initialRunner)
+    // The modern lease and inbox stores identify work that may need recovery
+    // now. Scanning every historical event partition can be very expensive on
+    // a long-lived data root, so it must not gate fresh interaction. Keep the
+    // event-only scan as a background compatibility pass for older runs that
+    // predate the lease store.
+    if ((initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)?.durableRunLeaseStore) {
+      await router.recoverDurableRuns(initialRunner, 'queue')
+      void router.recoverDurableRuns(initialRunner, 'events')
+    } else {
+      await router.recoverDurableRuns(initialRunner, 'all')
+    }
     try {
       const recovered = await initialRunner.runCheckpoints?.recoverInterruptedResumes(
         'application restarted before checkpoint continuation completed',
@@ -119,27 +130,31 @@ export class RunRouter {
     return router
   }
 
-  private async recoverDurableRuns(initialRunner: AgentRunner, includeEventRuns = true): Promise<void> {
+  private async recoverDurableRuns(
+    initialRunner: AgentRunner,
+    source: 'all' | 'queue' | 'events' = 'all',
+  ): Promise<void> {
+    if (this.stopped) return
     const durableEventStore = initialRunner.infra?.durableEventStore
     const durableInboxStore = initialRunner.infra?.durableInboxStore as unknown as DurableInboxRecoveryStore | undefined
     const durableRunLeaseStore = (initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)
       ?.durableRunLeaseStore
-    if (((includeEventRuns && durableEventStore?.listRuns)
-      || durableInboxStore?.listRecoverableRuns
-      || durableRunLeaseStore?.listRecoverableRuns) && initialRunner.recoverDurableRun) {
+    if (((source !== 'queue' && durableEventStore?.listRuns)
+      || (source !== 'events' && durableInboxStore?.listRecoverableRuns)
+      || (source !== 'events' && durableRunLeaseStore?.listRecoverableRuns)) && initialRunner.recoverDurableRun) {
       try {
         const activeClaimedRuns = new Set([
           ...(await durableInboxStore?.listActiveClaimedRuns?.() ?? []),
           ...(await durableRunLeaseStore?.listActiveRuns?.() ?? []),
         ].map((run) => `${run.sessionId}\0${run.runId}`))
         const discoveredRuns = [
-          ...(includeEventRuns
+          ...(source !== 'queue'
             ? (await durableEventStore?.listRuns?.() ?? []).filter(
                 (run) => !activeClaimedRuns.has(`${run.sessionId}\0${run.runId}`),
               )
             : []),
-          ...(await durableInboxStore?.listRecoverableRuns?.() ?? []),
-          ...(await durableRunLeaseStore?.listRecoverableRuns?.() ?? []),
+          ...(source !== 'events' ? await durableInboxStore?.listRecoverableRuns?.() ?? [] : []),
+          ...(source !== 'events' ? await durableRunLeaseStore?.listRecoverableRuns?.() ?? [] : []),
         ]
         const durableRuns = [...new Map(discoveredRuns.map((run) => (
           [`${run.sessionId}\0${run.runId}`, run] as const
@@ -147,7 +162,13 @@ export class RunRouter {
           left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
         ))
         for (const durableRun of durableRuns) {
+          if (this.stopped) break
           try {
+            // Modern event-backed runs also have a lease. The queue pass has
+            // already handled expired leases; an active or released lease must
+            // never be re-driven by the legacy compatibility scan.
+            if (source === 'events' && durableRunLeaseStore?.read
+              && await durableRunLeaseStore.read(durableRun.sessionId, durableRun.runId)) continue
             const recovery = await initialRunner.recoverDurableRun(
               asSessionId(durableRun.sessionId),
               durableRun.runId,
@@ -165,10 +186,12 @@ export class RunRouter {
         console.error(`[durable-harness] run recovery discovery failed: ${(error as Error).message}`)
       }
     }
-    try {
-      await this.scheduleDurableRecovery(initialRunner)
-    } catch (error) {
-      console.error(`[durable-harness] recovery wake-up scheduling failed: ${(error as Error).message}`)
+    if (source !== 'events') {
+      try {
+        await this.scheduleDurableRecovery(initialRunner)
+      } catch (error) {
+        console.error(`[durable-harness] recovery wake-up scheduling failed: ${(error as Error).message}`)
+      }
     }
   }
 
@@ -189,7 +212,7 @@ export class RunRouter {
     const delayMs = Math.max(0, Date.parse(expiresAt) - Date.now())
     this.durableRecoveryTimer = setTimeout(() => {
       this.durableRecoveryTimer = undefined
-      void this.recoverDurableRuns(initialRunner, false)
+      void this.recoverDurableRuns(initialRunner, 'queue')
     }, delayMs)
     this.durableRecoveryTimer.unref?.()
   }

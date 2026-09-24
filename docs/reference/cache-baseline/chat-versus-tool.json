@@ -1,6 +1,6 @@
 {
   "probe": "chat-versus-tool",
-  "freeze": "git 3f23d33",
+  "freeze": "git bbc5fe0",
   "model": "test",
   "toolNames": [
     "read",
@@ -12,7 +12,7 @@
     {
       "index": 1,
       "label": "tool.call1",
-      "characters": 7730,
+      "characters": 8429,
       "messages": 11,
       "stableHeadCharacters": 3444,
       "catalog": "document_read,read,web_fetch,web_search#9c23a5b0"
@@ -23,7 +23,7 @@
       "characters": 5604,
       "messages": 7,
       "sharedPrefixCharacters": 3557,
-      "sharedPrefixRatio": 0.4602,
+      "sharedPrefixRatio": 0.422,
       "stableHeadCharacters": 3444,
       "catalog": "none"
     }

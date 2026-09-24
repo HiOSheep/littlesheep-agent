@@ -95,13 +95,9 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     if (this.initializationFailure) throw this.initializationFailure;
     try {
       await mkdir(this.rootDir, { recursive: true });
-      // Scan now so startup fails closed for a corrupt or unknown event file.
-      const entries = await readdir(this.rootDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        if (!/^[a-f0-9]{64}$/.test(entry.name)) throw new DurableEventStoreError(`invalid event partition: ${entry.name}`, 'corrupt');
-        await this.readPartition(join(this.rootDir, entry.name));
-      }
+      // Historical partition validation belongs to the recovery scan. Even a
+      // directory-only listing of a large Windows data root can delay unrelated
+      // new runs by seconds. Reads and appends still validate their own partition.
       this.initialized = true;
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
@@ -231,6 +227,7 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     const runs: Array<{ sessionId: string; runId: string }> = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (!/^[a-f0-9]{64}$/.test(entry.name)) throw new DurableEventStoreError(`invalid event partition: ${entry.name}`, 'corrupt');
       const events = await this.readPartition(join(this.rootDir, entry.name));
       const first = events[0];
       if (first) runs.push({ sessionId: first.sessionId, runId: first.runId });

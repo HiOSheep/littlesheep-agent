@@ -5,6 +5,8 @@ import type { AgentRunner } from '@littlesheep/runner'
 import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import type { LocalAppApiServerOptions } from './contracts.js'
 import type { LocalAppApiRequest } from './http.js'
+import { RuntimeNotReadyError } from './http.js'
+import { LOCAL_APP_API_PREFIXES, LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { routeApplicationLifecycle } from './application-lifecycle-routes.js'
 import type { RunRouter } from './run-routes.js'
 
@@ -33,7 +35,18 @@ export async function routeRunLifecycle(
     controlActiveRun: options.controlActiveRun,
     desktopAcceptance: options.desktopAcceptance,
   })) return true
-  if (!context.runRouter) return false
+  if (!context.runRouter) {
+    const path = request.path
+    if (path === LOCAL_APP_API_ROUTES.run
+      || path === LOCAL_APP_API_ROUTES.runStream
+      || path === LOCAL_APP_API_ROUTES.runCheckpoints
+      || path.startsWith(`${LOCAL_APP_API_ROUTES.runCheckpoints}/`)
+      || path.startsWith(LOCAL_APP_API_PREFIXES.approvals)
+      || /^\/runs\/[^/]+\/events$/.test(path)) {
+      throw new RuntimeNotReadyError()
+    }
+    return false
+  }
   return context.runRouter.route(request, {
     getRunner: context.getRunner,
     getConfig: context.getConfig,

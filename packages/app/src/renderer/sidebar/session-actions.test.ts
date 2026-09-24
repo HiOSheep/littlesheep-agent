@@ -6,7 +6,6 @@ import { createSessionActions, type SessionActionContext } from './session-actio
 vi.mock('../api', () => ({
   deleteSession: vi.fn(),
   getSessionMessagePage: vi.fn(),
-  updateRuntime: vi.fn(),
 }))
 
 vi.mock('../runtime-readiness/runtime-readiness-state', () => ({
@@ -26,14 +25,15 @@ function createSwitchContext(overrides: Partial<SessionActionContext> = {}): Ses
     beginDraftApprovalScope: vi.fn(),
     currentSession: undefined,
     pushRoute: vi.fn(),
-    refreshProjects: vi.fn(async () => undefined),
-    refreshRuntime: vi.fn(async () => undefined),
     refreshSessions: vi.fn(async () => []),
     removeWorkspaceSessionLayout: vi.fn(),
     resetWorkspaceSessionLayout: vi.fn(),
     runtime: null,
     sessionLoadRequestRef: { current: 0 },
     historyLoadRequestRef: { current: 0 },
+    sessionHistoryCacheRef: { current: new Map() },
+    selectedSessionWorkspaceRef: { current: undefined },
+    defaultWorkspaceRef: { current: 'D:\\default' },
     historyWindow: { hasMore: false, loading: false },
     sessions: [],
     setContextUsageSnapshot: vi.fn(),
@@ -143,6 +143,59 @@ describe('session switching', () => {
     expect(context.setCurrentSession).toHaveBeenCalledWith(undefined)
     expect(context.setSessionOwnership).toHaveBeenCalledWith({ scope: 'project', projectId: 'project-1' })
     expect(context.setMessages).toHaveBeenCalledWith([])
+    expect(mockedGetSessionMessagePage).not.toHaveBeenCalled()
+  })
+
+  it('keeps a selected session loading in the background after switching away', async () => {
+    let finishFirst: ((page: { messages: Array<{ id: string; role: 'assistant'; text: string; timestamp: string }>; hasMore: boolean }) => void) | undefined
+    const firstPage = new Promise<{ messages: Array<{ id: string; role: 'assistant'; text: string; timestamp: string }>; hasMore: boolean }>((resolve) => {
+      finishFirst = resolve
+    })
+    mockedGetSessionMessagePage
+      .mockImplementationOnce(() => firstPage)
+      .mockResolvedValueOnce({ messages: [], hasMore: false })
+    const context = createSwitchContext()
+    const actions = createSessionActions(context)
+    const first = { id: 'first', title: '一', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' } as const
+    const second = { id: 'second', title: '二', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' } as const
+
+    const loadingFirst = actions.switchSession(first)
+    await vi.waitFor(() => expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('first', { limit: 120 }))
+    await actions.switchSession(second)
+    finishFirst?.({ messages: [{ id: 'first-message', role: 'assistant', text: '第一段已加载', timestamp: '2026-09-24T00:00:00.000Z' }], hasMore: false })
+    await loadingFirst
+    expect(context.setMessages).not.toHaveBeenCalledWith([expect.objectContaining({ text: '第一段已加载' })])
+
+    await actions.switchSession(first)
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledTimes(2)
+    expect(context.setMessages).toHaveBeenLastCalledWith([expect.objectContaining({ text: '第一段已加载' })])
+  })
+
+  it('switches workspace locally without rebuilding the global runtime', async () => {
+    const context = createSwitchContext({ runtime: { workspace: 'D:\\default' } as SessionActionContext['runtime'] })
+    const actions = createSessionActions(context)
+    await actions.switchSession({ id: 'project-session', title: '项目', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'project', workspacePath: 'D:\\project' })
+    expect(context.selectedSessionWorkspaceRef.current).toBe('D:\\project')
+    expect(context.setRuntime).toHaveBeenCalledWith(expect.any(Function))
+    expect(context.setCurrentSession).toHaveBeenCalledWith('project-session')
+  })
+
+  it('restores the saved default workspace for another session or a new chat', async () => {
+    const context = createSwitchContext({
+      runtime: { workspace: 'D:\\project' } as SessionActionContext['runtime'],
+      selectedSessionWorkspaceRef: { current: 'D:\\project' },
+    })
+    const actions = createSessionActions(context)
+    await actions.switchSession({ id: 'standalone', title: '独立', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' })
+    expect(context.selectedSessionWorkspaceRef.current).toBeUndefined()
+    const switched = vi.mocked(context.setRuntime).mock.lastCall?.[0] as (state: SessionActionContext['runtime']) => SessionActionContext['runtime']
+    expect(switched(context.runtime)?.workspace).toBe('D:\\default')
+
+    context.selectedSessionWorkspaceRef.current = 'D:\\project'
+    actions.createConversationFromSidebar()
+    const newChat = vi.mocked(context.setRuntime).mock.lastCall?.[0] as (state: SessionActionContext['runtime']) => SessionActionContext['runtime']
+    expect(newChat(context.runtime)?.workspace).toBe('D:\\default')
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledTimes(1)
   })
 
   it('force reloads the active session after checkpoint recovery without aborting the completed stream', async () => {

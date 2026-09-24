@@ -39,11 +39,11 @@ export async function buildDurableHarnessInfrastructure(
    * stayed inside their run-to-run spread, so this is a stage-level gain and is
    * not claimed as a measured first-executable improvement.
    *
-   * Failure semantics stay the same as the sequential version for callers: the
-   * first failure in declaration order is the one reported and recorded, and
+   * Failure semantics stay the same for the startup checks each store performs:
+   * the first failure in declaration order is the one reported and recorded, and
    * `durableHarnessInitializationError` still closes next-mode admission before
    * any model or tool work. The only difference is that a later store may have
-   * finished its own scan (and expired-claim requeue) before the failure is
+   * finished its own initialization (and expired-claim requeue) before the failure is
    * raised; that write is bounded, idempotent, and confined to its own
    * directory, and the run cannot proceed on the failed store either way.
    */

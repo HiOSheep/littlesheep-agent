@@ -6,7 +6,7 @@ import {
   deleteSession,
   getSessionMessagePage,
   renameSession as requestSessionRename,
-  updateRuntime,
+  type SessionMessagePage,
   type ProjectMeta,
   type RuntimeState,
   type SessionMeta
@@ -27,7 +27,13 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { FloatingHelpTip } from '../ui/floating-help'
-import { isSamePath } from '../workspace/path-utils'
+
+export interface CachedSessionHistory {
+  lastMessageAt: number
+  page: Promise<SessionMessagePage>
+}
+
+class SessionExecutionFailedError extends Error {}
 
 /**
  * Annotate the newest assistant activity with the session's real compaction
@@ -62,14 +68,15 @@ export interface SessionActionContext {
   beginDraftApprovalScope: () => void
   currentSession: string | undefined
   pushRoute: (route: AppRoute) => void
-  refreshProjects: () => Promise<void>
-  refreshRuntime: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
   removeWorkspaceSessionLayout: (sessionId: string) => void
   resetWorkspaceSessionLayout: (sessionId?: string) => void
   runtime: RuntimeState | null
   sessionLoadRequestRef: MutableRefObject<number>
   historyLoadRequestRef: MutableRefObject<number>
+  sessionHistoryCacheRef: MutableRefObject<Map<string, CachedSessionHistory>>
+  selectedSessionWorkspaceRef: MutableRefObject<string | undefined>
+  defaultWorkspaceRef: MutableRefObject<string | undefined>
   historyWindow: SessionHistoryWindow
   sessions: SessionMeta[]
   setContextUsageSnapshot: Dispatch<SetStateAction<ContextUsageSnapshot | null>>
@@ -102,9 +109,10 @@ const SESSION_HISTORY_MEMORY_MAX = 480
 export function createSessionActions(context: SessionActionContext) {
   const {
     abortRef, appMountedRef, approvalGrantsRef, historyLoadRequestRef, sessionLoadRequestRef,
+    sessionHistoryCacheRef, selectedSessionWorkspaceRef, defaultWorkspaceRef,
     alignWorkspacePanelToWorkspaceRoot, pushRoute, removeWorkspaceSessionLayout,
     resetWorkspaceSessionLayout,
-    beginDraftApprovalScope, refreshProjects, refreshRuntime, refreshSessions, settleApprovalPrompt,
+    beginDraftApprovalScope, refreshSessions, settleApprovalPrompt,
     currentSession, historyWindow, runtime, sessions, visibleSessions,
     setContextUsageSnapshot, setConversationCollapsed, setControlTip, setCurrentSession,
     setHistoryWindow, setMessages, setPinnedSessionIds, setRuntime, setRuntimeError,
@@ -120,6 +128,10 @@ export function createSessionActions(context: SessionActionContext) {
 
   function newSession(ownership: Pick<SessionMeta, 'scope' | 'projectId'> = { scope: 'standalone' }) {
     invalidateConversationView()
+    selectedSessionWorkspaceRef.current = undefined
+    setRuntime((current) => current && defaultWorkspaceRef.current
+      ? { ...current, workspace: defaultWorkspaceRef.current }
+      : current)
     pushRoute({ section: 'chat' })
     beginDraftApprovalScope()
     resetDraftPermissionMode()
@@ -164,21 +176,11 @@ export function createSessionActions(context: SessionActionContext) {
     const { id, workspacePath } = session
     setSidebarPanel(null)
     pushRoute({ section: 'chat' })
-    if (workspacePath && (!runtime || !isSamePath(runtime.workspace, workspacePath))) {
-      try {
-        const next = await updateRuntime({ workspace: workspacePath })
-        if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
-        setRuntime(next)
-        setRuntimeError(null)
-        void refreshProjects()
-      } catch (e) {
-        if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
-        setRuntimeError((e as Error).message)
-        await refreshRuntime()
-        return
-      }
-    }
-    const sessionWorkspace = workspacePath ?? runtime?.workspace
+    // Session selection changes the effective workspace for this view and its
+    // run request. It must not persist a new global default or rebuild Runner.
+    selectedSessionWorkspaceRef.current = workspacePath
+    const sessionWorkspace = workspacePath ?? defaultWorkspaceRef.current ?? runtime?.workspace
+    if (sessionWorkspace) setRuntime((current) => current ? { ...current, workspace: sessionWorkspace } : current)
     if (sessionWorkspace) alignWorkspacePanelToWorkspaceRoot(sessionWorkspace, id)
     setSessionOwnership({ scope: session.scope, projectId: session.projectId })
     const sessionChanged = id !== currentSession
@@ -193,21 +195,28 @@ export function createSessionActions(context: SessionActionContext) {
     // and make the input surface jump on every session switch.
     setMessages([])
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: true })
-    // History is served by the Runner, so opening a conversation during the
-    // deliberately interactive not-ready window used to answer 503 and surface as
-    // "加载历史失败". Wait for execution instead: the viewport keeps its loading
-    // state, and the conversation appears as soon as the capability exists.
-    // Readiness that is unknown (no bridge) resolves immediately, so this is not
-    // a new gate for unit tests or non-Electron hosts.
-    const readiness = await waitForExecutionReady()
-    if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
-    if (readiness?.state === 'failed') {
-      setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
-      setRuntimeError('执行能力启动失败，这段对话暂时无法加载。')
-      return
+    // Only a selected session starts its history request. The promise belongs
+    // to that session, so switching away does not cancel its load; switching
+    // back can reuse either an in-flight or a completed first page.
+    const cache = sessionHistoryCacheRef.current
+    const cached = cache.get(id)
+    const page = !options.forceReload && cached?.lastMessageAt === session.lastMessageAt
+      ? cached.page
+      : (async () => {
+        const readiness = await waitForExecutionReady()
+        if (readiness?.state === 'failed') throw new SessionExecutionFailedError()
+        return getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
+      })()
+    if (page !== cached?.page) {
+      cache.delete(id)
+      cache.set(id, { lastMessageAt: session.lastMessageAt, page })
+      if (cache.size > 6) cache.delete(cache.keys().next().value!)
     }
     try {
-      const history = await getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
+      const history = await page.catch((error) => {
+        if (cache.get(id)?.page === page) cache.delete(id)
+        throw error
+      })
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
       setRuntimeError(null)
       setMessages(attachCompactionNotice(
@@ -225,7 +234,9 @@ export function createSessionActions(context: SessionActionContext) {
       if (!appMountedRef.current || requestId !== sessionLoadRequestRef.current) return
       setMessages([])
       setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
-      setRuntimeError(`加载历史失败: ${(e as Error).message}`)
+      setRuntimeError(e instanceof SessionExecutionFailedError
+        ? '执行能力启动失败，这段对话暂时无法加载。'
+        : `加载历史失败: ${(e as Error).message}`)
     }
   }
 
@@ -284,6 +295,7 @@ export function createSessionActions(context: SessionActionContext) {
 
 
   function clearSessionFromLocalState(id: string, options: { forgetWorkspace?: boolean } = {}) {
+    sessionHistoryCacheRef.current.delete(id)
     approvalGrantsRef.current.clear(sessionApprovalScopeKey(id))
     forgetSessionPermissionMode(id)
     setSessions((items) => items.filter((item) => item.id !== id))

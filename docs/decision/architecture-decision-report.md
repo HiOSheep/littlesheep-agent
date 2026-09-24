@@ -1,8 +1,8 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-09-22 23:49:24
+最后更新：2026-09-24 17:52:04
 评估范围：当前源码、常驻文档与已记录的验证结果
-执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**当前未闭环的是缓存 95% 红线（实机负载未达标）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、MCP 与发布流程。**
+执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**当前未闭环的是缓存 95% 红线（实机负载未达标）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
 
 ## 当前开发方向（2026-09-22，待实施）
 
@@ -190,7 +190,7 @@ src/renderer/shared/
 
 ## 6. 推荐实施顺序
 
-以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行使用 [Agent Runtime 连续性任务书 2026-07-14](../taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md) 的独立阶段号；全局执行顺序以 [项目状态](project-status.md) 的"推荐后续顺序"为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
+以下顺序描述 **跨模块职责收敛工作线**，不是产品全部任务的唯一阶段编号。Context、记忆注册、附件、运行中重入、检查点和后台执行的原专项阶段号随《Agent Runtime 连续性任务书 2026-07-14》于 2026-09-24 退役（该任务书的机制多数已被单一主循环、只读记忆工具与"压缩唯一写入"取代，原文可取回：`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）；仍未闭环的方向已并入[项目状态](project-status.md) 的"未完成方向"，全局执行顺序以项目状态的"推荐后续顺序"为准。每个阶段的当前进度以本节状态和项目状态为准，不能只因类型或入口存在就视为完成。
 
 ### 阶段 0：特征基线与核心契约
 

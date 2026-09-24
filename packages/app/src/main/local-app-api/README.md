@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-24 03:25:57
+最后更新：2026-09-24 18:49:21
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -49,6 +49,8 @@
 - **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。`/application/acceptance` 另提供仅隔离验收使用的 `resize`、`maximize`、`minimize`、`startup-page` 与 `startup-error` 动作（`resize` / `maximize` 供 CS-02 在多个窗口宽度与最大化/还原两种状态下核对原生覆盖区；`minimize` 供启动期间的窗口生命周期检查，最小化后窗口不参与截图、检查的是 DOM 状态；`startup-page` / `startup-error` 把生产同一份启动文档、真实失败文案交回窗口，以便对这两个靠等待无法到达的页面捕获像素），无对应能力时返回 501。
 - **失败关闭为 503 `runtime-not-ready`**：所有真正需要 Runner 的分支。它们必须用 `resolveRunner(context.getRunner)` **在用到该 Runner 的分支内**惰性解析——不得把 `getRunner()` 提到函数开头，否则 `/sessions` 这类元数据路由会在 Runner 未发布时一起失败（这正是实测中发现的缺陷：Runner 构建失败时侧栏会空白）。
 - **Runner 发布后启用**：`setRunner()` 同时构建 RunRouter 并初始化附件缓存，调用方在它 settle 之前不发布执行就绪，因此没有请求会看到半成品 router。
+- **恢复期间的路由隔离**：`local-app-api-server.ts` 不得在请求入口等待 `RunRouter.create()`；否则旧任务恢复会让 `/sessions`、`/runtime` 和工作区预览一起无响应。只在 RunRouter 完成后原子发布实例；此之前 Run/Checkpoint/审批入口返回 503，已有元数据路由继续服务。
+- **旧事件异步补扫**：RunRouter 先等待现代租约与收件箱中可恢复任务的检查，再开放执行；遍历所有历史事件分区的旧版兼容恢复在后台继续，已有租约的 run 不重复恢复。后台扫描在 router 停止后不得继续发起新的恢复。
 
 `getRunner()` 返回 `undefined` 表示"执行不可用"，由组合根持有该状态（`packages/app/src/main/index.ts` 的 `runner` 引用只在 `startExecution()` 中赋值）。
 

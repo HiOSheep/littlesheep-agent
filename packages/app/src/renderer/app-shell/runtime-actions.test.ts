@@ -24,7 +24,7 @@ function runtimeState(workspace: string): RuntimeState {
   return { workspace } as RuntimeState
 }
 
-function actions(overrides: { mounted?: boolean } = {}) {
+function actions(overrides: { mounted?: boolean; selectedWorkspace?: string } = {}) {
   const setRuntime = vi.fn()
   const setRuntimeError = vi.fn()
   const created = createRuntimeActions({
@@ -37,6 +37,8 @@ function actions(overrides: { mounted?: boolean } = {}) {
     refreshProjects: vi.fn(async () => undefined),
     modelPatchSequenceRef: { current: 0 },
     pendingModelPatchRef: { current: null },
+    selectedSessionWorkspaceRef: { current: overrides.selectedWorkspace },
+    defaultWorkspaceRef: { current: undefined },
   })
   return { created, setRuntime, setRuntimeError }
 }
@@ -44,6 +46,13 @@ function actions(overrides: { mounted?: boolean } = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   updateRuntime.mockResolvedValue(runtimeState('D:\\picked'))
+  getRuntime.mockResolvedValue(runtimeState('D:\\default'))
+})
+
+it('keeps the selected session workspace when runtime settings refresh', async () => {
+  const { created, setRuntime } = actions({ selectedWorkspace: 'D:\\session' })
+  await created.refreshRuntime()
+  expect(setRuntime).toHaveBeenLastCalledWith(expect.objectContaining({ workspace: 'D:\\session' }))
 })
 
 describe('chooseWorkspacePath', () => {
