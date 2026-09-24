@@ -886,6 +886,80 @@ describe('stream completion signal', () => {
   });
 });
 
+describe('request deadline versus caller cancellation', () => {
+  // Both interrupt the same fetch with the same AbortError. Before this contract a Provider
+  // that hung past the timeout was classified as `cancelled` and never retried — the opposite
+  // of "retry transport faults, honour cancellation" (found by the real-window retry fixture).
+  function abortError(): Error {
+    const error = new Error('This operation was aborted');
+    error.name = 'AbortError';
+    return error;
+  }
+
+  function hangUntilAborted(init?: { signal?: AbortSignal }): Promise<Response> {
+    return new Promise<Response>((_resolve, reject) => {
+      if (init?.signal?.aborted) return reject(abortError());
+      init?.signal?.addEventListener('abort', () => reject(abortError()), { once: true });
+    });
+  }
+
+  const okResponse = {
+    id: 'x',
+    model: 'gpt-4o',
+    choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+  };
+
+  it('retries our own deadline as a transient timeout', async () => {
+    let call = 0;
+    const fetch = vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
+      call += 1;
+      // First attempt hangs past the deadline; the retry answers normally.
+      if (call === 1) return hangUntilAborted(init);
+      const headers = new Map([['content-type', 'application/json']]);
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (key: string) => headers.get(key.toLowerCase()) },
+        json: async () => okResponse,
+        text: async () => JSON.stringify(okResponse),
+        body: null,
+      } as unknown as Response;
+    });
+    const client = new OpenAIClient({
+      ...BASE_OPTS,
+      timeoutMs: 10,
+      retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false },
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+
+    const response = await client.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(response.content).toBe('ok');
+  });
+
+  it('never retries a caller abort', async () => {
+    const controller = new AbortController();
+    let call = 0;
+    const fetch = vi.fn((_url: string, init?: { signal?: AbortSignal }) => {
+      call += 1;
+      return hangUntilAborted(init);
+    });
+    const client = new OpenAIClient({
+      ...BASE_OPTS,
+      timeoutMs: 5_000,
+      retry: { maxAttempts: 5, baseDelayMs: 1, jitter: false },
+      fetch: fetch as unknown as typeof globalThis.fetch,
+    });
+
+    const pending = client.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }], signal: controller.signal });
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(call).toBe(1);
+  });
+});
+
 describe('createLlmClient', () => {
   it('builds client from provider config', async () => {
     const fetch = mockFetch([{

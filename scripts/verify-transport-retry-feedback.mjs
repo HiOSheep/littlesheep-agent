@@ -130,7 +130,7 @@ async function submitPrompt(client, prompt = PROMPT) {
  * tool result), so a case is judged by the *fault log* plus the retry wording, never by the
  * raw request count alone.
  */
-async function runCase({ client, provider, name, prompt = PROMPT, faults, timeoutMs = 45_000 }) {
+async function runCase({ client, provider, name, prompt = PROMPT, faults, timeoutMs = 45_000, stopAfterMs = 0 }) {
   await startNewConversation(client)
   await provider.setFaults(faults)
   const before = provider.requests.length
@@ -139,7 +139,16 @@ async function runCase({ client, provider, name, prompt = PROMPT, faults, timeou
   const timeline = []
   const startedAt = Date.now()
   let last = null
+  let stopClicked = false
   while (Date.now() - startedAt < timeoutMs) {
+    if (!stopClicked && stopAfterMs > 0 && Date.now() - startedAt >= stopAfterMs) {
+      stopClicked = await evaluate(client, `(() => {
+        const button = document.querySelector('.composer-run-actions .send-round.stop')
+        if (!(button instanceof HTMLElement)) return false
+        button.click()
+        return true
+      })()`)
+    }
     const sample = await evaluate(client, OBSERVE_EXPRESSION)
     if (sample && (sample.state || sample.error)) {
       if (sample.activeStage !== last?.activeStage || sample.state !== last?.state || sample.error !== last?.error) {
@@ -159,6 +168,7 @@ async function runCase({ client, provider, name, prompt = PROMPT, faults, timeou
     name,
     attempts: attempts.length,
     faultLog,
+    stopClicked,
     /** Faults consumed by the leading run of failures, i.e. the first logical request. */
     leadingFailures: faultLog.findIndex((entry) => entry === 'none') === -1
       ? faultLog.length
@@ -239,8 +249,27 @@ async function main() {
       prompt: `请输出这份验收文档：${LONG_MARKDOWN_MARKER}`,
       faults: [{ kind: 'stream_break', afterChunks: 5, times: 1 }],
     }))
+    cases.push(await runCase({
+      client, provider, name: 'provider-timeout',
+      // The Provider never answers the first attempt; the client's own deadline (5 s) fires and
+      // the retry succeeds. This used to be indistinguishable from a user cancellation.
+      faults: [{ kind: 'hang', ms: 8_000, times: 1 }],
+      timeoutMs: 30_000,
+    }))
+    cases.push(await runCase({
+      client, provider, name: 'request-error-not-retryable',
+      faults: [{ kind: 'status', status: 400, times: 40 }],
+      timeoutMs: 30_000,
+    }))
+    cases.push(await runCase({
+      client, provider, name: 'user-cancel',
+      // Stop is pressed while the Provider is still silent: the run must stop without retrying.
+      faults: [{ kind: 'hang', ms: 30_000, times: 40 }],
+      stopAfterMs: 700,
+      timeoutMs: 30_000,
+    }))
 
-    const [transient, rateLimit, auth, exhausted, streamCut] = cases
+    const [transient, rateLimit, auth, exhausted, streamCut, timeout, requestError, cancelled] = cases
     const failures = []
     const expect = (condition, message) => { if (!condition) failures.push(message) }
 
@@ -283,6 +312,28 @@ async function main() {
       'the recovered answer is missing its sentinels, so it is not a complete settlement')
     const answerOccurrences = streamCut.answer.split(LONG_MARKDOWN_START).length - 1
     expect(answerOccurrences === 1, `the retried answer was not exactly one settlement (found ${answerOccurrences})`)
+
+    // F. the client's own deadline is a transient transport fault: the hung attempt is
+    // replayed, and the wording does not claim a Provider status it never received. (The run
+    // then makes its own next request, so the attempt count is not the assertion.)
+    expect(timeout.faultLog[0] === 'hang:', `the first attempt was not the hung one: ${JSON.stringify(timeout.faultLog)}`)
+    expect(timeout.faultLog.filter((entry) => entry === 'hang:').length === 1, 'the deadline was not recovered by a replay')
+    expect(timeout.retryWording.some((value) => value.includes('第 1 次重试')), 'the timeout was not announced as a retry')
+    expect(timeout.settled && timeout.answer.includes(ANSWER_MARKER), 'the run did not continue after a Provider timeout')
+
+    // G. a 400 is a request problem: the transport never backs off and replays it, and the
+    // failure is visible. (The streaming path re-sends once without `stream_options` as a
+    // compatibility fallback, which is a different, deliberate mechanism.)
+    expect(requestError.retryWording.length === 0, `400 produced retry wording: ${JSON.stringify(requestError.retryWording)}`)
+    expect(requestError.faultLog[0] === 'status:400', `the first attempt was not the 400: ${JSON.stringify(requestError.faultLog)}`)
+    expect(typeof requestError.error === 'string' && requestError.error.length > 0, 'a request error left no visible reason')
+    expect(!requestError.answer.includes(ANSWER_MARKER), 'a request error still produced a successful answer')
+
+    // H. user cancellation stops the run instead of waiting out the retry budget.
+    expect(cancelled.stopClicked, 'the stop control was unavailable, so cancellation was never tested')
+    expect(cancelled.retryWording.length === 0, `cancellation still retried: ${JSON.stringify(cancelled.retryWording)}`)
+    expect(cancelled.attempts <= 1, `cancellation produced ${cancelled.attempts} attempts`)
+    expect(!cancelled.settled || !cancelled.answer.includes(ANSWER_MARKER), 'a cancelled run still produced an answer')
 
     const evidence = { cases, failures }
     if (failures.length > 0) {

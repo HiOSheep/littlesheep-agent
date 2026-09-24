@@ -248,7 +248,11 @@ export class OpenAIClient implements LlmClient {
 
         const timeout = req.timeoutMs ?? this.timeoutMs;
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeout);
+        let timedOut = false;
+        const timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeout);
         const onAbort = () => controller.abort();
         if (req.signal) {
           if (req.signal.aborted) controller.abort();
@@ -265,7 +269,7 @@ export class OpenAIClient implements LlmClient {
           if (!res.ok) {
             let errMsg = `HTTP ${res.status}`;
             try {
-              const errBody = (await res.json()) as { error?: { message?: string } };
+              const errBody = (await res.json()) as { error?: { message: string } };
               if (errBody?.error?.message) errMsg = errBody.error.message;
             } catch { /* ignore parse failure */ }
             throw new LlmError(
@@ -283,6 +287,8 @@ export class OpenAIClient implements LlmClient {
             model: json.model,
             usage: { promptTokens: json.usage?.prompt_tokens ?? 0 },
           };
+        } catch (err) {
+          throw this.timeoutAwareError(err, timedOut, req.signal, timeout);
         } finally {
           clearTimeout(timer);
           req.signal?.removeEventListener('abort', onAbort);
@@ -324,7 +330,19 @@ export class OpenAIClient implements LlmClient {
 
     const timeout = req.timeoutMs ?? this.timeoutMs;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+    /**
+     * Our own deadline is not the caller's cancellation.
+     *
+     * Both interrupt the same fetch with the same `AbortError`, so a Provider that hangs past
+     * the timeout used to be classified as `cancelled` and never retried — the opposite of
+     * "respect cancellation, retry transport faults". The flag is what keeps them apart: a
+     * deadline that fired becomes a retryable 408, a caller abort stays an abort.
+     */
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
     let cleaned = false;
     const onAbort = () => controller.abort();
     const cleanup = () => {
@@ -360,8 +378,14 @@ export class OpenAIClient implements LlmClient {
       return { response: res, cleanup, attempt: opts.transportAttempt, startedAtMs };
     } catch (err) {
       cleanup();
-      throw err;
+      throw this.timeoutAwareError(err, timedOut, req.signal, timeout);
     }
+  }
+
+  /** Translate our own deadline into a retryable timeout, leaving a caller abort alone. */
+  private timeoutAwareError(err: unknown, timedOut: boolean, callerSignal: AbortSignal | undefined, timeoutMs: number): unknown {
+    if (!timedOut || callerSignal?.aborted) return err;
+    return new LlmError(408, `Request timed out after ${timeoutMs}ms`, true);
   }
   /** Parse a non-streaming choice into ChatResponse. */
   private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse, request: ChatRequest): ChatResponse {
