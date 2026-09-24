@@ -131,7 +131,7 @@ function buildConfig(workspaceDir) {
 
 async function seedSessions(dataDir) {
   const now = Date.now()
-  const sessions = [0, 1].map((index) => ({
+  const sessions = [0, 1, 2].map((index) => ({
     id: `history-session-${index}`,
     title: `大历史会话 ${index}`,
     createdAt: now - index * 1_000,
@@ -141,6 +141,130 @@ async function seedSessions(dataDir) {
   }))
   await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({ sessions }, null, 2)}\n`, 'utf8')
   return sessions
+}
+
+/** History requests the renderer actually issued, straight from CDP network events. */
+function historyRequests(events, sessionId) {
+  const suffix = `/sessions/${sessionId}/messages`
+  return events.filter((event) => (
+    event.method === 'Network.requestWillBeSent'
+    && typeof event.params?.request?.url === 'string'
+    && event.params.request.url.includes(suffix)
+  ))
+}
+
+function abortedRequests(events) {
+  return events.filter((event) => event.method === 'Network.loadingFailed' && event.params?.canceled === true).length
+}
+
+/** The window shows its loading row until the selected session's page settles. */
+async function readHistoryState(client) {
+  return client.evaluate(`(() => {
+    const active = document.querySelector('.session-item.active');
+    return {
+      session: active ? active.textContent.trim() : null,
+      loading: Boolean(document.querySelector('.history-loading.loading')),
+      empty: Boolean(document.querySelector('.empty-hint')),
+      messages: document.querySelectorAll('.message').length,
+    };
+  })()`)
+}
+
+async function waitForHistorySettled(client, timeoutMs = 20_000) {
+  return harness.waitFor(async () => {
+    const state = await readHistoryState(client).catch(() => undefined)
+    if (!state) return undefined
+    return state.loading ? undefined : state
+  }, timeoutMs, 'session history settled')
+}
+
+async function clickSession(client, titleFragment) {
+  return client.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.session-item')];
+    const target = rows.find((row) => row.textContent.includes(${JSON.stringify(titleFragment)}));
+    if (!target) return { clicked: false, rows: rows.map((row) => row.textContent.trim()) };
+    target.click();
+    return { clicked: true, title: target.textContent.trim() };
+  })()`)
+}
+
+/**
+ * Does the selected-session cache actually save a request on the way back?
+ *
+ * Counting the renderer's own `/messages` requests through CDP is the crisp
+ * claim: a first visit must issue exactly one, a revisit must issue none, and
+ * rapid switching must not duplicate a request nor cancel one that is already
+ * in flight (the read belongs to the session, not to the view). Settle times are
+ * recorded as well, but the fixture sessions carry no messages, so they measure
+ * the round trip rather than a payload.
+ */
+async function measureSessionHistoryCache({ client, sessions }) {
+  await client.send('Network.enable')
+  const steps = []
+  const skipped = []
+  const requestsFor = (sessionId) => historyRequests(client.events, sessionId).length
+
+  // A conversation the window already read cannot serve as a "first visit": its
+  // request is already in the log. Rather than guessing which one that is from
+  // the DOM, treat an observed request as the evidence that it was loaded and
+  // move on to the next candidate.
+  async function visit(session, kind) {
+    const before = requestsFor(session.id)
+    const startedAt = Date.now()
+    const click = await clickSession(client, session.title)
+    const settled = await waitForHistorySettled(client).catch((error) => ({ error: String(error) }))
+    const issued = requestsFor(session.id) - before
+    return { step: `history-${kind}`, session: session.id, click, settleMs: Date.now() - startedAt, issuedRequests: issued, totalRequests: requestsFor(session.id), settled }
+  }
+
+  let firstTarget = null
+  for (const session of sessions) {
+    const attempt = await visit(session, 'first')
+    if (attempt.issuedRequests === 0) {
+      skipped.push({ session: session.id, reason: 'already loaded before the case started' })
+      continue
+    }
+    steps.push(attempt)
+    firstTarget = session
+    break
+  }
+  if (!firstTarget) {
+    return { steps, skipped, aborted: 0, error: 'no conversation was left unloaded for a first-visit measurement' }
+  }
+
+  const revisit = await visit(firstTarget, 'revisit')
+  steps.push(revisit)
+
+  // Rapid switching: pick another conversation the window has not read yet,
+  // select it, leave immediately and come back before it can have finished.
+  const rapidTarget = sessions.find((session) => session.id !== firstTarget.id && requestsFor(session.id) === 0)
+  if (rapidTarget) {
+    const first = await clickSession(client, rapidTarget.title)
+    await delay(30)
+    const away = await clickSession(client, firstTarget.title)
+    await delay(30)
+    const back = await clickSession(client, rapidTarget.title)
+    const settled = await waitForHistorySettled(client).catch((error) => ({ error: String(error) }))
+    await delay(300)
+    steps.push({
+      step: 'history-rapid-switch',
+      session: rapidTarget.id,
+      first,
+      away,
+      back,
+      issuedRequests: requestsFor(rapidTarget.id),
+      settled,
+    })
+  } else {
+    skipped.push({ reason: 'no second unloaded conversation for the rapid-switch case' })
+  }
+
+  const requestedUrls = client.events
+    .filter((event) => event.method === 'Network.requestWillBeSent')
+    .map((event) => String(event.params?.request?.url ?? ''))
+    .filter((url) => url.includes('/sessions/'))
+    .slice(-10)
+  return { steps, skipped, aborted: abortedRequests(client.events), requestedUrls, totalNetworkEvents: client.events.length }
 }
 
 async function readReadiness(locator) {
@@ -308,6 +432,39 @@ async function main() {
       failures.push({ check: 'the selected session first page answers once execution is ready', detail: history.filter((entry) => entry.status !== 200) })
     }
 
+    // 4. Cache reuse: the same sessions through the real sidebar, counting the
+    //    requests the renderer actually issues.
+    if (client) {
+      const cache = await measureSessionHistoryCache({ client, sessions }).catch((error) => ({ error: String(error) }))
+      observation.steps.push({ step: 'session-history-cache', ...cache })
+      if (cache.error) {
+        failures.push({ check: 'the session history cache case ran', detail: cache.error })
+      } else {
+        const firstVisits = cache.steps.filter((entry) => entry.step === 'history-first')
+        const revisits = cache.steps.filter((entry) => entry.step === 'history-revisit')
+        const rapid = cache.steps.find((entry) => entry.step === 'history-rapid-switch')
+        const notOneRequest = firstVisits.filter((entry) => entry.issuedRequests !== 1)
+        if (notOneRequest.length > 0) {
+          failures.push({ check: 'a first visit to a session issues exactly one history request', detail: notOneRequest })
+        }
+        const repeated = revisits.filter((entry) => entry.issuedRequests !== 0)
+        if (repeated.length > 0) {
+          failures.push({ check: 'returning to a session reuses its cached history instead of re-requesting it', detail: repeated })
+        }
+        if (rapid?.issuedRequests !== 1) {
+          failures.push({ check: 'rapid switching issues one history request, not one per switch', detail: rapid })
+        }
+        if ((cache.aborted ?? 0) > 0) {
+          failures.push({ check: 'switching away does not cancel a history read that is in flight', detail: { aborted: cache.aborted } })
+        }
+        if (cache.steps.some((entry) => entry.settled?.error)) {
+          failures.push({ check: 'every selected session settles its history state', detail: cache.steps.filter((entry) => entry.settled?.error).map((entry) => entry.step) })
+        }
+      }
+    } else {
+      failures.push({ check: 'the renderer is attached for the cache case', detail: 'no debugger client' })
+    }
+
     const log = await readFile(logPath, 'utf8').catch(() => '')
     const marks = marksFromLog(log)
     observation.marks = {
@@ -354,6 +511,10 @@ async function main() {
         'the light routes across it but does not observe a completion signal for the scan',
         'itself, because the router exposes none.',
         'Packaged builds are not covered here.',
+        'The cache case counts requests and settle times on fixture sessions with no',
+        'messages: it proves one request for a first visit, none for a revisit and none',
+        'cancelled, but the payload-driven timing difference needs a data root with real',
+        'conversation history.',
       ],
     }
     await mkdir(outDir, { recursive: true })

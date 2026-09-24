@@ -2,7 +2,7 @@
   "check": "desktop-large-history-startup",
   "ok": true,
   "label": "2026-09-24",
-  "measuredAt": "2026-09-24T11:53:31.712Z",
+  "measuredAt": "2026-09-24T12:11:05.893Z",
   "environment": {
     "platform": "win32 x64",
     "node": "v26.4.0",
@@ -11,50 +11,50 @@
   "fixture": {
     "partitions": 400,
     "eventFiles": 1600,
-    "synthesizeMs": 1241,
-    "sessions": 2,
+    "synthesizeMs": 931,
+    "sessions": 3,
     "eventsPerRun": 4
   },
   "steps": [
     {
       "step": "during-recovery",
-      "apiListeningMs": 703,
-      "executionReadyMs": 1277,
+      "apiListeningMs": 615,
+      "executionReadyMs": 1191,
       "readinessState": "ready",
       "samples": 2,
       "slowest": [
         {
-          "atMs": 753,
+          "atMs": 661,
           "path": "/sessions",
-          "ms": 16,
+          "ms": 17,
           "status": 200,
-          "bodyBytes": 294
+          "bodyBytes": 434
         },
         {
-          "atMs": 753,
+          "atMs": 661,
           "path": "/workspace/list",
-          "ms": 16,
+          "ms": 17,
           "status": 200,
           "bodyBytes": 666
         },
         {
-          "atMs": 753,
+          "atMs": 661,
           "path": "/runtime",
-          "ms": 7,
+          "ms": 8,
           "status": 200,
           "bodyBytes": 3685
         },
         {
-          "atMs": 753,
+          "atMs": 661,
           "path": "/runtime/readiness",
-          "ms": 5,
+          "ms": 7,
           "status": 200,
-          "bodyBytes": 106
+          "bodyBytes": 105
         },
         {
-          "atMs": 1024,
+          "atMs": 938,
           "path": "/workspace/list",
-          "ms": 5,
+          "ms": 4,
           "status": 200,
           "bodyBytes": 666
         }
@@ -70,7 +70,7 @@
         {
           "session": "history-session-0",
           "path": "/sessions/history-session-0/messages?limit=30",
-          "ms": 10,
+          "ms": 18,
           "status": 200,
           "bodyBytes": 57
         },
@@ -91,57 +91,147 @@
         {
           "session": "history-session-1",
           "path": "/sessions/history-session-1/messages?limit=30",
-          "ms": 0,
+          "ms": 16,
           "status": 200,
           "bodyBytes": 57
         },
         {
           "session": "history-session-1",
           "path": "/sessions/history-session-1/messages?limit=30",
-          "ms": 0,
+          "ms": 16,
           "status": 200,
           "bodyBytes": 57
         },
         {
           "session": "history-session-1",
           "path": "/sessions/history-session-1/messages?limit=30",
-          "ms": 14,
+          "ms": 16,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 15,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 16,
+          "status": 200,
+          "bodyBytes": 57
+        },
+        {
+          "session": "history-session-2",
+          "path": "/sessions/history-session-2/messages?limit=30",
+          "ms": 16,
           "status": 200,
           "bodyBytes": 57
         }
       ],
       "responsiveness": {
         "samples": 20,
-        "minMs": 7,
+        "minMs": 2,
         "medianMs": 17,
         "maxMs": 18
       }
+    },
+    {
+      "step": "session-history-cache",
+      "steps": [
+        {
+          "step": "history-first",
+          "session": "history-session-0",
+          "click": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "settleMs": 61,
+          "issuedRequests": 1,
+          "totalRequests": 1,
+          "settled": {
+            "session": "大历史会话 00分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        },
+        {
+          "step": "history-revisit",
+          "session": "history-session-0",
+          "click": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "settleMs": 11,
+          "issuedRequests": 0,
+          "totalRequests": 1,
+          "settled": {
+            "session": "大历史会话 00分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        },
+        {
+          "step": "history-rapid-switch",
+          "session": "history-session-1",
+          "first": {
+            "clicked": true,
+            "title": "大历史会话 10分"
+          },
+          "away": {
+            "clicked": true,
+            "title": "大历史会话 00分"
+          },
+          "back": {
+            "clicked": true,
+            "title": "大历史会话 10分"
+          },
+          "issuedRequests": 1,
+          "settled": {
+            "session": "大历史会话 10分",
+            "loading": false,
+            "empty": true,
+            "messages": 0
+          }
+        }
+      ],
+      "skipped": [],
+      "aborted": 0,
+      "requestedUrls": [
+        "http://127.0.0.1:3892/sessions/history-session-0/messages?limit=120",
+        "http://127.0.0.1:3892/sessions/history-session-1/messages?limit=120"
+      ],
+      "totalNetworkEvents": 26
     }
   ],
   "marks": {
     "rendererFirstFrame": {
       "stage": "renderer-first-frame",
-      "processUptimeMs": 1191.7,
-      "durationMs": 258.8
+      "processUptimeMs": 1062.9,
+      "durationMs": 245.9
     },
     "rendererWorkspaceEntries": {
       "stage": "renderer-workspace-entries",
-      "processUptimeMs": 1152.7,
-      "durationMs": 227.4
+      "processUptimeMs": 1026.4,
+      "durationMs": 214.7
     },
     "executionStart": {
       "stage": "execution-start",
-      "processUptimeMs": 599.5
+      "processUptimeMs": 520.1
     },
     "runnerReady": {
       "stage": "runner-ready",
-      "processUptimeMs": 715.8,
-      "durationMs": 116.4
+      "processUptimeMs": 627.7,
+      "durationMs": 107.6
     },
     "durableEventsReady": {
       "stage": "runner-infra-durable-events-ready",
-      "processUptimeMs": 612.9,
-      "durationMs": 0.9
+      "processUptimeMs": 531.5,
+      "durationMs": 4.3
     }
   },
   "recoveryLogLines": {
@@ -159,6 +249,10 @@
     "The background compatibility scan runs after readiness by design; this ledger times",
     "the light routes across it but does not observe a completion signal for the scan",
     "itself, because the router exposes none.",
-    "Packaged builds are not covered here."
+    "Packaged builds are not covered here.",
+    "The cache case counts requests and settle times on fixture sessions with no",
+    "messages: it proves one request for a first visit, none for a revisit and none",
+    "cancelled, but the payload-driven timing difference needs a data root with real",
+    "conversation history."
   ]
 }

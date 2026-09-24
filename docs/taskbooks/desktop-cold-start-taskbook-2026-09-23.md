@@ -1,6 +1,6 @@
 # 桌面冷启动体验与加载策略优化任务书 2026-09-23
 
-最后更新：2026-09-24 19:58:12
+最后更新：2026-09-24 20:11:49
 
 ## 1. 目标与当前状态
 
@@ -173,7 +173,7 @@
 
 ## 7. 验收记录
 
-最后更新：2026-09-24 19:58:12
+最后更新：2026-09-24 20:11:49
 
 ### CS-01｜建立可重复的启动基线 —— 实现完成，部分待验收
 
@@ -306,13 +306,14 @@
 - 既有真实窗口脚本同步改到新表面并全部通过：`scripts/verify-desktop-cold-start-interaction.mjs` 现在断言"阶段文字在控制行内（宽度占比 0.075）、条带为 `null`、发送禁用、草稿保持"，就绪后两个表面都消失；失败档探针不变，仍然通过。
 - 剩余缺口：**真实显示缩放**（125% / 150% / 200% 的 Windows 缩放与明暗桌面背景）仍是人工项，脚本只做了 DPR 代理；正常启动未就绪窗口只有约 300 ms，"正常启动不长出全局条"由同一状态的拉长版本测量。另在 800 px 窗口下顺带记录两处**既有**布局现象（与本项改动无关）：控制行本身已很拥挤（就绪后同样存在），右侧预览列在面板与文件树夹挤下一行只剩一个字。复选框保持未勾选。
 
-### CS-10｜按选中会话加载与后台续载 —— 实现完成，机制已有账本，真实规模与缓存复用待量化（进行中）
+### CS-10｜按选中会话加载与后台续载 —— 实现完成，机制与缓存复用均有账本，打包版待复验（进行中）
 
 - **改动文件**：`packages/app/src/main/local-app-api-server.ts`（请求入口不再 await RunRouter 恢复：`activeRunRouter` + 世代号，重建时旧 router 停止，避免请求与恢复互相等待）、`local-app-api/run-lifecycle-routes.ts`（路由未就绪时 Run/Run-Stream/Run-Checkpoints/审批/生命周期明确 503）、`local-app-api/run-routes.ts`（`recoverDurableRuns` 拆成 `queue`/`events`/`all`：现代租约与收件箱在就绪前处理，历史事件分区只作后台兼容扫描；新增 `stopped` 提前返回）、`packages/runner/src/durable-event-store.ts`（启动不再全量列目录并逐个读取历史分区，校验下移到恢复扫描；自身分区的读写仍然严格校验）、`packages/app/src/renderer/sidebar/session-actions.ts`（按选中会话加载 + 会话历史缓存）、`packages/app/src/renderer/app-shell/runtime-actions.ts` 与 `use-app-controller.ts`（会话工作区与全局默认工作区分离）。
 - **按选中会话加载的契约（源码确认）**：只有被选中的会话才发起首屏历史请求；该 promise 属于会话本身，切走不取消，切回可复用进行中或已完成的结果；缓存以会话 `lastMessageAt` 校验、最多 6 个会话，失败时把自身从缓存移除；`newSession` 清空选中工作区并恢复默认工作区；删除会话同时清缓存。会话切换只改当前视图的工作区，**不再** `updateRuntime` 落盘默认目录或重建 Runner。
 - **单测证据（本次重跑：6 个文件 38 例全通过）**：`local-app-api-readiness.test.ts`(4)、`local-app-api/run-routes.test.ts`(5)、`packages/runner/src/durable-event-store.test.ts`(10)、`durable-harness-infrastructure.test.ts`(2)、`renderer/sidebar/session-actions.test.ts`(12)、`renderer/app-shell/runtime-actions.test.ts`(5)。
 - **真实数据观察值（来自 2026-09-24 记录，仓库内暂无原始账本）**：真实数据根约 399 个事件分区 / 13,769 个事件文件；修复前两次执行就绪约 55.7 s 与 84.5 s；修复后一次重复启动：Renderer 首帧约 1.30 s、工作区目录条目约 1.17 s、执行就绪约 5.67 s，两段已有会话首屏历史 29 / 34 ms，一次新会话真实模型发送 HTTP 200 `ok` 且约 4.68 s。**这些数字只存在于本任务书**，因此只能算观察值，不能称为分位数。
-- **合成大历史数据根上的账本（本轮新增，`measure:desktop-large-history-startup`）**：`scripts/measure-desktop-large-history-startup.mjs` 按磁盘格式写入 N 个历史事件分区，每条 run 是一条已结算完成的合法事件流（`run_accepted` → `final_reply_proposed` → `final_reply_settled` → `run_completed`；只写两条会被恢复流程以"requires a settled final reply"拒绝，400 条全失败——这正是夹具必须写成合法完成态的原因），再驱动真实窗口测量，账本 `docs/reference/cold-start-baseline/desktop-large-history-startup-2026-09-24.json` 与 `-large.json`。实测（0 失败、0 恢复失败）：**400 分区 / 1,600 文件 → 执行就绪 1277 ms；1200 分区 / 4,800 文件 → 执行就绪 1269 ms**，即历史规模三倍而就绪基本不变；API 监听 703 / 698 ms，渲染器首帧 1191.7 / 1172.8 ms，首个目录条目 1152.7 / 1134.6 ms；恢复期 `/sessions`、`/workspace/list`、`/runtime` 最慢 16/16/7 ms 与 19/18/9 ms（全部 200），就绪后所选会话首屏历史 0–17 ms（全部 200），就绪后 20 次 `/runtime` 中位 17 ms、最大 18/20 ms（此时后台扫描仍在跑）。
-- 该账本能证明的是**机制**（恢复不再阻塞就绪与轻量路由），不能证明真实磁盘与真实历史的规模（那仍是上面那批观察值的来源）；脚本拿不到后台扫描的完成信号，因此"扫描结束后继续交互"只有间接支持；打包版未覆盖。逐项边界写在基线文档的 CS-10 一节。
+- **合成大历史数据根上的账本（本轮新增，`measure:desktop-large-history-startup`）**：`scripts/measure-desktop-large-history-startup.mjs` 按磁盘格式写入 N 个历史事件分区，每条 run 是一条已结算完成的合法事件流（`run_accepted` → `final_reply_proposed` → `final_reply_settled` → `run_completed`；只写两条会被恢复流程以"requires a settled final reply"拒绝，400 条全失败——这正是夹具必须写成合法完成态的原因），再驱动真实窗口测量，账本 `docs/reference/cold-start-baseline/desktop-large-history-startup-2026-09-24.json` 与 `-large.json`。实测（0 失败、0 恢复失败）：**400 分区 / 1,600 文件 → 执行就绪 1191 ms；1200 分区 / 4,800 文件 → 执行就绪 1233 ms**（更早一次同规模运行为 1277 / 1269 ms），即历史规模三倍而就绪基本不变；API 监听 615 / 644 ms，恢复期最慢一次轻量请求 17 ms（`/sessions`）与 15 ms（`/workspace/list`），就绪后所选会话首屏历史 14–18 / 13–17 ms（全部 200）。
+- **缓存复用也量化了（同一脚本新加 `session-history-cache` 一步）**：脚本打开 CDP 的 `Network` 域，直接数**渲染器自己发出的** `/sessions/<id>/messages` 请求（不从耗时反推），并自动跳过启动时已加载过的会话（判据是"已经观测到过该会话的请求"）。实测两份账本一致：首次进入一个会话 **1 次请求**（61 / 55 ms 结算），切走再切回 **0 次请求**（11 / 11 ms），"选中 → 切走 → 切回"的快速切换仍只有 **1 次请求**，全程 **0 个历史请求被取消**——分别对应"首次必发一次""切回复用缓存""不按切换次数重复发""切走不取消进行中的读取"四条契约。
+- 该账本能证明的是**机制与请求行为**，不能证明真实磁盘与真实历史的规模（那仍是上面那批观察值的来源），也不能证明"有真实历史负载时缓存省下多少毫秒"（缓存用例的夹具会话没有消息）；脚本拿不到后台扫描的完成信号，因此"扫描结束后继续交互"只有间接支持；打包版未覆盖。逐项边界写在基线文档的 CS-10 一节。
 - **既有真实窗口脚本**：`pnpm run verify:desktop-cold-start-interaction` 0 失败（未就绪时切换会话、普通文件与浏览器标签预览、草稿与焦点保持、就绪交接）；`pnpm run verify:desktop-cold-start-readiness-failure` 覆盖路由未就绪的 503 语义与有界重试。
-- 剩余缺口：**快速连续切换时的缓存复用量化**（账本只测了首屏历史耗时，没测"切走再切回是否命中缓存"）、**后台扫描结束后的长时交互**（脚本没有扫描完成信号）、打包版复验，以及真实数据根那批观察值仍缺少原始账本。复选框保持未勾选。
+- 剩余缺口：**后台扫描结束后的长时交互**（脚本没有扫描完成信号）、**打包版复验**，以及真实数据根那批观察值仍缺少原始账本；缓存用例只证明请求次数与往返耗时，不证明真实历史负载下的收益。复选框保持未勾选。
