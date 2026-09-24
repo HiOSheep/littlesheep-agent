@@ -71,6 +71,19 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
             <h2>技能</h2>
             <p className="ms-desc">本地技能会在这里集中查看。当前版本只能查看内容，不能在界面里启用、禁用或编辑技能。</p>
           </div>
+          {/*
+            A reload the user can actually start. Without it the "kept the list, marked it as not
+            refreshed" branch was unreachable: the only buttons that reload appear *after* a
+            failure, so a successful page could never be refreshed (UX-04 acceptance).
+          */}
+          <button
+            className="ms-feedback-action"
+            type="button"
+            disabled={status === 'loading'}
+            onClick={() => void loadSkills()}
+          >
+            {status === 'loading' ? '正在加载…' : '刷新'}
+          </button>
           {!embedded && <button className="dialog-close" onClick={onClose}>×</button>}
         </div>
         <div className="ms-content content-fade">

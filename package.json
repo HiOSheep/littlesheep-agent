@@ -100,6 +100,7 @@
     "verify:deletion-confirmation": "pnpm run ensure:app-build && node scripts/verify-deletion-confirmation.mjs",
     "verify:composer-stop-append": "pnpm run ensure:app-build && node scripts/verify-composer-stop-append.mjs",
     "verify:keyboard-modal-focus": "pnpm run ensure:app-build && node scripts/verify-keyboard-modal-focus.mjs",
+    "verify:skills-catalog-states": "pnpm run ensure:app-build && node scripts/verify-skills-catalog-states.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },
