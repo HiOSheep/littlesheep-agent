@@ -16,10 +16,12 @@ configuration:
 | [`pre-fix-cd6cabc.md`](pre-fix-cd6cabc.md) | `cd6cabc`, the commit before this work started |
 | [`baseline-git-0af62a7.md`](baseline-git-0af62a7.md) | `0af62a7`, after SP-01/02/04/05/06/07 |
 
-Both records carry the same frozen loads. The probe runs inside the harness suite,
-so it only writes `latest.md` plus the per-load JSON files; each run re-labels them
-with the current commit. Only the freeze label changes between runs — measurements
-that change are the ones worth reading, and none have since `0af62a7`.
+Both records carry the same frozen loads. The probe runs inside the harness suite and
+writes only `latest.md`, re-labelling it with the current commit; the per-load JSON dumps
+it used to write had no reader and were removed on 2026-09-24. Measurements that change are
+the ones worth reading — and the turn-1 character counts have moved since `0af62a7` (see
+the current reading in [`latest.md`](latest.md)), while the shared-prefix and stable-head
+numbers below are the ones that converged.
 
 ## What the probe measures
 

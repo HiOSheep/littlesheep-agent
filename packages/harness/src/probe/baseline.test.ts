@@ -96,13 +96,8 @@ describe('cache baseline probe', () => {
 
     const summary = render(reports);
     writeFileSync(join(OUT_DIR, 'latest.md'), summary, 'utf8');
-    for (const report of reports) {
-      writeFileSync(
-        join(OUT_DIR, `${report.probe}.json`),
-        `${JSON.stringify(report, null, 2)}\n`,
-        'utf8',
-      );
-    }
+    // Only the rendered report is written: the per-load JSON dumps had no reader (the
+    // numbers are all in latest.md) and were removed as unreferenced artefacts.
     // The probe is only a baseline when it actually produced requests.
     for (const report of reports) {
       expect(report.requests.length, `${report.probe} produced requests`).toBeGreaterThan(0);
