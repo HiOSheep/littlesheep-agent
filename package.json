@@ -94,6 +94,7 @@
     "verify:chat-readability": "pnpm run ensure:app-build && node scripts/verify-chat-output-readability.mjs",
     "verify:chat-reading-scenarios": "pnpm run ensure:app-build && node scripts/verify-chat-reading-scenarios.mjs",
     "verify:workspace-large-directory": "pnpm run ensure:app-build && node scripts/verify-workspace-large-directory.mjs",
+    "verify:chat-history-paging": "pnpm run ensure:app-build && node scripts/verify-chat-history-paging.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },
