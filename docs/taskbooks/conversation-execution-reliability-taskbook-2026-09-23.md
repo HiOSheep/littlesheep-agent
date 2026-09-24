@@ -265,7 +265,7 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 
 ### 人工试玩之外的机械事实（同一轮在 HEAD 复跑）
 
-`node scripts/probe-game-artifacts.mjs .codex_tmp/ce12-games` 在 `cfb0fc1` + 文档提交通上复跑，结果与上一次一致：
+`node scripts/probe-game-artifacts.mjs .codex_tmp/ce12-games` 在当时的 HEAD（`9bd09be`，代码与当前一致，只是本轮文档提交尚未落盘）上复跑，结果与上一次一致：
 
 ```text
 runs          breakout-A.html  canvas=760x480 animates=after start       score=0->0   restart=key:R
@@ -288,6 +288,8 @@ runs          snake-D.html     canvas=440x440 animates=on first input    score=0
 
 - `pnpm run verify:conversation-execution-reliability`：12 个场景 exit 0，报告里 `humanPlaythrough` 字段由脚本固定写 `not_performed`（脚本不能替人玩），`isolatedDataRemoved: true`。
 - `pnpm run typecheck`、`pnpm run check:repo`（36 passed / 0 failed）：通过。
+- `pnpm test`：**首次全量运行 1 failed / 495 passed**，唯一失败是既有的 `packages/runner/src/session-compaction-input.test.ts` 在并行满载下 90 秒超时（本轮之前被记为"已知抖动"，一直没查到成因）。这次测到了成因：**开着影子 Git 版本检查点时，一次 run 会 spawn 约 56 个 `git` 进程**（基线快照、逐次调用扫描 tracked paths、收尾提交），Windows 上约 10 秒/次；该文件里最长的一条用例因此从中位数 20 秒被推到 90 秒以上。该文件断言的是**压缩输入**，不看快照，于是按验收脚本的既有做法（`versioning: { enabled: false }`，仓库里 11 个脚本都这么写）关掉该测试的版本检查点：文件总时长 52 秒 → 30 秒，最长用例 20 秒 → **11.8 秒**；随后全量复跑 **496 files / 3578 tests 全绿（exit 0）**。改动落在 `packages/runner/src/session-compaction-input.test.ts` 与同提交的 `packages/runner/README.md`（记录成因与"验证快照的用例不要照抄这一行"）。
+- 仍然是**测量事实而非缺陷结论**：一次真实 run 里 56 次 git spawn 是否值得优化（缓存 `head`/`trackedPaths`、合并提交）本轮没有下判断，它不在本任务书的范围内；本轮只消除了它给门禁带来的抖动。
 
 ## 实施记录｜2026-09-24 第二十轮（换一条实机门禁跑，抓到一个"一次越权调用废掉整轮"的真缺陷）
 

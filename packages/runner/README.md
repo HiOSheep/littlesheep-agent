@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-24 02:45:00
+最后更新：2026-09-24 11:47:40
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 
@@ -26,7 +26,7 @@
 
 ## 测试与修改定位
 
-- 运行行为和摘要接续在 `src/runner.test.ts`，摘要精确字段保真在 `src/session-summary-fidelity.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，压缩压力触发与候选结算在 `src/session-compaction-scheduler.test.ts` 与 `src/session-compaction-input.test.ts`，durable 恢复在 `src/durable-*.test.ts`，负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。涉及会话转录的断言先过滤 `runtimeTail` 记录：它们为按字节回放而持久化，但不是对话。`session-compaction-input.test.ts` 的用例会驱动真实 run 与真实压缩调用，因此该文件显式把测试超时设为 90 秒——并行跑全量测试时它们曾因默认超时而失败，那与它们断言的行为无关。
+- 运行行为和摘要接续在 `src/runner.test.ts`，摘要精确字段保真在 `src/session-summary-fidelity.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，压缩压力触发与候选结算在 `src/session-compaction-scheduler.test.ts` 与 `src/session-compaction-input.test.ts`，durable 恢复在 `src/durable-*.test.ts`，负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。涉及会话转录的断言先过滤 `runtimeTail` 记录：它们为按字节回放而持久化，但不是对话。`session-compaction-input.test.ts` 的用例会驱动真实 run 与真实压缩调用，因此该文件显式把测试超时设为 90 秒——并行跑全量测试时它们曾因默认超时而失败，那与它们断言的行为无关。**2026-09-24 测得超时的真实成因**：开着影子 Git 版本检查点时，一次 run 会 spawn 约 56 个 `git` 进程（基线快照、逐次调用扫描 tracked paths、收尾提交），在 Windows 上约 10 秒/次，全量并行时把该文件里最长的一条推到 90 秒以上。该文件断言的是**压缩输入**，不看快照，所以按验收脚本的既有做法设 `config.versioning.enabled = false`：文件总时长 52 秒 → 30 秒，最长用例 20 秒 → 11.8 秒。需要验证快照行为的用例不要照抄这一行。
 - 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。
 - 续跑样本的断言必须按**当前**行为写：旧检查点的 `taskBook`/`taskExecution` 是只读历史，VERIFY 不再把它当成缺口，因此"预算耗尽后授予完全访问并重试"这一样本交付的是模型自己写的回答（2 次请求、轨迹 `[recover, execute, verify, finalize]`）。它此前断言的那次额外请求其实是 `ask_user` 的措辞调用——即工作已经做完却又问了一遍用户。
 - 检查点里的**任务状态**与**本轮额度**必须分开传递。`continuationLoopBudget`（`src/run-checkpoint.ts`）让续跑继承 taskBook、已完成步骤、副作用、验证历史和权限，但把模型调用数、工具循环次数、连续无进展计数与证据指纹重置为 0，并按**当前**配置取 `maxModelCallsPerRun`；`restoreContinuationContext` 同时清空来源轮的 `lastError` 与 `recoveryAttempts`。此前把"已花掉的额度"当作新 run 的已用额度，等于让耗尽预算后的用户重试在第一次模型请求之前就失败：用户每次说"再尝试一次"，得到的都是同一句升级提问，且没有任何新工作。本次改动前的复现是轨迹 `[recover, execute, recover, ask_user]` 且没有副作用；改动后为 `[recover, execute, verify, finalize]`。上一轮的耗尽事实不丢：它作为续接证据的 `handoff`（`previousFailure` 与 `runBudget`）记录在 `ConversationContinuationEvidence` 上，而不是重新施加到新 run。

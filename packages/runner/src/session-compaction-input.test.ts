@@ -22,6 +22,13 @@ const created: Array<{ shutdown: () => Promise<void> }> = [];
 // These tests drive real runner turns (and therefore real compaction calls), so they
 // are slow by nature: under a fully parallel suite they can exceed the default
 // timeout, which says nothing about the behaviour they assert.
+//
+// Measured 2026-09-24: with shadow-Git versioning on, each runner turn spawned ~56
+// `git` processes (baseline snapshot, per-call tracked-path scan, completion commit),
+// which cost ~10 s per turn on Windows and pushed one test in this file past 90 s
+// under full-suite load. This file asserts the *compaction input*, so it turns
+// versioning off the same way the acceptance harnesses do; nothing here inspects
+// snapshots, and turning it off removes the contention that caused the timeout.
 vi.setConfig({ testTimeout: 90_000 });
 
 afterAll(async () => {
@@ -43,6 +50,7 @@ describe('session compaction input boundary', () => {
    */
   async function createCompactionRunner(llm: unknown) {
     const config = structuredClone(DEFAULT_CONFIG);
+    config.versioning.enabled = false;
     config.agents.defaults.contextCompressionThresholdRatio = 0.000_001;
     config.sessions.compaction.threshold = 2;
     config.sessions.compaction.keepRecent = 1;
@@ -71,6 +79,7 @@ describe('session compaction input boundary', () => {
 
   it('sends no capability snapshot, retrieval contract or run state to the summarizer', async () => {
     const config = structuredClone(DEFAULT_CONFIG);
+    config.versioning.enabled = false;
     // Pressure-triggered compaction, as in a real long session.
     config.agents.defaults.contextCompressionThresholdRatio = 0.000_001;
     config.sessions.compaction.threshold = 2;
