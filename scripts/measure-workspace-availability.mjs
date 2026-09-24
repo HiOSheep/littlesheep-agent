@@ -257,9 +257,14 @@ async function launch({ dataDir, workspaceDir, chromiumDir, index, measure }) {
             : null,
         };
       })()`)
-      run.dom = { opened, fileOpened, previewVisible, persisted }
+      run.dom = { opened, fileOpened, previewVisible, persisted, mirror: await readLayoutMirror(dataDir) }
       run.ok = previewVisible === true && persisted.hasFileTab === true
       if (!run.ok) run.note = 'the warm-up did not persist a file tab to restore'
+      // A user closes the app; that quit path is what flushes the durable layout
+      // mirror. Killing the process here would leave the mirror at its earlier
+      // (review-only) snapshot and the measured launches would restore that.
+      await harness.desktopAction(locator, 'quit').catch(() => undefined)
+      for (let attempt = 0; attempt < 50 && child.exitCode === null; attempt += 1) await delay(100)
       return { ok: run.ok, run }
     }
 
@@ -404,6 +409,22 @@ async function seedWorkspaceLayout(client, { workspaceDir, file }) {
     return true;
   })()`)
   await delay(600)
+}
+
+/** The durable layout mirror Main owns, reduced to shapes (no paths, no ids). */
+async function readLayoutMirror(dataDir) {
+  const raw = await readFile(join(dataDir, 'workspace', 'layout.json'), 'utf8').catch(() => null)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    return Object.values(parsed?.snapshots ?? {}).map((snapshot) => ({
+      collapsed: snapshot?.collapsed ?? null,
+      activeTabKind: typeof snapshot?.activeTab === 'string' ? snapshot.activeTab.split(':')[0] : null,
+      openTabKinds: (snapshot?.openTabs ?? []).map((tab) => String(tab).split(':')[0]),
+    }))
+  } catch {
+    return 'unreadable'
+  }
 }
 
 async function waitForDom(client, expect) {

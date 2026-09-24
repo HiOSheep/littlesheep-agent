@@ -1,8 +1,8 @@
 {
   "check": "desktop-workspace-availability",
   "label": "2026-09-24",
-  "startedAt": "2026-09-24T05:43:36.142Z",
-  "samples": 2,
+  "startedAt": "2026-09-24T05:50:49.668Z",
+  "samples": 3,
   "fixture": {
     "workspaceDir": "<user-home>\\<temp>\\workspace",
     "dataDir": "<user-home>\\<temp>\\data",
@@ -47,101 +47,164 @@
           "hasFileTab": true,
           "panelCollapsed": false,
           "activeTabKind": "file"
-        }
+        },
+        "mirror": [
+          {
+            "collapsed": false,
+            "activeTabKind": "file",
+            "openTabKinds": [
+              "review",
+              "file"
+            ]
+          }
+        ]
       },
       "timings": {}
     },
     {
       "index": 1,
       "kind": "measured",
-      "ok": false,
+      "ok": true,
       "marks": {
-        "entriesProcessUptimeMs": 1219.1,
-        "entriesRendererMs": 296.2,
-        "executionReadyProcessUptimeMs": 809.8
+        "entriesProcessUptimeMs": 1112.3,
+        "entriesRendererMs": 253.2,
+        "previewProcessUptimeMs": 1112.2,
+        "previewRendererMs": 253.1,
+        "executionReadyProcessUptimeMs": 674.8
       },
       "dom": {
         "panelPresent": true,
         "navigatorPresent": true,
         "entryRows": 4,
         "fileRows": 1,
-        "previewPanePresent": false,
-        "previewTextLength": 0,
+        "previewPanePresent": true,
+        "previewTextLength": 15210,
         "placeholderText": null,
-        "treeNotice": "正在读取 Git 更改..."
+        "treeNotice": null
       },
       "timings": {
-        "processCreateToEntriesMs": 1219.1,
-        "processCreateToExecutionReadyMs": 809.8
+        "processCreateToEntriesMs": 1112.3,
+        "processCreateToPreviewMs": 1112.2,
+        "processCreateToExecutionReadyMs": 674.8
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 30656,
+        "port": 2450,
         "retryable": false
-      },
-      "note": "the restored file never published visible content"
+      }
     },
     {
       "index": 2,
       "kind": "measured",
-      "ok": false,
+      "ok": true,
       "marks": {
-        "entriesProcessUptimeMs": 1145.1,
-        "entriesRendererMs": 220.3,
-        "executionReadyProcessUptimeMs": 820.1
+        "entriesProcessUptimeMs": 1117.5,
+        "entriesRendererMs": 260.2,
+        "previewProcessUptimeMs": 1117.3,
+        "previewRendererMs": 260,
+        "executionReadyProcessUptimeMs": 669.6
       },
       "dom": {
         "panelPresent": true,
         "navigatorPresent": true,
         "entryRows": 4,
         "fileRows": 1,
-        "previewPanePresent": false,
-        "previewTextLength": 0,
+        "previewPanePresent": true,
+        "previewTextLength": 15210,
         "placeholderText": null,
-        "treeNotice": "正在读取 Git 更改..."
+        "treeNotice": null
       },
       "timings": {
-        "processCreateToEntriesMs": 1145.1,
-        "processCreateToExecutionReadyMs": 820.1
+        "processCreateToEntriesMs": 1117.5,
+        "processCreateToPreviewMs": 1117.3,
+        "processCreateToExecutionReadyMs": 669.6
       },
       "readinessAtAttach": {
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 38196,
+        "port": 5325,
         "retryable": false
-      },
-      "note": "the restored file never published visible content"
+      }
     },
     {
       "index": 3,
+      "kind": "measured",
+      "ok": true,
+      "marks": {
+        "entriesProcessUptimeMs": 1085.9,
+        "entriesRendererMs": 244.9,
+        "previewProcessUptimeMs": 1085.7,
+        "previewRendererMs": 244.7,
+        "executionReadyProcessUptimeMs": 645.1
+      },
+      "dom": {
+        "panelPresent": true,
+        "navigatorPresent": true,
+        "entryRows": 4,
+        "fileRows": 1,
+        "previewPanePresent": true,
+        "previewTextLength": 15210,
+        "placeholderText": null,
+        "treeNotice": null
+      },
+      "timings": {
+        "processCreateToEntriesMs": 1085.9,
+        "processCreateToPreviewMs": 1085.7,
+        "processCreateToExecutionReadyMs": 645.1
+      },
+      "readinessAtAttach": {
+        "state": "ready",
+        "phase": "execution",
+        "apiVersion": 1,
+        "port": 5338,
+        "retryable": false
+      }
+    },
+    {
+      "index": 4,
       "kind": "click-to-preview",
       "ok": true,
       "clicked": {
         "clicked": true,
         "label": "MREADME.md",
-        "at": 310.40000000037253
+        "at": 303.09999999962747
       },
-      "clickToPreviewMs": 15.2,
-      "previewTextLength": 12,
-      "previewMarkProcessUptimeMs": 1121.7,
+      "clickToPreviewMs": 3,
+      "previewTextLength": 15210,
+      "previewMarkProcessUptimeMs": 1102.3,
       "previewMarkEmitted": true
     }
   ],
   "summary": {
-    "measuredRuns": 0,
-    "failedRuns": 2,
+    "measuredRuns": 3,
+    "failedRuns": 0,
     "processCreateToFirstFrameMs": null,
-    "processCreateToEntriesMs": null,
-    "processCreateToPreviewMs": null,
-    "processCreateToExecutionReadyMs": null,
+    "processCreateToEntriesMs": {
+      "samples": 3,
+      "min": 1085.9,
+      "median": 1112.3,
+      "max": 1117.5
+    },
+    "processCreateToPreviewMs": {
+      "samples": 3,
+      "min": 1085.7,
+      "median": 1112.2,
+      "max": 1117.3
+    },
+    "processCreateToExecutionReadyMs": {
+      "samples": 3,
+      "min": 645.1,
+      "median": 669.6,
+      "max": 674.8
+    },
     "clickToPreviewMs": {
       "samples": 1,
-      "min": 15.2,
-      "median": 15.2,
-      "max": 15.2
+      "min": 3,
+      "median": 3,
+      "max": 3
     }
   },
   "note": [
