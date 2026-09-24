@@ -1,6 +1,6 @@
 # Core Flow 状态契约
 
-最后更新：2026-09-24 12:09:53
+最后更新：2026-09-24 22:07:26
 
 本页是 Harness 状态边和高频 `RunContext` 字段责任的导航入口。可执行契约位于 `packages/types/src/stage-transitions.ts` 与 `packages/types/src/run-context-contract.ts`；本页只解释如何阅读和扩展它们，不复制运行时实现。
 
@@ -14,6 +14,7 @@
 enter -> classify
 classify -> execute          (每个请求，含常规会话/工具工作/续接)
 classify -> reply            (能力/状态询问)
+execute -> ask_user          (主循环内模型发起 request_user_input；是真实边，不是兼容边)
 execute -> verify
 execute -> recover
 recover -> classify
@@ -22,6 +23,7 @@ recover -> verify
 recover -> reply
 recover -> ask_user
 recover -> finalize
+verify -> execute            (结构性证据缺口的唯一一次局部重规划)
 verify -> finalize
 verify -> recover
 verify -> ask_user

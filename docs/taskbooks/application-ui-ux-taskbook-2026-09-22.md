@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-24 21:52:08
+最后更新：2026-09-24 22:07:26
 
 ## 1. 范围与结论
 
@@ -11,6 +11,8 @@
 **证据边界**：这是源码与交互契约审查，未启动 Electron、未进行鼠标/键盘实机走查、未测量截图对比度。下文“源码确认”表示实现分支已核对，并不表示在真实窗口中已复现；“体验建议”需要验证收益；“待实机验证”不得登记为已复现缺陷。所有任务仍未完成。
 
 **进度（2026-09-23 00:02:00）**：UX-01~UX-14 实现完成，UX-16 的第三项（普通/紧凑都保留失败、权限拒绝、未验证、部分完成与待用户事项）已在源码侧修复并回归；16 项仍全部未勾选，因为统一完成标准要求真实 Electron 验收。**当前唯一阻塞条件：缺少真实窗口证据。** 需要执行的验收脚本已分别写在 UX-01~UX-16 各自的实施记录里（最小窗口与 125%/150%/200% 缩放、微软拼音、四类渠道 fixture、五种失败注入、紧凑模式五类状态、流式长回答阅读位置、双会话现场与重启恢复，以及 UX-14 的两处取值变化）。
+
+**2026-09-24 对话区增补**：UX-19~UX-22 针对用户报告的滚动定位、流式文字外观及缺失、模型连接失败、输出可读性。以下是新增待办和源码检查结论，未实施产品代码，也未在真实 Electron 窗口复现；上段进度只描述原 UX-01~UX-16 的历史状态，不代表新增任务已完成。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -41,6 +43,10 @@
 | [ ] | UX-16 | 补齐主对话与拓展工作区的场景验收 | 待实机验证 | L |
 | [ ] | UX-17 | 大仓库文件树虚拟化（先建基准，再选实现） | 对标记录 + 体验建议 | L |
 | [ ] | UX-18 | 为审阅侧栏提供独立宽度 | 对标记录 + 体验建议 | S |
+| [ ] | UX-19 | P1 | 修正对话区阅读位置和上下定位 | 用户反馈 + 源码风险；待实机定位 | M |
+| [ ] | UX-20 | P0 | 查清流式文字变色及内容消失的路径 | 用户反馈 + 源码风险；待实机复现 | M |
+| [ ] | UX-21 | P0 | 模型瞬时故障分级重试与失败反馈 | 源码确认 + 用户反馈 | M |
+| [ ] | UX-22 | P2 | 收敛对话输出层级与可读性 | 用户反馈 + 体验建议；待实机验证 | M |
 
 ## 3. 可执行任务
 
@@ -314,7 +320,7 @@
 
 **问题**：文件树展开后**递归挂载全部行**（`workspace-tree-rows.tsx` 是递归实现，仓库内没有任何 virtualizer 引用，也没有 `overscan`/`useVirtualizer` 之类代码）。大目录下的滚动、筛选与切换成本随行数线性增长。OpenCode 的做法是目录按需 list + TanStack virtual 只挂可视行（稳定 28px 行高、overscan 10），这是它在大仓库上最重要的结构性优势。
 
-**定位**：[workspace-tree-rows.tsx](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx)、[file-navigator.tsx](../../packages/app/src/renderer/workspace/file-navigator.tsx)、`workspace/directory-cache.ts`（现有 128 条 / 5 秒 stale-while-revalidate 缓存）。对标依据与上游 commit 见 [OpenCode VS Code 对标记录](../reference/opencode-vscode-comparison-2026-08-13.md)。
+**定位**：[workspace-tree-rows.tsx](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx)、[file-navigator.tsx](../../packages/app/src/renderer/workspace/file-navigator.tsx)、`workspace/directory-cache.ts`（现有 128 条 / 5 秒 stale-while-revalidate 缓存）。对标依据与上游 commit 见本文第 7 节。
 
 - [ ] 先建立展开基准：1,000 行与 10,000 行目录下的首帧、滚动流畅度、展开/折叠与筛选耗时，作为改动前证据（没有基准不改实现）。
 - [ ] 再选实现：自实现固定行高虚拟化，或在体积与许可证可接受时引入轻量库；**不得**为一个列表引入完整 Solid 运行时、第二套目录扫描或新的活动页。
@@ -341,12 +347,61 @@
 - 折入来源：同 UX-17；对标记录原写"仍可后续补审阅侧栏独立宽度"。
 - 现状锚点：`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 存在于 `app-shell/preferences.ts`，`review.tsx` 默认双列（`true`）。
 
+### UX-19｜对话区阅读位置和上下定位
+
+**问题与边界**：用户反馈上下滚动定位不顺手。源码已有底部吸附阈值、历史加载后的高度修复和 ResizeObserver，不能描述为“没有滚动锚点”。但当前切换会话会直接跳到底部；视口高度变化时，`resolveChatResizeScrollTop` 即使阅读者已离开底部，仍按旧底部距离移动 `scrollTop`；也没有明确的“回到底部”控件。哪一种对应用户体验，需要实机定位。
+
+**定位**：[chat-view.tsx](../../packages/app/src/renderer/app-shell/chat-view.tsx)、[chat-scroll-anchor.ts](../../packages/app/src/renderer/chat/chat-scroll-anchor.ts)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[composer-view.tsx](../../packages/app/src/renderer/app-shell/composer-view.tsx)。与 UX-16 共用长回答验收，不重复搭建滚动系统。
+
+- [ ] 隔离数据根下录制：短/长会话从顶部、中部、底部开始，流式增量、加载更早消息、展开工具详情、输入框增高、导航栏拖动/折叠、窗口缩放、切换会话及返回；标记每次非用户触发的视口位移。
+- [ ] 对已离开底部的阅读者采用可见消息锚点或等效稳定策略；仅在读者仍贴近底部时跟随新输出。会话返回位置符合会话现场预期，并提供可达的回到底部入口及新消息提示。
+- [ ] 验收：上述场景中文字不跳离当前阅读段；历史插入、底部跟随与返回底部各自稳定；普通/紧凑模式、窄窗口与高 DPI 均可用。修复前后记录 `scrollTop`、可见消息键及截图/视频。
+
+**状态**：未开始；源码可确认当前控制分支，实际误定位仍待 Electron 复现。
+
+### UX-20｜流式文字外观变化与内容缺失
+
+**问题与边界**：用户报告部分字色突然变化、部分文字像被吞掉。`Markdown.tsx` 对正在输出的尾部反复解析，完成后切换成整篇渲染；CSS 对标题、链接、引用、行内代码设有不同颜色，代码块还会从纯文本 fallback 切到按需加载的高亮组件。这些能解释潜在的视觉变化，**尚未证明就是用户看到的那一处**。另一个已确认的状态分支是 `run-result-reducer.ts` 在 `status !== 'ok'` 时清空流式回答预览；底层 SSE 解析对无效 JSON 数据行直接跳过，且 `parseStream` 目前以流结束作为完成条件，需核对异常截断是否被识别。不得把未校验的预览直接当作 Agent 最终回复保留下来。
+
+**定位**：[Markdown.tsx](../../packages/app/src/renderer/Markdown.tsx)、[streaming-markdown.ts](../../packages/app/src/renderer/streaming-markdown.ts)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[assistant-delta-buffer.ts](../../packages/app/src/renderer/chat/assistant-delta-buffer.ts)、[run-result-reducer.ts](../../packages/app/src/renderer/chat/run-result-reducer.ts)、[client.ts](../../packages/llm/src/client.ts)、[api/run.ts](../../packages/app/src/renderer/api/run.ts)。
+
+- [ ] 用含标题、列表、链接、引用、代码围栏、中文标点与长段落的确定性分块输入，逐步比对 Provider 接收文本、SSE delta/reset/replace、前端缓冲、最终 settlement 与 DOM `textContent`；覆盖断流、畸形帧、无最终结果和非成功 run，先确定文字在哪一层消失。
+- [ ] 修复实际丢失层；在流式与完成态之间保持文字完整及语义样式稳定。必要的链接/代码差异应有一致的视觉规范，避免仅因组件切换闪烁。未授权工具标记、无效模型回复和未结算文案继续按 Runtime 规则撤回，以明确状态说明原因。
+- [ ] 验收：成功 run 的最终 DOM/复制文本与持久化 settlement 一致；瞬时断线恢复无重复或缺字；失败 run 不伪装成成功回答，且已完成步骤、失败原因、是否可重试清楚可见；普通/紧凑模式及重开会话一致。真实窗口录屏确认变色场景，自动测试覆盖定位到的具体丢字边界。
+
+**状态**：未开始；上述实现分支是源码事实，用户观察到的具体根因待复现。
+
+### UX-21｜模型瞬时故障分级重试与失败反馈
+
+**问题与边界**：用户期望模型连接失败后自动恢复，连续失败五次才停止。当前 `packages/llm/src/retry.ts` 默认 `maxAttempts: 3`，仅 `retryable` 错误及 `TypeError` 重试，429/500/502/503/504 被标为可重试；`AbortError` 等未被认作可重试，最终失败会沿 run 状态进入恢复/失败呈现。`maxAttempts` 是**总请求次数**，用户说的“重连 5 次”应明确为首次请求后最多 **5 次重试**，而不是总共 5 次。底层已具备指数退避，不能描述为完全没有重试。
+
+**定位**：[retry.ts](../../packages/llm/src/retry.ts)、[client.ts](../../packages/llm/src/client.ts)、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[run-actions.ts](../../packages/app/src/renderer/chat/run-actions.ts)、[run-result-reducer.ts](../../packages/app/src/renderer/chat/run-result-reducer.ts)。区分 HTTP 超时、用户取消、认证失败、额度/速率限制、参数错误、网络中断、流开始前/后的断开以及结果已被持久化但 UI 连接断开。
+
+- [ ] 先用错误注入表核对每类失败的实际分类、当前尝试数和 run 结局；保留请求、失败、重试次数及耗时的真实用量账本，不把重试隐藏在“单次调用”统计里。
+- [ ] 对可安全重放的瞬时连接/服务故障，采用首次请求后最多 5 次有界重试，指数退避与抖动，尊重取消、超时和 Provider 的限流提示；进度明确显示“第 n 次重试 / 最多 5 次”。认证、配置、参数、权限、用户取消及已经产生不确定副作用的调用不盲重试。流中断前后的重发要以请求/片段身份去重，并在结果不明时走恢复，不重复执行已完成工具。
+- [ ] 验收：前 1~5 次可重试故障后恢复则继续当前 run；第 5 次重试仍失败才给出可理解的失败状态和用户可操作的续接方式；不可重试故障立即明确失败；取消后不再等待或重试；重连不重复文本、工具副作用和最终回复。测试至少含 429、503、超时、断流、401/400、用户取消与本地 SSE 断线。
+
+**状态**：未开始；重试次数和类别为源码确认，用户遇到的具体错误尚需日志/错误注入定位。
+
+### UX-22｜对话输出层级与可读性
+
+**问题与边界**：在 UX-19~UX-21 的正确性问题定位后，再实机审查活动行、模型正文、失败提示、来源、工具结果及消息操作。现有普通/紧凑模式与 UX-16 的失败可见性修复是基础，不新增一套输出信息架构。
+
+**定位**：[assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx)、[agent-tool-row.tsx](../../packages/app/src/renderer/chat/agent-tool-row.tsx)、[message-meta.tsx](../../packages/app/src/renderer/chat/message-meta.tsx)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)。
+
+- [ ] 在真实窗口检查长正文与工具输出的层级、默认展开量、行宽、段落间距、可复制性、键盘焦点、状态对比度及窄窗口换行；按“读完结果、找到失败、继续任务”三个操作记录卡点。
+- [ ] 仅对有证据的卡点做局部调整：最终结果优先可读，过程可按需展开，失败/权限/未验证保持显眼；沿用主题 token、现有 Markdown 与普通/紧凑模式，不用 opacity 隐去有用文字。
+- [ ] 验收：长回答首屏能辨认当前结论与状态，代码/链接/来源可读可复制，失败与下一步可找到；键盘、125%/150%/200% 缩放和两种显示模式通过录屏/截图复核。
+
+**状态**：未开始；属于体验建议，不能在实机走查前声称具体对比度或层级不合格。
+
 ## 4. 实施顺序与依赖
 
 1. **第一批：可靠性**。UX-01、UX-02、UX-03、UX-04、UX-05；UX-02 需要的最小确认层可与 UX-07 共用，不等整套 UI 抽象完成再修复。
 2. **第二批：一致性**。UX-06、UX-07、UX-08、UX-09、UX-10、UX-11。草稿离开、模态焦点和异步反馈应共同验收；无模型引导依赖草稿保留和错误表达。
 3. **第三批：收口**。UX-12、UX-13、UX-14；UX-15/16 从第一批就开始记录基线，最终跨批回归。视觉修改必须以真实窗口证据收尾。
 4. **按需排期（2026-09-24 折入）**。UX-17 必须先出 1,000/10,000 行基准、再决定自实现或引库，不与本轮收口绑定；UX-18 很小，可与 UX-07 的导航/模态冻结一起做，避免两次改同一片布局状态。
+5. **对话区专项**。先并行记录 UX-19/UX-20 的真实窗口与分层证据，以及 UX-21 的错误注入表；先修真正的丢字/错误分类与安全重试，再处理滚动定位，最后以 UX-22 收口视觉层级。与 UX-16 共用长回答和失败验收记录。
 
 不以“重做前端”为一个大任务，不为清单新增调度、记忆写入或另一个权限体系。不自动改变既定开发主线；本任务书是可独立排期的应用层 backlog。
 
@@ -382,12 +437,19 @@
 | 14 | UX-16 | 本任务实施记录 | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |
 | 15 | UX-18 | 本任务实施记录 | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动 | |
 | 16 | UX-17 | 本任务实施记录 | 1,000 / 10,000 行目录的改前改后成对基准 + 键盘/筛选行为回归 | |
+| 17 | UX-20 | 本任务实施记录 | 分块流式文本逐层比对 + 断流/畸形帧/最终结算 + 真实窗口录屏 | |
+| 18 | UX-21 | 本任务实施记录 | 429/503/超时/断流/401/400/取消/SSE 断线分类，安全重试最多 5 次 | |
+| 19 | UX-19 | 本任务实施记录 | 顶部/中部/底部阅读 + 历史加载/输入增高/分栏变化/会话返回定位 | |
+| 20 | UX-22 | 本任务实施记录 | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 
 **自动门快照（记录于 2026-09-23 00:11，会随每次运行变化，不作为常驻结论）**：`check:repo` 当时 36/36 通过（2026-09-24 增补两条检查后为 38/38）；全量测试 **476 个文件 / 3358 通过、2 失败、1 跳过**，两个失败均不在本任务改动面内——`packages/runner/src/runner.test.ts` 的压缩范围断言与 `scripts/verify-web-live-llm-evidence.test.mjs` 解析被管道捕获的子进程 stdout（本沙箱不允许管道捕获，属环境边界）；全 workspace typecheck、App 构建与 `verify:app-recovery` 当时均通过。**测试数量与耗时以命令输出为准**，本任务书不复述为当前结果。
 
-## 7. 对标记录里不在本轮 UI 范围的两项
+## 7. 对标折入项与上游证据
 
-以下两项来自 [OpenCode VS Code 对标记录](../reference/opencode-vscode-comparison-2026-08-13.md)，**不排进 UX-xx 清单**，因为它们是产品面或数据模型决定，不是界面修正；记录在此是为了让那份对标记录的待办有明确归属，而不是继续悬空：
+2026-08-13 的《OpenCode VS Code 对标记录》已于 2026-09-24 退役（原文可取回：`git log --follow -- docs/reference/opencode-vscode-comparison-2026-08-13.md`），其内容按性质分三处承接：**大仓库文件树虚拟化 → UX-17**、**审阅侧栏独立宽度 → UX-18**、**以下两项不排期**。上游证据留在本节，供将来重新核对时使用：
 
-- **行级评论的持久性**：LS 已有行/范围手势、view zone 与附件式发布（`workspace/line-comments.tsx`、`review-line-comments.ts`、`line-comment-attachments.ts`），但**没有独立评论存储或 Runtime 评论合约**——评论只作为本轮附件进入对话；OpenCode 是持久评论模型。是否引入持久评论、以及它与会话/行范围的绑定协议，需单独立项并按 Runtime 合约评审。
-- **真正的 LS VS Code 扩展**：OpenCode 的扩展是约 10.8 KB 的薄终端桥（复用 VS Code 原生终端、文件树、编辑器，把当前文件/选区转成 `@relative/path#Lstart-end` 注入 TUI），LS 的"内置 VS Code 模块"其实是自有 Monaco 工作台，两者是两个产品面。若要做，应新建 VS Code SDK 项目并保持 MIT/自有许可边界清晰，不能通过嵌入 OpenCode Desktop 替代。当前为"记录在案、不排期"的待产品选择项。
+- 上游：`anomalyco/opencode`，对标 commit `cc4b45612974f735ddec46009ede07729511fba4`（MIT）；其 VS Code 扩展 `sst-dev.opencode-0.0.13` 约 10.8 KB，只做终端/HTTP 桥，没有 Webview、Monaco 或自己的文件树。关键源码：[sdks/vscode/src/extension.ts](https://github.com/anomalyco/opencode/blob/cc4b45612974f735ddec46009ede07729511fba4/sdks/vscode/src/extension.ts)、[file-tree-v2-model.ts](https://github.com/anomalyco/opencode/blob/cc4b45612974f735ddec46009ede07729511fba4/packages/app/src/components/file-tree-v2-model.ts)。
+- 当时**已直接吸收**的 5 项（文件预览 byte-LRU、Git Diff 字节预算、Monaco 模型缓存与面板切换稳定、审阅过滤与键盘导航、Main 审阅快照与 Diff 请求边界）实现细节在 `packages/app/src/renderer/workspace/README.md`、`renderer/README.md` 与 `ui/README.md`，本任务书不重复。
+- **未排期两项**（产品面或数据模型决定，不是界面修正）：
+  - **行级评论的持久性**：LS 已有行/范围手势、view zone 与附件式发布（`workspace/line-comments.tsx`、`review-line-comments.ts`、`line-comment-attachments.ts`），但**没有独立评论存储或 Runtime 评论合约**——评论只作为本轮附件进入对话；OpenCode 是持久评论模型。是否引入持久评论、以及它与会话/行范围的绑定协议，需单独立项并按 Runtime 合约评审。
+  - **真正的 LS VS Code 扩展**：OpenCode 的扩展复用 VS Code 原生终端、文件树、编辑器，把当前文件/选区转成 `@relative/path#Lstart-end` 注入 TUI；LS 的"内置 VS Code 模块"其实是自有 Monaco 工作台，两者是两个产品面。若要做，应新建 VS Code SDK 项目并保持 MIT/自有许可边界清晰，不能通过嵌入 OpenCode Desktop 替代。当前为"记录在案、不排期"的待产品选择项。

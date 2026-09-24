@@ -1,6 +1,6 @@
 # Cache request-shape comparison: pre-fix vs post-fix
 
-最后更新：2026-09-24 21:42:08
+最后更新：2026-09-24 22:07:26
 
 本目录记录"系统提示词与请求前缀精简"任务书的结构基线与前后对比。除本文件外，`latest.md`
 由探针在每次 harness 测试运行时重新生成（同样只含字符数、共享前缀与工具目录摘要，
@@ -14,14 +14,32 @@ configuration:
 | Report | Freeze |
 | --- | --- |
 | [`pre-fix-cd6cabc.md`](pre-fix-cd6cabc.md) | `cd6cabc`, the commit before this work started |
-| [`baseline-git-0af62a7.md`](baseline-git-0af62a7.md) | `0af62a7`, after SP-01/02/04/05/06/07 |
 
 Both records carry the same frozen loads. The probe runs inside the harness suite and
 writes only `latest.md`, re-labelling it with the current commit; the per-load JSON dumps
 it used to write had no reader and were removed on 2026-09-24. Measurements that change are
-the ones worth reading — and the turn-1 character counts have moved since `0af62a7` (see
-the current reading in [`latest.md`](latest.md)), while the shared-prefix and stable-head
-numbers below are the ones that converged.
+the ones worth reading — and the turn-1 character counts have moved since the freeze above
+(see the current reading in [`latest.md`](latest.md)), while the shared-prefix and
+stable-head numbers below are the ones that converged. `baseline-git-0af62a7.md` was
+retired on 2026-09-24: this README already records that its shared-prefix reading counted
+bytes that matched by accident, so it was a refuted post-fix copy rather than evidence.
+
+## 长任务批次历史（机器可读账本保留，逐批叙述已退役）
+
+冻结清单与长任务的每次真实运行都由 `scripts/run-real-long-task.mjs` 驱动、`scripts/report-real-long-task-baseline.mjs` 聚合。**逐批的 `.md` 渲染已在 2026-09-24 退役**（它们只是各自 `.json` 的表格渲染，原文见 git 历史），批次结论集中在这里；`.json` 全部保留——它们是 gate 的输入，且冷启动/重建/尾部三类未缓存分解是从当时保留的临时数据根重算出来的，临时目录清掉后这些 JSON 是唯一副本。
+
+| 批次（账本） | 平均 H_ui | 唯一事实 |
+| --- | ---: | --- |
+| [改动前 `real-long-task-baseline-2026-09-22.json`](real-long-task-baseline-2026-09-22.json) | 73.4% | 唯一的改动前真实 Provider 账本；功能失败 4/12 |
+| [任务区间回放后 `…-post-lt02-2026-09-22.json`](real-long-task-baseline-post-lt02-2026-09-22.json) | 84.2% | 首次把重建未缓存降到 0（5/12）；功能失败 4/12→1/12 |
+| [回放与压缩修复后 `…-after-replay-fixes-2026-09-22.json`](real-long-task-baseline-after-replay-fixes-2026-09-22.json) | 86.0% | 唯一带"排除 provider 矛盾后"敏感性列的批次（4/12 矛盾） |
+| [强制收尾修复后 `…-forced-final-fix-2026-09-22.json`](real-long-task-baseline-forced-final-fix-2026-09-22.json) | 88.1% | 最干净的一批：产物验收 12/12、0 矛盾、重建合计 2,276（10/12 为零） |
+| [任务区间不可淘汰后 `…-pinned-interval-2026-09-22.json`](real-long-task-baseline-pinned-interval-2026-09-22.json) | 87.1% | **当前冻结清单回归集**（验收门的默认输入之一）；产物 12/12、0 矛盾 |
+| [L1 长任务 `long-interval-task-L1-2026-09-22.json`](long-interval-task-L1-2026-09-22.json) | 99.13% / 99.21% | **当前红线证据**（验收门的另一默认输入）：第 16 回合起节点全部 ≥95% |
+| [L1 第 14 回合重启 `…-L1-restart-2026-09-22.json`](long-interval-task-L1-restart-2026-09-22.json) | 98.99% | 唯一的进程重启连续性测量（重启不损失前缀） |
+| [L1 空闲 45 分钟 `…-L1-idle-pause-2026-09-22.json`](long-interval-task-L1-idle-pause-2026-09-22.json) | 99.05% | 唯一的缓存有效期测量（结论为"至少 45 分钟内有效"） |
+
+口径、禁止做法与判定入口见[缓存 95% 验收规程](../cache-95-acceptance.md)；聚合账本表头的"达标 0/N"是不加豁免的严格读法、"存在功能失败"会把 provider 未回答的尝试计入，读表前先看该规程的说明。
 
 ## What the probe measures
 

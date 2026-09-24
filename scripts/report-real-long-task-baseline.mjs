@@ -24,8 +24,12 @@ const valueOf = (flag) => {
   return index >= 0 ? args[index + 1] : undefined;
 };
 const resultsDir = resolve(repoRoot, valueOf('--dir') ?? '.codex_tmp');
-const jsonPath = resolve(repoRoot, valueOf('--json') ?? 'docs/reference/cache-baseline/real-long-task-baseline-2026-09-22.json');
-const markdownPath = resolve(repoRoot, valueOf('--markdown') ?? 'docs/reference/cache-baseline/real-long-task-baseline-2026-09-22.md');
+// Defaults stay inside the ignored scratch directory on purpose: a bare run must not
+// clobber a committed historical ledger, and it must not recreate a Markdown render that
+// was retired. Freeze a batch by naming `--json` and (optionally) `--markdown` explicitly,
+// then add its row to docs/reference/cache-baseline/README.md by hand.
+const jsonPath = resolve(repoRoot, valueOf('--json') ?? '.codex_tmp/real-long-task-baseline.json');
+const markdownPath = valueOf('--markdown') ? resolve(repoRoot, valueOf('--markdown')) : null;
 
 function readRuns() {
   if (!existsSync(resultsDir)) return [];
@@ -188,7 +192,7 @@ function markdown(data) {
 }
 
 writeFileSync(jsonPath, `${JSON.stringify(aggregate, null, 2)}\n`, 'utf8');
-writeFileSync(markdownPath, markdown(aggregate), 'utf8');
+if (markdownPath) writeFileSync(markdownPath, markdown(aggregate), 'utf8');
 console.log(`runs=${aggregate.runs}/${aggregate.expectedRuns} met=${aggregate.metRuns} `
   + `functionalFailures=${aggregate.runsWithFunctionalFailure} usageComplete=${aggregate.usageCompleteRuns}`);
 for (const run of aggregate.results) {
@@ -198,4 +202,6 @@ for (const run of aggregate.results) {
   for (const failed of run.failedChecks) console.log(`      failed check: ${failed}`);
 }
 console.log(`json: ${jsonPath}`);
-console.log(`markdown: ${markdownPath}`);
+console.log(markdownPath
+  ? `markdown: ${markdownPath}`
+  : 'markdown: 未写出（默认不生成；需要冻结可读副本时显式传 --markdown <path>，并在 docs/reference/cache-baseline/README.md 登记该批次）');
