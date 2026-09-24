@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-24 23:02:00
+最后更新：2026-09-24 23:13:22
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -32,7 +32,7 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 
 请求里的工作区目录是**默认值**，不是裁决：渲染器随每次 run 下发 Runtime 当前工作区（`chat/run-actions.ts`），而一个已绑定项目的会话按自己的目录运行，Main 侧因此会忽略这次下发（见 `src/main/local-app-api/README.md` 的 `resolveOwnedRunWorkspace`）。反过来，用户显式给当前项目会话换目录时，`app-shell/runtime-actions.ts` 的 `chooseWorkspacePath` 必须同时写入该会话（`api/sessions.ts` 的 `updateSessionWorkspace`），否则默认目录改了、会话却还在原处；独立会话没有这层绑定，只跟随默认目录。
 
-**失败不会在界面上消失**（CE-09 的现行契约，回归在 `chat/run-actions.test.ts`、`chat/run-result-reducer.test.ts`、`shared/history-activity.test.ts`）：一次 run 的终态由 `finally` 复位 `loading`，所以输入框不会永久停在运行中；确定性的流拒绝、流结束却没有 result、`ok` 却没有已结算回复都变成当前回合的 `failed` 且原样带上 Runtime 原因，中止走 `aborted`；失败回合的正文为空，流式预览被撤回，Runtime 状态行是唯一的用户可见陈述。刷新或重开会话时由 `shared/history-activity.ts` 从持久化消息与执行日志重建同一状态，没有 assistant 消息的 run 也会得到一行不写入转录的 Runtime 状态行；启动恢复只重读列表、不自动弹窗（见 `runtime-recovery/README.md`）。
+**失败不会在界面上消失**（CE-09 的现行契约，回归在 `chat/run-actions.test.ts`、`chat/run-result-reducer.test.ts`、`shared/history-activity.test.ts`）：一次 run 的终态由 `finally` 复位 `loading`，所以输入框不会永久停在运行中；确定性的流拒绝、流结束却没有 result、`ok` 却没有已结算回复都变成当前回合的 `failed` 且原样带上 Runtime 原因，中止走 `aborted`；失败回合的正文为空，流式预览被撤回，Runtime 状态行是唯一的用户可见陈述。刷新或重开会话时由 `shared/history-activity.ts` 从持久化消息与执行日志重建同一状态，没有 assistant 消息的 run 也会得到一行不写入转录的 Runtime 状态行；启动恢复只重读列表、不自动弹窗（见 `runtime-recovery/README.md`）。这条契约的前提是"流本身没被单个坏帧打死"：SSE 解析层只跳过无法解析的帧（见 `api/README.md`），丢字的定性证据与分层探针在 `chat/stream-text-integrity.test.ts`。流式尾部反复解析、完成态整篇重渲染，以及代码块从纯文本回退切到高亮组件，都只是**待录屏取证的变色候选**，没有真实窗口证据前不得据此改样式。
 
 用户可见的 Agent 自然语言也不由 Renderer 拼装：回复、澄清、任务说明、步骤摘要、验证说明和交付表达必须来自真实 LLM 调用，并结合运行时 `SOUL.md`、用户语言与已验证事实。Renderer 只呈现 Runtime 下发的最终文案，以及按钮、状态枚举、进度、路径、权限结果等机器事实；发布身份、幂等和去重由 Runtime 的持久化会话注册表负责，Renderer 不因措辞与上一回合相同而合并、改写或抑制消息，也不在回复为空时套用固定人格文案，只显示 Runtime 错误/状态。
 

@@ -108,5 +108,14 @@ export function parseSseFrame(frame: string): { name: string; data: unknown } | 
     }
   }
   if (dataLines.length === 0) return null
-  return { name, data: JSON.parse(dataLines.join('\n')) }
+  try {
+    return { name, data: JSON.parse(dataLines.join('\n')) }
+  } catch {
+    // A truncated or corrupt payload is skipped, exactly like the Provider-side stream parser
+    // does. Throwing here killed the whole run stream on a single bad frame, losing every
+    // later event — including the result frame — instead of only the broken one. Failing
+    // closed is still the caller's job: a stream that never delivers a parsable `result`
+    // frame ends without a verdict and is rejected there (see consumeRunStream).
+    return null
+  }
 }

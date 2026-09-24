@@ -377,6 +377,16 @@
 
 **状态**：未开始；上述实现分支是源码事实，用户观察到的具体根因待复现。
 
+**实施记录（2026-09-24 23:13:05）｜状态：分层定位完成并修掉一条已确认的整段丢失路径；DOM 取证与真实窗口录屏未做，保持未勾选**
+
+- 逐层结论（同一份确定性样本，含标题、列表、链接、引用、代码围栏、中文标点与长段落）：
+  - **SSE 解析层（`renderer/api/common.ts` 的 `parseSseFrame`）是本次唯一确认的"整段丢失"路径**。该函数此前对 `data:` 行直接 `JSON.parse`，解析失败会抛出并中断整条流的读取——一个畸形帧不只丢自己，还会带走它之后的全部 delta **和 `result` 帧**，于是"文字被吞掉"与"run 没有结算"同时出现。现已改为返回 `null` 跳过该帧（与 Provider 侧解析同构），失败关闭的责任仍留在 `consumeRunStream`：整条流始终没有可解析的 `result` 时照旧拒绝。**注意**：这条只解释了"只要有坏帧，损失被放大到整条流"，不等于已复现用户看到的那一次，触发帧的来源仍需真实窗口取证。
+  - 缓冲层（`assistant-delta-buffer.ts`）按显示帧合并增量，`clear()` 只丢弃**尚未提交显示**的尾部；已显示的正文不会因合并被回车覆盖。
+  - 结算层（`run-result-reducer.ts`）在 `status !== 'ok'` 时把该回合正文置空——撤回未验证预览是既有的 Runtime 规则，不是丢字；成功 run 用 settlement 文案覆盖预览（见 `run-result-reducer.ts` 第 57 行的 `text: result.status === 'ok' ? settledReply : ''`）。
+  - **外观层（变色）仍未取证**：`Markdown.tsx` 对正在输出的尾部反复解析、完成后切整篇渲染，代码块从纯文本 fallback 切到按需加载的高亮组件；这三处都能产生视觉变化，但必须用真实窗口录屏确认是哪一处，本轮不做样式改动。
+- 验证方式：新增 [stream-text-integrity.test.ts](../../packages/app/src/renderer/chat/stream-text-integrity.test.ts) 9 例，驱动**真实**的 `consumeRunStream` + `createAssistantDeltaBuffer` + `reduceCompletedRunMessages`，覆盖：正常流逐字节一致（delta 拼接 = 显示文本 = settlement）；帧被切成三次读取仍能重组；畸形帧被跳过后邻居正文与结算完好；**"结果帧本身解析不了"时仍然 fail closed**（拒绝并以 `ended without result` 结束，不把坏帧当成静默成功）；传输重试的 `replace ''` 语义（不重复，但读者会看到已显示文字先消失再重来）；无 result 的断流同样拒绝；`aborted`/`failed` 撤回预览；settlement 覆盖预览；buffer 只在 replace 时丢弃待显示尾部。`vitest run` 相关 3 个文件 20 例通过。
+- 未覆盖项：DOM `textContent` 比对、复制文本一致性与变色场景录屏都需要真实 Electron 窗口；`parseStream` 仍以"流结束"作为完成条件，**异常截断本身不被识别**（目前只能通过"没有 result"间接发现）；传输重试清空可见回答时仍未说明原因，应与 UX-21 的"第 n 次重试 / 最多 5 次"进度一起呈现。第 1~3 条复选框因此保持未勾选。
+
 ### UX-21｜模型瞬时故障分级重试与失败反馈
 
 **问题与边界**：用户期望模型连接失败后自动恢复，连续失败五次才停止。当前 `packages/llm/src/retry.ts` 默认 `maxAttempts: 3`，仅 `retryable` 错误及 `TypeError` 重试，429/500/502/503/504 被标为可重试；`AbortError` 等未被认作可重试，最终失败会沿 run 状态进入恢复/失败呈现。`maxAttempts` 是**总请求次数**，用户说的“重连 5 次”应明确为首次请求后最多 **5 次重试**，而不是总共 5 次。底层已具备指数退避，不能描述为完全没有重试。
