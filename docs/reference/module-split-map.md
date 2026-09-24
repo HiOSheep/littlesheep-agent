@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-09-24 21:13:47
+最后更新：2026-09-24 21:32:27
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -11,6 +11,7 @@
 - 超过 600 行默认进入强制拆分队列；先冻结 facade 和特征测试，再移动实现。
 - 拆分必须保持公共 API、持久化格式、URL、动画、导航、恢复和用户数据语义。
 - 所有权标记为 A 文档、B Renderer、C Main/Adapter、D Memory、E Harness/Context；每个新增模块在移出队列前必须归属于其中之一。
+- 两个队列的行数与"已完成拆分"的当前入口行数由仓库卫生门**逐条比对实测值**（同一口径：生产 `.ts/.tsx`、排除测试文件、去掉末尾空行）；数字由人写、门禁校验，不由脚本改写——生成器会把本表用来"让人再看一眼文件"的上限和队列静默改写成实际值。
 
 ## 强制拆分队列
 
@@ -214,29 +215,29 @@
 
 以下不是永久例外，而是有界拆分队列。301-600 行文件继续由上方软上限队列管理；超过 600 行文件只能接受修复、特征测试或完成拆分所需的兼容修改，且不得超过登记上限。到期时必须复查、下调上限或完成拆分。
 
-**复查日期是到期期限，不是"上次复查"**：到期前必须逐条复查（路径仍存在、仍超过 600 行、未越过上限），确认后统一顺延；2026-09-24 已按此口径完成一次逐条复查并顺延到 2026-10-24（仓库卫生门在 `复查日期 < 今天` 时直接失败，日期本身不会被自动续期）。
+**本轮复查到期：2026-10-24**（下表所有条目共用这一日期，表格里一律写"同上"——续期只改这一处）。到期前必须逐条复查（路径仍存在、仍超过 600 行、未越过上限）；仓库卫生门在到期日已过时直接失败，日期不会自动续期。2026-09-24 已按此口径完成一次逐条复查。
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
 | --- | --- | --- | ---: | --- |
-| `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 2026-10-24 |
-| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 2026-10-24 |
-| `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 2026-10-24 |
-| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传、C07 压缩 operation owner 接线、durable final-reply publication 和资源收尾仍共享跨阶段不变量；effect 对账查询、run 模式读取、Runtime 失败发布、压缩 scheduler 与续接证据装配（`continuation-evidence.ts`）已下沉，先冻结恢复、幂等和单一发布特征测试，再拆分协调职责 | 2595 | 2026-10-24 |
-| `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 2026-10-24 |
-| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点、执行证据、请求前缀变化原因仍共享版本边界；会话续接证据已迁入 `conversation-continuation.ts`，其余拆分时必须保持现有 barrel 与持久化兼容 | 925 | 2026-10-24 |
-| `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 2026-10-24 |
-| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 2026-10-24 |
-| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 2026-10-24 |
-| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 2026-10-24 |
-| `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 2026-10-24 |
-| `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 2026-10-24 |
-| `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 2026-10-24 |
-| `packages/safety/src/permission-boundary.ts` | C / Safety | 网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定刚接入；先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | 660 | 2026-10-24 |
-| `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 2026-10-24 |
-| `packages/harness/src/durable-kernel.ts` | E / Harness | 恢复、并发 cursor、effect lifecycle 和 authoritative settlement 刚接入；并发恢复 action 去重后上限调整，先冻结跨实例并发与重启恢复特征测试，再拆 event reducer、recovery policy 和 settlement policy | 940 | 2026-10-24 |
-| `packages/harness/src/cache-observability.ts` | E / Harness | Provider、Context、Memory/Embedding 三套账本刚接入 request-bound 脱敏观测；先冻结 CACHE-03/04/05 确定性矩阵，再按 ledger、fingerprint、report 拆分 | 680 | 2026-10-24 |
-| `packages/harness/src/model-observability.ts` | E / Harness | 模型请求、Context、Provider usage、缓存证据与 C09 前缀变化原因（`prefixChange`）统一关联；先完成真实 usage 和 durable replay 证据，再拆 provider reconciliation 与 request snapshot projection | 705 | 2026-10-24 |
-| `packages/session/src/manager.ts` | E / Runtime | C08C 压缩事务在前驱 CAS、候选回执与 activation 投影之间共享持久化不变量；先冻结崩溃/并发恢复特征测试，再把 compaction transaction 与 activation adapter 移出 facade | 660 | 2026-10-24 |
-| `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 630 | 2026-10-24 |
-| `packages/app/src/main/index.ts` | C / App Main | 冷启动专项把 bootstrap 拆成三段（数据前置 / UI 索引与监听 / Runner 与就绪发布），阶段编排本身仍在组合根；先把 Local App API 选项对象与 Runner 构建下沉到独立模块，再下调上限 | 660 | 2026-10-24 |
-| `packages/app/src/main/desktop-shell.ts` | C / App Main | 冷启动专项的隔离验收需要窗口状态与文档切换（启动页、失败页、最大化/还原、渲染器是否已接管），这些都必须触达私有窗口状态；先把窗口状态 codec 与验收快照保持在既有下沉模块，再把这两组辅助方法移出 | 620 | 2026-10-24 |
+| `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 同上 |
+| `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 同上 |
+| `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 同上 |
+| `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传、C07 压缩 operation owner 接线、durable final-reply publication 和资源收尾仍共享跨阶段不变量；effect 对账查询、run 模式读取、Runtime 失败发布、压缩 scheduler 与续接证据装配（`continuation-evidence.ts`）已下沉，先冻结恢复、幂等和单一发布特征测试，再拆分协调职责 | 2595 | 同上 |
+| `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 同上 |
+| `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点、执行证据、请求前缀变化原因仍共享版本边界；会话续接证据已迁入 `conversation-continuation.ts`，其余拆分时必须保持现有 barrel 与持久化兼容 | 925 | 同上 |
+| `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 同上 |
+| `packages/runner/src/run-checkpoint-store.ts` | E / Runtime | 检查点 codec、原子存储、查询、容量、保留期和稳定 conversation-turn identity 共享恢复不变量；完成查询拆分前保持 facade 稳定 | 900 | 同上 |
+| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 同上 |
+| `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 同上 |
+| `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 同上 |
+| `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 同上 |
+| `packages/memory-tree/src/v3/catalog.ts` | D / Memory | activation schema 与检索投影刚稳定，先保持 Catalog facade 和恢复契约；本轮新增激活与关系投影后复查 | 640 | 同上 |
+| `packages/safety/src/permission-boundary.ts` | C / Safety | 网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定刚接入；先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | 660 | 同上 |
+| `packages/tools/src/tool-execution-service.ts` | E / Tools | Web 工具接线需要保持统一校验、审批、事件、取消和持久化投影不变量；先完成 WB-09 发布矩阵，再拆 invocation lifecycle 与 Web result projection | 660 | 同上 |
+| `packages/harness/src/durable-kernel.ts` | E / Harness | 恢复、并发 cursor、effect lifecycle 和 authoritative settlement 刚接入；并发恢复 action 去重后上限调整，先冻结跨实例并发与重启恢复特征测试，再拆 event reducer、recovery policy 和 settlement policy | 940 | 同上 |
+| `packages/harness/src/cache-observability.ts` | E / Harness | Provider、Context、Memory/Embedding 三套账本刚接入 request-bound 脱敏观测；先冻结 CACHE-03/04/05 确定性矩阵，再按 ledger、fingerprint、report 拆分 | 680 | 同上 |
+| `packages/harness/src/model-observability.ts` | E / Harness | 模型请求、Context、Provider usage、缓存证据与 C09 前缀变化原因（`prefixChange`）统一关联；先完成真实 usage 和 durable replay 证据，再拆 provider reconciliation 与 request snapshot projection | 705 | 同上 |
+| `packages/session/src/manager.ts` | E / Runtime | C08C 压缩事务在前驱 CAS、候选回执与 activation 投影之间共享持久化不变量；先冻结崩溃/并发恢复特征测试，再把 compaction transaction 与 activation adapter 移出 facade | 660 | 同上 |
+| `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 630 | 同上 |
+| `packages/app/src/main/index.ts` | C / App Main | 冷启动专项把 bootstrap 拆成三段（数据前置 / UI 索引与监听 / Runner 与就绪发布），阶段编排本身仍在组合根；先把 Local App API 选项对象与 Runner 构建下沉到独立模块，再下调上限 | 660 | 同上 |
+| `packages/app/src/main/desktop-shell.ts` | C / App Main | 冷启动专项的隔离验收需要窗口状态与文档切换（启动页、失败页、最大化/还原、渲染器是否已接管），这些都必须触达私有窗口状态；先把窗口状态 codec 与验收快照保持在既有下沉模块，再把这两组辅助方法移出 | 620 | 同上 |

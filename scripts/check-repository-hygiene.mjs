@@ -481,18 +481,24 @@ async function checkRepositoryNavigation() {
   assert(missingFromSplitMap.length === 0, '300 行以上生产文件已登记', missingFromSplitMap.join(', '))
 
   const controlled = new Map()
-  const controlledPattern = /^\| `([^`]+)` \| ([^|]+) \| ([^|]+) \| (\d+) \| (\d{4}-\d{2}-\d{2}) \|$/gmu
+  // The section declares ONE due date for every row and the rows carry `同上`, so renewing
+  // the review is a single edit instead of 22. The previous per-row dates could not be kept
+  // honest by anything: they all silently expired together.
+  const reviewDue = /本轮复查到期：(\d{4}-\d{2}-\d{2})/u.exec(splitMap)?.[1] ?? null
+  const controlledPattern = /^\| `([^`]+)` \| ([^|]+) \| ([^|]+) \| (\d+) \| ([^|]+) \|$/gmu
   for (const match of splitMap.matchAll(controlledPattern)) {
     controlled.set(match[1], {
       owner: match[2].trim(),
       reason: match[3].trim(),
       ceiling: Number(match[4]),
-      reviewAt: match[5],
+      reviewAt: match[5].trim(),
     })
   }
   const hardLimitFiles = largeFiles.filter((entry) => entry.lines > 600)
   const controlledViolations = []
   const today = new Date().toISOString().slice(0, 10)
+  if (!reviewDue) controlledViolations.push('缺少"本轮复查到期：YYYY-MM-DD"声明')
+  else if (reviewDue < today) controlledViolations.push(`本轮复查到期日已过 ${reviewDue}：必须逐条复查后顺延`)
   for (const entry of hardLimitFiles) {
     const exception = controlled.get(entry.path)
     if (!exception) {
@@ -503,12 +509,51 @@ async function checkRepositoryNavigation() {
     if (entry.lines > exception.ceiling) {
       controlledViolations.push(`${entry.path}: ${entry.lines} > 受控上限 ${exception.ceiling}`)
     }
-    if (exception.reviewAt < today) controlledViolations.push(`${entry.path}: 复查日期已过 ${exception.reviewAt}`)
+    if (exception.reviewAt !== '同上') {
+      controlledViolations.push(`${entry.path}: 复查日期必须写"同上"，实际为 ${exception.reviewAt}`)
+    }
   }
   for (const path of controlled.keys()) {
     if (!hardLimitFiles.some((entry) => entry.path === path)) controlledViolations.push(`${path}: 已不超过 600 行，应移除登记`)
   }
   assert(controlledViolations.length === 0, '600 行以上生产文件受控', controlledViolations.join(', '))
+  if (reviewDue && reviewDue >= today) pass('受控超限复查到期', reviewDue)
+
+  /**
+   * The queue counts are hand-written review notes, so they are VERIFIED here rather than
+   * generated: a generator would silently rewrite the very numbers (ceilings, queue rows)
+   * that exist to make the reader look at the file again.
+   */
+  async function productionLineCount(rel) {
+    const file = join(repoRoot, rel)
+    if (!existsSync(file)) return null
+    const fileLines = (await readText(file)).split(/\r?\n/u)
+    return fileLines.length - (fileLines.at(-1) === '' ? 1 : 0)
+  }
+  const queueCounts = new Map(largeFiles.map((entry) => [entry.path, entry.lines]))
+  const countMismatches = []
+  let splitSection = ''
+  for (const line of splitMap.split(/\r?\n/u)) {
+    if (line.startsWith('## ')) {
+      splitSection = line.slice(3).trim()
+      continue
+    }
+    if (splitSection === '强制拆分队列' || splitSection === '软上限审查队列') {
+      const match = /^\| `([^`]+)` \| (\d+) \|/u.exec(line)
+      if (!match) continue
+      const actual = queueCounts.get(match[1]) ?? await productionLineCount(match[1])
+      if (actual === null) countMismatches.push(`${match[1]}: 表内登记但文件不存在`)
+      else if (String(actual) !== match[2]) countMismatches.push(`${match[1]}: 表内 ${match[2]} ≠ 实测 ${actual}`)
+    }
+    if (splitSection === '已完成拆分') {
+      const match = /^\| `([^`]+)` \| \d+ \| (\d+) 行/u.exec(line)
+      if (!match) continue
+      const actual = await productionLineCount(match[1])
+      if (actual === null) countMismatches.push(`${match[1]}: 当前入口文件不存在`)
+      else if (String(actual) !== match[2]) countMismatches.push(`${match[1]} 当前入口: 表内 ${match[2]} ≠ 实测 ${actual}`)
+    }
+  }
+  assert(countMismatches.length === 0, '模块拆分地图计数与实测一致', countMismatches.join(', '))
   pass('大型生产文件基线', `${largeFiles.length} 个文件超过 300 行；${hardLimitFiles.length} 个受控超过 600 行`)
 }
 
