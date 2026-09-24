@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-24 12:14:30
+最后更新：2026-09-24 21:48:02
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -43,4 +43,5 @@
 - 总体回归在 `src/default-harness.test.ts`、`src/e2e.test.ts`；追加式前缀与固定工具目录由 `src/run-tail-ledger.test.ts`、`src/request-prefix-append-only.test.ts`、`src/tool-catalog-stability.test.ts` 覆盖；回答级连续性与摘要字段解析分别在 `src/response-continuity.test.ts`、`src/session-summary-fidelity-text.test.ts`，各阶段测试与实现同目录。
 - 环境简报在 `src/runtime-context-notice.test.ts`（含跨会话互不串状态）；prompt 工作区事实与 shell 披露在 `src/stages/execute/prompt.test.ts`；失败处置与循环行为在 `src/stages/execute/tool-failure-disposition.test.ts`；重复观察与不透明命令的分流在 `src/stages/execute/read-observation-loop.test.ts`、`src/stages/execute/side-effect-ledger.test.ts`；VERIFY 证据缺口的输入矩阵与续跑继承证据在 `src/stages/verify/evidence-gap.test.ts`。简报的**送达与否则**由 `packages/runner/src/run-context-notice-delivery.test.ts` 覆盖（请求在传输层失败 → 转录无记录 → 下次 run 重新投递）。
 - 路由必须指向驱动实际注册的 stage：`src/stage-routing-registry.test.ts` 扫描 `src/stages/` 的 `next` 目标并与 `default-harness.ts` 的注册表比对，退役 stage 名（`decide`/`evolve`/`capture`）既不能作为路由目标，也不能重新注册。
+- 请求形状探针在 `src/probe/baseline.test.ts`（负载定义在 `src/probe/frozen-load.ts`）：它不调用 Provider，只统计每个冻结负载的逐请求字符数、共享前缀与工具目录摘要，并把渲染结果写到 `docs/reference/cache-baseline/latest.md`（需要冻结某次对比时把人可读的 `latest.md` 复制成 `baseline-<freeze>.md`）。**它只写 `latest.md`**：早期版本还会为每个负载各写一个同名 JSON 转储，那些文件没有任何读取方，2026-09-24 已随文件一起删除，不要恢复这种"测试顺手产出、却没人读"的产物。
 - 修改状态转移先更新 stage 契约和特征测试，再调整实现。
