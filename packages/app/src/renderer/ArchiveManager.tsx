@@ -42,6 +42,15 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const requestRef = useRef(0)
+  /**
+   * The in-flight guard for a confirmed delete, kept in a ref on purpose.
+   *
+   * `deleting` is React state: two clicks dispatched in the same task both read `false`, so a
+   * double click on the confirmation submitted two DELETE requests (measured in the real window
+   * by `verify:deletion-confirmation`). The ref flips synchronously, so the second click of the
+   * same confirmation can never reach the API.
+   */
+  const deletingRef = useRef(false)
 
   useEffect(() => {
     void refreshArchive()
@@ -123,7 +132,7 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
   }
 
   function cancelDeletion() {
-    if (deleting) return
+    if (deletingRef.current) return
     setPendingDeletion(null)
     setDeleteError(null)
   }
@@ -131,8 +140,10 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
   async function confirmDeletion() {
     const pending = pendingDeletion
     // One delete per confirmation: a second click while the request is in
-    // flight must not submit another DELETE.
-    if (!pending || deleting) return
+    // flight must not submit another DELETE. The ref is what makes this true
+    // for two clicks in the same task, where the `deleting` state is still false.
+    if (!pending || deletingRef.current) return
+    deletingRef.current = true
     setDeleting(true)
     setBusyKey(pending.key)
     setDeleteError(null)
@@ -149,6 +160,7 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
       // Keep the dialog open so the failed deletion and its target stay locatable.
       setDeleteError((err as Error).message)
     } finally {
+      deletingRef.current = false
       if (mountedRef.current) {
         setDeleting(false)
         setBusyKey(null)

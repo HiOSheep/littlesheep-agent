@@ -94,8 +94,13 @@ describe('permanent deletion wiring', () => {
     expect(source).toContain('requestProjectDeletion(project, sessions.length)')
     expect(source).toContain('requestSessionDeletion(session)')
     expect(source).toContain('<DangerConfirmDialog')
-    expect(source).toContain('if (!pending || deleting) return')
+    expect(source).toContain('if (!pending || deletingRef.current) return')
     expect(source).toContain('setDeleteError((err as Error).message)')
+    // The in-flight guard has to be synchronous: two clicks in the same task both read the
+    // `deleting` state as false, which is how a double click once submitted two DELETEs
+    // (measured in the real window by `verify:deletion-confirmation`).
+    expect(source).not.toContain('if (!pending || deleting) return')
+    expect(source).toContain('const deletingRef = useRef(false)')
     // The delete API is only reached from the confirmed transaction.
     expect(source.match(/deleteArchivedProject\(/gu)).toHaveLength(1)
     expect(source.match(/deleteArchivedSession\(/gu)).toHaveLength(1)

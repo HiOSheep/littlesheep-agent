@@ -94,6 +94,13 @@
 - 验证方式：`packages/app/src/renderer/deletion-impact.test.ts` 11 个用例（有/无归档对话的项目、磁盘文件夹保留、对话范围、密钥与对话保留、当前模型识别、确认层接线与单次提交、恢复路径无确认、对话框键盘与禁用状态）；`pnpm exec vitest run` 通过；`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
 - 未覆盖项：取消、Escape、连点和失败注入尚未在真实窗口中走查；`danger-confirm.tsx` 的 Tab 焦点约束与完整焦点管理留给 UX-07，本轮只保证初始焦点在“取消”和关闭后回到触发点。
 
+**实施记录（2026-09-25 03:50:00）｜状态：取消/Escape/连点/失败注入已在真实窗口走查，并修掉连点重复提交 DELETE 的真实缺陷；多会话项目的确认文案仍由单元测试覆盖，保持未勾选**
+
+- 新增真实窗口门 `pnpm run verify:deletion-confirmation`（`scripts/verify-deletion-confirmation.mjs`）：把两段归档对话直接种进 `archive/index.json`（应用自己写的文件）与会话 JSONL，再在页面里装一个 `fetch` 探测器统计渲染器真正发出的 DELETE，并按需让下一次 DELETE 返回 500。
+- 实测（1180×760）：确认层标题"永久删除归档对话？"、对象名"归档对话 甲"、后果两条（"删除这条归档记录，以及它保存在本地的消息记录和会话摘要"、"删除后无法恢复"）、保留项一条（"不会删除工作区里的文件"）、初始焦点在**取消**；**打开确认层时 DELETE 计数仍为 0**。Escape 关闭后计数 0、列表不变；点"取消"同样计数 0、列表不变；确认后该行消失且计数 1；注入 500 后确认层**保持打开**并显示 `Local app API error: 500`，被删除对象仍在；再点一次（此时不注入失败）计数 +1 并成功删除。
+- **本次走查抓到的真实缺陷（已修）**：在确认层上**同一帧内连点两次"永久删除"会发出两次 DELETE**（探测器实测 `deletes: 2`，两条请求 URL 相同、时间戳相同）。原因是防重复用的是 React state（`deleting`），而同一 task 内的两次点击都读到 `false`。现在改为**同步的 `deletingRef`** 先占位（`if (!pending || deletingRef.current) return`，`finally` 里复位），`cancelDeletion` 也读同一个 ref；回归断言写进 `deletion-impact.test.ts`（明确断言使用的是 ref 而不是 state），修后实测连点只发出 1 次 DELETE。
+- 仍未覆盖（复选框保持未勾选）：**包含多个归档对话的项目**这一条仍只有单元测试（`deletion-impact.test.ts` 覆盖"项目 + 若干对话"的文案与范围），未在真实窗口里用多会话项目走查；供应商删除的确认层同样未实机走查；`danger-confirm.tsx` 的 Tab 焦点约束仍留给 UX-07。
+
 ### UX-03｜运行中同时支持停止与补充
 
 **问题**：`showStop = loading && !input.trim()`。任务运行中只要输入草稿，原停止按钮就切为发送，用户需要清空草稿才能在该位置停止。
@@ -617,7 +624,7 @@
 | 顺序 | 任务 | 脚本位置 | 关键步骤摘要 | 结论 |
 | --- | --- | --- | --- | --- |
 | 1 | UX-01 | 本任务实施记录 + `pnpm run verify:composer-ime-submit` | 微软拼音组词确认候选 → 下一次普通 Enter 只发一次；Shift+Enter、粘贴、附件仍有效 | |
-| 2 | UX-02 | 本任务实施记录 | 取消 / Escape / 请求失败 / 连点 / 多会话项目各一次；确认前不发生删除、失败留在确认层 | |
+| 2 | UX-02 | 本任务实施记录 + `pnpm run verify:deletion-confirmation` | 取消 / Escape / 请求失败 / 连点各一次；确认前不发生删除、失败留在确认层 | |
 | 3 | UX-03 | 本任务实施记录 | 带草稿与附件时直接停止且草稿不丢；补充发送只提交一次；“正在停止”持续到 run 结束 | |
 | 4 | UX-04 | 本任务实施记录 | 慢请求、空响应、列表失败、详情失败、快速切换各一次 | |
 | 5 | UX-05 | 本任务实施记录 | 发现失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类 | |

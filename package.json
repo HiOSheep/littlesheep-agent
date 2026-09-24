@@ -97,6 +97,7 @@
     "verify:chat-history-paging": "pnpm run ensure:app-build && node scripts/verify-chat-history-paging.mjs",
     "verify:local-stream-disconnect": "pnpm run ensure:app-build && node scripts/verify-local-stream-disconnect.mjs",
     "verify:composer-ime-submit": "pnpm run ensure:app-build && node scripts/verify-composer-ime-submit.mjs",
+    "verify:deletion-confirmation": "pnpm run ensure:app-build && node scripts/verify-deletion-confirmation.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },
