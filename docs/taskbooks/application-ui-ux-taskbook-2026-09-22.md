@@ -336,9 +336,9 @@
 
 **定位**：[navigation.ts](../../packages/app/src/renderer/settings/navigation.ts)、[home.tsx](../../packages/app/src/renderer/settings/home.tsx)、[direct-module.tsx](../../packages/app/src/renderer/settings/direct-module.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)。
 
-- [ ] 先画出现有入口—页面—返回目标映射，确定每个模块唯一页面身份，保留有价值的快捷入口而不复制状态。
-- [ ] 对话显示归入界面偏好；压缩阈值作为高级上下文配置按需展开；profile 与权限继续分离。
-- [ ] 验收：从聊天、独立模块、设置总览进入同一功能时名称和状态一致；返回到来处；常见配置可按用户意图找到。先验证小幅重排，避免整套导航重建。
+- [x] 先画出现有入口—页面—返回目标映射，确定每个模块唯一页面身份，保留有价值的快捷入口而不复制状态。
+- [x] 对话显示归入界面偏好；压缩阈值作为高级上下文配置按需展开；profile 与权限继续分离。
+- [x] 验收：从聊天、独立模块、设置总览进入同一功能时名称和状态一致；返回到来处；常见配置可按用户意图找到。先验证小幅重排，避免整套导航重建。
 
 **实施记录（2026-09-22 23:52:31）｜状态：实现完成，实机验收未做，保持未勾选**
 
@@ -346,21 +346,40 @@
 - 验证方式：`settings/navigation.test.ts` 6 个用例——`SettingsPage` 联合类型、导航分组、可恢复集合、工作区渲染分支四者的集合必须一致（新增页面漏登记即失败）；直接模块页允许走共享分支但必须能被 `direct-module.tsx` 映射；「界面」独占显示密度、Agent 页不再持有显示偏好；阈值行必须位于折叠区内；README 必须保留映射表与各模块名称。`pnpm exec vitest run packages/app/src/renderer` 103 个文件 / 548 个用例全部通过；`tsc -b` 通过。
 - 未覆盖项：未在真实窗口从聊天、直接模块页与设置总览三处进入同一功能核对名称与返回位置；本轮按“小幅重排”执行，没有重建导航或合并设置分组；`use-navigation-controller.ts` 的历史快照未改动。
 
+**实施记录（2026-09-25 06:55:20）｜状态：三处入口的名称与返回位置已在真实窗口逐条走通，唯一“不足”（外部渠道页标题与导航条目不同名）已统一；三项勾选**
+
+- 新增真实窗口门 `pnpm run verify:settings-navigation-terminology`（[verify-settings-navigation-terminology.mjs](../../scripts/verify-settings-navigation-terminology.mjs)），同时覆盖 UX-12 与 UX-13 的验收项。夹具是**空配置**数据根（无供应商、无渠道），因为“从聊天进入模型设置”这条入口只在无模型时才由输入栏自己给出。
+- 实测（1280×840，隔离数据根）：
+  - **从聊天**：先输入草稿 → 打开模型选择器 → 点“配置模型” → 落在「模型供应商」（`activeNav` 与页面标题同为「模型供应商」）；点“退出设置”回到聊天，**草稿仍在**。返回目标与 README 的映射表一致。
+  - **设置总览**：总览 14 行与侧边栏 15 项逐行同名（`missingInNav: []`，唯一不出现在总览里的是“总览”自己）。
+  - **总览 → 页面 → 返回来处**：从总览点「外部渠道」→ `activeNav` 与标题一致，关闭后回到聊天（进入前的那一页）。
+  - **工作模块**：记忆树 / 已安排 / 插件各自“侧边栏直入页标题 = 设置页标题 = 导航条目名”，并且**从直入页打开设置再关闭，回到的是该模块页而不是聊天**（三个模块逐条实测）。
+  - **重排后的页面边界**：`界面` 页有且只有两个显示密度选项（`普通`（选中）/`紧凑`，页面上不出现 `Normal`/`Compact`）；`Agent 行为` 页的压缩阈值仍**折叠**在“高级上下文设置”里（`details.open === false` 且阈值控件在其中），该页没有任何权限模式控件（权限继续只由输入栏控制）。
+- **顺带修掉的真实缺陷（本门实机发现）**：外部渠道页的标题是「渠道连接」，而同一条目的导航名、空态文案、重载反馈与“活动任务来源”标签都写「外部渠道」——同一功能两个名字。已把标题统一为「外部渠道」；门内断言“页面标题 === 导航条目名”覆盖三个入入口。
+- **UX-13 的渲染侧复核**（源码扫描 `terminology.test.ts` 之外的补充）：四个被访问页面拼起来的文本里没有退役说法「提供方」；`技能` 页渲染「当前版本只能查看内容，不能在界面里启用、禁用或编辑技能」；`已安排` 页渲染「还没有接入 Runtime」「功能尚未接入」；渠道空态渲染「还没有配置外部渠道，当前没有渠道可以运行。这个版本还没有渠道配置界面。」并把精确字段放进可展开的“在哪里配置”（`config.json` 的 `channels.channels`）。本轮未新增任何模板化 Agent 回复，也未改动 Runtime 文案。
+- 仍未覆盖：走查覆盖聊天、设置侧边栏、设置总览与三个直入模块这四类入口，没有逐页枚举全部 14 个设置页；术语检查读的是被访问页面的渲染文本，不能替代源码扫描；`session`/`workspace` 等代码标识符仍不在文案范围内。
+
 ### UX-13｜术语和产品文案
 
 **问题**：同一供应商功能混用“提供方/供应商”；中文设置页显示 Normal/Compact；总览和技能页描述“后续功能模块”“后续可继续接”；外部渠道无配置时直接要求编辑 `config.json` 的嵌套字段。
 
 **定位**：[models.tsx](../../packages/app/src/renderer/settings/models.tsx)、[model-provider-editor.tsx](../../packages/app/src/renderer/settings/model-provider-editor.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)、[home.tsx](../../packages/app/src/renderer/settings/home.tsx)、[MemorySkills.tsx](../../packages/app/src/renderer/MemorySkills.tsx)、[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)。
 
-- [ ] 建立小型术语表：供应商、模型、对话、任务、项目、工作区、应用数据目录；Normal/Compact 使用一致的中文显示名。
-- [ ] 功能说明只描述当前可用能力；高级配置字段放入可展开说明或帮助入口，未提供配置 UI 时如实说明限制。
-- [ ] 验收：相同概念在标题、按钮、提示和空态一致；路径/状态事实不被文案重写；不增加模板化 Agent 回复。
+- [x] 建立小型术语表：供应商、模型、对话、任务、项目、工作区、应用数据目录；Normal/Compact 使用一致的中文显示名。
+- [x] 功能说明只描述当前可用能力；高级配置字段放入可展开说明或帮助入口，未提供配置 UI 时如实说明限制。
+- [x] 验收：相同概念在标题、按钮、提示和空态一致；路径/状态事实不被文案重写；不增加模板化 Agent 回复。
 
 **实施记录（2026-09-22 23:46:30）｜状态：实现完成，实机验收未做，保持未勾选**
 
 - 实现范围：术语表新增到 [UI 交互规范](../principles/ui-interaction-guidelines.md) 的“术语表”一节（供应商、模型、对话、任务、项目、工作区、应用数据目录，以及“普通/紧凑”），并规定面向用户文案只描述当前可用能力。代码侧统一了“提供方 → 供应商”（`settings/models.tsx`、`model-provider-editor.tsx`、`chat/assistant-turn.tsx` 的用量/模型/来源标签、样式注释与 `renderer/README.md`），对话显示密度改为“普通/紧凑”（存储仍是 `normal`/`compact`）。开发计划式文案改为当前事实：`settings/home.tsx` 的“后续功能模块”改为“工作模块的设置入口”，`MemorySkills.tsx` 的“后续可继续接启用、禁用和编辑”改为“当前版本只能查看内容，不能在界面里启用、禁用或编辑技能”，拓展工作区的侧边聊天占位改为“侧边聊天尚未接入 / 当前版本还不能在这里进行局部对话”。外部渠道空态不再把嵌套字段当作第一步：主文案说明“还没有配置外部渠道”和“这个版本还没有渠道配置界面”，精确的 `channels.channels` 与应用数据目录 `config.json` 放进可展开的“在哪里配置”。
 - 验证方式：`terminology.test.ts` 4 个用例，其中术语一致性与禁用文案是对整个 `packages/app/src/renderer` 源码树的扫描（排除测试文件），因此新增文案引入旧说法会直接失败；另断言对话显示用中文名、未接通表面写明“尚未接入”、渠道空态把精确配置字段放进披露而不是主指令。`pnpm exec vitest run packages/app/src/renderer` 101 个文件 / 538 个用例全部通过；`tsc -b packages/app/tsconfig.json packages/app/tsconfig.web.json` 通过。
 - 未覆盖项：术语表只覆盖本轮出现的概念，`session`/`workspace` 等代码标识符不在文案范围内；未在真实窗口逐页核对文案；未新增模板化 Agent 回复，也未改动任何 Runtime 文案。
+
+**实施记录（2026-09-25 06:55:20）｜状态：渲染侧文案与术语一致性已在真实窗口复核（与 UX-12 同一道门），顺带统一了外部渠道页标题；三项勾选**
+
+- 验证方式与实测结果见上一条 UX-12 的实施记录：`pnpm run verify:settings-navigation-terminology` 在真实窗口读取被访问页面的**渲染文本**，断言（1）四个页面拼接文本中不出现退役说法「提供方」；（2）`界面` 页的两个显示密度选项为「普通/紧凑」且页面不出现 `Normal`/`Compact`；（3）`技能` 页写「当前版本只能查看内容，不能在界面里启用、禁用或编辑技能」；（4）`已安排` 页写「还没有接入 Runtime」「功能尚未接入」；（5）渠道空态写「还没有配置外部渠道……这个版本还没有渠道配置界面。」并把 `config.json` 的 `channels.channels` 放进可展开的“在哪里配置”；（6）外部渠道页标题与导航条目同名（修前是「渠道连接」，见 UX-12 记录的缺陷条目）。
+- 与源码扫描的分工：`terminology.test.ts` 保证整个 `packages/app/src/renderer` 不再出现旧说法与新文案被改回；本门保证**这些文案真的渲染到屏幕上**、并且同一个概念在不同入口显示同一个名字。两者互补，都不涉及 Runtime 文案。
+- 仍未覆盖：同上一条（未逐页枚举、代码标识符不在范围内）；本轮没有新增模板化 Agent 回复，也没有改动任何 Runtime 生成的文案。
 
 ### UX-14｜共享 UI 的增量收敛
 
@@ -747,7 +766,7 @@
 | 8 | UX-08 / UX-10 | 本任务实施记录 | 三个入口状态一致；“每个可点击控件有可见结果”；四种渠道 fixture 的标签与颜色 | |
 | 9 | UX-09 | 本任务实施记录 + `pnpm run verify:async-feedback` | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
 | 10 | UX-11 | 本任务实施记录 + `pnpm run verify:no-model-config-loop` | 新数据根从空状态配置完成并回到原草稿；加载失败重试；保存后选择器从 Runtime 刷新 | |
-| 11 | UX-12 / UX-13 | 本任务实施记录 | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |
+| 11 | UX-12 / UX-13 | 本任务实施记录 + `pnpm run verify:settings-navigation-terminology` | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |
 | 12 | UX-14 | 本任务实施记录 | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px） | |
 | 13 | UX-15 | 本任务实施记录 + `pnpm run verify:narrow-high-dpi-forms` | 最小窗口与常用窗口 + 125%/150%/200% 缩放下的模型表单、设置侧栏、审批长路径、运行时选择器 | |
 | 14 | UX-16 | 本任务实施记录 | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |

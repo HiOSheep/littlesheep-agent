@@ -87,7 +87,9 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
     <div className="overlay" onClick={embedded ? undefined : onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
         <div className="dialog-header">
-          <h2>渠道连接</h2>
+          {/* One name for the feature: the navigation entry, the empty state and the
+              feedback messages all say 外部渠道 (UX-12/UX-13 实机验收发现标题不一致). */}
+          <h2>外部渠道</h2>
           {!embedded && <button className="dialog-close" onClick={onClose}>×</button>}
         </div>
 

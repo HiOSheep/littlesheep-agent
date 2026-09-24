@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-25 06:26:51
+最后更新：2026-09-25 06:52:37
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -18,7 +18,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `styles/`：跨领域样式。共享外壳的定位契约要当成布局事实读：`.workspace-files-navigator` 的 `position: absolute` 只适用于 `.workspace-shared-file-navigator` 这个 flex 占位项内部的普通目录导航；审阅标签的导航是 `.workspace-review` 的直接子元素，必须留在 flex 行内（`04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则），否则它会盖住 Diff 表面和标题行按钮（UX-18 实机验收记录：两个图标按钮与导航刷新按钮落在同一矩形，指针不可达）。**窄宽度下的布局切换用容器查询**：`07-overlays-settings.css` 在 560px 以下把供应商模型行从四列改为堆叠并显示每字段标签；实测 800×600 最小窗口下原布局只剩 62px/44px 两个可输入字段（UX-15）。窗口级与缩放级的可用性走查见 `pnpm run verify:narrow-high-dpi-forms`。
 - `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。诊断文案的两个计数互斥：`invalidFiles` 是最近一次扫描读不出来的记录数，`warningCount` 只统计残留临时文件、目录读写异常等不属于这些记录的发现，因此一份坏记录不会被同时说成“无法读取”和“不完整”。
 - `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
-- `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。
+- `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。**一个功能只有一个名字**：`ChannelConnections.tsx` 的标题、空态、反馈文案与导航条目都写「外部渠道」（标题曾是「渠道连接」，与导航条目不一致，UX-12/UX-13 实机验收发现并统一）；三处入口的名称与返回位置由 `pnpm run verify:settings-navigation-terminology` 在真实窗口走查。
 - `ArchiveManager.tsx`：归档项目的永久删除先经 `ui/danger-confirm.tsx` 确认，文案由 `deletion-impact.ts` 按 Local App API 的真实行为生成（删除项目记录会连同其归档对话和本地消息记录，磁盘项目文件夹保留）。删除期间确认动作单次提交，失败留在确认层内。可恢复的归档操作保持单次点击。**防重复必须是同步的 `deletingRef`，不能只靠 `deleting` state**：同一 task 内的两次点击都读到 state 的旧值，实测会在确认层上发出两次 DELETE（`verify:deletion-confirmation` 连点断言，回归在 `deletion-impact.test.ts`）。
 - `MemorySkills.tsx`、`skill-catalog-state.ts`：技能页的加载中、成功为空、成功有数据和失败是四种不同结果；重新加载失败保留已有列表并标注未刷新，详情读取失败保留列表与当前选择并提供重试。状态规则是纯 reducer，可在无窗口环境下回归。**页头必须有可点的刷新入口**（`dialog-header` 里的"刷新"，复用 `ms-feedback-action` 样式）：否则"保留列表并标注未刷新"这条分支在界面上不可达——此前只有失败后才出现重载按钮，加载成功的页面无法再刷新（`verify:skills-catalog-states` 实机验收发现）。
 - `deletion-impact.ts`：不可逆删除的对象、影响和保留项的唯一文案来源；供应商删除只描述配置条目移除，密钥仍留在系统密钥库，并提示当前选中模型是否来自该供应商。
