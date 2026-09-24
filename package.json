@@ -104,6 +104,7 @@
     "verify:provider-editor-draft": "pnpm run ensure:app-build && node scripts/verify-provider-editor-draft.mjs",
     "verify:recovery-states": "pnpm run ensure:app-build && node scripts/verify-recovery-states.mjs",
     "verify:review-navigator-width": "pnpm run ensure:app-build && node scripts/verify-review-navigator-width.mjs",
+    "verify:no-model-config-loop": "pnpm run ensure:app-build && node scripts/verify-no-model-config-loop.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },

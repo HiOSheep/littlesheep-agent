@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-25 04:23:31
+最后更新：2026-09-25 05:49:41
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -17,7 +17,7 @@
 | `run-lifecycle-routes.ts` / `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制和 `/application/acceptance` 验收入口；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
 | `session-routes.ts` | 会话列表、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录；重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。`PATCH /sessions/:id` 另接受 `workspacePath`，作为**项目会话显式换目录**的唯一入口（必须是已存在的绝对目录；独立会话没有自己的目录，请求该字段会被拒绝，因为它跟随请求与默认目录）。 |
-| `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。 |
+| `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。模型引用校验（`validateModelRef`）必须按**解析后的模型 id** 比较：供应商的 `models` 既可能是裸 id 数组，也可能是带元数据的对象数组（设置页保存的自定义供应商就是后者），直接 `models.includes(model)` 会让自定义供应商的模型在选择器里可选、选中后却被 500 拒绝（UX-11 实机验收发现并修掉）。 |
 | `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
 | `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |

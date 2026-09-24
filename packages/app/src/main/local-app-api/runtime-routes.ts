@@ -1,7 +1,7 @@
 // Runtime, provider credentials, data-root and application lifecycle routes.
 
 import type { Config } from '@littlesheep/config'
-import { ConfigSchema, parseModelRef, resolveApiKey } from '@littlesheep/config'
+import { ConfigSchema, parseModelRef, resolveApiKey, resolveProviderModelIds } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
 import type { RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
@@ -371,7 +371,14 @@ export function resolveReasoning(
   return coerceReasoningForModelRef(requested, config.agents.defaults.model)
 }
 
-function validateModelRef(config: Config, modelRef: string): string | null {
+/**
+ * Reject a model reference the configuration cannot resolve.
+ *
+ * Exported for its own regression test: the comparison has to go through the
+ * resolved model ids, because a provider's list mixes bare ids and declared
+ * metadata objects.
+ */
+export function validateModelRef(config: Config, modelRef: string): string | null {
   let providerId: string
   let model: string
   try {
@@ -383,7 +390,13 @@ function validateModelRef(config: Config, modelRef: string): string | null {
   }
   const provider = config.providers.find((entry) => entry.id === providerId)
   if (!provider) return `unknown provider: ${providerId}`
-  if (provider.models && provider.models.length > 0 && !provider.models.includes(model)) {
+  // A model list holds bare ids or declared metadata objects, so the id has to be
+  // resolved before it is compared. Comparing the raw entries made every model of a
+  // user-declared provider unselectable: the composer's own picker offered
+  // "acceptance-gw/slow-a" and this check answered "not listed", because
+  // `models` held `[{ id: 'slow-a' }]`.
+  const modelIds = resolveProviderModelIds(provider)
+  if (modelIds.length > 0 && !modelIds.includes(model)) {
     return `model "${model}" is not listed for provider "${providerId}"`
   }
   if (provider.apiKey && !resolveApiKey(provider.apiKey)) {

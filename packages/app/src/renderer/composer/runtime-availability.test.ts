@@ -128,15 +128,29 @@ describe('runtime availability', () => {
       hasSelectableModel: true,
     })
     expect(ready).toMatchObject({ kind: 'ready', action: 'none', label: '' })
+  })
 
-    // Providers exist but the selected model cannot be resolved: not ready.
-    const unresolved = describeRuntimeAvailability({
+  it('separates "no model chosen yet" from "saved providers are unusable"', () => {
+    // Providers exist and offer models, but nothing is selected: the picker itself
+    // is the answer, and the provider page must not be blamed for a missing key.
+    const unselected = describeRuntimeAvailability({
       runtime: runtime([provider()]),
       runtimeError: null,
       selectableProviderCount: 1,
       hasSelectableModel: false,
     })
-    expect(unresolved.kind).toBe('unusable')
+    expect(unselected).toMatchObject({ kind: 'no-selection', action: 'none', label: '还没有选择模型' })
+    expect(unselected.detail).toContain('选一个模型')
+    expect(unselected.detail).not.toContain('密钥')
+
+    // No usable provider at all: this one really is about the provider settings.
+    const unusable = describeRuntimeAvailability({
+      runtime: runtime([provider()]),
+      runtimeError: null,
+      selectableProviderCount: 0,
+      hasSelectableModel: false,
+    })
+    expect(unusable.kind).toBe('unusable')
   })
 })
 

@@ -1,16 +1,18 @@
 // Why the composer's model picker has nothing to select.
 //
-// Three different facts must not collapse into one "no model" label:
+// Four different facts must not collapse into one "no model" label:
 //   - the Runtime configuration never loaded (a failure, with a retry);
 //   - nothing is configured yet (a first-run state, with a configuration path);
 //   - providers are configured but none of them is usable (a saved key is not a
-//     verified callable model), which needs the provider page, not a retry.
+//     verified callable model), which needs the provider page, not a retry;
+//   - providers are usable but no model has been selected yet, which needs the
+//     picker's own model list and nothing else.
 // `isConfiguredProvider` is the settings page's own predicate, so the composer
 // and the provider list cannot disagree about what "configured" means.
 import type { RuntimeState } from '../../shared/runtime-api-contracts'
 import { isConfiguredProvider } from '../settings/model-provider-draft'
 
-export type RuntimeAvailabilityKind = 'loading' | 'ready' | 'load-failed' | 'unconfigured' | 'unusable'
+export type RuntimeAvailabilityKind = 'loading' | 'ready' | 'load-failed' | 'unconfigured' | 'unusable' | 'no-selection'
 
 export interface RuntimeAvailability {
   kind: RuntimeAvailabilityKind
@@ -62,13 +64,28 @@ export function describeRuntimeAvailability(input: RuntimeAvailabilityInput): Ru
     }
   }
 
-  if (input.selectableProviderCount === 0 || !input.hasSelectableModel) {
+  if (input.selectableProviderCount === 0) {
     return {
       kind: 'unusable',
       label: '已配置的供应商还不可用',
       detail: '供应商已保存，但还没有可选择的模型：可能缺少 API 密钥，或没有填写模型条目。保存配置不等于已经验证可以调用。',
       action: 'configure',
       actionLabel: '检查供应商配置',
+    }
+  }
+
+  // Providers are ready and their models are offered, but nothing is selected yet.
+  // This is not the "unusable" state: telling a user who just saved a key and a
+  // model entry that one of them may be missing sends them back to the settings
+  // page for no reason. Measured in the UX-11 walkthrough, this is exactly the
+  // state after saving a usable provider for the first time.
+  if (!input.hasSelectableModel) {
+    return {
+      kind: 'no-selection',
+      label: '还没有选择模型',
+      detail: '供应商已经可以使用；打开这个菜单选一个模型。',
+      action: 'none',
+      actionLabel: '',
     }
   }
 
