@@ -22,7 +22,19 @@ export {
   type OpenAIClientOptions,
   type OpenAICompatibleChatBodyOptions,
 } from './client.js';
-export { retryWithBackoff, isRetryable, DEFAULT_RETRY, type RetryOptions } from './retry.js';
+export {
+  retryWithBackoff,
+  isRetryable,
+  classifyFailure,
+  retryDelayMs,
+  retryAfterHintMs,
+  maxRetriesOf,
+  DEFAULT_RETRY,
+  DEFAULT_MAX_RETRIES,
+  type RetryOptions,
+  type RetryProgress,
+  type RetryFailureClass,
+} from './retry.js';
 export { zodToJsonSchema, buildToolSpec } from './schema.js';
 export {
   containsUnquotedDsmlControlMarkup,

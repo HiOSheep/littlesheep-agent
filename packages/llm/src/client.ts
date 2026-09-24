@@ -11,7 +11,7 @@ import type {
   ToolCall,
 } from './types.js';
 import { LlmError } from './types.js';
-import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions } from './retry.js';
+import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions, type RetryProgress } from './retry.js';
 import {
   attachTransportUsage,
   monotonicNow,
@@ -161,6 +161,20 @@ export class OpenAIClient implements LlmClient {
     return h;
   }
 
+  /** Client retry options plus a request-level progress observer, when the caller passed one. */
+  private retryOptionsFor(
+    onTransportRetry?: (progress: RetryProgress) => void,
+  ): RetryOptions {
+    if (!onTransportRetry) return this.retry;
+    return {
+      ...this.retry,
+      onRetry: (progress) => {
+        this.retry.onRetry?.(progress);
+        onTransportRetry(progress);
+      },
+    };
+  }
+
   /** Non-streaming chat. */
   async chat(req: ChatRequest): Promise<ChatResponse> {
     const logicalStartedAtMs = monotonicNow();
@@ -180,7 +194,7 @@ export class OpenAIClient implements LlmClient {
           managed.cleanup();
         }
       },
-      this.retry,
+      this.retryOptionsFor(req.onTransportRetry),
       req.signal,
     );
     return response;
@@ -217,7 +231,7 @@ export class OpenAIClient implements LlmClient {
           managed.cleanup();
         }
       },
-      this.retry,
+      this.retryOptionsFor(req.onTransportRetry),
       req.signal,
     );
     return response;
@@ -258,6 +272,7 @@ export class OpenAIClient implements LlmClient {
               res.status,
               errMsg,
               this.retry.retryableStatuses.includes(res.status),
+              parseRetryAfterMs(res.headers),
             );
           }
           const json = (await res.json()) as OpenAIEmbeddingResponse;
@@ -273,7 +288,9 @@ export class OpenAIClient implements LlmClient {
           req.signal?.removeEventListener('abort', onAbort);
         }
       },
-      this.retry,
+      // Embeddings take the client-level retry options: only chat/stream requests carry a
+      // per-request progress observer.
+      this.retryOptionsFor(),
       req.signal,
     );
   }
@@ -338,7 +355,7 @@ export class OpenAIClient implements LlmClient {
           if (errBody?.error?.message) errMsg = errBody.error.message;
         } catch { /* ignore parse failure */ }
         if (this.retry.retryableStatuses.includes(res.status)) retryable = true;
-        throw new LlmError(res.status, errMsg, retryable);
+        throw new LlmError(res.status, errMsg, retryable, parseRetryAfterMs(res.headers));
       }
       return { response: res, cleanup, attempt: opts.transportAttempt, startedAtMs };
     } catch (err) {
@@ -566,6 +583,24 @@ function streamChunkOperation(chunk: StreamChunk): NonNullable<StreamChunk['oper
   if (chunk.type === 'reset') return 'reset';
   if (chunk.type === 'done') return 'replace';
   return 'append';
+}
+
+/**
+ * `Retry-After` as milliseconds. Accepts delay-seconds and an HTTP-date, clamps to a sane
+ * ceiling, and returns undefined when the header is absent or unusable — a provider hint is
+ * a floor for the next wait, never a reason to wait forever.
+ */
+function parseRetryAfterMs(headers: Headers | undefined): number | undefined {
+  const raw = typeof headers?.get === 'function' ? headers.get('retry-after') : null;
+  if (!raw) return undefined;
+  const seconds = Number(raw.trim());
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(120_000, Math.floor(seconds * 1000));
+  const at = Date.parse(raw);
+  if (Number.isFinite(at)) {
+    const delta = at - Date.now();
+    return delta > 0 ? Math.min(120_000, delta) : undefined;
+  }
+  return undefined;
 }
 
 /** Build an LlmClient from a ModelProvider config. */

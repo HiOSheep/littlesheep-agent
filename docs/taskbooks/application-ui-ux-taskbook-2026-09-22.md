@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-24 22:08:51
+最后更新：2026-09-24 22:32:00
 
 ## 1. 范围与结论
 
@@ -382,6 +382,13 @@
 - [ ] 验收：前 1~5 次可重试故障后恢复则继续当前 run；第 5 次重试仍失败才给出可理解的失败状态和用户可操作的续接方式；不可重试故障立即明确失败；取消后不再等待或重试；重连不重复文本、工具副作用和最终回复。测试至少含 429、503、超时、断流、401/400、用户取消与本地 SSE 断线。
 
 **状态**：未开始；重试次数和类别为源码确认，用户遇到的具体错误尚需日志/错误注入定位。
+
+**实施记录（2026-09-24 22:32:00）｜状态：策略层实现完成且有单元证据；进度显示与真实窗口验收未做，保持未勾选**
+
+- 实现范围（`packages/llm`）：`retry.ts` 改为分级重试——`maxAttempts` 是**总请求数**，默认 `DEFAULT_MAX_RETRIES + 1` = **首次请求 + 最多 5 次重试**（`maxRetries` 是等价写法，只在未传 `maxAttempts` 时生效）；`classifyFailure` 把失败分为 `transient`（网络失败、5xx、408、空 choices）、`rate_limited`（429）、`auth`（401/403）、`request`（其余 4xx）、`cancelled` 与 `unknown`，**只有前两类会被重放**，其余第一次就抛给上层。等待为指数退避 + 抖动；`Retry-After`（秒数或 HTTP 日期，来自 429/503）作为**下限**抬高本次等待，单次等待受 `maxDelayMs`（默认 30 s）封顶；退避期间监听 `AbortSignal`，取消后立即抛 `AbortError` 而不再等待或发起下一次请求。每次重试前调用 `onRetry({ retry, maxRetries, delayMs, failureClass, status })`；`LlmError` 新增 `retryAfterMs`，`ChatRequest.onTransportRetry` 让调用方拿到**本次请求**的重试进度。（本条"问题与边界"里"默认 `maxAttempts: 3`、用户说的重连 5 次应明确为 5 次重试"是改动前的事实，现已按后者实现。）
+- 验证方式：新增 `packages/llm/src/retry.test.ts` 10 例——默认首次 + 5 次重试（6 次总尝试、`retry` 依次为 1..5）、 `maxRetries` 写法、六类失败的分类与"不可重放者只调用一次"、`Retry-After` 下限与 `maxDelayMs` 封顶、已取消的 signal 不发起请求、退避期间取消在 20 ms 内返回（计划等待 5 s）；`client.test.ts` 新增 2 例——重试进度透传到请求级观察者、`retry-after: 2` 被解析为 2000 ms 且实际等待被上限压到 5 ms。`pnpm exec vitest run packages/llm/src`：4 个文件 58 例通过。
+- 顺带修掉的测试漂移：`client.test.ts` 的固定装置此前不声明重试参数，失败路径会睡满生产退避（默认 3 次尝试时整文件 106.5 s）；现在固定装置显式传 `retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false }`，同一文件降到 0.21 s。回归上限不依赖生产默认值的这一条应继续保持。
+- 未覆盖项：**运行界面尚未显示"第 n 次重试 / 最多 5 次"**（hook、`retryAfterMs` 与 usage 账本已就绪，消费端未接）；流中断前后的重发去重目前只有客户端的 `reset` 语义，未针对真实断流取证；本地 SSE 断线、真实 Provider 的前 1~5 次恢复与最终失败文案仍需错误注入与真实窗口验收。第 1、3 条复选框因此保持未勾选。
 
 ### UX-22｜对话输出层级与可读性
 

@@ -52,6 +52,12 @@ export interface ChatRequest {
   signal?: AbortSignal;
   /** Override per-request timeout (ms). */
   timeoutMs?: number;
+  /**
+   * Transport-retry progress for this request (UX-21): called before each retry with the
+   * retry number, the planned wait and the failure class, so the caller can show
+   * "第 n 次重试 / 最多 5 次" and record it. Settings come from the client's retry options.
+   */
+  onTransportRetry?: (progress: import('./retry.js').RetryProgress) => void;
 }
 
 /** A tool call returned by the model. */
@@ -165,10 +171,15 @@ export interface LlmClient {
 export class LlmError extends Error {
   readonly status: number;
   readonly retryable: boolean;
-  constructor(status: number, message: string, retryable: boolean) {
+  /** Provider-supplied wait (Retry-After), honoured as a floor by the retry loop. */
+  readonly retryAfterMs?: number;
+  constructor(status: number, message: string, retryable: boolean, retryAfterMs?: number) {
     super(message);
     this.name = 'LlmError';
     this.status = status;
     this.retryable = retryable;
+    if (typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+      this.retryAfterMs = Math.floor(retryAfterMs);
+    }
   }
 }

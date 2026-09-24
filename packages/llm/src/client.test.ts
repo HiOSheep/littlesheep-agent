@@ -7,10 +7,10 @@ import {
 } from './client.js';
 import { LlmError, type ChatResponse } from './types.js';
 import { zodToJsonSchema, buildToolSpec } from './schema.js';
-import { retryWithBackoff } from './retry.js';
+import { retryAfterHintMs, retryWithBackoff, type RetryProgress } from './retry.js';
 
 /** Build a mock fetch that returns given responses in sequence. */
-function mockFetch(responses: Array<{ status?: number; json?: unknown; body?: string; text?: string }>) {
+function mockFetch(responses: Array<{ status?: number; json?: unknown; body?: string; text?: string; headers?: Record<string, string> }>) {
   let call = 0;
   const fn = vi.fn(async () => {
     const r = responses[Math.min(call, responses.length - 1)]!;
@@ -19,6 +19,7 @@ function mockFetch(responses: Array<{ status?: number; json?: unknown; body?: st
     const headers = new Map<string, string>();
     if (r.body !== undefined) headers.set('content-type', 'text/event-stream');
     else headers.set('content-type', 'application/json');
+    for (const [key, value] of Object.entries(r.headers ?? {})) headers.set(key.toLowerCase(), value);
     const body = r.body ?? JSON.stringify(r.json ?? {});
     return {
       ok: status >= 200 && status < 300,
@@ -53,6 +54,10 @@ const BASE_OPTS = {
   baseURL: 'https://api.openai.com/v1',
   apiKey: 'sk-test',
   timeoutMs: 5000,
+  // Tests assert classification and payload handling, not wall-clock backoff: keep the
+  // retry envelope explicit and instant so a failure path cannot sleep out the production
+  // delays (the first request plus five retries is the shipped default).
+  retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false },
 };
 
 describe('OpenAI-compatible request body', () => {
@@ -324,6 +329,56 @@ describe('OpenAIClient.chat', () => {
     expect(res.content).toBe('ok');
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(res.usage).toEqual(expect.objectContaining({ transportAttempt: 2, observedAttemptCount: 2 }));
+  });
+
+  it('reports transport retry progress to the request observer (UX-21)', async () => {
+    const fetch = mockFetch([
+      { status: 503, json: { error: { message: 'Service Unavailable' } } },
+      {
+        json: {
+          id: 'chatcmpl-retry', model: 'gpt-4o',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        },
+      },
+    ]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    const progress: RetryProgress[] = [];
+    const res = await client.chat({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      onTransportRetry: (info) => progress.push(info),
+    });
+    expect(res.content).toBe('ok');
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({ retry: 1, maxRetries: 2, failureClass: 'transient', status: 503 });
+  });
+
+  it('carries a provider Retry-After hint into the retry decision (UX-21)', async () => {
+    const fetch = mockFetch([
+      { status: 429, headers: { 'retry-after': '2' }, json: { error: { message: 'rate limited' } } },
+      {
+        json: {
+          id: 'chatcmpl-rate', model: 'gpt-4o',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        },
+      },
+    ]);
+    // maxDelayMs keeps the wait instant; the assertion is that the hint was parsed and that
+    // the cap — not the 2 s hint — decided the actual wait.
+    const client = new OpenAIClient({
+      ...BASE_OPTS, fetch,
+      retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false, maxDelayMs: 5 },
+    });
+    const progress: RetryProgress[] = [];
+    await client.chat({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'hi' }],
+      onTransportRetry: (info) => progress.push(info),
+    });
+    expect(progress).toHaveLength(1);
+    expect(progress[0]).toMatchObject({ retry: 1, maxRetries: 1, failureClass: 'rate_limited', delayMs: 5, status: 429 });
+    expect(retryAfterHintMs(progress[0].error)).toBe(2_000);
   });
 
   it('throws LlmError on 400 (non-retryable)', async () => {
