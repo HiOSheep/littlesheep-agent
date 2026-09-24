@@ -10,7 +10,9 @@
 // The tail is therefore a ledger: each entry is rendered, hashed and appended
 // once; later iterations reuse the appended messages and only append entries
 // whose content actually changed. A→B→A is two recorded transitions, not a
-// rewind, because the earlier message is never rewritten.
+// rewind, because the earlier message is never rewritten. "Changed" is measured
+// against the value announced last, so A→B→A→B ends by announcing B again: the
+// model reads the state that is in effect, not the state it saw most often.
 import { createHash } from 'node:crypto';
 import type { ContextMessageSegment } from '@littlesheep/context';
 import type { ChatMessage } from '@littlesheep/llm';
@@ -53,12 +55,16 @@ export interface RunTailDelta {
  * An append-only ledger of the tail entries this loop has already sent.
  *
  * The identity of an entry is its semantic id plus a content hash, so a changed
- * fact produces a new entry instead of rewriting an earlier one, and re-sending
- * an unchanged fact is impossible. A→B→A is therefore two recorded transitions,
- * not a rewind.
+ * fact produces a new entry instead of rewriting an earlier one. The comparison
+ * is against **the value last sent for that id**, never against the set of values
+ * ever sent: a state that flips A→B→A→B must announce its final B even though a
+ * B was announced earlier in the run, or the model keeps reading a stale
+ * environment while the Runtime has already moved on. A→B→A is therefore two
+ * recorded transitions, not a rewind, and a steady state still appends nothing.
  */
 export class RunTailLedger {
-  private readonly sent = new Set<string>();
+  /** id → fingerprint of the last value this ledger announced for that id. */
+  private readonly lastSent = new Map<string, string>();
 
   /**
    * Seed the ledger with entries an earlier run already sent in this task
@@ -68,15 +74,20 @@ export class RunTailLedger {
    * turn 2 repeated 9 of turn 1's 10 sections byte for byte (~1.2k tokens) even
    * though they were already in the replayed prefix, and the duplicate copies were
    * billed as new input.
+   *
+   * The entries arrive in transcript order, so the **last** one recorded for an id
+   * is the value the model was last told — which is what the next comparison must
+   * use. (A transcript that ends with A→B→A hands over A, not B.)
    */
   constructor(priorEntries: readonly { id: string; text: string }[] = []) {
     for (const entry of priorEntries) {
-      this.sent.add(`${entry.id}#${hash(entry.text)}`);
+      this.lastSent.set(entry.id, `${entry.id}#${hash(entry.text)}`);
     }
   }
 
   /**
-   * Append every tail entry that has not been sent yet in this loop.
+   * Append every tail entry whose current value differs from the last one this
+   * loop announced for the same id.
    *
    * `systemSegments` are the sections the system message is made of, and
    * `tailSegments` are the bundle's below-boundary sections. Both are needed:
@@ -93,8 +104,8 @@ export class RunTailLedger {
     const entries: RunTailEntry[] = [];
     for (const entry of renderTailEntries(ctx, systemSegments, tailSegments)) {
       const fingerprint = `${entry.id}#${hash(entry.text)}`;
-      if (this.sent.has(fingerprint)) continue;
-      this.sent.add(fingerprint);
+      if (this.lastSent.get(entry.id) === fingerprint) continue;
+      this.lastSent.set(entry.id, fingerprint);
       messages.push({ role: 'system', content: entry.text });
       entries.push(entry);
     }

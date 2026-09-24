@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-24 11:12:10
+最后更新：2026-09-24 12:14:30
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -21,7 +21,7 @@
 - 迭代预算耗尽（`stages/execute/tool-loop.ts`）：预算用尽**不再直接判失败**——若本轮已有工具结果，允许恰好一次收尾请求（复用强制收尾机制，工具调用被本地拒绝），让模型说出已交付的内容；第二次越界仍判失败，预算依旧封顶。实机依据：一次真实运行已把游戏写到磁盘，却因为循环在第 20 轮停下而只回了一句"预算耗尽，你想怎么办"。
 - 迭代额度是**每轮 run** 的，并且是本轮唯一的：`stages/execute/iteration-budget.ts` 的 `MAX_TOOL_LOOP_ITERATIONS`（**30**，`@littlesheep/harness` 公开导出，Runner 报告同一常量）按 `loopBudget.toolLoopIterationsUsed` 累计，同一 run 内重试 stage、恢复或再次进入主循环都不会拿到新额度；续接一次**新的 run** 则由 Runner 重置计数（见 `@littlesheep/runner` 的 `continuationLoopBudget`），所以用户重试得到的是"一轮有界的工作"，而不是继承上一轮已花掉的额度。上限从 20 提到 30 是实机证据驱动的：三次真实验收运行分别在 19、20、22 次工具调用处撞上它，几乎全部成功、产物已在磁盘上，然后以"请用户决定"结束——正是本任务书要消除的行为。真正让用户付费的是 `agents.defaults.maxModelCallsPerRun`（默认 32），一轮一次调用时 30 轮正好落在它里面，因此迭代上限现在是"一轮并发很多调用"的兜底，而不是最先触发的限制。失败文案用 `toolLoopIterationCeiling(ctx)` 报**这一轮实际的上限**（检查点可以带别的值）。`noProgressRounds`、证据指纹和由它们派生的强制收尾同属这一份 run 级额度。
 - 重复观察不是重放（CE-06）：账本只看 Runtime 能证明的事实——只声明读资源或属于 Runtime 只读名单的调用根本不进账本，因此"列目录 → 创建产物 → 再列目录"能拿到新观察；不透明 `exec` 不声明资源，无论命令首词多像列举都记为 `external`，重复成功调用仍被拒。拒绝文案点名 `glob`/`read` 作为结构化替代入口。回归在 `stages/execute/read-observation-loop.test.ts` 与 `side-effect-ledger.test.ts`。
-- 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。
+- 环境简报（`runtime-context-notice.ts`）：每次请求注入一块 ≤6 行的"当前执行环境/本次变更"，字段取自实际生效状态——`resolvedRunConfig` 的 provider/model 与权限、`ctx.cwd`、真实 shell、网络开关与可用工具数。渲染是纯函数：与上一次已观察状态相同就完全不输出，所以同一有效状态不会被重复宣告。上一次状态从 `modelHistory` + 本 run 的 `produced` 里的 `runtime-context` 尾部记录解析，因此重启、检查点续接和压缩后仍然是同一份事实；主循环把它作为尾部账本的一条（`run-tail-ledger.ts`，order 0.25），单请求阶段由 `runtime-awareness.ts` 注入并在发布成功后记录进 transcript。**尾部账本的"变化"按"同 id 上一次发出的值"判定，不按"这个值以前是否发过"**：反复切换 A→B→A→B 时，最后那次 B 与更早的 B 字节相同，用"见过就不再发"的集合去重会把它丢掉，模型读到的仍是被切回 A 的那一版简报，而 Runtime 早已在 B 上运行（`run-tail-ledger.test.ts` 覆盖；同一规则也保护 KnownState 与记忆释放条目）。
 - Runtime facts 里的 `shell` 行由 `@littlesheep/tools` 的 `describeExecutionShell()` 生成，与 `exec` 实际 spawn 的解释器同一常量；不依赖仓库根 TOOLS.md 或用户的运行时副本。prompt 的 `# Workspace` 段落取 run 级事实 `ctx.cwd`（`RuntimeFacts.workspace`），与工具 cwd 同源。
 - 续跑的证据投影（`stages/verify/task-state.ts` 的 `inheritedEffectEvidence` 与计划证据条件）：检查点持久化 `sideEffects` 与 `taskExecution`，但不持久化 `toolInvocations`，续跑 run 的 invocation 列表只属于本轮。两处判定因此都以"这是本轮产生的吗"为前提——继承的终态副作用由检查点自身作证；**步骤证据只对本次 run 执行过的计划成立**，续跑带进来的旧计划不再被当成缺口（此前会把 run 打回去重规划一个没有执行器能跑的步骤集）。没有 callId、仍未结算、本 run 未续跑，或计划属于本 run 时，缺口照旧上报。
 - **不可用证据与已记录的负结果按"Runtime 知道什么"分界**（`stages/verify/task-state.ts`）：权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）是"还没人决定是否授权"，用户必须决定，所以升级；**Runtime 自己在执行前发出的拒绝（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）是确定性结果——调用没跑，Runtime 完全知道发生了什么**，连同 `failed`/`timed_out`/`aborted` 一起留在记录里，让 run 停在 `unverified`。此前它们被算作缺口，实测两次让已经写好产物、结算了 10 个副作用的 run 变成一句提问（一次是附带调用 schema 非法，一次是重复调用被护栏拒绝）。模型纠正这类调用的机会在循环内（拒绝作为工具结果回到模型，受无进展与迭代预算约束）。

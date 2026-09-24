@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-24 04:06:49
+最后更新：2026-09-24 12:08:32
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -52,7 +52,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 
 网络设置页的 Provider 检查是用户主动触发的 Main-owned 一次性搜索：只有当前已配置 Provider 的真实检查成功才显示 `ready`；检查结果只保存在当前运行时，配置变化、Runner 重建或重启后重新回到 `configured_unchecked`。启动过程不会为健康状态隐式联网。
 
-`src/main/runtime-config-change.ts` 的保存事务（normalize → persist → 重建 Runner）按顺序串行化，保存失败时拒绝调用方并保留旧版本；它的测试夹具始终持有一份已载入的配置，因此 `current()` 在该用例里不返回 `null`（null 仍属 Main 尚未读取配置时的契约）。
+`src/main/runtime-config-change.ts` 的保存事务（normalize → persist → 重建 Runner）按顺序串行化，保存失败时拒绝调用方并保留旧版本。**"已保存"不等于"已生效"**：持久化会把新版本写进 Runner 副本读的那个槽位，所以字段比较必须在持久化之前做；一次重建失败会被记成"已落盘但未生效"，再次保存同一个版本仍会重建 Runner，而不是返回一个没人用的"保存成功"。它的测试夹具始终持有一份已载入的配置，因此 `current()` 在该用例里不返回 `null`（null 仍属 Main 尚未读取配置时的契约）。
 
 ### 权限容器
 

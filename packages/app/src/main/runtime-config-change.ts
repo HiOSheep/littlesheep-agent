@@ -53,7 +53,11 @@ function stableStringify(value: unknown): string {
 }
 
 export interface RuntimeConfigUpdaterOptions {
-  /** The Runner's current configuration copy; `null` before the first build. */
+  /**
+   * The configuration the live Runner was built from; `null` before the first
+   * build. This is *not* "the last saved configuration": a rebuild that failed
+   * leaves the Runner on an older copy while the store already names the new one.
+   */
   current: () => Config | null
   /** Normalize a candidate revision exactly as the startup path does. */
   prepare: (config: Config) => Config
@@ -71,17 +75,39 @@ export interface RuntimeConfigUpdaterOptions {
  * normalize against a different "current" config or interleave a persist with a
  * rebuild. A persist failure rejects the caller's promise and leaves the
  * previous revision in place — the save is not reported as applied.
+ *
+ * "Saved" and "in effect" are two different revisions and the updater keeps them
+ * apart. `options.current()` answers only the second question, and it cannot be
+ * trusted to keep answering it once a save has been written: the composition root
+ * publishes the saved revision into the slot that read comes from. So a save
+ * whose rebuild threw is remembered here as persisted-but-not-applied, and the
+ * next save of that same revision replaces the Runner again instead of reporting
+ * success for a setting no run is using.
  */
 export function createRuntimeConfigUpdater(
   options: RuntimeConfigUpdaterOptions,
 ): (config: Config) => Promise<Config> {
   let queue: Promise<void> = Promise.resolve()
+  /** Written to disk, but the rebuild that would make it effective failed. */
+  let notApplied: Config | null = null
   return (config: Config): Promise<Config> => {
     const operation = queue.then(async () => {
       const normalized = options.prepare(config)
+      // Compared against the live Runner's copy, which is why this runs before
+      // the persist below publishes the new revision into the same slot.
       const changedKeys = changedRuntimeConfigKeys(options.current(), normalized)
+      const retryNotApplied = notApplied !== null
+        && changedRuntimeConfigKeys(notApplied, normalized).length === 0
       await options.persist(normalized)
-      if (changedKeys.length > 0) await options.rebuild()
+      if (changedKeys.length > 0 || retryNotApplied) {
+        try {
+          await options.rebuild()
+        } catch (error) {
+          notApplied = normalized
+          throw error
+        }
+        notApplied = null
+      }
       return normalized
     })
     queue = operation.then(() => undefined, () => undefined)

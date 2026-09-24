@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { textMessage } from '@littlesheep/types';
 import type { RunContext } from '@littlesheep/types';
 import { RunTailLedger, renderTailEntries } from './run-tail-ledger.js';
+import { persistRuntimeTailMessages } from './stages/execute/tool-result-persistence.js';
 import { makeCtx } from './tests/helpers.js';
 
 function withKnownStateRevision(ctx: RunContext, revision: number): RunContext {
@@ -142,6 +143,32 @@ describe('RunTailLedger', () => {
     expect(String(afterA.messages[0]?.content)).toContain('released_atoms: atom-b');
     expect(String(afterB.messages[0]?.content)).toContain('released_atoms: atom-a');
     expect(unchanged.messages).toEqual([]);
+  });
+
+  it('re-announces the current runtime context when it returns to a value it already announced', () => {
+    // Repeated switching A→B→A→B used to end with the model reading A: the
+    // fourth notice is byte-identical to the second one, and a ledger that
+    // remembers *every* fingerprint it ever sent treats the repeat as already
+    // sent. What matters is the last value the model was told, not the set of
+    // values it has seen.
+    const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
+    const ledger = new RunTailLedger();
+    const announce = (model: string): string => {
+      ctx.model = model;
+      const delta = ledger.update(ctx);
+      // The loop persists what it appends; that transcript is what the next
+      // render reads back as "the state the model was last told about".
+      persistRuntimeTailMessages(ctx, ctx.produced, delta.messages, delta.entries);
+      return delta.messages.map((message) => String(message.content)).join('\n');
+    };
+
+    expect(announce('provider-a/model-a')).toContain('model: provider-a/model-a');
+    expect(announce('provider-b/model-b')).toContain('model: provider-b/model-b');
+    expect(announce('provider-a/model-a')).toContain('model: provider-a/model-a');
+    // The regression: this one was dropped, so the effective state stayed A.
+    expect(announce('provider-b/model-b')).toContain('model: provider-b/model-b');
+    // And the steady state still costs nothing.
+    expect(announce('provider-b/model-b')).toBe('');
   });
 
   it('includes the prompt sections the tail owns and skips the stable ones', () => {

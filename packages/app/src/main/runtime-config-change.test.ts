@@ -70,9 +70,10 @@ describe('changedRuntimeConfigKeys', () => {
 // (normalize, persist, then replace the Runner), so a persistence failure has to
 // reject before anything reads the new revision.
 describe('createRuntimeConfigUpdater', () => {
-  function updater(options: { failPersist?: boolean } = {}) {
+  function updater(options: { failPersist?: boolean; failRebuildTimes?: number } = {}) {
     const events: string[] = []
     const persisted: Config[] = []
+    let rebuilds = 0
     // This harness always holds a loaded revision; the updater's own contract
     // still allows null for a Main process that has not read one yet.
     let current: Config = config()
@@ -83,13 +84,18 @@ describe('createRuntimeConfigUpdater', () => {
         events.push('persist')
         if (options.failPersist) throw new Error('disk is read-only')
         persisted.push(next)
+        // Exactly what the composition root does: the saved revision lands in the
+        // same slot the Runner's copy is read from. A failed rebuild therefore
+        // leaves "saved" and "in effect" disagreeing.
         current = next
       },
       rebuild: async () => {
         events.push('rebuild')
+        rebuilds += 1
+        if (rebuilds <= (options.failRebuildTimes ?? 0)) throw new Error('runner rebuild failed')
       },
     })
-    return { update, events, persisted, current: () => current }
+    return { update, events, persisted, rebuilds: () => rebuilds, current: () => current }
   }
 
   it('persists before replacing the Runner, and only when something changed', async () => {
@@ -119,6 +125,46 @@ describe('createRuntimeConfigUpdater', () => {
     // the next read still describes what is actually on disk.
     expect(harness.events).toEqual(['persist'])
     expect(harness.current()).toEqual(before)
+  })
+
+  it('rebuilds again when the same revision is saved after a failed rebuild', async () => {
+    // The reported sequence: the save reached disk as B, the Runner rebuild threw,
+    // and the settings page still ran A. Saving B again used to compare B against
+    // the *saved* revision, find no difference and return success — the app said
+    // "saved" while the next run still resolved policy from A.
+    const harness = updater({ failRebuildTimes: 1 })
+    const next = config()
+    next.agents.defaults.workspace = 'D:\\moved'
+
+    await expect(harness.update(next)).rejects.toThrow('runner rebuild failed')
+    expect(harness.events).toEqual(['persist', 'rebuild'])
+    // Saved, but not in effect: the failure is visible to the caller.
+    expect(harness.current().agents.defaults.workspace).toBe('D:\\moved')
+
+    await harness.update(next)
+
+    // The retry must replace the Runner, not report a save that never took effect.
+    expect(harness.events).toEqual(['persist', 'rebuild', 'persist', 'rebuild'])
+    expect(harness.rebuilds()).toBe(2)
+
+    // Once it succeeded, saving the same revision is a no-op again.
+    await harness.update(next)
+    expect(harness.events).toEqual(['persist', 'rebuild', 'persist', 'rebuild', 'persist'])
+  })
+
+  it('does not rebuild for a revision the live Runner already runs after a failure', async () => {
+    const harness = updater({ failRebuildTimes: 1 })
+    const before = harness.current()
+    const moved = config()
+    moved.agents.defaults.workspace = 'D:\\moved'
+
+    await expect(harness.update(moved)).rejects.toThrow('runner rebuild failed')
+    // Reverting to the revision the Runner actually holds needs a rebuild too:
+    // the store says "moved", the process is still on the original.
+    await harness.update(structuredClone(before))
+
+    expect(harness.events).toEqual(['persist', 'rebuild', 'persist', 'rebuild'])
+    expect(harness.current().agents.defaults.workspace).toBe(before.agents.defaults.workspace)
   })
 
   it('serializes concurrent updates so they cannot mix two revisions', async () => {
