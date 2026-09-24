@@ -4,7 +4,7 @@
 
 import { join, resolve } from 'node:path';
 import type { LlmClient } from '@littlesheep/llm';
-import { createLlmClient } from '@littlesheep/llm';
+import { DEFAULT_RETRY, createLlmClient } from '@littlesheep/llm';
 import { SessionManager } from '@littlesheep/session';
 import { MemoryStore } from '@littlesheep/memory-core';
 import type { Config, ModelProvider } from '@littlesheep/config';
@@ -179,8 +179,34 @@ export function resolveLlm(
     baseURL: provider.baseURL,
     apiKey,
     timeoutSeconds: provider.timeoutSeconds,
-  });
+  }, acceptanceRetryOptions());
   return { llm, modelName };
+}
+
+/**
+ * Acceptance-only backoff.
+ *
+ * A real-window retry fixture has to make the Provider fail several times on purpose.
+ * Production backoff (500 ms base, doubling and jittered) turns five retries into tens of
+ * seconds of waiting, which is neither a useful gate nor a stable one. The override exists
+ * only inside the acceptance build and is bounded, exactly like
+ * `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS`; outside that build the client keeps its own
+ * defaults.
+ */
+export function acceptanceRetryOptions(
+  env: Record<string, string | undefined> = process.env,
+): { retry: typeof DEFAULT_RETRY } | undefined {
+  if (env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] !== '1') return undefined;
+  const requested = Number.parseInt(env['LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS'] ?? '', 10);
+  if (!Number.isFinite(requested) || requested <= 0) return undefined;
+  return {
+    retry: {
+      ...DEFAULT_RETRY,
+      baseDelayMs: Math.max(1, Math.min(250, requested)),
+      // Deterministic waits: a gate must not become flaky because a jitter sample was long.
+      jitter: false,
+    },
+  };
 }
 
 /** Build the full Infrastructure from config + branding. Async (skill loader reads dirs). */

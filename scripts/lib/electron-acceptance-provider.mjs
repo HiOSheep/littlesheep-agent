@@ -11,6 +11,8 @@ export async function startElectronAcceptanceProvider(options = {}) {
     streamChunkCharacters: Math.max(0, Math.min(10_000, Math.round(Number(options.streamChunkCharacters) || 0))),
     modelDelayMs: new Map(),
     promptDelay: null,
+    /** Faults consumed by successive Provider requests; see `normalizeFaults`. */
+    faults: normalizeFaults(options.faults),
   }
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -35,6 +37,8 @@ export async function startElectronAcceptanceProvider(options = {}) {
       if (typeof body.streamChunkCharacters === 'number') {
         state.streamChunkCharacters = Math.max(0, Math.min(10_000, Math.round(body.streamChunkCharacters)))
       }
+      if (body.clearFaults === true) state.faults = []
+      if (Array.isArray(body.faults)) state.faults = normalizeFaults(body.faults)
       writeJson(res, 200, {
         ok: true,
         requestDelayMs: state.requestDelayMs,
@@ -42,6 +46,7 @@ export async function startElectronAcceptanceProvider(options = {}) {
         promptDelay: state.promptDelay,
         streamChunkDelayMs: state.streamChunkDelayMs,
         streamChunkCharacters: state.streamChunkCharacters,
+        faults: state.faults,
       })
       return
     }
@@ -72,7 +77,25 @@ export async function startElectronAcceptanceProvider(options = {}) {
     })
     if (requests.length > MAX_LOGGED_REQUESTS) requests.splice(0, requests.length - MAX_LOGGED_REQUESTS)
     await delay(delayMs)
+    // Faults are consumed per Provider request and logged on that request, so a fixture can
+    // map every transport attempt to what the Provider actually did with it.
+    const fault = takeFault(state)
+    if (fault) requests[requests.length - 1].fault = fault
+    if (fault?.kind === 'status') {
+      const headers = { 'Content-Type': 'application/json; charset=utf-8' }
+      if (fault.retryAfterSeconds !== undefined) headers['Retry-After'] = String(fault.retryAfterSeconds)
+      res.writeHead(fault.status, headers)
+      res.end(JSON.stringify({
+        error: { message: `acceptance fault: injected HTTP ${fault.status}`, type: 'acceptance_fault' },
+      }))
+      return
+    }
+    if (fault?.kind === 'hang') await delay(fault.ms)
     const response = buildResponse(body, requestIndex, model)
+    if (fault?.kind === 'stream_break' && body.stream === true) {
+      await writeBrokenStream(res, response, state, fault.afterChunks)
+      return
+    }
     if (body.stream === true) await writeStream(res, response, state)
     else writeJson(res, 200, response)
   })
@@ -88,6 +111,17 @@ export async function startElectronAcceptanceProvider(options = {}) {
     controlURL: `http://127.0.0.1:${address.port}/control`,
     requestsURL: `http://127.0.0.1:${address.port}/requests`,
     requests,
+    /** Current fault queue, so a fixture can assert what is still pending. */
+    faults: state.faults,
+    setFaults: async (faults) => {
+      const response = await fetch(`http://127.0.0.1:${address.port}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(faults === null ? { clearFaults: true } : { faults }),
+      })
+      if (!response.ok) throw new Error(`acceptance provider control failed: ${response.status}`)
+      return response.json()
+    },
     setDelay: async ({ model, delayMs, requestDelayMs, promptContains }) => {
       const payload = {}
       if (model !== undefined) payload.model = model
@@ -378,6 +412,72 @@ function boundedTools(value) {
 
 function boundedDelay(value) {
   return Math.max(0, Math.min(120_000, Math.round(Number(value) || 0)))
+}
+
+/**
+ * Faults a fixture can inject into successive Provider requests.
+ *
+ *   { kind: 'status', status: 429, times: 2, retryAfterSeconds: 1 }  HTTP failure (+ hint)
+ *   { kind: 'stream_break', afterChunks: 3, times: 1 }               SSE cut mid-answer
+ *   { kind: 'hang', ms: 5_000, times: 1 }                            no response (client timeout)
+ *
+ * Every entry is bounded and a malformed one is dropped rather than accepted, so a fixture
+ * cannot accidentally ask this provider to hold a connection open forever.
+ */
+function normalizeFaults(value) {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 16).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const times = Math.max(1, Math.min(40, Math.round(Number(entry.times) || 1)))
+    if (entry.kind === 'status') {
+      const status = Math.round(Number(entry.status))
+      if (!Number.isFinite(status) || status < 400 || status > 599) return []
+      const retryAfterSeconds = Number.isFinite(Number(entry.retryAfterSeconds))
+        ? Math.max(0, Math.min(30, Math.round(Number(entry.retryAfterSeconds))))
+        : undefined
+      return [{ kind: 'status', status, times, ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }) }]
+    }
+    if (entry.kind === 'stream_break') {
+      return [{ kind: 'stream_break', afterChunks: Math.max(1, Math.min(200, Math.round(Number(entry.afterChunks) || 3))), times }]
+    }
+    if (entry.kind === 'hang') {
+      return [{ kind: 'hang', ms: Math.max(1, Math.min(120_000, Math.round(Number(entry.ms) || 1_000))), times }]
+    }
+    return []
+  })
+}
+
+/** Consume one fault from the queue, keeping the remaining repeats in place. */
+function takeFault(state) {
+  const fault = state.faults[0]
+  if (!fault) return null
+  const remaining = fault.times - 1
+  if (remaining <= 0) state.faults.shift()
+  else state.faults[0] = { ...fault, times: remaining }
+  return { ...fault, times: 1, remaining }
+}
+
+/**
+ * Start a real SSE answer, emit a few chunks, then drop the connection without `[DONE]`.
+ * This is the transport shape the harness has to survive without duplicating or losing text.
+ */
+async function writeBrokenStream(res, response, state, afterChunks) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  })
+  const message = response.choices[0].message
+  const chunks = splitStreamText(message.content ?? '', state.streamChunkCharacters)
+  for (const content of chunks.slice(0, afterChunks)) {
+    res.write(`data: ${JSON.stringify({
+      id: response.id,
+      model: response.model,
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    })}\n\n`)
+    await delay(state.streamChunkDelayMs)
+  }
+  res.destroy()
 }
 
 function delay(ms) {

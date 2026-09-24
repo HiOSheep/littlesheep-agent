@@ -90,6 +90,7 @@
     "verify:desktop-cold-start-readiness-failure": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-readiness-failure.mjs",
     "verify:desktop-readiness-placement": "pnpm run assert:app-build && node scripts/verify-desktop-readiness-placement.mjs",
     "verify:chat-streaming-rendering": "pnpm run ensure:app-build && node scripts/verify-chat-streaming-rendering.mjs",
+    "verify:retry-feedback": "pnpm run ensure:app-build && node scripts/verify-transport-retry-feedback.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },

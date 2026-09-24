@@ -42,7 +42,7 @@
 | `packages/app/src/main/index.ts` | 659 | Electron 启动和组合；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样与内置浏览器宿主已下沉；启动文件模板下沉到 `bootstrap-templates.ts` | 继续抽取 bootstrap 服务，入口只保留装配顺序；按规则（超过 600 行必须进入本表）从软上限队列移入 | C |
 | `packages/llm/src/client.ts` | E / Runtime | 请求生命周期、错误分类、流式解析与重试接线共享同一状态机；先冻结协议解码与观察者接线的特征测试，再拆 request builder、stream parser、response mapper 与 retry observer 接线 | 660 | 同上 |
 | `packages/app/src/main/desktop-shell.ts` | 609 | Electron 窗口、托盘、关闭策略、窗口状态和退出前刷新 | 保持 DesktopShell 生命周期边界；状态 codec 留在 `desktop-window-state.ts`，隔离验收动作（缩放、最大化/还原、启动页、启动失败页）留在 `desktop-acceptance-actions.ts` + `desktop-visual-acceptance.ts`；按规则从软上限队列移入 | C |
-| `packages/llm/src/client.ts` | 619 | 请求构造、流式解析、reasoning/usage 归属、`Retry-After` 解析、重试接线与 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper 与 retry observer 接线；协议解码不向 Harness/Renderer 扩散。按规则（超过 600 行必须进入本表）从软上限队列移入 | E |
+| `packages/llm/src/client.ts` | 642 | 请求构造、流式解析、reasoning/usage 归属、`Retry-After` 解析、重试接线与 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper 与 retry observer 接线；协议解码不向 Harness/Renderer 扩散。按规则（超过 600 行必须进入本表）从软上限队列移入 | E |
 
 ## 软上限审查队列
 
@@ -98,7 +98,7 @@
 | `packages/memory-tree/src/memory-repository/v3-atom-management.ts` | 443 | Atom move/merge/revise/invalidate/reactivate 原子 mutation 与审计 | 保持持久化 mutation 边界；语义准入留在独立 service | D |
 | `packages/session/src/reply-fingerprint-store.ts` | 334 | 已发布文本指纹账本、final settlement reservation/settle sidecar、会话重启恢复与原子锁 | 保持会话级幂等存储边界；继续增长时分离 legacy fingerprint 与 settlement registry codec | E |
 | `packages/memory-tree/src/v3/atom-store.ts` | 425 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
-| `packages/runner/src/infra.ts` | 566 | 默认基础设施创建、Provider/Web、Memory v3 与后台维护准入装配 | durable store 组装已下沉到 `durable-harness-infrastructure.ts`；继续保持组合根并下沉 Memory 服务组装 | E |
+| `packages/runner/src/infra.ts` | 592 | 默认基础设施创建、Provider/Web、Memory v3 与后台维护准入装配 | durable store 组装已下沉到 `durable-harness-infrastructure.ts`；继续保持组合根并下沉 Memory 服务组装 | E |
 | `packages/app/src/renderer/workspace/tab-strip.tsx` | 438 | 工作区标签渲染、关闭、重排、拖拽和溢出标签 | 将拖拽 controller 与标签视图继续保持独立，禁止吸收面板状态 | B |
 | `packages/app/src/renderer/workspace/panel.tsx` | 399 | 拓展工作区页面、评论状态和工作面装配 | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
 | `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务和终端环境派生 | 保持 facade；下载器不得回填此文件 | C |

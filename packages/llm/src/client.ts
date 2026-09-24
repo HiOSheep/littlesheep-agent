@@ -419,6 +419,16 @@ export class OpenAIClient implements LlmClient {
     let usage: ChatResponse['usage'];
     let dsmlContentMode = false;
     let dsmlToolNamePublished = false;
+    /**
+     * Whether the Provider itself said the answer was over (`[DONE]` or a `finish_reason`).
+     *
+     * A transport that drops mid-answer closes the body exactly like a finished stream, so
+     * "the reader ended" is not completion. Treating it as completion published a truncated
+     * answer as a settled reply — measured in the real window with an injected stream cut.
+     * Only a Provider signal counts; a stream that carried content but never signalled
+     * completion is a retryable transport failure (see the check after the read loop).
+     */
+    let sawTerminalSignal = false;
     const dsmlScanner = createIncrementalDsmlControlScanner();
 
     while (true) {
@@ -431,7 +441,10 @@ export class OpenAIClient implements LlmClient {
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data:')) continue;
         const data = trimmed.slice(5).trim();
-        if (data === '[DONE]') continue;
+        if (data === '[DONE]') {
+          sawTerminalSignal = true;
+          continue;
+        }
         let chunk: OpenAIStreamChunk;
         try {
           chunk = JSON.parse(data) as OpenAIStreamChunk;
@@ -445,6 +458,7 @@ export class OpenAIClient implements LlmClient {
         if (parsedUsage) usage = parsedUsage;
         const delta = chunk.choices[0]?.delta;
         const fr = chunk.choices[0]?.finish_reason;
+        if (fr) sawTerminalSignal = true;
         if (delta?.content) {
           onFirstSignal('content');
           content += delta.content;
@@ -492,6 +506,15 @@ export class OpenAIClient implements LlmClient {
         }
         if (fr) finishReason = this.mapFinishReason(fr);
       }
+    }
+    // A stream that carried an answer but never signalled completion was cut in transit.
+    // Publishing it would settle a truncated reply as an authoritative one (the real-window
+    // fixture injects exactly this); 502 keeps it in the replay-safe transport class, so the
+    // bounded retry re-sends the request and the caller clears its streamed preview with the
+    // `reset` chunk it already gets for any retry round. An empty stream is left alone: empty
+    // output has its own bounded handling upstream.
+    if (!sawTerminalSignal && (content.length > 0 || reasoningContent.length > 0 || toolCallMap.size > 0)) {
+      throw new LlmError(502, 'Stream ended before the provider signalled completion', true);
     }
     let toolCalls = Array.from(toolCallMap.values()).map((tc) => ({
       id: tc.id,

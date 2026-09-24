@@ -824,6 +824,68 @@ describe('retryWithBackoff', () => {
   });
 });
 
+describe('stream completion signal', () => {
+  // A transport that drops mid-answer closes the body exactly like a finished stream. Before
+  // this contract the truncated text was published as the settled answer (measured in the
+  // real window with an injected stream cut), so the retry never happened.
+  it('retries a stream that carried content but never signalled completion', async () => {
+    const truncated = 'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"half an ans"}}]}';
+    const complete = [
+      'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"the whole answer"}}]}',
+      'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
+      'data: [DONE]',
+    ].join('\n\n');
+    const fetch = mockFetch([{ body: truncated }, { body: complete }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+    const chunks: import('./types.js').StreamChunk[] = [];
+
+    const response = await client.chatStream(
+      { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+      (chunk) => chunks.push(chunk),
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(response.content).toBe('the whole answer');
+    expect(response.transport).toMatchObject({ transportAttempt: 2, observedAttemptCount: 2 });
+    // The caller is told to drop what it already showed, which is what keeps a retried
+    // answer from being displayed twice.
+    expect(chunks.filter((chunk) => chunk.type === 'reset')).toHaveLength(1);
+    expect(chunks.at(-1)).toMatchObject({ type: 'done' });
+  });
+
+  it('accepts a stream that ends after the provider signalled completion', async () => {
+    // `[DONE]` alone is a completion signal; a finish_reason alone is too.
+    for (const ending of [
+      ['data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"done"}}]}', 'data: [DONE]'],
+      ['data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"done"}}]}', 'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}'],
+    ]) {
+      const fetch = mockFetch([{ body: ending.join('\n\n') }]);
+      const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+      const response = await client.chatStream(
+        { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+        () => undefined,
+      );
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(response.content).toBe('done');
+    }
+  });
+
+  it('leaves an empty stream to the bounded empty-output handling upstream', async () => {
+    const fetch = mockFetch([{ body: '' }]);
+    const client = new OpenAIClient({ ...BASE_OPTS, fetch });
+
+    const response = await client.chatStream(
+      { model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] },
+      () => undefined,
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(response.content).toBe('');
+  });
+});
+
 describe('createLlmClient', () => {
   it('builds client from provider config', async () => {
     const fetch = mockFetch([{
