@@ -143,7 +143,7 @@
 | `packages/experience/src/experience-store.ts` | 309 | 经验索引、备份、并发和衰减 | 分离 index、backup、mutation、decay | D |
 | `packages/memory-tree/src/memory-repository/v3-retrieval.ts` | 307 | 分支/作用域约束检索与精确治理读取路由 | 保持检索编排 | D |
 | `packages/harness/src/response-continuity-text.ts` | 581 | 回答连续性所需的有界文本、Atom 标记、显式标签值、Runtime 摘要保真字段和否定语义解析 | 保持纯文本解析边界；若继续增长，分离标签值解析与通用连续性术语处理 | E |
-| `packages/app/src/main/local-app-api/runtime-routes.ts` | 412 | Runtime 配置、Web policy projection、data-root/应用生命周期与 Web cache 路由 | Runtime payload 投影已下沉到 `runtime-payload.ts`、模型供应商路由已下沉到 `provider-routes.ts`；继续保持路由 facade，不再吸收 provider 或 payload 组装 | C |
+| `packages/app/src/main/local-app-api/runtime-routes.ts` | 425 | Runtime 配置、Web policy projection、data-root/应用生命周期与 Web cache 路由 | Runtime payload 投影已下沉到 `runtime-payload.ts`、模型供应商路由已下沉到 `provider-routes.ts`；继续保持路由 facade，不再吸收 provider 或 payload 组装 | C |
 | `packages/app/src/main/local-app-api/session-routes.ts` | 469 | 会话查询、权限模式更新、显式会话目录切换和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
 | `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 319 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |
 | `packages/config/src/schema.ts` | 406 | 全局配置 schema、Web policy 和 provider/模型配置校验 | 保持版本化 schema facade；provider 模型条目规范化与用户声明能力分别位于 `provider-models.ts`、`configured-models.ts` | E |
