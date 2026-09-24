@@ -1,5 +1,5 @@
 # Renderer 应用壳
-最后更新：2026-09-24 18:59:04
+最后更新：2026-09-24 23:02:00
 
 这里负责把各 Renderer 领域组合成一个应用界面，不拥有会话、记忆、项目或工作区的权威数据。
 
@@ -10,6 +10,7 @@
 - `use-navigation-controller.ts`、`navigation.ts`、`types.ts`：有界的前进/后退历史、设置转场和全局路由。
 - `persistent-state.ts`、`use-app-persistence.ts`：版本化恢复快照与有界写入节流；瞬态 UI 和授权只留在内存。
 - `preferences.ts`、`list-motion.ts`：Renderer 偏好和列表过渡的纯客户端辅助；工作区文件导航折叠状态与审阅 Monaco 单列/双列偏好使用独立 key，均为 best-effort 本地 UI 状态，不进入会话或任务恢复数据。
+- `use-app-controller.ts`、`app-controller-projections.ts`、`workspace-dock-view.tsx` 把会话现场的**两个**导航宽度转发给拓展工作区（UX-18）：`workspaceFileNavigatorWidth` 与 `workspaceReviewNavigatorWidth`（以及各自 setter）。投影字段列表必须成对保留，否则审阅宽度会退回共享的 `fileNavigatorWidth`，拖宽审阅列表就会连带移动文件导航。
 
 新增业务行为应进入对应领域控制器，不要继续扩大 `use-app-controller.ts`；修改导航时必须回归设置、拓展工作区、标签和重启恢复。
 

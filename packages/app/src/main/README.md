@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-24 19:31:07
+最后更新：2026-09-24 23:02:00
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -23,7 +23,7 @@
 - `run-activity-monitor.ts`、`run-policy.ts`：聚合当前与正在退场的 Runner 活动快照；解析权限模式和行为 profile，并在执行前重算容器边界与审批，启动期恢复读取只经 `createRecoveryReadAuthorizer`。
 - `local-app-api/session-routes.ts` 的 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量，产出**会话累计缓存命中**（`cachedPromptTokens / promptTokens`，含冷启动、不含分离调用），与验收账本同源同公式；`requestsWithoutUsage > 0` 时标注为局部读数。同一个文件的 `PATCH /sessions/:id` 还拥有**项目会话的显式目录切换**：项目会话按项目（或它自己记录的目录）运行，保存默认工作区不会搬动它，因此换目录必须是针对该会话的显式操作。
 - `local-app-api/run-support.ts` 的 `resolveOwnedRunWorkspace` 在解析目录前先解析会话归属：只有没有自身绑定的会话才吃请求里的 `workspace`（渲染器随每次请求下发的是 Runtime 当前工作区）。判定与取舍见该目录 README；回归在 `local-app-api/run-support.test.ts` 与 `run-stream-api.test.ts`。
-- `session-index.ts`、`project-index.ts`、`archive-index.ts`、`workspace-layout-index.ts`、`workspace-artifact-index.ts`、`terminal-activity-index.ts`：UI 元数据索引。
+- `session-index.ts`、`project-index.ts`、`archive-index.ts`、`workspace-layout-index.ts`、`workspace-artifact-index.ts`、`terminal-activity-index.ts`：UI 元数据索引。`workspace-layout-index.ts` 的恢复镜像同时保存会话现场的两个导航宽度（`fileNavigatorWidth` 与 `reviewNavigatorWidth`，UX-18），两者各按 `WORKSPACE_FILE_NAVIGATOR_WIDTH_*` 独立 clamp；旧镜像缺 `reviewNavigatorWidth` 时落回默认值，不继承文件导航的宽度。
 - `attachment-cache.ts`、`data-root-*.ts`、`workspace-*.ts`：各自受管数据和资源生命周期。
 - `development-environment-definitions.ts`、`development-environment-files.ts`、`development-environments.ts`：LS 工具链定义、版本检测、导入/移除事务、版本偏好和终端派生环境；设置页面通过 Local App API 访问，不直接触碰文件系统。
 - `memory-files.ts`、`memory-tree-control.ts`、`memory-atom-control.ts`、`memory-v3-*.ts`、`memory-embedding-model-control.ts`：用户记忆文件投影、记忆树/资源/Atom 管理适配（只由 Local App API 的用户操作触达，不是 Agent 工具）、v3 迁移与本地向量模型生命周期；不建立第二份记忆索引。

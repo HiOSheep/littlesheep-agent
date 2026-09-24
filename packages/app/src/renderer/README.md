@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-24 18:49:21
+最后更新：2026-09-24 23:02:00
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
 
@@ -26,6 +26,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `chat/assistant-turn.tsx`：一轮 Agent 的思考摘要、真实执行过程、验证和最终结果渐进披露。
 - `Markdown.tsx`、`link-navigation.tsx`、`workspace/browser.tsx`：全局链接单击进入 LS 内置预览；网页由独立的有界 URL 历史驱动前进、后退和刷新，网页内部跳转不会污染全局应用导航。
 - `workspace/preview-pane.tsx`、`workspace/code-editor.tsx` 与主进程 Office 预览服务：代码和普通文本使用共享内置编辑器；普通 Markdown 文件默认渲染，查看源码或编辑时才挂载共享 Monaco，而 Git 审阅中的 Markdown 仍显示源代码 Diff。普通文件和审阅主表面铺满拓展工作区的可用宽度与底部，不绘制外围圆角、边框或整面 hover 反馈；右侧文件导航贴边并仅保留左分隔线。普通查看和审阅统一保留舒适的行号/代码间距；审阅行号、增删计数与连续 5px 左缘使用不透明的 `#02A243` / `#DE352E`，代码行使用在 `#101010` 上合成为 `#1A2B1C` / `#371D17` 的单层 50% 透明底色；单列内联删除视图区也绘制整段连续红色左缘，字符级背景、整块 gutter 背景及会形成方块伪影的 Diff text border 均不绘制；Office/OpenDocument 以有界只读文本预览呈现，二进制正文不进入 Renderer。
+- `workspace-persistence.ts`：会话现场的版本化布局（含 `fileNavigatorWidth` 与 `reviewNavigatorWidth` 两个独立导航宽度，UX-18）。hydrate/serialize 对两者分别按 `WORKSPACE_FILE_NAVIGATOR_WIDTH_*` clamp；旧快照缺 `reviewNavigatorWidth` 时回落到默认宽度，而不是继承文件导航的当前值。
 
 Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项目、密钥或工作区文件的权威数据。
 
