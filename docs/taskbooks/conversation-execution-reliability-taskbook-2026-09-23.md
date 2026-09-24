@@ -27,7 +27,7 @@
 | 已核查已修 | CE-09 | P1 | run 失败也有可见、可恢复的终态 | P8 | M | 可先复现；联验依赖 CE-08 |
 | 部分实施待实测 | CE-10 | P2 | 中文过程表达与低风险模糊请求直接执行 | P9 | S | CE-01/03/04 |
 | 已回归 | CE-11 | P2 | 保留 DSML 泄漏历史回归 | P7 | S | 无 |
-| 大部分已实测，人工试玩待做 | CE-12 | P0 交付门 | 三类工作区的真实完整流程验收 | P1～P9 | L | 对应实现与调查关闭后 |
+| 已实测已闭环 | CE-12 | P0 交付门 | 三类工作区的真实完整流程验收 | P1～P9 | L | 对应实现与调查关闭后 |
 | 已实施待实测 | CE-13 | P0 | 注入简短的运行时变更上下文 | 用户追加：模型、工作区等即时信息 | M | CE-01/02/03 的有效事实来源 |
 
 建议交付批次：
@@ -202,7 +202,7 @@
 | 模型失败、发布校验失败、断流、权限拒绝、未知副作用 | 终态可见且语义准确；硬边界不被修复逻辑绕过 |
 
 - [x] 默认目录和外部目录的正常样本各至少独立执行两次；失败样本保留，修复后重跑，不以挑选成功样本关闭任务。（`scripts/verify-conversation-execution-reliability.mjs` 连做两轮完整验收：同一会话内"做一个小游戏吧"→"继续做吧"，加一次独立新会话重跑同一请求。工作区是**配置默认目录且位于数据根之外、路径含空格**的目录，属于"外部/含空格"一类；两轮共 4 次正常样本执行全部 `status=ok`，失败样本按 5.5 轮记录保留在数据根。**2026-09-24 第十八轮起脚本共 12 个场景**，含后加的四条：`retry_after_denied_write`（拒绝审批后的重试绑定）、`workspace_history_boundary`（历史目录边界）、`budget_exhaustion_and_retry`（四调用上限 → 重启 → 续接 → 重试）、以及续跑遇到未结算副作用时的诚实终态分支；每次运行都记录 `sourceRevision` 与逐场景 `runId`/`sessionId`。）
-- [ ] 至少人工玩一局生成游戏，检查启动、输入、计分/胜负或对应核心规则、重新开始；结果注明实测范围。**没有人工试玩**：本轮只做了机械校验（内联脚本可解析、无外部/远程脚本，并检出 canvas / game_loop / keyboard_input / score / restart 信号），以及一次模型自己写的 Node 沙箱试跑（8000 帧、0 运行时异常、得分 125）。"好不好玩、手感如何"仍是未完成的人工项。
+- [x] 至少人工玩一局生成游戏，检查启动、输入、计分/胜负或对应核心规则、重新开始；结果注明实测范围。（**2026-09-24 第二十一轮：人工试玩已完成，本行关闭。** 实测范围：4 款贪吃蛇（`.codex_tmp/ce12-games/snake-A.html`～`snake-D.html`）+ 1 款"小羊快跑"同类真实产物，共 5 局；用户结论：启动、键盘输入、计分/核心规则、重新开始全部正常，未发现 bug，无失败样本。此前的机械校验保留并复跑：`node scripts/probe-game-artifacts.mjs .codex_tmp/ce12-games` 在 HEAD 仍为 `{"games":8,"runs":7,"needsALook":1,"broken":0}`，唯一 `needs-a-look` 是 `snake-C.html` 的加载期 `TypeError: Cannot read properties of undefined (reading 'length')`（`resize()` 早于 `reset()`，来自第一次 `draw()`）——人工游玩未观察到可见异常，缺陷仍记录在案，属模型产物问题而非 Runtime 路径问题；探针的 `restartAffordance=key:R` 只是它采用的路径（有按钮点按钮，否则按 R），4 款打砖块与 `snake-C` 的按键重开在探针里没有观察到文本/得分变化，因此**打砖块那 4 个文件的重开未经人工确认**，人工实测只覆盖上列 5 局。）
 - [x] 记录源码版本、实际构建版本、模型/Provider、权限模式、脱敏目录类别、run 关联、产物校验与窗口结论。原始日志留在数据根，仓库仅保留脱敏验收摘要。（报告含 `sourceRevision`、`electronVersion`、provider/model、`permissionMode=full`、目录类别（含空格的外部/默认工作区）、每个场景的 `runId`/`sessionId`、产物校验与真实窗口就绪判定；原始会话与执行日志留在隔离数据根，见下方"CE-12 实机验收记录"。）
 - [x] 三档权限的拒绝和同意路径均有自动化覆盖；“完全访问确认后可运行”不代表研究/受限模式可绕过批准。（自动化：`packages/safety/src/permission-boundary.test.ts` 覆盖三档判定矩阵，`packages/tools/src/builtin/exec.test.ts` 断言研究模式仍需批准、受限一律批准、完全访问放行。**真实窗口**：CE-12 验收新增两条研究模式场景——工作区在容器内，`write` 触发的批准被**同意**时文件确实落盘（`approvals.granted=1`），被**拒绝**时文件不存在且回复没有谎称成功（`approvals.denied=1`，`write` 状态 `approval_denied`）。受限模式仍未在真实窗口里走过。）
 - [x] 缓存检查沿用[既有缓存验收约束](../reference/cache-95-acceptance.md)，验证同目录复用和跨 run 回放；两轮小游戏不强行套用长区间 95% 命中结论，不为缓存保留错误 cwd。（`pnpm.cmd run check:cache-acceptance` → exit 0，结论 `met`；两轮小游戏样本刻意不套用长任务 95% 红线，验收记录里只报告事实。）
@@ -252,6 +252,42 @@ Shell：powershell.exe；权限：研究（写入仍需批准）
 - 已完成：阅读用户问题汇总、核对关键源码机制、映射原 P1～P9，并按用户追加需求加入 CE-13 运行时变更上下文；共 13 项任务，已定义依赖与验收。
 - 未进行：产品代码修复、原始日志核验、故障复现、真实模型调用、Electron 实机验收。
 - 文档检查结果在本次交付回复中说明；以上任务状态不因文档检查通过而变为已完成。
+
+## 实施记录｜2026-09-24 第二十一轮（CE-12 人工试玩完成：5 局真实产物全部正常，交付门关闭）
+
+这一轮只做一件事：把 CE-12 唯一剩下的人工项做完并如实记录。
+
+### 人工试玩结果（用户执行）
+
+- **实测范围**：4 款贪吃蛇（`.codex_tmp/ce12-games/snake-A.html`、`snake-B.html`、`snake-C.html`、`snake-D.html`）+ 1 款"小羊快跑"同类真实产物，共 5 局。
+- **结论**：启动、键盘输入、计分/核心规则、重新开始均正常，**未发现 bug**，无失败样本。
+- 这 5 个文件都是真实模型、真实 Windows shell、真实 Electron 窗口跑出来的产物，不是手写样例。
+
+### 人工试玩之外的机械事实（同一轮在 HEAD 复跑）
+
+`node scripts/probe-game-artifacts.mjs .codex_tmp/ce12-games` 在 `cfb0fc1` + 文档提交通上复跑，结果与上一次一致：
+
+```text
+runs          breakout-A.html  canvas=760x480 animates=after start       score=0->0   restart=key:R
+runs          breakout-B.html  canvas=720x520 animates=after start       score=0->0   restart=key:R
+runs          breakout-C.html  canvas=880x560 animates=after start       score=0->200 restart=key:R
+runs          breakout-D.html  canvas=640x480 animates=after start       score=0->20  restart=key:R
+runs          snake-A.html     canvas=780x600 animates=on first input    score=0->0   restart=key:R
+runs          snake-B.html     canvas=520x520 animates=immediately       score=0->0   restart=button:再来一局
+needs-a-look  snake-C.html     load: TypeError: Cannot read properties of undefined (reading 'length')
+runs          snake-D.html     canvas=440x440 animates=on first input    score=0->0   restart=button:再来一局
+{"games":8,"runs":7,"needsALook":1,"broken":0}
+```
+
+两点必须说清楚，避免把机械结论读成比它更强的东西：
+
+1. **`snake-C.html` 的加载期异常仍在案**：`resize()` 早于 `reset()`，第一次 `draw()` 因此抛 `TypeError`。人工游玩没有观察到可见异常（没有黑屏、没有卡死），但这属于"模型产物自身缺陷、恰好没被用户看到"，不是 Runtime 路径缺陷；探针会继续把它标成 `needs-a-look`。
+2. **`restartAffordance=key:R` 只是探针采用的路径**（有按钮就点按钮，否则按 R 键），不是游戏声明的能力。JSON 里 4 款打砖块与 `snake-C` 的 `restartChanged=false`（按 R 后文本/得分没有变化），因此**打砖块那 4 个文件的"重新开始"没有人工确认**；人工实测覆盖的是上列 5 局。这一条不影响本行结论（任务书要求的是"至少人工玩一局"，且 5 局里重开均正常），但如果以后要断言打砖块的按键重开可用，需要单独验。
+
+### 本轮同时复核的门禁
+
+- `pnpm run verify:conversation-execution-reliability`：12 个场景 exit 0，报告里 `humanPlaythrough` 字段由脚本固定写 `not_performed`（脚本不能替人玩），`isolatedDataRemoved: true`。
+- `pnpm run typecheck`、`pnpm run check:repo`（36 passed / 0 failed）：通过。
 
 ## 实施记录｜2026-09-24 第二十轮（换一条实机门禁跑，抓到一个"一次越权调用废掉整轮"的真缺陷）
 
@@ -818,7 +854,7 @@ CE-13 的最后一条要求"在 CE-12 中检查真实出站请求及后续行为
 - **CE-09**：终态全部可读——3 个场景的 `status`、`runId`、验证记录都能从持久日志重建（两条 run 正是靠这条路恢复的）。
 - **CE-10（行为面）**：中文请求得到中文过程与交付；正常场景**没有**先追问游戏类型就直接开工并交付。
 
-**没有做的（不得据此认为 CE-12 关闭）**：
+**没有做的（不得据此认为 CE-12 关闭）**（**2026-09-24 第二十一轮已补做人工试玩（5 局），CE-12 交付门据此关闭；本节其余缺口的最新状态见各行记录，此处保留第六轮当时的缺口描述。**）：
 
 - **人工试玩**没有进行。机械校验只证明产物可解析、无外部依赖、含 canvas/游戏循环/键盘输入/计分/重开信号；"玩起来如何"没人验证。
 - 权限只走了 `full`：研究/受限模式的批准对话框未在真实窗口里走过（自动化矩阵已覆盖判定）。
