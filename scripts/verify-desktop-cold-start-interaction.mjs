@@ -304,6 +304,16 @@ async function main() {
     observations.push({ step: 'window-lifecycle', ...lifecycle.observation })
     failures.push(...lifecycle.failures)
 
+    // 4c. The right workspace keeps its file while the conversation changes and
+    //     while the window is hidden: the taskbook's CS-08 robustness list. The
+    //     request/response race is induced by clicking a second file and switching
+    //     conversation immediately after it, so a stale response landing late
+    //     would show up as content that does not match the file the panel says it
+    //     is showing.
+    const workspacePreview = await runWorkspacePreviewCase()
+    observations.push({ step: 'workspace-preview-robustness', ...workspacePreview.observation })
+    failures.push(...workspacePreview.failures)
+
     await writeFile(join(outDir, 'cold-start-interaction.json'), `${JSON.stringify({
       check: 'desktop-cold-start-interaction',
       ok: failures.length === 0,
@@ -436,6 +446,396 @@ async function runWindowLifecycleCase(dir) {
     await harness.removeTemporaryRoot(root)
   }
   return { observation, failures }
+}
+
+/**
+ * The right workspace across conversation switches and window hide/show (CS-08).
+ *
+ * Everything here happens inside the widened not-ready window except the final
+ * readiness wait, because that is when the workspace is claimed to be usable.
+ * The two fixture files carry unique markers, so "the panel is showing file X"
+ * (breadcrumb) and "the body is file X's body" (marker) can be checked against
+ * each other. That is what catches a stale response landing after a newer one:
+ * the visible body would no longer match the file the panel says it shows.
+ */
+async function runWorkspacePreviewCase() {
+  const failures = []
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-cold-start-workspace-'))
+  const dataDir = join(root, 'data')
+  const workspaceDir = join(root, 'workspace')
+  const chromiumDir = join(root, 'chromium')
+  const logPath = join(root, 'electron.log')
+  const debuggingPort = await harness.reservePort()
+  let client
+  let child
+  const observation = { steps: [] }
+
+  const readmeMarker = 'MARKER-README-DOCUMENT'
+  const notesMarker = 'MARKER-NOTES-DOCUMENT'
+  const markers = { readmeMarker, notesMarker }
+
+  try {
+    await mkdir(workspaceDir, { recursive: true })
+    await mkdir(dataDir, { recursive: true })
+    await writeFile(
+      join(workspaceDir, 'README.md'),
+      `# 会话切换期间的工作区\n\n${readmeMarker}\n\n${'正文段落。\n\n'.repeat(120)}`,
+      'utf8',
+    )
+    await writeFile(join(workspaceDir, 'notes.md'), `# notes\n\n${notesMarker}\n\n第二份文件。\n`, 'utf8')
+    await seedSessions(dataDir)
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify({
+      version: 1,
+      agents: { defaults: { workspace: workspaceDir } },
+      desktop: { closePolicy: 'always-background' },
+    }, null, 2)}\n`, 'utf8')
+
+    child = await harness.startElectron({
+      dataDir,
+      chromiumDir,
+      debuggingPort,
+      logPath,
+      extraEnv: {
+        LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
+        LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS: String(NOT_READY_WINDOW_MS),
+      },
+    })
+    const locator = await harness.waitForLocator(dataDir, child.pid)
+    client = await harness.connectRenderer(debuggingPort)
+    await client.send('Runtime.enable')
+    await harness.waitForVisible(client, '.composer textarea', 0, harness.actionTimeoutMs)
+
+    // A. The window starts as the *draft* conversation: the sidebar may already
+    //    highlight a row, but the workspace layout the app records belongs to the
+    //    draft bucket (verified by reading both mirrors, not by assuming). The
+    //    right panel must still be usable here - that is the CS-08 claim.
+    await openPanel(client)
+    await waitForWorkspaceRows(client)
+    const openedDraft = await openWorkspaceFile(client, 'README.md', markers)
+    const inDraft = await readWorkspacePreview(client, markers)
+    const readinessAtDraft = await readReadiness(locator)
+    const draftLayouts = await readLayoutState(dataDir, client)
+    observation.steps.push({
+      step: 'draft-file-opened',
+      readiness: readinessAtDraft?.state ?? null,
+      opened: openedDraft,
+      preview: inDraft,
+      layouts: draftLayouts,
+    })
+    if (inDraft.marker !== 'readme') {
+      failures.push({ check: 'the opened file body is the file the panel shows', detail: inDraft })
+    }
+    if (readinessAtDraft?.state !== 'starting') {
+      failures.push({ check: 'the workspace was usable inside the not-ready window', detail: { readiness: readinessAtDraft } })
+    }
+
+    // B. Leave the startup conversation and come back to the same sidebar row.
+    //    The taskbook asks exactly this: the file must not be reset to blank.
+    //    The two layout mirrors are recorded with the observation, because the
+    //    answer depends on which conversation bucket the app filed the file under.
+    const awayAttempt = await openOtherSession(client)
+    await delay(700)
+    const away = await readWorkspacePreview(client, markers)
+    const noticesAway = await readNoticeSurfaces(client)
+    observation.steps.push({ step: 'switched-away', attempt: awayAttempt, preview: away, notices: noticesAway })
+    if (awayAttempt.opened !== true) {
+      failures.push({ check: 'the other conversation can be opened', detail: awayAttempt })
+    }
+    if (away.marker === 'readme') {
+      failures.push({ check: 'the other conversation does not show the first one\'s file', detail: { draft: inDraft, away } })
+    }
+    if (noticesAway.errorText !== null) {
+      failures.push({ check: 'switching conversation raises no error banner', detail: noticesAway })
+    }
+    if (noticesAway.activeRunCount > 0) {
+      failures.push({ check: 'switching conversation starts no run', detail: noticesAway })
+    }
+
+    const backAttempt = await openSessionByTitle(client, awayAttempt.from)
+    await delay(700)
+    const returned = await reopenAndReadPreview(client, markers, true)
+    const afterReturn = returned.preview
+    observation.steps.push({
+      step: 'returned-to-startup-conversation',
+      attempt: backAttempt,
+      panel: returned.panel,
+      restore: returned.restore,
+      preview: afterReturn,
+      layouts: await readLayoutState(dataDir, client),
+    })
+    if (backAttempt?.opened !== true) {
+      failures.push({ check: 'the startup conversation row can be reopened', detail: backAttempt })
+    }
+    if (!samePreview(afterReturn, inDraft)) {
+      failures.push({
+        check: 'returning to the startup conversation restores the file opened during startup',
+        detail: { before: inDraft, after: afterReturn, layouts: await readLayoutState(dataDir, client) },
+      })
+    }
+
+    // C. Control: after readiness, open a file in the conversation the window then
+    //    has, and run the same round trip. This separates "the layout does not
+    //    restore" from "the startup window filed the file under the draft".
+    const readyBeforeControl = await waitForReady(locator)
+    await delay(400)
+    await openPanel(client)
+    await waitForWorkspaceRows(client)
+    const openedControl = await openWorkspaceFile(client, 'README.md', markers)
+    const controlBefore = await readWorkspacePreview(client, markers)
+    const controlAway = await openOtherSession(client)
+    await delay(700)
+    const controlBack = await openSessionByTitle(client, controlAway.from)
+    await delay(700)
+    const controlRead = await reopenAndReadPreview(client, markers, true)
+    const controlAfter = controlRead.preview
+    observation.steps.push({
+      step: 'post-ready-round-trip',
+      readiness: readyBeforeControl?.state ?? null,
+      opened: openedControl,
+      away: controlAway,
+      back: controlBack,
+      restore: controlRead.restore,
+      before: controlBefore,
+      after: controlAfter,
+      layouts: await readLayoutState(dataDir, client),
+    })
+    if (controlBefore.marker !== 'readme') {
+      failures.push({ check: 'a file can be opened once execution is ready', detail: controlBefore })
+    }
+    if (controlAway.opened !== true || controlBack?.opened !== true) {
+      failures.push({ check: 'the post-ready round trip really switched conversation', detail: { away: controlAway, back: controlBack } })
+    }
+    if (!samePreview(controlAfter, controlBefore)) {
+      failures.push({
+        check: 'returning to a conversation restores a file opened in it',
+        detail: { before: controlBefore, after: controlAfter, layouts: await readLayoutState(dataDir, client) },
+      })
+    }
+
+    // D. Induced race on the file the panel is currently showing: open the second
+    //    file and switch conversation immediately, so the preview request and the
+    //    switch overlap. Whatever settles last, the body must belong to the file
+    //    the breadcrumb names - that is what a stale response winning would break.
+    const raceBefore = await readWorkspacePreview(client, markers)
+    const openedNotes = await openWorkspaceFile(client, 'notes.md', markers).catch((error) => ({ opened: false, error: String(error) }))
+    const raceSwitch = await openOtherSession(client)
+    await delay(500)
+    const backAgain = await openSessionByTitle(client, raceSwitch.from)
+    await delay(900)
+    const raceRead = await reopenAndReadPreview(client, markers, false)
+    const afterRace = raceRead.preview
+    observation.steps.push({ step: 'race-switch', raceBefore, opened: openedNotes, away: raceSwitch, back: backAgain, preview: afterRace })
+    if (openedNotes?.opened !== true) {
+      failures.push({ check: 'the second file could be opened for the race', detail: openedNotes })
+    }
+    if (raceSwitch.opened !== true || backAgain?.opened !== true) {
+      failures.push({ check: 'the race really switched conversation and came back', detail: { away: raceSwitch, back: backAgain } })
+    }
+    if (afterRace.previewLength > 0 && !previewMatchesLabel(afterRace)) {
+      failures.push({ check: 'the body belongs to the file the panel names after the race', detail: afterRace })
+    }
+    if (afterRace.marker === 'notes' && raceBefore.marker !== 'notes') {
+      observation.raceWinner = 'the second file'
+    }
+
+    // Hide and restore the window with the file open.
+    await harness.desktopAction(locator, 'close')
+    await delay(700)
+    await harness.desktopAction(locator, 'show')
+    await delay(700)
+    const afterShow = await readWorkspacePreview(client, markers)
+    observation.steps.push({ step: 'hide-show', preview: afterShow })
+    if (afterRace.previewLength > 0 && !samePreview(afterShow, afterRace)) {
+      failures.push({ check: 'hiding and restoring the window keeps the open file', detail: { before: afterRace, after: afterShow } })
+    }
+
+    // Handoff to readiness must not reset the workspace either.
+    const ready = await waitForReady(locator)
+    await delay(300)
+    const afterReady = await readWorkspacePreview(client, markers)
+    observation.steps.push({ step: 'after-ready', state: ready?.state ?? null, preview: afterReady })
+    if (ready?.state !== 'ready') {
+      failures.push({ check: 'the workspace case still reaches readiness', detail: { readiness: ready } })
+    }
+    if (afterRace.previewLength > 0 && !samePreview(afterReady, afterRace)) {
+      failures.push({ check: 'the readiness handoff does not reset the open file', detail: { before: afterRace, after: afterReady } })
+    }
+  } catch (error) {
+    failures.push({ check: 'the workspace preview case ran', detail: error instanceof Error ? error.message : String(error) })
+  } finally {
+    client?.close()
+    if (child?.exitCode === null) await harness.forceTerminate(child)
+    await harness.removeTemporaryRoot(root)
+  }
+  return { observation, failures }
+}
+
+/** The body must carry the marker of the file the breadcrumb names. */
+function previewMatchesLabel(preview) {
+  const label = preview.fileLabel ?? ''
+  if (label.includes('notes.md')) return preview.marker === 'notes'
+  if (label.includes('README.md')) return preview.marker === 'readme'
+  return false
+}
+
+/** Same file, same body: the digest is what the equality claims are made of. */
+function samePreview(left, right) {
+  return left.previewLength === right.previewLength
+    && left.previewHead === right.previewHead
+    && left.marker === right.marker
+    && left.fileLabel === right.fileLabel
+}
+
+/**
+ * Restores the panel for the current conversation and waits for its file body.
+ *
+ * A conversation the user never opened keeps the default collapsed layout, so a
+ * switch away may legitimately show no panel. Coming back must restore the file,
+ * which is what this waits for - a collapsed panel after the return would mean
+ * the layout was lost rather than merely not applied yet.
+ */
+async function reopenAndReadPreview(client, markers, expected) {
+  const panel = await client.evaluate(`(() => {
+    const node = document.querySelector('.workspace-panel');
+    const open = Boolean(node && !node.classList.contains('collapsed'));
+    if (!open) {
+      const toggle = document.querySelector('.workspace-panel-corner-toggle, .workspace-panel-reopen-target');
+      if (toggle) toggle.click();
+    }
+    return { openBefore: open, toggled: !open };
+  })()`)
+  let restore = null
+  if (!panel.openBefore) {
+    // Only wait when a file is expected: a conversation with no saved file has
+    // nothing to restore and must not be turned into a timeout.
+    const before = await readWorkspacePreview(client, markers)
+    if (expected && before.previewLength === 0) {
+      // A timeout here must carry the facts, not just the elapsed time: "the
+      // layout was lost" and "the harness clicked the wrong node" look identical
+      // from the outside.
+      restore = await harness.waitFor(async () => {
+        const now = await readWorkspacePreview(client, markers)
+        return now.previewLength > 60 ? now.previewLength : undefined
+      }, harness.actionTimeoutMs, 'restored preview body').catch(async (error) => ({
+        error: error instanceof Error ? error.message : String(error),
+        diagnostics: await readPanelDiagnostics(client),
+      }))
+    }
+  }
+  return { panel, restore, preview: await readWorkspacePreview(client, markers) }
+}
+
+/**
+ * Which conversation bucket actually holds the open file.
+ *
+ * Main persists one snapshot per conversation under `<data-root>/workspace/layout.json`;
+ * the renderer mirrors the same shape in local storage. Reading both is what
+ * separates "the switch dropped the file" from "the harness switched to a
+ * conversation that never had one". Only fixture session ids appear here.
+ */
+async function readLayoutState(dataDir, client) {
+  const raw = await readFile(join(dataDir, 'workspace', 'layout.json'), 'utf8').catch(() => null)
+  let main = null
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      main = Object.fromEntries(Object.entries(parsed?.snapshots ?? {}).map(([key, snapshot]) => [key, {
+        collapsed: snapshot?.collapsed ?? null,
+        activeTabKind: typeof snapshot?.activeTab === 'string' ? snapshot.activeTab.split(':')[0] : null,
+        openTabKinds: (snapshot?.openTabs ?? []).map((tab) => String(tab).split(':')[0]),
+      }]))
+    } catch {
+      main = 'unreadable'
+    }
+  }
+  const renderer = await client.evaluate(`(() => {
+    try {
+      const raw = localStorage.getItem('littlesheep.ui.workspaceSessionLayouts');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Object.fromEntries(Object.entries(parsed ?? {}).map(([key, value]) => [key, {
+        collapsed: value?.collapsed ?? null,
+        tabCount: Array.isArray(value?.openTabs) ? value.openTabs.length : null,
+        openTabKinds: Array.isArray(value?.openTabs) ? value.openTabs.map((tab) => String(tab).split(':')[0]) : null,
+      }]));
+    } catch (error) { return 'unreadable' }
+  })()`).catch(() => 'unavailable')
+  return { main, renderer }
+}
+
+/** What the panel actually looks like when a restore did not happen. */
+async function readPanelDiagnostics(client) {
+  return client.evaluate(`(() => {
+    const panel = document.querySelector('.workspace-panel');
+    const tabs = [...document.querySelectorAll('.workspace-panel-header [role="tab"], .workspace-tab')].map((node) => node.textContent.trim());
+    return {
+      panelPresent: Boolean(panel),
+      panelClass: panel ? panel.className : null,
+      togglePresent: Boolean(document.querySelector('.workspace-panel-corner-toggle, .workspace-panel-reopen-target')),
+      previewPanePresent: Boolean(document.querySelector('.workspace-preview-pane')),
+      tabs,
+      placeholder: document.querySelector('.workspace-preview-body .workspace-placeholder')?.textContent?.trim() ?? null,
+      treeNotice: document.querySelector('.workspace-tree-notice')?.textContent?.trim() ?? null,
+      bodyHead: (document.querySelector('.workspace-preview-body')?.textContent ?? '').slice(0, 80),
+    };
+  })()`)
+}
+
+/** Opens the workspace panel if the current conversation keeps it collapsed. */
+async function openPanel(client) {
+  return client.evaluate(`(() => {
+    const toggle = document.querySelector('.workspace-panel-corner-toggle, .workspace-panel-reopen-target');
+    if (toggle && document.querySelector('.workspace-panel.collapsed')) toggle.click();
+    return { toggled: Boolean(toggle) };
+  })()`)
+}
+
+async function waitForWorkspaceRows(client) {
+  return harness.waitFor(async () => {
+    const rows = await client.evaluate(`document.querySelectorAll('.workspace-tree-row.file').length`)
+    return rows > 0 ? rows : undefined
+  }, harness.actionTimeoutMs, 'workspace tree rows')
+}
+
+/** Clicks a file row and waits until the preview body has real content. */
+async function openWorkspaceFile(client, name, markers) {
+  const clicked = await client.evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.workspace-tree-row.file')];
+    const target = rows.find((row) => row.textContent.includes(${JSON.stringify(name)}));
+    if (!target) return { opened: false, rows: rows.map((row) => row.textContent.trim()) };
+    target.click();
+    return { opened: true, label: target.textContent.trim() };
+  })()`)
+  if (clicked?.opened !== true) return clicked
+  await harness.waitFor(async () => {
+    const length = await readWorkspacePreview(client, markers).then((preview) => preview.previewLength).catch(() => 0)
+    return length > 60 ? length : undefined
+  }, harness.actionTimeoutMs, `preview body of ${name}`)
+  return clicked
+}
+
+/** Breadcrumb, tree size and a bounded digest of the panel's body text. */
+async function readWorkspacePreview(client, markers = { readmeMarker: '', notesMarker: '' }) {
+  return client.evaluate(`(() => {
+    const breadcrumbs = document.querySelector('.workspace-preview-breadcrumbs');
+    const body = document.querySelector('.workspace-preview-body');
+    const errors = [...document.querySelectorAll('.composer-error, .runtime-notice-error')];
+    const text = body ? body.textContent : '';
+    // Which fixture file the body actually is - the check that catches a stale
+    // response winning the race against a newer one.
+    const marker = text.includes(${JSON.stringify(markers.notesMarker)})
+      ? 'notes'
+      : text.includes(${JSON.stringify(markers.readmeMarker)}) ? 'readme' : 'unknown';
+    return {
+      panelOpen: Boolean(document.querySelector('.workspace-panel:not(.collapsed)')),
+      fileLabel: breadcrumbs ? breadcrumbs.textContent.trim() : null,
+      previewLength: text.length,
+      previewHead: text.slice(0, 120),
+      marker,
+      rows: document.querySelectorAll('.workspace-tree-row.file').length,
+      errorText: errors.length === 0 ? null : errors.map((node) => node.textContent.trim()).join(' | '),
+    };
+  })()`)
 }
 
 async function seedSessions(dataDir) {

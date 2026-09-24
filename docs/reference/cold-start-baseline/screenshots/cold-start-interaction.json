@@ -1,6 +1,6 @@
 {
   "check": "desktop-cold-start-interaction",
-  "ok": true,
+  "ok": false,
   "observations": [
     {
       "step": "attached",
@@ -10,7 +10,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 43297
+        "port": 6809
       },
       "notices": {
         "errorText": null,
@@ -60,7 +60,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 43297
+        "port": 6809
       }
     },
     {
@@ -95,7 +95,7 @@
         "reason": "正在准备运行能力",
         "apiVersion": 1,
         "retryable": false,
-        "port": 43297
+        "port": 6809
       }
     },
     {
@@ -125,10 +125,10 @@
         "state": "ready",
         "phase": "execution",
         "apiVersion": 1,
-        "port": 43297,
+        "port": 6809,
         "retryable": false
       },
-      "notReadyWindowMs": 7698,
+      "notReadyWindowMs": 7557,
       "requiredWindowMs": 6000
     },
     {
@@ -201,9 +201,374 @@
           "notice": null
         }
       ]
+    },
+    {
+      "step": "workspace-preview-robustness",
+      "steps": [
+        {
+          "step": "draft-file-opened",
+          "readiness": "starting",
+          "opened": {
+            "opened": true,
+            "label": "MREADME.md"
+          },
+          "preview": {
+            "panelOpen": true,
+            "fileLabel": "workspace/README.md",
+            "previewLength": 753,
+            "previewHead": "会话切换期间的工作区\nMARKER-README-DOCUMENT\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文",
+            "marker": "readme",
+            "rows": 2,
+            "errorText": null
+          },
+          "layouts": {
+            "main": null,
+            "renderer": {
+              "__draft__": {
+                "collapsed": true,
+                "tabCount": 1,
+                "openTabKinds": [
+                  "review"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "step": "switched-away",
+          "attempt": {
+            "opened": true,
+            "title": "交互验证会话 10分",
+            "from": "交互验证会话 00分",
+            "activeKnown": false,
+            "rows": 2,
+            "titles": [
+              "交互验证会话 00分",
+              "交互验证会话 10分"
+            ]
+          },
+          "preview": {
+            "panelOpen": false,
+            "fileLabel": null,
+            "previewLength": 0,
+            "previewHead": "",
+            "marker": "unknown",
+            "rows": 2,
+            "errorText": null
+          },
+          "notices": {
+            "errorText": null,
+            "readinessNotice": null,
+            "readinessHint": "正在准备运行能力",
+            "activeRunCount": 0,
+            "sessionTitles": [
+              "交互验证会话 00分",
+              "交互验证会话 10分"
+            ]
+          }
+        },
+        {
+          "step": "returned-to-startup-conversation",
+          "attempt": {
+            "opened": true,
+            "title": "交互验证会话 00分",
+            "rows": 2
+          },
+          "panel": {
+            "openBefore": false,
+            "toggled": true
+          },
+          "restore": {
+            "error": "timed out waiting for restored preview body",
+            "diagnostics": {
+              "panelPresent": true,
+              "panelClass": "workspace-panel  ",
+              "togglePresent": true,
+              "previewPanePresent": false,
+              "tabs": [
+                "审阅"
+              ],
+              "placeholder": null,
+              "treeNotice": "正在读取 Git 更改...",
+              "bodyHead": ""
+            }
+          },
+          "preview": {
+            "panelOpen": true,
+            "fileLabel": null,
+            "previewLength": 0,
+            "previewHead": "",
+            "marker": "unknown",
+            "rows": 2,
+            "errorText": null
+          },
+          "layouts": {
+            "main": {
+              "session:interaction-session-0": {
+                "collapsed": false,
+                "activeTabKind": "review",
+                "openTabKinds": [
+                  "review"
+                ]
+              },
+              "session:interaction-session-1": {
+                "collapsed": true,
+                "activeTabKind": "review",
+                "openTabKinds": [
+                  "review"
+                ]
+              }
+            },
+            "renderer": {
+              "__draft__": {
+                "collapsed": false,
+                "tabCount": 2,
+                "openTabKinds": [
+                  "review",
+                  "file"
+                ]
+              },
+              "session:interaction-session-1": {
+                "collapsed": true,
+                "tabCount": 1,
+                "openTabKinds": [
+                  "review"
+                ]
+              },
+              "session:interaction-session-0": {
+                "collapsed": false,
+                "tabCount": 1,
+                "openTabKinds": [
+                  "review"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "step": "post-ready-round-trip",
+          "readiness": "ready",
+          "opened": {
+            "opened": true,
+            "label": "MREADME.md"
+          },
+          "away": {
+            "opened": true,
+            "title": "交互验证会话 10分",
+            "from": "交互验证会话 00分",
+            "activeKnown": true,
+            "rows": 2,
+            "titles": [
+              "交互验证会话 00分",
+              "交互验证会话 10分"
+            ]
+          },
+          "back": {
+            "opened": true,
+            "title": "交互验证会话 00分",
+            "rows": 2
+          },
+          "restore": null,
+          "before": {
+            "panelOpen": true,
+            "fileLabel": "workspace/README.md",
+            "previewLength": 753,
+            "previewHead": "会话切换期间的工作区\nMARKER-README-DOCUMENT\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文",
+            "marker": "readme",
+            "rows": 2,
+            "errorText": null
+          },
+          "after": {
+            "panelOpen": true,
+            "fileLabel": "workspace/README.md",
+            "previewLength": 753,
+            "previewHead": "会话切换期间的工作区\nMARKER-README-DOCUMENT\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文",
+            "marker": "readme",
+            "rows": 2,
+            "errorText": null
+          },
+          "layouts": {
+            "main": {
+              "session:interaction-session-0": {
+                "collapsed": false,
+                "activeTabKind": "file",
+                "openTabKinds": [
+                  "review",
+                  "file"
+                ]
+              },
+              "session:interaction-session-1": {
+                "collapsed": true,
+                "activeTabKind": "review",
+                "openTabKinds": [
+                  "review"
+                ]
+              }
+            },
+            "renderer": {
+              "__draft__": {
+                "collapsed": false,
+                "tabCount": 2,
+                "openTabKinds": [
+                  "review",
+                  "file"
+                ]
+              },
+              "session:interaction-session-1": {
+                "collapsed": true,
+                "tabCount": 1,
+                "openTabKinds": [
+                  "review"
+                ]
+              },
+              "session:interaction-session-0": {
+                "collapsed": false,
+                "tabCount": 2,
+                "openTabKinds": [
+                  "review",
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "step": "race-switch",
+          "raceBefore": {
+            "panelOpen": true,
+            "fileLabel": "workspace/README.md",
+            "previewLength": 753,
+            "previewHead": "会话切换期间的工作区\nMARKER-README-DOCUMENT\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文",
+            "marker": "readme",
+            "rows": 2,
+            "errorText": null
+          },
+          "opened": {
+            "opened": true,
+            "label": "Mnotes.md"
+          },
+          "away": {
+            "opened": true,
+            "title": "交互验证会话 10分",
+            "from": "交互验证会话 00分",
+            "activeKnown": true,
+            "rows": 2,
+            "titles": [
+              "交互验证会话 00分",
+              "交互验证会话 10分"
+            ]
+          },
+          "back": {
+            "opened": true,
+            "title": "交互验证会话 00分",
+            "rows": 2
+          },
+          "preview": {
+            "panelOpen": true,
+            "fileLabel": "workspace/notes.md",
+            "previewLength": 34,
+            "previewHead": "notes\nMARKER-NOTES-DOCUMENT\n第二份文件。",
+            "marker": "notes",
+            "rows": 2,
+            "errorText": null
+          }
+        },
+        {
+          "step": "hide-show",
+          "preview": {
+            "panelOpen": true,
+            "fileLabel": "workspace/notes.md",
+            "previewLength": 34,
+            "previewHead": "notes\nMARKER-NOTES-DOCUMENT\n第二份文件。",
+            "marker": "notes",
+            "rows": 2,
+            "errorText": null
+          }
+        },
+        {
+          "step": "after-ready",
+          "state": "ready",
+          "preview": {
+            "panelOpen": true,
+            "fileLabel": "workspace/notes.md",
+            "previewLength": 34,
+            "previewHead": "notes\nMARKER-NOTES-DOCUMENT\n第二份文件。",
+            "marker": "notes",
+            "rows": 2,
+            "errorText": null
+          }
+        }
+      ],
+      "raceWinner": "the second file"
     }
   ],
-  "failures": [],
+  "failures": [
+    {
+      "check": "returning to the startup conversation restores the file opened during startup",
+      "detail": {
+        "before": {
+          "panelOpen": true,
+          "fileLabel": "workspace/README.md",
+          "previewLength": 753,
+          "previewHead": "会话切换期间的工作区\nMARKER-README-DOCUMENT\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文段落。\n正文",
+          "marker": "readme",
+          "rows": 2,
+          "errorText": null
+        },
+        "after": {
+          "panelOpen": true,
+          "fileLabel": null,
+          "previewLength": 0,
+          "previewHead": "",
+          "marker": "unknown",
+          "rows": 2,
+          "errorText": null
+        },
+        "layouts": {
+          "main": {
+            "session:interaction-session-0": {
+              "collapsed": false,
+              "activeTabKind": "review",
+              "openTabKinds": [
+                "review"
+              ]
+            },
+            "session:interaction-session-1": {
+              "collapsed": true,
+              "activeTabKind": "review",
+              "openTabKinds": [
+                "review"
+              ]
+            }
+          },
+          "renderer": {
+            "__draft__": {
+              "collapsed": false,
+              "tabCount": 2,
+              "openTabKinds": [
+                "review",
+                "file"
+              ]
+            },
+            "session:interaction-session-1": {
+              "collapsed": true,
+              "tabCount": 1,
+              "openTabKinds": [
+                "review"
+              ]
+            },
+            "session:interaction-session-0": {
+              "collapsed": false,
+              "tabCount": 1,
+              "openTabKinds": [
+                "review"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
   "gaps": [
     "a deliberately slow initialization (no product knob exists to delay it)",
     "typing continuously for the whole not-ready window (that window is ~300 ms here)",
