@@ -66,6 +66,17 @@
 - 验证方式：`packages/app/src/renderer/ui/enter-confirm.test.ts` 8 个事件用例（普通 Enter、Shift+Enter、`isComposing`、229、组词中状态、非 Enter 键不拦截、组词确认后的下一次 Enter 只产生一次确认、两处视图接线断言）；`pnpm exec vitest run packages/app/src/renderer/ui/enter-confirm.test.ts` 通过；`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
 - 未覆盖项：未在真实 Electron 窗口中用微软拼音实测组词确认的 keydown 序列，也未验证 229 兼容分支是否在本机 Electron/Windows 上真的被触发；`preventDefault` 之外的输入法行为（候选窗定位等）不在本轮范围。
 
+**实施记录（2026-09-25 03:30:00）｜状态：真实窗口的组词验收完成，三条验收全部通过**
+
+- 新增真实窗口门 `pnpm run verify:composer-ime-submit`（`scripts/verify-composer-ime-submit.mjs`）：用 CDP 的 `Input.imeSetComposition` 在真实渲染器里建立**真正的 composition**（与 Windows 输入法走同一条路径），再用 `Input.dispatchKeyEvent` 发出确认键，并在页面事件捕获阶段记录渲染器实际收到的 composition/keydown 事件。
+- 实测（1100×700，隔离数据根）：
+  - **组词是真的**：`compositionstart: 1`、`compositionupdate: 1`，输入栏内容为"组词验收"，且确认键的 keydown 带着 **Chromium 自己的组合标记** `{ isComposing: true, keyCode: 13, shiftKey: false }`——正是 `enter-confirm.ts` 为它写下的分支（也说明本机 Electron/Windows 上 `isComposing` 分支先于 229 兼容分支命中）。
+  - **确认候选不发送**：该 Enter 前后用户消息数与 Provider 请求数都**没有变化**（0 → 0）。
+  - **提交与下一次 Enter**：`Input.insertText` 结束组合（`composing: false`）并保留文字；随后普通 Enter **只发送一次**（新增 1 条用户消息），请求正文里同时带着"组词验收"和粘贴的文件名，输入栏被清空。
+  - **Shift+Enter**：输入栏变成 `"组词验收\n"`（保留换行、未发送、未清空）；**粘贴文件**：出现 1 个附件卡片、未发送，并随那次发送一起进入请求。
+- 验收脚本同时避开了一个测量陷阱：发送与否必须按**用户消息/run** 计数，不能按 Provider 请求数——一次 run 合法地会发出多次 Provider 请求（工具轮 + 收尾轮），按后者会把"只发一次"误判成发两次。
+- 仍未覆盖：本机未安装真实微软拼音，因此**候选窗交互本身**（候选选择、翻页、`229` 兼容分支在特定输入法构建上的触发）仍只在事件层验证；`preventDefault` 之外的输入法行为（候选窗定位）不在范围。复选框保持未勾选。
+
 ### UX-02｜永久删除和配置删除的风险语义
 
 **问题**：归档页的永久删除按钮直接调用 API，供应商卡片删除也直接提交。归档项目的 Main DELETE 路径还会删除其归档关联会话，界面只靠图标标签不足以表达影响。
@@ -605,7 +616,7 @@
 
 | 顺序 | 任务 | 脚本位置 | 关键步骤摘要 | 结论 |
 | --- | --- | --- | --- | --- |
-| 1 | UX-01 | 本任务实施记录 | 微软拼音组词确认候选 → 下一次普通 Enter 只发一次；Shift+Enter、粘贴、附件仍有效 | |
+| 1 | UX-01 | 本任务实施记录 + `pnpm run verify:composer-ime-submit` | 微软拼音组词确认候选 → 下一次普通 Enter 只发一次；Shift+Enter、粘贴、附件仍有效 | |
 | 2 | UX-02 | 本任务实施记录 | 取消 / Escape / 请求失败 / 连点 / 多会话项目各一次；确认前不发生删除、失败留在确认层 | |
 | 3 | UX-03 | 本任务实施记录 | 带草稿与附件时直接停止且草稿不丢；补充发送只提交一次；“正在停止”持续到 run 结束 | |
 | 4 | UX-04 | 本任务实施记录 | 慢请求、空响应、列表失败、详情失败、快速切换各一次 | |
