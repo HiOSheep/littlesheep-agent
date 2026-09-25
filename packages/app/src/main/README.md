@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 03:30:19
+最后更新：2026-09-26 03:37:48
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -58,3 +58,7 @@
 ## 打开文件的磁盘状态（2026-09-26）
 
 `local-app-api/workspace-file-service.ts` 增加 `statWorkspaceFile` 与 `GET /workspace/file-stat`：只回 exists/modifiedAt/size，供渲染器在编辑期间发现外部改写或删除（UX-25 第 3 条）。它不读文件内容，也不改变保存路径的 409 语义——那是最后一道防线，新查询是更早的提示。
+
+## Git 审阅的有界一致性重读（2026-09-26）
+
+`local-app-api/workspace-git-review.ts` 现在用 HEAD、index stat 与 status 指纹在装配前后比对，必要时重读一次；仍不稳定就把快照标成 `unstable`（共享契约 `workspace-review-contracts.ts` 的可选字段），由渲染器提示。这是 UX-27 第 2 条要求的"读取前后一致性校验 + 丢弃过期结果"，仍然复用既有缓存/取消/合并逻辑，没有新增调度层。

@@ -304,6 +304,7 @@ export function WorkspaceReview({
       refreshing,
       hasResult: Boolean(snapshot && isSamePath(snapshot.workspacePath, workspacePath)),
       generatedAt: snapshot?.generatedAt,
+      unstable: snapshot?.unstable,
     },
     diff: { error: diffError, outdated: diffOutdated, loading: diffLoading, hasResult: Boolean(selectedDiff) },
     onRetrySnapshot: () => requestSnapshotRefresh(true),

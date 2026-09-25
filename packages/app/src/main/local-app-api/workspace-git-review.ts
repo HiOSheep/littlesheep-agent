@@ -1,6 +1,7 @@
 // Coordinates bounded, layered Git review snapshots and per-file diffs for the Local App API.
 
 import { randomUUID } from 'node:crypto'
+import { stat } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import type {
   WorkspaceReviewDiffLayerKind,
@@ -39,8 +40,21 @@ import {
   workspaceReviewStatusFromCode,
 } from './workspace-git-review-parsers.js'
 import { countUntrackedFiles } from './workspace-git-untracked.js'
+import {
+  readConsistentReview,
+  reviewStatusHash,
+  type ReviewConsistencyFacts,
+} from './workspace-git-review-consistency.js'
 
 const MAX_REVIEW_FILES = 2_000
+
+/** The bounded status read; the same arguments are used for the consistency check. */
+function reviewStatusArgs(repository: RepositoryContext): string[] {
+  return [
+    'status', '--porcelain=v1', '--branch', '--ahead-behind', '-z', '--untracked-files=all',
+    '--ignore-submodules=dirty', '--', repository.scopePathspec,
+  ]
+}
 
 interface DiffRequest {
   kind: WorkspaceReviewDiffLayerKind
@@ -70,8 +84,6 @@ export async function readWorkspaceReviewSnapshotRecord(
   options: WorkspaceReviewReadOptions = {},
 ): Promise<WorkspaceReviewSnapshotRecord> {
   const root = resolve(workspacePath)
-  const generatedAt = new Date().toISOString()
-  const revision = randomUUID()
   const [repositoryResult, filterOverridesResult] = await Promise.allSettled([
     resolveRepositoryContext(root, options.signal),
     readDisabledFilterOverrides(root, options.signal),
@@ -79,7 +91,7 @@ export async function readWorkspaceReviewSnapshotRecord(
   if (repositoryResult.status === 'rejected') {
     if (isGitUnavailable(repositoryResult.reason)) {
       return {
-        snapshot: emptySnapshot(root, revision, generatedAt, 'git-unavailable', 'Git 不可用。'),
+        snapshot: emptySnapshot(root, randomUUID(), new Date().toISOString(), 'git-unavailable', 'Git 不可用。'),
         repository: null,
         filterOverrides: [],
       }
@@ -89,20 +101,56 @@ export async function readWorkspaceReviewSnapshotRecord(
   const repository = repositoryResult.value
   if (!repository) {
     return {
-      snapshot: emptySnapshot(root, revision, generatedAt, 'not-repository', '当前工作区不是 Git 仓库。'),
+      snapshot: emptySnapshot(root, randomUUID(), new Date().toISOString(), 'not-repository', '当前工作区不是 Git 仓库。'),
       repository: null,
       filterOverrides: [],
     }
   }
   if (filterOverridesResult.status === 'rejected') throw filterOverridesResult.reason
-
   const filterOverrides = filterOverridesResult.value
+
+  // UX-27 item 2: the snapshot is assembled from several Git commands, so it is not one
+  // atomic read. The repository is fingerprinted before, and the status is fingerprint-
+  // ed again after; a disagreement means the result describes a state that never
+  // existed and is re-read (bounded). If it keeps changing, the snapshot is marked
+  // `unstable` instead of being presented as fresh.
+  let lastRecord: WorkspaceReviewSnapshotRecord | null = null
+  const consistency = await readConsistentReview<WorkspaceReviewSnapshotRecord>({
+    readFacts: () => readReviewConsistencyFacts(repository, options),
+    readOnce: async () => {
+      const before = await readReviewConsistencyFacts(repository, options)
+      const pass = await readSnapshotOnce(root, repository, filterOverrides, options)
+      // The status the assembly actually observed is what has to match the status that
+      // is there now; HEAD and the index were read immediately before the assembly.
+      const observed = await readReviewConsistencyFacts(repository, options, {
+        statusHash: reviewStatusHash(pass.statusStdout.toString('utf8')),
+        head: before.head,
+        indexModifiedAt: before.indexModifiedAt,
+        indexSize: before.indexSize,
+      })
+      lastRecord = pass.record
+      return { value: pass.record, facts: observed }
+    },
+  })
+  const record = consistency.value ?? lastRecord
+  if (!record) throw new Error('review snapshot produced no result')
+  return consistency.stable
+    ? record
+    : { ...record, snapshot: { ...record.snapshot, unstable: true } }
+}
+
+/** One assembly pass: the Git commands that produce a snapshot. */
+async function readSnapshotOnce(
+  root: string,
+  repository: RepositoryContext,
+  filterOverrides: readonly GitConfigOverride[],
+  options: WorkspaceReviewReadOptions,
+): Promise<{ record: WorkspaceReviewSnapshotRecord; statusStdout: Buffer }> {
+  const generatedAt = new Date().toISOString()
+  const revision = randomUUID()
   const gitOptions = { configOverrides: filterOverrides, signal: options.signal }
   const [statusResult, stagedResult, unstagedResult] = await Promise.all([
-    runReadOnlyGit(repository.repositoryRoot, [
-      'status', '--porcelain=v1', '--branch', '--ahead-behind', '-z', '--untracked-files=all',
-      '--ignore-submodules=dirty', '--', repository.scopePathspec,
-    ], gitOptions),
+    runReadOnlyGit(repository.repositoryRoot, reviewStatusArgs(repository), gitOptions),
     runReadOnlyGit(
       repository.repositoryRoot,
       repositoryDiffArgs(repository, 'staged', true),
@@ -158,6 +206,8 @@ export async function readWorkspaceReviewSnapshotRecord(
   }).sort(compareReviewFiles)
 
   return {
+    statusStdout: statusResult.stdout,
+    record: {
     snapshot: {
       revision,
       availability: 'ready',
@@ -179,6 +229,43 @@ export async function readWorkspaceReviewSnapshotRecord(
     },
     repository,
     filterOverrides,
+    },
+  }
+}
+
+
+/**
+ * The cheap facts that reveal a repository change: `HEAD`, the index file's stat, and
+ * a fingerprint of the working-tree status. `overrides.statusHash` lets the caller pass
+ * the status one assembly pass already observed, so the check costs one extra status
+ * read per attempt rather than a second full snapshot.
+ */
+async function readReviewConsistencyFacts(
+  repository: RepositoryContext,
+  options: WorkspaceReviewReadOptions,
+  overrides: Partial<ReviewConsistencyFacts> = {},
+): Promise<ReviewConsistencyFacts> {
+  const repositoryRoot = repository.repositoryRoot
+  const gitOptions = { signal: options.signal }
+  const [headResult, indexPathResult, statusResult] = await Promise.all([
+    runReadOnlyGit(repositoryRoot, ['rev-parse', '--verify', 'HEAD'], { ...gitOptions, allowExitCodes: [128] })
+      .catch(() => null),
+    runReadOnlyGit(repositoryRoot, ['rev-parse', '--git-path', 'index'], gitOptions).catch(() => null),
+    // The *same* arguments as the snapshot's own status read: two fingerprints can only
+    // be compared when they were taken the same way (a narrower probe reported every
+    // read as racing, which the integration tests caught).
+    overrides.statusHash === undefined
+      ? runReadOnlyGit(repositoryRoot, reviewStatusArgs(repository), gitOptions).catch(() => null)
+      : Promise.resolve(null),
+  ])
+  const indexStat = indexPathResult
+    ? await stat(indexPathResult.stdout.toString('utf8').trim()).catch(() => undefined)
+    : undefined
+  return {
+    head: overrides.head ?? (headResult && headResult.code === 0 ? headResult.stdout.toString('utf8').trim() || null : null),
+    indexModifiedAt: overrides.indexModifiedAt ?? indexStat?.mtimeMs ?? null,
+    indexSize: overrides.indexSize ?? indexStat?.size ?? null,
+    statusHash: overrides.statusHash ?? (statusResult ? reviewStatusHash(String(statusResult.stdout)) : ''),
   }
 }
 

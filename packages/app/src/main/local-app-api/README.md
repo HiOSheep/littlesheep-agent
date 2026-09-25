@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 03:30:19
+最后更新：2026-09-26 03:37:48
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -74,3 +74,7 @@
 ## 文件磁盘状态查询（UX-25 第 3 条，2026-09-26）
 
 `GET /workspace/file-stat?root&path` 只回 `{ path, relativePath, exists, modifiedAt, size }`：静态预览面板据此在用户编辑期间发现"磁盘上的版本已变化"或"文件已被删除"，而不是等保存时撞 409。实现是 `statWorkspaceFile`（不读内容、不做预览工作），路径校验与预览/保存共用同一套 `resolveWorkspaceRoot`/`resolveWorkspaceTarget`。
+
+## Git 审阅读取的一致性（UX-27 第 2 条，2026-09-26）
+
+`workspace-git-review-consistency.ts` + `workspace-git-review.ts`：一次审阅读取由多条只读 Git 命令组成，**不是**原子快照。因此在装配前取指纹（`HEAD`、`.git/index` 的 mtime/size、以及**与装配同参数**的 `status --porcelain -z` 指纹），装配后重新取一次；不一致就**有界重读**（默认 2 次尝试，即 1 次重试）。两次都赶上变化时快照照常返回，但带 `unstable: true`，界面据此显示"仓库在读取期间仍在变化"，而不是把混合状态当成新结果。指纹必须用同一组参数取（用更窄的探针会让每次读取都被判成竞态，集成测试当场抓到过这个假阳性）。

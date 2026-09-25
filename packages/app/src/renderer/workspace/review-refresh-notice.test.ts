@@ -7,6 +7,16 @@ const GENERATED_AT = '2026-09-25T09:30:00.000Z'
 const GENERATED_AT_TEXT = new Date(GENERATED_AT).toLocaleString('zh-CN')
 
 describe('workspace review refresh notices', () => {
+  it('marks a snapshot that raced with a change instead of passing it off as settled', () => {
+    // UX-27 item 2: Main re-reads while the repository changes; if even the bounded
+    // retries race, the data still shows but is labelled.
+    const racing = reviewSnapshotNotice({ error: '', refreshing: false, hasResult: true, unstable: true })
+    expect(racing?.tone).toBe('warning')
+    expect(racing?.message).toContain('仓库在读取期间仍在变化')
+    // A settled read stays silent.
+    expect(reviewSnapshotNotice({ error: '', refreshing: false, hasResult: true })).toBeNull()
+    expect(reviewSnapshotNotice({ error: '', refreshing: false, hasResult: true, unstable: false })).toBeNull()
+  })
   it('labels a cached snapshot failure as stale instead of a refresh success', () => {
     const notice = reviewSnapshotNotice({
       error: 'Local app API error: 500',

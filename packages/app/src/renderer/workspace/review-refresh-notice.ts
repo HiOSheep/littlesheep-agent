@@ -28,6 +28,12 @@ export interface ReviewSnapshotNoticeInput {
   hasResult: boolean
   /** `generatedAt` of that snapshot, so stale content can name its own age. */
   generatedAt?: string
+  /**
+   * The repository changed during every bounded read attempt (UX-27 item 2), so this
+   * snapshot may mix two states. It is shown — hiding real data would be worse — but it
+   * says what it is instead of passing as a settled read.
+   */
+  unstable?: boolean
 }
 
 export interface ReviewDiffNoticeInput {
@@ -79,6 +85,12 @@ export function reviewSnapshotNotice(input: ReviewSnapshotNoticeInput): Feedback
       'error',
       `Git 更改更新失败，显示上次结果${lastSuccessSuffix(input.generatedAt)}。`,
       input.error,
+    )
+  }
+  if (input.unstable) {
+    return feedback(
+      'warning',
+      '仓库在读取期间仍在变化，这份更改列表可能混合了两个状态；刷新会重新读取。',
     )
   }
   return input.refreshing && input.hasResult

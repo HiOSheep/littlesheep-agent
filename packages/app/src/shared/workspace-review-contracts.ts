@@ -45,6 +45,12 @@ export interface WorkspaceReviewSnapshot {
   filesTruncated: boolean
   files: WorkspaceReviewFile[]
   generatedAt: string
+  /**
+   * True when the repository changed during every bounded read attempt, so this
+   * snapshot may describe a state that never existed (UX-27 item 2). Absent means the
+   * read was consistent.
+   */
+  unstable?: boolean
   message?: string
 }
 

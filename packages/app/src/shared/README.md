@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-26 03:30:19
+最后更新：2026-09-26 03:37:48
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -28,3 +28,7 @@
 ## 工作区磁盘状态路由（2026-09-26）
 
 `local-app-api-routes.ts` 增加 `workspaceFileStat: '/workspace/file-stat'`：打开文件的元数据查询（exists/modifiedAt/size），供预览面板发现外部改写或删除（UX-25 第 3 条）。
+
+## 审阅快照的 unstable 字段（2026-09-26）
+
+`workspace-review-contracts.ts` 的 `WorkspaceReviewSnapshot` 增加可选 `unstable?: boolean`：仓库在全部有界重读尝试期间仍在变化时为 true（UX-27 第 2 条），缺省即"读取一致"。渲染器据此提示，而不是把混合状态当成已结算结果。

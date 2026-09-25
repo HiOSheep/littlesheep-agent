@@ -107,6 +107,9 @@ describe('workspace Git review integration', () => {
 
     const snapshot = await readWorkspaceReview(repository)
     expect(snapshot.availability).toBe('ready')
+    // UX-27 item 2: a read that is not racing anything is consistent, and says so by
+    // leaving `unstable` off (the flag is the exception, not the default).
+    expect(snapshot.unstable).toBeUndefined()
     expect(snapshot.files).toMatchObject([{
       path: 'first.ts',
       status: 'added',
@@ -129,6 +132,9 @@ describe('workspace Git review integration', () => {
 
     const snapshot = await readWorkspaceReview(repository)
     expect(snapshot.availability).toBe('ready')
+    // UX-27 item 2: a read that is not racing anything is consistent, and says so by
+    // leaving `unstable` off (the flag is the exception, not the default).
+    expect(snapshot.unstable).toBeUndefined()
     expect(snapshot.files.map((file) => file.path)).toEqual(['src/new.ts', 'tracked.txt'])
     expect(snapshot.files.find((file) => file.path === 'src/new.ts')?.absolutePath)
       .toBe(resolve(repository, 'src', 'new.ts'))
