@@ -123,6 +123,7 @@ const CANVAS_GAME = `<!doctype html>
 <body>
   <canvas id="stage" width="320" height="240"></canvas>
   <p id="hud">分数: 0</p>
+  <button id="restart" type="button">重新开始</button>
   <script>
     (() => {
       const canvas = document.getElementById('stage');
@@ -147,6 +148,12 @@ const CANVAS_GAME = `<!doctype html>
         draw();
       });
       canvas.addEventListener('click', () => { state.score += 1; hud(); draw(); });
+      document.getElementById('restart').addEventListener('click', () => {
+        state.score = 0;
+        state.x = 20;
+        hud();
+        draw();
+      });
       draw();
       state.ready = true;
     })();
@@ -1107,6 +1114,30 @@ async function main() {
       'the run entry produces a playable page (real input changes the game state)',
       { before: runProbe.canvas?.gameState ?? null, after: runAfterInput },
     )
+    // UX-26 item 5/6: starting a fresh round must work, not only the first one.
+    const restartResult = await harness.waitFor(async () => {
+      const clicked = await runGuest.evaluate(`(() => {
+        const button = document.getElementById('restart');
+        if (!(button instanceof HTMLElement)) return false;
+        button.click();
+        return true;
+      })()`)
+      if (!clicked) return undefined
+      await delay(400)
+      const after = await runGuest.evaluate(`window.__gameState ? { score: window.__gameState.score, x: window.__gameState.x, hud: document.getElementById('hud')?.textContent ?? null } : null`)
+      return after && after.score === 0 && after.x === 20 ? after : undefined
+    }, 10_000, 'restart resets the round').catch(() => null)
+    recorder.note({
+      step: 'html-run-restart',
+      entry: '工作区 → canvas-game.html → 运行 → 重新开始',
+      scoreBefore: runAfterInput.score,
+      after: restartResult,
+    })
+    recorder.check(
+      restartResult?.score === 0 && restartResult.x === 20 && restartResult.hud === '分数: 0',
+      'starting a fresh round works after playing one',
+      { before: runAfterInput, after: restartResult },
+    )
     recorder.check(
       isolation.lsBridge === false && isolation.nodeRequire === false,
       'the running page gets no LS bridge and no Node integration',
@@ -1435,6 +1466,111 @@ async function main() {
       'a crashed guest leaves the app driving the toolbar (stop still releases the service)',
       { crashReply, guestAnswerAfterCrash, crashResponse, crashReloadClicked, crashReloadResponse, crashStopClicked, urlAfterStop: crashServerGone },
     )
+
+    // 2f. UX-26 item 5: a *multi-file* page runs from the HTML entry — its module,
+    // stylesheet, image and local JSON are all served — the game reacts to a click, and
+    // editing a file on disk shows up after 重新加载.
+    await openFileFromTree(client, 'index.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：index.html') ? mounted : undefined
+    }, 20_000, 'multi-file preview before running')
+    const startedMultiRun = await clickPreviewAction(client, '运行')
+    const multiServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the multi-file page')
+    const multiRunUrl = multiServers[0].url
+    const multiTarget = await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      return targets.find((candidate) => candidate.url === multiRunUrl) ?? undefined
+    }, 30_000, 'browser tab for the multi-file page').catch(() => null)
+    const multiGuest = multiTarget ? new harness.CdpClient(multiTarget.webSocketDebuggerUrl) : null
+    let multiProbe = null
+    let multiStepped = null
+    let multiAfterReload = null
+    let multiReloadOrigin = null
+    if (multiGuest) {
+      await multiGuest.send('Runtime.enable')
+      multiProbe = await harness.waitFor(() => multiGuest.evaluate(`window.__multiState?.level ? (() => {
+        const styles = [...document.styleSheets].map((sheet) => { try { return [...sheet.cssRules].length } catch { return -1 } });
+        const sprite = document.querySelector('.sprite');
+        const board = document.querySelector('.board');
+        return {
+          level: document.getElementById('level')?.textContent ?? null,
+          steps: document.getElementById('steps')?.textContent ?? null,
+          styleSheetRules: styles.reduce((total, count) => total + count, 0),
+          spriteNaturalWidth: sprite?.naturalWidth ?? 0,
+          boardBackground: board ? getComputedStyle(board).backgroundColor : null,
+          moduleRan: window.__multiState?.ready === true,
+        };
+      })() : null`), 30_000, 'multi-file page initialized')
+      multiStepped = await harness.waitFor(async () => {
+        const before = await multiGuest.evaluate(`document.getElementById('steps')?.textContent ?? null`)
+        await multiGuest.evaluate(`(() => { document.getElementById('step')?.click(); return true })()`)
+        await delay(300)
+        const after = await multiGuest.evaluate(`document.getElementById('steps')?.textContent ?? null`)
+        return before !== after ? { before, after } : undefined
+      }, 10_000, 'step button advances the counter').catch(() => null)
+
+      // Change the JSON on disk, then reload through the toolbar: the page must pick it up.
+      await writeFile(join(workspaceDir, 'multi-file', 'level.json'), '{ "level": 9, "target": 3 }\n', 'utf8')
+      const originBeforeReload = await multiGuest.evaluate('performance.timeOrigin')
+      await selectWorkspaceTab(client, 'index.html')
+      const multiReloadClicked = await clickPreviewAction(client, '重新加载')
+      multiReloadOrigin = multiReloadClicked
+        ? await harness.waitFor(async () => {
+            const origin = await multiGuest.evaluate('performance.timeOrigin').catch(() => undefined)
+            return origin && origin !== originBeforeReload ? origin : undefined
+          }, 20_000, 'multi-file page reloaded').catch(() => null)
+        : null
+      if (multiReloadOrigin) {
+        multiAfterReload = await harness.waitFor(() => multiGuest.evaluate(`window.__multiState?.level === 9 ? {
+          level: document.getElementById('level')?.textContent ?? null,
+          steps: document.getElementById('steps')?.textContent ?? null,
+          styleSheetRules: [...document.styleSheets].reduce((total, sheet) => { try { return total + [...sheet.cssRules].length } catch { return total } }, 0),
+          spriteNaturalWidth: document.querySelector('.sprite')?.naturalWidth ?? 0,
+        } : null`), 20_000, 'edited JSON visible after reload').catch(() => null)
+      }
+      multiGuest.close()
+    }
+    const multiShot = await captureScreenshot(client, screenshotDir, 'html-run-multi-file.png')
+    recorder.note({
+      step: 'html-run-multi-file',
+      entry: '工作区 → multi-file/index.html → 运行 → 前进一步 → 改 level.json → 重新加载',
+      clicked: startedMultiRun,
+      runUrl: multiRunUrl,
+      probe: multiProbe,
+      stepped: multiStepped,
+      reloadedOrigin: multiReloadOrigin,
+      afterReload: multiAfterReload,
+      screenshot: multiShot,
+    })
+    recorder.check(
+      multiProbe?.moduleRan === true
+      && multiProbe.level === '7'
+      && multiProbe.styleSheetRules > 0
+      && multiProbe.spriteNaturalWidth > 0,
+      'a running multi-file page gets its module, stylesheet, image and local JSON',
+      multiProbe,
+    )
+    recorder.check(
+      multiStepped !== null,
+      'the running page reacts to a real click',
+      multiStepped,
+    )
+    recorder.check(
+      multiAfterReload?.level === '9',
+      'editing a file on disk reaches the page after 重新加载',
+      { reloadedOrigin: multiReloadOrigin, afterReload: multiAfterReload },
+    )
+    await selectWorkspaceTab(client, 'index.html')
+    await clickPreviewAction(client, '停止')
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+    // Put the edited fixture back: the Git comparison later in this walkthrough reads a
+    // status whose expected shape is one modified file plus one untracked file.
+    await writeFile(join(workspaceDir, 'multi-file', 'level.json'), MULTI_LEVEL, 'utf8')
+    recorder.note({ step: 'html-run-multi-file-restored', restored: MULTI_LEVEL.trim() })
 
     // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
     await selectWorkspaceFeature(client, '浏览器')
