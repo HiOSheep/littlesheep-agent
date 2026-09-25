@@ -303,8 +303,7 @@ export function WorkspaceReview({
       error,
       refreshing,
       hasResult: Boolean(snapshot && isSamePath(snapshot.workspacePath, workspacePath)),
-      generatedAt: snapshot?.generatedAt,
-      unstable: snapshot?.unstable,
+      generatedAt: snapshot?.generatedAt, unstable: snapshot?.unstable,
     },
     diff: { error: diffError, outdated: diffOutdated, loading: diffLoading, hasResult: Boolean(selectedDiff) },
     onRetrySnapshot: () => requestSnapshotRefresh(true),
@@ -323,14 +322,15 @@ export function WorkspaceReview({
           ? <WorkspacePlaceholder title="没有未提交更改" text="工作区与 HEAD 一致。" />
           : undefined
 
+
   return (
     <div className={`workspace-review workspace-files ${sideBySide ? 'is-side-by-side' : ''}`}>
       <div className="workspace-review-content">
         <WorkspaceReviewDiff
           file={selectedFile}
           diff={selectedDiff}
-          sideBySide={sideBySide}
-          emptyState={emptyState}
+          sideBySide={sideBySide} emptyState={emptyState}
+          limits={{ navigatorCollapsed: fileNavigatorCollapsed, filesTruncated: snapshot?.filesTruncated ?? false, fileCount: snapshot?.files.length ?? 0, totalFileCount: snapshot?.totalFiles ?? 0 }}
           loading={diffLoading}
           notices={notices}
           lineCommentsByScope={lineCommentsByScope}

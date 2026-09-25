@@ -10,6 +10,7 @@ import type {
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { reviewLimitNotice, type ReviewLimitInput } from './review-limits'
 import { diffMetadataLabel, diffMetadataValue } from './review-diff-metadata'
 import { FileGlyphIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
@@ -34,12 +35,15 @@ const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 const EMPTY_LAYER_KINDS: WorkspaceReviewDiffLayer['kind'][] = []
 /** Stable identity for layers without extended headers (the view memoises on it). */
 const EMPTY_DIFF_METADATA: NonNullable<WorkspaceReviewDiffLayer['metadata']> = []
+/** Stable identity for a diff that has not arrived (used by the limit sentence). */
+const EMPTY_DIFF_LAYERS: WorkspaceReviewDiffLayer[] = []
 
 export function WorkspaceReviewDiff({
   file,
   diff,
   sideBySide,
   emptyState,
+  limits,
   loading,
   notices,
   lineCommentsByScope,
@@ -56,6 +60,8 @@ export function WorkspaceReviewDiff({
   diff: WorkspaceReviewFileDiff | null
   sideBySide: boolean
   emptyState?: ReactNode
+  /** Stated by the navigator normally; repeated here when it is collapsed. */
+  limits?: ReviewLimitInput
   loading: boolean
   /** Stale/refresh state for the snapshot and the selected diff, newest first. */
   notices: WorkspaceReviewNotice[]
@@ -74,6 +80,10 @@ export function WorkspaceReviewDiff({
   onTipChange: (tip: FloatingHelpTip | null) => void
   scrollRef: RefObject<HTMLDivElement>
 }) {
+  // The navigator states the limits; when it is collapsed the body has to (UX-28 item 5).
+  const limitText = limits
+    ? reviewLimitNotice({ ...limits, truncatedLayers: (diff?.layers ?? EMPTY_DIFF_LAYERS).filter((layer) => layer.truncated).length })?.text ?? null
+    : null
   return (
     <section className="workspace-review-diff" aria-label="文件差异">
       <WorkspaceReviewDiffHeader
@@ -85,6 +95,9 @@ export function WorkspaceReviewDiff({
         onTipChange={onTipChange}
       />
       <div ref={scrollRef} className="workspace-review-diff-scroll">
+        {/* UX-28 item 5: with the navigator collapsed the list — and the line that says it
+            is capped — is off screen, so the body states the limits instead. */}
+        {limitText && <div className="workspace-review-limit-notice" role="status">{limitText}</div>}
         {notices.map((notice) => (
           <FeedbackNotice
             key={notice.key}

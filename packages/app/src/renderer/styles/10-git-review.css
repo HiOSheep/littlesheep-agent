@@ -449,3 +449,14 @@
     display: none;
   }
 }
+
+/* Stated by the navigator normally, repeated here when it is collapsed (UX-28 item 5). */
+.workspace-review-limit-notice {
+  margin: 8px;
+  padding: 6px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+}

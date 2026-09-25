@@ -123,7 +123,7 @@
 | `packages/memory-tree/src/task-query.ts` | 345 | 当前请求、有限近期历史、版本化摘要、排除和任务转向语义 | 按 reference、negative/contrast、summary continuity 拆分 | D |
 | `packages/app/src/main/attachments.ts` | 563 | run 附件解析和所有权分类 | 分离 ownership、metadata、content resolver | C |
 | `packages/app/src/renderer/api/run.ts` | 365 | Renderer 普通 run、SSE、稳定 request key 与 continuation failure 映射 | 保持传输 facade；继续将响应 codec 和重连观察下沉 | B |
-| `packages/app/src/renderer/workspace/review-diff.tsx` | 447 | Git diff 模型、单双列 Monaco 装配、陈旧提示条和行评论层组合 | 无需文本 hunk 的变更（重命名/权限）由 `review-diff-metadata.ts` 命名，提示的文案与色调由 `review-refresh-notice.ts` 决定，diff 映射、评论附件和删除行适配继续独立 | B |
+| `packages/app/src/renderer/workspace/review-diff.tsx` | 460 | Git diff 模型、单双列 Monaco 装配、陈旧提示条和行评论层组合 | 无需文本 hunk 的变更（重命名/权限）由 `review-diff-metadata.ts` 命名，提示的文案与色调由 `review-refresh-notice.ts` 决定，diff 映射、评论附件和删除行适配继续独立 | B |
 | `packages/app/src/renderer/workspace/review-inline-deleted-comments.tsx` | 410 | 单列删除行评论手势、view zone 编辑器和附件发布 | 与通用行评论共享纯 helper；后续下沉删除行 view-zone controller | B |
 | `packages/app/src/renderer/workspace/review-inline-deleted-line-numbers.ts` | 326 | 单列删除区域的源行号投影和交互目标同步 | 保持 Monaco view-zone adapter，不吸收评论编辑状态 | B |
 | `packages/app/src/renderer/chat/activity-model.ts` | 323 | Agent 活动、公开推理、工具步骤和完成态投影 | 保持纯活动模型；展示组件不得回填状态归并逻辑 | B |
