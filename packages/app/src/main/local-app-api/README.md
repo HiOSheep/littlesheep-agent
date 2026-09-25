@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 04:43:19
+最后更新：2026-09-26 04:56:22
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -82,3 +82,7 @@
 ## Git 读取失败的分类（UX-28 第 1 条，2026-09-26）
 
 `workspace-git-failure.ts` 把整次审阅读取的失败按 Git 自己的 stderr 分类（`not-repository` / `dubious-ownership` / `permission-denied` / `corrupt-repository` / `timed-out` / `cancelled` / `git-unavailable` / `unknown`），每类给一句可执行的原因与下一步，原始 stderr 只保留首行且不超过 200 字符。分类作用于整次读取（index 损坏只让 `status` 失败而 `rev-parse` 仍成功），并映射为快照的 `availability` 与 `message`；取消仍然抛出（调用方按 AbortError 处理）。绝不自动写 `safe.directory` 或任何全局配置——属主不符时只把 Git 的话转达给用户。
+
+## 无文本 hunk 的元数据变更（UX-28 第 3 条，2026-09-26）
+
+纯重命名（或权限变化）只有 extended header，没有 `@@`：`parseDiffMetadata` 把它们解析成 `metadata`（`rename from/to`、`similarity index`、`old/new mode` 等，键保持 Git 原文），`readDiffLayer` 据此返回，而"该层使用了普通 unified diff 之外的格式"提示只在既没有 hunk 也没有元数据时出现。计数语义（分层增删之和，不是 HEAD 到工作树净变化）与两层并存的行为有 `workspace-git-layers.test.ts` 与 `workspace-git-review-metadata.test.ts` 钉住。

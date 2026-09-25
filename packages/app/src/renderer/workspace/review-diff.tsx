@@ -10,6 +10,7 @@ import type {
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { diffMetadataLabel, diffMetadataValue } from './review-diff-metadata'
 import { FileGlyphIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { WorkspaceCodeDiffEditor } from './code-editor'
@@ -31,6 +32,8 @@ import { ReviewLineCounts } from './review-line-counts'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 const EMPTY_LAYER_KINDS: WorkspaceReviewDiffLayer['kind'][] = []
+/** Stable identity for layers without extended headers (the view memoises on it). */
+const EMPTY_DIFF_METADATA: NonNullable<WorkspaceReviewDiffLayer['metadata']> = []
 
 export function WorkspaceReviewDiff({
   file,
@@ -149,6 +152,7 @@ function WorkspaceReviewDiffLayerView({
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const model = useMemo(() => buildWorkspaceReviewEditorModel(layer), [layer])
+  const metadata = layer.metadata ?? EMPTY_DIFF_METADATA
   const originalLanguage = workspaceLanguageForPath(file.oldPath ?? file.path)
   const modifiedLanguage = workspaceLanguageForPath(file.path)
   const modelKey = `${layer.kind}:${file.oldPath ?? file.path}->${file.path}`
@@ -237,7 +241,19 @@ function WorkspaceReviewDiffLayerView({
     <section className="workspace-review-diff-layer" aria-label={LAYER_LABELS[layer.kind]}>
       {layer.binary && <WorkspacePlaceholder title="二进制文件" text="该层不提供逐行差异。" />}
       {layer.notice && <div className="workspace-review-notice">{layer.notice}</div>}
-      {!layer.binary && layer.hunks.length === 0 && (
+      {/* A rename or a mode change has no lines to show; its extended headers *are* the
+          change (UX-28 item 3), so they are listed instead of "no line diff". */}
+      {!layer.binary && metadata.length > 0 && (
+        <ul className="workspace-review-diff-metadata">
+          {metadata.map((entry) => (
+            <li key={`${entry.key}-${entry.value}`}>
+              <span>{diffMetadataLabel(entry.key)}</span>
+              <span className="workspace-review-diff-metadata-value">{diffMetadataValue(entry)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!layer.binary && layer.hunks.length === 0 && metadata.length === 0 && (
         <WorkspacePlaceholder title="没有可显示的行差异" text="Git 没有为该层返回普通 unified diff。" />
       )}
       {!layer.binary && layer.hunks.length > 0 && (

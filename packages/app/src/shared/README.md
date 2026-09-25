@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-26 04:43:19
+最后更新：2026-09-26 04:56:22
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -36,3 +36,7 @@
 ## 审阅可用性的失败分类（2026-09-26）
 
 `workspace-review-contracts.ts` 的 `WorkspaceReviewAvailability` 除 `ready`/`not-repository`/`git-unavailable` 外，新增 `dubious-ownership`/`permission-denied`/`corrupt-repository`/`timed-out`/`cancelled`/`git-error`：非 ready 的快照都带一句可执行原因，渲染器只需显示 `message`（UX-28 第 1 条）。
+
+## 差异层的元数据（2026-09-26）
+
+`workspace-review-contracts.ts` 的 `WorkspaceReviewDiffLayer` 增加可选 `metadata`（`key`/`value`，键为 Git 的 extended header 原文）：纯重命名与权限变化没有文本 hunk，展示它们是数据而不是"无差异"（UX-28 第 3 条）。

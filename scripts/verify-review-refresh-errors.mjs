@@ -114,6 +114,7 @@ const SURFACE_EXPRESSION = `(() => {
     fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\\s+/gu, ' ').trim(),
     branch: (review?.querySelector('.workspace-files-root span')?.textContent || '').replace('Git 审阅', '').trim(),
+    diffMetadata: [...(review?.querySelectorAll('.workspace-review-diff-metadata li') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()),
     placeholder: [...(review?.querySelectorAll('.workspace-placeholder') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
     notices,
@@ -868,6 +869,45 @@ async function main() {
       churn = false
       clearInterval(churnTimer)
     }
+
+    // UX-28 item 3 in the window: a pure rename has no text hunk, so it has to appear as
+    // metadata (and never as "no line diff" or as an unparsed format).
+    git(workspaceDir, ['mv', 'sample.txt', 'renamed-sample.txt'])
+    git(workspaceDir, ['add', '-A'])
+    await click(client, REFRESH_LABEL)
+    const renamedVisible = await waitForSurface(
+      client,
+      (surface) => surface.fileStats.includes('renamed-sample.txt'),
+      25_000,
+      'the rename appears in the list',
+    ).catch(() => readSurface(client))
+    await client.evaluate(`(() => {
+      const row = [...document.querySelectorAll('.workspace-review [role="treeitem"]')]
+        .find((node) => (node.textContent || '').includes('renamed-sample.txt'));
+      if (row instanceof HTMLElement) row.click();
+      return true;
+    })()`)
+    const renameDiff = await waitForSurface(
+      client,
+      (surface) => surface.diffMetadata.length > 0,
+      20_000,
+      'rename metadata in the diff',
+    ).catch(() => readSurface(client))
+    const renameShot = await captureScreenshot(client, screenshotDir, 'review-rename-metadata.png')
+    recorder.note({
+      step: 'rename-metadata',
+      fileStats: renamedVisible.fileStats,
+      diffMetadata: renameDiff.diffMetadata,
+      placeholder: renameDiff.placeholder,
+      screenshot: renameShot,
+    })
+    recorder.check(
+      renameDiff.diffMetadata.some((entry) => entry.includes('重命名自') && entry.includes('sample.txt'))
+      && renameDiff.diffMetadata.some((entry) => entry.includes('重命名为') && entry.includes('renamed-sample.txt'))
+      && !renameDiff.placeholder.includes('没有可显示的行差异'),
+      'a pure rename is shown as rename metadata instead of as "no line diff"',
+      { diffMetadata: renameDiff.diffMetadata, placeholder: renameDiff.placeholder },
+    )
 
     // UX-28 item 1 in the window: a damaged repository has to say it is damaged (and what
     // to do) instead of claiming the directory is not a Git repository. The fixture is

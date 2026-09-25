@@ -2,6 +2,7 @@
 
 import type {
   WorkspaceReviewDiffHunk,
+  WorkspaceReviewDiffMetadata,
   WorkspaceReviewFile,
   WorkspaceReviewFileStatus,
 } from '../../shared/workspace-review-contracts.js'
@@ -20,6 +21,26 @@ export interface WorkspaceReviewNumstatRecord {
   additions: number
   deletions: number
   binary: boolean
+}
+
+
+/**
+ * The extended headers Git prints for changes with no text hunk (UX-28 item 3).
+ *
+ * A pure rename is `similarity index` + `rename from` + `rename to` and nothing else, so
+ * a parser that only understands `@@` sees "no hunks" and the view used to say the layer
+ * "used a format other than a plain unified diff". The keys are kept as Git prints them;
+ * naming them for people is the renderer's job.
+ */
+export function parseDiffMetadata(rawDiff: string): WorkspaceReviewDiffMetadata[] {
+  const metadata: WorkspaceReviewDiffMetadata[] = []
+  for (const line of rawDiff.replace(/\r\n/gu, '\n').split('\n')) {
+    if (line.startsWith('@@') || line.startsWith('diff --git') || line.startsWith('index ')) continue
+    if (line.startsWith('--- ') || line.startsWith('+++ ') || line.startsWith('Binary files')) continue
+    const match = /^(old mode|new mode|deleted file mode|new file mode|rename from|rename to|copy from|copy to|similarity index|dissimilarity index) (.+)$/u.exec(line)
+    if (match) metadata.push({ key: match[1]!, value: match[2]! })
+  }
+  return metadata
 }
 
 export interface WorkspaceReviewParsedDiff {

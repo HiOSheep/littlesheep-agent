@@ -8,7 +8,7 @@ import {
   runReadOnlyGit,
   type GitConfigOverride,
 } from './workspace-git-command.js'
-import { parseNumstat, parseUnifiedDiffBounded } from './workspace-git-review-parsers.js'
+import { parseDiffMetadata, parseNumstat, parseUnifiedDiffBounded } from './workspace-git-review-parsers.js'
 
 export const MAX_GIT_DIFF_TOTAL_BYTES = 8 * 1024 * 1024
 export const MAX_GIT_DIFF_LINES_PER_LAYER = 5_000
@@ -57,12 +57,22 @@ export async function readDiffLayer(
     : parseUnifiedDiffBounded(rawDiff, MAX_GIT_DIFF_LINES_PER_LAYER)
   const truncated = result.truncated || parsed.truncated
   const limitMb = Math.max(1, Math.round(options.maxBytes / 1024 / 1024))
+  // A rename or a mode change is a change with no hunks; its extended headers are data,
+  // not an unparsed format (UX-28 item 3).
+  const metadata = binary ? [] : parseDiffMetadata(rawDiff)
   const notice = result.truncated
     ? `该层 Diff 内容较大，已按 ${limitMb} MB 上限截断。`
     : parsed.truncated
       ? `该层 Diff 行数较多，已显示前 ${MAX_GIT_DIFF_LINES_PER_LAYER} 行。`
-      : !binary && rawDiff && parsed.hunks.length === 0
+      : !binary && rawDiff && parsed.hunks.length === 0 && metadata.length === 0
       ? '该层使用了普通 unified diff 之外的格式。'
       : undefined
-  return { kind, hunks: parsed.hunks, binary, truncated, ...(notice ? { notice } : {}) }
+  return {
+    kind,
+    hunks: parsed.hunks,
+    binary,
+    truncated,
+    ...(metadata.length > 0 ? { metadata } : {}),
+    ...(notice ? { notice } : {}),
+  }
 }

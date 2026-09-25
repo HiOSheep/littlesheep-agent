@@ -89,8 +89,22 @@ export interface WorkspaceReviewDiffHunk {
 
 export type WorkspaceReviewDiffLayerKind = 'staged' | 'unstaged' | 'untracked'
 
+/**
+ * A change Git records without any text hunk: a rename, a copy, or a mode change.
+ *
+ * UX-28 item 3: these are real changes and must be shown as themselves rather than as
+ * "no diff" or as an unparsed format.
+ */
+export interface WorkspaceReviewDiffMetadata {
+  /** The extended header key, exactly as Git prints it (`rename from`, `new mode`, …). */
+  key: string
+  value: string
+}
+
 export interface WorkspaceReviewDiffLayer {
   kind: WorkspaceReviewDiffLayerKind
+  /** Extended headers for changes that carry no text hunk. */
+  metadata?: WorkspaceReviewDiffMetadata[]
   hunks: WorkspaceReviewDiffHunk[]
   binary: boolean
   truncated: boolean

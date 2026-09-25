@@ -407,6 +407,39 @@
   font-size: 11px;
 }
 
+/* A change with no text hunk — a rename or a mode change (UX-28 item 3). Same surface as
+   the notice above it; the value keeps its raw form next to the explanation. */
+.workspace-review-diff-metadata {
+  margin: 8px;
+  padding: 7px 9px;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+}
+
+.workspace-review-diff-metadata li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace-review-diff-metadata span {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.workspace-review-diff-metadata-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 @container (max-width: 620px) {
   .workspace-review-diff-actions > .workspace-review-line-counts {
     display: none;
