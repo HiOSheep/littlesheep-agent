@@ -4,6 +4,7 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { RefreshIcon } from '../ui/icons'
 import { HistoryBackIcon, HistoryForwardIcon, BrowserNewTabIcon } from '../ui/browser-icons'
 import { transientTriggerProps } from '../ui/transient'
+import { WORKSPACE_BROWSER_RELOAD_EVENT, type WorkspaceBrowserReloadDetail } from './browser-reload'
 import { EMBEDDED_BROWSER_PARTITION } from '../../shared/browser-control-contracts'
 import { normalizeBrowserEventUrl, normalizeBrowserUrl, type WorkspaceBrowserHistory } from './browser-history'
 import type { WorkspaceBrowserTabId } from './browser-tabs'
@@ -302,6 +303,20 @@ export function WorkspaceBrowser({
     const sequence = beginPendingNavigation(url, 'reload')
     startPendingNavigation(sequence)
   }
+
+  // UX-26: the HTML run controls offer "重新加载" next to 运行/停止. The run tab is the
+  // browser tab showing that URL, so the request travels as an event and only the
+  // browser showing the same page reloads — no prop has to be threaded through the
+  // panel for a cross-surface action.
+  useEffect(() => {
+    const handleReloadRequest = (event: Event) => {
+      const requested = (event as CustomEvent<WorkspaceBrowserReloadDetail>).detail?.url
+      if (!requested || requested !== url) return
+      reload()
+    }
+    window.addEventListener(WORKSPACE_BROWSER_RELOAD_EVENT, handleReloadRequest)
+    return () => window.removeEventListener(WORKSPACE_BROWSER_RELOAD_EVENT, handleReloadRequest)
+  })
 
   return (
     <section className="workspace-browser" aria-busy={loading}>

@@ -4,6 +4,7 @@
 // composition ceiling, and the run rules (saved file only, ask about a dirty
 // draft, stop releases the service) are one transaction that belongs together.
 import { useCallback, useEffect, useState } from 'react'
+import { requestWorkspaceBrowserReload } from './browser-reload'
 import {
   IDLE_HTML_RUN,
   startHtmlRun,
@@ -17,6 +18,7 @@ export interface HtmlRunController {
   requestRun: () => void
   saveAndRun: () => void
   cancelPrompt: () => void
+  reload: () => void
   stop: () => void
 }
 
@@ -82,12 +84,21 @@ export function useHtmlRun({
     })()
   }, [workspacePath])
 
+  // Reloading re-requests the page from the same service, so edits saved to disk show
+  // up without restarting anything; the request is addressed by URL so only the
+  // browser tab showing this run reloads.
+  const reload = useCallback(() => {
+    if (state.status !== 'running') return
+    requestWorkspaceBrowserReload(state.url)
+  }, [state.status, state.url])
+
   return {
     state,
     prompt,
     requestRun,
     saveAndRun,
     cancelPrompt: useCallback(() => setPrompt(false), []),
+    reload,
     stop,
   }
 }

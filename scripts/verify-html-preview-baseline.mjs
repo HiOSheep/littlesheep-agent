@@ -1093,6 +1093,58 @@ async function main() {
       isolation,
     )
 
+    // 2b′. UX-26 item 1: the toolbar's 重新加载 reloads the page in the tab that is
+    // showing it, without restarting the service. A reload is visible to the guest as
+    // a fresh document, so its `performance.timeOrigin` must change.
+    const timeOriginBeforeReload = await runGuest.evaluate('performance.timeOrigin')
+    await selectWorkspaceTab(client, 'canvas-game.html')
+    const reloadButtonEnabled = await client.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.workspace-tab-view.active button')]
+        .find((node) => node.textContent.trim() === '重新加载');
+      if (!(button instanceof HTMLButtonElement)) return null;
+      return !button.disabled;
+    })()`)
+    const reloadClicked = reloadButtonEnabled
+      ? await clickPreviewAction(client, '重新加载')
+      : false
+    const reloadedOrigin = reloadClicked
+      ? await harness.waitFor(async () => {
+          const origin = await runGuest.evaluate('performance.timeOrigin').catch(() => undefined)
+          return origin && origin !== timeOriginBeforeReload ? origin : undefined
+        }, 20_000, 'guest reloaded by the toolbar').catch(() => null)
+      : null
+    const runServerAfterReload = await apiJson(locator, '/workspace/preview-server')
+    const reloadProbe = reloadedOrigin
+      ? await harness.waitFor(() => runGuest.evaluate(`window.__gameState ? (${PAGE_PROBE}) : null`), 20_000, 'game after reload').catch(() => null)
+      : null
+    recorder.note({
+      step: 'html-run-reload',
+      entry: '工作区 → canvas-game.html → 运行中 → 重新加载',
+      reloadButtonEnabled,
+      clicked: reloadClicked,
+      timeOriginBefore: timeOriginBeforeReload,
+      timeOriginAfter: reloadedOrigin,
+      gameState: reloadProbe?.canvas?.gameState ?? null,
+      // The same service entry, still running: reloading must not restart anything.
+      serverEntry: runServerAfterReload?.servers?.[0]?.entry ?? null,
+      serverStartedAt: runServerAfterReload?.servers?.[0]?.startedAt ?? null,
+    })
+    recorder.check(
+      reloadButtonEnabled === true && reloadedOrigin !== null,
+      '重新加载 gives the running page a fresh document',
+      { reloadButtonEnabled, timeOriginBefore: timeOriginBeforeReload, timeOriginAfter: reloadedOrigin },
+    )
+    recorder.check(
+      reloadProbe?.canvas?.gameState?.ready === true,
+      'the reloaded page runs again (scripts execute from scratch)',
+      reloadProbe ? { gameState: reloadProbe.canvas?.gameState ?? null } : null,
+    )
+    recorder.check(
+      runServerAfterReload?.servers?.[0]?.startedAt === runServer.startedAt,
+      'reloading reuses the running service instead of starting another one',
+      { before: runServer.startedAt, after: runServerAfterReload?.servers?.[0]?.startedAt ?? null },
+    )
+
     // The service answers only its own tokenised, in-root paths.
     const runOrigin = new URL(runServer.url).origin
     const runToken = new URL(runServer.url).pathname.split('/')[1]

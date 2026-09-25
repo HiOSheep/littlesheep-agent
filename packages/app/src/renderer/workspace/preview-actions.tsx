@@ -29,6 +29,7 @@ export function WorkspacePreviewActions({
   codeWrapEnabled,
   htmlRun,
   onRunHtml,
+  onReloadHtml,
   onStopHtml,
   onToggleCodeWrap,
   onToggleMarkdownSource,
@@ -48,6 +49,7 @@ export function WorkspacePreviewActions({
   codeWrapEnabled: boolean
   htmlRun: HtmlRunState
   onRunHtml: () => void
+  onReloadHtml: () => void
   onStopHtml: () => void
   onToggleMarkdownSource: () => void
   onToggleHtmlSource: () => void
@@ -76,6 +78,16 @@ export function WorkspacePreviewActions({
             {...tipHandlers(runTip, onTipChange)}
           >
             {run.label}
+          </button>
+          <button
+            {...transientTriggerProps()}
+            className="workspace-files-text-btn"
+            type="button"
+            disabled={!run.reload}
+            onClick={onReloadHtml}
+            {...tipHandlers('重新加载运行中的页面：磁盘上已改动的文件会被重新读取', onTipChange)}
+          >
+            重新加载
           </button>
           <button
             {...transientTriggerProps()}

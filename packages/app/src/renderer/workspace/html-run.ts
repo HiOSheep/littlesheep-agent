@@ -27,19 +27,30 @@ export interface HtmlRunState {
 
 export const IDLE_HTML_RUN: HtmlRunState = { status: 'idle', url: '', message: '' }
 
-/** Which toolbar actions a state offers. */
-export function htmlRunActions(state: HtmlRunState): { run: boolean; stop: boolean; label: string } {
+/**
+ * Which toolbar actions a state offers.
+ *
+ * UX-26 asks for a coherent 运行 / 重新加载 / 停止 entry: while a page is running the
+ * reload action is the one that makes sense (the served files may have changed on
+ * disk), and the run action is disabled instead of silently opening a second tab.
+ */
+export function htmlRunActions(state: HtmlRunState): {
+  run: boolean
+  reload: boolean
+  stop: boolean
+  label: string
+} {
   switch (state.status) {
     case 'starting':
-      return { run: false, stop: false, label: '正在启动…' }
+      return { run: false, reload: false, stop: false, label: '正在启动…' }
     case 'running':
-      return { run: true, stop: true, label: '重新运行' }
+      return { run: false, reload: true, stop: true, label: '运行' }
     case 'stopped':
-      return { run: true, stop: false, label: '运行' }
+      return { run: true, reload: false, stop: false, label: '运行' }
     case 'failed':
-      return { run: true, stop: false, label: '重试运行' }
+      return { run: true, reload: false, stop: false, label: '重试运行' }
     default:
-      return { run: true, stop: false, label: '运行' }
+      return { run: true, reload: false, stop: false, label: '运行' }
   }
 }
 

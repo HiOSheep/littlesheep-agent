@@ -11,12 +11,14 @@ import {
 const running: HtmlRunState = { status: 'running', url: 'http://127.0.0.1:1/token/game.html', message: '' }
 
 describe('workspace html run state', () => {
-  it('offers run, stop and a busy label per state', () => {
-    expect(htmlRunActions(IDLE_HTML_RUN)).toEqual({ run: true, stop: false, label: '运行' })
-    expect(htmlRunActions({ status: 'starting', url: '', message: '' })).toEqual({ run: false, stop: false, label: '正在启动…' })
-    expect(htmlRunActions(running)).toEqual({ run: true, stop: true, label: '重新运行' })
-    expect(htmlRunActions({ status: 'stopped', url: '', message: '' })).toEqual({ run: true, stop: false, label: '运行' })
-    expect(htmlRunActions({ status: 'failed', url: '', message: 'boom' })).toEqual({ run: true, stop: false, label: '重试运行' })
+  it('offers run, reload, stop and a busy label per state', () => {
+    expect(htmlRunActions(IDLE_HTML_RUN)).toEqual({ run: true, reload: false, stop: false, label: '运行' })
+    expect(htmlRunActions({ status: 'starting', url: '', message: '' })).toEqual({ run: false, reload: false, stop: false, label: '正在启动…' })
+    // Running: the served files may have changed on disk, so reload is the useful
+    // action, and a second run is not offered (it would only pile up browser tabs).
+    expect(htmlRunActions(running)).toEqual({ run: false, reload: true, stop: true, label: '运行' })
+    expect(htmlRunActions({ status: 'stopped', url: '', message: '' })).toEqual({ run: true, reload: false, stop: false, label: '运行' })
+    expect(htmlRunActions({ status: 'failed', url: '', message: 'boom' })).toEqual({ run: true, reload: false, stop: false, label: '重试运行' })
   })
 
   it('reports the run fact, the stopped fact and the failure with its reason', () => {

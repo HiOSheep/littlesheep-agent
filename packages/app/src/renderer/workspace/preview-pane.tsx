@@ -288,8 +288,8 @@ export function WorkspacePreviewPane({
             showHtmlSource={showHtmlSource}
             canOpenExternalVSCode={canOpenExternalVSCode}
             showCodeWrapToggle={editorVisible} codeWrapEnabled={codeWrapEnabled}
-            htmlRun={htmlRun.state}
-            onRunHtml={htmlRun.requestRun}
+            htmlRun={htmlRun.state} onRunHtml={htmlRun.requestRun}
+            onReloadHtml={htmlRun.reload}
             onStopHtml={htmlRun.stop}
             onToggleCodeWrap={() => setCodeWrapEnabled(!codeWrapEnabled)}
             onToggleMarkdownSource={toggleMarkdownSource}
