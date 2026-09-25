@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 03:40:04
+最后更新：2026-09-26 04:46:00
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -151,3 +151,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 
 常见修改位置：启动/退出看 `src/main/`，纯跨进程规则看 `src/shared/`，UI 与交互看 `src/renderer/`，最小桥接看 `src/preload/`。各目录的 README 是更细一层的所有权入口。
 - **审阅快照会自报"读取期间仓库仍在变化"**（UX-27 第 2 条）：一次审阅读取是多条 Git 命令拼起来的，Main 现在用 HEAD、index stat 与同参数的 status 指纹在装配前后比对，不一致就有界重读一次；仍不一致时快照带 `unstable` 并显示"仓库在读取期间仍在变化"，而不是把混合状态当成新结果。
+- **Git 读取失败会说清楚是哪一种**（UX-28 第 1 条）：损坏的仓库、属主不符、权限拒绝、超时、取消与"真的不是仓库"各有自己的原因与下一步；属主不符时只转达 Git 的提示，绝不自动改动用户的全局配置。

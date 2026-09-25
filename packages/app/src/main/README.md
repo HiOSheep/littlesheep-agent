@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 03:37:48
+最后更新：2026-09-26 04:46:00
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -62,3 +62,7 @@
 ## Git 审阅的有界一致性重读（2026-09-26）
 
 `local-app-api/workspace-git-review.ts` 现在用 HEAD、index stat 与 status 指纹在装配前后比对，必要时重读一次；仍不稳定就把快照标成 `unstable`（共享契约 `workspace-review-contracts.ts` 的可选字段），由渲染器提示。这是 UX-27 第 2 条要求的"读取前后一致性校验 + 丢弃过期结果"，仍然复用既有缓存/取消/合并逻辑，没有新增调度层。
+
+## Git 读取失败的分类（2026-09-26）
+
+`local-app-api/workspace-git-failure.ts` 把审阅读取的失败按 Git 的 stderr 分类（不是仓库 / 属主不符 / 权限拒绝 / 仓库损坏 / 超时 / 取消 / 未找到 Git / 未分类），每类一句可执行原因，原始证据不超过首行 200 字符；分类作用于整次读取，取消仍然抛出。LS 不会自动写 `safe.directory`（UX-28 第 1 条）。
