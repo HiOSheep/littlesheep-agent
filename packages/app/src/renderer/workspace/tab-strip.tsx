@@ -365,6 +365,9 @@ export function WorkspaceTabStrip({
             key={entry.id}
             className={`workspace-active-item ${active ? 'active' : ''} ${entry.kind === 'file' && entry.dirty ? 'file-dirty' : ''} ${dragging ? 'is-dragging' : ''}`}
             role="tab"
+            // Which kind of tab this is, so acceptance can drive the browser tab without
+            // guessing from its label (a browser tab is labelled by its page/host).
+            data-workspace-tab-kind={entry.kind}
             tabIndex={0}
             aria-selected={active}
             aria-grabbed={dragging || undefined}

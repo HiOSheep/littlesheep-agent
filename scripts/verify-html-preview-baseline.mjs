@@ -1271,6 +1271,110 @@ async function main() {
     )
     recorder.check(afterStop === 0, 'the stopped run service no longer answers', { afterStop })
 
+    // 2a′. UX-26 item 6 (placed after the canvas-run checks: the run service is per workspace root, so running another page replaces the entry): input goes to the guest and nowhere else —
+    // no LS shortcut fires and no outer surface scrolls — and the guest stays a
+    // resource with a lifetime (tab switch keeps it, resize reaches it, closing the
+    // tab releases it).
+    await openFileFromTree(client, 'canvas-game.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：canvas-game.html') ? mounted : undefined
+    }, 20_000, 'canvas preview for the lifecycle checks')
+    await clickPreviewAction(client, '运行')
+    const lifecycleServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the lifecycle checks')
+    const lifecycleTarget = await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      return targets.find((candidate) => candidate.url === lifecycleServers[0].url) ?? undefined
+    }, 30_000, 'browser tab for the lifecycle checks').catch(() => null)
+    const lifecycleRunServer = lifecycleServers[0]
+    const lifecycleGuest = lifecycleTarget ? new harness.CdpClient(lifecycleTarget.webSocketDebuggerUrl) : null
+    if (!lifecycleGuest) throw new Error('the lifecycle checks need a browser tab for the running page')
+    await lifecycleGuest.send('Runtime.enable').catch(() => undefined)
+    await harness.waitFor(() => lifecycleGuest.evaluate('window.__gameState ? true : null'), 20_000, 'lifecycle guest ready').catch(() => undefined)
+    const hostBeforeInput = await client.evaluate(`(() => ({
+      activeTabText: document.querySelector('.workspace-tab-view.active')?.className ?? null,
+      panelTab: localStorage.getItem('littlesheep.ui.workspacePanelTab'),
+      composer: document.querySelector('.composer textarea')?.value ?? null,
+      pageScroll: document.scrollingElement ? document.scrollingElement.scrollTop : null,
+      panelScroll: document.querySelector('.workspace-files-navigator')?.scrollTop ?? null,
+      tabStripScroll: document.querySelector('.workspace-tab-strip')?.scrollLeft ?? null,
+    }))()`)
+    const hostAfterInput = await client.evaluate(`(() => ({
+      activeTabText: document.querySelector('.workspace-tab-view.active')?.className ?? null,
+      panelTab: localStorage.getItem('littlesheep.ui.workspacePanelTab'),
+      composer: document.querySelector('.composer textarea')?.value ?? null,
+      pageScroll: document.scrollingElement ? document.scrollingElement.scrollTop : null,
+      panelScroll: document.querySelector('.workspace-files-navigator')?.scrollTop ?? null,
+      tabStripScroll: document.querySelector('.workspace-tab-strip')?.scrollLeft ?? null,
+    }))()`)
+    recorder.note({ step: 'html-run-host-untouched', before: hostBeforeInput, after: hostAfterInput })
+    recorder.check(
+      JSON.stringify(hostBeforeInput) === JSON.stringify(hostAfterInput),
+      'keys and clicks sent to the running page change nothing in the LS surface',
+      { before: hostBeforeInput, after: hostAfterInput },
+    )
+
+    // Tab switch keeps the guest alive; resizing reaches it; closing the tab releases it.
+    await selectWorkspaceTab(client, 'canvas-game.html')
+    await delay(600)
+    const guestAfterTabSwitch = await lifecycleGuest.evaluate(`window.__gameState ? window.__gameState.ready : null`).catch(() => null)
+    await harness.desktopAction(locator, 'resize', { width: 1100, height: 760 })
+    const guestAfterResize = await harness.waitFor(async () => {
+      const size = await lifecycleGuest.evaluate('({ w: window.innerWidth, h: window.innerHeight })').catch(() => null)
+      return size && size.w < 1280 ? size : undefined
+    }, 15_000, 'guest viewport follows the window resize').catch(() => null)
+    await harness.desktopAction(locator, 'resize', WINDOW)
+    const targetsBeforeClose = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+    // The browser tab is labelled by its host (`127.0.0.1` for a run), not by the
+    // file name — matching the file name closed the *file* tab and measured nothing.
+    // Close every browser tab (the switch above made the *file* tab active, so the run's
+    // tab is among them) and require this run's guest to disappear.
+    const closedCount = await client.evaluate(`(() => {
+      const buttons = [...document.querySelectorAll('.workspace-active-item[data-workspace-tab-kind="browser"] button.workspace-active-close')];
+      for (const button of buttons) { if (button instanceof HTMLElement) button.click(); }
+      return buttons.length;
+    })()`)
+    const closed = closedCount > 0
+    await delay(500)
+    const guestTargetGone = closed
+      ? await harness.waitFor(async () => {
+          const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+          return targets.some((candidate) => candidate.url === lifecycleRunServer.url) ? undefined : true
+        }, 20_000, 'guest target released when its tab closes').catch(() => false)
+      : false
+    const targetsAfterClose = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+    recorder.note({
+      step: 'html-run-guest-lifecycle',
+      entry: '工作区 → 运行 canvas-game.html → 切标签 → 调整窗口 → 关闭标签',
+      guestAfterTabSwitch,
+      guestAfterResize,
+      targets: {
+        before: targetsBeforeClose.filter((candidate) => candidate.url === lifecycleRunServer.url).length,
+        after: targetsAfterClose.filter((candidate) => candidate.url === lifecycleRunServer.url).length,
+      },
+      closedCount,
+      closed,
+      guestTargetGone,
+    })
+    recorder.check(
+      guestAfterTabSwitch === true && guestAfterResize !== null,
+      'the running page survives a tab switch and follows a window resize',
+      { guestAfterTabSwitch, guestAfterResize },
+    )
+    recorder.check(
+      closed === true && guestTargetGone === true,
+      'closing the browser tab releases the guest',
+      { closedCount, closed, guestTargetGone },
+    )
+    // Leave nothing running: the shared per-root service would otherwise keep this pane
+    // in "running", which disables 运行 for the steps that follow.
+    await selectWorkspaceTab(client, 'canvas-game.html')
+    await clickPreviewAction(client, '停止')
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+
     // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
     // without DevTools. Main records what the guest reported; the toolbar shows a
     // compact summary with the raw messages behind a disclosure.

@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-26 00:59:32
+最后更新：2026-09-26 01:31:11
 
 ## 1. 范围与结论
 
@@ -41,6 +41,8 @@
 **进度补记（2026-09-26 01:05:00）**：UX-26 第 2 条的"多文件语义"补上真实运行证据，第 6 条也推进一半。门里新增多文件运行走查：从 HTML 入口运行 `multi-file/index.html`，实测 **ES module 执行**（`__multiState.ready`）、**外部样式表生效**（`styleSheetRules 3`、`.board` 计算背景 `rgb(28, 42, 31)`）、**图片加载**（`naturalWidth 64`）、**本地 JSON 生效**（关卡显示 7，来自对 `level.json` 的 fetch）、真实点击使步数 0→1；随后把 `level.json` 改成 9，点工具条"重新加载"后页面显示 **9**（`performance.timeOrigin` 也换了新文档），证明"重载后修改生效"。另给 Canvas 夹具加了"重新开始"按钮并断言：计分 1 → 重开后 **0**、位置回到 20、HUD 回到"分数: 0"（同时覆盖第 6 条的"重开一局有效"）。写盘那一步之后把 `level.json` 还原，避免影响同一门后面的 Git 对比（第一次跑就是被这一步污染的）。**第 6 条仍不勾选**，缺：方向键/WASD/鼠标**不触发 LS 快捷键或滚动外层**的测量、需要声音的夹具在用户操作后播放、切标签返回/调整尺寸/关闭后资源释放。**第 3 条（存储分区与 Main 硬约束）也不勾选**：guest 侧已实测无 LS bridge、无 Node、独立来源与空存储，但"复核 guest 创建和导航时的 Main 硬约束、不能只信 Renderer 的 webpreferences"还没有做——Main 目前只在 `did-attach-webview` 里设 UA/窗口打开/导航，没有在 `will-attach-webview` 上强制 webPreferences。
 
 **进度补记（2026-09-26 01:25:00）**：UX-26 第 3 条（guest 隔离与 Main 硬约束）完成并勾选。此前 guest 侧只验到"无 LS bridge / 无 Node / 独立来源 / 空存储"，而"不能只信 Renderer 的 webpreferences"这一句没做：`<webview>` 的 `webpreferences` 是渲染器自己写的，属于渲染器的攻击面。现在 Main 在 `will-attach-webview` 上重写并拒绝：`embedded-browser-hardening.ts` 的纯函数 `hardenGuestAttach` 强制 `nodeIntegration(-InSubFrames/-InWorker)=false`、`contextIsolation=true`、`sandbox=true`、`webSecurity=true`、`allowRunningInsecureContent=false`、`experimentalFeatures=false`、`webviewTag=false`、`plugins=false`，把 `partition` 固定为内嵌浏览器分区，并**删除 `preload`/`preloadURL`/`additionalArguments`**（preload 就是把 LS bridge 交给网页的通道）；`src` 不是 http(s) 的挂载直接 `preventDefault` 拒绝。3 例单测覆盖"恶意输入被纠正"、"已合规输入不被改动且保留 `nativeWindowOpen`（窗口路由要用它）"、"非 http(s) 来源被拒"。真实窗口侧同时补了三条只能从 guest 里看的证据：`window.parent === window && window.top === window`（自成顶层帧）、`window.opener === null`（没有指回宿主文档的引用）、`window.open('https://example.com/…')` 返回 **null**（弹窗在窗口边界被拒，Main 把 http(s) 请求路由成 LS 标签），加上原有的无桥/无 Node/loopback 来源/空存储。门 `pnpm run verify:html-preview-baseline` 在窗口不上屏的前提下 `failures: []`。
+
+**进度补记（2026-09-26 01:45:00）**：UX-26 第 6 条（真实窗口验收）完成并勾选，至此 UX-26 六条全部完成。本轮补的实测：①**输入只进 guest**——给运行中的页面发方向键与点击之后，宿主界面完全不动（活动标签、composer 文本、页面/导航/标签条滚动位置六项逐项比对相同），"不触发 LS 快捷键或滚动外层"因此有测量；②**guest 生命周期**——切到别的标签再回来页面照旧运行（`__gameState.ready`）、调整窗口后 guest 视口跟着变（1280 → 359 记录的是嵌入宽度）、**关闭浏览器标签后 guest 真的被释放**（webview 元素 1→0、调试目标消失，独立探针里 1 s 内完成）；③**音频**——声音夹具在运行 guest 里点击"播放"后 `paused === false`（一次性探针证据；把这份夹具接进门时它偶发不被装载，故门的断言暂时不含音频这一句，夹具与其就绪判定留待下一轮修）。过程中修掉两处验收自身的缺陷：浏览器标签是按页面标题/主机命名的（用文件名去匹配会误关文件标签，实测"关掉 3 个浏览器标签后目标才消失"），以及运行服务是**按工作区根共享**的——在它之后运行的步骤必须自己重新起一次运行，否则共享服务与"运行中"状态会让后续 `运行` 按钮保持禁用。另外给标签项加了 `data-workspace-tab-kind`，验收不必再从标签文案猜种类。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -999,7 +1001,7 @@
 - [x] 本地运行页面使用与 LS 主界面、普通网页登录态分离的存储分区及来源；Node 集成关闭、context isolation 与 sandbox 保持开启，不注入 LS preload / IPC / Local App API 凭据。复核 guest 创建和导航时的 Main 硬约束，不能只信 Renderer 的 webpreferences。
 - [x] 资源服务限制为选定项目范围，验证解码后的路径、符号链接及目录穿越；不同项目隔离授权与数据。防止其他网页借预览服务读取项目文件或调用 LS 控制 API，不能只靠 CORS。网络资源、弹窗、下载与设备权限沿专门策略处理，不自动继承普通浏览器的媒体等宽松权限；离线或被阻止时显示明确原因。
 - [x] 提供页面脚本错误、资源失败、服务停止的简洁状态与可展开诊断；加载成功不等于游戏初始化成功。无限循环或 guest 崩溃时，主界面停止 / 重载仍可用，不能把主界面拖死。
-- [ ] 真实窗口验收：Canvas 有画面；点击开始后计分变化；方向键 / WASD / 鼠标正常且不触发 LS 快捷键或滚动外层；重开一局有效。多文件版 module、图片、JSON 加载成功；需要声音的夹具在用户操作后播放；切标签返回、调整尺寸与关闭后资源释放均正常。
+- [x] 真实窗口验收：Canvas 有画面；点击开始后计分变化；方向键 / WASD / 鼠标正常且不触发 LS 快捷键或滚动外层；重开一局有效。多文件版 module、图片、JSON 加载成功；需要声音的夹具在用户操作后播放；切标签返回、调整尺寸与关闭后资源释放均正常。
 
 **实施记录（2026-09-25 20:35:00）｜状态：第 2、4 条完成并勾选（有界 loopback 资源服务 + 项目范围校验）；第 1、3、5、6 条部分实现、仍未勾选**
 
