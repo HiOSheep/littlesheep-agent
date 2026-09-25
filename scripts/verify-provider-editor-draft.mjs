@@ -11,7 +11,7 @@
 // Usage:
 //   node scripts/verify-provider-editor-draft.mjs [--out=<dir>] [--keep]
 
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
@@ -189,6 +189,27 @@ async function typeName(client, value) {
   })()`)
 }
 
+const SECRET_MARKER = 'ux06-discard-secret-7f0c'
+
+async function typeSecret(client) {
+  return evaluate(client, `(() => {
+    const input = document.querySelector('.provider-editor input[type="password"]')
+    if (!(input instanceof HTMLInputElement)) return false
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(input, ${JSON.stringify(SECRET_MARKER)})
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return true
+  })()`)
+}
+
+async function secretState(client) {
+  return evaluate(client, `(() => ({
+    draftPresent: document.querySelector('.provider-editor input[type="password"]')?.value === ${JSON.stringify(SECRET_MARKER)},
+    browserStorageClean: !JSON.stringify(Object.entries(localStorage)).includes(${JSON.stringify(SECRET_MARKER)})
+      && !JSON.stringify(Object.entries(sessionStorage)).includes(${JSON.stringify(SECRET_MARKER)}),
+  }))()`)
+}
+
 async function main() {
   await harness.assertBuildFresh()
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-provider-draft-'))
@@ -229,8 +250,10 @@ async function main() {
     await openEditor(client)
     const untouched = await evaluate(client, EDITOR_STATE_EXPRESSION)
     await typeName(client, DRAFT_NAME)
+    const secretEntered = await typeSecret(client)
     await delay(200)
     const modified = await evaluate(client, EDITOR_STATE_EXPRESSION)
+    const secretWhileEditing = await secretState(client)
     const modifiedScreenshot = await writePng(client, 'editor-modified')
 
     // --- 2. switching settings pages with the editor open, then returning -----------------------
@@ -252,6 +275,7 @@ async function main() {
     await openSettingsPage(client, '模型供应商')
     await openEditor(client)
     const restored = await evaluate(client, EDITOR_STATE_EXPRESSION)
+    const secretAfterReturn = await secretState(client)
     const restoredScreenshot = await writePng(client, 'editor-restored')
 
     // --- 3. closing with unsaved edits asks instead of discarding silently ----------------------
@@ -287,6 +311,7 @@ async function main() {
     const closedByDiscard = await evaluate(client, `Boolean(document.querySelector('.provider-editor'))`)
     await openEditor(client)
     const afterDiscard = await evaluate(client, EDITOR_STATE_EXPRESSION)
+    const secretAfterDiscard = await secretState(client)
     const savesAfterDiscard = await evaluate(client, `window.__lsSaveProbe.saves`)
     await evaluate(client, `document.querySelector('.provider-editor .close-btn')?.click()`)
     await delay(250)
@@ -315,6 +340,8 @@ async function main() {
     await delay(400)
     const cardsAfterSave = await evaluate(client, CARDS_EXPRESSION)
     const probeState = await evaluate(client, `window.__lsSaveProbe`)
+    const configFileClean = !(await readFile(join(dataDir, 'config.json'), 'utf8')).includes(SECRET_MARKER)
+    const electronLogClean = !(await readFile(logPath, 'utf8').catch(() => '')).includes(SECRET_MARKER)
 
     const results = {
       providersBefore,
@@ -322,6 +349,12 @@ async function main() {
       afterSwitch,
       untouched,
       modified,
+      secretEntered,
+      secretWhileEditing,
+      secretAfterReturn,
+      secretAfterDiscard,
+      configFileClean,
+      electronLogClean,
       restored,
       discardPrompt,
       editorStillOpen,
@@ -345,11 +378,15 @@ async function main() {
     expect(untouched !== null, 'the editor did not open')
     expect(untouched.status === null, `an untouched draft claimed a state: ${JSON.stringify(untouched.status)}`)
     expect(modified.status === '已修改，尚未保存。', `the dirty state was not shown: ${JSON.stringify(modified.status)}`)
+    expect(secretEntered === true && secretWhileEditing.draftPresent, 'the secret draft did not reach the editor')
+    expect(secretWhileEditing.browserStorageClean, 'the secret reached browser storage while editing')
     // 2. the page switch unmounts the editor and returning restores the draft.
     expect(navAttempt === 'clicked', 'the settings navigation could not be clicked')
     expect(afterSwitch.editorOpen === false, 'switching pages left the editor mounted')
     expect(afterSwitch.activeNav === '界面', `the page did not switch: ${JSON.stringify(afterSwitch.activeNav)}`)
     expect(restored.name === DRAFT_NAME, `the draft was lost across pages: ${JSON.stringify(restored.name)}`)
+    expect(secretAfterReturn.draftPresent && secretAfterReturn.browserStorageClean,
+      'the secret did not remain only in the in-memory draft across pages')
     // The editor labels a restored draft that still differs from its baseline as "已修改": the
     // dirty fact wins over the restored one, which is the more useful statement for the user.
     expect(['已修改，尚未保存。', '已恢复上次离开时未保存的草稿。'].includes(restored.status),
@@ -365,6 +402,9 @@ async function main() {
     expect(closedByDiscard === false, '丢弃修改 did not close the editor')
     expect(afterDiscard.name !== DRAFT_NAME, `丢弃修改 kept the draft: ${JSON.stringify(afterDiscard.name)}`)
     expect(afterDiscard.status === null, `丢弃修改 left a dirty state: ${JSON.stringify(afterDiscard.status)}`)
+    expect(secretAfterDiscard.draftPresent === false && secretAfterDiscard.browserStorageClean,
+      'the discarded secret was still in the editor or browser storage')
+    expect(configFileClean && electronLogClean, 'the unsaved secret reached config or Electron log')
     expect(savesAfterDiscard === 0, `discarding issued ${savesAfterDiscard} save requests`)
     // 4. a failed save explains itself, keeps the content, and does not change the list.
     expect(saveFailed.error.some((text) => text.includes('保存失败')), `no save failure was shown: ${JSON.stringify(saveFailed.error)}`)
