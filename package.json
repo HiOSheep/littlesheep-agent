@@ -104,6 +104,7 @@
     "verify:provider-editor-draft": "pnpm run ensure:app-build && node scripts/verify-provider-editor-draft.mjs",
     "verify:recovery-states": "pnpm run ensure:app-build && node scripts/verify-recovery-states.mjs",
     "verify:review-navigator-width": "pnpm run ensure:app-build && node scripts/verify-review-navigator-width.mjs",
+    "verify:review-refresh-errors": "pnpm run ensure:app-build && node scripts/verify-review-refresh-errors.mjs",
     "verify:no-model-config-loop": "pnpm run ensure:app-build && node scripts/verify-no-model-config-loop.mjs",
     "verify:async-feedback": "pnpm run ensure:app-build && node scripts/verify-async-feedback.mjs",
     "verify:narrow-high-dpi-forms": "pnpm run ensure:app-build && node scripts/verify-narrow-high-dpi-forms.mjs",

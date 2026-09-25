@@ -9,12 +9,14 @@ import type {
   WorkspaceReviewFileDiff,
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
+import { FeedbackNotice } from '../ui/feedback-notice'
 import { FileGlyphIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { WorkspaceCodeDiffEditor } from './code-editor'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
 import { WorkspacePlaceholder } from './placeholder'
 import { buildWorkspaceReviewEditorModel } from './review-diff-model'
+import type { WorkspaceReviewNotice } from './review-refresh-notice'
 import { WorkspaceReviewInlineDeletedComments } from './review-inline-deleted-comments'
 import {
   attachReviewInlineDeletedLineNumbers,
@@ -36,7 +38,7 @@ export function WorkspaceReviewDiff({
   sideBySide,
   emptyState,
   loading,
-  error,
+  notices,
   lineCommentsByScope,
   onSideBySideChange,
   onLineCommentsChange,
@@ -52,7 +54,8 @@ export function WorkspaceReviewDiff({
   sideBySide: boolean
   emptyState?: ReactNode
   loading: boolean
-  error: string
+  /** Stale/refresh state for the snapshot and the selected diff, newest first. */
+  notices: WorkspaceReviewNotice[]
   lineCommentsByScope: Record<string, WorkspaceLineComment[]>
   onSideBySideChange: (sideBySide: boolean) => void
   onLineCommentsChange: (scope: string, comments: WorkspaceLineComment[]) => void
@@ -79,10 +82,19 @@ export function WorkspaceReviewDiff({
         onTipChange={onTipChange}
       />
       <div ref={scrollRef} className="workspace-review-diff-scroll">
+        {notices.map((notice) => (
+          <FeedbackNotice
+            key={notice.key}
+            feedback={notice.feedback}
+            className="workspace-review-update-notice"
+            retryLabel={notice.retryLabel}
+            onRetry={notice.onRetry}
+            busy={notice.busy}
+          />
+        ))}
         {emptyState}
-        {!emptyState && loading && <WorkspacePlaceholder title="读取差异" text="正在生成文件 diff。" />}
-        {!emptyState && !loading && error && <WorkspacePlaceholder title="差异读取失败" text={error} />}
-        {!emptyState && !loading && !error && diff?.layers.map((layer) => (
+        {!emptyState && loading && !diff && <WorkspacePlaceholder title="读取差异" text="正在生成文件 diff。" />}
+        {!emptyState && diff?.layers.map((layer) => (
           <WorkspaceReviewDiffLayerView
             workspacePath={diff.workspacePath}
             file={diff.file}

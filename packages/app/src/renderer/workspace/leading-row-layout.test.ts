@@ -198,7 +198,11 @@ describe('workspace page leading row alignment', () => {
 
   it('keeps preview toolbar hover surfaces free of edge lines', () => {
     const iconButton = ruleBody('.workspace-files-icon-btn')
-    const iconButtonHover = ruleBody('.workspace-files-icon-btn:hover,\n.workspace-files-icon-btn:focus-visible')
+    // The pressed state shares the hover surface, so the toggle that keeps a
+    // wrap preference shows the same borderless treatment as hover and focus.
+    const iconButtonHover = ruleBody(
+      '.workspace-files-icon-btn:hover,\n.workspace-files-icon-btn:focus-visible,\n.workspace-files-icon-btn[aria-pressed="true"]',
+    )
     const textButton = ruleBody('.workspace-files-text-btn')
     const textButtonHover = ruleBody('.workspace-files-text-btn:hover,\n.workspace-files-text-btn:focus-visible,\n.workspace-files-text-btn.active')
 

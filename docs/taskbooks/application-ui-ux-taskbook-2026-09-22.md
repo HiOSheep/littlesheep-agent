@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 17:30:05
+最后更新：2026-09-25 18:36:40
 
 ## 1. 范围与结论
 
@@ -19,6 +19,8 @@
 **进度补记（2026-09-25 17:29:05）**：UX-03 的运行中补充消息、停止入口与草稿/附件边界已在真实窗口通过；UX-07 的审批焦点、背景阻断、Escape 拒绝一次和动画期间重复 Escape 已在真实窗口通过；UX-06 的密钥草稿生命周期与四类编辑状态已在真实窗口通过。上述 16:16 的段落保留为当时快照，以本补记和各任务的最新实施记录为准。
 
 **2026-09-25 拓展工作区增补**：新增 UX-24～UX-31，共 31 项。用户明确报告“HTML 小游戏全白，或白底带些字，无法游玩”，另报告 Git 审查异常和缺少 PowerShell / Bash 选择。以下新增任务均未实施；基线为 `8b7c6bd` 加当前工作树，保留本轮前已有的 UI 与文档修改。源码确认静态 HTML 预览禁用脚本、Windows Shell 固定为 PowerShell，以及 Git 有缓存时刷新失败不展示错误；尚未拿到问题 HTML 或具体 Git 报错，不能宣称已复现用户原例。既有相关测试 9 个文件、30 项通过，只证明原有覆盖；本轮未启动 Electron、未验收小游戏或打包版。
+
+**进度补记（2026-09-25 18:36:00）**：UX-27 的第一条（保留旧内容时必须标明“正在刷新 / 更新失败，显示上次结果”，快照与单文件 Diff 的失败分别可见且各有重试）已完成真实窗口验收并勾选；新增真实窗口门 `pnpm run verify:review-refresh-errors`（含“重试确实发出新请求”的探针断言，最终构建上 `failures: []`），并修掉自 `5ed06e7` 起一直失败的 `leading-row-layout.test.ts`（该提交把图标按钮规则扩成三个选择器却没同步断言）。UX-27 的读取前后一致性校验、A→B→A / 连点 / 慢响应不串数据、以及“列表统计与 Diff 属于同一版本”仍未开始，整项保持未勾选。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -945,10 +947,27 @@
 
 **范围与源码确认**：[review.tsx](../../packages/app/src/renderer/workspace/review.tsx) 的 snapshot catch 只在 `!hasSnapshot` 时设置错误，diff catch 只在 `!cached && !stale` 时显示错误；已有缓存时失败会被隐藏。`selectedDiff` 仅按路径和工作区匹配，未检查 revision，刷新期间允许保留旧 Diff 而没有独立过期说明。[workspace-git-review.ts](../../packages/app/src/main/local-app-api/workspace-git-review.ts) 的 revision 是随机 UUID，状态 / numstat 分别读取，详情又读取实时 Git；[workspace-git-review-cache.ts](../../packages/app/src/main/local-app-api/workspace-git-review-cache.ts) 校验的是缓存身份，不能证明 HEAD、index 与工作树内容未变化。后者属于待复现的一致性风险。
 
-- [ ] 保留旧内容时标明“正在刷新 / 更新失败，显示上次结果”及上次成功时间，失败有重试；snapshot 与单文件 diff 的失败分别可见，不能将旧数据呈现为刷新成功。
+- [x] 保留旧内容时标明“正在刷新 / 更新失败，显示上次结果”及上次成功时间，失败有重试；snapshot 与单文件 diff 的失败分别可见，不能将旧数据呈现为刷新成功。
 - [ ] 基于 HEAD / index / 当前文件等必要事实建立读取前后的一致性校验；在差异读取期间发生变化时丢弃过期结果并有界刷新。复用现有缓存、合并请求与取消逻辑，不新增调度层，也不声称 Git 多命令读取天然是原子快照。
 - [ ] A→B→A 工作区 / 文件切换、已暂存后再次编辑、外部保存、撤销、提交 / 切分支、刷新连点、取消及慢响应均不串数据。持续变化或连续 409 时有界终止并提示，不能无限刷新。
 - [ ] 验收：已加载 Diff 后使刷新失败，旧结果明确带过期状态；恢复后一次手动刷新取得当前内容并清除错误；列表统计与 Diff 所属版本匹配，或明确显示重新读取中。延迟返回的旧请求不能覆盖新请求。
+
+**实施记录（2026-09-25 18:35:00）｜状态：第一条（旧数据自报状态）完成真实窗口验收并勾选；其余三条仍未开始**
+
+- 实现范围：新增 `renderer/workspace/review-refresh-notice.ts`（纯规则）——把“刷新中 / 更新失败 / 差异属于上一个 revision”三类事实派生为共享 `Feedback`（色调是字段，不从文案里猜）：失败说“显示上次结果”并用仍在屏上的 `generatedAt` 报出上次成功读取时间；**快照与单文件 Diff 各自成条、各自带重试动作**，每条 `busy` 只反映自己那次请求，`status` 类提示不带任何按钮。`review.tsx` 只把状态与两个动作交给它：`setDiffLoading(force || !cached)` 让“请求在飞”与“没有内容可显示”分开，因此刷新期间旧差异会说明自己正在被重读；失败不再清掉旧 Diff（旧实现在已缓存时把错误整个吞掉）；“重试差异”以 `force` 绕过 Diff TTL 真正重新请求。提示统一由共享 `ui/feedback-notice.tsx` 渲染（`role`/`data-tone` 随色调、失败原因进有界“技术详情”、pending 时禁用重试），`10-git-review.css` 的 `.workspace-review-update-notice` 只声明版面并复用行内通知几何 token。
+- 一处被门禁逼出来的结构调整（记录，因为它决定后续往哪里加）：`review.tsx` 是"核心组合热点"，基线 383 行且**只允许下降**。把 `reviewNotices(...).map(...)` 的接线留在视图里会让它涨到 392；因此提示的重试接线也归 `review-refresh-notice.ts`（视图只传两个回调），视图回落到 **382 行**、新模块 107 行。换言之这个文件以后不接受新的提示文案或分支。
+- 真实窗口门 `pnpm run verify:review-refresh-errors`（[verify-review-refresh-errors.mjs](../../scripts/verify-review-refresh-errors.mjs)）：隔离数据根 + 真实 Git 工作区（1 个未暂存修改，CLI 状态与 `+second` 先断言过）+ 页面 `fetch` 探针，可**按住**、注入 500 或放行 `/workspace/review` 与 `/workspace/review/diff`。窗口 1280×840（dpr 1.5，真实显示器缩放），最终构建上连续运行 `failures: []`；`--keep` 那次的两张截图在 `%TEMP%\littlesheep-review-refresh-AdgNb8\screenshots\`（临时根，不提交）。
+- 实测（括号内为探针计数）：
+  - **基线**：1 个更改文件、1 层 Diff、**0 条提示**（成功不产生任何陈旧说明）。
+  - **按住快照刷新**：出现 `role=status`／`tone=info` 的“正在刷新 Git 更改，当前显示上次结果。”且**没有任何重试按钮**；旧文件与旧 Diff 都还在，刷新按钮在此期间 `disabled=true`；释放后提示消失、快照请求计数增长。
+  - **快照刷新失败（已有缓存）**：`role=alert` 的“Git 更改更新失败，显示上次结果（上次成功读取：2026/9/25 18:33:17）。”+ 可展开“技术详情”（“Git 审阅暂时无法读取，请稍后重试。”）+ **启用**的“重试刷新”；旧快照与旧 Diff 都在（files 1 / layers 1）；点重试后提示清空且**确实发出新请求**（snapshots 4→5）。
+  - **按住 Diff 刷新**：`role=status` 的“快照已变化，当前差异属于上次结果，正在重新读取。”，旧 Diff 层仍在（layers 1）。
+  - **Diff 刷新失败**：`role=alert` 的“差异更新失败，显示上次结果。”+ 技术详情（“文件差异暂时无法读取，请稍后重试。”）+ 启用的“重试差异”，旧 Diff 层仍在（layers 1）。
+  - **重试确实绕过缓存**：点“重试差异”后探针 `diffs` 5→6（真的又发了一次请求，而不是复用缓存里的旧值）、提示清空、Diff 仍在。
+- 回归：`review-refresh-notice.test.ts` 8 例（快照失败带上次成功时间与 Runtime 原文、首次读取失败不重复报、刷新中为 `status` 且无动作、陈旧 Diff 与首次 Diff 失败分开、差异属于上一 revision、详情有界 400 字符、两条提示的顺序与“动作只挂在失败条上”、以及两个视图都经共享反馈结构渲染）；`pnpm exec vitest run packages/app/src/renderer` 116 文件 / 642 例通过，`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0，`node scripts/check-repository-hygiene.mjs` 38/38 通过。
+- 顺带修掉的一处既有回归：`leading-row-layout.test.ts` 仍在等只有两个选择器的 hover 规则，而 `5ed06e7` 已把它扩成含 `[aria-pressed="true"]` 的三个选择器——该用例自那次提交起一直是红的（`pnpm exec vitest run packages/app/src/renderer/workspace` 会失败）；现按规则的真实形状更新，断言意图不变（hover／pressed／focus 共用同一个无边框表面）。
+- 构建边界（记录，不改仓库脚本）：本机 `pnpm` 由宿主运行时代理，脚本在 `ELECTRON_RUN_AS_NODE` 下执行，于是 `prepare-littlesheep-runtime.mjs` 里对 `resources/default_app.asar` 的 `stat` 触发 Electron 的 asar 钩子并抛 `Invalid package`，构建失败。本轮改用真实 Node 执行同一条 `ensure:app-build` 命令（临时 `pnpm.cmd` 代理放在 `%TEMP%`，不写进仓库），构建与门禁都通过；这是宿主边界，不是产品缺陷。
+- 未覆盖（其余三条保持未勾选）：**读取前后的一致性校验**（HEAD / index / 当前文件事实比对、丢弃过期结果）没有做；**A→B→A、连点、取消、慢响应不串数据**没有做；“列表统计与 Diff 属于同一版本”没有做。`revision` 仍是每次读取的随机 UUID，所以本门只证明“旧数据不再冒充新数据”，不证明它一定是最新的。同一 revision 的“正在刷新文件差异，当前显示上次结果。”分支在真实窗口要等缓存 TTL（30 s）过期后失败再点重试才可达，本门没有构造，只有 `review-refresh-notice.test.ts` 的单元覆盖。
 
 ### UX-28｜Git 状态分类与差异显示完整性
 
@@ -1048,7 +1067,7 @@
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 | 21 | UX-23 | 本任务实施记录 + `pnpm run verify:code-wrap-control` | 语言标签文本；折行开关在对话代码块与工作区 Monaco 上生效；中文与正文同字形；按钮可达 | 通过 |
 | 22 | UX-24～UX-26 | 本任务验收项；HTML 静态 / 小游戏实机门待建 | 对照浏览器、资源加载、Canvas 与输入、错误诊断、guest 隔离 | 未执行 |
-| 23 | UX-27 / UX-28 | 本任务验收项；复用既有 Git 测试与 `verify:review-navigator-width`，补刷新失败 / 内容竞争场景 | CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | 未执行 |
+| 23 | UX-27 / UX-28 | 本任务实施记录 + `pnpm run verify:review-refresh-errors`；复用既有 Git 测试与 `verify:review-navigator-width`，补内容竞争与错误分类场景 | 按住／失败／放行审阅快照与 Diff：旧数据自报刷新中与更新失败、两条失败各自可见可重试、重试确实重新请求；CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | UX-27 第一条通过（三次 `failures: []`）；其余未执行 |
 | 24 | UX-29 / UX-30 | 本任务验收项；多 Shell / 会话实机门待建 | Shell 身份、cwd、独立实例、PTY 降级、关闭与恢复 | 未执行 |
 | 25 | UX-31 | 本任务组合步骤；扩展 `verify:conversation-workspace-scenarios` 或登记最小独立门 | 小游戏编辑运行、终端服务、Git 审查、跨工作区、打包版 | 未执行 |
 

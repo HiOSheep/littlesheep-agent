@@ -23,6 +23,7 @@ import {
   selectWorkspaceReviewPath,
 } from './review-model'
 import { WorkspaceReviewDiff } from './review-diff'
+import { reviewNotices } from './review-refresh-notice'
 import type { WorkspaceLineComment } from './line-comments'
 import { WorkspaceReviewTree } from './review-tree'
 import { preloadWorkspaceCodeEditor } from './code-editor'
@@ -88,8 +89,10 @@ export function WorkspaceReview({
   const [diff, setDiff] = useState<WorkspaceReviewFileDiff | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const [diffError, setDiffError] = useState('')
+  const [diffRetryVersion, setDiffRetryVersion] = useState(0)
   const snapshotRequestRef = useRef(0)
   const diffRequestRef = useRef(0)
+  const handledDiffRetryRef = useRef(0)
   const reviewScrollRef = useRef<HTMLDivElement>(null)
   const artifactVersionRef = useRef(artifactVersion)
   const completedRefreshVersionRef = useRef(0)
@@ -182,7 +185,6 @@ export function WorkspaceReview({
           alive
           && requestId === snapshotRequestRef.current
           && (reason as Error).name !== 'AbortError'
-          && !hasSnapshot
         ) {
           console.debug('[workspace-review] review snapshot request failed', reason)
           setError(workspaceErrorMessage(reason, 'Git 审阅暂时无法读取，请稍后重试。'))
@@ -227,10 +229,18 @@ export function WorkspaceReview({
       && isSamePath(diff.workspacePath, workspacePath)
       ? diff
       : null
+    const force = diffRetryVersion > handledDiffRetryRef.current
+    handledDiffRetryRef.current = diffRetryVersion
     setDiff(cached ?? stale)
-    setDiffLoading(!cached && !stale)
+    // "Loading" means a request is in flight, so stale content under a refresh can
+    // say it is being refreshed instead of looking like a fresh result. A cache hit
+    // with no forced re-read never leaves this process.
+    setDiffLoading(force || !cached)
     setDiffError('')
-    workspaceReviewCache.loadDiff(workspacePath, selectedPath, selectedRevision, { signal: controller.signal })
+    workspaceReviewCache.loadDiff(workspacePath, selectedPath, selectedRevision, {
+      force,
+      signal: controller.signal,
+    })
       .then((result) => {
         if (alive && requestId === diffRequestRef.current) setDiff(result)
       })
@@ -240,11 +250,8 @@ export function WorkspaceReview({
           requestSnapshotRefresh(true)
           return
         }
-        if (!cached && !stale) {
-          setDiff(null)
-          console.debug('[workspace-review] review diff request failed', reason)
-          setDiffError(workspaceErrorMessage(reason, '文件差异暂时无法读取，请稍后重试。'))
-        }
+        console.debug('[workspace-review] review diff request failed', reason)
+        setDiffError(workspaceErrorMessage(reason, '文件差异暂时无法读取，请稍后重试。'))
       })
       .finally(() => {
         if (alive && requestId === diffRequestRef.current) setDiffLoading(false)
@@ -253,7 +260,7 @@ export function WorkspaceReview({
       alive = false
       controller.abort()
     }
-  }, [selectedPath, selectedRevision, requestSnapshotRefresh, workspacePath])
+  }, [selectedPath, selectedRevision, diffRetryVersion, requestSnapshotRefresh, workspacePath])
 
   const tree = useMemo(() => buildWorkspaceReviewTree(snapshot?.files ?? []), [snapshot?.files])
   const filteredFiles = useMemo(
@@ -289,12 +296,25 @@ export function WorkspaceReview({
     && isSamePath(diff.workspacePath, workspacePath)
     ? diff
     : null
+  const diffOutdated = Boolean(selectedDiff && selectedDiff.revision !== selectedRevision)
+  // Stale content must say so: the notice policy is pure, the actions are wired here.
+  const notices = reviewNotices({
+    snapshot: {
+      error,
+      refreshing,
+      hasResult: Boolean(snapshot && isSamePath(snapshot.workspacePath, workspacePath)),
+      generatedAt: snapshot?.generatedAt,
+    },
+    diff: { error: diffError, outdated: diffOutdated, loading: diffLoading, hasResult: Boolean(selectedDiff) },
+    onRetrySnapshot: () => requestSnapshotRefresh(true),
+    onRetryDiff: () => setDiffRetryVersion((version) => version + 1),
+  })
   const branchLabel = snapshot?.branch ?? 'Git'
   const repositoryLabel = snapshot?.upstream ? `${branchLabel} -> ${snapshot.upstream}` : branchLabel
   const snapshotReady = snapshot?.availability === 'ready'
   const emptyState = loading && !snapshot
     ? <WorkspacePlaceholder title="读取 Git 状态" text="正在整理当前工作区更改。" />
-    : !loading && error
+    : !loading && error && !snapshot
       ? <WorkspacePlaceholder title="Git 审阅失败" text={error} />
       : !loading && !error && snapshot && !snapshotReady
         ? <WorkspacePlaceholder title="Git 审阅不可用" text={snapshot.message ?? '当前工作区无法读取 Git 状态。'} />
@@ -311,7 +331,7 @@ export function WorkspaceReview({
           sideBySide={sideBySide}
           emptyState={emptyState}
           loading={diffLoading}
-          error={diffError}
+          notices={notices}
           lineCommentsByScope={lineCommentsByScope}
           onSideBySideChange={setSideBySide}
           onLineCommentsChange={onLineCommentsChange}

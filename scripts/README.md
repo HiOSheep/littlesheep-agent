@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-25 17:30:05
+最后更新：2026-09-25 18:37:00
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -15,4 +15,5 @@
 - `pnpm run verify:provider-editor-draft` 在真实窗口验证编辑状态、切页草稿、丢弃确认、失败保留和保存中关闭；使用固定假密钥检查丢弃后密码框、浏览器存储、隔离配置与 Electron 日志均不含该值，报告只输出布尔结果。
 - `pnpm run verify:conversation-workspace-scenarios` 覆盖对话滚动/输入/工具结果/多附件/工作区双栏，并按会话分别验证文件草稿、目录与浏览器现场；`pnpm run verify:electron-ui-state-continuity` 负责隔离数据根中的真实进程退出、启动恢复与窗口/路由/阅读位置。
 - `pnpm run verify:retry-feedback` 注入 429/503/401/400/超时/断流/取消，验证有界重试与中断续接，并检查普通、紧凑显示中的重试进度和紧凑失败原因。
+- `pnpm run verify:review-refresh-errors` 在真实 Git 工作区里按住、注入失败或放行审阅快照与单文件 Diff 请求，核对陈旧内容始终自报状态：刷新中显示上次结果、失败分别落在各自提示并给出重试，且“重试差异”确实发出新的 Diff 请求（页面 `fetch` 探针计数）而不是复用缓存。
 - 任务书级应用验收的范围、结果与未覆盖项集中记录在 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`；通过单个脚本不代表其未覆盖场景也通过。

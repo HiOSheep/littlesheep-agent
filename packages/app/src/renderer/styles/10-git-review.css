@@ -292,6 +292,21 @@
   overscroll-behavior: contain;
 }
 
+/* Stale Git review content. The tone is the shared feedback structure's job. */
+.workspace-review-update-notice {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--notice-font-size);
+  line-height: 1.4;
+}
+
 .workspace-review-diff-scroll > .workspace-placeholder {
   min-height: 100%;
 }
