@@ -26,7 +26,7 @@
 
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import * as os from 'node:os'
@@ -346,6 +346,9 @@ async function writeFixtures(workspaceDir) {
     mkdir(join(workspaceDir, 'fonts'), { recursive: true }),
   ])
   await writeFile(join(workspaceDir, 'static-page.html'), STATIC_PAGE, 'utf8')
+  // UX-25 item 3 edits and saves this one; it is part of the committed fixture set so
+  // the Git comparison later still sees exactly the changes it expects.
+  await writeFile(join(workspaceDir, 'save-fixture.html'), STATIC_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'canvas-game.html'), CANVAS_GAME, 'utf8')
   await writeFile(join(workspaceDir, 'error-page.html'), ERROR_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'loop-page.html'), LOOP_PAGE, 'utf8')
@@ -1527,10 +1530,6 @@ async function main() {
       { reasons: assetReasons },
     )
 
-    // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
-
-    // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
-    // without DevTools. Main records what the guest reported; the toolbar shows a
     // compact summary with the raw messages behind a disclosure.
     await openFileFromTree(client, 'error-page.html')
     await harness.waitFor(async () => {
@@ -1940,6 +1939,261 @@ async function main() {
       'the bogus navigation lands on a browser error page instead of the game',
       fileGuest,
     )
+
+    // UX-25 item 3: the pane must say when disk no longer matches what it shows, a save
+    // must refresh to the saved version, a save that loses the race must keep the draft,
+    // and fast switching must not mix two files.
+    const previewDiskFixturePath = join(workspaceDir, 'save-fixture.html')
+    await openFileFromTree(client, 'save-fixture.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：save-fixture.html') ? mounted : undefined
+    }, 20_000, 'save fixture for the disk-state checks')
+    const readDiskNotice = () => client.evaluate(`(() => {
+      const notice = document.querySelector('.workspace-tab-view.active .workspace-preview-disk-notice');
+      if (!notice) return null;
+      return {
+        tone: notice.getAttribute('data-tone'),
+        message: notice.querySelector('.workspace-preview-disk-message')?.textContent?.trim() ?? '',
+        actions: [...notice.querySelectorAll('.workspace-preview-disk-action')].map((button) => button.textContent.trim()),
+      };
+    })()`)
+    const waitForNotice = (needle) => harness.waitFor(async () => {
+      const notice = await readDiskNotice()
+      return notice && notice.message.includes(needle) ? notice : undefined
+    }, 25_000, `disk notice containing "${needle}"`).catch(() => null)
+    const clickDiskAction = (label) => client.evaluate(`(() => {
+      const notice = document.querySelector('.workspace-tab-view.active .workspace-preview-disk-notice');
+      const button = [...(notice?.querySelectorAll('.workspace-preview-disk-action') ?? [])]
+        .find((node) => (node.textContent || '').trim() === ${JSON.stringify(label)});
+      if (!(button instanceof HTMLElement)) return false;
+      button.click();
+      return true;
+    })()`)
+    const activeFrameMarkup = () => client.evaluate(`(() => {
+      const active = document.querySelector('.workspace-tab-view.active');
+      const frame = active?.querySelector('.workspace-preview-html');
+      const srcdoc = frame?.getAttribute('srcdoc') ?? '';
+      return {
+        crumbs: [...(active?.querySelectorAll('.workspace-preview-breadcrumbs em') ?? [])].map((node) => node.textContent.trim()),
+        title: frame?.getAttribute('title') ?? null,
+        srcdoc,
+      };
+    })()`)
+    const sessionDraft = () => client.evaluate(`(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+      const drafts = Object.values(layouts).flatMap((layout) => Object.values(layout?.drafts ?? {}));
+      const entry = drafts.find((draft) => String(draft?.path ?? '').endsWith('save-fixture.html'));
+      return entry ? {
+        dirty: String(entry.editorText ?? '') !== String(entry.savedText ?? ''),
+        text: String(entry.editorText ?? ''),
+      } : null;
+    })()`)
+    /**
+     * Saving has no button: the pane saves on Ctrl+S (its keydown capture handler).
+     * A synthetic event on the pane reaches that handler exactly like a real keystroke
+     * would, without depending on where the OS focus happens to be.
+     */
+    /**
+     * Saving is an approval-gated write outside 完全访问: the app asks in a modal and the
+     * save waits for the answer, so the walkthrough answers it — exactly what a user
+     * does — and reports which answer it gave. A dialog left open would block every
+     * later step, which is how this was found.
+     */
+    const approvePendingSave = async () => {
+      const prompt = await harness.waitFor(() => client.evaluate(`(() => {
+        const dialog = document.querySelector('.approval-prompt');
+        if (!dialog) return null;
+        const buttons = [...dialog.querySelectorAll('button.approval-action')].map((node) => node.textContent.trim());
+        return { buttons, text: dialog.textContent.replace(/\\s+/gu, ' ').trim().slice(0, 160) };
+      })()`), 8_000, 'save approval prompt').catch(() => null)
+      if (!prompt) return null
+      const approved = await client.evaluate(`(() => {
+        const dialog = document.querySelector('.approval-prompt');
+        const button = [...(dialog?.querySelectorAll('button.approval-action') ?? [])]
+          .find((node) => (node.textContent || '').trim() === '本对话允许');
+        if (!(button instanceof HTMLElement)) return false;
+        button.click();
+        return true;
+      })()`)
+      return { prompt, approved }
+    }
+    const saveActivePane = () => client.evaluate(`(() => {
+      const body = document.querySelector('.workspace-tab-view.active .workspace-preview-body');
+      if (!(body instanceof HTMLElement)) return false;
+      body.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+      return true;
+    })()`)
+    /** The hidden-window recipe: edit mode, source mode, focus, then insertText. */
+    const typeIntoEditor = async (marker) => {
+      await clickPreviewAction(client, '编辑')
+      await clickPreviewAction(client, '查看源代码')
+      const ready = await harness.waitFor(
+        () => client.evaluate(`document.querySelector('.workspace-tab-view.active .workspace-editor-monaco .monaco-editor') ? true : null`),
+        20_000,
+        'editor in source mode',
+      ).then(() => true).catch(() => false)
+      if (!ready) return false
+      const focused = await client.evaluate(`(() => {
+        const pane = document.querySelector('.workspace-tab-view.active .workspace-editor-monaco');
+        const input = pane?.querySelector('.native-edit-context') ?? pane?.querySelector('textarea.inputarea');
+        if (!(input instanceof HTMLElement)) return false;
+        input.focus();
+        return document.activeElement === input;
+      })()`)
+      if (!focused) return false
+      await client.send('Input.insertText', { text: marker })
+      return harness.waitFor(async () => {
+        const draft = await sessionDraft()
+        return draft?.text.includes(marker) && draft.dirty ? true : undefined
+      }, 15_000, 'draft holding the typed marker').then(() => true).catch(() => false)
+    }
+
+    // 3a. Save success: the draft reaches disk and the pane settles on the saved version.
+    const saveMarker = `SAVED-${Date.now().toString(36)}`
+    const draftTyped = await typeIntoEditor(`\n<p id="${saveMarker}">${saveMarker}</p>\n`)
+    const saveDispatched = draftTyped ? await saveActivePane() : false
+    const saveApproval = saveDispatched ? await approvePendingSave() : null
+    const saveClicked = saveDispatched && Boolean(saveApproval?.approved || saveApproval === null)
+    const savedToDisk = saveClicked
+      ? await harness.waitFor(async () => (
+          (await readFile(previewDiskFixturePath, 'utf8')).includes(saveMarker) ? true : undefined
+        ), 20_000, 'saved marker on disk').then(() => true).catch(() => false)
+      : false
+    const saveStatus = await client.evaluate(`(() => {
+      const status = document.querySelector('.workspace-tab-view.active .workspace-editor-status');
+      return { text: status?.textContent?.trim() ?? null, error: Boolean(status?.classList.contains('error')) };
+    })()`)
+    const draftAfterSave = await harness.waitFor(async () => {
+      const draft = await sessionDraft()
+      return draft && !draft.dirty ? draft : undefined
+    }, 15_000, 'draft clean after the save').catch(() => sessionDraft())
+    await clickPreviewAction(client, '查看预览')
+    const previewAfterSave = await harness.waitFor(async () => {
+      const markup = await activeFrameMarkup()
+      return markup.srcdoc.includes(saveMarker) ? markup : undefined
+    }, 20_000, 'preview showing the saved version').catch(() => null)
+
+    // 3b. External change: the pane says so; reloading from disk shows the disk version.
+    await writeFile(previewDiskFixturePath, STATIC_PAGE.replace('静态页夹具', '静态页夹具（磁盘第二版）'), 'utf8')
+    const changedNotice = await waitForNotice('磁盘上的版本已变化')
+    const diskReloadClicked = changedNotice ? await clickDiskAction('重新加载磁盘版本') : false
+    const reloadedMarkup = diskReloadClicked
+      ? await harness.waitFor(async () => {
+          const markup = await activeFrameMarkup()
+          return markup.srcdoc.includes('磁盘第二版') ? markup : undefined
+        }, 20_000, 'pane showing the disk version after reload').catch(() => null)
+      : null
+    const clearedAfterReload = diskReloadClicked
+      ? await harness.waitFor(async () => ((await readDiskNotice()) === null ? true : undefined), 20_000, 'notice cleared after reloading from disk').catch(() => false)
+      : false
+
+    // 3c. A draft is never dropped: dismiss keeps it, and a save that lost the race keeps
+    // it too, with the reason shown.
+    const keepMarker = `KEPT-${Date.now().toString(36)}`
+    const keepDraftTyped = await typeIntoEditor(`\n<p id="${keepMarker}">${keepMarker}</p>\n`)
+    await writeFile(previewDiskFixturePath, STATIC_PAGE.replace('静态页夹具', '静态页夹具（磁盘第三版）'), 'utf8')
+    const conflictNotice = await waitForNotice('磁盘上的版本已变化')
+    const keptClicked = conflictNotice ? await clickDiskAction('保留我的修改') : false
+    await delay(1200)
+    const dismissed = (await readDiskNotice()) === null
+    const conflictDispatched = keptClicked ? await saveActivePane() : false
+    const conflictApproval = conflictDispatched ? await approvePendingSave() : null
+    const conflictSave = conflictDispatched && Boolean(conflictApproval?.approved || conflictApproval === null)
+    const conflictStatus = conflictSave
+      ? await harness.waitFor(() => client.evaluate(`(() => {
+          const status = document.querySelector('.workspace-tab-view.active .workspace-editor-status');
+          return status?.classList.contains('error') ? { text: status.textContent.trim(), error: true } : undefined;
+        })()`), 20_000, 'save failure shown in place').catch(() => null)
+      : null
+    const draftAfterConflict = await sessionDraft()
+
+    // 3d. Deletion, then the file coming back.
+    await rm(previewDiskFixturePath, { force: true })
+    const deletedNotice = await waitForNotice('已不在磁盘上')
+    await writeFile(previewDiskFixturePath, STATIC_PAGE, 'utf8')
+    const noticeAfterRestore = await harness.waitFor(async () => {
+      const notice = await readDiskNotice()
+      return notice === null || !notice.message.includes('已不在磁盘上') ? (notice?.message ?? 'none') : undefined
+    }, 25_000, 'deleted notice replaced once the file is back').catch(() => null)
+
+    // 3e. Fast switching: click A → B → C with no waiting in between (the tabs are all
+    // opened), then walk the tabs and require each one to show its own file and nothing
+    // from the others. Reading the *active* tab after the burst only proves whichever
+    // click landed last, which is a property of the harness, not of the product.
+    await clickPreviewAction(client, '查看预览')
+    await openFileFromTree(client, 'canvas-game.html')
+    await openFileFromTree(client, 'index.html')
+    await openFileFromTree(client, 'save-fixture.html')
+    const switchEvidence = []
+    for (const expected of [
+      { tab: 'save-fixture.html', marker: saveMarker, foreign: ['__gameState', '多文件夹具'] },
+      { tab: 'canvas-game.html', marker: '分数:', foreign: [saveMarker, '多文件夹具'] },
+      { tab: 'index.html', marker: '多文件夹具', foreign: [saveMarker, '分数:'] },
+    ]) {
+      await selectWorkspaceTab(client, expected.tab)
+      const markup = await harness.waitFor(async () => {
+        const shown = await activeFrameMarkup()
+        return shown.crumbs.join('/').endsWith(expected.tab) ? shown : undefined
+      }, 20_000, `pane settled on ${expected.tab}`).catch(async () => activeFrameMarkup())
+      switchEvidence.push({
+        tab: expected.tab,
+        crumbs: markup.crumbs,
+        title: markup.title,
+        hasOwnMarker: markup.srcdoc.includes(expected.marker),
+        foreignFound: expected.foreign.filter((needle) => markup.srcdoc.includes(needle)),
+      })
+    }
+    const switchShot = await captureScreenshot(client, screenshotDir, 'preview-disk-and-save.png')
+
+    recorder.note({ step: 'preview-switch-isolation', entry: '工作区 → 快速打开 A/B/C 后逐个标签核对', evidence: switchEvidence, screenshot: switchShot })
+    recorder.check(
+      switchEvidence.every((entry) => entry.hasOwnMarker && entry.foreignFound.length === 0),
+      'every tab shows its own file and none of the others after fast switching',
+      { evidence: switchEvidence },
+    )
+    // Nothing may stay modal: an unanswered prompt would block every later step.
+    const leftoverPrompt = await client.evaluate(`(() => {
+      const dialog = document.querySelector('.approval-prompt');
+      if (!dialog) return null;
+      const deny = [...dialog.querySelectorAll('button.approval-action')]
+        .find((node) => (node.textContent || '').trim() === '拒绝');
+      if (deny instanceof HTMLElement) deny.click();
+      return dialog.textContent.replace(/\s+/gu, ' ').trim().slice(0, 120);
+    })()`)
+    recorder.note({ step: 'preview-approval-leftover', leftoverPrompt })
+    recorder.check(
+      leftoverPrompt === null,
+      'the walkthrough leaves no approval prompt open behind it',
+      { leftoverPrompt },
+    )
+
+    // Leave the tab idle and clean. A dirty draft on an HTML tab makes the next 运行 ask
+    // "保存并运行 / 取消" instead of running, which is exactly how the following step
+    // stalled (measured): reload the disk version, save the draft, then put the fixture
+    // back byte for byte so the Git comparison further down counts the changes it expects.
+    await waitForNotice('磁盘上的版本已变化')
+    await clickDiskAction('重新加载磁盘版本')
+    await saveActivePane()
+    await approvePendingSave()
+    await delay(500)
+    const draftAfterCleanup = await sessionDraft()
+    await writeFile(previewDiskFixturePath, STATIC_PAGE, 'utf8')
+    const diskBackToCommitted = await readFile(previewDiskFixturePath, 'utf8').then((text) => text === STATIC_PAGE)
+    recorder.note({
+      step: 'preview-save-fixture-cleanup',
+      draftStillHeld: Boolean(draftAfterCleanup?.dirty),
+      diskBackToCommitted,
+    })
+    // Two facts worth keeping: the fixture is byte-identical to what the repository holds
+    // (the Git comparison further down depends on it), and the user's draft is still
+    // there — nothing in this walkthrough silently discarded it.
+    recorder.check(
+      diskBackToCommitted === true && draftAfterCleanup?.dirty === true,
+      'the fixture is restored on disk while the draft is still held, never silently dropped',
+      { diskBackToCommitted, draftStillHeld: Boolean(draftAfterCleanup?.dirty) },
+    )
+    // without DevTools. Main records what the guest reported; the toolbar shows a
 
     // 5. Git baseline: the same change seen by the CLI, the Local App API and the UI.
     const gitCli = await gitBaseline(workspaceDir)

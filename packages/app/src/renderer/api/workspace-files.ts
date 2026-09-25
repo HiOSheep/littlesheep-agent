@@ -5,7 +5,7 @@ import type {
   WorkspaceLayoutSnapshot,
 } from '../../shared/workspace-contracts'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes'
-import { localApiFetch, localApiStatusError } from './common'
+import { localApiFetch, localApiResponseError, localApiStatusError } from './common'
 
 export async function selectWorkspace(): Promise<string | null> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.workspaceSelect, { method: 'POST' })
@@ -104,11 +104,28 @@ export async function listWorkspaceDirectory(root: string, path?: string): Promi
 
 export async function previewWorkspaceFile(root: string, path: string): Promise<WorkspacePreview> {
   const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspacePreview}?${workspaceQuery(root, path)}`)
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
-  }
+  // `localApiResponseError` keeps the status *and* the server's sentence: the pane needs
+  // both to tell "this file changed on disk" (409, reload first) from "try again later".
+  if (!res.ok) throw await localApiResponseError(res)
   return res.json() as Promise<WorkspacePreview>
+}
+
+export interface WorkspaceFileStat {
+  path: string
+  relativePath: string
+  exists: boolean
+  modifiedAt: number | null
+  size: number | null
+}
+
+/**
+ * Metadata-only check for the open file (UX-25 item 3): the pane uses it to notice an
+ * external change or a deletion before a save has to fail with 409.
+ */
+export async function statWorkspaceFile(root: string, path: string): Promise<WorkspaceFileStat> {
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceFileStat}?${workspaceQuery(root, path)}`)
+  if (!res.ok) throw localApiStatusError(res.status)
+  return res.json() as Promise<WorkspaceFileStat>
 }
 
 export async function saveWorkspaceFile(
@@ -123,10 +140,9 @@ export async function saveWorkspaceFile(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ root, path, content, expectedModifiedAt, sessionId }),
   })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
-    throw new Error((data as { error: string }).error)
-  }
+  // `localApiResponseError` keeps the status *and* the server's sentence: the pane needs
+  // both to tell "this file changed on disk" (409, reload first) from "try again later".
+  if (!res.ok) throw await localApiResponseError(res)
   return res.json() as Promise<WorkspacePreview>
 }
 

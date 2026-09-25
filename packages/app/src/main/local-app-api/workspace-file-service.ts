@@ -77,6 +77,32 @@ export async function listWorkspaceDirectory(root: string, target: string) {
   }
 }
 
+/**
+ * Is the file on disk still the version the renderer is showing?
+ *
+ * UX-25 item 3: the pane has to be able to say "磁盘上的版本已变化" or "文件已被删除"
+ * *before* the user tries to save (the save's 409 is the last line of defence, not the
+ * first notice). This answers with metadata only — no content, no preview work — so a
+ * periodic check stays cheap.
+ */
+export async function statWorkspaceFile(root: string, target: string): Promise<{
+  path: string
+  relativePath: string
+  exists: boolean
+  modifiedAt: number | null
+  size: number | null
+}> {
+  const base = {
+    path: target,
+    relativePath: relative(root, target),
+  }
+  const info = await stat(target).catch(() => undefined)
+  if (!info?.isFile()) {
+    return { ...base, exists: false, modifiedAt: null, size: null }
+  }
+  return { ...base, exists: true, modifiedAt: info.mtimeMs, size: info.size }
+}
+
 export async function previewWorkspaceFile(root: string, target: string) {
   const info = await stat(target)
   if (!info.isFile()) throw new HttpError(400, 'workspace path is not a file')

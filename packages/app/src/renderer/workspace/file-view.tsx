@@ -1,5 +1,5 @@
 // Owns one workspace file's cached loading, approved save transaction, and preview handoff.
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   openWorkspacePathInVSCode,
   saveWorkspaceFile,
@@ -56,41 +56,39 @@ export function WorkspaceFileView({
   const [error, setError] = useState('')
   const requestRef = useRef(0)
 
-  useEffect(() => {
-    let alive = true
+  const loadPreview = useCallback(async () => {
     const requestId = ++requestRef.current
+    setError('')
+    try {
+      // A selected file must be checked against the filesystem even when its
+      // cached preview is still fresh; the file may have been deleted or moved
+      // after the navigator populated the cache.
+      const result = await workspaceFilePreviewCache.load(root, path, { force: true })
+      if (requestId !== requestRef.current) return
+      setPreview(result)
+    } catch (err) {
+      if (requestId !== requestRef.current) return
+      console.debug('[workspace-file-view] file preview request failed', err)
+      const missingMessage = missingWorkspaceFileMessage(err)
+      if (missingMessage) {
+        workspaceFilePreviewCache.invalidate(root, path)
+        setPreview(null)
+        setError(missingMessage)
+        return
+      }
+      setError(workspaceErrorMessage(err, '文件预览暂时无法读取，请稍后重试。'))
+    } finally {
+      if (requestId === requestRef.current) setLoading(false)
+    }
+  }, [path, root])
+
+  useEffect(() => {
     const cached = workspaceFilePreviewCache.read(root, path)
     setPreview(cached)
     setError('')
     setLoading(!cached)
-    // A selected file must be checked against the filesystem even when its
-    // cached preview is still fresh; the file may have been deleted or moved
-    // after the navigator populated the cache.
-    workspaceFilePreviewCache.load(root, path, { force: true })
-      .then((result) => {
-        if (!alive || requestId !== requestRef.current) return
-        setPreview(result)
-      })
-      .catch((err) => {
-        if (!alive || requestId !== requestRef.current) return
-        console.debug('[workspace-file-view] file preview request failed', err)
-        const missingMessage = missingWorkspaceFileMessage(err)
-        if (missingMessage) {
-          workspaceFilePreviewCache.invalidate(root, path)
-          setPreview(null)
-          setError(missingMessage)
-          return
-        }
-        setError(workspaceErrorMessage(err, '文件预览暂时无法读取，请稍后重试。'))
-      })
-      .finally(() => {
-        if (!alive || requestId !== requestRef.current) return
-        setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [root, path])
+    void loadPreview()
+  }, [loadPreview, path, root])
 
   async function openInVSCode() {
     try {
@@ -136,6 +134,7 @@ export function WorkspaceFileView({
       onOpenInVSCode={openInVSCode}
       onSaveFile={saveFile}
       onOpenBrowserTab={onOpenBrowserTab}
+      onReloadFromDisk={loadPreview}
       onDraftChange={onDraftChange}
       comments={comments}
       onCommentsChange={onCommentsChange}

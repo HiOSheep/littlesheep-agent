@@ -2037,6 +2037,44 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   color: var(--danger);
 }
 
+/* The file on disk is no longer what the pane is showing (UX-25 item 3). Same row
+   geometry as the save status; only the tone changes, and the draft is never dropped
+   by a notice — the actions are the user's. */
+.workspace-preview-disk-notice {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.workspace-preview-disk-notice[data-tone='warning'] {
+  color: var(--warning, var(--accent));
+}
+
+.workspace-preview-disk-notice[data-tone='failure'] {
+  color: var(--danger);
+}
+
+.workspace-preview-disk-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workspace-preview-disk-action {
+  flex: 0 0 auto;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid currentcolor;
+  /* The house rules: controls stay on the default cursor and use the radius token. */
+  border-radius: var(--radius-ui);
+  padding: 1px 6px;
+}
+
 .workspace-editor-monaco {
   position: relative;
   height: 100%;

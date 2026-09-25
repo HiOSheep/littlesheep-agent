@@ -16,6 +16,7 @@ import {
   MAX_TEXT_SAVE_BYTES,
   previewWorkspaceFile,
   saveWorkspaceTextFile,
+  statWorkspaceFile,
 } from './workspace-file-service.js'
 import { workspaceGitReviewCache } from './workspace-git-review-cache.js'
 import type { WorkspacePreviewServers } from './workspace-preview-server.js'
@@ -87,6 +88,15 @@ export async function routeWorkspace(
     const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
     json(res, 200, await previewWorkspaceFile(root, target))
+    return true
+  }
+
+  // Metadata-only: the pane uses this to notice an external change or a deletion
+  // before the user tries to save (UX-25 item 3).
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceFileStat) {
+    const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
+    json(res, 200, await statWorkspaceFile(root, target))
     return true
   }
 

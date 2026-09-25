@@ -15,6 +15,9 @@ import {
 } from '../workspace-persistence'
 import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
 import { WorkspaceHtmlPreviewSurface } from './html-preview-surface'
+import { WorkspacePreviewDiskNotice } from './preview-disk-notice'
+import { workspaceDiskNotice } from './preview-disk-state'
+import { useWorkspaceDiskWatch } from './use-workspace-disk-watch'
 import { WorkspaceOfficePreview } from './office-preview-panel'
 import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
@@ -24,7 +27,7 @@ import { HtmlRunNotice } from './html-run-notice'
 import { useHtmlRun } from './use-html-run'
 import { useCodeWrapPreference } from '../ui/code-wrap-preference'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
-import { workspaceErrorMessage } from './workspace-errors'
+import { workspaceSaveErrorMessage } from './workspace-errors'
 import { reportWorkspacePreviewVisible } from './workspace-timing'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
@@ -41,6 +44,7 @@ export function WorkspacePreviewPane({
   onOpenInVSCode,
   onSaveFile,
   onOpenBrowserTab,
+  onReloadFromDisk,
   onDraftChange,
   comments,
   onCommentsChange,
@@ -60,6 +64,8 @@ export function WorkspacePreviewPane({
   onOpenInVSCode: () => void | Promise<void>
   onSaveFile: (path: string, content: string, expectedModifiedAt?: number) => Promise<WorkspacePreview>
   onOpenBrowserTab: (url: string) => void
+  /** Re-read the file from disk; used by the external-change notice. */
+  onReloadFromDisk?: () => void
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   comments?: WorkspaceLineComment[]
   onCommentsChange?: (comments: WorkspaceLineComment[]) => void
@@ -105,6 +111,9 @@ export function WorkspacePreviewPane({
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  /** A dismissed disk notice, keyed by the situation it dismissed. */
+  const [diskKeptPath, setDiskKeptPath] = useState('')
+  const [diskWatchRevision, setDiskWatchRevision] = useState(0)
   const [codeWrapEnabled, setCodeWrapEnabled] = useCodeWrapPreference()
   /** Path whose save confirmation must survive the preview refresh it caused. */
   const savedStatusPathRef = useRef<string | null>(null)
@@ -114,6 +123,18 @@ export function WorkspacePreviewPane({
   } | null>(null)
   const editorVisible = editable && (!isMarkdown || showMarkdownSource) && (!isHtml || showHtmlSource)
   const dirty = editable && editorText !== savedText
+  // UX-25 item 3: notice an external change or deletion while the user is still here,
+  // not only when a save has to fail. diskKeptPath remembers a dismissed notice so it
+  // does not nag until the situation changes again.
+  const diskState = useWorkspaceDiskWatch({
+    root: workspacePath,
+    path: preview?.path ?? '',
+    loadedModifiedAt: preview?.modifiedAt,
+    enabled: Boolean(preview) && !loading && editable,
+    revision: diskWatchRevision,
+  })
+  const diskNoticeKey = `${diskState}\0${preview?.modifiedAt ?? 0}`
+  const diskNotice = diskKeptPath === diskNoticeKey ? null : workspaceDiskNotice(diskState, dirty)
   const editorLineCount = editable ? countEditorLines(editorText) : null
   const fileTypeLabel = editable ? editorLanguageLabel : (preview ? attachmentExtLabel(preview.name) : '')
   const previewModifiedAt = preview?.modifiedAt ? formatDateTime(preview.modifiedAt) : ''
@@ -248,7 +269,9 @@ export function WorkspacePreviewPane({
       return true
     } catch (err) {
       console.debug('[workspace-preview-pane] file save failed', err)
-      setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))
+      // A 409/413/415/403 already says what to do; the generic sentence would tell the
+      // user to retry something that cannot succeed until they act.
+      setSaveError(workspaceSaveErrorMessage(err, '文件保存失败，请稍后重试。'))
       return false
     } finally {
       setSaving(false)
@@ -307,6 +330,15 @@ export function WorkspacePreviewPane({
           {saveError || saveMessage}
         </div>
       )}
+      <WorkspacePreviewDiskNotice
+        notice={diskNotice}
+        onKeepDraft={() => setDiskKeptPath(diskNoticeKey)}
+        onReloadFromDisk={() => {
+          setDiskKeptPath(diskNoticeKey)
+          setDiskWatchRevision((value) => value + 1)
+          onReloadFromDisk?.()
+        }}
+      />
       <div
         className={`workspace-preview-body ${editorVisible ? 'editor' : ''}`}
         onKeyDownCapture={(event) => {

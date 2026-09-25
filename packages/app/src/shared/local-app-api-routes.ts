@@ -33,6 +33,8 @@ export const LOCAL_APP_API_ROUTES = {
   attachmentImport: '/attachments/import',
   workspaceList: '/workspace/list',
   workspacePreview: '/workspace/preview',
+  /** Metadata-only check: is the file still the version the pane is showing? */
+  workspaceFileStat: '/workspace/file-stat',
   workspacePreviewServer: '/workspace/preview-server',
   workspaceReview: '/workspace/review',
   workspaceReviewDiff: '/workspace/review/diff',

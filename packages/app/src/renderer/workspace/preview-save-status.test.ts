@@ -18,6 +18,8 @@ describe('workspace preview save status', () => {
       /if \(savedStatusPathRef\.current === preview\?\.path\) savedStatusPathRef\.current = null\s*else \{\s*setSaveMessage\(''\); setSaveError\(''\)/u,
     )
     // A failed save still reports in place, with the draft kept for a retry.
-    expect(pane).toContain("setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))")
+    // The failure keeps the draft and reports the server's actionable reason when there
+    // is one (a 409 says to reload, so "稍后重试" would be wrong).
+    expect(pane).toContain("setSaveError(workspaceSaveErrorMessage(err, '文件保存失败，请稍后重试。'))")
   })
 })
