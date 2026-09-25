@@ -1,5 +1,5 @@
 # Renderer 设置
-最后更新：2026-09-25 06:53:14
+最后更新：2026-09-25 17:24:13
 
 这里负责设置侧边栏、设置页和直接打开的记忆树/插件/已安排页面。设置与主页共用全局导航和侧边栏交互，但不复制运行时数据。
 
@@ -8,6 +8,7 @@
 - `agent-profile.tsx`、`appearance.tsx`、`storage.tsx`、`scheduled.tsx`、`plugins.tsx`、`direct-module.tsx`：领域页面；`appearance.tsx` 只放显示偏好（对话显示密度，普通/紧凑，存储仍是 `normal`/`compact`），`agent-profile.tsx` 只放 profile 与上下文策略（压缩阈值收在“高级上下文设置”折叠里），术语统一遵循 `docs/principles/ui-interaction-guidelines.md` 的术语表。
 - `scheduled.tsx`：计划任务尚未接入 Runtime，因此页面只声明“功能尚未接入”，不提供筛选或创建控件，也不显示“暂无数据”式的空态；侧边栏、设置总览和直接模块页共用这一个页面，入口描述同样标注未接入。
 - `models.tsx`、`model-provider-editor.tsx`、`model-provider-draft.ts`、`provider-editor-session.ts`：模型供应商卡片、编辑对话框、纯校验草稿和会话级草稿存储；删除供应商先经 `ui/danger-confirm.tsx` 确认，影响文案来自 `deletion-impact.ts`，只描述配置条目移除，不声称密钥被清除。空态明确写出“保存配置只代表写入了密钥和模型声明，不代表 LS 已经验证过它真的可以调用”，与输入栏的 `runtime-availability.ts` 用同一个 `isConfiguredProvider` 判定“已配置”。
+- 供应商删除在确认后立即以 `deletingRef` 同步锁住同一次操作，防止同一帧连点发出两次 DELETE；响应完成或失败后才释放。真实窗口验收见 `pnpm run verify:deletion-confirmation`。
 - `web.tsx`、`web-state.ts`、`browser.tsx`、`development-environments.tsx`：网络检索、内置浏览器和开发环境注册表页面。
 - `application-background.tsx`、`active-run-row.tsx`、`application-background-state.ts`：三档关闭策略与活动任务控制。活动列表通过 `api/application-lifecycle.ts` 的 SSE 订阅同步，手动刷新只用于快照校准，不使用常驻轮询。
 

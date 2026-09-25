@@ -175,6 +175,15 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
   if (user.includes('运行中的补充验收')) {
     return textChoice('已处理补充要求：运行中的补充验收。')
   }
+  if (user.includes('UX07-APPROVAL-ESCAPE')) {
+    const toolMessage = [...messages].reverse().find((message) => message?.role === 'tool')
+    return toolMessage
+      ? textChoice('审批路径已结束。')
+      : toolChoice('ux07-approval-write', 'write', {
+        file_path: 'ux07-approval-escape-probe.txt',
+        content: 'This file must not exist after Escape denies approval.\n',
+      })
+  }
   if (system.includes('Choose the next LittleSheep activity')) {
     const activity = /使用\s*glob\s*工具|use\s+the\s+glob\s+tool/iu.test(user) ? 'execute' : 'respond'
     return textChoice(JSON.stringify({ activity, confidence: 0.99, reason: 'deterministic acceptance route' }))

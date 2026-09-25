@@ -12,7 +12,7 @@
 // Usage:
 //   node scripts/verify-keyboard-modal-focus.mjs [--out=<dir>] [--keep]
 
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
@@ -155,6 +155,27 @@ const FOCUS_STATE_EXPRESSION = `(() => {
   }
 })()`
 
+const INSTALL_APPROVAL_PROBE = `(() => {
+  const probe = { responses: [] }
+  window.__ux07ApprovalProbe = probe
+  const originalFetch = window.fetch.bind(window)
+  window.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url) || ''
+    const method = String((init && init.method) || 'GET').toUpperCase()
+    if (method === 'POST' && /\\/approvals\\/[^/]+$/u.test(url)) {
+      let body = null
+      try { body = JSON.parse(String(init?.body ?? 'null')) } catch {}
+      const entry = { approved: body?.approved ?? null, status: null }
+      probe.responses.push(entry)
+      const response = await originalFetch(input, init)
+      entry.status = response.status
+      return response
+    }
+    return originalFetch(input, init)
+  }
+  return true
+})()`
+
 async function main() {
   await harness.assertBuildFresh()
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-keyboard-modal-'))
@@ -246,6 +267,73 @@ async function main() {
     const secondEscapeClosedSettings = afterSecondEscape.settingsOpen === false
     const escapeScreenshot = await writePng(client, 'after-escape')
 
+    // --- 5. a real Agent approval starts on its explanation and Escape denies the write -------
+    const exitFocused = await focusSelector(client, '[aria-label="退出设置页"]')
+    await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`), harness.startTimeoutMs, 'the composer after leaving settings')
+    await evaluate(client, INSTALL_APPROVAL_PROBE)
+    const promptDrafted = await evaluate(client, `(() => {
+      const textarea = document.querySelector('.composer textarea')
+      if (!(textarea instanceof HTMLTextAreaElement)) return false
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+      setter?.call(textarea, '请使用 write 工具创建 UX07-APPROVAL-ESCAPE 验收文件')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+      textarea.focus()
+      return true
+    })()`)
+    await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.approval-prompt') ? true : null`), harness.startTimeoutMs, 'the Agent approval prompt')
+    const approvalOpened = await evaluate(client, `(() => {
+      const prompt = document.querySelector('.approval-prompt')
+      const active = document.activeElement
+      return {
+        title: prompt?.querySelector('h2')?.textContent?.trim() ?? null,
+        focusOnHeading: active === prompt?.querySelector('h2'),
+        action: prompt?.querySelector('.approval-kicker')?.textContent?.trim() ?? null,
+      }
+    })()`)
+    await pressKey(client, 'Enter')
+    const approvalAfterEnter = await evaluate(client, `Boolean(document.querySelector('.approval-prompt'))`)
+    const backgroundPoint = await evaluate(client, `(() => {
+      const textarea = document.querySelector('.composer textarea')
+      if (!(textarea instanceof HTMLTextAreaElement)) return null
+      const bounds = textarea.getBoundingClientRect()
+      window.__ux07BackgroundClicks = 0
+      textarea.addEventListener('click', () => { window.__ux07BackgroundClicks += 1 })
+      return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
+    })()`)
+    if (!backgroundPoint) throw new Error('the background composer is missing')
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: backgroundPoint.x, y: backgroundPoint.y, button: 'left', buttons: 1, clickCount: 1,
+    })
+    await client.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: backgroundPoint.x, y: backgroundPoint.y, button: 'left', buttons: 0, clickCount: 1,
+    })
+    const backgroundClickCount = await evaluate(client, `window.__ux07BackgroundClicks`)
+    const approvalTabTrace = []
+    for (let index = 0; index < 4; index += 1) {
+      await pressKey(client, 'Tab')
+      approvalTabTrace.push(await evaluate(client, `(() => {
+        const prompt = document.querySelector('.approval-prompt')
+        return Boolean(prompt && document.activeElement && prompt.contains(document.activeElement))
+      })()`))
+    }
+    await pressKey(client, 'Escape')
+    // The first key starts the exit animation. A second key while the old DOM
+    // is still present must not trigger another approval decision.
+    await pressKey(client, 'Escape')
+    await delay(300)
+    const approvalAfterEscape = await evaluate(client, `(() => ({
+      promptOpen: Boolean(document.querySelector('.approval-prompt')),
+      focusRestored: document.activeElement === document.querySelector('.composer textarea'),
+      settingsOpen: Boolean(document.querySelector('.settings-workspace')),
+    }))()`)
+    await harness.waitFor(() => evaluate(client, `window.__ux07ApprovalProbe?.responses?.some((item) => item.status !== null) || null`), harness.startTimeoutMs, 'the approval response')
+    const approvalResponses = await evaluate(client, `window.__ux07ApprovalProbe.responses`)
+    const approvalScreenshot = await writePng(client, 'approval-denied-by-escape')
+    const deniedWritePath = join(workplaceDir, 'ux07-approval-escape-probe.txt')
+    const deniedWriteAbsent = await access(deniedWritePath).then(() => false, () => true)
+
     const results = {
       entryFocused,
       navFocused,
@@ -256,7 +344,16 @@ async function main() {
       afterFirstEscape,
       afterSecondEscape,
       secondEscapeClosedSettings,
-      screenshots: { dialogScreenshot, tabScreenshot, escapeScreenshot },
+      exitFocused,
+      promptDrafted,
+      approvalOpened,
+      approvalAfterEnter,
+      backgroundClickCount,
+      approvalTabTrace,
+      approvalAfterEscape,
+      approvalResponses,
+      deniedWriteAbsent,
+      screenshots: { dialogScreenshot, tabScreenshot, escapeScreenshot, approvalScreenshot },
     }
 
     const failures = []
@@ -280,6 +377,20 @@ async function main() {
     expect(afterFirstEscape.settingsOpen, 'the first Escape closed the settings layer as well')
     expect(afterFirstEscape.activeClass?.includes('archive-action') === true,
       `focus did not return to the delete action: ${JSON.stringify(afterFirstEscape.activeClass)}`)
+    // 5. a real write approval is readable before any grant; Escape rejects it.
+    expect(exitFocused === true, 'the settings exit could not be focused')
+    expect(promptDrafted === true, 'the approval request could not be submitted')
+    expect(approvalOpened.title === '允许写入文件？', `unexpected approval title: ${approvalOpened.title}`)
+    expect(approvalOpened.action === 'Agent 工具调用', 'approval did not come from an Agent tool')
+    expect(approvalOpened.focusOnHeading, 'approval initially focused an action instead of its explanation')
+    expect(approvalAfterEnter, 'Enter on the heading unexpectedly approved the operation')
+    expect(backgroundClickCount === 0, 'a pointer click reached the background composer through the approval layer')
+    expect(approvalTabTrace.every(Boolean), 'Tab escaped the approval dialog')
+    expect(approvalAfterEscape.promptOpen === false, 'Escape did not close the approval dialog')
+    expect(approvalAfterEscape.focusRestored, 'approval did not restore focus to the composer')
+    expect(approvalResponses.length === 1 && approvalResponses[0]?.approved === false && approvalResponses[0]?.status < 300,
+      `Escape must submit one rejection: ${JSON.stringify(approvalResponses)}`)
+    expect(deniedWriteAbsent, 'the denied write still reached the filesystem')
 
     if (failures.length > 0) {
       throw new Error(`keyboard modal focus acceptance failed: ${JSON.stringify({ results, failures })}`)

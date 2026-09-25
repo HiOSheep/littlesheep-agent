@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 17:12:24
+最后更新：2026-09-25 17:22:57
 
 ## 1. 范围与结论
 
@@ -251,10 +251,10 @@
 
 **定位**：[approval/prompt.tsx](../../packages/app/src/renderer/approval/prompt.tsx)、[checkpoint-recovery.tsx](../../packages/app/src/renderer/runtime-recovery/checkpoint-recovery.tsx)、[ui/presence.tsx](../../packages/app/src/renderer/ui/presence.tsx)、[MemorySkills.tsx](../../packages/app/src/renderer/MemorySkills.tsx)、[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)。
 
-- [ ] 为真正模态对话框统一进入焦点、Tab 范围、背景不可操作、关闭后返回触发点；将“平铺编辑页”与模态 dialog 分开定义。
-- [ ] Escape 只交给最上层处理；审批中的 Escape 保持拒绝语义，恢复中的关闭保持稍后处理语义；单纯关闭不能意外批准或放弃任务。
-- [ ] 评估审批初始焦点改为说明或非授权动作，避免打开时连续 Enter 意外授予权限；保留完全访问红色确认。
-- [ ] 验收：只用键盘打开、阅读、循环 Tab、取消、返回原位置；两层 UI 时一次 Escape 只收起一层；退出动画期间不会重复触发操作。
+- [x] 为真正模态对话框统一进入焦点、Tab 范围、背景不可操作、关闭后返回触发点；将“平铺编辑页”与模态 dialog 分开定义。
+- [x] Escape 只交给最上层处理；审批中的 Escape 保持拒绝语义，恢复中的关闭保持稍后处理语义；单纯关闭不能意外批准或放弃任务。
+- [x] 评估审批初始焦点改为说明或非授权动作，避免打开时连续 Enter 意外授予权限；保留完全访问红色确认。
+- [x] 验收：只用键盘打开、阅读、循环 Tab、取消、返回原位置；两层 UI 时一次 Escape 只收起一层；退出动画期间不会重复触发操作。
 
 **实施记录（2026-09-22 23:12:16）｜状态：实现完成，实机验收未做，保持未勾选**
 
@@ -275,6 +275,11 @@
 - 实现范围：`runtime-recovery/checkpoint-recovery.tsx` 在恢复弹窗显示期间继续挂载入口，并用 `aria-hidden`、`tabIndex=-1`、`pointer-events:none` 暂时从辅助技术、键盘顺序和指针操作中移除。这样共享模态层关闭时仍能把焦点还给原入口；入口不再因弹窗开关被卸载。
 - 验证方式：`checkpoint-recovery-state.test.ts` 10/10 通过，`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过；`pnpm run verify:recovery-states -- --windows=1` 的真实 Electron 窗口场景返回 `ok: true`。用键盘 Enter 打开损坏记录入口，再以 CDP Escape 关闭，观测 `dialogOpen=false`、`triggerFocused=true`、损坏 checkpoint 仍存在、Provider 请求数为 0；随后再次打开并查看记录也成功。验收进程正常退出。
 - 未覆盖项：本次只验了恢复弹窗。审批 Escape 是否拒绝且不误批准、审批初始焦点、全套背景不可操作、退出动画期间重复触发均未实机闭合；系统缩放和窗口尺寸未记录。已有键盘确认层的 Tab 循环、Escape 单层关闭和焦点返回证据不能替代审批场景，因此 UX-07 保持未勾选。
+
+**实施记录（2026-09-25 17:22:18）｜状态：审批与退出动画补齐真实窗口验收；UX-07 四项完成**
+
+- 扩展 `pnpm run verify:keyboard-modal-focus`，在隔离窗口里发起真实 Agent `write` 工具调用并进入 Main 审批流程。初始焦点落在说明标题；标题上按 Enter 后弹窗仍在；四次 Tab 均留在弹窗内；指针点击弹窗背后的输入栏，背景收到 0 次点击。连续两次 Escape 期间只向 `/approvals/{id}` 提交 **1 次** `approved:false`（HTTP 200），弹窗关闭后焦点回到输入栏，目标文件不存在。授权拒绝与文件系统结果共同证明没有误授权。原有两层 UI 的键盘打开、Tab 循环、一次 Escape 只收顶层及焦点返回断言也再次通过。
+- 恢复层的 Escape / 稍后处理和现场保留由 `verify:recovery-states -- --windows=1` 的真实窗口结果覆盖；完全访问红色确认和页面级 Escape 的规则由 `modal-layer.test.ts` 及既有验收覆盖。真正模态用遮罩阻断背景指针，用 Tab 约束键盘；平铺编辑页沿页面级作用域，不使用模态 Tab 限制。
 
 ### UX-08｜未接通功能不呈现虚假可操作性
 
