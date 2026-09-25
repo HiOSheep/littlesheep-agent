@@ -14,8 +14,11 @@ import {
   WORKSPACE_NAVIGATOR_MOTION_START_EVENT,
 } from '../ui/resize'
 
+// Latin stays monospace; the CJK tail is explicit so Chinese inside the editor
+// resolves to the same face as prose (Microsoft YaHei UI) instead of whatever the
+// browser falls back to per glyph. Keep it in sync with `--mono`.
 export const WORKSPACE_MONACO_FONT_FAMILY =
-  'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, monospace'
+  'Consolas, ui-monospace, SFMono-Regular, Menlo, Monaco, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace'
 
 // Keep the editor gutter stable across ordinary files and Git review. A
 // four-character line-number reserve plus a dedicated decoration gutter keeps
