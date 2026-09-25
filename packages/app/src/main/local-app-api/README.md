@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 07:28:55
+最后更新：2026-09-26 07:31:31
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -94,3 +94,7 @@
 ## 与命令行基线一致（UX-28 第 2 条，2026-09-26）
 
 `workspace-git-review-baseline.test.ts` 用真实 Git 造出每个形态，先取 `git status --porcelain -z --untracked-files=all`，再问审阅同一批路径，两边必须给出同一组路径与同一类状态：**子目录**（审阅给工作区相对路径，且必须能被自己的 diff API 取到）、**linked worktree**（`.git` 是文件；分支标签取该 worktree 的分支）、**detached HEAD**（标签形如 `detached@ea8cd6f`）、**未解决冲突**（`UU` → `conflicted`）、**子模块**（gitlink 的 ` M`）、**中文与空格路径 + 空文件 + 二进制**。此前已有：仓库根、无 HEAD、重命名/删除/新增、二进制、不支持格式的限制说明。
+
+## 失败分类的实际复现（UX-28 第 1 条，2026-09-26）
+
+`workspace-git-review-unavailable.test.ts` 在真机上复现两类：**Git 未安装**（清空 PATH 并重新导入模块，绕过可执行文件缓存 → `git-unavailable`）与**权限拒绝**（`icacls .git\index /deny <用户>:(R)` 让 Git 自己报 `Permission denied` → `permission-denied`，恢复 ACL 后仓库恢复可用）。另有一条把"不自动修改全局 `safe.directory`"变成实测：读损坏仓库前后 `git config --global --list` 完全一致。ownership 与 timeout 在本机无法复现（需要别的账户拥有的目录／真的挂住的 git），保持分类级证据。
