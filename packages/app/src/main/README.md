@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 05:01:58
+最后更新：2026-09-26 05:57:16
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -70,3 +70,7 @@
 ## 差异层的元数据（2026-09-26）
 
 `local-app-api/workspace-git-diff.ts` 的 `readDiffLayer` 会把纯重命名 / 权限变化的 extended header 作为 `metadata` 返回（`parseDiffMetadata` 解析，键保持 Git 原文），"该层使用了普通 unified diff 之外的格式"只在既无 hunk 又无元数据时出现（UX-28 第 3 条）。
+
+## 审阅上限的呈现（2026-09-26）
+
+`review-tree.tsx` 的 `reviewSummaryLabel` 把被截断的列表写成"显示前 N 个，共 M 个文件"；`workspace-git-review-limits.test.ts` 用 2,100 个文件与 6,000 行改动钉住列表/每层上限与"合计不完整"的标记（UX-28 第 5 条）。
