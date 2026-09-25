@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 17:09:14
+最后更新：2026-09-25 18:43:18
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -16,6 +16,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **窄窗口与缩放下的表单可用性**：关键按钮必须始终可达（含滚动后可达），输入字段不得被压缩到无法输入，页面不出现非必要横向滚动，长路径既能完整查看也能复制。供应商模型行在 560px 以下由四列改为堆叠并显示每字段标签（实测最小窗口下原布局只剩 62px/44px，见 `src/renderer/README.md` 的 `styles/` 条目）；五组窗口×缩放组合的走查见 `pnpm run verify:narrow-high-dpi-forms`。
 - **失败留在发起处**：供应商保存、阈值保存、渠道重载、插件启停、文件保存五类写操作都必须在本页显示失败与下一步（`src/renderer/ui/feedback.ts` 的 `tone` 字段决定 `status`/`alert` 与色调，长错误有界折叠），不要求用户回到聊天区找错误；工作区文件保存的状态行还要跨过它自己触发的那次预览刷新。五类注入见 `pnpm run verify:async-feedback`。
 - **不可逆删除先讲清范围**：归档项目删除说明随项目移除的归档对话数和本地消息记录，并确认磁盘目录保留；供应商删除说明模型条目、当前模型依赖、密钥库与对话记录边界。真实窗口门 `pnpm run verify:deletion-confirmation` 覆盖取消、Escape、失败重试、归档项目多会话清理及删除连点只提交一次。
+- **陈旧数据必须自报状态**：Git 审阅在刷新进行中、更新失败或差异仍属于上一个 revision 时，旧结果必须说明自己是旧的——快照与单文件 Diff 各自成条、各自带重试，快照失败还要报出上次成功读取时间；提示的文案与色调只由 `src/renderer/workspace/review-refresh-notice.ts` 派生，视图不写提示句子。真实窗口门 `pnpm run verify:review-refresh-errors` 会按住、注入失败并断言“重试差异”真的发出新请求。
 - **右侧工作区的导航占位是布局契约**：普通目录导航由 `.workspace-shared-file-navigator` 这个 flex 项占位，而审阅标签的导航是审阅表面的直接子元素——只有 `position: absolute` 时它会盖住 Diff 表面和标题行按钮（UX-18 实机验收测得两组按钮落在同一矩形，指针不可达）。`src/renderer/styles/04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则让它留在行内，改动这块样式前先读 `src/renderer/README.md` 的 `styles/` 条目与 `pnpm run verify:review-navigator-width`。
 - **代码换行偏好跨两个代码界面共享**：Markdown 代码块的头部栏在高亮与纯文本回退路径中相同；`CodeWrapToggle` 与工作区 Monaco 读取 `littlesheep.ui.codeWrap`。默认关闭、开启后即时同步并记住状态。`pnpm run verify:code-wrap-control` 在隔离 Electron 窗口实测了水平溢出变化与 Monaco 折行行数。
 - **重启保留当前入口**：启动时恢复上次会话只装载会话历史与工作区，不会覆盖应用关闭前保存的设置页或模块路由；用户手动切换会话仍返回对话。真实退出/重开验收见 `pnpm run verify:electron-ui-state-continuity`。
