@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 03:37:48
+最后更新：2026-09-26 04:43:19
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -78,3 +78,7 @@
 ## Git 审阅读取的一致性（UX-27 第 2 条，2026-09-26）
 
 `workspace-git-review-consistency.ts` + `workspace-git-review.ts`：一次审阅读取由多条只读 Git 命令组成，**不是**原子快照。因此在装配前取指纹（`HEAD`、`.git/index` 的 mtime/size、以及**与装配同参数**的 `status --porcelain -z` 指纹），装配后重新取一次；不一致就**有界重读**（默认 2 次尝试，即 1 次重试）。两次都赶上变化时快照照常返回，但带 `unstable: true`，界面据此显示"仓库在读取期间仍在变化"，而不是把混合状态当成新结果。指纹必须用同一组参数取（用更窄的探针会让每次读取都被判成竞态，集成测试当场抓到过这个假阳性）。
+
+## Git 读取失败的分类（UX-28 第 1 条，2026-09-26）
+
+`workspace-git-failure.ts` 把整次审阅读取的失败按 Git 自己的 stderr 分类（`not-repository` / `dubious-ownership` / `permission-denied` / `corrupt-repository` / `timed-out` / `cancelled` / `git-unavailable` / `unknown`），每类给一句可执行的原因与下一步，原始 stderr 只保留首行且不超过 200 字符。分类作用于整次读取（index 损坏只让 `status` 失败而 `rev-parse` 仍成功），并映射为快照的 `availability` 与 `message`；取消仍然抛出（调用方按 AbortError 处理）。绝不自动写 `safe.directory` 或任何全局配置——属主不符时只把 Git 的话转达给用户。

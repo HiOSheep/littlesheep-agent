@@ -45,6 +45,10 @@ import {
   reviewStatusHash,
   type ReviewConsistencyFacts,
 } from './workspace-git-review-consistency.js'
+import {
+  gitFailureOf,
+  type WorkspaceGitFailureKind,
+} from './workspace-git-failure.js'
 
 const MAX_REVIEW_FILES = 2_000
 
@@ -96,7 +100,24 @@ export async function readWorkspaceReviewSnapshotRecord(
         filterOverrides: [],
       }
     }
-    throw repositoryResult.reason
+    // UX-28 item 1: report *why* the read failed. A damaged repository, an ownership
+    // refusal, a permission problem, a timeout and a cancelled read are five different
+    // situations with five different next steps; only a genuine non-repository is normal.
+    const failure = gitFailureOf(repositoryResult.reason)
+    // Cancellation is not a repository state: the caller aborted on purpose (navigation,
+    // a newer read, shutdown) and its own handling depends on the rejection.
+    if (failure.kind === 'unknown' || failure.kind === 'cancelled') throw repositoryResult.reason
+    return {
+      snapshot: emptySnapshot(
+        root,
+        randomUUID(),
+        new Date().toISOString(),
+        availabilityForGitFailure(failure.kind),
+        `${failure.reason}${failure.detail ? `（${failure.detail}）` : ''}`,
+      ),
+      repository: null,
+      filterOverrides: [],
+    }
   }
   const repository = repositoryResult.value
   if (!repository) {
@@ -114,7 +135,56 @@ export async function readWorkspaceReviewSnapshotRecord(
   // ed again after; a disagreement means the result describes a state that never
   // existed and is re-read (bounded). If it keeps changing, the snapshot is marked
   // `unstable` instead of being presented as fresh.
-  let lastRecord: WorkspaceReviewSnapshotRecord | null = null
+  try {
+    return await readStableReviewRecord(root, repository, filterOverrides, options)
+  } catch (error) {
+    const classified = failureSnapshot(root, error)
+    if (classified) return classified
+    throw error
+  }
+}
+
+/**
+ * One consistency-checked read, or the classified snapshot for a reportable failure.
+ *
+ * The failure can surface from any of the Git commands the assembly runs (a corrupt
+ * index only breaks `status`, not `rev-parse`), so the classification is applied to the
+ * whole read rather than to its first step.
+ */
+function failureSnapshot(
+  root: string,
+  error: unknown,
+): WorkspaceReviewSnapshotRecord | null {
+  if (isGitUnavailable(error)) {
+    return {
+      snapshot: emptySnapshot(root, randomUUID(), new Date().toISOString(), 'git-unavailable', 'Git 不可用。'),
+      repository: null,
+      filterOverrides: [],
+    }
+  }
+  const failure = gitFailureOf(error)
+  // Cancellation is not a repository state, and an unclassified error keeps its own
+  // message rather than being dressed up as a Git problem.
+  if (failure.kind === 'unknown' || failure.kind === 'cancelled') return null
+  return {
+    snapshot: emptySnapshot(
+      root,
+      randomUUID(),
+      new Date().toISOString(),
+      availabilityForGitFailure(failure.kind),
+      `${failure.reason}${failure.detail ? `（${failure.detail}）` : ''}`,
+    ),
+    repository: null,
+    filterOverrides: [],
+  }
+}
+
+async function readStableReviewRecord(
+  root: string,
+  repository: RepositoryContext,
+  filterOverrides: readonly GitConfigOverride[],
+  options: WorkspaceReviewReadOptions,
+): Promise<WorkspaceReviewSnapshotRecord> {
   const consistency = await readConsistentReview<WorkspaceReviewSnapshotRecord>({
     readFacts: () => readReviewConsistencyFacts(repository, options),
     readOnce: async () => {
@@ -128,11 +198,10 @@ export async function readWorkspaceReviewSnapshotRecord(
         indexModifiedAt: before.indexModifiedAt,
         indexSize: before.indexSize,
       })
-      lastRecord = pass.record
       return { value: pass.record, facts: observed }
     },
   })
-  const record = consistency.value ?? lastRecord
+  const record = consistency.value
   if (!record) throw new Error('review snapshot produced no result')
   return consistency.stable
     ? record
@@ -351,6 +420,31 @@ function diffRequests(
     requests.push({ kind: 'unstaged', args: repositoryDiffArgs(repository, 'unstaged', false, pathspecs) })
   }
   return requests
+}
+
+
+/** The snapshot availability that matches a classified failure. */
+function availabilityForGitFailure(
+  kind: WorkspaceGitFailureKind,
+): WorkspaceReviewSnapshot['availability'] {
+  switch (kind) {
+    case 'not-repository':
+      return 'not-repository'
+    case 'dubious-ownership':
+      return 'dubious-ownership'
+    case 'permission-denied':
+      return 'permission-denied'
+    case 'corrupt-repository':
+      return 'corrupt-repository'
+    case 'timed-out':
+      return 'timed-out'
+    case 'cancelled':
+      return 'cancelled'
+    case 'git-unavailable':
+      return 'git-unavailable'
+    default:
+      return 'git-error'
+  }
 }
 
 function emptySnapshot(

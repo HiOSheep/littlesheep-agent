@@ -616,7 +616,7 @@ async function probePreviewFrameMarkup(debuggingPort, needle) {
       documents.push(await frameClient.evaluate(`(() => ({
         url: location.href,
         htmlLength: document.documentElement.outerHTML.length,
-        text: (document.body?.innerText ?? '').replace(/\s+/gu, ' ').slice(0, 120),
+        text: (document.body?.innerText ?? '').replace(/\\s+/gu, ' ').slice(0, 120),
         hasMarker: document.documentElement.outerHTML.includes(${JSON.stringify(needle)}),
         styleSheets: document.styleSheets.length,
         scripts: document.scripts.length,
@@ -2159,7 +2159,7 @@ async function main() {
       const deny = [...dialog.querySelectorAll('button.approval-action')]
         .find((node) => (node.textContent || '').trim() === '拒绝');
       if (deny instanceof HTMLElement) deny.click();
-      return dialog.textContent.replace(/\s+/gu, ' ').trim().slice(0, 120);
+      return dialog.textContent.replace(/\\s+/gu, ' ').trim().slice(0, 120);
     })()`)
     recorder.note({ step: 'preview-approval-leftover', leftoverPrompt })
     recorder.check(

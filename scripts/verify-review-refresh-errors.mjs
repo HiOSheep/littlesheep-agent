@@ -111,9 +111,10 @@ const SURFACE_EXPRESSION = `(() => {
   return {
     visible: Boolean(review && review.getBoundingClientRect().width > 0),
     files: review?.querySelectorAll('[role="treeitem"]').length ?? 0,
-    fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\s+/gu, ' ').trim()).join(' | '),
-    selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\s+/gu, ' ').trim(),
+    fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
+    selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\\s+/gu, ' ').trim(),
     branch: (review?.querySelector('.workspace-files-root span')?.textContent || '').replace('Git 审阅', '').trim(),
+    placeholder: [...(review?.querySelectorAll('.workspace-placeholder') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
     notices,
     refresh: refresh ? { disabled: refresh.disabled } : null,
@@ -121,7 +122,7 @@ const SURFACE_EXPRESSION = `(() => {
     // The diff *layers'* text, not the whole pane: the pane also hosts the built-in
     // editor placeholder, which has nothing to do with the diff's version.
     diffText: [...document.querySelectorAll('.workspace-review-diff-layer')]
-      .map((node) => node.textContent || '').join(' ').replace(/\s+/gu, ' ').trim().slice(0, 600),
+      .map((node) => node.textContent || '').join(' ').replace(/\\s+/gu, ' ').trim().slice(0, 600),
     viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
     probe: probe ? {
       snapshots: probe.snapshots, diffs: probe.diffs,
@@ -665,13 +666,14 @@ async function main() {
       selected: { name: selectedName, uiShowsIt: selectedAddedLine.length > 0 && afterVersion.diffText.includes(selectedAddedLine) },
     })
     recorder.check(
-      // Row labels are ellipsized by the view (measured: `sample.txt` renders as
-      // `ample.txt`), so the comparison is on the count and the totals the revision
-      // carries; the names stay in the record as evidence.
-      afterVersion.files === (apiSnapshot.body?.files?.length ?? -1)
+      // Names, count and totals all come from the same read. (An earlier version compared
+      // only the counts because row labels *looked* ellipsized: that was this gate eating
+      // the letter `s` through `/s+/` in a template literal, not the view.)
+      uiNames.join(',') === apiNames.join(',')
+      && afterVersion.files === (apiSnapshot.body?.files?.length ?? -1)
       && uiAdditions === (apiSnapshot.body?.additions ?? -1)
       && rereading === false,
-      'the file list on screen matches the snapshot revision it came from, totals included',
+      'the file list on screen matches the snapshot revision it came from, names and totals included',
       { uiFiles: afterVersion.files, apiFiles: apiSnapshot.body?.files?.length ?? null, uiNames, apiNames, uiAdditions, apiAdditions: apiSnapshot.body?.additions ?? null },
     )
     recorder.check(
@@ -866,6 +868,31 @@ async function main() {
       churn = false
       clearInterval(churnTimer)
     }
+
+    // UX-28 item 1 in the window: a damaged repository has to say it is damaged (and what
+    // to do) instead of claiming the directory is not a Git repository. The fixture is
+    // disposable, so the index is simply left broken at the end of the walkthrough.
+    await writeFile(join(workspaceDir, '.git', 'index'), 'garbage that is not an index\n', 'utf8')
+    await click(client, REFRESH_LABEL)
+    const damagedSnapshot = await waitForSurface(
+      client,
+      (surface) => surface.placeholder.includes('git fsck'),
+      25_000,
+      'damaged repository explained in the view',
+    ).catch(() => readSurface(client))
+    const damagedShot = await captureScreenshot(client, screenshotDir, 'review-damaged-repository.png')
+    recorder.note({
+      step: 'damaged-repository',
+      placeholder: damagedSnapshot.placeholder,
+      files: damagedSnapshot.files,
+      screenshot: damagedShot,
+    })
+    recorder.check(
+      damagedSnapshot.placeholder.includes('git fsck')
+      && !damagedSnapshot.placeholder.includes('不是 Git 仓库'),
+      'a damaged repository is reported as damaged, with the next step, not as "not a repository"',
+      { placeholder: damagedSnapshot.placeholder },
+    )
   } catch (error) {
     recorder.check(false, 'the walkthrough completed without an unexpected failure', {
       error: error instanceof Error ? error.message : String(error),

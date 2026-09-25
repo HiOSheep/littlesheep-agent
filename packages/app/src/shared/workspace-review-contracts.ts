@@ -1,6 +1,21 @@
 // Structured, bounded Git review records shared by Main and the renderer.
 
-export type WorkspaceReviewAvailability = 'ready' | 'not-repository' | 'git-unavailable'
+export type WorkspaceReviewAvailability =
+  | 'ready'
+  /** The directory is not inside a work tree (the one normal, non-broken case). */
+  | 'not-repository'
+  | 'git-unavailable'
+  /** Git refused because the directory is owned by another user (safe.directory). */
+  | 'dubious-ownership'
+  | 'permission-denied'
+  /** The repository exists but its data cannot be read. */
+  | 'corrupt-repository'
+  /** The read ran into the bounded time limit. */
+  | 'timed-out'
+  /** The read was cancelled. */
+  | 'cancelled'
+  /** A failure the classifier could not name; the message carries the raw evidence. */
+  | 'git-error'
 
 export type WorkspaceReviewFileStatus =
   | 'added'

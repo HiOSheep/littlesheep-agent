@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-26 03:37:48
+最后更新：2026-09-26 04:43:19
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -32,3 +32,7 @@
 ## 审阅快照的 unstable 字段（2026-09-26）
 
 `workspace-review-contracts.ts` 的 `WorkspaceReviewSnapshot` 增加可选 `unstable?: boolean`：仓库在全部有界重读尝试期间仍在变化时为 true（UX-27 第 2 条），缺省即"读取一致"。渲染器据此提示，而不是把混合状态当成已结算结果。
+
+## 审阅可用性的失败分类（2026-09-26）
+
+`workspace-review-contracts.ts` 的 `WorkspaceReviewAvailability` 除 `ready`/`not-repository`/`git-unavailable` 外，新增 `dubious-ownership`/`permission-denied`/`corrupt-repository`/`timed-out`/`cancelled`/`git-error`：非 ready 的快照都带一句可执行原因，渲染器只需显示 `message`（UX-28 第 1 条）。

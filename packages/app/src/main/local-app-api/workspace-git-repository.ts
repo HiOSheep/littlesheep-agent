@@ -3,6 +3,11 @@
 import { relative, resolve } from 'node:path'
 import { runReadOnlyGit } from './workspace-git-command.js'
 import {
+  classifyGitFailure,
+  isNotRepositoryFailure,
+  WorkspaceGitReadError,
+} from './workspace-git-failure.js'
+import {
   literalGitPathspec,
   nativeRelativePathToGitPath,
   normalizeGitPath,
@@ -22,7 +27,14 @@ export async function resolveRepositoryContext(
     allowExitCodes: [0, 128],
     signal,
   })
-  if (rootResult.code !== 0) return null
+  if (rootResult.code !== 0) {
+    // UX-28 item 1: a non-zero `rev-parse` is not automatically "not a repository". The
+    // stderr is classified, so a damaged object store or a `safe.directory` refusal is
+    // reported as itself; only a genuine "not a git repository" stays null.
+    const failure = classifyGitFailure(new Error(rootResult.stderr || 'git rev-parse failed'))
+    if (isNotRepositoryFailure(failure)) return null
+    throw new WorkspaceGitReadError(failure)
+  }
   const repositoryRoot = resolve(rootResult.stdout.toString('utf8').trim())
   const scope = normalizeGitPath(nativeRelativePathToGitPath(relative(repositoryRoot, workspacePath)))
   if (scope === '..' || scope.startsWith('../')) return null
