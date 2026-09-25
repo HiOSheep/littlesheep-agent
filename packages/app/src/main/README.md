@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 04:46:00
+最后更新：2026-09-26 05:01:58
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -66,3 +66,7 @@
 ## Git 读取失败的分类（2026-09-26）
 
 `local-app-api/workspace-git-failure.ts` 把审阅读取的失败按 Git 的 stderr 分类（不是仓库 / 属主不符 / 权限拒绝 / 仓库损坏 / 超时 / 取消 / 未找到 Git / 未分类），每类一句可执行原因，原始证据不超过首行 200 字符；分类作用于整次读取，取消仍然抛出。LS 不会自动写 `safe.directory`（UX-28 第 1 条）。
+
+## 差异层的元数据（2026-09-26）
+
+`local-app-api/workspace-git-diff.ts` 的 `readDiffLayer` 会把纯重命名 / 权限变化的 extended header 作为 `metadata` 返回（`parseDiffMetadata` 解析，键保持 Git 原文），"该层使用了普通 unified diff 之外的格式"只在既无 hunk 又无元数据时出现（UX-28 第 3 条）。
