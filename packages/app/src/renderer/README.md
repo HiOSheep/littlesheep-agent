@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 05:57:16
+最后更新：2026-09-26 06:30:12
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -66,3 +66,4 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 - `workspace/review-refresh-notice.ts` 现在还负责 `unstable` 快照的提示（"仓库在读取期间仍在变化…"，warning 级）：Main 的有界重读仍赶不上变化时，旧数据照常显示但明确标注（UX-27 第 2 条）。
 - `workspace/review-diff-metadata.ts` 给差异层的 extended header 起人名（重命名自/重命名为、复制自/复制为、相似度、旧/新权限并解释权限号），`review-diff.tsx` 在层内列出（UX-28 第 3 条）。
 - `workspace/review-tree.tsx` 的 `reviewSummaryLabel`：列表被截断时显示"显示前 N 个，共 M 个文件"（UX-28 第 5 条）。
+- `workspace/review-limits.ts`：导航器折叠时把列表/差异层的上限语句交给差异面板（`review-diff.tsx` 用 `.workspace-review-limit-notice` 渲染），展开时不重复（UX-28 第 5 条）。
