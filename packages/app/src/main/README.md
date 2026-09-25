@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 00:59:32
+最后更新：2026-09-26 02:18:36
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -50,3 +50,7 @@
 - 测试与实现同目录，临时数据必须使用隔离目录。
 - 新 API 先确定领域路由、共享协议、错误格式和恢复语义，再接入兼容 facade。
 - 启动恢复的 HTTP/SSE 契约（发现、详情、续跑、放弃、观察者断开后仍继续恢复）定位在 `run-checkpoint-api.test.ts`；它用假 Runner 构造 `runCheckpoints`，因此 **store 诊断新增字段时必须同步这个夹具**（`warningFindings` 曾经漏加，列表路由因此 500）。真实窗口的五类恢复状态由 `pnpm run verify:recovery-states` 覆盖。
+
+## 预览服务的资源失败记录（2026-09-26）
+
+`local-app-api/workspace-preview-server.ts` 除服务文件外，还记录被拒绝的子资源请求（路径、状态、时间，各条目上限 30）与成功计数，供静态预览显示哪个资源没加载、为什么。这是 UX-25 第 2、4 条把相对资源交给 Main 校验后的观测面；边界（token、根内真实路径、无目录列举、无写方法）不变。

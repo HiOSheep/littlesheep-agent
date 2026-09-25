@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-25 23:51:06
+最后更新：2026-09-26 02:18:36
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -66,3 +66,7 @@
 - Git 审阅必须复用同一份仓库快照：普通仓库使用一次带 `--branch --ahead-behind` 的状态查询解析分支、upstream 和 ahead/behind，staged Diff 同时兼容无首个 commit 的仓库；文件 Diff 必须携带快照 revision，陈旧 revision 返回 409，不能为旧树隐式重扫仓库。
 - 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
 - 修改后运行 App typecheck、对应 API 特征测试、全量测试、构建和恢复检查。
+
+## 静态服务的资源失败记录（UX-25 第 4 条）
+
+`workspace-preview-server.ts` 的有界 loopback 服务按条目记录**被拒绝的子资源请求**（路径、状态、时间，上限 30 条）与成功计数：静态预览不运行脚本，帧内看不到缺失的样式表或图片，这个服务是唯一目击者。记录随 `GET /workspace/preview-server` 一起返回（`assetFailures`/`assetSuccesses`），渲染器据此在预览上方列出原因并提供重试。

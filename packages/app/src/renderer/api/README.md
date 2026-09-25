@@ -1,6 +1,6 @@
 # Renderer API 客户端
 
-最后更新：2026-09-25 23:51:06
+最后更新：2026-09-26 02:18:36
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。
 
@@ -45,3 +45,7 @@
 
 - 修改客户端后至少运行 `pnpm.cmd --filter @littlesheep/app run typecheck`。
 - 修改路由或 SSE 契约时同时运行对应 Local App API 特征测试和全量质量检查。
+
+## 预览服务客户端（2026-09-26）
+
+`workspace-preview-server.ts` 增加 `listWorkspacePreviewServers()`（GET），返回值除服务身份外还带 `assetFailures`（路径/状态/时间）与 `assetSuccesses`；静态预览用它把哪些相对资源没加载显示给用户并可重试（UX-25 第 2、4 条）。
