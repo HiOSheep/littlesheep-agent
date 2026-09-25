@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-25 07:12:30
+最后更新：2026-09-25 20:29:02
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -12,6 +12,7 @@
 - `context-usage-contracts.ts` 的 `SessionContextUsageRecord` 增加 `sessionCache`（`SessionCumulativeCacheUsage`）：会话累计缓存复用，字段与验收账本一致，精确值不做取整。
 - `run-checkpoint-contracts.ts` 的 `LocalAppRunCheckpointDiagnostics` 两个计数**互斥**：`invalidFiles` 是最近一次扫描读不出来的记录数（每份文件算一次），`warningCount` 只统计不属于这些记录的发现（残留临时文件、目录 I/O）。此前 `warningCount` 取诊断条目总数，而每条坏记录自己也贡献一条，同一份文件因此被同时说成"无法读取"和"不完整"；领域实现见 `@littlesheep/runner` 的 `run-checkpoint-scan.ts`。
 - `runtime-readiness-contracts.ts` / `runtime-readiness-ipc.ts`：执行就绪的唯一载荷与通道契约（`starting`/`ready`/`failed` + 阶段 + 原因 + 端口，`apiVersion` 校验）、渲染器启动计时的通道名与封闭阶段白名单，以及失败后**有界重试**的通道（`RUNTIME_RETRY_EXECUTION_CHANNEL`；渲染器计时白名单另含 `renderer-workspace-entries` / `renderer-workspace-preview` 两个"右侧真正可用"阶段；回答带 `accepted` / `attemptsUsed` / `attemptsRemaining` / `refusedBecause`，窗口据此如实呈现"这次没被接受"）。窗口早于 Runner 出现，这两个文件是渲染器判断"能不能执行、能不能重试"的唯一协议来源。
+- `local-app-api-routes.ts` 是两侧唯一的路径目录（静态路由、动态前缀和 ID 编解码都只认它）。UX-26 新增 `workspacePreviewServer: '/workspace/preview-server'`：`POST` 为选定工作区的 HTML 页面启动有界 loopback 服务并返回带 token 的 URL，`DELETE` 停止它，`GET` 列出现有服务；服务本身的边界（根范围、真实路径、token、Host、生命周期）由 `../main/local-app-api/workspace-preview-server.ts` 拥有，这里只登记路径。
 - `channel-control-contracts.ts` 的 `ChannelStatus.running` 带后端契约：`ChannelConnectionsStatus.channels` 来自 `PluginHost.listChannels()`，即渠道管理器的**运行表**（停止会移出条目，启动失败进 `failures`），所以列出的条目按契约就是在运行的；字段保留是因为设置页必须按运行项计数，不能把"已配置"或"列表非空"当成连接健康。契约由 `packages/plugins/src/channel/manager.test.ts` 钉住，四种 fixture 的真实窗口核对见 `pnpm run verify:channel-entry-states`。
 - 只能依赖纯 TypeScript 契约，不依赖 Electron、React、文件系统或网络；测试可以用隔离临时目录。
 - 跨 package 的稳定协议应进入 `@littlesheep/types`；仅 App 两侧共享的模型留在此处。
