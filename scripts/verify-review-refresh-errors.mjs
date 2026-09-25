@@ -16,7 +16,7 @@
 //   node scripts/verify-review-refresh-errors.mjs [--keep]
 
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile , rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
@@ -113,6 +113,7 @@ const SURFACE_EXPRESSION = `(() => {
     files: review?.querySelectorAll('[role="treeitem"]').length ?? 0,
     fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\s+/gu, ' ').trim()).join(' | '),
     selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\s+/gu, ' ').trim(),
+    branch: (review?.querySelector('.workspace-files-root span')?.textContent || '').replace('Git 审阅', '').trim(),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
     notices,
     refresh: refresh ? { disabled: refresh.disabled } : null,
@@ -678,6 +679,193 @@ async function main() {
       'the diff read for the snapshot revision the list came from contains the new line',
       { revision: apiRevision ?? null, status: apiDiff?.status ?? null, hasMarker: apiDiffText.includes(versionMarker) },
     )
+
+    // UX-27 item 3: the repository moving underneath the view must not mix data. Each of
+    // these is a real Git change followed by a refresh, so the list and the diff have to
+    // describe the *new* state only.
+    const stageAndEdit = async () => {
+      git(workspaceDir, ['add', 'sample.txt'])
+      await writeFile(samplePath, `first\n${versionMarker}\n${versionMarker}-unstaged\n`, 'utf8')
+      await click(client, REFRESH_LABEL)
+      await waitForSurface(client, (surface) => surface.files >= 1, 25_000, 'the staged file is listed')
+      // Diff layers belong to the *selected* file, and the selection follows the list
+      // (newer.txt sorts first), so the staged file has to be selected explicitly.
+      await client.evaluate(`(() => {
+        const row = [...document.querySelectorAll('.workspace-review [role="treeitem"]')]
+          .find((node) => (node.textContent || '').includes('ample.txt'));
+        if (row instanceof HTMLElement) row.click();
+        return true;
+      })()`)
+      return waitForSurface(
+        client,
+        (surface) => surface.layers >= 2,
+        25_000,
+        'staged and unstaged layers for the same file',
+      ).catch(() => readSurface(client))
+    }
+    const stagedAndEdited = await stageAndEdit()
+    recorder.note({
+      step: 'staged-then-edited',
+      files: stagedAndEdited.files,
+      layers: stagedAndEdited.layers,
+      fileStats: stagedAndEdited.fileStats,
+    })
+    recorder.check(
+      stagedAndEdited.layers >= 2,
+      'a file staged and then edited again shows both layers instead of one',
+      { files: stagedAndEdited.files, layers: stagedAndEdited.layers, fileStats: stagedAndEdited.fileStats },
+    )
+
+    // Undo: the working tree goes back to HEAD, so the file must leave the list and its
+    // diff must not stay on screen as if it were still changed.
+    git(workspaceDir, ['restore', '--staged', 'sample.txt'])
+    git(workspaceDir, ['restore', 'sample.txt'])
+    await click(client, REFRESH_LABEL)
+    const afterUndo = await waitForSurface(
+      client,
+      (surface) => surface.files === 1,
+      25_000,
+      'only the untracked file is left after the undo',
+    ).catch(() => readSurface(client))
+    const undoSnapshot = await harness.fetchJson(locator, `/workspace/review?root=${encodeURIComponent(workspaceDir)}`)
+    recorder.note({
+      step: 'undo-removes-the-change',
+      files: afterUndo.files,
+      fileStats: afterUndo.fileStats,
+      apiFiles: (undoSnapshot.body?.files ?? []).map((file) => file.path),
+    })
+    recorder.check(
+      afterUndo.files === 1
+      && (undoSnapshot.body?.files ?? []).every((file) => !String(file.path).endsWith('sample.txt')),
+      'undoing the edit removes the file from the list instead of leaving a stale diff',
+      { files: afterUndo.files, apiFiles: (undoSnapshot.body?.files ?? []).map((file) => file.path) },
+    )
+
+    // Commit: a clean tree, and the branch label still names where we are.
+    git(workspaceDir, ['add', 'newer.txt'])
+    git(workspaceDir, ['commit', '-m', 'fixture commit during review'])
+    await click(client, REFRESH_LABEL)
+    const afterCommit = await waitForSurface(
+      client,
+      (surface) => surface.files === 0 && !surface.notices.some((notice) => notice.tone === 'error'),
+      25_000,
+      'clean tree after the commit',
+    ).catch(() => readSurface(client))
+    recorder.note({ step: 'commit-during-review', files: afterCommit.files, branch: afterCommit.branch, notices: afterCommit.notices })
+    recorder.check(
+      afterCommit.files === 0 && afterCommit.branch === 'main',
+      'committing leaves an empty, correct list on the same branch',
+      { files: afterCommit.files, branch: afterCommit.branch },
+    )
+
+    // Branch switch: the label follows, and switching back shows the same state again.
+    git(workspaceDir, ['checkout', '-b', 'fixture-branch'])
+    await writeFile(join(workspaceDir, 'on-branch.txt'), 'branch work\n', 'utf8')
+    await click(client, REFRESH_LABEL)
+    const onBranch = await waitForSurface(
+      client,
+      (surface) => surface.branch === 'fixture-branch' && surface.files === 1,
+      25_000,
+      'branch switch reflected in the label and list',
+    ).catch(() => readSurface(client))
+    git(workspaceDir, ['checkout', 'main'])
+    await rm(join(workspaceDir, 'on-branch.txt'), { force: true }).catch(() => undefined)
+    await click(client, REFRESH_LABEL)
+    const backOnMain = await waitForSurface(
+      client,
+      (surface) => surface.branch === 'main' && surface.files === 0,
+      25_000,
+      'back on main with a clean tree',
+    ).catch(() => readSurface(client))
+    recorder.note({
+      step: 'branch-switch',
+      onBranch: { branch: onBranch.branch, files: onBranch.files },
+      backOnMain: { branch: backOnMain.branch, files: backOnMain.files },
+    })
+    recorder.check(
+      onBranch.branch === 'fixture-branch' && onBranch.files === 1
+      && backOnMain.branch === 'main' && backOnMain.files === 0,
+      'switching branches and back shows each branch state, never a mixture',
+      { onBranch: { branch: onBranch.branch, files: onBranch.files }, backOnMain: { branch: backOnMain.branch, files: backOnMain.files } },
+    )
+
+    // A→B→A on the file list: the diff has to follow the selection, not lag behind it.
+    await writeFile(join(workspaceDir, 'alpha.txt'), 'alpha\n', 'utf8')
+    await writeFile(join(workspaceDir, 'beta.txt'), 'beta\n', 'utf8')
+    await click(client, REFRESH_LABEL)
+    await waitForSurface(client, (surface) => surface.files === 2, 25_000, 'two changed files')
+    const selectRow = (fragment) => client.evaluate(`(() => {
+      const row = [...document.querySelectorAll('.workspace-review [role="treeitem"]')]
+        .find((node) => (node.textContent || '').includes(${JSON.stringify(fragment)}));
+      if (!(row instanceof HTMLElement)) return false;
+      row.click();
+      return true;
+    })()`)
+    const alphaSelected = await selectRow('alpha.')
+    const alphaShown = await waitForSurface(client, (surface) => surface.diffText.includes('alpha'), 20_000, 'alpha diff').catch(() => readSurface(client))
+    const betaSelected = await selectRow('beta.')
+    const betaShown = await waitForSurface(client, (surface) => surface.diffText.includes('beta'), 20_000, 'beta diff').catch(() => readSurface(client))
+    const alphaAgain = await selectRow('alpha.')
+    const alphaBack = await waitForSurface(
+      client,
+      (surface) => surface.diffText.includes('alpha') && !surface.diffText.includes('beta'),
+      20_000,
+      'alpha diff again',
+    ).catch(() => readSurface(client))
+    recorder.note({
+      step: 'file-switch-a-b-a',
+      selected: { alpha: alphaSelected, beta: betaSelected, alphaAgain },
+      shown: {
+        alpha: alphaShown.diffText.slice(0, 80),
+        beta: betaShown.diffText.slice(0, 80),
+        alphaBack: alphaBack.diffText.slice(0, 80),
+      },
+    })
+    recorder.check(
+      alphaSelected === true && betaSelected === true && alphaAgain === true
+      && alphaShown.diffText.includes('alpha')
+      && betaShown.diffText.includes('beta')
+      && alphaBack.diffText.includes('alpha') && !alphaBack.diffText.includes('beta'),
+      'switching files A → B → A shows each file\'s own diff and nothing from the other',
+      { alpha: alphaShown.diffText.slice(0, 60), beta: betaShown.diffText.slice(0, 60), alphaBack: alphaBack.diffText.slice(0, 60) },
+    )
+
+    // Continuous change: the repository keeps being written to while the view refreshes.
+    // The reads must stay bounded (no infinite refresh loop) and the view must settle.
+    const beforeChurn = await readSurface(client)
+    let churn = true
+    const churnTimer = setInterval(() => {
+      if (!churn) return
+      void writeFile(join(workspaceDir, 'churn.txt'), `churn ${Date.now()}\n`, 'utf8')
+    }, 40)
+    try {
+      for (let clickIndex = 0; clickIndex < 3; clickIndex += 1) {
+        await click(client, REFRESH_LABEL)
+        await delay(400)
+      }
+      const settledUnderChurn = await waitForSurface(
+        client,
+        (surface) => !surface.refresh?.disabled && surface.notices.every((notice) => notice.tone !== 'error'),
+        25_000,
+        'view settles while the repository keeps changing',
+      ).catch(() => readSurface(client))
+      recorder.note({
+        step: 'churn-under-refresh',
+        files: settledUnderChurn.files,
+        snapshots: settledUnderChurn.probe?.snapshots ?? null,
+        readsDuringChurn: (settledUnderChurn.probe?.snapshots ?? 0) - (beforeChurn.probe?.snapshots ?? 0),
+        notices: settledUnderChurn.notices,
+      })
+      const churnReads = (settledUnderChurn.probe?.snapshots ?? 0) - (beforeChurn.probe?.snapshots ?? 0)
+      recorder.check(
+        settledUnderChurn.notices.every((notice) => notice.tone !== 'error') && churnReads <= 6,
+        'continuous change keeps the refresh bounded and leaves no error behind',
+        { churnReads, snapshots: settledUnderChurn.probe?.snapshots ?? null, notices: settledUnderChurn.notices },
+      )
+    } finally {
+      churn = false
+      clearInterval(churnTimer)
+    }
   } catch (error) {
     recorder.check(false, 'the walkthrough completed without an unexpected failure', {
       error: error instanceof Error ? error.message : String(error),
