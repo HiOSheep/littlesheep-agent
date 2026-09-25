@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 00:31:59
+最后更新：2026-09-26 00:59:32
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -28,6 +28,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **启动失败页可取证**：`src/main/desktop-acceptance-actions.ts` 只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时装配隔离验收动作（`/application/acceptance` 的 `resize` / `startup-error` 等），后者把真实失败文案交给生产同一份 `showStartupError` 文档，使 CS-02 能对"启动失败"这一无法靠等待到达的状态取像素证据；生产运行不挂载这些动作。
 - **验收运行不占用用户的屏幕**：隔离验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 把这条判定放在**唯一的上屏出口 `showWindow()`** 里（启动页、渲染器就绪、恢复几何、`show()` 全部经过它；只在 `show()`/`showStartup()` 上设卡会漏掉内部调用，实测窗口照样弹出）。需要像素的检查必须先经验收动作显式放行，顺序有单元测试钉住。生产启动不受影响。**副产品（实测）**：窗口隐藏时渲染器仍报 `document.visibilityState === 'visible'`、DOM 与输入管线照常工作（`Input.insertText` 能改编辑器模型并让面板变脏），但 Chromium 不做布局与绘制——`.view-line` 为 0，**离屏 iframe 也没有调试目标**；一次 `Page.captureScreenshot` 会强制出帧，之后帧目标才出现（实测目标数 1 → 2），验收门因此先"预热一帧"再读帧内文档；隐藏窗口下的截图很慢（实测 5 s，下一次 12 s 超时），所以截图已改成有界、失败只记录不判定。
 - **HTML 运行入口是"运行 / 重新加载 / 停止"**（UX-26 第 1 条）：静态预览不执行脚本，运行经 Main 的有界 loopback 服务在既有浏览器 guest 里打开；运行中"运行"按钮禁用（避免再开一个标签），"重新加载"以 URL 寻址的窗口事件让**显示该页面的那个标签**重新加载（不重启服务，保存到磁盘的改动因此生效），停止释放服务。真实窗口验收在 `pnpm run verify:html-preview-baseline`。
+- **guest 的硬约束在 Main，不在渲染器**（UX-26 第 3 条）：`<webview webpreferences>` 是渲染器写的，Main 在挂载时重写并拒绝不合规的挂载——无 Node 集成、contextIsolation/sandbox 开启、分区固定为内嵌浏览器分区、**preload 与 additionalArguments 一律删除**、非 http(s) 来源直接拒绝（`embedded-browser-hardening.ts`，3 例单测）。真实窗口实测 guest 自成顶层帧、`window.opener === null`、`window.open` 返回 null（弹窗被拒并路由成 LS 标签）、无 LS bridge、无 Node、空存储。
 - **运行中的页面自己报告问题**（UX-26 第 3 条）：`embedded-browser-diagnostics.ts` 在 Main 侧保有一份有界记录（40 条、消息截断、逐出最旧），渲染器在"运行"提示旁显示"脚本报错 N · 资源失败 M（查看详情）"，展开是页面原文。**两条来源缺一不可**：`console-message` 只报页面自己抛的错（实测缺失样式表与图片完全不产生 console 消息），子资源 4xx 与连接被拒来自 session 的 `webRequest.onCompleted/onErrorOccurred` 并以 `referrer` 归到页面上；用户因此不必打开 DevTools。真实窗口验收见 `pnpm run verify:html-preview-baseline`（`error-page.html` 夹具：脚本报错 1 + 资源失败 2）。
 - **会话累计缓存命中**：composer 的上下文指示器除窗口占用外，还显示**本会话累计**的缓存命中率与 `缓存读取 / 输入` 原值。该值由主进程 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量（`cachedPromptTokens / promptTokens`，**含冷启动**、不含压缩等分离调用），与验收账本、`check:cache-acceptance` 用的是同一组字段与同一公式；`requestsWithoutUsage > 0` 时明确标注"usage 未上报"，不把局部读数当成完整读数。展示层四舍五入，判定层一律用精确值。
 

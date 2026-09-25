@@ -1085,6 +1085,14 @@ async function main() {
       nodeRequire: typeof window.require !== 'undefined' || typeof window.process !== 'undefined',
       origin: location.origin,
       storageKeys: Object.keys(localStorage).length,
+      // Main applies the guest's web preferences at attach time (UX-26 item 3) rather than trusting the
+      // renderer's webview webpreferences. A guest runs in its own WebContents, so it
+      // is its own top frame and has no opener pointing back at the host document.
+      isTopFrame: window.parent === window && window.top === window,
+      openerIsNull: window.opener === null,
+      // A popup request must not create an OS window; Main routes http(s) requests
+      // into an LS browser tab and denies the window itself.
+      openResult: (() => { try { return window.open('https://example.com/popup-probe', '_blank') === null ? 'denied' : 'opened' } catch (error) { return 'threw:' + String(error).slice(0, 40) } })(),
     }))()`)
     const runPoint = await canvasPointInViewport(runGuest)
     await dispatchGameInput(runGuest, runPoint)
@@ -1142,6 +1150,16 @@ async function main() {
       isolation.lsBridge === false && isolation.nodeRequire === false,
       'the running page gets no LS bridge and no Node integration',
       isolation,
+    )
+    recorder.check(
+      isolation.isTopFrame === true && isolation.openerIsNull === true,
+      'the guest is its own top frame with no opener into the host document',
+      { isTopFrame: isolation.isTopFrame, openerIsNull: isolation.openerIsNull },
+    )
+    recorder.check(
+      isolation.openResult === 'denied',
+      'a popup request is denied at the window boundary (Main routes it into an LS tab)',
+      { openResult: isolation.openResult },
     )
 
     // 2b′. UX-26 item 1: the toolbar's 重新加载 reloads the page in the tab that is

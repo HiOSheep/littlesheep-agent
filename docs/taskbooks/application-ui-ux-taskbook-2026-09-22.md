@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-26 00:45:55
+最后更新：2026-09-26 00:59:32
 
 ## 1. 范围与结论
 
@@ -39,6 +39,8 @@
 **进度补记（2026-09-26 00:45:00）**：UX-26 第 3 条完成并勾选——除第 9 轮的脚本报错/资源失败诊断外，本轮补齐"无限循环或 guest 崩溃时主界面停止 / 重载仍可用"。新增死循环夹具（脚本先把自己标成"已就绪"再 `while (true)`）与 `Page.crash`：实测 guest 全程不再回答（死循环与崩溃后都是 `timeout`），而**主界面文档仍以 1–2 ms 应答**，停止与重新加载都能点、都生效（停止后运行服务的 URL 立即拒连、服务列表清空）。过程中修掉两个"会把门自己拖死"的探针缺陷：对卡死渲染进程的 `Runtime.enable` 没有超时（这正是上一轮门卡住的根因），以及 Electron 根本不回 `Page.crash` 的应答——崩溃要按"guest 之后彻底沉默"判定，不能等答复。另外把运行提示的措辞从"页面已…运行"改为"页面已…打开…页面自己报告的问题显示在下面"：加载成功不等于初始化成功，界面不再替页面宣称它跑起来了。
 
 **进度补记（2026-09-26 01:05:00）**：UX-26 第 2 条的"多文件语义"补上真实运行证据，第 6 条也推进一半。门里新增多文件运行走查：从 HTML 入口运行 `multi-file/index.html`，实测 **ES module 执行**（`__multiState.ready`）、**外部样式表生效**（`styleSheetRules 3`、`.board` 计算背景 `rgb(28, 42, 31)`）、**图片加载**（`naturalWidth 64`）、**本地 JSON 生效**（关卡显示 7，来自对 `level.json` 的 fetch）、真实点击使步数 0→1；随后把 `level.json` 改成 9，点工具条"重新加载"后页面显示 **9**（`performance.timeOrigin` 也换了新文档），证明"重载后修改生效"。另给 Canvas 夹具加了"重新开始"按钮并断言：计分 1 → 重开后 **0**、位置回到 20、HUD 回到"分数: 0"（同时覆盖第 6 条的"重开一局有效"）。写盘那一步之后把 `level.json` 还原，避免影响同一门后面的 Git 对比（第一次跑就是被这一步污染的）。**第 6 条仍不勾选**，缺：方向键/WASD/鼠标**不触发 LS 快捷键或滚动外层**的测量、需要声音的夹具在用户操作后播放、切标签返回/调整尺寸/关闭后资源释放。**第 3 条（存储分区与 Main 硬约束）也不勾选**：guest 侧已实测无 LS bridge、无 Node、独立来源与空存储，但"复核 guest 创建和导航时的 Main 硬约束、不能只信 Renderer 的 webpreferences"还没有做——Main 目前只在 `did-attach-webview` 里设 UA/窗口打开/导航，没有在 `will-attach-webview` 上强制 webPreferences。
+
+**进度补记（2026-09-26 01:25:00）**：UX-26 第 3 条（guest 隔离与 Main 硬约束）完成并勾选。此前 guest 侧只验到"无 LS bridge / 无 Node / 独立来源 / 空存储"，而"不能只信 Renderer 的 webpreferences"这一句没做：`<webview>` 的 `webpreferences` 是渲染器自己写的，属于渲染器的攻击面。现在 Main 在 `will-attach-webview` 上重写并拒绝：`embedded-browser-hardening.ts` 的纯函数 `hardenGuestAttach` 强制 `nodeIntegration(-InSubFrames/-InWorker)=false`、`contextIsolation=true`、`sandbox=true`、`webSecurity=true`、`allowRunningInsecureContent=false`、`experimentalFeatures=false`、`webviewTag=false`、`plugins=false`，把 `partition` 固定为内嵌浏览器分区，并**删除 `preload`/`preloadURL`/`additionalArguments`**（preload 就是把 LS bridge 交给网页的通道）；`src` 不是 http(s) 的挂载直接 `preventDefault` 拒绝。3 例单测覆盖"恶意输入被纠正"、"已合规输入不被改动且保留 `nativeWindowOpen`（窗口路由要用它）"、"非 http(s) 来源被拒"。真实窗口侧同时补了三条只能从 guest 里看的证据：`window.parent === window && window.top === window`（自成顶层帧）、`window.opener === null`（没有指回宿主文档的引用）、`window.open('https://example.com/…')` 返回 **null**（弹窗在窗口边界被拒，Main 把 http(s) 请求路由成 LS 标签），加上原有的无桥/无 Node/loopback 来源/空存储。门 `pnpm run verify:html-preview-baseline` 在窗口不上屏的前提下 `failures: []`。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -994,7 +996,7 @@
 
 - [x] 在 HTML 工具条提供“运行 / 重新加载 / 停止”及查看源文件的连贯入口；运行使用明确的已保存版本，遇到脏草稿提供保存并运行或取消，保存失败不运行旧版本。首次运行前简短说明将执行页面脚本；后续不重复增加低价值确认。
 - [x] 优先复用既有浏览器 guest 与生命周期，增加由 Main 管理、只绑定 loopback 的有界静态资源服务；单文件与多文件均保持浏览器正常的 HTML / CSS / JavaScript / module / fetch 语义。需要构建的项目进入已有开发服务 URL，不擅自安装依赖或执行项目脚本，也不把 TSX 当作可直接运行的 HTML。
-- [ ] 本地运行页面使用与 LS 主界面、普通网页登录态分离的存储分区及来源；Node 集成关闭、context isolation 与 sandbox 保持开启，不注入 LS preload / IPC / Local App API 凭据。复核 guest 创建和导航时的 Main 硬约束，不能只信 Renderer 的 webpreferences。
+- [x] 本地运行页面使用与 LS 主界面、普通网页登录态分离的存储分区及来源；Node 集成关闭、context isolation 与 sandbox 保持开启，不注入 LS preload / IPC / Local App API 凭据。复核 guest 创建和导航时的 Main 硬约束，不能只信 Renderer 的 webpreferences。
 - [x] 资源服务限制为选定项目范围，验证解码后的路径、符号链接及目录穿越；不同项目隔离授权与数据。防止其他网页借预览服务读取项目文件或调用 LS 控制 API，不能只靠 CORS。网络资源、弹窗、下载与设备权限沿专门策略处理，不自动继承普通浏览器的媒体等宽松权限；离线或被阻止时显示明确原因。
 - [x] 提供页面脚本错误、资源失败、服务停止的简洁状态与可展开诊断；加载成功不等于游戏初始化成功。无限循环或 guest 崩溃时，主界面停止 / 重载仍可用，不能把主界面拖死。
 - [ ] 真实窗口验收：Canvas 有画面；点击开始后计分变化；方向键 / WASD / 鼠标正常且不触发 LS 快捷键或滚动外层；重开一局有效。多文件版 module、图片、JSON 加载成功；需要声音的夹具在用户操作后播放；切标签返回、调整尺寸与关闭后资源释放均正常。

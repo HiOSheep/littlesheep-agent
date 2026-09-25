@@ -8,6 +8,7 @@ import {
   type BrowserStorageOperationResult,
   type BrowserStorageStatus,
 } from '../shared/browser-control-contracts.js'
+import { hardenGuestAttach } from './embedded-browser-hardening.js'
 import {
   consoleLevelToNumber,
   lastRememberedGuestPageUrl,
@@ -97,6 +98,24 @@ export function configureEmbeddedBrowserWindow(win: Electron.BrowserWindow): voi
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!/^https?:\/\//iu.test(url) && /^(mailto|tel):/iu.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Hard constraints for every guest, applied here rather than trusted from the
+  // renderer's `<webview webpreferences>` (UX-26): no Node integration, no preload (a
+  // preload is how the LS bridge would reach a web page), the embedded-browser
+  // partition and nothing else, and no guest that is not pointed at http(s).
+  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+    const decision = hardenGuestAttach({
+      webPreferences: webPreferences as unknown as Record<string, unknown>,
+      params: { src: params.src },
+    })
+    if (decision.corrections.length > 0) {
+      console.warn(`[embedded-browser] corrected guest web preferences: ${decision.corrections.join(', ')}`)
+    }
+    if (!decision.allowed) {
+      console.warn(`[embedded-browser] refused guest attachment: ${decision.reason}`)
+      event.preventDefault()
+    }
   })
 
   win.webContents.on('did-attach-webview', (_event, guestContents) => {
