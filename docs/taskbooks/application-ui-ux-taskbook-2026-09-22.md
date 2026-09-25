@@ -788,6 +788,14 @@
 - 结论与**未做的改动**：上述状态里没有任何一项低于 AA，也没有横向裁切、不可选中或不可聚焦的控件；工具活动行本身就是带 `aria-label` 的可聚焦 `BUTTON`（实测标签"搜索，**/*"）。按本任务书"仅对有证据的卡点做局部调整、不能在实机走查前声称层级或对比度不合格"的要求，本轮**不改样式**，把这张表作为基线与回归门槛：以后任何改动让上表任一项跌破阈值，门会失败。
 - 仍未覆盖（第 1~3 条复选框保持未勾选）：**紧凑显示模式**、**125%/150%/200% 系统缩放**与键盘全流程走查（Tab 顺序、Escape、焦点返回）未测；"读完结果、找到失败、继续任务"三段式操作记录与录屏尚未采集；工具输出的长文本折叠默认展开量、来源与引用的可读性也未单独测量。截图落在 `%TEMP%\littlesheep-chat-readability\screenshots\`（`long-answer.png`、`tool-run.png`、`failure.png`、`failure-narrow.png`）。
 
+**实施记录（2026-09-25 13:55:00）｜状态：代码块中文与正文不同字体的根因已定位并修好（源码侧已验证），真实窗口测量待做；保持未勾选**
+
+- 用户反馈：Markdown 渲染出来的字体与正常文本不是同一种字体（附截图：引用段 + 代码块）。
+- 查证：`--mono` 原为 `"Cascadia Code", "SFMono-Regular", Consolas, monospace`，**整条栈没有中文字体**，代码里的中文只能按字形回退到宋体类衬线，而正文用 `Microsoft YaHei UI`；代码块自身也没有 `font-family` 声明（`03-shell-sidebar.css` 的 `.code-block-source` 只有选中色规则），用什么等宽完全由浏览器默认决定。
+- 修法（选项 D，保住代码对齐）：`--mono` 增加 `"Microsoft YaHei UI"` / `"Microsoft YaHei"` / `"Noto Sans SC"` 回退；`05-chat-messages.css` 新增 `.markdown pre, .markdown pre code, .markdown code-block-source { font-family: var(--mono) }`。
+- 防回流：`ui-state-consistency.test.ts` 新增用例（mono 栈必须含中文回退、Markdown 代码必须用该令牌），该文件 8/8 通过；`check:repo` 38/38；提交 `f8d2290` 已推送。
+- 未覆盖：真实窗口里的计算字体族与字形对比截图未做（`.markdown p` / `.markdown blockquote` / `.markdown pre code` 三者的 font-family 实测），因此本条保持未勾选。
+
 **实施记录（2026-09-25 03:10:00）｜状态：紧凑模式与高 DPI 已并入同一门并全部通过；键盘全流程与录屏仍未做，保持未勾选**
 
 - 把两个阶段并入 `pnpm run verify:chat-readability`（同一次启动，六个夹具）：**紧凑显示**（运行中切换 `littlesheep.ui.conversationDisplayMode`，长回答保持在同一段转写上重测）与**高设备像素比**（`Emulation.setDeviceMetricsOverride` 设 `deviceScaleFactor: 2`，在失败状态上重测）。
