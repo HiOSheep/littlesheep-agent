@@ -171,6 +171,17 @@ describe('shared state sample', () => {
     expect(declarationsOnly).not.toMatch(/(?:^|[\s;{])opacity:\s*0\.42;/u)
   })
 
+  it('keeps the monospace stack able to render CJK', () => {
+    const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
+
+    // A mono stack without CJK faces makes the browser fall back per glyph, so a
+    // single code block renders two typefaces (Latin mono + a serif CJK fallback)
+    // while the surrounding prose uses Microsoft YaHei UI.
+    expect(root).toMatch(/--mono:[^;]*"Microsoft YaHei UI"/u)
+    // Markdown code takes its typeface from that token, not the browser default.
+    expect(declarations('.markdown pre', 'font-family: var(--mono)')).toBe(true)
+  })
+
   it('keeps the existing theme, motion and radius exceptions intact', () => {
     const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
 

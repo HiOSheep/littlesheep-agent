@@ -550,6 +550,14 @@
   padding: 34px 18px 18px;
 }
 
+/* Markdown code gets its typeface from the app token instead of the browser's
+   generic `monospace` default, so the CJK fallbacks above apply to code too. */
+.markdown pre,
+.markdown pre code,
+.markdown .code-block-source {
+  font-family: var(--mono);
+}
+
 .mermaid-block-surface > svg {
   display: block;
   width: 100%;
