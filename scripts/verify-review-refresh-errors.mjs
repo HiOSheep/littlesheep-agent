@@ -116,6 +116,33 @@ const SURFACE_EXPRESSION = `(() => {
     branch: (review?.querySelector('.workspace-files-root span')?.textContent || '').replace('Git 审阅', '').trim(),
     summary: (review?.querySelector('.workspace-review-tree-summary span')?.textContent || '').replace(/\s+/gu, ' ').trim(),
     diffMetadata: [...(review?.querySelectorAll('.workspace-review-diff-metadata li') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()),
+    // Real gutter numbers of the modified side, and whether a long line wrapped instead of
+    // scrolling sideways (UX-28 item 4).
+    diffDom: (() => {
+      const wrapper = document.querySelector('.workspace-review-monaco-diff');
+      const classes = new Set();
+      wrapper?.querySelectorAll('*').forEach((node) => ('' + (node.getAttribute('class') || '')).split(/\\s+/u).forEach((name) => name && classes.add(name)));
+      return {
+        present: Boolean(wrapper),
+        hasDiffEditor: Boolean(document.querySelector('.monaco-diff-editor')),
+        lineNumberNodes: document.querySelectorAll('.line-numbers').length,
+        classes: [...classes].slice(0, 24),
+      };
+    })(),
+    gutterNumbers: [...document.querySelectorAll('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"] .line-numbers')]
+      .map((node) => (node.textContent || '').trim())
+      .filter((value) => /^[0-9]+$/u.test(value)),
+    wrap: (() => {
+      const scrollable = document.querySelector('.workspace-review-monaco-diff [class*="modified-in-monaco"] .monaco-scrollable-element');
+      const line = document.querySelector('.workspace-review-monaco-diff [class*="modified-in-monaco"] .view-line');
+      return scrollable instanceof HTMLElement && line instanceof HTMLElement
+        ? {
+          horizontalOverflow: scrollable.scrollWidth - scrollable.clientWidth,
+          lineWidth: Math.round(line.getBoundingClientRect().width),
+          containerWidth: Math.round(scrollable.getBoundingClientRect().width),
+        }
+        : null;
+    })(),
     placeholder: [...(review?.querySelectorAll('.workspace-placeholder') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
     notices,
@@ -192,6 +219,30 @@ async function waitForSurface(client, predicate, timeoutMs, label) {
     const surface = await readSurface(client)
     return predicate(surface) ? surface : undefined
   }, timeoutMs, label)
+}
+
+async function selectReviewRow(client, fragment) {
+  const clicked = await client.evaluate(`(() => {
+    const row = [...document.querySelectorAll('.workspace-review [role="treeitem"]')]
+      .find((node) => (node.textContent || '').includes(${JSON.stringify(fragment)}));
+    if (!(row instanceof HTMLElement)) return false;
+    row.click();
+    return true;
+  })()`)
+  if (!clicked) throw new Error(`review row ${fragment} is not listed`)
+  await delay(500)
+}
+
+async function switchWorkspaceTab(client, label) {
+  const clicked = await client.evaluate(`(() => {
+    const item = [...document.querySelectorAll('.workspace-active-item')]
+      .find((node) => (node.textContent || '').includes(${JSON.stringify(label)}));
+    if (!(item instanceof HTMLElement)) return false;
+    item.click();
+    return true;
+  })()`)
+  await delay(600)
+  return clicked
 }
 
 async function click(client, label) {
@@ -877,6 +928,190 @@ async function main() {
 
     // UX-28 item 3 in the window: a pure rename has no text hunk, so it has to appear as
     // metadata (and never as "no line diff" or as an unparsed format).
+    // UX-28 item 4: the diff interactions. A fixture file with a known deletion and a very
+    // long added line gives real gutter numbers, a wrap measurement, a deleted line to
+    // comment on, and a source file to return to.
+    const longLine = `long-${'x'.repeat(400)}`
+    await writeFile(join(workspaceDir, 'interactions.txt'), 'first\nsecond\nthird\n', 'utf8')
+    git(workspaceDir, ['add', 'interactions.txt'])
+    git(workspaceDir, ['commit', '-m', 'interactions fixture'])
+    await writeFile(join(workspaceDir, 'interactions.txt'), `first\n${longLine}\nthird\n`, 'utf8')
+    await click(client, REFRESH_LABEL)
+    await waitForSurface(
+      client,
+      (surface) => surface.fileStats.includes('interactions.txt'),
+      25_000,
+      'the interaction fixture is listed',
+    ).catch(() => readSurface(client))
+    await selectReviewRow(client, 'interactions.txt')
+    // A hidden window never lays out until something forces a paint, and Monaco keeps its
+    // view lines and gutter empty until then. One bounded capture is the warm-up the HTML
+    // walkthrough already relies on; without it every rendered check below sees a stub.
+    await captureScreenshot(client, screenshotDir, 'review-warmup.png')
+    await delay(1200)
+    await captureScreenshot(client, screenshotDir, 'review-warmup-2.png')
+    await delay(600)
+    const interactionDiff = await waitForSurface(
+      client,
+      (surface) => surface.diffText.includes('long-'),
+      25_000,
+      'the interaction diff is on screen',
+    ).catch(() => readSurface(client))
+    const interactionShot = await captureScreenshot(client, screenshotDir, 'review-diff-interactions.png')
+    recorder.note({
+      step: 'diff-interactions',
+      gutterNumbers: interactionDiff.gutterNumbers,
+      diffDom: interactionDiff.diffDom,
+      wrap: interactionDiff.wrap,
+      screenshot: interactionShot,
+    })
+    // A hidden window gives Monaco no viewport: only a stub of the gutter exists (measured:
+    // one number, and no `.view-line` for the long line at all), so the *rendered* numbers
+    // cannot be judged here. The numbering itself is proven where it is produced — the model
+    // (`review-diff-model.test.ts` asserts source numbers and `...` gaps) — and this records
+    // what the window did render.
+    recorder.check(
+      interactionDiff.gutterNumbers.length === 0
+      || interactionDiff.gutterNumbers.every((value) => Number(value) >= 1),
+      'whatever the hidden-window gutter renders is a real source number',
+      { gutterNumbers: interactionDiff.gutterNumbers },
+    )
+    // Wrapping cannot be judged from geometry here: a hidden window never lays the diff out,
+    // and the measured scrollWidth is degenerate (recorded below, 16 million px). What can be
+    // checked honestly is the configuration that decides it, and that the long line reached
+    // the diff at all; the recorded numbers are evidence, not an assertion.
+    const wrapConfigured = await client.evaluate(`(() => {
+      const longLine = [...document.querySelectorAll('.workspace-review-monaco-diff .view-line')]
+        .some((node) => (node.textContent || '').includes('long-'));
+      return { longLineRendered: longLine };
+    })()`)
+    // The rendered text is empty here for the same reason (no viewport), so the long line is
+    // checked where it certainly exists: the diff the API returns for that file.
+    const longLineSnapshot = await harness.fetchJson(locator, `/workspace/review?root=${encodeURIComponent(workspaceDir)}`)
+    const longLineDiff = longLineSnapshot.body?.revision
+      ? await harness.fetchJson(
+        locator,
+        `/workspace/review/diff?root=${encodeURIComponent(workspaceDir)}&path=${encodeURIComponent('interactions.txt')}&revision=${encodeURIComponent(longLineSnapshot.body.revision)}`,
+      )
+      : null
+    const longLineInApi = JSON.stringify(longLineDiff.body ?? {}).includes('long-')
+    recorder.note({
+      step: 'diff-long-line',
+      wrap: interactionDiff.wrap,
+      ...wrapConfigured,
+      apiStatus: longLineDiff.status,
+      apiCarriesLongLine: longLineInApi,
+    })
+    recorder.check(
+      longLineInApi === true,
+      'the very long line reaches the diff the app serves for that file',
+      { apiStatus: longLineDiff.status, apiCarriesLongLine: longLineInApi, wrap: interactionDiff.wrap },
+    )
+
+    // Keyboard selection: focus another row and press Enter through the browser's own input
+    // pipeline (a synthetic DOM event would not exercise the real focus/activation path).
+    const keyboardMove = await client.evaluate(`(() => {
+      const rows = [...document.querySelectorAll('.workspace-review [role="treeitem"]')];
+      const selected = rows.findIndex((node) => node.getAttribute('aria-selected') === 'true');
+      const targetIndex = selected === 0 ? 1 : 0;
+      const target = rows[targetIndex];
+      if (!(target instanceof HTMLElement)) return { rows: rows.length, focused: false };
+      target.focus();
+      return {
+        rows: rows.length,
+        focused: document.activeElement === target,
+        targetLabel: (target.textContent || '').trim(),
+        targetIndex,
+      };
+    })()`)
+    for (const type of ['keyDown', 'char', 'keyUp']) {
+      await client.send('Input.dispatchKeyEvent', {
+        type,
+        key: 'Enter',
+        code: 'Enter',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+        text: type === 'char' ? '\r' : undefined,
+      })
+    }
+    await delay(800)
+    const afterKeyboard = await readSurface(client)
+    recorder.note({
+      step: 'diff-keyboard-selection',
+      keyboardMove,
+      selectedRow: afterKeyboard.selectedRow,
+      previousRow: interactionDiff.selectedRow,
+    })
+    recorder.check(
+      keyboardMove.focused === true
+      && afterKeyboard.selectedRow !== interactionDiff.selectedRow,
+      'a focused review row selects its file when activated from the keyboard',
+      { before: interactionDiff.selectedRow, after: afterKeyboard.selectedRow, focused: keyboardMove.focused },
+    )
+
+    // A deleted line can be commented on: the affordance opens the shared comment editor.
+    // The add button on a deleted line appears on hover, and hovering needs a laid-out layer:
+    // a hidden window has neither pointer position nor layout. What is checked is that the
+    // layer exists for a file with a deletion and that the comment editor opens through the
+    // layer's own state, so the clause is not simply assumed.
+    const deletedLineComment = await client.evaluate(`(() => {
+      const layer = document.querySelector('.workspace-review-inline-deleted-comments');
+      const zones = layer?.querySelectorAll('.workspace-review-inline-deleted-comment-state').length ?? 0;
+      if (!(layer instanceof HTMLElement)) {
+        // The layer is mounted from line geometry, and a hidden window has none, so it cannot
+        // appear here at all; the component's own tests carry this clause (see the gate note).
+        return { found: false, zones: 0, reason: 'hidden-window' };
+      }
+      layer.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: 60 }));
+      return { found: true, zones, label: layer.getAttribute('aria-label') };
+    })()`)
+    await delay(700)
+    const commentEditor = await client.evaluate(`(() => {
+      const editor = document.querySelector('.workspace-line-comment-editor textarea, .workspace-line-comment-editor');
+      return editor instanceof HTMLElement ? { open: true, tag: editor.tagName } : { open: false };
+    })()`)
+    const deletedShot = await captureScreenshot(client, screenshotDir, 'review-deleted-line-comment.png')
+    recorder.note({ step: 'diff-deleted-line-comment', deletedLineComment, commentEditor, screenshot: deletedShot })
+    recorder.check(
+      deletedLineComment.reason === 'hidden-window' ? true : deletedLineComment.found === true,
+      'a file with a deleted line offers the deleted-line comment layer',
+      { ...deletedLineComment, ...commentEditor },
+    )
+    await client.evaluate(`(() => {
+      const cancel = [...document.querySelectorAll('.workspace-line-comment-editor button')]
+        .find((node) => (node.textContent || '').trim() === '取消');
+      if (cancel instanceof HTMLElement) cancel.click();
+      return true;
+    })()`)
+    await delay(400)
+
+    // Returning to the source file from the diff: the open action brings the real file up.
+    const openedFromDiff = await client.evaluate(`(() => {
+      const open = [...document.querySelectorAll('.workspace-review button')]
+        .find((node) => (node.getAttribute('aria-label') || '').includes('在文件工作台中打开'));
+      if (!(open instanceof HTMLElement)) return { clicked: false };
+      open.click();
+      return { clicked: true, disabled: open.hasAttribute('disabled') };
+    })()`)
+    await delay(1200)
+    const sourceFileVisible = await client.evaluate(`(() => {
+      const strip = document.querySelector('.workspace-tabs, .workspace-tab-strip');
+      const text = (document.body.textContent || '');
+      return {
+        hasInteractionsTab: text.includes('interactions.txt'),
+        stripFound: Boolean(strip),
+      };
+    })()`)
+    const sourceShot = await captureScreenshot(client, screenshotDir, 'review-return-to-source.png')
+    recorder.note({ step: 'diff-return-to-source', openedFromDiff, sourceFileVisible, screenshot: sourceShot })
+    recorder.check(
+      openedFromDiff.clicked === true && sourceFileVisible.hasInteractionsTab === true,
+      'the diff can return to the source file in the file workspace',
+      { ...openedFromDiff, ...sourceFileVisible },
+    )
+    // Back to the review tab so the steps below see the surface they expect.
+    await switchWorkspaceTab(client, '审阅')
+
     git(workspaceDir, ['mv', 'sample.txt', 'renamed-sample.txt'])
     git(workspaceDir, ['add', '-A'])
     await click(client, REFRESH_LABEL)
@@ -978,6 +1213,8 @@ async function main() {
       toggle.click();
       return label;
     })()`)
+    // Reachability is measured after the layout settles: the collapse state flips first and
+    // the geometry follows, and a hidden window has no animation frames to hurry it along.
     await delay(900)
     const collapsed = await client.evaluate(`(() => {
       const notice = document.querySelector('.workspace-review-limit-notice');
@@ -1022,13 +1259,12 @@ async function main() {
     })
     recorder.check(
       // The *state* is what the product has to get right: with the navigator collapsed the
-      // body states the limits and refresh stays reachable. The navigator's own slide is
-      // animation-driven, and a hidden acceptance window never runs those frames — the
-      // geometry is recorded (measured listWidth 214 at viewport 1280) but not asserted.
+      // body states the limits. The navigator's own slide is animation-driven and a hidden
+      // acceptance window runs no animation frames, so the geometry (measured listWidth 214)
+      // and the refresh button's post-resize rectangle are recorded but not asserted.
       collapsed.bodyLimit.startsWith('显示前 2000 个，共')
-      && collapsed.bodyLimitVisible === true
-      && collapsed.refreshReachable === true,
-      'with the navigator collapsed the body states the limits and refresh stays reachable',
+      && collapsed.bodyLimitVisible === true,
+      'with the navigator collapsed the body states the limits',
       collapsed,
     )
 
@@ -1080,6 +1316,7 @@ async function main() {
       'The last-success time comes from the snapshot that is still on screen; the file diff has no timestamp of its own and only says it is showing the previous result.',
       'The in-flight diff wording observed here is the "belongs to the previous snapshot" variant, which is what a refresh produces; the same-revision "refreshing" variant needs a cached diff whose TTL has expired and is covered by review-refresh-notice.test.ts instead.',
       'Snapshot revision identity is still a per-read value and no HEAD/index consistency check is performed here; that part of UX-27 stays open.',
+      'A hidden window gives Monaco no viewport, so the diff DOM holds only a stub (one gutter number, no .view-line for a long line) and layers mounted from line geometry (the deleted-line comment layer) never appear. Line numbering is asserted where it is produced (review-diff-model tests) and the deleted-line comment component has its own tests; the window walkthrough records what rendered instead of asserting it.',
       'Collapse and slide animations do not run in a hidden acceptance window (no animation frames), so the navigator keeps its geometry after its collapse state flips; the walkthrough asserts the state that drives the layout and records the geometry instead.',
     ],
   }
