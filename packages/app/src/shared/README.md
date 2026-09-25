@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-25 23:51:06
+最后更新：2026-09-26 03:30:19
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -24,3 +24,7 @@
 
 - 每个共享模块均应有同目录测试（当前已有 `permission-modes`、`model-capabilities`、`run-usage`、`cache-call-observations`、`history-activity`、`session-scope`、`window-drag-contracts`、`local-app-api-routes`）。
 - 修改持久化字段时同时检查 main 生产者、renderer 消费者和旧快照兼容。
+
+## 工作区磁盘状态路由（2026-09-26）
+
+`local-app-api-routes.ts` 增加 `workspaceFileStat: '/workspace/file-stat'`：打开文件的元数据查询（exists/modifiedAt/size），供预览面板发现外部改写或删除（UX-25 第 3 条）。

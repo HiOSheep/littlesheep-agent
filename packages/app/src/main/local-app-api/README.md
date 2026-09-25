@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 02:18:36
+最后更新：2026-09-26 03:30:19
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -70,3 +70,7 @@
 ## 静态服务的资源失败记录（UX-25 第 4 条）
 
 `workspace-preview-server.ts` 的有界 loopback 服务按条目记录**被拒绝的子资源请求**（路径、状态、时间，上限 30 条）与成功计数：静态预览不运行脚本，帧内看不到缺失的样式表或图片，这个服务是唯一目击者。记录随 `GET /workspace/preview-server` 一起返回（`assetFailures`/`assetSuccesses`），渲染器据此在预览上方列出原因并提供重试。
+
+## 文件磁盘状态查询（UX-25 第 3 条，2026-09-26）
+
+`GET /workspace/file-stat?root&path` 只回 `{ path, relativePath, exists, modifiedAt, size }`：静态预览面板据此在用户编辑期间发现"磁盘上的版本已变化"或"文件已被删除"，而不是等保存时撞 409。实现是 `statWorkspaceFile`（不读内容、不做预览工作），路径校验与预览/保存共用同一套 `resolveWorkspaceRoot`/`resolveWorkspaceTarget`。

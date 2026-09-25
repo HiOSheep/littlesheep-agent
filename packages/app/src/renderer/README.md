@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 02:16:16
+最后更新：2026-09-26 03:30:19
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -59,3 +59,7 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 
 - 纯状态、历史、布局和 Context 展示测试与实现同目录；跨域行为优先添加 shared contract 或 controller 特征测试。
 - 视觉或交互变更还需构建、刷新桌面快捷方式并进行真实窗口验收。
+
+## 工作区预览的磁盘一致性（2026-09-26）
+
+`workspace/preview-disk-state.ts`（纯规则）、`workspace/use-workspace-disk-watch.ts`（5 秒轮询 + 保存后复查）、`workspace/preview-disk-notice.tsx`（提示条与两个动作）共同实现 UX-25 第 3 条：打开的文件被外部改写或删除时主动提示，草稿永不因提示被丢弃；`workspace/workspace-errors.ts` 的 `workspaceSaveErrorMessage` 让保存失败显示服务端可执行的原因。

@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 02:18:36
+最后更新：2026-09-26 03:30:19
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -54,3 +54,7 @@
 ## 预览服务的资源失败记录（2026-09-26）
 
 `local-app-api/workspace-preview-server.ts` 除服务文件外，还记录被拒绝的子资源请求（路径、状态、时间，各条目上限 30）与成功计数，供静态预览显示哪个资源没加载、为什么。这是 UX-25 第 2、4 条把相对资源交给 Main 校验后的观测面；边界（token、根内真实路径、无目录列举、无写方法）不变。
+
+## 打开文件的磁盘状态（2026-09-26）
+
+`local-app-api/workspace-file-service.ts` 增加 `statWorkspaceFile` 与 `GET /workspace/file-stat`：只回 exists/modifiedAt/size，供渲染器在编辑期间发现外部改写或删除（UX-25 第 3 条）。它不读文件内容，也不改变保存路径的 409 语义——那是最后一道防线，新查询是更早的提示。
