@@ -1,0 +1,1272 @@
+// Real-environment baseline for HTML files in the extended workspace (taskbook UX-24).
+//
+// The user reported that an HTML game shows a blank page inside LS ("全白，或白底
+// 带些字，无法游玩"), and that Git review and the missing PowerShell/Bash choice
+// also misbehave. Before changing anything this gate fixes the entry points and
+// what each of them is *supposed* to show, so later tasks (UX-25/26) can be judged
+// against measured behaviour instead of the source alone.
+//
+// Three fixtures are written into an isolated workspace and opened three ways:
+//   1. an ordinary installed browser (Chrome, else Edge) at a loopback HTTP URL,
+//      which is the reference for "what the page really does";
+//   2. the LS file preview (`<iframe sandbox="" srcdoc=...>` after DOMPurify);
+//   3. the LS browser tab (real `webview` guest) at the same loopback URL.
+//
+// For each entry the gate records the rendered title/text, canvas pixels and game
+// state, every subresource the document requested, script count, and the first
+// console/CSP error — plus screenshots. It asserts only what the current contract
+// claims, so a real regression in either entry fails the gate.
+//
+// Honesty boundary: the user's original HTML was never provided. These fixtures
+// are synthetic and are labelled as such; nothing here claims the original file
+// is fixed.
+//
+// Usage:
+//   node scripts/verify-html-preview-baseline.mjs [--keep]
+
+import { execFileSync, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import * as os from 'node:os'
+import { extname, join, normalize, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
+import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+
+const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 25_000 })
+const WINDOW = { width: 1280, height: 860 }
+const FIXTURE_LABEL = '合成夹具（用户原例未提供）'
+
+const STATIC_PAGE = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>静态页夹具</title>
+  <style>
+    body { margin: 0; font-family: "Microsoft YaHei UI", sans-serif; background: #101418; color: #e8e8e8; }
+    .panel { padding: 24px; background-image: url('assets/tile.svg'); background-repeat: repeat; }
+    .card { background: #1c1c1c; border: 1px solid #343434; border-radius: 10px; padding: 16px; }
+    .accent { color: #d8b45c; font-weight: 700; }
+    #dynamic { color: #6fd08c; }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('dynamic').textContent = '脚本已运行';
+    });
+  </script>
+</head>
+<body>
+  <div class="panel">
+    <div class="card">
+      <h1>静态页夹具</h1>
+      <p class="accent">CSS、背景图与中文都要保留。</p>
+      <p id="dynamic">脚本未运行</p>
+      <img id="sprite" src="assets/tile.svg" width="64" height="64" alt="sprite">
+    </div>
+  </div>
+</body>
+</html>
+`
+
+const CANVAS_GAME = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Canvas 小游戏夹具</title>
+  <style>
+    html, body { margin: 0; background: #05070a; color: #e8e8e8; font-family: "Microsoft YaHei UI", sans-serif; }
+    canvas { display: block; margin: 12px; background: #123456; }
+    #hud { margin: 0 12px 12px; }
+  </style>
+</head>
+<body>
+  <canvas id="stage" width="320" height="240"></canvas>
+  <p id="hud">分数: 0</p>
+  <script>
+    (() => {
+      const canvas = document.getElementById('stage');
+      const ctx = canvas.getContext('2d');
+      const state = { x: 20, y: 180, score: 0, frames: 0, ready: false };
+      window.__gameState = state;
+      function draw() {
+        ctx.fillStyle = '#123456';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#6fd08c';
+        ctx.fillRect(state.x, state.y, 24, 24);
+        ctx.fillStyle = '#e8e8e8';
+        ctx.font = '16px sans-serif';
+        ctx.fillText('分数: ' + state.score, 12, 24);
+        state.frames += 1;
+      }
+      function hud() { document.getElementById('hud').textContent = '分数: ' + state.score; }
+      window.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowRight' || event.key === 'd') state.x += 8;
+        if (event.key === 'ArrowLeft' || event.key === 'a') state.x -= 8;
+        if (event.key === ' ') { state.score += 1; hud(); }
+        draw();
+      });
+      canvas.addEventListener('click', () => { state.score += 1; hud(); draw(); });
+      draw();
+      state.ready = true;
+    })();
+  </script>
+</body>
+</html>
+`
+
+const MULTI_INDEX = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>多文件夹具</title>
+  <link rel="stylesheet" href="game.css">
+</head>
+<body>
+  <main class="board">
+    <h1 class="title">多文件夹具</h1>
+    <img class="sprite" src="sprite.svg" alt="sprite" width="48" height="48">
+    <p class="level">关卡: <span id="level">加载中</span></p>
+    <button id="step" type="button">前进一步</button>
+    <p class="steps">步数: <span id="steps">0</span></p>
+  </main>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
+`
+
+const MULTI_CSS = `.board {
+  padding: 20px;
+  background: #1c2a1f;
+  color: #e8e8e8;
+  font-family: "Microsoft YaHei UI", sans-serif;
+}
+
+.title {
+  color: #d8b45c;
+}
+
+.sprite {
+  display: block;
+  margin: 8px 0;
+}
+`
+
+const MULTI_JS = `const state = { steps: 0, level: null, ready: false };
+window.__multiState = state;
+
+fetch('./level.json')
+  .then((response) => response.json())
+  .then((data) => {
+    state.level = data.level;
+    document.getElementById('level').textContent = String(data.level);
+  })
+  .catch((error) => {
+    state.fetchError = String(error);
+    document.getElementById('level').textContent = '加载失败';
+  });
+
+document.getElementById('step').addEventListener('click', () => {
+  state.steps += 1;
+  document.getElementById('steps').textContent = String(state.steps);
+});
+
+state.ready = true;
+`
+
+const MULTI_LEVEL = '{ "level": 7, "target": 3 }\n'
+
+const SPRITE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+  <rect width="64" height="64" fill="#2f6f4f"/>
+  <circle cx="32" cy="32" r="14" fill="#d8b45c"/>
+</svg>
+`
+
+const GAME_COLOR = { r: 0x12, g: 0x34, b: 0x56 }
+
+/** Everything one entry point can report about the document it rendered. */
+const PAGE_PROBE = `(() => {
+  const canvas = document.querySelector('canvas');
+  const sample = canvas ? (() => {
+    try {
+      const data = canvas.getContext('2d').getImageData(4, 4, 1, 1).data;
+      return [data[0], data[1], data[2], data[3]];
+    } catch (error) {
+      return 'error:' + error.name;
+    }
+  })() : null;
+  const image = document.querySelector('img');
+  return {
+    url: location.href,
+    readyState: document.readyState,
+    htmlLength: document.documentElement ? document.documentElement.outerHTML.length : -1,
+    title: document.title,
+    text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 240),
+    scripts: document.scripts.length,
+    styleSheets: document.styleSheets.length,
+    bodyBackground: document.body ? getComputedStyle(document.body).backgroundColor : null,
+    canvas: canvas ? {
+      width: canvas.width,
+      height: canvas.height,
+      sample,
+      gameState: window.__gameState ? { ...window.__gameState } : null,
+      multiState: window.__multiState ? { ...window.__multiState } : null,
+    } : null,
+    image: image ? { complete: image.complete, naturalWidth: image.naturalWidth } : null,
+    dynamic: document.getElementById('dynamic')?.textContent?.trim() ?? null,
+    level: document.getElementById('level')?.textContent?.trim() ?? null,
+    steps: document.getElementById('steps')?.textContent?.trim() ?? null,
+    resources: performance.getEntriesByType('resource').map((entry) => ({
+      name: entry.name.replace(location.origin, ''),
+      initiatorType: entry.initiatorType,
+      transferSize: entry.transferSize,
+      duration: Math.round(entry.duration),
+    })),
+  };
+})()`
+
+function createRecorder() {
+  const observations = []
+  const failures = []
+  return {
+    note: (entry) => observations.push(entry),
+    check: (condition, check, detail) => {
+      if (!condition) failures.push({ check, detail })
+      return Boolean(condition)
+    },
+    failures,
+    observations,
+  }
+}
+
+async function writeFixtures(workspaceDir) {
+  await Promise.all([
+    mkdir(join(workspaceDir, 'assets'), { recursive: true }),
+    mkdir(join(workspaceDir, 'multi-file'), { recursive: true }),
+  ])
+  await writeFile(join(workspaceDir, 'static-page.html'), STATIC_PAGE, 'utf8')
+  await writeFile(join(workspaceDir, 'canvas-game.html'), CANVAS_GAME, 'utf8')
+  await writeFile(join(workspaceDir, 'assets', 'tile.svg'), SPRITE_SVG, 'utf8')
+  await writeFile(join(workspaceDir, 'multi-file', 'index.html'), MULTI_INDEX, 'utf8')
+  await writeFile(join(workspaceDir, 'multi-file', 'game.css'), MULTI_CSS, 'utf8')
+  await writeFile(join(workspaceDir, 'multi-file', 'game.js'), MULTI_JS, 'utf8')
+  await writeFile(join(workspaceDir, 'multi-file', 'level.json'), MULTI_LEVEL, 'utf8')
+  await writeFile(join(workspaceDir, 'multi-file', 'sprite.svg'), SPRITE_SVG, 'utf8')
+}
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+}
+
+/** Loopback static server: the controlled local HTTP address of the task. */
+async function startStaticServer(root) {
+  const requests = []
+  const server = createServer(async (request, response) => {
+    const requested = new URL(request.url ?? '/', 'http://127.0.0.1')
+    const relative = normalize(decodeURIComponent(requested.pathname)).replace(/^[\\/]+/u, '')
+    const target = join(root, relative)
+    requests.push({ path: requested.pathname })
+    if (target !== root && !target.startsWith(root + sep)) {
+      response.writeHead(403).end('forbidden')
+      return
+    }
+    try {
+      const body = await readFile(target)
+      response.writeHead(200, { 'content-type': MIME_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' })
+      response.end(body)
+    } catch {
+      response.writeHead(404).end('not found')
+    }
+  })
+  await new Promise((resolvePromise) => server.listen(0, '127.0.0.1', resolvePromise))
+  const address = server.address()
+  const port = typeof address === 'object' && address ? address.port : 0
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    requests,
+    close: () => new Promise((resolvePromise) => server.close(() => resolvePromise())),
+  }
+}
+
+const BROWSER_CANDIDATES = [
+  { name: 'Chrome', executable: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' },
+  { name: 'Chrome', executable: 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe' },
+  { name: 'Edge', executable: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' },
+  { name: 'Edge', executable: 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe' },
+]
+
+function findSystemBrowser() {
+  return BROWSER_CANDIDATES.find((candidate) => existsSync(candidate.executable)) ?? null
+}
+
+async function connectTarget(port, predicate, label, { timeoutMs = 45_000 } = {}) {
+  const target = await harness.waitFor(async () => {
+    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
+    if (!response?.ok) return undefined
+    const values = await response.json()
+    return values.find((candidate) => candidate.webSocketDebuggerUrl && predicate(candidate))
+  }, timeoutMs, label)
+  const client = new harness.CdpClient(target.webSocketDebuggerUrl)
+  await client.send('Runtime.enable')
+  await client.send('Log.enable')
+  await client.send('Page.enable')
+  return { client, target }
+}
+
+/** Launch the ordinary browser headless and connect to the fixture page target. */
+async function launchSystemBrowser({ browser, url, port, profileDir }) {
+  const child = spawn(browser.executable, [
+    '--headless=new',
+    '--disable-gpu',
+    '--no-first-run',
+    '--no-default-browser-check',
+    `--user-data-dir=${profileDir}`,
+    `--remote-debugging-port=${port}`,
+    '--window-size=1024,720',
+    url,
+  ], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+  child.stdout.resume()
+  child.stderr.resume()
+  const { client } = await connectTarget(port, (target) => target.url.startsWith(url), `${browser.name} fixture page`)
+  return { child, client }
+}
+
+async function evaluate(client, expression) {
+  return client.evaluate(expression)
+}
+
+/** Console/CSP/exception entries the client has seen since an index. */
+function readEvents(client, fromIndex) {
+  return client.events.slice(fromIndex).flatMap((message) => {
+    if (message.method === 'Log.entryAdded') {
+      const entry = message.params.entry
+      return [{
+        kind: 'log',
+        level: entry.level,
+        source: entry.source,
+        text: String(entry.text).slice(0, 200),
+        url: entry.url ?? null,
+      }]
+    }
+    if (message.method === 'Runtime.exceptionThrown') {
+      const details = message.params.exceptionDetails
+      return [{
+        kind: 'exception',
+        text: String(details.exception?.description ?? details.text).slice(0, 200),
+        url: details.url ?? null,
+      }]
+    }
+    if (message.method === 'Runtime.consoleAPICalled') {
+      return [{
+        kind: 'console',
+        level: message.params.type,
+        text: message.params.args.map((argument) => argument.value ?? argument.description ?? '').join(' ').slice(0, 200),
+      }]
+    }
+    return []
+  }).filter((entry) => entry.level !== 'verbose')
+}
+
+async function captureScreenshot(client, dir, name) {
+  await mkdir(dir, { recursive: true })
+  const shot = await client.send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(dir, name), Buffer.from(shot.data, 'base64'))
+  return join(dir, name)
+}
+
+async function seedPreferences(client, workspaceDir, filePath) {
+  const fileTab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
+  const layout = {
+    collapsed: false,
+    fullscreen: true,
+    activeTab: fileTab,
+    openTabs: [fileTab],
+    openRequest: { root: workspaceDir, path: filePath },
+    fileNavigatorCollapsed: false,
+    fileNavigatorWidth: 214,
+    reviewNavigatorWidth: 214,
+    expandedPaths: [],
+    drafts: {},
+    browserTabs: [],
+  }
+  const preferences = {
+    'littlesheep.ui.workspacePanelCollapsed': 'false',
+    'littlesheep.ui.workspacePanelFullscreen': 'true',
+    'littlesheep.ui.workspacePanelTab': fileTab,
+    'littlesheep.ui.workspacePanelOpenTabs': JSON.stringify([fileTab]),
+    'littlesheep.ui.workspacePanelOpenRoot': workspaceDir,
+    'littlesheep.ui.workspacePanelOpenPath': filePath,
+    'littlesheep.ui.workspaceFileNavigatorCollapsed': 'false',
+    'littlesheep.ui.workspaceSessionLayouts': JSON.stringify({ __draft__: layout }),
+  }
+  await client.evaluate(`(() => {
+    const values = ${JSON.stringify(preferences)};
+    for (const [key, value] of Object.entries(values)) localStorage.setItem(key, value);
+    return true;
+  })()`)
+}
+
+/** Open a workspace file through the real file tree row. */
+async function openFileFromTree(client, name) {
+  const clicked = await client.evaluate(`(() => {
+    const row = [...document.querySelectorAll('.workspace-tree-row.file')]
+      .find((node) => node.querySelector('.workspace-tree-name')?.textContent?.trim() === ${JSON.stringify(name)});
+    if (!(row instanceof HTMLElement)) return false;
+    row.click();
+    return true;
+  })()`)
+  if (!clicked) throw new Error(`workspace file row not available: ${name}`)
+}
+
+async function expandDirectory(client, name) {
+  const clicked = await client.evaluate(`(() => {
+    const row = [...document.querySelectorAll('.workspace-tree-row.directory')]
+      .find((node) => node.querySelector('.workspace-tree-name')?.textContent?.trim() === ${JSON.stringify(name)});
+    if (!(row instanceof HTMLElement)) return false;
+    if (row.getAttribute('aria-expanded') !== 'true') row.click();
+    return true;
+  })()`)
+  if (!clicked) throw new Error(`workspace directory row not available: ${name}`)
+}
+
+/**
+ * Probe the sandboxed preview document.
+ *
+ * `sandbox=""` gives the frame an opaque origin, so the app document cannot read
+ * it, and Electron runs it out of process (`/json/list` shows an `iframe` target
+ * whose url is `about:srcdoc`), so the page target reports no child frames. The
+ * gate therefore attaches to that frame target directly and falls back to a CDP
+ * isolated world for same-process frames.
+ */
+/**
+ * Read every preview document through its own debug target.
+ *
+ * `sandbox=""` gives the frame an opaque origin, so the app document cannot read
+ * it, and Electron runs each preview as an out-of-process frame whose own target
+ * (`/json/list`, type `iframe`, url `about:srcdoc`) is the only place the rendered
+ * document can be observed. The page target reports no child frames at all.
+ */
+async function probeAllPreviewFrames(debuggingPort) {
+  const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)
+  const targets = await response.json()
+  const documents = []
+  for (const target of targets.filter((candidate) => candidate.type === 'iframe' && candidate.webSocketDebuggerUrl)) {
+    const frameClient = new harness.CdpClient(target.webSocketDebuggerUrl)
+    try {
+      await frameClient.send('Runtime.enable')
+      documents.push(await frameClient.evaluate(PAGE_PROBE))
+    } catch (error) {
+      documents.push({ error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      frameClient.close()
+    }
+  }
+  return documents
+}
+
+/** Every mounted preview iframe with the sanitized document it was given. */
+async function readPreviewFrames(client) {
+  return client.evaluate(`(() => {
+    return [...document.querySelectorAll('.workspace-preview-html')].map((node) => {
+      const srcdoc = node.getAttribute('srcdoc') || '';
+      return {
+        title: node.getAttribute('title'),
+        active: !node.closest('.inactive'),
+        srcdocLength: srcdoc.length,
+        srcdocHead: srcdoc.slice(0, 240),
+        hasScriptTag: /<script/i.test(srcdoc),
+        hasCsp: srcdoc.includes('Content-Security-Policy'),
+        hasBase: /<base href="file:\\/\\//i.test(srcdoc),
+        hasStyleTag: /<style/i.test(srcdoc),
+        hasTitleTag: /<title/i.test(srcdoc),
+        sandbox: node.getAttribute('sandbox'),
+      };
+    });
+  })()`)
+}
+
+async function main() {
+  await harness.assertBuildFresh()
+  const keep = process.argv.includes('--keep')
+  const recorder = createRecorder()
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-html-baseline-'))
+  const dataDir = join(root, 'data')
+  const workspaceDir = join(dataDir, 'workplace')
+  const chromiumDir = join(root, 'chromium')
+  const browserProfileDir = join(root, 'system-browser')
+  const logPath = join(root, 'electron.log')
+  const screenshotDir = join(root, 'screenshots')
+  const provider = await startElectronAcceptanceProvider({ streamChunkDelayMs: 0 })
+  const browser = findSystemBrowser()
+  let electron
+  let locator
+  let client
+  let server
+  let systemBrowser
+  let fingerprint = null
+  try {
+    await Promise.all([mkdir(workspaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
+    await writeFixtures(workspaceDir)
+    // The repository exists before the app boots, so the review surface reads a
+    // workspace it has always known; the changes are made later on purpose.
+    const gitRepository = await gitInit(workspaceDir)
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify({
+      version: 1,
+      providers: [{
+        id: 'acceptance',
+        name: 'Acceptance',
+        baseURL: provider.baseURL,
+        apiKey: 'acceptance-key',
+        timeoutSeconds: 10,
+        models: ['slow-a'],
+      }],
+      agents: {
+        defaults: {
+          workspace: workspaceDir,
+          model: 'acceptance/slow-a',
+          reasoning: 'auto',
+          profile: 'general',
+          timeoutSeconds: 60,
+          maxRecoveryAttempts: 1,
+        },
+      },
+      desktop: { closePolicy: 'always-background' },
+    }, null, 2)}\n`, 'utf8')
+
+    server = await startStaticServer(workspaceDir)
+    recorder.note({ step: 'fixtures', root, origin: server.origin, label: FIXTURE_LABEL, browser: browser?.name ?? null })
+
+    // 1. The reference rendering: the same files over a loopback HTTP address.
+    if (!browser) {
+      recorder.check(false, 'an installed ordinary browser was found for the reference rendering', null)
+    } else {
+      const port = await harness.reservePort()
+      systemBrowser = await launchSystemBrowser({
+        browser,
+        url: `${server.origin}/canvas-game.html`,
+        port,
+        profileDir: browserProfileDir,
+      })
+      const version = await systemBrowser.client.send('Browser.getVersion')
+      const gameReference = await harness.waitFor(
+        () => evaluate(systemBrowser.client, `window.__gameState ? (${PAGE_PROBE}) : null`),
+        30_000,
+        'reference canvas game',
+      )
+      const gameShot = await captureScreenshot(systemBrowser.client, screenshotDir, 'reference-canvas-game.png')
+      recorder.note({
+        step: 'reference-canvas-game',
+        browser: browser.name,
+        product: version.product,
+        probe: gameReference,
+        errors: readEvents(systemBrowser.client, 0),
+        screenshot: gameShot,
+      })
+      recorder.check(
+        Array.isArray(gameReference.canvas?.sample)
+        && gameReference.canvas.sample[0] === GAME_COLOR.r
+        && gameReference.canvas.sample[1] === GAME_COLOR.g
+        && gameReference.canvas.sample[2] === GAME_COLOR.b,
+        'the reference browser really paints the game canvas (script ran)',
+        { sample: gameReference.canvas?.sample ?? null },
+      )
+      recorder.check(
+        gameReference.canvas?.gameState?.ready === true,
+        'the reference browser exposes the game state',
+        gameReference.canvas?.gameState ?? null,
+      )
+
+      // Interaction in the reference: keyboard moves the player, click scores.
+      const before = gameReference.canvas?.gameState ?? {}
+      const canvasRect = await canvasPointInViewport(systemBrowser.client)
+      await dispatchGameInput(systemBrowser.client, canvasRect)
+      const afterInteraction = await waitForGameChange(systemBrowser.client, before, 'reference game interaction')
+      recorder.note({ step: 'reference-canvas-interaction', before, after: afterInteraction })
+      recorder.check(afterInteraction.x > Number(before.x ?? 0), 'ArrowRight moves the player in the reference browser', { before: before.x ?? null, after: afterInteraction.x })
+      recorder.check(afterInteraction.score > Number(before.score ?? 0), 'clicking the canvas scores in the reference browser', { before: before.score ?? null, after: afterInteraction.score })
+
+      // Static page and multi-file page in the reference.
+      for (const [step, path, settle] of [
+        ['reference-static-page', 'static-page.html', `document.getElementById('dynamic')?.textContent?.trim() === '脚本已运行'`],
+        ['reference-multi-file', 'multi-file/index.html', `document.getElementById('level')?.textContent?.trim() === '7'`],
+      ]) {
+        await systemBrowser.client.send('Page.navigate', { url: `${server.origin}/${path}` })
+        // Wait for the page's own subresources, not just for the HTML to parse:
+        // the first probe used to run before the stylesheet, image and fetch landed.
+        const probe = await harness.waitFor(
+          () => evaluate(systemBrowser.client, `document.readyState === 'complete' && (${settle}) ? (${PAGE_PROBE}) : null`),
+          30_000,
+          step,
+        )
+        const shot = await captureScreenshot(systemBrowser.client, screenshotDir, `${step}.png`)
+        recorder.note({ step, browser: browser.name, probe, screenshot: shot })
+        if (step === 'reference-static-page') {
+          recorder.check(probe.dynamic === '脚本已运行', 'the reference browser runs the static page script', { dynamic: probe.dynamic })
+          recorder.check(probe.image?.complete === true && probe.image.naturalWidth === 64, 'the reference browser loads the page image', probe.image)
+          recorder.check(probe.styleSheets >= 1, 'the reference browser applies the page stylesheet', { styleSheets: probe.styleSheets })
+          recorder.check(
+            probe.resources.some((entry) => entry.name.endsWith('assets/tile.svg')),
+            'the reference browser requests the local background/image asset',
+            probe.resources,
+          )
+        } else {
+          recorder.check(probe.level === '7', 'the reference browser loads the local JSON over fetch', { level: probe.level })
+          recorder.check(probe.scripts === 1, 'the reference browser loads the module script', { scripts: probe.scripts })
+          recorder.check(
+            probe.resources.some((entry) => entry.name.endsWith('game.css')),
+            'the reference browser requests the local stylesheet',
+            probe.resources,
+          )
+        }
+      }
+    }
+
+    // 2. The LS file preview for the same three fixtures, opened from the file tree.
+    const debuggingPort = await harness.reservePort()
+    electron = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
+    locator = await harness.waitForLocator(dataDir, electron.pid)
+    await harness.waitForDesktop(locator)
+    client = await harness.connectRenderer(debuggingPort)
+    await client.send('Runtime.enable')
+    await client.send('Log.enable')
+    await client.send('Page.enable')
+    await harness.desktopAction(locator, 'resize', WINDOW)
+    await harness.waitFor(
+      () => client.evaluate(`document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`),
+      harness.startTimeoutMs,
+      'composer textarea',
+    )
+    await seedPreferences(client, workspaceDir, join(workspaceDir, 'static-page.html'))
+    const beforeReload = await client.evaluate('performance.timeOrigin')
+    await client.send('Page.reload', { ignoreCache: false })
+    await harness.waitFor(async () => {
+      const state = await client.evaluate(`(() => ({ readyState: document.readyState, timeOrigin: performance.timeOrigin }))()`)
+        .catch(() => undefined)
+      if (!state) return undefined
+      return state.readyState === 'complete' && state.timeOrigin !== beforeReload ? state.timeOrigin : undefined
+    }, harness.actionTimeoutMs, 'renderer reload with the HTML fixture open')
+    const eventsFrom = client.events.length
+
+    const previewSteps = [
+      // Measured baseline (see the taskbook record): the first HTML file — seeded so
+      // its content is ready before the pane mounts — always renders, while a file
+      // opened from the tree afterwards sometimes keeps the empty frame document it
+      // was created with and stays blank. The rendering outcome is recorded per
+      // file rather than asserted, because that race is the defect UX-25 fixes.
+      { step: 'preview-static-page', name: 'static-page.html', marker: '静态页夹具', documents: 1, seeded: true, expand: null },
+      { step: 'preview-canvas-game', name: 'canvas-game.html', marker: '分数:', documents: 2, seeded: false, expand: null },
+      { step: 'preview-multi-file', name: 'index.html', marker: '多文件夹具', documents: 3, seeded: false, expand: 'multi-file' },
+    ]
+    const renderOutcomes = []
+    for (const entry of previewSteps) {
+      if (entry.expand) await expandDirectory(client, entry.expand)
+      await harness.waitFor(
+        () => client.evaluate(`Boolean([...document.querySelectorAll('.workspace-tree-name')].find((node) => node.textContent?.trim() === ${JSON.stringify(entry.name)})) || null`),
+        15_000,
+        `${entry.name} in the file tree`,
+      )
+      await openFileFromTree(client, entry.name)
+      const frames = await harness.waitFor(async () => {
+        const mounted = await readPreviewFrames(client)
+        return mounted.some((candidate) => candidate.title === `HTML 预览：${entry.name}`) ? mounted : undefined
+      }, 25_000, `${entry.step} iframe`)
+      const frame = frames.find((candidate) => candidate.title === `HTML 预览：${entry.name}`)
+      const documents = await harness.waitFor(async () => {
+        const probed = await probeAllPreviewFrames(debuggingPort)
+        const newest = probed.at(-1)
+        return probed.length >= entry.documents && newest?.readyState === 'complete' ? probed : undefined
+      }, 25_000, `${entry.step} documents`)
+      // Give a late document a chance to arrive before calling it blank.
+      let settled = documents
+      if (!documents.some((document) => document.text?.includes(entry.marker))) {
+        await delay(3_000)
+        settled = await probeAllPreviewFrames(debuggingPort)
+      }
+      const renderedDocument = settled.find((document) => document.text?.includes(entry.marker)) ?? null
+      const newest = settled.at(-1)
+      renderOutcomes.push({ step: entry.step, file: entry.name, rendered: Boolean(renderedDocument) })
+      const shot = await captureScreenshot(client, screenshotDir, `${entry.step}.png`)
+      recorder.note({
+        step: entry.step,
+        entry: `工作区文件树 → ${entry.name}`,
+        seededBeforeMount: entry.seeded,
+        rendered: Boolean(renderedDocument),
+        mountedFrames: frames.map(({ title, active }) => ({ title, active })),
+        srcdoc: frame,
+        documents: settled,
+        errors: readEvents(client, eventsFrom),
+        screenshot: shot,
+      })
+      // Stable contract of the preview pipeline, for every file.
+      recorder.check(frame.hasScriptTag === false, `${entry.step}: the preview strips script tags`, frame)
+      recorder.check(frame.hasCsp === true && frame.hasBase === true, `${entry.step}: the preview injects its CSP and file base`, frame)
+      recorder.check(frame.sandbox === '', `${entry.step}: the preview frame stays fully sandboxed`, { sandbox: frame.sandbox })
+      // A file whose content is ready before the pane mounts must render (this held
+      // in every run); a file opened afterwards may race and stay blank.
+      if (entry.seeded) {
+        recorder.check(Boolean(renderedDocument), `${entry.step}: a preloaded file renders its own text`, settled)
+        recorder.check(renderedDocument?.scripts === 0, `${entry.step}: no script executes in the preview document`, renderedDocument)
+        recorder.check(
+          renderedDocument?.styleSheets === 0,
+          `${entry.step}: the preview drops the document <style> block, so the page renders unstyled (UX-25)`,
+          renderedDocument,
+        )
+        recorder.check(
+          renderedDocument?.image?.naturalWidth === 0,
+          `${entry.step}: a local file:// image is requested but not decoded inside the preview (UX-25)`,
+          renderedDocument?.image ?? null,
+        )
+      } else if (renderedDocument) {
+        // Rendered path: the frame got the real document even without preloading.
+        recorder.check(
+          renderedDocument.canvas === null || renderedDocument.canvas?.gameState == null,
+          `${entry.step}: the preview still cannot start page scripts`,
+          renderedDocument.canvas,
+        )
+      } else {
+        // Blank path: the frame kept the head-only document it was created with.
+        recorder.check(
+          newest?.readyState === 'complete' && newest.text === '' && newest.htmlLength < 600
+          && Number(frame.srcdocLength) > Number(newest.htmlLength),
+          `${entry.step}: a later HTML file can stay blank — the frame keeps its empty document while the srcdoc attribute already has content (UX-25 root cause)`,
+          { srcdocLength: frame.srcdocLength, document: newest },
+        )
+      }
+    }
+    recorder.note({ step: 'preview-render-outcomes', outcomes: renderOutcomes })
+
+    // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
+    await selectWorkspaceFeature(client, '浏览器')
+    await harness.waitFor(() => client.evaluate(`document.querySelector('.workspace-browser-address input') instanceof HTMLInputElement || null`), 15_000, 'browser address field')
+    await submitAddress(client, `${server.origin}/canvas-game.html`)
+    const { client: guest, target: guestTarget } = await connectTarget(
+      debuggingPort,
+      (candidate) => candidate.url.startsWith(server.origin),
+      'LS browser tab guest target',
+      { timeoutMs: 30_000 },
+    )
+    const guestProbe = await harness.waitFor(() => guest.evaluate(`window.__gameState ? (${PAGE_PROBE}) : null`), 30_000, 'LS browser tab canvas game')
+    const guestShot = await captureScreenshot(guest, screenshotDir, 'ls-browser-tab-canvas-game.png')
+    recorder.note({
+      step: 'ls-browser-tab-canvas-game',
+      entry: `工作区 → 浏览器标签 → ${server.origin}/canvas-game.html`,
+      targetType: guestTarget.type,
+      probe: guestProbe,
+      errors: readEvents(guest, 0),
+      screenshot: guestShot,
+    })
+    recorder.check(
+      Array.isArray(guestProbe.canvas?.sample)
+      && guestProbe.canvas.sample[0] === GAME_COLOR.r
+      && guestProbe.canvas.sample[1] === GAME_COLOR.g
+      && guestProbe.canvas.sample[2] === GAME_COLOR.b,
+      'the LS browser tab paints the game canvas over the loopback URL',
+      { sample: guestProbe.canvas?.sample ?? null },
+    )
+    const guestBefore = guestProbe.canvas?.gameState ?? {}
+    // Real input goes to the guest target; the canvas can be larger than the
+    // guest viewport, so the click point is the centre of the visible overlap.
+    const guestPoint = await canvasPointInViewport(guest)
+    await dispatchGameInput(guest, guestPoint)
+    const guestAfter = await waitForGameChange(guest, guestBefore, 'LS browser tab game interaction')
+    recorder.note({ step: 'ls-browser-tab-interaction', before: guestBefore, after: guestAfter, point: guestPoint })
+    recorder.check(guestAfter.x > Number(guestBefore.x ?? 0), 'keyboard input reaches the game in the LS browser tab', { before: guestBefore.x ?? null, after: guestAfter.x })
+    recorder.check(guestAfter.score > Number(guestBefore.score ?? 0), 'pointer input reaches the game in the LS browser tab', { before: guestBefore.score ?? null, after: guestAfter.score })
+    guest.close()
+
+    // 4. A local file path typed into the browser address bar: what does LS do?
+    const fileUrl = `file:///${join(workspaceDir, 'canvas-game.html').replace(/\\/gu, '/')}`
+    await submitAddress(client, fileUrl)
+    await delay(1_500)
+    const fileOutcome = await client.evaluate(`(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+      const layout = layouts.__draft__ ?? Object.values(layouts)[0] ?? null;
+      return {
+        address: document.querySelector('.workspace-browser-address input')?.value ?? null,
+        guestSources: [...document.querySelectorAll('webview')].map((node) => node.getAttribute('src')),
+        tabs: layout?.browserTabs?.map((tab) => tab.url) ?? null,
+        visibleText: (document.querySelector('.workspace-browser')?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+      };
+    })()`)
+    let fileGuest = null
+    try {
+      const attached = await connectTarget(
+        debuggingPort,
+        (candidate) => /^https:\/\/file/iu.test(candidate.url) || candidate.url.includes('file///'),
+        'bogus file navigation guest',
+        { timeoutMs: 15_000 },
+      )
+      fileGuest = await attached.client.evaluate(PAGE_PROBE)
+      attached.client.close()
+    } catch {
+      fileGuest = null
+    }
+    const fileShot = await captureScreenshot(client, screenshotDir, 'ls-browser-file-address.png')
+    recorder.note({
+      step: 'ls-browser-file-address',
+      entry: '工作区 → 浏览器标签 → 地址栏输入本地 file:// 路径',
+      submitted: fileUrl,
+      outcome: fileOutcome,
+      guest: fileGuest,
+      screenshot: fileShot,
+    })
+    recorder.check(
+      (fileOutcome.guestSources ?? []).every((source) => !String(source).startsWith('file:')),
+      'the LS browser tab never navigates to the file:// address itself',
+      fileOutcome,
+    )
+    recorder.check(
+      (fileOutcome.tabs ?? []).some((url) => /^https:\/\/file/iu.test(String(url))),
+      'a local file path is silently rewritten into a bogus https host',
+      fileOutcome.tabs,
+    )
+    recorder.check(
+      fileGuest !== null
+      && (fileGuest.url.startsWith('chrome-error://')
+        || /无法访问|拒绝连接|ERR_|This site|网页无法打开|找不到/iu.test(`${fileGuest.title} ${fileGuest.text}`)),
+      'the bogus navigation lands on a browser error page instead of the game',
+      fileGuest,
+    )
+
+    // 5. Git baseline: the same change seen by the CLI, the Local App API and the UI.
+    const gitCli = await gitBaseline(workspaceDir)
+    const gitApi = await gitApiBaseline(locator, workspaceDir, gitCli)
+    const gitUi = await gitUiBaseline(client, eventsFrom)
+    recorder.note({ step: 'git-cli-vs-api-vs-ui', repository: gitRepository, cli: gitCli, api: gitApi, ui: gitUi })
+    recorder.check(
+      gitApi.snapshotFiles.length === gitCli.status.length,
+      'the review API lists the same changed files as git status',
+      { cli: gitCli.status, api: gitApi.snapshotFiles },
+    )
+    recorder.check(
+      gitCli.addedLines.every((line) => gitApi.diffAdditions.includes(line.slice(1))),
+      'the review API returns the added lines the CLI diff shows (content without the diff marker)',
+      { cliAdditions: gitCli.addedLines, apiAdditions: gitApi.diffAdditions },
+    )
+    recorder.check(
+      gitApi.untrackedLayers.some((layer) => layer.kind === 'untracked'),
+      'the review API keeps an untracked file in its own layer',
+      { untrackedFile: gitApi.untrackedDiffFile, layers: gitApi.untrackedLayers },
+    )
+    recorder.check(
+      gitUi.treeFiles.length === gitCli.status.length,
+      'the review tab lists the same changed files as git status',
+      { cli: gitCli.status, ui: gitUi.treeFiles },
+    )
+    recorder.check(
+      gitUi.treeStatuses.includes('M') && gitUi.treeStatuses.includes('U'),
+      'the review tab distinguishes a modified file from an untracked one, like git status does',
+      { statuses: gitUi.treeStatuses, rows: gitUi.treeFiles, cli: gitCli.status, staleAtMount: gitUi.staleAtMount },
+    )
+
+    // 6. Shell baseline: executable, version, cwd and PTY state of the real session.
+    const shell = await terminalBaseline(locator, workspaceDir)
+    recorder.note({ step: 'shell-baseline', ...shell })
+    recorder.check(
+      /^PowerShell/u.test(shell.snapshot.shell),
+      'the workspace terminal runs the PowerShell profile',
+      shell.snapshot,
+    )
+    recorder.check(
+      shell.snapshot.cwd.toLowerCase() === workspaceDir.toLowerCase(),
+      'the terminal session starts in the workspace root',
+      { cwd: shell.snapshot.cwd },
+    )
+    recorder.check(
+      shell.snapshot.backend === 'pty' || shell.snapshot.backend === 'spawn',
+      'the session reports which backend it actually got',
+      { backend: shell.snapshot.backend },
+    )
+    recorder.check(
+      /^\d+\.\d+/u.test(shell.version ?? ''),
+      'the running shell reports a real PowerShell version',
+      { version: shell.version, line: shell.line },
+    )
+    recorder.check(
+      String(shell.reportedCwd ?? '').toLowerCase() === workspaceDir.toLowerCase(),
+      'the shell itself reports the same working directory',
+      { reportedCwd: shell.reportedCwd },
+    )
+    // Measured baseline for UX-27's remaining items: the review tab can mount on a
+    // snapshot taken before the working tree changed. Either it mounted fresh, or
+    // the user's refresh has to reach the true state.
+    recorder.check(
+      !String(gitUi.staleAtMount ?? '').includes('没有未提交更改')
+      || gitUi.treeFiles.length === gitCli.status.length,
+      'a review tab that mounts stale still reaches the true state after a refresh',
+      { staleAtMount: gitUi.staleAtMount, afterRefresh: gitUi.treeFiles, cli: gitCli.status },
+    )
+
+    // Fingerprint while the renderer session is still open: a CDP call after the
+    // socket closed never settles (that hung the gate once).
+    fingerprint = await buildFingerprint(client)
+  } catch (error) {
+    recorder.check(false, 'the baseline walkthrough completed without an unexpected failure', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+  } finally {
+    client?.close()
+    systemBrowser?.client?.close()
+    if (systemBrowser?.child && systemBrowser.child.exitCode === null) systemBrowser.child.kill()
+    if (electron?.exitCode === null) await harness.forceTerminate(electron)
+    await server?.close().catch(() => undefined)
+    await provider.close().catch(() => undefined)
+    if (!keep) await harness.removeTemporaryRoot(root)
+  }
+
+  const evidence = {
+    check: 'html-preview-baseline',
+    capturedAt: new Date().toISOString(),
+    fixtureRoot: keep ? root : '<temporary root removed>',
+    window: WINDOW,
+    fingerprint: fingerprint ?? (await buildFingerprint(null)),
+    fixtures: {
+      label: FIXTURE_LABEL,
+      files: [
+        'static-page.html',
+        'canvas-game.html',
+        'multi-file/index.html',
+        'multi-file/game.css',
+        'multi-file/game.js',
+        'multi-file/level.json',
+        'multi-file/sprite.svg',
+        'assets/tile.svg',
+      ],
+    },
+    ok: recorder.failures.length === 0,
+    observations: recorder.observations,
+    failures: recorder.failures,
+    limits: [
+      'The fixtures are synthetic. The user never provided the original HTML, so nothing here claims that the reported game is fixed or reproduced.',
+      'The reference entry is an installed Chrome/Edge running headless; it proves what the page does outside LS, not what the user saw in their browser.',
+      'The LS file preview is a sanitized `srcdoc` iframe with `sandbox=""`, and Electron runs it out of process, so its document is probed through the frame target\'s own debug session rather than from the app document.',
+      'The preview expectations in this gate describe the measured current behaviour (first file renders, later files stay blank, <style> dropped); UX-25 replaces them and must update this gate in the same change.',
+      'Windows and Electron versions come from the running process; the source revision and build digests come from the build fingerprint written by ensure:app-build.',
+    ],
+  }
+  console.log(JSON.stringify(evidence, null, 2))
+  if (!evidence.ok) process.exitCode = 1
+}
+
+/** Source revision, build digests and engine versions behind these measurements. */
+async function buildFingerprint(client) {
+  const manifestPath = join(repoRoot(), 'packages', 'app', 'out', '.littlesheep-build-fingerprint.json')
+  const manifest = await readFile(manifestPath, 'utf8').then(JSON.parse).catch(() => null)
+  const product = client
+    ? await client.send('Browser.getVersion').then((value) => value.product).catch(() => null)
+    : null
+  return {
+    revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot(), encoding: 'utf8', windowsHide: true }).trim(),
+    buildInputDigest: manifest?.input?.digest ?? null,
+    buildOutputDigest: manifest?.output?.digest ?? null,
+    electronVersion: manifest?.runtime?.electronVersion ?? null,
+    rendererProduct: product,
+    node: process.version,
+    platform: `${process.platform} ${process.arch}`,
+    os: `${os.type()} ${os.release()}`,
+  }
+}
+
+function repoRoot() {
+  return fileURLToPath(new URL('..', import.meta.url))
+}
+
+/** The review tab's own view of the same repository state. */
+async function gitUiBaseline(client, eventsFrom) {
+  await selectWorkspaceFeature(client, '审阅')
+  const read = () => client.evaluate(`(() => {
+    const review = document.querySelector('.workspace-review');
+    if (!review) return null;
+    const rows = [...review.querySelectorAll('[role="treeitem"]')].map((node) => ({
+      text: (node.textContent || '').replace(/\\s+/g, ' ').trim(),
+      status: node.querySelector('.workspace-review-file-status')?.textContent?.trim() ?? null,
+    }));
+    const status = review.querySelector('.workspace-review-diff-layer-status')?.textContent?.trim() ?? null;
+    const title = review.querySelector('.workspace-review-diff-title-main')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null;
+    return {
+      rows,
+      statusText: status,
+      title,
+      surfaceText: (review.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+    };
+  })()`)
+  let surface = await read()
+  await delay(1_200)
+  // Measured: the review tab can mount on a snapshot cached before the changes, so
+  // the user's own refresh is what makes the current state appear.
+  const staleAtMount = (await read())?.surfaceText ?? null
+  const refreshed = await client.evaluate(`(() => {
+    const button = [...document.querySelectorAll('.workspace-review button')]
+      .find((node) => node.getAttribute('aria-label') === '刷新 Git 更改');
+    if (!(button instanceof HTMLElement)) return false;
+    button.click();
+    return true;
+  })()`)
+  try {
+    surface = await harness.waitFor(async () => {
+      const current = await read()
+      return current?.rows?.length > 0 ? current : undefined
+    }, 20_000, 'review tab with the fixture changes')
+  } catch (error) {
+    // The timeout is the interesting case: report what the surface actually shows.
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; review surface: ${JSON.stringify(surface)}; refreshed: ${refreshed}`)
+  }
+  return {
+    treeFiles: surface.rows.map((row) => row.text),
+    treeStatuses: surface.rows.map((row) => row.status),
+    statusText: surface.statusText,
+    title: surface.title,
+    surfaceText: surface.surfaceText,
+    staleAtMount,
+    refreshed,
+    errors: readEvents(client, eventsFrom).slice(-5),
+  }
+}
+
+/** A real repository in the fixture workspace, created before the app boots. */
+async function gitInit(workspaceDir) {
+  const run = (args) => execFileSync('git', args, { cwd: workspaceDir, encoding: 'utf8', windowsHide: true }).trim()
+  run(['init', '--initial-branch=main'])
+  run(['config', 'user.email', 'html-baseline@example.invalid'])
+  run(['config', 'user.name', 'HTML Baseline'])
+  run(['add', '.'])
+  run(['commit', '-m', 'fixture'])
+  return { revision: run(['rev-parse', 'HEAD']) }
+}
+
+/** One edit plus one new file, then the CLI's own view of that state. */
+async function gitBaseline(workspaceDir) {
+  const run = (args) => execFileSync('git', args, { cwd: workspaceDir, encoding: 'utf8', windowsHide: true }).trim()
+  const target = join(workspaceDir, 'canvas-game.html')
+  await writeFile(target, `${await readFile(target, 'utf8')}<!-- baseline edit -->\n`, 'utf8')
+  await writeFile(join(workspaceDir, 'probe-untracked.txt'), 'untracked\n', 'utf8')
+  const status = run(['status', '--porcelain']).split(/\r?\n/u).filter(Boolean)
+  const diff = run(['diff', '--', 'canvas-game.html'])
+  const numstat = run(['diff', '--numstat']).split(/\r?\n/u).filter(Boolean)
+  return {
+    status,
+    addedLines: diff.split(/\r?\n/u).filter((line) => line.startsWith('+') && !line.startsWith('+++')),
+    numstat,
+    revision: run(['rev-parse', 'HEAD']),
+  }
+}
+
+/** What the Local App API reports for exactly that repository state. */
+async function gitApiBaseline(locator, workspaceDir, cli) {
+  const root = encodeURIComponent(workspaceDir)
+  const snapshot = await apiJson(locator, `/workspace/review?root=${root}&force=1`)
+  const file = snapshot.files.find((entry) => entry.path === 'canvas-game.html') ?? snapshot.files[0]
+  const untracked = snapshot.files.find((entry) => entry.status === 'untracked') ?? null
+  const diffFor = async (entry) => (entry
+    ? apiJson(locator, `/workspace/review/diff?root=${root}&path=${encodeURIComponent(entry.absolutePath)}&revision=${encodeURIComponent(snapshot.revision)}`)
+    : null)
+  const diff = await diffFor(file)
+  const untrackedDiff = await diffFor(untracked)
+  const layerSummary = (value) => (value?.layers ?? []).map((layer) => ({
+    kind: layer.kind,
+    hunks: layer.hunks.length,
+    binary: layer.binary,
+    truncated: layer.truncated,
+  }))
+  const layers = layerSummary(diff)
+  return {
+    availability: snapshot.availability,
+    branch: snapshot.branch ?? null,
+    snapshotFiles: snapshot.files.map((entry) => `${entry.path} (${entry.status})`),
+    totalFiles: snapshot.totalFiles,
+    countsComplete: snapshot.countsComplete,
+    diffFile: file?.path ?? null,
+    diffAdditions: (diff?.hunks ?? []).flatMap((hunk) => hunk.lines)
+      .filter((line) => line.kind === 'addition')
+      .map((line) => line.content),
+    layers,
+    untrackedLayers: layerSummary(untrackedDiff),
+    untrackedDiffFile: untracked?.path ?? null,
+    cliStatus: cli.status,
+  }
+}
+
+/** Start a real workspace terminal and read its identity and PTY state. */
+async function terminalBaseline(locator, workspaceDir) {
+  const snapshot = await apiJson(locator, '/workspace/terminal/session', {
+    method: 'POST',
+    body: { root: workspaceDir, cols: 100, rows: 30 },
+  })
+  let output = ''
+  const controller = new AbortController()
+  const sessionPath = `/workspace/terminal/session/${encodeURIComponent(snapshot.sessionId)}`
+  try {
+    const stream = await fetch(harness.apiUrl(locator, `${sessionPath}/stream`), {
+      headers: harness.authHeaders(locator),
+      signal: controller.signal,
+    })
+    const reader = stream.body.getReader()
+    const decoder = new TextDecoder()
+    const collect = (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          output += decoder.decode(value, { stream: true })
+        }
+      } catch {
+        // The stream is aborted on purpose once the command has answered.
+      }
+    })()
+    await delay(300)
+    // `PSV=` followed by a digit can only come from the command's output: the
+    // echoed input still has the quote and `$PSVersionTable` right after it.
+    await apiJson(locator, `${sessionPath}/input`, {
+      method: 'POST',
+      body: { data: '"PSV=" + $PSVersionTable.PSVersion.ToString() + "|CWD=" + (Get-Location).Path + "|ENC=" + [Console]::OutputEncoding.WebName + "|END"\r' },
+    })
+    await harness.waitFor(() => (/PSV=\d/u.test(output) ? true : undefined), 20_000, 'terminal command output')
+    controller.abort()
+    await collect
+  } catch (error) {
+    output += `\n[stream error: ${error instanceof Error ? error.message : String(error)}]`
+  } finally {
+    controller.abort()
+    await fetch(harness.apiUrl(locator, sessionPath), {
+      method: 'DELETE',
+      headers: harness.authHeaders(locator),
+    }).catch(() => undefined)
+  }
+  const plain = decodeSseText(output).replace(/\u001b\[[0-9;?]*[A-Za-z]/gu, '')
+  const line = plain.split(/\r?\n/u).map((entry) => entry.trim()).find((entry) => /^PSV=\d/u.test(entry)) ?? ''
+  const [, version, cwd, encoding] = /^PSV=([^|]+)\|CWD=([^|]*)\|ENC=([^|]*)\|/u.exec(line) ?? []
+  return {
+    snapshot,
+    version: version ?? null,
+    reportedCwd: cwd ?? null,
+    encoding: encoding ?? null,
+    line: line || null,
+    output: plain.slice(-300),
+  }
+}
+
+/** The stdout text carried by the terminal SSE stream. */
+function decodeSseText(raw) {
+  return raw
+    .split(/\r?\n/u)
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => {
+      try {
+        return JSON.parse(line.slice(5).trim())?.text ?? ''
+      } catch {
+        return ''
+      }
+    })
+    .join('')
+}
+
+async function apiJson(locator, path, { method = 'GET', body } = {}) {
+  const response = await fetch(harness.apiUrl(locator, path), {
+    method,
+    headers: {
+      ...harness.authHeaders(locator),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  if (!response.ok) throw new Error(`${method} ${path} failed: ${response.status}`)
+  return response.json()
+}
+
+async function selectWorkspaceFeature(client, label) {
+  let open = false
+  for (let attempt = 0; attempt < 3 && !open; attempt += 1) {
+    await client.evaluate(`(() => {
+      const trigger = document.querySelector('.workspace-add-trigger');
+      if (trigger instanceof HTMLElement) trigger.click();
+      return true;
+    })()`)
+    open = await harness.waitFor(
+      () => client.evaluate(`Boolean(document.querySelector('.workspace-add-panel.visible')) || null`),
+      5_000,
+      `workspace feature menu (attempt ${attempt + 1})`,
+    ).then(() => true).catch(() => false)
+  }
+  if (!open) throw new Error('the workspace feature menu could not be opened')
+  const selected = await client.evaluate(`(() => {
+    const item = [...document.querySelectorAll('.workspace-add-panel.visible .workspace-add-item')]
+      .find((node) => (node.textContent || '').includes(${JSON.stringify(label)}));
+    if (!(item instanceof HTMLElement)) return false;
+    item.click();
+    return true;
+  })()`)
+  if (!selected) throw new Error(`workspace feature ${label} could not be selected`)
+}
+
+async function submitAddress(client, url) {
+  const submitted = await client.evaluate(`(() => {
+    const input = document.querySelector('.workspace-browser-address input');
+    const form = input?.closest('form');
+    if (!(input instanceof HTMLInputElement) || !(form instanceof HTMLFormElement)) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, ${JSON.stringify(url)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    form.requestSubmit();
+    return true;
+  })()`)
+  if (!submitted) throw new Error('the browser address could not be submitted')
+}
+
+/**
+ * Centre of the canvas area that is actually inside the target's viewport.
+ *
+ * The embedded guest can be narrower than the fixture canvas (measured: a 121 px
+ * wide guest against a 320 px canvas), so the geometric centre of the element can
+ * sit outside the visible area and a click there lands on another surface.
+ */
+async function canvasPointInViewport(target) {
+  const point = await target.evaluate(`(() => {
+    const box = document.querySelector('canvas').getBoundingClientRect();
+    const left = Math.max(box.left, 0);
+    const top = Math.max(box.top, 0);
+    const right = Math.min(box.right, window.innerWidth);
+    const bottom = Math.min(box.bottom, window.innerHeight);
+    if (right - left < 4 || bottom - top < 4) {
+      return {
+        error: 'the canvas is outside the visible viewport',
+        canvas: { x: box.left, y: box.top, width: box.width, height: box.height },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      };
+    }
+    return { x: (left + right) / 2, y: (top + bottom) / 2, visible: { width: right - left, height: bottom - top } };
+  })()`)
+  if (point?.error) throw new Error(`${point.error}: ${JSON.stringify(point)}`)
+  return point
+}
+
+/**
+ * Real keyboard and pointer input at the canvas centre.
+ *
+ * The pointer gesture comes first on purpose: the embedded guest only takes
+ * keyboard events once the click focused it (measured: a key sent before the
+ * click was dropped, the same key after it landed).
+ */
+async function dispatchGameInput(target, point) {
+  await target.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y })
+  await target.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 })
+  await target.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1 })
+  await target.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+  await target.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+}
+
+/** Wait for any game state change, then let the caller assert which inputs landed. */
+async function waitForGameChange(target, before, label) {
+  return harness.waitFor(() => target.evaluate(`(() => {
+    const state = window.__gameState;
+    if (!state) return null;
+    const changed = state.x !== ${Number(before.x ?? 0)} || state.score !== ${Number(before.score ?? 0)};
+    return changed ? { ...state, hud: document.getElementById('hud')?.textContent ?? null } : null;
+  })()`), 10_000, label)
+}
+
+await main()

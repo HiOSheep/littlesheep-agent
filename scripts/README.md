@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-25 18:37:00
+最后更新：2026-09-25 19:28:31
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -16,4 +16,5 @@
 - `pnpm run verify:conversation-workspace-scenarios` 覆盖对话滚动/输入/工具结果/多附件/工作区双栏，并按会话分别验证文件草稿、目录与浏览器现场；`pnpm run verify:electron-ui-state-continuity` 负责隔离数据根中的真实进程退出、启动恢复与窗口/路由/阅读位置。
 - `pnpm run verify:retry-feedback` 注入 429/503/401/400/超时/断流/取消，验证有界重试与中断续接，并检查普通、紧凑显示中的重试进度和紧凑失败原因。
 - `pnpm run verify:review-refresh-errors` 在真实 Git 工作区里按住、注入失败或放行审阅快照与单文件 Diff 请求，核对陈旧内容始终自报状态：刷新中显示上次结果、失败分别落在各自提示并给出重试，且“重试差异”确实发出新的 Diff 请求（页面 `fetch` 探针计数）而不是复用缓存。
+- `pnpm run verify:html-preview-baseline` 建立 HTML 小游戏/Git/Shell 的固定基线：把静态页、内联脚本 Canvas 小游戏和多文件夹具写入隔离工作区，同一批文件分别在装机的 Chrome（回环 HTTP，参照实现）、LS 文件预览（沙箱 `srcdoc`）和 LS 浏览器标签（`webview` 来宾）里测量画面、脚本数、canvas 像素、子资源请求与首个控制台错误；另比对一个真实 Git 仓库在 CLI、Local App API 与审阅标签三处的同一份更改，并用真实终端会话记录 Shell 名称、后端、cwd、版本与编码。夹具是合成的——用户原例未提供，报告里如实标注。
 - 任务书级应用验收的范围、结果与未覆盖项集中记录在 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`；通过单个脚本不代表其未覆盖场景也通过。

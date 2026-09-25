@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 18:36:40
+最后更新：2026-09-25 19:28:31
 
 ## 1. 范围与结论
 
@@ -21,6 +21,8 @@
 **2026-09-25 拓展工作区增补**：新增 UX-24～UX-31，共 31 项。用户明确报告“HTML 小游戏全白，或白底带些字，无法游玩”，另报告 Git 审查异常和缺少 PowerShell / Bash 选择。以下新增任务均未实施；基线为 `8b7c6bd` 加当前工作树，保留本轮前已有的 UI 与文档修改。源码确认静态 HTML 预览禁用脚本、Windows Shell 固定为 PowerShell，以及 Git 有缓存时刷新失败不展示错误；尚未拿到问题 HTML 或具体 Git 报错，不能宣称已复现用户原例。既有相关测试 9 个文件、30 项通过，只证明原有覆盖；本轮未启动 Electron、未验收小游戏或打包版。
 
 **进度补记（2026-09-25 18:36:00）**：UX-27 的第一条（保留旧内容时必须标明“正在刷新 / 更新失败，显示上次结果”，快照与单文件 Diff 的失败分别可见且各有重试）已完成真实窗口验收并勾选；新增真实窗口门 `pnpm run verify:review-refresh-errors`（含“重试确实发出新请求”的探针断言，最终构建上 `failures: []`），并修掉自 `5ed06e7` 起一直失败的 `leading-row-layout.test.ts`（该提交把图标按钮规则扩成三个选择器却没同步断言）。UX-27 的读取前后一致性校验、A→B→A / 连点 / 慢响应不串数据、以及“列表统计与 Diff 属于同一版本”仍未开始，整项保持未勾选。
+
+**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。UX-25/UX-26 仍未开始，整批保持未勾选。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -913,9 +915,25 @@
 
 **范围与证据**：核对 [preview-pane.tsx](../../packages/app/src/renderer/workspace/preview-pane.tsx)、[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx)、[browser.tsx](../../packages/app/src/renderer/workspace/browser.tsx)、[review.tsx](../../packages/app/src/renderer/workspace/review.tsx)、[terminal.tsx](../../packages/app/src/renderer/workspace/terminal.tsx)。现有 HTML 测试只检查源码字符串包含 sanitizer、sandbox、base 等，并未执行页面、验证资源加载或游戏输入。
 
-- [ ] 在临时工作区准备：完整 head/style 静态页、内联脚本 Canvas 小游戏、多文件小游戏（CSS / 图片 / JS module / 本地 JSON）；每份记录入口、预期画面与至少一个交互结果。拿到用户原文件后追加原例，未取得时明确标注，不能以合成样本声称原例已修复。
-- [ ] 同一文件在普通浏览器受控本地 HTTP 地址、LS 文件预览、LS 浏览器标签中对照；记录资源请求、控制台首个错误、截图和输入结果。区分页面本身错误、运行入口限制、CSS/资源失败和未启动开发服务。
-- [ ] Git 用临时仓库记录 CLI 状态 / 分层 diff、API 返回与 UI 的差异；Shell 记录实际可执行文件、版本、cwd 和 PTY 状态。记录源码 revision、构建指纹、Windows / Electron 版本，防止用旧构建判断新源码。
+- [x] 在临时工作区准备：完整 head/style 静态页、内联脚本 Canvas 小游戏、多文件小游戏（CSS / 图片 / JS module / 本地 JSON）；每份记录入口、预期画面与至少一个交互结果。拿到用户原文件后追加原例，未取得时明确标注，不能以合成样本声称原例已修复。
+- [x] 同一文件在普通浏览器受控本地 HTTP 地址、LS 文件预览、LS 浏览器标签中对照；记录资源请求、控制台首个错误、截图和输入结果。区分页面本身错误、运行入口限制、CSS/资源失败和未启动开发服务。
+- [x] Git 用临时仓库记录 CLI 状态 / 分层 diff、API 返回与 UI 的差异；Shell 记录实际可执行文件、版本、cwd 和 PTY 状态。记录源码 revision、构建指纹、Windows / Electron 版本，防止用旧构建判断新源码。
+
+**实施记录（2026-09-25 19:26:00）｜状态：三条完成；夹具是合成的，用户原例仍未取得；三项勾选**
+
+- 新增真实环境基线门 `pnpm run verify:html-preview-baseline`（[verify-html-preview-baseline.mjs](../../scripts/verify-html-preview-baseline.mjs)）。它把三份夹具写进隔离工作区并**先建好真实 Git 仓库再启动应用**，然后按三个入口逐项测量：装机 Chrome（`--headless=new`，回环 HTTP 静态服务，作为"页面本身应该是什么样"的参照）、LS 文件预览（工作区文件树打开，沙箱 `srcdoc`）、LS 浏览器标签（真实 `webview` 来宾，同一回环 URL）。夹具：`static-page.html`（完整 head/style/img/脚本）、`canvas-game.html`（内联脚本 Canvas 游戏：方向键移动、点击计分、HUD）、`multi-file/`（`index.html` + `game.css` + `game.js` module + `level.json` + `sprite.svg`）、`assets/tile.svg`。
+- **构建与版本指纹（写进门的输出）**：revision `778f141`、构建输入摘要 `0e42f42b…`、输出摘要 `21652ae7…`、Electron 36.9.5（渲染器 `Chrome/136.0.7103.177`）、Node v26.4.0、`win32 x64`、`Windows_NT 10.0.26200`。会话窗口 1280×860。
+- **参照实现（Chrome 153.0.8010.53，唯一控制台错误是我自己的 `favicon.ico` 404）**：小游戏 canvas 采样 `[18,52,86,255]`（= 夹具底色 `#123456`）、`__gameState.ready`；真实键盘 + 指针输入后 `x 20→28`、`score 0→1`、HUD 变成"分数: 1"；静态页脚本运行（`脚本已运行`）、图片 `naturalWidth 64`、样式表 1 份、深色底 `rgb(16,20,24)`、请求到 `/assets/tile.svg`；多文件页 `level=7`（fetch JSON）、css/js/svg/json **四个子资源全部请求到**、样式表 1 份。→ 夹具本身有效，"正确的样子"有可复现基线。
+- **LS 文件预览（三份都测了 srcdoc 与帧内文档）**：
+  - `srcdoc` 属性（三份一致）：脚本标签被剥离 `hasScriptTag=false`、注入了 CSP 与 `file:` base、`sandbox=""`；**`<style>` 与 `<title>` 都不见了**（`hasStyleTag=false`、`hasTitleTag=false`）。
+  - 渲染出来的文档（第一份，始终渲染）：正文文本在、`scripts=0`、**`styleSheets=0`**、`body` 背景 `rgba(0,0,0,0)`（透明→白底），图片以 `file:///…/assets/tile.svg` 发起了请求但 `naturalWidth=0`（没有解码）。→ 这就是用户说的"**白底带些字**"：样式表被丢掉，页面退化成无样式的黑字白底。
+  - **竞态（用户说的"全白"）**：从文件树打开的后续 HTML 文件**有时**保持创建时的空文档——本轮多次运行的实测结果是 `static-page.html`（先用会话现场预置、挂载前内容已就绪）**每次都渲染**，而 `canvas-game.html` 在一次运行中渲染、在其余运行中 `readyState=complete`、`htmlLength≈467`、`body` 为空、没有 canvas；`multi-file/index.html` 同样为空。空文档在 6 秒后、以及切标签再切回后都不变，而同一时刻元素的 `srcdoc` 属性已经有 568/805 字符的正文 → **帧保留的是它被创建时的空文档，之后属性更新没有让它重新导航**。截图 `preview-canvas-game.png`（空白白框）就是用户看到的形态。
+- **LS 浏览器标签**：同一小游戏**可玩**——canvas 采样 `[18,52,86,255]`、`__gameState.ready`、真实输入后 `x 20→28`、`score 0→1`。输入必须先点一下再按键（先按键会被丢，实测），这是夹具经验，也说明来宾只有在聚焦后才收键盘。
+- **本地路径走浏览器标签（"运行入口限制"这一类）**：地址栏提交 `file:///…/canvas-game.html` 后，`normalizeBrowserUrl` 把它改写成 `https://file///C:/…`（主机名 `file`），标签 URL 与持久化现场都变成这个假地址，来宾落在 `chrome-error://chromewebdata/`（空白错误页），界面上**没有任何解释**。→ 若用户是"把文件路径粘进 LS 浏览器"，看到的就是白页 + 无说明。
+- **Git：CLI / API / UI 三处同一份更改**（`M canvas-game.html` + 新增 `probe-untracked.txt`，改动内容为一行 `<!-- baseline edit -->`）：CLI `git status --porcelain` 两行、`git diff` 一行新增、`numstat 1 0`；API `GET /workspace/review` 报告 `availability=ready`、`branch=main`、同样两个文件（`modified`/`untracked`）、`countsComplete=true`，单文件 Diff 分别给出 `unstaged`（1 hunk，新增行内容不含 `+` 前缀）与 `untracked`（1 hunk）两层；UI 审阅标签列出 `M canvas-game.html +1 -0`、`U probe-untracked.txt +1 -0`、合计 `2 个文件 +2 -0`。**另测到一处陈旧读数**：审阅标签挂载时显示"没有未提交更改 工作区与 HEAD 一致。0 个文件"，点一次"刷新 Git 更改"才变成正确的两行——这条记录给 UX-27 的剩余条目（旧数据状态与一致性）。
+- **Shell：真实会话身份**：`POST /workspace/terminal/session` 建会话（100×30）返回 `shell="PowerShell PTY"`、`backend="pty"`、`source="workspace-user"`、`cwd` = 工作区根；在同一会话里执行命令后，Shell 自己报告 `PSV=5.1.26100.9444`、`CWD=` 同一路径、`ENC=utf-8`。即 Windows 上确实只有一个固定的 Windows PowerShell 5.1 配置（无探测、无选择，UX-29 的能力缺口由此确认）。
+- **顺带记录（不据此改代码）**：在本次会话里浏览器标签被二次导航后，渲染器控制台出现 3 次 `TypeError: Cannot read properties of undefined (reading 'getWebContentsId')`（`WebViewElement.observeFinishedLoad`），来宾生命周期属于 UX-26/UX-30。
+- 未覆盖 / 边界：**夹具是合成的**，用户原例（那份"全白或白底带些字"的 HTML）没有拿到，所以本项只建立可复现基线与根因方向，不声明用户原例已修复；`<style>` 丢失与"后续文件空帧"两条的直接修复属于 UX-25，小游戏可运行入口属于 UX-26；参照实现是 headless Chrome，不代表用户实际使用的浏览器或浏览器插件环境；LS 侧没有测打包版与真实系统缩放下的这些页面（UX-31 覆盖）。
 
 ### UX-25｜静态 HTML 的文档结构和资源加载
 
@@ -1066,7 +1084,7 @@
 | 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 | 21 | UX-23 | 本任务实施记录 + `pnpm run verify:code-wrap-control` | 语言标签文本；折行开关在对话代码块与工作区 Monaco 上生效；中文与正文同字形；按钮可达 | 通过 |
-| 22 | UX-24～UX-26 | 本任务验收项；HTML 静态 / 小游戏实机门待建 | 对照浏览器、资源加载、Canvas 与输入、错误诊断、guest 隔离 | 未执行 |
+| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线）；UX-25/26 的实现门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离 | UX-24 基线通过（`failures: []`，夹具为合成）；UX-25/26 未执行 |
 | 23 | UX-27 / UX-28 | 本任务实施记录 + `pnpm run verify:review-refresh-errors`；复用既有 Git 测试与 `verify:review-navigator-width`，补内容竞争与错误分类场景 | 按住／失败／放行审阅快照与 Diff：旧数据自报刷新中与更新失败、两条失败各自可见可重试、重试确实重新请求；CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | UX-27 第一条通过（三次 `failures: []`）；其余未执行 |
 | 24 | UX-29 / UX-30 | 本任务验收项；多 Shell / 会话实机门待建 | Shell 身份、cwd、独立实例、PTY 降级、关闭与恢复 | 未执行 |
 | 25 | UX-31 | 本任务组合步骤；扩展 `verify:conversation-workspace-scenarios` 或登记最小独立门 | 小游戏编辑运行、终端服务、Git 审查、跨工作区、打包版 | 未执行 |
