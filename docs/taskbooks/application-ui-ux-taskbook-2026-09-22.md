@@ -813,6 +813,23 @@
 - 高 DPI 实测（DPR 2，与 800px 最小窗口阶段区分开）：文档与转写横向溢出均为 0，失败提示仍是 `14px`、对比度 15.53，与 DPR 1 逐项一致——CSS 布局契约不随缩放变化。说明：这一项模拟的是**光栅化**那一半（DPR）；会缩小 CSS 视口的那一半由 800px 最小窗口阶段覆盖，因为窗口管理器不会把窗口压到比 `MINIMUM_WINDOW` 更窄。
 - 仍未覆盖（第 1~3 条复选框保持未勾选）：**键盘全流程**（Tab 顺序、Escape 分层收起、焦点返回）与"读完结果、找到失败、继续任务"三段式操作记录、录屏未做；工具输出长文本的默认折叠量与来源/引用可读性未单独测量。截图新增 `long-answer-compact.png`、`failure-high-dpi.png`。
 
+### UX-23｜代码块头部栏与自动换行开关
+
+**现状与建议**：对话里的 Markdown 代码块只有右上角一个复制按钮——没有语言标签，也没有“自动换行”开关，长行只能横向滚动；拓展工作区的代码显示同样没有换行开关。用户给出的参考图要求：代码块顶部是一条头部栏，左侧显示语言标签（如 `XML`），右侧是「自动换行」与「复制」两个图标按钮；并要求拓展工作区的代码显示在对应位置也加这个开关。
+
+**定位**：[Markdown.tsx](../../packages/app/src/renderer/Markdown.tsx) 的 `PlainCodeFallback` / `CodeBlock`（`.code-toolbar` 与 `.code-block-source`）、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[workspace/code-editor.tsx](../../packages/app/src/renderer/workspace/code-editor.tsx)（Monaco 选项与工具条位置）。
+
+- [ ] 抽出**一个**代码块头部栏：对话高亮路径与纯文本回退路径复用同一条，左侧语言标签用已解析的 `language`（缺省 `text`，大写显示），右侧是自动换行开关与复制按钮。
+- [ ] 自动换行开关：默认不折行（横向滚动），点击后折行；状态在两条代码块路径与拓展工作区代码显示之间**共享并记住**（`localStorage` 偏好），工作区侧切换 Monaco 的 `wordWrap`。
+- [ ] 样式与角色：头部栏的圆角/内边距/标签字号沿用现有 token 与 UX-14 的字号角色，按钮走统一图标集、焦点与禁用角色；不得破坏 `--mono` 的中文回退（中文与正文同字形）与既有语法高亮配色。
+- [ ] 验收：真实窗口里语言标签文本正确；两个按钮可点且状态可见（折行前后 `white-space`/`scrollWidth` 实测变化）；工作区代码显示的开关确实生效；中文渲染宽度与正文一致；`ui-state-consistency.test.ts` 增加防回流断言。
+
+**实施记录（2026-09-25 15:20:00）｜状态：已登记为独立任务，实现未开始**
+
+- 来源：用户 2026-09-25 的界面反馈与两张参考图（代码块头部栏：语言标签 + 自动换行 + 复制），并明确选择「第一个图标是自动换行开关」且要求拓展工作区的代码显示在对应位置也放同一个开关。
+- 入口已定位（实现时按此执行）：`Markdown.tsx:221` 的 `PlainCodeFallback` 与 `Markdown.tsx:248` 的 `CodeBlock` 共用 `.code-block > .code-toolbar`（现在只有 `<CopyButton>`）；`Markdown.tsx:169` 已从 `code.language-xxx` 解析出 `language`，可直接作为标签文本；折行态样式落在 `05-chat-messages.css` 的 `.code-block-source`；工作区侧在 `workspace/code-editor.tsx` 的 Monaco 选项区切换 `wordWrap`，按钮位置与面板工具条一致。
+- 与已完成工作的关系：前两轮已修好“代码块中文与正文不同字形”（`--mono` 补中文回退 + 代码块显式声明该令牌，实测中文宽度 64 px = 正文 64 px），本项只加头部栏与折行开关，不改配色与等宽/中文字形规则。
+
 ## 4. 实施顺序与依赖
 
 1. **第一批：可靠性**。UX-01、UX-02、UX-03、UX-04、UX-05；UX-02 需要的最小确认层可与 UX-07 共用，不等整套 UI 抽象完成再修复。
@@ -859,6 +876,7 @@
 | 18 | UX-21 | 本任务实施记录 + `pnpm run verify:retry-feedback` / `verify:local-stream-disconnect` | 429/503/超时/断流/401/400/取消/本地 SSE 断线共九类，安全重试最多 5 次 | |
 | 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
+| 21 | UX-23 | 本任务实施记录 + 待建门（代码块头部栏与折行开关的实机走查） | 语言标签文本；折行开关在对话代码块与工作区代码显示两条路径上都生效；中文与正文同字形；按钮可达 | |
 
 **自动门快照（记录于 2026-09-23 00:11，会随每次运行变化，不作为常驻结论）**：`check:repo` 当时 36/36 通过（2026-09-24 增补两条检查后为 38/38）；全量测试 **476 个文件 / 3358 通过、2 失败、1 跳过**，两个失败均不在本任务改动面内——`packages/runner/src/runner.test.ts` 的压缩范围断言与 `scripts/verify-web-live-llm-evidence.test.mjs` 解析被管道捕获的子进程 stdout（本沙箱不允许管道捕获，属环境边界）；全 workspace typecheck、App 构建与 `verify:app-recovery` 当时均通过。**测试数量与耗时以命令输出为准**，本任务书不复述为当前结果。
 
