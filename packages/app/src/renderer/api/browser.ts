@@ -26,3 +26,31 @@ export async function clearBrowserData(): Promise<BrowserStorageOperationResult>
   if (!response.ok) throw await localApiResponseError(response)
   return response.json() as Promise<BrowserStorageOperationResult>
 }
+
+export type BrowserDiagnosticKind = 'script' | 'resource' | 'navigation' | 'console'
+
+export interface BrowserDiagnosticEntry {
+  kind: BrowserDiagnosticKind
+  message: string
+  url: string
+  sourceId: string
+  lineNumber: number
+  at: string
+}
+
+export interface BrowserDiagnostics {
+  entries: BrowserDiagnosticEntry[]
+  counts: Record<BrowserDiagnosticKind, number>
+  revision: number
+}
+
+/**
+ * What a page in the embedded browser reported (script errors, failed resources,
+ * load failures). UX-26: running a page must be diagnosable without DevTools.
+ */
+export async function getBrowserDiagnostics(url: string): Promise<BrowserDiagnostics> {
+  const query = new URLSearchParams({ url })
+  const response = await localApiFetch(`${LOCAL_APP_API_ROUTES.browserDiagnostics}?${query}`)
+  if (!response.ok) throw await localApiResponseError(response)
+  return response.json() as Promise<BrowserDiagnostics>
+}

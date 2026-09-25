@@ -1,6 +1,6 @@
 # Renderer API 客户端
 
-最后更新：2026-09-25 20:27:30
+最后更新：2026-09-25 23:51:06
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。
 
@@ -13,7 +13,7 @@
 | `workspace-preview-server.ts` | 运行工作区 HTML 页面的有界 loopback 服务客户端（UX-26）：`startWorkspacePreviewServer(root, path)` 返回带随机 token 的 loopback URL，`stopWorkspacePreviewServer(root)` 释放它。根范围、真实路径校验与生命周期都由 Main 拥有，这里只发请求。 |
 | `run.ts` | Agent run、流式事件和权限批准。 |
 | `run-checkpoints.ts` | RunCheckpoint 列表、详情、续跑流和放弃。 |
-| `application-lifecycle.ts` | 活动任务快照、`active_runs` SSE 订阅和暂停/继续/中断控制；目前由设置页直接导入。 |
+| `browser.ts` | 内置浏览器分区状态与清理，以及 `getBrowserDiagnostics(url)`（UX-26：运行页面的脚本报错/资源失败，供"运行"旁的诊断读数使用）。 |`n| `application-lifecycle.ts` | 活动任务快照、`active_runs` SSE 订阅和暂停/继续/中断控制；目前由设置页直接导入。 |
 | `sessions.ts` | 会话、项目、归档和历史消息分页；`updateSessionWorkspace` 是项目会话显式换目录的调用入口（独立会话跟随默认目录，不走这里）。 |
 | `runtime.ts` | Provider、Runtime、API key、Web Provider 检查、数据根和应用重启。 |
 | `attachments.ts` | 附件选择、浏览器文件导入和本地路径解析。 |

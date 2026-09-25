@@ -6,6 +6,7 @@
 // "save and run" is this notice.
 import { FeedbackNotice } from '../ui/feedback-notice'
 import { htmlRunBusy, htmlRunFeedback, type HtmlRunState } from './html-run'
+import { WorkspaceRunDiagnostics } from './run-diagnostics'
 
 export function HtmlRunNotice({
   run,
@@ -28,6 +29,11 @@ export function HtmlRunNotice({
           className="workspace-preview-run-notice"
           busy={htmlRunBusy(run)}
         />
+        {/* UX-26: a running page reports its own script errors and failed resources
+            here, so the user never has to open DevTools to find out. */}
+        {run.status === 'running' && run.url
+          ? <WorkspaceRunDiagnostics url={run.url} />
+          : null}
       </div>
     )
   }

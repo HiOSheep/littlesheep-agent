@@ -8,6 +8,14 @@ import {
   type BrowserStorageOperationResult,
   type BrowserStorageStatus,
 } from '../shared/browser-control-contracts.js'
+import {
+  consoleLevelToNumber,
+  lastRememberedGuestPageUrl,
+  recordGuestConsole,
+  recordGuestLoadFailure,
+  recordGuestResourceFailure,
+  rememberGuestPageUrl,
+} from './embedded-browser-diagnostics.js'
 
 let embeddedBrowserSession: Electron.Session | null = null
 let embeddedBrowserOperation: Promise<void> | null = null
@@ -106,9 +114,54 @@ export function configureEmbeddedBrowserWindow(win: Electron.BrowserWindow): voi
     })
     guestContents.on('did-finish-load', () => {
       void applyTextDocumentContrast(guestContents)
+      if (!guestContents.isDestroyed()) rememberGuestPageUrl(guestContents.getURL())
+    })
+    // A run page must not need DevTools to be diagnosable: what the guest reports is
+    // recorded in a bounded per-page list the renderer shows next to the run controls.
+    guestContents.on('console-message', (details) => {
+      if (guestContents.isDestroyed()) return
+      rememberGuestPageUrl(guestContents.getURL())
+      recordGuestConsole({
+        url: guestContents.getURL(),
+        message: details.message,
+        source: 'other',
+        level: consoleLevelToNumber(details.level),
+        sourceId: details.sourceId,
+        lineNumber: details.lineNumber,
+      })
+    })
+    guestContents.on('did-fail-load', (_loadEvent, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return
+      recordGuestLoadFailure({
+        url: validatedURL || (guestContents.isDestroyed() ? '' : guestContents.getURL()),
+        errorCode,
+        errorDescription,
+      })
     })
     guestContents.on('will-navigate', (event, url) => {
       if (!/^https?:\/\//iu.test(url)) event.preventDefault()
+    })
+  })
+  // A 404 stylesheet or a refused connection never reaches `console-message`
+  // (measured), so the session's own observers report them; they carry the referrer,
+  // which is the page the user is looking at.
+  const browserSession = getEmbeddedBrowserSession()
+  browserSession.webRequest.onCompleted({ urls: ['http://*/*', 'https://*/*'] }, (details) => {
+    if (details.statusCode < 400 || details.resourceType === 'mainFrame') return
+    recordGuestResourceFailure({
+      url: details.referrer || lastRememberedGuestPageUrl(),
+      resourceUrl: details.url,
+      statusCode: details.statusCode,
+      resourceType: details.resourceType,
+    })
+  })
+  browserSession.webRequest.onErrorOccurred({ urls: ['http://*/*', 'https://*/*'] }, (details) => {
+    if (details.resourceType === 'mainFrame') return
+    recordGuestResourceFailure({
+      url: details.referrer || lastRememberedGuestPageUrl(),
+      resourceUrl: details.url,
+      statusCode: 0,
+      resourceType: details.resourceType,
     })
   })
 }

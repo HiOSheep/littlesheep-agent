@@ -42,6 +42,7 @@ export const LOCAL_APP_API_ROUTES = {
   workspaceOpen: '/workspace/open',
   externalOpen: '/external/open',
   workspaceOpenVscode: '/workspace/open-vscode',
+  browserDiagnostics: '/browser/diagnostics',
   browserStatus: '/browser/status',
   browserClearCache: '/browser/clear-cache',
   browserClearData: '/browser/clear-data',

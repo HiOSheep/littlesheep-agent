@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-25 20:27:30
+最后更新：2026-09-25 23:51:06
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -27,7 +27,7 @@
 | `workspace-git-*.ts` | 仓库/分支定位、只读命令、过滤器安全策略、porcelain/numstat/diff 解析、未跟踪扫描、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
 | `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |
 | `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由；`terminal-permission.ts` 区分用户自控终端与 Agent 发起的命令。 |
-| `browser-routes.ts` | 内置浏览器分区状态与缓存/数据清理。 |
+| `browser-routes.ts` | 内置浏览器分区状态与缓存/数据清理，以及 `/browser/diagnostics`（运行页面报告过的脚本报错/资源失败，来自 `../embedded-browser-diagnostics.ts` 的有界记录）。 |
 | `development-environment-routes.ts` | 开发环境状态、版本偏好、导入和移除接口。 |
 | `extension-routes.ts` | 插件与外部渠道控制面。 |
 | `vscode-launcher.ts` | VS Code 命令发现与启动。 |

@@ -39,6 +39,26 @@ const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs:
 const WINDOW = { width: 1280, height: 860 }
 const FIXTURE_LABEL = '合成夹具（用户原例未提供）'
 
+/** UX-26 diagnostics: a page that throws and misses a resource, on purpose. */
+const ERROR_PAGE = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>报错夹具</title>
+  <link rel="stylesheet" href="missing-style.css">
+  <style>body { margin: 0; background: #101418; color: #e8e8e8; font-family: "Microsoft YaHei UI", sans-serif; }</style>
+</head>
+<body>
+  <h1>报错夹具</h1>
+  <img id="missing" src="missing-image.png" alt="缺失图片">
+  <script>
+    window.__errorFixture = true;
+    throw new Error('夹具脚本错误');
+  </script>
+</body>
+</html>
+`
+
 const STATIC_PAGE = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -262,6 +282,7 @@ async function writeFixtures(workspaceDir) {
   ])
   await writeFile(join(workspaceDir, 'static-page.html'), STATIC_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'canvas-game.html'), CANVAS_GAME, 'utf8')
+  await writeFile(join(workspaceDir, 'error-page.html'), ERROR_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'assets', 'tile.svg'), SPRITE_SVG, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'index.html'), MULTI_INDEX, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'game.css'), MULTI_CSS, 'utf8')
@@ -1128,6 +1149,84 @@ async function main() {
       stoppedNotice,
     )
     recorder.check(afterStop === 0, 'the stopped run service no longer answers', { afterStop })
+
+    // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
+    // without DevTools. Main records what the guest reported; the toolbar shows a
+    // compact summary with the raw messages behind a disclosure.
+    await openFileFromTree(client, 'error-page.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：error-page.html') ? mounted : undefined
+    }, 20_000, 'error page preview before running')
+    const startedErrorRun = await clickPreviewAction(client, '运行')
+    const errorServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the error page')
+    const errorRunUrl = errorServers[0].url
+    await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      return targets.find((candidate) => candidate.url === errorRunUrl) ?? undefined
+    }, 30_000, 'browser tab for the error page')
+    // Running opens the browser tab, which becomes active: the readout lives next to
+    // the file's run controls, so go back to that tab to read it.
+    await selectWorkspaceTab(client, 'error-page.html')
+    // The guest reports asynchronously; wait for the projection the toolbar renders.
+    const diagnosticsNotice = await harness.waitFor(() => client.evaluate(`(() => {
+      const node = document.querySelector('.workspace-tab-view.active .workspace-preview-run-diagnostics');
+      const button = node?.querySelector('button');
+      return button ? { summary: button.textContent.trim(), expanded: button.getAttribute('aria-expanded') } : null;
+    })()`), 30_000, 'run diagnostics summary').catch(() => null)
+    const expandedDiagnostics = diagnosticsNotice
+      ? await client.evaluate(`(() => {
+          const node = document.querySelector('.workspace-tab-view.active .workspace-preview-run-diagnostics');
+          node?.querySelector('button')?.click();
+          return true;
+        })()`)
+      : false
+    const diagnosticsDetails = expandedDiagnostics
+      ? await harness.waitFor(() => client.evaluate(`(() => {
+          const items = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-run-diagnostics-list li')]
+            .map((item) => item.textContent.replace(/\\s+/gu, ' ').trim());
+          return items.length > 0 ? items : undefined;
+        })()`), 10_000, 'run diagnostics details').catch(() => null)
+      : null
+    const diagnosticsApi = await apiJson(locator, `/browser/diagnostics?url=${encodeURIComponent(errorRunUrl)}`)
+    const diagnosticsShot = await captureScreenshot(client, screenshotDir, 'html-run-diagnostics.png')
+    recorder.note({
+      step: 'html-run-diagnostics',
+      entry: '工作区 → error-page.html → 运行（脚本抛错 + 缺失资源）',
+      clicked: startedErrorRun,
+      runUrl: errorRunUrl,
+      notice: diagnosticsNotice,
+      details: diagnosticsDetails,
+      counts: diagnosticsApi.counts ?? null,
+      entries: (diagnosticsApi.entries ?? []).map((entry) => ({ kind: entry.kind, message: entry.message.slice(0, 90) })),
+      screenshot: diagnosticsShot,
+    })
+    recorder.check(
+      (diagnosticsApi.counts?.script ?? 0) >= 1,
+      'Main records the script error the running page threw',
+      diagnosticsApi.counts ?? null,
+    )
+    recorder.check(
+      (diagnosticsApi.counts?.resource ?? 0) >= 1,
+      'Main records the failed resource the running page asked for',
+      diagnosticsApi.counts ?? null,
+    )
+    recorder.check(
+      diagnosticsNotice?.summary.includes('脚本报错') === true && diagnosticsNotice.summary.includes('资源失败'),
+      'the toolbar states the script error and the failed resource without DevTools',
+      diagnosticsNotice,
+    )
+    recorder.check(
+      Array.isArray(diagnosticsDetails) && diagnosticsDetails.some((line) => line.includes('夹具脚本错误')),
+      'the details disclose the message the page itself produced',
+      diagnosticsDetails,
+    )
+    await selectWorkspaceTab(client, 'error-page.html')
+    await clickPreviewAction(client, '停止')
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
 
     // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
     await selectWorkspaceFeature(client, '浏览器')

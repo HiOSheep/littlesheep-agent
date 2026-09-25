@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-25 23:31:57
+最后更新：2026-09-25 23:51:06
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -14,6 +14,7 @@
 - `local-app-api/workspace-git-*.ts`：工作区 Git 仓库定位、分层审阅、opaque revision、状态/Diff 有界缓存和子进程并发控制；详细契约由 `local-app-api/README.md` 维护。
 - `desktop-shell.ts`（配合 `tray-controller.ts`、`close-policy.ts`、`desktop-window-state.ts`、`desktop-startup-page.ts`、`desktop-visual-acceptance.ts`）：BrowserWindow、托盘、三档关闭策略、窗口拖拽与退出前落盘 IPC；`desktop-acceptance-snapshot.ts` 为其提供只读验收快照。原生标题栏覆盖区、启动页与渲染器标题栏共用 `desktop-startup-page.ts` 导出的实色 `#101010` 契约（启用 acrylic 会在原生按钮区形成可见接缝，已移除）；`currentWindow()` 供就绪发布按次解析当前窗口。**隔离验收运行默认不把窗口显示出来**：`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 把判定放在**唯一的上屏出口 `showWindow()`** 里——启动页、渲染器就绪、恢复几何和 `show()` 都经过它，只在 `show()`/`showStartup()` 上设卡会漏掉内部调用（实测窗口照样弹出、盖住用户）。需要像素的检查必须显式放行：验收动作先调 `allowAcceptanceWindow()` 再 `show()`（顺序有单测）。生产启动不受影响（只认验收环境变量）。
 - `local-app-api/workspace-preview-server.ts`：运行工作区 HTML 页面的**有界 loopback 静态服务**（UX-26）。静态预览不执行脚本，所以"运行"必须经 HTTP：每个工作区根一个监听、URL 带随机 token、只答 `GET`/`HEAD`、`Host` 必须是 loopback、解码后的路径再经 `realpath` 校验（穿越与符号链接逃逸都拒）、无目录列表、无 CORS 头、单文件上限、有界服务数 + 空闲回收 + 显式 `stop`（API server 关闭时 `stopAll`）。它只服务项目根内的普通文件，不代理进程、不执行项目脚本、不安装依赖。
+- `embedded-browser-diagnostics.ts`：运行中的工作区页面**不必打开 DevTools** 就能被诊断（UX-26）：有界（40 条、消息截断 300 字符、逐出最旧）记录每条脚本报错/资源失败/加载失败，按页面 URL 查询，`/browser/diagnostics?url=…` 只读投影给渲染器。两条来源缺一不可——`console-message` 只报页面自己抛的错（实测缺失样式表与图片**完全不产生** console 消息），子资源 4xx 与连接被拒来自 session 的 `webRequest.onCompleted/onErrorOccurred`，用 `referrer`（缺失时用最近访问的页面 URL）归到页面上。
 - `desktop-visual-acceptance.ts`：CS-02 接缝检查所需的原生侧事实（标题栏高度、覆盖区颜色、启动页底色、窗口背景）、有界窗口缩放与最大化/还原（`setWindowMaximizedForAcceptance`），以及在实机窗口上渲染启动页与启动失败页；它是"验收快照里的声明值"，验收脚本据此与实测像素比对。只服务隔离验收运行，不接管窗口生命周期（窗口由 `index.ts` 在调用点解析后传入）。
 - 启动页 / 启动失败页取证（`desktop-acceptance-actions.ts` 装配、`desktop-visual-acceptance.ts` 的 `showStartupPageForAcceptance` / `showStartupErrorPageForAcceptance` 渲染，经应用生命周期路由的 `startup-page` / `startup-error` 动作触达）：把生产同一份启动文档交回窗口、把真实失败文案交给与生产同一份 `showStartupError` 文档，供隔离验收捕获像素。这两页都无法靠等待到达（启动页只停留约 90 ms），因此这是唯一能对它们取证的入口；`desktop-acceptance-actions.ts` 在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 之外整体返回 `undefined`，渲染函数自身也再判一次，生产路径不受影响。捕获证明的是页面外观，不证明启动页的停留时长——交接时序仍属人工验收项。
 - 就绪窗口的验收拉长（`desktop-acceptance-actions.ts` 的 `acceptanceReadyDelayMs()` / `waitForAcceptanceReadyDelay()`，`index.ts` 在发布就绪前调用）：只推迟**发布**，Runner 照常构建，被拉长的只是渲染器看到的未就绪窗口，用以在真实窗口上验证"先可用界面"的交互契约（草稿、发送禁用、真实阶段文案）。仅 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 且 `LITTLESHEEP_ACCEPTANCE_READY_DELAY_MS` 为正整数时生效，上限 60 s，生效时打出 `acceptance-ready-delay` 阶段标以免被误读成初始化变慢；正常启动为 0。
