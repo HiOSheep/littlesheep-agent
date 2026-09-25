@@ -895,6 +895,51 @@ async function main() {
       { overlap: restored.composerOverlappedByPanel, coverer: restored.coverers },
     )
 
+    // ---------------------------------------------------------------------
+    // 5. Markdown font roles in the real window
+    // ---------------------------------------------------------------------
+    const fontProbe = await evaluate(client, `(() => {
+      const read = (selector) => {
+        const node = document.querySelector(selector);
+        if (!(node instanceof HTMLElement)) return null;
+        const style = getComputedStyle(node);
+        return { fontFamily: style.fontFamily, fontSize: style.fontSize };
+      };
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      const width = (family) => {
+        context.font = '16px ' + family;
+        return Math.round(context.measureText('中文验收').width * 100) / 100;
+      };
+      const prose = read('.markdown p') ?? read('.markdown blockquote');
+      const code = read('.markdown pre code') ?? read('.code-block-source');
+      return {
+        prose,
+        code,
+        inlineCode: read('.markdown-inline-code'),
+        proseCjkWidth: prose ? width(prose.fontFamily) : null,
+        codeCjkWidth: code ? width(code.fontFamily) : null,
+      };
+    })()`)
+    screenshots['fonts'] = await writePng(client, 'markdown-fonts')
+    recorder.note({ step: 'markdown-fonts', probe: fontProbe })
+    recorder.check(
+      (fontProbe.prose?.fontFamily ?? '').includes('Segoe UI Variable Text'),
+      'Markdown prose renders with the body font token',
+      { prose: fontProbe.prose },
+    )
+    recorder.check(
+      (fontProbe.code?.fontFamily ?? '').includes('Cascadia Code')
+      && (fontProbe.code?.fontFamily ?? '').includes('Microsoft YaHei UI'),
+      'Markdown code declares the mono token together with its CJK fallback',
+      { code: fontProbe.code, inlineCode: fontProbe.inlineCode },
+    )
+    recorder.check(
+      fontProbe.proseCjkWidth !== null && fontProbe.proseCjkWidth === fontProbe.codeCjkWidth,
+      'Chinese inside code resolves to the same face width as prose',
+      { proseCjkWidth: fontProbe.proseCjkWidth, codeCjkWidth: fontProbe.codeCjkWidth },
+    )
+
     screenshots['final'] = await writePng(client, 'scenarios-final')
   } catch (error) {
     recorder.check(false, 'the walkthrough completed without an unexpected failure', {
