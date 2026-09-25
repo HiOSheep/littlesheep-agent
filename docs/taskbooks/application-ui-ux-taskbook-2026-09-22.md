@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 19:28:31
+最后更新：2026-09-25 19:31:45
 
 ## 1. 范围与结论
 
@@ -922,7 +922,7 @@
 **实施记录（2026-09-25 19:26:00）｜状态：三条完成；夹具是合成的，用户原例仍未取得；三项勾选**
 
 - 新增真实环境基线门 `pnpm run verify:html-preview-baseline`（[verify-html-preview-baseline.mjs](../../scripts/verify-html-preview-baseline.mjs)）。它把三份夹具写进隔离工作区并**先建好真实 Git 仓库再启动应用**，然后按三个入口逐项测量：装机 Chrome（`--headless=new`，回环 HTTP 静态服务，作为"页面本身应该是什么样"的参照）、LS 文件预览（工作区文件树打开，沙箱 `srcdoc`）、LS 浏览器标签（真实 `webview` 来宾，同一回环 URL）。夹具：`static-page.html`（完整 head/style/img/脚本）、`canvas-game.html`（内联脚本 Canvas 游戏：方向键移动、点击计分、HUD）、`multi-file/`（`index.html` + `game.css` + `game.js` module + `level.json` + `sprite.svg`）、`assets/tile.svg`。
-- **构建与版本指纹（写进门的输出）**：revision `778f141`、构建输入摘要 `0e42f42b…`、输出摘要 `21652ae7…`、Electron 36.9.5（渲染器 `Chrome/136.0.7103.177`）、Node v26.4.0、`win32 x64`、`Windows_NT 10.0.26200`。会话窗口 1280×860。
+- **构建与版本指纹（写进门的输出）**：revision `059cc16`、构建输入摘要 `a388d9f4…`、输出摘要 `21652ae7…`（与上一次构建相同，说明本项只改了文档与脚本）、Electron 36.9.5（渲染器 `Chrome/136.0.7103.177`）、Node v26.4.0、`win32 x64`、`Windows_NT 10.0.26200`。会话窗口 1280×860。提交后在最终源码 revision 上复跑一次，同样 `failures: []`，渲染结论一致。
 - **参照实现（Chrome 153.0.8010.53，唯一控制台错误是我自己的 `favicon.ico` 404）**：小游戏 canvas 采样 `[18,52,86,255]`（= 夹具底色 `#123456`）、`__gameState.ready`；真实键盘 + 指针输入后 `x 20→28`、`score 0→1`、HUD 变成"分数: 1"；静态页脚本运行（`脚本已运行`）、图片 `naturalWidth 64`、样式表 1 份、深色底 `rgb(16,20,24)`、请求到 `/assets/tile.svg`；多文件页 `level=7`（fetch JSON）、css/js/svg/json **四个子资源全部请求到**、样式表 1 份。→ 夹具本身有效，"正确的样子"有可复现基线。
 - **LS 文件预览（三份都测了 srcdoc 与帧内文档）**：
   - `srcdoc` 属性（三份一致）：脚本标签被剥离 `hasScriptTag=false`、注入了 CSP 与 `file:` base、`sandbox=""`；**`<style>` 与 `<title>` 都不见了**（`hasStyleTag=false`、`hasTitleTag=false`）。
