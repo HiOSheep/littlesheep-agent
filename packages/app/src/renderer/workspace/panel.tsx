@@ -239,11 +239,11 @@ export function WorkspacePanel({
             root={fileTab.root}
             path={fileTab.path}
             sessionId={sessionId}
-            draft={fileDrafts[tab]}
-            onDraftChange={onFileDraftChange}
+            draft={fileDrafts[tab]} onDraftChange={onFileDraftChange}
             onRequestFileSaveApproval={onRequestFileSaveApproval}
             onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
             onWorkspaceFileSaved={onWorkspaceFileSaved}
+            onOpenBrowserTab={onBrowserOpenNewTab}
             comments={lineCommentsByScope[commentScope] ?? EMPTY_LINE_COMMENTS}
             onCommentsChange={(comments) => updateLineComments(commentScope, comments)}
             onCommentUpdate={(previous, next, attachment) => onLineCommentUpdate(

@@ -29,6 +29,7 @@ export function WorkspaceFileView({
   onCommentUpdate,
   onCommentDelete,
   onAddAttachment,
+  onOpenBrowserTab,
   onTipChange,
 }: {
   tabId: WorkspaceFileTabId
@@ -45,6 +46,7 @@ export function WorkspaceFileView({
   onCommentUpdate: (previous: WorkspaceLineComment, next: WorkspaceLineComment, attachment: AttachmentRef) => void
   onCommentDelete: (comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
+  onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [preview, setPreview] = useState<WorkspacePreview | null>(() => (
@@ -133,6 +135,7 @@ export function WorkspaceFileView({
       draft={draft}
       onOpenInVSCode={openInVSCode}
       onSaveFile={saveFile}
+      onOpenBrowserTab={onOpenBrowserTab}
       onDraftChange={onDraftChange}
       comments={comments}
       onCommentsChange={onCommentsChange}

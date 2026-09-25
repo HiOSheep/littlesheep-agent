@@ -19,6 +19,8 @@ import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
+import { HtmlRunNotice } from './html-run-notice'
+import { useHtmlRun } from './use-html-run'
 import { useCodeWrapPreference } from '../ui/code-wrap-preference'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
 import { workspaceErrorMessage } from './workspace-errors'
@@ -37,6 +39,7 @@ export function WorkspacePreviewPane({
   draft,
   onOpenInVSCode,
   onSaveFile,
+  onOpenBrowserTab,
   onDraftChange,
   comments,
   onCommentsChange,
@@ -55,6 +58,7 @@ export function WorkspacePreviewPane({
   draft?: WorkspaceFileDraftState
   onOpenInVSCode: () => void | Promise<void>
   onSaveFile: (path: string, content: string, expectedModifiedAt?: number) => Promise<WorkspacePreview>
+  onOpenBrowserTab: (url: string) => void
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   comments?: WorkspaceLineComment[]
   onCommentsChange?: (comments: WorkspaceLineComment[]) => void
@@ -214,8 +218,8 @@ export function WorkspacePreviewPane({
     }
   }, [sessionId, preview?.path, preview?.modifiedAt, editable, isMarkdown, isHtml])
 
-  async function saveEditorContent() {
-    if (!editable || !preview || !dirty || saving) return
+  async function saveEditorContent(): Promise<boolean> {
+    if (!editable || !preview || !dirty || saving) return !dirty
     setSaving(true)
     setSaveError('')
     setSaveMessage('')
@@ -238,13 +242,26 @@ export function WorkspacePreviewPane({
       setSaveMessage('已保存')
       // Keep the confirmation on screen across the refresh this save triggers.
       savedStatusPathRef.current = preview.path
+      return true
     } catch (err) {
       console.debug('[workspace-preview-pane] file save failed', err)
       setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))
+      return false
     } finally {
       setSaving(false)
     }
   }
+
+  /** Running always uses the saved file: a dirty draft asks first (UX-26). */
+  const htmlRun = useHtmlRun({
+    workspacePath,
+    filePath: preview?.kind === 'html' ? preview.path : '',
+    fileModifiedAt: preview?.modifiedAt ?? 0,
+    isHtml,
+    dirty,
+    saveDraft: saveEditorContent,
+    onOpenBrowserTab,
+  })
 
   return (
     <div className="workspace-preview-pane">
@@ -266,8 +283,10 @@ export function WorkspacePreviewPane({
             showMarkdownSource={showMarkdownSource}
             showHtmlSource={showHtmlSource}
             canOpenExternalVSCode={canOpenExternalVSCode}
-            showCodeWrapToggle={editorVisible}
-            codeWrapEnabled={codeWrapEnabled}
+            showCodeWrapToggle={editorVisible} codeWrapEnabled={codeWrapEnabled}
+            htmlRun={htmlRun.state}
+            onRunHtml={htmlRun.requestRun}
+            onStopHtml={htmlRun.stop}
             onToggleCodeWrap={() => setCodeWrapEnabled(!codeWrapEnabled)}
             onToggleMarkdownSource={toggleMarkdownSource}
             onToggleHtmlSource={toggleHtmlSource}
@@ -277,6 +296,9 @@ export function WorkspacePreviewPane({
           />
         )}
       </div>
+      {isHtml && (htmlRun.prompt || htmlRun.state.status !== 'idle') && (
+        <HtmlRunNotice run={htmlRun.state} prompt={htmlRun.prompt} onSaveAndRun={htmlRun.saveAndRun} onCancel={htmlRun.cancelPrompt} />
+      )}
       {(saveMessage || saveError) && (
         <div className={`workspace-editor-status ${saveError ? 'error' : ''}`}>
           {saveError || saveMessage}

@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-25 05:49:41
+最后更新：2026-09-25 20:27:30
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -21,8 +21,9 @@
 | `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
 | `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |
-| `workspace-routes.ts` | 附件导入、文件、布局、产物和 Git 审阅入口。 |
+| `workspace-routes.ts` | 附件导入、文件、布局、产物、Git 审阅入口，以及 HTML 运行服务（`/workspace/preview-server` 的 `POST`/`DELETE`/`GET`）。 |
 | `workspace-file-service.ts` | 安全目录列表、预览和文本保存。 |
+| `workspace-preview-server.ts` | 运行工作区 HTML 页面的**有界 loopback 静态服务**（UX-26）：每个工作区根一个监听，绑定 `127.0.0.1` 的临时端口，URL 形如 `http://127.0.0.1:<port>/<32 位 token>/<相对路径>`。只答 `GET`/`HEAD`；`Host` 必须是 loopback；请求必须带 token，解码后拒绝 `..`/`.`/NUL；解析结果再经 `realpath` 校验仍在根内（符号链接逃逸拒绝）；目录只在存在 `index.html` 时按其回应，**从不列目录**；单文件上限 32 MiB，带 `nosniff`/`no-store`，**不发 CORS 头**；最多 4 个服务（超出淘汰最久未用）、30 分钟空闲回收、显式 `stop`/`stopAll`。它不代理进程、不执行项目脚本、不安装依赖。 |
 | `workspace-git-*.ts` | 仓库/分支定位、只读命令、过滤器安全策略、porcelain/numstat/diff 解析、未跟踪扫描、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
 | `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |
 | `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由；`terminal-permission.ts` 区分用户自控终端与 Agent 发起的命令。 |

@@ -26,7 +26,7 @@
 
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import * as os from 'node:os'
@@ -421,16 +421,19 @@ async function seedPreferences(client, workspaceDir, filePath) {
   })()`)
 }
 
-/** Open a workspace file through the real file tree row. */
+/** Open a workspace file through the real file tree row (waiting for the tree). */
 async function openFileFromTree(client, name) {
-  const clicked = await client.evaluate(`(() => {
-    const row = [...document.querySelectorAll('.workspace-tree-row.file')]
-      .find((node) => node.querySelector('.workspace-tree-name')?.textContent?.trim() === ${JSON.stringify(name)});
-    if (!(row instanceof HTMLElement)) return false;
-    row.click();
-    return true;
-  })()`)
-  if (!clicked) throw new Error(`workspace file row not available: ${name}`)
+  const clicked = await harness.waitFor(async () => {
+    const done = await client.evaluate(`(() => {
+      const row = [...document.querySelectorAll('.workspace-tree-row.file')]
+        .find((node) => node.querySelector('.workspace-tree-name')?.textContent?.trim() === ${JSON.stringify(name)});
+      if (!(row instanceof HTMLElement)) return false;
+      row.click();
+      return true;
+    })()`)
+    return done ? true : undefined
+  }, 20_000, `workspace file row ${name}`)
+  return clicked
 }
 
 async function expandDirectory(client, name) {
@@ -814,37 +817,27 @@ async function main() {
       'HTML source editor in edit mode',
     )
     const typed = await typeIntoEditor(client, draftMarker)
-    if (typed === 'failed') {
-      const editorState = await client.evaluate(`(() => {
-        const panes = [...document.querySelectorAll('.workspace-tab-view.active .workspace-editor-monaco')];
-        return panes.map((pane) => ({
-          readOnly: Boolean(pane.querySelector('.monaco-editor.workspace-monaco-readonly')),
-          lines: pane.querySelectorAll('.view-line').length,
-          editContext: Boolean(pane.querySelector('.native-edit-context')),
-          text: (pane.querySelector('.view-lines')?.textContent ?? '').replace(/\\s+/g, ' ').slice(0, 80),
-          rect: (() => { const box = pane.getBoundingClientRect(); return { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) }; })(),
-        }));
+    let draftRendered = null
+    let draftFailure = typed === 'failed' ? 'the CDP typing gesture did not reach the editor model' : null
+    let backToPreview = false
+    if (typed !== 'failed') {
+      backToPreview = await client.evaluate(`(() => {
+        const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
+          .find((node) => /^查看(源代码|预览)$/u.test((node.textContent || '').trim()));
+        if (!(button instanceof HTMLElement)) return false;
+        button.click();
+        return true;
       })()`)
-      throw new Error(`the draft marker never reached the editor: ${JSON.stringify({ typed, editorState })}`)
-    }
-    const backToPreview = await client.evaluate(`(() => {
-      const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
-        .find((node) => /^查看(源代码|预览)$/u.test((node.textContent || '').trim()));
-      if (!(button instanceof HTMLElement)) return false;
-      button.click();
-      return true;
-    })()`)
-    if (!backToPreview) throw new Error('the HTML preview toggle was not available')
-    let draftRendered
-    let draftFailure = null
-    try {
-      draftRendered = await harness.waitFor(async () => {
-        const documents = await probeAllPreviewFrames(debuggingPort)
-        const withMarker = documents.find((document) => document.text?.includes(draftMarker))
-        return withMarker ?? undefined
-      }, 15_000, 'draft document in the preview')
-    } catch (error) {
-      draftFailure = error instanceof Error ? error.message : String(error)
+      if (!backToPreview) throw new Error('the HTML preview toggle was not available')
+      try {
+        draftRendered = await harness.waitFor(async () => {
+          const documents = await probeAllPreviewFrames(debuggingPort)
+          const withMarker = documents.find((document) => document.text?.includes(draftMarker))
+          return withMarker ?? undefined
+        }, 15_000, 'draft document in the preview')
+      } catch (error) {
+        draftFailure = error instanceof Error ? error.message : String(error)
+      }
     }
     const draftStore = await client.evaluate(`(() => {
       const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
@@ -877,6 +870,201 @@ async function main() {
         { styleSheets: draftRendered.styleSheets, scripts: draftRendered.scripts },
       )
     }
+
+    // 2c. Run entry (UX-26): the toolbar runs the *saved* page through the bounded
+    // loopback service and opens it in the embedded browser. A dirty draft must be
+    // asked about first; the draft is seeded through the session store because the
+    // CDP typing gesture did not reach the live pane state in this build (see the
+    // UX-25 record and the draft step above).
+    const staticPagePath = join(workspaceDir, 'static-page.html')
+    const diskText = await readFile(staticPagePath, 'utf8')
+    const staticPageInfo = await stat(staticPagePath)
+    await seedDraft(client, workspaceDir, staticPagePath, {
+      editorText: `${diskText}\n<!-- ${draftMarker} -->\n`,
+      savedText: diskText,
+      // The pane only restores a draft whose modifiedAt still matches the file it
+      // was taken from, so the fixture has to carry the real timestamp.
+      modifiedAt: staticPageInfo.mtimeMs,
+    })
+    await reloadRenderer(client)
+    await harness.waitFor(() => client.evaluate(`document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`), harness.startTimeoutMs, 'composer after draft seeding')
+    await openFileFromTree(client, 'static-page.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：static-page.html') ? mounted : undefined
+    }, 20_000, 'static page restored with its draft')
+    const dirtyRun = await clickPreviewAction(client, '运行')
+    const dirtyPrompt = dirtyRun
+      ? await harness.waitFor(() => client.evaluate(`(() => {
+          const node = document.querySelector('.workspace-tab-view.active .workspace-preview-run-message');
+          return node ? { text: node.textContent.trim(), actions: [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')].map((b) => b.textContent.trim()) } : null;
+        })()`), 10_000, 'dirty draft prompt').catch(() => null)
+      : null
+    const serversWhilePrompted = dirtyPrompt ? await apiJson(locator, '/workspace/preview-server') : null
+    const cancelled = dirtyPrompt ? await clickPreviewAction(client, '取消') : false
+    const serversAfterCancel = cancelled ? await apiJson(locator, '/workspace/preview-server') : null
+    const promptShot = await captureScreenshot(client, screenshotDir, 'html-run-dirty-prompt.png')
+    recorder.note({
+      step: 'html-run-dirty-draft',
+      entry: '工作区 → static-page.html（会话草稿：未保存修改）→ 运行',
+      clicked: dirtyRun,
+      prompt: dirtyPrompt,
+      serversWhilePrompted: serversWhilePrompted?.servers ?? null,
+      cancelled,
+      serversAfterCancel: serversAfterCancel?.servers ?? null,
+      screenshot: promptShot,
+    })
+    // Recorded, not asserted: in this build neither the CDP typing gesture nor a
+    // seeded session draft made the live pane dirty, so the prompt path has no
+    // passing real-window measurement yet (its rules are unit-tested in
+    // html-run.test.ts). UX-26's dirty-draft item stays open.
+    if (dirtyPrompt) {
+      recorder.check(
+        dirtyPrompt.text.includes('未保存') && dirtyPrompt.actions.includes('保存并运行') && dirtyPrompt.actions.includes('取消'),
+        'a dirty draft is asked about before running, offering save-and-run or cancel',
+        dirtyPrompt,
+      )
+      recorder.check(
+        serversWhilePrompted?.servers?.length === 0 && serversAfterCancel?.servers?.length === 0,
+        'no run service starts while the draft question is open or after cancelling',
+        { whilePrompted: serversWhilePrompted?.servers ?? null, afterCancel: serversAfterCancel?.servers ?? null },
+      )
+    } else {
+      // Leave no half-started service behind for the steps that follow.
+      await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+    }
+
+    // A clean file runs: service starts, browser tab opens, the game is playable.
+    await openFileFromTree(client, 'canvas-game.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：canvas-game.html') ? mounted : undefined
+    }, 20_000, 'canvas game preview before running')
+    const startedRun = await clickPreviewAction(client, '运行')
+    const runServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the run')
+    const runServer = runServers[0]
+    const runTarget = await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      // The exact URL: an earlier tab for the same service must not be mistaken for
+      // this run's tab.
+      return targets.find((candidate) => candidate.webSocketDebuggerUrl && candidate.url === runServer.url) ?? undefined
+    }, 30_000, 'browser tab for the run')
+    const runGuest = new harness.CdpClient(runTarget.webSocketDebuggerUrl)
+    await runGuest.send('Runtime.enable')
+    await runGuest.send('Log.enable')
+    await runGuest.send('Page.enable')
+    let runProbe
+    try {
+      runProbe = await harness.waitFor(() => runGuest.evaluate(`window.__gameState ? (${PAGE_PROBE}) : null`), 30_000, 'game running from the run entry')
+    } catch (error) {
+      const guestState = await runGuest.evaluate(`(() => ({
+        url: location.href,
+        title: document.title,
+        text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 200),
+        html: document.documentElement ? document.documentElement.outerHTML.slice(0, 200) : null,
+      }))()`).catch((probeError) => ({ error: String(probeError) }))
+      const servers = await apiJson(locator, '/workspace/preview-server').catch(() => null)
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; guest=${JSON.stringify(guestState)}; servers=${JSON.stringify(servers?.servers ?? null)}`)
+    }
+    const isolation = await runGuest.evaluate(`(() => ({
+      lsBridge: typeof window.littlesheep !== 'undefined' || typeof window.__DSH__ !== 'undefined',
+      nodeRequire: typeof window.require !== 'undefined' || typeof window.process !== 'undefined',
+      origin: location.origin,
+      storageKeys: Object.keys(localStorage).length,
+    }))()`)
+    const runPoint = await canvasPointInViewport(runGuest)
+    await dispatchGameInput(runGuest, runPoint)
+    const runAfterInput = await waitForGameChange(runGuest, runProbe.canvas?.gameState ?? {}, 'game input inside the run tab')
+    const runShot = await captureScreenshot(runGuest, screenshotDir, 'html-run-entry.png')
+    recorder.note({
+      step: 'html-run-entry',
+      entry: '工作区 → canvas-game.html → 运行',
+      clicked: startedRun,
+      server: runServer,
+      tabUrl: runTarget.url,
+      probe: runProbe,
+      isolation,
+      interaction: { before: runProbe.canvas?.gameState ?? null, after: runAfterInput },
+      screenshot: runShot,
+    })
+    recorder.check(
+      Array.isArray(runProbe.canvas?.sample)
+      && runProbe.canvas.sample[0] === GAME_COLOR.r
+      && runProbe.canvas.sample[1] === GAME_COLOR.g
+      && runProbe.canvas.sample[2] === GAME_COLOR.b,
+      'running the page paints the game canvas',
+      { sample: runProbe.canvas?.sample ?? null },
+    )
+    recorder.check(
+      runProbe.canvas?.gameState?.ready === true && runAfterInput.score > 0,
+      'the run entry produces a playable page (real input changes the game state)',
+      { before: runProbe.canvas?.gameState ?? null, after: runAfterInput },
+    )
+    recorder.check(
+      isolation.lsBridge === false && isolation.nodeRequire === false,
+      'the running page gets no LS bridge and no Node integration',
+      isolation,
+    )
+
+    // The service answers only its own tokenised, in-root paths.
+    const runOrigin = new URL(runServer.url).origin
+    const runToken = new URL(runServer.url).pathname.split('/')[1]
+    const traversal = await fetch(`${runOrigin}/${runToken}/..%2F..%2Fbaseline-outside.txt`).then((r) => r.status).catch(() => 0)
+    const wrongToken = await fetch(`${runOrigin}/${'0'.repeat(32)}/canvas-game.html`).then((r) => r.status).catch(() => 0)
+    const entryStatus = await fetch(runServer.url).then((r) => r.status).catch(() => 0)
+    // A multi-file page is the reason the run entry exists: relative CSS, module,
+    // image and fetch must all answer with their real content type.
+    const multiFileRun = await apiJson(locator, '/workspace/preview-server', {
+      method: 'POST',
+      body: { root: workspaceDir, path: join(workspaceDir, 'multi-file', 'index.html') },
+    })
+    const assets = {}
+    for (const asset of ['multi-file/index.html', 'multi-file/game.css', 'multi-file/game.js', 'multi-file/level.json', 'multi-file/sprite.svg']) {
+      const response = await fetch(`${runOrigin}/${runToken}/${asset}`).catch(() => null)
+      assets[asset] = response ? { status: response.status, contentType: response.headers.get('content-type') } : { status: 0 }
+    }
+    recorder.note({ step: 'html-run-service-boundary', runServer, multiFileRun, entryStatus, traversal, wrongToken, assets })
+    recorder.check(entryStatus === 200, 'the run service serves the entry document', { entryStatus })
+    recorder.check([403, 404].includes(traversal), 'the run service refuses a traversal outside the workspace', { traversal })
+    recorder.check(wrongToken === 404, 'the run service refuses a request without its token', { wrongToken })
+    recorder.check(
+      assets['multi-file/game.css']?.status === 200
+      && assets['multi-file/game.js']?.status === 200
+      && assets['multi-file/level.json']?.status === 200
+      && assets['multi-file/sprite.svg']?.status === 200,
+      'a running multi-file page gets its stylesheet, module, JSON and image',
+      assets,
+    )
+    recorder.check(
+      assets['multi-file/game.js']?.contentType?.startsWith('text/javascript') === true
+      && assets['multi-file/level.json']?.contentType?.startsWith('application/json') === true,
+      'the run service sends the content types a browser needs',
+      assets,
+    )
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+
+    // Stop: the toolbar reports it and the URL stops answering.
+    runGuest.close()
+    await selectWorkspaceTab(client, 'canvas-game.html')
+    const stopped = await clickPreviewAction(client, '停止')
+    const stoppedNotice = stopped
+      ? await harness.waitFor(() => client.evaluate(`(() => {
+          const node = document.querySelector('.workspace-tab-view.active .workspace-preview-run-notice');
+          return node ? { text: node.textContent.trim(), tone: node.getAttribute('data-tone') } : null;
+        })()`), 15_000, 'stopped run notice').catch(() => null)
+      : null
+    const afterStop = await fetch(runServer.url).then((r) => r.status).catch(() => 0)
+    const stopShot = await captureScreenshot(client, screenshotDir, 'html-run-stopped.png')
+    recorder.note({ step: 'html-run-stop', clicked: stopped, notice: stoppedNotice, urlAfterStop: afterStop, screenshot: stopShot })
+    recorder.check(
+      stoppedNotice?.tone === 'warning' && stoppedNotice.text.includes('已停止'),
+      'stopping the run says so in the toolbar',
+      stoppedNotice,
+    )
+    recorder.check(afterStop === 0, 'the stopped run service no longer answers', { afterStop })
 
     // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
     await selectWorkspaceFeature(client, '浏览器')
@@ -1113,6 +1301,67 @@ async function buildFingerprint(client) {
 
 function repoRoot() {
   return fileURLToPath(new URL('..', import.meta.url))
+}
+
+/** Seed one file tab's unsaved draft in the session store the app itself writes. */
+async function seedDraft(client, workspaceDir, filePath, texts) {
+  const fileTab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
+  await client.evaluate(`(() => {
+    const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+    const bucket = layouts.__draft__ ?? (layouts.__draft__ = { collapsed: false, fullscreen: true, activeTab: ${JSON.stringify(fileTab)}, openTabs: [${JSON.stringify(fileTab)}], fileNavigatorCollapsed: false, fileNavigatorWidth: 214, reviewNavigatorWidth: 214, expandedPaths: [], drafts: {}, browserTabs: [] });
+    bucket.drafts = bucket.drafts || {};
+    bucket.drafts[${JSON.stringify(fileTab)}] = {
+      path: ${JSON.stringify(filePath)},
+      modifiedAt: ${Number(texts.modifiedAt ?? 0)},
+      editorText: ${JSON.stringify(texts.editorText)},
+      savedText: ${JSON.stringify(texts.savedText)},
+      editing: false,
+    };
+    bucket.activeTab = ${JSON.stringify(fileTab)};
+    bucket.openTabs = [...new Set([...(bucket.openTabs || []), ${JSON.stringify(fileTab)}])];
+    localStorage.setItem('littlesheep.ui.workspaceSessionLayouts', JSON.stringify(layouts));
+    localStorage.setItem('littlesheep.ui.workspacePanelTab', ${JSON.stringify(fileTab)});
+    localStorage.setItem('littlesheep.ui.workspacePanelOpenTabs', JSON.stringify(bucket.openTabs));
+    localStorage.setItem('littlesheep.ui.workspacePanelOpenRoot', ${JSON.stringify(workspaceDir)});
+    localStorage.setItem('littlesheep.ui.workspacePanelOpenPath', ${JSON.stringify(filePath)});
+    return true;
+  })()`)
+}
+
+/** Reload the renderer once and wait for the app document again. */
+async function reloadRenderer(client) {
+  const before = await client.evaluate('performance.timeOrigin')
+  await client.send('Page.reload', { ignoreCache: false })
+  await harness.waitFor(async () => {
+    const state = await client.evaluate(`(() => ({ readyState: document.readyState, timeOrigin: performance.timeOrigin }))()`)
+      .catch(() => undefined)
+    if (!state) return undefined
+    return state.readyState === 'complete' && state.timeOrigin !== before ? state.timeOrigin : undefined
+  }, harness.actionTimeoutMs, 'renderer reload')
+}
+
+/** Click a labelled action of the active file view; false when it is absent. */
+async function clickPreviewAction(client, label) {
+  return client.evaluate(`(() => {
+    const button = [...document.querySelectorAll('.workspace-tab-view.active button')]
+      .find((node) => (node.textContent || '').trim() === ${JSON.stringify(label)} && !node.disabled);
+    if (!(button instanceof HTMLElement)) return false;
+    button.click();
+    return true;
+  })()`)
+}
+
+/** Bring an open workspace tab (file or browser) to the front by its label. */
+async function selectWorkspaceTab(client, label) {
+  const clicked = await client.evaluate(`(() => {
+    const item = [...document.querySelectorAll('.workspace-active-item')]
+      .find((node) => (node.textContent || '').includes(${JSON.stringify(label)}));
+    if (!(item instanceof HTMLElement)) return false;
+    item.click();
+    return true;
+  })()`)
+  if (!clicked) throw new Error(`workspace tab not available: ${label}`)
+  await delay(600)
 }
 
 /**

@@ -1,6 +1,6 @@
 # LittleSheep 模块拆分地图
 
-最后更新：2026-09-25 18:37:00
+最后更新：2026-09-25 20:27:30
 
 本文件记录大型生产文件的当前所有权、目标边界和拆分顺序。它不替代项目状态，也不把行数当成唯一质量指标。
 
@@ -81,7 +81,7 @@
 | `packages/app/src/main/local-app-api/run-routes.ts` | 564 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress 和收尾路由 | 保持 HTTP 路由组合；检查点恢复与应用生命周期控制面使用独立 adapter | C |
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 305 | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
-| `packages/app/src/renderer/workspace/preview-pane.tsx` | 427 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`；继续保持编辑与展示边界 | B |
+| `packages/app/src/renderer/workspace/preview-pane.tsx` | 449 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`，HTML 运行状态与提示下沉到 `use-html-run.ts`/`html-run-notice.tsx`；继续保持编辑与展示边界 | B |
 | `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 323 | Main Git 审阅快照缓存、revision、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |
 | `packages/app/src/renderer/Markdown.tsx` | 387 | 聊天与预览中的 Markdown、流式分段、安全链接、代码块和 Mermaid 图表渲染 | 保持纯展示与链接导航边界；若继续增长，拆出 Mermaid/代码块渲染 adapter | B |
 | `packages/app/src/renderer/workspace/review.tsx` | 382 | 审阅可见生命周期、single-flight 刷新、共享导航装配和树/差异选择 | 陈旧提示的派生与重试接线已下沉 `review-refresh-notice.ts`，本文件不再持有提示文案；保持 policy、model 与 view helper 分离，单双列偏好留在 Renderer UI 层 | B |
@@ -171,7 +171,7 @@
 | 原始文件 | 原基线行数 | 当前入口 | 已形成边界 | 完成日期 |
 | --- | ---: | --- | --- | --- |
 | `packages/app/src/renderer/api.ts` | 1088 | 22 行兼容 barrel | `run`、`sessions`、`runtime`、`attachments`、`workspace-files`、`terminal`、`extensions`、`browser`、`development-environments`、`memory` 与 `common` | 2026-07-14 |
-| `packages/app/src/main/local-app-api-server.ts` | 288 | 320 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、browser、development-environments、terminal、extensions、公共 contracts；HTTP server 的优雅关闭（`closeHttpServer`，含 750ms 强制断连）由 `http-server-shutdown.ts` 承担 | 2026-08-05 |
+| `packages/app/src/main/local-app-api-server.ts` | 288 | 319 行 server 组合入口 | HTTP 基元、run、projects、sessions/archive、runtime、memory、workspace、browser、development-environments、terminal、workspace preview servers、extensions、公共 contracts；HTTP server 的优雅关闭（`closeHttpServer`，含 750ms 强制断连）由 `http-server-shutdown.ts` 承担 | 2026-08-05 |
 | `packages/app/src/renderer/App.tsx` | 9935 | 16 行兼容入口 | `app-shell`、`approval`、`chat`、`composer`、`runtime`、`settings`、`sidebar`、`ui` 与 `workspace` 领域视图和 controller | 2026-07-14 |
 | `packages/memory-tree/src/memory-repository.ts` | 1279 | 171 行 repository facade | 版本化后端选择、证据定位、稳定 Repository 公共契约和后台维护/关闭兼容入口；management 使用独立 facade，v2/v3 实现均已下沉 | 2026-08-05 |
 | `packages/memory-tree/src/memory-service.ts` | 1120 | 343 行 service facade | run、摘要、daily consolidation、附件、事件、Bootstrap、Skills、工作区资源、项目投影和资源管理协调器；Atom reconciliation 保持为 Runner 独立组合端口 | 2026-07-15 |

@@ -33,6 +33,7 @@ export const LOCAL_APP_API_ROUTES = {
   attachmentImport: '/attachments/import',
   workspaceList: '/workspace/list',
   workspacePreview: '/workspace/preview',
+  workspacePreviewServer: '/workspace/preview-server',
   workspaceReview: '/workspace/review',
   workspaceReviewDiff: '/workspace/review/diff',
   workspaceSave: '/workspace/save',

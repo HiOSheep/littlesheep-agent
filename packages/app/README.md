@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 19:49:11
+最后更新：2026-09-25 20:27:30
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -17,7 +17,8 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **失败留在发起处**：供应商保存、阈值保存、渠道重载、插件启停、文件保存五类写操作都必须在本页显示失败与下一步（`src/renderer/ui/feedback.ts` 的 `tone` 字段决定 `status`/`alert` 与色调，长错误有界折叠），不要求用户回到聊天区找错误；工作区文件保存的状态行还要跨过它自己触发的那次预览刷新。五类注入见 `pnpm run verify:async-feedback`。
 - **不可逆删除先讲清范围**：归档项目删除说明随项目移除的归档对话数和本地消息记录，并确认磁盘目录保留；供应商删除说明模型条目、当前模型依赖、密钥库与对话记录边界。真实窗口门 `pnpm run verify:deletion-confirmation` 覆盖取消、Escape、失败重试、归档项目多会话清理及删除连点只提交一次。
 - **陈旧数据必须自报状态**：Git 审阅在刷新进行中、更新失败或差异仍属于上一个 revision 时，旧结果必须说明自己是旧的——快照与单文件 Diff 各自成条、各自带重试，快照失败还要报出上次成功读取时间；提示的文案与色调只由 `src/renderer/workspace/review-refresh-notice.ts` 派生，视图不写提示句子。真实窗口门 `pnpm run verify:review-refresh-errors` 会按住、注入失败并断言“重试差异”真的发出新请求。
-- **HTML 预览要留住文档本身，也不要留下空帧**：净化按整份文档处理并放行 `title`（否则 `<head>`/`<style>` 被丢，重样式页面退化成黑字白底），`meta`/`link` 仍禁止；帧只为真实内容创建、并按文档摘要做 `key`（`srcdoc` 在帧加载初始空文档时被更新会被 Chromium 忽略，留下永久空白）。静态预览不运行脚本、不发起网络请求，并在帧上方明说这一点。本地相对资源（`<link>`/图片/CSS `url()`/字体）在沙箱帧里加载不到，需要 UX-26 的 Main 有界静态资源服务。真实窗口门 `pnpm run verify:html-preview-baseline` 逐项读取渲染后的 DOM 与计算样式（标题、`styleSheets`、`body`/`canvas` 计算色、脚本数）。
+- **HTML 预览要留住文档本身，也不要留下空帧**：净化按整份文档处理并放行 `title`（否则 `<head>`/`<style>` 被丢，重样式页面退化成黑字白底），`meta`/`link` 仍禁止；帧只为真实内容创建、并按文档摘要做 `key`（`srcdoc` 在帧加载初始空文档时被更新会被 Chromium 忽略，留下永久空白）。静态预览不运行脚本、不发起网络请求，并在帧上方明说这一点。本地相对资源（`<link>`/图片/CSS `url()`/字体）在沙箱帧里加载不到——出路是"运行"而不是放宽 sandbox。真实窗口门 `pnpm run verify:html-preview-baseline` 逐项读取渲染后的 DOM 与计算样式（标题、`styleSheets`、`body`/`canvas` 计算色、脚本数）。
+- **跑起来的东西走"运行"，不走预览**（UX-26）：HTML 工具条的 **运行 / 停止** 请求 Main 的 `/workspace/preview-server`——一个有界、只绑 loopback、URL 带随机 token 的静态服务，范围限定所选工作区，只答 `GET`/`HEAD`，路径解码 + `realpath` 双重校验（穿越、符号链接逃逸、错误 token 都拒），无目录列表、无 CORS、有界数量与空闲回收；成功后经既有浏览器 guest 打开该 URL（独立分区、无 LS preload / IPC / Node 集成）。运行**只用磁盘上的版本**：有未保存草稿时先问"保存并运行 / 取消"，保存失败不运行；停止即释放服务，界面显示"运行服务已停止；页面重新加载会失败。"。它不代理进程、不执行项目脚本、不安装依赖——需要构建的项目仍走用户自己的开发服务。
 - **右侧工作区的导航占位是布局契约**：普通目录导航由 `.workspace-shared-file-navigator` 这个 flex 项占位，而审阅标签的导航是审阅表面的直接子元素——只有 `position: absolute` 时它会盖住 Diff 表面和标题行按钮（UX-18 实机验收测得两组按钮落在同一矩形，指针不可达）。`src/renderer/styles/04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则让它留在行内，改动这块样式前先读 `src/renderer/README.md` 的 `styles/` 条目与 `pnpm run verify:review-navigator-width`。
 - **代码换行偏好跨两个代码界面共享**：Markdown 代码块的头部栏在高亮与纯文本回退路径中相同；`CodeWrapToggle` 与工作区 Monaco 读取 `littlesheep.ui.codeWrap`。默认关闭、开启后即时同步并记住状态。`pnpm run verify:code-wrap-control` 在隔离 Electron 窗口实测了水平溢出变化与 Monaco 折行行数。
 - **重启保留当前入口**：启动时恢复上次会话只装载会话历史与工作区，不会覆盖应用关闭前保存的设置页或模块路由；用户手动切换会话仍返回对话。真实退出/重开验收见 `pnpm run verify:electron-ui-state-continuity`。

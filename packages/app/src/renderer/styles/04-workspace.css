@@ -2522,6 +2522,30 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   font-size: var(--notice-font-size);
 }
 
+/* Run state of the HTML page: notice or the dirty-draft question, next to the actions. */
+.workspace-preview-run {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspace-preview-run-notice {
+  flex: 1 1 auto;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: var(--notice-font-size);
+}
+
+.workspace-preview-run-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--feedback-danger-text);
+  font-size: var(--notice-font-size);
+}
+
 .workspace-preview-html {
   display: block;
   flex: 1 1 auto;

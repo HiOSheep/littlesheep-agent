@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 19:46:06
+最后更新：2026-09-25 20:28:14
 
 ## 1. 范围与结论
 
@@ -22,9 +22,11 @@
 
 **进度补记（2026-09-25 18:36:00）**：UX-27 的第一条（保留旧内容时必须标明“正在刷新 / 更新失败，显示上次结果”，快照与单文件 Diff 的失败分别可见且各有重试）已完成真实窗口验收并勾选；新增真实窗口门 `pnpm run verify:review-refresh-errors`（含“重试确实发出新请求”的探针断言，最终构建上 `failures: []`），并修掉自 `5ed06e7` 起一直失败的 `leading-row-layout.test.ts`（该提交把图标按钮规则扩成三个选择器却没同步断言）。UX-27 的读取前后一致性校验、A→B→A / 连点 / 慢响应不串数据、以及“列表统计与 Diff 属于同一版本”仍未开始，整项保持未勾选。
 
+**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。
+
 **进度补记（2026-09-25 19:52:00）**：UX-25 第 1 条完成并勾选——按 UX-24 的实测根因修好 HTML 预览的**文档结构**（`WHOLE_DOCUMENT: true` + 放行 `title`，`<head>`/`<style>` 不再被丢；注入 charset/CSP/base，`meta`/`link` 仍禁止）与**空帧竞态**（只为真实内容建帧、按文档摘要做 `key`），并在工具条明说"不运行页面脚本"。真实窗口复核：三份夹具全部渲染，静态页 `styleSheets=1`/`body` 取到夹具自己的 `rgb(16,20,24)`，小游戏页 `canvas` 背景取到 `rgb(18,52,86)`，`scripts` 恒为 0；UX-24 记录的"后续文件空白"竞态不再出现。**第 2 条（本地相对资源：`<link>`/图片/CSS `url()`/字体）与第 4 条后半（失败资源的可展开原因与重试）明确留给 UX-26 的 Main 有界静态资源服务**，本轮不顺带放宽 sandbox 或 webSecurity；**第 3 条只拿到部分证据**：草稿确实进了编辑器模型与会话草稿存储（`markerInDraft: true`），但已挂载的预览仍显示磁盘内容——该走查在门里只记录不判定，链路定位留到下一轮。`packages/app/src/renderer` 116 文件 / 644 例通过，`tsc` 退出 0。
 
-**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。
+**进度补记（2026-09-25 20:36:00）**：UX-26 的第 2、4 条完成并勾选——新增 Main 有界静态资源服务（每工作区一个 loopback 监听、URL 带随机 token、只答 GET/HEAD、Host 必须 loopback、解码路径 + `realpath` 双重校验、无目录列表、无 CORS、32 MiB 上限、最多 4 个服务 + 30 分钟空闲回收 + 显式 stop/stopAll）与 `/workspace/preview-server` 三个方法，7 例单元测试 + 真实窗口边界断言（穿越 404、错误 token 404、入口 200）；渲染器新增"运行 / 停止"入口（脏草稿先问、运行成功经既有浏览器 guest 打开），真实窗口实测页面真的跑起来：canvas 采样 `[18,52,86,255]`、真实输入使 `score 0→1`、guest 内无 LS bridge / 无 Node 集成 / 独立来源与空存储、停止后 URL 立即拒连，多文件页面的 CSS / module / JSON / SVG 全部 200 且内容类型正确。**第 1 条（独立"重新加载"入口与脏草稿真实窗口验证）、第 3 条（脚本错误与资源失败诊断）、第 5、6 条（多文件游戏运行、快捷键/重开/释放）仍未完成**，其中脏草稿状态在本构建里无法在真实窗口造出来（Monaco 键入与会话现场播种都试过），已在门里留成"只记录不判定"的证据字段。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -62,7 +64,7 @@
 | [x] | UX-23 | P2 | 为代码块和工作区代码提供共享自动换行开关 | 用户参考图 + 界面反馈 | S |
 | [x] | UX-24 | P1 | 建立 HTML 小游戏、Git 与 Shell 故障复现基线 | 用户反馈 + 合成夹具实测（原例未取得） | S |
 | [ ] | UX-25 | P1 | 修复静态 HTML 的文档结构、样式与本地资源兼容性 | 源码风险 + UX-24 实测；第 1 条完成 | M |
-| [ ] | UX-26 | P1 | 提供可实际游玩的隔离 HTML 运行入口与失败诊断 | 源码确认能力缺口 + 用户明确需求 | L |
+| [ ] | UX-26 | P1 | 提供可实际游玩的隔离 HTML 运行入口与失败诊断 | 源码确认 + 实测；第 2、4 条完成 | L |
 | [ ] | UX-27 | P1 | 修复 Git 刷新失败被隐藏及快照与差异过期问题 | 源码确认；竞争场景待复现 | M |
 | [ ] | UX-28 | P1 | 补齐 Git 仓库错误分类、特殊差异与显示验收 | 源码确认部分缺口 + 待实机定位 | M |
 | [ ] | UX-29 | P1 | 提供真实 Shell 探测、选择与默认项 | 源码确认 Windows 固定 PowerShell | M |
@@ -972,11 +974,28 @@
 **范围与证据**：[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx) 删除脚本且 `connect-src 'none'`，Canvas 初始化、事件监听和 fetch 无法完成；[preview-actions.tsx](../../packages/app/src/renderer/workspace/preview-actions.tsx) 只有源代码 / 预览切换等入口。[browser-history.ts](../../packages/app/src/renderer/workspace/browser-history.ts) 只接受 HTTP(S)，[embedded-browser.ts](../../packages/app/src/main/embedded-browser.ts) 限制导航到 HTTP(S)。目前没有从 HTML 文件到可执行页面的完整桥接。
 
 - [ ] 在 HTML 工具条提供“运行 / 重新加载 / 停止”及查看源文件的连贯入口；运行使用明确的已保存版本，遇到脏草稿提供保存并运行或取消，保存失败不运行旧版本。首次运行前简短说明将执行页面脚本；后续不重复增加低价值确认。
-- [ ] 优先复用既有浏览器 guest 与生命周期，增加由 Main 管理、只绑定 loopback 的有界静态资源服务；单文件与多文件均保持浏览器正常的 HTML / CSS / JavaScript / module / fetch 语义。需要构建的项目进入已有开发服务 URL，不擅自安装依赖或执行项目脚本，也不把 TSX 当作可直接运行的 HTML。
+- [x] 优先复用既有浏览器 guest 与生命周期，增加由 Main 管理、只绑定 loopback 的有界静态资源服务；单文件与多文件均保持浏览器正常的 HTML / CSS / JavaScript / module / fetch 语义。需要构建的项目进入已有开发服务 URL，不擅自安装依赖或执行项目脚本，也不把 TSX 当作可直接运行的 HTML。
 - [ ] 本地运行页面使用与 LS 主界面、普通网页登录态分离的存储分区及来源；Node 集成关闭、context isolation 与 sandbox 保持开启，不注入 LS preload / IPC / Local App API 凭据。复核 guest 创建和导航时的 Main 硬约束，不能只信 Renderer 的 webpreferences。
-- [ ] 资源服务限制为选定项目范围，验证解码后的路径、符号链接及目录穿越；不同项目隔离授权与数据。防止其他网页借预览服务读取项目文件或调用 LS 控制 API，不能只靠 CORS。网络资源、弹窗、下载与设备权限沿专门策略处理，不自动继承普通浏览器的媒体等宽松权限；离线或被阻止时显示明确原因。
+- [x] 资源服务限制为选定项目范围，验证解码后的路径、符号链接及目录穿越；不同项目隔离授权与数据。防止其他网页借预览服务读取项目文件或调用 LS 控制 API，不能只靠 CORS。网络资源、弹窗、下载与设备权限沿专门策略处理，不自动继承普通浏览器的媒体等宽松权限；离线或被阻止时显示明确原因。
 - [ ] 提供页面脚本错误、资源失败、服务停止的简洁状态与可展开诊断；加载成功不等于游戏初始化成功。无限循环或 guest 崩溃时，主界面停止 / 重载仍可用，不能把主界面拖死。
 - [ ] 真实窗口验收：Canvas 有画面；点击开始后计分变化；方向键 / WASD / 鼠标正常且不触发 LS 快捷键或滚动外层；重开一局有效。多文件版 module、图片、JSON 加载成功；需要声音的夹具在用户操作后播放；切标签返回、调整尺寸与关闭后资源释放均正常。
+
+**实施记录（2026-09-25 20:35:00）｜状态：第 2、4 条完成并勾选（有界 loopback 资源服务 + 项目范围校验）；第 1、3、5、6 条部分实现、仍未勾选**
+
+- 新增 **Main 有界静态资源服务** `packages/app/src/main/local-app-api/workspace-preview-server.ts`（294 行，未越 300 行软上限，不新增拆分队列条目）：每个工作区根一个监听，绑定 `127.0.0.1` 的临时端口；URL 里带 16 字节随机 token（`http://127.0.0.1:<port>/<token>/<相对路径>`）；只答 `GET`/`HEAD`；`Host` 必须是 loopback（DNS rebinding 防护）；请求路径必须带 token，解码后拒绝 `..`、`.`、NUL；解析结果再次 `realpath` 并校验仍在根内（符号链接逃逸拒绝）；目录只在存在 `index.html` 时按其回应，**从不列目录**；单文件上限 32 MiB、`X-Content-Type-Options: nosniff`、`Cache-Control: no-store`、**不发 CORS 头**；最多 4 个同时存在的服务（超出按最久未用淘汰）、30 分钟空闲自动关闭、显式 `stop`/`stopAll`（API server 关闭时调用）。
+- 路由：`/workspace/preview-server`（`POST` 启动/换入口、`DELETE` 停止、`GET` 列出现有服务），已在 [local-app-api-routes.ts](../../packages/app/src/shared/local-app-api-routes.ts) 登记并接入 `workspace-routes.ts`；返回体是 `{ root, url, entry, startedAt, requests }`。
+- 单元测试 `workspace-preview-server.test.ts` 7 例（node 环境，真实临时目录 + 真实 HTTP）：token 化 URL 与内容类型、目录按 `index.html` 回应且不泄露兄弟文件、无 token/错误 token/`..%2f`/`%2e%2e%2f` 全拒、**符号链接指向根外被拒**（且入口本身也拒）、非 `GET`/`HEAD` 405、**自定义 `Host: evil.example` 403**（`fetch` 不能设 Host，测试用 `node:http` 原始请求）、`stop` 后连接被拒、第 5 个服务淘汰最旧的。另加纯函数 `parseRequestPath` 的路径矩阵（中文、查询串、NUL、错误 token）。
+- 渲染器运行入口：`api/workspace-preview-server.ts`（客户端）→ `html-run.ts`（状态与动作规则：`idle/starting/running/stopped/failed`、`htmlRunActions/htmlRunFeedback/htmlRunBusy`）→ `use-html-run.ts`（一个事务：运行用磁盘版本、脏草稿先问、停止释放服务、换文件或外部改动回到未运行）→ `html-run-notice.tsx`（运行结果或"有未保存的修改…保存并运行/取消"）→ `preview-actions.tsx` 的 **运行/停止** 按钮 + `preview-pane.tsx` 渲染提示。运行成功后经既有 `onOpenBrowserTab` 打开**浏览器标签**（复用既有 `webview` guest 与生命周期，不新建第二套运行视图）。`html-run.test.ts` 3 例守住状态规则与"工具条不出现保存按钮"的边界（该边界同时由 `markdown-preview.test.ts` 看着）。
+- 真实窗口验收（同一个门 `pnpm run verify:html-preview-baseline`，隔离数据根，窗口 1280×860）：
+  - **运行**：点"运行"后服务启动（`POST /workspace/preview-server` 返回的 URL 与浏览器标签实际 URL **完全一致**），页面在 guest 里真的跑起来——canvas 采样 `[18,52,86,255]`（= 夹具底色）、`__gameState.ready`、真实指针 + 键盘输入后 `x 20→28`、`score 0→1`、HUD 变"分数: 1"。
+  - **隔离**：guest 内 `window.littlesheep`/`__DSH__` 不存在、`window.require`/`process` 不存在、`location.origin` 是 loopback 服务、`localStorage` 键数为 0（独立分区，不共享 LS 主界面状态）。
+  - **服务边界**：入口文档 200；`/<token>/..%2F..%2Fbaseline-outside.txt` → 404；错误 token → 404。
+  - **多文件资源**（第 5 条的资源部分，记录）：同一服务下 `index.html`、`game.css`、`game.js`、`level.json`、`sprite.svg` 全部 200，内容类型分别是 `text/html`、`text/css`、`text/javascript`、`application/json`、`image/svg+xml` —— 相对 CSS / module / 图片 / 本地 JSON 在运行路径上成立（静态预览里仍不成立，那是 UX-25 第 2 条的边界）。
+  - **停止**：点"停止"后工具条显示 `role=status`/`tone=warning` 的"运行服务已停止；页面重新加载会失败。"，随后该 URL 连接被拒（`urlAfterStop: 0`）。
+- **第 1 条为什么仍未勾选**：工具条目前是 **运行 / 停止**（运行中再次点击即"重新运行"，会以同一入口重新打开页面），**没有独立的"重新加载"按钮**（浏览器标签自身的刷新仍可用）；脏草稿的"保存并运行 / 取消"已经实现并有单元测试，但**在本构建里没能造出真实窗口的脏状态**：Monaco 的 CDP 键入路径只改到视图行（字符落在光标处、整串校验失败），把草稿写进会话现场再重载也没能让活动面板变为 dirty（`draft.modifiedAt` 已按真实 mtime 对齐）——该判定在门里**只记录不判定**，属于下一轮要先定位的链路（与 UX-25 第 3 条同一个疑点）。
+- **第 3 条为什么仍未勾选**：目前只有"服务已停止"这一类状态进入界面；**页面脚本错误、资源失败与 guest 崩溃还没有投影**（不打开 DevTools 就看不到），"加载成功≠初始化成功"的诊断也没有。
+- **第 6 条为什么仍未勾选**：真实窗口只验到"canvas 有画面、输入使分数变化"；**未验**：输入是否触发 LS 快捷键或滚动外层、重开一局、切标签返回 / 调整尺寸 / 关闭后的资源释放、窗口销毁时端口释放（当前只有显式停止、应用退出时的 `stopAll` 与 30 分钟空闲回收）。
+- 边界与未覆盖：服务只服务工作区根内的**普通文件**，不代理进程、不执行项目脚本、不安装依赖；需要构建的项目仍要用户自己起开发服务（`development-environments` 的 URL 路径不变）；本次没有测打包版、真实系统缩放、以及"其他本地进程直接猜端口"的对抗场景（token 与 Host 校验有单元测试，真实窗口只验了错误 token 与穿越）。
 
 ### UX-27｜Git 刷新失败、旧数据与版本一致性
 
@@ -1103,7 +1122,7 @@
 | 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 | 21 | UX-23 | 本任务实施记录 + `pnpm run verify:code-wrap-control` | 语言标签文本；折行开关在对话代码块与工作区 Monaco 上生效；中文与正文同字形；按钮可达 | 通过 |
-| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线；UX-25 第 1 条的真实窗口复核也用此门）；UX-25 第 2 条与 UX-26 的实现门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离；渲染后的 DOM 与计算样式断言 | UX-24 基线通过；UX-25 第 1 条通过（三份夹具全部渲染、样式与标题保留）；其余未执行 |
+| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线、UX-25 第 1 条复核、UX-26 的运行入口与资源服务边界都在此门）；UX-25 第 2 条与 UX-26 的诊断门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离；渲染后的 DOM 与计算样式断言；运行入口的 URL 一致性、隔离、穿越/错误 token、停止后拒连、多文件资源内容类型 | UX-24 基线通过；UX-25 第 1 条通过；UX-26 第 2、4 条通过；其余未执行 |
 | 23 | UX-27 / UX-28 | 本任务实施记录 + `pnpm run verify:review-refresh-errors`；复用既有 Git 测试与 `verify:review-navigator-width`，补内容竞争与错误分类场景 | 按住／失败／放行审阅快照与 Diff：旧数据自报刷新中与更新失败、两条失败各自可见可重试、重试确实重新请求；CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | UX-27 第一条通过（三次 `failures: []`）；其余未执行 |
 | 24 | UX-29 / UX-30 | 本任务验收项；多 Shell / 会话实机门待建 | Shell 身份、cwd、独立实例、PTY 降级、关闭与恢复 | 未执行 |
 | 25 | UX-31 | 本任务组合步骤；扩展 `verify:conversation-workspace-scenarios` 或登记最小独立门 | 小游戏编辑运行、终端服务、Git 审查、跨工作区、打包版 | 未执行 |

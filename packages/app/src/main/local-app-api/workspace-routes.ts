@@ -18,6 +18,7 @@ import {
   saveWorkspaceTextFile,
 } from './workspace-file-service.js'
 import { workspaceGitReviewCache } from './workspace-git-review-cache.js'
+import type { WorkspacePreviewServers } from './workspace-preview-server.js'
 import {
   normalizeOptionalSessionId,
   normalizePositiveInt,
@@ -39,6 +40,7 @@ export interface WorkspaceRouteContext {
   projectIndex: ProjectIndex
   workspaceArtifactIndex: WorkspaceArtifactIndex
   workspaceLayoutIndex: WorkspaceLayoutIndex
+  workspacePreviewServers: WorkspacePreviewServers
   attachmentCache: ManagedAttachmentCache
   selectWorkspace?: () => Promise<string | null>
   selectAttachments?: () => Promise<AttachmentRef[]>
@@ -85,6 +87,27 @@ export async function routeWorkspace(
     const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
     json(res, 200, await previewWorkspaceFile(root, target))
+    return true
+  }
+
+  // Running a workspace HTML page: a bounded loopback static service scoped to the
+  // selected workspace. The renderer opens the returned URL in the embedded browser.
+  if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspacePreviewServer) {
+    const body = await readJson(req, 64 * 1024)
+    const root = resolveWorkspaceRootFromValue(body.root, context.getConfig(), context.workplaceDir)
+    const target = resolveWorkspaceTarget(root, typeof body.path === 'string' ? body.path : '')
+    json(res, 200, await context.workspacePreviewServers.start(root, target))
+    return true
+  }
+
+  if (method === 'DELETE' && path === LOCAL_APP_API_ROUTES.workspacePreviewServer) {
+    const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
+    json(res, 200, await context.workspacePreviewServers.stop(root))
+    return true
+  }
+
+  if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspacePreviewServer) {
+    json(res, 200, { servers: context.workspacePreviewServers.list() })
     return true
   }
 

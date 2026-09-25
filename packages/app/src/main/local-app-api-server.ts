@@ -22,6 +22,7 @@ import { routeBrowser } from './local-app-api/browser-routes.js'
 import { routeDevelopmentEnvironments } from './local-app-api/development-environment-routes.js'
 import { routeRunLifecycle } from './local-app-api/run-lifecycle-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
+import { WorkspacePreviewServers } from './local-app-api/workspace-preview-server.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 import { WebProviderCheckCoordinator } from './local-app-api/web-provider-check.js'
@@ -32,10 +33,9 @@ export type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-ap
 export async function startLocalAppApiServer(
   opts: LocalAppApiServerOptions,
 ): Promise<LocalAppApiServer> {
-  // The Runner may not exist yet: the listener starts first so the desktop
-  // window can show real session metadata while execution is still starting.
-  // `opts.getRunner()` returns undefined until the composition root publishes
-  // one; every Runner-backed route then fails with 503 runtime-not-ready.
+  // The Runner may not exist yet: the listener starts first so the desktop window
+  // can show real session metadata while execution is starting; Runner-backed routes
+  // answer 503 runtime-not-ready until the composition root publishes one.
   let currentPluginHost: PluginHost | null = null
   const requireRunner = (): AgentRunner => {
     const current = opts.getRunner()
@@ -124,6 +124,7 @@ export async function startLocalAppApiServer(
     ...webProviderCheck.routeBindings(),
   }
   const terminalRouter = new TerminalRouter()
+  const workspacePreviewServers = new WorkspacePreviewServers()
   await developmentEnvironmentManager.initialize()
 
   const server = createServer((req, res) => {
@@ -151,10 +152,7 @@ export async function startLocalAppApiServer(
         requireRunner,
         () => currentPluginHost,
         () => currentConfig,
-        (c: Config) => {
-          webProviderCheck.invalidateIfWebChanged(c)
-          currentConfig = c
-        },
+        (c: Config) => { webProviderCheck.invalidateIfWebChanged(c); currentConfig = c },
         routeOptions,
         mutateSession,
         mutateRuntimeConfig,
@@ -162,15 +160,13 @@ export async function startLocalAppApiServer(
         attachmentCache,
         runRouter,
         terminalRouter,
+        workspacePreviewServers,
         developmentEnvironmentManager,
       )
     })().catch((err) => {
       const status = err instanceof HttpError ? err.status : 500
-      if (!res.headersSent) {
-        json(res, status, { error: (err as Error).message })
-      } else {
-        res.end()
-      }
+      if (!res.headersSent) json(res, status, { error: (err as Error).message })
+      else res.end()
     })
   })
 
@@ -198,6 +194,7 @@ export async function startLocalAppApiServer(
       router?.stop()
       if (activeRunRouter !== router) activeRunRouter?.stop()
       terminalRouter.stop()
+  void workspacePreviewServers.stopAll()
       await embeddingModelManager.shutdown()
       await closeHttpServer(server)
     },
@@ -221,6 +218,7 @@ async function route(
   attachmentCache: ManagedAttachmentCache,
   runRouter: RunRouter | undefined,
   terminalRouter: TerminalRouter,
+  workspacePreviewServers: WorkspacePreviewServers,
   developmentEnvironmentManager: DevelopmentEnvironmentManager,
 ): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://127.0.0.1')
@@ -280,6 +278,7 @@ async function route(
     projectIndex,
     workspaceArtifactIndex,
     workspaceLayoutIndex,
+    workspacePreviewServers,
     attachmentCache,
     selectWorkspace: opts.selectWorkspace,
     selectAttachments: opts.selectAttachments,
