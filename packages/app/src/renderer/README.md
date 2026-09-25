@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-25 23:33:50
+最后更新：2026-09-25 23:52:32
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -10,6 +10,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 ## 入口与所有权
 
 - `workspace/workspace-timing.ts`：CS-08 的两个可用性阶段（首个目录行、首个文件正文被绘制）上报；`api/workspace-files.ts` 的请求路径由 `LOCAL_APP_API_ROUTES` 插值构造并有 `workspace-client-paths.test.ts` 护栏（2026-09-24 曾因缺少 `${` 导致右侧完全不可用）。`workspace/layout-ownership.ts` 决定启动期草稿布局归属哪一段会话（由进入的第一段会话认领），判据见该目录 README。
+- `workspace/run-diagnostics.tsx`：**运行页面的诊断读数**（UX-26 第 3 条）——按运行 URL 轮询 `/browser/diagnostics`，把"脚本报错 / 资源失败 / 页面加载失败"计数与展开后的原文显示在运行提示旁；`summarizeBrowserDiagnostics` 是纯函数（只汇总用户需要反应的三类，`console` 不计数），数据一律来自 Main 的记录，渲染器不重新解析页面。
 - `workspace/preview-draft.ts` 的 `workspaceDraftOutcome` 是**会话草稿存续的唯一规则**：预览已加载且是文本类才写、已加载且确实不是文本类才丢弃、**预览还没到时一律保留**。第三条是修一个真实缺陷：面板挂载时 `editable` 仍为 false，旧实现据此删掉了该标签的草稿，未保存改动因此活不过重载/切会话/重启（实测一次重载后 `draftCount: 0`）。规则有单测，且明确要求不要退回成裸 `else` 删除；`preview-pane.tsx` 只按它给出的三种结果行事。
 - `main.tsx`：React 挂载；同时启动渲染器自报的首帧观察（`runtime-readiness/renderer-timing.ts`，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出）。
 - `App.tsx`：16 行兼容入口，装配 `app-shell` 控制器与就绪提示，不承载业务逻辑。
