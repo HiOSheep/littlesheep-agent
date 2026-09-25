@@ -15,7 +15,7 @@ describe('workspace preview save status', () => {
     expect(pane).toContain('const savedStatusPathRef = useRef<string | null>(null)')
     expect(pane).toMatch(/setSaveMessage\('已保存'\)[\s\S]{0,160}savedStatusPathRef\.current = preview\.path/u)
     expect(pane).toMatch(
-      /if \(savedStatusPathRef\.current === preview\?\.path\) \{\s*savedStatusPathRef\.current = null\s*\} else \{\s*setSaveMessage\(''\)\s*setSaveError\(''\)/u,
+      /if \(savedStatusPathRef\.current === preview\?\.path\) savedStatusPathRef\.current = null\s*else \{\s*setSaveMessage\(''\); setSaveError\(''\)/u,
     )
     // A failed save still reports in place, with the draft kept for a retry.
     expect(pane).toContain("setSaveError(workspaceErrorMessage(err, '文件保存失败，请稍后重试。'))")

@@ -14,7 +14,8 @@ import {
   type WorkspaceFileTabId
 } from '../workspace-persistence'
 import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
-import { WorkspaceHtmlPreview } from './html-preview'
+import { WorkspaceHtmlPreviewSurface } from './html-preview-surface'
+import { WorkspaceOfficePreview } from './office-preview-panel'
 import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState, workspaceDraftOutcome } from './preview-draft'
@@ -199,11 +200,9 @@ export function WorkspacePreviewPane({
     // ran in the same tick: the "已保存" line was cleared before it could be seen.
     // The status now survives exactly the refresh the save itself caused — the ref is
     // consumed here, so switching files or an external change still clears it.
-    if (savedStatusPathRef.current === preview?.path) {
-      savedStatusPathRef.current = null
-    } else {
-      setSaveMessage('')
-      setSaveError('')
+    if (savedStatusPathRef.current === preview?.path) savedStatusPathRef.current = null
+    else {
+      setSaveMessage(''); setSaveError('')
     }
     // Writing here is what makes an edit dirty for the session; `keep` exists so a
     // still-loading preview cannot be mistaken for "this tab has no editable content"
@@ -328,7 +327,13 @@ export function WorkspacePreviewPane({
           </div>
         )}
         {!loading && !error && isHtml && !showHtmlSource && (
-          <WorkspaceHtmlPreview path={preview.path} name={preview.name} content={editorText} />
+          <WorkspaceHtmlPreviewSurface
+            root={workspacePath}
+            path={preview.path}
+            name={preview.name}
+            content={editorText}
+            enabled
+          />
         )}
         {!loading && !error && editorVisible && (
           <div className="workspace-editor-monaco">
@@ -394,60 +399,4 @@ export function WorkspacePreviewPane({
       )}
     </div>
   )
-}
-
-function WorkspaceOfficePreview({
-  preview,
-}: {
-  preview: Extract<WorkspacePreview, { kind: 'office' }>
-}) {
-  return (
-    <div className={`workspace-office-preview ${preview.officeKind}`}>
-      <div className="workspace-office-heading">
-        <strong>{officeKindLabel(preview.officeKind)}</strong>
-        {preview.note && <span>{preview.note}</span>}
-        {preview.truncated && <span>内容较多，已按预览上限截取。</span>}
-      </div>
-      {preview.sections.length === 0 && (
-        <div className="workspace-office-empty">文件已在 LS 内打开，但没有提取到可显示的文字。</div>
-      )}
-      {preview.officeKind === 'spreadsheet' ? (
-        <div className="workspace-office-sheets">
-          {preview.sections.map((section) => (
-            <section className="workspace-office-sheet" key={section.title}>
-              <h3>{section.title}</h3>
-              <div className="workspace-office-table-wrap">
-                <table>
-                  <tbody>
-                    {(section.rows ?? []).map((row, rowIndex) => (
-                      <tr key={`${section.title}-${rowIndex}`}>
-                        {row.map((cell, cellIndex) => <td key={`${rowIndex}-${cellIndex}`}>{cell}</td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
-        </div>
-      ) : (
-        <div className="workspace-office-sections">
-          {preview.sections.map((section) => (
-            <section className="workspace-office-section" key={section.title}>
-              <h3>{section.title}</h3>
-              {(section.paragraphs ?? []).map((paragraph, index) => (
-                <p key={`${section.title}-${index}`}>{paragraph}</p>
-              ))}
-            </section>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function officeKindLabel(kind: Extract<WorkspacePreview, { kind: 'office' }>['officeKind']): string {
-  if (kind === 'spreadsheet') return '表格预览'
-  if (kind === 'presentation') return '演示文稿预览'
-  return '文档预览'
 }

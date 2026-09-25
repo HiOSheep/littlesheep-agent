@@ -45,7 +45,28 @@ export interface WorkspacePreviewServerInfo {
   entry: string
   startedAt: string
   requests: number
+  /**
+   * Why a subresource did not load, newest last.
+   *
+   * The static preview cannot run scripts, so a missing stylesheet or image is
+   * invisible from the frame: the only witness is this server. UX-25 item 4 needs
+   * an expandable reason per failure, so the outcomes are recorded here and read
+   * back through the same route that lists servers.
+   */
+  assetFailures: WorkspacePreviewAssetFailure[]
+  /** Successful subresource responses since the server started. */
+  assetSuccesses: number
 }
+
+export interface WorkspacePreviewAssetFailure {
+  /** Request path relative to the workspace root. */
+  path: string
+  status: number
+  at: string
+}
+
+/** Bounded so a page with many broken references cannot grow the entry without limit. */
+const MAX_RECORDED_ASSET_FAILURES = 30
 
 interface PreviewServerEntry {
   root: string
@@ -57,6 +78,8 @@ interface PreviewServerEntry {
   startedAt: string
   requests: number
   lastRequestAt: number
+  assetFailures: WorkspacePreviewAssetFailure[]
+  assetSuccesses: number
 }
 
 export class WorkspacePreviewServers {
@@ -100,6 +123,8 @@ export class WorkspacePreviewServers {
       startedAt: new Date().toISOString(),
       requests: 0,
       lastRequestAt: Date.now(),
+      assetFailures: [],
+      assetSuccesses: 0,
     }
     this.entries.set(key, created)
     this.ensureSweeper()
@@ -180,6 +205,7 @@ export class WorkspacePreviewServers {
         return
       }
       const body = await readFile(file)
+      entry.assetSuccesses += 1
       res.writeHead(200, {
         'content-type': MIME_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
         'content-length': String(body.byteLength),
@@ -190,9 +216,23 @@ export class WorkspacePreviewServers {
       else res.end(body)
     } catch (error) {
       const status = error instanceof HttpError ? error.status : 404
+      recordAssetFailure(entry, requested, status)
       res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' }).end(status === 403 ? 'forbidden' : 'not found')
     }
   }
+}
+
+/**
+ * Remember why a subresource was refused, so the preview can name the missing file
+ * instead of silently rendering without it (UX-25 item 4).
+ */
+function recordAssetFailure(entry: PreviewServerEntry, requestPath: string, status: number): void {
+  entry.assetFailures.push({
+    path: requestPath || entry.entry,
+    status,
+    at: new Date().toISOString(),
+  })
+  while (entry.assetFailures.length > MAX_RECORDED_ASSET_FAILURES) entry.assetFailures.shift()
 }
 
 interface IncomingMessageLike {
@@ -275,6 +315,8 @@ function info(entry: PreviewServerEntry): WorkspacePreviewServerInfo {
     entry: entry.entry,
     startedAt: entry.startedAt,
     requests: entry.requests,
+    assetFailures: [...entry.assetFailures],
+    assetSuccesses: entry.assetSuccesses,
   }
 }
 

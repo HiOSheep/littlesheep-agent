@@ -84,7 +84,9 @@ const STATIC_PAGE = `<!doctype html>
   <meta charset="utf-8">
   <title>静态页夹具</title>
   <style>
-    body { margin: 0; font-family: "Microsoft YaHei UI", sans-serif; background: #101418; color: #e8e8e8; }
+    /* The face has to be *used*: Chromium only fetches a @font-face when text needs it. */
+    body { margin: 0; font-family: '夹具字体', "Microsoft YaHei UI", sans-serif; background: #101418; color: #e8e8e8; }
+    @font-face { font-family: '夹具字体'; src: url('fonts/fixture.woff2') format('woff2'); font-display: swap; }
     .panel { padding: 24px; background-image: url('assets/tile.svg'); background-repeat: repeat; }
     .card { background: #1c1c1c; border: 1px solid #343434; border-radius: 10px; padding: 16px; }
     .accent { color: #d8b45c; font-weight: 700; }
@@ -103,6 +105,11 @@ const STATIC_PAGE = `<!doctype html>
       <p class="accent">CSS、背景图与中文都要保留。</p>
       <p id="dynamic">脚本未运行</p>
       <img id="sprite" src="assets/tile.svg" width="64" height="64" alt="sprite">
+      <img id="asset-subdir" src="assets/tile.svg" width="24" height="24" alt="subdir">
+      <img id="asset-cjk-space" src="素材/背景 图.svg" width="24" height="24" alt="cjk">
+      <img id="asset-hash" src="shots/shot%231.svg" width="24" height="24" alt="hash">
+      <img id="asset-percent" src="100%25.svg" width="24" height="24" alt="percent">
+      <img id="asset-missing" src="assets/does-not-exist.svg" width="24" height="24" alt="missing">
     </div>
   </div>
 </body>
@@ -243,6 +250,16 @@ const PAGE_PROBE = `(() => {
     }
   })() : null;
   const image = document.querySelector('img');
+  // UX-25 item 2: every relative reference the fixture writes must actually arrive,
+  // including the subdirectory, the Chinese name with a space, and the hash/percent names
+  // that only survive if the reference is encoded exactly once.
+  const localAssets = (() => {
+    const result = {};
+    for (const node of document.querySelectorAll('img[id^="asset-"]')) {
+      result[node.id] = { naturalWidth: node.naturalWidth, currentSrc: node.currentSrc, complete: node.complete };
+    }
+    return result;
+  })();
   const computed = (selector) => {
     const node = document.querySelector(selector);
     return node ? getComputedStyle(node).backgroundColor : null;
@@ -255,6 +272,25 @@ const PAGE_PROBE = `(() => {
     text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 240),
     scripts: document.scripts.length,
     styleSheets: document.styleSheets.length,
+    styleSheetInfo: [...document.styleSheets].map((sheet) => ({
+      href: sheet.href,
+      rules: (() => { try { return sheet.cssRules.length } catch (error) { return 'blocked:' + error.name } })(),
+    })),
+    localAssets,
+    fonts: [...document.fonts].map((face) => ({ family: face.family, status: face.status })),
+    // The @font-face source as the frame itself sees it: real rendered evidence that the
+    // font reference was rewritten, independent of whether Chromium started the fetch.
+    fontSources: (() => {
+      const sources = [];
+      for (const sheet of document.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules } catch (error) { continue }
+        for (const rule of rules) {
+          if (rule.constructor.name === 'CSSFontFaceRule') sources.push(rule.style.getPropertyValue('src'));
+        }
+      }
+      return sources;
+    })(),
     bodyBackground: document.body ? getComputedStyle(document.body).backgroundColor : null,
     styles: {
       body: computed('body'),
@@ -305,12 +341,24 @@ async function writeFixtures(workspaceDir) {
   await Promise.all([
     mkdir(join(workspaceDir, 'assets'), { recursive: true }),
     mkdir(join(workspaceDir, 'multi-file'), { recursive: true }),
+    mkdir(join(workspaceDir, '素材'), { recursive: true }),
+    mkdir(join(workspaceDir, 'shots'), { recursive: true }),
+    mkdir(join(workspaceDir, 'fonts'), { recursive: true }),
   ])
   await writeFile(join(workspaceDir, 'static-page.html'), STATIC_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'canvas-game.html'), CANVAS_GAME, 'utf8')
   await writeFile(join(workspaceDir, 'error-page.html'), ERROR_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'loop-page.html'), LOOP_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'assets', 'tile.svg'), SPRITE_SVG, 'utf8')
+  // UX-25 item 2 names these cases: a subdirectory, a Chinese name with a space,
+  // a literal `#` and a literal `%` in the file name (referenced percent-encoded).
+  await writeFile(join(workspaceDir, '素材', '背景 图.svg'), SPRITE_SVG, 'utf8')
+  await writeFile(join(workspaceDir, 'shots', 'shot#1.svg'), SPRITE_SVG, 'utf8')
+  // A font the preview must fetch. The bytes are a stub, so Chromium fails to decode
+  // them; what this measures is the request path (rewrite -> CSP -> Main), which is
+  // what the item's font clause is about.
+  await writeFile(join(workspaceDir, 'fonts', 'fixture.woff2'), Buffer.from('wOF2stub-fixture-font', 'utf8'))
+  await writeFile(join(workspaceDir, '100%.svg'), SPRITE_SVG, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'index.html'), MULTI_INDEX, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'game.css'), MULTI_CSS, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'game.js'), MULTI_JS, 'utf8')
@@ -800,16 +848,16 @@ async function main() {
         expand: null,
       },
       {
-        // This fixture styles itself through an external stylesheet, which the
-        // static preview cannot load yet (UX-25's resource half); the document
-        // itself must still render.
+        // This fixture styles itself through an external stylesheet, which now loads
+        // through Main's loopback service (UX-25 item 2).
         step: 'preview-multi-file',
         name: 'index.html',
         marker: '多文件夹具',
         title: '多文件夹具',
         documents: 3,
         seeded: false,
-        style: { key: 'board', expected: null, styleSheets: 0 },
+        // The external stylesheet now arrives through the loopback service.
+        style: { key: 'board', expected: 'rgb(28, 42, 31)', styleSheets: 1 },
         expand: 'multi-file',
       },
     ]
@@ -883,6 +931,49 @@ async function main() {
           `${entry.step}: the preview keeps the document title`,
           { title: renderedDocument.title, expected: entry.title },
         )
+        // UX-25 item 2, the whole chain in one place: the sanitized document keeps the
+        // relative reference, the resolver rewrites it to Main's loopback service, the
+        // frame's CSP allows that origin, and Main resolves the path inside the root.
+        if (entry.step === 'preview-static-page') {
+          const assets = renderedDocument.localAssets ?? {}
+          const expected = {
+            'asset-subdir': 'assets/tile.svg',
+            'asset-cjk-space': '素材/背景 图.svg',
+            'asset-hash': 'shots/shot%231.svg',
+            'asset-percent': '100%25.svg',
+          }
+          for (const [id, reference] of Object.entries(expected)) {
+            const asset = assets[id] ?? null
+            recorder.check(
+              asset?.naturalWidth > 0,
+              `${entry.step}: the preview loads \`${reference}\` through the served root`,
+              { id, reference, asset },
+            )
+          }
+          recorder.check(
+            assets['asset-missing']?.naturalWidth === 0,
+            `${entry.step}: a reference that does not exist stays a failure, not a silent success`,
+            { asset: assets['asset-missing'] ?? null },
+          )
+          // Fonts go through exactly the same rewrite; a stub file proves the request
+          // left the frame (status leaves 'unloaded') and that Main served it (a 404
+          // would show up in the recorded failures instead).
+          // A hidden acceptance window never makes Chromium *start* a font fetch (measured:
+          // the face stays `unloaded` even though the text uses it), so the font clause is
+          // proven where it is observable: the @font-face source the frame itself holds.
+          const fontSources = renderedDocument.fontSources ?? []
+          recorder.check(
+            fontSources.some((source) => String(source).includes('/fonts/fixture.woff2')),
+            `${entry.step}: the @font-face source resolves to the served root`,
+            { fontSources, fonts: renderedDocument.fonts ?? [] },
+          )
+          const srcdoc = frame.srcdoc ?? ''
+          recorder.check(
+            !/src="assets\//u.test(srcdoc) && !/src="\.\.?\//u.test(srcdoc),
+            `${entry.step}: relative references are rewritten to the loopback service in the frame document`,
+            { srcdocHead: frame.srcdocHead },
+          )
+        }
         if (entry.style.expected) {
           recorder.check(
             renderedDocument.styles?.[entry.style.key] === entry.style.expected,
@@ -1036,10 +1127,21 @@ async function main() {
       'a dirty draft is asked about before running, offering save-and-run or cancel',
       dirtyPrompt,
     )
+    // The static preview legitimately starts the same per-root service to fetch
+    // relative styles and images, so "nothing was served" is not the question here.
+    // What must not happen is a *run*: the service identity may not change (no new
+    // server, no new entry workout) and no browser tab may open.
+    const serverIdentities = (payload) => (payload?.servers ?? []).map((server) => `${server.url}|${server.startedAt}`).sort()
+    const targetsWhilePrompted = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
     recorder.check(
-      serversWhilePrompted?.servers?.length === 0 && serversAfterCancel?.servers?.length === 0,
-      'no run service starts while the draft question is open or after cancelling',
-      { whilePrompted: serversWhilePrompted?.servers ?? null, afterCancel: serversAfterCancel?.servers ?? null },
+      JSON.stringify(serverIdentities(serversWhilePrompted)) === JSON.stringify(serverIdentities(serversAfterCancel))
+      && !targetsWhilePrompted.some((candidate) => candidate.type === 'webview'),
+      'answering the draft question runs nothing: no new service and no browser tab',
+      {
+        whilePrompted: serverIdentities(serversWhilePrompted),
+        afterCancel: serverIdentities(serversAfterCancel),
+        webviewTargets: targetsWhilePrompted.filter((candidate) => candidate.type === 'webview').length,
+      },
     )
     recorder.check(promptGone === true, 'cancelling the draft question closes it', { cancelled, promptGone })
     // Leave no half-started service behind for the steps that follow.
@@ -1374,6 +1476,58 @@ async function main() {
     await selectWorkspaceTab(client, 'canvas-game.html')
     await clickPreviewAction(client, '停止')
     await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+
+    // UX-25 item 4: the *static* preview cannot run scripts, so a missing stylesheet
+    // or image is invisible inside the frame — Main's service is the witness, and the
+    // notice names the files with a retry next to them.
+    await openFileFromTree(client, 'error-page.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：error-page.html') ? mounted : undefined
+    }, 20_000, 'error page static preview')
+    const assetNotice = await harness.waitFor(() => client.evaluate(`(() => {
+      const notice = document.querySelector('.workspace-tab-view.active .workspace-preview-asset-notice');
+      const summary = notice?.querySelector('.workspace-preview-asset-summary');
+      return summary ? { text: summary.textContent.trim(), retry: Boolean(notice.querySelector('.workspace-preview-asset-retry')) } : null;
+    })()`), 30_000, 'preview asset failure notice').catch(() => null)
+    const assetDetails = assetNotice
+      ? await client.evaluate(`(() => {
+          const notice = document.querySelector('.workspace-tab-view.active .workspace-preview-asset-notice');
+          notice?.querySelector('.workspace-preview-asset-summary')?.click();
+          return true;
+        })()`)
+      : false
+    const assetReasons = assetDetails
+      ? await harness.waitFor(() => client.evaluate(`(() => {
+          const items = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-asset-list li')]
+            .map((item) => item.textContent.replace(/\\s+/gu, ' ').trim());
+          return items.length > 0 ? items : undefined;
+        })()`), 10_000, 'preview asset failure reasons').catch(() => null)
+      : null
+    const assetService = await apiJson(locator, '/workspace/preview-server')
+    const retryShot = await captureScreenshot(client, screenshotDir, 'preview-asset-failures.png')
+    recorder.note({
+      step: 'preview-asset-failures',
+      entry: '工作区 → error-page.html（静态预览：缺失样式表与图片）',
+      notice: assetNotice,
+      reasons: assetReasons,
+      serverFailures: (assetService.servers ?? []).flatMap((server) => server.assetFailures ?? []).map((failure) => `${failure.status} ${failure.path}`),
+      screenshot: retryShot,
+    })
+    recorder.check(
+      Boolean(assetNotice?.text?.includes('个资源未能加载')) && assetNotice.retry === true,
+      'the static preview says how many resources failed and offers a retry',
+      assetNotice,
+    )
+    recorder.check(
+      Array.isArray(assetReasons)
+      && assetReasons.some((reason) => reason.includes('missing-style.css'))
+      && assetReasons.some((reason) => reason.includes('missing-image.png')),
+      'expanding the notice names each failed resource with its reason',
+      { reasons: assetReasons },
+    )
+
+    // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
 
     // 2d. UX-26 diagnostics: a page that throws and misses a resource must say so
     // without DevTools. Main records what the guest reported; the toolbar shows a

@@ -18,7 +18,11 @@ describe('workspace Markdown preview modes', () => {
     expect(previewPane).toContain('isMarkdown && !showMarkdownSource && (')
     expect(previewPane).toContain('const [showHtmlSource, setShowHtmlSource] = useState(')
     expect(previewPane).toContain('isHtml && !showHtmlSource && (')
-    expect(previewPane).toContain('<WorkspaceHtmlPreview path={preview.path} name={preview.name} content={editorText} />')
+    // UX-25 item 2: the static HTML preview is handed the served asset base so its
+    // relative styles/images/fonts can load through Main's bounded loopback service.
+    expect(previewPane).toContain('<WorkspaceHtmlPreview')
+    expect(previewPane).toContain('<WorkspaceHtmlPreviewSurface')
+    expect(previewPane).toContain('root={workspacePath}')
     expect(previewPane).toContain('<Markdown text={editorText} />')
     expect(previewPane).toContain("wordWrap: codeWrapEnabled ? 'on' : 'off'")
     expect(previewActions).toContain('<CodeWrapToggle')

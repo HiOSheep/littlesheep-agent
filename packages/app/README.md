@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 01:33:03
+最后更新：2026-09-26 02:16:16
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -29,6 +29,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **验收运行不占用用户的屏幕**：隔离验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 把这条判定放在**唯一的上屏出口 `showWindow()`** 里（启动页、渲染器就绪、恢复几何、`show()` 全部经过它；只在 `show()`/`showStartup()` 上设卡会漏掉内部调用，实测窗口照样弹出）。需要像素的检查必须先经验收动作显式放行，顺序有单元测试钉住。生产启动不受影响。**副产品（实测）**：窗口隐藏时渲染器仍报 `document.visibilityState === 'visible'`、DOM 与输入管线照常工作（`Input.insertText` 能改编辑器模型并让面板变脏），但 Chromium 不做布局与绘制——`.view-line` 为 0，**离屏 iframe 也没有调试目标**；一次 `Page.captureScreenshot` 会强制出帧，之后帧目标才出现（实测目标数 1 → 2），验收门因此先"预热一帧"再读帧内文档；隐藏窗口下的截图很慢（实测 5 s，下一次 12 s 超时），所以截图已改成有界、失败只记录不判定。
 - **HTML 运行入口是"运行 / 重新加载 / 停止"**（UX-26 第 1 条）：静态预览不执行脚本，运行经 Main 的有界 loopback 服务在既有浏览器 guest 里打开；运行中"运行"按钮禁用（避免再开一个标签），"重新加载"以 URL 寻址的窗口事件让**显示该页面的那个标签**重新加载（不重启服务，保存到磁盘的改动因此生效），停止释放服务。真实窗口验收在 `pnpm run verify:html-preview-baseline`。
 - **UX-26 的六条全部完成**（2026-09-26）：HTML 工具条 运行/重新加载/停止、Main 有界 loopback 服务、guest 隔离与 Main 硬约束、项目范围校验、诊断读数（脚本报错/资源失败/服务停止 + 死循环与崩溃韧性）、真实窗口验收（canvas 有画面、输入改变计分、输入不触达宿主界面、重开一局、多文件 module/图片/JSON、切标签/缩放/关闭后释放）。唯一还剩的收尾：声音夹具接进门（目前只有一次性探针证据：点击播放后 `paused === false`）。
+- **静态预览的相对资源走 Main 校验的回环服务**（UX-25 第 2 条）：预览帧仍是 `sandbox=""` 且 `connect-src 'none'`，但 `img`/`link rel=stylesheet`/`@font-face` 等相对引用会被改写成 Main 有界服务的地址（每次请求都按工作区根校验真实路径），因此子目录、中文、空格、`#`、`%` 名称都能加载，缺失资源在预览上方以"N 个资源未能加载（查看详情）"列出并可重试；CSP 里的 `http(s)` 已移除，提示语承诺的"不发起网络请求"成立。
 - **guest 的硬约束在 Main，不在渲染器**（UX-26 第 3 条）：`<webview webpreferences>` 是渲染器写的，Main 在挂载时重写并拒绝不合规的挂载——无 Node 集成、contextIsolation/sandbox 开启、分区固定为内嵌浏览器分区、**preload 与 additionalArguments 一律删除**、非 http(s) 来源直接拒绝（`embedded-browser-hardening.ts`，3 例单测）。真实窗口实测 guest 自成顶层帧、`window.opener === null`、`window.open` 返回 null（弹窗被拒并路由成 LS 标签）、无 LS bridge、无 Node、空存储。
 - **运行中的页面自己报告问题**（UX-26 第 3 条）：`embedded-browser-diagnostics.ts` 在 Main 侧保有一份有界记录（40 条、消息截断、逐出最旧），渲染器在"运行"提示旁显示"脚本报错 N · 资源失败 M（查看详情）"，展开是页面原文。**两条来源缺一不可**：`console-message` 只报页面自己抛的错（实测缺失样式表与图片完全不产生 console 消息），子资源 4xx 与连接被拒来自 session 的 `webRequest.onCompleted/onErrorOccurred` 并以 `referrer` 归到页面上；用户因此不必打开 DevTools。真实窗口验收见 `pnpm run verify:html-preview-baseline`（`error-page.html` 夹具：脚本报错 1 + 资源失败 2）。
 - **会话累计缓存命中**：composer 的上下文指示器除窗口占用外，还显示**本会话累计**的缓存命中率与 `缓存读取 / 输入` 原值。该值由主进程 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量（`cachedPromptTokens / promptTokens`，**含冷启动**、不含压缩等分离调用），与验收账本、`check:cache-acceptance` 用的是同一组字段与同一公式；`requestsWithoutUsage > 0` 时明确标注"usage 未上报"，不把局部读数当成完整读数。展示层四舍五入，判定层一律用精确值。

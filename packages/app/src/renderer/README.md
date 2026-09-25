@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 01:33:03
+最后更新：2026-09-26 02:16:16
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -10,6 +10,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 ## 入口与所有权
 
 - `workspace/workspace-timing.ts`：CS-08 的两个可用性阶段（首个目录行、首个文件正文被绘制）上报；`api/workspace-files.ts` 的请求路径由 `LOCAL_APP_API_ROUTES` 插值构造并有 `workspace-client-paths.test.ts` 护栏（2026-09-24 曾因缺少 `${` 导致右侧完全不可用）。`workspace/layout-ownership.ts` 决定启动期草稿布局归属哪一段会话（由进入的第一段会话认领），判据见该目录 README。
+- `workspace/html-preview-assets.ts` / `workspace/use-html-preview-assets.ts` / `workspace/html-preview-surface.tsx` / `workspace/html-preview-asset-notice.tsx`：静态预览的相对资源链路（改写 → 只在需要时经 Main 的有界 loopback 服务取回 → 失败时列出原因并可重试），以及 `workspace/office-preview-panel.tsx`（Office 预览正文，原先内联在 `preview-pane.tsx`）。
 - **运行页面的验收可驱动**：`workspace/tab-strip.tsx` 给每个标签项加 `data-workspace-tab-kind`（`file`/`browser`/功能页）。浏览器标签是按页面标题或主机命名的，验收脚本用文件名匹配会误关文件标签（实测），这个属性让"关闭运行标签并释放 guest"可以被稳定断言。
 - `workspace/browser-reload.ts`：运行页面的"重新加载"信号——URL 寻址的窗口事件（与列宽/导航动效同一套跨组件约定），只有 `url` 相同的浏览器标签刷新，因此不需要把回调从工具条一路穿到 dock。
 - `workspace/run-diagnostics.tsx`：**运行页面的诊断读数**（UX-26 第 3 条）——按运行 URL 轮询 `/browser/diagnostics`，把"脚本报错 / 资源失败 / 页面加载失败"计数与展开后的原文显示在运行提示旁；`summarizeBrowserDiagnostics` 是纯函数（只汇总用户需要反应的三类，`console` 不计数），数据一律来自 Main 的记录，渲染器不重新解析页面。

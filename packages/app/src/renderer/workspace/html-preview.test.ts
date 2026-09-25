@@ -23,7 +23,9 @@ describe('workspace HTML preview', () => {
     // UX-25: run as a fragment the sanitizer dropped <head>, and every <style> rule
     // with it, so a styled page rendered as unstyled text on white (measured).
     expect(source).toContain('WHOLE_DOCUMENT: true')
-    expect(source).toContain("const HTML_PREVIEW_ADD_TAGS = ['title']")
+    // `link` survives so a local stylesheet can load; the rewriter keeps only the
+    // stylesheet form and drops preload/icon/manifest.
+    expect(source).toContain("const HTML_PREVIEW_ADD_TAGS = ['title', 'link']")
     expect(source).toContain('ADD_TAGS: HTML_PREVIEW_ADD_TAGS')
   })
 
@@ -35,7 +37,13 @@ describe('workspace HTML preview', () => {
     expect(source).toContain('if (!content.trim())')
     expect(source).toContain('key={previewDocumentKey(path, srcDoc)}')
     expect(source).toContain('export function previewDocumentKey')
-    expect(source).toContain('静态预览：保留标题与样式，不运行页面脚本，也不发起网络请求。')
+    expect(source).toContain('静态预览：保留标题与样式，不运行页面脚本')
+    // UX-25 item 2: relative resources are rewritten to Main's loopback service, and
+    // the frame may only load from that origin — remote http(s) subresources are
+    // blocked so the note above the frame stays true.
+    expect(source).toContain('rewritePreviewAssets(sanitized, {')
+    expect(source).toContain('htmlPreviewCsp(assetOrigin)')
+    expect(source).not.toContain('http: https:')
   })
 
   it('injects a controlled base URL and charset so local paths resolve from the HTML file', async () => {

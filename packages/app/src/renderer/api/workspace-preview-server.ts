@@ -36,3 +36,24 @@ export async function stopWorkspacePreviewServer(root: string): Promise<{ stoppe
   if (!response.ok) throw await localApiResponseError(response)
   return response.json() as Promise<{ stopped: boolean }>
 }
+
+export interface WorkspacePreviewAssetFailure {
+  /** Request path relative to the workspace root. */
+  path: string
+  status: number
+  at: string
+}
+
+export async function listWorkspacePreviewServers(): Promise<{
+  servers: Array<WorkspacePreviewServerInfo & {
+    assetFailures: WorkspacePreviewAssetFailure[]
+    assetSuccesses: number
+  }>
+}> {
+  const response = await localApiFetch(LOCAL_APP_API_ROUTES.workspacePreviewServer, { method: 'GET' })
+  if (!response.ok) throw await localApiResponseError(response)
+  return response.json() as Promise<{ servers: Array<WorkspacePreviewServerInfo & {
+    assetFailures: WorkspacePreviewAssetFailure[]
+    assetSuccesses: number
+  }> }>
+}
