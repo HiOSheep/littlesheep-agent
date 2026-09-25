@@ -788,6 +788,16 @@
 - 结论与**未做的改动**：上述状态里没有任何一项低于 AA，也没有横向裁切、不可选中或不可聚焦的控件；工具活动行本身就是带 `aria-label` 的可聚焦 `BUTTON`（实测标签"搜索，**/*"）。按本任务书"仅对有证据的卡点做局部调整、不能在实机走查前声称层级或对比度不合格"的要求，本轮**不改样式**，把这张表作为基线与回归门槛：以后任何改动让上表任一项跌破阈值，门会失败。
 - 仍未覆盖（第 1~3 条复选框保持未勾选）：**紧凑显示模式**、**125%/150%/200% 系统缩放**与键盘全流程走查（Tab 顺序、Escape、焦点返回）未测；"读完结果、找到失败、继续任务"三段式操作记录与录屏尚未采集；工具输出的长文本折叠默认展开量、来源与引用的可读性也未单独测量。截图落在 `%TEMP%\littlesheep-chat-readability\screenshots\`（`long-answer.png`、`tool-run.png`、`failure.png`、`failure-narrow.png`）。
 
+**实施记录（2026-09-25 14:20:00）｜状态：字体修复的真实窗口测量完成（33 项断言 / 0 失败），条目仍未勾选（其余可读性场景未做）**
+
+- 门 `pnpm run verify:conversation-workspace-scenarios` 增加第 5 段"Markdown 字体角色"实测，在真实窗口里读计算样式并用 canvas 量中文宽度：
+  - 正文 `.markdown p` 计算字体族 = `"Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif`（14px），即正文令牌；
+  - 代码 `.markdown pre code` 计算字体族 = `"Cascadia Code", SFMono-Regular, Consolas, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace`（12px），即 mono 令牌且**含中文回退**；
+  - 中文样本 `中文验收` 在两种字体族下宽度相同：正文 64 px、代码 64 px；
+  - 行内代码 `.markdown-inline-code` = `"Cascadia Code", SFMono-Regular, Consolas, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace`。
+- 三项断言：正文用正文令牌、代码用 mono 令牌（含 `Microsoft YaHei UI`）、中文在两者下同宽——全部通过；整门 33 项断言 / 0 失败，提交 `ad22a40`。
+- 仍未覆盖：整屏字形对比截图（截图已存 `%TEMP%`，但未逐字对比渲染结果）；紧凑模式与高 DPI 下的字体复核；本条其余可读性场景（长工具输出、失败、来源）此前已另测。
+
 **实施记录（2026-09-25 13:55:00）｜状态：代码块中文与正文不同字体的根因已定位并修好（源码侧已验证），真实窗口测量待做；保持未勾选**
 
 - 用户反馈：Markdown 渲染出来的字体与正常文本不是同一种字体（附截图：引用段 + 代码块）。
