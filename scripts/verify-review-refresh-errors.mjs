@@ -33,16 +33,41 @@ const PROBE_SOURCE = `(() => {
   const probe = {
     failSnapshot: false, failDiff: false, holdSnapshot: false, holdDiff: false,
     snapshots: 0, diffs: 0,
+    // UX-27 item 4 needs finer control than "hold everything": hold the *next* N
+    // snapshots individually, answer them later, and be able to answer with stale data.
+    holdSnapshotNext: 0,
   };
-  const holds = { snapshot: null, diff: null };
+  const holds = { snapshot: null, diff: null, queued: [], craftStale: false };
   const originalFetch = window.fetch.bind(window);
   const failure = (message) => Promise.resolve(new Response(JSON.stringify({ error: message }), {
     status: 500, headers: { 'content-type': 'application/json' },
   }));
+  const answerHeldSnapshot = (input, init, resolve, reject) => {
+    originalFetch(input, init).then(async (response) => {
+      if (!holds.craftStale) {
+        resolve(response);
+        return;
+      }
+      // A genuinely older answer: the same shape, minus whatever the newest read found.
+      // If the renderer lets it win, the file it drops disappears from the list.
+      const payload = await response.clone().json();
+      const files = Array.isArray(payload.files) ? payload.files.slice(0, -1) : payload.files;
+      resolve(new Response(JSON.stringify({ ...payload, files }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }));
+    }).catch(reject);
+  };
   window.fetch = function probedFetch(input, init) {
     const target = new URL(typeof input === 'string' ? input : (input && input.url) || '', location.href);
     if (target.pathname === '/workspace/review') {
       probe.snapshots += 1;
+      if (probe.holdSnapshotNext > 0) {
+        probe.holdSnapshotNext -= 1;
+        return new Promise((resolve, reject) => {
+          holds.queued.push(() => answerHeldSnapshot(input, init, resolve, reject));
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+        });
+      }
       if (probe.holdSnapshot) {
         return new Promise((resolve, reject) => {
           holds.snapshot = () => { probe.holdSnapshot = false; resolve(originalFetch(input, init)); };
@@ -86,15 +111,22 @@ const SURFACE_EXPRESSION = `(() => {
   return {
     visible: Boolean(review && review.getBoundingClientRect().width > 0),
     files: review?.querySelectorAll('[role="treeitem"]').length ?? 0,
+    fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\s+/gu, ' ').trim()).join(' | '),
+    selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\s+/gu, ' ').trim(),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
     notices,
     refresh: refresh ? { disabled: refresh.disabled } : null,
     revision: (document.querySelector('.workspace-review-diff')?.textContent || '').length,
+    // The diff *layers'* text, not the whole pane: the pane also hosts the built-in
+    // editor placeholder, which has nothing to do with the diff's version.
+    diffText: [...document.querySelectorAll('.workspace-review-diff-layer')]
+      .map((node) => node.textContent || '').join(' ').replace(/\s+/gu, ' ').trim().slice(0, 600),
     viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
     probe: probe ? {
       snapshots: probe.snapshots, diffs: probe.diffs,
       failSnapshot: probe.failSnapshot, failDiff: probe.failDiff,
       holdSnapshot: probe.holdSnapshot, holdDiff: probe.holdDiff,
+      holdSnapshotNext: probe.holdSnapshotNext, queued: (window.__reviewHolds?.queued ?? []).length,
       pending: { snapshot: Boolean(window.__reviewHolds?.snapshot), diff: Boolean(window.__reviewHolds?.diff) },
     } : null,
   };
@@ -273,12 +305,34 @@ async function main() {
     }
 
     // 1. Baseline: a real snapshot and a real diff, and no notice at all.
-    const initial = await waitForSurface(
+    //
+    // The very first snapshot can lose a startup race right after the renderer reload
+    // (measured: "Failed to fetch" with the Local App API still coming up). One explicit
+    // refresh is what a user would do, and the retry is recorded rather than hidden —
+    // the conditions the baseline asserts are unchanged.
+    let initial = await waitForSurface(
       client,
       (surface) => surface.visible && surface.files > 0 && surface.layers > 0,
       30_000,
       'Git review snapshot and diff',
-    )
+    ).catch(() => null)
+    if (!initial) {
+      const beforeInitialRetry = await readSurface(client)
+      await click(client, REFRESH_LABEL)
+      initial = await waitForSurface(
+        client,
+        // Wait for the retry to *settle*, notice gone: a snapshot that is still
+        // refreshing legitimately says so, and the baseline asserts a quiet load.
+        (surface) => surface.visible && surface.files > 0 && surface.layers > 0 && surface.notices.length === 0,
+        30_000,
+        'Git review snapshot and diff after one refresh',
+      )
+      recorder.note({
+        step: 'initial-retry',
+        before: { files: beforeInitialRetry.files, layers: beforeInitialRetry.layers, snapshots: beforeInitialRetry.probe?.snapshots ?? null },
+        after: { files: initial.files, layers: initial.layers, snapshots: initial.probe?.snapshots ?? null },
+      })
+    }
     recorder.note({ step: 'initial', files: initial.files, layers: initial.layers, notices: initial.notices, viewport: initial.viewport })
     recorder.check(initial.notices.length === 0, 'a successful load shows no stale notice', initial.notices)
 
@@ -456,6 +510,173 @@ async function main() {
       diffRecovered.probe.diffs > diffFailure.probe.diffs,
       'the retry really issues a new diff request instead of reusing the cache',
       { before: diffFailure.probe.diffs, after: diffRecovered.probe.diffs },
+    )
+
+    // UX-27 item 4: a delayed older answer must not win. The renderer already prevents
+    // two overlapping snapshot reads (in-flight guard + one queued follow-up), so the
+    // property is checked where it lives: extra clicks while a read is held must not
+    // start more reads, and once the held (deliberately stale) answer and the queued
+    // refresh have both landed, the list must be the newest read's, with no notice left.
+    await setProbe(client, { holdSnapshotNext: 1, failSnapshot: false, failDiff: false, holdSnapshot: false, holdDiff: false })
+    const beforeOutOfOrder = await readSurface(client)
+    await click(client, REFRESH_LABEL)
+    const heldOlder = await waitForSurface(
+      client,
+      (surface) => surface.probe.holdSnapshotNext === 0 && surface.probe.pending.snapshot === false,
+      15_000,
+      'older snapshot request held',
+    ).catch(() => readSurface(client))
+    const heldCount = heldOlder.probe.snapshots
+    await click(client, REFRESH_LABEL)
+    await click(client, REFRESH_LABEL)
+    await click(client, REFRESH_LABEL)
+    const whileHeld = await readSurface(client)
+    await writeFile(join(workspaceDir, 'newer.txt'), 'newer\n', 'utf8')
+    await client.evaluate(`(() => { window.__reviewHolds.craftStale = true; const next = window.__reviewHolds.queued.shift(); if (next) next(); return true; })()`)
+    const settledOutOfOrder = await waitForSurface(
+      client,
+      (surface) => surface.notices.length === 0 && surface.files >= 2 && surface.probe.queued === 0,
+      25_000,
+      'newest read settles after the stale answer',
+    ).catch(() => readSurface(client))
+    const outOfOrderShot = await captureScreenshot(client, screenshotDir, 'review-out-of-order.png')
+    recorder.note({
+      step: 'out-of-order-snapshot',
+      before: { snapshots: beforeOutOfOrder.probe.snapshots, files: beforeOutOfOrder.files },
+      held: { snapshots: heldCount, files: heldOlder.files },
+      whileHeld: { snapshots: whileHeld.probe.snapshots, files: whileHeld.files },
+      settled: { snapshots: settledOutOfOrder.probe.snapshots, files: settledOutOfOrder.files, notices: settledOutOfOrder.notices.length },
+      screenshot: outOfOrderShot,
+    })
+    recorder.check(
+      whileHeld.probe.snapshots === heldCount,
+      'refreshes clicked while a read is in flight do not start more reads',
+      { heldCount, whileHeld: whileHeld.probe.snapshots },
+    )
+    recorder.check(
+      settledOutOfOrder.files >= 2 && settledOutOfOrder.notices.length === 0,
+      'after a stale answer and the queued refresh, the list is the newest read with no notice left',
+      { files: settledOutOfOrder.files, notices: settledOutOfOrder.notices },
+    )
+    // UX-27 item 3: refresh spam is coalesced instead of firing a request per click.
+    const beforeSpam = await readSurface(client)
+    for (let clickIndex = 0; clickIndex < 5; clickIndex += 1) await click(client, REFRESH_LABEL)
+    const afterSpam = await waitForSurface(
+      client,
+      (surface) => !surface.refresh?.disabled && surface.probe.snapshots > beforeSpam.probe.snapshots,
+      20_000,
+      'spammed refresh settles',
+    )
+    recorder.note({
+      step: 'refresh-spam',
+      before: { snapshots: beforeSpam.probe.snapshots, files: beforeSpam.files },
+      after: { snapshots: afterSpam.probe.snapshots, files: afterSpam.files, notices: afterSpam.notices.length },
+    })
+    recorder.check(
+      // A re-reading notice is the honest outcome when the tree moved under the view: the
+      // point of this check is the *bounded* read count, not silence.
+      afterSpam.probe.snapshots - beforeSpam.probe.snapshots <= 3
+      && afterSpam.notices.every((notice) => notice.tone === 'info' && notice.text.includes('正在重新读取')),
+      'five quick refreshes coalesce into a bounded number of reads and end clean',
+      { issued: afterSpam.probe.snapshots - beforeSpam.probe.snapshots, notices: afterSpam.notices },
+    )
+
+    // UX-27 item 4: the list's stats and the diff must belong to the same version — or
+    // the view must say it is still re-reading. The fixture's sample.txt already has a
+    // diff on screen; adding a line and refreshing must move both, or say so.
+    const beforeVersion = await readSurface(client)
+    const versionMarker = `version-${Date.now().toString(36)}`
+    await writeFile(samplePath, `first\n${versionMarker}\n`, 'utf8')
+    await click(client, REFRESH_LABEL)
+    const afterVersion = await waitForSurface(
+      client,
+      (surface) => surface.fileStats !== beforeVersion.fileStats || surface.diffText.includes(versionMarker),
+      25_000,
+      'list stats or diff move to the new version',
+    ).catch(() => readSurface(client))
+    const rereading = afterVersion.notices.some((notice) => notice.tone === 'info' && notice.text.includes('正在重新读取'))
+    const versionShot = await captureScreenshot(client, screenshotDir, 'review-diff-version.png')
+
+    // The API agrees with itself: the diff read for the *same* revision the list was
+    // built from contains the new line, so "stats and diff match" is not a coincidence
+    // of the renderer holding two different reads.
+    const apiSnapshot = await harness.fetchJson(locator, `/workspace/review?root=${encodeURIComponent(workspaceDir)}`)
+    const apiRevision = apiSnapshot.body?.revision
+    const apiDiff = apiRevision
+      ? await harness.fetchJson(locator, `/workspace/review/diff?root=${encodeURIComponent(workspaceDir)}&path=${encodeURIComponent(samplePath)}&revision=${encodeURIComponent(apiRevision)}`)
+      : null
+    const apiDiffText = JSON.stringify(apiDiff?.body ?? {})
+    // The same read, asked for the file the view has selected: whatever the diff pane is
+    // showing has to be what this revision holds for that file, not an older read's.
+    // The row text starts with its porcelain status letter (`Unewer.txt+1-0`), which is
+    // not part of the file name.
+    const selectedRowText = String(afterVersion.selectedRow ?? '').replace(/^[A-Z?!]{1,2}\s*/u, '')
+    const selectedName = selectedRowText.match(/[\w.\u4e00-\u9fff-]+\.\w+/u)?.[0] ?? ''
+    const selectedDiff = apiRevision && selectedName
+      ? await harness.fetchJson(locator, `/workspace/review/diff?root=${encodeURIComponent(workspaceDir)}&path=${encodeURIComponent(join(workspaceDir, selectedName))}&revision=${encodeURIComponent(apiRevision)}`)
+      : null
+    // Whatever shape a layer payload has, the diff on screen has to contain content this
+    // revision holds for that file — that is what "the list and the diff agree" means.
+    const selectedContents = (JSON.stringify(selectedDiff?.body ?? '').match(/"content":"([^"]{3,})"/gu) ?? [])
+      .map((match) => match.slice('"content":"'.length, -1).trim())
+      .filter((content) => content.length > 2 && !content.includes('\\'))
+    const selectedAddedLine = selectedContents.find((content) => afterVersion.diffText.includes(content)) ?? ''
+    recorder.note({
+      step: 'diff-version-match',
+      marker: versionMarker,
+      before: { fileStats: beforeVersion.fileStats, diffText: beforeVersion.diffText.slice(0, 120) },
+      after: { fileStats: afterVersion.fileStats, hasMarker: afterVersion.diffText.includes(versionMarker), notices: afterVersion.notices, selectedRow: afterVersion.selectedRow },
+      rereading,
+      selected: {
+        name: selectedName,
+        addedLine: selectedAddedLine,
+        status: selectedDiff?.status ?? null,
+        uiShowsIt: selectedAddedLine.length > 0 && afterVersion.diffText.includes(selectedAddedLine),
+      },
+      api: {
+        revision: apiRevision ?? null,
+        status: apiDiff?.status ?? null,
+        hasMarker: apiDiffText.includes(versionMarker),
+        files: apiSnapshot.body?.files?.length ?? null,
+      },
+      screenshot: versionShot,
+    })
+    recorder.check(
+      selectedName.length > 0 && selectedAddedLine.length > 0 && afterVersion.diffText.includes(selectedAddedLine),
+      'the diff on screen is the one the snapshot revision holds for the selected file',
+      { selectedName, selectedAddedLine, diffText: afterVersion.diffText.slice(0, 160) },
+    )
+    // The list itself has to be the revision it was built from: same files, same totals.
+    const uiNames = String(afterVersion.fileStats ?? '')
+      .split('|')
+      .map((row) => row.trim().replace(/^[A-Z?!]{1,2}\s*/u, '').match(/[\w.\u4e00-\u9fff-]+\.\w+/u)?.[0] ?? '')
+      .filter((name) => name.length > 0)
+      .sort()
+    const apiNames = (apiSnapshot.body?.files ?? []).map((file) => String(file.path).split(/[\\/]/u).pop() ?? '').sort()
+    const uiAdditions = (String(afterVersion.fileStats ?? '').match(/\+(\d+)/gu) ?? [])
+      .reduce((total, token) => total + Number(token.slice(1)), 0)
+    recorder.note({
+      step: 'list-vs-revision',
+      uiNames,
+      apiNames,
+      uiAdditions,
+      apiAdditions: apiSnapshot.body?.additions ?? null,
+      selected: { name: selectedName, uiShowsIt: selectedAddedLine.length > 0 && afterVersion.diffText.includes(selectedAddedLine) },
+    })
+    recorder.check(
+      // Row labels are ellipsized by the view (measured: `sample.txt` renders as
+      // `ample.txt`), so the comparison is on the count and the totals the revision
+      // carries; the names stay in the record as evidence.
+      afterVersion.files === (apiSnapshot.body?.files?.length ?? -1)
+      && uiAdditions === (apiSnapshot.body?.additions ?? -1)
+      && rereading === false,
+      'the file list on screen matches the snapshot revision it came from, totals included',
+      { uiFiles: afterVersion.files, apiFiles: apiSnapshot.body?.files?.length ?? null, uiNames, apiNames, uiAdditions, apiAdditions: apiSnapshot.body?.additions ?? null },
+    )
+    recorder.check(
+      Boolean(apiRevision) && apiDiff?.status === 200 && apiDiffText.includes(versionMarker),
+      'the diff read for the snapshot revision the list came from contains the new line',
+      { revision: apiRevision ?? null, status: apiDiff?.status ?? null, hasMarker: apiDiffText.includes(versionMarker) },
     )
   } catch (error) {
     recorder.check(false, 'the walkthrough completed without an unexpected failure', {
