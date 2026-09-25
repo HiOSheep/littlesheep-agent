@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-26 06:40:45
+最后更新：2026-09-26 07:23:39
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -53,3 +53,5 @@
 - `workspace/review-limits.ts` 的 `reviewLimitNotice`：导航器折叠时把列表/差异层的上限语句交给差异面板显示（展开时返回 null，不重复）；`review-diff.tsx` 用 `.workspace-review-limit-notice` 渲染（UX-28 第 5 条）。
 
 **评论锚点（UX-28 第 4 条）**：`line-comment-model.ts` 的 `lineCommentAnchorState` 判定评论是否仍指向当初的代码（`anchored`/`moved`/`unknown`，缺锚点或读不到源码时不作结论）；`AttachmentLineComment.anchorText` 记录创建时的行内容，评论卡片在 `moved` 时显示"代码行已变化"。
+
+**差异交互的验收边界（UX-28 第 4 条，2026-09-26）**：键盘选择与"回到源文件"在真实窗口里走查；行号由 `review-diff-model` 保证（`newStart` → 真实源码行号、远距离 hunk 之间给 `...`）；长行换行与删除行评论层在隐藏窗口里不可见（Monaco 无布局、评论层按行几何挂载），因此只有配置级与单元级证据。
