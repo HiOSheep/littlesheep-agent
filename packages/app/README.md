@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 21:36:52
+最后更新：2026-09-25 23:31:57
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -26,7 +26,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **没有模型时的第一步是可用路径**：输入栏的选择器把"还没配置""配置读取失败""已保存但不可用""可用但还没选模型"分成四种事实（`src/renderer/composer/runtime-availability.ts`），空菜单直接给出"配置模型 / 检查供应商配置 / 重试读取"，打开设置只是路由切换、不清空草稿与附件；自定义供应商保存的模型条目是元数据对象，因此 Runtime 的模型引用校验必须按解析后的 id 比较（`src/main/local-app-api/runtime-routes.ts`）。整条路径由 `pnpm run verify:no-model-config-loop` 在真实窗口走查。
 - **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。
 - **启动失败页可取证**：`src/main/desktop-acceptance-actions.ts` 只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时装配隔离验收动作（`/application/acceptance` 的 `resize` / `startup-error` 等），后者把真实失败文案交给生产同一份 `showStartupError` 文档，使 CS-02 能对"启动失败"这一无法靠等待到达的状态取像素证据；生产运行不挂载这些动作。
-- **验收运行不占用用户的屏幕**：隔离验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 据此让 `show()`/`showStartup()` 在验收运行里默认不生效（需要像素的检查必须先经验收动作显式放行，顺序有单元测试钉住）。生产启动不受影响；被遮住的文档在 Chromium 里是 `hidden`，编辑器根本不会布局，所以"要有像素"与"别盖住用户"只能靠这条显式放行区分。
+- **验收运行不占用用户的屏幕**：隔离验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 把这条判定放在**唯一的上屏出口 `showWindow()`** 里（启动页、渲染器就绪、恢复几何、`show()` 全部经过它；只在 `show()`/`showStartup()` 上设卡会漏掉内部调用，实测窗口照样弹出）。需要像素的检查必须先经验收动作显式放行，顺序有单元测试钉住。生产启动不受影响。**副产品（实测）**：窗口隐藏时渲染器仍报 `document.visibilityState === 'visible'`、DOM 与输入管线照常工作（`Input.insertText` 能改编辑器模型并让面板变脏），但 Chromium 不做布局与绘制——`.view-line` 为 0，**离屏 iframe 也没有调试目标**；一次 `Page.captureScreenshot` 会强制出帧，之后帧目标才出现（实测目标数 1 → 2），验收门因此先"预热一帧"再读帧内文档；隐藏窗口下的截图很慢（实测 5 s，下一次 12 s 超时），所以截图已改成有界、失败只记录不判定。
 - **会话累计缓存命中**：composer 的上下文指示器除窗口占用外，还显示**本会话累计**的缓存命中率与 `缓存读取 / 输入` 原值。该值由主进程 `buildSessionContextUsageRecord` 按会话汇总每次 run 的 provider 用量（`cachedPromptTokens / promptTokens`，**含冷启动**、不含压缩等分离调用），与验收账本、`check:cache-acceptance` 用的是同一组字段与同一公式；`requestsWithoutUsage > 0` 时明确标注"usage 未上报"，不把局部读数当成完整读数。展示层四舍五入，判定层一律用精确值。
 
 ## 应用层交互基线

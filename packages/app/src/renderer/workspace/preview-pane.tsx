@@ -17,7 +17,7 @@ import { WorkspaceCodeEditor, workspaceEditorModelPath } from './code-editor'
 import { WorkspaceHtmlPreview } from './html-preview'
 import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
-import { resolveWorkspacePreviewEditorState } from './preview-draft'
+import { resolveWorkspacePreviewEditorState, workspaceDraftOutcome } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
 import { HtmlRunNotice } from './html-run-notice'
 import { useHtmlRun } from './use-html-run'
@@ -205,16 +205,20 @@ export function WorkspacePreviewPane({
       setSaveMessage('')
       setSaveError('')
     }
-    if (editable && preview && (preview.kind === 'text' || preview.kind === 'markdown' || preview.kind === 'html')) {
-      if (tabId && onDraftChange) onDraftChange(tabId, {
+    // Writing here is what makes an edit dirty for the session; `keep` exists so a
+    // still-loading preview cannot be mistaken for "this tab has no editable content"
+    // — that deleted every stored draft on remount (see workspaceDraftOutcome).
+    const outcome = workspaceDraftOutcome(preview)
+    if (outcome === 'persist' && editable && preview && tabId && onDraftChange) {
+      onDraftChange(tabId, {
         path: preview.path,
         modifiedAt: preview.modifiedAt,
         editorText: nextEditorText,
         savedText: nextSavedText,
         editing: nextEditing,
       })
-    } else {
-      if (tabId && onDraftChange) onDraftChange(tabId, null)
+    } else if (outcome === 'drop' && tabId && onDraftChange) {
+      onDraftChange(tabId, null)
     }
   }, [sessionId, preview?.path, preview?.modifiedAt, editable, isMarkdown, isHtml])
 

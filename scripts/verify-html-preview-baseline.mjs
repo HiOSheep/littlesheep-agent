@@ -240,7 +240,12 @@ function createRecorder() {
   const observations = []
   const failures = []
   return {
-    note: (entry) => observations.push(entry),
+    // Progress goes to stderr: a stall must be visible in the log, not only in the
+    // final report (two runs were lost to a silent hang before this).
+    note: (entry) => {
+      observations.push(entry)
+      console.error(`[gate] ${entry.step}`)
+    },
     check: (condition, check, detail) => {
       if (!condition) failures.push({ check, detail })
       return Boolean(condition)
@@ -382,14 +387,27 @@ function readEvents(client, fromIndex) {
   }).filter((entry) => entry.level !== 'verbose')
 }
 
-async function captureScreenshot(client, dir, name) {
+/**
+ * Capture a screenshot, but never let it hold the run hostage.
+ *
+ * While the acceptance window is hidden a capture still forces a paint, which is
+ * slow and sometimes never settles (measured: one capture took 5 s, the next timed
+ * out after 12 s). Screenshots are evidence, not assertions, so a failure is
+ * recorded as `null` instead of aborting the walkthrough.
+ */
+async function captureScreenshot(client, dir, name, timeoutMs = 20_000) {
   await mkdir(dir, { recursive: true })
-  const shot = await client.send('Page.captureScreenshot', { format: 'png' })
-  await writeFile(join(dir, name), Buffer.from(shot.data, 'base64'))
-  return join(dir, name)
+  const shot = await Promise.race([
+    client.send('Page.captureScreenshot', { format: 'png' }),
+    delay(timeoutMs).then(() => null),
+  ]).catch(() => null)
+  if (!shot?.data) return null
+  const path = join(dir, name)
+  await writeFile(path, Buffer.from(shot.data, 'base64'))
+  return path
 }
 
-async function seedPreferences(client, workspaceDir, filePath) {
+async function seedPreferences(client, workspaceDir, filePath, draft = null) {
   const fileTab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
   const layout = {
     collapsed: false,
@@ -401,7 +419,7 @@ async function seedPreferences(client, workspaceDir, filePath) {
     fileNavigatorWidth: 214,
     reviewNavigatorWidth: 214,
     expandedPaths: [],
-    drafts: {},
+    drafts: draft ? { [fileTab]: draft } : {},
     browserTabs: [],
   }
   const preferences = {
@@ -473,6 +491,37 @@ async function probeAllPreviewFrames(debuggingPort) {
     try {
       await frameClient.send('Runtime.enable')
       documents.push(await frameClient.evaluate(PAGE_PROBE))
+    } catch (error) {
+      documents.push({ error: error instanceof Error ? error.message : String(error) })
+    } finally {
+      frameClient.close()
+    }
+  }
+  return documents
+}
+
+/**
+ * Preview frames whose rendered **markup** contains `needle`.
+ *
+ * A marker inside an HTML comment is invisible to `innerText` (and DOMPurify strips
+ * comments entirely), so an edit is proven through `outerHTML`.
+ */
+async function probePreviewFrameMarkup(debuggingPort, needle) {
+  const response = await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)
+  const targets = await response.json()
+  const documents = []
+  for (const target of targets.filter((candidate) => candidate.type === 'iframe' && candidate.webSocketDebuggerUrl)) {
+    const frameClient = new harness.CdpClient(target.webSocketDebuggerUrl)
+    try {
+      await frameClient.send('Runtime.enable')
+      documents.push(await frameClient.evaluate(`(() => ({
+        url: location.href,
+        htmlLength: document.documentElement.outerHTML.length,
+        text: (document.body?.innerText ?? '').replace(/\s+/gu, ' ').slice(0, 120),
+        hasMarker: document.documentElement.outerHTML.includes(${JSON.stringify(needle)}),
+        styleSheets: document.styleSheets.length,
+        scripts: document.scripts.length,
+      }))()`))
     } catch (error) {
       documents.push({ error: error instanceof Error ? error.message : String(error) })
     } finally {
@@ -665,6 +714,18 @@ async function main() {
       if (!state) return undefined
       return state.readyState === 'complete' && state.timeOrigin !== beforeReload ? state.timeOrigin : undefined
     }, harness.actionTimeoutMs, 'renderer reload with the HTML fixture open')
+    // One paint before the frame work: an acceptance run keeps its window hidden, and
+    // while nothing is rendered an out-of-process preview iframe has no debug target at
+    // all (measured: 1 target without a paint, 2 with one) — the frame probes would then
+    // wait out their whole timeout. Capturing also proves the window stays off screen.
+    const windowSnapshot = await harness.desktopSnapshot(locator).catch(() => null)
+    const warmShot = await captureScreenshot(client, screenshotDir, 'warm-paint.png')
+    recorder.note({
+      step: 'warm-paint',
+      windowVisible: windowSnapshot?.windowVisible ?? null,
+      visibilityState: await client.evaluate('document.visibilityState'),
+      captured: Boolean(warmShot),
+    })
     const eventsFrom = client.events.length
 
     const previewSteps = [
@@ -795,34 +856,58 @@ async function main() {
       renderOutcomes,
     )
 
-    // 2b. UX-25 item 3, draft half: the preview shows the edited draft, not the file
-    // on disk, and a new document replaces the frame instead of reusing it.
-    const draftMarker = '草稿标记-51ab'
+    // 2b. UX-25 item 3, draft half: an unsaved edit is kept by the session store and
+    // the preview renders it instead of the file on disk.
+    //
+    // The edit is made through the real editor, but *without a visible window*: an
+    // acceptance run keeps its window off the user's screen, and CDP key events need
+    // a laid-out editor. Focusing the editor's own input element and inserting text
+    // through the input pipeline updates the model (and with it the pane's draft)
+    // even when nothing is painted — measured: 0 rendered lines, draft dirty, preview
+    // following.
+    const draftMarker = `草稿标记-${Date.now().toString(36)}`
     await openFileFromTree(client, 'static-page.html')
     await harness.waitFor(async () => {
       const mounted = await readPreviewFrames(client)
       return mounted.some((candidate) => candidate.title === 'HTML 预览：static-page.html') ? mounted : undefined
     }, 20_000, 'static page preview before editing')
     const sourceMode = await client.evaluate(`(() => {
-      const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
-        .find((node) => (node.textContent || '').trim() === '编辑');
+      const button = [...document.querySelectorAll('.workspace-tab-view.active button')]
+        .find((node) => /^编辑$|^只读$/u.test((node.textContent || '').trim()));
       if (!(button instanceof HTMLElement)) return false;
       button.click();
       return true;
     })()`)
     if (!sourceMode) throw new Error('the HTML edit action was not available')
     await harness.waitFor(
-      () => client.evaluate(`document.querySelector('.workspace-editor-monaco .monaco-editor:not(.workspace-monaco-readonly)') ? true : null`),
+      () => client.evaluate(`document.querySelector('.workspace-tab-view.active .workspace-editor-monaco .monaco-editor') ? true : null`),
       20_000,
       'HTML source editor in edit mode',
     )
-    const typed = await typeIntoEditor(client, draftMarker)
+    const draftInput = await client.evaluate(`(() => {
+      const pane = document.querySelector('.workspace-tab-view.active .workspace-editor-monaco');
+      const input = pane?.querySelector('.native-edit-context') ?? pane?.querySelector('textarea.inputarea');
+      if (!(input instanceof HTMLElement)) return { focused: false, reason: 'no input element' };
+      input.focus();
+      return { focused: document.activeElement === input, reason: null };
+    })()`)
+    if (draftInput.focused) await client.send('Input.insertText', { text: `\n${draftMarker}\n` })
+    const draftStore = await harness.waitFor(() => client.evaluate(`(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+      const drafts = Object.values(layouts).flatMap((layout) => Object.values(layout?.drafts ?? {}));
+      const entries = drafts.map((draft) => ({
+        path: draft?.path ?? null,
+        dirty: String(draft?.editorText ?? '') !== String(draft?.savedText ?? ''),
+        markerInDraft: String(draft?.editorText ?? '').includes(${JSON.stringify(draftMarker)}),
+      }));
+      const withMarker = entries.find((entry) => entry.markerInDraft && entry.dirty);
+      return withMarker ? { draftCount: drafts.length, dirtyCount: entries.filter((entry) => entry.dirty).length, entries } : undefined;
+    })()`), 15_000, 'dirty draft in the session store').catch(() => null)
     let draftRendered = null
-    let draftFailure = typed === 'failed' ? 'the CDP typing gesture did not reach the editor model' : null
-    let backToPreview = false
-    if (typed !== 'failed') {
-      backToPreview = await client.evaluate(`(() => {
-        const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
+    let draftFailure = draftInput.focused ? null : `the editor input element was not focusable: ${draftInput.reason}`
+    if (draftStore) {
+      const backToPreview = await client.evaluate(`(() => {
+        const button = [...document.querySelectorAll('.workspace-tab-view.active button')]
           .find((node) => /^查看(源代码|预览)$/u.test((node.textContent || '').trim()));
         if (!(button instanceof HTMLElement)) return false;
         button.click();
@@ -831,108 +916,86 @@ async function main() {
       if (!backToPreview) throw new Error('the HTML preview toggle was not available')
       try {
         draftRendered = await harness.waitFor(async () => {
-          const documents = await probeAllPreviewFrames(debuggingPort)
-          const withMarker = documents.find((document) => document.text?.includes(draftMarker))
-          return withMarker ?? undefined
-        }, 15_000, 'draft document in the preview')
+          // Read the frame by *markup*: DOMPurify's own output is what the frame gets.
+          const documents = await probePreviewFrameMarkup(debuggingPort, draftMarker)
+          return documents.find((document) => document.hasMarker === true) ?? undefined
+        }, 25_000, 'draft document in the preview')
       } catch (error) {
         draftFailure = error instanceof Error ? error.message : String(error)
       }
+    } else if (!draftFailure) {
+      draftFailure = 'the inserted edit never reached the session draft store'
     }
-    const draftStore = await client.evaluate(`(() => {
-      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
-      const drafts = Object.values(layouts).flatMap((layout) => Object.values(layout?.drafts ?? {}));
-      return {
-        draftCount: drafts.length,
-        markerInDraft: drafts.some((draft) => String(draft?.editorText ?? '').includes(${JSON.stringify(draftMarker)})),
-      };
-    })()`)
     const draftShot = await captureScreenshot(client, screenshotDir, 'preview-html-draft.png')
     recorder.note({
       step: 'preview-html-draft',
-      entry: '工作区文件树 → static-page.html → 编辑 → 输入 → 预览',
+      entry: '工作区 → static-page.html → 编辑 → 输入（隐藏窗口）→ 查看预览',
       marker: draftMarker,
-      typed,
+      input: draftInput,
       appearedInPreview: Boolean(draftRendered),
       failure: draftFailure,
       draftStore,
       document: draftRendered ?? null,
       screenshot: draftShot,
     })
-    // Recorded, not asserted: the typed draft reached the editor's model and the
-    // session draft store, but the mounted preview kept the on-disk document
-    // (srcdoc length unchanged), so the draft-follows-preview path has no passing
-    // measurement yet — see the gate limits and the UX-25 record.
-    if (draftRendered) {
-      recorder.check(
-        draftRendered.styleSheets >= 1 && draftRendered.scripts === 0,
-        'the edited draft renders with its styles and without scripts',
-        { styleSheets: draftRendered.styleSheets, scripts: draftRendered.scripts },
-      )
-    }
+    // The regression this pins: the mount effect used to run before the file loaded
+    // and deleted the stored draft, so no unsaved edit survived a remount — and the
+    // second check is the whole point of an edit: the preview shows it.
+    recorder.check(
+      draftStore?.dirtyCount >= 1 && draftStore?.entries?.some((entry) => entry.markerInDraft === true) === true,
+      'the inserted edit is dirty in the session draft store',
+      draftStore ?? { failure: draftFailure, input: draftInput },
+    )
+    recorder.check(
+      draftRendered?.hasMarker === true && draftRendered.styleSheets >= 1 && draftRendered.scripts === 0,
+      'the unsaved draft is what the preview renders, with styles and without scripts',
+      draftRendered ?? { failure: draftFailure },
+    )
 
     // 2c. Run entry (UX-26): the toolbar runs the *saved* page through the bounded
-    // loopback service and opens it in the embedded browser. A dirty draft must be
-    // asked about first; the draft is seeded through the session store because the
-    // CDP typing gesture did not reach the live pane state in this build (see the
-    // UX-25 record and the draft step above).
-    const staticPagePath = join(workspaceDir, 'static-page.html')
-    const diskText = await readFile(staticPagePath, 'utf8')
-    const staticPageInfo = await stat(staticPagePath)
-    await seedDraft(client, workspaceDir, staticPagePath, {
-      editorText: `${diskText}\n<!-- ${draftMarker} -->\n`,
-      savedText: diskText,
-      // The pane only restores a draft whose modifiedAt still matches the file it
-      // was taken from, so the fixture has to carry the real timestamp.
-      modifiedAt: staticPageInfo.mtimeMs,
-    })
-    await reloadRenderer(client)
-    await harness.waitFor(() => client.evaluate(`document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`), harness.startTimeoutMs, 'composer after draft seeding')
-    await openFileFromTree(client, 'static-page.html')
-    await harness.waitFor(async () => {
-      const mounted = await readPreviewFrames(client)
-      return mounted.some((candidate) => candidate.title === 'HTML 预览：static-page.html') ? mounted : undefined
-    }, 20_000, 'static page restored with its draft')
+    // loopback service and opens it in the embedded browser. The draft restored above
+    // is still unsaved, so running must ask first — and must not start anything until
+    // the user answers.
     const dirtyRun = await clickPreviewAction(client, '运行')
     const dirtyPrompt = dirtyRun
       ? await harness.waitFor(() => client.evaluate(`(() => {
           const node = document.querySelector('.workspace-tab-view.active .workspace-preview-run-message');
-          return node ? { text: node.textContent.trim(), actions: [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')].map((b) => b.textContent.trim()) } : null;
+          return node ? { text: node.textContent.trim(), actions: [...document.querySelectorAll('.workspace-tab-view.active button')].map((b) => b.textContent.trim()) } : null;
         })()`), 10_000, 'dirty draft prompt').catch(() => null)
       : null
-    const serversWhilePrompted = dirtyPrompt ? await apiJson(locator, '/workspace/preview-server') : null
+    const serversWhilePrompted = await apiJson(locator, '/workspace/preview-server')
     const cancelled = dirtyPrompt ? await clickPreviewAction(client, '取消') : false
-    const serversAfterCancel = cancelled ? await apiJson(locator, '/workspace/preview-server') : null
+    const promptGone = cancelled
+      ? await harness.waitFor(() => client.evaluate(`document.querySelector('.workspace-tab-view.active .workspace-preview-run-message') ? null : true`), 10_000, 'prompt dismissed').then(() => true).catch(() => false)
+      : false
+    const serversAfterCancel = await apiJson(locator, '/workspace/preview-server')
     const promptShot = await captureScreenshot(client, screenshotDir, 'html-run-dirty-prompt.png')
     recorder.note({
       step: 'html-run-dirty-draft',
-      entry: '工作区 → static-page.html（会话草稿：未保存修改）→ 运行',
+      entry: '工作区 → static-page.html（未保存草稿）→ 运行 → 取消',
       clicked: dirtyRun,
       prompt: dirtyPrompt,
       serversWhilePrompted: serversWhilePrompted?.servers ?? null,
       cancelled,
+      promptGone,
       serversAfterCancel: serversAfterCancel?.servers ?? null,
       screenshot: promptShot,
     })
-    // Recorded, not asserted: in this build neither the CDP typing gesture nor a
-    // seeded session draft made the live pane dirty, so the prompt path has no
-    // passing real-window measurement yet (its rules are unit-tested in
-    // html-run.test.ts). UX-26's dirty-draft item stays open.
-    if (dirtyPrompt) {
-      recorder.check(
-        dirtyPrompt.text.includes('未保存') && dirtyPrompt.actions.includes('保存并运行') && dirtyPrompt.actions.includes('取消'),
-        'a dirty draft is asked about before running, offering save-and-run or cancel',
-        dirtyPrompt,
-      )
-      recorder.check(
-        serversWhilePrompted?.servers?.length === 0 && serversAfterCancel?.servers?.length === 0,
-        'no run service starts while the draft question is open or after cancelling',
-        { whilePrompted: serversWhilePrompted?.servers ?? null, afterCancel: serversAfterCancel?.servers ?? null },
-      )
-    } else {
-      // Leave no half-started service behind for the steps that follow.
-      await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
-    }
+    recorder.check(
+      dirtyPrompt?.text?.includes('未保存') === true
+      && dirtyPrompt.actions.includes('保存并运行')
+      && dirtyPrompt.actions.includes('取消'),
+      'a dirty draft is asked about before running, offering save-and-run or cancel',
+      dirtyPrompt,
+    )
+    recorder.check(
+      serversWhilePrompted?.servers?.length === 0 && serversAfterCancel?.servers?.length === 0,
+      'no run service starts while the draft question is open or after cancelling',
+      { whilePrompted: serversWhilePrompted?.servers ?? null, afterCancel: serversAfterCancel?.servers ?? null },
+    )
+    recorder.check(promptGone === true, 'cancelling the draft question closes it', { cancelled, promptGone })
+    // Leave no half-started service behind for the steps that follow.
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
 
     // A clean file runs: service starts, browser tab opens, the game is playable.
     await openFileFromTree(client, 'canvas-game.html')
@@ -1303,31 +1366,6 @@ function repoRoot() {
   return fileURLToPath(new URL('..', import.meta.url))
 }
 
-/** Seed one file tab's unsaved draft in the session store the app itself writes. */
-async function seedDraft(client, workspaceDir, filePath, texts) {
-  const fileTab = `file:${encodeURIComponent(workspaceDir)}|${encodeURIComponent(filePath)}`
-  await client.evaluate(`(() => {
-    const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
-    const bucket = layouts.__draft__ ?? (layouts.__draft__ = { collapsed: false, fullscreen: true, activeTab: ${JSON.stringify(fileTab)}, openTabs: [${JSON.stringify(fileTab)}], fileNavigatorCollapsed: false, fileNavigatorWidth: 214, reviewNavigatorWidth: 214, expandedPaths: [], drafts: {}, browserTabs: [] });
-    bucket.drafts = bucket.drafts || {};
-    bucket.drafts[${JSON.stringify(fileTab)}] = {
-      path: ${JSON.stringify(filePath)},
-      modifiedAt: ${Number(texts.modifiedAt ?? 0)},
-      editorText: ${JSON.stringify(texts.editorText)},
-      savedText: ${JSON.stringify(texts.savedText)},
-      editing: false,
-    };
-    bucket.activeTab = ${JSON.stringify(fileTab)};
-    bucket.openTabs = [...new Set([...(bucket.openTabs || []), ${JSON.stringify(fileTab)}])];
-    localStorage.setItem('littlesheep.ui.workspaceSessionLayouts', JSON.stringify(layouts));
-    localStorage.setItem('littlesheep.ui.workspacePanelTab', ${JSON.stringify(fileTab)});
-    localStorage.setItem('littlesheep.ui.workspacePanelOpenTabs', JSON.stringify(bucket.openTabs));
-    localStorage.setItem('littlesheep.ui.workspacePanelOpenRoot', ${JSON.stringify(workspaceDir)});
-    localStorage.setItem('littlesheep.ui.workspacePanelOpenPath', ${JSON.stringify(filePath)});
-    return true;
-  })()`)
-}
-
 /** Reload the renderer once and wait for the app document again. */
 async function reloadRenderer(client) {
   const before = await client.evaluate('performance.timeOrigin')
@@ -1374,46 +1412,6 @@ async function selectWorkspaceTab(client, label) {
  * not the editor model in this Electron build (measured), so the model's own
  * change event — and with it the draft — never fired.
  */
-async function typeIntoEditor(client, text) {
-  const point = await harness.waitFor(async () => {
-    const value = await client.evaluate(`(() => {
-      const pane = document.querySelector('.workspace-tab-view.active .workspace-editor-monaco');
-      const line = pane?.querySelector('.monaco-editor .view-line');
-      if (!(pane instanceof HTMLElement) || !(line instanceof HTMLElement)) return null;
-      const paneBox = pane.getBoundingClientRect();
-      const lineBox = line.getBoundingClientRect();
-      // A long line extends far beyond the visible editor, so its own centre can
-      // sit outside the window; the click point is inside the overlap instead.
-      const left = Math.max(paneBox.left, lineBox.left, 0);
-      const right = Math.min(paneBox.right, lineBox.right, window.innerWidth);
-      if (right - left < 8) return null;
-      return { x: left + Math.min(30, (right - left) / 2), y: lineBox.top + lineBox.height / 2 };
-    })()`)
-    return value ?? undefined
-  }, 30_000, 'the Monaco text area')
-  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 })
-  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1 })
-  await delay(300)
-  for (const character of text) {
-    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', text: character, unmodifiedText: character, key: character })
-    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: character })
-    await delay(20)
-  }
-  await delay(500)
-  if (await editorHasText(client, text)) return 'keyEvents'
-  await client.send('Input.insertText', { text })
-  await delay(400)
-  return (await editorHasText(client, text)) ? 'insertText' : 'failed'
-}
-
-async function editorHasText(client, text) {
-  return client.evaluate(`(() => {
-    const content = (document.querySelector('.workspace-tab-view.active .workspace-editor-monaco .view-lines')?.textContent ?? '')
-      .replace(/\\u00a0/gu, ' ');
-    return content.includes(${JSON.stringify(text)}) ? true : null;
-  })()`).then(Boolean)
-}
-
 /** The review tab's own view of the same repository state. */
 async function gitUiBaseline(client, eventsFrom) {
   await selectWorkspaceFeature(client, '审阅')

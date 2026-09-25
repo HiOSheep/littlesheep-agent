@@ -111,10 +111,18 @@ export function createElectronHarness({
     }, startTimeoutMs, 'Local App API locator')
   }
 
+  /**
+   * Wait for the desktop window to exist.
+   *
+   * Deliberately not `windowVisible`: an acceptance run keeps the window off the
+   * user's screen (it drives the renderer over the debug protocol), and requiring
+   * visibility here would force every run to cover the desktop. Checks that need
+   * pixels ask for the window through the acceptance `show` action.
+   */
   async function waitForDesktop(locator) {
     return waitFor(async () => {
       const snapshot = await desktopSnapshot(locator).catch(() => undefined)
-      return snapshot?.windowExists && snapshot.windowVisible ? snapshot : undefined
+      return snapshot?.windowExists ? snapshot : undefined
     }, startTimeoutMs, 'desktop window')
   }
 

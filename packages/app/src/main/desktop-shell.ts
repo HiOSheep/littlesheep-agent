@@ -139,7 +139,6 @@ export class LittleSheepDesktopShell {
 
   /** Show a lightweight branding surface while the Runtime is still starting. */
   showStartup(): void {
-    if (acceptanceWindowHeldBack()) return
     const window = this.resolveWindow()
     if (window) {
       this.mainWindow = window
@@ -150,9 +149,6 @@ export class LittleSheepDesktopShell {
   }
 
   show(): void {
-    // An acceptance run drives the renderer over the debug protocol; showing the
-    // window would take over the user's screen for no reason (see the helper).
-    if (acceptanceWindowHeldBack()) return
     const window = this.resolveWindow()
     if (window) {
       this.mainWindow = window
@@ -580,19 +576,20 @@ export class LittleSheepDesktopShell {
   }
 }
 
+/**
+ * Put the window on screen — the single place that does, and therefore where an
+ * acceptance run is held back: guarding the callers missed the internal ones.
+ */
 function showWindow(win: BrowserWindow): void {
   if (win.isDestroyed()) return
+  if (acceptanceWindowHeldBack()) return
   if (win.isMinimized()) win.restore()
   if (!win.isVisible()) win.show()
   win.focus()
 }
 
 function resolveDesktopIcon(): string | undefined {
-  return resolveAppIconPath({
-    appPath: app.getAppPath(),
-    moduleDir: __dirname,
-    resourcesPath: process.resourcesPath,
-  })
+  return resolveAppIconPath({ appPath: app.getAppPath(), moduleDir: __dirname, resourcesPath: process.resourcesPath })
 }
 
 function resolveDesktopStartupIconDataUrl(): string | undefined {
