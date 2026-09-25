@@ -197,6 +197,10 @@ const PAGE_PROBE = `(() => {
     }
   })() : null;
   const image = document.querySelector('img');
+  const computed = (selector) => {
+    const node = document.querySelector(selector);
+    return node ? getComputedStyle(node).backgroundColor : null;
+  };
   return {
     url: location.href,
     readyState: document.readyState,
@@ -206,6 +210,12 @@ const PAGE_PROBE = `(() => {
     scripts: document.scripts.length,
     styleSheets: document.styleSheets.length,
     bodyBackground: document.body ? getComputedStyle(document.body).backgroundColor : null,
+    styles: {
+      body: computed('body'),
+      board: computed('.board'),
+      canvas: computed('canvas'),
+      heading: document.querySelector('h1') ? getComputedStyle(document.querySelector('h1')).color : null,
+    },
     canvas: canvas ? {
       width: canvas.width,
       height: canvas.height,
@@ -474,9 +484,11 @@ async function readPreviewFrames(client) {
   return client.evaluate(`(() => {
     return [...document.querySelectorAll('.workspace-preview-html')].map((node) => {
       const srcdoc = node.getAttribute('srcdoc') || '';
+      const shell = node.closest('.workspace-preview-html-shell');
       return {
         title: node.getAttribute('title'),
-        active: !node.closest('.inactive'),
+        active: Boolean(node.closest('.workspace-tab-view.active')),
+        note: shell?.querySelector('.workspace-preview-html-note')?.textContent?.trim() ?? null,
         srcdocLength: srcdoc.length,
         srcdocHead: srcdoc.slice(0, 240),
         hasScriptTag: /<script/i.test(srcdoc),
@@ -653,14 +665,41 @@ async function main() {
     const eventsFrom = client.events.length
 
     const previewSteps = [
-      // Measured baseline (see the taskbook record): the first HTML file — seeded so
-      // its content is ready before the pane mounts — always renders, while a file
-      // opened from the tree afterwards sometimes keeps the empty frame document it
-      // was created with and stays blank. The rendering outcome is recorded per
-      // file rather than asserted, because that race is the defect UX-25 fixes.
-      { step: 'preview-static-page', name: 'static-page.html', marker: '静态页夹具', documents: 1, seeded: true, expand: null },
-      { step: 'preview-canvas-game', name: 'canvas-game.html', marker: '分数:', documents: 2, seeded: false, expand: null },
-      { step: 'preview-multi-file', name: 'index.html', marker: '多文件夹具', documents: 3, seeded: false, expand: 'multi-file' },
+      // UX-25 acceptance: each fixture must render its own document with its own
+      // styles, whether or not its content was ready before the pane mounted.
+      {
+        step: 'preview-static-page',
+        name: 'static-page.html',
+        marker: '静态页夹具',
+        title: '静态页夹具',
+        documents: 1,
+        seeded: true,
+        style: { key: 'body', expected: 'rgb(16, 20, 24)', styleSheets: 1 },
+        expand: null,
+      },
+      {
+        step: 'preview-canvas-game',
+        name: 'canvas-game.html',
+        marker: '分数:',
+        title: 'Canvas 小游戏夹具',
+        documents: 2,
+        seeded: false,
+        style: { key: 'canvas', expected: 'rgb(18, 52, 86)', styleSheets: 1 },
+        expand: null,
+      },
+      {
+        // This fixture styles itself through an external stylesheet, which the
+        // static preview cannot load yet (UX-25's resource half); the document
+        // itself must still render.
+        step: 'preview-multi-file',
+        name: 'index.html',
+        marker: '多文件夹具',
+        title: '多文件夹具',
+        documents: 3,
+        seeded: false,
+        style: { key: 'board', expected: null, styleSheets: 0 },
+        expand: 'multi-file',
+      },
     ]
     const renderOutcomes = []
     for (const entry of previewSteps) {
@@ -706,39 +745,138 @@ async function main() {
       recorder.check(frame.hasScriptTag === false, `${entry.step}: the preview strips script tags`, frame)
       recorder.check(frame.hasCsp === true && frame.hasBase === true, `${entry.step}: the preview injects its CSP and file base`, frame)
       recorder.check(frame.sandbox === '', `${entry.step}: the preview frame stays fully sandboxed`, { sandbox: frame.sandbox })
-      // A file whose content is ready before the pane mounts must render (this held
-      // in every run); a file opened afterwards may race and stay blank.
-      if (entry.seeded) {
-        recorder.check(Boolean(renderedDocument), `${entry.step}: a preloaded file renders its own text`, settled)
-        recorder.check(renderedDocument?.scripts === 0, `${entry.step}: no script executes in the preview document`, renderedDocument)
+      recorder.check(
+        typeof frame.note === 'string' && frame.note.includes('不运行页面脚本'),
+        `${entry.step}: the static preview says it does not run page scripts`,
+        { note: frame.note },
+      )
+      // UX-25: every fixture must render its own document and keep its styles, no
+      // matter whether its content was ready before the pane mounted.
+      recorder.check(Boolean(renderedDocument), `${entry.step}: the opened file renders its own document`, settled)
+      if (renderedDocument) {
         recorder.check(
-          renderedDocument?.styleSheets === 0,
-          `${entry.step}: the preview drops the document <style> block, so the page renders unstyled (UX-25)`,
-          renderedDocument,
+          renderedDocument.scripts === 0,
+          `${entry.step}: no script executes in the preview document`,
+          { scripts: renderedDocument.scripts },
         )
         recorder.check(
-          renderedDocument?.image?.naturalWidth === 0,
-          `${entry.step}: a local file:// image is requested but not decoded inside the preview (UX-25)`,
-          renderedDocument?.image ?? null,
+          renderedDocument.styleSheets === entry.style.styleSheets,
+          entry.style.styleSheets > 0
+            ? `${entry.step}: the preview keeps the document's own stylesheet`
+            : `${entry.step}: an external stylesheet is still not loadable (recorded; UX-25 resource half)`,
+          { styleSheets: renderedDocument.styleSheets, expected: entry.style.styleSheets, srcdoc: frame.srcdocLength },
         )
-      } else if (renderedDocument) {
-        // Rendered path: the frame got the real document even without preloading.
+        recorder.check(
+          renderedDocument.title === entry.title,
+          `${entry.step}: the preview keeps the document title`,
+          { title: renderedDocument.title, expected: entry.title },
+        )
+        if (entry.style.expected) {
+          recorder.check(
+            renderedDocument.styles?.[entry.style.key] === entry.style.expected,
+            `${entry.step}: the document's own CSS decides the rendered colors`,
+            { style: entry.style.key, value: renderedDocument.styles?.[entry.style.key] ?? null, expected: entry.style.expected },
+          )
+        }
         recorder.check(
           renderedDocument.canvas === null || renderedDocument.canvas?.gameState == null,
-          `${entry.step}: the preview still cannot start page scripts`,
+          `${entry.step}: the preview never starts page scripts`,
           renderedDocument.canvas,
-        )
-      } else {
-        // Blank path: the frame kept the head-only document it was created with.
-        recorder.check(
-          newest?.readyState === 'complete' && newest.text === '' && newest.htmlLength < 600
-          && Number(frame.srcdocLength) > Number(newest.htmlLength),
-          `${entry.step}: a later HTML file can stay blank — the frame keeps its empty document while the srcdoc attribute already has content (UX-25 root cause)`,
-          { srcdocLength: frame.srcdocLength, document: newest },
         )
       }
     }
     recorder.note({ step: 'preview-render-outcomes', outcomes: renderOutcomes })
+    recorder.check(
+      renderOutcomes.every((entry) => entry.rendered),
+      'every opened HTML file renders in the preview (UX-25: the blank-frame race is gone)',
+      renderOutcomes,
+    )
+
+    // 2b. UX-25 item 3, draft half: the preview shows the edited draft, not the file
+    // on disk, and a new document replaces the frame instead of reusing it.
+    const draftMarker = '草稿标记-51ab'
+    await openFileFromTree(client, 'static-page.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：static-page.html') ? mounted : undefined
+    }, 20_000, 'static page preview before editing')
+    const sourceMode = await client.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
+        .find((node) => (node.textContent || '').trim() === '编辑');
+      if (!(button instanceof HTMLElement)) return false;
+      button.click();
+      return true;
+    })()`)
+    if (!sourceMode) throw new Error('the HTML edit action was not available')
+    await harness.waitFor(
+      () => client.evaluate(`document.querySelector('.workspace-editor-monaco .monaco-editor:not(.workspace-monaco-readonly)') ? true : null`),
+      20_000,
+      'HTML source editor in edit mode',
+    )
+    const typed = await typeIntoEditor(client, draftMarker)
+    if (typed === 'failed') {
+      const editorState = await client.evaluate(`(() => {
+        const panes = [...document.querySelectorAll('.workspace-tab-view.active .workspace-editor-monaco')];
+        return panes.map((pane) => ({
+          readOnly: Boolean(pane.querySelector('.monaco-editor.workspace-monaco-readonly')),
+          lines: pane.querySelectorAll('.view-line').length,
+          editContext: Boolean(pane.querySelector('.native-edit-context')),
+          text: (pane.querySelector('.view-lines')?.textContent ?? '').replace(/\\s+/g, ' ').slice(0, 80),
+          rect: (() => { const box = pane.getBoundingClientRect(); return { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.width), h: Math.round(box.height) }; })(),
+        }));
+      })()`)
+      throw new Error(`the draft marker never reached the editor: ${JSON.stringify({ typed, editorState })}`)
+    }
+    const backToPreview = await client.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.workspace-tab-view.active .workspace-preview-actions button')]
+        .find((node) => /^查看(源代码|预览)$/u.test((node.textContent || '').trim()));
+      if (!(button instanceof HTMLElement)) return false;
+      button.click();
+      return true;
+    })()`)
+    if (!backToPreview) throw new Error('the HTML preview toggle was not available')
+    let draftRendered
+    let draftFailure = null
+    try {
+      draftRendered = await harness.waitFor(async () => {
+        const documents = await probeAllPreviewFrames(debuggingPort)
+        const withMarker = documents.find((document) => document.text?.includes(draftMarker))
+        return withMarker ?? undefined
+      }, 15_000, 'draft document in the preview')
+    } catch (error) {
+      draftFailure = error instanceof Error ? error.message : String(error)
+    }
+    const draftStore = await client.evaluate(`(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+      const drafts = Object.values(layouts).flatMap((layout) => Object.values(layout?.drafts ?? {}));
+      return {
+        draftCount: drafts.length,
+        markerInDraft: drafts.some((draft) => String(draft?.editorText ?? '').includes(${JSON.stringify(draftMarker)})),
+      };
+    })()`)
+    const draftShot = await captureScreenshot(client, screenshotDir, 'preview-html-draft.png')
+    recorder.note({
+      step: 'preview-html-draft',
+      entry: '工作区文件树 → static-page.html → 编辑 → 输入 → 预览',
+      marker: draftMarker,
+      typed,
+      appearedInPreview: Boolean(draftRendered),
+      failure: draftFailure,
+      draftStore,
+      document: draftRendered ?? null,
+      screenshot: draftShot,
+    })
+    // Recorded, not asserted: the typed draft reached the editor's model and the
+    // session draft store, but the mounted preview kept the on-disk document
+    // (srcdoc length unchanged), so the draft-follows-preview path has no passing
+    // measurement yet — see the gate limits and the UX-25 record.
+    if (draftRendered) {
+      recorder.check(
+        draftRendered.styleSheets >= 1 && draftRendered.scripts === 0,
+        'the edited draft renders with its styles and without scripts',
+        { styleSheets: draftRendered.styleSheets, scripts: draftRendered.scripts },
+      )
+    }
 
     // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
     await selectWorkspaceFeature(client, '浏览器')
@@ -945,7 +1083,8 @@ async function main() {
       'The fixtures are synthetic. The user never provided the original HTML, so nothing here claims that the reported game is fixed or reproduced.',
       'The reference entry is an installed Chrome/Edge running headless; it proves what the page does outside LS, not what the user saw in their browser.',
       'The LS file preview is a sanitized `srcdoc` iframe with `sandbox=""`, and Electron runs it out of process, so its document is probed through the frame target\'s own debug session rather than from the app document.',
-      'The preview expectations in this gate describe the measured current behaviour (first file renders, later files stay blank, <style> dropped); UX-25 replaces them and must update this gate in the same change.',
+      'A page whose styling lives in an external stylesheet (<link>) still renders unstyled: the sanitizer drops `link` and a sandboxed frame cannot load file:// subresources. The bounded resource service for that is UX-26.',
+      'The draft-preview step is recorded, not asserted: the typed draft reached the editor model and the session draft store (`markerInDraft: true`) while the mounted preview kept the on-disk document, so "the preview follows an unsaved draft" has no passing measurement yet and UX-25 item 3 stays open.',
       'Windows and Electron versions come from the running process; the source revision and build digests come from the build fingerprint written by ensure:app-build.',
     ],
   }
@@ -974,6 +1113,56 @@ async function buildFingerprint(client) {
 
 function repoRoot() {
   return fileURLToPath(new URL('..', import.meta.url))
+}
+
+/**
+ * Type into the real Monaco editor.
+ *
+ * Monaco 0.5x takes input through an `EditContext`, so the hidden textarea cannot
+ * be focused: a real click into a rendered line followed by text-carrying key
+ * events is the gesture that works (same recipe as `verify-async-feedback`).
+ * Key events come first here: `Input.insertText` updated the rendered lines but
+ * not the editor model in this Electron build (measured), so the model's own
+ * change event — and with it the draft — never fired.
+ */
+async function typeIntoEditor(client, text) {
+  const point = await harness.waitFor(async () => {
+    const value = await client.evaluate(`(() => {
+      const pane = document.querySelector('.workspace-tab-view.active .workspace-editor-monaco');
+      const line = pane?.querySelector('.monaco-editor .view-line');
+      if (!(pane instanceof HTMLElement) || !(line instanceof HTMLElement)) return null;
+      const paneBox = pane.getBoundingClientRect();
+      const lineBox = line.getBoundingClientRect();
+      // A long line extends far beyond the visible editor, so its own centre can
+      // sit outside the window; the click point is inside the overlap instead.
+      const left = Math.max(paneBox.left, lineBox.left, 0);
+      const right = Math.min(paneBox.right, lineBox.right, window.innerWidth);
+      if (right - left < 8) return null;
+      return { x: left + Math.min(30, (right - left) / 2), y: lineBox.top + lineBox.height / 2 };
+    })()`)
+    return value ?? undefined
+  }, 30_000, 'the Monaco text area')
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1 })
+  await delay(300)
+  for (const character of text) {
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', text: character, unmodifiedText: character, key: character })
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: character })
+    await delay(20)
+  }
+  await delay(500)
+  if (await editorHasText(client, text)) return 'keyEvents'
+  await client.send('Input.insertText', { text })
+  await delay(400)
+  return (await editorHasText(client, text)) ? 'insertText' : 'failed'
+}
+
+async function editorHasText(client, text) {
+  return client.evaluate(`(() => {
+    const content = (document.querySelector('.workspace-tab-view.active .workspace-editor-monaco .view-lines')?.textContent ?? '')
+      .replace(/\\u00a0/gu, ' ');
+    return content.includes(${JSON.stringify(text)}) ? true : null;
+  })()`).then(Boolean)
 }
 
 /** The review tab's own view of the same repository state. */

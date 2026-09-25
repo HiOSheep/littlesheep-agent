@@ -1,6 +1,6 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-25 19:32:27
+最后更新：2026-09-25 19:46:06
 
 ## 1. 范围与结论
 
@@ -22,7 +22,9 @@
 
 **进度补记（2026-09-25 18:36:00）**：UX-27 的第一条（保留旧内容时必须标明“正在刷新 / 更新失败，显示上次结果”，快照与单文件 Diff 的失败分别可见且各有重试）已完成真实窗口验收并勾选；新增真实窗口门 `pnpm run verify:review-refresh-errors`（含“重试确实发出新请求”的探针断言，最终构建上 `failures: []`），并修掉自 `5ed06e7` 起一直失败的 `leading-row-layout.test.ts`（该提交把图标按钮规则扩成三个选择器却没同步断言）。UX-27 的读取前后一致性校验、A→B→A / 连点 / 慢响应不串数据、以及“列表统计与 Diff 属于同一版本”仍未开始，整项保持未勾选。
 
-**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。UX-25/UX-26 仍未开始，整批保持未勾选。
+**进度补记（2026-09-25 19:52:00）**：UX-25 第 1 条完成并勾选——按 UX-24 的实测根因修好 HTML 预览的**文档结构**（`WHOLE_DOCUMENT: true` + 放行 `title`，`<head>`/`<style>` 不再被丢；注入 charset/CSP/base，`meta`/`link` 仍禁止）与**空帧竞态**（只为真实内容建帧、按文档摘要做 `key`），并在工具条明说"不运行页面脚本"。真实窗口复核：三份夹具全部渲染，静态页 `styleSheets=1`/`body` 取到夹具自己的 `rgb(16,20,24)`，小游戏页 `canvas` 背景取到 `rgb(18,52,86)`，`scripts` 恒为 0；UX-24 记录的"后续文件空白"竞态不再出现。**第 2 条（本地相对资源：`<link>`/图片/CSS `url()`/字体）与第 4 条后半（失败资源的可展开原因与重试）明确留给 UX-26 的 Main 有界静态资源服务**，本轮不顺带放宽 sandbox 或 webSecurity；**第 3 条只拿到部分证据**：草稿确实进了编辑器模型与会话草稿存储（`markerInDraft: true`），但已挂载的预览仍显示磁盘内容——该走查在门里只记录不判定，链路定位留到下一轮。`packages/app/src/renderer` 116 文件 / 644 例通过，`tsc` 退出 0。
+
+**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。
 
 约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
 
@@ -59,7 +61,7 @@
 | [ ] | UX-22 | P2 | 收敛对话输出层级与可读性 | 用户反馈 + 体验建议；待实机验证 | M |
 | [x] | UX-23 | P2 | 为代码块和工作区代码提供共享自动换行开关 | 用户参考图 + 界面反馈 | S |
 | [x] | UX-24 | P1 | 建立 HTML 小游戏、Git 与 Shell 故障复现基线 | 用户反馈 + 合成夹具实测（原例未取得） | S |
-| [ ] | UX-25 | P1 | 修复静态 HTML 的文档结构、样式与本地资源兼容性 | 源码风险；待实机定位 | M |
+| [ ] | UX-25 | P1 | 修复静态 HTML 的文档结构、样式与本地资源兼容性 | 源码风险 + UX-24 实测；第 1 条完成 | M |
 | [ ] | UX-26 | P1 | 提供可实际游玩的隔离 HTML 运行入口与失败诊断 | 源码确认能力缺口 + 用户明确需求 | L |
 | [ ] | UX-27 | P1 | 修复 Git 刷新失败被隐藏及快照与差异过期问题 | 源码确认；竞争场景待复现 | M |
 | [ ] | UX-28 | P1 | 补齐 Git 仓库错误分类、特殊差异与显示验收 | 源码确认部分缺口 + 待实机定位 | M |
@@ -941,10 +943,27 @@
 
 **范围与证据**：[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx) 使用 DOMPurify 默认文档处理、删除 `base/script/template/form/iframe` 与 data 属性，再注入 `file:` base；iframe 为 `sandbox=""`。因此动态页面不能运行是已知限制；完整文档 head/style 是否保留、file 子资源能否实际加载仍需浏览器行为验证，不能只凭 CSP 允许 file 就判成功。关联 [path-utils.ts](../../packages/app/src/renderer/workspace/path-utils.ts)、[workspace-file-service.ts](../../packages/app/src/main/local-app-api/workspace-file-service.ts)、预览草稿与保存逻辑。
 
-- [ ] 明确并验证完整文档与 HTML 片段的处理规则；保留静态显示需要的标题、样式和编码语义，同时保持脚本及事件处理器隔离。静态模式说明“不运行脚本”，提供运行入口。
+- [x] 明确并验证完整文档与 HTML 片段的处理规则；保留静态显示需要的标题、样式和编码语义，同时保持脚本及事件处理器隔离。静态模式说明“不运行脚本”，提供运行入口。
 - [ ] 解决相对 CSS / 图片 / 字体路径及 CSS `url()`；覆盖子目录、中文、空格、`#`、`%`、缺失资源。资源访问由 Main 验证实际路径与范围；不通过关闭 webSecurity 或扩大整个磁盘访问修复渲染。
 - [ ] 明确当前显示的是未保存草稿还是磁盘文件；保存成功后刷新，保存失败保留草稿。测试文件被外部更改、删除及快速切换时，不串内容、不用旧内容冒充新版本。
 - [ ] 验收以实际渲染后的 DOM、计算样式和资源成功响应为准；为失败资源显示可展开原因与重试，不以源码字符串断言代替渲染验收。
+
+**实施记录（2026-09-25 19:50:00）｜状态：第 1 条完成并勾选（含把 UX-24 测出的两条根因修掉）；第 2、3、4 条仍未完成**
+
+- 修掉 UX-24 实测的两条根因（同一改动）：
+  1. **文档结构**：`createHtmlPreviewDocument` 改为 `WHOLE_DOCUMENT: true` 并单独放行 `title`，`<head>` 连同 `<style>` 不再被丢掉；注入的 head 自带 `<meta charset="utf-8">`（编码语义），`meta`/`link` 仍在禁止清单里（`meta` 能做 `http-equiv` 跳转、`link` 会引入外部样式表请求），`base`/`script`/`template`/`form`/`iframe`/`object`/`embed` 与 data 属性保持禁止，`sandbox=""` 不变。
+  2. **空帧竞态**：`WorkspaceHtmlPreview` 只在有真实内容时创建帧，并用 `previewDocumentKey(path, srcDoc)`（FNV-1a 摘要）作为 `key`——内容变了就换一个新帧，而不是给一个仍在加载初始空文档的帧补 `srcdoc`。内容为空时显示"这个文件还没有内容"的占位。
+  3. 静态预览在帧上方新增一行 `role="status"` 说明："静态预览：保留标题与样式，不运行页面脚本，也不发起网络请求。"（"运行入口"按本项自己的边界由 UX-26 承担，见标题下那句"小游戏运行由 UX-26 承担"。）
+- 真实窗口验收（`pnpm run verify:html-preview-baseline`，隔离数据根，窗口 1280×860，门已按 UX-25 的验收口径扩写）：三份夹具**全部渲染**（`static-page.html`、`canvas-game.html`、`multi-file/index.html` 的 `rendered` 都是 true）——UX-24 那次"后续文件空白"的竞态不再出现。逐项实测：
+  - 静态页：`srcdoc` 里 `hasStyleTag=true`、`hasTitleTag=true`、`hasScriptTag=false`；帧内 `styleSheets=1`、`title='静态页夹具'`、`body` 背景 `rgb(16, 20, 24)`（夹具自己的深色主题）、`h1` 颜色 `rgb(232, 232, 232)`、`scripts=0`。
+  - Canvas 小游戏：`styleSheets=1`、`title='Canvas 小游戏夹具'`、`body` `rgb(5, 7, 10)`、**`canvas` 背景 `rgb(18, 52, 86)`**（即页面 CSS 生效）、`scripts=0`、`window.__gameState` 不存在（脚本仍被剥离）。
+  - 多文件页：文档与标题渲染（`title='多文件夹具'`、正文含"关卡: 加载中"），但外部 `game.css` 仍未生效（`styleSheets=0`、`.board` 背景透明）——见下一条未完成项。
+  - 三份都测到工具条的"不运行页面脚本"说明存在。
+- 回归：`html-preview.test.ts` 扩到 4 例（整份文档净化与 `title` 放行、只为真实文档建帧且按文档 key、说明文案、charset/base 注入）；`packages/app/src/renderer` 116 文件 / 644 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
+- **第 2 条为什么没做**：本地相对资源（`<link rel=stylesheet>`、`<img src>`、CSS `url()`、字体）在 `sandbox=""` 的帧里拿不到——帧是不透明来源，Chromium 拒绝 `file:` 子资源，实测图片 `naturalWidth=0`、外部样式表 `styleSheets=0`。按本项要求"资源访问由 Main 验证实际路径与范围"，正确做法是 UX-26 的 **Main 有界静态资源服务**（只绑 loopback、限定项目范围），而不是放宽 sandbox 或 webSecurity；因此这条留给 UX-26 之后再做，门的 `limits` 里明确记录了"外部样式表仍不可加载"。
+- **第 3 条的部分证据（记录，不作为通过）**：门里加了"编辑 → 输入草稿标记 → 回预览"的走查，实测**草稿到达了编辑器模型与会话草稿存储**（`markerInDraft: true`、键入路径为真实按键事件），但**已挂载的预览仍是磁盘内容**（`srcdoc` 长度与编辑前一致、帧内文本不含标记）——即"预览跟随未保存草稿"这条链路目前没有通过的测量；保存成功后刷新、保存失败保留草稿、外部更改/删除、快速切换不串内容这四类本轮都没有测。该步骤在门里**只记录不判定**（`appearedInPreview: false` 会进证据，不会让门变红），下一轮先定位这条链路再补断言。
+- **第 4 条的部分证据（记录，不作为通过）**：已按本项要求把验收从"源码字符串"改成**实际渲染后的 DOM 与计算样式**（标题、`styleSheets`、`body`/`canvas`/`.board` 计算色、脚本数、帧内文本都在真实窗口里读）；但"为失败资源显示可展开原因与重试"依赖第 2 条的资源加载，尚未实现。
+- 未覆盖 / 边界：只测了这三份夹具与一次草稿走查；子目录、中文、空格、`#`、`%` 路径与缺失资源的矩阵属于第 2 条，随资源服务一起做；预览草稿链路的机制定位（草稿已入存储但预览未更新）留给下一轮，门里已留下可复现步骤与证据字段。
 
 ### UX-26｜HTML 小游戏可运行的隔离入口
 
@@ -1084,7 +1103,7 @@
 | 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
 | 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
 | 21 | UX-23 | 本任务实施记录 + `pnpm run verify:code-wrap-control` | 语言标签文本；折行开关在对话代码块与工作区 Monaco 上生效；中文与正文同字形；按钮可达 | 通过 |
-| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线）；UX-25/26 的实现门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离 | UX-24 基线通过（`failures: []`，夹具为合成）；UX-25/26 未执行 |
+| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线；UX-25 第 1 条的真实窗口复核也用此门）；UX-25 第 2 条与 UX-26 的实现门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离；渲染后的 DOM 与计算样式断言 | UX-24 基线通过；UX-25 第 1 条通过（三份夹具全部渲染、样式与标题保留）；其余未执行 |
 | 23 | UX-27 / UX-28 | 本任务实施记录 + `pnpm run verify:review-refresh-errors`；复用既有 Git 测试与 `verify:review-navigator-width`，补内容竞争与错误分类场景 | 按住／失败／放行审阅快照与 Diff：旧数据自报刷新中与更新失败、两条失败各自可见可重试、重试确实重新请求；CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | UX-27 第一条通过（三次 `failures: []`）；其余未执行 |
 | 24 | UX-29 / UX-30 | 本任务验收项；多 Shell / 会话实机门待建 | Shell 身份、cwd、独立实例、PTY 降级、关闭与恢复 | 未执行 |
 | 25 | UX-31 | 本任务组合步骤；扩展 `verify:conversation-workspace-scenarios` 或登记最小独立门 | 小游戏编辑运行、终端服务、Git 审查、跨工作区、打包版 | 未执行 |

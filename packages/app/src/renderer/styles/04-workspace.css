@@ -2501,6 +2501,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-preview-html-shell {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   min-height: 100%;
   overflow: hidden;
@@ -2509,8 +2511,20 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border-radius: var(--radius-ui);
 }
 
+/* Static HTML previews keep the document's own styles but never run its scripts. */
+.workspace-preview-html-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--notice-font-size);
+}
+
 .workspace-preview-html {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
   height: max(520px, 100%);
   min-height: 520px;
