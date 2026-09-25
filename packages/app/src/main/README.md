@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 07:28:55
+最后更新：2026-09-26 07:32:56
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -78,3 +78,7 @@
 ## 审阅与命令行基线一致（2026-09-26）
 
 `local-app-api/workspace-git-review-baseline.test.ts` 逐形态对照 `git status --porcelain`：子目录、linked worktree、detached HEAD（`detached@<sha>`）、合并冲突（`conflicted`）、子模块 gitlink、中文与空格路径、空文件与二进制（UX-28 第 2 条）。
+
+## 失败分类的真机复现（2026-09-26）
+
+`local-app-api/workspace-git-review-unavailable.test.ts`：清空 PATH 复现 `git-unavailable`；`icacls .git\index /deny` 复现 `permission-denied`（分类作用于整次读取，因为拒绝发生在 `rev-parse` 成功之后）；读损坏仓库前后全局配置不变，实测"不自动修改 safe.directory"（UX-28 第 1 条）。
