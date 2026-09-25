@@ -110,6 +110,7 @@
     "verify:settings-navigation-terminology": "pnpm run ensure:app-build && node scripts/verify-settings-navigation-terminology.mjs",
     "verify:shared-ui-roles": "pnpm run ensure:app-build && node scripts/verify-shared-ui-roles.mjs",
     "verify:channel-entry-states": "pnpm run ensure:app-build && node scripts/verify-channel-entry-states.mjs",
+    "verify:conversation-workspace-scenarios": "pnpm run ensure:app-build && node scripts/verify-conversation-workspace-scenarios.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
     "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
   },
