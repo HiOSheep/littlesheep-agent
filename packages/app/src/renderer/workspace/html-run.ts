@@ -56,7 +56,7 @@ export function htmlRunActions(state: HtmlRunState): {
 
 export function htmlRunFeedback(state: HtmlRunState): Feedback | null {
   if (state.status === 'running') {
-    return successFeedback('页面已在隔离的本地地址中运行；脚本、样式和本地资源按浏览器语义加载。')
+    return successFeedback('页面已在隔离的本地地址中打开；脚本、样式和本地资源按浏览器语义加载，页面自己报告的问题显示在下面。')
   }
   if (state.status === 'stopped') return warningFeedback('运行服务已停止；页面重新加载会失败。')
   if (state.status === 'failed') return failureFeedback('无法运行这个页面。', state.message)

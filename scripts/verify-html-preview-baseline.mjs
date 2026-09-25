@@ -39,6 +39,25 @@ const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs:
 const WINDOW = { width: 1280, height: 860 }
 const FIXTURE_LABEL = '合成夹具（用户原例未提供）'
 
+/** UX-26 resilience: a page that loads, marks itself ready, then spins forever. */
+const LOOP_PAGE = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>死循环夹具</title>
+  <style>body { margin: 0; background: #101418; color: #e8e8e8; font-family: "Microsoft YaHei UI", sans-serif; }</style>
+</head>
+<body>
+  <h1>死循环夹具</h1>
+  <p id="ready">未就绪</p>
+  <script>
+    document.getElementById('ready').textContent = '已就绪';
+    while (true) { /* 故意卡死渲染进程 */ }
+  </script>
+</body>
+</html>
+`
+
 /** UX-26 diagnostics: a page that throws and misses a resource, on purpose. */
 const ERROR_PAGE = `<!doctype html>
 <html lang="zh-CN">
@@ -283,6 +302,7 @@ async function writeFixtures(workspaceDir) {
   await writeFile(join(workspaceDir, 'static-page.html'), STATIC_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'canvas-game.html'), CANVAS_GAME, 'utf8')
   await writeFile(join(workspaceDir, 'error-page.html'), ERROR_PAGE, 'utf8')
+  await writeFile(join(workspaceDir, 'loop-page.html'), LOOP_PAGE, 'utf8')
   await writeFile(join(workspaceDir, 'assets', 'tile.svg'), SPRITE_SVG, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'index.html'), MULTI_INDEX, 'utf8')
   await writeFile(join(workspaceDir, 'multi-file', 'game.css'), MULTI_CSS, 'utf8')
@@ -1279,6 +1299,142 @@ async function main() {
     await selectWorkspaceTab(client, 'error-page.html')
     await clickPreviewAction(client, '停止')
     await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+
+    // 2e. UX-26 resilience: a page that spins forever must not take the app document
+    // with it (the stop control has to keep working), and neither must a crashed guest.
+    // Both are measured as how long the app takes to answer while the guest is dead.
+    const measureAppResponse = async (label) => {
+      const started = Date.now()
+      const answered = await client.evaluate(`document.querySelector('.composer textarea') instanceof HTMLTextAreaElement`)
+        .catch(() => null)
+      return { label, answered: answered === true, ms: Date.now() - started }
+    }
+    await openFileFromTree(client, 'loop-page.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：loop-page.html') ? mounted : undefined
+    }, 20_000, 'loop page preview before running')
+    const startedLoopRun = await clickPreviewAction(client, '运行')
+    const loopServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the loop page')
+    const loopUrl = loopServers[0].url
+    const loopTarget = await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      return targets.find((candidate) => candidate.url === loopUrl) ?? undefined
+    }, 30_000, 'browser tab for the loop page').catch(() => null)
+    // The guest may answer once (its script ran before the loop) and then must not.
+    // Everything about this probe is bounded: a renderer spinning in a `while (true)`
+    // never answers `Runtime.enable` either, and an unbounded CDP call is exactly how
+    // this step hung the whole gate the first time.
+    const loopGuestAnswer = loopTarget
+      ? await Promise.race([
+          (async () => {
+            const loopGuest = new harness.CdpClient(loopTarget.webSocketDebuggerUrl)
+            try {
+              await loopGuest.send('Runtime.enable')
+              return await loopGuest.evaluate('document.getElementById("ready")?.textContent ?? null').catch(() => null)
+            } finally {
+              loopGuest.close()
+            }
+          })().catch(() => null),
+          delay(8_000).then(() => 'timeout'),
+        ])
+      : null
+    await selectWorkspaceTab(client, 'loop-page.html')
+    const loopResponses = [await measureAppResponse('loop:file-tab')]
+    const loopStopClicked = await clickPreviewAction(client, '停止')
+    const loopResponsesAfterStop = [await measureAppResponse('loop:after-stop')]
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+    const loopShot = await captureScreenshot(client, screenshotDir, 'html-run-loop-page.png')
+
+    // Crash a healthy run's guest, then drive the toolbar again.
+    await openFileFromTree(client, 'canvas-game.html')
+    await harness.waitFor(async () => {
+      const mounted = await readPreviewFrames(client)
+      return mounted.some((candidate) => candidate.title === 'HTML 预览：canvas-game.html') ? mounted : undefined
+    }, 20_000, 'canvas preview before the crash check')
+    await clickPreviewAction(client, '运行')
+    const crashServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.length > 0 ? payload.servers : undefined
+    }, 20_000, 'preview server for the crash check')
+    const crashTarget = await harness.waitFor(async () => {
+      const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+      return targets.find((candidate) => candidate.url === crashServers[0].url) ?? undefined
+    }, 30_000, 'browser tab for the crash check').catch(() => null)
+    const crashGuest = crashTarget ? new harness.CdpClient(crashTarget.webSocketDebuggerUrl) : null
+    let crashReply = 'not-attempted'
+    let guestAnswerAfterCrash = 'not-attempted'
+    if (crashGuest) {
+      await crashGuest.send('Runtime.enable').catch(() => undefined)
+      // Electron never answers `Page.crash`: the renderer dies before the reply is
+      // written (measured — the reply times out while every later call goes silent
+      // too). So the crash is established by the guest going silent, not by a reply.
+      crashReply = await Promise.race([
+        crashGuest.send('Page.crash').then(() => 'replied').catch((error) => `error:${error}`),
+        delay(8_000).then(() => 'no-reply'),
+      ])
+      await delay(1_500)
+      guestAnswerAfterCrash = await Promise.race([
+        crashGuest.evaluate('1 + 1').then((value) => `answered:${value}`).catch(() => 'error'),
+        delay(6_000).then(() => 'timeout'),
+      ])
+      crashGuest.close()
+    }
+    await selectWorkspaceTab(client, 'canvas-game.html')
+    const crashResponse = await measureAppResponse('crash:file-tab')
+    // "停止 / 重载仍可用": both controls must still drive the app after the crash.
+    const crashReloadClicked = await clickPreviewAction(client, '重新加载')
+    const crashReloadResponse = await measureAppResponse('crash:reload')
+    const crashStopClicked = await clickPreviewAction(client, '停止')
+    const crashServerGone = await fetch(crashServers[0].url, { signal: AbortSignal.timeout(5_000) }).then((response) => response.status).catch(() => 0)
+    const crashApi = await apiJson(locator, '/workspace/preview-server')
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+    recorder.note({
+      step: 'html-run-resilience',
+      entry: '工作区 → loop-page.html（脚本死循环）→ 停止；canvas-game.html → guest 崩溃 → 停止',
+      loop: {
+        clicked: startedLoopRun,
+        runUrl: loopUrl,
+        guestAnswer: loopGuestAnswer,
+        responses: [...loopResponses, ...loopResponsesAfterStop],
+        stopClicked: loopStopClicked,
+      },
+      crash: {
+        reply: crashReply,
+        guestAnswerAfterCrash,
+        response: crashResponse,
+        reloadClicked: crashReloadClicked,
+        reloadResponse: crashReloadResponse,
+        stopClicked: crashStopClicked,
+        urlAfterStop: crashServerGone,
+        openServers: crashApi.servers?.length ?? null,
+      },
+      screenshot: loopShot,
+    })
+    recorder.check(
+      loopResponses.every((entry) => entry.answered) && loopResponses[0].ms < 5_000,
+      'a page spinning forever does not take the app document with it',
+      loopResponses,
+    )
+    recorder.check(
+      loopStopClicked === true && loopResponsesAfterStop.every((entry) => entry.answered),
+      'the stop control still works while the page is unresponsive',
+      { loopStopClicked, after: loopResponsesAfterStop },
+    )
+    recorder.check(
+      crashReply !== 'not-attempted'
+      && guestAnswerAfterCrash === 'timeout'
+      && crashResponse.answered === true
+      && crashReloadClicked === true
+      && crashReloadResponse.answered === true
+      && crashStopClicked === true
+      && crashServerGone === 0,
+      'a crashed guest leaves the app driving the toolbar (stop still releases the service)',
+      { crashReply, guestAnswerAfterCrash, crashResponse, crashReloadClicked, crashReloadResponse, crashStopClicked, urlAfterStop: crashServerGone },
+    )
 
     // 3. The same page in the LS browser tab (webview guest, loopback HTTP URL).
     await selectWorkspaceFeature(client, '浏览器')
