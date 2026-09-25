@@ -1633,7 +1633,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-files-icon-btn:hover,
-.workspace-files-icon-btn:focus-visible {
+.workspace-files-icon-btn:focus-visible,
+.workspace-files-icon-btn[aria-pressed="true"] {
   color: var(--text-strong);
   background: var(--control-hover);
   outline: 0;

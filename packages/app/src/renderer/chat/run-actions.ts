@@ -94,6 +94,7 @@ export function createRunActions(context: RunActionContext) {
         hasAttachments: attachments.length > 0,
         pendingRuntimeMessageRef,
         publishRuntimeEventNotice,
+        setMessages,
         setInput,
       })
       return

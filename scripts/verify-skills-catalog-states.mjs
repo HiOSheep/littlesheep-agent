@@ -82,7 +82,7 @@ function buildConfig(workspaceDir, providerBaseURL) {
  */
 const INSTALL_SKILLS_PROBE = `(() => {
   if (window.__lsSkillsProbe) return true
-  const probe = { listDelayMs: 0, failListTimes: 0, failDetailNames: [], listRequests: 0, detailRequests: 0, failures: [] }
+  const probe = { listDelayMs: 0, emptyListTimes: 0, failListTimes: 0, failDetailNames: [], delayDetailNames: [], listRequests: 0, detailRequests: 0, failures: [] }
   window.__lsSkillsProbe = probe
   const originalFetch = window.fetch.bind(window)
   const skillsPath = '/skills'
@@ -107,8 +107,19 @@ const INSTALL_SKILLS_PROBE = `(() => {
           status: 500, headers: { 'Content-Type': 'application/json' },
         })
       }
+      if (probe.emptyListTimes > 0) {
+        probe.emptyListTimes -= 1
+        probe.failures.push({ kind: 'empty-list', at: Math.round(performance.now()) })
+        return new Response(JSON.stringify({ skills: [] }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        })
+      }
     } else {
       probe.detailRequests += 1
+      if (probe.delayDetailNames.includes(name)) {
+        probe.delayDetailNames = probe.delayDetailNames.filter((item) => item !== name)
+        await new Promise((done) => setTimeout(done, 1_800))
+      }
       if (probe.failDetailNames.includes(name)) {
         probe.failDetailNames = probe.failDetailNames.filter((item) => item !== name)
         probe.failures.push({ kind: 'detail', name, at: Math.round(performance.now()) })
@@ -260,7 +271,47 @@ async function main() {
     })()`), 30_000, 'the recovered detail')
     await evaluate(client, `document.querySelector('.memory-skills-dialog .ms-back')?.click()`)
     await delay(300)
+
+    // --- 6. rapid selection: a slower earlier response must not replace the latest choice --------
+    const secondSkill = ready.items.find((name) => name !== firstSkill)
+    await evaluate(client, `(() => { window.__lsSkillsProbe.delayDetailNames = [${JSON.stringify(firstSkill)}]; return true })()`)
+    await evaluate(client, `(() => {
+      const item = [...document.querySelectorAll('.memory-skills-dialog .ms-item')]
+        .find((element) => element.textContent?.includes(${JSON.stringify(firstSkill)}))
+      item?.click()
+      return true
+    })()`)
+    await harness.waitFor(() => evaluate(client, `window.__lsSkillsProbe.detailRequests >= 2`), 5_000, 'the slower first detail request to start')
+    await delay(80)
+    await evaluate(client, `(() => {
+      const item = [...document.querySelectorAll('.memory-skills-dialog .ms-item')]
+        .find((element) => element.textContent?.includes(${JSON.stringify(secondSkill)}))
+      item?.click()
+      return true
+    })()`)
+    const fastSwitch = await harness.waitFor(() => evaluate(client, `(() => {
+      const state = ${SKILLS_STATE_EXPRESSION}
+      return state?.detailTitle === ${JSON.stringify(secondSkill)} ? state : null
+    })()`), 10_000, 'the second selected skill to open first')
+    await delay(2_000)
+    const afterLateDetail = await evaluate(client, SKILLS_STATE_EXPRESSION)
+    await evaluate(client, `document.querySelector('.memory-skills-dialog .ms-back')?.click()`)
+    await delay(250)
     const backToList = await evaluate(client, SKILLS_STATE_EXPRESSION)
+
+    // --- 7. a successful empty response is distinguishable from an error -------------------------
+    await evaluate(client, `(() => { window.__lsSkillsProbe.emptyListTimes = 1; return true })()`)
+    const emptyRefreshClicked = await evaluate(client, `(() => {
+      const button = [...document.querySelectorAll('.memory-skills-dialog .dialog-header .ms-feedback-action')][0]
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })()`)
+    const empty = await harness.waitFor(() => evaluate(client, `(() => {
+      const state = ${SKILLS_STATE_EXPRESSION}
+      return state?.hint === '暂无技能' && state.items.length === 0 ? state : null
+    })()`), 10_000, 'the successful empty skills state')
+    const emptyScreenshot = await writePng(client, 'skills-empty')
     const probeState = await evaluate(client, `window.__lsSkillsProbe`)
 
     const results = {
@@ -271,9 +322,13 @@ async function main() {
       recovered,
       detailFailure,
       detailRecovered,
+      fastSwitch,
+      afterLateDetail,
+      emptyRefreshClicked,
+      empty,
       backToList,
       probeState,
-      screenshots: { loadingScreenshot, readyScreenshot, staleScreenshot, detailFailureScreenshot },
+      screenshots: { loadingScreenshot, readyScreenshot, staleScreenshot, detailFailureScreenshot, emptyScreenshot },
     }
 
     const failures = []
@@ -300,7 +355,13 @@ async function main() {
     expect(detailFailure.feedback.some((entry) => entry.text.includes('读取技能详情失败')), 'the detail failure was not explained')
     expect(detailFailure.feedback.some((entry) => entry.action === '重试'), 'the detail failure offered no retry')
     expect(detailRecovered.detailTitle === firstSkill, `the retry opened ${JSON.stringify(detailRecovered.detailTitle)} instead of ${JSON.stringify(firstSkill)}`)
-    expect(backToList.detailOpen === false && backToList.items.length > 0, '返回 did not restore the list')
+    expect(fastSwitch.detailTitle === secondSkill, `the fast second selection opened ${JSON.stringify(fastSwitch.detailTitle)} instead of ${JSON.stringify(secondSkill)}`)
+    expect(afterLateDetail.detailTitle === secondSkill, `the slower earlier response replaced ${JSON.stringify(secondSkill)} with ${JSON.stringify(afterLateDetail.detailTitle)}`)
+    expect(backToList.detailOpen === false && backToList.items.length > 0, '返回 did not restore the list after rapid switching')
+    expect(emptyRefreshClicked, 'the empty-state refresh could not be clicked')
+    expect(empty.hint === '暂无技能' && empty.items.length === 0 && empty.feedback.length === 0,
+      `the successful empty response was not rendered as an empty state: ${JSON.stringify(empty)}`)
+    expect(probeState.failures.some((entry) => entry.kind === 'empty-list'), 'the empty response was not injected')
 
     if (failures.length > 0) {
       throw new Error(`skills catalog states failed: ${JSON.stringify({ results, failures })}`)

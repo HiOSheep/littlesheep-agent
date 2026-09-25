@@ -107,6 +107,7 @@ const SURFACE_EXPRESSION = `(() => {
       title: trigger.getAttribute('title'),
       count: trigger.querySelector('strong') ? Number((trigger.querySelector('strong').textContent || '').trim()) : 0,
     } : null,
+    triggerFocused: Boolean(trigger && document.activeElement === trigger),
     dialogOpen: Boolean(dialog),
     dialogError: text('.checkpoint-recovery-error'),
     dialogDiagnostic: text('.checkpoint-recovery-diagnostic'),
@@ -474,6 +475,38 @@ async function click(client, selector) {
   })()`)
 }
 
+async function pressEscape(client) {
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyDown', key: 'Escape', code: 'Escape',
+    windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+  })
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'Escape', code: 'Escape',
+    windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27,
+  })
+  await delay(500)
+}
+
+async function activateRecoveryTriggerByKeyboard(client) {
+  const focused = await client.evaluate(`(() => {
+    const trigger = document.querySelector('.checkpoint-recovery-trigger')
+    if (!(trigger instanceof HTMLElement)) return false
+    trigger.focus({ preventScroll: true })
+    return document.activeElement === trigger
+  })()`)
+  if (!focused) throw new Error('the recovery entry could not receive keyboard focus')
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyDown', key: 'Enter', code: 'Enter',
+    windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+    text: '\r', unmodifiedText: '\r',
+  })
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'Enter', code: 'Enter',
+    windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+  })
+  await delay(150)
+}
+
 async function submitComposer(client, prompt) {
   const typed = await typeInto(client, '.composer textarea', prompt)
   if (!typed) throw new Error('composer textarea is not available')
@@ -589,8 +622,18 @@ async function windowDiscoveryAndCapture({ root, provider }) {
     recorder.check(!damaged.dialogOpen, 'unreadable records do not open a dialog by themselves', damaged)
     recorder.check(provider.requests.length === 0, 'unreadable records execute nothing', { requests: provider.requests.length })
 
-    await click(handle.client, '.checkpoint-recovery-trigger')
+    await activateRecoveryTriggerByKeyboard(handle.client)
     const opened = await waitForSurface(handle.client, (surface) => surface.dialogOpen, 20_000, 'recovery dialog for unreadable records')
+    await pressEscape(handle.client)
+    const afterEscape = await readSurface(handle.client)
+    recorder.note({ step: 'recovery-escape-dismiss', surface: afterEscape, brokenFileExists: existsSync(brokenPath) })
+    recorder.check(!afterEscape.dialogOpen, 'Escape closes the recovery dialog without abandoning the task', afterEscape)
+    recorder.check(afterEscape.trigger?.count === 1, 'Escape leaves the damaged-record entry discoverable', afterEscape.trigger)
+    recorder.check(afterEscape.triggerFocused, 'Escape returns focus to the recovery entry', afterEscape)
+    recorder.check(existsSync(brokenPath), 'Escape preserves the unreadable checkpoint file', { brokenPath })
+    recorder.check(provider.requests.length === 0, 'Escape does not resume or execute the recovery task', { requests: provider.requests.length })
+    await activateRecoveryTriggerByKeyboard(handle.client)
+    const reopenedAfterEscape = await waitForSurface(handle.client, (surface) => surface.dialogOpen, 20_000, 'recovery dialog reopened after Escape')
     const checksBefore = (await readProbe(handle.client)).listRequests
     await click(handle.client, '.checkpoint-recovery-actions button')
     await delay(900)
@@ -603,6 +646,8 @@ async function windowDiscoveryAndCapture({ root, provider }) {
     recorder.note({
       step: 'damaged-dialog',
       opened: { diagnostic: opened.dialogDiagnostic, empty: opened.dialogEmpty, error: opened.dialogError, footer: opened.footerButtons },
+      afterEscape: { dialogOpen: afterEscape.dialogOpen, trigger: afterEscape.trigger, triggerFocused: afterEscape.triggerFocused, checkpointPreserved: existsSync(brokenPath) },
+      reopenedAfterEscape: { diagnostic: reopenedAfterEscape.dialogDiagnostic, dialogOpen: reopenedAfterEscape.dialogOpen },
       rechecked: { diagnostic: rechecked.dialogDiagnostic, dialogOpen: rechecked.dialogOpen, trigger: rechecked.trigger },
       reopened: { diagnostic: reopened.dialogDiagnostic, empty: reopened.dialogEmpty, footer: reopened.footerButtons },
       probe: { listRequests: recheckProbe.listRequests },

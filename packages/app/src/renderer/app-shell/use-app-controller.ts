@@ -387,7 +387,7 @@ export function useAppController() {
       activeSessionPersistenceReadyRef.current = true
       return
     }
-    void switchSession(session)
+    void switchSession(session, { preserveRoute: true }) // Startup recovery keeps the persisted route.
   }, [currentSession, sessions, sessionsLoaded])
 
   useEffect(() => {

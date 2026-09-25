@@ -1,10 +1,12 @@
 # @littlesheep/harness
 
-最后更新：2026-09-25 00:16:31
+最后更新：2026-09-25 17:09:14
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
 ## 职责与边界
+
+- 运行中 `user_message` 是当前 run 的用户输入：`runtime-control-boundary.ts` 在安全边界验收并有界暂存，`stages/execute/tool-loop.ts` 在模型请求前后取出；响应到达时的新要求会使旧工具提议失效。容量满时明确拒绝新事件，不覆盖旧事件。
 
 - 公开入口是 `src/index.ts`；阶段实现在 `src/stages/`，装配在 `default-harness.ts`，唯一的驱动是 `durable-harness.ts`（`createNextHarness`）。
 - 活动路由只产出两条路径：所有会话与任务进入单一主循环（`stages/execute/tool-loop.ts` + `runners.ts`），能力/状态询问进入最小 Runtime 事实契约的 `reply`。DECIDE、验证模型调用、RECOVER 模型调用与 CAPTURE 已删除；`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名、LLM Call Contract 条目和检查点兼容字段存活，`checkpoint-resume.ts` 的 `resolveCheckpointResumeStage` 把入口为 `decide` 的检查点改派到 `execute`。ASK_USER 不可路由：它由主循环内模型发起的 `request_user_input`，或由 RECOVER 的权限拒绝/预算耗尽升级到达。

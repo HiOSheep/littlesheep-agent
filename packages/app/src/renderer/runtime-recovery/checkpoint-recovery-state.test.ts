@@ -186,7 +186,11 @@ describe('checkpoint recovery wiring', () => {
       readFile(new URL('./use-checkpoint-recovery.ts', import.meta.url), 'utf8'),
     ])
 
-    expect(view).toContain("recovery.entry.kind !== 'none' && !recovery.visible")
+    expect(view).toContain("recovery.entry.kind !== 'none' && (")
+    expect(view).not.toContain("recovery.entry.kind !== 'none' && !recovery.visible")
+    expect(view).toContain('aria-hidden={recovery.visible || undefined}')
+    expect(view).toContain('tabIndex={recovery.visible ? -1 : undefined}')
+    expect(view).toContain("pointerEvents: 'none'")
     expect(view).toContain("recovery.entry.action === 'retry' ? recovery.retryDiscovery : recovery.open")
     expect(view).toContain('recovery.discoveryFailed\n                  ? \'这次没有读取成功')
     expect(view).toContain('重新检查')

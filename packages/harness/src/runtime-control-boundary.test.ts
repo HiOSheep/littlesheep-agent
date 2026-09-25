@@ -8,7 +8,12 @@ import {
   type TaskBook,
 } from '@littlesheep/types';
 import { makeCtx } from './tests/helpers.js';
-import { consumeRuntimeControlEvents, consumeRuntimeTaskEvents } from './runtime-control-boundary.js';
+import {
+  consumePendingRuntimeUserMessages,
+  consumeRuntimeControlEvents,
+  consumeRuntimeTaskEvents,
+  takeDeferredRuntimeUserMessages,
+} from './runtime-control-boundary.js';
 
 function event(sequence: number, type: RuntimeEventEnvelope['type'], payload: Record<string, unknown> = {}): RuntimeEventEnvelope {
   return {
@@ -146,7 +151,7 @@ describe('runtime control boundary', () => {
     expect(ctx.runtimeControl).toBeUndefined();
   });
 
-  it('defers task-changing events for DECIDE instead of dropping them', () => {
+  it('routes active user messages into EXECUTE and defers other task changes', () => {
     const ctx = makeCtx();
     const events = [
       { ...event(1, 'user_message', { text: 'add a validation step' }), runId: ctx.runId },
@@ -167,9 +172,60 @@ describe('runtime control boundary', () => {
       'event-1', 'event-2', 'event-3',
     ]);
     expect(mock.settleDecisionBatch).toHaveBeenCalledWith('batch-1', [
-      expect.objectContaining({ eventId: 'event-1', status: 'ignored', reason: 'deferred-awaiting-replan' }),
+      expect.objectContaining({ eventId: 'event-1', status: 'applied', reason: 'user-message-preserved-for-execute' }),
       expect.objectContaining({ eventId: 'event-2', status: 'ignored', reason: 'deferred-awaiting-replan' }),
       expect.objectContaining({ eventId: 'event-3', status: 'ignored', reason: 'deferred-awaiting-replan' }),
+    ]);
+  });
+
+  it('captures mid-loop user messages at a safe request boundary and releases them once', () => {
+    const ctx = makeCtx();
+    const update = { ...event(1, 'user_message', { text: 'add a validation step' }), runId: ctx.runId };
+    const mock = queue([update]);
+    ctx.runtimeEventQueue = mock.port;
+
+    const result = consumePendingRuntimeUserMessages(ctx);
+
+    expect(result.events).toEqual([update]);
+    expect(ctx.deferredRuntimeEvents).toEqual([update]);
+    expect(ctx.deferredRuntimeEventIds).toEqual([update.id]);
+    expect(mock.settleDecisionBatch).toHaveBeenCalledWith('batch-1', [
+      expect.objectContaining({ eventId: update.id, status: 'applied', reason: 'user-message-preserved-for-execute' }),
+    ]);
+    expect(takeDeferredRuntimeUserMessages(ctx)).toEqual([update]);
+    expect(ctx.deferredRuntimeEvents).toEqual([]);
+    expect(takeDeferredRuntimeUserMessages(ctx)).toEqual([]);
+  });
+
+  it('releases a failed mid-loop message settlement without losing the event', () => {
+    const ctx = makeCtx();
+    const update = { ...event(1, 'user_message', { text: 'keep this update' }), runId: ctx.runId };
+    const mock = queue([update], new Error('settle failed'));
+    ctx.runtimeEventQueue = mock.port;
+
+    const result = consumePendingRuntimeUserMessages(ctx);
+
+    expect(result.events).toEqual([]);
+    expect(result.error).toContain('settle failed');
+    expect(ctx.deferredRuntimeEvents ?? []).toEqual([]);
+    expect(mock.releaseDecisionBatch).toHaveBeenCalledWith('batch-1');
+  });
+
+  it('does not discard an older deferred event when the mid-loop buffer is full', () => {
+    const ctx = makeCtx();
+    const older = Array.from({ length: 32 }, (_, index) => event(index + 1, 'setting_changed'));
+    ctx.deferredRuntimeEvents = older;
+    ctx.deferredRuntimeEventIds = older.map((item) => item.id);
+    const update = { ...event(33, 'user_message', { text: 'keep this update' }), runId: ctx.runId };
+    const mock = queue([update]);
+    ctx.runtimeEventQueue = mock.port;
+
+    const result = consumePendingRuntimeUserMessages(ctx);
+
+    expect(result.events).toEqual([]);
+    expect(ctx.deferredRuntimeEvents).toEqual(older);
+    expect(mock.settleDecisionBatch).toHaveBeenCalledWith('batch-1', [
+      expect.objectContaining({ eventId: update.id, status: 'conflict', reason: 'deferred-runtime-event-capacity' }),
     ]);
   });
 
@@ -285,7 +341,7 @@ describe('runtime control boundary', () => {
     expect(mock.settleDecisionBatch).toHaveBeenCalledWith('batch-1', [
       ...Array.from({ length: 32 }, (_, index) => expect.objectContaining({
         eventId: `event-${index + 1}`,
-        status: 'ignored',
+        status: 'applied',
       })),
       ...Array.from({ length: 8 }, (_, index) => expect.objectContaining({
         eventId: `event-${index + 33}`,

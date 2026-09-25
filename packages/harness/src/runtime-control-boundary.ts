@@ -23,6 +23,7 @@ export const RUNTIME_CONTROL_EVENT_TYPES = [
 const MAX_CONTROL_EVENT_IDS = 32;
 const MAX_DEFERRED_RUNTIME_EVENTS = 32;
 const MAX_DEFERRED_RUNTIME_EVENT_IDS = 128;
+const RUNTIME_USER_MESSAGE_EVENT_TYPES = ['user_message'] as const satisfies readonly RuntimeEventType[];
 
 export const RUNTIME_TASK_EVENT_TYPES = [
   'user_message',
@@ -163,12 +164,17 @@ export function consumeRuntimeTaskEvents(ctx: RunContext): RuntimeTaskBoundaryRe
       return decision(event, 'conflict', `taskbook-patch-${patchResult.reason}`);
     }
 
+    if (event.type === 'user_message' && !validRuntimeUserMessage(event)) {
+      return decision(event, 'conflict', 'invalid-runtime-user-message');
+    }
     if (!rememberDeferredEvent(event, stagedDeferredEvents, stagedDeferredIds)) {
       return decision(event, 'conflict', 'deferred-runtime-event-capacity');
     }
     shouldReplan = true;
     deferredEventIds.push(event.id);
-    return decision(event, 'ignored', 'deferred-awaiting-replan');
+    return event.type === 'user_message'
+      ? decision(event, 'applied', 'user-message-preserved-for-execute')
+      : decision(event, 'ignored', 'deferred-awaiting-replan');
   });
 
   try {
@@ -206,6 +212,71 @@ export function consumeRuntimeTaskEvents(ctx: RunContext): RuntimeTaskBoundaryRe
   );
 }
 
+/**
+ * Capture user updates that arrive while the EXECUTE loop is between requests.
+ * They are persisted into the checkpoint-carried deferred list and consumed by
+ * the same model loop before it makes another request.
+ */
+export function consumePendingRuntimeUserMessages(ctx: RunContext): {
+  events: RuntimeEventEnvelope[];
+  error?: string;
+} {
+  const queue = ctx.runtimeEventQueue;
+  if (!queue) return { events: [] };
+
+  let batch: ReturnType<typeof queue.openDecisionBatchForTypes>;
+  try {
+    batch = queue.openDecisionBatchForTypes(RUNTIME_USER_MESSAGE_EVENT_TYPES);
+  } catch (error) {
+    return { events: [], error: `runtime user-message boundary open failed: ${(error as Error).message}` };
+  }
+  if (!batch) return { events: [] };
+
+  const events: RuntimeEventEnvelope[] = [];
+  const stagedDeferredEvents = [...(ctx.deferredRuntimeEvents ?? [])];
+  const stagedDeferredIds = [...(ctx.deferredRuntimeEventIds ?? [])];
+  const decisions: RuntimeEventDecision[] = batch.events.map((event) => {
+    if (!validRuntimeUserMessage(event)) {
+      return decision(event, 'conflict', 'invalid-runtime-user-message');
+    }
+    if (!rememberDeferredEvent(event, stagedDeferredEvents, stagedDeferredIds)) {
+      return decision(event, 'conflict', 'deferred-runtime-event-capacity');
+    }
+    events.push(event);
+    return decision(event, 'applied', 'user-message-preserved-for-execute');
+  });
+
+  try {
+    queue.settleDecisionBatch(batch.token, decisions);
+  } catch (error) {
+    try {
+      queue.releaseDecisionBatch(batch.token);
+    } catch {
+      // Preserve the original settlement failure; the queue lease is bounded.
+    }
+    return { events: [], error: `runtime user-message boundary settle failed: ${(error as Error).message}` };
+  }
+
+  if (events.length > 0) {
+    writeRuntimeState(ctx, 'runtime-boundary', {
+      deferredRuntimeEvents: stagedDeferredEvents,
+      deferredRuntimeEventIds: stagedDeferredIds.slice(-MAX_DEFERRED_RUNTIME_EVENT_IDS),
+    });
+  }
+  return { events };
+}
+
+/** Remove pending user messages after the execute loop has put them in a request. */
+export function takeDeferredRuntimeUserMessages(ctx: RunContext): RuntimeEventEnvelope[] {
+  const deferred = ctx.deferredRuntimeEvents ?? [];
+  const events = deferred.filter((event) => event.type === 'user_message' && validRuntimeUserMessage(event));
+  if (events.length === 0) return [];
+  writeRuntimeState(ctx, 'runtime-boundary', {
+    deferredRuntimeEvents: deferred.filter((event) => event.type !== 'user_message'),
+  });
+  return events;
+}
+
 function decideControlEvent(
   state: RuntimeControlState,
   event: RuntimeEventEnvelope,
@@ -229,6 +300,14 @@ function eventReason(event: RuntimeEventEnvelope): string | undefined {
   if (typeof value !== 'string') return undefined;
   const normalized = value.trim();
   return normalized ? normalized.slice(0, 1_024) : undefined;
+}
+
+function validRuntimeUserMessage(event: RuntimeEventEnvelope): boolean {
+  const text = event.payload.text;
+  return event.type === 'user_message'
+    && typeof text === 'string'
+    && text.trim().length > 0
+    && text.length <= 16 * 1024;
 }
 
 function extractPatch(event: RuntimeEventEnvelope): { present: boolean; value: unknown } {

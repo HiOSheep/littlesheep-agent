@@ -44,6 +44,9 @@ export function SettingsModelsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const requestRef = useRef(0)
+  // A synchronous guard is needed because React state can be stale for two
+  // confirmation clicks dispatched in the same task.
+  const deletingRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -169,7 +172,8 @@ export function SettingsModelsPage() {
   async function confirmDelete() {
     const pending = pendingDelete
     // One delete per confirmation: the dialog disables both actions in flight.
-    if (!pending || deleting) return
+    if (!pending || deletingRef.current) return
+    deletingRef.current = true
     setDeleting(true)
     setDeleteError(null)
     try {
@@ -183,12 +187,13 @@ export function SettingsModelsPage() {
       // Keep the dialog open with the failure so the target stays locatable.
       setDeleteError((e as Error).message)
     } finally {
+      deletingRef.current = false
       if (mountedRef.current) setDeleting(false)
     }
   }
 
   function cancelDelete() {
-    if (deleting) return
+    if (deletingRef.current) return
     setPendingDelete(null)
     setDeleteError(null)
   }

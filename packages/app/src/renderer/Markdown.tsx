@@ -6,6 +6,8 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useLinkNavigation } from './link-navigation'
 import { StreamingMarkdownPartitioner } from './streaming-markdown'
 import { CheckIcon, CopyIcon } from './ui/icons'
+import { CodeWrapToggle } from './ui/code-wrap-toggle'
+import { useCodeWrapPreference } from './ui/code-wrap-preference'
 
 // Single-line activity labels are rendered by a bounded scanner instead of the
 // parser below, so an activity row never depends on the Markdown plugin chain.
@@ -218,26 +220,45 @@ function MarkdownLink({ href, children }: { href?: string; children: ReactNode }
  * arrives. It reuses the highlighter's own class names and inline styles so the
  * swap does not move the surrounding layout.
  */
-function PlainCodeFallback({ code, language }: { code: string; language: string }) {
+function CodeToolbar({
+  code,
+  language,
+  wrapped,
+  onToggleWrap,
+}: {
+  code: string
+  language: string
+  wrapped: boolean
+  onToggleWrap: () => void
+}) {
   return (
-    <div className="code-block">
-      <div className="code-toolbar">
+    <div className="code-toolbar">
+      <span className="code-language-label">{(language || 'text').toUpperCase()}</span>
+      <div className="code-toolbar-actions">
+        <CodeWrapToggle wrapped={wrapped} onToggle={onToggleWrap} />
         <CopyButton text={code} label="代码" />
       </div>
+    </div>
+  )
+}
+
+function PlainCodeFallback({
+  code,
+  language,
+  wrapped,
+  onToggleWrap,
+}: {
+  code: string
+  language: string
+  wrapped: boolean
+  onToggleWrap: () => void
+}) {
+  return (
+    <div className="code-block">
+      <CodeToolbar code={code} language={language} wrapped={wrapped} onToggleWrap={onToggleWrap} />
       <pre
         className="code-block-source"
-        style={{
-          margin: 0,
-          maxWidth: '100%',
-          overflow: 'hidden',
-          overflowWrap: 'anywhere',
-          background: 'transparent',
-          backgroundColor: 'transparent',
-          padding: 'var(--code-block-inset)',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          paddingRight: 'calc(var(--code-block-inset) + var(--code-copy-button-size) + var(--code-copy-safe-gap))',
-        }}
+        data-code-wrap={wrapped ? 'on' : 'off'}
       >
         <code className={`language-${language}`} style={{ background: 'transparent' }}>{code}</code>
       </pre>
@@ -246,39 +267,50 @@ function PlainCodeFallback({ code, language }: { code: string; language: string 
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [wrapped, setWrapped] = useCodeWrapPreference()
+  const codeWrapStyle = wrapped
+    ? { whiteSpace: 'pre-wrap' as const, overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const }
+    : { whiteSpace: 'pre' as const, overflowWrap: 'normal' as const, wordBreak: 'normal' as const }
   return (
-    <Suspense fallback={<PlainCodeFallback code={code} language={language} />}>
+    <Suspense fallback={(
+      <PlainCodeFallback
+        code={code}
+        language={language}
+        wrapped={wrapped}
+        onToggleWrap={() => setWrapped(!wrapped)}
+      />
+    )}>
       <div className="code-block">
-        <div className="code-toolbar">
-          <CopyButton text={code} label="代码" />
-        </div>
+        <CodeToolbar
+          code={code}
+          language={language}
+          wrapped={wrapped}
+          onToggleWrap={() => setWrapped(!wrapped)}
+        />
         <SyntaxHighlighter
           className="code-block-source"
+          data-code-wrap={wrapped ? 'on' : 'off'}
           language={language}
           style={oneDark}
           PreTag="div"
-          wrapLongLines
+          wrapLongLines={wrapped}
           codeTagProps={{
             className: `language-${language}`,
             style: {
               background: 'transparent',
               backgroundColor: 'transparent',
-              whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-              wordBreak: 'break-word',
+              ...codeWrapStyle,
             },
           }}
           customStyle={{
             margin: 0,
             maxWidth: '100%',
-            overflow: 'hidden',
-            overflowWrap: 'anywhere',
+            overflowX: wrapped ? 'hidden' : 'auto',
+            overflowY: 'hidden',
             background: 'transparent',
             backgroundColor: 'transparent',
             padding: 'var(--code-block-inset)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            paddingRight: 'calc(var(--code-block-inset) + var(--code-copy-button-size) + var(--code-copy-safe-gap))',
+            ...codeWrapStyle,
           }}
         >
           {code}

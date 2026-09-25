@@ -170,12 +170,12 @@ export function createSessionActions(context: SessionActionContext) {
   }
 
 
-  async function switchSession(session: SessionMeta, options: { forceReload?: boolean } = {}) {
+  async function switchSession(session: SessionMeta, options: { forceReload?: boolean; preserveRoute?: boolean } = {}) {
     const requestId = ++sessionLoadRequestRef.current
     historyLoadRequestRef.current = 0
     const { id, workspacePath } = session
     setSidebarPanel(null)
-    pushRoute({ section: 'chat' })
+    if (!options.preserveRoute) pushRoute({ section: 'chat' })
     // Session selection changes the effective workspace for this view and its
     // run request. It must not persist a new global default or rebuild Runner.
     selectedSessionWorkspaceRef.current = workspacePath

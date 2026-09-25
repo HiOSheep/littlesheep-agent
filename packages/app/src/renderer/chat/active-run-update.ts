@@ -1,12 +1,12 @@
 // Sends a user-authored update into the current run without opening another run.
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { sendRuntimeTaskEvent } from '../api'
+import type { ChatMessage } from './types'
 import {
   createRuntimeTaskEventIdentity,
   describeRuntimeTaskEventFailure,
   describeRuntimeTaskEventOutcome,
   runtimeTaskEventNeedsNewIdentity,
-  runtimeTaskEventWasQueued,
   type RuntimeTaskEventIdentity,
   type RuntimeTaskEventNotice,
 } from '../runtime-events/runtime-task-events'
@@ -22,12 +22,13 @@ export interface ActiveRunUpdateContext {
     identity: RuntimeTaskEventIdentity
   } | null>
   publishRuntimeEventNotice: (notice: RuntimeTaskEventNotice | null) => void
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>
   setInput: Dispatch<SetStateAction<string>>
 }
 
 
 export async function sendActiveRunUpdate(text: string, context: ActiveRunUpdateContext): Promise<void> {
-  const { activeRunIdRef, appMountedRef, hasAttachments, pendingRuntimeMessageRef, publishRuntimeEventNotice, setInput } = context
+  const { activeRunIdRef, appMountedRef, hasAttachments, pendingRuntimeMessageRef, publishRuntimeEventNotice, setInput, setMessages } = context
   if (!text) {
     if (hasAttachments) {
       const createdAt = Date.now()
@@ -69,8 +70,26 @@ export async function sendActiveRunUpdate(text: string, context: ActiveRunUpdate
     })
     if (!appMountedRef.current) return
     publishRuntimeEventNotice(describeRuntimeTaskEventOutcome('message', outcome))
-    if (runtimeTaskEventWasQueued(outcome)) {
+    if (outcome.kind === 'accepted' || outcome.kind === 'duplicate') {
       setInput((current) => current.trim() === text ? '' : current)
+      setMessages((current) => {
+        if (current.some((message) => message.id === identity.id)) return current
+        const next = [...current]
+        let activeAssistantIndex = -1
+        for (let index = next.length - 1; index >= 0; index -= 1) {
+          if (next[index]?.role === 'assistant') {
+            activeAssistantIndex = index
+            break
+          }
+        }
+        next.splice(activeAssistantIndex >= 0 ? activeAssistantIndex : next.length, 0, {
+          id: identity.id,
+          role: 'user',
+          text,
+          timestamp: outcome.event.receivedAt,
+        })
+        return next
+      })
     }
     if (runtimeTaskEventNeedsNewIdentity(outcome)) pendingRuntimeMessageRef.current = null
   } catch (error) {

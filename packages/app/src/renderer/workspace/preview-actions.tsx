@@ -1,6 +1,7 @@
 // File preview toolbar controls; preview and draft state remain owned by preview-pane.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { VSCodeIcon } from '../ui/icons'
+import { CodeWrapToggle } from '../ui/code-wrap-toggle'
 import { transientTriggerProps } from '../ui/transient'
 
 export function WorkspacePreviewActions({
@@ -11,6 +12,9 @@ export function WorkspacePreviewActions({
   showMarkdownSource,
   showHtmlSource,
   canOpenExternalVSCode,
+  showCodeWrapToggle,
+  codeWrapEnabled,
+  onToggleCodeWrap,
   onToggleMarkdownSource,
   onToggleHtmlSource,
   onToggleEditing,
@@ -24,10 +28,13 @@ export function WorkspacePreviewActions({
   showMarkdownSource: boolean
   showHtmlSource: boolean
   canOpenExternalVSCode: boolean
+  showCodeWrapToggle: boolean
+  codeWrapEnabled: boolean
   onToggleMarkdownSource: () => void
   onToggleHtmlSource: () => void
   onToggleEditing: () => void
   onOpenInVSCode: () => void | Promise<void>
+  onToggleCodeWrap: () => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const markdownSourceTip = showMarkdownSource ? '返回渲染预览' : '查看 Markdown 源代码'
@@ -35,6 +42,13 @@ export function WorkspacePreviewActions({
 
   return (
     <div className="workspace-preview-actions">
+      {showCodeWrapToggle && (
+        <CodeWrapToggle
+          className="workspace-files-icon-btn code-wrap-toggle"
+          wrapped={codeWrapEnabled}
+          onToggle={onToggleCodeWrap}
+        />
+      )}
       {editable && (
         <>
           {isMarkdown && (

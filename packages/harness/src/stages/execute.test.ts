@@ -1015,6 +1015,94 @@ describe('executeStage', () => {
     expect(ctx.toolResults?.map((item) => item.callId)).toEqual(['parallel-1', 'parallel-2']);
   });
 
+  it('injects an accepted user update into the next request in the same execute loop', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return textResponse(requests.length === 1 ? 'stale preview' : 'handled update');
+    });
+    const ctx = makeCtx({ inbound: textMessage('user', 'start the task') });
+    const update: RuntimeEventEnvelope = {
+      version: RUNTIME_EVENT_VERSION,
+      id: 'runtime-user-update-1',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      sequence: 1,
+      type: 'user_message',
+      source: 'app',
+      status: 'queued',
+      receivedAt: '2026-09-25T08:00:00.000Z',
+      payload: { text: 'add a validation step' },
+    };
+    let delivered = false;
+    ctx.runtimeEventQueue = {
+      openDecisionBatchForTypes(types) {
+        if (delivered || !types.includes('user_message') || requests.length === 0) return undefined;
+        return { token: 'user-update-batch', openedAt: update.receivedAt, cursor: 1, events: [update] };
+      },
+      settleDecisionBatch(_token, decisions) {
+        delivered = true;
+        return decisions.map((decision) => ({ ...update, status: decision.status }));
+      },
+      releaseDecisionBatch: () => true,
+    } as unknown as RuntimeEventQueueLike;
+
+    const result = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.messages.some((message) => message.content === 'add a validation step')).toBe(false);
+    expect(requests[1]?.messages.some((message) => message.role === 'user' && message.content === 'add a validation step')).toBe(true);
+    expect(ctx.produced.filter((message) => message.id === update.id)).toEqual([
+      expect.objectContaining({ role: 'user', content: [{ type: 'text', text: 'add a validation step' }] }),
+    ]);
+    expect(ctx.deferredRuntimeEvents).toEqual([]);
+    expect(ctx.contextSnapshots?.at(-1)?.items.some((item) => item.kind === 'user_input')).toBe(true);
+  });
+
+  it('does not execute tool calls from a response superseded by a newly accepted user update', async () => {
+    const requests: import('@littlesheep/llm').ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      return requests.length === 1
+        ? toolCallResponse([{ id: 'stale-call', name: 'lookup', args: { q: 'old plan' } }])
+        : textResponse('reconsidered update');
+    });
+    const lookup = makeTool('lookup', { ok: true, output: 'should not run' });
+    const ctx = makeCtx({ tools: [lookup], inbound: textMessage('user', 'start a task') });
+    const update: RuntimeEventEnvelope = {
+      version: RUNTIME_EVENT_VERSION,
+      id: 'runtime-user-update-before-tool',
+      runId: ctx.runId,
+      sessionId: ctx.sessionId,
+      sequence: 1,
+      type: 'user_message',
+      source: 'app',
+      status: 'queued',
+      receivedAt: '2026-09-25T08:00:00.000Z',
+      payload: { text: 'do not run the old lookup' },
+    };
+    let delivered = false;
+    ctx.runtimeEventQueue = {
+      openDecisionBatchForTypes(types) {
+        if (delivered || !types.includes('user_message') || requests.length === 0) return undefined;
+        return { token: 'user-update-before-tool', openedAt: update.receivedAt, cursor: 1, events: [update] };
+      },
+      settleDecisionBatch(_token, decisions) {
+        delivered = true;
+        return decisions.map((decision) => ({ ...update, status: decision.status }));
+      },
+      releaseDecisionBatch: () => true,
+    } as unknown as RuntimeEventQueueLike;
+
+    const result = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(lookup.calls).toHaveLength(0);
+    expect(requests[1]?.messages.some((message) => message.role === 'user' && message.content === 'do not run the old lookup')).toBe(true);
+    expect(ctx.produced.some((message) => message.content.some((part) => part.type === 'tool_calls'))).toBe(false);
+  });
+
   // ─── M3: ctx.produced persistence ──────────────────────────────────────
 
   // Runtime tail sections are also persisted now (they sit in the request the

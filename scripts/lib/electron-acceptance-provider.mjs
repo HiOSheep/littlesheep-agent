@@ -172,6 +172,9 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
   if (user.includes(LONG_MARKDOWN_MARKER)) {
     return textChoice(longMarkdownAnswer())
   }
+  if (user.includes('运行中的补充验收')) {
+    return textChoice('已处理补充要求：运行中的补充验收。')
+  }
   if (system.includes('Choose the next LittleSheep activity')) {
     const activity = /使用\s*glob\s*工具|use\s+the\s+glob\s+tool/iu.test(user) ? 'execute' : 'respond'
     return textChoice(JSON.stringify({ activity, confidence: 0.99, reason: 'deterministic acceptance route' }))

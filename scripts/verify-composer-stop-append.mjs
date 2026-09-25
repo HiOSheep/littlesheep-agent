@@ -126,6 +126,7 @@ const COMPOSER_STATE_EXPRESSION = `(() => {
     notices: [...document.querySelectorAll('.runtime-event-notice')].map((element) => element.textContent?.trim() ?? ''),
     userMessages: [...document.querySelectorAll('.message.user')].map((element) => element.textContent?.trim() ?? ''),
     runStatus: [...document.querySelectorAll('.assistant-turn')].at(-1)?.querySelector('.run-status-error')?.textContent?.trim() ?? null,
+    assistantText: [...document.querySelectorAll('.assistant-turn')].at(-1)?.querySelector('.assistant-response-stream')?.textContent?.trim() ?? '',
   }
 })()`
 
@@ -289,6 +290,7 @@ async function main() {
       appendedVisible,
       appendedMessages,
       appendOccurrencesInProviderRequests: providerUserTexts.filter((text) => text.includes(APPEND_TEXT)).length,
+      appendAssistantText: afterAppend.assistantText,
       afterAppend,
       screenshots: { draftScreenshot, stoppingScreenshot, appendScreenshot },
     }
@@ -321,6 +323,12 @@ async function main() {
     expect(appendOutcomes.filter((kind) => kind === 'duplicate').length === 1,
       `the runtime did not deduplicate the second click: ${JSON.stringify(appendOutcomes)}`)
     expect(afterAppend.draft === '', `the composer kept the appended text: ${JSON.stringify(afterAppend.draft)}`)
+    expect(appendedVisible, 'the accepted update did not appear in the conversation')
+    expect(appendedMessages.length === 1, `the conversation recorded the update ${appendedMessages.length} times`)
+    expect(providerUserTexts.filter((text) => text.includes(APPEND_TEXT)).length >= 1,
+      'the accepted update never reached a later Provider request')
+    expect(afterAppend.assistantText.includes('已处理补充要求：运行中的补充验收'),
+      `the final answer did not respond to the update: ${JSON.stringify(afterAppend.assistantText)}`)
 
     if (failures.length > 0) {
       throw new Error(`composer stop/append acceptance failed: ${JSON.stringify({ results, failures })}`)

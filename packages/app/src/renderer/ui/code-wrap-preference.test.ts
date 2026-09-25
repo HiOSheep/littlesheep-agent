@@ -3,6 +3,8 @@ import {
   CODE_WRAP_STORAGE,
   codeWrapToggleLabel,
   readCodeWrapPreference,
+  setCodeWrapPreference,
+  subscribeCodeWrapPreference,
   writeCodeWrapPreference,
   type CodeWrapStorage,
 } from './code-wrap-preference'
@@ -35,6 +37,23 @@ describe('code wrap preference', () => {
   it('labels the next action, not the current state', () => {
     expect(codeWrapToggleLabel(false)).toBe('开启自动换行')
     expect(codeWrapToggleLabel(true)).toBe('关闭自动换行')
+  })
+
+  it('notifies every mounted code surface when the shared switch changes', () => {
+    const updates: string[] = []
+    const removeChat = subscribeCodeWrapPreference(() => {
+      updates.push(`chat:${readCodeWrapPreference()}`)
+    })
+    const removeWorkspace = subscribeCodeWrapPreference(() => {
+      updates.push(`workspace:${readCodeWrapPreference()}`)
+    })
+
+    setCodeWrapPreference(true)
+    expect(updates).toEqual(['chat:true', 'workspace:true'])
+    setCodeWrapPreference(false)
+    expect(updates.slice(2)).toEqual(['chat:false', 'workspace:false'])
+    removeChat()
+    removeWorkspace()
   })
 
   it('survives storage that throws instead of breaking the view', () => {

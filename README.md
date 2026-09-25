@@ -1,6 +1,6 @@
 # LittleSheep 🐑
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-25 15:30:59
 
 **A local-first agent desktop app that turns goals into finished work.**
 
@@ -13,6 +13,8 @@ LS 不只是一个聊天窗口。它包含持久化 Agent Runtime、长期记忆
 > LittleSheep 目前仍在快速开发中，主要面向 Windows 桌面环境。
 
 ## Why LittleSheep?
+
+应用层的输入、状态反馈、工作区现场、对话阅读和代码折行验收及仍待闭合事项汇总在 [应用层 UI / UX 任务书](docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md)。
 
 普通聊天 Agent 往往围绕一次请求和一次回复运行，而 LS 更关注一个问题：
 

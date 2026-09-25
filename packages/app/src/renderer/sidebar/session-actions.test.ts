@@ -84,6 +84,25 @@ describe('session switching', () => {
 
     expect(mockedWaitForExecutionReady).toHaveBeenCalledTimes(1)
     expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 120 })
+    expect(context.pushRoute).toHaveBeenCalledWith({ section: 'chat' })
+  })
+
+  it('preserves the restored application route while loading the last selected conversation', async () => {
+    const context = createSwitchContext()
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-2',
+      title: '第二个会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    }, { preserveRoute: true })
+
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 120 })
+    expect(context.setCurrentSession).toHaveBeenCalledWith('session-2')
+    expect(context.pushRoute).not.toHaveBeenCalled()
   })
 
   it('reports a failed Runtime instead of a history-load error', async () => {

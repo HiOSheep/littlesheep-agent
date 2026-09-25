@@ -122,7 +122,7 @@ async function main() {
       conversationCollapsed: document.querySelector('.conversation-section')?.classList.contains('collapsed') === true,
       projectCollapsed: document.querySelector('.project-section')?.classList.contains('collapsed') === true,
       sidebarWidth: document.querySelector('.sidebar-resizer')?.getAttribute('aria-valuenow') ?? '',
-      settingsOpen: Boolean(document.querySelector('.settings-workspace')),
+      settingsOpen: document.querySelector('.settings-entry-btn')?.getAttribute('aria-expanded') === 'true',
       activeSettingsPage: document.querySelector('.settings-nav-item.active')?.textContent?.trim() ?? '',
       persisted: JSON.parse(localStorage.getItem('littlesheep.ui.appShellState') ?? 'null'),
       workspaceLayouts: JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') ?? 'null'),
@@ -619,10 +619,19 @@ async function verifyFileNavigatorResize(client) {
 }
 
 async function revealWorkspaceAndReadNavigatorWidth(client) {
-  await client.evaluate(`document.querySelector('.settings-entry-btn')?.click()`)
+  const settingsClose = await client.evaluate(`(() => {
+    const button = [...document.querySelectorAll('.settings-entry-btn')]
+      .find((node) => node.getAttribute('aria-expanded') === 'true')
+    if (!(button instanceof HTMLElement)) return { found: false }
+    const before = button.getAttribute('aria-expanded')
+    button.click()
+    return { found: true, before, label: button.getAttribute('aria-label') }
+  })()`)
+  if (!settingsClose?.found) throw new Error(`restored settings close control was unavailable: ${JSON.stringify(settingsClose)}`)
+  await waitFor(async () => client.evaluate(`document.querySelector('.window-shell')?.classList.contains('settings-open') === false || null`), START_TIMEOUT_MS, 'restored settings route to close')
   // Settings uses a keep-mounted presence layer. Closing it does not remove
   // the workspace node; wait for the authoritative hidden phase instead.
-  await waitFor(async () => client.evaluate(`document.querySelector('.settings-presence')?.classList.contains('presence-hidden') || null`), START_TIMEOUT_MS, 'restored workspace route')
+  await waitFor(async () => client.evaluate(`document.querySelector('.settings-presence')?.classList.contains('presence-hidden') || null`), START_TIMEOUT_MS, 'restored settings surface to finish closing')
   await client.evaluate(`(() => {
     const panel = document.querySelector('.workspace-panel')
     if (panel?.classList.contains('collapsed')) {

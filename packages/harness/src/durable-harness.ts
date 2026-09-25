@@ -118,6 +118,16 @@ export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
           current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
+        // A user update captured before CLASSIFY still belongs to the active
+        // run. Once route facts exist, deliver it through the single EXECUTE
+        // loop even if the original turn would otherwise have taken REPLY.
+        const hasDeferredUserMessage = ctx.deferredRuntimeEvents?.some((event) => (
+          event.type === 'user_message' && typeof event.payload.text === 'string'
+        )) ?? false;
+        if (hasDeferredUserMessage && stageName !== 'execute' && stageName !== 'classify') {
+          current = ctx.classification ? 'execute' : 'classify';
+          continue;
+        }
         if (runtimeTasks.taskBookChanged && stageName !== 'execute' && !runtimeTasks.shouldReplan) {
           current = ctx.classification ? 'execute' : 'classify';
           continue;

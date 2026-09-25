@@ -1,6 +1,8 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-24 11:12:10
+最后更新：2026-09-25 17:09:14
+
+当前 run 接收的 `user_message` 由 `tool-loop.ts` 在模型请求前后加入同一消息序列并写入本轮会话产物；若新消息在响应期间抵达，旧响应里的工具调用不执行，主循环带着补充重新请求。`context-candidates.ts` 将它归为有来源的用户输入。回归见 `stages/execute.test.ts` 与真实窗口 `verify:composer-stop-append`。
 
 - `contracts.ts`：依赖、工具循环和输出清洗契约，并区分模型可见的 `tools` 目录与本轮真正可调用的 `admittedTools`。
 - `guidance.ts`：基础消息装配与步骤提示片段；`renderPlanGuidance`/`renderTaskBookGuidance` 把 TaskBook 与计划渲染进主循环提示（不提及已删除的 stage），`renderStepGuidance` 是第二执行体系遗留的步骤契约渲染，当前没有运行期调用方。

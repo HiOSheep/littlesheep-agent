@@ -1,11 +1,11 @@
 # Renderer 启动恢复
-最后更新：2026-09-25 04:20:18
+最后更新：2026-09-25 16:16:02
 
 这里负责启动时的未完成任务发现、安静的恢复入口、现场查看、续跑和放弃；恢复的权威判定仍在 Runtime，本目录只做展示与请求编排。
 
 - `use-checkpoint-recovery.ts`：启动发现、续跑流式订阅、停止、放弃和错误/忙碌状态；发现失败单独记录为 `discoveryFailed`，不与“没有待恢复任务”混同。启动发现等 `runtime-readiness` 报告执行就绪后才执行（`subscribeRuntimeReadiness`），否则会在 Local App API 已监听但 Runner 尚未发布时把“还在启动”误报成读取失败。
 - `checkpoint-recovery-state.ts`：纯状态与文案。`checkpointRecoveryEntry` 把发现失败、正在恢复、待补充信息、待恢复任务和损坏记录收敛成一个安静入口；`checkpointRecoveryDiagnosticText` 的“N 份恢复记录无法读取 / N 处恢复目录读写异常”两类计数**互斥**（见 `LocalAppRunCheckpointDiagnostics`），一份坏记录只算一次，不再同时被说成“无法读取”和“不完整”。
-- `checkpoint-recovery.tsx`：入口按钮与恢复对话框；诊断说明与重试在没有任何有效 checkpoint 时也必须可见。对话框使用共享模态层：进入焦点在“稍后处理”，Tab 约束在对话框内，关闭后焦点回到入口，Escape 只关闭当前层（等同“稍后处理”），绝不会放弃任务。
+- `checkpoint-recovery.tsx`：入口按钮与恢复对话框；诊断说明与重试在没有任何有效 checkpoint 时也必须可见。对话框使用共享模态层：进入焦点在“稍后处理”，Tab 约束在对话框内，关闭后焦点回到入口，Escape 只关闭当前层（等同“稍后处理”），绝不会放弃任务。模态打开时入口保持挂载，临时退出键盘顺序并隐藏给辅助技术，避免关闭回调找不到已卸载的焦点返回目标。
 - `checkpoint-recovery-request.ts`：恢复请求的稳定身份，避免不确定传输后重复提交同一回合。
 
 ## 边界

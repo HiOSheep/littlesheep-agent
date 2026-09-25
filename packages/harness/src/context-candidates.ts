@@ -13,6 +13,7 @@ import type {
   ContextSourceRef,
   Message,
   RunContext,
+  RuntimeEventEnvelope,
   StageName,
 } from '@littlesheep/types';
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
@@ -82,6 +83,11 @@ export interface BuildRunRequestCandidatesOptions {
     source: ContextSourceRef;
     scope?: ContextScope;
   }>;
+  /**
+   * Appended user-authored updates accepted by the active Runtime run. These
+   * stay user input in Context accounting instead of becoming workflow prose.
+   */
+  runtimeUserMessages?: ReadonlyMap<ChatMessage, RuntimeEventEnvelope>;
 }
 
 export interface InsertedContextMessage {
@@ -263,6 +269,24 @@ export function buildRunRequestCandidates(
           generatedAt: ctx.inbound.timestamp,
         },
         priority: primaryUserKind === 'user_input' ? 95 : 85,
+        required: true,
+      })];
+    }
+
+    const runtimeUserMessage = options.runtimeUserMessages?.get(message);
+    if (runtimeUserMessage && message.role === 'user') {
+      return [candidate({
+        id: `${stage}:runtime-user:${runtimeUserMessage.id}`,
+        order,
+        message,
+        kind: 'user_input',
+        source: {
+          kind: 'message',
+          id: runtimeUserMessage.id,
+          sessionId: ctx.sessionId,
+          generatedAt: runtimeUserMessage.receivedAt,
+        },
+        priority: 95,
         required: true,
       })];
     }

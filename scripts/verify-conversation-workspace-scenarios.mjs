@@ -354,14 +354,16 @@ async function typeDraftWithLineBreaks(client, lines) {
   await delay(150)
 }
 
-async function clickVisible(client, selector) {
+async function clickVisible(client, selector, wantedText) {
   return evaluate(client, `(() => {
+    const wantedText = ${JSON.stringify(wantedText ?? null)};
     const node = [...document.querySelectorAll(${JSON.stringify(selector)})]
       .find((candidate) => {
         if (!(candidate instanceof HTMLElement)) return false;
         if (candidate.closest('[inert]')) return false;
         const rect = candidate.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        return wantedText === null || (candidate.textContent || '').includes(wantedText);
       });
     if (!(node instanceof HTMLElement)) return { clicked: false };
     node.click();
@@ -384,6 +386,104 @@ async function clickLauncherItem(client, preferredLabels) {
     target.click();
     return { clicked: true, labels, chosen: (target.textContent || '').trim() };
   })()`)
+}
+
+async function selectWorkspaceFeature(client, label) {
+  const collapsed = await evaluate(client, `document.querySelector('.workspace-panel')?.classList.contains('collapsed') ?? true`)
+  if (collapsed) {
+    const openedPanel = await clickVisible(client, '.workspace-panel-corner-toggle')
+    if (!openedPanel.clicked) throw new Error('the workspace panel could not be opened')
+  }
+  await harness.waitFor(
+    () => evaluate(client, `document.querySelector('.workspace-panel')?.classList.contains('collapsed') === false || null`),
+    10_000,
+    'workspace panel to open',
+  )
+  const menu = await clickVisible(client, '.workspace-add-trigger')
+  if (!menu.clicked) throw new Error('the workspace feature menu could not be opened')
+  await harness.waitFor(() => evaluate(client, `Boolean(document.querySelector('.workspace-add-panel.visible')) || null`), 5_000, 'workspace feature menu')
+  const selected = await clickVisible(client, '.workspace-add-panel.visible .workspace-add-item', label)
+  if (!selected.clicked) throw new Error(`workspace feature ${label} could not be selected`)
+}
+
+async function createWorkspaceScene(client, { fileName, draftMarker, browserUrl }) {
+  await selectWorkspaceFeature(client, '终端')
+  await harness.waitFor(
+    () => evaluate(client, `Boolean([...document.querySelectorAll('.workspace-tree-row.file')].find((node) => node.textContent?.includes(${JSON.stringify(fileName)}))) || null`),
+    15_000,
+    `workspace file ${fileName}`,
+  )
+  const notesRow = await evaluate(client, `(() => {
+    const row = [...document.querySelectorAll('.workspace-tree-row.directory')]
+      .find((node) => node.textContent?.trim().includes('notes'))
+    if (!(row instanceof HTMLElement)) return { found: false }
+    const wasExpanded = row.getAttribute('aria-expanded') === 'true'
+    if (!wasExpanded) row.click()
+    return { found: true, expanded: wasExpanded }
+  })()`)
+  if (!notesRow.found) throw new Error('the notes directory row was not available')
+  const notesChildren = await harness.waitFor(() => evaluate(client, `(() => {
+    const names = [...document.querySelectorAll('.workspace-tree-name')].map((node) => node.textContent?.trim())
+    return ['alpha.md', 'beta.md', 'gamma.md'].every((name) => names.includes(name)) ? names : null
+  })()`), 10_000, 'notes directory to expand')
+
+  const openFile = await clickVisible(client, '.workspace-tree-row.file', fileName)
+  if (!openFile.clicked) throw new Error(`the ${fileName} row could not be opened`)
+  try {
+    await harness.waitFor(() => evaluate(client, `Boolean(document.querySelector('.workspace-editor-monaco .monaco-editor')) || null`), 20_000, `${fileName} preview`)
+  } catch (error) {
+    const state = await evaluate(client, `(() => ({
+      tabs: [...document.querySelectorAll('.workspace-active-item')].map((node) => node.textContent?.trim()),
+      activeTab: document.querySelector('.workspace-tab-view.active')?.className ?? null,
+      selectedTreeRow: document.querySelector('.workspace-tree-row.selected')?.textContent?.trim() ?? null,
+      previewActions: document.querySelector('.workspace-preview-actions')?.textContent?.trim() ?? null,
+      status: document.querySelector('.workspace-editor-status')?.textContent?.trim() ?? null,
+      editor: Boolean(document.querySelector('.workspace-editor-monaco .monaco-editor')),
+      loading: document.querySelector('.workspace-preview-body')?.textContent?.trim().slice(0, 120) ?? null,
+    }))()`)
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; file scene state: ${JSON.stringify(state)}`)
+  }
+  const edit = await clickVisible(client, '.workspace-preview-actions button', '编辑')
+  if (!edit.clicked) throw new Error(`${fileName} could not enter edit mode`)
+  await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-editor-monaco .monaco-editor:not(.workspace-monaco-readonly)') ? true : null`), 10_000, `${fileName} editor to enter edit mode`)
+  const editorPoint = await evaluate(client, `(() => {
+    const node = document.querySelector('.workspace-editor-monaco .monaco-editor .view-lines')
+    if (!(node instanceof HTMLElement)) return null
+    const box = node.getBoundingClientRect()
+    return box.width > 10 && box.height > 10 ? { x: box.left + Math.min(80, box.width / 2), y: box.top + Math.min(40, box.height / 2) } : null
+  })()`)
+  if (!editorPoint) throw new Error('the Monaco editor body was not available for typing')
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: editorPoint.x, y: editorPoint.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: editorPoint.x, y: editorPoint.y, button: 'left', buttons: 1, clickCount: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: editorPoint.x, y: editorPoint.y, button: 'left', buttons: 0, clickCount: 1 })
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 })
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 })
+  await client.send('Input.insertText', { text: draftMarker })
+  const visibleDraft = await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-editor-monaco .view-lines')?.textContent?.includes(${JSON.stringify(draftMarker)}) || null`), 10_000, 'unsaved editor draft')
+
+  await selectWorkspaceFeature(client, '浏览器')
+  await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-browser-address input') instanceof HTMLInputElement || null`), 10_000, 'browser address field')
+  const submittedUrl = await evaluate(client, `(() => {
+    const input = document.querySelector('.workspace-browser-address input')
+    const form = input?.closest('form')
+    if (!(input instanceof HTMLInputElement) || !(form instanceof HTMLFormElement)) return false
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    setter?.call(input, ${JSON.stringify(browserUrl)})
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    form.requestSubmit()
+    return true
+  })()`)
+  if (!submittedUrl) throw new Error('the browser address could not be submitted')
+  const browserStored = await harness.waitFor(() => evaluate(client, `(() => {
+    const id = localStorage.getItem('littlesheep.ui.activeSession')
+    const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}')
+    const layout = layouts[id ? 'session:' + encodeURIComponent(id) : '__draft__']
+    return layout?.browserTabs?.some((tab) => tab.url === ${JSON.stringify(browserUrl)})
+      ? { id, activeTab: layout.activeTab, browserTabs: layout.browserTabs, expandedPaths: layout.expandedPaths, drafts: layout.drafts }
+      : null
+  })()`), 15_000, 'browser URL to persist in this conversation')
+  await delay(350)
+  return { notesChildren, visibleDraft, browserStored }
 }
 
 async function dragPanelResizer(client, deltaX) {
@@ -499,6 +599,11 @@ async function main() {
     await Promise.all(['alpha', 'beta', 'gamma'].map((name) => writeFile(
       join(workplaceDir, 'notes', `${name}.md`),
       `# ${name}\n`,
+      'utf8',
+    )))
+    await Promise.all(['scenario-file-00.ts', 'scenario-file-01.ts'].map((name, index) => writeFile(
+      join(workplaceDir, name),
+      `export const sessionScene = ${index}\n`,
       'utf8',
     )))
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
@@ -896,7 +1001,141 @@ async function main() {
     )
 
     // ---------------------------------------------------------------------
-    // 5. Markdown font roles in the real window
+    // 5. each conversation owns its files, unsaved edits, directory and browser scene
+    // ---------------------------------------------------------------------
+    const scenarioBaseUrl = provider.baseURL.replace(/\/v1$/u, '')
+    const firstDraftMarker = 'UNSAVED_SESSION_A_DRAFT_4827'
+    const firstBrowserUrl = `${scenarioBaseUrl}/health?scene=session-a`
+    const firstScene = await createWorkspaceScene(client, {
+      fileName: 'scenario-file-00.ts',
+      draftMarker: firstDraftMarker,
+      browserUrl: firstBrowserUrl,
+    })
+    const firstSessionId = firstScene.browserStored.id
+    const firstWorkspaceKey = `session:${encodeURIComponent(firstSessionId)}`
+    const firstSceneScreenshot = await writePng(client, 'session-a-workspace-scene')
+    recorder.note({ step: 'session-a-workspace-scene', firstScene, screenshot: firstSceneScreenshot })
+    recorder.check(Boolean(firstSessionId), 'the first real conversation has a persisted id', { firstSessionId })
+    recorder.check(
+      firstScene.browserStored.browserTabs.some((tab) => tab.url === firstBrowserUrl)
+        && firstScene.browserStored.expandedPaths.some((path) => path.endsWith('notes'))
+        && Object.values(firstScene.browserStored.drafts).some((draft) => draft.editorText.includes(firstDraftMarker)),
+      'conversation A persists its browser URL, expanded directory, and unsaved file draft in its own layout',
+      { key: firstWorkspaceKey, layout: firstScene.browserStored },
+    )
+
+    const newConversation = await clickVisible(client, '.conversation-section .sidebar-new-action')
+    if (!newConversation.clicked) throw new Error('a second conversation could not be started')
+    let secondConversationDraft
+    try {
+      secondConversationDraft = await harness.waitFor(() => evaluate(client, `(() => {
+        const userMessages = document.querySelectorAll('.message.user').length
+        const assistantTurns = document.querySelectorAll('.assistant-turn').length
+        return userMessages === 0 && assistantTurns === 0 ? { userMessages, assistantTurns } : null
+      })()`), 10_000, 'the second conversation draft')
+    } catch (error) {
+      const state = await evaluate(client, `(() => ({
+        activeSession: localStorage.getItem('littlesheep.ui.activeSession'),
+        activeRows: [...document.querySelectorAll('.session-item.active')].map((node) => node.textContent?.trim()),
+        userMessages: document.querySelectorAll('.message.user').length,
+        assistantTurns: document.querySelectorAll('.assistant-turn').length,
+        buttons: [...document.querySelectorAll('.conversation-section .sidebar-new-action')].map((node) => ({ label: node.getAttribute('aria-label'), inert: Boolean(node.closest('[inert]')) })),
+      }))()`)
+      throw new Error(`${error instanceof Error ? error.message : String(error)}; second conversation state: ${JSON.stringify(state)}`)
+    }
+    recorder.note({ step: 'second-conversation-draft', secondConversationDraft, persistedActiveSession: await evaluate(client, `localStorage.getItem('littlesheep.ui.activeSession')`) })
+    await submit(client, '第二会话工作区隔离验收，请直接简短回复。')
+    const secondSettled = await waitForStreamState(client, 'settled', 'the second conversation to settle')
+    const secondSession = await harness.waitFor(() => evaluate(client, `(() => {
+      const id = localStorage.getItem('littlesheep.ui.activeSession')
+      const items = [...document.querySelectorAll('.session-item')]
+      return id && items.filter((item) => item.classList.contains('active')).length === 1 ? id : null
+    })()`), 20_000, 'the second conversation id')
+    recorder.check(secondSession !== firstSessionId, 'the new conversation persists under a different session id', { firstSessionId, secondSession })
+    const secondDraftMarker = 'UNSAVED_SESSION_B_DRAFT_7391'
+    const secondBrowserUrl = `${scenarioBaseUrl}/health?scene=session-b`
+    const secondScene = await createWorkspaceScene(client, {
+      fileName: 'scenario-file-01.ts',
+      draftMarker: secondDraftMarker,
+      browserUrl: secondBrowserUrl,
+    })
+    const secondWorkspaceKey = `session:${encodeURIComponent(secondSession)}`
+    const secondSceneScreenshot = await writePng(client, 'session-b-workspace-scene')
+    recorder.note({ step: 'session-b-workspace-scene', secondSettled, secondSession, secondScene, screenshot: secondSceneScreenshot })
+
+    const secondFileTab = await clickVisible(client, '.workspace-active-item', 'scenario-file-01.ts')
+    const secondEditorRestored = secondFileTab.clicked && await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.workspace-editor-monaco .view-lines')?.textContent?.includes(${JSON.stringify(secondDraftMarker)}) || null`),
+      10_000,
+      'conversation B unsaved draft to restore',
+    )
+    const secondBrowserTab = await evaluate(client, `(() => {
+      const tab = [...document.querySelectorAll('.workspace-active-item')]
+        .find((node) => node.querySelector('.workspace-panel-svg-icon circle[r="5.25"]'))
+      if (!(tab instanceof HTMLElement)) return false
+      tab.click()
+      return true
+    })()`)
+    const secondBrowserRestored = secondBrowserTab && await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.workspace-browser-address input')?.value === ${JSON.stringify(secondBrowserUrl)} || null`),
+      10_000,
+      'conversation B browser address to restore',
+    )
+    const secondLayout = await evaluate(client, `(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}')
+      return layouts[${JSON.stringify(secondWorkspaceKey)}] ?? null
+    })()`)
+    recorder.check(
+      secondEditorRestored === true && secondBrowserRestored === true
+        && secondLayout?.expandedPaths?.some((path) => path.endsWith('notes'))
+        && Object.values(secondLayout?.drafts ?? {}).some((draft) => draft.editorText.includes(secondDraftMarker)),
+      'conversation B restores its own file draft, directory, and browser state',
+      { secondEditorRestored, secondBrowserRestored, layout: secondLayout },
+    )
+    recorder.check(
+      !Object.values(secondLayout?.drafts ?? {}).some((draft) => draft.editorText.includes(firstDraftMarker))
+        && !secondLayout?.browserTabs?.some((tab) => tab.url === firstBrowserUrl),
+      'conversation B does not inherit conversation A draft or browser state',
+      { secondLayout },
+    )
+
+    const switchedToFirst = await evaluate(client, `(() => {
+      const target = [...document.querySelectorAll('.session-item')]
+        .find((item) => item.textContent?.includes('请输出这份验收文档'))
+      if (!(target instanceof HTMLElement)) return false
+      target.click()
+      return true
+    })()`)
+    if (!switchedToFirst) throw new Error('conversation A was not available in the session list')
+    await harness.waitFor(() => evaluate(client, `localStorage.getItem('littlesheep.ui.activeSession') === ${JSON.stringify(firstSessionId)} || null`), 20_000, 'conversation A to become active again')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-browser-address input')?.value === ${JSON.stringify(firstBrowserUrl)} || null`), 20_000, 'conversation A browser scene to restore')
+    const firstFileTab = await clickVisible(client, '.workspace-active-item', 'scenario-file-00.ts')
+    const firstEditorRestored = firstFileTab.clicked && await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.workspace-editor-monaco .view-lines')?.textContent?.includes(${JSON.stringify(firstDraftMarker)}) || null`),
+      10_000,
+      'conversation A unsaved draft to restore',
+    )
+    const firstLayout = await evaluate(client, `(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}')
+      return layouts[${JSON.stringify(firstWorkspaceKey)}] ?? null
+    })()`)
+    recorder.note({ step: 'session-switch-restore', firstBrowserUrl, firstEditorRestored, firstLayout })
+    recorder.check(
+      firstEditorRestored === true && firstLayout?.browserTabs?.some((tab) => tab.url === firstBrowserUrl)
+        && firstLayout?.expandedPaths?.some((path) => path.endsWith('notes'))
+        && Object.values(firstLayout?.drafts ?? {}).some((draft) => draft.editorText.includes(firstDraftMarker)),
+      'switching back to conversation A restores its distinct file draft, expanded directory, and browser tab',
+      { firstEditorRestored, firstLayout },
+    )
+    recorder.check(
+      !Object.values(firstLayout?.drafts ?? {}).some((draft) => draft.editorText.includes(secondDraftMarker))
+        && !firstLayout?.browserTabs?.some((tab) => tab.url === secondBrowserUrl),
+      'conversation A does not inherit conversation B draft or browser state',
+      { firstLayout },
+    )
+
+    // ---------------------------------------------------------------------
+    // 6. Markdown font roles in the real window
     // ---------------------------------------------------------------------
     const fontProbe = await evaluate(client, `(() => {
       const read = (selector) => {
@@ -963,7 +1202,7 @@ async function main() {
     observations: recorder.observations,
     failures: recorder.failures,
     limits: [
-      'One session and one window: the two-conversation isolation and the restart half of UX-16 are covered by the existing continuity walkthrough (pnpm run verify:electron-ui-state-continuity), not by this fixture.',
+      'The two-conversation workspace scene is measured here; full process restart recovery remains covered by pnpm run verify:electron-ui-state-continuity.',
       'The default permission mode prompts before the Agent touches anything, so the fixture answers those prompts the way a user would (see `approvals`); it does not measure the prompt itself.',
       'The compact/normal rendering of failure, permission, unverified, partial and waiting states is a separate scenario and is not measured here.',
       'The long tool result comes from the real glob tool over a 64-file fixture workspace; the answer text comes from the deterministic acceptance Provider.',

@@ -7,6 +7,7 @@ import {
 } from '@littlesheep/llm';
 import type {
   RunContext,
+  RuntimeEventEnvelope,
   ToolInvocationRecord,
   ToolResult,
 } from '@littlesheep/types';
@@ -66,6 +67,10 @@ import {
   persistToolLoopProgress,
   registerEvidenceFingerprint,
 } from './evidence-progress.js';
+import {
+  consumePendingRuntimeUserMessages,
+  takeDeferredRuntimeUserMessages,
+} from '../../runtime-control-boundary.js';
 
 const MAX_ITERATIONS = MAX_TOOL_LOOP_ITERATIONS;
 /**
@@ -144,6 +149,7 @@ export async function runToolLoop(
   const tailLedger = new RunTailLedger(priorTailEntries(ctx));
   const initialTail = tailLedger.update(ctx, systemSegments, tailSegments);
   const tailMessageSet = new Set<ChatMessage>();
+  const runtimeUserMessages = new Map<ChatMessage, RuntimeEventEnvelope>();
   const initialTailMessages = initialTail.messages;
   for (const message of initialTailMessages) tailMessageSet.add(message);
   // The tail is part of the request the Provider caches, so it is persisted here:
@@ -170,6 +176,12 @@ export async function runToolLoop(
   persistVerifyGapControl(ctx, produced, messages);
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+    const pendingUserMessages = captureRuntimeUserMessages(ctx);
+    if (pendingUserMessages.error) {
+      return { ok: false, content: '', toolResults, iterations: iteration - 1, error: pendingUserMessages.error };
+    }
+    appendRuntimeUserMessages(ctx, messages, produced, pendingUserMessages.events, runtimeUserMessages);
+
     if (!reserveToolLoopIteration(ctx)) {
       // A spent budget ends the loop, not the turn: one bounded final-answer
       // request is allowed so the model can report the work it already did.
@@ -242,6 +254,7 @@ export async function runToolLoop(
           trailingOwnership: 'caller',
           tailMessages: tailMessageSet,
           tailKinds,
+          runtimeUserMessages,
         }),
         // The loop owns the append-only tail; the request recorder must not
         // re-inject (and thereby re-position) it per iteration. Context trimming
@@ -272,6 +285,22 @@ export async function runToolLoop(
     }
 
     closeTranscriptTurn(ctx, transcriptTurn, response.finishReason);
+
+    // A user message may arrive while the Provider is streaming. Before
+    // accepting a final answer or executing proposed tools, capture it at this
+    // safe boundary and let the same main loop reconsider the request.
+    const updatesAfterRequest = captureRuntimeUserMessages(ctx);
+    if (updatesAfterRequest.error) {
+      return { ok: false, content: '', toolResults, iterations: iteration, error: updatesAfterRequest.error };
+    }
+    if (updatesAfterRequest.events.length > 0) {
+      if (response.finishReason === 'stop' && response.content.trim()) {
+        messages.push({ role: 'assistant', content: response.content });
+      }
+      appendRuntimeUserMessages(ctx, messages, produced, updatesAfterRequest.events, runtimeUserMessages);
+      ctx.onAssistantReplace?.('');
+      continue;
+    }
 
     if (response.finishReason === 'stop') {
       const citationValidation = validateWebCitations(response.content, ctx.webEvidence);
@@ -526,6 +555,40 @@ export async function runToolLoop(
   };
 }
 
+function captureRuntimeUserMessages(ctx: RunContext): {
+  events: RuntimeEventEnvelope[];
+  error?: string;
+} {
+  const consumed = consumePendingRuntimeUserMessages(ctx);
+  if (consumed.error) return consumed;
+  return { events: takeDeferredRuntimeUserMessages(ctx) };
+}
+
+function appendRuntimeUserMessages(
+  ctx: RunContext,
+  messages: ChatMessage[],
+  produced: RunContext['produced'],
+  events: readonly RuntimeEventEnvelope[],
+  candidates: Map<ChatMessage, RuntimeEventEnvelope>,
+): void {
+  for (const event of events) {
+    const text = typeof event.payload.text === 'string' ? event.payload.text : '';
+    if (!text.trim()) continue;
+    const chatMessage: ChatMessage = { role: 'user', content: text };
+    messages.push(chatMessage);
+    candidates.set(chatMessage, event);
+    produced.push({
+      id: event.id,
+      role: 'user',
+      content: [{ type: 'text', text }],
+      timestamp: event.receivedAt,
+      sessionId: ctx.sessionId,
+      runId: ctx.runId,
+      stage: 'execute',
+    });
+  }
+}
+
 function finalizeToolResult(
   ctx: RunContext,
   produced: RunContext['produced'],
@@ -587,4 +650,3 @@ function updateInvocationRecord(
 ): void {
   upsertToolInvocationEvidence(ctx, 'execute', record, state);
 }
-

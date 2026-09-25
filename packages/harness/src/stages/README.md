@@ -1,10 +1,12 @@
 # Harness Stages
 
-最后更新：2026-09-24 11:13:25
+最后更新：2026-09-25 17:09:14
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
 ## 所有权
+
+- `execute/` 在每次模型请求前后读取当前 run 的已接收用户补充；响应期间到达的新要求先进入同一主循环，再决定工具或最终回答。阶段边界仍由 `runtime-control-boundary.ts` 持有事件结算与暂存。
 
 - `classify.ts`：确定性活动路由，不发出模型请求，只产出 `execute`（能力/状态询问以外的所有请求）与 `reply`（能力/状态询问）；`clarify` 不再可路由，缺少信息由回复本身追问。
 - `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把**不可用证据**交给恢复，把**已记录的负结果**留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。两者的分界是"Runtime 知道什么"——权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）是"还没人决定是否授权"，用户必须决定，所以升级；Runtime 自己在执行前发出的拒绝（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）是确定性结果（调用没跑），连同 `failed`/`timed_out`/`aborted` 与结果缺失、输出截断、未结算副作用一起按各自的证据类别处理。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。

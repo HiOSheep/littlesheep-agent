@@ -1,9 +1,11 @@
 # Electron Renderer
-最后更新：2026-09-25 15:34:00
+最后更新：2026-09-25 17:09:14
 
-Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。
+Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
-首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。`inline-markdown.tsx` 负责活动行的单行标签（有界扫描器，不引入解析器）。**注意：入口字节数在本应用里不是首帧的可靠代理**——Markdown 解析管线整条按需（入口 −400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须以成对实测证明收益，详见 `docs/reference/cold-start-baseline/`。
+运行中的补充发送由 `chat/active-run-update.ts` 按 Runtime 事件身份显示为当前对话的用户消息；停止入口与补充发送入口并存，详细行为和真实窗口门见 `chat/README.md`。
+
+首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。语法高亮与纯文本回退共享同一个代码头部栏、语言标签、自动换行和复制动作；换行偏好由 `ui/code-wrap-preference.ts` 持有，工作区 Monaco 使用同一持久值（UX-23）。`inline-markdown.tsx` 负责活动行的单行标签（有界扫描器，不引入解析器）。**注意：入口字节数在本应用里不是首帧的可靠代理**——Markdown 解析管线整条按需（入口 −400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须以成对实测证明收益，详见 `docs/reference/cold-start-baseline/`。
 
 ## 入口与所有权
 
@@ -17,12 +19,12 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `ui/README.md` 的状态样本是共享角色的唯一清单：错误文本、危险控件、行内通知几何、常规/提交/页头/段内动作和禁用态各有唯一 token（`--feedback-danger-text`、`--notice-padding-*`/`--notice-font-size`、`--control-height-md|sm|row`、`--control-disabled-opacity`、`--choice-disabled-opacity`）。UX-14 的实机验收 `pnpm run verify:shared-ui-roles` 在真实窗口里逐条测量：对话框校验错误与五处历史浅红都是 `rgb(255, 210, 210)`、插件成功/失败通知都是 8px/10px/12px 且字号 12px、设置页头动作 32px、段内紧凑动作 30px、进行中的操作用 0.42 禁用并配文字（保存中/加载中/清除中）、`prefers-reduced-motion` 下 0.14s/0.18s 的动效塌到 0.001s；源侧契约由 `ui-state-consistency.test.ts` 守住。密集行、工具条与选择器角色**没有**收敛，取值与理由记在该目录 README。
 - `approval/`、`chat/`、`composer/`、`runtime/`、`runtime-recovery/`、`runtime-readiness/`、`settings/`、`sidebar/`、`ui/`、`workspace/`：按责任域拆分的 Renderer 实现。
 - `styles/`：跨领域样式。共享外壳的定位契约要当成布局事实读：`.workspace-files-navigator` 的 `position: absolute` 只适用于 `.workspace-shared-file-navigator` 这个 flex 占位项内部的普通目录导航；审阅标签的导航是 `.workspace-review` 的直接子元素，必须留在 flex 行内（`04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则），否则它会盖住 Diff 表面和标题行按钮（UX-18 实机验收记录：两个图标按钮与导航刷新按钮落在同一矩形，指针不可达）。**窄宽度下的布局切换用容器查询**：`07-overlays-settings.css` 在 560px 以下把供应商模型行从四列改为堆叠并显示每字段标签；实测 800×600 最小窗口下原布局只剩 62px/44px 两个可输入字段（UX-15）。窗口级与缩放级的可用性走查见 `pnpm run verify:narrow-high-dpi-forms`。
-- `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作（详见该目录 README）。诊断文案的两个计数互斥：`invalidFiles` 是最近一次扫描读不出来的记录数，`warningCount` 只统计残留临时文件、目录读写异常等不属于这些记录的发现，因此一份坏记录不会被同时说成“无法读取”和“不完整”。
+- `runtime-recovery/`：启动恢复入口与对话框。发现失败、损坏记录、待补充信息和待恢复任务是不同事实，收敛成同一个安静入口：失败可重试、聊天保持可用、不自动打开弹窗，重试只重读列表而不重跑已结算操作。入口在恢复层打开时保持挂载，临时退出键盘顺序并对辅助技术隐藏，供 Escape 关闭后恢复焦点（详见该目录 README）。诊断文案的两个计数互斥：`invalidFiles` 是最近一次扫描读不出来的记录数，`warningCount` 只统计残留临时文件、目录读写异常等不属于这些记录的发现，因此一份坏记录不会被同时说成“无法读取”和“不完整”。
 - `api.ts`：22 行 Local App API 兼容 barrel；领域客户端位于 `api/`。
 - `TraceCard.tsx`、`MemoryTreeView.tsx`、`ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`：仍保留的独立领域视图，由 `settings/workspace.tsx` 的归档、技能和外部渠道页复用；其中记忆页只显示六份权威记忆文件并仅允许编辑 `SOUL.md`，不承载 Atom、向量或记忆写入入口。**一个功能只有一个名字**：`ChannelConnections.tsx` 的标题、空态、反馈文案与导航条目都写「外部渠道」（标题曾是「渠道连接」，与导航条目不一致，UX-12/UX-13 实机验收发现并统一）；三处入口的名称与返回位置由 `pnpm run verify:settings-navigation-terminology` 在真实窗口走查。
 - `ArchiveManager.tsx`：归档项目的永久删除先经 `ui/danger-confirm.tsx` 确认，文案由 `deletion-impact.ts` 按 Local App API 的真实行为生成（删除项目记录会连同其归档对话和本地消息记录，磁盘项目文件夹保留）。删除期间确认动作单次提交，失败留在确认层内。可恢复的归档操作保持单次点击。**防重复必须是同步的 `deletingRef`，不能只靠 `deleting` state**：同一 task 内的两次点击都读到 state 的旧值，实测会在确认层上发出两次 DELETE（`verify:deletion-confirmation` 连点断言，回归在 `deletion-impact.test.ts`）。
-- `MemorySkills.tsx`、`skill-catalog-state.ts`：技能页的加载中、成功为空、成功有数据和失败是四种不同结果；重新加载失败保留已有列表并标注未刷新，详情读取失败保留列表与当前选择并提供重试。状态规则是纯 reducer，可在无窗口环境下回归。**页头必须有可点的刷新入口**（`dialog-header` 里的"刷新"，复用 `ms-feedback-action` 样式）：否则"保留列表并标注未刷新"这条分支在界面上不可达——此前只有失败后才出现重载按钮，加载成功的页面无法再刷新（`verify:skills-catalog-states` 实机验收发现）。
-- `deletion-impact.ts`：不可逆删除的对象、影响和保留项的唯一文案来源；供应商删除只描述配置条目移除，密钥仍留在系统密钥库，并提示当前选中模型是否来自该供应商。
+- `MemorySkills.tsx`、`skill-catalog-state.ts`：技能页的加载中、成功为空、成功有数据和失败是四种不同结果；重新加载失败保留已有列表并标注未刷新，详情读取失败保留列表与当前选择并提供重试。状态规则是纯 reducer，可在无窗口环境下回归。**页头必须有可点的刷新入口**（`dialog-header` 里的"刷新"，复用 `ms-feedback-action` 样式）：否则"保留列表并标注未刷新"这条分支在界面上不可达——此前只有失败后才出现重载按钮，加载成功的页面无法再刷新（`verify:skills-catalog-states` 实机验收发现）。该门还在隔离真实窗口注入了成功空数组与延迟详情响应，验证“暂无技能”只随成功空结果出现、较慢旧详情不会覆盖较新的用户选择。
+- `deletion-impact.ts`：不可逆删除的对象、影响和保留项的唯一文案来源；供应商删除只描述配置条目移除，密钥仍留在系统密钥库，并提示当前选中模型是否来自该供应商。归档项目确认说明受影响的对话数、历史记录与磁盘目录；归档/供应商删除都必须同步防重，真实窗口门覆盖多会话项目和同帧连点。
 - `channel-status.ts`：渠道总体状态的唯一派生口。总体标签由已加载渠道的真实 `running` 与失败项计数得出（未配置/未运行/部分运行/运行中），不把“列表非空”或“已配置”当成连接健康；列表标题与逐项标签使用同一批事实。**后端契约**：载荷里的 `channels` 只含正在运行的实例（`PluginHost.listChannels()` 读渠道管理器的运行表，`stop()` 移出条目、启动失败进 `failures`），因此"已加载但已停止"的条目在当前后端不可达——总体状态里那句不可达文案已按契约改成陈述配置事实（"已配置 N 个渠道（M 个启用），当前没有渠道在运行"），逐项 `running` 判定保留为防御路径。四种 fixture（空配置 / 全部停用 / 运行中含失败 / 全部运行）的标签、计数与取色核对见 `pnpm run verify:channel-entry-states`。
 - `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义供应商使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。**编辑会话与离开保护**（UX-06）：草稿放在模块内存的 `provider-editor-session.ts`（不落盘、不写日志），所以切页再回来时它还在——回到该页会**直接带着草稿重新打开编辑器**；`关闭/取消` 在有未保存修改时**先问再丢**（`provider-editor-discard`：继续编辑 / 丢弃修改），不会静默丢失，保存中则两者都禁用。真实窗口实测（`verify:provider-editor-draft`）：切页后草稿名仍在（脏状态标签优先于"已恢复…"），丢弃不发任何保存请求，注入 500 后失败原因与可修正内容都留在编辑器里。
 - `composer/context-usage-indicator.tsx` 除上下文窗口占用外，还显示**会话累计缓存命中率**与 `缓存读取 / 输入` 原值（含冷启动，与验收账本同源）；展示层 `toFixed(1)` 四舍五入，判定层始终用精确值。

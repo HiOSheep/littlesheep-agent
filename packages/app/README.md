@@ -1,8 +1,10 @@
 # @littlesheep/app
 
-最后更新：2026-09-25 15:34:00
+最后更新：2026-09-25 17:09:14
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
+
+运行中补充由 Local App API 写入当前 run 的事件队列，再由 Harness 在安全边界送进同一执行循环；Renderer 按事件身份显示一次用户消息。停止与补充的隔离窗口验收见 `pnpm run verify:composer-stop-append`。
 
 - **冷启动三段式**：窗口早于执行能力出现。①数据根迁移、用户布局、keychain、config、Memory v3（顺序是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口加载渲染器；③Runner 与 RunRouter 建成后发布执行就绪。可选插件宿主在就绪之后异步加载，不阻塞执行能力。
 - **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。
@@ -13,7 +15,11 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **一个功能只有一个名字**：同一功能从聊天、设置总览、设置侧边栏和工作模块直入页进入时，标题与导航条目必须同名，关闭设置回到打开设置前的那一页；面向用户的文案只描述当前可用能力（术语表见 `docs/principles/ui-interaction-guidelines.md`，源码扫描见 `terminology.test.ts`，真实窗口走查见 `pnpm run verify:settings-navigation-terminology`）。
 - **窄窗口与缩放下的表单可用性**：关键按钮必须始终可达（含滚动后可达），输入字段不得被压缩到无法输入，页面不出现非必要横向滚动，长路径既能完整查看也能复制。供应商模型行在 560px 以下由四列改为堆叠并显示每字段标签（实测最小窗口下原布局只剩 62px/44px，见 `src/renderer/README.md` 的 `styles/` 条目）；五组窗口×缩放组合的走查见 `pnpm run verify:narrow-high-dpi-forms`。
 - **失败留在发起处**：供应商保存、阈值保存、渠道重载、插件启停、文件保存五类写操作都必须在本页显示失败与下一步（`src/renderer/ui/feedback.ts` 的 `tone` 字段决定 `status`/`alert` 与色调，长错误有界折叠），不要求用户回到聊天区找错误；工作区文件保存的状态行还要跨过它自己触发的那次预览刷新。五类注入见 `pnpm run verify:async-feedback`。
+- **不可逆删除先讲清范围**：归档项目删除说明随项目移除的归档对话数和本地消息记录，并确认磁盘目录保留；供应商删除说明模型条目、当前模型依赖、密钥库与对话记录边界。真实窗口门 `pnpm run verify:deletion-confirmation` 覆盖取消、Escape、失败重试、归档项目多会话清理及删除连点只提交一次。
 - **右侧工作区的导航占位是布局契约**：普通目录导航由 `.workspace-shared-file-navigator` 这个 flex 项占位，而审阅标签的导航是审阅表面的直接子元素——只有 `position: absolute` 时它会盖住 Diff 表面和标题行按钮（UX-18 实机验收测得两组按钮落在同一矩形，指针不可达）。`src/renderer/styles/04-workspace.css` 的 `.workspace-files > .workspace-files-navigator` 规则让它留在行内，改动这块样式前先读 `src/renderer/README.md` 的 `styles/` 条目与 `pnpm run verify:review-navigator-width`。
+- **代码换行偏好跨两个代码界面共享**：Markdown 代码块的头部栏在高亮与纯文本回退路径中相同；`CodeWrapToggle` 与工作区 Monaco 读取 `littlesheep.ui.codeWrap`。默认关闭、开启后即时同步并记住状态。`pnpm run verify:code-wrap-control` 在隔离 Electron 窗口实测了水平溢出变化与 Monaco 折行行数。
+- **重启保留当前入口**：启动时恢复上次会话只装载会话历史与工作区，不会覆盖应用关闭前保存的设置页或模块路由；用户手动切换会话仍返回对话。真实退出/重开验收见 `pnpm run verify:electron-ui-state-continuity`。
+- **技能目录的空态与失败各有真实证据**：`MemorySkills.tsx` 只有 Runtime 成功返回空数组才显示“暂无技能”；列表刷新失败保留旧列表，详情失败保留可重试的选择。`pnpm run verify:skills-catalog-states` 的隔离窗口门覆盖 loading、成功有数据、成功空数组、列表/详情失败与详情快速切换。
 - **没有模型时的第一步是可用路径**：输入栏的选择器把"还没配置""配置读取失败""已保存但不可用""可用但还没选模型"分成四种事实（`src/renderer/composer/runtime-availability.ts`），空菜单直接给出"配置模型 / 检查供应商配置 / 重试读取"，打开设置只是路由切换、不清空草稿与附件；自定义供应商保存的模型条目是元数据对象，因此 Runtime 的模型引用校验必须按解析后的 id 比较（`src/main/local-app-api/runtime-routes.ts`）。整条路径由 `pnpm run verify:no-model-config-loop` 在真实窗口走查。
 - **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。
 - **启动失败页可取证**：`src/main/desktop-acceptance-actions.ts` 只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时装配隔离验收动作（`/application/acceptance` 的 `resize` / `startup-error` 等），后者把真实失败文案交给生产同一份 `showStartupError` 文档，使 CS-02 能对"启动失败"这一无法靠等待到达的状态取像素证据；生产运行不挂载这些动作。
@@ -25,6 +31,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 
 - 输入确认：Enter 发送、Shift+Enter 换行、输入法组词确认候选不触发提交，由 `renderer/ui/enter-confirm.ts` 单独拥有；视图不得自行判断 Enter。
 - 键盘层级：`renderer/ui/modal-layer.ts` / `modal-surface.ts` 决定 Escape 属于最上层、模态对话框的 Tab 约束与焦点归还；平铺编辑页只用页面级作用域，不捕获 Tab。
+- 恢复对话框打开时，恢复入口保留为焦点返回目标并暂时退出键盘顺序；Escape 只收起弹窗，不续跑或放弃现场。
 - 异步反馈：`renderer/ui/feedback.ts` / `feedback-notice.tsx` 是唯一结构，色调来自结果字段而不是解析文案；失败留在发起操作处、可重试、长错误折叠呈现。设置页的写操作必须把结果带回本页，包括 `applyRuntimePatchReporting` 返回的 Runtime 失败文本。
 - 不可逆操作：永久删除先经 `renderer/ui/danger-confirm.tsx` 确认，影响文案由 `renderer/deletion-impact.ts` 按真实 API 行为生成；可恢复的归档恢复保持单次点击。删除事务的防重复必须是**同步的 ref**（`ArchiveManager.tsx` 的 `deletingRef`）：同一 task 内连点两次时 React state 仍是旧值，真实窗口实测会向 API 发出两次 DELETE。
 - 显示密度：紧凑模式只折叠无需关注的行，失败、权限拒绝、未验证、部分完成与待用户事项必须继续可见（`renderer/chat/activity-visibility.ts`）。

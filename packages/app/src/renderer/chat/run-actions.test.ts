@@ -33,6 +33,11 @@ describe('run actions active-run updates', () => {
       dedupKey: expect.any(String),
     }))
     expect(fixture.input()).toBe('')
+    expect(fixture.messages()).toContainEqual(expect.objectContaining({
+      id: apiMocks.sendRuntimeTaskEvent.mock.calls[0]?.[1].id,
+      role: 'user',
+      text: 'add verification',
+    }))
     expect(fixture.notices.at(-1)).toMatchObject({ tone: 'success' })
   })
 
@@ -67,6 +72,7 @@ describe('run actions active-run updates', () => {
       dedupKey: firstRequest?.dedupKey,
     })
     expect(fixture.input()).toBe('')
+    expect(fixture.messages().filter((message) => message.text === 'retry safely')).toHaveLength(1)
   })
 
   it('keeps the update visible while the run identity is still starting', async () => {

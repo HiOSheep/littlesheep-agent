@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-25 15:34:00
+最后更新：2026-09-25 15:36:13
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -9,7 +9,7 @@
 - `transient.ts`、`resize.ts`：临时菜单事件和拖动生命周期。
 - `icons.tsx`：统一图标集合；`browser-icons.tsx`、`file-glyph-icons.tsx` 是已拆出的浏览器历史和文件类型图标家族。
 - `display-frame.ts`、`display-synced-settle.ts`、`use-frame-coalesced-state.ts`：显示帧合并、布局收敛和高频状态合帧。
-- `code-wrap-preference.ts`：代码“自动换行”开关的唯一偏好来源（taskbook UX-23）。对话里的 Markdown 代码块与拓展工作区的编辑器读同一个 `localStorage` 键（默认关闭＝横向滚动），因此用户在任一处切换后，另一处与重启后的状态一致；存储被禁用时静默回落默认值，不让偏好读取影响渲染。
+- `code-wrap-preference.ts`、`code-wrap-toggle.tsx`：代码“自动换行”偏好的唯一来源与共享可访问按钮（taskbook UX-23）。对话 Markdown 和工作区编辑器读同一个 `localStorage` 键，并通过同一 Renderer 内订阅立即同步；默认关闭＝横向滚动，存储不可用时回落默认值，不让偏好读取影响渲染。`Markdown.tsx` 的高亮与纯文本回退共用头部栏；真实窗口验收门为 `pnpm run verify:code-wrap-control`。
 - `enter-confirm.ts`：Enter 确认语义的纯规则与输入法组词状态。普通 Enter 确认、Shift+Enter 换行、组词中的 Enter 交给输入法；主输入框与项目名输入框共用它，不要把 Enter 判断重新写回各自的 `onKeyDown`。
 - `modal-layer.ts`、`modal-surface.ts`：分层 UI 的键盘语义。`modal-layer.ts` 是纯规则（Escape 归属最上层、Tab 循环索引），`modal-surface.ts` 提供 `useEscapeScope`（页面级作用域：弹层、菜单、平铺设置页）与 `useModalSurface`（真正的模态对话框：进入焦点、Tab 约束、关闭后焦点回到触发点）。
 - `danger-confirm.tsx`：不可逆删除的最小确认层，展示对象、影响和保留项，初始焦点在“取消”，请求进行中禁用两个动作。
@@ -41,4 +41,4 @@
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 
-`icons.tsx` 是无状态声明式图标集合，359 行，但不含业务状态、网络调用或跨域依赖；浏览器历史与文件类型两族已经独立成文件，不得再回流合并。
+`icons.tsx` 是无状态声明式图标集合，359 行，冻结期间保持原有行数；浏览器历史与文件类型图标家族已经独立成文件。代码换行图标由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合。

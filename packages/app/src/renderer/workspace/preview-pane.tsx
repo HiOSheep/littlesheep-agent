@@ -19,6 +19,7 @@ import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState } from './preview-draft'
 import { WorkspacePreviewActions } from './preview-actions'
+import { useCodeWrapPreference } from '../ui/code-wrap-preference'
 import { WorkspaceLineCommentOverlay, type WorkspaceLineComment } from './line-comments'
 import { workspaceErrorMessage } from './workspace-errors'
 import { reportWorkspacePreviewVisible } from './workspace-timing'
@@ -99,6 +100,7 @@ export function WorkspacePreviewPane({
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [codeWrapEnabled, setCodeWrapEnabled] = useCodeWrapPreference()
   /** Path whose save confirmation must survive the preview refresh it caused. */
   const savedStatusPathRef = useRef<string | null>(null)
   const [editorHandle, setEditorHandle] = useState<{
@@ -124,7 +126,8 @@ export function WorkspacePreviewPane({
     renderLineHighlight: editing ? 'all' : 'none',
     renderWhitespace: 'selection',
     tabSize: 2,
-  }), [editing])
+    wordWrap: codeWrapEnabled ? 'on' : 'off',
+  }), [codeWrapEnabled, editing])
 
   function emitDraft(next: {
     editorText?: string
@@ -263,6 +266,9 @@ export function WorkspacePreviewPane({
             showMarkdownSource={showMarkdownSource}
             showHtmlSource={showHtmlSource}
             canOpenExternalVSCode={canOpenExternalVSCode}
+            showCodeWrapToggle={editorVisible}
+            codeWrapEnabled={codeWrapEnabled}
+            onToggleCodeWrap={() => setCodeWrapEnabled(!codeWrapEnabled)}
             onToggleMarkdownSource={toggleMarkdownSource}
             onToggleHtmlSource={toggleHtmlSource}
             onToggleEditing={toggleEditing}

@@ -118,7 +118,10 @@ describe('permanent deletion wiring', () => {
     const source = await readFile(new URL('./settings/models.tsx', import.meta.url), 'utf8')
 
     expect(source).toContain('providerDeletionImpact(provider, runtime?.model ?? \'\')')
-    expect(source).toContain('if (!pending || deleting) return')
+    expect(source).toContain('if (!pending || deletingRef.current) return')
+    expect(source).not.toContain('if (!pending || deleting) return')
+    expect(source).toContain('const deletingRef = useRef(false)')
+    expect(source).toContain('if (deletingRef.current) return')
     expect(source).toContain('<DangerConfirmDialog')
     expect(source.match(/await deleteProvider\(/gu)).toHaveLength(1)
     // Opening the confirmation itself must not delete anything.

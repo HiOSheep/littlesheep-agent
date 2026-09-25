@@ -1,9 +1,9 @@
 // Real-window acceptance for irreversible deletion (taskbook UX-02).
 //
 // `danger-confirm.tsx` and `deletion-impact.ts` are unit-tested, but the acceptance asks for the
-// real paths: cancel, Escape, a failing request, a double click, and a project that owns several
-// conversations. The two properties that matter are "nothing is deleted before confirmation" and
-// "the confirmation says what the API will really do".
+// real paths: cancel, Escape, a failing request, same-task double clicks, a project that owns
+// several conversations, and provider removal. The two properties that matter are "nothing is
+// deleted before confirmation" and "the confirmation says what the API will really do".
 //
 // The fixture seeds the archive index directly (the same `archive/index.json` the app writes),
 // then drives the real archive page and counts the DELETE requests the renderer issues through a
@@ -12,7 +12,7 @@
 // Usage:
 //   node scripts/verify-deletion-confirmation.mjs [--out=<dir>] [--keep]
 
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
@@ -29,8 +29,11 @@ const outRoot = resolve(repoRoot, readOption('out', join(tmpdir(), 'littlesheep-
 const keepRoot = process.argv.includes('--keep')
 const WINDOW = { width: 1180, height: 760 }
 const EVALUATE_TIMEOUT_MS = 15_000
+const PROJECT = { id: 'archived-project-alpha', name: '归档项目甲' }
 const SESSION_A = { id: 'archived-session-alpha', title: '归档对话 甲' }
 const SESSION_B = { id: 'archived-session-beta', title: '归档对话 乙' }
+const PROJECT_SESSION_A = { id: 'archived-project-session-alpha', title: '项目对话 甲' }
+const PROJECT_SESSION_B = { id: 'archived-project-session-beta', title: '项目对话 乙' }
 
 function withTimeout(promise, timeoutMs, label) {
   let timer
@@ -81,19 +84,50 @@ function buildConfig(workspaceDir, providerBaseURL) {
 /** Two archived conversations with history, written where the app reads them. */
 async function seedArchive(dataDir) {
   const now = Date.now()
+  const projectPath = join(dataDir, '..', 'archived-project-files')
   await mkdir(join(dataDir, 'sessions'), { recursive: true })
   await mkdir(join(dataDir, 'archive'), { recursive: true })
-  const sessions = [SESSION_A, SESSION_B].map((session, index) => ({
+  await mkdir(projectPath, { recursive: true })
+  await writeFile(join(projectPath, 'keep-after-archive-delete.txt'), 'project files are outside archive deletion\n', 'utf8')
+  const project = {
+    ...PROJECT,
+    path: projectPath,
+    createdAt: new Date(now - 300_000).toISOString(),
+    lastActiveAt: new Date(now - 60_000).toISOString(),
+    archivedAt: now,
+  }
+  const sessions = [
+    ...[SESSION_A, SESSION_B].map((session, index) => ({
+      ...session,
+      createdAt: now - (index + 4) * 60_000,
+      lastMessageAt: now - (index + 3) * 60_000,
+      mode: 'research',
+      scope: 'standalone',
+      archivedAt: now - index * 1_000,
+    })),
+    ...[PROJECT_SESSION_A, PROJECT_SESSION_B].map((session, index) => ({
+      ...session,
+      createdAt: now - (index + 2) * 60_000,
+      lastMessageAt: now - (index + 1) * 60_000,
+      mode: 'research',
+      scope: 'project',
+      projectId: PROJECT.id,
+      workspacePath: projectPath,
+      archivedAt: now - index * 1_000,
+    })),
+  ].map((session, index) => ({
     id: session.id,
     title: session.title,
-    createdAt: now - (index + 2) * 60_000,
-    lastMessageAt: now - (index + 1) * 60_000,
-    mode: 'research',
-    scope: 'standalone',
-    archivedAt: now - index * 1_000,
+    createdAt: session.createdAt,
+    lastMessageAt: session.lastMessageAt,
+    mode: session.mode,
+    scope: session.scope,
+    ...(session.projectId ? { projectId: session.projectId } : {}),
+    ...(session.workspacePath ? { workspacePath: session.workspacePath } : {}),
+    archivedAt: session.archivedAt,
   }))
   await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({ sessions: [] }, null, 2)}\n`, 'utf8')
-  await writeFile(join(dataDir, 'archive', 'index.json'), `${JSON.stringify({ projects: [], sessions }, null, 2)}\n`, 'utf8')
+  await writeFile(join(dataDir, 'archive', 'index.json'), `${JSON.stringify({ projects: [project], sessions }, null, 2)}\n`, 'utf8')
   for (const session of sessions) {
     const lines = [JSON.stringify({
       type: 'metadata',
@@ -116,7 +150,7 @@ async function seedArchive(dataDir) {
     }
     await writeFile(join(dataDir, 'sessions', `${session.id}.jsonl`), `${lines.join('\n')}\n`, 'utf8')
   }
-  return sessions
+  return { project, projectPath, sessions }
 }
 
 /** Count the DELETE requests the renderer actually issues, and optionally fail the next one. */
@@ -160,6 +194,7 @@ const DIALOG_STATE_EXPRESSION = `(() => {
 
 const ARCHIVE_STATE_EXPRESSION = `(() => ({
   rows: [...document.querySelectorAll('.archive-session-row')].map((row) => row.textContent?.trim() ?? ''),
+  projects: [...document.querySelectorAll('.archive-project-row .archive-row-text strong')].map((row) => row.textContent?.trim() ?? ''),
   dialogOpen: Boolean(document.querySelector('.danger-confirm-dialog')),
   deletes: window.__lsDeleteProbe?.requests?.length ?? null,
 }))()`
@@ -182,6 +217,18 @@ async function openArchivePage(client) {
   await harness.waitFor(() => evaluate(client, `document.querySelector('.archive-page') ? true : null`), harness.startTimeoutMs, 'archive page')
 }
 
+async function openModelsPage(client) {
+  const opened = await evaluate(client, `(() => {
+    const item = [...document.querySelectorAll('.settings-nav-item')]
+      .find((element) => element.textContent?.includes('模型供应商'))
+    if (!(item instanceof HTMLElement)) return false
+    item.click()
+    return true
+  })()`)
+  if (!opened) throw new Error('the model providers settings page was not reachable')
+  await harness.waitFor(() => evaluate(client, `document.querySelector('.provider-card') ? true : null`), harness.startTimeoutMs, 'configured provider card')
+}
+
 async function clickDeleteFor(client, title) {
   const clicked = await evaluate(client, `(() => {
     const row = [...document.querySelectorAll('.archive-session-row')]
@@ -193,6 +240,34 @@ async function clickDeleteFor(client, title) {
   })()`)
   if (!clicked) throw new Error(`no delete action for "${title}"`)
   await harness.waitFor(() => evaluate(client, `document.querySelector('.danger-confirm-dialog') ? true : null`), harness.startTimeoutMs, 'confirmation layer')
+  await delay(150)
+}
+
+async function clickProjectDeleteFor(client, name) {
+  const clicked = await evaluate(client, `(() => {
+    const row = [...document.querySelectorAll('.archive-project-row')]
+      .find((element) => element.textContent?.includes(${JSON.stringify(name)}))
+    const button = row?.querySelector('.archive-action.danger')
+    if (!(button instanceof HTMLElement)) return false
+    button.click()
+    return true
+  })()`)
+  if (!clicked) throw new Error(`no delete action for archived project "${name}"`)
+  await harness.waitFor(() => evaluate(client, `document.querySelector('.danger-confirm-dialog') ? true : null`), harness.startTimeoutMs, 'project confirmation layer')
+  await delay(150)
+}
+
+async function clickProviderDeleteFor(client, name) {
+  const clicked = await evaluate(client, `(() => {
+    const card = [...document.querySelectorAll('.provider-card')]
+      .find((element) => element.textContent?.includes(${JSON.stringify(name)}))
+    const button = card?.querySelector('.provider-remove')
+    if (!(button instanceof HTMLElement)) return false
+    button.click()
+    return true
+  })()`)
+  if (!clicked) throw new Error(`no delete action for provider "${name}"`)
+  await harness.waitFor(() => evaluate(client, `document.querySelector('.danger-confirm-dialog') ? true : null`), harness.startTimeoutMs, 'provider confirmation layer')
   await delay(150)
 }
 
@@ -210,7 +285,7 @@ async function main() {
 
   try {
     await Promise.all([mkdir(workplaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
-    await seedArchive(dataDir)
+    const seededArchive = await seedArchive(dataDir)
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
 
     const debuggingPort = await harness.reservePort()
@@ -298,6 +373,43 @@ async function main() {
     })()`), 30_000, 'the retried delete')
     const afterRetry = await evaluate(client, ARCHIVE_STATE_EXPRESSION)
 
+    // --- 6. a project confirmation names and removes every archived conversation, but not files --
+    await clickProjectDeleteFor(client, PROJECT.name)
+    const projectDialog = await evaluate(client, DIALOG_STATE_EXPRESSION)
+    const beforeProjectDelete = await evaluate(client, ARCHIVE_STATE_EXPRESSION)
+    await evaluate(client, `document.querySelector('.danger-confirm-dialog .danger-btn')?.click()`)
+    await harness.waitFor(() => evaluate(client, `(() => {
+      const row = [...document.querySelectorAll('.archive-project-row')]
+        .find((element) => element.textContent?.includes(${JSON.stringify(PROJECT.name)}))
+      return row ? null : true
+    })()`), 30_000, 'the archived project disappearing')
+    const afterProjectDelete = await evaluate(client, ARCHIVE_STATE_EXPRESSION)
+    const projectFilesRemain = await access(join(seededArchive.projectPath, 'keep-after-archive-delete.txt')).then(() => true, () => false)
+    const remainingSessionFiles = await Promise.all([PROJECT_SESSION_A, PROJECT_SESSION_B].map(async (session) => {
+      const path = join(dataDir, 'sessions', `${session.id}.jsonl`)
+      return await access(path).then(() => true, () => false)
+    }))
+
+    // --- 7. provider deletion names configuration impact and keeps its key/conversations -------
+    await openModelsPage(client)
+    await clickProviderDeleteFor(client, 'Electron Acceptance')
+    const providerDialog = await evaluate(client, DIALOG_STATE_EXPRESSION)
+    const beforeProviderDelete = await evaluate(client, ARCHIVE_STATE_EXPRESSION)
+    await evaluate(client, `(() => {
+      const button = document.querySelector('.danger-confirm-dialog .danger-btn')
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      button.click()
+      return true
+    })()`)
+    await harness.waitFor(() => evaluate(client, `(() => {
+      const card = [...document.querySelectorAll('.provider-card')]
+        .find((element) => element.textContent?.includes('Electron Acceptance'))
+      return card ? null : true
+    })()`), 30_000, 'the provider card disappearing')
+    const afterProviderDelete = await evaluate(client, ARCHIVE_STATE_EXPRESSION)
+    const providerDeleteRequests = await evaluate(client, `window.__lsDeleteProbe.requests.slice(-1)`)
+
     const results = {
       seeded,
       initial,
@@ -310,6 +422,15 @@ async function main() {
       afterFailure,
       stateAfterFailure,
       afterRetry,
+      projectDialog,
+      beforeProjectDelete,
+      afterProjectDelete,
+      projectFilesRemain,
+      remainingSessionFiles,
+      providerDialog,
+      beforeProviderDelete,
+      afterProviderDelete,
+      providerDeleteRequests,
       screenshots: { dialogScreenshot, failureScreenshot },
     }
 
@@ -339,6 +460,26 @@ async function main() {
     expect(stateAfterFailure.rows.some((row) => row.includes(SESSION_B.title)), 'the conversation disappeared despite the failed delete')
     expect(afterRetry.deletes === 3, `the retry did not submit exactly one more delete (${afterRetry.deletes})`)
     expect(afterRetry.rows.some((row) => row.includes(SESSION_B.title)) === false, 'the retried delete did not remove the conversation')
+    expect(projectDialog?.name?.includes(PROJECT.name), `the confirmation does not name the archived project: ${JSON.stringify(projectDialog?.name)}`)
+    expect(projectDialog?.removes?.some((text) => text.includes('2 个归档对话')), `the confirmation does not disclose both archived conversations: ${JSON.stringify(projectDialog?.removes)}`)
+    expect(projectDialog?.removes?.some((text) => text.includes('2 个对话保存在本地的消息记录')), `the confirmation does not disclose the local conversation history: ${JSON.stringify(projectDialog?.removes)}`)
+    expect(projectDialog?.preserved?.some((text) => text.includes('不会删除磁盘上的项目文件夹')), `the confirmation does not disclose that project files are preserved: ${JSON.stringify(projectDialog?.preserved)}`)
+    expect(beforeProjectDelete.deletes === 3, `opening the project confirmation issued a DELETE (${beforeProjectDelete.deletes})`)
+    expect(beforeProjectDelete.rows.some((row) => row.includes(PROJECT_SESSION_A.title)) && beforeProjectDelete.rows.some((row) => row.includes(PROJECT_SESSION_B.title)), 'the project conversations were missing before confirmation')
+    expect(afterProjectDelete.deletes === 4, `confirming project deletion did not issue exactly one DELETE (${afterProjectDelete.deletes})`)
+    expect(afterProjectDelete.projects.includes(PROJECT.name) === false, 'the archived project remains listed after confirmed deletion')
+    expect(afterProjectDelete.rows.some((row) => row.includes(PROJECT_SESSION_A.title) || row.includes(PROJECT_SESSION_B.title)) === false, 'one or more project conversations remain listed after deletion')
+    expect(projectFilesRemain, 'deleting the archive record removed the project folder from disk')
+    expect(remainingSessionFiles.every((exists) => !exists), `project conversation history files were not all deleted: ${JSON.stringify(remainingSessionFiles)}`)
+    expect(providerDialog?.name?.includes('Electron Acceptance'), `the confirmation does not name the provider: ${JSON.stringify(providerDialog?.name)}`)
+    expect(providerDialog?.removes?.some((text) => text.includes('1 个模型条目')), `the confirmation does not list the provider model entry: ${JSON.stringify(providerDialog?.removes)}`)
+    expect(providerDialog?.preserved?.some((text) => text.includes('API 密钥仍留在系统密钥库')), `the confirmation does not state that the key is preserved: ${JSON.stringify(providerDialog?.preserved)}`)
+    expect(providerDialog?.preserved?.some((text) => text.includes('不会删除任何对话记录')), `the confirmation does not state that conversation records are preserved: ${JSON.stringify(providerDialog?.preserved)}`)
+    expect(providerDialog?.inUse?.includes('slow-a'), `the confirmation does not identify the currently selected model: ${JSON.stringify(providerDialog?.inUse)}`)
+    expect(beforeProviderDelete.deletes === 4, `opening the provider confirmation issued a DELETE (${beforeProviderDelete.deletes})`)
+    expect(afterProviderDelete.deletes === 5, `a double click on provider deletion submitted ${afterProviderDelete.deletes - 4} DELETE requests`)
+    expect(providerDeleteRequests.length === 1 && providerDeleteRequests[0]?.url?.includes('/config/providers/acceptance'), `the confirmed request was not scoped to one provider DELETE: ${JSON.stringify(providerDeleteRequests)}`)
+    expect(afterProviderDelete.rows.length === beforeProviderDelete.rows.length, 'deleting the provider changed archived conversation records')
 
     if (failures.length > 0) {
       throw new Error(`deletion confirmation acceptance failed: ${JSON.stringify({ results, failures })}`)

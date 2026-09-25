@@ -90,6 +90,8 @@ const OBSERVE_EXPRESSION = `(() => {
     text: response?.textContent ?? '',
     activeStage: stages.at(-1)?.textContent ?? null,
     error: turn.querySelector('.run-status-error')?.textContent ?? null,
+    attentionLine: turn.querySelector('.agent-transcript-attention')?.textContent ?? null,
+    displayMode: localStorage.getItem('littlesheep.ui.conversationDisplayMode') ?? 'normal',
   }
 })()`
 
@@ -151,14 +153,22 @@ async function runCase({ client, provider, name, prompt = PROMPT, faults, timeou
     }
     const sample = await evaluate(client, OBSERVE_EXPRESSION)
     if (sample && (sample.state || sample.error)) {
-      if (sample.activeStage !== last?.activeStage || sample.state !== last?.state || sample.error !== last?.error) {
-        timeline.push({ ms: Date.now() - startedAt, state: sample.state, activeStage: sample.activeStage, error: sample.error })
+      if (sample.activeStage !== last?.activeStage || sample.state !== last?.state || sample.error !== last?.error
+        || sample.attentionLine !== last?.attentionLine) {
+        timeline.push({
+          ms: Date.now() - startedAt,
+          state: sample.state,
+          activeStage: sample.activeStage,
+          error: sample.error,
+          attentionLine: sample.attentionLine,
+          displayMode: sample.displayMode,
+        })
       }
       last = sample
       // The turn is finished when the stream settled *or* a Runtime error row replaced it.
       if (sample.state === 'settled' || sample.error) break
     }
-    await delay(30)
+    await delay(10)
   }
   const attempts = provider.requests.slice(before)
   const faultLog = attempts.map((request) => request.fault
@@ -177,6 +187,8 @@ async function runCase({ client, provider, name, prompt = PROMPT, faults, timeou
     answer: last?.text ?? '',
     settled: last?.state === 'settled',
     error: last?.error ?? null,
+    attentionLine: last?.attentionLine ?? null,
+    displayMode: last?.displayMode ?? null,
     timeline,
   }
 }
@@ -205,7 +217,7 @@ async function main() {
       debuggingPort,
       logPath,
       // Shorten only the wait between attempts; the budget itself stays the product's.
-      extraEnv: { LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS: '60' },
+      extraEnv: { LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS: '120' },
     })
     const locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
@@ -269,7 +281,23 @@ async function main() {
       timeoutMs: 30_000,
     }))
 
+    await evaluate(client, `(() => {
+      localStorage.setItem('littlesheep.ui.conversationDisplayMode', 'compact')
+      window.dispatchEvent(new CustomEvent('littlesheep:conversation-display-mode', { detail: 'compact' }))
+      return true
+    })()`)
+    cases.push(await runCase({
+      client, provider, name: 'compact-retry-visible',
+      faults: [{ kind: 'status', status: 503, times: 1 }],
+    }))
+    cases.push(await runCase({
+      client, provider, name: 'compact-unretryable-failure-visible',
+      faults: [{ kind: 'status', status: 401, times: 8 }],
+      timeoutMs: 30_000,
+    }))
+
     const [transient, rateLimit, auth, exhausted, streamCut, timeout, requestError, cancelled] = cases
+    const [compactRetry, compactFailure] = cases.slice(8)
     const failures = []
     const expect = (condition, message) => { if (!condition) failures.push(message) }
 
@@ -334,6 +362,17 @@ async function main() {
     expect(cancelled.retryWording.length === 0, `cancellation still retried: ${JSON.stringify(cancelled.retryWording)}`)
     expect(cancelled.attempts <= 1, `cancellation produced ${cancelled.attempts} attempts`)
     expect(!cancelled.settled || !cancelled.answer.includes(ANSWER_MARKER), 'a cancelled run still produced an answer')
+
+    // I/J. compact mode must keep retry progress and its final failure visible.
+    expect(compactRetry.timeline.length > 0 && compactRetry.timeline.every((entry) => entry.displayMode === 'compact'),
+      'the compact retry case left compact display')
+    expect(compactRetry.retryWording.some((value) => value.includes('第 1 次重试') && value.includes('最多 5 次')),
+      'compact display hid the bounded retry progress')
+    expect(compactRetry.settled && compactRetry.answer.includes(ANSWER_MARKER), 'the compact retry case did not recover')
+    expect(compactFailure.timeline.length > 0 && compactFailure.timeline.every((entry) => entry.displayMode === 'compact'),
+      'the compact failure case left compact display')
+    expect(compactFailure.error?.includes('401') && compactFailure.attentionLine?.includes('本轮未完成'),
+      `compact display hid the failed turn or its reason: ${JSON.stringify(compactFailure)}`)
 
     const evidence = { cases, failures }
     if (failures.length > 0) {

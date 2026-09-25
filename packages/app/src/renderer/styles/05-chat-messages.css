@@ -518,6 +518,8 @@
   --code-copy-button-size: 26px;
   --code-copy-safe-gap: 6px;
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   overflow: hidden;
   background: #202020;
@@ -603,23 +605,52 @@
 }
 
 .code-toolbar {
-  position: absolute;
-  top: var(--code-block-inset);
-  right: var(--code-block-inset);
-  z-index: 1;
+  position: relative;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 0;
-  padding: 0;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 3px 8px;
   color: var(--muted);
-  background: transparent;
-  border-bottom: 0;
-  font-size: 12px;
-  pointer-events: none;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.code-language-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.code-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
 .mermaid-block > .code-toolbar {
+  position: absolute;
+  top: var(--code-block-inset);
+  right: var(--code-block-inset);
+  left: auto;
+  z-index: 1;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  pointer-events: none;
   opacity: 0;
   transition: opacity var(--motion-fast) var(--motion-ease);
 }
@@ -649,6 +680,20 @@
   word-break: break-word;
 }
 
+.code-block-source[data-code-wrap="off"] {
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.code-block-source[data-code-wrap="on"] {
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .code-block-source > code,
 .code-block-source .token {
   max-width: 100%;
@@ -656,6 +701,13 @@
   white-space: inherit;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.code-block-source[data-code-wrap="off"] > code,
+.code-block-source[data-code-wrap="off"] .token {
+  white-space: inherit;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .code-block-source > code {

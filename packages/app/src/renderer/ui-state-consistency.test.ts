@@ -182,6 +182,14 @@ describe('shared state sample', () => {
     expect(declarations('.markdown pre', 'font-family: var(--mono)')).toBe(true)
   })
 
+  it('keeps code language, wrapping, and copy actions in a shared toolbar role', () => {
+    expect(styles).toMatch(/\.code-toolbar\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;[^}]*background:\s*var\(--surface-2\);[^}]*border-bottom:\s*1px solid var\(--border\);/u)
+    expect(styles).toMatch(/\.code-language-label\s*\{[^}]*text-transform:\s*uppercase;[^}]*white-space:\s*nowrap;/u)
+    expect(styles).toMatch(/\.code-block-source\[data-code-wrap="off"\]\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*pre;/u)
+    expect(styles).toMatch(/\.code-block-source\[data-code-wrap="on"\]\s*\{[^}]*white-space:\s*pre-wrap;/u)
+    expect(styles).toMatch(/\.code-toolbar button:focus-visible\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.14\);/u)
+  })
+
   it('keeps the existing theme, motion and radius exceptions intact', () => {
     const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
 

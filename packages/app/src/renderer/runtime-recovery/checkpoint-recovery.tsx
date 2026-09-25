@@ -30,11 +30,14 @@ export function CheckpointRecovery({ recovery }: { recovery: CheckpointRecoveryC
   })
 
   return createPortal(<>
-    {recovery.entry.kind !== 'none' && !recovery.visible && (
+    {recovery.entry.kind !== 'none' && (
       <button
         type="button"
         className={`checkpoint-recovery-trigger ${recovery.entry.kind}`}
         title={recovery.entry.title}
+        aria-hidden={recovery.visible || undefined}
+        tabIndex={recovery.visible ? -1 : undefined}
+        style={recovery.visible ? { pointerEvents: 'none' } : undefined}
         onClick={recovery.entry.action === 'retry' ? recovery.retryDiscovery : recovery.open}
       >
         <RefreshIcon />
