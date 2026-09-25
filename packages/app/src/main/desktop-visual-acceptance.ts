@@ -31,6 +31,25 @@ export function desktopVisualContract(): DesktopVisualContract {
   }
 }
 
+/** Set once an acceptance run explicitly asks for the window on screen. */
+let acceptanceWindowAllowed = false
+
+/** Let an acceptance run show the window; only the pixel checks need that. */
+export function allowAcceptanceWindowForAcceptance(): void {
+  acceptanceWindowAllowed = true
+}
+
+/**
+ * Should an isolated acceptance run keep the window off the user's screen?
+ *
+ * Acceptance scripts drive the production renderer over the debug protocol, so the
+ * window only has to exist — not be visible: showing it takes over whatever the user
+ * is doing. A production start is never held back. Acceptance runs only.
+ */
+export function acceptanceWindowHeldBack(): boolean {
+  return !acceptanceWindowAllowed && process.env['LITTLESHEEP_ELECTRON_ACCEPTANCE'] === '1'
+}
+
 /**
  * Resize a live window to an explicit size.
  *

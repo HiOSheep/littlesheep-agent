@@ -19,6 +19,7 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
   const showStartupPage = vi.fn(() => true)
   const close = vi.fn(() => true)
   const show = vi.fn()
+  const allowAcceptanceWindow = vi.fn()
   let maximized = false
   let minimized = false
   const maximize = vi.fn(() => { maximized = true })
@@ -39,8 +40,8 @@ function createShell(overrides: { destroyed?: boolean; window?: boolean } = {}) 
       } as unknown as NonNullable<AcceptanceWindow>)
       : undefined
   ))
-  const shell = { close, show, currentWindow, showStartupError, showStartupPage } satisfies DesktopAcceptanceShell
-  return { shell, setSize, showStartupError, showStartupPage, close, show, currentWindow, maximize, unmaximize, minimize, restore }
+  const shell = { close, show, currentWindow, showStartupError, showStartupPage, allowAcceptanceWindow } satisfies DesktopAcceptanceShell
+  return { shell, setSize, showStartupError, showStartupPage, close, show, allowAcceptanceWindow, currentWindow, maximize, unmaximize, minimize, restore }
 }
 
 function createActions(shell: DesktopAcceptanceShell, quit = vi.fn()) {
@@ -70,7 +71,7 @@ describe('desktop acceptance actions', () => {
 
   it('drives the live window when the acceptance run asks for it', () => {
     vi.stubEnv(ACCEPTANCE_ENV, '1')
-    const { shell, setSize, showStartupError, showStartupPage, close, show } = createShell()
+    const { shell, setSize, showStartupError, showStartupPage, close, show, allowAcceptanceWindow } = createShell()
     const { actions, quit } = createActions(shell)
     if (!actions) throw new Error('acceptance actions were not created')
 
@@ -91,7 +92,13 @@ describe('desktop acceptance actions', () => {
     expect(actions.close()).toBe(true)
     expect(close).toHaveBeenCalledTimes(1)
     actions.show()
+    // Showing is what puts a window on the user's screen, so an acceptance run has to
+    // say so explicitly first: `allowAcceptanceWindow()` is what releases the shell's
+    // hold-back, and it must happen before `show()` — not after.
+    expect(allowAcceptanceWindow).toHaveBeenCalledTimes(1)
     expect(show).toHaveBeenCalledTimes(1)
+    expect(allowAcceptanceWindow.mock.invocationCallOrder[0])
+      .toBeLessThan((show.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER))
     actions.quit()
     expect(quit).toHaveBeenCalledTimes(1)
   })

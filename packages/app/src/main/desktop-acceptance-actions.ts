@@ -21,6 +21,8 @@ import {
 export interface DesktopAcceptanceShell {
   close(): boolean
   show(): void
+  /** An acceptance run that explicitly wants the window on screen. */
+  allowAcceptanceWindow(): void
   currentWindow(): BrowserWindow | undefined
   showStartupError(error: unknown): void
   showStartupPage(): boolean
@@ -48,7 +50,9 @@ export function createDesktopAcceptanceActions(input: {
     token: input.token,
     snapshot: input.snapshot,
     close: () => input.shell.close(),
-    show: () => input.shell.show(),
+    // show() only takes effect in an acceptance run after this: the window stays
+    // off the user's screen unless a check genuinely needs pixels.
+    show: () => { input.shell.allowAcceptanceWindow(); input.shell.show() },
     quit: input.quit,
     // CS-02 needs the native caption buttons rendered at more than one width,
     // which the renderer cannot drive.

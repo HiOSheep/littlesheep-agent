@@ -23,6 +23,8 @@ import {
   DESKTOP_TITLEBAR_HEIGHT,
 } from './desktop-startup-page.js'
 import {
+  acceptanceWindowHeldBack,
+  allowAcceptanceWindowForAcceptance,
   desktopVisualContract,
   type DesktopVisualContract,
 } from './desktop-visual-acceptance.js'
@@ -137,6 +139,7 @@ export class LittleSheepDesktopShell {
 
   /** Show a lightweight branding surface while the Runtime is still starting. */
   showStartup(): void {
+    if (acceptanceWindowHeldBack()) return
     const window = this.resolveWindow()
     if (window) {
       this.mainWindow = window
@@ -147,6 +150,9 @@ export class LittleSheepDesktopShell {
   }
 
   show(): void {
+    // An acceptance run drives the renderer over the debug protocol; showing the
+    // window would take over the user's screen for no reason (see the helper).
+    if (acceptanceWindowHeldBack()) return
     const window = this.resolveWindow()
     if (window) {
       this.mainWindow = window
@@ -164,6 +170,11 @@ export class LittleSheepDesktopShell {
     const window = this.resolveWindow()
     const restoredState = window ? this.restoreWindowStateFor(window) : undefined
     if (restoredState?.maximized === true) window?.maximize()
+  }
+
+  /** Let an acceptance run show the window (only the pixel checks need it). */
+  allowAcceptanceWindow(): void {
+    allowAcceptanceWindowForAcceptance()
   }
 
   close(): boolean {

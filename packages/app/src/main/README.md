@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-25 20:27:30
+最后更新：2026-09-25 21:16:28
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -12,7 +12,7 @@
 - `local-app-api-server.ts`：兼容 facade，只负责 loopback server、领域路由装配、可变 Runner/PluginHost/Config 热替换，以及实例级资源（run/terminal router、附件缓存、向量模型与开发环境管理器）的启停顺序。Runner 通过 `getRunner()` 惰性读取：监听早于 Runner 建立，`/runtime/readiness`、`/sessions`、`/projects`、`/runtime`、应用生命周期（含桌面验收）在未就绪时照常应答，其余 Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；`setRunner()` 同时构建 RunRouter 并初始化附件缓存。**请求入口不得等待 RunRouter 恢复**（2026-09-24）：路由只在 RunRouter 构建完成后按世代号原子发布（`activeRunRouter`），恢复期间元数据、Runtime、会话索引与工作区路由立即应答，Run/Checkpoint/审批返回 503；否则旧任务恢复会让这些轻量请求一起无响应。历史事件分区的兼容扫描同样移出就绪关键路径，见 `local-app-api/README.md` 的"恢复期间的路由隔离"与"旧事件异步补扫"。
 - `local-app-api/`：HTTP/SSE 基元、公共契约与各领域路由；新增接口必须进入对应领域。启动恢复的发现/详情/续跑/放弃路由（`local-app-api/run-checkpoint-routes.ts`）与它投影给窗口的两个诊断计数（`run-checkpoint-view.ts`）同属这一层：计数必须互斥地描述"最近一次扫描"——`invalidFiles` 是读不出来的记录数，`warningCount` 只统计不属于这些记录的发现，详见 `local-app-api/README.md`。Runtime 的模型引用校验同样在这一层：`runtime-routes.ts` 的 `validateModelRef` 按解析后的模型 id 比较，因为供应商的 `models` 允许裸 id 与声明元数据两种形状（自定义供应商保存的是后者）。
 - `local-app-api/workspace-git-*.ts`：工作区 Git 仓库定位、分层审阅、opaque revision、状态/Diff 有界缓存和子进程并发控制；详细契约由 `local-app-api/README.md` 维护。
-- `desktop-shell.ts`（配合 `tray-controller.ts`、`close-policy.ts`、`desktop-window-state.ts`、`desktop-startup-page.ts`、`desktop-visual-acceptance.ts`）：BrowserWindow、托盘、三档关闭策略、窗口拖拽与退出前落盘 IPC；`desktop-acceptance-snapshot.ts` 为其提供只读验收快照。原生标题栏覆盖区、启动页与渲染器标题栏共用 `desktop-startup-page.ts` 导出的实色 `#101010` 契约（启用 acrylic 会在原生按钮区形成可见接缝，已移除）；`currentWindow()` 供就绪发布按次解析当前窗口。
+- `desktop-shell.ts`（配合 `tray-controller.ts`、`close-policy.ts`、`desktop-window-state.ts`、`desktop-startup-page.ts`、`desktop-visual-acceptance.ts`）：BrowserWindow、托盘、三档关闭策略、窗口拖拽与退出前落盘 IPC；`desktop-acceptance-snapshot.ts` 为其提供只读验收快照。原生标题栏覆盖区、启动页与渲染器标题栏共用 `desktop-startup-page.ts` 导出的实色 `#101010` 契约（启用 acrylic 会在原生按钮区形成可见接缝，已移除）；`currentWindow()` 供就绪发布按次解析当前窗口。**隔离验收运行默认不把窗口显示出来**（`acceptanceWindowHeldBack()`）：验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——否则一次验收就会盖住用户正在做的事，而且被盖住的文档在 Chromium 里是 `hidden`，编辑器根本不会布局。需要像素的检查必须显式放行：验收动作先调 `allowAcceptanceWindow()` 再 `show()`。生产启动不受影响。
 - `local-app-api/workspace-preview-server.ts`：运行工作区 HTML 页面的**有界 loopback 静态服务**（UX-26）。静态预览不执行脚本，所以"运行"必须经 HTTP：每个工作区根一个监听、URL 带随机 token、只答 `GET`/`HEAD`、`Host` 必须是 loopback、解码后的路径再经 `realpath` 校验（穿越与符号链接逃逸都拒）、无目录列表、无 CORS 头、单文件上限、有界服务数 + 空闲回收 + 显式 `stop`（API server 关闭时 `stopAll`）。它只服务项目根内的普通文件，不代理进程、不执行项目脚本、不安装依赖。
 - `desktop-visual-acceptance.ts`：CS-02 接缝检查所需的原生侧事实（标题栏高度、覆盖区颜色、启动页底色、窗口背景）、有界窗口缩放与最大化/还原（`setWindowMaximizedForAcceptance`），以及在实机窗口上渲染启动页与启动失败页；它是"验收快照里的声明值"，验收脚本据此与实测像素比对。只服务隔离验收运行，不接管窗口生命周期（窗口由 `index.ts` 在调用点解析后传入）。
 - 启动页 / 启动失败页取证（`desktop-acceptance-actions.ts` 装配、`desktop-visual-acceptance.ts` 的 `showStartupPageForAcceptance` / `showStartupErrorPageForAcceptance` 渲染，经应用生命周期路由的 `startup-page` / `startup-error` 动作触达）：把生产同一份启动文档交回窗口、把真实失败文案交给与生产同一份 `showStartupError` 文档，供隔离验收捕获像素。这两页都无法靠等待到达（启动页只停留约 90 ms），因此这是唯一能对它们取证的入口；`desktop-acceptance-actions.ts` 在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 之外整体返回 `undefined`，渲染函数自身也再判一次，生产路径不受影响。捕获证明的是页面外观，不证明启动页的停留时长——交接时序仍属人工验收项。
