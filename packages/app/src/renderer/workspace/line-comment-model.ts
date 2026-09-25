@@ -6,6 +6,8 @@ export type WorkspaceLineComment = AttachmentLineComment & { id: string; created
 export type LineCommentDraftState = {
   editingRange: LineCommentRange | null
   draftText: string
+  /** Source lines the range covers, captured when the draft begins (see anchorText). */
+  anchorText?: string
   commentId?: string
   commentCreatedAt?: number
 }
@@ -17,7 +19,7 @@ export type LineCommentDraftComment = {
 }
 
 export type LineCommentDraftAction =
-  | { type: 'begin'; range: LineCommentRange; comment?: LineCommentDraftComment }
+  | { type: 'begin'; range: LineCommentRange; comment?: LineCommentDraftComment; anchorText?: string }
   | { type: 'change'; text: string }
   | { type: 'cancel' }
 
@@ -42,6 +44,7 @@ export function reduceLineCommentDraft(
     return {
       editingRange: action.range,
       draftText: action.comment?.text ?? '',
+      ...(action.anchorText ? { anchorText: action.anchorText } : {}),
       ...(action.comment ? {
         commentId: action.comment.id,
         commentCreatedAt: action.comment.createdAt,
@@ -72,6 +75,7 @@ export function createLineCommentFromDraft(
     ...(state.editingRange.endLine === state.editingRange.startLine
       ? {} : { endLine: state.editingRange.endLine }),
     text,
+    ...(state.anchorText ? { anchorText: state.anchorText } : {}),
     createdAt: identity.createdAt ?? Date.now(),
   }
 }
@@ -120,4 +124,28 @@ export function lineCommentZoneHeight(text: string): number {
 
 export function formatLineRange(startLine: number, endLine: number): string {
   return startLine === endLine ? `第 ${startLine} 行` : `第 ${startLine}-${endLine} 行`
+}
+
+/**
+ * Does a comment still sit on the code it was written about? (UX-28 item 4)
+ *
+ * Comments are anchored by line number, and a refresh can put different code under those
+ * numbers. The comment keeps the text it was created on, so this answers "anchored" when
+ * the lines still match, "moved" when they do not, and "unknown" when there is nothing to
+ * compare (an older comment, or a source that is no longer available) — the caller must not
+ * turn "unknown" into a claim either way.
+ */
+export type LineCommentAnchorState = 'anchored' | 'moved' | 'unknown'
+
+export function lineCommentAnchorState(
+  comment: Pick<WorkspaceLineComment, 'startLine' | 'endLine' | 'anchorText'>,
+  sourceLines: readonly string[] | null | undefined,
+): LineCommentAnchorState {
+  const anchor = comment.anchorText
+  if (!anchor || anchor.length === 0) return 'unknown'
+  if (!sourceLines || sourceLines.length === 0) return 'unknown'
+  const endLine = comment.endLine ?? comment.startLine
+  if (comment.startLine < 1 || endLine > sourceLines.length) return 'moved'
+  const current = sourceLines.slice(comment.startLine - 1, endLine).join('\n')
+  return current === anchor ? 'anchored' : 'moved'
 }

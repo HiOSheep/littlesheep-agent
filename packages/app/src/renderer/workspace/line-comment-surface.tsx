@@ -26,6 +26,7 @@ import {
   readCssPixelValue,
   reduceLineCommentDraft,
   updateZoneHeight,
+  type LineCommentAnchorState,
   type WorkspaceLineComment,
 } from './line-comment-model'
 import type { LineCommentRange } from './line-comment-gesture'
@@ -40,11 +41,18 @@ export { useLineCommentViewZones, type LineCommentViewZoneSpec } from './line-co
 
 export function useLineCommentDraft() {
   const [state, dispatch] = useReducer(reduceLineCommentDraft, EMPTY_LINE_COMMENT_DRAFT)
-  const begin = useCallback((range: LineCommentRange) => dispatch({ type: 'begin', range }), [])
+  const begin = useCallback((range: LineCommentRange, options: { anchorText?: string } = {}) => dispatch({
+    type: 'begin',
+    range,
+    ...(options.anchorText ? { anchorText: options.anchorText } : {}),
+  }), [])
   const beginEdit = useCallback((comment: WorkspaceLineComment, range?: LineCommentRange) => dispatch({
     type: 'begin',
     range: range ?? { startLine: comment.startLine, endLine: comment.endLine ?? comment.startLine },
     comment: { id: comment.id, createdAt: comment.createdAt, text: comment.text },
+    // Editing keeps the original anchor: the comment still belongs to the code it was
+    // written about, whatever the editor shows now (UX-28 item 4).
+    ...(comment.anchorText ? { anchorText: comment.anchorText } : {}),
   }), [])
   const change = useCallback((text: string) => dispatch({ type: 'change', text }), [])
   const cancel = useCallback(() => dispatch({ type: 'cancel' }), [])
@@ -139,11 +147,13 @@ export function LineCommentEditor({
   )
 }
 
-export function LineCommentCard({ comment, onEdit, onDelete, onTipChange }: {
+export function LineCommentCard({ comment, onEdit, onDelete, onTipChange, anchorState = 'unknown' }: {
   comment: WorkspaceLineComment
   onEdit: () => void
   onDelete: () => void
   onTipChange?: (tip: FloatingHelpTip | null) => void
+  /** Whether the code under this comment is still the code it was written on. */
+  anchorState?: LineCommentAnchorState
 }) {
   const showTip = (label: string, event: MouseEvent<HTMLButtonElement>) => {
     onTipChange?.(buildFloatingHelpTip(label, event.clientX, event.clientY))
@@ -157,6 +167,17 @@ export function LineCommentCard({ comment, onEdit, onDelete, onTipChange }: {
       <div className="workspace-line-comment-card-meta">
         <span>{formatLineRange(comment.startLine, comment.endLine ?? comment.startLine)}</span>
         <span className="workspace-line-comment-card-status">已发布</span>
+        {/* A refresh can put different code under the same line numbers; saying so is what
+            keeps a comment from silently pointing somewhere else (UX-28 item 4). */}
+        {anchorState === 'moved' && (
+          <span
+            className="workspace-line-comment-card-moved"
+            role="status"
+            title="评论所针对的代码行已被改动，评论保留的是当时的代码。"
+          >
+            代码行已变化
+          </span>
+        )}
         <div className="workspace-line-comment-card-actions">
           <button
             className="workspace-line-comment-action"

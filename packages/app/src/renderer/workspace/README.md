@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-26 06:17:34
+最后更新：2026-09-26 06:40:45
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -51,3 +51,5 @@
 
 **审阅上限怎么显示（UX-28 第 5 条）**：列表被截断时显示"显示前 2000 个，共 2100 个文件"（`reviewSummaryLabel`，替换了原来含糊的 `2000/2100`），旁边的合计在计数不完整时带"行数超过审阅扫描预算"提示；每层的截断在提示条里写明是 MB 上限还是 5000 行上限。
 - `workspace/review-limits.ts` 的 `reviewLimitNotice`：导航器折叠时把列表/差异层的上限语句交给差异面板显示（展开时返回 null，不重复）；`review-diff.tsx` 用 `.workspace-review-limit-notice` 渲染（UX-28 第 5 条）。
+
+**评论锚点（UX-28 第 4 条）**：`line-comment-model.ts` 的 `lineCommentAnchorState` 判定评论是否仍指向当初的代码（`anchored`/`moved`/`unknown`，缺锚点或读不到源码时不作结论）；`AttachmentLineComment.anchorText` 记录创建时的行内容，评论卡片在 `moved` 时显示"代码行已变化"。

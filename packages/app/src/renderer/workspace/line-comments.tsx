@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import type { AttachmentRef } from '../api'
 import type { FloatingHelpTip } from '../ui/floating-help'
+import type { LineCommentAnchorState } from './line-comment-model'
 import {
   didLineCommentGestureDrag,
   resolveLineCommentGesture,
@@ -28,6 +29,7 @@ import {
 export {
   LINE_COMMENT_ADD_BUTTON_SIZE,
   resolveLineCommentAddButtonLeft,
+  type LineCommentAnchorState,
   type WorkspaceLineComment,
 } from './line-comment-model'
 
@@ -352,11 +354,43 @@ export function WorkspaceLineCommentOverlay({
   }
 
   function beginComment(range: LineCommentRange) {
-    if (!readOnly || !mapModelRangeToSource(range, lineNumbers)) return
+    const sourceRange = mapModelRangeToSource(range, lineNumbers)
+    if (!readOnly || !sourceRange) return
     clearEditorSelection()
     setHoveredLine(range.endLine)
-    draft.begin(range)
+    // Capture what is being commented on, so a later refresh cannot quietly move the
+    // comment onto different code (UX-28 item 4).
+    draft.begin(range, { anchorText: sourceLinesForRange(sourceRange) })
     editor?.revealLineInCenterIfOutsideViewport(range.endLine)
+  }
+
+
+  /**
+   * Whether a comment still sits on the code it was written about.
+   *
+   * The anchor was captured from the *model* lines, so this compares against the model
+   * lines the comment's source range maps to now; an unreadable model or a range that no
+   * longer maps stays `unknown` rather than claiming either way (UX-28 item 4).
+   */
+  function anchorStateFor(comment: WorkspaceLineComment): LineCommentAnchorState {
+    if (!comment.anchorText) return 'unknown'
+    const sourceRange = { startLine: comment.startLine, endLine: comment.endLine ?? comment.startLine }
+    const current = sourceLinesForRange(sourceRange)
+    if (current === undefined) return 'unknown'
+    return current === comment.anchorText ? 'anchored' : 'moved'
+  }
+
+  /** The source lines a range covers, or undefined when the model is not readable. */
+  function sourceLinesForRange(range: LineCommentRange): string | undefined {
+    const model = editor?.getModel()
+    if (!model) return undefined
+    const values: string[] = []
+    for (let line = range.startLine; line <= range.endLine; line += 1) {
+      const mapped = mapSourceRangeToModel({ startLine: line, endLine: line }, lineNumbers)
+      if (!mapped) return undefined
+      values.push(model.getLineContent(mapped.startLine))
+    }
+    return values.length > 0 ? values.join('\n') : undefined
   }
 
   function beginEditComment(comment: WorkspaceLineComment) {
@@ -482,6 +516,7 @@ export function WorkspaceLineCommentOverlay({
               onEdit={() => beginEditComment(zone.comment)}
               onDelete={() => deleteComment(zone.comment)}
               onTipChange={onTipChange}
+              anchorState={anchorStateFor(zone.comment)}
             />
           )}
         </div>

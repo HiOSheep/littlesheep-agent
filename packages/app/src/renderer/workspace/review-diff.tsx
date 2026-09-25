@@ -84,6 +84,9 @@ export function WorkspaceReviewDiff({
   const limitText = limits
     ? reviewLimitNotice({ ...limits, truncatedLayers: (diff?.layers ?? EMPTY_DIFF_LAYERS).filter((layer) => layer.truncated).length })?.text ?? null
     : null
+  // A deleted file has nothing to open; the label says why instead of leaving a dead button
+  // whose tooltip still promises the action (UX-28 item 4).
+  const openLabel = file?.status === 'deleted' ? '文件已删除，无法在文件工作台中打开' : '在文件工作台中打开'
   return (
     <section className="workspace-review-diff" aria-label="文件差异">
       <WorkspaceReviewDiffHeader
@@ -92,6 +95,7 @@ export function WorkspaceReviewDiff({
         sideBySide={sideBySide}
         onSideBySideChange={onSideBySideChange}
         onOpenFile={onOpenFile}
+        openLabel={openLabel}
         onTipChange={onTipChange}
       />
       <div ref={scrollRef} className="workspace-review-diff-scroll">
@@ -386,6 +390,7 @@ function WorkspaceReviewDiffHeader({
   sideBySide,
   onSideBySideChange,
   onOpenFile,
+  openLabel,
   onTipChange,
 }: {
   file: WorkspaceReviewFile | null
@@ -393,6 +398,8 @@ function WorkspaceReviewDiffHeader({
   sideBySide: boolean
   onSideBySideChange: (sideBySide: boolean) => void
   onOpenFile: () => void
+  /** The action's label, which says why it is unavailable for a deleted file. */
+  openLabel: string
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   if (!file) return <div className="workspace-review-diff-header workspace-page-leading-row" />
@@ -434,11 +441,11 @@ function WorkspaceReviewDiffHeader({
           {...transientTriggerProps()}
           className="workspace-review-icon-button"
           type="button"
-          aria-label="在文件工作台中打开"
+          aria-label={openLabel}
           disabled={file.status === 'deleted'}
           onClick={onOpenFile}
-          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('在文件工作台中打开', event.clientX, event.clientY))}
-          onMouseMove={(event) => onTipChange(buildFloatingHelpTip('在文件工作台中打开', event.clientX, event.clientY))}
+          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(openLabel, event.clientX, event.clientY))}
+          onMouseMove={(event) => onTipChange(buildFloatingHelpTip(openLabel, event.clientX, event.clientY))}
           onMouseLeave={() => onTipChange(null)}
           onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('在文件工作台中打开', event.currentTarget))}
           onBlur={() => onTipChange(null)}

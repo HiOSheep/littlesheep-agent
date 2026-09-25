@@ -8,6 +8,14 @@ export interface AttachmentLineComment {
   startLine: number
   endLine?: number
   text: string
+  /**
+   * The exact source lines the comment was written on, joined with newlines.
+   *
+   * After a refresh the code under a line number can be something else entirely; keeping
+   * what was commented on is what makes that visible instead of silently re-pointing the
+   * comment at unrelated code (UX-28 item 4). Absent on comments created before this.
+   */
+  anchorText?: string
 }
 
 export interface AttachmentRef {
