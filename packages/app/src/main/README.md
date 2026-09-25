@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 05:57:16
+最后更新：2026-09-26 07:28:55
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -74,3 +74,7 @@
 ## 审阅上限的呈现（2026-09-26）
 
 `review-tree.tsx` 的 `reviewSummaryLabel` 把被截断的列表写成"显示前 N 个，共 M 个文件"；`workspace-git-review-limits.test.ts` 用 2,100 个文件与 6,000 行改动钉住列表/每层上限与"合计不完整"的标记（UX-28 第 5 条）。
+
+## 审阅与命令行基线一致（2026-09-26）
+
+`local-app-api/workspace-git-review-baseline.test.ts` 逐形态对照 `git status --porcelain`：子目录、linked worktree、detached HEAD（`detached@<sha>`）、合并冲突（`conflicted`）、子模块 gitlink、中文与空格路径、空文件与二进制（UX-28 第 2 条）。

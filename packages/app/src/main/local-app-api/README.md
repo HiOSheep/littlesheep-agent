@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 05:34:55
+最后更新：2026-09-26 07:28:55
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -90,3 +90,7 @@
 ## 审阅上限与截断的可见性（UX-28 第 5 条，2026-09-26）
 
 上限仍在原处（列表 2,000 个文件、每层 5,000 行、每层 8 MB），但现在都有实测：`workspace-git-review-limits.test.ts` 用 2,100 个未跟踪文件断言 `filesTruncated: true`、`files.length === 2000`、`totalFiles === 2100`，并且**合计被标成不完整**（`countsComplete: false`，因为 `additions`/`deletions` 只覆盖被列出的文件）；用 6,000 行改动断言该层 `truncated: true` 且提示里写明 5000 行上限。
+
+## 与命令行基线一致（UX-28 第 2 条，2026-09-26）
+
+`workspace-git-review-baseline.test.ts` 用真实 Git 造出每个形态，先取 `git status --porcelain -z --untracked-files=all`，再问审阅同一批路径，两边必须给出同一组路径与同一类状态：**子目录**（审阅给工作区相对路径，且必须能被自己的 diff API 取到）、**linked worktree**（`.git` 是文件；分支标签取该 worktree 的分支）、**detached HEAD**（标签形如 `detached@ea8cd6f`）、**未解决冲突**（`UU` → `conflicted`）、**子模块**（gitlink 的 ` M`）、**中文与空格路径 + 空文件 + 二进制**。此前已有：仓库根、无 HEAD、重命名/删除/新增、二进制、不支持格式的限制说明。
