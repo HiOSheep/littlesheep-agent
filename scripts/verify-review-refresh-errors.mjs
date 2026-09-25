@@ -114,6 +114,7 @@ const SURFACE_EXPRESSION = `(() => {
     fileStats: [...(review?.querySelectorAll('[role="treeitem"]') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     selectedRow: (review?.querySelector('[role="treeitem"][aria-selected="true"]')?.textContent || '').replace(/\\s+/gu, ' ').trim(),
     branch: (review?.querySelector('.workspace-files-root span')?.textContent || '').replace('Git 审阅', '').trim(),
+    summary: (review?.querySelector('.workspace-review-tree-summary span')?.textContent || '').replace(/\s+/gu, ' ').trim(),
     diffMetadata: [...(review?.querySelectorAll('.workspace-review-diff-metadata li') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()),
     placeholder: [...(review?.querySelectorAll('.workspace-placeholder') ?? [])].map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()).join(' | '),
     layers: review?.querySelectorAll('.workspace-review-diff-layer').length ?? 0,
@@ -536,10 +537,14 @@ async function main() {
     const whileHeld = await readSurface(client)
     await writeFile(join(workspaceDir, 'newer.txt'), 'newer\n', 'utf8')
     await client.evaluate(`(() => { window.__reviewHolds.craftStale = true; const next = window.__reviewHolds.queued.shift(); if (next) next(); return true; })()`)
+    // The queued refresh starts once the queue drains; only then can the newest list be
+    // on screen. Waiting for both in one predicate raced the queue in an earlier run.
+    await waitForSurface(client, (surface) => surface.probe.queued === 0, 20_000, 'the queued refresh left the queue')
+      .catch(() => undefined)
     const settledOutOfOrder = await waitForSurface(
       client,
-      (surface) => surface.notices.length === 0 && surface.files >= 2 && surface.probe.queued === 0,
-      25_000,
+      (surface) => surface.notices.length === 0 && surface.files >= 2,
+      30_000,
       'newest read settles after the stale answer',
     ).catch(() => readSurface(client))
     const outOfOrderShot = await captureScreenshot(client, screenshotDir, 'review-out-of-order.png')
@@ -909,6 +914,60 @@ async function main() {
       { diffMetadata: renameDiff.diffMetadata, placeholder: renameDiff.placeholder },
     )
 
+    // UX-28 item 5: the review limits have to stay visible. The fixture gains more than
+    // the 2,000-file cap, the window narrows and the panel collapses — the truncation
+    // sentence must still be on screen (inside the viewport, not clipped away).
+    const manyFiles = 2_050
+    await Promise.all(Array.from({ length: manyFiles }, (_unused, index) => (
+      writeFile(join(workspaceDir, `bulk-${String(index).padStart(4, '0')}.txt`), 'x\n', 'utf8')
+    )))
+    await click(client, REFRESH_LABEL)
+    const truncated = await waitForSurface(
+      client,
+      (surface) => surface.summary.includes('显示前') && surface.summary.includes('个文件'),
+      60_000,
+      'the capped list says what it is showing',
+    ).catch(() => readSurface(client))
+    const narrowShot = await captureScreenshot(client, screenshotDir, 'review-truncated-wide.png')
+    // Narrow the window (the app clamps it to its own minimum, measured 800 px) and keep
+    // the panel open: collapsing the panel hides the whole list *by design*, so the clause
+    // "limits stay visible in a tight layout" is about the surface still being readable.
+    await harness.desktopAction(locator, 'resize', { width: 620, height: 720 })
+    await delay(800)
+    const narrow = await readSurface(client)
+    const narrowVisible = await client.evaluate(`(() => {
+      const summary = document.querySelector('.workspace-review-tree-summary span');
+      if (!(summary instanceof HTMLElement)) return null;
+      const rect = summary.getBoundingClientRect();
+      return {
+        text: (summary.textContent || '').trim(),
+        visible: rect.width > 0 && rect.height > 0 && rect.left >= -1 && rect.right <= window.innerWidth + 1,
+        viewport: window.innerWidth,
+        clamped: window.innerWidth > 620,
+      };
+    })()`)
+    const narrowNarrowShot = await captureScreenshot(client, screenshotDir, 'review-truncated-narrow.png')
+    await harness.desktopAction(locator, 'resize', WINDOW)
+    recorder.note({
+      step: 'limits-visible',
+      summary: truncated.summary,
+      files: truncated.files,
+      narrow: narrowVisible,
+      narrowFiles: narrow.files,
+      screenshots: [narrowShot, narrowNarrowShot],
+    })
+    recorder.check(
+      truncated.summary.startsWith('显示前 2000 个，共')
+      && truncated.files === 2_000,
+      'a capped list says "showing the first 2000 of N" instead of a bare fraction',
+      { summary: truncated.summary, files: truncated.files },
+    )
+    recorder.check(
+      narrowVisible !== null && narrowVisible.visible === true && narrowVisible.text.startsWith('显示前'),
+      'the truncation sentence stays inside a narrowed window',
+      narrowVisible,
+    )
+
     // UX-28 item 1 in the window: a damaged repository has to say it is damaged (and what
     // to do) instead of claiming the directory is not a Git repository. The fixture is
     // disposable, so the index is simply left broken at the end of the walkthrough.
@@ -963,9 +1022,21 @@ async function main() {
   if (!evidence.ok) process.exitCode = 1
 }
 
-async function captureScreenshot(client, dir, name) {
+/**
+ * A bounded screenshot.
+ *
+ * Under a hidden window a capture has to force a paint, and with 2,000 tree rows on
+ * screen that took long enough to stall the whole walkthrough — while the app itself
+ * answered CDP evaluations in 0-2 ms throughout (measured). Evidence that can hang the
+ * gate is worse than no screenshot, so a capture past its budget returns null.
+ */
+async function captureScreenshot(client, dir, name, timeoutMs = 20_000) {
   await mkdir(dir, { recursive: true })
-  const shot = await client.send('Page.captureScreenshot', { format: 'png' })
+  const shot = await Promise.race([
+    client.send('Page.captureScreenshot', { format: 'png' }),
+    delay(timeoutMs).then(() => null),
+  ]).catch(() => null)
+  if (!shot?.data) return null
   await writeFile(join(dir, name), Buffer.from(shot.data, 'base64'))
   return join(dir, name)
 }

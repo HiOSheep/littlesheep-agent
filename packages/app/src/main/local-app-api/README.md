@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 04:56:22
+最后更新：2026-09-26 05:34:55
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -86,3 +86,7 @@
 ## 无文本 hunk 的元数据变更（UX-28 第 3 条，2026-09-26）
 
 纯重命名（或权限变化）只有 extended header，没有 `@@`：`parseDiffMetadata` 把它们解析成 `metadata`（`rename from/to`、`similarity index`、`old/new mode` 等，键保持 Git 原文），`readDiffLayer` 据此返回，而"该层使用了普通 unified diff 之外的格式"提示只在既没有 hunk 也没有元数据时出现。计数语义（分层增删之和，不是 HEAD 到工作树净变化）与两层并存的行为有 `workspace-git-layers.test.ts` 与 `workspace-git-review-metadata.test.ts` 钉住。
+
+## 审阅上限与截断的可见性（UX-28 第 5 条，2026-09-26）
+
+上限仍在原处（列表 2,000 个文件、每层 5,000 行、每层 8 MB），但现在都有实测：`workspace-git-review-limits.test.ts` 用 2,100 个未跟踪文件断言 `filesTruncated: true`、`files.length === 2000`、`totalFiles === 2100`，并且**合计被标成不完整**（`countsComplete: false`，因为 `additions`/`deletions` 只覆盖被列出的文件）；用 6,000 行改动断言该层 `truncated: true` 且提示里写明 5000 行上限。

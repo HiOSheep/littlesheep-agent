@@ -12,6 +12,24 @@ import {
 } from './review-model'
 import { ReviewLineCounts } from './review-line-counts'
 
+
+/**
+ * How many changed files the tree is showing (UX-28 item 5).
+ *
+ * A capped list used to read `2000/2500 个文件`, which looks like a fraction of something
+ * unnamed; the sentence says what is shown and what exists, and the counts beside it are
+ * marked incomplete by the caller.
+ */
+export function reviewSummaryLabel(input: {
+  fileCount: number
+  totalFileCount: number
+  filesTruncated: boolean
+}): string {
+  return input.filesTruncated
+    ? `显示前 ${input.fileCount} 个，共 ${input.totalFileCount} 个文件`
+    : `${input.fileCount} 个文件`
+}
+
 interface WorkspaceReviewTreeProps {
   workspacePath: string
   repositoryLabel: string
@@ -120,7 +138,11 @@ export function WorkspaceReviewTree({
         />
       </label>
       <div className="workspace-review-tree-summary">
-        <span>{filesTruncated ? `${fileCount}/${totalFileCount}` : fileCount} 个文件</span>
+        {/* UX-28 item 5: when the list is capped, say what is shown *and* what exists —
+            "2000/2500 个文件" reads as a fraction of something unnamed. */}
+        <span title={filesTruncated ? `更改文件较多，只列出前 ${fileCount} 个，共 ${totalFileCount} 个。` : undefined}>
+          {reviewSummaryLabel({ fileCount, totalFileCount, filesTruncated })}
+        </span>
         <ReviewLineCounts additions={additions} deletions={deletions} available={countsComplete} />
       </div>
       <div className="workspace-tree workspace-review-tree-scroll" role="tree" aria-label="当前 Git 更改文件树">
