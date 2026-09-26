@@ -218,6 +218,18 @@ function measureExpression(samples) {
   })()`
 }
 
+async function waitForDisabledTone(client, selectors, harness) {
+  const expression = `(() => ${JSON.stringify(selectors)}.every((selector) => {
+    const node = document.querySelector(selector)
+    return node !== null && getComputedStyle(node).opacity === ${JSON.stringify(DISABLED_OPACITY)}
+  }))()`
+  await harness.waitFor(
+    () => evaluate(client, expression),
+    harness.startTimeoutMs,
+    'the disabled controls to settle at the shared disabled tone',
+  )
+}
+
 async function measure(client, samples) {
   const rows = await evaluate(client, measureExpression(samples))
   const byKey = new Map(rows.map((row) => [row.key, row]))
@@ -668,6 +680,9 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/plugins/reload', 1800, 'POST'); return true })()`)
     const reloadStart = await clickVisible(client, '.plugin-reload-button')
     await delay(350)
+    // Same reason as the provider editor above: the control fades into the shared disabled tone, so a
+    // measurement taken while that 180ms fade is still running is not the disabled state.
+    await waitForDisabledTone(client, ['.plugin-reload-button', '.plugin-list-item .plugin-switch'], harness)
     const pluginWaiting = await measure(client, [
       { key: 'reload', selector: '.plugin-reload-button', props: CONTROL_PROPS },
     ])
