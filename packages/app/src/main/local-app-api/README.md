@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 10:14:13
+最后更新：2026-09-26 14:58:37
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -75,9 +75,13 @@
 
 `GET /workspace/file-stat?root&path` 只回 `{ path, relativePath, exists, modifiedAt, size }`：静态预览面板据此在用户编辑期间发现"磁盘上的版本已变化"或"文件已被删除"，而不是等保存时撞 409。实现是 `statWorkspaceFile`（不读内容、不做预览工作），路径校验与预览/保存共用同一套 `resolveWorkspaceRoot`/`resolveWorkspaceTarget`。
 
+`GET /workspace/list` 的可选 `filter` 在 Main 对当前目录排序后、320 项截断前筛选名称；仍使用同一目录读取路径，最多接收 256 字符，不递归扫描未展开目录。这样当前目录里排序在第 320 项之后的文件仍可按名称找到。
+
 ## Git 审阅读取的一致性（UX-27 第 2 条，2026-09-26）
 
 `workspace-git-review-consistency.ts` + `workspace-git-review.ts`：一次审阅读取由多条只读 Git 命令组成，**不是**原子快照。因此在装配前取指纹（`HEAD`、`.git/index` 的 mtime/size、以及**与装配同参数**的 `status --porcelain -z` 指纹），装配后重新取一次；不一致就**有界重读**（默认 2 次尝试，即 1 次重试）。两次都赶上变化时快照照常返回，但带 `unstable: true`，界面据此显示"仓库在读取期间仍在变化"，而不是把混合状态当成新结果。指纹必须用同一组参数取（用更窄的探针会让每次读取都被判成竞态，集成测试当场抓到过这个假阳性）。
+
+覆盖边界：HEAD/index/status 均未变化时，一个已脏文件再次保存可能不被检测到；这一层不提供当前文件的内容级快照保证。Renderer 的 Diff 409 自动刷新最多两次，持续冲突会停止并提示手动重试。
 
 ## Git 读取失败的分类（UX-28 第 1 条，2026-09-26）
 
@@ -100,9 +104,13 @@
 `workspace-git-review-unavailable.test.ts` 在真机上复现两类：**Git 未安装**（清空 PATH 并重新导入模块，绕过可执行文件缓存 → `git-unavailable`）与**权限拒绝**（`icacls .git\index /deny <用户>:(R)` 让 Git 自己报 `Permission denied` → `permission-denied`，恢复 ACL 后仓库恢复可用）。另有一条把"不自动修改全局 `safe.directory`"变成实测：读损坏仓库前后 `git config --global --list` 完全一致。ownership 与 timeout 在本机无法复现（需要别的账户拥有的目录／真的挂住的 git），保持分类级证据。
 - `park-offscreen` 验收动作：窗口移到屏幕外后 `showInactive()` 渲染，用于需要真实布局的检查（只有验收环境注册该动作）。
 
+## 终端会话的读流与重放（UX-37，2026-09-26）
+
+渲染器同一时刻只读**一个**会话（当前显示的那个），切换标签时中止旧流并重新 `GET /workspace/session/<id>/stream`；`replayTo` 在挂流时先发 `start`，再把该会话有界的历史（512 KB 上限）逐条送回，因此重连后屏幕能重建而不是空白。**重放必须先剥掉由终端回答的设备查询**（`stripTerminalDeviceQueries`：`CSI c` / `CSI > c` / `CSI 5n` / `CSI 6n`）：把查询再喂给终端会让它再答一次，而那个答案会作为用户输入写进 shell——实测切回标签后的命令以 `\x1b[?1;2cSet-Content …` 到达并被 PowerShell 拒绝。只有重放被过滤，实时输出逐字节保留（终端本来就必须回答第一次）。此前的"每个会话一条 SSE"在 6 个会话时耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接，创建/输入/尺寸请求全部排队不返回；单流是这条的连接层修复。
+
 ## Shell 探测与选择（UX-29，2026-09-26）
 
-`workspace-shell-discovery.ts` 一次探测 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL：每项带 `available` 与 `reason` + `configHint`，不可用项留在列表里而不是被隐藏。`isGitBashPath` 拒绝 `System32\bash.exe`（那是 WSL 启动器）；WSL 只按 `wsl.exe --list --quiet` 的**真实发行版**逐条列出（输出按 UTF-16LE 解码）。参数一律数组，Git Bash 不会拿到 PowerShell 的启动参数。`GET /workspace/terminal/shells` 暴露列表；会话创建只接受**受校验的 profile id**，由 Main 重新探测后决定 executable/args/env。
+`workspace-shell-discovery.ts` 一次探测 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL：每项带 `available` 与 `reason` + `configHint`，不可用项留在列表里而不是被隐藏。从 PATH 的 `Git\cmd\git.exe` 反推非默认安装根的 `bin\bash.exe`；`isGitBashPath` 仍拒绝 `System32\bash.exe`（WSL 启动器）。WSL 按真实发行版逐条列出。会话创建显式指定未知或不可用 id 时返回 400 和可见错误，不指定 id 时才选默认 Shell；由 Main 重新探测后决定 executable/args/env。
 
 ## 终端 Shell 的真实验收（UX-29 第 4 条 PowerShell 侧，2026-09-26）
 

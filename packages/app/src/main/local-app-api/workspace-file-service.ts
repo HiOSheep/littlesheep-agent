@@ -30,7 +30,7 @@ const HEAVY_WORKSPACE_DIRS = new Set([
   'target',
 ])
 
-export async function listWorkspaceDirectory(root: string, target: string) {
+export async function listWorkspaceDirectory(root: string, target: string, filterText = '') {
   const info = await lstat(target)
   if (!info.isDirectory()) throw new HttpError(400, 'workspace path is not a directory')
   const rawEntries = await readdir(target, { withFileTypes: true })
@@ -51,7 +51,13 @@ export async function listWorkspaceDirectory(root: string, target: string) {
       if (left.isDirectory() !== right.isDirectory()) return left.isDirectory() ? -1 : 1
       return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' })
     })
-  const limited = visibleEntries.slice(0, MAX_WORKSPACE_DIR_ENTRIES)
+  // Filter before the cap. Filtering only the renderer's first 320 rows makes a real file
+  // beyond that page indistinguishable from a file that does not exist.
+  const needle = filterText.trim().toLocaleLowerCase()
+  const matchingEntries = needle
+    ? visibleEntries.filter((entry) => entry.name.toLocaleLowerCase().includes(needle))
+    : visibleEntries
+  const limited = matchingEntries.slice(0, MAX_WORKSPACE_DIR_ENTRIES)
   const entries = await Promise.all(limited.map(async (entry) => {
     const itemPath = resolve(target, entry.name)
     if (!isPathInsideOrSame(root, itemPath)) return null
@@ -72,7 +78,7 @@ export async function listWorkspaceDirectory(root: string, target: string) {
     path: target,
     relativePath: relative(root, target),
     entries: entries.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
-    truncated: visibleEntries.length > limited.length,
+    truncated: matchingEntries.length > limited.length,
     hiddenCount,
   }
 }

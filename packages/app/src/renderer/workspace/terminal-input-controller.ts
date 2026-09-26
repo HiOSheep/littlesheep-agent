@@ -73,7 +73,7 @@ export function createTerminalInputController(
         }
         if (inactive() || currentGeneration !== generation) return
         if (completed > 0) {
-          options.setStatus('PowerShell 就绪')
+          options.setStatus('终端就绪')
           options.onCompletedCommand()
         }
       }

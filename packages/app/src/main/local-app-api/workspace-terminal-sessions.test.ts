@@ -1,7 +1,8 @@
 // UX-30 item 1: several terminal sessions live at once, and one must not disturb another.
 //
-// This is the Main-side half of the claim: two sessions in one manager, started with different
-// shells, keep their own process, output and exit state; closing one leaves the other running.
+// This is the Main-side half of the claim: two sessions in one manager, started with the same
+// available PowerShell profile, keep their own process, output and exit state; closing one
+// leaves the other running. Cross-shell coexistence needs a separate acceptance fixture.
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

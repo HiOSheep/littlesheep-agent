@@ -3,7 +3,6 @@
 // Pure state on purpose. The rules worth getting right are the ones a user notices: a tab is
 // never silently replaced, closing one moves the selection somewhere sensible, the replay
 // buffer is bounded, and input can never be routed to a session that is no longer running.
-import type { WorkspaceShellProfile } from '../api/terminal'
 
 export type TerminalSessionStatus = 'starting' | 'ready' | 'exited' | 'failed'
 
@@ -15,6 +14,7 @@ export interface TerminalSessionTab {
   shellLabel: string
   cwd: string
   status: TerminalSessionStatus
+  backend?: 'pty' | 'spawn'
   exitCode?: number | null
   /** Bounded tail of this session's output, so switching back is not a blank screen. */
   replay: string
@@ -41,6 +41,12 @@ export type TerminalSessionsAction =
   | { type: 'select'; id: string }
   | { type: 'output'; id: string; text: string }
   | { type: 'status'; id: string; status: TerminalSessionStatus; exitCode?: number | null }
+  | { type: 'backend'; id: string; backend: 'pty' | 'spawn' }
+  /**
+   * A stream attached to this session. Main replays its bounded history on attach, so what the
+   * renderer kept for a backgrounded tab is dropped first instead of being duplicated.
+   */
+  | { type: 'attached'; id: string }
   | { type: 'close'; id: string }
   /** Drops every tab: the workspace they belonged to is gone. */
   | { type: 'reset' }
@@ -110,6 +116,22 @@ export function reduceTerminalSessions(
       tabs[index] = next
       return { ...state, tabs }
     }
+    case 'backend': {
+      const index = state.tabs.findIndex((tab) => tab.id === action.id)
+      if (index < 0) return state
+      const tabs = [...state.tabs]
+      tabs[index] = { ...tabs[index]!, backend: action.backend }
+      return { ...state, tabs }
+    }
+    case 'attached': {
+      const index = state.tabs.findIndex((tab) => tab.id === action.id)
+      if (index < 0) return state
+      const tab = state.tabs[index]!
+      if (!tab.replay && !tab.replayTruncated) return state
+      const tabs = [...state.tabs]
+      tabs[index] = { ...tab, replay: '', replayTruncated: false }
+      return { ...state, tabs }
+    }
     case 'close': {
       const index = state.tabs.findIndex((tab) => tab.id === action.id)
       if (index < 0) return state
@@ -127,17 +149,4 @@ export function reduceTerminalSessions(
     default:
       return state
   }
-}
-
-/** The tab to open next: the same shell, in the same directory, until the user says otherwise. */
-export function nextTerminalTabShell(
-  profiles: readonly WorkspaceShellProfile[],
-  state: TerminalSessionsState,
-): WorkspaceShellProfile | null {
-  const active = state.tabs.find((tab) => tab.id === state.activeId)
-  const fromActive = active?.shellId
-    ? profiles.find((profile) => profile.id === active.shellId && profile.available)
-    : undefined
-  if (fromActive) return fromActive
-  return profiles.find((profile) => profile.available) ?? null
 }

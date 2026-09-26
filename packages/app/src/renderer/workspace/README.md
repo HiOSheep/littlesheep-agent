@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-26 11:10:09
+最后更新：2026-09-26 14:58:17
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -59,15 +59,24 @@
 **编辑器布局不再依赖动画帧（2026-09-26，UX-28 第 4 条排查副产品）**：`code-editor.tsx` 的布局调度改为同步执行 `layout()`（`ResizeObserver` 每帧最多回调一次，帧回调无可合并），并在挂载与窗口重新可见时立即布局。理由是被遮挡/最小化的窗口不产生动画帧，布局不该依赖帧到达；**实测说明**：这没有改变"隐藏窗口里编辑器根节点只有 5 px、只渲染 1 行"的测量（pane 715 px），那条差异的原因是高度链只在控件真正渲染时才解析；删除行评论层按行几何挂载，因此在该宿主里不会出现。
 - **审阅差异面板缺陷（记录）**：在真实渲染的窗口里实测，`.monaco-diff-editor` 仍带 inline `height: 5px`、父链明确 716 px、只渲染 1 行与 1 个 gutter 行号；已排除渲染节流、帧合并、模型变化后布局、延迟布局与应用自身 resize 事件五条假设。
 - **编辑器盒子由应用自己测量（UX-28 第 4 条修复）**：`code-editor.tsx` 的 `measureEditorBox` 向上有界取最大盒子并显式 `layout({width,height})`；修复前审阅差异面板只有 5 px／1 行／1 个行号，修复后 716 px／12 行／行号 1,2,3。差异交互的窗口级验收用 `park-offscreen`（窗口移出所有显示器后 `showInactive()`），因此需要真实布局的检查不会出现在用户桌面上。
-- **Shell 下拉与真实名称**（UX-29）：`workspace/terminal-shell-picker.tsx` 提供下拉（不可用项在提示里说明缺什么），`terminal-shell-choice.ts` 决定选中项并在**偏好失效时明确提示**（原因 + 配置路径 + 已改用的 Shell），终端标题与中断/重启提示都使用真实运行中的 Shell 名称；最近命令列表抽到 `terminal-activity.tsx`、工具按钮抽到 `terminal-toolbar.tsx`（`terminal.tsx` 543 行，低于原基线）。
+- **Shell 下拉与真实名称**（UX-29）：`workspace/terminal-shell-picker.tsx` 提供下拉（不可用项在提示里说明缺什么），`terminal-shell-choice.ts` 决定选中项并在**偏好失效时明确提示**（原因 + 配置路径 + 已改用的 Shell），终端标题与中断/重启提示都使用真实运行中的 Shell 名称；最近命令列表抽到 `terminal-activity.tsx`、工具按钮抽到 `terminal-toolbar.tsx`。
 - **多终端标签模型**（UX-30）：`workspace/terminal-sessions.ts` 是纯 reducer（标签带 Shell、cwd、状态、退出码与有上限的回放缓存；超过 8 个标签拒绝并说明；关闭后选中项落到邻位；`terminalInputTarget` 保证输入永远不会送到启动中/已退出/失败的会话），`terminal-tabs.tsx` 渲染标签条，`use-terminal-shell-selection.ts` 持有探测与偏好；`terminal.tsx` 用该模型跟随真实会话状态。
 
-**多会话接线与终端冒烟（UX-30，2026-09-26）**：`use-terminal-sessions.ts` 接管会话集合与流（每个会话一条流、输出按会话缓冲、输入只发给活动且就绪的会话），`terminal.tsx` 只保留 xterm 与渲染（530 行）。`verify-conversation-workspace-scenarios.mjs` 的终端步骤现在会断言面板起来并列出真实 Shell（实测 `["PowerShell 7","Windows PowerShell","命令提示符","WSL · Ubuntu-26.04"]`），且单会话不显示标签条；该门同时改为把窗口停在屏幕外渲染（原来隐藏窗口会导致截图超时）。
+**多会话接线与终端冒烟（UX-30，2026-09-26）**：`use-terminal-sessions.ts` 接管会话集合与流，`terminal.tsx` 只保留 xterm 与渲染。**同一时刻只读一个会话**：`attach()` 中止上一条流并为当前显示的会话建流，`{ type: 'attached' }` 先清掉该标签在本地的回放缓存，再由 Main `replayTo` 把有界历史重新送回来。此前"每个会话一条流"的做法在 6 个会话时耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接，之后的创建/输入/尺寸/目录请求全部排队不返回，界面既不报错也不拒绝（UX-37 复查实测：点了 8 次创建、只settle 6 次）。`verify-conversation-workspace-scenarios.mjs` 的终端步骤断言面板起来并列出本机探测到的 Shell，且单会话不显示标签条；该门把窗口停在屏幕外渲染，以便截图和布局检查。
 
 ## 多终端：创建、切换与关闭（UX-30 第 1 条，2026-09-26）
 
 工具栏新增**新建**（提示写明"正在运行的终端不受影响"），第二个会话出现后标签条显示每个会话的真实 Shell 与状态，并且中断/重启/清空的提示补上影响范围（"只影响这一个，共 N 个终端"）；工作区或会话切换时 `closeAll` 终止所有会话。真实窗口走查：点新建后得到 2 个标签、恰好 1 个选中、第一个会话状态不受影响（实测 `终端 1运行中 / 终端 2启动中`），关闭第二个后标签条消失且剩下的会话仍为运行中。
 
-## 终端专项门与两个修复（UX-30 第 1、2 条，2026-09-26）
+## 终端专项门与四个修复（UX-30 / UX-37，2026-09-26）
 
-独立门 `pnpm run verify:workspace-terminal` 覆盖：Shell 下拉列出真实 Shell、打开时恰好一个会话、新建得到两个标签（恰好一个选中）、两个会话各自收到自己的输入（标记文件验证）、关闭当前标签只移除那一个。修复：打开面板只创建一个会话（此前一次挂载起两个 shell）；隐藏面板不再终止会话（清理只在工作区/会话身份真的变化时执行）。
+独立门 `pnpm run verify:workspace-terminal` 断言 Shell 下拉列出本机真实 Shell、初始单会话、新建后两个标签且恰好一个选中、切回第一个标签后仍能把命令写进它自己的标记文件、关闭当前标签只移除那一个（每次命令都先等 xterm helper textarea 的 `readOnly` 变为 false：它是 `disableStdin` 的镜像，置位时 xterm 丢弃全部输入）。`verify:transcript-state-visibility` 之外的门不重复这些断言。
+
+四个真实缺陷由这轮门与复查发现并修复，都影响用户：
+
+- **打开面板只创建一个会话**（StrictMode/快速重挂载会起两个 shell）；
+- **切换工作区或会话后终端变成空面板**：`startedRef` 只在首次挂载置位、从不复位，而清理会 `closeAll`，于是新身份既没有会话也不会再启动；现在身份变化时先复位该守卫；
+- **切回一个已在运行的标签后键盘失效**：`onActiveChange` 曾无条件 `setTerminalInputEnabled(false)`，只有会话再输出才会打开，而空闲的 shell 停在自己的提示符上不会再输出；现在切到的标签已 `ready` 就直接放行；
+- **重放历史把设备查询又答一次**：Main 的 `replayTo` 现在剥掉 `CSI c` / `CSI > c` / `CSI 5n` / `CSI 6n` 这类由终端回答的查询（`stripTerminalDeviceQueries`），否则终端会把答案当成用户输入发给 shell——实测切回标签后的命令以 `\x1b[?1;2cSet-Content …` 到达，PowerShell 直接报"`[` 后面缺少"。
+
+隐藏面板保活，关闭终端标签或切换工作区/会话时关闭所有会话（面板标签的提示写明这两条）。8 会话上限在 Main 创建之前判定并给出可见拒绝。切标签清空待发送输入。中断按钮在 PTY 与兼容模式下措辞不同（后者是强制结束进程树）。最近命令列表带上命令所在会话的真实 Shell 名（旧记录与 Agent 运行命令没有该字段时省略，不猜）。**终端标签不跨重启持久化**（已决定不做）：`localStorage` 只保存 Shell 偏好，重启后是零标签，界面也不暗示旧进程仍在运行。

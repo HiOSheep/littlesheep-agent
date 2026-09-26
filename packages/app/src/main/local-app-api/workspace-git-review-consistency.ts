@@ -12,6 +12,10 @@
 //   - the index file's `mtime`/`size` (staging and commits write it),
 //   - a fingerprint of `git status --porcelain -z` (working-tree edits do not touch
 //     the index, so without this an edit during the read would go unnoticed).
+// This is a collection-level consistency check. A second save to an already dirty file
+// can leave HEAD, index metadata and porcelain status unchanged, so this fingerprint
+// cannot detect that particular race. The UI must not describe it as an atomic read of
+// the current file contents. A content-level check would require bounded per-file facts.
 //
 // The orchestration takes its readers as arguments so the retry rule is testable
 // without Git, and the caller keeps ownership of what "one read" means.

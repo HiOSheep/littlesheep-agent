@@ -64,7 +64,7 @@ export function WorkspaceTerminalActivityList({
             >
               <span className="workspace-terminal-activity-command">{activity.command}</span>
               <span className="workspace-terminal-activity-meta">
-                {terminalActivityStatus(activity)} · {formatDurationMs(activity.durationMs)}
+                {terminalActivityMeta(activity)}
               </span>
             </button>
           )
@@ -72,6 +72,13 @@ export function WorkspaceTerminalActivityList({
       </div>
     </div>
   )
+}
+
+/** Shell · status · duration, so several open shells stay distinguishable in the history. */
+export function terminalActivityMeta(activity: TerminalActivityRecord): string {
+  return [activity.shell, terminalActivityStatus(activity), formatDurationMs(activity.durationMs)]
+    .filter((part): part is string => Boolean(part))
+    .join(' · ')
 }
 
 export function terminalActivityStatus(activity: TerminalActivityRecord): string {
@@ -88,6 +95,7 @@ export function terminalActivityStatus(activity: TerminalActivityRecord): string
 export function terminalActivityTip(activity: TerminalActivityRecord): string {
   const parts = [
     activity.command,
+    ...(activity.shell ? [`shell: ${activity.shell}`] : []),
     `cwd: ${activity.cwd}`,
     `${terminalActivityStatus(activity)} · ${formatDurationMs(activity.durationMs)}`,
   ]

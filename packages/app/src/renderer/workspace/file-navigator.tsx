@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   openWorkspacePathInVSCode,
+  listWorkspaceDirectory,
   type WorkspaceEntry
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
@@ -54,6 +55,10 @@ export function WorkspaceFileNavigator({
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set())
   const [treeError, setTreeError] = useState('')
   const [filterText, setFilterText] = useState('')
+  const normalizedFilter = normalizeWorkspaceFilter(filterText)
+  const [filteredDirectories, setFilteredDirectories] = useState<Record<string, WorkspaceDirectoryState>>({})
+  const [filteredQuery, setFilteredQuery] = useState('')
+  const [filterPending, setFilterPending] = useState(false)
   const directoryRequestRef = useRef(0)
   const mountedRef = useRef(true)
 
@@ -114,6 +119,42 @@ export function WorkspaceFileNavigator({
       void loadDirectory(path)
     }
   }, [directories, expandedPaths, navigatorCollapsed, workspacePath])
+
+  useEffect(() => {
+    if (!normalizedFilter || navigatorCollapsed || !directories[workspacePath]) {
+      setFilteredDirectories({})
+      setFilteredQuery('')
+      setFilterPending(false)
+      return
+    }
+    let alive = true
+    setFilterPending(true)
+    setFilteredQuery('')
+    const timer = window.setTimeout(() => {
+      const paths = Object.keys(directories)
+      void Promise.all(paths.map(async (path) => [path, await listWorkspaceDirectory(workspacePath, path, normalizedFilter)] as const))
+        .then((results) => {
+          if (!alive) return
+          const next: Record<string, WorkspaceDirectoryState> = {}
+          for (const [path, result] of results) {
+            const entries = [...result.entries]
+            // Keep already loaded parent folders so a match inside an expanded child
+            // remains reachable even when the parent name itself does not match.
+            for (const entry of directories[path]?.entries ?? []) {
+              if (entry.kind === 'directory' && directories[entry.path]
+                && !entries.some((candidate) => candidate.path === entry.path)) entries.push(entry)
+            }
+            next[path] = { entries, truncated: result.truncated, hiddenCount: result.hiddenCount }
+          }
+          setFilteredDirectories(next)
+          setFilteredQuery(normalizedFilter)
+          setTreeError('')
+        })
+        .catch(() => { if (alive) setTreeError('筛选暂时无法完成，请重试。') })
+        .finally(() => { if (alive) setFilterPending(false) })
+    }, 120)
+    return () => { alive = false; window.clearTimeout(timer) }
+  }, [normalizedFilter, navigatorCollapsed, workspacePath, directories])
 
   function setDirectoryLoading(path: string, loading: boolean) {
     setLoadingDirs((value) => {
@@ -214,11 +255,13 @@ export function WorkspaceFileNavigator({
     for (const path of ancestors) void loadDirectory(path, true)
   }
 
-  const rootInfo = directories[workspacePath]
+  const shownDirectories = normalizedFilter
+    ? filteredQuery === normalizedFilter ? filteredDirectories : {}
+    : directories
+  const rootInfo = shownDirectories[workspacePath]
   const loadingRoot = loadingDirs.has(workspacePath)
-  const normalizedFilter = normalizeWorkspaceFilter(filterText)
   const rootHasVisibleEntries = rootInfo
-    ? rootInfo.entries.some((entry) => workspaceEntryMatchesFilter(entry, directories, normalizedFilter))
+    ? rootInfo.entries.some((entry) => workspaceEntryMatchesFilter(entry, shownDirectories, normalizedFilter))
     : false
 
   // CS-08: the navigator is only "available" once a row is actually painted, so
@@ -305,16 +348,18 @@ export function WorkspaceFileNavigator({
             onChange={(event) => setFilterText(event.target.value)}
           />
         </label>
-        <div className="workspace-tree" role="tree" aria-label="当前工作区文件树">
+        <div className="workspace-tree" role="tree" aria-label="当前工作区文件树"
+          data-filter-ready={normalizedFilter && !filterPending && filteredQuery === normalizedFilter && rootInfo ? normalizedFilter : ''}>
           {loadingRoot && !rootInfo && <WorkspaceTreeNotice text="正在读取文件树..." />}
           {treeError && <WorkspaceTreeNotice text={treeError} tone="error" />}
-          {rootInfo && rootInfo.entries.length === 0 && <WorkspaceTreeNotice text="这个文件夹是空的。" />}
-          {rootInfo && normalizedFilter && !rootHasVisibleEntries && <WorkspaceTreeNotice text="没有匹配的文件。" />}
+          {filterPending && <WorkspaceTreeNotice text="正在筛选当前目录与已展开目录..." />}
+          {rootInfo && !normalizedFilter && rootInfo.entries.length === 0 && <WorkspaceTreeNotice text="这个文件夹是空的。" />}
+          {rootInfo && normalizedFilter && !filterPending && !rootHasVisibleEntries && <WorkspaceTreeNotice text="当前目录与已展开目录没有匹配的文件；未展开目录尚未搜索。" />}
           {rootInfo && (
             <WorkspaceTreeRows
               dirPath={workspacePath}
               depth={0}
-              directories={directories}
+              directories={shownDirectories}
               expanded={expanded}
               loadingDirs={loadingDirs}
               selectedPath={selectedPath}
@@ -327,7 +372,7 @@ export function WorkspaceFileNavigator({
             <WorkspaceTreeNotice
               text={[
                 rootInfo.hiddenCount > 0 ? `已隐藏 ${rootInfo.hiddenCount} 个重目录或链接` : '',
-                rootInfo.truncated ? `已截断到前 ${MAX_WORKSPACE_DIR_ENTRIES_LABEL} 项` : '',
+                rootInfo.truncated ? `${normalizedFilter ? '筛选结果' : '列表'}已截断到前 ${MAX_WORKSPACE_DIR_ENTRIES_LABEL} 项` : '',
               ].filter(Boolean).join('，')}
             />
           )}

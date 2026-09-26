@@ -124,11 +124,16 @@ describe('workspace review refresh notices', () => {
   it('renders both surfaces through the shared feedback structure', async () => {
     const review = await source('./review.tsx')
     const reviewDiff = await source('./review-diff.tsx')
+    const diffRead = await source('./use-workspace-review-diff.ts')
 
     // The notices come from the pure policy module; the view only wires actions.
     expect(review).toContain('reviewNotices({')
-    expect(review).toContain('onRetrySnapshot: () => requestSnapshotRefresh(true)')
-    expect(review).toContain('onRetryDiff: () => setDiffRetryVersion((version) => version + 1)')
+    expect(review).toContain('onRetrySnapshot: retrySnapshot')
+    expect(review).toContain('onRetryDiff: retryDiff')
+    // Retrying is the user's answer to a conflict, so it starts a new re-read budget;
+    // the budget itself stays bounded inside the diff reader.
+    expect(review).toContain('resetConflictBudget()')
+    expect(diffRead).toContain('MAX_DIFF_CONFLICT_REFRESHES')
     expect(reviewDiff).toContain("import { FeedbackNotice } from '../ui/feedback-notice'")
     expect(reviewDiff).toContain('feedback={notice.feedback}')
     expect(reviewDiff).toContain('className="workspace-review-update-notice"')

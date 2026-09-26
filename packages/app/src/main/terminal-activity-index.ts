@@ -15,6 +15,8 @@ export interface TerminalActivityInput {
   cwd: string
   workspacePath: string
   sessionId?: string
+  /** The Shell the command ran in, when it came from a resolved terminal profile. */
+  shell?: string
   startedAt?: string
   endedAt?: string
   durationMs: number
@@ -59,6 +61,7 @@ export class TerminalActivityIndex {
       cwd: normalizePath(input.cwd),
       workspacePath: normalizePath(input.workspacePath),
       sessionId: input.sessionId?.trim() || undefined,
+      shell: input.shell?.trim() || undefined,
       startedAt: input.startedAt ?? now,
       endedAt: input.endedAt ?? now,
       durationMs: Math.max(0, Math.round(input.durationMs)),
@@ -152,6 +155,7 @@ function isTerminalActivityRecord(value: unknown): value is TerminalActivityReco
     typeof item.truncated === 'boolean' &&
     typeof item.stdoutPreview === 'string' &&
     typeof item.stderrPreview === 'string' &&
-    (typeof item.sessionId === 'string' || item.sessionId === undefined)
+    (typeof item.sessionId === 'string' || item.sessionId === undefined) &&
+    (typeof item.shell === 'string' || item.shell === undefined)
   )
 }

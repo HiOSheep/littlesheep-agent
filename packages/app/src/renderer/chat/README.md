@@ -1,5 +1,5 @@
 # Renderer 对话
-最后更新：2026-09-25 17:12:24
+最后更新：2026-09-26 14:58:17
 
 这里负责消息、执行过程和渐进式披露的展示，以及把一次流式 run 的事件归并为 UI 状态。
 
@@ -11,10 +11,10 @@
 - `active-run-update.ts` 在 Runtime 接收运行中补充后按事件 id 将用户消息插入当前对话，重复响应不重复显示；真正执行由 Harness 的下一次模型请求决定。`verify:composer-stop-append` 以 Provider 请求记录确认补充进入同一 run。
 - `activity-model.ts`、`task-progress-indicator.tsx`、`message-meta.tsx`、`chat-scroll-anchor.ts`、`conversation-display.ts`：活动数据变换、进度控件、消息页脚、滚动锚定和显示密度。
 - **滚动位置只有一个所有者（UX-19）**：`use-chat-scroll-controller.ts` 持有底部吸附、阅读锚点与"回到最新"状态，`app-shell/chat-view.tsx` 只渲染它给出的 `onScroll`/`onClickCapture` 与按钮。读者在底部附近（`CHAT_STICKY_BOTTOM_THRESHOLD` 内）时视口变化按底边修复；**离开底部后锚点是"正在读的那条消息"而不是"离底部的距离"**——`selectChatVisibleAnchor` 记下第一条仍在视口内的 `data-message-key` 及其位置，`resolveAnchoredScrollTop` 在重排后把它放回原处，并用有界的 display-settle 逐帧收敛（宽度变化会在 ResizeObserver 通知之后继续重排，只测一次会留下尾部跳动）；锚点已不在（历史窗口替换）时不猜、不改动。新输出到达而读者不在底部时只置 `hasNewContent`，由 `.chat-jump-to-latest` 提供可达的返回入口，不把人拽到底部。**只有"换了一段对话"才重新贴底**：草稿会话在首次 run 里取得持久 id 时转写并没有换（真实窗口实测：这个瞬间重新贴底会把已经向上滚动的读者拽回底部），加载更早消息会改变首条消息 id 但会话没变——两者都必须保持读者位置；"有新内容"用消息数 + 末条 id + 末条正文长度判定，流式增长同样算新内容。**修复循环必须让位给读者**：hook 记住自己写过的 `scrollTop`，`onScroll` 看到不是自己写的滚动就立刻取消逐帧修复（真实验收里这条是必需项——不取消时"回到最新"会被旧锚点拉回，按钮永不消失）。回归：`chat-scroll-anchor.test.ts`（纯算术）与 `chat-scroll-controller-wiring.test.ts`（接线、让位规则与 CSS 契约）；真实窗口数字由 `verify:electron-ui-state-continuity` 与 `verify:chat-streaming-rendering` 记录。
-- `activity-visibility.ts`：渐进披露规则。紧凑显示只折叠"无需关注"的已完成行；未成功的工具调用（含 Runtime 报告的权限拒绝）、失败或中止的准备行、失败的思考行、未通过的验证与失败步骤都必须继续可见（`compactTranscriptEntries` / `activityAttentionLine`），不得因为减少噪声而隐藏需要决定或修复的事实。
+- `activity-visibility.ts`：渐进披露规则。紧凑显示只折叠"无需关注"的已完成行；未成功的工具调用（含 Runtime 报告的权限拒绝）、失败或中止的准备行、失败的思考行、未通过的验证与失败步骤都必须继续可见（`compactTranscriptEntries` / `activityAttentionLine`），不得因为减少噪声而隐藏需要决定或修复的事实。**折叠只对"已不再运行"的回合生效**（`compactCompleted`），因此等待用户批准的运行中回合在两种模式下的渲染完全相同，"正在等待 write 的权限批准"这条事实在两种模式下都可读。
 - `context-projections.ts`、`conversation-turn-fingerprint.ts`：上下文快照的有界无正文投影，以及跨文本、运行时、工作区和附件的稳定回合标识。
 - `stream-text-integrity.test.ts`：流式文字完整性的分层探针（UX-20），用一份含标题/列表/链接/引用/代码围栏/中文标点/长段落的确定性样本驱动**真实**的 `consumeRunStream` + `assistant-delta-buffer` + `run-result-reducer`，固定住四条边界：正常流逐字节一致；畸形帧只被跳过、不连累邻居；**结果帧本身无法解析时仍以"结束却没有 result"拒绝，不静默成功**；`aborted`/`failed` 撤回预览而成功 run 用 settlement 文案覆盖预览。增删流式层的语义前先在这里改断言。
 
-验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
+验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。**两种显示模式都要能读到它**：验证结论属于活动而不是转录行，紧凑模式由 `.agent-transcript-attention` 承载，普通模式由 `activityVerificationLine` 单独渲染成一行（`data-transcript-verification`，中性样式，不带危险色）。普通模式下每个已结算回合都是 `unverified`，因此这一行是常态而不是告警——但它必须存在，否则同一份 run 在一种显示模式下"从未验证过"这件事会完全消失。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，没有 partial：需要"没做完"的说法时用 `aborted`（本轮已停止）、`paused`（本轮已暂停）或 `needs_replan`（验证：需要调整），不要为清单虚构状态。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
 
 `run-actions.ts` 为 337 行，略高于 300 行，因为一次 run 的 SSE 顺序、步骤/工具归并、审批、停止和最终收尾必须维持同一事务边界。后续只有在建立独立事件 reducer 特征测试后才继续拆分，当前不得继续增长。

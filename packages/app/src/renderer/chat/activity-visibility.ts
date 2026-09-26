@@ -68,11 +68,23 @@ export function activityAttentionLine(
   const failedSteps = activity.steps.filter((step) => step.status === 'failed')
   if (failedSteps.length > 0) parts.push(`${failedSteps.length} 个步骤失败`)
 
-  const notPassed = (activity.verificationHistory ?? []).filter((record) => record.verdict !== 'pass')
-  if (notPassed.length > 0) {
-    const labels = [...new Set(notPassed.map((record) => verificationVerdictLabel(record.verdict)))]
-    parts.push(`验证：${labels.join('、')}`)
-  }
+  const verification = activityVerificationLine(activity)
+  if (verification) parts.push(verification)
 
   return parts.length > 0 ? parts.join(' · ') : null
+}
+
+/**
+ * The verification verdicts that did not pass, as one line. The verdict lives on the activity
+ * rather than on a transcript row, so compact mode folds it into the attention line while
+ * normal mode renders this line on its own: a verdict that did not pass must stay readable in
+ * both modes and must never read as a pass (UX-16).
+ */
+export function activityVerificationLine(
+  activity: Pick<AssistantTurnActivity, 'verificationHistory'>,
+): string | null {
+  const notPassed = (activity.verificationHistory ?? []).filter((record) => record.verdict !== 'pass')
+  if (notPassed.length === 0) return null
+  const labels = [...new Set(notPassed.map((record) => verificationVerdictLabel(record.verdict)))]
+  return `验证：${labels.join('、')}`
 }

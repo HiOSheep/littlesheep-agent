@@ -130,9 +130,10 @@ async function measureDirectoryEntry(client, name) {
     return rows.length > ${before} ? performance.now() : null
   })()`), 60_000, `${name} first child row`)
 
-  // Settle: the row count must stop changing for a few frames.
+  // Settle: the row count must stop changing across timed polls. An off-screen Electron
+  // window can throttle animation frames, so rAF is not a reliable wait clock here.
   const settled = await evaluate(client, `(async () => {
-    const raf = () => new Promise((done) => requestAnimationFrame(() => done()))
+    const poll = () => new Promise((done) => setTimeout(done, 30))
     let last = -1
     let stableFrames = 0
     const startedAt = performance.now()
@@ -141,7 +142,7 @@ async function measureDirectoryEntry(client, name) {
       if (count === last) stableFrames += 1
       else { stableFrames = 0; last = count }
       if (stableFrames >= 6) break
-      await raf()
+      await poll()
     }
     return { rows: document.querySelectorAll('.workspace-tree-row').length, settledAt: performance.now() }
   })()`)
@@ -186,10 +187,9 @@ const SCROLLER_EXPRESSION = `(() => {
   return null
 })()`
 
-/** Frame pacing while scrolling the tree from top to bottom. */
+/** Synchronous layout cost while scrolling the tree from top to bottom. */
 async function measureScrollPacing(client) {
   return evaluate(client, `(async () => {
-    const raf = () => new Promise((done) => requestAnimationFrame((timestamp) => done(timestamp)))
     const row = document.querySelector('.workspace-tree-row')
     let scroller = null
     let node = row?.parentElement ?? null
@@ -203,17 +203,17 @@ async function measureScrollPacing(client) {
     if (!(scroller instanceof HTMLElement)) return null
     scroller.scrollTop = 0
     const deltas = []
-    let previous = await raf()
     const steps = 30
     for (let step = 1; step <= steps; step += 1) {
+      const startedAt = performance.now()
       scroller.scrollTop = Math.round((scroller.scrollHeight - scroller.clientHeight) * (step / steps))
-      const timestamp = await raf()
-      deltas.push(Math.round((timestamp - previous) * 100) / 100)
-      previous = timestamp
+      void scroller.offsetHeight
+      deltas.push(Math.round((performance.now() - startedAt) * 100) / 100)
     }
     const sorted = [...deltas].sort((left, right) => left - right)
     return {
       scroller: typeof scroller.className === 'string' ? scroller.className : '',
+      mode: 'sync-layout',
       scrollRange: scroller.scrollHeight - scroller.clientHeight,
       frames: deltas.length,
       averageMs: Math.round((deltas.reduce((total, value) => total + value, 0) / deltas.length) * 100) / 100,
@@ -268,36 +268,78 @@ async function measureUncappedRowCost(client, counts) {
 /** Type a query into the navigator filter and report what the tree shows. */
 async function measureFilter(client, query) {
   const before = await evaluate(client, `document.querySelectorAll('.workspace-tree-row').length`)
-  const started = await evaluate(client, `(() => {
-    const input = document.querySelector('.workspace-file-filter input')
+  const focusProbe = await evaluate(client, `(() => {
+    const input = document.querySelector('.workspace-shared-file-navigator .workspace-file-filter input')
     if (!(input instanceof HTMLInputElement)) return null
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    setter?.call(input, ${JSON.stringify(query)})
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.focus()
+    return { focused: document.activeElement === input, navigatorClass: input.closest('.workspace-shared-file-navigator')?.className,
+      rect: input.getBoundingClientRect().toJSON(), activeTab: document.querySelector('.workspace-tab-view.active')?.className,
+      tabs: [...document.querySelectorAll('.workspace-tab-strip [role="tab"]')].map((tab) => ({ text: tab.textContent?.trim(), active: tab.getAttribute('aria-selected'), kind: tab.getAttribute('data-workspace-tab-kind') })) }
+  })()`)
+  if (!focusProbe?.focused) return { query, supported: false, focusProbe }
+  const started = await evaluate(client, `(() => {
+    const input = document.querySelector('.workspace-shared-file-navigator .workspace-file-filter input')
+    if (!(input instanceof HTMLInputElement)) return null
+    input.focus()
+    input.select()
     return performance.now()
   })()`)
   if (started === null) return { query, supported: false }
+  if (query) {
+    await client.send('Input.insertText', { text: query })
+  } else {
+    await client.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 })
+  }
   const result = await evaluate(client, `(async () => {
-    const raf = () => new Promise((done) => requestAnimationFrame(() => done()))
-    let last = -1
-    let stable = 0
+    const poll = () => new Promise((done) => setTimeout(done, 30))
     const startedAt = performance.now()
-    while (performance.now() - startedAt < 10000) {
-      const count = document.querySelectorAll('.workspace-tree-row').length
-      if (count === last) stable += 1
-      else { stable = 0; last = count }
-      if (stable >= 6) break
-      await raf()
+    while (performance.now() - startedAt < 2000) {
+      const tree = document.querySelector('.workspace-shared-file-navigator .workspace-tree')
+      if (tree?.getAttribute('data-filter-ready') === ${JSON.stringify(query.toLowerCase())}) break
+      await poll()
     }
     const rows = [...document.querySelectorAll('.workspace-tree-row')]
     return {
       rows: rows.length,
       matched: rows.some((row) => row.textContent?.includes(${JSON.stringify(query)})),
+      ready: document.querySelector('.workspace-shared-file-navigator .workspace-tree')?.getAttribute('data-filter-ready'),
+      inputValue: document.querySelector('.workspace-shared-file-navigator .workspace-file-filter input')?.value ?? null,
       sample: rows.slice(0, 3).map((row) => row.textContent?.trim().slice(0, 30) ?? ''),
       settledAt: performance.now(),
     }
   })()`)
   return { query, supported: true, ms: Math.round(result.settledAt - started), rowsBefore: before, addedRows: result.rows - before, ...result }
+}
+
+async function measureFilterKeystrokes(client, query) {
+  const steps = []
+  for (let length = 1; length <= query.length; length += 1) {
+    const result = await measureFilter(client, query.slice(0, length))
+    steps.push({ length, ms: result.ms, rows: result.rows, ready: result.ready })
+  }
+  return steps
+}
+
+async function measureKeyboardNavigation(client) {
+  const setup = await evaluate(client, `(() => {
+    const rows = [...document.querySelectorAll('.workspace-tree-row')]
+    const firstFile = rows.findIndex((row) => row.classList.contains('file'))
+    const lastFile = rows.findLastIndex((row) => row.classList.contains('file'))
+    rows[firstFile]?.focus()
+    return { count: rows.filter((row) => row.classList.contains('file')).length, steps: lastFile - firstFile }
+  })()`)
+  if (setup.count < 320) return { ...setup, reachedLast: false, ms: null }
+  const started = Date.now()
+  for (let index = 0; index < setup.steps; index += 1) {
+    await client.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 })
+  }
+  const reachedLast = await evaluate(client, `(() => {
+    const rows = [...document.querySelectorAll('.workspace-tree-row.file')]
+    return document.activeElement === rows.at(-1)
+  })()`)
+  return { ...setup, reachedLast, ms: Date.now() - started }
 }
 
 async function main() {
@@ -328,7 +370,9 @@ async function main() {
     const locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
     await harness.desktopAction(locator, 'resize', WINDOW)
+    await harness.desktopAction(locator, 'show')
     client = await harness.connectRenderer(debuggingPort)
+    await client.send('Page.bringToFront')
     await seedPreferences(client, workplaceDir)
 
     const results = []
@@ -351,12 +395,21 @@ async function main() {
         await delay(120)
       }
       const entry = await measureDirectoryEntry(client, fixture.name)
+      await evaluate(client, `document.querySelector('.workspace-tree-row.file')?.click()`)
+      await harness.waitFor(
+        () => evaluate(client, `document.querySelector('.workspace-shared-file-navigator:not(.inactive) .workspace-file-filter input') ? true : null`),
+        20_000,
+        'file tab and active navigator',
+      )
       const scroller = await evaluate(client, SCROLLER_EXPRESSION)
       const pacing = await measureScrollPacing(client)
       const filterBeyondCap = await measureFilter(client, 'zzz-beyond-cap')
       const filterFirst = await measureFilter(client, 'aaa-first')
       await measureFilter(client, '')
-      results.push({ ...fixture, listing: listingSamples, entry, scroller, scrollPacing: pacing, filterBeyondCap, filterFirst })
+      const keystrokes = await measureFilterKeystrokes(client, 'zzz')
+      await measureFilter(client, '')
+      const keyboard = await measureKeyboardNavigation(client)
+      results.push({ ...fixture, listing: listingSamples, entry, scroller, scrollPacing: pacing, filterBeyondCap, filterFirst, keystrokes, keyboard })
     }
 
     const failures = []
@@ -365,6 +418,9 @@ async function main() {
       expect(result.listing.every((sample) => sample.status === 200), `${result.name}: the listing route did not answer 200`)
       expect(result.listing.every((sample) => sample.entries <= 320), `${result.name}: the renderer received more than the cap allows`)
       expect(result.entry.addedRows <= 321, `${result.name}: the tree rendered ${result.entry.addedRows} child rows for a capped listing`)
+      expect(result.filterBeyondCap.matched === true, `${result.name}: a file beyond the initial cap cannot be reached by filtering`)
+      expect(result.keystrokes.every((step) => step.ready === 'zzz'.slice(0, step.length)), `${result.name}: a filter keystroke did not settle`)
+      expect(result.keyboard.reachedLast === true, `${result.name}: keyboard Tab did not reach the last file row`)
       expect(result.scrollPacing === null || result.scrollPacing.longFrames === 0,
         `${result.name}: ${result.scrollPacing?.longFrames} long frames while scrolling the navigator`)
     }

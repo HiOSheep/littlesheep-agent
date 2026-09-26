@@ -203,13 +203,30 @@ function hashRouteIdentity(hash: string): string {
 export function normalizeBrowserUrl(value: string): string {
   const input = value.trim()
   if (!input) return ''
-  const normalized = /^https?:\/\//iu.test(input) ? input : `https://${input}`
+  const normalized = /^https?:\/\//iu.test(input) ? input : `${browserSchemeFor(input)}://${input}`
   try {
     const url = new URL(normalized)
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
   } catch {
     return ''
   }
+}
+
+/**
+ * The scheme for a host the user typed without one (UX-31 item 2). LS never starts a user
+ * project's own server, but a person who did start one types `localhost:5173`; assuming HTTPS
+ * there sends them to a scheme the dev server does not serve. Loopback names get HTTP, and
+ * anything else keeps the HTTPS assumption.
+ */
+function browserSchemeFor(input: string): 'http' | 'https' {
+  const authority = input.split(/[/?#]/u, 1)[0] ?? ''
+  const host = (authority.split('@').at(-1) ?? '')
+    .replace(/:\d+$/u, '')
+    .replace(/^\[|\]$/gu, '')
+    .toLowerCase()
+  return host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '::1'
+    ? 'http'
+    : 'https'
 }
 
 // Navigation events come from Chromium and must already contain a web URL.

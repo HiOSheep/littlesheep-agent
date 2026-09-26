@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 10:13:50
+最后更新：2026-09-26 14:58:37
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -57,11 +57,11 @@
 
 ## 打开文件的磁盘状态（2026-09-26）
 
-`local-app-api/workspace-file-service.ts` 增加 `statWorkspaceFile` 与 `GET /workspace/file-stat`：只回 exists/modifiedAt/size，供渲染器在编辑期间发现外部改写或删除（UX-25 第 3 条）。它不读文件内容，也不改变保存路径的 409 语义——那是最后一道防线，新查询是更早的提示。
+`local-app-api/workspace-file-service.ts` 增加 `statWorkspaceFile` 与 `GET /workspace/file-stat`：只回 exists/modifiedAt/size，供渲染器在编辑期间发现外部改写或删除（UX-25 第 3 条）。它不读文件内容，也不改变保存路径的 409 语义——那是最后一道防线，新查询是更早的提示。目录列表的可选 `filter` 在 Main 排序后、320 项截断前执行；未展开的子目录不递归扫描。
 
 ## Git 审阅的有界一致性重读（2026-09-26）
 
-`local-app-api/workspace-git-review.ts` 现在用 HEAD、index stat 与 status 指纹在装配前后比对，必要时重读一次；仍不稳定就把快照标成 `unstable`（共享契约 `workspace-review-contracts.ts` 的可选字段），由渲染器提示。这是 UX-27 第 2 条要求的"读取前后一致性校验 + 丢弃过期结果"，仍然复用既有缓存/取消/合并逻辑，没有新增调度层。
+`local-app-api/workspace-git-review.ts` 用 HEAD、index stat 与 status 指纹在装配前后比对，必要时重读一次；仍不稳定就把快照标成 `unstable`（共享契约 `workspace-review-contracts.ts` 的可选字段），由渲染器提示。它是集合级校验：一个本来就脏的文件再次保存、而 porcelain 文字不变时，不能证明文件内容未变；不把结果称为原子文件快照。连续 Diff 409 的渲染器自动刷新最多两次，之后提示手动重试。
 
 ## Git 读取失败的分类（2026-09-26）
 
@@ -83,7 +83,7 @@
 
 `local-app-api/workspace-git-review-unavailable.test.ts`：清空 PATH 复现 `git-unavailable`；`icacls .git\index /deny` 复现 `permission-denied`（分类作用于整次读取，因为拒绝发生在 `rev-parse` 成功之后）；读损坏仓库前后全局配置不变，实测"不自动修改 safe.directory"（UX-28 第 1 条）。
 - **屏外停放**：`desktop-visual-acceptance.ts` 的 `parkWindowOffscreenForAcceptance` 先把窗口移到所有显示器之外再 `showInactive()`，供需要真实布局的验收使用；只有 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时契约可用。记录到的缺陷：审阅差异的 Monaco 根节点保持 inline `height: 5px`（父链 716 px），仅渲染 1 行——在**正在渲染**的窗口里同样复现，因此是应用侧布局缺陷。
-- **Shell 探测与选择**（UX-29）：`main/workspace-shell-discovery.ts` 探测本机真实可用的 Shell（含"PATH 上的 bash.exe 是 WSL 启动器、不算 Git Bash"与 WSL 发行版逐条列出），`terminal-process.ts` 按 profile 启动并把 `LANG`/`TERM` 等环境并入 spawn；`GET /workspace/terminal/shells` 提供列表，未知或不可用的 id 被拒绝。
+- **Shell 探测与选择**（UX-29/32）：`main/workspace-shell-discovery.ts` 从 PATH 中 `Git\cmd\git.exe` 反推安装根并找 `bin\bash.exe`，仍拒绝 System32 的 WSL 启动器；WSL 发行版逐条列出。`terminal-process.ts` 按 profile 启动并把 `LANG`/`TERM` 并入 spawn；`GET /workspace/terminal/shells` 提供列表。显式指定的未知或不可用 id 返回 400，只有未指定 id 才选默认 Shell。
 
 ## 终端 Shell 的真实验收（2026-09-26）
 
@@ -94,6 +94,8 @@
 `windowsPathToWslPath` 把 Windows 工作区路径映射成 WSL 能用的 `/mnt/<盘符>/...`（UNC 返回 null，不猜），`wslArgs(发行版, 工作区)` 用它作为 `--cd`，映射不出来时退回 `~`；WSL 的 `--cd` 依赖会话目录，所以参数不能像其它 Shell 一样在探测时冻结（`shellLaunch(profile, root)`）。实机验收（PowerShell 侧）：会话在含空格与中文的路径下启动，cwd 正确，且能写入并读回 `中文 文件.txt`。
 - **多个终端会话**（UX-30）：`local-app-api/workspace-terminal-sessions.test.ts` 实测两个真实会话输出互不串台、关闭其一不影响另一个、超过上限被拒绝；渲染侧的标签模型与标签条见 `renderer/workspace/terminal-sessions.ts`。
 - **多终端会话接线**（UX-30）：`renderer/workspace/use-terminal-sessions.ts` 持有会话与流，`terminal.tsx` 只保留 xterm 与渲染；`workspace-terminal-authority-api.test.ts` 另断言 `GET /workspace/terminal/shells` 返回可用项与不可用项的原因。
+- **终端重放与设备查询**（UX-37）：`local-app-api/terminal-session.ts` 的 `replayTo` 在挂流时重放有界历史前先剥掉由终端回答的设备查询（`stripTerminalDeviceQueries`），否则终端会把答案当用户输入写进 shell，实测下一条命令以 `\x1b[?1;2cSet-Content …` 到达并被拒绝。同一时刻只有一条终端流（渲染器只读当前显示的会话），这是浏览器 6 条 HTTP/1.1 连接预算下的连接层修复。
+- **最近命令的来源**（UX-30 第 5 条）：`terminal-activity-index.ts` 的 `TerminalActivityRecord` 带可选 `shell`（写入方是交互会话的 `terminal-capture.ts`，取自会话真实的 Shell 标签）；旧记录与 Agent 运行命令没有该字段，界面省略而不是猜。
 
 ## WSL 的可用性与实测边界（UX-29 第 3、4 条，2026-09-26）
 

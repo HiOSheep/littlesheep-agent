@@ -8,7 +8,7 @@
 
 import { existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -113,7 +113,10 @@ export function isGitBashPath(path: string): boolean {
 }
 
 /** The Git for Windows locations worth checking when bash is not on PATH. */
-export function gitBashCandidates(env: NodeJS.ProcessEnv): string[] {
+export function gitBashCandidates(
+  env: NodeJS.ProcessEnv,
+  fileExists: (path: string) => boolean = existsSync,
+): string[] {
   const roots = [
     env['ProgramFiles'],
     env['ProgramW6432'],
@@ -129,6 +132,15 @@ export function gitBashCandidates(env: NodeJS.ProcessEnv): string[] {
   for (const entry of pathEntries) {
     const candidate = join(entry, 'bash.exe')
     if (isGitBashPath(candidate)) candidates.push(candidate)
+    // Git for Windows normally puts <root>\cmd on PATH, while Bash lives in <root>\bin.
+    // Only infer that root when this PATH entry actually contains git.exe.
+    if (basename(entry).toLowerCase() === 'cmd' && fileExists(join(entry, 'git.exe'))) {
+      const gitRoot = dirname(entry)
+      for (const relative of [['bin', 'bash.exe'], ['usr', 'bin', 'bash.exe']]) {
+        const bash = join(gitRoot, ...relative)
+        if (isGitBashPath(bash)) candidates.push(bash)
+      }
+    }
   }
   return candidates
 }
@@ -259,7 +271,7 @@ export async function discoverWorkspaceShells(
       configHint: '该系统缺少 Windows PowerShell 5.1，通常需要修复 Windows 组件。',
     })
 
-  const gitBash = firstExisting(gitBashCandidates(env), fileExists)
+  const gitBash = firstExisting(gitBashCandidates(env, fileExists), fileExists)
   profiles.push(gitBash
     ? {
       id: 'git-bash',
@@ -276,7 +288,7 @@ export async function discoverWorkspaceShells(
       label: 'Git Bash',
       available: false,
       reason: '未找到属于 Git for Windows 的 bash.exe（System32 下的 bash.exe 是 WSL 启动器，不算 Git Bash）。',
-      configHint: '安装 Git for Windows（winget install Git.Git），或确认安装在默认目录。',
+      configHint: '安装 Git for Windows（winget install Git.Git），或把安装目录的 cmd 加入 PATH。',
     })
 
   const cmd = env['SystemRoot'] ? join(env['SystemRoot'], 'System32', 'cmd.exe') : undefined
@@ -355,7 +367,7 @@ export function findWorkspaceShellProfile(
   return profile ?? null
 }
 
-/** The default shell: PowerShell 7 when present, then Windows PowerShell, then cmd. */
+/** The default shell: Windows PowerShell, then PowerShell 7, cmd and Git Bash. */
 export function defaultWorkspaceShellProfile(
   profiles: readonly WorkspaceShellProfile[],
 ): WorkspaceShellProfile | null {

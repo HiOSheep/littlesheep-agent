@@ -125,7 +125,9 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
 
   replayTo(res: ServerResponse): void {
     writeSse(res, 'start', this.snapshot())
-    for (const item of this.outputHistory) writeSse(res, item.stream, { text: item.text })
+    for (const item of this.outputHistory) {
+      writeSse(res, item.stream, { text: stripTerminalDeviceQueries(item.text) })
+    }
     if (this.exitInfo) writeSse(res, 'exit', this.exitInfo)
   }
 
@@ -244,6 +246,18 @@ export class WorkspaceTerminalSessionManager {
     this.sessions.clear()
     for (const session of sessions) session.kill()
   }
+}
+
+/**
+ * Device queries are answered by whichever terminal receives them, and a replay is not a new
+ * session talking — it is the same conversation shown again. Feeding a query back therefore makes
+ * the surface answer it a second time, and that answer is typed into the shell as if the user had
+ * written it: measured, a command sent right after switching back to a tab arrived as
+ * `\x1b[?1;2cSet-Content …` and PowerShell rejected the line. Only the replay is filtered; live
+ * output keeps every byte, because the terminal really must answer the query the first time.
+ */
+export function stripTerminalDeviceQueries(value: string): string {
+  return value.replace(/\x1b\[(?:>?c|>0c|5n|6n|\?6n)/gu, '')
 }
 
 export function normalizeTerminalSize(value: unknown): { cols: number; rows: number } {

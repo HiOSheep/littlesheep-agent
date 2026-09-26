@@ -31,7 +31,7 @@ const REFRESH_LABEL = '刷新 Git 更改'
 const PROBE_SOURCE = `(() => {
   if (window.__reviewFailureProbe) return true;
   const probe = {
-    failSnapshot: false, failDiff: false, holdSnapshot: false, holdDiff: false,
+    failSnapshot: false, failDiff: false, conflictDiff: false, holdSnapshot: false, holdDiff: false,
     snapshots: 0, diffs: 0,
     // UX-27 item 4 needs finer control than "hold everything": hold the *next* N
     // snapshots individually, answer them later, and be able to answer with stale data.
@@ -85,6 +85,9 @@ const PROBE_SOURCE = `(() => {
         });
       }
       if (probe.failDiff) return failure('fixture diff failure');
+      if (probe.conflictDiff) return Promise.resolve(new Response(JSON.stringify({ error: 'fixture diff conflict' }), {
+        status: 409, headers: { 'content-type': 'application/json' },
+      }));
     }
     return originalFetch(input, init);
   };
@@ -621,12 +624,47 @@ async function main() {
       { before: diffFailure.probe.diffs, after: diffRecovered.probe.diffs },
     )
 
-    // UX-27 item 4: a delayed older answer must not win. The renderer already prevents
-    // two overlapping snapshot reads (in-flight guard + one queued follow-up), so the
-    // property is checked where it lives: extra clicks while a read is held must not
-    // start more reads, and once the held (deliberately stale) answer and the queued
-    // refresh have both landed, the list must be the newest read's, with no notice left.
-    await setProbe(client, { holdSnapshotNext: 1, failSnapshot: false, failDiff: false, holdSnapshot: false, holdDiff: false })
+    // A diff that keeps answering 409 cannot trigger an endless snapshot/diff cycle.
+    const beforeConflict = await readSurface(client)
+    await setProbe(client, { conflictDiff: true })
+    await click(client, REFRESH_LABEL)
+    const conflictStopped = await waitForSurface(
+      client,
+      (surface) => surface.notices.some((notice) => notice.text.includes('持续变化，已停止自动刷新')),
+      25_000,
+      'repeated diff conflicts stop with an actionable notice',
+    ).catch(() => readSurface(client))
+    const conflictDiffReads = conflictStopped.probe.diffs - beforeConflict.probe.diffs
+    const conflictSnapshotReads = conflictStopped.probe.snapshots - beforeConflict.probe.snapshots
+    recorder.note({ step: 'bounded-diff-conflict', notices: conflictStopped.notices, conflictDiffReads, conflictSnapshotReads })
+    recorder.check(
+      conflictStopped.notices.some((notice) => notice.text.includes('持续变化，已停止自动刷新'))
+        && conflictDiffReads <= 3 && conflictSnapshotReads <= 3,
+      'repeated 409 responses stop after bounded retries and explain the next action',
+      { notices: conflictStopped.notices, conflictDiffReads, conflictSnapshotReads },
+    )
+    await setProbe(client, { conflictDiff: false })
+    await click(client, REFRESH_LABEL)
+    await waitForSurface(client, (surface) => surface.notices.length === 0, 20_000, 'diff recovers after conflict')
+
+    // UX-27 item 4: a delayed older answer must not win. The renderer prevents two
+    // overlapping snapshot reads (in-flight guard + one queued follow-up), so the property
+    // is checked where it lives. The toolbar button is *disabled* while a read is in flight,
+    // so the extra clicks below never reach the guard at all; the request that still reaches
+    // it is the diff notice's retry, whose 409 asks for a fresh snapshot and is therefore the
+    // queued follow-up. That is the shape asserted here: the clicks start no read, the held
+    // (deliberately stale) answer lands, and the queued follow-up replaces it with the newest
+    // list and leaves no notice behind.
+    await setProbe(client, { failDiff: true, conflictDiff: false, holdSnapshotNext: 0, holdSnapshot: false, holdDiff: false })
+    await click(client, REFRESH_LABEL)
+    const diffRetryBefore = await waitForSurface(
+      client,
+      (surface) => retryButton(surface, '重试差异')?.disabled === false
+        && surface.notices.some((notice) => notice.text.includes('差异更新失败')),
+      25_000,
+      'a retryable diff failure before the out-of-order read',
+    ).catch(() => readSurface(client))
+    await setProbe(client, { failDiff: false, conflictDiff: true, holdSnapshotNext: 1 })
     const beforeOutOfOrder = await readSurface(client)
     await click(client, REFRESH_LABEL)
     const heldOlder = await waitForSurface(
@@ -641,6 +679,17 @@ async function main() {
     await click(client, REFRESH_LABEL)
     const whileHeld = await readSurface(client)
     await writeFile(join(workspaceDir, 'newer.txt'), 'newer\n', 'utf8')
+    // The retry runs while the snapshot read is held, and its 409 makes the diff reader ask
+    // for a new snapshot instead of starting one, which is exactly the queued follow-up.
+    const queuedRetry = await client.evaluate(`(() => {
+      const button = [...document.querySelectorAll('.workspace-review button')]
+        .find((node) => (node.textContent || '').trim() === '重试差异');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+      button.click();
+      return true;
+    })()`)
+    await delay(400)
+    await setProbe(client, { conflictDiff: false })
     await client.evaluate(`(() => { window.__reviewHolds.craftStale = true; const next = window.__reviewHolds.queued.shift(); if (next) next(); return true; })()`)
     // The queued refresh starts once the queue drains; only then can the newest list be
     // on screen. Waiting for both in one predicate raced the queue in an earlier run.
@@ -656,20 +705,29 @@ async function main() {
     recorder.note({
       step: 'out-of-order-snapshot',
       before: { snapshots: beforeOutOfOrder.probe.snapshots, files: beforeOutOfOrder.files },
+      diffRetry: { available: retryButton(diffRetryBefore, '重试差异')?.disabled === false, diffs: diffRetryBefore.probe.diffs },
       held: { snapshots: heldCount, files: heldOlder.files },
-      whileHeld: { snapshots: whileHeld.probe.snapshots, files: whileHeld.files },
+      whileHeld: { snapshots: whileHeld.probe.snapshots, files: whileHeld.files, refreshDisabled: whileHeld.refresh?.disabled ?? null },
+      queuedRetry,
       settled: { snapshots: settledOutOfOrder.probe.snapshots, files: settledOutOfOrder.files, notices: settledOutOfOrder.notices.length },
       screenshot: outOfOrderShot,
     })
     recorder.check(
       whileHeld.probe.snapshots === heldCount,
       'refreshes clicked while a read is in flight do not start more reads',
-      { heldCount, whileHeld: whileHeld.probe.snapshots },
+      { heldCount, whileHeld: whileHeld.probe.snapshots, refreshDisabled: whileHeld.refresh?.disabled ?? null },
     )
     recorder.check(
-      settledOutOfOrder.files >= 2 && settledOutOfOrder.notices.length === 0,
+      settledOutOfOrder.files >= 2 && settledOutOfOrder.notices.length === 0
+      && settledOutOfOrder.probe.snapshots > heldCount,
       'after a stale answer and the queued refresh, the list is the newest read with no notice left',
-      { files: settledOutOfOrder.files, notices: settledOutOfOrder.notices },
+      {
+        files: settledOutOfOrder.files,
+        notices: settledOutOfOrder.notices,
+        heldSnapshots: heldCount,
+        settledSnapshots: settledOutOfOrder.probe.snapshots,
+        queuedRetry,
+      },
     )
     // UX-27 item 3: refresh spam is coalesced instead of firing a request per click.
     const beforeSpam = await readSurface(client)
@@ -947,10 +1005,12 @@ async function main() {
     // The reads must stay bounded (no infinite refresh loop) and the view must settle.
     const beforeChurn = await readSurface(client)
     let churn = true
+    let churnSequence = 0
     const churnTimer = setInterval(() => {
       if (!churn) return
-      void writeFile(join(workspaceDir, 'churn.txt'), `churn ${Date.now()}\n`, 'utf8')
-    }, 40)
+      churnSequence += 1
+      void writeFile(join(workspaceDir, `churn-${churnSequence}.txt`), `churn ${churnSequence}\n`, 'utf8')
+    }, 25)
     try {
       for (let clickIndex = 0; clickIndex < 3; clickIndex += 1) {
         await click(client, REFRESH_LABEL)
@@ -974,6 +1034,11 @@ async function main() {
         settledUnderChurn.notices.every((notice) => notice.tone !== 'error') && churnReads <= 6,
         'continuous change keeps the refresh bounded and leaves no error behind',
         { churnReads, snapshots: settledUnderChurn.probe?.snapshots ?? null, notices: settledUnderChurn.notices },
+      )
+      recorder.check(
+        settledUnderChurn.notices.some((notice) => notice.text.includes('仓库在读取期间仍在变化')),
+        'continuous change is labelled unstable in the review surface',
+        { churnSequence, notices: settledUnderChurn.notices },
       )
     } finally {
       churn = false
@@ -1503,7 +1568,7 @@ async function main() {
       'The fixture injects page-level fetch failures and a held request; the view, the review cache and the Local App API are the real ones, so this proves where stale content is reported, not how Git itself fails.',
       'The last-success time comes from the snapshot that is still on screen; the file diff has no timestamp of its own and only says it is showing the previous result.',
       'The in-flight diff wording observed here is the "belongs to the previous snapshot" variant, which is what a refresh produces; the same-revision "refreshing" variant needs a cached diff whose TTL has expired and is covered by review-refresh-notice.test.ts instead.',
-      'Snapshot revision identity is still a per-read value and no HEAD/index consistency check is performed here; that part of UX-27 stays open.',
+      'Main checks HEAD, index metadata and status around the review read. This window gate asserts the unstable notice under continuous status churn; a save to an already dirty file with unchanged status is outside that fingerprint.',
       'The layout-dependent checks park the window outside every display and show it inactively, so they render without appearing on the desktop; every other step keeps the window hidden. The walkthrough asserts the parked position rather than assuming it.',
       'Collapse and slide animations do not run in a hidden acceptance window (no animation frames), so the navigator keeps its geometry after its collapse state flips; the walkthrough asserts the state that drives the layout and records the geometry instead.',
     ],

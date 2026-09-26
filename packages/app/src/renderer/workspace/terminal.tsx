@@ -10,8 +10,6 @@ import { WorkspaceTerminalTabs } from './terminal-tabs'
 import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
 import { WorkspaceTerminalToolbar } from './terminal-toolbar'
 import {
-} from './terminal-sessions'
-import {
   WorkspaceTerminalActivityList,
 } from './terminal-activity'
 export {
@@ -81,15 +79,21 @@ export function WorkspaceTerminal({
       void inputControllerRef.current?.drain()
     },
     onActiveChange: (tab) => {
+      inputControllerRef.current?.reset()
       const terminal = terminalRef.current
       if (!terminal) return
       terminal.reset()
-      terminalBackendRef.current = 'spawn'
-      setTerminalInputEnabled(false)
+      terminalBackendRef.current = tab?.backend ?? 'spawn'
+      setTerminalBackend(tab?.backend ?? '')
+      setRunningShell(tab?.shellLabel ?? '')
+      // A session that is already running keeps taking input. Disabling it unconditionally
+      // left the keyboard dead after switching back: an idle shell at its prompt prints
+      // nothing, so nothing would ever turn the input back on (UX-30).
+      setTerminalInputEnabled(tab?.status === 'ready')
       if (!tab) return
       setStatus(terminalTabStatusLabel(tab))
-      // Switching back shows what happened while the tab was in the background.
-      if (tab.replay) terminal.write(tab.replay)
+      // No local replay here: attaching the stream makes Main replay the session's bounded
+      // history into this buffer, so writing what we kept would duplicate it (UX-30).
     },
     onError: (_id, message) => {
       setTerminalInputEnabled(false)
@@ -130,6 +134,10 @@ export function WorkspaceTerminal({
     const identity = `${workspacePath}\u0000${sessionId}`
     if (identityRef.current === identity) return
     identityRef.current = identity
+    // The sessions belonged to the identity that was left. The new one needs its own session:
+    // the surface's start guard is per identity, so it is cleared here — otherwise the panel
+    // would stay empty after a workspace or conversation switch until the user clicked 新建.
+    startedRef.current = false
     sessions.closeAll()
   }, [workspacePath, sessionId])
 
@@ -312,10 +320,8 @@ export function WorkspaceTerminal({
       fitScheduler?.cancel()
       inputDisposable?.dispose()
       resizeObserver?.disconnect()
-      // Closing the workspace terminal closes the session it was showing. The hook owns the
-      // stream, so there is nothing to abort here (UX-30).
-      const activeSessionId = activeSessionRef.current
-      if (activeSessionId) sessions.close(activeSessionId)
+      // Hiding this mounted panel keeps sessions alive; removing it closes every session.
+      sessions.closeAll()
       terminal?.dispose()
       if (terminalRef.current === terminal) terminalRef.current = null
       fitAddonRef.current = null
@@ -432,7 +438,7 @@ export function WorkspaceTerminal({
     if (!activeSessionId) return
     try {
       await interruptWorkspaceTerminalSession(activeSessionId)
-      setStatus('已发送 Ctrl+C')
+      setStatus(terminalBackendRef.current === 'pty' ? '已发送 Ctrl+C' : '已停止当前进程树')
     } catch (err) {
       const error = err as Error
       writeTerminalNotice(`\x1b[31m${error.message}\x1b[0m`)
@@ -483,7 +489,7 @@ export function WorkspaceTerminal({
       <header className="workspace-terminal-header workspace-page-leading-row">
         <div className="workspace-terminal-title">
           <span>终端</span>
-          <small>{compactPath(workspacePath)}{terminalBackend ? ` · ${terminalBackend === 'pty' ? 'PTY' : 'fallback'}` : ''}</small>
+          <small>{compactPath(workspacePath)}{terminalBackend ? ` · ${terminalBackend === 'pty' ? 'PTY' : '兼容模式'}` : ''}</small>
         </div>
         <div className="workspace-terminal-actions">
           <WorkspaceTerminalShellPicker
@@ -499,6 +505,7 @@ export function WorkspaceTerminal({
           <span className={`workspace-terminal-status ${running ? 'running' : ''}`}>{status}</span>
           <WorkspaceTerminalToolbar
             shellLabel={shellLabel}
+            backend={terminalBackend}
             sessionCount={sessions.state.tabs.length}
             onNew={() => void startTerminalSession(() => !mountedRef.current)}
             onInterrupt={() => void interruptTerminal()}
@@ -508,8 +515,10 @@ export function WorkspaceTerminal({
           />
         </div>
         {/* A saved Shell that is no longer installed says so here instead of vanishing. */}
-        {shellSelection.notice && (
-          <p className="workspace-terminal-shell-notice" role="status">{shellSelection.notice}</p>
+        {(shellSelection.notice || sessions.state.notice || terminalBackend === 'spawn') && (
+          <p className="workspace-terminal-shell-notice" role="status">
+            {shellSelection.notice || sessions.state.notice || '兼容模式：中断会强制停止当前进程树，不能像 PTY 一样向程序发送 Ctrl+C。'}
+          </p>
         )}
       </header>
       <WorkspaceTerminalActivityList

@@ -72,6 +72,12 @@ export interface TerminalActivityRecord {
   cwd: string
   workspacePath: string
   sessionId?: string
+  /**
+   * The Shell label Main resolved for the session this command ran in (UX-30 item 5). Older
+   * records and Agent-run commands have no session profile, so this stays optional and the
+   * list omits it instead of guessing.
+   */
+  shell?: string
   startedAt: string
   endedAt: string
   durationMs: number

@@ -22,20 +22,34 @@
 // is fixed.
 //
 // Usage:
-//   node scripts/verify-html-preview-baseline.mjs [--keep]
+//   node scripts/verify-html-preview-baseline.mjs [--app=packaged] [--keep]
+//
+// `--app=packaged` drives the packaged build (`release/win-unpacked/LittleSheep.exe`) instead
+// of the repository entry, so the same walkthrough can be repeated against what ships; the
+// freshness assertion is skipped there and the evidence records the asar digest instead of the
+// dev build fingerprint. `--keep` preserves the temporary root.
 
 import { execFileSync, spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import * as os from 'node:os'
-import { extname, join, normalize, sep } from 'node:path'
+import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 
-const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 25_000 })
+const appKind = process.argv.includes('--app=packaged') ? 'packaged' : 'dev'
+const packagedExecutable = appKind === 'packaged'
+  ? resolve(repoRoot(), 'release', 'win-unpacked', 'LittleSheep.exe')
+  : undefined
+const harness = createElectronHarness({
+  startTimeoutMs: 90_000,
+  actionTimeoutMs: 25_000,
+  ...(packagedExecutable ? { packagedExecutable } : {}),
+})
 const WINDOW = { width: 1280, height: 860 }
 const FIXTURE_LABEL = '合成夹具（用户原例未提供）'
 
@@ -1940,6 +1954,107 @@ async function main() {
       fileGuest,
     )
 
+    // UX-39 item 2: LS must not launch a user project's own server. The only
+    // "start a service and open a URL" path is LS's own bounded static preview server, so an
+    // address the user types is read as an address and nothing else. A person who started their
+    // own server types `127.0.0.1:<port>/page.html` with no scheme; assuming https there would
+    // send them to a TLS listener that does not exist. The gate's own loopback server serves no
+    // TLS at all, so a painted canvas is itself the proof that the address was read as http.
+    const bareAddress = server.origin.replace(/^http:\/\//u, '')
+    const bareUrl = `${server.origin}/canvas-game.html`
+    await submitAddress(client, `${bareAddress}/canvas-game.html`)
+    const bareTarget = await connectTarget(
+      debuggingPort,
+      (candidate) => candidate.url.startsWith(server.origin),
+      'bare loopback address guest',
+      { timeoutMs: 20_000 },
+    ).catch(() => null)
+    const bareProbe = bareTarget
+      ? await harness.waitFor(() => bareTarget.client.evaluate(`window.__gameState ? (${PAGE_PROBE}) : null`), 30_000, 'bare loopback canvas game').catch(() => null)
+      : null
+    const readBareAddressState = () => client.evaluate(`(() => {
+      const layouts = JSON.parse(localStorage.getItem('littlesheep.ui.workspaceSessionLayouts') || '{}');
+      const layout = layouts.__draft__ ?? Object.values(layouts)[0] ?? null;
+      return {
+        address: document.querySelector('.workspace-browser-address input')?.value ?? null,
+        guestSources: [...document.querySelectorAll('webview')].map((node) => node.getAttribute('src')),
+        tabs: layout?.browserTabs?.map((tab) => tab.url) ?? null,
+      };
+    })()`)
+    // The tab URL is persisted through the session layout, so it can land a tick after the
+    // navigation itself; the fallback read is what the assertion reports when it never does.
+    const bareAddressState = await harness.waitFor(async () => {
+      const state = await readBareAddressState()
+      return (state.tabs ?? []).includes(bareUrl) ? state : undefined
+    }, 15_000, 'stored browser tab URL for the bare loopback address').catch(() => readBareAddressState())
+    const barePort = new URL(server.origin).port
+    const bareServers = await apiJson(locator, '/workspace/preview-server').catch(() => null)
+    const serversForBareAddress = (bareServers?.servers ?? [])
+      .filter((entry) => String(entry.url ?? '').includes(`127.0.0.1:${barePort}`))
+    const developmentEnvironments = await apiJson(locator, '/development-environments').catch(() => null)
+    const environmentEntries = developmentEnvironments?.environments ?? []
+    const toolchainsRoot = String(developmentEnvironments?.toolchainsRoot ?? '')
+    const toolchainIds = ['node', 'python', 'java', 'go', 'rust', 'cpp', 'dotnet', 'ruby', 'php', 'git', 'powershell']
+    const toolchainsOwnedByLs = environmentEntries.length > 0 && environmentEntries.every((entry) => (
+      toolchainIds.includes(entry.id) && isSameOrInsidePath(toolchainsRoot, String(entry.managedRoot ?? ''))
+    ))
+    const environmentsMentioningBareAddress = environmentEntries
+      .filter((entry) => JSON.stringify(entry).includes(`127.0.0.1:${barePort}`))
+    const bareShot = await captureScreenshot(client, screenshotDir, 'ls-browser-bare-loopback-address.png')
+    recorder.note({
+      step: 'ls-browser-bare-loopback-address',
+      entry: '工作区 → 浏览器标签 → 地址栏输入 127.0.0.1:<port>/canvas-game.html（无 scheme）',
+      submitted: `${bareAddress}/canvas-game.html`,
+      expectedUrl: bareUrl,
+      targetUrl: bareTarget?.target.url ?? null,
+      outcome: bareAddressState,
+      canvasSample: bareProbe?.canvas?.sample ?? null,
+      previewServers: (bareServers?.servers ?? []).map((entry) => ({ url: entry.url, root: entry.root })),
+      serversForBareAddress,
+      developmentEnvironments: {
+        toolchainsRoot,
+        ids: environmentEntries.map((entry) => entry.id),
+        managedRoots: environmentEntries.map((entry) => entry.managedRoot),
+        mentioningBareAddress: environmentsMentioningBareAddress.length,
+      },
+      screenshot: bareShot,
+    })
+    recorder.check(
+      String(bareTarget?.target.url ?? '').startsWith(bareUrl)
+      && (bareAddressState.tabs ?? []).includes(bareUrl)
+      && !(bareAddressState.tabs ?? []).some((url) => /^https:\/\/(?:127\.0\.0\.1|localhost|\[::1\])/iu.test(String(url))),
+      'a bare loopback address is read as http, not https',
+      {
+        submitted: `${bareAddress}/canvas-game.html`,
+        targetUrl: bareTarget?.target.url ?? null,
+        address: bareAddressState.address,
+        tabs: bareAddressState.tabs,
+      },
+    )
+    recorder.check(
+      Array.isArray(bareProbe?.canvas?.sample)
+      && bareProbe.canvas.sample[0] === GAME_COLOR.r
+      && bareProbe.canvas.sample[1] === GAME_COLOR.g
+      && bareProbe.canvas.sample[2] === GAME_COLOR.b,
+      'the http loopback page really paints, so nothing fell back to TLS',
+      { sample: bareProbe?.canvas?.sample ?? null, targetUrl: bareTarget?.target.url ?? null },
+    )
+    recorder.check(
+      Array.isArray(bareServers?.servers) && serversForBareAddress.length === 0,
+      'the user\'s loopback address starts no LS preview server of its own',
+      { serversForBareAddress, servers: (bareServers?.servers ?? []).map((entry) => entry.url) },
+    )
+    recorder.check(
+      toolchainsOwnedByLs && environmentsMentioningBareAddress.length === 0,
+      'the only entries LS owns are its own toolchains, nothing registered for the submitted address',
+      {
+        toolchainsRoot,
+        ids: environmentEntries.map((entry) => entry.id),
+        mentioningBareAddress: environmentsMentioningBareAddress.length,
+      },
+    )
+    bareTarget?.client.close()
+
     // UX-25 item 3: the pane must say when disk no longer matches what it shows, a save
     // must refresh to the saved version, a save that loses the race must keep the draft,
     // and fast switching must not mix two files.
@@ -2117,6 +2232,37 @@ async function main() {
       return notice === null || !notice.message.includes('已不在磁盘上') ? (notice?.message ?? 'none') : undefined
     }, 25_000, 'deleted notice replaced once the file is back').catch(() => null)
 
+    recorder.note({
+      step: 'preview-disk-draft-settlement',
+      savedToDisk, saveStatus, draftAfterSave, previewAfterSave: Boolean(previewAfterSave),
+      changedNotice, reloadedMarkup: Boolean(reloadedMarkup), clearedAfterReload,
+      keepDraftTyped, dismissed, conflictStatus, draftAfterConflict, deletedNotice, noticeAfterRestore,
+    })
+    recorder.check(
+      savedToDisk && (draftAfterSave === null || draftAfterSave?.dirty === false)
+        && Boolean(previewAfterSave) && !saveStatus?.error,
+      'saving refreshes the preview to the saved document and settles the draft clean',
+      { savedToDisk, saveStatus, draftAfterSave, previewAfterSave: Boolean(previewAfterSave) },
+    )
+    recorder.check(
+      Boolean(changedNotice && reloadedMarkup && clearedAfterReload),
+      'reloading an external change shows the disk version and clears its notice',
+      { changedNotice, reloadedMarkup: Boolean(reloadedMarkup), clearedAfterReload },
+    )
+    recorder.check(
+      keepDraftTyped && dismissed && conflictStatus?.error === true
+        && conflictStatus.text.includes('文件已被外部修改')
+        && draftAfterConflict?.dirty === true && draftAfterConflict.text.includes(keepMarker),
+      'a 409 keeps the unsaved draft and displays the server reason',
+      { keepDraftTyped, dismissed, conflictStatus, draftAfterConflict },
+    )
+    recorder.check(
+      deletedNotice?.tone === 'failure' && noticeAfterRestore !== null
+        && !noticeAfterRestore.includes('已不在磁盘上'),
+      'deletion has an error notice that clears when the file returns',
+      { deletedNotice, noticeAfterRestore },
+    )
+
     // 3e. Fast switching: click A → B → C with no waiting in between (the tabs are all
     // opened), then walk the tabs and require each one to show its own file and nothing
     // from the others. Reading the *active* tab after the burst only proves whichever
@@ -2226,11 +2372,110 @@ async function main() {
       { statuses: gitUi.treeStatuses, rows: gitUi.treeFiles, cli: gitCli.status, staleAtMount: gitUi.staleAtMount },
     )
 
+    // UX-39: one synthetic game follows the complete edit → run → review → source path.
+    // The earlier level.json probe changed data only; this one changes the game's CSS and JS.
+    await selectWorkspaceTab(client, 'index.html')
+    const combinedRunStarted = await clickPreviewAction(client, '运行')
+    const combinedServers = await harness.waitFor(async () => {
+      const payload = await apiJson(locator, '/workspace/preview-server')
+      return payload.servers?.find((entry) => entry.url?.includes('index.html')) ?? undefined
+    }, 20_000, 'combined game service').catch(() => null)
+    const combinedTarget = combinedServers
+      ? await harness.waitFor(async () => {
+          const targets = await (await fetch(`http://127.0.0.1:${debuggingPort}/json/list`)).json()
+          return targets.find((entry) => entry.url === combinedServers.url) ?? undefined
+        }, 25_000, 'combined game browser target').catch(() => null)
+      : null
+    const combinedGuest = combinedTarget ? new harness.CdpClient(combinedTarget.webSocketDebuggerUrl) : null
+    let combinedAfterReload = null
+    if (combinedGuest) {
+      await combinedGuest.send('Runtime.enable')
+      await harness.waitFor(() => combinedGuest.evaluate('window.__multiState?.ready === true ? true : null'), 20_000, 'combined game ready')
+      await writeFile(join(workspaceDir, 'multi-file', 'game.css'), MULTI_CSS.replace('#1c2a1f', '#334455'), 'utf8')
+      await writeFile(join(workspaceDir, 'multi-file', 'game.js'), MULTI_JS.replace('state.steps += 1;', 'state.steps += 2;'), 'utf8')
+      const beforeReload = await combinedGuest.evaluate('performance.timeOrigin')
+      await selectWorkspaceTab(client, 'index.html')
+      const clicked = await clickPreviewAction(client, '重新加载')
+      if (clicked) {
+        combinedAfterReload = await harness.waitFor(async () => {
+          const result = await combinedGuest.evaluate(`(() => {
+            const board = document.querySelector('.board')
+            const step = document.getElementById('step')
+            if (!window.__multiState?.ready || !board || !step || performance.timeOrigin === ${beforeReload}) return null
+            step.click()
+            return { background: getComputedStyle(board).backgroundColor, steps: window.__multiState.steps }
+          })()`).catch(() => null)
+          return result?.steps === 2 ? result : undefined
+        }, 25_000, 'CSS and JS edits visible after reload').catch(() => null)
+      }
+      combinedGuest.close()
+    }
+    const combinedRunShot = await captureScreenshot(client, screenshotDir, 'game-edit-run.png')
+    await selectWorkspaceFeature(client, '审阅')
+    // A folder that only appears in a *later* snapshot starts collapsed (the expanded set is
+    // seeded when the tree first mounts), so the walkthrough has to open `multi-file` the way a
+    // person does before the file inside it can be clicked. Refresh is clicked only while it is
+    // enabled: it is disabled during a read, and a disabled button swallows the click.
+    let combinedFolder = null
+    let combinedRefreshClicks = 0
+    for (let attempt = 0; attempt < 3 && combinedFolder === null; attempt += 1) {
+      const refreshClicked = await client.evaluate(`(() => {
+        const button = [...document.querySelectorAll('.workspace-review button')]
+          .find((node) => node.getAttribute('aria-label') === '刷新 Git 更改')
+        if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+        button.click()
+        return true
+      })()`)
+      if (refreshClicked) combinedRefreshClicks += 1
+      combinedFolder = await harness.waitFor(() => client.evaluate(`(() => {
+        const folder = [...document.querySelectorAll('.workspace-review [role="treeitem"]')]
+          .find((row) => row.classList.contains('directory') && (row.textContent || '').includes('multi-file'))
+        if (!(folder instanceof HTMLElement)) return null
+        if (folder.getAttribute('aria-expanded') !== 'true') { folder.click(); return null }
+        return true
+      })()`), 12_000, 'the multi-file folder in Git review').catch(() => null)
+    }
+    const combinedReview = await harness.waitFor(() => client.evaluate(`(() => {
+      const review = document.querySelector('.workspace-review')
+      const rows = [...(review?.querySelectorAll('[role="treeitem"]') ?? [])]
+      const css = rows.some((row) => row.textContent?.includes('game.css'))
+      const js = rows.find((row) => row.textContent?.includes('game.js'))
+      if (!css || !(js instanceof HTMLElement)) return null
+      js.click()
+      return { css, js: true }
+    })()`), 20_000, 'CSS and JS in Git review').catch(() => null)
+    const combinedDiff = await harness.waitFor(() => client.evaluate(`(() => {
+      const title = document.querySelector('.workspace-review-diff-title-main')?.textContent ?? ''
+      return title.includes('game.js') ? title : null
+    })()`), 20_000, 'game JS diff selected').catch(() => null)
+    const combinedReviewShot = await captureScreenshot(client, screenshotDir, 'game-edit-review.png')
+    const openedSource = await client.evaluate(`(() => {
+      const button = document.querySelector('.workspace-review-diff button[aria-label="在文件工作台中打开"]')
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })()`)
+    const sourceReached = openedSource
+      ? await harness.waitFor(() => client.evaluate(`document.querySelector('.workspace-active-item.active')?.textContent?.includes('game.js') ? true : null`), 20_000, 'return from diff to game source').catch(() => false)
+      : false
+    recorder.note({ step: 'game-edit-run-review', fixture: FIXTURE_LABEL, combinedRunStarted, combinedAfterReload, combinedRefreshClicks, combinedFolder, combinedReview, combinedDiff, openedSource, sourceReached, screenshots: { run: combinedRunShot, review: combinedReviewShot } })
+    recorder.check(
+      combinedRunStarted && combinedAfterReload?.background === 'rgb(51, 68, 85)' && combinedAfterReload?.steps === 2,
+      'editing game CSS and JS changes the running page after reload',
+      { combinedRunStarted, combinedAfterReload },
+    )
+    recorder.check(
+      combinedReview?.css === true && combinedReview?.js === true && Boolean(combinedDiff) && sourceReached === true,
+      'the same game edits appear in Git review and return to the JS source file',
+      { combinedFolder, combinedRefreshClicks, combinedReview, combinedDiff, openedSource, sourceReached },
+    )
+    await apiJson(locator, `/workspace/preview-server?root=${encodeURIComponent(workspaceDir)}`, { method: 'DELETE' }).catch(() => undefined)
+
     // 6. Shell baseline: executable, version, cwd and PTY state of the real session.
     const shell = await terminalBaseline(locator, workspaceDir)
     recorder.note({ step: 'shell-baseline', ...shell })
     recorder.check(
-      /^PowerShell/u.test(shell.snapshot.shell),
+      /^(?:Windows )?PowerShell/u.test(shell.snapshot.shell),
       'the workspace terminal runs the PowerShell profile',
       shell.snapshot,
     )
@@ -2283,6 +2528,7 @@ async function main() {
 
   const evidence = {
     check: 'html-preview-baseline',
+    appKind,
     capturedAt: new Date().toISOString(),
     fixtureRoot: keep ? root : '<temporary root removed>',
     window: WINDOW,
@@ -2309,6 +2555,8 @@ async function main() {
       'The LS file preview is a sanitized `srcdoc` iframe with `sandbox=""`, and Electron runs it out of process, so its document is probed through the frame target\'s own debug session rather than from the app document.',
       'A page whose styling lives in an external stylesheet (<link>) still renders unstyled: the sanitizer drops `link` and a sandboxed frame cannot load file:// subresources. The bounded resource service for that is UX-26.',
       'The draft-preview step is recorded, not asserted: the typed draft reached the editor model and the session draft store (`markerInDraft: true`) while the mounted preview kept the on-disk document, so "the preview follows an unsaved draft" has no passing measurement yet and UX-25 item 3 stays open.',
+      'In the hidden Electron window, Chromium leaves document.fonts in unloaded state; the @font-face source is asserted to resolve to the loopback service, but actual font retrieval is not measured.',
+      'The bare-loopback-address step proves LS reads the typed address and starts no service of its own; it does not prove what LS would do with a project whose own start command a user asked the Agent to run (that is the terminal path, not the address bar).',
       'Windows and Electron versions come from the running process; the source revision and build digests come from the build fingerprint written by ensure:app-build.',
     ],
   }
@@ -2318,6 +2566,19 @@ async function main() {
 
 /** Source revision, build digests and engine versions behind these measurements. */
 async function buildFingerprint(client) {
+  if (packagedExecutable) {
+    const asarPath = resolve(repoRoot(), 'release', 'win-unpacked', 'resources', 'app.asar')
+    const asar = await readFile(asarPath)
+    const product = client ? await client.send('Browser.getVersion').then((value) => value.product).catch(() => null) : null
+    return {
+      revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot(), encoding: 'utf8', windowsHide: true }).trim(),
+      packagedExecutable,
+      packagedAsarSha256: createHash('sha256').update(asar).digest('hex'),
+      rendererProduct: product,
+      node: process.version,
+      platform: `${process.platform} ${process.arch}`,
+    }
+  }
   const manifestPath = join(repoRoot(), 'packages', 'app', 'out', '.littlesheep-build-fingerprint.json')
   const manifest = await readFile(manifestPath, 'utf8').then(JSON.parse).catch(() => null)
   const product = client
@@ -2572,6 +2833,15 @@ function decodeSseText(raw) {
       }
     })
     .join('')
+}
+
+/** Same path, or inside it: the two absolute paths compared here are Windows roots. */
+function isSameOrInsidePath(root, candidate) {
+  if (!root || !candidate) return false
+  const comparable = (value) => value.replace(/[\\/]+$/u, '').replace(/\//gu, '\\').toLowerCase()
+  const base = comparable(root)
+  const target = comparable(candidate)
+  return target === base || target.startsWith(`${base}\\`)
 }
 
 async function apiJson(locator, path, { method = 'GET', body } = {}) {

@@ -24,7 +24,7 @@ import type {
   TranscriptEntry,
 } from './types'
 import { useConversationDisplayMode } from './conversation-display'
-import { activityAttentionLine, compactTranscriptEntries } from './activity-visibility'
+import { activityAttentionLine, activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
 
 
 interface AssistantTurnMessageProps {
@@ -347,6 +347,9 @@ export function AssistantTranscript({
   // stay readable (UX-16).
   const rows = compact ? compactTranscriptEntries(transcript, activity.tools) : transcript
   const attention = compact ? activityAttentionLine(activity) : null
+  // The verification verdict is not a transcript row, so folding it into the compact attention
+  // line cannot be its only home: normal mode reads the same fact here (UX-16).
+  const verification = compact ? null : activityVerificationLine(activity)
   return (
     <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
       {rows.map((entry) => {
@@ -407,6 +410,9 @@ export function AssistantTranscript({
       {!compact && <ActiveActivityStatus activity={activity} />}
       {attention && (
         <div className="agent-transcript-summary agent-transcript-attention" role="status">{attention}</div>
+      )}
+      {verification && (
+        <div className="agent-transcript-summary" data-transcript-verification="true" role="status">{verification}</div>
       )}
       {transcriptSummary(activity, transcript) ? (
         <div className="agent-transcript-summary" data-transcript-summary="true">

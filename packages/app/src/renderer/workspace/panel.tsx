@@ -122,7 +122,7 @@ export function WorkspacePanel({
   }> = [
     { id: 'review', label: '审阅', desc: '审阅当前 Git 更改' },
     { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
-    { id: 'terminal', label: '终端', desc: '直接使用 LS 内置 PowerShell' },
+    { id: 'terminal', label: '终端', desc: '在你选择的 Shell 里交互；切到别的标签只隐藏面板，关闭这个标签会结束全部终端会话' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
     { id: 'sideChat', label: '侧边聊天', desc: '尚未接入的局部对话' },
   ]

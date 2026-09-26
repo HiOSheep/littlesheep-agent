@@ -41,6 +41,14 @@ const evaluate = (client, expression) => withTimeout(client.evaluate(expression)
 
 /** Types a command into the focused terminal and presses Enter through the browser. */
 async function sendTerminalCommand(client, text) {
+  // The live xterm mirrors `disableStdin` onto its helper textarea, and it drops every data event
+  // while that is set — a session that is starting, or one that was just switched to before its
+  // stream re-attached, would silently swallow the command.
+  await harness.waitFor(() => evaluate(client, `(() => {
+    const textareas = [...document.querySelectorAll('.workspace-terminal textarea')]
+    const textarea = textareas[textareas.length - 1]
+    return textarea instanceof HTMLTextAreaElement && !textarea.readOnly ? true : null
+  })()`), 30_000, 'the terminal to accept input')
   await evaluate(client, `(() => {
     // The live xterm is the last one in the panel: earlier nodes linger while the surface
     // re-attaches to a different session.
@@ -51,6 +59,10 @@ async function sendTerminalCommand(client, text) {
     return true
   })()`)
   await client.send('Input.insertText', { text })
+  // A separate beat before Enter: right after a tab switch the surface is still writing the
+  // session's replayed history, and an Enter delivered inside that burst is what the earlier
+  // runs lost (the text reached the shell, the line stayed unsubmitted).
+  await delay(250)
   for (const type of ['keyDown', 'char', 'keyUp']) {
     await client.send('Input.dispatchKeyEvent', {
       type,
@@ -198,12 +210,22 @@ async function main() {
       first,
     )
 
-    // Wait for the first session to be usable before typing into it.
+    // The status line only reads 就绪 after a command has completed, so readiness is measured by
+    // what the shell does: a marker file that only a live session can write. Waiting on the text
+    // alone timed out for the full 90 s in every previous run and then typed into nothing.
+    const readyMarker = join(workplaceDir, 'terminal-ready.txt')
+    let firstReady = false
     const ready = await harness.waitFor(async () => {
-      const surface = await terminalSurface(client)
-      return surface?.status.includes('就绪') ? surface : null
-    }, 90_000, 'the first session to become ready').catch(async () => await terminalSurface(client))
-    recorder.note({ step: 'terminal-first-ready', ready })
+      await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-ready.txt -Value ready')
+      firstReady = existsSync(readyMarker)
+      return firstReady ? await terminalSurface(client) : null
+    }, 90_000, 'the first session to accept a command').catch(async () => await terminalSurface(client))
+    recorder.note({ step: 'terminal-first-ready', ready, firstReady })
+    recorder.check(
+      firstReady === true,
+      'the first terminal really runs a shell instead of only reporting that it is starting',
+      { ready, firstReady },
+    )
 
     const marker = (name) => join(workplaceDir, name)
     await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-1.txt -Value a1')
@@ -222,7 +244,14 @@ async function main() {
       return { clicked: true }
     })()`)
     await delay(1500)
+    const afterBack = await terminalSurface(client)
     await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-2.txt -Value a2')
+    const afterA2 = await evaluate(client, `(() => ({
+      status: (document.querySelector('.workspace-terminal-status')?.textContent || '').trim(),
+      notice: (document.querySelector('.workspace-terminal-shell-notice')?.textContent || '').trim(),
+      focused: document.activeElement?.tagName + '.' + String(document.activeElement?.className || ''),
+      selected: (document.querySelector('.workspace-terminal-tab[aria-selected="true"]')?.textContent || '').trim(),
+    }))()`)
 
     const markers = {
       a1: existsSync(marker('terminal-a-1.txt')),
@@ -240,17 +269,18 @@ async function main() {
     await delay(1200)
     const afterClose = await terminalSurface(client)
 
-    recorder.note({ step: 'terminal-sessions', created, twoTabs, backToFirst, markers, closed, afterClose })
+    recorder.note({ step: 'terminal-sessions', created, twoTabs, backToFirst, afterBack, afterA2, markers, closed, afterClose })
     recorder.check(
       created.clicked === true && twoTabs.tabs >= 2 && twoTabs.activeTabs === 1,
       'creating another terminal adds a tab beside the running one',
       { created, twoTabs },
     )
-    // Typing into the terminal canvas did not land through CDP in this run, so the routing
-    // check is recorded rather than asserted until that path is worked out (see limits).
+    // Every command was typed into the live xterm through CDP and executed by a real shell, so
+    // the marker files are filesystem evidence that the sessions ran what they were given: the
+    // first one before and after a second session existed, the second one while it was selected.
     recorder.check(
-      markers.a1 || markers.b1 || markers.a2 || true,
-      'per-session input routing is not yet asserted here (recorded for the next round)',
+      markers.a1 && markers.b1 && markers.a2,
+      'both sessions run the commands they were given, and the first still works after a second is created',
       markers,
     )
     recorder.check(
@@ -262,7 +292,7 @@ async function main() {
     // The parked app holds the process open; an acceptance run quits it explicitly.
     if (locator) await harness.desktopAction(locator, 'quit').catch(() => undefined)
     const evidence = recorder.evidence([
-      'Terminal output renders to a canvas, so rendered text is not read. Typing into xterm through CDP (Input.insertText plus key events) did not reach the shell in this run, so per-session input routing is not asserted here yet; the tab model tests cover the routing rule and the next round works the typing path out.',
+      'Terminal output renders to a canvas, so rendered text is not read. Input is typed into the live xterm through CDP and the evidence that it reached a shell is the marker file each command writes; per-session input *routing* (a byte queued while the reader switches tabs) is covered by the terminal-session unit tests, not here.',
       'The sessions run real shells on this machine; their own startup time is the only reason the waits are generous.',
       'The window is parked off screen rather than hidden, because a hidden window does not lay out or paint.',
     ])

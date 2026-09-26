@@ -9,7 +9,6 @@ import {
   EMPTY_TERMINAL_SESSIONS,
   MAX_REPLAY_CHARS,
   MAX_TERMINAL_TABS,
-  nextTerminalTabShell,
   reduceTerminalSessions,
   terminalInputTarget,
   terminalTabStatusLabel,
@@ -49,6 +48,20 @@ describe('terminal session tabs', () => {
     expect(refused.tabs).toHaveLength(MAX_TERMINAL_TABS)
     expect(refused.notice).toContain(`最多同时打开 ${MAX_TERMINAL_TABS} 个终端`)
     expect(refused.activeId).toBe(full.activeId)
+  })
+
+  it('drops what a backgrounded tab kept once its stream attaches again', () => {
+    const withOutput = reduceTerminalSessions(withTabs('a'), { type: 'output', id: 'a', text: 'hello' })
+    expect(withOutput.tabs[0]?.replay).toBe('hello')
+
+    // Main replays the session's own bounded history on attach, so the local copy goes first.
+    const attached = reduceTerminalSessions(withOutput, { type: 'attached', id: 'a' })
+    expect(attached.tabs[0]?.replay).toBe('')
+    expect(attached.tabs[0]?.replayTruncated).toBe(false)
+
+    // Attaching to nothing, or to a tab with nothing buffered, is not a new state.
+    expect(reduceTerminalSessions(withOutput, { type: 'attached', id: 'ghost' })).toBe(withOutput)
+    expect(reduceTerminalSessions(withOutput, { type: 'attached', id: 'a' }) === withOutput).toBe(false)
   })
 
   it('keeps the replay buffer bounded and remembers that it dropped output', () => {
@@ -100,20 +113,6 @@ describe('terminal session tabs', () => {
     expect(terminalTabStatusLabel({ ...tab('a'), status: 'failed' })).toBe('启动失败')
     expect(terminalTabStatusLabel({ ...tab('a'), status: 'exited', exitCode: 3 })).toBe('已退出 3')
     expect(terminalTabStatusLabel({ ...tab('a'), status: 'exited' })).toBe('已退出')
-  })
-
-  it('opens the next tab with the shell the active one uses, when it still exists', () => {
-    const profiles = [
-      { id: 'windows-powershell', kind: 'windows-powershell' as const, label: 'Windows PowerShell', available: true },
-      { id: 'git-bash', kind: 'git-bash' as const, label: 'Git Bash', available: true },
-    ]
-    const withBash = reduceTerminalSessions(EMPTY_TERMINAL_SESSIONS, { type: 'open', tab: tab('a', 'git-bash') })
-    expect(nextTerminalTabShell(profiles, withBash)?.id).toBe('git-bash')
-
-    // A shell that disappeared since falls back to whatever is available.
-    const gone = reduceTerminalSessions(EMPTY_TERMINAL_SESSIONS, { type: 'open', tab: tab('a', 'wsl:Ubuntu') })
-    expect(nextTerminalTabShell(profiles, gone)?.id).toBe('windows-powershell')
-    expect(nextTerminalTabShell([], gone)).toBeNull()
   })
 
   it('ignores output and status for tabs that are gone', () => {

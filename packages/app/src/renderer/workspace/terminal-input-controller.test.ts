@@ -35,7 +35,7 @@ describe('workspace user terminal input', () => {
       'Get-Date\r',
       'conversation-1',
     )
-    expect(statuses).toEqual(['PowerShell 就绪'])
+    expect(statuses).toEqual(['终端就绪'])
     expect(onCompletedCommand).toHaveBeenCalledTimes(1)
   })
 
@@ -60,5 +60,30 @@ describe('workspace user terminal input', () => {
     expect(apiMocks.writeWorkspaceTerminalInput).toHaveBeenCalledTimes(1)
     expect(writeLine).toHaveBeenCalledWith('\x1b[31mterminal transport failed\x1b[0m')
     expect(statuses).toEqual(['输入失败'])
+  })
+
+  it('drops a queued keystroke when switching terminal tabs before its flush', async () => {
+    vi.stubGlobal('window', globalThis)
+    vi.useFakeTimers()
+    let activeId = 'terminal-1'
+    const controller = createTerminalInputController({
+      getTerminalSessionId: () => activeId,
+      getAppSessionId: () => undefined,
+      isDisposed: () => false,
+      writeLine: vi.fn(),
+      setStatus: vi.fn(),
+      onCompletedCommand: vi.fn(),
+    })
+    try {
+      controller.queue('x')
+      activeId = 'terminal-2'
+      controller.reset()
+      await vi.advanceTimersByTimeAsync(20)
+      expect(apiMocks.writeWorkspaceTerminalInput).not.toHaveBeenCalled()
+    } finally {
+      controller.dispose()
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
   })
 })

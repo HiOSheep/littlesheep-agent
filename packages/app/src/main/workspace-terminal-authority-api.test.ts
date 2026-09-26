@@ -96,6 +96,26 @@ describe('workspace terminal authority API', () => {
       }
       expect(shellBody.shells!.some((profile) => profile.available)).toBe(true)
 
+      const unknownShell = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalSession}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root: workplaceDir, shellId: 'shell-that-does-not-exist' }),
+      })
+      expect(unknownShell.status).toBe(400)
+      await expect(unknownShell.json()).resolves.toMatchObject({ error: expect.stringContaining('重新选择') })
+      expect(terminalProcessMocks.createWorkspaceTerminalProcess).not.toHaveBeenCalled()
+
+      const unavailableId = shellBody.shells!.find((profile) => !profile.available)?.id
+      if (unavailableId) {
+        const unavailableShell = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalSession}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ root: workplaceDir, shellId: unavailableId }),
+        })
+        expect(unavailableShell.status).toBe(400)
+        expect(terminalProcessMocks.createWorkspaceTerminalProcess).not.toHaveBeenCalled()
+      }
+
       const created = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalSession}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -133,4 +133,18 @@ describe('embedded browser history', () => {
     expect(normalizeBrowserEventUrl('about:blank')).toBe('')
     expect(normalizeBrowserEventUrl('mailto:user@example.test')).toBe('')
   })
+
+  it('reads a bare loopback address as the local development server it is', () => {
+    // A person who started their own server types the host and port; HTTPS there is a scheme
+    // the server does not answer (UX-31 item 2).
+    expect(normalizeBrowserUrl('localhost:5173')).toBe('http://localhost:5173/')
+    expect(normalizeBrowserUrl('127.0.0.1:8000/app?x=1')).toBe('http://127.0.0.1:8000/app?x=1')
+    expect(normalizeBrowserUrl('[::1]:5173')).toBe('http://[::1]:5173/')
+    expect(normalizeBrowserUrl('preview.localhost:3000')).toBe('http://preview.localhost:3000/')
+    // An explicit scheme is always kept, and public hosts keep the HTTPS assumption.
+    expect(normalizeBrowserUrl('https://localhost:5173')).toBe('https://localhost:5173/')
+    expect(normalizeBrowserUrl('example.test:8443')).toBe('https://example.test:8443/')
+    // A name that merely contains "localhost" is not loopback.
+    expect(normalizeBrowserUrl('localhost.example.test')).toBe('https://localhost.example.test/')
+  })
 })

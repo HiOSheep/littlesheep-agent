@@ -3,6 +3,7 @@
 // The injectable file/WSL seams cover every branch deterministically; the last test runs the
 // real discovery on the machine and asserts only invariants that hold wherever it runs.
 import { describe, expect, it } from 'vitest'
+import { existsSync } from 'node:fs'
 import {
   cmdArgs,
   windowsPathToWslPath,
@@ -99,6 +100,18 @@ describe('workspace shell discovery', () => {
     expect(isGitBashPath('C:\\Program Files\\Git\\usr\\bin\\bash.exe')).toBe(true)
   })
 
+  it('finds Git Bash outside Program Files through git.exe on PATH', async () => {
+    const env = { ...WINDOWS_ENV, PATH: 'D:\\Git\\cmd;C:\\Windows\\System32' }
+    const profiles = await discovery({
+      env,
+      files: ['D:\\Git\\cmd\\git.exe', 'D:\\Git\\bin\\bash.exe'],
+    })
+    expect(profiles.find((profile) => profile.id === 'git-bash')).toMatchObject({
+      available: true,
+      executable: 'D:\\Git\\bin\\bash.exe',
+    })
+  })
+
   it('lists one entry per real WSL distribution and says so when there are none', async () => {
     const withDistros = await discovery({ files: [WSL_EXE], distros: ['Ubuntu', 'Debian'] })
     const wslProfiles = withDistros.filter((profile) => profile.kind === 'wsl')
@@ -150,6 +163,9 @@ describe('workspace shell discovery', () => {
     // Git Bash is only ever a Git-owned bash, and a default shell always exists on Windows.
     const gitBash = byId.get('git-bash')
     if (gitBash?.executable) expect(isGitBashPath(gitBash.executable)).toBe(true)
+    if (process.platform === 'win32' && existsSync('D:\\Git\\cmd\\git.exe') && existsSync('D:\\Git\\bin\\bash.exe')) {
+      expect(gitBash).toMatchObject({ available: true, executable: 'D:\\Git\\bin\\bash.exe' })
+    }
     expect(defaultWorkspaceShellProfile(profiles)).not.toBeNull()
   }, 30_000)
 })

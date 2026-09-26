@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import {
   type AttachmentRef,
-  type WorkspaceReviewFileDiff,
   type WorkspaceReviewSnapshot,
 } from '../api'
 import {
@@ -30,6 +29,7 @@ import { preloadWorkspaceCodeEditor } from './code-editor'
 import { workspaceReviewCache } from './review-cache'
 import { workspaceErrorMessage } from './workspace-errors'
 import { WorkspaceReviewScrollRail } from './review-scroll-rail'
+import { useWorkspaceReviewDiff } from './use-workspace-review-diff'
 
 const REVIEW_REFRESH_INTERVAL_MS = 30_000
 
@@ -86,13 +86,7 @@ export function WorkspaceReview({
       buildWorkspaceReviewTree(workspaceReviewCache.readSnapshot(workspacePath)?.files ?? []),
     ))
   ))
-  const [diff, setDiff] = useState<WorkspaceReviewFileDiff | null>(null)
-  const [diffLoading, setDiffLoading] = useState(false)
-  const [diffError, setDiffError] = useState('')
-  const [diffRetryVersion, setDiffRetryVersion] = useState(0)
   const snapshotRequestRef = useRef(0)
-  const diffRequestRef = useRef(0)
-  const handledDiffRetryRef = useRef(0)
   const reviewScrollRef = useRef<HTMLDivElement>(null)
   const artifactVersionRef = useRef(artifactVersion)
   const completedRefreshVersionRef = useRef(0)
@@ -164,7 +158,7 @@ export function WorkspaceReview({
       setSnapshot(null)
       setSelectedPath(null)
       setExpandedFolders(new Set())
-      setDiff(null)
+      // The diff reader clears its own state once this snapshot is gone.
       setLoading(true)
     }
     workspaceReviewCache.loadSnapshot(workspacePath, { force, signal: controller.signal })
@@ -207,60 +201,19 @@ export function WorkspaceReview({
   }, [requestSnapshotRefresh, snapshotRefresh, workspacePath])
 
   const selectedRevision = snapshot?.revision ?? ''
-
-  useEffect(() => {
-    if (
-      !snapshot
-      || !isSamePath(snapshot.workspacePath, workspacePath)
-      || !selectedPath
-      || !snapshot.files.some((file) => file.path === selectedPath)
-    ) {
-      setDiff(null)
-      setDiffError('')
-      setDiffLoading(false)
-      return
-    }
-    let alive = true
-    const controller = new AbortController()
-    const requestId = ++diffRequestRef.current
-    const cached = workspaceReviewCache.readDiff(workspacePath, selectedPath, selectedRevision)
-    const stale = diff
-      && diff.file.path === selectedPath
-      && isSamePath(diff.workspacePath, workspacePath)
-      ? diff
-      : null
-    const force = diffRetryVersion > handledDiffRetryRef.current
-    handledDiffRetryRef.current = diffRetryVersion
-    setDiff(cached ?? stale)
-    // "Loading" means a request is in flight, so stale content under a refresh can
-    // say it is being refreshed instead of looking like a fresh result. A cache hit
-    // with no forced re-read never leaves this process.
-    setDiffLoading(force || !cached)
-    setDiffError('')
-    workspaceReviewCache.loadDiff(workspacePath, selectedPath, selectedRevision, {
-      force,
-      signal: controller.signal,
-    })
-      .then((result) => {
-        if (alive && requestId === diffRequestRef.current) setDiff(result)
-      })
-      .catch((reason) => {
-        if (!alive || requestId !== diffRequestRef.current || (reason as Error).name === 'AbortError') return
-        if ((reason as { status?: number }).status === 409) {
-          requestSnapshotRefresh(true)
-          return
-        }
-        console.debug('[workspace-review] review diff request failed', reason)
-        setDiffError(workspaceErrorMessage(reason, '文件差异暂时无法读取，请稍后重试。'))
-      })
-      .finally(() => {
-        if (alive && requestId === diffRequestRef.current) setDiffLoading(false)
-      })
-    return () => {
-      alive = false
-      controller.abort()
-    }
-  }, [selectedPath, selectedRevision, diffRetryVersion, requestSnapshotRefresh, workspacePath])
+  const {
+    diff, diffError, diffLoading, resetConflictBudget, retryDiff,
+  } = useWorkspaceReviewDiff({
+    workspacePath,
+    workspaceSnapshot: snapshot,
+    selectedPath,
+    requestSnapshotRefresh,
+  })
+  // Refreshing is how the user answers a conflict, so it starts a new conflict budget.
+  const retrySnapshot = useCallback(() => {
+    resetConflictBudget()
+    requestSnapshotRefresh(true)
+  }, [requestSnapshotRefresh, resetConflictBudget])
 
   const tree = useMemo(() => buildWorkspaceReviewTree(snapshot?.files ?? []), [snapshot?.files])
   const filteredFiles = useMemo(
@@ -306,8 +259,8 @@ export function WorkspaceReview({
       generatedAt: snapshot?.generatedAt, unstable: snapshot?.unstable,
     },
     diff: { error: diffError, outdated: diffOutdated, loading: diffLoading, hasResult: Boolean(selectedDiff) },
-    onRetrySnapshot: () => requestSnapshotRefresh(true),
-    onRetryDiff: () => setDiffRetryVersion((version) => version + 1),
+    onRetrySnapshot: retrySnapshot,
+    onRetryDiff: retryDiff,
   })
   const branchLabel = snapshot?.branch ?? 'Git'
   const repositoryLabel = snapshot?.upstream ? `${branchLabel} -> ${snapshot.upstream}` : branchLabel
@@ -366,7 +319,7 @@ export function WorkspaceReview({
         emptyText={filterText.trim() ? '没有匹配的更改' : snapshotReady ? '没有未提交更改' : '正在读取 Git 更改...'}
         onFilterTextChange={setFilterText}
         onFilterKeyDown={handleFilterKeyDown}
-        onRefresh={() => requestSnapshotRefresh(true)}
+        onRefresh={retrySnapshot}
         onToggleFolder={(path) => setExpandedFolders((current) => {
           const next = new Set(current)
           if (next.has(path)) next.delete(path)

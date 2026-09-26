@@ -1,14 +1,19 @@
 // UX-30: owning several terminal sessions at once.
 //
 // The surface keeps the xterm instance and its rendering; this hook owns *which* sessions exist,
-// one stream per session, and which one the keyboard belongs to. Extracting it is what makes
+// the single live stream, and which one the keyboard belongs to. Extracting it is what makes
 // "new terminal" possible without the surface growing past its line ceiling.
 //
-// Two rules are deliberate:
-// - output is buffered per session even while it is not displayed, so switching back shows
-//   what happened instead of a blank screen (`reduceTerminalSessions` bounds that buffer);
-// - input goes only to the active session *and* only while it is ready, so a keystroke can
-//   never reach a process that is starting, exited or failed.
+// Three rules are deliberate:
+// - exactly ONE session is streamed at a time, the displayed one. Six sessions used to hold six
+//   open SSE responses, which is the whole HTTP/1.1 connection budget of one origin: every later
+//   request (create, input, resize, the file listing) then queued behind them for ever, so the
+//   8-session cap was unreachable and the panel froze instead of refusing (UX-37);
+// - output is buffered per session even while it is not displayed, so switching back shows what
+//   happened instead of a blank screen. Main replays its own bounded history when a stream
+//   attaches, and `reduceTerminalSessions` bounds what the renderer keeps;
+// - input goes only to the active session *and* only while it is ready, so a keystroke can never
+//   reach a process that is starting, exited or failed.
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
 import {
   closeWorkspaceTerminalSession,
@@ -19,6 +24,7 @@ import {
 } from '../api/terminal'
 import {
   EMPTY_TERMINAL_SESSIONS,
+  MAX_TERMINAL_TABS,
   reduceTerminalSessions,
   terminalInputTarget,
   type TerminalSessionTab,
@@ -50,9 +56,13 @@ export interface TerminalSessionsApi {
 
 export function useTerminalSessions(callbacks: TerminalSessionsCallbacks = {}): TerminalSessionsApi {
   const [state, dispatch] = useReducer(reduceTerminalSessions, EMPTY_TERMINAL_SESSIONS)
-  const streams = useRef(new Map<string, AbortController>())
+  /** The one session whose output is being read, and the abort handle for that read. */
+  const streamRef = useRef<{ id: string; controller: AbortController } | null>(null)
+  const ownedIds = useRef(new Set<string>())
   const activeIdRef = useRef<string | null>(null)
   const stateRef = useRef(state)
+  const openingRef = useRef(0)
+  const lifecycleRef = useRef(0)
   stateRef.current = state
   const callbacksRef = useRef(callbacks)
   callbacksRef.current = callbacks
@@ -62,36 +72,110 @@ export function useTerminalSessions(callbacks: TerminalSessionsCallbacks = {}): 
     [state.tabs, state.activeId],
   )
 
-  // Announce a change of the displayed session, so the surface can switch its buffer.
+  const stopStream = useCallback(() => {
+    streamRef.current?.controller.abort()
+    streamRef.current = null
+  }, [])
+
+  /**
+   * Reads the given session, and only that one. Main answers with its bounded history first, so
+   * the renderer drops what it had for that tab and rebuilds it from the replay.
+   */
+  const attach = useCallback((id: string) => {
+    if (streamRef.current?.id === id) return
+    stopStream()
+    const tab = stateRef.current.tabs.find((candidate) => candidate.id === id)
+    if (!tab || tab.status === 'exited' || tab.status === 'failed') return
+    const controller = new AbortController()
+    streamRef.current = { id, controller }
+    dispatch({ type: 'attached', id })
+    void streamWorkspaceTerminalSession(id, {
+      signal: controller.signal,
+      onStart: (event) => {
+        if (event.backend) dispatch({ type: 'backend', id, backend: event.backend })
+        if (activeIdRef.current !== id) return
+        callbacksRef.current.onStart?.({
+          sessionId: id,
+          shell: event.shell,
+          ...(event.backend ? { backend: event.backend } : {}),
+        })
+      },
+      onStdout: (text) => {
+        dispatch({ type: 'output', id, text })
+        if (activeIdRef.current === id) callbacksRef.current.onActiveOutput?.(text, 'stdout')
+        // Any output means the shell is reading input, which is when the tab becomes ready.
+        dispatch({ type: 'status', id, status: 'ready' })
+      },
+      onStderr: (text) => {
+        dispatch({ type: 'output', id, text })
+        if (activeIdRef.current === id) callbacksRef.current.onActiveOutput?.(text, 'stderr')
+        dispatch({ type: 'status', id, status: 'ready' })
+      },
+      onExit: (event) => {
+        if (streamRef.current?.id === id) streamRef.current = null
+        dispatch({ type: 'status', id, status: 'exited', exitCode: event?.exitCode ?? null })
+      },
+      onError: (message) => {
+        if (streamRef.current?.id === id) streamRef.current = null
+        dispatch({ type: 'status', id, status: 'failed' })
+        callbacksRef.current.onError?.(id, message)
+      },
+    }).catch((error: unknown) => {
+      if ((error as Error).name === 'AbortError') return
+      if (streamRef.current?.id === id) streamRef.current = null
+      dispatch({ type: 'status', id, status: 'failed' })
+      callbacksRef.current.onError?.(id, (error as Error).message)
+    })
+  }, [stopStream])
+
+  // Announce a change of the displayed session, so the surface can switch its buffer, and follow
+  // it with the stream: the displayed session is the one whose output is read.
   useEffect(() => {
-    if (activeIdRef.current === state.activeId) return
+    const changed = activeIdRef.current !== state.activeId
     activeIdRef.current = state.activeId
-    callbacksRef.current.onActiveChange?.(activeTab)
-  }, [state.activeId, activeTab])
+    if (changed) callbacksRef.current.onActiveChange?.(activeTab)
+    if (state.activeId) attach(state.activeId)
+  }, [state.activeId, activeTab, attach])
 
   useEffect(() => () => {
-    for (const controller of streams.current.values()) controller.abort()
-    streams.current.clear()
-  }, [])
+    lifecycleRef.current += 1
+    stopStream()
+    for (const id of ownedIds.current) void closeWorkspaceTerminalSession(id).catch(() => undefined)
+    ownedIds.current.clear()
+  }, [stopStream])
 
   /** Closes every session: used when the workspace or conversation changes underneath them. */
   const closeAll = useCallback(() => {
-    for (const [id, controller] of streams.current) {
-      controller.abort()
-      void closeWorkspaceTerminalSession(id).catch(() => undefined)
-    }
-    streams.current.clear()
+    lifecycleRef.current += 1
+    stopStream()
+    for (const id of ownedIds.current) void closeWorkspaceTerminalSession(id).catch(() => undefined)
+    ownedIds.current.clear()
     dispatch({ type: 'reset' })
-  }, [])
+  }, [stopStream])
 
   const open = useCallback<TerminalSessionsApi['open']>(async ({ workspacePath, shellId, size }) => {
+    if (ownedIds.current.size + openingRef.current >= MAX_TERMINAL_TABS) {
+      dispatch({ type: 'notice', text: `最多同时打开 ${MAX_TERMINAL_TABS} 个终端；请先关闭一个再新建。` })
+      return null
+    }
+    openingRef.current += 1
+    const lifecycle = lifecycleRef.current
     let created: Awaited<ReturnType<typeof createWorkspaceTerminalSession>>
     try {
       created = await createWorkspaceTerminalSession(workspacePath, size, shellId ?? undefined)
     } catch (error) {
       dispatch({ type: 'notice', text: (error as Error).message })
       throw error
+    } finally {
+      openingRef.current -= 1
     }
+    if (lifecycle !== lifecycleRef.current) {
+      // The workspace or conversation changed while this session was being created: it belongs
+      // to something the user has left, so it is closed instead of being shown (UX-30).
+      void closeWorkspaceTerminalSession(created.sessionId).catch(() => undefined)
+      return null
+    }
+    ownedIds.current.add(created.sessionId)
     dispatch({
       type: 'open',
       tab: {
@@ -102,62 +186,15 @@ export function useTerminalSessions(callbacks: TerminalSessionsCallbacks = {}): 
         status: 'starting',
       },
     })
-
-    const controller = new AbortController()
-    streams.current.set(created.sessionId, controller)
-    void streamWorkspaceTerminalSession(created.sessionId, {
-      signal: controller.signal,
-      onStart: (event) => {
-        callbacksRef.current.onStart?.({
-          sessionId: created.sessionId,
-          shell: event.shell,
-          ...(event.backend ? { backend: event.backend } : {}),
-        })
-      },
-      onStdout: (text) => {
-        dispatch({ type: 'output', id: created.sessionId, text })
-        if (activeIdRef.current === created.sessionId) {
-          callbacksRef.current.onActiveOutput?.(text, 'stdout')
-        }
-        // Any output means the shell is reading input, which is when the tab becomes ready.
-        dispatch({ type: 'status', id: created.sessionId, status: 'ready' })
-      },
-      onStderr: (text) => {
-        dispatch({ type: 'output', id: created.sessionId, text })
-        if (activeIdRef.current === created.sessionId) {
-          callbacksRef.current.onActiveOutput?.(text, 'stderr')
-        }
-        dispatch({ type: 'status', id: created.sessionId, status: 'ready' })
-      },
-      onExit: (event) => {
-        streams.current.delete(created.sessionId)
-        dispatch({
-          type: 'status',
-          id: created.sessionId,
-          status: 'exited',
-          exitCode: event?.exitCode ?? null,
-        })
-      },
-      onError: (message) => {
-        streams.current.delete(created.sessionId)
-        dispatch({ type: 'status', id: created.sessionId, status: 'failed' })
-        callbacksRef.current.onError?.(created.sessionId, message)
-      },
-    }).catch((error: unknown) => {
-      if ((error as Error).name === 'AbortError') return
-      streams.current.delete(created.sessionId)
-      dispatch({ type: 'status', id: created.sessionId, status: 'failed' })
-      callbacksRef.current.onError?.(created.sessionId, (error as Error).message)
-    })
     return created.sessionId
   }, [])
 
   const close = useCallback((id: string) => {
-    streams.current.get(id)?.abort()
-    streams.current.delete(id)
+    ownedIds.current.delete(id)
+    if (streamRef.current?.id === id) stopStream()
     dispatch({ type: 'close', id })
     void closeWorkspaceTerminalSession(id).catch(() => undefined)
-  }, [])
+  }, [stopStream])
 
   const write = useCallback((data: string) => {
     const target = terminalInputTarget(stateRef.current)

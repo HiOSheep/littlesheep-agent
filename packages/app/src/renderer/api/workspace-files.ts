@@ -93,8 +93,10 @@ function workspaceQuery(root: string, path?: string): string {
   return params.toString()
 }
 
-export async function listWorkspaceDirectory(root: string, path?: string): Promise<WorkspaceDirectory> {
-  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceList}?${workspaceQuery(root, path)}`)
+export async function listWorkspaceDirectory(root: string, path?: string, filter = ''): Promise<WorkspaceDirectory> {
+  const params = new URLSearchParams(workspaceQuery(root, path))
+  if (filter) params.set('filter', filter)
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceList}?${params.toString()}`)
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
     throw new Error((data as { error: string }).error)

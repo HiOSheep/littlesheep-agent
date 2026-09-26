@@ -2,8 +2,8 @@
 //
 // Discovery reports what it can establish: the distribution is registered, and `wsl.exe` can
 // run a trivial command. Whether a *terminal* session starts is a different path (ConPTY plus
-// the WSL relay), and on this host it does not: the launch fails with
-// `Wsl/Service/E_UNEXPECTED` because the localhost proxy is not mirrored into WSL.
+// the WSL relay), so probe the real session and assert the observed outcome. A previous host
+// failure (`Wsl/Service/E_UNEXPECTED`) is not a permanent property of this machine.
 //
 // Both outcomes are therefore asserted, so this file is honest wherever it runs: a session that
 // starts must be a real Bash in the mapped workspace, and a session that cannot start must

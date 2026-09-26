@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activityAttentionLine, compactTranscriptEntries } from './activity-visibility'
+import { activityAttentionLine, activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
 import type { AssistantTurnActivity, LiveToolEvent, TranscriptEntry } from './types'
 
 function tool(overrides: Partial<LiveToolEvent> = {}): LiveToolEvent {
@@ -75,5 +75,23 @@ describe('compact mode keeps attention facts', () => {
     expect(line).toContain('验证：未验证')
     // A passing verification is not an attention fact.
     expect(line).not.toContain('验证通过')
+  })
+
+  it('gives the same verification fact to normal mode, which has no attention line', () => {
+    const unverified = activity({
+      status: 'done',
+      verificationHistory: [
+        { attempt: 1, verdict: 'unverified', reason: 'no evidence', verifiedAt: '2026-09-23T00:00:00.000Z', source: 'structural' },
+      ],
+    } as Partial<AssistantTurnActivity>)
+
+    expect(activityVerificationLine(unverified)).toBe('验证：未验证')
+    expect(activityVerificationLine(activity({
+      status: 'done',
+      verificationHistory: [
+        { attempt: 1, verdict: 'pass', reason: 'ok', verifiedAt: '2026-09-23T00:00:00.000Z', source: 'structural' },
+      ],
+    } as Partial<AssistantTurnActivity>))).toBeNull()
+    expect(activityVerificationLine(activity({ status: 'done' } as Partial<AssistantTurnActivity>))).toBeNull()
   })
 })

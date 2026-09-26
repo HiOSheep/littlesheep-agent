@@ -80,7 +80,9 @@ export async function routeWorkspace(
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.workspaceList) {
     const root = resolveWorkspaceRoot(url, context.getConfig(), context.workplaceDir)
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? root)
-    json(res, 200, await listWorkspaceDirectory(root, target))
+    const filter = url.searchParams.get('filter') ?? ''
+    if (filter.length > 256) throw new HttpError(400, 'file filter is too long')
+    json(res, 200, await listWorkspaceDirectory(root, target, filter))
     return true
   }
 

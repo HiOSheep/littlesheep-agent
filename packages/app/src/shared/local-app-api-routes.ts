@@ -82,8 +82,6 @@ export const LOCAL_APP_API_PREFIXES = {
   archiveSessions: '/archive/sessions/',
   archiveProjects: '/archive/projects/',
   terminalSessions: '/workspace/terminal/session/',
-  /** The Shell profiles this machine can actually run (UX-29). */
-  terminalShells: '/workspace/terminal/shells',
   plugins: '/plugins/',
   skills: '/skills/',
   memoryNodes: '/memory/tree/nodes/',

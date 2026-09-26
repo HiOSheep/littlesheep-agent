@@ -10,6 +10,7 @@ interface PendingTerminalCommandCapture {
   cwd: string
   workspacePath: string
   appSessionId?: string
+  shell: string
   startedAt: string
   startedAtMs: number
   stdout: string
@@ -34,6 +35,7 @@ export class TerminalCommandCaptureStore {
       cwd: session.root,
       workspacePath: session.root,
       appSessionId,
+      shell: session.shellLabel,
       startedAt: new Date(startedAtMs).toISOString(),
       startedAtMs,
       stdout: '',
@@ -75,6 +77,9 @@ export class TerminalCommandCaptureStore {
       cwd: capture.cwd,
       workspacePath: capture.workspacePath,
       sessionId: capture.appSessionId,
+      // The session knows which Shell it really runs, so the history can say where a
+      // command ran once several shells are open (UX-30 item 5).
+      shell: capture.shell,
       startedAt: capture.startedAt,
       endedAt: new Date(endedAtMs).toISOString(),
       durationMs: endedAtMs - capture.startedAtMs,
