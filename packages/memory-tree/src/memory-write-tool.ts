@@ -69,6 +69,12 @@ export interface MemoryWriteToolOptions {
     branch: string
     scope: string
     sourceRefs: readonly string[]
+    /**
+     * Who asserted this statement. `user` only when the runtime verified the user's own instruction:
+     * the epistemic rules turn that into user authority and a reported status, and they refuse the
+     * claim again if the sources carry no user message at all.
+     */
+    actorKind: 'user' | 'agent'
   }) => MemoryWriteEpistemicMetadata
   /** Records the audit line for an attempt (accepted or refused). */
   log?: (level: 'info' | 'warn', message: string) => void
@@ -224,7 +230,14 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
         createdAt: new Date().toISOString(),
         // The epistemic rules are the existing ones; this tool adds no second vocabulary, it only feeds
         // them the sources it actually verified.
-        epistemic: options.resolveEpistemic({ branch, scope, sourceRefs }),
+        epistemic: options.resolveEpistemic({
+          branch,
+          scope,
+          sourceRefs,
+          // A necessary write is the agent's own judgement; a user-request write is the user's, and it
+          // only reaches this line because a cited message really asked for it.
+          actorKind: request.reasonKind === 'user-request' ? 'user' : 'agent',
+        }),
       }
 
       let result: MemoryWriteResult

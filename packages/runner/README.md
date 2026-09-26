@@ -1,8 +1,10 @@
 # @littlesheep/runner
 
-最后更新：2026-09-27 06:37:13
+最后更新：2026-09-27 06:45:00
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
+真实验收（RS-07，2026-09-27）：`pnpm run verify:memory-controlled-writes` 在隔离数据根里用**真实 runner、真实 Memory v3 仓库与真实会话存储**跑完受控记忆的验收表——可调用工具目录、明确记住→重启→新会话召回（以模型实际收到的请求为准）、必要写入与薄弱理由拒绝、闲聊不写与模型不能自授权、压力下不学习、用户纠正（5432→6432，重启后仍只有新事实）、用户忘记与撤销标记跨重启、六类拒绝各自可辨、§2.1 常驻回归。脚本用受控模型替身定位边界，并在报告的 `limits` 里明确写出"未做真实模型验收"，不把替身当真实模型。
+
 `memory_manage` 与 `memory_write` 都在 `infra.ts` 注册（RS-06/06B，2026-09-27）：忘记工具拿到的是管理门面（`inspectNode`/`manageAtom`）、本轮导航台账（`listLedgers`，用于"本轮真的见过"）与会话消息窗口；提交成功后写入 `state.memoryAtomCorrections`，finalize 读取并清空它，进而设置会话的 `memoryRevokedAt`。`memory_write`：它把 `memoryService.write`、本会话最近 400 条消息（供来源核对）与 `resolveMemoryWriteEpistemic`（以中性的 `tool` stage）注入受控写入工具；`memory_tree` 仍是只读导航，两者权限档位相反——写入工具始终需要批准。注册表守卫测试同时断言两者在册、遗留的 `write_memory`/`record_experience` 不在册。
 
 ## 冷启动计时

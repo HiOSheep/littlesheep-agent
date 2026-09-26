@@ -569,7 +569,7 @@ export async function buildInfrastructure(
           createdAt: new Date().toISOString(),
           epistemic: {
             ...resolveMemoryWriteEpistemic({
-              raw: undefined,
+              raw: { kind: 'user' },
               stage: 'tool',
               branch: branch as never,
               scope: scope as never,
@@ -671,8 +671,8 @@ export async function buildInfrastructure(
           )),
         }));
       },
-      resolveEpistemic: ({ branch, scope, sourceRefs }) => resolveMemoryWriteEpistemic({
-        raw: undefined,
+      resolveEpistemic: ({ branch, scope, sourceRefs, actorKind }) => resolveMemoryWriteEpistemic({
+        raw: { kind: actorKind },
         stage: 'tool',
         branch: branch as never,
         scope: scope as never,
