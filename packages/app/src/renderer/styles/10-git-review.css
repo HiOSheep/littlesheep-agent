@@ -190,7 +190,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: var(--surface);
+  /* The header belongs to the diff column, so it wears the column's own surface: `--surface` made
+     it a lighter band across the top of an otherwise #101010 area. The hairline below it is what
+     separates the two, and it stays. */
+  background: var(--workspace-code-surface);
   box-shadow: inset 0 -1px var(--border);
 }
 
