@@ -3505,3 +3505,55 @@ body.is-resizing-column .settings-sidebar-resizer {
   font-size: 11px;
   font-style: normal;
 }
+
+/* Settings frames are off (2026-09-26). Everything the settings surface draws is told apart by its
+   fill instead of a 1px outline, so one block owns that decision rather than twenty-five rules.
+   What still means something keeps its line: semantic accent strips (danger / warning / success),
+   row dividers between entries, and `.dialog`, whose frame separates a modal from the window
+   behind it. */
+.settings-nav-item,
+.settings-module-search,
+.settings-filter-pill,
+.web-settings-field select,
+.web-provider-key-form input,
+.web-provider-key-form button,
+.web-cache-clear,
+.development-environment-version,
+.development-environment-status,
+.development-environment-controls input,
+.approval-prompt,
+.approval-prompt pre,
+.settings-module-empty-icon,
+.dialog-hint,
+.feedback-action,
+.key-badge.literal,
+.web-provider-check,
+.provider-input input,
+.channel-overall,
+.channel-tag,
+.provider-card,
+.provider-badge,
+.provider-model-chip,
+.provider-remove,
+.provider-editor-discard,
+.settings-inline-field input,
+.provider-model-row input,
+.provider-model-remove,
+.provider-chip,
+.provider-template {
+  border: 0;
+}
+
+/* These had no fill of their own, so losing the frame would have erased them. */
+.settings-filter-pill,
+.web-cache-clear,
+.development-environment-status,
+.development-environment-controls input,
+.provider-badge,
+.provider-model-chip,
+.provider-remove,
+.provider-model-row input,
+.provider-model-remove,
+.provider-chip {
+  background: rgba(255, 255, 255, 0.035);
+}

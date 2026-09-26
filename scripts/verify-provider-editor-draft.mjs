@@ -231,6 +231,10 @@ async function main() {
     const locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
     await harness.desktopAction(locator, 'resize', WINDOW)
+    // Park the window outside every display and show it inactively: this gate screenshots the
+    // editor, and a window Chromium never composites makes Page.captureScreenshot time out
+    // (measured twice in a row before this line existed).
+    await harness.desktopAction(locator, 'park-offscreen')
     client = await harness.connectRenderer(debuggingPort)
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`),

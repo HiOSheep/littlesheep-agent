@@ -59,9 +59,30 @@ describe('settings workspace surface', () => {
     expect(navItem).toContain('min-height: 28px')
     expect(navItem).toContain('gap: 8px')
     expect(navItem).toContain('padding: 0 7px')
-    expect(navItem).toContain('border: 1px solid transparent')
-    expect(ruleBody('.settings-nav-item:hover,\n.settings-nav-item:focus-visible')).toContain('border-color: var(--border-strong)')
-    expect(ruleBody('.settings-nav-item.active')).toContain('border-color: var(--border-strong)')
+    // The row carries no frame in any state; the shared settings de-framing block owns that, and
+    // the row shows hover and active through their fills.
+    const deFramed = styles.slice(styles.indexOf('/* Settings frames are off'))
+    expect(deFramed).toContain('.settings-nav-item,')
+    expect(deFramed).toContain('border: 0;')
+    expect(ruleBody('.settings-nav-item:hover,\n.settings-nav-item:focus-visible')).toContain('background-color: var(--sidebar-interaction-hover)')
+    expect(ruleBody('.settings-nav-item.active')).toContain('background-color: var(--sidebar-interaction-active)')
+  })
+
+  it('keeps the settings surface free of frame lines', () => {
+    const deFramed = styles.slice(styles.indexOf('/* Settings frames are off'))
+
+    for (const selector of [
+      '.settings-module-search',
+      '.settings-filter-pill',
+      '.provider-card',
+      '.provider-input input',
+      '.development-environment-version',
+    ]) {
+      expect(deFramed).toContain(selector)
+    }
+    // Semantic strips and the modal frame are deliberately not in that list.
+    expect(deFramed).not.toContain('.dialog,')
+    expect(deFramed).not.toContain('.approval-prompt.danger')
   })
 
   it('uses the titlebar code surface for every settings page canvas', () => {
