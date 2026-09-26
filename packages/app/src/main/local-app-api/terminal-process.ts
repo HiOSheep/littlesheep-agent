@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { workspaceShellConfig } from '../workspace-shell.js'
-import type { WorkspaceShellProfile } from '../workspace-shell-discovery.js'
+import { wslArgs, type WorkspaceShellProfile } from '../workspace-shell-discovery.js'
 import { HttpError } from './http.js'
 
 export interface WorkspaceTerminalProcess {
@@ -29,7 +29,7 @@ export async function createWorkspaceTerminalProcess(
   /** The discovered Shell to run; Main resolves it and the renderer only sends an id. */
   profile?: WorkspaceShellProfile | null,
 ): Promise<WorkspaceTerminalProcess> {
-  const shell = shellLaunch(profile)
+  const shell = shellLaunch(profile, root)
   // A discovered shell that has since been removed must fail here, with a message the UI can
   // show, instead of starting a process that never runs (`spawn` reports a missing executable
   // asynchronously, which used to leave a session that looked alive and could not be killed).
@@ -53,16 +53,24 @@ export async function createWorkspaceTerminalProcess(
  * A discovered profile wins; without one the previous behaviour (Windows PowerShell on
  * Windows, $SHELL elsewhere) is kept, so existing sessions migrate unchanged.
  */
-export function shellLaunch(profile?: WorkspaceShellProfile | null): {
+export function shellLaunch(
+  profile?: WorkspaceShellProfile | null,
+  workspacePath?: string,
+): {
   command: string
   args: string[]
   env: Record<string, string>
   label: string
 } {
   if (profile?.available && profile.executable) {
+    // WSL starts in a Linux directory, so its `--cd` depends on where this session runs —
+    // arguments cannot be frozen at discovery time for that shell (UX-29 item 3).
+    const args = profile.kind === 'wsl' && profile.distro
+      ? wslArgs(profile.distro, workspacePath)
+      : profile.args ?? []
     return {
       command: profile.executable,
-      args: profile.args ?? [],
+      args,
       env: profile.env ?? {},
       label: profile.label,
     }

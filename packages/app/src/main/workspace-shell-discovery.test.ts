@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cmdArgs,
+  windowsPathToWslPath,
   defaultWorkspaceShellProfile,
   discoverWorkspaceShells,
   findWorkspaceShellProfile,
@@ -144,4 +145,26 @@ describe('workspace shell discovery', () => {
     if (gitBash?.executable) expect(isGitBashPath(gitBash.executable)).toBe(true)
     expect(defaultWorkspaceShellProfile(profiles)).not.toBeNull()
   }, 30_000)
+})
+
+describe('workspace path mapping for WSL', () => {
+  it('maps a Windows drive path to the /mnt path WSL sees', () => {
+    expect(windowsPathToWslPath('C:\\Users\\me\\work')).toBe('/mnt/c/Users/me/work')
+    // Spaces and Chinese characters are ordinary path characters here.
+    expect(windowsPathToWslPath('D:\\工作 目录\\项目')).toBe('/mnt/d/工作 目录/项目')
+    expect(windowsPathToWslPath('C:\\')).toBe('/mnt/c')
+    expect(windowsPathToWslPath('c:/Users/me/')).toBe('/mnt/c/Users/me')
+  })
+
+  it('refuses to guess for paths WSL has no equivalent for', () => {
+    expect(windowsPathToWslPath('\\\\server\\share\\project')).toBeNull()
+    expect(windowsPathToWslPath('relative\\path')).toBeNull()
+    expect(windowsPathToWslPath('')).toBeNull()
+  })
+
+  it('starts the session in the workspace, and falls back to home when it cannot', () => {
+    expect(wslArgs('Ubuntu', 'C:\\Users\\me\\项目')).toEqual(['-d', 'Ubuntu', '--cd', '/mnt/c/Users/me/项目'])
+    expect(wslArgs('Ubuntu', '\\\\server\\share')).toEqual(['-d', 'Ubuntu', '--cd', '~'])
+    expect(wslArgs('Ubuntu')).toEqual(['-d', 'Ubuntu', '--cd', '~'])
+  })
 })

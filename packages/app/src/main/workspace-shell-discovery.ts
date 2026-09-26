@@ -62,8 +62,33 @@ export function cmdArgs(): string[] {
   return ['/K', 'chcp 65001 >NUL']
 }
 
-export function wslArgs(distro: string): string[] {
-  return ['-d', distro, '--cd', '~']
+/**
+ * Map a Windows path to the path WSL sees.
+ *
+ * A WSL shell starts in a Linux directory, so the workspace root has to be translated
+ * (`C:\Users\me\项目` → `/mnt/c/Users/me/项目`). A UNC path has no `/mnt` equivalent, so it
+ * maps to nothing and the caller must fall back to the home directory rather than guess.
+ */
+export function windowsPathToWslPath(path: string): string | null {
+  const normalized = path.trim().replace(/\\/gu, '/')
+  if (normalized.startsWith('//')) return null
+  const match = /^([A-Za-z]):(?:\/(.*))?$/u.exec(normalized)
+  if (!match) return null
+  const drive = match[1]!.toLowerCase()
+  const rest = (match[2] ?? '').replace(/\/+$/u, '')
+  return rest ? `/mnt/${drive}/${rest}` : `/mnt/${drive}`
+}
+
+/**
+ * The arguments that start a WSL session in the workspace.
+ *
+ * Passing the mapped directory keeps the terminal where the user is working; without a
+ * mapping (UNC workspace, or a path this cannot translate) it falls back to the home
+ * directory instead of failing to start.
+ */
+export function wslArgs(distro: string, workspacePath?: string): string[] {
+  const mapped = workspacePath ? windowsPathToWslPath(workspacePath) : null
+  return ['-d', distro, '--cd', mapped ?? '~']
 }
 
 /**

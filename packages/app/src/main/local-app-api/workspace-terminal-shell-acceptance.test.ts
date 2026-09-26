@@ -5,7 +5,7 @@
 //
 // Markers are built at run time ("LS-" + "MAJOR:") because a terminal echoes the command it is
 // given: a literal marker would match the echo before any output existed.
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -149,4 +149,29 @@ describe('workspace terminal shell acceptance', () => {
     await expect(manager.create(root, { cols: 80, rows: 24 }, { ...process.env }, broken))
       .rejects.toThrow()
   }, 60_000)
+
+  it('starts in a workspace path with spaces and Chinese characters', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'ls-terminal-paths-'))
+    cleanup.push(base)
+    // The clause is about arguments and cwd surviving spaces and non-ASCII, which is exactly
+    // where an array-vs-string mistake or a quoting bug shows up.
+    const root = join(base, '工作 目录 项目')
+    await mkdir(root, { recursive: true })
+    const profile = await powershellProfile()
+    if (!profile) return
+
+    const session = await startPowerShellSession(profile, root)
+    try {
+      session.write(probe('CWD', '(Get-Location).Path'))
+      const cwd = await session.waitFor('LS-CWD:')
+      expect(cwd).toContain('工作 目录 项目')
+
+      // Writing and reading a file proves the argument path is usable, not just printable.
+      session.write(probe('WRITE', '$(Set-Content -LiteralPath ".\\中文 文件.txt" -Value "内容" -Encoding utf8; (Get-Content -LiteralPath ".\\中文 文件.txt" -Encoding utf8))'))
+      const written = await session.waitFor('LS-WRITE:')
+      expect(written).toContain('内容')
+    } finally {
+      session.close()
+    }
+  }, 120_000)
 })
