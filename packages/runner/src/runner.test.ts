@@ -3048,6 +3048,80 @@ describe('host file write entry points', () => {
     // RS-06: the controlled durable writer is registered, and it is not one of the retired writers.
     expect(names).toContain('memory_write');
     expect(names).toContain('memory_tree');
+    expect(names).toContain('memory_manage');
+  });
+
+
+  // RS-06B: forgetting is authorized by the user's own words, and a committed forget revokes the
+  // session's pre-forget summaries so the old fact stops being injected as current memory.
+  it('forgets a memory the user asked to forget, and marks the session summaries revoked', async () => {
+    await createMemoryV3ExperimentMarker(dataDir);
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.repositoryBackend = 'v3';
+    const llm = makeMockLlm(() => textResponse('Understood.'));
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const session = await runner.sessionManager.create('openai/gpt-test');
+    await runner.sessionManager.append(session.id, [
+      textMessage('user', '记住：本地端口是 5432。', { id: 'remember-1', runId: 'run-1' }),
+      textMessage('user', '忘掉我之前说的端口偏好。', { id: 'forget-1', runId: 'run-2' }),
+    ]);
+
+    const writeTool = runner.infra.registry.get('memory_write')!.tool;
+    const writeCtx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never;
+    const written = await writeTool.execute({
+      reasonKind: 'user-request',
+      summary: '本地端口',
+      content: '本地开发端口是 5432。',
+      retrievalKeys: ['端口', '本地'],
+      reason: '用户要求记住。',
+      sourceMessageIds: ['remember-1'],
+    }, writeCtx);
+    expect(written.ok).toBe(true);
+    const atom = (await runner.infra.memoryRepository.listNodes('long-term'))[0]!;
+    // The public node carries the revision the management call must name; the atom's own revision is
+    // the same number, read through the management facade.
+    const inspection = await runner.infra.memoryRepository.management.inspectNode(atom.id, 'D3');
+    const revision = inspection!.atom!.revision;
+
+    // The run that forgets it has to have seen it: a navigation read is what puts the atom in the
+    // run's ledger, and the tool refuses targets the run never saw.
+    await runner.infra.memoryService.beginRun({
+      runId: 'run-2',
+      sessionId: session.id,
+      query: '端口 偏好',
+      recentHistory: [],
+      workspace: dataDir,
+    });
+    await runner.infra.memoryService.expand('run-2', { branchId: 'long-term', query: '端口' });
+
+    const manageTool = runner.infra.registry.get('memory_manage')!.tool;
+    const forgetCtx = { sessionId: session.id, runId: 'run-2', cwd: dataDir, approvalGranted: true } as never;
+    const forgotten = await manageTool.execute({
+      action: 'forget',
+      atomId: atom.id,
+      expectedRevision: revision,
+      reason: '用户要求忘记这条端口偏好。',
+      sourceMessageIds: ['forget-1'],
+    }, forgetCtx);
+    expect(forgotten.ok).toBe(true);
+    expect(forgotten.meta?.memoryManageOutcome).toBe('committed');
+    // The record stays (audit and provenance are not erased): what changes is that the atom is no
+    // longer in use, and a retrieval no longer returns it.
+    const after = await runner.infra.memoryRepository.management.inspectNode(atom.id, 'D3');
+    expect(after?.atom?.invalidation?.at).toBeTruthy();
+    const searched = await runner.infra.memoryService.expand('run-2', { branchId: 'long-term', query: '端口' });
+    expect(searched.fragments.some((fragment) => fragment.id === atom.id)).toBe(false);
+
+    // The runner recorded the correction, and the next run's finalize turns it into the session's
+    // revocation marker — which is what stops a pre-forget summary from being injected as current.
+    expect(runner.infra.state.memoryAtomCorrections?.length).toBe(1);
+    const run = await runner.run({ sessionId: session.id, text: '继续' });
+    expect(run.status).toBe('ok');
+    expect((await runner.sessionManager.loadMetadata(session.id))?.memoryRevokedAt).toBeTruthy();
+    // The marker belongs to that run: the next one starts clean.
+    expect(runner.infra.state.memoryAtomCorrections).toEqual([]);
   });
 
   // RS-06: the model may ask for a memory, but the Runtime decides whether the user authorized it.

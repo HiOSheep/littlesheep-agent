@@ -821,6 +821,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               compact: opts.config.sessions.compaction,
               compactionScheduler,
               infra,
+              // Memory corrections committed by tools since the last finalize; reading them consumes
+              // them, so the marker they feed is written exactly once and never leaks into a later run.
+              readMemoryAtomCorrections: () => {
+                const records = state.memoryAtomCorrections ?? [];
+                state.memoryAtomCorrections = [];
+                return records;
+              },
               assembleResult,
               log: opts.log,
             });

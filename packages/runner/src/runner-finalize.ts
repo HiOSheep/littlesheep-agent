@@ -23,6 +23,8 @@ export interface FinalizeRunnerPhaseOptions<TResult> {
   compact: { threshold: number; keepRecent: number; background?: boolean };
   /** Single owner for automatic compaction operations; optional for legacy callers. */
   compactionScheduler?: SessionCompactionScheduler;
+  /** Memory corrections committed by tools during this run (RS-06B). */
+  readMemoryAtomCorrections?: () => ReadonlyArray<{ atomId: string; action: string; status: string; revision?: number }>;
   infra: {
     memoryService: MemoryService;
     sessionManager: Parameters<typeof compactSessionAfterRun>[0]['sessionManager'];
@@ -106,7 +108,20 @@ export async function finalizeRunnerPhase<TResult>(
 
   // A committed correction/forget invalidates summaries produced before it, so
   // the next request does not inject the revoked fact as current memory.
-  if (memoryRevokedDuringRun(ctx, stageResult)) {
+  // A forget or correction committed by a tool during this run is reported through the same stage meta
+  // channel the retired stages used, so the revocation marker below has one source of truth.
+  const committedCorrections = options.readMemoryAtomCorrections?.() ?? []
+  const stageResultWithCorrections = committedCorrections.length === 0 ? stageResult : {
+    ...stageResult,
+    meta: {
+      ...(stageResult.meta as Record<string, unknown> | undefined),
+      memoryAtomCorrections: [
+        ...(((stageResult.meta as { memoryAtomCorrections?: unknown[] } | undefined)?.memoryAtomCorrections) ?? []),
+        ...committedCorrections,
+      ],
+    },
+  }
+  if (memoryRevokedDuringRun(ctx, stageResultWithCorrections)) {
     try {
       await options.infra.sessionManager.updateMetadata(options.sessionId, {
         memoryRevokedAt: new Date().toISOString(),

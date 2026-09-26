@@ -82,6 +82,7 @@ import {
   MemoryWriteService,
   ProjectMemoryBranch,
   TreeMemoryBranch,
+  createMemoryManageTool,
   createMemoryTreeTool,
   createMemoryWriteTool,
   migrateLegacyMemorySources,
@@ -94,6 +95,12 @@ export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, data?: unkno
 export interface RunnerState {
   sessionId: SessionId | undefined;
   model: string;
+  /**
+   * Memory corrections committed during the current run. The tools record them here, and the
+   * finalize step turns them into the session's revocation marker, so a summary written before a
+   * forgotten fact stops being injected as current memory. Cleared for every run.
+   */
+  memoryAtomCorrections?: Array<{ atomId: string; action: string; status: string; revision?: number }>;
 }
 
 /** The fully-assembled runtime. */
@@ -506,6 +513,61 @@ export async function buildInfrastructure(
     // One memory navigation entry point: the tree tool already covers
     // root_index, branch_index, expand and deep_search.
     createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),
+    // Forgetting is the second half of the controlled memory surface (RS-06B): the user's own words
+    // authorize it, the target is verified against this run's own view and its current revision, and
+    // correcting a memory is refused with that boundary rather than written as a rival fact.
+    createMemoryManageTool({
+      inspect: async (atomId) => {
+        const inspection = await memoryRepository.management.inspectNode(atomId, 'D3')
+        if (!inspection?.atom) return undefined
+        return {
+          atomId: inspection.atom.id,
+          revision: inspection.atom.revision,
+          branch: inspection.atom.branch,
+          scope: inspection.atom.scope,
+          status: inspection.atom.status,
+          ...(inspection.atom.invalidation ? { invalidatedAt: inspection.atom.invalidation.at } : {}),
+          summary: inspection.atom.summary,
+        }
+      },
+      invalidate: async ({ atomId, expectedRevision, reason }) => {
+        const result = await memoryRepository.management.manageAtom({
+          action: 'invalidate',
+          atomId,
+          expectedRevision,
+          reason,
+        })
+        if (result.action !== 'invalidate') throw new Error('The repository refused the invalidate action.')
+      },
+      // Seen by this run: the run's own navigation ledger records every atom that entered it, and an
+      // atom the model never saw cannot be changed from here — even if it exists and is active.
+      isVisibleToRun: async (runId, atomId) => {
+        const ledgers = memoryService.listLedgers(80)
+        const ledger = ledgers.find((entry) => entry.runId === runId)
+        if (!ledger) return false
+        return ledger.records.some((record) => record.nodeId === atomId
+          || record.fragmentIds.some((fragmentId) => fragmentId === atomId || fragmentId.endsWith(atomId)))
+      },
+      readMessages: async (sessionId) => {
+        const messages = await sessionManager.read(asSessionId(sessionId))
+        return messages.slice(-MEMORY_WRITE_SOURCE_WINDOW).map((message) => ({
+          id: message.id,
+          role: message.role === 'user' ? 'user' as const : 'assistant' as const,
+          text: message.content.map((block) => (block.type === 'text' ? block.text : '')).join('\n'),
+        }))
+      },
+      recordRevocation: (record) => {
+        // The finalize step turns this into the session's memory-revocation marker, which is what
+        // stops a summary written before the forget from being injected as current memory.
+        opts.state.memoryAtomCorrections = [...(opts.state.memoryAtomCorrections ?? []), {
+          atomId: record.atomId,
+          action: 'invalidate',
+          status: 'committed',
+          revision: record.revision,
+        }]
+      },
+      log: (level, message) => opts.log?.(level, `runner: ${message}`),
+    }),
     // The one durable writer (RS-06). It is registered here rather than in the read-only tree tool
     // because the two have opposite permission profiles: this one always needs approval, and the
     // Runtime verifies the cited sources before anything is committed.

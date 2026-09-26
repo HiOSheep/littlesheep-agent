@@ -181,6 +181,14 @@ export {
   type MemoryToolOptions,
 } from './memory-tool.js';
 export {
+  MEMORY_MANAGE_TOOL_NAME,
+  createMemoryManageTool,
+  userAskedToForget,
+  type MemoryManageSourceMessage,
+  type MemoryManageTarget,
+  type MemoryManageToolOptions,
+} from './memory-manage-tool.js';
+export {
   MEMORY_WRITE_MAX_PER_RUN,
   MEMORY_WRITE_TOOL_NAME,
   createMemoryWriteTool,
