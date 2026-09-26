@@ -2054,3 +2054,182 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   opacity: 0;
   pointer-events: none;
 }
+
+/* The titlebar's task pill: the conversation on screen plus what it is running. The glass is
+   deliberately heavier than the other popovers — the pill sits over the transcript, and the reader
+   must be able to read it without the text behind it bleeding through. */
+.running-pill-root {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  -webkit-app-region: no-drag;
+}
+
+.running-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: min(46vw, 520px);
+  height: 24px;
+  padding: 0 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--workspace-code-surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius-pill);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  cursor: default;
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+.running-pill:hover {
+  background: color-mix(in srgb, var(--workspace-code-surface) 92%, transparent);
+}
+
+.running-pill-ring {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid var(--muted-2);
+  border-radius: var(--radius-circle);
+}
+
+.running-pill-root.running .running-pill-ring {
+  border-color: color-mix(in srgb, var(--jump-to-latest-arrow) 55%, transparent);
+  border-top-color: var(--jump-to-latest-arrow);
+  animation: running-pill-spin 900ms linear infinite;
+}
+
+@keyframes running-pill-spin {
+  to { transform: rotate(360deg); }
+}
+
+.running-pill-title {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.running-pill-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.running-pill-panel {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(420px, 64vh);
+  padding: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--composer-surface) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: var(--radius-ui);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.48);
+  -webkit-backdrop-filter: blur(28px) saturate(155%);
+  backdrop-filter: blur(28px) saturate(155%);
+}
+
+.running-pill-panel-title {
+  padding: 2px 8px 6px;
+  overflow: hidden;
+  color: var(--text-strong, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.running-pill-panel-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 4px;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.running-pill-panel-section + .running-pill-command,
+.running-pill-panel-section + .running-pill-empty {
+  margin-top: 0;
+}
+
+.running-pill-panel-count {
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.running-pill-empty {
+  padding: 2px 8px 6px;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.running-pill-command {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-icon);
+}
+
+.running-pill-command:hover {
+  background: var(--composer-picker-option-hover);
+}
+
+.running-pill-command-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-circle);
+  background: var(--muted-2);
+}
+
+.running-pill-command.running .running-pill-command-dot {
+  background: var(--jump-to-latest-arrow);
+}
+
+.running-pill-command.failed .running-pill-command-dot {
+  background: var(--danger, #e5484d);
+}
+
+.running-pill-command-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.running-pill-command-text {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.running-pill-command-meta,
+.running-pill-command-time {
+  color: var(--muted-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.running-pill-command-time {
+  font-variant-numeric: tabular-nums;
+}

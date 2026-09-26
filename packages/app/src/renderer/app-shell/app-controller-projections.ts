@@ -23,6 +23,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'setControlTip',
     'openHyperlinkInside',
     'openHyperlinkWithSystem',
+    'titlebarTask',
   ],
   sidebar: [
     'sidebarCollapsed',

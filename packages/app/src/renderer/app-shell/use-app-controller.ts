@@ -21,6 +21,7 @@ import { buildContextUsage, type ContextUsageSnapshot } from '../context-usage'
 import { createProjectActions } from '../sidebar/project-actions'
 import { createSessionActions, type CachedSessionHistory, type SessionHistoryWindow } from '../sidebar/session-actions'
 import { useRuntimeTaskEvents } from '../runtime-events/use-runtime-task-events'
+import { latestRunActivity, useTitlebarTask } from './titlebar-task'
 import { useCheckpointRecovery } from '../runtime-recovery/use-checkpoint-recovery'
 import { FloatingHelpTip } from '../ui/floating-help'
 import { useFrameCoalescedState } from '../ui/use-frame-coalesced-state'
@@ -461,13 +462,8 @@ export function useAppController() {
     () => buildContextUsage(runtime?.model, contextUsageSnapshot),
     [contextUsageSnapshot, runtime?.model],
   )
-  const latestTaskActivity = useMemo(() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const activity = messages[index]?.activity
-      if (activity) return activity
-    }
-    return null
-  }, [messages])
+  const latestTaskActivity = latestRunActivity(messages)
+  const titlebarTask = useTitlebarTask({ sessions, currentSession, messages, activityNow })
   const sidebarToggleTip = sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'
   const moreConversationTip = '对话菜单'
   const newConversationTip = '新建对话'
@@ -647,7 +643,7 @@ export function useAppController() {
     workspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceReviewNavigatorWidth, setWorkspaceReviewNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion,
     controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn, selectableProviders,
-    selectedModel, displayedSessions, visibleSessions, reorderSidebarSessions, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, refreshRuntime, addAttachments, chooseWorkspace,
+    selectedModel, displayedSessions, visibleSessions, reorderSidebarSessions, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, titlebarTask, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, refreshRuntime, addAttachments, chooseWorkspace,
     openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, createProjectConversationFromSidebar,
     openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel,
     openWorkspacePanelTab, updateWorkspaceFileDraft, closeWorkspacePanelTab, defaultWorkspacePath, workspacePanelRoot, workspacePanelUsingTemporaryRoot,
