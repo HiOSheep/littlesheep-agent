@@ -47,9 +47,9 @@ ENTER → 活动路由 → ┬─ execute（唯一主循环：常规会话、工
 - **压缩在 run 结束后触发，且优先看真实上下文压力**：模型窗口已知（`contextSnapshot.budget.status === 'known'`）时只有 `compressionRecommended`（占用达到 `contextCompressionThresholdRatio`）会启动压缩，消息条数阈值退化为"窗口不可知"时的兜底；默认 `threshold 400` / `keepRecent 200` / `background false`（`packages/config/src/schema.ts`）。
 - **后果（2026-09-22 实测）**：登记窗口达 1M tokens 而真实长会话提示词只有 20k–30k，压力线不会被触及——四次 28 回合会话（169–222 个请求）的压缩调用数为 **0**（`compressionRecommended` 从未成立；验收数据根里的 `threshold: 100` 是冻结值，仓库默认仍是 400/200）。这不是缺陷，而是"消除消息条数阈值"的直接结果，但它意味着**在窗口远大于会话的配置下不再有压缩**。
 - **摘要安装与覆盖区间是一次原子提交**，带 predecessor / source-hash 前置条件（`packages/session/src/compaction.ts`、`packages/session/src/compaction-store.ts`）；前置条件不满足或写入失败时保留上一份有效摘要。
-- **压缩路径是持久记忆的唯一写入方**：`runner-finalize` → `compactSessionAfterRun` → `memoryService.write`，经 `resolveMemoryWriteEpistemic` 判定认识状态。失败与重试的摘要尝试都计入 operation usage。
-- **由此产生的边界**：既然压缩只在真实压力下触发，而大窗口配置下压力不会出现，**持久记忆也就不会被写入**。要恢复写入需要一条与缓存无关的写入路径或显式的记忆触发条件；把消息条数阈值塞回缓存路径会重新引入每次压缩的前缀重建（诊断运行实测 6 次压缩重付约 288k tokens），不是正确修法。
-- **模型没有可调用的记忆写入工具**：`memory_tree` 只有 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 五个只读动作（`packages/memory-tree/src/memory-tool.ts`）。
+- **压缩只产生会话摘要，不再是记忆写入方**（2026-09-27 起，RS-05）：`runner-finalize` → `compactSessionAfterRun` 只维护会话摘要；它不再生成或结算长期候选，升级前留下的 pending 候选会被终止并留档（`rejected` 结果 + `terminatedAt`/`terminationReason`，文件保留）。失败与重试的摘要尝试仍计入 operation usage。
+- **模型有受控的记忆写入接口**：写入口 `memory_write`（需批准，每次 run 上限 4 条；`user-request` 必须引用真的写了记忆指令的用户消息并由 Runtime 读原文核对，`necessary` 必须说明用途与不保存会失去什么；来源必须存在于本会话，被截断/清洗的来源不能支撑 durable 事实；写入身份由会话+分支+作用域+规范化内容+来源哈希而来）与管理口 `memory_manage`（用户亲口"忘记这条"/纠正；纠正按"写替代 → 记关系 → 才 supersede"三步提交，失败如实报告停在哪里）。常驻验收：`pnpm run verify:memory-controlled-writes`（隔离数据根、真实 runner 与存储，10 个场景）。
+- `memory_tree` 仍是只读导航：`root_index` / `branch_index` / `expand` / `deep_search` / `release`（`packages/memory-tree/src/memory-tool.ts`）；相似度只能提名、不能决定，值不同/恰有一侧否定/实体不相交的相似记忆一律拒绝合并（`packages/memory-tree/src/memory-repository/merge-guard.ts`）。
 - 记忆检索严格沿根索引 → 分支索引 → 展开推进；只有同一分支索引仍不足时才允许该分支内 `deep_search`。默认不跨树搜索，也不把向量召回直接注入上下文。
 - 每轮常驻的只有受限长度的根索引，不自动加载整份长期记忆或最近 daily 正文。
 
@@ -105,8 +105,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 | Context 与请求装配 | 主要数据链已实现；真实长任务红线 `met`、3 回合短负载有结构上限 | 边界之上为 system 消息、边界之下由 append-only 尾部账本追加；工具目录会话内固定；淘汰按 `appended-only` 作用域；tokenizer 能力矩阵与双账本已接通；会话累计命中率见"缓存命中率现状" | `packages/context/src/engine.ts`、`packages/harness/src/run-tail-ledger.ts`、`packages/harness/src/cache-prefix-split.ts`、`packages/types/src/token-ledger.ts` |
 | 工具执行 | 工程基线已完成 | `ToolExecutionService` 是查找、schema 校验、权限/单次批准、超时、中断、调度、清洗、事件与调用记录的唯一宿主边界；内置、插件和 run-scoped 工具共享该服务 | `packages/tools/src/tool-execution-service.ts`、`packages/runner/src/run-tools.ts` |
 | 权限与数据边界 | 已实现基础闭环 | 三档权限与行为 profile 正交；容器是 Main 的路径分类与审批闸门；核心源码宿主级只读 | `packages/safety/src/permission-boundary.ts`、`packages/app/src/main/run-policy.ts`、`packages/runner/src/core-source-protection.ts` |
-| 记忆树与 Memory v3 | 正式 backend 已切换；长尾验收进行中 | 索引优先检索、稳定实体与有向关系、动态 activation、写入认识边界与压缩后任务锚点恢复均已落地；`memory_tree` 只读，写入只经压缩路径 | `packages/memory-tree/`、`packages/memory-tree/src/memory-tool.ts`、`packages/runner/src/session-continuity.ts` |
-| 会话压缩 | 本地契约已完成 | 压力触发、默认 400/200/background false、摘要与覆盖区间原子提交且失败保留上一份、压缩为唯一记忆写入方 | `packages/session/src/compaction.ts`、`packages/session/src/compaction-store.ts`、`packages/config/src/schema.ts` |
+| 记忆树与 Memory v3 | 正式 backend 已切换；长尾验收进行中 | 索引优先检索、稳定实体与有向关系、动态 activation、写入认识边界与压缩后任务锚点恢复均已落地；`memory_tree` 只读；写入经受控 `memory_write`/`memory_manage`，压缩不再写入 | `packages/memory-tree/`、`packages/memory-tree/src/memory-tool.ts`、`packages/runner/src/session-continuity.ts` |
+| 会话压缩 | 本地契约已完成 | 压力触发、默认 400/200/background false、摘要与覆盖区间原子提交且失败保留上一份、压缩只产生摘要，不再写入记忆 | `packages/session/src/compaction.ts`、`packages/session/src/compaction-store.ts`、`packages/config/src/schema.ts` |
 | 执行记录与恢复 | 已实现 | 已完成 run 的步骤、权威 `ToolInvocationRecord`、验证、调用契约与 Context 快照可持久化并重放；活动 run 的续跑由版本化 `RunCheckpoint` 负责，两者不互相冒充 | `packages/runner/src/execution-log.ts`、`packages/runner/src/run-checkpoint-control.ts` |
 | 运行时事件与后台控制 | 已实现基础闭环 | 有界事件队列与安全消费、`TaskBookPatch`、暂停/继续/中断、Runner 显式续跑、应用启动恢复、托盘与三档关闭策略已接通 | `packages/runner/src/active-run-registry.ts`、`packages/app/src/main/desktop-shell.ts` |
 | 桌面应用与拓展工作区 | 已实现基础形态 | Local App API + SSE、Markdown、附件、审批、中断、文件树与编辑器、Git 审阅、受控终端、内置浏览器与产物索引 | `packages/app/src/main/`、`packages/app/src/renderer/` |

@@ -1,6 +1,6 @@
 # @littlesheep/experience
 
-最后更新：2026-09-22 12:47:49
+最后更新：2026-09-27 07:47:42
 
 保存经过校验确认的可复用经验、置信度和衰减信息，支持能力持续改进。
 
@@ -12,7 +12,7 @@
 
 ## 依赖与数据
 
-- 依赖记忆兼容存储（`atomicWrite`）、安全和公共契约。当前唯一写入方是 CLI `import-repo`（`experienceStore.append`）；EVOLVE 已删除，Runner 只在旧迁移未完成时把 store 注册为兼容读取分支 `LegacyExperienceBranch`，不再主动提出经验写入。
+- 依赖记忆兼容存储（`atomicWrite`）、安全和公共契约。本兼容存储的唯一写入方仍是 CLI `import-repo`（`experienceStore.append`）；持久记忆本身由受控的 `memory_write`/`memory_manage` 写入；EVOLVE 已删除，Runner 只在旧迁移未完成时把 store 注册为兼容读取分支 `LegacyExperienceBranch`，不再主动提出经验写入。
 - 经验数据属于用户数据根，损坏索引只做有备份的恢复（原始字节先写入 `backups/index.corrupt-*.json`）。
 
 ## 测试与修改定位

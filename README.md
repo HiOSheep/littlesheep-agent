@@ -1,6 +1,6 @@
 # LittleSheep 🐑
 
-最后更新：2026-09-27 07:42:08
+最后更新：2026-09-27 07:45:47
 
 **A local-first agent desktop app that turns goals into finished work.**
 
@@ -70,7 +70,7 @@ LS 使用统一 Memory Service 和索引优先的 Memory Tree，目前包括：
 - 压缩写入候选的认识状态校验
 - 可回滚迁移
 
-用户长期理念可以通过 `PHILOSOPHY.md` 注册为按需资源，而不是全文常驻每轮 Prompt。模型只能通过 `memory_tree` 的 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 读取和释放记忆，没有记忆写入工具；持久记忆的唯一写入方是会话压缩路径，其候选由 Runtime 提交或拒绝。
+用户长期理念可以通过 `PHILOSOPHY.md` 注册为按需资源，而不是全文常驻每轮 Prompt。模型通过 `memory_tree` 的 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 读取和释放记忆，通过受控的 `memory_write`（明确要求或必要决定，需批准）与 `memory_manage`（用户亲口"忘记这条"/纠正）写入；压缩路径只产生会话摘要，不再是写入方。
 
 ### Desktop Workspace
 

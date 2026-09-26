@@ -2,13 +2,13 @@
 
 最后更新：2026-09-24 21:29:06
 评估范围：当前源码、常驻文档与已记录的验证结果
-执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩是持久记忆的唯一写入方，模型侧 `memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**真实长任务的缓存红线已按现行会话累计口径达成（判定入口 `pnpm run check:cache-acceptance`），仍未闭环的是 3 回合短负载的结构上限（87–89%，只能靠更长的会话摊薄）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
+执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩只产生会话摘要，记忆写入由受控的 `memory_write`/`memory_manage` 承担（2026-09-27 起），`memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**真实长任务的缓存红线已按现行会话累计口径达成（判定入口 `pnpm run check:cache-acceptance`），仍未闭环的是 3 回合短负载的结构上限（87–89%，只能靠更长的会话摊薄）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
 
 ## 当前开发方向（2026-09-22，待实施）
 
 Harness / Runner 冻结为 stable kernel，后续只为真实任务 correctness bug、删除复杂度或已证明缺失的硬 invariant 最小修改。下一 Runtime 主线是文件观察版本与写入前置校验，复用工具执行、权限和检查点，不新增 stage/planner/scheduler/manager。Memory 按用户最新修正，仅在明确要求或确有必要时通过现有主循环提出受控写入；压缩保留会话连续性，移除长期候选自动提炼和提交。普通聊天不默认沉淀，不恢复 CAPTURE/auto-evolution，不靠消息条数压缩触发学习。
 
-这是新的开发顺序，覆盖下文历史阶段排序；当前源码仍是压缩唯一写入方，不提前宣称按需写入已实现。具体范围、必要性约束和验收见[Runtime 状态一致性与必要记忆任务书](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。缓存专项按用户确认已完成，后续按[现行验收条款](../reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)回归；不重开原清单。
+这是新的开发顺序，覆盖下文历史阶段排序；当时源码仍是压缩唯一写入方；2026-09-27 起按需写入已实现（见下文"已被取代"标注），本报告的历史推理保留不改。具体范围、必要性约束和验收见[Runtime 状态一致性与必要记忆任务书](../taskbooks/runtime-state-consistency-taskbook-2026-09-22.md)。缓存专项按用户确认已完成，后续按[现行验收条款](../reference/cache-95-acceptance.md#真实长任务现行红线2026-09-22)回归；不重开原清单。
 
 ## 1. 给决策者的结论
 
@@ -24,7 +24,7 @@ LittleSheep 当前不是"只有 Prompt 的聊天壳"：它已经具备代码控�
 
 1. **控制流只有一条执行路径。** 活动路由不消耗模型请求，只决定本轮进入主循环 `execute` 还是能力/状态 `reply`；聊天轮与工具轮共享同一 system 提示与工具集，因此前缀可跨轮复用。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 不再触发第二个执行器。
 2. **请求装配有唯一所有者。** system 消息就是缓存边界之上的 prompt 段；边界之下的段（bootstrap、runtime facts、检索意图契约、压缩摘要）各自作为独立消息追加，由 append-only 尾部账本持有，工具循环的第 N 次请求是第 N+1 次的字节前缀。工具目录在会话区间内固定，越权能力在**执行**边界被拒绝；上下文淘汰按 `appended-only` 作用域运行，已发送前缀超窗时请求显式失败。
-3. **写入与判定各自只有一个权威。** 压缩路径是持久记忆的唯一写入方（摘要与覆盖区间原子提交，带 predecessor/source-hash 前置条件，失败保留上一份有效摘要）；模型侧 `memory_tree` 只读；VERIFY 不调用模型；用户可见文案必须来自真实模型调用并携带 provenance。
+3. **写入与判定各自只有一个权威。** 写入由受控的 `memory_write`/`memory_manage` 承担（2026-09-27 起；此前为压缩路径），压缩只产生摘要（摘要与覆盖区间原子提交，带 predecessor/source-hash 前置条件，失败保留上一份有效摘要）；`memory_tree` 只读；VERIFY 不调用模型；用户可见文案必须来自真实模型调用并携带 provenance。
 4. **权限与容器是独立 ceiling。** 三档模式只改变授权；容器是 Main 的路径分类与审批闸门（`inside`/`outside`/`unknown`），不是 OS 进程沙箱；核心源码是宿主级只读边界，完全访问与单次批准都不能绕过。
 5. **缓存红线按会话累计口径在真实长任务验收节点判定，当前 `met`。** 3 回合短负载有结构上限（87–89%），不以红线判定；红线数字、判定口径与冻结负载规程只在 [项目状态](project-status.md) 与 [缓存 95% 验收规程](../reference/cache-95-acceptance.md) 维护。
 
@@ -89,7 +89,7 @@ React Renderer
 | Permission Policy | 基础可用 | `packages/app/src/main/run-policy.ts`、`ToolContext`、`packages/tools/src/tool-execution-service.ts` | 统一服务已消费权限决议并执行单次批准；网络资源和更强授权 token 尚未建模 | 权限作为独立 ceiling，不进入行为 profile |
 | Tool Registry | 稳定基础 | `packages/tools/src/registry.ts`、`packages/runner/src/run-tools.ts` | 注册、来源和 run-scoped 合并已保留到调用记录；插件/MCP 命名空间仍需版本化 | 保持 registry 只负责工具与来源，不吸收执行机制 |
 | Tool Execution | 工程基线已完成 | `packages/tools/src/tool-execution-service.ts`、`tool-execution-{scheduler,control,records,result}.ts` | 已统一 schema、权限、批准、超时、中断、调度、清洗、事件和记录；某轮不得使用的能力在执行边界被拒绝 | Harness 保持编排，所有新工具复用此服务 |
-| Memory Tree | 基础可用；读取只读、写入单一 | `packages/memory-tree/`、`memory-tool.ts`、Runner | `memory_tree` 五个只读动作；写入只经压缩路径；关系长期负载治理、Skill 治理与长尾表达待验收 | 继续扩展现有公共接口，不新建总包，也不新增模型侧写入工具 |
+| Memory Tree | 基础可用；读取只读、写入受控 | `packages/memory-tree/`、`memory-tool.ts`、`memory-write-tool.ts`、`memory-manage-tool.ts`、Runner | `memory_tree` 五个只读动作；写入经受控的 `memory_write`，忘记/纠正经 `memory_manage`（2026-09-27 起），压缩只产生摘要；关系长期负载治理、Skill 治理与长尾表达待验收 | 继续扩展现有公共接口，不新建总包，也不再新增第二个写入入口 |
 | Session | 基础可用 | `packages/session/`、`compaction.ts`、`compaction-store.ts` | 原子提交与前置条件已落地；真实 Provider 长会话质量、摘要失败与成本仍待验收 | 继续由 Context 策略驱动并补齐真实恢复场景 |
 | Execution Log | 稳定基础 | `packages/runner/src/execution-log.ts` | 优先持久化统一服务产生的权威调用记录；旧日志才使用消息推断兼容路径 | 保持有界、脱敏和只读重放，不把日志默认注入上下文 |
 | LLM Provider | DeepSeek 基础能力已实测 | `packages/llm/`、`packages/config/`、`packages/app/src/main/provider-calibration.ts` | 未配置的 OpenAI/GLM 不冒充已验收；Pro 工具协议与模型专用计数器未建立 | 保持 provider capability descriptor，按实际启用范围增加校准证据 |
@@ -160,7 +160,7 @@ Runner 继续自动发现实际 LS workspace 根，并把核心源码只读边�
 - `getManagementSnapshot()`；
 - `invalidate()` / `recover()`。
 
-写入侧已经收敛：**压缩路径是持久记忆的唯一写入方**（`runner-finalize` → `compactSessionAfterRun` → `memoryService.write`，经 `resolveMemoryWriteEpistemic` 判定认识状态），模型侧没有写入工具，`memory_tree` 只有 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 五个只读动作。摘要安装与覆盖区间是一次原子提交，带 predecessor / source-hash 前置条件，失败时保留上一份有效摘要；失败与重试的摘要尝试都计入 operation usage。
+写入侧当时的收敛：**压缩路径是持久记忆的唯一写入方**（`runner-finalize` → `compactSessionAfterRun` → `memoryService.write`，经 `resolveMemoryWriteEpistemic` 判定认识状态）——**此结论已于 2026-09-27 被取代**：压缩不再写入，写入口是受控的 `memory_write` 与管理口 `memory_manage`，`memory_tree` 只有 `root_index` / `branch_index` / `expand` / `deep_search` / `release` 五个只读动作。摘要安装与覆盖区间是一次原子提交，带 predecessor / source-hash 前置条件，失败时保留上一份有效摘要；失败与重试的摘要尝试都计入 operation usage。
 
 首批收敛已经完成：Runner 的 run 生命周期、bootstrap 注册、Agent 记忆工具、结构化写入和 App 记忆控制面都优先通过 `MemoryService`。旧 `memoryTree`、`memoryRepository` 和 `memoryWriteService` 字段暂时留在 Infrastructure 中兼容测试和迁移调用，新的第一方功能不得继续直接依赖它们。
 
@@ -258,7 +258,7 @@ src/renderer/shared/
 
 目标：让记忆和会话成为 Context Engine 可控、可追溯的来源。
 
-状态：主要工程闭环与正式迁移已完成，实际 Provider/长任务验收进行中。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness；压缩契约已收敛为：run 结束后按压力触发（默认 `threshold 400`、`keepRecent 200`、`background false`），摘要与覆盖区间原子提交并带 predecessor / source-hash 前置条件，失败保留上一份有效摘要，压缩路径是持久记忆的唯一写入方。仍待验收的是真实 Provider 长会话质量、摘要生成失败、成本，以及关系长期负载治理。
+状态：主要工程闭环与正式迁移已完成，实际 Provider/长任务验收进行中。Memory v3 已接管统一 Repository facade、Memory Service、Runner 与 Harness；压缩契约已收敛为：run 结束后按压力触发（默认 `threshold 400`、`keepRecent 200`、`background false`），摘要与覆盖区间原子提交并带 predecessor / source-hash 前置条件，失败保留上一份有效摘要。压缩路径**不再是记忆写入方**（2026-09-27 起，RS-05）：写入由受控的 `memory_write`/`memory_manage` 承担。仍待验收的是真实 Provider 长会话质量、摘要生成失败、成本，以及关系长期负载治理。
 
 建议边界：
 
@@ -374,7 +374,7 @@ src/renderer/shared/
 | Context 来源不透明 | "不失忆"不可验证、token 显示失真 | ContextSnapshot、来源账本、Provider usage 分层 |
 | 缓存命中率回退（长任务验收节点跌破 95%） | 成本与延迟高于预期，且容易用填充或预热掩盖 | 冻结负载、会话累计口径、禁止做法清单与逐请求归因；回归门 `pnpm run check:cache-acceptance` |
 | 请求前缀被逐轮改写 | 会话永远无法复用前缀，缓存收益归零 | 边界之上为 system 消息、边界之下走追加账本、工具目录会话内固定 |
-| 记忆自动写入失控 | 错误事实长期固化 | 写入只经压缩路径、来源与认识状态校验、原子提交与失败保留上一份摘要 |
+| 记忆自动写入失控 | 错误事实长期固化 | 写入只经受控的 `memory_write`/`memory_manage`（需批准、用户原话核对、来源存在性与完整性校验、写入身份幂等）、相似度只提名不决定、来源与认识状态校验、原子提交与失败保留上一份摘要（2026-09-27 起） |
 | 实体/关系误合并 | 跨项目、跨用户或跨权限信息污染 | 稳定实体 id、owner/scope、关系证据、D0-D3 披露和跨边界默认不传播 |
 | Skill 自动治理误删 | 能力丢失、插件所有权破坏 | 合并建议先审查、停用优先、引用检查、保留期、版本回滚和来源文件保护 |
 | Agent 自修改核心源码 | 运行版本损坏或无法启动 | 当前硬只读；未来仅允许隔离修改、完整验证、人工批准和自动回滚 |

@@ -95,7 +95,7 @@
 | --- | --- |
 | `packages/memory-tree/` | `MemoryService` 与 `MemoryRepository` 稳定公共接口、T0-T3 资源注册、索引导航、项目投影和生命周期；`src/task-query.ts` 与 `task-relevance.ts` 拥有有界多轮任务语义、版本化会话摘要回退和当前任务匹配；`src/memory-tree.ts` 负责 D1 准入、最强相关簇和 run working set；`src/memory-repository/` 拥有 v2/v3 后端、选择校验、事务账本、认识状态分类、节点/资源适配，以及独立的 v2→v3 snapshot/build/validation/commit、请求登记、恢复和受约束回滚模块；`src/v3/` 拥有 atom、journal、SQLite catalog、FTS/向量、有界维护和实体关系权威文件。v3 已接管正式用户数据；v2 与 snapshot 保留为兼容和受约束回滚来源。 |
 | `packages/embedding/` | Memory v3 的本地 Transformers.js Embedding 实现、固定 revision 模型登记、显式资产准备、大小/SHA-256 校验、离线加载和候选基准；不拥有记忆正文、Catalog 或 Provider 请求。 |
-| `packages/memory-core/` | 文件记忆兼容读取与受限维护基元：daily、长期记忆、旧来源适配和写入策略校验；它不是运行时持久记忆的写入方（唯一写入方是会话压缩路径）。 |
+| `packages/memory-core/` | 文件记忆兼容读取与受限维护基元：daily、长期记忆、旧来源适配和写入策略校验；它不是运行时持久记忆的写入方（写入方是受控的 `memory_write`/`memory_manage`；压缩只产生摘要）。 |
 | `packages/vector/` | 向量存储接口；只在已导航分支的深搜兜底路径使用。 |
 | `packages/experience/` | 经验记录、置信度衰减和可复用能力数据。 |
 | `packages/snapshot/` | 记忆快照、索引和回滚支持。 |

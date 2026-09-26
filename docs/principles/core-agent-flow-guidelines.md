@@ -150,7 +150,7 @@ ASK_USER 不是可路由活动，只有两条到达路径：
 - 系统提示词只携带受限长度的根索引；记忆规模增长不能让基础提示词按比例膨胀。
 - 记忆读取严格索引优先：从预加载根索引进入一个分支索引，再展开一个相关节点或查询。运行时在触碰记忆来源前拒绝跳过层级。
 - 深搜绝不跨树。必须在同一次 run 中明确指定一个已经成功读取分支索引并完成展开的分支。语义/向量召回只能作为该分支内的最后兜底候选来源。
-- 记忆读取只有 `memory_tree` 一个入口：root_index 返回根索引，branch_index 返回选定分支索引，expand 与 deep_search 才可能注入正文；兼容检索别名已删除，不得重新注册重复入口。
+- 记忆读取只有 `memory_tree` 一个入口：root_index 返回根索引，branch_index 返回选定分支索引，expand 与 deep_search 才可能注入正文；兼容检索别名已删除，不得重新注册重复入口。写入入口是 `memory_write`，忘记/纠正入口是 `memory_manage`（2026-09-27 起），两者都需批准并受 Runtime 校验。
 - 每次记忆介入都必须有预算、去重、来源追踪、安全封套，并记录到当前 run 账本。
 - 记忆运行时采用四层模型：对话原始来源、投影变更记录、Atom projections 和 run working set。对话原始来源只保存用户输入与对话区可见的 LS 回复、步骤、工具过程、验证和错误，成功写入后不改写；投影变更记录只服务幂等、恢复和审计；Atom 用于层级、相关性、检索和治理，可去重、合并、调整父级、失效、恢复或重建；working set 只决定本轮实际介入。物理文件位置和分层方式只服务持久化、恢复、人工管理与索引导航，不能成为注入分数。Runtime 必须显式维护“哪些 Atom 被发现、采用、排除、释放或重新激活，以及为什么”，并让这些决策随当前任务、关系、证据、时间和已验证效用变化，而不是随文件路径变化。Recovery journal 是有界恢复队列，不是原始数据源。
 - 首次业务请求先检查 D1 索引元数据，当前安全默认最多选择 2 个 D2 Atom、总预算 600 tokens，并要求 task relevance 严格高于 `0.25`。通过门槛后默认只保留最强相关簇，再按 scope、authority、confidence、importance、epistemic status、verified usefulness、routing/relationship relevance 和时效排序；只有由高相关种子通过有效语义关系发现、且 route strength 达到硬门槛的必要 Atom，才可跨越普通相关性断层与种子一同进入首次 working set。普通较弱尾部即使治理优先级较高，也只留在索引中供后续展开。没有候选达标时保持零注入，只记录各分支 D1 检查，不为凑数量加载无关正文；不得默认跨树向量召回。初始采用结果必须立即同步到 run 级 `KnownState`。执行中模型可通过受控工具请求继续展开，也可 `release` 当前无用 Atom；release 只释放本轮 Context 与 dedup 预算，不能删除或失效持久记忆。
@@ -169,7 +169,7 @@ ASK_USER 不是可路由活动，只有两条到达路径：
 - 时间变化通过 `effectiveAt`、`expiresAt`、`revalidateAt`、`lastUsefulAt` 和 due index 处理。运行中在安全边界近实时消费，到应用关闭期间跨过的时间点在下次启动补偿；不允许为“实时”无界轮询全部记忆或监控未授权文件。
 - 不失忆依赖持久权威副本、稳定索引、事件 journal、版本和恢复验证，不依赖全量 Prompt。当前请求不相关的记忆可以不注入，但必须仍可沿索引重新发现；用户批准的删除和到期清理仍按 tombstone、引用检查与审计执行。
 - 超出预算的结果返回摘要或可继续展开的索引，不直接塞入一段被截断的原始正文。
-- 运行结束时的记忆沉淀已随极简方案删除：EVOLVE 编排、自动 Skill 创建和 legacy-per-run 的 CAPTURE 总结都不再存在。持久记忆**只有一个写入方**：会话压缩路径（`runner-finalize` → `compactSessionAfterRun` → 记忆服务写入，经认识状态解析）。面向模型的记忆工具只有只读的 `memory_tree`（`root_index`/`branch_index`/`expand`/`deep_search`/`release` 五个动作），模型**没有**可调用的写入工具；这是 2026-09-21 记录在案的缺口，不是已解决的能力。任何路径都不能直接写入旧式扁平文件。
+- 运行结束时的记忆沉淀已随极简方案删除：EVOLVE 编排、自动 Skill 创建和 legacy-per-run 的 CAPTURE 总结都不再存在。持久记忆由**受控工具**写入：`memory_write`（`user-request` 需引用真的写了记忆指令的用户消息并由 Runtime 读原文核对；`necessary` 需说明用途与不保存会失去什么；需批准，每次 run 上限 4 条）与 `memory_manage`（用户亲口忘记或纠正，目标必须存在、在本轮导航台账里且 revision 一致）。会话压缩（`runner-finalize` → `compactSessionAfterRun`）**只产生摘要，不再提交或结算长期候选**，升级前的 pending 候选会被终止并留档。`memory_tree` 仍是只读导航（`root_index`/`branch_index`/`expand`/`deep_search`/`release`）。相似度只能提名、不能决定：值不同、恰有一侧否定或双方实体不相交的相似记忆一律拒绝合并。任何路径都不能直接写入旧式扁平文件。
 - 所有写入都包含 parent、scope、tier、检索键、来源 run、`sourceRefs`、`evidenceRefs`、置信度、重要性和理由。缺少父节点时进入恢复队列；重复或相似内容只能在 statement、epistemic、authority 和作用域兼容时强化或合并。合并保留来源、证据、来源 Atom tombstone 与历史；重复出现本身不能覆盖正文或提高 confidence。合法父级变化保持稳定 Atom id，并执行 revision、同作用域和循环校验。
 - 用户侧记忆页只读取应用数据根中的记忆文件目录，当前仅允许修改 `SOUL.md`；不得在普通 GUI 中暴露 Atom、关系、向量和压缩投影。Runtime 内部治理、检索和审计继续使用同一套 Memory Repository，不能因前端简化而建立展示副本。
 - LLM 每轮只预载记忆树简介与受限根索引，具体 Atom 按索引渐进介入；“树可完整访问”不等于“树内容完整注入”。
@@ -192,7 +192,7 @@ ASK_USER 不是可路由活动，只有两条到达路径：
 - `RECOVER` 是 Runtime 自有路由，不请求恢复模型：可重试失败回到产生失败的阶段，权限拒绝升级到 `ASK_USER`，副作用未结算或运行被中止则显式停止并只呈现 Runtime 状态。不可能成功的重试不再空转：预算耗尽直接升级，证据结构性缺口只给一次回到主循环的机会。单轮工具循环的迭代上限为 30 次，耗尽时写入转录的收尾指令明确说明"再调用一次工具会让整个 run 失败"。
 - 澄清只发一次模型自撰写的提问：模型通过主循环的 `request_user_input` 提问，文案按原文发布并绑定产生它的 request id，Runtime 不另发第二次措辞请求；Runtime 升级陈述只发一次；模型返回空文本时显式失败，不用模板冒充 Agent 回复。
 - 回复发布由 `ReplyProvenance` 绑定真实 Provider 请求；同一 settlement 身份只能发布一次，跨回合出现完全相同的措辞按原样发布，**不存在重新生成文案的 Runtime 路径**。
-- 记忆：面向模型的工具只有只读的 `memory_tree`（`root_index`、`branch_index`、`expand`、`deep_search`、`release`）；持久记忆的唯一写入方是会话压缩路径，模型没有可调用的写入工具。Runner 只持有一个索引优先记忆运行时实例，供提示词装配、`memory_tree` 导航、缓存失效、执行日志和设置概览共用。
+- 记忆：面向模型的工具是只读的 `memory_tree`（`root_index`、`branch_index`、`expand`、`deep_search`、`release`）、写入口 `memory_write` 与管理口 `memory_manage`；会话压缩只产生摘要，不再是写入方。Runner 只持有一个索引优先记忆运行时实例，供提示词装配、记忆工具导航、缓存失效、执行日志和设置概览共用。
 - 会话压缩在 run 结束后按压力触发，默认阈值 400 条消息、保留最近 200 条原文、后台压缩关闭；摘要的安装与被覆盖区间是同一次原子提交，提交前校验前驱摘要与来源哈希前置条件；失败保留上一份仍有效的摘要，失败与重试都计入该操作的用量统计。
 - 附件默认先注册清单；非图片正文通过当前 run 专属的 `inspect_attachment` 只读工具按需解析，未调用时不读取文件正文，图片仍按受限大小读取为多模态输入。
 - Token 账本按模型与请求形态精确性分层：DeepSeek V4 使用固定 revision tokenizer、Provider 校准后的最终 framing 与计数器 id；Flash 的普通请求、工具 schema、`tool_calls -> tool` 续轮、只保留历史工具消息和多工具乱序结果已完成零差值校准。Pro 工具协议在独立校准完成前默认拒绝；OpenAI/GLM 等未验证模型保持 `unavailable`，不用字符换算冒充真实 token。
@@ -202,7 +202,7 @@ ASK_USER 不是可路由活动，只有两条到达路径：
 
 ## 仍未实现
 
-- 模型没有可调用的持久记忆写入工具：该缺口按 2026-09-21 的裁定**维持现状并如实记录**，不以"明确写入已可用"表述。
+- 模型通过受控的 `memory_write`（明确要求或必要决定，需批准）与 `memory_manage`（忘记/纠正）写入持久记忆；`memory_tree` 只读。压缩路径只产生会话摘要，不再是写入方（2026-09-27 起）。
 - MCP 客户端尚未实现；未来从经过验证的稳定 adapter 开始，复用内置工具的权限、超时、清洗和执行记录契约，不先建立空 workspace 包。
 - Skill 治理队列仍待实现；Skill 相似度不自动触发合并或删除。
 - 工作区、渠道、记忆树与重启恢复的真实用户场景验收仍在继续；真实 Provider 的缓存 95% 目标尚未覆盖全部负载场景。
