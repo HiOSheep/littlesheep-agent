@@ -131,9 +131,11 @@
   --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
   /* The sidebar is the one floating card that is always on screen, and an untinted grey fill read
      as washed out. A faint sky-blue → violet wash runs down its height; both ends stay dark enough
-     for the sidebar's own text, and the workspace panel beside it keeps the plain glass. */
-  --sidebar-tint-top: rgba(86, 148, 255, 0.16);
-  --sidebar-tint-bottom: rgba(150, 104, 255, 0.19);
+     for the sidebar's own text, and the workspace panel beside it keeps the plain glass. The wash is
+     deliberately shallow — the first pass at 16% / 19% read as a coloured panel rather than a tint,
+     so it is halved and the hue is left alone. */
+  --sidebar-tint-top: rgba(86, 148, 255, 0.08);
+  --sidebar-tint-bottom: rgba(150, 104, 255, 0.1);
   --floating-panel-inset: 8px;
   --floating-panel-inline-gutter: 16px;
   /* Use one thin, low-contrast frame for every floating surface so straight
