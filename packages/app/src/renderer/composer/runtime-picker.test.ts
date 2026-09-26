@@ -103,15 +103,21 @@ describe('runtime picker labels', () => {
     expect(styles).toMatch(
       /\.runtime-menu-shell \.runtime-submenu\s*\{[\s\S]*?transition:[\s\S]*?opacity var\(--runtime-picker-transition\) var\(--motion-ease\),[\s\S]*?visibility 0s linear var\(--runtime-picker-transition\);/u,
     )
-    expect(styles).toMatch(/\.runtime-picker-panel\s*\{[\s\S]*?border:\s*0;/u)
-    expect(styles).toMatch(/\.runtime-menu-shell \.runtime-submenu\s*\{[\s\S]*?border:\s*0;/u)
     expect(styles).toMatch(/\.runtime-menu-divider\s*\{[^}]*height:\s*1px;[^}]*margin:\s*2px 1px;/u)
     expect(styles).toMatch(/\.runtime-menu-list\s*\{[^}]*gap:\s*1px;/u)
     expect(styles).toMatch(/\.runtime-menu-item\s*\{[^}]*min-height:\s*32px;[^}]*gap:\s*6px;[^}]*padding:\s*0 7px;/u)
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-picker-panel\s*\{[\s\S]*?gap:\s*2px;[\s\S]*?padding:\s*5px;/u)
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-submenu\s*\{[\s\S]*?padding:\s*5px;/u)
-    expect(styles).toMatch(/\.runtime-menu-shell \.runtime-picker-panel\s*\{[^}]*background:\s*var\(--control-hover\);/u)
-    expect(styles).toMatch(/\.runtime-menu-shell \.runtime-submenu\s*\{[^}]*background:\s*var\(--control-hover\);/u)
+    // The picker and its submenus are the composer's popovers: they take the input surface's
+    // material from one shared rule (translucent fill, backdrop blur, no border strokes) instead
+    // of an opaque fill each, so neither rule body owns a background or a border of its own.
+    expect(styles).toMatch(
+      /\.add-menu-panel,[\s\S]*?\.model-picker-panel,[\s\S]*?\.runtime-menu-shell \.runtime-picker-panel,[\s\S]*?\.runtime-menu-shell \.runtime-submenu\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u,
+    )
+    for (const selector of ['\\.runtime-menu-shell \\.runtime-picker-panel', '\\.runtime-menu-shell \\.runtime-submenu']) {
+      const body = new RegExp(`${selector}\\s*\\{([^}]*)\\}`, 'u').exec(styles)?.[1] ?? ''
+      expect(body).not.toContain('background')
+    }
     expect(styles).toMatch(
       /\.runtime-menu-shell \.runtime-menu-item:hover:not\(:disabled\),[\s\S]*?\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-hover\);/u,
     )

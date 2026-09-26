@@ -655,8 +655,7 @@
   width: min(420px, calc(100vw - 56px));
   padding: 8px;
   color: var(--text);
-  background: rgba(37, 37, 37, 0.98);
-  border: 1px solid var(--border-strong);
+  /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
@@ -1513,8 +1512,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--text);
-  background: var(--control-hover);
-  border: 0;
+  /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 1;
@@ -1542,8 +1540,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--text);
-  background: var(--control-hover);
-  border: 0;
+  /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
   border-radius: var(--radius-ui);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
@@ -1613,8 +1610,7 @@
   max-height: min(360px, 56vh);
   overflow: hidden;
   color: var(--text);
-  background: var(--bg-elevated);
-  border: 0;
+  /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
   border-radius: var(--radius-ui);
   box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
   opacity: 0;
@@ -1623,6 +1619,20 @@
   transition:
     opacity var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
+}
+
+/* Every panel the composer opens shares the input surface's material: the same translucent fill
+   and backdrop blur, and no border strokes. The panels are the add menu, the model/option picker
+   (the permission picker is one of those), and the runtime picker with its submenus. Geometry,
+   radius and shadow stay per panel; only the material is shared. */
+.add-menu-panel,
+.model-picker-panel,
+.runtime-menu-shell .runtime-picker-panel,
+.runtime-menu-shell .runtime-submenu {
+  background: var(--composer-surface);
+  border: 0;
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
 }
 
 .model-picker.open .model-picker-panel {
@@ -1644,7 +1654,8 @@
 .option-picker-panel.mode-picker-panel {
   width: min(280px, calc(100vw - 24px));
   padding: 5px;
-  background: var(--control-hover);
+  /* The material comes from the shared composer-popover rule above; this panel only owns its
+     size and shadow. */
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
 }
 

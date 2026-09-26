@@ -16,9 +16,14 @@ describe('mode picker layout', () => {
     expect(styles).toMatch(
       /\.mode-picker-panel \.option-picker-list\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1px;[^}]*padding:\s*0;/u,
     )
+    // The permission menu is one of the composer's popovers: it shares the input surface's
+    // material (translucent fill, backdrop blur, no border strokes) instead of an opaque fill of
+    // its own. The shared rule owns that material, so this panel body only carries geometry.
     expect(styles).toMatch(
-      /\.option-picker-panel\.mode-picker-panel\s*\{[^}]*padding:\s*5px;[^}]*background:\s*var\(--control-hover\);/u,
+      /\.option-picker-panel\.mode-picker-panel\s*\{[^}]*padding:\s*5px;[^}]*\}/u,
     )
+    expect(/\.option-picker-panel\.mode-picker-panel\s*\{([^}]*)\}/u.exec(styles)?.[1] ?? '')
+      .not.toContain('background')
     expect(styles).toMatch(
       /\.mode-picker-panel \.model-option\s*\{[^}]*min-height:\s*54px;[^}]*gap:\s*6px;[^}]*padding:\s*7px;[^}]*border-color:\s*transparent;[^}]*align-items:\s*start;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*16px minmax\(0, 1fr\);/u,
     )

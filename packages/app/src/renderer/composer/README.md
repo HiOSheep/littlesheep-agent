@@ -1,5 +1,5 @@
 # Renderer 输入栏
-最后更新：2026-09-25 05:49:03
+最后更新：2026-09-26 20:10:21
 
 这里负责用户输入、附件、工作区上下文、权限模式、模型/推理选择和上下文占用展示。
 
@@ -12,5 +12,7 @@
 - 发送入口的可用性：`app-shell/composer-view.tsx` 同时参考 Runtime 就绪事实（`runtime-readiness/use-runtime-readiness`）。窗口早于 Runner 出现，未就绪时发送必须在原地禁用并使用 Runtime 给出的原因，草稿与焦点不变；不得只凭“草稿非空”就放出可点击的发送入口。
 
 输入栏的 Enter、Shift+Enter 与输入法组词规则位于 `../ui/enter-confirm.ts`，由 `app-shell/composer-view.tsx` 使用；不要在这里或视图中另写 Enter 判断。
+
+**输入栏弹出的面板与输入框同一种材质**：`styles/06-composer.css` 里有一条共享规则，把 `.add-menu-panel`、`.model-picker-panel`（权限选择器是它的一个变体）、`.runtime-menu-shell .runtime-picker-panel` 与其 `.runtime-submenu` 统一成 `background: var(--composer-surface)`（`rgba(32, 32, 32, 0.75)`）+ `backdrop-filter: blur(18px) saturate(135%)` + `border: 0`，也就是输入框原来的半透明磨砂玻璃、且不带描边。各面板的几何、圆角与阴影仍归自己所有，**材质只在这一处声明**——新增输入栏弹层时把它加进那条共享规则的选列表，不要在面板体里另写背景或边框。真实窗口实测（2026-09-26）：四个面板与 `.composer` 的计算值都是 `rgba(32, 32, 32, 0.75)` + `blur(18px) saturate(1.35)` + `border-width: 0px`；面板圆角 10px、输入框 14px 保持不变。
 
 模型能力和权限策略来自 shared/runtime 配置；这里不保存密钥，不自行执行文件或工具操作。

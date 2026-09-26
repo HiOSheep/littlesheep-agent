@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 15:11:54
+最后更新：2026-09-26 20:10:21
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -9,6 +9,8 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 应用层这一轮（UX-32～UX-38）改了三条用户可见的边界，细节在各自的领域 README，汇总在[项目状态](../../docs/decision/project-status.md) 的"应用层 UI 与工作区"一节：终端同一时刻只读一个会话（每会话一条 SSE 会耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接），切回的会话保持键盘可用、重放不再让终端重答设备查询；目录筛选下推到 Main 的 320 项截断之前；对话区的验证结论在普通显示模式下也有独立一行。真实窗口门：`verify:transcript-state-visibility`、`verify:conversation-workspace-scenarios`、`verify:workspace-terminal`、`verify:html-preview-baseline`（含 `--app=packaged`）。
 
 - **冷启动三段式**：窗口早于执行能力出现。①数据根迁移、用户布局、keychain、config、Memory v3（顺序是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口加载渲染器；③Runner 与 RunRouter 建成后发布执行就绪。可选插件宿主在就绪之后异步加载，不阻塞执行能力。
+
+界面材质（2026-09-26）：输入栏弹出的添加菜单、权限/模型选择器与运行时选择器（含子菜单）统一成与输入框同一种半透明磨砂玻璃且不带描边，材质只在 `src/renderer/styles/06-composer.css` 的一条共享规则里声明；执行过程中模型说的话回到正文色（`.agent-transcript-prose`），步骤、工具与思考摘要仍保持 muted。细节与实测值见 `src/renderer/composer/README.md` 与 `src/renderer/chat/README.md`。
 - **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。
 - **首屏按需加载**：Monaco、mermaid 与 `react-syntax-highlighter` 都不得进入入口 chunk。完整 Prism 构建单独求值约 380 ms，改为按需后入口 chunk −936 KB、真实首帧早约 148 ms（成对实测见 `docs/reference/cold-start-baseline/`）。**入口字节数在本应用里不是首帧的可靠代理**：Markdown 解析管线整条按需（−400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须用成对实测证明收益。
 - **就绪是唯一事实**：`src/shared/runtime-readiness-{contracts,ipc}.ts` 定义载荷与通道，`src/main/runtime-readiness.ts` 拥有状态，renderer 经 `src/renderer/runtime-readiness/` 消费。未就绪时 metadata 路由照常应答、Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；具体边界见 `src/main/local-app-api/README.md`。正常启动的阶段文字只在发送按钮旁就地显示（`composer-readiness-hint`），横跨整窗的条带只用于失败态与重试（CS-09）。
