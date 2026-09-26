@@ -305,7 +305,9 @@ export class MemoryV3NodeStore {
         ),
       }))
       .sort((left, right) => right.score - left.score)[0];
-    if (similar && similar.score >= this.policy.duplicateSimilarityThreshold) {
+    // A correction names the atom it replaces, so it may not merge into any candidate at all: the new
+    // statement has to become its own atom for the supersession to be able to point at it.
+    if (!intent.supersedesAtomId && similar && similar.score >= this.policy.duplicateSimilarityThreshold) {
       // Similarity only nominates a merge; it never decides one. A statement whose values, negation or
       // subject differ from the candidate is a different fact, and merging it would leave the old body
       // current while attaching the new source to something it does not support.

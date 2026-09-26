@@ -77,6 +77,8 @@ import {
   LegacyExperienceBranch,
   LegacyLongTermBranch,
   MemoryRepository,
+  MemoryWriteIntent,
+  InjectionTier,
   MemoryService,
   MemoryTree,
   MemoryWriteService,
@@ -85,6 +87,7 @@ import {
   createMemoryManageTool,
   createMemoryTreeTool,
   createMemoryWriteTool,
+  memoryWriteIntentId,
   migrateLegacyMemorySources,
 } from '@littlesheep/memory-tree';
 
@@ -526,9 +529,86 @@ export async function buildInfrastructure(
           branch: inspection.atom.branch,
           scope: inspection.atom.scope,
           status: inspection.atom.status,
+          entityRefs: [...inspection.atom.entityRefs],
+          parentNodeId: inspection.atom.parentId ?? `${inspection.atom.branch}:root`,
+          ...(inspection.atom.scopeKey ? { scopeKey: inspection.atom.scopeKey } : {}),
+          domain: inspection.atom.domain,
+          statementKind: inspection.atom.statementKind,
           ...(inspection.atom.invalidation ? { invalidatedAt: inspection.atom.invalidation.at } : {}),
           summary: inspection.atom.summary,
         }
+      },
+      // A correction is three commits the runtime performs in order: write the replacement, relate it to
+      // the atom it replaces with the user's own words as evidence, then supersede that atom. Each step
+      // is idempotent, so an interrupted correction is finished by repeating the call.
+      writeReplacement: async ({ supersededAtomId, summary, content, retrievalKeys, branch, scope, parentNodeId, sourceRefs, runId }) => {
+        // The replacement's intent id is derived exactly like the write tool's, so repeating a corrected
+        // call lands on the same atom instead of stacking versions.
+        const intentId = memoryWriteIntentId({
+          sessionId: String(opts.state.sessionId ?? ''), branch, scope, content, sourceRefs,
+        })
+        // The replacement carries the user's authority and the entity the relation is built on, and it
+        // stays under the same semantic parent as the atom it replaces (the supersede boundary requires
+        // both).
+        const result = await memoryService.write({
+          id: intentId,
+          supersedesAtomId: supersededAtomId,
+          branch: branch as MemoryWriteIntent['branch'],
+          parentNodeId,
+          scope: scope as MemoryWriteIntent['scope'],
+          tier: InjectionTier.T2_RELEVANT,
+          summary,
+          content,
+          retrievalKeys: [...retrievalKeys],
+          sourceRunId: runId,
+          sourceStage: 'tool',
+          sourceRefs: [...sourceRefs],
+          importance: 0.9,
+          confidence: 0.95,
+          reason: 'User-stated correction of an existing memory (memory_manage).',
+          createdAt: new Date().toISOString(),
+          epistemic: {
+            ...resolveMemoryWriteEpistemic({
+              raw: undefined,
+              stage: 'tool',
+              branch: branch as never,
+              scope: scope as never,
+              sourceRefs: [...sourceRefs],
+              evidenceRefs: [],
+            }),
+            entityRefs: [],
+          },
+        })
+        if (!result.node) throw new Error(result.reason)
+        const stored = await memoryRepository.management.inspectNode(result.node.id, 'D3')
+        if (!stored?.atom) throw new Error(`The replacement ${result.node.id} is not readable after the write.`)
+        return { atomId: stored.atom.id, revision: stored.atom.revision, decision: result.decision }
+      },
+      relateReplacement: async (input) => {
+        if (!memoryRepository.management.relateCorrection) {
+          throw new Error('This repository backend cannot record a correction relation.')
+        }
+        return memoryRepository.management.relateCorrection({
+          supersededAtomId: input.supersededAtomId,
+          replacementAtomId: input.replacementAtomId,
+          sourceRefs: [...input.sourceRefs],
+          reason: input.reason,
+        })
+      },
+      supersede: async ({ atomId, expectedRevision, replacementAtomId, relationId, reason, evidenceRefs }) => {
+        const replacementInspection = await memoryRepository.management.inspectNode(replacementAtomId, 'D3')
+        if (!replacementInspection?.atom) throw new Error(`The replacement ${replacementAtomId} is not readable.`)
+        const result = await memoryRepository.management.manageAtom({
+          action: 'supersede',
+          atomId,
+          expectedRevision,
+          replacementAtomId,
+          replacementExpectedRevision: replacementInspection.atom.revision,
+          relationId,
+          reason,
+          evidenceRefs: [...evidenceRefs],
+        })
+        if (result.action !== 'supersede') throw new Error('The repository refused the supersede action.')
       },
       invalidate: async ({ atomId, expectedRevision, reason }) => {
         const result = await memoryRepository.management.manageAtom({

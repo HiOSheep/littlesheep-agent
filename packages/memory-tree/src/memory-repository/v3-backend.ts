@@ -56,7 +56,7 @@ import type {
   MemoryRepositoryManagementStatus,
   MemoryRepositoryNodeInspection,
 } from './management.js';
-import { MemoryV3AtomManagement } from './v3-atom-management.js';
+import { MemoryV3AtomManagement, type MemoryCorrectionRelationRequest } from './v3-atom-management.js';
 import { validateMemoryV3RepositoryState } from './v3-migration-validation-state.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
 import { MemoryV3FeedbackManager, MEMORY_USE_FEEDBACK_PAYLOAD_KEY } from './v3-feedback-manager.js';
@@ -143,6 +143,7 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
       atomStore: this.atomStore,
       catalog: this.catalog,
       coordinator: this.coordinator,
+      relations: this.graphStore,
     });
     this.feedback = new MemoryV3FeedbackManager(
       this.atomStore,
@@ -378,6 +379,10 @@ export class MemoryRepositoryV3Backend implements MemoryRepositoryBackend {
 
   manageAtomForManagement(request: MemoryAtomManagementRequest): Promise<MemoryAtomManagementResult> {
     return this.withPostWriteMaintenance(this.atomManagement.manage(request), () => true);
+  }
+
+  relateCorrectionForManagement(request: MemoryCorrectionRelationRequest): Promise<string> {
+    return this.atomManagement.relateCorrection(request);
   }
 
   validateMigrationSourceForManagement(

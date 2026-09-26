@@ -14,6 +14,8 @@ const target = (overrides: Partial<MemoryManageTarget> = {}): MemoryManageTarget
   branch: 'long-term',
   scope: 'global',
   status: 'active',
+  entityRefs: ['memory-entity:port'],
+  parentNodeId: 'long-term:root',
   ...overrides,
 })
 
@@ -22,9 +24,25 @@ function harness(options: {
   target?: MemoryManageTarget | undefined
   visible?: boolean
   invalidateFails?: string
+  replacementDecision?: string
+  relateFails?: string
+  supersedeFails?: string
+  withCorrectionPorts?: boolean
 } = {}) {
   const invalidate = vi.fn(async () => {
     if (options.invalidateFails) throw new Error(options.invalidateFails)
+  })
+  const writeReplacement = vi.fn(async () => ({
+    atomId: 'atom-2',
+    revision: 1,
+    decision: options.replacementDecision ?? 'created',
+  }))
+  const relateReplacement = vi.fn(async () => {
+    if (options.relateFails) throw new Error(options.relateFails)
+    return 'relation:replaces-1'
+  })
+  const supersede = vi.fn(async () => {
+    if (options.supersedeFails) throw new Error(options.supersedeFails)
   })
   const recordRevocation = vi.fn()
   const tool = createMemoryManageTool({
@@ -33,9 +51,10 @@ function harness(options: {
     isVisibleToRun: async () => options.visible ?? true,
     readMessages: async () => options.messages ?? [userMessage('m1', '忘掉我之前说的端口偏好。')],
     recordRevocation,
+    ...(options.withCorrectionPorts === false ? {} : { writeReplacement, relateReplacement, supersede }),
   })
   const ctx = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', approvalGranted: true } as never
-  return { tool, invalidate, recordRevocation, ctx }
+  return { tool, invalidate, writeReplacement, relateReplacement, supersede, recordRevocation, ctx }
 }
 
 const baseInput = {
@@ -127,19 +146,100 @@ describe('memory manage target verification', () => {
   })
 })
 
-describe('memory correction boundary', () => {
-  it('refuses to correct a memory and says the old one still stands', async () => {
-    const { tool, invalidate, ctx } = harness({ messages: [userMessage('m1', '刚才记错了：端口是 6432。')] })
-    const result = await tool.execute({
-      ...baseInput,
-      action: 'correct',
-      replacement: { summary: '端口', content: '端口是 6432。', retrievalKeys: ['端口'] },
-    }, ctx)
+describe('memory correction', () => {
+  const correctionInput = {
+    ...baseInput,
+    action: 'correct' as const,
+    reason: '用户说刚才记错了，端口是 6432。',
+    replacement: { summary: '本地端口', content: '本地端口是 6432。', retrievalKeys: ['端口'] },
+  }
+  const messages = [userMessage('m1', '刚才记错了：端口是 6432。')]
+
+  it('writes the replacement, relates it, and only then supersedes the earlier memory', async () => {
+    const { tool, writeReplacement, relateReplacement, supersede, recordRevocation, ctx } = harness({ messages })
+    const result = await tool.execute(correctionInput, ctx)
+
+    expect(result.ok).toBe(true)
+    expect(writeReplacement).toHaveBeenCalledWith(expect.objectContaining({
+      supersededAtomId: 'atom-1',
+      content: '本地端口是 6432。',
+      branch: 'long-term',
+      scope: 'global',
+      parentNodeId: 'long-term:root',
+      sourceRefs: ['conversation-source:run-1:user-message:m1'],
+    }))
+    expect(relateReplacement).toHaveBeenCalledWith(expect.objectContaining({
+      supersededAtomId: 'atom-1',
+      replacementAtomId: 'atom-2',
+    }))
+    expect(supersede).toHaveBeenCalledWith(expect.objectContaining({
+      atomId: 'atom-1',
+      expectedRevision: 3,
+      replacementAtomId: 'atom-2',
+      replacementExpectedRevision: 1,
+      relationId: 'relation:replaces-1',
+    }))
+    // Order matters: the replacement and its relation exist before the old atom stops being current.
+    expect(writeReplacement.mock.invocationCallOrder[0]!).toBeLessThan(relateReplacement.mock.invocationCallOrder[0]!)
+    expect(relateReplacement.mock.invocationCallOrder[0]!).toBeLessThan(supersede.mock.invocationCallOrder[0]!)
+    expect(recordRevocation).toHaveBeenCalledWith({
+      atomId: 'atom-1', revision: 3, action: 'supersede', replacementAtomId: 'atom-2',
+    })
+    expect(result.meta?.memoryManageOutcome).toBe('committed')
+    expect(result.output).toContain('Memory corrected')
+  })
+
+  it('says the earlier memory still stands when the replacement cannot be related', async () => {
+    const { tool, supersede, recordRevocation, ctx } = harness({ messages, relateFails: 'relation store locked' })
+    const result = await tool.execute(correctionInput, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.meta?.errorKind).toBe('memory_manage_partial')
+    expect(result.error).toContain('atom-2')
+    expect(result.error).toContain('still stands')
+    expect(supersede).not.toHaveBeenCalled()
+    // The revocation is still recorded: a summary written before this must not present the old fact as
+    // settled while the correction is half-applied.
+    expect(recordRevocation).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a half-applied correction as retryable instead of claiming success', async () => {
+    const { tool, recordRevocation, ctx } = harness({ messages, supersedeFails: 'revision moved' })
+    const result = await tool.execute(correctionInput, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.meta?.errorKind).toBe('memory_manage_partial')
+    expect(result.error).toContain('relation:replaces-1')
+    expect(result.error).toContain('retry this call with the same atom and revision')
+    expect(recordRevocation).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not supersede anything when the replacement write was refused', async () => {
+    const { tool, relateReplacement, supersede, ctx } = harness({ messages, replacementDecision: 'rejected' })
+    const result = await tool.execute(correctionInput, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('still stands')
+    expect(relateReplacement).not.toHaveBeenCalled()
+    expect(supersede).not.toHaveBeenCalled()
+  })
+
+  it('refuses a correction the user never asked for', async () => {
+    const { tool, writeReplacement, ctx } = harness({ messages: [userMessage('m1', '端口是多少？')] })
+    const result = await tool.execute(correctionInput, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.meta?.errorKind).toBe('memory_manage_not_authorized')
+    expect(writeReplacement).not.toHaveBeenCalled()
+  })
+
+  it('states the capability boundary when the runtime has no correction ports', async () => {
+    const { tool, invalidate, ctx } = harness({ messages, withCorrectionPorts: false })
+    const result = await tool.execute(correctionInput, ctx)
 
     expect(result.ok).toBe(false)
     expect(result.meta?.errorKind).toBe('memory_manage_unsupported')
-    expect(result.error).toContain('not implemented yet')
-    expect(result.error).toContain('old memory still stands')
+    expect(result.error).toContain('does not support correcting')
     expect(invalidate).not.toHaveBeenCalled()
   })
 })

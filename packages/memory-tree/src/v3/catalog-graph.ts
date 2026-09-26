@@ -84,6 +84,11 @@ export function upsertMemoryRelation(db: DatabaseSync, relation: MemoryRelation)
       throw new Error(`Memory relation ${relation.id} cannot be archived or deleted while atom references remain: ${JSON.stringify(blockers)}`);
     }
   }
+  // A relation connects two endpoints: a self-relation collapses to a single row and cannot express a
+  // direction, so it is refused by name instead of surfacing as a confusing "endpoints must exist".
+  if (relation.fromEntityId === relation.toEntityId) {
+    throw new Error('A memory relation must connect two distinct entities.');
+  }
   const entities = db.prepare(`
     SELECT entity_id, scope, scope_key, status FROM entities WHERE entity_id IN (?, ?)
   `).all(relation.fromEntityId, relation.toEntityId) as unknown as Array<{

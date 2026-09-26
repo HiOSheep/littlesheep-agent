@@ -424,6 +424,12 @@ export interface MemoryWriteIntent {
   reason: string;
   /** Optional explicit classification. Memory v3 applies a conservative classifier when absent. */
   epistemic?: MemoryWriteEpistemicMetadata;
+  /**
+   * Set only by a controlled correction: this write is a new version of the named atom and will
+   * supersede it. The similarity merge is skipped for such a write — merging a correction back onto
+   * the statement it corrects is exactly the silent behaviour the merge guard exists to prevent.
+   */
+  supersedesAtomId?: string;
   createdAt?: string;
 }
 

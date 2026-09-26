@@ -45,6 +45,13 @@ export interface MemoryManageTarget {
   invalidatedAt?: string
   isBranchRoot?: boolean
   summary?: string
+  /** The entities this atom is about; a correction's `replaces` relation has to share one. */
+  entityRefs: string[]
+  /** The semantic parent the atom sits under; a replacement has to stay under the same one. */
+  parentNodeId: string
+  scopeKey?: string
+  domain?: string
+  statementKind?: string
 }
 
 export interface MemoryManageToolOptions {
@@ -57,7 +64,48 @@ export interface MemoryManageToolOptions {
   /** Reads the session's message window so the user's instruction can be verified. */
   readMessages: (sessionId: string) => Promise<MemoryManageSourceMessage[]>
   /** Records the committed revocation so pre-revocation summaries stop being injected. */
-  recordRevocation?: (record: { atomId: string; revision: number; action: 'invalidate' }) => void
+  recordRevocation?: (record: {
+    atomId: string
+    revision: number
+    action: 'invalidate' | 'supersede'
+    replacementAtomId?: string
+  }) => void
+  /**
+   * Correction ports. A correction writes the replacement, relates it to the atom it replaces, and
+   * then supersedes that atom — three steps the runtime performs in this order so an interruption
+   * leaves a state it can describe and finish, never two atoms both current.
+   */
+  writeReplacement?: (input: {
+    /** The atom this replacement will supersede; the write must not merge into it. */
+    supersededAtomId: string
+    summary: string
+    content: string
+    retrievalKeys: string[]
+    branch: string
+    scope: string
+    parentNodeId: string
+    sourceRefs: string[]
+    runId: string
+  }) => Promise<{ atomId: string; revision: number; decision: string }>
+  /** Creates the `replaces` relation between the replacement and the atom it replaces. */
+  relateReplacement?: (input: {
+    supersededAtomId: string
+    replacementAtomId: string
+    scope: string
+    scopeKey?: string
+    sourceRefs: string[]
+    reason: string
+  }) => Promise<string>
+  /** Supersedes the old atom with the replacement (both already committed). */
+  supersede?: (input: {
+    atomId: string
+    expectedRevision: number
+    replacementAtomId: string
+    replacementExpectedRevision: number
+    relationId: string
+    reason: string
+    evidenceRefs: string[]
+  }) => Promise<void>
   log?: (level: 'info' | 'warn', message: string) => void
 }
 
@@ -167,9 +215,119 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
       }
 
       if (request.action === 'correct') {
-        return failure('memory_manage_unsupported',
-          'Correcting an existing memory (replacement plus relation plus evidence in one recoverable commit) is not implemented yet. '
-          + 'Tell the user the old memory still stands; if the new fact is worth keeping on its own, use memory_write and say plainly that the earlier one was not changed.')
+        if (!request.replacement) {
+          return failure('memory_manage_invalid_input', 'A correction needs the replacement statement (summary, content, retrievalKeys).')
+        }
+        if (!options.writeReplacement || !options.relateReplacement || !options.supersede) {
+          return failure('memory_manage_unsupported', 'This runtime does not support correcting an existing memory.')
+        }
+        // The replacement has to be about the same subject as the atom it replaces: the relation that
+        // authorizes the supersession is built between their entities, so a replacement with none of
+        // them could only be related by guessing.
+        if (target.entityRefs.length === 0) {
+          return failure('memory_manage_target_invalid',
+            'This memory has no entity to relate a replacement to, so it cannot be corrected through this path.')
+        }
+        const sourceRefs = request.sourceMessageIds
+          .map((id) => byId.get(id))
+          .filter((message): message is MemoryManageSourceMessage => Boolean(message))
+          .map((message) => `conversation-source:${ctx.runId}:user-message:${message.id}`)
+
+        let replacement: { atomId: string; revision: number; decision: string }
+        try {
+          replacement = await options.writeReplacement({
+            supersededAtomId: target.atomId,
+            summary: request.replacement.summary,
+            content: request.replacement.content,
+            retrievalKeys: [...request.replacement.retrievalKeys],
+            branch: target.branch,
+            scope: target.scope,
+            parentNodeId: target.parentNodeId,
+            sourceRefs,
+            runId: ctx.runId,
+          })
+        } catch (error) {
+          return failure('memory_manage_failed',
+            `The replacement could not be written, so nothing changed and the earlier memory still stands: ${String(error)}`)
+        }
+        if (replacement.decision !== 'created' && replacement.decision !== 'reinforced') {
+          return failure('memory_manage_failed',
+            `The replacement write was ${replacement.decision}, so the earlier memory still stands and was not superseded.`)
+        }
+
+        let relationId: string
+        try {
+          relationId = await options.relateReplacement({
+            supersededAtomId: target.atomId,
+            replacementAtomId: replacement.atomId,
+            scope: target.scope,
+            ...(target.scopeKey ? { scopeKey: target.scopeKey } : {}),
+            sourceRefs,
+            reason: request.reason,
+          })
+        } catch (error) {
+          // The replacement exists and is a current statement of the same subject; the old one has not
+          // been superseded yet. Saying exactly that is what makes the retry (or the user's decision)
+          // possible — never a second atom quietly treated as the current fact.
+          options.recordRevocation?.({
+            atomId: target.atomId,
+            revision: target.revision,
+            action: 'supersede',
+            replacementAtomId: replacement.atomId,
+          })
+          return failure('memory_manage_partial',
+            `The new version was written (${replacement.atomId}) but relating it to the earlier memory failed, so that memory still stands: ${String(error)}`)
+        }
+
+        try {
+          await options.supersede({
+            atomId: target.atomId,
+            expectedRevision: request.expectedRevision,
+            replacementAtomId: replacement.atomId,
+            replacementExpectedRevision: replacement.revision,
+            relationId,
+            reason: request.reason,
+            evidenceRefs: sourceRefs,
+          })
+        } catch (error) {
+          options.recordRevocation?.({
+            atomId: target.atomId,
+            revision: target.revision,
+            action: 'supersede',
+            replacementAtomId: replacement.atomId,
+          })
+          return failure('memory_manage_partial',
+            `The new version (${replacement.atomId}) and its relation (${relationId}) exist, but the earlier memory was not superseded: ${String(error)}. `
+            + 'The earlier memory still stands; retry this call with the same atom and revision to finish it.')
+        }
+
+        options.recordRevocation?.({
+          atomId: target.atomId,
+          revision: target.revision,
+          action: 'supersede',
+          replacementAtomId: replacement.atomId,
+        })
+        options.log?.('info', `memory_manage: corrected atom ${target.atomId} with ${replacement.atomId}`)
+        return {
+          callId: '',
+          ok: true,
+          output: [
+            '# Memory corrected',
+            `Replaced: ${target.atomId} (revision ${target.revision})`,
+            `Replacement: ${replacement.atomId}`,
+            `Relation: ${relationId}`,
+            `Reason: ${request.reason}`,
+            'The earlier statement is no longer current, and summaries produced before this are no longer current either.',
+          ].join('\n'),
+          meta: {
+            memoryManageAction: 'correct',
+            memoryManageOutcome: 'committed',
+            memoryManageAtomId: target.atomId,
+            memoryManageRevision: target.revision,
+            memoryManageReplacementAtomId: replacement.atomId,
+            memoryManageRelationId: relationId,
+          },
+        }
       }
 
       try {

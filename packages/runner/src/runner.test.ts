@@ -3052,6 +3052,81 @@ describe('host file write entry points', () => {
   });
 
 
+
+  // RS-06B: a user-stated correction writes the replacement, relates it with the user's own words as
+  // evidence, and supersedes the earlier memory — after which only the new statement is current.
+  it('corrects a memory the user says was wrong, and leaves only the new statement current', async () => {
+    await createMemoryV3ExperimentMarker(dataDir);
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.repositoryBackend = 'v3';
+    const llm = makeMockLlm(() => textResponse('Understood.'));
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const session = await runner.sessionManager.create('openai/gpt-test');
+    await runner.sessionManager.append(session.id, [
+      textMessage('user', '记住：本地端口是 5432。', { id: 'remember-1', runId: 'run-1' }),
+      textMessage('user', '刚才记错了，本地端口是 6432。', { id: 'correct-1', runId: 'run-2' }),
+    ]);
+
+    const writeTool = runner.infra.registry.get('memory_write')!.tool;
+    const written = await writeTool.execute({
+      reasonKind: 'user-request',
+      summary: '本地端口',
+      content: '本地开发端口是 5432。',
+      retrievalKeys: ['端口', '本地'],
+      reason: '用户要求记住。',
+      sourceMessageIds: ['remember-1'],
+    }, { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never);
+    expect(written.ok).toBe(true);
+    const original = written.meta?.memoryWriteAtomId as string;
+    const originalInspection = await runner.infra.memoryRepository.management.inspectNode(original, 'D3');
+    expect(originalInspection?.atom).toBeTruthy();
+
+    // The correcting run has to have seen the atom it corrects.
+    await runner.infra.memoryService.beginRun({
+      runId: 'run-2', sessionId: session.id, query: '本地端口', recentHistory: [], workspace: dataDir,
+    });
+    await runner.infra.memoryService.expand('run-2', { branchId: 'long-term', query: '端口' });
+
+    const manageTool = runner.infra.registry.get('memory_manage')!.tool;
+    const corrected = await manageTool.execute({
+      action: 'correct',
+      atomId: original,
+      expectedRevision: originalInspection!.atom!.revision,
+      reason: '用户说刚才记错了，端口是 6432。',
+      sourceMessageIds: ['correct-1'],
+      replacement: {
+        summary: '本地端口',
+        content: '本地开发端口是 6432。',
+        retrievalKeys: ['端口', '本地'],
+      },
+    }, { sessionId: session.id, runId: 'run-2', cwd: dataDir, approvalGranted: true } as never);
+    expect(corrected.error ?? '').toBe('');
+    expect(corrected.ok).toBe(true);
+    expect(corrected.meta?.memoryManageOutcome).toBe('committed');
+    const replacement = corrected.meta?.memoryManageReplacementAtomId as string;
+    expect(replacement).toBeTruthy();
+
+    // The earlier atom is superseded by the replacement, with the user's message as the evidence, and
+    // the new statement is what a retrieval returns.
+    const superseded = await runner.infra.memoryRepository.management.inspectNode(original, 'D3');
+    expect(superseded?.atom?.supersession?.byAtomId).toBe(replacement);
+    expect(superseded?.atom?.supersession?.relationId).toContain('user-correction');
+    const fetched = await runner.infra.memoryService.expand('run-2', { branchId: 'long-term', query: '端口' });
+    const contents = fetched.fragments.map((fragment) => fragment.content).join('\n');
+    expect(contents).toContain('6432');
+    expect(contents).not.toContain('5432');
+    // Both records stay: the old one is history, not deletion.
+    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
+    expect(nodes.some((node) => node.id === original)).toBe(true);
+
+    // A committed correction revokes pre-correction summaries exactly like a forget does.
+    const run = await runner.run({ sessionId: session.id, text: '继续' });
+    expect(run.status).toBe('ok');
+    expect((await runner.sessionManager.loadMetadata(session.id))?.memoryRevokedAt).toBeTruthy();
+  });
+
   // RS-06B: forgetting is authorized by the user's own words, and a committed forget revokes the
   // session's pre-forget summaries so the old fact stops being injected as current memory.
   it('forgets a memory the user asked to forget, and marks the session summaries revoked', async () => {

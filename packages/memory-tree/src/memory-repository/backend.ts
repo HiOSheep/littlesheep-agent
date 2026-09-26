@@ -26,6 +26,7 @@ import type {
 } from './contracts.js';
 import type { MemoryProjectRebindResult } from './project-rebinding.js';
 import type { MemoryRepositoryRetrievalBackend } from './retrieval.js';
+import type { MemoryCorrectionRelationRequest } from './v3-atom-management.js';
 import type {
   MemoryAtomManagementRequest,
   MemoryAtomManagementResult,
@@ -86,6 +87,7 @@ export interface MemoryRepositoryBackend extends Partial<MemoryRepositoryRetriev
   manageAtomForManagement?(
     request: MemoryAtomManagementRequest,
   ): Promise<MemoryAtomManagementResult>;
+  relateCorrectionForManagement?(request: MemoryCorrectionRelationRequest): Promise<string>;
   validateMigrationSourceForManagement?(
     source: MemoryTreeDocument,
     sourceManifestHash: string,

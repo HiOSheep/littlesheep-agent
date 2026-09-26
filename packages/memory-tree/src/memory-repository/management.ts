@@ -11,6 +11,7 @@ import type { MemoryRepositoryBackendKind } from './contracts.js';
 import type { MemoryRepositoryBackend } from './backend.js';
 import type { MemoryTreeDocument } from '../types.js';
 import type { MemoryV3MigrationValidation } from './v3-migration-contracts.js';
+import type { MemoryCorrectionRelationRequest } from './v3-atom-management.js';
 
 export interface MemoryRepositoryEmbeddingStatusCounts {
   disabled: number;
@@ -148,6 +149,11 @@ export interface MemoryRepositoryManagementFacade {
     disclosureLevel: MemoryRepositoryNodeInspection['disclosureLevel'],
   ): Promise<MemoryRepositoryNodeInspection | undefined>;
   manageAtom(request: MemoryAtomManagementRequest): Promise<MemoryAtomManagementResult>;
+  /**
+   * Records the eplaces relation a user-stated correction needs before it may supersede an atom.
+   * Optional: a backend without a graph projection cannot record one.
+   */
+  relateCorrection?(request: MemoryCorrectionRelationRequest): Promise<string>;
   validateMigrationSource(
     source: MemoryTreeDocument,
     sourceManifestHash: string,
@@ -166,6 +172,9 @@ export function createMemoryRepositoryManagementFacade(
       }
       return backend.manageAtomForManagement(request);
     },
+    relateCorrection: backend.relateCorrectionForManagement
+      ? (request) => backend.relateCorrectionForManagement!(request)
+      : undefined,
     validateMigrationSource: (source, sourceManifestHash) => {
       if (!backend.validateMigrationSourceForManagement) {
         return Promise.reject(new Error('Migration source validation requires the Memory v3 backend.'));

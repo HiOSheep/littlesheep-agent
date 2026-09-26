@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-27 06:10:03
+最后更新：2026-09-27 06:33:05
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 `memory_manage` 与 `memory_write` 都在 `infra.ts` 注册（RS-06/06B，2026-09-27）：忘记工具拿到的是管理门面（`inspectNode`/`manageAtom`）、本轮导航台账（`listLedgers`，用于"本轮真的见过"）与会话消息窗口；提交成功后写入 `state.memoryAtomCorrections`，finalize 读取并清空它，进而设置会话的 `memoryRevokedAt`。`memory_write`：它把 `memoryService.write`、本会话最近 400 条消息（供来源核对）与 `resolveMemoryWriteEpistemic`（以中性的 `tool` stage）注入受控写入工具；`memory_tree` 仍是只读导航，两者权限档位相反——写入工具始终需要批准。注册表守卫测试同时断言两者在册、遗留的 `write_memory`/`record_experience` 不在册。

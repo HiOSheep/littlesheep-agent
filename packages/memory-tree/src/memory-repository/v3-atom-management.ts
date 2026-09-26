@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type { MemoryAtomStore } from '../v3/atom-store.js';
 import type { MemoryCatalog } from '../v3/catalog.js';
-import type { MemoryAtom, MemoryAtomPatch } from '../v3/contracts.js';
+import type { MemoryAtom, MemoryAtomPatch, MemoryRelation } from '../v3/contracts.js';
 import type { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
 import { sha256Canonical } from '../v3/durable-json.js';
 import type {
@@ -22,7 +22,29 @@ export interface MemoryV3AtomManagementOptions {
   atomStore: MemoryAtomStore;
   catalog: MemoryCatalog;
   coordinator: MemoryV3StorageCoordinator;
+  /** Graph projection port; required only to record a user-authorized correction relation. */
+  relations?: MemoryCorrectionRelationPort;
   now?: () => Date;
+}
+
+/**
+ * The one place a correction relation is created rather than proposed. Ordinary writes leave a
+ * relation `proposed` until evidence settles it; a correction the user stated in their own words is
+ * already settled, and the alternative — refusing every correction until some unrelated process
+ * resolves a relation — would silently turn "记错了，是 6432" into a second contradictory fact.
+ */
+export interface MemoryCorrectionRelationPort {
+  upsertRelation(relation: MemoryRelation): Promise<MemoryRelation>;
+  getRelation(id: string): Promise<MemoryRelation | undefined>;
+  getEntity(id: string): Promise<{ id: string; status: string } | undefined>;
+}
+
+export interface MemoryCorrectionRelationRequest {
+  supersededAtomId: string;
+  replacementAtomId: string;
+  /** Runtime evidence: the user messages that asked for the correction. */
+  sourceRefs: string[];
+  reason: string;
 }
 
 type MemoryAtomLifecycleRequest = Extract<
@@ -34,6 +56,7 @@ export class MemoryV3AtomManagement {
   private readonly atomStore: MemoryAtomStore;
   private readonly catalog: MemoryCatalog;
   private readonly coordinator: MemoryV3StorageCoordinator;
+  private readonly relations: MemoryCorrectionRelationPort | undefined;
   private readonly now: () => Date;
   private mutationChain: Promise<void> = Promise.resolve();
 
@@ -41,6 +64,7 @@ export class MemoryV3AtomManagement {
     this.atomStore = options.atomStore;
     this.catalog = options.catalog;
     this.coordinator = options.coordinator;
+    this.relations = options.relations;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -54,6 +78,84 @@ export class MemoryV3AtomManagement {
       if (request.action === 'invalidate') return this.invalidate(request, reason);
       return this.reactivate(request, reason);
     });
+  }
+
+  /**
+   * Records the user-authorized `replaces` relation a correction needs before it may supersede. It is
+   * deliberately narrow: both atoms must exist, share the subject entity, and sit in the same branch
+   * and scope, the evidence must be real runtime source refs, and the id is derived from the request
+   * so a retry reuses the same relation instead of stacking a second one.
+   */
+  relateCorrection(request: MemoryCorrectionRelationRequest): Promise<string> {
+    return this.exclusive(async () => {
+      if (!this.relations) throw new Error('This repository cannot record correction relations.')
+      const sourceRefs = unique(request.sourceRefs.map((ref) => ref.trim()).filter(Boolean))
+      if (sourceRefs.length === 0) throw new Error('A correction relation needs runtime evidence references.')
+      const [superseded, replacement] = await Promise.all([
+        this.requiredAtom(request.supersededAtomId),
+        this.requiredAtom(request.replacementAtomId),
+      ])
+      if (superseded.id === replacement.id) throw new Error('A memory atom cannot replace itself.')
+      if (superseded.branch !== replacement.branch
+        || superseded.scope !== replacement.scope
+        || (superseded.scopeKey ?? '') !== (replacement.scopeKey ?? '')) {
+        throw new Error('A correction relation cannot cross branch, scope, or scopeKey boundaries.')
+      }
+      const at = this.now().toISOString()
+      // The two endpoints have to be two distinct entities, each belonging to its own side of the
+      // correction: the replacement's own entity replaces the superseded atom's own entity. Preferring
+      // an entity that only one side carries keeps the direction meaningful.
+      const fromEntityId = replacement.entityRefs.find((id) => !superseded.entityRefs.includes(id))
+        ?? replacement.entityRefs[0]
+      const toEntityId = superseded.entityRefs.find((id) => id !== fromEntityId && !replacement.entityRefs.includes(id))
+        ?? superseded.entityRefs.find((id) => id !== fromEntityId)
+      if (!fromEntityId || !toEntityId) {
+        throw new Error('A correction relation needs an entity on each side of the correction.')
+      }
+      const entity = await this.relations.getEntity(fromEntityId)
+      if (!entity) {
+        throw new Error(`The replacement's entity is not in the graph: ${fromEntityId}`)
+      }
+      if (entity.status !== 'active') {
+        throw new Error(`The replacement's entity is not active: ${fromEntityId}`)
+      }
+      const id = `memory-relation:user-correction:${sha256Canonical([
+        superseded.id, replacement.id, fromEntityId, toEntityId, sourceRefs,
+      ]).slice(0, 32)}`
+      const existing = await this.relations.getRelation(id)
+      const relation: MemoryRelation = {
+        version: 1,
+        id,
+        fromEntityId,
+        toEntityId,
+        type: 'replaces',
+        scope: superseded.scope,
+        scopeKey: superseded.scopeKey,
+        source: { kind: 'user', id: 'local-user' },
+        sourceRefs,
+        evidenceRefs: [`memory-atom:${superseded.id}@${superseded.revision}`, `memory-atom:${replacement.id}@${replacement.revision}`],
+        confidence: 0.9,
+        authorityScope: {
+          kind: 'user-self',
+          scope: superseded.scope,
+          scopeKey: superseded.scope === 'global' ? undefined : superseded.scopeKey,
+          topics: [],
+        },
+        relevance: 0.9,
+        status: 'active',
+        resolutionStatus: 'resolved',
+        revision: (existing?.revision ?? 0) + 1,
+        createdAt: existing?.createdAt ?? at,
+        updatedAt: at,
+      }
+      const stored = await this.relations.upsertRelation(relation).catch((error: unknown) => {
+        throw new Error(
+          `Recording the correction relation ${id} between ${relation.fromEntityId} and ${relation.toEntityId} failed: `
+          + `${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
+      return stored.id
+    })
   }
 
   private async supersede(
