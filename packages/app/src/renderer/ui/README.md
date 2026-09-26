@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-26 20:28:34
+最后更新：2026-09-26 20:52:50
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -7,7 +7,7 @@
 - `presence.tsx`：淡入淡出、外部点击收回和存在状态；外部点击收回的 Escape 也走模态层仲裁，只有最上层会消费该键。
 - `floating-help.tsx`、`overflowing-label.tsx`：延迟提示、定位，以及溢出标签的滚动测量。
 - `transient.ts`、`resize.ts`：临时菜单事件和拖动生命周期。
-- `icons.tsx`：统一图标集合；`browser-icons.tsx`、`file-glyph-icons.tsx` 是已拆出的浏览器历史和文件类型图标家族。
+- `icons.tsx`：统一图标集合；`browser-icons.tsx`、`file-glyph-icons.tsx` 是已拆出的浏览器历史和工作区文件/文件夹字形家族（`FolderGlyphIcon` 2026-09-26 从 `icons.tsx` 移入后者，`icons.tsx` 只保留再导出，冻结上限因此从 359 降到 350）。
 - `display-frame.ts`、`display-synced-settle.ts`、`use-frame-coalesced-state.ts`：显示帧合并、布局收敛和高频状态合帧。
 - `code-wrap-preference.ts`、`code-wrap-toggle.tsx`：代码“自动换行”偏好的唯一来源与共享可访问按钮（taskbook UX-23）。对话 Markdown 和工作区编辑器读同一个 `localStorage` 键，并通过同一 Renderer 内订阅立即同步；默认关闭＝横向滚动，存储不可用时回落默认值，不让偏好读取影响渲染。`Markdown.tsx` 的高亮与纯文本回退共用头部栏；真实窗口验收门为 `pnpm run verify:code-wrap-control`。
 - `enter-confirm.ts`：Enter 确认语义的纯规则与输入法组词状态。普通 Enter 确认、Shift+Enter 换行、组词中的 Enter 交给输入法；主输入框与项目名输入框共用它，不要把 Enter 判断重新写回各自的 `onKeyDown`。
@@ -41,4 +41,6 @@
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 
-`icons.tsx` 是无状态声明式图标集合，359 行，冻结期间保持原有行数；浏览器历史与文件类型图标家族已经独立成文件。代码换行图标由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点从 359 涨到 368 行——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
+`icons.tsx` 是无状态声明式图标集合，350 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350，上限同步下调），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行图标由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
+
+**工作区文件与文件夹字形的形状语言**（`file-glyph-icons.tsx` + `styles/04-workspace.css`，2026-09-26）：每个字形都是一块**圆角实心板**——文件夹是带圆角页签和浅色横条的琥珀色板（`--workspace-folder-glyph`），文件是圆角纸张 + 浅色折角 + 该类型自己的标记；标记与颜色对齐各类型官方标识（HTML5 橙配 "5"、CSS3 蓝配 "3"、JavaScript 黄配 "JS"、TypeScript 蓝、Markdown 蓝配 "MD"、Go 青配 "Go"、Git 橙、PDF 红……），几何则在 14px 下重画以保证圆角不糊。`generic` 只有纸张没有标记；浅色底（JS 黄、JSON 黄）的标记用深色，其余用白色。改这里的形状或配色时同步 `icons.test.ts` 的标记断言（"MD"/"5"）与 `04-workspace.css` 的色表。

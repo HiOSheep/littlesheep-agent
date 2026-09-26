@@ -60,18 +60,22 @@ describe('FileGlyphIcon', () => {
     expect(fileGlyphKind('unknown.custom')).toBe('generic')
 
     const markdown = renderToStaticMarkup(FileGlyphIcon({ name: 'README.md' }))
-    const json = renderToStaticMarkup(FileGlyphIcon({ name: 'package.json' }))
+    const html = renderToStaticMarkup(FileGlyphIcon({ name: 'index.html' }))
     const generic = renderToStaticMarkup(FileGlyphIcon({ name: 'unknown.custom' }))
 
     expect(markdown).toContain('file-glyph-markdown')
-    expect(markdown).toContain('>M</text>')
-    expect(markdown).toContain('c0 .58-.47 1.05-1.05 1.05')
-    expect(json).toContain('file-glyph-json')
-    expect(json).toContain('>{}</text>')
+    // The mark is the type's own, not a first letter: Markdown "MD", HTML5 "5".
+    expect(markdown).toContain('>MD</text>')
+    expect(html).toContain('>5</text>')
+    // Rounded plate: every sheet is the shared rounded path with a folded corner.
+    expect(markdown).toContain('file-glyph-sheet')
+    expect(markdown).toContain('file-glyph-fold')
     expect(generic).toContain('file-glyph-generic')
     expect(generic).not.toContain('file-glyph-label')
 
     const folder = renderToStaticMarkup(FolderGlyphIcon())
-    expect(folder).toContain('c.42 0 .76.2 1 .52')
+    expect(folder).toContain('folder-glyph-icon')
+    expect(folder).toContain('folder-glyph-body')
+    expect(folder).toContain('folder-glyph-bar')
   })
 })

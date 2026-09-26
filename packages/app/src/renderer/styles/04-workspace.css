@@ -1860,9 +1860,14 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   stroke: none;
 }
 
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold-fill {
+  fill: rgba(255, 255, 255, 0.34);
+  stroke: none;
+}
+
 .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.62);
+  stroke: rgba(255, 255, 255, 0.66);
   stroke-width: 0.9;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -1878,28 +1883,44 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-javascript,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-json,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-yaml {
-  fill: #181818;
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-json {
+  fill: #1b1b1b;
 }
 
-.workspace-tree-glyph-icon.file-glyph-markdown { color: #42b86b; }
-.workspace-tree-glyph-icon.file-glyph-typescript { color: #438ac5; }
-.workspace-tree-glyph-icon.file-glyph-javascript { color: #d4ab35; }
-.workspace-tree-glyph-icon.file-glyph-python { color: #4e9bca; }
-.workspace-tree-glyph-icon.file-glyph-json { color: #d49a3f; }
-.workspace-tree-glyph-icon.file-glyph-css { color: #4b91c7; }
-.workspace-tree-glyph-icon.file-glyph-html { color: #df7049; }
-.workspace-tree-glyph-icon.file-glyph-yaml { color: #c96972; }
-.workspace-tree-glyph-icon.file-glyph-shell { color: #849e59; }
-.workspace-tree-glyph-icon.file-glyph-rust { color: #b66f50; }
-.workspace-tree-glyph-icon.file-glyph-go { color: #58aebe; }
-.workspace-tree-glyph-icon.file-glyph-java { color: #cc6970; }
-.workspace-tree-glyph-icon.file-glyph-csharp { color: #627fca; }
-.workspace-tree-glyph-icon.file-glyph-git { color: #d66a5c; }
+/* The folder is the same rounded plate as the sheets, with a light bar instead of a type mark. */
+.workspace-tree-glyph-icon.folder-glyph-icon {
+  color: var(--workspace-folder-glyph);
+}
+
+.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body {
+  fill: currentColor;
+  stroke: none;
+}
+
+.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-bar {
+  fill: rgba(255, 255, 255, 0.82);
+  stroke: none;
+}
+
+/* Official marks and colours: HTML5 orange "5", CSS3 blue "3", JavaScript yellow "JS", TypeScript
+   blue "TS", Markdown blue "MD", Python blue "Py", Go cyan "Go", Git orange "git", Adobe red "PDF". */
+.workspace-tree-glyph-icon.file-glyph-markdown { color: #4a86e8; }
+.workspace-tree-glyph-icon.file-glyph-typescript { color: #3178c6; }
+.workspace-tree-glyph-icon.file-glyph-javascript { color: #f7df1e; }
+.workspace-tree-glyph-icon.file-glyph-python { color: #3776ab; }
+.workspace-tree-glyph-icon.file-glyph-json { color: #cbcb41; }
+.workspace-tree-glyph-icon.file-glyph-css { color: #2965f1; }
+.workspace-tree-glyph-icon.file-glyph-html { color: #e34f26; }
+.workspace-tree-glyph-icon.file-glyph-yaml { color: #cb171e; }
+.workspace-tree-glyph-icon.file-glyph-shell { color: #4eaa25; }
+.workspace-tree-glyph-icon.file-glyph-rust { color: #d28b62; }
+.workspace-tree-glyph-icon.file-glyph-go { color: #00add8; }
+.workspace-tree-glyph-icon.file-glyph-java { color: #e76f00; }
+.workspace-tree-glyph-icon.file-glyph-csharp { color: #8a4bbd; }
+.workspace-tree-glyph-icon.file-glyph-git { color: #f05032; }
 .workspace-tree-glyph-icon.file-glyph-lock { color: #bd7182; }
 .workspace-tree-glyph-icon.file-glyph-image { color: #9a74c3; }
-.workspace-tree-glyph-icon.file-glyph-pdf { color: #cc5e63; }
+.workspace-tree-glyph-icon.file-glyph-pdf { color: #e0393e; }
 .workspace-tree-glyph-icon.file-glyph-database { color: #6589b8; }
 .workspace-tree-glyph-icon.file-glyph-config { color: #848b96; }
 

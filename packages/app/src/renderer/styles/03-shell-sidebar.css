@@ -17,6 +17,9 @@
   --sidebar-menu-surface: rgba(8, 8, 8, 0.78);
   --workspace-tree-interaction-hover: color-mix(in srgb, var(--control-hover) 66%, transparent);
   --workspace-tree-interaction-active: color-mix(in srgb, var(--control-active) 68%, transparent);
+  /* Folder rows in the workspace tree: an amber rounded plate with a light bar, the one warm shape
+     among the file marks. */
+  --workspace-folder-glyph: #e8a33d;
   --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
   --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
   --composer-surface: rgba(32, 32, 32, 0.75);

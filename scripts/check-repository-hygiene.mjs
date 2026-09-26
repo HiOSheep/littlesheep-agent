@@ -435,7 +435,9 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/settings/plugins.tsx': 394,
     // 2026-09-02: browser/file glyph families and compatibility tests are
     // frozen at the measured boundary; future growth remains blocked.
-    'packages/app/src/renderer/ui/icons.tsx': 359,
+    // 2026-09-26: FolderGlyphIcon moved into file-glyph-icons.tsx with the file
+    // glyphs, lowering the ceiling from 359 to the measured 350.
+    'packages/app/src/renderer/ui/icons.tsx': 350,
     // 2026-08-13: the old files.tsx coordinator was removed. The remaining
     // workspace ownership boundaries are explicit and may only shrink.
     'packages/app/src/renderer/workspace/file-navigator.tsx': 455,

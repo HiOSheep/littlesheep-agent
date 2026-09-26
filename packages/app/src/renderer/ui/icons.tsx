@@ -1,7 +1,7 @@
 // Reusable renderer interaction primitives and icons.
 import { ModeRisk } from '../runtime/options'
 import { type WorkspacePanelTab } from '../workspace-persistence'
-export { FileGlyphIcon, fileGlyphKind, type FileGlyphKind } from './file-glyph-icons'
+export { FileGlyphIcon, FolderGlyphIcon, fileGlyphKind, type FileGlyphKind } from './file-glyph-icons'
 
 export function SidebarToggleIcon({ className = '' }: { className?: string }) {
   return (
@@ -327,15 +327,6 @@ export function TreeChevronIcon() {
   return (
     <svg className="workspace-tree-chevron-icon" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
       <path d="M4.4 2.9 7.55 6 4.4 9.1" />
-    </svg>
-  )
-}
-
-
-export function FolderGlyphIcon() {
-  return (
-    <svg className="workspace-tree-glyph-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3 3.65h3.05c.42 0 .76.2 1 .52l.74.95H13c.55 0 1 .45 1 1v4.95c0 .55-.45 1-1 1H3c-.55 0-1-.45-1-1V4.65c0-.55.45-1 1-1z" />
     </svg>
   )
 }

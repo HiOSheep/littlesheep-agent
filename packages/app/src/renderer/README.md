@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 20:39:53
+最后更新：2026-09-26 20:52:50
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -12,6 +12,8 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 **输入栏弹出的面板与输入框同一种材质**（2026-09-26）：`styles/06-composer.css` 用一条共享规则把添加菜单、模型/权限选择器、运行时选择器及其子菜单统一为输入框的半透明磨砂玻璃（`var(--composer-surface)` + `blur(18px) saturate(135%)`）并去掉描边；材质只在那一条规则里声明，面板体只保留几何、圆角与阴影。细节与实测值见 `composer/README.md`。
 
 **侧边栏的玻璃带一层淡蓝→淡紫晕色**（2026-09-26）：`styles/03-shell-sidebar.css` 里 `.sidebar-surface::before` 在共享填充之上叠一条 `linear-gradient`（`--sidebar-tint-top` / `--sidebar-tint-bottom`，alpha 都小于 0.2），工作区面板不染色；材质规则仍然只有一条，两个表面本体保持透明。像素实测与边界见 `sidebar/README.md`。
+
+**工作区树的文件夹与文件图标统一成圆角、按官方标识着色的字形**（2026-09-26）：形状与标记在 `ui/file-glyph-icons.tsx`（`FolderGlyphIcon` 也从 `ui/icons.tsx` 移来这里，冻结上限 359 → 350），颜色在 `styles/04-workspace.css` 的 `.file-glyph-*` 色表——文件夹是带浅色横条的琥珀色圆角板，文件是圆角纸张 + 浅色折角 + 类型自己的标记（HTML5 "5"、CSS3 "3"、JavaScript "JS"、Markdown "MD"……）。规则见 `ui/README.md`，树行侧的边界见 `workspace/README.md`。
 
 ## 入口与所有权
 
