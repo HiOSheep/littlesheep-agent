@@ -31,7 +31,11 @@ interface AssistantTurnMessageProps {
   message: ChatMessage
   messageKey?: string
   now: number
+  /** The workspace the turn's files live in, for their line counts. */
+  workspaceRoot?: string
   onOpenFile: (path: string) => void
+  /** Opens one of the turn's files in the workspace review. */
+  onOpenReview?: (path: string) => void
 }
 
 
@@ -39,7 +43,9 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   message,
   messageKey,
   now,
+  workspaceRoot,
   onOpenFile,
+  onOpenReview,
 }: AssistantTurnMessageProps) {
   const displayMode = useConversationDisplayMode()
   const activity = message.activity
@@ -52,7 +58,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
           )}
           {message.artifacts && message.artifacts.length > 0 && (
-            <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
+            <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
           )}
           {message.webEvidence && <WebSources evidence={message.webEvidence} />}
         </div>
@@ -86,7 +92,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
               <span className="run-status-error">{activity.error}</span>
             )}
             {message.artifacts && message.artifacts.length > 0 && (
-              <MessageFileStrip files={message.artifacts} label="产出成果" onOpenFile={onOpenFile} />
+              <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
             )}
             {message.webEvidence && <WebSources evidence={message.webEvidence} />}
           </div>
@@ -107,6 +113,8 @@ function sameAssistantTurnProps(
     previous.message !== next.message
     || previous.messageKey !== next.messageKey
     || previous.onOpenFile !== next.onOpenFile
+    || previous.onOpenReview !== next.onOpenReview
+    || previous.workspaceRoot !== next.workspaceRoot
   ) return false
   return previous.message.activity?.status !== 'running' || previous.now === next.now
 }

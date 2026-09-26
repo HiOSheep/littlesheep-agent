@@ -1,9 +1,10 @@
 # Renderer 输入栏
-最后更新：2026-09-26 20:10:21
+最后更新：2026-09-27 04:02:39
 
 这里负责用户输入、附件、工作区上下文、权限模式、模型/推理选择和上下文占用展示。
 
 - `add-menu.tsx`、`message-files.tsx`、`workspace-chip.tsx`：输入辅助控件、附件预览与消息正文装配。
+- `message-artifacts-card.tsx`、`use-artifact-deltas.ts`：一轮产物的卡片（2026-09-26）。头部是"已产出 N 个文件"加可数的增删总行数，中间是文件行（路径在左、`+n -m` 在右），超过 `ARTIFACT_CARD_VISIBLE_ROWS`（4）行时底部给出"全部 N 个文件 ⌄"。每行两个去处：**点行 → 拓展工作区预览该文件**，**点行数 → 该文件的审阅**（控制器 `openReviewInWorkspace`）。行数默认不带颜色（一轮改十个文件时满屏红绿只是噪声），只在指针悬停或键盘聚焦时变绿/红——`line-delta-add`/`line-delta-remove` 同时给行内与卡片总数复用。数字来自 `use-artifact-deltas.ts`：读审阅面板同一份 Git 快照（经 `workspaceReviewCache` 按工作区去重、有界、带 TTL），所以一轮提到多少文件都只发一次请求；Git 数不出来的文件（二进制、超界扫描、仓库外路径）**不给数字**，只留可点的行。附件仍是原来的紧凑条带。
 - `mode-picker.tsx`：三档权限模式选择，以及切到完全访问时的危险确认。
 - `runtime-picker.tsx`、`context-usage-indicator.tsx`：模型与推理档位选择、上下文占用展示。
 - `runtime-availability.ts`：无可用模型时的唯一状态来源。区分“配置读取中”“读取失败（可重试）”“还没有配置（给出配置入口）”“已保存但不可用（缺密钥或缺模型条目）”“供应商可用但还没选模型（`no-selection`）”，并用设置页同一个 `isConfiguredProvider` 判定“已配置”，因此选择器与供应商页不会对同一份配置给出不同结论；`runtime-picker.tsx` 的空菜单据此显示“配置模型 / 检查供应商配置 / 重试读取”，并保留当前草稿不动。**`no-selection` 与 `unusable` 必须分开**：供应商已保存、密钥和模型条目都在、只是还没选模型时，选择器要说“还没有选择模型”并指向菜单里的模型列表；说成“可能缺少 API 密钥，或没有填写模型条目”会把用户送回设置页去改一份本来正确的配置（UX-11 实机验收发现并修掉）。

@@ -48,6 +48,7 @@ import {
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId,
   type WorkspacePanelTabId,
+  type WorkspaceReviewRequest,
 } from '../workspace-persistence'
 import { saveWorkspaceFileBeforeClose } from './file-close'
 import { workspaceFilePreviewCache } from './file-preview-cache'
@@ -194,6 +195,7 @@ export function useWorkspaceLayoutController({
     setWorkspacePanelCollapsed,
     setRuntimeError,
   })
+  const [workspaceReviewRequest, setWorkspaceReviewRequest] = useState<WorkspaceReviewRequest | null>(null)
   const workspacePanelLayout = useMemo(() => resolveWorkspacePanelLayout({
     viewportWidth,
     sidebarWidth,
@@ -380,6 +382,17 @@ export function useWorkspaceLayoutController({
       WORKSPACE_PANEL_WIDTH_MIN,
       workspacePanelLayout.maxSplitWidth,
     ))
+  }
+
+  /**
+   * Opens the review on a specific file. The review request is transient on purpose: it is a
+   * navigation intent from one click, not layout state worth restoring on the next launch.
+   */
+  function openReviewInWorkspace(path: string) {
+    if (!path) return
+    setControlTip(null)
+    openWorkspacePanelTab('review')
+    setWorkspaceReviewRequest({ id: Date.now(), path })
   }
 
   function openWorkspacePanelTab(tab: WorkspacePanelTabId) {
@@ -573,6 +586,7 @@ export function useWorkspaceLayoutController({
     workspacePanelOpenTabs, setWorkspacePanelOpenTabs,
     ...browserController,
     workspaceOpenRequest, setWorkspaceOpenRequest,
+    workspaceReviewRequest, openReviewInWorkspace,
     workspaceFileDrafts, setWorkspaceFileDrafts,
     workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceReviewNavigatorWidth, setWorkspaceReviewNavigatorWidth,

@@ -20,6 +20,15 @@ export interface WorkspaceOpenRequest {
   path: string
 }
 
+/**
+ * A one-shot "show me this file's review" request. It is transient by design: it carries the intent
+ * of a single click, so it is not part of the persisted session layout.
+ */
+export interface WorkspaceReviewRequest {
+  id: number
+  path: string
+}
+
 export interface WorkspaceFileDraftState {
   path: string
   modifiedAt?: number

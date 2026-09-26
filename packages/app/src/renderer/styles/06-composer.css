@@ -2157,3 +2157,158 @@
   color: var(--feedback-danger-text);
   font-size: 12px;
 }
+
+/* The chat's "产出成果" card: one card per turn, its files as rows, their line counts on the right.
+   The counts are deliberately colourless until the pointer is on them — a turn that touched ten
+   files would otherwise be a wall of green and red — and they are their own button, because a count
+   is a way into that file's review rather than decoration. */
+.message-artifacts-card {
+  display: grid;
+  gap: 2px;
+  width: min(560px, 100%);
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--composer-surface, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+}
+
+.message-artifacts-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 6px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.message-artifacts-head-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.message-artifacts-head strong {
+  font-weight: 600;
+}
+
+.message-artifacts-total {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.message-artifacts-rows {
+  display: grid;
+  gap: 1px;
+}
+
+.message-artifacts-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-icon);
+}
+
+.message-artifacts-row:hover {
+  background: var(--composer-picker-option-hover);
+}
+
+.message-artifacts-row-open {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 6px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-icon);
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+.message-artifacts-row-path {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.message-artifacts-row-action {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.message-artifacts-row-delta {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-icon);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+/* Neutral until pointed at: the numbers carry no meaning as colour at rest. */
+.line-delta-add,
+.line-delta-remove {
+  color: var(--muted-2);
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.message-artifacts-row-delta:hover .line-delta-add,
+.message-artifacts-row-delta:focus-visible .line-delta-add,
+.message-artifacts-total:hover .line-delta-add {
+  color: var(--line-delta-add, #4ec26a);
+}
+
+.message-artifacts-row-delta:hover .line-delta-remove,
+.message-artifacts-row-delta:focus-visible .line-delta-remove,
+.message-artifacts-total:hover .line-delta-remove {
+  color: var(--line-delta-remove, #e5525c);
+}
+
+.message-artifacts-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  margin-top: 2px;
+  padding: 0 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-icon);
+  font-size: 12px;
+  cursor: default;
+}
+
+.message-artifacts-more:hover {
+  color: var(--text);
+  background: var(--composer-picker-option-hover);
+}
+
+.message-artifacts-more-arrow {
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.message-artifacts-more-arrow.open {
+  transform: rotate(-135deg) translate(-1px, -1px);
+}

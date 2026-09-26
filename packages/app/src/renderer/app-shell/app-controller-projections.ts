@@ -1,3 +1,9 @@
+// Which controller fields each renderer view is allowed to see.
+//
+// The controller is one object with everything in it; a view that receives the whole thing quietly
+// couples to fields it never needed, and the coupling only shows up when someone changes one. So
+// every view gets a declared Pick of the fields it actually renders, and adding a field to a view is
+// a one-line edit here rather than a prop drilled through three components.
 import type { AppController } from './use-app-controller'
 
 export const APP_CONTROLLER_VIEW_FIELDS = {
@@ -100,6 +106,8 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'scrollRef',
     'activityNow',
     'openFileInWorkspace',
+    'openReviewInWorkspace',
+    'projectPath',
   ],
   composer: [
     'input',
@@ -135,6 +143,8 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'chooseWorkspace',
     'resetWorkspace',
     'openFileInWorkspace',
+    'openReviewInWorkspace',
+    'projectPath',
     'handleComposerDragEnter',
     'handleComposerDragOver',
     'handleComposerDragLeave',
@@ -160,6 +170,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'updateWorkspaceBrowserTitle',
     'moveWorkspaceBrowser',
     'workspaceOpenRequest',
+    'workspaceReviewRequest',
     'setWorkspaceOpenRequest',
     'workspaceFileDrafts',
     'workspaceFileNavigatorCollapsed',
@@ -181,6 +192,8 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'workspacePanelLayout',
     'requestWorkspaceSaveApproval',
     'openFileInWorkspace',
+    'openReviewInWorkspace',
+    'projectPath',
     'beginWorkspacePanelResize',
     'toggleWorkspacePanel',
     'toggleWorkspacePanelFullscreen',

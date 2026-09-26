@@ -10,19 +10,41 @@ import { CloseIcon, FileGlyphIcon } from '../ui/icons'
 import { FadePresence } from '../ui/presence'
 import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
+import { MessageArtifactsCard } from './message-artifacts-card'
+import { useArtifactDeltas } from './use-artifact-deltas'
 
 
 export function MessageFileStrip({
   files,
   label,
+  workspaceRoot,
+  artifactVersion = 0,
   onOpenFile,
+  onOpenReview,
 }: {
   files: WorkspaceArtifactRef[]
   label: string
+  /** The workspace the files live in: the source of their line counts. */
+  workspaceRoot?: string
+  artifactVersion?: number
   onOpenFile: (path: string) => void
+  onOpenReview?: (path: string) => void
 }) {
   const navigation = useLinkNavigation()
+  const deltas = useArtifactDeltas(workspaceRoot ?? '', artifactVersion)
   if (files.length === 0) return null
+
+  // The turn's own产出 is one card; attachments stay the compact strip they were.
+  if (label !== '附件' && workspaceRoot && onOpenReview) {
+    return (
+      <MessageArtifactsCard
+        files={files}
+        deltas={deltas}
+        onOpenFile={onOpenFile}
+        onOpenReview={onOpenReview}
+      />
+    )
+  }
 
   return (
     <div className={`message-file-strip ${label !== '附件' ? 'result-links' : ''}`} aria-label={label}>

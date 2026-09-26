@@ -25,6 +25,7 @@ import {
   lineCommentScopeMatchesAttachment,
   type LineCommentAttachmentRemoval,
 } from './line-comment-attachments'
+import type { WorkspaceReviewRequest } from '../workspace-persistence'
 import { WorkspaceReview } from './review'
 import { workspaceFileLineCommentScope } from './review-line-comments'
 import { WorkspaceTerminal } from './terminal'
@@ -42,6 +43,7 @@ export function WorkspacePanel({
   defaultWorkspacePath,
   usingTemporaryRoot,
   openRequest,
+  reviewFocusRequest,
   sessionId,
   artifactVersion,
   fileDrafts,
@@ -79,6 +81,7 @@ export function WorkspacePanel({
   defaultWorkspacePath: string
   usingTemporaryRoot: boolean
   openRequest: WorkspaceOpenRequest | null
+  reviewFocusRequest?: WorkspaceReviewRequest | null
   sessionId?: string
   artifactVersion: number
   fileDrafts: Record<string, WorkspaceFileDraftState>
@@ -202,6 +205,7 @@ export function WorkspacePanel({
         <WorkspaceReview
           workspacePath={workspacePath}
           artifactVersion={artifactVersion}
+          focusRequest={reviewFocusRequest}
           fileNavigatorCollapsed={fileNavigatorCollapsed}
           fileNavigatorWidth={reviewNavigatorWidth}
           lineCommentsByScope={lineCommentsByScope}

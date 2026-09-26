@@ -26,6 +26,7 @@ import { reviewNotices } from './review-refresh-notice'
 import type { WorkspaceLineComment } from './line-comments'
 import { WorkspaceReviewTree } from './review-tree'
 import { preloadWorkspaceCodeEditor } from './code-editor'
+import type { WorkspaceReviewRequest } from '../workspace-persistence'
 import { workspaceReviewCache } from './review-cache'
 import { workspaceErrorMessage } from './workspace-errors'
 import { WorkspaceReviewScrollRail } from './review-scroll-rail'
@@ -38,6 +39,7 @@ export function WorkspaceReview({
   artifactVersion,
   fileNavigatorCollapsed,
   fileNavigatorWidth,
+  focusRequest,
   lineCommentsByScope,
   onFileNavigatorCollapsedChange,
   onFileNavigatorWidthChange,
@@ -52,6 +54,8 @@ export function WorkspaceReview({
   artifactVersion: number
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth: number
+  /** A one-shot "show this file" request, from a click outside the panel (the chat's artifact card). */
+  focusRequest?: WorkspaceReviewRequest | null
   lineCommentsByScope: Record<string, WorkspaceLineComment[]>
   onFileNavigatorCollapsedChange: (collapsed: boolean) => void
   onFileNavigatorWidthChange: (width: number) => void
@@ -86,6 +90,18 @@ export function WorkspaceReview({
       buildWorkspaceReviewTree(workspaceReviewCache.readSnapshot(workspacePath)?.files ?? []),
     ))
   ))
+  // A focus request selects the file the click named, once its snapshot actually lists it: the
+  // request can arrive before the panel has loaded, and a path Git does not report (an untracked
+  // file outside the repository) must not clear a working selection.
+  useEffect(() => {
+    const requested = focusRequest?.path
+    if (!requested) return
+    const match = snapshot?.files.find((file) => file.absolutePath === requested || file.path === requested)
+    if (!match) return
+    setSelectedPath(match.path)
+    setFilterText('')
+  }, [focusRequest, snapshot])
+
   const snapshotRequestRef = useRef(0)
   const reviewScrollRef = useRef<HTMLDivElement>(null)
   const artifactVersionRef = useRef(artifactVersion)

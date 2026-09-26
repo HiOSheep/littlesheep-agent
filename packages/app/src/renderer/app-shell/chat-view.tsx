@@ -34,7 +34,11 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     scrollRef,
     activityNow,
     openFileInWorkspace,
+    openReviewInWorkspace,
+    projectPath,
   } = controller
+  // The turn's files are opened from here, so their line counts come from the same workspace.
+  const artifactsWorkspaceRoot = projectPath
 
   const {
     readingAway,
@@ -123,7 +127,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                     <TraceCard trace={m.trace} toolCalls={m.toolCalls} durationMs={m.durationMs} onOpenFile={openFileInWorkspace} />
                   )}
                   {m.role === 'assistant' && m.artifacts && m.artifacts.length > 0 && (
-                    <MessageFileStrip files={m.artifacts} label="产出成果" onOpenFile={openFileInWorkspace} />
+                    <MessageFileStrip files={m.artifacts} label="产出成果" workspaceRoot={artifactsWorkspaceRoot} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
                   )}
                 </div>
                 <MessageMeta role={m.role} text={m.text} timestamp={m.timestamp} />

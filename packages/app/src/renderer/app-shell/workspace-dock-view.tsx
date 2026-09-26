@@ -37,6 +37,7 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
     updateWorkspaceBrowserTitle,
     moveWorkspaceBrowser,
     workspaceOpenRequest,
+  workspaceReviewRequest,
     setWorkspaceOpenRequest,
     workspaceFileDrafts,
     workspaceFileNavigatorCollapsed,
@@ -150,6 +151,7 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
         defaultWorkspacePath={defaultWorkspacePath}
         usingTemporaryRoot={workspacePanelUsingTemporaryRoot}
         openRequest={workspaceOpenRequest}
+        reviewFocusRequest={workspaceReviewRequest}
         sessionId={currentSession}
         artifactVersion={workspaceArtifactVersion}
         fileDrafts={workspaceFileDrafts}

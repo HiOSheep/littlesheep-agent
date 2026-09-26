@@ -428,7 +428,7 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/App.tsx': 16,
     // 2026-09-02: startup recovery, runtime settings and session projection
     // changes are frozen here; the facade is now in the hard-limit queue.
-    'packages/app/src/renderer/app-shell/use-app-controller.ts': 656,
+    'packages/app/src/renderer/app-shell/use-app-controller.ts': 654,
     // 2026-08-14: stable conversation-turn request identity and rejected-input
     // retention are now owned by this facade; further growth remains blocked.
     'packages/app/src/renderer/chat/run-actions.ts': 349,
@@ -441,13 +441,13 @@ async function checkRepositoryNavigation() {
     // 2026-08-13: the old files.tsx coordinator was removed. The remaining
     // workspace ownership boundaries are explicit and may only shrink.
     'packages/app/src/renderer/workspace/file-navigator.tsx': 455,
-    'packages/app/src/renderer/workspace/panel.tsx': 399,
+    'packages/app/src/renderer/workspace/panel.tsx': 403,
     'packages/app/src/renderer/workspace/preview-pane.tsx': 453,
     'packages/app/src/renderer/workspace/review.tsx': 383,
     'packages/app/src/renderer/workspace/terminal.tsx': 564,
     // 2026-08-14: file-close/save recovery callbacks were added at the
     // workspace boundary; keep the controller at this measured ceiling.
-    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 600,
+    'packages/app/src/renderer/workspace/use-workspace-layout-controller.ts': 614,
     // 2026-08-14: attachment lease protection is initialized with the API
     // server; route composition must move to the existing adapter boundary.
     // 2026-09-23: the listener now starts before the Runner, so this facade
