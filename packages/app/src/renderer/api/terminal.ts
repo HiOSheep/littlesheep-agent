@@ -136,14 +136,39 @@ export interface WorkspaceTerminalSessionHandlers {
   onError?: (message: string) => void
 }
 
+/** One Shell this machine can run, as Main discovered it (UX-29). */
+export interface WorkspaceShellProfile {
+  id: string
+  kind: 'windows-powershell' | 'powershell-7' | 'git-bash' | 'cmd' | 'wsl'
+  label: string
+  available: boolean
+  distro?: string
+  reason?: string
+  configHint?: string
+}
+
+export async function listWorkspaceTerminalShells(): Promise<WorkspaceShellProfile[]> {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.terminalShells)
+  if (!res.ok) throw localApiStatusError(res.status, `Local app API error: ${res.status}`)
+  const data = await res.json() as { shells?: WorkspaceShellProfile[] }
+  return data.shells ?? []
+}
+
 export async function createWorkspaceTerminalSession(
   root: string,
   size?: { cols: number; rows: number },
+  /** A profile id from `listWorkspaceTerminalShells`; Main validates it and decides the rest. */
+  shellId?: string,
 ): Promise<WorkspaceTerminalSession> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.terminalSession, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ root, cols: size?.cols, rows: size?.rows }),
+    body: JSON.stringify({
+      root,
+      cols: size?.cols,
+      rows: size?.rows,
+      ...(shellId ? { shellId } : {}),
+    }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))

@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process'
 import { workspaceShellConfig } from '../workspace-shell.js'
+import type { WorkspaceShellProfile } from '../workspace-shell-discovery.js'
 import { HttpError } from './http.js'
 
 export interface WorkspaceTerminalProcess {
@@ -24,16 +25,43 @@ export async function createWorkspaceTerminalProcess(
   root: string,
   size: { cols: number; rows: number },
   env: NodeJS.ProcessEnv = process.env,
+  /** The discovered Shell to run; Main resolves it and the renderer only sends an id. */
+  profile?: WorkspaceShellProfile | null,
 ): Promise<WorkspaceTerminalProcess> {
+  const shell = shellLaunch(profile)
   const pty = await loadNodePty()
   if (pty) {
     try {
-      return createPtyTerminalProcess(pty, root, size, env)
+      return createPtyTerminalProcess(pty, root, size, env, shell)
     } catch (error) {
       console.warn(`[workspace-terminal] node-pty failed, falling back to spawn: ${(error as Error).message}`)
     }
   }
-  return createSpawnTerminalProcess(root, env)
+  return createSpawnTerminalProcess(root, env, shell)
+}
+
+/**
+ * The executable, arguments and environment a session starts with.
+ *
+ * A discovered profile wins; without one the previous behaviour (Windows PowerShell on
+ * Windows, $SHELL elsewhere) is kept, so existing sessions migrate unchanged.
+ */
+export function shellLaunch(profile?: WorkspaceShellProfile | null): {
+  command: string
+  args: string[]
+  env: Record<string, string>
+  label: string
+} {
+  if (profile?.available && profile.executable) {
+    return {
+      command: profile.executable,
+      args: profile.args ?? [],
+      env: profile.env ?? {},
+      label: profile.label,
+    }
+  }
+  const fallback = workspaceShellConfig()
+  return { command: fallback.command, args: fallback.args, env: {}, label: fallback.label }
 }
 
 async function loadNodePty(): Promise<NodePtyModule | null> {
@@ -51,14 +79,14 @@ function createPtyTerminalProcess(
   root: string,
   size: { cols: number; rows: number },
   env: NodeJS.ProcessEnv,
+  shell: { command: string; args: string[]; env: Record<string, string>; label: string },
 ): WorkspaceTerminalProcess {
-  const shellConfig = workspaceShellConfig()
-  const terminal = pty.spawn(shellConfig.command, shellConfig.args, {
+  const terminal = pty.spawn(shell.command, shell.args, {
     name: 'xterm-256color',
     cols: size.cols,
     rows: size.rows,
     cwd: root,
-    env,
+    env: { ...env, ...shell.env },
     encoding: process.platform === 'win32' ? undefined : 'utf8',
     useConpty: process.platform === 'win32' ? true : undefined,
     useConptyDll: process.platform === 'win32' ? true : undefined,
@@ -119,7 +147,7 @@ function createPtyTerminalProcess(
   }
   return {
     kind: 'pty',
-    label: `${shellConfig.label} PTY`,
+    label: `${shell.label} PTY`,
     write: safeWrite,
     resize: (cols, rows) => {
       if (disposed || closing) throw new HttpError(410, 'terminal session has exited')
@@ -158,11 +186,14 @@ function createPtyTerminalProcess(
   }
 }
 
-function createSpawnTerminalProcess(root: string, env: NodeJS.ProcessEnv): WorkspaceTerminalProcess {
-  const shellConfig = workspaceShellConfig()
-  const child = spawn(shellConfig.command, shellConfig.args, {
+function createSpawnTerminalProcess(
+  root: string,
+  env: NodeJS.ProcessEnv,
+  shell: { command: string; args: string[]; env: Record<string, string>; label: string },
+): WorkspaceTerminalProcess {
+  const child = spawn(shell.command, shell.args, {
     cwd: root,
-    env,
+    env: { ...env, ...shell.env },
     windowsHide: true,
   })
   const dataListeners = new Set<(stream: 'stdout' | 'stderr', text: string) => void>()
@@ -209,7 +240,7 @@ function createSpawnTerminalProcess(root: string, env: NodeJS.ProcessEnv): Works
   }
   return {
     kind: 'spawn',
-    label: `${shellConfig.label} fallback`,
+    label: `${shell.label} fallback`,
     write: (data) => {
       const stdin = child.stdin
       if (

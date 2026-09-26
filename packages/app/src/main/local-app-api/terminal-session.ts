@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events'
 import type { ServerResponse } from 'node:http'
 import { HttpError, writeSse } from './http.js'
 import { createWorkspaceTerminalProcess, type WorkspaceTerminalProcess } from './terminal-process.js'
+import type { WorkspaceShellProfile } from '../workspace-shell-discovery.js'
 import {
   analyzeTerminalInput,
   EMPTY_TERMINAL_INPUT_STATE,
@@ -102,9 +103,11 @@ export class WorkspaceTerminalSession extends EventEmitter<WorkspaceTerminalSess
     root: string,
     size = DEFAULT_TERMINAL_SIZE,
     env: NodeJS.ProcessEnv = process.env,
+    /** The discovered Shell profile Main resolved for this session. */
+    profile: WorkspaceShellProfile | null = null,
   ): Promise<WorkspaceTerminalSession> {
     const normalizedSize = normalizeTerminalSize(size)
-    const terminal = await createWorkspaceTerminalProcess(root, normalizedSize, env)
+    const terminal = await createWorkspaceTerminalProcess(root, normalizedSize, env, profile)
     return new WorkspaceTerminalSession(root, normalizedSize, terminal)
   }
 
@@ -196,12 +199,13 @@ export class WorkspaceTerminalSessionManager {
     root: string,
     size = DEFAULT_TERMINAL_SIZE,
     env: NodeJS.ProcessEnv = process.env,
+    profile: WorkspaceShellProfile | null = null,
   ): Promise<WorkspaceTerminalSession> {
     if (this.closed) throw new HttpError(503, 'terminal session manager is stopped')
     if (this.sessions.size >= MAX_WORKSPACE_TERMINAL_SESSIONS) {
       throw new HttpError(429, 'too many workspace terminal sessions')
     }
-    const session = await WorkspaceTerminalSession.create(root, size, env)
+    const session = await WorkspaceTerminalSession.create(root, size, env, profile)
     this.sessions.set(session.sessionId, session)
     session.once('exit', () => {
       if (this.closed) return

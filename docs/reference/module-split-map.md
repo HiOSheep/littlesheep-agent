@@ -65,7 +65,7 @@
 | `packages/app/src/shared/history-activity.ts` | 349 | Runtime 执行日志到实时/历史对话活动的共享投影、用量与 transcript 兼容形状 | 保持无 UI 依赖的纯投影边界；流式水位和交互状态只留在 Renderer | B |
 | `packages/app/src/main/local-app-api/run-checkpoint-routes.ts` | 317 | checkpoint 发现、详情、补充信息、续跑、停止和放弃路由 | 保持路由 facade；将恢复准入和响应投影继续下沉到独立 adapter | C |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 573 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
-| `packages/app/src/renderer/workspace/terminal.tsx` | 564 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
+| `packages/app/src/renderer/workspace/terminal.tsx` | 543 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
 | `packages/memory-tree/src/v3/contracts.ts` | 547 | Memory v3 atom、认识状态、事件、实体、证据与 Embedding 契约 | 按 atom、event、graph、evidence 分组并保持 barrel | D |
 | `packages/harness/src/context-candidates.ts` | 464 | 把一次出站 stage 请求映射为带来源、种类、优先级和淘汰分组的 Context 候选；边界以下段落与运行中用户补充保留来源 | 保持"一次装配只描述来源与可改动程度"的单一职责；若继续增长，拆出消息分类（history/inserted/primary/tool）与尾部段落装配两个模块 | E |
 | `packages/harness/src/memory-known-state.ts` | 347 | 把 Runtime 的 KeyedState 引用按允许清单投影为模型可见文本，并维护尾部稳定槽位 | 保持白名单投影边界；若继续增长，拆出规则/条目渲染与摄入校验 | E |
@@ -79,7 +79,7 @@
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 495 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/app/src/shared/memory-control-contracts.ts` | 486 | 记忆文件、资源、投影、迁移和治理控制面公共契约 | 按普通文件视图与内部治理契约分组，保持 shared 无运行逻辑 | C |
 | `packages/app/src/main/local-app-api/run-routes.ts` | 564 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress 和收尾路由 | 保持 HTTP 路由组合；检查点恢复与应用生命周期控制面使用独立 adapter | C |
-| `packages/app/src/main/local-app-api/terminal-process.ts` | 305 | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
+| `packages/app/src/main/local-app-api/terminal-process.ts` | 336 | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
 | `packages/app/src/renderer/workspace/preview-pane.tsx` | 434 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`，HTML 运行状态与提示下沉到 `use-html-run.ts`/`html-run-notice.tsx`，静态预览帧与资源失败提示下沉到 `html-preview-surface.tsx`，Office 正文下沉到 `office-preview-panel.tsx`；继续保持编辑与展示边界 | B |
 | `packages/app/src/main/local-app-api/workspace-preview-server.ts` | 336 | 工作区根作用域的有界 loopback 静态服务：token、真实路径与符号链接校验、内容类型、空闲回收与资源失败记录 | 保持"每个根一个监听 + 每次请求都重新校验路径"的边界；若继续增长，把 MIME/路径解析与监听生命周期拆开，但不得引入目录列举、CORS 头或写方法 | C |

@@ -49,6 +49,8 @@ export const LOCAL_APP_API_ROUTES = {
   browserClearCache: '/browser/clear-cache',
   browserClearData: '/browser/clear-data',
   terminalSession: '/workspace/terminal/session',
+  /** The Shell profiles this machine can actually run (UX-29). */
+  terminalShells: '/workspace/terminal/shells',
   terminalRun: '/workspace/terminal/run',
   terminalActivity: '/workspace/terminal/activity',
   terminalStream: '/workspace/terminal/stream',
@@ -80,6 +82,8 @@ export const LOCAL_APP_API_PREFIXES = {
   archiveSessions: '/archive/sessions/',
   archiveProjects: '/archive/projects/',
   terminalSessions: '/workspace/terminal/session/',
+  /** The Shell profiles this machine can actually run (UX-29). */
+  terminalShells: '/workspace/terminal/shells',
   plugins: '/plugins/',
   skills: '/skills/',
   memoryNodes: '/memory/tree/nodes/',

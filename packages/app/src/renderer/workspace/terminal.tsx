@@ -3,18 +3,29 @@ import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
+import { preferredShellId, resolveTerminalShellChoice, savePreferredShellId } from './terminal-shell-choice'
+import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
+import { WorkspaceTerminalToolbar } from './terminal-toolbar'
+import {
+  WorkspaceTerminalActivityList,
+} from './terminal-activity'
+export {
+  formatDurationMs,
+  terminalActivityStatus,
+  terminalActivityTip,
+} from './terminal-activity'
 import {
   closeWorkspaceTerminalSession,
   createWorkspaceTerminalSession,
   interruptWorkspaceTerminalSession,
   listWorkspaceTerminalActivity,
+  listWorkspaceTerminalShells,
+  type WorkspaceShellProfile,
   resizeWorkspaceTerminalSession,
   streamWorkspaceTerminalSession,
   type TerminalActivityRecord
 } from '../api'
-import { formatDurationMs } from '../chat/activity-model'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { RefreshIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import {
   LITTLE_SHEEP_SELECTION_BACKGROUND,
@@ -57,6 +68,13 @@ export function WorkspaceTerminal({
   const [terminalBackend, setTerminalBackend] = useState<'pty' | 'spawn' | ''>('')
   const [activities, setActivities] = useState<TerminalActivityRecord[]>([])
   const [activityError, setActivityError] = useState('')
+  // UX-29: the shells Main discovered, the saved preference, and what the running session
+  // actually is. The picker chooses; Main validates the id and decides executable and args.
+  const [shellProfiles, setShellProfiles] = useState<WorkspaceShellProfile[]>([])
+  const [shellId, setShellId] = useState<string | null>(null)
+  const [shellNotice, setShellNotice] = useState('')
+  const shellIdRef = useRef<string | null>(null)
+  const [runningShell, setRunningShell] = useState('')
   const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
   const inputControllerRef = useRef<TerminalInputController | null>(null)
@@ -260,6 +278,23 @@ export function WorkspaceTerminal({
     if (active && terminalInputEnabledRef.current) terminal.focus()
   }, [active])
 
+  // Discovery changes when the machine changes (a Git install, a WSL distribution), so it is
+  // read once per mount and every start asks Main again through the profile id.
+  useEffect(() => {
+    let alive = true
+    void listWorkspaceTerminalShells()
+      .then((profiles) => {
+        if (!alive) return
+        setShellProfiles(profiles)
+        const choice = resolveTerminalShellChoice(profiles, preferredShellId())
+        setShellId(choice.selected?.id ?? null)
+        setShellNotice(choice.notice ?? '')
+        shellIdRef.current = choice.selected?.id ?? null
+      })
+      .catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+
   async function startTerminalSession(isDisposed: () => boolean) {
     streamAbortRef.current?.abort()
     const controller = new AbortController()
@@ -267,7 +302,7 @@ export function WorkspaceTerminal({
     setTerminalInputEnabled(false)
     setStatus('启动中')
     let terminalOutputSeen = false
-    let terminalReadyLabel = 'PowerShell'
+    let terminalReadyLabel = runningShell || 'Shell'
     const enableInputAfterOutput = () => {
       if (terminalOutputSeen || isDisposed()) return
       terminalOutputSeen = true
@@ -279,7 +314,7 @@ export function WorkspaceTerminal({
       const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
         ? terminalSizeRef.current
         : undefined
-      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size)
+      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size, shellIdRef.current ?? undefined)
       if (isDisposed()) {
         await closeWorkspaceTerminalSession(terminalSession.sessionId).catch(() => undefined)
         return
@@ -287,6 +322,7 @@ export function WorkspaceTerminal({
       terminalSessionRef.current = terminalSession.sessionId
       terminalBackendRef.current = terminalSession.backend ?? 'spawn'
       terminalReadyLabel = terminalSession.shell
+      setRunningShell(terminalSession.shell)
       setTerminalBackend(terminalSession.backend ?? 'spawn')
       terminalSizeRef.current = { cols: terminalSession.cols, rows: terminalSession.rows }
       reportTerminalSize()
@@ -433,6 +469,8 @@ export function WorkspaceTerminal({
     terminalRef.current?.clear()
   }
 
+  // The real shell, never a hardcoded one: the label follows the running session (UX-29).
+  const shellLabel = runningShell || shellId || 'Shell'
   return (
     <div className="workspace-terminal">
       <header className="workspace-terminal-header workspace-page-leading-row">
@@ -441,33 +479,26 @@ export function WorkspaceTerminal({
           <small>{compactPath(workspacePath)}{terminalBackend ? ` · ${terminalBackend === 'pty' ? 'PTY' : 'fallback'}` : ''}</small>
         </div>
         <div className="workspace-terminal-actions">
+          <WorkspaceTerminalShellPicker
+            profiles={shellProfiles}
+            selectedId={shellId}
+            busy={!running && status === '启动中'}
+            onSelect={(id) => {
+              savePreferredShellId(id)
+              setShellId(id)
+              setShellNotice('')
+              void stopAndRestartTerminal()
+            }}
+            onTipChange={(tip) => onTipChange(tip ? buildFloatingHelpTip(tip.label, tip.x, tip.y) : null)}
+          />
           <span className={`workspace-terminal-status ${running ? 'running' : ''}`}>{status}</span>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            onClick={() => void interruptTerminal()}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('向当前终端发送 Ctrl+C', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('向当前终端发送 Ctrl+C', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('向当前终端发送 Ctrl+C', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            中断
-          </button>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            onClick={() => void stopAndRestartTerminal()}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('停止当前 PowerShell 会话并重启', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('停止当前 PowerShell 会话并重启', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('停止当前 PowerShell 会话并重启', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            重启
-          </button>
+          <WorkspaceTerminalToolbar
+            shellLabel={shellLabel}
+            onInterrupt={() => void interruptTerminal()}
+            onRestart={() => void stopAndRestartTerminal()}
+            onClear={clearTerminal}
+            onTipChange={onTipChange}
+          />
           <button
             {...transientTriggerProps()}
             className="workspace-files-text-btn"
@@ -482,64 +513,21 @@ export function WorkspaceTerminal({
             清空
           </button>
         </div>
+        {/* A saved Shell that is no longer installed says so here instead of vanishing. */}
+        {shellNotice && (
+          <p className="workspace-terminal-shell-notice" role="status">{shellNotice}</p>
+        )}
       </header>
-      <div className="workspace-terminal-activity" aria-label="最近终端命令">
-        <div className="workspace-terminal-activity-heading">
-          <span>最近命令</span>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-terminal-activity-refresh"
-            type="button"
-            onClick={() => void refreshTerminalActivities()}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('刷新最近命令', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('刷新最近命令', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('刷新最近命令', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            <RefreshIcon />
-          </button>
-        </div>
-        <div className="workspace-terminal-activity-list">
-          {activities.length === 0 && !activityError && (
-            <span className="workspace-terminal-activity-empty">暂无命令记录</span>
-          )}
-          {activityError && (
-            <span className="workspace-terminal-activity-empty error">{activityError}</span>
-          )}
-          {activities.map((activity) => (
-            <button
-              key={activity.id}
-              type="button"
-              className={`workspace-terminal-activity-row ${activity.exitCode === 0 && !activity.timedOut ? 'ok' : 'warn'}`}
-              onClick={() => insertTerminalCommand(activity.command)}
-              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(terminalActivityTip(activity), event.clientX, event.clientY))}
-              onMouseMove={(event) => onTipChange(buildFloatingHelpTip(terminalActivityTip(activity), event.clientX, event.clientY))}
-              onMouseLeave={() => onTipChange(null)}
-              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(terminalActivityTip(activity), event.currentTarget))}
-              onBlur={() => onTipChange(null)}
-            >
-              <span className="workspace-terminal-activity-command">{activity.command}</span>
-              <span className="workspace-terminal-activity-meta">
-                {terminalActivityStatus(activity)} · {formatDurationMs(activity.durationMs)}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
+      <WorkspaceTerminalActivityList
+        activities={activities}
+        activityError={activityError}
+        onInsertCommand={insertTerminalCommand}
+        onRefresh={() => void refreshTerminalActivities()}
+        onTipChange={onTipChange}
+      />
       <div className="workspace-terminal-shell" ref={hostRef} aria-label="终端输入与输出" />
     </div>
   )
-}
-export function terminalActivityStatus(activity: TerminalActivityRecord): string {
-  if (activity.signal === 'session') return '已发送'
-  if (activity.signal === 'captured' || activity.signal === 'next-command') return '已记录'
-  if (activity.signal === 'interrupt') return '已中断'
-  if (activity.signal === 'closed') return '已关闭'
-  if (activity.signal === 'send-failed') return '发送失败'
-  if (activity.timedOut) return '超时'
-  if (activity.exitCode === 0) return '成功'
-  return `退出 ${activity.exitCode ?? activity.signal ?? '异常'}`
 }
 export function dedupeTerminalCommands(commands: string[]): string[] {
   const seen = new Set<string>()
@@ -552,13 +540,4 @@ export function dedupeTerminalCommands(commands: string[]): string[] {
   }
   return result
 }
-export function terminalActivityTip(activity: TerminalActivityRecord): string {
-  const parts = [
-    activity.command,
-    `cwd: ${activity.cwd}`,
-    `${terminalActivityStatus(activity)} · ${formatDurationMs(activity.durationMs)}`,
-  ]
-  if (activity.stdoutPreview) parts.push(`stdout: ${activity.stdoutPreview.slice(0, 240)}`)
-  if (activity.stderrPreview) parts.push(`stderr: ${activity.stderrPreview.slice(0, 240)}`)
-  return parts.join('\n')
-}
+

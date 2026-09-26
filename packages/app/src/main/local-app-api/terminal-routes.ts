@@ -24,6 +24,7 @@ import {
   WorkspaceTerminalSessionManager,
 } from './terminal-session.js'
 import { TerminalCommandCaptureStore } from './terminal-capture.js'
+import { defaultWorkspaceShellProfile, discoverWorkspaceShells, findWorkspaceShellProfile } from '../workspace-shell-discovery.js'
 import {
   normalizeOptionalSessionId,
   resolveWorkspaceRoot,
@@ -59,8 +60,26 @@ export class TerminalRouter {
       const terminalEnvironment = context.developmentEnvironmentManager
         ? await context.developmentEnvironmentManager.terminalEnvironment()
         : process.env
-      const session = await this.sessions.create(root, normalizeTerminalSize(body), terminalEnvironment)
+      // The renderer sends only an id; Main decides the executable, arguments and environment
+      // from a fresh discovery, so a stale or unknown id falls back to the default shell with
+      // the reason reported instead of running something unexpected (UX-29).
+      const profiles = await discoverWorkspaceShells()
+      const requested = findWorkspaceShellProfile(profiles, body.shellId)
+      const fallback = requested ? null : defaultWorkspaceShellProfile(profiles)
+      const session = await this.sessions.create(
+        root,
+        normalizeTerminalSize(body),
+        terminalEnvironment,
+        requested ?? fallback,
+      )
       json(res, 200, session.snapshot())
+      return true
+    }
+
+    if (request.method === 'GET' && path === LOCAL_APP_API_PREFIXES.terminalShells) {
+      // Discovery is honest: unavailable shells are listed with the reason and the place to
+      // configure them, so the menu can explain instead of offering something that fails.
+      json(res, 200, { shells: await discoverWorkspaceShells() })
       return true
     }
 
