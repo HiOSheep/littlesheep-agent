@@ -180,6 +180,16 @@ export {
   createMemoryTreeTool,
   type MemoryToolOptions,
 } from './memory-tool.js';
+export {
+  MEMORY_WRITE_MAX_PER_RUN,
+  MEMORY_WRITE_TOOL_NAME,
+  createMemoryWriteTool,
+  memoryWriteIntentId,
+  memoryWriteSourceRefs,
+  userAskedToRemember,
+  type MemoryWriteSourceMessage,
+  type MemoryWriteToolOptions,
+} from './memory-write-tool.js';
 export { fetchGitLog, fetchLatestCommitDate, parseGitLog } from './git-log.js';
 export { readProjectIndex } from './project-index.js';
 export {

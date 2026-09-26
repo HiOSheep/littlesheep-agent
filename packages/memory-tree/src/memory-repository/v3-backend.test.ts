@@ -690,6 +690,66 @@ describe('MemoryRepositoryV3Backend recovery', () => {
     expect(queryEmbeds()).toBe(1);
     expect(deep.length).toBeGreaterThan(0);
   });
+
+  /**
+   * RS-06 (§2.1 reproduced defect): the port changed from 5432 to 6432, the two statements scored
+   * 0.9167, and the repository reported `merged` — the retrievable body still said 5432 while the new
+   * source was appended to it. A changed value is a different fact, so the write is refused and the
+   * existing record is left exactly as it was.
+   */
+  it('refuses to merge a statement whose value changed, and keeps the old record intact', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-merge-guard-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const backend = createBackend(dataDir);
+    backends.push(backend);
+    await backend.initialize();
+
+    const first = await backend.write({
+      ...intent(),
+      id: 'write-port-5432',
+      summary: 'Local database port',
+      content: 'The local development database listens on port 5432 for the analytics job.',
+      retrievalKeys: ['database', 'port', 'development'],
+      sourceRefs: ['conversation-source:run-1:user-message:m1'],
+    });
+    expect(first.decision).toBe('created');
+    const atomId = first.node!.id;
+
+    const second = await backend.write({
+      ...intent(),
+      id: 'write-port-6432',
+      summary: 'Local database port',
+      content: 'The local development database listens on port 6432 for the analytics job.',
+      retrievalKeys: ['database', 'port', 'development'],
+      sourceRefs: ['conversation-source:run-2:user-message:m2'],
+    });
+    expect(second.decision).toBe('rejected');
+    expect(second.reason).toContain('different facts');
+    expect(second.reason).toContain('6432');
+
+    // The old body is still the current one, and it did not acquire the new source as support.
+    const node = (await backend.listNodes('long-term')).find((entry) => entry.id === atomId);
+    expect(node?.content).toContain('5432');
+    expect(node?.content).not.toContain('6432');
+    expect(node?.sourceRefs ?? []).not.toContain('conversation-source:run-2:user-message:m2');
+    // The refused write is on the audit trail rather than silently dropped.
+    const audit = (await backend.snapshot()).writeAudit;
+    expect(audit.some((entry) => entry.decision === 'rejected' && entry.reason.includes('different facts')))
+      .toBe(true);
+
+    // A restatement of the same fact still merges: the guard is not a blanket refusal.
+    const restated = await backend.write({
+      ...intent(),
+      id: 'write-port-restated',
+      summary: 'Local database port',
+      content: 'The local development database listens on port 5432 for the analytics job.',
+      retrievalKeys: ['database', 'port', 'development'],
+      sourceRefs: ['conversation-source:run-3:user-message:m3'],
+    });
+    expect(restated.decision).toBe('reinforced');
+    expect((await backend.listNodes('long-term')).filter((entry) => entry.id === atomId)).toHaveLength(1);
+  });
 });
 
 function createBackend(dataDir: string, embeddingEngine?: EmbeddingEngine): MemoryRepositoryV3Backend {

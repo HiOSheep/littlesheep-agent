@@ -1,6 +1,6 @@
 # Memory Repository 内部边界
 
-最后更新：2026-09-27 05:18:37
+最后更新：2026-09-27 05:40:12
 
 检索的向量边界（RS-06A，2026-09-27）：3-retrieval.ts 只在 mode === 'deep-search' 时调用 prepareVectorQuery。D1 索引、按 nodeId 展开与 xpand(query)（包括第一次）都不准备查询向量、不走向量搜索，只由 FTS、层级与关系边作答；引擎不可用时的既有降级不变。回归见 3-backend.test.ts 的 "prepares a query vector only at the deep-search boundary"（计数 embedding 引擎：写入索引的 embedding 不计入，xpand 为 0，deep-search 恰好 1）。
 

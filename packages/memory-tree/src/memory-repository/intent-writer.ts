@@ -10,6 +10,7 @@ import type {
   MemoryWriteResult,
 } from '../types.js';
 import { MEMORY_BRANCH_ROOTS } from './document-store.js';
+import { mayMergeMemoryStatements } from './merge-guard.js';
 import {
   equivalentMemoryNode,
   memoryIntentRejectionReason,
@@ -81,6 +82,23 @@ export function applyMemoryIntent(
     .map((node) => ({ node, score: memoryNodeSimilarity(node, intent) }))
     .sort((left, right) => right.score - left.score)[0];
   if (similar && similar.score >= policy.duplicateSimilarityThreshold) {
+    // The same rule as the v3 store: similarity nominates, it never decides. Two statements whose
+    // values, negation or subject differ are different facts, and merging them would leave the old
+    // body current while claiming the new source supports it.
+    const verdict = mayMergeMemoryStatements({
+      existingSummary: similar.node.summary,
+      existingContent: similar.node.content,
+      incomingSummary: intent.summary,
+      incomingContent: intent.content,
+      existingEntityRefs: similar.node.entityRefs,
+      incomingEntityRefs: intent.epistemic?.entityRefs,
+    });
+    if (!verdict.ok) {
+      const reason = `A similar memory was found (${similar.score.toFixed(2)}) but they are different facts: `
+        + `${verdict.detail}. Nothing was merged and the existing record is unchanged.`;
+      auditMemoryWrite(document, intent, policy, 'rejected', reason, similar.node.id);
+      return { intentId, decision: 'rejected', reason };
+    }
     mergeMemoryNode(similar.node, intent);
     refreshMemoryAncestors(document, similar.node.parentNodeId);
     const reason = `Merged with indexed memory ${similar.node.id} (similarity ${similar.score.toFixed(2)}).`;

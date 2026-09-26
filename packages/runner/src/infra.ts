@@ -38,6 +38,7 @@ import {
   CacheObservationStore,
   createDefaultHarness,
   createNextHarness,
+  resolveMemoryWriteEpistemic,
 } from '@littlesheep/harness';
 import {
   createLazyLocalExactContextTokenCounter,
@@ -82,6 +83,7 @@ import {
   ProjectMemoryBranch,
   TreeMemoryBranch,
   createMemoryTreeTool,
+  createMemoryWriteTool,
   migrateLegacyMemorySources,
 } from '@littlesheep/memory-tree';
 
@@ -496,11 +498,41 @@ export async function buildInfrastructure(
   const memoryEnvelope = safetyCF.enabled && safetyCF.sanitizePrelude
     ? sanitizePreludeForInjection
     : undefined;
+/** How much of the session the write tool may cite; the tail is what a follow-up instruction lives in. */
+  const MEMORY_WRITE_SOURCE_WINDOW = 400
+
   const extras: AgentTool[] = [
     createUseSkillTool(skillLoader),
     // One memory navigation entry point: the tree tool already covers
     // root_index, branch_index, expand and deep_search.
     createMemoryTreeTool(memoryService, { envelope: memoryEnvelope }),
+    // The one durable writer (RS-06). It is registered here rather than in the read-only tree tool
+    // because the two have opposite permission profiles: this one always needs approval, and the
+    // Runtime verifies the cited sources before anything is committed.
+    createMemoryWriteTool({
+      write: (intent) => memoryService.write(intent),
+      readMessages: async (sessionId) => {
+        const messages = await sessionManager.read(asSessionId(sessionId));
+        return messages.slice(-MEMORY_WRITE_SOURCE_WINDOW).map((message) => ({
+          id: message.id,
+          role: message.role === 'user' ? 'user' as const : 'assistant' as const,
+          text: message.content.map((block) => (block.type === 'text' ? block.text : '')).join('\n'),
+          runId: message.runId,
+          toolCallIds: message.content.flatMap((block) => (
+            block.type === 'tool_result' ? [block.result.callId] : []
+          )),
+        }));
+      },
+      resolveEpistemic: ({ branch, scope, sourceRefs }) => resolveMemoryWriteEpistemic({
+        raw: undefined,
+        stage: 'tool',
+        branch: branch as never,
+        scope: scope as never,
+        sourceRefs: [...sourceRefs],
+        evidenceRefs: [],
+      }),
+      log: (level, message) => opts.log?.(level, `runner: ${message}`),
+    }),
     createSessionStatusTool({
       sessionId: () => opts.state.sessionId ?? asSessionId(''),
       sessionManager,

@@ -3045,6 +3045,52 @@ describe('host file write entry points', () => {
     }
     expect(names).not.toContain('write_memory');
     expect(names).not.toContain('record_experience');
+    // RS-06: the controlled durable writer is registered, and it is not one of the retired writers.
+    expect(names).toContain('memory_write');
+    expect(names).toContain('memory_tree');
+  });
+
+  // RS-06: the model may ask for a memory, but the Runtime decides whether the user authorized it.
+  it('commits a memory the user asked for through the registered writer, and refuses one they did not', async () => {
+    await createMemoryV3ExperimentMarker(dataDir);
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.memory.repositoryBackend = 'v3';
+    const llm = makeMockLlm(() => textResponse('Understood.'));
+    const runner = await createRunner({ config, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    createdRunners.push(runner);
+
+    const session = await runner.sessionManager.create('openai/gpt-test');
+    await runner.sessionManager.append(session.id, [
+      textMessage('user', '记住：我偏好简洁的工程进度回复。', { id: 'remember-1', runId: 'run-1' }),
+      textMessage('user', '这个构建为什么失败？', { id: 'unrelated-1', runId: 'run-1' }),
+    ]);
+
+    const tool = runner.infra.registry.get('memory_write')!.tool;
+    const ctx = { sessionId: session.id, runId: 'run-1', cwd: dataDir } as never;
+    const request = {
+      reasonKind: 'user-request' as const,
+      summary: '工程进度回复偏好',
+      content: '用户希望工程进度的回复保持简洁。',
+      retrievalKeys: ['回复', '简洁', '偏好'],
+      reason: '用户明确要求记住这条偏好。',
+    };
+
+    // Authorized: the cited message really asks to remember.
+    const accepted = await tool.execute({ ...request, sourceMessageIds: ['remember-1'] }, ctx);
+    expect(accepted.ok).toBe(true);
+    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      sourceRefs: ['conversation-source:run-1:user-message:remember-1'],
+    });
+    expect(nodes[0]?.content).toContain('保持简洁');
+
+    // Unauthorized: the same request citing a message that never asked for anything must not write.
+    const refused = await tool.execute({ ...request, sourceMessageIds: ['unrelated-1'] }, ctx);
+    expect(refused.ok).toBe(false);
+    expect(refused.meta?.errorKind).toBe('memory_write_not_authorized');
+    expect(refused.error).toContain('has not authorized');
+    expect(await runner.infra.memoryRepository.listNodes('long-term')).toHaveLength(1);
   });
 });
 

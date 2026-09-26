@@ -44,7 +44,11 @@ export interface ModelMemoryEpistemicProposal {
 
 export interface ResolveMemoryWriteEpistemicInput {
   raw?: unknown;
-  stage: 'evolve' | 'capture';
+  /**
+   * `tool` is the neutral entry the controlled write tool uses (RS-06): it carries no historical
+   * stage semantics, and the status rules below treat it as cautiously as `capture`.
+   */
+  stage: 'evolve' | 'capture' | 'tool';
   branch: MemoryBranchKind;
   scope: MemoryScope;
   scopeKey?: string;
@@ -61,7 +65,7 @@ export function resolveMemoryWriteEpistemic(
 ): MemoryWriteEpistemicMetadata {
   const raw = record(input.raw);
   const statementKind = enumValue(raw?.statementKind, STATEMENT_KINDS)
-    ?? (input.stage === 'capture' ? 'reported-observation' : 'factual-claim');
+    ?? (input.stage === 'evolve' ? 'factual-claim' : 'reported-observation');
   const assertedBy = resolveActor(raw?.assertedBy, input.sourceRefs, input.evidenceRefs);
   const domain = resolveDomain(raw?.domain, input.branch, input.scope, assertedBy, statementKind);
   const epistemicStatus = resolveStatus(statementKind, assertedBy, input.stage, input.evidenceRefs);
@@ -196,7 +200,7 @@ function domainCompatible(
 function resolveStatus(
   statementKind: StatementKind,
   actor: MemoryActorRef,
-  stage: 'evolve' | 'capture',
+  stage: 'evolve' | 'capture' | 'tool',
   evidenceRefs: readonly string[],
 ): MemoryWriteEpistemicMetadata['epistemicStatus'] {
   if (statementKind === 'suggestion' || statementKind === 'hypothesis') return 'unverified';
@@ -204,7 +208,9 @@ function resolveStatus(
   const hasToolEvidence = evidenceRefs.some((ref) => ref.includes(':tool:') && ref.endsWith(':succeeded'));
   const hasPassingVerification = evidenceRefs.some((ref) => ref.includes(':verification:') && ref.endsWith(':pass'));
   if (actor.kind === 'tool' && hasToolEvidence && hasPassingVerification) return 'corroborated';
-  return stage === 'capture' ? 'reported' : 'unverified';
+  // Only the evolve stage may leave a tool-asserted statement unverified-but-current; a controlled
+  // write starts as reported, the same as a captured observation.
+  return stage === 'evolve' ? 'unverified' : 'reported';
 }
 
 function defaultActorId(kind: MemoryActorKind): string | undefined {

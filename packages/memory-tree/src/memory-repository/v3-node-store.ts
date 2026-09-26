@@ -28,6 +28,7 @@ import type {
 import { MEMORY_EVENT_VERSION } from '../v3/contracts.js';
 import { MemoryV3StorageCoordinator } from '../v3/storage-coordinator.js';
 import { MEMORY_BRANCH_ROOTS, memoryBranchRootId } from './document-store.js';
+import { mayMergeMemoryStatements } from './merge-guard.js';
 import {
   equivalentMemoryNode,
   assertMemoryTierChange,
@@ -305,7 +306,25 @@ export class MemoryV3NodeStore {
       }))
       .sort((left, right) => right.score - left.score)[0];
     if (similar && similar.score >= this.policy.duplicateSimilarityThreshold) {
-      return this.merge(similar.atom, similar.score, intent, classification, graph.entityRefs, graph.relationRefs);
+      // Similarity only nominates a merge; it never decides one. A statement whose values, negation or
+      // subject differ from the candidate is a different fact, and merging it would leave the old body
+      // current while attaching the new source to something it does not support.
+      const verdict = mayMergeMemoryStatements({
+        existingSummary: similar.atom.summary,
+        existingContent: similar.atom.content,
+        incomingSummary: intent.summary,
+        incomingContent: intent.content,
+        existingEntityRefs: similar.atom.entityRefs,
+        incomingEntityRefs: graph.entityRefs,
+      });
+      if (verdict.ok) {
+        return this.merge(similar.atom, similar.score, intent, classification, graph.entityRefs, graph.relationRefs);
+      }
+      const reason = `A similar memory was found (${similar.score.toFixed(2)}) but they are different facts: `
+        + `${verdict.detail}. Nothing was merged and the existing record is unchanged; correcting an existing `
+        + 'memory is not something this write path does (RS-06B).';
+      await this.ledger.appendWriteAudit(writeAudit(intent, 'rejected', reason, similar.atom.id));
+      return { intentId: intent.id!, decision: 'rejected', reason };
     }
 
     const audit = writeAudit(intent, 'created', 'Created an indexed Memory v3 atom and refreshed its scope index.', atomIdForIntent(intent.id!));
