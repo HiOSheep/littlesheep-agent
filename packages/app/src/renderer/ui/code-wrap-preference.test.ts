@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
+import { CodeWrapToggle } from './code-wrap-toggle'
 import {
   CODE_WRAP_STORAGE,
   codeWrapToggleLabel,
@@ -8,6 +11,9 @@ import {
   writeCodeWrapPreference,
   type CodeWrapStorage,
 } from './code-wrap-preference'
+
+// The test transform uses the classic JSX runtime, so the components need React in scope.
+vi.stubGlobal('React', React)
 
 function memoryStorage(initial: Record<string, string> = {}): CodeWrapStorage & { values: Map<string, string> } {
   const values = new Map(Object.entries(initial))
@@ -37,6 +43,18 @@ describe('code wrap preference', () => {
   it('labels the next action, not the current state', () => {
     expect(codeWrapToggleLabel(false)).toBe('开启自动换行')
     expect(codeWrapToggleLabel(true)).toBe('关闭自动换行')
+  })
+
+  it('draws one icon per wrap state, so the button shows the state it is in', () => {
+    const off = renderToStaticMarkup(CodeWrapToggle({ wrapped: false, onToggle: () => {} }))
+    const on = renderToStaticMarkup(CodeWrapToggle({ wrapped: true, onToggle: () => {} }))
+
+    expect(off).toContain('data-wrap-icon="off"')
+    expect(on).toContain('data-wrap-icon="on"')
+    expect(off).not.toContain('data-wrap-icon="on"')
+    expect(on).not.toContain('data-wrap-icon="off"')
+    expect(off).toContain('aria-pressed="false"')
+    expect(on).toContain('aria-pressed="true"')
   })
 
   it('notifies every mounted code surface when the shared switch changes', () => {

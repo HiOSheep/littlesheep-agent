@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-26 20:52:50
+最后更新：2026-09-26 21:21:17
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -41,6 +41,6 @@
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 
-`icons.tsx` 是无状态声明式图标集合，350 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350，上限同步下调），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行图标由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
+`icons.tsx` 是无状态声明式图标集合，350 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350，上限同步下调），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行按钮由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合；它**按状态画两个不同图标**（`data-wrap-icon="off"`：中间那条线直着伸出右边缘、箭头朝外＝不换行；`"on"`：同一条线折到下一行、箭头折回＝自动换行），切换时同步替换 SVG，因此按钮自身的图形就能说明当前状态，不只靠 `aria-pressed`。契约断言在 `code-wrap-preference.test.ts`（每个状态画哪个图标）。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
 
 **工作区文件与文件夹字形的形状语言**（`file-glyph-icons.tsx` + `styles/04-workspace.css`，2026-09-26）：每个字形都是一块**圆角实心板**——文件夹是带圆角页签和浅色横条的琥珀色板（`--workspace-folder-glyph`），文件是圆角纸张 + 浅色折角 + 该类型自己的标记；标记与颜色对齐各类型官方标识（HTML5 橙配 "5"、CSS3 蓝配 "3"、JavaScript 黄配 "JS"、TypeScript 蓝、Markdown 蓝配 "MD"、Go 青配 "Go"、Git 橙、PDF 红……），几何则在 14px 下重画以保证圆角不糊。`generic` 只有纸张没有标记；浅色底（JS 黄、JSON 黄）的标记用深色，其余用白色。改这里的形状或配色时同步 `icons.test.ts` 的标记断言（"MD"/"5"）与 `04-workspace.css` 的色表。
