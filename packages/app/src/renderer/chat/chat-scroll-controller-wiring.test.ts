@@ -45,7 +45,7 @@ describe('chat scroll controller wiring', () => {
     expect(view).toContain("data-new-content={hasNewContent ? 'true' : 'false'}")
     expect(view).toContain('onClick={scrollToLatest}')
     // Icon-only: the arrow says the direction, the accessible name says the action and its state.
-    expect(view).toContain('<JumpToLatestArrowIcon />')
+    expect(view).toContain('<JumpToLatestArrow />')
     expect(view).toContain("aria-label={hasNewContent ? '有新内容，回到最新' : '回到最新'}")
     // A circle, 3px above the input's visible top edge (the measured overlay height starts at the
     // composer shell, so its own top padding is subtracted), wearing the composer's own glass.

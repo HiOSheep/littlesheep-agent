@@ -7,12 +7,23 @@ import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
-import { JumpToLatestArrowIcon } from '../ui/icons'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import type { ChatViewController } from './app-controller-projections'
 
 /** How long the way back takes to grow out of the composer's edge, and to drop back into it. */
 const JUMP_MOTION_MS = 180
+
+/**
+ * Points down, into the composer. Drawn here rather than added to `ui/icons.tsx`, which is a
+ * frozen hotspot (see `docs/reference/module-split-map.md`); this is its only consumer.
+ */
+function JumpToLatestArrow() {
+  return (
+    <svg className="chat-jump-to-latest-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M8 3.4v8.2M4.4 8.1 8 11.7l3.6-3.6" />
+    </svg>
+  )
+}
 
 export function ChatView({ controller }: { controller: ChatViewController }) {
   const {
@@ -134,7 +145,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
             aria-hidden={readingAway ? undefined : true}
             onClick={scrollToLatest}
           >
-            <JumpToLatestArrowIcon />
+            <JumpToLatestArrow />
           </button>
         )}
     </>
