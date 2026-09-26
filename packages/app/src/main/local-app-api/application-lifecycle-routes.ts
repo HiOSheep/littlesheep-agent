@@ -84,6 +84,16 @@ export async function routeApplicationLifecycle(
       })
       return true
     }
+    if (body.action === 'park-offscreen') {
+      const park = context.desktopAcceptance.parkOffscreenForAcceptance
+      if (!park) {
+        json(res, 501, { error: 'Desktop acceptance park-offscreen is not available.' })
+        return true
+      }
+      const accepted = park()
+      json(res, accepted ? 202 : 409, { accepted, snapshot: context.desktopAcceptance.snapshot() })
+      return true
+    }
     if (body.action === 'startup-error') {
       const showStartupError = context.desktopAcceptance.showStartupErrorForAcceptance
       const message = typeof body.message === 'string' ? body.message.slice(0, 500) : ''

@@ -96,6 +96,15 @@ export interface LocalAppApiServerOptions {
     quit: () => void
     /** Present only when the shell can act on it; used by the CS-02 seam check. */
     resizeForAcceptance?: (size: { width: number; height: number }) => boolean
+    /**
+     * Moves the window off every display and shows it inactively.
+     *
+     * Walkthroughs keep windows hidden so they never land on the user's desktop, but a
+     * hidden window does not render: layout-dependent surfaces (the code editor's measured
+     * height, anything mounted from line geometry) cannot be checked there. Parking renders
+     * normally while staying invisible to the person at the machine.
+     */
+    parkOffscreenForAcceptance?: () => boolean
     /** Maximizes or restores the window so CS-02 can check both states. */
     setMaximizedForAcceptance?: (maximized: boolean) => boolean
     /** Minimizes or restores the window for the startup lifecycle checks. */

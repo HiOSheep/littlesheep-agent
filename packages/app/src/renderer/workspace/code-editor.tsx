@@ -153,6 +153,8 @@ export function WorkspaceCodeDiffEditor({
   // after each model change does not depend on that.
   useEffect(() => {
     layoutRef.current?.layout()
+    const deferred = window.setTimeout(() => layoutRef.current?.layout(), 120)
+    return () => window.clearTimeout(deferred)
   }, [props.original, props.modified])
   if (!monacoReady) return <>{loading}</>
   return (
@@ -342,7 +344,13 @@ function trackWorkspaceEditorLayout(
   // Immediate, then the coalesced path for whatever else changes afterwards.
   layoutNow()
   scheduleLayout(true)
+  // ...and once more on a task. The container can grow *after* the first measurement without
+  // any resize event to announce it — the pane is measured at 716 px while Monaco's root
+  // keeps an inline `height: 5px` and renders a single line. A deferred pass costs nothing,
+  // needs neither a frame nor an observer, and is what actually corrects that case.
+  const deferredLayout = window.setTimeout(() => layoutNow(), 120)
   return () => {
+    window.clearTimeout(deferredLayout)
     observer?.disconnect()
     document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)

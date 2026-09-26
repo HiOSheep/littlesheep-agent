@@ -107,7 +107,7 @@
 | `packages/app/src/renderer/workspace/panel.tsx` | 399 | 拓展工作区页面、评论状态和工作面装配 | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
 | `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务和终端环境派生 | 保持 facade；下载器不得回填此文件 | C |
 | `packages/app/src/renderer/workspace/browser.tsx` | 435 | 内置浏览器标签、导航、加载状态和网页内跳转 | 保持视图组合；历史算法和导航资格留在独立模块 | B |
-| `packages/app/src/renderer/workspace/code-editor.tsx` | 391 | Monaco 编辑器唯一懒加载、模型/视图生命周期和代码查看/编辑适配 | 保持编辑器运行时单一所有者；继续将语言支持与视图状态留在独立边界，不在普通文件/审阅组件重复初始化 | B |
+| `packages/app/src/renderer/workspace/code-editor.tsx` | 399 | Monaco 编辑器唯一懒加载、模型/视图生命周期和代码查看/编辑适配 | 保持编辑器运行时单一所有者；继续将语言支持与视图状态留在独立边界，不在普通文件/审阅组件重复初始化 | B |
 | `packages/app/src/renderer/workspace-persistence.ts` | 582 | 会话工作区布局 schema、draft 迁移、路径重绑定、快照恢复与规范化 | 保持纯数据转换边界；继续增长时分离 schema/codec 与路径转换 | B |
 | `packages/app/src/renderer/workspace/use-workspace-session-layouts.ts` | 429 | 会话工作区桶、draft 接管、本地持久化、Main 镜像恢复与关闭事务所有权 | 保持会话状态 Hook；文件保存行为继续留在布局 controller/file-close 边界 | B |
 | `packages/app/src/renderer/app-shell/preferences.ts` | 378 | Renderer 本地偏好键、基础 codec、旧工作区布局迁移与镜像应用判定 | 保持兼容偏好入口；后续将旧布局迁移下沉到 workspace persistence adapter | B |

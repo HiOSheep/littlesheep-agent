@@ -139,6 +139,15 @@ const SURFACE_EXPRESSION = `(() => {
         const pane = document.querySelector('.workspace-review-diff-scroll');
         return pane instanceof HTMLElement ? Math.round(pane.getBoundingClientRect().height) : null;
       })(),
+      // Every Monaco diff root in the document, not just the first: an orphan from an earlier
+      // mount would make the measurement below describe the wrong editor.
+      diffRoots: [...document.querySelectorAll('.monaco-diff-editor')].map((node) => ({
+        height: Math.round(node.getBoundingClientRect().height),
+        inlineHeight: node.style.height || null,
+        viewLines: node.querySelectorAll('.view-line').length,
+        connected: node.isConnected,
+        insideReview: Boolean(node.closest('.workspace-review-monaco-diff')),
+      })),
       // Every node from the pane down to Monaco's root: which one fails to receive the height?
       heightChain: (() => {
         const chain = [];
@@ -988,7 +997,17 @@ async function main() {
       25_000,
       'the interaction fixture is listed',
     ).catch(() => readSurface(client))
+    // Layout-dependent checks need a window that renders. This one is parked off every
+    // display and shown inactively, so it renders without ever appearing on the desktop —
+    // the hidden-window contract stays for every other step.
+    await harness.desktopAction(locator, 'park-offscreen')
+    await delay(1200)
     await selectReviewRow(client, 'interactions.txt')
+    // Measured here and recorded, not asserted: one `.monaco-diff-editor` exists, it is
+    // connected and inside the review pane, its parent chain is a definite 716 px, and it
+    // still carries an inline `height: 5px` with a single rendered line — in a window that is
+    // rendering (this step parks it off screen). The app's own layout event does not change
+    // it either. That is an app-side defect with its own follow-up, not a harness limit.
     // A hidden window never lays out until something forces a paint, and Monaco keeps its
     // view lines and gutter empty until then. One bounded capture is the warm-up the HTML
     // walkthrough already relies on; without it every rendered check below sees a stub.
@@ -1007,6 +1026,7 @@ async function main() {
       step: 'diff-interactions',
       gutterNumbers: interactionDiff.gutterNumbers,
       monaco: interactionDiff.monaco,
+      diffRoots: interactionDiff.diffRoots,
       diffDom: interactionDiff.diffDom,
       wrap: interactionDiff.wrap,
       screenshot: interactionShot,

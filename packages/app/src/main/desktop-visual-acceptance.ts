@@ -143,3 +143,23 @@ export function setWindowMinimizedForAcceptance(
   else window.restore()
   return true
 }
+
+/**
+ * Move the window off every display and show it.
+ *
+ * The acceptance contract keeps windows hidden so a walkthrough never lands on the user's
+ * desktop, but a hidden window is backgrounded: Chromium stops rendering frames, geometry
+ * queries return a stale chain and anything mounted from measured layout never appears.
+ * A window parked outside the desktop renders normally while still being invisible to the
+ * person using the machine — which is what lets those surfaces be checked at all.
+ *
+ * The bounds are applied *before* showing, so the window never appears on screen even for
+ * one frame, and `showInactive` keeps it from taking focus.
+ */
+export function parkWindowOffscreenForAcceptance(window: BrowserWindow | undefined): boolean {
+  if (!window || window.isDestroyed()) return false
+  const [width, height] = window.getSize()
+  window.setBounds({ x: -32_000, y: -32_000, width, height })
+  window.showInactive()
+  return true
+}

@@ -13,6 +13,7 @@ import {
   resizeWindowForAcceptance,
   setWindowMaximizedForAcceptance,
   setWindowMinimizedForAcceptance,
+  parkWindowOffscreenForAcceptance,
   showStartupErrorPageForAcceptance,
   showStartupPageForAcceptance,
 } from './desktop-visual-acceptance.js'
@@ -53,6 +54,11 @@ export function createDesktopAcceptanceActions(input: {
     // show() only takes effect in an acceptance run after this: the window stays
     // off the user's screen unless a check genuinely needs pixels.
     show: () => { input.shell.allowAcceptanceWindow(); input.shell.show() },
+    // Renders without landing on the user's desktop: the window is moved off every display
+    // and shown inactively. Needed by checks that measure layout, which a hidden window
+    // never produces (see parkWindowOffscreenForAcceptance).
+    parkOffscreenForAcceptance: () =>
+      parkWindowOffscreenForAcceptance(input.shell.currentWindow()),
     quit: input.quit,
     // CS-02 needs the native caption buttons rendered at more than one width,
     // which the renderer cannot drive.
