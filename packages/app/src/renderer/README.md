@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 21:31:24
+最后更新：2026-09-26 21:41:53
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -13,7 +13,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 
 **侧边栏的玻璃带一层淡蓝→淡紫晕色**（2026-09-26）：`styles/03-shell-sidebar.css` 里 `.sidebar-surface::before` 在共享填充之上叠一条 `linear-gradient`（`--sidebar-tint-top` / `--sidebar-tint-bottom`，alpha 都小于 0.2），工作区面板不染色；材质规则仍然只有一条，两个表面本体保持透明。像素实测与边界见 `sidebar/README.md`。
 
-**工作区树的文件夹与文件图标统一成圆角、按官方标识着色的字形**（2026-09-26）：形状与标记在 `ui/file-glyph-icons.tsx`（`FolderGlyphIcon` 也从 `ui/icons.tsx` 移来这里，冻结上限 359 → 350），颜色在 `styles/04-workspace.css` 的 `.file-glyph-*` 色表——文件夹是带浅色横条的琥珀色圆角板，文件是圆角纸张 + 浅色折角 + 类型自己的标记（HTML5 "5"、CSS3 "3"、JavaScript "JS"、Markdown "MD"……）。规则见 `ui/README.md`，树行侧的边界见 `workspace/README.md`。工作区树的展开缩进引导线也随指针出现：默认 `opacity: 0`，`.workspace-tree:hover` / `:focus-within` 时才为 1，并带 `var(--motion-base)` 的淡入淡出（reduced-motion 下瞬时）。工作区两个筛选框（`.workspace-file-filter`、`.workspace-artifacts-search`）不带描边：字段由填充区分，悬停/聚焦只改填充与文字色。代码换行按钮按状态切换图标（不换行＝线伸出右边缘、箭头朝外；换行＝线折回下一行），不再是一个图标走天下。设置页整体不画框线：导航行、搜索框、筛选胶囊、供应商卡片与字段/徽标只靠填充区分，语义色条、行分隔线与模态 `.dialog` 的边界保留。
+**工作区树的文件夹与文件图标统一成圆角、按官方标识着色的字形**（2026-09-26）：形状与标记在 `ui/file-glyph-icons.tsx`（`FolderGlyphIcon` 也从 `ui/icons.tsx` 移来这里，冻结上限 359 → 350），颜色在 `styles/04-workspace.css` 的 `.file-glyph-*` 色表——文件夹是带浅色横条的琥珀色圆角板，文件是圆角纸张 + 浅色折角 + 类型自己的标记（HTML5 "5"、CSS3 "3"、JavaScript "JS"、Markdown "MD"……）。规则见 `ui/README.md`，树行侧的边界见 `workspace/README.md`。工作区树的展开缩进引导线也随指针出现：默认 `opacity: 0`，`.workspace-tree:hover` / `:focus-within` 时才为 1，并带 `var(--motion-base)` 的淡入淡出（reduced-motion 下瞬时）。工作区两个筛选框（`.workspace-file-filter`、`.workspace-artifacts-search`）不带描边：字段由填充区分，悬停/聚焦只改填充与文字色。代码换行按钮按状态切换图标（不换行＝线伸出右边缘、箭头朝外；换行＝线折回下一行），不再是一个图标走天下。设置页整体不画框线：导航行、搜索框、筛选胶囊、供应商卡片与字段/徽标只靠填充区分，语义色条、行分隔线与模态 `.dialog` 的边界保留。设置页正文改成分组卡片：大标题 + 分组小标题 + 一张圆角卡片，卡片内每行左标题右控件、行间一条发丝线，开关为蓝色胶囊。
 
 ## 入口与所有权
 

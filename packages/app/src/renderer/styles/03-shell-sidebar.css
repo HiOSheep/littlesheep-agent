@@ -20,6 +20,8 @@
   /* Folder rows in the workspace tree: an amber rounded plate with a light bar, the one warm shape
      among the file marks. */
   --workspace-folder-glyph: #e8a33d;
+  /* Settings switches: the one place the UI uses a saturated blue, matching the reference's pill. */
+  --settings-switch-on: #3f7fd8;
   --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
   --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
   --composer-surface: rgba(32, 32, 32, 0.75);

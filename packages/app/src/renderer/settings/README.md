@@ -1,5 +1,5 @@
 # Renderer 设置
-最后更新：2026-09-26 21:31:24
+最后更新：2026-09-26 21:41:53
 
 这里负责设置侧边栏、设置页和直接打开的记忆树/插件/已安排页面。设置与主页共用全局导航和侧边栏交互，但不复制运行时数据。
 
@@ -20,6 +20,8 @@
 异步操作的反馈统一走 `ui/feedback.ts` 的结构：色调来自操作结果字段而不是解析文案，失败留在发起操作处并带可重试动作，长 Runtime 错误有界折叠。因此设置页的每一处写操作都必须把结果带回来：供应商保存/删除、插件启停与重载在页面内显示；压缩阈值保存经由 `applyRuntimePatchReporting` 把失败文本返回给页面（不再只写进聊天区的错误行），重新加载失败也不会留下旧的成功提示。
 
 **设置页不画框线**（2026-09-26）：导航行、模块搜索框、筛选胶囊、供应商卡片与各类字段/徽标一律 `border: 0`，靠填充区分——这条决定写在 `styles/07-overlays-settings.css` 末尾的"Settings frames are off"块里，集中一份而不是散落二十多条规则；块内第二批给原本只靠边框才看得见的元素（筛选胶囊、缓存按钮、开发环境状态、供应商徽标/模型芯片/移除按钮、模型行输入框等）补了 `rgba(255, 255, 255, 0.035)` 填充。**仍然保留线条的三类**：语义色条（danger / warning / success 的 `border-left`）、行与行之间的分隔线（`border-bottom`）、以及 `.dialog`——模态需要一条边界把它和整个窗口分开。真实窗口实测：`.settings-nav-item`（含 `.active`）、`.settings-module-search`、`.settings-filter-pill`、`.provider-card`、`.provider-badge` 的四边宽度都是 `0px`。
+
+**正文按"分组卡片"组织**（2026-09-26）：每个设置页正文都是"大标题 + 分组小标题 + 一张圆角卡片"，卡片里每行左侧是标题（+ 灰色说明）、右侧是控件（开关 / 下拉 / 小按钮 / 勾选），行与行之间只有一条发丝分隔线，首行和末行带卡片圆角——这条样式写在 `styles/07-overlays-settings.css` 末尾的"Settings body: grouped rows"块里，覆盖已有的行族（`.storage-settings-*`、`.web-settings-*`、`.settings-policy-*`、`.development-environment-*`、`.settings-overview-*`）和选择列表（`.profile-choice-list > .profile-choice`，选中行只是卡片里更亮的一行）。控件统一成"填充按钮"外观（无描边、`rgba(255,255,255,0.06)` 填充、9px 圆角），开关是胶囊形、开启时为蓝色（`--settings-switch-on`）。页面标题 26px、分组标题改为 muted 12px、行高 64–68px，比例对齐参考稿。
 
 ## 入口 → 页面 → 返回目标
 

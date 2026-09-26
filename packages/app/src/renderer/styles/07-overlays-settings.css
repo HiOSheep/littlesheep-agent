@@ -3557,3 +3557,176 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-chip {
   background: rgba(255, 255, 255, 0.035);
 }
+
+/* Settings body: grouped rows (2026-09-26). Every settings page renders a group of rows under a
+   heading; the rows are now drawn as one rounded card per group — a row owns the fill and the
+   hairline against the next row, the first and last rows carry the group's corners, and the group
+   heading stays above the card. Controls keep the fill-only look from the block above. */
+.storage-settings-section,
+.web-settings-section,
+.settings-policy-section,
+.development-environment-group,
+.plugin-list,
+.settings-overview-group {
+  align-content: start;
+  gap: 0;
+  margin-top: 18px;
+}
+
+.storage-settings-row,
+.web-settings-row,
+.settings-policy-row,
+.development-environment-row,
+.settings-overview-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.022);
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.storage-settings-row,
+.web-settings-row,
+.settings-policy-row {
+  min-height: 64px;
+}
+
+/* One card per group: the first row rounds its top, the last rounds its bottom, a single row does
+   both. `:first-child` covers groups whose rows start immediately; `.storage-settings-heading +`
+   covers the storage/browser layout, where the heading is the group's first child. */
+.storage-settings-row:first-child,
+.storage-settings-heading + .storage-settings-row,
+.web-settings-row:first-child,
+.settings-policy-row:first-child,
+.settings-policy-heading + .settings-policy-row,
+.development-environment-row:first-child,
+.settings-overview-row:first-child {
+  border-top-left-radius: var(--radius-floating-panel);
+  border-top-right-radius: var(--radius-floating-panel);
+}
+
+.storage-settings-row:last-child,
+.web-settings-row:last-child,
+.settings-policy-row:last-child,
+.development-environment-row:last-child,
+.settings-overview-row:last-child {
+  border-bottom: 0;
+  border-bottom-left-radius: var(--radius-floating-panel);
+  border-bottom-right-radius: var(--radius-floating-panel);
+}
+
+/* A notice inside a group is its own rounded fill rather than a row of the card. */
+.storage-settings-notice,
+.web-settings-notice {
+  margin: 8px 0 4px;
+  border-radius: var(--radius-ui);
+}
+
+/* The switch the reference uses: a blue pill when on, not a grey one. */
+.plugin-switch {
+  width: 36px;
+  height: 20px;
+  flex: 0 0 36px;
+}
+
+.plugin-switch > span {
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.plugin-switch.checked {
+  background: var(--settings-switch-on);
+}
+
+.plugin-switch.checked > span {
+  transform: translateX(16px);
+}
+
+/* Row controls (selects and the small action buttons) share one button look. */
+.web-settings-row select,
+.web-settings-field select,
+.settings-policy-row select,
+.storage-settings-row select,
+.storage-settings-row > button,
+.web-settings-row > button,
+.settings-policy-row > button,
+.development-environment-action-row button {
+  min-height: var(--control-height-row);
+  padding: 0 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-ui);
+  font-size: 12px;
+}
+
+/* Reference proportions: a larger page title, muted small group headings, slightly taller rows and
+   a card fill you can actually see against the page canvas. */
+.settings-module-heading h2 {
+  font-size: 26px;
+}
+
+.settings-module-heading p {
+  font-size: 13px;
+}
+
+.storage-settings-heading,
+.settings-policy-heading {
+  padding-bottom: 6px;
+}
+
+.storage-settings-heading strong,
+.settings-policy-heading strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 820;
+  letter-spacing: 0.01em;
+}
+
+.storage-settings-row,
+.web-settings-row,
+.settings-policy-row {
+  min-height: 68px;
+}
+
+.storage-settings-row,
+.web-settings-row,
+.settings-policy-row,
+.development-environment-row,
+.settings-overview-row {
+  background: rgba(255, 255, 255, 0.032);
+}
+
+/* Choice lists (display mode, agent profile, close policy) are one card of joined rows too: the
+   chosen row is simply the brighter one inside the card, and its check stays on the right. */
+.profile-choice-list {
+  gap: 0;
+  width: min(760px, 100%);
+  margin-top: 18px;
+}
+
+.profile-choice-list > .profile-choice {
+  min-height: 64px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.032);
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.profile-choice-list > .profile-choice:first-child {
+  border-top-left-radius: var(--radius-floating-panel);
+  border-top-right-radius: var(--radius-floating-panel);
+}
+
+.profile-choice-list > .profile-choice:last-child {
+  border-bottom: 0;
+  border-bottom-left-radius: var(--radius-floating-panel);
+  border-bottom-right-radius: var(--radius-floating-panel);
+}
+
+.profile-choice-list > .profile-choice.active {
+  background: rgba(255, 255, 255, 0.07);
+}
