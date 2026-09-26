@@ -41,13 +41,16 @@ describe('SidebarToggleIcon', () => {
 })
 
 describe('CopyIcon', () => {
-  it('renders a compact overlapping-document copy glyph', () => {
+  it('renders two rounded sheets with the front one really in front', () => {
     const icon = renderToStaticMarkup(React.createElement(CopyIcon))
 
     expect(icon).toContain('class="sidebar-svg-icon copy-icon"')
     expect(icon).toContain('shape-rendering="geometricPrecision"')
-    expect(icon).toContain('x="3.25" y="5.25" width="7.5" height="7.5"')
-    expect(icon).toContain('x="5.25" y="2.75" width="7.5" height="8.5"')
+    // The back sheet is drawn first; the front one carries its own fill class so its interior hides
+    // the back sheet's lines instead of letting them cross.
+    expect(icon).toContain('class="copy-icon-back" x="5.5" y="2.6" width="8" height="8" rx="2.1"')
+    expect(icon).toContain('class="copy-icon-front" x="2.5" y="5.4" width="8" height="8" rx="2.1"')
+    expect(icon.indexOf('copy-icon-back')).toBeLessThan(icon.indexOf('copy-icon-front'))
   })
 })
 

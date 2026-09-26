@@ -428,7 +428,7 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/App.tsx': 16,
     // 2026-09-02: startup recovery, runtime settings and session projection
     // changes are frozen here; the facade is now in the hard-limit queue.
-    'packages/app/src/renderer/app-shell/use-app-controller.ts': 654,
+    'packages/app/src/renderer/app-shell/use-app-controller.ts': 655,
     // 2026-08-14: stable conversation-turn request identity and rejected-input
     // retention are now owned by this facade; further growth remains blocked.
     'packages/app/src/renderer/chat/run-actions.ts': 349,

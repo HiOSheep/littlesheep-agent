@@ -35,6 +35,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     activityNow,
     openFileInWorkspace,
     openReviewInWorkspace,
+    branchConversationFromMessage,
     projectPath,
   } = controller
   // The turn's files are opened from here, so their line counts come from the same workspace.
@@ -111,6 +112,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                 messageKey={m.id ?? `message-${i}`}
                 now={activityNow}
                 onOpenFile={openFileInWorkspace}
+                onBranch={branchConversationFromMessage}
               />
             ) : (
               <div key={m.id ?? i} data-message-key={m.id ?? `message-${i}`} className={`message-with-meta ${m.role}`}>
@@ -130,7 +132,14 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                     <MessageFileStrip files={m.artifacts} label="产出成果" workspaceRoot={artifactsWorkspaceRoot} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
                   )}
                 </div>
-                <MessageMeta role={m.role} text={m.text} timestamp={m.timestamp} />
+                <MessageMeta
+                  role={m.role}
+                  text={m.text}
+                  timestamp={m.timestamp}
+                  onBranch={m.role === 'assistant' && m.id
+                    ? () => void branchConversationFromMessage(m.id as string)
+                    : undefined}
+                />
               </div>
             )
           ))}

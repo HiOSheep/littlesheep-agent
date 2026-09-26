@@ -147,14 +147,7 @@ export function CheckIcon() {
 }
 
 
-export function CopyIcon() {
-  return (
-    <svg className="sidebar-svg-icon copy-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
-      <rect x="3.25" y="5.25" width="7.5" height="7.5" rx="1.35" />
-      <rect x="5.25" y="2.75" width="7.5" height="8.5" rx="1.35" />
-    </svg>
-  )
-}
+
 
 
 export function SortIcon() {
@@ -348,3 +341,5 @@ export function ModeRiskIcon({ risk, className }: { risk: ModeRisk; className: s
     </svg>
   )
 }
+
+export { BranchIcon, CopyIcon } from './message-icons'

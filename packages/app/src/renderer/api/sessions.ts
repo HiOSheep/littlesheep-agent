@@ -88,6 +88,23 @@ export async function deleteSession(id: string, opts: { hard?: boolean } = {}): 
   if (!res.ok) throw localApiStatusError(res.status)
 }
 
+/**
+ * Forks a conversation at one of its messages. The branch is a real session holding everything up to
+ * and including that message, so the two can be continued independently from there.
+ */
+export async function branchSession(id: string, messageId: string): Promise<{ sessionId: string; messages: number }> {
+  const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id, '/branch'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messageId }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+  return res.json() as Promise<{ sessionId: string; messages: number }>
+}
+
 export async function renameSession(id: string, title: string): Promise<{ session: SessionMeta }> {
   const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id), {
     method: 'PATCH',

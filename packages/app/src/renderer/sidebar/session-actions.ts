@@ -3,6 +3,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { projectSessions } from '../../shared/session-scope'
 import {
+  branchSession,
   deleteSession,
   getSessionMessagePage,
   renameSession as requestSessionRename,
@@ -392,5 +393,25 @@ export function createSessionActions(context: SessionActionContext) {
       return next
     })
   }
-  return { createConversationFromSidebar, createProjectConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession }
+  /**
+   * Forks the current conversation at one of its messages and opens the branch.
+   *
+   * The branch is created by Main as a real session holding everything up to and including that
+   * message, so it can be continued on its own; the reader lands in it, which is the point of
+   * branching — the same conversation now has two futures.
+   */
+  async function branchConversationFromMessage(messageId: string) {
+    const sessionId = currentSession
+    if (!sessionId || !messageId) return
+    try {
+      const { sessionId: branchId } = await branchSession(sessionId, messageId)
+      const refreshed = await refreshSessions()
+      const branch = refreshed.find((session) => session.id === branchId)
+      if (branch) await switchSession(branch)
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : '分叉失败，请稍后重试。')
+    }
+  }
+
+  return { createConversationFromSidebar, createProjectConversationFromSidebar, openSidebarPanel, closeSidebarPanel, switchSession, loadOlderMessages, archiveSession, deleteSessionPermanently, renameSession, sessionsForProject, archiveAllSessions, togglePinnedSession, branchConversationFromMessage }
 }

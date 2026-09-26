@@ -5,11 +5,11 @@ import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
 import { ActivityGlyph } from './activity-glyph'
 import { ReasoningRow } from './reasoning-row'
+import { TurnUsageButton, turnUsageFigures, turnUsageLabel } from './turn-usage-card'
 import { InlineMarkdown, Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
 import {
   buildArtifactsFromLiveTools,
-  formatDurationMs,
   formatMaybeDuration,
   liveStepStatusLabel,
 } from './activity-model'
@@ -36,6 +36,8 @@ interface AssistantTurnMessageProps {
   /** The workspace the turn's files live in, for their line counts. */
   workspaceRoot?: string
   onOpenFile: (path: string) => void
+  /** Forks the conversation at this turn. */
+  onBranch?: (messageId: string) => void
   /** Opens one of the turn's files in the workspace review. */
   onOpenReview?: (path: string) => void
 }
@@ -48,6 +50,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   workspaceRoot,
   onOpenFile,
   onOpenReview,
+  onBranch,
 }: AssistantTurnMessageProps) {
   const displayMode = useConversationDisplayMode()
   const activity = message.activity
@@ -64,7 +67,12 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
           )}
           {message.webEvidence && <WebSources evidence={message.webEvidence} />}
         </div>
-        <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
+        <MessageMeta
+          role="assistant"
+          text={message.text}
+          timestamp={message.timestamp}
+          onBranch={message.id && onBranch ? () => onBranch(message.id as string) : undefined}
+        />
         <TurnUsageFooter message={message} />
       </div>
     )
@@ -98,7 +106,12 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             )}
             {message.webEvidence && <WebSources evidence={message.webEvidence} />}
           </div>
-          <MessageMeta role="assistant" text={message.text} timestamp={message.timestamp} />
+          <MessageMeta
+            role="assistant"
+            text={message.text}
+            timestamp={message.timestamp}
+            onBranch={message.id && onBranch ? () => onBranch(message.id as string) : undefined}
+          />
           <TurnUsageFooter message={message} />
         </div>
       )}
@@ -117,6 +130,7 @@ function sameAssistantTurnProps(
     || previous.onOpenFile !== next.onOpenFile
     || previous.onOpenReview !== next.onOpenReview
     || previous.workspaceRoot !== next.workspaceRoot
+    || previous.onBranch !== next.onBranch
   ) return false
   return previous.message.activity?.status !== 'running' || previous.now === next.now
 }
@@ -452,91 +466,44 @@ function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }
   return <div className="agent-transcript-summary" data-transcript-summary="true">{parts.join(' · ')}</div>
 }
 
+/**
+ * The same numbers, behind one pill. The line that used to run under every answer listed the cache
+ * rate four ways, four token kinds and the rate; it is reference material, so it lives in the card
+ * the pill opens, together with the per-call cache detail.
+ */
 function TurnUsageFooter({ message }: { message: ChatMessage }) {
   const usage = message.usage
   if (!usage) return null
-  if (usage.usageCompleteness === 'unknown') {
-    return <footer className="turn-usage-footer" aria-label="本轮用量">本轮用量 · 供应商未返回 token 统计</footer>
-  }
-  const providerSeconds = Math.max(0, (usage.providerDurationMs ?? 0) / 1000)
-  const fullyTimed = usage.requestCount !== undefined
-    && usage.timedRequestCount === usage.requestCount
-    && usage.timedCompletionTokens !== undefined
-  const speed = fullyTimed && providerSeconds > 0 ? usage.timedCompletionTokens! / providerSeconds : undefined
-  const cacheComplete = usage.requestCount !== undefined
-    && usage.cacheReportedRequestCount === usage.requestCount
-    && usage.cachedPromptTokens !== undefined
-  const cached = usage.cachedPromptTokens
-  // Prefer the provider's own disjoint miss count; only subtract when the
-  // Provider reported cached tokens without a miss count.
-  const uncached = usage.uncachedPromptTokens
-    ?? (cacheComplete ? Math.max(0, usage.promptTokens - cached!) : undefined)
-  const cacheHit = cacheComplete && usage.promptTokens > 0
-    ? `${Math.round((cached! / usage.promptTokens) * 100)}%`
-    : usage.cacheReportedRequestCount ? '部分提供' : '未提供'
-  // A blended ratio mixes the conversation's own turns with auxiliary stages
-  // whose prompts differ per stage; report both so the number is comparable
-  // with a session-level (DSH-style) cache rate.
-  const callGroups = summarizeCacheCallGroups(message.cacheCalls)
-  const mainHit = callGroups?.mainConversation.hitRatio === undefined
-    ? undefined
-    : `${Math.round(callGroups.mainConversation.hitRatio * 100)}%`
-  const auxiliaryHit = callGroups?.auxiliary.hitRatio === undefined
-    ? undefined
-    : `${Math.round(callGroups.auxiliary.hitRatio * 100)}%`
-  const parts = [
-    message.durationMs ? `用时 ${formatDurationMs(message.durationMs)}` : '',
-    speed !== undefined ? `${speed.toFixed(1)} tok/s` : '',
-    '本轮用量',
-    message.modelRef ?? '供应商/模型未知',
-    `缓存命中 ${cacheHit}`,
-    mainHit === undefined ? '' : `主对话命中 ${mainHit}（${callGroups!.mainConversation.calls} 次）`,
-    auxiliaryHit === undefined ? '' : `辅助阶段命中 ${auxiliaryHit}（${callGroups!.auxiliary.calls} 次）`,
-    `未缓存输入 ${uncached ?? '未提供'}`,
-    `缓存读取 ${cached ?? '未提供'}`,
-    `缓存写入 ${usage.cacheWriteTokens ?? '未提供'}`,
-    `输出 ${usage.completionTokens}`,
-    usage.reasoningTokens !== undefined ? `其中推理 ${usage.reasoningTokens}` : '',
-    usage.usageCompleteness === 'partial' ? '用量统计不完整' : '',
-  ].filter(Boolean)
   const calls = message.cacheCalls ?? []
   const reasons = message.cacheReasons ?? []
+  const callGroups = summarizeCacheCallGroups(message.cacheCalls)
+  const detailLines = [
+    ...calls.map((call) => [
+      `#${call.requestIndex} ${call.stage} · ${cacheCallStatusLabel(call.status)}`,
+      call.hitRatio === undefined ? '' : `${Math.round(call.hitRatio * 100)}%`,
+      call.promptTokens === undefined ? '输入 未提供' : `输入 ${call.promptTokens}`,
+      call.cachedPromptTokens === undefined ? '' : `缓存读取 ${call.cachedPromptTokens}`,
+      call.uncachedPromptTokens === undefined ? '' : `未缓存 ${call.uncachedPromptTokens}`,
+    ].filter(Boolean).join(' · ')),
+    reasons.length > 0
+      ? `主要原因：${reasons.map((entry) => `${cacheReasonLabel(entry.reason)}×${entry.count}`).join('、')}`
+      : '',
+  ].filter(Boolean)
   return (
     <footer className="turn-usage-footer" aria-label="本轮用量">
-      <span className="turn-usage-summary">{parts.join(' · ')}</span>
-      {calls.length > 0 ? (
-        <details className="turn-usage-cache-detail">
-          <summary>
-            逐调用缓存明细（{calls.length}
-            {message.cacheCallsTruncated ? '，仅最近若干次' : ''}）
-          </summary>
-          <ul className="turn-usage-cache-calls">
-            {calls.map((call) => (
-              <li key={`${call.requestIndex}:${call.stage}`}>
-                <span className="turn-usage-cache-call-head">
-                  #{call.requestIndex} {call.stage} · {cacheCallStatusLabel(call.status)}
-                  {call.hitRatio === undefined ? '' : ` ${Math.round(call.hitRatio * 100)}%`}
-                </span>
-                <span className="turn-usage-cache-call-amount">
-                  {call.promptTokens === undefined ? '输入 未提供' : `输入 ${call.promptTokens}`}
-                  {call.cachedPromptTokens === undefined ? '' : ` · 缓存读取 ${call.cachedPromptTokens}`}
-                  {call.uncachedPromptTokens === undefined ? '' : ` · 未缓存 ${call.uncachedPromptTokens}`}
-                </span>
-                {call.reasons.length > 0 ? (
-                  <span className="turn-usage-cache-call-reasons">
-                    原因 {call.reasons.map(cacheReasonLabel).join('、')}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {reasons.length > 0 ? (
-            <p className="turn-usage-cache-reasons">
-              主要原因：{reasons.map((entry) => `${cacheReasonLabel(entry.reason)}×${entry.count}`).join('、')}
-            </p>
-          ) : null}
-        </details>
-      ) : null}
+      <TurnUsageButton
+        label={turnUsageLabel(message)}
+        figures={[
+          ...turnUsageFigures(message),
+          ...(callGroups === undefined ? [] : [
+            { label: '主对话命中', value: `${Math.round((callGroups.mainConversation.hitRatio ?? 0) * 100)}%（${callGroups.mainConversation.calls} 次）` },
+            { label: '辅助阶段命中', value: `${Math.round((callGroups.auxiliary.hitRatio ?? 0) * 100)}%（${callGroups.auxiliary.calls} 次）` },
+          ]),
+        ]}
+        detail={calls.length > 0
+          ? { title: `逐调用缓存明细（${calls.length}${message.cacheCallsTruncated ? '，仅最近若干次' : ''}）`, lines: detailLines }
+          : undefined}
+      />
     </footer>
   )
 }

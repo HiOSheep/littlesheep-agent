@@ -108,6 +108,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'openFileInWorkspace',
     'openReviewInWorkspace',
     'projectPath',
+    'branchConversationFromMessage',
   ],
   composer: [
     'input',

@@ -861,3 +861,148 @@
   padding: 5px 6px;
   color: var(--feedback-danger-text);
 }
+
+/* The message action row. The front sheet of the copy mark is filled with the row's own background,
+   which is what puts it in front of the back sheet instead of letting the two outlines cross. */
+.copy-icon-back,
+.copy-icon-front {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+
+.copy-icon-front {
+  fill: var(--chat-message-surface, var(--surface));
+}
+
+.message-meta-copy,
+.message-meta-branch {
+  border-radius: var(--radius-ui);
+}
+
+.message-meta-branch .sidebar-svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The time reads at the size of the usage figures it sits beside, not larger than them. */
+.message-meta time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The usage pill and its card: everything the old line listed, behind one button. */
+.turn-usage-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: var(--surface-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  transition: color var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+}
+
+.turn-usage-button:hover,
+.turn-usage-button[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--control-hover);
+}
+
+.turn-usage-button .sidebar-svg-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.turn-usage-panel {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 6px;
+  width: min(340px, calc(100vw - 32px));
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-floating-panel);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42);
+}
+
+.turn-usage-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.turn-usage-panel-head-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+
+.turn-usage-panel-head strong {
+  font-weight: 600;
+}
+
+.turn-usage-panel-head-value {
+  margin-left: auto;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-usage-panel-rows {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.turn-usage-panel-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.turn-usage-panel-row dt {
+  color: var(--muted);
+}
+
+.turn-usage-panel-row dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-usage-panel-row.missing dd {
+  color: var(--muted-2);
+}
+
+.turn-usage-panel-detail {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.turn-usage-panel-detail summary {
+  cursor: default;
+}
+
+.turn-usage-panel-detail ul {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}

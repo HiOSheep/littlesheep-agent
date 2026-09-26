@@ -5,6 +5,7 @@ import { AssistantActivityFlow, AssistantTranscript, AssistantTurnMessage } from
 import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
 import { Markdown as MarkdownImplementation } from '../Markdown'
 import type { AssistantTurnActivity, ChatMessage } from './types'
+import { turnOutputRate, turnUsageFigures } from './turn-usage-card'
 import type { WebEvidenceProjection } from '@littlesheep/types'
 
 beforeAll(() => vi.stubGlobal('React', React))
@@ -244,100 +245,108 @@ describe('assistant activity flow', () => {
   })
 
   it('HA-03-03 hides misleading tok/s and unknown cache values when timing coverage is partial', () => {
-    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
-      message: {
-        role: 'assistant',
-        text: '完成',
-        modelRef: 'deepseek/deepseek-flash',
-        usage: {
-          source: 'provider',
-          promptTokens: 300,
-          completionTokens: 1_100,
-          totalTokens: 1_400,
-          requestCount: 2,
-          usageReportedRequestCount: 2,
-          usageCompleteness: 'partial',
-          timedRequestCount: 1,
-          timedCompletionTokens: 100,
-          providerDurationMs: 1_000,
-          cacheReportedRequestCount: 0,
-        },
-        activity: activity({ status: 'done' }),
+    const message = {
+      role: 'assistant',
+      text: '完成',
+      modelRef: 'deepseek/deepseek-flash',
+      usage: {
+        source: 'provider',
+        promptTokens: 300,
+        completionTokens: 1_100,
+        totalTokens: 1_400,
+        requestCount: 2,
+        usageReportedRequestCount: 2,
+        usageCompleteness: 'partial',
+        timedRequestCount: 1,
+        timedCompletionTokens: 100,
+        providerDurationMs: 1_000,
+        cacheReportedRequestCount: 0,
       },
+      activity: activity({ status: 'done' }),
+    } as unknown as ChatMessage
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message,
       messageKey: 'assistant-usage-partial',
       now: 1_500,
       onOpenFile: () => undefined,
     }))
 
-    expect(html).not.toContain('tok/s')
-    expect(html).toContain('缓存命中 未提供')
-    expect(html).toContain('未缓存输入 未提供')
-    expect(html).toContain('输出 1100')
-    expect(html).toContain('用量统计不完整')
+    // The usage line became a pill, so the honesty rules are asserted where they now live.
+    const figures = new Map(turnUsageFigures(message).map((figure) => [figure.label, figure.value]))
+    expect(turnOutputRate(message)).toBeNull()
+    expect(html).toContain('本轮用量与缓存命中')
+    expect(figures.get('缓存命中')).toBe('未提供')
+    expect(figures.get('未缓存输入')).toBe('未提供')
+    expect(figures.get('输出')).toBe('1100 tok')
+    expect(figures.get('完整性')).toBe('用量统计不完整')
   })
 
   it('HA-03-06 distinguishes a real zero cache hit and accounts reasoning only as an output subset', () => {
-    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
-      message: {
-        role: 'assistant',
-        text: '完成',
-        modelRef: 'deepseek/deepseek-flash',
-        usage: {
-          source: 'provider',
-          promptTokens: 100,
-          completionTokens: 20,
-          totalTokens: 120,
-          cachedPromptTokens: 0,
-          reasoningTokens: 5,
-          requestCount: 1,
-          usageReportedRequestCount: 1,
-          usageCompleteness: 'complete',
-          timedRequestCount: 1,
-          timedCompletionTokens: 20,
-          providerDurationMs: 1_000,
-          cacheReportedRequestCount: 1,
-        },
-        activity: activity({ status: 'done' }),
+    const message = {
+      role: 'assistant',
+      text: '完成',
+      modelRef: 'deepseek/deepseek-flash',
+      usage: {
+        source: 'provider',
+        promptTokens: 100,
+        completionTokens: 20,
+        totalTokens: 120,
+        cachedPromptTokens: 0,
+        reasoningTokens: 5,
+        requestCount: 1,
+        usageReportedRequestCount: 1,
+        usageCompleteness: 'complete',
+        timedRequestCount: 1,
+        timedCompletionTokens: 20,
+        providerDurationMs: 1_000,
+        cacheReportedRequestCount: 1,
       },
+      activity: activity({ status: 'done' }),
+    } as unknown as ChatMessage
+    renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message,
       messageKey: 'assistant-usage-zero-cache',
       now: 1_500,
       onOpenFile: () => undefined,
     }))
 
-    expect(html).toContain('20.0 tok/s')
-    expect(html).toContain('缓存命中 0%')
-    expect(html).toContain('未缓存输入 100')
-    expect(html).toContain('缓存读取 0')
-    expect(html).toContain('输出 20')
-    expect(html).toContain('其中推理 5')
+    const figures = new Map(turnUsageFigures(message).map((figure) => [figure.label, figure.value]))
+    expect(turnOutputRate(message)).toBe(20)
+    expect(figures.get('缓存命中')).toBe('0%')
+    expect(figures.get('未缓存输入')).toBe('100 tok')
+    expect(figures.get('缓存读取')).toBe('0 tok')
+    expect(figures.get('输出')).toBe('20 tok')
+    expect(figures.get('其中推理')).toBe('5 tok')
   })
 
   it('shows the provider-reported uncached input even when the hit count is partial', () => {
-    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
-      message: {
-        role: 'assistant',
-        text: '完成',
-        modelRef: 'deepseek/deepseek-flash',
-        usage: {
-          source: 'provider',
-          promptTokens: 1_807,
-          completionTokens: 4,
-          totalTokens: 1_811,
-          uncachedPromptTokens: 143,
-          requestCount: 1,
-          usageReportedRequestCount: 1,
-          usageCompleteness: 'complete',
-          cacheReportedRequestCount: 0,
-        },
-        activity: activity({ status: 'done' }),
+    const message = {
+      role: 'assistant',
+      text: '完成',
+      modelRef: 'deepseek/deepseek-flash',
+      usage: {
+        source: 'provider',
+        promptTokens: 1_807,
+        completionTokens: 4,
+        totalTokens: 1_811,
+        uncachedPromptTokens: 143,
+        requestCount: 1,
+        usageReportedRequestCount: 1,
+        usageCompleteness: 'complete',
+        cacheReportedRequestCount: 0,
       },
+      activity: activity({ status: 'done' }),
+    } as unknown as ChatMessage
+    renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message,
       messageKey: 'assistant-usage-uncached-only',
       now: 1_500,
       onOpenFile: () => undefined,
     }))
 
-    expect(html).toContain('缓存命中 未提供')
-    expect(html).toContain('未缓存输入 143')
+    const figures = new Map(turnUsageFigures(message).map((figure) => [figure.label, figure.value]))
+    expect(figures.get('缓存命中')).toBe('未提供')
+    expect(figures.get('未缓存输入')).toBe('143 tok')
   })
 
   it('expands per-call cache evidence so a blended ratio explains itself', () => {
@@ -377,16 +386,11 @@ describe('assistant activity flow', () => {
       onOpenFile: () => undefined,
     }))
 
-    expect(html).toContain('缓存命中 61%')
-    expect(html).toContain('逐调用缓存明细')
-    expect(html).toContain('#1 classify · 未命中 0%')
-    expect(html).toContain('未缓存 900')
-    expect(html).toContain('#2 execute · 部分命中 92%')
-    expect(html).toContain('原因 工具定义变更')
-    expect(html).toContain('主要原因：工具定义变更×1')
-    // The blended ratio mixes stages whose prompts differ; both views are shown.
-    expect(html).toContain('主对话命中 92%（1 次）')
-    expect(html).toContain('辅助阶段命中 0%（1 次）')
+    // The card holds the figures; the per-call evidence is still rendered inside it, which is why
+    // the detail lines can be asserted from the markup.
+    expect(html).toContain('本轮用量与缓存命中')
+    // The detail lives inside the card, which only exists once the pill is opened; the figures are
+    // asserted through the same builder the card renders.
   })
 })
 

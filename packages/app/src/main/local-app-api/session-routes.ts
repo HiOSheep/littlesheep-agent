@@ -27,7 +27,7 @@ import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
-import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
+import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 
 /** Bounded like the other session fields: a path, not a document. */
 const SESSION_WORKSPACE_PATH_MAX_LENGTH = 4_096
@@ -51,6 +51,33 @@ export async function routeSessions(
   // Runner is still starting; only the branches below resolve it, lazily.
   if (method === 'GET' && path === LOCAL_APP_API_ROUTES.sessions) {
     json(res, 200, { sessions: await sessionIndex.list() })
+    return true
+  }
+
+  /**
+   * Fork a conversation at one of its messages (2026-09-26).
+   *
+   * A branch is a real session, not a view: it is created through the same manager, then filled with
+   * the messages up to and including the chosen one, so the branch can be continued, renamed,
+   * archived and deleted like any other conversation. The message id is durable, which is why the
+   * renderer can name it directly; an id that is not in the session is refused instead of guessed.
+   */
+  const sessionBranchId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions, '/branch')
+  if (method === 'POST' && sessionBranchId !== null) {
+    const runner = resolveRunner(context.getRunner)
+    const body = await readJson(request.req)
+    const messageId = typeof body.messageId === 'string' ? body.messageId : ''
+    const source = await runner.sessionManager.read(asSessionId(sessionBranchId))
+    const index = source.findIndex((message) => message.id === messageId)
+    if (index < 0) throw new HttpError(404, '找不到要分叉的消息，请刷新会话后重试。')
+    // The title comes from the session index the sidebar already reads, so the branch reads as a
+    // branch of that conversation rather than a nameless new one.
+    const sessions = await sessionIndex.list()
+    const sourceTitle = sessions.find((entry) => entry.id === sessionBranchId)?.title?.trim()
+    const branchTitle = sourceTitle ? `${sourceTitle}（分支）` : '分支对话'
+    const branch = await runner.sessionManager.create(undefined, branchTitle)
+    await runner.sessionManager.append(branch.id, source.slice(0, index + 1))
+    json(res, 200, { sessionId: branch.id, messages: index + 1 })
     return true
   }
 
