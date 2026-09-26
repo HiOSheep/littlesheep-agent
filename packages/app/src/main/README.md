@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 09:36:14
+最后更新：2026-09-26 09:46:51
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -92,3 +92,4 @@
 ## WSL 路径映射（UX-29 第 3 条，2026-09-26）
 
 `windowsPathToWslPath` 把 Windows 工作区路径映射成 WSL 能用的 `/mnt/<盘符>/...`（UNC 返回 null，不猜），`wslArgs(发行版, 工作区)` 用它作为 `--cd`，映射不出来时退回 `~`；WSL 的 `--cd` 依赖会话目录，所以参数不能像其它 Shell 一样在探测时冻结（`shellLaunch(profile, root)`）。实机验收（PowerShell 侧）：会话在含空格与中文的路径下启动，cwd 正确，且能写入并读回 `中文 文件.txt`。
+- **多个终端会话**（UX-30）：`local-app-api/workspace-terminal-sessions.test.ts` 实测两个真实会话输出互不串台、关闭其一不影响另一个、超过上限被拒绝；渲染侧的标签模型与标签条见 `renderer/workspace/terminal-sessions.ts`。

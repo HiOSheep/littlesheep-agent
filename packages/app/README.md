@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 09:35:53
+最后更新：2026-09-26 09:46:51
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -165,3 +165,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **终端可以选 Shell**（UX-29）：Main 探测本机真实可用的 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL（不可用项说明原因与配置路径，PATH 上的 `bash.exe` 若是 WSL 启动器不会被当成 Git Bash），终端顶部下拉用真实名称，选择只发送受校验的 profile id。
 - **终端 Shell 有真实验收**（UX-29 第 4 条 PowerShell 侧）：真实会话里验证 `$PSVersionTable` 与实际启动的 Shell 一致、进程可执行文件、cwd、中文输出、环境继承与多行粘贴；顺带修掉"可执行文件消失时返回假活会话"与"终止未启动进程抛 EINVAL 逃逸退出路径"两个缺陷。
 - **WSL 会话从工作区开始**（UX-29 第 3 条）：`windowsPathToWslPath` 把 Windows 路径映射为 `/mnt/<盘符>/...`（UNC 不猜、退回 home），WSL 的 `--cd` 因此跟随会话目录；实机验收还覆盖了含空格与中文的工作区路径（cwd 正确、能写读 `中文 文件.txt`）。
+- **多终端会话**（UX-30 起步）：Main 侧实测两个真实会话互不干扰、关掉一个另一个照常、超过上限的创建被拒绝；渲染侧新增纯标签模型（状态、退出码、有上限的回放缓存、输入永不送到已退出/启动中的会话）与标签条，单个会话时外观不变。
