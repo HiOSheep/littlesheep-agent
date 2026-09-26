@@ -3031,3 +3031,72 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
     opacity: 0.9;
   }
 }
+
+/* UX-30: one tab per terminal session, each naming the shell and state it really has. */
+.workspace-terminal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 4px;
+}
+
+.workspace-terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  background: var(--surface);
+}
+
+.workspace-terminal-tab.active {
+  border-color: var(--accent, var(--border));
+}
+
+.workspace-terminal-tab.exited .workspace-terminal-tab-shell,
+.workspace-terminal-tab.failed .workspace-terminal-tab-shell {
+  color: var(--muted);
+}
+
+.workspace-terminal-tab-select {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+
+.workspace-terminal-tab-shell {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.workspace-terminal-tab-close {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.workspace-terminal-shell-notice {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.workspace-terminal-shell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.workspace-terminal-shell-label {
+  color: var(--muted);
+}

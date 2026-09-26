@@ -68,7 +68,8 @@ describe('terminal shell choice', () => {
     const terminal = await readFile(new URL('./terminal.tsx', import.meta.url), 'utf8')
     const picker = await readFile(new URL('./terminal-shell-picker.tsx', import.meta.url), 'utf8')
     expect(terminal).toContain('WorkspaceTerminalShellPicker')
-    expect(terminal).toContain('resolveTerminalShellChoice')
+    // The surface uses the hook that owns discovery + preference (UX-30 extraction).
+    expect(terminal).toContain('useTerminalShellSelection')
     expect(picker).toContain('aria-label="选择终端 Shell"')
     expect(picker).toContain('本机缺少')
   })

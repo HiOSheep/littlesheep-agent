@@ -2,10 +2,15 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { useEffect, useRef, useState } from 'react'
-import { preferredShellId, resolveTerminalShellChoice, savePreferredShellId } from './terminal-shell-choice'
+import { useEffect, useReducer, useRef, useState } from 'react'
+import { useTerminalShellSelection } from './use-terminal-shell-selection'
 import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
 import { WorkspaceTerminalToolbar } from './terminal-toolbar'
+import {
+  EMPTY_TERMINAL_SESSIONS,
+  reduceTerminalSessions,
+  terminalInputTarget,
+} from './terminal-sessions'
 import {
   WorkspaceTerminalActivityList,
 } from './terminal-activity'
@@ -19,8 +24,6 @@ import {
   createWorkspaceTerminalSession,
   interruptWorkspaceTerminalSession,
   listWorkspaceTerminalActivity,
-  listWorkspaceTerminalShells,
-  type WorkspaceShellProfile,
   resizeWorkspaceTerminalSession,
   streamWorkspaceTerminalSession,
   type TerminalActivityRecord
@@ -70,17 +73,19 @@ export function WorkspaceTerminal({
   const [activityError, setActivityError] = useState('')
   // UX-29: the shells Main discovered, the saved preference, and what the running session
   // actually is. The picker chooses; Main validates the id and decides executable and args.
-  const [shellProfiles, setShellProfiles] = useState<WorkspaceShellProfile[]>([])
-  const [shellId, setShellId] = useState<string | null>(null)
-  const [shellNotice, setShellNotice] = useState('')
-  const shellIdRef = useRef<string | null>(null)
+  const shellSelection = useTerminalShellSelection()
   const [runningShell, setRunningShell] = useState('')
+  // The tab model owns which sessions exist and what state each one is in (UX-30); the strip
+  // only appears once there is more than one, so a single terminal looks exactly as before.
+  const [sessionTabs, dispatchSessionTabs] = useReducer(reduceTerminalSessions, EMPTY_TERMINAL_SESSIONS)
   const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
   const inputControllerRef = useRef<TerminalInputController | null>(null)
   const activeRef = useRef(active)
+  const sessionTabsRef = useRef(sessionTabs)
   const terminalInputEnabledRef = useRef(false)
   activeRef.current = active
+  sessionTabsRef.current = sessionTabs
 
   useEffect(() => {
     void refreshTerminalActivities()
@@ -274,26 +279,13 @@ export function WorkspaceTerminal({
   useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
-    terminal.options.disableStdin = !terminalInputEnabledRef.current || !active
+    // The tab model decides whether the active session may receive input at all (UX-30):
+    // a starting, exited or failed session must never be typed into.
+    terminal.options.disableStdin = !terminalInputEnabledRef.current
+      || !active
+      || terminalInputTarget(sessionTabsRef.current) === null
     if (active && terminalInputEnabledRef.current) terminal.focus()
   }, [active])
-
-  // Discovery changes when the machine changes (a Git install, a WSL distribution), so it is
-  // read once per mount and every start asks Main again through the profile id.
-  useEffect(() => {
-    let alive = true
-    void listWorkspaceTerminalShells()
-      .then((profiles) => {
-        if (!alive) return
-        setShellProfiles(profiles)
-        const choice = resolveTerminalShellChoice(profiles, preferredShellId())
-        setShellId(choice.selected?.id ?? null)
-        setShellNotice(choice.notice ?? '')
-        shellIdRef.current = choice.selected?.id ?? null
-      })
-      .catch(() => undefined)
-    return () => { alive = false }
-  }, [])
 
   async function startTerminalSession(isDisposed: () => boolean) {
     streamAbortRef.current?.abort()
@@ -308,13 +300,19 @@ export function WorkspaceTerminal({
       terminalOutputSeen = true
       setStatus(`${terminalReadyLabel} 就绪`)
       setTerminalInputEnabled(true)
+      // The session is only usable once it has produced output; the tab says so (UX-30).
+      dispatchSessionTabs({
+        type: 'status',
+        id: terminalSessionRef.current ?? '',
+        status: 'ready',
+      })
       void inputControllerRef.current?.drain()
     }
     try {
       const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
         ? terminalSizeRef.current
         : undefined
-      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size, shellIdRef.current ?? undefined)
+      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size, shellSelection.shellIdRef.current ?? undefined)
       if (isDisposed()) {
         await closeWorkspaceTerminalSession(terminalSession.sessionId).catch(() => undefined)
         return
@@ -323,6 +321,17 @@ export function WorkspaceTerminal({
       terminalBackendRef.current = terminalSession.backend ?? 'spawn'
       terminalReadyLabel = terminalSession.shell
       setRunningShell(terminalSession.shell)
+      // One tab per real session, labelled with the shell Main actually launched (UX-30).
+      dispatchSessionTabs({
+        type: 'open',
+        tab: {
+          id: terminalSession.sessionId,
+          shellId: shellSelection.shellIdRef.current ?? null,
+          shellLabel: terminalSession.shell,
+          cwd: terminalSession.cwd ?? workspacePath,
+          status: 'starting',
+        },
+      })
       setTerminalBackend(terminalSession.backend ?? 'spawn')
       terminalSizeRef.current = { cols: terminalSession.cols, rows: terminalSession.rows }
       reportTerminalSize()
@@ -348,10 +357,18 @@ export function WorkspaceTerminal({
             enableInputAfterOutput()
           }
         },
-        onExit: () => {
+        onExit: (event) => {
           if (!isDisposed()) {
             setTerminalInputEnabled(false)
             setStatus('终端已退出')
+            // An exited session keeps its tab and its state, so the user can see what happened
+            // instead of watching a terminal that silently looks alive (UX-30).
+            dispatchSessionTabs({
+              type: 'status',
+              id: terminalSessionRef.current ?? '',
+              status: 'exited',
+              exitCode: event?.exitCode ?? null,
+            })
           }
         },
         onError: (message) => {
@@ -470,7 +487,7 @@ export function WorkspaceTerminal({
   }
 
   // The real shell, never a hardcoded one: the label follows the running session (UX-29).
-  const shellLabel = runningShell || shellId || 'Shell'
+  const shellLabel = runningShell || shellSelection.shellId || 'Shell'
   return (
     <div className="workspace-terminal">
       <header className="workspace-terminal-header workspace-page-leading-row">
@@ -480,13 +497,11 @@ export function WorkspaceTerminal({
         </div>
         <div className="workspace-terminal-actions">
           <WorkspaceTerminalShellPicker
-            profiles={shellProfiles}
-            selectedId={shellId}
+            profiles={shellSelection.profiles}
+            selectedId={shellSelection.shellId}
             busy={!running && status === '启动中'}
             onSelect={(id) => {
-              savePreferredShellId(id)
-              setShellId(id)
-              setShellNotice('')
+              shellSelection.choose(id)
               void stopAndRestartTerminal()
             }}
             onTipChange={(tip) => onTipChange(tip ? buildFloatingHelpTip(tip.label, tip.x, tip.y) : null)}
@@ -514,8 +529,8 @@ export function WorkspaceTerminal({
           </button>
         </div>
         {/* A saved Shell that is no longer installed says so here instead of vanishing. */}
-        {shellNotice && (
-          <p className="workspace-terminal-shell-notice" role="status">{shellNotice}</p>
+        {shellSelection.notice && (
+          <p className="workspace-terminal-shell-notice" role="status">{shellSelection.notice}</p>
         )}
       </header>
       <WorkspaceTerminalActivityList

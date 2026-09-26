@@ -1,5 +1,5 @@
 # Renderer 拓展工作区
-最后更新：2026-09-26 09:25:02
+最后更新：2026-09-26 09:46:13
 
 这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
 
@@ -60,3 +60,4 @@
 - **审阅差异面板缺陷（记录）**：在真实渲染的窗口里实测，`.monaco-diff-editor` 仍带 inline `height: 5px`、父链明确 716 px、只渲染 1 行与 1 个 gutter 行号；已排除渲染节流、帧合并、模型变化后布局、延迟布局与应用自身 resize 事件五条假设。
 - **编辑器盒子由应用自己测量（UX-28 第 4 条修复）**：`code-editor.tsx` 的 `measureEditorBox` 向上有界取最大盒子并显式 `layout({width,height})`；修复前审阅差异面板只有 5 px／1 行／1 个行号，修复后 716 px／12 行／行号 1,2,3。差异交互的窗口级验收用 `park-offscreen`（窗口移出所有显示器后 `showInactive()`），因此需要真实布局的检查不会出现在用户桌面上。
 - **Shell 下拉与真实名称**（UX-29）：`workspace/terminal-shell-picker.tsx` 提供下拉（不可用项在提示里说明缺什么），`terminal-shell-choice.ts` 决定选中项并在**偏好失效时明确提示**（原因 + 配置路径 + 已改用的 Shell），终端标题与中断/重启提示都使用真实运行中的 Shell 名称；最近命令列表抽到 `terminal-activity.tsx`、工具按钮抽到 `terminal-toolbar.tsx`（`terminal.tsx` 543 行，低于原基线）。
+- **多终端标签模型**（UX-30）：`workspace/terminal-sessions.ts` 是纯 reducer（标签带 Shell、cwd、状态、退出码与有上限的回放缓存；超过 8 个标签拒绝并说明；关闭后选中项落到邻位；`terminalInputTarget` 保证输入永远不会送到启动中/已退出/失败的会话），`terminal-tabs.tsx` 渲染标签条，`use-terminal-shell-selection.ts` 持有探测与偏好；`terminal.tsx` 用该模型跟随真实会话状态。
