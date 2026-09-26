@@ -694,6 +694,18 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   outline: 0;
 }
 
+/* The tab row is one surface: its two controls (fullscreen and the corner toggle) carry no fill of
+   their own in any state, so a hover never leaves an isolated grey block sitting on the strip.
+   They answer with the icon's colour instead. */
+.workspace-panel-action:hover,
+.workspace-panel-action:focus-visible,
+.workspace-panel-corner-toggle:hover,
+.workspace-panel-corner-toggle:focus-visible {
+  color: var(--text-strong);
+  background: transparent;
+  border-color: transparent;
+}
+
 .workspace-panel-svg-icon {
   display: block;
   width: 16px;
