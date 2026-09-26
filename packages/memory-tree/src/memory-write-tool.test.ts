@@ -52,7 +52,8 @@ function harness(options: {
       relationRefs: [],
     }),
   })
-  const ctx = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws' } as never
+  // The tool only ever runs after the harness granted approval for this call.
+  const ctx = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', approvalGranted: true } as never
   return { tool, write, writes, ctx }
 }
 
@@ -199,5 +200,40 @@ describe('memory write identity', () => {
     expect(userAskedToRemember('Please remember that I prefer concise replies')).toBe(true)
     expect(userAskedToRemember('别忘记把测试跑一遍')).toBe(true)
     expect(userAskedToRemember('这个构建为什么失败？')).toBe(false)
+  })
+})
+
+describe('memory write evidence and approval', () => {
+  it('refuses a write that cites a truncated source, and ignores truncation it did not cite', async () => {
+    const messages: MemoryWriteSourceMessage[] = [
+      { ...userMessage('m1', '记住：端口是 5432。'), truncated: true },
+      userMessage('m2', '记住：部署窗口是周五。'),
+    ]
+    const truncatedCite = harness({ messages })
+    const refused = await truncatedCite.tool.execute({ ...baseInput, sourceMessageIds: ['m1'] }, truncatedCite.ctx)
+    expect(refused.ok).toBe(false)
+    expect(refused.meta?.errorKind).toBe('memory_write_source_incomplete')
+    expect(refused.error).toContain('m1')
+    expect(truncatedCite.write).not.toHaveBeenCalled()
+
+    // The same session, citing only the whole message, is written.
+    const cleanCite = harness({ messages })
+    const accepted = await cleanCite.tool.execute({ ...baseInput, sourceMessageIds: ['m2'] }, cleanCite.ctx)
+    expect(accepted.ok).toBe(true)
+    expect(cleanCite.write).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to write without the approval grant for this call', async () => {
+    const { tool, write } = harness({ messages: [userMessage('m1', '记住：端口是 5432。')] })
+    const unapproved = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', permissionMode: 'restricted' } as never
+    const result = await tool.execute(baseInput, unapproved)
+    expect(result.ok).toBe(false)
+    expect(result.meta?.errorKind).toBe('memory_write_not_approved')
+    expect(write).not.toHaveBeenCalled()
+
+    // The full mode is never asked for a grant, so a write there is not refused for lacking one.
+    const fullMode = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', permissionMode: 'full' } as never
+    const allowed = await tool.execute(baseInput, fullMode)
+    expect(allowed.ok).toBe(true)
   })
 })

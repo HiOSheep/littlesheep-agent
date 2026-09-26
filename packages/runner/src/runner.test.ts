@@ -3066,7 +3066,7 @@ describe('host file write entry points', () => {
     ]);
 
     const tool = runner.infra.registry.get('memory_write')!.tool;
-    const ctx = { sessionId: session.id, runId: 'run-1', cwd: dataDir } as never;
+    const ctx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never;
     const request = {
       reasonKind: 'user-request' as const,
       summary: '工程进度回复偏好',

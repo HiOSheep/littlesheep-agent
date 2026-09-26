@@ -47,6 +47,12 @@ export interface MemoryWriteSourceMessage {
   runId?: string
   /** Tool call ids this message reported results for. */
   toolCallIds?: string[]
+  /**
+   * True when the runtime sanitized or truncated this message's evidence. A cited source that is not
+   * whole cannot support a durable fact, so a write citing one is refused — while a truncation nobody
+   * cited never blocks a write.
+   */
+  truncated?: boolean
 }
 
 export interface MemoryWriteToolOptions {
@@ -130,6 +136,15 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
       }
       const request = parsed.data
 
+      // The body only runs after the approval service allowed this call, and both of the things that
+      // approval was about are verified again here: the grant (in the modes that require one) and the
+      // sources below. A persisted older grant must not widen what this call may write, and the full
+      // mode is not asked for a grant at all, so it is not refused for lacking one.
+      if (ctx.permissionMode && ctx.permissionMode !== 'full' && ctx.approvalGranted !== true) {
+        return failure('memory_write_not_approved',
+          `A durable write needs the user's approval in ${ctx.permissionMode} mode; this call has none.`)
+      }
+
       const used = writesByRun.get(ctx.runId) ?? 0
       if (used >= MEMORY_WRITE_MAX_PER_RUN) {
         return failure('memory_write_budget_exhausted',
@@ -150,6 +165,14 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
           `These source messages are not in this session, so they cannot support a durable write: ${missing.join(', ')}.`)
       }
       const sources = cited.filter((message): message is MemoryWriteSourceMessage => Boolean(message))
+
+      // Completeness is checked per cited source, never per session: a truncated tool result somewhere
+      // else in the conversation is not this write's problem, but a cited one cannot support a fact.
+      const incomplete = sources.filter((message) => message.truncated === true)
+      if (incomplete.length > 0) {
+        return failure('memory_write_source_incomplete',
+          `These cited sources were truncated or sanitized, so they cannot support a durable fact: ${incomplete.map((message) => message.id).join(', ')}.`)
+      }
 
       if (request.reasonKind === 'user-request') {
         const users = sources.filter((message) => message.role === 'user')

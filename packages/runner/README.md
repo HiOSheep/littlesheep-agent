@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-27 05:40:12
+最后更新：2026-09-27 05:52:46
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 `memory_write` 在 `infra.ts` 注册（RS-06，2026-09-27）：它把 `memoryService.write`、本会话最近 400 条消息（供来源核对）与 `resolveMemoryWriteEpistemic`（以中性的 `tool` stage）注入受控写入工具；`memory_tree` 仍是只读导航，两者权限档位相反——写入工具始终需要批准。注册表守卫测试同时断言两者在册、遗留的 `write_memory`/`record_experience` 不在册。

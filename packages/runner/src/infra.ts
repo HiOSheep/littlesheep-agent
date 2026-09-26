@@ -521,6 +521,12 @@ export async function buildInfrastructure(
           toolCallIds: message.content.flatMap((block) => (
             block.type === 'tool_result' ? [block.result.callId] : []
           )),
+          // A sanitized or truncated body cannot support a durable fact; the write tool refuses to
+          // cite it. Unrelated truncation elsewhere in the session is not reported here at all.
+          truncated: message.content.some((block) => (
+            block.type === 'tool_result'
+            && (block.result.sanitized === true || block.result.meta?.truncated === true)
+          )),
         }));
       },
       resolveEpistemic: ({ branch, scope, sourceRefs }) => resolveMemoryWriteEpistemic({
