@@ -1424,6 +1424,15 @@ body.is-resizing-column .workspace-shared-file-navigator {
   flex: 0 0 var(--workspace-files-navigator-width);
 }
 
+/* The shared wrapper owns the animated column width (`flex-basis` plus the negative `margin-left`
+   of the collapsed rail), so the navigator inside it takes that width instead of the shared
+   variable. With the variable the absolutely positioned navigator stayed a full 214px wide while
+   the wrapper collapsed, which left its left border standing over the diff: a separator that did
+   not travel with the folder column's own left edge. */
+.workspace-shared-file-navigator > .workspace-files-navigator {
+  width: 100%;
+}
+
 .workspace-files:has(> .workspace-files-navigator.navigator-collapsed) > .workspace-files-navigator {
   flex-basis: var(--workspace-files-control-rail-width);
   margin-left: calc(0px - var(--workspace-files-control-rail-width));
