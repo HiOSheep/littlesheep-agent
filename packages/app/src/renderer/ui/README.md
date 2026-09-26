@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-27 02:33:27
+最后更新：2026-09-27 03:07:21
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -43,5 +43,6 @@
 
 `icons.tsx` 是无状态声明式图标集合，350 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350，上限同步下调），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行按钮由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合；它**按状态画两个不同图标**（`data-wrap-icon="off"`：中间那条线直着伸出右边缘、箭头朝外＝不换行；`"on"`：同一条线折到下一行、箭头折回＝自动换行），切换时同步替换 SVG，因此按钮自身的图形就能说明当前状态，不只靠 `aria-pressed`。契约断言在 `code-wrap-preference.test.ts`（每个状态画哪个图标）。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
 
+**文件字形在 16px 下要能看清**（2026-09-26）：`.workspace-tree-glyph-icon` 从 14px 提到 **16px**（正好填满行网格里那一列），类型标记的字号从 5px 提到 **7px**——14px 下的 5px 标记等于 4.4px，就是一团糊。字形宽度有上限（"MD" 在 7px 时量到 12px，比 11px 的纸面还宽），所以字样本身偏宽的标记降一档到 **6px**（`markdown` / `pdf` / `database` / `git`），YAML 的标记由 `YML` 改成 **`YL`**（与参考一致，也才放得下）。真实窗口实测：字形 16×16、标记 `font-size: 6–7px`（"MD" 10.4px、"JS" 8.5px、"TS" 9.3px、"YL" 8.9px、`{}` 5.3px），行高仍是 26px。门禁在 `workspace-glyph-legibility.test.ts` 与 `icons.test.ts` 里钉住几何与标记。
 **两段式控件 `split-button.tsx`**（2026-09-26）：左段是"当前选择"的图标、点一下就立即用当前选择做事，右段是箭头、点开列出其它选择；菜单通过 portal 渲染成 `.split-button-menu`（图标 + 文案 + 当前项高亮 + 可选的分隔线行），整块只有 30px 高、比"标签 + 下拉 + 独立按钮"省一行。它被终端头的 Shell 选择与预览工具栏的"打开方式"共用；用法上的约定是 **左段只做当前这件事、选择留在右段的列表里**，`onPrimary` 与 `items[].onSelect` 都由调用方提供。
 **工作区文件与文件夹字形的形状语言**（`file-glyph-icons.tsx` + `styles/04-workspace.css`，2026-09-26）：每个字形都是一块**圆角实心板**——文件夹是带圆角页签和浅色横条的琥珀色板（`--workspace-folder-glyph`），文件是圆角纸张 + 浅色折角 + 该类型自己的标记；标记与颜色对齐各类型官方标识（HTML5 橙配 "5"、CSS3 蓝配 "3"、JavaScript 黄配 "JS"、TypeScript 蓝、Markdown 蓝配 "MD"、Go 青配 "Go"、Git 橙、PDF 红……），几何则在 14px 下重画以保证圆角不糊。`generic` 只有纸张没有标记；浅色底（JS 黄、JSON 黄）的标记用深色，其余用白色。改这里的形状或配色时同步 `icons.test.ts` 的标记断言（"MD"/"5"）与 `04-workspace.css` 的色表。

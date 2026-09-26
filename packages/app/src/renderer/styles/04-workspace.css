@@ -1855,8 +1855,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-chevron-icon,
 .workspace-tree-glyph-icon {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   shape-rendering: geometricPrecision;
   overflow: visible;
 }
@@ -1896,9 +1896,19 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   fill: #ffffff;
   stroke: none;
   font-family: var(--font);
-  font-size: 5px;
+  /* Readable at the 16px the tree renders: at 5px the type mark was a smudge. */
+  font-size: 7px;
   font-weight: 800;
   letter-spacing: 0;
+}
+
+/* Marks whose own letterforms are wide step down one size so they still fit inside the plate:
+   three characters ("PDF"), and "MD", which measures 12px at 7px against a 11px plate. */
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-markdown,
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-pdf,
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-database,
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-git {
+  font-size: 6px;
 }
 
 .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-javascript,

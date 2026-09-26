@@ -5,7 +5,7 @@
 // plus the type's own mark (JS / TS / 5 / 3 / MD / …). Colours and marks follow each type's
 // official logo (HTML5 orange with "5", CSS3 blue with "3", JavaScript yellow with "JS", Markdown
 // blue with "MD", Go cyan with "Go", …); the geometry is redrawn here so the corners stay round at
-// the 14px the navigator renders them.
+// the 16px the navigator renders them.
 
 export type FileGlyphKind =
   | 'markdown' | 'typescript' | 'javascript' | 'python' | 'json' | 'css' | 'html' | 'yaml'
@@ -14,7 +14,7 @@ export type FileGlyphKind =
 
 const FILE_GLYPH_LABELS: Partial<Record<FileGlyphKind, string>> = {
   markdown: 'MD', typescript: 'TS', javascript: 'JS', python: 'Py', json: '{}', css: '3',
-  html: '5', yaml: 'YML', shell: '>_', rust: 'Rs', go: 'Go', java: 'J', csharp: 'C#',
+  html: '5', yaml: 'YL', shell: '>_', rust: 'Rs', go: 'Go', java: 'J', csharp: 'C#',
   git: 'git', lock: 'L', pdf: 'PDF', database: 'SQL', config: '{}',
 }
 
