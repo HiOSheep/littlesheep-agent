@@ -65,10 +65,14 @@ describe('workspace terminal WSL acceptance', () => {
     const deadline = Date.now() + 120_000
     const mapped = windowsPathToWslPath(root)
     const sawBash = () => /LS-BASH:\d+\.\d+/u.test(plain(buffer))
-    const sawFailure = () => /E_UNEXPECTED|不支持|错误代码|not supported|代理/u.test(plain(buffer) + startError)
+    // `wsl.exe` prints "检测到 localhost 代理配置…" on every invocation here and still exits 0,
+    // so that warning is not a failure. A failure is the session ending, or the manager
+    // refusing to create it — measured by state, not by matching text.
+    let exited = false
+    session?.on('exit', () => { exited = true })
 
     if (session) session.writeInput('printf "LS-BASH:%s\\n" "$BASH_VERSION"\n')
-    while (Date.now() < deadline && !sawBash() && !sawFailure()) {
+    while (Date.now() < deadline && !sawBash() && !exited && !startError) {
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
 
@@ -85,13 +89,30 @@ describe('workspace terminal WSL acceptance', () => {
       }
       expect(plain(buffer)).toContain(`LS-PWD:${mapped}`)
       expect(plain(buffer)).toContain('LS-UNAME:Linux')
+
+      // The profile's environment reaches the shell, Chinese survives the relay, and a pasted
+      // pair of commands both run — the same acceptance the PowerShell side gets.
+      session!.writeInput('printf "LS-LANG:%s\\n" "$LANG"; printf "LS-TERM:%s\\n" "$TERM"\n')
+      session!.writeInput('printf "LS-CN:%s\\n" "中文输出-测试"\n')
+      session!.writeInput('printf "LS-DEV:%s\\n" "$(ls /mnt/c | head -1 | wc -l)"\nprintf "LS-DEV2:%s\\n" ok\n')
+      const done = Date.now() + 60_000
+      while (Date.now() < done && !/LS-DEV2:/u.test(plain(buffer))) {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      const finalText = plain(buffer)
+      expect(finalText).toContain('LS-LANG:C.UTF-8')
+      expect(finalText).toContain('LS-TERM:xterm-256color')
+      expect(finalText).toContain('LS-CN:中文输出-测试')
+      expect(finalText).toContain('LS-DEV2:ok')
       return
     }
 
-    // The measured outcome on this host: the session cannot start, and it says why.
+    // A session that cannot produce a Bash prompt has to have said why, through an error or by
+    // exiting — silence would be the one unacceptable outcome.
+    const reported = startError || plain(buffer).slice(-400)
     expect(
-      sawFailure(),
-      `a WSL session that cannot start must report why; saw: ${plain(buffer).slice(-400)} ${startError}`,
+      exited || Boolean(startError),
+      `a WSL session that cannot run must report why; saw: ${reported}`,
     ).toBe(true)
     if (session) session.kill()
   }, 240_000)

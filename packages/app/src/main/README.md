@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 10:11:24
+最后更新：2026-09-26 10:13:50
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -98,3 +98,7 @@
 ## WSL 的可用性与实测边界（UX-29 第 3、4 条，2026-09-26）
 
 探测把 `wsl.exe` 解析成 `%SystemRoot%\System32\wsl.exe`（裸名字会让"启动前检查可执行文件"把 WSL 判为不存在），并对每个发行版做可用性探测（`wsl -d <发行版> -- true`），失败时把原因与配置路径写进 profile。实测边界：普通子进程探测可以成功，而**终端会话**（ConPTY + WSL 中继）在本机失败（`Wsl/Service/E_UNEXPECTED`，宿主机 localhost 代理未镜像进 WSL），所以探测不预测会话成功；`workspace-terminal-wsl-acceptance.test.ts` 因此两侧都断言——能启动时验证真实 Bash 与 `/mnt` 工作区，不能启动时验证**失败被如实报出**。
+
+## WSL 会话实测（UX-29 第 3、4 条，2026-09-26 修正）
+
+此前记录过"本机 WSL 会话无法启动"，**该结论是错的**：`wsl.exe -d <发行版> -- true` 等调用在本机一律 exit 0，`wsl: 检测到 localhost 代理配置…` 只是警告；判错的原因是本机验收测试用文本匹配（"代理/错误代码"）当失败标志，于是提前跳出等待。修好后等待改按状态判定（会话退出或创建报错才算失败），实测真实 WSL 会话：`BASH_VERSION` ✓、`uname -s` = Linux ✓、`PWD` = 映射后的 `/mnt/c/...` 工作区 ✓、`LANG`/`TERM` 来自 profile ✓、中文回环 ✓、一次写入多行都执行 ✓。
