@@ -118,7 +118,7 @@
 | `packages/app/src/renderer/settings/models.tsx` | 373 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 614 | 布局尺寸交互、标签命令、草稿编辑与关闭前保存编排 | 会话布局持久化已下沉到 `use-workspace-session-layouts.ts`；保持交互 controller，冻结期间不得继续吸收新职责 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | 606 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
+| `packages/app/src/renderer/chat/assistant-turn.tsx` | 586 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 464 | 归档加载、树和操作，以及永久删除确认 | controller + project/session 视图；删除影响文案、确认层与同步防重复（`deletingRef`）已分别下沉到 `deletion-impact.ts`、`ui/danger-confirm.tsx` 与 ref 守卫 | B |
 | `packages/plugins/src/channel/manager.ts` | 388 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/main/local-app-api/memory-routes.ts` | 353 | 记忆文件、旧控制面兼容、资源、项目投影及迁移子路由组合 | 保持纯路由组合；新增治理进入独立子路由 | C |
@@ -231,7 +231,6 @@
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 同上 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 同上 |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | B / Renderer | 布局尺寸交互、标签命令与关闭前保存共享同一份会话布局状态；本轮只加了一次性的审阅点名请求（`workspaceReviewRequest` + `openReviewInWorkspace`），先把它与后续的布局拆分一起下沉 | 620 | 同上 |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | B / Renderer | 思考摘要、执行过程、验证与产物的渐进式披露共享同一份活动模型；本轮只把产物卡片的两个回调（工作区根、审阅跳转）透传下来，先冻结披露顺序的特征测试再继续拆纯展示段 | 620 | 同上 |
 | `packages/app/src/renderer/workspace/line-comments.tsx` | B / Renderer | 行评论手势、Monaco view zone、草稿编排与附件发布仍共享同一份映射与生命周期；评论锚点比较（`anchorText`、"代码行已变化"）本轮加入。先冻结交互与附件发布的特征测试，再把手势判定、锚点比较与草稿归约移入 `line-comment-model.ts`，view zone 高度计算移入 `line-comment-view-zones.ts` | 680 | 同上 |
 | `packages/runner/src/runner.ts` | E / Runtime | run 生命周期、输入装配、检查点续跑、后台维护准入透传、C07 压缩 operation owner 接线、durable final-reply publication 和资源收尾仍共享跨阶段不变量；effect 对账查询、run 模式读取、Runtime 失败发布、压缩 scheduler 与续接证据装配（`continuation-evidence.ts`）已下沉，先冻结恢复、幂等和单一发布特征测试，再拆分协调职责 | 2595 | 同上 |
 | `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 同上 |

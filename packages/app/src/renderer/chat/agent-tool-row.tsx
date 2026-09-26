@@ -7,6 +7,8 @@ import {
   liveToolStatusClass,
   shortActivityText,
 } from './task-progress-indicator'
+import { toolLineDelta } from './tool-line-delta'
+import { useAnimatedCount } from './use-animated-count'
 import type { LiveToolEvent } from './types'
 
 
@@ -51,6 +53,7 @@ export function AgentToolRow({
         <span className={`agent-flow-summary ${errorText ? 'is-error' : ''}`}>
           {summary}
         </span>
+        <ToolLineDeltaBadge name={tool.name} input={tool.input} running={running} />
         <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
         <span className={`agent-flow-chevron ${hasDetails && open ? 'open' : ''}`} aria-hidden="true" />
         {running && (
@@ -102,6 +105,38 @@ export function AgentToolRow({
     </section>
   )
 }
+
+/**
+ * The line counts for a file-writing call. Always coloured here — this is the row that says what the
+ * agent just did to a file, and green/red is the reading — with the numbers walking to their new
+ * value as the arguments arrive.
+ */
+export function ToolLineDeltaBadge({
+  name,
+  input,
+  running,
+}: {
+  name: string
+  input: unknown
+  running: boolean
+}) {
+  const delta = toolLineDelta(name, input)
+  const additions = useAnimatedCount(delta?.additions ?? null)
+  const deletions = useAnimatedCount(delta?.deletions ?? null)
+  if (!delta) return null
+  const label = [
+    `新增 ${delta.additions} 行`,
+    delta.deletions === null ? '删除行数未知' : `删除 ${delta.deletions} 行`,
+    running ? '仍在写入' : '',
+  ].filter(Boolean).join('，')
+  return (
+    <span className={`agent-flow-delta ${running ? 'is-live' : ''}`} aria-label={label} title={label}>
+      <span className="agent-flow-delta-add">+{additions ?? 0}</span>
+      {delta.deletions !== null && <span className="agent-flow-delta-remove">-{deletions ?? 0}</span>}
+    </span>
+  )
+}
+
 
 function ToolActivityIcon({ name }: { name: string }) {
   const action = toolActionLabel(name)

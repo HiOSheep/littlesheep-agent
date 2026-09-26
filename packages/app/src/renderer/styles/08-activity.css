@@ -817,3 +817,32 @@ button.agent-flow-row.no-details:focus-visible,
 .tool-live-item.fail .tool-live-icon {
   color: var(--danger);
 }
+
+/* The line counts of a file-writing call. Always coloured here — this row is the one that says what
+   the agent did to a file, and green/red is the reading, unlike the artifact card where the counts
+   stay neutral until pointed at. A live call shows a faint presence so the numbers read as still
+   arriving. */
+.agent-flow-delta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-flow-delta-add {
+  color: var(--line-delta-add, #4ec26a);
+}
+
+.agent-flow-delta-remove {
+  color: var(--line-delta-remove, #e5525c);
+}
+
+.agent-flow-delta.is-live {
+  animation: agent-flow-delta-live 1.4s ease-in-out infinite;
+}
+
+@keyframes agent-flow-delta-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.62; }
+}
