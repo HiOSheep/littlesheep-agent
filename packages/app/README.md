@@ -1,10 +1,12 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 11:10:54
+最后更新：2026-09-26 15:11:54
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
 运行中补充由 Local App API 写入当前 run 的事件队列，再由 Harness 在安全边界送进同一执行循环；Renderer 按事件身份显示一次用户消息。停止与补充的隔离窗口验收见 `pnpm run verify:composer-stop-append`。
+
+应用层这一轮（UX-32～UX-38）改了三条用户可见的边界，细节在各自的领域 README，汇总在[项目状态](../../docs/decision/project-status.md) 的"应用层 UI 与工作区"一节：终端同一时刻只读一个会话（每会话一条 SSE 会耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接），切回的会话保持键盘可用、重放不再让终端重答设备查询；目录筛选下推到 Main 的 320 项截断之前；对话区的验证结论在普通显示模式下也有独立一行。真实窗口门：`verify:transcript-state-visibility`、`verify:conversation-workspace-scenarios`、`verify:workspace-terminal`、`verify:html-preview-baseline`（含 `--app=packaged`）。
 
 - **冷启动三段式**：窗口早于执行能力出现。①数据根迁移、用户布局、keychain、config、Memory v3（顺序是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口加载渲染器；③Runner 与 RunRouter 建成后发布执行就绪。可选插件宿主在就绪之后异步加载，不阻塞执行能力。
 - **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。

@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-24 22:07:26
+最后更新：2026-09-26 15:10:37
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -168,6 +168,27 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 文档分工：长期约束见 [架构原则](../principles/architecture-principles.md)，当前事实见本文件，演进顺序与取舍见 [架构决策报告](architecture-decision-report.md)，目录与模块归属见 [repository-guide.md](../reference/repository-guide.md)，插件边界见 [plugin-development.md](../reference/plugin-development.md)。
 - 新增核心协议必须有唯一权威来源；workspace 运行时依赖环、未公开深层 import 和未登记的大型文件会直接使质量检查失败。
 - 不把 API key、会话、记忆、执行日志或工作区产物复制进源码仓库。
+
+## 应用层 UI 与工作区（2026-09-26）
+
+《应用层 UI / UX 优化与统一任务书 2026-09-22》（原 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`，已退役）的 UX-32～UX-39 已完成，仍然成立的事实归到本节；逐条实现与逐次实测数字留在 git 历史（`git log --follow -- docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`），每个门证明不了什么写在各门自己的 `limits`。
+
+- **终端会话（UX-30 / UX-32 / UX-37）**：渲染器最多同时持有 8 个会话，判定发生在向 Main 创建**之前**，被拒时给出可见提示且不产生 Main 孤儿会话。**同一时刻只读一个会话**（当前显示的那个）：切换标签会中止旧流，由 Main 的 `replayTo` 把有界历史送回。此前"每个会话一条流"在 6 个会话时耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接，之后的创建/输入/尺寸请求全部排队不返回，界面既不报错也不拒绝（实测点了 8 次创建只 settle 6 次）。隐藏面板保活，关闭终端标签关闭该面板全部会话。切回的会话若已 `ready` 立即接受输入（否则空闲 shell 不再输出，键盘会永久失效）。**重放必须剥掉由终端回答的设备查询**（`CSI c` / `CSI > c` / `CSI 5n` / `CSI 6n`，`stripTerminalDeviceQueries`）：否则终端把答案当用户输入发给 shell，实测切回标签后的命令以 `\x1b[?1;2cSet-Content …` 到达并被 PowerShell 拒绝。最近命令列表带命令所在会话的真实 Shell 名（旧记录与 Agent 运行命令省略，不猜）。Shell 探测从 PATH 里 `Git\cmd\git.exe` 反推非默认安装根（本机 `D:\Git`）；显式指定的未知或不可用 shellId 返回 400，只有未指定 id 才选默认 Shell。**终端标签不跨重启持久化**（已决定不做），界面也不暗示旧进程仍在运行。
+- **对话区（UX-33 / UX-38）**：验证结论在两种显示模式都可读——紧凑模式由 `.agent-transcript-attention` 承载，普通模式由 `activityVerificationLine` 单独渲染一行（`data-transcript-verification`，中性样式，不带危险色）。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，**没有 `partial`**：需要"没做完"的说法时用 `aborted`、`paused` 或 `needs_replan`，不为清单虚构状态。切回会话按当前产品行为**跳到最新**（`gap ≤ 1`、无"回到最新"按钮），不恢复上次阅读位置。`回到最新` 按钮在普通/紧凑、800×660 最小窗口与 DPR 2 下可达、命中自身且不压输入栏。复制按钮写入剪贴板的文本等于持久化 settlement；同一夹具在紧凑模式、以及重载后重开同一会话时渲染同一结算。顶部/中部/底部三种起始位置都按 `data-message-key` 锚定（容差 1 px），底部按贴底判定。
+- **文件树（UX-36）**：目录筛选下推到 Main，在排序之后、320 项截断**之前**执行，因此排在前 320 之外的文件仍可按名称筛到；未展开目录不递归扫描。逐键筛选实测约 160–240 ms，320 行 Tab 导航可达最后一行，滚动为同步布局成本、无长帧；决定不做虚拟化（未截断时的创建/布局成本随行数单调上升，记录在门里）。
+- **Git 审阅（UX-35）**：一致性指纹是 `HEAD` + `.git/index` 的元数据 + **同参数** `status --porcelain -z`，属**集合级**校验——一个本来就脏的文件再次保存、而 porcelain 文字不变时检测不到，界面不得把它说成当前文件的原子快照。Diff 连续 409 的自动刷新最多两次，之后停止并提示手动重试；持续 Git 状态变化时快照标 `unstable` 并显示"仓库在读取期间仍在变化"。
+- **地址栏与用户项目服务（UX-39）**：裸 `localhost:5173`、`127.0.0.1:5173`、`[::1]:5173`、`*.localhost` 被读成 **http**，其它裸主机保持 https 假设；LS **不替用户启动项目脚本**，唯一"起服务 + 开 URL"是 LS 自有的有界静态预览服务。
+- **打包与门**：`verify:html-preview-baseline` 支持 `--app=packaged`，对 `release/win-unpacked` 跑同一条 walkthrough 并记录 `packagedExecutable` 与 `app.asar` 的 sha256（打包产物须先用 `pnpm run package:win` 重新生成，否则测的是旧字节）。命令与覆盖范围见 [scripts/README.md](../../scripts/README.md)，实现边界见 `packages/app/src/main/README.md`、`packages/app/src/renderer/workspace/README.md`、`packages/app/src/renderer/chat/README.md`。
+
+### 同一批验收记录的开放边界
+
+- 安装包（NSIS）实机安装与干净机器首次启动仍未验证；打包变体只覆盖解包目录，并靠证据里的 asar 摘要说明测的是哪一份字节。
+- `scripts/` 没有录屏能力：对话区"修复前后"的验收口径是逐帧 DOM 采样 + 前后 PNG，写进对应门的 `limits`，不用它冒充视频。
+- 用户报告的"流式文字变色"在固定输入下**未能复现**（每类块全程只有一个样式签名）；继续追需要复现输入（推理/工具混合输出、更长代码块的高亮 chunk 时机、主题/缩放切换瞬间）或用户录屏，不据猜测改样式。
+- 重载后重开会话这一步实测：点击**已经是当前会话**的侧栏行会再起一次历史读取，60 s 内停在"加载历史消息"；门因此不点活动行，这条路径记为未验证而不是通过。
+- 面板全屏：门断言应用状态可达（`fullscreen` + shell fullscreen 类），但实测 aside 宽度仍是 ~0.8 px、面板表面维持拖动后的 409 px，**视觉加宽没有证据**，需要单独排查。
+- `waiting_user` 在本版本无法由运行产生（只由旧版本/崩溃恢复写入），因此"等用户决定"在真实窗口里以**待批准**形态取证；`verify:transcript-state-visibility` 的 `limits` 记录了这一替换。
+- **第二个工作区根的跨工作区/重启归属验收仍未做成门**：这一轮写过一版 `verify-electron-ui-state-continuity` 的第二工作区根段落（第二个 root、跨会话与重启的 HTML/浏览器/Git/终端归属、跨重启的会话级现场），但它在真实窗口里反复失败，无法作为证据：失败点依次是"文件树看不到第二个 root 的顶层标记文件"（根因是验收脚本输入草稿时落进了文件导航的筛选框，把整棵树筛空——已在尝试版里修掉）、"草稿没进编辑面板"（Monaco 的 EditContext 没有被真正聚焦），以及 `Page.reload` 之后 CDP 执行上下文失效（`Cannot find context with specified id`，该门的 `reloadRenderer` 不会重连）。为避免仓库里留一个红门，该文件已回退到 HEAD，尝试版保存在 `%TEMP%\verify-electron-ui-state-continuity.attempt-2026-09-26.mjs`；**UX-39 第 3 条与 UX-33 的"跨重启会话级现场"因此仍未验收**，下一步是给该门加 CDP 重连并重跑。
 
 ## 未完成方向
 

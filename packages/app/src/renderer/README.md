@@ -1,9 +1,11 @@
 # Electron Renderer
-最后更新：2026-09-26 11:10:54
+最后更新：2026-09-26 15:11:54
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
 运行中的补充发送由 `chat/active-run-update.ts` 按 Runtime 事件身份显示为当前对话的用户消息；停止入口与补充发送入口并存，详细行为和真实窗口门见 `chat/README.md`。
+
+应用层这一轮（UX-32～UX-38）在渲染器侧落地的边界：终端**同一时刻只读一个会话**（切换标签会中止旧流并让 Main 重放有界历史），切回已就绪的会话立即接受输入，最近命令列表带真实 Shell 名；验证结论在紧凑模式进 `.agent-transcript-attention`、普通模式由 `activityVerificationLine` 单独一行；文件树筛选交给 Main 在 320 项截断前执行；审阅的文件差异读取下沉到 `workspace/use-workspace-review-diff.ts` 并带 409 有界重试；地址栏把裸回环地址读成 http。细节见 `workspace/README.md` 与 `chat/README.md`，真实窗口门见 `scripts/README.md`。
 
 首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。语法高亮与纯文本回退共享同一个代码头部栏、语言标签、自动换行和复制动作；换行偏好由 `ui/code-wrap-preference.ts` 持有，工作区 Monaco 使用同一持久值（UX-23）。`inline-markdown.tsx` 负责活动行的单行标签（有界扫描器，不引入解析器）。**注意：入口字节数在本应用里不是首帧的可靠代理**——Markdown 解析管线整条按需（入口 −400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须以成对实测证明收益，详见 `docs/reference/cold-start-baseline/`。
 
