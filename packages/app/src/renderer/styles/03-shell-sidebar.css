@@ -871,8 +871,10 @@ body.is-window-resizing .window-shell *::after {
   scroll-behavior: auto !important;
 }
 
+/* The brand is the name alone: the tagline that used to sit under it is gone, and the block keeps
+   no leftover room for it. */
 .brand-block {
-  padding: 0 6px 16px;
+  padding: 0 6px 12px;
 }
 
 .brand-title {
@@ -880,12 +882,6 @@ body.is-window-resizing .window-shell *::after {
   font-size: 16px;
   font-weight: 800;
   line-height: 1.2;
-}
-
-.brand-subtitle {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .sidebar-quick-nav {

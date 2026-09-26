@@ -46,7 +46,6 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
           <div className="sidebar-contents">
         <div className="brand-block">
           <div className="brand-title">LittleSheep</div>
-          <div className="brand-subtitle">本地 Agent 工作台</div>
         </div>
         <SidebarQuickNav
           activePanel={sidebarPanel}

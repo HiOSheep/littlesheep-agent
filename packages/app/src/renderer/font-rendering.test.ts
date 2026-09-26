@@ -191,7 +191,8 @@ describe('frontend font rendering baseline', () => {
     expect(ruleBody('.settings-nav-item')).toContain('color: var(--text)')
     expect(ruleBody('.settings-nav-item strong')).toContain('color: var(--text)')
     expect(ruleBody('.settings-nav-arrow')).toContain('color: var(--text)')
-    expect(ruleBody('.brand-subtitle')).toContain('color: var(--muted)')
+    // The brand is the name alone now: the tagline under it was removed, so only the title is left
+    // to keep bright.
     expect(ruleBody('.brand-title')).toContain('color: var(--text-strong)')
     expect(ruleBody('.sidebar-svg-icon')).toContain('stroke: currentColor')
     expect(ruleBody('.sidebar-svg-icon')).toContain('stroke-linecap: round')
