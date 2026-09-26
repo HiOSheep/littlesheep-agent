@@ -1003,17 +1003,16 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   padding: 0 8px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  /* Same call as the file filter: no frame, the fill carries the field. */
+  border: 0;
   border-radius: var(--radius-ui);
   transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
+    background-color var(--motion-fast) var(--motion-ease);
 }
 
 .workspace-artifacts-search:hover,
 .workspace-artifacts-search:focus-within {
   background: var(--control-hover);
-  border-color: var(--border-strong);
 }
 
 .workspace-artifacts-search svg {
@@ -1700,11 +1699,11 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   padding: 0 9px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  /* No frame: the field is told apart by its fill, and focus/hover only change that fill. */
+  border: 0;
   border-radius: var(--radius-ui);
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
@@ -1712,7 +1711,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-file-filter:hover {
   color: var(--text-strong);
   background: var(--control-hover);
-  border-color: var(--border-strong);
 }
 
 .workspace-file-filter svg {
