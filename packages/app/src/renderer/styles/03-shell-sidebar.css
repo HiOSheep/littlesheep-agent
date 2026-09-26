@@ -1412,6 +1412,9 @@ body.is-window-resizing .window-shell *::after {
   color: var(--text);
   background-color: var(--sidebar-interaction-active);
   border-color: transparent;
+  /* Selecting a conversation is a deliberate change of context, so its fill eases in at half the
+     hover speed; hovering itself keeps the fast feedback. */
+  transition-duration: calc(var(--motion-fast) * 2);
 }
 
 .session-item.is-dragging,

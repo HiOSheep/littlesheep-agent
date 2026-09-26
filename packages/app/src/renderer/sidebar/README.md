@@ -1,5 +1,5 @@
 # Renderer 侧边栏
-最后更新：2026-09-26 22:00:24
+最后更新：2026-09-26 23:22:41
 
 这里负责项目树、会话树、搜索、折叠、重命名、归档/删除菜单和侧边栏专属过渡。
 
@@ -10,5 +10,6 @@
 
 项目排序与会话更新时间排序必须保持各自语义；不可删除的一级节点和可归档子级的边界由主进程数据契约决定。
 
+**列表位移与选中淡入放慢到原来的一半**（2026-09-26）：侧边栏列表用 `useListReorderAnimation` 做 FLIP，`SIDEBAR_LIST_PUSH_DURATION_MS` 由 160ms 改为 **320ms**——点击会话导致的重排、置顶/取消置顶在"置顶组"与"日期组"之间移动时的行位移、以及拖动时的让位，都走同一次 FLIP，因此一起变慢。会话行自己的选中填充另有一条 CSS 过渡：`.session-item.active` 的 `transition-duration: calc(var(--motion-fast) * 2)`（140ms → **280ms**），只影响"选中"这一侧的淡入，悬停反馈仍是 140ms。真实窗口实测：置顶/取消置顶触发的行动画 `duration: 320`、缓动 `cubic-bezier(0.2, 0.8, 0.2, 1)`；点击后的活动行 `transition-duration: 0.28s`，非活动行仍是 `0.14s`。
 **会话行有三个快捷控件**（2026-09-26）：置顶、归档、以及"…"多功能菜单，按这个顺序排在行尾；归档从菜单里提出来做成一键按钮，是因为它是和置顶同一类的日常整理动作，走菜单要多两次点击却不产生任何决定（菜单里的"归档对话"仍然保留）。三个控件都用共享的 `.sidebar-section-action` 角色，`.session-row-actions` 的预留宽度相应改成三个控件的宽度（`(size * 3) + (gap * 2)` = 84px，标题栏因此少 29px）。真实窗口实测：控件顺序为 `session-pin-action` → `session-archive-action`（`aria-label="归档对话"`）→ `.sidebar-action-menu`，标题右边界 162px、控件区左边界 166px（不重叠），点击归档后该会话从列表消失。
 侧边栏的玻璃材质里带一层**从上到下的淡蓝→淡紫晕色**（`--sidebar-tint-top` / `--sidebar-tint-bottom`，2026-09-26）：它只加在 `.sidebar-surface::before` 上，是共享填充之上的一层 `background-image` 线性渐变，所以右侧工作区面板保持无染色玻璃，两者继续共用同一条材质规则；不要把它并进 `--sidebar-glass-fill`，也不要给 `.sidebar-surface` 本体加 `background-image`（`chat-layout-stability.test.ts` 锁住"表面本体透明、材质在 `::before`"）。两个 alpha 都压在 0.2 以下：真机实测（1280×860、DPR 1.5，取侧边栏上/中/下三带像素均值）为顶部 `rgb(50, 58, 74)`、中部 `rgb(41, 42, 65)`、底部 `rgb(47, 39, 67)`，通道关系由"蓝>绿>红"过渡到"蓝>红>绿"；文字仍是 `--text` 落在深色底上，对比度远高于 AA。要更强或更弱只调这两个令牌。

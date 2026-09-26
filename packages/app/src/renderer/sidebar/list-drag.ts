@@ -12,7 +12,12 @@ import { useListReorderAnimation } from '../app-shell/list-motion'
 export const SIDEBAR_LIST_DRAG_THRESHOLD_PX = 4
 export const SIDEBAR_LIST_AUTO_SCROLL_EDGE_PX = 28
 export const SIDEBAR_LIST_AUTO_SCROLL_STEP_PX = 14
-export const SIDEBAR_LIST_PUSH_DURATION_MS = 160
+/**
+ * The sidebar list's push/reorder motion. It is what the reader sees when a click re-sorts the list
+ * and when pinning or unpinning moves a row between the pinned and the dated group, so it runs at
+ * half the original speed (160ms → 320ms); the drag push shares the same pass and slows with it.
+ */
+export const SIDEBAR_LIST_PUSH_DURATION_MS = 320
 
 interface SidebarListDragSession {
   itemId: string
