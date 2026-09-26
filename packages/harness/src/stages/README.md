@@ -1,8 +1,10 @@
 # Harness Stages
 
-最后更新：2026-09-25 17:09:14
+最后更新：2026-09-27 05:41:55
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
+
+`memory-epistemic-policy.ts` 的 `resolveMemoryWriteEpistemic` 多了一个中性的 `tool` stage（RS-06，2026-09-27）：受控写入工具用它替代历史上的 `capture`/`evolve` 语义——不带任何阶段耦合，状态判定与 `capture` 一样谨慎（工具断言且无通过验证的记录保持 `reported`，不会因为来源是工具就升级）。
 
 ## 所有权
 
