@@ -199,6 +199,40 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
         })
         : textChoice('这次修改没有成功，我按运行时给出的原因说明。')
     }
+    if (user.includes(FILE_CONSISTENCY_MARKERS[3])) {
+      if (toolMessages.length === 0) {
+        // The command changes the file and then fails: the exit code says failure, the bytes say the
+        // write happened, and a follow-up edit based on what the agent read earlier must be refused.
+        return toolChoice('ls-file-exec', 'exec', {
+          command: `node -e "require('node:fs').writeFileSync('${FILE_CONSISTENCY_FILE}','written-by-exec');process.exit(3)"`,
+        })
+      }
+      return toolMessages.length === 1
+        ? toolChoice('ls-file-exec-edit', 'edit', {
+          file_path: FILE_CONSISTENCY_FILE,
+          old_string: 'beta',
+          new_string: 'after-exec',
+        })
+        : textChoice('命令失败后我基于旧内容改了文件，运行时按它的记录回答。')
+    }
+    if (user.includes(FILE_CONSISTENCY_MARKERS[4])) {
+      return toolMessages.length === 0
+        ? toolChoice('ls-file-document-create', 'document_create', {
+          file_path: FILE_CONSISTENCY_DOCUMENT,
+          format: 'docx',
+          title: '验收文档',
+          blocks: [{ type: 'paragraph', text: '同名创建应当被拒绝。' }],
+        })
+        : textChoice('同名文档没有被创建。')
+    }
+    if (user.includes(FILE_CONSISTENCY_MARKERS[5])) {
+      return toolMessages.length === 0
+        ? toolChoice('ls-file-denied-write', 'write', {
+          file_path: FILE_CONSISTENCY_DENIED_FILE,
+          content: 'this write must not reach the disk\n',
+        })
+        : textChoice('这次写入没有得到批准。')
+    }
     if (toolMessages.length === 0) {
       return toolChoice('ls-file-reread', 'read', { file_path: FILE_CONSISTENCY_FILE })
     }
@@ -310,8 +344,15 @@ export const FILE_CONSISTENCY_MARKERS = [
   'LS-FILE-READ-MARKER',
   'LS-FILE-STALE-EDIT-MARKER',
   'LS-FILE-REREAD-EDIT-MARKER',
+  'LS-FILE-EXEC-MARKER',
+  'LS-FILE-DOCUMENT-MARKER',
+  'LS-FILE-DENY-MARKER',
 ]
 export const FILE_CONSISTENCY_FILE = 'desktop-flow.txt'
+/** A document name that already exists, so document_create must refuse it. */
+export const FILE_CONSISTENCY_DOCUMENT = 'desktop-report.docx'
+/** Fresh path for the denied write: it must not exist afterwards. */
+export const FILE_CONSISTENCY_DENIED_FILE = 'denied-write.txt'
 
 const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
 

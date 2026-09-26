@@ -1,11 +1,11 @@
 # @littlesheep/tools
 
 提供内置工具、注册表，以及所有宿主工具共享的统一执行服务。
-桌面流程验收（RS-07，2026-09-27）：`pnpm run verify:desktop-file-consistency` 在真实窗口里跑完"用户中途保存"的链路——Agent 读文件 → 用户在自己编辑器里保存（同长度改写）→ Agent 的 `edit` 被拒（会话记录里是 `changed after it was read; read it again before overwriting it`）→ 盘上保留用户的字节 → 重读后同一编辑成功。证据同时来自两处：本进程读到的磁盘字节与会话存储里应用自己写的工具结果。模型是确定性替身，报告 `limits` 明写这一点与"编辑器 UI 未驱动"。
+桌面流程验收（RS-07，2026-09-27）：`pnpm run verify:desktop-file-consistency` 在真实窗口里跑完七段桌面流程，14 项检查。① Agent 读文件；② 用户在自己编辑器保存（同长度改写）；③ Agent 的 `edit` 被拒（会话存储里是 `changed after it was read; read it again before overwriting it`），盘上保留用户的字节；④ 重读后同一编辑成功；⑤ `exec` 写的文件随后退出 3——盘上是命令写入的内容，而基于旧读取的后续编辑被拒；⑥ `document_create` 对已存在的同名文档返回 `already exists`，既有文档字节不变；⑦ 研究模式下写入的批准请求由客户按真实审批端点**拒绝**，文件未被创建。最后做**对账**：从应用自己的 shadow 版本仓库（`backups/versioning/repositories/workspaces/*.git`）重建该文件的每个历史版本，断言每个版本都是这次流程真实产生过的内容，并报告最新版本与最终文件一致——"有备份"不等于"没有误覆盖"。证据同时来自本进程读到的磁盘字节与会话存储；模型是确定性替身、编辑器 UI 与审批弹窗 UI 未驱动（报告 `limits` 明写）。
 
 真实文件一致性验收（RS-07，2026-09-27）：`pnpm run verify:file-consistency-faults` 在临时工作区用**真实文件与真实工具**（`read`/`write`/`edit`/`exec`）验证文件观察守卫，并在每一步断言**磁盘上的字节**而不是工具的自述。覆盖：同大小且保留 mtime 的改写（`observation_stale`）、文件其它区域被改动、部分读取后写入被拒（`observation_missing`）与重读后成功、被截断的读取不产生观察、目录被换成 junction 的路径重定向、删除后重建（同内容放行／不同内容拒绝）、两个会话并发创建、跨会话提交后旧会话被拒、审批被拒时文件不变、`exec` 部分失败后基于旧观察的编辑被拒、以及进程重启后必须重读。报告在 `limits` 里写明未覆盖项（回滚检查点失败属于桌面入口，不在本脚本内）。
 
-最后更新：2026-09-27 07:26:59
+最后更新：2026-09-27 07:42:08
 
 ## 职责与边界
 

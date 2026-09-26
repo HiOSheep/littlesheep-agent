@@ -187,9 +187,21 @@ export function runStream(locator, body, timeoutMs = DEFAULT_RUN_TIMEOUT_MS) {
   return readSse(locator, '/run/stream', body, timeoutMs)
 }
 
-export async function readSse(locator, path, body, timeoutMs = DEFAULT_RUN_TIMEOUT_MS) {
+/**
+ * Read one run's observation stream.
+ *
+ * `options.approval` decides what this client answers when the Runtime asks for permission: 'approve'
+ * grants it, 'deny' refuses it, and anything else leaves the request unanswered (which is what a
+ * scenario that must not need approval wants — an unanswered request shows up as a timeout, not as a
+ * silent grant). The counter comes back in `approvals`, so a scenario can assert that the boundary was
+ * really crossed. The fourth argument also accepts a bare number, the older timeout-only form.
+ */
+export async function readSse(locator, path, body, options = {}) {
+  const timeoutMs = typeof options === 'number' ? options : (options.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS)
+  const approvalAnswer = typeof options === 'number' ? undefined : options.approval
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const approvals = { requested: 0, granted: 0, denied: 0, failed: 0 }
   try {
     const response = await fetch(apiUrl(locator, path), {
       method: 'POST',
@@ -218,15 +230,44 @@ export async function readSse(locator, path, body, timeoutMs = DEFAULT_RUN_TIMEO
         buffer = buffer.slice(boundary + 2)
         if (!event) continue
         events.push(event)
+        if (event.event === 'approval_request') {
+          approvals.requested += 1
+          await answerApproval(locator, event.data, approvalAnswer, approvals)
+        }
         if (event.event === 'result') result = event.data
         if (event.event === 'error') error = event.data?.error ?? 'unknown SSE error'
       }
     }
     if (error) throw new Error(`${path}: ${error}`)
     if (!result) throw new Error(`${path}: SSE ended without a result`)
-    return { result, events }
+    return { result, approvals, events }
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+/** Answer one approval request, or deliberately leave it unanswered. */
+async function answerApproval(locator, request, decision, approvals) {
+  const id = request?.id ?? request?.approvalId ?? request?.requestId
+  if (decision !== 'approve' && decision !== 'deny') return
+  if (!id) {
+    approvals.failed += 1
+    return
+  }
+  try {
+    const response = await fetch(apiUrl(locator, `/approvals/${id}`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: decision === 'approve' }),
+    })
+    if (!response.ok) {
+      approvals.failed += 1
+      return
+    }
+    if (decision === 'approve') approvals.granted += 1
+    else approvals.denied += 1
+  } catch {
+    approvals.failed += 1
   }
 }
 

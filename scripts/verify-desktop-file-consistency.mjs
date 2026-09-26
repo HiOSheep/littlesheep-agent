@@ -10,10 +10,14 @@
 //
 // Run: pnpm run verify:desktop-file-consistency
 
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
+  FILE_CONSISTENCY_DENIED_FILE,
+  FILE_CONSISTENCY_DOCUMENT,
   FILE_CONSISTENCY_FILE,
   FILE_CONSISTENCY_MARKERS,
   startElectronAcceptanceProvider,
@@ -225,6 +229,87 @@ async function main() {
       { okResults: toolResults.filter((entry) => entry.ok).length, total: toolResults.length },
     )
 
+
+    // ─── Stage 5: a command that changes the file and then fails ──────────────────────────────────
+    await runTurn(locator, `${FILE_CONSISTENCY_MARKERS[3]} 跑一个命令，然后按之前读到的内容改文件。`, sessionId)
+    const execResult = await waitForToolResult(harness, dataDir, sessionId, 'Command failed')
+      ?? await waitForToolResult(harness, dataDir, sessionId, 'exit')
+    const afterExec = await readFile(target, 'utf8')
+    screenshots['after-exec'] = await writePng(client, 'after-exec')
+    recorder.check(
+      afterExec === 'written-by-exec',
+      'the partially applied command\'s bytes are on disk even though it failed',
+      { onDisk: afterExec, execResult: execResult?.slice(0, 200) ?? null },
+    )
+    const execFollowUp = await readSessionToolResults(dataDir, sessionId)
+    recorder.check(
+      execFollowUp.some((entry) => !entry.ok && /changed after it was read|read it again/u.test(entry.error)),
+      'the edit that followed the failed command was refused against the stale read',
+      { results: execFollowUp.map((entry) => ({ ok: entry.ok, error: entry.error.slice(0, 120) })) },
+    )
+
+    // ─── Stage 6: creating a document whose name is taken ────────────────────────────────────────
+    const documentPath = join(workplaceDir, FILE_CONSISTENCY_DOCUMENT)
+    await writeFile(documentPath, 'existing document bytes\n', 'utf8')
+    await runTurn(locator, `${FILE_CONSISTENCY_MARKERS[4]} 生成一个同名文档。`, sessionId)
+    const documentRefusal = await waitForToolResult(harness, dataDir, sessionId, 'already exists')
+    recorder.check(
+      Boolean(documentRefusal),
+      'document_create refused to overwrite an existing document',
+      { toolResult: documentRefusal?.slice(0, 300) ?? null },
+    )
+    recorder.check(
+      await readFile(documentPath, 'utf8') === 'existing document bytes\n',
+      'the refused document creation left the existing document untouched',
+      { onDisk: await readFile(documentPath, 'utf8') },
+    )
+
+    // ─── Stage 7: a write the user denies ────────────────────────────────────────────────────────
+    const deniedPath = join(workplaceDir, FILE_CONSISTENCY_DENIED_FILE)
+    const denied = await readSse(locator, '/run/stream', {
+      text: `${FILE_CONSISTENCY_MARKERS[5]} 写入一个文件。`,
+      permissionMode: 'research',
+      sessionId,
+    }, { approval: 'deny' })
+    screenshots['after-denied-write'] = await writePng(client, 'after-denied-write')
+    recorder.check(
+      !(await pathExists(deniedPath)),
+      'a denied write created no file',
+      { denied: denied.approvals ?? null },
+    )
+    recorder.check(
+      (denied.approvals?.requested ?? 0) > 0 && (denied.approvals?.denied ?? 0) > 0,
+      'the run really asked for approval and the answer was a denial',
+      { approvals: denied.approvals ?? null },
+    )
+
+    // ─── Stage 8: versions, checkpoints and the final file, reconciled ───────────────────────────
+    const known = [
+      'alpha\nsecond line\n',
+      'ALPHA\nsecond line\n',
+      'beta\nsecond line\n',
+      'written-by-exec',
+    ]
+    const versions = await collectFileVersions(dataDir, FILE_CONSISTENCY_FILE)
+    recorder.check(versions.length > 0, 'the app recorded more than one version of the file', { versions: versions.length })
+    const finalBytes = await readFile(target, 'utf8')
+    recorder.check(
+      finalBytes === 'written-by-exec',
+      'the final file is the last mutation that actually happened',
+      { onDisk: finalBytes },
+    )
+    const unexpected = versions.filter((entry) => !known.includes(entry.text))
+    recorder.check(
+      unexpected.length === 0,
+      'every recorded version is a content this file really had, so a backup is not mistaken for the current bytes',
+      { recorded: versions.map((entry) => entry.path), unexpected: unexpected.map((entry) => entry.path) },
+    )
+    recorder.note({
+      step: 'reconciliation',
+      finalFile: { bytes: finalBytes, sha256: sha256(finalBytes) },
+      versions: versions.map((entry) => ({ path: entry.path, sha256: sha256(entry.text), matchesFinal: entry.text === finalBytes })),
+    })
+
     report = {
       check: 'desktop-file-consistency',
       ok: recorder.failures.length === 0,
@@ -243,7 +328,16 @@ async function main() {
     }
   } catch (error) {
     failure = error
-    report = { check: 'desktop-file-consistency', ok: false, error: String(error?.stack ?? error) }
+
+    // Keep what the run had already observed: a stopped acceptance must still say how far it got.
+    report = {
+      check: 'desktop-file-consistency',
+      ok: false,
+      error: String(error?.stack ?? error),
+      checks: recorder.count(),
+      failures: recorder.failures,
+      observations: recorder.observations,
+    }
   } finally {
     try { await handle?.electron?.kill?.() } catch { /* ignore */ }
     try { await provider.close?.() } catch { /* ignore */ }
@@ -304,6 +398,56 @@ async function findToolResult(dataDir, sessionId, needle) {
   return match ? (match.output || match.error) : null
 }
 
+function sha256(text) {
+  return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16)
+}
+
+async function pathExists(path) {
+  try { await access(path); return true } catch { return false }
+}
+
+/**
+ * Recorded versions of one file: whatever the app kept under its version/checkpoint stores, read here
+ * so the final bytes on disk can be reconciled against them instead of trusting that a backup exists.
+ */
+/**
+ * Recorded versions of one file, read from the app's own shadow version repositories. Reconstructing
+ * them here is the point: a backup existing proves nothing about the file on disk, so every recorded
+ * revision is compared against the contents this flow actually produced.
+ */
+async function collectFileVersions(dataDir, fileName) {
+  const versions = []
+  const repositoriesRoot = join(dataDir, 'backups', 'versioning', 'repositories', 'workspaces')
+  if (!await pathExists(repositoriesRoot)) return versions
+  for (const entry of await readdir(repositoriesRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const gitDir = join(repositoriesRoot, entry.name)
+    const log = await gitOutput(gitDir, ['log', '--all', '--format=%H', '--', fileName]).catch(() => '')
+    for (const sha of log.split('\n').map((line) => line.trim()).filter(Boolean)) {
+      const text = await gitOutput(gitDir, ['show', `${sha}:${fileName}`]).catch(() => null)
+      if (text !== null) versions.push({ path: `${entry.name.slice(0, 8)}@${sha.slice(0, 8)}`, text })
+    }
+  }
+  return versions
+}
+
+function gitOutput(gitDir, args) {
+  return new Promise((resolve, reject) => {
+    execFile('git', [`--git-dir=${gitDir}`, ...args], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
+      (error, stdout) => (error ? reject(error) : resolve(stdout)))
+  })
+}
+async function walkFiles(directory, depth, prefix = '') {
+  if (depth < 0) return []
+  const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
+  const files = []
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) files.push(...await walkFiles(join(directory, entry.name), depth - 1, relative))
+    else files.push(relative)
+  }
+  return files
+}
 async function writePng(client, name) {
   await client.send('Page.bringToFront').catch(() => undefined)
   const shot = await withTimeout(
