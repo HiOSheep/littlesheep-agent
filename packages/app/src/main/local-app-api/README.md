@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 09:31:19
+最后更新：2026-09-26 09:35:53
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -107,3 +107,7 @@
 ## 终端 Shell 的真实验收（UX-29 第 4 条 PowerShell 侧，2026-09-26）
 
 `workspace-terminal-shell-acceptance.test.ts` 用应用的会话管理器启动真实终端并断言：`$PSVersionTable.PSVersion.Major` 与实际启动的 Shell 一致（pwsh ≥7 / Windows PowerShell = 5）、`(Get-Process -Id $PID).Path` 等于探测到的可执行文件、cwd 落在工作区根、中文输出原样回显、环境变量继承、一次写入多行都按序执行且会话仍可用。顺带修掉：可执行文件在探测后消失时 `spawn` 的异步失败会让 `create` 返回一个假活会话（现在启动前检查并抛出可读错误）；终止从未启动的进程会抛 `EINVAL` 并从退出路径逃逸（现在安全失败）。
+
+## WSL 的路径映射与按会话启动参数（UX-29 第 3 条，2026-09-26）
+
+WSL 是唯一一个启动参数依赖会话目录的 Shell：`shellLaunch(profile, workspacePath)` 用 `windowsPathToWslPath`（UNC 返回 null）生成 `--cd`，映射不出来时退回 `~`。会话启动前还会检查可执行文件是否存在，避免"假活会话"。

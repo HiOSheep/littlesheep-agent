@@ -66,7 +66,7 @@ export function cmdArgs(): string[] {
  * Map a Windows path to the path WSL sees.
  *
  * A WSL shell starts in a Linux directory, so the workspace root has to be translated
- * (`C:\Users\me\项目` → `/mnt/c/Users/me/项目`). A UNC path has no `/mnt` equivalent, so it
+ * (`C:\work\me\项目` → `/mnt/c/Users/me/项目`). A UNC path has no `/mnt` equivalent, so it
  * maps to nothing and the caller must fall back to the home directory rather than guess.
  */
 export function windowsPathToWslPath(path: string): string | null {
