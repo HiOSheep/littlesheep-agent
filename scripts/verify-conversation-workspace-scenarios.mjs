@@ -406,8 +406,71 @@ async function selectWorkspaceFeature(client, label) {
   if (!selected.clicked) throw new Error(`workspace feature ${label} could not be selected`)
 }
 
-async function createWorkspaceScene(client, { fileName, draftMarker, browserUrl }) {
+
+/**
+ * UX-29/UX-30 regression net for the terminal surface.
+ *
+ * Switching to the 终端 tab used to be enough for the walkthrough; after the terminal gained
+ * shell discovery, a tab model and a session hook, it needs an actual assertion: a session is
+ * started, the shell that runs is a real one Main discovered, and the tab strip stays out of
+ * the way while there is only one session.
+ */
+async function assertWorkspaceTerminalReady(client, recorder) {
+  const terminal = await harness.waitFor(() => evaluate(client, `(() => {
+    const pane = document.querySelector('.workspace-terminal')
+    if (!(pane instanceof HTMLElement)) return null
+    const select = pane.querySelector('.workspace-terminal-shell-select')
+    return {
+      hasTerminal: Boolean(pane.querySelector('.workspace-terminal-shell, .xterm')),
+      status: (pane.querySelector('.workspace-terminal-status')?.textContent || '').trim(),
+      shellOptions: select instanceof HTMLSelectElement
+        ? [...select.options].map((option) => option.textContent || '')
+        : [],
+      selectedShell: select instanceof HTMLSelectElement ? select.value : null,
+      tabStrip: pane.querySelectorAll('.workspace-terminal-tabs').length,
+      tabs: pane.querySelectorAll('.workspace-terminal-tab').length,
+    }
+  })()`), 30_000, 'workspace terminal surface')
+
+  // The picker fills in once the shells request answers, so wait for real options rather than
+  // sampling the empty state a moment after the panel appears.
+  const populated = await harness.waitFor(() => evaluate(client, `(() => {
+    const select = document.querySelector('.workspace-terminal-shell-select')
+    if (!(select instanceof HTMLSelectElement)) return null
+    const options = [...select.options].map((option) => option.textContent || '')
+    return options.length > 0 && options[0] !== '没有可用的 Shell'
+      ? { options, selected: select.value }
+      : null
+  })()`), 20_000, 'terminal shell options').catch(() => null)
+
+  // The scene moves on from this tab, so the session's own readiness is recorded rather than
+  // asserted; what this step asserts is that the panel and its picker came up with real shells.
+  const ready = await harness.waitFor(() => evaluate(client, `(() => {
+    const pane = document.querySelector('.workspace-terminal')
+    const status = (pane?.querySelector('.workspace-terminal-status')?.textContent || '').trim()
+    return status ? { status } : null
+  })()`), 10_000, 'terminal session status').catch(() => ({ status: terminal.status }))
+
+  recorder.note({ step: 'workspace-terminal-smoke', terminal, populated, ready })
+  recorder.check(
+    terminal.hasTerminal === true
+    && populated !== null
+    && populated.options.length > 0
+    && populated.selected !== '',
+    'the terminal panel offers the shells discovery actually found',
+    { shellOptions: terminal.shellOptions, selectedShell: terminal.selectedShell, status: ready.status },
+  )
+  recorder.check(
+    // One session must look exactly like before: no strip, and no button that promises more.
+    terminal.tabs === 0 && terminal.tabStrip === 0,
+    'a single terminal session shows no tab strip',
+    { tabs: terminal.tabs, tabStrip: terminal.tabStrip },
+  )
+}
+
+async function createWorkspaceScene(client, recorder, { fileName, draftMarker, browserUrl }) {
   await selectWorkspaceFeature(client, '终端')
+  await assertWorkspaceTerminalReady(client, recorder)
   await harness.waitFor(
     () => evaluate(client, `Boolean([...document.querySelectorAll('.workspace-tree-row.file')].find((node) => node.textContent?.includes(${JSON.stringify(fileName)}))) || null`),
     15_000,
@@ -612,6 +675,10 @@ async function main() {
     const electron = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
     const locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
+    // Parked outside every display and shown inactively: the window renders (a hidden one times
+    // out on the screenshots this walkthrough takes) without ever appearing on the desktop.
+    await harness.desktopAction(locator, 'park-offscreen')
+    await delay(1200)
     await harness.desktopAction(locator, 'resize', WINDOW_SIZE)
     const client = await harness.connectRenderer(debuggingPort)
     await client.send('Runtime.enable')
@@ -1006,7 +1073,7 @@ async function main() {
     const scenarioBaseUrl = provider.baseURL.replace(/\/v1$/u, '')
     const firstDraftMarker = 'UNSAVED_SESSION_A_DRAFT_4827'
     const firstBrowserUrl = `${scenarioBaseUrl}/health?scene=session-a`
-    const firstScene = await createWorkspaceScene(client, {
+    const firstScene = await createWorkspaceScene(client, recorder, {
       fileName: 'scenario-file-00.ts',
       draftMarker: firstDraftMarker,
       browserUrl: firstBrowserUrl,
@@ -1054,7 +1121,7 @@ async function main() {
     recorder.check(secondSession !== firstSessionId, 'the new conversation persists under a different session id', { firstSessionId, secondSession })
     const secondDraftMarker = 'UNSAVED_SESSION_B_DRAFT_7391'
     const secondBrowserUrl = `${scenarioBaseUrl}/health?scene=session-b`
-    const secondScene = await createWorkspaceScene(client, {
+    const secondScene = await createWorkspaceScene(client, recorder, {
       fileName: 'scenario-file-01.ts',
       draftMarker: secondDraftMarker,
       browserUrl: secondBrowserUrl,

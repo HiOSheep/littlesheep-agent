@@ -84,6 +84,18 @@ describe('workspace terminal authority API', () => {
       })
       expect(agentCommand.status).toBe(403)
 
+      // UX-29: the renderer asks for the shells this machine can run before it offers a picker.
+      const shells = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalShells}`)
+      expect(shells.status).toBe(200)
+      const shellBody = await shells.json() as { shells?: Array<{ id: string; available: boolean; reason?: string }> }
+      expect(Array.isArray(shellBody.shells)).toBe(true)
+      expect(shellBody.shells!.length).toBeGreaterThan(0)
+      for (const profile of shellBody.shells!) {
+        // Every entry is either usable or explained; nothing is offered without a reason.
+        if (!profile.available) expect(profile.reason, `${profile.id} needs a reason`).toBeTruthy()
+      }
+      expect(shellBody.shells!.some((profile) => profile.available)).toBe(true)
+
       const created = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalSession}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -2,14 +2,14 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTerminalShellSelection } from './use-terminal-shell-selection'
+import { useTerminalSessions } from './use-terminal-sessions'
+import { terminalTabStatusLabel } from './terminal-sessions'
+import { WorkspaceTerminalTabs } from './terminal-tabs'
 import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
 import { WorkspaceTerminalToolbar } from './terminal-toolbar'
 import {
-  EMPTY_TERMINAL_SESSIONS,
-  reduceTerminalSessions,
-  terminalInputTarget,
 } from './terminal-sessions'
 import {
   WorkspaceTerminalActivityList,
@@ -20,12 +20,9 @@ export {
   terminalActivityTip,
 } from './terminal-activity'
 import {
-  closeWorkspaceTerminalSession,
-  createWorkspaceTerminalSession,
   interruptWorkspaceTerminalSession,
   listWorkspaceTerminalActivity,
   resizeWorkspaceTerminalSession,
-  streamWorkspaceTerminalSession,
   type TerminalActivityRecord
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
@@ -60,12 +57,49 @@ export function WorkspaceTerminal({
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const hostRef = useRef<HTMLDivElement>(null)
+  /** The session the keyboard belongs to, mirrored for the surface's own helpers. */
+  const activeSessionRef = useRef<string>('')
+  /** Lets the hook's callbacks reach the surface's input enablement without re-creating them. */
   const terminalRef = useRef<XTermTerminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
-  const streamAbortRef = useRef<AbortController | null>(null)
   const terminalSessionRef = useRef<string>('')
   const terminalBackendRef = useRef<'pty' | 'spawn'>('spawn')
   const terminalSizeRef = useRef<{ cols: number; rows: number }>({ cols: 0, rows: 0 })
+  // UX-30: the hook owns which sessions exist, one stream each, and which one the keyboard
+  // belongs to. The surface keeps the xterm and its rendering.
+  const sessions = useTerminalSessions({
+    onStart: (event) => {
+      terminalBackendRef.current = event.backend ?? 'spawn'
+      setTerminalBackend(event.backend ?? 'spawn')
+      setRunningShell(event.shell)
+      setStatus(`${event.shell} 正在连接`)
+    },
+    onActiveOutput: (text, tone) => {
+      writeTerminalText(text, tone === 'stderr' ? 'stderr' : 'normal')
+      // Output means the shell is reading; the tab's status follows in the same batch and
+      // the gate above opens on it. Draining here keeps typing responsive.
+      setTerminalInputEnabled(true)
+      void inputControllerRef.current?.drain()
+    },
+    onActiveChange: (tab) => {
+      const terminal = terminalRef.current
+      if (!terminal) return
+      terminal.reset()
+      terminalBackendRef.current = 'spawn'
+      setTerminalInputEnabled(false)
+      if (!tab) return
+      setStatus(terminalTabStatusLabel(tab))
+      // Switching back shows what happened while the tab was in the background.
+      if (tab.replay) terminal.write(tab.replay)
+    },
+    onError: (_id, message) => {
+      setTerminalInputEnabled(false)
+      writeTerminalNotice(`\x1b[31m${message}\x1b[0m`)
+      setStatus('终端错误')
+    },
+  })
+  activeSessionRef.current = sessions.activeTab?.id ?? ''
+  terminalSessionRef.current = activeSessionRef.current
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('启动中')
   const [terminalBackend, setTerminalBackend] = useState<'pty' | 'spawn' | ''>('')
@@ -75,17 +109,12 @@ export function WorkspaceTerminal({
   // actually is. The picker chooses; Main validates the id and decides executable and args.
   const shellSelection = useTerminalShellSelection()
   const [runningShell, setRunningShell] = useState('')
-  // The tab model owns which sessions exist and what state each one is in (UX-30); the strip
-  // only appears once there is more than one, so a single terminal looks exactly as before.
-  const [sessionTabs, dispatchSessionTabs] = useReducer(reduceTerminalSessions, EMPTY_TERMINAL_SESSIONS)
   const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
   const inputControllerRef = useRef<TerminalInputController | null>(null)
   const activeRef = useRef(active)
-  const sessionTabsRef = useRef(sessionTabs)
   const terminalInputEnabledRef = useRef(false)
   activeRef.current = active
-  sessionTabsRef.current = sessionTabs
 
   useEffect(() => {
     void refreshTerminalActivities()
@@ -265,128 +294,58 @@ export function WorkspaceTerminal({
       fitScheduler?.cancel()
       inputDisposable?.dispose()
       resizeObserver?.disconnect()
-      streamAbortRef.current?.abort()
-      streamAbortRef.current = null
-      const activeSessionId = terminalSessionRef.current
-      terminalSessionRef.current = ''
-      if (activeSessionId) void closeWorkspaceTerminalSession(activeSessionId).catch(() => undefined)
+      // Closing the workspace terminal closes the session it was showing. The hook owns the
+      // stream, so there is nothing to abort here (UX-30).
+      const activeSessionId = activeSessionRef.current
+      if (activeSessionId) sessions.close(activeSessionId)
       terminal?.dispose()
       if (terminalRef.current === terminal) terminalRef.current = null
       fitAddonRef.current = null
     }
   }, [sessionId, workspacePath])
 
+  // The tab model decides whether the active session may receive input at all (UX-30): a
+  // starting, exited or failed session must never be typed into. The status is a dependency
+  // because that is what changes the moment a session becomes ready.
   useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
-    // The tab model decides whether the active session may receive input at all (UX-30):
-    // a starting, exited or failed session must never be typed into.
     terminal.options.disableStdin = !terminalInputEnabledRef.current
       || !active
-      || terminalInputTarget(sessionTabsRef.current) === null
+      || sessions.activeTab?.status !== 'ready'
     if (active && terminalInputEnabledRef.current) terminal.focus()
-  }, [active])
+  }, [active, sessions.activeTab?.status])
 
+  /**
+   * Opens a session — the first one, or another one beside it (UX-30).
+   *
+   * The hook owns the tab, its stream and its bounded replay buffer; this only reports the
+   * outcome to the surface's own status line.
+   */
   async function startTerminalSession(isDisposed: () => boolean) {
-    streamAbortRef.current?.abort()
-    const controller = new AbortController()
-    streamAbortRef.current = controller
+    const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
+      ? terminalSizeRef.current
+      : undefined
     setTerminalInputEnabled(false)
     setStatus('启动中')
-    let terminalOutputSeen = false
-    let terminalReadyLabel = runningShell || 'Shell'
-    const enableInputAfterOutput = () => {
-      if (terminalOutputSeen || isDisposed()) return
-      terminalOutputSeen = true
-      setStatus(`${terminalReadyLabel} 就绪`)
-      setTerminalInputEnabled(true)
-      // The session is only usable once it has produced output; the tab says so (UX-30).
-      dispatchSessionTabs({
-        type: 'status',
-        id: terminalSessionRef.current ?? '',
-        status: 'ready',
-      })
-      void inputControllerRef.current?.drain()
-    }
+    setRunning(true)
     try {
-      const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
-        ? terminalSizeRef.current
-        : undefined
-      const terminalSession = await createWorkspaceTerminalSession(workspacePath, size, shellSelection.shellIdRef.current ?? undefined)
-      if (isDisposed()) {
-        await closeWorkspaceTerminalSession(terminalSession.sessionId).catch(() => undefined)
-        return
-      }
-      terminalSessionRef.current = terminalSession.sessionId
-      terminalBackendRef.current = terminalSession.backend ?? 'spawn'
-      terminalReadyLabel = terminalSession.shell
-      setRunningShell(terminalSession.shell)
-      // One tab per real session, labelled with the shell Main actually launched (UX-30).
-      dispatchSessionTabs({
-        type: 'open',
-        tab: {
-          id: terminalSession.sessionId,
-          shellId: shellSelection.shellIdRef.current ?? null,
-          shellLabel: terminalSession.shell,
-          cwd: terminalSession.cwd ?? workspacePath,
-          status: 'starting',
-        },
+      const id = await sessions.open({
+        workspacePath,
+        shellId: shellSelection.shellIdRef.current,
+        ...(size ? { size } : {}),
       })
-      setTerminalBackend(terminalSession.backend ?? 'spawn')
-      terminalSizeRef.current = { cols: terminalSession.cols, rows: terminalSession.rows }
+      if (!id || isDisposed()) return
+      terminalBackendRef.current = terminalBackendRef.current || 'spawn'
+      terminalSizeRef.current = size ?? terminalSizeRef.current
       reportTerminalSize()
-      setStatus('正在连接')
-      await streamWorkspaceTerminalSession(terminalSession.sessionId, {
-        signal: controller.signal,
-        onStart: (event) => {
-          if (isDisposed()) return
-          terminalBackendRef.current = event.backend ?? 'spawn'
-          terminalReadyLabel = event.shell
-          setTerminalBackend(event.backend ?? 'spawn')
-          setStatus('正在连接')
-        },
-        onStdout: (text) => {
-          if (!isDisposed()) {
-            writeTerminalText(text)
-            enableInputAfterOutput()
-          }
-        },
-        onStderr: (text) => {
-          if (!isDisposed()) {
-            writeTerminalText(text, 'stderr')
-            enableInputAfterOutput()
-          }
-        },
-        onExit: (event) => {
-          if (!isDisposed()) {
-            setTerminalInputEnabled(false)
-            setStatus('终端已退出')
-            // An exited session keeps its tab and its state, so the user can see what happened
-            // instead of watching a terminal that silently looks alive (UX-30).
-            dispatchSessionTabs({
-              type: 'status',
-              id: terminalSessionRef.current ?? '',
-              status: 'exited',
-              exitCode: event?.exitCode ?? null,
-            })
-          }
-        },
-        onError: (message) => {
-          if (isDisposed()) return
-          setTerminalInputEnabled(false)
-          writeTerminalNotice(`\x1b[31m${message}\x1b[0m`)
-          setStatus('终端错误')
-        },
-      })
-    } catch (err) {
-      const error = err as Error
-      if (error.name === 'AbortError') return
-      if (isDisposed()) return
+    } catch (error) {
+      if ((error as Error).name === 'AbortError' || isDisposed()) return
       setTerminalInputEnabled(false)
-      setStatus(error.message)
-      writeTerminalNotice(`\x1b[31m${error.message}\x1b[0m`)
+      setStatus((error as Error).message)
+      writeTerminalNotice(`\x1b[31m${(error as Error).message}\x1b[0m`)
     } finally {
-      if (streamAbortRef.current === controller) streamAbortRef.current = null
+      if (!isDisposed()) setRunning(false)
     }
   }
 
@@ -468,10 +427,9 @@ export function WorkspaceTerminal({
     terminalSessionRef.current = ''
     setTerminalInputEnabled(false)
     inputControllerRef.current?.reset()
-    streamAbortRef.current?.abort()
     setRunning(true)
     setStatus('正在停止')
-    if (activeSessionId) await closeWorkspaceTerminalSession(activeSessionId).catch(() => undefined)
+    if (activeSessionId) sessions.close(activeSessionId)
     terminalRef.current?.reset()
     void startTerminalSession(() => !mountedRef.current)
     setRunning(false)
@@ -490,6 +448,20 @@ export function WorkspaceTerminal({
   const shellLabel = runningShell || shellSelection.shellId || 'Shell'
   return (
     <div className="workspace-terminal">
+      {sessions.state.tabs.length > 1 && (
+        <WorkspaceTerminalTabs
+          tabs={sessions.state.tabs}
+          activeId={sessions.state.activeId}
+          busy={running}
+          onSelect={sessions.select}
+          onClose={(id) => {
+            sessions.close(id)
+            setStatus('已关闭一个终端会话')
+          }}
+          onNew={() => void startTerminalSession(() => !mountedRef.current)}
+          onTipChange={onTipChange}
+        />
+      )}
       <header className="workspace-terminal-header workspace-page-leading-row">
         <div className="workspace-terminal-title">
           <span>终端</span>
