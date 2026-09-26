@@ -22,6 +22,7 @@ import { WorkspaceOfficePreview } from './office-preview-panel'
 import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState, workspaceDraftOutcome } from './preview-draft'
+import { useWorkspaceOpenWith } from './use-workspace-open-with'
 import { WorkspacePreviewActions } from './preview-actions'
 import { HtmlRunNotice } from './html-run-notice'
 import { useHtmlRun } from './use-html-run'
@@ -90,6 +91,15 @@ export function WorkspacePreviewPane({
       : ''
   const editorLanguageLabel = formatEditorLanguageLabel(editorLanguage)
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
+  const openWith = useWorkspaceOpenWith({
+    root: workspacePath,
+    path: selectedPath,
+    canOpenInVSCode: canOpenExternalVSCode,
+    onOpenInVSCode,
+    // An open-with failure is an action error like a failed save, and the pane already shows one
+    // line for those, right above the status bar.
+    onError: (message) => setSaveError(message),
+  })
   // CS-08: first file body on screen. Placeholders, errors and an empty pane are
   // explicitly excluded, so a "读取中" state cannot be mistaken for availability.
   const previewContentVisible = !loading && !error && preview !== null
@@ -318,6 +328,7 @@ export function WorkspacePreviewPane({
             onToggleHtmlSource={toggleHtmlSource}
             onToggleEditing={toggleEditing}
             onOpenInVSCode={onOpenInVSCode}
+            openWith={openWith}
             onTipChange={onTipChange}
           />
         )}

@@ -1,13 +1,19 @@
 // UX-29: a saved Shell preference that no longer exists must be reported, not silently
 // replaced, and the session label must be the real shell rather than a hardcoded name.
 import { readFile } from 'node:fs/promises'
-import { describe, expect, it } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
 import type { WorkspaceShellProfile } from '../api/terminal'
 import {
   defaultTerminalShell,
   resolveTerminalShellChoice,
   terminalShellLabel,
 } from './terminal-shell-choice'
+import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
+
+// The test transform uses the classic JSX runtime, so the component needs React in scope.
+vi.stubGlobal('React', React)
 
 const profile = (
   id: string,
@@ -70,7 +76,28 @@ describe('terminal shell choice', () => {
     expect(terminal).toContain('WorkspaceTerminalShellPicker')
     // The surface uses the hook that owns discovery + preference (UX-30 extraction).
     expect(terminal).toContain('useTerminalShellSelection')
-    expect(picker).toContain('aria-label="选择终端 Shell"')
+    // The picker is the two-part pill: the right segment lists the shells, the left one starts the
+    // current Shell at once, so the label moved onto the split button's chevron.
+    expect(picker).toContain('<SplitButton')
+    expect(picker).toContain('menuLabel="选择终端 Shell"')
+    expect(picker).toContain('onPrimary=')
     expect(picker).toContain('本机缺少')
+  })
+
+  it('renders the current Shell on the left segment and the list behind the chevron', () => {
+    const markup = renderToStaticMarkup(WorkspaceTerminalShellPicker({
+      profiles: MACHINE,
+      selectedId: 'windows-powershell',
+      busy: false,
+      onSelect: () => undefined,
+    }))
+
+    // One compact pill, two segments: the left one names what it will start, the right lists.
+    expect(markup).toContain('split-button')
+    expect(markup).toContain('aria-label="终端 Shell：Windows PowerShell"')
+    expect(markup).toContain('aria-label="选择终端 Shell"')
+    expect(markup).toContain('aria-haspopup="menu"')
+    // The list itself only exists once the chevron is used.
+    expect(markup).not.toContain('split-button-menu-item')
   })
 })

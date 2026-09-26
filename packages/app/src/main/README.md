@@ -1,9 +1,14 @@
 # Electron Main
 
-最后更新：2026-09-26 14:58:37
+最后更新：2026-09-27 01:14:53
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
+## 用哪个应用打开文件（2026-09-26）
+
+`workspace-open-with.ts` 回答"这台机器能用什么打开这个文件"：Windows 的候选列表没有 API，桌面自己的选择器也是从同一批注册表键拼出来的，所以这里读同样的位置——`HKCU\...\FileExts\<ext>\UserChoice`（用户真正选定的默认）、`HKCR\<ext>`（默认 ProgId 与 `OpenWithProgids` / `OpenWithList`）、`HKCR\Applications\<exe>\SupportedTypes`（自称支持该扩展名的应用）、`HKCR\<ProgId>\shell\open\command`（启动命令）。诚实规则与终端 Shell 发现一致：拿不到命令的候选直接丢掉、列表有上限（12 条）、查询失败就是空列表而不是错误。两个只有真机才会教的细节都写在代码里并被单测钉住：`reg query` 的默认值名是**跟随控制台语言**的（中文 Windows 打印 `(默认)`，字节还是 CP936 的乱码），所以解析器接受任何 `(...)` 形式的默认值名；`FriendlyAppName` 同样可能乱码，出现替换字符时回退成可执行文件名。
+
+路由：`GET /workspace/open-with?root&path` 返回候选（按扩展名缓存 32 项，`reg.exe` 不必每次开预览都跑），`POST /workspace/open-with` 用 `{ root, path, handlerId }` 启动——**Main 收到 id 后重新发现一次再 spawn**，渲染进程永远不提供命令行；`POST /workspace/reveal` 走 `shell.showItemInFolder`，即"显示文件位置"。真机实测（本机 `.md`）：默认项解析为 `Visual Studio Code\Code.exe`（与 UserChoice 一致），第二个是 `D:\Obsidian\Obsidian.exe`。
 ## 入口与所有权
 
 - `index.ts`：启动与关闭编排；不得继续吸收领域实现。启动分三段：①数据根迁移、用户布局、keychain、config、Memory v3（顺序不可改，是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口提前加载渲染器（此时执行能力未就绪）；③Runner 与 RunRouter 构建完成后发布执行就绪。`runner` 引用只在第③段由 `startExecution()` 赋值。

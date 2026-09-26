@@ -193,6 +193,45 @@ export async function listWorkspaceArtifacts(
   return data.records
 }
 
+/** Starts one of the discovered handlers on this file. Main re-resolves the id before spawning. */
+export async function launchWorkspaceOpenWith(root: string, path: string, handlerId: string): Promise<void> {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.workspaceOpenWith, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root, path, handlerId }),
+  })
+  if (!res.ok) throw await localApiResponseError(res)
+}
+
+export interface WorkspaceOpenWithHandler {
+  id: string
+  label: string
+  command: string
+  executable: string
+  isDefault: boolean
+}
+
+/** The applications this machine can open the file with, discovered from the desktop registry. */
+export async function listWorkspaceOpenWith(root: string, path: string): Promise<WorkspaceOpenWithHandler[]> {
+  const query = new URLSearchParams({ root, path })
+  const res = await localApiFetch(`${LOCAL_APP_API_ROUTES.workspaceOpenWith}?${query.toString()}`)
+  if (!res.ok) throw localApiStatusError(res.status)
+  const data = await res.json() as { handlers: WorkspaceOpenWithHandler[] }
+  return data.handlers ?? []
+}
+
+export async function revealWorkspacePath(root: string, path: string): Promise<void> {
+  const res = await localApiFetch(LOCAL_APP_API_ROUTES.workspaceReveal, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root, path }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `Local app API error: ${res.status}` }))
+    throw new Error((data as { error: string }).error)
+  }
+}
+
 export async function openWorkspacePath(root: string, path: string): Promise<void> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.workspaceOpen, {
     method: 'POST',

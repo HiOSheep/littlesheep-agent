@@ -42,6 +42,10 @@ export const LOCAL_APP_API_ROUTES = {
   workspaceLayout: '/workspace/layout',
   workspaceArtifacts: '/workspace/artifacts',
   workspaceOpen: '/workspace/open',
+  /** Reveal a workspace path in the desktop's own file manager. */
+  workspaceReveal: '/workspace/reveal',
+  /** The applications this machine can open a workspace file with. */
+  workspaceOpenWith: '/workspace/open-with',
   externalOpen: '/external/open',
   workspaceOpenVscode: '/workspace/open-vscode',
   browserDiagnostics: '/browser/diagnostics',

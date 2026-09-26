@@ -82,7 +82,7 @@
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 365 |
 | `packages/app/src/main/workspace-shell-discovery.ts` | 379 | 本机 Shell 探测（Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL 发行版）、可用性与配置提示、WSL 路径映射 | 保持探测与映射边界；启动参数按 Shell 分支留在 `terminal-process.ts` | C | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
-| `packages/app/src/renderer/workspace/preview-pane.tsx` | 434 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`，HTML 运行状态与提示下沉到 `use-html-run.ts`/`html-run-notice.tsx`，静态预览帧与资源失败提示下沉到 `html-preview-surface.tsx`，Office 正文下沉到 `office-preview-panel.tsx`；继续保持编辑与展示边界 | B |
+| `packages/app/src/renderer/workspace/preview-pane.tsx` | 445 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏 | 文件加载与保存事务已下沉到 `file-view.tsx`，HTML 运行状态与提示下沉到 `use-html-run.ts`/`html-run-notice.tsx`，静态预览帧与资源失败提示下沉到 `html-preview-surface.tsx`，Office 正文下沉到 `office-preview-panel.tsx`；继续保持编辑与展示边界 | B |
 | `packages/app/src/main/local-app-api/workspace-preview-server.ts` | 336 | 工作区根作用域的有界 loopback 静态服务：token、真实路径与符号链接校验、内容类型、空闲回收与资源失败记录 | 保持"每个根一个监听 + 每次请求都重新校验路径"的边界；若继续增长，把 MIME/路径解析与监听生命周期拆开，但不得引入目录列举、CORS 头或写方法 | C |
 | `packages/app/src/main/local-app-api/workspace-git-review.ts` | 472 | Git 审阅快照与单文件差异的分层读取、项目范围校验、有界一致性重读（HEAD/index/status 指纹） | 保持"读取一次 + 有界重读"的组合层；指纹规则在 `workspace-git-review-consistency.ts`，失败分类在 `workspace-git-failure.ts`，解析在 `workspace-git-review-parsers.ts`，不新增调度层 | C |
 | `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 323 | Main Git 审阅快照缓存、revision、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |

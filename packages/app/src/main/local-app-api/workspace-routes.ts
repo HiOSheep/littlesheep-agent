@@ -10,6 +10,7 @@ import type { ProjectIndex } from '../project-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import type { WorkspaceLayoutIndex } from '../workspace-layout-index.js'
 import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
+import { routeOpenWith } from './open-with-routes.js'
 import { openInVSCode } from './vscode-launcher.js'
 import {
   listWorkspaceDirectory,
@@ -47,11 +48,16 @@ export interface WorkspaceRouteContext {
   selectAttachments?: () => Promise<AttachmentRef[]>
 }
 
+
+
 export async function routeWorkspace(
   request: LocalAppApiRequest,
   context: WorkspaceRouteContext,
 ): Promise<boolean> {
   const { req, res, url, path, method } = request
+
+  // "Open with" and "show in folder" have their own module: the router stays a composition surface.
+  if (await routeOpenWith(request, context)) return true
 
   if (method === 'POST' && path === LOCAL_APP_API_ROUTES.workspaceSelect) {
     if (!context.selectWorkspace) {

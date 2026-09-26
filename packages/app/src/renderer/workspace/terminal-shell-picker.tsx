@@ -1,9 +1,12 @@
-// UX-29: the "new terminal" Shell dropdown.
+// UX-29: the "new terminal" Shell choice.
 //
 // It shows the real shell names Main discovered, explains the ones that are unavailable
 // instead of hiding them, and refuses to guess: every option it can offer is one Main
-// validated on this machine.
+// validated on this machine. The control is a two-part pill — the left half starts a terminal
+// with the current Shell at once, the chevron lists the alternatives.
 import type { WorkspaceShellProfile } from '../api/terminal'
+import { SplitButton } from '../ui/split-button'
+import { WorkspaceFeatureIcon } from '../ui/icons'
 
 export function WorkspaceTerminalShellPicker({
   profiles,
@@ -23,24 +26,41 @@ export function WorkspaceTerminalShellPicker({
   const missingHint = missing
     .map((profile) => `${profile.label}：${profile.reason ?? '不可用'}`)
     .join('\n')
+  const current = available.find((profile) => profile.id === selectedId) ?? available[0] ?? null
+  const currentLabel = current?.label ?? '没有可用的 Shell'
 
   return (
-    <label className="workspace-terminal-shell">
-      <span className="workspace-terminal-shell-label">Shell</span>
-      <select
-        className="workspace-terminal-shell-select"
-        aria-label="选择终端 Shell"
-        value={selectedId ?? ''}
-        disabled={busy || available.length === 0}
-        title={missingHint ? `本机缺少：\n${missingHint}` : undefined}
-        onChange={(event) => onSelect(event.target.value)}
-        onFocus={() => onTipChange?.(null)}
-      >
-        {available.length === 0 && <option value="">没有可用的 Shell</option>}
-        {available.map((profile) => (
-          <option key={profile.id} value={profile.id}>{profile.label}</option>
-        ))}
-      </select>
-    </label>
+    <SplitButton
+      className="workspace-terminal-shell"
+      icon={<WorkspaceFeatureIcon id="terminal" />}
+      label={`终端 Shell：${currentLabel}`}
+      primaryTip={missingHint
+        ? `用 ${currentLabel} 新建终端。本机缺少：\n${missingHint}`
+        : `用 ${currentLabel} 新建终端`}
+      menuLabel="选择终端 Shell"
+      disabled={available.length === 0}
+      busy={busy}
+      items={[
+        ...available.map((profile) => ({
+          id: profile.id,
+          label: profile.label,
+          active: profile.id === current?.id,
+          onSelect: () => onSelect(profile.id),
+        })),
+        ...missing.map((profile) => ({
+          id: `missing-${profile.id}`,
+          label: `${profile.label}（不可用）`,
+          hint: profile.reason ?? '不可用',
+          disabled: true,
+          onSelect: () => undefined,
+        })),
+      ]}
+      onPrimary={() => {
+        if (current) onSelect(current.id)
+      }}
+      // The picker's own contract stays `{ label, x, y }`; the split button speaks the floating
+      // help tip shape, so the two are translated here rather than at every call site.
+      onTipChange={(tip) => onTipChange?.(tip ? { label: tip.text, x: tip.x, y: tip.y } : null)}
+    />
   )
 }

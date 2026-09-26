@@ -1,10 +1,12 @@
 // File preview toolbar controls; preview and draft state remain owned by preview-pane.
 import type { FocusEvent, MouseEvent } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { VSCodeIcon } from '../ui/icons'
+import { FolderGlyphIcon, VSCodeIcon } from '../ui/icons'
 import { CodeWrapToggle } from '../ui/code-wrap-toggle'
+import { SplitButton } from '../ui/split-button'
 import { transientTriggerProps } from '../ui/transient'
 import { htmlRunActions, type HtmlRunState } from './html-run'
+import { OPEN_WITH_REVEAL_ID, OPEN_WITH_VSCODE_ID, type WorkspaceOpenWith } from './use-workspace-open-with'
 
 const tipHandlers = (
   label: string,
@@ -36,6 +38,7 @@ export function WorkspacePreviewActions({
   onToggleHtmlSource,
   onToggleEditing,
   onOpenInVSCode,
+  openWith,
   onTipChange,
 }: {
   editable: boolean
@@ -55,6 +58,8 @@ export function WorkspacePreviewActions({
   onToggleHtmlSource: () => void
   onToggleEditing: () => void
   onOpenInVSCode: () => void | Promise<void>
+  /** Which application opens this file, when the pane has one to offer. */
+  openWith?: WorkspaceOpenWith
   onToggleCodeWrap: () => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
@@ -146,7 +151,50 @@ export function WorkspacePreviewActions({
           </button>
         </>
       )}
-      {canOpenExternalVSCode && (
+      {openWith && (() => {
+        const currentHandler = openWith.handlers.find((handler) => handler.id === openWith.currentId) ?? null
+        const currentIsVSCode = openWith.currentId === OPEN_WITH_VSCODE_ID
+        const currentLabel = currentIsVSCode
+          ? 'Visual Studio Code'
+          : currentHandler?.label ?? '系统默认应用'
+        return (
+          <SplitButton
+            className="workspace-preview-open-with"
+            icon={currentIsVSCode ? <VSCodeIcon /> : <FolderGlyphIcon />}
+            label={`打开方式：${currentLabel}`}
+            primaryTip={`用 ${currentLabel} 打开这个文件`}
+            menuLabel="选择打开方式"
+            onPrimary={openWith.openWithCurrent}
+            onTipChange={onTipChange}
+            items={[
+              ...(canOpenExternalVSCode
+                ? [{
+                    id: OPEN_WITH_VSCODE_ID,
+                    label: 'Visual Studio Code（默认）',
+                    icon: <VSCodeIcon />,
+                    active: currentIsVSCode,
+                    onSelect: () => openWith.openWith(OPEN_WITH_VSCODE_ID),
+                  }]
+                : []),
+              ...openWith.handlers.map((handler) => ({
+                id: handler.id,
+                label: handler.isDefault ? `${handler.label}（默认）` : handler.label,
+                hint: handler.executable,
+                active: handler.id === openWith.currentId,
+                onSelect: () => openWith.openWith(handler.id),
+              })),
+              {
+                id: OPEN_WITH_REVEAL_ID,
+                label: '显示文件位置',
+                icon: <FolderGlyphIcon />,
+                dividerBefore: true,
+                onSelect: openWith.reveal,
+              },
+            ]}
+          />
+        )
+      })()}
+      {!openWith && canOpenExternalVSCode && (
         <button
           {...transientTriggerProps()}
           className="workspace-files-icon-btn"
