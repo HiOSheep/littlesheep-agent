@@ -39,6 +39,8 @@ export interface TerminalSessionsApi {
   state: TerminalSessionsState
   activeTab: TerminalSessionTab | null
   open: (options: { workspacePath: string; shellId?: string | null; size?: { cols: number; rows: number } }) => Promise<string | null>
+  /** Ends every session; nothing may be left running for a workspace that is gone. */
+  closeAll: () => void
   close: (id: string) => void
   select: (id: string) => void
   /** Sends input to the active session, and refuses when it must not receive any. */
@@ -70,6 +72,16 @@ export function useTerminalSessions(callbacks: TerminalSessionsCallbacks = {}): 
   useEffect(() => () => {
     for (const controller of streams.current.values()) controller.abort()
     streams.current.clear()
+  }, [])
+
+  /** Closes every session: used when the workspace or conversation changes underneath them. */
+  const closeAll = useCallback(() => {
+    for (const [id, controller] of streams.current) {
+      controller.abort()
+      void closeWorkspaceTerminalSession(id).catch(() => undefined)
+    }
+    streams.current.clear()
+    dispatch({ type: 'reset' })
   }, [])
 
   const open = useCallback<TerminalSessionsApi['open']>(async ({ workspacePath, shellId, size }) => {
@@ -159,5 +171,5 @@ export function useTerminalSessions(callbacks: TerminalSessionsCallbacks = {}): 
     if (id) void resizeWorkspaceTerminalSession(id, cols, rows).catch(() => undefined)
   }, [])
 
-  return { state, activeTab, open, close, select: (id) => dispatch({ type: 'select', id }), write, resize }
+  return { state, activeTab, open, close, closeAll, select: (id) => dispatch({ type: 'select', id }), write, resize }
 }

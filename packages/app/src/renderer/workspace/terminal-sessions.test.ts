@@ -3,6 +3,7 @@
 // These are the behaviours a user notices when they go wrong: a tab silently replaced, the
 // selection jumping somewhere unexpected after a close, unbounded memory from a chatty
 // process, or — worst — keystrokes going to a session that has already exited.
+import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import {
   EMPTY_TERMINAL_SESSIONS,
@@ -119,5 +120,26 @@ describe('terminal session tabs', () => {
     const state = withTabs('a')
     expect(reduceTerminalSessions(state, { type: 'output', id: 'ghost', text: 'x' })).toBe(state)
     expect(reduceTerminalSessions(state, { type: 'status', id: 'ghost', status: 'ready' })).toBe(state)
+  })
+
+  it('drops every tab when the workspace they belonged to is gone', () => {
+    const state = withTabs('a', 'b')
+    expect(state.tabs).toHaveLength(2)
+    const reset = reduceTerminalSessions(state, { type: 'reset' })
+    expect(reset.tabs).toEqual([])
+    expect(reset.activeId).toBeNull()
+    // Resetting an already empty state is a no-op, so an effect may call it freely.
+    expect(reduceTerminalSessions(reset, { type: 'reset' })).toBe(reset)
+  })
+
+  it('offers a new session without giving up the running one, and says what a command affects', async () => {
+    const toolbar = await readFile(new URL('./terminal-toolbar.tsx', import.meta.url), 'utf8')
+    const surface = await readFile(new URL('./terminal.tsx', import.meta.url), 'utf8')
+    expect(toolbar).toContain("label: '新建'")
+    expect(toolbar).toContain('正在运行的终端不受影响')
+    // The scope wording appears as soon as more than one session exists.
+    expect(toolbar).toContain('只影响这一个')
+    expect(surface).toContain('sessionCount={sessions.state.tabs.length}')
+    expect(surface).toContain('sessions.closeAll()')
   })
 })

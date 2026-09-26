@@ -466,6 +466,78 @@ async function assertWorkspaceTerminalReady(client, recorder) {
     'a single terminal session shows no tab strip',
     { tabs: terminal.tabs, tabStrip: terminal.tabStrip },
   )
+
+  // UX-30 item 1: a second terminal is created beside the running one, not instead of it.
+  // The first tab's state is captured *before* the click, because the claim is that creating
+  // another session does not disturb it — not that it has already finished starting.
+  const beforeStates = await evaluate(client, `(() => [...document.querySelectorAll('.workspace-terminal-tab')]
+    .map((node) => (node.querySelector('.workspace-terminal-tab-shell')?.textContent || '').trim()))()`)
+  const created = await evaluate(client, `(() => {
+    const button = [...document.querySelectorAll('.workspace-terminal button')]
+      .find((node) => (node.textContent || '').trim() === '新建')
+    if (!(button instanceof HTMLElement)) return { clicked: false }
+    button.click()
+    return { clicked: true }
+  })()`)
+  const twoTabs = created.clicked
+    ? await harness.waitFor(() => evaluate(client, `(() => {
+      const tabs = [...document.querySelectorAll('.workspace-terminal-tab')]
+      if (tabs.length < 2) return null
+      return {
+        count: tabs.length,
+        labels: tabs.map((node) => (node.textContent || '').replace(/\\s+/gu, ' ').trim()),
+        states: tabs.map((node) => (node.querySelector('.workspace-terminal-tab-shell')?.textContent || '').trim()),
+        active: tabs.filter((node) => node.getAttribute('aria-selected') === 'true').length,
+      }
+    })()`), 60_000, 'a second terminal tab').catch(() => null)
+    : null
+
+  // Close the new one again; the first session has to keep running.
+  const closed = twoTabs
+    ? await evaluate(client, `(() => {
+      const tabs = [...document.querySelectorAll('.workspace-terminal-tab')]
+      const last = tabs[tabs.length - 1]
+      const button = last?.querySelector('.workspace-terminal-tab-close')
+      if (!(button instanceof HTMLElement)) return { clicked: false }
+      button.click()
+      return { clicked: true }
+    })()`)
+    : { clicked: false }
+  await delay(800)
+  const afterClose = await evaluate(client, `(() => ({
+    tabs: document.querySelectorAll('.workspace-terminal-tab').length,
+    strip: document.querySelectorAll('.workspace-terminal-tabs').length,
+    status: (document.querySelector('.workspace-terminal-status')?.textContent || '').trim(),
+  }))()`)
+
+  recorder.note({ step: 'workspace-terminal-second-session', beforeStates, created, twoTabs, closed, afterClose })
+  recorder.check(
+    created.clicked === true
+    && twoTabs !== null
+    && twoTabs.count >= 2
+    && twoTabs.active === 1
+    // Both tabs name a shell and a state: the list is not a pair of identical blanks.
+    && twoTabs.states.every((state) => state.length > 0),
+    'creating another terminal adds a tab beside the running one instead of replacing it',
+    { twoTabs, created },
+  )
+  const firstTabAfter = twoTabs?.states[0] ?? ''
+  recorder.check(
+    // The first session keeps its own state: it must not read as exited or failed, and it must
+    // not have lost the state it had before the second terminal appeared.
+    twoTabs !== null
+    && firstTabAfter.length > 0
+    && !firstTabAfter.includes('已退出')
+    && !firstTabAfter.includes('失败')
+    && (beforeStates[0] === undefined || beforeStates[0] === firstTabAfter),
+    'the session that was already running is left running when another is created',
+    { before: beforeStates, after: twoTabs?.states ?? [] },
+  )
+  recorder.check(
+    closed.clicked === true && afterClose.tabs <= 1,
+    'closing one terminal removes only that tab',
+    { closed, afterClose },
+  )
 }
 
 async function createWorkspaceScene(client, recorder, { fileName, draftMarker, browserUrl }) {

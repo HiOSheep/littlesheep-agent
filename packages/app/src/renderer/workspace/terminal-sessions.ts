@@ -42,6 +42,8 @@ export type TerminalSessionsAction =
   | { type: 'output'; id: string; text: string }
   | { type: 'status'; id: string; status: TerminalSessionStatus; exitCode?: number | null }
   | { type: 'close'; id: string }
+  /** Drops every tab: the workspace they belonged to is gone. */
+  | { type: 'reset' }
   | { type: 'notice'; text: string | null }
 
 /** The tab a keystroke belongs to, or null when nothing may receive input. */
@@ -118,6 +120,8 @@ export function reduceTerminalSessions(
       const neighbour = tabs[index] ?? tabs[index - 1] ?? null
       return { tabs, activeId: neighbour?.id ?? null, notice: state.notice }
     }
+    case 'reset':
+      return state.tabs.length === 0 && state.activeId === null ? state : EMPTY_TERMINAL_SESSIONS
     case 'notice':
       return state.notice === action.text ? state : { ...state, notice: action.text }
     default:

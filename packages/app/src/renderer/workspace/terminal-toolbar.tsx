@@ -9,6 +9,8 @@ import { transientTriggerProps } from '../ui/transient'
 
 export function WorkspaceTerminalToolbar({
   shellLabel,
+  sessionCount,
+  onNew,
   onInterrupt,
   onRestart,
   onClear,
@@ -16,15 +18,22 @@ export function WorkspaceTerminalToolbar({
 }: {
   /** The shell this session is really running, used in every label below. */
   shellLabel: string
+  /** How many sessions are open, so the wording can say what a command affects. */
+  sessionCount: number
+  onNew: () => void
   onInterrupt: () => void
   onRestart: () => void
   onClear: () => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
+  const scope = sessionCount > 1 ? `（只影响这一个，共 ${sessionCount} 个终端）` : ''
   const buttons: Array<{ label: string; tip: string; onClick: () => void }> = [
-    { label: '中断', tip: `向当前 ${shellLabel} 终端发送 Ctrl+C`, onClick: onInterrupt },
-    { label: '重启', tip: `停止当前 ${shellLabel} 会话并重启`, onClick: onRestart },
-    { label: '清空', tip: '清空终端输出', onClick: onClear },
+    // A second session is a new terminal beside the running one, which is why this is first:
+    // it never replaces what is already there (UX-30).
+    { label: '新建', tip: '新建一个终端会话；正在运行的终端不受影响', onClick: onNew },
+    { label: '中断', tip: `向当前 ${shellLabel} 终端发送 Ctrl+C${scope}`, onClick: onInterrupt },
+    { label: '重启', tip: `停止当前 ${shellLabel} 会话并重新启动${scope}`, onClick: onRestart },
+    { label: '清空', tip: `清空当前终端的显示输出${scope}`, onClick: onClear },
   ]
 
   return (

@@ -25,8 +25,7 @@ import {
   resizeWorkspaceTerminalSession,
   type TerminalActivityRecord
 } from '../api'
-import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { transientTriggerProps } from '../ui/transient'
+import { FloatingHelpTip, buildFloatingHelpTip } from '../ui/floating-help'
 import {
   LITTLE_SHEEP_SELECTION_BACKGROUND,
   LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
@@ -118,6 +117,12 @@ export function WorkspaceTerminal({
 
   useEffect(() => {
     void refreshTerminalActivities()
+  }, [workspacePath, sessionId])
+
+  // A workspace or conversation switch must not leave sessions running for something the user
+  // has left, and must never route input to them (UX-30).
+  useEffect(() => () => {
+    sessions.closeAll()
   }, [workspacePath, sessionId])
 
   useEffect(() => {
@@ -481,24 +486,13 @@ export function WorkspaceTerminal({
           <span className={`workspace-terminal-status ${running ? 'running' : ''}`}>{status}</span>
           <WorkspaceTerminalToolbar
             shellLabel={shellLabel}
+            sessionCount={sessions.state.tabs.length}
+            onNew={() => void startTerminalSession(() => !mountedRef.current)}
             onInterrupt={() => void interruptTerminal()}
             onRestart={() => void stopAndRestartTerminal()}
             onClear={clearTerminal}
             onTipChange={onTipChange}
           />
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            onClick={clearTerminal}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('清空终端输出', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('清空终端输出', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('清空终端输出', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            清空
-          </button>
         </div>
         {/* A saved Shell that is no longer installed says so here instead of vanishing. */}
         {shellSelection.notice && (
