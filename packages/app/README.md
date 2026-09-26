@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 09:10:30
+最后更新：2026-09-26 09:25:24
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -162,3 +162,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **编辑器布局不再依赖动画帧**（UX-28 第 4 条排查副产品）：`workspace/code-editor.tsx` 同步布局并在模型变化后重新布局；被遮挡/最小化的窗口不产生帧，也不投递 resize observer，布局不该依赖它们。实测说明：隐藏窗口里编辑器根节点仍是 5 px（pane 715 px）、只渲染 1 行，这条改动不改变那组测量。
 - **验收窗口可以停在屏幕外渲染**（只有验收环境可用）：`/application/acceptance` 的 `park-offscreen` 先把窗口移到所有显示器之外再 `showInactive()`，因此需要真实布局的检查能在**不打扰用户**的前提下进行；普通走查仍保持隐藏窗口。同时记录一个真实缺陷：审阅差异面板里 Monaco 根节点保持 inline `height: 5px`（父链明确 716 px），只渲染 1 行——与窗口是否渲染无关，已作为后续条目。
 - **审阅差异面板不再只有一行**（UX-28 第 4 条修掉的真实缺陷）：编辑器首次布局发生在容器为空时，Monaco 把 5 px 写成行内高度后再没更新；现在由 `measureEditorBox` 自己量好再 `layout({width,height})`（实测修复前 5 px/1 行/1 个行号 → 修复后 716 px/12 行/行号 1,2,3）。验收新增 `park-offscreen`：窗口移到所有显示器之外并 `showInactive()`，需要真实布局的检查因此能在**不打扰用户**的前提下运行（实测 screenX/Y = -21846、focused false）。
+- **终端可以选 Shell**（UX-29）：Main 探测本机真实可用的 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL（不可用项说明原因与配置路径，PATH 上的 `bash.exe` 若是 WSL 启动器不会被当成 Git Bash），终端顶部下拉用真实名称，选择只发送受校验的 profile id。

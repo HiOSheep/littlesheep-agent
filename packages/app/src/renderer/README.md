@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 09:11:00
+最后更新：2026-09-26 09:25:24
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -72,3 +72,4 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 - `workspace/code-editor.tsx`：布局同步执行并在模型变化后重新布局（不依赖动画帧或 resize observer 投递）；隐藏/被遮挡窗口的高度链解析仍会让编辑器保持 5 px，已如实记录（UX-28 第 4 条）。
 - `workspace/code-editor.tsx`：模型变化后与 120 ms 后各补一次布局；**实测未改变**审阅差异面板 5 px 的行内高度（父链 716 px），该缺陷已单独记录待修。
 - `workspace/code-editor.tsx` 的 `measureEditorBox`：向上有界取最大盒子并显式传给 `layout()`，修掉"编辑器只有 5 px / 1 行"的缺陷（UX-28 第 4 条）。
+- `workspace/terminal-shell-picker.tsx` + `terminal-shell-choice.ts`：终端 Shell 下拉、偏好失效提示与真实 Shell 名称（UX-29）；最近命令列表与工具按钮已抽到 `terminal-activity.tsx`、`terminal-toolbar.tsx`。
