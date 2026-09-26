@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-26 06:40:45
+最后更新：2026-09-26 09:25:43
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
 
@@ -44,3 +44,7 @@
 ## 行评论锚点（2026-09-26）
 
 `attachment-contracts.ts` 的 `AttachmentLineComment` 增加可选 `anchorText`：创建评论时记下当时那几行源码，刷新后据此判断评论是否还指向同一段代码（UX-28 第 4 条）；旧评论没有该字段时按"未知"处理，不冒充结论。
+
+## 终端 Shell 路由（2026-09-26）
+
+`local-app-api-routes.ts` 增加精确路由 `terminalShells`（`/workspace/terminal/shells`）与前缀表同名项：终端据此列出本机真实可用的 Shell，会话创建只传受校验的 profile id（UX-29）。
