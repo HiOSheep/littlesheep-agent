@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 09:25:02
+最后更新：2026-09-26 09:31:39
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -84,3 +84,7 @@
 `local-app-api/workspace-git-review-unavailable.test.ts`：清空 PATH 复现 `git-unavailable`；`icacls .git\index /deny` 复现 `permission-denied`（分类作用于整次读取，因为拒绝发生在 `rev-parse` 成功之后）；读损坏仓库前后全局配置不变，实测"不自动修改 safe.directory"（UX-28 第 1 条）。
 - **屏外停放**：`desktop-visual-acceptance.ts` 的 `parkWindowOffscreenForAcceptance` 先把窗口移到所有显示器之外再 `showInactive()`，供需要真实布局的验收使用；只有 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时契约可用。记录到的缺陷：审阅差异的 Monaco 根节点保持 inline `height: 5px`（父链 716 px），仅渲染 1 行——在**正在渲染**的窗口里同样复现，因此是应用侧布局缺陷。
 - **Shell 探测与选择**（UX-29）：`main/workspace-shell-discovery.ts` 探测本机真实可用的 Shell（含"PATH 上的 bash.exe 是 WSL 启动器、不算 Git Bash"与 WSL 发行版逐条列出），`terminal-process.ts` 按 profile 启动并把 `LANG`/`TERM` 等环境并入 spawn；`GET /workspace/terminal/shells` 提供列表，未知或不可用的 id 被拒绝。
+
+## 终端 Shell 的真实验收（2026-09-26）
+
+`local-app-api/workspace-terminal-shell-acceptance.test.ts` 启动真实终端核对 Shell 版本与进程路径、cwd、中文、环境与多行粘贴；同时覆盖"可执行文件不存在时报错而非挂住"。顺带修复：启动前检查可执行文件（避免假活会话）、进程树终止全程安全失败（UX-29 第 4 条）。
