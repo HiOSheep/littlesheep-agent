@@ -1,6 +1,7 @@
 // PTY-first workspace terminal process adapter with a spawn fallback.
 
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { workspaceShellConfig } from '../workspace-shell.js'
 import type { WorkspaceShellProfile } from '../workspace-shell-discovery.js'
 import { HttpError } from './http.js'
@@ -29,6 +30,12 @@ export async function createWorkspaceTerminalProcess(
   profile?: WorkspaceShellProfile | null,
 ): Promise<WorkspaceTerminalProcess> {
   const shell = shellLaunch(profile)
+  // A discovered shell that has since been removed must fail here, with a message the UI can
+  // show, instead of starting a process that never runs (`spawn` reports a missing executable
+  // asynchronously, which used to leave a session that looked alive and could not be killed).
+  if (profile?.executable && !existsSync(profile.executable)) {
+    throw new HttpError(400, `Shell 可执行文件不存在：${profile.executable}`)
+  }
   const pty = await loadNodePty()
   if (pty) {
     try {
@@ -325,12 +332,26 @@ function terminalClosedError(value: unknown): Error {
 }
 
 function killSpawnedProcessTree(child: ReturnType<typeof spawn>): void {
+  // Killing must never throw. A process that failed to start has no usable pid, and `kill` on
+  // it raises EINVAL — which used to escape from terminal shutdown (measured while accepting
+  // a shell whose executable had been removed).
+  const safeKill = () => {
+    try {
+      child.kill()
+    } catch {
+      // Already gone, or never started.
+    }
+  }
   const pid = child.pid
   if (process.platform === 'win32' && pid) {
-    const killer = spawn('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
-    killer.once('error', () => child.kill())
-    killer.once('close', () => child.kill())
+    try {
+      const killer = spawn('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
+      killer.once('error', safeKill)
+      killer.once('close', safeKill)
+    } catch {
+      safeKill()
+    }
     return
   }
-  child.kill()
+  safeKill()
 }

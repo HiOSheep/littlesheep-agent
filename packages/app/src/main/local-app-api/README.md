@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 09:25:02
+最后更新：2026-09-26 09:31:19
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -103,3 +103,7 @@
 ## Shell 探测与选择（UX-29，2026-09-26）
 
 `workspace-shell-discovery.ts` 一次探测 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL：每项带 `available` 与 `reason` + `configHint`，不可用项留在列表里而不是被隐藏。`isGitBashPath` 拒绝 `System32\bash.exe`（那是 WSL 启动器）；WSL 只按 `wsl.exe --list --quiet` 的**真实发行版**逐条列出（输出按 UTF-16LE 解码）。参数一律数组，Git Bash 不会拿到 PowerShell 的启动参数。`GET /workspace/terminal/shells` 暴露列表；会话创建只接受**受校验的 profile id**，由 Main 重新探测后决定 executable/args/env。
+
+## 终端 Shell 的真实验收（UX-29 第 4 条 PowerShell 侧，2026-09-26）
+
+`workspace-terminal-shell-acceptance.test.ts` 用应用的会话管理器启动真实终端并断言：`$PSVersionTable.PSVersion.Major` 与实际启动的 Shell 一致（pwsh ≥7 / Windows PowerShell = 5）、`(Get-Process -Id $PID).Path` 等于探测到的可执行文件、cwd 落在工作区根、中文输出原样回显、环境变量继承、一次写入多行都按序执行且会话仍可用。顺带修掉：可执行文件在探测后消失时 `spawn` 的异步失败会让 `create` 返回一个假活会话（现在启动前检查并抛出可读错误）；终止从未启动的进程会抛 `EINVAL` 并从退出路径逃逸（现在安全失败）。
