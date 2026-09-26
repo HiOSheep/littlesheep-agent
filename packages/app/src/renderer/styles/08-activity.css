@@ -216,6 +216,10 @@ button.agent-flow-row.no-details:focus-visible,
 
 .agent-transcript-prose {
   margin: 4px 0 6px;
+  /* The agent's own words keep the transcript's text colour. `.assistant-activity-flow` is muted
+     so that steps, tools and reasoning summaries recede; what the agent actually says while it
+     works is not machinery and must not read as an annotation. */
+  color: var(--text);
 }
 
 .agent-active-stage-row {

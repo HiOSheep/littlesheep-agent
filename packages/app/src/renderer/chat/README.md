@@ -1,5 +1,5 @@
 # Renderer 对话
-最后更新：2026-09-26 14:58:17
+最后更新：2026-09-26 19:47:14
 
 这里负责消息、执行过程和渐进式披露的展示，以及把一次流式 run 的事件归并为 UI 状态。
 
@@ -16,5 +16,7 @@
 - `stream-text-integrity.test.ts`：流式文字完整性的分层探针（UX-20），用一份含标题/列表/链接/引用/代码围栏/中文标点/长段落的确定性样本驱动**真实**的 `consumeRunStream` + `assistant-delta-buffer` + `run-result-reducer`，固定住四条边界：正常流逐字节一致；畸形帧只被跳过、不连累邻居；**结果帧本身无法解析时仍以"结束却没有 result"拒绝，不静默成功**；`aborted`/`failed` 撤回预览而成功 run 用 settlement 文案覆盖预览。增删流式层的语义前先在这里改断言。
 
 验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。**两种显示模式都要能读到它**：验证结论属于活动而不是转录行，紧凑模式由 `.agent-transcript-attention` 承载，普通模式由 `activityVerificationLine` 单独渲染成一行（`data-transcript-verification`，中性样式，不带危险色）。普通模式下每个已结算回合都是 `unverified`，因此这一行是常态而不是告警——但它必须存在，否则同一份 run 在一种显示模式下"从未验证过"这件事会完全消失。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，没有 partial：需要"没做完"的说法时用 `aborted`（本轮已停止）、`paused`（本轮已暂停）或 `needs_replan`（验证：需要调整），不要为清单虚构状态。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
+
+**执行过程中的"说的话"按正文颜色渲染**：`.assistant-activity-flow` 整体用 `--muted`，好让步骤、工具与思考摘要退到背景；但转录里的散文行（`.agent-transcript-prose`，模型在工具调用之间说给用户的话）不是机械过程，必须显式取回 `--text`，否则用户读到的解释比最终回答更淡、像脚注。只把这一个类改回正文色，步骤/工具/摘要/运行中状态行仍然保持 muted。真实窗口实测：散文行计算色 `rgb(232, 232, 232)`（= `--text` = `.assistant-turn` = 正文），同一容器 `rgb(160, 160, 160)`（= `--muted`）。
 
 `run-actions.ts` 为 337 行，略高于 300 行，因为一次 run 的 SSE 顺序、步骤/工具归并、审批、停止和最终收尾必须维持同一事务边界。后续只有在建立独立事件 reducer 特征测试后才继续拆分，当前不得继续增长。

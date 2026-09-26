@@ -442,6 +442,11 @@ async function main() {
     const locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
     await harness.desktopAction(locator, 'resize', WINDOW_SIZE)
+    // Park the window outside every display and show it inactively. A hidden window never
+    // advances CSS transitions, and some tones in this gate ARE transitions: measured, the
+    // disabled plugin-reload control read opacity 1 (the from-frame) while `:disabled` matched and
+    // the rule was in the stylesheet, with the transition still "running" and frozen at its start.
+    await harness.desktopAction(locator, 'park-offscreen')
     const client = await harness.connectRenderer(debuggingPort)
     await client.send('Runtime.enable')
     await client.send('Page.enable')
