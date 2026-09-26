@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 07:32:56
+最后更新：2026-09-26 08:26:59
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -159,3 +159,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **差异交互有真实走查**（UX-28 第 4 条）：真实回车（浏览器输入管线）在评审树里换选中项、从差异回到文件工作区的源文件、gutter 渲染真实行号、长行进入应用提供的差异数据；长行换行与删除行评论的视觉证据在隐藏窗口里拿不到（Monaco 不布局），只有配置级/单元级证据。
 - **审阅与命令行基线一致**（UX-28 第 2 条）：子目录（路径相对工作区且能被自己的 diff API 取到）、linked worktree、detached HEAD（`detached@<sha>`）、合并冲突（`conflicted`）、子模块 gitlink、中文与空格路径、空文件与二进制，逐形态对照 `git status --porcelain`。
 - **Git 失败分类有真机复现**（UX-28 第 1 条）：清空 PATH 得到 `git-unavailable`，用 ACL 拒绝读 `.git/index` 得到 `permission-denied`（而不是"不是 Git 仓库"），并实测读损坏仓库不会改动全局 `safe.directory`；ownership 与 timeout 在本机无法复现，保持分类级证据。
+- **编辑器布局不再依赖动画帧**（UX-28 第 4 条排查副产品）：`workspace/code-editor.tsx` 同步布局并在模型变化后重新布局；被遮挡/最小化的窗口不产生帧，也不投递 resize observer，布局不该依赖它们。实测说明：隐藏窗口里编辑器根节点仍是 5 px（pane 715 px）、只渲染 1 行，这条改动不改变那组测量。

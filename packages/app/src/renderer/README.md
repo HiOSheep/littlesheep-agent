@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 07:23:39
+最后更新：2026-09-26 08:26:59
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -69,3 +69,4 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 - `workspace/review-limits.ts`：导航器折叠时把列表/差异层的上限语句交给差异面板（`review-diff.tsx` 用 `.workspace-review-limit-notice` 渲染），展开时不重复（UX-28 第 5 条）。
 - `workspace/line-comment-model.ts` 的 `lineCommentAnchorState` 判定评论是否仍指向当初的代码（`anchored`/`moved`/`unknown`），`line-comment-surface.tsx` 在 `moved` 时显示"代码行已变化"（UX-28 第 4 条）。
 - `workspace/review-diff-surface.test.ts`：钉住 `diffWordWrap: 'on'` 与"gutter 行号来自 `review-diff-model` 而不是 1..n 计数器"（UX-28 第 4 条；隐藏窗口里 Monaco 不布局，渲染级证据无法取得）。
+- `workspace/code-editor.tsx`：布局同步执行并在模型变化后重新布局（不依赖动画帧或 resize observer 投递）；隐藏/被遮挡窗口的高度链解析仍会让编辑器保持 5 px，已如实记录（UX-28 第 4 条）。
