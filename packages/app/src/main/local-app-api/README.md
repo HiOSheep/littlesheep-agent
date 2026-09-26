@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 07:31:31
+最后更新：2026-09-26 08:46:27
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -98,3 +98,4 @@
 ## 失败分类的实际复现（UX-28 第 1 条，2026-09-26）
 
 `workspace-git-review-unavailable.test.ts` 在真机上复现两类：**Git 未安装**（清空 PATH 并重新导入模块，绕过可执行文件缓存 → `git-unavailable`）与**权限拒绝**（`icacls .git\index /deny <用户>:(R)` 让 Git 自己报 `Permission denied` → `permission-denied`，恢复 ACL 后仓库恢复可用）。另有一条把"不自动修改全局 `safe.directory`"变成实测：读损坏仓库前后 `git config --global --list` 完全一致。ownership 与 timeout 在本机无法复现（需要别的账户拥有的目录／真的挂住的 git），保持分类级证据。
+- `park-offscreen` 验收动作：窗口移到屏幕外后 `showInactive()` 渲染，用于需要真实布局的检查（只有验收环境注册该动作）。

@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 07:32:56
+最后更新：2026-09-26 08:46:27
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -82,3 +82,4 @@
 ## 失败分类的真机复现（2026-09-26）
 
 `local-app-api/workspace-git-review-unavailable.test.ts`：清空 PATH 复现 `git-unavailable`；`icacls .git\index /deny` 复现 `permission-denied`（分类作用于整次读取，因为拒绝发生在 `rev-parse` 成功之后）；读损坏仓库前后全局配置不变，实测"不自动修改 safe.directory"（UX-28 第 1 条）。
+- **屏外停放**：`desktop-visual-acceptance.ts` 的 `parkWindowOffscreenForAcceptance` 先把窗口移到所有显示器之外再 `showInactive()`，供需要真实布局的验收使用；只有 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时契约可用。记录到的缺陷：审阅差异的 Monaco 根节点保持 inline `height: 5px`（父链 716 px），仅渲染 1 行——在**正在渲染**的窗口里同样复现，因此是应用侧布局缺陷。
