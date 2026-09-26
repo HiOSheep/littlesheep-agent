@@ -13,6 +13,7 @@
 
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { LONG_MARKDOWN_MARKER, startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 import { createElectronHarness, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
@@ -415,6 +416,33 @@ async function selectWorkspaceFeature(client, label) {
  * started, the shell that runs is a real one Main discovered, and the tab strip stays out of
  * the way while there is only one session.
  */
+
+/** Types a command into the focused terminal and presses Enter through the browser. */
+async function sendTerminalCommand(client, text) {
+  await evaluate(client, `(() => {
+    const textarea = document.querySelector('.workspace-terminal textarea')
+    if (!(textarea instanceof HTMLTextAreaElement)) return false
+    textarea.focus()
+    return true
+  })()`)
+  await client.send('Input.insertText', { text })
+  for (const type of ['keyDown', 'char', 'keyUp']) {
+    await client.send('Input.dispatchKeyEvent', {
+      type,
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+      text: type === 'char' ? '\r' : undefined,
+    })
+  }
+  await delay(2500)
+}
+
+async function fileExists(path) {
+  return existsSync(path)
+}
+
 async function assertWorkspaceTerminalReady(client, recorder) {
   const terminal = await harness.waitFor(() => evaluate(client, `(() => {
     const pane = document.querySelector('.workspace-terminal')
@@ -537,6 +565,47 @@ async function assertWorkspaceTerminalReady(client, recorder) {
     closed.clicked === true && afterClose.tabs <= 1,
     'closing one terminal removes only that tab',
     { closed, afterClose },
+  )
+
+  // UX-30 item 1: input goes to the selected session, and creating another does not stop the
+  // first. Terminal text lives on a canvas, so this is checked by what the commands *do*: each
+  // session writes a marker file that only it could have written.
+  const markerPath = (name) => join(workplaceDir, name)
+  await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-1.txt -Value a1')
+  await evaluate(client, `(() => {
+    const button = [...document.querySelectorAll('.workspace-terminal button')]
+      .find((node) => (node.textContent || '').trim() === '新建')
+    if (button instanceof HTMLElement) button.click()
+    return true
+  })()`)
+  await harness.waitFor(
+    () => evaluate(client, `document.querySelectorAll('.workspace-terminal-tab').length >= 2 ? true : null`),
+    60_000,
+    'a second terminal for the routing check',
+  ).catch(() => null)
+  await delay(3000)
+  await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-b-1.txt -Value b1')
+  await evaluate(client, `(() => {
+    const first = [...document.querySelectorAll('.workspace-terminal-tab')][0]
+      ?.querySelector('.workspace-terminal-tab-select')
+    if (first instanceof HTMLElement) first.click()
+    return true
+  })()`)
+  await delay(1500)
+  await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-2.txt -Value a2')
+
+  const markers = {
+    a1: existsSync(markerPath('terminal-a-1.txt')),
+    b1: existsSync(markerPath('terminal-b-1.txt')),
+    a2: existsSync(markerPath('terminal-a-2.txt')),
+  }
+  recorder.note({ step: 'workspace-terminal-input-routing', markers })
+  recorder.check(
+    // If creating the second session had killed the first, or if input had gone to the wrong
+    // process, at least one of these files would be missing.
+    markers.a1 && markers.b1 && markers.a2,
+    'each terminal session receives its own input, and the first still works after a second is created',
+    markers,
   )
 }
 
@@ -1165,6 +1234,30 @@ async function main() {
 
     const newConversation = await clickVisible(client, '.conversation-section .sidebar-new-action')
     if (!newConversation.clicked) throw new Error('a second conversation could not be started')
+
+    // UX-30 item 1: the terminals of the conversation just left must not still be here, and
+    // nothing may be able to type into them.
+    await selectWorkspaceFeature(client, '终端')
+    await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.workspace-terminal') ? true : null`),
+      30_000,
+      'the terminal panel in the new conversation',
+    ).catch(() => null)
+    await delay(1500)
+    const terminalsAfterSwitch = await evaluate(client, `(() => ({
+      tabs: document.querySelectorAll('.workspace-terminal-tab').length,
+      strip: document.querySelectorAll('.workspace-terminal-tabs').length,
+      hasTerminal: Boolean(document.querySelector('.workspace-terminal')),
+      status: (document.querySelector('.workspace-terminal-status')?.textContent || '').trim(),
+    }))()`)
+    recorder.note({ step: 'terminal-after-conversation-switch', terminalsAfterSwitch })
+    recorder.check(
+      terminalsAfterSwitch.hasTerminal === true
+      && terminalsAfterSwitch.tabs === 0
+      && terminalsAfterSwitch.strip === 0,
+      'switching conversation starts with no terminals from the conversation that was left',
+      terminalsAfterSwitch,
+    )
     let secondConversationDraft
     try {
       secondConversationDraft = await harness.waitFor(() => evaluate(client, `(() => {

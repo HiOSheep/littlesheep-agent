@@ -120,8 +120,16 @@ export function WorkspaceTerminal({
   }, [workspacePath, sessionId])
 
   // A workspace or conversation switch must not leave sessions running for something the user
-  // has left, and must never route input to them (UX-30).
-  useEffect(() => () => {
+  // has left, and must never route input to them (UX-30). Closing the *panel* is different:
+  // hiding the terminal keeps its sessions alive, so this runs when the identity actually
+  // changes rather than when the component unmounts.
+  /** One session per panel mount, even if the effect that starts it runs twice. */
+  const startedRef = useRef(false)
+  const identityRef = useRef(`${workspacePath}\u0000${sessionId}`)
+  useEffect(() => {
+    const identity = `${workspacePath}\u0000${sessionId}`
+    if (identityRef.current === identity) return
+    identityRef.current = identity
     sessions.closeAll()
   }, [workspacePath, sessionId])
 
@@ -285,6 +293,11 @@ export function WorkspaceTerminal({
         // The PTY owns the XTerm cursor. Renderer-written banners would move
         // XTerm without moving PowerShell's PSReadLine cursor model, causing
         // the first command to be redrawn beside an earlier line.
+        // React may run this effect twice (StrictMode, or a fast remount): one panel must own
+        // exactly one session, so the start is guarded by a ref rather than by luck. Without
+        // this, opening the terminal leaked a second shell that nothing displayed.
+        if (startedRef.current) return
+        startedRef.current = true
         void startTerminalSession(() => disposed)
       })
       .catch((err) => {

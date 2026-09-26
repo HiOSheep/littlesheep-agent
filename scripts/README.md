@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-26 10:03:13
+最后更新：2026-09-26 11:10:09
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -20,3 +20,5 @@
 - 任务书级应用验收的范围、结果与未覆盖项集中记录在 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`；通过单个脚本不代表其未覆盖场景也通过。
 
 `verify:conversation-workspace-scenarios` 的终端步骤会断言终端面板列出真实可用的 Shell（实测包含 PowerShell 7、Windows PowerShell、命令提示符与 WSL 发行版），并检查单会话不显示标签条；该门把窗口停在所有显示器之外渲染（隐藏窗口会让截图超时，停放后渲染正常且不会出现在桌面上）
+
+`verify:workspace-terminal`（`scripts/verify-workspace-terminal.mjs`）是终端专项真实窗口门：窗口停在屏幕外渲染，面板以终端布局打开，断言 Shell 下拉列出本机真实 Shell、打开时恰好一个会话、点"新建"得到两个标签且恰好一个选中、两个会话各自收到自己的输入（用命令写标记文件验证）、关闭当前标签只移除那一个；终端输出是 canvas 因此不读渲染文本，这条与"切换标签后的回放待验证"一起写进了门的 limits

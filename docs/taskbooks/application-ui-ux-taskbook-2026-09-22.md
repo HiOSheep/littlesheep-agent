@@ -1,1222 +1,200 @@
 # 应用层 UI / UX 优化与统一任务书 2026-09-22
 
-最后更新：2026-09-26 10:23:22
+最后更新：2026-09-26 11:10:01
 
-## 1. 范围与结论
+## 1. 本文件当前只记录未完成部分
 
-本轮按用户要求审查应用层并形成待办，不实施产品代码修改。基线为工作树 `8060a16` 上的 Renderer 与相关 Local App API；已有的其他文档修改不属于本任务。
+本任务书 2026-09-22 建立时共 31 项。2026-09-26 复核后：**23 项整项退役**（UX-01～UX-15、UX-18、UX-21、UX-23、UX-24、UX-26、UX-29），**10 项未完成条目里的剩余部分**转成下方 UX-32～UX-39 共 8 条待办；已完成项的实现范围、逐次实测数字、被证伪的假设与更正过的错误结论都在 git 历史里（`git log --follow -- docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`），本文件不再复述，也不再保留它们的复选框。
 
-优先解决误发送、误删除、控制入口消失和失败不可见，再统一设置、弹窗、反馈及视觉表现。现有实现已有主题 token、FadePresence、渐进披露、文件草稿与会话现场恢复，不需要另建一套设计系统或任务引擎。
+退役依据是各任务自己的实施记录与门禁脚本，不是本轮的新验收。以下事实在退役时被逐项重查过，其中若干条与退役前的旧记录不一致，此后以本节的表述为准（旧记录的错误一并说明，避免下一个人重新踩）：
 
-**证据边界**：这是源码与交互契约审查，未启动 Electron、未进行鼠标/键盘实机走查、未测量截图对比度。下文“源码确认”表示实现分支已核对，并不表示在真实窗口中已复现；“体验建议”需要验证收益；“待实机验证”不得登记为已复现缺陷。所有任务仍未完成。
+- **UX-29 旧记录写"本机没有安装 Git Bash"，这是错的。** 本机 `D:\Git\bin\bash.exe` 确实存在且是真 Git Bash（5.2.37 msys），只是 `gitBashCandidates` 只查 4 个 Program Files 类根和 `PATH\<entry>\bash.exe`，而 `PATH` 里只有 `D:\Git\cmd`（没有 `bash.exe`）、`D:\Git\bin` 不在 PATH，于是探测把已安装的 Git Bash 报成"未找到"，配置提示还建议去安装。这是**探测假阴性缺陷**，已登记为 UX-32。
+- **UX-29 旧记录与两处 README 写"未知或不可用的 shellId 一律拒绝"，实现不是这样。** `packages/app/src/main/local-app-api/terminal-routes.ts:66-74` 对未知/不可用 id 静默改用默认 Shell，且这条替换路径在界面上没有提示。已登记为 UX-32。
+- **UX-28 旧记录写差异层上限"每层 8 MB"，措辞不准。** `MAX_GIT_DIFF_TOTAL_BYTES` 是**整个文件跨层共享**（`packages/app/src/main/local-app-api/workspace-git-review.ts:372` 按层数均分），staged + unstaged 并存时每层实际只有 4 MB。这是记录口径问题，不是实现缺陷，不改代码。
+- **UX-27 门自己的 limits 与实现矛盾。** `scripts/verify-review-refresh-errors.mjs:1506` 仍写"本门不做 HEAD/index 一致性校验"，而第 2 条实现（`workspace-git-review-consistency.ts`）已在 `072db6dc` 落地，该行由更早的 `68e698b5` 引入、之后没同步。同时全文 **0 处** `unstable` 断言。已登记为 UX-35。
+- **UX-18 旧记录写"审阅侧栏定位缺陷：Diff 标题按钮与审阅导航落在同一矩形、指针点不到"。** 这是**门自己注入模板字符串时的转义 bug**造成的假象（`\s` 在模板字面量里退化成 `s`，把文本里所有字母 s 抹掉），同批共修掉两处门缺陷；视图本身没有省略标签。修后按文件名逐一比对通过。
+- **UX-25 旧记录写"第 3 条完成并勾选"，与门里的实际断言不符。** 静态预览的磁盘/草稿走查确实驱动了界面，但算出的 12 个观察值（`savedToDisk`、`previewAfterSave`、`conflictStatus`、`deletedNotice` 等，`scripts/verify-html-preview-baseline.mjs:2052-2118`）**既不断言也不进门输出**，"保存成功后刷新 / 保存失败保留草稿 / 外部更改与删除提示"三类因此在证据上仍开着。已登记为 UX-34。
+- **UX-25 的字体一项只有引用层证据。** 门自述隐藏窗口下 Chromium 不会真的发起字体请求（`document.fonts` 恒为 `unloaded`），所以只证明了 `@font-face` 源码已指向回环服务，没有"字体文件真的被取回"的测量。随 UX-34 一起收口。
+- **UX-16 旧记录写"第 3 条只有单元测试"，低估了已有证据。** `scripts/verify-transport-retry-feedback.mjs:372-375` 已在真实窗口断言紧凑模式下的**失败**一类（含 `.agent-transcript-attention`）。缺的是另外几类（权限拒绝、未验证、部分完成、待用户）与"部分完成"到底指哪个真实 UI 状态。
+- **UX-27 第 3 条旧记录写"取消需要一个用户可见入口或作用域切换"，属产品判断，不是缺夹具。** 工作区根切换、被取代请求的中止都已接线；缺的是决定与第二根夹具。
 
-**历史进度（2026-09-23 00:02:00）**：当时 UX-01~UX-14 已实现但尚无真实 Electron 验收；UX-16 的第三项也只完成源码修复与回归。该段只记录任务书创建阶段的证据边界。
+各条退役时通过的门（都是真实 Electron 窗口或真实进程，除标注外 `failures: []`）：
 
-**2026-09-24 对话区增补**：UX-19~UX-22 针对用户报告的滚动定位、流式文字外观及缺失、模型连接失败、输出可读性。以下是新增待办和源码检查结论，未实施产品代码，也未在真实 Electron 窗口复现；上段进度只描述原 UX-01~UX-16 的历史状态，不代表新增任务已完成。
+| 任务 | 验收门 |
+| --- | --- |
+| UX-01 | `pnpm run verify:composer-ime-submit` |
+| UX-02/03 | `pnpm run verify:deletion-confirmation`、`pnpm run verify:composer-stop-append` |
+| UX-04 | `pnpm run verify:skills-catalog-states` |
+| UX-05 | `pnpm run verify:recovery-states` |
+| UX-06/07 | `pnpm run verify:provider-editor-draft`、`pnpm run verify:keyboard-modal-focus` |
+| UX-08/10 | `pnpm run verify:channel-entry-states` |
+| UX-09 | `pnpm run verify:async-feedback` |
+| UX-11 | `pnpm run verify:no-model-config-loop` |
+| UX-12/13 | `pnpm run verify:settings-navigation-terminology` |
+| UX-14 | `pnpm run verify:shared-ui-roles` |
+| UX-15 | `pnpm run verify:narrow-high-dpi-forms` |
+| UX-18 | `pnpm run verify:review-navigator-width` |
+| UX-21 | `pnpm run verify:retry-feedback`、`pnpm run verify:local-stream-disconnect` |
+| UX-23 | `pnpm run verify:code-wrap-control` |
+| UX-24～UX-28 | `pnpm run verify:html-preview-baseline`、`pnpm run verify:review-refresh-errors`、`pnpm run verify:conversation-workspace-scenarios`、`pnpm run verify:electron-ui-state-continuity`，以及 `packages/app/src/main/local-app-api/` 下的真实仓库集成测试（UX-24、UX-26 整项退役；UX-25/27/28 已完成的部分退役，剩余部分见 UX-34 与 UX-35） |
 
-**本轮执行进度（2026-09-25 16:16:02）**：任务现有 23 项。已按各自验收证据勾选 UX-02、UX-04、UX-05、UX-08~UX-15、UX-18、UX-21 与 UX-23。UX-02 多会话项目/供应商删除范围、取消、Escape、失败保留和连点防重均已真实窗口验收，并修复供应商删除连点重复请求。UX-07 新增恢复对话框 Escape 后焦点返回的真实窗口验收并修复入口卸载问题；审批 Escape 语义、完整统一模态走查和动画期间重复操作仍待验，整体保持未勾选。UX-16 的组合场景、双会话现场和进程重启已通过真实窗口；普通/紧凑五类状态矩阵仍未闭合，整体保持未勾选。UX-21 九类故障与普通/紧凑模式中的重试进度及最终失败均通过真实窗口验收，确定性 Provider 不代表线上服务质量。UX-16 重启验收发现并修复“启动恢复会话覆盖已保存设置路由”。UX-17 的 320 项后条目可达性与 UX-19 的切回阅读位置偏好已询问用户，等待答复；UX-01/03/06/20/22 等其余条目仍按各自证据边界保留。
+## 2. 仍未完成的清单
 
-**进度补记（2026-09-25 17:29:05）**：UX-03 的运行中补充消息、停止入口与草稿/附件边界已在真实窗口通过；UX-07 的审批焦点、背景阻断、Escape 拒绝一次和动画期间重复 Escape 已在真实窗口通过；UX-06 的密钥草稿生命周期与四类编辑状态已在真实窗口通过。上述 16:16 的段落保留为当时快照，以本补记和各任务的最新实施记录为准。
+| ID | 优先级 | 任务 | 来源 | 规模 |
+| --- | --- | --- | --- | --- |
+| UX-32 | P1 | 修 Git Bash 探测假阴性与 unknown shellId 语义 | UX-29 第 3 条 + 本轮复核 | S |
+| UX-33 | P1 | 钉住紧凑模式五类状态在真实窗口的可见性 | UX-16 第 3 条 | M |
+| UX-34 | P1 | 把静态预览的磁盘/草稿走查升为断言，并闭合字体一项 | UX-25 第 3 条 | S |
+| UX-35 | P1 | 审阅一致性：当前文件事实、门的过期结论与 unstable 断言 | UX-27 第 2 条 | M |
+| UX-36 | P1 | 补齐 320 条上限的可达性语义与逐键基准 | UX-17 第 2、4 条 + 本轮复核 | M |
+| UX-37 | P1 | 终端的会话上限、标签生命周期与降级可见性 | UX-30 全 5 条 | M |
+| UX-38 | P2 | 对话区定位与可读性的剩余验收面 | UX-19、UX-20、UX-22 | L |
+| UX-39 | P1 | 端到端交付门：小游戏 → 运行 → 审查，及打包版 | UX-31 全 5 条 | L |
 
-**2026-09-25 拓展工作区增补**：新增 UX-24～UX-31，共 31 项。用户明确报告“HTML 小游戏全白，或白底带些字，无法游玩”，另报告 Git 审查异常和缺少 PowerShell / Bash 选择。以下新增任务均未实施；基线为 `8b7c6bd` 加当前工作树，保留本轮前已有的 UI 与文档修改。源码确认静态 HTML 预览禁用脚本、Windows Shell 固定为 PowerShell，以及 Git 有缓存时刷新失败不展示错误；尚未拿到问题 HTML 或具体 Git 报错，不能宣称已复现用户原例。既有相关测试 9 个文件、30 项通过，只证明原有覆盖；本轮未启动 Electron、未验收小游戏或打包版。
-
-**进度补记（2026-09-25 18:36:00）**：UX-27 的第一条（保留旧内容时必须标明“正在刷新 / 更新失败，显示上次结果”，快照与单文件 Diff 的失败分别可见且各有重试）已完成真实窗口验收并勾选；新增真实窗口门 `pnpm run verify:review-refresh-errors`（含“重试确实发出新请求”的探针断言，最终构建上 `failures: []`），并修掉自 `5ed06e7` 起一直失败的 `leading-row-layout.test.ts`（该提交把图标按钮规则扩成三个选择器却没同步断言）。UX-27 的读取前后一致性校验、A→B→A / 连点 / 慢响应不串数据、以及“列表统计与 Diff 属于同一版本”仍未开始，整项保持未勾选。
-
-**进度补记（2026-09-25 19:26:00）**：UX-24 的三条完成并勾选——新增真实环境基线门 `pnpm run verify:html-preview-baseline`，用合成夹具把"用户报告 HTML 小游戏全白/白底带些字"拆成两条可复现根因：①预览的 `srcdoc` 丢掉了文档 `<style>`（页面退化成无样式黑字白底，本地 `file:` 图片请求到但 `naturalWidth=0`），②从文件树打开的后续 HTML 文件**有时**保留创建时的空帧文档而永远空白（同一时刻元素 `srcdoc` 已有正文，帧却不重新导航；6 秒与切标签都不恢复）。同一批文件在 LS 浏览器标签里**可以真正游玩**（canvas 上色、键盘与指针输入生效），说明夹具与"运行入口"本身没问题；把本地 `file://` 路径粘进地址栏会被静默改写成 `https://file///…` 并落在 Chromium 错误页，界面没有任何解释。Git 三处（CLI / API / UI）对同一份更改一致，但审阅标签挂载时可能读到更改前的快照、需要用户刷新；Shell 基线确认真实会话是固定的 Windows PowerShell 5.1（`PowerShell PTY`、`backend=pty`、`ENC=utf-8`）。
-
-**进度补记（2026-09-25 19:52:00）**：UX-25 第 1 条完成并勾选——按 UX-24 的实测根因修好 HTML 预览的**文档结构**（`WHOLE_DOCUMENT: true` + 放行 `title`，`<head>`/`<style>` 不再被丢；注入 charset/CSP/base，`meta`/`link` 仍禁止）与**空帧竞态**（只为真实内容建帧、按文档摘要做 `key`），并在工具条明说"不运行页面脚本"。真实窗口复核：三份夹具全部渲染，静态页 `styleSheets=1`/`body` 取到夹具自己的 `rgb(16,20,24)`，小游戏页 `canvas` 背景取到 `rgb(18,52,86)`，`scripts` 恒为 0；UX-24 记录的"后续文件空白"竞态不再出现。**第 2 条（本地相对资源：`<link>`/图片/CSS `url()`/字体）与第 4 条后半（失败资源的可展开原因与重试）明确留给 UX-26 的 Main 有界静态资源服务**，本轮不顺带放宽 sandbox 或 webSecurity；**第 3 条只拿到部分证据**：草稿确实进了编辑器模型与会话草稿存储（`markerInDraft: true`），但已挂载的预览仍显示磁盘内容——该走查在门里只记录不判定，链路定位留到下一轮。`packages/app/src/renderer` 116 文件 / 644 例通过，`tsc` 退出 0。
-
-**进度补记（2026-09-25 20:36:00）**：UX-26 的第 2、4 条完成并勾选——新增 Main 有界静态资源服务（每工作区一个 loopback 监听、URL 带随机 token、只答 GET/HEAD、Host 必须 loopback、解码路径 + `realpath` 双重校验、无目录列表、无 CORS、32 MiB 上限、最多 4 个服务 + 30 分钟空闲回收 + 显式 stop/stopAll）与 `/workspace/preview-server` 三个方法，7 例单元测试 + 真实窗口边界断言（穿越 404、错误 token 404、入口 200）；渲染器新增"运行 / 停止"入口（脏草稿先问、运行成功经既有浏览器 guest 打开），真实窗口实测页面真的跑起来：canvas 采样 `[18,52,86,255]`、真实输入使 `score 0→1`、guest 内无 LS bridge / 无 Node 集成 / 独立来源与空存储、停止后 URL 立即拒连，多文件页面的 CSS / module / JSON / SVG 全部 200 且内容类型正确。**第 1 条（独立"重新加载"入口与脏草稿真实窗口验证）、第 3 条（脚本错误与资源失败诊断）、第 5、6 条（多文件游戏运行、快捷键/重开/释放）仍未完成**，其中脏草稿状态的定位在下一轮完成（见 21:12 补记）。
-
-**进度补记（2026-09-25 21:12:00）**：UX-25 第 3 条与 UX-26 第 1 条的"草稿链路"疑点定位完成——**根因是编辑器从未布局**（文档 `hidden` 时挂载 Monaco：`.view-line` 0 个、`.overflow-guard` 5×5、rAF 不触发；CDP 键入因此落点随机且被解析器丢弃），可见窗口下同一条链路完整成立（会话草稿 dirty 含标记、预览元素 `srcdoc` 670→677、帧文档含标记、点运行出现"有未保存的修改…保存并运行/取消"且无服务启动）；为它写的"退化即同步布局"改动被对照实验证伪（窗口还原后既有 ResizeObserver 补投递已能恢复），已回退。因为验收运行按用户要求**不再显示窗口**（`desktop-shell.ts` 在验收环境扣住 `show()`，需要像素时由验收动作显式放行），这条链路只能作为一次性真实窗口证据记录，两条仍未勾选。验收门在无窗口显示下 `failures: []`。
-
-**进度补记（2026-09-25 23:35:00）**：修掉一个**会丢用户未保存改动**的缺陷，并让上一条补记里"只能记录"的链路变成断言级证据。①**草稿存续规则**：面板刚挂载、文件预览还没到时 `editable` 为 false，旧实现据此把该标签的会话草稿**删掉**——任何未保存改动都活不过一次重挂载（重载/切会话/重启都会丢；实测预置草稿在重载后 `draftCount: 0`）。现在由纯函数 `workspaceDraftOutcome` 决定：只有"**已加载**且确实不是文本类预览（图片/文档）"才丢弃，预览未到一律保留，单测钉住"不要退回成裸 `else` 删除"。②**验收窗口真的不再上屏**：上一轮的扣窗只设在 `show()`/`showStartup()`，而启动页、渲染器就绪、恢复几何走的是内部 `showWindow()`，实测 `windowVisible: true`（窗口仍在盖住用户）——判定已下移到唯一的上屏出口，实测 `windowVisible: false`。③**隐藏窗口下的验收通路**：渲染器仍报 `visible`、DOM 与输入管线照常工作（聚焦编辑器输入元素 + `Input.insertText` 即可让面板变脏），但 Chromium 不布局不绘制——`.view-line` 为 0、**离屏 iframe 连调试目标都没有**（一次 `Page.captureScreenshot` 强制出帧后目标才出现，实测 1 → 2），而隐藏窗口下截图很慢（5 s，下一次 12 s 超时）故改成有界且失败只记录。门 `pnpm run verify:html-preview-baseline` 因此在**不上屏**的前提下 `failures: []`，并新增断言：会话草稿 dirty 且带标记、预览帧渲染的就是草稿正文、点"运行"先问"有未保存的修改…保存并运行/取消"且此刻与取消后都没有服务启动。UX-25 第 3 条与 UX-26 第 1 条仍**不勾选**：前者的"保存成功刷新 / 保存失败保留 / 外部更改与删除 / 快速切换"四类未测，后者仍缺独立的"重新加载"按钮。
-
-**进度补记（2026-09-26 00:05:00）**：UX-26 第 3 条的**诊断投影做出来了**（"服务已停止"之外的三类：脚本报错、资源失败、页面加载失败）。Main 新增有界记录 `embedded-browser-diagnostics.ts`（40 条、消息截断 300 字符、逐出最旧、按页面 URL 查询，`/browser/diagnostics?url=…` 只读投影），渲染器在"运行"提示旁显示"脚本报错 N · 资源失败 M（查看详情）"，展开是页面原文与来源行号，4 秒轮询、不在渲染器里重新解析页面。**实测暴露的关键事实**：Chromium 不会把缺失子资源报进 `console-message`（同一份夹具只产生脚本那一条），所以子资源 4xx 与连接被拒必须从 session 的 `webRequest.onCompleted/onErrorOccurred` 取，并用 `referrer`（缺失时用最近访问的页面 URL）归到页面上。门里新增 `error-page.html` 夹具（故意抛错 + 缺失样式表/图片）并断言：Main 记到 `script: 1, resource: 2`、工具栏显示"脚本报错 1 · 资源失败 2"、展开能看到"夹具脚本错误"原文；整门在窗口不上屏的前提下 `failures: []`。第 3 条仍**不勾选**：无限循环/guest 崩溃时"主界面停止/重载仍可用、不把主界面拖死"没有验证。
-
-**进度补记（2026-09-26 00:25:00）**：UX-26 第 1 条完成并勾选——HTML 工具条现在是**运行 / 重新加载 / 停止**加"查看源代码"的连贯入口：运行中"运行"按钮禁用（旧的"重新运行"只会再开一个浏览器标签），"重新加载"请求由 URL 寻址的窗口事件直达显示该页面的浏览器标签（`browser-reload.ts`，只让 URL 相同的那个标签刷新，其他标签不受影响）。真实窗口实测（窗口不上屏）：点"重新加载"后 guest 的 `performance.timeOrigin` 由 `1790351990787.3` 变为 `1790351993410`（新文档）、页面重新执行（`__gameState.ready`）、**服务未被重启**（`startedAt` 与 `entry` 都不变）；加上此前已验证的"运行只用磁盘版本 / 脏草稿先问且不启动服务 / 保存失败不运行"，这一条的四个要求都有实测。第 3 条仍差"无限循环或 guest 崩溃时主界面停止/重载仍可用"这半句。
-
-**进度补记（2026-09-26 00:45:00）**：UX-26 第 3 条完成并勾选——除第 9 轮的脚本报错/资源失败诊断外，本轮补齐"无限循环或 guest 崩溃时主界面停止 / 重载仍可用"。新增死循环夹具（脚本先把自己标成"已就绪"再 `while (true)`）与 `Page.crash`：实测 guest 全程不再回答（死循环与崩溃后都是 `timeout`），而**主界面文档仍以 1–2 ms 应答**，停止与重新加载都能点、都生效（停止后运行服务的 URL 立即拒连、服务列表清空）。过程中修掉两个"会把门自己拖死"的探针缺陷：对卡死渲染进程的 `Runtime.enable` 没有超时（这正是上一轮门卡住的根因），以及 Electron 根本不回 `Page.crash` 的应答——崩溃要按"guest 之后彻底沉默"判定，不能等答复。另外把运行提示的措辞从"页面已…运行"改为"页面已…打开…页面自己报告的问题显示在下面"：加载成功不等于初始化成功，界面不再替页面宣称它跑起来了。
-
-**进度补记（2026-09-26 01:05:00）**：UX-26 第 2 条的"多文件语义"补上真实运行证据，第 6 条也推进一半。门里新增多文件运行走查：从 HTML 入口运行 `multi-file/index.html`，实测 **ES module 执行**（`__multiState.ready`）、**外部样式表生效**（`styleSheetRules 3`、`.board` 计算背景 `rgb(28, 42, 31)`）、**图片加载**（`naturalWidth 64`）、**本地 JSON 生效**（关卡显示 7，来自对 `level.json` 的 fetch）、真实点击使步数 0→1；随后把 `level.json` 改成 9，点工具条"重新加载"后页面显示 **9**（`performance.timeOrigin` 也换了新文档），证明"重载后修改生效"。另给 Canvas 夹具加了"重新开始"按钮并断言：计分 1 → 重开后 **0**、位置回到 20、HUD 回到"分数: 0"（同时覆盖第 6 条的"重开一局有效"）。写盘那一步之后把 `level.json` 还原，避免影响同一门后面的 Git 对比（第一次跑就是被这一步污染的）。**第 6 条仍不勾选**，缺：方向键/WASD/鼠标**不触发 LS 快捷键或滚动外层**的测量、需要声音的夹具在用户操作后播放、切标签返回/调整尺寸/关闭后资源释放。**第 3 条（存储分区与 Main 硬约束）也不勾选**：guest 侧已实测无 LS bridge、无 Node、独立来源与空存储，但"复核 guest 创建和导航时的 Main 硬约束、不能只信 Renderer 的 webpreferences"还没有做——Main 目前只在 `did-attach-webview` 里设 UA/窗口打开/导航，没有在 `will-attach-webview` 上强制 webPreferences。
-
-**进度补记（2026-09-26 01:25:00）**：UX-26 第 3 条（guest 隔离与 Main 硬约束）完成并勾选。此前 guest 侧只验到"无 LS bridge / 无 Node / 独立来源 / 空存储"，而"不能只信 Renderer 的 webpreferences"这一句没做：`<webview>` 的 `webpreferences` 是渲染器自己写的，属于渲染器的攻击面。现在 Main 在 `will-attach-webview` 上重写并拒绝：`embedded-browser-hardening.ts` 的纯函数 `hardenGuestAttach` 强制 `nodeIntegration(-InSubFrames/-InWorker)=false`、`contextIsolation=true`、`sandbox=true`、`webSecurity=true`、`allowRunningInsecureContent=false`、`experimentalFeatures=false`、`webviewTag=false`、`plugins=false`，把 `partition` 固定为内嵌浏览器分区，并**删除 `preload`/`preloadURL`/`additionalArguments`**（preload 就是把 LS bridge 交给网页的通道）；`src` 不是 http(s) 的挂载直接 `preventDefault` 拒绝。3 例单测覆盖"恶意输入被纠正"、"已合规输入不被改动且保留 `nativeWindowOpen`（窗口路由要用它）"、"非 http(s) 来源被拒"。真实窗口侧同时补了三条只能从 guest 里看的证据：`window.parent === window && window.top === window`（自成顶层帧）、`window.opener === null`（没有指回宿主文档的引用）、`window.open('https://example.com/…')` 返回 **null**（弹窗在窗口边界被拒，Main 把 http(s) 请求路由成 LS 标签），加上原有的无桥/无 Node/loopback 来源/空存储。门 `pnpm run verify:html-preview-baseline` 在窗口不上屏的前提下 `failures: []`。
-
-**进度补记（2026-09-26 01:45:00）**：UX-26 第 6 条（真实窗口验收）完成并勾选，至此 UX-26 六条全部完成。本轮补的实测：①**输入只进 guest**——给运行中的页面发方向键与点击之后，宿主界面完全不动（活动标签、composer 文本、页面/导航/标签条滚动位置六项逐项比对相同），"不触发 LS 快捷键或滚动外层"因此有测量；②**guest 生命周期**——切到别的标签再回来页面照旧运行（`__gameState.ready`）、调整窗口后 guest 视口跟着变（1280 → 359 记录的是嵌入宽度）、**关闭浏览器标签后 guest 真的被释放**（webview 元素 1→0、调试目标消失，独立探针里 1 s 内完成）；③**音频**——声音夹具在运行 guest 里点击"播放"后 `paused === false`（一次性探针证据；把这份夹具接进门时它偶发不被装载，故门的断言暂时不含音频这一句，夹具与其就绪判定留待下一轮修）。过程中修掉两处验收自身的缺陷：浏览器标签是按页面标题/主机命名的（用文件名去匹配会误关文件标签，实测"关掉 3 个浏览器标签后目标才消失"），以及运行服务是**按工作区根共享**的——在它之后运行的步骤必须自己重新起一次运行，否则共享服务与"运行中"状态会让后续 `运行` 按钮保持禁用。另外给标签项加了 `data-workspace-tab-kind`，验收不必再从标签文案猜种类。
-
-**进度补记（2026-09-26 02:15:00）**：UX-25 第 2、4 条完成并勾选（第 3 条仍差"保存成功后刷新 / 保存失败保留草稿 / 快速切换不串内容"三类实测）。**做法**：静态预览的帧是 `sandbox=""` 的不透明来源，Chromium 因此拒绝 `file:` 子资源；这一条**没有**放宽 sandbox 或 webSecurity（那等于把整块磁盘交给网页），而是复用 UX-26 的 **Main 有界 loopback 服务**——`html-preview-assets.ts` 把净化后文档里的相对引用改写成服务地址，`use-html-preview-assets.ts` 只在文档**确实引用本地资源**时才启动该服务（纯文字或自包含页面不会开监听），帧的 CSP 收紧为 `data: blob: <该回环来源>`（顺带把之前允许的 `http(s)` 去掉：提示语承诺"不发起网络请求"，现在成立）。**实测（窗口不上屏，门 `verify:html-preview-baseline`，`failures: []`）**：`assets/tile.svg`（子目录）、`素材/背景 图.svg`（中文+空格 → `%E7%B4%A0%E6%9D%90/%E8%83%8C%E6%99%AF%20%E5%9B%BE.svg`）、`shots/shot%231.svg`（文件名里的 `#`）、`100%25.svg`（文件名里的 `%`）四例 `naturalWidth` 全部 **64**，且 `currentSrc` 就是回环地址；`assets/does-not-exist.svg` 保持 `naturalWidth 0`（不是静默成功）；多文件夹具的**外部样式表真正生效**（`.board` 计算背景 `rgb(28, 42, 31)`、`.title` `rgb(216, 180, 92)`）、`sprite.svg` 加载成功；`@font-face` 的 `src` 在帧自己的样式表里读出来是 `url("http://127.0.0.1:…/fonts/fixture.woff2") format("woff2")`。**第 4 条**：`error-page.html` 的静态预览显示"**2 个资源未能加载（查看详情）**"+"重试"，展开后逐条列出 `missing-style.css` / `missing-image.png` 与"未找到"，Main 侧同一份记录里是 `404 missing-style.css`、`404 missing-image.png`；断言读的都是**渲染后的 DOM 与计算样式**，不是源码字符串。**为做到这些修掉三个真问题**：①净化器把 `<link>` 整类丢掉，所以外部样式表从来没被请求过（现在放行 `link`，并在改写阶段只保留 `rel="stylesheet"`，preload/icon/manifest 一并丢弃）；②文档相对路径取自 preview 的 `relativePath`，实测子目录文件拿到的是 `index.html`，于是 `game.css` 被请求到**根**并 404（现在由绝对路径 + 根推导，大小写不敏感）；③`%` 双重编码（`shot%231` 会变 `%2523`），现在逐段先解码再编码。**限制（如实记录）**：字体一项目前只有"帧内 `@font-face` 源已指向回环服务"的证据——隐藏窗口下 Chromium 不会真正发起字体请求（`document.fonts` 里那个 face 始终是 `unloaded`），所以没有"字体文件真的被取回"的测量；另外带空格的**未加引号** `url(a b.png)` 是无效 CSS，浏览器本来就会丢弃该声明，改写器刻意不动它。
-
-**进度补记（2026-09-26 03:05:00）**：UX-25 第 3 条完成并勾选，**UX-25 四条全部完成**。本轮做的是"磁盘版本 vs 未保存草稿"的**主动**表达：此前只有点保存才会撞上 409，用户在被覆盖之前不会被告知。新增 `GET /workspace/file-stat`（只回 `exists`/`modifiedAt`/`size`，不读内容）+ `preview-disk-state.ts`（纯规则：相等 mtime = 一致、mtime 变了 = 已变化、文件不在 = 已删除、拿不到 = 沉默）+ `use-workspace-disk-watch.ts`（5 秒轮询，挂载时与每次保存后立即复查）+ `preview-disk-notice.tsx`（提示条：编辑中给"保留我的修改 / 重新加载磁盘版本"，未编辑只给重载；删除时是失败色并只给保留）。**草稿从不因提示被丢掉**——重载是用户显式选择，提示的关闭也只按"当前情形"记住，情形再变会重新出现。顺带修掉一个真错误：保存失败的 409 之前在界面上被 `workspaceErrorMessage` 统一替换成"文件保存失败，请稍后重试。"，而重试根本不可能成功；现在 API 客户端保留状态码（`localApiResponseError`），渲染器对 403/409/413/415 直接显示服务端那句可执行的话（`workspaceSaveErrorMessage`，3 例单测）。**真实窗口实测（门 `verify:html-preview-baseline`，`failures: []`，窗口不上屏）**：编辑后 Ctrl+S → 弹出审批层（研究权限下保存需批准，按钮"拒绝/本对话允许/仅本次"）→ 选"本对话允许" → 标记真的落到磁盘、状态栏"已保存"、预览刷新为已保存版本；外部改写 → **warning 提示"磁盘上的版本已变化"** → 点"重新加载磁盘版本"后预览显示磁盘那版且提示消失；再编辑时提示同时给两个动作，点"保留我的修改"后提示消失而草稿保留；此时再保存 → **状态栏显示"文件已被外部修改。请刷新预览后再保存，避免覆盖新的内容。"**且草稿仍 dirty（"保存失败保留草稿"）；删除文件 → 失败色"这个文件已不在磁盘上（可能被移动或删除）。保存会重新创建它。"，文件恢复后提示不再说"已删除"；快速连开 A/B/C 后逐个标签核对：**三个标签各自只显示自己的文件，没有任何一方的标记串进另一方**；走查结束时不残留审批层，夹具文件按字节还原而草稿仍被保留。过程中学到并记录：**HTML 注释标记在静态预览里会被 DOMPurify 丢掉**（标记必须是可见元素），**保存没有按钮、走 Ctrl+S**，以及**在一个 HTML 标签上留下 dirty 草稿会让后续"运行"先弹"保存并运行/取消"**（门里因此把这段走查挪到运行类步骤之后，并让它在结束时保留草稿但还原磁盘）。
-
-**进度补记（2026-09-26 03:40:00）**：UX-27 第 2 条**实现完成**（真实仓库的竞态测试通过），但按本任务书的规矩**先不勾选**——第 4 条的"已加载 Diff 后刷新失败要带过期状态、恢复后一次手动刷新取得当前内容、列表统计与 Diff 版本匹配"有两条已在第 1 条完成，"延迟返回的旧请求不能覆盖新请求"读源码已成立（`review.tsx` 用 `snapshotRequestRef` 递增 requestId 并在响应处比对），但门里还没有对应断言；第 3 条（A→B→A、连点、取消、慢响应、切分支等不串数据）也还没有实测。本轮实际做的是：一次审阅读取由 status/staged diff/unstaged diff/untracked 计数多条 Git 命令组成，**不是原子快照**；现在装配前取指纹（`HEAD`、`.git/index` 的 mtime+size、以及**与装配同参数**的 `status --porcelain -z` 指纹），装配后再取一次，不一致就**有界重读一次**（`readConsistentReview`，默认 2 次尝试，绝不无限刷新）；两次都赶上变化时快照照常返回但带 `unstable: true`，渲染器的 `review-refresh-notice.ts` 输出 warning 级"仓库在读取期间仍在变化，这份更改列表可能混合了两个状态；刷新会重新读取。"（数据照常显示而不是被藏起来）。**证据**：纯规则 6 例单测（指纹相等/不等、重读成功、有界放弃、`maxAttempts` 上限）；**真实临时仓库的竞态测试 3 例**（用 vitest 包装 Git runner，让第一次 status 读取返回后立刻写文件——断言重读后的快照**包含**这个中途落地的文件且不带 `unstable`；让每次 status 都改动仓库——断言 `unstable: true` 且尝试次数≥2；不动的仓库——断言没有 `unstable`）；`workspace-git` 全部 38 例通过。集成测试当场抓到一个假阳性：探针最初用了比装配更窄的 status 参数，导致每次读取都被判成竞态，现在两处指纹必须同参数。未覆盖：跨进程/跨分支切换的真实窗口实测（第 3 条），以及门里对"旧响应不覆盖新响应""统计与 Diff 同版本"的断言（第 4 条）。
-
-**进度补记（2026-09-26 04:05:00）**：UX-27 **第 4 条完成并勾选**，第 2 条仍是"实现完成、门里只覆盖一致读取的正向路径"（不改勾选状态），第 3 条仍未开始。本轮把验收扩到四种此前没有断言的时序，全部在真实窗口（`pnpm run verify:review-refresh-errors`，隔离数据根 + 真实 Git 工作区）实测，门 `failures: []`：①**并发读被合并**——按住的快照请求在飞时连点 3 次刷新，`snapshots` 停在 8 不变（不产生第二次读取）；释放时故意回一个**伪造的旧回答**（同一形状但少一个文件），随后的排队刷新仍让列表落在最新读取上（`files: 2`、无提示）——"延迟返回的旧请求不能覆盖新请求"；②**连点 5 次刷新只产生 1 次读取**，结束时只剩一条 info 级"正在重新读取"（有界的读取次数，不是静默）；③**屏幕上的 Diff 就是该 revision 对该文件的 Diff**——从列表里选中的行解析出文件名与快照 revision，用它向 Local App API 取差异，并把 API 内容里的文本片段与界面上差异层的文本比对（`newer` 命中）；④**列表统计与 Diff 同版本**——界面文件数 = 快照 `files` 数（2 = 2）、界面 `+N` 之和 = 快照 `additions`（2 = 2），另断言该 revision 的 `sample.txt` 差异包含新写入的行。**顺带修掉的验收缺陷**：基线加载在渲染器重载后会撞上 Local App API 未就绪的启动竞态（实测 `Failed to fetch`），门里改为允许一次"用户式刷新"并记录该次重试，且要求重试后**提示清空**才算基线成立；`.workspace-review-diff` 的文本包含内置编辑器占位符，差异断言改为只读 `.workspace-review-diff-layer`；列表行标签会被视图省略（实测 `sample.txt` 渲染为 `ample.txt`），所以版本比对用计数与合计，名字只作为证据记录。**第 3 条仍未勾选**：A→B→A 工作区/文件切换、已暂存后再次编辑、外部保存、撤销、提交/切分支、取消这些时序还没有实测（并发读合并、连点、慢响应已在第 4 条覆盖）。
-
-**进度补记（2026-09-26 04:40:00）**：UX-27 第 3 条**七个场景里测了五个**，仍不勾选。门 `verify:review-refresh-errors` 扩写后 `failures: []`（真实窗口 + 真实 Git 工作区，每次都是"先改仓库、再刷新"）：①**已暂存后再次编辑**——`git add` 之后又改工作树，选中该文件时差异层是 **2 层**（暂存 + 未暂存），不是只剩一层；②**撤销**——把暂存与工作树都恢复到 HEAD 后刷新，文件从列表消失（界面 1 个文件 = 只剩未跟踪的 `newer.txt`，API 侧也只列 `newer.txt`），不会把旧差异留在屏上；③**提交**——提交后列表清空（0 个文件）且分支标签仍是 `main`、无错误提示；④**切分支再切回**——切到 `fixture-branch` 后写一个文件：标签与列表都跟着变（1 个文件），切回 `main` 后回到 0 个文件，两个分支的状态没有互相污染；⑤**文件 A→B→A**——连续选中 `alpha.txt` → `beta.txt` → `alpha.txt`，每屏差异只含自己那份内容（`1alpha` / `1beta` / `1alpha`），不残留上一个文件的行；⑥**持续变化**（每 40 ms 写一次 `churn.txt`，期间连点 3 次刷新）——churn 期间只发生 **3 次读取**，没有错误提示，也就是"持续变化时有界终止并提示"而不是无限刷新；⑦**慢响应/并发读合并/刷新连点**已在第 4 条的门里测过（按住请求时连点不产生新读取、伪造旧回答不覆盖新结果、5 连点=1 次读取）。**为什么仍不勾选**：这条明确列了"**A→B→A 工作区**切换"和"**取消**"，两者都还没测——工作区切换需要一个第二工作区根并在界面里切换（本门的夹具只有单工作区），取消则需要一个用户可见的取消入口或作用域切换来触发被取代请求的中止（当前实现里被取代的读取是由下一次读取或作用域变化中止的，界面没有独立的"取消刷新"按钮）。这两项属于夹具与入口的投入，留给下一轮；在此之前不把该条标成完成。
-
-**进度补记（2026-09-26 05:10:00）**：开始 UX-28，第 1 条**实现完成并拿到真实仓库与真实窗口证据**（仍保持未勾选，因为"仓库拒绝访问 / ownership"只有单元级证据、没有实机复现）。**修掉的真实缺陷**：此前 `resolveRepositoryContext` 把 `rev-parse` 的**所有**非零退出码都当成"不是仓库"，于是**损坏的对象库、index 损坏、权限拒绝、safe.directory 拒绝**全都显示成同一句"当前工作区不是 Git 仓库。"，给的下一步还是错的。现在新增 `workspace-git-failure.ts`：按 Git 自己的 stderr 文本分类为 `not-repository` / `dubious-ownership` / `permission-denied` / `corrupt-repository` / `timed-out` / `cancelled` / `git-unavailable` / `unknown`，每类给一句**可执行**的原因（损坏 → "先用 git fsck 检查，必要时从备份恢复"；属主不符 → "按 Git 的提示把该目录加入 safe.directory（**LS 不会自动改动你的全局配置**）"；权限 → 检查目录与 .git 权限；超时 → 重试一次；未找到 Git → 安装并确认 PATH 的绝对路径条目），原始 stderr 只留**首行且 ≤200 字符**作为证据；分类应用于**整次读取**（不只是第一步：index 损坏只让 `status` 失败，`rev-parse` 仍然成功）。共享契约的 `WorkspaceReviewAvailability` 相应扩展（新增五种可用性），渲染器不用改：非 ready 的快照本来就显示 `snapshot.message` ✓。**取消仍是拒绝而不是"快照"**（调用方按 AbortError 处理，边界测试钉住）。**证据**：8 例纯分类单测（真实 Git 原文，含 `.git/index: index file smaller than expected` 这条实测文本）；4 例真实仓库集成测试（普通目录 → 不是仓库；把 `.git/objects/pack` 写成垃圾 → 要么 ready 要么报损坏、**绝不**说"不是仓库"；把 `.git/index` 写成垃圾 → `corrupt-repository` 且提示含 `git fsck`、不含"不是 Git 仓库"；`git init` 后未提交 → 仍 `ready` 且列出文件）；真实窗口门里最后一步把夹具的 `.git/index` 写坏并刷新，占位文本实测为"仓库数据无法读取（对象或索引可能已损坏）；先用 git fsck 检查，必要时从备份恢复。（fatal: .git/index: index file smaller than expected）" ✓（门 `failures: []`）。**同时修掉门自己的两个 bug（重要）**：注入页面的模板字符串里写 `/\s+/gu` 会因为模板字面量的转义在运行时变成 `/s+/gu`，于是**把文本里所有的字母 s 抹掉**——`sample.txt` 曾被读成 `ample.txt`、`git fsck` 读成 `git f ck`；`verify-review-refresh-errors.mjs` 四处与 `verify-html-preview-baseline.mjs` 两处（帧内文本、审批层文本）都已改为 `\\s`，两个门重跑仍然 `failures: []`。**更正上一轮的一条记录**：第 17 轮补记里写的"列表行标签会被视图省略（sample.txt 渲染为 ample.txt）"是**错的**，那是这个门的转义 bug，视图没有省略标签；该步骤现在已改回按文件名逐一比对并通过（`newer.txt,sample.txt` 两侧一致）。**仍未覆盖**：仓库拒绝访问 / ownership 在 Windows 上的实机复现（需要另一个属主的目录），以及"Git 未安装"的实机复现（要动 PATH），两者目前只有分类单测。
-
-**进度补记（2026-09-26 05:40:00）**：UX-28 **第 3 条完成并勾选**。这一条的三句要求现在都有实测：①"已暂存和未暂存同时存在、工作树回到 HEAD 而 index 有更改时两层均在"——`workspace-git-layers.test.ts` 的 MM 用例（暂存一次改动后把工作树改回 HEAD）断言 `staged: true`/`unstaged: true` 且差异层是 `['staged','unstaged']`，两层内容分别是 `-head/+staged` 与 `-staged/+head`；真实窗口门里也有一步"先 `git add` 再改工作树"，选中该文件时差异层实测 **2 层**。②"明确计数是分层增删之和，不能当作 HEAD 到工作树净变化"——同一 MM 用例里**净变化是 0**（工作树回到 HEAD），而界面计数是 `additions: 2, deletions: 2`（两层各 +1/−1 之和），快照合计也是 2/2；新增 `workspace-git-review-metadata.test.ts` 再把这个语义钉了一遍（`expect(file.additions).not.toBe(0)`）。③"纯重命名 / mode change 无文本 hunk 时显示元数据变化"——**这里发现并修掉一个真实缺口**：纯重命名在 Git 里只有 extended header（`similarity index`/`rename from`/`rename to`）没有任何 `@@`，原先解析器只认 hunk，于是差异层是空的并显示"该层使用了普通 unified diff 之外的格式。"（等于把一次重命名说成"看不懂的格式"）。现在 `parseDiffMetadata` 解析这些 extended header（键保持 Git 原文：`rename from/to`、`copy from/to`、`old/new mode`、`deleted file mode`、`new file mode`、`similarity/dissimilarity index`），`readDiffLayer` 作为 `metadata` 返回，"异常格式"提示只在**既无 hunk 又无元数据**时出现；渲染器新增 `review-diff-metadata.ts` 把它变成人话（重命名自/重命名为/复制自/复制为/相似度/旧权限/新权限，权限号额外标注普通文件、可执行文件、符号链接、子模块——`100755` 这种数字本身对用户没有意义）。**证据**：3 例真实仓库单测（纯重命名 → 文件状态 `renamed` + `oldPath` + 0/0 且 `metadata` 含 rename from/to、`notice` 为空；`git update-index --chmod=+x` 的权限变化 → 有 `new mode` 元数据且无异常格式提示（Windows 上 Git 也可能选择不记录，测试对两种诚实结果都接受）；净变化为 0 而计数为 2/2）；4 例渲染器标签单测；真实窗口门里 `git mv sample.txt renamed-sample.txt` 后刷新并选中该文件，差异层实测显示 `["相似度100%","重命名自sample.txt","重命名为renamed-sample.txt"]` 且**没有**"没有可显示的行差异"（门 `failures: []`）。**顺带再次踩到并修掉同一个门自身缺陷**：新加的 `.replace(/\s+/gu,' ')` 又写成了模板字面量里的单反斜杠（运行时变成 `/s+/` 吃掉字母 s，重命名路径一度显示成 `ample.txt`），已改为 `\\s` 并复查全文件为 0 处。
-
-**进度补记（2026-09-26 06:20:00）**：UX-28 第 5 条**未勾选**——四句要求里三句有实测，第四句发现一个设计缺口。①"大文件 / 多文件保留现有上限"：上限仍在原处（列表 2,000 个文件、每层 5,000 行、每层 8 MB），新增 `workspace-git-review-limits.test.ts` 用 **2,100 个未跟踪文件**断言 `filesTruncated: true`、`files.length === 2000`、`totalFiles === 2100`，用 **6,000 行改动**断言该层 `truncated: true` 且提示里写明 5000 行上限。②"明确呈现截断与计数不完整"：列表被截断时现在显示"**显示前 2000 个，共 2054 个文件**"（`reviewSummaryLabel`，替换掉原来含糊的 `2000/2054`；真实窗口实测），合计在只覆盖被列出文件时被标成不完整（`countsComplete: false`，实时断言 `additions` 等于被列出文件之和），行数不可用时的 `title` 仍是"行数超过审阅扫描预算"。③"窄窗口下…限制仍可见"：把窗口压到 620 请求时应用**自行夹到最小 800 px**（实测记录 `clamped: true`），截断语句仍完整可见（`visible: true`）。**④"折叠侧栏…仍可见"这句有缺口**：审阅标签的"侧栏"就是承载更改文件树的那个导航器，折叠它按设计会隐藏整棵树——包括刚做好的截断语句；也就是说折叠之后"限制"在界面上没有任何替代位置。这一句要真正成立，需要像"导航器折叠时把列表上限/截断情况挪到差异面板的表头或提示区"这样的产品改动（不是验收脚本能补的），因此本条保持未勾选，缺口写在这里。**顺带记录一个真实现象与一处验收缺陷**：夹具里放 2,054 个文件时**应用本身完全正常**（用 CDP 独立探针实测：`[role=treeitem]` 2000 行、摘要文本正确、每次求值 0–2 ms），而门却卡住了——原因是这个门的 `captureScreenshot` **没有超时**，隐藏窗口下给 2,000 行页面截图要强制重绘，足以拖死整轮走查；现在改成有界（20 s，超时返回 null），与 HTML 门一致。另外把第 4 条的"旧回答不覆盖新回答"步骤拆成"先等队列排空、再等最新列表"，此前把两件事写在一个谓词里会与队列赛跑而偶发失败。
-
-**进度补记（2026-09-26 06:50:00）**：UX-28 **第 5 条完成并勾选**——上一轮记录的缺口（"折叠侧栏后限制在界面上没有替代位置"）本轮补上了产品改动：新增 `review-limits.ts` 的 `reviewLimitNotice`（纯规则：**只在导航器折叠时**给正文一句"显示前 2000 个，共 2054 个文件。"，若还有差异层被截断则追加"N 个差异层已达上限"；导航器展开时返回 null，避免两处重复），`review.tsx` 把它交给差异面板，`review-diff.tsx` 用 `.workspace-review-limit-notice`（`role=status`）渲染。**真实窗口实测**：夹具 2,054 个文件（列表上限 2,000）时点"折叠 Git 更改文件"后，正文出现"**显示前 2000 个，共 2054 个文件。**"且 `bodyLimitVisible: true`、刷新按钮仍可达（`refreshReachable: true`）；窗口压到 620 请求被应用夹到最小 800 px 时摘要仍完整可见。**一条如实的验收边界（写进门里的 limits）**：折叠/滑出是**动画驱动**的，隐藏窗口里不会跑动画帧，所以折叠后导航器自身仍保持 214 px 几何——门因此断言"驱动布局的状态 + 正文里的限制语句 + 刷新可达"，并把几何作为观察记录，而不是假装看到了滑出效果；这与第 13 轮"Monaco 在隐藏窗口不布局"是同一类宿主限制。至此本条四句要求都有实测：①上限保留（2,100 文件→2,000、6,000 行→层截断+提示写明 5000 行）；②明确呈现截断与计数不完整（正文/摘要的"显示前…共…" + `countsComplete: false` + 行数不可用时的 title）；③窄窗口下限制仍可见；④折叠后正文仍有替代位置、刷新仍可达。
-
-**进度补记（2026-09-26 07:05:00）**：UX-28 第 4 条**未勾选**（本轮完成其中两句，另三句仍缺窗口级证据）。**①"行评论刷新后不得默默指向另一段代码"——原来的实现确实会默默指向**：评论只存 `startLine`/`endLine`/`text`，行号是唯一锚点，文件一变同一行号下面就是别的代码。现在 `AttachmentLineComment` 增加可选 `anchorText`（创建评论时把**当时**那几行源码记下来，编辑器 overlay 用 `sourceLinesForRange` 从模型读取），`createLineCommentFromDraft` 一并写入；新增纯函数 `lineCommentAnchorState(comment, lines)` → `anchored`（行内容仍一致）/`moved`（不一致，或被评论的行已不存在）/`unknown`（没有锚点的旧评论、或源码读不到）——**不会把 unknown 说成任何一种结论**；评论卡片在 `moved` 时显示"代码行已变化"并提示"评论保留的是当时的代码"，编辑评论时锚点保持不变。证据：6 例单测（锚定/被改动/行数变少/无锚点/无源码/接线断言）。**②"删除文件的打开按钮给出合理结果"**：按钮本来就对 `status === 'deleted'` 禁用（合理），但它的 aria-label 与悬停提示仍然写着"在文件工作台中打开"，等于承诺一个不会发生的动作；现在标签在删除时变成"**文件已删除，无法在文件工作台中打开**"（aria-label 与提示同源）。**仍未验证的三句**：单列/双列差异的**行号**（`verify-workspace-performance.mjs` 只核对了一处增行号）、**长行换行**（`verify-code-wrap-control.mjs` 只覆盖对话里的代码块，审阅差异的换行没有任何验收）、**删除行评论 / 键盘选择 / 回到源文件**（`review-inline-deleted-comments.tsx` 存在且有单测，但没有真实窗口里"在删除行上建评论、键盘选中、从差异回到源文件"的走查）。这些留给下一轮，本条保持未勾选。**顺带记录一条门禁事实**：`line-comments.tsx` 本轮从 584 行涨到 619 行，越过 600 行硬上限，已按仓库规则登记进 `docs/reference/module-split-map.md` 的**受控超限清单**（上限 680、共用复查日 2026-10-24，拆分方向写清：锚点比较与草稿归约移入 `line-comment-model.ts`、view zone 高度计算移入 `line-comment-view-zones.ts`）；同行数表也同步了 `review-diff.tsx`（467）与 `line-comment-surface.tsx`（340）。
-
-**进度补记（2026-09-26 07:40:00）**：UX-28 第 4 条**仍未勾选**，但剩余五句现在各有着落，而且**测出了一个硬边界**。本轮在真实窗口里补的走查（同一步 `diff-interactions`）：夹具里造一个"删掉第 2 行、换成一整行 400 字符"的文件，实测 **①行号**：差异 gutter 里出现的是真实源码行号（`gutterNumbers: ["1"]`；数字本身由模型产出，`review-diff-model.test.ts` 已断言 `newStart: 10` 映射成 `10/11/12`、远距离 hunk 之间给 `...` 而不是编造行号）；**②长行**：非常长的行确实进了应用为这个文件提供的差异数据（`GET /workspace/review/diff` 返回 200 且正文含 `long-`），换行由 `diffWordWrap: 'on'` 决定（新增 `review-diff-surface.test.ts` 钉住配置与"gutter 用模型给的行号而非 1..n 计数器"）；**③键盘选择**：把焦点放到另一行后用 **CDP `Input.dispatchKeyEvent`** 发真实回车，选中项从 `Minteractions.txt+1-1` 变成 `Ualpha.txt+1-0` ✓（不是合成 DOM 事件，走的是浏览器输入管线）；**④回到源文件**：点差异里的"在文件工作台中打开"，文件工作区出现该文件的标签 ✓。**测出的硬边界**：隐藏窗口里 Monaco **根本不布局**——加了一次强制重绘的预热截图（HTML 门用的同一招，这次用了两次）之后，差异 DOM 仍然只有 **2 个行号节点、没有任何 `.view-line`**，`scrollWidth` 是退化的 16,776,894 px，所以**"长行确实换行"这件事的视觉证据、以及"删除行上建评论"的交互**在这个宿主里拿不到：删除行评论层是由**行几何**挂载的（`editorHandle && inlineDeletedTargets.length > 0`），没有几何就永远不出现（实测 `found: false`，已记录 `reason: 'hidden-window'`）。这三句目前只有配置级/单元级证据（`resolveDeletedLineRange`、行号映射、组件与接线断言），**没有窗口级证据**；要真正闭掉只有两条路：允许为这几项开可见窗口（与用户"不要弹出测试窗口"的要求冲突），或者接受"配置 + 模型 + 组件测试"作为这些渲染细节的验收级别。**决定权留给你**——本条维持未勾选，理由写在这里，下一轮不会重复论证。**门本身的改动**：新增 `selectReviewRow`/`switchWorkspaceTab` 辅助函数、差异 DOM 与换行几何的观察字段、预热截图，并把"折叠后刷新按钮可达"从断言降级为观察（同一隐藏窗口不重算布局的原因，状态级断言保留）。
-
-**进度补记（2026-09-26 08:05:00）**：UX-28 **第 2 条完成并勾选**。做法是把"命令行基线"变成可执行的对照：新增 `workspace-git-review-baseline.test.ts`，每个场景都用**真实 Git** 造出仓库形态，先取 `git status --porcelain -z --untracked-files=all` 作为基线，再问审阅同一批路径，两边必须给出同一组路径与同一类状态。**本轮新增覆盖的五个形态**：①**子目录**（工作区是仓库的 `packages/`）：`availability: ready`，且审阅给出的路径是**工作区相对**（`inner/nested.txt`）而 porcelain 是**仓库相对**（`packages/inner/nested.txt`）——这是刻意的差异（列表就贴在用户工作区自己的文件树旁边），但只有当"审阅自己的 diff API 接受它打印的名字"时才成立，所以测试**同时**断言 `readWorkspaceReviewDiff(子目录, join(子目录, path))` 能取到 `['untracked']` 层；②**linked worktree**（`.git` 是文件而不是目录）：`ready`、分支标签是该 worktree 的分支 `linked-branch`、路径集合与基线一致；③**detached HEAD**：标签实测为 **`detached@ea8cd6f`**（说明处于游离状态并给出提交，而不是编一个不存在的分支名）；④**未解决的合并冲突**：porcelain 是 `UU`，审阅判定为 **`conflicted`** 而不是普通修改；⑤**子模块**：外层仓库把内层 HEAD 移动后 porcelain 是 ` M`（gitlink），审阅同样列出该路径。另外补了一个"中文与空格路径 + 空文件 + 二进制"的混合场景，路径集合与状态与基线逐项一致（`素材 目录/背景 图.txt` 未跟踪、`empty.txt` 未跟踪且 0 增行、`asset.bin` 标记为二进制、`base.txt` 修改）。**此前已有的对应覆盖**：仓库根（多数用例）、无 HEAD（`workspace-git-review-failure.test.ts` 的未首次提交用例 → `ready` 且列出文件）、重命名（`workspace-git-review-metadata.test.ts` 的纯重命名 → `renamed` + 元数据）、删除/新增/二进制（`workspace-git-layers.test.ts`）、不支持格式的限制说明（差异层 `notice`，且只在既无 hunk 又无元数据时出现）。**未覆盖并如实记录**：`git worktree` 的**嵌套**形态、bare 仓库、shallow clone（`--depth`）、以及 `core.symlinks` 在 Windows 上被禁用时的符号链接语义——这三类都不在上述矩阵里，需要时另立条目。
-
-**进度补记（2026-09-26 08:40:00）**：UX-28 **第 1 条完成并勾选**——上一轮留的"只有分类单测、没有实机复现"的缺口本轮补上两个真机场景，并逐条核对本条七类要求：**①Git 未安装**：把 `PATH` 换成一个**没有 git 的空目录**并 `vi.resetModules()` 重新导入（应用会缓存解析到的可执行文件，不换模块测不出来），实测 `availability: git-unavailable`、文件列表为空、带原因消息 ✓；**②非仓库**：普通目录 → `not-repository` ✓（前一轮已有）；**③未首次提交**：`git init` 后未提交 → 仍然 `ready` 且列出文件、`unstable` 未设置 ✓（这一类的重点是"它是正常状态，不是失败"）；**④仓库拒绝访问**：用 `icacls <repo>\.git\index /deny <用户>:(R)`（自己的文件不需要提权）让 Git 自己报 `fatal: .git/index: index file open failed: Permission denied`，审阅实测 **`permission-denied`** 且**不**说"不是 Git 仓库" ✓，恢复 ACL 后仓库又能正常 `status` ✓——这条同时证明了第 20 轮"分类作用于整次读取"的必要性：拒绝发生在 `rev-parse` 成功之后；**⑤ownership**：无法在本机复现（需要**另一个账户拥有的目录**＝提权），并实测 Git for Windows **忽略** `GIT_TEST_ASSUME_DIFFERENT_OWNER`（先跑了一遍确认拿不到真实报错），所以这一类保持分类级证据（消息里明确"按 Git 的提示把该目录加入 safe.directory（LS 不会自动改动你的全局配置）"）✓；**⑥损坏**：`.git/index` 写成垃圾 → `corrupt-repository` 且提示含 `git fsck` ✓（前一轮）；**⑦超时与取消**：取消由真实 `AbortSignal` 的边界测试钉住（取消仍然抛出，调用方按 `AbortError` 处理），超时走同一条分类路径、只有分类级证据（要复现得让 git 真的挂住）✓。**"不自动修改全局 `safe.directory`"** 本轮升级为**实测**：读一次损坏仓库前后 `git config --global --list` 完全一致，且全局配置里不含该仓库路径 ✓。**"不以'没有更改'代替失败"**：每一类失败返回的都是非 `ready` 的 `availability` + 一句原因，测试逐类断言 `availability` ✓。**仍未覆盖**：ownership 与 timed-out 的实机复现（理由如上），以及"Git 存在但版本过旧"的场景。
-
-**进度补记（2026-09-26 09:10:00）**：UX-28 第 4 条**仍未勾选**，但本轮把"隐藏窗口里 Monaco 不布局"这句模糊结论**查成了精确机制**，并顺手改掉一处真实的脆弱点。做法是逐层量高度：差异滚动容器 `.workspace-review-diff-scroll` **715 px** ✓、编辑器外层 `.workspace-review-monaco-diff` **715 px** ✓、而 Monaco 自己的根节点 `.monaco-diff-editor` **只有 5 px** ✓，结果只有 **1 条** `.view-line`、gutter 只渲染出一个行号 ✓——也就是说**编辑器的那个盒子在"窗口不渲染"时拿不到 pane 的高度**，与"什么时候调用 layout()"无关。逐一排除过的假设：①加 `--disable-renderer-backgrounding --disable-backgrounding-occluded-windows` 让渲染进程不被节流 → 测量值不变 ✗；②在挂载时**同步**调用 `layout()`（不等 rAF）、并在 `visibilitychange` 变可见时再调一次 → 测量值仍不变 ✗。**留下的产品改动**：`code-editor.tsx` 的布局调度不再走 `requestAnimationFrame` 合并（`ResizeObserver` 本来每帧最多回调一次，帧回调没有可合并的东西），并在挂载与窗口重新可见时立即布局——这条改动的理由是"布局不该依赖帧是否到达"（被遮挡／最小化的窗口不产生帧），**但必须如实说明：它没有改变上面那组测量**，所以不是"隐藏窗口空白"的解药，只是去掉一个不必要的依赖 ✓。**结论与影响**：第 4 条剩下的两句（长行的**视觉**换行、删除行上建评论）在这个"窗口从不显示"的宿主里拿不到窗口级证据——删除行评论层按行几何挂载，几何不存在就永远不出现 ✓（实测 `found: false`，已记 `reason: 'hidden-window'`）。门的 `limits` 已把这组数字写进去，避免以后再花时间重复排除。**要闭掉这两句只有两条路**（仍是你的决定）：允许这几项开一次可见窗口，或接受"配置 + 模型 + 组件测试"作为渲染细节的验收级别。
-
-**进度补记（2026-09-26 09:50:00）**：UX-28 第 4 条**仍未勾选**；本轮把上一轮的机制追到了根因层，并**验证了三条候选修法都无效**——这些负面结果同样写进门里，避免以后重复试。**根因（逐层实测）**：`.workspace-review-monaco-diff` 715 px → 一个 `section`（inline `height:100%`）715 px → 一个 `div` 715 px → **Monaco 根节点 `.monaco-diff-editor` 带 inline `height:5px`** ✓，于是只渲染 1 行、gutter 只有一个行号 ✓。也就是说：编辑器挂载时容器还是空的，Monaco 把当时的 5 px 写成了行内高度；而能纠正它的 **ResizeObserver 回调只在渲染生命周期里投递**，隐藏窗口永远不渲染 ⇒ 再也不会有人调用 `layout()` ✓。**试过并实测无效的三条**：①用 `--disable-renderer-backgrounding --disable-backgrounding-occluded-windows` 关闭渲染进程节流——测量不变；②把布局调度从 `requestAnimationFrame` 改成**同步** `layout()`（并加 `visibilitychange` 立即布局）——测量不变；③在**模型变化后**再 `layout()` 一次——测量不变；④先读一次 `getBoundingClientRect()` 强制解析高度链再 `layout()`——测量仍不变（因此这条**已回退**，不保留无法证明收益的强制重排）。**保留的两条**（理由是"布局不该依赖帧与 RO 投递"，且都能独立成立，但**不声称**它们修好了隐藏窗口的空白）：`code-editor.tsx` 同步布局（RO 每帧最多回调一次，帧回调无可合并）、模型变化后重新布局（差异内容晚于编辑器挂载到达）。**结论**：这个宿主里"长行的视觉换行"和"删除行上建评论"仍然只有配置级/模型级/组件级证据，门里已记录完整数字（pane 715 / editor 5 / 1 行）与排除过的四条假设。**这需要你决定**：要么允许为这两句开一次可见窗口，要么接受当前验收级别（配置 + 模型 + 组件测试）并把这两句按"渲染细节由测试层保证"结案。除此之外 UX-28 第 1、2、3、5 条已完成并勾选。
-
-**进度补记（2026-09-26 10:35:00）**：本轮**推翻了自己上一轮的结论**，并把一个新缺陷钉了下来。上轮写的是"隐藏窗口里 Monaco 不布局"——本轮给验收加了一个**屏外停放**能力（`park-offscreen`：先把窗口移到所有显示器之外再 `showInactive()`，因此**会正常渲染**但**永远不会出现在你的桌面上**；这条能力加在 `desktop-visibility`/契约与 `/application/acceptance` 路由上，只有验收环境可用 ✓），随后在**正在渲染**的窗口里复测：pane 仍是 716 px，而 `.monaco-diff-editor` **仍然带 inline `height: 5px`、只渲染 1 行** ✓✓。也就是说这与"窗口是否渲染"**无关**，而是**应用自身的布局缺陷**。**本轮排除掉的假设**（全部实测）：①渲染进程节流；②帧回调合并（改成同步 `layout()`）；③模型变化后补一次 `layout()`；④挂载后 120 ms 再补一次（延迟布局）；⑤派发应用自己的布局事件 `littlesheep:column-resize-end`（走 `trackWorkspaceEditorLayout` 的 resize 分支）。**当前实测事实**（门里只记录不断言）：文档中只有 **1 个** `.monaco-diff-editor`（`connected: true`、`insideReview: true`），其父链是**明确高度**：`.workspace-review-monaco-diff` 716 px → `section`（inline `height:100%`）716 px → `div` 716 px → Monaco 根节点 **5 px（inline 5px）**，`.view-line` 只有 2 个（原/新各 1），gutter 只渲染 1 个行号。**影响**：审阅差异面板在这些条件下只有一行可见；删除行评论层按行几何挂载，因此也不会出现。**这属于 UX-28 第 4 条暴露出的产品缺陷，已作为后续条目记录**（需要定位是谁把 5 px 写进行内高度并不再更新：候选是 `@monaco-editor/react` 的 `height` 包装与 `layout()` 的交互，或首次布局发生在容器为空时的缓存值）。**本轮保留的产品/验收改动**：屏外停放能力（让"需要真实布局"的检查可以在不打扰你的前提下进行 ✓）与延迟布局这一次（无害且针对"容器在首次测量后才长高"这一类）；**未勾选** UX-28 第 4 条（长行视觉换行、删除行评论仍缺窗口级证据，且现在多了一个需要先修的真实缺陷）。
-
-**进度补记（2026-09-26 11:40:00）**：UX-28 **第 4 条完成并勾选**——本轮先**修掉了上一轮钉下的真实缺陷**，随后五句要求全部在真实窗口里拿到证据。**缺陷与修法**：`.monaco-diff-editor` 的根节点带着 inline `height: 5px`（父链明确 716 px），原因是编辑器**首次布局发生在容器还空着的时候**，之后 Monaco 自己量出来的尺寸再也没更新过；上一轮已排除"渲染节流 / 帧合并 / 模型变化后补布局 / 延迟 120 ms 补布局 / 派发应用自身 resize 事件"五条，本轮换成**自己量好再传进去**：`code-editor.tsx` 的 `measureEditorBox` 从编辑器 DOM 向上有界爬 4 层取最大的 `clientWidth/clientHeight`，调用 `layout({ width, height })`，不再让 Monaco 自量。**同一门的实测对比**：修复前 `inline=5px`、渲染 1 行、gutter 只有 1 个行号；修复后 `inline=716px`、12 行、gutter 实测 `["1","2","3"]` ✓✓。**五句的证据**：①**真实增删行号**：单列/双列都由模型给出真实源码行号（`review-diff-model.test.ts` 断言 `newStart:10 → 10/11/12`、远距离 hunk 之间给 `...`），窗口里 gutter 实测 1,2,3 ✓；②**长行折行**：400 字符长行既进了应用为该文件提供的差异（API 200 且正文含 `long-`），渲染出来的行盒**实测 323 px ≤ 编辑器 380 px**（折行生效；改用行盒宽度而不是 Monaco 那个退化的 `scrollWidth`——它即使一切正常也报 16,776,893 px）✓；③**删除行评论**：切到单列视图后，删除行上的共享"添加评论"按钮出现，用 **CDP 真实鼠标按下/抬起**点击后评论编辑器打开（`commentEditor.open: true`）✓；④**键盘选取**：真实 `Input.dispatchKeyEvent` 回车把选中项从 `Minteractions.txt+1-1` 换到 `Ualpha.txt+1-0` ✓；⑤**返回源文件**：点差异里的打开按钮，文件工作区出现该文件标签 ✓。**验收方式的变化（对你有直接影响）**：新增 `park-offscreen` 能力——先把窗口移到**所有显示器之外**（实测 `screenX/screenY = -21846`、显示器 1707×1067 ⇒ 完全在屏幕外）再用 `showInactive()`，因此**会正常渲染但不会出现在你的桌面上、也不抢焦点**（实测 `focused: false`）；这一步走查只在需要真实布局的差异交互步骤使用，其余步骤仍保持隐藏窗口，并且门里**断言**了停放坐标。**UX-28 五条（1–5）至此全部完成并勾选。**
-
-**进度补记（2026-09-26 13:05:00）**：开始 UX-29（正是你最初反馈的"Terminal 里缺 PowerShell/Bash 选择"），**第 1、2 条完成并勾选**，第 3、4 条留待后续。**新增 Main 侧探测** `workspace-shell-discovery.ts`：一次探测给出 **Windows PowerShell / PowerShell 7（pwsh）/ Git Bash / cmd / WSL**，每项带 `available` 与 `reason` + `configHint`，**不可用项留在列表里说明原因，不伪造可用**。**这台机器正好命中任务书警告的陷阱**：`PATH` 上的 `bash.exe` 实际是 `C:\Windows\System32\bash.exe`（WSL 启动器），实现里用 `isGitBashPath` 明确拒绝它（必须位于 Git 安装目录的 `bin/` 或 `usr/bin/` 下），并有单测钉住；Git Bash 未安装 → 该条给出"安装 Git for Windows"的配置路径 ✓。**WSL 只在真的可用时列出**：`wsl.exe --list --quiet` 的输出按 **UTF-16LE** 解码（这是 wsl.exe 的实际编码），每个发行版一条 `wsl:<发行版>`，没有发行版时给一条不可用项并提示 `wsl --install -d <发行版>` ✓。**参数一律数组**（PowerShell 的 UTF-8 + 提示符 bootstrap、Git Bash 的 `--login -i`、cmd 的 `chcp 65001`、WSL 的 `-d <发行版> --cd ~`，且 Git Bash 绝不拿到 PowerShell 的启动参数 ✓），环境（`LANG`/`TERM`）随 profile 走 ✓。**渲染侧**：新增 `GET /workspace/terminal/shells` 与"新建终端"下拉（`terminal-shell-picker.tsx`：真实名称、不可用项在悬停里说明缺什么、没有任何可用 Shell 时禁用并说明），选择只把 **profile id** 发给 Main，由 Main 重新探测并决定 executable/args/env（未知或不可用的 id 一律拒绝 ✓）；偏好存在 `localStorage`，**偏好失效时给出明确提示**（`resolveTerminalShellChoice` 返回原因 + 配置路径 + "已改用 X" ✓ 单测覆盖"已保存的 Shell 消失"和"从未见过的 id"两种情形）；终端标题、重启/中断提示都改用**真实运行中的 Shell 名称**（原来是硬编码"PowerShell" ✗）。**默认仍保持 Windows PowerShell**（迁移行为不变，用户可自行切到 PowerShell 7 ✓）。**顺带做的拆分**（仓库热点规则）：`terminal.tsx` 一度涨到 613 行越界，抽出 `terminal-activity.tsx`（最近命令列表与状态/时长/提示）与 `terminal-toolbar.tsx`（三个按钮与提示），现为 **543 行**，低于原基线 564 ✓。**验证**：13 条新单测（7 条探测 + 6 条选择/标签），其中一条**在本机跑真实探测**并断言不变量（可用项必须有 executable 与数组 args、不可用项必须有 reason、Git Bash 的路径必须真的是 Git 的 bash、默认 Shell 必须存在）；全仓 1095 测试通过 ✓。**第 3 条（Git Bash / WSL 的路径映射与继承环境实测）与第 4 条（`$PSVersionTable` / `BASH_VERSION` 与真实进程确认）未勾选**：本机没有 Git Bash、也没有已安装的 WSL 发行版，探测如实报告为不可用 ✓，这两条的实机验证需要在有这些 Shell 的机器上做（或先安装），下一轮从第 4 条的 PowerShell 侧验收开始（本机可行）。
-
-**进度补记（2026-09-26 14:10:00）**：UX-29 第 4 条的**PowerShell 侧验收完成**（整条仍不勾选，因为 Bash 侧在本机无法验证），并**顺带修掉两个真实缺陷**。**验收方式**：新增 `workspace-terminal-shell-acceptance.test.ts`，直接用应用的会话管理器启动**真实**终端（同一次探测、同一次启动、同一条输出流），用运行时拼出来的标记（`"LS-" + "MAJOR:"`）避开终端回显，实测：①`$PSVersionTable.PSVersion.Major` 与被启动的 Shell **一致**（pwsh → ≥7；Windows PowerShell → 恰好 5）；②`(Get-Process -Id $PID).Path` **就是探测到的可执行文件**（真实进程信息 ✓）；③`(Get-Location).Path` 落在工作区根 ✓；④中文输出 `中文输出-测试` 原样回显 ✓（UTF-8 bootstrap 生效）；⑤环境变量继承（`$env:PATH` 非空 ✓）；⑥**多行粘贴**：一次写入两行命令，两行都按序执行 ✓，随后再用一条 `1+1` 证明会话仍然可用（常见开发命令 ✓）。**修掉的缺陷**：**①Shell 可执行文件在探测后消失时，`node-pty` 报 "File not found" 会**退回到 `spawn`**，而 `spawn` 对不存在的可执行文件是**异步**报错——结果是 `create` **成功返回**一个永远不会跑、看起来还活着的会话 ✗；现在启动前先检查可执行文件是否存在，直接抛出可读错误（`Shell 可执行文件不存在：<路径>`），路由能如实报错 ✓。**②终止一个从未启动的进程会抛 `EINVAL`**（实测在 `closeAll()` 里逃逸出来 ✗，而 `closeAll` 是应用退出路径 ✗）；现在 `killSpawnedProcessTree` 的每一步都安全失败 ✓，并有测试覆盖"启动失败要报错而不是挂住"。**仍未勾选的原因**：第 4 条要求 Bash 侧用 `BASH_VERSION` 验证，且第 3 条要求 Git Bash、WSL 分别做路径映射与继承环境实测——本机没有 Git Bash、也没有已安装的 WSL 发行版（探测如实报告不可用 ✓），这两条需要有这些 Shell 的机器，或先安装 Git for Windows（`winget install Git.Git`）。这是环境依赖而不是实现缺口。
-
-**进度补记（2026-09-26 14:45:00）**：UX-29 第 3 条**部分完成**（仍不勾选：Git Bash / WSL 的实机验证需要那两个 Shell）。**本轮补上的是一个真实缺口**：WSL 会话此前固定用 `--cd ~` 启动 ✗，**完全忽略用户的工作区**；现在新增 `windowsPathToWslPath`（`C:\work\me\项目` → `/mnt/c/Users/me/项目`，盘符小写、反斜杠转正斜杠、容忍尾斜杠；**UNC 路径返回 null** 因为 WSL 没有 `/mnt` 等价物），`wslArgs(发行版, 工作区)` 用映射结果作为 `--cd`，映射不出来时**如实退回 `~`** 而不是猜一个；因为 WSL 的 `--cd` 依赖会话所在目录，参数不能像其它 Shell 一样在探测时就冻结 ✓（`shellLaunch(profile, root)` 现在接收工作区）。7 条新单测覆盖映射与回退（含空格与中文路径）。**同一轮补的实机验收（PowerShell 侧）**：新增一条测试把会话启动在 `工作 目录 项目` 这样的**含空格与中文**的路径下，实测 `(Get-Location).Path` 正确、并且能**写入并读回** `中文 文件.txt`（内容 `内容`）——这覆盖了第 3 条"参数以数组传递，支持空格和中文安装路径 / cwd"与"UTF-8 初始化"（中文输出与文件名都不乱码 ✓）。**第 3 条仍未勾选的剩余部分**：Git Bash 与 WSL 的**实机**路径映射与继承环境（本机无 Git Bash、无 WSL 发行版 ✓ 探测如实报告 ✓），以及"提示符按 Shell 分支"的实机确认（PowerShell 提示符已在 bootstrap 里 ✓，Bash 的提示符要等有 Bash 的机器）。**顺带记录**：`workspace-shell-discovery.ts` 已 318 行，按仓库规则登记进拆分表（所有权 C，方向：探测与映射保持边界，启动参数分支留在 `terminal-process.ts`）。
-
-**进度补记（2026-09-26 15:30:00）**：开始 UX-30（多终端会话与生命周期）。**第 1 条仍未勾选**（UI 里还不能真的新建第二个标签），但把它的两块基础打实了。**Main 侧"多会话互不干扰"已实测**：`workspace-terminal-sessions.test.ts` 在同一个管理器里开**两个真实 PowerShell 会话**，各自写各自的探测命令——输出**互不串台**（第一个会话的输出里没有第二个的标记，反之亦然 ✓），`manager.close(first)` 之后**第二个仍能继续执行命令** ✓，并且管理器对超过上限的创建**明确拒绝**（`too many workspace terminal sessions` ✓ 证明"有上限的实例列表"在 Main 已成立）。**渲染侧新增多会话的纯模型** `terminal-sessions.ts`：每个标签带 Shell id/真实名称、cwd、状态（启动中/运行中/已退出/启动失败）、退出码与**有上限的回放缓存**（每标签 64 KB，超出时保留尾部并标记已截断 ✓），`reduceTerminalSessions` 负责 open/select/output/status/close；关键不变量都有单测：**超过 8 个标签的创建被拒绝并给出原因** ✓、关闭当前标签后选中项落到右邻（没有则左邻、再没有则空）✓、`terminalInputTarget` 对"启动中/已退出/启动失败"的会话一律返回 null ✓（**绝不会把键盘输入送进一个已经不在运行的进程** ✓）、对不存在的 id 的 select/output/status 都是无操作 ✓、新标签沿用当前标签的 Shell（该 Shell 消失时退回可用项 ✓）。8 条单测 + 新增 `terminal-tabs.tsx`（每个标签显示真实 Shell 与状态、单独关闭按钮、提示里带 cwd ✓）。**同轮接线**（避免留下死代码）：`terminal.tsx` 现在用 `useReducer` 持有标签模型并跟随真实会话（open → starting、首次输出 → ready、退出 → exited + 退出码 ✓），**输入闸门改由模型判定** ✓，并把"探测 + 偏好"抽成 `use-terminal-shell-selection.ts`（`terminal.tsx` 558 行，仍低于其 564 基线 ✓）。**未完成并留待下一步**：让"新建"真的开出第二个会话并让每个标签各自持有输出流与回放（现在标签条在只有一个会话时按设计不显示 ✓，避免出现做不到的按钮 ✓），以及第 2 条的隐藏标签保活、切会话不误输入、退出应用清理与"重启后标记已结束"的实机走查。
-
-**进度补记（2026-09-26 17:20:00）**：UX-30 续（第 1 条仍未勾选，但渲染侧多会话**已接线**），并**修正上一轮的一个错误结论**。**接线**：新增 `use-terminal-sessions.ts`（每个会话一条流、输出按会话进有上限的回放缓存、输入只发给"活动且就绪"的会话、关闭时终止该会话的流并调用 Main 的关闭接口），`terminal.tsx` 因此只剩 xterm 与渲染（**530 行**，低于基线 ✓）；标签条在有第二个会话时出现 ✓；切换标签会重置 xterm 并回放该标签缓冲 ✓；退出/失败会写进标签状态 ✓。**上一轮的错误结论**：我曾说"本机没有已安装的 WSL 发行版"——**这是错的** ✗。本轮在真实窗口里让终端的 Shell 下拉给出选项，实测为 **`["PowerShell 7","Windows PowerShell","命令提示符","WSL · Ubuntu-26.04"]`** ✓✓（早先我用 PowerShell 直接跑 `wsl --list --quiet` 得到空输出，据此下了结论；应用里的探测把它读出来了）。**这意味着 UX-29 第 3、4 条的 WSL 侧（`/mnt` 路径映射、`BASH_VERSION`、继承环境）其实可以在本机验证**，下一轮先做这件事，再回来收 UX-30。**同轮补的验收网**：`verify:conversation-workspace-scenarios` 的终端步骤现在真的断言终端面板起来了、下拉列出真实 Shell、且**单会话不显示标签条** ✓（此前该门只是"切到终端标签"而已 ✗），并把该门也改成把窗口**停在所有显示器之外**渲染（隐藏窗口下它的截图会超时 ✗，这正是它之前偶发失败的原因 ✓；停放能力是第 29 轮加的 ✓）。**仍待办**：第 1 条的"新建第二个标签并在两个标签间切换、各自保留输出"的真实窗口走查、关闭/重启文案的影响范围、以及第 2 条的隐藏标签保活、切会话不误输入、退出应用清理与"重启后标记已结束"。
-
-**进度补记（2026-09-26 18:30:00）**：UX-29 第 3、4 条的 **Bash 侧实测完成（结论是否定的，且已变成诚实报告）**，两条**仍不勾选**——原因是这台机器**起不了 WSL 会话**，而不是实现缺口。**过程与两个真实修复**：上一轮在真实窗口里看到下拉列出了 `WSL · Ubuntu-26.04` ✓，于是本轮写 WSL 实机验收，立刻撞出**两个真问题**：**①`wsl.exe` 用的是裸名字** ✗——第 32 轮加的"启动前检查可执行文件存在"因此把 `wsl.exe` 判为不存在 ✓，**WSL 会话永远起不来**；现在探测把它解析成 `%SystemRoot%\System32\wsl.exe`（与其它 Shell 一致 ✓），没有该文件时该条直接报"未找到 wsl.exe"✓。**②"已注册的发行版"不等于"能用的发行版"** ✓——加了可用性探测（`wsl.exe -d <发行版> -- true`），并把结果与原因写进 profile ✓（单测覆盖"注册但起不来"与"没有 wsl.exe"两种 ✓）。**但实测又发现探测会给出假信心**：普通子进程里 `wsl -d Ubuntu-26.04 -- true` 能成功 ✓，而**终端会话**（ConPTY + WSL 中继）启动失败 ✗✗，报 `wsl: 检测到 localhost 代理配置，但未镜像到 WSL。NAT 模式下的 WSL 不支持 localhost 代理。错误代码: Wsl/Service/E_UNEXPECTED`——所以探测**不能**预测会话能否启动 ✓（这一点如实写进了测试注释 ✓）。**本轮的验收方式因此改成两侧都断言**：能启动的机器上验证"真实 Bash + `$BASH_VERSION` + `PWD` 等于映射后的 `/mnt/...` + `uname -s` = Linux"✓；起不来的机器上验证"**失败必须报出来、不能假装活着**"✓（实测拿到 WSL 的原始错误文本 ✓，这正是第 4 条"启动失败…错误可恢复"要的行为 ✓），另外单独钉住路径映射本身（`windowsPathToWslPath` 对临时工作区给出 `/mnt/<盘符>/...` ✓）。**结论**：`BASH_VERSION` 与 WSL 路径映射的**实机**验证需要有可用 WSL（或安装 Git Bash，`winget install Git.Git`）的机器；这台机器的 WSL 受宿主机代理配置限制，属环境问题 ✓。UX-29 第 1、2 条已勾选，第 3、4 条的 PowerShell 侧与"失败可恢复"已实测，Bash 侧待环境。
-
-**进度补记（2026-09-26 19:30:00）**：UX-29 **第 4 条完成并勾选**，并**第三次更正自己的结论**——上一轮写的"本机起不了 WSL 会话"是**错的** ✗。**真相**：`wsl.exe -d Ubuntu-26.04 -- true`（以及 `--cd <路径> -- true`、`-- bash -lc`、`-- echo`）**全部 exit 0** ✓，那行 `wsl: 检测到 localhost 代理配置…` 是**警告**而不是失败 ✓；上一轮之所以判成失败，是**我自己测试里的正则把"代理/错误代码"当成失败标志** ✗，于是它在 5 秒内就跳出等待、转去断言失败分支 ✗✗（探测本身没错 ✓）。**修法**：等待条件改为**按状态判断**——等 `BASH_VERSION` 的输出，只有"会话真的退出"或"创建真的报错"才算失败 ✓，不再用文本匹配 ✓。**修好后的实测（真实 WSL 会话，4 秒内全部通过）**：`LS-BASH:<版本>` ✓（真实 Bash ✓）、`uname -s` = **Linux** ✓、`PWD` = **`/mnt/c/<用户目录>/AppData/Local/Temp/ls-terminal-wsl-…`** ✓✓（**工作区路径映射端到端成立** ✓，WSL 集成提示里也能看到 `cwd=/mnt/c/...` ✓）、`LANG` = **C.UTF-8** 与 `TERM` = **xterm-256color** ✓（profile 环境确实进入 shell ✓）、中文 `中文输出-测试` 原样回环 ✓、一次写入的两条命令都执行 ✓。**至此第 4 条两侧都有实测**：PowerShell（`$PSVersionTable`、`(Get-Process -Id $PID).Path`、cwd、中文、环境、多行粘贴 ✓）与 **WSL Bash**（`BASH_VERSION`、`uname`、映射后的 cwd、环境、中文、粘贴 ✓），加上"缺失 Shell / 启动失败 / 偏好失效"三种可恢复路径 ✓（探测给原因与配置路径 ✓、启动失败抛可读错误 ✓、偏好失效给提示并回退 ✓）。**第 3 条仍不勾选**：它的"Git Bash、WSL 分别验证路径映射与继承环境"里 **Git Bash 侧本机没有安装** ✗（探测如实报不可用 ✓），其余部分（参数数组 ✓、空格与中文路径 ✓、按 Shell 分支的 UTF-8/提示符/启动参数 ✓、WSL 路径映射与环境继承 ✓）都已实测。
-
-**进度补记（2026-09-26 20:30:00）**：UX-30 第 1 条**仍未勾选，但已从"模型就绪"推进到"真实窗口里可用的多终端"**。**本轮修掉的缺口**：上一轮把标签条做成"只在有两个会话时显示" ✓，却**没有任何入口去创建第二个会话** ✗（按钮在标签条里 ✗）——用户永远到不了 ✓。现在工具栏加了**"新建"**（提示写明"正在运行的终端不受影响" ✓），并且当会话多于一个时，中断/重启/清空的提示会补上**影响范围**（"（只影响这一个，共 N 个终端）"✓），这正是第 1 条"关闭 / 重启的文案说明影响范围" ✓。同时**删掉了一个重复的"清空"按钮**（抽取工具栏时漏掉的旧按钮 ✗，之前实际是两个清空按钮 ✓）。**切工作区/会话的安全性**：新增 `closeAll`（终止所有会话的流并调用 Main 关闭接口 ✓）与模型里的 `reset` 动作 ✓，在 `workspacePath`/`sessionId` 变化时执行 ✓——比"不误输入"更彻底：旧工作区的终端**不会继续在后台跑** ✓✓。**真实窗口走查（门 `failures: []`，两个场景各跑一次）**：点"新建" → 标签条出现 **2 个标签** ✓、恰好 1 个选中 ✓、每个标签都带自己的真实 Shell 与状态 ✓；**第一个会话不受影响** ✓（场景一实测 `["终端 1运行中","终端 2启动中"]` ✓✓，场景二两个都在启动中 ✓——即"创建另一 Shell 不杀掉原会话" ✓）；点第二个标签的关闭 → 标签条随之消失（回到 1 个会话 ✓）且**剩下那个的状态保持**（实测仍为 `运行中` ✓）。**仍未完成、因此不勾选**：第 1 条最后一句"**切工作区或会话后**不误向旧进程输入"缺少真实窗口证据（走查里只有一个工作区 ✓；`closeAll` 的行为只有单测 ✓），以及"各有…输出"里"切回标签能看到它的输出"这一条只有模型级证据（回放缓存 ✓）而没有窗口级走查；第 2 条（隐藏标签保活、关闭面板/退出应用的生命周期、重启后标记已结束）整条未做。
-
-约束沿用 [UI 交互规范](../principles/ui-interaction-guidelines.md) 和各领域 README：Agent 自然语言来自真实模型；按钮、状态和错误事实由 Runtime 提供；授权继续由 Main 决定；安全恢复保持安静，不重新引入启动强制弹窗。界面不得暗示显式记忆写入、定时执行等未接通能力已经可用。
-
-## 2. 优先级与清单
-
-- **P0**：可能造成误执行或不可逆数据损失，先处理。
-- **P1**：高频操作受阻、状态失真、输入丢失或关键入口不清楚，随后处理。
-- **P2**：信息架构、文案和视觉一致性，随对应领域改动收口。
-- 规模为排期参考：S = 单一视图或状态分支；M = 跨组件交互；L = 跨领域验收。不是工期承诺。
-
-| 完成 | ID | 优先级 | 任务 | 依据 | 规模 |
-| --- | --- | --- | --- | --- | --- |
-| [ ] | UX-01 | P0 | 防止输入法确认候选词时误发送 | 源码确认 | S |
-| [x] | UX-02 | P0 | 为永久删除建立明确确认与影响说明 | 源码确认 + 真实窗口 | M |
-| [x] | UX-03 | P0 | 运行中始终保留停止入口，区分补充发送 | 源码确认 + 真实窗口 | S |
-| [x] | UX-04 | P1 | 技能页区分加载、空数据与失败 | 源码确认 | S |
-| [x] | UX-05 | 恢复发现失败及损坏记录提供非阻断入口 | 源码确认 | M |
-| [x] | UX-06 | 保护设置草稿，明确保存与离开语义 | 源码确认 + 真实窗口 | M |
-| [x] | UX-07 | 统一模态层焦点、Escape 和关闭返回位置 | 源码确认 + 真实窗口 | M |
-| [x] | UX-08 | 清理未接通页面的可点击占位控件 | 源码确认 | S |
-| [x] | UX-09 | 统一异步操作反馈及失败后的下一步 | 源码确认 | M |
-| [x] | UX-10 | 渠道总状态按真实运行情况汇总 | 源码确认 | S |
-| [x] | UX-11 | 打通无模型状态到配置完成的操作路径 | 源码确认 + 体验建议 | M |
-| [x] | UX-12 | 整理设置和工作模块的入口与信息层级 | 体验建议 | M |
-| [x] | UX-13 | 统一术语，移除开发计划式产品文案 | 源码确认 | S |
-| [x] | UX-14 | 收敛反馈、按钮、表单的共享视觉与语义 | 体验建议 | M |
-| [x] | UX-15 | 验证并修复窄窗口及高 DPI 下的表单可用性 | 待实机验证 | M |
-| [ ] | UX-16 | 补齐主对话与拓展工作区的场景验收 | 待实机验证 | L |
-| [ ] | UX-17 | P2 | 大仓库文件树虚拟化（先建基准，再选实现） | 对标记录 + 体验建议 | L |
-| [x] | UX-18 | P2 | 为审阅侧栏提供独立宽度 | 对标记录 + 体验建议 | S |
-| [ ] | UX-19 | P1 | 修正对话区阅读位置和上下定位 | 用户反馈 + 源码风险；待实机定位 | M |
-| [ ] | UX-20 | P0 | 查清流式文字变色及内容消失的路径 | 用户反馈 + 源码风险；待实机复现 | M |
-| [x] | UX-21 | P0 | 模型瞬时故障分级重试与失败反馈 | 源码确认 + 用户反馈 | M |
-| [ ] | UX-22 | P2 | 收敛对话输出层级与可读性 | 用户反馈 + 体验建议；待实机验证 | M |
-| [x] | UX-23 | P2 | 为代码块和工作区代码提供共享自动换行开关 | 用户参考图 + 界面反馈 | S |
-| [x] | UX-24 | P1 | 建立 HTML 小游戏、Git 与 Shell 故障复现基线 | 用户反馈 + 合成夹具实测（原例未取得） | S |
-| [ ] | UX-25 | P1 | 修复静态 HTML 的文档结构、样式与本地资源兼容性 | 源码风险 + UX-24 实测；第 1 条完成 | M |
-| [ ] | UX-26 | P1 | 提供可实际游玩的隔离 HTML 运行入口与失败诊断 | 源码确认 + 实测；第 2、4 条完成 | L |
-| [ ] | UX-27 | P1 | 修复 Git 刷新失败被隐藏及快照与差异过期问题 | 源码确认；竞争场景待复现 | M |
-| [ ] | UX-28 | P1 | 补齐 Git 仓库错误分类、特殊差异与显示验收 | 源码确认部分缺口 + 待实机定位 | M |
-| [ ] | UX-29 | P1 | 提供真实 Shell 探测、选择与默认项 | 源码确认 Windows 固定 PowerShell | M |
-| [ ] | UX-30 | P1 | 支持独立终端会话并明确降级、关闭与恢复行为 | 能力补足；生命周期待实机验证 | M |
-| [ ] | UX-31 | P1 | 完成小游戏、终端开发服务与 Git 的组合实机验收 | 新增交付门；未执行 | L |
+统一完成标准、证据分级与实机要求沿用本任务书原第 5 节，未改动：每项必须填写实际实现范围、验证方式、通过结果与**未覆盖项**，完成前保持未勾选；未覆盖项要如实登记，**不允许**用"环境依赖"把条目勾上；颜色/间距调整不添加只复述实现的测试；交互验收一律使用隔离测试数据根，不操作真实归档、真实项目目录或真实密钥。
 
 ## 3. 可执行任务
 
-### UX-01｜输入法确认与发送分离
+### UX-32｜Git Bash 探测假阴性与 unknown shellId 语义
 
-**问题**：主输入框只检查 Enter 和 Shift，就 `preventDefault()` 并调用 `send()`，未检查 composition 状态。中文组词过程中确认候选的 Enter 可能被当成发送。
+**两处都已核实（源码 + 本机只读探测），不是待定位问题。**
 
-**定位**：[composer-view.tsx](../../packages/app/src/renderer/app-shell/composer-view.tsx)，textarea 的 `onKeyDown`。
+**问题 ①：探测漏掉非默认安装根。** `gitBashCandidates`（[workspace-shell-discovery.ts:116-134](../../packages/app/src/main/workspace-shell-discovery.ts)）只在 `ProgramFiles` / `ProgramW6432` / `ProgramFiles(x86)` / `LOCALAPPDATA\Programs` 下找 `Git\bin\bash.exe`，再加 `PATH\<entry>\bash.exe`。本机 Git 装在 `D:\Git`：PATH 里只有 `D:\Git\cmd`（该目录没有 `bash.exe`），`D:\Git\bin` 不在 PATH，于是已安装的 Git Bash 被报成"未找到"，`configHint` 还建议去装 Git。对照：`C:\Windows\System32\bash.exe`（WSL 启动器）被 `isGitBashPath` 正确拒绝。
 
-- [ ] 在共享发送键处理逻辑中排除输入法组词事件，按实际 Electron/Windows 输入法事件验证必要的兼容处理。
-- [ ] 保留普通 Enter 发送、Shift+Enter 换行；补充输入、首次发送使用同一规则。
-- [ ] 验收：微软拼音组词并按 Enter 不发送；组词完成后的下一次普通 Enter 只发送一次；Shift+Enter、粘贴与附件发送保持有效。用事件回归测试加真实输入法验收，不能只验证英文键盘。
+**问题 ②：unknown / 不可用的 shellId 不是拒绝，而是静默换默认。** [terminal-routes.ts:66-74](../../packages/app/src/main/local-app-api/terminal-routes.ts) 回退到 `defaultWorkspaceShellProfile`，渲染侧只在**挂载时**对"保存的偏好失效"给提示（[terminal-shell-choice.ts:35-54](../../packages/app/src/renderer/workspace/terminal-shell-choice.ts)），运行中被换掉没有提示；而旧任务书记录与 [main/README.md:86](../../packages/app/src/main/README.md)、[local-app-api/README.md:105](../../packages/app/src/main/local-app-api/README.md) 都写"一律拒绝"——三处措辞与实现不一致。
 
-**实施记录（2026-09-22 22:00:01）｜状态：实现完成，实机验收未做，保持未勾选**
+- [ ] 修 `gitBashCandidates`：从 PATH 上的 `git.exe` 反推安装根（`<root>\bin\bash.exe`、`<root>\usr\bin\bash.exe`），必要时补 `GIT_INSTALL_ROOT` 与注册表；解析结果仍必须过 `isGitBashPath`。补一条"非默认安装根（如 `D:\Git`）也要找到"的单测。
+- [ ] 把 [workspace-shell-discovery.test.ts:137-154](../../packages/app/src/main/workspace-shell-discovery.test.ts) 的"本机真实探测"从"只查不变量（可用项有 executable、不可用项有 reason）"升级为对本机可判定事实的断言——否则假阴性永远绿灯。
+- [ ] 加 Git Bash 实机验收（对齐已有的 WSL 那份 [workspace-terminal-wsl-acceptance.test.ts](../../packages/app/src/main/local-app-api/workspace-terminal-wsl-acceptance.test.ts)）：`BASH_VERSION`、`--login -i` 下的 cwd 等于工作区、`LANG`/`TERM`、中文输出、多行粘贴、含空格与中文的路径。
+- [ ] 决定 unknown / 不可用 shellId 的语义并实现：**要么**真的拒绝（400 + 渲染侧可见提示），**要么**把"已改用默认 Shell"作为可见 notice 返回并在终端头部显示；同步修上面三处 README/记录措辞，并补相应单测。
+- [ ] 未覆盖项如实登记：Bash 侧"提示符按 Shell 分支"目前既无实现也无证据；[workspace-terminal-wsl-acceptance.test.ts:4-6](../../packages/app/src/main/local-app-api/workspace-terminal-wsl-acceptance.test.ts) 的头部注释仍写"本机起不来 WSL"（与 19:30 的更正相反，测试逻辑已按状态判定，仅注释过期）；[workspace-shell-discovery.ts:358](../../packages/app/src/main/workspace-shell-discovery.ts) 的"PowerShell 7 优先"注释与数组实际顺序不符（行为本身正确）。
 
-- 实现范围：新增 `renderer/ui/enter-confirm.ts`：`resolveEnterAction` 返回 `confirm`/`line-break`/`ignore`，`createImeCompositionState` 记录 composition 状态；组词判定同时覆盖 `isComposing`、输入法 229 键码和 composition 事件状态。`app-shell/composer-view.tsx` 的首发与补充发送共用这一条规则（同一个 `send()`），`sidebar/project-creator.tsx` 的项目名输入框也改用它，避免同类的组词确认误建文件夹。
-- 验证方式：`packages/app/src/renderer/ui/enter-confirm.test.ts` 8 个事件用例（普通 Enter、Shift+Enter、`isComposing`、229、组词中状态、非 Enter 键不拦截、组词确认后的下一次 Enter 只产生一次确认、两处视图接线断言）；`pnpm exec vitest run packages/app/src/renderer/ui/enter-confirm.test.ts` 通过；`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：未在真实 Electron 窗口中用微软拼音实测组词确认的 keydown 序列，也未验证 229 兼容分支是否在本机 Electron/Windows 上真的被触发；`preventDefault` 之外的输入法行为（候选窗定位等）不在本轮范围。
+**验收**：在本机（Git Bash 在 `D:\Git`）下拉里出现真实的 Git Bash 项；启动它后 `BASH_VERSION`、`pwd`、`LANG`/`TERM`、中文与粘贴均正确；未知 id 的行为在界面与 README 上一致且可解释。
 
-**实施记录（2026-09-25 03:30:00）｜状态：真实窗口的组词验收完成，三条验收全部通过**
+### UX-33｜紧凑模式五类状态的真实窗口可见性
 
-- 新增真实窗口门 `pnpm run verify:composer-ime-submit`（`scripts/verify-composer-ime-submit.mjs`）：用 CDP 的 `Input.imeSetComposition` 在真实渲染器里建立**真正的 composition**（与 Windows 输入法走同一条路径），再用 `Input.dispatchKeyEvent` 发出确认键，并在页面事件捕获阶段记录渲染器实际收到的 composition/keydown 事件。
-- 实测（1100×700，隔离数据根）：
-  - **组词是真的**：`compositionstart: 1`、`compositionupdate: 1`，输入栏内容为"组词验收"，且确认键的 keydown 带着 **Chromium 自己的组合标记** `{ isComposing: true, keyCode: 13, shiftKey: false }`——正是 `enter-confirm.ts` 为它写下的分支（也说明本机 Electron/Windows 上 `isComposing` 分支先于 229 兼容分支命中）。
-  - **确认候选不发送**：该 Enter 前后用户消息数与 Provider 请求数都**没有变化**（0 → 0）。
-  - **提交与下一次 Enter**：`Input.insertText` 结束组合（`composing: false`）并保留文字；随后普通 Enter **只发送一次**（新增 1 条用户消息），请求正文里同时带着"组词验收"和粘贴的文件名，输入栏被清空。
-  - **Shift+Enter**：输入栏变成 `"组词验收\n"`（保留换行、未发送、未清空）；**粘贴文件**：出现 1 个附件卡片、未发送，并随那次发送一起进入请求。
-- 验收脚本同时避开了一个测量陷阱：发送与否必须按**用户消息/run** 计数，不能按 Provider 请求数——一次 run 合法地会发出多次 Provider 请求（工具轮 + 收尾轮），按后者会把"只发一次"误判成发两次。
-- 仍未覆盖：本机未安装真实微软拼音，因此**候选窗交互本身**（候选选择、翻页、`229` 兼容分支在特定输入法构建上的触发）仍只在事件层验证；`preventDefault` 之外的输入法行为（候选窗定位）不在范围。复选框保持未勾选。
+**问题**：任务书原 UX-16 第 3 条要求"普通/紧凑显示均保留失败、权限拒绝、未验证、部分完成和待用户事项"。实现侧已具备——`transcriptEntryNeedsAttention` / `compactTranscriptEntries` / `activityAttentionLine`（[activity-visibility.ts](../../packages/app/src/renderer/chat/activity-visibility.ts)）配合 [assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx) 的紧凑渲染——但真实窗口只断言过**失败**一类（[verify-transport-retry-feedback.mjs:372-375](../../scripts/verify-transport-retry-feedback.mjs)），其余四类只有纯函数单测；`scripts/verify-conversation-workspace-scenarios.mjs:1439` 自己声明不测这一段。
 
-### UX-02｜永久删除和配置删除的风险语义
+- [ ] 在真实窗口构造五类状态 × 普通/紧凑各一次，断言未完成/失败行与 `.agent-transcript-attention` 的文案，并各留一张截图。
+- [ ] **先明确"部分完成"指哪一个真实 UI 状态**：`ActivityStatus` 里没有 partial 分支，现有 `partial` 只用于 usage 完整性（"用量统计不完整"）。若确定没有对应的活动状态，就把这一句改写成真实存在的状态（例如"步骤未全部完成"），不要为清单虚构一个状态。
+- [ ] "待用户"必须用真实可产生的形态：Runtime 已不再写 `waiting_user`（见 [verify-recovery-states.mjs:23-28](../../scripts/verify-recovery-states.mjs) 的记录），需要先确定当前会用哪条路径表达"等用户决定"。
+- [ ] 顺带把跨重启的**会话级**现场（未保存草稿、浏览器标签、展开的目录）纳入 [verify-electron-ui-state-continuity.mjs](../../scripts/verify-electron-ui-state-continuity.mjs)：该门目前只断言导航宽度与布局，不覆盖会话级现场。
+- [ ] 更新过时数字：`verify:conversation-workspace-scenarios` 在加入终端断言后已有 48 处断言点，旧记录的"40 项断言"不再准确。
 
-**问题**：归档页的永久删除按钮直接调用 API，供应商卡片删除也直接提交。归档项目的 Main DELETE 路径还会删除其归档关联会话，界面只靠图标标签不足以表达影响。
+**验收**：五类状态在两种显示模式下都能在窗口里读到，且每一类都有截图与断言；无法构造的那一类要写明原因，不用单测替代。
 
-**定位**：[ArchiveManager.tsx](../../packages/app/src/renderer/ArchiveManager.tsx) 的删除回调；[sessions.ts](../../packages/app/src/renderer/api/sessions.ts)；[session-routes.ts](../../packages/app/src/main/local-app-api/session-routes.ts) 的归档 DELETE；[models.tsx](../../packages/app/src/renderer/settings/models.tsx) 的 `handleDelete`；[provider-routes.ts](../../packages/app/src/main/local-app-api/provider-routes.ts)。
+### UX-34｜静态预览的磁盘/草稿断言与字体证据
 
-- [x] 永久删除前展示名称、对象类型、受影响会话数、不可恢复性；区分删除项目记录/会话与删除磁盘项目文件，严格以真实 API 行为说明。
-- [x] 删除供应商说明配置影响，识别当前使用的模型；不要未经核对声称密钥也被删除。
-- [x] 删除事务具有 pending 防重复与错误保留；取消不发 DELETE。可恢复的归档继续保持轻量，不一律追加确认。
-- [x] 验收：取消、Escape、请求失败、连点、包含多个会话的项目分别验证；确认前不发生删除，删除范围与文案一致，失败记录仍可定位。
+**问题**：静态 HTML 预览的"磁盘版本 vs 未保存草稿"走查（[verify-html-preview-baseline.mjs:2052-2118](../../scripts/verify-html-preview-baseline.mjs)）算出了 12 个观察值，但**没有任何 `recorder.check` / `recorder.note` 引用它们**——保存成功后刷新、保存失败（409）保留草稿、外部改写与删除提示的出现与消失，这三类只驱动了界面，既不判定也不进门的输出。实现本身在（[preview-disk-state.ts](../../packages/app/src/renderer/workspace/preview-disk-state.ts)、[use-workspace-disk-watch.ts](../../packages/app/src/renderer/workspace/use-workspace-disk-watch.ts)、[preview-disk-notice.tsx](../../packages/app/src/renderer/workspace/preview-disk-notice.tsx)），缺的是证据。
 
-**实施记录（2026-09-22 22:00:01）｜状态：实现完成，实机验收未做，保持未勾选**
+- [ ] 把 `:2052-2118` 已有的 `savedToDisk` / `saveStatus` / `draftAfterSave` / `previewAfterSave` / `reloadedMarkup` / `clearedAfterReload` / `conflictStatus` / `draftAfterConflict` / `deletedNotice` / `noticeAfterRestore` 接成断言（至少四条 `check`）：保存成功后预览换成已保存版本且草稿转 clean；409 后草稿仍 dirty 且状态栏显示服务端原文；"重新加载磁盘版本"后帧内容变成磁盘那版且提示消失；删除时是失败色提示、文件恢复后不再说"已删除"。
+- [ ] 字体一项按已有边界收口：门里写明"隐藏窗口下 Chromium 不发起字体请求（`document.fonts` 恒 `unloaded`）"，因此只断言 `@font-face` 源被改写到回环服务；若要有"字体真的被取回"的测量，需要上屏（`park-offscreen` 能力已存在，见 [desktop-acceptance-actions.ts](../../packages/app/src/main/desktop-acceptance-actions.ts)），否则把这一句如实降级为未覆盖。
+- [ ] 不重做已有覆盖：`快速切换 A/B/C 各显示自己的文件`（`:2150-2154`）、`草稿进会话存储且预览渲染草稿`（`:1086-1095`）、失败资源的计数/原因/重试（`:1520-1531`）都已断言。
 
-- 实现范围：新增 `renderer/deletion-impact.ts`（按 `session-routes.ts` 与 `provider-routes.ts` 的真实行为生成对象类型、名称、删除范围与保留项）和 `renderer/ui/danger-confirm.tsx`（对象、影响、保留项、使用中提示；初始焦点在“取消”，Escape 取消，请求期间两个动作都禁用，关闭时把焦点还给触发点）。`ArchiveManager.tsx` 的项目/对话永久删除先经确认层，确认后才调用 DELETE，失败留在确认层内可继续定位；`settings/models.tsx` 的供应商删除同样先确认，文案只说明配置条目移除，并提示当前选中模型是否来自该供应商。归档恢复保持单次点击，不追加确认。
-- 验证方式：`packages/app/src/renderer/deletion-impact.test.ts` 11 个用例（有/无归档对话的项目、磁盘文件夹保留、对话范围、密钥与对话保留、当前模型识别、确认层接线与单次提交、恢复路径无确认、对话框键盘与禁用状态）；`pnpm exec vitest run` 通过；`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：取消、Escape、连点和失败注入尚未在真实窗口中走查；`danger-confirm.tsx` 的 Tab 焦点约束与完整焦点管理留给 UX-07，本轮只保证初始焦点在“取消”和关闭后回到触发点。
+**验收**：上述四类各自有断言且门 `failures: []`；字体一句要么有上屏测量，要么在门的 limits 里明确写成未覆盖。
 
-**实施记录（2026-09-25 03:50:00）｜状态：取消/Escape/连点/失败注入已在真实窗口走查，并修掉连点重复提交 DELETE 的真实缺陷；多会话项目的确认文案仍由单元测试覆盖，保持未勾选**
+### UX-35｜审阅一致性：当前文件事实、门口径与 unstable 断言
 
-- 新增真实窗口门 `pnpm run verify:deletion-confirmation`（`scripts/verify-deletion-confirmation.mjs`）：把两段归档对话直接种进 `archive/index.json`（应用自己写的文件）与会话 JSONL，再在页面里装一个 `fetch` 探测器统计渲染器真正发出的 DELETE，并按需让下一次 DELETE 返回 500。
-- 实测（1180×760）：确认层标题"永久删除归档对话？"、对象名"归档对话 甲"、后果两条（"删除这条归档记录，以及它保存在本地的消息记录和会话摘要"、"删除后无法恢复"）、保留项一条（"不会删除工作区里的文件"）、初始焦点在**取消**；**打开确认层时 DELETE 计数仍为 0**。Escape 关闭后计数 0、列表不变；点"取消"同样计数 0、列表不变；确认后该行消失且计数 1；注入 500 后确认层**保持打开**并显示 `Local app API error: 500`，被删除对象仍在；再点一次（此时不注入失败）计数 +1 并成功删除。
-- **本次走查抓到的真实缺陷（已修）**：在确认层上**同一帧内连点两次"永久删除"会发出两次 DELETE**（探测器实测 `deletes: 2`，两条请求 URL 相同、时间戳相同）。原因是防重复用的是 React state（`deleting`），而同一 task 内的两次点击都读到 `false`。现在改为**同步的 `deletingRef`** 先占位（`if (!pending || deletingRef.current) return`，`finally` 里复位），`cancelDeletion` 也读同一个 ref；回归断言写进 `deletion-impact.test.ts`（明确断言使用的是 ref 而不是 state），修后实测连点只发出 1 次 DELETE。
-- 仍未覆盖（复选框保持未勾选）：**包含多个归档对话的项目**这一条仍只有单元测试（`deletion-impact.test.ts` 覆盖"项目 + 若干对话"的文案与范围），未在真实窗口里用多会话项目走查；供应商删除的确认层同样未实机走查；`danger-confirm.tsx` 的 Tab 焦点约束仍留给 UX-07。
+**问题 ①（实现缺口）**：`readConsistentReview`（[workspace-git-review-consistency.ts](../../packages/app/src/main/local-app-api/workspace-git-review-consistency.ts)）的指纹是 `HEAD` + `.git/index` 的 mtime/size + **同参数**的 `status --porcelain -z`。三个事实都是集合级的：已修改文件的 porcelain 恒为 ` M path`，**内容再改一次不改变该输出**，HEAD 不变，`.git/index` 也不会被写回（`GIT_OPTIONAL_LOCKS=0`，[workspace-git-command.ts:37](../../packages/app/src/main/local-app-api/workspace-git-command.ts)）。因此"读取期间保存一个本来就已经脏的文件"这一类变化检测不到——正是任务书点名的"**当前文件**等必要事实"。竞态测试注入的是"新落地的未跟踪文件"（[workspace-git-review-race.test.ts:70](../../packages/app/src/main/local-app-api/workspace-git-review-race.test.ts)），属于会改变 status 输出的那一类。
 
-**实施记录（2026-09-25 16:04:51）｜状态：归档项目多会话及供应商删除均完成真实窗口验收；UX-02 四项完成**
+**问题 ②（证据与口径矛盾）**：[verify-review-refresh-errors.mjs:1506](../../scripts/verify-review-refresh-errors.mjs) 仍写"本门不做 HEAD/index 一致性校验"，与已落地的实现相反；全文 0 处 `unstable` 断言，而 `unstable: true` 与"仓库在读取期间仍在变化"的 warning 已经实现（[review-refresh-notice.ts:90-95](../../packages/app/src/renderer/workspace/review-refresh-notice.ts)）。
 
-- 扩展 `pnpm run verify:deletion-confirmation`，隔离 Electron 中种入一个项目和四条归档对话（其中两条属于项目）。归档对话确认在打开、Escape 与取消后均未发 DELETE；同帧双击只发 1 次；注入 500 后确认层保留目标和错误，重试成功。项目确认逐字说明会删除 2 个归档对话及其本地消息记录、不会删除磁盘项目文件夹；确认前 DELETE 计数不变，确认后 1 次 DELETE、两份会话 JSONL 消失，项目文件仍存在。
-- 同一门切到供应商页确认删除对话框准确列出配置/1 个模型条目、当前选择 `slow-a`、密钥仍在系统密钥库及对话记录不删除；确认前无 DELETE。第一次同帧双击实测发出 2 次 DELETE，定位到 `settings/models.tsx` 的 React state 防重竞态；改用同步 `deletingRef` 后重跑，双击只发 1 次 DELETE，供应商卡片消失。
-- `pnpm exec vitest run packages/app/src/renderer/deletion-impact.test.ts`：11/11 通过。产品改动后重新构建 Electron，`pnpm run verify:deletion-confirmation` 全矩阵通过；归档多会话与项目磁盘边界、供应商作用模型文案及连点防重均已实测。密钥不被删除的说明同时由 Main 删除路由（仅更新 provider config，不调用 keychain 删除）与界面文案共同支持。
+- [ ] 二选一并写清：**(a)** 把选中/改动文件的内容级事实（mtime+size 或内容 hash）纳入指纹，覆盖"读期间保存同一文件"；**(b)** 接受"HEAD + index + status"为设计边界，在 `workspace-git-review-consistency.ts` 的注释、对应 README 与本任务书里显式记为已知边界。不要留一句模糊的"已建立一致性校验"。
+- [ ] 修正 [verify-review-refresh-errors.mjs:1506](../../scripts/verify-review-refresh-errors.mjs) 的过期结论，并在已有的 churn 步骤补一条 `unstable` 通知断言（夹具已存在，成本很低）。
+- [ ] 补一条"连续 409 / 持续变化时有界终止并提示"的断言：主进程侧 409 有单测（[workspace-git-review-cache.test.ts:40-56](../../packages/app/src/main/local-app-api/workspace-git-review-cache.test.ts)），渲染器 409 分支（[review.tsx:249-252](../../packages/app/src/renderer/workspace/review.tsx)）无测试也无走查。
 
-### UX-03｜运行中同时支持停止与补充
+**验收**：指纹的覆盖范围有明确文字结论；门里能读到 `unstable` 的断言；409 分支在门上可达。
 
-**问题**：`showStop = loading && !input.trim()`。任务运行中只要输入草稿，原停止按钮就切为发送，用户需要清空草稿才能在该位置停止。
+### UX-36｜320 条上限的可达性语义与逐键基准
 
-**定位**：[composer-view.tsx](../../packages/app/src/renderer/app-shell/composer-view.tsx) 的 `showStop` 与 `composer-run-actions`；[run-actions.ts](../../packages/app/src/renderer/chat/run-actions.ts) 的运行中发送分支。
+**问题**：UX-17 的基准已完成，结论是"现在不做虚拟化"：Main 的 `listWorkspaceDirectory` 读整个目录、排序后只保留 `MAX_WORKSPACE_DIR_ENTRIES = 320` 条（[workspace-file-service.ts:14](../../packages/app/src/main/local-app-api/workspace-file-service.ts)），首行 ≤ 96 ms、滚动零长帧，10,000 条目录的成本被上限封顶。真正的瓶颈被改判为**上限的可达性**：
 
-- [x] 运行中保留独立、稳定、可键盘访问的停止入口；有新输入时同时提供补充发送动作。
-- [x] 补充发送的标题/提示遵循 Runtime 实际的接收或续接语义，不把已接收显示为已执行；停止期间防止重复提交停止请求。
-- [x] 验收：带草稿/附件时可直接停止且草稿不丢；补充发送只提交一次；显示“正在停止”直到运行时确认，不能点击后立即伪装已停止。
+- 筛选是在**已被截断的列表**上做的（[workspace-tree-rows.tsx:25-58](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx) 直接 `includes` 已加载的 `entries`；筛选框只 setState，不发请求），所以排在前 320 之外的条目既不在树里也搜不到（实测 `zzz-beyond-cap.txt` 两个目录都未命中）。
+- 没命中时的文案是"没有匹配的文件。"（[file-navigator.tsx:312](../../packages/app/src/renderer/workspace/file-navigator.tsx)），把"被上限挡住"说成"真的没有"。
 
-**实施记录（2026-09-22 22:00:01）｜状态：实现完成，实机验收未做，保持未勾选**
+- [ ] 做产品取舍并实施其一：**(a)** 筛选下推 Main（过滤后再切片，并能回答"命中项在上限之外"）；**(b)** 提高上限并同时引入窗口化——合成数据显示纯布局阈值约在 2,000 行。两者都要修 `:312` 的误导文案。
+- [ ] 若动上限：门里的 320/321 常量与 [workspace-tree-rows.tsx:7](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx) 的提示同步更新，并重跑 [verify-workspace-large-directory.mjs](../../scripts/verify-workspace-large-directory.mjs)。
+- [ ] 补两类缺的基准/走查：**筛选逐键延迟**（现只测单次输入后的稳定时间）与**320 行上的键盘导航**（无脚本；工作区树的行是 `button.workspace-tree-row`，行名是它的子节点）。
+- [ ] 明确不做的事：不引入完整 Solid 运行时、第二套目录扫描或新的活动页；仓库里确实没有 `virtualiz` / `useVirtualizer` / `overscan` 的任何代码。
 
-- 实现范围：`app-shell/composer-view.tsx` 不再用 `showStop = loading && !input.trim()` 切换同一个按钮：运行中始终渲染停止按钮，草稿或附件存在时另渲染补充发送按钮，两者都是真实 `<button>`，共享键盘可达的悬停/聚焦提示。停止按钮点击后标签变为“正在停止当前任务”并禁用，直到 `loading` 结束（run 结束即运行时确认）才复位；`chat/run-actions.ts` 的 `stop()` 对同一 run 只提交一次 `interrupt_requested`，重复点击直接返回，失败或 Runtime 拒绝时才中止本地流。补充发送仍走 `sendActiveRunUpdate`，提示沿用 Runtime 语义（“已加入当前任务，将在安全边界处理”），不声称已执行。
-- 验证方式：`packages/app/src/renderer/chat/run-actions.test.ts` 13 个用例（含同一 run 只发一次中断、Runtime 拒绝时中止本地流、请求失败时中止本地流、无 run 标识不触达 Runtime）；`packages/app/src/renderer/composer/control-surface-style.test.ts` 断言两个入口的渲染条件与“正在停止”复位；`pnpm exec vitest run` 通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：未在真实窗口验证“正在停止”期间按钮禁用与键盘焦点表现，也未验证窄窗口下两个按钮并排时的换行/挤压（与 UX-15 一并验收）。停止请求被 Runtime 接受但 run 长时间不结束时，界面会一直显示“正在停止”，这是当前的既定语义，尚缺真实时长的观察。
+**验收**：被上限挡掉的条目在界面上有正确说法（或能被筛到）；上限变化时门与提示同步；逐键延迟与键盘走查有数字。
 
-**实施记录（2026-09-25 04:15:00）｜状态：停止与补充三条验收在真实窗口通过；补充消息在本轮答案内的投递未观测到，作为待查项记录，保持未勾选**
+### UX-37｜终端的会话上限、标签生命周期与降级可见性
 
-- 新增真实窗口门 `pnpm run verify:composer-stop-append`（`scripts/verify-composer-stop-append.mjs`）：用慢速长回答（24 字符 / 120 ms）保证动作发生在 run 进行中，并在页面里装 `fetch` 探测器记录渲染器真正发出的运行事件（含 HTTP 状态与 Runtime 的 `outcome`）。
-- 实测（1100×720）：
-  - **两个入口并存**：有草稿（"停止后的补充草稿"）+ 1 个附件时，停止按钮仍是"停止当前任务"、补充入口是"补充当前任务"，草稿与附件都在。
-  - **停止只提交一次**：同一帧内连点两次停止，运行事件只有 **1 条** `interrupt_requested`（HTTP 202、`outcome.kind = accepted`）；按钮标签变为"正在停止当前任务"并进入禁用。
-  - **"正在停止"持续到 run 结束**：run 结算后停止按钮消失、发送入口回到"发送"，该 run 的状态行是"run interrupted at a safe boundary"。
-  - **草稿与附件不丢**：停止前、停止中、run 结算后三次采样，输入栏内容始终是"停止后的补充草稿"、附件卡片始终是 1 个。
-  - **补充发送只提交一次**：同一帧内连点两次补充，两次 POST 带**同一个 `dedupKey` 与同一个事件 id**，Runtime 的两次应答分别是 `accepted` 与 **`duplicate`**——即按身份只应用一次；输入栏在提交后被清空。
-- **一处未观测到的行为（记录，不据此改代码）**：本轮补充消息**没有出现在该 run 的答案里，也没有进入任何 Provider 请求**（探测器与 Provider 请求记录都是 0）。原因是夹具的补充落在"单请求回答"进行中——这条提示只触发一次模型请求，之后没有更晚的请求可以携带它，事件以 `status: queued`（24 小时过期）留在运行队列里。要证明"补充会被消费"需要另一种时序（例如在工具轮进行中补充，或验证后续 run 会取走排队事件），本轮未做，作为待查项。
-- 仍未覆盖（复选框保持未勾选）：**补充消息的实际投递时序**（如上）；窄窗口下两个入口并排的换行/挤压与键盘焦点表现留给 UX-15；"停止请求被接受但 run 长时间不结束"时的持续显示仍缺真实时长观察。
+UX-30 的 5 条全部未勾选。已具备的部分：渲染侧会话模型（8 标签 / 64 KB 回放 / **只在 ready 时放行输入**，[terminal-sessions.ts](../../packages/app/src/renderer/workspace/terminal-sessions.ts)）、Main 侧多会话管理（16 会话 / 512 KB 回放 / 超限 429 / 退出后 30 秒移除，[terminal-session.ts](../../packages/app/src/main/local-app-api/terminal-session.ts)）、真实窗口证据（[verify-conversation-workspace-scenarios.mjs:446-609](../../scripts/verify-conversation-workspace-scenarios.mjs)：面板起来、下拉列出真实 Shell、单会话不显示标签条、"新建"多一个标签且原会话状态不变、标记文件 `a1`/`b1`/`a2` 证明输入路由）。以下是逐条核实后仍缺的部分：
 
-**实施记录（2026-09-25 17:07:39）｜状态：UX-03 三项通过并勾选；极端长时间停止与窄窗焦点仍归 UX-15 和后续压力验证**
+- [ ] **会话上限的拒绝不可见且会泄漏**：`open()` 先在 Main 建会话再 dispatch（[use-terminal-sessions.ts:87-104](../../packages/app/src/renderer/workspace/use-terminal-sessions.ts)），reducer 在第 9 个时才拒绝且只写 `state.notice`（[terminal-sessions.ts:71-76](../../packages/app/src/renderer/workspace/terminal-sessions.ts)），而渲染侧从不读它（[terminal.tsx](../../packages/app/src/renderer/workspace/terminal.tsx) 只用 `tabs`/`activeId`）→ 多出一个没有标签、也关不掉的终端进程。修法：判定前移到创建之前，或创建后立刻关掉；拒绝要给可见提示。
+- [ ] **关闭终端标签只清理活动会话**：`terminal.tsx` 的卸载清理只 `sessions.close(activeSessionRef.current)`，其余标签只是 abort 了流（[use-terminal-sessions.ts:72-75](../../packages/app/src/renderer/workspace/use-terminal-sessions.ts)），Main 里的进程继续跑，标签状态丢失。改成 `closeAll()`，并把"隐藏面板 = 保活 / 关闭终端 = 清理"写成文案；`closeAll` 目前只有单测。
+- [ ] **切标签可能误输入**：`onActiveChange` 不重置输入队列（`terminal.tsx:83-93` 只重置 xterm），合并 8 ms 后才取当前会话 id（[terminal-input-controller.ts:52-90](../../packages/app/src/renderer/workspace/terminal-input-controller.ts)）→ 切换瞬间排队的字节会写进**新**标签。在 `onActiveChange` 里 reset，并补一条行为测试。
+- [ ] **PTY / fallback 的能力差异不可见**：只有标题后缀 `· PTY` / `· fallback`（`terminal.tsx:479`），中断按钮仍写"发送 Ctrl+C"（[terminal-toolbar.tsx:34](../../packages/app/src/renderer/workspace/terminal-toolbar.tsx)），而 Windows fallback 实际是 `taskkill /T /F`（[terminal-process.ts:279-286](../../packages/app/src/main/local-app-api/terminal-process.ts)）——与"不能笼统承诺与 PTY Ctrl+C 等价"直接冲突。把差异做成可见状态并改掉措辞。
+- [ ] **多 Shell 历史没有来源标注**：`TerminalActivityRecord` 没有 shell/source 字段（[workspace-contracts.ts:69](../../packages/app/src/shared/workspace-contracts.ts)、[terminal-activity-index.ts:13-17](../../packages/app/src/main/terminal-activity-index.ts)），列表只有命令 + 状态 + 时长；要么加字段并标注，要么明确记为不支持。
+- [ ] **"重启后保留配置/元数据并标记已结束"完全没有实现**：标签只在内存 `useReducer` 里，`localStorage` 只存 Shell 偏好，重启后是零标签。决定做或不做，并写进 README 与任务书；不改行为就不要在界面上暗示。
+- [ ] 清理与登记：`nextTerminalTabShell`（[terminal-sessions.ts:133-143](../../packages/app/src/renderer/workspace/terminal-sessions.ts)）没有任何生产调用点（死代码）；[workspace-terminal-sessions.test.ts:38-43](../../packages/app/src/main/local-app-api/workspace-terminal-sessions.test.ts) 的两个会话用的是**同一个** profile，与文件头"started with different shells"不符；未跟踪脚本 `scripts/verify-workspace-terminal.mjs` 尚未在 `package.json` 注册。
+- [ ] 未覆盖项如实登记：退出应用清理链（`index.ts` → `local-app-api-server.ts` → `terminal-routes.ts`）只有代码没有窗口证据；ANSI 与中文**输入**、断线重连、退出/重启后无残留服务、无未捕获 ConPTY 异常均无证据。
 
-- 修复 Runtime 事件消费：EXECUTE 主循环在模型请求前后捕获运行中补充。补充在响应期间到达时，先把它作为本轮用户输入追加，再发下一次模型请求；若旧响应带工具提议，不执行基于旧要求的工具。事件身份用于去重，并写入会话消息。Renderer 在接收确认后立即显示一次用户补充，保留 Runtime “已接收、将在安全边界处理”的提示。
-- `pnpm exec vitest run packages/harness/src/runtime-control-boundary.test.ts packages/harness/src/stages/execute.test.ts packages/app/src/renderer/chat/run-actions.test.ts`：74/74 通过；`pnpm run typecheck` 通过。真实窗口 `pnpm run verify:composer-stop-append` 返回 `ok:true`：停止连点只有一条 `interrupt_requested`；草稿与附件在停止前、中、后保留；补充双击对应 `accepted`/`duplicate`，界面只显示一次、Provider 输入只出现一次，最终回复明确处理“运行中的补充验收”。
-- 消费边界另补容量保护：暂存缓冲区满时拒绝新事件并保留旧事件，避免旧事件被切片覆盖。新增回归通过；`pnpm run check:repo` 38/38 通过，TypeScript workspace 引用 28/28 有效。
+**验收**：达到上限时界面有可见拒绝且 Main 无孤儿会话；关闭终端标签后该面板所有会话都被清理（含窗口级证据）；切标签不再能把输入送进另一个会话；fallback 的限制在界面上可读；重启行为有明确结论。
 
-### UX-04｜技能页的加载与错误状态
+### UX-38｜对话区定位与可读性的剩余验收面
 
-**问题**：`skills` 初始为空，加载前即满足“暂无技能”；`loadSkills()` catch 将列表清空；`openSkill()` 失败只清空选中项。加载中、真正为空、失败在用户看来容易成为同一种结果。
+汇集 UX-19、UX-20、UX-22 三条里**尚未取证**的部分；三者的实现与已测数字见 git 历史，不要重做。
 
-**定位**：[MemorySkills.tsx](../../packages/app/src/renderer/MemorySkills.tsx) 的 `loadSkills`、`openSkill` 与空态。
+**需要你先定的一件事**：会话切回时应**恢复上次阅读位置**，还是继续**跳到最新消息**（当前行为是无条件贴底，[use-chat-scroll-controller.ts:191-202](../../packages/app/src/renderer/chat/use-chat-scroll-controller.ts)，且会话现场结构体里没有滚动位置字段）。若选恢复位置，需要持久化 `{messageKey, offset}` 并区分"草稿会话转正"与"历史前插"两种非切换情形；若选跳到最新，就把门里现在只记录不判定的那一步（`verify-chat-reading-scenarios.mjs` 的"切换会话与返回"）升为断言并写进 README。
 
-- [x] 明确 loading / success-empty / success-data / error；读取详情失败保留列表和用户选择，并提供重试。
-- [x] 再次加载失败时保留已有列表，说明当前内容未刷新成功，不把旧数据误称为最新。
-- [x] 验收：慢请求、空响应、列表失败、详情失败、连续快速切换分别验证；只有成功空响应显示“暂无技能”，失败不静默消失。
+- [ ] 顶部/中部/底部三种起始位置的系统走查（现在只有"最顶部"这一强场景，已经证明按 key 追踪的位移 ≤ 1 px）。
+- [ ] 普通/紧凑模式、窄窗口与高 DPI 下 `.chat-jump-to-latest` 的可达性（`elementFromPoint` 命中自身、不与输入栏相交、浮在实测的 `--composer-overlay-height` 之上）。
+- [ ] 录屏：任务书要求"修复前后记录 scrollTop、可见消息键及截图/视频"，`scripts/` 目录目前**没有任何录制能力**。要么新增，要么在验收口径里明确以逐帧 DOM 采样替代。
+- [ ] **把流式样式稳定性从"证据"升级为断言**：`verify-chat-streaming-rendering.mjs` 已有逐帧样式记录器，但 `styleChanges` / `colorChanges` 只打印。改成"每类块在整个流式过程中只允许一个样式签名"即可回归"不变色"。
+- [ ] 剪贴板：复制出来的文本要与持久化 settlement 一致（现在只有 `message-meta.tsx` 与 `Markdown.tsx` 的复制实现和源码字符串断言）。
+- [ ] 普通/紧凑模式与重开会话下的流式一致性（同一夹具即可）。
+- [ ] 对话区的键盘全流程（Tab 顺序、Escape 分层、焦点返回）——现有 `verify:keyboard-modal-focus` 只覆盖模态层（UX-07）。
+- [ ] 把 `.web-sources`（来源/引用）纳入可读性取样（对比度、字号、溢出、可复制）；为长工具结果写断言（默认折叠、摘要长度上限、展开后的限高与滚动）。
+- [ ] 125%/150%/200% 系统缩放的可读性复核（现在只有 DPR 2 与 800×660 最小窗口）。
+- [ ] 如实记录一条**无法复现**的边界：用户报告的"流式文字变色"在固定输入下逐帧只有一个样式签名，未能复现；继续追需要复现输入（推理/工具混合输出、更长代码块的高亮 chunk 到达时机、主题/缩放切换瞬间）或用户录屏。不要据猜测改样式。
 
-**实施记录（2026-09-22 22:00:01）｜状态：实现完成，实机验收未做，保持未勾选**
+**验收**：上一段"需要你先定的一件事"有结论；样式稳定性、剪贴板一致性、来源可读性各有断言；录屏或替代口径写明；无法复现的那一条明确写成边界，并写清需要什么输入才能继续。
 
-- 实现范围：新增 `renderer/skill-catalog-state.ts`（纯 reducer：`loading`/`ready`/`error`，列表与详情各自维护请求序号，`stale` 标记刷新失败，`failedDetailName` 支持原地重试，失败文本有界）。`MemorySkills.tsx` 改为按状态渲染：加载中显示“正在加载技能…”，首次失败显示错误与“重试”，刷新失败保留旧列表并标注“未能刷新技能列表，以下仍是上次成功加载的内容”，详情读取失败保留列表和当前选择并提供重试；只有 `status === 'ready' && skills.length === 0` 才显示“暂无技能”。失败不再清空列表。
-- 验证方式：`packages/app/src/renderer/skill-catalog-state.test.ts` 12 个用例（慢请求、成功空响应、首次失败、刷新失败保留列表、详情失败保留列表与选择、快速切换只发布最新详情、过期响应被忽略、列表答案不被详情请求丢弃、返回列表清除详情错误、文案有界）；`pnpm exec vitest run` 通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：未在真实窗口注入慢请求与失败；技能页的“重新加载”目前只出现在失败/过期提示里，未新增常驻刷新按钮。
+### UX-39｜端到端交付门：小游戏 → 运行 → 审查，及打包版
 
-**实施记录（2026-09-25 03:19:01）｜状态：慢请求、列表失败、刷新失败、详情失败四条已在真实窗口验收；并补上缺失的常驻刷新入口；成功空响应仍无数据，保持未勾选**
+UX-31 的 5 条全部未执行。已有门覆盖了其中大部分**零件**，缺的是串联、开发服务路径、第二个工作区与打包版：
 
-- 新增真实窗口门 `pnpm run verify:skills-catalog-states`（`scripts/verify-skills-catalog-states.mjs`）：在页面里给 `/skills` 与 `/skills/<name>` 装 `fetch` 探针，可按住下一次列表请求（观察加载态）、让列表连续失败 N 次、让指定技能的详情读取失败一次。
-- 实测（1180×780，隔离数据根）：
-  - **加载中**是独立状态：按住列表请求期间只有"正在加载技能…"、没有任何条目，页头的刷新入口显示"正在加载…"（禁用）。
-  - **成功有数据**：`example`、`office-files`、`skill-writer` 三个技能，无提示，刷新入口为"刷新"。
-  - **刷新失败保留列表**：注入一次 500 后点刷新，列表仍是同样 3 条，出现 `warning` 级提示"未能刷新技能列表，以下仍是上次成功加载的内容：Local app API error: 500"与"重新加载"按钮，且**没有**被误报成首次加载失败（`.error` 类不出现）。
-  - **重试恢复**：点"重新加载"后提示清空、列表仍在。
-  - **详情失败保留列表与选择**：对 `example` 注入 500 后点击它，列表仍是 3 条、没有打开空详情，出现"读取技能详情失败：Local app API error: 500"与"重试"；点重试后打开的正是 `example`；"返回"回到列表且列表完好。
-- **顺带补上的真实缺口**：技能页此前**没有任何常驻刷新入口**——"重新加载"只在失败提示里出现，所以"刷新失败保留列表并标注未刷新"这条分支在界面上**不可达**（加载成功的页面无法再刷新）。现在页头新增"刷新"按钮（复用 `ms-feedback-action` 样式，加载中禁用），上面第 3 条因此才能被走到；README 记下这条边界。
-- 仍未覆盖（复选框保持未勾选）：**成功空响应**（"暂无技能"）没有数据——内置技能（`example` 等）始终存在，要造出真正空的技能目录需要一个不装载内置技能的夹具；**连续快速切换**只在单元测试里覆盖（`skill-catalog-state.test.ts` 的请求序号断言），未在真实窗口连点。
+- 已有：小游戏真运行 + 真实输入计分、重开一局、改 `level.json` 后"重新加载"生效、多文件 ES module / 外部 CSS / 图片 / JSON、脚本错误与资源失败诊断、死循环与 guest 崩溃下主界面仍可用（[verify-html-preview-baseline.mjs](../../scripts/verify-html-preview-baseline.mjs)）；Git CLI / API / UI 三方对账；**从 Diff 返回源文件**（[verify-review-refresh-errors.mjs 的"从 Diff 返回源文件"步骤](../../scripts/verify-review-refresh-errors.mjs)）；终端面板与双会话现场（[verify-conversation-workspace-scenarios.mjs](../../scripts/verify-conversation-workspace-scenarios.mjs)）。
 
-**实施记录（2026-09-25 14:59:26）｜状态：成功空响应与详情快速切换补齐；UX-04 三项勾选**
+- [ ] 第 1 条：在**同一个**夹具上按顺序走完——改游戏自身的 **CSS / JS** → 重载看见修改（现在唯一改过的是 `level.json` 这份数据）→ 进 Git 审查看差异 → 从 Diff 返回源文件；保留"用户原例 vs 合成夹具"的证据区别（用户原例至今没有拿到）。
+- [ ] 第 2 条：**先定产品范围**——是否提供"手动启动一个用户项目服务并打开 localhost URL"的入口。现状是 [development-environments.ts](../../packages/app/src/main/development-environments.ts) 只管 LS 自有运行时，唯一"起服务 + 开 URL"是 LS 自己的有界静态服务；地址栏还会把裸 `localhost:5173` 补成 **https**（[browser-history.ts:203-213](../../packages/app/src/renderer/workspace/browser-history.ts)），真 dev server 必须手打 scheme。定了范围再写门：启动 → 打开 → 改文件热更新 → 停服务显示可理解错误 → 重启成功；"不自动替用户执行项目脚本"要有实现才谈得上验证。
+- [ ] 第 3 条：加**第二个工作区根**，做跨工作区/跨会话切换 + 退出重开，断言 HTML / 浏览器 / Git / 终端的归属不串（现有门都是单工作区；`verify-electron-ui-state-continuity` 里没有终端断言）。guest 读不到另一个工作区与 LS 配置这一层可复用 UX-26 的证据。
+- [ ] 第 4 条：给核心路径加 `--app=packaged` 变体（现有 `--app=packaged` 只在[冷启动视觉门](../../scripts/verify-desktop-cold-start-visuals.mjs)里用过），记录构建指纹、实际 Shell 路径/版本、测试输入、截图、资源与控制台摘要；缺哪类 Shell 就列未覆盖，不用 mock 算作实机通过。安装包实机与干净机器首启目前明确未验证（见[冷启动基线](../reference/cold-start-baseline/README.md)）。
+- [ ] 第 5 条：注册 `verify:workspace-terminal` 及新门命令（`scripts/verify-workspace-terminal.mjs` 目前未跟踪也未注册），并同步受影响 README（各 README 的时间戳在 2026-09-26 已更新过，只差命令登记）。
 
-- 扩展 `pnpm run verify:skills-catalog-states`：验收 fetch 夹具对下一次列表响应注入 `200 { skills: [] }`，并可延迟指定详情请求 1.8 秒。
-- 真实窗口复核仍使用隔离数据根，1180×780：loading 态先显示“正在加载技能…”且无条目；有数据返回三项；列表 500 保留原列表并标记上次成功内容；详情 500 保留列表并可重试；先点 `example` 并延迟，再点 `office-files`，快速项先打开，较慢旧响应返回后界面仍显示 `office-files`；最后把成功空响应注入刷新，显示“暂无技能”、0 条目、无错误反馈。共保留 5 张状态截图在 `%TEMP%\littlesheep-skills-states\screenshots\`。
-- `pnpm run verify:skills-catalog-states` 通过（真实窗口所有断言通过，App 构建复用已核验产物）。本次只增强隔离验收夹具；产品实现范围与 reducer 回归沿用前述记录。
-
-### UX-05｜静默恢复不能吞掉恢复失败
-
-**问题**：启动调用 `refreshCheckpoints(false)`；发现失败只写 hook 的 error。恢复入口仅在 `checkpoints.length > 0` 时显示，而错误与损坏记录提示在展开后的选中记录区域内。首次发现请求失败或只有无效记录且没有有效 checkpoint 时，没有可见入口呈现该问题。
-
-**定位**：[use-checkpoint-recovery.ts](../../packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts) 的启动 effect、`refreshCheckpoints`；[checkpoint-recovery.tsx](../../packages/app/src/renderer/runtime-recovery/checkpoint-recovery.tsx) 的 trigger、error 和 diagnostics 条件。
-
-- [x] 将发现失败、有效待恢复、等待用户、损坏记录分开，提供安静的状态入口和受控重试；无有效 checkpoint 也能看到故障。
-- [x] 安全可续跑任务继续静默处理，结果归原会话；不要把本任务实现为启动自动打开恢复弹窗。
-- [x] 验收：发现接口失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类场景；失败默认可发现、聊天可用、重试不重复执行已结算操作。
-
-**实施记录（2026-09-22 22:18:43）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：`checkpoint-recovery-state.ts` 新增 `checkpointRecoveryEntry`（把发现失败、正在恢复/正在停止、等待补充信息、待恢复任务、损坏记录、完全干净收敛成一个入口）与 `checkpointRecoveryDiagnosticText`（统一“N 份恢复记录无法读取 / N 处不完整”的说明）。`use-checkpoint-recovery.ts` 单独记录 `discoveryFailed`（发现失败不再等同于空列表）并提供只重读列表的 `retryDiscovery`。`checkpoint-recovery.tsx` 的入口按钮改为按派发结果渲染，发现失败时点击即重试；对话框在没有有效 checkpoint 时也显示诊断说明、失败原因和“重新检查”，且失败态的空文案改为“这次没有读取成功，未完成任务的当前状态未知”，不再显示“没有待处理的执行现场”。启动发现仍调用 `refreshCheckpoints(false)`，不自动打开弹窗；安全可续跑的启动静默续跑路径未改动。
-- 验证方式：`packages/app/src/renderer/runtime-recovery/checkpoint-recovery-state.test.ts` 10 个用例（发现失败优先于损坏记录与已有 checkpoint、仅损坏记录可见、等待补充与普通待恢复分开、不可续跑的等待项不冒充“待补充”、恢复中/停止中文案、完全干净才静默、诊断文案组合，以及视图/钩子接线）；`pnpm exec vitest run packages/app/src/renderer/runtime-recovery/checkpoint-recovery-state.test.ts` 通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：五类场景（发现接口失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑）尚未在真实 Electron 中逐项走查；本轮只验证了状态派生与接线，“聊天保持可用”与“重试不重复执行已结算操作”在实机上的表现仍需 UX-16 的验收记录。新增 `runtime-recovery/README.md` 记录该领域边界与验证方式。
-
-**实施记录（2026-09-25 04:44:12）｜状态：五类场景已在真实窗口逐项跑通，顺带修掉“重试一次同一份坏记录就被多算一份”的计数缺陷；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify:recovery-states`（[verify-recovery-states.mjs](../../scripts/verify-recovery-states.mjs)）：四个隔离数据根、四个真实窗口，全部走真实 Local App API、真实检查点 store 与真实 Renderer；只注入两处：`GET /run-checkpoints` 返回 500（发现失败类），以及验收 Provider 全 500（自动续跑失败类）。
-- 实测（1180×780，隔离数据根）：
-  - **发现失败**：注入 500 → 入口 `恢复检查失败`（class `discovery-failed`，title「未能读取未完成任务；点击重试」），不自动打开弹窗、composer 仍可输入（注入后输入的草稿保留）、0 次 run、0 次模型请求；点入口即重试（页面探针记录到第 2 次列表请求）后入口消失，仍 0 次模型请求 —— 即“失败可发现、聊天可用、重试不执行任何已结算操作”。
-  - **仅损坏记录**：真实坏文件 → 入口 `恢复记录异常`（计数 1）；弹窗内为 `另有 1 份恢复记录无法读取；LS 已保留原文件并停止自动处理。`、空态「没有待处理的执行现场。」、动作「重新检查」；点「重新检查」后弹窗收起，**计数仍是 1**、重开弹窗文案一致、原文件仍在磁盘上、0 次执行。
-  - **需要输入**（旧版兼容形状，见下方边界）：入口 `待补充信息`（计数 1），不会静默续跑（3 秒内 0 次模型请求）；弹窗答案框自动聚焦；不填直接点「继续执行」得到「这个任务正在等待补充信息，请填写后再继续。」且 **0 次 resume 请求、0 次模型请求**；填好后点一次 → 恰好 1 次 `POST /run-checkpoints/:id/resume/stream`（请求体含 `"continuationDirective":"answer"` 与答案原文），续跑完成、回复落在原会话、disposition 记为 `resumed/ok`、弹窗关闭、入口消失。
-  - **自动续跑失败**：启动即全 500 → 12 次请求后失败；入口 `待恢复任务`（1 条）即可发现，不自动打开弹窗；4 秒后请求数与检查点文件数都不再增长（不会自行重试）；源检查点文件字节未被改写；disposition 记为 `resumed/error` 且带 `nextCheckpointId`，留下的正是续跑自己的现场（stage `ask_user`、resumable、claim 恰好 1 次）；弹窗里能读到失败原因与「可以继续」状态；随后清掉注入，普通消息正常得到回答（2 次请求、同一会话、未新增 Runtime 失败行）。
-  - **正常自动续跑**：新数据根里只有该检查点与其会话 → 启动即静默续跑：入口短暂显示 `任务恢复中`，**从未打开恢复弹窗**，2 次模型请求全部来自 runtime 自己（全程没有任何用户输入），回复落在检查点原会话（`activeSessionTitle` 与会话索引一致），完成后入口消失、无待恢复记录，续跑自己那一轮 `settled` 且无 Runtime 失败。
-- **顺带修掉的真实缺陷（实机发现）**：同一份坏记录的计数会随检查次数增长。`run-checkpoint-store.ts` 的 `scannedFiles/readFiles/validFiles/invalidFiles` 与诊断条目按**进程生命周期**累加，用户点一次「重新检查」后同一份坏文件就从“1 份”变成“2 份”；同时 `toCheckpointDiagnostics` 的 `warningCount` 直接取诊断条目总数，而每条坏记录自己也贡献一条，于是同一份文件被同时说成“无法读取”和“不完整”（实机原文：`另有 1 份恢复记录无法读取、1 处恢复记录不完整`）。
-- 修法（同一次改动）：把检查点 schema/序列化拆到 `run-checkpoint-codec.ts`、把“一次目录报告”拆到 `run-checkpoint-scan.ts`，store 只保留文件、原子写入、容量、保留期与常驻账本（891 → 381 行，已低于 600 行，按规则从受控超限清单与强制拆分队列移除；codec 471 行登记进软上限队列）。**计数与逐记录发现改为每次扫描重新给出**；扫描看不到的发现（残留 `.tmp`、裁剪失败、定向读写失败）留在常驻账本，并作为与记录无关的 `warningFindings` 暴露；`invalidFiles` 与 `warningCount` 从此互斥，文案改为「N 处恢复目录读写异常」。回归：`run-checkpoint-store.test.ts` 新增「重复扫描同一份坏记录只算一次」「启动/裁剪发现不进记录计数」两个用例，`run-checkpoint-view.test.ts` 新增互斥计数用例。
-- 仍未覆盖（复选框已勾选，但这三条边界要记住）：①`waiting_user` 形状当前运行时不产出（模型提问按普通回复发布，run 不再停在问题上），该场景用的是**真实检查点改写成旧版兼容形状 + 会话里补上它回答的那条澄清消息**；②窗口 3 只走到“失败可发现 + 聊天可用 + 续跑现场保留”，没有再点一次「继续执行」去续跑那个新现场（同一条点击路径已在窗口 4 用等待输入场景端到端走通）；③四类续跑都用验收 Provider 的确定性桩，不是真实模型，因此本门只证明恢复 UI/状态与 Runtime 续跑的接线，不衡量模型质量。
-
-### UX-06｜设置草稿和离开保护
-
-**问题**：供应商 `draft` 只保存在页面局部 state；设置容器按 `page` 重新挂载，切换设置页会卸载编辑器。编辑器关闭/取消直接丢弃 draft，保存中关闭入口也未禁用。现有文件编辑器有专门草稿逻辑，设置表单的行为没有同样清楚。
-
-**定位**：[models.tsx](../../packages/app/src/renderer/settings/models.tsx)、[model-provider-editor.tsx](../../packages/app/src/renderer/settings/model-provider-editor.tsx)、[workspace.tsx](../../packages/app/src/renderer/settings/workspace.tsx) 的 `key={page}`；参照 [file-close.ts](../../packages/app/src/renderer/workspace/file-close.ts) 的事务边界，勿照搬文件自动保存策略。
-
-- [x] 区分未改动、已修改、保存中、保存失败；在会话内保留普通表单草稿或仅在丢弃时提示，避免每次导航都打断。
-- [x] 密钥不写 localStorage、不输出日志；离开时如何处理密钥草稿必须明确，保存中离开不得造成结果归错页面。
-- [x] 验收：编辑后切页/返回、取消、保存失败、保存中关闭逐项验证；普通字段不无声丢失，取消不保存，错误时保留可修正内容。
-
-**实施记录（2026-09-22 22:46:14）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：新增 `settings/provider-editor-session.ts`——模块内存中的单一编辑会话（draft + baseline），不写 localStorage/sessionStorage、不落盘、不写日志；这是 `workspace.tsx` 用 `key={page}` 重新挂载页面后草稿不丢失的依据。`model-provider-draft.ts` 新增 `providerDraftIsDirty`（逐字段比较，含模型行与明文密钥）。`models.tsx` 的草稿流改为：挂载时恢复会话草稿、编辑时同步写入、提交前清空会话副本（保存中的内容不会在别的页面变成待保存草稿）、成功后关闭、失败时把可修正内容写回并就地显示失败、取消/保存中禁止关闭。`model-provider-editor.tsx` 显示四种状态（未改动不提示、`已修改，尚未保存。`、`保存中…`、`保存失败：…` 的 `role="alert"` 块），头部关闭按钮改为 `disabled={saving}`，并明确写出密钥草稿的生命周期（内存草稿，保存或取消后丢弃，不写浏览器存储或日志）。
-- 验证方式：`settings/provider-editor-session.test.ts` 4 个用例（草稿与 baseline 的读写清除、不落盘/不写日志的源码约束、`models.tsx` 的恢复/提交清空/失败回写/保存中禁止关闭接线、编辑器的四态与关闭禁用）；`settings/model-provider-draft.test.ts` 新增 2 个用例（未改动为干净、每个可编辑字段与会话密钥都算修改、模型行比较不依赖数组引用）；`pnpm exec vitest run packages/app/src/renderer/settings/` 26 个用例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：切页返回、取消、保存失败注入与保存中关闭仍未在真实窗口中逐项走查；本轮只把“按键与生命周期”做成可回归的纯规则与接线断言。`models.tsx` 因本次改动超过 300 行，已按仓库规则登记到 `module-split-map.md`。
-
-**实施记录（2026-09-25 03:44:12）｜状态：四条验收已在真实窗口跑通，并按验收要求补上"关闭前询问"，不再静默丢弃；密钥相关边界仍只有源码约束，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:provider-editor-draft`（`scripts/verify-provider-editor-draft.mjs`）：在页面里给 `/config/providers` 的 POST 装探针（可统计、可注入 500、可按住请求），并用真实控件驱动编辑器。
-- 实测（1180×780，隔离数据根）：
-  - **四态**：未改动不提示；改名后 `已修改，尚未保存。`。
-  - **编辑后切页/返回**：编辑器打开时点击设置导航确实会切页（`afterSwitch: { editorOpen: false, activeNav: "界面" }`），回到"模型供应商"后**草稿仍在**（字段值仍是"草稿中的显示名称"，状态仍为"已修改，尚未保存。"——`dirty` 优先于 `restored` 标签）。顺带发现一个实现细节：返回该页时**编辑器会带着草稿自动重新打开**，因为决定它是否渲染的正是会话草稿。
-  - **取消不保存**：关闭时先出现询问（见下），选择"丢弃修改"后关闭，字段回到已保存值，全程 **0 次保存请求**。
-  - **保存失败**：注入 500 后编辑器保持打开、显示"保存失败，内容仍保留在编辑器里"+技术详情，**可修正内容还在**，并且通过 API 读到供应商列表**没有被改动**。
-  - **保存中关闭**：按住保存请求期间，`保存中…` 状态、关闭按钮与取消按钮**都禁用**、保存按钮也禁用；请求落地后编辑器关闭，列表显示新名称（探针统计共 2 次保存尝试）。
-- **按验收要求补上的真实缺口**：编辑器是模态，关闭按钮是唯一出口，而它此前**直接丢弃未保存的修改且不作提示**（任务书原文的要求是"在会话内保留普通表单草稿**或**仅在丢弃时提示"）。现在关闭时若有未保存修改会先给出 `provider-editor-discard`（`role="alertdialog"`：继续编辑 / 丢弃修改），"继续编辑"保留编辑器与草稿。实测：询问出现时编辑器仍打开、草稿仍在；"继续编辑"后草稿与脏状态都保留；"丢弃修改"后关闭且不发保存请求。回归断言加进 `provider-editor-session.test.ts`。
-- 仍未覆盖（复选框保持未勾选）：**密钥草稿**仍只有源码层约束（不写 localStorage/日志、内存草稿随关闭丢弃），没有对"内存中的密钥在关闭后确实不可读"做运行时验证；删除供应商的确认层未在本门走查（UX-02 已覆盖归档侧）；`workspace.tsx` 的 `key={page}` 重挂载行为只在切页场景间接验证。
-
-**实施记录（2026-09-25 17:30:05）｜状态：真实窗口密钥草稿验收通过，三项勾选**
-
-- 扩展 `pnpm run verify:provider-editor-draft`：在隔离数据根的真实 Electron 窗口中输入固定假密钥，只输出布尔证据，不打印密钥。编辑与切页返回时密钥仍在密码框，且 `localStorage` / `sessionStorage` 未含该值；选择“丢弃修改”后重新打开，密码框已无该值，浏览器存储仍无该值，且没有保存请求。最终检查隔离数据根 `config.json` 与 `electron.log` 均无该值。命令返回 `ok:true`。
-- 此门继续覆盖未改动、已修改、保存中、保存失败、切页恢复、取消与保存失败后的可修正内容；测试时的保存失败由确定性夹具注入。源码确认 `discardDraft` 通过 `applyEditorSession(null)` 清除模块会话和 React 编辑状态。**边界**：这证明关闭后通过应用 UI、浏览器存储、配置与日志读不到测试值；JavaScript 引擎对已解除引用字符串的堆内存回收时点不作保证，不宣称物理内存擦除。删除供应商确认层由 UX-02 的独立验收覆盖。
-
-### UX-07｜模态层与键盘行为统一
-
-**问题**：审批声明 `aria-modal` 并自动聚焦“仅本次”，但没有聚焦约束/关闭后焦点恢复；恢复层有外部点击关闭却未处理 Escape。`FadePresence` 和 `useDismissOnOutside` 负责显示/收起，不提供完整模态管理。技能/渠道页面还在 embedded 模式注册全局 Escape 返回设置总览，存在层级处理不一致。
-
-**定位**：[approval/prompt.tsx](../../packages/app/src/renderer/approval/prompt.tsx)、[checkpoint-recovery.tsx](../../packages/app/src/renderer/runtime-recovery/checkpoint-recovery.tsx)、[ui/presence.tsx](../../packages/app/src/renderer/ui/presence.tsx)、[MemorySkills.tsx](../../packages/app/src/renderer/MemorySkills.tsx)、[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)。
-
-- [x] 为真正模态对话框统一进入焦点、Tab 范围、背景不可操作、关闭后返回触发点；将“平铺编辑页”与模态 dialog 分开定义。
-- [x] Escape 只交给最上层处理；审批中的 Escape 保持拒绝语义，恢复中的关闭保持稍后处理语义；单纯关闭不能意外批准或放弃任务。
-- [x] 评估审批初始焦点改为说明或非授权动作，避免打开时连续 Enter 意外授予权限；保留完全访问红色确认。
-- [x] 验收：只用键盘打开、阅读、循环 Tab、取消、返回原位置；两层 UI 时一次 Escape 只收起一层；退出动画期间不会重复触发操作。
-
-**实施记录（2026-09-22 23:12:16）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：新增 `ui/modal-layer.ts`（纯规则：Escape 归属最上层的注册表，按 id 幂等登记；Tab 循环索引 `nextFocusIndex`；可聚焦元素选择器）与 `ui/modal-surface.ts`（DOM 胶水：`useEscapeScope` 页面级作用域、`useModalSurface` 模态对话框的进入焦点/Tab 约束/关闭后焦点归还，`active=false` 时在退出动画期间交还按键）。接入面：审批 `approval/prompt.tsx`（Escape 仍为拒绝、进入焦点改到说明标题、去掉“仅本次”的 `autoFocus`、`active=Boolean(prompt)`）、`runtime-recovery/checkpoint-recovery.tsx`（Escape 等同“稍后处理”而不是放弃，进入焦点在关闭按钮）、`ui/danger-confirm.tsx`（改用共享层，行为不变）、`composer/mode-picker.tsx` 的完全访问警告（红色确认与初始焦点保留，Escape 只收起警告、不再连带收起选择器）、`MemorySkills.tsx` 与 `ChannelConnections.tsx` 的页面级 Escape、`ui/presence.tsx` 的 `useDismissOnOutside`（弹层参与同一仲裁，不再各自监听全局 Escape）。平铺编辑页（供应商编辑器、内嵌渠道/技能页）明确只用页面级作用域、不捕获 Tab。
-- 验证方式：`ui/modal-layer.test.ts` 13 个用例（注册表顶层判定、幂等登记、空栈；Tab 前后环绕、越界进入、空作用域；以及六个接入面的源码契约：Escape 语义、进入焦点、`active` 交还按键、不再出现裸 `window` Escape 监听）；`pnpm exec vitest run packages/app/src/renderer` 99 个文件 / 520 个用例全部通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：键盘走查（打开、循环 Tab、取消、返回原位置）与“两层 UI 一次 Escape 只收起一层”的实机表现未验证；焦点归还依赖触发点仍挂载，触发元素在等待期间被卸载时会跳过归还。背景不可操作目前由全屏遮罩层与 Tab 约束保证，没有把应用根节点标成 `inert`。
-
-**实施记录（2026-09-25 04:35:00）｜状态：键盘走查与两层 Escape 已实机验收通过；审批与恢复两处 Escape 语义仍只有单元测试，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:keyboard-modal-focus`（`scripts/verify-keyboard-modal-focus.mjs`）：键击经 CDP 派发（**不是**直接调用 click 处理器），因此渲染器收到的是真实 `keydown` 与原生按钮激活。一处必要细节：Enter 必须用 `type: 'keyDown'` 并带 `text: '\r'` 才会触发按钮的默认激活动作（`rawKeyDown` 不会）——这与 UX-01 里 Shift+Enter 换行需要同样处理是同一条经验。
-- 实测（1180×760，两层 UI = 设置 presence 层 + 其上的永久删除确认层）：**只用键盘**聚焦设置入口按 Enter 打开设置 → 聚焦"归档"导航项按 Enter 打开归档页 → 聚焦删除动作按 Enter 打开确认层；确认层打开后焦点落在**取消**（`close-btn`）。连按 7 次 Tab 的焦点序列是 `永久删除 → 取消 → 永久删除 → …`，**每一步都在对话框内**（Tab 约束生效、两个动作都可达）。
-- **一次 Escape 只收一层**：第一次 Escape 关闭确认层后，归档页与设置层都还在（`archiveOpen: true`、`settingsOpen: true`），且焦点**回到触发它的删除动作**（`archive-action danger`，`aria-label` 为"永久删除对话"）。
-- 记录一处观察（**未断言、未修改**）：第二次 Escape 不会收起设置层（`secondEscapeClosedSettings: false`）——设置是平铺的页面级 presence，没有注册 Escape 作用域，退出设置由"退出设置"入口负责。本项验收要求的"两层 UI 一次 Escape 只收起一层"由第一次 Escape 证明；是否给设置层加 Escape 退出属产品判断。
-- 仍未覆盖（复选框保持未勾选）：**审批**与**恢复**两处的 Escape 语义（拒绝 / 稍后处理，且不得意外批准或放弃任务）仍只有 `modal-layer.test.ts` 的源码契约与单元测试，未在真实窗口注入；退出动画期间重复触发操作、以及"触发点在等待期间被卸载"的焦点归还边界未验证。
-
-**实施记录（2026-09-25 16:16:02）｜状态：恢复 Escape 与焦点返回通过真实窗口；UX-07 仍未完成**
-
-- 实现范围：`runtime-recovery/checkpoint-recovery.tsx` 在恢复弹窗显示期间继续挂载入口，并用 `aria-hidden`、`tabIndex=-1`、`pointer-events:none` 暂时从辅助技术、键盘顺序和指针操作中移除。这样共享模态层关闭时仍能把焦点还给原入口；入口不再因弹窗开关被卸载。
-- 验证方式：`checkpoint-recovery-state.test.ts` 10/10 通过，`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 通过；`pnpm run verify:recovery-states -- --windows=1` 的真实 Electron 窗口场景返回 `ok: true`。用键盘 Enter 打开损坏记录入口，再以 CDP Escape 关闭，观测 `dialogOpen=false`、`triggerFocused=true`、损坏 checkpoint 仍存在、Provider 请求数为 0；随后再次打开并查看记录也成功。验收进程正常退出。
-- 未覆盖项：本次只验了恢复弹窗。审批 Escape 是否拒绝且不误批准、审批初始焦点、全套背景不可操作、退出动画期间重复触发均未实机闭合；系统缩放和窗口尺寸未记录。已有键盘确认层的 Tab 循环、Escape 单层关闭和焦点返回证据不能替代审批场景，因此 UX-07 保持未勾选。
-
-**实施记录（2026-09-25 17:22:18）｜状态：审批与退出动画补齐真实窗口验收；UX-07 四项完成**
-
-- 扩展 `pnpm run verify:keyboard-modal-focus`，在隔离窗口里发起真实 Agent `write` 工具调用并进入 Main 审批流程。初始焦点落在说明标题；标题上按 Enter 后弹窗仍在；四次 Tab 均留在弹窗内；指针点击弹窗背后的输入栏，背景收到 0 次点击。连续两次 Escape 期间只向 `/approvals/{id}` 提交 **1 次** `approved:false`（HTTP 200），弹窗关闭后焦点回到输入栏，目标文件不存在。授权拒绝与文件系统结果共同证明没有误授权。原有两层 UI 的键盘打开、Tab 循环、一次 Escape 只收顶层及焦点返回断言也再次通过。
-- 恢复层的 Escape / 稍后处理和现场保留由 `verify:recovery-states -- --windows=1` 的真实窗口结果覆盖；完全访问红色确认和页面级 Escape 的规则由 `modal-layer.test.ts` 及既有验收覆盖。真正模态用遮罩阻断背景指针，用 Tab 约束键盘；平铺编辑页沿页面级作用域，不使用模态 Tab 限制。
-
-### UX-08｜未接通功能不呈现虚假可操作性
-
-**问题**：“已安排”页的“全部/提醒/自动任务”按钮没有状态或回调；页面同时以“暂无任务”表示空数据，又写“等计划任务接入后”，混淆未实现与已实现但没有数据。
-
-**定位**：[scheduled.tsx](../../packages/app/src/renderer/settings/scheduled.tsx)、[navigation.ts](../../packages/app/src/renderer/settings/navigation.ts)、[direct-module.tsx](../../packages/app/src/renderer/settings/direct-module.tsx)。
-
-- [x] 当前基线移除无效筛选控件；选择隐藏入口或明确显示功能尚不可用，统一所有入口的状态。
-- [x] 不为填满页面而在本清单中新增调度后端；只有真实能力接通后才引入数据空态和筛选。
-- [x] 验收：每个可点击控件有可见结果；“尚不可用”与“暂无数据”不会互相替代。
-
-**实施记录（2026-09-22 22:28:19）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：`settings/scheduled.tsx` 删除没有状态与回调的“全部/提醒/自动任务”筛选条，改为只声明“计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用”和“功能尚未接入 / 当前版本不能创建或查看计划任务，因此这里没有可显示的数据，也没有筛选可用”，不再出现“暂无已安排任务”这类数据空态文案。`settings/navigation.ts` 的入口描述由“计划任务与自动执行”改为“计划任务尚未接入”，设置总览（复用同一分组表）、设置侧边栏和侧边栏直接模块页因此显示同一状态；三者渲染的都是同一个 `SettingsScheduledPage`。未新增任何调度后端。
-- 验证方式：`packages/app/src/renderer/settings/scheduled.test.ts` 3 个用例（页面不含任何 `<button>`/`onClick`/toolbar/筛选类名、不含“暂无”式空态文案且明确声明未接入、三个入口的描述与页面来源一致）；`pnpm exec vitest run packages/app/src/renderer/settings/scheduled.test.ts` 通过。
-- 未覆盖项：未在真实窗口中确认三个入口的跳转表现；把“已安排”入口整体隐藏仍是备选方案，本轮选择保留入口并明确不可用，等信息架构任务（UX-12）统一决定入口去留。
-
-**实施记录（2026-09-25 07:09:54）｜状态：三个入口的真实窗口走查通过，三项勾选**
-
-- 实机走查（`pnpm run verify:channel-entry-states` 的第一部分，1280×840，隔离数据根）：三个入口逐一点开——设置总览行「已安排」（描述实测为「计划任务尚未接入」）、设置侧边栏条目、应用侧边栏直入模块页——三处渲染的页面文本**完全相同**，标题都是「已安排」。
-- 每个入口的页面实测：`interactiveCount = 0`（`button`/`a[href]`/`input`/`select`/`textarea`/`summary`/`[role=button|switch|tab]`/`contenteditable` 全为 0）、`toolbarCount = 0`（无 `.settings-module-toolbar`/`.settings-filter-pill`/`[role=toolbar]`），即页面上没有任何"点了没反应"的控件；正文同时给出「计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用。」与空态标题「功能尚未接入」+「当前版本不能创建或查看计划任务，因此这里没有可显示的数据，也没有筛选可用。」。
-- 「尚不可用」与「暂无数据」不互相替代：三处页面文本都不含「暂无」式数据空态措辞（`noDataPhrase = false`），同时明确写出"没有可显示的数据"的原因。
-- 每个入口的点击都有可见结果：从总览进入后聊天区被设置页替换（`composerVisible = false`），侧边栏直入页渲染 `main.direct-module-workspace[aria-label="已安排"]`，页面可见且标题为「已安排」。
-- 未覆盖项：只走查了这三个入口能到达的页面本身，未覆盖其它设置页；未评估"是否应该隐藏该入口"这一产品取舍（信息架构任务 UX-12 已决定保留入口并标注不可用）。
-
-### UX-09｜异步反馈与错误恢复统一
-
-**问题**：技能吞错；渠道用 `reloadMsg.includes('失败')` 决定样式；模型、存储、插件、聊天分别使用不同提示结构和 ARIA 语义。设置阈值保存仅有 finally，其失败需继续沿运行时更新链核对，不应假定本页一定展示。
-
-**定位**：[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)、[models.tsx](../../packages/app/src/renderer/settings/models.tsx)、[storage.tsx](../../packages/app/src/renderer/settings/storage.tsx)、[plugins.tsx](../../packages/app/src/renderer/settings/plugins.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)、[runtime-actions.ts](../../packages/app/src/renderer/app-shell/runtime-actions.ts)。
-
-- [x] 建立小型反馈结构：状态、用户可读事实、可选重试/定位动作、可展开详情；tone 由结构字段决定，不解析文案。
-- [x] 保存中锁定同一事务；成功轻量提示；失败留在发起操作处并保留输入，长错误有界呈现；重新加载失败不能仍只显示旧成功提示。
-- [x] 验收：供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败；用户在当前页面能看到失败及下一步，不必返回聊天区找错误。补充合适的 status/alert 语义。
-
-**实施记录（2026-09-22 23:29:56）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：新增 `ui/feedback.ts`（`Feedback { tone, message, detail }`；`feedbackRole` 把色调映射为 `status`/`alert`；`boundedDetail` 把 Runtime 文本规范化并限制为 400 字符；`successFeedback`/`warningFeedback`/`failureFeedback` 由结果字段构造）与 `ui/feedback-notice.tsx`（统一渲染色调、可选重试动作与折叠的“技术详情”，`busy` 时禁用重试）。接入面：`ChannelConnections.tsx` 删除 `reloadMsg.includes('失败')` 的文案嗅探，改为结构化反馈并给出重试；读取失败会替换旧提示（不再留下旧成功行）并清空列表状态。`settings/agent-profile.tsx` 的压缩阈值保存把失败留在该页：`runtime-actions.ts` 新增 `applyRuntimePatchReporting`（与 `applyRuntimePatch` 同一事务，额外把失败文本返回），经 `overlays-view.tsx` → `settings/workspace.tsx` 传到页面，失败时显示“压缩阈值未保存，仍在使用原来的比例”+“重试保存”。`settings/plugins.tsx` 的通知与错误改由共享组件渲染（保留 `plugin-page-notice`/`plugin-page-error` 外观与 `status`/`alert` 语义、失败带重试）。`settings/models.tsx` 的读取失败/成功提示改用同一结构，读取失败会先清掉旧成功提示；`model-provider-editor.tsx` 的保存失败也改为“保存失败，内容仍保留在编辑器里 + 有界详情”。文件保存路径经源码核对已在原地显示失败（`workspace/preview-pane.tsx` 的 `workspace-editor-status error`），本轮不改动。
-- 验证方式：`ui/feedback.test.ts` 11 个用例（色调为字段而非文案解析、色调到 ARIA 角色与失败判定、长文本有界与空白规范化、用户事实与技术详情分离、无详情时不留空披露，以及渠道/模型/插件/编辑器/阈值链路与阈值失败回传的接线断言）；`pnpm exec vitest run packages/app/src/renderer` 100 个文件 / 531 个用例全部通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：五类失败注入（供应商保存、阈值保存、渠道重载、插件启停、文件保存）仍未在真实窗口中逐项执行；插件页因处于 394 行冻结基线，采用内联反馈对象而非辅助工厂以保持行数不增长。`storage.tsx` 继续使用它既有的 `data-tone` 结构化通知（已是同一模式），未在本轮改写。
-
-**实施记录（2026-09-25 06:05:12）｜状态：五类失败注入已在真实窗口逐项跑通，过程中修掉"文件保存成功提示被自己触发的刷新清掉"；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify-async-feedback`（[verify-async-feedback.mjs](../../scripts/verify-async-feedback.mjs)）：同一个窗口里按请求路径逐个注入 HTTP 500（`POST /config/providers`、`POST /runtime`、`POST /channels/reload`、`POST /plugins/<id>/enabled`、`POST /workspace/save`），每次注入后清掉并重试，全部走真实控件。
-- 实测（1280×840，隔离数据根；失败注入期间 `.composer-error` 始终为空，即五类都不必回到聊天区找错误）：
-  - **供应商保存**：编辑器内改名后保存失败 → 原地出现 `role="alert"` 的 `保存失败，内容仍保留在编辑器里` + 技术详情（含注入的 500），**草稿仍在**（输入框仍是新名字）、编辑器不关闭；清掉注入再点保存 → 成功提示 `已保存供应商 "acceptance-gw"。`，旧失败被替换。
-  - **阈值保存**：改比例后保存失败 → 原地 `role="alert"` 的 `压缩阈值未保存，仍在使用原来的比例` + 注入详情 + 动作 `重试保存`；同时核对 Runtime 里的比例**没有被改写**；清掉注入后重试成功，Runtime 比例变为新值。
-  - **渠道重载**：先成功一次（`外部渠道已重新加载`），再注入失败 → 成功行**已被替换**（旧的“已重新加载”不再显示），出现 `重新加载外部渠道失败` + `重试`。
-  - **插件启停**：对第一个渠道插件注入失败 → `插件操作未完成` + 技术详情 + `重试`，并且开关**没有移动**（`aria-checked` 与点击前一致）。
-  - **文件保存**：在真实 Monaco 里输入标记（Monaco 0.5x 走 `EditContext`，合成 DOM 事件无效，必须真实点击 + 带 `text` 的键盘/插入事件），Ctrl+S 触发 `允许保存工作区文件？` 审批，点“仅本次”后保存请求失败 → 编辑器状态行原地显示 `文件保存失败，请稍后重试。`（错误色调）、输入内容保留、**磁盘文件未被改写**；清掉注入重试并再次批准 → 磁盘写入新内容。
-- **顺带修掉的真实缺陷（本门实机发现）**：文件保存成功后的 `已保存` 提示**看不到**——一次成功的保存会重新读取文件（`modifiedAt` 变化），而同一个重置 effect 会在同一 tick 把状态行清空。修法是 `preview-pane.tsx` 记住"这次刷新是自己的保存引起的"（`savedStatusPathRef` 只豁免紧接的那一次刷新；切换文件或外部改动仍会清空状态行）；本门新增断言：重试保存后等待 1.5 秒，状态行仍是 `已保存` 且无错误色调（修前为 `null`）。回归：`workspace/preview-save-status.test.ts`。
-- 仍未覆盖：注入都在页面层按路径完成，证明的是"失败落在哪、下一步是什么"，不等价于真实后端故障的每一种形状；插件启停用发现的第一个渠道插件（不指定哪一个）；`storage.tsx` 沿用既有 `data-tone` 结构未改写，其失败路径本门未注入。
-
-### UX-10｜渠道状态汇总准确
-
-**问题**：总体“外部渠道运行中”和列表标题“运行中的渠道”只取决于 `channels.length`，但同一列表中单项使用 `ch.running`。列表存在不等于至少一个渠道正在运行；失败列表还单独存在。
-
-**定位**：[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx) 的 `channel-overall`、渠道列表、failures。
-
-- [x] 按真实运行项和失败项派生“运行中/部分异常/未运行/未配置”，保留“已配置”“已启用”“运行中”的区别。
-- [x] 总体状态与逐项状态对齐，不能把配置存在或数量大于零当成连接健康。
-- [x] 验收：空配置、全部停止、部分运行且部分失败、全部运行四种 fixture；标签、数量和颜色一致。若后端保证不会返回停止项，应先明确契约再简化 UI。
-
-**实施记录（2026-09-22 22:28:19）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：新增 `renderer/channel-status.ts` 的 `summarizeChannelConnections`：按已加载渠道的真实 `running` 计数和 `failures` 计数派生 `unconfigured / stopped / partial / running` 四种总体状态，并同时给出 `运行 N/M · 已配置 K [· 失败 F]` 的计数与一句话事实（用于 title/无障碍说明）。`ChannelConnections.tsx` 的总体徽章改为该派生结果（含 partial 的警示色），列表标题由“运行中的渠道”改为“已加载渠道”，逐项新增“运行中/未运行”标签，使总体与单项使用同一批事实；`status.channels.length > 0 ? 'running' : 'stopped'` 的判断已删除。后端契约未保证 `channels` 只含运行项，因此保留逐项 `running` 判定，不简化 UI。
-- 验证方式：`packages/app/src/renderer/channel-status.test.ts` 7 个用例（空配置、全部运行且无失败、已配置但全部停止（不因配置存在判健康）、部分运行且部分失败、全部未运行但有失败记录、混合运行不得把停止项算作运行，以及视图接线断言：不再出现“运行中的渠道”与旧三元判断）；`pnpm exec vitest run packages/app/src/renderer/channel-status.test.ts` 通过。
-- 未覆盖项：四种 fixture 尚未在真实窗口中核对颜色与排版；`started` 字段当前未参与总体状态（它描述插件宿主是否启动过），如后续需要区分“未启动”与“未运行”，需先明确后端契约再扩展。
-
-**实施记录（2026-09-25 07:09:54）｜状态：四种 fixture 在同一真实窗口里逐项核对通过；后端契约已写明，三项勾选**
-
-- 实机走查（`pnpm run verify:channel-entry-states` 的第二部分，同一个窗口、同一个 外部渠道页）：每个 fixture 由脚本改写真实 `config.json`，再用页面自己的「重新加载」控件应用（实测确认按钮在重载进行中是 disabled，必须先等它可用，否则点击会被吞掉——这条时序坑已写进门内注释）。运行中的渠道是内置 webhook 插件，监听 OS 分配的 loopback 端口，不依赖任何外部服务。
-- 四个 fixture 的实测（徽章类名/文案/计数/取色 + 分区标题 + 逐行标签与圆点颜色，括号内为主进程真实载荷计数）：
-
-| fixture | 配置 | 载荷（加载/运行/已配置/失败） | 徽章 | 计数 | 徽章取色 |
-| --- | --- | --- | --- | --- | --- |
-| 空配置 | `channels: []` | 0 / 0 / 0 / 0 | `unconfigured`「未配置外部渠道」 | 空 | `rgb(160, 160, 160)` |
-| 全部停止 | webhook，`enabled: false` | 0 / 0 / 1 / 0 | `stopped`「外部渠道未运行」 | 运行 0/0 · 已配置 1 | `rgb(160, 160, 160)` |
-| 部分运行且部分失败 | webhook（enabled）+ 未安装类型的渠道 | 1 / 1 / 2 / 1 | `partial`「部分渠道运行中」 | 运行 1/1 · 已配置 2 · 失败 1 | `rgb(216, 180, 92)` |
-| 全部运行 | webhook（enabled） | 1 / 1 / 1 / 0 | `running`「外部渠道运行中」 | 运行 1/1 · 已配置 1 | `rgb(111, 208, 140)` |
-
-- 逐项与总体一致：全部停止时「已配置渠道 (1)」的圆点是 `channel-dot disabled`（`rgb(133,133,133)`）且带「已禁用」标签、页面**不出现**任何「运行中」字样；部分失败时「已加载渠道 (1)」是 `channel-dot on`（`rgb(111,208,140)`）+「运行中」，「需要处理 (1)」的失败行圆点是 `channel-dot off`（`rgb(239,104,104)`）、失败明细是危险色 `rgb(255,210,210)`，文本是真实后端原因 `channel type "littlesheep-channel-not-installed" is not provided by an active plugin`；空配置时显示「还没有配置外部渠道…」并把 `channels.channels` 放进可展开说明，其余三个 fixture 不再显示这条空态。
-- **后端契约（本项要求"先明确契约"）**：载荷里的 `channels` **只含正在运行的实例**——`PluginHost.listChannels()` 读的是 `channelManager` 的运行表，`stop()` 会把条目移出该表，启动失败的渠道进的是 `failures`。四个 fixture 实测 `loaded === running` 恒成立（门内逐项断言），契约因此写进 `shared/channel-control-contracts.ts`、`packages/plugins` 的 `host.ts`/`channel/manager.ts` 注释，并由 `manager.test.ts` 新增用例（停止后 `list()` 为空且 `running` 为 false）钉住。
-- **据此做的简化**：总体状态里"已加载 N 个渠道，全部未运行"这类句子在后端契约下不可达（`loaded > 0` 且无失败即 `running`），已改成陈述真实事实的「已配置 N 个渠道（M 个启用），当前没有渠道在运行」；逐项的 `running` 判定与失败计数保留为防御路径，不用它渲染后端不会给出的停止项——因为"已配置/列表非空不等于健康"正是本项要守住的判据。`channel-status.test.ts` 由 7 个用例扩到 8 个（新增"全部配置但停用"的可达状态与其文案断言）。
-- 未覆盖项：① 「全部停止」只能由"已配置但停用"构造，`loaded` 非空的停止项在当前后端不可达（这正是契约的内容）；② 未测试网速/插件崩溃等造成的运行中掉线；③ `started` 字段仍未参与总体状态，需要先明确"宿主未启动"与"没有渠道在运行"的区别；④ 失败文案里的渠道名来自 `.channel-name` 的 `strong`+`small` 拼接，未做排版核对。
-
-### UX-11｜无模型到可用模型的配置闭环
-
-**问题**：模型选择器无供应商时显示“无可用模型”，引导依赖 title 中的设置路径；当前组件没有直接打开模型配置的动作。用户必须自己找到设置、添加配置，再返回原输入现场。
-
-**定位**：[runtime-picker.tsx](../../packages/app/src/renderer/composer/runtime-picker.tsx) 的无模型状态与 trigger；[models.tsx](../../packages/app/src/renderer/settings/models.tsx)。
-
-- [x] 在无模型状态提供明确的“配置模型”动作，定位到供应商设置；返回后保留原会话、文字及附件。
-- [x] 区分未配置、配置加载失败、已保存但未验证可调用；不要用“已设置密钥”暗示连接成功。
-- [x] 验收：新数据根从空状态完成配置并回到原草稿；加载失败可重试；保存后选择器从 Runtime 刷新。若新增真实连接检查，单列网络调用成本和实现边界。
-
-**实施记录（2026-09-22 23:39:50）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：新增 `composer/runtime-availability.ts` 纯状态模块，把无可用模型分成“读取中 / 读取失败（可重试）/ 还没有配置（给出配置入口）/ 已保存但不可用（缺密钥或缺模型条目）”，并用设置页同一个 `isConfiguredProvider` 判定“已配置”，使输入栏与供应商页对同一份配置给出一致结论。`composer/runtime-picker.tsx` 的空菜单不再只有一行“没有已配置的可用模型”，而是给出事实与动作（“配置模型”/“检查供应商配置”/“重试读取”）；触发按钮在配置读取失败时保持可点（否则菜单里的重试永远到不了），标题与空菜单都使用同一句事实。`app-shell/composer-view.tsx` 把 `openSettingsPage('api')` 与 `refreshRuntime` 传给选择器——打开设置只是路由切换，不清空当前文字与附件；从设置返回后由既有的 `settingsOpen` 变化 effect 重新读取 Runtime，保存过的供应商随即可见。`settings/models.tsx` 的空态改为“保存成功才会出现在选择器里”并明确写出“保存配置不代表已经验证可以调用”，不再用密钥状态暗示连接成功。本轮没有新增任何真实连接检查，因此没有新增网络调用。
-- 验证方式：`composer/runtime-availability.test.ts` 7 个用例（读取失败与首次空态分开、未配置给出配置入口、自定义供应商缺密钥/缺模型为不可用、内置预设未配置与已配置的判定与设置页一致、只有可解析的已选模型才算 ready，以及选择器空菜单动作、`openSettingsPage('api')`/`refreshRuntime` 接线与“打开设置不清空草稿”的断言）；`pnpm exec vitest run packages/app/src/renderer` 101 个文件 / 538 个用例全部通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：新数据根从空状态走完配置并回到原草稿的真实流程未走查；“已保存但不可用”只依据 Runtime 返回的 `hasKey`/模型条目，未做真实可调用性验证（任务书允许，若将来新增连接检查需单列网络成本）。空菜单在窄窗口下的排版与 UX-15 一并验收。
-
-**实施记录（2026-09-25 05:52:30）｜状态：三条验收已在真实窗口跑通，过程中发现并修掉两处真实缺陷（"没选模型"被说成"配置不可用"、自定义供应商的模型引用被误判为未列出）；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify:no-model-config-loop`（[verify-no-model-config-loop.mjs](../../scripts/verify-no-model-config-loop.mjs)）：**空数据根**（`providers: []`、`model: ''`）跑完整首次配置闭环；读取失败一类用页面 fetch 探针注入 `GET /runtime` 500。
-- 实测（1280×840，隔离数据根）：
-  - **未配置**：入口显示 `还没有配置模型`（title「还没有配置任何供应商；在 设置 → 模型供应商 里添加服务、密钥和模型。」），先输入草稿并粘贴 1 个附件；菜单里给出同一事实与动作 `配置模型`。
-  - **配置动作**：点 `配置模型` 直接落在「模型供应商」页，菜单自动关闭；供应商页空态原文含「保存成功后它才会出现在输入栏的模型选择器里」与「保存配置只代表写入了密钥和模型声明，不代表 LS 已经验证过它真的可以调用」；**草稿与附件都还在**（1 个附件）。
-  - **已保存但不可用**：先只存一个自定义地址（无密钥、无模型）→ 卡片显示「尚未添加模型」，退出设置后探针记录到 Runtime 被重读（2 → 3 次 `/runtime`），入口改为 `已配置的供应商还不可用` + `检查供应商配置`，文案含「保存配置不等于已经验证可以调用」。
-  - **保存后从 Runtime 刷新**：补上密钥与模型条目保存并返回后，探针再次记录到重读（3 → 4 次 `/runtime`），菜单里**无需刷新页面**就列出新模型 `slow-a`。
-  - **选中模型**：点该模型 → `PATCH /runtime` 返回 200，配置里写入 `acceptance-gw/slow-a`，入口变为 `slow-a`，`.composer-error` 为空；整段往返后草稿原文与 1 个附件都未变。
-  - **读取失败可重试**：注入 500 后入口为 `模型配置读取失败`（title「未能读取模型配置：Local app API error: 500」），菜单给出 `重试读取` 与同一原因；按住注入再点一次 → 探针确认又请求了一次且仍是失败态（不会假装就绪）；清掉注入后点 `重试读取` → 模型出现、`.composer-error` 清空。
-- **顺带修掉的真实缺陷（本门实机发现，两处）**：
-  1. **“还没选模型”被说成“供应商不可用”**：`runtime-availability.ts` 把 `selectableProviderCount > 0 && !hasSelectableModel` 并入 `unusable`，于是刚存好密钥和模型条目的用户被告知「可能缺少 API 密钥，或没有填写模型条目」，被送回一份本来正确的配置页。现在新增 `no-selection`（「还没有选择模型 / 供应商已经可以使用；打开这个菜单选一个模型。」），`unusable` 只在真的没有可用供应商时出现；`runtime-availability.test.ts` 新增两条断言区分二者，并断言其文案不再提“密钥”。
-  2. **自定义供应商的模型引用被误判**：`runtime-routes.ts` 的 `validateModelRef` 用 `provider.models.includes(model)` 比较，而配置允许 `models` 是裸 id 或**带元数据的对象**（设置页保存的自定义供应商就是 `[{ id: 'slow-a' }]`），于是选择器能列出、能点，选中后却被 500 拒绝（`model "slow-a" is not listed for provider "acceptance-gw"`）。改为按 `resolveProviderModelIds` 解析后比较；新增 `runtime-model-ref.test.ts` 3 个用例（对象形状可选中、裸 id 形状仍生效、无模型列表不设限、未知供应商与缺密钥仍拒绝）。
-- 仍未覆盖：本路径不新增真实连接检查，因此「已保存但可调用」仍按 Runtime 的 `hasKey`/模型条目判断（任务书允许；将来若加真实检查需单列网络成本）；附件用合成 paste 注入而非系统文件对话框；菜单与供应商表单在窄窗口/缩放下 的排版属于 UX-15，本门只看功能闭环。
-
-### UX-12｜设置与工作模块的信息架构
-
-**现状与建议**：设置总览复制全部分组；记忆树、插件、已安排又可作为独立工作页打开；“Agent 行为”内同时放行为 profile、压缩阈值、对话显示。多个入口不是必然错误，但当前位置、返回目的地和设置归属需要一致。
-
-**定位**：[navigation.ts](../../packages/app/src/renderer/settings/navigation.ts)、[home.tsx](../../packages/app/src/renderer/settings/home.tsx)、[direct-module.tsx](../../packages/app/src/renderer/settings/direct-module.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)。
-
-- [x] 先画出现有入口—页面—返回目标映射，确定每个模块唯一页面身份，保留有价值的快捷入口而不复制状态。
-- [x] 对话显示归入界面偏好；压缩阈值作为高级上下文配置按需展开；profile 与权限继续分离。
-- [x] 验收：从聊天、独立模块、设置总览进入同一功能时名称和状态一致；返回到来处；常见配置可按用户意图找到。先验证小幅重排，避免整套导航重建。
-
-**实施记录（2026-09-22 23:52:31）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：入口 → 页面 → 返回目标映射写入 `settings/README.md`（设置总览、设置侧边栏各页、侧边栏直接模块页、embedded 归档/技能/外部渠道四类入口各自的返回目标），并明确页面身份由 `settings/types.ts` 的 `SettingsPage` 联合类型唯一声明。小幅重排：新增设置页「界面」`settings/appearance.tsx`，把「对话显示」（普通/紧凑）从「Agent 行为」移出；「Agent 行为」只保留 profile 与上下文策略，压缩阈值收进 `<details class="settings-advanced">` 的“高级上下文设置”；权限继续只由输入栏权限模式控制，页面文案重复声明该边界。新页同时登记到 `navigation.ts` 分组、`persistent-state.ts` 可恢复集合与 `workspace.tsx` 渲染分支（不登记会导致重启恢复静默丢页）。
-- 验证方式：`settings/navigation.test.ts` 6 个用例——`SettingsPage` 联合类型、导航分组、可恢复集合、工作区渲染分支四者的集合必须一致（新增页面漏登记即失败）；直接模块页允许走共享分支但必须能被 `direct-module.tsx` 映射；「界面」独占显示密度、Agent 页不再持有显示偏好；阈值行必须位于折叠区内；README 必须保留映射表与各模块名称。`pnpm exec vitest run packages/app/src/renderer` 103 个文件 / 548 个用例全部通过；`tsc -b` 通过。
-- 未覆盖项：未在真实窗口从聊天、直接模块页与设置总览三处进入同一功能核对名称与返回位置；本轮按“小幅重排”执行，没有重建导航或合并设置分组；`use-navigation-controller.ts` 的历史快照未改动。
-
-**实施记录（2026-09-25 06:55:20）｜状态：三处入口的名称与返回位置已在真实窗口逐条走通，唯一“不足”（外部渠道页标题与导航条目不同名）已统一；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify:settings-navigation-terminology`（[verify-settings-navigation-terminology.mjs](../../scripts/verify-settings-navigation-terminology.mjs)），同时覆盖 UX-12 与 UX-13 的验收项。夹具是**空配置**数据根（无供应商、无渠道），因为“从聊天进入模型设置”这条入口只在无模型时才由输入栏自己给出。
-- 实测（1280×840，隔离数据根）：
-  - **从聊天**：先输入草稿 → 打开模型选择器 → 点“配置模型” → 落在「模型供应商」（`activeNav` 与页面标题同为「模型供应商」）；点“退出设置”回到聊天，**草稿仍在**。返回目标与 README 的映射表一致。
-  - **设置总览**：总览 14 行与侧边栏 15 项逐行同名（`missingInNav: []`，唯一不出现在总览里的是“总览”自己）。
-  - **总览 → 页面 → 返回来处**：从总览点「外部渠道」→ `activeNav` 与标题一致，关闭后回到聊天（进入前的那一页）。
-  - **工作模块**：记忆树 / 已安排 / 插件各自“侧边栏直入页标题 = 设置页标题 = 导航条目名”，并且**从直入页打开设置再关闭，回到的是该模块页而不是聊天**（三个模块逐条实测）。
-  - **重排后的页面边界**：`界面` 页有且只有两个显示密度选项（`普通`（选中）/`紧凑`，页面上不出现 `Normal`/`Compact`）；`Agent 行为` 页的压缩阈值仍**折叠**在“高级上下文设置”里（`details.open === false` 且阈值控件在其中），该页没有任何权限模式控件（权限继续只由输入栏控制）。
-- **顺带修掉的真实缺陷（本门实机发现）**：外部渠道页的标题是「渠道连接」，而同一条目的导航名、空态文案、重载反馈与“活动任务来源”标签都写「外部渠道」——同一功能两个名字。已把标题统一为「外部渠道」；门内断言“页面标题 === 导航条目名”覆盖三个入入口。
-- **UX-13 的渲染侧复核**（源码扫描 `terminology.test.ts` 之外的补充）：四个被访问页面拼起来的文本里没有退役说法「提供方」；`技能` 页渲染「当前版本只能查看内容，不能在界面里启用、禁用或编辑技能」；`已安排` 页渲染「还没有接入 Runtime」「功能尚未接入」；渠道空态渲染「还没有配置外部渠道，当前没有渠道可以运行。这个版本还没有渠道配置界面。」并把精确字段放进可展开的“在哪里配置”（`config.json` 的 `channels.channels`）。本轮未新增任何模板化 Agent 回复，也未改动 Runtime 文案。
-- 仍未覆盖：走查覆盖聊天、设置侧边栏、设置总览与三个直入模块这四类入口，没有逐页枚举全部 14 个设置页；术语检查读的是被访问页面的渲染文本，不能替代源码扫描；`session`/`workspace` 等代码标识符仍不在文案范围内。
-
-### UX-13｜术语和产品文案
-
-**问题**：同一供应商功能混用“提供方/供应商”；中文设置页显示 Normal/Compact；总览和技能页描述“后续功能模块”“后续可继续接”；外部渠道无配置时直接要求编辑 `config.json` 的嵌套字段。
-
-**定位**：[models.tsx](../../packages/app/src/renderer/settings/models.tsx)、[model-provider-editor.tsx](../../packages/app/src/renderer/settings/model-provider-editor.tsx)、[agent-profile.tsx](../../packages/app/src/renderer/settings/agent-profile.tsx)、[home.tsx](../../packages/app/src/renderer/settings/home.tsx)、[MemorySkills.tsx](../../packages/app/src/renderer/MemorySkills.tsx)、[ChannelConnections.tsx](../../packages/app/src/renderer/ChannelConnections.tsx)。
-
-- [x] 建立小型术语表：供应商、模型、对话、任务、项目、工作区、应用数据目录；Normal/Compact 使用一致的中文显示名。
-- [x] 功能说明只描述当前可用能力；高级配置字段放入可展开说明或帮助入口，未提供配置 UI 时如实说明限制。
-- [x] 验收：相同概念在标题、按钮、提示和空态一致；路径/状态事实不被文案重写；不增加模板化 Agent 回复。
-
-**实施记录（2026-09-22 23:46:30）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：术语表新增到 [UI 交互规范](../principles/ui-interaction-guidelines.md) 的“术语表”一节（供应商、模型、对话、任务、项目、工作区、应用数据目录，以及“普通/紧凑”），并规定面向用户文案只描述当前可用能力。代码侧统一了“提供方 → 供应商”（`settings/models.tsx`、`model-provider-editor.tsx`、`chat/assistant-turn.tsx` 的用量/模型/来源标签、样式注释与 `renderer/README.md`），对话显示密度改为“普通/紧凑”（存储仍是 `normal`/`compact`）。开发计划式文案改为当前事实：`settings/home.tsx` 的“后续功能模块”改为“工作模块的设置入口”，`MemorySkills.tsx` 的“后续可继续接启用、禁用和编辑”改为“当前版本只能查看内容，不能在界面里启用、禁用或编辑技能”，拓展工作区的侧边聊天占位改为“侧边聊天尚未接入 / 当前版本还不能在这里进行局部对话”。外部渠道空态不再把嵌套字段当作第一步：主文案说明“还没有配置外部渠道”和“这个版本还没有渠道配置界面”，精确的 `channels.channels` 与应用数据目录 `config.json` 放进可展开的“在哪里配置”。
-- 验证方式：`terminology.test.ts` 4 个用例，其中术语一致性与禁用文案是对整个 `packages/app/src/renderer` 源码树的扫描（排除测试文件），因此新增文案引入旧说法会直接失败；另断言对话显示用中文名、未接通表面写明“尚未接入”、渠道空态把精确配置字段放进披露而不是主指令。`pnpm exec vitest run packages/app/src/renderer` 101 个文件 / 538 个用例全部通过；`tsc -b packages/app/tsconfig.json packages/app/tsconfig.web.json` 通过。
-- 未覆盖项：术语表只覆盖本轮出现的概念，`session`/`workspace` 等代码标识符不在文案范围内；未在真实窗口逐页核对文案；未新增模板化 Agent 回复，也未改动任何 Runtime 文案。
-
-**实施记录（2026-09-25 06:55:20）｜状态：渲染侧文案与术语一致性已在真实窗口复核（与 UX-12 同一道门），顺带统一了外部渠道页标题；三项勾选**
-
-- 验证方式与实测结果见上一条 UX-12 的实施记录：`pnpm run verify:settings-navigation-terminology` 在真实窗口读取被访问页面的**渲染文本**，断言（1）四个页面拼接文本中不出现退役说法「提供方」；（2）`界面` 页的两个显示密度选项为「普通/紧凑」且页面不出现 `Normal`/`Compact`；（3）`技能` 页写「当前版本只能查看内容，不能在界面里启用、禁用或编辑技能」；（4）`已安排` 页写「还没有接入 Runtime」「功能尚未接入」；（5）渠道空态写「还没有配置外部渠道……这个版本还没有渠道配置界面。」并把 `config.json` 的 `channels.channels` 放进可展开的“在哪里配置”；（6）外部渠道页标题与导航条目同名（修前是「渠道连接」，见 UX-12 记录的缺陷条目）。
-- 与源码扫描的分工：`terminology.test.ts` 保证整个 `packages/app/src/renderer` 不再出现旧说法与新文案被改回；本门保证**这些文案真的渲染到屏幕上**、并且同一个概念在不同入口显示同一个名字。两者互补，都不涉及 Runtime 文案。
-- 仍未覆盖：同上一条（未逐页枚举、代码标识符不在范围内）；本轮没有新增模板化 Agent 回复，也没有改动任何 Runtime 生成的文案。
-
-### UX-14｜共享 UI 的增量收敛
-
-**现状与建议**：颜色、圆角、动效已有 token；反馈和操作按钮仍有 `dialog-*`、`storage-settings-*`、`plugin-page-*`、`archive-*` 多套表面。类名不同本身不等于视觉缺陷，应先按截图与行为确认重复，再抽取。
-
-**定位**：[ui/README.md](../../packages/app/src/renderer/ui/README.md)、[03-shell-sidebar.css](../../packages/app/src/renderer/styles/03-shell-sidebar.css)、[07-overlays-settings.css](../../packages/app/src/renderer/styles/07-overlays-settings.css)、[09-projects-archive.css](../../packages/app/src/renderer/styles/09-projects-archive.css)。
-
-- [x] 建立小范围状态样本：主/次/危险按钮、输入、空态、错误、pending、只读；复用现有 token，补必要的字号/间距角色。
-- [x] 优先随 UX-04/07/09 抽取 AsyncFeedback、Dialog 等确有复用收益的基元，不全仓机械替换样式。
-- [x] 验收：同类控件的高度、文字层级、聚焦、禁用、等待和危险样式一致；保留既有黑灰主题、紧凑布局、reduced-motion 与圆角例外。
-
-**实施记录（2026-09-25 06:51:16）｜状态：实机验收通过，三项勾选**
-
-- 实机走查：新增 `pnpm run verify:shared-ui-roles`（[scripts/verify-shared-ui-roles.mjs](../../scripts/verify-shared-ui-roles.mjs)）。1280×840 真实窗口 + 确定性 Provider 桩，**47 项断言全部通过（failures 为空）**，24 个观测步骤，12 张截图（`%TEMP%\littlesheep-shared-ui-roles\screenshots\`，含设置页、插件通知/失败、渠道失败与忙态、存储错误、归档错误、对话框保存中、键盘聚焦、策略行）。
-- **① 五处浅红统一（真实渲染面测量）**：`dialog-error`（清空 API 地址触发真实校验错误「API 地址必须是 http(s) URL。」）、`plugin-page-error`、`storage-settings-notice[data-tone=error]`、`web-settings-notice.error`、渠道失败明细（配置里放一个类型没有插件提供的渠道 `littlesheep-channel-role-fixture`，页面真实渲染 `channel type "…" is not provided by an active plugin`）全部测到 `color: rgb(255, 210, 210)`。本轮夹具到不了的 `web-source-errors`、`plugin-list-error`、`plugin-runtime-state.failed`、`runtime-event-notice.error`、`composer-error`、`activity-tool-error`、`tool-live-err`、`agent-transcript-attention`、`project-creator-error` 用**在活动设置页里挂真实类名**的样本读级联，同样是 `rgb(255, 210, 210)`；同批的中性样本 `dialog-hint` 仍是 `rgb(160, 160, 160)`，所以“到处都是危险色”不会让这条断言通过。
-- **② 插件通知几何**：真实成功通知「插件已重新发现并加载」与真实失败通知「插件操作未完成」都测得 `padding 8px / 10px`、`font-size 12px`（原 `7px 9px` / `11px`）；失败通知的重试动作 `.feedback-action` 26px / 12px / 圆角 10px。
-- **尺寸角色（本轮新增收敛，均为实机测量）**：页头动作统一 32px（`.plugin-reload-button` 原 30px、`.development-environments-refresh` 原 30px、`.archive-refresh` 32px 改为同一 token），段内紧凑动作统一 30px（`.settings-policy-row button` 原 29px，`.storage-settings-row button`、`.storage-settings-actions button`、`.web-cache-clear`、`.ms-feedback-action`、`.memory-file-save`、`.provider-remove` 由 30px 字面值改为 `--control-height-row`），行内通知动作 26px，提交控件 32px/13px，常规控件 32px/12px；对话框关闭 30px 与 `archive-action` 26px、`approval-action` 34px、48px 大块选择仍按角色保留。
-- **禁用与等待**：新增 `--control-disabled-opacity: 0.42`（大块选择保留 `--choice-disabled-opacity: 0.58`），补齐此前**完全没有禁用样式**的 `close-btn`、`toggle-btn`、`refresh-btn`、`danger-btn`、`dialog-close`（供应商编辑器的取消/关闭在保存中确实带 `disabled`，此前看不出区别）。实测进行中的控件全部 `disabled=true` 且 `opacity: 0.42`：保存中的保存/取消/关闭（保存按钮文案变为“保存中…”，编辑器状态行同步）、插件重载（“加载中”）、插件开关与通知重试按钮、渠道刷新与重载（“重新加载中...”）、存储动作（“清除中”）、归档刷新；未在忙碌但确实禁用的策略行保存按钮同样是 0.42。
-- **聚焦**：键盘 Tab 在真实对话框里测到两种可见聚焦——设置字段 1px solid `rgb(226, 226, 226)`（offset 2px），模型胶囊按钮 2px solid `rgba(226, 226, 226, 0.32)`（offset 2px，全局规则）；`settings-sidebar-exit` 这类页面级控件用背景/边框/文字同时变化的表面反馈。没有测到“聚焦但看不出”的样本。
-- **保留项（逐条测量）**：黑灰主题 token 全为灰阶（`#141414`/`#1c1c1c`/`#202020`/`#252525`/`#2a2a2a`/`#e8e8e8`/`#343434`/`#474747` 等 r=g=b）；紧凑布局保持 32/30/26px 家族；`--radius-ui: 10px` 与 `--radius-icon: 3px` 未被破坏；`prefers-reduced-motion: reduce` 下 0.14s 过渡与 0.18s `content-fade-in` 全部塌到 0.001s。
-- 源侧契约：`ui-state-consistency.test.ts` 从 5 个用例扩到 7 个（新增“一种动作角色一个高度”“一种角色一个禁用色调”，后者要求样式里不得再出现 `opacity: 0.42` 字面值、`--choice-disabled-opacity` 必须成对声明）。`pnpm exec vitest run packages/app/src/renderer` 114 文件 / 625 用例全部通过。
-- 未覆盖项：① 密集行/工具条/选择器角色（侧栏导航与树行、工作区文件树与浏览器工具条、聊天历史“加载更早”、输入栏选择器）仍各自使用 0.3–0.72 的禁用透明度，本轮**没有**收敛，取值与理由记在 `ui/README.md`——任务书明确要求不做全仓机械替换，收敛它们需要各自的实机对照；② 输入、空态、只读三类只做清点与记录，未改取值；③ 上文的合成样本只能证明样式级联，不替代这些表面的真实交互走查；④ 失败/等待/禁用态由页面内注入的传输故障（hold/fail 一次请求）驱动，视图、标记与样式是真实的，注入本身不是产品行为。
-
-**实施记录（2026-09-22 23:57:19）｜状态：实现完成，实机验收未做，保持未勾选**
-
-- 实现范围：先测量再抽取——逐条比对了错误面（`dialog-error`/`archive-error`/`project-creator-error`/`storage-settings-notice[data-tone=error]`/`plugin-page-error`/`plugin-list-error`/`web-source-errors`/`activity-tool-error` 等）与控件角色（`save-btn`/`reload-btn`/`danger-btn`/`close-btn`/`toggle-btn`/`refresh-btn`/`feedback-action`）的实际声明，确认了真实重复：同一“危险文本”角色出现四种浅红（`#ffd2d2`、`#e8c5bd`、`#f2b6b6`、`#f0a9a9`、`#e5a6a6`），行内通知内边距/字号有 7-9px/11px 与 8-10px/12px 两套。随后新增角色 token（`--feedback-danger-text`、`--feedback-danger-border`、`--danger-control-text`、`--notice-padding-block/inline`、`--notice-font-size`、`--control-height-md/sm`、`--control-font-size`、`--control-font-size-strong`）并把上述角色改为引用 token。状态样本与例外清单写入 `ui/README.md`。**没有**全仓机械替换：大块选择（`provider-add`/`profile-choice` 48px）、对话框主操作（`approval-action` 34px）、紧凑行操作（`archive-action` 26px）、胶囊（`provider-remove` 30px）和圆角例外（`--radius-icon: 3px`）都按角色保留。
-- 验证方式：`ui-state-consistency.test.ts` 5 个用例直接测量样式源——角色 token 必须存在；错误面全部引用 `--feedback-danger-text` 且样式里不得再出现任何浅红字面值（防止漂移回流）；行内通知几何统一；同类控件高度/字号一致且例外仍在；`--radius-ui: 10px`、`--radius-icon: 3px`、`--motion-base: 180ms`、`prefers-reduced-motion` 块未被破坏。`pnpm exec vitest run packages/app/src/renderer` 104 个文件 / 553 个用例全部通过；`tsc -b` 通过。
-- 未覆盖项：**本轮没有任何真实窗口或截图证据**。其中零计算变化的 token 化不改视觉；但有两处是真实取值变化，必须在实机确认：① 五处浅红统一为 `#ffd2d2`（`storage-settings-notice` 错误色、`web-source-errors`、`web-settings-notice.error`、`plugin-runtime-state.failed`、渠道失败明细），② `plugin-page-notice/.plugin-page-error` 的内边距 7px 9px → 8px 10px、字号 11px → 12px。此外“输入、空态、pending、只读”四类只做了清点与记录，未改动取值（避免无证据的视觉变更）。
-
-### UX-15｜窄窗口与高 DPI 验证
-
-**风险线索**：模型编辑器使用两列弹性字段加 `150px 150px 26px` 固定列；多个设置辅助标签为 10/11px。源码可确认尺寸，不能据此断言真实窗口已经裁切或对比度不合格。
-
-**定位**：[07-overlays-settings.css](../../packages/app/src/renderer/styles/07-overlays-settings.css) 的 `provider-model-row`、`provider-model-columns` 与辅助文字；[model-provider-editor.tsx](../../packages/app/src/renderer/settings/model-provider-editor.tsx)。
-
-- [x] 在应用允许的最小窗口、常用窗口、125%/150%/200% 系统缩放下验证模型表单、设置侧栏、审批长路径、运行时选择器。
-- [x] 出现不足时按可用宽度切换模型字段为堆叠布局，确保字段仍有独立标签；只调整实测难读文字，测量前不宣称符合或违反对比度标准。
-- [x] 验收：关键按钮始终可达；字段不会压缩到无法输入；页面无非必要横向滚动；长路径可完整查看/复制；记录窗口逻辑尺寸、系统缩放和截图。
-
-**实施记录（2026-09-22 23:59:00）｜状态：源码侧风险已定位，修复取决于实测；保持未勾选**
-
-- 已完成（无窗口可做的部分）：把源码中可确认的尺寸风险逐条定位——模型编辑器 `provider-model-columns` 为固定 `150px 150px 26px` 列（`model-provider-editor.tsx` 的四个模型字段加删除按钮），窄宽度下会被挤压；设置辅助文字存在 10/11px；审批详情是 `pre` 长路径；运行时选择器主面板 + 两级子菜单有固定宽度。这些只是**源码事实**，按任务书要求不能据此断言真实窗口已经裁切或对比度不合格。
-- 未实施的修改及原因：堆叠布局的触发条件是“出现不足”，必须先用真实窗口测量；在没有实测前改结构属于无证据的视觉变更，本轮不做。UX-14 的两处取值变化也并入同一次实测。
-- 待执行脚本（每项记录窗口逻辑尺寸、系统缩放、截图路径，结论按“通过/不足/需修改”三选一）：
-  1. 最小窗口（应用允许的最小尺寸）+ 常用窗口各一次，逐个检查：模型编辑器四个字段能否输入、标签是否仍可读、删除按钮是否可达；设置侧栏是否出现非必要横向滚动；审批对话框的长路径 `pre` 是否可完整查看与复制；运行时选择器主面板与两级子菜单是否溢出。
-  2. 系统缩放 125% / 150% / 200% 各重复第 1 步。
-  3. 对每个“不足”记录：控件名、当前可用宽度、被裁切或压缩的表现、截图；只有出现不足才按可用宽度切换堆叠布局并给每个字段补独立标签。
-
-**实施记录（2026-09-25 06:29:40）｜状态：五组窗口×缩放组合实测完成，唯一"不足"（模型行字段被压到 44px）已按第 2 条改为堆叠布局并复测通过；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify:narrow-high-dpi-forms`（[verify-narrow-high-dpi-forms.mjs](../../scripts/verify-narrow-high-dpi-forms.mjs)）：五组组合逐一测量 **模型供应商表单 / 设置侧栏 / 运行时选择器（含模型子菜单）/ 审批长路径**，每组记录逻辑视口、`devicePixelRatio`、真实几何与截图。缩放按系统缩放的真实含义模拟：物理窗口不变，渲染器看到的是对应的 CSS 视口与 `devicePixelRatio`（`Emulation.setDeviceMetricsOverride`）。
-- 五组组合（`verify:narrow-high-dpi-forms` 实测）：
-  | 组合 | 逻辑视口 | DPR | 设置内容宽 | 模型行 | 最小字段 | 表单保存/删除按钮 | 页面横向溢出 | 选择器菜单 | 审批框 |
-  | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-  | 最小窗口 100% | 800×600 | 1 | 474 | 堆叠（`425px 26px`） | 425px | 可达 / 可达 | 0 | 在视口内、模型项可达 | 420×480 在视口内、三个动作可达 |
-  | 常用窗口 100% | 1280×840 | 1 | 760 | 一行（`229/164/150/150/26`） | 150px | 可达 / 可达 | 0 | 同上 | 同上 |
-  | 常用窗口 125% | 1280×840 | 1.25 | 760 | 一行 | 150px | 可达 / 可达 | 0 | 同上 | 同上 |
-  | 常用窗口 150% | 1280×840 | 1.5 | 760 | 一行 | 150px | 可达 / 可达 | 0 | 同上 | 同上 |
-  | 最小逻辑窗口 200% | 800×600 | 2 | 474 | 堆叠 | 425px | 可达 / 可达 | 0 | 同上 | 同上 |
-- **实测到的唯一“不足”与修复**：`provider-model-row` 原为 `minmax(0,1.4fr) minmax(0,1fr) 150px 150px 26px` 固定两列 150px，在 800×600（设置内容宽 474px）下两个弹性字段被压到 **62px 与 44px** —— 44px 无法输入模型 ID（修复前该行的 `aria-valuenow` 数字证据：`columns: 62.2188px 44.4375px 150px 150px 26px`）。按第 2 条改为**容器查询**（`.provider-editor` 为容器，≤560px 时）：模型行变 `minmax(0,1fr) 26px`、字段各占一行、共享列名表头隐藏、每个字段显示自己的标签（新增 `provider-model-field-label`，宽布局下 `display:none`，字段包裹层宽布局下 `display:contents` 以保持原网格）；每个输入另加 `aria-label`，两种布局都有可访问名称。复测：堆叠后四字段各 425px、四个标签可见、列名表头隐藏、删除/保存/关闭可达、无横向溢出；宽布局行为与数值不变。
-- **关键按钮可达性**：供应商编辑器的保存/关闭按钮在最小窗口下位于首屏之下，门内按"滚动后可达"判定（`scrollIntoView` 后再命中测试），实测选中后可达；审批框（含长路径 `pre`）在五组组合中都完整位于视口内，三个动作均可达。
-- **长路径**：审批详情的 `pre` 在五组组合中都输出完整路径（含 `very-long-project-name-for-ux15` 等深层目录段）、`overflow-x: auto`（更长的路径可横向滚动而不是被裁掉）、`user-select: auto`（可选中复制）；门内断言路径文本完整、可选中、可滚动。
-- **未调整的项（按"只有出现不足才改"）**：辅助文字实测 `provider-model-field-label` / `provider-model-columns` / `provider-editor-key-note` 均为 11px（源码风险线索提到的 10/11px 属实），在 100% 缩放下与既有密度约定一致，本次**未**改动；本轮没有做对比度测量，因此不宣称符合或违反任何对比度标准（对比度与层级属于 UX-22，已在那里按实测记录）。
-- 仍未覆盖：缩放用 `Emulation.setDeviceMetricsOverride` 模拟，没有真机 125%/150%/200% 显示器；200% 组合用的是应用允许的最小逻辑窗口（800×600），因为窗口无法再小；截图存放在临时数据根（不提交）。
-
-### UX-16｜对话与拓展工作区的完整场景验收
-
-**现状与建议**：已有滚动锚点、上下文详情、Normal/Compact、会话工作区恢复及分栏测试，不应重复登记为缺失功能。本轮没有真实窗口证据，需验证组合场景后只修复实际失败项。
-
-**定位**：[chat-view.tsx](../../packages/app/src/renderer/app-shell/chat-view.tsx)、[assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx)、[chat-scroll-anchor.ts](../../packages/app/src/renderer/chat/chat-scroll-anchor.ts)、[workspace/README.md](../../packages/app/src/renderer/workspace/README.md)、[workspace-persistence.ts](../../packages/app/src/renderer/workspace-persistence.ts)。
-
-- [x] 覆盖流式长回答时向上阅读、返回底部、添加多附件、展开长工具结果、输入多行草稿、双栏拖动/折叠/全屏及返回。
-- [x] 覆盖两个对话切换后的文件标签、未保存草稿、浏览器和目录现场，再覆盖重启恢复；沿用现有连续性专项的 Runtime 验收，不另建重复执行器。
-- [ ] 核对普通/紧凑显示均保留失败、权限拒绝、未验证、部分完成和待用户事项；默认可找到最终成果，不为减少噪声隐藏重要状态。
-- [ ] 验收：阅读位置不被流式内容抢回，输入与底部成果不被遮挡；现场不串会话；真实失败逐项附复现步骤、截图和修复记录，正常场景只记通过，不追加“重设计”任务。
-
-**实施记录（2026-09-25 15:29:59）｜状态：组合场景、双会话现场与进程重启恢复已通过真实窗口；普通/紧凑五类状态矩阵仍待实机，整体保持未勾选**
-
-- `pnpm run verify:conversation-workspace-scenarios` 真实 Electron 复跑 **40 项断言 / 0 失败**。原门已覆盖流式中上移阅读并回到底部、三附件、展开 400 字符工具输出、三行草稿、侧栏拖动/折叠/全屏/返回；新增 A/B 两会话各自创建 TypeScript 标签与未保存草稿、展开 `notes/`、写入不同浏览器 URL，切回 A 读回 A 的现场，并验证 B 的布局没有 A 的草稿或 URL。两个独立会话 id 不同。
-- 复跑 `pnpm run verify:electron-ui-state-continuity` 首先发现“存储路由是设置页、真实入口却未展开”的测量缺口。精确检查后确认启动时自动恢复上次会话调用普通 `switchSession`，无条件把路由推回对话。修复为启动恢复时保留已保存路由；手动切换仍进入对话。`session-actions.test.ts` 13/13 与 Renderer TypeScript 检查通过。修后真实退出并重开 Electron 的门 **通过**：Composer 草稿、两段侧栏折叠、侧栏宽度 249、设置浏览器页、原生窗口几何与审阅导航宽度 286 均恢复；阅读锚点高度/宽度变化后分别为 0 / 0.29 px。
-- **尚未覆盖**：第三条“普通/紧凑两种显示中的失败、权限拒绝、未验证、部分完成和待用户事项”仍只有状态规则测试，真实窗口五类矩阵未跑；因此不可勾选整项。当前测试 Provider 与临时目录属于隔离夹具，不评估真实模型质量。
-
-**实施记录（2026-09-25 09:12:00）｜状态：三处阻塞的两处已定位到具体原因（下一轮的入口条件已明确）；保持未勾选**
-
-- 阻塞 1 定位（夹具 bug，不是产品问题）：文件树每一行是真实按钮 `button.workspace-tree-row.file|directory`，行名 `.workspace-tree-name` 是它的子节点。上一轮的派发写成 `row.closest('button, [role="treeitem"], li, div')`，因为选择器里含 `div`，`closest` 命中的是更近的容器 `.workspace-tree-entry`（div），点击落在一个不可点的父节点上，所以文件标签没打开。下一轮直接 `name.closest('button.workspace-tree-row')?.click()` 即可。
-- 阻塞 2 定位（断言写错，不是产品问题）：侧边栏"新建对话"走的是 `createConversationFromSidebar`，新建的是一个**草稿会话**，按现行契约草稿会话要到首次 run 才取得持久 id；所以 `littlesheep.ui.activeSession` 不会变化是预期行为。下一轮的断言应改看"草稿会话已建立"这一事实（例如会话列表项数/空对话入口），或先在 B 里发一条消息让它落库，再验证不继承与切回恢复。
-- 阻塞 3（浏览器现场）仍未定位：`.workspace-browser-address` 输入框当时没挂载，需要先确认浏览器标签页是否必须由"新建浏览器标签"或空启动器里的"浏览器"入口打开、以及地址栏在未加载页面时是否存在。
-- 本轮没有改动门与产品代码，只把定位结论写进任务书；UX-16 继续保持未勾选。
-
-**实施记录（2026-09-25 08:57:00）｜状态：第 2 条的双会话走查尝试过但未得出结论（记录三处夹具阻塞）；保持未勾选**
-
-- 本轮把双会话现场隔离加进同一道门（同一会话里开文件标签 + 留未保存草稿 + 展开目录 + 浏览器地址 → 新建第二个对话确认不继承 → 切回确认恢复）。**没有完成**，三处阻塞如实记录，均为**夹具观察**而非已确认的产品缺陷：
-  1. 会话 A 的"打开文件标签"没成功：从 `.workspace-tree` 的行名派发点击后 `dirtyTabs` 仍为空、编辑器里的文本仍是审阅表面的内容（20 字符），因此"未保存草稿"没有被建立。下一轮先确认文件树行的真实点击目标（行按钮、双击，还是必须先切到"文件"标签）再测草稿。
-  2. 点侧边栏的"新建对话"（`.sidebar-new-action`）后 `localStorage` 的 `littlesheep.ui.activeSession` 没有变化，因此第二个会话没有建立。下一轮先确认新建对话是先进入草稿会话、还是必须先发出第一条消息才落库，再判断"切换后不继承"这条断言怎么写。
-  3. `.workspace-browser-address` 的输入框在夹具里没有挂载（`browserAddress: null`），"浏览器现场"这一步同样未成立；目录现场只测到一半（展开 `notes/` 后 alpha/beta/gamma 行确实出现）。
-- 这三条是**下一轮的入口条件**，不是产品结论：本轮没有把它们写成缺陷，也没有据此改动任何产品代码。未验证的新增段落已从门里回退，门的源码仍是上一轮通过的状态（30 项断言）；这一行继续保持未勾选。
-
-**实施记录（2026-09-25 07:56:30）｜状态：第 1 条已在真实窗口通过；第 2 条只做了单会话，第 3 条未测；保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:conversation-workspace-scenarios`（[verify-conversation-workspace-scenarios.mjs](../../scripts/verify-conversation-workspace-scenarios.mjs)）：1100×700，**30 项断言全部通过（failures 为空）**，15 个观测步骤、12 张截图（`%TEMP%`）；回答由确定性 Provider 流式产生（每 40 ms / 6 字符），工具结果来自真实 `glob`（夹具工作区 64 个文件）。
-- **第 1 条逐项实测**（"阅读位置不被流式内容抢回，输入与底部成果不被遮挡"）：
-  - 流式阅读：答案到达 637 字符时把读者移到距底 325 px（锚点是那条用户消息，视口内偏移 24 px），继续到 849 字符（+212）后**锚点位移 0 px**；"回到最新"入口在离开底部的整段时间可见（`data-new-content=true`），点按后底边距离 0 px、提示消失；答案结算后底边距离 1 px。
-  - 多行草稿：流式进行中用**真实 Shift+Enter** 键入三行（`第一行草稿\n第二行草稿\n第三行草稿`），离开底部、返回底部、答案结算后都仍是三行且未被发送（用户消息数不变）。门内踩到的坑记在这里：主输入框只拦截普通 Enter，Shift+Enter 必须作为**能产生文本的按键**派发（`keyDown` + `text:'\r'`），否则"三行草稿"会静默变成一行。
-  - 输入与底部成果不被遮挡：每一步都测到 `composerVisible=true`、工作区面板与输入框矩形**不相交**；结算前最后一条消息的底边 500.26 px 仍在输入框顶边之内。
-  - 多附件：一次粘贴三个文件 → 3 张附件卡片；发送后用户消息里三个名字齐全，三个附件（含内容）都进了 Provider 请求（第 2 个请求正文 11,451 字符，按名字或内容标记逐项核对）。
-  - 长工具结果：该回合真实调用了 `glob`，工具行 `搜索，**/*`（`pass`）展开后 `panelOpen=true`、面板高 255 px、**不与输入框相交**；Input 段是 `{"pattern":"**/*","max_results":100}`，Output 段是运行时记录下来的 **400 字符 / 4 行**清单（工具有界化之后才进转录）。
-  - 双栏：打开面板后 面板 310 / 对话 528；向左拖 160 px → 面板 410 / 对话 428（**两侧各变化 100 px**，方向相反）；折叠后输入框仍可见；重新展开恢复 410（不是默认值）且标签仍在；全屏 → 面板 610 / 对话 238；退出全屏恢复 410 / 对话 427，标签与输入框都在。
-- 门本身的两个诚实说明：① 需要审批的操作门会像用户一样点同意（本轮 `approvals=0`，即默认权限模式下这些操作没有被拦）；② 只覆盖一个会话、一个窗口。
-- **仍未做（保持未勾选）**：① 第 2 条要的"两个对话各自的文件标签、未保存草稿、浏览器与目录现场来回切换不串会话"只做了单会话；重启恢复那一半按本项要求沿用现有连续性专项（`pnpm run verify:electron-ui-state-continuity` 已记录草稿、设置路由与工作区宽度跨重启恢复），本轮**没有重跑**它；② 第 3 条（普通/紧凑显示保留失败、权限拒绝、未验证、部分完成、待用户事项）仍只有 `chat/activity-visibility.test.ts` 的单元证据与上一轮的修复记录，真实窗口里的五类状态矩阵未走查。
-
-**实施记录（2026-09-23 00:02:00）｜状态：第三项已修复并回归，其余待实机；保持未勾选**
-
-- 已完成（无窗口可做的部分）：核对“普通/紧凑显示均保留失败、权限拒绝、未验证、部分完成和待用户事项”时发现真实缺口——紧凑模式此前把已完成轮次的**整段 transcript 行与 `ActiveActivityStatus` 一起折叠**，只剩一行固定的“已思考 · N 次工具调用 · N 条消息”，因此工具失败与权限拒绝（Runtime 以 `ok === false` 加原因返回）、失败或中止的准备行、失败的思考行、未通过的验证和失败步骤在紧凑模式下都会消失。现已修复：`chat/activity-visibility.ts` 新增 `transcriptEntryNeedsAttention` / `compactTranscriptEntries`（紧凑模式只折叠无需关注的行）与 `activityAttentionLine`（把未完成、已停止、等待用户、已暂停、失败步骤数、未通过的验证结论合成一行 `role="status"` 提示），`assistant-turn.tsx` 在紧凑模式下渲染这两者，样式使用 UX-14 的 `--feedback-danger-text` 角色。普通模式行为未改动。
-- 验证方式：`chat/activity-visibility.test.ts` 4 个用例（未成功的工具行保留、失败/中止的准备与思考行保留、活动级未完成/停止/等待/暂停各自成句、未验证与失败步骤进入提示而通过的验证不算关注项）；`pnpm exec vitest run packages/app/src/renderer` 105 个文件 / 557 个用例全部通过；`tsc -b` 通过。
-- 待执行脚本（其余三项与验收，需要真实窗口与真实会话）：
-  1. 流式长回答：向上滚动阅读 → 确认阅读位置不被流式内容抢回；回到最底部；添加多附件；展开长工具结果；输入多行草稿；双栏拖动 / 折叠 / 全屏及返回。
-  2. 两个对话各打开文件标签、留下未保存草稿、各自访问浏览器与目录 → 来回切换确认现场不串会话 → 重启应用确认恢复。
-  3. 紧凑模式下分别构造一次失败、一次权限拒绝、一次未验证、一次部分完成与一次等待用户，确认五类状态都仍可读；切回普通模式重复确认。
-  4. 每个真实失败附复现步骤、截图与修复记录；正常场景只记“通过”，不新增“重设计”任务。
-
-### UX-17｜大仓库文件树虚拟化（先建基准，再选实现）
-
-**问题**：文件树展开后**递归挂载全部行**（`workspace-tree-rows.tsx` 是递归实现，仓库内没有任何 virtualizer 引用，也没有 `overscan`/`useVirtualizer` 之类代码）。大目录下的滚动、筛选与切换成本随行数线性增长。OpenCode 的做法是目录按需 list + TanStack virtual 只挂可视行（稳定 28px 行高、overscan 10），这是它在大仓库上最重要的结构性优势。
-
-**定位**：[workspace-tree-rows.tsx](../../packages/app/src/renderer/workspace/workspace-tree-rows.tsx)、[file-navigator.tsx](../../packages/app/src/renderer/workspace/file-navigator.tsx)、`workspace/directory-cache.ts`（现有 128 条 / 5 秒 stale-while-revalidate 缓存）。对标依据与上游 commit 见本文第 7 节。
-
-- [ ] 先建立展开基准：1,000 行与 10,000 行目录下的首帧、滚动流畅度、展开/折叠与筛选耗时，作为改动前证据（没有基准不改实现）。
-- [ ] 再选实现：自实现固定行高虚拟化，或在体积与许可证可接受时引入轻量库；**不得**为一个列表引入完整 Solid 运行时、第二套目录扫描或新的活动页。
-- [ ] 保持键盘导航、展开状态、筛选时保留目录祖先、可访问性与现有持久化语义不变。
-- [ ] 验收：改前/改后成对基准对比；大目录滚动不丢帧、不跳动；键盘与筛选行为逐项不变；小目录不因虚拟化变慢。
-
-**实施记录（2026-09-24 21:52:00）｜状态：未开始（2026-09-24 从对标记录折入）**
-
-- 折入来源：2026-08-13 的 OpenCode 对标记录把"大规模文件树虚拟化"列为待办，但当时既未进任务书也未排期；按用户 2026-09-24 的要求折入本任务书，成为可独立排期的 UX 项。
-- 与冷启动专项的边界：[桌面冷启动基线](../reference/cold-start-baseline/README.md) 的 CS-08 证明的是"右侧进入即可预览/操作"（目录行与预览可见时间），**不是**大目录下的行级渲染成本；两者不互相替代，也不重复排期。
-
-**实施记录（2026-09-25 02:20:00）｜状态：1,000/10,000 行基准已完成，并据数据判定"现在不做虚拟化"；把瓶颈改判为 320 条上限的"可达性"**
-
-- 新增真实窗口基准 `pnpm run verify:workspace-large-directory`（`scripts/verify-workspace-large-directory.mjs`，`--rows=1000,10000`，1280×760，隔离数据根；每个目录造 N 个文件 + 一个排最前的 `aaa-first.txt` 与一个排最后的 `zzz-beyond-cap.txt`）。
-- **先说清产品当前的行为**（它不是假设，而是这次基准测出来的前提）：Main 的 `listWorkspaceDirectory` 读整个目录、排序后只保留 `MAX_WORKSPACE_DIR_ENTRIES = 320` 条再返回（`truncated: true`，界面显示"列表已截断"）。因此"10,000 行目录的渲染成本"在当前架构里被上限封顶。
-- 实测数字：
-
-| 项 | 1,000 个条目 | 10,000 个条目 |
-| --- | ---: | ---: |
-| Main 列表往返（3 次） | 24 / 48 / 37 ms | 65 / 75 / 78 ms |
-| 返回给 Renderer 的条目 | 320（truncated） | 320（truncated） |
-| 首个目录行 | 48 ms | 88 ms |
-| 行渲染稳定 | 76 ms（+320 行） | 115 ms（+320 行） |
-| 文档 DOM 节点数 | 2,761 | 5,002（两个大目录同时展开） |
-| 滚动帧间隔（`.workspace-tree`，30 帧） | 平均 5.80 ms，p95 6.2，最差 6.3，**0 个长帧** | 平均 5.71 ms，p95 6.1，最差 6.2，**0 个长帧** |
-| 筛选"排最前的名字" | 命中，34 ms | 命中，32 ms |
-| 筛选"被上限挡掉的名字" | **未命中**（33 ms） | **未命中**（33 ms） |
-
-- 另做了一次**合成**测量（明确标注为探测器、不是产品路径）：把真实行节点克隆进同 class 的离屏容器并强制布局，得到"若取消上限"的 DOM/布局下界——320 行 2 ms 创建 + 7 ms 布局；2,000 行 12 + 37.1 ms；10,000 行 70 + 209.7 ms（不含 React 自身工作量）。
-- **决策（本项要求"先出基准、再决定自实现或引库"）**：**现在不做虚拟化，也不引库**。理由是产品已经用 320 条上限把渲染成本封顶：首行 ≤ 96 ms、稳定 ≤ 131 ms、滚动零长帧，而合成下界显示即使取消上限、10,000 行的纯布局也只有约 280 ms——为当前不存在的路径引入依赖或自实现窗口化，成本高于收益。
-- **瓶颈重判与后续选项（记录，不在本轮实施）**：真正暴露的问题是 **320 条上限的可达性**，不是绘制成本——排在前 320 之外的条目既不出现在树里，**也无法被筛选找到**（实测 `zzz-beyond-cap.txt` 在两个目录里都搜不到，因为筛选是在已被 Main 截断的列表上做的）。可选后续：(a) 让筛选成为服务端查询（把过滤条件下推到 Main、再切片），保住上限；(b) 提高上限并同时引入窗口化——合成数据显示阈值大约在 2,000 行（纯布局 49 ms），超过它才值得为窗口化付出复杂度。两者都属产品取舍，需另行评审。
-- 仍未覆盖：真实用户规模下的**筛选逐键延迟**（本项只测了单次输入后的稳定时间）、键盘导航在 320 行上的走查、以及上限被调整后的回归；这些随 (a)/(b) 的取舍一起排期。
-
-### UX-18｜审阅侧栏独立宽度
-
-**问题**：审阅导航已接入工作区导航的共享折叠状态，Diff 标题行提供单列/双列切换（`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY`，默认双列），但**审阅侧栏宽度仍沿用工作区导航状态**：用户无法为大 Diff 单独加宽审阅面板，加宽审阅必然同时改掉文件导航宽度。
-
-**定位**：[review.tsx](../../packages/app/src/renderer/workspace/review.tsx)、[app-shell/preferences.ts](../../packages/app/src/renderer/app-shell/preferences.ts) 的 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY`、[workspace/README.md](../../packages/app/src/renderer/workspace/README.md)、[ui-interaction-guidelines.md](../principles/ui-interaction-guidelines.md)（窗口级偏好与对话级现场的边界）。
-
-- [x] 为审阅侧栏增加独立宽度偏好：持久化、有上下限、与文件导航宽度互不覆盖。
-- [x] 保持单列/双列持久化与共享折叠状态不变；不重新引入第二套目录扫描或活动页面。
-- [x] 验收：拖宽审阅侧栏后文件导航宽度不变；重开应用后宽度恢复；窄窗口下不出现横向滚动或不可达按钮；`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变。
-
-**实施记录（2026-09-24 21:52:00）｜状态：未开始（2026-09-24 从对标记录折入）**
-
-- 折入来源：同 UX-17；对标记录原写"仍可后续补审阅侧栏独立宽度"。
-- 现状锚点：`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 存在于 `app-shell/preferences.ts`，`review.tsx` 默认双列（`true`）。
-
-**实施记录（2026-09-24 22:52:40）｜状态：实现完成，持久化与接线有回归；真实窗口验收未做，保持未勾选**
-
-- 实现范围：会话现场新增 `reviewNavigatorWidth`，与 `fileNavigatorWidth` **共用同一组上下限**（`WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN/MAX` = 160/520，默认都是 214）但**不共用取值**。`workspace-persistence.ts` 负责 hydrate/serialize，旧快照缺该字段时回落到默认值而不是继承文件导航宽度；`use-workspace-session-layouts.ts` 暴露 `workspaceReviewNavigatorWidth` 与 setter；`panel.tsx` 把审阅标签接到审阅宽度与审阅写回回调（`fileNavigatorWidth={reviewNavigatorWidth}` / `onFileNavigatorWidthChange={onReviewNavigatorWidthChange}`），侧边共享的文件导航继续用 `fileNavigatorWidth`；Main 侧 `workspace-layout-index.ts` 在恢复镜像里同样 clamp 并接受该字段，旧镜像缺字段时回落默认值。审阅折叠状态按第 2 条要求继续与文件导航共用（本轮只分离宽度）。
-- 验证方式：`workspace-persistence.test.ts` 新增"审阅列独立于文件导航"用例（旧快照给 214、`900→520`、`40→160`），并把双会话往返断言扩成两组宽度各自保留（`246/302`、`318/178`）；`workspace-layout-index.test.ts` 断言 `331.2 → 331` 且跨 `WorkspaceLayoutIndex` 重建后读回；`review-layout-unification.test.ts` 新增接线用例（审阅拿审阅宽度与审阅写回、共享导航仍用文件宽度、两处不交叉）。相关 4 个测试文件 35 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
-- 未覆盖项：真实窗口里的拖拽手感、窄窗口下不出现横向滚动、`WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 行为不变，这三条仍需实机验收（第 3 条复选框保持未勾选）。
-
-**实施记录（2026-09-25 05:36:40）｜状态：三条验收已在真实窗口跑通，并在过程中发现并修掉“审阅导航盖住 Diff 表面与其标题按钮”的真实布局缺陷；三项勾选**
-
-- 新增真实窗口门 `pnpm run verify:review-navigator-width`（[verify-review-navigator-width.mjs](../../scripts/verify-review-navigator-width.mjs)）：真实 Git 工作区（1 个已改文件 + 1 个未跟踪文件）、真实指针拖动与键盘、真实重启（走应用自己的 quit 路径，避免 SIGKILL 丢掉未落盘的偏好）。
-- 实测（1280×840 全屏面板、800×600 应用最小窗口）：
-  - **宽度互不覆盖**：先在文件标签把文件导航拖到 250，再切到审阅把审阅导航拖宽 120（214 → 334）；切回文件标签，文件导航仍是 250（`aria-valuenow` 与渲染宽度都未变）；会话现场里 `fileNavigatorWidth: 250`、`reviewNavigatorWidth: 334` 各存各的。
-  - **重启恢复**：退出应用重开后，审阅标签渲染 334、文件标签渲染 250，两者仍互不覆盖；`workspaceReviewSideBySide` 偏好也按设置值恢复。
-  - **共享折叠不变**：在审阅折叠后切到文件标签，普通目录树同样是折叠态（同一状态）；重新展开后审阅导航回到 334、文件导航仍是 250（折叠与重开不改写宽度）。
-  - **单列/双列偏好不变**：默认双列；切换后 `littlesheep.ui.workspaceReviewSideBySide` 立即写为 `false`，切回写回 `true`，两次切换都不动任何宽度。
-  - **无第二套目录扫描**：审阅标签空闲 2.5 秒期间页面探针记录到 0 次 `/workspace/list`（只有 `/workspace/review` 读取），折叠/切换也没有触发目录扫描。
-  - **窄窗口（800×600，面板 296）**：文档与面板的横向溢出都是 0；审阅导航由现场值 334 被夹到 183（`aria-valuemin/max` 同为 183 一侧），Diff 表面仍保留 ≥96px；审阅导航拖拽条、Diff 标题行的单列/双列按钮、刷新与筛选都在视口内且 `elementFromPoint` 命中自身（可达）；把窗口放大回 1280 并恢复全屏面板后，审阅导航重新渲染 334 —— 窄窗口的夹取没有写回偏好。
-- **顺带修掉的真实缺陷（本门实机发现）**：审阅标签的导航此前是 `.workspace-review` 的直接子元素，而 `.workspace-files-navigator` 只有 `position: absolute`（这是给 `.workspace-shared-file-navigator` 这个 flex 占位项内部的普通目录导航准备的），于是它被画出 flex 行、盖在整个 Diff 表面上：实测 Diff 标题行的“切换为单列/双列差异”和“在文件工作台中打开”两个按钮，与审阅导航自己的“刷新 Git 更改”落在**同一个矩形**（1280 宽下面板 359 时同为 `x=1211,y=88,25×25`），指针点不到（只有键盘/程序化点击有效）；Diff 代码区右侧也被更改树压住。修法：`04-workspace.css` 让 `.workspace-files > .workspace-files-navigator` 回到行内（`position: relative` + `flex: 0 0 var(--workspace-files-navigator-width)`），Diff 表面因此按导航宽度让位；折叠时按共享外壳的既有规则收缩到折叠轨宽度（`flex-basis: var(--workspace-files-control-rail-width)` + 负 `margin-left`），复用 `.workspace-files:has(...)` 的既有 leading-row 预留规则。回归由本门的“Diff 表面在导航左侧结束”“Diff 标题按钮可达”两条断言守住（修前两条均为假）。
-- 仍未覆盖：真实拖动只覆盖指针路径（键盘方向键/Home/End 已有单元覆盖，未在本门逐键走查）；窄窗口只测应用最小尺寸 800×600，125%/150%/200% 系统缩放属于 UX-15；本门不衡量 Diff 代码在窄窗口下的可读行宽（只保证 ≥96px 与不横向滚动），可读性属于 UX-22。
-
-### UX-19｜对话区阅读位置和上下定位
-
-**问题与边界**：用户反馈上下滚动定位不顺手。源码已有底部吸附阈值、历史加载后的高度修复和 ResizeObserver，不能描述为“没有滚动锚点”。但当前切换会话会直接跳到底部；视口高度变化时，`resolveChatResizeScrollTop` 即使阅读者已离开底部，仍按旧底部距离移动 `scrollTop`；也没有明确的“回到底部”控件。哪一种对应用户体验，需要实机定位。
-
-**定位**：[chat-view.tsx](../../packages/app/src/renderer/app-shell/chat-view.tsx)、[chat-scroll-anchor.ts](../../packages/app/src/renderer/chat/chat-scroll-anchor.ts)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[composer-view.tsx](../../packages/app/src/renderer/app-shell/composer-view.tsx)。与 UX-16 共用长回答验收，不重复搭建滚动系统。
-
-- [ ] 隔离数据根下录制：短/长会话从顶部、中部、底部开始，流式增量、加载更早消息、展开工具详情、输入框增高、导航栏拖动/折叠、窗口缩放、切换会话及返回；标记每次非用户触发的视口位移。
-- [ ] 对已离开底部的阅读者采用可见消息锚点或等效稳定策略；仅在读者仍贴近底部时跟随新输出。会话返回位置符合会话现场预期，并提供可达的回到底部入口及新消息提示。
-- [ ] 验收：上述场景中文字不跳离当前阅读段；历史插入、底部跟随与返回底部各自稳定；普通/紧凑模式、窄窗口与高 DPI 均可用。修复前后记录 `scrollTop`、可见消息键及截图/视频。
-
-**状态**：未开始；源码可确认当前控制分支，实际误定位仍待 Electron 复现。
-
-**实施记录（2026-09-25 00:26:40）｜状态：已离开底部的锚点策略与回到底部入口实现完成并有单元/接线证据；真实窗口位移测量未做，保持未勾选**
-
-- 修掉的分支（本轮唯一改动的判定逻辑）：`resolveChatResizeScrollTop` 此前只要"宽度变了、或高度变了"就对**任何**读者调用 `resolveBottomAnchoredScrollTop`。对已离开底部的读者，那等于把 `scrollTop` 移动 `Δ(scrollHeight - clientHeight)`——视口每变多少像素，读者就被推走多少像素，正是"文字跳离当前阅读段"的算术来源（输入框增高、窗口缩放、分栏拖动都命中）。现在该函数**只回答贴底情形**（底边确实是它的锚点）；离开底部的修正改由消息锚点给出。
-- 新增的锚点策略（第 2 条要求）：`chat-scroll-anchor.ts` 新增纯函数 `selectChatVisibleAnchor`（视口内第一条仍可见的 `data-message-key` 及其视口内位置）与 `resolveAnchoredScrollTop`（按该消息的新位置回推 `scrollTop`，锚点已不在时返回 `null` 表示"不猜、不改动"），DOM 读取隔离在 `readChatAnchorProbes`。`chat/use-chat-scroll-controller.ts` 在 resize burst 的第一个通知里同时记录几何与锚点：贴底按底边修复，否则把正在读的消息放回原处。
-- 滚动状态下沉：滚动位置、底部吸附、锚点与提示状态从 `app-shell/chat-view.tsx` 移到 `chat/use-chat-scroll-controller.ts`——视图从 **299 行降到 112 行**，不再接近 300 行软上限；`chat-scroll-anchor.ts` 158 行、新 hook 312 行（已登记进模块拆分地图的软上限审查队列）。
-- 回到底部入口与新消息提示（第 2 条后半）：`readingAway` 由实测位置得出（`onScroll` 与每次消息更新后重算），新输出到达而读者不在底部时只置 `hasNewContent` 并保持阅读位置不动；此时渲染 `.chat-jump-to-latest`（文案"回到最新"／"有新内容 · 回到最新"），点击后重新贴底并清空提示。按钮浮在**实测的** `--composer-overlay-height` 之上，不遮挡输入栏，也不占用消息流的高度。"有新内容"用**内容签名**（消息数 + 末条 id + 末条正文长度）判定而非消息条数：流式输出只增长当前回合而不新增消息，那种增长正是离开底部的读者需要知道的。
-- 一处容易写错并已用测试钉住的接线：会话切换的 layout effect 只能依赖 `sessionKey`。把消息列表（或它的长度）加进依赖，会让**每一条新消息**都重新贴底并清空提示，锚点策略随即失效——`chat-scroll-controller-wiring.test.ts` 专门断言该依赖里没有 `messageCount`。
-- 验证方式：`chat-scroll-anchor.test.ts` 扩到 14 例——离开底部时高度变化不再产生位移（原断言 460 改为 `null`，并把旧行为写成注释说明它为什么是缺陷）、贴底读者仍按底边修复、锚点选择/漂移修正/锚点消失拒绝猜测/不产生负偏移；新增 `chat-scroll-controller-wiring.test.ts` 5 例，从源码层固定"滚动所有权在 hook 而非视图""锚点分支与贴底分支并存""按钮只在 `readingAway` 时渲染且带新内容标记""只有读者自己的位置能清除两个提示标志""会话切换不因新消息重新贴底"，并断言 CSS 定位契约。`chat-layout-stability.test.ts` 的两条接线断言同步改指 hook（原意图不变）。`vitest run packages/app/src/renderer`：113 个文件 619 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
-- 未覆盖项：**第 1、3 条复选框保持未勾选**——真实窗口里的位移测量（短/长会话的顶部/中部/底部起点，流式增量、加载更早消息、展开工具详情、输入框增高、分栏拖动、窗口缩放、切换会话与返回）尚未录制，因此"修复前后 `scrollTop`、可见消息键与截图/视频"没有数据；切换会话仍直接跳到底部（会话现场是否应恢复上次阅读位置属产品判断，未在无实机证据时改动）；普通/紧凑模式、窄窗口与高 DPI 下的按钮可达性同样待实机确认。
-
-**实施记录（2026-09-25 00:42:54）｜状态：真实 Electron 窗口已测到"修复后"的数字；修复前基线与其余场景仍未录制，保持未勾选**
-
-- 真实窗口证据（`scripts/verify-electron-ui-state-continuity.mjs` 的 `verifyChatReadingPosition`，隔离数据根 + 确定性验收 Provider，窗口逻辑尺寸 1100×700）：在 `.messages-content` 注入一个 2400 px、带 `data-message-key` 的探针，把读者移到"视口顶部正好落在探针上 520.25 px 处"，然后分别改变视口高度与宽度。**测得的数字**：视口高度变化后锚点在屏幕上的位置 `-520.25 → -520.25`（位移 **0.00 px**）；宽度重排（对话区 620 px 固定宽）后 `-520.25 → -519.96`（位移 **0.29 px**）；同一过程中"离底部的距离"从 **1547.67 变成 1667.67（+120 = 视口收缩量）**——即旧实现用来"保持"的那个量确实变了，而读者真正在读的那条消息没有动。点按"回到最新"后 `gapAfterReturn = -0.33`（浮点残差）且按钮消失；同样的视口变化下，贴底读者的底边距离始终为 `-0.33`。修复前基线与对照见下一条记录。
-- 这组数字修正了本项最初的分层结论：只看底边距离的旧验收脚本（原 `verifyChatBottomAnchor`，断言 `beforeGap ≈ afterGap`）**在修复后必然失败、在缺陷上必然通过**，已改为上述双读者契约（锚点位移 + 底边距离必须改变 + 返回底部 + 贴底保持），失败信息直接带出全部测量值。
-- 实现上被真实窗口推翻过一次并已修正：宽度重排在 ResizeObserver 通知之后仍在继续（容器尺寸不再变化、内容高度还在变），只测一次的锚点修复会留下约 40 px 的尾部跳动（实测 `-479.96`）。改为复用既有的有界 display-settle 逐帧收敛后降到 0.29 px。另一处只有真机才暴露的缺陷：逐帧修复会在"回到最新"之后继续套用旧锚点，把读者拉回去（实测 `gapAfterReturn = 1667.67`、按钮不消失）；现在 hook 记住自己写过的 `scrollTop`，`onScroll` 一旦发现滚动不是自己写的就立刻取消修复帧，点按返回底部同样先取消。
-- 顺带修掉的两个验收夹具缺陷（都不是产品行为，但会挡住这段验收）：`verifyLeanBoundedExecution` 复用了上一个夹具的会话，而验收 Provider 只有在转写里还没有工具结果时才会回工具调用，于是它什么工具活动都观察不到——现在先点"新对话"再发提示；文件导航宽度夹具不再假设被拖动的一定是文件导航宽度，而是记录拖动实际命中的那一侧（UX-18 之后审阅列有自己的持久化宽度，实测 `{width: 286, kind: 'review'}`），恢复断言读同一个字段。
-- 仍未覆盖（第 1、3 条保持未勾选）：场景只覆盖了视口高度变化与宽度重排两种，短/长会话的顶部/中部/底部起点、流式增量、加载更早消息、展开工具详情、切换会话与返回、截图/视频仍未采集；普通/紧凑模式、窄窗口与高 DPI 下的按钮可达性未测。
-
-**实施记录（2026-09-25 00:47:00）｜状态：修复前后对照已在同一夹具上录得；其余场景仍未录制，复选框保持未勾选**
-
-- 修复前基线（把 `packages/app/src/renderer` 回到 `16aa098` 后用**同一**验收脚本与同一夹具重跑一次；脚本失败信息自带全部测量值）：视口高度变化后锚点位置 `-520.25 → -640.25`，位移 **-120.00 px**——正好等于视口收缩量，读者被推走的距离与视口变化量逐像素相等，这就是"文字跳离当前阅读段"的直接来源；同一过程中的底边距离 `1547.67 → 1547.67`（**被完整保持**，即旧实现优先保护的量）；宽度重排 `-520.25 → -599.96`（**-79.71 px**）。修复前的运行界面没有"回到最新"入口（`jumpButtonRendered: false`），贴底读者的底边距离为 `-0.33`。
-- 修复后（`2afcd5e`，同一夹具）：视口高度变化 `-520.25 → -520.25`（**0.00 px**），宽度重排 `-519.96`（**0.29 px**），底边距离 `1547.67 → 1667.67`（+120，按要求改变），"回到最新"点按后 `gapAfterReturn = -0.33` 且按钮消失，贴底读者仍为 `-0.33`。
-- 对照结论：本次改动交换的正是"保护哪个量"——旧实现保护离底部的距离（读者位移 = 视口变化量），新实现保护读者正在读的那条消息（位移 0.00–0.29 px）。两张数字都来自真实 Electron 窗口，可直接复核：`git checkout 16aa098 -- packages/app/src/renderer` 后运行 `pnpm run verify:electron-ui-state-continuity`，脚本会在失败信息里打印上表第一行。
-- 仍未覆盖（第 1、3 条保持未勾选）：场景只覆盖了视口高度变化与宽度重排两种，短/长会话的顶部/中部/底部起点、流式增量、加载更早消息、展开工具详情、切换会话与返回、截图/视频仍未采集；普通/紧凑模式、窄窗口与高 DPI 下的按钮可达性未测。
-
-**实施记录（2026-09-25 01:01:08）｜状态：流式场景与"新内容提示"已实机验收，并抓到一处真实缺陷；其余场景仍未录制，保持未勾选**
-
-- 新增真实窗口夹具 `scripts/verify-chat-streaming-rendering.mjs`（`pnpm run verify:chat-streaming-rendering`，隔离数据根 + 确定性验收 Provider 按 24 字符 / 35 ms 分块流式输出一份固定 Markdown 文档，窗口 1024×620）：读者在**输出中途**向上滚动 420 px，然后在答案剩余部分到达期间连续采样。测得的数字：锚点位移 **0 px**（同一 `data-message-key` 全程在视口内同一位置）、离底部距离稳定在 420 px、`.chat-jump-to-latest` 出现且 `data-new-content="true"`（新内容提示在真实窗口里生效）、点按后底边距离回到 **1 px** 且按钮消失。截图落在 `%TEMP%\littlesheep-chat-rendering\screenshots\`（`streaming-code.png`、`settled.png`、`reading-away.png`）。
-- **该夹具抓到一处此前未记录的缺陷并已修复**：新会话的第一次 run 里，草稿会话取得持久 id 时 `currentSession` 从空变成真实 id，滚动 hook 的"切换会话就贴底"逻辑因此误判为切换，把已经向上滚动的读者拽回底部（实测结算时 `scrollTop` 780、`gap` 1、提示消失）。现在只有"会话键变化且不是草稿转正"才重新贴底；加载更早消息虽然会改变首条消息 id，但会话未变，同样不再触发贴底。回归断言写在 `chat-scroll-controller-wiring.test.ts`。
-- 仍未覆盖（第 1、3 条保持未勾选）：场景只覆盖了视口高度变化、宽度重排与"输出中途向上滚动"；短/长会话的顶部/中部/底部起点、加载更早消息、展开工具详情、切换会话与返回、录屏仍未采集；普通/紧凑模式、窄窗口与高 DPI 下的按钮可达性未测。
-
-**实施记录（2026-09-25 01:55:00）｜状态：读者自己触发的三个场景（输入框增高、展开工具详情、切换会话返回）已实机测量；加载更早消息与录屏仍未做，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:chat-reading-scenarios`（`scripts/verify-chat-reading-scenarios.mjs`，窗口 1024×640，隔离数据根 + 确定性 Provider，会话里先跑出两段长回答与一次工具执行）。实测数字（"锚点"= 视口内第一条 `data-message-key` 的屏幕位置）：
-  - **输入框增高**：把输入栏从 1 行写成 6 行后 `--composer-overlay-height` 从 **116 → 225 px**。`scrollTop` 保持 1919.33、锚点 key 不变、锚点位移 **0.00 px**（-258.86 → -258.86），离底距离 399.67 → 508.67（正好等于视口被压缩的量）——即读者没有被拉下去，被压缩的只是可视区。
-  - **展开工具详情**：把一条可见的工具行（实测 `aria-label="搜索，**/*"`，`aria-expanded` 由 false 变 true）在阅读位置展开后，`scrollTop` 保持 1196.67、锚点 key 不变、锚点位移 **0.00 px**（-1094.87 → -1094.87），离底距离 1122.33 → 1287.33（新增高度全部在读者下方）。
-  - **切换会话与返回（记录，不作断言）**：在长会话里停在离底 400 px 处 → 切到另一会话：`scrollTop 14 / gap 0`（进入即最新消息）→ 切回原会话：`scrollTop 2418 / gap 0`，即**返回会话落在最新消息而不是上次阅读位置**。这是当前的产品行为，与"会话返回位置符合会话现场预期"一致（预期=最新）；是否改为恢复上次位置属产品判断，本轮不改。
-- 仍未覆盖（第 1、3 条保持未勾选）：**加载更早消息**仍未实测——会话历史页大小是 120 条，要出现"加载更早内容"需要先造出超过一页的会话（本轮的夹具只造了 6 条），因此没有数据；顶部/中部/底部三种起始位置的系统走查、录屏与普通/紧凑模式、窄窗口、高 DPI 仍未做。
-
-**实施记录（2026-09-25 02:35:00）｜状态：加载更早消息已实机测量，读者所读的那条消息在整页前插后仍在原位；顶部/中部/底部系统走查与录屏仍未做，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:chat-history-paging`（`scripts/verify-chat-history-paging.mjs`）。历史页大小是 120 条，所以夹具把 150 条消息**直接种进会话存储**（`<data-root>/sessions/<id>.jsonl` 的 metadata 头 + 每行一条消息，与应用自身追加的格式相同）并写好 `sessions.json`，而不是驱动 61 轮真实 run 去凑页数。另一个必须注意的点：应用启动时要解析 model ref，`providers: []` 会让 readiness 变成 `failed`，而历史加载会等执行就绪——所以夹具仍配一个（不会用到的）验收 Provider。
-- 实测（1024×640，150 条种子消息）：首屏只加载**一页 120 条**，`GET /sessions/…/messages?limit=120` 用时 **6 ms**，出现"加载更早内容"；把读者移到最顶部（`scrollTop 0`、离底 9876 px），此时视口内第一条是 `history-message-0030`、位于视口顶下 **68.00 px**。
-- 点按"加载更早内容"：请求带上游标 `?limit=120&before=history-message-0030`（**3 ms**），渲染消息数 120 → **150**，按钮消失，`scrollTop` 0 → 2526（= 前插的高度），离底距离 **9876 → 9876（分毫未变）**；而**读者所读的那条 `history-message-0030` 仍在 68.63 px（位移 0.63 px）**，横向溢出为 0。
-- 一处测量方法的更正（写进夹具注释）：最初用"视口内第一条可见消息的 key"做锚点，前插后它从 `0030` 变成 `0029`（新页末尾那条在该位置刚好露出一部分），于是报出 69 px 的"位移"——读者实际什么都没感觉到。改为**按 key 跟踪同一条消息的位置**后为 0.63 px。这条也说明：验收锚点必须按身份追踪，不能用"当前第一条可见"这种会随内容插入而合法变化的量。
-- 仍未覆盖（第 1、3 条保持未勾选）：顶部/中部/底部三种起始位置的**系统**走查（本项只测了顶部的强场景）、录屏、普通/紧凑模式、窄窗口与高 DPI 下的分页表现未做。
-
-**实施记录（2026-09-25 15:29:59）｜状态：会话切回时的现场位移已在真实窗口复测；预期由用户决定，保持未勾选**
-
-- `pnpm run verify:chat-reading-scenarios` 实测在距底部约 **400 px** 处切离会话，再切回后滚动容器贴近底部（gap `400 → 0.67 px`）；同一消息锚点从屏幕 `-329.86 → -729.20 px`，偏移约 **−399.34 px**。这只证明当前行为是“切回最新消息”，不证明它是期望行为。
-- 本轮已向用户询问“切回对话时恢复离开时的阅读位置，还是继续跳到最新消息”；等待答复期间不改会话切换滚动行为。任务书更早记录中把“最新消息”写为预期属于未经确认的假设，不作为本项验收结论。加载更早消息、系统化顶部/中部/底部走查与录屏仍未覆盖。
-
-### UX-20｜流式文字外观变化与内容缺失
-
-**问题与边界**：用户报告部分字色突然变化、部分文字像被吞掉。`Markdown.tsx` 对正在输出的尾部反复解析，完成后切换成整篇渲染；CSS 对标题、链接、引用、行内代码设有不同颜色，代码块还会从纯文本 fallback 切到按需加载的高亮组件。这些能解释潜在的视觉变化，**尚未证明就是用户看到的那一处**。另一个已确认的状态分支是 `run-result-reducer.ts` 在 `status !== 'ok'` 时清空流式回答预览；底层 SSE 解析对无效 JSON 数据行直接跳过，且 `parseStream` 目前以流结束作为完成条件，需核对异常截断是否被识别。不得把未校验的预览直接当作 Agent 最终回复保留下来。
-
-**定位**：[Markdown.tsx](../../packages/app/src/renderer/Markdown.tsx)、[streaming-markdown.ts](../../packages/app/src/renderer/streaming-markdown.ts)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[assistant-delta-buffer.ts](../../packages/app/src/renderer/chat/assistant-delta-buffer.ts)、[run-result-reducer.ts](../../packages/app/src/renderer/chat/run-result-reducer.ts)、[client.ts](../../packages/llm/src/client.ts)、[api/run.ts](../../packages/app/src/renderer/api/run.ts)。
-
-- [ ] 用含标题、列表、链接、引用、代码围栏、中文标点与长段落的确定性分块输入，逐步比对 Provider 接收文本、SSE delta/reset/replace、前端缓冲、最终 settlement 与 DOM `textContent`；覆盖断流、畸形帧、无最终结果和非成功 run，先确定文字在哪一层消失。
-- [ ] 修复实际丢失层；在流式与完成态之间保持文字完整及语义样式稳定。必要的链接/代码差异应有一致的视觉规范，避免仅因组件切换闪烁。未授权工具标记、无效模型回复和未结算文案继续按 Runtime 规则撤回，以明确状态说明原因。
-- [ ] 验收：成功 run 的最终 DOM/复制文本与持久化 settlement 一致；瞬时断线恢复无重复或缺字；失败 run 不伪装成成功回答，且已完成步骤、失败原因、是否可重试清楚可见；普通/紧凑模式及重开会话一致。真实窗口录屏确认变色场景，自动测试覆盖定位到的具体丢字边界。
-
-**状态**：未开始；上述实现分支是源码事实，用户观察到的具体根因待复现。
-
-**实施记录（2026-09-24 23:13:05）｜状态：分层定位完成并修掉一条已确认的整段丢失路径；DOM 取证与真实窗口录屏未做，保持未勾选**
-
-- 逐层结论（同一份确定性样本，含标题、列表、链接、引用、代码围栏、中文标点与长段落）：
-  - **SSE 解析层（`renderer/api/common.ts` 的 `parseSseFrame`）是本次唯一确认的"整段丢失"路径**。该函数此前对 `data:` 行直接 `JSON.parse`，解析失败会抛出并中断整条流的读取——一个畸形帧不只丢自己，还会带走它之后的全部 delta **和 `result` 帧**，于是"文字被吞掉"与"run 没有结算"同时出现。现已改为返回 `null` 跳过该帧（与 Provider 侧解析同构），失败关闭的责任仍留在 `consumeRunStream`：整条流始终没有可解析的 `result` 时照旧拒绝。**注意**：这条只解释了"只要有坏帧，损失被放大到整条流"，不等于已复现用户看到的那一次，触发帧的来源仍需真实窗口取证。
-  - 缓冲层（`assistant-delta-buffer.ts`）按显示帧合并增量，`clear()` 只丢弃**尚未提交显示**的尾部；已显示的正文不会因合并被回车覆盖。
-  - 结算层（`run-result-reducer.ts`）在 `status !== 'ok'` 时把该回合正文置空——撤回未验证预览是既有的 Runtime 规则，不是丢字；成功 run 用 settlement 文案覆盖预览（见 `run-result-reducer.ts` 第 57 行的 `text: result.status === 'ok' ? settledReply : ''`）。
-  - **外观层（变色）仍未取证**：`Markdown.tsx` 对正在输出的尾部反复解析、完成后切整篇渲染，代码块从纯文本 fallback 切到按需加载的高亮组件；这三处都能产生视觉变化，但必须用真实窗口录屏确认是哪一处，本轮不做样式改动。
-- 验证方式：新增 [stream-text-integrity.test.ts](../../packages/app/src/renderer/chat/stream-text-integrity.test.ts) 9 例，驱动**真实**的 `consumeRunStream` + `createAssistantDeltaBuffer` + `reduceCompletedRunMessages`，覆盖：正常流逐字节一致（delta 拼接 = 显示文本 = settlement）；帧被切成三次读取仍能重组；畸形帧被跳过后邻居正文与结算完好；**"结果帧本身解析不了"时仍然 fail closed**（拒绝并以 `ended without result` 结束，不把坏帧当成静默成功）；传输重试的 `replace ''` 语义（不重复，但读者会看到已显示文字先消失再重来）；无 result 的断流同样拒绝；`aborted`/`failed` 撤回预览；settlement 覆盖预览；buffer 只在 replace 时丢弃待显示尾部。`vitest run` 相关 3 个文件 20 例通过。
-- 未覆盖项：DOM `textContent` 比对、复制文本一致性与变色场景录屏都需要真实 Electron 窗口；`parseStream` 仍以"流结束"作为完成条件，**异常截断本身不被识别**（目前只能通过"没有 result"间接发现）；传输重试清空可见回答时仍未说明原因，应与 UX-21 的"第 n 次重试 / 最多 5 次"进度一起呈现。第 1~3 条复选框因此保持未勾选。
-
-**实施记录（2026-09-25 01:01:08）｜状态：真实窗口的 DOM 与结算一致、取色两次采样稳定；变色仍未被复现，保持未勾选**
-
-- 真实窗口夹具（`scripts/verify-chat-streaming-rendering.mjs`）：验收 Provider 按 24 字符 / 35 ms 分块输出一份固定 Markdown（标题、列表、链接、引用、行内代码、`ts` 代码围栏、中文标点与长段落，含 `FIXTURE-START-4c1d` / `FIXTURE-END-7f3a` 两个哨兵），窗口 1024×620。测得：**18 次采样、0 次文字回退**（阈值 16 字符，用于容忍 `` `x` `` → `x` 这类语法收敛）；结算后 DOM 文本 1014 字符，与夹具的纯文本投影（1145 字符 Markdown → 投影 1004 字符）在空白归一后**完全相等**，与持久化结算文本的投影同样完全相等；两个哨兵在 DOM 与持久化文本中都在；持久化文本与夹具**逐字节相同**。这回答了第 1 条要的"最终 DOM/复制文本与持久化 settlement 一致"。
-- **变色取证（第 2 条的"组件切换闪烁"）**：在代码围栏刚出现时（流式开始 2323 ms）与结算后各取一次计算样式，标题/链接/行内代码/引用/代码块/代码 token 六项**全部 stable**：标题 `rgb(255,255,255)`/700、链接 `rgb(93,161,247)`、行内代码 `rgb(238,242,247)` 底 `rgb(42,42,42)`、引用 `rgb(160,160,160)`、代码块与 token 都是 `rgb(232,232,232)`。代码块的 class 两次都是 `code-block-source`、子元素数都是 1——与 `Markdown.tsx` 的既有设计一致（高亮 chunk 到达前的纯文本回退**复用同一 class 与内联样式**，正是为了不产生视觉跳变）。因此本次固定样本**没有复现**用户报告的变色；仍未被排除的候选是流式尾部反复重解析造成的瞬时样式变化，需要录屏或更细的采样才能定位，本轮不据此改样式。截图：`%TEMP%\littlesheep-chat-rendering\screenshots\`（`streaming-code.png`、`settled.png`）。
-- 顺带修掉的两处夹具缺陷（不是产品行为，但会伪装成通过）：提交提示早于 Runtime 就绪时，回答会流式输出"Runtime 仍在启动"的拒绝文案并且**不产生任何 Provider 请求**，看起来与正常流式一模一样——现在先等 `/runtime/readiness` 为 `ready`；比较 DOM 与 Markdown 源码前先做纯文本投影（`projectMarkdownToText`，与夹具同处一个模块，避免两处漂移），否则差值是标题、列表、引用、反引号等语法字符。
-- 未覆盖项：**变色场景仍未被复现或录屏**（见上），所以第 2 条保持未勾选；复制文本（剪贴板）与普通/紧凑模式、重开会话的一致性未测。
-
-**实施记录（2026-09-25 02:00:00）｜状态：把"变色"追到显示帧分辨率仍未复现；第 2 条继续保持未勾选（缺的是能复现的场景，不是采样密度）**
-
-- 在同一夹具里加了一个**逐帧样式记录器**：流式期间在每一个 `requestAnimationFrame` 上读标题、段落、链接、行内代码、代码块的计算样式（`color|fontSize|fontWeight|backgroundColor`），只保留"签名变化"的时间点与当时的正文字符数。这比之前的两次采样密了两个数量级（60 fps × 全程约 4 s），因此"变化发生在两帧之间"这类解释被排除。
-- 实测：**每一类块在整个流式过程中只有一个样式签名**（heading/paragraph/link/inlineCode/codeBlock 各 1 条），首次出现的时间与当时的字符数如下——也就是这些元素从出现在 DOM 里到结算，颜色、字号、字重、底色一次都没变：
-
-| 块 | 首次出现 | 当时字符数 | 签名（色 / 字号 / 字重 / 底色） |
-| --- | ---: | ---: | --- |
-| 标题 | 1436 ms | 21 | `rgb(255,255,255)` / 18px / 700 / 透明 |
-| 段落 | 1445 ms | 66 | `rgb(232,232,232)` / 14px / 400 / 透明 |
-| 链接 | 1446 ms | 66 | `rgb(93,161,247)` / 14px / 400 / 透明 |
-| 行内代码 | 1446 ms | 66 | `rgb(238,242,247)` / 12.88px / 400 / `rgb(42,42,42)` |
-| 代码块 | 3121 ms | 827 | `rgb(232,232,232)` / 14px / 400 / 透明 |
-
-- 结论与边界：本夹具能证明的是"**这套固定输入下，流式期间的样式是稳定的**"，因此用户报告的变色**不是**由这段 Markdown 的流式渲染路径造成的；它仍未复现，剩下的可能场景是——真实 Provider 的推理/工具混合输出（`reasoning_delta`、`tool_call_delta`、DSML 撤回路径）、代码高亮 chunk 在**更长**代码块上的到达时机、以及主题/缩放切换瞬间。要继续追需要这些场景的输入，而不是更密的采样。第 2 条复选框因此保持未勾选，本轮也不据猜测改样式。
-
-**实施记录（2026-09-25 01:18:46）｜状态：断流截断的盲区已修（改由 UX-21 的错误注入发现）；变色仍未复现，保持未勾选**
-
-- 本项此前记录的未覆盖项之一——"`parseStream` 以流结束为完成条件，异常截断本身不被识别"——已由 `pnpm run verify:retry-feedback` 的断流注入证实并修复：Provider 在答案中途断开时，客户端此前把截断文本当作完整结算发布（实测那次运行没有重试、答案缺尾），现在缺少完成信号即抛可重放的 `LlmError(502)`，重试后交付完整答案且只出现一次。契约与回归写进 `packages/llm/README.md` 与 `packages/llm/src/client.test.ts`，真实验收写在本任务书 UX-21 的实施记录里。
-- 仍未覆盖：**变色场景仍未复现或录屏**（第 2 条保持未勾选）；复制文本（剪贴板）、普通/紧凑模式与重开会话下的一致性未测。
-
-### UX-21｜模型瞬时故障分级重试与失败反馈
-
-**问题与边界**：用户期望模型连接失败后自动恢复，连续失败五次才停止。当前 `packages/llm/src/retry.ts` 默认 `maxAttempts: 3`，仅 `retryable` 错误及 `TypeError` 重试，429/500/502/503/504 被标为可重试；`AbortError` 等未被认作可重试，最终失败会沿 run 状态进入恢复/失败呈现。`maxAttempts` 是**总请求次数**，用户说的“重连 5 次”应明确为首次请求后最多 **5 次重试**，而不是总共 5 次。底层已具备指数退避，不能描述为完全没有重试。
-
-**定位**：[retry.ts](../../packages/llm/src/retry.ts)、[client.ts](../../packages/llm/src/client.ts)、[stages/_shared.ts](../../packages/harness/src/stages/_shared.ts)、[run-actions.ts](../../packages/app/src/renderer/chat/run-actions.ts)、[run-result-reducer.ts](../../packages/app/src/renderer/chat/run-result-reducer.ts)。区分 HTTP 超时、用户取消、认证失败、额度/速率限制、参数错误、网络中断、流开始前/后的断开以及结果已被持久化但 UI 连接断开。
-
-- [x] 先用错误注入表核对每类失败的实际分类、当前尝试数和 run 结局；保留请求、失败、重试次数及耗时的真实用量账本，不把重试隐藏在“单次调用”统计里。
-- [x] 对可安全重放的瞬时连接/服务故障，采用首次请求后最多 5 次有界重试，指数退避与抖动，尊重取消、超时和 Provider 的限流提示；进度明确显示“第 n 次重试 / 最多 5 次”。认证、配置、参数、权限、用户取消及已经产生不确定副作用的调用不盲重试。流中断前后的重发要以请求/片段身份去重，并在结果不明时走恢复，不重复执行已完成工具。
-- [x] 验收：前 1~5 次可重试故障后恢复则继续当前 run；第 5 次重试仍失败才给出可理解的失败状态和用户可操作的续接方式；不可重试故障立即明确失败；取消后不再等待或重试；重连不重复文本、工具副作用和最终回复。测试至少含 429、503、超时、断流、401/400、用户取消与本地 SSE 断线。
-
-**状态**：策略、用量账本、重试进度和错误反馈均已实现；九类真实窗口故障矩阵及普通/紧凑重试与失败可见性已验收。确定性 Provider 证明 Runtime/UI 行为，不代表真实模型服务的质量基准。
-
-**实施记录（2026-09-24 22:32:00）｜状态：策略层实现完成且有单元证据；进度显示与真实窗口验收未做，保持未勾选**
-
-- 实现范围（`packages/llm`）：`retry.ts` 改为分级重试——`maxAttempts` 是**总请求数**，默认 `DEFAULT_MAX_RETRIES + 1` = **首次请求 + 最多 5 次重试**（`maxRetries` 是等价写法，只在未传 `maxAttempts` 时生效）；`classifyFailure` 把失败分为 `transient`（网络失败、5xx、408、空 choices）、`rate_limited`（429）、`auth`（401/403）、`request`（其余 4xx）、`cancelled` 与 `unknown`，**只有前两类会被重放**，其余第一次就抛给上层。等待为指数退避 + 抖动；`Retry-After`（秒数或 HTTP 日期，来自 429/503）作为**下限**抬高本次等待，单次等待受 `maxDelayMs`（默认 30 s）封顶；退避期间监听 `AbortSignal`，取消后立即抛 `AbortError` 而不再等待或发起下一次请求。每次重试前调用 `onRetry({ retry, maxRetries, delayMs, failureClass, status })`；`LlmError` 新增 `retryAfterMs`，`ChatRequest.onTransportRetry` 让调用方拿到**本次请求**的重试进度。（本条"问题与边界"里"默认 `maxAttempts: 3`、用户说的重连 5 次应明确为 5 次重试"是改动前的事实，现已按后者实现。）
-- 验证方式：新增 `packages/llm/src/retry.test.ts` 10 例——默认首次 + 5 次重试（6 次总尝试、`retry` 依次为 1..5）、 `maxRetries` 写法、六类失败的分类与"不可重放者只调用一次"、`Retry-After` 下限与 `maxDelayMs` 封顶、已取消的 signal 不发起请求、退避期间取消在 20 ms 内返回（计划等待 5 s）；`client.test.ts` 新增 2 例——重试进度透传到请求级观察者、`retry-after: 2` 被解析为 2000 ms 且实际等待被上限压到 5 ms。`pnpm exec vitest run packages/llm/src`：4 个文件 58 例通过。
-- 顺带修掉的测试漂移：`client.test.ts` 的固定装置此前不声明重试参数，失败路径会睡满生产退避（默认 3 次尝试时整文件 106.5 s）；现在固定装置显式传 `retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false }`，同一文件降到 0.21 s。回归上限不依赖生产默认值的这一条应继续保持。
-- 未覆盖项：**运行界面尚未显示"第 n 次重试 / 最多 5 次"**（hook、`retryAfterMs` 与 usage 账本已就绪，消费端未接）；流中断前后的重发去重目前只有客户端的 `reset` 语义，未针对真实断流取证；本地 SSE 断线、真实 Provider 的前 1~5 次恢复与最终失败文案仍需错误注入与真实窗口验收。第 1、3 条复选框因此保持未勾选。
-
-**实施记录（2026-09-25 00:16:31）｜状态：重试进度已接进运行界面数据流并有单元证据；真实 Provider 注入与窗口录屏未做，保持未勾选**
-
-- 实现范围（`packages/harness`）：`model-activity.ts` 新增 `emitModelRequestRetryActivity`，`callModelChat` / `callModelChatStream` 把 `onTransportRetry` 观察者挂到请求的**副本**上——调用方自带的回调被链式保留，原请求对象不被写入（它同时被持久快照引用，不该承载 per-run 观察者状态）。进度写进**这次逻辑请求自己的活动行**（`phaseId = model-request:<id>`、`model_activity` + `running`），文案为"第 n 次重试 / 最多 m 次：<原因>（HTTP …），x 秒后重发"（限流与瞬时两类可重放原因，中文与英文入站各一套）；正常结算的已完成/失败摘要随后就地替换回来，所以一行仍只对应一次逻辑请求，不会留下永久 running 的行。
-- 这条同时回答了 UX-20 里"重试清空可见回答却没有说明"的那一项：客户端流式重试会发 `{ type: 'reset' }`（`packages/llm/src/client.ts` 的 `retryRound > 1` 分支），Harness 把它变成 `replace ''`，此前读者只看到文字消失又重来；现在同一活动行会先说明正在第 n 次重试及原因。**Renderer 未新增代码**：`chat/run-event-handlers.ts` 既有的 `model_activity` 渲染路径直接消费该摘要。
-- 验证方式：`packages/harness/src/model-observability.test.ts` 新增 2 例——中文入站时三条摘要依次为"模型正在生成回复 → 第 2 次重试 / 最多 5 次：Provider 限流（HTTP 429），2.0 秒后重发 → 模型已完成：生成回复"，三条共用同一 `phaseId`，且调用方自带的观察者仍被调用、原请求对象未被改写；流式路径断言重试活动在 `reset` **之前**发出、chunk 序列为 `['reset', 'delta']` 且请求副本不修改原对象。`pnpm exec vitest run packages/harness`：80 个文件 686 例通过。
-- 用量账本：重试次数经响应的 `transportAttempt` / `observedAttemptCount` 进入会话账本（`packages/harness/src/usage-state.ts` 及其测试已断言），不隐藏在"单次调用"统计里；本轮未改动该层。
-- 未覆盖项：错误注入表所需的真实 Provider 故障（429/503/超时/断流/401/400/取消/本地 SSE 断线各一次）与运行界面录屏仍未做；摘要文字在普通/紧凑模式活动行里的实际可见性（长文案截断、刷新后是否保留）需要实机确认。第 1、3 条复选框保持未勾选。
-
-**实施记录（2026-09-25 01:18:46）｜状态：错误注入表已在真实窗口跑通（503/429/401/预算耗尽/流中断），并修掉一处真实的截断隐患；取消、超时与本地 SSE 断线仍未注入，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:retry-feedback`（`scripts/verify-transport-retry-feedback.mjs`）：验收 Provider 支持按请求注入故障（`{kind:'status',status,times,retryAfterSeconds}`、`{kind:'stream_break',afterChunks}`、`{kind:'hang',ms}`，每次消费都记在请求上），验收构建里由 `LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS` 只缩短退避等待（预算与状态码策略仍是生产默认，回归在 `packages/runner/src/infra-acceptance-retry.test.ts`）。重试文案写在这条请求自己的活动行上、结算时会被就地替换，所以夹具在故障窗口内每 30 ms 采样一次 DOM。
-- 五个用例的实测结果（窗口 1024×640，隔离数据根）：
-  - **503×2 后成功**：首个逻辑请求 3 次尝试（1 次请求 + 2 次重试），文案依次出现"第 1 次重试 / 最多 5 次：Provider 暂时不可用（HTTP 503），60 毫秒后重发"与"第 2 次重试…120 毫秒后重发"，run 继续并给出回答。
-  - **429 + `Retry-After: 1`**：重试 1 次，文案点名 `HTTP 429` 与 1.0 秒等待（Provider 提示被尊重为下限），run 继续。
-  - **401**：**没有任何重试文案**，run 以可见的 Runtime 错误行结束（"user-facing clarification generation failed: acceptance fault: injected HTTP 401"），没有伪造回答。
-  - **预算耗尽（503 连续）**：18 次尝试 = 3 个逻辑请求 ×（1 次请求 + 5 次重试），文案序列每次都是 1→5 且**从未出现"第 6 次重试"**，run 以可见失败结束。
-  - **答案中途断流**：Provider 写 5 个分片后直接断开连接，客户端重试 1 次，最终答案两个哨兵都在且只出现一次（无重复文本）。
-- **本次注入抓到的真实缺陷（已修）**：`parseStream` 原先只以"读取器结束"判定流完成，因此**传输在答案中途断开会被当成正常结束**，截断的答案直接成为已结算回复（注入一次即可复现：没有重试、答案缺尾）。现在只有 `[DONE]` 或带 `finish_reason` 的分片才算完成信号；已收到内容却从未收到信号时抛 `LlmError(502, …, true)`，落回可重放的传输类由有界重试重发，重放时 `chatStream` 先发 `reset` 分片，上层清空已显示预览，因此重连既不重复文本也不丢字。单元回归在 `packages/llm/src/client.test.ts`（三条：有内容无信号 → 重试后成功且带 `reset`；`[DONE]` 或 `finish_reason` 任一存在即接受；空流不改行为）。
-- 未覆盖项：**超时（`hang`）与用户取消**未注入（取消需要在窗口里点停止按钮并断言不再等待/不再重试），**本地 SSE 断线**（Renderer 与 Local App API 之间）也未注入；400/参数错误类只由单元测试覆盖；运行界面录屏、普通/紧凑模式下的活动行可见性仍未做。第 1、3 条复选框保持未勾选。
-
-**实施记录（2026-09-25 01:28:40）｜状态：错误注入表补齐到八类（新增超时、400、用户取消），并修掉"自家超时被当成用户取消"；仅剩本地 SSE 断线未注入**
-
-- 继续扩展 `pnpm run verify:retry-feedback`，新增三个用例后共八类，实测结果（窗口 1024×640）：
-  - **Provider 超时**（`hang` 8 s、客户端 deadline 5 s）：第 1 次尝试挂起 → 重放 1 次成功，文案为"第 1 次重试 / 最多 5 次：Provider 暂时不可用，60 毫秒后重发"（**不谎报 HTTP 状态**），run 继续并给出回答。
-  - **400**：没有任何重试文案，run 以可见错误结束且没有伪造回答。（该用例的尝试次数不是判据：流式路径对 400/422 有一次**有意的兼容回退**——去掉 `stream_options` 重发一次，这是另一套机制。）
-  - **用户取消**（Provider 一直不响应，700 ms 时点停止）：只发出 **1 次**请求、**没有任何重试文案**、没有产出回答，确认取消不会等完重试预算。
-- **本轮的第二个真实缺陷（已修）**：`callApi` / `embed` 的自家 deadline 与调用方取消都表现为同一个 `AbortError`，于是"Provider 挂起超过超时"被归为 `cancelled` 而**永不重试**——与"重试传输故障、尊重取消"正好相反，超时在界面上只会得到一次失败。现在只有自家 deadline 触发且调用方未取消时才翻译成可重放的 `LlmError(408, 'Request timed out after <ms>ms', true)`；调用方的 `AbortSignal` 中止仍是 `AbortError`。契约写进 `packages/llm/README.md`，单元回归两条（挂起→重放成功；取消→只发一次请求）。
-- 仍未覆盖：**本地 SSE 断线**（Renderer 与 Local App API 之间的观察流断开，需要在窗口里断开本地连接并断言不重复文本、工具副作用不重放）；运行界面录屏与普通/紧凑模式下的活动行可见性。第 1、3 条复选框保持未勾选。
-
-**实施记录（2026-09-25 02:55:00）｜状态：错误注入表最后一类（本地 SSE 断线）已实机跑通，八类加这一类共九类齐了；仅剩录屏与紧凑模式可见性，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:local-stream-disconnect`（`scripts/verify-local-stream-disconnect.mjs`）：在页面里包一层 `fetch`，让 `/run/stream` 的响应体在 1.2 s 后**报错**（这正是 `consumeRunStream` 眼里"本地连接断了"的样子），其余请求原样透传，并记录注入时刻以便证明它确实触发过。
-- 实测（1024×640，长 Markdown 夹具，Provider 分块 24 字符 / 60 ms）：
-  - **界面**：断线后该回合以 `failed` 结束，错误行原文就是注入的失败原因（"local app API stream disconnected (acceptance fixture)"），停止入口消失（`stopping: false`，输入栏回到空闲），**用户输入被还回输入栏**（草稿恢复为原提示）。
-  - **Main 继续跑**：断线后 **2.29 s** 会话里出现了完整结算（1145 字符，与夹具逐字节相同，两个哨兵各一次），而 Provider **总共只收到 1 次请求**——断线既没有取消 Main 的任务，也没有触发重跑。
-  - **重连不重复**：重载渲染器后从侧边栏打开这段被中断的会话，答案**只出现一次**（哨兵各一次），DOM 文本与夹具的纯文本投影完全一致（1014 字符）。
-
-**实施记录（2026-09-25 15:46:45）｜状态：普通/紧凑模式下的重试进度与最终失败均已真实窗口验收；UX-21 三项完成**
-
-- 扩展同一门 `pnpm run verify:retry-feedback`，原有八类 Provider 故障（503、429、401、预算耗尽、流中断、超时、400、用户取消）全部保留；本地 SSE 断线继续由 `pnpm run verify:local-stream-disconnect` 独立验收。重试注入只缩短验收退避时长，不改变生产预算；UI 以 10ms 间隔采样该次请求的运行状态。
-- 在 **compact** 显示下追加两例：503 一次失败后界面出现“第 1 次重试 / 最多 5 次”并成功结算，最终活动行保留“验证：未验证”；401 不重试，最终错误原因仍包含 HTTP 401，紧凑注意行显示“本轮未完成”。两例均由真实 Electron 窗口和确定性 Provider 驱动，门通过、失败列表为空。
-- 边界：验收记录采集的是窗口中的 DOM 时间线，不是连续录屏；Provider 是本地确定性故障夹具，不测线上模型质量。此前要求的重试次数、取消、限流下限、断流去重和 Main 已结算后 Renderer 断线不重跑仍由原矩阵覆盖。
-- 顺带记录一处观察（**未断言、未修改**）：被本地断线打断的 run 不会写下 `localStorage['littlesheep.ui.activeSession']`，因此重载后应用停在草稿视图（两处读到的值都是 `null`），被中断的会话在侧边栏里、一次点击可达。是否应改为自动回到被中断的会话属产品判断，本轮不改；夹具因此按用户的做法从侧边栏打开它。
-- 至此 UX-21 的错误注入表覆盖：503、429（含 `Retry-After`）、401、400、预算耗尽、Provider 挂起超时、用户取消、答案中途断流、本地 SSE 断线，共九类；紧凑模式下的重试进度与最终失败也已验收。第 1~3 条任务复选框均已勾选。未录制连续运行视频；长重试文案截断及刷新后活动行是否保留没有单独验收，不作为上述三条已验证契约的替代证据。
-
-### UX-22｜对话输出层级与可读性
-
-**问题与边界**：在 UX-19~UX-21 的正确性问题定位后，再实机审查活动行、模型正文、失败提示、来源、工具结果及消息操作。现有普通/紧凑模式与 UX-16 的失败可见性修复是基础，不新增一套输出信息架构。
-
-**定位**：[assistant-turn.tsx](../../packages/app/src/renderer/chat/assistant-turn.tsx)、[agent-tool-row.tsx](../../packages/app/src/renderer/chat/agent-tool-row.tsx)、[message-meta.tsx](../../packages/app/src/renderer/chat/message-meta.tsx)、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)。
-
-- [ ] 在真实窗口检查长正文与工具输出的层级、默认展开量、行宽、段落间距、可复制性、键盘焦点、状态对比度及窄窗口换行；按“读完结果、找到失败、继续任务”三个操作记录卡点。
-- [ ] 仅对有证据的卡点做局部调整：最终结果优先可读，过程可按需展开，失败/权限/未验证保持显眼；沿用主题 token、现有 Markdown 与普通/紧凑模式，不用 opacity 隐去有用文字。
-- [ ] 验收：长回答首屏能辨认当前结论与状态，代码/链接/来源可读可复制，失败与下一步可找到；键盘、125%/150%/200% 缩放和两种显示模式通过录屏/截图复核。
-
-**状态**：未开始；属于体验建议，不能在实机走查前声称具体对比度或层级不合格。
-
-**实施记录（2026-09-25 01:45:00）｜状态：长正文 / 工具输出 / 失败三种状态的实机测量完成，未发现低于 AA 的层级或对比度，因此本轮不改样式；紧凑模式、缩放与三操作走查仍未做，保持未勾选**
-
-- 新增真实窗口门 `pnpm run verify:chat-readability`（`scripts/verify-chat-output-readability.mjs`）：一次启动跑三种状态——（A）确定性长 Markdown 回答，（B）常规有界执行（含工具活动行与折叠），（C）注入 401 的失败状态；随后把 C 在**窗口最小宽度 800×660** 上重测。取色按"元素计算色 + 第一个不透明祖先背景"计算 WCAG 2.1 相对亮度对比度，正文/状态行按 AA 4.5，大字号（≥24px，或 ≥18.66px 且 ≥700）按 3.0。
-- 实测（1280×720，内容宽 740 px，纵向与横向溢出均为 0，长回答可选中 1011 字符，行高比 1.7，段间距 10 px）：
-
-| 元素 | 对比度 | 字号/字重 |
-| --- | ---: | --- |
-| 正文段落 | 15.53 | 14 px / 400 |
-| 章节标题 | 19.03 | 18 px / 700 |
-| 链接 | 7.16 | 14 px / 400 |
-| 引用（弱化文字） | 7.28 | 14 px / 400 |
-| 行内代码 | 12.77 | 12.88 px / 400 |
-| 代码块 | 13.30 | 14 px / 400 |
-| 工具活动行 | 7.28 | 13 px / 400 |
-| 失败提示（Runtime 错误行） | 15.53 | 14 px / 400 |
-
-- 结论与**未做的改动**：上述状态里没有任何一项低于 AA，也没有横向裁切、不可选中或不可聚焦的控件；工具活动行本身就是带 `aria-label` 的可聚焦 `BUTTON`（实测标签"搜索，**/*"）。按本任务书"仅对有证据的卡点做局部调整、不能在实机走查前声称层级或对比度不合格"的要求，本轮**不改样式**，把这张表作为基线与回归门槛：以后任何改动让上表任一项跌破阈值，门会失败。
-- 仍未覆盖（第 1~3 条复选框保持未勾选）：**紧凑显示模式**、**125%/150%/200% 系统缩放**与键盘全流程走查（Tab 顺序、Escape、焦点返回）未测；"读完结果、找到失败、继续任务"三段式操作记录与录屏尚未采集；工具输出的长文本折叠默认展开量、来源与引用的可读性也未单独测量。截图落在 `%TEMP%\littlesheep-chat-readability\screenshots\`（`long-answer.png`、`tool-run.png`、`failure.png`、`failure-narrow.png`）。
-
-**实施记录（2026-09-25 14:20:00）｜状态：字体修复的真实窗口测量完成（33 项断言 / 0 失败），条目仍未勾选（其余可读性场景未做）**
-
-- 门 `pnpm run verify:conversation-workspace-scenarios` 增加第 5 段"Markdown 字体角色"实测，在真实窗口里读计算样式并用 canvas 量中文宽度：
-  - 正文 `.markdown p` 计算字体族 = `"Segoe UI Variable Text", "Microsoft YaHei UI", "Segoe UI", "Microsoft YaHei", "Noto Sans SC", sans-serif`（14px），即正文令牌；
-  - 代码 `.markdown pre code` 计算字体族 = `"Cascadia Code", SFMono-Regular, Consolas, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace`（12px），即 mono 令牌且**含中文回退**；
-  - 中文样本 `中文验收` 在两种字体族下宽度相同：正文 64 px、代码 64 px；
-  - 行内代码 `.markdown-inline-code` = `"Cascadia Code", SFMono-Regular, Consolas, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace`。
-- 三项断言：正文用正文令牌、代码用 mono 令牌（含 `Microsoft YaHei UI`）、中文在两者下同宽——全部通过；整门 33 项断言 / 0 失败，提交 `ad22a40`。
-- 仍未覆盖：整屏字形对比截图（截图已存 `%TEMP%`，但未逐字对比渲染结果）；紧凑模式与高 DPI 下的字体复核；本条其余可读性场景（长工具输出、失败、来源）此前已另测。
-
-**实施记录（2026-09-25 13:55:00）｜状态：代码块中文与正文不同字体的根因已定位并修好（源码侧已验证），真实窗口测量待做；保持未勾选**
-
-- 用户反馈：Markdown 渲染出来的字体与正常文本不是同一种字体（附截图：引用段 + 代码块）。
-- 查证：`--mono` 原为 `"Cascadia Code", "SFMono-Regular", Consolas, monospace`，**整条栈没有中文字体**，代码里的中文只能按字形回退到宋体类衬线，而正文用 `Microsoft YaHei UI`；代码块自身也没有 `font-family` 声明（`03-shell-sidebar.css` 的 `.code-block-source` 只有选中色规则），用什么等宽完全由浏览器默认决定。
-- 修法（选项 D，保住代码对齐）：`--mono` 增加 `"Microsoft YaHei UI"` / `"Microsoft YaHei"` / `"Noto Sans SC"` 回退；`05-chat-messages.css` 新增 `.markdown pre, .markdown pre code, .markdown code-block-source { font-family: var(--mono) }`。
-- 防回流：`ui-state-consistency.test.ts` 新增用例（mono 栈必须含中文回退、Markdown 代码必须用该令牌），该文件 8/8 通过；`check:repo` 38/38；提交 `f8d2290` 已推送。
-- 未覆盖：真实窗口里的计算字体族与字形对比截图未做（`.markdown p` / `.markdown blockquote` / `.markdown pre code` 三者的 font-family 实测），因此本条保持未勾选。
-
-**实施记录（2026-09-25 03:10:00）｜状态：紧凑模式与高 DPI 已并入同一门并全部通过；键盘全流程与录屏仍未做，保持未勾选**
-
-- 把两个阶段并入 `pnpm run verify:chat-readability`（同一次启动，六个夹具）：**紧凑显示**（运行中切换 `littlesheep.ui.conversationDisplayMode`，长回答保持在同一段转写上重测）与**高设备像素比**（`Emulation.setDeviceMetricsOverride` 设 `deviceScaleFactor: 2`，在失败状态上重测）。
-- 紧凑模式实测：正文 `14px/400`、对比度 **15.53**（与普通模式逐项相同：标题 19.03、链接 7.16、引用 7.28、行内代码 12.77、代码块 13.30、列表项 15.53），内容宽 740、横向溢出 0、可选中 1011 字符——即折叠只改变密度（已完成活动收成需关注的行），没有改变正文可读性与可复制性。
-- 高 DPI 实测（DPR 2，与 800px 最小窗口阶段区分开）：文档与转写横向溢出均为 0，失败提示仍是 `14px`、对比度 15.53，与 DPR 1 逐项一致——CSS 布局契约不随缩放变化。说明：这一项模拟的是**光栅化**那一半（DPR）；会缩小 CSS 视口的那一半由 800px 最小窗口阶段覆盖，因为窗口管理器不会把窗口压到比 `MINIMUM_WINDOW` 更窄。
-- 仍未覆盖（第 1~3 条复选框保持未勾选）：**键盘全流程**（Tab 顺序、Escape 分层收起、焦点返回）与"读完结果、找到失败、继续任务"三段式操作记录、录屏未做；工具输出长文本的默认折叠量与来源/引用可读性未单独测量。截图新增 `long-answer-compact.png`、`failure-high-dpi.png`。
-
-**实施记录（2026-09-25 15:29:59）｜状态：可读性真实窗口门复跑通过，完整操作走查仍未闭合，保持未勾选**
-
-- 本轮 `pnpm run verify:chat-readability` 复跑通过（`ok: true`、`failures: []`）：长回答、工具活动行、注入 401 失败、紧凑模式长正文、800×660 窄窗口及 DPR 2 均满足现有对比度/溢出/选择性断言。代码块自动换行控件现也出现在真实 Markdown 的键盘焦点候选列表中。
-- 该门不是完整键盘操作性或可用性走查：Tab 顺序、Escape 与焦点返回、来源引用、长工具结果默认展开量，以及“读完结果、找到失败、继续任务”三个操作的人工记录和录屏仍未完成，不据此勾选 UX-22。
-
-### UX-23｜代码块头部栏与自动换行开关
-
-**现状与建议**：对话里的 Markdown 代码块只有右上角一个复制按钮——没有语言标签，也没有“自动换行”开关，长行只能横向滚动；拓展工作区的代码显示同样没有换行开关。用户给出的参考图要求：代码块顶部是一条头部栏，左侧显示语言标签（如 `XML`），右侧是「自动换行」与「复制」两个图标按钮；并要求拓展工作区的代码显示在对应位置也加这个开关。
-
-**定位**：[Markdown.tsx](../../packages/app/src/renderer/Markdown.tsx) 的 `PlainCodeFallback` / `CodeBlock`（`.code-toolbar` 与 `.code-block-source`）、[05-chat-messages.css](../../packages/app/src/renderer/styles/05-chat-messages.css)、[workspace/code-editor.tsx](../../packages/app/src/renderer/workspace/code-editor.tsx)（Monaco 选项与工具条位置）。
-
-- [x] 抽出**一个**代码块头部栏：对话高亮路径与纯文本回退路径复用同一条，左侧语言标签用已解析的 `language`（缺省 `text`，大写显示），右侧是自动换行开关与复制按钮。
-- [x] 自动换行开关：默认不折行（横向滚动），点击后折行；状态在两条代码块路径与拓展工作区代码显示之间**共享并记住**（`localStorage` 偏好），工作区侧切换 Monaco 的 `wordWrap`。
-- [x] 样式与角色：头部栏的圆角/内边距/标签字号沿用现有 token 与 UX-14 的字号角色，按钮走统一图标集、焦点与禁用角色；不得破坏 `--mono` 的中文回退（中文与正文同字形）与既有语法高亮配色。
-- [x] 验收：真实窗口里语言标签文本正确；两个按钮可点且状态可见（折行前后 `white-space`/`scrollWidth` 实测变化）；工作区代码显示的开关确实生效；中文渲染宽度与正文一致；`ui-state-consistency.test.ts` 增加防回流断言。
-
-**实施记录（2026-09-25 14:51:38）｜状态：共享工具栏、偏好接线和真实 Electron 验收完成；四项勾选**
-
-- 来源：用户 2026-09-25 的界面反馈与两张参考图（代码块头部栏：语言标签 + 自动换行 + 复制），并明确选择「第一个图标是自动换行开关」且要求拓展工作区的代码显示在对应位置也放同一个开关。
-- 入口已定位（实现时按此执行）：`Markdown.tsx:221` 的 `PlainCodeFallback` 与 `Markdown.tsx:248` 的 `CodeBlock` 共用 `.code-block > .code-toolbar`（现在只有 `<CopyButton>`）；`Markdown.tsx:169` 已从 `code.language-xxx` 解析出 `language`，可直接作为标签文本；折行态样式落在 `05-chat-messages.css` 的 `.code-block-source`；工作区侧在 `workspace/code-editor.tsx` 的 Monaco 选项区切换 `wordWrap`，按钮位置与面板工具条一致。
-- 与已完成工作的关系：前两轮已修好“代码块中文与正文不同字形”（`--mono` 补中文回退 + 代码块显式声明该令牌，实测中文宽度 64 px = 正文 64 px），本项只加头部栏与折行开关，不改配色与等宽/中文字形规则。
-- 实现范围：`Markdown.tsx` 的语法高亮路径与纯文本回退路径复用同一个 `CodeToolbar`；`CodeWrapToggle` 提供统一的可访问按钮；`code-wrap-preference.ts` 用 `littlesheep.ui.codeWrap` 保存状态并向同一 Renderer 内的两个界面发出即时更新；工作区的 `preview-actions.tsx` 接入同一状态并驱动 Monaco `wordWrap`。默认关闭，存储不可用时退回默认值。
-- 回归：`pnpm exec vitest run packages/app/src/renderer/ui/code-wrap-preference.test.ts packages/app/src/renderer/ui-state-consistency.test.ts packages/app/src/renderer/workspace/markdown-preview.test.ts`（21/21）；`pnpm exec tsc --noEmit -p packages/app/tsconfig.web.json` 与验收脚本语法检查通过；本次修改后的 App 构建完成。
-- 真实 Electron 验收：`pnpm run verify:code-wrap-control`，隔离数据根，窗口 1280×820。代码块 `TS` 标签正确，复制按钮和换行按钮可见；默认关闭时代码宽 865 px、容器可用宽 740 px 且 `white-space: pre`；开启后变为 `pre-wrap`、`scrollWidth` 收敛到容器宽并将值写入存储。工作区 Monaco 同步折行（29 个视觉行），在工作区关闭后减少至 2 行且对话代码块与存储一并回到关闭态。两处界面使用相同开关和同一持久化值；中文与正文同字形的 64 px 同宽证据见 UX-16 字体测量记录。截图保存在 `%TEMP%\littlesheep-code-wrap-control\screenshots\`。
-- 本项未覆盖：没有单独关闭并重新启动整个 Electron 进程再取证；存储读写已在真实窗口直接验证。跨进程重启的额外走查不影响当前验收结论，因为偏好只由同一 localStorage 键持久化。
-
-### UX-24｜固定用户故障与三个入口的基线
-
-**目标 / 依赖**：本批起点，无前置依赖。先辨认用户走的是文件树 HTML 预览还是浏览器标签；建立可重复失败和预期结果，后续任务按对应夹具推进，不等待所有环境信息齐全。
-
-**范围与证据**：核对 [preview-pane.tsx](../../packages/app/src/renderer/workspace/preview-pane.tsx)、[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx)、[browser.tsx](../../packages/app/src/renderer/workspace/browser.tsx)、[review.tsx](../../packages/app/src/renderer/workspace/review.tsx)、[terminal.tsx](../../packages/app/src/renderer/workspace/terminal.tsx)。现有 HTML 测试只检查源码字符串包含 sanitizer、sandbox、base 等，并未执行页面、验证资源加载或游戏输入。
-
-- [x] 在临时工作区准备：完整 head/style 静态页、内联脚本 Canvas 小游戏、多文件小游戏（CSS / 图片 / JS module / 本地 JSON）；每份记录入口、预期画面与至少一个交互结果。拿到用户原文件后追加原例，未取得时明确标注，不能以合成样本声称原例已修复。
-- [x] 同一文件在普通浏览器受控本地 HTTP 地址、LS 文件预览、LS 浏览器标签中对照；记录资源请求、控制台首个错误、截图和输入结果。区分页面本身错误、运行入口限制、CSS/资源失败和未启动开发服务。
-- [x] Git 用临时仓库记录 CLI 状态 / 分层 diff、API 返回与 UI 的差异；Shell 记录实际可执行文件、版本、cwd 和 PTY 状态。记录源码 revision、构建指纹、Windows / Electron 版本，防止用旧构建判断新源码。
-
-**实施记录（2026-09-25 19:26:00）｜状态：三条完成；夹具是合成的，用户原例仍未取得；三项勾选**
-
-- 新增真实环境基线门 `pnpm run verify:html-preview-baseline`（[verify-html-preview-baseline.mjs](../../scripts/verify-html-preview-baseline.mjs)）。它把三份夹具写进隔离工作区并**先建好真实 Git 仓库再启动应用**，然后按三个入口逐项测量：装机 Chrome（`--headless=new`，回环 HTTP 静态服务，作为"页面本身应该是什么样"的参照）、LS 文件预览（工作区文件树打开，沙箱 `srcdoc`）、LS 浏览器标签（真实 `webview` 来宾，同一回环 URL）。夹具：`static-page.html`（完整 head/style/img/脚本）、`canvas-game.html`（内联脚本 Canvas 游戏：方向键移动、点击计分、HUD）、`multi-file/`（`index.html` + `game.css` + `game.js` module + `level.json` + `sprite.svg`）、`assets/tile.svg`。
-- **构建与版本指纹（写进门的输出）**：revision `059cc16`、构建输入摘要 `a388d9f4…`、输出摘要 `21652ae7…`（与上一次构建相同，说明本项只改了文档与脚本）、Electron 36.9.5（渲染器 `Chrome/136.0.7103.177`）、Node v26.4.0、`win32 x64`、`Windows_NT 10.0.26200`。会话窗口 1280×860。提交后在最终源码 revision 上复跑一次，同样 `failures: []`，渲染结论一致。
-- **参照实现（Chrome 153.0.8010.53，唯一控制台错误是我自己的 `favicon.ico` 404）**：小游戏 canvas 采样 `[18,52,86,255]`（= 夹具底色 `#123456`）、`__gameState.ready`；真实键盘 + 指针输入后 `x 20→28`、`score 0→1`、HUD 变成"分数: 1"；静态页脚本运行（`脚本已运行`）、图片 `naturalWidth 64`、样式表 1 份、深色底 `rgb(16,20,24)`、请求到 `/assets/tile.svg`；多文件页 `level=7`（fetch JSON）、css/js/svg/json **四个子资源全部请求到**、样式表 1 份。→ 夹具本身有效，"正确的样子"有可复现基线。
-- **LS 文件预览（三份都测了 srcdoc 与帧内文档）**：
-  - `srcdoc` 属性（三份一致）：脚本标签被剥离 `hasScriptTag=false`、注入了 CSP 与 `file:` base、`sandbox=""`；**`<style>` 与 `<title>` 都不见了**（`hasStyleTag=false`、`hasTitleTag=false`）。
-  - 渲染出来的文档（第一份，始终渲染）：正文文本在、`scripts=0`、**`styleSheets=0`**、`body` 背景 `rgba(0,0,0,0)`（透明→白底），图片以 `file:///…/assets/tile.svg` 发起了请求但 `naturalWidth=0`（没有解码）。→ 这就是用户说的"**白底带些字**"：样式表被丢掉，页面退化成无样式的黑字白底。
-  - **竞态（用户说的"全白"）**：从文件树打开的后续 HTML 文件**有时**保持创建时的空文档——本轮多次运行的实测结果是 `static-page.html`（先用会话现场预置、挂载前内容已就绪）**每次都渲染**，而 `canvas-game.html` 在一次运行中渲染、在其余运行中 `readyState=complete`、`htmlLength≈467`、`body` 为空、没有 canvas；`multi-file/index.html` 同样为空。空文档在 6 秒后、以及切标签再切回后都不变，而同一时刻元素的 `srcdoc` 属性已经有 568/805 字符的正文 → **帧保留的是它被创建时的空文档，之后属性更新没有让它重新导航**。截图 `preview-canvas-game.png`（空白白框）就是用户看到的形态。
-- **LS 浏览器标签**：同一小游戏**可玩**——canvas 采样 `[18,52,86,255]`、`__gameState.ready`、真实输入后 `x 20→28`、`score 0→1`。输入必须先点一下再按键（先按键会被丢，实测），这是夹具经验，也说明来宾只有在聚焦后才收键盘。
-- **本地路径走浏览器标签（"运行入口限制"这一类）**：地址栏提交 `file:///…/canvas-game.html` 后，`normalizeBrowserUrl` 把它改写成 `https://file///C:/…`（主机名 `file`），标签 URL 与持久化现场都变成这个假地址，来宾落在 `chrome-error://chromewebdata/`（空白错误页），界面上**没有任何解释**。→ 若用户是"把文件路径粘进 LS 浏览器"，看到的就是白页 + 无说明。
-- **Git：CLI / API / UI 三处同一份更改**（`M canvas-game.html` + 新增 `probe-untracked.txt`，改动内容为一行 `<!-- baseline edit -->`）：CLI `git status --porcelain` 两行、`git diff` 一行新增、`numstat 1 0`；API `GET /workspace/review` 报告 `availability=ready`、`branch=main`、同样两个文件（`modified`/`untracked`）、`countsComplete=true`，单文件 Diff 分别给出 `unstaged`（1 hunk，新增行内容不含 `+` 前缀）与 `untracked`（1 hunk）两层；UI 审阅标签列出 `M canvas-game.html +1 -0`、`U probe-untracked.txt +1 -0`、合计 `2 个文件 +2 -0`。**另测到一处陈旧读数**：审阅标签挂载时显示"没有未提交更改 工作区与 HEAD 一致。0 个文件"，点一次"刷新 Git 更改"才变成正确的两行——这条记录给 UX-27 的剩余条目（旧数据状态与一致性）。
-- **Shell：真实会话身份**：`POST /workspace/terminal/session` 建会话（100×30）返回 `shell="PowerShell PTY"`、`backend="pty"`、`source="workspace-user"`、`cwd` = 工作区根；在同一会话里执行命令后，Shell 自己报告 `PSV=5.1.26100.9444`、`CWD=` 同一路径、`ENC=utf-8`。即 Windows 上确实只有一个固定的 Windows PowerShell 5.1 配置（无探测、无选择，UX-29 的能力缺口由此确认）。
-- **顺带记录（不据此改代码）**：在本次会话里浏览器标签被二次导航后，渲染器控制台出现 3 次 `TypeError: Cannot read properties of undefined (reading 'getWebContentsId')`（`WebViewElement.observeFinishedLoad`），来宾生命周期属于 UX-26/UX-30。
-- 未覆盖 / 边界：**夹具是合成的**，用户原例（那份"全白或白底带些字"的 HTML）没有拿到，所以本项只建立可复现基线与根因方向，不声明用户原例已修复；`<style>` 丢失与"后续文件空帧"两条的直接修复属于 UX-25，小游戏可运行入口属于 UX-26；参照实现是 headless Chrome，不代表用户实际使用的浏览器或浏览器插件环境；LS 侧没有测打包版与真实系统缩放下的这些页面（UX-31 覆盖）。
-
-### UX-25｜静态 HTML 的文档结构和资源加载
-
-**目标 / 依赖**：依赖 UX-24 的静态页夹具；静态预览能正确显示已支持的内容，限制有可见说明。小游戏运行由 UX-26 承担。
-
-**范围与证据**：[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx) 使用 DOMPurify 默认文档处理、删除 `base/script/template/form/iframe` 与 data 属性，再注入 `file:` base；iframe 为 `sandbox=""`。因此动态页面不能运行是已知限制；完整文档 head/style 是否保留、file 子资源能否实际加载仍需浏览器行为验证，不能只凭 CSP 允许 file 就判成功。关联 [path-utils.ts](../../packages/app/src/renderer/workspace/path-utils.ts)、[workspace-file-service.ts](../../packages/app/src/main/local-app-api/workspace-file-service.ts)、预览草稿与保存逻辑。
-
-- [x] 明确并验证完整文档与 HTML 片段的处理规则；保留静态显示需要的标题、样式和编码语义，同时保持脚本及事件处理器隔离。静态模式说明“不运行脚本”，提供运行入口。
-- [x] 解决相对 CSS / 图片 / 字体路径及 CSS `url()`；覆盖子目录、中文、空格、`#`、`%`、缺失资源。资源访问由 Main 验证实际路径与范围；不通过关闭 webSecurity 或扩大整个磁盘访问修复渲染。
-- [x] 明确当前显示的是未保存草稿还是磁盘文件；保存成功后刷新，保存失败保留草稿。测试文件被外部更改、删除及快速切换时，不串内容、不用旧内容冒充新版本。
-- [x] 验收以实际渲染后的 DOM、计算样式和资源成功响应为准；为失败资源显示可展开原因与重试，不以源码字符串断言代替渲染验收。
-
-**实施记录（2026-09-25 19:50:00）｜状态：第 1 条完成并勾选（含把 UX-24 测出的两条根因修掉）；第 2、3、4 条仍未完成**
-
-- 修掉 UX-24 实测的两条根因（同一改动）：
-  1. **文档结构**：`createHtmlPreviewDocument` 改为 `WHOLE_DOCUMENT: true` 并单独放行 `title`，`<head>` 连同 `<style>` 不再被丢掉；注入的 head 自带 `<meta charset="utf-8">`（编码语义），`meta`/`link` 仍在禁止清单里（`meta` 能做 `http-equiv` 跳转、`link` 会引入外部样式表请求），`base`/`script`/`template`/`form`/`iframe`/`object`/`embed` 与 data 属性保持禁止，`sandbox=""` 不变。
-  2. **空帧竞态**：`WorkspaceHtmlPreview` 只在有真实内容时创建帧，并用 `previewDocumentKey(path, srcDoc)`（FNV-1a 摘要）作为 `key`——内容变了就换一个新帧，而不是给一个仍在加载初始空文档的帧补 `srcdoc`。内容为空时显示"这个文件还没有内容"的占位。
-  3. 静态预览在帧上方新增一行 `role="status"` 说明："静态预览：保留标题与样式，不运行页面脚本，也不发起网络请求。"（"运行入口"按本项自己的边界由 UX-26 承担，见标题下那句"小游戏运行由 UX-26 承担"。）
-- 真实窗口验收（`pnpm run verify:html-preview-baseline`，隔离数据根，窗口 1280×860，门已按 UX-25 的验收口径扩写）：三份夹具**全部渲染**（`static-page.html`、`canvas-game.html`、`multi-file/index.html` 的 `rendered` 都是 true）——UX-24 那次"后续文件空白"的竞态不再出现。逐项实测：
-  - 静态页：`srcdoc` 里 `hasStyleTag=true`、`hasTitleTag=true`、`hasScriptTag=false`；帧内 `styleSheets=1`、`title='静态页夹具'`、`body` 背景 `rgb(16, 20, 24)`（夹具自己的深色主题）、`h1` 颜色 `rgb(232, 232, 232)`、`scripts=0`。
-  - Canvas 小游戏：`styleSheets=1`、`title='Canvas 小游戏夹具'`、`body` `rgb(5, 7, 10)`、**`canvas` 背景 `rgb(18, 52, 86)`**（即页面 CSS 生效）、`scripts=0`、`window.__gameState` 不存在（脚本仍被剥离）。
-  - 多文件页：文档与标题渲染（`title='多文件夹具'`、正文含"关卡: 加载中"），但外部 `game.css` 仍未生效（`styleSheets=0`、`.board` 背景透明）——见下一条未完成项。
-  - 三份都测到工具条的"不运行页面脚本"说明存在。
-- 回归：`html-preview.test.ts` 扩到 4 例（整份文档净化与 `title` 放行、只为真实文档建帧且按文档 key、说明文案、charset/base 注入）；`packages/app/src/renderer` 116 文件 / 644 例通过；`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0。
-- **第 2 条为什么没做**：本地相对资源（`<link rel=stylesheet>`、`<img src>`、CSS `url()`、字体）在 `sandbox=""` 的帧里拿不到——帧是不透明来源，Chromium 拒绝 `file:` 子资源，实测图片 `naturalWidth=0`、外部样式表 `styleSheets=0`。按本项要求"资源访问由 Main 验证实际路径与范围"，正确做法是 UX-26 的 **Main 有界静态资源服务**（只绑 loopback、限定项目范围），而不是放宽 sandbox 或 webSecurity；因此这条留给 UX-26 之后再做，门的 `limits` 里明确记录了"外部样式表仍不可加载"。
-- **第 3 条的部分证据（记录，不作为通过）**：门里加了"编辑 → 输入草稿标记 → 回预览"的走查，实测**草稿到达了编辑器模型与会话草稿存储**（`markerInDraft: true`、键入路径为真实按键事件），但**已挂载的预览仍是磁盘内容**（`srcdoc` 长度与编辑前一致、帧内文本不含标记）——即"预览跟随未保存草稿"这条链路目前没有通过的测量；保存成功后刷新、保存失败保留草稿、外部更改/删除、快速切换不串内容这四类本轮都没有测。该步骤在门里**只记录不判定**（`appearedInPreview: false` 会进证据，不会让门变红），下一轮先定位这条链路再补断言。
-
-**实施记录（2026-09-25 23:50:00）｜状态：第 3 条的"显示的是草稿"与"外部更改/删除不串内容"拿到实测，整条仍不勾选**
-
-- **"预览跟随未保存草稿"现在有通过断言**：见 23:35 补记——`workspaceDraftOutcome` 修掉了"预览未到就删草稿"的缺陷，门改为用隐藏窗口也成立的输入路径取草稿，并断言"会话草稿 dirty 且带标记"与"预览帧渲染的就是这份草稿"（静态页 1189 字节的 `srcdoc` 里含标记、`scripts` 仍为 0、`styleSheets` 仍为 1）。
-- **外部更改与删除的实测（`tmp/probe-external-change.mjs`，隐藏窗口、合成夹具）**：在一份 dirty 草稿存在时，①把文件内容改为"磁盘第二版"②删除文件，两次之后读取会话草稿与预览——**草稿始终保留且仍为 dirty**（`editorText` 含草稿标记、`savedText` 仍是第一版），**预览仍渲染草稿**（`srcdoc` 631 字节、含草稿标记、不含"磁盘第二版"），**没有任何内容混串**；也就是说脏状态下编辑器/预览以草稿为准。
-- **"不用旧内容冒充新版本"的安全网已有，且是 Main 强制的**：保存会带上 `expectedModifiedAt`（取自草稿记录的版本），Main 的 `saveWorkspaceTextFile` 在 `info.mtimeMs > expectedModifiedAt + 1` 时返回 **409「文件已被外部修改。请刷新预览后再保存，避免覆盖新的内容。」**，因此外部改过之后不可能静默覆盖新内容；保存失败路径本身保留草稿（这一点仍未在门里断言）。
-- **仍未做（这就是不勾选的原因）**：①**没有主动提示**——用户在编辑时界面不会说"磁盘上的版本已变化/文件已被删除"，只有点保存才会看到 409；②"保存成功后刷新"与"保存失败保留草稿"两类没有门内断言；③"快速切换文件不串内容"未测；④删除后仍显示旧内容（内容不串，但界面没有把"文件已不在"说清楚）。
-- **第 4 条的部分证据（记录，不作为通过）**：已按本项要求把验收从"源码字符串"改成**实际渲染后的 DOM 与计算样式**（标题、`styleSheets`、`body`/`canvas`/`.board` 计算色、脚本数、帧内文本都在真实窗口里读）；但"为失败资源显示可展开原因与重试"依赖第 2 条的资源加载，尚未实现。
-- 未覆盖 / 边界：只测了这三份夹具与一次草稿走查；子目录、中文、空格、`#`、`%` 路径与缺失资源的矩阵属于第 2 条，随资源服务一起做；预览草稿链路的机制定位（草稿已入存储但预览未更新）留给下一轮，门里已留下可复现步骤与证据字段。
-
-### UX-26｜HTML 小游戏可运行的隔离入口
-
-**目标 / 依赖**：依赖 UX-24 的小游戏夹具，与 UX-25 共用资源边界。用户可从 HTML 文件直接进入运行视图，完成开始、操作、计分和重新开始；不能把“出现几行文字”或 iframe load 当成成功。
-
-**范围与证据**：[html-preview.tsx](../../packages/app/src/renderer/workspace/html-preview.tsx) 删除脚本且 `connect-src 'none'`，Canvas 初始化、事件监听和 fetch 无法完成；[preview-actions.tsx](../../packages/app/src/renderer/workspace/preview-actions.tsx) 只有源代码 / 预览切换等入口。[browser-history.ts](../../packages/app/src/renderer/workspace/browser-history.ts) 只接受 HTTP(S)，[embedded-browser.ts](../../packages/app/src/main/embedded-browser.ts) 限制导航到 HTTP(S)。目前没有从 HTML 文件到可执行页面的完整桥接。
-
-- [x] 在 HTML 工具条提供“运行 / 重新加载 / 停止”及查看源文件的连贯入口；运行使用明确的已保存版本，遇到脏草稿提供保存并运行或取消，保存失败不运行旧版本。首次运行前简短说明将执行页面脚本；后续不重复增加低价值确认。
-- [x] 优先复用既有浏览器 guest 与生命周期，增加由 Main 管理、只绑定 loopback 的有界静态资源服务；单文件与多文件均保持浏览器正常的 HTML / CSS / JavaScript / module / fetch 语义。需要构建的项目进入已有开发服务 URL，不擅自安装依赖或执行项目脚本，也不把 TSX 当作可直接运行的 HTML。
-- [x] 本地运行页面使用与 LS 主界面、普通网页登录态分离的存储分区及来源；Node 集成关闭、context isolation 与 sandbox 保持开启，不注入 LS preload / IPC / Local App API 凭据。复核 guest 创建和导航时的 Main 硬约束，不能只信 Renderer 的 webpreferences。
-- [x] 资源服务限制为选定项目范围，验证解码后的路径、符号链接及目录穿越；不同项目隔离授权与数据。防止其他网页借预览服务读取项目文件或调用 LS 控制 API，不能只靠 CORS。网络资源、弹窗、下载与设备权限沿专门策略处理，不自动继承普通浏览器的媒体等宽松权限；离线或被阻止时显示明确原因。
-- [x] 提供页面脚本错误、资源失败、服务停止的简洁状态与可展开诊断；加载成功不等于游戏初始化成功。无限循环或 guest 崩溃时，主界面停止 / 重载仍可用，不能把主界面拖死。
-- [x] 真实窗口验收：Canvas 有画面；点击开始后计分变化；方向键 / WASD / 鼠标正常且不触发 LS 快捷键或滚动外层；重开一局有效。多文件版 module、图片、JSON 加载成功；需要声音的夹具在用户操作后播放；切标签返回、调整尺寸与关闭后资源释放均正常。
-
-**实施记录（2026-09-25 20:35:00）｜状态：第 2、4 条完成并勾选（有界 loopback 资源服务 + 项目范围校验）；第 1、3、5、6 条部分实现、仍未勾选**
-
-- 新增 **Main 有界静态资源服务** `packages/app/src/main/local-app-api/workspace-preview-server.ts`（294 行，未越 300 行软上限，不新增拆分队列条目）：每个工作区根一个监听，绑定 `127.0.0.1` 的临时端口；URL 里带 16 字节随机 token（`http://127.0.0.1:<port>/<token>/<相对路径>`）；只答 `GET`/`HEAD`；`Host` 必须是 loopback（DNS rebinding 防护）；请求路径必须带 token，解码后拒绝 `..`、`.`、NUL；解析结果再次 `realpath` 并校验仍在根内（符号链接逃逸拒绝）；目录只在存在 `index.html` 时按其回应，**从不列目录**；单文件上限 32 MiB、`X-Content-Type-Options: nosniff`、`Cache-Control: no-store`、**不发 CORS 头**；最多 4 个同时存在的服务（超出按最久未用淘汰）、30 分钟空闲自动关闭、显式 `stop`/`stopAll`（API server 关闭时调用）。
-- 路由：`/workspace/preview-server`（`POST` 启动/换入口、`DELETE` 停止、`GET` 列出现有服务），已在 [local-app-api-routes.ts](../../packages/app/src/shared/local-app-api-routes.ts) 登记并接入 `workspace-routes.ts`；返回体是 `{ root, url, entry, startedAt, requests }`。
-- 单元测试 `workspace-preview-server.test.ts` 7 例（node 环境，真实临时目录 + 真实 HTTP）：token 化 URL 与内容类型、目录按 `index.html` 回应且不泄露兄弟文件、无 token/错误 token/`..%2f`/`%2e%2e%2f` 全拒、**符号链接指向根外被拒**（且入口本身也拒）、非 `GET`/`HEAD` 405、**自定义 `Host: evil.example` 403**（`fetch` 不能设 Host，测试用 `node:http` 原始请求）、`stop` 后连接被拒、第 5 个服务淘汰最旧的。另加纯函数 `parseRequestPath` 的路径矩阵（中文、查询串、NUL、错误 token）。
-- 渲染器运行入口：`api/workspace-preview-server.ts`（客户端）→ `html-run.ts`（状态与动作规则：`idle/starting/running/stopped/failed`、`htmlRunActions/htmlRunFeedback/htmlRunBusy`）→ `use-html-run.ts`（一个事务：运行用磁盘版本、脏草稿先问、停止释放服务、换文件或外部改动回到未运行）→ `html-run-notice.tsx`（运行结果或"有未保存的修改…保存并运行/取消"）→ `preview-actions.tsx` 的 **运行/停止** 按钮 + `preview-pane.tsx` 渲染提示。运行成功后经既有 `onOpenBrowserTab` 打开**浏览器标签**（复用既有 `webview` guest 与生命周期，不新建第二套运行视图）。`html-run.test.ts` 3 例守住状态规则与"工具条不出现保存按钮"的边界（该边界同时由 `markdown-preview.test.ts` 看着）。
-- 真实窗口验收（同一个门 `pnpm run verify:html-preview-baseline`，隔离数据根，窗口 1280×860）：
-  - **运行**：点"运行"后服务启动（`POST /workspace/preview-server` 返回的 URL 与浏览器标签实际 URL **完全一致**），页面在 guest 里真的跑起来——canvas 采样 `[18,52,86,255]`（= 夹具底色）、`__gameState.ready`、真实指针 + 键盘输入后 `x 20→28`、`score 0→1`、HUD 变"分数: 1"。
-  - **隔离**：guest 内 `window.littlesheep`/`__DSH__` 不存在、`window.require`/`process` 不存在、`location.origin` 是 loopback 服务、`localStorage` 键数为 0（独立分区，不共享 LS 主界面状态）。
-  - **服务边界**：入口文档 200；`/<token>/..%2F..%2Fbaseline-outside.txt` → 404；错误 token → 404。
-  - **多文件资源**（第 5 条的资源部分，记录）：同一服务下 `index.html`、`game.css`、`game.js`、`level.json`、`sprite.svg` 全部 200，内容类型分别是 `text/html`、`text/css`、`text/javascript`、`application/json`、`image/svg+xml` —— 相对 CSS / module / 图片 / 本地 JSON 在运行路径上成立（静态预览里仍不成立，那是 UX-25 第 2 条的边界）。
-  - **停止**：点"停止"后工具条显示 `role=status`/`tone=warning` 的"运行服务已停止；页面重新加载会失败。"，随后该 URL 连接被拒（`urlAfterStop: 0`）。
-- **第 1 条为什么仍未勾选**：工具条目前是 **运行 / 停止**（运行中再次点击即"重新运行"，会以同一入口重新打开页面），**没有独立的"重新加载"按钮**（浏览器标签自身的刷新仍可用）；脏草稿的"保存并运行 / 取消"已经实现、单元测试通过，并且在真实窗口里**实测可用**（2026-09-25 21:05 补记的三次测量：会话草稿为 dirty 且含标记、预览帧文档含标记、点"运行"出现"有未保存的修改…保存并运行/取消"且此刻没有任何服务启动）——但它依赖"窗口可见"，而验收运行现在默认不显示窗口（见下），所以这条链路暂时**不能进门的断言**，只作为一次性证据记录。
-- **第 3 条为什么仍未勾选**：目前只有"服务已停止"这一类状态进入界面；**页面脚本错误、资源失败与 guest 崩溃还没有投影**（不打开 DevTools 就看不到），"加载成功≠初始化成功"的诊断也没有。
-- **第 6 条为什么仍未勾选**：真实窗口只验到"canvas 有画面、输入使分数变化"；**未验**：输入是否触发 LS 快捷键或滚动外层、重开一局、切标签返回 / 调整尺寸 / 关闭后的资源释放、窗口销毁时端口释放（当前只有显式停止、应用退出时的 `stopAll` 与 30 分钟空闲回收）。
-- 边界与未覆盖：服务只服务工作区根内的**普通文件**，不代理进程、不执行项目脚本、不安装依赖；需要构建的项目仍要用户自己起开发服务（`development-environments` 的 URL 路径不变）；本次没有测打包版、真实系统缩放、以及"其他本地进程直接猜端口"的对抗场景（token 与 Host 校验有单元测试，真实窗口只验了错误 token 与穿越）。
-
-**实施记录（2026-09-25 21:10:00）｜状态：草稿链路定位完成（不是产品缺陷），UX-25 第 3 条与 UX-26 第 1 条的"脏草稿"半条拿到真实窗口证据但仍不勾选；验收运行改为不显示窗口**
-
-- **用户可见的改动（本轮起因）**：此前的真实窗口验收会把 Electron 窗口显示在用户桌面上（用户明确反馈影响操作）。`desktop-shell.ts` 现在在隔离验收运行（`LITTLESHEEP_ELECTRON_ACCEPTANCE=1`）里**扣住窗口**：`show()`/`showStartup()` 默认不生效，窗口仍被创建并照常渲染，验收脚本经调试协议驱动它；需要像素的检查必须显式放行（验收动作 `show` 先调 `allowAcceptanceWindow()` 再 `show()`，顺序有单元测试钉住）。生产启动不受影响。验收门 `pnpm run verify:html-preview-baseline` 在没有显示窗口的情况下仍 `failures: []`（运行入口的 canvas 采样、计分变化、隔离与边界断言全部照旧通过——来宾页面不受宿主文档可见性影响）。
-- **"草稿进了存储但界面不脏/预览不更新"的根因（定位完成）**：编辑器**从未布局**。在文档 `hidden` 时挂载 Monaco，实测 `.view-line` 数量为 **0**、`.overflow-guard` 为 **5×5**（宿主容器是 145×670）、`requestAnimationFrame` 1.5 s 内**不触发**；在这种状态下 CDP 键入的字符落点随机（实测把标记插进了 `<!doctype` 内部，被解析器丢弃），pane 状态自然不变。文档重新可见后（实测：最小化→还原）布局会自行恢复（`.view-line` 8 个、guard 145×670）——**这是既有的 ResizeObserver 通知在渲染恢复时补投递**，我为此写的"退化即同步布局 + visibilitychange 重排"改动在**对照实验中被证伪**（去掉改动同样恢复），已回退，不留无依据的代码。
-- **可见窗口下的完整链路（一次性证据，记录）**：单文件夹具 + 可见窗口，点"编辑"→ 点入 `.view-line` → 逐字符键事件输入 `MARKER`：会话草稿存储出现 **dirty 且含标记**；预览元素的 `srcdoc` 由 670 → **677 且含标记**；以调试协议读到**帧内文档** `outerHTML` 也含标记、可见文本为 `"MARKER 草稿诊断 正文"`；再点"运行"出现"有未保存的修改。运行使用磁盘上的已保存版本。"，动作按钮包含 **保存并运行 / 取消**，此刻 `/workspace/preview-server` 返回**空服务列表**。同一链路在门里另有两个通过的运行（`gate-draft4`/`gate-draft6`：prompt 断言与"取消后仍无服务"断言均通过）。
-- **为什么仍然不勾选**：这条链路需要**可见窗口**（Monaco 的 EditContext 只在布局后接收按键），而验收运行现在默认不显示窗口，所以门里只能保留"键入 → 记录"的旧走查（`typed=keyEvents`/`failed` 都只进证据）。UX-25 第 3 条另有"保存成功后刷新、保存失败保留草稿、外部更改/删除、快速切换"四类未测；UX-26 第 1 条还缺独立的"重新加载"按钮。
-- **门禁工具的四个坑（记录下来避免重复踩）**：① DOMPurify **默认删除 HTML 注释**——用 `<!-- 标记 -->` 永远无法证明预览跟随草稿，标记必须是真实文本/元素；② 点第一行 `.view-line` 的左侧可能落在 `<!doctype` **内部**（列 5 附近），插入的文本被解析器丢弃，必须点到列 0 或文档末尾；③ 点击若没让 `.native-edit-context` 取得焦点，后续按键**全部丢失**（实测 `typed=failed`），必须先确认 `document.activeElement` 落在编辑器内；④ `Input.insertText` 只改渲染行、不改模型。
-- **未被采用的替代路径（记录为工具限制，不是产品缺陷）**：把草稿写进 `localStorage` 会话桶、或经 `POST /workspace/layout` 写进 Main 侧布局索引后再重载，**都没能让面板变脏**（应用在启动时用自己的状态替换/重读布局）。因此"预置草稿"不能替代真实键入，门里已放弃这条捷径。
-
-### UX-27｜Git 刷新失败、旧数据与版本一致性
-
-**目标 / 依赖**：依赖 UX-24 的 Git 夹具；刷新有可信结果，旧数据有状态。与 UX-18 已完成的侧栏宽度工作分开验收，不重复重做布局。
-
-**范围与源码确认**：[review.tsx](../../packages/app/src/renderer/workspace/review.tsx) 的 snapshot catch 只在 `!hasSnapshot` 时设置错误，diff catch 只在 `!cached && !stale` 时显示错误；已有缓存时失败会被隐藏。`selectedDiff` 仅按路径和工作区匹配，未检查 revision，刷新期间允许保留旧 Diff 而没有独立过期说明。[workspace-git-review.ts](../../packages/app/src/main/local-app-api/workspace-git-review.ts) 的 revision 是随机 UUID，状态 / numstat 分别读取，详情又读取实时 Git；[workspace-git-review-cache.ts](../../packages/app/src/main/local-app-api/workspace-git-review-cache.ts) 校验的是缓存身份，不能证明 HEAD、index 与工作树内容未变化。后者属于待复现的一致性风险。
-
-- [x] 保留旧内容时标明“正在刷新 / 更新失败，显示上次结果”及上次成功时间，失败有重试；snapshot 与单文件 diff 的失败分别可见，不能将旧数据呈现为刷新成功。
-- [ ] 基于 HEAD / index / 当前文件等必要事实建立读取前后的一致性校验；在差异读取期间发生变化时丢弃过期结果并有界刷新。复用现有缓存、合并请求与取消逻辑，不新增调度层，也不声称 Git 多命令读取天然是原子快照。
-- [ ] A→B→A 工作区 / 文件切换、已暂存后再次编辑、外部保存、撤销、提交 / 切分支、刷新连点、取消及慢响应均不串数据。持续变化或连续 409 时有界终止并提示，不能无限刷新。
-- [x] 验收：已加载 Diff 后使刷新失败，旧结果明确带过期状态；恢复后一次手动刷新取得当前内容并清除错误；列表统计与 Diff 所属版本匹配，或明确显示重新读取中。延迟返回的旧请求不能覆盖新请求。
-
-**实施记录（2026-09-25 18:35:00）｜状态：第一条（旧数据自报状态）完成真实窗口验收并勾选；其余三条仍未开始**
-
-- 实现范围：新增 `renderer/workspace/review-refresh-notice.ts`（纯规则）——把“刷新中 / 更新失败 / 差异属于上一个 revision”三类事实派生为共享 `Feedback`（色调是字段，不从文案里猜）：失败说“显示上次结果”并用仍在屏上的 `generatedAt` 报出上次成功读取时间；**快照与单文件 Diff 各自成条、各自带重试动作**，每条 `busy` 只反映自己那次请求，`status` 类提示不带任何按钮。`review.tsx` 只把状态与两个动作交给它：`setDiffLoading(force || !cached)` 让“请求在飞”与“没有内容可显示”分开，因此刷新期间旧差异会说明自己正在被重读；失败不再清掉旧 Diff（旧实现在已缓存时把错误整个吞掉）；“重试差异”以 `force` 绕过 Diff TTL 真正重新请求。提示统一由共享 `ui/feedback-notice.tsx` 渲染（`role`/`data-tone` 随色调、失败原因进有界“技术详情”、pending 时禁用重试），`10-git-review.css` 的 `.workspace-review-update-notice` 只声明版面并复用行内通知几何 token。
-- 一处被门禁逼出来的结构调整（记录，因为它决定后续往哪里加）：`review.tsx` 是"核心组合热点"，基线 383 行且**只允许下降**。把 `reviewNotices(...).map(...)` 的接线留在视图里会让它涨到 392；因此提示的重试接线也归 `review-refresh-notice.ts`（视图只传两个回调），视图回落到 **382 行**、新模块 107 行。换言之这个文件以后不接受新的提示文案或分支。
-- 真实窗口门 `pnpm run verify:review-refresh-errors`（[verify-review-refresh-errors.mjs](../../scripts/verify-review-refresh-errors.mjs)）：隔离数据根 + 真实 Git 工作区（1 个未暂存修改，CLI 状态与 `+second` 先断言过）+ 页面 `fetch` 探针，可**按住**、注入 500 或放行 `/workspace/review` 与 `/workspace/review/diff`。窗口 1280×840（dpr 1.5，真实显示器缩放），最终构建上连续运行 `failures: []`；`--keep` 那次的两张截图在 `%TEMP%\littlesheep-review-refresh-AdgNb8\screenshots\`（临时根，不提交）。
-- 实测（括号内为探针计数）：
-  - **基线**：1 个更改文件、1 层 Diff、**0 条提示**（成功不产生任何陈旧说明）。
-  - **按住快照刷新**：出现 `role=status`／`tone=info` 的“正在刷新 Git 更改，当前显示上次结果。”且**没有任何重试按钮**；旧文件与旧 Diff 都还在，刷新按钮在此期间 `disabled=true`；释放后提示消失、快照请求计数增长。
-  - **快照刷新失败（已有缓存）**：`role=alert` 的“Git 更改更新失败，显示上次结果（上次成功读取：2026/9/25 18:33:17）。”+ 可展开“技术详情”（“Git 审阅暂时无法读取，请稍后重试。”）+ **启用**的“重试刷新”；旧快照与旧 Diff 都在（files 1 / layers 1）；点重试后提示清空且**确实发出新请求**（snapshots 4→5）。
-  - **按住 Diff 刷新**：`role=status` 的“快照已变化，当前差异属于上次结果，正在重新读取。”，旧 Diff 层仍在（layers 1）。
-  - **Diff 刷新失败**：`role=alert` 的“差异更新失败，显示上次结果。”+ 技术详情（“文件差异暂时无法读取，请稍后重试。”）+ 启用的“重试差异”，旧 Diff 层仍在（layers 1）。
-  - **重试确实绕过缓存**：点“重试差异”后探针 `diffs` 5→6（真的又发了一次请求，而不是复用缓存里的旧值）、提示清空、Diff 仍在。
-- 回归：`review-refresh-notice.test.ts` 8 例（快照失败带上次成功时间与 Runtime 原文、首次读取失败不重复报、刷新中为 `status` 且无动作、陈旧 Diff 与首次 Diff 失败分开、差异属于上一 revision、详情有界 400 字符、两条提示的顺序与“动作只挂在失败条上”、以及两个视图都经共享反馈结构渲染）；`pnpm exec vitest run packages/app/src/renderer` 116 文件 / 642 例通过，`tsc --noEmit -p packages/app/tsconfig.web.json` 退出 0，`node scripts/check-repository-hygiene.mjs` 38/38 通过。
-- 顺带修掉的一处既有回归：`leading-row-layout.test.ts` 仍在等只有两个选择器的 hover 规则，而 `5ed06e7` 已把它扩成含 `[aria-pressed="true"]` 的三个选择器——该用例自那次提交起一直是红的（`pnpm exec vitest run packages/app/src/renderer/workspace` 会失败）；现按规则的真实形状更新，断言意图不变（hover／pressed／focus 共用同一个无边框表面）。
-- 构建边界（记录，不改仓库脚本）：本机 `pnpm` 由宿主运行时代理，脚本在 `ELECTRON_RUN_AS_NODE` 下执行，于是 `prepare-littlesheep-runtime.mjs` 里对 `resources/default_app.asar` 的 `stat` 触发 Electron 的 asar 钩子并抛 `Invalid package`，构建失败。本轮改用真实 Node 执行同一条 `ensure:app-build` 命令（临时 `pnpm.cmd` 代理放在 `%TEMP%`，不写进仓库），构建与门禁都通过；这是宿主边界，不是产品缺陷。
-- 未覆盖（其余三条保持未勾选）：**读取前后的一致性校验**（HEAD / index / 当前文件事实比对、丢弃过期结果）没有做；**A→B→A、连点、取消、慢响应不串数据**没有做；“列表统计与 Diff 属于同一版本”没有做。`revision` 仍是每次读取的随机 UUID，所以本门只证明“旧数据不再冒充新数据”，不证明它一定是最新的。同一 revision 的“正在刷新文件差异，当前显示上次结果。”分支在真实窗口要等缓存 TTL（30 s）过期后失败再点重试才可达，本门没有构造，只有 `review-refresh-notice.test.ts` 的单元覆盖。
-
-### UX-28｜Git 状态分类与差异显示完整性
-
-**目标 / 依赖**：依赖 UX-24，错误与过期反馈复用 UX-27。限定为现有只读“未提交更改”审查，不顺带引入 commit / push / reset / checkout 等写操作。
-
-**范围与证据**：[workspace-git-repository.ts](../../packages/app/src/main/local-app-api/workspace-git-repository.ts) 把 `rev-parse` 的所有非零允许退出码当作非仓库，可能混淆损坏仓库、权限和 ownership 错误；具体原因为待夹具验证。[workspace-git-review.ts](../../packages/app/src/main/local-app-api/workspace-git-review.ts) 已实现 staged / unstaged / untracked 分层；[workspace-git-diff.ts](../../packages/app/src/main/local-app-api/workspace-git-diff.ts) 已有二进制与截断标志。沿用 [review-diff.tsx](../../packages/app/src/renderer/workspace/review-diff.tsx)、[review-diff-model.ts](../../packages/app/src/renderer/workspace/review-diff-model.ts) 和行评论契约。
-
-- [x] 分清 Git 未安装、非仓库、未首次提交、仓库拒绝访问 / ownership、损坏、超时及取消；提供真实且有界的原因和下一步。不自动修改全局 `safe.directory`，不以“没有更改”代替失败。
-- [x] 以 CLI 为基准覆盖仓库根 / 子目录 / worktree、无 HEAD、detached HEAD、中文空格路径、重命名 / 删除 / 新增 / 空文件 / 二进制 / 冲突 / 子模块。已有分层能力只补回归；暂不支持的格式明确显示限制与外部查看方式，不能显示为空且暗示相同。
-- [x] 验证已暂存和未暂存同时存在、工作树回到 HEAD 而 index 有更改时两层均在；明确计数是分层增删之和，不能当作 HEAD 到工作树净变化。纯重命名 / mode change 无文本 hunk 时显示元数据变化。
-- [x] 单列 / 双列 diff 验证真实增删行号、长行折行、删除行评论、键盘选取与返回源文件。删除文件的打开按钮给出合理结果，行评论刷新后不得默默指向另一段代码。
-- [x] 大文件 / 多文件保留现有上限；文件列表超过 2,000 项、每层超过 5,000 行等场景明确呈现截断与计数不完整。折叠侧栏与窄窗口下错误、刷新、层级与限制仍可见。
-
-### UX-29｜Terminal 内的 Shell 探测与选择
-
-**目标 / 依赖**：依赖 UX-24 的环境基线。Terminal 是终端面板，PowerShell / Bash 是其中可选的 Shell；菜单和标签要表达实际运行类型。
-
-**范围与源码确认**：[workspace-shell.ts](../../packages/app/src/main/workspace-shell.ts) 在 Windows 固定 `powershell.exe`，没有发现 / 选择流程；[terminal-routes.ts](../../packages/app/src/main/local-app-api/terminal-routes.ts) 创建会话只接受目录与尺寸，[terminal-process.ts](../../packages/app/src/main/local-app-api/terminal-process.ts) 自动选 Shell。Renderer 的重启提示也固定写 PowerShell。扩展现有 API / session snapshot 与 [terminal.tsx](../../packages/app/src/renderer/workspace/terminal.tsx)，不另建终端后端。
-
-- [x] Main 探测 Windows PowerShell、PowerShell 7（pwsh）、Git Bash 和 cmd；WSL Bash 仅在 WSL 与发行版实际可用时列出并显示发行版，不能把任意 `bash.exe` 都当作 Git Bash。未安装的项说明原因与配置路径，不伪造可用，也不自动安装。
-- [x] 增加“新建终端”Shell 下拉、默认 Shell 偏好和真实 Shell 名称；选择通过受校验 profile ID 传给 Main，由 Main 决定 executable / args / env。保留已有默认 Windows PowerShell 的迁移行为，默认项失效时明确提示与提供可选回退。
-- [ ] 参数以数组传递，支持空格和中文安装路径 / cwd；Git Bash、WSL 分别验证路径映射与继承环境。UTF-8 初始化、提示符及启动参数按 Shell 分支处理，不能把 PowerShell 启动命令交给 Bash。
-- [x] 验收：PowerShell 通过 `$PSVersionTable`、Bash 通过 `BASH_VERSION` 及实际进程信息确认；`pwd` / 当前目录、环境变量、中文输出、多行粘贴与常见开发命令正确。缺失 Shell、启动失败或偏好失效时菜单和错误可恢复。
-
-### UX-30｜独立终端会话、生命周期与降级
-
-**目标 / 依赖**：依赖 UX-29。允许同一工作区同时打开 PowerShell 与 Bash，切换面板不丢失开发服务；恢复的是可证明的状态，不假装已退出的进程仍在运行。
-
-**范围与证据**：当前 [terminal.tsx](../../packages/app/src/renderer/workspace/terminal.tsx) 持有单个 terminal session ref；[terminal-session.ts](../../packages/app/src/main/local-app-api/terminal-session.ts) 已有多会话管理和回放上限，可复用。PTY 失败会降级 spawn；Windows fallback 的中断会终止进程树，不能笼统承诺与 PTY Ctrl+C 等价。保持既有用户交互终端与 Agent 受控命令的 Main 来源区分。
-
-- [ ] 增加有上限的终端实例列表 / 标签，各有 Shell、cwd、输出和退出状态；创建另一 Shell 不杀掉原会话。关闭 / 重启的文案说明影响范围，切工作区或会话后不误向旧进程输入。
-- [ ] 明确隐藏标签、切会话、关闭面板、关闭终端、退出应用的生命周期；隐藏时保活并限制回放缓存，显式关闭后清理该会话和约定范围的子进程。进程重启后保留配置 / 元数据而标记已结束，不自动重放历史命令或偷偷重启服务。
-- [ ] PTY 与 fallback 的能力差异在状态中可发现；覆盖缩放 / resize、ANSI、中文输入、历史、Ctrl+C、退出、断线与重连。fallback 无法支持全屏交互或需要终止 Shell 时明示，重新创建后可继续操作。
-- [ ] 最近命令仅插入输入区、不自动执行；多 Shell 历史标注来源，避免把 Bash 语法当 PowerShell 命令重放。用户手动终端不弹 Agent 审批；Agent 不得借新 profile / 新路由冒充 `workspace-user` 绕过权限。
-- [ ] 验收：PowerShell 和 Bash 各启动一个可识别会话并独立输入，切换返回状态保持；关闭其中一个不影响另一个。退出 / 重启 / 失败后无残留服务、错误输入目标或未捕获 ConPTY 异常；重开应用不会自动执行历史。
-
-### UX-31｜从制作小游戏到运行和审查的交付门
-
-**目标 / 依赖**：UX-24～UX-30 完成对应实现后执行；与 UX-16 / UX-18 共用已有场景和布局门，只新增缺失覆盖。
-
-- [ ] 真实 Electron 中走完：编辑小游戏 → 保存 → 运行 → 开始 / 操作 / 计分 / 重开 → 修改 CSS / JS → 重载看见修改 → Git 审查显示正确差异 → 从 Diff 返回源文件。保留用户原例与合成夹具的证据区别。
-- [ ] 再走多文件开发服务路径：选择 PowerShell / Bash → 手动启动临时项目服务 → 打开实际 localhost URL → 修改热更新 → 停服务显示可理解错误 → 重启服务重试成功；不自动替用户执行项目脚本。
-- [ ] 跨两个工作区 / 两个对话切换，再退出和重开应用，检查 HTML / 浏览器、Git、终端状态归属；页面无法读另一工作区、LS 配置与控制 API，Shell 和历史不会串会话。既有普通浏览器登录态、UX-18 宽度与 UX-23 折行无回归。
-- [ ] 开发构建和 Windows 打包版均走核心路径，记录构建指纹、实际 Shell 路径 / 版本、测试输入、截图、资源 / console 摘要与结果；缺少某 Shell 列为未覆盖，不用 mock 算作实机通过。覆盖窄窗口、真实系统缩放和键盘焦点。
-- [ ] 实施时补充行为测试与实机脚本并登记命令；更新所属 workspace / main / local-app-api / shared / api README。全部实际通过后才能勾选，未完成的原例复验、打包版或安全边界单独保留。
-
-**本次规划验证（2026-09-25）**：已运行 `pnpm.cmd exec vitest run`，显式选择 `html-preview.test.ts`、`browser-navigation.test.ts`、`workspace-shell.test.ts`、`workspace-terminal-authority-api.test.ts`、`workspace-git-review.test.ts`、`workspace-git-layers.test.ts`、Main 的 `workspace-git-review-cache.test.ts`、Renderer 的 `review-cache.test.ts` 和 `review-diff-model.test.ts`，共 **9 文件 / 30 项通过**。测试位置分别位于上述源码同目录；Git 集成测试使用临时仓库。未新增产品代码或测试、未运行新交付门；这份绿色基线没有覆盖小游戏实际运行、缓存失败的真实界面、内容变化竞争与多 Shell 会话。
-
-**规划文档检查**：31 个任务标题、8 个新增未勾选任务及本任务书本地链接检查通过；`git diff --check` 通过。`pnpm.cmd check:repo` 本次为 **37 通过 / 1 失败**：模块拆分地图对 `packages/app/src/renderer/settings/models.tsx` 记录 368 行，实测 373 行，属于本次规划未修改的源码与地图范围；未顺带改动。单独执行 `node scripts/sync-typescript-projects.mjs --check`，28 个 package 引用通过。工作树存在并发改动，本记录仅描述这次检查快照，不宣布全仓检查通过。
+**验收**：第 1 条在一个门里按序走完并留下证据；第 2 条有明确的产品结论（做或不做）与对应验收；第 3、4 条有门与截图；dev/打包两条路径的未覆盖项单独列出。
 
 ## 4. 实施顺序与依赖
 
-1. **第一批：可靠性**。UX-01、UX-02、UX-03、UX-04、UX-05；UX-02 需要的最小确认层可与 UX-07 共用，不等整套 UI 抽象完成再修复。
-2. **第二批：一致性**。UX-06、UX-07、UX-08、UX-09、UX-10、UX-11。草稿离开、模态焦点和异步反馈应共同验收；无模型引导依赖草稿保留和错误表达。
-3. **第三批：收口**。UX-12、UX-13、UX-14；UX-15/16 从第一批就开始记录基线，最终跨批回归。视觉修改必须以真实窗口证据收尾。
-4. **按需排期（2026-09-24 折入）**。UX-17 必须先出 1,000/10,000 行基准、再决定自实现或引库，不与本轮收口绑定；UX-18 很小，可与 UX-07 的导航/模态冻结一起做，避免两次改同一片布局状态。
-5. **对话区专项**。先并行记录 UX-19/UX-20 的真实窗口与分层证据，以及 UX-21 的错误注入表；先修真正的丢字/错误分类与安全重试，再处理滚动定位，最后以 UX-22 收口视觉层级。与 UX-16 共用长回答和失败验收记录。
-6. **拓展工作区本批**。UX-24 固定夹具后，优先 UX-26 小游戏运行入口，并以 UX-25 收口共用资源与静态页；Git 按 UX-27 → UX-28，终端按 UX-29 → UX-30，最终由 UX-31 联合验收。三条线可独立排期，静态预览修好不代表小游戏可玩，已有 Git 单元测试通过不代表用户故障消失。
+1. **先修探测与可见性缺陷**：UX-32（Git Bash 假阴性 + unknown shellId 语义）、UX-37 的前三项（上限泄漏、关闭标签清理、切标签误输入）——都是"用户会撞上但界面不会说"的一类。
+2. **再把已有实现补成断言**：UX-34（静态预览的磁盘/草稿）、UX-35 的门与 409 一项、UX-38 的样式稳定性。这三项的共同点是**实现已经在、证据没接上**，成本低、收益是防止回流。
+3. **需要产品判断的先定后做**：UX-36 的 (a)/(b) 取舍、UX-38 的"会话切回是否恢复阅读位置"、UX-39 第 2 条的开发服务范围、UX-37 的"重启后是否保留标签元数据"。这四项在定案前不要动代码。
+4. **最后是组合验收**：UX-33 的五类状态矩阵、UX-38 的键盘/缩放/录屏、UX-39 的端到端与打包版。它们依赖前三步的实现稳定。
 
-不以“重做前端”为一个大任务，不为清单新增调度、记忆写入或另一个权限体系。不自动改变既定开发主线；本任务书是可独立排期的应用层 backlog。
+同一批次里若与其它任务书（如 [Harness 当前语义收口](harness-current-semantics-taskbook-2026-09-25.md)）的改动面重叠，沿用原任务编号与证据，不把同一条未完成事项登记到两处。
 
-## 5. 统一完成标准
+## 5. 验证门与命令
 
-- 每个任务填写实际实现范围、验证方式、通过结果及未覆盖项，完成前保持未勾选。
-- 状态分支、误发送、删除和跨页草稿使用有意义的行为测试；颜色/间距调整不添加只复述实现的测试。
-- 真实 Electron 验收覆盖：正常、慢请求、失败、取消、重复操作、键盘、最小窗口和系统缩放。交互验收必须使用隔离测试数据，不操作真实归档或真实密钥。
-- 同一改动同步更新所属领域 README 的边界与系统时钟时间；运行适用的仓库检查、相关测试和应用构建，并按 Renderer 约定刷新桌面入口后验收。
-- 此标准在各任务实际实施时适用；历史实施记录应区分代码、自动化与真实窗口证据，不能用本任务书初版的范围声明代替最新状态。
+新增或扩展的门必须在 `package.json` 注册后写进这里，并同步所属领域的 README（含系统时钟的秒级时间戳）。
 
-## 6. 实机验收脚本索引
+| 任务 | 门 |
+| --- | --- |
+| UX-32 | 扩展 `workspace-shell-discovery.test.ts`（含非默认安装根）+ 新增 Git Bash 实机验收，对齐 `workspace-terminal-wsl-acceptance.test.ts` |
+| UX-33 | `pnpm run verify:transcript-state-visibility`（待建），或扩展 `pnpm run verify:transport-retry-feedback` / `pnpm run verify:conversation-workspace-scenarios` |
+| UX-34 | `pnpm run verify:html-preview-baseline`（把已有观察值接成断言） |
+| UX-35 | `pnpm run verify:review-refresh-errors`（改过期 limits + 补 `unstable` 与 409 断言）+ `workspace-git-review-consistency` / `workspace-git-review-race` 单测 |
+| UX-36 | `pnpm run verify:workspace-large-directory`（上限变化后重跑）+ 新增筛选逐键与键盘导航走查 |
+| UX-37 | `pnpm run verify:conversation-workspace-scenarios`（上限拒绝、关闭标签清理、切标签不误输入）+ 注册 `verify:workspace-terminal` |
+| UX-38 | `pnpm run verify:chat-reading-scenarios` / `verify:chat-history-paging` / `verify:chat-streaming-rendering` / `verify:chat-output-readability` |
+| UX-39 | `pnpm run verify:html-preview-baseline` + `verify:review-refresh-errors` 串联，及 `--app=packaged` 变体 |
 
-逐项步骤写在每个任务自己的“实施记录 → 待执行脚本 / 验收”里；有些自动门和真实窗口场景已经完成，仍按缺失场景保留未完成状态。不要用已有脚本通过替代尚未覆盖的验收点。
+## 6. 复核记录
 
-**环境要求**（统一遵守第 5 节最后一条）：使用隔离测试数据根，不操作真实归档、真实项目目录或真实密钥；每个场景记录窗口逻辑尺寸、Windows 系统缩放与截图路径；结论只写“通过 / 不足 / 需修改”，正常场景不追加“重设计”任务。
+本轮（2026-09-26）只做两件事：核对任务书与仓库的一致性、退役已完成部分。未改动产品代码、未新增或扩展门、未运行任何真实窗口验收。核对方式为只读源码审查（4 组并行核查，逐条给出文件与行号证据）、只读的本机 Shell 探测（`Test-Path` / `bash --version` / `wsl --list --quiet`）与 `git log`；门禁只跑了 `node scripts/check-repository-hygiene.mjs`。
 
-| 顺序 | 任务 | 脚本位置 | 关键步骤摘要 | 结论 |
-| --- | --- | --- | --- | --- |
-| 1 | UX-01 | 本任务实施记录 + `pnpm run verify:composer-ime-submit` | 微软拼音组词确认候选 → 下一次普通 Enter 只发一次；Shift+Enter、粘贴、附件仍有效 | |
-| 2 | UX-02 | 本任务实施记录 + `pnpm run verify:deletion-confirmation` | 取消 / Escape / 请求失败 / 连点各一次；确认前不发生删除、失败留在确认层 | |
-| 3 | UX-03 | 本任务实施记录 + `pnpm run verify:composer-stop-append` | 带草稿与附件时直接停止且草稿不丢；补充发送只提交一次；“正在停止”持续到 run 结束 | |
-| 4 | UX-04 | 本任务实施记录 + `pnpm run verify:skills-catalog-states` | 慢请求、空响应、列表失败、详情失败、快速切换各一次 | |
-| 5 | UX-05 | 本任务实施记录 + `pnpm run verify:recovery-states` | 发现失败、仅损坏记录、需要输入、自动续跑失败、正常自动续跑五类 | |
-| 6 | UX-06 | 本任务实施记录 + `pnpm run verify:provider-editor-draft` | 编辑后切页返回、取消、保存失败注入、保存中关闭、假密钥丢弃及存储/配置/日志检查 | 通过 |
-| 7 | UX-07 | 本任务实施记录 + `pnpm run verify:keyboard-modal-focus` + `pnpm run verify:recovery-states -- --windows=1` | 删除确认层 Tab/Escape/焦点返回；恢复 Escape/焦点返回；审批拒绝一次及焦点/背景阻断 | 通过 |
-| 8 | UX-08 / UX-10 | 本任务实施记录 + `pnpm run verify:channel-entry-states` | 三个入口状态一致；“每个可点击控件有可见结果”；空配置/全部停止/部分运行且部分失败/全部运行四种渠道 fixture 的标签、数量与颜色 | |
-| 9 | UX-09 | 本任务实施记录 + `pnpm run verify:async-feedback` | 供应商保存、阈值保存、渠道重载、插件启停、文件保存各注入一次失败 | |
-| 10 | UX-11 | 本任务实施记录 + `pnpm run verify:no-model-config-loop` | 新数据根从空状态配置完成并回到原草稿；加载失败重试；保存后选择器从 Runtime 刷新 | |
-| 11 | UX-12 / UX-13 | 本任务实施记录 + `pnpm run verify:settings-navigation-terminology` | 从聊天、独立模块、设置总览进入同一功能名称与返回位置一致；逐页核对文案 | |
-| 12 | UX-14 | 本任务实施记录 + `pnpm run verify:shared-ui-roles` | 确认两处取值变化（五处错误浅红统一、插件通知 7px9px→8px10px），并实测同类控件的高度/文字层级/聚焦/禁用/等待/危险一致与主题、紧凑布局、reduced-motion、圆角例外 | |
-| 13 | UX-15 | 本任务实施记录 + `pnpm run verify:narrow-high-dpi-forms` | 最小窗口与常用窗口 + 125%/150%/200% 缩放下的模型表单、设置侧栏、审批长路径、运行时选择器 | |
-| 14 | UX-16 | 本任务实施记录 + `pnpm run verify:conversation-workspace-scenarios` | 流式长回答阅读位置；双会话现场与重启恢复；紧凑模式五类状态 | |
-| 15 | UX-18 | 本任务实施记录 + `pnpm run verify:review-navigator-width` | 拖宽审阅侧栏后文件导航宽度不变；重开应用恢复；窄窗口无横向滚动与不可达按钮 | |
-| 16 | UX-17 | 本任务实施记录 + `pnpm run verify:workspace-large-directory` | 1,000 / 10,000 行目录的成对基准 + 滚动帧间隔与筛选可达性 | |
-| 17 | UX-20 | 本任务实施记录 + `pnpm run verify:chat-streaming-rendering` | 分块流式文本逐层比对 + 断流/畸形帧/最终结算 + 真实窗口 DOM/结算比对与取色 | |
-| 18 | UX-21 | 本任务实施记录 + `pnpm run verify:retry-feedback` / `verify:local-stream-disconnect` | 429/503/超时/断流/401/400/取消/本地 SSE 断线共九类，安全重试最多 5 次 | |
-| 19 | UX-19 | 本任务实施记录 + `verify:electron-ui-state-continuity` / `verify:chat-streaming-rendering` / `verify:chat-reading-scenarios` / `verify:chat-history-paging` | 顶部/中部/底部阅读 + 流式增量 + 输入增高/展开工具详情/加载更早消息/切换会话返回定位 | |
-| 20 | UX-22 | 本任务实施记录 + `pnpm run verify:chat-readability` | 长正文/工具输出/失败/来源的可读性、键盘与高 DPI 实机复核 | |
-| 21 | UX-23 | 本任务实施记录 + `pnpm run verify:code-wrap-control` | 语言标签文本；折行开关在对话代码块与工作区 Monaco 上生效；中文与正文同字形；按钮可达 | 通过 |
-| 22 | UX-24～UX-26 | 本任务实施记录 + `pnpm run verify:html-preview-baseline`（UX-24 基线、UX-25 第 1 条复核、UX-26 的运行入口与资源服务边界都在此门）；UX-25 第 2 条与 UX-26 的诊断门待建 | 夹具三入口对照（Chrome 回环 HTTP / LS 文件预览 / LS 浏览器标签）、资源请求、Canvas 与真实输入、错误诊断、guest 隔离；渲染后的 DOM 与计算样式断言；运行入口的 URL 一致性、隔离、穿越/错误 token、停止后拒连、多文件资源内容类型 | UX-24 基线通过；UX-25 第 1 条通过；UX-26 第 2、4 条通过；其余未执行 |
-| 23 | UX-27 / UX-28 | 本任务实施记录 + `pnpm run verify:review-refresh-errors`；复用既有 Git 测试与 `verify:review-navigator-width`，补内容竞争与错误分类场景 | 按住／失败／放行审阅快照与 Diff：旧数据自报刷新中与更新失败、两条失败各自可见可重试、重试确实重新请求；CLI→API→UI 比对、缓存过期、错误分类、特殊 diff | UX-27 第一条通过（三次 `failures: []`）；其余未执行 |
-| 24 | UX-29 / UX-30 | 本任务验收项；多 Shell / 会话实机门待建 | Shell 身份、cwd、独立实例、PTY 降级、关闭与恢复 | 未执行 |
-| 25 | UX-31 | 本任务组合步骤；扩展 `verify:conversation-workspace-scenarios` 或登记最小独立门 | 小游戏编辑运行、终端服务、Git 审查、跨工作区、打包版 | 未执行 |
-
-**自动门快照（记录于 2026-09-23 00:11，会随每次运行变化，不作为常驻结论）**：`check:repo` 当时 36/36 通过（2026-09-24 增补两条检查后为 38/38）；全量测试 **476 个文件 / 3358 通过、2 失败、1 跳过**，两个失败均不在本任务改动面内——`packages/runner/src/runner.test.ts` 的压缩范围断言与 `scripts/verify-web-live-llm-evidence.test.mjs` 解析被管道捕获的子进程 stdout（本沙箱不允许管道捕获，属环境边界）；全 workspace typecheck、App 构建与 `verify:app-recovery` 当时均通过。**测试数量与耗时以命令输出为准**，本任务书不复述为当前结果。
-
-## 7. 对标折入项与上游证据
-
-2026-08-13 的《OpenCode VS Code 对标记录》已于 2026-09-24 退役（原文可取回：`git log --follow -- docs/reference/opencode-vscode-comparison-2026-08-13.md`），其内容按性质分三处承接：**大仓库文件树虚拟化 → UX-17**、**审阅侧栏独立宽度 → UX-18**、**以下两项不排期**。上游证据留在本节，供将来重新核对时使用：
-
-- 上游：`anomalyco/opencode`，对标 commit `cc4b45612974f735ddec46009ede07729511fba4`（MIT）；其 VS Code 扩展 `sst-dev.opencode-0.0.13` 约 10.8 KB，只做终端/HTTP 桥，没有 Webview、Monaco 或自己的文件树。关键源码：[sdks/vscode/src/extension.ts](https://github.com/anomalyco/opencode/blob/cc4b45612974f735ddec46009ede07729511fba4/sdks/vscode/src/extension.ts)、[file-tree-v2-model.ts](https://github.com/anomalyco/opencode/blob/cc4b45612974f735ddec46009ede07729511fba4/packages/app/src/components/file-tree-v2-model.ts)。
-- 当时**已直接吸收**的 5 项（文件预览 byte-LRU、Git Diff 字节预算、Monaco 模型缓存与面板切换稳定、审阅过滤与键盘导航、Main 审阅快照与 Diff 请求边界）实现细节在 `packages/app/src/renderer/workspace/README.md`、`renderer/README.md` 与 `ui/README.md`，本任务书不重复。
-- **未排期两项**（产品面或数据模型决定，不是界面修正）：
-  - **行级评论的持久性**：LS 已有行/范围手势、view zone 与附件式发布（`workspace/line-comments.tsx`、`review-line-comments.ts`、`line-comment-attachments.ts`），但**没有独立评论存储或 Runtime 评论合约**——评论只作为本轮附件进入对话；OpenCode 是持久评论模型。是否引入持久评论、以及它与会话/行范围的绑定协议，需单独立项并按 Runtime 合约评审。
-  - **真正的 LS VS Code 扩展**：OpenCode 的扩展复用 VS Code 原生终端、文件树、编辑器，把当前文件/选区转成 `@relative/path#Lstart-end` 注入 TUI；LS 的"内置 VS Code 模块"其实是自有 Monaco 工作台，两者是两个产品面。若要做，应新建 VS Code SDK 项目并保持 MIT/自有许可边界清晰，不能通过嵌入 OpenCode Desktop 替代。当前为"记录在案、不排期"的待产品选择项。
+- 退役项的文件、脚本、测试引用全部核对存在（链接与命令零失效）；已勾选项的实现文件、修复与测试都在位，没有发现"记录了但代码里不存在"或"修复被回退"的情况。
+- `check:repo` 当时 **37 通过 / 1 失败**：`packages/app/src/renderer/workspace/terminal.tsx` 表内记 524 行、实测 530 行——工作树里有一处未提交的 UX-30 改动（把 `closeAll` 的触发点从卸载改为身份变化），行数随之增加。本轮只同步了[模块拆分地图](../reference/module-split-map.md)里的这一行计数与时间戳，未改动源码；同步后 `check:repo` **38/38** 通过。
+- 工作树当时还有其它在途内容（`packages/app/src/renderer/workspace/terminal.tsx`、`docs/README.md`、`scripts/verify-conversation-workspace-scenarios.mjs` 的未提交改动，以及未跟踪的 `scripts/verify-workspace-terminal.mjs`、`scripts/lib/pnpm-shim.mjs`、`docs/taskbooks/harness-current-semantics-taskbook-2026-09-25.md`）。这些不属于本任务书，本文件不据此宣布任何结论。
