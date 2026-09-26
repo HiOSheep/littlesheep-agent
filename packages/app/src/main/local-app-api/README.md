@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-26 09:46:13
+最后更新：2026-09-26 10:11:24
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -115,3 +115,7 @@ WSL 是唯一一个启动参数依赖会话目录的 Shell：`shellLaunch(profil
 ## 多个终端会话共存（UX-30，2026-09-26）
 
 `workspace-terminal-sessions.test.ts` 在同一管理器里开两个真实会话：输出互不串台、关闭其中一个后另一个仍可继续执行命令、超过上限的创建被明确拒绝（`too many workspace terminal sessions`）。
+
+## WSL 会话的探测与失败处理（UX-29，2026-09-26）
+
+`workspace-terminal-wsl-acceptance.test.ts`：能启动 WSL 的机器上验证真实 Bash（`$BASH_VERSION`、`PWD` = 映射后的 `/mnt/...`、`uname -s`）；本机 WSL 会话因宿主代理配置无法启动，验证的是"失败被如实报出、不假装活着"。`checkWslDistroReal` 的探测只说明发行版可执行普通命令，不预测终端会话能否启动。

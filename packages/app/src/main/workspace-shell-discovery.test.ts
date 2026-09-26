@@ -15,6 +15,8 @@ import {
   wslArgs,
 } from './workspace-shell-discovery'
 
+const WSL_EXE = 'C:\\Windows\\System32\\wsl.exe'
+
 const WINDOWS_ENV: NodeJS.ProcessEnv = {
   SystemRoot: 'C:\\Windows',
   ProgramFiles: 'C:\\Program Files',
@@ -26,6 +28,7 @@ function discovery(options: {
   files?: string[]
   distros?: string[]
   env?: NodeJS.ProcessEnv
+  unusableDistros?: Record<string, string>
 }) {
   const files = new Set((options.files ?? []).map((path) => path.toLowerCase()))
   return discoverWorkspaceShells({
@@ -33,6 +36,10 @@ function discovery(options: {
     env: options.env ?? WINDOWS_ENV,
     fileExists: (path) => files.has(path.toLowerCase()),
     listWslDistributions: async () => options.distros ?? [],
+    checkWslDistro: async (distro) => {
+      const reason = options.unusableDistros?.[distro]
+      return reason ? { ok: false, reason } : { ok: true }
+    },
   })
 }
 
@@ -93,7 +100,7 @@ describe('workspace shell discovery', () => {
   })
 
   it('lists one entry per real WSL distribution and says so when there are none', async () => {
-    const withDistros = await discovery({ files: [], distros: ['Ubuntu', 'Debian'] })
+    const withDistros = await discovery({ files: [WSL_EXE], distros: ['Ubuntu', 'Debian'] })
     const wslProfiles = withDistros.filter((profile) => profile.kind === 'wsl')
 
     expect(wslProfiles.map((profile) => profile.id)).toEqual(['wsl:Ubuntu', 'wsl:Debian'])
@@ -101,7 +108,7 @@ describe('workspace shell discovery', () => {
     expect(wslProfiles[0]?.label).toBe('WSL · Ubuntu')
     expect(wslProfiles[0]?.args).toEqual(wslArgs('Ubuntu'))
 
-    const withoutDistros = await discovery({ files: [], distros: [] })
+    const withoutDistros = await discovery({ files: [WSL_EXE], distros: [] })
     const wsl = withoutDistros.find((profile) => profile.kind === 'wsl')
     expect(wsl).toMatchObject({ id: 'wsl', available: false })
     expect(wsl?.configHint).toContain('wsl --install')
@@ -163,8 +170,33 @@ describe('workspace path mapping for WSL', () => {
   })
 
   it('starts the session in the workspace, and falls back to home when it cannot', () => {
-    expect(wslArgs('Ubuntu', 'C:\\Users\\me\\项目')).toEqual(['-d', 'Ubuntu', '--cd', '/mnt/c/Users/me/项目'])
+    expect(wslArgs('Ubuntu', 'C:\\work\\me\\项目')).toEqual(['-d', 'Ubuntu', '--cd', '/mnt/c/work/me/项目'])
     expect(wslArgs('Ubuntu', '\\\\server\\share')).toEqual(['-d', 'Ubuntu', '--cd', '~'])
     expect(wslArgs('Ubuntu')).toEqual(['-d', 'Ubuntu', '--cd', '~'])
+  })
+
+  it('does not offer a distribution that is registered but cannot start', async () => {
+    // Measured on this host: the distribution is listed, yet every session fails with
+    // `Wsl/Service/E_UNEXPECTED` because the proxy configuration is not mirrored into WSL.
+    const profiles = await discovery({
+      files: [WSL_EXE],
+      distros: ['Ubuntu'],
+      unusableDistros: { Ubuntu: 'wsl: 检测到 localhost 代理配置，但未镜像到 WSL。' },
+    })
+    const wsl = profiles.find((profile) => profile.id === 'wsl:Ubuntu')
+
+    expect(wsl).toMatchObject({ available: false })
+    expect(wsl?.reason).toContain('无法启动')
+    expect(wsl?.reason).toContain('localhost 代理')
+    expect(wsl?.configHint).toContain('wsl -d')
+    // The executable stays known, so the reason can be acted on rather than guessed at.
+    expect(wsl?.executable).toBe(WSL_EXE)
+  })
+
+  it('reports WSL as unavailable when there is no wsl.exe at all', async () => {
+    const profiles = await discovery({ files: [], distros: ['Ubuntu'] })
+    const wsl = profiles.find((profile) => profile.kind === 'wsl')
+    expect(wsl).toMatchObject({ id: 'wsl', available: false })
+    expect(wsl?.reason).toContain('wsl.exe')
   })
 })

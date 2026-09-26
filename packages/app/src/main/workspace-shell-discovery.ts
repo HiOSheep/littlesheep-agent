@@ -39,6 +39,14 @@ export interface WorkspaceShellDiscoveryOptions {
   fileExists?: (path: string) => boolean
   /** Lists WSL distributions; resolves to an empty list when WSL is unusable. */
   listWslDistributions?: () => Promise<string[]>
+  /**
+   * Checks that a distribution can actually run a command.
+   *
+   * A registered distribution is not the same as a usable one: this host's proxy
+   * configuration makes WSL refuse every session (Wsl/Service/E_UNEXPECTED) while the
+   * distribution is still listed. Offering it would promise a shell that cannot start.
+   */
+  checkWslDistro?: (distro: string) => Promise<{ ok: boolean; reason?: string }>
 }
 
 /** UTF-8 console bootstrap shared by both PowerShell editions. */
@@ -157,6 +165,21 @@ export async function listWslDistributionsReal(): Promise<string[]> {
   }
 }
 
+
+/** Runs one trivial command in a distribution to see whether it can start at all. */
+export async function checkWslDistroReal(distro: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    await run('wsl.exe', ['-d', distro, '--', 'true'], { windowsHide: true, timeout: 20_000 })
+    return { ok: true }
+  } catch (error) {
+    const message = (error as { stderr?: string; message?: string }).stderr
+      || (error as Error).message
+      || 'unknown'
+    const firstLine = message.split(/\r?\n/u).map((line) => line.trim()).find((line) => line.length > 0)
+    return { ok: false, reason: (firstLine ?? 'unknown').slice(0, 200) }
+  }
+}
+
 /**
  * Every shell the terminal can offer on this machine, available or not.
  *
@@ -170,6 +193,7 @@ export async function discoverWorkspaceShells(
   const env = options.env ?? process.env
   const fileExists = options.fileExists ?? ((path: string) => existsSync(path))
   const listWsl = options.listWslDistributions ?? listWslDistributionsReal
+  const checkWsl = options.checkWslDistro ?? checkWslDistroReal
 
   if (platform !== 'win32') {
     const shell = env['SHELL'] || '/bin/sh'
@@ -268,6 +292,23 @@ export async function discoverWorkspaceShells(
       configHint: '该系统缺少命令提示符，通常需要修复 Windows 组件。',
     })
 
+  // `wsl.exe` is resolved to its real location, like every other shell: a bare name cannot be
+  // verified before starting, and offering it would claim availability this discovery has not
+  // established.
+  const wslExecutable = env['SystemRoot'] ? join(env['SystemRoot'], 'System32', 'wsl.exe') : undefined
+  const wslPath = wslExecutable && fileExists(wslExecutable) ? wslExecutable : undefined
+  if (!wslPath) {
+    profiles.push({
+      id: 'wsl',
+      kind: 'wsl',
+      label: 'WSL Bash',
+      available: false,
+      reason: '未找到 System32 下的 wsl.exe，WSL 不可用。',
+      configHint: '安装 WSL：wsl --install，然后在管理员终端里安装发行版。',
+    })
+    return profiles
+  }
+
   const distros = await listWsl()
   if (distros.length === 0) {
     profiles.push({
@@ -275,20 +316,28 @@ export async function discoverWorkspaceShells(
       kind: 'wsl',
       label: 'WSL Bash',
       available: false,
-      reason: 'WSL 不可用或没有已安装的发行版。',
+      executable: wslPath,
+      reason: 'WSL 已安装，但没有已安装的发行版。',
       configHint: '安装发行版：wsl --install -d <发行版>，然后用 wsl --list --quiet 确认。',
     })
   } else {
     for (const distro of distros) {
+      const usable = await checkWsl(distro)
       profiles.push({
         id: `wsl:${distro}`,
         kind: 'wsl',
         label: `WSL · ${distro}`,
-        available: true,
-        executable: 'wsl.exe',
+        available: usable.ok,
+        executable: wslPath,
         args: wslArgs(distro),
         distro,
         env: { LANG: 'C.UTF-8', TERM: 'xterm-256color' },
+        ...(usable.ok
+          ? {}
+          : {
+            reason: `发行版 ${distro} 已注册但无法启动：${usable.reason ?? 'WSL 拒绝启动会话'}。`,
+            configHint: '在 PowerShell 里执行 wsl -d <发行版> 查看完整错误；代理配置与 WSL 网络模式需要匹配。',
+          }),
       })
     }
   }

@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-26 10:04:05
+最后更新：2026-09-26 10:11:24
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -94,3 +94,7 @@
 `windowsPathToWslPath` 把 Windows 工作区路径映射成 WSL 能用的 `/mnt/<盘符>/...`（UNC 返回 null，不猜），`wslArgs(发行版, 工作区)` 用它作为 `--cd`，映射不出来时退回 `~`；WSL 的 `--cd` 依赖会话目录，所以参数不能像其它 Shell 一样在探测时冻结（`shellLaunch(profile, root)`）。实机验收（PowerShell 侧）：会话在含空格与中文的路径下启动，cwd 正确，且能写入并读回 `中文 文件.txt`。
 - **多个终端会话**（UX-30）：`local-app-api/workspace-terminal-sessions.test.ts` 实测两个真实会话输出互不串台、关闭其一不影响另一个、超过上限被拒绝；渲染侧的标签模型与标签条见 `renderer/workspace/terminal-sessions.ts`。
 - **多终端会话接线**（UX-30）：`renderer/workspace/use-terminal-sessions.ts` 持有会话与流，`terminal.tsx` 只保留 xterm 与渲染；`workspace-terminal-authority-api.test.ts` 另断言 `GET /workspace/terminal/shells` 返回可用项与不可用项的原因。
+
+## WSL 的可用性与实测边界（UX-29 第 3、4 条，2026-09-26）
+
+探测把 `wsl.exe` 解析成 `%SystemRoot%\System32\wsl.exe`（裸名字会让"启动前检查可执行文件"把 WSL 判为不存在），并对每个发行版做可用性探测（`wsl -d <发行版> -- true`），失败时把原因与配置路径写进 profile。实测边界：普通子进程探测可以成功，而**终端会话**（ConPTY + WSL 中继）在本机失败（`Wsl/Service/E_UNEXPECTED`，宿主机 localhost 代理未镜像进 WSL），所以探测不预测会话成功；`workspace-terminal-wsl-acceptance.test.ts` 因此两侧都断言——能启动时验证真实 Bash 与 `/mnt` 工作区，不能启动时验证**失败被如实报出**。
