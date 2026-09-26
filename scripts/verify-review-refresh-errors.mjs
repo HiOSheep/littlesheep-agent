@@ -129,6 +129,25 @@ const SURFACE_EXPRESSION = `(() => {
         classes: [...classes].slice(0, 24),
       };
     })(),
+    monaco: {
+      editors: document.querySelectorAll('.workspace-review-monaco-diff .monaco-editor').length,
+      viewLines: document.querySelectorAll('.workspace-review-monaco-diff .view-line').length,
+      modifiedViewLines: document.querySelectorAll('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"] .view-line').length,
+      lineNumberTexts: [...document.querySelectorAll('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"] .line-numbers')]
+        .map((node) => (node.textContent || '').trim()).slice(0, 12),
+      containerHeight: (() => {
+        const pane = document.querySelector('.workspace-review-diff-scroll');
+        return pane instanceof HTMLElement ? Math.round(pane.getBoundingClientRect().height) : null;
+      })(),
+      heightChain: ['.workspace-review-diff-scroll', '.workspace-review-monaco-diff', '.monaco-diff-editor', '.modified-in-monaco-diff-editor']
+        .map((selector) => {
+          const node = document.querySelector('.workspace-review-monaco-diff ' + selector) ?? document.querySelector(selector);
+          return node instanceof HTMLElement
+            ? { selector, height: Math.round(node.getBoundingClientRect().height), display: getComputedStyle(node).display, flex: getComputedStyle(node).flex }
+            : { selector, height: null };
+        }),
+      windowHeight: window.innerHeight,
+    },
     gutterNumbers: [...document.querySelectorAll('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"] .line-numbers')]
       .map((node) => (node.textContent || '').trim())
       .filter((value) => /^[0-9]+$/u.test(value)),
@@ -329,7 +348,19 @@ async function main() {
     }, null, 2)}\n`, 'utf8')
 
     const debuggingPort = await harness.reservePort()
-    electron = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
+    electron = await harness.startElectron({
+      dataDir,
+      chromiumDir,
+      debuggingPort,
+      logPath,
+      // The window stays hidden (this gate never shows one), and a hidden window gets
+      // backgrounded: Chromium stops producing frames, so `requestAnimationFrame` never
+      // fires — and the editor lays itself out from a rAF callback. Measured with the
+      // default flags: the diff DOM holds two line-number nodes, no `.view-line` at all,
+      // and a degenerate scrollWidth. These switches keep the renderer unthrottled so the
+      // same surface can actually be measured; they change the host, not the app.
+      extraArgs: ['--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'],
+    })
     locator = await harness.waitForLocator(dataDir, electron.pid)
     await harness.waitForDesktop(locator)
     client = await harness.connectRenderer(debuggingPort)
@@ -961,6 +992,7 @@ async function main() {
     recorder.note({
       step: 'diff-interactions',
       gutterNumbers: interactionDiff.gutterNumbers,
+      monaco: interactionDiff.monaco,
       diffDom: interactionDiff.diffDom,
       wrap: interactionDiff.wrap,
       screenshot: interactionShot,
@@ -1316,7 +1348,7 @@ async function main() {
       'The last-success time comes from the snapshot that is still on screen; the file diff has no timestamp of its own and only says it is showing the previous result.',
       'The in-flight diff wording observed here is the "belongs to the previous snapshot" variant, which is what a refresh produces; the same-revision "refreshing" variant needs a cached diff whose TTL has expired and is covered by review-refresh-notice.test.ts instead.',
       'Snapshot revision identity is still a per-read value and no HEAD/index consistency check is performed here; that part of UX-27 stays open.',
-      'A hidden window gives Monaco no viewport, so the diff DOM holds only a stub (one gutter number, no .view-line for a long line) and layers mounted from line geometry (the deleted-line comment layer) never appear. Line numbering is asserted where it is produced (review-diff-model tests) and the deleted-line comment component has its own tests; the window walkthrough records what rendered instead of asserting it.',
+      'A hidden window gives Monaco no resolved height: measured, the diff pane is 715 px while the editor root is 5 px and exactly one line renders, with or without a frame-coalesced layout call (and with the renderer unthrottled). Anything mounted from line geometry — the deleted-line comment layer — therefore never appears. Line numbering is asserted where it is produced (review-diff-model + surface tests) and the deleted-line component has its own tests; the walkthrough records what rendered instead of asserting it.',
       'Collapse and slide animations do not run in a hidden acceptance window (no animation frames), so the navigator keeps its geometry after its collapse state flips; the walkthrough asserts the state that drives the layout and records the geometry instead.',
     ],
   }

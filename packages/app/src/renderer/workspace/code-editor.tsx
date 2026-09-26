@@ -284,22 +284,41 @@ function trackWorkspaceEditorLayout(
   layoutTarget: WorkspaceEditorLayoutTarget = hostEditor,
 ): () => void {
   let frame: number | undefined
+  const layoutNow = () => {
+    window.cancelAnimationFrame(frame ?? 0)
+    frame = undefined
+    layoutTarget.layout()
+  }
   const scheduleLayout = (force = false) => {
     if (!force && (
       document.body.classList.contains('is-resizing-column')
       || document.body.classList.contains('is-workspace-navigator-motion')
     )) return
-    window.cancelAnimationFrame(frame ?? 0)
-    frame = window.requestAnimationFrame(() => {
-      frame = undefined
-      layoutTarget.layout()
-    })
+    // Synchronous on purpose. Coalescing onto `requestAnimationFrame` is what Monaco's own
+    // `automaticLayout` does, but it makes layout depend on frames arriving, and a window
+    // that is occluded, minimized or otherwise not rendering never runs them. Measured in
+    // that state: a 715 px pane, a 5 px editor root and exactly one rendered line — blank,
+    // and unchanged by calling `layout()` synchronously, because the height chain itself is
+    // only resolved when the widget renders. Removing the frame dependency is still the right
+    // shape (resize observers already deliver at most one callback per frame, so a frame
+    // callback had nothing left to coalesce); it is not a fix for that measurement.
+    layoutNow()
   }
   const host = hostEditor.getDomNode()?.parentElement
   const observer = typeof ResizeObserver === 'undefined'
     ? null
     : new ResizeObserver(() => scheduleLayout())
   if (host) observer?.observe(host)
+  // A frame callback is how layout is coalesced during resizes, but it is the *only* path
+  // here, and an occluded, minimized or otherwise non-rendering window never runs animation
+  // frames (measured: a 715 px pane with exactly one rendered line). The editor then stays
+  // laid out at a stale size until something forces a frame — the surface looks blank.
+  // Laying out immediately on mount and whenever the window becomes visible does not depend
+  // on a frame arriving; the frame path stays for the resize storms it exists for.
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') layoutNow()
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   const handleColumnResizeEnd = () => scheduleLayout(true)
   const handleNavigatorMotionStart = () => {
     window.cancelAnimationFrame(frame ?? 0)
@@ -309,9 +328,12 @@ function trackWorkspaceEditorLayout(
   window.addEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
   window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
   window.addEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
+  // Immediate, then the coalesced path for whatever else changes afterwards.
+  layoutNow()
   scheduleLayout(true)
   return () => {
     observer?.disconnect()
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     window.removeEventListener(COLUMN_RESIZE_END_EVENT, handleColumnResizeEnd)
     window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_START_EVENT, handleNavigatorMotionStart)
     window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
