@@ -139,7 +139,9 @@ export function SplitButton({
                 void item.onSelect()
               }}
             >
-              {item.icon && <span className="split-button-menu-icon" aria-hidden="true">{item.icon}</span>}
+              {/* The icon cell is always rendered, even when empty: with a two-column grid an
+                  iconless row would otherwise put its label in the 18px icon column. */}
+              <span className="split-button-menu-icon" aria-hidden="true">{item.icon}</span>
               <span className="split-button-menu-label">{item.label}</span>
             </button>
           ))}
