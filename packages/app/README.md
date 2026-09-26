@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-26 10:13:50
+最后更新：2026-09-26 10:23:45
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -169,3 +169,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **多终端会话已接线**（UX-30）：`use-terminal-sessions.ts` 持有会话集合与流（按会话缓冲输出、输入只发给活动且就绪的会话），标签条出现于第二个会话；真实窗口走查实测 Shell 下拉列出 `PowerShell 7 / Windows PowerShell / 命令提示符 / WSL · Ubuntu-26.04`（据此更正了"本机没有 WSL 发行版"的旧结论）。
 - **WSL 可用性探测与失败如实报告**（UX-29 第 3、4 条）：`wsl.exe` 解析为绝对路径、每个发行版做启动探测并把原因写进 profile；实测本机会话因宿主机代理配置无法启动（`Wsl/Service/E_UNEXPECTED`），验收因此断言"失败必须报出来"而不是假装可用。
 - **WSL 会话实测通过**（UX-29 第 4 条）：真实 WSL Bash 里验证 `BASH_VERSION`、`uname -s`、映射后的 `/mnt` 工作区、profile 环境（`LANG`/`TERM`）、中文回环与多行粘贴；此前"本机 WSL 起不来"的记录是验收脚本用文本匹配误判警告导致，已更正。
+- **多终端可用**（UX-30 第 1 条）：工具栏新增"新建"（提示说明不影响正在运行的终端），多个会话时中断/重启/清空的提示会说明影响范围，标签条显示每个会话的真实 Shell 与状态；工作区或会话切换时终止全部会话。真实窗口走查：新建后 2 个标签、恰好 1 个选中、原有会话状态不变（`终端 1运行中 / 终端 2启动中`），关闭第二个后标签条消失且剩余会话仍在运行。
