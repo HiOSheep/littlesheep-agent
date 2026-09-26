@@ -132,6 +132,8 @@ export function WorkspaceCodeDiffEditor({
   ...props
 }: WorkspaceCodeDiffEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
+  /** The diff editor itself, so layout can be re-run when its content changes. */
+  const layoutRef = useRef<WorkspaceEditorLayoutTarget | null>(null)
   const monacoReady = usePreparedWorkspaceMonacoLanguages([
     originalLanguage ?? 'plaintext',
     modifiedLanguage ?? 'plaintext',
@@ -144,6 +146,14 @@ export function WorkspaceCodeDiffEditor({
     lifecycleRef.current?.dispose()
     lifecycleRef.current = null
   }, [])
+  // The diff arrives after the editor mounts, so laying out only at mount measures an empty
+  // container and Monaco keeps that size (measured: an inline `height: 5px` on its root while
+  // the pane is 715 px). A resize observer would catch the growth, but it is delivered during
+  // rendering — which never happens for a hidden, occluded or minimized window. Laying out
+  // after each model change does not depend on that.
+  useEffect(() => {
+    layoutRef.current?.layout()
+  }, [props.original, props.modified])
   if (!monacoReady) return <>{loading}</>
   return (
     <Suspense fallback={loading}>
@@ -164,6 +174,7 @@ export function WorkspaceCodeDiffEditor({
             editor.getModifiedEditor(),
             editor,
           )
+          layoutRef.current = editor
           lifecycleRef.current = {
             dispose: () => {
               stopLayoutTracking()

@@ -139,13 +139,27 @@ const SURFACE_EXPRESSION = `(() => {
         const pane = document.querySelector('.workspace-review-diff-scroll');
         return pane instanceof HTMLElement ? Math.round(pane.getBoundingClientRect().height) : null;
       })(),
-      heightChain: ['.workspace-review-diff-scroll', '.workspace-review-monaco-diff', '.monaco-diff-editor', '.modified-in-monaco-diff-editor']
-        .map((selector) => {
-          const node = document.querySelector('.workspace-review-monaco-diff ' + selector) ?? document.querySelector(selector);
-          return node instanceof HTMLElement
-            ? { selector, height: Math.round(node.getBoundingClientRect().height), display: getComputedStyle(node).display, flex: getComputedStyle(node).flex }
-            : { selector, height: null };
-        }),
+      // Every node from the pane down to Monaco's root: which one fails to receive the height?
+      heightChain: (() => {
+        const chain = [];
+        let node = document.querySelector('.workspace-review-monaco-diff');
+        for (let depth = 0; node instanceof HTMLElement && depth < 8; depth += 1) {
+          const style = getComputedStyle(node);
+          chain.push({
+            depth,
+            tag: node.tagName.toLowerCase(),
+            class: (node.getAttribute('class') || '').slice(0, 60),
+            height: Math.round(node.getBoundingClientRect().height),
+            computedHeight: style.height,
+            display: style.display,
+            flex: style.flex,
+            minHeight: style.minHeight,
+            inlineHeight: node.style.height || null,
+          });
+          node = node.firstElementChild;
+        }
+        return chain;
+      })(),
       windowHeight: window.innerHeight,
     },
     gutterNumbers: [...document.querySelectorAll('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"] .line-numbers')]
