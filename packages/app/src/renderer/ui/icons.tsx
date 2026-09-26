@@ -94,6 +94,15 @@ export function SettingsNavArrowIcon() {
   )
 }
 
+/** Points down, into the composer: the way back to the newest message. */
+export function JumpToLatestArrowIcon() {
+  return (
+    <svg className="chat-jump-to-latest-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M8 3.4v8.2M4.4 8.1 8 11.7l3.6-3.6" />
+    </svg>
+  )
+}
+
 
 export function MoreIcon() {
   return (

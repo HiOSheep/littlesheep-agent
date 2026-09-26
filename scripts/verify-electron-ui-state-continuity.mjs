@@ -1858,9 +1858,13 @@ async function verifyChatReadingPosition(client) {
       const jumpButtonRendered = jumpButton() !== null
       jumpButton()?.click()
       const returnedToBottom = await waitFor(() => gap() <= 1, 2000)
+      // Leaving the bottom is animated (the control drops back into the composer), so "hidden"
+      // means it is gone within the animation's own budget, not on the next frame.
+      const jumpButtonHiddenAfterReturn = await waitFor(() => (jumpButton() === null ? true : undefined), 2000)
+        .then(() => true)
+        .catch(() => false)
       await settle(3)
       const gapAfterReturn = gap()
-      const jumpButtonHiddenAfterReturn = jumpButton() === null
 
       // Pinned reader: the bottom edge is its anchor, so it must stay at the bottom.
       scrollTo(messages.scrollHeight)

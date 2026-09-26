@@ -59,46 +59,79 @@
 }
 
 /* The reachable way back to the newest message, shown only while the reader is above the
-   sticky-bottom band. It floats above the composer overlay (whose height is measured at
-   runtime), so it never covers the input surface or the line being read. */
+   sticky-bottom band. It floats 3px above the composer overlay (whose height is measured at
+   runtime), so it never covers the input surface or the line being read, and it wears the same
+   glass as the input it points into: translucent fill, backdrop blur, no border strokes. */
 .chat-jump-to-latest {
   position: absolute;
-  bottom: calc(var(--composer-overlay-height) + var(--composer-message-gap) / 2);
+  /* 3px above the input's visible top edge: the measured overlay height starts at the composer
+     shell, which has its own top padding, so that inset comes back off. */
+  bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-top) + 3px);
   left: 50%;
   z-index: 45;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 12px;
-  transform: translateX(-50%);
-  color: var(--text);
-  background: var(--control-hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  white-space: nowrap;
-  box-shadow: var(--shadow);
+  justify-content: center;
+  /* The same 34px control surface the composer's own controls use, as a circle. */
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  /* The droplet grows out of the composer's top edge: the origin sits on the button's own bottom
+     edge, which is that edge plus the same 3px gap. */
+  transform: translateX(-50%) translateY(0) scale(1);
+  transform-origin: 50% calc(100% + 3px);
+  color: var(--jump-to-latest-arrow);
+  background: var(--composer-surface);
+  border: 0;
+  border-radius: var(--radius-circle);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   transition:
-    color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-base) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease);
+}
+
+/* Mounted but not offered yet (`entering` is the first painted frame, `exiting` is the way back
+   out): a small drop at the composer's edge instead of a button. */
+.chat-jump-to-latest[data-motion="entering"],
+.chat-jump-to-latest[data-motion="exiting"] {
+  opacity: 0;
+  transform: translateX(-50%) translateY(14px) scale(0.18);
+  pointer-events: none;
+}
+
+.chat-jump-to-latest-arrow {
+  width: 16px;
+  height: 16px;
+  /* The icon is decoration inside the control: the button itself has to stay the hit target. */
+  pointer-events: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .chat-jump-to-latest:hover,
 .chat-jump-to-latest:focus-visible {
-  background: var(--control-active);
-  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--composer-surface) 78%, var(--accent));
+  color: var(--accent-hover);
 }
 
-/* New output while away is a fact the reader must be able to notice without scrolling;
-   the label already says it, the marker makes it findable at a glance. */
+/* New output while away is a fact the reader must be able to notice without scrolling; the arrow
+   already points at it, this badge makes it findable at a glance. */
 .chat-jump-to-latest[data-new-content="true"]::before {
   content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
   width: 6px;
   height: 6px;
   border-radius: var(--radius-circle);
-  background: var(--accent);
+  background: var(--jump-to-latest-arrow);
 }
 
 .messages.is-empty {

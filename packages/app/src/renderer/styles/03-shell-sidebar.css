@@ -36,6 +36,9 @@
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
   --accent-soft: rgba(226, 226, 226, 0.1);
+  /* The one control that points down into the composer. Its arrow is the sky-blue accent so the
+     way back to the newest message reads as a direction, not as another grey chip. */
+  --jump-to-latest-arrow: #7ec8ff;
   --danger: #ef6868;
   --danger-soft: rgba(239, 104, 104, 0.12);
   --success: #6fd08c;
@@ -1999,6 +2002,10 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   --chat-content-max-width: var(--composer-max-width);
   --chat-content-gutter: clamp(18px, 2.6vw, 40px);
   --composer-overlay-height: 116px;
+  /* `.composer-shell`'s own top padding: the measured overlay height starts at the shell, so the
+     input's visible top edge is this far below it. Anything that has to sit a fixed distance above
+     the input — the way back to the newest message — subtracts it. */
+  --composer-shell-inset-top: 8px;
   --composer-message-gap: 32px;
   flex: 1 1 0;
   width: 0;

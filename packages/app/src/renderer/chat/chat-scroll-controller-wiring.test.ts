@@ -38,13 +38,23 @@ describe('chat scroll controller wiring', () => {
     const view = await source('../app-shell/chat-view.tsx')
     const styles = await readRendererStyleSource()
 
-    expect(view).toContain('{readingAway && (')
+    // It stays mounted for the length of its own exit, so the reader sees it drop back into the
+    // composer instead of it vanishing on the frame the bottom is reached.
+    expect(view).toContain('{jumpMounted && (')
     expect(view).toContain('className="chat-jump-to-latest"')
     expect(view).toContain("data-new-content={hasNewContent ? 'true' : 'false'}")
     expect(view).toContain('onClick={scrollToLatest}')
-    expect(view).toContain("hasNewContent ? '有新内容 · 回到最新' : '回到最新'")
-    // The control floats above the measured composer overlay instead of covering it.
-    expect(styles).toMatch(/\.chat-jump-to-latest\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\) \/ 2\);[\s\S]*?left:\s*50%;/u)
+    // Icon-only: the arrow says the direction, the accessible name says the action and its state.
+    expect(view).toContain('<JumpToLatestArrowIcon />')
+    expect(view).toContain("aria-label={hasNewContent ? '有新内容，回到最新' : '回到最新'}")
+    // A circle, 3px above the input's visible top edge (the measured overlay height starts at the
+    // composer shell, so its own top padding is subtracted), wearing the composer's own glass.
+    expect(styles).toMatch(/\.chat-jump-to-latest\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*calc\(var\(--composer-overlay-height\) - var\(--composer-shell-inset-top\) \+ 3px\);[\s\S]*?left:\s*50%;/u)
+    expect(styles).toMatch(/\.chat-jump-to-latest\s*\{[\s\S]*?width:\s*34px;[\s\S]*?height:\s*34px;[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*var\(--radius-circle\);[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    expect(styles).toMatch(/\.chat-jump-to-latest\s*\{[\s\S]*?color:\s*var\(--jump-to-latest-arrow\);[\s\S]*?background:\s*var\(--composer-surface\);/u)
+    // The droplet grows out of the composer's top edge, and the hidden state is that same drop.
+    expect(styles).toMatch(/\.chat-jump-to-latest\s*\{[\s\S]*?transform-origin:\s*50% calc\(100% \+ 3px\);/u)
+    expect(styles).toMatch(/\.chat-jump-to-latest\[data-motion="entering"\],[\s\S]*?\.chat-jump-to-latest\[data-motion="exiting"\]\s*\{[^}]*opacity:\s*0;[^}]*transform:\s*translateX\(-50%\) translateY\(14px\) scale\(0\.18\);/u)
     expect(styles).toContain('.chat-jump-to-latest[data-new-content="true"]::before')
   })
 

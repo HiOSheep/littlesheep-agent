@@ -954,8 +954,13 @@ async function main() {
         `${entry.name}: the way back is not above the composer: bottom=${measurement?.rect?.bottom} composerTop=${measurement?.composerTop}`)
       expect(measurement?.overlayHeight !== null && (measurement?.overlayHeight ?? 0) > 0,
         `${entry.name}: the composer overlay height is not readable from .chat: ${measurement?.overlayHeight}`)
-      expect(measurement?.overlayClearance !== null && (measurement?.overlayClearance ?? -1) >= 0,
-        `${entry.name}: the way back floats into the composer overlay: bottom=${measurement?.rect?.bottom} viewportHeight=${measurement?.viewport?.height} overlayHeight=${measurement?.overlayHeight}`)
+      // The resting gap is stated as a product fact: 3px above the input's visible top edge. The
+      // measured overlay height starts at the composer shell, whose own top padding sits above the
+      // input surface, so clearance against the overlay alone is no longer the contract.
+      expect(measurement?.bottomAboveComposerTop !== null
+        && (measurement?.bottomAboveComposerTop ?? -1) >= 3
+        && (measurement?.bottomAboveComposerTop ?? 99) <= 4,
+      `${entry.name}: the way back is not 3px above the input: gap=${measurement?.bottomAboveComposerTop} composerTop=${measurement?.composerTop} bottom=${measurement?.rect?.bottom} overlayHeight=${measurement?.overlayHeight}`)
       expect(measurement?.displayMode === entry.mode,
         `${entry.name}: the conversation display mode was not applied: ${measurement?.displayMode}`)
     }

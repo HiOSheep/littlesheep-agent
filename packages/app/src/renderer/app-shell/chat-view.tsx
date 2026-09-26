@@ -1,13 +1,18 @@
 // Conversation transcript view. Scroll ownership (bottom stickiness, the reader's anchor and
 // the way back to the newest message) lives in `../chat/use-chat-scroll-controller`.
+import { useEffect, useState } from 'react'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
+import { JumpToLatestArrowIcon } from '../ui/icons'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import type { ChatViewController } from './app-controller-projections'
+
+/** How long the way back takes to grow out of the composer's edge, and to drop back into it. */
+const JUMP_MOTION_MS = 180
 
 export function ChatView({ controller }: { controller: ChatViewController }) {
   const {
@@ -33,6 +38,25 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     sessionKey: currentSession,
     loadOlderMessages,
   })
+
+  // The way back drops out of the composer's edge and drops back into it, so it stays mounted for
+  // the length of its own exit instead of vanishing on the frame the reader reaches the bottom.
+  const [jumpMounted, setJumpMounted] = useState(readingAway)
+  const [jumpSettled, setJumpSettled] = useState(readingAway)
+  useEffect(() => {
+    let timer = 0
+    if (readingAway) {
+      setJumpMounted(true)
+      // One frame in the small state before growing: a timeout, not requestAnimationFrame, because
+      // a window Chromium is not compositing never delivers frames.
+      timer = window.setTimeout(() => setJumpSettled(true), 16)
+    } else {
+      setJumpSettled(false)
+      timer = window.setTimeout(() => setJumpMounted(false), JUMP_MOTION_MS)
+    }
+    return () => window.clearTimeout(timer)
+  }, [readingAway])
+  const jumpMotion = readingAway && jumpSettled ? 'settled' : readingAway ? 'entering' : 'exiting'
 
   return (
     <>
@@ -97,14 +121,20 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           ))}
           </div>
         </div>
-        {readingAway && (
+        {jumpMounted && (
           <button
             type="button"
             className="chat-jump-to-latest"
             data-new-content={hasNewContent ? 'true' : 'false'}
+            data-motion={jumpMotion}
+            // An icon-only control still has to say what it does, and the two states differ: with
+            // new content below this is how the reader learns there was something to come back to.
+            aria-label={hasNewContent ? '有新内容，回到最新' : '回到最新'}
+            tabIndex={readingAway ? 0 : -1}
+            aria-hidden={readingAway ? undefined : true}
             onClick={scrollToLatest}
           >
-            {hasNewContent ? '有新内容 · 回到最新' : '回到最新'}
+            <JumpToLatestArrowIcon />
           </button>
         )}
     </>
