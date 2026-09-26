@@ -119,10 +119,16 @@
   --settings-reveal-motion: 560ms;
   --settings-sidebar-exit-content-motion: var(--motion-fast);
   --settings-sidebar-exit-reveal-delay: 80ms;
-  /* Keep the material translucent and neutral. The previous bitmap wash was
-     opaque RGB data, so layering it over the panel made the surface look like
-     a blue-to-brown solid fill instead of frosted glass. */
+  /* Keep the material translucent. The previous bitmap wash was opaque RGB data,
+     so layering it over the panel made the surface look like a blue-to-brown
+     solid fill instead of frosted glass; the colour below is a low-alpha CSS
+     gradient instead, so the fill and the blur still read through it. */
   --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
+  /* The sidebar is the one floating card that is always on screen, and an untinted grey fill read
+     as washed out. A faint sky-blue → violet wash runs down its height; both ends stay dark enough
+     for the sidebar's own text, and the workspace panel beside it keeps the plain glass. */
+  --sidebar-tint-top: rgba(86, 148, 255, 0.16);
+  --sidebar-tint-bottom: rgba(150, 104, 255, 0.19);
   --floating-panel-inset: 8px;
   --floating-panel-inline-gutter: 16px;
   /* Use one thin, low-contrast frame for every floating surface so straight
@@ -657,6 +663,16 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   -webkit-backdrop-filter: blur(20px) saturate(145%);
   backdrop-filter: blur(20px) saturate(145%);
   pointer-events: none;
+}
+
+/* The colour wash is its own layer on top of the shared fill, so the two surfaces keep exactly one
+   material rule and only the sidebar carries a tint. */
+.sidebar-surface::before {
+  background-image: linear-gradient(
+    180deg,
+    var(--sidebar-tint-top) 0%,
+    var(--sidebar-tint-bottom) 100%
+  );
 }
 
 .sidebar-contents {

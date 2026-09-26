@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-26 20:35:21
+最后更新：2026-09-26 20:39:53
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -10,6 +10,8 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 首屏依赖：Monaco、mermaid 与 `react-syntax-highlighter` 都必须按需加载（实测完整 Prism 构建单独求值约 380 ms、入口 chunk 因此少 936 KB、真实首帧早约 148 ms）；代码块在高亮 chunk 到达前用 `Markdown.tsx` 的等宽纯文本回退呈现，复用相同 class 与内联样式以避免布局跳动。语法高亮与纯文本回退共享同一个代码头部栏、语言标签、自动换行和复制动作；换行偏好由 `ui/code-wrap-preference.ts` 持有，工作区 Monaco 使用同一持久值（UX-23）。`inline-markdown.tsx` 负责活动行的单行标签（有界扫描器，不引入解析器）。**注意：入口字节数在本应用里不是首帧的可靠代理**——Markdown 解析管线整条按需（入口 −400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须以成对实测证明收益，详见 `docs/reference/cold-start-baseline/`。
 
 **输入栏弹出的面板与输入框同一种材质**（2026-09-26）：`styles/06-composer.css` 用一条共享规则把添加菜单、模型/权限选择器、运行时选择器及其子菜单统一为输入框的半透明磨砂玻璃（`var(--composer-surface)` + `blur(18px) saturate(135%)`）并去掉描边；材质只在那一条规则里声明，面板体只保留几何、圆角与阴影。细节与实测值见 `composer/README.md`。
+
+**侧边栏的玻璃带一层淡蓝→淡紫晕色**（2026-09-26）：`styles/03-shell-sidebar.css` 里 `.sidebar-surface::before` 在共享填充之上叠一条 `linear-gradient`（`--sidebar-tint-top` / `--sidebar-tint-bottom`，alpha 都小于 0.2），工作区面板不染色；材质规则仍然只有一条，两个表面本体保持透明。像素实测与边界见 `sidebar/README.md`。
 
 ## 入口与所有权
 
