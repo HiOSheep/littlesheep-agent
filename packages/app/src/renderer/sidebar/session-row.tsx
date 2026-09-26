@@ -185,6 +185,24 @@ export function SessionRow({
             >
               <PinIcon active={pinned} />
             </button>
+            {/* Archiving sits next to pinning: it is the other one-click housekeeping action on a
+                row, and reaching it through the "…" menu costs two clicks for no decision. */}
+            <button
+              className="sidebar-section-action session-archive-action"
+              type="button"
+              aria-label="归档对话"
+              onClick={(event) => {
+                event.stopPropagation()
+                void onArchive()
+              }}
+              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('归档对话', event.clientX, event.clientY))}
+              onMouseMove={(event) => onTipChange(buildFloatingHelpTip('归档对话', event.clientX, event.clientY))}
+              onMouseLeave={() => onTipChange(null)}
+              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('归档对话', event.currentTarget))}
+              onBlur={() => onTipChange(null)}
+            >
+              <ArchiveIcon />
+            </button>
             <SidebarActionMenu
               label={menuLabel}
               onTipChange={onTipChange}

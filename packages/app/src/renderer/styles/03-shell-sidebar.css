@@ -1704,7 +1704,9 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   align-items: center;
   justify-content: flex-end;
   gap: var(--sidebar-action-gap);
-  min-width: var(--sidebar-action-column);
+  /* Three controls on a session row — pin, archive, and the "…" menu — so the reserved track is
+     one action wider than the shared column token. */
+  min-width: calc((var(--sidebar-action-size) * 3) + (var(--sidebar-action-gap) * 2));
   opacity: 0;
   pointer-events: none;
   transform: translateX(4px);
