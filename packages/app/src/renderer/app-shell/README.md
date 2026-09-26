@@ -1,7 +1,9 @@
 # Renderer 应用壳
-最后更新：2026-09-27 02:37:24
+最后更新：2026-09-27 02:38:32
 
 这里负责把各 Renderer 领域组合成一个应用界面，不拥有会话、记忆、项目或工作区的权威数据。
+
+侧边栏品牌只留名字（2026-09-26）：`sidebar-view.tsx` 的 `.brand-block` 里只有 `.brand-title`「LittleSheep」，原来那行「本地 Agent 工作台」连同 `.brand-subtitle` 规则一起删除，下边距从 16px 收到 12px——**不给人去楼空的高度**。真实窗口实测：`.brand-subtitle` 数量 0，`.brand-block` 高 31px（标题行盒 19 + 下边距 12），快捷导航紧接着从块的底边开始。
 
 - `app-view.tsx`：装配 `sidebar-view.tsx`、`core-workspace-view.tsx` 和 `overlays-view.tsx`；`chat-view.tsx` 承载消息列表和跟踪卡，**不再自己拥有滚动状态**——滚动位置、底部吸附、阅读锚点与"回到最新"入口都来自 `chat/use-chat-scroll-controller.ts`（UX-19），视图只渲染 `.messages`、`onScroll`/`onClickCapture` 和那个按钮；`composer-view.tsx`、`conversation-section-view.tsx`、`workspace-dock-view.tsx`、`sidebar-resizer-view.tsx` 是各区段的稳定表面。**"回到最新"是一个从输入框边缘长出来的圆形玻璃按钮**（2026-09-26）：只显示向下箭头（`--jump-to-latest-arrow` 天蓝），几何与材质见 `styles/05-chat-messages.css`；为了让"先长出来、再收回输入框"这个过渡能放完，它在 `readingAway` 变假之后**多挂载一个 `JUMP_MOTION_MS`**（180 ms），用 `data-motion`（`entering` / `settled` / `exiting`）驱动，退出期间 `tabIndex=-1` + `aria-hidden`，所以 DOM 里短暂存在的只是一个不可聚焦的收尾动画，不要据此判断"读者还在上面"——判断要么等它消失，要么读 `data-motion`。计时用 `setTimeout` 而不是 `requestAnimationFrame`：不被合成的窗口不派发帧。
 - `composer-view.tsx`：输入栏表面。Enter 走 `ui/enter-confirm.ts` 的共享规则；运行中同时保留停止入口（请求发出后显示“正在停止当前任务”，直到 run 结束才复位）和草稿存在时的补充发送入口，两者不互相替换。停止的“一次请求”约束仍由 `chat/run-actions.ts` 持有。模型选择器在无可用模型时把 `openSettingsPage('api')` 与 `refreshRuntime` 交给 `RuntimePicker`，只做路由切换，不清空当前文字与附件；从设置返回后由既有的 `settingsOpen` 变化 effect 重新读取 Runtime。发送入口另受 `runtime-readiness/use-runtime-readiness` 的就绪事实约束：未就绪时原地禁用并使用 Runtime 的原因，草稿与焦点保持不变（`scripts/verify-desktop-cold-start-interaction.mjs` 在真实窗口上验证该契约）。正常启动的阶段文字由 `runtime-readiness/composer-readiness-hint` 就地渲染在 `.composer-right` 内（发送按钮左侧），因此普通启动不会出现横跨整窗的状态条；只有失败才回到整窗条带。
