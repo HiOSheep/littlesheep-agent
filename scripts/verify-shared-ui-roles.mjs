@@ -624,6 +624,20 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/config/providers', 1800, 'POST'); return true })()`)
     await clickVisible(client, '.provider-editor .save-btn')
     await delay(400)
+    // The shared control tone fades over 140ms, so a measurement taken the instant the save begins
+    // samples a transition instead of the disabled state. Wait for it to settle, then measure.
+    await harness.waitFor(
+      () => evaluate(client, `(() => ${JSON.stringify([
+        '.provider-editor .save-btn',
+        '.provider-editor .dialog-footer .close-btn',
+        '.provider-editor .dialog-close',
+      ])}.every((selector) => {
+        const node = document.querySelector(selector)
+        return node !== null && getComputedStyle(node).opacity === ${JSON.stringify(DISABLED_OPACITY)}
+      }))()`),
+      harness.startTimeoutMs,
+      'the disabled controls to settle at the shared disabled tone',
+    )
     const saving = await measure(client, [
       { key: 'save', selector: '.provider-editor .save-btn', props: CONTROL_PROPS },
       { key: 'cancel', selector: '.provider-editor .dialog-footer .close-btn', props: CONTROL_PROPS },

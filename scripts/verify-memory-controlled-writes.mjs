@@ -20,7 +20,8 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { DEFAULT_BRANDING } from '../packages/branding/dist/index.js';
 import { DEFAULT_CONFIG } from '../packages/config/dist/index.js';
-import { createMemoryV3ExperimentMarker } from '../packages/memory-tree/dist/index.js';
+import { MemoryRepository, createMemoryV3ExperimentMarker } from '../packages/memory-tree/dist/index.js';
+import { mkdtemp as mkdtempFs, rm as rmFs } from 'node:fs/promises';
 import { createRunner } from '../packages/runner/dist/runner.js';
 
 const startedAt = performance.now();
@@ -47,6 +48,33 @@ try {
   process.env.LITTLESHEEP_DATA_DIR = dataDir;
   await mkdir(workspace, { recursive: true });
   await createMemoryV3ExperimentMarker(dataDir);
+
+  // RS-08: the memory write path cannot be switched on by accident. A data root without the isolated
+  // data marker (or an active migration locator) must be refused before any storage is opened, which is
+  // what keeps a rollback build from quietly resuming the automatic writes this batch removed.
+  {
+    const bareDir = await mkdtempFs(join(tmpdir(), 'littlesheep-memory-no-marker-'));
+    let refusal;
+    try {
+      const repository = new MemoryRepository({
+        dataDir: bareDir,
+        backend: 'v3',
+      });
+      await repository.initialize();
+    } catch (error) {
+      refusal = error;
+    } finally {
+      await rmFs(bareDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined);
+    }
+    assert(refusal, 'A v3 memory repository opened a data root with no marker or migration locator.');
+    assert(/refusing to open this data root/u.test(refusal.message),
+      `Unexpected refusal message: ${refusal.message}`);
+    scenarios.push({
+      scenario: '受控启动拒绝（无隔离标识 / 无迁移 locator）',
+      evidence: { refused: true, messageMatched: true },
+      result: 'pass',
+    });
+  }
 
   const config = structuredClone(DEFAULT_CONFIG);
   config.memory.repositoryBackend = 'v3';
