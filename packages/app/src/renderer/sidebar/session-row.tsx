@@ -1,6 +1,7 @@
 // Primary navigation, project/session trees, and sidebar actions.
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
@@ -18,6 +19,10 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { ArchiveIcon, MoreIcon, PinIcon, RenameIcon, TrashIcon } from '../ui/icons'
 import { OverflowingLabel } from '../ui/overflowing-label'
 import { SidebarActionMenu } from './action-menu'
+import { SIDEBAR_LIST_PUSH_DURATION_MS } from './list-drag'
+
+/** The sidebar list's own easing, shared with the push pass so a pin reads as one movement. */
+const SESSION_PIN_MOTION_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 
 
 export function SessionRow({
@@ -62,6 +67,30 @@ export function SessionRow({
   const renameInputRef = useRef<HTMLInputElement>(null)
   const renameRequestRef = useRef(0)
   const focusFrameRef = useRef<number>()
+  const rowRef = useRef<HTMLDivElement | null>(null)
+  const previousRectRef = useRef<DOMRect | null>(null)
+  const previousPinnedRef = useRef(pinned)
+
+  // Pinning and unpinning move a row between the pinned group and the dated one, which makes it a
+  // new id in each group's list pass: the shared reorder animation covers the neighbours that slide
+  // out of the way, never the row that crossed the boundary — measured, that row was already at its
+  // final position 60ms after the click while the others were still travelling. This gives the
+  // crossing row the same motion, from where it was to where it landed.
+  useLayoutEffect(() => {
+    const node = rowRef.current
+    const rect = node?.getBoundingClientRect() ?? null
+    const previous = previousRectRef.current
+    const crossed = previousPinnedRef.current !== pinned
+    previousPinnedRef.current = pinned
+    previousRectRef.current = rect
+    if (!node || !rect || !previous || !crossed) return
+    const dy = previous.top - rect.top
+    if (Math.abs(dy) < 0.5) return
+    node.animate(
+      [{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }],
+      { duration: SIDEBAR_LIST_PUSH_DURATION_MS, easing: SESSION_PIN_MOTION_EASING },
+    )
+  })
 
   useEffect(() => {
     if (!renaming) return
@@ -116,7 +145,10 @@ export function SessionRow({
 
   return (
     <div
-      ref={itemRef}
+      ref={(node) => {
+        rowRef.current = node
+        itemRef?.(node)
+      }}
       className={`session-item ${className ?? ''} ${active ? 'active' : ''} ${pinned ? 'pinned' : ''} ${renaming ? 'renaming' : ''} ${dragging ? 'is-dragging' : ''}`}
       role={renaming ? undefined : 'button'}
       tabIndex={renaming ? -1 : 0}
