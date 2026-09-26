@@ -158,6 +158,35 @@ export class SessionCompactionStore {
     await atomicWriteText(path, JSON.stringify(transaction, null, 2));
   }
 
+  /**
+   * Closes a proposal that will never be settled (RS-05): every candidate without an outcome is
+   * recorded as rejected with the given reason, and the proposal carries a termination stamp. The
+   * pending file is deliberately left in place — it is the audit trail of what was proposed and why
+   * nothing was written — and the stamp makes a second call a no-op.
+   */
+  async terminateMemoryProposal(sessionId: SessionId, summaryId: string, reason: string): Promise<void> {
+    const path = this.pendingPath(sessionId, summaryId);
+    if (!existsSync(path)) return;
+    const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
+    if (transaction.version !== 2 || !transaction.memoryProposal) return;
+    if (transaction.memoryProposal.terminatedAt) return;
+    const updatedAt = new Date().toISOString();
+    const settled = new Set(transaction.memoryProposal.outcomes.map((outcome) => outcome.candidateId));
+    for (const candidate of transaction.memoryProposal.candidates) {
+      if (settled.has(candidate.id)) continue;
+      transaction.memoryProposal.outcomes.push({
+        candidateId: candidate.id,
+        status: 'rejected',
+        reason,
+        updatedAt,
+      });
+      settled.add(candidate.id);
+    }
+    transaction.memoryProposal.terminatedAt = updatedAt;
+    transaction.memoryProposal.terminationReason = reason;
+    await atomicWriteText(path, JSON.stringify(transaction, null, 2));
+  }
+
   async completeMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
     const path = this.pendingPath(sessionId, summaryId);
     if (!existsSync(path)) return;

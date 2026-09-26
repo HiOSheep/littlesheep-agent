@@ -2042,7 +2042,7 @@ describe('createRunner run', () => {
     expect((await runner.replay(continuation.runId))?.resourceIds).toContain(summary.id);
   });
 
-  it('uses one compaction response for the session summary and durable memory candidates', async () => {
+  it('writes the session summary and no durable memory, even when the model offers candidates', async () => {
     await createMemoryV3ExperimentMarker(dataDir);
     const config = structuredClone(DEFAULT_CONFIG);
     config.memory.repositoryBackend = 'v3';
@@ -2057,6 +2057,8 @@ describe('createRunner run', () => {
       // per-run Runtime facts block, so do not assume a fixed position.
       const transcript = String(request.messages.find((message) => message.role === 'user')?.content ?? '');
       const sourceMessageId = /\[source message ([^ |]+)/u.exec(transcript)?.[1] ?? '';
+      // RS-05: the prompt no longer asks for candidates. A model that still sends them must not be
+      // able to turn compaction back into an unsupervised memory writer.
       return textResponse(JSON.stringify({
         summary: 'The user prefers concise replies.',
         candidates: [{
@@ -2080,12 +2082,11 @@ describe('createRunner run', () => {
     const summary = (await runner.sessionManager.loadMetadata(result.sessionId))?.compaction;
     expect(compactionCalls).toBe(1);
     expect(summary?.summary).toContain('prefers concise replies');
+    // No proposal is created at all, so there is nothing pending to settle later.
     expect(await runner.sessionManager.listPendingCompactions(result.sessionId)).toEqual([]);
     const nodes = await runner.infra.memoryRepository.listNodes('long-term');
-    expect(nodes).toEqual(expect.arrayContaining([expect.objectContaining({
-      summary: 'Concise reply preference',
-      sourceRunIds: [result.runId],
-    })]));
+    expect(nodes).toEqual([]);
+    expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
     // C07: the compaction is owned by one scheduler operation, not an anonymous finalize side effect.
     expect(runner.compactionOperations?.()).toMatchObject([{
       sessionId: String(result.sessionId),
@@ -2105,8 +2106,9 @@ describe('createRunner run', () => {
     }]);
   });
 
-  // C10A: a proposal committed before a crash is settled from durable state, without another model call.
-  it('resumes a committed compaction proposal without re-running the compaction model', async () => {
+  // C10A/RS-05: a proposal committed before a crash is closed from durable state, without another
+  // model call and without writing anything to memory.
+  it('terminates a committed compaction proposal on resume instead of settling it', async () => {
     const config = structuredClone(DEFAULT_CONFIG);
     config.sessions.compaction.threshold = 100;
     config.sessions.compaction.keepRecent = 20;
@@ -2126,16 +2128,28 @@ describe('createRunner run', () => {
     const result = await runner.run({ sessionId, text: 'continue after restart' });
     expect(result.status).toBe('ok');
     expect(compactionCalls).toBe(0);
-    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toEqual([]);
     expect((await runner.sessionManager.loadMetadata(sessionId))?.compaction?.id).toBe(summaryId);
-    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
-    expect(nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ summary: 'crash-resume durable candidate' }),
-    ]));
+    // The proposal still exists as the audit trail, but it is stamped as terminated and every
+    // candidate is explicitly rejected.
+    const pending = await runner.sessionManager.listPendingCompactions(sessionId);
+    expect(pending).toHaveLength(1);
+    const proposal = pending[0]?.version === 2 ? pending[0].memoryProposal : undefined;
+    expect(proposal?.terminatedAt).toBeTruthy();
+    expect(proposal?.terminationReason).toContain('RS-05');
+    expect(proposal?.outcomes.length).toBe(proposal?.candidates.length);
+    expect(proposal?.outcomes.every((outcome) => outcome.status === 'rejected')).toBe(true);
+    // Nothing was written, and the second run is a no-op rather than a second termination.
+    expect(await runner.infra.memoryRepository.listNodes('long-term')).toEqual([]);
+    const terminatedAt = proposal?.terminatedAt;
+    await runner.run({ sessionId, text: 'continue again' });
+    const after = await runner.sessionManager.listPendingCompactions(sessionId);
+    const afterProposal = after[0]?.version === 2 ? after[0].memoryProposal : undefined;
+    expect(afterProposal?.terminatedAt).toBe(terminatedAt);
+    expect(await runner.infra.memoryRepository.listNodes('long-term')).toEqual([]);
   });
 
-  // C10A: a failed source/summary registration keeps the proposal pending and retries on the next run.
-  it('keeps a proposal pending when summary registration fails and settles it on the next run', async () => {
+  // C10A/RS-05: a failed summary registration must not turn into a durable write either.
+  it('terminates a pending proposal even when summary registration fails, and writes nothing', async () => {
     const config = structuredClone(DEFAULT_CONFIG);
     config.sessions.compaction.threshold = 100;
     config.sessions.compaction.keepRecent = 20;
@@ -2153,18 +2167,17 @@ describe('createRunner run', () => {
       .mockRejectedValueOnce(new Error('summary resource registration unavailable'));
     const first = await runner.run({ sessionId, text: 'first continuation' });
     expect(first.status).toBe('ok');
-    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toHaveLength(1);
-    expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
+    expect((await runner.sessionManager.loadMetadata(sessionId))?.compaction?.id).toBe(summaryId);
+    const pending = await runner.sessionManager.listPendingCompactions(sessionId);
+    const proposal = pending[0]?.version === 2 ? pending[0].memoryProposal : undefined;
+    expect(proposal?.terminatedAt).toBeTruthy();
+    expect(proposal?.outcomes.every((outcome) => outcome.status === 'rejected')).toBe(true);
 
     registration.mockRestore();
     const second = await runner.run({ sessionId, text: 'second continuation' });
     expect(second.status).toBe('ok');
-    expect(await runner.sessionManager.listPendingCompactions(sessionId)).toEqual([]);
-    expect((await runner.sessionManager.loadMetadata(sessionId))?.compaction?.id).toBe(summaryId);
-    const nodes = await runner.infra.memoryRepository.listNodes('long-term');
-    expect(nodes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ summary: 'registration-retry durable candidate' }),
-    ]));
+    expect(await runner.infra.memoryRepository.listNodes('long-term')).toEqual([]);
+    expect((await runner.infra.memoryRepository.snapshot()).writeAudit).toEqual([]);
   });
 
   // C08A/HC-13: authoritative source capture failure is surfaced in the result, not hidden behind a warn log.
@@ -2189,7 +2202,7 @@ describe('createRunner run', () => {
     expect(capture.mock.calls.length).toBeGreaterThanOrEqual(1);
   });
 
-  // HC-07: an invalid compaction proposal has bounded attempts, preserves the transcript, and commits no candidate.
+  // HC-07/RS-05: compaction ignores a candidate it is no longer asked for, writes the summary, and\n  // still commits nothing to durable memory.
   it('keeps the previous transcript when a compaction proposal cites an uncovered source', async () => {
     const config = structuredClone(DEFAULT_CONFIG);
     config.sessions.compaction.threshold = 2;
@@ -2230,13 +2243,16 @@ describe('createRunner run', () => {
 
     const result = await runner.run({ sessionId: session.id, text: 'continue the seeded task' });
     expect(result.status).toBe('ok');
-    // decode/schema retries stay bounded at two total attempts.
-    expect(compactionCalls).toBe(2);
-    expect((await runner.sessionManager.loadMetadata(session.id))?.compaction).toBeUndefined();
+    // RS-05: a candidate is no longer decoded, so one that cites an uncovered source cannot fail the
+    // operation — the summary is written and the candidate is simply never read.
+    expect(compactionCalls).toBe(1);
+    expect((await runner.sessionManager.loadMetadata(session.id))?.compaction?.summary)
+      .toContain('Invalid proposal that must not persist.');
     expect(await runner.sessionManager.listPendingCompactions(session.id)).toEqual([]);
+    expect(await runner.infra.memoryRepository.listNodes('long-term')).toEqual([]);
     const after = await runner.sessionManager.read(session.id);
     expect(after.slice(0, before.length).map((message) => message.id)).toEqual(before.map((message) => message.id));
-    expect(runner.compactionOperations?.()).toMatchObject([{ status: 'failed' }]);
+    expect(runner.compactionOperations?.()).toMatchObject([{ status: 'completed' }]);
   });
 
   // HC-18: the legacy plain-text compaction protocol still produces a summary.

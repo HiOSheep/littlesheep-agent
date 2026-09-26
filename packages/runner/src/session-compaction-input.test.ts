@@ -72,9 +72,10 @@ describe('session compaction input boundary', () => {
   it('still states the summary contract and fidelity priorities', () => {
     // The simplification must not touch the prompt contract itself.
     expect(source).toContain('You maintain a versioned session summary for an AI agent.');
-    expect(source).toContain('Allowed `branch` values are exactly: long-term, project, experience');
     expect(source).toContain('Preserve unfinished work, open decisions, artifact paths and exact `label: value` pairs');
-    expect(source).toContain('Return one JSON object with `summary` and `candidates`.');
+    // RS-05 narrowed the contract: a summary, with no durable-memory candidates alongside it.
+    expect(source).toContain('Return one JSON object with a `summary` field and no other required field.');
+    expect(source).not.toContain('`candidates` is an array of at most 8 durable facts');
   });
 
   it('sends no capability snapshot, retrieval contract or run state to the summarizer', async () => {

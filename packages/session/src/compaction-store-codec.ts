@@ -50,6 +50,13 @@ export interface CompactionMemoryProposal {
   evidenceComplete: boolean;
   candidates: CompactionMemoryCandidate[];
   outcomes: CompactionMemoryCandidateOutcome[];
+  /**
+   * Set when the proposal was explicitly terminated instead of settled (RS-05). Compaction no longer
+   * writes durable memory, so a proposal left pending by an older build is closed with this stamp and
+   * its audit kept — the stamp is also what makes re-running the termination a no-op.
+   */
+  terminatedAt?: string;
+  terminationReason?: string;
 }
 
 export interface PendingCompactionTransactionV1 {

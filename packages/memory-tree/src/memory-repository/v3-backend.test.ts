@@ -643,6 +643,53 @@ describe('MemoryRepositoryV3Backend recovery', () => {
     expect(updated?.confidence).toBe(relation.confidence);
     expect(updated?.feedbackRevision).toBe(1);
   });
+
+  /**
+   * RS-06A: preparing a query vector is a model call, and navigation the reader did not ask for must
+   * not pay it. An ordinary `expand` — including the very first one, which used to prepare the query
+   * vector before any `deep_search` happened — is answered by FTS, the hierarchy and relation edges.
+   */
+  it('prepares a query vector only at the deep-search boundary', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'ls-memory-v3-vector-boundary-'));
+    directories.push(dataDir);
+    await createMemoryV3ExperimentMarker(dataDir);
+    const engine = localEmbeddingEngine();
+    const backend = createBackend(dataDir, engine);
+    backends.push(backend);
+    await backend.initialize();
+    await backend.write(intent());
+
+    // The write itself embeds (that is indexing, not retrieval), so the count starts from here.
+    const embedCallsAfterWrite = vi.mocked(engine.embed).mock.calls.length;
+    expect(embedCallsAfterWrite).toBeGreaterThan(0);
+    const queryEmbeds = () => vi.mocked(engine.embed).mock.calls.length - embedCallsAfterWrite;
+
+    const expanded = await backend.retrieveMemory({
+      branch: 'long-term',
+      query: 'catalog graph',
+      mode: 'expand',
+      disclosureLevel: 'D2',
+      scopes: [{ scope: 'global' }],
+      now: new Date().toISOString(),
+      limit: 5,
+    });
+    expect(queryEmbeds()).toBe(0);
+    // Navigation still answers from the evidence it has, so dropping the vector is not a silent loss
+    // of results.
+    expect(expanded.length).toBeGreaterThan(0);
+
+    const deep = await backend.retrieveMemory({
+      branch: 'long-term',
+      query: 'catalog graph',
+      mode: 'deep-search',
+      disclosureLevel: 'D2',
+      scopes: [{ scope: 'global' }],
+      now: new Date().toISOString(),
+      limit: 5,
+    });
+    expect(queryEmbeds()).toBe(1);
+    expect(deep.length).toBeGreaterThan(0);
+  });
 });
 
 function createBackend(dataDir: string, embeddingEngine?: EmbeddingEngine): MemoryRepositoryV3Backend {

@@ -1,8 +1,8 @@
 # Runtime 状态一致性与必要记忆任务书 2026-09-22
 
-最后更新：2026-09-24 20:08:20
+最后更新：2026-09-27 05:17:22
 
-状态：**文件一致性主线（RS-00～RS-04）已实现并推送**（`593107c` / `9b01619` / `91381ad` / `9b4fced` / `4e8f402`），每批含真实文件测试与 README 同步，`check:repo` 36/36；**RS-05～RS-08（含补充的 RS-06A/06B）尚未开始**（Memory 解绑、按需写入、已有记忆纠正/撤销、向量检索边界、真实验收、收口退役）。2026-09-23 的 Memory 审查补充了缺陷证据；2026-09-24 补入 Agent 修改已有记忆的缺口，均未实施修复。上一份缓存专项按用户确认已完成，本任务只保留其回归约束，不重新立项。
+状态（2026-09-27 更新）：**RS-05（删除压缩自动学习）与 RS-06A（向量只在深搜边界）已实现**（`packages/runner`、`packages/session`、`packages/memory-tree`，含回归测试与 `check:repo` 全绿）；文件一致性主线（RS-00～RS-04）此前已实现并推送；**RS-06（受控 memory_write）、RS-06B（Agent 纠正/忘记）、RS-07（真实验收）、RS-08（收口退役）尚未开始**。
 
 ## 1. 决定与范围
 
@@ -101,10 +101,11 @@
 
 范围：`packages/runner/src/session-continuity.ts`、`packages/session/src/compaction.ts` 与 compaction store 的候选兼容/结算边界。此次发现的整批截断拒绝和非用户消息统一映射为回复，随旧写入链删除；不为即将退役的链增加逐候选调度或另一套来源管理。
 
-- [ ] 压缩仅维护会话工作摘要、未完成目标及恢复信息；删除候选提炼提示、候选解码与自动 `memoryService.write` 调用。摘要/原始对话持久化继续保留，但不当作新的长期事实写入或借摘要登记旁路自动晋升。
-- [ ] 处理升级前 pending compaction memory proposal：未提交候选按现有事务状态显式终止并保留审计，不在启动/续接时自动写入；已提交记忆、来源和摘要不删除，不回滚用户数据。
-- [ ] 清理无调用方的该写入链与配置，保留必要旧格式读取兼容；不恢复 CAPTURE、自动演化或以消息数量触发压缩来“找机会学习”。
+- [x] 压缩仅维护会话工作摘要、未完成目标及恢复信息；删除候选提炼提示、候选解码与自动 `memoryService.write` 调用。摘要/原始对话持久化继续保留，但不当作新的长期事实写入或借摘要登记旁路自动晋升。
+- [x] 处理升级前 pending compaction memory proposal：未提交候选按现有事务状态显式终止并保留审计，不在启动/续接时自动写入；已提交记忆、来源和摘要不删除，不回滚用户数据。
+- [x] 清理无调用方的该写入链与配置，保留必要旧格式读取兼容；不恢复 CAPTURE、自动演化或以消息数量触发压缩来“找机会学习”。
 
+**已实现（2026-09-27）**：`session-continuity.ts` 的压缩提示只要求 `summary`（仍保留"未完成的边界值逐字保留"等保真要求），`decodeCompaction` 只解码摘要——模型若仍返回 `candidates` 则**被忽略**，不再有解码、校验或写入；`commitCompactionCandidate`、`memoryService.write` 依赖与候选相关辅助（`createHash`/`stringList`/`boundedScore`）全部删除，`memoryService` 收缩为 `Pick<MemoryService,'registerSessionSummary'>`。升级前遗留的 pending 提案由 `terminateLegacyCompactionMemory` 显式终止：每个没有结论的候选写入 `rejected` + 退役原因，提案盖上 `terminatedAt`/`terminationReason`（`CompactionMemoryProposal` 新增两个可选字段，旧记录照常读取），pending 文件**保留为审计**，重复调用因时间戳而成为 no-op；已提交的记忆、来源与摘要不动。摘要资源注册从"提案结算"移到压缩操作本身（没有提案时不再有 pending 事务可结算）。回归：`runner.test.ts` 四条（压缩只写摘要且忽略模型给的候选、resume 时终止而非结算、注册失败也终止且零写入、引用未覆盖来源的候选不再让操作失败），`session-compaction-prompt.test.ts`/`session-compaction-input.test.ts` 断言提示里不再出现候选契约，`packages/runner`+`packages/session`+`packages/memory-tree` 全绿（`packages/harness/src/default-harness.test.ts` 的 OOM 为既有环境问题，与本批无关）。
 验收：没有明确或必要写入请求时，普通聊天、真实压力压缩及重启恢复均不新增长期事实；会话连续性仍通过；升级前 pending 候选不会复活自动学习。此步骤与 RS-06 在同一发布批次交付，避免只删除唯一入口后宣称 Memory 已可用。
 
 ### RS-06｜Memory：明确要求或必要时 durable write（P0，依赖 RS-05）
@@ -128,10 +129,11 @@
 
 范围：`packages/memory-tree/src/memory-repository/v3-retrieval.ts`、`tree-memory-branch.ts` 与对应导航/服务测试。无 RS-05/06 实现依赖，可独立修复；并入 RS-07 验收。只修既有 mode 分支，不新增检索阶段、planner 或 manager。
 
-- [ ] 按请求 mode 分开普通展开与深搜：D1 索引、按 nodeId 展开和 `expand(query)` 均不准备查询向量、不调用向量搜索；保留现有 scope、FTS、层级、预算与证据约束。
-- [ ] 只有通过同 run 分支索引和展开前置检查的 `deep_search` 才允许使用分支内向量兜底；每次深搜最多准备一次查询向量并复用于已授权 scopes。未索引/未展开的深搜拒绝，跨 scope 不泄漏，本地模型不可用时保留既有 FTS/层级降级结果。
-- [ ] 分别观测查询向量准备、实际 embedding 与向量搜索调用，排除写入建索引的 embedding 次数；覆盖 `expand(query)`，不能只测按 nodeId 展开而遗漏此次绕行路径。
+- [x] 按请求 mode 分开普通展开与深搜：D1 索引、按 nodeId 展开和 `expand(query)` 均不准备查询向量、不调用向量搜索；保留现有 scope、FTS、层级、预算与证据约束。
+- [x] 只有通过同 run 分支索引和展开前置检查的 `deep_search` 才允许使用分支内向量兜底；每次深搜最多准备一次查询向量并复用于已授权 scopes。未索引/未展开的深搜拒绝，跨 scope 不泄漏，本地模型不可用时保留既有 FTS/层级降级结果。
+- [x] 分别观测查询向量准备、实际 embedding 与向量搜索调用，排除写入建索引的 embedding 次数；覆盖 `expand(query)`，不能只测按 nodeId 展开而遗漏此次绕行路径。
 
+**已实现（2026-09-27）**：`v3-retrieval.ts` 的 `searchScoped` 只在 `request.mode === 'deep-search'` 时 `prepareVectorQuery`；D1 索引、按 nodeId 展开与首次 `expand(query)` 一律零查询向量、零向量搜索，仍由 FTS、层级与关系边给出结果（引擎不可用时的既有降级不变）。回归：`v3-backend.test.ts` 新增一例，用计数 embedding 引擎证明写入索引的 embedding 不计入、`expand` 后查询 embedding 为 0 且结果非空、`deep-search` 恰好 1 次。
 验收：有可用 embedding 引擎时，`branch_index → expand(query)` 的查询 embedding/向量搜索均为 0；合法 `deep_search` 每次最多一次查询 embedding，违规导航在调用向量前拒绝；引擎不可用时普通展开仍返回可用 FTS 证据，深搜如实保留降级边界。真实模型/性能结果另行记录，不用调用计数宣称速度提升。
 
 ### RS-06B｜Memory：Agent 纠正与忘记已有记忆（P0，依赖 RS-06）

@@ -196,12 +196,18 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
     const retrievalQuery = taskQuery.retrievalText || request.query;
     const merged = new Map<string, MemoryV3ScoredCandidate>();
     const perScopeLimit = Math.min(MAX_CANDIDATE_POOL, Math.max(request.limit * 4, 20));
+    // Only a deep search may fall back to vectors (RS-06A): an ordinary `expand` — including the
+    // first one, which is where the query embedding used to be prepared — is answered by FTS, the
+    // hierarchy and the relation edges alone. Preparing a query vector is itself a model call, and
+    // paying it for navigation the reader did not ask for is exactly what the taskbook forbids.
     let preparedVector: Awaited<ReturnType<MemoryCatalog['prepareVectorQuery']>> | undefined;
-    try {
-      preparedVector = await this.catalog.prepareVectorQuery(retrievalQuery, request.signal);
-    } catch (error) {
-      if (!(error instanceof EmbeddingUnavailableError)) throw error;
-      // A missing local model never blocks hierarchy or FTS retrieval.
+    if (request.mode === 'deep-search') {
+      try {
+        preparedVector = await this.catalog.prepareVectorQuery(retrievalQuery, request.signal);
+      } catch (error) {
+        if (!(error instanceof EmbeddingUnavailableError)) throw error;
+        // A missing local model never blocks hierarchy or FTS retrieval.
+      }
     }
     for (const scope of scopes) {
       throwIfAborted(request.signal);

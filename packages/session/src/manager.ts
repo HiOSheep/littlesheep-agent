@@ -461,6 +461,16 @@ export class SessionManager implements SessionManagerLike {
     }
   }
 
+  async terminateCompactionMemoryProposal(sessionId: SessionId, summaryId: string, reason: string): Promise<void> {
+    const file = this.sessionFile(sessionId);
+    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
+    try {
+      await this.compactions.terminateMemoryProposal(sessionId, summaryId, reason);
+    } finally {
+      await handle.release();
+    }
+  }
+
   async completeCompactionMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
     const file = this.sessionFile(sessionId);
     const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
