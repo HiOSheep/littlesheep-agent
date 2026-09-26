@@ -292,6 +292,29 @@ function trackWorkspaceEditorLifecycle(
 type WorkspaceEditorLayoutTarget = Pick<Monaco.editor.IStandaloneCodeEditor, 'layout'>
   | Pick<Monaco.editor.IStandaloneDiffEditor, 'layout'>
 
+
+/**
+ * The box an editor should occupy: the largest one within a few levels above it.
+ *
+ * Asking Monaco to measure its own container is not enough when the container grows after the
+ * editor was first laid out — measured, the editor root held an inline `height: 5px` while the
+ * pane above it was 716 px. Climbing a bounded number of levels and taking the largest box
+ * finds the surface the user actually sees whether the editor is standalone or inside a diff.
+ */
+function measureEditorBox(
+  hostEditor: Monaco.editor.IStandaloneCodeEditor,
+): { width: number; height: number } | null {
+  let node: HTMLElement | null = hostEditor.getDomNode()
+  let best: { width: number; height: number } | null = null
+  for (let depth = 0; node && depth < 4; depth += 1) {
+    if (node.clientWidth > 0 && node.clientHeight > 0) {
+      best = { width: node.clientWidth, height: node.clientHeight }
+    }
+    node = node.parentElement
+  }
+  return best
+}
+
 function trackWorkspaceEditorLayout(
   hostEditor: Monaco.editor.IStandaloneCodeEditor,
   layoutTarget: WorkspaceEditorLayoutTarget = hostEditor,
@@ -300,7 +323,13 @@ function trackWorkspaceEditorLayout(
   const layoutNow = () => {
     window.cancelAnimationFrame(frame ?? 0)
     frame = undefined
-    layoutTarget.layout()
+    // Pass a measured size instead of letting Monaco measure its own container. Its root node
+    // was observed holding an inline `height: 5px` while the pane around it was a definite
+    // 716 px: the editor kept the size it saw when it was first laid out and never took the
+    // container's later height. Explicit numbers cannot go stale that way.
+    const measured = measureEditorBox(hostEditor)
+    if (measured) layoutTarget.layout(measured)
+    else layoutTarget.layout()
   }
   const scheduleLayout = (force = false) => {
     if (!force && (

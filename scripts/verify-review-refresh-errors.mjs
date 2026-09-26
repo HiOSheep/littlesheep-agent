@@ -1002,7 +1002,54 @@ async function main() {
     // the hidden-window contract stays for every other step.
     await harness.desktopAction(locator, 'park-offscreen')
     await delay(1200)
+    // Prove the parked window is actually outside the desktop: the whole point is that it
+    // renders without ever appearing in front of the person using the machine.
+    const parkedPosition = await client.evaluate(`({
+      screenX: window.screenX, screenY: window.screenY,
+      screenWidth: window.screen.width, screenHeight: window.screen.height,
+      availWidth: window.screen.availWidth, availHeight: window.screen.availHeight,
+      focused: document.hasFocus(),
+    })`)
+    recorder.note({ step: 'parked-window', parkedPosition })
+    recorder.check(
+      parkedPosition.screenX + parkedPosition.screenWidth < 0
+      || parkedPosition.screenY + parkedPosition.screenHeight < 0,
+      'the parked window sits outside every display',
+      parkedPosition,
+    )
     await selectReviewRow(client, 'interactions.txt')
+    // Decisive probe: ask Monaco itself. If a live editor exists, whether `layout()` (measured)
+    // or `layout({width, height})` (explicit) changes its box separates "the app never reaches
+    // the live editor" from "the editor refuses to take a size".
+    const monacoLayoutProbe = await client.evaluate(`(() => {
+      const api = window.monaco;
+      const editors = api?.editor?.getDiffEditors?.() ?? [];
+      const read = () => editors.map((editor) => {
+        const node = editor.getDomNode();
+        return {
+          inlineHeight: node ? node.style.height : null,
+          height: node ? Math.round(node.getBoundingClientRect().height) : null,
+        };
+      });
+      const pane = document.querySelector('.workspace-review-monaco-diff');
+      const result = {
+        hasMonaco: Boolean(api),
+        diffEditors: editors.length,
+        before: read(),
+      };
+      editors.forEach((editor) => editor.layout());
+      result.afterMeasured = read();
+      editors.forEach((editor) => editor.layout({
+        width: pane ? pane.clientWidth : 800,
+        height: pane ? pane.clientHeight : 600,
+      }));
+      result.afterExplicit = read();
+      result.paneSize = pane ? { width: pane.clientWidth, height: pane.clientHeight } : null;
+      return result;
+    })()`)
+    recorder.note({ step: 'diff-monaco-layout-probe', monacoLayoutProbe })
+    await delay(500)
+
     // Measured here and recorded, not asserted: one `.monaco-diff-editor` exists, it is
     // connected and inside the review pane, its parent chain is a definite 716 px, and it
     // still carries an inline `height: 5px` with a single rendered line — in a window that is
@@ -1037,9 +1084,9 @@ async function main() {
     // (`review-diff-model.test.ts` asserts source numbers and `...` gaps) — and this records
     // what the window did render.
     recorder.check(
-      interactionDiff.gutterNumbers.length === 0
-      || interactionDiff.gutterNumbers.every((value) => Number(value) >= 1),
-      'whatever the hidden-window gutter renders is a real source number',
+      // One deletion on line 2 replaced by an addition, so the modified side is exactly 1..3.
+      interactionDiff.gutterNumbers.join(',') === '1,2,3',
+      'the diff gutter shows the real source line numbers',
       { gutterNumbers: interactionDiff.gutterNumbers },
     )
     // Wrapping cannot be judged from geometry here: a hidden window never lays the diff out,
@@ -1068,10 +1115,21 @@ async function main() {
       apiStatus: longLineDiff.status,
       apiCarriesLongLine: longLineInApi,
     })
+    // Wrapping is checked on the rendered line box: with wrapping on it is clamped to the
+    // editor's width, and the raw scrollWidth of Monaco's scrollable element is meaningless
+    // here (measured 16,776,893 px even when everything renders).
+    const wrapBox = await client.evaluate(`(() => {
+      const editor = document.querySelector('.workspace-review-monaco-diff [class*="modified-in-monaco-diff-editor"]');
+      const line = editor?.querySelector('.view-line');
+      return editor instanceof HTMLElement && line instanceof HTMLElement
+        ? { editor: Math.round(editor.getBoundingClientRect().width), line: Math.round(line.getBoundingClientRect().width) }
+        : null;
+    })()`)
+    recorder.note({ step: 'diff-wrap-box', wrapBox, apiCarriesLongLine: longLineInApi })
     recorder.check(
-      longLineInApi === true,
-      'the very long line reaches the diff the app serves for that file',
-      { apiStatus: longLineDiff.status, apiCarriesLongLine: longLineInApi, wrap: interactionDiff.wrap },
+      longLineInApi === true && wrapBox !== null && wrapBox.line <= wrapBox.editor + 1,
+      'the very long line reaches the diff and its rendered line box stays inside the editor',
+      { apiStatus: longLineDiff.status, apiCarriesLongLine: longLineInApi, wrapBox },
     )
 
     // Keyboard selection: focus another row and press Enter through the browser's own input
@@ -1120,17 +1178,72 @@ async function main() {
     // a hidden window has neither pointer position nor layout. What is checked is that the
     // layer exists for a file with a deletion and that the comment editor opens through the
     // layer's own state, so the clause is not simply assumed.
+    // Deleted-line markers live in the inline (single column) view, so switch to it first; the
+    // affordance itself appears on hover over the deleted zone, and hovering needs a laid-out
+    // surface — which the parked window now provides. Both switches go through the real UI.
+    const columnSwitch = await client.evaluate(`(() => {
+      const toggle = document.querySelector('.workspace-review-diff-actions button[aria-pressed]');
+      if (!(toggle instanceof HTMLElement)) return { found: false };
+      const before = toggle.getAttribute('aria-pressed');
+      if (before === 'true') toggle.click();
+      return { found: true, before, label: toggle.getAttribute('aria-label') };
+    })()`)
+    await delay(1500)
+    const inlineMode = await client.evaluate(`(() => {
+      const review = document.querySelector('.workspace-review');
+      const toggle = document.querySelector('.workspace-review-diff-actions button[aria-pressed]');
+      return {
+        sideBySide: review ? review.classList.contains('is-side-by-side') : null,
+        pressed: toggle ? toggle.getAttribute('aria-pressed') : null,
+      };
+    })()`)
+    recorder.note({ step: 'diff-inline-mode', columnSwitch, inlineMode })
+    const deletedZone = await client.evaluate(`(() => {
+      const marker = document.querySelector('.workspace-review-monaco-diff .gutter-delete')
+        ?? document.querySelector('.workspace-review-monaco-diff [class*="delete"]');
+      if (!(marker instanceof HTMLElement)) return null;
+      const rect = marker.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    })()`)
+    if (deletedZone) {
+      await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: deletedZone.x, y: deletedZone.y, button: 'none' })
+      await delay(400)
+    }
     const deletedLineComment = await client.evaluate(`(() => {
       const layer = document.querySelector('.workspace-review-inline-deleted-comments');
       const zones = layer?.querySelectorAll('.workspace-review-inline-deleted-comment-state').length ?? 0;
+      const add = document.querySelector('.workspace-line-comment-add, .workspace-line-comment-add-button');
       if (!(layer instanceof HTMLElement)) {
-        // The layer is mounted from line geometry, and a hidden window has none, so it cannot
-        // appear here at all; the component's own tests carry this clause (see the gate note).
-        return { found: false, zones: 0, reason: 'hidden-window' };
+        return { found: false, zones: 0, addButton: Boolean(add), reason: 'layer-not-mounted' };
       }
-      layer.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 40, clientY: 60 }));
-      return { found: true, zones, label: layer.getAttribute('aria-label') };
+      return {
+        found: true,
+        zones,
+        addButton: Boolean(add),
+        label: layer.getAttribute('aria-label'),
+        edge: 'layer',
+      };
     })()`)
+    // The affordance is the shared add button; click it through the input pipeline and see
+    // whether the comment editor opens on the deleted line.
+    const addButtonRect = await client.evaluate(`(() => {
+      const add = document.querySelector('.workspace-line-comment-add, .workspace-line-comment-add-button');
+      if (!(add instanceof HTMLElement)) return null;
+      const rect = add.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    })()`)
+    if (addButtonRect) {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await client.send('Input.dispatchMouseEvent', {
+          type,
+          x: addButtonRect.x,
+          y: addButtonRect.y,
+          button: 'left',
+          clickCount: 1,
+        })
+      }
+      await delay(500)
+    }
     await delay(700)
     const commentEditor = await client.evaluate(`(() => {
       const editor = document.querySelector('.workspace-line-comment-editor textarea, .workspace-line-comment-editor');
@@ -1139,10 +1252,19 @@ async function main() {
     const deletedShot = await captureScreenshot(client, screenshotDir, 'review-deleted-line-comment.png')
     recorder.note({ step: 'diff-deleted-line-comment', deletedLineComment, commentEditor, screenshot: deletedShot })
     recorder.check(
-      deletedLineComment.reason === 'hidden-window' ? true : deletedLineComment.found === true,
-      'a file with a deleted line offers the deleted-line comment layer',
-      { ...deletedLineComment, ...commentEditor },
+      inlineMode.sideBySide === false
+      && addButtonRect !== null
+      && commentEditor.open === true,
+      'in the single-column view a comment can be started on a deleted line',
+      { ...inlineMode, ...deletedLineComment, ...commentEditor },
     )
+    // Back to the two-column view the rest of the walkthrough expects.
+    await client.evaluate(`(() => {
+      const toggle = document.querySelector('.workspace-review-diff-actions button[aria-pressed]');
+      if (toggle instanceof HTMLElement && toggle.getAttribute('aria-pressed') === 'false') toggle.click();
+      return true;
+    })()`)
+    await delay(600)
     await client.evaluate(`(() => {
       const cancel = [...document.querySelectorAll('.workspace-line-comment-editor button')]
         .find((node) => (node.textContent || '').trim() === '取消');
@@ -1382,7 +1504,7 @@ async function main() {
       'The last-success time comes from the snapshot that is still on screen; the file diff has no timestamp of its own and only says it is showing the previous result.',
       'The in-flight diff wording observed here is the "belongs to the previous snapshot" variant, which is what a refresh produces; the same-revision "refreshing" variant needs a cached diff whose TTL has expired and is covered by review-refresh-notice.test.ts instead.',
       'Snapshot revision identity is still a per-read value and no HEAD/index consistency check is performed here; that part of UX-27 stays open.',
-      'A hidden window gives Monaco no resolved height: measured, the diff pane is 715 px while the editor root is 5 px and exactly one line renders, with or without a frame-coalesced layout call (and with the renderer unthrottled). Anything mounted from line geometry — the deleted-line comment layer — therefore never appears. Line numbering is asserted where it is produced (review-diff-model + surface tests) and the deleted-line component has its own tests; the walkthrough records what rendered instead of asserting it.',
+      'The layout-dependent checks park the window outside every display and show it inactively, so they render without appearing on the desktop; every other step keeps the window hidden. The walkthrough asserts the parked position rather than assuming it.',
       'Collapse and slide animations do not run in a hidden acceptance window (no animation frames), so the navigator keeps its geometry after its collapse state flips; the walkthrough asserts the state that drives the layout and records the geometry instead.',
     ],
   }
