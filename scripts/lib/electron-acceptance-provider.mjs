@@ -166,11 +166,49 @@ function buildResponse(body, requestIndex, model) {
   }
 }
 
+/**
+ * Tool messages belonging to the turn being answered: everything after the newest user message. A
+ * later turn in the same session sees the earlier turns' tool results too, and counting those would
+ * put the fixture on the wrong step.
+ */
+function toolMessagesThisTurn(messages) {
+  const lastUser = messages.map((message) => message?.role).lastIndexOf('user')
+  return messages.slice(lastUser + 1).filter((message) => message?.role === 'tool')
+}
 function classifyResponse({ body, system, user, messages, model, requestIndex }) {
   // Deterministic long Markdown answer for the streamed-rendering fixture. Checked before
   // every other branch so the fixture always streams text and never turns into a tool call.
   if (user.includes(LONG_MARKDOWN_MARKER)) {
     return textChoice(longMarkdownAnswer())
+  }
+  // Desktop file-consistency fixture (RS-07): one user message per stage, and the tool messages
+  // already in this request tell the fixture which step of the stage it is on.
+  if (FILE_CONSISTENCY_MARKERS.some((marker) => user.includes(marker))) {
+    const toolMessages = toolMessagesThisTurn(messages)
+    if (user.includes(FILE_CONSISTENCY_MARKERS[0])) {
+      return toolMessages.length === 0
+        ? toolChoice('ls-file-read', 'read', { file_path: FILE_CONSISTENCY_FILE })
+        : textChoice('已读取该文件的当前内容。')
+    }
+    if (user.includes(FILE_CONSISTENCY_MARKERS[1])) {
+      return toolMessages.length === 0
+        ? toolChoice('ls-file-stale-edit', 'edit', {
+          file_path: FILE_CONSISTENCY_FILE,
+          old_string: 'ALPHA',
+          new_string: 'beta',
+        })
+        : textChoice('这次修改没有成功，我按运行时给出的原因说明。')
+    }
+    if (toolMessages.length === 0) {
+      return toolChoice('ls-file-reread', 'read', { file_path: FILE_CONSISTENCY_FILE })
+    }
+    return toolMessages.length === 1
+      ? toolChoice('ls-file-reread-edit', 'edit', {
+        file_path: FILE_CONSISTENCY_FILE,
+        old_string: 'ALPHA',
+        new_string: 'beta',
+      })
+      : textChoice('重读之后修改成功。')
   }
   if (user.includes('运行中的补充验收')) {
     return textChoice('已处理补充要求：运行中的补充验收。')
@@ -267,7 +305,15 @@ function textChoice(content) {
  * Marker a script puts in its prompt to receive {@link longMarkdownAnswer} instead of the
  * short continuity reply. Exported so a fixture and this provider cannot drift apart.
  */
-export const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
+/** RS-07 desktop file-consistency fixture: one marker per stage, one file under test. */
+export const FILE_CONSISTENCY_MARKERS = [
+  'LS-FILE-READ-MARKER',
+  'LS-FILE-STALE-EDIT-MARKER',
+  'LS-FILE-REREAD-EDIT-MARKER',
+]
+export const FILE_CONSISTENCY_FILE = 'desktop-flow.txt'
+
+const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
 
 /** Sentinels the fixture asserts on: the answer is only complete if both survive the stream. */
 export const LONG_MARKDOWN_START = 'FIXTURE-START-4c1d'
