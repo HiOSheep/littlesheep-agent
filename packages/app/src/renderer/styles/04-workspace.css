@@ -1780,8 +1780,20 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   min-width: var(--workspace-tree-guide-width);
   box-sizing: border-box;
   background-color: var(--border);
+  /* The indent guides are a reading aid for the column the pointer is in, not permanent chrome:
+     they fade in while the cursor is over the tree (or the tree holds keyboard focus) and fade out
+     again on leave. Reduced-motion turns the fade into an instant switch globally. */
+  opacity: 0;
+  transition: opacity var(--motion-base) var(--motion-ease);
   content: '';
   pointer-events: none;
+}
+
+.workspace-tree:hover .workspace-tree-entry.expanded::before,
+.workspace-tree:hover .workspace-review-tree-branch.expanded::before,
+.workspace-tree:focus-within .workspace-tree-entry.expanded::before,
+.workspace-tree:focus-within .workspace-review-tree-branch.expanded::before {
+  opacity: 1;
 }
 
 .workspace-tree-row {
