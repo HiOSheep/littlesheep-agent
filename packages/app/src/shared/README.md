@@ -1,8 +1,8 @@
 # App Shared Contracts
 
-最后更新：2026-09-26 14:58:17
+最后更新：2026-09-27 01:29:06
 
-保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。
+保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。 路由常量集中在 `local-app-api-routes.ts`：新增路由必须同时登记到 `LOCAL_APP_API_ROUTES`，动态前缀则进 `LOCAL_APP_API_PREFIXES`（后者要求以 `/` 结尾且不与该表重复，有单测把关）。
 
 ## 边界
 

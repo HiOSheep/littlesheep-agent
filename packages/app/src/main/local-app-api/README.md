@@ -1,9 +1,10 @@
 # Local App API
 
-最后更新：2026-09-26 14:58:37
+最后更新：2026-09-27 01:29:06
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
+`open-with-routes.ts` 提供"用哪个应用打开"的三条路由（2026-09-26）：`GET /workspace/open-with` 返回本机为该扩展名注册的应用（按扩展名缓存 32 项，因为发现要跑 `reg.exe`），`POST /workspace/open-with` 用 `{ root, path, handlerId }` 启动其中一个，`POST /workspace/reveal` 走 `shell.showItemInFolder`。**渲染进程只传 id，不传命令行**：两条写路由都会重新发现一次再 spawn / 展示，id 失效时返回 400 而不是猜。它们独立成文件，让 `workspace-routes.ts` 保持在组合面的 300 行预算内（275 行）。
 会话上下文用量记录额外携带 `sessionCache`：本会话累计的输入/缓存读取/未缓存与精确命中率，供 composer 指示器展示；它是 provider 用量的汇总，不引入第二套真相来源。
 ## 结构
 
