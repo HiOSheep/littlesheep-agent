@@ -240,13 +240,14 @@ describe('step evidence for a plan this run did not execute', () => {
     expect(runtimeExecutionEvidenceGap(ctx)).toBeUndefined();
   });
 
-  it('still owes it for a plan this run executed', () => {
+  // A plan carried by an old checkpoint is read-only history, and nothing executes steps any more — so
+  // step completeness is no longer an evidence gap at all (HC-03). The legacy fixture stays, because the
+  // compatibility reader still has to parse it, but it must not produce a gap.
+  it('does not turn an inherited plan into an execution gap', () => {
     const ctx = legacyPlanContext('failed');
-    // No resume marker: the plan belongs to this run, so an incomplete execution
-    // is a real gap and the verdict must not pass.
     ctx.resumedFromCheckpointId = undefined;
 
-    expect(runtimeExecutionEvidenceGap(ctx)).toBe('failed or missing task step evidence');
+    expect(runtimeExecutionEvidenceGap(ctx)).toBeUndefined();
   });
 });
 

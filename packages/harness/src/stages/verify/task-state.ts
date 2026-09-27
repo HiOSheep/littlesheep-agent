@@ -1,11 +1,18 @@
-import type {
-  PartialReplanRequest,
-  RunContext,
-  SideEffectCheckpoint,
-  TaskStepFailureKind,
-  ToolInvocationStatus,
-} from '@littlesheep/types';
-import { writeReplanState } from '../../replan-state.js';
+import type { RunContext, SideEffectCheckpoint, ToolInvocationStatus } from '@littlesheep/types';
+
+/** Side-effect statuses that mean the Runtime does not know the outcome yet. */
+const UNSETTLED_EFFECT_STATUSES = new Set<SideEffectCheckpoint['status']>([
+  'planned',
+  'in_progress',
+  'unknown',
+]);
+
+/** Refusals the model can correct: the call never ran, so the outcome is known. */
+const RECORDED_REFUSAL_STATUSES = new Set<ToolInvocationStatus>([
+  'validation_failed',
+  'unknown_tool',
+  'repeated_call_blocked',
+]);
 
 /**
  * Invocation statuses that make the recorded evidence unusable rather than
@@ -35,85 +42,14 @@ const EVIDENCE_BLOCKING_INVOCATION_STATUSES = new Set<ToolInvocationStatus>([
   'hard_denied',
 ]);
 
-/**
- * Refusals the Runtime itself issued before the call ran: determinate outcomes
- * like any other failure, so they keep the verdict away from `pass` without
- * making the evidence unusable.
- */
-const RECORDED_REFUSAL_STATUSES = new Set<ToolInvocationStatus>([
-  'validation_failed',
-  'unknown_tool',
-  'repeated_call_blocked',
-]);
-
-/** Side-effect statuses that are still unresolved rather than settled. */
-const UNSETTLED_EFFECT_STATUSES = new Set(['planned', 'in_progress', 'unknown']);
-
-/**
- * Step-scoped replan targets derived only from recorded Runtime state: the steps
- * that actually failed or were blocked. Steps that never ran stay with the
- * normal plan instead of being rewritten, and completed steps are never rerun.
- *
- * Only steps this run recorded can be replanned. A plan restored from a
- * checkpoint that this run never executed is read-only history: with the second
- * executor deleted there is nothing to replan there, and treating it as an
- * incomplete plan would send the run back into the loop until recovery gave up.
- */
-export function deriveReplanTargets(ctx: RunContext): string[] {
-  const recorded = ctx.taskExecution?.steps ?? [];
-  if (recorded.length === 0) return [];
-  const knownIds = new Set(taskStepIds(ctx));
-  const results = new Map(recorded.map((step) => [step.stepId, step]));
-  const ordered = recorded.map((step) => step.stepId).filter((id) => knownIds.has(id));
-  const failed = ordered.filter((id) => {
-    const status = results.get(id)?.status;
-    return status === 'failed' || status === 'blocked';
-  });
-  if (failed.length > 0) return failed;
-
-  const incomplete = ordered.filter((id) => results.get(id)?.status !== 'done');
-  if (incomplete.length > 0) return incomplete;
-  return ordered.length > 0 ? [ordered[ordered.length - 1]!] : [];
-}
-
-export function canRecoverWithPartialReplan(ctx: RunContext, targetIds: string[]): boolean {
-  if (!ctx.taskBook || targetIds.length === 0) return false;
-  const kinds = failedKinds(ctx, targetIds);
-  if (kinds.some((kind) => kind === 'permission_denied' || kind === 'model_error' || kind === 'aborted')) {
-    return false;
-  }
-  return kinds.length === 0
-    || kinds.some((kind) => kind === 'tool_error'
-      || kind === 'not_found'
-      || kind === 'verification_gap'
-      || kind === 'unknown');
-}
-
-export function hasIncompleteTaskExecution(ctx: RunContext): boolean {
-  if (!ctx.taskBook || !ctx.taskExecution) return false;
-  const results = new Map(ctx.taskExecution.steps.map((step) => [step.stepId, step.status]));
-  return taskStepIds(ctx).some((id) => results.get(id) !== 'done');
-}
 
 /** Runtime facts that a model verdict is not allowed to repair or hide. */
 export function runtimeExecutionEvidenceGap(ctx: RunContext): string | undefined {
-  // Step evidence is only owed for a plan this run actually executed. A plan
-  // restored from a checkpoint is read-only history, so its untouched steps are
-  // not an execution gap.
-  //
-  // The condition is what makes that true. Nothing executes steps any more, so a
-  // resumed run can only ever see the plan it inherited: judging it turned
-  // inherited history into a gap, sent the run back to re-plan steps no executor
-  // can run, and spent the whole replan budget before asking the user.
-  const planOwedByThisRun = ctx.resumedFromCheckpointId === undefined;
-  if (planOwedByThisRun) {
-    if (ctx.taskBook && ctx.taskExecution && hasIncompleteTaskExecution(ctx)) {
-      return 'failed or missing task step evidence';
-    }
-    if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {
-      return `task execution status is ${ctx.taskExecution.status}`;
-    }
-  }
+  // Step evidence is not judged here any more (HC-03). A plan restored from a checkpoint is read-only
+  // history, and nothing executes steps at all: no run creates a TaskBook or a TaskExecution, so asking
+  // whether "this run's" steps are complete could only ever fire on inherited history — which turned
+  // history into a gap and spent the replan budget sending the run back to a step executor that no longer
+  // exists. What the run owes is evidence for the calls it actually made, below.
   if (ctx.toolInvocationsTruncated) return 'tool invocation evidence is truncated';
 
   const invocations = ctx.toolInvocations ?? [];
@@ -197,69 +133,18 @@ export function recordedToolFailures(ctx: RunContext, limit = 5): string[] {
  * incomplete evidence about work the Runtime had already settled — the resumed
  * run could not finish truthfully.
  *
- * The attestation therefore comes from what the checkpoint itself carried:
+ * The attestation therefore comes from what the checkpoint itself carried: the restored ledger entry is
+ * terminal, which means the Runtime settled it before the interruption. (A legacy TaskBook checkpoint
+ * could also carry the call on a step; nothing writes those any more, and reading inherited history as
+ * evidence was always the weaker of the two.)
  *
- * - a legacy TaskBook checkpoint recorded the call and its outcome on the step,
- *   and a *failed* outcome is as recorded as a successful one — the requirement
- *   is that an outcome exists, not that it was positive;
- * - the restored ledger entry is terminal, which means the Runtime settled it
- *   before the interruption.
- *
- * Anything else — no call id, a non-terminal status, a different run's step
- * evidence — still reports the gap.
+ * Anything else — no call id, a non-terminal status — still reports the gap.
  */
 function inheritedEffectEvidence(ctx: RunContext, effect: SideEffectCheckpoint): boolean {
   if (!ctx.resumedFromCheckpointId) return false;
-  const callId = effect.callId;
-  if (!callId) return false;
-  const recordedOnStep = (ctx.taskExecution?.steps ?? []).some((step) => (
-    step.toolCallIds.includes(callId)
-    && step.toolResults.some((result) => result.callId === callId)
-  ));
-  if (recordedOnStep) return true;
+  if (!effect.callId) return false;
   return effect.status === 'succeeded' || effect.status === 'failed' || effect.status === 'cancelled';
 }
 
-export function installPartialReplan(
-  ctx: RunContext,
-  targetStepIds: string[],
-  reason: string,
-  feedback: string,
-  attempt: number,
-): PartialReplanRequest {
-  const request: PartialReplanRequest = {
-    attempt,
-    requestedAt: new Date().toISOString(),
-    targetStepIds,
-    reason,
-    feedback,
-  };
-  const targets = new Set(targetStepIds);
-  const completed = new Set(
-    (ctx.taskExecution?.steps ?? [])
-      .filter((step) => step.status === 'done')
-      .map((step) => step.stepId),
-  );
-  const preservedStepIds = taskStepIds(ctx).filter((id) => completed.has(id) && !targets.has(id));
-  const replanHistory = [
-    ...(ctx.replanHistory ?? ctx.taskExecution?.replanHistory ?? []),
-    { ...request, preservedStepIds },
-  ];
-  writeReplanState(ctx, 'verify', {
-    partialReplanRequest: request,
-    replanHistory,
-    ...(ctx.taskExecution ? { taskExecution: { ...ctx.taskExecution, replanHistory } } : {}),
-  });
-  return request;
-}
 
-function taskStepIds(ctx: RunContext): string[] {
-  return ctx.taskBook?.steps.map((step, index) => step.id ?? `step-${index + 1}`) ?? [];
-}
 
-function failedKinds(ctx: RunContext, targetIds: string[]): TaskStepFailureKind[] {
-  const targets = new Set(targetIds);
-  return (ctx.taskExecution?.steps ?? [])
-    .filter((step) => targets.has(step.stepId) && step.failureKind)
-    .map((step) => step.failureKind!);
-}

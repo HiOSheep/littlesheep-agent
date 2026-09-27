@@ -185,7 +185,7 @@
 | `packages/harness/src/stages/execute.ts` | 867 | 21 行 stage facade | guidance、prompt 与单一主循环入口；TaskBook 步骤执行器已随第二执行体系删除 | 2026-09-21 |
 | `packages/harness/src/stages/execute/main-loop.ts` | 330 | 172 行主循环执行入口 | TaskBook 编排、步骤调度与分支执行已随第二执行体系删除；只保留循环、发布与失败记录 | 2026-09-21 |
 | `packages/harness/src/stages/verify.ts` | 90 | 103 行 VERIFY facade | 只做 Runtime 可证事实的判定：结构通道 `pass`、其余记 `unverified`、失败走有界恢复；已删除验证模型调用，模型裁决、证据装配和裁决契约随请求一起移除，不得重新引入第二套判定入口 | 2026-09-20 |
-| `packages/harness/src/stages/verify/routing.ts` | 322 | 329 行路由与证据模块 | VERIFY 结构证据记录、已验证回复发布和恢复/重规划路由；失败状态通过 `failure-state.ts` 写入，步骤状态继续由 `task-state.ts` 拥有；不再装配模型请求 | 2026-09-20 |
+| `packages/harness/src/stages/verify/routing.ts` | 322 | 253 行路由与证据模块 | VERIFY 结构证据记录、已验证回复发布和恢复路由；失败状态通过 `failure-state.ts` 写入；不再装配模型请求；两个窄结构通道只读本次 run 自己的 invocation/result/副作用与转录参数（HC-03），局部重规划随其消费方 DECIDE 一并删除 | 2026-09-20 |
 | `packages/harness/src/stages/recover.ts` | 150 | 161 行恢复入口 | Runtime 自有恢复路由：有界重试、显式停止、升级到 ASK_USER（不再请求恢复模型）；恢复策略留在 `stages/recover/policy.ts`，入口只做状态编排；不得重新引入模型裁决或第二套恢复入口 | 2026-09-20 |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 205 行用户记忆文件视图 | GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`；Atom、关系、向量、迁移和审计退回 Runtime 与内部治理 API | 2026-07-16 |
 | `packages/app/src/main/workspace-office-preview.ts` | 339 | 27 行路径适配器 | 有界 Office/OpenDocument 只读解析器已迁入 `@littlesheep/documents/office-preview`，Main 只保留路径感知与预览预算适配 | 2026-09-22 |

@@ -2,7 +2,7 @@
 // VERIFY routing: records evidence, publishes verified replies, and routes bounded recovery outcomes.
 
 import { createHash } from 'node:crypto';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import type {
   RunContext,
   StageResult,
@@ -13,11 +13,6 @@ import { writeDecisionState } from '../../decision-state.js';
 import { recordFailure } from '../../failure-state.js';
 import { clearReplyState } from '../../reply-state.js';
 import { textOf } from '../_shared.js';
-import {
-  canRecoverWithPartialReplan,
-  deriveReplanTargets,
-  installPartialReplan,
-} from './task-state.js';
 
 const RUNTIME_VERIFIABLE_READ_ONLY_TOOLS = new Set([
   'read',
@@ -64,35 +59,35 @@ export function publishVerifiedReply(_ctx: RunContext): void {
   return;
 }
 
+/**
+ * The narrow read-only pass, judged from the evidence a current run actually produces.
+ *
+ * This used to require a `taskBook` step and its `taskExecution` result, which no run creates any more:
+ * the check could only ever be satisfied by a test hand-building the retired structures, so the branch was
+ * unreachable in production (HC-03). The live facts are the same facts the old plan carried — which tool
+ * ran, whether it succeeded, whether the output reached the model intact, and whether anything was
+ * written — and they come from the run's own invocation, result and side-effect records.
+ *
+ * Still narrow on purpose: exactly one tool call in the whole run, a builtin read-only tool, an unsanitized
+ * success, no side effect at all, and a Provider-authored reply. Anything wider stays `unverified`.
+ */
 export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<StageResult | undefined> {
-  if ((ctx.taskBook?.complexity !== 'trivial' && ctx.taskBook?.complexity !== 'simple')
-    || ctx.taskBook.steps.length !== 1) return undefined;
-  const execution = ctx.taskExecution;
-  if (execution?.status !== 'done' || execution.steps.length !== 1) return undefined;
-  const step = execution.steps[0]!;
-  if (step.status !== 'done' || step.error || !step.output?.trim()) return undefined;
-  if (step.toolResults.length === 0 || step.toolResults.some((result) => !result.ok || result.sanitized)) return undefined;
-  if ((ctx.sideEffects?.length ?? 0) > 0) return undefined;
-  if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return undefined;
-
-  const expectedCallIds = new Set(step.toolCallIds);
   const invocations = ctx.toolInvocations ?? [];
-  if (expectedCallIds.size === 0 || invocations.length !== expectedCallIds.size) return undefined;
-  if (invocations.some((invocation) => (
-    invocation.status !== 'succeeded'
+  if (invocations.length !== 1) return undefined;
+  const invocation = invocations[0]!;
+  if (invocation.status !== 'succeeded'
     || invocation.toolSource !== 'builtin'
     || invocation.outputTruncated === true
-    || !expectedCallIds.has(invocation.callId)
-    || !RUNTIME_VERIFIABLE_READ_ONLY_TOOLS.has(invocation.toolName)
-  ))) return undefined;
-  const resultCallIds = new Set(step.toolResults.map((result) => result.callId));
-  if (resultCallIds.size !== expectedCallIds.size
-    || [...expectedCallIds].some((callId) => !resultCallIds.has(callId))) return undefined;
+    || !RUNTIME_VERIFIABLE_READ_ONLY_TOOLS.has(invocation.toolName)) return undefined;
+  if ((ctx.sideEffects?.length ?? 0) > 0) return undefined;
+  if (!ctx.reply?.trim() || ctx.replyProvenance?.source !== 'llm') return undefined;
+  const result = (ctx.toolResults ?? []).find((candidate) => candidate.callId === invocation.callId);
+  if (!result || !result.ok || result.sanitized) return undefined;
 
   const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
   const reason = chinese
-    ? '运行时已确认唯一的只读步骤完成，工具调用全部成功，且未产生写入或外部副作用。'
-    : 'Runtime confirmed the single read-only step completed, every tool call succeeded, and no write or external side effect occurred.';
+    ? '运行时已确认本次运行只有一次只读工具调用且成功、输出完整，并未产生任何写入或外部副作用。'
+    : 'Runtime confirmed the run made exactly one read-only tool call, it succeeded with an intact output, and no write or external side effect occurred.';
   await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
   publishVerifiedReply(ctx);
   return {
@@ -103,32 +98,23 @@ export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<S
   };
 }
 
-/** Verify narrowly structured write-then-read tasks from Runtime evidence. */
+/** Verify a narrowly structured write-then-read run from Runtime evidence. */
 export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Promise<StageResult | undefined> {
-  const taskBook = ctx.taskBook;
-  const execution = ctx.taskExecution;
-  if (!taskBook
-    || taskBook.steps.length !== 2
-    || execution?.status !== 'done'
-    || execution.steps.length !== 2
-    || !ctx.reply
-    || ctx.replyProvenance?.source !== 'llm') {
-    return undefined;
-  }
+  const invocations = ctx.toolInvocations ?? [];
+  if (invocations.length !== 2) return undefined;
+  const [writeInvocation, readInvocation] = invocations;
+  if (writeInvocation?.toolName !== 'write' || readInvocation?.toolName !== 'read') return undefined;
+  if (!ctx.reply || ctx.replyProvenance?.source !== 'llm') return undefined;
+  if ([writeInvocation, readInvocation].some((invocation) => (
+    invocation.status !== 'succeeded'
+    || invocation.toolSource !== 'builtin'
+    || invocation.outputTruncated === true
+  ))) return undefined;
 
-  const [writeStep, readStep] = taskBook.steps;
-  const [writeResult, readResult] = execution.steps;
-  if (writeStep?.toolProposal?.name !== 'write'
-    || readStep?.toolProposal?.name !== 'read'
-    || writeResult?.status !== 'done'
-    || readResult?.status !== 'done'
-    || writeResult.error
-    || readResult.error) {
-    return undefined;
-  }
-
-  const writeInput = asRecord(writeStep.toolProposal.input);
-  const readInput = asRecord(readStep.toolProposal.input);
+  // The arguments come from the run's own transcript: the same assistant tool calls the model produced,
+  // not a plan a deleted executor wrote.
+  const writeInput = asRecord(toolCallInput(ctx, writeInvocation.callId));
+  const readInput = asRecord(toolCallInput(ctx, readInvocation.callId));
   const writePath = stringValue(writeInput?.file_path);
   const readPath = stringValue(readInput?.file_path);
   const expectedContent = stringValue(writeInput?.content);
@@ -138,31 +124,11 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
     return undefined;
   }
 
-  const writeToolResult = onlySuccessfulToolResult(writeResult.toolResults);
-  const readToolResult = onlySuccessfulToolResult(readResult.toolResults);
-  if (!writeToolResult || !readToolResult
-    || typeof readToolResult.output !== 'string'
-    || readToolResult.output !== expectedContent
-    || writeResult.toolCallIds.length !== 1
-    || readResult.toolCallIds.length !== 1) {
-    return undefined;
-  }
-
-  const expectedCalls = new Map([
-    [writeResult.toolCallIds[0]!, { stepId: writeResult.stepId, toolName: 'write' }],
-    [readResult.toolCallIds[0]!, { stepId: readResult.stepId, toolName: 'read' }],
-  ]);
-  const invocations = ctx.toolInvocations ?? [];
-  if (invocations.length !== expectedCalls.size
-    || invocations.some((invocation) => {
-      const expected = expectedCalls.get(invocation.callId);
-      return !expected
-        || invocation.status !== 'succeeded'
-        || invocation.toolSource !== 'builtin'
-        || invocation.outputTruncated === true
-        || invocation.stepId !== expected.stepId
-        || invocation.toolName !== expected.toolName;
-    })) {
+  const writeResult = (ctx.toolResults ?? []).find((candidate) => candidate.callId === writeInvocation.callId);
+  const readResult = (ctx.toolResults ?? []).find((candidate) => candidate.callId === readInvocation.callId);
+  if (!writeResult?.ok || !readResult?.ok || writeResult.sanitized || readResult.sanitized
+    || typeof readResult.output !== 'string'
+    || readResult.output !== expectedContent) {
     return undefined;
   }
 
@@ -170,24 +136,14 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
   if (sideEffects.length !== 1
     || sideEffects[0]?.status !== 'succeeded'
     || sideEffects[0].toolName !== 'write'
-    || sideEffects[0].stepId !== writeResult.stepId
-    || sideEffects[0].callId !== writeResult.toolCallIds[0]) {
+    || sideEffects[0].callId !== writeInvocation.callId) {
     return undefined;
   }
 
-  const inbound = textOf(ctx.inbound);
-  const fileName = basename(resolve(ctx.cwd, writePath));
-  if (!inbound.includes(fileName)
-    || !inbound.includes(expectedContent)
-    || !ctx.reply.includes(fileName)
-    || !ctx.reply.includes(expectedContent)) {
-    return undefined;
-  }
-
-  const chinese = /[\u3400-\u9fff]/u.test(inbound);
+  const chinese = /[\u3400-\u9fff]/u.test(textOf(ctx.inbound));
   const reason = chinese
-    ? 'Runtime 已确认写入步骤成功并持久记录副作用，随后只读步骤从同一路径读回了完全一致的内容；最终回答也包含用户要求的文件名和核对值。'
-    : 'Runtime confirmed the write side effect, read the exact content back from the same path, and found the requested file name and verification value in the final reply.';
+    ? 'Runtime 已确认写入调用成功并持久记录副作用，随后同一路径的只读调用读回了与写入参数完全一致的内容。'
+    : 'Runtime confirmed the write call succeeded with a recorded side effect, and a later read of the same path returned exactly the bytes the write was given.';
   await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
   publishVerifiedReply(ctx);
   return {
@@ -196,6 +152,18 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
     ok: true,
     meta: { verdict: 'pass', runtimeFastPath: true, writeReadFastPath: true, reason },
   };
+}
+
+/** The `input` of a tool call the run's transcript recorded, by call id. */
+function toolCallInput(ctx: RunContext, callId: string): unknown {
+  for (const message of ctx.history ?? []) {
+    for (const block of message.content ?? []) {
+      if (block.type !== 'tool_calls') continue;
+      const call = block.calls.find((candidate: { id: string }) => candidate.id === callId);
+      if (call) return call.input;
+    }
+  }
+  return undefined;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -213,11 +181,7 @@ function normalizePath(value: string, cwd: string): string {
   return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
 }
 
-function onlySuccessfulToolResult(
-  results: readonly import('@littlesheep/types').ToolResult[],
-): import('@littlesheep/types').ToolResult | undefined {
-  return results.length === 1 && results[0]?.ok && !results[0].sanitized ? results[0] : undefined;
-}
+
 
 export async function routeKnownIncompleteExecution(
   ctx: RunContext,
@@ -227,56 +191,17 @@ export async function routeKnownIncompleteExecution(
   meta: Record<string, unknown>,
 ): Promise<StageResult> {
   invalidateUnverifiedReply(ctx);
-  const targetStepIds = deriveReplanTargets(ctx);
   const feedback = `Recorded step evidence is incomplete: ${reason}`;
-  if (!canRecoverWithPartialReplan(ctx, targetStepIds)) {
-    await recordVerification(ctx, {
-      verdict: 'fail',
-      reason,
-      feedback,
-      failedStepIds: targetStepIds,
-      source: 'structural',
-    });
-    recordFailure(ctx, 'verify', 'verify', feedback);
-    return {
-      stage: 'verify',
-      next: 'recover',
-      ok: false,
-      error: feedback,
-      meta: { failedStepIds: targetStepIds, ...meta },
-    };
-  }
-  if (replanAttempts >= maxReplan) return escalateExhaustedReplan(ctx, reason, feedback);
-
-  const nextReplanAttempts = replanAttempts + 1;
-  writeReplanState(ctx, 'verify', {
-    replanAttempts: nextReplanAttempts,
-    verifyFeedback: feedback,
-  });
-  installPartialReplan(ctx, targetStepIds, reason, feedback, nextReplanAttempts);
-  await recordVerification(ctx, {
-    verdict: 'needs_replan',
-    reason,
-    feedback,
-    failedStepIds: targetStepIds,
-    source: 'degraded',
-  });
-  // The partial re-plan re-enters the one main loop. DECIDE, the stage that used
-  // to consume `partialReplanRequest` and re-plan the TaskBook, was deleted with
-  // the second execution system, so naming it here would exit the run with
-  // "no stage registered for 'decide'". EXECUTE reads the recorded feedback and
-  // the step-scoped request, and a resumed run already normalizes decide→execute.
-  return {
-    stage: 'verify',
-    next: 'execute',
-    ok: true,
-    meta: {
-      degradedReplan: true,
-      failedStepIds: targetStepIds,
-      replanAttempts: ctx.replanAttempts,
-      ...meta,
-    },
-  };
+  // There is no partial re-plan here any more (HC-03). It existed to re-plan the steps of the deleted
+  // executor: it required a TaskBook, installed a step-scoped request, and the stage that consumed that
+  // request (DECIDE) went with the second execution system — on a current run the condition could never be
+  // met, so a gap always took this branch anyway. An evidence gap is a recorded negative outcome and
+  // RECOVER owns the bounded retry, so say what is missing and let it route.
+  void replanAttempts;
+  void maxReplan;
+  await recordVerification(ctx, { verdict: 'fail', reason, feedback, source: 'structural' });
+  recordFailure(ctx, 'verify', 'verify', feedback);
+  return { stage: 'verify', next: 'recover', ok: false, error: feedback, meta };
 }
 
 export async function escalateExhaustedReplan(ctx: RunContext, reason: string, feedback: string): Promise<StageResult> {
@@ -308,7 +233,6 @@ export async function escalateExhaustedReplan(ctx: RunContext, reason: string, f
     verdict: 'fail',
     reason,
     feedback,
-    failedStepIds: deriveReplanTargets(ctx),
     source: 'structural',
   });
   return {

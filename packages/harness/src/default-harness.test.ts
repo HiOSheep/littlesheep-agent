@@ -171,10 +171,11 @@ describe('createDefaultHarness state machine', () => {
     });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
     expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
-    // VERIFY no longer spends a model request. A lean bounded-loop run has no
-    // task book whose acceptance the code could prove, so the run is recorded
-    // as unverified rather than as a verified pass.
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'unverified' });
+    // VERIFY no longer spends a model request. This run meets the narrow
+    // read-only rule the code can check exactly: exactly one tool call, a builtin
+    // read-only tool, a successful unsanitized result, no side effect, and a
+    // Provider-authored reply — so the run is recorded as a structural pass.
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
     expect(llm.chat).toHaveBeenCalledTimes(2);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'execute_tool_loop', 'execute_tool_loop',
