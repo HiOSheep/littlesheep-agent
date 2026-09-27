@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-27 17:54:14
+最后更新：2026-09-27 20:50:19
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -283,3 +283,34 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 任何"已完成"都要说明范围：基础形态、配置层、连接器层与真实场景验收不能混为一谈。
 - 不把用户密钥、用户会话、记忆树或工作区文件复制到仓库；运行时数据只在用户数据目录中维护。
 - **回滚锚点**：`freeze-2026-09-02` tag 仍指向原冻结提交 `a925a508c009505c474faecd5419f9256bc89f5f`；其后的 Harness 与缓存增量都在 `main` 上继续开发，当前工作树**没有**重新冻结，不能把 `main` 的 HEAD 当作冻结版本引用。需要回滚或对比旧行为时用该 tag，而不是某次任务的起点提交。
+
+## 整仓瘦身与冗余收口（2026-09-27，任务书已退役）
+
+任务书 `docs/taskbooks/repository-slimming-taskbook-2026-09-27.md` 已完成并退役，全文留在 Git 历史。基线账本见 [repository-slimming-baseline-2026-09-27.md](../reference/repository-slimming-baseline-2026-09-27.md)（绑定 HEAD `ec527a7e`，只写实测）。以下仍成立的事实由本节拥有。
+
+### 已实施并有测量证据
+
+| 项 | 结果 | 测量口径 |
+| --- | --- | --- |
+| 误入库的测试/编译生成物 | 删除 **111** 个（110 个 `cache-scope-matrix-*/*.json` + 1 个 `vitest.config.ts.timestamp-*.mjs`，**271,959 字节**）；跟踪清单中该类产物现为 **0** | `git ls-files` 与逐文件长度 |
+| 生成物来源 | 两个测试的暂存目录改到系统临时区（`mkdtemp(join(tmpdir(), …))`）；中断实测：仓库根不再新增可入库文件 | 杀掉进程后重跑 |
+| 防回流 | 门禁拒绝 4 种生成形状，并校验 4 条忽略规则存在；新增"把门禁拷进临时仓库"的失败用例 | `check:repo` + `scripts/check-repository-hygiene.test.mjs` |
+| 无效依赖边 | 净减少 **4** 条：`packages/tools` 去掉 `@littlesheep/experience`、`@littlesheep/vector`；`packages/experience` 去掉 `zod`、`@littlesheep/types` | 逐包 import 计数（0 引用才删） |
+| ⚠️ 任务书 F-02 的修正 | F-02 误把 `@littlesheep/safety`（`packages/tools` 13 个文件引用）与 `@littlesheep/memory-core`（`packages/harness` 1 个文件）列为无引用，**实测保留** | 同上；文本筛查不是动态依赖证明 |
+| 未装配工具 | 删除 `createRecordExperienceTool`（250 行，净 −229 生产行，导出 10→8）；`ExperienceStore` 与 CLI `import-repo` 的消费者保持 | 全仓消费者搜索 |
+| `packages/vector` | **已退役**（用户裁定）：无生产/CLI/迁移/脚本消费者；用户 v2 数据库原样留在磁盘，读取实现留在 Git 历史；`sync:tsconfig` 由 28 个引用降为 **27** | 消费者搜索 + 项目图 |
+| 空正文动态 Skill | 普通 run 不再广告 `taskbook`（改前会广告且正文为 `undefined`）；旧 checkpoint 仍读出计划，`execute` 恰好一次、无 `decide` | 在模型请求内读实时描述与 `loadBody` |
+| 脚本重复实现 | 净 **−429 行 / −3 文件**：`CdpClient` 5→1、`reservePort` 5→1、私有 `waitForExit` 8→5、私有 `startElectron` 6→3；三个孤立诊断脚本退役且独有读数已迁移 | 证据表 `scripts/acceptance-matrix.md` |
+| 文档漂移 | 14 个文件改为"受控工具写入 + 压缩只产摘要"；入口文档历史段 19 段 → 1 行规则 + 10 行归属表，25 个链接无丢失 | 每处先在代码核对行号 |
+| 跟踪清单 | **1,930 → 1,820** 项（净 −110） | `git ls-files` |
+
+### 仍开放（带 owner 与原因）
+
+| 项 | 原因 | 下一步 |
+| --- | --- | --- |
+| **发布载荷收窄**（原 SL-04） | 验收要求在**真实重建产物 + 无开发依赖的隔离环境**中验证启动、终端 node-pty、本地 embedding 首次与离线复用、PDF/Word/表格、Monaco、Mermaid、HTML 预览；且本地 `release/` 样本已按"仓库不留缓存"的要求移出检出目录，需先重新打包才有对照基线 | 重新 `pnpm run package:win` 后按平台收窄。**已实测目标：非目标平台载荷 223.1 MiB**（`onnxruntime-node` 287.5 MiB 中仅 `win32/x64` 64.0 MiB 需要；任务书原估 153.7 MiB 漏了 `win32/arm64` 69.4 MiB）。负责人：App/打包接线 |
+| `verify:memory-v3-provider` 真实 provider 复跑 | 该门已重写到当前语义并通过脚本化客户端验证（负例可失败），但实跑缺两个前置：`DEEPSEEK_API_KEY` 未导出，且数据根缺本地 BGE 模型（`<data-root>/models/embedding`） | 装 BGE 模型并导出 key 后 `pnpm run verify:memory-v3-provider` |
+| 本地磁盘回收 | 用户裁定只出清单不删除；清单与保留理由已在退役的任务书中，移出物在仓库之外的 `littlesheep-repo-cache-2026-09-27/`（含 `MANIFEST.md`） | 确认无可再生证据后删除该目录 |
+| 门禁健壮性 | 已修：缺失文件时报具名失败而非崩栈 | — |
+
+**口径提醒**：以上"字节/行数"只用于源码维护成本，不等价于安装包体积或运行成本；未重新打包前不得据此外推发布载荷收益。
