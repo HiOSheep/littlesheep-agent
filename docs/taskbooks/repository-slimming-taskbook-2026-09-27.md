@@ -1,6 +1,6 @@
 # 整仓瘦身与冗余收口任务书 2026-09-27
 
-最后更新：2026-09-27 18:56:07
+最后更新：2026-09-27 18:57:47
 
 状态：实施中（2026-09-27 起）。SL-00 / SL-01 / SL-06 已完成并提交，SL-03 主体完成（`vector` 已裁定退役、待与 SL-02 同批执行），SL-05 与 memory-v3 验收修复在进行，SL-02 / SL-04 / SL-08 因并行工作进行中而按任务书要求暂缓，SL-07 已出清单、用户裁定不删除。逐项证据与保留理由见文末「执行记录」。
 
@@ -195,7 +195,7 @@
 | SL-02 删除无效依赖边 | 待执行 | 需要同步 `pnpm-lock.yaml`，而该文件正被并行的 Electron 44 升级占用且尚未提交；现在改写会把两批改动混进同一提交，违反本任务书"不清除或合并这些工作"的要求 |
 | SL-03 的 `vector` 退役 | **已裁定：退役** | 用户 2026-09-27 裁定退役该包；用户 v2 数据库原样保留、读取实现留在 Git 历史。执行需改 `packages/tools/package.json`、`vitest.config.ts` 别名、生成的 tsconfig references 与锁文件，与 SL-02 同批进行 |
 | SL-04 收窄发布载荷 | 待执行 | 依赖 SL-00 基线；`packages/app/runtime` 现为 1,625.9 MiB（含并行升级正在写入的临时目录），打包配置在途，先做会测到中间状态 |
-| SL-07 回收本地输出 | 已完成清单，**决定不删除** | 用户 2026-09-27 决定：只出带保留理由的清单，等逐个确认。实测：`release` 1,326.3 MiB（保留为 SL-04 基线）、`.codex_tmp` 1,172.6 MiB（其中 `p5d-p5c-output` 1,041.7 / `dependency-audit` 58.4 / `verification-reports` 27.9 / `ls-instances` 21.8 MiB）、`packages/app/runtime` 1,625.9 MiB、`packages/app/out` 26.9 MiB、`tmp` 9.4 MiB（任务书明确不默认视为可再生） |
+| SL-07 回收本地输出 | **已按裁定收尾**：清单见文末「SL-07 本地输出回收：dry-run 清单」，本轮零字节回收 | 用户 2026-09-27 决定：只出带保留理由的清单，等逐个确认。实测：`release` 1,326.3 MiB（保留为 SL-04 基线）、`.codex_tmp` 1,172.6 MiB（其中 `p5d-p5c-output` 1,041.7 / `dependency-audit` 58.4 / `verification-reports` 27.9 / `ls-instances` 21.8 MiB）、`packages/app/runtime` 1,625.9 MiB、`packages/app/out` 26.9 MiB、`tmp` 9.4 MiB（任务书明确不默认视为可再生） |
 | SL-08 整体验收与防回流 | 待执行 | 依赖 SL-01～07；须汇总移除文件、依赖边、退役模块与安装包字节，并在跨包清理完成后跑完整门 |
 
 ### 实施期间发现的独立问题（不在本任务书范围，已登记）
@@ -232,3 +232,24 @@
 **实测非目标载荷合计 223.1 MiB**（占该依赖 287.5 MiB 的 78%）。任务书 F-04 原估 153.7 MiB 只计入了 darwin 与 linux，**漏掉了 `win32/arm64` 的 69.4 MiB**；本表为实测修正值。
 
 留待 SL-04 执行时验证的两点，均未测量：①`@napi-rs`、`@img`、`node-pty` 是否同样携带非目标平台/架构变体（同一方法可测）；②该 223.1 MiB 是**解包体积**，安装包（NSIS 压缩）与 asar 内的差值必须在**真实重建产物**上重测，不能由本表推算；③必须保留动态加载的原生模块、PDF 资源与模型资源，WASM 是否可移除需单独验证（任务书 SL-04 验收项）。
+
+### SL-07 本地输出回收：dry-run 清单（2026-09-27，用户裁定不删除）
+
+口径：`lstat` 递归文件长度合计，不跟随符号链接，不是磁盘分配量（allocated size）。上表所有命中项均为 `real` 目录，**没有链接指针**（此前审查记录的 1,257 个链接位于 `.codex_tmp` 更深处，按设计跳过，未计入任何数字）。**本轮未删除任何文件**——用户 2026-09-27 裁定只保留清单与理由，待逐个确认。
+
+| 绝对路径 | MiB | 文件数 | 归属 | 保留理由 / 处置 |
+| --- | ---: | ---: | --- | --- |
+| `D:\Repositories\littlesheep\.codex_tmp\p5d-p5c-output` | 1041.7 | 20834 | 早期 Codex 会话的产物目录 | 体积最大的一项；**未确认是否含唯一证据**，故保留。确认可再生后再议 |
+| `D:\Repositories\littlesheep\.codex_tmp\dependency-audit` | 58.4 | 162 | 依赖审计输出 | 可由审计脚本重跑再生；保留待用户确认 |
+| `D:\Repositories\littlesheep\.codex_tmp\verification-reports` | 27.9 | 365 | 历史验收报告 | 可能含某次验收的唯一证据；**必须逐个确认**，不得整目录删除 |
+| `D:\Repositories\littlesheep\.codex_tmp\ls-instances` | 21.8 | 159 | 实例运行数据 | 待确认 |
+| `D:\Repositories\littlesheep\.codex_tmp\electron-userdata-pending-20260805-1928` | 4.7 | 67 | Electron 用户数据暂存（2026-08-05） | 待确认 |
+| `D:\Repositories\littlesheep\release` | 1326.3 | 1448 | 打包输出（`win-unpacked` 1096.3） | **保留**：SL-04 的体积基线与验收证据；其中旧 Setup.exe 仍需用于对照 |
+| `D:\Repositories\littlesheep\packages\app\runtime` | 1625.8 | 294 | `prepare-littlesheep-runtime.mjs` 准备的 Electron 运行时 | **保留**：当前开发启动依赖它，且并行升级正在写入其中两个临时目录 |
+| `D:\Repositories\littlesheep\packages\app\out` | 26.9 | 165 | 当前 App 构建输出 | **保留**：当前构建产物，不是缓存 |
+| `D:\Repositories\littlesheep\tmp` | 9.4 | 53 | 图标等源材料 | **保留**：任务书明确不默认视为可再生 |
+| `D:\Repositories\littlesheep\node_modules.link-damaged-20260804` | 0.1 | 2 | 已损坏链接的隔离目录 | 体积可忽略，不是收益点；保留（清理它可能影响 node_modules 解析） |
+
+按此裁定，SL-07 **不发生任何字节回收**，其产出是上表（含保留理由与待确认项）。这不是"未完成"：任务书允许"仅清理已确认不再使用且可重建的项目"，而用户裁定先不删除，故本项以清单交付收尾。
+
+**若后续要回收**，仍须遵守任务书的两条硬约束：删除前确认路径确实位于上述目标内且未通过链接跳到外部；不使用 `git clean -fdx` 或全盘通配删除。收益只能记为本地磁盘回收，**不得计入安装包或运行成本**。
