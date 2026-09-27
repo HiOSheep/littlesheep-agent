@@ -7,7 +7,6 @@ import {
   buildSignature,
   clearSignature,
   readSignature,
-  sameSignature,
   writeSignature,
 } from './preimage-signature.js';
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
@@ -232,25 +231,8 @@ export class GitCheckpointCoordinator {
     const workspaceRoot = resolve(options.workspaceRoot);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
-    const gitDir = this.dataRepository.gitDir;
-    const stored = await readSignature(gitDir);
-    const signature = stored === undefined
-      ? undefined
-      : buildSignature(stored.commit, walked.length, walked);
-    // Nothing the preimage can see has changed since the last one, and that preimage tracked exactly what
-    // the walk sees: reuse it instead of paying a `ls-files`, a stat per path, the add batches and a commit
-    // for an identical result. Anything else — a changed file, a new or removed one, a tracked path the walk
-    // cannot see — falls through to the full commit, because missing a change would lose a rollback point.
-    const reusable = stored !== undefined && signature !== undefined && sameSignature(stored, signature);
-    const dataPaths = reusable ? undefined : await this.dataManagedPaths(walked.map((entry) => entry.path));
-    const dataBeforeCommit = reusable
-      ? stored.commit
-      : await this.dataRepository.commitPaths(dataPaths!, `data preimage ${options.runId}`);
-    markPreimage(reusable ? 'preimage-reused' : 'preimage-committed', walked.length);
-    if (!reusable && dataBeforeCommit) {
-      await writeSignature(gitDir, buildSignature(dataBeforeCommit, dataPaths!.length, walked));
-    }
+    const preimage = await this.resolvePreimage(`data preimage ${options.runId}`, false, 'preimage');
+    const dataBeforeCommit = preimage.commit;
     const repositoryId = workspaceRepositoryId(workspaceRoot);
     const workspaceRepository = this.workspaceRepository(workspaceRoot, repositoryId);
     const manifest: VersionCheckpointManifest = {
@@ -263,13 +245,13 @@ export class GitCheckpointCoordinator {
       data: {
         repositoryId: 'littlesheep-data',
         beforeCommit: dataBeforeCommit,
-        trackedPathCount: dataPaths?.length ?? stored?.trackedCount ?? walked.length,
+        trackedPathCount: preimage.trackedCount,
       },
       workspace: {
         repositoryId,
         trackedPaths: [],
       },
-      warningCodes: reusable ? ['preimage-reused'] : [],
+      warningCodes: preimage.reused ? ['preimage-reused'] : [],
     };
     await this.writeManifest(manifest);
     return new RunGitCheckpoint(this, manifest, workspaceRoot, workspaceRepository);
@@ -464,28 +446,52 @@ export class GitCheckpointCoordinator {
     return manifestSummary(manifest);
   }
 
+  /**
+   * The commit this data root's preimage is at, and whether it had to be written.
+   *
+   * The fast path asks git two questions instead of walking the data root: is the work tree clean, and is HEAD
+   * still the recorded commit? Both are single processes; the walk they replace is a recursive readdir plus an
+   * `lstat` per managed file, measured at 8.3 s on a large fixture and far worse on a real 31k-file root, on the
+   * path to execution readiness. When either answer says no — a modified, added or removed path, or a HEAD that
+   * moved without a new signature — the full path runs, because missing a change would lose a rollback point.
+   */
+  private async resolvePreimage(
+    message: string,
+    allowEmpty: boolean,
+    stage: 'bootstrap' | 'preimage',
+  ): Promise<{ commit: string | undefined; trackedCount: number; reused: boolean }> {
+    const gitDir = this.dataRepository.gitDir;
+    const stored = await readSignature(gitDir);
+    const head = await this.dataRepository.head();
+    if (head !== undefined && await this.dataRepository.isWorkTreeClean()) {
+      if (stored?.commit === head) {
+        markPreimage(`${stage}-reused`, stored.trackedCount);
+        return { commit: head, trackedCount: stored.trackedCount, reused: true };
+      }
+      // HEAD moved without anything pending: the previous run's completion committed its own effects. HEAD is
+      // then the preimage, and the record only needs to point at it again — one `ls-files`, no walk, no commit.
+      const trackedCount = await this.dataRepository.trackedPaths()
+        .then((paths) => paths.length)
+        .catch(() => stored?.trackedCount ?? 0);
+      await writeSignature(gitDir, buildSignature(head, trackedCount));
+      markPreimage(`${stage}-reused`, trackedCount);
+      return { commit: head, trackedCount, reused: true };
+    }
+    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
+    const paths = await this.dataManagedPaths(walked.map((entry) => entry.path));
+    const commit = await this.dataRepository.commitPaths(paths, message, allowEmpty);
+    markPreimage(`${stage}-committed`, walked.length);
+    if (commit) await writeSignature(gitDir, buildSignature(commit, paths.length));
+    return { commit, trackedCount: paths.length, reused: false };
+  }
+
   private async initializeInternal(): Promise<VersionCheckpointSummary> {
     await mkdir(this.manifestsDir, { recursive: true });
     await this.dataRepository.initialize();
     await this.recoverPendingManifests();
     const createdAt = new Date().toISOString();
-    // Starting the app used to walk the whole data root, stat every path, run the add batches and create an
-    // empty bootstrap commit — on every start, on the path to execution readiness. It is the same question
-    // `beginRun` asks, so it gets the same answer: if the recorded signature still describes this data root,
-    // the recorded commit is the bootstrap state and nothing needs to be written.
-    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
-    const gitDir = this.dataRepository.gitDir;
-    const stored = await readSignature(gitDir);
-    const reusable = stored !== undefined
-      && sameSignature(stored, buildSignature(stored.commit, walked.length, walked));
-    const paths = reusable ? undefined : await this.dataManagedPaths(walked.map((entry) => entry.path));
-    const commit = reusable
-      ? stored.commit
-      : await this.dataRepository.commitPaths(paths!, `bootstrap ${createdAt}`, true);
-    markPreimage(reusable ? 'bootstrap-reused' : 'bootstrap-committed', walked.length);
-    if (!reusable && commit) {
-      await writeSignature(gitDir, buildSignature(commit, paths!.length, walked));
-    }
+    const preimage = await this.resolvePreimage(`bootstrap ${createdAt}`, true, 'bootstrap');
+    const commit = preimage.commit;
     const manifest: VersionCheckpointManifest = {
       version: 1,
       id: randomUUID(),
@@ -496,9 +502,9 @@ export class GitCheckpointCoordinator {
       data: {
         repositoryId: 'littlesheep-data',
         commit,
-        trackedPathCount: paths?.length ?? stored?.trackedCount ?? walked.length,
+        trackedPathCount: preimage.trackedCount,
       },
-      warningCodes: reusable ? ['preimage-reused'] : [],
+      warningCodes: preimage.reused ? ['preimage-reused'] : [],
     };
     await this.writeManifest(manifest);
     await this.pruneManifests();

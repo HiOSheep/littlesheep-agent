@@ -1,3 +1,11 @@
+// Shadow-repository Git plumbing: process spawn, locking, path normalization and the commit primitives.
+//
+// Owns one `git` invocation path for the versioning shadow repositories (data root and per-workspace), the
+// per-repository mutation queue and lock file that serialize writers, and the queries the checkpoint
+// coordinator asks of a repository: tracked paths, HEAD, work-tree cleanliness, commit-or-reuse. It does not
+// decide *what* to version — path selection and the manifest format live in git-checkpoint-files.ts and
+// git-checkpoint.ts.
+import { spawn } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -73,13 +81,35 @@ export class ShadowGitRepository {
     await writeFile(excludePath, `${this.excludePatterns.join('\n')}\n`, 'utf8');
   }
 
-  async head(): Promise<string | undefined> {
-    return this.headInternal();
-  }
-
   private async headInternal(): Promise<string | undefined> {
     const result = await this.git(['rev-parse', '--verify', 'HEAD'], [0, 128]);
     return result.code === 0 ? result.stdout.trim() || undefined : undefined;
+  }
+
+  /** The commit HEAD points at, or undefined on an unborn branch. */
+  async head(): Promise<string | undefined> {
+    await this.initialize();
+    return this.headInternal();
+  }
+
+  /**
+   * True when the work tree matches HEAD exactly — asked of git rather than answered by a walk.
+   *
+   * The caller's alternative is walking every managed file and lstat-ing it: on a real data root (31k files
+   * measured) that costs seconds, and it runs on the path to execution readiness. `git status` answers the
+   * same question in one process, and it fails in the safe direction — any modification, addition or removal
+   * of a tracked path makes it non-empty, so a caller that skips work on `true` only ever skips work that was
+   * genuinely unnecessary.
+   *
+   * One caveat the callers honour: `--untracked-files=all` does not list *ignored* files, so a newly created
+   * managed path matching an exclude pattern would not appear here. The tracked-count guard the callers
+   * already apply is what keeps that case on the slow path.
+   */
+  async isWorkTreeClean(): Promise<boolean> {
+    await this.initialize();
+    const result = await this.git(['status', '--porcelain', '-z', '--untracked-files=all'], [0, 128]);
+    if (result.code !== 0) return false;
+    return result.stdout.length === 0;
   }
 
   async commitAll(message: string, allowEmpty = false): Promise<string | undefined> {

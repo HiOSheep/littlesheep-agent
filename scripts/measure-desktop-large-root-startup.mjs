@@ -783,6 +783,8 @@ async function runOneLaunch({ fixtureId, dataDir, root, launch, scale }) {
     // product cannot parse would make every stage number below meaningless.
     const checkpoints = await harness.fetchJson(locator, '/run-checkpoints').catch((error) => ({ error: String(error) }))
     const log = await readFile(logPath, 'utf8').catch(() => '')
+    const stageCounts = {}
+    for (const entry of stages) stageCounts[entry.stage] = (stageCounts[entry.stage] ?? 0) + 1
     const logFacts = {
       attachmentProtectionCheckpoints: stages.find((entry) => entry.stage === 'attachment-protection-checkpoints')?.durationMs ?? null,
       attachmentProtection: stages.find((entry) => entry.stage === 'attachment-protection')?.durationMs ?? null,
@@ -794,9 +796,28 @@ async function runOneLaunch({ fixtureId, dataDir, root, launch, scale }) {
       runnerWarnings: (log.match(/runner:/gu) ?? []).length,
       attachmentsWarnings: (log.match(/\[attachments\]/gu) ?? []).length,
       // A second `execution-start`/`observability-ready` pair means the Runner was
-      // built twice (a failed attempt followed by the retry controller), which would
-      // make this launch's numbers a sum of two attempts rather than one start.
-      runnerBuilds: stages.filter((entry) => entry.stage === 'execution-start').length,
+      // built twice, which would make this launch's numbers a sum of two attempts
+      // rather than one start.
+      runnerBuilds: stageCounts['execution-start'] ?? 0,
+      duplicateRunnersMarkCounts: Object.fromEntries(
+        Object.entries(stageCounts)
+          .filter(([stage, count]) => count > 1 && stage.startsWith('runner-infra-'))
+          .map(([stage, count]) => [stage, count]),
+      ),
+      // `[run-timing] {scope:'preimage', ...}` is the shadow-Git coordinator's own
+      // account of what bootstrap did: `bootstrap-committed` means it walked the
+      // data root and committed, `bootstrap-reused` means the recorded signature
+      // still matched and it only walked.
+      preimageMarks: log.split(/\r?\n/u).flatMap((line) => {
+        const offset = line.indexOf('[run-timing] ')
+        if (offset < 0) return []
+        try {
+          const parsed = JSON.parse(line.slice(offset + '[run-timing] '.length))
+          return parsed?.scope === 'preimage' ? [{ stage: parsed.stage, paths: parsed.paths }] : []
+        } catch {
+          return []
+        }
+      }),
       readinessRetries: (log.match(/\[retry\]/gu) ?? []).length,
       readinessFailures: (log.match(/\[readiness\]/gu) ?? []).length,
       timingEntries: timings.length,
@@ -975,15 +996,16 @@ function compareFixtures(large, small) {
 const CODE_ATTRIBUTION = [
   {
     measured: 'unattributed gap: runner-infra-observability-ready -> runner-infra-durable-events-ready',
-    scalesWith: 'every file in DATA_ROOT_DIRS, plus every manifest in backups/versioning/checkpoints, but only when config.versioning.enabled is true',
+    scalesWith: 'every file under DATA_ROOT_DIRS (sessions, memory, memory-tree, archive, projects, skills, experience, workspace) plus every manifest in backups/versioning/checkpoints - but only when config.versioning.enabled is true; the A/B fixture `synthetic-large-noversioning` is what proves the attribution',
     awaitedBeforeReady: true,
     code: [
       'packages/runner/src/infra.ts:282 `await versioning?.initialize()` - inside createRunner, before readiness',
       'packages/snapshot/src/git-checkpoint.ts:467 initializeInternal()',
-      'packages/snapshot/src/git-checkpoint.ts:470 + :532-545 recoverPendingManifests(): readdir + readFile + JSON.parse of EVERY file in backups/versioning/checkpoints',
-      'packages/snapshot/src/git-checkpoint.ts:472 + :510 -> packages/snapshot/src/git-checkpoint-files.ts:51-73 collectDataFileStats(): recursive walk of DATA_ROOT_DIRS (git-checkpoint-files.ts:26-35: archive, experience, memory, memory-tree, projects, sessions, skills, workspace) with an lstat per file',
-      'packages/snapshot/src/git-checkpoint.ts:473 -> packages/snapshot/src/git-client.ts:93-113 commitPaths(): an exists() per path, then `git add -A -f` in batches, then a commit',
-      'packages/snapshot/src/git-checkpoint.ts:488-489 writeManifest + pruneManifests() -> :548-554 readdir + stat of every manifest',
+      'packages/snapshot/src/git-checkpoint.ts:470 + :546 recoverPendingManifests(): readdir + readFile + JSON.parse of EVERY file in backups/versioning/checkpoints',
+      'packages/snapshot/src/git-checkpoint.ts:476 collectDataFileStats(this.dataRoot, ...) -> packages/snapshot/src/git-checkpoint-files.ts:51-73: a recursive walk of DATA_ROOT_DIRS (git-checkpoint-files.ts:26-35) with an lstat per file. This walk runs on EVERY start, reused signature or not',
+      'packages/snapshot/src/git-checkpoint.ts:479-484: when the recorded signature does not match (cold start, or anything changed the data root since the last preimage) it additionally runs dataManagedPaths() (:524, `git ls-files`) and packages/snapshot/src/git-client.ts:93-113 commitPaths() - an exists() per path, `git add -A -f` in batches, then a commit',
+      'packages/snapshot/src/git-checkpoint.ts:503-504 writeManifest + pruneManifests() -> :563-569 readdir + stat of every manifest',
+      'packages/snapshot/src/git-checkpoint.ts:52 markPreimage() prints `[run-timing] {scope:"preimage", stage, paths}`; logFacts.preimageMarks records whether this start committed or reused',
     ],
   },
   {
@@ -1029,6 +1051,16 @@ const CODE_ATTRIBUTION = [
     scalesWith: 'nothing measured: DataRootMigrationManager.prepareForBootstrap() had no pending operation in either fixture',
     awaitedBeforeReady: true,
     code: ['packages/app/src/main/index.ts:249 `await dataRootManager.prepareForBootstrap()`'],
+  },
+  {
+    measured: 'a second, overlapping Runner build (seen only on the real-copy cold launch)',
+    scalesWith: 'everything the first build scales with, twice, concurrently on the same data root',
+    awaitedBeforeReady: true,
+    code: [
+      'packages/app/src/main/index.ts:461 startExecution\'s createRunner and :539 doRebuildRunner\'s createRunner; :551 `server.setRunner(newRunner)` is not awaited',
+      'the rebuild is reachable from the API routes packages/app/src/main/local-app-api/provider-routes.ts:98 and :123 and packages/app/src/main/local-app-api/runtime-routes.ts:296 (save an API key, save a provider)',
+      'NOT ESTABLISHED: which of those requests the renderer issued during this start. The evidence is only that two runner builds ran (two runner-infra-observability-ready marks about 1 ms apart, two `[run-timing] preimage` lines, two attachment-protection passes) and that main logged `[workspace-review] review snapshot request failed Error: Git command aborted.` while both were running',
+    ],
   },
 ]
 
@@ -1138,11 +1170,16 @@ async function main() {
   report.gaps.push(
     'The synthetic fixtures are written by this script in the shapes the product writes, not by the product;',
     'the app\'s own reader is what proves they are parseable (/run-checkpoints is read after readiness).',
-    'The app build is one commit behind HEAD (see buildFreshness); the differing commits touch packages/snapshot',
-    'preimage reuse and per-run send-to-first-token timing, neither of which is on the bootstrap path.',
+    // The freshness line is derived, not asserted: this checkout is being edited while
+    // it is measured, so the fact belongs in the report either way.
+    buildFreshness.status === 'fresh'
+      ? `The app build matched the source when this run started (manifest ${buildFreshness.detail?.manifest?.createdAt ?? 'unknown'}); the tree was being edited by another agent during the session, so these numbers belong to that build and to no other.`
+      : `The app build did NOT match the source (${buildFreshness.message}); these numbers belong to the built artifacts, not to HEAD.`,
     'readiness is observed by polling at 20 ms, so spawnToReadyMs carries up to ~20 ms of observation lag.',
     'memory v3 is not exercised by the synthetic fixtures (it needs a SQLite catalog and a local embedding',
     'model); the real-copy fixture reflects whatever backend that data root actually uses.',
+    'The real-copy cold launch built the Runner twice (see codeAttribution, last entry). Its numbers are the sum',
+    'of both builds, so they are an upper bound rather than a clean single-start measurement.',
   )
 
   await mkdir(outDir, { recursive: true })

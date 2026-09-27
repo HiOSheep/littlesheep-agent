@@ -72,7 +72,8 @@
 | `packages/harness/src/context-candidates.ts` | 464 | 把一次出站 stage 请求映射为带来源、种类、优先级和淘汰分组的 Context 候选；边界以下段落与运行中用户补充保留来源 | 保持"一次装配只描述来源与可改动程度"的单一职责；若继续增长，拆出消息分类（history/inserted/primary/tool）与尾部段落装配两个模块 | E |
 | `packages/harness/src/memory-known-state.ts` | 347 | 把 Runtime 的 KeyedState 引用按允许清单投影为模型可见文本，并维护尾部稳定槽位 | 保持白名单投影边界；若继续增长，拆出规则/条目渲染与摄入校验 | E |
 | `packages/harness/src/stages/ask_user.ts` | 316 | 发布模型自撰写的提问、Runtime 恢复升级说明与澄清结算 | 提问文案只能来自模型或 Runtime 事实，该边界不得放宽；若继续增长，把澄清发布与恢复升级拆成两个模块 | E |
-| `packages/snapshot/src/git-checkpoint.ts` | 592 | 数据与工作区两阶段 checkpoint、同步回退和退出冻结协调 | 保持事务 facade；文件筛选、manifest codec 与 Git plumbing 已独立 | E |
+| `packages/snapshot/src/git-client.ts` | 319 | 影子 Git 仓库的进程、锁与查询基元：spawn、按仓库串行的 mutation 队列与锁文件、路径归一化、trackedPaths/HEAD/isWorkTreeClean/commitPaths | 只回答"仓库现在是什么状态"，不决定版本化哪些路径（筛选在 git-checkpoint-files.ts，manifest 在 git-checkpoint.ts） | E |
+| `packages/snapshot/src/git-checkpoint.ts` | 598 | 数据与工作区两阶段 checkpoint、同步回退和退出冻结协调 | 保持事务 facade；文件筛选、manifest codec 与 Git plumbing 已独立 | E |
 | `packages/memory-tree/src/memory-repository/v3-migration.ts` | 538 | v2->v3 请求登记、启动执行、恢复、受约束回滚和 locator 状态机 | 保持事务 facade；若继续增长，分离 request/recovery 与 rollback coordinator | D |
 | `packages/plugins/src/host.ts` | 543 | 插件发现、加载、启停、贡献迁移 | 分离 discovery、activation、contribution、reconcile | C |
 | `packages/memory-tree/src/legacy-memory-branches.ts` | 509 | 旧记忆分支兼容 | 保持隔离，迁移结束后缩减或退役 | D |

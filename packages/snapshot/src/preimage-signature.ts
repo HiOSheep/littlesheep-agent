@@ -20,50 +20,25 @@ export interface PreimageFileStat {
 }
 
 export interface PreimageSignature {
-  version: 1
+  version: 2
   /** Commit the signature describes; reused as the next run's preimage. */
   commit: string
-  /** Paths the preimage tracked, including tracked-but-unwalked ones. */
+  /** Paths that commit tracks — reported by a manifest without listing the tree again. */
   trackedCount: number
-  files: PreimageFileStat[]
 }
 
 export function signaturePath(gitDir: string): string {
   return join(gitDir, 'littlesheep-preimage.json')
 }
 
-export function buildSignature(
-  commit: string,
-  trackedCount: number,
-  files: readonly PreimageFileStat[],
-): PreimageSignature {
-  return {
-    version: 1,
-    commit,
-    trackedCount,
-    files: [...files].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0)),
-  }
-}
-
-/** True only when the two signatures describe the same commit and the same file states. */
-export function sameSignature(previous: PreimageSignature, current: PreimageSignature): boolean {
-  if (previous.commit !== current.commit) return false
-  if (previous.trackedCount !== current.trackedCount) return false
-  if (previous.files.length !== current.files.length) return false
-  for (let index = 0; index < current.files.length; index += 1) {
-    const before = previous.files[index]!
-    const after = current.files[index]!
-    if (before.path !== after.path || before.sizeBytes !== after.sizeBytes || before.mtimeMs !== after.mtimeMs) {
-      return false
-    }
-  }
-  return true
+export function buildSignature(commit: string, trackedCount: number): PreimageSignature {
+  return { version: 2, commit, trackedCount }
 }
 
 export async function readSignature(gitDir: string): Promise<PreimageSignature | undefined> {
   try {
     const parsed = JSON.parse(await readFile(signaturePath(gitDir), 'utf8')) as PreimageSignature
-    if (parsed?.version !== 1 || typeof parsed.commit !== 'string' || !Array.isArray(parsed.files)) return undefined
+    if (parsed?.version !== 2 || typeof parsed.commit !== 'string') return undefined
     if (typeof parsed.trackedCount !== 'number') return undefined
     return parsed
   } catch {
