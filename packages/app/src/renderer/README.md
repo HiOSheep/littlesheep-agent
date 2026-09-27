@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-28 01:42:06
+最后更新：2026-09-28 01:50:04
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -41,6 +41,7 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - **运行页面的验收可驱动**：`workspace/tab-strip.tsx` 给每个标签项加 `data-workspace-tab-kind`（`file`/`browser`/功能页）。浏览器标签是按页面标题或主机命名的，验收脚本用文件名匹配会误关文件标签（实测），这个属性让"关闭运行标签并释放 guest"可以被稳定断言。
 - `workspace/browser-reload.ts`：运行页面的"重新加载"信号——URL 寻址的窗口事件（与列宽/导航动效同一套跨组件约定），只有 `url` 相同的浏览器标签刷新，因此不需要把回调从工具条一路穿到 dock。
 - `workspace/run-diagnostics.tsx`：**运行页面的诊断读数**（UX-26 第 3 条）——按运行 URL 轮询 `/browser/diagnostics`，把"脚本报错 / 资源失败 / 页面加载失败"计数与展开后的原文显示在运行提示旁；`summarizeBrowserDiagnostics` 是纯函数（只汇总用户需要反应的三类，`console` 不计数），数据一律来自 Main 的记录，渲染器不重新解析页面。
+- `workspace/file-close.ts`、`workspace/file-close-refusal.tsx`、`workspace/file-close-layout.ts`：**关闭脏文件的第三个答案**（工作区审计 P1 第 9 条）——保存审批只回答"能否写盘"，拒绝它过去会让标签静默留着且仍脏；现在拒绝后由标签条给出"已拒绝保存…＋放弃修改/继续编辑"，放弃走 `{ discardDraft: true }` 关标签并丢弃草稿，权限提示与批准后的写盘行为一字未改。`code-editor.tsx` 的 `adoptMountedEditorValue` 保证被丢弃的正文不会从缓存模型里回到重开的干净标签上。真实窗口门：`pnpm run verify:workspace-file-close-discard`。
 - `workspace/preview-draft.ts` 的 `workspaceDraftOutcome` 是**会话草稿存续的唯一规则**：预览已加载且是文本类才写、已加载且确实不是文本类才丢弃、**预览还没到时一律保留**。第三条是修一个真实缺陷：面板挂载时 `editable` 仍为 false，旧实现据此删掉了该标签的草稿，未保存改动因此活不过重载/切会话/重启（实测一次重载后 `draftCount: 0`）。规则有单测，且明确要求不要退回成裸 `else` 删除；`preview-pane.tsx` 只按它给出的三种结果行事。
 - `main.tsx`：React 挂载；同时启动渲染器自报的首帧观察（`runtime-readiness/renderer-timing.ts`，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出）。
 - `App.tsx`：16 行兼容入口，装配 `app-shell` 控制器与就绪提示，不承载业务逻辑。

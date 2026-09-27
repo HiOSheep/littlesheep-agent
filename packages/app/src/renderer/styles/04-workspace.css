@@ -315,6 +315,58 @@
   display: none;
 }
 
+/* The answer a refused close could not give (audit P1 #9). The permission prompt
+   only asks about saving the file, so denying it used to leave the tab dirty and
+   silent; this states the refusal and offers the one action that closes the tab
+   without writing. It floats over the panel body (out of the tab row's flow, so
+   the strip geometry is untouched) and is anchored to `.workspace-panel-contents`,
+   the positioned ancestor the tab-row controls already position against. */
+.workspace-file-close-refusal {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 4;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height-sm, 24px);
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-ui);
+  box-shadow: var(--floating-panel-shadow);
+  font-size: var(--notice-font-size);
+  line-height: 1.4;
+}
+
+.workspace-file-close-refusal[data-tone='warning'] {
+  border-color: var(--warning);
+}
+
+.workspace-file-close-refusal-message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.workspace-file-close-refusal-action {
+  flex: 0 0 auto;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-ui);
+  padding: 2px 8px;
+}
+
+.workspace-file-close-refusal-action:hover,
+.workspace-file-close-refusal-action:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
+
 .workspace-active-item {
   --workspace-tab-fill: var(--bg);
   --workspace-tab-glass-fill: color-mix(in srgb, var(--control-hover) 74%, transparent);

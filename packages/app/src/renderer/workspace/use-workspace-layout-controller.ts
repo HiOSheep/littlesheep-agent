@@ -42,7 +42,6 @@ import {
   WINDOW_RESIZE_START_EVENT,
 } from '../ui/resize'
 import {
-  DEFAULT_WORKSPACE_PANEL_TABS,
   WORKSPACE_PANEL_OPEN_TABS_MAX,
   parseWorkspaceFileTabId,
   type WorkspaceFileDraftState,
@@ -50,7 +49,16 @@ import {
   type WorkspacePanelTabId,
   type WorkspaceReviewRequest,
 } from '../workspace-persistence'
-import { saveWorkspaceFileBeforeClose } from './file-close'
+import {
+  saveWorkspaceFileBeforeClose,
+  type WorkspaceFileCloseRequest,
+  type WorkspaceFileCloseResult,
+} from './file-close'
+import {
+  finalizeWorkspacePanelTabClose,
+  findClosingWorkspaceFileState,
+  recordSavedWorkspaceFileDraft,
+} from './file-close-layout'
 import { workspaceFilePreviewCache } from './file-preview-cache'
 import { isSamePath, workspaceBreadcrumbs } from './path-utils'
 import { beginWorkspacePanelResizeInteraction } from './resize-interaction'
@@ -412,7 +420,7 @@ export function useWorkspaceLayoutController({
   }
 
   function updateWorkspaceFileDraft(tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) {
-    const closingState = findClosingWorkspaceFileState(activeWorkspaceSessionKey, tab)
+    const closingState = findClosingWorkspaceFileState(closingWorkspaceFileTabsRef.current, activeWorkspaceSessionKey, tab)
     const nextDraft = draft && closingState?.hasSavedVersion
       ? {
           ...draft,
@@ -431,88 +439,33 @@ export function useWorkspaceLayoutController({
     })
   }
 
-  function recordSavedWorkspaceFileDraft(
-    layoutKey: string,
-    tab: WorkspaceFileTabId,
-    savedText: string,
-    preview: WorkspacePreview,
-    closingState: {
-      hasSavedVersion: boolean
-      savedText: string
-      modifiedAt?: number
-    },
-  ): WorkspaceFileDraftState | undefined {
-    closingState.hasSavedVersion = true
-    closingState.savedText = savedText
-    closingState.modifiedAt = preview.modifiedAt
-
-    let recordedDraft: WorkspaceFileDraftState | undefined
-    setWorkspaceSessionFileDrafts(layoutKey, (drafts) => {
-      const currentDraft = drafts[tab]
-      if (!currentDraft) return drafts
-      recordedDraft = {
-        ...currentDraft,
-        modifiedAt: preview.modifiedAt,
-        savedText,
-      }
-      return { ...drafts, [tab]: recordedDraft }
-    })
-    return recordedDraft
-  }
-
-  function finalizeWorkspacePanelTabClose(layoutKey: string, tab: WorkspacePanelTabId) {
-    const layout = workspaceSessionLayoutsRef.current[layoutKey]
-    if (!layout) return
-    const currentTabs = layout.openTabs
-    const tabIndex = currentTabs.indexOf(tab)
-    const nextTabs = currentTabs.filter((item) => item !== tab)
-    const browserTabs = isWorkspaceBrowserTabId(tab)
-      ? layout.browserTabs.filter((item) => item.id !== tab)
-      : layout.browserTabs
-    let drafts = layout.drafts
-    if (parseWorkspaceFileTabId(tab)) {
-      if (drafts[tab]) {
-        const next = { ...drafts }
-        delete next[tab]
-        drafts = next
-      }
-    }
-    if (tabIndex < 0) {
-      if (browserTabs !== layout.browserTabs || drafts !== layout.drafts) {
-        commitWorkspaceSessionLayout(layoutKey, { ...layout, browserTabs, drafts })
-      }
-      return
-    }
-    let activeTab = layout.activeTab
-    let collapsed = layout.collapsed
-    if (nextTabs.length === 0) {
-      activeTab = DEFAULT_WORKSPACE_PANEL_TABS[0] ?? 'review'
-      collapsed = false
-    } else if (activeTab === tab) {
-      activeTab = nextTabs[Math.max(0, tabIndex - 1)] ?? nextTabs[0] ?? 'review'
-    }
-    commitWorkspaceSessionLayout(layoutKey, {
-      ...layout,
-      activeTab,
-      openTabs: nextTabs,
-      collapsed,
-      drafts,
-      browserTabs,
-    })
-  }
-
-  async function closeWorkspacePanelTab(tab: WorkspacePanelTabId) {
+  /**
+   * Close a panel tab. A dirty file tab first goes through its save approval; the
+   * returned result is what the tab strip turns into the 放弃修改 answer, so a
+   * refused approval never stays silent.
+   */
+  async function closeWorkspacePanelTab(
+    tab: WorkspacePanelTabId,
+    request?: WorkspaceFileCloseRequest,
+  ): Promise<WorkspaceFileCloseResult | undefined> {
     setControlTip(null)
     const layoutKey = activeWorkspaceSessionKey
+    // The third answer to closing a dirty file: the user refused the save and
+    // then chose to abandon the draft. Nothing is written, and dropping the draft
+    // is safe here precisely because the tab leaves the layout in the same step.
+    if (request?.discardDraft) {
+      finalizeWorkspacePanelTabClose(workspaceSessionLayoutsRef, commitWorkspaceSessionLayout, layoutKey, tab)
+      return 'closed'
+    }
     const fileTab = parseWorkspaceFileTabId(tab)
     const draft = fileTab ? workspaceSessionLayoutsRef.current[layoutKey]?.drafts[tab] : undefined
     if (!fileTab || !draft || draft.editorText === draft.savedText) {
-      finalizeWorkspacePanelTabClose(layoutKey, tab)
-      return
+      finalizeWorkspacePanelTabClose(workspaceSessionLayoutsRef, commitWorkspaceSessionLayout, layoutKey, tab)
+      return 'closed'
     }
     const fileTabId = tab as WorkspaceFileTabId
     const operationKey = `${layoutKey}\0${fileTabId}`
-    if (closingWorkspaceFileTabsRef.current.has(operationKey)) return
+    if (closingWorkspaceFileTabsRef.current.has(operationKey)) return undefined
 
     const closingState = {
       layoutKey,
@@ -523,7 +476,7 @@ export function useWorkspaceLayoutController({
     }
     closingWorkspaceFileTabsRef.current.set(operationKey, closingState)
     try {
-      await saveWorkspaceFileBeforeClose({
+      return await saveWorkspaceFileBeforeClose({
         getDraft: () => workspaceSessionLayoutsRef.current[closingState.layoutKey]?.drafts[fileTabId],
         requestSaveApproval: () => onRequestFileSaveApproval({
           path: fileTab.path,
@@ -545,26 +498,32 @@ export function useWorkspaceLayoutController({
           }
           return preview
         },
-        recordSavedDraft: (savedText, preview) => (
-          recordSavedWorkspaceFileDraft(closingState.layoutKey, fileTabId, savedText, preview, closingState)
+        recordSavedDraft: (savedText, preview) => recordSavedWorkspaceFileDraft(
+          setWorkspaceSessionFileDrafts,
+          closingState.layoutKey,
+          fileTabId,
+          savedText,
+          preview,
+          closingState,
         ),
-        closeTab: () => finalizeWorkspacePanelTabClose(closingState.layoutKey, tab),
+        closeTab: () => finalizeWorkspacePanelTabClose(
+          workspaceSessionLayoutsRef,
+          commitWorkspaceSessionLayout,
+          closingState.layoutKey,
+          tab,
+        ),
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (activeWorkspaceSessionKeyRef.current === closingState.layoutKey) {
         setRuntimeError(`自动保存失败，文件仍保持打开：${message}`)
       }
+      // A failed save keeps the tab open with its own visible failure status; it
+      // is not a refused approval, so it does not raise the discard notice.
+      return undefined
     } finally {
       closingWorkspaceFileTabsRef.current.delete(operationKey)
     }
-  }
-
-  function findClosingWorkspaceFileState(layoutKey: string, tab: WorkspaceFileTabId) {
-    for (const state of closingWorkspaceFileTabsRef.current.values()) {
-      if (state.layoutKey === layoutKey && state.fileTabId === tab) return state
-    }
-    return undefined
   }
 
   const workspacePanelUsingTemporaryRoot = !isSamePath(workspacePanelRoot, defaultWorkspacePath)

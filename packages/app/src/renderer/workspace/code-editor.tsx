@@ -115,6 +115,7 @@ export function WorkspaceCodeEditor({
         onMount={(editor, monaco) => {
           lifecycleRef.current?.dispose()
           lifecycleRef.current = trackWorkspaceEditorLifecycle(editor, true)
+          adoptMountedEditorValue(editor, props.value)
           onMount?.(editor, monaco)
         }}
         options={mergedOptions}
@@ -387,6 +388,28 @@ function trackWorkspaceEditorLayout(
     window.removeEventListener(WORKSPACE_NAVIGATOR_MOTION_END_EVENT, handleNavigatorMotionEnd)
     window.cancelAnimationFrame(frame ?? 0)
   }
+}
+
+/**
+ * A mounted editor adopts the text its surface is showing.
+ *
+ * `@monaco-editor/react` deliberately never applies `value` to a model it did not
+ * create, which is what keeps a cached model's content across remounts. That is
+ * right while the two agree, and wrong once they cannot: closing a tab whose draft
+ * was abandoned (放弃修改) leaves the cached model holding text the file no longer
+ * has, so reopening the file would show the discarded draft under a clean tab. The
+ * pane's `value` is always the authoritative text of its surface (the draft while
+ * dirty, the file text when clean), so a freshly mounted editor adopts it and the
+ * abandoned text cannot come back through the model.
+ */
+function adoptMountedEditorValue(
+  editor: Monaco.editor.IStandaloneCodeEditor,
+  value: EditorProps['value'],
+): void {
+  if (typeof value !== 'string') return
+  const model = editor.getModel()
+  if (!model || model.getValue() === value) return
+  model.setValue(value)
 }
 
 function trackCodeEditorModel(

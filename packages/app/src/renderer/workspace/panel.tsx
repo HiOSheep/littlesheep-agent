@@ -31,7 +31,7 @@ import { workspaceFileLineCommentScope } from './review-line-comments'
 import { WorkspaceTerminal } from './terminal'
 import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
-import { WorkspaceTabStrip } from './tab-strip'
+import { WorkspaceTabStripWithCloseRefusal, type WorkspaceFileTabCloseHandler } from './file-close-refusal'
 import { WorkspaceEmptyLauncher } from './empty-launcher'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
@@ -91,7 +91,7 @@ export function WorkspacePanel({
   expandedPaths: string[]
   onTabChange: (tab: WorkspacePanelTabId) => void
   onTabsReorder: (tabs: WorkspacePanelTabId[]) => void
-  onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
+  onCloseTab: WorkspaceFileTabCloseHandler
   onFileDraftChange: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   onToggleFullscreen: () => void
   onRememberOpenPath: (root: string, path: string) => void
@@ -317,7 +317,7 @@ export function WorkspacePanel({
         >
         <header className="workspace-panel-header">
           <div className="workspace-panel-topbar">
-            <WorkspaceTabStrip
+            <WorkspaceTabStripWithCloseRefusal
               activeTab={activeTab}
               openTabs={openTabs}
               browserTabs={browserTabs}
