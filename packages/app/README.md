@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 19:24:34
+最后更新：2026-09-27 22:28:36
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -81,6 +81,19 @@ pnpm run refresh:desktop-shortcut
 ```
 
 根目录的 `build-app.bat` 已把构建与刷新集中到 `scripts/build-app.ps1`，并且不依赖固定仓库路径。构建前会由 `scripts/prepare-littlesheep-runtime.mjs` 在本机 Electron 安装目录生成同版本的 `LittleSheep.exe`；它是被 `.gitignore` 忽略的运行时副本，不进入 Git。应用构建输出位于 `packages/app/out/`，只保留在本机供 `LittleSheep.exe` 启动，不进入 Git。
+
+## 发布载荷（Windows x64）
+
+`pnpm run package:win`（解包目录）与 `pnpm run package:win-installer`（NSIS 安装程序）都由 `scripts/package-windows-release.mjs` 驱动。**产物不写进检出目录**：`scripts/lib/release-artifacts.mjs` 解析发布根，`LITTLESHEEP_RELEASE_DIR` 优先，否则是 `<系统临时目录>/littlesheep-run-artifacts/windows-release/`；暂存 `out`、暂存 Electron 运行时、生成的临时配置和打包锁同样落在系统临时区。`packages/app/electron-builder.yml` 里 `directories.output` 的值只是手跑 `electron-builder` 时的默认，脚本会重写它。
+
+`electron-builder.yml` 的 `files` 是唯一的载荷契约，只有两类收窄，且都是**加法安全**的（没被点名的依赖照常打包，新运行时依赖不会被静默丢掉）：
+
+1. **非目标平台/架构**：`onnxruntime-node` 的 `bin/napi-v6/{darwin,linux}` 与 `win32/arm64`、`node-pty` 的 darwin/win32-arm64 prebuild 与 arm64 ConPTY。`@napi-rs/*` 与 `@img/*` 不需要规则——pnpm 在这台机器上只安装 win32-x64 变体，electron-builder 对缺失的可选依赖只报告"not present"。
+2. **已经编译进 `out`、运行时不会再按模块名解析的目录**：`onnxruntime-web`（transformers 的 Node 构建内联了它的 JS，只用 `requireFromHere("onnxruntime-node")`）、`pdfjs-dist`（PDF.js 已打进 `out/main/chunks/pdf-*.js`，且 `read-pdf.ts` 不传 `cMapUrl`/`standardFontDataUrl`/`wasmUrl`，包内的 `cmaps`/`standard_fonts`/`wasm` 不可达）、以及 mermaid/monaco/@xterm/react-markdown 语法高亮这一批渲染器库及其独占依赖树。清单由"渲染器库闭包 − 打包运行时闭包"算出，不是逐个猜的。
+
+**必须保留**：`@napi-rs/canvas`（`out/main/chunks/pdf-*.js` 通过 `createRequire` 动态要求它，electron-builder 自动解包）、`onnxruntime-node` 的 win32/x64、`@img/sharp-win32-x64`、`@huggingface/*`、`node-pty` 的 win32-x64 prebuild，以及 `@littlesheep/documents` 的依赖树（`xlsx`/`pdfkit`/`docx`/`mammoth`/`fontkit` 等约 35 MiB 仍在载荷里：它们是运行时文档库，pdfkit 还会按 `__dirname` 读自己的数据文件，删它们需要各自单独取证）。
+
+实测（同一台机器连续两次重打包，文件长度合计）：解包目录 **1,175.01 → 568.31 MiB**、`app.asar` **444.90 → 66.44 MiB**、`app.asar.unpacked` **361.26 → 134.31 MiB**、安装程序 **273.51 → 156.93 MiB**。解包侧的 226.95 MiB 差值里 223.10 来自 `onnxruntime-node`、3.85 来自 `node-pty`，与收窄前的分平台测量逐项吻合。隔离验收见 `pnpm run verify:packaged-isolation` 与 `node scripts/verify-html-preview-baseline.mjs --app=packaged`（后者经根 `verify:*` 运行时会被前置的 `ensure:app-build` 吃掉参数，所以写直接调用），事实边界写在 `scripts/README.md`。
 
 ## 运行边界
 
@@ -188,3 +201,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - 工具事件与运行流恢复（2026-09-27）：Main 侧 `local-app-api/run-tool-event-projection.ts` 把过大的工具事件压到本地 SSE 单事件上限（32 KiB）内并保留路径与真实行数；Renderer 侧 `chat/run-transport-recovery.ts` 把 SSE 只当观察者——连接断开不等于 run 失败，先回读权威执行日志再决定是否抹掉预览。
 - UI 门与热点（2026-09-27）：本轮新增的聊天样式回到门的要求——圆角只用语义 token（含设置列表角的 --floating-panel-inner-radius）、普通交互控件不用 pointer 光标；enderer/chat/run-actions.ts 回到 349 行登记上限以内（348），断流对账接线集中在 enderer/chat/run-transport-recovery.ts。
 - 冷启动就绪路径（2026-09-27）：附件保护/清理与会话索引预热移出关键路径，窗口与发送可更早就绪；真实数据根上可用 LITTLESHEEP_BOOTSTRAP_TIMING=1 查看 ttachment-protection* 标点。
+- 前端改造第一批（2026-09-27）：**O1** 把"未解决失败／权限拒绝／待决策／未通过的验证结论"投影到过程折叠**之外**（`renderer/chat/attention-row.tsx`），普通模式也不再漏掉失败步骤计数，且未通过的验证结论绝不读成通过；**S1** 把设置侧栏重排为四组（通用／模型与行为／连接与扩展／存储与环境），总览只留少量常用入口与需要处理的配置问题，归档与记忆树保留工作模块入口、"已安排"退出常用导航但设置搜索仍可直达，并新增旧标识映射保证深链与前进后退不失效（可达性由测试断言，不靠文字声称）。两项均未跑完真实窗口的最终验收，边界见任务书台账。
