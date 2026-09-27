@@ -328,12 +328,6 @@ importers:
       '@littlesheep/safety':
         specifier: workspace:*
         version: link:../safety
-      '@littlesheep/types':
-        specifier: workspace:*
-        version: link:../types
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
 
   packages/harness:
     dependencies:
@@ -529,9 +523,6 @@ importers:
       '@littlesheep/documents':
         specifier: workspace:*
         version: link:../documents
-      '@littlesheep/experience':
-        specifier: workspace:*
-        version: link:../experience
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core
@@ -544,20 +535,11 @@ importers:
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
-      '@littlesheep/vector':
-        specifier: workspace:*
-        version: link:../vector
       zod:
         specifier: ^3.23.0
         version: 3.25.76
 
   packages/types: {}
-
-  packages/vector:
-    dependencies:
-      '@littlesheep/llm':
-        specifier: workspace:*
-        version: link:../llm
 
   packages/web:
     dependencies:

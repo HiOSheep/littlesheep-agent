@@ -74,7 +74,6 @@ export default defineConfig({
       '@littlesheep/skills': pkg('skills'),
       '@littlesheep/tools': pkg('tools'),
       '@littlesheep/types': pkg('types'),
-      '@littlesheep/vector': pkg('vector'),
     },
   },
   test: {

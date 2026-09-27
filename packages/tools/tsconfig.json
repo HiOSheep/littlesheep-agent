@@ -12,9 +12,6 @@
       "path": "../documents"
     },
     {
-      "path": "../experience"
-    },
-    {
       "path": "../memory-core"
     },
     {
@@ -25,9 +22,6 @@
     },
     {
       "path": "../types"
-    },
-    {
-      "path": "../vector"
     }
   ]
 }

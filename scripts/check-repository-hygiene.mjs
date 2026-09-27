@@ -873,4 +873,12 @@ async function main() {
   process.exit(failures.length === 0 ? 0 : 1)
 }
 
-await main()
+// A gate must fail with a named check, never crash with a stack trace: a working tree mid-refactor
+// (a tracked file deleted but not yet committed, for instance) is exactly when someone runs it.
+try {
+  await main()
+} catch (error) {
+  console.error(`[fail] 仓库卫生检查自身未能完成: ${error?.message ?? error}`)
+  console.error(`Repository hygiene: failed (0 passed, 1 failed)`)
+  process.exit(1)
+}
