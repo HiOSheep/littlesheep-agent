@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-27 20:55:45
+最后更新：2026-09-27 21:29:24
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -43,3 +43,4 @@
 
 `verify:electron-ui-state-continuity` 另建第二个工作区根，走"root A → 项目 root B → B 内新建会话 → 重启应用 → 回到 A"的往返，断言：B 的文件树只列 B 自己的文件、`GET /workspace/review` 对非活动根返回 **403** 而活动根 200、切换后终端 0 会话，以及重启后未保存草稿（`draftRestored: true`）、文件标签的 dirty 状态、浏览器标签与展开目录都还在。该门为此修掉三处验收脚本缺陷：草稿输入落进文件导航的筛选框（把整棵树筛空）、没等 Monaco 的可编辑表面就开始打字、以及 `Page.reload` 之后 CDP 执行上下文失效而不重连。
 - 运行产物不再写进检出目录（2026-09-27）：验证报告、截图、临时诊断与 task manifest 统一走 `scripts/lib/run-artifacts.mjs`，默认落在 `<系统临时目录>/littlesheep-run-artifacts/`，可用 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 覆盖；脚本自带的 `--dir` / `--json` / `--report` 仍优先。此前 10 个脚本默认写 `.codex_tmp/`，导致清理后每次跑门都会在仓库里重新长出缓存；现在跑完 `verify:core` 仓库内不再产生任何文件。
+- 启动与快捷方式链路（2026-09-27）：`scripts/launch-littlesheep.ps1` 是桌面与开始菜单快捷方式的实际入口——它先幂等重写两个 `.lnk` 指向自己（首次运行即完成安装），再 `ensure:app-build` 保证跑的是**当前构建**，然后解析 `packages/app/runtime` 中**最新**的 `electron-v*-win32-x64` 启动，并顺手删除中断留下的 `electron-v*-win32-x64-<数字>` 暂存目录与更旧的运行时（本次清掉 1258.4 MiB）。它还会清除继承来的 `ELECTRON_RUN_AS_NODE`——该变量会让 Electron 以纯 Node 运行、应用立刻死于 `requestSingleInstanceLock` 未定义（实测：清除后 4 秒到达 `state=ready`）。入口：`pnpm run app:launch` / `app:shortcuts` / `app:clean-runtimes`。
