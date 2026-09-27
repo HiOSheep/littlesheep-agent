@@ -87,7 +87,7 @@
 | --- | --- | --- |
 | `tsc -b` | **exit 0**（00:24） | 类型层自洽 |
 | 渲染器套件 | **exit 0，144 文件 / 821 项通过**（00:23） | ⚠️ **此前记录的 composer 2 项失败已消失** ✓ —— 表内 #1/#2 的**代码**现在是通过状态 ✓，但**实机验收证据仍未产出** ✗，故状态保持"修复中" ✓ |
-| `check:repo` | **exit 1，恰好 1 项失败**：`公开文档和脚本不含本机路径或账号: scripts/lib/experiment-sandbox.mjs: 28971` | 这**不是**我此前预告的 `tool-loop.ts` / `tool-execution-service.ts` 超限 ✗（那两项此刻不存在 ✓，地图计数也一致 ✓）。**归属**：另一个 agent 的 sandbox 工作（他们的新脚本把用户机器路径写进了跟踪文件 ✗）。**未修** ✓：不属于本次审计范围，且是他们的在途文件 ✓；接手者应把它还给他们或直接删掉路径字面量 ✓ |
+| `check:repo` | **exit 1，恰好 1 项失败**：`公开文档和脚本不含本机路径或账号: scripts/lib/experiment-sandbox.mjs: <user>` | 这**不是**我此前预告的 `tool-loop.ts` / `tool-execution-service.ts` 超限 ✗（那两项此刻不存在 ✓，地图计数也一致 ✓）。**归属**：另一个 agent 的 sandbox 工作（他们的新脚本把用户机器路径写进了跟踪文件 ✗）。**未修** ✓：不属于本次审计范围，且是他们的在途文件 ✓；接手者应把它还给他们或直接删掉路径字面量 ✓ |
 | 顶部条高度 | `DESKTOP_TITLEBAR_HEIGHT = 32`（`desktop-startup-page.ts:18`）✓、`titleBarOverlay.height = WINDOW_TITLEBAR_HEIGHT`（`desktop-shell.ts:288`）✓、CSS `--window-titlebar-height: 32px`（`03-shell-sidebar.css:132`）✓ —— **三处一致 32px** | 用户"顶部条高度与窗口控制按钮高度一致"的要求**在常量层面已经满足** ✓；**未测**的是真实窗口里原生控制按钮的像素高度 ✗（chali 实施包被要求补这一步 ✓）|
 
 ### chali 布局的重复实现冲突：按 (A) 处理

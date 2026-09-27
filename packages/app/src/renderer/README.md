@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-27 22:36:15
+最后更新：2026-09-28 00:09:10
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -55,7 +55,8 @@ Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区�
 - `channel-status.ts`：渠道总体状态的唯一派生口。总体标签由已加载渠道的真实 `running` 与失败项计数得出（未配置/未运行/部分运行/运行中），不把“列表非空”或“已配置”当成连接健康；列表标题与逐项标签使用同一批事实。**后端契约**：载荷里的 `channels` 只含正在运行的实例（`PluginHost.listChannels()` 读渠道管理器的运行表，`stop()` 移出条目、启动失败进 `failures`），因此"已加载但已停止"的条目在当前后端不可达——总体状态里那句不可达文案已按契约改成陈述配置事实（"已配置 N 个渠道（M 个启用），当前没有渠道在运行"），逐项 `running` 判定保留为防御路径。四种 fixture（空配置 / 全部停用 / 运行中含失败 / 全部运行）的标签、计数与取色核对见 `pnpm run verify:channel-entry-states`。
 - `settings/models.tsx`、`settings/model-provider-editor.tsx`、`settings/model-provider-draft.ts`：模型供应商页的卡片视图、编辑对话框和纯校验；自定义供应商使用 OpenAI 兼容接口，密钥经 Main 写入系统密钥库，模型元数据（上下文窗口、最大输出、推理档位）只按用户声明使用，未声明即保持未知。**编辑会话与离开保护**（UX-06）：草稿放在模块内存的 `provider-editor-session.ts`（不落盘、不写日志），所以切页再回来时它还在——回到该页会**直接带着草稿重新打开编辑器**；`关闭/取消` 在有未保存修改时**先问再丢**（`provider-editor-discard`：继续编辑 / 丢弃修改），不会静默丢失，保存中则两者都禁用。真实窗口实测（`verify:provider-editor-draft`）：切页后草稿名仍在（脏状态标签优先于"已恢复…"），丢弃不发任何保存请求，注入 500 后失败原因与可修正内容都留在编辑器里。
 - `composer/context-usage-indicator.tsx` 除上下文窗口占用外，还显示**会话累计缓存命中率**与 `缓存读取 / 输入` 原值（含冷启动，与验收账本同源）；展示层 `toFixed(1)` 四舍五入，判定层始终用精确值。
-- `composer/runtime-availability.ts` 是"选择器里没有可选模型"的唯一判据，四种事实分开：读取中、读取失败（可重试）、还没有配置（给出配置入口）、供应商已保存但不可用（缺密钥或缺模型条目）、以及**供应商可用但还没选模型**（`no-selection`，只指向菜单里的模型列表）。最后一种此前被并入"不可用"，于是刚存好密钥和模型条目的用户被告知"可能缺少 API 密钥，或没有填写模型条目"（UX-11 实机验收发现）。真实窗口流程见 `pnpm run verify:no-model-config-loop`。
+- `composer/runtime-availability.ts` 是"没有可用模型"的唯一判据，四种事实分开：读取中、读取失败（可重试）、还没有配置（给出配置入口）、供应商已保存但不可用（缺密钥或缺模型条目）、以及**供应商可用但还没选模型**（`no-selection`，只指向菜单里的模型列表）。最后一种此前被并入"不可用"，于是刚存好密钥和模型条目的用户被告知"可能缺少 API 密钥，或没有填写模型条目"（UX-11 实机验收发现）。它由 `composer/use-model-availability.ts` 算一次、经控制器 `modelAvailability` 投影给选择器、发送入口与空对话文案，`composer/send-readiness.ts` 再把"执行是否可用"合进来给出唯一的发送判据——**没有可用模型时发送被拒且写明原因**，不再把消息派给一个答不出来的供应商（实测那一轮工作态 1 分 14 秒、零字符、无错误也无结算）。真实窗口流程见 `pnpm run verify:no-model-config-loop` 与 `pnpm run verify:composer-send-gate`。
+- 输入栏光标归属：`composer/focus-routing.ts` 的 `shouldTakeComposerFocus` 是唯一判据（`launch` 只在无人持有焦点时取走；`new-session` 除非有弹层/对话框打开或用户正在别的文本表面输入，否则取走），`composer/use-composer-focus.ts` 在挂载时与收到 `newSession()` 的窗口事件时请求它。窗口刚可用和新建对话都必须把光标放进输入框（ChatGPT/Claude/Cursor/VS Code 的同一约定），但不得从对话框、审批提示或用户自己移走的焦点那里抢；真实窗口门 `pnpm run verify:composer-focus`。
 - `chat/assistant-turn.tsx`：一轮 Agent 的思考摘要、真实执行过程、验证和最终结果渐进披露。
 - `Markdown.tsx`、`link-navigation.tsx`、`workspace/browser.tsx`：全局链接单击进入 LS 内置预览；网页由独立的有界 URL 历史驱动前进、后退和刷新，网页内部跳转不会污染全局应用导航。
 - `workspace/preview-pane.tsx`、`workspace/code-editor.tsx` 与主进程 Office 预览服务：代码和普通文本使用共享内置编辑器；普通 Markdown 文件默认渲染，查看源码或编辑时才挂载共享 Monaco，而 Git 审阅中的 Markdown 仍显示源代码 Diff。普通文件和审阅主表面铺满拓展工作区的可用宽度与底部，不绘制外围圆角、边框或整面 hover 反馈；右侧文件导航贴边并仅保留左分隔线。普通查看和审阅统一保留舒适的行号/代码间距；审阅行号、增删计数与连续 5px 左缘使用不透明的 `#02A243` / `#DE352E`，代码行使用在 `#101010` 上合成为 `#1A2B1C` / `#371D17` 的单层 50% 透明底色；单列内联删除视图区也绘制整段连续红色左缘，字符级背景、整块 gutter 背景及会形成方块伪影的 Diff text border 均不绘制；Office/OpenDocument 以有界只读文本预览呈现，二进制正文不进入 Renderer。
