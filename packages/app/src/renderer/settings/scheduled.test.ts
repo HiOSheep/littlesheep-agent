@@ -34,9 +34,12 @@ describe('scheduled page placeholder', () => {
 
     expect(navigation).toContain("title: '已安排', desc: '计划任务尚未接入'")
     expect(navigation).not.toContain('计划任务与自动执行')
-    // Settings overview, the direct module page and the sidebar all reach the
-    // same page component, so they cannot disagree about its state.
-    expect(home).toContain('SETTINGS_NAV_GROUPS')
+    // S1: the placeholder left the common navigation, so it is marked search-only in
+    // the single navigation index instead of being listed on the overview.
+    expect(navigation).toContain('searchOnly: true')
+    // Settings overview, the direct module page and the sidebar all read the same
+    // navigation index, so they cannot disagree about its state.
+    expect(home).toContain('commonSettingsNavGroups')
     expect(directModule).toContain("if (page === 'scheduled') return <SettingsScheduledPage />")
   })
 })

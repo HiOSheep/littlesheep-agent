@@ -10,6 +10,12 @@ export interface SettingsNavItem {
   page: SettingsPage
   title: string
   desc: string
+  /**
+   * True for a page that stays a valid route and stays searchable but must not
+   * occupy the common sidebar: the scheduled placeholder is not a connected
+   * capability, so it must not look like one (taskbook S1).
+   */
+  searchOnly?: boolean
 }
 
 

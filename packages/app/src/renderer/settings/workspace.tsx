@@ -15,7 +15,7 @@ import { SettingsApplicationBackgroundPage } from './application-background'
 import { DirectModulePageContent } from './direct-module'
 import { SettingsHome } from './home'
 import { SettingsModelsPage } from './models'
-import { SETTINGS_NAV_GROUPS } from './navigation'
+import { commonSettingsNavGroups, filterSettingsNavGroups, settingsSearchNavGroups } from './navigation'
 import { SettingsStoragePage } from './storage'
 import { SettingsBrowserPage } from './browser'
 import { SettingsDevelopmentEnvironmentsPage } from './development-environments'
@@ -62,18 +62,11 @@ export function SettingsWorkspace({
     pageHasChangedRef.current = true
   }
 
-  const normalizedQuery = settingsQuery.trim().toLocaleLowerCase()
-  const filteredNavGroups = SETTINGS_NAV_GROUPS.map((group) => {
-    if (!normalizedQuery || group.title.toLocaleLowerCase().includes(normalizedQuery)) {
-      return group
-    }
-    return {
-      ...group,
-      items: group.items.filter((item) => (
-        `${item.title} ${item.desc}`.toLocaleLowerCase().includes(normalizedQuery)
-      )),
-    }
-  }).filter((group) => group.items.length > 0)
+  // 侧栏默认只显示常用导航；搜索时切换到完整索引，因此未接入的占位页仍能被找到并打开。
+  const filteredNavGroups = filterSettingsNavGroups(
+    settingsQuery,
+    settingsQuery.trim() ? settingsSearchNavGroups() : commonSettingsNavGroups(),
+  )
 
   return (
     <div className="settings-workspace">
@@ -161,7 +154,7 @@ export function SettingsWorkspace({
         />
         <main className="settings-workspace-body">
           <div key={page} className={`settings-page-transition ${pageHasChangedRef.current ? 'with-motion' : ''}`}>
-            {page === 'home' && <SettingsHome onOpenPage={onOpenPage} />}
+            {page === 'home' && <SettingsHome runtime={runtime} onOpenPage={onOpenPage} />}
             {page === 'application' && (
               <SettingsApplicationBackgroundPage
                 closePolicy={runtime?.closePolicy ?? null}

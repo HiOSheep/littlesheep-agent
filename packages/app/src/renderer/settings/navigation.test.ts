@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
-import { SETTINGS_NAV_GROUPS } from './navigation'
+import { commonSettingsNavGroups, settingsSearchNavGroups } from './navigation'
 
 function readSettingsFile(name: string): Promise<string> {
   return readFile(new URL(`./${name}`, import.meta.url), 'utf8')
@@ -14,13 +14,20 @@ async function declaredSettingsPages(): Promise<string[]> {
 }
 
 describe('settings page identity', () => {
-  it('lists every settings page exactly once in the navigation groups', async () => {
+  it('lists every settings page exactly once in the navigation index', async () => {
     const declared = await declaredSettingsPages()
-    const listed = SETTINGS_NAV_GROUPS.flatMap((group) => group.items.map((item) => item.page))
+    // The sidebar shows the common entries plus, while searching, the search-only
+    // placeholder; the index is the union, so a page cannot be added to one and
+    // forgotten in the other.
+    const listed = settingsSearchNavGroups().flatMap((group) => group.items.map((item) => item.page))
 
     expect(new Set(listed).size).toBe(listed.length)
     // 'home' is the settings root: it has a navigation row like every other page.
     expect([...listed].sort()).toEqual([...declared].sort())
+    // The sidebar itself holds the same set minus the entries marked search-only.
+    const common = commonSettingsNavGroups().flatMap((group) => group.items.map((item) => item.page))
+    const searchOnly = listed.filter((page) => !common.includes(page))
+    expect([...common, ...searchOnly].sort()).toEqual([...declared].sort())
   })
 
   it('keeps every settings page restorable after a restart', async () => {
@@ -95,9 +102,11 @@ describe('settings information architecture', () => {
     const readme = await readFile(new URL('./README.md', import.meta.url), 'utf8')
 
     expect(readme).toContain('入口 → 页面 → 返回目标')
-    for (const name of ['记忆树', '已安排', '插件', '归档', '技能', '外部渠道', '界面']) {
+    for (const name of ['记忆树', '已安排', '插件', '归档', '技能', '外部渠道', '界面', '模型与行为', '连接与扩展', '存储与环境']) {
       expect(readme, name).toContain(name)
     }
+    // The overview no longer mirrors the directory, so the README documents what it does show.
+    expect(readme).toContain('总览只列出')
   })
 
   it('names the shared modules the same way from the sidebar, the overview and the module page', async () => {
@@ -111,7 +120,9 @@ describe('settings information architecture', () => {
       [...directModule.matchAll(/if \(page === '([^']+)'\) return '([^']+)'/gu)].map((m) => [m[1]!, m[2]!]),
     )
     labels.set('plugins', directModule.match(/return '([^']+)'\n\}/u)?.[1] ?? '')
-    const navTitle = (page: string) => SETTINGS_NAV_GROUPS
+    // The search index carries every entry, including the search-only placeholder,
+    // so a direct module page still finds its own name in settings.
+    const navTitle = (page: string) => settingsSearchNavGroups()
       .flatMap((group) => group.items)
       .find((item) => item.page === page)?.title
 

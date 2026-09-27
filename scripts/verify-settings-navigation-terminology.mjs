@@ -27,9 +27,11 @@ const RETIRED_PROVIDER_TERM = `${'提供'}${'方'}`
 
 /** Direct module pages and the sidebar label that opens them. */
 const DIRECT_MODULES = [
-  { page: 'memoryTree', label: '记忆树' },
-  { page: 'scheduled', label: '已安排' },
-  { page: 'plugins', label: '插件' },
+  { page: 'memoryTree', label: '记忆树', inCommonSettingsNavigation: true },
+  // S1: the scheduled placeholder left the common settings navigation, so this
+  // walkthrough now reaches its settings page through the settings search below.
+  { page: 'scheduled', label: '已安排', inCommonSettingsNavigation: false },
+  { page: 'plugins', label: '插件', inCommonSettingsNavigation: true },
 ]
 
 const SURFACE_EXPRESSION = `(() => {
@@ -74,6 +76,12 @@ const SURFACE_EXPRESSION = `(() => {
       desc: (row.querySelector('span')?.textContent || '').trim(),
     })),
     navItems: [...document.querySelectorAll('.settings-nav-item')].map((item) => (item.textContent || '').trim()),
+    // S1: the rows the sidebar offers right now (the common navigation when nothing is
+    // typed). Hidden keep-mounted copies are excluded the same way visibleText does it.
+    visibleNavItems: [...document.querySelectorAll('.settings-nav-item')]
+      .filter((item) => !item.closest('[inert]'))
+      .map((item) => (item.textContent || '').trim()),
+    settingsSearchQuery: document.querySelector('.settings-sidebar-search input')?.value ?? null,
     directModule: (() => {
       const main = document.querySelector('main.direct-module-workspace');
       return main ? { label: main.getAttribute('aria-label'), heading: (main.querySelector('h2')?.textContent || '').trim() } : null;
@@ -168,7 +176,7 @@ async function click(client, selector) {
 async function clickByText(client, selector, text) {
   return client.evaluate(`(() => {
     const node = [...document.querySelectorAll(${JSON.stringify(selector)})]
-      .find((item) => (item.textContent || '').includes(${JSON.stringify(text)}));
+      .find((item) => !item.closest('[inert]') && (item.textContent || '').includes(${JSON.stringify(text)}));
     if (!(node instanceof HTMLElement)) return false;
     node.click();
     return true;
@@ -204,6 +212,51 @@ async function openSettingsPage(client, label) {
     (surface) => (surface.activeNav === label ? surface : undefined),
     20_000,
     `the ${label} settings page`,
+  )
+}
+
+async function setSettingsQuery(client, value) {
+  return client.evaluate(`(() => {
+    const input = document.querySelector('.settings-sidebar-search input');
+    if (!(input instanceof HTMLInputElement)) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ${JSON.stringify(value)}, inputType: 'insertText' }));
+    return true;
+  })()`)
+}
+
+/**
+ * S1: opens a settings page the way a user reaches a page that is no longer in the
+ * common sidebar — type its name into the settings search, then click the hit. The
+ * page opens through the same `onOpenPage(id)` route, so back/forward history and the
+ * page identity are unchanged; only the entry point differs.
+ */
+async function openSettingsPageViaSearch(client, label) {
+  if (!await setSettingsQuery(client, label)) throw new Error('the settings search input is missing')
+  await waitForSurface(
+    client,
+    (surface) => (surface.settingsSearchQuery === label ? surface : undefined),
+    20_000,
+    `the settings search for ${label}`,
+  )
+  const opened = await clickByText(client, '.settings-nav-item', label)
+  if (!opened) throw new Error(`searching ${label} did not offer the page`)
+  return waitForSurface(
+    client,
+    (surface) => (surface.heading === label ? surface : undefined),
+    30_000,
+    `the ${label} settings page opened from search`,
+  )
+}
+
+async function clearSettingsQuery(client) {
+  await setSettingsQuery(client, '')
+  return waitForSurface(
+    client,
+    (surface) => (surface.settingsSearchQuery === '' ? surface : undefined),
+    20_000,
+    'the settings search to clear',
   )
 }
 
@@ -342,13 +395,13 @@ async function main() {
       // The settings shell has to be open before a sidebar entry can be clicked: the
       // keep-mounted layer stays in the DOM while hidden.
       await openSettingsFromEntry(client)
-      await openSettingsPage(client, module.label)
-      const settingsView = await waitForSurface(
-        client,
-        (surface) => (surface.activeNav === module.label && surface.heading === module.label ? surface : undefined),
-        20_000,
-        `the ${module.label} settings page`,
-      )
+      // S1: a common entry is clicked in the sidebar; a search-only placeholder is
+      // reached through the settings search, which is the route the taskbook keeps for it.
+      const commonBeforeSearch = module.inCommonSettingsNavigation ? [] : (await readSurface(client)).visibleNavItems
+      const settingsView = module.inCommonSettingsNavigation
+        ? await openSettingsPage(client, module.label)
+        : await openSettingsPageViaSearch(client, module.label)
+      if (!module.inCommonSettingsNavigation) await clearSettingsQuery(client)
       const returned = await closeSettings(client)
       const backOnModule = await waitForSurface(
         client,
@@ -362,6 +415,7 @@ async function main() {
         directHeading: direct.directModule,
         settingsHeading: settingsView.heading,
         settingsNav: settingsView.activeNav,
+        settingsEntryPoint: module.inCommonSettingsNavigation ? 'sidebar' : 'search',
         returnedTo: backOnModule.directModule,
         returnedComposer: returned.composerPresent,
       }
@@ -374,10 +428,30 @@ async function main() {
         direct.directModule,
       )
       recorder.check(
-        settingsView.heading === module.label && settingsView.activeNav === module.label,
+        settingsView.heading === module.label,
         `${module.label}: the settings page uses the same name`,
         { heading: settingsView.heading, activeNav: settingsView.activeNav },
       )
+      if (module.inCommonSettingsNavigation) {
+        recorder.check(
+          settingsView.activeNav === module.label,
+          `${module.label}: the common sidebar marks the open page`,
+          { activeNav: settingsView.activeNav },
+        )
+      } else {
+        // S1: the placeholder left the common navigation, so its name must not be a
+        // sidebar row before searching — and it must still be reachable from search.
+        recorder.check(
+          !commonBeforeSearch.includes(module.label),
+          `${module.label}: the entry left the common settings navigation`,
+          { navItems: commonBeforeSearch },
+        )
+        recorder.check(
+          settingsView.activeNav === module.label,
+          `${module.label}: the search-only page is highlighted by the result it opened from`,
+          { activeNav: settingsView.activeNav },
+        )
+      }
       recorder.check(
         backOnModule.directModule.label === module.label,
         `${module.label}: closing the settings returns to the module page it was opened from`,
@@ -387,6 +461,7 @@ async function main() {
 
     // --- 5. rendered terminology and the re-arranged settings pages ------------
     await openSettingsFromEntry(client)
+    const commonNavigation = (await readSurface(client)).visibleNavItems
     const appearance = await openSettingsPage(client, '界面')
     await waitForSurface(client, (surface) => (surface.heading === '界面' ? surface : undefined), 20_000, 'the appearance page')
     const appearanceSurface = await readSurface(client)
@@ -396,17 +471,19 @@ async function main() {
     const agent = await readSurface(client)
     await clickByText(client, '.settings-nav-item', '技能')
     const skills = await waitForSurface(client, (surface) => (surface.activeNav === '技能' ? surface : undefined), 20_000, 'the skills page')
-    await clickByText(client, '.settings-nav-item', '已安排')
-    const scheduled = await waitForSurface(client, (surface) => (surface.activeNav === '已安排' ? surface : undefined), 20_000, 'the scheduled page')
+    // S1: the scheduled page is entered through the settings search here too.
+    const scheduledPage = await openSettingsPageViaSearch(client, '已安排')
     const scheduledText = (await readSurface(client)).pageText ?? ''
     const wholePageText = [appearanceText, agent.pageText, skills.pageText, scheduledText].join(' ')
     recorder.note({
       step: 'terminology',
+      commonNavigation,
       appearanceModes: appearanceSurface.displayModeChoices,
       agentAdvanced: agent.advancedDetails,
       agentThresholdInsideDetails: agent.thresholdInsideDetails,
       agentPermissionControl: agent.permissionControlOnPage,
       skillsText: (skills.pageText ?? '').slice(0, 240),
+      scheduledHeading: scheduledPage.heading,
       scheduledText: scheduledText.slice(0, 240),
       retiredTermPresent: wholePageText.includes(RETIRED_PROVIDER_TERM),
     })
@@ -445,6 +522,24 @@ async function main() {
       scheduledText.includes('尚未接入'),
       'the scheduled page says the capability is not connected yet',
       { text: scheduledText.slice(0, 200) },
+    )
+    // S1: the placeholder is searchable but no longer a common sidebar row, and the
+    // overview shows a few common entries instead of the whole directory.
+    recorder.check(
+      !commonNavigation.includes('已安排'),
+      'the unconnected scheduled placeholder left the common settings navigation',
+      { navItems: commonNavigation },
+    )
+    recorder.check(
+      scheduledPage.heading === '已安排',
+      'the scheduled page still opens, under its own name, from the settings search',
+      { heading: scheduledPage.heading },
+    )
+    recorder.check(
+      commonNavigation.length >= 14 && commonNavigation.includes('归档') && commonNavigation.includes('记忆树')
+      && commonNavigation.includes('界面'),
+      'the common settings navigation lists the four groups plus the work modules',
+      { navItems: commonNavigation },
     )
     await closeSettings(client)
   } catch (error) {

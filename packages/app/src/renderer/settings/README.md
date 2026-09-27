@@ -1,12 +1,15 @@
 # Renderer 设置
-最后更新：2026-09-27 16:24:14
+最后更新：2026-09-27 21:53:28
 
 这里负责设置侧边栏、设置页和直接打开的记忆树/插件/已安排页面。设置与主页共用全局导航和侧边栏交互，但不复制运行时数据。
 
-- `navigation.ts`、`types.ts`：设置分组和页面契约。
+**信息架构（S1，2026-09-27）**：侧栏从“通用承载 9 项”的五组改为按用户意图分的四组——**通用**（`home`、`appearance`、`application`）、**模型与行为**（`api`、`agent`）、**连接与扩展**（`web`、`browser`、`plugins`、`skills`、`channels`）、**存储与环境**（`storage`、`developmentEnvironments`）——另加**工作模块**（`archive`、`memoryTree`）与**未接入**（`scheduled`）。页面身份（`SettingsPage` 的 15 个 id）没有改名，所以持久化路由、返回/前进历史和 `openSettingsPage(id)` 深链接照旧解析；新增的 `LEGACY_SETTINGS_PAGE_GROUPS` 是「旧页面标识 → 新分组」的映射表，`RENAMED_SETTINGS_PAGE_IDS` 与 `REMOVED_SETTINGS_PAGE_IDS` 为后续重排预留，`resolveSettingsPage(id)` 保证旧标识要么落到同一个页面、要么落到有明确去向的页面，不会出现空白页。自动化证明在 `navigation-architecture.test.ts`：15 项清单逐个断言去向、四个分组的页面集合、归档/记忆树的去向、已安排只在搜索索引里、每个常用页从设置入口 ≤2 次选择可达、以及旧标识全部仍能解析。
+
+- `navigation.ts`、`types.ts`：设置分组、搜索索引和页面契约。`searchOnly` 条目（目前只有 `scheduled`）仍可从设置搜索打开，因此 `filteredNavGroups` 在没有搜索词时用 `commonSettingsNavGroups()`、有搜索词时用 `settingsSearchNavGroups()`。
 - `workspace.tsx`、`home.tsx`：设置壳与总览；归档、技能和外部渠道页复用 Renderer 根目录的 `ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`。
+- `home.tsx`：**总览只列出** 4 个常用入口（模型供应商、界面、网络检索、存储与数据）和**有证据**的配置问题（`settingsHomeProblems()` 只读 `runtime.providers`，用设置页自己的 `isConfiguredProvider` 判定“还没有配置模型 / 已配置的供应商还没有可用模型”）。它不再复制整份目录，也不做状态仪表盘；“网络检索未配置”这类偏好性提示故意不做，因为 Runtime 没有把“用户需要处理”作为事实给出。
 - `agent-profile.tsx`、`appearance.tsx`、`storage.tsx`、`scheduled.tsx`、`plugins.tsx`、`direct-module.tsx`：领域页面；`appearance.tsx` 只放显示偏好（对话显示密度，普通/紧凑，存储仍是 `normal`/`compact`），`agent-profile.tsx` 只放 profile 与上下文策略（压缩阈值收在“高级上下文设置”折叠里），术语统一遵循 `docs/principles/ui-interaction-guidelines.md` 的术语表。
-- `scheduled.tsx`：计划任务尚未接入 Runtime，因此页面只声明“功能尚未接入”，不提供筛选或创建控件，也不显示“暂无数据”式的空态；侧边栏、设置总览和直接模块页共用这一个页面，入口描述同样标注未接入。
+- `scheduled.tsx`：计划任务尚未接入 Runtime，因此页面只声明“功能尚未接入”，不提供筛选或创建控件，也不显示“暂无数据”式的空态；侧边栏、设置总览和直接模块页共用这一个页面，入口描述同样标注未接入。它已退出常用导航（`searchOnly: true`），但设置搜索仍能找到并打开它。
 - `models.tsx`、`model-provider-editor.tsx`、`model-provider-draft.ts`、`provider-editor-session.ts`：模型供应商卡片、编辑对话框、纯校验草稿和会话级草稿存储；删除供应商先经 `ui/danger-confirm.tsx` 确认，影响文案来自 `deletion-impact.ts`，只描述配置条目移除，不声称密钥被清除。空态明确写出“保存配置只代表写入了密钥和模型声明，不代表 LS 已经验证过它真的可以调用”，与输入栏的 `runtime-availability.ts` 用同一个 `isConfiguredProvider` 判定“已配置”。
 - 供应商删除在确认后立即以 `deletingRef` 同步锁住同一次操作，防止同一帧连点发出两次 DELETE；响应完成或失败后才释放。真实窗口验收见 `pnpm run verify:deletion-confirmation`。
 - `web.tsx`、`web-state.ts`、`browser.tsx`、`development-environments.tsx`：网络检索、内置浏览器和开发环境注册表页面。
@@ -32,13 +35,14 @@
 | 入口 | 页面 | 返回目标 |
 | --- | --- | --- |
 | 侧边栏「设置」 | 设置总览 `home` | 关闭设置回到打开设置前的路由（`settingsReturnRouteRef`），前进/后退按钮走全局历史 |
-| 设置侧边栏 / 总览列表 | 对应设置页（含「界面」`appearance`） | 同一设置壳内切换；关闭设置回到进入前的路由 |
+| 设置侧边栏（14 项，四组 + 工作模块）/ 总览常用入口（4 项） | 对应设置页（含「界面」`appearance`） | 同一设置壳内切换；关闭设置回到进入前的路由 |
+| 设置搜索结果 | 常用页 + 未接入的「已安排」 | 与点侧栏一致：`onOpenPage(id)` 走同一条路由，因此返回/前进历史照旧 |
 | 侧边栏「记忆树」「已安排」「插件」 | 直接模块页 `DirectModuleWorkspace` | 全局返回按钮回到进入前的路由，不再叠加一层设置壳 |
 | 设置「归档」「技能」「外部渠道」 | 复用 `ArchiveManager`、`MemorySkills`、`ChannelConnections`（embedded） | 关闭动作与 Escape 回设置总览；这三页不新增自己的返回栈 |
 
-页面身份由 `types.ts` 的 `SettingsPage` 联合类型唯一声明：`navigation.ts` 的分组、`persistent-state.ts` 的可恢复集合和 `workspace.tsx` 的渲染分支必须覆盖同一批 id，`navigation.test.ts` 会对三者做集合比对，新增页面必须同时登记，否则重启恢复会静默丢弃该页。
+页面身份由 `types.ts` 的 `SettingsPage` 联合类型唯一声明：`navigation.ts` 的搜索索引、`persistent-state.ts` 的可恢复集合和 `workspace.tsx` 的渲染分支必须覆盖同一批 id，`navigation.test.ts` 会对三者做集合比对，新增页面必须同时登记，否则重启恢复会静默丢弃该页。
 
-**名称一致性（UX-12/UX-13 实机验收）**：同一功能在导航条目、页面标题与各入口里必须是同一个名字。设置总览的 14 行与侧边栏的 15 项逐行同名（实测 `missingInNav: []`）；记忆树 / 已安排 / 插件三个工作模块从侧边栏直接打开与从设置进入得到同一标题，关闭设置回到**打开设置前的那一页**（实测返回后仍是该模块，不是聊天）；外部渠道页的标题曾是「渠道连接」，与导航条目、空态和反馈文案里的「外部渠道」不一致，已统一为「外部渠道」。整条走查见 `pnpm run verify:settings-navigation-terminology`。
+**名称一致性（UX-12/UX-13 实机验收，S1 后更新）**：同一功能在导航条目、页面标题与各入口里必须是同一个名字。S1 之前是「总览 14 行 = 侧栏 15 项逐行同名」（实测 `missingInNav: []`）；S1 之后侧栏是 14 项（四组 12 项 + 工作模块 2 项），总览只保留 4 个常用入口 + 配置问题提醒，因此这条断言改成**方向性**的：总览出现的每一行（常用入口）仍必须在侧栏同名，而侧栏的 14 项不再要求出现在总览里。「已安排」退出常用导航后，走查改为先在设置搜索里输入「已安排」再点结果，并断言页面标题仍是「已安排」（`pnpm run verify:settings-navigation-terminology` 的第 4 步）。记忆树 / 插件两个工作模块从侧边栏直接打开与从设置进入仍是同一标题，关闭设置回到**打开设置前的那一页**；外部渠道页的标题曾是「渠道连接」，与导航条目、空态和反馈文案里的「外部渠道」不一致，已统一为「外部渠道」。
 
 「界面」只放显示偏好（对话显示密度），「Agent 行为」只放 profile 与上下文策略（压缩阈值收在「高级上下文设置」折叠里），权限继续只由输入栏的权限模式控制。
 
