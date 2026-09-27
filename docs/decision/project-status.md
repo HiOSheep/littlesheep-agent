@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-26 15:41:47
+最后更新：2026-09-27 08:55:26
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -169,6 +169,26 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 新增核心协议必须有唯一权威来源；workspace 运行时依赖环、未公开深层 import 和未登记的大型文件会直接使质量检查失败。
 - 不把 API key、会话、记忆、执行日志或工作区产物复制进源码仓库。
 
+## 文件一致性与受控记忆（2026-09-27）
+
+原「Runtime 状态一致性与必要记忆任务书」于 2026-09-27 退役，其仍然成立的事实归入本节（原文见 git 历史）。三项完成记录：**实现完成**、**真实验收完成**、**缓存回归完成**。
+
+**文件侧——观察后才允许覆盖**（`packages/tools/src/file-observation.ts`、`read`/`write`/`edit`/`document_create`）：
+
+- 每次完整且未被清洗/截断的读取才产生 observation（内容哈希 + `coverage: full|partial`）；二进制预览、截断与脱敏**不产生**观察，所以"看过一部分"不能换来完成覆盖。
+- 覆盖已有文件前**按内容哈希**校验：文件被改过 → `observation_stale`；只读过一部分 → `observation_missing`；没有观察端口 → 拒绝而不是猜测。同大小、保留 mtime 的改写同样会被识别。
+- `document_create` 首版只创建新文件：目标已存在即 `target_exists` 拒绝（不为二进制文档扩展覆盖协议）；`exec` 之后相关观察保守失效，后续编辑按陈旧处理。
+- 判断一致性的依据是**最终字节**，不是"有备份"：`pnpm run verify:file-consistency-faults`（11 场景，真实文件与故障注入：同大小改写、其它区域变化、部分读取、截断、目录改 junction 的路径重定向、删除重建、并发创建、跨会话提交、审批被拒、exec 部分失败、进程重启）与 `pnpm run verify:desktop-file-consistency`（14 项检查，真实窗口内"读→用户保存→被拒→重读成功"，并用应用自己的 shadow 版本仓库重建每个历史版本与最终文件对账）。
+- **未覆盖**：回滚检查点失败属桌面入口，未纳入脚本；Windows 上以目录 junction 代替符号链接验证路径重定向。
+
+**记忆侧——受控写入与"相似度只提名"**（详见「会话压缩与记忆写入」一节与 `packages/memory-tree/README.md`）：
+
+- 压缩只产生会话摘要（RS-05）；旧 pending 候选被终止并留档，`pnpm run verify:legacy-data-root-upgrade` 断言每个候选 `rejected` + `terminatedAt` + 点名原因、长期原子 0 → 0、重复压缩不重复结算、无隔离标识/迁移 locator 的数据根受控拒绝（审计可能最终落在 `failed/`，见 `packages/session/README.md`）。
+- 查询向量只在 `deep-search` 边界准备（RS-06A）：D1 索引、`nodeId` 展开与 `expand(query)` 都不走向量，回归见 `packages/memory-tree/src/memory-repository/v3-backend.test.ts`。
+- 常驻验收：`verify:memory-controlled-writes`（10 场景，隔离数据根 + 真实 runner/存储）、`verify:memory-live-model`（真实 DeepSeek `deepseek-flash`，**5/5**：明确记住、新会话召回、自然语言纠正、闲聊不写、忘记生效）。
+- **未覆盖**：真实模型下的"必要决定按需写入"与"含糊指代/跨 scope 拒绝"目前只有确定性验收；真实模型那一轮的纠正行为在描述修正前后各出现过一次失败（见 `packages/memory-tree/README.md`）。
+
+**缓存回归**：本轮变更后的构建上 `pnpm run check:cache-acceptance` 结论 `met`，长任务 `>=95%` 达标 2/2，冻结清单 12 次运行全部通过。
 ## 应用层 UI 与工作区（2026-09-26）
 
 《应用层 UI / UX 优化与统一任务书 2026-09-22》（原 `docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`，已退役）的 UX-32～UX-39 已完成，仍然成立的事实归到本节；逐条实现与逐次实测数字留在 git 历史（`git log --follow -- docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`），每个门证明不了什么写在各门自己的 `limits`。
