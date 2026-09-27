@@ -205,6 +205,17 @@ export function rt03Fixture() {
     expectedFinalVersion: 4,
     // The exact call the two runs must share, so the ledger can compare them by hash.
     frozenCall: { command: 'node tools/run_tests.mjs' },
+    // The host wrote this script and therefore knows what it touches: one file it reads, one it appends
+    // to, and the subject under test. This is the declaration arm B's candidate consumes. It names an
+    // exact command and exact paths — nothing is inferred from the command being called "test".
+    declaredExecScopes: [{
+      command: 'node tools/run_tests.mjs',
+      resources: [
+        { path: 'src/subject.mjs', mode: 'write' },
+        { path: 'tools/run_tests.mjs', mode: 'read' },
+        { path: 'runs/executions.jsonl', mode: 'write' },
+      ],
+    }],
     prompt: [
       '请在当前 workplace 里严格按顺序完成，每一步都要真的调用工具，不要合并步骤：',
       '1) 用 exec 运行命令 `node tools/run_tests.mjs`（不要传 cwd，不要传 timeout_ms），并记录它的输出；',

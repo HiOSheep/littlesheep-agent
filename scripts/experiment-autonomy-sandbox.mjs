@@ -71,6 +71,11 @@ export const BUDGET = Object.freeze({
 const EVIDENCE_ROOT = process.env.LS_EXPERIMENT_EVIDENCE_DIR
   ?? 'D:\\littlesheep-evidence\\RASB-2026-09-27';
 
+/** `--evidenceRoot=` wins so a batch driver can point a whole batch at one directory. */
+function evidenceRootOf(args) {
+  return args.evidenceRoot ?? EVIDENCE_ROOT;
+}
+
 function parseArgs(argv) {
   const args = { mode: undefined, json: undefined, cases: [] };
   for (const raw of argv) {
@@ -86,7 +91,7 @@ function parseArgs(argv) {
 }
 
 function ledgerPath(args) {
-  return args.ledger ?? join(EVIDENCE_ROOT, 'ledger.jsonl');
+  return args.ledger ?? join(evidenceRootOf(args), 'ledger.jsonl');
 }
 
 function out(args, payload, exitCode) {
@@ -170,8 +175,13 @@ async function withWallClock(promise, ms, onTimeout) {
  * the model's response and the Runtime's execution — the "execution boundary" the taskbook names — and
  * records the original proposal next to the transformed input. Arm A and arm B get the identical injector,
  * so a difference between them is the rule under test and not the fault.
+ *
+ * It also normalises the wire model id. `createRunner({ llm })` short-circuits the provider lookup
+ * (`resolveLlm` returns the raw ref as `modelName` when an override is supplied), so a run that injects a
+ * client would otherwise send `deepseek/deepseek-flash` to an API that only knows `deepseek-flash`. The
+ * rewrite is a transport detail of this harness and is applied to every arm, not a rule under test.
  */
-function createInjector(plan) {
+function createInjector(plan, wireModel) {
   const state = { applied: null, attempts: 0 };
   const rewrite = (response) => {
     if (!plan || state.applied) return response;
@@ -199,14 +209,14 @@ function createInjector(plan) {
     call.function.arguments = transformed;
     return response;
   };
+  const onWire = (req) => (wireModel ? { ...req, model: wireModel } : req);
   return {
     state,
     wrap(client) {
-      if (!plan) return client;
       return {
         ...client,
-        chat: async (req) => rewrite(await client.chat(req)),
-        chatStream: async (req, onDelta) => rewrite(await client.chatStream(req, onDelta)),
+        chat: async (req) => rewrite(await client.chat(onWire(req))),
+        chatStream: async (req, onDelta) => rewrite(await client.chatStream(onWire(req), onDelta)),
         embed: client.embed.bind(client),
       };
     },
@@ -228,7 +238,10 @@ function summarizeRun(result, toolEvents) {
   return {
     status: result?.status ?? 'error',
     error: result?.error ? String(result.error).slice(0, 400) : null,
-    iterations: result?.trace?.filter((stage) => stage.name === 'execute').length ?? null,
+    // `trace` is a stage trace, so its `execute` entries count stage traversals, not loop iterations.
+    // The authoritative counters are the Provider's own request count and the recorded invocations.
+    executeStageTraversals: result?.trace?.filter((stage) => stage.name === 'execute').length ?? null,
+    modelCalls: result?.usage?.requestCount ?? null,
     toolCallCount: toolEvents.filter((event) => event.type === 'tool_end').length,
     toolNames: [...new Set(toolEvents.filter((event) => event.type === 'tool_end').map((event) => event.name))],
     webToolEvents: toolEvents.filter((event) => event.type === 'tool_end' && webTools.has(event.name)).map((event) => ({
@@ -774,13 +787,33 @@ async function rt04Checks({ summary, workspace, fixture }) {
   ];
 }
 
+/**
+ * RT-04's control half: the file never changes, so the read-only exemption must not fire at all and the
+ * ordinary bounds (repeat guard, no-progress) still end the polling.
+ */
+async function rt04PollChecks({ summary }) {
+  const successfulReads = summary.invocations.filter((record) => record.tool === 'read' && record.status === 'succeeded').length;
+  const refusedReads = summary.invocations.filter((record) => record.tool === 'read' && record.status === 'repeated_call_blocked').length;
+  return [
+    { id: 'polling_did_not_run_unbounded', pass: successfulReads < 6, detail: { successfulReads, requested: 6 } },
+    { id: 'polling_stopped_with_a_reason', pass: refusedReads > 0 || successfulReads <= 3, detail: { refusedReads, successfulReads } },
+    { id: 'run_answered', pass: typeof summary.reply === 'string' && summary.reply.length > 0, detail: { status: summary.status } },
+  ];
+}
+
 const CHECKERS = {
   'RT-01': rt01Checks,
   'RT-02': rt02Checks,
   'RT-03': rt03Checks,
   'RT-04': rt04Checks,
-  'RT-04-poll': rt04Checks,
+  'RT-04-poll': rt04PollChecks,
 };
+
+/** Same normalisation the file tools use for a resource key, so a declaration can actually match. */
+function normaliseResourcePath(path) {
+  const trimmed = path.replace(/[\\/]+$/u, '');
+  return process.platform === 'win32' ? trimmed.toLocaleLowerCase() : trimmed;
+}
 
 async function runModelCase(args) {
   const caseId = args.cases[0];
@@ -790,7 +823,7 @@ async function runModelCase(args) {
   if (!caseId || !arm || !['A', 'B'].includes(arm)) throw new Error('usage: model --case=<id> --arm=A|B --trial=<n> --batch=<id>');
 
   const fixture = fixtureFor(caseId);
-  const runDir = ensureDir(join(EVIDENCE_ROOT, 'raw-runs', `${batchId}-${caseId}-${arm}-t${trial}`));
+  const runDir = ensureDir(join(evidenceRootOf(args), 'raw-runs', `${batchId}-${caseId}-${arm}-t${trial}`));
   const dataDir = join(runDir, 'data');
   const workspace = join(dataDir, 'workplace');
   await rm(runDir, { recursive: true, force: true });
@@ -800,12 +833,24 @@ async function runModelCase(args) {
   const config = isolatedConfig(caseId === 'RT-01' ? { web: { ...DEFAULT_CONFIG.web, enabled: true } } : {});
   await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(config, null, 2)}\n`, 'utf8');
 
+  // The host declares what its own frozen command touches, in the same resource-key shape the file tools
+  // use. The declaration is part of the run's environment, so arm A receives it too and simply ignores
+  // it; only a candidate that reads it can act on it.
+  const declaredScopes = (fixture.declaredExecScopes ?? []).map((scope) => ({
+    command: scope.command,
+    resources: scope.resources.map((resource) => ({
+      key: `fs:${normaliseResourcePath(resolve(workspace, resource.path))}`,
+      mode: resource.mode,
+    })),
+  }));
+  process.env.LS_EXPERIMENT_EXEC_SCOPES = JSON.stringify(declaredScopes);
+
   const previousDataDir = process.env.LITTLESHEEP_DATA_DIR;
   process.env.LITTLESHEEP_DATA_DIR = dataDir;
   const injectionPlan = args.injection === 'none' || (!args.injection && !isInjectedCase(caseId))
     ? undefined
     : injectionPlanFor(caseId, args.injection);
-  const injector = createInjector(injectionPlan);
+  const injector = createInjector(injectionPlan, BUDGET.model.split('/').slice(1).join('/'));
 
   const provider = config.providers[0];
   const apiKey = process.env[provider.apiKey.slice(1)];
@@ -813,6 +858,7 @@ async function runModelCase(args) {
     out(args, { mode: 'model', caseId, arm, trial, outcome: 'blocked', reason: `${provider.apiKey} is not set` }, 3);
     return;
   }
+  const wireModel = BUDGET.model.split('/').slice(1).join('/');
   const realClient = createLlmClient({ baseURL: provider.baseURL, apiKey, timeoutSeconds: 120 });
   const llm = injector.wrap(realClient);
 
@@ -821,6 +867,7 @@ async function runModelCase(args) {
   const started = performance.now();
   let runner;
   let result;
+  let loopBudget = null;
   let timedOut = false;
   let failure = null;
   const abort = new AbortController();
@@ -832,6 +879,11 @@ async function runModelCase(args) {
       model: BUDGET.model,
       llm,
       skillsDirs: [],
+      // `permissionMode` is only derived when the Runner knows the container root; without it the
+      // gate falls back to `tool.requiresApproval`, and `permissionPolicyId: 'full'` would not mean
+      // what the product means by full access. Pointing the container at this run's own data root is
+      // what makes the two arms run under the same, product-shaped authorization.
+      containerRoot: dataDir,
       log: () => undefined,
     });
     const session = await runner.sessionManager.create(BUDGET.model);
@@ -840,6 +892,7 @@ async function runModelCase(args) {
         sessionId: session.id,
         text: fixture.prompt,
         cwd: workspace,
+        origin: 'test',
         permissionPolicyId: 'full',
         approve: async () => true,
         onToolEvent: (event) => toolEvents.push(event),
@@ -850,11 +903,22 @@ async function runModelCase(args) {
     );
     timedOut = outcome.timedOut;
     result = outcome.value;
+    // The loop budget is persisted on the run checkpoint, not on the result. It is where the
+    // no-progress bound and the iteration ceiling are observable, so RT-04/RT-05 read it.
+    if (result?.runId) {
+      try {
+        const checkpoint = await runner.infra?.runCheckpointStore?.latestForRun?.(result.runId);
+        loopBudget = checkpoint?.loopBudget ?? null;
+      } catch (error) {
+        loopBudget = { unavailable: String(error?.message ?? error).slice(0, 200) };
+      }
+    }
   } catch (error) {
     failure = error;
   } finally {
     if (previousDataDir === undefined) delete process.env.LITTLESHEEP_DATA_DIR;
     else process.env.LITTLESHEEP_DATA_DIR = previousDataDir;
+    delete process.env.LS_EXPERIMENT_EXEC_SCOPES;
   }
 
   const elapsedMs = Math.round(performance.now() - started);
@@ -961,7 +1025,7 @@ function usageOf(result) {
 
 async function runSandboxMode(args) {
   const { runSandboxCases } = await import('./lib/experiment-sandbox.mjs');
-  return runSandboxCases(args, { BUDGET, EVIDENCE_ROOT, REPO_ROOT, ledgerPath: ledgerPath(args), out, gitFacts, sourceDigest });
+  return runSandboxCases(args, { BUDGET, EVIDENCE_ROOT: evidenceRootOf(args), REPO_ROOT, ledgerPath: ledgerPath(args), out, gitFacts, sourceDigest });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────── main
