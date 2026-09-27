@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-27 20:50:19
+最后更新：2026-09-27 21:10:43
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -295,8 +295,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 | 误入库的测试/编译生成物 | 删除 **111** 个（110 个 `cache-scope-matrix-*/*.json` + 1 个 `vitest.config.ts.timestamp-*.mjs`，**271,959 字节**）；跟踪清单中该类产物现为 **0** | `git ls-files` 与逐文件长度 |
 | 生成物来源 | 两个测试的暂存目录改到系统临时区（`mkdtemp(join(tmpdir(), …))`）；中断实测：仓库根不再新增可入库文件 | 杀掉进程后重跑 |
 | 防回流 | 门禁拒绝 4 种生成形状，并校验 4 条忽略规则存在；新增"把门禁拷进临时仓库"的失败用例 | `check:repo` + `scripts/check-repository-hygiene.test.mjs` |
-| 无效依赖边 | 净减少 **4** 条：`packages/tools` 去掉 `@littlesheep/experience`、`@littlesheep/vector`；`packages/experience` 去掉 `zod`、`@littlesheep/types` | 逐包 import 计数（0 引用才删） |
-| ⚠️ 任务书 F-02 的修正 | F-02 误把 `@littlesheep/safety`（`packages/tools` 13 个文件引用）与 `@littlesheep/memory-core`（`packages/harness` 1 个文件）列为无引用，**实测保留** | 同上；文本筛查不是动态依赖证明 |
+| 无效依赖边 | 净减少 **6** 条：`packages/tools` 去掉 `@littlesheep/experience`、`@littlesheep/vector`、`@littlesheep/memory-core`；`packages/harness` 去掉 `@littlesheep/safety`；`packages/experience` 去掉 `zod`、`@littlesheep/types` | 逐包 import 计数（0 引用才删）；F-02 四条候选全部处理完 |
+| ⚠️ F-02 候选的核对更正 | 第一轮把扫描结果**配错了包**：F-02 的候选是 `tools → memory-core` 与 `harness → safety`，而第一轮引用的是无关的另一对边。重新取证后两条候选均**确实无引用**（各自唯一出现即声明行 `tools/package.json:17`、`harness/package.json:26`；无静态引用、无动态 `import()`、无裸名 specifier、无传递需要），故**已删除** → F-02 四条候选至此全部处理完 | 逐包 grep（记住：`tools → safety` 13 个文件与 `harness → memory-core` 1 个文件是另外两条**应当保留**的边） |
 | 未装配工具 | 删除 `createRecordExperienceTool`（250 行，净 −229 生产行，导出 10→8）；`ExperienceStore` 与 CLI `import-repo` 的消费者保持 | 全仓消费者搜索 |
 | `packages/vector` | **已退役**（用户裁定）：无生产/CLI/迁移/脚本消费者；用户 v2 数据库原样留在磁盘，读取实现留在 Git 历史；`sync:tsconfig` 由 28 个引用降为 **27** | 消费者搜索 + 项目图 |
 | 空正文动态 Skill | 普通 run 不再广告 `taskbook`（改前会广告且正文为 `undefined`）；旧 checkpoint 仍读出计划，`execute` 恰好一次、无 `decide` | 在模型请求内读实时描述与 `loadBody` |

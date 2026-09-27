@@ -5,7 +5,7 @@
 
 真实文件一致性验收（RS-07，2026-09-27）：`pnpm run verify:file-consistency-faults` 在临时工作区用**真实文件与真实工具**（`read`/`write`/`edit`/`exec`）验证文件观察守卫，并在每一步断言**磁盘上的字节**而不是工具的自述。覆盖：同大小且保留 mtime 的改写（`observation_stale`）、文件其它区域被改动、部分读取后写入被拒（`observation_missing`）与重读后成功、被截断的读取不产生观察、目录被换成 junction 的路径重定向、删除后重建（同内容放行／不同内容拒绝）、两个会话并发创建、跨会话提交后旧会话被拒、审批被拒时文件不变、`exec` 部分失败后基于旧观察的编辑被拒、以及进程重启后必须重读。报告在 `limits` 里写明未覆盖项（回滚检查点失败属于桌面入口，不在本脚本内）。
 
-最后更新：2026-09-27 20:27:52
+最后更新：2026-09-27 21:10:43
 
 - **可重跑声明**（2026-09-27，HC-04）：`write` 与 `edit` 声明 `reRunnableAfterResourceChange`，表示“同一参数在 Runtime 记录了同资源的后续成功变更之后，可以是一次新的执行”。声明本身不授权任何调用：账本只有在持有该记录时才发放新身份（见 `packages/harness/README.md`）；`exec` 等不透明工具不声明，其同参数重复仍被拒。
 
@@ -34,4 +34,4 @@
 
 - 注册、调度、统一执行、清洗、审批、路径保护和每个内置工具均有同目录测试。
 - 新工具必须定义 schema、权限等级、执行并发策略、资源读写集合、输出上限、中断语义和失败格式；插件与未来 MCP 工具也必须通过统一服务执行。
-- 依赖边收口（2026-09-27，SL-02）：移除实测零引用的 `@littlesheep/experience` 与 `@littlesheep/vector`；保留 `@littlesheep/safety`（本包 13 个文件引用）与 `@littlesheep/types`（35 个文件）——任务书 F-02 曾把 safety 列为无引用，逐条复核后证明该判断有误。
+- 依赖边收口（2026-09-27，SL-02）：移除实测零引用的 `@littlesheep/experience`、`@littlesheep/vector` 与 `@littlesheep/memory-core`（后者在 F-02 首轮核对时被误配到别的包——重新取证后确认本包对它是零引用）。**保留** `@littlesheep/safety`（本包 13 个文件引用）与 `@littlesheep/types`（35 个文件）。

@@ -523,9 +523,6 @@ importers:
       '@littlesheep/documents':
         specifier: workspace:*
         version: link:../documents
-      '@littlesheep/memory-core':
-        specifier: workspace:*
-        version: link:../memory-core
       '@littlesheep/safety':
         specifier: workspace:*
         version: link:../safety
