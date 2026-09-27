@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-27 23:50:40
+最后更新：2026-09-27 23:58:51
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -72,3 +72,11 @@
 ### 并发写作者的干扰（记录在案，不是我的改动）
 
 本轮结束时 `check:repo` 为 **37/38** ✓，唯一失败来自**另一个 agent 在途的 sandbox 工作** ✗：`packages/harness/src/stages/execute/tool-loop.ts`（670 > 受控上限 660 ✓）与 `packages/tools/src/tool-execution-service.ts`（715 > 660 ✓），以及两条对应的拆分地图计数漂移 ✓。这两处**不在本次审计的范围内** ✓，我未触碰 ✓；接手者若看到门禁红，先确认是不是这两个文件 ✓，不要误判成本次扫描的产物 ✗。
+
+### 写冲突与回收事件（2026-09-27 23:57，必须知道）
+
+- **P0 的修复其实一直在被写** ✓：`packages/app/src/renderer/composer/{send-readiness.ts, send-block-notice.tsx, use-model-availability.ts, use-composer-focus.ts}`（新文件）＋ `app-shell/composer-view.tsx`、`composer/runtime-availability.ts`、`runtime-picker.tsx`、`app-shell/chat-view.tsx`、`use-app-controller.ts`、`app-controller-presence`、`composer/focus-routing.ts`、`sidebar/session-actions.ts` 的编辑，时间 23:51–23:55。**它同时覆盖了表内 #1（发送门禁）与 #2（焦点）** —— 设计与我给修复包的指令一致（`describeComposerSendReadiness(availability, executionReason)` → 阻断；发送禁用 + `aria-label` 原因；Enter 同样受门禁；`.composer-send-block` 可见提示）。
+- **我一度误判它已死亡** ✗：给我的包发消息返回 `active teammate not found` ✓，我把这当成"包已死" ✓，实际上包在继续工作、只是**邮箱被回收** ✗。教训：`not found` 只说明**不可寻址** ✓，不等于**没在跑** ✗ —— 判断"有没有人在写"必须看**文件 mtime** ✓（本次正是靠它发现真相 ✓）。
+- **另一份独立取证包（`ca2ee04e`）报了冲突并提议正确的分工** ✓：它不重复实现 ✗，改为**独立产证** ✓（全新根无 key → 拒绝 + 无 run 启动 + `/run/stream` 从未 POST + 覆盖 Enter；配好供应商 → 端到端仍可发送 ✓），并等树稳定（静默 5 分钟 + typecheck 干净 ✓）后再构建 ✓，以免两个并发构建互相覆盖 `packages/app/out` ✓。**它的判断与建议都对** ✓ —— 但我**无法回复它**（同样不可达 ✗），所以这条分工只保留在这里 ✓。
+- **该修复批次当前是红的** ✗，因此**没有提交** ✓：`tsc -b` exit 0 ✓，但渲染器套件 2 项失败 ✗ —— `composer/control-surface-style.test.ts`（"reuses the workspace tab frame treatment across non-submit controls" ✗，疑与 V1/V3 的样式层改动交互 ✓）与 `composer/runtime-availability.test.ts`（"offers the action inside the empty picker menu instead of only a title" ✗，写者自己的新测试 ✓）。**红就是红** ✓：表内 #1/#2 状态保持"修复中" ✓。
+- **命令可用性坑** ✗：末期某些 shell 里 `pnpm`/`pnpm.cmd` **不在 PATH** ✗，而我最初两次把"命令没跑起来"当成了"检查通过" ✗（`$out` 为空是报错造成的 ✗ 不是通过 ✓）。**正确做法**：用 `node node_modules/typescript/bin/tsc -b tsconfig.workspace.json --pretty false` 与 `node node_modules/vitest/vitest.mjs run <paths>` 直调 ✓，并以 **exit code** 判定 ✓ —— 上表结论即由这两条命令得出 ✓。
