@@ -1,6 +1,6 @@
 # LLM Call Contract 边界
 
-最后更新：2026-09-22 12:40:16
+最后更新：2026-09-27 17:54:14
 
 本目录定义 Core Flow 每种模型调用的版本化认知契约。
 
@@ -11,4 +11,4 @@
 
 本目录只拥有调用策略模板和解析，不拥有 Prompt 正文、Context 内容、工具实现或记忆存储。公共类型唯一来源是 `@littlesheep/types`，请求记录入口是 `../model-observability.ts`，契约校验与 reasoning 偏好在 `../model-request-contract.ts`，Context 强制执行位于 `@littlesheep/context`。
 
-契约负责声明调用目的、允许输入、可作决定、输出结构、记忆意图、工具权限和预算。模型请求仍由 Context Engine 装配，工具执行和记忆提交仍只由运行时完成，持久记忆的写入方只剩压缩路径。每轮另有模型调用硬上限；用户可见的回复、任务说明、执行结论和澄清必须来自真实调用，模型已通过 `request_user_input` 写好的提问按原样发布、不再二次措辞，`FINALIZE` 明确禁止额外模型调用。定向验证位于 `../model-observability.test.ts`，多调用隔离由 `../e2e.test.ts` 覆盖。
+契约负责声明调用目的、允许输入、可作决定、输出结构、记忆意图、工具权限和预算。模型请求仍由 Context Engine 装配，工具执行和记忆提交仍只由运行时完成；持久记忆的写入方是受控的 `memory_write`/`memory_manage`，压缩路径只产生会话摘要。每轮另有模型调用硬上限；用户可见的回复、任务说明、执行结论和澄清必须来自真实调用，模型已通过 `request_user_input` 写好的提问按原样发布、不再二次措辞，`FINALIZE` 明确禁止额外模型调用。定向验证位于 `../model-observability.test.ts`，多调用隔离由 `../e2e.test.ts` 覆盖。

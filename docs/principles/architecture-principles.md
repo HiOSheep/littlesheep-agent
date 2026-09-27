@@ -1,7 +1,7 @@
 # LittleSheep 架构原则
 
 状态：规范性文档
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-27 17:54:14
 
 本文定义 LittleSheep（LS）长期开发必须遵守的架构原则。它回答“系统各部分应当如何分工”，不记录某一阶段的完成进度，也不直接作为发送给模型的 System Prompt。
 
@@ -433,9 +433,9 @@ Atom 的动态字段必须分工明确：`confidence` 表示陈述可靠性，�
 
 项目记忆在逻辑上跟随项目，并采用“私有权威数据 + 可选项目内投影”的双层策略：完整、可审计的权威数据默认位于 LS 用户数据目录并以稳定 project id 关联；只有用户明确启用后，才在项目目录写入经过筛选的投影。运行时项目内投影默认仍属于私有 Agent 数据，不建议提交到线上仓库；创建前必须说明用途、包含内容、隐私边界、同步方向、建议的 Git 忽略方式和误提交风险。若用户确实需要共享项目背景，应使用单独的“可共享导出”动作和更严格的字段白名单，不能把运行时投影直接改名为公开文档。任何投影都不得包含密钥、私密用户画像、完整执行日志或其他不适合进入项目仓库的数据。
 
-记忆写入必须沿层级和索引确定 domain、parent、scope、tier、statement kind、epistemic status、authority scope、对话来源、外部证据、置信度、重要性、时间语义和理由，并经过安全、去重、合并、预算和审计校验。`sourceRefs` 只引用对话原始来源；工具、VERIFY、外部文档和其他佐证进入 `evidenceRefs`，两者不得混用。建议只能以 proposal/hypothesis 状态保存；事实主张必须保留验证状态；用户目标、偏好和决定按其权威范围保存，不能与客观技术事实混写。模型没有持久记忆的写入工具（见本节开头），它只能提出结构化候选意图并在当前 run 内请求加入或释放 atom；它不能直接改写对话原始来源、提交持久 mutation、覆盖认识状态或解决冲突。运行时依据真实来源、`MemoryUpdateEvent`、工具证据和 VERIFY 结果决定是否更新 Atom 投影。默认 UI 不打扰用户；GUI 只开放记忆文件视图和 `SOUL.md` 编辑。完整 Atom 变更记录仍必须在内部可审计、可导出并能按治理规则失效、恢复或重建，后续若新增高级治理入口，也必须操作 Runtime 的同一份数据而不是展示副本。
+记忆写入必须沿层级和索引确定 domain、parent、scope、tier、statement kind、epistemic status、authority scope、对话来源、外部证据、置信度、重要性、时间语义和理由，并经过安全、去重、合并、预算和审计校验。`sourceRefs` 只引用对话原始来源；工具、VERIFY、外部文档和其他佐证进入 `evidenceRefs`，两者不得混用。建议只能以 proposal/hypothesis 状态保存；事实主张必须保留验证状态；用户目标、偏好和决定按其权威范围保存，不能与客观技术事实混写。模型只能通过受控的 `memory_write`/`memory_manage` 提交持久写入（见本节开头）：它不能直接改写对话原始来源、提交持久 mutation、覆盖认识状态或解决冲突，写入仍要经过 Runtime 的来源、认识状态、去重、审计与恢复校验。运行时依据真实来源、`MemoryUpdateEvent`、工具证据和 VERIFY 结果决定是否更新 Atom 投影。默认 UI 不打扰用户；GUI 只开放记忆文件视图和 `SOUL.md` 编辑。完整 Atom 变更记录仍必须在内部可审计、可导出并能按治理规则失效、恢复或重建，后续若新增高级治理入口，也必须操作 Runtime 的同一份数据而不是展示副本。
 
-压缩路径中的模型只能描述 domain、statement kind、asserted source 和 topics，不能声明 verified、authority 或 resolution。Runtime 必须把 asserted source 与实际对话来源、成功工具结果或外部资源证据对账；对账失败时降级为 LS 自身的未验证陈述，并移除不可信主体标识。旧式 daily 原文追加到 `MEMORY.md` 的蒸馏路径不得存在；任何压缩、蒸馏或提升都只能产生结构化 Atom 提案，再经过同一套来源、认识状态、去重、审计与恢复校验。
+写入路径中的模型只能描述 domain、statement kind、asserted source 和 topics，不能声明 verified、authority 或 resolution（受控写入工具以中性的 `tool` stage 调用 `resolveMemoryWriteEpistemic`）。Runtime 必须把 asserted source 与实际对话来源、成功工具结果或外部资源证据对账；对账失败时降级为 LS 自身的未验证陈述，并移除不可信主体标识。旧式 daily 原文追加到 `MEMORY.md` 的蒸馏路径不得存在；压缩只产生会话摘要，不再产生或结算 Atom 候选，任何记忆写入都只能经受控工具并经过同一套来源、认识状态、去重、审计与恢复校验。
 
 ## 8. Tool Execution Service
 

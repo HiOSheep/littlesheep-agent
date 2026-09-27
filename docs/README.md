@@ -1,12 +1,12 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-27 10:19:30
+最后更新：2026-09-27 17:59:27
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
 ## 现在先做什么
 
-**当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，持久记忆的唯一写入方是会话压缩路径。
+**当前阶段**：活动路由只产出两条路径——所有常规会话与任务回合都进入单一主循环 `execute`，只有能力/状态询问走最小 Runtime 事实契约的 `reply`；`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动（缺少信息时由回复本身追问，或由主循环的 `request_user_input` 与恢复升级到达 `ASK_USER`）。DECIDE、VERIFY 模型调用、RECOVER 模型调用和 CAPTURE 已删除：已持久化的 TaskBook 只作为可读历史，步骤在主循环内串行推进；本回合无权使用的工具在执行时被拒绝，而广告给模型的工具目录在整个会话区间内保持固定；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`）；持久记忆由受控工具 `memory_write`/`memory_manage` 写入，会话压缩只产生摘要——当前事实、理由与验收入口统一由[项目状态](decision/project-status.md)的「会话压缩与记忆写入」维护，本页不复述。
 
 **推荐下一步**：按[项目状态](decision/project-status.md)的「推荐后续顺序」推进。原 Runtime 状态一致性与必要记忆任务书（2026-09-22）已于 2026-09-27 退役——文件一致性、受控记忆写入、向量边界、真实模型与旧数据根验收全部完成，仍然成立的事实归入项目状态的「文件一致性与受控记忆（2026-09-27）」，原文见 git 历史。
 
@@ -36,6 +36,8 @@
 
 ## 已决定方向后再看任务书
 
+- [整仓瘦身与冗余收口任务书 2026-09-27](taskbooks/repository-slimming-taskbook-2026-09-27.md)：区分源码维护、发布载荷与本地磁盘；记录生成物误入库、无效依赖边、遗留工具、安装包跨平台资产及文档漂移，按 SL-00～SL-08 执行和验收。当前仅完成审查，清理尚未实施。
+- [整仓瘦身基线账本（SL-00）2026-09-27](reference/repository-slimming-baseline-2026-09-27.md)：把改动前基线绑定到 HEAD `ec527a7e` 与工作区差异摘要——`git ls-files` 1,930 项 / HEAD blob 18,351,219 字节、package TS/TSX 非测试 153,887 行与测试 96,273 行、`scripts/` 67,377 行、111 个误入库生成物（271,959 字节，测量时已由 SL-01 从工作树删除）、只读现算的 App 构建 input/output 指纹、本地目录字节与 win32/x64 平台；同时记录 SL-03 的改动前后与 taskbook Skill 取证输出。未重建、未运行，因此不含提速结论。
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
 
 ### 当前主线
@@ -57,29 +59,26 @@
 
 ### 任务书生命周期
 
-任务书保存阶段设计和验收记录，不代表全局最新状态。不要通过比较任务书日期判断下一步。
+任务书保存阶段设计和验收记录，不代表全局最新状态；不要通过比较任务书日期判断下一步。一份任务书完成后不再留在仓库里：先把仍然成立的事实汇总到拥有它的常驻文档，再取消追踪，原文保留在 git 历史中。规则细节、任务书数量预算，以及"判定依据不足的文档不得由实现者直接删除、有争议先记录待裁定项由用户裁定"由[仓库指南](reference/repository-guide.md)拥有，本页不复述。
 
-**任务书完成后不再留在仓库里**：先把仍然成立的事实汇总到拥有它的常驻文档（项目状态、架构决策报告、架构原则、`reference/` 对应参考），再用 `git rm` 取消追踪并删除本节条目；原文保留在 git 历史中（`git log --follow -- <path>` 可取回）。仓库自检对 `docs/taskbooks/` 下的任务书数量设有预算，超预算时先退役已完成的任务书再新增。规则细节见[仓库指南](reference/repository-guide.md)。
+已退役文档与事实去向（逐份的阶段结论、验收数字与逐条证据只在 git 历史，用 `git log --follow -- <path>` 取回）：
 
-2026-09-22 已按此规则退役第一批已完成/已失效文档（7 份任务书 + 1 份参考），其中事实已分别归入 `AGENTS.md`、项目状态与遗留参考；那一轮的逐条结论、逐份去向与证据更正记录在《文档退役审查记录 2026-09-22》里，该记录随后于 2026-09-24 退役（原文可取回：`git log --follow -- docs/reference/document-retirement-review-2026-09-22.md`）。**判定依据不足的文档不得由实现者直接删除**：对是否应退役有争议时，先在项目状态或本页记录待裁定项与理由，由用户裁定后再执行。
+| 退役日期 | 文档 | 仍成立事实的当前所有者 |
+| --- | --- | --- |
+| 2026-09-22 | 第一批已完成/失效文档（7 份任务书 + 1 份参考） | `AGENTS.md`、[项目状态](decision/project-status.md)；逐条去向与证据更正曾记录在《文档退役审查记录 2026-09-22》（其后于 2026-09-24 退役，原文见 git 历史 `docs/reference/document-retirement-review-2026-09-22.md`） |
+| 2026-09-24 | 对话执行可靠性修复任务清单 2026-09-23（CE-01～CE-13，65 条验收项完成） | [项目状态](decision/project-status.md)（核心流程与状态边语义、尾部账本与运行时简报、工作区事实与配置保存事务、交付门与探针）、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)（验证分界、不可重试的恢复、交付优先、越权调用与提问轮边界）、[Core Flow 状态契约](reference/core-flow-state-contract.md)；两条未闭环（受限模式的批准对话框、强杀重启后的并发恢复租约）在项目状态的"未完成方向" |
+| 2026-09-24 | 桌面冷启动体验与加载策略优化任务书 2026-09-23（CS-01～CS-10，59 条验收项完成） | [桌面冷启动基线](reference/cold-start-baseline/README.md)（全部指标、逐次账本、边界与复现命令，含 2026-09-24 人工确认范围与仍未闭环项）、[项目状态](decision/project-status.md)（选中会话与全局工作区的分离、恢复期路由隔离） |
+| 2026-09-24 | Agent Runtime 连续性任务书 2026-07-14 | 机制已被后续架构取代（DECIDE 与工具提议路径、TaskBook 步骤执行器、逐请求时钟注入、记忆管理页均已删除）；五项未完成方向归入[项目状态](decision/project-status.md) 的"未完成方向"，其中原先无所有者的任务效率基线进入"P1：效率基线" |
+| 2026-09-24 | 真实长任务缓存红线任务书 2026-09-22（LT-00～LT-08） | [缓存 95% 验收规程](reference/cache-95-acceptance.md)（指标定义、验收规程、实测边界、未汇总项）、[项目状态](decision/project-status.md)（使前缀可复用的架构事实、休眠但未修复的前缀稳定性问题）、[缓存基线](reference/cache-baseline/README.md)（逐次原始数字）与各 package README |
+| 2026-09-24 | 网络检索发布清单 2026-08-29 / 网络检索供应链审查 2026-08-29 | [网络检索安全合并验收](reference/web-retrieval-security-acceptance-2026-08-29.md)（环境限制、发布当天复核清单、发布阻断条件、已知限制、Web 包依赖边界、许可证缺口、Tavily 公开条款快照、发布扫描规则）、[生产依赖安全记录](reference/production-dependency-security.md)（组合/替代许可证清单） |
+| 2026-09-24 | OpenCode VS Code 对标记录 2026-08-13 | 文件树虚拟化的结论归[项目状态](decision/project-status.md)（决定不做虚拟化）；当时吸收的 5 项改动由 `packages/app/src/renderer/` 各领域 README 拥有；**审阅侧栏独立宽度、行级评论持久性与真正的 VS Code 扩展目前没有所有者**，属产品面/数据模型决定且不排期，细节（上游 commit、许可证、扩展体积与关键源码链接）只在 git 历史 `docs/reference/opencode-vscode-comparison-2026-08-13.md` |
+| 2026-09-24 | 缓存基线 5 份被取代或只是账本渲染的文档 | [缓存基线](reference/cache-baseline/README.md) 的批次历史表；机器可读账本 `.json` 全部保留（gate 输入，且冷启动/重建/尾部三类分解的唯一副本） |
+| 2026-09-26 | 应用层 UI / UX 优化与统一任务书 2026-09-22（UX-32～UX-39） | [项目状态](decision/project-status.md) 的"应用层 UI 与工作区（2026-09-26）"（含"同一批验收记录的开放边界"）与各 package / 领域 README、`scripts/README.md`；本轮修掉的四个真实窗口缺陷（终端面板空面板、切回标签键盘失效、每会话一条流耗尽连接、重放污染下一条命令）记录在同文件的终端会话条目 |
+| 2026-09-27 | Runtime 状态一致性与必要记忆任务书 2026-09-22、Harness 当前语义与历史复杂度收口任务书 2026-09-25、对话任务连续性 P0 专项任务书 2026-08-13 | [项目状态](decision/project-status.md) 的三个对应小节（"文件一致性与受控记忆（2026-09-27）"、"Harness 当前语义（2026-09-27）"、"对话连续性（2026-09-27）"） |
 
-2026-09-24 按同一规则退役《对话执行可靠性修复任务清单 2026-09-23》（CE-01～CE-13）：65 条验收项全部完成，含真实模型 + 真实 Electron 窗口的交付门与 5 局人工试玩。仍然成立的事实已归入[项目状态](decision/project-status.md)（核心流程与状态边语义、尾部账本与运行时简报、工作区事实与配置保存事务、交付门与探针、未完成方向）、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)（验证分界、不可重试的恢复、交付优先、越权调用与提问轮的边界）与 [Core Flow 状态契约](reference/core-flow-state-contract.md)（提问轮与升级后的终态），实现细节落在各 package/领域 README。仍未闭环的两条写在项目状态的"未完成方向"里：受限模式的批准对话框未在真实窗口走过；`verify:electron-deepseek-parallel-load` 在强杀重启后并发恢复检查点时报 `active resume lease`（属运行状态一致性方向）。
+本页保留的机器事实：`check:repo` 的 `required` 列表不固定任何任务书（`scripts/check-repository-hygiene.mjs:189-199`），任务书数量受[仓库指南](reference/repository-guide.md)所述预算约束。
 
-2026-09-24 同日退役《桌面冷启动体验与加载策略优化任务书 2026-09-23》（CS-01～CS-10，59 条验收项全部完成）。退役依据是自动化实机证据与用户人工验收都已齐备：真实窗口账本覆盖五时间点基线、三种窗口宽度的像素、未就绪期间的输入/切换/发送门禁、失败态与有界重试、恢复归属、右侧工作区的三指标与切换/竞争/窗口隐藏健壮性、CS-09 三档启动的摆放实拍，以及 CS-10 的大历史数据根（400/1200 分区下执行就绪 1191/1233 ms、缓存首次 1 次请求/重访 0 次/0 取消、打包版 1497 ms 同样 0 失败）；缩放与壁纸、交接瞬间、失焦与最小化、系统重启后冷启动、安装包实机、改选目录与真实续接由用户 2026-09-24 人工确认无问题。仍然成立的事实已归入[桌面冷启动基线](reference/cold-start-baseline/README.md)（全部指标、账本、边界与复现命令）、[项目状态](decision/project-status.md)（选中会话与全局工作区的分离、恢复期路由隔离）与各 package / 领域 README；未消失的边界（合成数据根只证明机制、缓存夹具无消息、DPR 代理不等于真实缩放、后台扫描无完成信号、安装包未签名）都写在基线的对应小节，原文保留在 git 历史（`git log --follow -- docs/taskbooks/desktop-cold-start-taskbook-2026-09-23.md`）。
-
-2026-09-24 同日退役《Agent Runtime 连续性任务书 2026-07-14》。它的退役理由不是"阶段全部完成"，而是**机制已被后续架构取代**：DECIDE 与工具提议路径、TaskBook 步骤执行器与步骤级并行、逐请求时钟注入、记忆管理页都已删除或改义，旧阶段计划无法再执行，其阶段号也不再对应任何运行路径。退役前逐条复核了 2026-09-22 审查列为"保留"理由的五项未完成方向，全部由常驻文档承接：Pro/其它 Provider 模型专用校准、非字段事实普遍连续性、外部系统副作用与真实网络中断、长期真实用户负载见[项目状态](decision/project-status.md) 的"未完成方向"P0，数据根迁移真实场景见同文件"桌面应用与数据版本"，原先唯一没有所有者的**任务效率基线**新写入项目状态的"P1：效率基线"（四档任务集、十项指标、与裸模型及成熟 Agent 对比）。其余仍然成立的事实分别由[架构原则](principles/architecture-principles.md)、[核心 Agent 流程规范](principles/core-agent-flow-guidelines.md)、[UI 交互规范](principles/ui-interaction-guidelines.md)、[仓库指南](reference/repository-guide.md) 与各 package README 拥有，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。同日从 `check:repo` 的 `required` 列表移除该文件，`required` 不再固定任何任务书。
-
-2026-09-24 同日退役《真实长任务缓存红线任务书 2026-09-22》（LT-00～LT-08）。退役依据是交付物已达成且有机器可判定的入口：`pnpm run check:cache-acceptance` 当前结论 **met**（长任务 2/2、冻结清单 12 次运行通过回归口径），用户此前已确认该缓存专项完成。退役前把仍然成立的事实分别归入常驻文档：[缓存 95% 验收规程](reference/cache-95-acceptance.md)（指标定义、验收规程、实测边界，以及可核对费用与两类 usage 缺口的未汇总项）、[项目状态](decision/project-status.md)（使前缀可复用的架构事实、压缩不触发导致记忆不写入、休眠但未修复的前缀稳定性问题）与 harness README（`tool_choice` 必须保留目录与 `auto`）；逐次原始数字留在[缓存基线](reference/cache-baseline/README.md)，历史验收数字只保留在 git 历史（`git log --follow -- docs/taskbooks/real-long-task-cache-taskbook-2026-09-22.md`）。原任务书列为退役前置的两份文档（项目状态、缓存验收规程）已提交定稿，不再构成阻塞。
-
-2026-09-24 同日退役两份网络检索参考文档：《网络检索发布清单 2026-08-29》与《网络检索供应链审查 2026-08-29》。两者是同一专项下与验收报告重叠的派生记录，且各自的头部结论已被后续事实推翻（漏洞读数已被 2026-09-22 修复取代、依赖数与 DNS 机制已变、发布门与验收报告重复）。退役前把仍然成立的独有事实并入[网络检索安全合并验收](reference/web-retrieval-security-acceptance-2026-08-29.md)（环境限制、发布当天复核清单、发布阻断条件、已知限制、Web 包依赖边界、许可证缺口、Tavily 公开条款快照、发布扫描规则）与[生产依赖安全记录](reference/production-dependency-security.md)（组合/替代许可证清单），实现状态与发布门仍由契约 + 验收报告维护；原文保留在 git 历史（`git log --follow -- docs/reference/web-retrieval-release-checklist-2026-08-29.md`、`git log --follow -- docs/reference/web-retrieval-supply-chain-review-2026-08-29.md`）。
-
-2026-09-24 同日退役《OpenCode VS Code 对标记录 2026-08-13》（连同它的待办归属一起收口）：其结论按性质全部有主——大仓库文件树虚拟化 → UI/UX 任务书的 UX-17（基准先行；该任务书已于 2026-09-26 退役）、审阅侧栏独立宽度 → UX-18，行级评论持久性与真正的 VS Code 扩展 → 同一任务书第 7 节（标明属产品面/数据模型决定、当前不排期）；上游 commit、许可证、扩展体积与关键源码链接也留存在第 7 节，当时已吸收的 5 项改动由 `packages/app/src/renderer/` 各领域 README 拥有。同日退役《文档退役审查记录 2026-09-22》：它是一次性审查的过程记录，其中的裁定此后已全部执行完毕（被列为"保留"的 agent-runtime 任务书、对标记录与本次一并处置，对话连续性 P0 仍在跟踪且头部已按后续复核更新，模块图与仓库指南的修正已落地），原文只保留在 git 历史（`git log --follow -- docs/reference/document-retirement-review-2026-09-22.md`）。
-
-2026-09-24 同日退役缓存基线里 5 份被取代或只是账本渲染的文档：《改动前基线》《任务区间回放后》《回放与压缩修复后》《强制收尾修复后》四份逐批快照的机器可读账本（`.json`）与仍然成立的结论改由[缓存基线](reference/cache-baseline/README.md) 的批次历史表承接，`baseline-git-0af62a7.md`（其共享前缀读数被同目录 README 判定为误测）直接删除；当前红线证据（L1 长任务、重启、空闲）与验收门读取的两个账本全部保留，原文见 git 历史。
-
-2026-09-26 退役《应用层 UI / UX 优化与统一任务书 2026-09-22》（UX-32～UX-39 全部完成；UX-01～UX-31 的已完成部分此前已整项退役）。退役依据是八个待办各自的**真实窗口或真实进程**门都跑通并留下结果：`verify:transcript-state-visibility`（新门，五类需要注意的事实 × 普通/紧凑两种显示模式）、`verify:conversation-workspace-scenarios`（终端 8 会话上限的可见拒绝与无孤儿创建、隐藏保活、关闭面板清理全部会话）、`verify:workspace-terminal`（首次跑通）、`verify:electron-ui-state-continuity`（第二个工作区根的归属与重启现场）、`verify:html-preview-baseline`（磁盘/草稿断言、CSS/JS 同夹具审查链、回环地址与"不替用户启动项目脚本"）、`verify:review-refresh-errors`、`verify:workspace-large-directory`，以及 Git Bash 实机验收与对应单测。仍然成立的事实已归入[项目状态](decision/project-status.md) 的"应用层 UI 与工作区（2026-09-26）"小节（含**同一批验收记录的开放边界**：安装包未验证、无录屏能力、"流式文字变色"未复现、重载后点活动会话行会卡在加载历史、面板全屏的视觉加宽无证据、`waiting_user` 只能以待批准形态取证），实现边界落在 `packages/app/src/main/README.md`、`packages/app/src/renderer/workspace/README.md`、`packages/app/src/renderer/chat/README.md`、`packages/app/src/shared/README.md` 与 `scripts/README.md`。本轮同时修掉四个只在真实窗口里暴露的缺陷（终端面板在身份切换后变成空面板、切回标签后键盘失效、每会话一条流耗尽浏览器连接、重放历史使终端重答设备查询而污染下一条命令）；原文保留在 git 历史（`git log --follow -- docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`）。
-
-任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径：`respond` 在路由边界归一为 `execute`，`clarify` 不是可路由活动；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点、LLM Call Contract 和兼容字段里，不得再作为新的产品概念使用。
+任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点与兼容字段里，不得再作为新的产品概念使用——路由与兼容边界由[项目状态](decision/project-status.md)的"核心流程（当前）"与 [Core Flow 状态契约](reference/core-flow-state-contract.md)拥有。
 
 ## 需要定位代码或维护仓库时
 

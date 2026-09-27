@@ -1,6 +1,6 @@
 # LittleSheep 核心 Agent 流程规范
 
-最后更新：2026-09-24 21:29:06
+最后更新：2026-09-27 17:54:14
 
 本文是 [LittleSheep 架构原则](architecture-principles.md) 在 Core Flow、TaskBook、验证、恢复和记忆运行时上的专项约束。LLM 与 Agent、Mode 与权限、Context 与 Memory、Harness 与 Tool Execution 的顶层分工以架构原则为准；本文不重复维护另一套总架构。
 
@@ -165,7 +165,7 @@ ASK_USER 不是可路由活动，只有两条到达路径：
 - User Memory、Agent Self Memory、Task/Project/Session Memory 和 Knowledge Memory 使用同一套索引与写入协议。任何 domain 都按 D0 可发现索引、D1 摘要元数据、D2 原子正文、D3 来源与审计渐进展开；D0-D3 不等同于 T0-T3。
 - Memory Repository 还要登记用户、项目、文件、会话、任务、Skill、工具、规则和概念等实体，以及属于、依赖、引用、冲突、替代、派生、相似、影响和证据支持等有向关系。D0/D1 只给出边界和最强相关关系，D2 按任务展开局部关系邻域，D3 才读取完整证据与历史；关系可以在严格边界内发现候选，但不能直接触发事实确认、合并或无条件注入。
 - LS 自身记忆中的学习经验、工具技巧和失败教训可以持续更新，但不能覆盖高权威身份、安全规则、架构原则或用户当前要求；用户推断与用户明确陈述也必须分开存放和披露。
-- V3 backend 激活后，Runner 在每轮结束时补齐该轮全部对话原始来源；压缩路径写入 Atom 前先持久化其 `sourceRefs`，来源捕获失败时延期投影写入。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。影响 Atom 的用户纠正、工具/VERIFY 证据、项目/资源变化、能力变化、冲突处理和时间到期统一生成版本化 `MemoryUpdateEvent`，并先写入只追加的投影变更记录，再登记到可恢复 journal，随后幂等更新 Atom 与 catalog；mutation 提交后另写 append-only commit receipt。投影变更记录落盘后即使在 journal 登记前崩溃，也必须在重启时自动补投影；catalog 重建使用 receipt 区分历史已提交记录与真正待恢复记录，禁止倒放旧 mutation 覆盖较新 Atom。处理失败进入恢复状态，禁止只更新内存或静默覆盖对话来源。
+- V3 backend 激活后，Runner 在每轮结束时补齐该轮全部对话原始来源；受控记忆写入在写 Atom 前先持久化其 `sourceRefs`，来源捕获失败时延期投影写入（压缩路径只产生会话摘要，不再写 Atom）。正式 V2 路径在迁移前继续以会话 JSONL 保存可见对话，不提前创建 V3 来源文件。影响 Atom 的用户纠正、工具/VERIFY 证据、项目/资源变化、能力变化、冲突处理和时间到期统一生成版本化 `MemoryUpdateEvent`，并先写入只追加的投影变更记录，再登记到可恢复 journal，随后幂等更新 Atom 与 catalog；mutation 提交后另写 append-only commit receipt。投影变更记录落盘后即使在 journal 登记前崩溃，也必须在重启时自动补投影；catalog 重建使用 receipt 区分历史已提交记录与真正待恢复记录，禁止倒放旧 mutation 覆盖较新 Atom。处理失败进入恢复状态，禁止只更新内存或静默覆盖对话来源。
 - 时间变化通过 `effectiveAt`、`expiresAt`、`revalidateAt`、`lastUsefulAt` 和 due index 处理。运行中在安全边界近实时消费，到应用关闭期间跨过的时间点在下次启动补偿；不允许为“实时”无界轮询全部记忆或监控未授权文件。
 - 不失忆依赖持久权威副本、稳定索引、事件 journal、版本和恢复验证，不依赖全量 Prompt。当前请求不相关的记忆可以不注入，但必须仍可沿索引重新发现；用户批准的删除和到期清理仍按 tombstone、引用检查与审计执行。
 - 超出预算的结果返回摘要或可继续展开的索引，不直接塞入一段被截断的原始正文。

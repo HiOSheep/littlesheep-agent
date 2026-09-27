@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-09-24 20:56:17
+最后更新：2026-09-27 17:54:14
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -25,7 +25,7 @@
 1. **先汇总事实**：把其中仍然成立的内容（当前行为、契约、边界、已核验的数字）写进拥有该事实的常驻文档——当前事实进[项目状态](../decision/project-status.md)，演进顺序与取舍进[架构决策报告](../decision/architecture-decision-report.md)，长期约束进[架构原则](../principles/architecture-principles.md)，流程与状态契约进[核心流程规范](../principles/core-agent-flow-guidelines.md) 与 [Core Flow 状态契约](core-flow-state-contract.md)，代码归属进本指南与[模块拆分地图](module-split-map.md)。逐条确认没有常驻文档缺失该事实后，才进入下一步。
 2. **再取消追踪**：`git rm <file>`（同时删除工作区文件），并从[文档决策入口](../README.md)的任务书清单里删除对应条目。文件内容仍完整保留在 git 历史中（`git log --follow -- <path>` 可取回原始文本），所以这一步不丢证据，只防止仓库文档持续膨胀。
 
-未完成的任务书继续跟踪，并在入口的"当前主线"里列出。已完成但尚未汇总事实的任务书**不得**直接删除；入口的"已完成基线/专项与历史执行基线"分组只用于尚未走完这两步的过渡期，不应长期存在。仓库自检对 `docs/taskbooks/` 下的跟踪文件数量设有预算，超预算时必须在退役已完成任务书与新增任务书之间做取舍，而不是继续累加。
+未完成的任务书继续跟踪，并在入口的"当前主线"里列出。已完成但尚未汇总事实的任务书**不得**直接删除；入口的"已完成基线/专项与历史执行基线"分组只用于尚未走完这两步的过渡期，不应长期存在。仓库自检对 `docs/taskbooks/` 下的跟踪文件数量设有预算，超预算时必须在退役已完成任务书与新增任务书之间做取舍，而不是继续累加。**判定依据不足的文档不得由实现者直接删除**：对是否应退役有争议时，先在[项目状态](../decision/project-status.md)或[文档决策入口](../README.md)记录待裁定项与理由，由用户裁定后再执行。
 
 **package / 领域 README 是随代码一起维护的所有权说明。** 每个 workspace package（`packages/*`、`packages/channels/*`）和每个领域目录（例如 `packages/app/src/main`、`packages/app/src/renderer/chat`、`packages/harness/src/stages/execute`）都有自己的 `README.md`，内容是**当前**职责、入口、边界、依赖方向和验证方式。规则：
 
@@ -138,7 +138,7 @@ MCP 客户端当前尚未实现，也不保留空 workspace 包；未来实现�
 | 配置、Provider/模型能力 | `packages/config/` | `src/schema.ts`、`src/model-capabilities.ts` | `src/schema.test.ts`、App shared capability 测试 |
 | Prompt 与行为 profile | `packages/prompt/` | `src/builder.ts`、`src/profiles.ts` | `src/builder.test.ts`、`src/profiles.test.ts` |
 | 记忆树、资源注册与项目投影 | `packages/memory-tree/` | 稳定 facade：`src/memory-service.ts`、`src/memory-repository.ts`；对话原始来源：`src/conversation-source-store.ts`；run 反馈：`src/memory-feedback.ts`、`src/memory-repository/v3-feedback-manager.ts`；run working set：`src/memory-tree-working-set.ts`；多轮任务语义、当前任务相关度与 prime 选择：`src/task-query.ts`、`src/task-relevance.ts`、`src/memory-prime-relevance.ts`；D1/深搜候选：`src/memory-repository/v3-retrieval.ts`、`v3-retrieval-materializer.ts`；Catalog FTS/向量：`src/v3/catalog-fts.ts`、`catalog-embedding.ts`；路由/关系相关性：`src/v3/priority.ts`、`src/v3/catalog-relevance.ts`；版本后端：`src/memory-repository/v2-backend.ts`、`v3-backend.ts`、`factory.ts`；安全迁移：`repository-locator.ts`、`v3-migration*.ts`；v3 投影变更与 Atom：`src/v3/raw-record-store.ts`、`raw-record-file.ts`、`raw-record-commit-store.ts`（兼容内部命名，语义为 projection mutation records）、`atom-store.ts`、`catalog.ts`、`graph-store.ts`、`storage-coordinator.ts` | 双后端契约：`src/memory-repository.contract.test.ts`；来源与反馈：`src/conversation-source-store.test.ts`、`src/memory-feedback.test.ts`；任务语义、相关性与 D1：`src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/v3/catalog.test.ts`、`src/v3/contracts-priority.test.ts`、`src/memory-repository/v3-backend.test.ts`；迁移：`src/memory-repository/v3-migration.test.ts`；v3：`src/memory-repository/v3-*.test.ts`、`src/v3/*.test.ts`；Runner：`packages/runner/src/memory-v3.integration.test.ts`；KnownState 摄入：`packages/harness/src/memory-known-state.ts`、`packages/harness/src/stages/execute/tool-loop.ts` |
-| 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役，运行时持久记忆仍只经会话压缩路径写入 |
+| 旧文件记忆兼容读取与安全写入基元 | `packages/memory-core/` | `src/store.ts`、`src/search.ts`、`src/write-memory.ts` | 对应同名测试；旧 archive/vector 写入入口已退役，运行时持久记忆由受控的 `memory_write`/`memory_manage` 写入，压缩路径只产生摘要 |
 | 会话、回复 settlement 幂等和长会话摘要 | `packages/session/` | `src/manager.ts`、`src/reply-fingerprint-store.ts`、`src/compaction.ts`、`src/compaction-store.ts` | 对应同名测试；原始 JSONL 不删除、不改写。回复闸门只约束 settlement 身份（同一身份幂等、不同身份允许相同措辞），文本指纹账本用于审计与旧入口。摘要生成与精确字段保真还需联查 `packages/runner/src/session-continuity.ts`、`session-summary-fidelity.ts`，摘要进入 Memory v3 的边界联查 `packages/memory-tree/src/task-query.ts` |
 | 工具注册、统一执行、审批、超时清理和内置工具 | `packages/tools/` | `src/registry.ts`、`src/tool-execution-service.ts`、`src/tool-execution-{scheduler,control,records,result}.ts`、`src/builtin/exec.ts`、其余 `src/builtin/` | `src/tool-execution-service.test.ts`、`src/builtin/exec.test.ts`、`src/builtin/document-tools.test.ts`、其余 `src/**/*.test.ts` |
 | 网络检索、抓取安全与 citation | `packages/web/` | `src/provider.ts`、`src/provider-registry.ts`、`src/runtime.ts`、`src/fetch/{service,url-policy,dns-resolver,http-client,extract}.ts`、`src/providers/tavily.ts`、`src/cache/web-cache.ts` | `src/**/*.test.ts`、`scripts/verify-web-*.mjs` |
@@ -224,7 +224,7 @@ App / CLI / Channel adapters
 7. 跨包只从公开入口导入；出现反向依赖时先定义端口，不通过深层 import 或循环依赖解决。
 8. 新建 package 需要同时满足独立职责、稳定接口、独立测试和真实复用；否则先在现有 package 内按 feature 拆分。
 
-Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明、请求格式与运行时 `counterId` 一致后才能生成精确账本。DeepSeek V4 官方 tokenizer 与 Provider 校准后的请求 framing 位于 `packages/context/src/tokenizers/`；精确性按模型和请求形态记录：Flash 的普通请求与工具协议、Pro 的普通请求已通过逐请求对账，Pro 工具协议与 OpenAI/GLM 模型专用 tokenizer 仍需在实际启用形态下单独校准。Token 账本公共契约独立位于 `packages/types/src/token-ledger.ts`。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；EXECUTE 与 VERIFY 也已把 Prompt 装配、工具循环、步骤调度和结构验收从 stage facade 中分离，其中 `stages/execute.ts` 只保留调度。工具目录在整个会话区间内固定：`stages/execute/prompt.ts` 渲染固定目录，检索意图只在缓存边界以下的有界尾部收窄本回合可执行的能力，实际调用仍由 Runtime 在执行边界复核权限、schema、路径、资源和副作用。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`；`classify`、`evolve`、`capture`、`recover`、`verify` 模板只为历史日志、重放投影和旧检查点解析保留，运行路径不再发起对应请求（`classify` 由确定性规则完成）。持久记忆的唯一写入方是会话压缩路径；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`），模型没有记忆写入工具，压缩候选由 Runtime 提交或拒绝。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、统一工具超时与清理、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
+Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约过滤、预算、淘汰、计数和双快照；provider/model tokenizer 能力矩阵强制模型声明、请求格式与运行时 `counterId` 一致后才能生成精确账本。DeepSeek V4 官方 tokenizer 与 Provider 校准后的请求 framing 位于 `packages/context/src/tokenizers/`；精确性按模型和请求形态记录：Flash 的普通请求与工具协议、Pro 的普通请求已通过逐请求对账，Pro 工具协议与 OpenAI/GLM 模型专用 tokenizer 仍需在实际启用形态下单独校准。Token 账本公共契约独立位于 `packages/types/src/token-ledger.ts`。Memory Repository 与 Memory Service 已分别把持久化和运行协调拆入同名领域目录；EXECUTE 与 VERIFY 也已把 Prompt 装配、工具循环、步骤调度和结构验收从 stage facade 中分离，其中 `stages/execute.ts` 只保留调度。工具目录在整个会话区间内固定：`stages/execute/prompt.ts` 渲染固定目录，检索意图只在缓存边界以下的有界尾部收窄本回合可执行的能力，实际调用仍由 Runtime 在执行边界复核权限、schema、路径、资源和副作用。TaskBook 与步骤执行公共契约位于 `packages/types/src/task.ts`，状态机与 RunContext 位于 `packages/types/src/agent.ts`。版本化 LLM Call Contract 位于 `packages/harness/src/llm-call-contracts/`；`classify`、`evolve`、`capture`、`recover`、`verify` 模板只为历史日志、重放投影和旧检查点解析保留，运行路径不再发起对应请求（`classify` 由确定性规则完成）。持久记忆由受控的 `memory_write`/`memory_manage` 写入（`packages/runner/src/infra.ts:520,654`），压缩只产生摘要；`memory_tree` 只读（`root_index` / `branch_index` / `expand` / `deep_search` / `release`）。运行时事件队列、活动 run ingress、安全边界、TaskBookPatch、统一工具超时与清理、持久检查点、Runner 显式续跑、Renderer 事件入口、应用启动恢复、活动任务 SSE、设置页后台控制、托盘和关闭策略已有独立模块。不能因为已有 package 或接口就宣称真实场景已经完成，具体评估和演进顺序见 [架构决策报告](../decision/architecture-decision-report.md)。
 
 ## 测试与脚本
 
@@ -244,7 +244,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `pnpm.cmd run verify:memory-v3-intent-routing`：使用正式本地 BGE 和系统临时数据根，验证当前请求自足、多轮中英文指代、LS 方案引用、硬排除/负向约束、任务转向和项目 scope。D1 必须保持零查询向量，分支内深搜每个请求只生成一个查询向量；被排除正文、旧历史污染、scope 泄漏和网络尝试都必须为零。
 - `pnpm.cmd run verify:memory-v3-compaction-continuity`：使用正式本地 BGE 和系统临时数据根，验证压缩后真实指代只在近期任务锚点不足时读取版本化会话摘要；覆盖中英文回退、当前目标优先、任务转向、排除/替代、session 隔离、无摘要零注入和 Repository 重启。D1 必须零查询向量，弱相关尾部不得为填满 working set 自动注入，运行阶段不得访问网络。
 - `pnpm.cmd run verify:memory-v3-bge-soak`：复用同一隔离 soak，但使用活动数据根中已 provision 且通过哈希校验的真实本地 BGE 模型。合成 Atom 仍只写系统临时目录；模型目录只读。该门额外验证模型暂不可用、瞬时 Embed 失败恢复、512 维向量、离线零请求、RSS 上限和 pipeline dispose，不修改正式记忆或 Catalog。
-- `pnpm.cmd run verify:memory-v3-provider -- --provider=<id>`：在创建隔离数据根前先执行真实非流式 Provider 预检，要求真实回复和权威 usage；预检通过后才验证 Memory v3 首轮注入、压缩写入候选的提交/拒绝、反馈和重启召回。鉴权失败、缺少 usage、mock 或 Harness 恢复文本都不能算通过。
+- `pnpm.cmd run verify:memory-v3-provider -- --provider=<id>`：在创建隔离数据根前先执行真实非流式 Provider 预检，要求真实回复和权威 usage；预检通过后才在隔离数据根里跑真实 run，校验 Memory v3 首轮索引注入、回复命中标记、重启后新会话召回、对话原始来源与 provider usage 对账（合成事实由验收脚本直接经 Repository 写入，`sourceStage: 'tool'`）。**该门当前不可作为验收证据**：`scripts/lib/memory-v3-provider-acceptance.mjs:99-100,107,275` 仍要求已删除的 `EVOLVE`/`CAPTURE` 记忆意图与 stage，当前实现下必然失败；脚本修正前不得引用它的结论。鉴权失败、缺少 usage、mock 或 Harness 恢复文本都不能算通过。
 - `pnpm.cmd run verify:memory-v3-readiness -- --data-dir=<应用数据根>`：只读检查指定 V2 数据根，只把 `memory-tree` 复制到系统临时目录，在副本上验证完整迁移、V3 重启读取、业务 atom/内部 scope root 口径、catalog integrity 和回滚；不复制配置、会话、密钥或 workplace，任何退出路径都删除临时副本。结果只证明该次源快照，正式登记迁移前必须重新执行，不能用旧哈希替代迁移器的提交前复核。
 - `pnpm.cmd run sync:tsconfig`：从 28 个 workspace manifest 的真实依赖自动生成 package `references` 和 `tsconfig.workspace.json`；`check:repo` 会拒绝过期引用。
 - 包内 `src/**/*.test.ts(x)`：测试包内契约和模块行为，应与源码同目录维护。
@@ -271,7 +271,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/prepare-littlesheep-runtime.mjs`：按当前 Electron 版本在本机生成被命名为 `LittleSheep.exe` 的运行时副本；该副本属于安装/构建产物，不进入 Git。
-- `scripts/refresh-desktop-shortcut.ps1`：调用命名运行时准备脚本，按脚本所在仓库路径生成指向 `LittleSheep.exe` 的桌面快捷方式。
+- `scripts/refresh-desktop-shortcut.ps1`：调用命名运行时准备脚本，按脚本所在仓库路径生成指向 `LittleSheep.exe` 的桌面快捷方式；目标、参数、工作目录、图标四项已一致时**不重写**文件（重存 `.lnk` 会丢掉资源管理器保存在文件之外的状态），`-Force` 强制重写，`-IfPresent` 把"这个桌面没有快捷方式"和"尚未构建出 `out/`"当作可跳过的状态而非错误。
+- `scripts/sync-desktop-shortcut.mjs`：把 `refresh-desktop-shortcut.ps1` 接到 `@littlesheep/app` 的 `predev` / `prebuild` 与根目录 `build:app` 之后的跨平台入口，让快捷方式随 Electron 版本自动前进——否则升级后桌面图标仍指向旧 Chromium，而旧引擎不认识新属性时会静默退回，看起来像改动没生效。默认尽力而为且失败不中断，`--strict`（`pnpm run refresh:desktop-shortcut`）为显式模式。
 - `scripts/start-littlesheep.ps1`：位置无关的开发启动入口。
 
 ## 源码、生成物和用户数据边界

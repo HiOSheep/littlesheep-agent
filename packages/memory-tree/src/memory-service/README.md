@@ -1,11 +1,11 @@
 # Memory Service 内部边界
 
-最后更新：2026-09-22 13:10:04
+最后更新：2026-09-27 17:54:14
 
 本目录实现 `MemoryService` 背后的作用域协调器，不直接成为新的公开入口。
 
 - `run-coordinator.ts`：run 开始/结束、运行级资源登记与失效，并暴露 `refineRun`（当前无 runtime 调用方）。
-- `source-feedback.ts`：对话原始来源持久化，以及由 VERIFY/工具证据约束的 Atom 使用反馈；持久记忆写入本身不在本目录，由 Runner 压缩路径经 `MemoryWriteService` 完成。
+- `source-feedback.ts`：对话原始来源持久化，以及由 VERIFY/工具证据约束的 Atom 使用反馈；持久记忆写入本身不在本目录，由受控工具 `memory_write`/`memory_manage` 经 Runner `infra.ts` 装配的写入路径完成，压缩路径只产生会话摘要。
 - `summary-resources.ts`、`attachment-resources.ts`、`runtime-event-resources.ts`：会话摘要、附件和事件账本的独立生命周期。
 - `bootstrap-resources.ts`、`skill-resources.ts`：用户数据中的身份/规则/理念文档和 Skill 所有权同步；`PHILOSOPHY.md` 只注册到资源索引，不作为常驻 Prompt bootstrap。
 - `workspace-documents.ts`、`workspace-index-resources.ts`：正式文档目录与有界文件元数据索引。

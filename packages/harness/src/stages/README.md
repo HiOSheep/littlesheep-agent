@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-27 02:33:58
+最后更新：2026-09-27 17:54:14
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -19,7 +19,7 @@
 - 可重跑凭据（2026-09-27，HC-04）：`execute/side-effect-ledger.ts` 的 `resourceChangeWarrant` 只在“工具声明 + 非 `unknown` 种类 + 有写资源 + 账本中存在晚于该次结算的同资源成功变更”时发放 `:retryN` 新身份并在持久意图里写审计；真实模型验收为 `verify:ledger-reexecution-live`。
 - VERIFY 的两个窄结构 `pass` 只读**本次 run 自己**的证据（2026-09-27，HC-03）：工具调用、工具结果、副作用账本，以及工具参数——参数依次从 `ctx.produced` → `ctx.modelHistory` → `ctx.history` 取（只有最后一个是 run 之前的纯文本投影，只读它会让写后读回通道对全新 run 永不可达）。细节见 `verify/README.md`。
 - 运行期事件的重入是有界的（2026-09-27，HC-02 附带修正）：`durable-harness.ts` 把延迟的用户补充或任务事件**每次事件只交给主循环一次**；若主循环随后选择别的路径而事件仍是 deferred，就按主循环的决定收尾，不再把每个阶段反复弹回 `execute`。此前"没有阶段消费该事件"会让 run 无法结束并耗尽内存（实测 `default-harness.test.ts` 的该用例 124 秒后 OOM），现在同一文件 12 项 6 秒通过，并新增"事件始终未被消费也不困住 run"的回归用例。
-- `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成压缩路径写入时用的 Runtime 认识论元数据。
+- `enter.ts` 提供入口状态；`_shared.ts` 只放多个 stage 真正共享的纯 helper；`memory-epistemic-policy.ts` 只把模型描述的来源转成 Runtime 认识论元数据；当前唯一生产调用方是受控写入工具（`packages/runner/src/infra.ts:569,674`，以中性的 `tool` stage），压缩路径不再经过它。
 - 升级到用户时（`recover/escalation.ts`）必须带上原因类别、已完成部分与所需动作三件事实，而不是把同一句三选一原样再问一遍；`ask_user.ts` 仍用真实模型调用组织可见文案，Runtime 只提供事实。**两类重试是不可能的，命中即不再空转**：上限记录在 run 上的预算耗尽直接升级（实机一次白跑 4 轮 execute）；结构性证据缺口也一样——VERIFY 是已记录证据的纯函数，重试它只会复现同一结论（实机一次出现 4 条完全相同的 `structural` 失败记录、相隔 174 ms、期间无任何新调用），所以第一次缺口回到 `execute` 让模型闭合它，第二次才升级。主循环在因缺口重入时补一条 Runtime 控制消息说明缺口，避免盲重试。
 - 用户语言与声音边界同时覆盖两条路径：`reply`/`ask_user` 用 `buildUserFacingVoiceAddon` 声明"措辞归模型、事实归 Runtime"，主循环用提示自带的执行契约（用户的语言、代码与路径不翻译、清晰低风险目标按合理默认直接开工，只在缺关键事实/目标冲突/不可逆/缺权限时提一次问）。两条路径的 SOUL 都来自同一份 bootstrap。
 - DECIDE、它的规划模块和 TaskBook 步骤执行器已随第二执行体系删除；`decide` 只作为旧检查点的兼容 stage 名保留，驱动会把恢复入口映射到主循环。运行结束时的自动沉淀（CAPTURE）与自动演化（EVOLVE 编排、自动 Skill 创建）同样已删除。

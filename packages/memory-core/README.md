@@ -1,16 +1,16 @@
 # @littlesheep/memory-core
 
-最后更新：2026-09-22 12:47:49
+最后更新：2026-09-27 17:54:14
 
 提供文件型记忆的兼容存储、共享原子写入基元、写入安全策略和旧来源适配。
 
 ## 职责与边界
 
-- 公开入口是 `src/index.ts`；实际被最多消费的是 `atomic-write.ts`（`atomicWrite`，tmp + 同卷 rename），被 App 主进程、memory-tree 文档/投影写入、harness 缓存观测和 experience 索引共用；`store.ts` 是兼容的 `MemoryStore`（`MEMORY.md` + `memory/YYYY-MM-DD.md`），`prelude.ts`（`buildRecentPrelude`）和 `search.ts`（`searchMemory`/`isRipgrepAvailable`）是旧 prelude 与 ripgrep 检索适配，`write-memory.ts` 只提供遗留的 `write_memory` AgentTool 工厂 `createWriteMemoryTool`——当前没有任何 runtime 装配它，模型也没有可用的记忆写入工具。
+- 公开入口是 `src/index.ts`；实际被最多消费的是 `atomic-write.ts`（`atomicWrite`，tmp + 同卷 rename），被 App 主进程、memory-tree 文档/投影写入、harness 缓存观测和 experience 索引共用；`store.ts` 是兼容的 `MemoryStore`（`MEMORY.md` + `memory/YYYY-MM-DD.md`），`prelude.ts`（`buildRecentPrelude`）和 `search.ts`（`searchMemory`/`isRipgrepAvailable`）是旧 prelude 与 ripgrep 检索适配，`write-memory.ts` 只提供遗留的 `write_memory` AgentTool 工厂 `createWriteMemoryTool`——当前没有任何 runtime 装配它（注册表守卫断言 `write_memory` 不在册）；模型可用的记忆写入工具是 memory-tree 的受控 `memory_write`/`memory_manage`，不由本包提供。
 - `MemoryStore` 现在只被 Runner 装配为未完成旧迁移时的兼容读取分支，以及 CLI 的记忆命令使用；memory-tree 只使用 `atomicWrite`。
 - memory-tree / Memory Service 只消费 `atomicWrite`；本包不负责树形导航 UI、项目投影或 Context 选择。
 - 禁止新增绕过 `@littlesheep/memory-tree` 注册和审计的新主运行时写入路径。
-- 旧 `daily -> MEMORY.md` 原文追加、月/年 Markdown 摘要和独立远程向量维护入口均已退役；未来 daily 提升或压缩只能生成结构化 Memory v3 写入提案，并经过来源、认识状态、去重、审计和恢复校验。
+- 旧 `daily -> MEMORY.md` 原文追加、月/年 Markdown 摘要和独立远程向量维护入口均已退役；未来 daily 提升只能生成结构化 Memory v3 写入提案，并经过来源、认识状态、去重、审计和恢复校验（会话压缩自 2026-09-27 起只产生摘要，不再产生候选）。
 
 ## 依赖与数据
 

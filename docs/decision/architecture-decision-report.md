@@ -1,6 +1,6 @@
 # LittleSheep 架构评估与开发决策报告
 
-最后更新：2026-09-27 08:55:26
+最后更新：2026-09-27 17:54:14
 评估范围：当前源码、常驻文档与已记录的验证结果
 执行状态：控制流已收敛为唯一主循环。活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；DECIDE、验证模型调用、恢复模型调用与 CAPTURE 已删除，`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名保留在类型与旧检查点读取路径中；ASK_USER 只能由主循环的 `request_user_input` 或 RECOVER 升级到达；持久化 TaskBook 是只读历史，步骤串行执行。请求装配由缓存边界与 append-only 尾部账本共同决定：system 消息就是边界之上的 prompt 段，边界之下的段各自作为独立消息追加。工具目录在一个会话区间内固定，某轮不得使用的能力在执行边界被拒绝；上下文淘汰按 `appended-only` 作用域运行。会话压缩只产生会话摘要，记忆写入由受控的 `memory_write`/`memory_manage` 承担（2026-09-27 起），`memory_tree` 只读；VERIFY 不调用模型，窄结构形态记为 `pass`、其余已完成的 run 记为 `unverified`。权限仍为三档并与行为 profile 正交，容器是 Main 的路径分类与审批闸门而不是 OS 沙箱。Memory v3 阶段 0-26、统一 Tool Execution Service、运行时事件、TaskBookPatch、检查点续跑与桌面后台控制已形成工程基线。**真实长任务的缓存红线已按现行会话累计口径达成（判定入口 `pnpm run check:cache-acceptance`），仍未闭环的是 3 回合短负载的结构上限（87–89%，只能靠更长的会话摊薄）、Pro 与其他 Provider 的模型专用校准、非字段事实与外部系统副作用验收、与成熟 Agent 产品可比较的任务效率基线、MCP 与发布流程。**
 
@@ -52,7 +52,7 @@ React Renderer
           -> Context Engine (candidates + budget + cache-boundary split + tail ledger)
           -> LLM
           -> Tool Execution Service (registered tools, execution-scope admission)
-          -> memory tree (read-only navigation; compaction owns writes)
+          -> memory tree (read-only navigation; controlled writes via memory_write/memory_manage)
           -> session / execution logs / checkpoints
       -> PluginHost
         -> tool contributions
@@ -65,7 +65,7 @@ React Renderer
 - 一次请求只有一条装配路径：缓存边界之上的段构成 system 消息，边界之下的段由同一个 append-only 账本追加，迭代只追加不重写。
 - Runner 在每次 run 开始时装配会话、工作区、行为 profile、推理配置、工具和记忆根索引。
 - 工具对象由注册表管理，所有副作用经统一 Tool Execution Service；插件工具与 run-scoped 工具走同一条管线。
-- 记忆读取采用根索引、分支索引、节点展开和分支内深搜的路径；写入只发生在压缩路径。
+- 记忆读取采用根索引、分支索引、节点展开和分支内深搜的路径；写入只经受控的 `memory_write`/`memory_manage`，压缩只产生会话摘要（2026-09-27 起；当前事实见[项目状态](project-status.md)的「会话压缩与记忆写入」）。
 - TaskBook、步骤、工具调用、验证和最终结果可进入执行日志并由 UI 恢复。
 
 当前主流程的结构性限制：
@@ -265,7 +265,7 @@ src/renderer/shared/
 - 在现有 memory-tree 边界上继续提供统一服务公共接口；
 - 保持已落地的项目记忆三层字段、同步、冲突、清理、Git 忽略、稳定身份和可恢复路径重绑定契约；
 - 压缩摘要继续保留来源消息范围、版本、模型、关键约束和校验信息，不能删除原始会话事实；
-- 不新增模型侧记忆写入工具；需要写入时走压缩路径或用户明确操作；
+- 不新增第二个模型侧写入入口：记忆写入已经受控的 `memory_write`/`memory_manage`，压缩只产生摘要（已实现，2026-09-27）；
 - 默认本地生成 Embedding，Provider `/embeddings` 只在用户显式启用时允许；层级和 FTS 不依赖向量可用性。
 
 验收标准：长会话压缩后，任务约束、未完成步骤、关键用户偏好和来源不丢失；失败可回退到上一份有效摘要；记忆 UI 与运行时仍操作同一份数据。

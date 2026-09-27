@@ -2,7 +2,7 @@
 
 这里保存 LS 随核心发布的受控工具实现。
 
-最后更新：2026-09-27 02:10:27
+最后更新：2026-09-27 17:54:14
 
 ## 分类
 
@@ -15,7 +15,7 @@
 
 ## 边界与测试
 
-- 记忆导航不在本目录：`memory_tree` 由 `@littlesheep/memory-tree` 的 index-first runtime 提供，只有 `root_index`、`branch_index`、`expand`、`deep_search`、`release` 五个只读动作。模型没有记忆写入工具，持久记忆只由会话压缩路径写入。
+- 记忆导航不在本目录：`memory_tree` 由 `@littlesheep/memory-tree` 的 index-first runtime 提供，只有 `root_index`、`branch_index`、`expand`、`deep_search`、`release` 五个只读动作；持久记忆的写入与忘记/纠正同样不在本目录，由 `@littlesheep/memory-tree` 的受控工具 `memory_write`/`memory_manage` 提供，压缩路径只产生会话摘要。
 - 每个工具定义稳定名称、schema、权限等级、工作区约束、中断和有界输出；`document_read` 与 `document_create` 在执行前调用 `authorizeToolAccess`，写入还要先过核心源码只读根。
 - `read.ts` 通过单个文件句柄取出字节、大小与 mtime，因此三者描述同一份版本；读取成功后它会把这版原始字节的 sha256 与**模型实际看到的行范围**登记进 `ToolContext.observation`。只有未被清洗、未被截断且范围非空的交付才算观察：二进制预览、读取失败、审批拒绝、截断或改写过的内容都不登记，模型需要重读。带 `offset`/`limit` 的读取登记为 `partial` 并记录可见行区间。
 - `write.ts` / `edit.ts` 在授权之后、durable checkpoint **之前**校验观察，并在同路径互斥区内**紧邻写入前**用同一份字节复核一次：覆盖已有文件要求 `coverage: 'full'` 的观察，`edit` 只要求被替换的行落在已观察范围内。序列固定为授权与路径复核 → 观察/版本校验 → checkpoint → 锁定内复核 → 写入 → 结算；观察缺失、过期、不可支持或范围不足时返回 `ok: false`（**不抛异常**，否则副作用会结算成 `unknown` 并阻塞恢复），文件保持原样，`meta.errorKind` 记录 `observation_missing` / `observation_stale` / `observation_unsupported` / `target_exists`。目标不存在时不要求观察，改用 `flag: 'wx'` 独占创建：并发创建者会得到 `target_exists` 而不是被静默覆盖。写入成功或结局不明后旧观察一律失效，因此下一次修改必须重读。
