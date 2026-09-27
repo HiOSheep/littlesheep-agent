@@ -948,6 +948,30 @@ async function sb05Checks({ summary, workspace, fixture, runDir }) {
   ];
 }
 
+/**
+ * RT-05 combination load: the checks count what the run *spent*, not just what it produced. A candidate
+ * that quietly makes the runtime reach for extra tools on a task that needs none is exactly what this is
+ * looking for, and it would not show up in a pass/fail artifact check.
+ */
+function rt05SimpleChecks({ summary }) {
+  return [
+    { id: 'answered_without_tools', pass: summary.toolCallCount === 0, detail: { toolCallCount: summary.toolCallCount, toolNames: summary.toolNames } },
+    { id: 'no_retrieval_attempted', pass: summary.webToolEvents.length === 0, detail: { webToolEvents: summary.webToolEvents.length } },
+    { id: 'real_answer_published', pass: typeof summary.reply === 'string' && summary.reply.length > 10, detail: { replyExcerpt: summary.reply.slice(0, 160) } },
+    { id: 'model_calls_bounded', pass: (summary.modelCalls ?? 0) <= 3, detail: { modelCalls: summary.modelCalls } },
+  ];
+}
+
+async function rt05SingleFileChecks({ summary, workspace, fixture }) {
+  let content = null;
+  try { content = (await readFile(join(workspace, fixture.targetPath), 'utf8')).trim(); } catch { /* missing */ }
+  return [
+    { id: 'single_file_written', pass: content === fixture.expectedContent, detail: { expected: fixture.expectedContent, actual: content } },
+    { id: 'did_not_run_commands', pass: !summary.toolNames.includes('exec'), detail: { toolNames: summary.toolNames } },
+    { id: 'tool_calls_bounded', pass: summary.toolCallCount <= fixture.maxToolCalls, detail: { toolCallCount: summary.toolCallCount, max: fixture.maxToolCalls } },
+    { id: 'model_calls_bounded', pass: (summary.modelCalls ?? 0) <= 4, detail: { modelCalls: summary.modelCalls } },
+  ];
+}
 const CHECKERS = {
   'RT-01': rt01Checks,
   'RT-02': rt02Checks,
@@ -955,6 +979,8 @@ const CHECKERS = {
   'RT-04': rt04Checks,
   'RT-04-poll': rt04PollChecks,
   'SB-05': sb05Checks,
+  'RT-05-simple': rt05SimpleChecks,
+  'RT-05-singlefile': rt05SingleFileChecks,
 };
 
 /** Same normalisation the file tools use for a resource key, so a declaration can actually match. */

@@ -1,8 +1,8 @@
 # Runtime 自主执行与沙箱边界验证任务书 2026-09-27
 
-最后更新：2026-09-28 00:22:00
+最后更新：2026-09-28 00:34:00
 
-状态：**部分执行**。EV-00、RT-01～RT-04、SB-01～SB-04 已执行并回填；SB-05 的"真实模型经沙箱跑通"部分通过（单次 run）、**Electron 与打包验收未跑**；RT-05 已汇总但**未做组合真实模型负载**。第 7 节台账与第 8 节回传模板按实际结果回填，失败、受阻与未验证项原样保留。执行后的候选补丁全部反向回退，工作树未保留任何候选改动；正式采用与否仍由用户决定。
+状态：**接近完成**。EV-00、RT-01～RT-05、SB-01～SB-04 已执行并回填；SB-05 的"真实模型经沙箱跑通"部分通过（单次 run）、**Electron 与打包验收未跑**、审批对照臂未做。第 7 节台账与第 8 节回传模板按实际结果回填，失败、受阻与未验证项原样保留。执行后的候选补丁全部反向回退，工作树未保留任何候选改动；正式采用与否仍由用户决定。
 
 ## 1. 目标、交付与范围
 
@@ -249,7 +249,7 @@ Harness / Runner / 公共契约修改按仓库规则运行 `pnpm.cmd run verify:
 | RT-02 | pass | 候选 `patches/rt02-b.patch`：`tool-failure-disposition.ts` 只把 `input_validation` 放回主循环，其余 `validation_failed`（`step_tool_not_allowed`、`parallel_step_contract`）与未知工具、授权拒绝、未结算副作用保持硬边界；纠错次数由 Runtime 已记录的同类失败次数封顶（3） | 批次 `RASB-2026-09-27-MODEL`（顺序 A→B）与 `SMOKE-2026-09-27`；注入器在 LLM 边界把**第一次** `exec` 提议的 `command` 改成数字 `42`，原始提议与变换后输入都进账本，两臂注入完全相同 | **A 3/3 失败、B 3/3 通过**，注入在 6 次 run 中全部生效。A：模型只发 2–3 次请求就被 `Runtime control: the latest tool boundary failed...` 收尾，`workplace/report.json` 从未生成。B：6–7 次请求，模型读到真实的 zod 校验错误后改正参数并完成任务，产物 `total=12` 与回复一致。确定性契约 9 行（`input_validation` 之外全部保持 authoritative）在 A 下成立、B 下只翻转 `input_validation` 一行。**边界**：该收益只证明"注入后的恢复"，**不能**宣称自然参数错误率下降；`step_tool_not_allowed` 与 `parallel_step_contract` 两类负向只做了确定性对照，未跑真实模型 |
 | RT-03 | pass | 首批候选（`MODEL` 批次 3 次）**未生效**：`exec` 声明了资源，但 `resolveToolExecutionPolicy` 对 `concurrency: 'exclusive'` 的工具一律返回空资源列表，warrant 永远打不开。修正候选 `patches/rt03-b.patch` 追加 `tool-execution-result.ts` 的改动（并发与资源身份分开处理），并同步 `current-path-contract.test.ts`（该断言原本写死"exec 不得声明可重跑"） | 批次 `RASB-2026-09-27-MODEL`（旧候选）、`RASB-2026-09-27-MODEL4`（修正候选，顺序 A→B）；证据 `raw-runs\*-RT-03-*`（含 `data\workplace\runs\executions.jsonl`） | 夹具 `tools/run_tests.mjs` 自记执行次数与被测内容哈希。**修正后 A 3/3 失败、B 3/3 通过**：A 的 `executions.jsonl` 只有 1 行，第二次同参数命令被 `repeated_call_blocked`（`side_effect_replay`）拒绝；B 有 2 行且两次 `subjectHash` 不同，即真实跑了两次。确定性账本 9 行：无变更时仍是 replay、记录到变更后发放 `:retry1` 新身份、`in_progress`/`unknown` 与租约冲突都 blocked、不声明能力的工具变更后仍拒绝。descriptor 探针显示未声明命令仍是 `effectKind=external`、资源为空。**未验证**：命令声明是宿主提供的信任输入，声明写错时 Runtime 会被误导，需要 SB 侧验证；并发租约冲突只有确定性对照 |
 | RT-04 | pass | 候选 `patches/rt04-b.patch`：`ToolExecutionService` 新增 `resourceChangeCursor`，只对**全部资源为只读**且游标真正前进的调用签发新计数身份；游标由 harness 从 `sideEffects` 里已结算成功的同资源效果数提供。写入类调用、未知工具、恢复去重不继承该豁免 | 批次 `RASB-2026-09-27-MODEL5`（顺序 B→A）、`RASB-2026-09-27-MODEL6`（轮询对照，顺序 A→B）；证据 `raw-runs\*-RT-04-*`、`raw-runs\*-RT-04-poll-*` | **B 3/3 通过、A 2/3 失败（另 1 次未触发：模型只读了 3 次）**。确定性游标夹具：文件每次都变则 5/5 读成功；文件不变仍 3/5（第 4 次照旧被拒）；交错场景 4 次通过后第 5 次回到基础计数被拒；写入类调用即使游标前进也仍 3/4。**未改阈值**（30 轮、连续 2 轮无进展原样）。轮询对照 A 3/3、B 3/3 通过——B 的空转没有被豁免掉。**未验证**：真实模型这侧只测了"文件变化"的场景，"文件不变时靠无进展停止"在真实模型下未单独触发 |
-| RT-05 | unverified | 未新增候选；只做汇总与确定性组合回归 | `node scripts/experiment-autonomy-sandbox-report.mjs --batches=... --json=<ev>\rt-summary.json`；合并四份补丁后 `node node_modules/vitest/vitest.mjs run <7 个受影响文件>` | 汇总：39 次真实模型 run、2,686,425 prompt token、151,323 completion token、usage 缺失 0、权限提示 0（`containerRoot` + `permissionPolicyId=full`，授权是配置而非候选差异）。合并候选下 7 个受影响文件 **113/113 通过**，且 §2 六个文件在基线仍 89/89——候选没有回归既有契约。**未做**：第 3 节要求的"组合负载"（简单直接回答 + 单文件任务）没有跑，因此**无法排除候选增加无谓查证或工具调用**；本表所有收益都是单项归因，缺组合证据。误拦截一列没有逐 callId 的冻结裁定依据，只有拒绝计数。费用未知 |
+| RT-05 | pass | 未新增候选；汇总 + 确定性组合回归 + **真实模型组合负载**（授权是配置而非候选差异） | `node scripts/experiment-autonomy-sandbox-report.mjs --batches=... --json=<ev>\rt-summary.json`；合并 rt02+rt03+rt04 后 `<7 个受影响文件>` **113/113 通过**；组合负载批次 `RASB-2026-09-27-MODEL7`（`batch-plan-model7.json`，两个用例、A/B 各 3 次，顺序 A→B 与 B→A） | 汇总：51 次真实模型 run、2,850,000 量级 prompt token、usage 缺失 0、权限提示 0。**组合负载 12/12 两臂全通过，且没有多花一次调用**：简单直接回答用例 A/B 各 3 次都是 `tools=0 / models=1`（token 17,490 vs 17,500，差 10 可忽略）；单文件用例 B 三次都是 `tools=1 / models=2`，A 有两次 `1/2`、一次 `2/3`（token 42,530 vs 35,960，候选反而更低）。即被测的三个候选在"不需要工具的简单任务"上**没有增加无谓查证或工具调用**。逐项建议已按"保留 / 调整后复测 / 证据不足"给出。**未验证**：误拦截一列仍无逐 callId 的冻结裁定依据，只有拒绝计数；费用未知（无价格表，按第 5 节不填零）；组合样本与单项样本已分开统计，但组合只覆盖"更轻"的两类任务，未覆盖组合下的重负载 |
 | SB-01 | pass | 无源码改动；只读探测 + 官方资料复核 | 只读命令集与逐条输出见 `<ev>\sb01-machine-capability.md`；子代理原始报告 `<ev>\sb01-recon-full.txt` | Windows 11 Home（build 26200.9457）**Windows Sandbox 不可用**（`WindowsSandbox.exe`/`containers.dll`/`wsb.exe` 全不存在，Home SKU）；WDAG 策略键缺失、`WDAGUtilityAccount` 禁用；`*AppContainer*` cmdlet 一个都没有；可选功能 Enabled/Disabled **查不到**（`Get-WindowsOptionalFeature` → `请求的操作需要提升`，`dism` → `Error: 740`）。会话非提权、Administrators 为 deny-only，因此 `New-LocalUser`/`New-NetFirewallRule`/服务安装都做不了。WSL2（2.7.14.0，内核 6.18.33.2，Ubuntu 26.04，systemd running）里 `bwrap 0.11.1` 与 `unshare --user --map-root-user` **可用且已做功能验证**；`firejail`/`nsjail`/`docker`/`podman`/`iptables` 缺失。本机已存在一个在产参照实现（OpenAI Codex 的 `CodexSandboxOffline` 专用用户 + `CodexSandboxUsers` 组 + 3 条出站 Block 防火墙规则 + 自动启动服务），但它需要管理员权限才能安装，**属于用户决定，不是 Agent 能自行落地的**。C: 仅剩 18.34 GB，WSL 盘 4.349 GB 在 D: |
 | SB-02 | pass | 候选 `patches/sb02-b.patch`：新增 `packages/tools/src/builtin/exec-sandbox.ts`（后端定义、预检、审计、`requested/actual` 元数据），`exec.ts` 在原有参数校验/授权/审批/版本检查/观察冻结**之后**才选择进程后端；后端建立不起来时返回 `sandbox_unavailable` 并停止，**没有静默回退**；`WSL_UTF8=1` 并丢弃 wsl.exe 的代理提示，避免把宿主基础设施文本当成命令输出喂给模型 | `node scripts/experiment-autonomy-sandbox.mjs sandbox --json=<ev>\sandbox\sandbox-report.json`；宿主侧独立观测 `<ev>\sandbox\scratch\sb0*\sandbox-audit.jsonl` | **四行全部通过**：`research` 模式下拒绝授权 → 命令没跑且 `denied.txt` 不存在（工具原话 `Approval denied: this command requires user approval.`）；同一模式放行 → 在沙箱里真的跑了；不可用后端（不存在的发行版）→ 不执行、不回落；`host` 后端 → `actualBackend=host`。宿主侧审计独立记录 `requestedBackend`/`actualBackend`/`commandHash`/`workspace`/`network`（SB-03 11 行、SB-04 14 行）。**修正记录**：第一版用 `permissionMode=full` 测"拒绝"，那等于没测——`full` 下边界直接 allow、审批回调根本不会被调用；改用 `research` 才是真实的授权路径。**未验证**：`ToolInvocationRecord` 仍无 isolation 字段，账本层面的隔离事实靠工具 `meta.sandbox` + 宿主审计文件，不是产品持久化字段 |
 | SB-03 | pass | 同上（`patches/sb02-b.patch`）；兼容性经**真实 `exec` 工具**执行 | `sandbox` 模式 sb03-workload 11 行；宿主侧验收在报告 `hostChecks` | **11 行全部经沙箱执行，3 项宿主侧验收通过**：版本探测、文件读、写后读回（宿主能看到 `out.txt`）、建目录、空格+中文路径、`git init`/`git status`、`node -e` 脚本、输出截断、同命令重测。失败退出码一行如实返回 `exit code 3`。沙箱需要显式声明只读工具链（`/home/dev/.nvm/versions/node/v22.23.3`），因为 `/home` 被遮蔽——这正是 SB-01 要求的"冻结只读工具链"。**未验证**：包管理/依赖安装链路、冷热启动计时、资源占用读数、原生与 WSL2 的换行/权限语义对比。**该后端不提供任何资源上限**（沙箱内 `ulimit` 为 memory/time unlimited、process 31715） |
@@ -341,6 +341,9 @@ Runtime 各任务：A/B 启动数、通过数、未触发数、介入数、误�
          合计 445,154 prompt + 18,370 completion token，168,092 ms。
   RT-04  B 3/3 pass、A 3 run 全 fail（其中 1 次未触发）；轮询对照 A 3/3、B 3/3 pass。
          593,562 prompt + 22,437 completion token，183,941 ms。
+  RT-05  组合负载（合并 rt02+rt03+rt04）：简单直接回答 A/B 各 3 次全通过且 tools=0/models=1；
+         单文件任务 A/B 各 3 次全通过，B 恒为 tools=1/models=2，A 两次 1/2、一次 2/3。
+         合计 12 run，59,970 prompt + 45,040 completion token 量级，无额外工具调用。
   介入：权限提示 0 次、人工补救 0 次（自动批准实验，计数是结构值不是用户负担）。
   误拦截：账本只有拒绝总数（每条含 callId/status/reason），没有预先冻结的"合法却被拦"裁定依据，
   因此本列不填，见 RT-05 的未验证边界。
@@ -410,7 +413,7 @@ Sandbox 各后端：正常负载结果、边界矩阵、真实进程身份、冷
   RT-04 → **建议保留**。B 3/3 通过 vs A 2/3 失败（1 次未触发），游标夹具证明豁免只在只读且游标真正前进时
     生效：文件不变仍 3/5、交错后仍会回到基础计数被拒、写入类调用不继承；轮询对照两臂都通过。
     需要补的是真实模型下"文件不变靠无进展停止"这一条。
-  RT-05 → **证据不足**。缺组合负载，无法排除候选增加无谓工具调用；费用未知；误拦截缺逐 callId 裁定依据。
+  RT-05 → **组合负载已补，结论转为支持保留**：12/12 两臂全通过且没有多花调用（简单任务两臂都是 0 工具/1 模型调用）。仍需承认费用未知、误拦截缺逐 callId 裁定依据、组合只覆盖更轻的两类任务。
   SB-01 → **建议按结论执行**：Windows 原生隔离在本机不可行（SKU + 权限），若要走 Codex 式低权限用户+ACL+
     防火墙方案，需要用户提供管理员授权的安装步骤，不能由 Agent 自行落地。
   SB-02/03/04 → **建议保留为实验特性，不进入产品默认**。后端已接进 `createExecTool`，四行授权一致性、

@@ -57,17 +57,23 @@ async function run(command, commandArgs, options = {}) {
   }
 }
 
+/** Every patch a case is defined by. A combination case applies several at once. */
+function patchNamesOf(entry) {
+  return entry.patches ?? (entry.patch ? [entry.patch] : []);
+}
+
 /** Revert every patch the plan knows about; a patch that is not applied is not an error. */
 async function revertAll(plan) {
   const reverted = [];
   for (const entry of plan.cases) {
-    if (!entry.patch) continue;
-    const patch = join(plan.patchDir, entry.patch);
-    if (!existsSync(patch)) continue;
-    const result = await run('git', ['apply', '--reverse', '--check', patch]);
-    if (!result.ok) continue;
-    const applied = await run('git', ['apply', '--reverse', patch]);
-    reverted.push({ patch: entry.patch, ok: applied.ok });
+    for (const patchName of patchNamesOf(entry)) {
+      const patch = join(plan.patchDir, patchName);
+      if (!existsSync(patch)) continue;
+      const result = await run('git', ['apply', '--reverse', '--check', patch]);
+      if (!result.ok) continue;
+      const applied = await run('git', ['apply', '--reverse', patch]);
+      reverted.push({ patch: patchName, ok: applied.ok });
+    }
   }
   return reverted;
 }
@@ -160,7 +166,9 @@ async function main() {
       // Every arm transition starts from the frozen baseline, so a leftover patch from the previous
       // case can never be attributed to this one.
       await revertAll(plan);
-      if (arm === 'B') await applyPatch(plan, entry.patch);
+      if (arm === 'B') {
+        for (const patchName of patchNamesOf(entry)) await applyPatch(plan, patchName);
+      }
       const changed = await assertArmState(plan, arm);
       log({ step: 'arm-state', caseId: entry.caseId, arm, changedPaths: changed });
 

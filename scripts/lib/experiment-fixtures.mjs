@@ -274,6 +274,39 @@ export function sb05Fixture() {
   };
 }
 
+/**
+ * RT-05 combination load. These two cases are deliberately *not* the rules under test: they are the
+ * workloads a candidate could damage. One needs no tools at all, the other needs one file written. If a
+ * candidate makes the runtime reach for the web or for extra tool rounds on either, that shows up as extra
+ * calls rather than as a failure, so the checks count calls as well as artifacts.
+ */
+export function rt05SimpleFixture() {
+  return {
+    caseId: 'RT-05-simple',
+    files: {
+      'package.json': `${JSON.stringify({ name: 'rt05-simple-fixture', private: true, type: 'module', version: '0.0.0' }, null, 2)}\n`,
+    },
+    prompt: '用一句话解释什么是幂等操作。不要使用任何工具，也不要查资料，直接回答。',
+    maxToolCalls: 0,
+  };
+}
+
+export function rt05SingleFileFixture() {
+  return {
+    caseId: 'RT-05-singlefile',
+    files: {
+      'package.json': `${JSON.stringify({ name: 'rt05-singlefile-fixture', private: true, type: 'module', version: '0.0.0' }, null, 2)}\n`,
+    },
+    targetPath: 'notes/greeting.txt',
+    expectedContent: 'hello from rt05',
+    prompt: [
+      '这是一个单文件任务，只需要一步：',
+      '用 write 创建 `notes/greeting.txt`，内容正好是 `hello from rt05`（不要多余内容）。',
+      '不要运行任何命令，不要查资料，写完在回答里确认路径。',
+    ].join('\n'),
+    maxToolCalls: 2,
+  };
+}
 export function fixtureFor(caseId) {
   switch (caseId) {
     case 'RT-01': return rt01Fixture();
@@ -282,6 +315,8 @@ export function fixtureFor(caseId) {
     case 'RT-04': return rt04Fixture();
     case 'RT-04-poll': return rt04PollFixture();
     case 'SB-05': return sb05Fixture();
+    case 'RT-05-simple': return rt05SimpleFixture();
+    case 'RT-05-singlefile': return rt05SingleFileFixture();
     default: throw new Error(`unknown fixture case: ${caseId}`);
   }
 }
