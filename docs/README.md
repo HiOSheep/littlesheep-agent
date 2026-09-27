@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-27 08:55:26
+最后更新：2026-09-27 10:19:30
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -36,13 +36,13 @@
 
 ## 已决定方向后再看任务书
 
-- [Harness 当前语义与历史复杂度收口任务书 2026-09-25](taskbooks/harness-current-semantics-taskbook-2026-09-25.md)：新增 HC-00～06，收口 next/legacy 命名、历史读取与当前执行契约、VERIFY 旧结构依赖及新调用/恢复重放身份；模型观测与工具循环拆分引用现有模块拆分地图，不重复立项。与 Memory、子 Agent、UI、对话续接及缓存专项明确分工；当前仅方案，尚未实施。
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
 
 ### 当前主线
 
 - Runtime 状态一致性与必要记忆任务书（2026-09-22）：**已于 2026-09-27 退役**，事实归入[项目状态](decision/project-status.md)的「文件一致性与受控记忆（2026-09-27）」。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
+- Harness 当前语义与历史复杂度收口任务书（2026-09-25）：**已于 2026-09-27 退役**（HC-00～HC-06 全部落地），事实归入[项目状态](decision/project-status.md)的「Harness 当前语义（2026-09-27）」。
 - 对话任务连续性 P0 专项任务书（2026-08-13）：**已于 2026-09-27 退役**，事实归入[项目状态](decision/project-status.md)的「对话连续性（2026-09-27）」。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：现行红线口径（会话累计、真实长任务节点、`pnpm run check:cache-acceptance`）、当前实测、冻结输入、测量规则、禁止做法、完成条件与仍未汇总项；仍然承重的历史结论集中在附录 A，逐轮测量日志已移出、只留在 git 历史。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前 checkout 上跑冻结负载的逐请求字符数、共享前缀与工具目录摘要对比，并维护**长任务批次历史表**（每一批的唯一事实与机器可读账本链接；逐批叙述已于 2026-09-24 退役）；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)保留为对比依据（不含提示词正文、会话内容或密钥）。

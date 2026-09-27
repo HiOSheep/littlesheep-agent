@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-27 08:55:26
+最后更新：2026-09-27 10:19:30
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -18,7 +18,7 @@ ENTER → 活动路由 → ┬─ execute（唯一主循环：常规会话、工
 - **活动路由只产出两条路径**：`execute` 与能力/状态 `reply`。常规会话与常规任务都进入同一个主循环，聊天轮与工具轮因此共享同一份 system 提示与工具集，前缀可跨轮复用。规则识别出的读法（问候、直接回答约束等）只保留在 `type`/`reasonCode` 中供审计，不再据此分成两套提示形状。复杂、超长、需要检索或处于续接状态的请求同样在循环内完成，只保留解释性 reason code。
 - **DECIDE 已删除**：stage 注册表中没有 `decide`。它只作为历史 stage 名保留在 `StageName`、`allowedTransitions` 与旧检查点中；恢复时 `resolveCheckpointResumeStage` 把入口为 `decide` 的检查点改派到主循环 `execute`，不重新规划。`classify` 同样只作为历史标签与检查点兼容保留，不再调用分类模型。
 - **EXECUTE 是唯一主循环**：模型在同一循环内选择"直接回答"或"请求工具"，Runtime 负责权限、校验、执行与结果追加；多步骤工作在循环内串行推进。
-- **持久化 TaskBook 是只读历史**：步骤执行器与调度器已删除，持久化的 `task_book` 策略降级为 `bounded_loop` 并保留原 reason code；已存在的计划不再触发第二个执行器。
+- **持久化 TaskBook 是只读历史**：步骤执行器与调度器已删除，没有任何生产路径再创建计划或步骤执行结构，也没有活路由指向退休 stage（`packages/harness/src/stages/current-path-contract.test.ts` 扫描生产源码挡住重新接入）。**旧数据里 `task_book` 这个执行模式仍按旧边界读取，但不再"降级"**（2026-09-27，HC-02 更正）：它由 `PersistedExecutionWorkMode`/`PersistedWorkPolicy` 表达，只被恢复校验 `isSupportedPersistedWorkPolicy` 接受，运行路径不读取它；原先的降级代码与它依赖的两个 helper 已随消费者核实删除，未知模式一律拒绝而不是静默执行。
 - **VERIFY 不调用验证模型**：只断言 Runtime 证据能证明的事实。窄结构形态（单只读步骤、写后读回）判定为 `pass`；其余已完成的 run 记录为 `unverified`——证据完整、调用成功、存在模型回复，但需要人工判断的验收标准未经验证。记录到的失败、缺失步骤或截断证据不能变成 `pass`。
 - **"不可用证据"与"已记录的负结果"按 Runtime 知道什么分界**：权限结果（`approval_denied` / `approval_unavailable` / `hard_denied`）是"还没人决定是否授权"，只有用户能决定，因此升级到 `ASK_USER`；Runtime 自己在执行前发出的拒绝（`validation_failed` / `unknown_tool` / `repeated_call_blocked`）是确定性结果——调用根本没跑——连同 `failed` / `timed_out` / `aborted` 一起留在记录里，让已交付的 run 停在 `unverified`，不把交付过的工作变成一句提问。
 - **RECOVER 由 Runtime 路由，不调用恢复模型**：可重试失败回到产生失败的阶段（受次数上限约束）；权限拒绝升级到 `ASK_USER`；副作用未结算或运行被中止时显式停止并只呈现 Runtime 状态；已完成步骤不重复执行。
@@ -177,6 +177,23 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - **连续性由会话转录承载**：同一 `sessionId` 内每条用户消息恰好持久化一次；真实流程中 `conversationContinuation.resolution` 为 `none`，即没有隐藏的自动续接绑定在替用户接线。
 - **回答连续有交付物级硬门**（CTC-P0-12）：`pnpm run verify:conversation-continuity-live` 用真实 DeepSeek 执行"研究模式下缺权限被挡 → 用户答'给你权限和相关工具了，你再试试' → 完全访问下完成原任务"：第一轮必须**不**产出交付物并说明缺什么；第二轮必须产出可重新打开的 PDF、正文为中文、且最终回复**点名交付物**并**不**重复原问题（有界拒绝泛化追问）。跨重启的真实窗口回答连续由 `verify:electron-deepseek-reply-continuity` 覆盖。
 - **未覆盖 / 边界**：该门驱动的是应用 `/run/stream` 入口（桌面输入框使用的同一表面），不是窗口本身；回复检查是"交付物存在且校验通过 + 有界拒绝重问"，不是对措辞的语义评判，真实模型的表达波动会被如实记录为模型行为；`waiting_user` 的真实旧检查点迁移在本环境没有可用的历史数据根，只有夹具级证据。
+## Harness 当前语义（2026-09-27）
+
+原「Harness 当前语义与历史复杂度收口任务书 2026-09-25」于 2026-09-27 退役，HC-00～HC-06 全部落地，事实归入本节（原文见 git 历史）。
+
+**唯一入口与唯一循环（HC-00/HC-01）**：产品入口是 `createDefaultHarness`（装配阶段注册表），它调用唯一驱动 `createDurableHarness`；主循环入口是 `executeMainLoop`（`packages/harness/src/stages/execute/main-loop.ts`），单轮工具循环仍是 `runToolLoop`（`tool-loop.ts`）。此前 `createNextHarness`/`executeLegacyLoop`/`runners.ts` 是历史暗示，且 Runner **每次启动构建两个完全相同的 harness**、真正被驱动的是 `infra.nextHarness` 而 `infra.harness` 从未被读取——现在只构建一个，并删除零消费者的 `HarnessRegistryImpl`/`createHarnessRegistry` 与 types 的 `HarnessRegistry` 接口。
+
+**当前执行值与历史可读值分开（HC-02）**：`ExecutionWorkMode` 只有 `bounded_loop`；旧构建写下的 `task_book` 属于 `PersistedExecutionWorkMode`/`PersistedWorkPolicy`，只由恢复校验接受。阶段图同样分开——`allowedTransitions` 只含已注册 stage（`inspectStageTransition` 对它校验，遇到退休 stage fail closed 并区分 `not-an-edge`/`retired-stage`），`historicalStageTransitions` 只供读取旧记录与图工具。每个保留值都在声明处写明支持版本、消费者与移除条件。
+
+**VERIFY 只读本次 run 自己的证据（HC-03）**：两个窄结构 `pass` 此前要求 `taskBook`/`taskExecution`，而没有任何生产路径创建它们，因此真实 run 永远走不到；现在单只读通道要求"整轮恰好一次只读内置调用 + 成功 + 输出完整 + 无副作用 + Provider 回复 + 结果完整"，写后读回通道要求"恰好 write→read 两次 + 路径归一后相同 + 读回与写入内容逐字节相同 + 恰好一条成功 write 副作用"，参数取自本次 run 自己记录的工具调用（`ctx.produced` → `ctx.modelHistory` → `ctx.history`）。随消费者核实删除：局部重规划分支与六个步骤专属辅助函数。**行为变化**：这些窄通道从"测试专属"变为真实可达；其余判定不变，任何记录到的失败、缺失证据或未知副作用仍不能成为 `pass`。
+
+**重复调用的"新执行 vs 恢复重放"（HC-04）**：账本默认拒绝同一 `tool:<name>:<inputHash>` 成功后再调用；当**工具声明** `reRunnableAfterResourceChange`、效果种类非 `unknown`、且账本中存在**晚于该次结算**的同写资源成功变更时，Runtime 发放 `:retryN` 新身份并在持久意图事件写入 `warrant:resource-changed:<前序效果>` 审计，原结算保留。`write`/`edit` 声明该能力，`exec` 等不透明工具不声明（Shell 文本不能证明范围），模型重复请求或换理由都不构成凭据。真实模型验收 `verify:ledger-reexecution-live` 两场景通过。
+
+**运行期事件重入有界（HC-02 附带修复）**：延迟的用户补充/任务事件每个事件只交给主循环一次，之后按主循环的决定收尾；此前"没有阶段消费该事件"会让 run 无法结束并耗尽内存（实测 `default-harness.test.ts` 124 秒后 OOM，现该文件 12 项 6 秒通过）。
+
+**回归约束（HC-05）**：`packages/harness/src/stages/current-path-contract.test.ts` 扫描生产源码，禁止重新接入退休执行体系（TaskBook 字面量、`executionMode: 'task_book'`、退休入口名、已删除的步骤辅助函数、指向退休 stage 的活路由），并断言"可重跑"能力只由拥有写资源的文件工具声明；同一文件用真实 harness run 证明该能力的端到端接线。兼容夹具只出现在标题点明 legacy/inherited 的分组里：**读旧值可以，造旧值不行**。
+
+**仍保留的兼容项与消费者**：`PersistedWorkPolicy`（恢复校验 `runner.ts`）、`historicalStageTransitions`/`historicalStageNames`（读取旧 trace 与图工具）、`RunCheckpoint` 的阶段名校验表与 `Message.stage`（旧转录与检查点）、`decide`→`execute` 归一（`checkpoint-resume.ts`）、旧输入哈希身份（账本保守读取）。**未由本批承接**：`model-observability.ts` 与 `stages/execute/tool-loop.ts` 的拆分仍只归模块拆分地图队列；`exec` 这类不透明工具的对象范围仍是已知缺口（需要工具声明资源才能真正发放凭据）。
 ## 文件一致性与受控记忆（2026-09-27）
 
 原「Runtime 状态一致性与必要记忆任务书」于 2026-09-27 退役，其仍然成立的事实归入本节（原文见 git 历史）。三项完成记录：**实现完成**、**真实验收完成**、**缓存回归完成**。
