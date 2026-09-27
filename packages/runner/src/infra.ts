@@ -634,6 +634,8 @@ export async function buildInfrastructure(
           id: message.id,
           role: message.role === 'user' ? 'user' as const : 'assistant' as const,
           text: message.content.map((block) => (block.type === 'text' ? block.text : '')).join('\n'),
+          // The manage tool falls back to this run's own user message when nothing is cited.
+          runId: message.runId,
         }))
       },
       recordRevocation: (record) => {

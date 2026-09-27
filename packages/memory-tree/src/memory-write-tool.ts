@@ -34,7 +34,11 @@ const MemoryWriteInput = z.object({
   reason: z.string().min(1).max(500),
   branch: z.enum(['long-term', 'project', 'experience']).optional(),
   scope: z.enum(['global', 'workspace', 'project']).optional(),
-  sourceMessageIds: z.array(z.string().min(1).max(160)).min(1).max(16),
+  /**
+   * Optional: this run's messages are used when nothing is cited. A model has no way to know this
+   * session's message ids, and requiring them made every real user-request write impossible.
+   */
+  sourceMessageIds: z.array(z.string().min(1).max(160)).min(1).max(16).optional(),
   importance: z.number().min(0).max(1).optional(),
   confidence: z.number().min(0).max(1).optional(),
 })
@@ -124,9 +128,11 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
     name: MEMORY_WRITE_TOOL_NAME,
     description: [
       'Save one durable memory, and only when it is worth keeping across sessions.',
-      'Use reasonKind "user-request" when the user explicitly asked to remember something: at least one',
-      'cited sourceMessageIds entry must be the user message that carries that instruction, and the',
-      'runtime checks the text itself — you cannot authorize a write on the user\'s behalf.',
+      'Use reasonKind "user-request" when the user explicitly asked to remember something: the user',
+      'message of this run must carry that instruction. Citing sourceMessageIds is optional — give them',
+      'only if you actually know this session\'s message ids; the runtime reads this run\'s own messages',
+      'when you cite nothing, and it checks the text itself either way, so you cannot authorize a write',
+      'on the user\'s behalf.',
       'Use reasonKind "necessary" for a stable constraint, an agreed project decision, or a verified fact',
       'that would be expensive to obtain again; then `reason` must say what it is for and what is lost by',
       'not saving it. Never write transient progress, tool logs, file contents that can simply be read',
@@ -164,13 +170,24 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
         return failure('memory_write_source_unavailable', `Session messages could not be read: ${String(error)}`)
       }
       const byId = new Map(messages.map((message) => [message.id, message]))
-      const cited = request.sourceMessageIds.map((id) => byId.get(id))
-      const missing = request.sourceMessageIds.filter((id) => !byId.has(id))
+      const citedIds = request.sourceMessageIds ?? []
+      const cited = citedIds.map((id) => byId.get(id))
+      const missing = citedIds.filter((id) => !byId.has(id))
       if (missing.length > 0) {
         return failure('memory_write_source_missing',
           `These source messages are not in this session, so they cannot support a durable write: ${missing.join(', ')}.`)
       }
-      const sources = cited.filter((message): message is MemoryWriteSourceMessage => Boolean(message))
+      // A model cannot know this session's message ids, so citing them is optional. When it cites
+      // nothing, the sources are the messages of *this run*: the user's own instruction is right there,
+      // and the runtime reads it itself. A cited message that does not carry the instruction is what
+      // makes a write unauthorized, so citing nothing is not a way around the check.
+      const sources = cited.length > 0
+        ? cited.filter((message): message is MemoryWriteSourceMessage => Boolean(message))
+        : messages.filter((message) => message.runId !== undefined && message.runId === ctx.runId)
+      if (sources.length === 0) {
+        return failure('memory_write_source_missing',
+          'This run has no message the write could rest on, so there is nothing to cite.')
+      }
 
       // Completeness is checked per cited source, never per session: a truncated tool result somewhere
       // else in the conversation is not this write's problem, but a cited one cannot support a fact.

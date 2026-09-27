@@ -25,7 +25,11 @@ const MemoryManageInput = z.object({
   expectedRevision: z.number().int().min(0),
   /** The user's own words, or the reason this correction is needed. */
   reason: z.string().min(1).max(500),
-  sourceMessageIds: z.array(z.string().min(1).max(160)).min(1).max(16),
+  /**
+   * Optional: the calling run's own messages are used when nothing is cited, because a model has no
+   * way to know this session's message ids.
+   */
+  sourceMessageIds: z.array(z.string().min(1).max(160)).min(1).max(16).optional(),
   /** Only for `correct`, which is not supported yet. */
   replacement: z.object({
     summary: z.string().min(1).max(240),
@@ -113,6 +117,8 @@ export interface MemoryManageSourceMessage {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /** The run that produced this message; used when the caller cites nothing. */
+  runId?: string
 }
 
 /**
@@ -162,18 +168,23 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
         return failure('memory_manage_source_unavailable', `Session messages could not be read: ${String(error)}`)
       }
       const byId = new Map(messages.map((message) => [message.id, message]))
-      const missing = request.sourceMessageIds.filter((id) => !byId.has(id))
+      const citedIds = request.sourceMessageIds ?? []
+      const missing = citedIds.filter((id) => !byId.has(id))
       if (missing.length > 0) {
         return failure('memory_manage_source_missing',
           `These source messages are not in this session: ${missing.join(', ')}.`)
       }
-      const citedUsers = request.sourceMessageIds
-        .map((id) => byId.get(id))
+      // Citing specific messages is optional: the user message of *this run* is the one that asked, and
+      // the runtime reads it itself. A cited message that does not ask for the change still makes the
+      // call unauthorized, so citing nothing is not a way around the check.
+      const citedUsers = (citedIds.length > 0
+        ? citedIds.map((id) => byId.get(id))
+        : messages.filter((message) => message.runId !== undefined && message.runId === ctx.runId))
         .filter((message): message is MemoryManageSourceMessage => Boolean(message) && message!.role === 'user')
       if (!citedUsers.some((message) => userAskedToForget(message.text))) {
         return failure('memory_manage_not_authorized',
           citedUsers.length === 0
-            ? 'Name the user message that asked for this change; none of the cited messages is from the user.'
+            ? 'No user message of this run asks for this change, so the user has not authorized it.'
             : 'No cited user message asks to forget or correct a memory, so the user has not authorized this change.')
       }
 
@@ -228,8 +239,7 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
           return failure('memory_manage_target_invalid',
             'This memory has no entity to relate a replacement to, so it cannot be corrected through this path.')
         }
-        const sourceRefs = request.sourceMessageIds
-          .map((id) => byId.get(id))
+        const sourceRefs = (citedIds.length > 0 ? citedIds.map((id) => byId.get(id)) : citedUsers)
           .filter((message): message is MemoryManageSourceMessage => Boolean(message))
           .map((message) => `conversation-source:${ctx.runId}:user-message:${message.id}`)
 

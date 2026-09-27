@@ -57,6 +57,10 @@ function harness(options: {
   return { tool, invalidate, writeReplacement, relateReplacement, supersede, recordRevocation, ctx }
 }
 
+/** The tool falls back to this run's own messages, so the message needs its run id. */
+const runUserMessage = (id: string, text: string, runId = 'run-1'): MemoryManageSourceMessage => ({
+  id, role: 'user', text, runId,
+})
 const baseInput = {
   action: 'forget' as const,
   atomId: 'atom-1',
@@ -94,6 +98,32 @@ describe('memory manage authorization', () => {
   })
 })
 
+describe('memory manage citations', () => {
+  it('authorizes a forget from this run\'s own message when nothing is cited', async () => {
+    const { tool, invalidate, ctx } = harness({
+      messages: [runUserMessage('m1', '忘掉之前那条端口偏好。')],
+    })
+    const { sourceMessageIds, ...withoutCitations } = baseInput
+    void sourceMessageIds
+    const result = await tool.execute(withoutCitations, ctx)
+
+    expect(result.ok).toBe(true)
+    expect(invalidate).toHaveBeenCalledWith({ atomId: 'atom-1', expectedRevision: 3, reason: baseInput.reason })
+  })
+
+  it('still refuses when no message of this run asks for the change', async () => {
+    const { tool, invalidate, ctx } = harness({
+      messages: [runUserMessage('m1', '端口是多少？')],
+    })
+    const { sourceMessageIds, ...withoutCitations } = baseInput
+    void sourceMessageIds
+    const result = await tool.execute(withoutCitations, ctx)
+
+    expect(result.ok).toBe(false)
+    expect(result.meta?.errorKind).toBe('memory_manage_not_authorized')
+    expect(invalidate).not.toHaveBeenCalled()
+  })
+})
 describe('memory manage target verification', () => {
   it('refuses an unknown target', async () => {
     const { tool, invalidate, ctx } = harness({ target: undefined })
