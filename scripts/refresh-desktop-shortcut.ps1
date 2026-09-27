@@ -1,6 +1,16 @@
 [CmdletBinding()]
 param(
-  [string]$ShortcutPath
+  [string]$ShortcutPath,
+  # Re-save the link even when TargetPath, Arguments, WorkingDirectory and
+  # IconLocation already match. Skipping that write is the default because
+  # re-saving an existing .lnk discards the state Explorer keeps beside the file
+  # (pin state, icon position), so an "unchanged" refresh is not free.
+  [switch]$Force,
+  # Best-effort mode for the pnpm lifecycle (`predev` / `prebuild`). There,
+  # "the app has not been built yet" and "this desktop has no shortcut" are
+  # states rather than errors, so they report a reason and exit 0. A genuine
+  # failure (missing icon, broken runtime, unwritable link) still throws.
+  [switch]$IfPresent
 )
 
 Set-StrictMode -Version Latest
@@ -13,13 +23,35 @@ $mainBundlePath = Join-Path $appDirectory 'out\main\index.js'
 $preloadBundlePath = Join-Path $appDirectory 'out\preload\index.js'
 $rendererEntryPath = Join-Path $appDirectory 'out\renderer\index.html'
 
+if (-not $ShortcutPath) {
+  $desktop = [Environment]::GetFolderPath('Desktop')
+  $ShortcutPath = Join-Path $desktop 'LittleSheep.lnk'
+}
+
+# Resolve the link first. In best-effort mode this is the cheapest possible exit:
+# a desktop with no shortcut needs neither a prepared runtime nor a build.
+if ($IfPresent -and -not (Test-Path -LiteralPath $ShortcutPath -PathType Leaf)) {
+  Write-Host "Desktop shortcut left alone: no shortcut at $ShortcutPath."
+  Write-Host 'Run pnpm run refresh:desktop-shortcut to create it.'
+  return
+}
+
 if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
   throw "LittleSheep icon was not found at $iconPath"
 }
+$missingArtifacts = @()
 foreach ($buildArtifact in @($mainBundlePath, $preloadBundlePath, $rendererEntryPath)) {
   if (-not (Test-Path -LiteralPath $buildArtifact -PathType Leaf)) {
-    throw "LittleSheep build artifact was not found at $buildArtifact. Run the app build first."
+    $missingArtifacts += $buildArtifact
   }
+}
+if ($missingArtifacts.Count -gt 0) {
+  if ($IfPresent) {
+    Write-Host 'Desktop shortcut left alone: the app build is not ready yet.'
+    Write-Host "Missing: $($missingArtifacts -join ', ')"
+    return
+  }
+  throw "LittleSheep build artifact was not found at $($missingArtifacts[0]). Run the app build first."
 }
 
 Push-Location $appDirectory
@@ -42,9 +74,50 @@ $runtimePath = (Resolve-Path -LiteralPath $runtimePath).Path
 $appDirectory = (Resolve-Path -LiteralPath $appDirectory).Path
 $iconPath = (Resolve-Path -LiteralPath $iconPath).Path
 
-if (-not $ShortcutPath) {
-  $desktop = [Environment]::GetFolderPath('Desktop')
-  $ShortcutPath = Join-Path $desktop 'LittleSheep.lnk'
+$expectedArguments = '.'
+
+if (-not $Force) {
+  # Compare before writing. Those four properties fully describe the link, so a
+  # match means a re-save could only disturb state kept outside the file.
+  $currentIsSufficient = $false
+  $probe = $null
+  $existing = $null
+  try {
+    $probe = New-Object -ComObject WScript.Shell
+    $existing = $probe.CreateShortcut($ShortcutPath)
+    $currentIcon = [string]$existing.IconLocation
+    $iconSeparator = $currentIcon.LastIndexOf(',')
+    $currentIconPath = if ($iconSeparator -ge 0) {
+      $currentIcon.Substring(0, $iconSeparator).Trim('"')
+    } else {
+      $currentIcon.Trim('"')
+    }
+    if (
+      [StringComparer]::OrdinalIgnoreCase.Equals([string]$existing.TargetPath, $runtimePath) -and
+      [StringComparer]::OrdinalIgnoreCase.Equals([string]$existing.Arguments, $expectedArguments) -and
+      [StringComparer]::OrdinalIgnoreCase.Equals([string]$existing.WorkingDirectory, $appDirectory) -and
+      [StringComparer]::OrdinalIgnoreCase.Equals($currentIconPath, $iconPath)
+    ) {
+      $currentIsSufficient = $true
+    }
+  } catch {
+    # An unreadable link is a reason to rewrite it, never a reason to skip.
+    $currentIsSufficient = $false
+  } finally {
+    if ($null -ne $existing) {
+      [void][Runtime.InteropServices.Marshal]::ReleaseComObject($existing)
+    }
+    if ($null -ne $probe) {
+      [void][Runtime.InteropServices.Marshal]::ReleaseComObject($probe)
+    }
+  }
+  if ($currentIsSufficient) {
+    Write-Host "Desktop shortcut already current: $ShortcutPath"
+    Write-Host "Target: $runtimePath"
+    Write-Host "Working directory: $appDirectory"
+    Write-Host "Icon: $iconPath"
+    return
+  }
 }
 
 $shell = New-Object -ComObject WScript.Shell
@@ -52,7 +125,7 @@ $shortcut = $null
 try {
   $shortcut = $shell.CreateShortcut($ShortcutPath)
   $shortcut.TargetPath = $runtimePath
-  $shortcut.Arguments = '.'
+  $shortcut.Arguments = $expectedArguments
   $shortcut.WorkingDirectory = $appDirectory
   $shortcut.IconLocation = "$iconPath,0"
   $shortcut.Description = 'LittleSheep Agent Desktop App'

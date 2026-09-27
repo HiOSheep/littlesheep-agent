@@ -1,10 +1,11 @@
 // Shared Playwright-free Electron/CDP harness for the real-window verification
 // scripts (workspace performance, desktop cold start).
 //
-// Ownership: process launch, the locator handshake, the minimal CDP client and
-// the polling/rounding primitives every real-window measurement needs. Domain
-// assertions (what a workspace panel or a cold-start stage must satisfy) stay in
-// the individual scripts; this module must not grow product budgets.
+// Ownership: process launch and exit, the locator handshake, the minimal CDP
+// client and the polling/rounding primitives every real-window measurement
+// needs. Domain assertions (what a workspace panel or a cold-start stage must
+// satisfy) stay in the individual scripts; this module must not grow product
+// budgets.
 //
 // The launch contract matches the app's own acceptance surface:
 //   - `LITTLESHEEP_DATA_DIR` isolates the data root,
@@ -75,7 +76,12 @@ export function createElectronHarness({
       ...process.env,
       LITTLESHEEP_DATA_DIR: dataDir,
       LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
-      ...extraEnv,
+    }
+    // Undefined means "unset for this run": a fixture data root must decide what
+    // counts as configured, so ambient provider keys have to be removable.
+    for (const [name, value] of Object.entries(extraEnv)) {
+      if (value === undefined) delete env[name]
+      else env[name] = value
     }
     delete env.ELECTRON_RUN_AS_NODE
     const spawnRequestedAt = Date.now()
@@ -286,6 +292,28 @@ export function createElectronHarness({
     child.kill('SIGKILL')
   }
 
+  /**
+   * Wait for an already-launched process to exit on its own.
+   *
+   * Resolves with the exit code, and rejects after `timeoutMs`. It deliberately
+   * does not signal the process: killing is `forceTerminate`'s job, and the
+   * scenarios that assert "the app quits cleanly" must not be given a kill.
+   */
+  async function waitForExit(child, timeoutMs = actionTimeoutMs) {
+    if (child.exitCode !== null) return child.exitCode
+    return new Promise((resolvePromise, reject) => {
+      const timer = setTimeout(() => {
+        child.removeListener('exit', onExit)
+        reject(new Error(`Electron process ${child.pid} did not exit within ${timeoutMs}ms`))
+      }, timeoutMs)
+      const onExit = (code) => {
+        clearTimeout(timer)
+        resolvePromise(code)
+      }
+      child.once('exit', onExit)
+    })
+  }
+
   async function removeTemporaryRoot(root) {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       try {
@@ -321,6 +349,7 @@ export function createElectronHarness({
     fetchJson,
     readBootstrapTimings,
     forceTerminate,
+    waitForExit,
     removeTemporaryRoot,
   }
 }

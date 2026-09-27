@@ -1,14 +1,15 @@
-import { spawn } from 'node:child_process'
-import { createServer } from 'node:net'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+import { join } from 'node:path'
+// Process launch/exit, port reservation, the polling helper and the CDP client
+// come from the shared real-window harness; the motion assertions below are
+// this gate's own.
+import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
 
-const repoRoot = resolve('.')
-const appRoot = join(repoRoot, 'packages', 'app')
 const START_TIMEOUT_MS = 60_000
 const MOTION_SAMPLE_MS = 40
+const harness = createElectronHarness({ startTimeoutMs: START_TIMEOUT_MS })
+const { CdpClient, delay, waitFor, reservePort, removeTemporaryRoot, waitForExit } = harness
 
 async function main() {
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-panel-collapse-release-'))
@@ -20,14 +21,11 @@ async function main() {
   await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir), null, 2)}\n`, 'utf8')
 
   const debuggingPort = await reservePort()
-  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
-  const env = { ...process.env, LITTLESHEEP_DATA_DIR: dataDir, LITTLESHEEP_ELECTRON_ACCEPTANCE: '1' }
-  delete env.ELECTRON_RUN_AS_NODE
-  const child = spawn(executable, ['.', `--user-data-dir=${chromiumDir}`, `--remote-debugging-port=${debuggingPort}`], {
-    cwd: appRoot,
-    env,
-    stdio: ['ignore', 'ignore', 'ignore'],
-    windowsHide: true,
+  const child = await harness.startElectron({
+    dataDir,
+    chromiumDir,
+    debuggingPort,
+    logPath: join(root, 'electron.log'),
   })
   let client
   let preserve = false
@@ -51,9 +49,9 @@ async function main() {
     client?.close()
     if (child.exitCode === null) {
       child.kill()
-      await waitForExit(child, 10_000)
+      await waitForExit(child, 10_000).catch(() => undefined)
     }
-    if (!preserve) await rm(root, { recursive: true, force: true })
+    if (!preserve) await removeTemporaryRoot(root)
   }
 }
 
@@ -256,86 +254,6 @@ async function dragAt(client, fromX, fromY, toX, toY) {
     await delay(8)
   }
   await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: toX, y: toY, button: 'left', buttons: 0, clickCount: 1 })
-}
-
-async function reservePort() {
-  const server = createServer()
-  await new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolvePromise)
-  })
-  const address = server.address()
-  const port = typeof address === 'object' && address ? address.port : 0
-  await new Promise((resolvePromise) => server.close(resolvePromise))
-  return port
-}
-
-async function waitFor(operation, timeoutMs, label) {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < timeoutMs) {
-    const value = await operation()
-    if (value) return value
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
-  }
-  throw new Error(`Timed out waiting for ${label}`)
-}
-
-async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null) return
-  await new Promise((resolvePromise, reject) => {
-    const timer = setTimeout(() => reject(new Error('Electron did not exit in time')), timeoutMs)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolvePromise()
-    })
-  })
-}
-
-async function delay(milliseconds) {
-  await new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds))
-}
-
-class CdpClient {
-  constructor(url) {
-    this.nextId = 1
-    this.pending = new Map()
-    this.socket = new WebSocket(url)
-    this.opened = new Promise((resolvePromise, reject) => {
-      this.socket.addEventListener('open', resolvePromise, { once: true })
-      this.socket.addEventListener('error', reject, { once: true })
-    })
-    this.socket.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data)
-      if (!message.id) return
-      const pending = this.pending.get(message.id)
-      if (!pending) return
-      this.pending.delete(message.id)
-      if (message.error) pending.reject(new Error(message.error.message))
-      else pending.resolve(message.result)
-    })
-  }
-
-  async send(method, params = {}) {
-    await this.opened
-    const id = this.nextId++
-    const response = new Promise((resolvePromise, reject) => this.pending.set(id, { resolve: resolvePromise, reject }))
-    this.socket.send(JSON.stringify({ id, method, params }))
-    return response
-  }
-
-  async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-    if (result.exceptionDetails) {
-      throw new Error(
-        result.exceptionDetails.exception?.description
-          ?? result.exceptionDetails.text
-          ?? 'evaluate failed',
-      )
-    }
-    return result.result.value
-  }
-
-  close() { this.socket.close() }
 }
 
 await main()

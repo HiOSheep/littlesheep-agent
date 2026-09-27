@@ -67,6 +67,17 @@ export function pixelAt(image, x, y) {
   return pixelRgba(pixels, cy * width * channels + cx * channels, colorType)
 }
 
+/**
+ * `[r, g, b, a]` at a raw byte offset for the decoded image's colour type.
+ *
+ * Exported for callers that walk the whole buffer (colour histograms, ink
+ * coverage): a per-pixel `pixelAt` call would re-clamp coordinates they already
+ * know are in range.
+ */
+export function pixelRgbaAt(image, offset) {
+  return pixelRgba(image.pixels, offset, image.colorType)
+}
+
 /** `#RRGGBB` for an image coordinate. */
 export function hexAt(image, x, y) {
   const [r, g, b] = pixelAt(image, x, y)

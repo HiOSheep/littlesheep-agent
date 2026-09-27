@@ -8,45 +8,43 @@ const appRoot = join(repoRoot, 'packages', 'app')
 const appRequire = createRequire(join(appRoot, 'package.json'))
 const runtimeRoot = join(appRoot, 'runtime')
 const force = process.argv.includes('--force')
-const runtimeFiles = [
-  'chrome_100_percent.pak',
-  'chrome_200_percent.pak',
-  'd3dcompiler_47.dll',
-  'ffmpeg.dll',
-  'icudtl.dat',
-  'libEGL.dll',
-  'libGLESv2.dll',
-  'resources.pak',
-  'resources/default_app.asar',
-  'snapshot_blob.bin',
-  'v8_context_snapshot.bin',
-  'version',
-  'vk_swiftshader.dll',
-  'vk_swiftshader_icd.json',
-  'vulkan-1.dll',
+/**
+ * The prepared runtime is a copy of the installed Electron's `dist` with the
+ * executable renamed, so the completeness check asks that `dist` which files
+ * exist instead of naming them itself. The previous hardcoded manifest of every
+ * DLL broke the moment the runtime moved: Electron 44 dropped the ANGLE pair
+ * (`libEGL.dll`, `libGLESv2.dll`) and added `dxcompiler.dll` / `dxil.dll`, so the
+ * check failed on a runtime that was in fact complete — and because `predev` and
+ * `prebuild` both run this script, that surfaced as `pnpm run dev` exiting 1.
+ *
+ * `stableRuntimeEntries` is the weaker question the fallback path can ask: when
+ * no installed Electron is reachable there is no `dist` to compare against, so
+ * it verifies the entries the launcher dereferences by name.
+ */
+const stableRuntimeEntries = [
+  ['version', 'file'],
+  ['locales', 'directory'],
+  ['resources', 'directory'],
+  ['resources/default_app.asar', 'file'],
 ]
-const runtimeDirectories = ['locales', 'resources']
 
-async function isCompleteRuntime(runtimeDirectory, runtimePath, expectedBinarySize) {
-  const requiredFiles = [runtimePath, ...runtimeFiles.map((file) => join(runtimeDirectory, file))]
-  const filesPresent = await Promise.all(requiredFiles.map(async (path) => {
-    try {
-      const entry = await stat(path)
-      return entry.isFile()
-    } catch {
-      return false
-    }
-  }))
-  if (!filesPresent.every(Boolean)) return false
+async function entryIs(path, type) {
+  try {
+    const entry = await stat(path)
+    return type === 'file' ? entry.isFile() : entry.isDirectory()
+  } catch {
+    return false
+  }
+}
 
-  const directoriesPresent = await Promise.all(runtimeDirectories.map(async (directory) => {
-    try {
-      return (await stat(join(runtimeDirectory, directory))).isDirectory()
-    } catch {
-      return false
-    }
-  }))
-  if (!directoriesPresent.every(Boolean)) return false
+/**
+ * `sourceDirectory` is the installed Electron's `dist` when it is known, and
+ * `sourceBinaryName` is the executable that the renamed `LittleSheep.exe`
+ * replaces inside the runtime — that one name is skipped. Every other entry has
+ * to be present, and files have to match the source size.
+ */
+async function isCompleteRuntime(runtimeDirectory, runtimePath, sourceDirectory, sourceBinaryName, expectedBinarySize) {
+  if (!(await entryIs(runtimePath, 'file'))) return false
 
   if (typeof expectedBinarySize === 'number') {
     try {
@@ -55,7 +53,34 @@ async function isCompleteRuntime(runtimeDirectory, runtimePath, expectedBinarySi
       return false
     }
   }
-  return true
+
+  if (sourceDirectory) {
+    let entries
+    try {
+      entries = await readdir(sourceDirectory, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    const mirrored = await Promise.all(entries
+      .filter((entry) => entry.name !== sourceBinaryName)
+      .map(async (entry) => {
+        const source = join(sourceDirectory, entry.name)
+        const target = join(runtimeDirectory, entry.name)
+        if (entry.isDirectory()) return entryIs(target, 'directory')
+        if (!(await entryIs(target, 'file'))) return false
+        try {
+          return (await stat(target)).size === (await stat(source)).size
+        } catch {
+          return false
+        }
+      }))
+    return mirrored.every(Boolean)
+  }
+
+  const present = await Promise.all(
+    stableRuntimeEntries.map(([relative, type]) => entryIs(join(runtimeDirectory, relative), type)),
+  )
+  return present.every(Boolean)
 }
 
 async function readElectronVersion(electronPath) {
@@ -122,7 +147,7 @@ const runtimeDirectoryName = `electron-v${electronVersion}-${process.platform}-$
 let runtimeDirectory = join(runtimeRoot, runtimeDirectoryName)
 let electronRuntimePath = join(runtimeDirectory, `LittleSheep${extname(electronPath)}`)
 
-if (force || !(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, source.size))) {
+if (force || !(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
   // Keep each prepared runtime isolated. This avoids replacing DLLs that a
   // currently running LittleSheep process may still have open.
   if (await stat(runtimeDirectory).then(() => true).catch(() => false)) {
@@ -139,7 +164,7 @@ if (force || !(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, so
   }
 }
 
-if (!(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, source.size))) {
+if (!(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
   throw new Error(`Prepared Electron runtime is incomplete at ${runtimeDirectory}`)
 }
 if (sourceBinaryName !== basename(electronRuntimePath)) {

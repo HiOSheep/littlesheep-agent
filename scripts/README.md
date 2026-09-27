@@ -1,12 +1,14 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-27 18:04:06
+最后更新：2026-09-27 19:03:20
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
 - `verify-*.mjs` 是可直接运行的验收入口；根目录 `package.json` 中的 `verify:*` 命令负责先准备对应构建，再启动门。
-- `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。
+- `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。
+- `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。harness 的所有权边界是**进程启动与退出、locator 握手、最小 CDP 客户端、轮询/取整原语**：`waitForExit(child, timeoutMs)` 只等退出并返回退出码（不杀进程，杀是 `forceTerminate`），`startElectron({ extraEnv })` 里值为 `undefined` 表示“本次运行删除这个环境变量”（夹具数据根必须能排除环境里已有的 Provider 密钥）。域断言和产品预算一律留在各门里，不要长在这个模块上。
 - `check-repository-hygiene.mjs`（`pnpm run check:repo` 的第一段）包含仓库卫生门。它按**形状**拒绝已跟踪的生成物，除了 out/dist/coverage/release/tsbuildinfo/log，还包括测试中断留在仓库根的 `cache-scope-matrix-*` / `cache-observation-store-*` 暂存目录，以及 Vite / electron-vite 打包 TS 配置时写下的 `vitest.config.ts.timestamp-*.mjs` / `electron.vite.config.<数字>.mjs`。这些形状曾经真的入库（110 个 JSON + 1 个配置包）而旧门禁全绿，所以同一改动补了 `.gitignore` 窄规则，并把四条规则本身纳入"生成物已忽略"断言——删掉规则是门禁失败，不是静默重新漏水。对应测试 `check-repository-hygiene.test.mjs` 把门禁脚本复制进一个临时 Git 仓库，用 `git add -f` 让四种形状真正被跟踪，断言门禁失败且**只**点名这四个路径，而 `cache-observation-store.ts` 这类同前缀真源码不被误判。
+- 执行日志的离线诊断入口是 `node scripts/audit-cache-usage.mjs <dataDir>`（即 `pnpm run audit:cache`，覆盖用量/缓存/延迟账本）、`node scripts/analyze-cache-shapes.mjs <dataDir>`（头部构成、跨 run 首次分歧、provider 消息头尾）与 `node scripts/analyze-prompt-cache.mjs <dataDir>`（按 purpose 的失效原因与组件 digest 抖动）。SL-05 退役了根目录三个从未挂到任何入口、也没有任何文档引用的一次性脚本 `head-sections.mjs` / `ts-keys.mjs` / `tool-keys.mjs`：`head-sections` 的“reply 调用头部条目 id 与字符数”读数已并入 `analyze-cache-shapes.mjs` 的最后一节（改报最新一个含 reply 调用的 run）；`ts-keys` / `tool-keys` 的“打印第一批键名”由 `packages/runner/src/execution-log.ts` 的类型契约与 `execution-log.test.ts` 的键/脱敏断言覆盖。
 - `pnpm run verify:code-wrap-control` 核对对话代码块与工作区 Monaco 的共享自动换行偏好、真实滚动/折行变化及按钮状态。
 - `pnpm run verify:skills-catalog-states` 使用可控 Local App API 响应验证技能页成功空列表、错误保留、重试和快速详情切换。
 - `pnpm run verify:deletion-confirmation` 验证永久删除的取消、失败保留、连点去重，并确认项目删除会清理多个归档对话记录而保留磁盘文件夹。

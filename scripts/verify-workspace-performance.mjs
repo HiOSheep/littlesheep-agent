@@ -1,13 +1,14 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { inflateSync } from 'node:zlib'
 import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
 // Process launch, the CDP client and the polling primitives live in the shared
-// real-window harness so the cold-start benchmark measures the same way.
-import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
+// real-window harness so the cold-start benchmark measures the same way; the
+// screenshot decoder and `numeric` are shared with the other window gates.
+import { createElectronHarness, numeric } from './lib/electron-cdp-harness.mjs'
+import { decodePng, pixelRgbaAt } from './lib/png-pixels.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
@@ -1792,57 +1793,11 @@ async function captureElementInk(client, selector) {
 }
 
 function decodePngInk(buffer) {
-  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-  if (!buffer.subarray(0, 8).equals(signature)) throw new Error('Monaco screenshot is not PNG')
-  let offset = 8
-  let width = 0
-  let height = 0
-  let bitDepth = 0
-  let colorType = 0
-  const idat = []
-  while (offset + 12 <= buffer.length) {
-    const length = buffer.readUInt32BE(offset)
-    const type = buffer.toString('ascii', offset + 4, offset + 8)
-    const dataStart = offset + 8
-    const dataEnd = dataStart + length
-    if (dataEnd + 4 > buffer.length) throw new Error('Truncated Monaco screenshot PNG')
-    if (type === 'IHDR') {
-      width = buffer.readUInt32BE(dataStart)
-      height = buffer.readUInt32BE(dataStart + 4)
-      bitDepth = buffer[dataStart + 8]
-      colorType = buffer[dataStart + 9]
-      if (buffer[dataStart + 12] !== 0) throw new Error('Interlaced Monaco screenshot is unsupported')
-    } else if (type === 'IDAT') {
-      idat.push(buffer.subarray(dataStart, dataEnd))
-    } else if (type === 'IEND') {
-      break
-    }
-    offset = dataEnd + 4
-  }
-  if (!width || !height || bitDepth !== 8) throw new Error('Unsupported Monaco screenshot format')
-  const channels = { 0: 1, 2: 3, 4: 2, 6: 4 }[colorType]
-  if (!channels) throw new Error(`Unsupported Monaco screenshot color type: ${colorType}`)
-  const raw = inflateSync(Buffer.concat(idat))
-  const rowBytes = width * channels
-  const expectedLength = height * (rowBytes + 1)
-  if (raw.length < expectedLength) throw new Error('Truncated Monaco screenshot pixel data')
-  const pixels = Buffer.alloc(height * rowBytes)
+  const image = decodePng(buffer)
+  const { width, height, channels, pixels } = image
   const histogram = new Map()
-  let sourceOffset = 0
-  for (let y = 0; y < height; y += 1) {
-    const filter = raw[sourceOffset++]
-    const rowStart = y * rowBytes
-    for (let x = 0; x < rowBytes; x += 1) {
-      const source = raw[sourceOffset++]
-      const left = x >= channels ? pixels[rowStart + x - channels] : 0
-      const up = y > 0 ? pixels[rowStart - rowBytes + x] : 0
-      const upperLeft = y > 0 && x >= channels ? pixels[rowStart - rowBytes + x - channels] : 0
-      pixels[rowStart + x] = unfilterByte(filter, source, left, up, upperLeft)
-    }
-    if (filter > 4) throw new Error(`Unsupported Monaco screenshot PNG filter: ${filter}`)
-  }
   for (let index = 0; index < pixels.length; index += channels) {
-    const rgba = pixelRgba(pixels, index, colorType)
+    const rgba = pixelRgbaAt(image, index)
     const key = `${rgba[0] >> 3},${rgba[1] >> 3},${rgba[2] >> 3},${rgba[3] >> 5}`
     histogram.set(key, (histogram.get(key) ?? 0) + 1)
   }
@@ -1850,7 +1805,7 @@ function decodePngInk(buffer) {
   const dominant = dominantKey.split(',').map(Number)
   let inkPixels = 0
   for (let index = 0; index < pixels.length; index += channels) {
-    const rgba = pixelRgba(pixels, index, colorType)
+    const rgba = pixelRgbaAt(image, index)
     const distance = Math.abs(rgba[0] - dominant[0] * 8) + Math.abs(rgba[1] - dominant[1] * 8) + Math.abs(rgba[2] - dominant[2] * 8)
     // RGB bins are eight values wide, so the same dominant colour can be up
     // to 21 Manhattan-distance units from the bin origin. Keep the threshold
@@ -1866,31 +1821,6 @@ function decodePngInk(buffer) {
     hasInk: inkPixels >= Math.max(20, Math.floor(sampledPixels * 0.001)),
     dominantColor: dominant,
   }
-}
-
-function unfilterByte(filter, source, left, up, upperLeft) {
-  if (filter === 0) return source
-  if (filter === 1) return (source + left) & 0xff
-  if (filter === 2) return (source + up) & 0xff
-  if (filter === 3) return (source + Math.floor((left + up) / 2)) & 0xff
-  if (filter === 4) {
-    const estimate = left + up - upperLeft
-    const leftDistance = Math.abs(estimate - left)
-    const upDistance = Math.abs(estimate - up)
-    const upperLeftDistance = Math.abs(estimate - upperLeft)
-    const predictor = leftDistance <= upDistance && leftDistance <= upperLeftDistance
-      ? left
-      : upDistance <= upperLeftDistance ? up : upperLeft
-    return (source + predictor) & 0xff
-  }
-  return source
-}
-
-function pixelRgba(buffer, offset, colorType) {
-  if (colorType === 6) return [buffer[offset], buffer[offset + 1], buffer[offset + 2], buffer[offset + 3]]
-  if (colorType === 2) return [buffer[offset], buffer[offset + 1], buffer[offset + 2], 255]
-  if (colorType === 4) return [buffer[offset], buffer[offset], buffer[offset], buffer[offset + 1]]
-  return [buffer[offset], buffer[offset], buffer[offset], 255]
 }
 
 function resourceDelta(start, end, elapsedMs) {
@@ -2112,11 +2042,6 @@ function compactCommandLine(value) {
   if (typeof value !== 'string') return ''
   const compact = value.replace(/\s+/gu, ' ').trim()
   return compact.length > 360 ? `${compact.slice(0, 357)}...` : compact
-}
-
-function numeric(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? number : 0
 }
 
 async function directoryBytes(path) {

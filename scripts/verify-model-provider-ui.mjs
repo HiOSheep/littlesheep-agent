@@ -3,23 +3,23 @@
 // The page must render the provider cards in normal flow and open the editor
 // as a viewport-fixed dialog. This guards the regression where both layers end
 // up in the same column and visually overlap.
-import { spawn } from 'node:child_process'
-import { createServer } from 'node:net'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
-import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+// Process launch/exit, the locator handshake, the CDP client and the polling
+// primitives come from the shared real-window harness.
+import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const appRoot = join(repoRoot, 'packages', 'app')
 const START_TIMEOUT_MS = 60_000
 const SCREENSHOT_PATH = join(repoRoot, '.codex_tmp', 'model-provider-ui.png')
 const LIST_SCREENSHOT_PATH = join(repoRoot, '.codex_tmp', 'model-provider-list.png')
+const harness = createElectronHarness({ startTimeoutMs: START_TIMEOUT_MS })
+const { waitFor, reservePort, waitForExit } = harness
 
 async function main() {
-  await assertAppBuildFresh(repoRoot)
+  await harness.assertBuildFresh()
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-model-provider-ui-'))
   const dataDir = join(root, 'data')
   const chromiumDir = join(root, 'chromium')
@@ -358,43 +358,23 @@ function buildConfig(workspaceDir) {
 }
 
 async function startElectron({ dataDir, chromiumDir, debuggingPort, logPath }) {
-  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
-  const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
-  const env = {
-    ...process.env,
-    LITTLESHEEP_DATA_DIR: dataDir,
-    LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
-  }
-  // The fixture data root must decide what counts as configured: ambient
-  // provider keys would silently enable built-in presets.
-  for (const name of ['DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'GLM_API_KEY', 'LOCAL_GW_API_KEY']) {
-    delete env[name]
-  }
-  delete env.ELECTRON_RUN_AS_NODE
-  const child = spawn(executable, ['.', `--user-data-dir=${chromiumDir}`, `--remote-debugging-port=${debuggingPort}`], {
-    cwd: appRoot,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
+  return harness.startElectron({
+    dataDir,
+    chromiumDir,
+    debuggingPort,
+    logPath,
+    // The fixture data root must decide what counts as configured: ambient
+    // provider keys would silently enable built-in presets.
+    extraEnv: Object.fromEntries(
+      ['DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'GLM_API_KEY', 'LOCAL_GW_API_KEY'].map((name) => [name, undefined]),
+    ),
   })
-  child.stdout.pipe(log, { end: false })
-  child.stderr.pipe(log, { end: false })
-  child.once('exit', () => log.end())
-  return child
 }
 
 async function connectRenderer(port) {
-  const target = await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
-    if (!response?.ok) return undefined
-    const values = await response.json()
-    return values.find((candidate) => candidate.type === 'page'
-      && candidate.webSocketDebuggerUrl
-      && candidate.url
-      && !candidate.url?.startsWith('data:text/html'))
-  }, START_TIMEOUT_MS, 'renderer debug target')
-  const client = new CdpClient(target.webSocketDebuggerUrl)
-  await client.enableRuntime()
+  const client = await harness.connectRenderer(port)
+  // This gate captures screenshots, so it turns the Page domain on itself.
+  await client.send('Page.enable')
   await waitFor(async () => {
     try {
       return await client.evaluate(`Boolean(document.querySelector('.composer textarea') && document.querySelector('.sidebar-resizer'))`)
@@ -433,111 +413,5 @@ async function captureScreenshot(client, path) {
   await writeFile(path, Buffer.from(shot.data, 'base64'))
   return path
 }
-
-
-async function reservePort() {
-  const server = createServer()
-  await new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolvePromise)
-  })
-  const address = server.address()
-  const port = typeof address === 'object' && address ? address.port : 0
-  await new Promise((resolvePromise) => server.close(resolvePromise))
-  if (!port) throw new Error('failed to reserve a renderer debugging port')
-  return port
-}
-
-async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null) return
-  await new Promise((resolvePromise, reject) => {
-    const timer = setTimeout(() => reject(new Error('Electron did not exit in time')), timeoutMs)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolvePromise()
-    })
-  })
-}
-
-async function waitFor(operation, timeoutMs, label) {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < timeoutMs) {
-    const value = await operation()
-    if (value) return value
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
-  }
-  throw new Error(`Timed out waiting for ${label}`)
-}
-
-class CdpClient {
-  constructor(url) {
-    this.nextId = 1
-    this.pending = new Map()
-    this.defaultExecutionContext = undefined
-    this.defaultExecutionContextReady = new Promise((resolvePromise) => {
-      this.resolveDefaultExecutionContext = resolvePromise
-    })
-    this.socket = new WebSocket(url)
-    this.opened = new Promise((resolvePromise, reject) => {
-      this.socket.addEventListener('open', resolvePromise, { once: true })
-      this.socket.addEventListener('error', reject, { once: true })
-    })
-    this.socket.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data)
-      if (message.method === 'Runtime.executionContextCreated') {
-        const context = message.params?.context
-        if (context?.auxData?.isDefault || context?.name === '') {
-          this.defaultExecutionContext = context.id
-          this.resolveDefaultExecutionContext?.(context.id)
-        }
-        return
-      }
-      if (message.method === 'Runtime.executionContextsCleared') {
-        this.defaultExecutionContext = undefined
-        return
-      }
-      if (!message.id) return
-      const pending = this.pending.get(message.id)
-      if (!pending) return
-      this.pending.delete(message.id)
-      if (message.error) pending.reject(new Error(message.error.message))
-      else pending.resolve(message.result)
-    })
-  }
-
-  async enableRuntime() {
-    await this.send('Runtime.enable')
-  }
-
-  async waitForDefaultExecutionContext() {
-    if (this.defaultExecutionContext !== undefined) return this.defaultExecutionContext
-    return this.defaultExecutionContextReady
-  }
-
-  async send(method, params = {}) {
-    await this.opened
-    const id = this.nextId++
-    const response = new Promise((resolvePromise, reject) => this.pending.set(id, { resolve: resolvePromise, reject }))
-    this.socket.send(JSON.stringify({ id, method, params }))
-    return response
-  }
-
-  async evaluate(expression) {
-    await this.waitForDefaultExecutionContext()
-    const result = await this.send('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-      ...(this.defaultExecutionContext === undefined ? {} : { contextId: this.defaultExecutionContext }),
-    })
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Renderer evaluation failed')
-    return result.result.value
-  }
-
-  close() {
-    this.socket.close()
-  }
-}
-
 
 await main()

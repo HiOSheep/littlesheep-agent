@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -209,6 +209,16 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
   const config = structuredClone(DEFAULT_CONFIG);
   config.memory.repositoryBackend = 'v3';
   config.agents.defaults.workspace = workspace;
+  // The Runner derives its approval mode from the container root, which is the bootstrap directory.
+  // Without one the approval callback is unavailable and the approval-gated `memory_write` is refused
+  // before it runs — the gate would then measure the harness, not the migrated write path.
+  const bootstrapDir = join(dataDir, 'bootstrap');
+  await mkdir(bootstrapDir, { recursive: true });
+  await writeFile(
+    join(bootstrapDir, 'AGENTS.md'),
+    'Isolated post-migration acceptance environment. Keep every action inside the supplied workspace.\n',
+    'utf8',
+  );
   const previousDataDir = process.env.LITTLESHEEP_DATA_DIR;
   process.env.LITTLESHEEP_DATA_DIR = dataDir;
   const runId = 'memory-v3-runtime-acceptance';
@@ -220,30 +230,23 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
       config,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
+      bootstrapDir,
       llm: makeMockLlm([
-        textResponse('{"type":"problem","confidence":0.9,"reason":"runtime acceptance"}'),
-        textResponse('{"plan":[{"description":"verify migrated runtime","tools":[]}]}'),
-        textResponse('The isolated migrated runtime completed its verification step.'),
-        textResponse('{"verdict":"pass","reason":"isolated runtime goal achieved"}'),
-        textResponse(JSON.stringify({ memories: [{
-          branch: 'project',
-          parentNodeId: 'project:root',
-          scope: 'workspace',
+        // The user's own message carries the memory instruction, so the model has a legitimate
+        // `user-request` basis. The runtime reads that message itself and the write tool checks it.
+        toolCallResponse('migrated-write', 'memory_write', {
+          reasonKind: 'user-request',
           summary: marker,
-          content: 'The migrated Memory v3 repository accepted an EVOLVE write through the real Runner path.',
-          retrievalKeys: ['migrated', 'runtime', 'acceptance'],
-          importance: 0.8,
+          content: `The migrated runtime acceptance marker is ${marker}.`,
+          retrievalKeys: ['migrated', 'runtime', 'acceptance', marker],
+          reason: 'The user asked for this to be remembered in this run.',
+          // Long-term/global is the form the controlled tool can complete on its own: a project write
+          // needs a `scopeKey` only the workspace resource path (not the model) can supply.
+          branch: 'long-term',
           confidence: 0.95,
-          reason: 'Verified by the isolated post-migration Runner acceptance flow.',
-        }], createSkill: null })),
-        textResponse(JSON.stringify({ observations: [{
-          summary: 'Migrated runtime run completed',
-          content: 'The isolated post-migration Runner completed and persisted its CAPTURE record.',
-          retrievalKeys: ['migrated', 'runtime', 'capture'],
-          importance: 0.5,
-          confidence: 0.95,
-          reason: 'The Runner returned an accepted result in the isolated migrated data root.',
-        }] })),
+          importance: 0.85,
+        }),
+        textResponse('The isolated migrated runtime completed its verification step.'),
       ]),
       skillsDirs: [],
       runTimeoutMs: 30_000,
@@ -251,16 +254,41 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
     const result = await first.run({
       runId,
       origin: 'app',
-      text: 'Verify the isolated migrated Memory v3 runtime without external tools.',
+      // The isolated acceptance runs in full mode: `memory_write` is approval-gated in the other
+      // modes, and this gate is about the post-migration write path, not the approval prompt.
+      permissionPolicyId: 'full',
+      workspaceContext: { boundaryKind: 'agent_workplace' },
+      text: [
+        'Verify the isolated migrated Memory v3 runtime without external tools.',
+        `请记住：迁移后的验收标记是 ${marker}。这条指令就是用户要求长期保存该标记的原话。`,
+      ].join('\n'),
       cwd: workspace,
     });
-    assert.equal(result.status, 'ok');
-    const projectNode = (await first.infra.memoryRepository.listNodes('project'))
+    assert.equal(result.status, 'ok', result.error ?? String(result.reply ?? ''));
+    // Durable memory comes from the controlled tool, not from an automatic settlement stage: the run
+    // must have committed a `tool`-stage write of this run, and the retired stages must not appear.
+    const trace = new Set((await first.replay(runId))?.trace?.filter((entry) => entry.ok).map((entry) => entry.name) ?? []);
+    for (const stage of ['enter', 'execute', 'finalize']) {
+      assert(trace.has(stage), `The post-migration run did not complete ${stage}.`);
+    }
+    for (const retired of ['decide', 'evolve', 'capture']) {
+      assert(!trace.has(retired), `The post-migration run ran the retired ${retired} stage.`);
+    }
+    const replay = await first.replay(runId);
+    const toolSummary = (replay?.toolCalls ?? [])
+      .map((record) => `${record.call.name}:${record.result.ok ? 'ok' : (record.result.meta?.errorKind ?? 'failed')}:${(record.result.error ?? '').slice(0, 120)}`)
+      .join(' | ') || 'none';
+    const writtenNode = (await first.infra.memoryRepository.listNodes('long-term'))
       .find((node) => node.sourceRunIds.includes(runId));
-    const dailyNode = (await first.infra.memoryRepository.listNodes('daily'))
-      .find((node) => node.sourceRunIds.includes(runId));
-    assert(projectNode, 'The migrated runtime did not persist its EVOLVE atom.');
-    assert(dailyNode, 'The migrated runtime did not persist its CAPTURE atom.');
+    assert(writtenNode,
+      `The migrated runtime persisted no durable memory for its own run; tool calls=${toolSummary}`);
+    const memoryWrite = await first.infra.memoryRepository.management.inspectNode(writtenNode.id, 'D3');
+    assert(memoryWrite.atom.sourceStages?.includes('tool'),
+      `The migrated runtime did not persist a controlled tool write: sourceStages=${(memoryWrite.atom.sourceStages ?? []).join(',')}`);
+    assert(
+      `${memoryWrite.atom.summary}\n${memoryWrite.atom.content}`.includes(marker),
+      'The migrated runtime did not persist the marker the user asked it to remember.',
+    );
     const firstMessages = await first.sessionManager.read(result.sessionId);
     assert(firstMessages.some((message) => message.role === 'user'));
     assert(firstMessages.some((message) => message.role === 'assistant'));
@@ -271,12 +299,12 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
       config,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
+      bootstrapDir,
       llm: makeMockLlm([]),
       skillsDirs: [],
       runTimeoutMs: 30_000,
     });
-    assert.equal((await restored.infra.memoryRepository.getNode(projectNode.id))?.summary, marker);
-    assert.equal((await restored.infra.memoryRepository.getNode(dailyNode.id))?.summary, 'Migrated runtime run completed');
+    assert.equal((await restored.infra.memoryRepository.getNode(writtenNode.id))?.summary, marker);
     const restoredMessages = await restored.sessionManager.read(result.sessionId);
     assert.deepEqual(restoredMessages.map((message) => message.id), firstMessages.map((message) => message.id));
 
@@ -289,24 +317,24 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
       workspace,
       autoPrime: false,
     });
-    const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'project');
-    assert(index.entries.some((entry) => entry.id === projectNode.id));
+    const index = await restored.infra.memoryService.branchIndex(navigationRunId, 'long-term');
+    assert(index.entries.some((entry) => entry.id === writtenNode.id));
     const expansion = await restored.infra.memoryService.expand(navigationRunId, {
-      branchId: 'project',
-      nodeId: projectNode.id,
+      branchId: 'long-term',
+      nodeId: writtenNode.id,
       limit: 1,
       tokenBudget: 800,
     });
-    assert(expansion.fragments.some((fragment) => fragment.id === projectNode.id));
-    const released = await restored.infra.memoryService.release(navigationRunId, [projectNode.id]);
-    assert.deepEqual(released.releasedAtomIds, [projectNode.id]);
+    assert(expansion.fragments.some((fragment) => fragment.id === writtenNode.id));
+    const released = await restored.infra.memoryService.release(navigationRunId, [writtenNode.id]);
+    assert.deepEqual(released.releasedAtomIds, [writtenNode.id]);
     const search = await restored.infra.memoryService.deepSearch(navigationRunId, {
-      branchId: 'project',
+      branchId: 'long-term',
       query: 'migrated runtime acceptance',
       limit: 5,
       tokenBudget: 800,
     });
-    assert(search.fragments.some((fragment) => fragment.id === projectNode.id));
+    assert(search.fragments.some((fragment) => fragment.id === writtenNode.id));
     await restored.infra.memoryService.finishRun(navigationRunId);
 
     const validateActiveV3 = (source, sourceManifestHash) => (
@@ -324,8 +352,9 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
     return {
       runStatus: result.status,
       sessionMessageCount: restoredMessages.length,
-      evolveAtomsPersisted: 1,
-      captureAtomsPersisted: 1,
+      controlledWriteAtomsPersisted: 1,
+      controlledWriteSourceStages: [...(memoryWrite.atom.sourceStages ?? [])],
+      retiredStagesAbsent: true,
       restartRecovered: true,
       indexedNavigationVerified: true,
       ftsRetrievalVerified: true,
@@ -341,9 +370,14 @@ async function verifyPostMigrationRuntime(manager, dataDir) {
 
 function makeMockLlm(responses) {
   const queue = [...responses];
-  const chat = async () => {
+  const requests = [];
+  const chat = async (request) => {
+    requests.push(request);
     const response = queue.shift();
-    if (!response) throw new Error('Unexpected LLM request during Memory v3 runtime acceptance.');
+    if (!response) {
+      // The request count makes an exhausted queue actionable: it says how far the run got.
+      throw new Error(`Unexpected LLM request during Memory v3 runtime acceptance (#${requests.length}).`);
+    }
     return response;
   };
   return {
@@ -360,6 +394,15 @@ function makeMockLlm(responses) {
 
 function textResponse(content) {
   return { content, toolCalls: [], finishReason: 'stop' };
+}
+
+/** A model turn that asks for the controlled durable write instead of an automatic settlement. */
+function toolCallResponse(id, name, args) {
+  return {
+    content: '',
+    finishReason: 'tool_calls',
+    toolCalls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+  };
 }
 
 function parseArgs(values) {

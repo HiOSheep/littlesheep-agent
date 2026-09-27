@@ -1,19 +1,19 @@
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
-import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
+import { dirname, join } from 'node:path'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+// Process launch/exit, the locator handshake, the CDP client and the polling
+// primitives come from the shared real-window harness; only the continuity
+// assertions below are this gate's own.
+import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const appRoot = join(repoRoot, 'packages', 'app')
 const START_TIMEOUT_MS = 60_000
 const EXIT_TIMEOUT_MS = 20_000
 const COMPOSER_DRAFT = 'restart continuity draft 4827'
+const harness = createElectronHarness({ startTimeoutMs: START_TIMEOUT_MS, actionTimeoutMs: EXIT_TIMEOUT_MS })
+const { delay, waitFor, waitForLocator, desktopAction, fetchJson, reservePort, startElectron, waitForExit } = harness
 
 // §UX-39 item 3: the second workspace root. It is a sibling of the data
 // directory — outside the data root, unlike `dataDir/workplace`, so the two
@@ -33,7 +33,7 @@ const PROJECT_REFRESH_PROMPT = '确认归属前刷新一次项目列表 4821'
 const TERMINAL_TIMEOUT_MS = 90_000
 
 async function main() {
-  await assertAppBuildFresh(repoRoot)
+  await harness.assertBuildFresh()
   const keep = process.argv.includes('--keep')
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-ui-state-continuity-'))
   const dataDir = join(root, 'data')
@@ -1015,16 +1015,7 @@ function isPathInsideOrSame(parent, child) {
   return normalizedChild === normalizedParent || normalizedChild.startsWith(`${normalizedParent}\\`)
 }
 
-const settle = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 400))
-
-async function fetchJson(locator, path, init) {
-  const response = await fetch(`http://${locator.host}:${locator.port}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${locator.token}`, ...(init?.headers ?? {}) },
-  })
-  const body = await response.json().catch(() => undefined)
-  return { status: response.status, ok: response.ok, body }
-}
+const settle = () => delay(400)
 
 /**
  * A capture that can hang is worse than no capture: the same budgeted recipe
@@ -1720,49 +1711,19 @@ async function verifyObservableActivityStream(client) {
   }
 }
 
-async function startElectron({ dataDir, chromiumDir, debuggingPort, logPath }) {
-  const executable = resolveVerifiedElectronExecutable(repoRoot, { requireAppBuildManifest: true })
-  const log = await import('node:fs').then(({ createWriteStream }) => createWriteStream(logPath, { flags: 'a' }))
-  const env = {
-    ...process.env,
-    LITTLESHEEP_DATA_DIR: dataDir,
-    LITTLESHEEP_ELECTRON_ACCEPTANCE: '1',
-  }
-  delete env.ELECTRON_RUN_AS_NODE
-  const child = spawn(executable, ['.', `--user-data-dir=${chromiumDir}`, `--remote-debugging-port=${debuggingPort}`], {
-    cwd: appRoot,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
-  child.stdout.pipe(log, { end: false })
-  child.stderr.pipe(log, { end: false })
-  child.once('exit', () => log.end())
-  return child
-}
-
+/**
+ * Attach to the production renderer.
+ *
+ * The shared harness supplies the launch/attach half; this gate's own half is
+ * the extra requirement that the React shell is really up — every step below
+ * drives the composer, the sidebar resizer and the workspace panel.
+ */
 async function connectRenderer(port) {
-  const target = await waitFor(async () => {
-    const response = await fetch(`http://127.0.0.1:${port}/json/list`).catch(() => undefined)
-    if (!response?.ok) return undefined
-    const values = await response.json()
-    return values.find((candidate) => candidate.type === 'page'
-      && candidate.webSocketDebuggerUrl
-      && candidate.url
-      && !candidate.url?.startsWith('data:text/html'))
-  }, START_TIMEOUT_MS, 'renderer debug target')
-  const client = new CdpClient(target.webSocketDebuggerUrl)
-  await client.enableRuntime()
+  const client = await harness.connectRenderer(port)
+  // This gate reloads the document and captures screenshots, so it turns the
+  // Page domain on itself (the shared attach deliberately enables nothing).
   await client.send('Page.enable')
-  await waitFor(async () => {
-    try {
-      return await client.evaluate(`Boolean(document.querySelector('.composer textarea') && document.querySelector('.sidebar-resizer'))`)
-    } catch {
-      // The startup page and the renderer share a WebContents. Navigation can
-      // replace the execution context between target discovery and evaluation.
-      return undefined
-    }
-  }, START_TIMEOUT_MS, 'renderer UI context')
+  await waitForRendererReady(client)
   return client
 }
 
@@ -2064,134 +2025,6 @@ function assertGeometryNear(actual, expected, label) {
     if (!Number.isFinite(actual?.[key]) || Math.abs(actual[key] - expected[key]) > 12) {
       throw new Error(`${label} ${key} differs: expected ${expected[key]}, received ${actual?.[key]}`)
     }
-  }
-}
-
-async function waitForLocator(dataDir, expectedPid) {
-  const path = join(dataDir, 'runtime', 'local-app-api.json')
-  return waitFor(async () => {
-    try {
-      const locator = JSON.parse(await readFile(path, 'utf8'))
-      return locator.pid === expectedPid && locator.token ? locator : undefined
-    } catch {
-      return undefined
-    }
-  }, START_TIMEOUT_MS, 'Local App API locator')
-}
-
-async function desktopAction(locator, action) {
-  const response = await fetch(`http://${locator.host}:${locator.port}/application/acceptance`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${locator.token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ action }),
-  })
-  if (!response.ok) throw new Error(`desktop action ${action} failed: ${response.status}`)
-}
-
-async function reservePort() {
-  const server = createServer()
-  await new Promise((resolvePromise, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolvePromise)
-  })
-  const address = server.address()
-  const port = typeof address === 'object' && address ? address.port : 0
-  await new Promise((resolvePromise) => server.close(resolvePromise))
-  if (!port) throw new Error('failed to reserve a renderer debugging port')
-  return port
-}
-
-async function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null) return
-  await new Promise((resolvePromise, reject) => {
-    const timer = setTimeout(() => reject(new Error('Electron did not exit in time')), timeoutMs)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolvePromise()
-    })
-  })
-}
-
-async function waitFor(operation, timeoutMs, label) {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < timeoutMs) {
-    const value = await operation()
-    if (value) return value
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100))
-  }
-  throw new Error(`Timed out waiting for ${label}`)
-}
-
-class CdpClient {
-  constructor(url) {
-    this.nextId = 1
-    this.pending = new Map()
-    this.defaultExecutionContext = undefined
-    this.defaultExecutionContextReady = new Promise((resolvePromise) => {
-      this.resolveDefaultExecutionContext = resolvePromise
-    })
-    this.socket = new WebSocket(url)
-    this.opened = new Promise((resolvePromise, reject) => {
-      this.socket.addEventListener('open', resolvePromise, { once: true })
-      this.socket.addEventListener('error', reject, { once: true })
-    })
-    this.socket.addEventListener('message', (event) => {
-      const message = JSON.parse(event.data)
-      if (message.method === 'Runtime.executionContextCreated') {
-        const context = message.params?.context
-        if (context?.auxData?.isDefault || context?.name === '') {
-          this.defaultExecutionContext = context.id
-          this.resolveDefaultExecutionContext?.(context.id)
-        }
-        return
-      }
-      if (message.method === 'Runtime.executionContextsCleared') {
-        this.defaultExecutionContext = undefined
-        return
-      }
-      if (!message.id) return
-      const pending = this.pending.get(message.id)
-      if (!pending) return
-      this.pending.delete(message.id)
-      if (message.error) pending.reject(new Error(message.error.message))
-      else pending.resolve(message.result)
-    })
-  }
-
-  async enableRuntime() {
-    await this.send('Runtime.enable')
-  }
-
-  async waitForDefaultExecutionContext() {
-    if (this.defaultExecutionContext !== undefined) return this.defaultExecutionContext
-    return this.defaultExecutionContextReady
-  }
-
-  async send(method, params = {}) {
-    await this.opened
-    const id = this.nextId++
-    const response = new Promise((resolvePromise, reject) => this.pending.set(id, { resolve: resolvePromise, reject }))
-    this.socket.send(JSON.stringify({ id, method, params }))
-    return response
-  }
-
-  async evaluate(expression) {
-    await this.waitForDefaultExecutionContext()
-    const result = await this.send('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-      ...(this.defaultExecutionContext === undefined ? {} : { contextId: this.defaultExecutionContext }),
-    })
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text ?? 'Renderer evaluation failed')
-    return result.result.value
-  }
-
-  close() {
-    this.socket.close()
   }
 }
 

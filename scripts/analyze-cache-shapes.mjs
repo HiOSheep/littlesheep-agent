@@ -7,6 +7,11 @@
 // run, what the provider actually received (head and tail), and whether the
 // reply purpose still emits more than one system shape.
 //
+// The last section is the former root `head-sections.mjs` readout: which
+// context-snapshot items make up the reply call's head and how large each one
+// is. It reports the newest run that has a reply call (that script stopped at
+// whichever log `readdir` happened to return first).
+//
 // Usage: node scripts/analyze-cache-shapes.mjs <dataDir>
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -33,6 +38,8 @@ for (const file of readdirSync(logDir).filter((name) => name.endsWith('.json')))
       messages,
       firstSystem: messages.find((message) => message.role === 'system'),
       items: (snapshots.get(request.contextSnapshotId)?.items ?? []).map((item) => item.id),
+      itemSizes: (snapshots.get(request.contextSnapshotId)?.items ?? [])
+        .map((item) => ({ id: item.id, characterCount: item.characterCount ?? 0 })),
       uncached: prompt.uncachedTokenCount ?? 0,
       total: prompt.tokenCount ?? 0,
     };
@@ -111,4 +118,22 @@ for (const request of runs.flatMap((run) => run.requests)) {
 }
 for (const [length, count] of [...shapes].sort((left, right) => right[1] - left[1])) {
   console.log(`  ${String(count).padStart(4)} calls with first system message of ${length} characters`);
+}
+
+// Ported from the retired root `head-sections.mjs`: the reply call's head is
+// where the identity/workspace/memory/tooling directives are assembled, so the
+// per-item sizes are what a head trim is judged against. The item-id filter is
+// that script's own heuristic, kept verbatim.
+const HEAD_ITEM_PATTERN = /system|identity|workspace|safety|core-flow|capabilit|memory|profile|tooling|directive|runtime|date|bootstrap|index|skill/i;
+console.log('\n=== reply request head items (id and characters) ===');
+const replyRun = [...runs].reverse().find((run) => run.requests.some((request) => request.purpose === 'reply'));
+const replyRequest = replyRun?.requests.find((request) => request.purpose === 'reply');
+if (!replyRequest) {
+  console.log('  no reply request in these logs');
+} else {
+  console.log(`  run=${replyRun.id} snapshotItems=${replyRequest.itemSizes.length}`);
+  for (const item of replyRequest.itemSizes) {
+    if (!HEAD_ITEM_PATTERN.test(item.id)) continue;
+    console.log(`  ${String(item.id).padEnd(46)} ${String(item.characterCount).padStart(6)}`);
+  }
 }
