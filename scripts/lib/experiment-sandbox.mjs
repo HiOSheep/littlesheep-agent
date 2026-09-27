@@ -20,6 +20,8 @@ import { appendJsonLine, ensureDir, ledgerRecord, sha256, writeJson } from './ex
 
 export const SANDBOX_BACKEND = 'wsl2-bwrap';
 export const SANDBOX_DISTRO = 'Ubuntu-26.04';
+/** The runtime the sandbox needs, re-exposed read-only after `/home` is masked. Measured on this host. */
+export const SANDBOX_TOOLCHAIN = ['/home/dev/.nvm/versions/node/v22.23.3'];
 
 /** The isolation fact set each case reports, so a reader can tell which channel closed what. */
 export function describeIsolation() {
@@ -42,44 +44,17 @@ export function describeIsolation() {
 /**
  * The command that runs one shell line inside the sandbox.
  *
- * Exported so the same definition is what the prototype executes and what the matrix describes: a
- * mismatch between the two would make every isolation claim unfalsifiable.
+ * This is a re-export of the **product-side** definition (`packages/tools/src/builtin/exec-sandbox.ts`)
+ * rather than a second copy: the isolation a case describes and the isolation the tool executes have to be
+ * the same bytes, otherwise every claim here would be unfalsifiable.
  */
-export function buildSandboxArgv(spec, command) {
-  const { distro = SANDBOX_DISTRO, workspace, network = 'none', proxyUrl, maskedPaths = ['/mnt', '/home'], extraRoBinds = [] } = spec;
-  const argv = [
-    '-d', distro, '-e', 'bwrap',
-    '--ro-bind', '/', '/',
-    '--dev', '/dev',
-    '--proc', '/proc',
-    '--tmpfs', '/tmp',
-    // The read-only root alone still exposes the whole distro *and* the Windows drives through /mnt; both
-    // were measured readable. Masking them is what turns "read-only" into "not there".
-    ...maskedPaths.flatMap((path) => ['--tmpfs', path]),
-    // Re-expose only the run's own workspace, at its real path, read-write.
-    '--bind', workspace, workspace,
-    // WSLInterop is dispatched by a global binfmt_misc handler and /init is in the read-only root, so a
-    // Windows executable visible inside the sandbox runs as a host process outside it. Masking /init with
-    // a character device closes that channel; measured, the escape succeeds without this line.
-    '--ro-bind', '/dev/null', '/init',
-    ...extraRoBinds.flatMap((pair) => ['--ro-bind', pair[0], pair[1]]),
-    '--unshare-all',
-    ...(network === 'proxy' || network === 'shared' ? ['--share-net'] : []),
-    '--die-with-parent',
-    '--chdir', workspace,
-    // A minimal, explicit environment. Nothing is inherited from the Windows side.
-    '--setenv', 'HOME', '/tmp',
-    '--setenv', 'PATH', '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-    '--setenv', 'LANG', 'C.UTF-8',
-    ...(network === 'proxy' && proxyUrl ? [
-      '--setenv', 'http_proxy', proxyUrl,
-      '--setenv', 'https_proxy', proxyUrl,
-      '--setenv', 'HTTP_PROXY', proxyUrl,
-      '--setenv', 'HTTPS_PROXY', proxyUrl,
-    ] : []),
-    '/bin/sh', '-c', command,
-  ];
-  return argv;
+export async function loadSandboxBackend() {
+  return import('../../packages/tools/dist/builtin/exec-sandbox.js');
+}
+
+export async function buildSandboxArgv(spec, command) {
+  const backend = await loadSandboxBackend();
+  return backend.buildSandboxArgv(spec, command);
 }
 
 /** True when the machine can run this backend at all; the answer is evidence, not an assumption. */
@@ -106,14 +81,21 @@ export function distroPathOf(winPath) {
   return `/mnt/${match[1].toLowerCase()}/${match[2].replaceAll('\\', '/')}`;
 }
 
-/** A tool context good enough for a direct exec invocation, with a real approval gate. */
-function toolContext({ dataDir, workspace, approvals }) {
+/**
+ * A tool context good enough for a direct exec invocation, with a real approval gate.
+ *
+ * `permissionMode` is a parameter because the gate's behaviour depends on it, and getting that wrong is how
+ * a test lies to itself: under `full` the boundary decides `allow` and the approval callback is never
+ * consulted, so "deny" would appear to work while proving nothing. The authorization rows use `research`,
+ * where a write/execute outside the container genuinely needs an answer.
+ */
+function toolContext({ dataDir, workspace, approvals, permissionMode = 'full' }) {
   return {
     sessionId: 'sandbox-experiment',
     runId: `sandbox-${Date.now()}`,
     cwd: workspace,
     containerRoot: dataDir,
-    permissionMode: 'full',
+    permissionMode,
     approve: async (action, detail) => {
       approvals.push({ action, detail });
       return approvals.allow;
@@ -131,19 +113,21 @@ async function loadExecTool() {
  * Drive one command through the exec tool with the candidate backend selected. The tool is the real one,
  * so a regression in validation, approval, sanitising or cancellation shows up here.
  */
-export async function runThroughExecTool({ command, timeoutMs = 60_000, dataDir, workspace, approvals, backend = SANDBOX_BACKEND, spec }) {
+export async function runThroughExecTool({ command, timeoutMs = 60_000, dataDir, workspace, approvals, backend = SANDBOX_BACKEND, spec, auditPath, permissionMode = 'full' }) {
   const execTool = await loadExecTool();
   const previous = {
     backend: process.env.LS_EXPERIMENT_EXEC_BACKEND,
     spec: process.env.LS_EXPERIMENT_SANDBOX,
+    audit: process.env.LS_EXPERIMENT_SANDBOX_AUDIT,
   };
   process.env.LS_EXPERIMENT_EXEC_BACKEND = backend;
   process.env.LS_EXPERIMENT_SANDBOX = JSON.stringify(spec);
+  if (auditPath) process.env.LS_EXPERIMENT_SANDBOX_AUDIT = auditPath;
   const started = performance.now();
   try {
     const result = await execTool.execute(
       { command, cwd: workspace, timeout_ms: timeoutMs },
-      toolContext({ dataDir, workspace, approvals }),
+      toolContext({ dataDir, workspace, approvals, permissionMode }),
     );
     return {
       ok: result.ok === true,
@@ -167,9 +151,19 @@ export async function runThroughExecTool({ command, timeoutMs = 60_000, dataDir,
     else process.env.LS_EXPERIMENT_EXEC_BACKEND = previous.backend;
     if (previous.spec === undefined) delete process.env.LS_EXPERIMENT_SANDBOX;
     else process.env.LS_EXPERIMENT_SANDBOX = previous.spec;
+    if (previous.audit === undefined) delete process.env.LS_EXPERIMENT_SANDBOX_AUDIT;
+    else process.env.LS_EXPERIMENT_SANDBOX_AUDIT = previous.audit;
   }
 }
 
+/** Read a file's text, or `null` when it is absent — a missing artifact is a failed check, not a crash. */
+function readTextOrNull(path) {
+  try { return readFileSync(path, 'utf8'); } catch { return null; }
+}
+function countLinesOrZero(path) {
+  const text = readTextOrNull(path);
+  return text ? text.split('\n').filter(Boolean).length : 0;
+}
 // ──────────────────────────────────────────────────────────────────────────────── cases
 
 /**
@@ -178,8 +172,11 @@ export async function runThroughExecTool({ command, timeoutMs = 60_000, dataDir,
  */
 async function sb03Workload({ scratch, run, record }) {
   const workspace = ensureDir(join(scratch, 'ws'));
+  // The host-side audit file is the independent observer: the tool result says which backend ran, and
+  // this file says the same thing from outside the tool.
+  const auditPath = join(scratch, 'sandbox-audit.jsonl');
   const inner = distroPathOf(workspace);
-  const spec = { workspace: inner, network: 'none' };
+  const spec = { workspace, network: 'none', toolchainPaths: SANDBOX_TOOLCHAIN };
   await writeFile(join(workspace, 'subject.mjs'), 'export const VERSION = 7;\n', 'utf8');
   await mkdir(join(workspace, 'a dir with 空格'), { recursive: true });
   await writeFile(join(workspace, 'a dir with 空格', 'note.txt'), 'spaced\n', 'utf8');
@@ -201,7 +198,7 @@ async function sb03Workload({ scratch, run, record }) {
   for (const row of rows) {
     const approvals = [];
     const outcome = await runThroughExecTool({
-      command: row.command, dataDir: scratch, workspace, approvals, spec, timeoutMs: 90_000,
+      command: row.command, dataDir: scratch, workspace, approvals, spec, timeoutMs: 90_000, auditPath,
     });
     results.push({
       id: row.id,
@@ -216,7 +213,7 @@ async function sb03Workload({ scratch, run, record }) {
   // backend must not change that.
   const approvals = [];
   const repeat = await runThroughExecTool({
-    command: rows.at(-1).command, dataDir: scratch, workspace, approvals, spec, timeoutMs: 60_000,
+    command: rows.at(-1).command, dataDir: scratch, workspace, approvals, spec, timeoutMs: 60_000, auditPath,
   });
   results.push({
     id: 'identical-command-twice-repeat',
@@ -228,7 +225,7 @@ async function sb03Workload({ scratch, run, record }) {
   });
 
   const hostChecks = [
-    { id: 'workspace-file-written-on-host', pass: readFileSync(join(workspace, 'out.txt'), 'utf8').trim() === 'written' },
+    { id: 'workspace-file-written-on-host', pass: (readTextOrNull(join(workspace, 'out.txt')) ?? '').trim() === 'written' },
     { id: 'nested-directory-on-host', pass: existsSync(join(workspace, 'nested', 'deep')) },
     { id: 'git-repo-on-host', pass: existsSync(join(workspace, 'repo', '.git')) },
   ];
@@ -241,6 +238,9 @@ async function sb03Workload({ scratch, run, record }) {
  */
 async function sb04Boundary({ scratch, record }) {
   const workspace = ensureDir(join(scratch, 'ws'));
+  // The host-side audit file is the independent observer: the tool result says which backend ran, and
+  // this file says the same thing from outside the tool.
+  const auditPath = join(scratch, 'sandbox-audit.jsonl');
   const inner = distroPathOf(workspace);
   const outsideSentinelWin = join(scratch, 'outside-sentinel.txt');
   const insideSentinelWin = join(workspace, 'inside-sentinel.txt');
@@ -251,14 +251,14 @@ async function sb04Boundary({ scratch, record }) {
 
   const outsideSentinelInner = distroPathOf(outsideSentinelWin);
   const proofInner = distroPathOf(proofWin);
-  const spec = { workspace: inner, network: 'none' };
-  const specShared = { workspace: inner, network: 'shared' };
+  const spec = { workspace, network: 'none', toolchainPaths: SANDBOX_TOOLCHAIN };
+  const specShared = { workspace, network: 'shared', toolchainPaths: SANDBOX_TOOLCHAIN };
 
   const rows = [];
   const exec = async (id, command, { useSpec = spec, expect, note } = {}) => {
     const approvals = [];
     const outcome = await runThroughExecTool({
-      command, dataDir: scratch, workspace, approvals, spec: useSpec, timeoutMs: 60_000,
+      command, dataDir: scratch, workspace, approvals, spec: useSpec, timeoutMs: 60_000, auditPath,
     });
     rows.push({
       id,
@@ -309,13 +309,9 @@ async function sb04Boundary({ scratch, record }) {
     command: 'sh -c \'for i in 1 2 3 4 5 6 7 8 9 10; do echo tick >> heartbeat.txt; sleep 1; done\'',
     dataDir: scratch, workspace, approvals: cancelApprovals, spec, timeoutMs: 3_000,
   });
-  const ticksAfterTimeout = existsSync(heartbeatWin)
-    ? readFileSync(heartbeatWin, 'utf8').split('\n').filter(Boolean).length
-    : 0;
+  const ticksAfterTimeout = countLinesOrZero(heartbeatWin);
   await new Promise((resolveWait) => { setTimeout(resolveWait, 12_000); });
-  const ticksSettled = existsSync(heartbeatWin)
-    ? readFileSync(heartbeatWin, 'utf8').split('\n').filter(Boolean).length
-    : 0;
+  const ticksSettled = countLinesOrZero(heartbeatWin);
   rows.push({
     id: 'timeout-stops-the-subtree',
     command: 'heartbeat every second for 10s, timeout_ms=3000',
@@ -329,8 +325,8 @@ async function sb04Boundary({ scratch, record }) {
   });
 
   const hostChecks = [
-    { id: 'outside-sentinel-unchanged', pass: readFileSync(outsideSentinelWin, 'utf8').trim() === 'OUTSIDE-SENTINEL-1B7C' },
-    { id: 'inside-sentinel-intact', pass: readFileSync(insideSentinelWin, 'utf8').trim() === 'INSIDE-SENTINEL-9F3A' },
+    { id: 'outside-sentinel-unchanged', pass: (readTextOrNull(outsideSentinelWin) ?? '').trim() === 'OUTSIDE-SENTINEL-1B7C' },
+    { id: 'inside-sentinel-intact', pass: (readTextOrNull(insideSentinelWin) ?? '').trim() === 'INSIDE-SENTINEL-9F3A' },
     { id: 'no-interop-proof-file', pass: !existsSync(proofWin) },
     { id: 'legit-workspace-write-landed', pass: existsSync(join(workspace, 'legit.txt')) },
     { id: 'heartbeat-stopped-after-timeout', pass: ticksSettled <= ticksAfterTimeout },
@@ -344,6 +340,9 @@ async function sb04Boundary({ scratch, record }) {
  */
 async function sb02Authorization({ scratch }) {
   const workspace = ensureDir(join(scratch, 'ws'));
+  // The host-side audit file is the independent observer: the tool result says which backend ran, and
+  // this file says the same thing from outside the tool.
+  const auditPath = join(scratch, 'sandbox-audit.jsonl');
   const inner = distroPathOf(workspace);
   const rows = [];
 
@@ -352,11 +351,11 @@ async function sb02Authorization({ scratch }) {
   approvals.allow = false;
   const denied = await runThroughExecTool({
     command: 'echo should-not-run > denied.txt',
-    dataDir: scratch, workspace, approvals, spec: { workspace: inner, network: 'none' },
+    dataDir: scratch, workspace, approvals, permissionMode: 'research', auditPath, spec: { workspace, network: 'none', toolchainPaths: SANDBOX_TOOLCHAIN },
   });
   rows.push({
     id: 'approval-denied-blocks-execution',
-    pass: !existsSync(join(workspace, 'denied.txt')),
+    pass: !existsSync(join(workspace, 'denied.txt')) && denied.ok === false,
     detail: { toolOk: denied.ok, toolError: denied.error, approvalsSeen: denied.approvals.length },
   });
 
@@ -364,7 +363,7 @@ async function sb02Authorization({ scratch }) {
   allowed.allow = true;
   const granted = await runThroughExecTool({
     command: 'echo should-run > granted.txt',
-    dataDir: scratch, workspace, approvals: allowed, spec: { workspace: inner, network: 'none' },
+    dataDir: scratch, workspace, approvals: allowed, permissionMode: 'research', auditPath, spec: { workspace, network: 'none', toolchainPaths: SANDBOX_TOOLCHAIN },
   });
   rows.push({
     id: 'approval-granted-runs-in-the-sandbox',
@@ -377,7 +376,7 @@ async function sb02Authorization({ scratch }) {
     command: 'echo fallback-check > fallback.txt',
     dataDir: scratch, workspace, approvals: (() => { const a = []; a.allow = true; return a; })(),
     backend: 'wsl2-bwrap',
-    spec: { workspace: inner, network: 'none', distro: 'NoSuchDistro-9x' },
+    spec: { workspace, network: 'none', distro: 'NoSuchDistro-9x', toolchainPaths: SANDBOX_TOOLCHAIN },
   });
   rows.push({
     id: 'unavailable-backend-does-not-fall-back',
@@ -392,7 +391,7 @@ async function sb02Authorization({ scratch }) {
     dataDir: scratch, workspace,
     approvals: (() => { const a = []; a.allow = true; return a; })(),
     backend: 'host',
-    spec: { workspace: inner, network: 'none' },
+    spec: { workspace, network: 'none', toolchainPaths: SANDBOX_TOOLCHAIN },
   });
   rows.push({
     id: 'host-backend-is-reported-as-host',

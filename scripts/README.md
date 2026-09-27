@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 00:04:31
+最后更新：2026-09-28 00:22:35
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -8,6 +8,9 @@
 - `experiment-autonomy-sandbox.mjs` + `lib/experiment-ledger.mjs` + `lib/experiment-fixtures.mjs` 是 `docs/taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md` 的实验入口，**不是**产品门禁：它只回答该任务书的问题，通过它不代表产品行为已变更。四个模式：`budget`（在任何模型调用之前打印冻结的批次预算与停止条件）、`precheck`（无模型费用的确定性夹具：检索准入探针、URL/SSRF 负向矩阵、`classifyToolFailure` 契约、副作用账本决策、`ToolExecutionService` 重复调用护栏、Provider 可达性）、`model --case=RT-0x --arm=A|B --trial=n --batch=id`（真实模型 A/B，每次一个隔离数据根与合成工作区）、`sandbox`（后端边界矩阵，见下）。逐 run 账本写在仓库外的证据目录（`LS_EXPERIMENT_EVIDENCE_DIR`，默认 `D:\littlesheep-evidence\RASB-2026-09-27`），字段集是任务书第 8 节的最小集合，由 `assertLedgerRecord` 强制；仓库里不留运行时会话、Provider 请求、凭据或工作区产物。`A` 臂跑的是未打补丁的工作树，`B` 臂在 `git apply` 候选补丁并重建 `dist` 之后跑，每条账本记录都带当时的 `sourceHash`，所以两个臂可以按字节区分。退出码：0 通过、1 有验收项失败、2 用法错误、3 前置能力缺失（blocked）、4 命中预算停止条件。
 
 - `verify-*.mjs` 是可直接运行的验收入口；根目录 `package.json` 中的 `verify:*` 命令负责先准备对应构建，再启动门。
+- `pnpm run verify:composer-send-gate` 走两遍发送入口：全新数据根（`OPENAI_API_KEY`/`DEEPSEEK_API_KEY`/`GLM_API_KEY` 在本次启动里被删掉，否则夹具就不算"未配置"）且执行已就绪时，断言发送控件禁用、就地写出"设置 → 模型供应商"的原因、可访问名与它一致、空对话文案同句，并按 Enter 与按钮各拒一次（无消息、无 run、无会话）；再把确定性 Provider 配上，断言同一入口照常发送、Provider 请求都用配置的模型并结算出固定回答。
+- `pnpm run verify:composer-focus` 在真实窗口核对光标归属：新窗口无点击即把光标放进输入框且真实 CDP 按键能插入文字；点侧栏"新对话"后光标回到输入框；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。三、四、五三个负例注入的是 `newSession()` 自己派发的那次性窗口事件（事件名从源码读），因为真实命令会关掉搜索面板、模态又挡住点击。**它先把窗口停到屏幕外**（`park-offscreen`）：隐藏窗口不派发动画帧，而侧栏搜索面板要两帧才可见，不停放这个负例根本到不了"用户正在别处输入"的状态。
+- `verify-startup-failure-retry.mjs`（根 `package.json` 里是 `pnpm run verify:startup-failure-retry`）把渲染器接管**之前**的启动失败做真：`config.json` 故意无法解析，断言独立失败页有且仅有一个可用的重试控件、点击后真的跑了一次 Main 的有界重试（Electron 日志出现 `[retry] execution retry 1/3 failed`）、页面写出真实原因并继续提供重试；修好配置再点一次后渲染器接管窗口、`/runtime/readiness` 就绪、并且能在恢复后的窗口里跑完一轮。该夹具从来没有 locator（阶段 1 就失败），所以前半段按 CDP 目标连接、不走 Local App API。
 - `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。
 - `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。harness 的所有权边界是**进程启动与退出、locator 握手、最小 CDP 客户端、轮询/取整原语**：`waitForExit(child, timeoutMs)` 只等退出并返回退出码（不杀进程，杀是 `forceTerminate`），`startElectron({ extraEnv })` 里值为 `undefined` 表示“本次运行删除这个环境变量”（夹具数据根必须能排除环境里已有的 Provider 密钥）。域断言和产品预算一律留在各门里，不要长在这个模块上。
 - `check-repository-hygiene.mjs`（`pnpm run check:repo` 的第一段）包含仓库卫生门。它按**形状**拒绝已跟踪的生成物，除了 out/dist/coverage/release/tsbuildinfo/log，还包括测试中断留在仓库根的 `cache-scope-matrix-*` / `cache-observation-store-*` 暂存目录，以及 Vite / electron-vite 打包 TS 配置时写下的 `vitest.config.ts.timestamp-*.mjs` / `electron.vite.config.<数字>.mjs`。这些形状曾经真的入库（110 个 JSON + 1 个配置包）而旧门禁全绿，所以同一改动补了 `.gitignore` 窄规则，并把四条规则本身纳入"生成物已忽略"断言——删掉规则是门禁失败，不是静默重新漏水。对应测试 `check-repository-hygiene.test.mjs` 把门禁脚本复制进一个临时 Git 仓库，用 `git add -f` 让四种形状真正被跟踪，断言门禁失败且**只**点名这四个路径，而 `cache-observation-store.ts` 这类同前缀真源码不被误判。

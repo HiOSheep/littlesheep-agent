@@ -924,12 +924,37 @@ async function rt04PollChecks({ summary }) {
   ];
 }
 
+/**
+ * SB-05's acceptance: the real entry. A real model proposes a build/test task, the proposal goes through
+ * the Tool Execution Service, a real sandboxed process runs it, and the artifact is checked on the host.
+ * The host-side sandbox audit file is the independent witness that the process really was the sandboxed one.
+ */
+async function sb05Checks({ summary, workspace, fixture, runDir }) {
+  const reportPath = join(workspace, fixture.reportPath);
+  let total = null;
+  try { total = JSON.parse(await readFile(reportPath, 'utf8'))?.total ?? null; } catch { /* missing */ }
+  let audit = [];
+  try {
+    audit = (await readFile(join(runDir, 'sandbox-audit.jsonl'), 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  } catch { /* no audit */ }
+  const sandboxedExecs = audit.filter((entry) => entry.actualBackend === 'wsl2-bwrap');
+  const succeededExecs = summary.invocations.filter((record) => record.tool === 'exec' && record.status === 'succeeded');
+  return [
+    { id: 'artifact_produced_by_the_sandboxed_run', pass: total === fixture.expectedTotal, detail: { expected: fixture.expectedTotal, actual: total } },
+    { id: 'host_audit_confirms_the_sandbox_backend', pass: sandboxedExecs.length > 0, detail: { auditLines: audit.length, sandboxedExecs: sandboxedExecs.length } },
+    { id: 'no_exec_ran_on_the_host_shell', pass: audit.length > 0 && audit.every((entry) => entry.actualBackend === 'wsl2-bwrap'), detail: { backends: [...new Set(audit.map((entry) => entry.actualBackend))] } },
+    { id: 'exec_invocations_recorded', pass: succeededExecs.length > 0, detail: { succeededExecs: succeededExecs.length } },
+    { id: 'reply_reports_the_artifact_total', pass: new RegExp(String(fixture.expectedTotal)).test(summary.reply), detail: { replyExcerpt: summary.reply.slice(0, 200) } },
+  ];
+}
+
 const CHECKERS = {
   'RT-01': rt01Checks,
   'RT-02': rt02Checks,
   'RT-03': rt03Checks,
   'RT-04': rt04Checks,
   'RT-04-poll': rt04PollChecks,
+  'SB-05': sb05Checks,
 };
 
 /** Same normalisation the file tools use for a resource key, so a declaration can actually match. */
@@ -967,6 +992,17 @@ async function runModelCase(args) {
     })),
   }));
   process.env.LS_EXPERIMENT_EXEC_SCOPES = JSON.stringify(declaredScopes);
+
+  // SB-05: run the real entry with the sandbox backend selected. The selection is an experiment-only
+  // environment contract, so the product keeps its default host shell unless a host opts in.
+  const sandboxEnabled = caseId === 'SB-05';
+  if (sandboxEnabled) {
+    process.env.LS_EXPERIMENT_EXEC_BACKEND = 'wsl2-bwrap';
+    process.env.LS_EXPERIMENT_SANDBOX = JSON.stringify({
+      workspace, network: 'none', toolchainPaths: ['/home/dev/.nvm/versions/node/v22.23.3'],
+    });
+    process.env.LS_EXPERIMENT_SANDBOX_AUDIT = join(runDir, 'sandbox-audit.jsonl');
+  }
 
   const previousDataDir = process.env.LITTLESHEEP_DATA_DIR;
   process.env.LITTLESHEEP_DATA_DIR = dataDir;
@@ -1042,6 +1078,9 @@ async function runModelCase(args) {
     if (previousDataDir === undefined) delete process.env.LITTLESHEEP_DATA_DIR;
     else process.env.LITTLESHEEP_DATA_DIR = previousDataDir;
     delete process.env.LS_EXPERIMENT_EXEC_SCOPES;
+    delete process.env.LS_EXPERIMENT_EXEC_BACKEND;
+    delete process.env.LS_EXPERIMENT_SANDBOX;
+    delete process.env.LS_EXPERIMENT_SANDBOX_AUDIT;
   }
 
   const elapsedMs = Math.round(performance.now() - started);

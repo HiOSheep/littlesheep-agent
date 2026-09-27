@@ -259,6 +259,21 @@ export function rt04PollFixture() {
   };
 }
 
+/** SB-05: the same build task as RT-02, run through the real entry with the sandbox backend selected. */
+export function sb05Fixture() {
+  const base = rt02Fixture();
+  return {
+    ...base,
+    caseId: 'SB-05',
+    prompt: [
+      '请在 workplace 下完成这件事，全部用工具完成，不要只描述步骤：',
+      '1) 用 exec 运行命令 `node tools/build_report.mjs`（工作目录就是当前 workplace 根目录）；',
+      '2) 用 read 读回 workplace/report.json；',
+      '3) 在回答里报出 total 的数值。',
+    ].join('\n'),
+  };
+}
+
 export function fixtureFor(caseId) {
   switch (caseId) {
     case 'RT-01': return rt01Fixture();
@@ -266,6 +281,7 @@ export function fixtureFor(caseId) {
     case 'RT-03': return rt03Fixture();
     case 'RT-04': return rt04Fixture();
     case 'RT-04-poll': return rt04PollFixture();
+    case 'SB-05': return sb05Fixture();
     default: throw new Error(`unknown fixture case: ${caseId}`);
   }
 }
