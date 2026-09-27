@@ -25,6 +25,9 @@ export const editTool: AgentTool = {
   description: 'Edit a file by replacing an exact string. Requires approval.',
   inputSchema: EditInput,
   requiresApproval: true,
+  // Re-applying the same replacement is a new operation when the Runtime recorded a later successful change
+  // to the same path (HC-04); with no such record it stays the replay the ledger refuses.
+  reRunnableAfterResourceChange: true,
   execution: parallelFilePolicy('file_path', 'write'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, old_string, new_string } = EditInput.parse(input);

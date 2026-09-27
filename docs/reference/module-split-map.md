@@ -155,7 +155,7 @@
 | `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 340 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |
 | `packages/config/src/schema.ts` | 406 | 全局配置 schema、Web policy 和 provider/模型配置校验 | 保持版本化 schema facade；provider 模型条目规范化与用户声明能力分别位于 `provider-models.ts`、`configured-models.ts` | E |
 | `packages/config/src/model-capabilities.ts` | 357 | 内置 provider/model 能力注册表：上下文窗口、输出上限、推理档位、Provider reasoning 映射和精确/不可用 tokenizer 状态 | 保持只读内置事实表；用户声明能力进入 `configured-models.ts`，不在此文件累计 | E |
-| `packages/harness/src/stages/execute/side-effect-ledger.ts` | 376 | 可恢复工具执行的 Runtime 效果外壳：效果描述、幂等键、租约、durable intent 与有界 reconciliation key 投影 | 保持效果登记边界；用户声明模型能力等无关职责不得进入；继续增长时分离 lease 与 intent payload 组装 | E |
+| `packages/harness/src/stages/execute/side-effect-ledger.ts` | 431 | 可恢复工具执行的 Runtime 效果外壳：效果描述、幂等键、租约、durable intent 与有界 reconciliation key 投影 | 保持效果登记边界；用户声明模型能力等无关职责不得进入；继续增长时分离 lease 与 intent payload 组装 | E |
 | `packages/harness/src/context.ts` | 386 | RunContext 构造、Web evidence sink 和工具上下文装配 | 保持 Context 入口；继续将 Web evidence 与基础 Context builder 分离 | E |
 | `packages/types/src/web-retrieval.ts` | 440 | Web policy、provider、fetch、citation 和 evidence projection 公共契约 | 保持公共 barrel；按 policy/provider/evidence 分组并维持向后兼容 | E |
 | `packages/web/src/runtime.ts` | 570 | 每轮 Web retrieval quota、取消、citation、cache 和 evidence projection | 保持 per-run runtime facade；继续将 quota/citation/evidence adapter 分离 | E |

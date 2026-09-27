@@ -33,6 +33,9 @@ export const writeTool: AgentTool = {
   description: 'Write content to a file (overwrites if exists). Requires approval.',
   inputSchema: WriteInput,
   requiresApproval: true,
+  // Rewriting the same bytes is a new operation when the Runtime recorded a later successful change to the
+  // same path (HC-04); with no such record it stays the replay the ledger refuses.
+  reRunnableAfterResourceChange: true,
   execution: parallelFilePolicy('file_path', 'write'),
   // Recovery key: the target path plus the digest of the intended bytes. No
   // content text is persisted, only enough to prove the file on disk is the

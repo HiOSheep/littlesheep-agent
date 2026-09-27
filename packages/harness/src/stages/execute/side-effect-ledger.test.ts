@@ -33,6 +33,92 @@ function recordingCtx() {
   return { ctx, appended }
 }
 
+/** The same probe, declaring that a repeat after an observed change can be a new operation. */
+function reRunnableProbeTool(name = 'mutate_probe'): AgentTool {
+  return { ...probeTool(undefined, name), reRunnableAfterResourceChange: true }
+}
+
+// HC-04: a settled success refuses a replay — unless the Runtime recorded a change to the operation's own
+// subject after it settled. The warrant is the ledger's own evidence (a later successful effect on one of
+// the same write resources), never the model asking twice.
+describe('repeating a call whose earlier attempt succeeded', () => {
+  it('grants a fresh execution identity when the run recorded a later change to the same resource', async () => {
+    const { ctx, appended } = recordingCtx()
+    const tool = reRunnableProbeTool()
+    const verify = describeSideEffect(tool, { value: 'check' }, writeResource, undefined, 'call-1')!
+    expect((await beginSideEffect(ctx, verify)).kind).toBe('started')
+    await finishSideEffect(ctx, verify, { callId: 'call-1', ok: true })
+
+    // The verification now replays before anything changed: still refused.
+    expect((await beginSideEffect(ctx, { ...verify, callId: 'call-2' })).kind).toBe('duplicate')
+
+    // A later, settled-successful mutation of the same resource is the recorded change.
+    const mutate = describeSideEffect(tool, { value: 'change' }, writeResource, undefined, 'call-3')!
+    expect((await beginSideEffect(ctx, mutate)).kind).toBe('started')
+    await finishSideEffect(ctx, mutate, { callId: 'call-3', ok: true })
+
+    const again = await beginSideEffect(ctx, { ...verify, callId: 'call-4' })
+    expect(again.kind).toBe('started')
+    if (again.kind !== 'started') throw new Error('expected the warranted repeat to start')
+    expect(again.descriptor.idempotencyKey).toBe(`${verify.idempotencyKey}:retry1`)
+    // The warrant is on the durable intent of the attempt it authorized, so an audit can tell a granted
+    // repeat from a replay.
+    expect(appended.at(-1)?.payload).toMatchObject({
+      effectId: `${verify.idempotencyKey}:retry1`,
+      evidenceRef: `warrant:resource-changed:${mutate.idempotencyKey}`,
+    })
+    await finishSideEffect(ctx, again.descriptor, { callId: 'call-4', ok: true })
+
+    // Two independent executions are on the record, each settled once.
+    expect(ctx.sideEffects?.map((effect) => effect.status)).toEqual(['succeeded', 'succeeded', 'succeeded'])
+    // Two independent executions of the *same* operation: its first attempt and the warranted retry.
+    expect(ctx.sideEffects?.filter((effect) => (
+      effect.idempotencyKey === verify.idempotencyKey
+      || effect.idempotencyKey === `${verify.idempotencyKey}:retry1`
+    ))).toHaveLength(2)
+  })
+
+  it('refuses the repeat when the change was recorded before the settled attempt', async () => {
+    const { ctx } = recordingCtx()
+    const tool = reRunnableProbeTool()
+    const mutate = describeSideEffect(tool, { value: 'change' }, writeResource, undefined, 'call-1')!
+    await beginSideEffect(ctx, mutate)
+    await finishSideEffect(ctx, mutate, { callId: 'call-1', ok: true })
+
+    const verify = describeSideEffect(tool, { value: 'check' }, writeResource, undefined, 'call-2')!
+    expect((await beginSideEffect(ctx, verify)).kind).toBe('started')
+    await finishSideEffect(ctx, verify, { callId: 'call-2', ok: true })
+
+    // Nothing happened after the verification settled, so this is the replay the ledger refuses.
+    const replay = await beginSideEffect(ctx, { ...verify, callId: 'call-3' })
+    expect(replay.kind).toBe('duplicate')
+  })
+
+  it('keeps refusing for a tool that never declared the capability, and for an unknown effect kind', async () => {
+    const { ctx } = recordingCtx()
+    const plain = probeTool()
+    const settle = async (tool: AgentTool, value: string, callId: string) => {
+      const descriptor = describeSideEffect(tool, { value }, writeResource, undefined, callId)!
+      expect((await beginSideEffect(ctx, descriptor)).kind).toBe('started')
+      await finishSideEffect(ctx, descriptor, { callId, ok: true })
+      return descriptor
+    }
+    const first = await settle(plain, 'check', 'call-1')
+    await settle(plain, 'change', 'call-2')
+    expect((await beginSideEffect(ctx, { ...first, callId: 'call-3' })).kind).toBe('duplicate')
+
+    // An effect the Runtime could not classify is never re-run on this warrant.
+    const opaque = describeSideEffect(reRunnableProbeTool('opaque_probe'), { value: 'check' }, [], undefined, 'call-4')!
+    expect(opaque.effectKind).toBe('unknown')
+    await beginSideEffect(ctx, opaque)
+    await finishSideEffect(ctx, opaque, { callId: 'call-4', ok: true })
+    const opaqueChange = describeSideEffect(reRunnableProbeTool('opaque_probe'), { value: 'change' }, [], undefined, 'call-5')!
+    await beginSideEffect(ctx, opaqueChange)
+    await finishSideEffect(ctx, opaqueChange, { callId: 'call-5', ok: true })
+    expect((await beginSideEffect(ctx, { ...opaque, callId: 'call-6' })).kind).toBe('duplicate')
+  })
+})
+
 describe('side-effect reconciliation keys', () => {
   it('persists the bounded key a tool declares', async () => {
     const { ctx, appended } = recordingCtx()

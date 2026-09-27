@@ -40,6 +40,44 @@ export interface SideEffectDescriptor {
   effectKind: SideEffectCheckpoint['effectKind']
   /** Tool-declared bounded recovery key; absent when the tool declares none. */
   reconciliationKey?: ReconciliationValue
+  /** The tool declared that a repeat after an observed change can be a new operation. */
+  reRunnable?: boolean
+  /** Audit note for a granted warrant; persisted on the attempt it authorized. */
+  evidenceRef?: string
+}
+
+/**
+ * The warrant for repeating a call whose earlier attempt succeeded, or `undefined`.
+ *
+ * One source of truth, and it is the Runtime's own ledger rather than the model's word: a **later**
+ * settled-successful effect in this run touched one of the same write resources. That is what "the target
+ * changed after the operation ran" looks like in recorded facts — the second `write`/`edit` on the same
+ * path is the change, and a verification that ran before it is stale rather than replayed.
+ *
+ * Deliberately narrow: the tool has to declare itself re-runnable, the effect must not be of unknown kind,
+ * the operation must have write resources to compare, and the change must come **after** the settled
+ * attempt. Everything else — the same call twice with nothing in between, an unknown or in-progress
+ * settlement, a tool that never declared the capability — keeps the existing refusal.
+ */
+function resourceChangeWarrant(ctx: RunContext, descriptor: SideEffectDescriptor): string | undefined {
+  if (descriptor.reRunnable !== true) return undefined
+  if (descriptor.effectKind === 'unknown') return undefined
+  if (descriptor.resourceKeys.length === 0) return undefined
+  const effects = ctx.sideEffects ?? []
+  const attempts = effectAttempts(ctx, descriptor.idempotencyKey)
+  const settled = attempts.filter((item) => item.status === 'succeeded')
+  if (settled.length === 0) return undefined
+  const lastSettledIndex = effects.reduce((last, item, index) => (
+    attempts.some((attempt) => attempt.idempotencyKey === item.idempotencyKey) ? index : last
+  ), -1)
+  if (lastSettledIndex < 0) return undefined
+  const shared = new Set(descriptor.resourceKeys)
+  return effects.slice(lastSettledIndex + 1).find((item) => (
+    item.status === 'succeeded'
+    && item.idempotencyKey !== descriptor.idempotencyKey
+    && !item.idempotencyKey.startsWith(`${descriptor.idempotencyKey}:retry`)
+    && (item.resourceKeys ?? []).some((key) => shared.has(key))
+  ))?.idempotencyKey
 }
 
 export type SideEffectSettlement = Extract<
@@ -109,6 +147,7 @@ export function describeSideEffect(
 
   const inputHash = hashInput(input)
   const reconciliationKey = toolReconciliationKey(tool, input)
+  const reRunnable = tool.reRunnableAfterResourceChange === true
   const effectKind: SideEffectCheckpoint['effectKind'] = resourceKeys.length > 0
     ? 'local_mutation'
     : tool.name === 'exec'
@@ -123,6 +162,7 @@ export function describeSideEffect(
     resourceKeys,
     effectKind,
     ...(reconciliationKey ? { reconciliationKey } : {}),
+    ...(reRunnable ? { reRunnable } : {}),
   }
 }
 
@@ -159,27 +199,41 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
     // Once any attempt of this operation succeeded, running it again would
     // replay an applied effect: refuse, exactly as before.
     if (attempts.some((item) => item.status === 'succeeded')) {
-      return { kind: 'duplicate', descriptor, status: 'succeeded' }
-    }
-    const latest = attempts[attempts.length - 1]!
-    if (!RETRYABLE_SETTLEMENTS.has(latest.status)) {
-      return {
-        kind: 'blocked',
-        descriptor,
-        reason: `side effect ${descriptor.idempotencyKey} already has status ${latest.status}`,
+      // A settled success is a replay — unless the Runtime recorded a change to the operation's own
+      // subject after it settled, in which case this is a new execution with its own identity and the
+      // earlier settlement stays in the record. See `resourceChangeWarrant`.
+      const warrant = resourceChangeWarrant(ctx, descriptor)
+      if (warrant === undefined) {
+        return { kind: 'duplicate', descriptor, status: 'succeeded' }
+      }
+      descriptor = {
+        ...descriptor,
+        idempotencyKey: nextAttemptKey(ctx, descriptor.idempotencyKey),
+        evidenceRef: `warrant:resource-changed:${warrant}`.slice(0, 512),
+      }
+    } else {
+      const latest = attempts[attempts.length - 1]!
+      if (!RETRYABLE_SETTLEMENTS.has(latest.status)) {
+        return {
+          kind: 'blocked',
+          descriptor,
+          reason: `side effect ${descriptor.idempotencyKey} already has status ${latest.status}`,
+        }
+      }
+      // The latest attempt is settled as a determinate failure, so this is a new
+      // attempt rather than a replay. The durable kernel allows exactly one
+      // settlement per effect id, so the retry gets its own attempt-scoped id and
+      // the failed attempt stays in the record.
+      descriptor = {
+        ...descriptor,
+        idempotencyKey: nextAttemptKey(ctx, descriptor.idempotencyKey),
       }
     }
-    // The latest attempt is settled as a determinate failure, so this is a new
-    // attempt rather than a replay. The durable kernel allows exactly one
-    // settlement per effect id, so the retry gets its own attempt-scoped id and
-    // the failed attempt stays in the record.
-    descriptor = {
-      ...descriptor,
-      idempotencyKey: nextAttemptKey(ctx, descriptor.idempotencyKey),
-    }
   }
+
   const entry: SideEffectCheckpoint = {
     ...descriptor,
+    // A granted warrant is part of the attempt it authorized, so it is persisted with it.\n    ...(descriptor.evidenceRef ? { evidenceRef: descriptor.evidenceRef } : {}),
     status: 'in_progress',
     startedAt: new Date().toISOString(),
   }
@@ -231,6 +285,7 @@ export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDes
         idempotencyKey: descriptor.idempotencyKey,
         toolName: descriptor.toolName,
         inputHash: descriptor.inputHash,
+        ...(descriptor.evidenceRef ? { evidenceRef: descriptor.evidenceRef } : {}),
         effectKind: descriptor.effectKind,
         ...(descriptor.reconciliationKey ? { reconciliationKey: descriptor.reconciliationKey } : {}),
         ...(lease?.kind === 'acquired' ? { ownerId: lease.ownerId, leaseUntil: lease.leaseUntil } : {}),

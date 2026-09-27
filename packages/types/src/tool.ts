@@ -164,6 +164,17 @@ export interface AgentTool {
   inputSchema: ToolSchema;
   /** Whether this tool requires approval before executing. */
   requiresApproval?: boolean;
+  /**
+   * Whether repeating this exact call can be a **new** operation rather than a replay.
+   *
+   * The ledger refuses an identical call whose earlier attempt succeeded, which is the right default: for
+   * an opaque tool the Runtime cannot tell "run it again" from "the same effect, replayed". A tool that can
+   * say what its effect is about declares this, and then the Runtime grants a fresh execution identity only
+   * when it holds its **own** record of a change: a later settled-successful effect on one of the same
+   * write resources, in the same active run. Nothing else opens the door — not the model asking twice, not
+   * a re-worded reason — and an effect whose kind is `unknown` never qualifies.
+   */
+  reRunnableAfterResourceChange?: boolean;
   /** Explicit runtime concurrency contract; omitted means exclusive. */
   execution?: ToolExecutionPolicy;
   /** Redact/hash input before approval UI, runtime events or persistence. */
