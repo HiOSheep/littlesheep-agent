@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-27 21:29:24
+最后更新：2026-09-27 22:23:48
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -43,4 +43,6 @@
 
 `verify:electron-ui-state-continuity` 另建第二个工作区根，走"root A → 项目 root B → B 内新建会话 → 重启应用 → 回到 A"的往返，断言：B 的文件树只列 B 自己的文件、`GET /workspace/review` 对非活动根返回 **403** 而活动根 200、切换后终端 0 会话，以及重启后未保存草稿（`draftRestored: true`）、文件标签的 dirty 状态、浏览器标签与展开目录都还在。该门为此修掉三处验收脚本缺陷：草稿输入落进文件导航的筛选框（把整棵树筛空）、没等 Monaco 的可编辑表面就开始打字、以及 `Page.reload` 之后 CDP 执行上下文失效而不重连。
 - 运行产物不再写进检出目录（2026-09-27）：验证报告、截图、临时诊断与 task manifest 统一走 `scripts/lib/run-artifacts.mjs`，默认落在 `<系统临时目录>/littlesheep-run-artifacts/`，可用 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 覆盖；脚本自带的 `--dir` / `--json` / `--report` 仍优先。此前 10 个脚本默认写 `.codex_tmp/`，导致清理后每次跑门都会在仓库里重新长出缓存；现在跑完 `verify:core` 仓库内不再产生任何文件。
+- **发布包也移出检出目录（2026-09-27）**：`pnpm run package:win` / `package:win-installer` 由 `scripts/lib/release-artifacts.mjs` 决定输出位置——`LITTLESHEEP_RELEASE_DIR`（绝对路径或相对当前目录）优先，否则与运行产物同根，即 `<系统临时目录>/littlesheep-run-artifacts/windows-release/`。`scripts/package-windows-release.mjs` 自己重写 electron-builder 的 `directories.output`，并把暂存 `out`、暂存 Electron 运行时、生成的临时配置与打包锁一并放到系统临时区，所以中断一次打包不会在 `packages/app/` 留下 `.release-staging-*` 或临时 yml。`--app=packaged` 的 `measure-desktop-cold-start`、`measure-desktop-large-history-startup`、`verify-desktop-cold-start-visuals`、`verify-html-preview-baseline` 经同一个模块解析可执行文件与 `app.asar`，生产端与消费端不会各指一处。
+- `pnpm run verify:packaged-isolation`（`scripts/verify-packaged-isolation.mjs`）只启动 `package:win` 产出的解包产物，数据根在系统临时区（`--data-root=` 可换成已备好的数据根），因此它证明的是"只有发布包时也成立"的那部分事实：执行就绪、node-pty 终端（断言会话后端是 `pty` 而不是回落的 `spawn`，并让真实 Shell 命令落一个标记文件）、PDF/Word/表格的生成与再读取，以及本地向量模型从隔离数据根加载并两次得到同一向量（第二次带 `HF_HUB_OFFLINE=1`，并断言 `allowRemoteModels === false`）。文档与向量两项都以 `ELECTRON_RUN_AS_NODE=1` 启动**打包后的** `LittleSheep.exe`，并从 `app.asar` 里 `require` 主进程自己用的那个 chunk，因此不借用检出的 `node_modules`。它**不**断言 Monaco / Mermaid / HTML 预览的渲染（那部分归 `verify-html-preview-baseline`，可用 `--app=packaged` 对同一产物跑），`limits` 里逐条写明。**已实测的环境限制**：本机 Node 的 `fetch`（undici）连不上模型主机（`Connect Timeout Error`，而 PowerShell 的 `Invoke-WebRequest` 对同一地址返回 200），所以"首次准备"在全新数据根上会以 `fetch failed` 失败——该失败被如实记为失败步骤，不写成"已验证"。
 - 启动与快捷方式链路（2026-09-27）：`scripts/launch-littlesheep.ps1` 是桌面与开始菜单快捷方式的实际入口——它先幂等重写两个 `.lnk` 指向自己（首次运行即完成安装），再 `ensure:app-build` 保证跑的是**当前构建**，然后解析 `packages/app/runtime` 中**最新**的 `electron-v*-win32-x64` 启动，并顺手删除中断留下的 `electron-v*-win32-x64-<数字>` 暂存目录与更旧的运行时（本次清掉 1258.4 MiB）。它还会清除继承来的 `ELECTRON_RUN_AS_NODE`——该变量会让 Electron 以纯 Node 运行、应用立刻死于 `requestSingleInstanceLock` 未定义（实测：清除后 4 秒到达 `state=ready`）。入口：`pnpm run app:launch` / `app:shortcuts` / `app:clean-runtimes`。

@@ -20,6 +20,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, CdpClient, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
+import { packagedExecutablePath } from './lib/release-artifacts.mjs'
 
 const EVENT_VERSION = 1
 const PARTITION_NAME = /^[a-f0-9]{64}$/u
@@ -33,7 +34,7 @@ function readOption(name, fallback) {
 const appKind = readOption('app', 'dev')
 if (appKind !== 'dev' && appKind !== 'packaged') throw new Error(`--app must be dev or packaged, received ${appKind}`)
 const packagedExecutable = appKind === 'packaged'
-  ? resolve(repoRoot, 'release/win-unpacked/LittleSheep.exe')
+  ? packagedExecutablePath()
   : undefined
 const harness = createElectronHarness({
   startTimeoutMs: 120_000,
@@ -502,7 +503,7 @@ async function main() {
       measuredAt: new Date().toISOString(),
       environment: {
         app: appKind,
-        executable: appKind === 'packaged' ? 'release/win-unpacked/LittleSheep.exe' : 'repository entry (packages/app)',
+        executable: appKind === 'packaged' ? packagedExecutable : 'repository entry (packages/app)',
         platform: `${process.platform} ${process.arch}`,
         node: process.version,
         electron: 'see packages/app/package.json',
@@ -522,7 +523,7 @@ async function main() {
         'the light routes across it but does not observe a completion signal for the scan',
         'itself, because the router exposes none.',
         appKind === 'packaged'
-          ? 'This ledger was produced by the packaged artifact; its freshness depends on when release/win-unpacked was built.'
+          ? 'This ledger was produced by the packaged artifact; its freshness depends on when the release root last built.'
           : 'Packaged builds are not covered by this run (use --app=packaged after pnpm run package:win).',
         'The cache case counts requests and settle times on fixture sessions with no',
         'messages: it proves one request for a first visit, none for a revisit and none',

@@ -3,9 +3,20 @@ productName: LittleSheep
 copyright: Copyright (c) 2026 LittleSheep
 
 directories:
+  # `scripts/package-windows-release.mjs` rewrites this line to the resolved release root
+  # (LITTLESHEEP_RELEASE_DIR, default <os temp>/littlesheep-run-artifacts/windows-release) so a
+  # build never writes the payload into the checkout. The value here is only what a hand-run
+  # `electron-builder` would use — prefer `pnpm run package:win`.
   output: ../../release
   buildResources: resources
 
+# The `files` list below is the whole packaging contract. Two shape rules apply to it:
+#   * Every `!node_modules/...` pattern is a node_modules exclusion. electron-builder hands exactly
+#     those negations to its node-module matcher (`app-builder-lib/out/fileMatcher.js`
+#     `getNodeModuleFileMatcher`, which collects "only excludes"), matched against paths relative to
+#     `packages/app`. Positive patterns do not restrict node_modules at all.
+#   * Exclusions are additive-safe: a dependency that is not named here keeps shipping. That is the
+#     deliberate direction — a new runtime dependency must never be dropped silently.
 files:
   - from: .release-staging/out
     to: out
@@ -14,6 +25,50 @@ files:
   - package.json
   - '!**/*.cov.*'
 
+  # --- 1. Non-target platform and architecture (Windows x64 only) -------------------------------
+  # onnxruntime-node ships every `napi-v6/<platform>/<arch>` slice in one tarball. Only win32/x64 is
+  # loadable on this target; the rest is measured dead weight (SL-04 numbers in
+  # docs/decision/project-status.md).
+  - '!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}{,/**/*}'
+  - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**/*}'
+  # node-pty keeps prebuilds for four targets plus a per-architecture ConPTY.
+  # `@napi-rs/*` and `@img/*` need no rule: pnpm installs only the win32-x64 variant of each on this
+  # host, and electron-builder reports the other variants as "not present" instead of bundling them.
+  - '!node_modules/node-pty/prebuilds/{darwin-arm64,darwin-x64,win32-arm64}{,/**/*}'
+  - '!node_modules/node-pty/third_party/conpty/*/win10-arm64{,/**/*}'
+
+  # --- 2. Already compiled into `out`, never resolved from node_modules at runtime ---------------
+  # electron.vite.config.ts externalises only `better-sqlite3`, `node-pty`,
+  # `@huggingface/transformers` and `onnxruntime-node`; a scan of the built bundle finds no other
+  # non-builtin `require()` / `import()`. Every directory below is therefore a second copy of code
+  # that already sits inside `app.asar/out`.
+  #
+  # `@huggingface/transformers` inlines onnxruntime-web's JS into `transformers.node.mjs` and only
+  # ever requires `onnxruntime-node` from disk (`requireFromHere("onnxruntime-node")`), so the
+  # onnxruntime-web package directory — the browser backend's WASM execution providers — is
+  # unreachable for this Node main process.
+  - '!node_modules/onnxruntime-web{,/**/*}'
+  # PDF.js is bundled into `out/main/chunks/pdf-*.js` and `pdf.worker-*.js`. Its `cmaps/`,
+  # `standard_fonts/` and `wasm/` trees are only reached through `cMapUrl` / `standardFontDataUrl` /
+  # `wasmUrl`, and `packages/documents/src/read-pdf.ts` passes none of them.
+  - '!node_modules/pdfjs-dist{,/**/*}'
+  # Renderer libraries: each has a matching chunk in `out/renderer/assets` (mermaid.core-*.js,
+  # editor.api2-*.js, xterm-*.js, index-*.js).
+  - '!node_modules/{mermaid,@mermaid-js,monaco-editor,@monaco-editor,@xterm}{,/**/*}'
+  - '!node_modules/{react-markdown,react-syntax-highlighter,refractor,prismjs,highlight.js,highlightjs-vue,lowlight,fault,format,hastscript,property-information,space-separated-tokens,comma-separated-tokens,unified,parse-entities,stringify-entities,markdown-table,longest-streak,ccount,zwitch,trim-lines,bail,trough,devlop,dequal,is-plain-obj,extend,html-url-attributes,inline-style-parser,style-to-js,style-to-object,estree-util-is-identifier-name,decode-named-character-reference,remark-gfm,remark-parse,remark-rehype,remark-stringify}{,/**/*}'
+  - '!node_modules/{micromark,micromark-*,mdast-util-*,hast-util-*,unist-util-*,vfile,vfile-message,character-entities,character-entities-html4,character-entities-legacy,character-reference-invalid,is-alphabetical,is-alphanumerical,is-decimal,is-hexadecimal}{,/**/*}'
+  # Engine trees that exist only for the libraries above: mermaid's renderers
+  # (cytoscape/d3/katex/marked/dagre), the syntax highlighter's grammars, and the helpers only they
+  # pull in. The list is closure(renderer libraries) minus closure(@huggingface/transformers,
+  # node-pty, @napi-rs/canvas, @littlesheep/documents, sharp), so nothing the packaged main process
+  # can load is named here.
+  - '!node_modules/{dompurify,d3,d3-*,@types/d3*}{,/**/*}'
+  - '!node_modules/{dagre-d3-es,khroma,cytoscape,cytoscape-fcose,cytoscape-cose-bilkent,katex,marked,lodash-es,dayjs,stylis,roughjs,ts-dedent,uuid,fastdom,state-local,strictdom,es-toolkit,@braintree/sanitize-url,@iconify,@chevrotain,@antfu,package-manager-detector,tinyexec,duck,hachure-fill,layout-base,cose-base,robust-predicates,delaunator,internmap,rw,points-on-curve,points-on-path,path-data-parser,@upsetjs}{,/**/*}'
+  # Type-only packages. Nothing loads them at runtime, so they never need to ship.
+  - '!node_modules/@types/{debug,d3*,estree,estree-jsx,geojson,hast,mdast,ms,prismjs,trusted-types,unist}{,/**/*}'
+
+# Runtime icon assets. These are read from the packaged `resources/resources/` directory, so they
+# are copied as resources rather than bundled into the archive.
 extraResources:
   - from: resources
     to: resources
@@ -21,6 +76,10 @@ extraResources:
       - littlesheep.ico
       - littlesheep-icon.png
 
+# Files the main process loads by path at runtime stay outside the archive. node-pty,
+# onnxruntime-node, sharp and @huggingface/transformers are listed explicitly; electron-builder
+# additionally auto-unpacks `@napi-rs/canvas`, which `out/main/chunks/pdf-*.js` requires through a
+# `createRequire` call.
 asar: true
 npmRebuild: false
 buildDependenciesFromSource: false

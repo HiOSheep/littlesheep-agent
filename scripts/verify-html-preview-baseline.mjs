@@ -24,7 +24,8 @@
 // Usage:
 //   node scripts/verify-html-preview-baseline.mjs [--app=packaged] [--keep]
 //
-// `--app=packaged` drives the packaged build (`release/win-unpacked/LittleSheep.exe`) instead
+// `--app=packaged` drives the unpacked build under the release root (see
+// `scripts/lib/release-artifacts.mjs`; `pnpm run package:win` writes it there) instead
 // of the repository entry, so the same walkthrough can be repeated against what ships; the
 // freshness assertion is skipped there and the evidence records the asar digest instead of the
 // dev build fingerprint. `--keep` preserves the temporary root.
@@ -40,10 +41,11 @@ import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+import { packagedExecutablePath, packagedResourcesPath } from './lib/release-artifacts.mjs'
 
 const appKind = process.argv.includes('--app=packaged') ? 'packaged' : 'dev'
 const packagedExecutable = appKind === 'packaged'
-  ? resolve(repoRoot(), 'release', 'win-unpacked', 'LittleSheep.exe')
+  ? packagedExecutablePath()
   : undefined
 const harness = createElectronHarness({
   startTimeoutMs: 90_000,
@@ -2567,7 +2569,7 @@ async function main() {
 /** Source revision, build digests and engine versions behind these measurements. */
 async function buildFingerprint(client) {
   if (packagedExecutable) {
-    const asarPath = resolve(repoRoot(), 'release', 'win-unpacked', 'resources', 'app.asar')
+    const asarPath = resolve(packagedResourcesPath(), 'app.asar')
     const asar = await readFile(asarPath)
     const product = client ? await client.send('Browser.getVersion').then((value) => value.product).catch(() => null) : null
     return {

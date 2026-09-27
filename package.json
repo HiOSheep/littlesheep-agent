@@ -94,6 +94,7 @@
     "verify:memory-v3-readiness": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner && node scripts/verify-memory-v3-migration-readiness.mjs",
     "benchmark:embedding": "pnpm run ensure:workspace-build -- --package=@littlesheep/embedding --package=@littlesheep/branding && node scripts/benchmark-local-embedding.mjs",
     "verify:app-recovery": "node scripts/verify-app-recovery-sources.mjs",
+    "verify:packaged-isolation": "node scripts/verify-packaged-isolation.mjs",
     "verify:workspace-performance": "pnpm run assert:app-build && node scripts/verify-workspace-performance.mjs",
     "verify:desktop-cold-start": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-visuals.mjs",
     "verify:desktop-cold-start-interaction": "pnpm run assert:app-build && node scripts/verify-desktop-cold-start-interaction.mjs",

@@ -36,8 +36,7 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, repoRoot } from './lib/electron-cdp-harness.mjs'
-
-const PACKAGED_EXECUTABLE_RELATIVE = 'release/win-unpacked/LittleSheep.exe'
+import { packagedExecutablePath, releaseRoot } from './lib/release-artifacts.mjs'
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`
@@ -49,7 +48,10 @@ const appKind = readOption('app', 'dev')
 if (appKind !== 'dev' && appKind !== 'packaged') {
   throw new Error(`--app must be dev or packaged, received ${appKind}`)
 }
-const packagedExecutable = appKind === 'packaged' ? resolve(repoRoot, PACKAGED_EXECUTABLE_RELATIVE) : undefined
+const packagedExecutable = appKind === 'packaged' ? packagedExecutablePath() : undefined
+const packagedExecutableLabel = appKind === 'packaged'
+  ? join(releaseRoot, 'win-unpacked', 'LittleSheep.exe')
+  : 'packages/app/out (dev entry)'
 const harness = createElectronHarness({
   startTimeoutMs: 90_000,
   actionTimeoutMs: 30_000,
@@ -98,7 +100,7 @@ async function main() {
     check: 'desktop-cold-start',
     label,
     app: appKind,
-    appExecutable: appKind === 'packaged' ? PACKAGED_EXECUTABLE_RELATIVE : 'packages/app/out (dev entry)',
+    appExecutable: packagedExecutableLabel,
     startedAt: startedAt.toISOString(),
     samples,
     launches,

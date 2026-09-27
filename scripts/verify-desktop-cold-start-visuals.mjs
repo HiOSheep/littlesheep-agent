@@ -18,17 +18,16 @@
 // Usage:
 //   node scripts/verify-desktop-cold-start-visuals.mjs [--app=dev|packaged] [--out=docs/reference/cold-start-baseline/screenshots] [--keep]
 //
-// `--app=packaged` drives `release/win-unpacked/LittleSheep.exe` instead of the
-// development entry, and writes its captures with a `-packaged` suffix so a
-// packaged run cannot overwrite the development evidence.
+// `--app=packaged` drives the unpacked executable under the release root
+// (`scripts/lib/release-artifacts.mjs`) instead of the development entry, and writes its captures
+// with a `-packaged` suffix so a packaged run cannot overwrite the development evidence.
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createElectronHarness, CdpClient, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
+import { packagedExecutablePath } from './lib/release-artifacts.mjs'
 import { columnColors, decodePng, hexAt } from './lib/png-pixels.mjs'
-
-const PACKAGED_EXECUTABLE_RELATIVE = 'release/win-unpacked/LittleSheep.exe'
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`
@@ -40,7 +39,7 @@ const appKind = readOption('app', 'dev')
 if (appKind !== 'dev' && appKind !== 'packaged') {
   throw new Error(`--app must be dev or packaged, received ${appKind}`)
 }
-const packagedExecutable = appKind === 'packaged' ? resolve(repoRoot, PACKAGED_EXECUTABLE_RELATIVE) : undefined
+const packagedExecutable = appKind === 'packaged' ? packagedExecutablePath() : undefined
 const captureSuffix = appKind === 'packaged' ? '-packaged' : ''
 const ledgerName = appKind === 'packaged' ? 'cold-start-visuals-packaged.json' : 'cold-start-visuals.json'
 
