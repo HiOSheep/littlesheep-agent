@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 22:30:39
+最后更新：2026-09-27 22:34:40
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -93,7 +93,7 @@ pnpm run refresh:desktop-shortcut
 
 **必须保留**：`@napi-rs/canvas`（`out/main/chunks/pdf-*.js` 通过 `createRequire` 动态要求它，electron-builder 自动解包）、`onnxruntime-node` 的 win32/x64、`@img/sharp-win32-x64`、`@huggingface/*`、`node-pty` 的 win32-x64 prebuild，以及 `@littlesheep/documents` 的依赖树（`xlsx`/`pdfkit`/`docx`/`mammoth`/`fontkit` 等约 35 MiB 仍在载荷里：它们是运行时文档库，pdfkit 还会按 `__dirname` 读自己的数据文件，删它们需要各自单独取证）。
 
-实测（同一台机器连续两次重打包，文件长度合计）：解包目录 **1,175.01 → 568.31 MiB**、`app.asar` **444.90 → 66.44 MiB**、`app.asar.unpacked` **361.26 → 134.31 MiB**、安装程序 **273.51 → 156.93 MiB**。解包侧的 226.95 MiB 差值里 223.10 来自 `onnxruntime-node`、3.85 来自 `node-pty`，与收窄前的分平台测量逐项吻合。隔离验收见 `pnpm run verify:packaged-isolation` 与 `node scripts/verify-html-preview-baseline.mjs --app=packaged`（后者经根 `verify:*` 运行时会被前置的 `ensure:app-build` 吃掉参数，所以写直接调用），事实边界写在 `scripts/README.md`。
+实测（同一台机器连续两次重打包，文件长度合计）：解包目录 **1,232,082,503 → 597,288,192 字节（1,175.01 → 569.62 MiB）**、`app.asar` **466,509,892 → 69,688,045 字节（444.90 → 66.46 MiB）**、`app.asar.unpacked` **378,806,235 → 140,833,771 字节（361.26 → 134.31 MiB）**、安装程序 **286,793,650 → 165,898,400 字节（273.51 → 158.22 MiB）**。解包侧的 226.95 MiB 差值里 223.10 来自 `onnxruntime-node`、3.85 来自 `node-pty`，与收窄前的分平台测量逐项吻合；`app.asar` 内的 `out/renderer` 同期从 16.44 涨到 16.46 MiB，那 0.02 MiB 来自打包期间并行的渲染器改动，不计入本收窄。隔离验收见 `pnpm run verify:packaged-isolation` 与 `node scripts/verify-html-preview-baseline.mjs --app=packaged`（后者经根 `verify:*` 运行时会被前置的 `ensure:app-build` 吃掉参数，所以写直接调用），事实边界写在 `scripts/README.md`。
 
 ## 运行边界
 

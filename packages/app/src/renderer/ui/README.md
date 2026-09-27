@@ -69,6 +69,8 @@
 
 **本轮合并/删除的重复规则**（每条都保持最终生效值不变）：`.settings-sidebar-track`（07，两处合并为一处）、`.profile-choice-list`（07，删掉重复的 `width`/`gap` 覆盖）、`.settings-module-kicker`（07，把后写的 `display: none` 并入自己的规则）、`.workspace-files-root span`（04，删掉重复 `display` 的空操作）、`.workspace-terminal-shell`（04，两处合并）、`.workspace-review-tree-branch`（04 与 10 两处合并到 04）、`.runtime-provider-option small` / `.runtime-reasoning-option small`（06，两处合并）、以及 21 条逐角色禁用规则合并为状态层的一条。仍然保留的两处"同名规则"是**有意分层**（`03` 画材质、`12` 下角形；`*` 与 `:root` 分属重置与角政策），不动。两处**故意没合并**：`.model-picker-trigger`（`composer/control-surface-style.test.ts` 逐条钉住两个规则体的声明顺序，合并要连另一包的断言一起改）与 `.settings-page-transition`（`font-rendering.test.ts` 钉住 `round(nearest …)` 的居中写法，但后写的 `margin-inline: auto` 实际覆盖了它——见"未验证与遗留"）。
 
+**按下层的实测边界（本轮真实窗口探针）**：`ui/` 之外仍有两类控件没有按下反馈——工作区文件树/浏览器/审阅的动作按钮（属于工作区工作包）与 `app-nav-btn` 之外的 `.app-nav-controls` 组合；`settings-entry-btn`/`sidebar-toggle-btn`/`app-nav-btn` 三个窗口镶边控件在基线探针里 `mousePressed` 中心像素差为 0，本轮已补进状态层（重测见下方证据）。`disabled` 只覆盖上面列出的角色族；密集行/工具条的禁用透明度是登记过的未收敛项。
+
 ## 状态矩阵（V3）
 
 悬停之外，控件还必须有**按下**与**忙碌**，否则"点下去了吗""还在跑吗"只能靠猜。本轮实测到的缺口：真实 `mousePressed` 在四个探针控件（`sidebar-toggle-btn`、`settings-entry-btn`、`composer-tab-control`、`app-nav-btn`）上**中心像素差为 0**；`.plugin-switch` 完全没有悬停/按下；禁用色被复制进 21 条规则，`.danger-btn:disabled` 还用字面量 `0.5` 覆盖了自己角色令牌的 `0.42`。
@@ -80,7 +82,8 @@
 | 危险控件（`danger-btn`、`active-run-actions button.danger`、`archive-action.danger`） | `color-mix(--danger-soft 65%, --control-active)` | 同上 | `color-mix(--danger-soft 88%, --control-active)` | 同上（字面量 `0.5` 已删） | 同上 |
 | 填充型动作（`feedback-action`、`ms-feedback-action`） | `--control-active` | 同上 | `--control-pressed` | 同上 | 同上 |
 | 发送控键（`send-round`，含 `.stop`） | 无悬停（`transition: none`，发送/停止不逐帧动画） | 同上 | 向底色压一档（`color-mix(accent 82%, bg)`；停止态向 `--danger` 压） | `--control-disabled-opacity` | 同上 |
-| 玻璃面上的行（`sidebar-nav-button`、`session-item`、`settings-nav-item`、`settings-overview-row`、`sidebar-section-action`、`sidebar-search-result`、`sidebar-menu-item`） | `--sidebar-interaction-hover` | 同上 | `--sidebar-interaction-active` | 除 `sidebar-section-action`（0.72，见未收敛）外走 token | 同上 |
+| 玻璃面上的行（`sidebar-nav-button`、`session-item`、`settings-nav-item`、`settings-overview-row`、`settings-entry-btn`、`sidebar-section-action`、`sidebar-search-result`、`sidebar-menu-item`） | `--sidebar-interaction-hover` | 同上 | `--sidebar-interaction-active` | 除 `sidebar-section-action`（0.72，见未收敛）外走 token | 同上 |
+| 窗口镶边控件（`sidebar-toggle-btn`、`app-nav-btn`） | `--control-hover` | 全局环 | `--control-active` | 未统一（见未收敛） | 同上 |
 | 菜单 / 选择器行（`split-button-menu-item`、`runtime-menu-item`、`model-option`） | `--composer-picker-option-hover` | 同上 | `--composer-picker-option-active` | `--control-disabled-opacity` | 同上 |
 | 开关（`plugin-switch`） | 本轮新增 `filter: brightness(1.12)` | 同上 | `filter: brightness(0.94)` | `--control-disabled-opacity` | 同上 |
 | 输入区触发器（`composer-tab-control`、`model-picker-trigger`、`runtime-picker-trigger`、`pill-select`） | `--control-hover`（打开态 `--control-active`） | 同上 | `--control-active` | `--composer-control-disabled-opacity`（`0.48`）+ `cursor: default` | 同上 |
