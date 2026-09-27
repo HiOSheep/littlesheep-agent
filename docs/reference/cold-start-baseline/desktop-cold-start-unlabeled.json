@@ -1,0 +1,3005 @@
+{
+  "check": "desktop-cold-start",
+  "label": "unlabeled",
+  "app": "dev",
+  "appExecutable": "packages/app/out (dev entry)",
+  "startedAt": "2026-09-27T03:03:37.305Z",
+  "samples": 3,
+  "launches": 1,
+  "profiles": [
+    "empty",
+    "normal",
+    "large",
+    "recovery"
+  ],
+  "note": [
+    "Hot-cache repeats are not a full cold start: a rebooted machine and a",
+    "first-ever binary read are outside what this harness can automate.",
+    "Each sample uses a fresh isolated data root, so the data layout is cold",
+    "while the OS file cache for the application bundle is warm from the",
+    "previous repeat. Treat the first repeat of a session as the coldest.",
+    "Only one launch per sample was taken, so the ledger has no steady-state numbers."
+  ],
+  "machine": {
+    "platform": "win32",
+    "arch": "x64",
+    "release": "10.0.26200",
+    "cpuModel": "AMD Ryzen 9 7945HX with Radeon Graphics        ",
+    "cpuCount": 32,
+    "totalMemoryGb": 15.7,
+    "electronVersion": "36.9.5",
+    "appBuildInputDigest": "d99d2212acc0b486726c5bbe876195c3fc9fbef7ff555a78c73cfcc83f20e9f7"
+  },
+  "runs": [
+    {
+      "profile": "empty",
+      "index": 0,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 58080,
+      "processCreatedAt": 1790478217404,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 255.5
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 256.7
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 557.5
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 628
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 628.5
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 649.7,
+          "durationMs": 21.2
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 650.6,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 660.1,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 660.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 669.4,
+          "durationMs": 8.8
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 671.3,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 671.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 671.9,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 672,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 674.2,
+          "durationMs": 2.2
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 674.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 687.1,
+          "durationMs": 12.8
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 691,
+          "durationMs": 3.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 708.6
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 714,
+          "durationMs": 23
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 714.3
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 726.3,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 879.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 894.9
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 255.5,
+        "processStartRecordedAtMs": 256.7,
+        "spawnToMainModuleMs": 256.7,
+        "spawnToLocatorMs": 1144.7,
+        "locatorToCdpAttachedMs": 580,
+        "inputUsableMs": 404.8,
+        "inputAcceptedCharacter": true,
+        "executionReadyMs": 2350.7,
+        "firstSendPreparationMs": 14.2
+      }
+    },
+    {
+      "profile": "empty",
+      "index": 1,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 62244,
+      "processCreatedAt": 1790478234499,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 255
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 256.7
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 552.2
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 625.7
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 626.1
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 644.7,
+          "durationMs": 18.7
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 645.7,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 654.1,
+          "durationMs": 8.4
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 654.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 662,
+          "durationMs": 7.6
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 663,
+          "durationMs": 1
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 663.1,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 663.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 663.6,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 670,
+          "durationMs": 6.4
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 670.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 682.5,
+          "durationMs": 12.2
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 685.9,
+          "durationMs": 3.4
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 701
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 704.5,
+          "durationMs": 18.7
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 704.7
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 716.2,
+          "durationMs": 8.7
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 862.1
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 876
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 255,
+        "processStartRecordedAtMs": 256.7,
+        "spawnToMainModuleMs": 256.7,
+        "spawnToLocatorMs": 1109.7,
+        "locatorToCdpAttachedMs": 395,
+        "inputUsableMs": 233.1,
+        "inputAcceptedCharacter": true,
+        "executionReadyMs": 2239.7,
+        "firstSendPreparationMs": 14
+      }
+    },
+    {
+      "profile": "empty",
+      "index": 2,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 3368,
+      "processCreatedAt": 1790478251291,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 235.6
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 236.9
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 508.6
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 581.5
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 581.9
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 602.9,
+          "durationMs": 21
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 603.9,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 615.1,
+          "durationMs": 11.2
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 615.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 625.2,
+          "durationMs": 9.7
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 626.2,
+          "durationMs": 1
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 626.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 628.2,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 628.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 630.8,
+          "durationMs": 2.5
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 630.9,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 640.4,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 642.3,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 659.6
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 664.2,
+          "durationMs": 21.9
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 664.5
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 690.8,
+          "durationMs": 23.6
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 816.6
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 818.4
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 0,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 235.6,
+        "processStartRecordedAtMs": 236.9,
+        "spawnToMainModuleMs": 236.9,
+        "spawnToLocatorMs": 1048.9,
+        "locatorToCdpAttachedMs": 441,
+        "inputUsableMs": 315.1,
+        "inputAcceptedCharacter": true,
+        "executionReadyMs": 2137.9,
+        "firstSendPreparationMs": 12.8
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 0,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 36960,
+      "processCreatedAt": 1790478268183,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 237.1
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 238.4
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 523.5
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 592.9
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 593.2
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 611.2,
+          "durationMs": 18
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 612.3,
+          "durationMs": 1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 618.1,
+          "durationMs": 5.8
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 618.5,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 620.3,
+          "durationMs": 1.8
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 621.1,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 621.2,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 621.5,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 621.6,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 624.2,
+          "durationMs": 2.7
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 624.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 637.6,
+          "durationMs": 13.2
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 639.5,
+          "durationMs": 2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 654.3
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 658.4,
+          "durationMs": 18.8
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 658.6
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 675.4,
+          "durationMs": 14.3
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 676.8,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 687.6,
+          "durationMs": 11.6
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 687.8,
+          "durationMs": 11.7
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 687.8,
+          "durationMs": 11.8
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 687.9,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 689.5,
+          "durationMs": 1.6
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 689.8,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 701.4,
+          "durationMs": 11.6
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 758.4,
+          "durationMs": 57
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 762.3,
+          "durationMs": 3.8
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 780.8,
+          "durationMs": 18.4
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 781.2,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 781.3,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 781.5,
+          "durationMs": 122.9
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 784.9,
+          "durationMs": 2.9
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 784.9,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 813.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 813.9
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 838.7,
+          "durationMs": 57.2
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 839.3
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 237.1,
+        "processStartRecordedAtMs": 238.4,
+        "spawnToMainModuleMs": 238.4,
+        "spawnToLocatorMs": 1052.4,
+        "locatorToCdpAttachedMs": 446,
+        "inputUsableMs": 324,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 333.3,
+        "executionReadyMs": 1533.4,
+        "firstSendPreparationMs": 17.8
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 1,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 18704,
+      "processCreatedAt": 1790478285066,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 235
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 236.1
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 504.3
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 569.1
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 569.6
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 590.1,
+          "durationMs": 20.5
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 591.1,
+          "durationMs": 1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 596.8,
+          "durationMs": 5.7
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 597.2,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 599.1,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 599.9,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 600,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 600.2,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 600.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 604.6,
+          "durationMs": 4.2
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 604.7,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 614.7,
+          "durationMs": 10
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 616.6,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 632.4
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 636,
+          "durationMs": 19.4
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 636.2
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 648.4,
+          "durationMs": 9.8
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 649.9,
+          "durationMs": 1
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 659.7,
+          "durationMs": 10.7
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 660.3,
+          "durationMs": 11.3
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 660.5,
+          "durationMs": 11.5
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 660.6,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 664,
+          "durationMs": 3.4
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 664.3,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 675.2,
+          "durationMs": 10.9
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 735.3,
+          "durationMs": 60
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 738.9,
+          "durationMs": 3.5
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 755.1,
+          "durationMs": 16.2
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 755.6,
+          "durationMs": 0.5
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 755.7,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 755.9,
+          "durationMs": 119.8
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 760.1,
+          "durationMs": 3.7
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 760.2,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 801.3
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 802.7
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 817.5,
+          "durationMs": 61.6
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 818.1
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 235,
+        "processStartRecordedAtMs": 236.1,
+        "spawnToMainModuleMs": 236.1,
+        "spawnToLocatorMs": 1040.1,
+        "locatorToCdpAttachedMs": 465,
+        "inputUsableMs": 351.8,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 360.8,
+        "executionReadyMs": 1563.1,
+        "firstSendPreparationMs": 15.4
+      }
+    },
+    {
+      "profile": "normal",
+      "index": 2,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 43592,
+      "processCreatedAt": 1790478301896,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 231
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 232.2
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 520.6
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 589.2
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 589.6
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 607.8,
+          "durationMs": 18.2
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 608.9,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 614.8,
+          "durationMs": 5.9
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 615.1,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 617.2,
+          "durationMs": 2.1
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 618.1,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 618.2,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 618.4,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 618.5,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 620.9,
+          "durationMs": 2.3
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 621,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 632.6,
+          "durationMs": 11.6
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 634.5,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 649.7
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 653.1,
+          "durationMs": 18.6
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 653.2
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 666.2,
+          "durationMs": 10.6
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 667.7,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 682.4,
+          "durationMs": 15.6
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 682.5,
+          "durationMs": 15.7
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 682.8,
+          "durationMs": 15.9
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 682.8,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 686.8,
+          "durationMs": 3.9
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 687,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 701.5,
+          "durationMs": 14.5
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 743,
+          "durationMs": 41.4
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 746.9,
+          "durationMs": 3.8
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 759.6,
+          "durationMs": 12.6
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 760,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 760.1,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 760.3,
+          "durationMs": 107.1
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 765.3,
+          "durationMs": 4.5
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 765.3,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 806.7
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 807.9
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 819.3,
+          "durationMs": 59
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 820
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 231,
+        "processStartRecordedAtMs": 232.2,
+        "spawnToMainModuleMs": 232.2,
+        "spawnToLocatorMs": 1038.2,
+        "locatorToCdpAttachedMs": 346,
+        "inputUsableMs": 220.7,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 300.7,
+        "executionReadyMs": 1482.2,
+        "firstSendPreparationMs": 16.8
+      }
+    },
+    {
+      "profile": "large",
+      "index": 0,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 15744,
+      "processCreatedAt": 1790478318675,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 235.4
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 236.5
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 498.2
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 564.2
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 564.6
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 582.9,
+          "durationMs": 18.3
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 584,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 589.8,
+          "durationMs": 5.8
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 590.1,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 592.1,
+          "durationMs": 2
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 593.3,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 593.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 593.9,
+          "durationMs": 0.5
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 594.1,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 596.8,
+          "durationMs": 2.8
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 597,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 607.1,
+          "durationMs": 10.2
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 609.3,
+          "durationMs": 2.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 625
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 629.8,
+          "durationMs": 20.5
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 630
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 642.8,
+          "durationMs": 10.2
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 644.1,
+          "durationMs": 0.7
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 656.3,
+          "durationMs": 12.8
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 656.5,
+          "durationMs": 13
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 656.7,
+          "durationMs": 13.3
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 656.8,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 659.2,
+          "durationMs": 2.4
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 659.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 674.4,
+          "durationMs": 15.1
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 719.6,
+          "durationMs": 45.1
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 722.7,
+          "durationMs": 3.1
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 738.9,
+          "durationMs": 16.1
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 739.6,
+          "durationMs": 0.6
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 739.6,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 740,
+          "durationMs": 110
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 743.7,
+          "durationMs": 3.2
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 743.7,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 777.5
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 778.1
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 793.8,
+          "durationMs": 53.7
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 794.5
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 200,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 235.4,
+        "processStartRecordedAtMs": 236.5,
+        "spawnToMainModuleMs": 236.5,
+        "spawnToLocatorMs": 988.5,
+        "locatorToCdpAttachedMs": 457,
+        "inputUsableMs": 387.3,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 405.8,
+        "executionReadyMs": 1559.5,
+        "firstSendPreparationMs": 25.4
+      }
+    },
+    {
+      "profile": "large",
+      "index": 1,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 42672,
+      "processCreatedAt": 1790478335615,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 230.7
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 231.8
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 490.5
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 556.9
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 557.3
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 575,
+          "durationMs": 17.7
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 576,
+          "durationMs": 1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 581.8,
+          "durationMs": 5.7
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 582.1,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 584.1,
+          "durationMs": 2
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 586.1,
+          "durationMs": 2
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 586.2,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 586.7,
+          "durationMs": 0.6
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 586.8,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 589.6,
+          "durationMs": 2.8
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 589.7,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 600.1,
+          "durationMs": 10.4
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 606.6,
+          "durationMs": 6.5
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 621.5
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 625.4,
+          "durationMs": 18.8
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 625.6
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 633.7,
+          "durationMs": 5.5
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 635.6,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 645,
+          "durationMs": 10.6
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 645.1,
+          "durationMs": 10.6
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 645.2,
+          "durationMs": 10.7
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 645.2,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 646.6,
+          "durationMs": 1.4
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 646.8,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 659.5,
+          "durationMs": 12.6
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 710.7,
+          "durationMs": 51.2
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 715.1,
+          "durationMs": 4.3
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 731.6,
+          "durationMs": 16.5
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 732.1,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 732.2,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 732.4,
+          "durationMs": 106.9
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 735.7,
+          "durationMs": 2.8
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 735.8,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 776.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 777.4
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 798.5,
+          "durationMs": 66.1
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 799.2
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 200,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 230.7,
+        "processStartRecordedAtMs": 231.8,
+        "spawnToMainModuleMs": 231.8,
+        "spawnToLocatorMs": 996.8,
+        "locatorToCdpAttachedMs": 482,
+        "inputUsableMs": 362.4,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 381.9,
+        "executionReadyMs": 1532.8,
+        "firstSendPreparationMs": 26.9
+      }
+    },
+    {
+      "profile": "large",
+      "index": 2,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 64804,
+      "processCreatedAt": 1790478352489,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 231.8
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 232.9
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 526
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 594.6
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 594.9
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 613.5,
+          "durationMs": 18.5
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 614.3,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 620.1,
+          "durationMs": 5.8
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 620.4,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 622.2,
+          "durationMs": 1.8
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 623.1,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 623.1,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 623.4,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 623.5,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 627.3,
+          "durationMs": 3.8
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 627.5,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 637,
+          "durationMs": 9.5
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 638.7,
+          "durationMs": 1.8
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 654.3
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 658.8,
+          "durationMs": 20
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 659
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 672.1,
+          "durationMs": 10.4
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 673.8,
+          "durationMs": 1
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 685.8,
+          "durationMs": 12.9
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 685.9,
+          "durationMs": 13
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 689.6,
+          "durationMs": 16.8
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 689.7,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 692,
+          "durationMs": 2.3
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 692.2,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 719.8,
+          "durationMs": 27.6
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 749.6,
+          "durationMs": 29.7
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 754,
+          "durationMs": 4.4
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 768.4,
+          "durationMs": 14.3
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 768.9,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 768.9,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 769.2,
+          "durationMs": 110.1
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 773.7,
+          "durationMs": 4.1
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 773.8,
+          "durationMs": 1.8
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 807.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 808.5
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 827.3,
+          "durationMs": 58.2
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 827.8
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 200,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 231.8,
+        "processStartRecordedAtMs": 232.9,
+        "spawnToMainModuleMs": 232.9,
+        "spawnToLocatorMs": 1040.9,
+        "locatorToCdpAttachedMs": 436,
+        "inputUsableMs": 392.6,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 418.7,
+        "executionReadyMs": 1603.9,
+        "firstSendPreparationMs": 27.7
+      }
+    },
+    {
+      "profile": "recovery",
+      "index": 0,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 58344,
+      "processCreatedAt": 1790478369490,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 240.7
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 241.8
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 517.3
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 585.8
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 586.3
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 604.1,
+          "durationMs": 17.8
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 605.2,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 612,
+          "durationMs": 6.7
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 612.4,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 614.7,
+          "durationMs": 2.3
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 615.9,
+          "durationMs": 1.2
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 616,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 616.3,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 616.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 618.4,
+          "durationMs": 2
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 618.5,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 628.8,
+          "durationMs": 10.3
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 632.4,
+          "durationMs": 3.6
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 647.5
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 651.1,
+          "durationMs": 18.6
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 651.3
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 664.6,
+          "durationMs": 10.8
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 666.5,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 677.2,
+          "durationMs": 11.8
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 677.4,
+          "durationMs": 11.9
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 678.1,
+          "durationMs": 12.6
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 678.2,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 679.8,
+          "durationMs": 1.7
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 680,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 691.3,
+          "durationMs": 11.3
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 743.1,
+          "durationMs": 51.7
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 750.6,
+          "durationMs": 7.4
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 766.2,
+          "durationMs": 15.6
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 766.8,
+          "durationMs": 0.5
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 766.9,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 767.1,
+          "durationMs": 115.8
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 787.5,
+          "durationMs": 19.9
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 787.5,
+          "durationMs": 17.3
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 807
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 812.2
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 841.4,
+          "durationMs": 74.3
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 842.1
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 240.7,
+        "processStartRecordedAtMs": 241.8,
+        "spawnToMainModuleMs": 241.8,
+        "spawnToLocatorMs": 1032.8,
+        "locatorToCdpAttachedMs": 465,
+        "inputUsableMs": 346.1,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 353.3,
+        "executionReadyMs": 1546.8,
+        "firstSendPreparationMs": 16.8
+      }
+    },
+    {
+      "profile": "recovery",
+      "index": 1,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 60948,
+      "processCreatedAt": 1790478386361,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 241
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 242.1
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 499.6
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 567.8
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 568.1
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 586.5,
+          "durationMs": 18.4
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 587.7,
+          "durationMs": 1.1
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 602.2,
+          "durationMs": 14.5
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 602.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 604.4,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 605.3,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 605.4,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 605.7,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 605.8,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 607.7,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 607.8,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 617.7,
+          "durationMs": 10
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 622.5,
+          "durationMs": 4.8
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 642.1
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 645.7,
+          "durationMs": 23.2
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 645.9
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 656.4,
+          "durationMs": 8
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 658,
+          "durationMs": 1
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 670.2,
+          "durationMs": 13.2
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 670.3,
+          "durationMs": 13.2
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 670.4,
+          "durationMs": 13.3
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 670.4,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 672,
+          "durationMs": 1.6
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 672.2,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 688.1,
+          "durationMs": 15.8
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 738.4,
+          "durationMs": 50.3
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 742,
+          "durationMs": 3.5
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 756.1,
+          "durationMs": 14.1
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 756.6,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 756.6,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 756.9,
+          "durationMs": 110.9
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 778.3,
+          "durationMs": 21
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 778.4,
+          "durationMs": 18.9
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 802.3
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 803.7
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 828.7,
+          "durationMs": 71.8
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 829.2
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 241,
+        "processStartRecordedAtMs": 242.1,
+        "spawnToMainModuleMs": 242.1,
+        "spawnToLocatorMs": 1030.1,
+        "locatorToCdpAttachedMs": 460,
+        "inputUsableMs": 339.1,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 346.3,
+        "executionReadyMs": 1535.1,
+        "firstSendPreparationMs": 17.2
+      }
+    },
+    {
+      "profile": "recovery",
+      "index": 2,
+      "launch": 1,
+      "launchCount": 1,
+      "warm": false,
+      "ok": true,
+      "pid": 34460,
+      "processCreatedAt": 1790478403224,
+      "rendererFrameReported": false,
+      "readinessPhase": "execution",
+      "firstSendOutcome": "accepted",
+      "bootstrapTimings": [
+        {
+          "stage": "main-module-ready",
+          "processUptimeMs": 234.5
+        },
+        {
+          "stage": "process-start",
+          "processUptimeMs": 235.7
+        },
+        {
+          "stage": "electron-app-ready",
+          "processUptimeMs": 501.4
+        },
+        {
+          "stage": "desktop-startup-visible",
+          "processUptimeMs": 571.3
+        },
+        {
+          "stage": "bootstrap-start",
+          "processUptimeMs": 571.7
+        },
+        {
+          "stage": "branding-ready",
+          "processUptimeMs": 590.2,
+          "durationMs": 18.5
+        },
+        {
+          "stage": "data-root-ready",
+          "processUptimeMs": 591.5,
+          "durationMs": 1.3
+        },
+        {
+          "stage": "user-data-layout-ready",
+          "processUptimeMs": 597.1,
+          "durationMs": 5.6
+        },
+        {
+          "stage": "keychain-ready",
+          "processUptimeMs": 597.5,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "config-ready",
+          "processUptimeMs": 599.4,
+          "durationMs": 1.9
+        },
+        {
+          "stage": "memory-v3-ready",
+          "processUptimeMs": 600.2,
+          "durationMs": 0.8
+        },
+        {
+          "stage": "durable-config-ready",
+          "processUptimeMs": 600.3,
+          "durationMs": 0.1
+        },
+        {
+          "stage": "project-index-ready",
+          "processUptimeMs": 600.6,
+          "durationMs": 0.3
+        },
+        {
+          "stage": "session-index-ready",
+          "processUptimeMs": 600.8,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "archive-index-ready",
+          "processUptimeMs": 604.8,
+          "durationMs": 4
+        },
+        {
+          "stage": "ui-indexes-ready",
+          "processUptimeMs": 604.9,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "local-api-ready",
+          "processUptimeMs": 615,
+          "durationMs": 10.1
+        },
+        {
+          "stage": "locator-written",
+          "processUptimeMs": 618.2,
+          "durationMs": 3.2
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 635.4
+        },
+        {
+          "stage": "desktop-shell-initialized",
+          "processUptimeMs": 639.6,
+          "durationMs": 21.4
+        },
+        {
+          "stage": "execution-start",
+          "processUptimeMs": 639.8
+        },
+        {
+          "stage": "runner-infra-observability-ready",
+          "processUptimeMs": 651.9,
+          "durationMs": 9.4
+        },
+        {
+          "stage": "runner-infra-durable-events-ready",
+          "processUptimeMs": 653.5,
+          "durationMs": 0.9
+        },
+        {
+          "stage": "runner-infra-durable-effect-leases-ready",
+          "processUptimeMs": 665,
+          "durationMs": 12.3
+        },
+        {
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 665.1,
+          "durationMs": 12.5
+        },
+        {
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 666.3,
+          "durationMs": 13.6
+        },
+        {
+          "stage": "runner-infra-durable-ready",
+          "processUptimeMs": 666.3,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-infra-checkpoint-store-ready",
+          "processUptimeMs": 668,
+          "durationMs": 1.7
+        },
+        {
+          "stage": "runner-infra-embedding-ready",
+          "processUptimeMs": 668.3,
+          "durationMs": 0.2
+        },
+        {
+          "stage": "runner-infra-memory-ready",
+          "processUptimeMs": 698.8,
+          "durationMs": 30.5
+        },
+        {
+          "stage": "runner-infra-bootstrap-files-loaded",
+          "processUptimeMs": 732,
+          "durationMs": 33.1
+        },
+        {
+          "stage": "runner-infra-skills-ready",
+          "processUptimeMs": 735.8,
+          "durationMs": 3.7
+        },
+        {
+          "stage": "runner-infra-skill-resources-synced",
+          "processUptimeMs": 752.6,
+          "durationMs": 16.7
+        },
+        {
+          "stage": "runner-infra-harness-ready",
+          "processUptimeMs": 753,
+          "durationMs": 0.4
+        },
+        {
+          "stage": "runner-infra-returned",
+          "processUptimeMs": 753.1,
+          "durationMs": 0
+        },
+        {
+          "stage": "runner-ready",
+          "processUptimeMs": 753.4,
+          "durationMs": 113.5
+        },
+        {
+          "stage": "attachment-protection",
+          "processUptimeMs": 772.6,
+          "durationMs": 18.8
+        },
+        {
+          "stage": "attachment-protection-checkpoints",
+          "processUptimeMs": 772.6,
+          "durationMs": 16.6
+        },
+        {
+          "stage": "renderer-did-finish-load",
+          "processUptimeMs": 787.9
+        },
+        {
+          "stage": "renderer-load-started",
+          "processUptimeMs": 788.6
+        },
+        {
+          "stage": "execution-ready",
+          "processUptimeMs": 824.3,
+          "durationMs": 71
+        },
+        {
+          "stage": "plugin-host-ready",
+          "processUptimeMs": 824.9
+        }
+      ],
+      "rendererState": {
+        "url": "file:///D:/Repositories/littlesheep/packages/app/out/renderer/index.html",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasComposer": true,
+        "sessionRows": 40,
+        "readinessNotice": null
+      },
+      "timings": {
+        "mainModuleReadyMs": 234.5,
+        "processStartRecordedAtMs": 235.7,
+        "spawnToMainModuleMs": 235.7,
+        "spawnToLocatorMs": 1001.7,
+        "locatorToCdpAttachedMs": 463,
+        "inputUsableMs": 340,
+        "inputAcceptedCharacter": true,
+        "sessionReadableMs": 350.4,
+        "executionReadyMs": 1512.7,
+        "firstSendPreparationMs": 17.6
+      }
+    }
+  ],
+  "summary": {
+    "empty": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 236.9,
+          "max": 256.7,
+          "values": [
+            256.7,
+            256.7,
+            236.9
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 1048.9,
+          "max": 1144.7,
+          "values": [
+            1144.7,
+            1109.7,
+            1048.9
+          ]
+        },
+        "rendererFirstFrameMs": null,
+        "processCreateToFirstFrameMs": null,
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 233.1,
+          "max": 404.8,
+          "values": [
+            404.8,
+            233.1,
+            315.1
+          ]
+        },
+        "sessionReadableMs": null,
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 2137.9,
+          "max": 2350.7,
+          "values": [
+            2350.7,
+            2239.7,
+            2137.9
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 12.8,
+          "max": 14.2,
+          "values": [
+            14.2,
+            14,
+            12.8
+          ]
+        }
+      }
+    },
+    "normal": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 232.2,
+          "max": 238.4,
+          "values": [
+            238.4,
+            236.1,
+            232.2
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 1038.2,
+          "max": 1052.4,
+          "values": [
+            1052.4,
+            1040.1,
+            1038.2
+          ]
+        },
+        "rendererFirstFrameMs": null,
+        "processCreateToFirstFrameMs": null,
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 220.7,
+          "max": 351.8,
+          "values": [
+            324,
+            351.8,
+            220.7
+          ]
+        },
+        "sessionReadableMs": {
+          "samples": 3,
+          "min": 300.7,
+          "max": 360.8,
+          "values": [
+            333.3,
+            360.8,
+            300.7
+          ]
+        },
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 1482.2,
+          "max": 1563.1,
+          "values": [
+            1533.4,
+            1563.1,
+            1482.2
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 15.4,
+          "max": 17.8,
+          "values": [
+            17.8,
+            15.4,
+            16.8
+          ]
+        }
+      }
+    },
+    "large": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 231.8,
+          "max": 236.5,
+          "values": [
+            236.5,
+            231.8,
+            232.9
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 988.5,
+          "max": 1040.9,
+          "values": [
+            988.5,
+            996.8,
+            1040.9
+          ]
+        },
+        "rendererFirstFrameMs": null,
+        "processCreateToFirstFrameMs": null,
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 362.4,
+          "max": 392.6,
+          "values": [
+            387.3,
+            362.4,
+            392.6
+          ]
+        },
+        "sessionReadableMs": {
+          "samples": 3,
+          "min": 381.9,
+          "max": 418.7,
+          "values": [
+            405.8,
+            381.9,
+            418.7
+          ]
+        },
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 1532.8,
+          "max": 1603.9,
+          "values": [
+            1559.5,
+            1532.8,
+            1603.9
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 25.4,
+          "max": 27.7,
+          "values": [
+            25.4,
+            26.9,
+            27.7
+          ]
+        }
+      }
+    },
+    "recovery": {
+      "runs": 3,
+      "failedRuns": 0,
+      "metrics": {
+        "spawnToMainModuleMs": {
+          "samples": 3,
+          "min": 235.7,
+          "max": 242.1,
+          "values": [
+            241.8,
+            242.1,
+            235.7
+          ]
+        },
+        "spawnToLocatorMs": {
+          "samples": 3,
+          "min": 1001.7,
+          "max": 1032.8,
+          "values": [
+            1032.8,
+            1030.1,
+            1001.7
+          ]
+        },
+        "rendererFirstFrameMs": null,
+        "processCreateToFirstFrameMs": null,
+        "inputUsableMs": {
+          "samples": 3,
+          "min": 339.1,
+          "max": 346.1,
+          "values": [
+            346.1,
+            339.1,
+            340
+          ]
+        },
+        "sessionReadableMs": {
+          "samples": 3,
+          "min": 346.3,
+          "max": 353.3,
+          "values": [
+            353.3,
+            346.3,
+            350.4
+          ]
+        },
+        "executionReadyMs": {
+          "samples": 3,
+          "min": 1512.7,
+          "max": 1546.8,
+          "values": [
+            1546.8,
+            1535.1,
+            1512.7
+          ]
+        },
+        "firstSendPreparationMs": {
+          "samples": 3,
+          "min": 16.8,
+          "max": 17.6,
+          "values": [
+            16.8,
+            17.2,
+            17.6
+          ]
+        }
+      }
+    }
+  },
+  "budgets": {
+    "note": [
+      "桌面冷启动的回归护栏，不是提速目标。数值来自 2026-09-23 的基线样本（每 profile n=5，另有一次 normal n=15 的复测），",
+      "取整到 10 ms 并留出约 1.3-1.5 倍余量，用于发现明显回退；样本量不足以支撑高分位统计，因此不能用它宣称性能达标。",
+      "spawnToLocatorMs 不设护栏：基线本身在 640-990 ms 之间波动，这个量级内无法区分回退与噪声。",
+      "budgetsMs 同时约束冷启动（每次样本的第 1 次启动）与稳态启动（--launches 的第 2 次及以后）的观测最大值；",
+      "warmVsColdMs 是额外的中位数差护栏：稳态启动不得比首次启动慢超过该余量，用于发现「每次启动都重做首次工作」这类回退。"
+    ],
+    "measured": "2026-09-23",
+    "sample": {
+      "profiles": [
+        "empty",
+        "normal",
+        "large",
+        "recovery"
+      ],
+      "runsPerProfile": 5,
+      "extra": "normal n=15"
+    },
+    "budgetsMs": {
+      "spawnToMainModuleMs": 250,
+      "processCreateToFirstFrameMs": 1800,
+      "inputUsableMs": 500,
+      "sessionReadableMs": 550,
+      "executionReadyMs": 2200,
+      "firstSendPreparationMs": 50
+    },
+    "packagedBudgetsMs": {
+      "spawnToMainModuleMs": 300,
+      "processCreateToFirstFrameMs": 2100,
+      "inputUsableMs": 1100,
+      "sessionReadableMs": 1100,
+      "executionReadyMs": 2900,
+      "firstSendPreparationMs": 80
+    },
+    "packagedNote": [
+      "打包版使用单独一组上限：它读的是 release/win-unpacked 的完整解包树，会话内第一次启动是磁盘冷读。",
+      "依据的观测：现账本 desktop-cold-start-packaged-warm-2026-09-23.json（9 次，中位 inputUsable 288-298 / sessionReadable 294-305 / executionReady 1456-1491 / 首帧 1236-1247），",
+      "以及该 label 首次运行时的会话首次启动读数（inputUsableMs 829.1 / sessionReadableMs 835.6 / executionReadyMs 2167.8 / 首帧 1524.1）——那次账本已被同 label 重跑覆盖，数值仅保留在此说明中。",
+      "这组上限按观测最大值留出约 1.3 倍余量，用于发现打包产物的整体回退；开发版的 budgetsMs 才是紧的那一组，两者不可互换。",
+      "缺少 packagedBudgetsMs 时脚本回退到 budgetsMs，并在断言里标明使用的集合。"
+    ],
+    "warmVsColdMs": {
+      "spawnToMainModuleMs": 60,
+      "processCreateToFirstFrameMs": 250,
+      "inputUsableMs": 150,
+      "sessionReadableMs": 150,
+      "executionReadyMs": 250
+    },
+    "unmeasured": [
+      "系统重启后的完全冷启动（脚本无法自动化；2026-09-24 已由用户人工确认无问题）",
+      "125% / 150% / 200% 缩放与明暗桌面背景（只用 DPR 代理测量；2026-09-24 已由用户人工确认无问题）"
+    ]
+  },
+  "assertions": {
+    "ok": false,
+    "checks": {
+      "empty.spawnToMainModuleMs": {
+        "observedMax": 256.7,
+        "budget": 250,
+        "ok": false
+      },
+      "empty.inputUsableMs": {
+        "observedMax": 404.8,
+        "budget": 500,
+        "ok": true
+      },
+      "empty.executionReadyMs": {
+        "observedMax": 2350.7,
+        "budget": 2200,
+        "ok": false
+      },
+      "empty.firstSendPreparationMs": {
+        "observedMax": 14.2,
+        "budget": 50,
+        "ok": true
+      },
+      "normal.spawnToMainModuleMs": {
+        "observedMax": 238.4,
+        "budget": 250,
+        "ok": true
+      },
+      "normal.inputUsableMs": {
+        "observedMax": 351.8,
+        "budget": 500,
+        "ok": true
+      },
+      "normal.sessionReadableMs": {
+        "observedMax": 360.8,
+        "budget": 550,
+        "ok": true
+      },
+      "normal.executionReadyMs": {
+        "observedMax": 1563.1,
+        "budget": 2200,
+        "ok": true
+      },
+      "normal.firstSendPreparationMs": {
+        "observedMax": 17.8,
+        "budget": 50,
+        "ok": true
+      },
+      "large.spawnToMainModuleMs": {
+        "observedMax": 236.5,
+        "budget": 250,
+        "ok": true
+      },
+      "large.inputUsableMs": {
+        "observedMax": 392.6,
+        "budget": 500,
+        "ok": true
+      },
+      "large.sessionReadableMs": {
+        "observedMax": 418.7,
+        "budget": 550,
+        "ok": true
+      },
+      "large.executionReadyMs": {
+        "observedMax": 1603.9,
+        "budget": 2200,
+        "ok": true
+      },
+      "large.firstSendPreparationMs": {
+        "observedMax": 27.7,
+        "budget": 50,
+        "ok": true
+      },
+      "recovery.spawnToMainModuleMs": {
+        "observedMax": 242.1,
+        "budget": 250,
+        "ok": true
+      },
+      "recovery.inputUsableMs": {
+        "observedMax": 346.1,
+        "budget": 500,
+        "ok": true
+      },
+      "recovery.sessionReadableMs": {
+        "observedMax": 353.3,
+        "budget": 550,
+        "ok": true
+      },
+      "recovery.executionReadyMs": {
+        "observedMax": 1546.8,
+        "budget": 2200,
+        "ok": true
+      },
+      "recovery.firstSendPreparationMs": {
+        "observedMax": 17.6,
+        "budget": 50,
+        "ok": true
+      }
+    },
+    "budgetSet": "budgetsMs"
+  }
+}

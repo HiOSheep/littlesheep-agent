@@ -2,6 +2,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { closeHttpServer } from './http-server-shutdown.js'
+import { deferAttachmentProtection } from './attachment-protection.js'
 import { bindFetchCompatibleHttpServer } from './fetch-compatible-port.js'
 import { join } from 'node:path'
 import type { AgentRunner } from '@littlesheep/runner'
@@ -87,25 +88,17 @@ export async function startLocalAppApiServer(
   } catch (error) {
     console.error(`[projects] pending path rebind recovery failed: ${(error as Error).message}`)
   }
-  const initializeForRunner = async (runner: AgentRunner): Promise<void> => {
-    const protectedAttachmentIds = new Set<string>()
-    const inspections = typeof runner.runCheckpoints?.list === 'function'
-      ? await runner.runCheckpoints.list(128)
-      : []
-    for (const inspection of inspections) {
-      if (inspection.disposition?.status === 'resumed'
-        || inspection.disposition?.status === 'completed'
-        || inspection.disposition?.status === 'abandoned') continue
-      for (const reference of inspection.checkpoint.resumeState?.attachments ?? []) {
-        protectedAttachmentIds.add(reference.cacheId)
-      }
-    }
-    await attachmentCache.initialize(protectedAttachmentIds)
-    webProviderCheck.invalidate()
-  }
   const attachmentCache = new ManagedAttachmentCache({
     rootDir: join(opts.dataDir, 'attachment-cache'),
   })
+  // Two scans that grow with existing data — the checkpoint list and the cache directory — decide only what
+  // the cache may delete, so they run in the background (see `attachment-protection.ts`): readiness is not
+  // blocked on garbage collection, and the pass can only keep a file longer, never drop one early.
+  let attachmentProtection: Promise<void> = Promise.resolve()
+  const initializeForRunner = async (runner: AgentRunner): Promise<void> => {
+    attachmentProtection = deferAttachmentProtection(runner, attachmentCache).settled
+    webProviderCheck.invalidate()
+  }
   const embeddingModelManager = opts.memoryEmbeddingModelManager ?? new MemoryEmbeddingModelManager({ dataDir: opts.dataDir })
   const respondReadinessToPath = (requestPath: string): { payload: unknown } | undefined => (
     requestPath === LOCAL_APP_API_ROUTES.readiness
@@ -195,6 +188,9 @@ export async function startLocalAppApiServer(
       if (activeRunRouter !== router) activeRunRouter?.stop()
       terminalRouter.stop()
   void workspacePreviewServers.stopAll()
+      // Let the deferred attachment-protection pass finish before the data root goes away; it writes the
+      // cache index, so stopping mid-pass is the one way this deferral could leave a temp file behind.
+      await attachmentProtection
       await embeddingModelManager.shutdown()
       await closeHttpServer(server)
     },

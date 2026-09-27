@@ -308,7 +308,8 @@ async function bootstrap(): Promise<void> {
   await projectIndex.removeManagedWorkspaceShells(dataDir.workplace)
   stageStartedAt = recordBootstrapTiming('project-index-ready', stageStartedAt)
   sessionIndex = new SessionIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
-  await sessionIndex.list()
+  // Warm-up only: every route that needs the index awaits list() itself.
+  void sessionIndex.list().catch(() => undefined)
   stageStartedAt = recordBootstrapTiming('session-index-ready', stageStartedAt)
   archiveIndex = new ArchiveIndex({ dataDir: dataDir.root, workplaceDir: dataDir.workplace })
   await archiveIndex.migrateManagedWorkspaceMetadata()

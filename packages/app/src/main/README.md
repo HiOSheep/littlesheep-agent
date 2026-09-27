@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-27 02:33:58
+最后更新：2026-09-27 11:07:45
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -111,3 +111,4 @@
 此前记录过"本机 WSL 会话无法启动"，**该结论是错的**：`wsl.exe -d <发行版> -- true` 等调用在本机一律 exit 0，`wsl: 检测到 localhost 代理配置…` 只是警告；判错的原因是本机验收测试用文本匹配（"代理/错误代码"）当失败标志，于是提前跳出等待。修好后等待改按状态判定（会话退出或创建报错才算失败），实测真实 WSL 会话：`BASH_VERSION` ✓、`uname -s` = Linux ✓、`PWD` = 映射后的 `/mnt/c/...` 工作区 ✓、`LANG`/`TERM` 来自 profile ✓、中文回环 ✓、一次写入多行都执行 ✓。
 
 - `local-app-api/run-tool-event-projection.ts`（2026-09-27）：工具事件进入本地 SSE 之前的有界投影（32 KiB 上限，保留 `file_path`/`path` 与真实行数），避免整份文件参数把单事件撑爆。
+- 就绪路径只留必要工作（2026-09-27）：`local-app-api-server.ts` 的附件保护/清理（读最多 128 个检查点 + 扫描整个附件缓存目录）改为**后台**执行，仍在同一独占队列里，因此只可能让文件多留一会儿、不会提前删除；`stop()` 会等它结束以避免留下临时索引文件。`index.ts` 的会话索引改为后台预热（每个用到它的路由自己 `await list()`）。两处都在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 下产出 `attachment-protection` / `attachment-protection-checkpoints` 标点，便于在真实数据根上量化。
