@@ -1,6 +1,6 @@
 # LittleSheep 🐑
 
-最后更新：2026-09-27 08:32:42
+最后更新：2026-09-27 08:40:59
 
 **A local-first agent desktop app that turns goals into finished work.**
 

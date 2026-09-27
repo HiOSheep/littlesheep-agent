@@ -1,12 +1,13 @@
 # @littlesheep/memory-tree
 
-最后更新：2026-09-27 08:32:42
+最后更新：2026-09-27 08:40:59
 
 实现索引优先的记忆树、统一 Memory Service、T0-T3 资源注册、项目投影、Memory v3 数据层和资源生命周期。
 受控启动拒绝（RS-08，2026-09-27）：v3 后端在打开数据根前要求隔离数据标识或有效的迁移 locator，否则直接拒绝（"refusing to open this data root"）。这就是回滚构建不能悄悄恢复自动写入的机制之一；`verify:memory-controlled-writes` 把它作为常驻场景断言（另两条证据：遗留写入器不在注册表、压缩不产生原子）。
 
 受控的忘记与纠正（RS-06B，2026-09-27）：`memory-manage-tool.ts` 提供 `memory_manage`（同样 `requiresApproval: true`）。`forget` 要求模型给出**具体 atomId 与它看到的 revision**，并且至少要引用一条**真的说了"忘记/记错了"的用户消息**——Runtime 读原文核对，模型不能替用户授权。目标逐个核对：不存在、不可见（不在本轮导航台账里）、已被忘记、revision 过期、或是结构性的分支根，各有各的拒绝理由，绝不按相似度挑目标；已被忘记的重复请求返回"已不在使用"而不是报错（幂等）。提交成功后才调用 `recordRevocation`，由 runner 的 finalize 写成会话的撤销标记，使**忘记之前产生的摘要不再作为当前记忆注入**。`correct`（同轮补齐）按三步提交：先写替代（`supersedesAtomId` 标记，使这次写入**跳过相似度合并**——把纠正合并回它要纠正的那条正是守卫要阻止的行为），再由 `v3-atom-management.relateCorrection` 记录一条 `replaces` 关系（两端各取**各自**的实体，因为图谱拒绝自环；证据是用户消息的不可变引用；关系 id 由请求哈希而来所以重试复用），最后才 supersede 旧原子。任一步失败都如实报告停在哪里（`memory_manage_partial`，写明"旧记忆仍然有效"与如何重试），并照常写入撤销记录——绝不出现两个都被当作当前事实的原子。相关校验复用既有 `validateAtomCorrectionBoundary` 的边界语义（同分支/作用域/父节点/领域/陈述类别）。
 
+真实模型验收的后续修正（2026-09-27，同一轮）：① **形状宽容、策略严格**——`memory_write` 的 `summary`/`retrievalKeys`/`reason` 与 `memory_manage` 的 `reason` 都改为可选（缺省值由已有字段推导），因为实测有一次真实模型漏传 `reason`，调用在**校验阶段**就被拒、根本没走到策略；授权、来源、来源完整性、目标 revision 与幂等这些策略仍然照旧严格。② **过期的工具描述会直接改变模型行为**：`memory_manage` 的描述里一直写着"纠正尚不支持"（那是更早一轮的措辞），真实模型因此**拒绝纠正**、只回"旧记忆无法原地修改"；改成如实描述 `forget`/`correct` 之后，真实模型立刻用 `memory_manage` 完成纠正与忘记，验收从 4/5 变为 **5/5**。③ 测量修正：`listNodes` 返回的是**投影节点**，被取代或失效的原子在节点上仍是 `active`，因此"是否仍被注入"必须读**原子自身**（`management.inspectNode`）；此前用节点状态判断，曾把一次成功的忘记误报成失败。
 来源引用是可选的（2026-09-27，真实模型验收发现）：`memory_write` 与 `memory_manage` 都不再要求模型给 `sourceMessageIds`——模型无法知道会话的消息 id，要求它必然失败（实测：真实模型两次都把自造 id 交给工具，被 `memory_write_source_missing` 拒绝，durable 写入完全不可用）。现在**不引用时**以**本轮的会话消息**为来源（Runtime 自己读用户原话），引用时仍必须存在、仍必须真的含指令；原子记录里的 `conversation-source:` 引用始终来自真实消息。常驻验收：`pnpm run verify:memory-live-model`（真实 DeepSeek 提供方，需要 `DEEPSEEK_API_KEY`）。
 
 受控写入与反自动合并（RS-06，2026-09-27）：

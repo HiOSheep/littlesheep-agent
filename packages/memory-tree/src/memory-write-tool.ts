@@ -27,11 +27,17 @@ export const MEMORY_WRITE_MAX_PER_RUN = 4
 
 const MemoryWriteInput = z.object({
   reasonKind: z.enum(['user-request', 'necessary']),
-  summary: z.string().min(1).max(240),
+  /**
+   * The shape here is forgiving on purpose, and the live-model acceptance is why: a real model omitted
+   * `reason` on one run and the write failed on validation before any policy was even consulted. Missing
+   * plumbing is filled in below; what stays strict is the policy — who authorized it, what it rests on,
+   * how complete that evidence is, and whether the same operation already ran.
+   */
+  summary: z.string().min(1).max(240).optional(),
   content: z.string().min(1).max(4_000),
-  retrievalKeys: z.array(z.string().min(1).max(80)).min(1).max(16),
+  retrievalKeys: z.array(z.string().min(1).max(80)).min(1).max(16).optional(),
   /** Why this will matter later — and what is lost by not saving it. */
-  reason: z.string().min(1).max(500),
+  reason: z.string().min(1).max(500).optional(),
   branch: z.enum(['long-term', 'project', 'experience']).optional(),
   scope: z.enum(['global', 'workspace', 'project']).optional(),
   /**
@@ -146,7 +152,18 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
       if (!parsed.success) {
         return failure('memory_write_invalid_input', parsed.error.issues.map((issue) => issue.message).join('; '))
       }
-      const request = parsed.data
+      // Fill in what a model may reasonably leave out, from what it did provide. `reasonKind` still has to
+      // be one of the two recorded reasons, and a necessary write still needs a substantive one.
+      const parsedData = parsed.data
+      const derivedSummary = (parsedData.summary ?? parsedData.content.split('\n')[0] ?? '').trim().slice(0, 240)
+      const request = {
+        ...parsedData,
+        summary: derivedSummary.length > 0 ? derivedSummary : 'Memory',
+        retrievalKeys: parsedData.retrievalKeys ?? [derivedSummary.slice(0, 80) || 'memory'],
+        reason: parsedData.reason ?? (parsedData.reasonKind === 'user-request'
+          ? 'The user asked for this to be remembered in this run.'
+          : ''),
+      }
 
       // The body only runs after the approval service allowed this call, and both of the things that
       // approval was about are verified again here: the grant (in the modes that require one) and the

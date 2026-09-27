@@ -30,8 +30,8 @@
 | `packages/harness/src/model-observability.ts` | 690 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影（含传输重试进度）已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 655 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责 | B |
 | `packages/memory-tree/src/memory-tree.ts` | 654 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
-| `packages/memory-tree/src/memory-write-tool.ts` | 301 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
-| `packages/memory-tree/src/memory-manage-tool.ts` | 377 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
+| `packages/memory-tree/src/memory-write-tool.ts` | 318 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
+| `packages/memory-tree/src/memory-manage-tool.ts` | 388 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
 | `packages/tools/src/tool-execution-service.ts` | 660 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权。**已到受控上限 660**：结果收尾逻辑已移入 `tool-execution-result.ts`，下一次改动必须先完成 invocation lifecycle 拆分，不能再往上加行 | E |
 | `packages/session/src/manager.ts` | 650 | 会话 JSONL、metadata、回复指纹、压缩投影/事务提交与摘要 activation facade | 保持 facade；压缩事务与 activation 投影继续下沉到 `compaction-store.ts` 边界 | E |
 | `packages/memory-tree/src/v3/catalog.ts` | 637 | Memory v3 Catalog facade、Atom/FTS/账本/due/激活投影 | ledger/due 管理与 management projection 继续下沉 | D |
@@ -240,8 +240,8 @@
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点、执行证据、请求前缀变化原因仍共享版本边界；会话续接证据已迁入 `conversation-continuation.ts`，其余拆分时必须保持现有 barrel 与持久化兼容 | 925 | 同上 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 同上 |
 | `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 同上 |
-| `packages/memory-tree/src/memory-write-tool.ts` | 301 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
-| `packages/memory-tree/src/memory-manage-tool.ts` | 377 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
+| `packages/memory-tree/src/memory-write-tool.ts` | 318 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
+| `packages/memory-tree/src/memory-manage-tool.ts` | 388 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
 | `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 同上 |
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | E / Runtime | disposition claim、跨进程锁、有界历史和续跑 identity 查询共享原子写入不变量；先冻结 P0 连续性矩阵再拆 codec/query/retention | 740 | 同上 |
 | `packages/app/src/main/data-root-migration.ts` | C / App Main | 数据迁移事务需保持恢复与回滚原子性，先补齐阶段检查点 | 637 | 同上 |

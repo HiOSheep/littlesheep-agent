@@ -23,8 +23,8 @@ const MemoryManageInput = z.object({
   atomId: z.string().min(1).max(200),
   /** The revision the model actually saw; a mismatch means the memory changed under it. */
   expectedRevision: z.number().int().min(0),
-  /** The user's own words, or the reason this correction is needed. */
-  reason: z.string().min(1).max(500),
+  /** The user's own words, or the reason this correction is needed. Filled in when omitted. */
+  reason: z.string().min(1).max(500).optional(),
   /**
    * Optional: the calling run's own messages are used when nothing is cited, because a model has no
    * way to know this session's message ids.
@@ -137,13 +137,15 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
   return {
     name: MEMORY_MANAGE_TOOL_NAME,
     description: [
-      'Forget one memory the user asked you to forget.',
-      'You must name the exact atom (atomId) and the revision you saw (expectedRevision); never guess a',
-      'target, never pick one by similarity, and never use this to store a new version of a fact.',
-      'At least one cited sourceMessageIds entry must be the user message that asked for it — the runtime',
-      'reads that text itself, so you cannot authorize a change on the user\'s behalf.',
-      'Correcting a memory is not supported yet: action "correct" is refused with that boundary, and you',
-      'must report that to the user instead of writing the new fact as if the old one were gone.',
+      'Change a memory the user says is wrong: action "forget" removes it from use, and action "correct"',
+      'replaces it with the statement the user now asserts (give the replacement). Use this whenever the',
+      'user says a remembered fact is outdated or mistaken — writing a second, contradicting memory instead',
+      'leaves both of them looking current, which is exactly what correction exists to prevent.',
+      'Name the exact atom (atomId) and the revision you saw (expectedRevision); never guess a target and',
+      'never pick one by similarity.',
+      'The user message of this run must be the one that asked for it — the runtime reads that text itself,',
+      'so you cannot authorize a change on the user\'s behalf. Fixing sourceMessageIds is optional and',
+      'usually unnecessary: omit it unless you really were given a message id.',
     ].join(' '),
     requiresApproval: true,
     inputSchema: MemoryManageInput,
@@ -152,7 +154,16 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
       if (!parsed.success) {
         return failure('memory_manage_invalid_input', parsed.error.issues.map((issue) => issue.message).join('; '))
       }
-      const request = parsed.data
+      // Same tolerance as the write tool: a missing reason is plumbing, not policy. Authorization, the
+      // target's existence and revision, and the evidence behind the change are all still checked.
+      const parsedData = parsed.data
+      const request = {
+        ...parsedData,
+        reason: parsedData.reason
+          ?? (parsedData.action === 'forget'
+            ? 'The user asked for this memory to be forgotten.'
+            : 'The user asked for this memory to be corrected.'),
+      }
 
       if (ctx.permissionMode && ctx.permissionMode !== 'full' && ctx.approvalGranted !== true) {
         return failure('memory_manage_not_approved',

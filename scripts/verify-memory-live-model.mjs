@@ -72,6 +72,30 @@ try {
   });
 
   const longTerm = async () => runner.infra.memoryRepository.listNodes('long-term');
+  /**
+   * What the branch actually holds, by kind and scope. A bare count cannot tell a structural node from a
+   * memory the model wrote, and the difference is the whole question when a model has been running.
+   */
+  const treeSummary = async () => {
+    const nodes = await longTerm();
+    const byKind = {};
+    const byScope = {};
+    for (const node of nodes) {
+      const kind = node.id.startsWith('memory-atom:') ? 'atom' : node.id.includes(':root') ? 'root' : 'other';
+      byKind[kind] = (byKind[kind] ?? 0) + 1;
+      byScope[node.scope] = (byScope[node.scope] ?? 0) + 1;
+    }
+    return {
+      total: nodes.length,
+      byKind,
+      byScope,
+      activeAtoms: nodes.filter((node) => node.id.startsWith('memory-atom:') && node.status === 'active').length,
+      summaries: nodes
+        .filter((node) => node.id.startsWith('memory-atom:'))
+        .map((node) => String(node.summary ?? '').slice(0, 60))
+        .slice(0, 12),
+    };
+  };
   const sessionToolNames = async (sessionId) => {
     const lines = (await readFile(join(dataDir, 'sessions', `${sessionId}.jsonl`), 'utf8'))
       .split('\n').filter(Boolean);
@@ -191,17 +215,31 @@ try {
   const forgetRun = await run(forgetSession.id, '忘掉本地开发端口那条记忆吧，不需要了。');
   const forgetTools = await sessionToolNames(forgetSession.id);
   const afterForget = await longTerm();
-  const refreshed = afterForget.filter((atom) => atom.status === 'active').map((atom) => atom.content).join('\n');
+  // "Current" has to be read from the atom itself: `listNodes` projects a node, and a superseded or
+  // invalidated atom keeps `status: 'active'` there on purpose (its record stays). An earlier version of
+  // this gate filtered on the node's status and therefore reported a successful forget as still injected.
+  const currentAtoms = [];
+  for (const node of afterForget) {
+    if (!node.id.startsWith('memory-atom:')) continue;
+    const inspection = await runner.infra.memoryRepository.management.inspectNode(node.id, 'D3');
+    const atom = inspection?.atom;
+    if (atom && atom.status === 'active' && !atom.supersession && !atom.invalidation) currentAtoms.push(node);
+  }
+  const refreshed = currentAtoms.map((atom) => atom.content).join('\n');
+  const stillInjected = refreshed.includes(CHANGED_PORT) || refreshed.includes(PORT);
   scenarios.push({
     scenario: '用户要求忘记',
     evidence: {
       status: forgetRun.status,
       reply: String(forgetRun.reply ?? '').slice(0, 200),
       toolsCalled: forgetTools,
-      activeAtoms: refreshed.length,
+      currentAtoms: currentAtoms.length,
+      currentAtomSummaries: currentAtoms.map((atom) => String(atom.summary ?? '').slice(0, 60)),
       stillInjected: refreshed.includes(CHANGED_PORT) || refreshed.includes(PORT),
     },
-    result: forgetTools.includes('memory_manage') ? 'pass' : 'fail',
+    // Calling the tool is not the outcome: the fact must actually stop being current, otherwise a failed
+    // forget would be reported as a pass.
+    result: forgetTools.includes('memory_manage') && !stillInjected ? 'pass' : 'fail',
   });
 
   const failed = scenarios.filter((scenario) => scenario.result !== 'pass');
@@ -210,6 +248,7 @@ try {
     generatedAt: new Date().toISOString(),
     model: 'deepseek/deepseek-flash',
     dataRoot: { isolated: true },
+    memoryTree: await treeSummary(),
     approvalsAsked: approvals.requested,
     scenarios,
     limits: [
