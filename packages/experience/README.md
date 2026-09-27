@@ -1,6 +1,6 @@
 # @littlesheep/experience
 
-最后更新：2026-09-27 18:02:30
+最后更新：2026-09-27 20:27:52
 
 保存经过校验确认的可复用经验、置信度和衰减信息，支持能力持续改进。
 
@@ -20,3 +20,4 @@
 
 - 存储、并发、损坏恢复和衰减测试位于 `src/experience-store.test.ts`。
 - 调整生命周期时同时检查备份、去重和用户可管理性。
+- 依赖边收口（2026-09-27）：SL-03 删除 `createRecordExperienceTool` 后，`zod` 与 `@littlesheep/types` 在本包已无引用（0 个 zod import、0 个 types import），故一并移除；`@littlesheep/memory-core` 与 `@littlesheep/safety` 仍在用，保留。

@@ -1,6 +1,6 @@
 # Electron Main
 
-最后更新：2026-09-27 13:47:35
+最后更新：2026-09-27 20:27:52
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 
@@ -113,3 +113,4 @@
 
 - `local-app-api/run-tool-event-projection.ts`（2026-09-27）：工具事件进入本地 SSE 之前的有界投影（32 KiB 上限，保留 `file_path`/`path` 与真实行数），避免整份文件参数把单事件撑爆。
 - 就绪路径只留必要工作（2026-09-27）：`local-app-api-server.ts` 的附件保护/清理（读最多 128 个检查点 + 扫描整个附件缓存目录）改为**后台**执行，仍在同一独占队列里，因此只可能让文件多留一会儿、不会提前删除；`stop()` 会等它结束以避免留下临时索引文件。`index.ts` 的会话索引改为后台预热（每个用到它的路由自己 `await list()`）。两处都在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 下产出 `attachment-protection` / `attachment-protection-checkpoints` 标点，便于在真实数据根上量化。
+- Electron 44 类型适配（2026-09-27）：`embedded-browser.ts` 中 `guestContents.hostWebContents` 在 Electron 44 里可为 null（guest 可能比宿主存活更久），改为只读一次 host 并判空后再发送新标签页事件；工作区 `typecheck` 因此恢复干净。
