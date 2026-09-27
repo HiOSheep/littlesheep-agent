@@ -43,11 +43,6 @@
   color: var(--text);
 }
 
-.memory-files-icon-button:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: default;
-}
-
 .memory-activation-projection {
   min-height: 32px;
   display: flex;
@@ -281,11 +276,6 @@
 .memory-file-save:focus-visible {
   background: var(--control-hover);
   color: var(--text);
-}
-
-.memory-file-save:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: default;
 }
 
 .memory-file-editor,

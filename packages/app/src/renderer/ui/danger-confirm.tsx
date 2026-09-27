@@ -5,9 +5,14 @@
 // topmost layer, and disables both actions while the request is in flight so a
 // repeated click cannot submit a second delete. Focus returns to the element
 // that opened the confirmation when it closes.
+//
+// The in-flight state is published as `aria-busy` and the failure carries the
+// shared failure mark next to its sentence: the disabled buttons alone would only
+// say "you cannot press this", not "a delete is already running" or "it failed".
 import { useRef } from 'react'
 import type { DeletionImpact } from '../deletion-impact'
 import { useModalSurface } from './modal-surface'
+import { FailureIcon } from './state-icons'
 
 export function DangerConfirmDialog({
   impact,
@@ -42,6 +47,7 @@ export function DangerConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-label={heading}
+        aria-busy={busy ? true : undefined}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
       >
@@ -58,7 +64,12 @@ export function DangerConfirmDialog({
           </ul>
         )}
         {impact.inUse && <div className="danger-confirm-inuse">{impact.inUse}</div>}
-        {error && <div className="dialog-error" role="alert">{error}</div>}
+        {error && (
+          <div className="dialog-error" role="alert">
+            <span className="feedback-icon" aria-hidden="true"><FailureIcon /></span>
+            <span>{error}</span>
+          </div>
+        )}
         <div className="dialog-footer">
           <button ref={cancelRef} className="close-btn" type="button" disabled={busy} onClick={onCancel}>
             取消

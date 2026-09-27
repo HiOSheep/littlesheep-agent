@@ -96,11 +96,26 @@
   --activity-badge-font-size: 11px;
   /* One disabled tone for the shared control roles and the settings/dialog
      action buttons. Dense row, toolbar and picker roles keep their own scale
-     (see ui/README.md) — this is a role token, not a blanket opacity. */
+     (see ui/README.md) — this is a role token, not a blanket opacity.
+     `styles/13-interaction-states.css` is the single rule that applies it. */
   --control-disabled-opacity: 0.42;
   /* Large selection blocks keep more presence than a button when disabled. */
   --choice-disabled-opacity: 0.58;
+  /* Dense row actions (file-tree icon, chat history row, review icon button) sit
+     one step below the shared control role, so a disabled row action does not
+     read as a disabled primary action. */
+  --row-action-disabled-opacity: 0.55;
+  /* The press step for controls whose hover fill is already `--control-active`.
+     The fill ramp is `--control` -> `--control-hover` -> `--control-active` ->
+     `--control-pressed`; a press is always the next step up, never a new hue. */
+  --control-pressed: #424242;
+  /* One shadow per elevation, not per panel. `--shadow` is the dialog, this is
+     the floating menu/picker layer (seven panels used to repeat the literal),
+     and `--floating-panel-shadow` is the resting floating card. Small floating
+     chips (task pill, "back to latest", reopen label) keep their own
+     size-scaled shadows on purpose. */
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
+  --shadow-menu: 0 22px 54px rgba(0, 0, 0, 0.44);
   --radius-ui: 10px;
   --radius-floating-panel: 14px;
   --radius-composer: 12px;
@@ -155,7 +170,19 @@
   /* Keep the material translucent. The previous bitmap wash was opaque RGB data,
      so layering it over the panel made the surface look like a blue-to-brown
      solid fill instead of frosted glass; the colour below is a low-alpha CSS
-     gradient instead, so the fill and the blur still read through it. */
+     gradient instead, so the fill and the blur still read through it.
+
+     Material roles (V1, full table with every call site in ui/README.md):
+     - panel glass: this fill + `blur(20px) saturate(145%)`, painted by the inset
+       `::before` of the floating sidebar and workspace panels;
+     - float/menu glass: `--composer-surface` + `blur(18px) saturate(135%)`,
+       shared by the composer, the floating task pill and every menu/picker;
+     - scrim: the two modal backdrops, which dim instead of carrying content;
+     - stable fill: `--surface*`, `--control*` and the message surface, which
+       long prose, code, tables and dense settings content sit on (no blur).
+     A new glass surface has to enter that table and the material-role gate
+     (`ui-material-roles.test.ts`); glasses are never stacked inside one visual
+     layer. */
   --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
   /* The sidebar is the one floating card that is always on screen, and an untinted grey fill read
      as washed out. A faint sky-blue → violet wash runs down its height; both ends stay dark enough
@@ -239,9 +266,22 @@ button {
   color: inherit;
 }
 
+/* Keyboard focus has one app-wide treatment. The role-based controls are listed
+   next to the native ones because a `<div role="tab">` or a `[role="option"]`
+   gets no ring from the user agent, and a keyboard user cannot see where they
+   are. A surface that draws focus itself keeps doing so: its own
+   `:focus-visible` rule lives in a later domain file, so it still wins. */
 button:focus-visible,
 textarea:focus-visible,
-input:focus-visible {
+input:focus-visible,
+a[href]:focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible,
+[role='menuitem']:focus-visible,
+[role='menuitemradio']:focus-visible,
+[role='option']:focus-visible,
+[role='switch']:focus-visible,
+[role='tab']:focus-visible {
   outline: 2px solid rgba(226, 226, 226, 0.32);
   outline-offset: 2px;
 }
@@ -2227,7 +2267,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   background: var(--composer-surface);
   border: 0;
   border-radius: var(--radius-composer-input);
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
+  box-shadow: var(--shadow-menu);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
 }

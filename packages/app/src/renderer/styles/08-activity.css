@@ -316,8 +316,12 @@ button.agent-flow-row.no-details,
   line-height: 22px;
 }
 
-/* Compact mode keeps the facts that need a decision or a fix (UX-16). */
+/* The facts that need a decision or a fix (UX-16, O1). The row sits between the process trigger
+   and the collapsible body, so it must not add spacing above the body: the trigger already draws
+   the rule above it, and the first body row brings its own top edge. */
 .agent-transcript-attention {
+  max-width: 820px;
+  margin: 4px 0 0;
   color: var(--feedback-danger-text);
 }
 

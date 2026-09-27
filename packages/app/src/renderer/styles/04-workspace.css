@@ -1575,10 +1575,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   white-space: nowrap;
 }
 
-.workspace-files-root span {
-  display: inline-flex;
-}
-
 .workspace-root-badge {
   display: inline-flex;
   align-items: center;
@@ -1694,7 +1690,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-files-icon-btn:disabled {
   color: var(--muted-2);
   cursor: default;
-  opacity: 0.55;
+  opacity: var(--row-action-disabled-opacity);
 }
 
 .workspace-file-filter {
@@ -1764,6 +1760,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-review-tree-branch {
+  position: relative;
+  min-width: 0;
   --workspace-tree-row-inline-start: 5px;
   --workspace-tree-indent-step: 16px;
   --workspace-tree-chevron-column-width: 15px;
@@ -3043,6 +3041,10 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-terminal-shell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -3140,13 +3142,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   font-size: 11px;
 }
 
-.workspace-terminal-shell {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-}
-
 .workspace-terminal-shell-label {
   color: var(--muted);
 }
@@ -3189,11 +3184,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .split-button-chevron:hover:not(:disabled),
 .split-button.open .split-button-chevron {
   background: var(--control-hover);
-}
-
-.split-button-primary:disabled,
-.split-button-chevron:disabled {
-  opacity: var(--control-disabled-opacity);
 }
 
 .split-button.busy .split-button-icon {
@@ -3259,10 +3249,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 
 .split-button-menu-item.active {
   background: var(--composer-picker-option-active);
-}
-
-.split-button-menu-item:disabled {
-  opacity: var(--control-disabled-opacity);
 }
 
 .split-button-menu-icon {

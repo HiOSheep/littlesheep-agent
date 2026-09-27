@@ -246,11 +246,6 @@
   border-color: transparent;
 }
 
-.project-create-submit:disabled {
-  cursor: default;
-  opacity: var(--control-disabled-opacity);
-}
-
 .project-creator-error {
   margin-top: 10px;
   padding: var(--notice-padding-block) var(--notice-padding-inline);
@@ -310,11 +305,6 @@
   color: var(--text-strong);
   background: var(--control-hover);
   border-color: var(--border-strong);
-}
-
-.archive-refresh:disabled {
-  cursor: default;
-  opacity: var(--control-disabled-opacity);
 }
 
 .archive-error {
@@ -510,11 +500,6 @@
   color: var(--danger);
   background: var(--danger-soft);
   border-color: rgba(239, 104, 104, 0.22);
-}
-
-.archive-action:disabled {
-  cursor: default;
-  opacity: var(--control-disabled-opacity);
 }
 
 .archive-glyph {

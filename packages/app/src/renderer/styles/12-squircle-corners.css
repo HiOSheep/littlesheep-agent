@@ -103,6 +103,7 @@
 .settings-entry-btn,
 .settings-module-search,
 .settings-sidebar-search,
+.state-view[data-state='loading'] .state-view-ring,
 .task-progress-indicator,
 .task-progress-ring,
 .task-progress-step-dot,

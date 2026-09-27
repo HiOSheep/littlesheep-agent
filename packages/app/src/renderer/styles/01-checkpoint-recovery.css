@@ -148,11 +148,6 @@
   background: var(--control-hover);
 }
 
-.checkpoint-recovery-header button:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: default;
-}
-
 .checkpoint-recovery-list {
   display: flex;
   gap: 4px;
@@ -483,11 +478,6 @@
   color: var(--feedback-danger-text);
   background: var(--danger-soft);
   border-color: rgba(239, 104, 104, 0.42);
-}
-
-.checkpoint-recovery-actions button:disabled {
-  opacity: var(--control-disabled-opacity);
-  cursor: default;
 }
 
 .checkpoint-abandon-confirm {

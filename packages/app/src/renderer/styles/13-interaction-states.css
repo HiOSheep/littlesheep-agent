@@ -1,0 +1,391 @@
+/*
+ * Shared interaction states (V3) and the four state views.
+ *
+ * One layer owns the states every control role answers the same way, so a page
+ * cannot re-invent them per surface:
+ *
+ *   hover     - stays with the role's own domain file. The fill a row or a
+ *               button takes under the pointer depends on the surface it sits on
+ *               (glass sidebar, settings canvas, floating menu), and that is a
+ *               per-role decision with its own contrast measurement.
+ *   focus     - the app-wide `:focus-visible` ring in `03-shell-sidebar.css`,
+ *               extended there to the non-button roles (`a[href]`, `summary` and
+ *               the ARIA widget roles) so every keyboard stop has a visible
+ *               focus treatment even when the control is not a `<button>`.
+ *   pressed   - this file. `:active` has to outrank the role's `:hover` fill,
+ *               which is why this layer is imported last: while the pointer is
+ *               still down the press must be visible, and a domain file's
+ *               `:hover:not(:disabled)` rule would otherwise win on specificity.
+ *   disabled  - this file: one token per role family and one rule per family, so
+ *               no page can drift back to a literal opacity. `.danger-btn` had
+ *               drifted to `0.5` while the documented role said `0.42`.
+ *   busy      - this file, keyed on `aria-busy="true"`. Busy is a *working*
+ *               state: it never borrows the disabled tone alone, because a
+ *               dimmed control reads as "not available" and not as "already
+ *               running".
+ *
+ * Nothing in here may introduce a material, radius or type size: this file only
+ * moves the states the roles already share. The role -> token -> usage table for
+ * both materials and states lives in `ui/README.md`, and `ui-state-matrix.test.ts`
+ * measures this file against that table.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Disabled: the role family answers one tone.
+ *
+ * The selector list is the audited inventory of the shared control roles: the
+ * shared buttons, the settings page/dialog actions, the compact row actions and
+ * the two-segment control. Each entry used to carry its own identical
+ * `opacity`/`cursor` rule (21 rules with the same pair of declarations), which
+ * is exactly how `.danger-btn` acquired a literal override that contradicted the
+ * role token.
+ * ------------------------------------------------------------------------- */
+:is(
+  .toggle-btn,
+  .close-btn,
+  .refresh-btn,
+  .danger-btn,
+  .dialog-close,
+  .save-btn,
+  .reload-btn,
+  .feedback-action,
+  .icon-btn,
+  .send-round,
+  .plugin-reload-button,
+  .plugin-switch,
+  .split-button-primary,
+  .split-button-chevron,
+  .split-button-menu-item,
+  .settings-policy-row button,
+  .application-background-refresh,
+  .active-run-actions button,
+  .storage-settings-row button,
+  .storage-settings-actions button,
+  .development-environments-refresh,
+  .development-environment-version-remove,
+  .development-environment-action-row button,
+  .development-environment-controls > button,
+  .checkpoint-recovery-header button,
+  .checkpoint-recovery-actions button,
+  .memory-files-icon-button,
+  .memory-file-save,
+  .project-create-submit,
+  .archive-refresh,
+  .archive-action
+):disabled {
+  cursor: default;
+  opacity: var(--control-disabled-opacity);
+}
+
+/* ---------------------------------------------------------------------------
+ * State marks (V3): the glyph family in `ui/state-icons.tsx`.
+ *
+ * One geometry for every state/tone mark, sized by its context and drawn with
+ * the current text colour, so the tone is carried by the container and the
+ * *shape* is what distinguishes failure from warning from unavailable. The icons
+ * stay inline so a mark can sit inside a plain error box (`dialog-error`) as well
+ * as inside the flex feedback row.
+ * ------------------------------------------------------------------------- */
+.state-icon,
+.feedback-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
+.feedback-icon {
+  align-self: center;
+}
+
+.dialog-error .feedback-icon {
+  margin-right: 6px;
+}
+
+/* A segment that is disabled *because* its own action is in flight keeps its
+   full presence: the busy bar is the state, the disabled tone is for "cannot
+   act". Without this the two states would read the same and a running action
+   would look unavailable. */
+.split-button.busy .split-button-primary:disabled {
+  opacity: 1;
+}
+
+/* A control that cannot act must not offer the action cursor, whatever disabled
+   it: `:disabled` for the form controls, `aria-disabled` for the role-based ones
+   (`.sidebar-section-action`, `.web-source-row`). */
+:is(
+  button,
+  [role='button'],
+  [role='menuitem'],
+  [role='menuitemradio'],
+  [role='option'],
+  [role='switch'],
+  [role='tab'],
+  summary
+):is(:disabled, [aria-disabled='true']) {
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------------------
+ * Pressed: the fill a control takes while the pointer is down.
+ *
+ * Three families, one step each, so a press is always a *stronger* fill than
+ * hover and never a colour the role does not already own.
+ * ------------------------------------------------------------------------- */
+
+/* Rows on the glass surfaces (sidebar, settings rail, settings overview). */
+:is(
+  .sidebar-nav-button,
+  .sidebar-menu-item,
+  .sidebar-search-result,
+  .sidebar-section-action,
+  .session-item,
+  .settings-nav-item,
+  .settings-overview-row
+):active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--sidebar-interaction-active);
+}
+
+/* Ordinary controls on the solid canvases. */
+:is(
+  .icon-btn,
+  .toggle-btn,
+  .close-btn,
+  .refresh-btn,
+  .dialog-close,
+  .plugin-reload-button,
+  .memory-files-icon-button,
+  .memory-file-save,
+  .settings-filter-pill,
+  .pill-select,
+  .split-button-primary,
+  .split-button-chevron,
+  .add-menu-item,
+  .workspace-add-trigger,
+  .workspace-empty-launcher-item,
+  .workspace-panel-tab,
+  .settings-policy-row button,
+  .application-background-refresh,
+  .active-run-actions button,
+  .storage-settings-row button,
+  .storage-settings-actions button,
+  .development-environments-refresh,
+  .development-environment-version-remove,
+  .development-environment-action-row button,
+  .development-environment-controls > button,
+  .checkpoint-recovery-header button,
+  .checkpoint-recovery-actions button,
+  .project-create-submit,
+  .archive-refresh,
+  .archive-action
+):active:not(:disabled):not([aria-disabled='true']) {
+  background-color: var(--control-active);
+}
+
+/* Menu and picker rows: the same fill the row takes when it is the current
+   choice, which is the only "pressed" vocabulary a menu has. */
+:is(.split-button-menu-item, .runtime-menu-item, .model-option):active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--composer-picker-option-active);
+}
+
+/* Controls whose hover fill is already `--control-active`: the press steps to
+   `--control-pressed` (one step up the same ramp) instead of repeating it. */
+:is(.feedback-action, .ms-feedback-action):active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--control-pressed);
+}
+/* The accent-filled submit actions step back down to the base accent. */
+:is(.save-btn, .reload-btn):active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Danger actions deepen their own tint: never grey, never the ordinary press. */
+:is(.danger-btn, .active-run-actions button.danger, .archive-action.danger):active:not(:disabled):not([aria-disabled='true']) {
+  background: color-mix(in srgb, var(--danger-soft) 88%, var(--control-active));
+  border-color: color-mix(in srgb, var(--danger) 62%, transparent);
+}
+
+/* The settings switch had no pointer state at all: a filter keeps the checked
+   blue intact, so the press cannot be confused with "off". */
+.plugin-switch:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.plugin-switch:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+
+/* The composer's own triggers: pressing one of them shows the same fill as the
+   panel it opens, so the press and the open state cannot disagree. The extra
+   `:not([aria-disabled])` is deliberate: the domain rules for these triggers
+   carry a `:not(.context-usage)` clause, and the press has to match that
+   specificity or the hover fill would win while the pointer is down. */
+.composer-tab-control:active:not(:disabled):not([aria-disabled='true']) {
+  background: var(--control-active);
+}
+
+/* The accent-filled send control keeps `transition: none` so the send/stop swap
+   cannot animate, and it has no hover fill; its press is therefore a step toward
+   the surface colour, which is visible in both the send and the stop state. */
+.send-round:active:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 82%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 82%, var(--bg));
+}
+
+.send-round.stop:active:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-soft) 62%, var(--danger));
+  border-color: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+/* The floating task pill, pressed. */
+.running-pill:active {
+  background: color-mix(in srgb, var(--composer-surface) 78%, var(--control-hover));
+}
+
+/* ---------------------------------------------------------------------------
+ * Busy: a working state, keyed on the attribute the components already publish.
+ * ------------------------------------------------------------------------- */
+[aria-busy='true'] {
+  cursor: progress;
+}
+
+/* The two-segment control (`ui/split-button.tsx`) keeps its own glyph while its
+   action is in flight and says so with a thin bar on its bottom edge. The bar
+   pulses instead of sweeping so that `prefers-reduced-motion` (which collapses
+   every animation to a single 1ms pass) still leaves a visible bar rather than
+   sliding it out of the control. */
+.split-button.busy {
+  position: relative;
+}
+
+.split-button.busy::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 22%, var(--accent) 78%, transparent 100%);
+  pointer-events: none;
+  animation: interaction-busy-pulse 1.2s var(--motion-ease) infinite;
+}
+
+@keyframes interaction-busy-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * The four state views: loading, empty, unavailable, failure.
+ *
+ * They have to be told apart without colour, because colour alone cannot carry
+ * a state and the same muted grey is used for all four today:
+ *
+ *   loading      - a ring that turns, `aria-busy="true"`, no action;
+ *   empty        - a neutral outline glyph, an explanation, at most one action;
+ *   unavailable  - a slashed glyph, `aria-disabled="true"` and a *required*
+ *                  reason, so "cannot be used" can never be rendered as "there is
+ *                  nothing here";
+ *   failure      - the danger glyph, the reason and the retry.
+ *
+ * `ui/state-view.tsx` renders this structure; `ui/state-view.ts` owns the state
+ * table and is asserted in `ui-state-matrix.test.ts`. Surfaces that already
+ * render one of the four states keep their own markup until their owning work
+ * package adopts the shared view (see `ui/README.md`).
+ * ------------------------------------------------------------------------- */
+.state-view {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 7px;
+  min-height: 180px;
+  padding: 28px 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.state-view-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 3px;
+  color: var(--muted-2);
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+}
+
+.state-view strong {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.state-view p {
+  max-width: 380px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.state-view-reason {
+  max-width: 380px;
+  color: var(--muted-2);
+}
+
+/* Loading turns; the ring is the only state that moves. */
+.state-view[data-state='loading'] .state-view-icon {
+  color: var(--muted);
+}
+
+/* Empty stays neutral on purpose: the tray mark and the muted text, no warning
+   and no danger, because "there is nothing here" is not a problem with the
+   surface. */
+.state-view[data-state='empty'] .state-view-icon {
+  color: var(--muted-2);
+}
+
+.state-view[data-state='loading'] .state-view-ring {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--text);
+  border-radius: var(--radius-circle);
+  animation: plugin-loading-spin 0.9s linear infinite;
+}
+
+/* Unavailable is a different shape and a different frame, not a lighter empty. */
+.state-view[data-state='unavailable'] .state-view-icon {
+  color: var(--warning);
+  border-style: dashed;
+}
+
+.state-view[data-state='unavailable'] p {
+  color: var(--muted-2);
+}
+
+/* Failure carries the danger role and keeps its retry. */
+.state-view[data-state='failure'] .state-view-icon {
+  color: var(--feedback-danger-text);
+  background: var(--danger-soft);
+  border-color: var(--feedback-danger-border);
+}
+
+.state-view[data-state='failure'] p {
+  color: var(--feedback-danger-text);
+}
+
+.state-view-action-slot {
+  margin-top: 5px;
+}

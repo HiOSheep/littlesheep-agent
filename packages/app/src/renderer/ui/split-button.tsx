@@ -28,6 +28,7 @@ export function SplitButton({
   items,
   menuLabel,
   disabled = false,
+  disabledReason,
   busy = false,
   onTipChange,
   onPrimary,
@@ -41,6 +42,12 @@ export function SplitButton({
   items: SplitButtonItem[]
   menuLabel: string
   disabled?: boolean
+  /**
+   * Why the control cannot act. A disabled control that cannot say why is a
+   * dead end, so the reason is published as the segment's own tooltip; while an
+   * action is in flight the busy reason takes its place.
+   */
+  disabledReason?: string
   busy?: boolean
   onTipChange?: (tip: FloatingHelpTip | null) => void
   onPrimary: () => void | Promise<void>
@@ -84,14 +91,21 @@ export function SplitButton({
     onBlur: () => onTipChange?.(null),
   })
 
+  const reason = busy ? '正在执行，完成或失败后可以再用' : disabled ? disabledReason : undefined
+
   return (
-    <div ref={rootRef} className={`split-button ${className} ${open ? 'open' : ''} ${busy ? 'busy' : ''}`}>
+    <div
+      ref={rootRef}
+      className={`split-button ${className} ${open ? 'open' : ''} ${busy ? 'busy' : ''}`}
+      aria-busy={busy ? true : undefined}
+    >
       <button
         {...transientTriggerProps()}
         className="split-button-primary"
         type="button"
         aria-label={label}
         disabled={disabled || busy}
+        title={reason}
         onClick={() => void onPrimary()}
         {...tip(primaryTip)}
       >
@@ -106,6 +120,7 @@ export function SplitButton({
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
+        title={disabled ? disabledReason : undefined}
         onClick={() => {
           onTipChange?.(null)
           setOpen((value) => !value)
