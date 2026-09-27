@@ -1,0 +1,4905 @@
+{
+  "check": "desktop-large-root-startup",
+  "label": "2026-09-27",
+  "measuredAt": "2026-09-27T03:58:44.352Z",
+  "question": "Which startup stage grows with the size of the data root, up to /runtime/readiness = ready?",
+  "method": [
+    "Real Electron app (repository entry) launched against an isolated data root in os.tmpdir()",
+    "with LITTLESHEEP_BOOTSTRAP_TIMING=1; the send gate lifts at /runtime/readiness = ready, so the",
+    "measurement stops there and no message is ever sent. spawnToReadyMs is parent wall clock from the",
+    "spawn call to the first probe that saw `ready`; processCreateToReadyMs re-anchors on the child's own",
+    "`process-start` uptime entry. Stage durations are the app's own [bootstrap-timing] entries."
+  ],
+  "environment": {
+    "platform": "win32 x64",
+    "cpuModel": "AMD Ryzen 9 7945HX with Radeon Graphics        ",
+    "cpuCount": 32,
+    "totalMemoryGb": 15.7,
+    "node": "v26.4.0",
+    "electron": "36.9.5"
+  },
+  "buildFreshness": {
+    "status": "stale",
+    "message": "App build artifacts are stale (input-mismatch)."
+  },
+  "gitHeadFile": "ref: refs/heads/main",
+  "fixtures": [
+    {
+      "id": "synthetic-large",
+      "kind": "synthetic",
+      "scale": {
+        "sessions": 1200,
+        "messagesPerSession": 8,
+        "replyFingerprints": 200,
+        "checkpoints": 280,
+        "resumingDispositions": 20,
+        "leases": 300,
+        "effectLeases": 60,
+        "inbox": 300,
+        "eventPartitions": 120,
+        "executionLogs": 400,
+        "cacheObservations": 150,
+        "compactionOperations": 150,
+        "attachmentFiles": 360,
+        "memoryFiles": 260,
+        "manifests": 300,
+        "archivedSessions": 240,
+        "projects": 6
+      },
+      "prepareMs": 3297,
+      "seed": {
+        "seedMs": 3297,
+        "sessionIds": 1200,
+        "checkpoints": 280
+      },
+      "runs": [
+        {
+          "fixtureId": "synthetic-large",
+          "launch": 1,
+          "warm": false,
+          "pid": 56328,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 409,
+          "spawnToLocatorMs": 843,
+          "spawnToReadyMs": 18549,
+          "processCreateToReadyMs": 18799.1,
+          "processStartedAfterSpawnMs": 250.1,
+          "readyUptimeMs": 18351.8,
+          "bootstrapStartUptimeMs": 612.9,
+          "bootstrapToReadyMs": 17738.9,
+          "stagedSumBeforeReadyMs": 19971.1,
+          "scale": {
+            "sessions": 1200,
+            "messagesPerSession": 8,
+            "replyFingerprints": 200,
+            "checkpoints": 280,
+            "resumingDispositions": 20,
+            "leases": 300,
+            "effectLeases": 60,
+            "inbox": 300,
+            "eventPartitions": 120,
+            "executionLogs": 400,
+            "cacheObservations": 150,
+            "compactionOperations": 150,
+            "attachmentFiles": 360,
+            "memoryFiles": 260,
+            "manifests": 300,
+            "archivedSessions": 240,
+            "projects": 6
+          },
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 248.9
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 250.1
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 545.6
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 612.6
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 612.9
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 630.8,
+              "durationMs": 17.9
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 631.7,
+              "durationMs": 0.9
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 641.7,
+              "durationMs": 10
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 642.1,
+              "durationMs": 0.4
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 644.2,
+              "durationMs": 2.1
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 645.1,
+              "durationMs": 0.9
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 645.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 646.1,
+              "durationMs": 1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 646.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 657.7,
+              "durationMs": 11.5
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 657.8,
+              "durationMs": 0.2
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 668,
+              "durationMs": 10.1
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 673.6,
+              "durationMs": 5.6
+            },
+            {
+              "index": 18,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 690.2
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 694.4,
+              "durationMs": 20.8
+            },
+            {
+              "index": 20,
+              "stage": "execution-start",
+              "processUptimeMs": 694.6
+            },
+            {
+              "index": 21,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 839.3
+            },
+            {
+              "index": 22,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 840.7
+            },
+            {
+              "index": 23,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 861.9,
+              "durationMs": 165
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 2021.6,
+              "durationMs": 1010
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 12682,
+              "durationMs": 0.7
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 12728,
+              "durationMs": 46.5
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 12837.2,
+              "durationMs": 155.8
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 12876.9,
+              "durationMs": 195.5
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 12877,
+              "durationMs": 0
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 12878.9,
+              "durationMs": 1.9
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 12879,
+              "durationMs": 0.1
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 12889.6,
+              "durationMs": 10.5
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 12919.2,
+              "durationMs": 29.5
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 12922.4,
+              "durationMs": 3.1
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 12939.8,
+              "durationMs": 17.4
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 12940.3,
+              "durationMs": 0.4
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 12940.3,
+              "durationMs": 0
+            },
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 12940.6,
+              "durationMs": 12246
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 13284.6,
+              "durationMs": 252.2
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 13284.7,
+              "durationMs": 343.7
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 18351.8,
+              "durationMs": 5411.2
+            },
+            {
+              "index": 42,
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 18352.4
+            }
+          ],
+          "topStages": [
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 12940.6,
+              "durationMs": 12246
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 18351.8,
+              "durationMs": 5411.2
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 2021.6,
+              "durationMs": 1010
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 13284.7,
+              "durationMs": 343.7
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 13284.6,
+              "durationMs": 252.2
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 12876.9,
+              "durationMs": 195.5
+            },
+            {
+              "index": 23,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 861.9,
+              "durationMs": 165
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 12837.2,
+              "durationMs": 155.8
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 12728,
+              "durationMs": 46.5
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 12919.2,
+              "durationMs": 29.5
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 694.4,
+              "durationMs": 20.8
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 630.8,
+              "durationMs": 17.9
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 12939.8,
+              "durationMs": 17.4
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 657.7,
+              "durationMs": 11.5
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 12889.6,
+              "durationMs": 10.5
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 668,
+              "durationMs": 10.1
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 641.7,
+              "durationMs": 10
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 673.6,
+              "durationMs": 5.6
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 12922.4,
+              "durationMs": 3.1
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 644.2,
+              "durationMs": 2.1
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 12878.9,
+              "durationMs": 1.9
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 646.1,
+              "durationMs": 1
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 631.7,
+              "durationMs": 0.9
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 645.1,
+              "durationMs": 0.9
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 12682,
+              "durationMs": 0.7
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 642.1,
+              "durationMs": 0.4
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 12940.3,
+              "durationMs": 0.4
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 657.8,
+              "durationMs": 0.2
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 645.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 646.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 12879,
+              "durationMs": 0.1
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 12877,
+              "durationMs": 0
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 12940.3,
+              "durationMs": 0
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 861.9,
+              "toUptimeMs": 12682,
+              "gapMs": 11820.1,
+              "laterStageDurationMs": 0.7,
+              "unattributedMs": 11820.1
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 250.1,
+              "toUptimeMs": 545.6,
+              "gapMs": 295.5,
+              "laterStageDurationMs": null,
+              "unattributedMs": 295.5
+            },
+            {
+              "from": "runner-infra-durable-effect-leases-ready",
+              "to": "runner-infra-durable-run-leases-ready",
+              "fromUptimeMs": 12728,
+              "toUptimeMs": 12837.2,
+              "gapMs": 109.2,
+              "laterStageDurationMs": 155.8,
+              "unattributedMs": 109.2
+            },
+            {
+              "from": "runner-ready",
+              "to": "attachment-protection-checkpoints",
+              "fromUptimeMs": 12940.6,
+              "toUptimeMs": 13284.6,
+              "gapMs": 344,
+              "laterStageDurationMs": 252.2,
+              "unattributedMs": 91.8
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 545.6,
+              "toUptimeMs": 612.6,
+              "gapMs": 67,
+              "laterStageDurationMs": null,
+              "unattributedMs": 67
+            },
+            {
+              "from": "runner-infra-durable-events-ready",
+              "to": "runner-infra-durable-effect-leases-ready",
+              "fromUptimeMs": 12682,
+              "toUptimeMs": 12728,
+              "gapMs": 46,
+              "laterStageDurationMs": 46.5,
+              "unattributedMs": 46
+            },
+            {
+              "from": "runner-infra-durable-run-leases-ready",
+              "to": "runner-infra-durable-inbox-ready",
+              "fromUptimeMs": 12837.2,
+              "toUptimeMs": 12876.9,
+              "gapMs": 39.7,
+              "laterStageDurationMs": 195.5,
+              "unattributedMs": 39.7
+            },
+            {
+              "from": "execution-start",
+              "to": "runner-infra-observability-ready",
+              "fromUptimeMs": 694.6,
+              "toUptimeMs": 861.9,
+              "gapMs": 167.3,
+              "laterStageDurationMs": 165,
+              "unattributedMs": 2.3
+            },
+            {
+              "from": "runner-infra-memory-ready",
+              "to": "runner-infra-bootstrap-files-loaded",
+              "fromUptimeMs": 12889.6,
+              "toUptimeMs": 12919.2,
+              "gapMs": 29.6,
+              "laterStageDurationMs": 29.5,
+              "unattributedMs": 0.1
+            },
+            {
+              "from": "locator-written",
+              "to": "desktop-shell-initialized",
+              "fromUptimeMs": 673.6,
+              "toUptimeMs": 694.4,
+              "gapMs": 20.8,
+              "laterStageDurationMs": 20.8,
+              "unattributedMs": 0
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 13284.7,
+              "toUptimeMs": 18351.8,
+              "gapMs": 5067.1,
+              "laterStageDurationMs": 5411.2,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 256,
+              "warningCount": 1
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 252.2,
+            "attachmentProtection": 343.7,
+            "attachmentProtectionAtUptimeMs": 13284.7,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 43
+          }
+        },
+        {
+          "fixtureId": "synthetic-large",
+          "launch": 2,
+          "warm": true,
+          "pid": 11072,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 82,
+          "spawnToLocatorMs": 827,
+          "spawnToReadyMs": 4260,
+          "processCreateToReadyMs": 4500.4,
+          "processStartedAfterSpawnMs": 240.4,
+          "readyUptimeMs": 4067.1,
+          "bootstrapStartUptimeMs": 598.4,
+          "bootstrapToReadyMs": 3468.7,
+          "stagedSumBeforeReadyMs": 5506.4,
+          "scale": {
+            "sessions": 1200,
+            "messagesPerSession": 8,
+            "replyFingerprints": 200,
+            "checkpoints": 280,
+            "resumingDispositions": 20,
+            "leases": 300,
+            "effectLeases": 60,
+            "inbox": 300,
+            "eventPartitions": 120,
+            "executionLogs": 400,
+            "cacheObservations": 150,
+            "compactionOperations": 150,
+            "attachmentFiles": 360,
+            "memoryFiles": 260,
+            "manifests": 300,
+            "archivedSessions": 240,
+            "projects": 6
+          },
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 239.1
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 240.4
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 530.3
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 598.1
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 598.4
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 617.4,
+              "durationMs": 19
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 618.9,
+              "durationMs": 1.5
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 624.8,
+              "durationMs": 5.9
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 625.1,
+              "durationMs": 0.3
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 627.1,
+              "durationMs": 1.9
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 628,
+              "durationMs": 0.9
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 628.1,
+              "durationMs": 0.1
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 629.1,
+              "durationMs": 1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 629.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 647.7,
+              "durationMs": 18.5
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 647.9,
+              "durationMs": 0.2
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 657.1,
+              "durationMs": 9.2
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 659,
+              "durationMs": 1.9
+            },
+            {
+              "index": 18,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 674.1
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 678.1,
+              "durationMs": 19.1
+            },
+            {
+              "index": 20,
+              "stage": "execution-start",
+              "processUptimeMs": 678.3
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 693.7,
+              "durationMs": 13
+            },
+            {
+              "index": 22,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 827.4
+            },
+            {
+              "index": 23,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 829.1
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 2006.1,
+              "durationMs": 1000.6
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 2901.8,
+              "durationMs": 0.7
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 2952.9,
+              "durationMs": 51.6
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 3127,
+              "durationMs": 225.9
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 3140,
+              "durationMs": 238.8
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 3140.1,
+              "durationMs": 0
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 3142.5,
+              "durationMs": 2.4
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 3142.7,
+              "durationMs": 0.2
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 3146.8,
+              "durationMs": 4
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 3160.6,
+              "durationMs": 13.7
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 3163.9,
+              "durationMs": 3.3
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 3167.4,
+              "durationMs": 3.4
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 3167.8,
+              "durationMs": 0.4
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 3167.9,
+              "durationMs": 0
+            },
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 3168.1,
+              "durationMs": 2489.8
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 3410.9,
+              "durationMs": 237.6
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 3411,
+              "durationMs": 242.4
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 4067.1,
+              "durationMs": 899
+            },
+            {
+              "index": 42,
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 4067.6
+            }
+          ],
+          "topStages": [
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 3168.1,
+              "durationMs": 2489.8
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 2006.1,
+              "durationMs": 1000.6
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 4067.1,
+              "durationMs": 899
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 3411,
+              "durationMs": 242.4
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 3140,
+              "durationMs": 238.8
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 3410.9,
+              "durationMs": 237.6
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 3127,
+              "durationMs": 225.9
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 2952.9,
+              "durationMs": 51.6
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 678.1,
+              "durationMs": 19.1
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 617.4,
+              "durationMs": 19
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 647.7,
+              "durationMs": 18.5
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 3160.6,
+              "durationMs": 13.7
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 693.7,
+              "durationMs": 13
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 657.1,
+              "durationMs": 9.2
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 624.8,
+              "durationMs": 5.9
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 3146.8,
+              "durationMs": 4
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 3167.4,
+              "durationMs": 3.4
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 3163.9,
+              "durationMs": 3.3
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 3142.5,
+              "durationMs": 2.4
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 627.1,
+              "durationMs": 1.9
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 659,
+              "durationMs": 1.9
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 618.9,
+              "durationMs": 1.5
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 629.1,
+              "durationMs": 1
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 628,
+              "durationMs": 0.9
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 2901.8,
+              "durationMs": 0.7
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 3167.8,
+              "durationMs": 0.4
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 625.1,
+              "durationMs": 0.3
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 647.9,
+              "durationMs": 0.2
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 3142.7,
+              "durationMs": 0.2
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 628.1,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 629.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 3140.1,
+              "durationMs": 0
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 3167.9,
+              "durationMs": 0
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 693.7,
+              "toUptimeMs": 2901.8,
+              "gapMs": 2208.1,
+              "laterStageDurationMs": 0.7,
+              "unattributedMs": 2208.1
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 240.4,
+              "toUptimeMs": 530.3,
+              "gapMs": 289.9,
+              "laterStageDurationMs": null,
+              "unattributedMs": 289.9
+            },
+            {
+              "from": "runner-infra-durable-effect-leases-ready",
+              "to": "runner-infra-durable-inbox-ready",
+              "fromUptimeMs": 2952.9,
+              "toUptimeMs": 3127,
+              "gapMs": 174.1,
+              "laterStageDurationMs": 225.9,
+              "unattributedMs": 174.1
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 530.3,
+              "toUptimeMs": 598.1,
+              "gapMs": 67.8,
+              "laterStageDurationMs": null,
+              "unattributedMs": 67.8
+            },
+            {
+              "from": "runner-infra-durable-events-ready",
+              "to": "runner-infra-durable-effect-leases-ready",
+              "fromUptimeMs": 2901.8,
+              "toUptimeMs": 2952.9,
+              "gapMs": 51.1,
+              "laterStageDurationMs": 51.6,
+              "unattributedMs": 51.1
+            },
+            {
+              "from": "runner-ready",
+              "to": "attachment-protection-checkpoints",
+              "fromUptimeMs": 3168.1,
+              "toUptimeMs": 3410.9,
+              "gapMs": 242.8,
+              "laterStageDurationMs": 237.6,
+              "unattributedMs": 5.2
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 3411,
+              "toUptimeMs": 4067.1,
+              "gapMs": 656.1,
+              "laterStageDurationMs": 899,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 256,
+              "warningCount": 1
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 237.6,
+            "attachmentProtection": 242.4,
+            "attachmentProtectionAtUptimeMs": 3411,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 43
+          }
+        }
+      ],
+      "inventory": {
+        "totalFiles": 4730,
+        "totalBytes": 30798244,
+        "entries": [
+          {
+            "path": "sessions",
+            "kind": "directory",
+            "files": 1400,
+            "bytes": 26712920
+          },
+          {
+            "path": "durable-events",
+            "kind": "directory",
+            "files": 480,
+            "bytes": 254880
+          },
+          {
+            "path": "execution-logs",
+            "kind": "directory",
+            "files": 400,
+            "bytes": 1069880
+          },
+          {
+            "path": "attachment-cache",
+            "kind": "directory",
+            "files": 361,
+            "bytes": 1031218
+          },
+          {
+            "path": "backups",
+            "kind": "directory",
+            "files": 300,
+            "bytes": 112350
+          },
+          {
+            "path": "durable-inbox",
+            "kind": "directory",
+            "files": 300,
+            "bytes": 164920
+          },
+          {
+            "path": "durable-run-leases",
+            "kind": "directory",
+            "files": 300,
+            "bytes": 90900
+          },
+          {
+            "path": "run-checkpoint-dispositions",
+            "kind": "directory",
+            "files": 280,
+            "bytes": 120600
+          },
+          {
+            "path": "run-checkpoints",
+            "kind": "directory",
+            "files": 280,
+            "bytes": 526556
+          },
+          {
+            "path": "memory",
+            "kind": "directory",
+            "files": 260,
+            "bytes": 49810
+          },
+          {
+            "path": "cache-observations",
+            "kind": "directory",
+            "files": 150,
+            "bytes": 65290
+          },
+          {
+            "path": "compaction-operations",
+            "kind": "directory",
+            "files": 150,
+            "bytes": 55050
+          },
+          {
+            "path": "durable-effect-leases",
+            "kind": "directory",
+            "files": 60,
+            "bytes": 20280
+          },
+          {
+            "path": "workspace",
+            "kind": "directory",
+            "files": 2,
+            "bytes": 101
+          },
+          {
+            "path": "archive",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 93211
+          },
+          {
+            "path": "config.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 1324
+          },
+          {
+            "path": "MEMORY.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 1690
+          },
+          {
+            "path": "projects",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 2615
+          },
+          {
+            "path": "sessions.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 424513
+          },
+          {
+            "path": "ui",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 124
+          },
+          {
+            "path": "workplace",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 12
+          },
+          {
+            "path": "config",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "experience",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "skills",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "small",
+      "kind": "synthetic",
+      "scale": {
+        "sessions": 3,
+        "messagesPerSession": 2,
+        "replyFingerprints": 0,
+        "checkpoints": 0,
+        "resumingDispositions": 0,
+        "leases": 0,
+        "effectLeases": 0,
+        "inbox": 0,
+        "eventPartitions": 0,
+        "executionLogs": 0,
+        "cacheObservations": 0,
+        "compactionOperations": 0,
+        "attachmentFiles": 0,
+        "memoryFiles": 0,
+        "manifests": 0,
+        "archivedSessions": 0,
+        "projects": 1
+      },
+      "prepareMs": 15,
+      "seed": {
+        "seedMs": 15,
+        "sessionIds": 3,
+        "checkpoints": 0
+      },
+      "runs": [
+        {
+          "fixtureId": "small",
+          "launch": 1,
+          "warm": false,
+          "pid": 61748,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 40,
+          "spawnToLocatorMs": 820,
+          "spawnToReadyMs": 2470,
+          "processCreateToReadyMs": 2725.8,
+          "processStartedAfterSpawnMs": 255.8,
+          "readyUptimeMs": 2307.2,
+          "bootstrapStartUptimeMs": 590.5,
+          "bootstrapToReadyMs": 1716.7,
+          "stagedSumBeforeReadyMs": 2820.3,
+          "scale": {
+            "sessions": 3,
+            "messagesPerSession": 2,
+            "replyFingerprints": 0,
+            "checkpoints": 0,
+            "resumingDispositions": 0,
+            "leases": 0,
+            "effectLeases": 0,
+            "inbox": 0,
+            "eventPartitions": 0,
+            "executionLogs": 0,
+            "cacheObservations": 0,
+            "compactionOperations": 0,
+            "attachmentFiles": 0,
+            "memoryFiles": 0,
+            "manifests": 0,
+            "archivedSessions": 0,
+            "projects": 1
+          },
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 254.6
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 255.8
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 520.6
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 590.2
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 590.5
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 606.8,
+              "durationMs": 16.3
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 607.6,
+              "durationMs": 0.8
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 617,
+              "durationMs": 9.4
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 617.3,
+              "durationMs": 0.4
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 619.1,
+              "durationMs": 1.8
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 619.9,
+              "durationMs": 0.8
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 620,
+              "durationMs": 0.1
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 620.8,
+              "durationMs": 0.8
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 620.9,
+              "durationMs": 0.1
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 623.4,
+              "durationMs": 2.5
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 623.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 632.7,
+              "durationMs": 9.2
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 634.6,
+              "durationMs": 2
+            },
+            {
+              "index": 18,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 649.2
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 653,
+              "durationMs": 18.4
+            },
+            {
+              "index": 20,
+              "stage": "execution-start",
+              "processUptimeMs": 653.2
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 666.1,
+              "durationMs": 10.6
+            },
+            {
+              "index": 22,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 828.1
+            },
+            {
+              "index": 23,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 829.4
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1999,
+              "durationMs": 997.3
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 2186.8,
+              "durationMs": 1.9
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 2195.4,
+              "durationMs": 10.5
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 2195.6,
+              "durationMs": 10.7
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 2196.2,
+              "durationMs": 11.1
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 2196.2,
+              "durationMs": 0
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 2197.5,
+              "durationMs": 1.3
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 2197.7,
+              "durationMs": 0.1
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 2206.7,
+              "durationMs": 9
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 2237.5,
+              "durationMs": 30.7
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 2240.8,
+              "durationMs": 3.2
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 2253.3,
+              "durationMs": 12.5
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 2253.9,
+              "durationMs": 0.5
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 2253.9,
+              "durationMs": 0
+            },
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 2254.2,
+              "durationMs": 1601
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 2258.1,
+              "durationMs": 0.8
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 2258.1,
+              "durationMs": 3.4
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 2307.2,
+              "durationMs": 53
+            },
+            {
+              "index": 42,
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 2307.7
+            }
+          ],
+          "topStages": [
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 2254.2,
+              "durationMs": 1601
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1999,
+              "durationMs": 997.3
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 2307.2,
+              "durationMs": 53
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 2237.5,
+              "durationMs": 30.7
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 653,
+              "durationMs": 18.4
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 606.8,
+              "durationMs": 16.3
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 2253.3,
+              "durationMs": 12.5
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 2196.2,
+              "durationMs": 11.1
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 2195.6,
+              "durationMs": 10.7
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 666.1,
+              "durationMs": 10.6
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 2195.4,
+              "durationMs": 10.5
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 617,
+              "durationMs": 9.4
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 632.7,
+              "durationMs": 9.2
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 2206.7,
+              "durationMs": 9
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 2258.1,
+              "durationMs": 3.4
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 2240.8,
+              "durationMs": 3.2
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 623.4,
+              "durationMs": 2.5
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 634.6,
+              "durationMs": 2
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 2186.8,
+              "durationMs": 1.9
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 619.1,
+              "durationMs": 1.8
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 2197.5,
+              "durationMs": 1.3
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 607.6,
+              "durationMs": 0.8
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 619.9,
+              "durationMs": 0.8
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 620.8,
+              "durationMs": 0.8
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 2258.1,
+              "durationMs": 0.8
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 2253.9,
+              "durationMs": 0.5
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 617.3,
+              "durationMs": 0.4
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 620,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 620.9,
+              "durationMs": 0.1
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 623.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 2197.7,
+              "durationMs": 0.1
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 2196.2,
+              "durationMs": 0
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 2253.9,
+              "durationMs": 0
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 666.1,
+              "toUptimeMs": 2186.8,
+              "gapMs": 1520.7,
+              "laterStageDurationMs": 1.9,
+              "unattributedMs": 1520.7
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 255.8,
+              "toUptimeMs": 520.6,
+              "gapMs": 264.8,
+              "laterStageDurationMs": null,
+              "unattributedMs": 264.8
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 520.6,
+              "toUptimeMs": 590.2,
+              "gapMs": 69.6,
+              "laterStageDurationMs": null,
+              "unattributedMs": 69.6
+            },
+            {
+              "from": "runner-infra-memory-ready",
+              "to": "runner-infra-bootstrap-files-loaded",
+              "fromUptimeMs": 2206.7,
+              "toUptimeMs": 2237.5,
+              "gapMs": 30.8,
+              "laterStageDurationMs": 30.7,
+              "unattributedMs": 0.1
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 2258.1,
+              "toUptimeMs": 2307.2,
+              "gapMs": 49.1,
+              "laterStageDurationMs": 53,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 0,
+              "warningCount": 0
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 0.8,
+            "attachmentProtection": 3.4,
+            "attachmentProtectionAtUptimeMs": 2258.1,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 43
+          }
+        },
+        {
+          "fixtureId": "small",
+          "launch": 2,
+          "warm": true,
+          "pid": 2664,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 16,
+          "spawnToLocatorMs": 801,
+          "spawnToReadyMs": 1436,
+          "processCreateToReadyMs": 1680.9,
+          "processStartedAfterSpawnMs": 244.9,
+          "readyUptimeMs": 1285.7,
+          "bootstrapStartUptimeMs": 583.6,
+          "bootstrapToReadyMs": 702.1,
+          "stagedSumBeforeReadyMs": 775.2,
+          "scale": {
+            "sessions": 3,
+            "messagesPerSession": 2,
+            "replyFingerprints": 0,
+            "checkpoints": 0,
+            "resumingDispositions": 0,
+            "leases": 0,
+            "effectLeases": 0,
+            "inbox": 0,
+            "eventPartitions": 0,
+            "executionLogs": 0,
+            "cacheObservations": 0,
+            "compactionOperations": 0,
+            "attachmentFiles": 0,
+            "memoryFiles": 0,
+            "manifests": 0,
+            "archivedSessions": 0,
+            "projects": 1
+          },
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 243.5
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 244.9
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 513.2
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 583.2
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 583.6
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 601.1,
+              "durationMs": 17.5
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 602,
+              "durationMs": 1
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 611.4,
+              "durationMs": 9.4
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 611.8,
+              "durationMs": 0.4
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 613.8,
+              "durationMs": 2
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 614.6,
+              "durationMs": 0.8
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 614.7,
+              "durationMs": 0.1
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 615.5,
+              "durationMs": 0.8
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 615.6,
+              "durationMs": 0.1
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 618.4,
+              "durationMs": 2.8
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 618.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 628.9,
+              "durationMs": 10.4
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 633,
+              "durationMs": 4.1
+            },
+            {
+              "index": 18,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 647.7
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 650.9,
+              "durationMs": 18
+            },
+            {
+              "index": 20,
+              "stage": "execution-start",
+              "processUptimeMs": 651.2
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 660.7,
+              "durationMs": 6.6
+            },
+            {
+              "index": 22,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 800.9
+            },
+            {
+              "index": 23,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 801.8
+            },
+            {
+              "index": 24,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 1191.2,
+              "durationMs": 0.6
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 1199.9,
+              "durationMs": 9.3
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 1200.1,
+              "durationMs": 9.4
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 1200.5,
+              "durationMs": 9.9
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 1200.6,
+              "durationMs": 0
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 1202,
+              "durationMs": 1.4
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 1202.2,
+              "durationMs": 0.2
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 1206,
+              "durationMs": 3.8
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 1217.8,
+              "durationMs": 11.8
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 1221.1,
+              "durationMs": 3.2
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 1232.6,
+              "durationMs": 11.5
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 1233,
+              "durationMs": 0.4
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 1233.1,
+              "durationMs": 0
+            },
+            {
+              "index": 37,
+              "stage": "runner-ready",
+              "processUptimeMs": 1233.3,
+              "durationMs": 582.1
+            },
+            {
+              "index": 38,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 1237.9,
+              "durationMs": 0.8
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection",
+              "processUptimeMs": 1238,
+              "durationMs": 4.3
+            },
+            {
+              "index": 40,
+              "stage": "execution-ready",
+              "processUptimeMs": 1285.7,
+              "durationMs": 52.4
+            },
+            {
+              "index": 41,
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 1286.3
+            }
+          ],
+          "topStages": [
+            {
+              "index": 37,
+              "stage": "runner-ready",
+              "processUptimeMs": 1233.3,
+              "durationMs": 582.1
+            },
+            {
+              "index": 40,
+              "stage": "execution-ready",
+              "processUptimeMs": 1285.7,
+              "durationMs": 52.4
+            },
+            {
+              "index": 19,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 650.9,
+              "durationMs": 18
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 601.1,
+              "durationMs": 17.5
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 1217.8,
+              "durationMs": 11.8
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 1232.6,
+              "durationMs": 11.5
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 628.9,
+              "durationMs": 10.4
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 1200.5,
+              "durationMs": 9.9
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 611.4,
+              "durationMs": 9.4
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 1200.1,
+              "durationMs": 9.4
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 1199.9,
+              "durationMs": 9.3
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 660.7,
+              "durationMs": 6.6
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection",
+              "processUptimeMs": 1238,
+              "durationMs": 4.3
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 633,
+              "durationMs": 4.1
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 1206,
+              "durationMs": 3.8
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 1221.1,
+              "durationMs": 3.2
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 618.4,
+              "durationMs": 2.8
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 613.8,
+              "durationMs": 2
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 1202,
+              "durationMs": 1.4
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 602,
+              "durationMs": 1
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 614.6,
+              "durationMs": 0.8
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 615.5,
+              "durationMs": 0.8
+            },
+            {
+              "index": 38,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 1237.9,
+              "durationMs": 0.8
+            },
+            {
+              "index": 24,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 1191.2,
+              "durationMs": 0.6
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 611.8,
+              "durationMs": 0.4
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 1233,
+              "durationMs": 0.4
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 1202.2,
+              "durationMs": 0.2
+            },
+            {
+              "index": 11,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 614.7,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 615.6,
+              "durationMs": 0.1
+            },
+            {
+              "index": 15,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 618.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 1200.6,
+              "durationMs": 0
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 1233.1,
+              "durationMs": 0
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 660.7,
+              "toUptimeMs": 1191.2,
+              "gapMs": 530.5,
+              "laterStageDurationMs": 0.6,
+              "unattributedMs": 530.5
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 244.9,
+              "toUptimeMs": 513.2,
+              "gapMs": 268.3,
+              "laterStageDurationMs": null,
+              "unattributedMs": 268.3
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 513.2,
+              "toUptimeMs": 583.2,
+              "gapMs": 70,
+              "laterStageDurationMs": null,
+              "unattributedMs": 70
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 1238,
+              "toUptimeMs": 1285.7,
+              "gapMs": 47.7,
+              "laterStageDurationMs": 52.4,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 0,
+              "warningCount": 0
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 0.8,
+            "attachmentProtection": 4.3,
+            "attachmentProtectionAtUptimeMs": 1238,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 42
+          }
+        }
+      ],
+      "inventory": {
+        "totalFiles": 12,
+        "totalBytes": 20180,
+        "entries": [
+          {
+            "path": "sessions",
+            "kind": "directory",
+            "files": 3,
+            "bytes": 17061
+          },
+          {
+            "path": "workspace",
+            "kind": "directory",
+            "files": 2,
+            "bytes": 101
+          },
+          {
+            "path": "archive",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 39
+          },
+          {
+            "path": "attachment-cache",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 36
+          },
+          {
+            "path": "config.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 1314
+          },
+          {
+            "path": "projects",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 445
+          },
+          {
+            "path": "sessions.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 1048
+          },
+          {
+            "path": "ui",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 124
+          },
+          {
+            "path": "workplace",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 12
+          },
+          {
+            "path": "backups",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "config",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "experience",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "memory",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "skills",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "real-copy",
+      "kind": "copy",
+      "copiedFrom": "C:\\Users\\28971\\.littlesheep",
+      "prepareMs": 40349,
+      "seed": {
+        "copiedFrom": "C:\\Users\\28971\\.littlesheep"
+      },
+      "runs": [
+        {
+          "fixtureId": "real-copy",
+          "launch": 1,
+          "warm": false,
+          "pid": 1816,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 745,
+          "spawnToLocatorMs": 953,
+          "spawnToReadyMs": 32859,
+          "processCreateToReadyMs": 33110.4,
+          "processStartedAfterSpawnMs": 251.4,
+          "readyUptimeMs": 32684.6,
+          "bootstrapStartUptimeMs": 601.2,
+          "bootstrapToReadyMs": 32083.4,
+          "stagedSumBeforeReadyMs": 55872.1,
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 250.2
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 251.4
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 529.7
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 600.8
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 601.2
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 619.6,
+              "durationMs": 18.5
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 620.4,
+              "durationMs": 0.7
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 713.8,
+              "durationMs": 93.4
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 719.8,
+              "durationMs": 6
+            },
+            {
+              "index": 9,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 741.2
+            },
+            {
+              "index": 10,
+              "stage": "config-ready",
+              "processUptimeMs": 746.8,
+              "durationMs": 27
+            },
+            {
+              "index": 11,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 747.9,
+              "durationMs": 1.1
+            },
+            {
+              "index": 12,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 747.9,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "project-index-ready",
+              "processUptimeMs": 753.9,
+              "durationMs": 6
+            },
+            {
+              "index": 14,
+              "stage": "session-index-ready",
+              "processUptimeMs": 754,
+              "durationMs": 0.1
+            },
+            {
+              "index": 15,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 758,
+              "durationMs": 3.9
+            },
+            {
+              "index": 16,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 758.1,
+              "durationMs": 0.1
+            },
+            {
+              "index": 17,
+              "stage": "local-api-ready",
+              "processUptimeMs": 779,
+              "durationMs": 20.9
+            },
+            {
+              "index": 18,
+              "stage": "locator-written",
+              "processUptimeMs": 781,
+              "durationMs": 2
+            },
+            {
+              "index": 19,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 795.2
+            },
+            {
+              "index": 20,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 802.5,
+              "durationMs": 21.5
+            },
+            {
+              "index": 21,
+              "stage": "execution-start",
+              "processUptimeMs": 802.7
+            },
+            {
+              "index": 22,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1351.7,
+              "durationMs": 407.3
+            },
+            {
+              "index": 23,
+              "stage": "renderer-first-frame",
+              "processUptimeMs": 1354.1,
+              "durationMs": 398.4
+            },
+            {
+              "index": 24,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 3038.5,
+              "durationMs": 1834.3
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 3039,
+              "durationMs": 2233.7
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 22628,
+              "durationMs": 0.5
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 23202.8,
+              "durationMs": 575.2
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 24306.9,
+              "durationMs": 0.4
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 24362.5,
+              "durationMs": 56
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 25510,
+              "durationMs": 2882.4
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 25768.3,
+              "durationMs": 1461.8
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 28616.1,
+              "durationMs": 5988.5
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 28616.2,
+              "durationMs": 0
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 28618.1,
+              "durationMs": 1.9
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 28618.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 28631.1,
+              "durationMs": 12.9
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 28649.7,
+              "durationMs": 18.6
+            },
+            {
+              "index": 38,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 28652.8,
+              "durationMs": 3.1
+            },
+            {
+              "index": 39,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 28665.9,
+              "durationMs": 13
+            },
+            {
+              "index": 40,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 28666.3,
+              "durationMs": 0.3
+            },
+            {
+              "index": 41,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 28666.3,
+              "durationMs": 0
+            },
+            {
+              "index": 42,
+              "stage": "runner-ready",
+              "processUptimeMs": 28666.5,
+              "durationMs": 27863.8
+            },
+            {
+              "index": 43,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 29350.7,
+              "durationMs": 5044.1
+            },
+            {
+              "index": 44,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 29350.7,
+              "durationMs": 0
+            },
+            {
+              "index": 45,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 29353.7,
+              "durationMs": 3
+            },
+            {
+              "index": 46,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 29353.8,
+              "durationMs": 0
+            },
+            {
+              "index": 47,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 29367.3,
+              "durationMs": 13.5
+            },
+            {
+              "index": 48,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 29380.3,
+              "durationMs": 12.9
+            },
+            {
+              "index": 49,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 29383.2,
+              "durationMs": 2.8
+            },
+            {
+              "index": 50,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 29394.2,
+              "durationMs": 11
+            },
+            {
+              "index": 51,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 29394.3,
+              "durationMs": 0.1
+            },
+            {
+              "index": 52,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 29394.3,
+              "durationMs": 0
+            },
+            {
+              "index": 53,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 29736.8,
+              "durationMs": 1063.1
+            },
+            {
+              "index": 54,
+              "stage": "attachment-protection",
+              "processUptimeMs": 29736.8,
+              "durationMs": 1069.9
+            },
+            {
+              "index": 55,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 29738.6,
+              "durationMs": 335.8
+            },
+            {
+              "index": 56,
+              "stage": "attachment-protection",
+              "processUptimeMs": 29738.7,
+              "durationMs": 344.3
+            },
+            {
+              "index": 57,
+              "stage": "execution-ready",
+              "processUptimeMs": 32684.6,
+              "durationMs": 4018.1
+            }
+          ],
+          "topStages": [
+            {
+              "index": 42,
+              "stage": "runner-ready",
+              "processUptimeMs": 28666.5,
+              "durationMs": 27863.8
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 28616.1,
+              "durationMs": 5988.5
+            },
+            {
+              "index": 43,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 29350.7,
+              "durationMs": 5044.1
+            },
+            {
+              "index": 57,
+              "stage": "execution-ready",
+              "processUptimeMs": 32684.6,
+              "durationMs": 4018.1
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 25510,
+              "durationMs": 2882.4
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 3039,
+              "durationMs": 2233.7
+            },
+            {
+              "index": 24,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 3038.5,
+              "durationMs": 1834.3
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 25768.3,
+              "durationMs": 1461.8
+            },
+            {
+              "index": 54,
+              "stage": "attachment-protection",
+              "processUptimeMs": 29736.8,
+              "durationMs": 1069.9
+            },
+            {
+              "index": 53,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 29736.8,
+              "durationMs": 1063.1
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 23202.8,
+              "durationMs": 575.2
+            },
+            {
+              "index": 22,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1351.7,
+              "durationMs": 407.3
+            },
+            {
+              "index": 23,
+              "stage": "renderer-first-frame",
+              "processUptimeMs": 1354.1,
+              "durationMs": 398.4
+            },
+            {
+              "index": 56,
+              "stage": "attachment-protection",
+              "processUptimeMs": 29738.7,
+              "durationMs": 344.3
+            },
+            {
+              "index": 55,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 29738.6,
+              "durationMs": 335.8
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 713.8,
+              "durationMs": 93.4
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 24362.5,
+              "durationMs": 56
+            },
+            {
+              "index": 10,
+              "stage": "config-ready",
+              "processUptimeMs": 746.8,
+              "durationMs": 27
+            },
+            {
+              "index": 20,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 802.5,
+              "durationMs": 21.5
+            },
+            {
+              "index": 17,
+              "stage": "local-api-ready",
+              "processUptimeMs": 779,
+              "durationMs": 20.9
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 28649.7,
+              "durationMs": 18.6
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 619.6,
+              "durationMs": 18.5
+            },
+            {
+              "index": 47,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 29367.3,
+              "durationMs": 13.5
+            },
+            {
+              "index": 39,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 28665.9,
+              "durationMs": 13
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 28631.1,
+              "durationMs": 12.9
+            },
+            {
+              "index": 48,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 29380.3,
+              "durationMs": 12.9
+            },
+            {
+              "index": 50,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 29394.2,
+              "durationMs": 11
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 719.8,
+              "durationMs": 6
+            },
+            {
+              "index": 13,
+              "stage": "project-index-ready",
+              "processUptimeMs": 753.9,
+              "durationMs": 6
+            },
+            {
+              "index": 15,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 758,
+              "durationMs": 3.9
+            },
+            {
+              "index": 38,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 28652.8,
+              "durationMs": 3.1
+            },
+            {
+              "index": 45,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 29353.7,
+              "durationMs": 3
+            },
+            {
+              "index": 49,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 29383.2,
+              "durationMs": 2.8
+            },
+            {
+              "index": 18,
+              "stage": "locator-written",
+              "processUptimeMs": 781,
+              "durationMs": 2
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 28618.1,
+              "durationMs": 1.9
+            },
+            {
+              "index": 11,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 747.9,
+              "durationMs": 1.1
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 620.4,
+              "durationMs": 0.7
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 22628,
+              "durationMs": 0.5
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 24306.9,
+              "durationMs": 0.4
+            },
+            {
+              "index": 40,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 28666.3,
+              "durationMs": 0.3
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 3039,
+              "toUptimeMs": 22628,
+              "gapMs": 19589,
+              "laterStageDurationMs": 0.5,
+              "unattributedMs": 19589
+            },
+            {
+              "from": "runner-infra-durable-run-leases-ready",
+              "to": "runner-infra-durable-inbox-ready",
+              "fromUptimeMs": 25768.3,
+              "toUptimeMs": 28616.1,
+              "gapMs": 2847.8,
+              "laterStageDurationMs": 5988.5,
+              "unattributedMs": 2847.8
+            },
+            {
+              "from": "runner-infra-durable-effect-leases-ready",
+              "to": "runner-infra-durable-run-leases-ready",
+              "fromUptimeMs": 24362.5,
+              "toUptimeMs": 25510,
+              "gapMs": 1147.5,
+              "laterStageDurationMs": 2882.4,
+              "unattributedMs": 1147.5
+            },
+            {
+              "from": "runner-infra-durable-effect-leases-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 23202.8,
+              "toUptimeMs": 24306.9,
+              "gapMs": 1104.1,
+              "laterStageDurationMs": 0.4,
+              "unattributedMs": 1104.1
+            },
+            {
+              "from": "runner-ready",
+              "to": "runner-infra-durable-inbox-ready",
+              "fromUptimeMs": 28666.5,
+              "toUptimeMs": 29350.7,
+              "gapMs": 684.2,
+              "laterStageDurationMs": 5044.1,
+              "unattributedMs": 684.2
+            },
+            {
+              "from": "runner-infra-durable-events-ready",
+              "to": "runner-infra-durable-effect-leases-ready",
+              "fromUptimeMs": 22628,
+              "toUptimeMs": 23202.8,
+              "gapMs": 574.8,
+              "laterStageDurationMs": 575.2,
+              "unattributedMs": 574.8
+            },
+            {
+              "from": "execution-start",
+              "to": "runner-infra-observability-ready",
+              "fromUptimeMs": 802.7,
+              "toUptimeMs": 3038.5,
+              "gapMs": 2235.8,
+              "laterStageDurationMs": 1834.3,
+              "unattributedMs": 401.5
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 251.4,
+              "toUptimeMs": 529.7,
+              "gapMs": 278.3,
+              "laterStageDurationMs": null,
+              "unattributedMs": 278.3
+            },
+            {
+              "from": "runner-infra-durable-run-leases-ready",
+              "to": "runner-infra-durable-run-leases-ready",
+              "fromUptimeMs": 25510,
+              "toUptimeMs": 25768.3,
+              "gapMs": 258.3,
+              "laterStageDurationMs": 1461.8,
+              "unattributedMs": 258.3
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 529.7,
+              "toUptimeMs": 600.8,
+              "gapMs": 71.1,
+              "laterStageDurationMs": null,
+              "unattributedMs": 71.1
+            },
+            {
+              "from": "runner-infra-durable-events-ready",
+              "to": "runner-infra-durable-effect-leases-ready",
+              "fromUptimeMs": 24306.9,
+              "toUptimeMs": 24362.5,
+              "gapMs": 55.6,
+              "laterStageDurationMs": 56,
+              "unattributedMs": 55.6
+            },
+            {
+              "from": "data-root-ready",
+              "to": "user-data-layout-ready",
+              "fromUptimeMs": 620.4,
+              "toUptimeMs": 713.8,
+              "gapMs": 93.4,
+              "laterStageDurationMs": 93.4,
+              "unattributedMs": 0
+            },
+            {
+              "from": "keychain-ready",
+              "to": "config-ready",
+              "fromUptimeMs": 719.8,
+              "toUptimeMs": 746.8,
+              "gapMs": 27,
+              "laterStageDurationMs": 27,
+              "unattributedMs": 0
+            },
+            {
+              "from": "ui-indexes-ready",
+              "to": "local-api-ready",
+              "fromUptimeMs": 758.1,
+              "toUptimeMs": 779,
+              "gapMs": 20.9,
+              "laterStageDurationMs": 20.9,
+              "unattributedMs": 0
+            },
+            {
+              "from": "locator-written",
+              "to": "desktop-shell-initialized",
+              "fromUptimeMs": 781,
+              "toUptimeMs": 802.5,
+              "gapMs": 21.5,
+              "laterStageDurationMs": 21.5,
+              "unattributedMs": 0
+            },
+            {
+              "from": "runner-infra-returned",
+              "to": "attachment-protection-checkpoints",
+              "fromUptimeMs": 29394.3,
+              "toUptimeMs": 29736.8,
+              "gapMs": 342.5,
+              "laterStageDurationMs": 1063.1,
+              "unattributedMs": 0
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 29738.7,
+              "toUptimeMs": 32684.6,
+              "gapMs": 2945.9,
+              "laterStageDurationMs": 4018.1,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 0,
+              "warningCount": 0
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 1063.1,
+            "attachmentProtection": 1069.9,
+            "attachmentProtectionAtUptimeMs": 29736.8,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 58
+          }
+        },
+        {
+          "fixtureId": "real-copy",
+          "launch": 2,
+          "warm": true,
+          "pid": 37628,
+          "ok": true,
+          "readinessState": "ready",
+          "readinessPhase": "execution",
+          "probes": 117,
+          "spawnToLocatorMs": 987,
+          "spawnToReadyMs": 6193,
+          "processCreateToReadyMs": 6453.2,
+          "processStartedAfterSpawnMs": 260.2,
+          "readyUptimeMs": 5979,
+          "bootstrapStartUptimeMs": 637.6,
+          "bootstrapToReadyMs": 5341.4,
+          "stagedSumBeforeReadyMs": 7675.5,
+          "stages": [
+            {
+              "index": 0,
+              "stage": "main-module-ready",
+              "processUptimeMs": 258.9
+            },
+            {
+              "index": 1,
+              "stage": "process-start",
+              "processUptimeMs": 260.2
+            },
+            {
+              "index": 2,
+              "stage": "electron-app-ready",
+              "processUptimeMs": 562.9
+            },
+            {
+              "index": 3,
+              "stage": "desktop-startup-visible",
+              "processUptimeMs": 637.1
+            },
+            {
+              "index": 4,
+              "stage": "bootstrap-start",
+              "processUptimeMs": 637.6
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 667.1,
+              "durationMs": 29.5
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 668.1,
+              "durationMs": 1
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 767.8,
+              "durationMs": 99.8
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 768.5,
+              "durationMs": 0.7
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 786.8,
+              "durationMs": 18.2
+            },
+            {
+              "index": 10,
+              "stage": "renderer-did-finish-load",
+              "processUptimeMs": 789
+            },
+            {
+              "index": 11,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 791.2,
+              "durationMs": 4.4
+            },
+            {
+              "index": 12,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 791.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 13,
+              "stage": "project-index-ready",
+              "processUptimeMs": 792.4,
+              "durationMs": 1.2
+            },
+            {
+              "index": 14,
+              "stage": "session-index-ready",
+              "processUptimeMs": 792.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 15,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 796.9,
+              "durationMs": 4.4
+            },
+            {
+              "index": 16,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 797.1,
+              "durationMs": 0.2
+            },
+            {
+              "index": 17,
+              "stage": "local-api-ready",
+              "processUptimeMs": 805.8,
+              "durationMs": 8.7
+            },
+            {
+              "index": 18,
+              "stage": "locator-written",
+              "processUptimeMs": 807.5,
+              "durationMs": 1.8
+            },
+            {
+              "index": 19,
+              "stage": "renderer-load-started",
+              "processUptimeMs": 825.8
+            },
+            {
+              "index": 20,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 830.8,
+              "durationMs": 23.2
+            },
+            {
+              "index": 21,
+              "stage": "execution-start",
+              "processUptimeMs": 831
+            },
+            {
+              "index": 22,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 1073,
+              "durationMs": 239
+            },
+            {
+              "index": 23,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1369.8,
+              "durationMs": 386.2
+            },
+            {
+              "index": 24,
+              "stage": "renderer-first-frame",
+              "processUptimeMs": 1372.4,
+              "durationMs": 379.6
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 3702.3,
+              "durationMs": 0.7
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 3765,
+              "durationMs": 63.3
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 3948.9,
+              "durationMs": 247.2
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 4335.6,
+              "durationMs": 633.9
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 4335.6,
+              "durationMs": 0
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 4337.5,
+              "durationMs": 1.8
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 4337.8,
+              "durationMs": 0.3
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 4349.7,
+              "durationMs": 11.9
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 4365.2,
+              "durationMs": 15.4
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 4369.4,
+              "durationMs": 4.1
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 4378.8,
+              "durationMs": 9.4
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 4379.2,
+              "durationMs": 0.4
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 4379.2,
+              "durationMs": 0
+            },
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 4379.5,
+              "durationMs": 3548.5
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 4551.5,
+              "durationMs": 169.3
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 4551.5,
+              "durationMs": 171.7
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 5979,
+              "durationMs": 1599.5
+            },
+            {
+              "index": 42,
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 5979.5
+            }
+          ],
+          "topStages": [
+            {
+              "index": 38,
+              "stage": "runner-ready",
+              "processUptimeMs": 4379.5,
+              "durationMs": 3548.5
+            },
+            {
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 5979,
+              "durationMs": 1599.5
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 4335.6,
+              "durationMs": 633.9
+            },
+            {
+              "index": 23,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 1369.8,
+              "durationMs": 386.2
+            },
+            {
+              "index": 24,
+              "stage": "renderer-first-frame",
+              "processUptimeMs": 1372.4,
+              "durationMs": 379.6
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 3948.9,
+              "durationMs": 247.2
+            },
+            {
+              "index": 22,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 1073,
+              "durationMs": 239
+            },
+            {
+              "index": 40,
+              "stage": "attachment-protection",
+              "processUptimeMs": 4551.5,
+              "durationMs": 171.7
+            },
+            {
+              "index": 39,
+              "stage": "attachment-protection-checkpoints",
+              "processUptimeMs": 4551.5,
+              "durationMs": 169.3
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 767.8,
+              "durationMs": 99.8
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 3765,
+              "durationMs": 63.3
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 667.1,
+              "durationMs": 29.5
+            },
+            {
+              "index": 20,
+              "stage": "desktop-shell-initialized",
+              "processUptimeMs": 830.8,
+              "durationMs": 23.2
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 786.8,
+              "durationMs": 18.2
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 4365.2,
+              "durationMs": 15.4
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 4349.7,
+              "durationMs": 11.9
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 4378.8,
+              "durationMs": 9.4
+            },
+            {
+              "index": 17,
+              "stage": "local-api-ready",
+              "processUptimeMs": 805.8,
+              "durationMs": 8.7
+            },
+            {
+              "index": 11,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 791.2,
+              "durationMs": 4.4
+            },
+            {
+              "index": 15,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 796.9,
+              "durationMs": 4.4
+            },
+            {
+              "index": 34,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 4369.4,
+              "durationMs": 4.1
+            },
+            {
+              "index": 18,
+              "stage": "locator-written",
+              "processUptimeMs": 807.5,
+              "durationMs": 1.8
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 4337.5,
+              "durationMs": 1.8
+            },
+            {
+              "index": 13,
+              "stage": "project-index-ready",
+              "processUptimeMs": 792.4,
+              "durationMs": 1.2
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 668.1,
+              "durationMs": 1
+            },
+            {
+              "index": 8,
+              "stage": "keychain-ready",
+              "processUptimeMs": 768.5,
+              "durationMs": 0.7
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 3702.3,
+              "durationMs": 0.7
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 4379.2,
+              "durationMs": 0.4
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 4337.8,
+              "durationMs": 0.3
+            },
+            {
+              "index": 16,
+              "stage": "ui-indexes-ready",
+              "processUptimeMs": 797.1,
+              "durationMs": 0.2
+            },
+            {
+              "index": 12,
+              "stage": "durable-config-ready",
+              "processUptimeMs": 791.2,
+              "durationMs": 0.1
+            },
+            {
+              "index": 14,
+              "stage": "session-index-ready",
+              "processUptimeMs": 792.5,
+              "durationMs": 0.1
+            },
+            {
+              "index": 29,
+              "stage": "runner-infra-durable-ready",
+              "processUptimeMs": 4335.6,
+              "durationMs": 0
+            },
+            {
+              "index": 37,
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 4379.2,
+              "durationMs": 0
+            }
+          ],
+          "gaps": [
+            {
+              "from": "runner-infra-observability-ready",
+              "to": "runner-infra-durable-events-ready",
+              "fromUptimeMs": 1073,
+              "toUptimeMs": 3702.3,
+              "gapMs": 2629.3,
+              "laterStageDurationMs": 0.7,
+              "unattributedMs": 2629.3
+            },
+            {
+              "from": "runner-infra-durable-run-leases-ready",
+              "to": "runner-infra-durable-inbox-ready",
+              "fromUptimeMs": 3948.9,
+              "toUptimeMs": 4335.6,
+              "gapMs": 386.7,
+              "laterStageDurationMs": 633.9,
+              "unattributedMs": 386.7
+            },
+            {
+              "from": "process-start",
+              "to": "electron-app-ready",
+              "fromUptimeMs": 260.2,
+              "toUptimeMs": 562.9,
+              "gapMs": 302.7,
+              "laterStageDurationMs": null,
+              "unattributedMs": 302.7
+            },
+            {
+              "from": "runner-infra-durable-effect-leases-ready",
+              "to": "runner-infra-durable-run-leases-ready",
+              "fromUptimeMs": 3765,
+              "toUptimeMs": 3948.9,
+              "gapMs": 183.9,
+              "laterStageDurationMs": 247.2,
+              "unattributedMs": 183.9
+            },
+            {
+              "from": "electron-app-ready",
+              "to": "desktop-startup-visible",
+              "fromUptimeMs": 562.9,
+              "toUptimeMs": 637.1,
+              "gapMs": 74.2,
+              "laterStageDurationMs": null,
+              "unattributedMs": 74.2
+            },
+            {
+              "from": "runner-infra-durable-events-ready",
+              "to": "runner-infra-durable-effect-leases-ready",
+              "fromUptimeMs": 3702.3,
+              "toUptimeMs": 3765,
+              "gapMs": 62.7,
+              "laterStageDurationMs": 63.3,
+              "unattributedMs": 62.7
+            },
+            {
+              "from": "execution-start",
+              "to": "runner-infra-observability-ready",
+              "fromUptimeMs": 831,
+              "toUptimeMs": 1073,
+              "gapMs": 242,
+              "laterStageDurationMs": 239,
+              "unattributedMs": 3
+            },
+            {
+              "from": "runner-ready",
+              "to": "attachment-protection-checkpoints",
+              "fromUptimeMs": 4379.5,
+              "toUptimeMs": 4551.5,
+              "gapMs": 172,
+              "laterStageDurationMs": 169.3,
+              "unattributedMs": 2.7
+            },
+            {
+              "from": "locator-written",
+              "to": "desktop-shell-initialized",
+              "fromUptimeMs": 807.5,
+              "toUptimeMs": 830.8,
+              "gapMs": 23.3,
+              "laterStageDurationMs": 23.2,
+              "unattributedMs": 0.1
+            },
+            {
+              "from": "bootstrap-start",
+              "to": "branding-ready",
+              "fromUptimeMs": 637.6,
+              "toUptimeMs": 667.1,
+              "gapMs": 29.5,
+              "laterStageDurationMs": 29.5,
+              "unattributedMs": 0
+            },
+            {
+              "from": "data-root-ready",
+              "to": "user-data-layout-ready",
+              "fromUptimeMs": 668.1,
+              "toUptimeMs": 767.8,
+              "gapMs": 99.7,
+              "laterStageDurationMs": 99.8,
+              "unattributedMs": 0
+            },
+            {
+              "from": "attachment-protection",
+              "to": "execution-ready",
+              "fromUptimeMs": 4551.5,
+              "toUptimeMs": 5979,
+              "gapMs": 1427.5,
+              "laterStageDurationMs": 1599.5,
+              "unattributedMs": 0
+            }
+          ],
+          "runCheckpointsApi": {
+            "status": 200,
+            "keys": [
+              "checkpoints",
+              "diagnostics"
+            ],
+            "listed": 0,
+            "diagnostics": {
+              "invalidFiles": 0,
+              "warningCount": 0
+            }
+          },
+          "logFacts": {
+            "attachmentProtectionCheckpoints": 169.3,
+            "attachmentProtection": 171.7,
+            "attachmentProtectionAtUptimeMs": 4551.5,
+            "recoveredRuns": 0,
+            "recoveryNotices": 0,
+            "checkpointScanCapped": false,
+            "versioningWarnings": 0,
+            "runnerWarnings": 0,
+            "attachmentsWarnings": 0,
+            "timingEntries": 43
+          }
+        }
+      ],
+      "inventory": {
+        "totalFiles": 31221,
+        "totalBytes": 263198511,
+        "entries": [
+          {
+            "path": "durable-events",
+            "kind": "directory",
+            "files": 21365,
+            "bytes": 34975239
+          },
+          {
+            "path": "backups",
+            "kind": "directory",
+            "files": 3284,
+            "bytes": 49637409
+          },
+          {
+            "path": "sessions",
+            "kind": "directory",
+            "files": 1932,
+            "bytes": 62383533
+          },
+          {
+            "path": "durable-inbox",
+            "kind": "directory",
+            "files": 1193,
+            "bytes": 674547
+          },
+          {
+            "path": "execution-logs",
+            "kind": "directory",
+            "files": 1151,
+            "bytes": 104427734
+          },
+          {
+            "path": "durable-run-leases",
+            "kind": "directory",
+            "files": 596,
+            "bytes": 182551
+          },
+          {
+            "path": "compaction-operations",
+            "kind": "directory",
+            "files": 548,
+            "bytes": 213112
+          },
+          {
+            "path": "run-checkpoint-dispositions",
+            "kind": "directory",
+            "files": 512,
+            "bytes": 233628
+          },
+          {
+            "path": "cache-observations",
+            "kind": "directory",
+            "files": 344,
+            "bytes": 1014911
+          },
+          {
+            "path": "run-checkpoints",
+            "kind": "directory",
+            "files": 128,
+            "bytes": 768559
+          },
+          {
+            "path": "durable-effect-leases",
+            "kind": "directory",
+            "files": 118,
+            "bytes": 39766
+          },
+          {
+            "path": "workplace",
+            "kind": "directory",
+            "files": 22,
+            "bytes": 300269
+          },
+          {
+            "path": "workspace",
+            "kind": "directory",
+            "files": 7,
+            "bytes": 558508
+          },
+          {
+            "path": "memory-tree",
+            "kind": "directory",
+            "files": 4,
+            "bytes": 1413071
+          },
+          {
+            "path": "config",
+            "kind": "directory",
+            "files": 2,
+            "bytes": 181
+          },
+          {
+            "path": "models",
+            "kind": "directory",
+            "files": 2,
+            "bytes": 6368058
+          },
+          {
+            "path": "AGENTS.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 130
+          },
+          {
+            "path": "archive",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 345
+          },
+          {
+            "path": "attachment-cache",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 35
+          },
+          {
+            "path": "config.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 4220
+          },
+          {
+            "path": "MEMORY.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 109
+          },
+          {
+            "path": "PHILOSOPHY.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 202
+          },
+          {
+            "path": "projects",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 361
+          },
+          {
+            "path": "sessions.json",
+            "kind": "file",
+            "files": 1,
+            "bytes": 1394
+          },
+          {
+            "path": "SOUL.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 131
+          },
+          {
+            "path": "toolchains",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 139
+          },
+          {
+            "path": "TOOLS.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 125
+          },
+          {
+            "path": "ui",
+            "kind": "directory",
+            "files": 1,
+            "bytes": 122
+          },
+          {
+            "path": "USER.md",
+            "kind": "file",
+            "files": 1,
+            "bytes": 122
+          },
+          {
+            "path": "memory",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "plugin-data",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "plugins",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          },
+          {
+            "path": "skills",
+            "kind": "directory",
+            "files": 0,
+            "bytes": 0
+          }
+        ]
+      }
+    }
+  ],
+  "gaps": [
+    "The synthetic fixtures are written by this script in the shapes the product writes, not by the product;",
+    "the app's own reader is what proves they are parseable (/run-checkpoints is read after readiness).",
+    "The app build is one commit behind HEAD (see buildFreshness); the differing commits touch packages/snapshot",
+    "preimage reuse and per-run send-to-first-token timing, neither of which is on the bootstrap path.",
+    "readiness is observed by polling at 20 ms, so spawnToReadyMs carries up to ~20 ms of observation lag.",
+    "memory v3 is not exercised by the synthetic fixtures (it needs a SQLite catalog and a local embedding",
+    "model); the real-copy fixture reflects whatever backend that data root actually uses."
+  ],
+  "comparison": {
+    "largeFixture": "synthetic-large",
+    "smallFixture": "small",
+    "spawnToReadyMs": {
+      "large": [
+        18549,
+        4260
+      ],
+      "small": [
+        2470,
+        1436
+      ],
+      "largeMedianMs": 11404.5,
+      "smallMedianMs": 1953
+    },
+    "heuristic": "scalesWithData = (largeMedian - smallMedian >= 20ms) AND (largeMedian >= max(2 x smallMedian, smallMedian + 20ms))",
+    "stages": [
+      {
+        "stage": "runner-ready",
+        "largeMedianMs": 7367.9,
+        "smallMedianMs": 1091.6,
+        "deltaMs": 6276.3,
+        "scalesWithData": true
+      },
+      {
+        "stage": "execution-ready",
+        "largeMedianMs": 3155.1,
+        "smallMedianMs": 52.7,
+        "deltaMs": 3102.4,
+        "scalesWithData": true
+      },
+      {
+        "stage": "attachment-protection",
+        "largeMedianMs": 293.1,
+        "smallMedianMs": 3.9,
+        "deltaMs": 289.2,
+        "scalesWithData": true
+      },
+      {
+        "stage": "attachment-protection-checkpoints",
+        "largeMedianMs": 244.9,
+        "smallMedianMs": 0.8,
+        "deltaMs": 244.1,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-inbox-ready",
+        "largeMedianMs": 210.7,
+        "smallMedianMs": 9.9,
+        "deltaMs": 200.8,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-run-leases-ready",
+        "largeMedianMs": 197.3,
+        "smallMedianMs": 10.3,
+        "deltaMs": 187,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-observability-ready",
+        "largeMedianMs": 89,
+        "smallMedianMs": 8.6,
+        "deltaMs": 80.4,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-effect-leases-ready",
+        "largeMedianMs": 49.1,
+        "smallMedianMs": 10.3,
+        "deltaMs": 38.8,
+        "scalesWithData": true
+      },
+      {
+        "stage": "archive-index-ready",
+        "largeMedianMs": 15,
+        "smallMedianMs": 2.7,
+        "deltaMs": 12.4,
+        "scalesWithData": false
+      },
+      {
+        "stage": "renderer-workspace-entries",
+        "largeMedianMs": 1005.3,
+        "smallMedianMs": 997.3,
+        "deltaMs": 8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "desktop-shell-initialized",
+        "largeMedianMs": 20,
+        "smallMedianMs": 18.2,
+        "deltaMs": 1.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "branding-ready",
+        "largeMedianMs": 18.5,
+        "smallMedianMs": 16.9,
+        "deltaMs": 1.6,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-checkpoint-store-ready",
+        "largeMedianMs": 2.2,
+        "smallMedianMs": 1.4,
+        "deltaMs": 0.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-memory-ready",
+        "largeMedianMs": 7.3,
+        "smallMedianMs": 6.4,
+        "deltaMs": 0.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "locator-written",
+        "largeMedianMs": 3.8,
+        "smallMedianMs": 3.1,
+        "deltaMs": 0.7,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-bootstrap-files-loaded",
+        "largeMedianMs": 21.6,
+        "smallMedianMs": 21.3,
+        "deltaMs": 0.4,
+        "scalesWithData": false
+      },
+      {
+        "stage": "data-root-ready",
+        "largeMedianMs": 1.2,
+        "smallMedianMs": 0.9,
+        "deltaMs": 0.3,
+        "scalesWithData": false
+      },
+      {
+        "stage": "project-index-ready",
+        "largeMedianMs": 1,
+        "smallMedianMs": 0.8,
+        "deltaMs": 0.2,
+        "scalesWithData": false
+      },
+      {
+        "stage": "config-ready",
+        "largeMedianMs": 2,
+        "smallMedianMs": 1.9,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "memory-v3-ready",
+        "largeMedianMs": 0.9,
+        "smallMedianMs": 0.8,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "ui-indexes-ready",
+        "largeMedianMs": 0.2,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "durable-config-ready",
+        "largeMedianMs": 0.1,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "session-index-ready",
+        "largeMedianMs": 0.1,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-durable-ready",
+        "largeMedianMs": 0,
+        "smallMedianMs": 0,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-embedding-ready",
+        "largeMedianMs": 0.2,
+        "smallMedianMs": 0.2,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-skills-ready",
+        "largeMedianMs": 3.2,
+        "smallMedianMs": 3.2,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-harness-ready",
+        "largeMedianMs": 0.4,
+        "smallMedianMs": 0.5,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-returned",
+        "largeMedianMs": 0,
+        "smallMedianMs": 0,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "keychain-ready",
+        "largeMedianMs": 0.4,
+        "smallMedianMs": 0.4,
+        "deltaMs": -0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "local-api-ready",
+        "largeMedianMs": 9.6,
+        "smallMedianMs": 9.8,
+        "deltaMs": -0.2,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-durable-events-ready",
+        "largeMedianMs": 0.7,
+        "smallMedianMs": 1.3,
+        "deltaMs": -0.5,
+        "scalesWithData": false
+      },
+      {
+        "stage": "user-data-layout-ready",
+        "largeMedianMs": 8,
+        "smallMedianMs": 9.4,
+        "deltaMs": -1.5,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-skill-resources-synced",
+        "largeMedianMs": 10.4,
+        "smallMedianMs": 12,
+        "deltaMs": -1.6,
+        "scalesWithData": false
+      },
+      {
+        "stage": "main-module-ready",
+        "scalesWithData": false
+      },
+      {
+        "stage": "process-start",
+        "scalesWithData": false
+      },
+      {
+        "stage": "electron-app-ready",
+        "scalesWithData": false
+      },
+      {
+        "stage": "desktop-startup-visible",
+        "scalesWithData": false
+      },
+      {
+        "stage": "bootstrap-start",
+        "scalesWithData": false
+      },
+      {
+        "stage": "renderer-load-started",
+        "scalesWithData": false
+      },
+      {
+        "stage": "execution-start",
+        "scalesWithData": false
+      },
+      {
+        "stage": "renderer-did-finish-load",
+        "scalesWithData": false
+      },
+      {
+        "stage": "plugin-host-ready",
+        "scalesWithData": false
+      }
+    ],
+    "scalingStages": [
+      {
+        "stage": "runner-ready",
+        "largeMedianMs": 7367.9,
+        "smallMedianMs": 1091.6,
+        "deltaMs": 6276.3,
+        "scalesWithData": true
+      },
+      {
+        "stage": "execution-ready",
+        "largeMedianMs": 3155.1,
+        "smallMedianMs": 52.7,
+        "deltaMs": 3102.4,
+        "scalesWithData": true
+      },
+      {
+        "stage": "attachment-protection",
+        "largeMedianMs": 293.1,
+        "smallMedianMs": 3.9,
+        "deltaMs": 289.2,
+        "scalesWithData": true
+      },
+      {
+        "stage": "attachment-protection-checkpoints",
+        "largeMedianMs": 244.9,
+        "smallMedianMs": 0.8,
+        "deltaMs": 244.1,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-inbox-ready",
+        "largeMedianMs": 210.7,
+        "smallMedianMs": 9.9,
+        "deltaMs": 200.8,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-run-leases-ready",
+        "largeMedianMs": 197.3,
+        "smallMedianMs": 10.3,
+        "deltaMs": 187,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-observability-ready",
+        "largeMedianMs": 89,
+        "smallMedianMs": 8.6,
+        "deltaMs": 80.4,
+        "scalesWithData": true
+      },
+      {
+        "stage": "runner-infra-durable-effect-leases-ready",
+        "largeMedianMs": 49.1,
+        "smallMedianMs": 10.3,
+        "deltaMs": 38.8,
+        "scalesWithData": true
+      }
+    ],
+    "constantStages": [
+      {
+        "stage": "archive-index-ready",
+        "largeMedianMs": 15,
+        "smallMedianMs": 2.7,
+        "deltaMs": 12.4,
+        "scalesWithData": false
+      },
+      {
+        "stage": "renderer-workspace-entries",
+        "largeMedianMs": 1005.3,
+        "smallMedianMs": 997.3,
+        "deltaMs": 8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "desktop-shell-initialized",
+        "largeMedianMs": 20,
+        "smallMedianMs": 18.2,
+        "deltaMs": 1.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "branding-ready",
+        "largeMedianMs": 18.5,
+        "smallMedianMs": 16.9,
+        "deltaMs": 1.6,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-checkpoint-store-ready",
+        "largeMedianMs": 2.2,
+        "smallMedianMs": 1.4,
+        "deltaMs": 0.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-memory-ready",
+        "largeMedianMs": 7.3,
+        "smallMedianMs": 6.4,
+        "deltaMs": 0.8,
+        "scalesWithData": false
+      },
+      {
+        "stage": "locator-written",
+        "largeMedianMs": 3.8,
+        "smallMedianMs": 3.1,
+        "deltaMs": 0.7,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-bootstrap-files-loaded",
+        "largeMedianMs": 21.6,
+        "smallMedianMs": 21.3,
+        "deltaMs": 0.4,
+        "scalesWithData": false
+      },
+      {
+        "stage": "data-root-ready",
+        "largeMedianMs": 1.2,
+        "smallMedianMs": 0.9,
+        "deltaMs": 0.3,
+        "scalesWithData": false
+      },
+      {
+        "stage": "project-index-ready",
+        "largeMedianMs": 1,
+        "smallMedianMs": 0.8,
+        "deltaMs": 0.2,
+        "scalesWithData": false
+      },
+      {
+        "stage": "config-ready",
+        "largeMedianMs": 2,
+        "smallMedianMs": 1.9,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "memory-v3-ready",
+        "largeMedianMs": 0.9,
+        "smallMedianMs": 0.8,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "ui-indexes-ready",
+        "largeMedianMs": 0.2,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "durable-config-ready",
+        "largeMedianMs": 0.1,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "session-index-ready",
+        "largeMedianMs": 0.1,
+        "smallMedianMs": 0.1,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-durable-ready",
+        "largeMedianMs": 0,
+        "smallMedianMs": 0,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-embedding-ready",
+        "largeMedianMs": 0.2,
+        "smallMedianMs": 0.2,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-skills-ready",
+        "largeMedianMs": 3.2,
+        "smallMedianMs": 3.2,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-harness-ready",
+        "largeMedianMs": 0.4,
+        "smallMedianMs": 0.5,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-returned",
+        "largeMedianMs": 0,
+        "smallMedianMs": 0,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "stage": "keychain-ready",
+        "largeMedianMs": 0.4,
+        "smallMedianMs": 0.4,
+        "deltaMs": -0.1,
+        "scalesWithData": false
+      },
+      {
+        "stage": "local-api-ready",
+        "largeMedianMs": 9.6,
+        "smallMedianMs": 9.8,
+        "deltaMs": -0.2,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-durable-events-ready",
+        "largeMedianMs": 0.7,
+        "smallMedianMs": 1.3,
+        "deltaMs": -0.5,
+        "scalesWithData": false
+      },
+      {
+        "stage": "user-data-layout-ready",
+        "largeMedianMs": 8,
+        "smallMedianMs": 9.4,
+        "deltaMs": -1.5,
+        "scalesWithData": false
+      },
+      {
+        "stage": "runner-infra-skill-resources-synced",
+        "largeMedianMs": 10.4,
+        "smallMedianMs": 12,
+        "deltaMs": -1.6,
+        "scalesWithData": false
+      }
+    ],
+    "unattributedGaps": [
+      {
+        "gap": "runner-infra-observability-ready -> runner-infra-durable-events-ready",
+        "largeMedianUnattributedMs": 7014.1,
+        "smallMedianUnattributedMs": 1025.6,
+        "deltaMs": 5988.5,
+        "scalesWithData": true
+      },
+      {
+        "gap": "process-start -> electron-app-ready",
+        "largeMedianUnattributedMs": 292.7,
+        "smallMedianUnattributedMs": 266.6,
+        "deltaMs": 26.1,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-infra-memory-ready -> runner-infra-bootstrap-files-loaded",
+        "largeMedianUnattributedMs": 0.1,
+        "smallMedianUnattributedMs": 0.1,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "gap": "attachment-protection -> execution-ready",
+        "largeMedianUnattributedMs": 0,
+        "smallMedianUnattributedMs": 0,
+        "deltaMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "gap": "electron-app-ready -> desktop-startup-visible",
+        "largeMedianUnattributedMs": 67.4,
+        "smallMedianUnattributedMs": 69.8,
+        "deltaMs": -2.4,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-infra-durable-effect-leases-ready -> runner-infra-durable-run-leases-ready",
+        "largeMedianUnattributedMs": 109.2,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-ready -> attachment-protection-checkpoints",
+        "largeMedianUnattributedMs": 48.5,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-infra-durable-events-ready -> runner-infra-durable-effect-leases-ready",
+        "largeMedianUnattributedMs": 48.6,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-infra-durable-run-leases-ready -> runner-infra-durable-inbox-ready",
+        "largeMedianUnattributedMs": 39.7,
+        "scalesWithData": false
+      },
+      {
+        "gap": "execution-start -> runner-infra-observability-ready",
+        "largeMedianUnattributedMs": 2.3,
+        "scalesWithData": false
+      },
+      {
+        "gap": "locator-written -> desktop-shell-initialized",
+        "largeMedianUnattributedMs": 0,
+        "scalesWithData": false
+      },
+      {
+        "gap": "runner-infra-durable-effect-leases-ready -> runner-infra-durable-inbox-ready",
+        "largeMedianUnattributedMs": 174.1,
+        "scalesWithData": false
+      }
+    ],
+    "scalingGaps": [
+      {
+        "gap": "runner-infra-observability-ready -> runner-infra-durable-events-ready",
+        "largeMedianUnattributedMs": 7014.1,
+        "smallMedianUnattributedMs": 1025.6,
+        "deltaMs": 5988.5,
+        "scalesWithData": true
+      }
+    ]
+  },
+  "realCopy": {
+    "spawnToReadyMs": [
+      32859,
+      6193
+    ],
+    "topStages": [
+      [
+        {
+          "index": 42,
+          "stage": "runner-ready",
+          "processUptimeMs": 28666.5,
+          "durationMs": 27863.8
+        },
+        {
+          "index": 32,
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 28616.1,
+          "durationMs": 5988.5
+        },
+        {
+          "index": 43,
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 29350.7,
+          "durationMs": 5044.1
+        },
+        {
+          "index": 57,
+          "stage": "execution-ready",
+          "processUptimeMs": 32684.6,
+          "durationMs": 4018.1
+        },
+        {
+          "index": 30,
+          "stage": "runner-infra-durable-run-leases-ready",
+          "processUptimeMs": 25510,
+          "durationMs": 2882.4
+        }
+      ],
+      [
+        {
+          "index": 38,
+          "stage": "runner-ready",
+          "processUptimeMs": 4379.5,
+          "durationMs": 3548.5
+        },
+        {
+          "index": 41,
+          "stage": "execution-ready",
+          "processUptimeMs": 5979,
+          "durationMs": 1599.5
+        },
+        {
+          "index": 28,
+          "stage": "runner-infra-durable-inbox-ready",
+          "processUptimeMs": 4335.6,
+          "durationMs": 633.9
+        },
+        {
+          "index": 23,
+          "stage": "renderer-workspace-entries",
+          "processUptimeMs": 1369.8,
+          "durationMs": 386.2
+        },
+        {
+          "index": 24,
+          "stage": "renderer-first-frame",
+          "processUptimeMs": 1372.4,
+          "durationMs": 379.6
+        }
+      ]
+    ],
+    "inventoryTotals": {
+      "files": 31221,
+      "bytes": 263198511
+    }
+  }
+}

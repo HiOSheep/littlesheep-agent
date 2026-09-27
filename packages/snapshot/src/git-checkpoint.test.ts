@@ -29,18 +29,23 @@ describe('GitCheckpointCoordinator', () => {
 
       // Nothing changed between the two runs, so the second reuses the first preimage instead of committing
       // an identical tree. The mark is the observable: it is emitted where the decision is made.
+      const beforeSecondRun = marks.length;
       const unchanged = await coordinator.beginRun({ runId: 'run-2', workspaceRoot: workspace });
       const unchangedSummary = await unchanged.complete({ sessionId: 'session-2' });
-      expect(marks.filter((line) => line.includes('"preimage-reused"'))).toHaveLength(1);
+      // Scoped to this run's own marks: the other cases in this file start coordinators too.
+      const secondRunMarks = marks.slice(beforeSecondRun);
+      expect(secondRunMarks.some((line) => line.includes('"preimage-reused"'))).toBe(true);
+      expect(secondRunMarks.some((line) => line.includes('"preimage-committed"'))).toBe(false);
 
       // A content change must produce a new preimage; the reuse must not hide it.
       await writeFile(join(dataRoot, 'MEMORY.md'), 'memory-v2', 'utf8');
+      const beforeThirdRun = marks.length;
       const changed = await coordinator.beginRun({ runId: 'run-3', workspaceRoot: workspace });
       await writeFile(join(dataRoot, 'MEMORY.md'), 'memory-v3', 'utf8');
       const changedSummary = await changed.complete({ sessionId: 'session-3' });
       expect(changedSummary.id).not.toBe(unchangedSummary.id);
-      // Two commits: run 1 and run 3. Run 2 reused run 1's.
-      expect(marks.filter((line) => line.includes('"preimage-committed"'))).toHaveLength(2);
+      // The changed run committed; the unchanged one did not.
+      expect(marks.slice(beforeThirdRun).some((line) => line.includes('"preimage-committed"'))).toBe(true);
 
       // The reuse must not become the only preimage: the changed run committed its own, which is what a
       // rollback of that run can rest on. (What a rollback then restores for a data file is the checkpoint's

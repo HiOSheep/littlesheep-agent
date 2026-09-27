@@ -469,8 +469,23 @@ export class GitCheckpointCoordinator {
     await this.dataRepository.initialize();
     await this.recoverPendingManifests();
     const createdAt = new Date().toISOString();
-    const paths = await this.dataManagedPaths();
-    const commit = await this.dataRepository.commitPaths(paths, `bootstrap ${createdAt}`, true);
+    // Starting the app used to walk the whole data root, stat every path, run the add batches and create an
+    // empty bootstrap commit — on every start, on the path to execution readiness. It is the same question
+    // `beginRun` asks, so it gets the same answer: if the recorded signature still describes this data root,
+    // the recorded commit is the bootstrap state and nothing needs to be written.
+    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
+    const gitDir = this.dataRepository.gitDir;
+    const stored = await readSignature(gitDir);
+    const reusable = stored !== undefined
+      && sameSignature(stored, buildSignature(stored.commit, walked.length, walked));
+    const paths = reusable ? undefined : await this.dataManagedPaths(walked.map((entry) => entry.path));
+    const commit = reusable
+      ? stored.commit
+      : await this.dataRepository.commitPaths(paths!, `bootstrap ${createdAt}`, true);
+    markPreimage(reusable ? 'bootstrap-reused' : 'bootstrap-committed', walked.length);
+    if (!reusable && commit) {
+      await writeSignature(gitDir, buildSignature(commit, paths!.length, walked));
+    }
     const manifest: VersionCheckpointManifest = {
       version: 1,
       id: randomUUID(),
@@ -481,9 +496,9 @@ export class GitCheckpointCoordinator {
       data: {
         repositoryId: 'littlesheep-data',
         commit,
-        trackedPathCount: paths.length,
+        trackedPathCount: paths?.length ?? stored?.trackedCount ?? walked.length,
       },
-      warningCodes: [],
+      warningCodes: reusable ? ['preimage-reused'] : [],
     };
     await this.writeManifest(manifest);
     await this.pruneManifests();
