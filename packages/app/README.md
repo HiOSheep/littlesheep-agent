@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 22:34:40
+最后更新：2026-09-27 22:36:52
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -203,3 +203,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - 冷启动就绪路径（2026-09-27）：附件保护/清理与会话索引预热移出关键路径，窗口与发送可更早就绪；真实数据根上可用 LITTLESHEEP_BOOTSTRAP_TIMING=1 查看 ttachment-protection* 标点。
 - 前端改造第一批（2026-09-27）：**O1** 把"未解决失败／权限拒绝／待决策／未通过的验证结论"投影到过程折叠**之外**（`renderer/chat/attention-row.tsx`），普通模式也不再漏掉失败步骤计数，且未通过的验证结论绝不读成通过；**S1** 把设置侧栏重排为四组（通用／模型与行为／连接与扩展／存储与环境），总览只留少量常用入口与需要处理的配置问题，归档与记忆树保留工作模块入口、"已安排"退出常用导航但设置搜索仍可直达，并新增旧标识映射保证深链与前进后退不失效（可达性由测试断言，不靠文字声称）。两项均未跑完真实窗口的最终验收，边界见任务书台账。
 - 前端改造第二批（2026-09-27）：**V1** 收敛材质与层级——新增 `styles/13-interaction-states.css` 统一控件角色状态，12 个样式文件按已有令牌去重填充/边框/覆盖规则，玻璃限定在侧栏、输入区、浮动条与菜单，密集内容改用稳定底色；**V3** 新增 `ui/state-view.ts(x)` 与 `ui/state-icons.tsx`，把加载/无数据/不可用/失败四态做成共享原语并配图标与文字（不只靠颜色）。断言层新增 `ui-material-roles.test.ts`、`ui-state-matrix.test.ts`，其中状态矩阵抓到并修掉一个真实缺陷：`.runtime-menu-item:hover:not(:disabled)`（specificity 400）曾压过菜单按下组（300），即按下态在真实窗口里不可见。**尚未完成真实窗口最终验收**：150%/200% 缩放对比度、减少动态效果、圆角是否裁切焦点环未测。
+- 发布载荷收窄（2026-09-27，SL-04 已完成）：真实重打包实测 unpacked **1175.01 → 569.62 MiB（−51.5%）**、`app.asar` **444.90 → 66.46 MiB（−85.1%）**、`app.asar.unpacked` **361.26 → 134.31 MiB（−62.8%）**、安装包 **273.51 → 158.22 MiB（−42.2%）**；解包差值可精确分解为 `onnxruntime-node` −223.10 MiB（非目标平台/架构切片）与 `node-pty` −3.85 MiB。收窄规则写在 `electron-builder.yml` 的两组 negation：非目标平台原生资产，以及渲染器 bundle 已自带的前端库（按"渲染器库闭包 − 主进程可动态加载包闭包"计算，避免误删）。打包输出改由 `scripts/lib/release-artifacts.mjs` 解析（`LITTLESHEEP_RELEASE_DIR`，默认在共享运行产物根），因此仓库内不再产生发布产物。**未验证**：embedding 模型的**下载**路径（本机 Node 出网到 huggingface.co 被阻断，已改用 SHA-256 校验过的文件验证加载与离线复用）与 Mermaid 渲染（无门禁断言）。
