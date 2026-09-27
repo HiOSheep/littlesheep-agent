@@ -43,7 +43,7 @@
 
 - Runtime 状态一致性与必要记忆任务书（2026-09-22）：**已于 2026-09-27 退役**，事实归入[项目状态](decision/project-status.md)的「文件一致性与受控记忆（2026-09-27）」。
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
-- [对话任务连续性 P0 专项任务书 2026-08-13](taskbooks/conversation-task-continuity-taskbook-2026-08-13.md)：修复普通聊天未绑定 waiting-user Checkpoint、执行现场与附件/临时工具无法自然恢复、权限未按当前状态重验及最终回答断档。
+- 对话任务连续性 P0 专项任务书（2026-08-13）：**已于 2026-09-27 退役**，事实归入[项目状态](decision/project-status.md)的「对话连续性（2026-09-27）」。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：现行红线口径（会话累计、真实长任务节点、`pnpm run check:cache-acceptance`）、当前实测、冻结输入、测量规则、禁止做法、完成条件与仍未汇总项；仍然承重的历史结论集中在附录 A，逐轮测量日志已移出、只留在 git 历史。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前 checkout 上跑冻结负载的逐请求字符数、共享前缀与工具目录摘要对比，并维护**长任务批次历史表**（每一批的唯一事实与机器可读账本链接；逐批叙述已于 2026-09-24 退役）；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
 - [桌面冷启动基线 2026-09-23](reference/cold-start-baseline/README.md)：CS-01 的五时间点基线（进程启动、真实首帧、输入可用、当前会话可读、首次可执行）× 空/普通/大历史/待恢复四档隔离数据，含逐次原始机器可读账本、CS-04 执行准备预算拆解（Runner 构建 121 ms / RunRouter 50 ms / 插件宿主 2.8 ms）与两项已被实测证伪的"提速"改动记录；[原始账本](reference/cold-start-baseline/desktop-cold-start-baseline-2026-09-23.json)。

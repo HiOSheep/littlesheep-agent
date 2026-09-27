@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | 文件观察、写前版本校验、exec 失效 | [项目状态](../decision/project-status.md) 的「文件一致性与受控记忆（2026-09-27）」（原 Runtime 状态一致性任务书 RS-00～04，已于 2026-09-27 退役） | 保持约束、复用回归，不重做实现 |
 | 压缩与记忆解绑、明确/必要写入、向量门、纠正与忘记 | 同上 RS-05/06/06A/06B/07/08 | 全部排除；兼容清理不得删除其仍使用的来源与认识状态 |
-| 原目标续接、附件/工具配方、恢复权限、旧检查点迁移与回滚、交付物级验收 | [对话任务连续性任务书](conversation-task-continuity-taskbook-2026-08-13.md) 的现行复核边界及未完成验收 | HC-02 仅隔离格式与当前执行类型；HC-03 仅修当前结构验证接线，不重建连续性机制或宣称该专项关闭 |
+| 原目标续接、附件/工具配方、恢复权限、旧检查点迁移与回滚、交付物级验收 | [项目状态](../decision/project-status.md) 的「对话连续性（2026-09-27）」（原对话任务连续性任务书，已于 2026-09-27 退役：`verify:conversation-continuity-live`、`verify:electron-deepseek-reply-continuity`） | 保持约束、复用回归，不重做实现 | HC-02 仅隔离格式与当前执行类型；HC-03 仅修当前结构验证接线，不重建连续性机制或宣称该专项关闭 |
 | 子 Agent 身份、隔离、预算、停止、父子账本及效率对跑 | [单层子 Agent 任务书](single-level-subagent-taskbook-2026-09-24.md) SA-00～11 | 不新增委派能力；只提供清楚、稳定的主循环入口 |
 | UI、Shell 选择、终端、工作区及 HTML 预览 | UI/UX 任务书（`docs/taskbooks/application-ui-ux-taskbook-2026-09-22.md`，已于 2026-09-26 退役；现行事实见[项目状态](../decision/project-status.md) 的"应用层 UI 与工作区"） | 不重排期；历史活动展示的兼容语义保持 |
 | `model-observability.ts`、`tool-loop.ts` 拆分 | [模块拆分地图](../reference/module-split-map.md)“强制拆分队列”中对应两行 | 第 5 节只给接缝验收和执行次序；实现范围、行数和完成记录仍只更新原队列 |
