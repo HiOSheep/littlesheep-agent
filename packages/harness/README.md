@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-27 10:02:55
+最后更新：2026-09-27 10:09:33
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -8,7 +8,7 @@
 
 - 运行中 `user_message` 是当前 run 的用户输入：`runtime-control-boundary.ts` 在安全边界验收并有界暂存，`stages/execute/tool-loop.ts` 在模型请求前后取出；响应到达时的新要求会使旧工具提议失效。容量满时明确拒绝新事件，不覆盖旧事件。
 
-- 重复调用的"新执行 vs 恢复重放"有可验证凭据（2026-09-27，HC-04）：副作用账本仍默认拒绝同一 `tool:<name>:<inputHash>` 成功后再调用；只有当**工具声明** `reRunnableAfterResourceChange`、副作用种类不是 `unknown`、且账本里有**晚于该次结算**的同资源成功变更时，Runtime 才发放一次新的执行身份（`:retryN` 独立结算，意图事件带 `warrant:resource-changed:<前序效果>` 审计），原结算保留。模型重复请求、换个理由、或在变更之前调用都不构成凭据；`write`/`edit` 已声明该能力，不透明工具（如 `exec`）不声明，因此其同参数重复仍被拒绝。
+- 重复调用的"新执行 vs 恢复重放"有可验证凭据（2026-09-27，HC-04）：副作用账本仍默认拒绝同一 `tool:<name>:<inputHash>` 成功后再调用；只有当**工具声明** `reRunnableAfterResourceChange`、副作用种类不是 `unknown`、且账本里有**晚于该次结算**的同资源成功变更时，Runtime 才发放一次新的执行身份（`:retryN` 独立结算，意图事件带 `warrant:resource-changed:<前序效果>` 审计），原结算保留。模型重复请求、换个理由、或在变更之前调用都不构成凭据；`write`/`edit` 已声明该能力，不透明工具（如 `exec`）不声明，因此其同参数重复仍被拒绝。**真实模型验收**：`pnpm run verify:ledger-reexecution-live`（DeepSeek `deepseek-flash`、隔离工作区）在同一会话里跑两个场景——"写 v1 → 读 → 写 v2 → 读 → 用与第一次完全相同的参数再写 v1"必须**执行成功**且文件最终为 v1；"写 A → 立刻再写 A"必须被拒且原因点名 `refusing to replay`。实测两场景均通过。
 - VERIFY 不再依赖已删除执行器的计划（2026-09-27，HC-03）：窄结构判定改读本次 run 的 invocation/result/副作用与它自己记录的工具调用参数；`routeKnownIncompleteExecution` 的局部重规划与六个步骤专属辅助函数已删除。
 - 运行期事件重入有界（2026-09-27）：延迟的用户补充/任务事件**每个事件只交给主循环一次**，之后按主循环的决定收尾；没有阶段消费该事件时不再无限弹回 `execute`（此前会让 run 无法结束并耗尽内存）。回归见 `default-harness.test.ts`。
 - 公开入口是 `src/index.ts`；阶段实现在 `src/stages/`，装配在 `default-harness.ts`，唯一的驱动是 `durable-harness.ts`（`createDurableHarness`），由 `createDefaultHarness` 装配阶段后调用，Runner 只构建一个 harness。

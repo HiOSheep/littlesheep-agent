@@ -2,7 +2,7 @@
 
 这里保存 LS 随核心发布的受控工具实现。
 
-最后更新：2026-09-24 04:25:40
+最后更新：2026-09-27 02:10:27
 
 ## 分类
 
@@ -28,3 +28,5 @@
 - 网络工具只通过每轮注入的 `WebRetrievalRuntime` 执行：`web_search` 只能使用 Runtime 选定的 Provider，`web_fetch` 只能匿名读取已校验的公共 HTTP(S) URL。它们不接收 endpoint、method、header、Cookie、Authorization、body、proxy 或输出路径；搜索/网页内容一律是 `external_untrusted`，持久化边界只接受 `WebEvidenceProjection`。
 - 网络关闭、Provider 未配置、敏感 query、私网/危险 URL、超时、取消和 citation 不一致必须默认拒绝或保留 partial/blocked 状态，不能由工具隐式 fallback 到 HTML scraping、浏览器或长期 Memory 写入。
 - 禁止工具自行持久化审批或绕过 Registry/Wrapper；测试与实现同目录。
+
+- `write.ts` / `edit.ts`：除权限与 recovery key 之外，还声明 `reRunnableAfterResourceChange`（HC-04）——同参数重跑只有在 Runtime 记录了同资源的后续成功变更时才是新执行，否则仍是账本拒绝的重放。

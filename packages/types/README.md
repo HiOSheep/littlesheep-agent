@@ -1,12 +1,13 @@
 # @littlesheep/types
 
-最后更新：2026-09-27 09:40:39
+最后更新：2026-09-27 02:10:27
 
 保存跨 package 的纯 TypeScript 契约，是运行时协议的唯一公共类型来源。
 
 ## 职责与边界
 
 - 公开入口是 `src/index.ts`；`conversation-continuation.ts` 拥有会话续接审计证据（`ConversationContinuationEvidence` 与它的版本常量，含 `handoff`），`task.ts` 拥有需求校准、TaskBook、步骤执行与验证契约（已持久化的 TaskBook 在当前 runtime 里是只读历史，`TaskComplexity` 等由已删除的 DECIDE 产生的字段只作兼容），`agent.ts` 拥有状态机、RunContext 与 Hook 契约（`RunContext.modelHistory` 是"模型回放用的任务区间转录"，与只含 prose 的 `history` 分开），`message.ts` 拥有 Message/ContentBlock/ToolCall/ToolResult 契约（`ToolCall.rawArguments`、`tool_result.modelContent`、assistant 的文本前言与 `reasoning`、`Message.runtimeTail`/`runtimeTailId` 都是任务区间按字节回放所需：原始参数串只在工具没有输入 projector 时保存，带 `webEvidence` 的结果永不保存模型看到的正文，`runtimeTail` 消息不得进入 prose/UI/连续性投影、也不计入压缩阈值与摘要计数，`runtimeTailId` 让下一轮识别"同一条目、同样文本"从而不重复发送），`stage-transitions.ts` 是 Core Flow 边的唯一来源（唯一驱动会用 `inspectStageTransition` 校验每一次实际转移，因此新增路由必须同时登记该边；`execute` 边上 `ask_user` 是**真实**可达目标——主循环内模型可调用 `request_user_input`，漏登会让一次合法提问判定整轮失败；`decide`/`evolve`/`capture` 只作为历史 stage 名与旧记录的兼容边保留，供旧检查点读取与改派），`runtime-contracts.ts` 的 `RuntimeActiveRunPhase` 用 `starting`/`executing`/`verifying`/`finalizing` 描述活动 run，未产生步骤、工具或验证证据的阶段就是 `starting`，不存在规划阶段，`web-retrieval.ts` 拥有 provider 无关、可序列化且有界的网络策略、搜索、抓取、引用、错误和证据投影契约，其余消息、会话、工具、记忆和运行协议也按领域文件分组。
+- `AgentTool.reRunnableAfterResourceChange`（2026-09-27，HC-04）是**能力声明**：工具说明“同一参数在 Runtime 记录了同资源变更后可以是一次新执行”，授权仍由副作用账本用自己记录的事实判定；未声明或效果种类为 `unknown` 的工具不受影响。
 - **当前执行契约与历史读取契约分开表达**（2026-09-27，HC-02）：`ExecutionWorkMode` 只有 `bounded_loop`（本构建唯一可执行的模式），旧构建写下的 `task_book` 属于 `PersistedExecutionWorkMode` / `PersistedWorkPolicy`，只由恢复校验 `isSupportedPersistedWorkPolicy` 接受，运行路径不再读取它；`stage-transitions.ts` 同样分成当前图 `allowedTransitions`（只含已注册 stage，`inspectStageTransition` 对它校验，遇到退休 stage 一律 fail closed 并说明是 `not-an-edge` 还是 `retired-stage`）与只读历史 `historicalStageTransitions` / `historicalStageNames`。每个保留值都在声明处写明支持的版本、消费者与移除条件。
 - 只定义稳定数据结构和端口，不实现文件系统、网络、Electron、Provider 或业务流程。
 - `ConversationContinuationEvidence.handoff` 是"新 run 故意没有继承什么"的公开字段：任务进度随 checkpoint 继承，限制单轮自主工作量的额度不继承，因此 `previousFailure` 与 `runBudget`（来源轮的模型调用数、工具循环次数，以及本 run 按当前配置拿到的额度）只作记录，不重新施加。`RunContext` 契约里 `lastError`、`recoveryAttempts`、`modelCallCount`、`loopBudget` 的 `purpose` 同步写明这条边界：续接只继承任务状态。
