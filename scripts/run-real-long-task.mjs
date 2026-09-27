@@ -28,6 +28,7 @@ import {
   locatorRelativePath, removeEnvironment, runStream, startElectron, waitForDesktop, waitForExit, waitForLocator, waitForMissing,
 } from './lib/electron-deepseek-acceptance.mjs'
 import { judgeNodes, projectSessions, readLedger } from './lib/session-cache-ledger.mjs'
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const RUN_TIMEOUT_SECONDS = 300
@@ -600,7 +601,7 @@ async function writeReports(report, options) {
   const clean = createSanitizer(report)(report)
   const jsonPath = options.json
     ? resolve(process.cwd(), options.json)
-    : join(repoRoot, '.codex_tmp', `real-long-task-${report.taskId}-${report.attempt}.json`)
+    : runArtifact(`real-long-task-${report.taskId}-${report.attempt}.json`)
   await mkdir(dirname(jsonPath), { recursive: true })
   await writeFile(jsonPath, `${JSON.stringify(clean, null, 2)}\n`, 'utf8')
   if (!options.report) return { jsonPath, markdownPath: undefined }

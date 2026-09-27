@@ -10,11 +10,12 @@ import { fileURLToPath } from 'node:url'
 // Process launch/exit, the locator handshake, the CDP client and the polling
 // primitives come from the shared real-window harness.
 import { createElectronHarness } from './lib/electron-cdp-harness.mjs'
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const START_TIMEOUT_MS = 60_000
-const SCREENSHOT_PATH = join(repoRoot, '.codex_tmp', 'model-provider-ui.png')
-const LIST_SCREENSHOT_PATH = join(repoRoot, '.codex_tmp', 'model-provider-list.png')
+const SCREENSHOT_PATH = runArtifact('model-provider-ui.png')
+const LIST_SCREENSHOT_PATH = runArtifact('model-provider-list.png')
 const harness = createElectronHarness({ startTimeoutMs: START_TIMEOUT_MS })
 const { waitFor, reservePort, waitForExit } = harness
 

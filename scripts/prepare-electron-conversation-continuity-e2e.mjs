@@ -11,8 +11,9 @@ import {
   waitForDesktop,
   waitForLocator,
 } from './lib/electron-deepseek-acceptance.mjs'
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
-const controlDir = join(repoRoot, '.codex_tmp', 'continuity-p0-e2e')
+const controlDir = runArtifact('continuity-p0-e2e')
 const manifestPath = join(controlDir, 'live-environment.json')
 const fixtureName = 'p0-conversation-continuity-source.pdf'
 const model = 'deepseek-v4-flash'

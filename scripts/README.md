@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-27 19:03:20
+最后更新：2026-09-27 20:55:45
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -42,3 +42,4 @@
 `verify:workspace-large-directory` 在 1,000/10,000 个文件的隔离目录中检查 Main 的 320 行上限、筛选后再截断带来的上限外文件可达性、逐键稳定时间、320 行 Tab 导航及滚动布局成本；门里同时记录"不做虚拟化"的依据（未截断时的创建/布局成本随行数单调上升）。`verify:review-refresh-errors` 还断言连续 409 有界停止和持续 Git 状态变化时的 `unstable` 提示。
 
 `verify:electron-ui-state-continuity` 另建第二个工作区根，走"root A → 项目 root B → B 内新建会话 → 重启应用 → 回到 A"的往返，断言：B 的文件树只列 B 自己的文件、`GET /workspace/review` 对非活动根返回 **403** 而活动根 200、切换后终端 0 会话，以及重启后未保存草稿（`draftRestored: true`）、文件标签的 dirty 状态、浏览器标签与展开目录都还在。该门为此修掉三处验收脚本缺陷：草稿输入落进文件导航的筛选框（把整棵树筛空）、没等 Monaco 的可编辑表面就开始打字、以及 `Page.reload` 之后 CDP 执行上下文失效而不重连。
+- 运行产物不再写进检出目录（2026-09-27）：验证报告、截图、临时诊断与 task manifest 统一走 `scripts/lib/run-artifacts.mjs`，默认落在 `<系统临时目录>/littlesheep-run-artifacts/`，可用 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 覆盖；脚本自带的 `--dir` / `--json` / `--report` 仍优先。此前 10 个脚本默认写 `.codex_tmp/`，导致清理后每次跑门都会在仓库里重新长出缓存；现在跑完 `verify:core` 仓库内不再产生任何文件。

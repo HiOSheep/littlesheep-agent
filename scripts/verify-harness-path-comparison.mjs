@@ -18,13 +18,14 @@ import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 import { compareHarnessPaths } from '../packages/harness/dist/index.js'
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
 const START_TIMEOUT_MS = 90_000
 const RUN_TIMEOUT_MS = 180_000
 const POLICIES = ['full', 'research', 'restricted']
-const OUTPUT_PATH = join(repoRoot, '.codex_tmp', 'harness-path-comparison.json')
+const OUTPUT_PATH = runArtifact('harness-path-comparison.json')
 const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_COMPARISON_OFFLINE === '1'
 /** Force a low compaction threshold so the paired sample covers the compaction round class. */
 const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'

@@ -2,9 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const defaultReportDirectory = resolve(repoRoot, '.codex_tmp', 'verification-reports');
+const defaultReportDirectory = runArtifact('verification-reports');
 const gateNames = new Set(['changed', 'core', 'full']);
 const stageOrder = Object.freeze({
   changed: ['check:repo', 'selector', 'typecheck', 'tests', 'build', 'recovery'],

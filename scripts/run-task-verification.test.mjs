@@ -2,11 +2,12 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createTaskPlan, parseArgs, runTaskVerification } from './run-task-verification.mjs';
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = process.cwd();
 
 async function withReportDirectory(callback) {
-  const directory = await mkdtemp(join(repoRoot, '.codex_tmp', 'task-test-'));
+  const directory = await mkdtemp(runArtifact('task-test-'));
   try { return await callback(directory); } finally { await rm(directory, { recursive: true, force: true }); }
 }
 

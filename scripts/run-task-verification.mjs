@@ -4,9 +4,10 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverWorkspaceProjects, projectConfigPaths, projectsForFiles } from './workspace-projects.mjs';
 import { writeVerificationReport } from './run-verification-gate.mjs';
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const defaultReportDirectory = resolve(repoRoot, '.codex_tmp', 'verification-reports', 'task');
+const defaultReportDirectory = runArtifact('verification-reports', 'task');
 
 function normalizePath(value) {
   return String(value).replace(/\\/g, '/').replace(/^\.\//u, '');

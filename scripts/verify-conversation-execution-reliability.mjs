@@ -9,6 +9,7 @@ import { loadBranding, resolveDataDir } from '../packages/branding/dist/index.js
 import { getProvider, loadConfig, withProviderPresets } from '../packages/config/dist/index.js'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
 import { createGameArtifactProbe } from './lib/game-artifact-probe.mjs'
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 
 /**
  * Conversation-execution delivery gate: the acceptance the retired CE-12
@@ -105,7 +106,7 @@ async function main() {
   // workspace paths that needed quoting in the real shell.
   const workspaceDir = join(root, 'work space')
   const chromiumDir = join(root, 'chromium')
-  const appLogPath = join(repoRoot, '.codex_tmp', `ce12-app-${Date.now()}.log`)
+  const appLogPath = runArtifact(`ce12-app-${Date.now()}.log`)
   let electron
   let report
   let succeeded = false

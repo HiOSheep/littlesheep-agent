@@ -11,7 +11,7 @@ import {
 const repoRoot = process.cwd();
 
 async function withReportDirectory(callback) {
-  const directory = await mkdtemp(join(repoRoot, '.codex_tmp', 'gate-test-'));
+  const directory = await mkdtemp(runArtifact('gate-test-'));
   try {
     return await callback(directory);
   } finally {

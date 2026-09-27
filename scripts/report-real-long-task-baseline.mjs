@@ -1,4 +1,7 @@
 // Aggregate the frozen real-long-task runs into one baseline record.
+
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
+// Aggregate the frozen real-long-task runs into one baseline record.
 //
 // Reads the per-run reports written by scripts/run-real-long-task.mjs (plus the
 // kept isolated data roots for the loss decomposition) and emits the LT-00
@@ -23,12 +26,12 @@ const valueOf = (flag) => {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : undefined;
 };
-const resultsDir = resolve(repoRoot, valueOf('--dir') ?? '.codex_tmp');
+const resultsDir = resolve(repoRoot, valueOf('--dir') ?? runArtifactsRoot);
 // Defaults stay inside the ignored scratch directory on purpose: a bare run must not
 // clobber a committed historical ledger, and it must not recreate a Markdown render that
 // was retired. Freeze a batch by naming `--json` and (optionally) `--markdown` explicitly,
 // then add its row to docs/reference/cache-baseline/README.md by hand.
-const jsonPath = resolve(repoRoot, valueOf('--json') ?? '.codex_tmp/real-long-task-baseline.json');
+const jsonPath = resolve(repoRoot, valueOf('--json') ?? runArtifact('real-long-task-baseline.json'));
 const markdownPath = valueOf('--markdown') ? resolve(repoRoot, valueOf('--markdown')) : null;
 
 function readRuns() {
