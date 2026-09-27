@@ -20,14 +20,14 @@ export function prefersReducedMotion(): boolean {
  */
 export function useAnimatedCount(value: number | null, durationMs = LINE_COUNT_MOTION_MS): number | null {
   const [display, setDisplay] = useState(value)
-  const fromRef = useRef(value)
+  const displayedRef = useRef(value)
   const frameRef = useRef<number>()
   const startedAtRef = useRef(0)
 
   useEffect(() => {
-    const from = fromRef.current
+    const from = displayedRef.current
     if (value === null || from === null || from === value || durationMs <= 0 || prefersReducedMotion()) {
-      fromRef.current = value
+      displayedRef.current = value
       setDisplay(value)
       return
     }
@@ -38,9 +38,9 @@ export function useAnimatedCount(value: number | null, durationMs = LINE_COUNT_M
       // Ease out: fast at first, settling on the real number.
       const eased = 1 - (1 - progress) * (1 - progress)
       const next = Math.round(from + (value - from) * eased)
+      displayedRef.current = next
       setDisplay(next)
       if (progress < 1) frameRef.current = window.requestAnimationFrame(step)
-      else fromRef.current = value
     }
     frameRef.current = window.requestAnimationFrame(step)
     return () => {

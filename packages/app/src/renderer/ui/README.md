@@ -1,7 +1,9 @@
 # Renderer 通用 UI
-最后更新：2026-09-27 04:28:55
+最后更新：2026-09-27 10:23:53
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
+
+`message-icons.tsx` 的分叉图标使用一条输入路径向两个端点分流的轮廓，16px 下保留清晰的分叉方向；消息行控制的尺寸和悬停状态在 `styles/05-chat-messages.css`。
 
 - `feedback.ts`、`feedback-notice.tsx`：异步操作反馈的唯一结构。`tone` 是字段而不是从文案里解析出来的（调用方知道成功还是失败就直说），`feedbackRole` 决定 `status` / `alert`，长 Runtime 错误在这里有界化并由视图折叠在“技术详情”里；`FeedbackNotice` 同时渲染色调、可选的重试动作和详情披露，`busy` 期间禁用重试以免重复提交同一事务。
 - `presence.tsx`：淡入淡出、外部点击收回和存在状态；外部点击收回的 Escape 也走模态层仲裁，只有最上层会消费该键。

@@ -194,6 +194,18 @@ export async function runAgentStream(
   return consumeRunStream(res, handlers)
 }
 
+/** Read the completed authoritative run after a local SSE observer disconnects. */
+export async function replayCompletedRun(runId: string, signal?: AbortSignal): Promise<RunResult | null> {
+  const response = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, runId), { signal })
+  if (response.status === 404) return null
+  if (!response.ok) throw await localApiResponseError(response)
+  const log = await response.json() as RunResult
+  if (log.runId !== runId || !['ok', 'error', 'aborted'].includes(log.status)) {
+    throw new Error('Local App API returned an invalid run replay')
+  }
+  return log
+}
+
 export async function consumeRunStream(
   res: Response,
   handlers: RunStreamHandlers,
@@ -208,6 +220,7 @@ export async function consumeRunStream(
   const decoder = new TextDecoder()
   let buffer = ''
   let finalResult: RunResult | undefined
+  let finalResultRef = ''
   let activeRunId = ''
   let approvalError: unknown
   let rejectApprovalFailure: (error: unknown) => void = () => undefined
@@ -236,13 +249,14 @@ export async function consumeRunStream(
       } else if (event.name === 'replace') {
         handlers.onReplace?.(String((event.data as { text?: string }).text ?? ''))
       } else if (event.name === 'tool_start' || event.name === 'tool_end') {
-        const d = event.data as { callId?: string; name?: string; stepId?: string; input?: unknown; ok?: boolean; output?: string; error?: string }
+        const d = event.data as { callId?: string; name?: string; stepId?: string; input?: unknown; lineProgress?: { additions: number; deletions: number | null }; ok?: boolean; output?: string; error?: string }
         handlers.onToolEvent?.({
           type: event.name,
           callId: String(d.callId ?? ''),
           name: String(d.name ?? ''),
           stepId: d.stepId,
           input: d.input,
+          lineProgress: d.lineProgress,
           ok: d.ok,
           output: d.output,
           error: d.error,
@@ -281,6 +295,8 @@ export async function consumeRunStream(
           })
       } else if (event.name === 'result') {
         finalResult = event.data as RunResult
+      } else if (event.name === 'result_ref') {
+        finalResultRef = String((event.data as { runId?: string }).runId ?? '')
       } else if (event.name === 'error') {
         throw new RunStreamServerError(
           String((event.data as { error?: string }).error ?? 'stream failed'),
@@ -292,6 +308,11 @@ export async function consumeRunStream(
     if (done) break
   }
 
+  if (!finalResult && finalResultRef) {
+    if (finalResultRef !== activeRunId) throw new Error('Local app API result reference does not match start metadata')
+    finalResult = await replayCompletedRun(finalResultRef)
+      ?? undefined
+  }
   if (!finalResult) throw new Error('Local app API stream ended without result')
   if (!activeRunId) throw new Error('Local app API stream ended without start metadata')
   if (finalResult.runId !== activeRunId) throw new Error('Local app API stream result run id does not match start metadata')

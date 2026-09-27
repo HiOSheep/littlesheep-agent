@@ -42,6 +42,10 @@ export interface ToolStreamEvent {
   streamRef?: TranscriptStreamRef
   toolCallIndex?: number
   receivedCharacters?: number
+  /** Provisional numeric projection of streamed file arguments; no source text. */
+  lineProgress?: { additions: number; deletions: number | null }
+  /** Bounded path or command preview while tool arguments are generated. */
+  argumentSummary?: string
   generationStatus?: 'running' | 'done' | 'failed' | 'aborted'
   callId?: string
   name?: string

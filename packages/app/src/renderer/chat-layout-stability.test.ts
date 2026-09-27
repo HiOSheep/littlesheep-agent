@@ -162,7 +162,7 @@ describe('chat layout stability', () => {
     expect(composer).toContain('new ResizeObserver(() => updateOverlayClearance())')
   })
 
-  it('keeps Agent activity in one flat immediate flow with a stable Markdown reply surface', async () => {
+  it('keeps the reply surface stable while completed Agent activity can collapse', async () => {
     const styles = await readRendererStyleSource()
     const assistantTurn = await readRendererFile('./chat/assistant-turn.tsx')
     const toolRow = await readRendererFile('./chat/agent-tool-row.tsx')
@@ -172,8 +172,11 @@ describe('chat layout stability', () => {
     expect(assistantTurn).toContain('<Markdown text={message.text} />')
     expect(assistantTurn).not.toContain('Boolean(message.activityCollapsed)')
     expect(assistantTurn).not.toContain('ActivityDisclosure')
+    expect(assistantTurn).toContain('className="assistant-process-trigger"')
+    expect(assistantTurn).toContain('className="assistant-process-content" hidden={!processOpen}')
     expect(toolRow).toContain('data-call-id={tool.callId}')
-    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*24px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
+    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*38px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
+    expect(styles).toContain('.assistant-process-content[hidden]')
     expect(styles).toMatch(/\.agent-flow-row\.is-active::after\s*\{[^}]*animation:\s*agent-flow-sweep 2\.6s ease-out infinite;/u)
     expect(styles).not.toContain('.assistant-turn-header')
     expect(styles).not.toContain('.activity-command-header')

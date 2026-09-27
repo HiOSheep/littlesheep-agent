@@ -66,6 +66,45 @@ describe('renderer run API', () => {
     expect(result).toMatchObject({ runId: 'run-1', status: 'ok', reply: 'done' })
   })
 
+  it('reads a large settled result by reference after the SSE body closes', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    const api = await loadRunApi()
+    fetchMock.mockResolvedValueOnce(streamResponse([
+      { name: 'start', data: { runId: 'run-large' } },
+      { name: 'delta', data: { delta: '完整回答' } },
+      { name: 'result_ref', data: { runId: 'run-large' } },
+    ])).mockResolvedValueOnce(new Response(JSON.stringify({
+      runId: 'run-large', sessionId: 'session-1', status: 'ok', reply: '完整回答', durationMs: 10,
+      finalReplySettlement: { status: 'settled', reply: '完整回答' },
+    }), { status: 200 }))
+
+    const deltas: string[] = []
+    const result = await api.runAgentStream('answer', 'session-1', 'research', {
+      onDelta: (delta) => deltas.push(delta),
+    })
+    expect(deltas).toEqual(['完整回答'])
+    expect(result.reply).toBe('完整回答')
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/runs/run-large')
+  })
+
+  it('preserves numeric line progress on a bounded tool event', async () => {
+    const api = await loadRunApi()
+    const events: unknown[] = []
+    await api.consumeRunStream(streamResponse([
+      { name: 'start', data: { runId: 'run-write' } },
+      { name: 'tool_start', data: {
+        type: 'tool_start', callId: 'write-1', name: 'write',
+        input: { file_path: 'src/example.ts', truncated: true },
+        lineProgress: { additions: 8_000, deletions: null },
+      } },
+      { name: 'result', data: { runId: 'run-write', sessionId: 'session-1', status: 'ok', reply: 'done' } },
+    ]), { onDelta: () => undefined, onToolEvent: (event) => events.push(event) })
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'tool_start', lineProgress: { additions: 8_000, deletions: null },
+    }))
+  })
+
   it('rejects a stream whose result run id differs from its start metadata', async () => {
     const fetchMock = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchMock)

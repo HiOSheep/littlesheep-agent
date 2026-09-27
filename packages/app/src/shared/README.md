@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-27 01:29:06
+最后更新：2026-09-27 09:49:43
 
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。 路由常量集中在 `local-app-api-routes.ts`：新增路由必须同时登记到 `LOCAL_APP_API_ROUTES`，动态前缀则进 `LOCAL_APP_API_PREFIXES`（后者要求以 `/` 结尾且不与该表重复，有单测把关）。
 
@@ -48,3 +48,5 @@
 ## 终端 Shell 路由（2026-09-26）
 
 `local-app-api-routes.ts` 增加精确路由 `terminalShells`（`/workspace/terminal/shells`）：终端据此列出本机真实可用的 Shell，会话创建只传受校验的 profile id（UX-29）。它是精确路由而非前缀，`LOCAL_APP_API_PREFIXES` 只保留以 `/` 结尾的动态前缀。
+
+`history-activity.ts` 为流式工具准备事件保留纯数字的文件行数进度，不携带文件正文。

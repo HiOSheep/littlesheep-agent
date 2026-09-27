@@ -93,9 +93,9 @@
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/harness/src/runtime-control-boundary.ts` | 375 | Runtime 控制事件、任务变更和运行中用户补充的队列结算与有界暂存 | 保持事件结算为单一职责；后续增长时把控制事件判定和补充暂存拆为各自的纯 helper | E |
 | `packages/harness/src/durable-projection-codec.ts` | 518 | durable payload 解析、effect owner/lease 成对校验和 cache projection allowlist | Provider usage 与本地 token calibration 已下沉 `durable-provider-usage-codec.ts`；继续保持不受信 payload codec 边界 | E |
-| `packages/app/src/renderer/chat/run-event-handlers.ts` | 325 | SSE 活动事件到单个对话轮次的实时归并 | 保持 reducer 适配层；若继续增长，按 transcript 与 tool/task activity 拆分 | B |
+| `packages/app/src/renderer/chat/run-event-handlers.ts` | 335 | SSE 活动事件到单个对话轮次的实时归并 | 保持 reducer 适配层；若继续增长，按 transcript 与 tool/task activity 拆分 | B |
 | `packages/harness/src/stages/reply.ts` | 355 | 能力/状态问答的最小 Runtime 事实契约、DSML 协议拒绝、回复 provenance 与预览闭合（常规会话已并入主循环；跨回合文案改写已删除） | 保持 REPLY facade；协议判定留在 LLM adapter，常规会话分支删除后应下沉为 capability-reply 专用 stage | E |
-| `packages/harness/src/stages/execute/model-transcript.ts` | 318 | 主循环的有序 transcript 与流式增量转发（无 transcript 时直接转发文本增量） | 保持 transcript 与 assistant 预览通道的单一所有权；继续分离 reasoning 行与 tool-preparing 行 | E |
+| `packages/harness/src/stages/execute/model-transcript.ts` | 321 | 主循环的有序 transcript 与流式增量转发（无 transcript 时直接转发文本增量） | 保持 transcript 与 assistant 预览通道的单一所有权；继续分离 reasoning 行与 tool-preparing 行 | E |
 | `packages/types/src/durable-harness.ts` | 389 | durable Harness event、projection、recovery、final settlement 和 capability protocol 公共契约 | 保持版本化公共 barrel；按 event、projection、recovery 分组时维持序列化兼容 | E |
 | `packages/memory-tree/src/memory-repository/resource-store.ts` | 454 | 资源注册、生命周期、重绑定和审计 | 分离 registry、lifecycle、rebind、audit | D |
 | `packages/memory-tree/src/v3/event-journal.ts` | 446 | Memory v3 event 与 operation journal 的同构恢复语义 | 契约稳定后拆为两个 store，共享 bounded journal codec | D |
@@ -120,7 +120,7 @@
 | `packages/app/src/renderer/settings/models.tsx` | 373 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 614 | 布局尺寸交互、标签命令、草稿编辑与关闭前保存编排 | 会话布局持久化已下沉到 `use-workspace-session-layouts.ts`；保持交互 controller，冻结期间不得继续吸收新职责 | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | 558 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
+| `packages/app/src/renderer/chat/assistant-turn.tsx` | 585 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 464 | 归档加载、树和操作，以及永久删除确认 | controller + project/session 视图；删除影响文案、确认层与同步防重复（`deletingRef`）已分别下沉到 `deletion-impact.ts`、`ui/danger-confirm.tsx` 与 ref 守卫 | B |
 | `packages/plugins/src/channel/manager.ts` | 388 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/main/local-app-api/memory-routes.ts` | 353 | 记忆文件、旧控制面兼容、资源、项目投影及迁移子路由组合 | 保持纯路由组合；新增治理进入独立子路由 | C |
@@ -151,7 +151,7 @@
 | `packages/memory-tree/src/memory-repository/v3-retrieval.ts` | 313 | 分支/作用域约束检索与精确治理读取路由 | 保持检索编排 | D |
 | `packages/harness/src/response-continuity-text.ts` | 581 | 回答连续性所需的有界文本、Atom 标记、显式标签值、Runtime 摘要保真字段和否定语义解析 | 保持纯文本解析边界；若继续增长，分离标签值解析与通用连续性术语处理 | E |
 | `packages/app/src/main/local-app-api/runtime-routes.ts` | 425 | Runtime 配置、Web policy projection、data-root/应用生命周期与 Web cache 路由 | Runtime payload 投影已下沉到 `runtime-payload.ts`、模型供应商路由已下沉到 `provider-routes.ts`；继续保持路由 facade，不再吸收 provider 或 payload 组装 | C |
-| `packages/app/src/main/local-app-api/session-routes.ts` | 496 | 会话查询、权限模式更新、显式会话目录切换和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
+| `packages/app/src/main/local-app-api/session-routes.ts` | 516 | 会话查询、权限模式更新、显式会话目录切换和历史 projection 路由 | 保持 session API facade；继续将 session mutation 与 response projection 分离 | C |
 | `packages/app/src/renderer/workspace/line-comment-surface.tsx` | 340 | Monaco 行评论交互、附件和 Web/文件来源关联的共享 surface | 保持交互 adapter；继续将 attachment lifecycle 与 view-zone rendering 下沉 | B |
 | `packages/config/src/schema.ts` | 406 | 全局配置 schema、Web policy 和 provider/模型配置校验 | 保持版本化 schema facade；provider 模型条目规范化与用户声明能力分别位于 `provider-models.ts`、`configured-models.ts` | E |
 | `packages/config/src/model-capabilities.ts` | 357 | 内置 provider/model 能力注册表：上下文窗口、输出上限、推理档位、Provider reasoning 映射和精确/不可用 tokenizer 状态 | 保持只读内置事实表；用户声明能力进入 `configured-models.ts`，不在此文件累计 | E |

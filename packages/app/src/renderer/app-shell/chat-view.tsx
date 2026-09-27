@@ -111,7 +111,9 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                 message={m}
                 messageKey={m.id ?? `message-${i}`}
                 now={activityNow}
+                workspaceRoot={artifactsWorkspaceRoot}
                 onOpenFile={openFileInWorkspace}
+                onOpenReview={openReviewInWorkspace}
                 onBranch={branchConversationFromMessage}
               />
             ) : (
@@ -136,7 +138,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                   role={m.role}
                   text={m.text}
                   timestamp={m.timestamp}
-                  onBranch={m.role === 'assistant' && m.id
+                  onBranch={m.id
                     ? () => void branchConversationFromMessage(m.id as string)
                     : undefined}
                 />

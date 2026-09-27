@@ -3,6 +3,7 @@ import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   runAgentStream,
+  RunStreamServerError,
   sendRuntimeControlEvent,
   type ApprovalRequest,
   type AttachmentRef,
@@ -21,10 +22,11 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
-import { settleLiveReasoning } from './activity-model'
+import { settleLiveReasoning, updateLastAssistantActivity, upsertLiveReasoning } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { reduceCompletedRunMessages } from './run-result-reducer'
 import { conversationTurnFingerprint } from './conversation-turn-fingerprint'
+import { recoverCompletedRunAfterStreamLoss } from './run-transport-recovery'
 import { ChatMessage } from './types'
 import { sendActiveRunUpdate } from './active-run-update'
 import type { RuntimeTaskEventIdentity, RuntimeTaskEventNotice } from '../runtime-events/runtime-task-events'
@@ -221,17 +223,46 @@ export function createRunActions(context: RunActionContext) {
       void refreshSessions()
       void refreshProjects()
     } catch (e) {
+      let failure = e
+      const disconnectedRunId = activeRunIdRef.current
+      if (disconnectedRunId && ownsVisibleConversation() && !controller.signal.aborted && !(e instanceof RunStreamServerError)) {
+        updateLastAssistantActivity(setMessages, (activity) => ({
+          ...activity,
+          reasoning: upsertLiveReasoning(activity.reasoning ?? [], {
+            phaseId: 'runtime:stream-recovery',
+            source: 'runtime',
+            activityKind: 'runtime_recovery',
+            summary: '本地事件流已断开，正在读取本轮运行结果',
+            status: 'running',
+            startedAt: Date.now(),
+          }),
+        }))
+        try {
+          const recovered = await recoverCompletedRunAfterStreamLoss(disconnectedRunId, controller.signal)
+          if (!ownsVisibleConversation()) return
+          deltaBuffer.flush()
+          setCurrentSession(recovered.sessionId)
+          setWorkspaceArtifactVersion((value) => value + 1)
+          setMessages((messages) => reduceCompletedRunMessages(messages, recovered))
+          pendingConversationTurnRef.current = null
+          void refreshSessions()
+          void refreshProjects()
+          return
+        } catch (recoveryError) {
+          failure = recoveryError
+        }
+      }
       if (
-        ((e as Error).name === 'AbortError' || (e as Error).name === 'RunStreamServerError')
+        ((failure as Error).name === 'AbortError' || (failure as Error).name === 'RunStreamServerError')
         && pendingConversationTurnRef.current?.requestKey === requestKey
       ) {
         pendingConversationTurnRef.current = null
       }
       if (!ownsVisibleConversation()) return
-      deltaBuffer.clear()
+      deltaBuffer.flush()
       setInput((current) => current.trim() ? current : text)
       setAttachments((current) => current.length > 0 ? current : activeAttachments)
-      if ((e as Error).name === 'AbortError') {
+      if ((failure as Error).name === 'AbortError') {
         setMessages((m) => {
           const next = [...m]
           const last = next[next.length - 1]
@@ -260,12 +291,12 @@ export function createRunActions(context: RunActionContext) {
       setMessages((m) => {
         const next = [...m]
         const last = next[next.length - 1]
-        const error = (e as Error).message
+        const error = (failure as Error).message
         if (last?.role === 'assistant') {
           const endedAt = Date.now()
           next[next.length - 1] = {
             ...last,
-            text: '',
+            text: last.text,
             activityCollapsed: true,
             activity: last.activity
               ? {

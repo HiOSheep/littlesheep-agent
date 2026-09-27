@@ -55,7 +55,7 @@ export async function routeSessions(
   }
 
   /**
-   * Fork a conversation at one of its messages (2026-09-26).
+   * Fork a conversation at any persisted conversational message.
    *
    * A branch is a real session, not a view: it is created through the same manager, then filled with
    * the messages up to and including the chosen one, so the branch can be continued, renamed,
@@ -70,13 +70,33 @@ export async function routeSessions(
     const source = await runner.sessionManager.read(asSessionId(sessionBranchId))
     const index = source.findIndex((message) => message.id === messageId)
     if (index < 0) throw new HttpError(404, '找不到要分叉的消息，请刷新会话后重试。')
+    const target = source[index]!
+    if ((target.role !== 'assistant' && target.role !== 'user') || target.runtimeTail
+      || (target.role === 'assistant' && target.finalReplySettlement?.status !== 'settled'
+        && (target.finalReplySettlement !== undefined || (target.stage && target.stage !== 'finalize')))) {
+      throw new HttpError(409, '这条消息尚不能分叉，请等待消息保存后重试。')
+    }
     // The title comes from the session index the sidebar already reads, so the branch reads as a
     // branch of that conversation rather than a nameless new one.
     const sessions = await sessionIndex.list()
-    const sourceTitle = sessions.find((entry) => entry.id === sessionBranchId)?.title?.trim()
+    const sourceMeta = sessions.find((entry) => entry.id === sessionBranchId)
+    const sourceTitle = sourceMeta?.title?.trim()
     const branchTitle = sourceTitle ? `${sourceTitle}（分支）` : '分支对话'
     const branch = await runner.sessionManager.create(undefined, branchTitle)
-    await runner.sessionManager.append(branch.id, source.slice(0, index + 1))
+    // Historical messages belong to this new session. Their old settlement identities are not
+    // registered here, so keep the already published text without copying the source registry key.
+    const history = source.slice(0, index + 1).map(({ finalReplySettlement: _settlement, ...message }) => ({
+      ...message,
+      sessionId: branch.id,
+    }))
+    await runner.sessionManager.append(branch.id, history)
+    await sessionIndex.upsert(branch.id, {
+      title: branchTitle,
+      mode: sourceMeta?.mode,
+      scope: sourceMeta?.scope,
+      projectId: sourceMeta?.projectId,
+      workspacePath: sourceMeta?.workspacePath,
+    })
     json(res, 200, { sessionId: branch.id, messages: index + 1 })
     return true
   }

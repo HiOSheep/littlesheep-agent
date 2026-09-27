@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { BranchIcon, CheckIcon, CopyIcon } from '../ui/icons'
 
 interface MessageMetaProps {
@@ -8,6 +8,7 @@ interface MessageMetaProps {
   /** Forks the conversation at this message; absent for messages that cannot branch yet. */
   onBranch?: () => void
   branching?: boolean
+  usageAction?: ReactNode
 }
 
 export const MessageMeta = memo(function MessageMeta({
@@ -16,6 +17,7 @@ export const MessageMeta = memo(function MessageMeta({
   timestamp,
   onBranch,
   branching = false,
+  usageAction,
 }: MessageMetaProps) {
   const [copied, setCopied] = useState(false)
   const copiedTimerRef = useRef<number>()
@@ -34,7 +36,7 @@ export const MessageMeta = memo(function MessageMeta({
   }
 
   // The assistant's own reply leads with its controls, the reader's message ends with them, so the
-  // row always reads away from the bubble it belongs to: [copy][branch][time] on the left for the
+  // row always reads away from the bubble it belongs to: [copy][branch][usage][time] on the left for the
   // agent, [time][branch][copy] on the right for the user.
   return (
     <div className={`message-meta message-meta-${role}`}>
@@ -59,6 +61,7 @@ export const MessageMeta = memo(function MessageMeta({
           <BranchIcon />
         </button>
       )}
+      {role === 'assistant' && usageAction}
       <time dateTime={timestamp}>{formatMessageTime(timestamp)}</time>
     </div>
   )

@@ -12,6 +12,26 @@ import {
 const request: ChatRequest = { model: 'test', messages: [{ role: 'user', content: 'work' }] };
 
 describe('model transcript closure', () => {
+  it('publishes real numeric file progress as argument fragments arrive', async () => {
+    const events: ToolStreamEvent[] = []
+    const ctx = makeCtx()
+    ctx.streamModelTranscript = true
+    ctx.onToolEvent = (event) => events.push(event)
+    const llm = {
+      chatStream: async (_request, onDelta) => {
+        onDelta({ type: 'tool_call_delta', toolCallIndex: 0, toolCallName: 'write', toolCallArgsDelta: '{"file_path":"a.ts","content":"one\\n' })
+        onDelta({ type: 'tool_call_delta', toolCallIndex: 0, toolCallArgsDelta: 'two\\nthree"}' })
+        return { content: '', toolCalls: [], finishReason: 'tool_calls' as const }
+      },
+    } as LlmClient
+    const turn = createTranscriptTurn(ctx, 'step', 1)
+    const response = await runTranscriptModelTurn(ctx, llm, request, turn)
+    closeTranscriptTurn(ctx, turn, response.finishReason)
+    const progress = events.filter((event) => event.type === 'tool_preparing' && event.lineProgress)
+    expect(progress.at(-1)?.lineProgress).toEqual({ additions: 3, deletions: null })
+    expect(progress.at(-1)?.argumentSummary).toBe('a.ts')
+    expect(JSON.stringify(progress)).not.toContain('one\\ntwo')
+  })
   it('HA-04-04 closes reasoning and tool preparation when the stream fails', async () => {
     const events: ToolStreamEvent[] = [];
     const replacements: string[] = [];

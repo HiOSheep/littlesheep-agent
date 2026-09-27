@@ -31,19 +31,16 @@ export function AgentToolRow({
   const inputText = formatToolInput(tool)
   const outputText = tool.error ? '' : formatToolResult(tool)
   const errorText = tool.error ? firstLine(tool.error) : ''
-  const hasDetails = Boolean(targetPath || inputText || outputText || errorText)
   const summary = errorText || toolSummaryText(tool) || (running ? 'Running…' : '')
 
   return (
     <section className={`agent-tool-call ${statusClass} ${open ? 'open' : ''}`} data-call-id={tool.callId}>
       <button
         type="button"
-        className={`agent-flow-row agent-tool-row ${running ? 'is-active' : ''} ${hasDetails ? '' : 'no-details'}`}
+        className={`agent-flow-row agent-tool-row ${running ? 'is-active' : ''}`}
         aria-label={`${title}${summary ? `，${summary}` : ''}`}
-        {...(hasDetails ? { 'aria-expanded': open } : {})}
-        onClick={() => {
-          if (hasDetails) setOpen((value) => !value)
-        }}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
       >
         <span className="agent-tool-glyph" aria-hidden="true">
           <ToolActivityIcon name={tool.name} />
@@ -53,21 +50,20 @@ export function AgentToolRow({
         <span className={`agent-flow-summary ${errorText ? 'is-error' : ''}`}>
           {summary}
         </span>
-        <ToolLineDeltaBadge name={tool.name} input={tool.input} running={running} />
+        <ToolLineDeltaBadge name={tool.name} input={tool.input} progress={tool.lineProgress} running={running} />
         <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
-        <span className={`agent-flow-chevron ${hasDetails && open ? 'open' : ''}`} aria-hidden="true" />
+        <span className={`agent-flow-chevron ${open ? 'open' : ''}`} aria-hidden="true" />
         {running && (
           <span className="agent-flow-sr-only" role="status" aria-live="polite">
             正在{displayAction}{summary ? `：${summary}` : ''}
           </span>
         )}
       </button>
-      {hasDetails && (
-        <div
-          className={`agent-tool-details-panel disclosure-panel ${open ? 'open' : ''}`}
-          aria-hidden={!open}
-          {...(!open ? { inert: '' } : {})}
-        >
+      <div
+        className={`agent-tool-details-panel disclosure-panel ${open ? 'open' : ''}`}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
+      >
           <div className="agent-tool-details-panel-inner">
             <div className="agent-tool-details">
               {targetPath && onOpenFile && (
@@ -100,8 +96,7 @@ export function AgentToolRow({
               )}
             </div>
           </div>
-        </div>
-      )}
+      </div>
     </section>
   )
 }
@@ -114,13 +109,15 @@ export function AgentToolRow({
 export function ToolLineDeltaBadge({
   name,
   input,
+  progress,
   running,
 }: {
   name: string
   input: unknown
+  progress?: { additions: number; deletions: number | null }
   running: boolean
 }) {
-  const delta = toolLineDelta(name, input)
+  const delta = progress ?? toolLineDelta(name, input)
   const additions = useAnimatedCount(delta?.additions ?? null)
   const deletions = useAnimatedCount(delta?.deletions ?? null)
   if (!delta) return null
@@ -133,6 +130,20 @@ export function ToolLineDeltaBadge({
     <span className={`agent-flow-delta ${running ? 'is-live' : ''}`} aria-label={label} title={label}>
       <span className="agent-flow-delta-add">+{additions ?? 0}</span>
       {delta.deletions !== null && <span className="agent-flow-delta-remove">-{deletions ?? 0}</span>}
+    </span>
+  )
+}
+
+export function PreparingLineDeltaBadge({ progress }: {
+  progress?: { additions: number; deletions: number | null }
+}) {
+  const additions = useAnimatedCount(progress?.additions ?? null)
+  const deletions = useAnimatedCount(progress?.deletions ?? null)
+  if (!progress) return null
+  return (
+    <span className="agent-flow-delta is-live" aria-label={`正在生成文件修改：新增 ${progress.additions} 行${progress.deletions === null ? '' : `，删除 ${progress.deletions} 行`}`}>
+      <span className="agent-flow-delta-add">+{additions ?? 0}</span>
+      {progress.deletions !== null && <span className="agent-flow-delta-remove">-{deletions ?? 0}</span>}
     </span>
   )
 }

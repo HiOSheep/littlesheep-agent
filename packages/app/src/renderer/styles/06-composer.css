@@ -2164,46 +2164,61 @@
    is a way into that file's review rather than decoration. */
 .message-artifacts-card {
   display: grid;
-  gap: 2px;
-  width: min(560px, 100%);
-  margin-top: 8px;
-  padding: 8px;
-  background: var(--composer-surface, var(--surface));
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  width: min(760px, 100%);
+  margin-top: 14px;
+  overflow: hidden;
+  background: #343436;
+  border: 1px solid #737376;
+  border-radius: 18px;
 }
 
 .message-artifacts-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 2px 6px 6px;
-  color: var(--text);
-  font-size: 12px;
+  column-gap: 16px;
+  min-height: 88px;
+  padding: 14px 16px;
+  color: #f4f4f5;
+  border-bottom: 1px solid #747477;
 }
 
 .message-artifacts-head-icon {
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  color: var(--muted);
+  grid-row: 1 / 3;
+  width: 58px;
+  height: 58px;
+  color: #e5fbff;
+  background: #66686c;
+  border: 1px solid #85868a;
+  border-radius: 16px;
+}
+
+.message-artifacts-head-icon svg {
+  width: 27px;
+  height: 27px;
 }
 
 .message-artifacts-head strong {
-  font-weight: 600;
+  align-self: end;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .message-artifacts-total {
   display: inline-flex;
-  gap: 6px;
-  margin-left: auto;
+  align-self: start;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 .message-artifacts-rows {
   display: grid;
-  gap: 1px;
+  padding: 4px 12px;
 }
 
 .message-artifacts-row {
@@ -2211,11 +2226,11 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  border-radius: var(--radius-icon);
+  border-radius: 9px;
 }
 
 .message-artifacts-row:hover {
-  background: var(--composer-picker-option-hover);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .message-artifacts-row-open {
@@ -2223,15 +2238,15 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 26px;
-  padding: 0 6px;
-  color: var(--text);
+  min-height: 46px;
+  padding: 0 10px;
+  color: #f4f4f5;
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 12px;
+  font-size: 14px;
   text-align: left;
-  cursor: default;
+  cursor: pointer;
 }
 
 .message-artifacts-row-path {
@@ -2242,41 +2257,37 @@
 }
 
 .message-artifacts-row-action {
-  flex: 0 0 auto;
-  color: var(--muted-2);
-  font-size: 11px;
+  display: none;
 }
 
 .message-artifacts-row-delta {
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  min-height: 26px;
-  padding: 0 8px;
+  min-height: 38px;
+  padding: 0 10px;
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 11px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
-  cursor: default;
+  cursor: pointer;
 }
 
 /* Neutral until pointed at: the numbers carry no meaning as colour at rest. */
 .line-delta-add,
 .line-delta-remove {
-  color: var(--muted-2);
+  color: #dedee0;
   transition: color var(--motion-fast) var(--motion-ease);
 }
 
 .message-artifacts-row-delta:hover .line-delta-add,
-.message-artifacts-row-delta:focus-visible .line-delta-add,
-.message-artifacts-total:hover .line-delta-add {
+.message-artifacts-row-delta:focus-visible .line-delta-add {
   color: var(--line-delta-add, #4ec26a);
 }
 
 .message-artifacts-row-delta:hover .line-delta-remove,
-.message-artifacts-row-delta:focus-visible .line-delta-remove,
-.message-artifacts-total:hover .line-delta-remove {
+.message-artifacts-row-delta:focus-visible .line-delta-remove {
   color: var(--line-delta-remove, #e5525c);
 }
 
@@ -2284,15 +2295,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 26px;
-  margin-top: 2px;
-  padding: 0 6px;
-  color: var(--muted);
+  min-height: 48px;
+  margin: 4px 12px 8px;
+  padding: 0 10px;
+  color: #f4f4f5;
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 12px;
-  cursor: default;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .message-artifacts-more:hover {

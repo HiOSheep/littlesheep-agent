@@ -9,6 +9,63 @@ import { SessionIndex } from '../session-index.js'
 import { buildSessionContextUsageRecord, routeSessions, type SessionRouteContext } from './session-routes.js'
 import { localAppApiItemPath, LOCAL_APP_API_PREFIXES } from '../../shared/local-app-api-routes.js'
 
+describe('session branching', () => {
+  it('branches at a user message, retaining the project context and excluding later messages', async () => {
+    const source = [
+      { id: 'u-1', role: 'user', content: [{ type: 'text', text: 'first' }], sessionId: 'source' },
+      { id: 'a-1', role: 'assistant', stage: 'finalize', content: [{ type: 'text', text: 'answer' }],
+        sessionId: 'source', finalReplySettlement: { status: 'settled', settlementId: 'source-settlement' } },
+      { id: 'u-2', role: 'user', content: [{ type: 'text', text: 'again' }], sessionId: 'source' },
+    ]
+    const append = vi.fn().mockResolvedValue(undefined)
+    const upsert = vi.fn().mockResolvedValue(undefined)
+    const manager = { read: vi.fn().mockResolvedValue(source), create: vi.fn().mockResolvedValue({ id: 'branch' }), append }
+    const runner = { sessionManager: manager } as unknown as AgentRunner
+    const context = {
+      getRunner: () => runner,
+      sessionIndex: { list: vi.fn().mockResolvedValue([{ id: 'source', title: '原对话', mode: 'limited',
+        scope: 'project', projectId: 'project-1', workspacePath: 'D:\\project' }]), upsert },
+      projectIndex: {}, archiveIndex: {},
+    } as unknown as SessionRouteContext
+    const call = async (messageId: string) => {
+      const server = createServer((req, res) => {
+        const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+        void routeSessions({ req, res, url, path: url.pathname, method: req.method ?? 'GET' }, context)
+          .catch((error: unknown) => {
+            res.writeHead(error instanceof Error && 'status' in error ? Number(error.status) : 500,
+              { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+          })
+      })
+      await listen(server)
+      try {
+        const address = server.address()
+        if (!address || typeof address === 'string') throw new Error('missing test port')
+        const response = await fetch(`http://127.0.0.1:${address.port}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'source', '/branch')}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId }),
+        })
+        return { status: response.status, body: await response.json() as Record<string, unknown> }
+      } finally { await close(server) }
+    }
+
+    expect(await call('u-1')).toMatchObject({ status: 200, body: { sessionId: 'branch', messages: 1 } })
+    expect(append).toHaveBeenLastCalledWith('branch', [{ ...source[0], sessionId: 'branch' }])
+    expect(upsert).toHaveBeenCalledWith('branch', expect.objectContaining({ scope: 'project', projectId: 'project-1', workspacePath: 'D:\\project', mode: 'limited' }))
+
+    expect(await call('a-1')).toMatchObject({ status: 200, body: { messages: 2 } })
+    expect(append.mock.lastCall?.[1]).toEqual([
+      { ...source[0], sessionId: 'branch' },
+      { id: 'a-1', role: 'assistant', stage: 'finalize', content: [{ type: 'text', text: 'answer' }], sessionId: 'branch' },
+    ])
+
+    const createsBeforeRejectedBranch = manager.create.mock.calls.length
+    manager.read.mockResolvedValueOnce([...source, { id: 'a-pending', role: 'assistant', stage: 'finalize',
+      finalReplySettlement: { status: 'proposed' }, content: [{ type: 'text', text: 'draft' }] }])
+    expect(await call('a-pending')).toMatchObject({ status: 409 })
+    expect(manager.create).toHaveBeenCalledTimes(createsBeforeRejectedBranch)
+  })
+})
+
 function usageLog(input: {
   sessionId: string
   runId: string

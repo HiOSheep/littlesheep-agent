@@ -1,6 +1,6 @@
 # EXECUTE 内部边界
 
-最后更新：2026-09-27 09:19:46
+最后更新：2026-09-27 09:49:43
 
 当前 run 接收的 `user_message` 由 `tool-loop.ts` 在模型请求前后加入同一消息序列并写入本轮会话产物；若新消息在响应期间抵达，旧响应里的工具调用不执行，主循环带着补充重新请求。`context-candidates.ts` 将它归为有来源的用户输入。回归见 `stages/execute.test.ts` 与真实窗口 `verify:composer-stop-append`。
 
@@ -18,3 +18,5 @@
 - `tool-failure-disposition.ts`：一轮工具失败对循环意味着什么。`classifyToolFailure` 只依据 Runtime 已记录的事实（该 callId 的 invocation 记录与副作用账本条目），不看错误文本：权限/硬安全拒绝、schema 校验失败、未知工具、被中止、核心源码只读保护（`core_source_read_only`）、执行服务的重复调用护栏（`repeated_call`）、副作用仍未结算（`planned`/`in_progress`/`unknown`）以及**没有 invocation 记录**的结果都是权威边界，进入强制收尾；已确定性结算的普通失败（路径不存在、参数错、命令非零退出后已结算）留在同一循环里由模型纠正，仍受迭代与无进展预算约束。**被本请求排除在外的能力是例外**（`TOOL_NOT_ADMITTED_ERROR_KIND`）：越权调用由循环在到达工具前拒绝、因此天然没有 invocation 记录，若照"无记录即权威"处理，一次越权调用就会让整轮再也用不了任何工具——实测（并行负载门禁）一次开局的 `use_skill` 让只准入 `write`/`read` 的两步任务连产物都没生成。现在该 error kind 在读"无记录"规则之前判为 `correctable`：这次调用照样被拒（`notAdmittedResult` 带上拒绝文案与 kind），准入的工具仍然可用。**同批部分成功、部分失败时保留成功的一半**：两条结果按序都进账本，模型只重做失败的那条，Runtime 不会重发已经成功的调用。**重复成功调用的拒绝（`side_effect_replay`）是"对这次调用终局、对整轮不终局"**：什么都没执行、也没有任何未知，所以 run 继续，模型可以改用结构化只读工具观察或换一个动作——这不是绕过边界，调用无论如何都被拒。`toolRoundFailurePolicy` 把这一判定收敛成循环里的三行，并给出要持久化的 Runtime 控制消息；失败的副作用调用会要求先观察实际状态再决定，Runtime 自身从不重放。
 
 `../execute.ts` 只负责清除回复状态、请求运行提示并把控制权交给单一主循环。TaskBook 步骤执行器（`task-book-runner.ts`、`task-step-runner.ts`、`task-step-scheduler.ts`、`reply-candidate.ts`、`final-reply.ts`、`direct-tool-proposal.ts`）与自动并行波次、资源冲突打包、按波次降级、bounded_loop 升级入口、自动记忆沉淀一起随第二执行体系删除：已持久化的 TaskBook 现在是只读历史，多步骤工作在同一个循环内串行完成。工具不能绕过权限门，失败不能被子循环重试掩盖，已完成副作用不得重放。
+
+`model-transcript.ts` 在模型生成工具参数时以有界缓存计算 `tool_preparing.lineProgress`；`tool-argument-line-progress.ts` 只发布数字，不发布未完成的文件正文。

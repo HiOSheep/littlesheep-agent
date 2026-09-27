@@ -37,12 +37,14 @@ import {
   withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { routeRunCheckpoints } from './run-checkpoint-routes.js'
+import { projectToolEventForStream } from './run-tool-event-projection.js'
 import {
   MAX_RUNTIME_EVENT_REASON_LENGTH,
   parseRuntimeTaskEventBody,
 } from './runtime-event-request.js'
 
 const MAX_ACTIVE_STREAM_RUNS = 16
+const MAX_INLINE_RUN_RESULT_BYTES = 64 * 1024
 const MAX_PENDING_APPROVALS = 64
 const RUNTIME_EVENT_REGISTRATION_WAIT_MS = 2_000
 const RUNTIME_EVENT_REGISTRATION_POLL_MS = 20
@@ -365,7 +367,7 @@ export class RunRouter {
             requestKey,
             workspaceContext,
             signal: controller.signal,
-            onToolEvent: (event) => writeSse(res, event.type, event),
+            onToolEvent: (event) => writeSse(res, event.type, projectToolEventForStream(event)),
             onAssistantReplace: (text) => writeSse(res, 'replace', { text }),
             ...resolveRunPolicy(
               effectiveBody,
@@ -392,7 +394,15 @@ export class RunRouter {
         if (ownsActiveRun) {
           await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
         }
-        writeSse(res, 'result', publishedResult)
+        // A large settlement can exceed the bounded SSE socket buffer even though
+        // the run finished normally. Send an id and let the observer read the
+        // already persisted authoritative log instead of destroying its socket.
+        const serializedResult = JSON.stringify(publishedResult)
+        if (Buffer.byteLength(serializedResult, 'utf8') > MAX_INLINE_RUN_RESULT_BYTES) {
+          writeSse(res, 'result_ref', { runId })
+        } else {
+          writeSse(res, 'result', publishedResult)
+        }
       } catch (error) {
         writeSse(res, 'error', { error: (error as Error).message })
       } finally {

@@ -1,6 +1,6 @@
 # Renderer API 客户端
 
-最后更新：2026-09-27 04:28:55
+最后更新：2026-09-27 09:30:23
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。 `workspace-files.ts` 另有"打开方式"三件套：`listWorkspaceOpenWith`（读候选）、`launchWorkspaceOpenWith`（只传 handlerId，由 Main 复核后再启动）、`revealWorkspacePath`（显示文件位置）。
 
@@ -55,3 +55,5 @@
 `workspace-files.ts` 增加 `statWorkspaceFile(root, path)`（元数据轮询，UX-25 第 3 条）；同时 `saveWorkspaceFile` 的失败改为 `localApiResponseError`，保留 HTTP 状态码与服务端原句——预览面板因此能对 403/409/413/415 显示可执行的原因，而不是一律"稍后重试"。
 - `listWorkspaceDirectory(root, path, filter)` 把可选名称筛选交给 Main 在 320 项截断前执行；普通缓存仍只保存未筛选目录，筛选结果不污染预热缓存。
 - `terminal.ts` 增加 `listWorkspaceTerminalShells()` 与 `createWorkspaceTerminalSession(root, size, shellId)`：Shell 列表与受校验的 profile id 传递（UX-29）。
+
+`run.ts` 支持 `result_ref` 回读，并提供按 runId 查询已完成运行的入口；SSE 观察中断不代表 Agent run 本身失败。

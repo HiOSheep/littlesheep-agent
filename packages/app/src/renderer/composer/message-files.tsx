@@ -35,7 +35,7 @@ export function MessageFileStrip({
   if (files.length === 0) return null
 
   // The turn's own产出 is one card; attachments stay the compact strip they were.
-  if (label !== '附件' && workspaceRoot && onOpenReview) {
+  if (label !== '附件' && onOpenReview) {
     return (
       <MessageArtifactsCard
         files={files}

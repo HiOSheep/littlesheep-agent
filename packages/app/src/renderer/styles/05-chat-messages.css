@@ -256,8 +256,13 @@
   justify-content: flex-start;
 }
 
+.message-meta-user time { order: 1; }
+.message-meta-user .message-meta-branch { order: 2; }
+.message-meta-user .message-meta-copy { order: 3; }
+
 .message-meta:hover,
-.message-meta:focus-within {
+.message-meta:focus-within,
+.message-meta:has(.message-meta-usage) {
   opacity: 1;
 }
 
@@ -884,6 +889,34 @@
   width: 16px;
   height: 16px;
 }
+
+.message-meta-branch {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.message-meta-branch:hover,
+.message-meta-branch:focus-visible {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.branch-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.message-meta-usage { display: inline-flex; align-items: center; }
 
 /* The time reads at the size of the usage figures it sits beside, not larger than them. */
 .message-meta time {

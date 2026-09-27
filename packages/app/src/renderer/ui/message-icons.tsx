@@ -13,15 +13,13 @@ export function CopyIcon() {
   )
 }
 
-/** A stem that splits in two: one conversation becoming two. */
+/** One conversation continuing along either of two paths. */
 export function BranchIcon() {
   return (
     <svg className="sidebar-svg-icon branch-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
-      <circle cx="4.6" cy="3.6" r="1.7" />
-      <circle cx="11.4" cy="3.6" r="1.7" />
-      <circle cx="8" cy="12.4" r="1.7" />
-      <path d="M4.6 5.3v1.1a1.9 1.9 0 0 0 1.9 1.9h3a1.9 1.9 0 0 0 1.9-1.9V5.3" />
-      <path d="M8 8.3v2.4" />
+      <path d="M2.5 8h3.1c2.4 0 2.3-4 4.8-4h1.3M5.6 8c2.4 0 2.3 4 4.8 4h1.3" />
+      <circle cx="13" cy="4" r="1.2" />
+      <circle cx="13" cy="12" r="1.2" />
     </svg>
   )
 }

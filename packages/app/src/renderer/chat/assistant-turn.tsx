@@ -1,5 +1,5 @@
 // Conversation rendering and execution-progress presentation.
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import type { WebEvidenceProjection } from '@littlesheep/types'
 import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
@@ -15,7 +15,7 @@ import {
 } from './activity-model'
 import { visibleActivitySteps } from './activity-visibility'
 import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
-import { AgentToolRow } from './agent-tool-row'
+import { AgentToolRow, PreparingLineDeltaBadge, toolActionLabel } from './agent-tool-row'
 import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
 import type {
@@ -53,6 +53,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   onBranch,
 }: AssistantTurnMessageProps) {
   const displayMode = useConversationDisplayMode()
+  const [processOpenOverride, setProcessOpenOverride] = useState<boolean | null>(null)
   const activity = message.activity
   if (!activity) {
     return (
@@ -72,8 +73,8 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
           text={message.text}
           timestamp={message.timestamp}
           onBranch={message.id && onBranch ? () => onBranch(message.id as string) : undefined}
+          usageAction={<TurnUsageAction message={message} />}
         />
-        <TurnUsageFooter message={message} />
       </div>
     )
   }
@@ -81,15 +82,29 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   const responseVisible = activity.status === 'running'
     || Boolean(message.text.trim() || activity.error || message.artifacts?.length)
   const compactCompleted = displayMode === 'compact' && activity.status !== 'running'
+  const processOpen = processOpenOverride ?? (activity.status !== 'done')
+  const processLabel = activity.status === 'running' ? `正在工作 · ${formatMaybeDuration(activity.startedAt, undefined, now)}`
+    : activity.status === 'done' ? `用时 ${formatMaybeDuration(activity.startedAt, activity.endedAt, now)}`
+      : activity.status === 'aborted' ? '已停止' : activity.status === 'failed' ? '执行失败' : '等待处理'
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
-      {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
-      {(activity.transcript?.length ?? 0) > 0
-        ? <AssistantTranscript transcript={activity.transcript ?? []} activity={activity} now={now} onOpenFile={onOpenFile} compact={compactCompleted} />
-        : compactCompleted
-          ? <LegacyActivitySummary activity={activity} />
-          : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
+      <button type="button" className="assistant-process-trigger" aria-expanded={processOpen}
+        onClick={() => setProcessOpenOverride(!processOpen)}>
+        <span>{processLabel}</span>
+        {activity.status === 'done' && activityVerificationLine(activity) && (
+          <span className="assistant-process-verification">{activityVerificationLine(activity)}</span>
+        )}
+        <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
+      </button>
+      <div className="assistant-process-content" hidden={!processOpen}>
+        {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
+        {(activity.transcript?.length ?? 0) > 0
+          ? <AssistantTranscript transcript={activity.transcript ?? []} activity={activity} now={now} onOpenFile={onOpenFile} compact={compactCompleted} />
+          : compactCompleted
+            ? <LegacyActivitySummary activity={activity} />
+            : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
+      </div>
       {responseVisible && (
         <div className="message-with-meta assistant">
           <div
@@ -110,9 +125,9 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             role="assistant"
             text={message.text}
             timestamp={message.timestamp}
-            onBranch={message.id && onBranch ? () => onBranch(message.id as string) : undefined}
+            onBranch={activity.status === 'done' && message.id && onBranch ? () => onBranch(message.id as string) : undefined}
+            usageAction={<TurnUsageAction message={message} />}
           />
-          <TurnUsageFooter message={message} />
         </div>
       )}
     </section>
@@ -189,10 +204,14 @@ function AgentStepGroup({
   const running = step.status === 'running'
   const description = distinctActivityText(step.description, step.title)
   const result = step.error || ''
+  const [open, setOpen] = useState(true)
 
   return (
-    <section className={`agent-step-group ${step.status}`} data-step-id={step.stepId}>
-      <div className={`agent-flow-row agent-step-row ${running ? 'is-active' : ''}`}>
+    <details className={`agent-step-group ${step.status}`} data-step-id={step.stepId} open={open}>
+      <summary className={`agent-flow-row agent-step-row ${running ? 'is-active' : ''}`} onClick={(event) => {
+        event.preventDefault()
+        setOpen((value) => !value)
+      }}>
         <span className={`agent-flow-glyph agent-step-glyph ${step.status}`} aria-hidden="true"><ActivityGlyph kind="step" /></span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>
           {running ? '执行' : liveStepStatusLabel(step.status)}
@@ -202,13 +221,13 @@ function AgentStepGroup({
           <InlineMarkdown text={step.title} />
         </span>
         <span className="agent-flow-meta">{formatMaybeDuration(step.startedAt, step.endedAt, now)}</span>
-        <span aria-hidden="true" />
+        <span className="agent-flow-chevron" aria-hidden="true" />
         {running && (
           <span className="agent-flow-sr-only" role="status" aria-live="polite">
             正在执行：{step.title}
           </span>
         )}
-      </div>
+      </summary>
       {description && (
         <div className="agent-flow-copy">
           <Markdown text={description} />
@@ -224,7 +243,7 @@ function AgentStepGroup({
           <Markdown text={result} />
         </div>
       )}
-    </section>
+    </details>
   )
 }
 
@@ -405,13 +424,26 @@ export function AssistantTranscript({
           )
         }
         if (entry.kind === 'preparing') {
+          const action = entry.name ? toolActionLabel(entry.name) : '调用工具'
+          const status = entry.status === 'running' ? '正在生成参数'
+            : entry.status === 'done' ? '参数已生成'
+              : entry.status === 'aborted' ? '已中止' : '生成失败'
           return (
-            <div key={entry.id} className={`agent-flow-row agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
-              <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
-              <span className="agent-flow-title">准备{entry.name ? ` ${entry.name}` : '工具'}</span>
-              <span className="agent-flow-separator" aria-hidden="true" />
-              <span className="agent-flow-summary">已生成 {entry.receivedCharacters} 个字符参数{entry.status === 'running' ? ' · Running…' : ''}</span>
-            </div>
+            <details key={entry.id} className={`agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
+              <summary className="agent-flow-row">
+                <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
+                <span className="agent-flow-title">{action === '调用' ? entry.name : action}</span>
+                <span className="agent-flow-separator" aria-hidden="true" />
+                <span className="agent-flow-summary">{entry.argumentSummary || status}</span>
+                <PreparingLineDeltaBadge progress={entry.lineProgress} />
+                <span className="agent-flow-chevron" aria-hidden="true" />
+              </summary>
+              <div className="agent-flow-details">
+                <div>{status}{entry.name ? ` · 工具：${entry.name}` : ''}</div>
+                {entry.argumentSummary && <div>目标：{entry.argumentSummary}</div>}
+                <div>已接收 {entry.receivedCharacters} 个参数字符。实际执行结果见后续工具记录。</div>
+              </div>
+            </details>
           )
         }
         const tool = tools.get(entry.callId)
@@ -471,7 +503,7 @@ function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }
  * rate four ways, four token kinds and the rate; it is reference material, so it lives in the card
  * the pill opens, together with the per-call cache detail.
  */
-function TurnUsageFooter({ message }: { message: ChatMessage }) {
+function TurnUsageAction({ message }: { message: ChatMessage }) {
   const usage = message.usage
   if (!usage) return null
   const calls = message.cacheCalls ?? []
@@ -490,7 +522,7 @@ function TurnUsageFooter({ message }: { message: ChatMessage }) {
       : '',
   ].filter(Boolean)
   return (
-    <footer className="turn-usage-footer" aria-label="本轮用量">
+    <span className="message-meta-usage" aria-label="本轮用量">
       <TurnUsageButton
         label={turnUsageLabel(message)}
         figures={[
@@ -504,7 +536,7 @@ function TurnUsageFooter({ message }: { message: ChatMessage }) {
           ? { title: `逐调用缓存明细（${calls.length}${message.cacheCallsTruncated ? '，仅最近若干次' : ''}）`, lines: detailLines }
           : undefined}
       />
-    </footer>
+    </span>
   )
 }
 

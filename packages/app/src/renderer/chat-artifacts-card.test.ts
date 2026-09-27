@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { vi } from 'vitest'
+import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource } from './style-source-test-utils'
 import { ARTIFACT_CARD_VISIBLE_ROWS, MessageArtifactsCard } from './composer/message-artifacts-card'
 import { artifactDeltas, lineDeltaFor } from './composer/use-artifact-deltas'
@@ -68,6 +69,12 @@ describe('artifact line deltas', () => {
 })
 
 describe('the chat artifacts card', () => {
+  it('passes review and workspace context through the activity turn renderer', async () => {
+    const chatView = await readFile(new URL('./app-shell/chat-view.tsx', import.meta.url), 'utf8')
+    expect(chatView).toContain('workspaceRoot={artifactsWorkspaceRoot}')
+    expect(chatView).toContain('onOpenReview={openReviewInWorkspace}')
+  })
+
   it('names the turn, its file count and the totals it could count', () => {
     const markup = card(
       [file('pong.html'), file('index.html', 'modified')],
@@ -108,9 +115,9 @@ describe('artifact count colours', () => {
       styles.indexOf('.line-delta-add,'),
       styles.indexOf('.message-artifacts-row-delta:hover .line-delta-add'),
     )
-    expect(rule).toContain('color: var(--muted-2)')
+    expect(rule).toContain('color: #dedee0')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-add,')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-remove,')
-    expect(styles).toContain('.message-artifacts-row-delta:focus-visible .line-delta-add,')
+    expect(styles).toContain('.message-artifacts-row-delta:focus-visible .line-delta-add {')
   })
 })

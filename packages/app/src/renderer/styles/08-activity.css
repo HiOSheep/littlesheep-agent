@@ -56,20 +56,32 @@
   align-items: center;
   width: 100%;
   min-width: 0;
-  min-height: 24px;
-  gap: 6px;
-  padding: 0 2px;
+  min-height: 38px;
+  gap: 9px;
+  padding: 4px 3px;
   overflow: hidden;
   color: var(--muted);
   background: transparent;
   border: 0;
   border-radius: var(--radius-ui);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 400;
-  line-height: 24px;
+  line-height: 28px;
   letter-spacing: 0;
   text-align: left;
+}
+
+.agent-tool-row {
+  grid-template-columns: 16px max-content 2px minmax(0, 1fr) auto auto 8px;
+}
+
+.agent-tool-row .agent-flow-meta {
+  grid-column: 6;
+}
+
+.agent-tool-row .agent-flow-chevron {
+  grid-column: 7;
 }
 
 button.agent-flow-row {
@@ -205,6 +217,18 @@ button.agent-flow-row.no-details:focus-visible,
   transform: rotate(90deg);
 }
 
+.agent-step-group > summary {
+  list-style: none;
+}
+
+.agent-step-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-step-group[open] > summary .agent-flow-chevron {
+  transform: rotate(90deg);
+}
+
 .agent-transcript-reasoning .agent-transcript-details {
   margin: 2px 0 6px 26px;
   padding: 8px 10px;
@@ -293,14 +317,6 @@ button.agent-flow-row.no-details:focus-visible,
   color: var(--feedback-danger-text);
 }
 
-.turn-usage-footer {
-  max-width: min(820px, 100%);
-  margin-top: 5px;
-  color: var(--muted-2);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
 .agent-flow-summary.is-error,
 .agent-step-result.error {
   color: var(--danger);
@@ -326,6 +342,50 @@ button.agent-flow-row.no-details:focus-visible,
 }
 
 .agent-flow-chevron.open {
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.assistant-process-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 820px;
+  min-height: 34px;
+  padding: 4px 0 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assistant-process-trigger .agent-flow-chevron {
+  margin-left: auto;
+}
+
+.assistant-process-verification {
+  color: var(--muted-2);
+  font-size: 12px;
+}
+
+.assistant-process-content[hidden] {
+  display: none;
+}
+
+.agent-tool-preparing > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.agent-tool-preparing > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-tool-preparing[open] > summary .agent-flow-chevron {
   transform: translateY(-1px) rotate(45deg);
 }
 

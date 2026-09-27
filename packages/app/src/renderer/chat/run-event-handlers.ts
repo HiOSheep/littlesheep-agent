@@ -117,6 +117,8 @@ export function handleRunToolEvent(
             id,
             name: evt.name,
             receivedCharacters: evt.receivedCharacters ?? 0,
+            lineProgress: evt.lineProgress,
+            argumentSummary: evt.argumentSummary,
             status: evt.generationStatus ?? 'running',
           })
       return { ...activity, ...stream.state, ...mergeVisibility(activity.visibility, 'progress'), transcript }
@@ -195,13 +197,14 @@ export function handleRunToolEvent(
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
       ...mergeVisibility(activity.visibility, evt.visibility),
-      transcript: appendTranscriptTool(activity.transcript ?? [], evt.callId!),
+      transcript: appendTranscriptTool(activity.transcript ?? [], evt.callId!, evt.name!),
       tools: upsertLiveTool(activity.tools, {
         callId: evt.callId ?? '',
         name: evt.name ?? '',
         stepId: evt.stepId,
         startedAt: Date.now(),
         input: evt.input,
+        lineProgress: evt.lineProgress,
         ok: undefined,
         error: undefined,
       }),
@@ -316,8 +319,17 @@ function upsertTranscriptReasoning(
   })
 }
 
-function appendTranscriptTool(entries: TranscriptEntry[], callId: string): TranscriptEntry[] {
+function appendTranscriptTool(entries: TranscriptEntry[], callId: string, name: string): TranscriptEntry[] {
   const id = `tool:${callId}`
   if (entries.some((entry) => entry.id === id)) return entries
+  // The model's parameter stream and the Runtime's tool execution are one
+  // operation to the reader. Replace its completed preparation row in place.
+  const preparingIndex = entries.findIndex((entry) => entry.kind === 'preparing'
+    && entry.status === 'done' && entry.name === name)
+  if (preparingIndex >= 0) {
+    const next = [...entries]
+    next[preparingIndex] = { kind: 'tool', id, callId }
+    return next
+  }
   return upsertTranscriptEntry(entries, { kind: 'tool', id, callId })
 }

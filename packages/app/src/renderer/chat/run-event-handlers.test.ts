@@ -67,14 +67,17 @@ describe('model transcript reduction', () => {
     for (const [sequence, receivedCharacters] of [[1, 10], [2, 20], [3, 30]] as const) {
       dispatch(context, {
         type: 'tool_preparing', phaseId: 'turn:tool:0', name: 'exec',
-        receivedCharacters, generationStatus: sequence === 3 ? 'done' : 'running',
+        receivedCharacters, argumentSummary: 'rg src', generationStatus: sequence === 3 ? 'done' : 'running',
         streamRef: { version: 1, runId: 'run', requestId: 'req', transportAttempt: 1, sequence, operation: 'replace' },
       })
     }
     expect(activity().transcript).toEqual([expect.objectContaining({
-      kind: 'preparing', name: 'exec', receivedCharacters: 30, status: 'done',
+      kind: 'preparing', name: 'exec', receivedCharacters: 30, argumentSummary: 'rg src', status: 'done',
     })])
     expect(activity().tools).toHaveLength(0)
+    dispatch(context, { type: 'tool_start', callId: 'call-1', name: 'exec', visibility: 'progress' })
+    expect(activity().transcript).toEqual([expect.objectContaining({ kind: 'tool', callId: 'call-1' })])
+    expect(activity().tools).toHaveLength(1)
   })
 
   it('HA-04-04 retires an old attempt so late frames cannot revive it', () => {

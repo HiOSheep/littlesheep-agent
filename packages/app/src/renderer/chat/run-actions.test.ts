@@ -226,8 +226,8 @@ describe('run actions active-run updates', () => {
 
   // CE-09: a failure has to stay visible. The composer must leave the running
   // state and the turn must carry the Runtime's own reason — never a canned
-  // Agent apology, and never a streamed preview left standing as if it were the
-  // answer.
+  // Agent apology. Keep the streamed preview as evidence of what was actually
+  // received, marked by the failed Runtime state rather than as a final answer.
   it.each([
     ['a definitive stream rejection', (() => {
       const error = new Error('provider request failed: 502')
@@ -250,7 +250,7 @@ describe('run actions active-run updates', () => {
     await createRunActions(fixture.context).send()
 
     const message = fixture.messages().at(-1)
-    expect(message?.text).toBe('')
+    expect(message?.text).toBe('partial preview ')
     expect(message?.activity).toMatchObject({
       status: 'failed',
       error: (failure as Error).message,

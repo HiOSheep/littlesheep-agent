@@ -7,6 +7,7 @@
 import type { ChatRequest, ChatResponse, LlmClient, StreamChunk } from '@littlesheep/llm';
 import type { RunContext, ToolStreamEvent } from '@littlesheep/types';
 import { callModelChat, callModelChatStream, modelRequestIdFor } from '../../model-observability.js';
+import { MAX_PROGRESS_ARGUMENT_CHARACTERS, toolArgumentLineProgress, toolArgumentSummary } from './tool-argument-line-progress.js';
 
 /** Bounded per-row transcript text; the UI never receives unbounded model text. */
 const MAX_TRANSCRIPT_TEXT_LENGTH = 4_000;
@@ -26,6 +27,8 @@ export interface TranscriptTurn {
     receivedCharacters: number;
     publishedName: string;
     publishedCharacters: number;
+    argumentsSoFar: string;
+    argumentsOverflow: boolean;
   }>;
   requestId?: string;
   transportAttempt: number;
@@ -115,6 +118,8 @@ export function closeTranscriptTurn(
       toolCallIndex,
       name: preparing.name || undefined,
       receivedCharacters: preparing.receivedCharacters,
+      lineProgress: preparing.argumentsOverflow ? undefined : (toolArgumentLineProgress(preparing.name, preparing.argumentsSoFar) ?? undefined),
+      argumentSummary: preparing.argumentsOverflow ? undefined : (toolArgumentSummary(preparing.argumentsSoFar) ?? undefined),
       streamRef: nextStreamRef(ctx, turn, 'replace'),
     });
   }
@@ -145,6 +150,8 @@ export function abortTranscriptTurn(
       toolCallIndex,
       name: preparing.name || undefined,
       receivedCharacters: preparing.receivedCharacters,
+      lineProgress: preparing.argumentsOverflow ? undefined : (toolArgumentLineProgress(preparing.name, preparing.argumentsSoFar) ?? undefined),
+      argumentSummary: preparing.argumentsOverflow ? undefined : (toolArgumentSummary(preparing.argumentsSoFar) ?? undefined),
       streamRef: nextStreamRef(ctx, turn, 'replace'),
     });
   }
@@ -229,12 +236,19 @@ function collectTranscriptChunk(
       receivedCharacters: 0,
       publishedName: '',
       publishedCharacters: 0,
+      argumentsSoFar: '',
+      argumentsOverflow: false,
     };
+    const argumentsDelta = chunk.toolCallArgsDelta ?? '';
+    const argumentsOverflow = previous.argumentsOverflow
+      || previous.argumentsSoFar.length + argumentsDelta.length > MAX_PROGRESS_ARGUMENT_CHARACTERS;
     const preparing = {
       name: previous.name + (chunk.toolCallName ?? ''),
       receivedCharacters: previous.receivedCharacters + (chunk.toolCallArgsDelta?.length ?? 0),
       publishedName: previous.publishedName,
       publishedCharacters: previous.publishedCharacters,
+      argumentsSoFar: argumentsOverflow ? '' : previous.argumentsSoFar + argumentsDelta,
+      argumentsOverflow,
     };
     turn.preparingTools.set(toolCallIndex, preparing);
     const firstPublication = preparing.publishedCharacters === 0 && !preparing.publishedName;
@@ -250,6 +264,8 @@ function collectTranscriptChunk(
         toolCallIndex,
         name: preparing.name || undefined,
         receivedCharacters: preparing.receivedCharacters,
+        lineProgress: preparing.argumentsOverflow ? undefined : (toolArgumentLineProgress(preparing.name, preparing.argumentsSoFar) ?? undefined),
+        argumentSummary: preparing.argumentsOverflow ? undefined : (toolArgumentSummary(preparing.argumentsSoFar) ?? undefined),
         streamRef: nextStreamRef(ctx, turn, 'replace'),
       });
       preparing.publishedName = preparing.name;

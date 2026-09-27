@@ -55,7 +55,7 @@ export interface HistoryActivity {
     | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
     | { kind: 'text'; id: string; text: string }
     | { kind: 'system'; id: string; text: string }
-    | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; status: 'running' | 'done' | 'failed' | 'aborted' }
+    | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; lineProgress?: { additions: number; deletions: number | null }; argumentSummary?: string; status: 'running' | 'done' | 'failed' | 'aborted' }
     | { kind: 'tool'; id: string; callId: string }
   >
 }

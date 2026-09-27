@@ -24,12 +24,11 @@ export function ReasoningRow({
       className={`agent-transcript-reasoning ${status}`}
       data-transcript-entry={id}
       open={pinnedOpen ?? status === 'running'}
-      onToggle={(event) => {
-        const isOpen = (event.currentTarget as HTMLDetailsElement).open
-        setPinnedOpen((current) => (current === isOpen ? current : isOpen))
-      }}
     >
-      <summary className="agent-flow-row">
+      <summary className="agent-flow-row" onClick={(event) => {
+        event.preventDefault()
+        setPinnedOpen((current) => !(current ?? status === 'running'))
+      }}>
         <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
         <span className="agent-flow-title">思考</span>
         <span className="agent-flow-separator" aria-hidden="true" />
@@ -37,7 +36,7 @@ export function ReasoningRow({
         <span className="agent-flow-chevron" aria-hidden="true" />
       </summary>
       <div className="agent-transcript-details">
-        <Markdown text={text} />
+        <Markdown text={text} streaming={status === 'running'} />
       </div>
     </details>
   )
