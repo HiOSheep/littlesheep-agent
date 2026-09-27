@@ -1,7 +1,7 @@
 {
   "check": "desktop-large-root-startup",
-  "label": "2026-09-27",
-  "measuredAt": "2026-09-27T03:58:44.352Z",
+  "label": "warm-check",
+  "measuredAt": "2026-09-27T04:15:41.537Z",
   "question": "Which startup stage grows with the size of the data root, up to /runtime/readiness = ready?",
   "method": [
     "Real Electron app (repository entry) launched against an isolated data root in os.tmpdir()",
@@ -19,9 +19,239 @@
     "electron": "36.9.5"
   },
   "buildFreshness": {
-    "status": "stale",
-    "message": "App build artifacts are stale (input-mismatch)."
+    "status": "fresh",
+    "detail": {
+      "fresh": true,
+      "reason": "match",
+      "manifest": {
+        "createdAt": "2026-09-27T04:10:56.843Z",
+        "input": {
+          "digest": "e4e0bdd1cdbfe09063905bf19a996f4d8fc7e59c7dd8b4c22fa1f3e2876a92dd",
+          "fileCount": 1538,
+          "runtime": {
+            "arch": "x64",
+            "electronVersion": "36.9.5",
+            "packageRoot": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron",
+            "platform": "win32",
+            "preparedExecutable": {
+              "path": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64/LittleSheep.exe",
+              "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce",
+              "size": 202690560
+            },
+            "preparedRuntimeDirectory": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64",
+            "sourceExecutable": {
+              "path": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron/dist/electron.exe",
+              "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce",
+              "size": 202690560
+            }
+          },
+          "sourceDigest": "6c883e3b88b1daa558508eeb0a970f48b39c9f7c114c49e864e59343a4defb54",
+          "totalBytes": 12104196,
+          "workspacePackages": [
+            "@littlesheep/app",
+            "@littlesheep/branding",
+            "@littlesheep/channel-feishu",
+            "@littlesheep/channel-qqbot",
+            "@littlesheep/channel-telegram",
+            "@littlesheep/channel-webhook",
+            "@littlesheep/classifier",
+            "@littlesheep/config",
+            "@littlesheep/context",
+            "@littlesheep/documents",
+            "@littlesheep/embedding",
+            "@littlesheep/experience",
+            "@littlesheep/harness",
+            "@littlesheep/llm",
+            "@littlesheep/memory-core",
+            "@littlesheep/memory-tree",
+            "@littlesheep/plugins",
+            "@littlesheep/prompt",
+            "@littlesheep/runner",
+            "@littlesheep/safety",
+            "@littlesheep/session",
+            "@littlesheep/skills",
+            "@littlesheep/snapshot",
+            "@littlesheep/tools",
+            "@littlesheep/types",
+            "@littlesheep/vector",
+            "@littlesheep/web"
+          ]
+        },
+        "kind": "littlesheep-app-build",
+        "mode": "ensure-build",
+        "output": {
+          "digest": "abd754b23c7bae981e20a9638ae5da6e957132fd52a73e407ac5b9d4e24e9730",
+          "fileCount": 165,
+          "requiredFiles": [
+            "packages/app/out/main/index.js",
+            "packages/app/out/preload/index.js",
+            "packages/app/out/renderer/index.html"
+          ],
+          "totalBytes": 28149790
+        },
+        "runtime": {
+          "arch": "x64",
+          "electronVersion": "36.9.5",
+          "packageRoot": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron",
+          "platform": "win32",
+          "preparedExecutable": {
+            "path": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64/LittleSheep.exe",
+            "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce",
+            "size": 202690560
+          },
+          "preparedRuntimeDirectory": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64",
+          "sourceExecutable": {
+            "path": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron/dist/electron.exe",
+            "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce",
+            "size": 202690560
+          }
+        },
+        "schemaVersion": 1
+      },
+      "input": {
+        "digest": "e4e0bdd1cdbfe09063905bf19a996f4d8fc7e59c7dd8b4c22fa1f3e2876a92dd",
+        "sourceDigest": "6c883e3b88b1daa558508eeb0a970f48b39c9f7c114c49e864e59343a4defb54",
+        "fileCount": 1538,
+        "totalBytes": 12104196,
+        "workspacePackages": [
+          "@littlesheep/app",
+          "@littlesheep/branding",
+          "@littlesheep/channel-feishu",
+          "@littlesheep/channel-qqbot",
+          "@littlesheep/channel-telegram",
+          "@littlesheep/channel-webhook",
+          "@littlesheep/classifier",
+          "@littlesheep/config",
+          "@littlesheep/context",
+          "@littlesheep/documents",
+          "@littlesheep/embedding",
+          "@littlesheep/experience",
+          "@littlesheep/harness",
+          "@littlesheep/llm",
+          "@littlesheep/memory-core",
+          "@littlesheep/memory-tree",
+          "@littlesheep/plugins",
+          "@littlesheep/prompt",
+          "@littlesheep/runner",
+          "@littlesheep/safety",
+          "@littlesheep/session",
+          "@littlesheep/skills",
+          "@littlesheep/snapshot",
+          "@littlesheep/tools",
+          "@littlesheep/types",
+          "@littlesheep/vector",
+          "@littlesheep/web"
+        ],
+        "runtime": {
+          "electronVersion": "36.9.5",
+          "platform": "win32",
+          "arch": "x64",
+          "packageRoot": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron",
+          "sourceExecutable": {
+            "path": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron/dist/electron.exe",
+            "size": 202690560,
+            "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce"
+          },
+          "preparedExecutable": {
+            "path": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64/LittleSheep.exe",
+            "size": 202690560,
+            "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce"
+          },
+          "preparedRuntimeDirectory": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64"
+        }
+      },
+      "output": {
+        "digest": "abd754b23c7bae981e20a9638ae5da6e957132fd52a73e407ac5b9d4e24e9730",
+        "fileCount": 165,
+        "totalBytes": 28149790,
+        "requiredFiles": [
+          "packages/app/out/main/index.js",
+          "packages/app/out/preload/index.js",
+          "packages/app/out/renderer/index.html"
+        ]
+      },
+      "runtime": {
+        "electronVersion": "36.9.5",
+        "platform": "win32",
+        "arch": "x64",
+        "packageRoot": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron",
+        "sourceExecutable": {
+          "path": "D:/Repositories/littlesheep/node_modules/.pnpm/electron@36.9.5/node_modules/electron/dist/electron.exe",
+          "size": 202690560,
+          "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce"
+        },
+        "preparedExecutable": {
+          "path": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64/LittleSheep.exe",
+          "size": 202690560,
+          "sha256": "1fcc9e4398b4fffe0d4d0fd133ccc49e223fae84ea6c5f5d82ff85923dc5a3ce"
+        },
+        "preparedRuntimeDirectory": "D:/Repositories/littlesheep/packages/app/runtime/electron-v36.9.5-win32-x64"
+      }
+    }
   },
+  "codeAttribution": [
+    {
+      "measured": "unattributed gap: runner-infra-observability-ready -> runner-infra-durable-events-ready",
+      "scalesWith": "every file in DATA_ROOT_DIRS, plus every manifest in backups/versioning/checkpoints, but only when config.versioning.enabled is true",
+      "awaitedBeforeReady": true,
+      "code": [
+        "packages/runner/src/infra.ts:282 `await versioning?.initialize()` - inside createRunner, before readiness",
+        "packages/snapshot/src/git-checkpoint.ts:467 initializeInternal()",
+        "packages/snapshot/src/git-checkpoint.ts:470 + :532-545 recoverPendingManifests(): readdir + readFile + JSON.parse of EVERY file in backups/versioning/checkpoints",
+        "packages/snapshot/src/git-checkpoint.ts:472 + :510 -> packages/snapshot/src/git-checkpoint-files.ts:51-73 collectDataFileStats(): recursive walk of DATA_ROOT_DIRS (git-checkpoint-files.ts:26-35: archive, experience, memory, memory-tree, projects, sessions, skills, workspace) with an lstat per file",
+        "packages/snapshot/src/git-checkpoint.ts:473 -> packages/snapshot/src/git-client.ts:93-113 commitPaths(): an exists() per path, then `git add -A -f` in batches, then a commit",
+        "packages/snapshot/src/git-checkpoint.ts:488-489 writeManifest + pruneManifests() -> :548-554 readdir + stat of every manifest"
+      ]
+    },
+    {
+      "measured": "runner-infra-durable-events-ready / -inbox-ready / -run-leases-ready / -effect-leases-ready",
+      "scalesWith": "one parsed record per file in durable-events, durable-inbox, durable-run-leases, durable-effect-leases",
+      "awaitedBeforeReady": true,
+      "code": [
+        "packages/runner/src/infra.ts:319 `await buildDurableHarnessInfrastructure(...)`",
+        "packages/runner/src/durable-harness-infrastructure.ts:50-66 - the four initialize() calls run overlapped (Promise.allSettled), which is why each mark carries its own duration",
+        "packages/runner/src/durable-event-store.ts:93 initialize() (partition listing at :226)",
+        "packages/runner/src/durable-inbox-store.ts:77 initialize() (readdir + parse at :347)",
+        "packages/runner/src/durable-run-lease-store.ts:72 initialize() -> :226 readLeases() parses EVERY lease file",
+        "packages/runner/src/durable-effect-lease-store.ts (same shape as the run-lease store)"
+      ]
+    },
+    {
+      "measured": "execution-ready (the whole runner-ready -> readiness.ready() window)",
+      "scalesWith": "the number of run checkpoints and dispositions, and one execution-log read per checkpoint run id",
+      "awaitedBeforeReady": true,
+      "code": [
+        "packages/app/src/main/index.ts:479 `await server?.setRunner(created)`, then :490 readiness.ready()",
+        "packages/app/src/main/local-app-api/run-routes.ts:103 RunRouter.create -> :111 `await recoverDurableRuns(..., \"queue\")` (the event-partition pass on :112 is `void`ed - the earlier fix)",
+        "packages/app/src/main/local-app-api/run-routes.ts:117 `await ...recoverInterruptedResumes(...)` -> packages/runner/src/run-checkpoint-control.ts:72 -> controller.listResumingDispositions() -> packages/runner/src/run-checkpoint-disposition-store.ts:75 and :103 (readdir + parse)",
+        "packages/app/src/main/local-app-api/run-routes.ts:125 `await ...reconcileCompletedRuns(...)` -> packages/runner/src/run-checkpoint-control.ts:59 checkpointStore.list() -> packages/runner/src/run-checkpoint-store.ts:203 -> packages/runner/src/run-checkpoint-scan.ts:76-120 (readdir, a stat per file, parse of up to maxReadEntries = 256 newest) and an executionLogStore.read per checkpoint run id at run-checkpoint-control.ts:63"
+      ]
+    },
+    {
+      "measured": "attachment-protection / attachment-protection-checkpoints",
+      "scalesWith": "up to 128 checkpoints plus every file in attachment-cache/files",
+      "awaitedBeforeReady": false,
+      "code": [
+        "packages/app/src/main/attachment-protection.ts:22-55 - started from packages/app/src/main/local-app-api-server.ts:99, where `.settled` is stored and never awaited"
+      ]
+    },
+    {
+      "measured": "session-index-ready",
+      "scalesWith": "nothing during bootstrap: the read itself happens on the first route that needs it",
+      "awaitedBeforeReady": false,
+      "code": [
+        "packages/app/src/main/index.ts:312 `void sessionIndex.list().catch(...)`"
+      ]
+    },
+    {
+      "measured": "data-root-ready",
+      "scalesWith": "nothing measured: DataRootMigrationManager.prepareForBootstrap() had no pending operation in either fixture",
+      "awaitedBeforeReady": true,
+      "code": [
+        "packages/app/src/main/index.ts:249 `await dataRootManager.prepareForBootstrap()`"
+      ]
+    }
+  ],
   "gitHeadFile": "ref: refs/heads/main",
   "fixtures": [
     {
@@ -46,9 +276,10 @@
         "archivedSessions": 240,
         "projects": 6
       },
-      "prepareMs": 3297,
+      "versioningEnabled": true,
+      "prepareMs": 3689,
       "seed": {
-        "seedMs": 3297,
+        "seedMs": 3689,
         "sessionIds": 1200,
         "checkpoints": 280
       },
@@ -57,19 +288,19 @@
           "fixtureId": "synthetic-large",
           "launch": 1,
           "warm": false,
-          "pid": 56328,
+          "pid": 56404,
           "ok": true,
           "readinessState": "ready",
           "readinessPhase": "execution",
-          "probes": 409,
-          "spawnToLocatorMs": 843,
-          "spawnToReadyMs": 18549,
-          "processCreateToReadyMs": 18799.1,
-          "processStartedAfterSpawnMs": 250.1,
-          "readyUptimeMs": 18351.8,
-          "bootstrapStartUptimeMs": 612.9,
-          "bootstrapToReadyMs": 17738.9,
-          "stagedSumBeforeReadyMs": 19971.1,
+          "probes": 572,
+          "spawnToLocatorMs": 985,
+          "spawnToReadyMs": 27530,
+          "processCreateToReadyMs": 27817.6,
+          "processStartedAfterSpawnMs": 287.6,
+          "readyUptimeMs": 27347.6,
+          "bootstrapStartUptimeMs": 704.1,
+          "bootstrapToReadyMs": 26643.5,
+          "stagedSumBeforeReadyMs": 29722.8,
           "scale": {
             "sessions": 1200,
             "messagesPerSession": 8,
@@ -93,449 +324,449 @@
             {
               "index": 0,
               "stage": "main-module-ready",
-              "processUptimeMs": 248.9
+              "processUptimeMs": 286.4
             },
             {
               "index": 1,
               "stage": "process-start",
-              "processUptimeMs": 250.1
+              "processUptimeMs": 287.6
             },
             {
               "index": 2,
               "stage": "electron-app-ready",
-              "processUptimeMs": 545.6
+              "processUptimeMs": 616.3
             },
             {
               "index": 3,
               "stage": "desktop-startup-visible",
-              "processUptimeMs": 612.6
+              "processUptimeMs": 703.7
             },
             {
               "index": 4,
               "stage": "bootstrap-start",
-              "processUptimeMs": 612.9
+              "processUptimeMs": 704.1
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 630.8,
-              "durationMs": 17.9
+              "processUptimeMs": 724.7,
+              "durationMs": 20.6
             },
             {
               "index": 6,
               "stage": "data-root-ready",
-              "processUptimeMs": 631.7,
-              "durationMs": 0.9
+              "processUptimeMs": 725.9,
+              "durationMs": 1.2
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 641.7,
-              "durationMs": 10
+              "processUptimeMs": 737.6,
+              "durationMs": 11.7
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 642.1,
-              "durationMs": 0.4
+              "processUptimeMs": 738.2,
+              "durationMs": 0.6
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 644.2,
-              "durationMs": 2.1
+              "processUptimeMs": 740.4,
+              "durationMs": 2.2
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 645.1,
-              "durationMs": 0.9
+              "processUptimeMs": 741.9,
+              "durationMs": 1.5
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 645.2,
+              "processUptimeMs": 742,
               "durationMs": 0.1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 646.1,
-              "durationMs": 1
+              "processUptimeMs": 745.4,
+              "durationMs": 3.4
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 646.2,
-              "durationMs": 0.1
+              "processUptimeMs": 745.6,
+              "durationMs": 0.2
             },
             {
               "index": 14,
               "stage": "archive-index-ready",
-              "processUptimeMs": 657.7,
-              "durationMs": 11.5
+              "processUptimeMs": 769.5,
+              "durationMs": 23.9
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 657.8,
-              "durationMs": 0.2
+              "processUptimeMs": 769.8,
+              "durationMs": 0.3
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 668,
-              "durationMs": 10.1
+              "processUptimeMs": 795.5,
+              "durationMs": 25.8
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 673.6,
-              "durationMs": 5.6
+              "processUptimeMs": 801.5,
+              "durationMs": 5.9
             },
             {
               "index": 18,
               "stage": "renderer-load-started",
-              "processUptimeMs": 690.2
+              "processUptimeMs": 829.7
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 694.4,
-              "durationMs": 20.8
+              "processUptimeMs": 836.4,
+              "durationMs": 34.9
             },
             {
               "index": 20,
               "stage": "execution-start",
-              "processUptimeMs": 694.6
+              "processUptimeMs": 836.7
             },
             {
               "index": 21,
               "stage": "renderer-did-finish-load",
-              "processUptimeMs": 839.3
+              "processUptimeMs": 1009.9
             },
             {
               "index": 22,
               "stage": "renderer-load-started",
-              "processUptimeMs": 840.7
+              "processUptimeMs": 1012.5
             },
             {
               "index": 23,
               "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 861.9,
-              "durationMs": 165
+              "processUptimeMs": 1033.9,
+              "durationMs": 194.6
             },
             {
               "index": 24,
               "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2021.6,
-              "durationMs": 1010
+              "processUptimeMs": 2228,
+              "durationMs": 1005.2
             },
             {
               "index": 25,
               "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 12682,
-              "durationMs": 0.7
+              "processUptimeMs": 14341,
+              "durationMs": 1
             },
             {
               "index": 26,
               "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 12728,
-              "durationMs": 46.5
+              "processUptimeMs": 14410,
+              "durationMs": 69.9
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 12837.2,
-              "durationMs": 155.8
+              "processUptimeMs": 14580.7,
+              "durationMs": 240.6
             },
             {
               "index": 28,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 12876.9,
-              "durationMs": 195.5
+              "processUptimeMs": 14631.8,
+              "durationMs": 291.8
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 12877,
+              "processUptimeMs": 14631.9,
               "durationMs": 0
             },
             {
               "index": 30,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 12878.9,
-              "durationMs": 1.9
+              "processUptimeMs": 14634.4,
+              "durationMs": 2.4
             },
             {
               "index": 31,
               "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 12879,
-              "durationMs": 0.1
+              "processUptimeMs": 14634.6,
+              "durationMs": 0.2
             },
             {
               "index": 32,
               "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 12889.6,
-              "durationMs": 10.5
+              "processUptimeMs": 14647.2,
+              "durationMs": 12.5
             },
             {
               "index": 33,
               "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 12919.2,
-              "durationMs": 29.5
+              "processUptimeMs": 14686.8,
+              "durationMs": 39.5
             },
             {
               "index": 34,
               "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 12922.4,
-              "durationMs": 3.1
+              "processUptimeMs": 14692,
+              "durationMs": 5.1
             },
             {
               "index": 35,
               "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 12939.8,
-              "durationMs": 17.4
+              "processUptimeMs": 14707.9,
+              "durationMs": 15.8
             },
             {
               "index": 36,
               "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 12940.3,
-              "durationMs": 0.4
+              "processUptimeMs": 14708.6,
+              "durationMs": 0.6
             },
             {
               "index": 37,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 12940.3,
+              "processUptimeMs": 14708.7,
               "durationMs": 0
             },
             {
               "index": 38,
               "stage": "runner-ready",
-              "processUptimeMs": 12940.6,
-              "durationMs": 12246
+              "processUptimeMs": 14709.1,
+              "durationMs": 13872.5
             },
             {
               "index": 39,
               "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 13284.6,
-              "durationMs": 252.2
+              "processUptimeMs": 15389.4,
+              "durationMs": 520.7
             },
             {
               "index": 40,
               "stage": "attachment-protection",
-              "processUptimeMs": 13284.7,
-              "durationMs": 343.7
+              "processUptimeMs": 15389.4,
+              "durationMs": 679.6
             },
             {
               "index": 41,
               "stage": "execution-ready",
-              "processUptimeMs": 18351.8,
-              "durationMs": 5411.2
+              "processUptimeMs": 27347.6,
+              "durationMs": 12638.5
             },
             {
               "index": 42,
               "stage": "plugin-host-ready",
-              "processUptimeMs": 18352.4
+              "processUptimeMs": 27348.3
             }
           ],
           "topStages": [
             {
               "index": 38,
               "stage": "runner-ready",
-              "processUptimeMs": 12940.6,
-              "durationMs": 12246
+              "processUptimeMs": 14709.1,
+              "durationMs": 13872.5
             },
             {
               "index": 41,
               "stage": "execution-ready",
-              "processUptimeMs": 18351.8,
-              "durationMs": 5411.2
+              "processUptimeMs": 27347.6,
+              "durationMs": 12638.5
             },
             {
               "index": 24,
               "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2021.6,
-              "durationMs": 1010
+              "processUptimeMs": 2228,
+              "durationMs": 1005.2
             },
             {
               "index": 40,
               "stage": "attachment-protection",
-              "processUptimeMs": 13284.7,
-              "durationMs": 343.7
+              "processUptimeMs": 15389.4,
+              "durationMs": 679.6
             },
             {
               "index": 39,
               "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 13284.6,
-              "durationMs": 252.2
+              "processUptimeMs": 15389.4,
+              "durationMs": 520.7
             },
             {
               "index": 28,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 12876.9,
-              "durationMs": 195.5
-            },
-            {
-              "index": 23,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 861.9,
-              "durationMs": 165
+              "processUptimeMs": 14631.8,
+              "durationMs": 291.8
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 12837.2,
-              "durationMs": 155.8
+              "processUptimeMs": 14580.7,
+              "durationMs": 240.6
+            },
+            {
+              "index": 23,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 1033.9,
+              "durationMs": 194.6
             },
             {
               "index": 26,
               "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 12728,
-              "durationMs": 46.5
+              "processUptimeMs": 14410,
+              "durationMs": 69.9
             },
             {
               "index": 33,
               "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 12919.2,
-              "durationMs": 29.5
+              "processUptimeMs": 14686.8,
+              "durationMs": 39.5
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 694.4,
-              "durationMs": 20.8
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 630.8,
-              "durationMs": 17.9
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 12939.8,
-              "durationMs": 17.4
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 657.7,
-              "durationMs": 11.5
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 12889.6,
-              "durationMs": 10.5
+              "processUptimeMs": 836.4,
+              "durationMs": 34.9
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 668,
-              "durationMs": 10.1
+              "processUptimeMs": 795.5,
+              "durationMs": 25.8
+            },
+            {
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 769.5,
+              "durationMs": 23.9
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 724.7,
+              "durationMs": 20.6
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 14707.9,
+              "durationMs": 15.8
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 14647.2,
+              "durationMs": 12.5
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 641.7,
-              "durationMs": 10
+              "processUptimeMs": 737.6,
+              "durationMs": 11.7
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 673.6,
-              "durationMs": 5.6
+              "processUptimeMs": 801.5,
+              "durationMs": 5.9
             },
             {
               "index": 34,
               "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 12922.4,
-              "durationMs": 3.1
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 644.2,
-              "durationMs": 2.1
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 12878.9,
-              "durationMs": 1.9
+              "processUptimeMs": 14692,
+              "durationMs": 5.1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 646.1,
-              "durationMs": 1
+              "processUptimeMs": 745.4,
+              "durationMs": 3.4
             },
             {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 631.7,
-              "durationMs": 0.9
+              "index": 30,
+              "stage": "runner-infra-checkpoint-store-ready",
+              "processUptimeMs": 14634.4,
+              "durationMs": 2.4
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 740.4,
+              "durationMs": 2.2
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 645.1,
-              "durationMs": 0.9
+              "processUptimeMs": 741.9,
+              "durationMs": 1.5
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 725.9,
+              "durationMs": 1.2
             },
             {
               "index": 25,
               "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 12682,
-              "durationMs": 0.7
+              "processUptimeMs": 14341,
+              "durationMs": 1
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 642.1,
-              "durationMs": 0.4
+              "processUptimeMs": 738.2,
+              "durationMs": 0.6
             },
             {
               "index": 36,
               "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 12940.3,
-              "durationMs": 0.4
+              "processUptimeMs": 14708.6,
+              "durationMs": 0.6
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 657.8,
+              "processUptimeMs": 769.8,
+              "durationMs": 0.3
+            },
+            {
+              "index": 13,
+              "stage": "session-index-ready",
+              "processUptimeMs": 745.6,
+              "durationMs": 0.2
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 14634.6,
               "durationMs": 0.2
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 645.2,
-              "durationMs": 0.1
-            },
-            {
-              "index": 13,
-              "stage": "session-index-ready",
-              "processUptimeMs": 646.2,
-              "durationMs": 0.1
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 12879,
+              "processUptimeMs": 742,
               "durationMs": 0.1
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 12877,
+              "processUptimeMs": 14631.9,
               "durationMs": 0
             },
             {
               "index": 37,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 12940.3,
+              "processUptimeMs": 14708.7,
               "durationMs": 0
             }
           ],
@@ -543,100 +774,100 @@
             {
               "from": "runner-infra-observability-ready",
               "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 861.9,
-              "toUptimeMs": 12682,
-              "gapMs": 11820.1,
-              "laterStageDurationMs": 0.7,
-              "unattributedMs": 11820.1
+              "fromUptimeMs": 1033.9,
+              "toUptimeMs": 14341,
+              "gapMs": 13307.1,
+              "laterStageDurationMs": 1,
+              "unattributedMs": 13307.1
             },
             {
               "from": "process-start",
               "to": "electron-app-ready",
-              "fromUptimeMs": 250.1,
-              "toUptimeMs": 545.6,
-              "gapMs": 295.5,
+              "fromUptimeMs": 287.6,
+              "toUptimeMs": 616.3,
+              "gapMs": 328.7,
               "laterStageDurationMs": null,
-              "unattributedMs": 295.5
-            },
-            {
-              "from": "runner-infra-durable-effect-leases-ready",
-              "to": "runner-infra-durable-run-leases-ready",
-              "fromUptimeMs": 12728,
-              "toUptimeMs": 12837.2,
-              "gapMs": 109.2,
-              "laterStageDurationMs": 155.8,
-              "unattributedMs": 109.2
+              "unattributedMs": 328.7
             },
             {
               "from": "runner-ready",
               "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 12940.6,
-              "toUptimeMs": 13284.6,
-              "gapMs": 344,
-              "laterStageDurationMs": 252.2,
-              "unattributedMs": 91.8
+              "fromUptimeMs": 14709.1,
+              "toUptimeMs": 15389.4,
+              "gapMs": 680.3,
+              "laterStageDurationMs": 520.7,
+              "unattributedMs": 159.6
             },
             {
               "from": "electron-app-ready",
               "to": "desktop-startup-visible",
-              "fromUptimeMs": 545.6,
-              "toUptimeMs": 612.6,
-              "gapMs": 67,
+              "fromUptimeMs": 616.3,
+              "toUptimeMs": 703.7,
+              "gapMs": 87.4,
               "laterStageDurationMs": null,
-              "unattributedMs": 67
-            },
-            {
-              "from": "runner-infra-durable-events-ready",
-              "to": "runner-infra-durable-effect-leases-ready",
-              "fromUptimeMs": 12682,
-              "toUptimeMs": 12728,
-              "gapMs": 46,
-              "laterStageDurationMs": 46.5,
-              "unattributedMs": 46
-            },
-            {
-              "from": "runner-infra-durable-run-leases-ready",
-              "to": "runner-infra-durable-inbox-ready",
-              "fromUptimeMs": 12837.2,
-              "toUptimeMs": 12876.9,
-              "gapMs": 39.7,
-              "laterStageDurationMs": 195.5,
-              "unattributedMs": 39.7
+              "unattributedMs": 87.4
             },
             {
               "from": "execution-start",
               "to": "runner-infra-observability-ready",
-              "fromUptimeMs": 694.6,
-              "toUptimeMs": 861.9,
-              "gapMs": 167.3,
-              "laterStageDurationMs": 165,
-              "unattributedMs": 2.3
+              "fromUptimeMs": 836.7,
+              "toUptimeMs": 1033.9,
+              "gapMs": 197.2,
+              "laterStageDurationMs": 194.6,
+              "unattributedMs": 2.6
             },
             {
               "from": "runner-infra-memory-ready",
               "to": "runner-infra-bootstrap-files-loaded",
-              "fromUptimeMs": 12889.6,
-              "toUptimeMs": 12919.2,
-              "gapMs": 29.6,
-              "laterStageDurationMs": 29.5,
+              "fromUptimeMs": 14647.2,
+              "toUptimeMs": 14686.8,
+              "gapMs": 39.6,
+              "laterStageDurationMs": 39.5,
               "unattributedMs": 0.1
+            },
+            {
+              "from": "bootstrap-start",
+              "to": "branding-ready",
+              "fromUptimeMs": 704.1,
+              "toUptimeMs": 724.7,
+              "gapMs": 20.6,
+              "laterStageDurationMs": 20.6,
+              "unattributedMs": 0
+            },
+            {
+              "from": "session-index-ready",
+              "to": "archive-index-ready",
+              "fromUptimeMs": 745.6,
+              "toUptimeMs": 769.5,
+              "gapMs": 23.9,
+              "laterStageDurationMs": 23.9,
+              "unattributedMs": 0
+            },
+            {
+              "from": "ui-indexes-ready",
+              "to": "local-api-ready",
+              "fromUptimeMs": 769.8,
+              "toUptimeMs": 795.5,
+              "gapMs": 25.7,
+              "laterStageDurationMs": 25.8,
+              "unattributedMs": 0
             },
             {
               "from": "locator-written",
               "to": "desktop-shell-initialized",
-              "fromUptimeMs": 673.6,
-              "toUptimeMs": 694.4,
-              "gapMs": 20.8,
-              "laterStageDurationMs": 20.8,
+              "fromUptimeMs": 801.5,
+              "toUptimeMs": 836.4,
+              "gapMs": 34.9,
+              "laterStageDurationMs": 34.9,
               "unattributedMs": 0
             },
             {
               "from": "attachment-protection",
               "to": "execution-ready",
-              "fromUptimeMs": 13284.7,
-              "toUptimeMs": 18351.8,
-              "gapMs": 5067.1,
-              "laterStageDurationMs": 5411.2,
+              "fromUptimeMs": 15389.4,
+              "toUptimeMs": 27347.6,
+              "gapMs": 11958.2,
+              "laterStageDurationMs": 12638.5,
               "unattributedMs": 0
             }
           ],
@@ -648,20 +879,23 @@
             ],
             "listed": 0,
             "diagnostics": {
-              "invalidFiles": 256,
+              "invalidFiles": 0,
               "warningCount": 1
             }
           },
           "logFacts": {
-            "attachmentProtectionCheckpoints": 252.2,
-            "attachmentProtection": 343.7,
-            "attachmentProtectionAtUptimeMs": 13284.7,
+            "attachmentProtectionCheckpoints": 520.7,
+            "attachmentProtection": 679.6,
+            "attachmentProtectionAtUptimeMs": 15389.4,
             "recoveredRuns": 0,
             "recoveryNotices": 0,
             "checkpointScanCapped": false,
             "versioningWarnings": 0,
             "runnerWarnings": 0,
             "attachmentsWarnings": 0,
+            "runnerBuilds": 1,
+            "readinessRetries": 0,
+            "readinessFailures": 0,
             "timingEntries": 43
           }
         },
@@ -669,19 +903,19 @@
           "fixtureId": "synthetic-large",
           "launch": 2,
           "warm": true,
-          "pid": 11072,
+          "pid": 52452,
           "ok": true,
           "readinessState": "ready",
           "readinessPhase": "execution",
-          "probes": 82,
-          "spawnToLocatorMs": 827,
-          "spawnToReadyMs": 4260,
-          "processCreateToReadyMs": 4500.4,
-          "processStartedAfterSpawnMs": 240.4,
-          "readyUptimeMs": 4067.1,
-          "bootstrapStartUptimeMs": 598.4,
-          "bootstrapToReadyMs": 3468.7,
-          "stagedSumBeforeReadyMs": 5506.4,
+          "probes": 129,
+          "spawnToLocatorMs": 857,
+          "spawnToReadyMs": 6670,
+          "processCreateToReadyMs": 6920.9,
+          "processStartedAfterSpawnMs": 250.9,
+          "readyUptimeMs": 6499.9,
+          "bootstrapStartUptimeMs": 618.2,
+          "bootstrapToReadyMs": 5881.7,
+          "stagedSumBeforeReadyMs": 8932.3,
           "scale": {
             "sessions": 1200,
             "messagesPerSession": 8,
@@ -705,449 +939,449 @@
             {
               "index": 0,
               "stage": "main-module-ready",
-              "processUptimeMs": 239.1
+              "processUptimeMs": 249.6
             },
             {
               "index": 1,
               "stage": "process-start",
-              "processUptimeMs": 240.4
+              "processUptimeMs": 250.9
             },
             {
               "index": 2,
               "stage": "electron-app-ready",
-              "processUptimeMs": 530.3
+              "processUptimeMs": 545.5
             },
             {
               "index": 3,
               "stage": "desktop-startup-visible",
-              "processUptimeMs": 598.1
+              "processUptimeMs": 617.8
             },
             {
               "index": 4,
               "stage": "bootstrap-start",
-              "processUptimeMs": 598.4
+              "processUptimeMs": 618.2
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 617.4,
-              "durationMs": 19
+              "processUptimeMs": 635.7,
+              "durationMs": 17.5
             },
             {
               "index": 6,
               "stage": "data-root-ready",
-              "processUptimeMs": 618.9,
-              "durationMs": 1.5
+              "processUptimeMs": 636.4,
+              "durationMs": 0.7
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 624.8,
-              "durationMs": 5.9
+              "processUptimeMs": 642.7,
+              "durationMs": 6.3
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 625.1,
+              "processUptimeMs": 643.1,
               "durationMs": 0.3
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 627.1,
+              "processUptimeMs": 645,
               "durationMs": 1.9
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 628,
-              "durationMs": 0.9
+              "processUptimeMs": 647.7,
+              "durationMs": 2.7
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 628.1,
+              "processUptimeMs": 647.8,
               "durationMs": 0.1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 629.1,
+              "processUptimeMs": 648.8,
               "durationMs": 1
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 629.2,
+              "processUptimeMs": 648.9,
               "durationMs": 0.1
             },
             {
               "index": 14,
               "stage": "archive-index-ready",
-              "processUptimeMs": 647.7,
-              "durationMs": 18.5
+              "processUptimeMs": 663.5,
+              "durationMs": 14.6
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 647.9,
+              "processUptimeMs": 663.7,
               "durationMs": 0.2
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 657.1,
-              "durationMs": 9.2
+              "processUptimeMs": 675.1,
+              "durationMs": 11.4
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 659,
-              "durationMs": 1.9
+              "processUptimeMs": 677.4,
+              "durationMs": 2.3
             },
             {
               "index": 18,
               "stage": "renderer-load-started",
-              "processUptimeMs": 674.1
+              "processUptimeMs": 697.6
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 678.1,
-              "durationMs": 19.1
+              "processUptimeMs": 701.8,
+              "durationMs": 24.4
             },
             {
               "index": 20,
               "stage": "execution-start",
-              "processUptimeMs": 678.3
+              "processUptimeMs": 702
             },
             {
               "index": 21,
               "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 693.7,
-              "durationMs": 13
+              "processUptimeMs": 714.5,
+              "durationMs": 9.9
             },
             {
               "index": 22,
               "stage": "renderer-did-finish-load",
-              "processUptimeMs": 827.4
+              "processUptimeMs": 877
             },
             {
               "index": 23,
               "stage": "renderer-load-started",
-              "processUptimeMs": 829.1
+              "processUptimeMs": 878.7
             },
             {
               "index": 24,
               "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2006.1,
-              "durationMs": 1000.6
+              "processUptimeMs": 2125.2,
+              "durationMs": 1016
             },
             {
               "index": 25,
               "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 2901.8,
-              "durationMs": 0.7
+              "processUptimeMs": 3598.7,
+              "durationMs": 3.2
             },
             {
               "index": 26,
               "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 2952.9,
-              "durationMs": 51.6
+              "processUptimeMs": 3667.9,
+              "durationMs": 72.1
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 3127,
-              "durationMs": 225.9
+              "processUptimeMs": 4009.6,
+              "durationMs": 414
             },
             {
               "index": 28,
               "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 3140,
-              "durationMs": 238.8
+              "processUptimeMs": 4049.8,
+              "durationMs": 454.1
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 3140.1,
-              "durationMs": 0
+              "processUptimeMs": 4049.9,
+              "durationMs": 0.1
             },
             {
               "index": 30,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 3142.5,
-              "durationMs": 2.4
+              "processUptimeMs": 4054,
+              "durationMs": 4.1
             },
             {
               "index": 31,
               "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 3142.7,
-              "durationMs": 0.2
+              "processUptimeMs": 4054.4,
+              "durationMs": 0.3
             },
             {
               "index": 32,
               "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 3146.8,
-              "durationMs": 4
+              "processUptimeMs": 4061.3,
+              "durationMs": 6.9
             },
             {
               "index": 33,
               "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 3160.6,
-              "durationMs": 13.7
+              "processUptimeMs": 4078,
+              "durationMs": 16.5
             },
             {
               "index": 34,
               "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 3163.9,
-              "durationMs": 3.3
+              "processUptimeMs": 4085.9,
+              "durationMs": 7.8
             },
             {
               "index": 35,
               "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 3167.4,
-              "durationMs": 3.4
+              "processUptimeMs": 4090.9,
+              "durationMs": 4.9
             },
             {
               "index": 36,
               "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 3167.8,
-              "durationMs": 0.4
+              "processUptimeMs": 4091.7,
+              "durationMs": 0.6
             },
             {
               "index": 37,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 3167.9,
+              "processUptimeMs": 4091.8,
               "durationMs": 0
             },
             {
               "index": 38,
               "stage": "runner-ready",
-              "processUptimeMs": 3168.1,
-              "durationMs": 2489.8
+              "processUptimeMs": 4092.2,
+              "durationMs": 3390.2
             },
             {
               "index": 39,
               "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 3410.9,
-              "durationMs": 237.6
+              "processUptimeMs": 4617.1,
+              "durationMs": 516
             },
             {
               "index": 40,
               "stage": "attachment-protection",
-              "processUptimeMs": 3411,
-              "durationMs": 242.4
+              "processUptimeMs": 4617.2,
+              "durationMs": 524.4
             },
             {
               "index": 41,
               "stage": "execution-ready",
-              "processUptimeMs": 4067.1,
-              "durationMs": 899
+              "processUptimeMs": 6499.9,
+              "durationMs": 2407.7
             },
             {
               "index": 42,
               "stage": "plugin-host-ready",
-              "processUptimeMs": 4067.6
+              "processUptimeMs": 6500.8
             }
           ],
           "topStages": [
             {
               "index": 38,
               "stage": "runner-ready",
-              "processUptimeMs": 3168.1,
-              "durationMs": 2489.8
-            },
-            {
-              "index": 24,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2006.1,
-              "durationMs": 1000.6
+              "processUptimeMs": 4092.2,
+              "durationMs": 3390.2
             },
             {
               "index": 41,
               "stage": "execution-ready",
-              "processUptimeMs": 4067.1,
-              "durationMs": 899
+              "processUptimeMs": 6499.9,
+              "durationMs": 2407.7
+            },
+            {
+              "index": 24,
+              "stage": "renderer-workspace-entries",
+              "processUptimeMs": 2125.2,
+              "durationMs": 1016
             },
             {
               "index": 40,
               "stage": "attachment-protection",
-              "processUptimeMs": 3411,
-              "durationMs": 242.4
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 3140,
-              "durationMs": 238.8
+              "processUptimeMs": 4617.2,
+              "durationMs": 524.4
             },
             {
               "index": 39,
               "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 3410.9,
-              "durationMs": 237.6
+              "processUptimeMs": 4617.1,
+              "durationMs": 516
+            },
+            {
+              "index": 28,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 4049.8,
+              "durationMs": 454.1
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 3127,
-              "durationMs": 225.9
+              "processUptimeMs": 4009.6,
+              "durationMs": 414
             },
             {
               "index": 26,
               "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 2952.9,
-              "durationMs": 51.6
+              "processUptimeMs": 3667.9,
+              "durationMs": 72.1
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 678.1,
-              "durationMs": 19.1
+              "processUptimeMs": 701.8,
+              "durationMs": 24.4
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 617.4,
-              "durationMs": 19
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 647.7,
-              "durationMs": 18.5
+              "processUptimeMs": 635.7,
+              "durationMs": 17.5
             },
             {
               "index": 33,
               "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 3160.6,
-              "durationMs": 13.7
+              "processUptimeMs": 4078,
+              "durationMs": 16.5
             },
             {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 693.7,
-              "durationMs": 13
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 663.5,
+              "durationMs": 14.6
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 657.1,
-              "durationMs": 9.2
+              "processUptimeMs": 675.1,
+              "durationMs": 11.4
             },
             {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 624.8,
-              "durationMs": 5.9
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 3146.8,
-              "durationMs": 4
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 3167.4,
-              "durationMs": 3.4
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 714.5,
+              "durationMs": 9.9
             },
             {
               "index": 34,
               "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 3163.9,
-              "durationMs": 3.3
+              "processUptimeMs": 4085.9,
+              "durationMs": 7.8
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 4061.3,
+              "durationMs": 6.9
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 642.7,
+              "durationMs": 6.3
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 4090.9,
+              "durationMs": 4.9
             },
             {
               "index": 30,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 3142.5,
-              "durationMs": 2.4
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 627.1,
-              "durationMs": 1.9
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 659,
-              "durationMs": 1.9
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 618.9,
-              "durationMs": 1.5
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 629.1,
-              "durationMs": 1
-            },
-            {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 628,
-              "durationMs": 0.9
+              "processUptimeMs": 4054,
+              "durationMs": 4.1
             },
             {
               "index": 25,
               "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 2901.8,
+              "processUptimeMs": 3598.7,
+              "durationMs": 3.2
+            },
+            {
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 647.7,
+              "durationMs": 2.7
+            },
+            {
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 677.4,
+              "durationMs": 2.3
+            },
+            {
+              "index": 9,
+              "stage": "config-ready",
+              "processUptimeMs": 645,
+              "durationMs": 1.9
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 648.8,
+              "durationMs": 1
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 636.4,
               "durationMs": 0.7
             },
             {
               "index": 36,
               "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 3167.8,
-              "durationMs": 0.4
+              "processUptimeMs": 4091.7,
+              "durationMs": 0.6
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 625.1,
+              "processUptimeMs": 643.1,
+              "durationMs": 0.3
+            },
+            {
+              "index": 31,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 4054.4,
               "durationMs": 0.3
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 647.9,
-              "durationMs": 0.2
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 3142.7,
+              "processUptimeMs": 663.7,
               "durationMs": 0.2
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 628.1,
+              "processUptimeMs": 647.8,
               "durationMs": 0.1
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 629.2,
+              "processUptimeMs": 648.9,
               "durationMs": 0.1
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 3140.1,
-              "durationMs": 0
+              "processUptimeMs": 4049.9,
+              "durationMs": 0.1
             },
             {
               "index": 37,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 3167.9,
+              "processUptimeMs": 4091.8,
               "durationMs": 0
             }
           ],
@@ -1155,64 +1389,55 @@
             {
               "from": "runner-infra-observability-ready",
               "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 693.7,
-              "toUptimeMs": 2901.8,
-              "gapMs": 2208.1,
-              "laterStageDurationMs": 0.7,
-              "unattributedMs": 2208.1
+              "fromUptimeMs": 714.5,
+              "toUptimeMs": 3598.7,
+              "gapMs": 2884.2,
+              "laterStageDurationMs": 3.2,
+              "unattributedMs": 2884.2
             },
             {
               "from": "process-start",
               "to": "electron-app-ready",
-              "fromUptimeMs": 240.4,
-              "toUptimeMs": 530.3,
-              "gapMs": 289.9,
+              "fromUptimeMs": 250.9,
+              "toUptimeMs": 545.5,
+              "gapMs": 294.6,
               "laterStageDurationMs": null,
-              "unattributedMs": 289.9
-            },
-            {
-              "from": "runner-infra-durable-effect-leases-ready",
-              "to": "runner-infra-durable-inbox-ready",
-              "fromUptimeMs": 2952.9,
-              "toUptimeMs": 3127,
-              "gapMs": 174.1,
-              "laterStageDurationMs": 225.9,
-              "unattributedMs": 174.1
+              "unattributedMs": 294.6
             },
             {
               "from": "electron-app-ready",
               "to": "desktop-startup-visible",
-              "fromUptimeMs": 530.3,
-              "toUptimeMs": 598.1,
-              "gapMs": 67.8,
+              "fromUptimeMs": 545.5,
+              "toUptimeMs": 617.8,
+              "gapMs": 72.3,
               "laterStageDurationMs": null,
-              "unattributedMs": 67.8
-            },
-            {
-              "from": "runner-infra-durable-events-ready",
-              "to": "runner-infra-durable-effect-leases-ready",
-              "fromUptimeMs": 2901.8,
-              "toUptimeMs": 2952.9,
-              "gapMs": 51.1,
-              "laterStageDurationMs": 51.6,
-              "unattributedMs": 51.1
+              "unattributedMs": 72.3
             },
             {
               "from": "runner-ready",
               "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 3168.1,
-              "toUptimeMs": 3410.9,
-              "gapMs": 242.8,
-              "laterStageDurationMs": 237.6,
-              "unattributedMs": 5.2
+              "fromUptimeMs": 4092.2,
+              "toUptimeMs": 4617.1,
+              "gapMs": 524.9,
+              "laterStageDurationMs": 516,
+              "unattributedMs": 8.9
+            },
+            {
+              "from": "locator-written",
+              "to": "desktop-shell-initialized",
+              "fromUptimeMs": 677.4,
+              "toUptimeMs": 701.8,
+              "gapMs": 24.4,
+              "laterStageDurationMs": 24.4,
+              "unattributedMs": 0
             },
             {
               "from": "attachment-protection",
               "to": "execution-ready",
-              "fromUptimeMs": 3411,
-              "toUptimeMs": 4067.1,
-              "gapMs": 656.1,
-              "laterStageDurationMs": 899,
+              "fromUptimeMs": 4617.2,
+              "toUptimeMs": 6499.9,
+              "gapMs": 1882.7,
+              "laterStageDurationMs": 2407.7,
               "unattributedMs": 0
             }
           ],
@@ -1224,27 +1449,30 @@
             ],
             "listed": 0,
             "diagnostics": {
-              "invalidFiles": 256,
+              "invalidFiles": 0,
               "warningCount": 1
             }
           },
           "logFacts": {
-            "attachmentProtectionCheckpoints": 237.6,
-            "attachmentProtection": 242.4,
-            "attachmentProtectionAtUptimeMs": 3411,
+            "attachmentProtectionCheckpoints": 516,
+            "attachmentProtection": 524.4,
+            "attachmentProtectionAtUptimeMs": 4617.2,
             "recoveredRuns": 0,
             "recoveryNotices": 0,
             "checkpointScanCapped": false,
             "versioningWarnings": 0,
             "runnerWarnings": 0,
             "attachmentsWarnings": 0,
+            "runnerBuilds": 1,
+            "readinessRetries": 0,
+            "readinessFailures": 0,
             "timingEntries": 43
           }
         }
       ],
       "inventory": {
         "totalFiles": 4730,
-        "totalBytes": 30798244,
+        "totalBytes": 30822244,
         "entries": [
           {
             "path": "sessions",
@@ -1262,7 +1490,7 @@
             "path": "execution-logs",
             "kind": "directory",
             "files": 400,
-            "bytes": 1069880
+            "bytes": 1061960
           },
           {
             "path": "attachment-cache",
@@ -1298,7 +1526,7 @@
             "path": "run-checkpoints",
             "kind": "directory",
             "files": 280,
-            "bytes": 526556
+            "bytes": 558476
           },
           {
             "path": "memory",
@@ -1392,2827 +1620,6 @@
           }
         ]
       }
-    },
-    {
-      "id": "small",
-      "kind": "synthetic",
-      "scale": {
-        "sessions": 3,
-        "messagesPerSession": 2,
-        "replyFingerprints": 0,
-        "checkpoints": 0,
-        "resumingDispositions": 0,
-        "leases": 0,
-        "effectLeases": 0,
-        "inbox": 0,
-        "eventPartitions": 0,
-        "executionLogs": 0,
-        "cacheObservations": 0,
-        "compactionOperations": 0,
-        "attachmentFiles": 0,
-        "memoryFiles": 0,
-        "manifests": 0,
-        "archivedSessions": 0,
-        "projects": 1
-      },
-      "prepareMs": 15,
-      "seed": {
-        "seedMs": 15,
-        "sessionIds": 3,
-        "checkpoints": 0
-      },
-      "runs": [
-        {
-          "fixtureId": "small",
-          "launch": 1,
-          "warm": false,
-          "pid": 61748,
-          "ok": true,
-          "readinessState": "ready",
-          "readinessPhase": "execution",
-          "probes": 40,
-          "spawnToLocatorMs": 820,
-          "spawnToReadyMs": 2470,
-          "processCreateToReadyMs": 2725.8,
-          "processStartedAfterSpawnMs": 255.8,
-          "readyUptimeMs": 2307.2,
-          "bootstrapStartUptimeMs": 590.5,
-          "bootstrapToReadyMs": 1716.7,
-          "stagedSumBeforeReadyMs": 2820.3,
-          "scale": {
-            "sessions": 3,
-            "messagesPerSession": 2,
-            "replyFingerprints": 0,
-            "checkpoints": 0,
-            "resumingDispositions": 0,
-            "leases": 0,
-            "effectLeases": 0,
-            "inbox": 0,
-            "eventPartitions": 0,
-            "executionLogs": 0,
-            "cacheObservations": 0,
-            "compactionOperations": 0,
-            "attachmentFiles": 0,
-            "memoryFiles": 0,
-            "manifests": 0,
-            "archivedSessions": 0,
-            "projects": 1
-          },
-          "stages": [
-            {
-              "index": 0,
-              "stage": "main-module-ready",
-              "processUptimeMs": 254.6
-            },
-            {
-              "index": 1,
-              "stage": "process-start",
-              "processUptimeMs": 255.8
-            },
-            {
-              "index": 2,
-              "stage": "electron-app-ready",
-              "processUptimeMs": 520.6
-            },
-            {
-              "index": 3,
-              "stage": "desktop-startup-visible",
-              "processUptimeMs": 590.2
-            },
-            {
-              "index": 4,
-              "stage": "bootstrap-start",
-              "processUptimeMs": 590.5
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 606.8,
-              "durationMs": 16.3
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 607.6,
-              "durationMs": 0.8
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 617,
-              "durationMs": 9.4
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 617.3,
-              "durationMs": 0.4
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 619.1,
-              "durationMs": 1.8
-            },
-            {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 619.9,
-              "durationMs": 0.8
-            },
-            {
-              "index": 11,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 620,
-              "durationMs": 0.1
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 620.8,
-              "durationMs": 0.8
-            },
-            {
-              "index": 13,
-              "stage": "session-index-ready",
-              "processUptimeMs": 620.9,
-              "durationMs": 0.1
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 623.4,
-              "durationMs": 2.5
-            },
-            {
-              "index": 15,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 623.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 16,
-              "stage": "local-api-ready",
-              "processUptimeMs": 632.7,
-              "durationMs": 9.2
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 634.6,
-              "durationMs": 2
-            },
-            {
-              "index": 18,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 649.2
-            },
-            {
-              "index": 19,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 653,
-              "durationMs": 18.4
-            },
-            {
-              "index": 20,
-              "stage": "execution-start",
-              "processUptimeMs": 653.2
-            },
-            {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 666.1,
-              "durationMs": 10.6
-            },
-            {
-              "index": 22,
-              "stage": "renderer-did-finish-load",
-              "processUptimeMs": 828.1
-            },
-            {
-              "index": 23,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 829.4
-            },
-            {
-              "index": 24,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1999,
-              "durationMs": 997.3
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 2186.8,
-              "durationMs": 1.9
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 2195.4,
-              "durationMs": 10.5
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 2195.6,
-              "durationMs": 10.7
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 2196.2,
-              "durationMs": 11.1
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 2196.2,
-              "durationMs": 0
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 2197.5,
-              "durationMs": 1.3
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 2197.7,
-              "durationMs": 0.1
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 2206.7,
-              "durationMs": 9
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 2237.5,
-              "durationMs": 30.7
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 2240.8,
-              "durationMs": 3.2
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 2253.3,
-              "durationMs": 12.5
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 2253.9,
-              "durationMs": 0.5
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 2253.9,
-              "durationMs": 0
-            },
-            {
-              "index": 38,
-              "stage": "runner-ready",
-              "processUptimeMs": 2254.2,
-              "durationMs": 1601
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 2258.1,
-              "durationMs": 0.8
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 2258.1,
-              "durationMs": 3.4
-            },
-            {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 2307.2,
-              "durationMs": 53
-            },
-            {
-              "index": 42,
-              "stage": "plugin-host-ready",
-              "processUptimeMs": 2307.7
-            }
-          ],
-          "topStages": [
-            {
-              "index": 38,
-              "stage": "runner-ready",
-              "processUptimeMs": 2254.2,
-              "durationMs": 1601
-            },
-            {
-              "index": 24,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1999,
-              "durationMs": 997.3
-            },
-            {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 2307.2,
-              "durationMs": 53
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 2237.5,
-              "durationMs": 30.7
-            },
-            {
-              "index": 19,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 653,
-              "durationMs": 18.4
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 606.8,
-              "durationMs": 16.3
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 2253.3,
-              "durationMs": 12.5
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 2196.2,
-              "durationMs": 11.1
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 2195.6,
-              "durationMs": 10.7
-            },
-            {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 666.1,
-              "durationMs": 10.6
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 2195.4,
-              "durationMs": 10.5
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 617,
-              "durationMs": 9.4
-            },
-            {
-              "index": 16,
-              "stage": "local-api-ready",
-              "processUptimeMs": 632.7,
-              "durationMs": 9.2
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 2206.7,
-              "durationMs": 9
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 2258.1,
-              "durationMs": 3.4
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 2240.8,
-              "durationMs": 3.2
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 623.4,
-              "durationMs": 2.5
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 634.6,
-              "durationMs": 2
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 2186.8,
-              "durationMs": 1.9
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 619.1,
-              "durationMs": 1.8
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 2197.5,
-              "durationMs": 1.3
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 607.6,
-              "durationMs": 0.8
-            },
-            {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 619.9,
-              "durationMs": 0.8
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 620.8,
-              "durationMs": 0.8
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 2258.1,
-              "durationMs": 0.8
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 2253.9,
-              "durationMs": 0.5
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 617.3,
-              "durationMs": 0.4
-            },
-            {
-              "index": 11,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 620,
-              "durationMs": 0.1
-            },
-            {
-              "index": 13,
-              "stage": "session-index-ready",
-              "processUptimeMs": 620.9,
-              "durationMs": 0.1
-            },
-            {
-              "index": 15,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 623.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 2197.7,
-              "durationMs": 0.1
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 2196.2,
-              "durationMs": 0
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 2253.9,
-              "durationMs": 0
-            }
-          ],
-          "gaps": [
-            {
-              "from": "runner-infra-observability-ready",
-              "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 666.1,
-              "toUptimeMs": 2186.8,
-              "gapMs": 1520.7,
-              "laterStageDurationMs": 1.9,
-              "unattributedMs": 1520.7
-            },
-            {
-              "from": "process-start",
-              "to": "electron-app-ready",
-              "fromUptimeMs": 255.8,
-              "toUptimeMs": 520.6,
-              "gapMs": 264.8,
-              "laterStageDurationMs": null,
-              "unattributedMs": 264.8
-            },
-            {
-              "from": "electron-app-ready",
-              "to": "desktop-startup-visible",
-              "fromUptimeMs": 520.6,
-              "toUptimeMs": 590.2,
-              "gapMs": 69.6,
-              "laterStageDurationMs": null,
-              "unattributedMs": 69.6
-            },
-            {
-              "from": "runner-infra-memory-ready",
-              "to": "runner-infra-bootstrap-files-loaded",
-              "fromUptimeMs": 2206.7,
-              "toUptimeMs": 2237.5,
-              "gapMs": 30.8,
-              "laterStageDurationMs": 30.7,
-              "unattributedMs": 0.1
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 2258.1,
-              "toUptimeMs": 2307.2,
-              "gapMs": 49.1,
-              "laterStageDurationMs": 53,
-              "unattributedMs": 0
-            }
-          ],
-          "runCheckpointsApi": {
-            "status": 200,
-            "keys": [
-              "checkpoints",
-              "diagnostics"
-            ],
-            "listed": 0,
-            "diagnostics": {
-              "invalidFiles": 0,
-              "warningCount": 0
-            }
-          },
-          "logFacts": {
-            "attachmentProtectionCheckpoints": 0.8,
-            "attachmentProtection": 3.4,
-            "attachmentProtectionAtUptimeMs": 2258.1,
-            "recoveredRuns": 0,
-            "recoveryNotices": 0,
-            "checkpointScanCapped": false,
-            "versioningWarnings": 0,
-            "runnerWarnings": 0,
-            "attachmentsWarnings": 0,
-            "timingEntries": 43
-          }
-        },
-        {
-          "fixtureId": "small",
-          "launch": 2,
-          "warm": true,
-          "pid": 2664,
-          "ok": true,
-          "readinessState": "ready",
-          "readinessPhase": "execution",
-          "probes": 16,
-          "spawnToLocatorMs": 801,
-          "spawnToReadyMs": 1436,
-          "processCreateToReadyMs": 1680.9,
-          "processStartedAfterSpawnMs": 244.9,
-          "readyUptimeMs": 1285.7,
-          "bootstrapStartUptimeMs": 583.6,
-          "bootstrapToReadyMs": 702.1,
-          "stagedSumBeforeReadyMs": 775.2,
-          "scale": {
-            "sessions": 3,
-            "messagesPerSession": 2,
-            "replyFingerprints": 0,
-            "checkpoints": 0,
-            "resumingDispositions": 0,
-            "leases": 0,
-            "effectLeases": 0,
-            "inbox": 0,
-            "eventPartitions": 0,
-            "executionLogs": 0,
-            "cacheObservations": 0,
-            "compactionOperations": 0,
-            "attachmentFiles": 0,
-            "memoryFiles": 0,
-            "manifests": 0,
-            "archivedSessions": 0,
-            "projects": 1
-          },
-          "stages": [
-            {
-              "index": 0,
-              "stage": "main-module-ready",
-              "processUptimeMs": 243.5
-            },
-            {
-              "index": 1,
-              "stage": "process-start",
-              "processUptimeMs": 244.9
-            },
-            {
-              "index": 2,
-              "stage": "electron-app-ready",
-              "processUptimeMs": 513.2
-            },
-            {
-              "index": 3,
-              "stage": "desktop-startup-visible",
-              "processUptimeMs": 583.2
-            },
-            {
-              "index": 4,
-              "stage": "bootstrap-start",
-              "processUptimeMs": 583.6
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 601.1,
-              "durationMs": 17.5
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 602,
-              "durationMs": 1
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 611.4,
-              "durationMs": 9.4
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 611.8,
-              "durationMs": 0.4
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 613.8,
-              "durationMs": 2
-            },
-            {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 614.6,
-              "durationMs": 0.8
-            },
-            {
-              "index": 11,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 614.7,
-              "durationMs": 0.1
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 615.5,
-              "durationMs": 0.8
-            },
-            {
-              "index": 13,
-              "stage": "session-index-ready",
-              "processUptimeMs": 615.6,
-              "durationMs": 0.1
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 618.4,
-              "durationMs": 2.8
-            },
-            {
-              "index": 15,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 618.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 16,
-              "stage": "local-api-ready",
-              "processUptimeMs": 628.9,
-              "durationMs": 10.4
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 633,
-              "durationMs": 4.1
-            },
-            {
-              "index": 18,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 647.7
-            },
-            {
-              "index": 19,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 650.9,
-              "durationMs": 18
-            },
-            {
-              "index": 20,
-              "stage": "execution-start",
-              "processUptimeMs": 651.2
-            },
-            {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 660.7,
-              "durationMs": 6.6
-            },
-            {
-              "index": 22,
-              "stage": "renderer-did-finish-load",
-              "processUptimeMs": 800.9
-            },
-            {
-              "index": 23,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 801.8
-            },
-            {
-              "index": 24,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 1191.2,
-              "durationMs": 0.6
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 1199.9,
-              "durationMs": 9.3
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 1200.1,
-              "durationMs": 9.4
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 1200.5,
-              "durationMs": 9.9
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 1200.6,
-              "durationMs": 0
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 1202,
-              "durationMs": 1.4
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 1202.2,
-              "durationMs": 0.2
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 1206,
-              "durationMs": 3.8
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 1217.8,
-              "durationMs": 11.8
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 1221.1,
-              "durationMs": 3.2
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 1232.6,
-              "durationMs": 11.5
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 1233,
-              "durationMs": 0.4
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 1233.1,
-              "durationMs": 0
-            },
-            {
-              "index": 37,
-              "stage": "runner-ready",
-              "processUptimeMs": 1233.3,
-              "durationMs": 582.1
-            },
-            {
-              "index": 38,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 1237.9,
-              "durationMs": 0.8
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection",
-              "processUptimeMs": 1238,
-              "durationMs": 4.3
-            },
-            {
-              "index": 40,
-              "stage": "execution-ready",
-              "processUptimeMs": 1285.7,
-              "durationMs": 52.4
-            },
-            {
-              "index": 41,
-              "stage": "plugin-host-ready",
-              "processUptimeMs": 1286.3
-            }
-          ],
-          "topStages": [
-            {
-              "index": 37,
-              "stage": "runner-ready",
-              "processUptimeMs": 1233.3,
-              "durationMs": 582.1
-            },
-            {
-              "index": 40,
-              "stage": "execution-ready",
-              "processUptimeMs": 1285.7,
-              "durationMs": 52.4
-            },
-            {
-              "index": 19,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 650.9,
-              "durationMs": 18
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 601.1,
-              "durationMs": 17.5
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 1217.8,
-              "durationMs": 11.8
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 1232.6,
-              "durationMs": 11.5
-            },
-            {
-              "index": 16,
-              "stage": "local-api-ready",
-              "processUptimeMs": 628.9,
-              "durationMs": 10.4
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 1200.5,
-              "durationMs": 9.9
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 611.4,
-              "durationMs": 9.4
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 1200.1,
-              "durationMs": 9.4
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 1199.9,
-              "durationMs": 9.3
-            },
-            {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 660.7,
-              "durationMs": 6.6
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection",
-              "processUptimeMs": 1238,
-              "durationMs": 4.3
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 633,
-              "durationMs": 4.1
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 1206,
-              "durationMs": 3.8
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 1221.1,
-              "durationMs": 3.2
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 618.4,
-              "durationMs": 2.8
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 613.8,
-              "durationMs": 2
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 1202,
-              "durationMs": 1.4
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 602,
-              "durationMs": 1
-            },
-            {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 614.6,
-              "durationMs": 0.8
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 615.5,
-              "durationMs": 0.8
-            },
-            {
-              "index": 38,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 1237.9,
-              "durationMs": 0.8
-            },
-            {
-              "index": 24,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 1191.2,
-              "durationMs": 0.6
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 611.8,
-              "durationMs": 0.4
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 1233,
-              "durationMs": 0.4
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 1202.2,
-              "durationMs": 0.2
-            },
-            {
-              "index": 11,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 614.7,
-              "durationMs": 0.1
-            },
-            {
-              "index": 13,
-              "stage": "session-index-ready",
-              "processUptimeMs": 615.6,
-              "durationMs": 0.1
-            },
-            {
-              "index": 15,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 618.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 1200.6,
-              "durationMs": 0
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 1233.1,
-              "durationMs": 0
-            }
-          ],
-          "gaps": [
-            {
-              "from": "runner-infra-observability-ready",
-              "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 660.7,
-              "toUptimeMs": 1191.2,
-              "gapMs": 530.5,
-              "laterStageDurationMs": 0.6,
-              "unattributedMs": 530.5
-            },
-            {
-              "from": "process-start",
-              "to": "electron-app-ready",
-              "fromUptimeMs": 244.9,
-              "toUptimeMs": 513.2,
-              "gapMs": 268.3,
-              "laterStageDurationMs": null,
-              "unattributedMs": 268.3
-            },
-            {
-              "from": "electron-app-ready",
-              "to": "desktop-startup-visible",
-              "fromUptimeMs": 513.2,
-              "toUptimeMs": 583.2,
-              "gapMs": 70,
-              "laterStageDurationMs": null,
-              "unattributedMs": 70
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 1238,
-              "toUptimeMs": 1285.7,
-              "gapMs": 47.7,
-              "laterStageDurationMs": 52.4,
-              "unattributedMs": 0
-            }
-          ],
-          "runCheckpointsApi": {
-            "status": 200,
-            "keys": [
-              "checkpoints",
-              "diagnostics"
-            ],
-            "listed": 0,
-            "diagnostics": {
-              "invalidFiles": 0,
-              "warningCount": 0
-            }
-          },
-          "logFacts": {
-            "attachmentProtectionCheckpoints": 0.8,
-            "attachmentProtection": 4.3,
-            "attachmentProtectionAtUptimeMs": 1238,
-            "recoveredRuns": 0,
-            "recoveryNotices": 0,
-            "checkpointScanCapped": false,
-            "versioningWarnings": 0,
-            "runnerWarnings": 0,
-            "attachmentsWarnings": 0,
-            "timingEntries": 42
-          }
-        }
-      ],
-      "inventory": {
-        "totalFiles": 12,
-        "totalBytes": 20180,
-        "entries": [
-          {
-            "path": "sessions",
-            "kind": "directory",
-            "files": 3,
-            "bytes": 17061
-          },
-          {
-            "path": "workspace",
-            "kind": "directory",
-            "files": 2,
-            "bytes": 101
-          },
-          {
-            "path": "archive",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 39
-          },
-          {
-            "path": "attachment-cache",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 36
-          },
-          {
-            "path": "config.json",
-            "kind": "file",
-            "files": 1,
-            "bytes": 1314
-          },
-          {
-            "path": "projects",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 445
-          },
-          {
-            "path": "sessions.json",
-            "kind": "file",
-            "files": 1,
-            "bytes": 1048
-          },
-          {
-            "path": "ui",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 124
-          },
-          {
-            "path": "workplace",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 12
-          },
-          {
-            "path": "backups",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "config",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "experience",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "memory",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "skills",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          }
-        ]
-      }
-    },
-    {
-      "id": "real-copy",
-      "kind": "copy",
-      "copiedFrom": "<user>\\.littlesheep",
-      "prepareMs": 40349,
-      "seed": {
-        "copiedFrom": "<user>\\.littlesheep"
-      },
-      "runs": [
-        {
-          "fixtureId": "real-copy",
-          "launch": 1,
-          "warm": false,
-          "pid": 1816,
-          "ok": true,
-          "readinessState": "ready",
-          "readinessPhase": "execution",
-          "probes": 745,
-          "spawnToLocatorMs": 953,
-          "spawnToReadyMs": 32859,
-          "processCreateToReadyMs": 33110.4,
-          "processStartedAfterSpawnMs": 251.4,
-          "readyUptimeMs": 32684.6,
-          "bootstrapStartUptimeMs": 601.2,
-          "bootstrapToReadyMs": 32083.4,
-          "stagedSumBeforeReadyMs": 55872.1,
-          "stages": [
-            {
-              "index": 0,
-              "stage": "main-module-ready",
-              "processUptimeMs": 250.2
-            },
-            {
-              "index": 1,
-              "stage": "process-start",
-              "processUptimeMs": 251.4
-            },
-            {
-              "index": 2,
-              "stage": "electron-app-ready",
-              "processUptimeMs": 529.7
-            },
-            {
-              "index": 3,
-              "stage": "desktop-startup-visible",
-              "processUptimeMs": 600.8
-            },
-            {
-              "index": 4,
-              "stage": "bootstrap-start",
-              "processUptimeMs": 601.2
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 619.6,
-              "durationMs": 18.5
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 620.4,
-              "durationMs": 0.7
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 713.8,
-              "durationMs": 93.4
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 719.8,
-              "durationMs": 6
-            },
-            {
-              "index": 9,
-              "stage": "renderer-did-finish-load",
-              "processUptimeMs": 741.2
-            },
-            {
-              "index": 10,
-              "stage": "config-ready",
-              "processUptimeMs": 746.8,
-              "durationMs": 27
-            },
-            {
-              "index": 11,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 747.9,
-              "durationMs": 1.1
-            },
-            {
-              "index": 12,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 747.9,
-              "durationMs": 0.1
-            },
-            {
-              "index": 13,
-              "stage": "project-index-ready",
-              "processUptimeMs": 753.9,
-              "durationMs": 6
-            },
-            {
-              "index": 14,
-              "stage": "session-index-ready",
-              "processUptimeMs": 754,
-              "durationMs": 0.1
-            },
-            {
-              "index": 15,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 758,
-              "durationMs": 3.9
-            },
-            {
-              "index": 16,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 758.1,
-              "durationMs": 0.1
-            },
-            {
-              "index": 17,
-              "stage": "local-api-ready",
-              "processUptimeMs": 779,
-              "durationMs": 20.9
-            },
-            {
-              "index": 18,
-              "stage": "locator-written",
-              "processUptimeMs": 781,
-              "durationMs": 2
-            },
-            {
-              "index": 19,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 795.2
-            },
-            {
-              "index": 20,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 802.5,
-              "durationMs": 21.5
-            },
-            {
-              "index": 21,
-              "stage": "execution-start",
-              "processUptimeMs": 802.7
-            },
-            {
-              "index": 22,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1351.7,
-              "durationMs": 407.3
-            },
-            {
-              "index": 23,
-              "stage": "renderer-first-frame",
-              "processUptimeMs": 1354.1,
-              "durationMs": 398.4
-            },
-            {
-              "index": 24,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 3038.5,
-              "durationMs": 1834.3
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 3039,
-              "durationMs": 2233.7
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 22628,
-              "durationMs": 0.5
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 23202.8,
-              "durationMs": 575.2
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 24306.9,
-              "durationMs": 0.4
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 24362.5,
-              "durationMs": 56
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 25510,
-              "durationMs": 2882.4
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 25768.3,
-              "durationMs": 1461.8
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 28616.1,
-              "durationMs": 5988.5
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 28616.2,
-              "durationMs": 0
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 28618.1,
-              "durationMs": 1.9
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 28618.2,
-              "durationMs": 0.1
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 28631.1,
-              "durationMs": 12.9
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 28649.7,
-              "durationMs": 18.6
-            },
-            {
-              "index": 38,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 28652.8,
-              "durationMs": 3.1
-            },
-            {
-              "index": 39,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 28665.9,
-              "durationMs": 13
-            },
-            {
-              "index": 40,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 28666.3,
-              "durationMs": 0.3
-            },
-            {
-              "index": 41,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 28666.3,
-              "durationMs": 0
-            },
-            {
-              "index": 42,
-              "stage": "runner-ready",
-              "processUptimeMs": 28666.5,
-              "durationMs": 27863.8
-            },
-            {
-              "index": 43,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 29350.7,
-              "durationMs": 5044.1
-            },
-            {
-              "index": 44,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 29350.7,
-              "durationMs": 0
-            },
-            {
-              "index": 45,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 29353.7,
-              "durationMs": 3
-            },
-            {
-              "index": 46,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 29353.8,
-              "durationMs": 0
-            },
-            {
-              "index": 47,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 29367.3,
-              "durationMs": 13.5
-            },
-            {
-              "index": 48,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 29380.3,
-              "durationMs": 12.9
-            },
-            {
-              "index": 49,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 29383.2,
-              "durationMs": 2.8
-            },
-            {
-              "index": 50,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 29394.2,
-              "durationMs": 11
-            },
-            {
-              "index": 51,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 29394.3,
-              "durationMs": 0.1
-            },
-            {
-              "index": 52,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 29394.3,
-              "durationMs": 0
-            },
-            {
-              "index": 53,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 29736.8,
-              "durationMs": 1063.1
-            },
-            {
-              "index": 54,
-              "stage": "attachment-protection",
-              "processUptimeMs": 29736.8,
-              "durationMs": 1069.9
-            },
-            {
-              "index": 55,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 29738.6,
-              "durationMs": 335.8
-            },
-            {
-              "index": 56,
-              "stage": "attachment-protection",
-              "processUptimeMs": 29738.7,
-              "durationMs": 344.3
-            },
-            {
-              "index": 57,
-              "stage": "execution-ready",
-              "processUptimeMs": 32684.6,
-              "durationMs": 4018.1
-            }
-          ],
-          "topStages": [
-            {
-              "index": 42,
-              "stage": "runner-ready",
-              "processUptimeMs": 28666.5,
-              "durationMs": 27863.8
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 28616.1,
-              "durationMs": 5988.5
-            },
-            {
-              "index": 43,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 29350.7,
-              "durationMs": 5044.1
-            },
-            {
-              "index": 57,
-              "stage": "execution-ready",
-              "processUptimeMs": 32684.6,
-              "durationMs": 4018.1
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 25510,
-              "durationMs": 2882.4
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 3039,
-              "durationMs": 2233.7
-            },
-            {
-              "index": 24,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 3038.5,
-              "durationMs": 1834.3
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 25768.3,
-              "durationMs": 1461.8
-            },
-            {
-              "index": 54,
-              "stage": "attachment-protection",
-              "processUptimeMs": 29736.8,
-              "durationMs": 1069.9
-            },
-            {
-              "index": 53,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 29736.8,
-              "durationMs": 1063.1
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 23202.8,
-              "durationMs": 575.2
-            },
-            {
-              "index": 22,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1351.7,
-              "durationMs": 407.3
-            },
-            {
-              "index": 23,
-              "stage": "renderer-first-frame",
-              "processUptimeMs": 1354.1,
-              "durationMs": 398.4
-            },
-            {
-              "index": 56,
-              "stage": "attachment-protection",
-              "processUptimeMs": 29738.7,
-              "durationMs": 344.3
-            },
-            {
-              "index": 55,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 29738.6,
-              "durationMs": 335.8
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 713.8,
-              "durationMs": 93.4
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 24362.5,
-              "durationMs": 56
-            },
-            {
-              "index": 10,
-              "stage": "config-ready",
-              "processUptimeMs": 746.8,
-              "durationMs": 27
-            },
-            {
-              "index": 20,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 802.5,
-              "durationMs": 21.5
-            },
-            {
-              "index": 17,
-              "stage": "local-api-ready",
-              "processUptimeMs": 779,
-              "durationMs": 20.9
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 28649.7,
-              "durationMs": 18.6
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 619.6,
-              "durationMs": 18.5
-            },
-            {
-              "index": 47,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 29367.3,
-              "durationMs": 13.5
-            },
-            {
-              "index": 39,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 28665.9,
-              "durationMs": 13
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 28631.1,
-              "durationMs": 12.9
-            },
-            {
-              "index": 48,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 29380.3,
-              "durationMs": 12.9
-            },
-            {
-              "index": 50,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 29394.2,
-              "durationMs": 11
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 719.8,
-              "durationMs": 6
-            },
-            {
-              "index": 13,
-              "stage": "project-index-ready",
-              "processUptimeMs": 753.9,
-              "durationMs": 6
-            },
-            {
-              "index": 15,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 758,
-              "durationMs": 3.9
-            },
-            {
-              "index": 38,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 28652.8,
-              "durationMs": 3.1
-            },
-            {
-              "index": 45,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 29353.7,
-              "durationMs": 3
-            },
-            {
-              "index": 49,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 29383.2,
-              "durationMs": 2.8
-            },
-            {
-              "index": 18,
-              "stage": "locator-written",
-              "processUptimeMs": 781,
-              "durationMs": 2
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 28618.1,
-              "durationMs": 1.9
-            },
-            {
-              "index": 11,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 747.9,
-              "durationMs": 1.1
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 620.4,
-              "durationMs": 0.7
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 22628,
-              "durationMs": 0.5
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 24306.9,
-              "durationMs": 0.4
-            },
-            {
-              "index": 40,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 28666.3,
-              "durationMs": 0.3
-            }
-          ],
-          "gaps": [
-            {
-              "from": "runner-infra-observability-ready",
-              "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 3039,
-              "toUptimeMs": 22628,
-              "gapMs": 19589,
-              "laterStageDurationMs": 0.5,
-              "unattributedMs": 19589
-            },
-            {
-              "from": "runner-infra-durable-run-leases-ready",
-              "to": "runner-infra-durable-inbox-ready",
-              "fromUptimeMs": 25768.3,
-              "toUptimeMs": 28616.1,
-              "gapMs": 2847.8,
-              "laterStageDurationMs": 5988.5,
-              "unattributedMs": 2847.8
-            },
-            {
-              "from": "runner-infra-durable-effect-leases-ready",
-              "to": "runner-infra-durable-run-leases-ready",
-              "fromUptimeMs": 24362.5,
-              "toUptimeMs": 25510,
-              "gapMs": 1147.5,
-              "laterStageDurationMs": 2882.4,
-              "unattributedMs": 1147.5
-            },
-            {
-              "from": "runner-infra-durable-effect-leases-ready",
-              "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 23202.8,
-              "toUptimeMs": 24306.9,
-              "gapMs": 1104.1,
-              "laterStageDurationMs": 0.4,
-              "unattributedMs": 1104.1
-            },
-            {
-              "from": "runner-ready",
-              "to": "runner-infra-durable-inbox-ready",
-              "fromUptimeMs": 28666.5,
-              "toUptimeMs": 29350.7,
-              "gapMs": 684.2,
-              "laterStageDurationMs": 5044.1,
-              "unattributedMs": 684.2
-            },
-            {
-              "from": "runner-infra-durable-events-ready",
-              "to": "runner-infra-durable-effect-leases-ready",
-              "fromUptimeMs": 22628,
-              "toUptimeMs": 23202.8,
-              "gapMs": 574.8,
-              "laterStageDurationMs": 575.2,
-              "unattributedMs": 574.8
-            },
-            {
-              "from": "execution-start",
-              "to": "runner-infra-observability-ready",
-              "fromUptimeMs": 802.7,
-              "toUptimeMs": 3038.5,
-              "gapMs": 2235.8,
-              "laterStageDurationMs": 1834.3,
-              "unattributedMs": 401.5
-            },
-            {
-              "from": "process-start",
-              "to": "electron-app-ready",
-              "fromUptimeMs": 251.4,
-              "toUptimeMs": 529.7,
-              "gapMs": 278.3,
-              "laterStageDurationMs": null,
-              "unattributedMs": 278.3
-            },
-            {
-              "from": "runner-infra-durable-run-leases-ready",
-              "to": "runner-infra-durable-run-leases-ready",
-              "fromUptimeMs": 25510,
-              "toUptimeMs": 25768.3,
-              "gapMs": 258.3,
-              "laterStageDurationMs": 1461.8,
-              "unattributedMs": 258.3
-            },
-            {
-              "from": "electron-app-ready",
-              "to": "desktop-startup-visible",
-              "fromUptimeMs": 529.7,
-              "toUptimeMs": 600.8,
-              "gapMs": 71.1,
-              "laterStageDurationMs": null,
-              "unattributedMs": 71.1
-            },
-            {
-              "from": "runner-infra-durable-events-ready",
-              "to": "runner-infra-durable-effect-leases-ready",
-              "fromUptimeMs": 24306.9,
-              "toUptimeMs": 24362.5,
-              "gapMs": 55.6,
-              "laterStageDurationMs": 56,
-              "unattributedMs": 55.6
-            },
-            {
-              "from": "data-root-ready",
-              "to": "user-data-layout-ready",
-              "fromUptimeMs": 620.4,
-              "toUptimeMs": 713.8,
-              "gapMs": 93.4,
-              "laterStageDurationMs": 93.4,
-              "unattributedMs": 0
-            },
-            {
-              "from": "keychain-ready",
-              "to": "config-ready",
-              "fromUptimeMs": 719.8,
-              "toUptimeMs": 746.8,
-              "gapMs": 27,
-              "laterStageDurationMs": 27,
-              "unattributedMs": 0
-            },
-            {
-              "from": "ui-indexes-ready",
-              "to": "local-api-ready",
-              "fromUptimeMs": 758.1,
-              "toUptimeMs": 779,
-              "gapMs": 20.9,
-              "laterStageDurationMs": 20.9,
-              "unattributedMs": 0
-            },
-            {
-              "from": "locator-written",
-              "to": "desktop-shell-initialized",
-              "fromUptimeMs": 781,
-              "toUptimeMs": 802.5,
-              "gapMs": 21.5,
-              "laterStageDurationMs": 21.5,
-              "unattributedMs": 0
-            },
-            {
-              "from": "runner-infra-returned",
-              "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 29394.3,
-              "toUptimeMs": 29736.8,
-              "gapMs": 342.5,
-              "laterStageDurationMs": 1063.1,
-              "unattributedMs": 0
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 29738.7,
-              "toUptimeMs": 32684.6,
-              "gapMs": 2945.9,
-              "laterStageDurationMs": 4018.1,
-              "unattributedMs": 0
-            }
-          ],
-          "runCheckpointsApi": {
-            "status": 200,
-            "keys": [
-              "checkpoints",
-              "diagnostics"
-            ],
-            "listed": 0,
-            "diagnostics": {
-              "invalidFiles": 0,
-              "warningCount": 0
-            }
-          },
-          "logFacts": {
-            "attachmentProtectionCheckpoints": 1063.1,
-            "attachmentProtection": 1069.9,
-            "attachmentProtectionAtUptimeMs": 29736.8,
-            "recoveredRuns": 0,
-            "recoveryNotices": 0,
-            "checkpointScanCapped": false,
-            "versioningWarnings": 0,
-            "runnerWarnings": 0,
-            "attachmentsWarnings": 0,
-            "timingEntries": 58
-          }
-        },
-        {
-          "fixtureId": "real-copy",
-          "launch": 2,
-          "warm": true,
-          "pid": 37628,
-          "ok": true,
-          "readinessState": "ready",
-          "readinessPhase": "execution",
-          "probes": 117,
-          "spawnToLocatorMs": 987,
-          "spawnToReadyMs": 6193,
-          "processCreateToReadyMs": 6453.2,
-          "processStartedAfterSpawnMs": 260.2,
-          "readyUptimeMs": 5979,
-          "bootstrapStartUptimeMs": 637.6,
-          "bootstrapToReadyMs": 5341.4,
-          "stagedSumBeforeReadyMs": 7675.5,
-          "stages": [
-            {
-              "index": 0,
-              "stage": "main-module-ready",
-              "processUptimeMs": 258.9
-            },
-            {
-              "index": 1,
-              "stage": "process-start",
-              "processUptimeMs": 260.2
-            },
-            {
-              "index": 2,
-              "stage": "electron-app-ready",
-              "processUptimeMs": 562.9
-            },
-            {
-              "index": 3,
-              "stage": "desktop-startup-visible",
-              "processUptimeMs": 637.1
-            },
-            {
-              "index": 4,
-              "stage": "bootstrap-start",
-              "processUptimeMs": 637.6
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 667.1,
-              "durationMs": 29.5
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 668.1,
-              "durationMs": 1
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 767.8,
-              "durationMs": 99.8
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 768.5,
-              "durationMs": 0.7
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 786.8,
-              "durationMs": 18.2
-            },
-            {
-              "index": 10,
-              "stage": "renderer-did-finish-load",
-              "processUptimeMs": 789
-            },
-            {
-              "index": 11,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 791.2,
-              "durationMs": 4.4
-            },
-            {
-              "index": 12,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 791.2,
-              "durationMs": 0.1
-            },
-            {
-              "index": 13,
-              "stage": "project-index-ready",
-              "processUptimeMs": 792.4,
-              "durationMs": 1.2
-            },
-            {
-              "index": 14,
-              "stage": "session-index-ready",
-              "processUptimeMs": 792.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 15,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 796.9,
-              "durationMs": 4.4
-            },
-            {
-              "index": 16,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 797.1,
-              "durationMs": 0.2
-            },
-            {
-              "index": 17,
-              "stage": "local-api-ready",
-              "processUptimeMs": 805.8,
-              "durationMs": 8.7
-            },
-            {
-              "index": 18,
-              "stage": "locator-written",
-              "processUptimeMs": 807.5,
-              "durationMs": 1.8
-            },
-            {
-              "index": 19,
-              "stage": "renderer-load-started",
-              "processUptimeMs": 825.8
-            },
-            {
-              "index": 20,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 830.8,
-              "durationMs": 23.2
-            },
-            {
-              "index": 21,
-              "stage": "execution-start",
-              "processUptimeMs": 831
-            },
-            {
-              "index": 22,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 1073,
-              "durationMs": 239
-            },
-            {
-              "index": 23,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1369.8,
-              "durationMs": 386.2
-            },
-            {
-              "index": 24,
-              "stage": "renderer-first-frame",
-              "processUptimeMs": 1372.4,
-              "durationMs": 379.6
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 3702.3,
-              "durationMs": 0.7
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 3765,
-              "durationMs": 63.3
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 3948.9,
-              "durationMs": 247.2
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 4335.6,
-              "durationMs": 633.9
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 4335.6,
-              "durationMs": 0
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 4337.5,
-              "durationMs": 1.8
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 4337.8,
-              "durationMs": 0.3
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 4349.7,
-              "durationMs": 11.9
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 4365.2,
-              "durationMs": 15.4
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 4369.4,
-              "durationMs": 4.1
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 4378.8,
-              "durationMs": 9.4
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 4379.2,
-              "durationMs": 0.4
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 4379.2,
-              "durationMs": 0
-            },
-            {
-              "index": 38,
-              "stage": "runner-ready",
-              "processUptimeMs": 4379.5,
-              "durationMs": 3548.5
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 4551.5,
-              "durationMs": 169.3
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 4551.5,
-              "durationMs": 171.7
-            },
-            {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 5979,
-              "durationMs": 1599.5
-            },
-            {
-              "index": 42,
-              "stage": "plugin-host-ready",
-              "processUptimeMs": 5979.5
-            }
-          ],
-          "topStages": [
-            {
-              "index": 38,
-              "stage": "runner-ready",
-              "processUptimeMs": 4379.5,
-              "durationMs": 3548.5
-            },
-            {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 5979,
-              "durationMs": 1599.5
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 4335.6,
-              "durationMs": 633.9
-            },
-            {
-              "index": 23,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 1369.8,
-              "durationMs": 386.2
-            },
-            {
-              "index": 24,
-              "stage": "renderer-first-frame",
-              "processUptimeMs": 1372.4,
-              "durationMs": 379.6
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 3948.9,
-              "durationMs": 247.2
-            },
-            {
-              "index": 22,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 1073,
-              "durationMs": 239
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 4551.5,
-              "durationMs": 171.7
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 4551.5,
-              "durationMs": 169.3
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 767.8,
-              "durationMs": 99.8
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 3765,
-              "durationMs": 63.3
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 667.1,
-              "durationMs": 29.5
-            },
-            {
-              "index": 20,
-              "stage": "desktop-shell-initialized",
-              "processUptimeMs": 830.8,
-              "durationMs": 23.2
-            },
-            {
-              "index": 9,
-              "stage": "config-ready",
-              "processUptimeMs": 786.8,
-              "durationMs": 18.2
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 4365.2,
-              "durationMs": 15.4
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 4349.7,
-              "durationMs": 11.9
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 4378.8,
-              "durationMs": 9.4
-            },
-            {
-              "index": 17,
-              "stage": "local-api-ready",
-              "processUptimeMs": 805.8,
-              "durationMs": 8.7
-            },
-            {
-              "index": 11,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 791.2,
-              "durationMs": 4.4
-            },
-            {
-              "index": 15,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 796.9,
-              "durationMs": 4.4
-            },
-            {
-              "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 4369.4,
-              "durationMs": 4.1
-            },
-            {
-              "index": 18,
-              "stage": "locator-written",
-              "processUptimeMs": 807.5,
-              "durationMs": 1.8
-            },
-            {
-              "index": 30,
-              "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 4337.5,
-              "durationMs": 1.8
-            },
-            {
-              "index": 13,
-              "stage": "project-index-ready",
-              "processUptimeMs": 792.4,
-              "durationMs": 1.2
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 668.1,
-              "durationMs": 1
-            },
-            {
-              "index": 8,
-              "stage": "keychain-ready",
-              "processUptimeMs": 768.5,
-              "durationMs": 0.7
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 3702.3,
-              "durationMs": 0.7
-            },
-            {
-              "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 4379.2,
-              "durationMs": 0.4
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 4337.8,
-              "durationMs": 0.3
-            },
-            {
-              "index": 16,
-              "stage": "ui-indexes-ready",
-              "processUptimeMs": 797.1,
-              "durationMs": 0.2
-            },
-            {
-              "index": 12,
-              "stage": "durable-config-ready",
-              "processUptimeMs": 791.2,
-              "durationMs": 0.1
-            },
-            {
-              "index": 14,
-              "stage": "session-index-ready",
-              "processUptimeMs": 792.5,
-              "durationMs": 0.1
-            },
-            {
-              "index": 29,
-              "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 4335.6,
-              "durationMs": 0
-            },
-            {
-              "index": 37,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 4379.2,
-              "durationMs": 0
-            }
-          ],
-          "gaps": [
-            {
-              "from": "runner-infra-observability-ready",
-              "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 1073,
-              "toUptimeMs": 3702.3,
-              "gapMs": 2629.3,
-              "laterStageDurationMs": 0.7,
-              "unattributedMs": 2629.3
-            },
-            {
-              "from": "runner-infra-durable-run-leases-ready",
-              "to": "runner-infra-durable-inbox-ready",
-              "fromUptimeMs": 3948.9,
-              "toUptimeMs": 4335.6,
-              "gapMs": 386.7,
-              "laterStageDurationMs": 633.9,
-              "unattributedMs": 386.7
-            },
-            {
-              "from": "process-start",
-              "to": "electron-app-ready",
-              "fromUptimeMs": 260.2,
-              "toUptimeMs": 562.9,
-              "gapMs": 302.7,
-              "laterStageDurationMs": null,
-              "unattributedMs": 302.7
-            },
-            {
-              "from": "runner-infra-durable-effect-leases-ready",
-              "to": "runner-infra-durable-run-leases-ready",
-              "fromUptimeMs": 3765,
-              "toUptimeMs": 3948.9,
-              "gapMs": 183.9,
-              "laterStageDurationMs": 247.2,
-              "unattributedMs": 183.9
-            },
-            {
-              "from": "electron-app-ready",
-              "to": "desktop-startup-visible",
-              "fromUptimeMs": 562.9,
-              "toUptimeMs": 637.1,
-              "gapMs": 74.2,
-              "laterStageDurationMs": null,
-              "unattributedMs": 74.2
-            },
-            {
-              "from": "runner-infra-durable-events-ready",
-              "to": "runner-infra-durable-effect-leases-ready",
-              "fromUptimeMs": 3702.3,
-              "toUptimeMs": 3765,
-              "gapMs": 62.7,
-              "laterStageDurationMs": 63.3,
-              "unattributedMs": 62.7
-            },
-            {
-              "from": "execution-start",
-              "to": "runner-infra-observability-ready",
-              "fromUptimeMs": 831,
-              "toUptimeMs": 1073,
-              "gapMs": 242,
-              "laterStageDurationMs": 239,
-              "unattributedMs": 3
-            },
-            {
-              "from": "runner-ready",
-              "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 4379.5,
-              "toUptimeMs": 4551.5,
-              "gapMs": 172,
-              "laterStageDurationMs": 169.3,
-              "unattributedMs": 2.7
-            },
-            {
-              "from": "locator-written",
-              "to": "desktop-shell-initialized",
-              "fromUptimeMs": 807.5,
-              "toUptimeMs": 830.8,
-              "gapMs": 23.3,
-              "laterStageDurationMs": 23.2,
-              "unattributedMs": 0.1
-            },
-            {
-              "from": "bootstrap-start",
-              "to": "branding-ready",
-              "fromUptimeMs": 637.6,
-              "toUptimeMs": 667.1,
-              "gapMs": 29.5,
-              "laterStageDurationMs": 29.5,
-              "unattributedMs": 0
-            },
-            {
-              "from": "data-root-ready",
-              "to": "user-data-layout-ready",
-              "fromUptimeMs": 668.1,
-              "toUptimeMs": 767.8,
-              "gapMs": 99.7,
-              "laterStageDurationMs": 99.8,
-              "unattributedMs": 0
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 4551.5,
-              "toUptimeMs": 5979,
-              "gapMs": 1427.5,
-              "laterStageDurationMs": 1599.5,
-              "unattributedMs": 0
-            }
-          ],
-          "runCheckpointsApi": {
-            "status": 200,
-            "keys": [
-              "checkpoints",
-              "diagnostics"
-            ],
-            "listed": 0,
-            "diagnostics": {
-              "invalidFiles": 0,
-              "warningCount": 0
-            }
-          },
-          "logFacts": {
-            "attachmentProtectionCheckpoints": 169.3,
-            "attachmentProtection": 171.7,
-            "attachmentProtectionAtUptimeMs": 4551.5,
-            "recoveredRuns": 0,
-            "recoveryNotices": 0,
-            "checkpointScanCapped": false,
-            "versioningWarnings": 0,
-            "runnerWarnings": 0,
-            "attachmentsWarnings": 0,
-            "timingEntries": 43
-          }
-        }
-      ],
-      "inventory": {
-        "totalFiles": 31221,
-        "totalBytes": 263198511,
-        "entries": [
-          {
-            "path": "durable-events",
-            "kind": "directory",
-            "files": 21365,
-            "bytes": 34975239
-          },
-          {
-            "path": "backups",
-            "kind": "directory",
-            "files": 3284,
-            "bytes": 49637409
-          },
-          {
-            "path": "sessions",
-            "kind": "directory",
-            "files": 1932,
-            "bytes": 62383533
-          },
-          {
-            "path": "durable-inbox",
-            "kind": "directory",
-            "files": 1193,
-            "bytes": 674547
-          },
-          {
-            "path": "execution-logs",
-            "kind": "directory",
-            "files": 1151,
-            "bytes": 104427734
-          },
-          {
-            "path": "durable-run-leases",
-            "kind": "directory",
-            "files": 596,
-            "bytes": 182551
-          },
-          {
-            "path": "compaction-operations",
-            "kind": "directory",
-            "files": 548,
-            "bytes": 213112
-          },
-          {
-            "path": "run-checkpoint-dispositions",
-            "kind": "directory",
-            "files": 512,
-            "bytes": 233628
-          },
-          {
-            "path": "cache-observations",
-            "kind": "directory",
-            "files": 344,
-            "bytes": 1014911
-          },
-          {
-            "path": "run-checkpoints",
-            "kind": "directory",
-            "files": 128,
-            "bytes": 768559
-          },
-          {
-            "path": "durable-effect-leases",
-            "kind": "directory",
-            "files": 118,
-            "bytes": 39766
-          },
-          {
-            "path": "workplace",
-            "kind": "directory",
-            "files": 22,
-            "bytes": 300269
-          },
-          {
-            "path": "workspace",
-            "kind": "directory",
-            "files": 7,
-            "bytes": 558508
-          },
-          {
-            "path": "memory-tree",
-            "kind": "directory",
-            "files": 4,
-            "bytes": 1413071
-          },
-          {
-            "path": "config",
-            "kind": "directory",
-            "files": 2,
-            "bytes": 181
-          },
-          {
-            "path": "models",
-            "kind": "directory",
-            "files": 2,
-            "bytes": 6368058
-          },
-          {
-            "path": "AGENTS.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 130
-          },
-          {
-            "path": "archive",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 345
-          },
-          {
-            "path": "attachment-cache",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 35
-          },
-          {
-            "path": "config.json",
-            "kind": "file",
-            "files": 1,
-            "bytes": 4220
-          },
-          {
-            "path": "MEMORY.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 109
-          },
-          {
-            "path": "PHILOSOPHY.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 202
-          },
-          {
-            "path": "projects",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 361
-          },
-          {
-            "path": "sessions.json",
-            "kind": "file",
-            "files": 1,
-            "bytes": 1394
-          },
-          {
-            "path": "SOUL.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 131
-          },
-          {
-            "path": "toolchains",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 139
-          },
-          {
-            "path": "TOOLS.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 125
-          },
-          {
-            "path": "ui",
-            "kind": "directory",
-            "files": 1,
-            "bytes": 122
-          },
-          {
-            "path": "USER.md",
-            "kind": "file",
-            "files": 1,
-            "bytes": 122
-          },
-          {
-            "path": "memory",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "plugin-data",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "plugins",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          },
-          {
-            "path": "skills",
-            "kind": "directory",
-            "files": 0,
-            "bytes": 0
-          }
-        ]
-      }
     }
   ],
   "gaps": [
@@ -4224,682 +1631,7 @@
     "memory v3 is not exercised by the synthetic fixtures (it needs a SQLite catalog and a local embedding",
     "model); the real-copy fixture reflects whatever backend that data root actually uses."
   ],
-  "comparison": {
-    "largeFixture": "synthetic-large",
-    "smallFixture": "small",
-    "spawnToReadyMs": {
-      "large": [
-        18549,
-        4260
-      ],
-      "small": [
-        2470,
-        1436
-      ],
-      "largeMedianMs": 11404.5,
-      "smallMedianMs": 1953
-    },
-    "heuristic": "scalesWithData = (largeMedian - smallMedian >= 20ms) AND (largeMedian >= max(2 x smallMedian, smallMedian + 20ms))",
-    "stages": [
-      {
-        "stage": "runner-ready",
-        "largeMedianMs": 7367.9,
-        "smallMedianMs": 1091.6,
-        "deltaMs": 6276.3,
-        "scalesWithData": true
-      },
-      {
-        "stage": "execution-ready",
-        "largeMedianMs": 3155.1,
-        "smallMedianMs": 52.7,
-        "deltaMs": 3102.4,
-        "scalesWithData": true
-      },
-      {
-        "stage": "attachment-protection",
-        "largeMedianMs": 293.1,
-        "smallMedianMs": 3.9,
-        "deltaMs": 289.2,
-        "scalesWithData": true
-      },
-      {
-        "stage": "attachment-protection-checkpoints",
-        "largeMedianMs": 244.9,
-        "smallMedianMs": 0.8,
-        "deltaMs": 244.1,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-inbox-ready",
-        "largeMedianMs": 210.7,
-        "smallMedianMs": 9.9,
-        "deltaMs": 200.8,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-run-leases-ready",
-        "largeMedianMs": 197.3,
-        "smallMedianMs": 10.3,
-        "deltaMs": 187,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-observability-ready",
-        "largeMedianMs": 89,
-        "smallMedianMs": 8.6,
-        "deltaMs": 80.4,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-effect-leases-ready",
-        "largeMedianMs": 49.1,
-        "smallMedianMs": 10.3,
-        "deltaMs": 38.8,
-        "scalesWithData": true
-      },
-      {
-        "stage": "archive-index-ready",
-        "largeMedianMs": 15,
-        "smallMedianMs": 2.7,
-        "deltaMs": 12.4,
-        "scalesWithData": false
-      },
-      {
-        "stage": "renderer-workspace-entries",
-        "largeMedianMs": 1005.3,
-        "smallMedianMs": 997.3,
-        "deltaMs": 8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "desktop-shell-initialized",
-        "largeMedianMs": 20,
-        "smallMedianMs": 18.2,
-        "deltaMs": 1.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "branding-ready",
-        "largeMedianMs": 18.5,
-        "smallMedianMs": 16.9,
-        "deltaMs": 1.6,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-checkpoint-store-ready",
-        "largeMedianMs": 2.2,
-        "smallMedianMs": 1.4,
-        "deltaMs": 0.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-memory-ready",
-        "largeMedianMs": 7.3,
-        "smallMedianMs": 6.4,
-        "deltaMs": 0.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "locator-written",
-        "largeMedianMs": 3.8,
-        "smallMedianMs": 3.1,
-        "deltaMs": 0.7,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-bootstrap-files-loaded",
-        "largeMedianMs": 21.6,
-        "smallMedianMs": 21.3,
-        "deltaMs": 0.4,
-        "scalesWithData": false
-      },
-      {
-        "stage": "data-root-ready",
-        "largeMedianMs": 1.2,
-        "smallMedianMs": 0.9,
-        "deltaMs": 0.3,
-        "scalesWithData": false
-      },
-      {
-        "stage": "project-index-ready",
-        "largeMedianMs": 1,
-        "smallMedianMs": 0.8,
-        "deltaMs": 0.2,
-        "scalesWithData": false
-      },
-      {
-        "stage": "config-ready",
-        "largeMedianMs": 2,
-        "smallMedianMs": 1.9,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "memory-v3-ready",
-        "largeMedianMs": 0.9,
-        "smallMedianMs": 0.8,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "ui-indexes-ready",
-        "largeMedianMs": 0.2,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "durable-config-ready",
-        "largeMedianMs": 0.1,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "session-index-ready",
-        "largeMedianMs": 0.1,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-durable-ready",
-        "largeMedianMs": 0,
-        "smallMedianMs": 0,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-embedding-ready",
-        "largeMedianMs": 0.2,
-        "smallMedianMs": 0.2,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-skills-ready",
-        "largeMedianMs": 3.2,
-        "smallMedianMs": 3.2,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-harness-ready",
-        "largeMedianMs": 0.4,
-        "smallMedianMs": 0.5,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-returned",
-        "largeMedianMs": 0,
-        "smallMedianMs": 0,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "keychain-ready",
-        "largeMedianMs": 0.4,
-        "smallMedianMs": 0.4,
-        "deltaMs": -0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "local-api-ready",
-        "largeMedianMs": 9.6,
-        "smallMedianMs": 9.8,
-        "deltaMs": -0.2,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-durable-events-ready",
-        "largeMedianMs": 0.7,
-        "smallMedianMs": 1.3,
-        "deltaMs": -0.5,
-        "scalesWithData": false
-      },
-      {
-        "stage": "user-data-layout-ready",
-        "largeMedianMs": 8,
-        "smallMedianMs": 9.4,
-        "deltaMs": -1.5,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-skill-resources-synced",
-        "largeMedianMs": 10.4,
-        "smallMedianMs": 12,
-        "deltaMs": -1.6,
-        "scalesWithData": false
-      },
-      {
-        "stage": "main-module-ready",
-        "scalesWithData": false
-      },
-      {
-        "stage": "process-start",
-        "scalesWithData": false
-      },
-      {
-        "stage": "electron-app-ready",
-        "scalesWithData": false
-      },
-      {
-        "stage": "desktop-startup-visible",
-        "scalesWithData": false
-      },
-      {
-        "stage": "bootstrap-start",
-        "scalesWithData": false
-      },
-      {
-        "stage": "renderer-load-started",
-        "scalesWithData": false
-      },
-      {
-        "stage": "execution-start",
-        "scalesWithData": false
-      },
-      {
-        "stage": "renderer-did-finish-load",
-        "scalesWithData": false
-      },
-      {
-        "stage": "plugin-host-ready",
-        "scalesWithData": false
-      }
-    ],
-    "scalingStages": [
-      {
-        "stage": "runner-ready",
-        "largeMedianMs": 7367.9,
-        "smallMedianMs": 1091.6,
-        "deltaMs": 6276.3,
-        "scalesWithData": true
-      },
-      {
-        "stage": "execution-ready",
-        "largeMedianMs": 3155.1,
-        "smallMedianMs": 52.7,
-        "deltaMs": 3102.4,
-        "scalesWithData": true
-      },
-      {
-        "stage": "attachment-protection",
-        "largeMedianMs": 293.1,
-        "smallMedianMs": 3.9,
-        "deltaMs": 289.2,
-        "scalesWithData": true
-      },
-      {
-        "stage": "attachment-protection-checkpoints",
-        "largeMedianMs": 244.9,
-        "smallMedianMs": 0.8,
-        "deltaMs": 244.1,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-inbox-ready",
-        "largeMedianMs": 210.7,
-        "smallMedianMs": 9.9,
-        "deltaMs": 200.8,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-run-leases-ready",
-        "largeMedianMs": 197.3,
-        "smallMedianMs": 10.3,
-        "deltaMs": 187,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-observability-ready",
-        "largeMedianMs": 89,
-        "smallMedianMs": 8.6,
-        "deltaMs": 80.4,
-        "scalesWithData": true
-      },
-      {
-        "stage": "runner-infra-durable-effect-leases-ready",
-        "largeMedianMs": 49.1,
-        "smallMedianMs": 10.3,
-        "deltaMs": 38.8,
-        "scalesWithData": true
-      }
-    ],
-    "constantStages": [
-      {
-        "stage": "archive-index-ready",
-        "largeMedianMs": 15,
-        "smallMedianMs": 2.7,
-        "deltaMs": 12.4,
-        "scalesWithData": false
-      },
-      {
-        "stage": "renderer-workspace-entries",
-        "largeMedianMs": 1005.3,
-        "smallMedianMs": 997.3,
-        "deltaMs": 8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "desktop-shell-initialized",
-        "largeMedianMs": 20,
-        "smallMedianMs": 18.2,
-        "deltaMs": 1.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "branding-ready",
-        "largeMedianMs": 18.5,
-        "smallMedianMs": 16.9,
-        "deltaMs": 1.6,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-checkpoint-store-ready",
-        "largeMedianMs": 2.2,
-        "smallMedianMs": 1.4,
-        "deltaMs": 0.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-memory-ready",
-        "largeMedianMs": 7.3,
-        "smallMedianMs": 6.4,
-        "deltaMs": 0.8,
-        "scalesWithData": false
-      },
-      {
-        "stage": "locator-written",
-        "largeMedianMs": 3.8,
-        "smallMedianMs": 3.1,
-        "deltaMs": 0.7,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-bootstrap-files-loaded",
-        "largeMedianMs": 21.6,
-        "smallMedianMs": 21.3,
-        "deltaMs": 0.4,
-        "scalesWithData": false
-      },
-      {
-        "stage": "data-root-ready",
-        "largeMedianMs": 1.2,
-        "smallMedianMs": 0.9,
-        "deltaMs": 0.3,
-        "scalesWithData": false
-      },
-      {
-        "stage": "project-index-ready",
-        "largeMedianMs": 1,
-        "smallMedianMs": 0.8,
-        "deltaMs": 0.2,
-        "scalesWithData": false
-      },
-      {
-        "stage": "config-ready",
-        "largeMedianMs": 2,
-        "smallMedianMs": 1.9,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "memory-v3-ready",
-        "largeMedianMs": 0.9,
-        "smallMedianMs": 0.8,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "ui-indexes-ready",
-        "largeMedianMs": 0.2,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "durable-config-ready",
-        "largeMedianMs": 0.1,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "session-index-ready",
-        "largeMedianMs": 0.1,
-        "smallMedianMs": 0.1,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-durable-ready",
-        "largeMedianMs": 0,
-        "smallMedianMs": 0,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-embedding-ready",
-        "largeMedianMs": 0.2,
-        "smallMedianMs": 0.2,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-skills-ready",
-        "largeMedianMs": 3.2,
-        "smallMedianMs": 3.2,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-harness-ready",
-        "largeMedianMs": 0.4,
-        "smallMedianMs": 0.5,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-returned",
-        "largeMedianMs": 0,
-        "smallMedianMs": 0,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "stage": "keychain-ready",
-        "largeMedianMs": 0.4,
-        "smallMedianMs": 0.4,
-        "deltaMs": -0.1,
-        "scalesWithData": false
-      },
-      {
-        "stage": "local-api-ready",
-        "largeMedianMs": 9.6,
-        "smallMedianMs": 9.8,
-        "deltaMs": -0.2,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-durable-events-ready",
-        "largeMedianMs": 0.7,
-        "smallMedianMs": 1.3,
-        "deltaMs": -0.5,
-        "scalesWithData": false
-      },
-      {
-        "stage": "user-data-layout-ready",
-        "largeMedianMs": 8,
-        "smallMedianMs": 9.4,
-        "deltaMs": -1.5,
-        "scalesWithData": false
-      },
-      {
-        "stage": "runner-infra-skill-resources-synced",
-        "largeMedianMs": 10.4,
-        "smallMedianMs": 12,
-        "deltaMs": -1.6,
-        "scalesWithData": false
-      }
-    ],
-    "unattributedGaps": [
-      {
-        "gap": "runner-infra-observability-ready -> runner-infra-durable-events-ready",
-        "largeMedianUnattributedMs": 7014.1,
-        "smallMedianUnattributedMs": 1025.6,
-        "deltaMs": 5988.5,
-        "scalesWithData": true
-      },
-      {
-        "gap": "process-start -> electron-app-ready",
-        "largeMedianUnattributedMs": 292.7,
-        "smallMedianUnattributedMs": 266.6,
-        "deltaMs": 26.1,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-infra-memory-ready -> runner-infra-bootstrap-files-loaded",
-        "largeMedianUnattributedMs": 0.1,
-        "smallMedianUnattributedMs": 0.1,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "gap": "attachment-protection -> execution-ready",
-        "largeMedianUnattributedMs": 0,
-        "smallMedianUnattributedMs": 0,
-        "deltaMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "gap": "electron-app-ready -> desktop-startup-visible",
-        "largeMedianUnattributedMs": 67.4,
-        "smallMedianUnattributedMs": 69.8,
-        "deltaMs": -2.4,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-infra-durable-effect-leases-ready -> runner-infra-durable-run-leases-ready",
-        "largeMedianUnattributedMs": 109.2,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-ready -> attachment-protection-checkpoints",
-        "largeMedianUnattributedMs": 48.5,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-infra-durable-events-ready -> runner-infra-durable-effect-leases-ready",
-        "largeMedianUnattributedMs": 48.6,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-infra-durable-run-leases-ready -> runner-infra-durable-inbox-ready",
-        "largeMedianUnattributedMs": 39.7,
-        "scalesWithData": false
-      },
-      {
-        "gap": "execution-start -> runner-infra-observability-ready",
-        "largeMedianUnattributedMs": 2.3,
-        "scalesWithData": false
-      },
-      {
-        "gap": "locator-written -> desktop-shell-initialized",
-        "largeMedianUnattributedMs": 0,
-        "scalesWithData": false
-      },
-      {
-        "gap": "runner-infra-durable-effect-leases-ready -> runner-infra-durable-inbox-ready",
-        "largeMedianUnattributedMs": 174.1,
-        "scalesWithData": false
-      }
-    ],
-    "scalingGaps": [
-      {
-        "gap": "runner-infra-observability-ready -> runner-infra-durable-events-ready",
-        "largeMedianUnattributedMs": 7014.1,
-        "smallMedianUnattributedMs": 1025.6,
-        "deltaMs": 5988.5,
-        "scalesWithData": true
-      }
-    ]
-  },
-  "realCopy": {
-    "spawnToReadyMs": [
-      32859,
-      6193
-    ],
-    "topStages": [
-      [
-        {
-          "index": 42,
-          "stage": "runner-ready",
-          "processUptimeMs": 28666.5,
-          "durationMs": 27863.8
-        },
-        {
-          "index": 32,
-          "stage": "runner-infra-durable-inbox-ready",
-          "processUptimeMs": 28616.1,
-          "durationMs": 5988.5
-        },
-        {
-          "index": 43,
-          "stage": "runner-infra-durable-inbox-ready",
-          "processUptimeMs": 29350.7,
-          "durationMs": 5044.1
-        },
-        {
-          "index": 57,
-          "stage": "execution-ready",
-          "processUptimeMs": 32684.6,
-          "durationMs": 4018.1
-        },
-        {
-          "index": 30,
-          "stage": "runner-infra-durable-run-leases-ready",
-          "processUptimeMs": 25510,
-          "durationMs": 2882.4
-        }
-      ],
-      [
-        {
-          "index": 38,
-          "stage": "runner-ready",
-          "processUptimeMs": 4379.5,
-          "durationMs": 3548.5
-        },
-        {
-          "index": 41,
-          "stage": "execution-ready",
-          "processUptimeMs": 5979,
-          "durationMs": 1599.5
-        },
-        {
-          "index": 28,
-          "stage": "runner-infra-durable-inbox-ready",
-          "processUptimeMs": 4335.6,
-          "durationMs": 633.9
-        },
-        {
-          "index": 23,
-          "stage": "renderer-workspace-entries",
-          "processUptimeMs": 1369.8,
-          "durationMs": 386.2
-        },
-        {
-          "index": 24,
-          "stage": "renderer-first-frame",
-          "processUptimeMs": 1372.4,
-          "durationMs": 379.6
-        }
-      ]
-    ],
-    "inventoryTotals": {
-      "files": 31221,
-      "bytes": 263198511
-    }
-  }
+  "comparison": null,
+  "realCopy": null,
+  "versioningExperiment": null
 }

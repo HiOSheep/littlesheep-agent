@@ -151,7 +151,7 @@ async function seedSyntheticRoot({ dataDir, workspaceDir, scale, versioningEnabl
   await mkdir(workspaceDir, { recursive: true })
   await writeFile(join(workspaceDir, 'README.md'), `# Large-root fixture\n\n${'正文段落。\n\n'.repeat(60)}`, 'utf8')
   await mkdir(dataDir, { recursive: true })
-  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workspaceDir, { versioningEnabled }), null, 2)}\n`, 'utf8')
+  await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workspaceDir, versioningEnabled), null, 2)}\n`, 'utf8')
 
   const sessionIds = []
   const sessionIndex = []
@@ -835,6 +835,11 @@ async function runOneLaunch({ fixtureId, dataDir, root, launch, scale }) {
       },
       logFacts,
     }
+  } catch (error) {
+    // A launch that never reached the locator is diagnosable only through the
+    // child's own output, so the tail is carried into the failure.
+    const tail = await readFile(logPath, 'utf8').then((text) => text.split(/\r?\n/u).filter(Boolean).slice(-25)).catch(() => [])
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\nelectron log tail:\n${tail.join('\n')}`)
   } finally {
     if (child?.exitCode === null) await harness.forceTerminate(child)
   }
