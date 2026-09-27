@@ -72,6 +72,7 @@ const SURFACE_EXPRESSION = `(() => {
     heading: firstVisibleHeading(),
     settingsHeading: visibleText('.settings-home > .settings-home-heading > h2'),
     overviewRows: [...document.querySelectorAll('.settings-overview-row')].map((row) => ({
+      tone: row.dataset.tone ?? null,
       title: (row.querySelector('strong')?.textContent || '').trim(),
       desc: (row.querySelector('span')?.textContent || '').trim(),
     })),
@@ -329,7 +330,10 @@ async function main() {
     const overview = await openSettingsFromEntry(client)
     await clickByText(client, '.settings-nav-item', '总览')
     const home = await waitForSurface(client, (surface) => (surface.settingsHeading === '设置' ? surface : undefined), 20_000, 'the settings overview')
+    // A problem row reports a configuration fact and carries an action, so it is not a destination and
+    // has no sidebar counterpart to match (S1). Only the rows that open a settings page are compared.
     const missingInNav = home.overviewRows
+      .filter((row) => row.tone !== 'attention')
       .map((row) => row.title)
       .filter((title) => !home.navItems.includes(title))
     recorder.note({
@@ -346,15 +350,17 @@ async function main() {
       { missingInNav, rows: home.overviewRows.map((row) => row.title) },
     )
 
-    // --- 3. overview entry -> page -> return to the origin ---------------------
-    await clickByText(client, '.settings-overview-row', '外部渠道')
+    // --- 3. sidebar entry -> page -> return to the origin ----------------------
+    // The overview was compressed to a few common entries (S1), so 外部渠道 is entered from its
+    // sidebar group now. The check itself is unchanged: the page still has to load with one name.
+    await clickByText(client, '.settings-nav-item', '外部渠道')
     const channelsPage = await waitForSurface(
       client,
       (surface) => (surface.activeNav === '外部渠道' && (surface.settingsPageText ?? '').includes('还没有配置外部渠道')
         ? surface
         : undefined),
       30_000,
-      'the loaded channels page from the overview',
+      'the loaded channels page from the sidebar',
     )
     recorder.note({
       step: 'channels-page',
