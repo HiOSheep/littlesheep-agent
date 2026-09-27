@@ -1,6 +1,6 @@
 # 桌面冷启动基线 2026-09-23（CS-01）
 
-最后更新：2026-09-24 21:45:37
+最后更新：2026-09-27 11:33:40
 
 本文件是桌面冷启动专项的常驻基线与该专项事实的唯一所有者（原《桌面冷启动体验与加载策略优化任务书 2026-09-23》已于 2026-09-24 退役，原文见 `git log --follow -- docs/taskbooks/desktop-cold-start-taskbook-2026-09-23.md`）。原始逐次样本见同目录
 [机器可读账本](desktop-cold-start-baseline-2026-09-23.json)（由
@@ -467,6 +467,50 @@ adopt  { draft: {tabs:2, request:yes, expanded:1, drafts:1}, target: {tabs:1, re
 
 边界：合成数据根只证明机制，不证明真实磁盘与真实历史规模（上一节的 5.67 s 那批观察值来自真实数据根）；缓存用例的夹具会话**没有真实消息**，因此它证明的是请求次数与往返耗时，不是"有真实历史负载时能省多少毫秒"；本脚本拿不到后台扫描的完成信号（router 不暴露），"扫描结束后继续交互"只由就绪后的响应性采样间接支持；打包版已由上表末行与 `desktop-large-history-startup-2026-09-24-packaged.json` 覆盖（同一夹具、同一脚本），但"就绪不随历史规模增长"仍以两个开发版规模点为准。`--partitions` 可调规模，`--keep` 保留数据根以便复查。
 
+## 新对话 → 首个流式 token（`measure:desktop-first-token`）
+
+本文件此前只到"首次可执行"为止：`firstSendPreparationMs` 在渲染器消费掉草稿时就结束，`executionReadyMs` 在就绪发布时就结束，两者都不回答"用户点了新对话、发出消息之后，多久看到第一个字"。`scripts/measure-desktop-first-token.mjs`（`pnpm run measure:desktop-first-token`）补上这一段，并在同一个时钟（渲染器 `performance.now()`）上把它拆开；[`desktop-first-token.json`](desktop-first-token.json) 是**最近一次**运行的原始账本（固定文件名，每次运行覆盖，一次运行一个样本），下表的中位/范围取自本文件写作时的 4 次运行：
+
+| 指标 | 含义 | 4 次样本（中位，范围，ms） |
+| --- | --- | ---: |
+| `clickToFirstTokenMs` | 侧栏「新对话」按钮的点击处理器返回 → 回复容器出现第一个非空字符 | 931.4（890.2–1027.5） |
+| `clickToEnterMs` | 点击 → Enter 提交（脚本自己的打字开销） | 16.9（16.0–22.3） |
+| `enterToFirstTokenMs` | Enter → 首字上屏 | 914.5（874.2–1005.2） |
+| `enterToRunAcceptedMs` | Enter → Runtime 接受这次 run（Runner 自己的 `startedAt`） | 13.4（8.5–16.0） |
+| `enterToFirstModelOutputMs` | Enter → 首个模型输出上屏（夹具的 `glob` 工具调用行） | 881.0（846.4–968.8） |
+| `appFirstTokenMarkToDomMs` | Runner 自报 `first-token` → 该文本出现在 DOM（含 Main→渲染器投递、帧同步 flush、React 渲染与 ≤25 ms 轮询量化） | 207.7（193.8–237.3） |
+| `readinessWaitMs` | 输入区可用 → `/runtime/readiness` 报 `ready`（脚本墙钟） | 603.5（594–611） |
+| `spawnToFirstTokenMs` | 进程启动 → 首字上屏（父进程墙钟） | 2936.5（2835–3026） |
+
+口径：4 次运行各自新建隔离数据根、各自启动一次、全部 `ok: true`；模型是本地确定性 Provider（`startElectronAcceptanceProvider`），因此量的是应用自身成本而不是供应商往返；窗口是**显示出来**的（原因见下）。样本数不足以支撑分位数，上表只给中位与范围。
+
+### run 自身报出的阶段（`[run-timing]`，4 次样本的中位）
+
+| stage | `sinceRunStartMs` 中位（范围） | 该段耗时中位（范围） |
+| --- | ---: | ---: |
+| `versioning-preimage` | 470.5（448.3–563.4） | 470.5（448.3–563.4） |
+| `retired-proposals-and-durable-input` | 514.3（495.5–605.9） | 44.4（41.2–47.2） |
+| `durable-user-input` | 538.4（516.9–627.0） | 21.4（20.3–27.6） |
+| `workspace-resource-sync` | 559.0（535.5–645.6） | 19.4（18.6–21.1） |
+| `context-assembled` | 594.2（568.5–683.7） | 35.5（32.5–38.1） |
+| `harness-start` | 594.3（568.6–683.9） | 0.2（0.1–0.2） |
+| `first-token` | 686.7（663.4–774.0） | 92.4（90.1–94.8） |
+
+读法：Enter 后约 13 ms run 就被接受，但在**第一个 mark 之前**已经过去 448–563 ms，而模型调用本身（`harness-start` → `first-token`）只有 90–95 ms。也就是说这条路径上的 pre-token 成本主要不在模型往返，而在 run 开始到 `versioning-preimage` 之间的准备；`[run-timing]` 目前到 `first-token` 为止，`appFirstTokenMarkToDomMs` 的那 194–237 ms 内部（Main→渲染器投递、帧同步 flush）还没有标点。
+
+### 测量环境本身会改变这个数字（实测对照）
+
+回复文本走渲染器的显示同步缓冲（`assistant-delta-buffer`：页面可见时用 `requestAnimationFrame`，`document.hidden` 时退化为 `setTimeout(16)`）。验收窗口默认**从不显示**，而这样的页面仍自报 `visibilityState: "visible"`，只是 Chromium 几乎不投递帧：
+
+| 条件 | 约 2 s 内的动画帧（脚本自装 rAF 探针） | Enter → 首字（ms） | Runner mark → DOM（ms） |
+| --- | ---: | ---: | ---: |
+| 窗口从未显示（验收默认行为，3 次） | 2（只在装了探针的那次测得） | 1262.9 / 1280.7 / 1325.9 | 607.5 / 630.6 / 630.6 |
+| 窗口显示（默认，4 次） | 251–267 | 874.2–1005.2 | 193.8–237.3 |
+
+因此脚本默认把窗口显示出来（真实用户的窗口就是可见的），并把帧数写进账本；`--no-show` 可复现隐藏条件，账本里 `scenario.windowShown` 会写明，两种样本不可互相比较。`--disable-background-timer-throttling`、`--disable-renderer-backgrounding`、`--disable-backgrounding-occluded-windows` 三个开关（仓库内其他验收脚本也在用）只关掉 Chromium 的后台策略、不改应用代码；三个隐藏样本里有两次**已经打开**这些开关，所以上面那约 300 ms 不是计时器节流造成的。
+
+边界：数据根每次新建，因此这次 run 在其中的**首次**索引与记忆引导工作也被计入（真实安装第二次启动不会重复付这笔成本）；夹具对带 `tools` 的第一个请求固定回一个 `glob` 工具调用，所以"首字"发生在一次工具往返之后（`enterToFirstModelOutputMs` 给出工具行上屏的时刻）；`appFirstTokenMarkToDomMs` 用 run 的 `startedAt` 把 Runner 的计时原点接到渲染器时间轴，两者采集相差数毫秒，只能当归因辅助；4 次样本不能支撑"某次改动让首字快了 X ms"这类结论。
+
 ## 证据精简（2026-09-24）
 
 删除了 7 张逐字节重复或只作代理说明的截图（约 0.75 MB），没有断言因此失去证据：
@@ -498,6 +542,9 @@ pnpm run verify:desktop-readiness-placement
 # 大历史数据根下的执行就绪与会话加载（合成 400 / 1200 个历史事件分区）
 pnpm run measure:desktop-large-history-startup
 node scripts/measure-desktop-large-history-startup.mjs --partitions=1200 --label=2026-09-24-large
+# 新对话 → 首个流式 token（真实窗口 + 本地确定性 Provider；账本为 desktop-first-token.json）
+pnpm run measure:desktop-first-token
+node scripts/measure-desktop-first-token.mjs --no-show   # 复现"窗口隐藏时首字更慢"的对照
 # 恢复归属（需要真实 Provider 凭据；无凭据时脚本跳过并说明原因）
 $env:DEEPSEEK_API_KEY = '<credential>'
 pnpm run verify:desktop-cold-start-recovery

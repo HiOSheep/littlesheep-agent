@@ -11,14 +11,14 @@
 //   clickAt              the sidebar 「新对话」 button's own click handler returned
 //   typedAt              the probe draft was written into `.composer textarea`
 //   enterAt              the Enter keydown that submits the draft was dispatched
-//   userRowAt            the local user row is in the transcript (renderer state committed)
-//   assistantTurnAt      the streaming assistant turn exists
-//   replyContainerAt     `.assistant-response-stream` exists
-//   firstTokenAt         that container holds its first non-empty text
-//   settledAt            the container reports `data-stream-state="settled"`
+//   firstTokenAt         `.assistant-response-stream` holds its first non-empty text
+//   settledAt            that container reports `data-stream-state="settled"`
 //
 //   clickToFirstTokenMs = firstTokenAt - clickAt, split into clickToEnterMs and
 //   enterToFirstTokenMs so the pre-token cost is attributable instead of one opaque number.
+//   The report's `timeline` adds the intermediate facts on the same clock — the local user row,
+//   the reply container, the tool-call rows, `data-stream-state`, the run-in-flight flag — so a
+//   sample says what changed when, instead of only its endpoints.
 //
 // WHAT IT DOES NOT PROVE (deliberately explicit)
 //   - The model is a local deterministic fixture (`startElectronAcceptanceProvider`), not a real
@@ -30,14 +30,16 @@
 //     do not read `enterToFirstTokenMs` as pure model latency.
 //   - The first token is observed by polling the DOM every ~25 ms, so the number is an upper bound
 //     on the paint time with up to one poll interval of quantization.
-//   - The acceptance window is held back (not shown) in this run, so the reply's display-synced
-//     flush uses the renderer's 16 ms timeout fallback instead of `requestAnimationFrame`. Both
-//     cadences are ~16 ms, but a real on-screen window is not what was measured here.
+//   - The reply is painted through the renderer's display-synced buffer. This script shows the
+//     window (a real user's window is visible) and counts animation frames with its own rAF probe;
+//     with the window left hidden, Chromium delivers almost no frames and the same app reports a
+//     first token roughly 300 ms later. `--no-show` reproduces that and records it as such — never
+//     compare a hidden sample with a shown one.
 //   - One run is one sample. It is not a percentile, and it is only comparable with another run
 //     on the same machine with the same fixture pacing and similar background load.
 //
 // Usage:
-//   node scripts/measure-desktop-first-token.mjs [--deadline-ms=60000] [--out=<dir>] [--keep]
+//   node scripts/measure-desktop-first-token.mjs [--deadline-ms=60000] [--out=<dir>] [--keep] [--no-show]
 //   pnpm run measure:desktop-first-token
 
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
@@ -72,16 +74,19 @@ const COMPOSER_SELECTOR = '.composer textarea'
 /**
  * A reply token is painted through the renderer's display-synced path: `assistant-delta-buffer`
  * flushes on `requestAnimationFrame` when the page is visible (and falls back to `setTimeout(16)`
- * while `document.hidden`). An acceptance window is held back and never shown, so Chromium has no
- * compositor producing frames for it and the flush can sit in the buffer until something forces a
- * paint. Measured on the same build and fixture: hidden, Enter → first token was 1280.7 / 1325.9 ms
- * while the Runner's own `first-token` mark sat at ~680–755 ms; with the window shown, the two
- * agree within one frame (see `metrics.appFirstTokenMarkToDomMs` in the report).
+ * while `document.hidden`). An acceptance window is held back and never shown, and Chromium then
+ * delivers almost no frames even though the page still reports `visibilityState: "visible"`. The
+ * flush waits for one, so the sample measures the missing compositor instead of the application.
  *
- * A real user's window is visible, so the default here is to show it. `--no-show` keeps the window
- * off the desktop and records `scenario.windowShown: false` so such a sample is not compared with
- * a shown one. The three switches below are Playwright's standard background set and only stop
- * Chromium from throttling an occluded window's timers; they change no application code.
+ * Measured on the same build and fixture (frames counted by a rAF probe this script installs,
+ * one sample each):
+ *   window never shown : 2 frames in ~2.1 s, Enter → first token 1262.9 ms, Runner mark → DOM 607.5 ms
+ *   window shown       : 253 frames in ~2.1 s, Enter → first token 952.1 ms, Runner mark → DOM 237.3 ms
+ * A real user's window is visible, so showing it is the default here. `--no-show` keeps the window
+ * off the desktop and records `scenario.windowShown: false`, so such a sample is never compared
+ * with a shown one. The three switches below are Playwright's standard background set; they stop
+ * Chromium from throttling an occluded window's timers and change no application code (they were
+ * not what produced the gap: they were already on in the 1262.9 ms sample).
  */
 const CHROMIUM_BACKGROUND_FLAGS = [
   '--disable-background-timer-throttling',
@@ -467,7 +472,13 @@ async function main() {
       enterToRunAcceptedMs: acceptedRun.observed
         ? round(Date.parse(acceptedRun.startedAt) - enterAtWallClock)
         : undefined,
-      enterToRunAcceptedNoticedMs: acceptedRun.noticedAfterEnterMs,
+      /**
+       * When the poller *noticed* the run, not when it started — and therefore also a rough
+       * responsiveness reading for Main: measured ~550–575 ms, because the run's first half second
+       * keeps the process busy. Use `enterToRunAcceptedMs` (the Runner's own `startedAt`) as the
+       * acceptance time.
+       */
+      runAcceptedNoticedByPollerMs: acceptedRun.noticedAfterEnterMs,
       enterToSettledMs: settledAt === undefined ? undefined : round(settledAt - submitted.after),
       readinessWaitMs: round(readyObservedAt - composerUsableAt),
       spawnToReadyMs: round(readyObservedAt - spawnRequestedAt.at),
@@ -532,9 +543,10 @@ async function main() {
         'the model is a local deterministic fixture, so this is the application\'s cost and not a vendor round trip',
         'the fixture answers a tool-bearing request with one glob call, so the first prose token follows one tool round trip inside the same run',
         'first-token time is observed by polling the DOM every ~25 ms, so it is an upper bound with up to one interval of quantization',
-        'the acceptance window is held back (never shown), so the reply flush runs the renderer\'s 16 ms timeout fallback rather than requestAnimationFrame, and Chromium\'s background timer throttling is disabled by harness switches (see scenario.chromiumFlags)',
-        'appFirstTokenMarkToDomMs joins the Runner\'s timing origin to the run\'s startedAt, which are captured a few ms apart: read it as an attribution aid, not an exact figure',
-        'one run is one sample: no percentile is claimed, and comparisons need the same machine, fixture pacing and background load',
+        'the sample is taken with the window shown (real-user condition) and Chromium\'s background throttling disabled by harness switches (see scenario.chromiumFlags); with the window hidden the renderer gets almost no animation frames and the reply\'s frame-synced flush adds roughly 300 ms that a visible window does not pay',
+        'appFirstTokenMarkToDomMs joins the Runner\'s timing origin to the run\'s startedAt, which are captured a few ms apart: read it as an attribution aid, not an exact figure. It is not decomposed further — between the mark and the paint sit the Main-to-Renderer SSE hop, the display-synced flush, the React render and at most one poll interval, and no mark exists inside that span yet',
+        'the data root is freshly created, so the first run in it also pays first-ever index and memory bootstrap work that a warm installation has already done',
+        'one run is one sample: no percentile is claimed, and comparisons need the same machine, fixture pacing, window visibility and background load',
         'readinessWaitMs is Node wall clock between "the composer was usable" and "readiness was observed", not a renderer measurement',
       ],
     }

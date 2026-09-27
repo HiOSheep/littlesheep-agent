@@ -1,7 +1,7 @@
 {
   "check": "desktop-first-token",
   "ok": true,
-  "measuredAt": "2026-09-27T03:26:06.916Z",
+  "measuredAt": "2026-09-27T03:32:40.739Z",
   "metric": "new conversation → first streamed token (real Electron window, deterministic local model)",
   "machine": {
     "platform": "win32",
@@ -30,9 +30,9 @@
       "visibilityState": "visible"
     },
     "animationFrames": {
-      "frames": 253,
-      "firstFrameAt": 411.19999998807907,
-      "lastFrameAt": 2462.4000000059605
+      "frames": 247,
+      "firstFrameAt": 374.80000001192093,
+      "lastFrameAt": 2349.7000000178814
     },
     "chromiumFlags": [
       "--disable-background-timer-throttling",
@@ -48,293 +48,293 @@
     "lastState": "ready"
   },
   "milestones": {
-    "clickAt": 945,
-    "typedAt": 960.2,
-    "enterAt": 962.5,
-    "firstTokenAt": 1914.6,
-    "settledAt": 2461.2
+    "clickAt": 926,
+    "typedAt": 938.7,
+    "enterAt": 942.2,
+    "firstTokenAt": 1819.1,
+    "settledAt": 2346.6
   },
   "metrics": {
-    "clickToFirstTokenMs": 969.6,
-    "clickToEnterMs": 17.5,
-    "enterToFirstTokenMs": 952.1,
-    "enterToFirstModelOutputMs": 914.5,
-    "enterToToolRowMs": 914.5,
-    "typedToEnterMs": 2.3,
-    "enterToRunAcceptedMs": 8.5,
-    "enterToRunAcceptedNoticedMs": 574,
-    "enterToSettledMs": 1498.7,
-    "readinessWaitMs": 611,
-    "spawnToReadyMs": 2054,
-    "spawnToFirstTokenMs": 3026,
-    "clickToFirstTokenNodeClockMs": 964,
+    "clickToFirstTokenMs": 893.1,
+    "clickToEnterMs": 16.2,
+    "enterToFirstTokenMs": 876.9,
+    "enterToFirstModelOutputMs": 847.5,
+    "enterToToolRowMs": 847.5,
+    "typedToEnterMs": 3.5,
+    "enterToRunAcceptedMs": 16,
+    "runAcceptedNoticedByPollerMs": 537,
+    "enterToSettledMs": 1404.4,
+    "readinessWaitMs": 607,
+    "spawnToReadyMs": 1940,
+    "spawnToFirstTokenMs": 2835,
+    "clickToFirstTokenNodeClockMs": 888,
     "firstTokenCharacters": 74,
     "replyCharactersAtSettle": 74,
     "pollIntervalMs": 25,
     "pollQuantizationMs": 25,
     "pollCount": 23,
-    "appFirstTokenMarkToDomMs": 237.3
+    "appFirstTokenMarkToDomMs": 193.8
   },
   "runMarks": [
     {
       "scope": "run",
       "stage": "versioning-preimage",
-      "sinceRunStartMs": 490.7,
-      "durationMs": 490.7
+      "sinceRunStartMs": 448.3,
+      "durationMs": 448.3
     },
     {
       "scope": "run",
       "stage": "retired-proposals-and-durable-input",
-      "sinceRunStartMs": 531.9,
-      "durationMs": 41.2
+      "sinceRunStartMs": 495.5,
+      "durationMs": 47.2
     },
     {
       "scope": "run",
       "stage": "durable-user-input",
-      "sinceRunStartMs": 553.5,
-      "durationMs": 21.6
+      "sinceRunStartMs": 523.2,
+      "durationMs": 27.6
     },
     {
       "scope": "run",
       "stage": "workspace-resource-sync",
-      "sinceRunStartMs": 573.6,
-      "durationMs": 20.1
+      "sinceRunStartMs": 544.3,
+      "durationMs": 21.1
     },
     {
       "scope": "run",
       "stage": "context-assembled",
-      "sinceRunStartMs": 611.6,
-      "durationMs": 38
+      "sinceRunStartMs": 576.7,
+      "durationMs": 32.5
     },
     {
       "scope": "run",
       "stage": "harness-start",
-      "sinceRunStartMs": 611.8,
+      "sinceRunStartMs": 576.9,
       "durationMs": 0.2
     },
     {
       "scope": "run",
       "stage": "first-token",
-      "sinceRunStartMs": 706.3,
-      "durationMs": 94.5
+      "sinceRunStartMs": 667.1,
+      "durationMs": 90.2
     }
   ],
   "bootstrapMarks": [
     {
       "stage": "main-module-ready",
-      "processUptimeMs": 253.2
+      "processUptimeMs": 234.4
     },
     {
       "stage": "process-start",
-      "processUptimeMs": 254.4
+      "processUptimeMs": 236
     },
     {
       "stage": "electron-app-ready",
-      "processUptimeMs": 576.2
+      "processUptimeMs": 494.2
     },
     {
       "stage": "desktop-startup-visible",
-      "processUptimeMs": 642.7
+      "processUptimeMs": 562.4
     },
     {
       "stage": "bootstrap-start",
-      "processUptimeMs": 643.1
+      "processUptimeMs": 562.9
     },
     {
       "stage": "branding-ready",
-      "processUptimeMs": 665.2,
-      "durationMs": 22.2
+      "processUptimeMs": 580,
+      "durationMs": 17.1
     },
     {
       "stage": "data-root-ready",
-      "processUptimeMs": 666.3,
-      "durationMs": 1.1
+      "processUptimeMs": 581,
+      "durationMs": 1
     },
     {
       "stage": "user-data-layout-ready",
-      "processUptimeMs": 683.9,
-      "durationMs": 17.6
+      "processUptimeMs": 586.5,
+      "durationMs": 5.5
     },
     {
       "stage": "keychain-ready",
-      "processUptimeMs": 684.3,
-      "durationMs": 0.4
+      "processUptimeMs": 586.8,
+      "durationMs": 0.3
     },
     {
       "stage": "config-ready",
-      "processUptimeMs": 687.2,
-      "durationMs": 2.9
+      "processUptimeMs": 588.8,
+      "durationMs": 2
     },
     {
       "stage": "memory-v3-ready",
-      "processUptimeMs": 688.1,
-      "durationMs": 0.9
+      "processUptimeMs": 589.6,
+      "durationMs": 0.8
     },
     {
       "stage": "durable-config-ready",
-      "processUptimeMs": 688.1,
+      "processUptimeMs": 589.7,
       "durationMs": 0.1
     },
     {
       "stage": "project-index-ready",
-      "processUptimeMs": 688.5,
-      "durationMs": 0.3
+      "processUptimeMs": 592,
+      "durationMs": 2.3
     },
     {
       "stage": "session-index-ready",
-      "processUptimeMs": 688.6,
+      "processUptimeMs": 592.1,
       "durationMs": 0.1
     },
     {
       "stage": "archive-index-ready",
-      "processUptimeMs": 702.6,
-      "durationMs": 14
+      "processUptimeMs": 594.5,
+      "durationMs": 2.4
     },
     {
       "stage": "ui-indexes-ready",
-      "processUptimeMs": 702.8,
+      "processUptimeMs": 594.7,
       "durationMs": 0.2
     },
     {
       "stage": "local-api-ready",
-      "processUptimeMs": 714.1,
-      "durationMs": 11.3
+      "processUptimeMs": 604.6,
+      "durationMs": 9.9
     },
     {
       "stage": "locator-written",
-      "processUptimeMs": 717.3,
-      "durationMs": 3.3
+      "processUptimeMs": 609.3,
+      "durationMs": 4.8
     },
     {
       "stage": "renderer-load-started",
-      "processUptimeMs": 735.8
+      "processUptimeMs": 626.1
     },
     {
       "stage": "desktop-shell-initialized",
-      "processUptimeMs": 739.8,
-      "durationMs": 22.4
+      "processUptimeMs": 629.4,
+      "durationMs": 20.1
     },
     {
       "stage": "execution-start",
-      "processUptimeMs": 740
+      "processUptimeMs": 629.6
     },
     {
       "stage": "runner-infra-observability-ready",
-      "processUptimeMs": 833.5,
-      "durationMs": 90.8
+      "processUptimeMs": 641.9,
+      "durationMs": 10
     },
     {
       "stage": "renderer-did-finish-load",
-      "processUptimeMs": 948.9
+      "processUptimeMs": 861.9
     },
     {
       "stage": "renderer-load-started",
-      "processUptimeMs": 968.6
+      "processUptimeMs": 877.9
     },
     {
       "stage": "renderer-workspace-entries",
-      "processUptimeMs": 1381,
-      "durationMs": 240.7
+      "processUptimeMs": 1260.7,
+      "durationMs": 205.5
     },
     {
       "stage": "renderer-first-frame",
-      "processUptimeMs": 1432.3,
-      "durationMs": 285.6
+      "processUptimeMs": 1305.7,
+      "durationMs": 250.8
     },
     {
       "stage": "runner-infra-durable-events-ready",
-      "processUptimeMs": 1781.4,
-      "durationMs": 0.7
-    },
-    {
-      "stage": "runner-infra-durable-run-leases-ready",
-      "processUptimeMs": 1790.5,
-      "durationMs": 9.8
+      "processUptimeMs": 1670,
+      "durationMs": 0.5
     },
     {
       "stage": "runner-infra-durable-inbox-ready",
-      "processUptimeMs": 1790.9,
-      "durationMs": 10.2
+      "processUptimeMs": 1677.4,
+      "durationMs": 7.9
+    },
+    {
+      "stage": "runner-infra-durable-run-leases-ready",
+      "processUptimeMs": 1677.6,
+      "durationMs": 8.1
     },
     {
       "stage": "runner-infra-durable-effect-leases-ready",
-      "processUptimeMs": 1790.9,
-      "durationMs": 10.2
+      "processUptimeMs": 1678,
+      "durationMs": 8.5
     },
     {
       "stage": "runner-infra-durable-ready",
-      "processUptimeMs": 1791,
+      "processUptimeMs": 1678.1,
       "durationMs": 0
     },
     {
       "stage": "runner-infra-checkpoint-store-ready",
-      "processUptimeMs": 1792.3,
-      "durationMs": 1.4
+      "processUptimeMs": 1681.1,
+      "durationMs": 3
     },
     {
       "stage": "runner-infra-embedding-ready",
-      "processUptimeMs": 1792.5,
+      "processUptimeMs": 1681.2,
       "durationMs": 0.2
     },
     {
       "stage": "runner-infra-memory-ready",
-      "processUptimeMs": 1804.3,
-      "durationMs": 11.7
+      "processUptimeMs": 1690.4,
+      "durationMs": 9.1
     },
     {
       "stage": "runner-infra-bootstrap-files-loaded",
-      "processUptimeMs": 1831.2,
-      "durationMs": 26.9
+      "processUptimeMs": 1716.8,
+      "durationMs": 26.4
     },
     {
       "stage": "runner-infra-skills-ready",
-      "processUptimeMs": 1836.7,
-      "durationMs": 5.4
+      "processUptimeMs": 1720,
+      "durationMs": 3.1
     },
     {
       "stage": "runner-infra-skill-resources-synced",
-      "processUptimeMs": 1848,
-      "durationMs": 11.3
+      "processUptimeMs": 1731.6,
+      "durationMs": 11.6
     },
     {
       "stage": "runner-infra-harness-ready",
-      "processUptimeMs": 1848.6,
+      "processUptimeMs": 1732.1,
       "durationMs": 0.4
     },
     {
       "stage": "runner-infra-returned",
-      "processUptimeMs": 1848.6,
+      "processUptimeMs": 1732.2,
       "durationMs": 0
     },
     {
       "stage": "runner-ready",
-      "processUptimeMs": 1848.9,
-      "durationMs": 1108.9
+      "processUptimeMs": 1732.4,
+      "durationMs": 1102.8
     },
     {
       "stage": "attachment-protection-checkpoints",
-      "processUptimeMs": 1853.4,
-      "durationMs": 0.7
+      "processUptimeMs": 1735.6,
+      "durationMs": 0.8
     },
     {
       "stage": "attachment-protection",
-      "processUptimeMs": 1853.5,
-      "durationMs": 4.2
+      "processUptimeMs": 1735.7,
+      "durationMs": 2.9
     },
     {
       "stage": "execution-ready",
-      "processUptimeMs": 1894.4,
-      "durationMs": 45.5
+      "processUptimeMs": 1782.7,
+      "durationMs": 50.3
     },
     {
       "stage": "plugin-host-ready",
-      "processUptimeMs": 1895
+      "processUptimeMs": 1783.2
     }
   ],
   "providerRequests": [
     {
       "requestIndex": 1,
-      "receivedAt": "2026-09-27T03:26:09.997Z",
+      "receivedAt": "2026-09-27T03:32:43.659Z",
       "model": "first-token",
       "stream": true,
       "tools": [
@@ -356,7 +356,7 @@
     },
     {
       "requestIndex": 2,
-      "receivedAt": "2026-09-27T03:26:10.031Z",
+      "receivedAt": "2026-09-27T03:32:43.688Z",
       "model": "first-token",
       "stream": true,
       "tools": [
@@ -380,15 +380,15 @@
   "runAcceptance": {
     "available": true,
     "observed": true,
-    "noticedAfterEnterMs": 574,
-    "runIdPrefix": "39a433f4",
+    "noticedAfterEnterMs": 537,
+    "runIdPrefix": "9431c56f",
     "phase": "starting",
     "controlStatus": "running",
-    "startedAt": "2026-09-27T03:26:09.319Z"
+    "startedAt": "2026-09-27T03:32:43.022Z"
   },
   "timeline": [
     {
-      "at": 980,
+      "at": 961.9,
       "event": "first-observation",
       "facts": {
         "userRowCount": 1,
@@ -403,7 +403,7 @@
       }
     },
     {
-      "at": 1877,
+      "at": 1789.7,
       "changed": {
         "toolRows": {
           "from": 0,
@@ -413,7 +413,7 @@
       "replyCharacters": 0
     },
     {
-      "at": 1914.6,
+      "at": 1819.1,
       "changed": {
         "hasReplyText": {
           "from": false,
@@ -423,7 +423,7 @@
       "replyCharacters": 74
     },
     {
-      "at": 2461.2,
+      "at": 2346.6,
       "changed": {
         "streamState": {
           "from": "streaming",
@@ -438,7 +438,7 @@
     }
   ],
   "finalTranscriptSample": {
-    "at": 2461.199999988079,
+    "at": 2346.5999999940395,
     "userRowCount": 1,
     "assistantTurnCount": 1,
     "turnClass": "assistant-turn done",
@@ -458,9 +458,10 @@
     "the model is a local deterministic fixture, so this is the application's cost and not a vendor round trip",
     "the fixture answers a tool-bearing request with one glob call, so the first prose token follows one tool round trip inside the same run",
     "first-token time is observed by polling the DOM every ~25 ms, so it is an upper bound with up to one interval of quantization",
-    "the acceptance window is held back (never shown), so the reply flush runs the renderer's 16 ms timeout fallback rather than requestAnimationFrame, and Chromium's background timer throttling is disabled by harness switches (see scenario.chromiumFlags)",
-    "appFirstTokenMarkToDomMs joins the Runner's timing origin to the run's startedAt, which are captured a few ms apart: read it as an attribution aid, not an exact figure",
-    "one run is one sample: no percentile is claimed, and comparisons need the same machine, fixture pacing and background load",
+    "the sample is taken with the window shown (real-user condition) and Chromium's background throttling disabled by harness switches (see scenario.chromiumFlags); with the window hidden the renderer gets almost no animation frames and the reply's frame-synced flush adds roughly 300 ms that a visible window does not pay",
+    "appFirstTokenMarkToDomMs joins the Runner's timing origin to the run's startedAt, which are captured a few ms apart: read it as an attribution aid, not an exact figure. It is not decomposed further — between the mark and the paint sit the Main-to-Renderer SSE hop, the display-synced flush, the React render and at most one poll interval, and no mark exists inside that span yet",
+    "the data root is freshly created, so the first run in it also pays first-ever index and memory bootstrap work that a warm installation has already done",
+    "one run is one sample: no percentile is claimed, and comparisons need the same machine, fixture pacing, window visibility and background load",
     "readinessWaitMs is Node wall clock between \"the composer was usable\" and \"readiness was observed\", not a renderer measurement"
   ]
 }
