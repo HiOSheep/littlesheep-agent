@@ -2169,7 +2169,7 @@
   overflow: hidden;
   background: #343436;
   border: 1px solid #737376;
-  border-radius: 18px;
+  border-radius: var(--radius-floating-panel);
 }
 
 .message-artifacts-head {
@@ -2193,7 +2193,7 @@
   color: #e5fbff;
   background: #66686c;
   border: 1px solid #85868a;
-  border-radius: 16px;
+  border-radius: var(--radius-composer-input);
 }
 
 .message-artifacts-head-icon svg {
@@ -2226,7 +2226,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  border-radius: 9px;
+  border-radius: var(--radius-ui);
 }
 
 .message-artifacts-row:hover {
@@ -2246,7 +2246,6 @@
   border-radius: var(--radius-icon);
   font-size: 14px;
   text-align: left;
-  cursor: pointer;
 }
 
 .message-artifacts-row-path {
@@ -2271,7 +2270,6 @@
   border-radius: var(--radius-icon);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  cursor: pointer;
 }
 
 /* Neutral until pointed at: the numbers carry no meaning as colour at rest. */
@@ -2303,7 +2301,6 @@
   border: 0;
   border-radius: var(--radius-icon);
   font-size: 14px;
-  cursor: pointer;
 }
 
 .message-artifacts-more:hover {

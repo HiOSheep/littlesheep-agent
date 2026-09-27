@@ -11,7 +11,12 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 
-vi.mock('../api', () => apiMocks)
+// Keep the real module's exports (the error classes the chat code checks with instanceof) and override only
+// the transport calls this test drives.
+vi.mock('../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api')>()),
+  ...apiMocks,
+}))
 
 
 describe('run actions active-run updates', () => {

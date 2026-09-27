@@ -261,7 +261,10 @@
 .message-meta-user .message-meta-copy { order: 3; }
 
 .message-meta:hover,
-.message-meta:focus-within,
+.message-meta:focus-within {
+  opacity: 1;
+}
+
 .message-meta:has(.message-meta-usage) {
   opacity: 1;
 }
@@ -899,7 +902,6 @@
   color: inherit;
   background: transparent;
   border: 0;
-  cursor: pointer;
 }
 
 .message-meta-branch:hover,

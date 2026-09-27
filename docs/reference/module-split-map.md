@@ -131,7 +131,7 @@
 | `packages/app/src/renderer/workspace/review-inline-deleted-comments.tsx` | 410 | 单列删除行评论手势、view zone 编辑器和附件发布 | 与通用行评论共享纯 helper；后续下沉删除行 view-zone controller | B |
 | `packages/app/src/renderer/workspace/review-inline-deleted-line-numbers.ts` | 326 | 单列删除区域的源行号投影和交互目标同步 | 保持 Monaco view-zone adapter，不吸收评论编辑状态 | B |
 | `packages/app/src/renderer/chat/activity-model.ts` | 323 | Agent 活动、公开推理、工具步骤和完成态投影 | 保持纯活动模型；展示组件不得回填状态归并逻辑 | B |
-| `packages/app/src/renderer/chat/run-actions.ts` | 368 | 聊天发送、流式事件所有权和输入/附件重试保留 | turn fingerprint 与完成态消息归并已下沉；保持发送 facade，停止请求去重留在本模块 | B |
+| `packages/app/src/renderer/chat/run-actions.ts` | 348 | 聊天发送、流式事件所有权和输入/附件重试保留 | turn fingerprint 与完成态消息归并已下沉；保持发送 facade，停止请求去重留在本模块 | B |
 | `packages/app/src/renderer/sidebar/project-section.tsx` | 480 | 项目树、折叠状态、项目菜单和持久化刷新 | 保持项目区视图边界；项目事务继续由 sidebar actions 拥有 | B |
 | `packages/app/src/main/workspace-layout-index.ts` | 393 | Main 多会话工作区镜像、旧单快照兼容、边界规范化与项目路径重绑定 | 保持持久化索引边界；继续增长时分离 store codec 与路径重绑定 | C |
 | `packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts` | 355 | Checkpoint 发现、续跑请求、恢复入口状态与资源/权限状态展示 | 状态选择与展示 helper 已下沉到 `checkpoint-recovery-state.ts`（含发现失败与损坏记录的入口派生）；保持恢复控制器，不要再吸收展示逻辑 | B |

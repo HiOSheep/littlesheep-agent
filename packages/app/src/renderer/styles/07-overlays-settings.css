@@ -3864,8 +3864,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-overview-row:first-child,
 .profile-choice-list > .profile-choice:first-child {
   border-top: 1px solid #383838;
-  border-top-left-radius: 24px;
-  border-top-right-radius: 24px;
+  border-top-left-radius: var(--floating-panel-inner-radius);
+  border-top-right-radius: var(--floating-panel-inner-radius);
 }
 
 .storage-settings-row:last-child,
@@ -3874,8 +3874,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 .development-environment-row:last-child,
 .settings-overview-row:last-child,
 .profile-choice-list > .profile-choice:last-child {
-  border-bottom-left-radius: 24px;
-  border-bottom-right-radius: 24px;
+  border-bottom-left-radius: var(--floating-panel-inner-radius);
+  border-bottom-right-radius: var(--floating-panel-inner-radius);
 }
 
 .storage-settings-row strong,
@@ -3916,7 +3916,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--text-strong);
   background: #303030;
   border: 1px solid #3b3b3b;
-  border-radius: 14px;
+  border-radius: var(--radius-floating-panel);
   font-size: 16px;
 }
 
@@ -3930,7 +3930,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 30px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .web-settings-row .plugin-switch > span {

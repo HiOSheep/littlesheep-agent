@@ -360,7 +360,6 @@ button.agent-flow-row.no-details:focus-visible,
   font: inherit;
   font-size: 13px;
   text-align: left;
-  cursor: pointer;
 }
 
 .assistant-process-trigger .agent-flow-chevron {
@@ -378,7 +377,6 @@ button.agent-flow-row.no-details:focus-visible,
 
 .agent-tool-preparing > summary {
   list-style: none;
-  cursor: pointer;
 }
 
 .agent-tool-preparing > summary::-webkit-details-marker {

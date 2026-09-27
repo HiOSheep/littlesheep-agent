@@ -1,5 +1,5 @@
 # Electron Renderer
-最后更新：2026-09-27 10:24:47
+最后更新：2026-09-27 02:45:07
 
 Renderer 负责聊天、导航、设置、记忆树、归档和拓展工作区的可视交互。会话列表只取索引，选中才读取消息；切换后的未完成读取保留在有界内存缓存中，不阻止新会话直接进入对话。启动恢复上次会话时保留已持久化的设置/模块路由，避免会话加载把用户送回聊天页。
 
@@ -86,3 +86,5 @@ Renderer 拥有临时 UI 状态和交互编排，不拥有会话、记忆、项�
 - `workspace/terminal-sessions.ts` + `terminal-tabs.tsx` + `use-terminal-shell-selection.ts`：多终端标签的纯模型（Shell/cwd/状态/退出码、8 个标签上限、64 KB 回放缓存、输入闸门只在运行中的会话放行）、标签条与探测/偏好 hook（UX-30 起步）。
 - `workspace/use-terminal-sessions.ts`：多会话的流与回放所有者（每会话一条流、按会话缓冲、输入闸门、关闭时终止流并通知 Main）；标签条在第二个会话出现，切换标签重置并回放（UX-30）。
 - `workspace/verify:workspace-terminal` 对应的终端门与修复：一次挂载只起一个会话、隐藏面板保活（只在工作区/会话身份变化时清理）、去掉重复的清空按钮（UX-30 第 1、2 条）。
+
+- UI 门与样式一致性（2026-09-27）：圆角只用语义 token（本轮把新加的 `9px`/`14px`/`16px`/`18px`/`24px`/`999px` 分别映射到 `--radius-ui`、`--radius-floating-panel`、`--radius-composer-input`、`--floating-panel-inner-radius`、`--radius-pill`，视觉差 0–4px）；光标策略保持"普通交互控件用默认光标、只有四个分隔条用 `col-resize`"，因此新样式里的 `cursor: pointer` 已移除；`.message-meta` 的显隐规则保持 `:hover`/`:focus-within` 相邻、`:has(...)` 单独成条。

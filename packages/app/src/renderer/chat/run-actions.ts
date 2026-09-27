@@ -3,7 +3,6 @@ import '@xterm/xterm/css/xterm.css'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import {
   runAgentStream,
-  RunStreamServerError,
   sendRuntimeControlEvent,
   type ApprovalRequest,
   type AttachmentRef,
@@ -22,11 +21,11 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
-import { settleLiveReasoning, updateLastAssistantActivity, upsertLiveReasoning } from './activity-model'
+import { settleLiveReasoning } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { reduceCompletedRunMessages } from './run-result-reducer'
 import { conversationTurnFingerprint } from './conversation-turn-fingerprint'
-import { recoverCompletedRunAfterStreamLoss } from './run-transport-recovery'
+import { attemptStreamLossRecovery } from './run-transport-recovery'
 import { ChatMessage } from './types'
 import { sendActiveRunUpdate } from './active-run-update'
 import type { RuntimeTaskEventIdentity, RuntimeTaskEventNotice } from '../runtime-events/runtime-task-events'
@@ -81,7 +80,6 @@ export function createRunActions(context: RunActionContext) {
     setActivityNow, setAttachments, setContextUsageSnapshot, setCurrentSession, setInput,
     setLoading, setMessages, setWorkspaceArtifactVersion,
   } = context
-
 
   async function send() {
     const text = input.trim()
@@ -169,6 +167,7 @@ export function createRunActions(context: RunActionContext) {
       if (!ownsVisibleConversation()) return
       setMessages((messages) => updateLastAssistantText(messages, (text) => text + delta))
     })
+    const recoveryHost = { setMessages, setCurrentSession, setWorkspaceArtifactVersion, pendingConversationTurnRef, deltaBuffer, refreshSessions, refreshProjects }
     try {
       const result = await runAgentStream(text || '请根据附件继续处理。', currentSession, permissionMode, {
         signal: controller.signal,
@@ -224,34 +223,16 @@ export function createRunActions(context: RunActionContext) {
       void refreshProjects()
     } catch (e) {
       let failure = e
-      const disconnectedRunId = activeRunIdRef.current
-      if (disconnectedRunId && ownsVisibleConversation() && !controller.signal.aborted && !(e instanceof RunStreamServerError)) {
-        updateLastAssistantActivity(setMessages, (activity) => ({
-          ...activity,
-          reasoning: upsertLiveReasoning(activity.reasoning ?? [], {
-            phaseId: 'runtime:stream-recovery',
-            source: 'runtime',
-            activityKind: 'runtime_recovery',
-            summary: '本地事件流已断开，正在读取本轮运行结果',
-            status: 'running',
-            startedAt: Date.now(),
-          }),
-        }))
-        try {
-          const recovered = await recoverCompletedRunAfterStreamLoss(disconnectedRunId, controller.signal)
-          if (!ownsVisibleConversation()) return
-          deltaBuffer.flush()
-          setCurrentSession(recovered.sessionId)
-          setWorkspaceArtifactVersion((value) => value + 1)
-          setMessages((messages) => reduceCompletedRunMessages(messages, recovered))
-          pendingConversationTurnRef.current = null
-          void refreshSessions()
-          void refreshProjects()
-          return
-        } catch (recoveryError) {
-          failure = recoveryError
-        }
-      }
+      // A dropped SSE observer is not a failed run: reconcile against the authoritative log first.
+      const recovery = await attemptStreamLossRecovery({
+        runId: activeRunIdRef.current ?? undefined,
+        signal: controller.signal,
+        error: e,
+        ownsVisibleConversation,
+        host: recoveryHost,
+      })
+      if (recovery.kind === 'recovered') return
+      if (recovery.kind === 'failed') failure = recovery.error
       if (
         ((failure as Error).name === 'AbortError' || (failure as Error).name === 'RunStreamServerError')
         && pendingConversationTurnRef.current?.requestKey === requestKey
@@ -354,7 +335,6 @@ function localMessageId(role: 'user' | 'assistant'): string {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`
   return `live-${role}-${uuid}`
 }
-
 
 function updateLastAssistantText(
   messages: ChatMessage[],
