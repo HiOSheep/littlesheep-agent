@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 00:59:54
+最后更新：2026-09-28 01:42:05
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -11,6 +11,7 @@
 - `pnpm run verify:composer-send-gate` 走两遍发送入口：全新数据根（`OPENAI_API_KEY`/`DEEPSEEK_API_KEY`/`GLM_API_KEY` 在本次启动里被删掉，否则夹具就不算"未配置"）且执行已就绪时，断言发送控件禁用、就地写出"设置 → 模型供应商"的原因、可访问名与它一致、空对话文案同句，并按 Enter 与按钮各拒一次（无消息、无 run、无会话）；再把确定性 Provider 配上，断言同一入口照常发送、Provider 请求都用配置的模型并结算出固定回答。
 - `verify-composer-send-model-gate.mjs`（`node scripts/verify-composer-send-model-gate.mjs --case=blocked|ready|both`，默认 `both`）是同一个发送入口在**线级**上的证据入口，把上面那条拆成可单独重跑的两个 case，报告与截图写在仓库外（`lib/run-artifacts.mjs` 的 `composer-send-model-gate/`）。`--case=blocked`：全新数据根、三个内置 Provider 密钥在本次启动里删掉、默认模型 ref（`openai/gpt-5.6`）留在配置里，先断言执行已就绪，所以下面的拒绝只可能来自模型事实；再现"发送控件禁用 + 就地原因 + 可访问名与空对话文案同句"，然后**按 Enter 与点按按钮各拒一次**，两次都要求页面级 `fetch` 探针上 `POST /run/stream` 计数为 0、Local App API 的 `/application/active-runs` 为空、转录里没有消息、草稿原样保留。`--case=ready`：确定性 Provider 配好后同一条入口必须走通——同一探针记到 1 次 run 路由 POST（这是"计数 0"的正例，证明负例不是探针坏了）、Provider 收到带草稿的请求、带固定锚点的回答进入转录、run 结算且 active-run 列表重新为空。
 - `pnpm run verify:composer-focus` 在真实窗口核对光标归属：新窗口无点击即把光标放进输入框且真实 CDP 按键能插入文字；点侧栏"新对话"后光标回到输入框；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。三、四、五三个负例注入的是 `newSession()` 自己派发的那次性窗口事件（事件名从源码读），因为真实命令会关掉搜索面板、模态又挡住点击。**它先把窗口停到屏幕外**（`park-offscreen`）：隐藏窗口不派发动画帧，而侧栏搜索面板要两帧才可见，不停放这个负例根本到不了"用户正在别处输入"的状态。
+- `pnpm run verify:composer-draft-scope` 用一个全新数据根核对**草稿只属于一个对话**（P1，2026-09-28）：先在"新对话"里用真实 CDP 按键打一段带标记的草稿，并经输入栏自己的粘贴路径贴一个文件（合成 `File` 没有磁盘路径，于是走 `importAttachment` 拿到 Local App API 的受管副本），断言发送控件接受这段草稿；再点侧栏里先前建立的那个对话，断言那里的输入栏是**空的**（0 个附件卡片）且发送控件因空草稿而禁用（可访问名仍是"发送"、`.composer-send-block` 为空，说明拒绝不是模型或执行原因），同时那一行确实变成 `.active`（切换真的发生了，不是"什么都没做"）；切回来断言草稿与附件卡片逐字恢复；反方向再来一遍（旧对话保留自己的草稿）；最后在那个旧对话里按 Enter 发送，断言只有它的草稿被清空、另一个对话的草稿仍在、重新打开被发送的对话仍是空的，并从 Provider 请求日志断言**未发送的草稿从未到达模型**。窗口停在屏幕外渲染，两张截图与 `evidence.json` 写在仓库外（`lib/run-artifacts.mjs` 的 `composer-draft-scope/`）。它在**修复前**的构建上实测复现了缺陷（切换后输入栏仍是那段草稿、`sendDisabled: false`、附件卡片跟着过来），因此留了 `--stale-build-diagnostic`：只用于对旧字节取这一对前后证据，默认仍断言构建新鲜度。
 - `verify-startup-failure-retry.mjs`（根 `package.json` 里是 `pnpm run verify:startup-failure-retry`）把渲染器接管**之前**的启动失败做真：`config.json` 故意无法解析，断言独立失败页有且仅有一个可用的重试控件、点击后真的跑了一次 Main 的有界重试（Electron 日志出现 `[retry] execution retry 1/3 failed`）、页面写出真实原因并继续提供重试；修好配置再点一次后渲染器接管窗口、`/runtime/readiness` 就绪、并且能在恢复后的窗口里跑完一轮。该夹具从来没有 locator（阶段 1 就失败），所以前半段按 CDP 目标连接、不走 Local App API。
 - `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。
 - `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。harness 的所有权边界是**进程启动与退出、locator 握手、最小 CDP 客户端、轮询/取整原语**：`waitForExit(child, timeoutMs)` 只等退出并返回退出码（不杀进程，杀是 `forceTerminate`），`startElectron({ extraEnv })` 里值为 `undefined` 表示“本次运行删除这个环境变量”（夹具数据根必须能排除环境里已有的 Provider 密钥）。域断言和产品预算一律留在各门里，不要长在这个模块上。
@@ -37,6 +38,8 @@
 `verify:conversation-workspace-scenarios` 的终端步骤会断言终端面板列出真实可用的 Shell（实测包含 PowerShell 7、Windows PowerShell、命令提示符与 WSL 发行版），并检查单会话不显示标签条；该门把窗口停在所有显示器之外渲染（隐藏窗口会让截图超时，停放后渲染正常且不会出现在桌面上）
 
 `verify:workspace-terminal`（`scripts/verify-workspace-terminal.mjs`）是终端专项真实窗口门：窗口停在屏幕外渲染，面板以终端布局打开，断言 Shell 下拉列出本机真实 Shell、初始单会话、新建后两个标签且恰好一个选中、**切回第一个标签后仍能把命令写进它自己的标记文件**、关闭当前标签只移除那一个。每次输入前先等 xterm helper textarea 的 `readOnly` 变为 false（它是 `disableStdin` 的镜像，置位时 xterm 丢弃全部输入）；"会话真的跑起来"用命令写出的标记文件判定，不看状态文字（状态行只有命令执行完才读作"就绪"）。
+
+`verify:workspace-file-close-discard`（`scripts/verify-workspace-file-close-discard.mjs`）验证**关闭脏文件时的第三个答案**（工作区审计 P1 第 9 条）：真实窗口里打开工作区文件、进编辑态输入、点 ✕，断言弹出的仍是**权限**提示且只有"拒绝/本对话允许/仅本次"三个答案（放弃编辑不是权限系统的决定，对话框里没有"放弃修改"）；选"拒绝"后标签仍在且仍脏、磁盘一字未改、标签条上出现可见提示并带"放弃修改"；"继续编辑"收起提示且不改动任何东西；"放弃修改"关闭标签并丢弃草稿——重开同一个文件看到的是磁盘正文、草稿标记不再出现；最后 `仅本次` 仍照旧写盘并关标签。每条断言单独记进证据（`assertions[]`），窗口全程不上屏，"可见"按已布局且计算样式非隐藏判定，这两点写在门的 `limits` 里。
 
 `verify:transcript-state-visibility`（`scripts/verify-transcript-state-visibility.mjs`）用真实窗口把"需要注意的事实"在**普通与紧凑两种显示模式**下各测一遍：未验证（`unverified`，普通模式由 `[data-transcript-verification]` 承载、紧凑模式进 `.agent-transcript-attention`）、传输失败（401 × 8，`本轮未完成` + `.run-status-error` 原文）、被停止（`本轮已停止`）、等待用户批准（运行中回合，两模式渲染一致）、以及被拒绝的写调用（真实窗口重载后由持久历史投影成 `.agent-tool-call.fail`，紧凑模式保留该行）。十张截图对应五类 × 两模式；`waiting_user` 无法在本版本产生、`部分完成` 没有对应状态这两件事写在门的 `limits` 里，不用单测替代。
 

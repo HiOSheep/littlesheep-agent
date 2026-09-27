@@ -64,6 +64,8 @@ export function attachCompactionNotice(
 
 export interface SessionActionContext {
   abortRef: MutableRefObject<AbortController | null>
+  /** The composer shows the incoming conversation's own draft, never the outgoing one's. */
+  activateConversationDraft: (sessionId: string | undefined) => void
   alignWorkspacePanelToWorkspaceRoot: (root: string, sessionId?: string | null) => void
   appMountedRef: MutableRefObject<boolean>
   approvalGrantsRef: MutableRefObject<SessionApprovalGrantStore>
@@ -110,7 +112,7 @@ const SESSION_HISTORY_MEMORY_MAX = 480
 
 export function createSessionActions(context: SessionActionContext) {
   const {
-    abortRef, appMountedRef, approvalGrantsRef, historyLoadRequestRef, sessionLoadRequestRef,
+    abortRef, activateConversationDraft, appMountedRef, approvalGrantsRef, historyLoadRequestRef, sessionLoadRequestRef,
     sessionHistoryCacheRef, selectedSessionWorkspaceRef, defaultWorkspaceRef,
     alignWorkspacePanelToWorkspaceRoot, pushRoute, removeWorkspaceSessionLayout,
     resetWorkspaceSessionLayout,
@@ -139,6 +141,7 @@ export function createSessionActions(context: SessionActionContext) {
     resetDraftPermissionMode()
     resetWorkspaceSessionLayout()
     setCurrentSession(undefined)
+    activateConversationDraft(undefined)
     setSessionOwnership(ownership)
     setMessages([])
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
@@ -194,6 +197,9 @@ export function createSessionActions(context: SessionActionContext) {
     if (sessionChanged) {
       abortRef.current?.abort()
       setCurrentSession(id)
+      // The draft belongs to the conversation it was typed in: the composer now shows this
+      // session's own draft (empty when it has none), and the one just left stays in its slot.
+      activateConversationDraft(id)
       setContextUsageSnapshot(null)
     }
     // Loading status belongs to the message viewport. Do not route it through

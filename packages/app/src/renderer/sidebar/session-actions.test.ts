@@ -19,6 +19,7 @@ const mockedWaitForExecutionReady = vi.mocked(waitForExecutionReady)
 function createSwitchContext(overrides: Partial<SessionActionContext> = {}): SessionActionContext {
   return {
     abortRef: { current: null },
+    activateConversationDraft: vi.fn(),
     alignWorkspacePanelToWorkspaceRoot: vi.fn(),
     appMountedRef: { current: true },
     approvalGrantsRef: { current: { clear: vi.fn() } },
@@ -163,6 +164,49 @@ describe('session switching', () => {
     expect(context.setSessionOwnership).toHaveBeenCalledWith({ scope: 'project', projectId: 'project-1' })
     expect(context.setMessages).toHaveBeenCalledWith([])
     expect(mockedGetSessionMessagePage).not.toHaveBeenCalled()
+  })
+
+  it('shows the conversation being opened its own draft, never the one just left', async () => {
+    const context = createSwitchContext({ currentSession: 'session-1' })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-2',
+      title: '第二个会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    })
+
+    expect(context.activateConversationDraft).toHaveBeenCalledTimes(1)
+    expect(context.activateConversationDraft).toHaveBeenCalledWith('session-2')
+  })
+
+  it('returns a new conversation to the new-conversation draft slot', () => {
+    const context = createSwitchContext({ currentSession: 'session-1' })
+    const { createConversationFromSidebar } = createSessionActions(context)
+
+    createConversationFromSidebar()
+
+    expect(context.activateConversationDraft).toHaveBeenCalledTimes(1)
+    expect(context.activateConversationDraft).toHaveBeenCalledWith(undefined)
+  })
+
+  it('leaves the draft alone when the same conversation is reloaded', async () => {
+    const context = createSwitchContext({ currentSession: 'session-1' })
+    const { switchSession } = createSessionActions(context)
+
+    await switchSession({
+      id: 'session-1',
+      title: '当前会话',
+      createdAt: 1,
+      lastMessageAt: 2,
+      mode: 'general',
+      scope: 'standalone',
+    }, { forceReload: true })
+
+    expect(context.activateConversationDraft).not.toHaveBeenCalled()
   })
 
   it('keeps a selected session loading in the background after switching away', async () => {
