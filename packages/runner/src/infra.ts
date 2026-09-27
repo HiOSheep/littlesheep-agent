@@ -37,7 +37,6 @@ import {
 import {
   CacheObservationStore,
   createDefaultHarness,
-  createNextHarness,
   resolveMemoryWriteEpistemic,
 } from '@littlesheep/harness';
 import {
@@ -115,7 +114,6 @@ export interface Infrastructure extends DurableHarnessInfrastructure {
   registry: ToolRegistry;
   harness: AgentHarness;
   /** Independent durable transition driver used only after next-mode admission. */
-  nextHarness: AgentHarness;
   skillLoader: SkillLoader;
   executionLogStore: ExecutionLogStore;
   /** Bounded session-scoped durable projections for cache-quality reports. */
@@ -713,16 +711,7 @@ export async function buildInfrastructure(
     log: opts.log,
     tokenCounter,
   });
-  const nextHarness = createNextHarness({
-    llm,
-    model: modelName,
-    sessionManager,
-    memoryStore,
-    config: opts.config,
-    branding: opts.branding,
-    log: opts.log,
-    tokenCounter,
-  });
+  
 
   void memoryRepository.startBackgroundMaintenance().catch((error) => {
     opts.log?.('warn', `memory-v3: background maintenance stopped: ${(error as Error).message}`);
@@ -742,7 +731,6 @@ export async function buildInfrastructure(
     disposeEmbedding,
     registry,
     harness,
-    nextHarness,
     skillLoader,
     executionLogStore,
     ...durableHarnessInfrastructure,

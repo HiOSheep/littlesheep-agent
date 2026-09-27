@@ -2,7 +2,7 @@
 
 最后更新：2026-09-27 08:55:26
 
-状态：**方案，尚未实施**。本任务书新增 HC-00～HC-06 七项工作；两个大型模块的拆分继续由现有模块拆分地图拥有，不另立重复任务。只读源码审查与已有测试通过不代表本清单已完成。
+状态：**实施中**（2026-09-27：HC-00 证据已取得、HC-01 已落地）。本任务书新增 HC-00～HC-06 七项工作；两个大型模块的拆分继续由现有模块拆分地图拥有，不另立重复任务。只读源码审查与已有测试通过不代表本清单已完成。
 
 ## 1. 目标与约束
 
@@ -67,10 +67,10 @@ HC-04 的独有触发条件是“**同一活跃 run 内，状态已改变后的�
 
 依赖：HC-00。范围：Harness factory、`index.ts`、Runner 装配、`execute.ts`、`execute/runners.ts` 及直接消费者。
 
-- [ ] 确定一个当前主入口名称：沿用 `createDefaultHarness` 或采用职责明确的 `createDurableHarness`，择一作为正常调用入口；去掉生产调用里的 `createNextHarness` / `nextHarness` 历史暗示。避免为了改名再增加一层转发。
-- [ ] 将 `executeLegacyLoop` 及单入口的 `runners.ts` 改为符合当前职责的名称，例如 `executeMainLoop` 与 `main-loop.ts`；区分 stage 编排入口与 `runToolLoop` 的循环职责，不能只把两者改成相似泛名。
-- [ ] 公开导出若确有外部消费者，旧名仅在包边界保留带弃用说明的别名，注明消费者与移除条件；仓内正常路径不得继续使用。没有兼容需求的旧转发直接删除。
-- [ ] 更新说明当前职责的注释、README 和受影响脚本；真实历史格式说明不做机械替换。纯改名不改变磁盘 stage 值、模型提示、请求形状或工具描述。
+- [x] 确定一个当前主入口名称：**`createDefaultHarness` 是唯一正常入口**（装配阶段并调用驱动），驱动本体改名为 `createDurableHarness`（`durable-harness.ts`）。生产调用里的 `createNextHarness` / `nextHarness` 已消失；`infra.ts` 原先**同时构建两个相同 harness**（`nextHarness` 才是被 runner 使用的那一个，`harness` 从未被读取），现在只构建一个。没有为了改名增加转发层。
+- [x] `executeLegacyLoop` → `executeMainLoop`，`stages/execute/runners.ts` → `stages/execute/main-loop.ts`（唯一导入方是 `stages/execute.ts`）；`runToolLoop` 保持自己的名字与职责（单轮工具循环），两者不再像历史遗物。
+- [x] 包导出同步为 `createDefaultHarness` + `createDurableHarness`；`createNextHarness` 无仓外消费者，直接移除而不是保留别名。同一批删除零消费者的一层一层转发：`override.ts`（`HarnessRegistryImpl` / `createHarnessRegistry`，全仓无引用）与 `types` 中的 `HarnessRegistry` 接口。
+- [x] `packages/harness/README.md`、`stages/execute/README.md`、模块拆分地图同步；注释改为说明唯一驱动与单入口。纯改名批次未触碰磁盘 stage 值、模型提示、请求形状或工具描述（`durableHarnessMode` 这类**已持久化**的值属于 HC-02 的兼容范围，未在改名中改动）。
 
 验收：从 Runner 沿主入口到单循环能读出唯一当前路径；构建/类型检查及已有入口契约通过。对纯改名批次，冻结请求内容、工具目录和持久化 payload 等价，不为名字本身增加镜像测试。
 

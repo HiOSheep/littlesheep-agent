@@ -13,7 +13,7 @@ import type { LlmClient } from '@littlesheep/llm';
 import type { SessionManager } from '@littlesheep/session';
 import type { Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
-import { createNextHarness } from './durable-harness.js';
+import { createDurableHarness } from './durable-harness.js';
 import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
 import { createExecuteStage } from './stages/execute.js';
@@ -84,8 +84,8 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
  * Build the default Core Flow harness. Stages close over the supplied deps.
  */
 export function createDefaultHarness(opts: DefaultHarnessOptions): AgentHarness {
-  // One persistence driver. The legacy/shadow split is gone: every run uses the
-  // durable loop, which records each executed transition in the durable event
-  // stream. The shared stage factory above stays the single source of stages.
-  return createNextHarness(opts);
+  // One persistence driver: every run uses the durable loop, which records each executed transition in
+  // the durable event stream. The stage factory above stays the single source of stages, and Runner
+  // builds exactly one harness from it.
+  return createDurableHarness(opts);
 }

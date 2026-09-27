@@ -3,7 +3,6 @@
 // LLM never chooses the stage; it only decides within a stage.
 import { describe, it, expect } from 'vitest';
 import { createDefaultHarness } from './default-harness.js';
-import { createNextHarness } from './durable-harness.js';
 import {
   createMockLlm,
   textResponse,

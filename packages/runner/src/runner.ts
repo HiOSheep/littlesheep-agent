@@ -811,7 +811,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           execute: async (preparedRun) => {
             const executedRun = await executeRunnerPhase({
               ctx: preparedRun.ctx,
-              harness: infra.nextHarness,
+              harness: infra.harness,
               signal,
               runCheckpointStore: infra.runCheckpointStore,
               log: opts.log,

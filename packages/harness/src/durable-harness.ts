@@ -24,10 +24,11 @@ import { resolveCheckpointResumeStage } from './checkpoint-resume.js';
 import { recordFailure } from './failure-state.js';
 
 /**
- * Build the independent durable transition driver. The durable event sink is
- * supplied on RunContext by Runner and is the only persistence boundary here.
+ * Build the durable transition driver — the one Core Flow driver. It is reached through
+ * createDefaultHarness, which supplies the stage registry; the durable event sink arrives on RunContext
+ * and is the only persistence boundary here.
  */
-export function createNextHarness(opts: DefaultHarnessOptions): AgentHarness {
+export function createDurableHarness(opts: DefaultHarnessOptions): AgentHarness {
   const hooks = new HookRunner(opts.log);
   const stages = createHarnessStages(opts);
 

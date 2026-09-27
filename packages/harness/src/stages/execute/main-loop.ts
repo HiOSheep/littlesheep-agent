@@ -18,7 +18,7 @@ import { replaceToolResults } from '../../execution-evidence-state.js';
 import { resolveExplicitToolInstructionSet, renderExplicitToolScopeContract } from '../../explicit-tool-instruction.js';
 import { toolsForRetrievalIntent, renderRetrievalIntentContract } from '../../retrieval-intent.js';
 
-export async function executeLegacyLoop(
+export async function executeMainLoop(
   deps: ExecuteStageDeps,
   ctx: RunContext,
   systemPrompt: SystemPromptBundle,

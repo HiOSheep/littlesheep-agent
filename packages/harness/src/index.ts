@@ -11,17 +11,14 @@ export {
 // Hook runner (Layer 3 primitive).
 export { HookRunner } from './hooks/runner.js';
 
-// Default Core Flow harness + registry (Layers 1/2 entry points).
+// The one Core Flow harness. There is no named-harness registry: nothing ever registered one, so the
+// layer-1 indirection was removed rather than kept as an unused seam.
 export {
   createDefaultHarness,
   createHarnessStages,
   type DefaultHarnessOptions,
 } from './default-harness.js';
-export { createNextHarness } from './durable-harness.js';
-export {
-  HarnessRegistryImpl,
-  createHarnessRegistry,
-} from './override.js';
+export { createDurableHarness } from './durable-harness.js';
 
 // EXECUTE-stage helper exposed for tests / custom EXECUTE stages.
 export { convertToolCall } from './stages/execute.js';
