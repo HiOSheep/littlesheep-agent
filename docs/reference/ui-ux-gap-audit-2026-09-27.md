@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-28 00:44:27
+最后更新：2026-09-28 00:55:15
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -115,3 +115,25 @@
 另跑对方那条 `node scripts/verify-composer-send-model-gate.mjs` 作为**独立复核** ✓。**判定只看 exit code** ✓，不看"有没有报错行" ✗。
 
 **`pnpm` 不在 PATH 这个坑，我今晚踩了三次** ✗：三次都表现为"输出为空" ✓ 而实际是命令根本没跑起来 ✓。**规则**：所有检查一律用 node 直调脚本 + `$LASTEXITCODE` 判定 ✓；`pnpm run X` 只用于确认入口存在 ✓，不用于判定结果 ✗。
+
+### P0 的独立实证已到手（2026-09-28 00:5x）—— 表内 #1 的验收证据
+
+由**独立取证包**的真实窗口门禁 `scripts/verify-composer-send-model-gate.mjs` 给出（与修复作者的门禁是**两个独立实现** ✓，二者在 DOM 契约上一致 ✓）：
+
+**拒绝路径（全新数据根、三档预设均无 key、`/runtime` model 为默认值、readiness=ready）** ✓：
+- 发送控件 **disabled** ✓；`aria-label`、行内 `.composer-send-block` 与首屏 `.empty-copy` **三处都带同一句原因**"还没有配置任何供应商；在 设置 → 模型供应商 里添加服务、密钥和模型。" ✓；
+- **两种入口都被拒绝** ✓：指针点击控件 ✓ **与真实 CDP Enter（带草稿）** ✓；
+- `/run/stream` 的页面 fetch 探针计数 = **0** ✓；`GET /application/active-runs` = **`[]`** ✓；**没有**用户消息、**没有**助手回合、**没有**停止控件 ✓；**草稿保留** ✓。
+- 证据文件：`%TEMP%\littlesheep-run-artifacts\composer-send-model-gate\composer-send-model-gate.json` 与 `unconfigured-refusal.png` ✓。
+
+**可用路径（配好 acceptance provider，model `acceptance/slow-a`）** ✓：发送可用 ✓ → 点击后 `POST /run/stream` **恰好 1 次** ✓ → **2 次** Provider 调用 ✓ → 结算出答案 ✓（"已完成 slow-a 的 glob 检查…验收回合 2。" ✓）→ 草稿清空 ✓、无报错 ✓、active runs `[]` ✓。另：既有门禁 `verify-composer-ime-submit.mjs` 仍 `ok:true` ✓（普通 Enter 在已配置根上**恰好发送一次** ✓）。
+
+**结论**：表内 **#1 的两条验收证据（拒绝 + 可用路径）均已具备** ✓ —— 这是本次审计里**第一条达到完成标准**的项 ✓。剩余待办只有一处**回归修复**（见下 ✓）。
+
+### #1 引入的真实回归（独立取证包发现，未擅自动手 ✓）
+
+`node scripts/verify-desktop-cold-start-interaction.mjs` 现在 **FAIL** ✗，失败检查为"the readiness surfaces clear once execution is available"（脚本 :276 ✓）。机制：该场景用**无 config.json 的全新根** ✓，就绪后新的模型提示仍在屏上 ✓，而它渲染为 `<span className="composer-readiness-hint composer-send-block">` ✗ → 门禁探针 `document.querySelector('.composer-readiness-hint')` 命中它 ✓ 读到的不是 null ✗ → 同一个类名**在 DOM 里有两个含义** ✗。
+
+**我的裁定：(a) 组件侧修** ✓ —— 给发送阻断提示**自己的类名** ✓ 并把它加进 `styles/06-composer.css` 里 `.composer-readiness-hint` 的样式规则 ✓，同步更新 runtime-readiness README 对该类的说明 ✓；**不采用** (b) 门禁侧绕过 ✗（那会把歧义留在 DOM 里 ✓，让下一个消费者继续猜 ✗）。门禁要求的判定：`verify-composer-send-model-gate` 与 `verify-desktop-cold-start-interaction` **两条都要 exit 0** ✓。
+
+**待办**：实施 (a) 并复跑两条门禁 ✓ —— 原取证包在回复前被回收 ✗，作者包亦不可寻址 ✗，故此项留待下一手（改动前先看 `composer/**` 与 `06-composer.css` 的 mtime 是否静默 ✓）。
