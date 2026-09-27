@@ -68,3 +68,6 @@ renderer-module-report.json
 
 # Generated PDFs
 *.pdf
+
+# Cold-start measurement scratch ledger (written when no --label is given).
+docs/reference/cold-start-baseline/desktop-cold-start-unlabeled.json
