@@ -72,7 +72,8 @@ import { describeToolAccess, shouldRequestPermissionApproval } from '@littleshee
 import { resolveRunTools } from './run-tools.js';
 import { buildRunnerCapabilityState } from './capability-snapshot.js';
 import { runRunnerCoordinator } from './runner-coordinator.js';
-import { executeRunnerPhase } from './runner-execute.js';
+import { executeRunnerPhase } from './runner-execute.js'
+import { beginRunTiming, markRun, markRunFirstToken } from './run-timing.js';
 import { finalizeRunnerPhase } from './runner-finalize.js';
 import type { SessionCompactionOperationRecord } from './session-compaction-scheduler.js';
 import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
@@ -437,7 +438,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     const signal = abortControl.signal;
 
     try {
-      activeCheckpoint = await infra.versioning?.beginRun({ runId, workspaceRoot: cwd });
+      beginRunTiming()
+      activeCheckpoint = await infra.versioning?.beginRun({ runId, workspaceRoot: cwd })
+      markRun('versioning-preimage');
       // 1. Resolve or create session.
       let sessionId: SessionId;
       if (continuation) {
@@ -524,7 +527,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             runId,
             timestamp: new Date(startedAt).toISOString(),
           });
-      await recordDurableUserInput(durableRecorder, origin, runId, inbound);
+      markRun('retired-proposals-and-durable-input');
+      await recordDurableUserInput(durableRecorder, origin, runId, inbound)
+      markRun('durable-user-input');
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
       // Apply caller-provided tool policy before the run.
@@ -622,6 +627,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             key: infra.cacheObservationKey,
           }).catch(() => undefined)
         : undefined;
+      markRun('workspace-resource-sync');
       const ctx: RunContext = await buildRunContext({
         sessionId,
         inbound,
@@ -643,7 +649,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         log: opts.log,
         versioning: activeCheckpoint,
         observation: infra.fileObservations.forSession(sessionId),
-        onAssistantDelta: input.onAssistantDelta,
+        onAssistantDelta: (delta) => {
+        markRunFirstToken()
+        input.onAssistantDelta?.(delta)
+      },
         onAssistantReplace: input.onAssistantReplace,
         onToolEvent,
         profilePromptAddon: behaviorProfile?.systemPromptAddon,
@@ -803,12 +812,15 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
 
       // 5. Execute the state machine and checkpoint recovery state.
+      markRun('context-assembled')
       const prepared = { ctx, sessionId, inboundText: input.text, usedContinuitySummaryId };
       let result: RunnerResult;
       try {
         result = await runRunnerCoordinator<RunContext, RunnerResult, MemoryAccessLedger | undefined>({
           prepare: async () => prepared,
           execute: async (preparedRun) => {
+            // Last mark before the harness starts: everything after it is the model loop itself.
+            markRun('harness-start')
             const executedRun = await executeRunnerPhase({
               ctx: preparedRun.ctx,
               harness: infra.harness,

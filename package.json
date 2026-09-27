@@ -124,7 +124,8 @@
     "verify:workspace-terminal": "pnpm run ensure:app-build && node scripts/verify-workspace-terminal.mjs",
     "verify:code-wrap-control": "pnpm run ensure:app-build && node scripts/verify-code-wrap-control.mjs",
     "measure:desktop-cold-start": "pnpm run assert:app-build && node scripts/measure-desktop-cold-start.mjs",
-    "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs"
+    "measure:desktop-large-history-startup": "pnpm run assert:app-build && node scripts/measure-desktop-large-history-startup.mjs",
+    "measure:desktop-first-token": "pnpm run ensure:app-build && node scripts/measure-desktop-first-token.mjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
