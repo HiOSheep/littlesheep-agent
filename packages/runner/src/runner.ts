@@ -683,7 +683,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           webRetrieval: webRetrievalRuntime,
         });
       runContext = ctx;
-      infra.skillLoader?.registerDynamic?.({ name: TASKBOOK_SKILL_NAME, description: TASKBOOK_SKILL_DESCRIPTION }, () => renderTaskbookSkillBody(ctx));
       onToolEvent({
         type: 'capability_snapshot',
         visibility: 'silent',
@@ -704,6 +703,24 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             });
           }
         }
+      }
+      /**
+       * Offer this run's task book as a skill only when there is something to
+       * read. A fresh run has neither a task book nor a plan, and an entry
+       * registered with no body would still appear in `use_skill`'s
+       * "Available skills" list while `loadBody` returns undefined — the model
+       * would be told a skill exists and then told it was not found. The check
+       * runs after the continuation restore above, because a legacy checkpoint
+       * recovers its plan there; the body stays a closure so it is rendered from
+       * the context at load time. With the entry registered once, before the
+       * first request and dropped in `finally`, the catalogue shape is fixed for
+       * the whole run.
+       */
+      if (renderTaskbookSkillBody(ctx)) {
+        infra.skillLoader?.registerDynamic?.(
+          { name: TASKBOOK_SKILL_NAME, description: TASKBOOK_SKILL_DESCRIPTION },
+          () => renderTaskbookSkillBody(ctx),
+        );
       }
       writeRuntimeState(ctx, continuation ? 'runner-restore' : 'runner-init', {
         conversationContinuation: structuredClone(continuationEvidence),
