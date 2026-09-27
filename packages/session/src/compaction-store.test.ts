@@ -161,7 +161,47 @@ describe('SessionCompactionStore', () => {
     expect(recovered).toBe(0);
     expect(applied).toEqual([]);
     expect(activeSummaryId).toBe(newer.id);
-    expect(await store.listPending(sessionId)).toEqual([]);
+    // The older transaction is not applied and does not overwrite the active summary — that is C10A.
+    // It is also not quarantined any more: it still carries an un-settled memory proposal, and moving it
+    // to `failed/` would put it out of reach of the runner's retirement sweep, which is the thing that
+    // records why nothing was written (RS-08, measured on a real data root).
+    expect(await store.listPending(sessionId)).toMatchObject([{
+      version: 2,
+      summary: { id: older.id },
+      memoryProposal: { outcomes: [] },
+    }]);
+    await expect(failedFiles(directory, sessionId)).resolves.toHaveLength(0);
+  });
+
+  // A stale proposal without a proposal left to settle is still isolated, which keeps the quarantine
+  // path honest rather than unreachable.
+  it('still quarantines a stale committed transaction that has nothing left to settle', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
+    tempDirs.push(directory);
+    const sessionId = asSessionId('session-late-writer-no-proposal');
+    const store = new SessionCompactionStore(directory);
+    const older = summary({ id: 'summary-older-clean' });
+    await store.commit(
+      sessionId,
+      older,
+      preconditionFor(older),
+      async () => undefined,
+      proposalFor(['a']),
+    );
+    // Settled: the proposal carries its termination stamp, so there is nothing left for anyone to
+    // terminate and the stale transaction can be isolated as before.
+    await store.terminateMemoryProposal(sessionId, older.id, 'retired by the running build');
+    const newer = summary({ id: 'summary-newer-clean' });
+    await store.commit(sessionId, newer, preconditionFor(newer, older.id), async () => undefined);
+
+    const recovered = await new SessionCompactionStore(directory).recover(sessionId, async (transaction) => {
+      if (transaction.version !== 2 || transaction.precondition.expectedPreviousSummaryId !== newer.id) {
+        const error = new Error('Compaction predecessor changed during late recovery.');
+        error.name = 'StaleCompactionError';
+        throw error;
+      }
+    });
+    expect(recovered).toBe(0);
     await expect(failedFiles(directory, sessionId)).resolves.toHaveLength(1);
   });
 

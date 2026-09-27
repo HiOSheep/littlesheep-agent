@@ -19,7 +19,7 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 2484 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/runner.ts` | 2502 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
 | `packages/harness/src/durable-kernel.ts` | 930 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 652 | 单一模型工具循环、审批、失败记录、消息续接和运行中用户补充投递 | 用户补充消费由 `runtime-control-boundary.ts` 持有结算，主循环只在请求前后纳入消息；后续如继续增长，分离补充消息的请求桥接与现有 invocation adapter，保持单一主循环 | E |
 | `packages/types/src/runtime-contracts.ts` | 872 | Context、事件、检查点、活动任务控制、执行证据、请求前缀变化原因和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`，effect ownership port 已迁入 `effect-lease.ts`，会话续接证据已迁入 `conversation-continuation.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
@@ -160,7 +160,7 @@
 | `packages/web/src/runtime.ts` | 570 | 每轮 Web retrieval quota、取消、citation、cache 和 evidence projection | 保持 per-run runtime facade；继续将 quota/citation/evidence adapter 分离 | E |
 | `packages/memory-tree/src/conversation-source-store.ts` | 487 | append-only 会话来源存储、幂等 capture、manifest 与有界 session/run 目录（catalog 分页/降级/取消） | 保持不可变来源边界；后续分离 catalog 查询与存储 codec，catalog 不返回 payload | D |
 | `packages/runner/src/session-continuity.ts` | 393 | post-run 压缩编排、单次受控 Provider 摘要+候选提炼、pending proposal 结算与恢复 | 保持压缩操作编排边界；后续按 snapshot 读取、proposal 校验、candidate settlement 拆分 | E |
-| `packages/session/src/compaction-store.ts` | 396 | 压缩 pending journal、摘要投影、activation 证据与候选 outcome 存储 | 保持原子持久化边界；后续分离 pending codec、projection 与 activation store | E |
+| `packages/session/src/compaction-store.ts` | 408 | 压缩 pending journal、摘要投影、activation 证据与候选 outcome 存储 | 保持原子持久化边界；后续分离 pending codec、projection 与 activation store | E |
 | `packages/runner/src/durable-event-store.ts` | 538 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 581 | 持久 command inbox、按 run/command 领取、claim owner fencing、有界重启发现/lease wake-up、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/runner/src/durable-run-lease-store.ts` | 353 | next run 的跨进程 acquire/reclaim/renew/release、活动/过期枚举、最早到期点与持久格式校验 | 保持 run lease store 单一职责；heartbeat 与 recovery policy 留在独立 adapter | E |

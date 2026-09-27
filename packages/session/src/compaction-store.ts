@@ -119,10 +119,15 @@ export class SessionCompactionStore {
         }
         recovered += 1;
       } catch (error) {
-        // A committed transaction whose predecessor has since changed is a real conflict and stays
-        // quarantined. Any other failure on an already-committed transaction is not: its summary is
-        // durable, and quarantining it would also remove a memory proposal from the compatibility path
-        // that still has to terminate it (RS-08). The file is kept open instead.
+        // A committed transaction that still carries an un-settled memory proposal is never quarantined
+        // (RS-08). Its summary is already durable, so nothing here can be applied; the proposal is what
+        // is left, and the runner's retirement sweep is the thing that must terminate it and record why
+        // nothing was written. Quarantining would move it out of that sweep's reach — measured on a real
+        // data root, where the candidates ended up in `failed/` with no outcome at all. The file is kept
+        // exactly as it is, including when the predecessor has since changed.
+        if (isTerminalCompactionConflict(error) && hasUnsettledProposal(transaction)) {
+          continue;
+        }
         if (committed && !isTerminalCompactionConflict(error)) {
           recovered += 1;
           continue;
@@ -380,6 +385,13 @@ function canonicalHash(value: unknown): string {
 
 function digest(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+/** True when the transaction carries a memory proposal that has not been terminated yet. */
+function hasUnsettledProposal(transaction: PendingCompactionTransaction): boolean {
+  return transaction.version === 2
+    && Boolean(transaction.memoryProposal)
+    && !transaction.memoryProposal?.terminatedAt;
 }
 
 function errorCode(error: unknown): string | undefined {

@@ -1,6 +1,6 @@
 # Runtime 状态一致性与必要记忆任务书 2026-09-22
 
-最后更新：2026-09-27 08:11:41
+最后更新：2026-09-27 08:23:52
 
 状态（2026-09-27 更新）：**RS-05（删除压缩自动学习）与 RS-06A（向量只在深搜边界）已实现**（`packages/runner`、`packages/session`、`packages/memory-tree`，含回归测试与 `check:repo` 全绿）；文件一致性主线（RS-00～RS-04）此前已实现并推送；**RS-06（受控 memory_write）、RS-06B（Agent 纠正/忘记）、RS-07（真实验收）、RS-08（收口退役）尚未开始**。
 
@@ -176,7 +176,9 @@
 ### RS-08｜最小文档、迁移与收口（P1，随实现同步）
 
 - [ ] 每批只更新实际变更 package/领域 README，系统时钟时间行与源码同次提交；稳定契约汇入项目状态、架构原则、工具/Memory 文档和运行时指令，不把计划写成已实现。
-- [ ] **旧数据根升级演练：阻断点已定位，修复位置已确定（2026-09-27）**。**已确认可行**：经发布 API `SessionManager.commitCompaction(sessionId, summary, precondition, proposal)` 能构造出真实旧状态——manager 留下带 `memoryProposal` 的 pending 文件（本轮再次验证）。**阻断点**：会话恢复（`SessionCompactionStore.recover` → `manager.applyCompactionTransactionWithoutLock`）会拒绝对"前驱摘要已变"的已提交事务，并把它**整体隔离**到 `failed/`（实测 `StaleCompactionError: Compaction predecessor changed from <旧> to <pending 自己的摘要>`），于是 RS-05 期望的"终止并保留审计（rejected + `terminatedAt`）"不会发生，候选连 outcome 都没有。**本轮尝试的修法与其失败原因**：把 runner 的终止扫描提前到 run 开始时（已落地：`terminateRetiredCompactionProposals` 被导出并在 `runner.ts` 的 `state.sessionId = sessionId` 之后立即调用）**不足以**奏效——触发恢复的那次会话读取发生在更早的**续接/检查点加载**阶段（`continuation` 是 `executeRun` 的入参，先于本函数解析），因此扫描仍晚于恢复。**下一步的确切位置**：① 在 `SessionManager` 的恢复路径里，对"已提交且 proposal 未终止"的事务改为保留（把 `applyCompactionTransactionWithoutLock` 的前驱冲突判定与 RS-05 的终止策略合并）；或 ② 在**续接加载之前**（`loadRunContinuation` 调用点）执行终止扫描。两者都需要同时更新 C10A 用例的期望（"较旧且未被终止的提案"应从"隔离"改为"保留待终止"），这是本轮未做的部分。**已落地的部分**：`recover` 对已提交事务的非终态失败不再隔离（隔离只留给真冲突），`packages/session` 55 项与 `runner.test.ts` 全绿。
+- [ ] **旧数据根升级演练：阻断点已定位，修复位置已确定（2026-09-27）**。**已确认可行**：经发布 API `SessionManager.commitCompaction(sessionId, summary, precondition, proposal)` 能构造出真实旧状态——manager 留下带 `memoryProposal` 的 pending 文件（本轮再次验证）。**阻断点**：会话恢复（`SessionCompactionStore.recover` → `manager.applyCompactionTransactionWithoutLock`）会拒绝对"前驱摘要已变"的已提交事务，并把它**整体隔离**到 `failed/`（实测 `StaleCompactionError: Compaction predecessor changed from <旧> to <pending 自己的摘要>`），于是 RS-05 期望的"终止并保留审计（rejected + `terminatedAt`）"不会发生，候选连 outcome 都没有。**本轮尝试的修法与其失败原因**：把 runner 的终止扫描提前到 run 开始时（已落地：`terminateRetiredCompactionProposals` 被导出并在 `runner.ts` 的 `state.sessionId = sessionId` 之后立即调用）**不足以**奏效——触发恢复的那次会话读取发生在更早的**续接/检查点加载**阶段（`continuation` 是 `executeRun` 的入参，先于本函数解析），因此扫描仍晚于恢复。**本轮进一步收窄（2026-09-27 第二轮）**：给 store 加了"已提交且提案未终止的事务不隔离"的规则（保留在 `pending/`，留给 runner 的扫描），并给 C10A 用例补上"已终止提案的陈旧事务仍隔离"的新用例（`packages/session` 8 项全绿）。但实测显示**扫描根本没看到它**：`SessionManager.listPendingCompactions → recover` 的调用栈证明隔离发生在**扫描自己的第一次读取**里，而隔离出来的记录**没有 `summaryCommittedAt`**——runner 的兼容过滤正是 `if (transaction.version !== 2 || !transaction.summaryCommittedAt) continue`，于是这种形状永远不会被终止。所以真正要查的是**这个戳为什么没写上**（候选：`commitCompaction` 的 apply 抛过瞬时错误而保留了未加戳的文件；或 manager 的提交路径未走到 store 的打戳分支）。修好打戳（或让扫描也接受"已提交但未加戳"的提案）之后，上面两条修法才有意义。
+
+**下一步的确切位置**：① 在 `SessionManager` 的恢复路径里，对"已提交且 proposal 未终止"的事务改为保留（把 `applyCompactionTransactionWithoutLock` 的前驱冲突判定与 RS-05 的终止策略合并）；或 ② 在**续接加载之前**（`loadRunContinuation` 调用点）执行终止扫描。两者都需要同时更新 C10A 用例的期望（"较旧且未被终止的提案"应从"隔离"改为"保留待终止"），这是本轮未做的部分。**已落地的部分**：`recover` 对已提交事务的非终态失败不再隔离（隔离只留给真冲突），`packages/session` 55 项与 `runner.test.ts` 全绿。
 - [x] **迁移与受控启动（2026-09-27，证据）**：回滚版不得悄悄重新启用自动写入的三条证据都已常驻——① v3 后端在打开数据根前要求隔离数据标识或有效迁移 locator，否则拒绝（`verify:memory-controlled-writes` 的"受控启动拒绝"场景，断言真实报错文案）；② 遗留写入器 `write_memory`/`record_experience` 不在注册表（同一脚本的工具目录场景）；③ 压缩不产生原子（压力场景 + 该条目既有测试）。旧 pending 候选的兼容与终止语义由 RS-05 的既有测试覆盖（`terminateMemoryProposal`：保留文件、写 rejected 结果与 `terminatedAt`/`terminationReason`、重复终止为 no-op）。**未做**：真实旧数据根升级后的完整迁移演练（只在测试与受控数据根上验证过）。
 - [ ] 迁移只为旧 pending 候选和已存在记录兼容所需，不改造 Memory 存储架构。回滚版本不得悄悄重新启用自动写入；保留升级标识/受控启动拒绝等最小兼容措施及恢复证据。
 - [ ] 执行适用单元/集成检查、`verify:changed` 与 `check:repo`；改动桌面接线时验证 App 构建及实际入口。删除本批无用分支/配置与重复说明，不开展无关清理。

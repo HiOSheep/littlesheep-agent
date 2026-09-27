@@ -995,6 +995,24 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     input: RunInput,
     authoritativeTurnInputDigest?: string,
   ): Promise<RunnerResult> {
+    // Retired compaction memory proposals are closed before anything reads this session. The read that
+    // starts the manager's compaction recovery happens inside continuation loading below, and recovery
+    // quarantines a committed proposal whose predecessor has since changed — a later compaction commits
+    // exactly that way. Sweeping first keeps the reason nothing was written with the proposal instead of
+    // losing it into a quarantine directory. The sweep is idempotent; the compaction path calls it again
+    // after the run.
+    if (input.sessionId) {
+      try {
+        await terminateRetiredCompactionProposals({
+          sessionManager: infra.sessionManager,
+          memoryService: infra.memoryService,
+          sessionId: input.sessionId,
+          log: opts.log,
+        })
+      } catch (error) {
+        opts.log?.('warn', 'runner: retired compaction proposal sweep degraded: ' + (error as Error).message)
+      }
+    }
     const turnId = input.sessionId ? conversationTurnMessageId(input.sessionId, input.requestKey) : undefined
     const baseEvidence: ConversationContinuationEvidence = {
       version: 1,
