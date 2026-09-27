@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-27 23:58:51
+最后更新：2026-09-28 00:35:17
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -80,3 +80,22 @@
 - **另一份独立取证包（`ca2ee04e`）报了冲突并提议正确的分工** ✓：它不重复实现 ✗，改为**独立产证** ✓（全新根无 key → 拒绝 + 无 run 启动 + `/run/stream` 从未 POST + 覆盖 Enter；配好供应商 → 端到端仍可发送 ✓），并等树稳定（静默 5 分钟 + typecheck 干净 ✓）后再构建 ✓，以免两个并发构建互相覆盖 `packages/app/out` ✓。**它的判断与建议都对** ✓ —— 但我**无法回复它**（同样不可达 ✗），所以这条分工只保留在这里 ✓。
 - **该修复批次当前是红的** ✗，因此**没有提交** ✓：`tsc -b` exit 0 ✓，但渲染器套件 2 项失败 ✗ —— `composer/control-surface-style.test.ts`（"reuses the workspace tab frame treatment across non-submit controls" ✗，疑与 V1/V3 的样式层改动交互 ✓）与 `composer/runtime-availability.test.ts`（"offers the action inside the empty picker menu instead of only a title" ✗，写者自己的新测试 ✓）。**红就是红** ✓：表内 #1/#2 状态保持"修复中" ✓。
 - **命令可用性坑** ✗：末期某些 shell 里 `pnpm`/`pnpm.cmd` **不在 PATH** ✗，而我最初两次把"命令没跑起来"当成了"检查通过" ✗（`$out` 为空是报错造成的 ✗ 不是通过 ✓）。**正确做法**：用 `node node_modules/typescript/bin/tsc -b tsconfig.workspace.json --pretty false` 与 `node node_modules/vitest/vitest.mjs run <paths>` 直调 ✓，并以 **exit code** 判定 ✓ —— 上表结论即由这两条命令得出 ✓。
+
+### 00:32 状态更新（来自 chali 冲突报告包的实测，均已固化）
+
+| 事实 | 数值 / 结论 | 意义 |
+| --- | --- | --- |
+| `tsc -b` | **exit 0**（00:24） | 类型层自洽 |
+| 渲染器套件 | **exit 0，144 文件 / 821 项通过**（00:23） | ⚠️ **此前记录的 composer 2 项失败已消失** ✓ —— 表内 #1/#2 的**代码**现在是通过状态 ✓，但**实机验收证据仍未产出** ✗，故状态保持"修复中" ✓ |
+| `check:repo` | **exit 1，恰好 1 项失败**：`公开文档和脚本不含本机路径或账号: scripts/lib/experiment-sandbox.mjs: 28971` | 这**不是**我此前预告的 `tool-loop.ts` / `tool-execution-service.ts` 超限 ✗（那两项此刻不存在 ✓，地图计数也一致 ✓）。**归属**：另一个 agent 的 sandbox 工作（他们的新脚本把用户机器路径写进了跟踪文件 ✗）。**未修** ✓：不属于本次审计范围，且是他们的在途文件 ✓；接手者应把它还给他们或直接删掉路径字面量 ✓ |
+| 顶部条高度 | `DESKTOP_TITLEBAR_HEIGHT = 32`（`desktop-startup-page.ts:18`）✓、`titleBarOverlay.height = WINDOW_TITLEBAR_HEIGHT`（`desktop-shell.ts:288`）✓、CSS `--window-titlebar-height: 32px`（`03-shell-sidebar.css:132`）✓ —— **三处一致 32px** | 用户"顶部条高度与窗口控制按钮高度一致"的要求**在常量层面已经满足** ✓；**未测**的是真实窗口里原生控制按钮的像素高度 ✗（chali 实施包被要求补这一步 ✓）|
+
+### chali 布局的重复实现冲突：按 (A) 处理
+
+- 我先后派了两个 chali 包：第一个（早先那个）邮箱被回收 ✗，我误判为"已死" ✗ 于是重派了第二个 ✓；结果第一个**一直活着** ✓ 且已改到第 4 个文件 ✓（`app-view.tsx`、`global-titlebar.tsx`、`03-shell-sidebar.css`、`07-overlays-settings.css` ✓，方案与我给的任务书一致 ✓：新增 `WindowDragRegion` 覆盖侧栏上方的拖动带 ✓、`--settings-content-origin-y` 去掉 `-32px` 偏移 ✓、标题栏移入 `.app` 网格内 ✓）。
+- 第二个包**正确地拒绝动手** ✓（第二个实现 = lost update ✗），并给出 (A)/(B)/(C) 三选 ✓。**我裁定 (A) 停手、交出方案与测量** ✓ —— 它交回的高度调查正是上表第 4 行 ✓。
+- **教训（第二次同类）** ✗：`active teammate not found` **只表示不可寻址**，不代表没在跑 ✗。判断"有没有人在写"必须看**文件 mtime** ✓（这次又是靠 mtime 才确认第一个包活着 ✓）。以后派包前先查 mtime，再决定是否重派 ✓。
+
+### chali 尚未完成的缺口（由冲突包指出，交给在跑的那个包）
+
+侧栏上方左上角的拖动带是否真正覆盖 ✓、导航控件（折叠/前进后退）在新结构下的位置与可达性 ✓、残留的 32px 假设（`.settings-workspace { inset: 32px 0 0 }` ✓、`11-runtime-readiness.css` 的 `top: var(--window-titlebar-height)` ✓）、四个陷阱的逐项核验 ✓、真实窗口对照截图 ✓、README 与拆分地图同步 ✓。
