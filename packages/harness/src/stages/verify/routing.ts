@@ -154,9 +154,18 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
   };
 }
 
-/** The `input` of a tool call the run's transcript recorded, by call id. */
+/**
+ * The `input` of a tool call this run made, by call id.
+ *
+ * The call arguments live where the run actually records them: `produced` holds the messages this run
+ * creates (including its assistant tool calls), and `modelHistory` is the bounded task-interval transcript
+ * the model replays, tool calls and results included. `history` is the *prose-only* projection built before
+ * the run and filtered to messages with a text block, so searching only that made the write-then-read
+ * channel unreachable for a fresh run — it could see the two invocations but never their arguments. It
+ * stays last so a caller that supplies a transcript (a resumed run, a test fixture) is still honoured.
+ */
 function toolCallInput(ctx: RunContext, callId: string): unknown {
-  for (const message of ctx.history ?? []) {
+  for (const message of [...(ctx.produced ?? []), ...(ctx.modelHistory ?? []), ...(ctx.history ?? [])]) {
     for (const block of message.content ?? []) {
       if (block.type !== 'tool_calls') continue;
       const call = block.calls.find((candidate: { id: string }) => candidate.id === callId);

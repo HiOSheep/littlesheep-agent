@@ -122,12 +122,6 @@ describe('structural pass evidence comes from the run itself', () => {
     const ctx = makeCtx({
       inbound: textMessage('user', `Write proof.txt with ${MARKER}, then read it back and report both values.`),
       tools: [write, read],
-      // The transcript projection described in the file header: the calls the
-      // model is about to make, as the Runtime persists them.
-      history: [
-        transcriptCall('write-1', 'write', { file_path: 'proof.txt', content: MARKER }),
-        transcriptCall('read-1', 'read', { file_path: 'proof.txt' }),
-      ],
     });
 
     const result = await h.run(ctx);
@@ -153,14 +147,11 @@ describe('structural pass evidence comes from the run itself', () => {
     expect(read.calls).toHaveLength(1);
   });
 
-  it('does not reach the write-read pass when the run carries no transcript of its own calls', async () => {
-    // The same real run as above without the transcript projection. This records
-    // a reachability limit of the current implementation rather than a desired
-    // outcome: `toolCallInput` reads `ctx.history`, and a run never writes its own
-    // assistant tool calls there — `persistToolCalls` records them in
-    // `ctx.produced`, and only a later run's session projection reaches
-    // `ctx.history`. Every other fact the branch needs is present here, so the
-    // run still settles as `unverified` instead of `pass`.
+  it('reads the call arguments from the run itself, not from the pre-run history projection', async () => {
+    // No seeded `history`: the arguments have to come from what this run recorded while it ran
+    // (`ctx.produced`). This is the reachability proof for the write-then-read channel — before the
+    // arguments were read from `ctx.history`, which is built from the session *before* the run, so a
+    // fresh run could hold both invocations and still never satisfy the branch.
     const write = makeTool('write', { ok: true, output: 'Wrote proof.txt' });
     const read = makeTool('read', { ok: true, output: MARKER });
     const llm = createMockLlm([
@@ -180,7 +171,7 @@ describe('structural pass evidence comes from the run itself', () => {
     expect(ctx.history ?? []).toHaveLength(0);
     expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['write', 'read']);
     expect(ctx.sideEffects).toHaveLength(1);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
   });
 });
 
