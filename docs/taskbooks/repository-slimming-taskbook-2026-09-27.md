@@ -1,8 +1,8 @@
 # 整仓瘦身与冗余收口任务书 2026-09-27
 
-最后更新：2026-09-27 15:07:56
+最后更新：2026-09-27 18:31:34
 
-状态：审查与实施清单；尚未执行代码、依赖、安装包或本地目录清理。以下任务均未完成。本轮仅新增任务书与文档入口。
+状态：实施中（2026-09-27 起）。SL-00 / SL-01 / SL-06 已完成并提交，SL-03 主体完成（`vector` 已裁定退役、待与 SL-02 同批执行），SL-05 与 memory-v3 验收修复在进行，SL-02 / SL-04 / SL-08 因并行工作进行中而按任务书要求暂缓，SL-07 已出清单、用户裁定不删除。逐项证据与保留理由见文末「执行记录」。
 
 ## 1. 目标、范围和执行原则
 
@@ -167,3 +167,40 @@
 - 已完成：修改前 `pnpm.cmd check:repo`，38 项通过、28 个 TypeScript 项目引用有效。明确保留 F-01 的检查盲点。
 - 文档交付检查：修改后 `check:repo` 仍为 38/38，TypeScript references 为 28/28；19 个明确源码引用均存在，9 项任务均未勾选且已接入文档入口。任务书尚未纳入 Git index，因此门禁的 tracked-only 任务书计数仍为 1，实际现存 2 份已单独核对。本次文档的空白检查通过；全仓 `git diff --check` 在并行编辑的 Renderer README 第 2/8/9 行报告行尾空白，本轮未处理。没有用文档检查证明瘦身实施完成。
 - 未运行：完整测试、真实模型、真实 Electron、重新打包、干净机器安装与性能对比。本轮没有移除产品源码、依赖或本地文件。
+
+## 6. 执行记录（2026-09-27，按提交绑定）
+
+本轮由主 Agent 与子 Agent 分批实施；每条记录都注明证据与门槛结果，未执行的候选写明保留理由。基线见 [repository-slimming-baseline-2026-09-27.md](../reference/repository-slimming-baseline-2026-09-27.md)（绑定 HEAD `ec527a7e`）。
+
+### 已完成
+
+| 任务 | 提交 | 证据 |
+| --- | --- | --- |
+| SL-00 固定基线 | `5116e74b` | 基线账本：1,930 跟踪条目 / 18,351,219 HEAD 字节 / 本地目录 lstat 实测 / 平台与 Node 版本；**明确记录没有重建、打包或实跑，因此不含任何提速声明** |
+| SL-01 移除误入库生成物 | `c203f4aa` | 删除 111 个跟踪产物（110 个 `cache-scope-matrix-*/*.json` + 1 个 `vitest.config.ts.timestamp-*.mjs`，271,959 B，与审查值一致）；两处测试暂存改到系统临时目录；**中断实测**仓库根不再新增可入库文件；门禁新增 4 种形状拒绝 + 4 条忽略规则存在性校验，并有"把门禁拷进临时仓库"的失败用例；跟踪清单中该类产物现为 **0** |
+| SL-06 消除文档漂移 | `25cf9764` | 14 个文件修正为"受控工具写入 + 压缩只产摘要"（每处先在代码核对行号）；入口文档历史段 19 段 → 1 行规则 + 10 行归属表，逐条先确认独有事实去向；两处自相矛盾消除；25 个文档链接无丢失 |
+| SL-03 退役未装配工具 + Skill 取证 | `db8b3197` | 删除 `record-experience.ts` 及其导出（全仓搜索仅定义/导出/README/任务书；净 −229 生产行，导出 10→8，零测试覆盖被删；`infra.ts` 与 CLI `import-repo` 的消费者保持）；`runner.ts` 仅在正文非空时注册动态 taskbook Skill —— 取证测试在模型请求内读实时描述：改前普通 run 广告 `taskbook` 而正文 `undefined`，改后为 `(none)`，旧 checkpoint 仍读出计划且 `execute` 恰好一次、无 `decide` |
+
+验证门槛：`check:repo` 在上述每次提交后均为 38/38（含 28 个 TypeScript 项目引用）；SL-01 后 `packages/harness` 82 文件 / 703 项通过；SL-03 后 experience+vector+skills+harness+runner+cli 共 151 文件 / 1,200 项通过。
+
+### 进行中
+
+- **SL-05**（脚本收口）：先建"场景—独有断言—证据层级—入口"表再合并；根目录三个诊断脚本先查维护入口再决定退役。
+- **memory-v3 验收修复**（用户追加要求）：`verify:memory-v3-provider` 等仍在断言已删除的 EVOLVE/CAPTURE 意图与旧阶段列表，属于验收落后于实现；整族审计并重写到"受控写入 + 压缩只产摘要 + 单循环"，新增"无记忆指令的 run 不得产生 durable 写入"的负例；真实 provider 运行需要 `DEEPSEEK_API_KEY`，未设置前不宣称通过。
+
+### 未执行（保留理由与前置条件）
+
+| 任务 | 状态 | 理由 / 前置 |
+| --- | --- | --- |
+| SL-02 删除无效依赖边 | 待执行 | 需要同步 `pnpm-lock.yaml`，而该文件正被并行的 Electron 44 升级占用且尚未提交；现在改写会把两批改动混进同一提交，违反本任务书"不清除或合并这些工作"的要求 |
+| SL-03 的 `vector` 退役 | **已裁定：退役** | 用户 2026-09-27 裁定退役该包；用户 v2 数据库原样保留、读取实现留在 Git 历史。执行需改 `packages/tools/package.json`、`vitest.config.ts` 别名、生成的 tsconfig references 与锁文件，与 SL-02 同批进行 |
+| SL-04 收窄发布载荷 | 待执行 | 依赖 SL-00 基线；`packages/app/runtime` 现为 1,625.9 MiB（含并行升级正在写入的临时目录），打包配置在途，先做会测到中间状态 |
+| SL-07 回收本地输出 | 已完成清单，**决定不删除** | 用户 2026-09-27 决定：只出带保留理由的清单，等逐个确认。实测：`release` 1,326.3 MiB（保留为 SL-04 基线）、`.codex_tmp` 1,172.6 MiB（其中 `p5d-p5c-output` 1,041.7 / `dependency-audit` 58.4 / `verification-reports` 27.9 / `ls-instances` 21.8 MiB）、`packages/app/runtime` 1,625.9 MiB、`packages/app/out` 26.9 MiB、`tmp` 9.4 MiB（任务书明确不默认视为可再生） |
+| SL-08 整体验收与防回流 | 待执行 | 依赖 SL-01～07；须汇总移除文件、依赖边、退役模块与安装包字节，并在跨包清理完成后跑完整门 |
+
+### 实施期间发现的独立问题（不在本任务书范围，已登记）
+
+- `pnpm run verify:memory-v3-provider` 在本任务书开始时**不可能通过**：脚本仍要求已删除的 EVOLVE/CAPTURE 记忆意图与 ENTER/CLASSIFY/DECIDE 阶段。已由本轮的验收修复任务处置。
+- workspace `typecheck` 当前失败于 `packages/app/src/main/embedded-browser.ts:125,127`（Electron 44 类型使 `hostWebContents` 可空），来源是并行的 Electron 升级，不由本任务书引入，需由该工作收口。
+- `packages/app/out/.littlesheep-build-fingerprint.json` 在测量时缺失，`ensure-app-build.mjs --assert` 报 `manifest-unavailable`；基线账本改用只读重算的输入/输出摘要并已注明。
+- `packages/experience` 的 `zod` 与 `@littlesheep/types` 依赖边在 SL-03 删除后不再被该包使用；依赖边收口属 SL-02。
