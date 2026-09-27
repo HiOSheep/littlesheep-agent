@@ -34,6 +34,85 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/@media\s*\(max-width:\s*860px\)[\s\S]*?--sidebar-width:\s*232px;/u)
   })
 
+  it('lays the window out in the chali arrangement: full-height sidebar, top bar over chat and workspace', async () => {
+    const styles = await readRendererStyleSource()
+    const app = directRuleBody(styles, '.app')
+    const titlebar = directRuleBody(styles, '.window-titlebar')
+    const sidebar = directRuleBody(styles, '.sidebar')
+    const resizer = directRuleBody(styles, '.sidebar-resizer')
+    const coreWorkspace = directRuleBody(styles, '.core-workspace')
+    const dragBand = directRuleBody(styles, '.window-drag-band')
+    const settingsLayout = directRuleBody(styles, '.settings-layout')
+    const settingsTrack = directRuleBody(styles, '.settings-sidebar-track')
+    const settingsResizer = directRuleBody(styles, '.settings-sidebar-resizer')
+    const settingsBody = directRuleBody(styles, '.settings-workspace-body')
+    const appView = await readRendererFile('./app-shell/app-view.tsx')
+    const globalTitlebar = await readRendererFile('./sidebar/global-titlebar.tsx')
+    const settingsWorkspace = await readRendererFile('./settings/workspace.tsx')
+
+    // Two rows — the 32px top bar, then the content — over three columns: the sidebar,
+    // its resize seam, and the chat+workspace region.
+    expect(app).toContain('grid-template-rows: var(--window-titlebar-height) minmax(0, 1fr)')
+    expect(app).toContain('var(--sidebar-active-width)')
+    expect(app).toContain('var(--sidebar-active-resizer-width)')
+    expect(app).toContain('minmax(0, 1fr)')
+
+    // The top bar starts where the sidebar column ends: it is row 1 of column 3 only,
+    // so it never crosses the sidebar.
+    expect(titlebar).toContain('grid-column: 3')
+    expect(titlebar).toContain('grid-row: 1')
+    // The sidebar spans both rows, which is what carries its card up to the window's
+    // top edge instead of leaving it below a full-width bar.
+    expect(sidebar).toContain('grid-column: 1')
+    expect(sidebar).toContain('grid-row: 1 / -1')
+    expect(resizer).toContain('grid-column: 2')
+    expect(resizer).toContain('grid-row: 1 / -1')
+    expect(coreWorkspace).toContain('grid-column: 3')
+    expect(coreWorkspace).toContain('grid-row: 2')
+
+    // The window's top edge stays one continuous drag strip. The titlebar drags the
+    // chat+workspace half; this band drags the sidebar half, taking its box from the
+    // same grid track the sidebar occupies so it follows resize and collapse, and
+    // sitting above the sidebar resizer so the whole band is grabbable.
+    expect(dragBand).toContain('grid-column: 1')
+    expect(dragBand).toContain('grid-row: 1')
+    expect(dragBand).toContain('-webkit-app-region: drag')
+    expect(dragBand).toContain('background: transparent')
+    expect(Number(dragBand.match(/z-index:\s*(\d+)/u)?.[1] ?? 0)).toBeGreaterThan(
+      Number(resizer.match(/z-index:\s*(\d+)/u)?.[1] ?? 0),
+    )
+    expect(titlebar).toContain('-webkit-app-region: drag')
+    // Both halves carry the same two mechanisms: the CSS app-region and the pointer
+    // bridge to Main, which live together in the window-chrome module.
+    expect(globalTitlebar).toContain('export function WindowDragRegion')
+    expect(globalTitlebar).toContain('bridge.startWindowDrag({ screenX: event.screenX, screenY: event.screenY })')
+    expect(appView.match(/<WindowDragRegion\b/g)?.length).toBe(1)
+    expect(appView).toContain('<WindowDragRegion className="window-drag-band" />')
+    // The inert/aria-hidden boundary for the settings hand-off covers the two panels the
+    // settings surface paints over — not the top bar and not the drag band, which both
+    // stay usable while settings is open. The wrapper therefore has to be layout-neutral.
+    expect(appView).toContain('<div className="app-panels" aria-hidden={settingsOpen}')
+    expect(appView).not.toContain('<div className="app" aria-hidden={settingsOpen}')
+    expect(directRuleBody(styles, '.app-panels')).toContain('display: contents')
+
+    // The settings surface mirrors the same arrangement: full-height rail, page column
+    // below the same stationary top bar, and its own drag band over the rail.
+    expect(settingsLayout).toContain('grid-template-rows: var(--window-titlebar-height) minmax(0, 1fr)')
+    expect(settingsTrack).toContain('grid-column: 1')
+    expect(settingsTrack).toContain('grid-row: 1 / -1')
+    expect(settingsResizer).toContain('grid-column: 2')
+    expect(settingsResizer).toContain('grid-row: 1 / -1')
+    expect(settingsBody).toContain('grid-column: 3')
+    expect(settingsBody).toContain('grid-row: 2')
+    expect(settingsWorkspace.match(/<WindowDragRegion\b/g)?.length).toBe(1)
+    expect(settingsWorkspace).toContain('<WindowDragRegion className="window-drag-band" />')
+
+    // The rail's first row is a real control (the settings search field), so it keeps
+    // clear of the drag band instead of sitting half inside it.
+    const settingsContents = directRuleBody(styles, '.settings-sidebar-contents')
+    expect(settingsContents).toContain('padding-top: calc(var(--window-titlebar-height) - var(--floating-panel-inset))')
+  })
+
   it('uses the code-view surface for the titlebar, chat, and workspace materials', async () => {
     const styles = await readRendererStyleSource()
 
@@ -424,7 +503,10 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/--settings-entry-collapsed-width:\s*37px;/u)
     expect(styles).toMatch(/--settings-origin-x:\s*calc\(var\(--settings-entry-left\) \+ \(var\(--settings-entry-collapsed-width\) \/ 2\)\);/u)
     expect(styles).toMatch(/--settings-origin-y:\s*calc\(100vh - var\(--settings-entry-bottom\) - \(var\(--settings-entry-height\) \/ 2\)\);/u)
-    expect(styles).toMatch(/--settings-content-origin-y:\s*calc\(var\(--settings-origin-y\) - 32px\);/u)
+    // The settings surface spans the window (chali), so its local reveal origin is the
+    // global anchor: the old `- 32px` undid the offset of a surface that started below
+    // the title bar, and that offset no longer exists.
+    expect(styles).toMatch(/--settings-content-origin-y:\s*var\(--settings-origin-y\);/u)
     expect(styles).toMatch(/--settings-entry-height:\s*34px;/u)
     expect(styles).toMatch(/\.sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
     expect(styles).toMatch(/\.settings-sidebar-contents\s*\{[^}]*padding:\s*var\(--sidebar-content-block-inset\) var\(--sidebar-content-inline-inset\);/u)
@@ -452,7 +534,7 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.window-shell:has\(> \.presence-layer \.settings-workspace\) \.primary-workspace \.sidebar-contents/u)
     expect(styles).toMatch(/\.presence-layer\.presence-exiting \.settings-sidebar-track\s*\{[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;[^}]*transition:\s*opacity var\(--settings-reveal-motion\) var\(--motion-ease\);/u)
     expect(styles).not.toMatch(/\.window-shell\.settings-open \.primary-workspace\s*\{[^}]*display:\s*none;/u)
-    expect(styles).toMatch(/\.settings-workspace\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*32px 0 0;[^}]*visibility:\s*hidden;[^}]*transition:\s*visibility 0s linear var\(--settings-reveal-motion\);/u)
+    expect(styles).toMatch(/\.settings-workspace\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*visibility:\s*hidden;[^}]*transition:\s*visibility 0s linear var\(--settings-reveal-motion\);/u)
     expect(styles).toContain('.presence-layer.settings-presence.visible .settings-workspace {')
     expect(styles).toContain('visibility: visible;\n  transition: visibility 0s linear 0s;')
     expect(styles).toContain('.presence-layer.settings-presence.presence-entering .settings-workspace {')
@@ -476,7 +558,17 @@ describe('chat layout stability', () => {
     expect(presence).toContain("persistentHidden ? 'presence-hidden' : ''")
     expect(presence).toContain('onExited?: () => void')
     expect(styles).toMatch(/\.presence-layer\.settings-presence\s*\{[^}]*pointer-events:\s*none;/u)
-    expect(styles).toMatch(/\.settings-presence \.settings-workspace\s*\{[^}]*pointer-events:\s*auto;/u)
+    // The settings surface covers the whole window now, so hit testing is decided per
+    // region: the surface and its grid are click-through, and the rail, the rail's
+    // resize seam, the page column and the drag band take the pointer back. Without
+    // this the overlay would swallow the stationary top bar's navigation controls and
+    // the window's top-left drag strip.
+    expect(styles).toMatch(/\.settings-workspace\s*\{[^}]*pointer-events:\s*none;/u)
+    expect(styles).toMatch(/\.settings-layout\s*\{[^}]*pointer-events:\s*none;/u)
+    expect(styles).toMatch(/\.settings-sidebar-track\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.settings-sidebar-resizer\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.settings-workspace-body\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.window-drag-band\s*\{[^}]*pointer-events:\s*auto;/u)
     expect(appView).toContain('<SettingsEntryButton')
     expect(appView).toContain('onOpen={openSettingsFromEntry}')
     expect(appView).toContain('onClose={closeSettingsFromEntry}')

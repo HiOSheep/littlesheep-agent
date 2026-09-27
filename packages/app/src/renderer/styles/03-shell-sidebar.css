@@ -126,7 +126,9 @@
   --motion-fast: 140ms;
   --motion-base: 180ms;
   --motion-slow: 220ms;
-  /* Must match WINDOW_TITLEBAR_HEIGHT in the Electron shell. */
+  /* Must match WINDOW_TITLEBAR_HEIGHT in the Electron shell. It is the height of the
+     top bar over the chat+workspace column, the height of the window drag band over
+     the sidebar column, and the offset of the settings page column. */
   --window-titlebar-height: 32px;
   --sidebar-section-motion: 280ms;
   --sidebar-section-ease: cubic-bezier(0.65, 0, 0.35, 1);
@@ -161,9 +163,11 @@
   --settings-entry-collapsed-width: 37px;
   --settings-origin-x: calc(var(--settings-entry-left) + (var(--settings-entry-collapsed-width) / 2));
   --settings-origin-y: calc(100vh - var(--settings-entry-bottom) - (var(--settings-entry-height) / 2));
-  /* The settings surface starts below the stationary 32px titlebar, so its
-     local reveal origin must remove that offset from the global button anchor. */
-  --settings-content-origin-y: calc(var(--settings-origin-y) - 32px);
+  /* The settings surface now spans the window like the app shell does: its rail is a
+     full-height column and its page column starts below the same stationary 32px top
+     bar. The local reveal origin is therefore the global anchor itself — the `32px`
+     subtraction that used to remove the surface's top offset is gone, not moved. */
+  --settings-content-origin-y: var(--settings-origin-y);
   --settings-reveal-motion: 560ms;
   --settings-sidebar-exit-content-motion: var(--motion-fast);
   --settings-sidebar-exit-reveal-delay: 80ms;
@@ -384,7 +388,7 @@ summary:focus-visible,
   height: 100vh;
   min-width: 0;
   /* Keep the native acrylic backdrop available underneath the floating cards.
-     The titlebar, chat, and exposed sidebar gutter paint the code surface;
+     The top bar, chat, and exposed sidebar gutter paint the code surface;
      the sidebar track cuts out the rounded card center below. */
   background: transparent;
   overflow: hidden;
@@ -441,6 +445,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .window-titlebar {
   position: relative;
+  grid-column: 3;
+  grid-row: 1;
   display: flex;
   align-items: center;
   flex: 0 0 var(--window-titlebar-height);
@@ -455,6 +461,37 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   border-bottom: 0;
   -webkit-app-region: drag;
   user-select: none;
+}
+
+/* Attribute-only wrapper: the sidebar and the workspace keep their own `grid-column` /
+   `grid-row` inside `.app`, while the `aria-hidden`/`inert` pair that hands the frame to
+   the settings surface covers exactly the two panels that surface paints over. The top
+   bar and the drag band stay live, so the navigation controls keep working while
+   settings is open. */
+.app-panels {
+  display: contents;
+}
+
+/* The other half of the window's top-edge drag strip. `chali` hands the window's
+   top-left corner to the sidebar, so the top bar starts at the sidebar's right edge
+   and no longer spans the window; this band covers exactly the sidebar column's 32px
+   row. It paints nothing — the sidebar card still reads as reaching the window's top
+   edge — and it is an ordinary grid item of that same track and row (it overlaps the
+   sidebar, which is what grid items placed in one area may do), so sidebar resize and
+   collapse move it with no second width calculation. Its two mechanisms are the
+   titlebar's: the CSS app-region above and the pointer bridge in
+   `sidebar/global-titlebar.tsx`. It sits above the sidebar and its resizer so the
+   whole top edge can be grabbed, which is also why the resizer no longer starts at
+   the window's top-left. */
+.window-drag-band {
+  grid-column: 1;
+  grid-row: 1;
+  z-index: 21;
+  background: transparent;
+  -webkit-app-region: drag;
+  /* The settings layout is click-through as a whole and this band is its one
+     window-chrome item, so it opts back in explicitly. */
+  pointer-events: auto;
 }
 
 .app-nav-controls {
@@ -588,6 +625,10 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
     var(--sidebar-active-width)
     var(--sidebar-active-resizer-width)
     minmax(0, 1fr);
+  /* Row 1 is the 32px top bar of the chat+workspace column; the sidebar and its
+     resizer span both rows, which is what puts the sidebar card against the window's
+     top edge instead of below a full-width title bar. */
+  grid-template-rows: var(--window-titlebar-height) minmax(0, 1fr);
   flex: 1;
   height: auto;
   min-height: 0;
@@ -604,6 +645,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   --chat-workspace-scrollbar-gap: 2px;
   --chat-workspace-scrollbar-overlap: 0px;
   position: relative;
+  grid-column: 3;
+  grid-row: 2;
   display: flex;
   height: 100%;
   min-height: 0;
@@ -626,6 +669,10 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .sidebar {
   position: relative;
+  grid-column: 1;
+  /* Full window height: the sidebar column includes the band the title bar used to
+     own, so its card starts at the window's top inset, not under a 32px bar. */
+  grid-row: 1 / -1;
   z-index: 3;
   display: block;
   --sidebar-action-size: 26px;
@@ -876,6 +923,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 .sidebar-resizer {
   position: relative;
+  grid-column: 2;
+  grid-row: 1 / -1;
   z-index: 20;
   width: 8px;
   min-width: 0;

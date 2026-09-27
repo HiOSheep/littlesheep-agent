@@ -76,6 +76,14 @@ describe('interaction surface visibility', () => {
     expect(overlays).toContain('interactiveDuringExit')
     expect(overlays).toContain('className="settings-presence"')
     expect(styles).toMatch(/\.presence-layer\.settings-presence\s*\{[^}]*pointer-events:\s*none;/u)
-    expect(styles).toMatch(/\.settings-presence \.settings-workspace\s*\{[^}]*pointer-events:\s*auto;/u)
+    // The settings surface spans the window, so it is click-through as a whole and each
+    // region that owns pixels opts back in. The rail and the page column are the two
+    // that always have something to click; the rail's resize seam keeps its longer
+    // selector, which is what still turns it off for the collapsed rail.
+    expect(styles).toMatch(/\.settings-workspace\s*\{[^}]*pointer-events:\s*none;/u)
+    expect(styles).not.toMatch(/\.settings-presence \.settings-workspace\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.settings-sidebar-track\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.settings-sidebar-resizer\s*\{[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.settings-workspace-body\s*\{[^}]*pointer-events:\s*auto;/u)
   })
 })

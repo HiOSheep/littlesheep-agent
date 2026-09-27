@@ -1,4 +1,6 @@
-// Primary navigation, project/session trees, and sidebar actions.
+// Window chrome: the 32px top bar of the chat/workspace region, its navigation
+// controls, the settings entry, and the transparent drag surfaces that keep the
+// window grabbable along its whole top edge.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
 import { HistoryBackIcon, HistoryForwardIcon } from '../ui/browser-icons'
@@ -26,6 +28,30 @@ function endWindowDrag(event: React.PointerEvent<HTMLElement>): void {
   if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
   event.currentTarget.releasePointerCapture(event.pointerId)
   window.littlesheep?.endWindowDrag?.()
+}
+
+/**
+ * Transparent window drag surface for a band the titlebar does not cover.
+ *
+ * `chali` puts the sidebar in the window's top-left corner and stops the 32px top
+ * bar at the sidebar's right edge, so the titlebar alone no longer spans the
+ * window's top edge. This is the second half of that strip: one drag surface per
+ * column that owns part of the band, each carrying the same two mechanisms the
+ * titlebar already used (the CSS `-webkit-app-region: drag` and the pointer bridge
+ * to Main). It renders no content and is not focusable.
+ */
+export function WindowDragRegion({ className }: { className?: string }) {
+  return (
+    <div
+      className={className}
+      data-window-drag-region=""
+      aria-hidden="true"
+      onPointerDown={startWindowDrag}
+      onPointerMove={moveWindowDrag}
+      onPointerUp={endWindowDrag}
+      onPointerCancel={endWindowDrag}
+    />
+  )
 }
 
 export function GlobalTitlebar({

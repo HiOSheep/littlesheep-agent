@@ -22,6 +22,7 @@ import { SettingsDevelopmentEnvironmentsPage } from './development-environments'
 import { SettingsWebPage } from './web'
 import { SettingsPage } from './types'
 import { CloseIcon, SearchIcon, SettingsNavArrowIcon } from '../ui/icons'
+import { WindowDragRegion } from '../sidebar/global-titlebar'
 
 
 export function SettingsWorkspace({
@@ -71,6 +72,10 @@ export function SettingsWorkspace({
   return (
     <div className="settings-workspace">
       <div className="settings-layout">
+        {/* The settings rail is the window's top-left corner while settings is open, so
+            it carries the same transparent drag surface the app sidebar does; without it
+            the window could not be dragged from its top-left in this view. */}
+        <WindowDragRegion className="window-drag-band" />
         <div className="settings-sidebar-track" aria-hidden={sidebarCollapsed} {...(sidebarCollapsed ? { inert: '' } : {})}>
           <aside className="sidebar-surface settings-sidebar">
             <div className="settings-sidebar-contents">
