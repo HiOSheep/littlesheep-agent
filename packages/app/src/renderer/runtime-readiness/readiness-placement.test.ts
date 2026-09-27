@@ -66,7 +66,9 @@ describe('startup stage text placement', () => {
 
   it('styles the normal hint locally and the failure surface window-wide', async () => {
     const styles = await readRendererStyleSource()
-    const hint = /\.composer-readiness-hint\s*\{([^}]*)\}/u.exec(styles)?.[1] ?? ''
+    // The appearance is shared with the model send-block notice, which keeps its own
+    // class; the hint may therefore head a selector list of class selectors.
+    const hint = /\.composer-readiness-hint(?:\s*,\s*\.[\w-]+)*\s*\{([^}]*)\}/u.exec(styles)?.[1] ?? ''
     expect(hint).toContain('text-overflow: ellipsis')
     expect(hint).not.toContain('position: fixed')
     expect(hint).not.toMatch(/(^|\s)(right|left):\s*0/u)
