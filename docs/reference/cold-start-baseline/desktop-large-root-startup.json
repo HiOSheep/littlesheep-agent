@@ -2612,10 +2612,10 @@
     {
       "id": "real-copy",
       "kind": "copy",
-      "copiedFrom": "C:\\Users\\28971\\.littlesheep",
+      "copiedFrom": "<user>\\.littlesheep",
       "prepareMs": 40349,
       "seed": {
-        "copiedFrom": "C:\\Users\\28971\\.littlesheep"
+        "copiedFrom": "<user>\\.littlesheep"
       },
       "runs": [
         {
