@@ -1,5 +1,6 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChatRequest } from '@littlesheep/llm';
 import type { DurableModelRequestProjection, DurableVerificationProjection } from '@littlesheep/types';
@@ -7,6 +8,19 @@ import { buildCacheObservation } from './cache-observability.js';
 import { CacheObservationStore } from './cache-observation-store.js';
 
 const roots: string[] = [];
+
+/**
+ * Scratch roots live in the OS temp dir, not `process.cwd()`: `afterEach` cannot
+ * run after an interrupted test process, and a `cache-observation-store-*`
+ * directory in the repository root is repository-shaped output that `git add`
+ * would stage (SL-01). `check:repo` now rejects the shape if one is ever committed.
+ */
+async function scratchRoot(): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), 'cache-observation-store-'));
+  roots.push(root);
+  return root;
+}
+
 const request: ChatRequest = {
   model: 'test/model',
   messages: [
@@ -77,8 +91,7 @@ afterEach(async () => {
 
 describe('CacheObservationStore', () => {
   it('survives a restart and returns only the exact authorized scope entry', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const first = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => 1_000 });
     await first.initialize();
     const current = observation();
@@ -101,8 +114,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('rejects unavailable scope and ephemeral identities before any cache write', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
     const current = observation();
@@ -119,8 +131,7 @@ describe('CacheObservationStore', () => {
 
   it('never persists prompt text and expires entries conservatively', async () => {
     let now = 1_000;
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 100, now: () => now });
     await store.initialize();
     const current = observation();
@@ -137,8 +148,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('serializes concurrent writes without producing partial JSON', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
     const entries = await Promise.all(Array.from({ length: 24 }, (_, index) => {
@@ -156,8 +166,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('reports only the authorized scope and never mixes another scope', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
     const scopeA = scope({ sessionId: 'session-a' });
@@ -187,8 +196,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('fails closed when the report scope cannot be authorized', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
 
@@ -199,8 +207,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('degrades the report gate when an entry cannot be parsed', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
     await store.put(observation(), scope());
@@ -217,8 +224,7 @@ describe('CacheObservationStore', () => {
 
   it('reports only observations inside the requested time window', async () => {
     let now = 1_000;
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => now });
     await store.initialize();
     await store.put(observation({
@@ -261,8 +267,7 @@ describe('CacheObservationStore', () => {
   });
 
   it('summarizes latency only from durable requests matching authorized observations', async () => {
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root });
     await store.initialize();
     await store.put(observation({ modelRequestId: 'request-1' }), scope());
@@ -328,8 +333,7 @@ describe('CacheObservationStore', () => {
 
   it('returns only the latest authorized observation for a scope', async () => {
     let now = 1_000;
-    const root = await mkdtemp(join(process.cwd(), 'cache-observation-store-'));
-    roots.push(root);
+    const root = await scratchRoot();
     const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => now });
     await store.initialize();
     await store.put(observation({

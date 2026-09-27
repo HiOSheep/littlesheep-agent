@@ -1,14 +1,17 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-26 21:31:24
+最后更新：2026-09-27 18:04:06
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
 - `verify-*.mjs` 是可直接运行的验收入口；根目录 `package.json` 中的 `verify:*` 命令负责先准备对应构建，再启动门。
 - `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。
+- `check-repository-hygiene.mjs`（`pnpm run check:repo` 的第一段）包含仓库卫生门。它按**形状**拒绝已跟踪的生成物，除了 out/dist/coverage/release/tsbuildinfo/log，还包括测试中断留在仓库根的 `cache-scope-matrix-*` / `cache-observation-store-*` 暂存目录，以及 Vite / electron-vite 打包 TS 配置时写下的 `vitest.config.ts.timestamp-*.mjs` / `electron.vite.config.<数字>.mjs`。这些形状曾经真的入库（110 个 JSON + 1 个配置包）而旧门禁全绿，所以同一改动补了 `.gitignore` 窄规则，并把四条规则本身纳入"生成物已忽略"断言——删掉规则是门禁失败，不是静默重新漏水。对应测试 `check-repository-hygiene.test.mjs` 把门禁脚本复制进一个临时 Git 仓库，用 `git add -f` 让四种形状真正被跟踪，断言门禁失败且**只**点名这四个路径，而 `cache-observation-store.ts` 这类同前缀真源码不被误判。
 - `pnpm run verify:code-wrap-control` 核对对话代码块与工作区 Monaco 的共享自动换行偏好、真实滚动/折行变化及按钮状态。
 - `pnpm run verify:skills-catalog-states` 使用可控 Local App API 响应验证技能页成功空列表、错误保留、重试和快速详情切换。
 - `pnpm run verify:deletion-confirmation` 验证永久删除的取消、失败保留、连点去重，并确认项目删除会清理多个归档对话记录而保留磁盘文件夹。
+- `prepare-littlesheep-runtime.mjs` 按**已安装 Electron 的版本**生成被重命名为 `LittleSheep.exe` 的运行时副本，挂在 `predev` / `prebuild` 上并被 `refresh-desktop-shortcut.ps1` 复用。它的完整性校验以已安装 `dist` 的**实际内容**为准，不再写死文件名——写死的清单在 Electron 44 上把 `pnpm run dev` 卡在退出码 1：44 去掉了 ANGLE 的 `libEGL.dll` / `libGLESv2.dll` 并加入 `dxcompiler.dll` / `dxil.dll`，而清单里还留着前两个。只有在找不到已安装 Electron、没有 `dist` 可比时，才退回按名字检查 `version` / `locales` / `resources` / `resources/default_app.asar`。下一次升 Electron 时这条差异不必再修一遍。
+- `sync-desktop-shortcut.mjs` 把桌面快捷方式指向 prepare 刚产出的运行时，挂在 `@littlesheep/app` 的 `predev` / `prebuild` 以及根目录 `build:app` 之后，所以升级 Electron 不会再留下一个指向旧 Chromium 的图标（旧引擎不认识 `corner-shape`，会静默退回普通圆角，看起来像改动没生效）。它是尽力而为的：非 Windows、桌面本来没有快捷方式、`packages/app/out` 还没构建出来，都只报告原因并退出 0，不给 `pnpm run dev` 增加新的失败面；`--strict`（即 `pnpm run refresh:desktop-shortcut`）才会创建缺失的快捷方式并传播失败。Windows 细节留在 `refresh-desktop-shortcut.ps1` 里，包括可能被重定向的桌面路径——只有 .NET 读出来的才可信。对应测试为 `lib/desktop-shortcut.test.mjs`。
 - `pnpm run verify:keyboard-modal-focus` 只用键盘检查模态层打开、Tab 焦点范围、Escape 分层关闭和焦点返回；在真实 Agent 写入审批中验证说明焦点、背景指针阻断、双 Escape 仅拒绝一次及无文件副作用；UX-07 之后还走一遍**对话区的键盘全流程**——从输入框起 Tab 一圈（断言按文档顺序经过"加载更早内容"、消息复制、工具行展开、代码复制与"回到最新"，且每个都带可访问名）、Shift+Tab 按元素身份原路返回输入框、逐层 Escape 只关一层且焦点回到入口、并给每一步留下截图。前进/后退期间挂载或卸载的停靠点（读者回到最新时"回到最新"按钮会消失）按共同集合比对，覆盖度另有一条断言兜底。
 - `pnpm run verify:recovery-states` 核对启动恢复的五类真实状态，并验证 Escape 只收起恢复层、保留待处理现场且把焦点还给入口。
 - `pnpm run verify:shared-ui-roles` 核对共享控件角色：禁用色调（`--control-disabled-opacity`）、控件几何、提示条与反馈动画在真实设置页/对话框里的一致性。**它必须把窗口停到屏幕外再 `showInactive()`**（`park-offscreen`）：隐藏窗口不推进 CSS transition，而这里的禁用色调本身就是 transition，实测会让"已禁用"的控件读到起始帧的 `opacity: 1`（规则在样式表里、`:disabled` 也命中，`getAnimations()` 显示该 transition 停在第一帧）——这不是产品缺陷，是测量条件。

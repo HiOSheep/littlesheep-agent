@@ -219,7 +219,18 @@ async function checkCanonicalFiles() {
   assert(missing.length === 0, '正式文档和维护脚本完整', missing.join(', '))
 
   const ignore = await readText(join(repoRoot, '.gitignore'))
-  const requiredIgnoreRules = ['packages/app/out/', 'dist/', '*.tsbuildinfo']
+  const requiredIgnoreRules = [
+    'packages/app/out/',
+    'dist/',
+    '*.tsbuildinfo',
+    // Generated shapes that keep reappearing beside real sources (see
+    // checkTrackedGeneratedFiles): the ignore rules are asserted here so deleting
+    // one is a gate failure, not a silent reopening of the leak.
+    'cache-scope-matrix-*/',
+    'cache-observation-store-*/',
+    'vitest.config.ts.timestamp-*.mjs',
+    'electron.vite.config.*.mjs',
+  ]
   const missingIgnoreRules = requiredIgnoreRules.filter((rule) => !ignore.split(/\r?\n/).includes(rule))
   assert(missingIgnoreRules.length === 0, '生成物已忽略', missingIgnoreRules.join(', '))
 
@@ -764,12 +775,32 @@ async function checkMemoryV3WriteBoundary() {
 }
 
 function checkTrackedGeneratedFiles() {
+  /**
+   * Shapes that only a generator writes, and that a normal run therefore should
+   * never commit. `.gitignore` covers them too, but the two checks answer
+   * different questions: the ignore rules stop `git add` from picking them up,
+   * while this one catches what is already tracked — a `git add -f`, a tool that
+   * never reads `.gitignore`, or a checkout made before the rules existed (110
+   * `cache-scope-matrix-*` JSON files and a Vite config bundle were tracked this
+   * way and passed every earlier gate).
+   */
+  const generatedShapes = [
+    // `mkdtemp(join(<cwd>, 'cache-scope-matrix-' | 'cache-observation-store-'))`
+    // in the harness cache suites. The directory shape is the artifact; the
+    // sources with the same prefix (`cache-observation-store.ts`) are not.
+    /(^|\/)cache-(?:scope-matrix|observation-store)-[^/]+\//,
+    // Vite bundles a TS config next to the config file and unlinks the bundle
+    // fire-and-forget, so a killed vitest/electron-vite process leaves it behind.
+    /(^|\/)vitest\.config\.ts\.timestamp-\d+-\w+\.mjs$/,
+    /(^|\/)electron\.vite\.config\.\d+\.mjs$/,
+  ]
   const generated = trackedFiles().filter((path) =>
     path.startsWith('packages/app/out/') ||
     /(^|\/)dist\//.test(path) ||
     /(^|\/)(coverage|release)\//.test(path) ||
     /\.tsbuildinfo$/i.test(path) ||
-    /\.log$/i.test(path),
+    /\.log$/i.test(path) ||
+    generatedShapes.some((shape) => shape.test(path)),
   )
   assert(generated.length === 0, 'Git 未跟踪生成物', generated.join(', '))
 }

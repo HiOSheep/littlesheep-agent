@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ChatRequest } from '@littlesheep/llm';
 import {
@@ -59,8 +60,12 @@ function observation(scopeInput: CacheScopeInput, index: number) {
   });
 }
 
+// Scratch stores live in the OS temp dir, not `process.cwd()`: `afterEach` cannot
+// run after an interrupted test process, and a `cache-scope-matrix-*` directory in
+// the repository root is repository-shaped output that `git add` would happily
+// stage (SL-01). `check:repo` now rejects the shape if one ever gets committed.
 async function createStore() {
-  const root = await mkdtemp(join(process.cwd(), 'cache-scope-matrix-'));
+  const root = await mkdtemp(join(tmpdir(), 'cache-scope-matrix-'));
   roots.push(root);
   const store = new CacheObservationStore({ rootDir: root, maxAgeMs: 60_000, now: () => 1_000 });
   await store.initialize();

@@ -21,6 +21,21 @@ coverage/
 .vitest-cache/
 .vitest/
 
+# Test scratch. Harness cache suites used to create these with mkdtemp() under
+# process.cwd(); they now use the OS temp dir, but a checkout made before that
+# change — or any interrupted run that cannot reach its afterEach — still leaves
+# this shape behind. The rules are shape-specific on purpose: the same names exist
+# as real sources (packages/harness/src/cache-observation-store.ts), which stay tracked.
+cache-scope-matrix-*/
+cache-observation-store-*/
+
+# Vite bundles a TypeScript config next to the config file and unlinks the bundle
+# fire-and-forget (vite 5 `loadConfigFromBundledFile`), so a killed vitest or
+# electron-vite process leaves it beside the real config. Nothing but the bundler
+# ever writes these names.
+vitest.config.ts.timestamp-*.mjs
+electron.vite.config.*.mjs
+
 # User data (runtime)
 .littlesheep/
 sessions/
