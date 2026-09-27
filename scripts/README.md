@@ -1,8 +1,10 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-27 22:23:48
+最后更新：2026-09-27 22:47:17
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
+
+- `experiment-autonomy-sandbox.mjs` + `lib/experiment-ledger.mjs` + `lib/experiment-fixtures.mjs` 是 `docs/taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md` 的实验入口，**不是**产品门禁：它只回答该任务书的问题，通过它不代表产品行为已变更。四个模式：`budget`（在任何模型调用之前打印冻结的批次预算与停止条件）、`precheck`（无模型费用的确定性夹具：检索准入探针、URL/SSRF 负向矩阵、`classifyToolFailure` 契约、副作用账本决策、`ToolExecutionService` 重复调用护栏、Provider 可达性）、`model --case=RT-0x --arm=A|B --trial=n --batch=id`（真实模型 A/B，每次一个隔离数据根与合成工作区）、`sandbox`（后端边界矩阵，见下）。逐 run 账本写在仓库外的证据目录（`LS_EXPERIMENT_EVIDENCE_DIR`，默认 `D:\littlesheep-evidence\RASB-2026-09-27`），字段集是任务书第 8 节的最小集合，由 `assertLedgerRecord` 强制；仓库里不留运行时会话、Provider 请求、凭据或工作区产物。`A` 臂跑的是未打补丁的工作树，`B` 臂在 `git apply` 候选补丁并重建 `dist` 之后跑，每条账本记录都带当时的 `sourceHash`，所以两个臂可以按字节区分。退出码：0 通过、1 有验收项失败、2 用法错误、3 前置能力缺失（blocked）、4 命中预算停止条件。
 
 - `verify-*.mjs` 是可直接运行的验收入口；根目录 `package.json` 中的 `verify:*` 命令负责先准备对应构建，再启动门。
 - `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。
