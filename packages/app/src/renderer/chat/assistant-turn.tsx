@@ -16,6 +16,7 @@ import {
 import { visibleActivitySteps } from './activity-visibility'
 import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
 import { AgentToolRow, PreparingLineDeltaBadge, toolActionLabel } from './agent-tool-row'
+import { ActivityAttentionRow } from './attention-row'
 import { DisclosurePanel } from './disclosure-panel'
 import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
@@ -27,7 +28,7 @@ import type {
   TranscriptEntry,
 } from './types'
 import { useConversationDisplayMode } from './conversation-display'
-import { activityAttentionLine, activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
+import { activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
 
 
 interface AssistantTurnMessageProps {
@@ -103,6 +104,9 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
         )}
         <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
       </button>
+      {/* Outside the panel on purpose: folding the process away must never take an unresolved
+          failure, a pending decision or a verdict that did not pass with it (O1). */}
+      <ActivityAttentionRow activity={activity} />
       <DisclosurePanel open={processOpen} className="assistant-process-content">
         {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
         {(activity.transcript?.length ?? 0) > 0
@@ -396,14 +400,9 @@ export function AssistantTranscript({
 }) {
   const tools = new Map(activity.tools.map((tool) => [tool.callId, tool]))
   // Compact mode folds the finished process away, never the facts that need a
-  // decision or a fix: failed/denied rows and the activity-level attention line
-  // stay readable (UX-16).
+  // decision or a fix: failed/denied rows stay readable (UX-16), and the activity-level
+  // facts that outlive the fold are rendered by `ActivityAttentionRow` outside this body.
   const rows = compact ? compactTranscriptEntries(transcript, activity.tools) : transcript
-  // Compact mode keeps the facts that need a decision or a fix: failed/denied
-  // rows and the activity-level attention line stay readable (UX-16). The
-  // verdict and the per-turn counts live on the process trigger, so they are
-  // not repeated by a footer under the answer.
-  const attention = compact ? activityAttentionLine(activity) : null
   return (
     <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
       {rows.map((entry) => {
@@ -430,9 +429,6 @@ export function AssistantTranscript({
           : null
       })}
       {!compact && <ActiveActivityStatus activity={activity} />}
-      {attention && (
-        <div className="agent-transcript-summary agent-transcript-attention" role="status">{attention}</div>
-      )}
     </div>
   )
 }

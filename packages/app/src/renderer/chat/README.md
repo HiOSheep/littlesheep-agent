@@ -1,5 +1,5 @@
 # Renderer 对话
-最后更新：2026-09-27 16:59:12
+最后更新：2026-09-27 22:01:09
 
 
 
@@ -26,11 +26,11 @@
 - `active-run-update.ts` 在 Runtime 接收运行中补充后按事件 id 将用户消息插入当前对话，重复响应不重复显示；真正执行由 Harness 的下一次模型请求决定。`verify:composer-stop-append` 以 Provider 请求记录确认补充进入同一 run。
 - `activity-model.ts`、`task-progress-indicator.tsx`、`message-meta.tsx`、`chat-scroll-anchor.ts`、`conversation-display.ts`：活动数据变换、进度控件、消息页脚、滚动锚定和显示密度。
 - **滚动位置只有一个所有者（UX-19）**：`use-chat-scroll-controller.ts` 持有底部吸附、阅读锚点与"回到最新"状态，`app-shell/chat-view.tsx` 只渲染它给出的 `onScroll`/`onClickCapture` 与按钮。读者在底部附近（`CHAT_STICKY_BOTTOM_THRESHOLD` 内）时视口变化按底边修复；**离开底部后锚点是"正在读的那条消息"而不是"离底部的距离"**——`selectChatVisibleAnchor` 记下第一条仍在视口内的 `data-message-key` 及其位置，`resolveAnchoredScrollTop` 在重排后把它放回原处，并用有界的 display-settle 逐帧收敛（宽度变化会在 ResizeObserver 通知之后继续重排，只测一次会留下尾部跳动）；锚点已不在（历史窗口替换）时不猜、不改动。新输出到达而读者不在底部时只置 `hasNewContent`，由 `.chat-jump-to-latest` 提供可达的返回入口，不把人拽到底部。**这个入口是一个圆形玻璃按钮**（2026-09-26）：与输入框同一种半透明磨砂材质、无描边、只画一个向下的天蓝箭头（`--jump-to-latest-arrow`），底边固定在**输入框可见上沿上方 3px**（`--composer-overlay-height` 从输入栏外壳量起，所以要减去外壳自己的 `--composer-shell-inset-top`；真实窗口实测 gap = 3px）。它从输入框边缘"长出来"、也"收回"输入框：`data-motion` 的三个值（`entering`/`settled`/`exiting`）由 `app-shell/chat-view.tsx` 的状态机给出，视图在 `readingAway` 变假后**多挂载一个动画时长（180 ms）**再卸载；判断"读者是否还在上面"要看 `data-motion` 或等元素消失，不要在退出窗口里按存在与否下结论（`verify:electron-ui-state-continuity` 因此把这步改成有界等待）。箭头是装饰（`pointer-events: none`），命中测试必须落在按钮本身（`verify:chat-reading-scenarios` 的 `hitIsButton` 会因此抓到图标抢命中）。**只有"换了一段对话"才重新贴底**：草稿会话在首次 run 里取得持久 id 时转写并没有换（真实窗口实测：这个瞬间重新贴底会把已经向上滚动的读者拽回底部），加载更早消息会改变首条消息 id 但会话没变——两者都必须保持读者位置；"有新内容"用消息数 + 末条 id + 末条正文长度判定，流式增长同样算新内容。**修复循环必须让位给读者**：hook 记住自己写过的 `scrollTop`，`onScroll` 看到不是自己写的滚动就立刻取消逐帧修复（真实验收里这条是必需项——不取消时"回到最新"会被旧锚点拉回，按钮永不消失）。回归：`chat-scroll-anchor.test.ts`（纯算术）与 `chat-scroll-controller-wiring.test.ts`（接线、让位规则与 CSS 契约）；真实窗口数字由 `verify:electron-ui-state-continuity` 与 `verify:chat-streaming-rendering` 记录。
-- `activity-visibility.ts`：渐进披露规则。紧凑显示只折叠"无需关注"的已完成行；未成功的工具调用（含 Runtime 报告的权限拒绝）、失败或中止的准备行、失败的思考行、未通过的验证与失败步骤都必须继续可见（`compactTranscriptEntries` / `activityAttentionLine`），不得因为减少噪声而隐藏需要决定或修复的事实。**折叠只对"已不再运行"的回合生效**（`compactCompleted`），因此等待用户批准的运行中回合在两种模式下的渲染完全相同，"正在等待 write 的权限批准"这条事实在两种模式下都可读。
+- `activity-visibility.ts`：渐进披露规则。紧凑显示只折叠"无需关注"的已完成行；未成功的工具调用（含 Runtime 报告的权限拒绝）、失败或中止的准备行、失败的思考行、未通过的验证与失败／结果未知的步骤都必须继续可见（`compactTranscriptEntries` / `activityAttentionLine`），不得因为减少噪声而隐藏需要决定或修复的事实。**折叠只对"已不再运行"的回合生效**（`compactCompleted`），因此等待用户批准的运行中回合在两种模式下的渲染完全相同，"正在等待 write 的权限批准"这条事实在两种模式下都可读。
 - `context-projections.ts`、`conversation-turn-fingerprint.ts`：上下文快照的有界无正文投影，以及跨文本、运行时、工作区和附件的稳定回合标识。
 - `stream-text-integrity.test.ts`：流式文字完整性的分层探针（UX-20），用一份含标题/列表/链接/引用/代码围栏/中文标点/长段落的确定性样本驱动**真实**的 `consumeRunStream` + `assistant-delta-buffer` + `run-result-reducer`，固定住四条边界：正常流逐字节一致；畸形帧只被跳过、不连累邻居；**结果帧本身无法解析时仍以"结束却没有 result"拒绝，不静默成功**；`aborted`/`failed` 撤回预览而成功 run 用 settlement 文案覆盖预览。增删流式层的语义前先在这里改断言。
 
-验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。**两种显示模式都要能读到它**：验证结论属于活动而不是转录行，紧凑模式由 `.agent-transcript-attention` 承载，普通模式由 `activityVerificationLine` 单独渲染成一行（`data-transcript-verification`，中性样式，不带危险色）。普通模式下每个已结算回合都是 `unverified`，因此这一行是常态而不是告警——但它必须存在，否则同一份 run 在一种显示模式下"从未验证过"这件事会完全消失。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，没有 partial：需要"没做完"的说法时用 `aborted`（本轮已停止）、`paused`（本轮已暂停）或 `needs_replan`（验证：需要调整），不要为清单虚构状态。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
+验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。**两种显示模式都要能读到它**：验证结论属于活动而不是转录行，触发行 `.assistant-process-verification` 在两种模式下都渲染它（`activityVerificationLine`），紧凑模式再由注意力行复述一次。普通模式下每个已结算回合都是 `unverified`，因此这条陈述是常态而不是告警——但它必须存在，否则同一份 run 在一种显示模式下"从未验证过"这件事会完全消失。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，没有 partial：需要"没做完"的说法时用 `aborted`（本轮已停止）、`paused`（本轮已暂停）或 `needs_replan`（验证：需要调整），不要为清单虚构状态。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
 
 **执行过程中的"说的话"按正文颜色渲染**：`.assistant-activity-flow` 整体用 `--muted`，好让步骤、工具与思考摘要退到背景；但转录里的散文行（`.agent-transcript-prose`，模型在工具调用之间说给用户的话）不是机械过程，必须显式取回 `--text`，否则用户读到的解释比最终回答更淡、像脚注。只把这一个类改回正文色，步骤/工具/摘要/运行中状态行仍然保持 muted。真实窗口实测：散文行计算色 `rgb(232, 232, 232)`（= `--text` = `.assistant-turn` = 正文），同一容器 `rgb(160, 160, 160)`（= `--muted`）。
 
@@ -71,3 +71,13 @@
 `pointer-events` 即使 `opacity: 0` 也保持 `auto`：隐藏的行仍是一个活的命中面（鼠标要能落在它上面才能把它唤出来），不是一条死带。这条靠 `message-meta.test.ts` 守住——断言不是"存在一条 opacity 规则"，而是**枚举每一条设置该行自身 opacity 的规则**，要求只有"基础隐藏"和"共享的 hover/focus 显示"两种状态；把 `:has(...)` 例外加回去会立刻失败。
 
 **间距从"命中盒之间"改到"字形之间"。** 图标按钮原本是 28×28 的盒子套 16px 字形，每边藏着 6px 看不见的内边距，于是行自己的 8px `gap` 渲染出来是：字形↔字形 20px、字形↔用量胶囊 14px、胶囊↔时间 8px——三级递减，同一行里三个不一样的节奏。现在按钮盒收到 **24×24**（字形仍 16px，每边 4px，24 也是这一行允许的最小点击目标），再用 `margin-inline: -4px` 把这 4px 交还给布局，行自己补 `padding-inline: 4px`，首尾图标因此与消息正文对齐。三处可见间距统一为 **8px**，且相邻命中盒正好相接、不重叠（悬停不会有死区，也不会有两块区域争同一次点击）。四个数字（盒 24、字形 16、行 padding 4、按钮负 margin -4）在 `message-meta.test.ts` 里一起断言，单独动其中一个就会破坏节奏。
+
+## 关键状态不随过程一起折叠（O1，2026-09-27）
+
+**注意力行搬出可折叠区。** `activityAttentionLine` 原先渲染在过程正文（`DisclosurePanel`）里面：紧凑模式折起正文时读者还能看到那一行，但**读者自己在普通模式点一下触发行把它折起来，同一批事实就一起消失了**——而"失败、权限拒绝、未验证、待决策始终可见"恰恰要在读者折叠之后也成立。现在这一行由 `chat/attention-row.tsx` 渲染在触发行与过程正文**之间**（`assistant-turn.tsx`），在两种显示模式下都只有一个位置，正文里不再有第二份；`AssistantTranscript` 因此不再需要 `activityAttentionLine`，也顺带去掉了它和触发行重复的那条页脚。`.agent-transcript-attention` 只加了两条布局属性（`max-width: 820px`、`margin: 4px 0 0`），因为它不再是正文里的一行、而要顶住其后正文的上边缘。
+
+**"未完成的步骤"包括结果未知的那一种。** 原判据只数 `status === 'failed'` 的步骤。一轮在工具还没回报结果时结束时，Reducer 会把该步骤标成 `unknown`（`run-result-reducer.ts`）——那不是失败，但也不是完成；折起来读就是"缺失的结果"被当成"做完了"。现在 `failed` 与 `unknown` 一起计入，措辞从"N 个步骤失败"改成"N 个步骤未完成"（覆盖两种状态，且不把未知说成失败）。
+
+**调用失败分"仍未解决"和"已由后续调用恢复"。** 记录在案的失败不会因为后续成功而消失，但"还在影响结果的问题"和"已经翻篇的历史失败"必须能分开读。判据直接沿用 Runtime 自己的规则：`harness/stages/verify/task-state.ts` 的 `runtimeExecutionEvidenceGap` 认为**同一步骤里更晚的一次成功调用**会顶掉这次未成功的调用；`classifyCallFailures` 用同一条规则把失败分成 `recovered` 与未解决，注意力行分别写成"N 次调用失败"和"N 次失败已由后续调用恢复"，两者同时成立时再补一句"本轮无未解决失败"。没带 `stepId` 的调用**永远算未解决**：没有可顶替的步骤，猜一条别的规则就会让未解决的问题读成历史。
+
+**验证结论只留一个主位置。** 结论在触发行（`.assistant-process-verification`）渲染，两种模式下都在；紧凑模式的注意力行复述它，因为它属于"折起来也必须看得到"的那批事实。`verify:transcript-state-visibility` 的断言随结构一起改：它原先等的是 `[data-transcript-verification="true"]`，而那个元素在"元信息合并到触发行"（2026-09-27）时就已经不存在了，门因此**从那时起一直红在第一处等待上**（`timed out waiting for a settled turn with a verification verdict`），不是本轮引入的。同一条门新增第 6 类场景：在真实窗口里**点击触发行把过程折起来**，普通与紧凑两种模式各测一次，断言 `aria-hidden/inert` 真的落下、注意力行不是正文面板的后代、失败行仍在（折叠而不是丢弃）。

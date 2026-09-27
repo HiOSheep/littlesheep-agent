@@ -1,14 +1,17 @@
 import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistantActivityFlow, AssistantTranscript, AssistantTurnMessage } from './assistant-turn'
 import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
 import { Markdown as MarkdownImplementation } from '../Markdown'
 import type { AssistantTurnActivity, ChatMessage } from './types'
 import { turnOutputRate, turnUsageFigures } from './turn-usage-card'
 import type { WebEvidenceProjection } from '@littlesheep/types'
+import { CONVERSATION_DISPLAY_MODE_KEY } from './conversation-display'
 
-beforeAll(() => vi.stubGlobal('React', React))
+// Re-stubbed per test: the O1 cases replace `window` to choose a display mode, and the Markdown
+// renderer reads the `React` global this suite provides.
+beforeEach(() => vi.stubGlobal('React', React))
 afterAll(() => vi.unstubAllGlobals())
 
 
@@ -475,5 +478,155 @@ describe('model transcript rendering', () => {
     expect(prose).toBeGreaterThan(thinking)
     expect(tool).toBeGreaterThan(prose)
     expect(later).toBeGreaterThan(tool)
+  })
+})
+
+/**
+ * O1 acceptance in the two display modes, rendered through the real component.
+ *
+ * The display mode is read from `localStorage` at first render, so the stub below is the same
+ * input the product reads. The process body is the only collapsible surface in the turn, so
+ * "outside the collapsed area" is decided by comparing positions: the attention row must sit
+ * before the body panel, and the body panel must really be collapsed (`aria-hidden` + `inert`,
+ * which is what removes it from reading and tab order).
+ */
+function renderTurn(activityOverrides: Partial<AssistantTurnActivity>, mode: 'normal' | 'compact'): string {
+  vi.stubGlobal('window', { localStorage: { getItem: (key: string) => key === CONVERSATION_DISPLAY_MODE_KEY ? mode : null } })
+  return renderToStaticMarkup(createElement(AssistantTurnMessage, {
+    message: { role: 'assistant', text: '结果在这里。', activity: activity(activityOverrides) },
+    messageKey: `assistant-${mode}`,
+    now: 5_000,
+    onOpenFile: () => undefined,
+  }))
+}
+
+function processBodyMarkup(html: string): string {
+  const start = html.indexOf('assistant-process-content')
+  expect(start, 'the process body should exist').toBeGreaterThanOrEqual(0)
+  // The body's own rows appear after the panel opens, so the first transcript/tool row is the
+  // end of the panel's opening tag.
+  const end = html.indexOf('assistant-activity-flow', start)
+  return html.slice(start, end === -1 ? html.length : end)
+}
+
+function attentionMarkup(html: string): string | null {
+  const start = html.indexOf('data-transcript-attention="true"')
+  if (start === -1) return null
+  const open = html.lastIndexOf('<', start)
+  const close = html.indexOf('</div>', start)
+  return html.slice(open, close)
+}
+
+describe('O1 keeps attention facts outside the folded process', () => {
+  const failedCall: Partial<AssistantTurnActivity> = {
+    status: 'done',
+    visibility: 'progress',
+    startedAt: 1_000,
+    endedAt: 5_000,
+    verificationHistory: [
+      { attempt: 1, verdict: 'unverified', reason: 'recorded failure', verifiedAt: '2026-09-27T00:00:00.000Z', source: 'structural' },
+    ],
+    transcript: [
+      { kind: 'reasoning', id: 'r1', text: '想过了。', status: 'done' },
+      { kind: 'tool', id: 'tool:call-a', callId: 'call-a' },
+    ],
+    tools: [{ callId: 'call-a', name: 'exec', stepId: 'step-1', startedAt: 1_000, endedAt: 2_000, ok: false, error: 'exec exited 3' }],
+    steps: [{ stepId: 'step-1', title: '运行命令', status: 'failed', toolCount: 1, activeTools: 0 }],
+  }
+
+  it('renders the finished-but-partly-failed turn once, outside the body, in both modes', () => {
+    for (const mode of ['normal', 'compact'] as const) {
+      const html = renderTurn(failedCall, mode)
+      const attention = attentionMarkup(html)
+
+      expect(attention, mode).not.toBeNull()
+      expect(attention, mode).toContain('1 个步骤未完成')
+      expect(attention, mode).toContain('1 次调用失败')
+      expect(attention, mode).toContain('验证：未验证')
+      // Exactly one home for those facts: the row is not repeated as a footer under the answer.
+      expect(html.match(/data-transcript-attention="true"/gu), mode).toHaveLength(1)
+      // And it is outside the collapsible body, which is what makes a fold unable to hide it.
+      const rowAt = html.indexOf('data-transcript-attention="true"')
+      const bodyAt = html.indexOf('assistant-process-content')
+      expect(rowAt, mode).toBeLessThan(bodyAt)
+    }
+  })
+
+  it('keeps the facts readable when the reader folds the process away', () => {
+    for (const mode of ['normal', 'compact'] as const) {
+      const html = renderTurn(failedCall, mode)
+
+      // The body really is collapsed, so anything inside it is unreadable.
+      expect(processBodyMarkup(html), mode).toContain('aria-hidden="true"')
+      expect(processBodyMarkup(html), mode).toContain('inert')
+      // The facts the reader has to act on are not in that subtree.
+      expect(attentionMarkup(html), mode).toContain('1 次调用失败')
+    }
+  })
+
+  it('keeps a run that waits for the reader visible in both modes', () => {
+    for (const mode of ['normal', 'compact'] as const) {
+      const html = renderTurn({
+        status: 'waiting_user',
+        visibility: 'progress',
+        startedAt: 1_000,
+        endedAt: 2_000,
+        steps: [{ stepId: 'step-1', title: '写入', status: 'pending', toolCount: 0, activeTools: 0 }],
+      }, mode)
+
+      expect(attentionMarkup(html), mode).toContain('等待你决定后继续')
+      expect(html.indexOf('data-transcript-attention="true"'), mode)
+        .toBeLessThan(html.indexOf('assistant-process-content'))
+    }
+  })
+
+  it('says nothing extra for a clean finished turn', () => {
+    for (const mode of ['normal', 'compact'] as const) {
+      const html = renderTurn({
+        status: 'done',
+        visibility: 'progress',
+        startedAt: 1_000,
+        endedAt: 5_000,
+        verificationHistory: [
+          { attempt: 1, verdict: 'pass', reason: 'ok', verifiedAt: '2026-09-27T00:00:00.000Z', source: 'structural' },
+        ],
+        steps: [{ stepId: 'step-1', title: '读取', status: 'done', toolCount: 1, activeTools: 0 }],
+        tools: [{ callId: 'call-a', name: 'read', stepId: 'step-1', startedAt: 1_000, endedAt: 2_000, ok: true }],
+      }, mode)
+
+      // One primary display location: the trigger's duration, and no attention row at all.
+      expect(attentionMarkup(html), mode).toBeNull()
+      expect(html, mode).toContain('用时')
+    }
+  })
+
+  it('does not judge an unfinished turn', () => {
+    const html = renderTurn({ status: 'running', visibility: 'progress', startedAt: 1_000 }, 'normal')
+
+    expect(attentionMarkup(html)).toBeNull()
+  })
+
+  it('does not duplicate the attention line as a footer inside the transcript body', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
+      transcript: [
+        { kind: 'reasoning', id: 'r1', text: '想过了。', status: 'done' },
+        { kind: 'tool', id: 'tool:call-a', callId: 'call-a' },
+      ],
+      activity: activity({
+        status: 'done',
+        visibility: 'progress',
+        verificationHistory: [
+          { attempt: 1, verdict: 'unverified', reason: 'recorded failure', verifiedAt: '2026-09-27T00:00:00.000Z', source: 'structural' },
+        ],
+        tools: [{ callId: 'call-a', name: 'exec', startedAt: 1_000, endedAt: 2_000, ok: false, error: 'exec exited 3' }],
+      }),
+      now: 1_500,
+      onOpenFile: () => undefined,
+      compact: true,
+    }))
+
+    // The kept row stays, the activity-level line lives on the turn instead of here.
+    expect(html).toContain('agent-tool-call fail')
+    expect(html).not.toContain('agent-transcript-attention')
   })
 })

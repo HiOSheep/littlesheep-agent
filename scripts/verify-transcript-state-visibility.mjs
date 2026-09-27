@@ -12,12 +12,16 @@
 //   4. pending-approval a running turn waiting for the user's write approval
 //   5. denied-tool      the same call, refused by the user, kept as a failed tool row after a
 //                       window reload (the live stream has no tool row for it)
+//   6. manual fold      the reader clicks the process trigger shut on the refused-call turn
 //
 // What each sample must show:
 //   - normal mode: the rows and text a reader needs (the failed turn and its reason, the kept
-//     failed tool row, the verification verdict, the live waiting/aborted status),
-//   - compact mode: the `.agent-transcript-attention` line, plus proof that folding really
-//     happened (fewer `.assistant-transcript [data-transcript-entry]` nodes than normal mode).
+//     failed tool row, the verification verdict on the process trigger, the live waiting/aborted
+//     status),
+//   - compact mode: the `.agent-transcript-attention` row, plus proof that folding really
+//     happened (fewer `.assistant-transcript [data-transcript-entry]` nodes than normal mode),
+//   - both modes: the attention row is never a descendant of `.assistant-process-content`, the
+//     panel the reader (or compact display) folds — checked here, and again after a real click.
 //
 // Two classes the taskbook names cannot be produced by this build:
 //   - 待用户 (`waiting_user`) is only written by older versions / crash recovery
@@ -153,7 +157,13 @@ const TURN_SAMPLE_EXPRESSION = `(() => {
   const transcript = turn.querySelector('.assistant-transcript');
   const entries = transcript ? [...transcript.querySelectorAll('[data-transcript-entry]')] : [];
   const attention = turn.querySelector('.agent-transcript-attention');
-  const verification = turn.querySelector('[data-transcript-verification="true"]');
+  // The verdict rides on the process trigger now (it used to be its own row inside the process
+  // body), so the fact and the row that carries it are sampled separately.
+  const trigger = turn.querySelector('.assistant-process-trigger');
+  const verification = turn.querySelector('.assistant-process-verification');
+  // "Outside the collapsed process body" is a structural fact, not a class name: the attention
+  // row must not be a descendant of the disclosure panel that folds.
+  const processBody = turn.querySelector('.assistant-process-content');
   const failedTools = [...turn.querySelectorAll('.agent-tool-call.fail[data-call-id]')];
   const allTools = [...turn.querySelectorAll('.agent-tool-call[data-call-id]')];
   // Tool rows are rendered from transcript entries but carry data-call-id instead of
@@ -178,6 +188,14 @@ const TURN_SAMPLE_EXPRESSION = `(() => {
     })),
     attentionPresent: attention instanceof HTMLElement,
     attentionText: text(attention) || null,
+    // The row that folds, its real collapsed state, and whether the attention fact lives inside it.
+    processBodyPresent: processBody instanceof HTMLElement,
+    processBodyFolded: processBody instanceof HTMLElement
+      && processBody.getAttribute('aria-hidden') === 'true'
+      && processBody.hasAttribute('inert'),
+    attentionInProcessBody: Boolean(attention && processBody && processBody.contains(attention)),
+    triggerText: text(trigger) || null,
+    triggerExpanded: trigger ? trigger.getAttribute('aria-expanded') : null,
     verificationPresent: verification instanceof HTMLElement,
     verificationText: text(verification) || null,
     toolRows: allTools.length,
@@ -363,6 +381,9 @@ function recordStrings(recorder, step, sample) {
       turnClass: sample.turnClass,
       runStatusError: sample.runStatusError,
       attentionText: sample.attentionText,
+      attentionInProcessBody: sample.attentionInProcessBody,
+      triggerText: sample.triggerText,
+      processBodyFolded: sample.processBodyFolded,
       verificationText: sample.verificationText,
       failedToolTexts: sample.failedToolTexts,
       activeStageTexts: sample.activeStageTexts,
@@ -424,19 +445,42 @@ async function main() {
       client,
       (sample) => sample.turnStatus !== 'running' && sample.verificationPresent,
       'a settled turn with a verification verdict',
-    )
-    const unverified = await captureBothModes({ client, recorder, screenshots, name: 'unverified' })
+    ).catch(async (error) => {
+      // A timeout here is a finding about the turn, not about the wait: record what is on screen
+      // so the evidence says whether the run never settled, or settled without a verdict.
+      const snapshot = await evaluate(client, `(() => ({
+        assistantTurns: document.querySelectorAll('.assistant-turn').length,
+        userMessages: document.querySelectorAll('.message.user').length,
+        turnClasses: [...document.querySelectorAll('.assistant-turn')].map((turn) => turn.className),
+        loadingHistory: (document.querySelector('.messages')?.textContent ?? '').includes('加载历史消息'),
+        composerDisabled: document.querySelector('.composer textarea')?.disabled ?? null,
+        running: document.querySelectorAll('.task-progress-indicator').length,
+        bodyText: (document.querySelector('.messages')?.textContent ?? '').replace(/\\s+/gu, ' ').trim().slice(0, 300),
+      }))()`).catch((cause) => ({ snapshotError: String(cause) }))
+      recorder.note({
+        step: 'unverified-timeout',
+        error: String(error),
+        snapshot,
+        sample: await sampleTurn(client).catch(() => null),
+      })
+      recorder.check(false, 'the plain prompt produces a settled turn with a verification verdict', {
+        error: String(error),
+        snapshot,
+      })
+      return null
+    })
+    const unverified = await captureBothModes({ client, recorder, screenshots, name: 'unverified', pick: '.assistant-process-verification' })
     recordStrings(recorder, 'unverified-normal', unverified.normal)
     recordStrings(recorder, 'unverified-compact', unverified.compact)
     recorder.check(
       unverified.normal.verificationPresent === true
       && (unverified.normal.verificationText ?? '').includes('验证：未验证'),
-      'normal mode renders the unverified verdict as its own status row (验证：未验证)',
-      { verificationText: unverified.normal.verificationText, turnClass: unverified.normal.turnClass },
+      'normal mode renders the unverified verdict on the process trigger (验证：未验证)',
+      { verificationText: unverified.normal.verificationText, triggerText: unverified.normal.triggerText, turnClass: unverified.normal.turnClass },
     )
     recorder.check(
       unverified.normal.attentionPresent === false,
-      'normal mode does not need the compact attention line',
+      'normal mode needs no attention row for a turn whose only fact is the verdict',
       { attentionText: unverified.normal.attentionText },
     )
     recorder.check(
@@ -447,7 +491,7 @@ async function main() {
     recorder.check(
       unverified.compact.attentionPresent === true
       && (unverified.compact.attentionText ?? '').includes('验证：未验证'),
-      'compact mode keeps the unverified verdict in the attention line',
+      'compact mode keeps the unverified verdict in the attention row',
       { attentionText: unverified.compact.attentionText },
     )
     recorder.check(
@@ -455,10 +499,18 @@ async function main() {
       'compact mode folds the unverified turn\'s non-attention rows away',
       { normalEntries: unverified.normal.entryCount, compactEntries: unverified.compact.entryCount },
     )
+    // The verdict used to be folded away in compact mode and re-stated by the outside row. It now
+    // has one home that both modes read, and compact mode adds the attention row beside it.
     recorder.check(
-      unverified.compact.verificationPresent === false,
-      'the verdict row itself is folded once the attention line carries it',
-      { verificationText: unverified.compact.verificationText, attentionText: unverified.compact.attentionText },
+      unverified.compact.verificationPresent === true
+      && unverified.compact.attentionInProcessBody === false
+      && (unverified.compact.attentionText ?? '').includes('验证：未验证'),
+      'the verdict stays on the trigger in both modes, and compact mode repeats it outside the folding body',
+      {
+        verificationText: unverified.compact.verificationText,
+        attentionText: unverified.compact.attentionText,
+        attentionInProcessBody: unverified.compact.attentionInProcessBody,
+      },
     )
 
     // ---------------------------------------------------------------------
@@ -758,6 +810,53 @@ async function main() {
       'compact mode folds the refused turn\'s non-attention rows away',
       { normalEntries: denied.normal.entryCount, compactEntries: denied.compact.entryCount },
     )
+
+    // ---------------------------------------------------------------------
+    // 6. manual fold: the reader clicks the process trigger shut
+    // ---------------------------------------------------------------------
+    // The trigger decides `processOpen`, so this is the product's own control, not an injected
+    // class. Everything the turn still has to say must survive the fold, in BOTH display modes:
+    // the failed row stays in the (now unreadable) body, and the facts that outlive it must not.
+    for (const mode of ['normal', 'compact']) {
+      await setDisplayMode(client, mode)
+      await delay(250)
+      const toggled = await evaluate(client, `(() => {
+        const row = document.querySelector('.agent-tool-call.fail[data-call-id]');
+        const turn = row ? row.closest('.assistant-turn') : null;
+        const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
+        if (!trigger) return null;
+        const before = trigger.getAttribute('aria-expanded');
+        trigger.click();
+        return { before };
+      })()`)
+      if (!toggled) throw new Error(`the process trigger could not be clicked in ${mode} mode`)
+      if (toggled.before !== 'true') throw new Error(`the process was already folded before the click in ${mode} mode`)
+      await delay(400)
+      const sample = await sampleTurn(client, 4, '.agent-tool-call.fail[data-call-id]')
+      recorder.note({ step: `manual-fold-${mode}`, toggled, sample })
+      recorder.check(
+        sample.processBodyFolded === true && sample.triggerExpanded === 'false',
+        `the reader's click really folds the process body in ${mode} mode`,
+        { processBodyFolded: sample.processBodyFolded, triggerExpanded: sample.triggerExpanded },
+      )
+      recorder.check(
+        sample.attentionPresent === true
+        && sample.attentionInProcessBody === false
+        && /次调用失败|个步骤未完成/u.test(sample.attentionText ?? ''),
+        `the failure the fold must not hide stays readable in ${mode} mode`,
+        {
+          attentionText: sample.attentionText,
+          attentionInProcessBody: sample.attentionInProcessBody,
+          triggerText: sample.triggerText,
+        },
+      )
+      recorder.check(
+        sample.transcriptFailedToolRows >= 1,
+        `the failed row is still in the transcript in ${mode} mode (folded, not dropped)`,
+        { transcriptFailedToolRows: sample.transcriptFailedToolRows, entryCount: sample.entryCount },
+      )
+      screenshots[`manual-fold-${mode}`] = await writePng(client, `manual-fold-${mode}`)
+    }
   } catch (error) {
     recorder.check(false, 'the five transcript states were produced without an unexpected failure', {
       error: error instanceof Error ? error.stack ?? error.message : String(error),
