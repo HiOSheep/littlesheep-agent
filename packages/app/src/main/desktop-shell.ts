@@ -118,7 +118,9 @@ export class LittleSheepDesktopShell {
   }
 
   initialize(): void {
-    this.initializeTray()
+    // Idempotent on purpose: a retry that recovered from a pre-renderer failure
+    // calls this to hand the window to the app, so the existing tray stays.
+    if (!this.tray?.available) this.initializeTray()
     this.rendererAvailable = true
     const window = this.resolveWindow() ?? this.createWindow()
     this.mainWindow = window
@@ -383,7 +385,7 @@ export class LittleSheepDesktopShell {
   }
 
   /** Leave an actionable diagnostic instead of keeping a failed bootstrap hidden. */
-  showStartupError(error: unknown): void {
+  showStartupError(error: unknown, options: { retryable?: boolean } = {}): void {
     const win = this.resolveWindow()
     if (!win || win.isDestroyed()) return
     this.rendererLoadedWindows.delete(win)
@@ -391,7 +393,7 @@ export class LittleSheepDesktopShell {
     const message = error instanceof Error ? error.message : String(error)
     const loading = win.loadURL(createDesktopStartupPageUrl(
       resolveDesktopStartupIconDataUrl(),
-      { errorMessage: message },
+      { errorMessage: message, retryable: options.retryable === true },
     ))
     void loading
       .catch((loadError) => {

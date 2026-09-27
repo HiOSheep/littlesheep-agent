@@ -21,6 +21,15 @@ const STARTUP_ICON_SIZE_PX = 112
 
 export interface DesktopStartupPageOptions {
   errorMessage?: string
+  /**
+   * Whether Main's bounded retry can be offered for this failure.
+   *
+   * The failure page is the last surface a pre-renderer failure has, so a startup
+   * that failed before the React notice ever mounted must still be able to ask for
+   * the same retry that notice offers. Main owns the bound and the single-flight
+   * rule; the page only forwards the click and states what came back.
+   */
+  retryable?: boolean
 }
 
 /**
@@ -35,8 +44,14 @@ export function createDesktopStartupPageHtml(
     ? `<img class="startup-icon" src="${iconDataUrl}" alt="LittleSheep" />`
     : ''
   const errorMessage = options.errorMessage?.trim()
+  // The retry control only exists where Main said a retry is possible. Its label
+  // is the same sentence the React notice uses (`execution-retry-state.ts`), so
+  // the two failure surfaces name one action the same way.
+  const retryControl = errorMessage && options.retryable === true
+    ? `<button class="startup-retry" type="button">重试启动运行能力</button><p class="startup-retry-note" role="status" aria-live="polite"></p>`
+    : ''
   const error = errorMessage
-    ? `<section class="startup-error" role="alert"><strong>LittleSheep 无法启动</strong><p>${escapeHtml(errorMessage.slice(0, 1000))}</p></section>`
+    ? `<section class="startup-error" role="alert"><strong>LittleSheep 无法启动</strong><p>${escapeHtml(errorMessage.slice(0, 1000))}</p>${retryControl}</section>`
     : ''
 
   return `<!doctype html>
@@ -114,6 +129,23 @@ export function createDesktopStartupPageHtml(
       .startup-error strong,
       .startup-error p { display: block; margin: 0; }
       .startup-error p { margin-top: 4px; color: rgba(255, 255, 255, 0.66); word-break: break-word; }
+
+      /* The one action the failure page carries. Wording and tone follow the
+       * renderer's retry strip; this document only states what Main answered. */
+      .startup-retry {
+        margin-top: 8px;
+        padding: 3px 10px;
+        color: inherit;
+        font: inherit;
+        background: transparent;
+        border: 1px solid currentColor;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+
+      .startup-retry:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); }
+      .startup-retry:disabled { opacity: 0.7; cursor: default; }
+      .startup-retry-note { color: rgba(255, 255, 255, 0.66); }
     </style>
   </head>
   <body>
@@ -143,6 +175,59 @@ export function createDesktopStartupPageHtml(
         }
         region.addEventListener('pointerup', finishDrag)
         region.addEventListener('pointercancel', finishDrag)
+      })()
+    </script>
+    <script>
+      (() => {
+        const button = document.querySelector('.startup-retry')
+        if (!button) return
+        const note = document.querySelector('.startup-retry-note')
+        const bridge = window.littlesheep
+        const say = (text) => { if (note) note.textContent = text }
+        // A control that cannot reach Main is not offered at all: this page is the
+        // last surface of a failed start, and a dead button would be worse than none.
+        if (!bridge || typeof bridge.retryExecution !== 'function') {
+          button.remove()
+          return
+        }
+
+        button.addEventListener('click', async () => {
+          button.disabled = true
+          button.textContent = '正在重试…'
+          say('')
+          let outcome = null
+          try {
+            outcome = await bridge.retryExecution()
+          } catch {
+            outcome = null
+          }
+          button.textContent = '重试启动运行能力'
+          if (!outcome) {
+            say('重试请求没有送达主进程，请重启应用。')
+            button.disabled = false
+            return
+          }
+          const remaining = typeof outcome.attemptsRemaining === 'number' ? outcome.attemptsRemaining : 0
+          if (outcome.accepted === false) {
+            // Main refused: a retry is already running, or the budget is spent.
+            // Either way this click was not an attempt and must not read as one.
+            say(outcome.refusedBecause === 'exhausted'
+              ? '重试次数已用完，请修复配置后重启应用。'
+              : '上一次重试还在进行中。')
+            button.disabled = outcome.refusedBecause === 'exhausted'
+            return
+          }
+          if (outcome.reason) {
+            button.disabled = remaining <= 0
+            say(remaining <= 0
+              ? '重试失败：' + outcome.reason + '（重试次数已用完，请重启应用）'
+              : '重试失败：' + outcome.reason)
+            return
+          }
+          // Accepted and it did not fail: Main has taken the window back and this
+          // document is about to be replaced by the application renderer.
+          say('重试成功，正在打开应用界面。')
+        })
       })()
     </script>
   </body>

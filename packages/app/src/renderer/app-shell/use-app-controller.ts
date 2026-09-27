@@ -6,7 +6,6 @@ import {
   listProjects,
   listSessions,
   selectWorkspace,
-  type AttachmentRef,
   type PermissionModeId,
   type ProjectMeta,
   type RuntimeState,
@@ -52,6 +51,7 @@ import {
 import { SidebarPanel } from './types'
 import { resolveSessionPermissionMode } from './session-permission-mode'
 import { useAppPersistence } from './use-app-persistence'
+import { useComposerDrafts } from './use-composer-drafts'
 import { useNavigationController } from './use-navigation-controller'
 import { isMissingWorkspacePathError } from '../workspace/workspace-errors'
 import { createAttachmentActions } from './attachment-actions'
@@ -77,12 +77,10 @@ export function useAppController() {
   const [sessionOwnership, setSessionOwnership] = useState<Pick<SessionMeta, 'scope' | 'projectId'>>({ scope: 'standalone' })
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [historyWindow, setHistoryWindow] = useState<SessionHistoryWindow>({ hasMore: false, loading: false })
-  const [input, setInputState] = useState(initialComposerDraft)
   const [loading, setLoading] = useState(false)
   const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionModeId>('research')
   const [sessionPermissionModeOverrides, setSessionPermissionModeOverrides] = useState<Record<string, PermissionModeId>>({})
   const [runtime, setRuntime] = useState<RuntimeState | null>(null)
-  const [attachments, setAttachments] = useState<AttachmentRef[]>([])
   const [attachmentRemoval, setAttachmentRemoval] = useState<LineCommentAttachmentRemoval | null>(null)
   const attachmentRemovalIdRef = useRef(0)
   const [dragActive, setDragActive] = useState(false)
@@ -117,7 +115,11 @@ export function useAppController() {
   const currentSessionRef = useRef(currentSession)
   const sessionsRef = useRef<SessionMeta[]>(sessions)
   const restoredLastSessionRef = useRef(false)
-  const inputValueRef = useRef(initialComposerDraft)
+  // The composer's draft — text and attachment chips — belongs to one conversation
+  // (`use-composer-drafts.ts`); every write lands in the active slot.
+  const {
+    input, setInput, inputValueRef, attachments, setAttachments, activateConversationDraft,
+  } = useComposerDrafts({ currentSession, initialSessionId: initialActiveSessionId, initialDraft: initialComposerDraft })
   const [activityNow, setActivityNow] = useState(() => Date.now())
   const liveToolStepRef = useRef(new Map<string, string>())
   const [contextUsageSnapshot, setContextUsageSnapshot] = useState<ContextUsageSnapshot | null>(null)
@@ -234,12 +236,6 @@ export function useAppController() {
       delete next[sessionId]
       return next
     })
-  }, [])
-  const setInput = useCallback<Dispatch<SetStateAction<string>>>((update) => {
-    const current = inputValueRef.current
-    const next = typeof update === 'function' ? update(current) : update
-    inputValueRef.current = next
-    setInputState(next)
   }, [])
   const { runtimeEventNotice, pendingRuntimeMessageRef, publishRuntimeEventNotice,
     notifyRuntimeSettingChanges, notifyRuntimeWorkspaceFileSaved: publishRuntimeWorkspaceFileSaved } = useRuntimeTaskEvents({ activeRunIdRef, appMountedRef, loading })
@@ -556,6 +552,7 @@ export function useAppController() {
     branchConversationFromMessage,
   } = createSessionActions({
     abortRef,
+    activateConversationDraft,
     alignWorkspacePanelToWorkspaceRoot,
     appMountedRef,
     approvalGrantsRef,

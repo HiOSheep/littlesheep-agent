@@ -54,6 +54,7 @@ const FOCUS_EXPRESSION = `(() => {
     fullAccessWarningOpen: Boolean(document.querySelector('.full-access-warning')),
     approvalOpen: Boolean(document.querySelector('.approval-prompt')),
     modePickerOpen: Boolean(document.querySelector('.mode-picker.open')),
+    searchVisible: Boolean(document.querySelector('.sidebar-feature-panel.visible .sidebar-search-box input')),
     focusInsideFullAccess: within('.full-access-warning'),
     focusInsideApproval: within('.approval-prompt'),
     focusInsideSearch: within('.sidebar-search-box'),
@@ -85,9 +86,24 @@ async function waitForFocus(client, predicate, timeoutMs, label) {
   }, timeoutMs, label)
 }
 
+/**
+ * Press a control through the DOM.
+ *
+ * Used for the sidebar controls: whether a synthesized pointer reaches them is a
+ * hit-testing question owned by other gates, while what this gate asserts is who
+ * owns the caret afterwards.
+ */
+async function clickDom(client, selector) {
+  return client.evaluate(`(() => {
+    const node = document.querySelector(${JSON.stringify(selector)});
+    if (!(node instanceof HTMLElement)) return false;
+    node.click();
+    return true;
+  })()`)
+}
+
 /** A real mouse click at the element's center, so focus lands where a user's would. */
-async function clickElement(client, selector) {
-  const point = await client.evaluate(`(() => {
+async function clickElement(client, selector) {  const point = await client.evaluate(`(() => {
     const node = document.querySelector(${JSON.stringify(selector)});
     if (!(node instanceof HTMLElement)) return null;
     const rect = node.getBoundingClientRect();
@@ -252,11 +268,43 @@ async function main() {
     recorder.check(typed.composerFocused === true, 'the caret stays in the composer while typing', typed.active)
 
     // --- B. a new conversation claims the caret -------------------------------
-    const clickedNew = await clickElement(handle.client, '.sidebar-quick-nav .sidebar-nav-button[aria-label="新对话"]')
+    // The sidebar controls are actuated through the DOM, with the control focused
+    // first so the situation matches a pointer click; whether a pointer reaches
+    // them is a hit-testing question owned by other gates, not this contract.
+    await clickDom(handle.client, '.sidebar-quick-nav .sidebar-nav-button[aria-label="搜索"]')
+    const panelOpen = await waitForFocus(
+      handle.client,
+      (state) => (state.searchVisible ? state : undefined),
+      20_000,
+      'the search surface to open',
+    ).catch(() => undefined)
+    const clickedNew = await handle.client.evaluate(`(() => {
+      const button = document.querySelector('.sidebar-quick-nav .sidebar-nav-button[aria-label="新对话"]');
+      if (!(button instanceof HTMLElement)) return { clicked: false, focused: false };
+      button.focus();
+      const focused = document.activeElement === button;
+      button.click();
+      return { clicked: true, focused };
+    })()`)
     const afterNew = await waitForFocus(handle.client, (state) => (state.composerFocused ? state : undefined), 10_000, 'the new-conversation caret')
-    recorder.note({ step: 'new-conversation', clickedNew, active: afterNew.active })
-    recorder.check(clickedNew === true, 'the sidebar 新对话 control was clicked', { clickedNew })
+    recorder.note({
+      step: 'new-conversation',
+      panelOpenBefore: Boolean(panelOpen),
+      click: clickedNew,
+      active: afterNew.active,
+      searchVisibleAfter: afterNew.searchVisible,
+    })
+    recorder.check(Boolean(panelOpen), 'the search surface was open before the command', panelOpen ?? null)
+    recorder.check(clickedNew.focused === true, 'the 新对话 control owned the caret when it was pressed', clickedNew)
     recorder.check(afterNew.composerFocused === true, 'a new conversation puts the caret in the composer', afterNew)
+    // `createConversationFromSidebar` closes the panel it was opened from, which is
+    // how this case knows the command really ran rather than the caret simply
+    // never having moved.
+    recorder.check(
+      afterNew.searchVisible === false,
+      'the new-conversation command ran (it closed the surface it was invoked from)',
+      afterNew,
+    )
 
     // --- C. an open dialog keeps focus ----------------------------------------
     await clickElement(handle.client, '.mode-picker-trigger')
@@ -287,7 +335,7 @@ async function main() {
     await delay(400)
 
     // --- D. a user typing elsewhere keeps focus -------------------------------
-    await clickElement(handle.client, '.sidebar-quick-nav .sidebar-nav-button[aria-label="搜索"]')
+    await clickDom(handle.client, '.sidebar-quick-nav .sidebar-nav-button[aria-label="搜索"]')
     // The panel mounts from two animation frames and stays `inert` until they
     // arrive, so this waits for a focusable input and then does what the user
     // does: puts the caret in it. Forcing a frame per poll is the same trick the
@@ -377,6 +425,7 @@ async function main() {
     failures: recorder.failures,
     limits: [
       'Cases C, D and E inject the same window event that starting a new conversation dispatches, because the real command closes the search panel (case D) and the modal blocks clicks (cases C and E); the composer re-checks its guards on that event exactly as it does on the command.',
+      'The sidebar controls in cases B and D are pressed through the DOM with the control focused first; whether a synthesized pointer reaches them is a hit-testing question owned by other gates, and the pointer path is still exercised in case C.',
       'The window is parked off every display so Chromium renders frames; it never lands on the user\'s desktop and `showInactive` keeps it from taking focus, so this proves DOM focus ownership and key delivery, not what a user sees painted.',
       'Case D polls with a forced frame because the search panel mounts from two animation frames and is `inert` until they arrive; the caret is then placed the way the user places it, and the assertion is about the composer not taking it away.',
       'The full-access warning opens without taking focus itself (its `useModalSurface` initial-focus effect runs before `FadePresence` mounts the dialog), so case C asserts what is true there: the composer does not take the keyboard while that dialog is open. Case E carries the literal "the open surface keeps its focus" evidence.',

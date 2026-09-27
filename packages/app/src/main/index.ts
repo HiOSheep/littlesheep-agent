@@ -158,7 +158,10 @@ const executionRetry = createExecutionRetryController({
   onBegin: () => readiness.begin('execution', '正在重试启动运行能力', { port: server?.port }),
   onFailure: (message, retryable) => readiness.fail(message, { retryable }),
   attempt: async () => {
-    if (!currentBranding || !currentDataDir) throw new Error('启动尚未完成，暂时无法重试。')
+    // Startup never got past the configuration stage, so nothing after it ran and
+    // there is no execution stage to retry: the whole startup runs again (that
+    // path is idempotent up to this point and loads the renderer itself).
+    if (!currentBranding || !currentDataDir) { await bootstrap(); return }
     const reloaded = prepareRuntimeConfig(await loadConfig({ dataDir: currentDataDir }), currentWorkplaceDir)
     currentConfig = reloaded.config
     await startExecution({
@@ -167,6 +170,8 @@ const executionRetry = createExecutionRetryController({
       model: reloaded.model,
       dataDir: currentDataDir,
     })
+    // The window may still be on the standalone failure page: hand it to the app.
+    desktopShell.initialize()
   },
   log: (message) => console.warn(`[retry] ${message}`),
 })
@@ -550,12 +555,13 @@ if (gotLock) {
     recordBootstrapTiming('desktop-startup-visible')
     void bootstrap().catch((error: unknown) => {
       console.error('[bootstrap] failed:', error)
-      readiness.fail(error instanceof Error ? error.message : String(error), { retryable: true })
+      const failure = readiness.fail(error instanceof Error ? error.message : String(error), { retryable: true })
       // Two failure stages, two visible states (both measured on a real window):
-      // before the renderer loads, the standalone failure page carries the error;
-      // after it, the shell states the same reason in its readiness notice and
-      // keeps the settings that fix the configuration reachable.
-      if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error)
+      // before the renderer loads, the standalone failure page carries the error
+      // and the same retry; after it, the shell states the same reason in its
+      // readiness notice and keeps the settings that fix the configuration
+      // reachable.
+      if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error, { retryable: failure.retryable })
     })
   })
 
