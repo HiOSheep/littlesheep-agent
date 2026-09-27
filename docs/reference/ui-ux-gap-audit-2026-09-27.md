@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-28 00:55:15
+最后更新：2026-09-28 00:57:22
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -137,3 +137,17 @@
 **我的裁定：(a) 组件侧修** ✓ —— 给发送阻断提示**自己的类名** ✓ 并把它加进 `styles/06-composer.css` 里 `.composer-readiness-hint` 的样式规则 ✓，同步更新 runtime-readiness README 对该类的说明 ✓；**不采用** (b) 门禁侧绕过 ✗（那会把歧义留在 DOM 里 ✓，让下一个消费者继续猜 ✗）。门禁要求的判定：`verify-composer-send-model-gate` 与 `verify-desktop-cold-start-interaction` **两条都要 exit 0** ✓。
 
 **待办**：实施 (a) 并复跑两条门禁 ✓ —— 原取证包在回复前被回收 ✗，作者包亦不可寻址 ✗，故此项留待下一手（改动前先看 `composer/**` 与 `06-composer.css` 的 mtime 是否静默 ✓）。
+
+### 独立证人的完整报告（2026-09-28 01:0x）与剩余唯一回归
+
+**修复本体（`547b4ec0`，作者为并发包 ✓）**：`send-readiness.ts:33-50` 的 `describeComposerSendReadiness({availability, executionReason})` → `blocked` ✓，原因复用**已有**文案（`executionReason ?? availability.detail` ✓，即 配置模型 / 检查供应商配置 / 重试读取 ✓，无新文案 ✓）；`composer-view.tsx:300-302` 禁用 + `aria-label` 带原因 ✓；`:221-228` **Enter 同样拒绝** ✓（堵住第二条进入死 run 的入口 ✓）；`:252-255` 控件行可见原因 ✓；`:99` 可用性只取一次 ✓ 并与 picker 共享 ✓；`send-block-notice.tsx:12-27` 行内句子 ✓；`chat-view.tsx:60-62` 首屏空态同一事实 ✓。
+
+**实证（独立门禁 `verify-composer-send-model-gate.mjs`，`ok:true / failures:0` ✓，产物在仓库外 ✓）**：
+- **前提从 Runtime 取得而非从 DOM 推断** ✓：`/runtime` → `model: "openai/gpt-5.6"`、三个供应商 `hasKey:false` ✓；`/runtime/readiness` → `ready` ✓ → **拒绝是因为模型事实，不是就绪门禁** ✓（这是关键区分 ✓）；
+- 拒绝带可见原因 ✓（截图 `unconfigured-refusal.png` ✓ 显示真实窗口里控件旁的句子与变暗的发送键 ✓）；**两种入口都被拒** ✓（指针点击 + 真实 CDP Enter 带草稿 ✓）→ `POST /run/stream = 0` ✓、`active-runs = []` ✓、无消息/无回合/无停止键 ✓、**草稿保留** ✓；
+- **可用路径不变** ✓：配好 acceptance provider 后发送可用 ✓ → `POST /run/stream` ×1 ✓ → **2 次** Provider 调用 ✓ → 结算出答案 ✓、草稿清空 ✓、无报错 ✓；既有门禁 `verify-composer-ime-submit` 仍 `ok:true` ✓（普通 Enter 恰好发送一次 ✓）。
+
+**剩余唯一回归（已定位到行 ✓）**：`verify-desktop-cold-start-interaction.mjs` 在 `:276` 读取 `.composer-readiness-hint` 并期望 `null` ✓，但新提示渲染为 `class="composer-readiness-hint composer-send-block"` ✗ → 在该场景（全新根、无 `config.json`）里命中了模型句子 ✗ → 类名在 DOM 里**有两个含义** ✗。
+**裁定 (a) 组件侧修** ✓：给提示**自己的类名** ✓，并把它加入 `packages/app/src/renderer/styles/11-runtime-readiness.css:10` 里 `.composer-readiness-hint` 的样式规则（**注意**：不是 `06-composer.css` ✓ —— 独立证人纠正了我先前给的路径 ✓），同步更新 runtime-readiness README ✓；**不采用**门禁侧绕过 ✗。判定：`verify-composer-send-model-gate` 与 `verify-desktop-cold-start-interaction` **两条都 exit 0** ✓。
+
+**证人明确未验的一项** ✓：composer 的"loading 也算 blocked"是否会与"窗口刚出现就按 Enter"的门禁抢时序 ✓（它实测 `/runtime` 取一次约 2 s 后发送才可用 ✓）；它没有复跑全部真实窗口门禁 ✗，因为构建一直被并发编辑作废 ✓（`App build inputs changed while the build was running` ✓，3 次失败 ✓）→ 它的实证范围就是上面那条门禁 + `verify-composer-ime-submit` ✓，**如实标注** ✓。
