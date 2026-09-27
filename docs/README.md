@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-27 20:50:19
+最后更新：2026-09-27 21:45:03
 
 本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
 
@@ -88,6 +88,7 @@
 - [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
 - [自定义模型供应商](reference/custom-model-providers.md)：Provider/模型配置字段、密钥存放、未声明能力的未知语义，以及只支持 OpenAI 兼容接口的边界。
+- [前端界面检查点 2026-09-27](reference/frontend-ui-checkpoint-2026-09-27.md)：大规模前端重构前的回滚锚点（标签 `ui-baseline-2026-09-27` → `e601ca7e`）、三档回滚方式、当前界面契约门禁，以及"视觉基线 PNG 早于锚点三天、建议重构前先刷新"的诚实说明。
 - 论文材料：论文正文、图表和复核材料的范围及提交前边界见 `docs/paper/README.md`，正文源稿为 `docs/paper/littlesheep-thesis.md`。**这两份是本机材料、未纳入版本库**（`git ls-files docs/paper` 为空），因此这里只给路径而不做文档链接——链接会让仓库门禁依赖不存在于版本库中的文件。
 
 ## 文档冲突规则
