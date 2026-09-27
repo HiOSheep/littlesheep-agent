@@ -17,7 +17,15 @@ function ensureRepoPath(value, label) {
   if (typeof value !== 'string' || value.trim() === '') throw new Error(`${label} must not be empty.`);
   const absolute = resolve(repoRoot, value);
   const path = relative(repoRoot, absolute);
-  if (isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`)) {
+  const outside = isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`);
+  if (outside) {
+    // Same documented exception as the gate: the shared run-artefacts root exists so that running a
+    // verification leaves no generated file in the working tree. Anything else stays repository-relative.
+    const fromRunArtifacts = relative(runArtifactsRoot, absolute);
+    const inRunArtifacts = !isAbsolute(fromRunArtifacts)
+      && fromRunArtifacts !== '..'
+      && !fromRunArtifacts.startsWith(`..${sep}`);
+    if (inRunArtifacts) return absolute;
     throw new Error(`${label} must stay inside the repository: ${value}`);
   }
   return normalizePath(path);

@@ -58,13 +58,23 @@ export function parseArgs(argv = process.argv.slice(2)) {
   return options;
 }
 
+/**
+ * Reports stay inside the repository, with one documented exception: the shared run-artefacts root
+ * (`scripts/lib/run-artifacts.mjs`), which exists precisely so that running a gate leaves no generated
+ * file in the working tree. That root is fixed by this repository, not caller-supplied, and an explicit
+ * `--report-dir` still has to resolve inside the checkout.
+ */
 function ensureRepoRelativePath(value, label) {
   const absolute = resolve(repoRoot, value);
   const relativePath = relative(repoRoot, absolute);
-  if (isAbsolute(relativePath) || relativePath === '..' || relativePath.startsWith(`..${sep}`)) {
-    throw new Error(`${label} must stay inside the repository: ${value}`);
-  }
-  return absolute;
+  const outside = isAbsolute(relativePath) || relativePath === '..' || relativePath.startsWith(`..${sep}`);
+  if (!outside) return absolute;
+  const insideRunArtifacts = relative(runArtifactsRoot, absolute);
+  const inRoot = !isAbsolute(insideRunArtifacts)
+    && insideRunArtifacts !== '..'
+    && !insideRunArtifacts.startsWith(`..${sep}`);
+  if (inRoot) return absolute;
+  throw new Error(`${label} must stay inside the repository: ${value}`);
 }
 
 function invocationFor(command, args) {

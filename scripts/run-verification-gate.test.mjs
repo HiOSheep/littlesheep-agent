@@ -7,6 +7,7 @@ import {
   runVerificationGate,
   summarizeGateReport,
 } from './run-verification-gate.mjs';
+import { runArtifact } from './lib/run-artifacts.mjs';
 
 const repoRoot = process.cwd();
 
