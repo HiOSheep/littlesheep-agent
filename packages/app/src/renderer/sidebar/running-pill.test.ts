@@ -3,7 +3,16 @@ import type { HistoryActivity } from '../../shared/history-activity'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { vi } from 'vitest'
-import { TaskCommandRow, formatPillDuration, taskCommandDetail, taskCommands } from './running-pill'
+import {
+  FINISHED_FOLD_THRESHOLD,
+  FINISHED_FOLD_VISIBLE,
+  TaskCommandRow,
+  foldFinishedCommands,
+  formatPillDuration,
+  normalizeRenameDraft,
+  taskCommandDetail,
+  taskCommands,
+} from './running-pill'
 
 // The test transform uses the classic JSX runtime, so the component needs React in scope.
 vi.stubGlobal('React', React)
@@ -20,7 +29,7 @@ const activity = (tools: ReturnType<typeof tool>[], status: HistoryActivity['sta
   tools,
 })
 
-describe('titlebar task pill', () => {
+describe('chat task pill', () => {
   it('formats elapsed time the way the pill reads it', () => {
     expect(formatPillDuration(400)).toBe('不足 1 秒')
     expect(formatPillDuration(23_000)).toBe('23 秒')
@@ -59,7 +68,7 @@ describe('titlebar task pill', () => {
   })
 })
 
-describe('titlebar task pill rows', () => {
+describe('chat task pill rows', () => {
   it('renders a command with its shell, state and duration', () => {
     const [command] = taskCommands(activity([
       tool('a', 'exec', { command: 'pnpm run build' }, 1_000, 40_000, true),
@@ -82,5 +91,52 @@ describe('titlebar task pill rows', () => {
     const failed = renderToStaticMarkup(TaskCommandRow({ command: commands[1]! }))
     expect(failed).toContain('exec · 失败')
     expect(failed).toContain('running-pill-command failed')
+  })
+
+  it('offers the stop control only on a running command that can stop', () => {
+    const commands = taskCommands(activity([
+      tool('a', 'exec', { command: 'sleep 30' }, 60_000, undefined),
+      tool('b', 'exec', { command: 'pnpm run build' }, 1_000, 40_000, true),
+    ]), 68_000)
+
+    const running = renderToStaticMarkup(TaskCommandRow({ command: commands[0]!, onStop: () => {} }))
+    expect(running).toContain('running-pill-command-stop')
+    expect(running).toContain('终止运行')
+    // A finished command has nothing left to stop, and a row without a stop callback renders none.
+    expect(renderToStaticMarkup(TaskCommandRow({ command: commands[1]!, onStop: () => {} }))).not.toContain('running-pill-command-stop')
+    expect(renderToStaticMarkup(TaskCommandRow({ command: commands[0]! }))).not.toContain('running-pill-command-stop')
+  })
+})
+
+describe('chat task pill history fold', () => {
+  const finishedRun = (count: number) => taskCommands(activity(
+    Array.from({ length: count }, (_, index) =>
+      tool(`call-${index}`, 'exec', { command: `step ${index}` }, 1_000 + index * 1_000, 1_500 + index * 1_000, true)),
+    'done',
+  ), 60_000).filter((command) => !command.running).reverse()
+
+  it('shows a short finished list whole', () => {
+    const fold = foldFinishedCommands(finishedRun(FINISHED_FOLD_THRESHOLD))
+    expect(fold.foldedCount).toBe(0)
+    expect(fold.visible).toHaveLength(FINISHED_FOLD_THRESHOLD)
+  })
+
+  it('folds the older commands once the list grows long, keeping the newest visible', () => {
+    const finished = finishedRun(FINISHED_FOLD_THRESHOLD + 5)
+    const fold = foldFinishedCommands(finished)
+    expect(fold.visible).toHaveLength(FINISHED_FOLD_VISIBLE)
+    expect(fold.foldedCount).toBe(finished.length - FINISHED_FOLD_VISIBLE)
+    // The list is newest-first, so the visible window is the newest few and the fold hides age.
+    expect(fold.visible[0]?.id).toBe(finished[0]?.id)
+    expect(fold.visible.at(-1)?.id).toBe(finished[FINISHED_FOLD_VISIBLE - 1]?.id)
+  })
+})
+
+describe('chat task pill rename', () => {
+  it('commits only a trimmed, genuinely different name', () => {
+    expect(normalizeRenameDraft('  新名字  ', '旧名字')).toBe('新名字')
+    expect(normalizeRenameDraft('旧名字', '旧名字')).toBeNull()
+    expect(normalizeRenameDraft('   ', '旧名字')).toBeNull()
+    expect(normalizeRenameDraft('', '旧名字')).toBeNull()
   })
 })

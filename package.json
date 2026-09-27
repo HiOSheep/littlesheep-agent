@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "pnpm run typecheck && pnpm run build:app",
-    "build:app": "node scripts/ensure-app-build.mjs --build",
+    "build:app": "node scripts/ensure-app-build.mjs --build && node scripts/sync-desktop-shortcut.mjs",
+    "refresh:desktop-shortcut": "node scripts/sync-desktop-shortcut.mjs --strict",
     "package:win": "node scripts/package-windows-release.mjs --dir",
     "package:win-installer": "node scripts/package-windows-release.mjs --installer",
     "ensure:app-build": "node scripts/ensure-app-build.mjs --ensure",

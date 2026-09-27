@@ -122,9 +122,11 @@ export function configureEmbeddedBrowserWindow(win: Electron.BrowserWindow): voi
     guestContents.setUserAgent(buildEmbeddedBrowserUserAgent())
     guestContents.setWindowOpenHandler(({ url, disposition }) => {
       if (/^https?:\/\//iu.test(url)) {
-        if (!guestContents.hostWebContents.isDestroyed()) {
+        // Electron 44 types `hostWebContents` as nullable: a guest can outlive the host that embedded it.
+        const host = guestContents.hostWebContents
+        if (host && !host.isDestroyed()) {
           const payload: BrowserOpenNewTabEvent = { url, disposition }
-          guestContents.hostWebContents.send(BROWSER_OPEN_NEW_TAB_CHANNEL, payload)
+          host.send(BROWSER_OPEN_NEW_TAB_CHANNEL, payload)
         }
       } else if (/^(mailto|tel):/iu.test(url)) {
         void shell.openExternal(url)

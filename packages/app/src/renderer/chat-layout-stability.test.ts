@@ -173,10 +173,14 @@ describe('chat layout stability', () => {
     expect(assistantTurn).not.toContain('Boolean(message.activityCollapsed)')
     expect(assistantTurn).not.toContain('ActivityDisclosure')
     expect(assistantTurn).toContain('className="assistant-process-trigger"')
-    expect(assistantTurn).toContain('className="assistant-process-content" hidden={!processOpen}')
+    expect(assistantTurn).toContain('open={processOpen} className="assistant-process-content"')
     expect(toolRow).toContain('data-call-id={tool.callId}')
     expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*32px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
-    expect(styles).toContain('.assistant-process-content[hidden]')
+    // The process body folds on the shared disclosure primitive. It used to be
+    // `hidden`, which snapped the whole transcript open and shut with no transition
+    // at all; the panel now keeps its box in the layout at 0fr and grows into 1fr.
+    expect(styles).toMatch(/\.agent-flow-disclosure\s*\{[^}]*grid-template-rows:\s*0fr;[^}]*transition:/u)
+    expect(styles).toMatch(/\.agent-flow-disclosure\.open\s*\{\s*grid-template-rows:\s*1fr;/u)
     expect(styles).toMatch(/\.agent-flow-row\.is-active::after\s*\{[^}]*animation:\s*agent-flow-sweep 2\.6s ease-out infinite;/u)
     expect(styles).not.toContain('.assistant-turn-header')
     expect(styles).not.toContain('.activity-command-header')
@@ -187,7 +191,7 @@ describe('chat layout stability', () => {
 
     expect(styles).toMatch(/\.workspace-active-item:hover,[\s\S]*?\.workspace-active-item\.active\s*\{[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--workspace-tab-glass-fill\);/u)
     expect(styles).toMatch(/--composer-surface:\s*rgba\(32, 32, 32, 0\.75\);/u)
-    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*var\(--composer-surface\);/u)
+    expect(styles).toMatch(/\.composer::before\s*\{[^}]*background:\s*var\(--composer-surface\);/u)
     expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*4px 8px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
     expect(styles).toMatch(/\.message\s*\{[^}]*max-width:\s*min\(820px, 78%\);[^}]*border-radius:\s*var\(--radius-ui\);[^}]*overflow-wrap:\s*anywhere;/u)
   })
@@ -247,7 +251,13 @@ describe('chat layout stability', () => {
     expect(settingsWorkspace).toContain('className="sidebar-surface settings-sidebar"')
     expect(styles).not.toMatch(/\.settings-sidebar\s*\{[^}]*border:\s*var\(--floating-panel-border-width\)/u)
     expect(styles).toMatch(/\.workspace-panel-surface\s*\{[^}]*background:\s*transparent;[^}]*background-clip:\s*border-box;[^}]*border:\s*var\(--floating-panel-border-width\) solid var\(--floating-panel-frame-color\);[^}]*border-radius:\s*var\(--radius-floating-panel\);[^}]*box-shadow:\s*var\(--floating-panel-shadow\);/u)
-    expect(styles).toMatch(/\.sidebar-surface::before,\s*\.workspace-panel-surface::before\s*\{[^}]*inset:\s*0;[^}]*border-radius:\s*var\(--floating-panel-inner-radius\);[^}]*clip-path:\s*inset\(0 round var\(--floating-panel-inner-radius\)\);[^}]*background:\s*var\(--sidebar-glass-fill\);[^}]*-webkit-backdrop-filter:\s*blur\(20px\) saturate\(145%\);[^}]*backdrop-filter:\s*blur\(20px\) saturate\(145%\);/u)
+    // The material layer is clipped by its own `border-radius`, not by a
+    // `clip-path`: an inset `round` clip draws arcs only, so it cut the blur to
+    // a round corner while the frame's border and shadow followed the
+    // superellipse, and the mismatch left an unpainted sliver at each corner.
+    // `12-squircle-corners.css` gives this layer the frame's corner shape and
+    // records the Chromium 152 measurement behind that change.
+    expect(styles).toMatch(/\.sidebar-surface::before,\s*\.workspace-panel-surface::before\s*\{[^}]*inset:\s*0;[^}]*border-radius:\s*var\(--floating-panel-inner-radius\);[^}]*background:\s*var\(--sidebar-glass-fill\);[^}]*-webkit-backdrop-filter:\s*blur\(20px\) saturate\(145%\);[^}]*backdrop-filter:\s*blur\(20px\) saturate\(145%\);/u)
     expect(styles).not.toMatch(/\.sidebar-surface::after,\s*\.workspace-panel-surface::after,\s*\.settings-sidebar::after\s*\{/u)
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar-surface/u)
     expect(styles).toMatch(/\.settings-layout:has\(\.settings-sidebar-resizer:hover\) \.settings-sidebar/u)
@@ -263,7 +273,15 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\)[\s\S]*?calc\(var\(--chat-content-gutter\) \+ var\(--chat-workspace-scrollbar-overlap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
     expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*40;[\s\S]*?pointer-events:\s*none;/u)
-    expect(styles).toMatch(/\.composer\s*\{[\s\S]*?background:\s*var\(--composer-surface\);[\s\S]*?-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    // The glass material lives on an inset ::before, not on the element: an
+    // element that carries a backdrop-filter is the backdrop root for every
+    // popover it opens, and a descendant blur only samples what that root
+    // already painted, so the add menu and the model/permission picker lost
+    // their frost (Chromium 152: ~60/255 stripe step against ~1/255) until the
+    // material moved to a layer the popovers are not nested inside.
+    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*transparent;/u)
+    expect(styles).not.toMatch(/\.composer\s*\{[^}]*backdrop-filter:/u)
+    expect(styles).toMatch(/\.composer::before\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
     expect(styles).toMatch(/\.composer\s*\{[^}]*border:\s*0;/u)
     expect(styles).not.toMatch(/\.composer\.drag-active\s*\{[^}]*border-color:/u)
     expect(composer).toContain('useLayoutEffect')
@@ -518,5 +536,41 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.window-shell\.workspace-panel-(?:drag-)?fullscreen \.workspace-panel-(?:contents|header|body)/u)
     expect(styles).not.toMatch(/\.workspace-panel-contents\s*\{[^}]*transition:[^}]*padding/u)
     expect(styles).not.toMatch(/\.workspace-panel-header\s*\{[^}]*transition:[^}]*padding-right/u)
+  })
+
+  it('floats the task pill at the chat column top and clips the transcript to its edges', async () => {
+    const styles = await readRendererStyleSource()
+    const chatView = await readRendererFile('./app-shell/chat-view.tsx')
+    const globalTitlebar = await readRendererFile('./sidebar/global-titlebar.tsx')
+    const projections = await readRendererFile('./app-shell/app-controller-projections.ts')
+
+    // The pill lives at the top of the chat column (to the right of the sidebar), not in the
+    // window titlebar, and the chat projection owns what it renders, renames and stops.
+    expect(chatView).toContain('className="running-pill-shell"')
+    expect(chatView).toContain('<RunningPill')
+    expect(globalTitlebar).not.toContain('RunningPill')
+    const chatFields = projections.slice(projections.indexOf('chat: ['), projections.indexOf('],', projections.indexOf('chat: [')))
+    expect(chatFields).toContain("'titlebarTask'")
+    expect(chatFields).toContain("'renameSession'")
+    expect(chatFields).toContain("'stop'")
+    const appFields = projections.slice(projections.indexOf('app: ['), projections.indexOf('],', projections.indexOf('app: [')))
+    expect(appFields).not.toContain("'titlebarTask'")
+
+    // The overlay is click-through except for the pill, symmetric to the composer shell below.
+    expect(styles).toMatch(/\.chat\s*\{[^}]*--task-pill-inset-top:\s*8px;[^}]*--task-pill-height:\s*24px;[^}]*--task-pill-overlay-height:\s*calc\(/u)
+    expect(styles).toMatch(/\.running-pill-shell\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*z-index:\s*40;[^}]*pointer-events:\s*none;/u)
+    expect(styles).toMatch(/\.running-pill-shell > \.running-pill-root\s*\{[^}]*pointer-events:\s*auto;/u)
+
+    // The transcript's edges: clipped at the pill's top edge while it floats there, and never
+    // reaching below the input's own bottom edge.
+    expect(styles).toMatch(/\.chat\s*\{[^}]*--composer-shell-inset-bottom:\s*12px;/u)
+    expect(styles).toMatch(/\.composer-shell\s*\{[^}]*padding:\s*var\(--composer-shell-inset-top\) var\(--chat-content-gutter\) var\(--composer-shell-inset-bottom\);/u)
+    expect(styles).toMatch(/\.messages\s*\{[^}]*margin-bottom:\s*var\(--composer-shell-inset-bottom\);/u)
+    expect(styles).toMatch(/\.chat:has\(> \.running-pill-shell\) \.messages\s*\{[^}]*margin-top:\s*var\(--task-pill-inset-top\);[^}]*padding-top:\s*var\(--task-pill-overlay-height\);[^}]*scroll-padding-top:\s*var\(--task-pill-overlay-height\);/u)
+
+    // Pill and panel wear the composer's glass recipe; neither is nested inside another
+    // backdrop-filtered element, so the blur has a real backdrop to sample.
+    expect(styles).toMatch(/\.running-pill\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    expect(styles).toMatch(/\.running-pill-panel\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*border-radius:\s*var\(--radius-composer-input\);[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
   })
 })

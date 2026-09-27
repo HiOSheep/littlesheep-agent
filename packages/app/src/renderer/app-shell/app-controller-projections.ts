@@ -29,7 +29,6 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'setControlTip',
     'openHyperlinkInside',
     'openHyperlinkWithSystem',
-    'titlebarTask',
   ],
   sidebar: [
     'sidebarCollapsed',
@@ -109,6 +108,12 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'openReviewInWorkspace',
     'projectPath',
     'branchConversationFromMessage',
+    // The task pill floats at the top of the chat column, so the chat projection owns what it
+    // renders (the conversation and its run), what it commits (rename), and what it stops.
+    'titlebarTask',
+    'renameSession',
+    'stop',
+    'setControlTip',
   ],
   composer: [
     'input',

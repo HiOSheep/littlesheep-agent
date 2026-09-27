@@ -1,5 +1,5 @@
 # Renderer 通用 UI
-最后更新：2026-09-27 10:23:53
+最后更新：2026-09-27 16:24:14
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 
@@ -40,6 +40,8 @@
 **未收敛范围（如实记录，不是已完成）**：侧栏导航/树行、工作区文件树与浏览器工具条、聊天历史“加载更早”、输入栏选择器这些密集行/工具条角色仍各自使用 0.3–0.72 的禁用透明度。它们与上面按钮角色的层级不同，任务书要求不做全仓机械替换，因此本轮没有改；要收敛需要各自的实机对照。
 
 **UX-14 的取值变化与实机证据**：五处危险文本（`storage-settings-notice` 错误色 `#e8c5bd`、`web-source-errors` 与 `web-settings-notice.error` 的 `#f2b6b6`、`plugin-runtime-state.failed` 的 `#f0a9a9`、渠道失败明细 `#e5a6a6`）统一为 `--feedback-danger-text`（即对话框错误一直在用的 `#ffd2d2`）；`plugin-page-notice/.plugin-page-error` 的内边距 `7px 9px` → `8px 10px`、字号 `11px` → `12px`；页头动作 30px → 32px；段内动作 29px → 30px；共享控件与设置/对话框动作按钮的禁用态统一为 `--control-disabled-opacity: 0.42`，并补上此前完全没有禁用样式的 `close-btn`/`toggle-btn`/`refresh-btn`/`danger-btn`/`dialog-close`。以上均由 `pnpm run verify:shared-ui-roles` 在真实窗口里测量（对话框错误 13px 文本为 `rgb(255,210,210)`、插件通知 8px/10px/12px、禁用态 0.42、reduced-motion 下 0.14s/0.18s 动效塌到 0.001s）；源侧契约见 `ui-state-consistency.test.ts`。
+
+**设置页正文的字号不是另一套体系**（2026-09-27）：设置正文的 11 个尺寸令牌（`--settings-page-title-font-size` 26px、`--settings-page-desc-font-size` 14px、`--settings-group-title-font-size` 15px、`--settings-row-title-font-size` 14px、`--settings-row-desc-font-size` 13px、`--settings-meta-font-size` 12px、`--settings-row-min-height` 68px、`--settings-switch-width/-height/-knob/-travel` 40/22/16/18px）与上面的控件令牌并列定义在 `03-shell-sidebar.css` 的 `:root`。设置页的**行动作**仍属于上表的「段内紧凑动作」角色（`--control-height-row` + `--control-font-size`），不再被某个后写的参考图规则改成 42px / 16px。上表里 `plugin-runtime-state.failed` 的浅红之外，`.plugin-diagnostics > strong`（曾为 `#f0b2b2`）与 `.plugin-diagnostics small`（曾为 `#d89c9c`）也统一到 `--feedback-danger-text`，`.plugin-trust-confirmation-inner strong` 与 `.plugin-trust-actions button.danger` 的 `#ffd6d6` 分别落到 `--feedback-danger-text` 与 `--danger-control-text`。契约与"最终生效值"断言见 `settings-typography.test.ts`。
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 

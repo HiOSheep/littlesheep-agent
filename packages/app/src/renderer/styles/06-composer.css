@@ -9,7 +9,7 @@
   flex-direction: column;
   min-height: 0;
   max-height: min(52vh, 440px);
-  padding: var(--composer-shell-inset-top) var(--chat-content-gutter) 12px;
+  padding: var(--composer-shell-inset-top) var(--chat-content-gutter) var(--composer-shell-inset-bottom);
   background: transparent;
   pointer-events: none;
   transition:
@@ -489,13 +489,38 @@
   width: min(var(--composer-max-width), 100%);
   margin: 0 auto;
   padding: var(--composer-padding-block) var(--composer-padding-inline);
-  background: var(--composer-surface);
+  /* The frame is intentionally transparent: the frosted material is painted by
+     the inset ::before below, so this element does not become a backdrop root.
+     If it carried the backdrop-filter itself it would be the backdrop root for
+     every popover it opens, and a descendant's blur only samples what its root
+     already painted - which for a popover floating outside this box is nothing,
+     so the add menu and the model/permission picker rendered the crisp page
+     through a 0.75 fill instead of frosted glass (measured on Chromium 152 as a
+     ~60/255 stripe step against the composer's ~1/255). */
+  position: relative;
+  background: transparent;
   border: 0;
   border-radius: var(--radius-composer-input);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  gap: 6px;
+}
+
+.composer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  /* z-index, not position, must stay the only thing below the in-flow content:
+     giving the composer a z-index would make it a stacking context and change
+     how the popovers layer against .task-progress-anchor. The negative layer
+     paints above the composer shell's transparent background - the shell's
+     z-index 40 is what keeps it above the page behind - and below the content. */
+  z-index: -1;
+  border-radius: var(--radius-composer-input);
+  corner-shape: var(--corner-shape);
+  background: var(--composer-surface);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
-  gap: 6px;
+  pointer-events: none;
 }
 
 .composer.drag-active {
@@ -656,7 +681,7 @@
   padding: 8px;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-composer-input);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
@@ -1168,7 +1193,7 @@
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 0;
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-composer-input);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
@@ -1513,7 +1538,7 @@
   overflow-y: auto;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-composer-input);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 1;
   pointer-events: auto;
@@ -1541,7 +1566,7 @@
   overflow-y: auto;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-composer-input);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
@@ -1611,8 +1636,8 @@
   overflow: hidden;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-ui);
-  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.46);
+  border-radius: var(--radius-composer-input);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;

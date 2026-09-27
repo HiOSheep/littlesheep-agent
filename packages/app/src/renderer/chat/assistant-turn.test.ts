@@ -437,7 +437,10 @@ describe('model transcript rendering', () => {
     expect(html).toContain('系统提示词')
     expect(html).toContain('SOUL-AND-USER-PROMPT')
     expect(html.indexOf('系统提示词')).toBeLessThan(html.indexOf('想好了'))
-    expect(html).toContain('<details')
+    // The row folds on the shared disclosure panel rather than a native `<details>`,
+    // so opening and closing animate instead of snapping.
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('disclosure-panel')
   })
 
   it('renders thinking, prose, and tools in the order they were produced', () => {

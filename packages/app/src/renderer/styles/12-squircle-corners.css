@@ -1,0 +1,136 @@
+/*
+ * Continuous corners.
+ *
+ * A `border-radius` corner is an elliptical arc: curvature is 1/r through the
+ * middle of the arc and drops to 0 the instant it meets the straight edge.
+ * `corner-shape` draws the corner as a superellipse instead, so the curvature
+ * keeps falling away smoothly as it reaches the edge — a continuous corner whose
+ * exact softness is the `--corner-shape` exponent below.
+ *
+ * This is the engine's own primitive. The earlier implementation drew the same
+ * shape in a Houdini paint worklet and applied it through the `mask` property,
+ * which cost three things a mask cannot give back: it clipped the element's own
+ * `box-shadow`, it fought `backdrop-filter`, and a `paint()` mask whose worklet
+ * had not registered yet hid the element outright rather than falling back to a
+ * round corner. (The wording matters: `chat-layout-stability.test.ts` bans the
+ * mask longhand by name across this stylesheet, comments included, so that
+ * corner geometry cannot quietly return to a mask.) `corner-shape` needs none of
+ * that — the border, the outer shadow and the corner all follow the same
+ * geometry — and an engine that does not know the property simply draws a round
+ * corner. It needs Chromium 139+;
+ * Electron 44 ships Chromium 152. The worklet existed only because the app ran
+ * on Electron 36 / Chromium 136.
+ *
+ * Why one blanket rule instead of an inventory: `corner-shape` is only visible
+ * where a corner radius exists, so a single rule reaches every rounded surface
+ * in the app — including the shadowed ones the mask had to skip — and keeps
+ * reaching surfaces added later.
+ *
+ * Why the exclusions below: a capsule and a dot are not rounded rectangles with
+ * a different corner, and a superellipse redraws them. Measured on Chromium 152
+ * by scanning the corner box for the painted pixel nearest the corner vertex (t
+ * is its distance inwards along one axis; an arc of radius r is 0.2929r, so the
+ * 60px reference below is 17.6px): at the shipped `superellipse(1.5)` the 60px
+ * corner moves t 17.6px → 13px, a 999px pill over a 20px clamp 5.9px → 4px, and
+ * a 60px dot 8.8px → 7px. `squircle` (`superellipse(2)`, what this file shipped
+ * before) cut deeper still — 9.0 / 3.2 / 4.9px — so the list was never optional,
+ * and milder is not the same as absent: the rendered circle and capsule stop
+ * being one either way. `corner-shape.test.ts` re-derives this list from the
+ * stylesheets, so a new capsule cannot quietly lose its round corner.
+ *
+ * Pseudo-elements need no entry here: the universal selector does not match
+ * them, so `::before`, `::after` and anything like `::-webkit-scrollbar-thumb`
+ * keeps an ordinary round corner. Neither does anything inside a shadow tree —
+ * the Monaco editor and the xterm terminal paint their own corners, so they
+ * stay circular.
+ */
+
+:root {
+  /* One knob for the whole app. `superellipse(1)` is an ordinary round corner,
+   * `superellipse(2)` is the classic squircle (Chromium also spells that value
+   * `squircle`, and measures it as exactly the same shape), and higher exponents
+   * are progressively squarer. 1.5 is the compromise this app ships, and it is
+   * the exponent - not the radius tokens - that decides how much of a radius is
+   * actually visible: measured on Chromium 152 over the radius x radius corner
+   * box, an arc gives up 21.5% of that box, `superellipse(2)` only 6.9%, and
+   * `superellipse(1.5)` 12.3%. Read the other way, at the same `border-radius` a
+   * corner reads as 0.57x (2) / 0.76x (1.5) of a round corner's radius, so with
+   * the classic squircle the `10px` surface token looked like barely more than
+   * 5px. An unsupported value falls back to a round corner rather than to
+   * nothing. */
+  --corner-shape: superellipse(1.5);
+}
+
+* {
+  corner-shape: var(--corner-shape);
+}
+
+/* Capsules and circles: the shapes a superellipse would redraw. */
+.active-run-indicator,
+.activity-step-dot,
+.add-menu-trigger.composer-tab-control,
+.agent-flow-separator,
+.agent-reasoning-entry-state,
+.attachment-image-preview-close,
+.attachment-preview-remove,
+.channel-dot,
+.channel-tag,
+.chat-jump-to-latest,
+.checkpoint-recovery-spinner,
+.checkpoint-recovery-trigger strong,
+.checkpoint-state-dot,
+.code-toolbar button,
+.development-environment-status,
+.icon-btn,
+.icon-btn.ghost,
+.key-badge,
+.memory-activation-dot,
+.message-meta-copy,
+.pill-select,
+.plugin-host-state > span,
+.plugin-loading-indicator,
+.plugin-switch,
+.plugin-switch > span,
+.provider-badge,
+.provider-chip,
+.provider-model-chip,
+.provider-model-remove,
+.provider-remove,
+.running-pill,
+.running-pill-command-dot,
+.running-pill-ring,
+.send-round,
+.settings-entry-btn,
+.settings-module-search,
+.settings-sidebar-search,
+.task-progress-indicator,
+.task-progress-ring,
+.task-progress-step-dot,
+.turn-usage-button,
+.verification-record-dot,
+.workspace-active-close,
+.workspace-add-open-dot,
+.workspace-artifact-row-meta em,
+.workspace-context-remove,
+.workspace-line-comment-action,
+.workspace-pill,
+.workspace-reset,
+.workspace-root-badge,
+.workspace-tree-loading {
+  corner-shape: round;
+}
+
+/* The floating panels paint their material in an inset pseudo-element that is
+ * clipped to the inner radius separately, so the blanket rule cannot reach it
+ * and the shape has to be handed down. Their `clip-path` is gone from
+ * `03-shell-sidebar.css`: it can only draw arcs, so it cut the material to a
+ * round corner while the frame's border, shadow and corner were
+ * superelliptical, leaving an unpainted sliver at every corner. Measured on
+ * Chromium 152, `border-radius` plus `corner-shape` already clip the fill *and*
+ * `backdrop-filter` to the same superellipse — a blur's painted boundary lands
+ * on the shape's edge at t=9.0px, not on the arc's t=17.6px — so the clip-path
+ * was redundant as well as wrong. */
+.sidebar-surface::before,
+.workspace-panel-surface::before {
+  corner-shape: var(--corner-shape);
+}

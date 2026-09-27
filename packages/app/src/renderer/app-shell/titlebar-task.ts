@@ -1,8 +1,10 @@
-// The titlebar's task pill state, kept out of the controller's composition surface.
+// The task pill's state, kept out of the controller's composition surface.
 //
 // The controller owns the session list, the transcript and the chat clock; this module turns them
 // into the one value the pill renders, so the pill can never read a different conversation than the
-// transcript beside it and the controller does not grow for a presentation concern.
+// transcript beside it and the controller does not grow for a presentation concern. The pill
+// itself floats at the top of the chat column (rendered by `chat-view.tsx`); the module's name
+// records where the pill used to live.
 import { useMemo } from 'react'
 import type { SessionMeta } from '../api'
 import type { ChatMessage } from '../chat/types'

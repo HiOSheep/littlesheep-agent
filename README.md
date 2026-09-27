@@ -121,7 +121,7 @@ pnpm run build
 .\build-app.bat
 ```
 
-构建完成后，桌面的 `LittleSheep.lnk` 会指向当前仓库生成的 `LittleSheep.exe` 命名运行时，并使用当前 `packages/app` 作为工作目录。
+构建完成后，桌面的 `LittleSheep.lnk` 会指向当前仓库生成的 `LittleSheep.exe` 命名运行时，并使用当前 `packages/app` 作为工作目录。这一步是自动的：`pnpm run dev`、`pnpm run build` 与 `build-app.bat` 都会把它同步到刚准备好的运行时，升级 Electron 后不必手动重跑；需要显式创建或排错时用 `pnpm run refresh:desktop-shortcut`。
 
 开发模式：
 

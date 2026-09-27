@@ -66,6 +66,34 @@
   --control-height-row: 30px;
   --control-font-size: 12px;
   --control-font-size-strong: 13px;
+  /* Settings body type scale (2026-09-27). The settings canvas is a content page like the archive
+     page, so it follows the same proportions instead of a scale of its own: one page title, one
+     page description, one group title, one row title, one row description, one meta size. A row
+     aligns its title and description on this scale, and no settings page invents a sixth size —
+     the plugin and model pages used to sit 4-6px below the storage and web pages, which read as
+     two different products inside one settings area. */
+  --settings-page-title-font-size: 26px;
+  --settings-page-desc-font-size: 14px;
+  --settings-group-title-font-size: 15px;
+  --settings-row-title-font-size: 14px;
+  --settings-row-desc-font-size: 13px;
+  --settings-meta-font-size: 12px;
+  --settings-row-min-height: 68px;
+  /* One switch geometry for every settings page. The plugin rows, the web rows and the
+     close-policy rows all render `.plugin-switch`, so its box is a token instead of three
+     per-page values (32x18 base, 36x20 rows, 48x30 web). */
+  --settings-switch-width: 40px;
+  --settings-switch-height: 22px;
+  --settings-switch-knob: 16px;
+  --settings-switch-travel: 18px;
+  /* Chat activity type scale (2026-09-27). The execution flow annotates a turn, so it sits one
+     step *below* the message body instead of above it: the row declared 15px while the transcript
+     it lives in is 13px and the answer it annotates is 14px, and its own meta, path and line
+     badge were 12/12/11px. One row now reads top-down on one scale — row text, then its meta,
+     then a badge. */
+  --activity-row-font-size: 13px;
+  --activity-meta-font-size: 12px;
+  --activity-badge-font-size: 11px;
   /* One disabled tone for the shared control roles and the settings/dialog
      action buttons. Dense row, toolbar and picker roles keep their own scale
      (see ui/README.md) — this is a role token, not a blanket opacity. */
@@ -656,7 +684,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 /* The absolute containing block starts at the surface's padding edge, which
    is the inside edge of its border. The material layer therefore fills the
    interior exactly; the reduced radius keeps its antialiasing aligned with
-   the inner edge instead of drawing over the frame. */
+   the inner edge instead of drawing over the frame.
+
+   `border-radius` alone clips both the fill and the blur here, so the material
+   carries no `clip-path`: it can only draw arcs, and cutting the material to a
+   round corner while the frame's border and shadow follow a superellipse left
+   an unpainted sliver at each corner. `12-squircle-corners.css` hands this
+   layer the same corner shape as its frame and records the measurement. */
 .sidebar-surface::before,
 .workspace-panel-surface::before {
   content: "";
@@ -664,7 +698,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   inset: 0;
   z-index: 0;
   border-radius: var(--floating-panel-inner-radius);
-  clip-path: inset(0 round var(--floating-panel-inner-radius));
   background: var(--sidebar-glass-fill);
   background-clip: padding-box;
   -webkit-backdrop-filter: blur(20px) saturate(145%);
@@ -672,14 +705,23 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   pointer-events: none;
 }
 
-/* The colour wash is its own layer on top of the shared fill, so the two surfaces keep exactly one
-   material rule and only the sidebar carries a tint. */
+/* The colour wash is its own layer, and the frosted grey is re-declared above it, so the two
+   surfaces keep exactly one material rule and only the sidebar carries a tint.
+
+   The order is load-bearing and the eye reads it immediately. A background image always paints
+   above the background colour, so while the wash was the only image layer it sat ON TOP of
+   `--sidebar-glass-fill`, and the card read as a blue-to-violet panel rather than as grey glass
+   with a wash inside it. Painting the same fill again as the topmost image layer puts the glass
+   back over the wash, and the tint only glows faintly through it, the way a frosted pane mutes
+   whatever is behind it. Muting the wash this way keeps both alphas where `sidebar-tint-depth`
+   pins them instead of trading one lever for another. */
 .sidebar-surface::before {
-  background-image: linear-gradient(
-    180deg,
-    var(--sidebar-tint-top) 0%,
-    var(--sidebar-tint-bottom) 100%
-  );
+  background-image: linear-gradient(var(--sidebar-glass-fill), var(--sidebar-glass-fill)),
+    linear-gradient(
+      180deg,
+      var(--sidebar-tint-top) 0%,
+      var(--sidebar-tint-bottom) 100%
+    );
 }
 
 .sidebar-contents {
@@ -2030,6 +2072,15 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
      input's visible top edge is this far below it. Anything that has to sit a fixed distance above
      the input — the way back to the newest message — subtracts it. */
   --composer-shell-inset-top: 8px;
+  --composer-shell-inset-bottom: 12px;
+  /* The task pill floats at the top edge of the chat column, symmetric to the composer at the
+     bottom: the transcript's viewport is clipped at the pill's top edge (margin-top on
+     `.messages`) and at the input's bottom edge (margin-bottom), and its scroll padding keeps
+     content out from under both overlays while scrolling. */
+  --task-pill-inset-top: 8px;
+  --task-pill-height: 24px;
+  --task-pill-content-gap: 8px;
+  --task-pill-overlay-height: calc(var(--task-pill-height) + var(--task-pill-content-gap));
   --composer-message-gap: 32px;
   flex: 1 1 0;
   width: 0;
@@ -2053,9 +2104,24 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   pointer-events: none;
 }
 
-/* The titlebar's task pill: the conversation on screen plus what it is running. The glass is
-   deliberately heavier than the other popovers — the pill sits over the transcript, and the reader
-   must be able to read it without the text behind it bleeding through. */
+/* The chat column's task pill: the conversation on screen plus what it is running, floating at
+   the top edge of the chat column (to the right of the sidebar), symmetric to the composer shell
+   at the bottom. The shell is click-through except for the pill itself. Both the pill and its
+   panel wear the same glass as the composer — translucent fill, 18px backdrop blur, no border
+   strokes — and neither is nested inside another backdrop-filtered element, so the blur has a
+   real backdrop to sample (see `composer/README.md` for the backdrop-root failure mode). */
+.running-pill-shell {
+  position: absolute;
+  top: 0;
+  right: var(--chat-workspace-scrollbar-overlap);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  padding: var(--task-pill-inset-top) var(--chat-content-gutter) 0;
+  pointer-events: none;
+}
+
 .running-pill-root {
   position: relative;
   z-index: 2;
@@ -2063,7 +2129,10 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   align-items: center;
   min-width: 0;
   flex: 0 1 auto;
-  -webkit-app-region: no-drag;
+}
+
+.running-pill-shell > .running-pill-root {
+  pointer-events: auto;
 }
 
 .running-pill {
@@ -2072,20 +2141,37 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   gap: 7px;
   min-width: 0;
   max-width: min(46vw, 520px);
-  height: 24px;
+  height: var(--task-pill-height);
   padding: 0 10px;
   color: var(--text);
-  background: color-mix(in srgb, var(--workspace-code-surface) 82%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--composer-surface);
+  border: 0;
   border-radius: var(--radius-pill);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .running-pill:hover {
-  background: color-mix(in srgb, var(--workspace-code-surface) 92%, transparent);
+  background: color-mix(in srgb, var(--composer-surface) 88%, var(--control-hover));
+}
+
+.running-pill.editing {
+  cursor: text;
+}
+
+.running-pill-rename-input {
+  flex: 1 1 auto;
+  min-width: 140px;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 12px;
 }
 
 .running-pill-ring {
@@ -2108,7 +2194,9 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 
 .running-pill-title {
   min-width: 0;
-  max-width: 42%;
+  /* A concrete cap, not a percentage: the pill hugs its content, so a relative cap would be
+     circular against the shrink-to-fit width. */
+  max-width: min(38vw, 320px);
   overflow: hidden;
   color: var(--text);
   font-size: 12px;
@@ -2135,12 +2223,13 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
-  background: color-mix(in srgb, var(--composer-surface) 90%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: var(--radius-ui);
-  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.48);
-  -webkit-backdrop-filter: blur(28px) saturate(155%);
-  backdrop-filter: blur(28px) saturate(155%);
+  /* The composer's own glass recipe, on a portal rooted at the document so the blur is real. */
+  background: var(--composer-surface);
+  border: 0;
+  border-radius: var(--radius-composer-input);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
 }
 
 .running-pill-panel-title {
@@ -2181,7 +2270,9 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 
 .running-pill-command {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  /* The trailing column stays empty (and widthless) for commands that already ended; a running
+     command fills it with its stop control. */
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
@@ -2190,6 +2281,58 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 
 .running-pill-command:hover {
   background: var(--composer-picker-option-hover);
+}
+
+.running-pill-command-stop {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  color: var(--muted-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-icon);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.running-pill-command-stop:hover,
+.running-pill-command-stop:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  outline: 0;
+}
+
+.running-pill-command-stop svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+}
+
+/* The dsh-style history fold: the row that opens the older finished commands, or tucks them
+   away again. */
+.running-pill-fold {
+  padding: 5px 8px;
+  color: var(--muted-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-icon);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.running-pill-fold:hover,
+.running-pill-fold:focus-visible {
+  color: var(--text);
+  background: var(--composer-picker-option-hover);
+  outline: 0;
 }
 
 .running-pill-command-dot {

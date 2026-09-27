@@ -26,6 +26,7 @@ describe('interaction surface visibility', () => {
       ['./composer/add-menu.tsx', 'className="add-menu-panel"'],
       ['./composer/mode-picker.tsx', 'className="model-picker-panel option-picker-panel mode-picker-panel"'],
       ['./chat/agent-tool-row.tsx', 'className={`agent-tool-details-panel disclosure-panel'],
+      ['./chat/disclosure-panel.tsx', 'className={`agent-flow-disclosure disclosure-panel'],
       ['./TraceCard.tsx', 'className={`trace-body disclosure-panel'],
       ['./sidebar/feature-panel.tsx', 'className={`sidebar-feature-panel'],
       ['./sidebar/project-creator.tsx', 'className={`project-creator-layer'],

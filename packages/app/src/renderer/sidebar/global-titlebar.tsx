@@ -2,7 +2,6 @@
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
 import { HistoryBackIcon, HistoryForwardIcon } from '../ui/browser-icons'
-import { RunningPill, type TitlebarTask } from './running-pill'
 import appIconUrl from '../../../resources/littlesheep-icon.png'
 
 function canBeginWindowDrag(target: EventTarget | null): boolean {
@@ -34,7 +33,6 @@ export function GlobalTitlebar({
   sidebarToggleTip,
   canNavigateBack,
   canNavigateForward,
-  titlebarTask,
   onToggleSidebar,
   onBack,
   onForward,
@@ -44,8 +42,6 @@ export function GlobalTitlebar({
   sidebarToggleTip: string
   canNavigateBack: boolean
   canNavigateForward: boolean
-  /** What the task pill reports: the conversation on screen, its newest run activity, the clock. */
-  titlebarTask: TitlebarTask
   onToggleSidebar: () => void
   onBack: () => void
   onForward: () => void
@@ -98,14 +94,6 @@ export function GlobalTitlebar({
         <img className="window-titlebar-icon" src={appIconUrl} alt="" aria-hidden="true" />
         <span>LittleSheep</span>
       </div>
-      {titlebarTask.hasSession && (
-        <RunningPill
-          title={titlebarTask.title}
-          activity={titlebarTask.activity}
-          now={titlebarTask.now}
-          onTipChange={onTipChange}
-        />
-      )}
     </header>
   )
 }

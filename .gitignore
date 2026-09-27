@@ -86,3 +86,6 @@ renderer-module-report.json
 
 # Cold-start measurement scratch ledger (written when no --label is given).
 docs/reference/cold-start-baseline/desktop-cold-start-unlabeled.json
+
+# Node/V8 compile cache some tooling writes next to the package (regenerable, never tracked).
+.wb-tmp/

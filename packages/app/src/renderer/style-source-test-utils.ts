@@ -13,6 +13,7 @@ export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/09-projects-archive.css',
   './styles/10-git-review.css',
   './styles/11-runtime-readiness.css',
+  './styles/12-squircle-corners.css',
 ] as const
 
 export interface RendererStyleSourceFile {

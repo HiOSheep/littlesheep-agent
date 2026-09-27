@@ -408,7 +408,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: clamp(54px, 8vh, 104px) clamp(22px, 5vw, 96px) 56px;
+  padding: 36px clamp(24px, 3vw, 40px) 56px;
   background: var(--workspace-code-surface);
   isolation: isolate;
   opacity: 0;
@@ -495,20 +495,20 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .settings-home-heading {
-  margin-bottom: 22px;
+  margin-bottom: 40px;
 }
 
 .settings-home-heading h2 {
   color: var(--text-strong);
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1.2;
+  font-size: var(--settings-page-title-font-size);
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .settings-home-heading p {
-  margin-top: 6px;
+  margin-top: 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--settings-page-desc-font-size);
 }
 
 .settings-overview-list {
@@ -518,16 +518,16 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-overview-group {
   display: grid;
-  gap: 5px;
+  gap: 0;
 }
 
 .settings-overview-group-title {
-  min-height: 18px;
-  padding: 0 8px;
-  color: var(--muted-2);
-  font-size: 11px;
-  font-weight: 820;
-  line-height: 18px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--text-strong);
+  font-size: var(--settings-group-title-font-size);
+  font-weight: 750;
+  line-height: 1.4;
 }
 
 .settings-overview-group-items {
@@ -558,14 +558,14 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-overview-row strong {
   min-width: 90px;
   color: var(--text-strong);
-  font-size: 14px;
-  font-weight: 900;
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 730;
 }
 
 .settings-overview-row span {
   min-width: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--settings-row-desc-font-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -582,10 +582,6 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 100%;
 }
 
-.settings-module-heading {
-  margin-bottom: 18px;
-}
-
 .settings-module-kicker {
   margin-bottom: 6px;
   color: var(--muted-2);
@@ -595,15 +591,15 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-module-heading h2 {
   color: var(--text-strong);
-  font-size: 22px;
-  font-weight: 920;
-  line-height: 1.2;
+  font-size: var(--settings-page-title-font-size);
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .settings-module-heading p {
-  margin-top: 7px;
+  margin-top: 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--settings-page-desc-font-size);
 }
 
 .settings-module-search {
@@ -764,16 +760,19 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-trust-copy small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
+/* One switch for every settings page: the plugin rows, the web rows and the close-policy rows all
+   render this control, so its box is a token rather than three per-page values, and it is a blue
+   pill when on (the one saturated blue in the UI) instead of a grey one. */
 .plugin-switch {
   position: relative;
-  width: 32px;
-  height: 18px;
-  flex: 0 0 32px;
+  width: var(--settings-switch-width);
+  height: var(--settings-switch-height);
+  flex: 0 0 var(--settings-switch-width);
   padding: 0;
-  background: #464646;
+  background: var(--border-strong);
   border: 0;
   border-radius: var(--radius-pill);
   transition:
@@ -785,9 +784,9 @@ body.is-resizing-column .settings-sidebar-resizer {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 12px;
-  height: 12px;
-  background: #c9c9c9;
+  width: var(--settings-switch-knob);
+  height: var(--settings-switch-knob);
+  background: var(--text);
   border-radius: var(--radius-circle);
   transition:
     transform var(--motion-slow) var(--motion-ease),
@@ -795,12 +794,12 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-switch.checked {
-  background: #787878;
+  background: var(--settings-switch-on);
 }
 
 .plugin-switch.checked > span {
-  background: #ffffff;
-  transform: translateX(14px);
+  background: var(--text-strong);
+  transform: translateX(var(--settings-switch-travel));
 }
 
 .plugin-switch:disabled {
@@ -843,13 +842,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-trust-confirmation-inner strong {
-  color: #ffd6d6;
-  font-size: 12px;
+  color: var(--feedback-danger-text);
+  font-size: var(--settings-meta-font-size);
 }
 
 .plugin-trust-confirmation-inner span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1.45;
 }
 
@@ -867,7 +866,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 11px;
+  font-size: var(--control-font-size);
   transition:
     color var(--motion-base) var(--motion-ease),
     background-color var(--motion-base) var(--motion-ease),
@@ -882,7 +881,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-trust-actions button.danger {
-  color: #ffd6d6;
+  color: var(--danger-control-text);
 }
 
 .plugin-host-state {
@@ -892,7 +891,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 6px;
   margin-left: auto;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .plugin-host-state > span {
@@ -947,18 +946,18 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-list {
   display: grid;
-  width: min(680px, 100%);
+  width: 100%;
 }
 
 .web-settings-page {
-  width: min(680px, 100%);
+  width: min(760px, 100%);
 }
 
 .web-settings-section {
   display: grid;
-  gap: 8px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 0;
+  padding: 0;
+  border-bottom: 0;
 }
 
 .web-settings-heading,
@@ -967,37 +966,47 @@ body.is-resizing-column .settings-sidebar-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 40px;
-  gap: 16px;
   color: var(--text);
-  font-size: 13px;
+}
+
+.web-settings-heading,
+.web-settings-field {
+  gap: 16px;
+}
+
+.web-settings-field {
+  min-height: 40px;
+}
+
+.web-settings-row,
+.web-settings-field {
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .web-settings-row > span {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 5px;
 }
 
 .web-settings-row strong,
 .web-settings-heading strong {
   color: var(--text-strong);
-  font-size: 13px;
 }
 
 .web-settings-row small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .web-settings-field select {
   min-width: 168px;
-  min-height: 32px;
-  padding: 0 8px;
+  min-height: var(--control-height-row);
+  padding: 0 12px;
   color: var(--text);
   background: var(--control);
   border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  border-radius: var(--radius-floating-panel);
 }
 
 .web-provider-key-form {
@@ -1027,7 +1036,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .web-provider-note {
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .web-egress-confirmation {
@@ -1100,7 +1109,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   grid-template-columns: 28px minmax(0, 1fr) auto 10px;
   align-items: center;
   width: 100%;
-  min-height: 70px;
+  min-height: var(--settings-row-min-height);
   gap: 9px;
   padding: 8px;
   color: var(--text);
@@ -1138,8 +1147,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 .plugin-list-title strong {
   overflow: hidden;
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 880;
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 730;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1147,15 +1156,14 @@ body.is-resizing-column .settings-sidebar-resizer {
 .plugin-list-title small,
 .plugin-list-meta {
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   white-space: nowrap;
 }
 
+/* Overflow behaviour only: colour, size and line height come from the shared row-description
+   group at the end of this file, so the plugin list reads at the same size as every other row. */
 .plugin-list-description {
   overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1163,7 +1171,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .plugin-list-error {
   overflow: hidden;
   color: var(--feedback-danger-text);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1173,7 +1181,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   align-items: center;
   gap: 5px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   white-space: nowrap;
 }
 
@@ -1251,7 +1259,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   display: grid;
   grid-template-columns: 74px minmax(0, 1fr);
   gap: 8px;
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1.45;
 }
 
@@ -1279,8 +1287,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .plugin-diagnostics > strong {
-  color: #f0b2b2;
-  font-size: 11px;
+  color: var(--feedback-danger-text);
+  font-size: var(--settings-meta-font-size);
 }
 
 .plugin-diagnostics > div {
@@ -1293,14 +1301,14 @@ body.is-resizing-column .settings-sidebar-resizer {
   overflow: hidden;
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .plugin-diagnostics small {
-  color: #d89c9c;
-  font-size: 10px;
+  color: var(--feedback-danger-text);
+  font-size: var(--settings-meta-font-size);
   line-height: 1.4;
 }
 
@@ -1315,8 +1323,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .profile-choice-list {
   display: grid;
-  gap: 3px;
-  width: min(560px, 100%);
+  gap: 0;
+  width: 100%;
 }
 
 .profile-choice {
@@ -1354,15 +1362,15 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .profile-choice strong {
-  font-size: 13px;
-  font-weight: 900;
-  line-height: 1.2;
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 730;
+  line-height: 1.35;
 }
 
 .profile-choice small {
   color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: var(--settings-row-desc-font-size);
+  line-height: 1.45;
 }
 
 .profile-choice-check {
@@ -1377,9 +1385,8 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-policy-section {
   display: grid;
-  gap: 8px;
-  width: min(560px, 100%);
-  margin-top: 24px;
+  gap: 0;
+  width: 100%;
 }
 
 /* Advanced configuration stays collapsed until the user asks for it. */
@@ -1403,45 +1410,45 @@ body.is-resizing-column .settings-sidebar-resizer {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .settings-policy-heading strong {
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: var(--settings-group-title-font-size);
+  font-weight: 750;
 }
 
 .settings-policy-heading span {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .settings-policy-row {
   display: grid;
-  grid-template-columns: minmax(150px, auto) minmax(140px, 1fr) 42px auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  min-height: 50px;
-  padding: 5px 8px;
+  gap: 18px;
+  min-height: var(--settings-row-min-height);
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
 .settings-policy-row > span {
   display: grid;
-  gap: 2px;
+  gap: 5px;
 }
 
 .settings-policy-row strong {
   color: var(--text-strong);
-  font-size: 12px;
-  font-weight: 830;
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 730;
 }
 
 .settings-policy-row small {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .settings-policy-row input[type="range"] {
@@ -1463,8 +1470,8 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  font-size: 12px;
+  border-radius: var(--radius-floating-panel);
+  font-size: var(--control-font-size);
   font-weight: 760;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -1500,9 +1507,9 @@ body.is-resizing-column .settings-sidebar-resizer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 34px;
+  min-height: 24px;
   gap: 16px;
-  padding: 0 8px 8px;
+  padding: 0;
 }
 
 .application-background-section-heading > span:first-child {
@@ -1513,14 +1520,14 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .application-background-section-heading strong {
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: var(--settings-group-title-font-size);
+  font-weight: 750;
 }
 
 .application-background-section-heading small,
 .application-background-section-heading > span:last-child {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1.4;
 }
 
@@ -1599,7 +1606,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .application-background-empty strong {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .active-run-list {
@@ -1643,13 +1650,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .active-run-state strong {
   color: var(--text-strong);
-  font-size: 13px;
+  font-size: var(--settings-row-title-font-size);
   font-weight: 850;
 }
 
 .active-run-state small {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .active-run-indicator {
@@ -1683,7 +1690,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 30px;
   gap: 5px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--control-font-size);
   font-weight: 760;
 }
 
@@ -1711,7 +1718,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .active-run-details {
   margin: 8px 0 0 18px;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .active-run-details summary {
@@ -1782,8 +1789,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .storage-settings-section {
   display: grid;
-  width: min(720px, 100%);
-  margin-top: 24px;
+  width: 100%;
 }
 
 .storage-settings-heading {
@@ -1791,27 +1797,27 @@ body.is-resizing-column .settings-sidebar-resizer {
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 8px 8px;
+  padding: 0;
 }
 
 .storage-settings-heading strong {
   color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 900;
+  font-size: var(--settings-group-title-font-size);
+  font-weight: 750;
 }
 
 .storage-settings-heading span {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
 .storage-settings-row {
   display: grid;
-  grid-template-columns: minmax(190px, 0.9fr) minmax(220px, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
-  min-height: 56px;
-  padding: 7px 8px;
+  min-height: var(--settings-row-min-height);
+  padding: 14px 20px;
   border-top: 1px solid var(--border);
 }
 
@@ -1825,21 +1831,21 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .storage-settings-row > span {
   display: grid;
-  gap: 3px;
+  gap: 5px;
   min-width: 0;
 }
 
 .storage-settings-row strong {
   color: var(--text-strong);
-  font-size: 12px;
-  font-weight: 830;
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 730;
 }
 
 .storage-settings-row small {
   overflow-wrap: anywhere;
-  color: var(--muted-2);
-  font-size: 11px;
-  line-height: 1.4;
+  color: var(--muted);
+  font-size: var(--settings-row-desc-font-size);
+  line-height: 1.45;
 }
 
 .storage-settings-row code {
@@ -1847,7 +1853,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   overflow: hidden;
   color: var(--muted);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1.45;
   text-align: right;
   text-overflow: ellipsis;
@@ -1863,8 +1869,8 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  font-size: 12px;
+  border-radius: var(--radius-floating-panel);
+  font-size: var(--control-font-size);
   font-weight: 760;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -1924,7 +1930,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .storage-settings-notice code {
   color: var(--text-strong);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .development-environments-page {
@@ -1997,7 +2003,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environments-root span {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   font-weight: 780;
 }
 
@@ -2006,7 +2012,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   overflow: hidden;
   color: var(--muted);
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2018,15 +2024,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-group {
   display: grid;
-  width: min(720px, 100%);
-  margin-top: 24px;
-}
-
-.development-environment-group-title {
-  padding: 0 8px 8px;
-  color: var(--muted-2);
-  font-size: 11px;
-  font-weight: 820;
+  width: 100%;
 }
 
 .development-environment-list {
@@ -2036,11 +2034,11 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(156px, 205px);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
-  min-height: 94px;
-  padding: 10px 8px;
+  min-height: var(--settings-row-min-height);
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2066,7 +2064,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .development-environment-main > small,
 .development-environment-main > p {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
   line-height: 1.4;
 }
 
@@ -2077,7 +2075,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 4px;
   min-width: 0;
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .development-environment-version {
@@ -2101,7 +2099,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: transparent;
   border: 0;
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1;
 }
 
@@ -2137,7 +2135,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 5px 10px;
   min-width: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2159,7 +2157,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
   font-weight: 820;
 }
 
@@ -2193,7 +2191,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .development-environment-controls label > span {
   color: var(--muted-2);
-  font-size: 10px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .development-environment-controls input {
@@ -2207,7 +2205,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
   outline: 0;
   font-family: Consolas, 'Cascadia Mono', monospace;
-  font-size: 11px;
+  font-size: var(--control-font-size);
 }
 
 .development-environment-controls input:focus {
@@ -2222,7 +2220,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 11px;
+  font-size: var(--control-font-size);
   font-weight: 780;
 }
 
@@ -2702,7 +2700,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-name {
   margin-bottom: 3px;
   color: var(--text-strong);
-  font-size: 14px;
+  font-size: var(--settings-row-title-font-size);
   font-weight: 700;
 }
 
@@ -2768,7 +2766,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
-  font-size: 13px;
+  font-size: var(--control-font-size-strong);
 }
 
 .provider-input input:focus {
@@ -3163,7 +3161,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .provider-empty strong {
   color: var(--text-strong);
-  font-size: 14px;
+  font-size: var(--settings-row-title-font-size);
   font-weight: 760;
 }
 
@@ -3176,7 +3174,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-template-group {
   margin: 14px 0 8px;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   font-weight: 760;
 }
 
@@ -3204,7 +3202,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .provider-card-title strong {
   color: var(--text-strong);
-  font-size: 14px;
+  font-size: var(--settings-row-title-font-size);
   font-weight: 760;
 }
 
@@ -3213,7 +3211,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   line-height: 19px;
 }
 
@@ -3237,7 +3235,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .provider-model-chip em {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   font-style: normal;
 }
 
@@ -3274,7 +3272,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
   color: var(--text);
   background: transparent;
-  font-size: 13px;
+  font-size: var(--control-font-size-strong);
 }
 
 .provider-add:hover {
@@ -3297,7 +3295,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .provider-editor-key-note {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-row-desc-font-size);
   line-height: 1.5;
 }
 
@@ -3335,7 +3333,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
   background: var(--surface-2, rgba(255, 255, 255, 0.04));
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--control-font-size-strong);
 }
 
 .settings-inline-field input:focus-visible {
@@ -3378,7 +3376,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-model-field-label {
   display: none;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   line-height: 1.4;
 }
 
@@ -3388,7 +3386,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 6px;
   padding: 0 8px;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .provider-model-row input {
@@ -3399,7 +3397,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
   background: transparent;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--control-font-size);
 }
 
 .provider-model-remove {
@@ -3418,7 +3416,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 /* Below this width the fixed 150px rows squeeze the two flexible fields to 62px and
@@ -3462,7 +3460,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-pill);
   color: var(--muted);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
 }
 
 .provider-chip.active {
@@ -3496,13 +3494,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-template small {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   word-break: break-all;
 }
 
 .provider-template em {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--settings-meta-font-size);
   font-style: normal;
 }
 
@@ -3570,51 +3568,18 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-overview-group {
   align-content: start;
   gap: 0;
-  margin-top: 18px;
 }
 
+/* The row lays out as title-and-description on the left and the control on the right. Its fill,
+   frame, corners, type scale and height come from the settings tokens at the end of this file:
+   the group card is defined once there, not here. */
 .storage-settings-row,
 .web-settings-row,
 .settings-policy-row,
-.development-environment-row,
-.settings-overview-row {
+.development-environment-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.022);
-  border-top: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.storage-settings-row,
-.web-settings-row,
-.settings-policy-row {
-  min-height: 64px;
-}
-
-/* One card per group: the first row rounds its top, the last rounds its bottom, a single row does
-   both. `:first-child` covers groups whose rows start immediately; `.storage-settings-heading +`
-   covers the storage/browser layout, where the heading is the group's first child. */
-.storage-settings-row:first-child,
-.storage-settings-heading + .storage-settings-row,
-.web-settings-row:first-child,
-.settings-policy-row:first-child,
-.settings-policy-heading + .settings-policy-row,
-.development-environment-row:first-child,
-.settings-overview-row:first-child {
-  border-top-left-radius: var(--radius-floating-panel);
-  border-top-right-radius: var(--radius-floating-panel);
-}
-
-.storage-settings-row:last-child,
-.web-settings-row:last-child,
-.settings-policy-row:last-child,
-.development-environment-row:last-child,
-.settings-overview-row:last-child {
-  border-bottom: 0;
-  border-bottom-left-radius: var(--radius-floating-panel);
-  border-bottom-right-radius: var(--radius-floating-panel);
 }
 
 /* A notice inside a group is its own rounded fill rather than a row of the card. */
@@ -3622,28 +3587,6 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-notice {
   margin: 8px 0 4px;
   border-radius: var(--radius-ui);
-}
-
-/* The switch the reference uses: a blue pill when on, not a grey one. */
-.plugin-switch {
-  width: 36px;
-  height: 20px;
-  flex: 0 0 36px;
-}
-
-.plugin-switch > span {
-  top: 3px;
-  left: 3px;
-  width: 14px;
-  height: 14px;
-}
-
-.plugin-switch.checked {
-  background: var(--settings-switch-on);
-}
-
-.plugin-switch.checked > span {
-  transform: translateX(16px);
 }
 
 /* Row controls (selects and the small action buttons) share one button look. */
@@ -3656,101 +3599,27 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-policy-row > button,
 .development-environment-action-row button {
   min-height: var(--control-height-row);
-  padding: 0 12px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-ui);
-  font-size: 12px;
+  padding-inline: 14px;
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border-radius: var(--radius-floating-panel);
+  font-size: var(--control-font-size);
 }
 
-/* Reference proportions: a larger page title, muted small group headings, slightly taller rows and
-   a card fill you can actually see against the page canvas. */
-.settings-module-heading h2 {
-  font-size: 26px;
-}
-
-.settings-module-heading p {
-  font-size: 13px;
-}
-
-.storage-settings-heading,
-.settings-policy-heading {
-  padding-bottom: 6px;
-}
-
-.storage-settings-heading strong,
-.settings-policy-heading strong {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 820;
-  letter-spacing: 0.01em;
-}
-
-.storage-settings-row,
-.web-settings-row,
-.settings-policy-row {
-  min-height: 68px;
-}
-
-.storage-settings-row,
-.web-settings-row,
-.settings-policy-row,
-.development-environment-row,
-.settings-overview-row {
-  background: rgba(255, 255, 255, 0.032);
-}
-
-/* Choice lists (display mode, agent profile, close policy) are one card of joined rows too: the
-   chosen row is simply the brighter one inside the card, and its check stays on the right. */
-.profile-choice-list {
-  gap: 0;
-  width: min(760px, 100%);
-  margin-top: 18px;
-}
-
-.profile-choice-list > .profile-choice {
-  min-height: 64px;
-  padding: 12px 18px;
-  background: rgba(255, 255, 255, 0.032);
-  border-radius: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.profile-choice-list > .profile-choice:first-child {
-  border-top-left-radius: var(--radius-floating-panel);
-  border-top-right-radius: var(--radius-floating-panel);
-}
-
-.profile-choice-list > .profile-choice:last-child {
-  border-bottom: 0;
-  border-bottom-left-radius: var(--radius-floating-panel);
-  border-bottom-right-radius: var(--radius-floating-panel);
-}
-
-.profile-choice-list > .profile-choice.active {
-  background: rgba(255, 255, 255, 0.07);
-}
-
-/* Settings body follows the supplied reference: wide canvas, clear section labels,
-   one dark card per group, inset dividers and controls aligned at the right edge. */
-.settings-workspace-body {
-  padding: 42px clamp(24px, 3vw, 40px) 64px;
-}
-
-.settings-page-transition,
-.settings-module-page,
-.settings-home,
-.web-settings-page {
-  width: min(1092px, 100%);
-}
-
+/* Settings body type scale (2026-09-27). One canvas, one heading scale, one row geometry and one
+   card fill for every settings page. Before this block the body carried four stacked rounds of
+   overrides: a page title declared four times (22 / 26 / 30 / 36px), rows measured at 64 / 68 /
+   90px, row actions at 30px in one round and 42px in the next, and the plugin, model and
+   active-run surfaces never received any of it — so one settings area rendered two type scales
+   6px apart and three switch geometries. Nothing here restates a value the tokens in `:root`
+   already carry, and nothing here is declared twice. */
 .settings-page-transition {
   margin-inline: auto;
 }
 
 .settings-module-heading,
 .settings-home-heading {
-  margin-bottom: 64px;
+  margin-bottom: 40px;
 }
 
 .settings-module-kicker {
@@ -3759,7 +3628,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .settings-module-heading h2,
 .settings-home-heading h2 {
-  font-size: 36px;
+  font-size: var(--settings-page-title-font-size);
   font-weight: 800;
   line-height: 1.25;
 }
@@ -3767,9 +3636,9 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-module-heading p,
 .settings-home-heading p {
   max-width: 760px;
-  margin-top: 12px;
+  margin-top: 10px;
   color: var(--muted);
-  font-size: 15px;
+  font-size: var(--settings-page-desc-font-size);
   line-height: 1.5;
 }
 
@@ -3788,54 +3657,46 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-section + .web-settings-section,
 .settings-policy-section + .settings-policy-section,
 .development-environment-group + .development-environment-group,
-.settings-overview-group + .settings-overview-group {
-  margin-top: 72px;
-}
-
+.settings-overview-group + .settings-overview-group,
 .application-background-section + .application-background-section {
-  margin-top: 72px;
+  margin-top: 44px;
 }
 
-.web-settings-section {
-  padding: 0;
-  border-bottom: 0;
-}
-
+/* One group title for every page: the overview groups, the storage / web / policy sections, and
+   the plugin, development-environment and active-run groups. The development-environment group
+   heading is `.development-environment-group-title` in the component — the earlier rounds styled
+   a `.development-environment-group-heading` that no component ever rendered, so that page kept
+   its 11px label. */
+.settings-overview-group-title,
 .storage-settings-heading,
 .settings-policy-heading,
 .web-settings-heading,
-.development-environment-group-heading,
-.application-background-section-heading,
-.settings-overview-group-title {
-  min-height: 28px;
-  margin-bottom: 22px;
+.development-environment-group-title,
+.application-background-section-heading {
+  min-height: 24px;
+  margin-bottom: 14px;
   padding: 0;
   color: var(--text-strong);
-  font-size: 19px;
+  font-size: var(--settings-group-title-font-size);
   font-weight: 750;
   line-height: 1.4;
 }
 
 .storage-settings-heading strong,
 .settings-policy-heading strong,
-.web-settings-heading strong {
-  color: var(--text-strong);
-  font-size: 19px;
-  font-weight: 750;
-}
-
+.web-settings-heading strong,
 .application-background-section-heading strong {
   color: var(--text-strong);
-  font-size: 19px;
+  font-size: var(--settings-group-title-font-size);
+  font-weight: 750;
 }
 
 .storage-settings-heading span,
 .settings-policy-heading span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--settings-row-desc-font-size);
 }
 
-.settings-overview-group-items,
 .profile-choice-list {
   gap: 0;
 }
@@ -3844,16 +3705,19 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row,
 .settings-policy-row,
 .development-environment-row,
-.settings-overview-row,
 .profile-choice-list > .profile-choice {
-  min-height: 90px;
-  padding: 18px 24px;
-  background: #232323;
-  border-left: 1px solid #383838;
-  border-right: 1px solid #383838;
-  border-bottom: 1px solid #383838;
+  min-height: var(--settings-row-min-height);
+  padding: 14px 20px;
+  background: var(--surface-2);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   border-radius: 0;
 }
+
+/* The plugin list is a card of joined rows like the rest. Its row is `.plugin-list-disclosure`
+   (the row also holds the disclosure chevron and the enable switch), so it takes the shared row
+   height while keeping its own hover and expanded treatment. */
 
 .storage-settings-row:first-child,
 .storage-settings-heading + .storage-settings-row,
@@ -3863,7 +3727,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .development-environment-row:first-child,
 .settings-overview-row:first-child,
 .profile-choice-list > .profile-choice:first-child {
-  border-top: 1px solid #383838;
+  border-top: 1px solid var(--border);
   border-top-left-radius: var(--floating-panel-inner-radius);
   border-top-right-radius: var(--floating-panel-inner-radius);
 }
@@ -3882,9 +3746,10 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row strong,
 .settings-policy-row strong,
 .settings-overview-row strong,
-.profile-choice strong {
+.profile-choice strong,
+.plugin-list-title strong {
   color: var(--text-strong);
-  font-size: 17px;
+  font-size: var(--settings-row-title-font-size);
   font-weight: 730;
   line-height: 1.35;
 }
@@ -3893,9 +3758,10 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row small,
 .settings-policy-row small,
 .settings-overview-row span,
-.profile-choice small {
-  color: #ababab;
-  font-size: 15px;
+.profile-choice small,
+.plugin-list-description {
+  color: var(--muted);
+  font-size: var(--settings-row-desc-font-size);
   line-height: 1.45;
 }
 
@@ -3905,50 +3771,31 @@ body.is-resizing-column .settings-sidebar-resizer {
   gap: 5px;
 }
 
+/* Row actions keep the shared compact-row control height instead of a per-page 42px, and they
+   stay fill-only: the settings surface draws no frames. */
 .storage-settings-row button,
 .storage-settings-actions button,
 .web-settings-row button:not(.plugin-switch),
 .settings-policy-row button,
 .web-settings-row select,
 .web-settings-field select {
-  min-height: 42px;
+  min-height: var(--control-height-row);
   padding-inline: 14px;
   color: var(--text-strong);
-  background: #303030;
-  border: 1px solid #3b3b3b;
+  background: var(--control-hover);
+  border: 0;
   border-radius: var(--radius-floating-panel);
-  font-size: 16px;
+  font-size: var(--control-font-size);
 }
 
 .profile-choice-list > .profile-choice.active {
-  background: #292929;
-}
-
-.web-settings-row .plugin-switch {
-  width: 48px;
-  height: 30px;
-  min-height: 30px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-pill);
-}
-
-.web-settings-row .plugin-switch > span {
-  top: 4px;
-  left: 4px;
-  width: 22px;
-  height: 22px;
-}
-
-.web-settings-row .plugin-switch.checked > span {
-  transform: translateX(18px);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 @media (max-width: 760px) {
-  .settings-workspace-body { padding: 30px 18px 48px; }
-  .settings-module-heading, .settings-home-heading { margin-bottom: 42px; }
-  .settings-module-heading h2, .settings-home-heading h2 { font-size: 30px; }
+  .settings-workspace-body { padding: 28px 18px 44px; }
+  .settings-module-heading, .settings-home-heading { margin-bottom: 28px; }
   .storage-settings-row, .web-settings-row, .settings-policy-row,
   .development-environment-row, .settings-overview-row,
-  .profile-choice-list > .profile-choice { padding: 16px 18px; }
+  .profile-choice-list > .profile-choice { padding: 12px 16px; }
 }

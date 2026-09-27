@@ -1,6 +1,6 @@
 # 生产依赖安全记录
 
-最后更新：2026-09-24 20:56:17
+最后更新：2026-09-27 15:22:39
 本次复核执行：2026-09-22（命令与结果见下）
 复查日期：2026-10-06，所有者：Embedding / Electron runtime（`@xmldom/xmldom` 条目另需 Documents 所有者）
 
@@ -33,6 +33,10 @@
 | 工作区类型与构建 | `tsc -b tsconfig.workspace.json` | 退出 0 |
 | 实际 Electron 文档运行时 | `pnpm run verify:electron-documents`（重建 App 后） | `{"check":"electron-document-runtime","ok":true}`，pdf/docx/xlsx/csv 生成与 xls/tsv/pptx 读取矩阵通过 |
 | 全量回归 | `vitest run` | 3160 通过、1 跳过、2 失败——两个失败都是既有的 pnpm/Windows shim 脚本用例，与依赖无关 |
+
+**上表之外：Electron 基线在本次复核之后变了（2026-09-27）**。桌面应用从 Electron **36.9.5（Chromium 136 / Node 22）**升到 **44.4.5（Chromium 152 / Node 24.21）**，起因是圆角要用 Chromium 139+ 的 `corner-shape`（见 `packages/app/README.md` 与 `packages/app/src/renderer/README.md`）。上表"真实 Electron 内本地推理"一行记录的是 **2026-09-22 那次在 36.9.5 里的执行**，作为当次记录**保留不改**；它需要在 **2026-10-06 的复查里在 44.4.5 上重跑**。
+
+按上表同一组依赖在 44.4.5 上重测过加载（2026-09-27，`runtime/electron-v44.4.5-win32-x64/LittleSheep.exe`，napi 10 / modules 149）：`@huggingface/transformers` 4.3.0（`pipeline` 为函数）、`sharp` 0.35.4（PNG 2×2 编码成功）、`onnxruntime-node` 1.30.0（`InferenceSession.create` 可用）、`adm-zip` 0.6.1（往返文本逐字一致）、`node-pty` 1.1.0（`spawn` 可用）**全部直接加载成功**，与 Electron 36 下安装的是同一份二进制、**无需重编**——它们都走 N-API。但"加载成功"不等于上表那次 feature-extraction 的 512 维与自相似数值，所以那两行仍需按计划复跑，本节不提前下结论。
 
 **离线证明**：向量质量两次都在 `--assert-no-network` 下运行（脚本会在运行时把 `globalThis.fetch` 换成抛错实现并统计被拦截的尝试），说明 Embedding 完全使用本地已校验资产，没有隐式联网。
 

@@ -55,7 +55,7 @@ export function AgentToolRow({
           {summary}
         </span>
         {pathChip && (
-          <span className="agent-flow-path" title={targetPath} aria-label={`路径 ${targetPath}`}>{pathChip}</span>
+          <span className="agent-flow-path" aria-label={`路径 ${targetPath}`}>{pathChip}</span>
         )}
         <ToolLineDeltaBadge name={tool.name} input={tool.input} progress={tool.lineProgress} running={running} />
         <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
@@ -134,7 +134,10 @@ export function ToolLineDeltaBadge({
     running ? '仍在写入' : '',
   ].filter(Boolean).join('，')
   return (
-    <span className={`agent-flow-delta ${running ? 'is-live' : ''}`} aria-label={label} title={label}>
+    // Pointing at a row only brightens its type — no native `title` tooltip pops
+    // up over the transcript, and the label still carries the full reading for
+    // assistive technology.
+    <span className={`agent-flow-delta ${running ? 'is-live' : ''}`} aria-label={label}>
       <span className="agent-flow-delta-add">+{additions ?? 0}</span>
       {delta.deletions !== null && <span className="agent-flow-delta-remove">-{deletions ?? 0}</span>}
     </span>

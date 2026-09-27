@@ -1,8 +1,12 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 13:47:35
+最后更新：2026-09-27 19:24:34
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
+
+运行时基线（2026-09-27）：Electron 从 **36.9.5（Chromium 136 / Node 22）**升到 **44.4.5（Chromium 152 / Node 24.21）**。最近的起因是终端圆角要用 Chromium 139+ 的 `corner-shape`（见 `src/renderer/README.md`），但 39 早已不在 Electron 只维护最新三个大版本的窗口内，所以直接落到当前稳定线。两个原生依赖（`node-pty`、`@huggingface/transformers` 及其 onnxruntime-node）都是 N-API，与 Electron 36 下安装的是同一份二进制，升级后在主进程内实测直接加载成功，**无需重编**；`electron-vite` 仍是 2.3.0，main/preload 的 1340 个模块照常转换。**`docs/reference/cold-start-baseline/` 下的记录全部标着 `electronVersion: 36.9.5`，描述的是 Chromium 136 / Node 22 上的测量，跨版本对比前必须重跑 `pnpm measure:desktop-cold-start`（及 `measure:desktop-first-token`、`measure:desktop-large-history-startup`、`measure:desktop-large-root-startup`）。**
+
+升级 `electron` 依赖**不会**顺带换掉本机那份运行时副本，这一步是显式的。`scripts/prepare-littlesheep-runtime.mjs` 按**当前已安装的 Electron 版本**生成 `packages/app/runtime/electron-v<版本>-<平台>-<架构>/LittleSheep.exe`，并在 `node_modules/electron/dist/` 放一份同名 alias 供 `electron-vite` 启动；它挂在 `predev` 和 `prebuild` 上，所以 `pnpm run dev` / `pnpm run build` 各自先跑一次。`runtime/` 下本该只留一个 `<版本>-<平台>-<架构>` 目录：`electron-v36.9.5-win32-x64/` 是旧版本留下的孤儿，带 `-<毫秒时间戳>` 后缀的则是运行时被判定不完整时另建的新副本（原目录可能正被在跑的进程占用）。两者都是安装产物，被 `.gitignore` 忽略、不进 Git，确认新副本完整后可以删除，每个约占 290 MB。**桌面快捷方式也在同一条链路上**：`scripts/sync-desktop-shortcut.mjs` 挂在 `predev` / `prebuild` 之后（根目录 `build:app` 亦然），把快捷方式指向 prepare 刚产出的运行时，所以升级 Electron 后从桌面图标启动不会再停在旧引擎上。它默认尽力而为——非 Windows、桌面本来没有快捷方式、`packages/app/out` 还没构建出来，都只报告原因并退出 0，不会挡住 `pnpm run dev`，真正的失败也只警告而不中断；显式创建或排错用 `pnpm run refresh:desktop-shortcut`。`scripts/refresh-desktop-shortcut.ps1` 在目标、参数、工作目录、图标四项已一致时**不重写**文件——重存 `.lnk` 会丢掉资源管理器保存在文件之外的状态（图标位置、固定状态）——`-Force` 强制重写，`-IfPresent` 供上面那条尽力而为路径使用。本次升级已实测该路径：`runtime/electron-v44.4.5-win32-x64/LittleSheep.exe` 报 Electron 44.4.5 / Chromium 152.0.7977.130 / Node 24.21.0（N-API 10），`CSS.supports('corner-shape', 'squircle')` 为真、`squircle` 的计算值是 `superellipse(2)`。应用实际采用的指数是 **`superellipse(1.5)`**，不是 `squircle`：同一个 `border-radius` 下角框（半径×半径）被让出的面积，普通圆弧 21.5%、`superellipse(1.5)` 12.3%、`squircle` 只有 6.9%，也就是角只读起来普通圆角半径的 0.76x / 0.57x——`squircle` 会让 `10px` 的表面令牌看着刚过 5px。选 1.5 是为了让拐弯看得出来，同时一个半径令牌、一个控件尺寸都不动（依据、实测与取舍见 `src/renderer/README.md`）。
 
 运行中补充由 Local App API 写入当前 run 的事件队列，再由 Harness 在安全边界送进同一执行循环；Renderer 按事件身份显示一次用户消息。停止与补充的隔离窗口验收见 `pnpm run verify:composer-stop-append`。
 
@@ -10,7 +14,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 
 - **冷启动三段式**：窗口早于执行能力出现。①数据根迁移、用户布局、keychain、config、Memory v3（顺序是任何写入者的前置条件）；②UI 索引 + Local App API 监听 + 窗口加载渲染器；③Runner 与 RunRouter 建成后发布执行就绪。可选插件宿主在就绪之后异步加载，不阻塞执行能力。
 
-界面材质（2026-09-26）：输入栏弹出的添加菜单、权限/模型选择器与运行时选择器（含子菜单）统一成与输入框同一种半透明磨砂玻璃且不带描边，材质只在 `src/renderer/styles/06-composer.css` 的一条共享规则里声明；执行过程中模型说的话回到正文色（`.agent-transcript-prose`），步骤、工具与思考摘要仍保持 muted；侧边栏的玻璃另叠了一层从上到下的淡蓝→淡紫晕色（工作区面板不染色）；工作区树的文件夹与文件图标改成圆角字形并按各类型官方标识着色（文件夹琥珀色圆角板、文件圆角纸张 + 类型标记），展开缩进引导线改为随指针淡入淡出（默认隐藏），工作区两个筛选框去掉描边、只用填充区分。代码换行按钮按状态画两个不同图标（不换行／自动换行）。设置页不画框线，行、字段、卡片与徽标一律靠填充区分（语义色条、行分隔线与模态边界保留）。设置页正文按"分组卡片 + 行"组织，开关为蓝色胶囊。会话行行尾提供置顶 / 归档 / "…" 三个快捷控件；审阅 diff 的标题行改用代码区表面色，不再在审阅界面顶部留下一块更亮的横带。细节与实测值见 `src/renderer/composer/README.md`、`src/renderer/chat/README.md`、`src/renderer/sidebar/README.md` 与 `src/renderer/ui/README.md`。
+界面材质（2026-09-27）：输入栏弹出的添加菜单、权限/模型选择器与运行时选择器（含子菜单）与输入框是同一块半透明磨砂玻璃且不带描边——材质只在 `src/renderer/styles/06-composer.css` 的一条共享规则里声明，并且真正生效：`.composer` 自带 `backdrop-filter` 会让它成为弹层的 backdrop root、把添加菜单与权限选择器的模糊变成空操作（Chromium 152 实测条纹残留约 60/255 对输入框约 1/255），现已把材质挪到内缩的 `.composer::before`（`.composer` 只给 `position: relative`、不新增堆叠上下文），并把三个弹层的圆角对齐到输入框的 `var(--radius-composer-input)`（14px）、阴影收敛成同一份；执行过程中模型说的话回到正文色（`.agent-transcript-prose`），步骤、工具与思考摘要仍保持 muted；侧边栏的玻璃另叠了一层从上到下的淡蓝→淡紫晕色（工作区面板不染色）；工作区树的文件夹与文件图标改成圆角字形并按各类型官方标识着色（文件夹琥珀色圆角板、文件圆角纸张 + 类型标记），展开缩进引导线改为随指针淡入淡出（默认隐藏），工作区两个筛选框去掉描边、只用填充区分。代码换行按钮按状态画两个不同图标（不换行／自动换行）。设置页不画框线，行、字段、卡片与徽标一律靠填充区分（语义色条、行分隔线与模态边界保留）。设置页正文按"分组卡片 + 行"组织，开关为蓝色胶囊。会话行行尾提供置顶 / 归档 / "…" 三个快捷控件；审阅 diff 的标题行改用代码区表面色，不再在审阅界面顶部留下一块更亮的横带。任务胶囊从标题栏迁到聊天区最上方（侧边栏右侧的点击穿透浮层），宽度自适应，双击标题就地重命名，展开后「进行中」指令可终止、「已结束」过长自动折叠，胶囊与浮层同为输入框同款磨砂玻璃；聊天内容的上缘不超过胶囊上缘、下缘不超过输入框下缘。细节与实测值见 `src/renderer/composer/README.md`、`src/renderer/chat/README.md`、`src/renderer/sidebar/README.md` 与 `src/renderer/ui/README.md`。
 - **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。
 - **首屏按需加载**：Monaco、mermaid 与 `react-syntax-highlighter` 都不得进入入口 chunk。完整 Prism 构建单独求值约 380 ms，改为按需后入口 chunk −936 KB、真实首帧早约 148 ms（成对实测见 `docs/reference/cold-start-baseline/`）。**入口字节数在本应用里不是首帧的可靠代理**：Markdown 解析管线整条按需（−400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须用成对实测证明收益。
 - **就绪是唯一事实**：`src/shared/runtime-readiness-{contracts,ipc}.ts` 定义载荷与通道，`src/main/runtime-readiness.ts` 拥有状态，renderer 经 `src/renderer/runtime-readiness/` 消费。未就绪时 metadata 路由照常应答、Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；具体边界见 `src/main/local-app-api/README.md`。正常启动的阶段文字只在发送按钮旁就地显示（`composer-readiness-hint`），横跨整窗的条带只用于失败态与重试（CS-09）。
@@ -64,14 +68,19 @@ pnpm install
 pnpm --filter @littlesheep/app dev
 ```
 
-完整构建和桌面快捷方式刷新使用：
+完整构建使用：
 
 ```powershell
 pnpm --filter @littlesheep/app build
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-desktop-shortcut.ps1
 ```
 
-根目录的 `build-app.bat` 已把这两步集中到 `scripts/build-app.ps1`，并且不依赖固定仓库路径。构建前会由 `scripts/prepare-littlesheep-runtime.mjs` 在本机 Electron 安装目录生成同版本的 `LittleSheep.exe`；它是被 `.gitignore` 忽略的运行时副本，不进入 Git。应用构建输出位于 `packages/app/out/`，只保留在本机供 `LittleSheep.exe` 启动，不进入 Git。
+桌面快捷方式**不必再单独刷新**——`prebuild` 之后已经跟着同步到本次构建的运行时。只有首次创建或排错时才显式执行（在仓库根目录）：
+
+```powershell
+pnpm run refresh:desktop-shortcut
+```
+
+根目录的 `build-app.bat` 已把构建与刷新集中到 `scripts/build-app.ps1`，并且不依赖固定仓库路径。构建前会由 `scripts/prepare-littlesheep-runtime.mjs` 在本机 Electron 安装目录生成同版本的 `LittleSheep.exe`；它是被 `.gitignore` 忽略的运行时副本，不进入 Git。应用构建输出位于 `packages/app/out/`，只保留在本机供 `LittleSheep.exe` 启动，不进入 Git。
 
 ## 运行边界
 

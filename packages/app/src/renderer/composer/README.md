@@ -1,5 +1,5 @@
 # Renderer 输入栏
-最后更新：2026-09-27 09:09:57
+最后更新：2026-09-27 18:33:10
 
 这里负责用户输入、附件、工作区上下文、权限模式、模型/推理选择和上下文占用展示。
 
@@ -14,6 +14,6 @@
 
 输入栏的 Enter、Shift+Enter 与输入法组词规则位于 `../ui/enter-confirm.ts`，由 `app-shell/composer-view.tsx` 使用；不要在这里或视图中另写 Enter 判断。
 
-**输入栏弹出的面板与输入框同一种材质**：`styles/06-composer.css` 里有一条共享规则，把 `.add-menu-panel`、`.model-picker-panel`（权限选择器是它的一个变体）、`.runtime-menu-shell .runtime-picker-panel` 与其 `.runtime-submenu` 统一成 `background: var(--composer-surface)`（`rgba(32, 32, 32, 0.75)`）+ `backdrop-filter: blur(18px) saturate(135%)` + `border: 0`，也就是输入框原来的半透明磨砂玻璃、且不带描边。各面板的几何、圆角与阴影仍归自己所有，**材质只在这一处声明**——新增输入栏弹层时把它加进那条共享规则的选列表，不要在面板体里另写背景或边框。真实窗口实测（2026-09-26）：四个面板与 `.composer` 的计算值都是 `rgba(32, 32, 32, 0.75)` + `blur(18px) saturate(1.35)` + `border-width: 0px`；面板圆角 10px、输入框 14px 保持不变。
+**输入栏弹出的面板与输入框是同一块磨砂玻璃，且这次真的生效**（2026-09-27）：`styles/06-composer.css` 里有一条共享规则，把 `.add-menu-panel`、`.model-picker-panel`（权限选择器是它的一个变体）、`.runtime-menu-shell .runtime-picker-panel` 与其 `.runtime-submenu` 统一成 `background: var(--composer-surface)`（`rgba(32, 32, 32, 0.75)`）+ `backdrop-filter: blur(18px) saturate(135%)` + `border: 0`。**此前这条规则只有声明是对的**：`.composer` 自己带着 `backdrop-filter`，于是它是所有后代的 *backdrop root*——后代的模糊只能采样这个根里已经画出来的内容，而添加菜单与权限选择器是它的后代、又整个浮在它的盒子外面，背后什么都没画，`blur(18px)` 因此是彻底的空操作，两个面板读成"清晰页面透过 0.75 深色填充"而不是玻璃；模型选择器被 portal 到 `document.body`（backdrop root 是文档）所以早就正常——三个菜单这才互不一致。Chromium 152 实测（高对比条纹背景、条纹节距 16px、填充 0.75 下条纹残留约 64/255）：条纹在 `.add-menu-panel` / `.model-picker-panel` 内部保留约 60/255 的相邻亮度差，而输入框本身只有约 1/255；把完全相同的标记移出 `.composer` 立刻回到约 1/255，唯一变量就是 backdrop root。修法是把材质从 `.composer` 挪到内缩的 `.composer::before`（`inset: 0` + `z-index: -1` + `border-radius: var(--radius-composer-input)` + `corner-shape: var(--corner-shape)`）：`.composer` 变透明、不再是 backdrop root，三个弹层的模糊这才采到真实页面，而 `::before` 自己的模糊照旧。`z-index: -1` 让这层玻璃落在内容之下，`.composer` 只给 `position: relative`、不给 `z-index`，因此不新增堆叠上下文、弹层与 `.task-progress-anchor` 的相对次序不变；这层负层级能盖在页面背景之上，靠 `.composer-shell` 的 `z-index: 40`（`chat-layout-stability.test.ts` 钉住）。同时把三个弹层的圆角从 `var(--radius-ui)`（10px）对齐到输入框的 `var(--radius-composer-input)`（14px），并把 `.model-picker-panel` 的阴影从 `0 20px 54px rgba(0,0,0,0.46)` 收敛到与其余弹层一致的 `0 22px 54px rgba(0,0,0,0.44)`。各面板的几何仍归自己所有，**材质只在这一处声明**——新增输入栏弹层时把它加进那条共享规则的选列表，不要在面板体里另写背景或边框。
 
 模型能力和权限策略来自 shared/runtime 配置；这里不保存密钥，不自行执行文件或工具操作。

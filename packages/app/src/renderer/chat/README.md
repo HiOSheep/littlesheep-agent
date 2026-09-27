@@ -1,11 +1,11 @@
 # Renderer 对话
-最后更新：2026-09-27 13:49:20
+最后更新：2026-09-27 16:59:12
 
 
 
 ## 消息行与用量（2026-09-26）
 
-每条消息下面的操作行按阅读方向排列：agent 回复为 `[复制][分叉][用量][时间]`、靠左；用户消息为 `[时间][分叉][复制]`、靠右。用量有数据时与时间、分叉同排常显，详细数字仍在胶囊弹层。复制字形在 `ui/message-icons.tsx` 画成两张圆角纸，分叉字形画成一条路径分向两个端点。分叉按钮调用 `branchConversationFromMessage`：Main 在 `POST /sessions/:id/branch` 按选中的任意已保存用户消息或已完成助手回复截取原始历史，重绑新会话 ID，复制会话所属项目、工作区与权限模式，再打开新分支。
+每条消息下面的操作行按阅读方向排列：agent 回复为 `[复制][分叉][用量][时间]`、靠左；用户消息为 `[时间][分叉][复制]`、靠右。整行同进同退——光标停在这一行上、或焦点落进行内时才出现，详细数字仍在胶囊弹层。复制字形在 `ui/message-icons.tsx` 画成两张圆角纸，分叉字形画成一条路径分向两个端点。分叉按钮调用 `branchConversationFromMessage`：Main 在 `POST /sessions/:id/branch` 按选中的任意已保存用户消息或已完成助手回复截取原始历史，重绑新会话 ID，复制会话所属项目、工作区与权限模式，再打开新分支。
 
 原先压在每条回复下面的那行数字（四种 token、两级缓存命中、速率）改成**一颗胶囊**：`turn-usage-card.tsx` 的 `TurnUsageButton` 打开参考图那样的卡片（供应商/模型、缓存命中、未缓存输入、缓存读取、缓存写入、输出、其中推理、用时、输出速率、请求数），逐调用缓存明细也搬进同一张卡。诚实规则原样保留并集中到 `turnUsageFigures`/`turnOutputRate`：缓存比例只有在每个请求都报了缓存 token 时才是百分比，否则说"部分提供/未提供"；未被上报的数字写"未提供"而不是 0；**统计不完整的回合不给速率**（`usageCompleteness === 'partial'` 直接返回 null），速率优先用 provider 自己计时的请求，没有才退回回合时长。
 ## 执行过程的展示（2026-09-26）
@@ -53,3 +53,21 @@
 **工具行压缩 + 路径独立成块。** `.agent-flow-row` 从 `min-height: 38px` / `padding: 4px` 降到 `32px` / `2px`（14 行常见回合省掉一条消息的高度）。搜索类工具原先把查询词和路径拼成一个字符串（`query · C://…`），现在摘要只留查询词，路径走 `.agent-flow-path` 自己的格子（`shortToolPath` 保留末尾三段），`.agent-tool-row` 的网格因此是 8 列。
 
 **产出成果卡瘦身。** 头部曾是一个 58px 图标撑起 88px 的横幅，比它下面三个文件行还高。现在头部一行 30px（图标 20px），行高 46px→28px、差值按钮 38px→28px、“全部 N 个文件”48px→28px，三个文件的卡片从约 300px 降到约 120px。顺带把卡片里硬编码的 `#343436` / `#737376` / `#f4f4f5` / `#dedee0` 换成 `--surface-3` / `--border-strong` / `--text` / `--muted`，避免以后做亮色主题时整批失效。
+
+## 折叠不再瞬开瞬关，任务行悬停只亮字（2026-09-27）
+
+**每一处折叠都走同一个原语。** `docs/principles/ui-interaction-guidelines.md` 要求"展开/折叠表面使用 `disclosure-panel` 模式，不允许瞬间挂载或卸载"，但执行流里还有四处用原生 `<details>`（思考行、系统提示词、AgentStepGroup、工具参数准备行），过程折叠面则用 `hidden` 属性切 `display`——点一下就是瞬时切换，于是同一屏里工具行是平滑的、它上一行却是硬跳。这五处现在全部走 `chat/disclosure-panel.tsx` 的 `DisclosurePanel`：面板始终留在 DOM 里，`.agent-flow-disclosure` 用 `grid-template-rows: 0fr → 1fr` 配 `opacity` 过渡（`--motion-base` / `--motion-fast`），关闭态由 `inert` + `aria-hidden` 把子树移出 tab 顺序，`disclosure-panel:not(.open)` 继续持有 `interaction-visibility.test.ts` 断言的"关闭时禁指针"。`agent-tool-row.tsx` 里既有的 `agent-tool-details-panel` 是同一技术的既有实现，新的 `.agent-flow-disclosure` 就是它的共享名字。
+
+**两条契约断言随之演进，方向是收紧而不是放宽。** `chat-layout-stability.test.ts` 与 `assistant-turn.test.ts` 原先断言的是**实现手段**——"过程正文必须带 `hidden={!processOpen}`"、"系统提示词必须是 `<details>`"。那两条断言恰好把修好这件事本身挡住了：它们钉住的正是要换掉的东西。现在改成断言新结构（`DisclosurePanel` + 常驻面板 + `disclosure-panel` 语义类），`interaction-visibility.test.ts` 的清单也把新面板纳入；"不许瞬时挂载/卸载"这条约束由此才真正可执行。
+
+**任务行不再弹原生悬浮框。** `agent-tool-row.tsx` 的路径块与行数徽章原先是聊天区里两个漏网的 `title=`（原生悬浮提示）；仓库的悬浮提示统一在 `ui/floating-help.tsx`，聊天区不在其中。两处 `title` 已删除，`aria-label` 保留（无障碍名称不变），悬停反馈改成**只改文字色**——`button.agent-flow-row:hover` / `:focus-visible` 把 `.agent-flow-title`、`.agent-flow-summary`、`.agent-flow-meta`、`.agent-flow-path` 提到 `--text-strong`，不再铺 `rgba(255, 255, 255, 0.028)` 的背景块；已展开的工具行（`.agent-tool-call.open > .agent-tool-row`）同样只亮字。
+
+**执行流的字号回到同一梯度。** `08-activity.css` 里 `.agent-flow-row` 曾硬编码 `font-size: 15px`——比对话正文（`--chat-message-font-size`，14px）还大，且与它所在容器 `.assistant-activity-flow` 的 13px 打架；行内 meta/path 12px、行数徽章 11px 也是散值。现在该文件的 **20 处 `font-size` 全部走 `:root` 的三个令牌**：行 13px（`--activity-row-font-size`）、元信息 12px（`--activity-meta-font-size`）、徽章 11px（`--activity-badge-font-size`）。
+
+## 操作行整行同进同退，间距按字形量（2026-09-27）
+
+**用量胶囊不再常显。** `05-chat-messages.css` 里 `.message-meta` 一直是 `opacity: 0`、靠 `:hover`/`:focus-within` 淡入，但后面跟了一条 `.message-meta:has(.message-meta-usage) { opacity: 1 }`：带用量胶囊的助手回复整行被钉住常显。结果同一行里胶囊永远亮着、复制/分叉/时间却随悬停闪进闪出——看起来不像同一层表面的东西，也是那一行里唯一无法让它消失的元素。那条例外已删除，复制、分叉、用量、时间**同进同退**。
+
+`pointer-events` 即使 `opacity: 0` 也保持 `auto`：隐藏的行仍是一个活的命中面（鼠标要能落在它上面才能把它唤出来），不是一条死带。这条靠 `message-meta.test.ts` 守住——断言不是"存在一条 opacity 规则"，而是**枚举每一条设置该行自身 opacity 的规则**，要求只有"基础隐藏"和"共享的 hover/focus 显示"两种状态；把 `:has(...)` 例外加回去会立刻失败。
+
+**间距从"命中盒之间"改到"字形之间"。** 图标按钮原本是 28×28 的盒子套 16px 字形，每边藏着 6px 看不见的内边距，于是行自己的 8px `gap` 渲染出来是：字形↔字形 20px、字形↔用量胶囊 14px、胶囊↔时间 8px——三级递减，同一行里三个不一样的节奏。现在按钮盒收到 **24×24**（字形仍 16px，每边 4px，24 也是这一行允许的最小点击目标），再用 `margin-inline: -4px` 把这 4px 交还给布局，行自己补 `padding-inline: 4px`，首尾图标因此与消息正文对齐。三处可见间距统一为 **8px**，且相邻命中盒正好相接、不重叠（悬停不会有死区，也不会有两块区域争同一次点击）。四个数字（盒 24、字形 16、行 padding 4、按钮负 margin -4）在 `message-meta.test.ts` 里一起断言，单独动其中一个就会破坏节奏。

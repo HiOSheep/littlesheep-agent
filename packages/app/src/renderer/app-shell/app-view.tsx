@@ -35,9 +35,6 @@ export function AppView({ controller }: { controller: AppViewController }) {
     coreWorkspace,
     overlays,
   } = controller
-  // The titlebar's task pill reads what the controller already resolved for it: the conversation on
-  // screen, the newest run activity, and the chat clock, so its elapsed times keep advancing.
-  const titlebarTask = controller.titlebarTask
   return (
     <LinkNavigationProvider value={{
       openInside: openHyperlinkInside,
@@ -62,7 +59,6 @@ export function AppView({ controller }: { controller: AppViewController }) {
             sidebarToggleTip={sidebarToggleTip}
             canNavigateBack={canNavigateBack}
             canNavigateForward={canNavigateForward}
-            titlebarTask={titlebarTask}
             onToggleSidebar={toggleSidebar}
             onBack={navigateBack}
             onForward={navigateForward}

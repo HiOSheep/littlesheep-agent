@@ -16,6 +16,7 @@ import {
 import { visibleActivitySteps } from './activity-visibility'
 import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
 import { AgentToolRow, PreparingLineDeltaBadge, toolActionLabel } from './agent-tool-row'
+import { DisclosurePanel } from './disclosure-panel'
 import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
 import type {
@@ -102,14 +103,14 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
         )}
         <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
       </button>
-      <div className="assistant-process-content" hidden={!processOpen}>
+      <DisclosurePanel open={processOpen} className="assistant-process-content">
         {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
         {(activity.transcript?.length ?? 0) > 0
           ? <AssistantTranscript transcript={activity.transcript ?? []} activity={activity} now={now} onOpenFile={onOpenFile} compact={compactCompleted} />
           : compactCompleted
             ? <LegacyActivitySummary activity={activity} />
             : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
-      </div>
+      </DisclosurePanel>
       {responseVisible && (
         <div className="message-with-meta assistant">
           <div
@@ -212,11 +213,13 @@ function AgentStepGroup({
   const [open, setOpen] = useState(true)
 
   return (
-    <details className={`agent-step-group ${step.status}`} data-step-id={step.stepId} open={open}>
-      <summary className={`agent-flow-row agent-step-row ${running ? 'is-active' : ''}`} onClick={(event) => {
-        event.preventDefault()
-        setOpen((value) => !value)
-      }}>
+    <div className={`agent-step-group ${step.status}`} data-step-id={step.stepId}>
+      <button
+        type="button"
+        className={`agent-flow-row agent-step-row ${running ? 'is-active' : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
         <span className={`agent-flow-glyph agent-step-glyph ${step.status}`} aria-hidden="true"><ActivityGlyph kind="step" /></span>
         <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>
           {running ? '执行' : liveStepStatusLabel(step.status)}
@@ -226,29 +229,31 @@ function AgentStepGroup({
           <InlineMarkdown text={step.title} />
         </span>
         <span className="agent-flow-meta">{formatMaybeDuration(step.startedAt, step.endedAt, now)}</span>
-        <span className="agent-flow-chevron" aria-hidden="true" />
+        <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
         {running && (
           <span className="agent-flow-sr-only" role="status" aria-live="polite">
             正在执行：{step.title}
           </span>
         )}
-      </summary>
-      {description && (
-        <div className="agent-flow-copy">
-          <Markdown text={description} />
-        </div>
-      )}
-      {tools.length > 0 && (
-        <div className="agent-flow-children">
-          <AgentToolList tools={tools} now={now} onOpenFile={onOpenFile} />
-        </div>
-      )}
-      {result && (
-        <div className={`agent-flow-copy agent-step-result ${step.error ? 'error' : ''}`}>
-          <Markdown text={result} />
-        </div>
-      )}
-    </details>
+      </button>
+      <DisclosurePanel open={open}>
+        {description && (
+          <div className="agent-flow-copy">
+            <Markdown text={description} />
+          </div>
+        )}
+        {tools.length > 0 && (
+          <div className="agent-flow-children">
+            <AgentToolList tools={tools} now={now} onOpenFile={onOpenFile} />
+          </div>
+        )}
+        {result && (
+          <div className={`agent-flow-copy agent-step-result ${step.error ? 'error' : ''}`}>
+            <Markdown text={result} />
+          </div>
+        )}
+      </DisclosurePanel>
+    </div>
   )
 }
 
@@ -403,20 +408,7 @@ export function AssistantTranscript({
     <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
       {rows.map((entry) => {
         if (entry.kind === 'system') {
-          return (
-            <details key={entry.id} className="agent-transcript-reasoning system" data-transcript-entry={entry.id}>
-              <summary className="agent-flow-row">
-                <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
-                <span className="agent-flow-title">系统提示词</span>
-                <span className="agent-flow-separator" aria-hidden="true" />
-                <span className="agent-flow-summary">{shortActivityText(entry.text, 200)}</span>
-                <span className="agent-flow-chevron" aria-hidden="true" />
-              </summary>
-              <div className="agent-transcript-details">
-                <Markdown text={entry.text} />
-              </div>
-            </details>
-          )
+          return <SystemPromptRow key={entry.id} id={entry.id} text={entry.text} />
         }
         if (entry.kind === 'reasoning') {
           return <ReasoningRow key={entry.id} id={entry.id} text={entry.text} status={entry.status} />
@@ -430,27 +422,7 @@ export function AssistantTranscript({
           )
         }
         if (entry.kind === 'preparing') {
-          const action = entry.name ? toolActionLabel(entry.name) : '调用工具'
-          const status = entry.status === 'running' ? '正在生成参数'
-            : entry.status === 'done' ? '参数已生成'
-              : entry.status === 'aborted' ? '已中止' : '生成失败'
-          return (
-            <details key={entry.id} className={`agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
-              <summary className="agent-flow-row">
-                <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
-                <span className="agent-flow-title">{action === '调用' ? entry.name : action}</span>
-                <span className="agent-flow-separator" aria-hidden="true" />
-                <span className="agent-flow-summary">{entry.argumentSummary || status}</span>
-                <PreparingLineDeltaBadge progress={entry.lineProgress} />
-                <span className="agent-flow-chevron" aria-hidden="true" />
-              </summary>
-              <div className="agent-flow-details">
-                <div>{status}{entry.name ? ` · 工具：${entry.name}` : ''}</div>
-                {entry.argumentSummary && <div>目标：{entry.argumentSummary}</div>}
-                <div>已接收 {entry.receivedCharacters} 个参数字符。实际执行结果见后续工具记录。</div>
-              </div>
-            </details>
-          )
+          return <PreparingRow key={entry.id} entry={entry} />
         }
         const tool = tools.get(entry.callId)
         return tool
@@ -464,6 +436,65 @@ export function AssistantTranscript({
     </div>
   )
 }
+
+/**
+ * The system prompt the run was actually started with. It is reference material
+ * and stays folded behind its own row — but folding it has to be the same smooth
+ * disclosure as every other row, not an instant snap.
+ */
+function SystemPromptRow({ id, text }: { id: string; text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="agent-transcript-reasoning system" data-transcript-entry={id}>
+      <button type="button" className="agent-flow-row" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
+        <span className="agent-flow-title">系统提示词</span>
+        <span className="agent-flow-separator" aria-hidden="true" />
+        <span className="agent-flow-summary">{shortActivityText(text, 200)}</span>
+        <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
+      </button>
+      <DisclosurePanel open={open}>
+        <div className="agent-transcript-details">
+          <Markdown text={text} />
+        </div>
+      </DisclosurePanel>
+    </div>
+  )
+}
+
+
+/**
+ * A tool call whose arguments were still streaming. It becomes a real tool row
+ * once `tool_start` arrives; until then it expands on the same disclosure
+ * primitive, so the two rows read as one continuous gesture.
+ */
+function PreparingRow({ entry }: { entry: Extract<TranscriptEntry, { kind: 'preparing' }> }) {
+  const [open, setOpen] = useState(false)
+  const action = entry.name ? toolActionLabel(entry.name) : '调用工具'
+  const status = entry.status === 'running' ? '正在生成参数'
+    : entry.status === 'done' ? '参数已生成'
+      : entry.status === 'aborted' ? '已中止' : '生成失败'
+  return (
+    <div className={`agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
+      <button type="button" className="agent-flow-row" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
+        <span className="agent-flow-title">{action === '调用' ? entry.name : action}</span>
+        <span className="agent-flow-separator" aria-hidden="true" />
+        <span className="agent-flow-summary">{entry.argumentSummary || status}</span>
+        <PreparingLineDeltaBadge progress={entry.lineProgress} />
+        <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
+      </button>
+      <DisclosurePanel open={open}>
+        <div className="agent-flow-details">
+          <div>{status}{entry.name ? ` · 工具：${entry.name}` : ''}</div>
+          {entry.argumentSummary && <div>目标：{entry.argumentSummary}</div>}
+          <div>已接收 {entry.receivedCharacters} 个参数字符。实际执行结果见后续工具记录。</div>
+        </div>
+      </DisclosurePanel>
+    </div>
+  )
+}
+
 
 function ActiveActivityStatus({ activity }: { activity: AssistantTurnActivity }) {
   if (activity.status !== 'running') return null

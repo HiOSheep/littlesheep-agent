@@ -36,7 +36,7 @@
   width: min(820px, 100%);
   margin: 0 0 10px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--activity-row-font-size);
 }
 
 .agent-reasoning,
@@ -67,7 +67,7 @@
   border: 0;
   border-radius: var(--radius-ui);
   font-family: var(--font);
-  font-size: 15px;
+  font-size: var(--activity-row-font-size);
   font-weight: 400;
   line-height: 28px;
   letter-spacing: 0;
@@ -85,7 +85,7 @@
   max-width: min(34%, 320px);
   overflow: hidden;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -99,30 +99,38 @@
 }
 
 button.agent-flow-row {
-  transition:
-    color var(--motion-fast) var(--motion-ease),
-    background-color var(--motion-fast) var(--motion-ease);
+  transition: color var(--motion-fast) var(--motion-ease);
 }
 
-button.agent-flow-row:hover,
-button.agent-flow-row:focus-visible,
-.agent-tool-call.open > .agent-tool-row {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.028);
-  outline: 0;
+/* Pointing at an execution row is a type highlight and nothing else: the row's own
+   text brightens, so scanning a run never paints boxes over the transcript and no
+   surface pops up under the cursor. A summary that already carries a state colour
+   (an error) and the line-count badge keep their ink. */
+button.agent-flow-row:hover .agent-flow-title,
+button.agent-flow-row:focus-visible .agent-flow-title,
+button.agent-flow-row:hover .agent-flow-summary:not(.is-error),
+button.agent-flow-row:focus-visible .agent-flow-summary:not(.is-error),
+button.agent-flow-row:hover .agent-flow-meta,
+button.agent-flow-row:focus-visible .agent-flow-meta,
+button.agent-flow-row:hover .agent-flow-path,
+button.agent-flow-row:focus-visible .agent-flow-path,
+.agent-tool-call.open > .agent-tool-row .agent-flow-title,
+.agent-tool-call.open > .agent-tool-row .agent-flow-summary:not(.is-error),
+.agent-tool-call.open > .agent-tool-row .agent-flow-meta,
+.agent-tool-call.open > .agent-tool-row .agent-flow-path {
+  color: var(--text-strong);
+}
+
+/* Keyboard focus still needs a visible ring — a colour shift alone is not a focus
+   indicator. */
+button.agent-flow-row:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
 }
 
 button.agent-flow-row.no-details,
 .agent-tool-row:not([aria-expanded]) {
   cursor: default;
-}
-
-button.agent-flow-row.no-details:hover,
-button.agent-flow-row.no-details:focus-visible,
-.agent-tool-row:not([aria-expanded]):hover,
-.agent-tool-row:not([aria-expanded]):focus-visible {
-  color: var(--muted);
-  background: transparent;
 }
 
 .agent-flow-row.is-active::after {
@@ -213,34 +221,16 @@ button.agent-flow-row.no-details:focus-visible,
   margin: 0;
 }
 
-.agent-transcript-reasoning > summary {
+/* Reasoning and step rows fold on the shared disclosure primitive now, so the row
+   itself is a plain button and the chevron follows its own `.open` class instead
+   of a `<details>` open attribute. */
+.agent-transcript-reasoning > .agent-flow-row {
   /* Renderer policy: interactive rows keep the default cursor. */
-  list-style: none;
   opacity: 0.82;
 }
 
-.agent-transcript-reasoning > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-transcript-reasoning.running > summary .agent-reasoning-glyph {
+.agent-transcript-reasoning.running > .agent-flow-row .agent-reasoning-glyph {
   color: var(--warning);
-}
-
-.agent-transcript-reasoning[open] > summary .agent-flow-chevron {
-  transform: rotate(90deg);
-}
-
-.agent-step-group > summary {
-  list-style: none;
-}
-
-.agent-step-group > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-step-group[open] > summary .agent-flow-chevron {
-  transform: rotate(90deg);
 }
 
 .agent-transcript-reasoning .agent-transcript-details {
@@ -248,7 +238,7 @@ button.agent-flow-row.no-details:focus-visible,
   padding: 8px 10px;
   border-left: 2px solid color-mix(in srgb, var(--muted-2) 40%, transparent);
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   opacity: 0.9;
 }
 
@@ -322,7 +312,7 @@ button.agent-flow-row.no-details:focus-visible,
 .agent-transcript-summary {
   margin: 4px 0;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   line-height: 22px;
 }
 
@@ -338,7 +328,7 @@ button.agent-flow-row.no-details:focus-visible,
 
 .agent-flow-meta {
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   font-weight: 400;
   line-height: 24px;
   white-space: nowrap;
@@ -372,7 +362,7 @@ button.agent-flow-row.no-details:focus-visible,
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--activity-row-font-size);
   text-align: left;
 }
 
@@ -383,7 +373,7 @@ button.agent-flow-row.no-details:focus-visible,
 .assistant-process-counts,
 .assistant-process-verification {
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   font-variant-numeric: tabular-nums;
 }
 
@@ -391,21 +381,9 @@ button.agent-flow-row.no-details:focus-visible,
   white-space: nowrap;
 }
 
-.assistant-process-content[hidden] {
-  display: none;
-}
-
-.agent-tool-preparing > summary {
-  list-style: none;
-}
-
-.agent-tool-preparing > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-tool-preparing[open] > summary .agent-flow-chevron {
-  transform: translateY(-1px) rotate(45deg);
-}
+/* The process body and the preparing rows are disclosure panels now; see
+   .agent-flow-disclosure below. `hidden` snapped the whole transcript open and
+   shut with no transition at all. */
 
 .agent-flow-row.no-details .agent-flow-chevron,
 .agent-tool-row:not([aria-expanded]) .agent-flow-chevron {
@@ -429,7 +407,7 @@ button.agent-flow-row.no-details:focus-visible,
   margin-left: 22px;
   padding: 1px 2px 5px;
   color: var(--muted-2);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   line-height: 1.55;
 }
 
@@ -478,6 +456,34 @@ button.agent-flow-row.no-details:focus-visible,
 }
 
 .agent-tool-details-panel-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* One disclosure primitive for every fold in the transcript. The panel keeps its
+   box in the layout at 0fr and grows into 1fr, so opening and closing are the same
+   transition played in two directions. The interaction guidelines forbid a
+   disclosure that mounts or unmounts instantly, which is exactly what the native
+   `<details>` rows did — and what `hidden` did for the process body. The tool
+   details above use the same technique; this is the shared name the rest of the
+   transcript folds on. */
+.agent-flow-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--motion-base) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+.agent-flow-disclosure.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.agent-flow-disclosure-inner {
   min-height: 0;
   overflow: hidden;
 }
@@ -537,7 +543,7 @@ button.agent-flow-row.no-details:focus-visible,
 
 .agent-reasoning-entry-meta {
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--activity-badge-font-size);
   white-space: nowrap;
 }
 
@@ -575,7 +581,7 @@ button.agent-flow-row.no-details:focus-visible,
   background: var(--surface-3);
   border-radius: var(--radius-ui);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   line-height: 1.5;
 }
 
@@ -591,7 +597,7 @@ button.agent-flow-row.no-details:focus-visible,
   background: transparent;
   border: 0;
   font-family: var(--font);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   text-align: left;
 }
 
@@ -632,7 +638,7 @@ button.agent-flow-row.no-details:focus-visible,
 .agent-tool-detail-label {
   color: var(--muted-2);
   font-family: var(--font);
-  font-size: 10px;
+  font-size: var(--activity-badge-font-size);
   font-weight: 700;
   line-height: 14px;
 }
@@ -646,7 +652,7 @@ button.agent-flow-row.no-details:focus-visible,
   background: transparent;
   border: 0;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -678,7 +684,7 @@ button.agent-flow-row.no-details:focus-visible,
   max-width: min(760px, 84%);
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
   opacity: 1;
   transition:
     opacity var(--motion-slow) var(--motion-ease);
@@ -770,7 +776,7 @@ button.agent-flow-row.no-details:focus-visible,
   justify-content: flex-end;
   gap: 7px;
   color: var(--muted-2);
-  font-size: 11px;
+  font-size: var(--activity-badge-font-size);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
@@ -829,7 +835,7 @@ button.agent-flow-row.no-details:focus-visible,
   min-width: 0;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--activity-badge-font-size);
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -853,7 +859,7 @@ button.agent-flow-row.no-details:focus-visible,
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
-  font-size: 12px;
+  font-size: var(--activity-meta-font-size);
 }
 
 .tool-live-item {
@@ -878,7 +884,7 @@ button.agent-flow-row.no-details:focus-visible,
 .tool-live-err {
   min-width: 0;
   color: var(--feedback-danger-text);
-  font-size: 11px;
+  font-size: var(--activity-badge-font-size);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -904,7 +910,7 @@ button.agent-flow-row.no-details:focus-visible,
   display: inline-flex;
   flex: 0 0 auto;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--activity-badge-font-size);
   font-variant-numeric: tabular-nums;
 }
 

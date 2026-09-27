@@ -6,6 +6,7 @@ import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
+import { RunningPill } from '../sidebar/running-pill'
 import { TraceCard } from '../TraceCard'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import type { ChatViewController } from './app-controller-projections'
@@ -37,6 +38,10 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     openReviewInWorkspace,
     branchConversationFromMessage,
     projectPath,
+    titlebarTask,
+    renameSession,
+    stop,
+    setControlTip,
   } = controller
   // The turn's files are opened from here, so their line counts come from the same workspace.
   const artifactsWorkspaceRoot = projectPath
@@ -147,6 +152,22 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           ))}
           </div>
         </div>
+        {titlebarTask.hasSession && (
+          // The task pill floats at the top of the chat column, to the right of the sidebar: the
+          // conversation on screen plus what it is running, hugging its own content's width.
+          <div className="running-pill-shell">
+            <RunningPill
+              title={titlebarTask.title}
+              activity={titlebarTask.activity}
+              now={titlebarTask.now}
+              onRename={(next) => {
+                if (currentSession) void renameSession(currentSession, next)
+              }}
+              onStop={stop}
+              onTipChange={setControlTip}
+            />
+          </div>
+        )}
         {jumpMounted && (
           <button
             type="button"

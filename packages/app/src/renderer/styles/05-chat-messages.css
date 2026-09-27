@@ -7,12 +7,24 @@
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
+  /* The content's bottom edge never reaches past the input's own bottom edge: the viewport is
+     clipped there instead of letting text slide into the strip below the composer. */
+  margin-bottom: var(--composer-shell-inset-bottom);
   padding: 24px var(--chat-content-gutter)
     calc(var(--composer-overlay-height) + var(--composer-message-gap))
     calc(var(--chat-content-gutter) + var(--chat-workspace-scrollbar-overlap));
   background: var(--workspace-code-surface);
   scroll-padding-bottom:
     calc(var(--composer-overlay-height) + var(--composer-message-gap));
+}
+
+/* While the task pill floats over the chat column, the transcript's top edge is clipped at the
+   pill's own top edge — content can scroll under the pill's glass but never appears above it —
+   and at rest the first line starts below the pill. */
+.chat:has(> .running-pill-shell) .messages {
+  margin-top: var(--task-pill-inset-top);
+  padding-top: var(--task-pill-overlay-height);
+  scroll-padding-top: var(--task-pill-overlay-height);
 }
 
 .messages-content {
@@ -232,6 +244,9 @@
   border-radius: 0;
 }
 
+/* The action row is a hover surface: hidden entirely until the pointer is on it or focus lands
+   inside it. `pointer-events` stays `auto` even at zero opacity — that is what lets the pointer
+   reach the row and reveal it — so the hidden row is still a live hit area, not a dead band. */
 .message-meta {
   display: flex;
   align-items: center;
@@ -240,6 +255,7 @@
   gap: 8px;
   height: 28px;
   margin-top: 4px;
+  padding-inline: 4px;
   color: rgba(218, 218, 218, 0.48);
   font-size: 14px;
   line-height: 1;
@@ -260,20 +276,24 @@
 .message-meta-user .message-meta-branch { order: 2; }
 .message-meta-user .message-meta-copy { order: 3; }
 
+/* Every child of the row follows this one rule: copy, branch, usage pill and time arrive and leave
+   together. A row carrying the usage pill used to be pinned visible so its numbers could be read
+   at a glance; that exception is gone, because a control that never fades out while its own
+   siblings do reads as a different kind of surface. */
 .message-meta:hover,
 .message-meta:focus-within {
   opacity: 1;
 }
 
-.message-meta:has(.message-meta-usage) {
-  opacity: 1;
-}
-
+/* 24px box around a 16px glyph: the 4px of padding on each side is what the negative margin below
+   hands back to the layout, so the row's spacing is measured between glyphs and pills rather than
+   between invisible hit areas. 24px is also the smallest target the row is allowed to ship. */
 .message-meta-copy {
   display: inline-grid;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-inline: -4px;
   place-items: center;
   padding: 0;
   color: inherit;
@@ -896,8 +916,9 @@
 .message-meta-branch {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
+  margin-inline: -4px;
   padding: 0;
   color: inherit;
   background: transparent;

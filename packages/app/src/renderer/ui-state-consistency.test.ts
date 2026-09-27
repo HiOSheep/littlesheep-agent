@@ -35,7 +35,9 @@ describe('shared state sample', () => {
   it('uses one danger text color for every error surface', () => {
     // After the UX-14 sweep no surface may hard-code a light red again: the two
     // role tokens carry the only two values, and #ffd8d8 is the control tone.
-    const hardCoded = [...styles.matchAll(/color:\s*#(?:ffd2d2|ffd8d8|e8c5bd|f2b6b6|f0a9a9|e5a6a6)\b/gu)]
+    // `#ffd6d6`, `#f0b2b2` and `#d89c9c` were the three stragglers the sweep left
+    // in the plugin diagnostics and trust surfaces; they are tokens now too.
+    const hardCoded = [...styles.matchAll(/color:\s*#(?:ffd2d2|ffd8d8|e8c5bd|f2b6b6|f0a9a9|e5a6a6|ffd6d6|f0b2b2|d89c9c)\b/gu)]
       .map((match) => match[0])
     expect(hardCoded).toEqual([])
 
@@ -54,16 +56,25 @@ describe('shared state sample', () => {
       '.runtime-event-notice.error',
       '.composer-error',
       '.channel-row.failure .channel-name small',
+      '.plugin-diagnostics > strong',
+      '.plugin-diagnostics small',
+      '.plugin-trust-confirmation-inner strong',
     ]) {
       expect(declarations(selector, 'color: var(--feedback-danger-text)'), selector).toBe(true)
     }
 
     // Controls keep their own brighter danger tone.
-    for (const selector of ['.danger-btn', '.send-round.stop', '.checkpoint-recovery-actions button.danger']) {
+    for (const selector of [
+      '.danger-btn',
+      '.send-round.stop',
+      '.checkpoint-recovery-actions button.danger',
+      '.plugin-trust-actions button.danger',
+    ]) {
       const controls = selector === '.danger-btn' ? declarations(selector, 'color: var(--danger-control-text)') : true
       expect(controls, selector).toBe(true)
     }
     expect(declarations('.danger-btn', 'color: var(--danger-control-text)')).toBe(true)
+    expect(declarations('.plugin-trust-actions button.danger', 'color: var(--danger-control-text)')).toBe(true)
 
     expect(declarations('.dialog-error', 'border: 1px solid var(--feedback-danger-border)')).toBe(true)
   })
