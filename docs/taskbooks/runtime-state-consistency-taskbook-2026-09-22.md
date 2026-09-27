@@ -1,6 +1,6 @@
 # Runtime 状态一致性与必要记忆任务书 2026-09-22
 
-最后更新：2026-09-27 07:56:10
+最后更新：2026-09-27 08:03:30
 
 状态（2026-09-27 更新）：**RS-05（删除压缩自动学习）与 RS-06A（向量只在深搜边界）已实现**（`packages/runner`、`packages/session`、`packages/memory-tree`，含回归测试与 `check:repo` 全绿）；文件一致性主线（RS-00～RS-04）此前已实现并推送；**RS-06（受控 memory_write）、RS-06B（Agent 纠正/忘记）、RS-07（真实验收）、RS-08（收口退役）尚未开始**。
 
@@ -176,7 +176,7 @@
 ### RS-08｜最小文档、迁移与收口（P1，随实现同步）
 
 - [ ] 每批只更新实际变更 package/领域 README，系统时钟时间行与源码同次提交；稳定契约汇入项目状态、架构原则、工具/Memory 文档和运行时指令，不把计划写成已实现。
-- [ ] **旧数据根升级演练尚未得出可用结论（2026-09-27 记录）**：尝试用真实 runner + 真实存储重建"旧构建留下的 pending 压缩候选"，再让当前构建打开该数据根。已确认的事实：① 兼容入口是 `packages/runner/src/session-continuity.ts` 的 `terminateLegacyCompactionMemory`，它只处理 `version === 2 && summaryCommittedAt` 的 pending 事务，终止后写入 `rejected` 结果与 `terminatedAt`/`terminationReason`；② 直接调用 `CompactionStore.terminateMemoryProposal` 的语义（保留文件、重复终止 no-op）已有单元测试覆盖；③ 但用真实压缩产出的 summary + 手工补写 `memoryProposal` 复现的事务，在真实运行中**未停留在 pending 路径**：若 precondition 与真实前驱摘要不一致会被隔离到 `failed/`，修正后则被消费掉（`records/` 里能看到该 summary 已持久化，pending 文件消失），因此"终止后文件保留"这一条在**真实运行路径**上尚未复现。下一步：定位删除该 pending 文件的确切分支（`compaction-store.commit` 的 `unlink` 分支与 `recoverPending` 的目录清理是候选），并构造一个不经手工补写、真正由兼容路径接管的旧状态。
+- [ ] **旧数据根升级演练：已定位到确切阻断点（2026-09-27）**。用真实 runner + 真实存储，经**发布 API**（`SessionManager.commitCompaction(sessionId, summary, precondition, proposal)`）构造旧状态是可行的：manager 确实留下了带 `memoryProposal` 的 pending 文件（本轮已验证）。但当前构建打开该数据根时，**会话恢复先于 runner 的兼容终止**：`SessionCompactionStore.recover` 对已提交事务（`summaryCommittedAt` 已设置）仍会重放 `persistProjection` + `applyMetadata`，后者按 `expectedPreviousSummaryId` 与**当前活动摘要**比较 → 抛 `StaleCompactionError`（实测：`Compaction predecessor changed from <旧> to <pending 自己的摘要>`）→ 该 pending 事务（连同它的 memoryProposal）被移到 `failed/`。于是 RS-05 期望的"终止并保留审计（rejected + terminatedAt）"在真实运行路径上不会发生，候选只在 `failed/` 里留存且**没有 outcome**。已做的改进（保留）：已提交事务遇到**非终态**失败时不再被隔离（隔离只留给真正的冲突），因此瞬时写入失败不会连带丢掉待终止的提案；`packages/session` 55 项测试全绿，含 C10A 的"较旧提案仍被隔离"。**待办的两条候选修法**：① 让 runner 的兼容终止在**会话恢复之前**运行（或在恢复时跳过带未终止 proposal 的已提交事务）；② 在 store 里区分"pending 摘要正是当前活动摘要"（应保留给兼容路径终止）与"pending 摘要已被更新摘要取代"（C10A，应隔离）。复现步骤与脚本草稿已在本轮验证过，重建成本约 30 行。
 - [x] **迁移与受控启动（2026-09-27，证据）**：回滚版不得悄悄重新启用自动写入的三条证据都已常驻——① v3 后端在打开数据根前要求隔离数据标识或有效迁移 locator，否则拒绝（`verify:memory-controlled-writes` 的"受控启动拒绝"场景，断言真实报错文案）；② 遗留写入器 `write_memory`/`record_experience` 不在注册表（同一脚本的工具目录场景）；③ 压缩不产生原子（压力场景 + 该条目既有测试）。旧 pending 候选的兼容与终止语义由 RS-05 的既有测试覆盖（`terminateMemoryProposal`：保留文件、写 rejected 结果与 `terminatedAt`/`terminationReason`、重复终止为 no-op）。**未做**：真实旧数据根升级后的完整迁移演练（只在测试与受控数据根上验证过）。
 - [ ] 迁移只为旧 pending 候选和已存在记录兼容所需，不改造 Memory 存储架构。回滚版本不得悄悄重新启用自动写入；保留升级标识/受控启动拒绝等最小兼容措施及恢复证据。
 - [ ] 执行适用单元/集成检查、`verify:changed` 与 `check:repo`；改动桌面接线时验证 App 构建及实际入口。删除本批无用分支/配置与重复说明，不开展无关清理。

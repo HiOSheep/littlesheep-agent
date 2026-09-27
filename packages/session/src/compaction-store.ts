@@ -107,6 +107,7 @@ export class SessionCompactionStore {
     for (const name of names) {
       const path = join(this.pendingDir(sessionId), name);
       const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
+      const committed = transaction.version === 2 && Boolean(transaction.summaryCommittedAt);
       try {
         await this.persistProjection(sessionId, transaction.summary);
         await applyMetadata(transaction);
@@ -117,7 +118,15 @@ export class SessionCompactionStore {
           await unlink(path);
         }
         recovered += 1;
-      } catch {
+      } catch (error) {
+        // A committed transaction whose predecessor has since changed is a real conflict and stays
+        // quarantined. Any other failure on an already-committed transaction is not: its summary is
+        // durable, and quarantining it would also remove a memory proposal from the compatibility path
+        // that still has to terminate it (RS-08). The file is kept open instead.
+        if (committed && !isTerminalCompactionConflict(error)) {
+          recovered += 1;
+          continue;
+        }
         await this.quarantinePending(sessionId, path, transaction.summary.id);
       }
     }

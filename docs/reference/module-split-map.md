@@ -160,7 +160,7 @@
 | `packages/web/src/runtime.ts` | 570 | 每轮 Web retrieval quota、取消、citation、cache 和 evidence projection | 保持 per-run runtime facade；继续将 quota/citation/evidence adapter 分离 | E |
 | `packages/memory-tree/src/conversation-source-store.ts` | 487 | append-only 会话来源存储、幂等 capture、manifest 与有界 session/run 目录（catalog 分页/降级/取消） | 保持不可变来源边界；后续分离 catalog 查询与存储 codec，catalog 不返回 payload | D |
 | `packages/runner/src/session-continuity.ts` | 372 | post-run 压缩编排、单次受控 Provider 摘要+候选提炼、pending proposal 结算与恢复 | 保持压缩操作编排边界；后续按 snapshot 读取、proposal 校验、candidate settlement 拆分 | E |
-| `packages/session/src/compaction-store.ts` | 387 | 压缩 pending journal、摘要投影、activation 证据与候选 outcome 存储 | 保持原子持久化边界；后续分离 pending codec、projection 与 activation store | E |
+| `packages/session/src/compaction-store.ts` | 396 | 压缩 pending journal、摘要投影、activation 证据与候选 outcome 存储 | 保持原子持久化边界；后续分离 pending codec、projection 与 activation store | E |
 | `packages/runner/src/durable-event-store.ts` | 538 | 哈希分区、append-only event 文件、cursor/idempotency 校验和 fail-closed replay | 保持文件 store facade；后续按 codec、partition IO、replay query 拆分 | E |
 | `packages/runner/src/durable-inbox-store.ts` | 581 | 持久 command inbox、按 run/command 领取、claim owner fencing、有界重启发现/lease wake-up、complete/fail 和幂等校验 | 保持 inbox facade；后续按 codec、lease policy、query 拆分 | E |
 | `packages/runner/src/durable-run-lease-store.ts` | 353 | next run 的跨进程 acquire/reclaim/renew/release、活动/过期枚举、最早到期点与持久格式校验 | 保持 run lease store 单一职责；heartbeat 与 recovery policy 留在独立 adapter | E |

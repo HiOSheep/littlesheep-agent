@@ -103,6 +103,35 @@ describe('SessionCompactionStore', () => {
     expect(await reopened.listPending(sessionId)).toEqual([]);
   });
 
+  // RS-08: a transaction that was already committed before this process started must stay open. It used
+  // to be re-applied on recovery, which threw and quarantined a committed summary — and with it the
+  // memory proposal the runner's compatibility path was supposed to terminate.
+  it('leaves an already-committed pending transaction open across recovery', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
+    tempDirs.push(directory);
+    const sessionId = asSessionId('session-committed-pending');
+    const item = summary({ id: 'summary-committed-pending' });
+    const store = new SessionCompactionStore(directory);
+    await store.commit(
+      sessionId,
+      item,
+      preconditionFor(item),
+      async () => undefined,
+      proposalFor(['a', 'b']),
+    );
+
+    const reopened = new SessionCompactionStore(directory);
+    expect(await reopened.recover(sessionId, async () => undefined)).toBe(1);
+    expect(await reopened.listPending(sessionId)).toMatchObject([{
+      version: 2,
+      summary: { id: item.id },
+      summaryCommittedAt: expect.any(String),
+      memoryProposal: { outcomes: [] },
+    }]);
+    const digest = createHash('sha256').update(item.id, 'utf8').digest('hex');
+    expect(await readdir(join(directory, '.compactions', digest, 'failed')).catch(() => [])).toEqual([]);
+  });
+
   // C10A: an old writer waking up after a newer summary became active must not commit or overwrite it.
   it('quarantines an older pending proposal once a newer summary is active', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
