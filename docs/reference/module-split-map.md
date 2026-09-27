@@ -52,7 +52,7 @@
 
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/run-checkpoint-codec.ts` | 471 | 检查点 schema 校验、有界 codec、序列化与文件名哈希（含 64 条写入窗口与 128 条历史兼容读取窗口） | 从 `run-checkpoint-store.ts` 拆出的 codec 边界；若继续增长，按 checkpoint 主体、resumeState、附件/工具 recipe 分组 | E |
+| `packages/runner/src/run-checkpoint-codec.ts` | 480 | 检查点 schema 校验、有界 codec、序列化与文件名哈希（含 64 条写入窗口与 128 条历史兼容读取窗口） | 从 `run-checkpoint-store.ts` 拆出的 codec 边界；若继续增长，按 checkpoint 主体、resumeState、附件/工具 recipe 分组 | E |
 | `packages/runner/src/run-checkpoint-store.ts` | 381 | 检查点目录的文件与原子写入、容量/保留期、诊断账本，以及"最近一次扫描"报告的组合 | codec 与目录扫描已分别下沉到 `run-checkpoint-codec.ts` 与 `run-checkpoint-scan.ts`；store 只保留文件所有权与容量策略，计数不得再回到进程生命周期累加 | E |
 | `packages/tools/src/builtin/exec.ts` | 375 | 受控命令执行：黑名单与审批、工作区回滚点、进程树终止、有界流捕获，以及不透明修改前后的观察冻结/失效 | 保持"命令执行 + 结算"边界；若继续增长，先拆出进程终止与流捕获（`exec-process.ts`），再考虑观察冻结策略 | E |
 | `packages/tools/src/file-observation.ts` | 323 | 文件观察的宿主半边：sha256 revision、规范路径键、同路径互斥表与有界观察表，以及写工具的 `readVerifiedFile()` 校验入口 | 保持"只登记与校验、不读写用户文件、不做策略决定"的边界；若继续增长，拆出路径键/互斥表（`observation-key.ts`）与校验入口（`observation-guard.ts`） | E |

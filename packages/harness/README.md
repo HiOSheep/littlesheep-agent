@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-27 09:19:46
+最后更新：2026-09-27 09:40:39
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -8,6 +8,7 @@
 
 - 运行中 `user_message` 是当前 run 的用户输入：`runtime-control-boundary.ts` 在安全边界验收并有界暂存，`stages/execute/tool-loop.ts` 在模型请求前后取出；响应到达时的新要求会使旧工具提议失效。容量满时明确拒绝新事件，不覆盖旧事件。
 
+- 运行期事件重入有界（2026-09-27）：延迟的用户补充/任务事件**每个事件只交给主循环一次**，之后按主循环的决定收尾；没有阶段消费该事件时不再无限弹回 `execute`（此前会让 run 无法结束并耗尽内存）。回归见 `default-harness.test.ts`。
 - 公开入口是 `src/index.ts`；阶段实现在 `src/stages/`，装配在 `default-harness.ts`，唯一的驱动是 `durable-harness.ts`（`createDurableHarness`），由 `createDefaultHarness` 装配阶段后调用，Runner 只构建一个 harness。
 - 活动路由只产出两条路径：所有会话与任务进入单一主循环（`stages/execute/tool-loop.ts` + `stages/execute/main-loop.ts`），能力/状态询问进入最小 Runtime 事实契约的 `reply`。DECIDE、验证模型调用、RECOVER 模型调用与 CAPTURE 已删除；`classify`、`decide`、`evolve`、`capture` 只作为历史 stage 名、LLM Call Contract 条目和检查点兼容字段存活，`checkpoint-resume.ts` 的 `resolveCheckpointResumeStage` 把入口为 `decide` 的检查点改派到 `execute`。ASK_USER 不可路由：它由主循环内模型发起的 `request_user_input`，或由 RECOVER 的权限拒绝/预算耗尽升级到达。
 - 已持久化的 TaskBook 是只读历史（降级策略为 `bounded_loop`）：没有第二个执行器、没有 TaskBook 步骤调度器、没有直接工具提议路径，也没有步骤级并行；多步骤工作在同一循环内串行完成。
