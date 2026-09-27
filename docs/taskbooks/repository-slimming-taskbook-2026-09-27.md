@@ -1,6 +1,6 @@
 # 整仓瘦身与冗余收口任务书 2026-09-27
 
-最后更新：2026-09-27 18:31:34
+最后更新：2026-09-27 18:56:07
 
 状态：实施中（2026-09-27 起）。SL-00 / SL-01 / SL-06 已完成并提交，SL-03 主体完成（`vector` 已裁定退役、待与 SL-02 同批执行），SL-05 与 memory-v3 验收修复在进行，SL-02 / SL-04 / SL-08 因并行工作进行中而按任务书要求暂缓，SL-07 已出清单、用户裁定不删除。逐项证据与保留理由见文末「执行记录」。
 
@@ -204,3 +204,31 @@
 - workspace `typecheck` 当前失败于 `packages/app/src/main/embedded-browser.ts:125,127`（Electron 44 类型使 `hostWebContents` 可空），来源是并行的 Electron 升级，不由本任务书引入，需由该工作收口。
 - `packages/app/out/.littlesheep-build-fingerprint.json` 在测量时缺失，`ensure-app-build.mjs --assert` 报 `manifest-unavailable`；基线账本改用只读重算的输入/输出摘要并已注明。
 - `packages/experience` 的 `zod` 与 `@littlesheep/types` 依赖边在 SL-03 删除后不再被该包使用；依赖边收口属 SL-02。
+
+### SL-04 前置测量（2026-09-27，只读；未改任何打包配置）
+
+对象是现存旧构建样本 `release/win-unpacked`（解包时间 2026-09-26 15:04，**不代表当前工作区重建结果**）。口径：文件长度合计，不跟随符号链接，不是磁盘分配量。
+
+`resources/app.asar.unpacked/node_modules` 中的原生载荷：
+
+| 依赖 | MiB |
+| --- | ---: |
+| `onnxruntime-node` | 287.5 |
+| `@napi-rs` | 36.0 |
+| `@img` | 18.5 |
+| `node-pty` | 9.3 |
+| `@huggingface` | 8.6 |
+
+`onnxruntime-node` 按平台/架构拆分（`napi-v6/<platform>/<arch>`）：
+
+| 目标 | MiB | 判定 |
+| --- | ---: | --- |
+| `darwin/arm64` | 85.3 | 非目标平台，移除候选 |
+| `linux/arm64` | 24.3 | 非目标平台，移除候选 |
+| `linux/x64` | 44.1 | 非目标平台，移除候选 |
+| `win32/arm64` | 69.4 | 目标平台但非目标架构，移除候选 |
+| `win32/x64` | 64.0 | **唯一需要保留** |
+
+**实测非目标载荷合计 223.1 MiB**（占该依赖 287.5 MiB 的 78%）。任务书 F-04 原估 153.7 MiB 只计入了 darwin 与 linux，**漏掉了 `win32/arm64` 的 69.4 MiB**；本表为实测修正值。
+
+留待 SL-04 执行时验证的两点，均未测量：①`@napi-rs`、`@img`、`node-pty` 是否同样携带非目标平台/架构变体（同一方法可测）；②该 223.1 MiB 是**解包体积**，安装包（NSIS 压缩）与 asar 内的差值必须在**真实重建产物**上重测，不能由本表推算；③必须保留动态加载的原生模块、PDF 资源与模型资源，WASM 是否可移除需单独验证（任务书 SL-04 验收项）。
