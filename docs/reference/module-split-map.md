@@ -15,7 +15,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 143 个生产文件超过 300 行，其中 24 个超过 600 行并进入受控超限清单。
+下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 147 个生产文件超过 300 行，其中 25 个超过 600 行并进入受控超限清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -122,6 +122,7 @@
 | `packages/prompt/src/builder.ts` | 499 | Prompt 分段、缓存边界之上的稳定装配（`stableText`/`stableSegments`）与边界之下尾段的渲染 | 保留 builder facade；缓存边界常量与判定见 `prompt/src/cache-boundary.ts`，复杂 section 继续移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 394 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件 | B |
 | `packages/app/src/renderer/settings/models.tsx` | 373 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
+| `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 573 | 布局尺寸交互、标签命令、草稿编辑、关闭前保存编排与"拒绝保存后放弃修改"这一分支 | 关闭路径的布局写入已下沉到 `file-close-layout.ts`（关标签＝连同草稿一起离开会话现场，因此 2026-09-28 已从受控超限清单注销），会话布局持久化仍在 `use-workspace-session-layouts.ts`；保持交互 controller，不得继续吸收新职责（审计 P1 第 9 条的第三个答案只加了这一条分支，并同时把三处布局写入移出本文件） | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 620 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 展开/折叠已从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程面与步骤组各多一层 `grid-template-rows` 过渡容器，因此由 593 涨到 624 行并越过 600 线（已进受控超限清单）；O1 再把注意力行移出可折叠正文（`chat/attention-row.tsx`），净减到 620 行；持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 464 | 归档加载、树和操作，以及永久删除确认 | controller + project/session 视图；删除影响文案、确认层与同步防重复（`deletingRef`）已分别下沉到 `deletion-impact.ts`、`ui/danger-confirm.tsx` 与 ref 守卫 | B |
