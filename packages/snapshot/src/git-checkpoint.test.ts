@@ -1,10 +1,60 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GitCheckpointCoordinator } from './git-checkpoint.js';
 
 describe('GitCheckpointCoordinator', () => {
+  // The preimage commit is the largest single cost before a run reaches the provider (measured: 448–563 ms of
+  // a ~915 ms wait for the first token). A run that changes nothing must not pay it again — but a run that
+  // changed anything must still get a real commit, because that commit is the rollback point.
+  it('reuses the previous preimage when nothing changed, and commits again when something did', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-preimage-'));
+    const previousSwitch = process.env['LITTLESHEEP_BOOTSTRAP_TIMING'];
+    const marks: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      marks.push(String(args[0]));
+    });
+    process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] = '1';
+    try {
+      const dataRoot = join(root, 'data');
+      const workspace = join(root, 'workspace');
+      await mkdir(join(dataRoot, 'memory'), { recursive: true });
+      await mkdir(workspace, { recursive: true });
+      await writeFile(join(dataRoot, 'MEMORY.md'), 'memory-v1', 'utf8');
+
+      const coordinator = new GitCheckpointCoordinator({ dataRoot });
+      const first = await coordinator.beginRun({ runId: 'run-1', workspaceRoot: workspace });
+      await first.complete({ sessionId: 'session-1' });
+
+      // Nothing changed between the two runs, so the second reuses the first preimage instead of committing
+      // an identical tree. The mark is the observable: it is emitted where the decision is made.
+      const unchanged = await coordinator.beginRun({ runId: 'run-2', workspaceRoot: workspace });
+      const unchangedSummary = await unchanged.complete({ sessionId: 'session-2' });
+      expect(marks.filter((line) => line.includes('"preimage-reused"'))).toHaveLength(1);
+
+      // A content change must produce a new preimage; the reuse must not hide it.
+      await writeFile(join(dataRoot, 'MEMORY.md'), 'memory-v2', 'utf8');
+      const changed = await coordinator.beginRun({ runId: 'run-3', workspaceRoot: workspace });
+      await writeFile(join(dataRoot, 'MEMORY.md'), 'memory-v3', 'utf8');
+      const changedSummary = await changed.complete({ sessionId: 'session-3' });
+      expect(changedSummary.id).not.toBe(unchangedSummary.id);
+      // Two commits: run 1 and run 3. Run 2 reused run 1's.
+      expect(marks.filter((line) => line.includes('"preimage-committed"'))).toHaveLength(2);
+
+      // The reuse must not become the only preimage: the changed run committed its own, which is what a
+      // rollback of that run can rest on. (What a rollback then restores for a data file is the checkpoint's
+      // own behaviour, covered by the next case; this one is about reuse versus commit.)
+      expect(changedSummary.id).not.toBe(unchangedSummary.id);
+      expect(await readFile(join(dataRoot, 'MEMORY.md'), 'utf8')).toBe('memory-v3');
+    } finally {
+      log.mockRestore();
+      if (previousSwitch === undefined) delete process.env['LITTLESHEEP_BOOTSTRAP_TIMING'];
+      else process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] = previousSwitch;
+      await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
   it('links data and workspace commits and rolls back both without touching untracked files', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ls-checkpoint-'));
     try {

@@ -2,7 +2,14 @@
 // Filesystem policy and manifest codecs live in git-checkpoint-files.ts; raw
 // Git plumbing remains isolated in git-client.ts.
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto'
+import {
+  buildSignature,
+  clearSignature,
+  readSignature,
+  sameSignature,
+  writeSignature,
+} from './preimage-signature.js';
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
@@ -16,7 +23,7 @@ import {
   DEFAULT_MAX_WORKSPACE_BYTES,
   DEFAULT_MAX_WORKSPACE_FILES,
   atomicJsonWrite,
-  collectDataFiles,
+  collectDataFileStats,
   isManagedDataPath,
   listJsonFiles,
   manifestSummary,
@@ -35,6 +42,14 @@ export interface GitCheckpointCoordinatorOptions {
   maxWorkspaceFiles?: number;
   maxWorkspaceBytes?: number;
   log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
+}
+
+/**
+ * Opt-in preimage timing, same switch and prefix as the runner's run marks so one report can show both.
+ */
+function markPreimage(stage: string, paths: number): void {
+  if (process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] !== '1') return
+  console.log(`[run-timing] ${JSON.stringify({ scope: 'preimage', stage, paths })}`)
 }
 
 export interface BeginRunCheckpointOptions {
@@ -217,11 +232,25 @@ export class GitCheckpointCoordinator {
     const workspaceRoot = resolve(options.workspaceRoot);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const dataPaths = await this.dataManagedPaths();
-    const dataBeforeCommit = await this.dataRepository.commitPaths(
-      dataPaths,
-      `data preimage ${options.runId}`,
-    );
+    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
+    const gitDir = this.dataRepository.gitDir;
+    const stored = await readSignature(gitDir);
+    const signature = stored === undefined
+      ? undefined
+      : buildSignature(stored.commit, walked.length, walked);
+    // Nothing the preimage can see has changed since the last one, and that preimage tracked exactly what
+    // the walk sees: reuse it instead of paying a `ls-files`, a stat per path, the add batches and a commit
+    // for an identical result. Anything else — a changed file, a new or removed one, a tracked path the walk
+    // cannot see — falls through to the full commit, because missing a change would lose a rollback point.
+    const reusable = stored !== undefined && signature !== undefined && sameSignature(stored, signature);
+    const dataPaths = reusable ? undefined : await this.dataManagedPaths(walked.map((entry) => entry.path));
+    const dataBeforeCommit = reusable
+      ? stored.commit
+      : await this.dataRepository.commitPaths(dataPaths!, `data preimage ${options.runId}`);
+    markPreimage(reusable ? 'preimage-reused' : 'preimage-committed', walked.length);
+    if (!reusable && dataBeforeCommit) {
+      await writeSignature(gitDir, buildSignature(dataBeforeCommit, dataPaths!.length, walked));
+    }
     const repositoryId = workspaceRepositoryId(workspaceRoot);
     const workspaceRepository = this.workspaceRepository(workspaceRoot, repositoryId);
     const manifest: VersionCheckpointManifest = {
@@ -234,13 +263,13 @@ export class GitCheckpointCoordinator {
       data: {
         repositoryId: 'littlesheep-data',
         beforeCommit: dataBeforeCommit,
-        trackedPathCount: dataPaths.length,
+        trackedPathCount: dataPaths?.length ?? stored?.trackedCount ?? walked.length,
       },
       workspace: {
         repositoryId,
         trackedPaths: [],
       },
-      warningCodes: [],
+      warningCodes: reusable ? ['preimage-reused'] : [],
     };
     await this.writeManifest(manifest);
     return new RunGitCheckpoint(this, manifest, workspaceRoot, workspaceRepository);
@@ -248,6 +277,8 @@ export class GitCheckpointCoordinator {
 
   async freeze(): Promise<VersionCheckpointSummary> {
     await this.initialize();
+    // This commit moves HEAD, so any recorded signature describes an older state now.
+    await clearSignature(this.dataRepository.gitDir);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     const dataPaths = await this.dataManagedPaths();
@@ -475,8 +506,8 @@ export class GitCheckpointCoordinator {
     return repository;
   }
 
-  private async dataManagedPaths(): Promise<string[]> {
-    const current = await collectDataFiles(this.dataRoot, this.maxFileBytes);
+  private async dataManagedPaths(walked?: readonly string[]): Promise<string[]> {
+    const current = walked ? [...walked] : (await collectDataFileStats(this.dataRoot, this.maxFileBytes)).map((e) => e.path);
     const tracked = this.initialized || await pathExists(join(this.dataRepository.gitDir, 'HEAD'))
       ? await this.dataRepository.trackedPaths().catch(() => [])
       : [];
