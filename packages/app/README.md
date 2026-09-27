@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 04:30:27
+最后更新：2026-09-27 02:33:58
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -175,3 +175,5 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **WSL 会话实测通过**（UX-29 第 4 条）：真实 WSL Bash 里验证 `BASH_VERSION`、`uname -s`、映射后的 `/mnt` 工作区、profile 环境（`LANG`/`TERM`）、中文回环与多行粘贴；此前"本机 WSL 起不来"的记录是验收脚本用文本匹配误判警告导致，已更正。
 - **多终端可用**（UX-30 第 1 条）：工具栏新增"新建"（提示说明不影响正在运行的终端），多个会话时中断/重启/清空的提示会说明影响范围，标签条显示每个会话的真实 Shell 与状态；工作区或会话切换时终止全部会话。真实窗口走查：新建后 2 个标签、恰好 1 个选中、原有会话状态不变（`终端 1运行中 / 终端 2启动中`），关闭第二个后标签条消失且剩余会话仍在运行。
 - **终端专项门与三个修复**（UX-30 第 1、2 条）：`verify:workspace-terminal` 独立走查终端（Shell 下拉、恰好一个会话、新建得到两个标签、两个会话各自收到自己的输入、关闭只移除那一个）；修复"打开面板泄漏第二个会话""隐藏面板会杀掉所有会话""重复的清空按钮"。
+
+- 工具事件与运行流恢复（2026-09-27）：Main 侧 `local-app-api/run-tool-event-projection.ts` 把过大的工具事件压到本地 SSE 单事件上限（32 KiB）内并保留路径与真实行数；Renderer 侧 `chat/run-transport-recovery.ts` 把 SSE 只当观察者——连接断开不等于 run 失败，先回读权威执行日志再决定是否抹掉预览。

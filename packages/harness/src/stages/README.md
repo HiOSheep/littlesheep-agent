@@ -1,6 +1,6 @@
 # Harness Stages
 
-最后更新：2026-09-27 10:17:14
+最后更新：2026-09-27 02:33:58
 
 每个文件实现 Core Flow 的一个状态，状态转移仍由 Harness 统一控制。
 
@@ -14,6 +14,7 @@
 - `execute.ts` + `execute/`：唯一主循环；`verify.ts` + `verify/`：结构化验收与恢复路由；`recover.ts` + `recover/`：Runtime 恢复，不调用恢复模型。VERIFY 把**不可用证据**交给恢复，把**已记录的负结果**留在验证记录里并让该 run 停在 `unverified`：失败永远不会变成 `pass`，也不会让 Runtime 用追问替换模型已经给出的回答。两者的分界是"Runtime 知道什么"——权限结果（`approval_denied`/`approval_unavailable`/`hard_denied`）是"还没人决定是否授权"，用户必须决定，所以升级；Runtime 自己在执行前发出的拒绝（`validation_failed`/`unknown_tool`/`repeated_call_blocked`）是确定性结果（调用没跑），连同 `failed`/`timed_out`/`aborted` 与结果缺失、输出截断、未结算副作用一起按各自的证据类别处理。**"结果缺失"只有一个成立条件**——有 invocation 记录却没有同 callId 的结果；续跑 run 继承的终态副作用由检查点自身作证，不再被误报为"没有对应工具调用"（取证矩阵见 `verify/evidence-gap.test.ts`）。
 - 提问那一轮（`user-input-request.ts`）：模型调用 `request_user_input` 即结束本轮，提问成为本轮结果——"依赖答案的操作必须等待"由结构保证，不靠约定。同一轮里与提问同批的其它调用**不执行**（可能依赖尚未给出的答案），但也不再让整轮失败：它们以带原因的拒绝结果写进转录，提问照常交给 `ask_user`；两个提问或读不懂的提问才是协议错误。轮内证据身份与无进展账本下沉在 `execute/evidence-progress.ts`。主循环的迭代上限是 **30**（`execute/iteration-budget.ts`）：三次真实运行在 19/20/22 次调用处撞上原上限 20、几乎全部成功且产物已在磁盘上，随后以提问结束，因此把上限提到与用户真正付费的 `maxModelCallsPerRun`（默认 32）同一量级，让它只作"一轮并发很多调用"的兜底。
 - `reply.ts`（含 `reply/continuity-repair.ts`）、`ask_user.ts`（含 `clarification-message.ts`）、`finalize.ts`：能力/状态回复、澄清与最终装配。`reply.ts` 与 `execute/prompt.ts` 读同一个 run 级工作区事实（`ctx.cwd`）渲染 `# Workspace`；`reply.ts` 在回复发布成功后才把本轮投递过的环境简报记入 transcript，失败的回合不记，因为模型可能从未读到它。
+- `execute/tool-argument-line-progress.ts`（2026-09-27）：参数仍在流式到达时的有界数值投影；`execute/model-transcript.ts` 负责把它与参数摘要发布到活动流，完成后的调用仍是权威。
 - 当前路径约束（2026-09-27，HC-05）：`current-path-contract.test.ts` 扫描生产源码，禁止重新接入退休执行体系（TaskBook 字面量、`executionMode: 'task_book'`、退休入口名与已删除的步骤辅助函数、指向 `decide`/`evolve`/`capture` 的活路由），并断言"可重跑"能力只由拥有写资源的文件工具声明；同一文件用一次真实 harness run 证明该能力的端到端接线。兼容夹具只允许出现在标题点明 legacy/inherited 的分组里。
 - 可重跑凭据（2026-09-27，HC-04）：`execute/side-effect-ledger.ts` 的 `resourceChangeWarrant` 只在“工具声明 + 非 `unknown` 种类 + 有写资源 + 账本中存在晚于该次结算的同资源成功变更”时发放 `:retryN` 新身份并在持久意图里写审计；真实模型验收为 `verify:ledger-reexecution-live`。
 - VERIFY 的两个窄结构 `pass` 只读**本次 run 自己**的证据（2026-09-27，HC-03）：工具调用、工具结果、副作用账本，以及工具参数——参数依次从 `ctx.produced` → `ctx.modelHistory` → `ctx.history` 取（只有最后一个是 run 之前的纯文本投影，只读它会让写后读回通道对全新 run 永不可达）。细节见 `verify/README.md`。
