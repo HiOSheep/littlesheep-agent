@@ -183,10 +183,12 @@ describe('composer control surfaces', () => {
     expect(composerView).toContain('disabled={stopping}')
     expect(composerView).toContain("const stopActionTip = stopping ? '正在停止当前任务' : stopTip")
     expect(composerView).toContain('{(!loading || hasPendingInput) && (')
-    // Sending additionally depends on the Runtime's own readiness fact: the
-    // window is usable before the Runner exists, so an unavailable execution must
-    // disable the entry without touching the draft or the focus.
-    expect(composerView).toContain('disabled={executionUnavailable !== null || (!loading && !hasPendingInput)}')
+    // Sending additionally depends on the Runtime's own facts: whether execution
+    // is available, and whether a usable model is selected. Both arrive as one
+    // decision, so the entry can never be disabled for one reason while its
+    // label states another, and the draft and the focus stay untouched.
+    expect(composerView).toContain('disabled={sendReadiness.blocked || (!loading && !hasPendingInput)}')
+    expect(composerView).toContain('executionReason: executionUnavailable')
     expect(composerView).toContain('useRuntimeReadiness()')
     expect(composerView).not.toContain('showStop')
     expect(composerView).not.toMatch(/className="send-round[^"]*composer-tab-control/u)

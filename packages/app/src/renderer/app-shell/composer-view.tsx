@@ -7,9 +7,12 @@ import {
 import { AddMenu } from '../composer/add-menu'
 import { ContextUsageIndicator } from '../composer/context-usage-indicator'
 import { shouldFocusComposerInput } from '../composer/focus-routing'
+import { useComposerFocus } from '../composer/use-composer-focus'
 import { AttachmentPreviewCard } from '../composer/message-files'
 import { ModePicker } from '../composer/mode-picker'
 import { RuntimePicker } from '../composer/runtime-picker'
+import { ComposerSendBlockNotice } from '../composer/send-block-notice'
+import { describeComposerSendReadiness } from '../composer/send-readiness'
 import { WorkspaceChip } from '../composer/workspace-chip'
 import { createImeCompositionState, resolveEnterAction } from '../ui/enter-confirm'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
@@ -49,6 +52,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     activityNow,
     selectableProviders,
     selectedModel,
+    modelAvailability,
     workspaceIsWorkplace,
     workspaceTip,
     contextUsage,
@@ -86,6 +90,18 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     if (!loading) setStopping(false)
   }, [loading])
   const hasPendingInput = input.trim().length > 0 || attachments.length > 0
+  // Sending dispatches a real run, so it is refused while the Runtime cannot
+  // answer it: no execution yet, or no usable model. With nothing configured the
+  // measured behaviour was a turn that streamed nothing for over a minute, with
+  // no error and no settlement, because the default model ref pointed at a
+  // provider without a key. The reason is the Runtime's own fact (see
+  // `composer/send-readiness.ts`), and it is stated next to this control.
+  const sendReadiness = describeComposerSendReadiness({
+    availability: modelAvailability,
+    executionReason: executionUnavailable,
+  })
+  // The caret belongs in the composer on launch; a new conversation asks again.
+  useComposerFocus(inputRef)
   // Running keeps a stop entry that never depends on the draft, plus a
   // supplementary send once there is something new to hand to the run.
   const stopActionTip = stopping ? '正在停止当前任务' : stopTip
@@ -204,7 +220,10 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
           onCompositionEnd={() => imeComposition.end()}
           onKeyDown={(event) => {
             if (resolveEnterAction(event.nativeEvent, imeComposition.composing) !== 'confirm') return
+            // Enter is the same send entry as the button, so it refuses for the
+            // same reason instead of dispatching past a disabled control.
             event.preventDefault()
+            if (sendReadiness.blocked) return
             void send()
           }}
           placeholder="给 LittleSheep 一个任务，或上传文件后直接发送"
@@ -230,10 +249,14 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
           </div>
           <div className="composer-right">
             <ComposerReadinessHint readiness={readiness} reason={readinessReason} />
+            <ComposerSendBlockNotice
+              executionReason={sendReadiness.executionReason}
+              modelReason={sendReadiness.modelReason}
+            />
             <ContextUsageIndicator usage={contextUsage} />
             <RuntimePicker
               runtime={runtime}
-              runtimeError={runtimeError}
+              availability={modelAvailability}
               providers={selectableProviders}
               selected={selectedModel}
               onModelChange={(model) => {
@@ -263,19 +286,20 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                 </button>
               )}
               {(!loading || hasPendingInput) && (
-                // The window is usable before the Runtime is ready, so a send in
-                // that window is limited on purpose. The draft and the focus stay
-                // untouched, and the reason comes from the Runtime rather than a
-                // generic "please wait".
+                // The window is usable before the Runtime is ready, and the model
+                // may not be usable yet either; a send in either window is refused
+                // on purpose. The draft and the focus stay untouched, the reason is
+                // stated next to this control, and it comes from the Runtime rather
+                // than a generic "please wait".
                 <button
                   className="send-round"
                   onClick={() => {
                     setControlTip(null)
                     void send()
                   }}
-                  disabled={executionUnavailable !== null || (!loading && !hasPendingInput)}
-                  aria-label={executionUnavailable ? executionUnavailable : sendTip}
-                  {...runActionTipHandlers(executionUnavailable ?? sendTip)}
+                  disabled={sendReadiness.blocked || (!loading && !hasPendingInput)}
+                  aria-label={sendReadiness.reason ?? sendTip}
+                  {...runActionTipHandlers(sendReadiness.reason ?? sendTip)}
                 >
                   <SendRunIcon />
                 </button>

@@ -56,6 +56,7 @@ import { useNavigationController } from './use-navigation-controller'
 import { isMissingWorkspacePathError } from '../workspace/workspace-errors'
 import { createAttachmentActions } from './attachment-actions'
 import { createRuntimeActions, type PendingModelPatch } from './runtime-actions'
+import { useModelAvailability } from '../composer/use-model-availability'
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import { normalizePermissionModeId } from '../../shared/permission-modes'
 
@@ -426,10 +427,8 @@ export function useAppController() {
   })
   const { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch } = runtimeActions
   const selectableProviders = useMemo(() => runtimeActions.selectableProviders(), [runtime])
-
-  const selectedModel = useMemo(() => {
-    return runtimeActions.selectedModel(selectableProviders)
-  }, [runtime, selectableProviders])
+  const selectedModel = useMemo(() => runtimeActions.selectedModel(selectableProviders), [runtime, selectableProviders])
+  const modelAvailability = useModelAvailability({ runtime, runtimeError, selectableProviders, selectedModel })
   const displayedSessions = useMemo(
     () => sortSessionsForSidebar(sessions, pinnedSessionIds, sidebarSessionOrder),
     [pinnedSessionIds, sessions, sidebarSessionOrder],
@@ -645,7 +644,7 @@ export function useAppController() {
     projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, removeAttachment, removeLineCommentAttachment, updatePublishedLineCommentAttachment, attachmentRemoval, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
     workspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceReviewRequest, openReviewInWorkspace, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceReviewNavigatorWidth, setWorkspaceReviewNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion,
-    controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn, selectableProviders,
+    controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn, selectableProviders, modelAvailability,
     selectedModel, displayedSessions, visibleSessions, reorderSidebarSessions, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, titlebarTask, branchConversationFromMessage, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, refreshRuntime, addAttachments, chooseWorkspace,
     openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, createProjectConversationFromSidebar,
     openSidebarPanel, closeSidebarPanel, switchSession, renameSession, archiveSession, deleteSessionPermanently, archiveProject, deleteProjectPermanently, archiveAllSessions, togglePinnedSession, beginSidebarResize, nudgeSidebar, toggleSidebar, beginWorkspacePanelResize, toggleWorkspacePanel, updateWorkspacePanelReopenPresence, toggleWorkspacePanelFullscreen, nudgeWorkspacePanel,

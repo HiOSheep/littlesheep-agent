@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-28 00:35:17
+最后更新：2026-09-28 00:44:27
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -99,3 +99,19 @@
 ### chali 尚未完成的缺口（由冲突包指出，交给在跑的那个包）
 
 侧栏上方左上角的拖动带是否真正覆盖 ✓、导航控件（折叠/前进后退）在新结构下的位置与可达性 ✓、残留的 32px 假设（`.settings-workspace { inset: 32px 0 0 }` ✓、`11-runtime-readiness.css` 的 `top: var(--window-titlebar-height)` ✓）、四个陷阱的逐项核验 ✓、真实窗口对照截图 ✓、README 与拆分地图同步 ✓。
+
+### 构建争用阻塞了三条修复的实机取证（2026-09-28 00:45）
+
+**观测**（node 直调 ✓，`pnpm` 在部分 shell 里不在 PATH ✓）：
+- `node scripts/ensure-app-build.mjs --ensure` **失败** ✗；
+- 三条门禁 `node scripts/verify-composer-send-gate.mjs` / `verify-composer-focus.mjs` / `verify-startup-failure-retry.mjs` **全部 exit=1** ✗，错误一致：`App build artifacts are stale (input-mismatch)` ✓。
+
+**原因**：chali 布局写者正在持续修改 `packages/app/src/**` ✓，构建输入在构建过程中变化 ✓ → 构建守卫中止 ✓ → 依赖"构建新鲜"的真实窗口门禁**无法开跑** ✓。这与修复包自己的告警一致 ✓（"另一个 agent 每几分钟重建 `packages/app/out`，门禁会在任何断言之前因 stale build 失败" ✓）。
+
+**结论**：表内 #1/#2/#3 的**代码已在树中** ✓（渲染器套件 **144 文件 / 821 项通过** ✓、`tsc -b` exit 0 ✓），且**两个独立实现的门禁在契约上一致** ✓（对方 `scripts/verify-composer-send-model-gate.mjs` 断言的 `.composer-send-block` in `.composer-right`、同一句 `aria-label`、禁用发送、草稿保留、无 run ✓ —— 与修复包产出的 DOM 完全一致 ✓）。但**实机验收证据仍为零** ✗ → 状态保持"修复中" ✓。
+
+**下一手**：等 chali 写者停止改动 `packages/app/src/**`（mtime 静默 ~5 分钟 ✓）后，按顺序跑：
+`node scripts/ensure-app-build.mjs --ensure` → `node scripts/verify-composer-send-gate.mjs` → `node scripts/verify-composer-focus.mjs` → `node scripts/verify-startup-failure-retry.mjs`；
+另跑对方那条 `node scripts/verify-composer-send-model-gate.mjs` 作为**独立复核** ✓。**判定只看 exit code** ✓，不看"有没有报错行" ✗。
+
+**`pnpm` 不在 PATH 这个坑，我今晚踩了三次** ✗：三次都表现为"输出为空" ✓ 而实际是命令根本没跑起来 ✓。**规则**：所有检查一律用 node 直调脚本 + `$LASTEXITCODE` 判定 ✓；`pnpm run X` 只用于确认入口存在 ✓，不用于判定结果 ✗。

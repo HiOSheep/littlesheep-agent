@@ -114,6 +114,9 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'renameSession',
     'stop',
     'setControlTip',
+    // The empty conversation's copy must not invite a send that cannot run, so the
+    // chat view renders the same availability the send entry is gated on.
+    'modelAvailability',
   ],
   composer: [
     'input',
@@ -133,6 +136,9 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'activityNow',
     'selectableProviders',
     'selectedModel',
+    // The picker renders this fact and the send entry refuses on it; neither
+    // derives a second one from the same inputs.
+    'modelAvailability',
     'workspaceIsWorkplace',
     'workspaceTip',
     'contextUsage',

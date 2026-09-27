@@ -19,6 +19,7 @@ import {
   type ApprovalDecision
 } from '../approval-grants'
 import { historyMessageToChatMessage } from '../chat/assistant-turn'
+import { requestComposerFocus } from '../composer/focus-routing'
 import { waitForExecutionReady } from '../runtime-readiness/runtime-readiness-state'
 import { projectCompactionOperations } from '../chat/context-projections'
 import { ChatMessage } from '../chat/types'
@@ -143,6 +144,10 @@ export function createSessionActions(context: SessionActionContext) {
     setHistoryWindow({ hasMore: false, beforeId: undefined, loading: false })
     setContextUsageSnapshot(null)
     settleApprovalPrompt('deny')
+    // A new conversation starts with the caret in the composer, the way ChatGPT,
+    // Claude, Cursor and VS Code do it. The composer re-checks the guards itself,
+    // so a dialog that is still open keeps the keyboard.
+    requestComposerFocus()
   }
 
 

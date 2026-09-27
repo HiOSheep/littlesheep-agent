@@ -1,15 +1,18 @@
 # Renderer 输入栏
-最后更新：2026-09-27 18:33:10
+最后更新：2026-09-28 00:09:10
 
 这里负责用户输入、附件、工作区上下文、权限模式、模型/推理选择和上下文占用展示。
 
 - `add-menu.tsx`、`message-files.tsx`、`workspace-chip.tsx`：输入辅助控件、附件预览与消息正文装配。
 - `message-artifacts-card.tsx`、`use-artifact-deltas.ts`：一轮产物显示为参考图式的单张宽卡片：图标与文件总数在头部，文件路径逐行排列，行数在右侧，超过 4 行时展开。**点文件行 → 拓展工作区预览**，**点行数 → 该文件审阅**。行数默认使用中性色，仅指针悬停或键盘聚焦到该行数按钮时变为红绿色。无可用工作区路径或 Git 无法计数时仍显示卡片与文件入口，省略行数。附件保留紧凑条带。
 - `mode-picker.tsx`：三档权限模式选择，以及切到完全访问时的危险确认。
-- `runtime-picker.tsx`、`context-usage-indicator.tsx`：模型与推理档位选择、上下文占用展示。
+- `runtime-picker.tsx`、`context-usage-indicator.tsx`：模型与推理档位选择、上下文占用展示。选择器不再自己算可用性，而是渲染 `use-model-availability.ts` 给出的那一份（`availability` prop），因此它和发送入口不可能对同一份配置给出不同结论。
 - `runtime-availability.ts`：无可用模型时的唯一状态来源。区分“配置读取中”“读取失败（可重试）”“还没有配置（给出配置入口）”“已保存但不可用（缺密钥或缺模型条目）”“供应商可用但还没选模型（`no-selection`）”，并用设置页同一个 `isConfiguredProvider` 判定“已配置”，因此选择器与供应商页不会对同一份配置给出不同结论；`runtime-picker.tsx` 的空菜单据此显示“配置模型 / 检查供应商配置 / 重试读取”，并保留当前草稿不动。**`no-selection` 与 `unusable` 必须分开**：供应商已保存、密钥和模型条目都在、只是还没选模型时，选择器要说“还没有选择模型”并指向菜单里的模型列表；说成“可能缺少 API 密钥，或没有填写模型条目”会把用户送回设置页去改一份本来正确的配置（UX-11 实机验收发现并修掉）。
+- `use-model-availability.ts`：可用性的唯一一次计算（控制器调用，`modelAvailability` 字段同时投影给 composer 与 chat）。三个表面共用它：选择器、发送入口、空对话文案。
+- `send-readiness.ts`：**发送是否必须被拒绝**的唯一判据，把 Runtime 就绪原因与上面的可用性合成一个决定（`blocked` / `reason` / `executionReason` / `modelReason` / `action`）。没有可用模型时发送被拒**并且说明原因**：默认模型引用 (`openai/gpt-5.6`) 指向没有密钥的供应商，实测那一轮停在工作态 1 分 14 秒、零字符、无错误也无结算，而 ChatGPT / Cursor / VS Code 都拒绝这种提交并把人指向模型设置。`composer-view.tsx` 的按钮与 Enter 是同一条入口，两者按同一判据拒绝；`send-block-notice.tsx` 把原因就地写在控件旁（启动阶段的文字仍归 `runtime-readiness/composer-readiness-hint`，两者互斥），禁用控件的可访问名携带同一句原因；`app-shell/chat-view.tsx` 的空对话文案也用同一句，不再邀请一次发不出去的任务。真实窗口门 `pnpm run verify:composer-send-gate`（未配置时拒绝且不产生 run，配置好后照常发送并结算）。
 - `context-usage-indicator.tsx` 的弹层同时给出上下文占用与会话累计缓存命中（`formatSessionCache`）；usage 未上报的请求会在文案里标注，不把局部读数当成完整读数。
-- `input-size.ts`、`focus-routing.ts`：输入框高度同步和输入焦点归属判定。
+- `input-size.ts`、`focus-routing.ts`：输入框高度同步和输入焦点归属判定。`focus-routing.ts` 还导出一次性的 `COMPOSER_FOCUS_REQUEST_EVENT` 与它的判断函数 `shouldTakeComposerFocus`：`launch`（窗口刚可用）只在没有任何元素持有焦点时取走光标，`new-session`（用户刚新建对话）除非有对话框/审批/弹层打开、或用户正在别的文本表面里输入，否则取走；两种意图都在**事件触发时**重读实时焦点，而不是在请求发出时。
+- `use-composer-focus.ts`：把上面两条焦点请求接到输入框上——挂载时请求 `launch` 光标，收到新建对话的窗口事件时下一轮请求 `new-session`。真实窗口门 `pnpm run verify:composer-focus`：新窗口无点击即可收到真实按键；新建对话把光标交还输入框；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。
 - 发送入口的可用性：`app-shell/composer-view.tsx` 同时参考 Runtime 就绪事实（`runtime-readiness/use-runtime-readiness`）。窗口早于 Runner 出现，未就绪时发送必须在原地禁用并使用 Runtime 给出的原因，草稿与焦点不变；不得只凭“草稿非空”就放出可点击的发送入口。
 
 输入栏的 Enter、Shift+Enter 与输入法组词规则位于 `../ui/enter-confirm.ts`，由 `app-shell/composer-view.tsx` 使用；不要在这里或视图中另写 Enter 判断。

@@ -1,4 +1,4 @@
-// Why the composer's model picker has nothing to select.
+// Why the composer has no usable model, and what fixes it.
 //
 // Four different facts must not collapse into one "no model" label:
 //   - the Runtime configuration never loaded (a failure, with a retry);
@@ -9,6 +9,9 @@
 //     picker's own model list and nothing else.
 // `isConfiguredProvider` is the settings page's own predicate, so the composer
 // and the provider list cannot disagree about what "configured" means.
+//
+// This is the only rule; `use-model-availability.ts` computes it once for every
+// composer surface, and `send-readiness.ts` turns it into the send decision.
 import type { RuntimeState } from '../../shared/runtime-api-contracts'
 import { isConfiguredProvider } from '../settings/model-provider-draft'
 

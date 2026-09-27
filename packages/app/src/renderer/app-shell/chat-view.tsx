@@ -5,10 +5,12 @@ import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { MessageFileStrip } from '../composer/message-files'
+import { describeComposerSendReadiness } from '../composer/send-readiness'
 import { Markdown } from '../Markdown'
 import { RunningPill } from '../sidebar/running-pill'
 import { TraceCard } from '../TraceCard'
 import { attachmentToArtifact } from '../workspace/path-utils'
+import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
 import type { ChatViewController } from './app-controller-projections'
 
 /** How long the way back takes to grow out of the composer's edge, and to drop back into it. */
@@ -42,9 +44,22 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     renameSession,
     stop,
     setControlTip,
+    modelAvailability,
   } = controller
   // The turn's files are opened from here, so their line counts come from the same workspace.
   const artifactsWorkspaceRoot = projectPath
+
+  // The empty conversation invites a send, so it must state the same fact the
+  // send entry refuses on: a first-run screen that says "hand it to LittleSheep"
+  // is exactly where a user with no model types and presses Enter.
+  const { reason: executionReason } = useRuntimeReadiness()
+  const sendReadiness = describeComposerSendReadiness({
+    availability: modelAvailability,
+    executionReason,
+  })
+  const emptyCopy = sendReadiness.blocked && sendReadiness.reason
+    ? sendReadiness.reason
+    : '选择模型、推理强度和工作目录后，直接交给 LittleSheep。'
 
   const {
     readingAway,
@@ -106,7 +121,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           {messages.length === 0 && !historyWindow.loading && (
             <div className="empty-hint">
               <div className="empty-title">今天要推进什么？</div>
-              <div className="empty-copy">选择模型、推理强度和工作目录后，直接交给 LittleSheep。</div>
+              <div className="empty-copy">{emptyCopy}</div>
             </div>
           )}
           {messages.map((m, i) => (

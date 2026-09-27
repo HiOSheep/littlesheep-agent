@@ -12,7 +12,7 @@ import { REASONING_OPTIONS } from '../runtime/options'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { RuntimeProvider } from './context-usage-indicator'
-import { describeRuntimeAvailability } from './runtime-availability'
+import type { RuntimeAvailability } from './runtime-availability'
 
 
 export interface SelectedRuntimeModel {
@@ -34,7 +34,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export function RuntimePicker({
   runtime,
-  runtimeError,
+  availability,
   providers,
   selected,
   onModelChange,
@@ -43,9 +43,11 @@ export function RuntimePicker({
   onRetryModelConfig,
 }: {
   runtime: RuntimeState | null
-  /** Composer-level Runtime error; with a null runtime it means the
-   *  configuration could not be read. */
-  runtimeError: string | null
+  /** Why nothing is selectable, computed once by the controller
+   *  (`use-model-availability.ts`). A failed configuration load stays clickable:
+   *  the menu is where the retry and the path to the provider settings live, and
+   *  the send entry refuses on this same fact rather than on a second one. */
+  availability: RuntimeAvailability
   providers: RuntimeProvider[]
   selected: SelectedRuntimeModel | null
   onModelChange: (model: string) => void
@@ -65,14 +67,6 @@ export function RuntimePicker({
   const menuPositionFrameRef = useRef<number>()
   const [menuPosition, setMenuPosition] = useState<RuntimeMenuPosition | null>(null)
   const [closedWidth, setClosedWidth] = useState<number | null>(null)
-  // A failed configuration load stays clickable: the menu is where the retry
-  // and the path to the provider settings live.
-  const availability = describeRuntimeAvailability({
-    runtime,
-    runtimeError,
-    selectableProviderCount: providers.length,
-    hasSelectableModel: selected !== null,
-  })
   const disabled = !runtime && availability.kind === 'loading'
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []

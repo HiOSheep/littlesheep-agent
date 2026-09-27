@@ -156,9 +156,21 @@ describe('runtime availability', () => {
 
 describe('runtime availability wiring', () => {
   it('offers the action inside the empty picker menu instead of only a title', async () => {
-    const picker = await readFile(new URL('./runtime-picker.tsx', import.meta.url), 'utf8')
+    const [picker, composer, controller, availabilityHook] = await Promise.all([
+      readFile(new URL('./runtime-picker.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../app-shell/composer-view.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../app-shell/use-app-controller.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./use-model-availability.ts', import.meta.url), 'utf8'),
+    ])
 
-    expect(picker).toContain('describeRuntimeAvailability({')
+    // The picker renders the one availability computed for the whole composer; a
+    // second derivation from the same inputs is exactly how the picker and the
+    // send entry would start disagreeing about whether sending is possible.
+    expect(picker).toContain('availability: RuntimeAvailability')
+    expect(picker).not.toContain('describeRuntimeAvailability')
+    expect(availabilityHook).toContain('describeRuntimeAvailability({')
+    expect(controller).toContain('useModelAvailability({ runtime, runtimeError, selectableProviders, selectedModel })')
+    expect(composer).toContain('availability={modelAvailability}')
     expect(picker).toContain('runtime-configure-action')
     expect(picker).toContain('if (availability.action === \'retry\') onRetryModelConfig()')
     expect(picker).toContain('else onConfigureModel()')
