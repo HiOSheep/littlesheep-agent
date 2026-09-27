@@ -102,6 +102,7 @@ import { DurableRunOwnership } from './durable-run-ownership.js';
 import { createDurableRunRecovery } from './durable-run-recovery.js';
 import { createDurableEffectOutcomeQuery } from './durable-effect-query.js';
 import { readDurableHarnessMode } from './durable-run-mode.js';
+import { terminateRetiredCompactionProposals } from './session-continuity.js';
 import {
   assembleResult,
   checkpointReason,
@@ -464,6 +465,20 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      // Retired compaction memory proposals are closed here, before anything reads the session: the
+      // manager's recovery would otherwise quarantine a proposal whose predecessor has since changed (a
+      // later compaction commits exactly that way), and the quarantine would take the proposal away from
+      // the sweep whose job is to record why nothing was written.
+      try {
+        await terminateRetiredCompactionProposals({
+          sessionManager: infra.sessionManager,
+          memoryService: infra.memoryService,
+          sessionId,
+          log: opts.log,
+        });
+      } catch (error) {
+        opts.log?.('warn', 'runner: retired compaction proposal sweep degraded: ' + (error as Error).message);
+      }
       const runProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile)?.id;
       const durableHarnessMode = resolveDurableHarnessMode(String(sessionId), origin, runProfile);
       durableRecorder = createDurableRunRecorder({

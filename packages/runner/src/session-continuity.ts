@@ -66,7 +66,7 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
   // from the operation's cost.
   const attempts: CompactionAttemptTally = { issued: 0, retries: 0, failures: 0 };
   try {
-    await terminateLegacyCompactionMemory(options);
+    await terminateRetiredCompactionProposals(options);
     const compacted = await maybeCompact(options.sessionManager, options.sessionId, {
       threshold: options.threshold,
       keepRecent: options.keepRecent,
@@ -176,7 +176,7 @@ async function runCompactionAttempt(options: RunSessionCompactionOptions): Promi
         ...withUsage(compactionUsage(before, usageCounters(options.ctx), attempts)),
       };
     }
-    await terminateLegacyCompactionMemory(options);
+    await terminateRetiredCompactionProposals(options);
     // The committed summary is a session resource, and it is registered here because RS-05 removed
     // the proposal that used to carry it: without a proposal there is no pending transaction to
     // settle later, so the registration happens as part of the compaction operation itself.
@@ -334,7 +334,28 @@ function legacyCompactionResponse(content: string | undefined): DecodedCompactio
 const RETIRED_COMPACTION_MEMORY_REASON =
   'Compaction no longer writes durable memory (RS-05): this candidate was never committed and will not be.';
 
-async function terminateLegacyCompactionMemory(options: RunSessionCompactionOptions): Promise<void> {
+/** What the retirement sweep needs; narrower than a whole compaction attempt on purpose. */
+export interface TerminateRetiredProposalsOptions {
+  sessionManager: Pick<SessionManager, 'listPendingCompactions' | 'terminateCompactionMemoryProposal'>;
+  memoryService: Pick<MemoryService, 'registerSessionSummary'>;
+  sessionId: SessionId;
+  log?: LogFn;
+}
+
+/**
+ * Close every committed-but-unsettled compaction memory proposal, and do it *before* anything reads the
+ * session.
+ *
+ * Order matters and was measured: the session manager's recovery refuses a transaction whose
+ * predecessor is no longer the active summary, and once a later compaction has committed, that is
+ * exactly what an old proposal looks like. Recovery then quarantines the whole transaction, which takes
+ * the proposal away from this sweep and leaves its candidates with no outcome at all. Running here first
+ * means the record says what happened (every candidate rejected, with the retirement reason) instead of
+ * disappearing into a quarantine directory.
+ */
+export async function terminateRetiredCompactionProposals(
+  options: TerminateRetiredProposalsOptions,
+): Promise<void> {
   const transactions = await options.sessionManager.listPendingCompactions(options.sessionId);
   for (const transaction of transactions) {
     // A freshly committed compaction has no memory proposal at all and is still pending until its
