@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-28 01:17:00
+最后更新：2026-09-28 01:18:52
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -198,3 +198,31 @@ GFM 表格（无 fixture 渲染 ✓，只有源码事实 ✓）；跨会话切�
 **两个曾被记为"红"的测试：断言未被放宽 ✓**（原作者在 23:58:47 重写 ✓，独立包逐条判定了"改的是哪一侧" ✓）：①样式断言本身**未动且非空洞** ✓（仍读真实规则块 ✓，如 `06-composer.css:2030` 的 `.composer-tab-control{height:var(--composer-control-surface-size)…}` ✓ 与 `:2041/:2076` 的 28px 覆盖 ✓ —— 规则若消失断言必失败 ✓）；改的只是 `disabled` 的**接线** ✓，因为 P0 刻意把"执行 + 模型"合并成**一个决策** ✓，使**禁用与文案不可能互相矛盾** ✓ → 新断言**更强** ✓；②picker 的断言从"必须调用 `describeRuntimeAvailability`"改为"picker 只接 `availability` 属性、**不得**自己推导、由 hook 推导、controller 调 `useModelAvailability`、composer 传入" ✓ —— 因为保留旧断言反而会**要求**那个 P0 正要消除的第二次推导 ✓。已核实生产代码里 `describeRuntimeAvailability(` **只在一处**被调用 ✓（`use-model-availability.ts` ✓）。
 
 **未变的两条边界** ✓：①Run B 用的是本地确定性 provider 桩 ✓ → 证明的是**派发/流式/结算端到端** ✓，**不**证明真实 provider 可达 ✓；②构建仍被并发编辑反复作废 ✓，每次运行都自行重建并重新断言新鲜度 ✓（死于 staleness 的尝试已重试 ✓）；它在仓库外用了一个 `pnpm` shim 来构建 ✓（因为 `pnpm` 不在 PATH ✓）✓，仓库内无残留 ✓。
+
+## 审计 D 结果（设置 / 工作区 / 浮层，2026-09-28 01:3x）
+
+方法 ✓：真实窗口（CDP + 确定性 provider ✓，产物在 `%TEMP%\littlesheep-run-artifacts\ui-audit` ✓，仓库内零写入 ✓）。**信任边界** ✓：观察绑定在 00:53 与 01:11 两个构建上 ✓；每条发现背后的**源码文件在该窗口内未被改动** ✓；并发被编辑的 `app-shell`/`sidebar`/`styles` 文件**已从所有结论中排除** ✓（这是正确的排除法 ✓）。
+
+### 新增发现（并入本表，P1 区在前）
+
+| # | 级别 | 症状（用户可见） | 证据 | 偏离的既有约定 | 最小修法 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- |
+| **9** | **P1** | **工作区关闭有未保存改动的标签时，没有"不保存"这个答案** ✗：点 ✕ 弹出的是**权限**对话框"允许保存工作区文件？"✓（三个答案都只回答"能否保存" ✓，没有一个是"不保存直接关" ✓）；选"拒绝"后**标签静默留在原地且仍脏** ✗、无任何提示 ✓、也没有任何入口能丢弃草稿 ✗ | `窗口`（`closeAttempt{approvalHeading, approvalButtons:["拒绝","本对话允许","仅本次"], discardOffered:false}` ✓；`afterDeny{tabCount:2, dirtyCount:1, composerError:null, discardPath:[]}` ✓；批准"仅本次"则 `tabCount:1` 且文件落盘 ✓）＋`源码`：`workspace/file-close.ts:24-46` ✓（dirty → requestSaveApproval → saveDraft → closeTab，**无丢弃分支** ✓）、`workspace/use-workspace-layout-controller.ts:526-552` ✓（`'approval-denied'` 结果**被调用点丢弃** ✗，无提示 ✓） | VS Code / Cursor / 所有编辑器：关闭脏缓冲区给 **保存 / 不保存 / 取消** ✓；**文件权限系统不是用户决定放弃编辑的地方** ✓ | 加第三条路径 ✓：(a) `approval-denied` 时保留标签 + 一行提示带"放弃修改" ✓；或 (b) 工作区保存审批里渲染"保存 / 不保存并关闭 / 取消" ✓。文件：`workspace/use-workspace-layout-controller.ts`（+ `approval/prompt.tsx` 若加选项 ✓） | 待派修（**建议排第一** ✓：频率最高 ✓ 且当前等于强迫保存或困住编辑 ✗）|
+| **10** | **P1** | **"完全访问"警告（本产品最危险的确认）不接管焦点** ✗：警告开了但焦点仍在原处（纯鼠标路径下是 `BODY` ✓；一次运行里停在后台侧栏按钮上 ✓）→ 随后的 Enter/Space 会**激活后台控件** ✗ —— 实测那次直接把应用导航到别的页面并**静默关掉了警告** ✗，待定的模式切换也丢了 ✗ | `窗口`（`{warningOpen:true, activeElement:BODY, focusInsideWarning:false}` ✓；Tab 一次后才进入对话框 ✓；第二次运行 `activeElement` 是后台"已安排"导航按钮 ✓，下一个 Enter 清掉警告与整个模式触发器 ✓）＋`源码`：`composer/mode-picker.tsx:126-130` 调 `useModalSurface({initialFocusRef})` ✓，但其子节点在 `FadePresence` 内 ✓，而 `ui/presence.tsx:88` 在 `show` 翻转的那次提交**返回 null** ✗ → `ui/modal-surface.ts:59-68` 只在 `active` 变化时聚焦一次 ✓，那时两个 ref 都还是 null ✗ 且**永不重试** ✗。对照：`ui/danger-confirm.tsx:34-40` 与 `approval/prompt.tsx:60-64` **做对了** ✓ | 模态打开即取得焦点 ✓，关闭时归还触发元素 ✓ | 首帧不要隐藏对话框 ✓（`FadePresence enterFrames={0}`/keepMounted ✓）或在 `useModalSurface` 里**下一帧重试初始聚焦** ✓ + 记录/恢复先前焦点 ✓。文件：`composer/mode-picker.tsx`、`ui/modal-surface.ts` | 待派修（**第二个修** ✓：它护着最危险的开关 ✓）|
+| **11** | **P1** | **设置 → 内置浏览器：一键清除所有网站数据** ✗（登出所有站点 + 删本地存储 ✓，**无确认、无撤销** ✗，而该行文案本身承诺了这个后果 ✓）| `窗口`（点击后各次采样均无 `[role=dialog]`/`[role=alertdialog]` ✓；状态立即变"网站数据、登录状态和缓存已清除。" ✓）＋`源码`：`settings/browser.tsx:94-96` 直接 `runAction('data')` ✓；`ui/danger-confirm.tsx` 只被归档与供应商删除用到 ✓。**对照的不对称** ✗：`settings/web.tsx:105-118` 连**可逆的**"启用网络检索"都做了确认 ✓ | 浏览器在清除浏览数据前会询问 ✓；不可逆删除要有确认并点明对象与影响 ✓（这也是 LS 自己在归档/供应商删除上的规则 ✓）| 复用 `settings/web.tsx:105-118` 已有的内联确认块 ✓（或 `DangerConfirmDialog` ✓）挡在 `runAction('data')` 前 ✓。文件：`settings/browser.tsx` | 待派修（纯数据损失预防 ✓）|
+| **12** | **P1** | **设置 → 模型供应商：编辑器与它的丢弃确认里 Esc 无效** ✗（有未保存修改时按 Esc 什么都不发生 ✓、焦点留在字段里 ✓；点 × 出现丢弃 `alertdialog` 后再按 Esc 依旧无效 ✓）| `窗口`（`{editorStillOpen:true, discardVisible:false}` ✓；丢弃对话框 `{role:"alertdialog", buttons:["继续编辑","丢弃修改"]}` ✓；再按 Esc 仍 `discardStillVisible:true` ✓）＋`源码`：`settings/model-provider-editor.tsx` **未注册任何 escape scope** ✗；而 `ui/modal-surface.ts:16` 正是为此存在 ✓，且 `ChannelConnections.tsx:41`、`MemorySkills.tsx:38` 都在用 ✓ | Esc 关闭最上层对话框/面板 ✓ —— LS 在审批、危险确认、完全访问警告、渠道/技能页与**每个浮层**都实现了 ✓，**只缺这一处** ✗ | `useEscapeScope(() => { if (!saving) closeEditor() })` ✓ + 丢弃确认一个（→ `keepEditing` ✓）。文件：`settings/models.tsx`（回调接线在 `model-provider-editor.tsx` ✓）| 待派修（**本清单最便宜的一条** ✓ ~2 行 ✓）|
+| **13** | P2 | **设置搜索只索引页面标题与描述** ✗ → 假阴性 + 命中不给理由：搜"压缩阈值"/"Tavily"/"关闭窗口"都得"没有匹配的设置" ✗（而该设置**确实存在** ✓）；命中只显示页面标题 ✓，所以"密钥→模型供应商"、"缓存→网络检索/内置浏览器"看不出**为什么**匹配 ✗；搜索结果**不能用方向键导航** ✗ | `窗口`＋`源码`：`settings/navigation.ts:78-94` 只过滤 `${title} ${desc}` ✓；`settings/workspace.tsx:111-113` 只渲染 `<strong>{title}</strong>` ✓ | VS Code / Chrome / Cursor 的设置搜索**按字段名与同义词**定位 ✓，并显示命中原因 ✓；标着"搜索设置"的框不该对**存在**的设置说"没有匹配" ✗ | 给索引条目加**字段级关键词/同义词** ✓，结果里渲染 desc（或命中的关键词 ✓）；空态文案改为"没有匹配的设置页面" ✓。文件：`settings/navigation.ts`、`settings/workspace.tsx` | 待派修 |
+| **14** | P2 | **审阅区在没有 Git 的工作区里同时显示"Git 审阅不可用"与"正在读取 Git 更改…"** ✗（后者是**常驻**的 ✓）| `窗口`＋`源码`：`workspace/review.tsx:335` 的 `emptyText = snapshotReady ? '没有未提交更改' : '正在读取 Git 更改...'` ✓，而不可用判定来自 `availability !== 'ready'`（`:288-289` ✓）→ **加载文案被复用为失败文案** ✗ | 加载失败应**替换**加载态 ✓；永不与错误并列显示"正在加载…" ✓ | 把 availability/error 传进树的 `emptyText` ✓。文件：`workspace/review.tsx` | 待派修 |
+| **15** | P2 | 设置 → 网络检索：**"检查 Tavily 连接"被禁用且无原因** ✗（`disabled:true` ✓、`title:null` ✓、`aria-describedby:null` ✓，段落也没说明需要先保存密钥并开启网络 ✓）| `窗口`＋`源码`：`settings/web.tsx:138-145` ✓ | 被禁用的主要动作要么说明原因 ✓，要么保持可用并在点击时解释 ✓（LS 在别处已有 `aria-disabled` + 原因的模式 ✓）| 给按钮绑一句原因（`aria-describedby`/`title` ✓）。文件：`settings/web.tsx` | 待派修 |
+| **16** | P2 | 模式选择器声明 `role="listbox"` 但子节点是普通按钮 ✗（`children BUTTON role:null aria-selected:null` ✓；打开后按方向键焦点仍停在触发器 ✓ 无键盘导航 ✓）| `窗口`＋`源码`：`composer/mode-picker.tsx:65-91` ✓；**对照** `composer/runtime-picker.tsx:241-368` 正确用了 `role=menu`/`menuitemradio` ✓ | APG listbox = `role=option` + `aria-selected` + 方向键 ✓；**或**改用 LS 自己已经在用的 menu 模式 ✓ | 照搬 runtime picker 的 `menu`/`menuitemradio` 模式 ✓（标签已存在 ✓）。文件：`composer/mode-picker.tsx` | 待派修 |
+| **17** | P2 | **S1 重排的两条宣称不成立** ✗（report-only ✓）：(a) **"已安排"仍是主侧栏里的一等可见入口** ✗（`.sidebar-nav-button aria-label 已安排` ✓ 247×28 ✓ 非 inert ✓，点开还是同一占位页 ✓）—— 重排只把它移出了**设置索引** ✓；(b) **五个设置页仍带与新分组矛盾的 `settings-module-kicker`** ✗（`agent-profile.tsx:54` 通用 vs 模型与行为 ✓、`web.tsx:87` 通用 vs 连接与扩展 ✓、`storage.tsx:80` 与 `development-environments.tsx:114` 通用 vs 存储与环境 ✓、`browser.tsx:49` 与 `plugins.tsx:186` 扩展 vs 连接与扩展 ✓）。当前**不可见** ✓，因为 `styles/07-overlays-settings.css:582` 设了 `display:none` ✓（实测每页 computed `display: "none"` ✓）→ **死代码** ✓，一旦取消隐藏就会显示错误分组 ✗ | `窗口`＋`源码` | 未接入的功能不应出现在常用导航 ✓（这也是 S1 自己的目标 ✓）| 隐藏 `sidebar/quick-nav.tsx` 里的"已安排"入口 ✓，或**明确**决定保留占位页 ✓；kicker 在下次触碰时顺手改 ✓，**不要为隐藏的 kicker 新建工程** ✗ | 待派修（(a) 需你/我确认是否保留该入口 ✓）|
+
+### 审计 D 已核对为**正确**（不要重复审计 ✓）
+
+设置：访问的 **12 个页面**每个都有标题 + 用户语言的用途句 ✓；有文本输入处都有显式保存 ✓（供应商编辑器、压缩阈值、Tavily 密钥、开发环境版本 ✓）并有 保存中/已保存/原地失败 反馈 ✓；单选/开关即时生效且可见选中态 ✓；保存失败**保留输入** ✓；无改动时保存禁用 ✓。浮层：审批提示点名动作、权限模式、边界判定、确切路径与内容、以及"本对话允许"的范围 ✓；Tab 在 拒绝→本对话允许→仅本次 间循环且焦点被困 ✓；Esc = 拒绝 ✓；**拒绝后写入确实不发生** ✓；防连点存在 ✓；通知 3.2 s 成功 / 6.4 s 警告 ✓、错误用 `role=status`+`aria-live=assertive` ✓。工作区：脏点按文件正确 ✓；**新对话没有泄漏文件标签** ✓；批准保存后标签关闭且文件落盘 ✓；非 Git 审阅有真实空态 ✓（唯一的陈旧文案就是上面第 14 条 ✓）。
+
+### 审计 D 未核对（如实列出 ✓）
+
+终端错误面与多会话行为（探针脚本自身有 bug ✓，**未重跑 → 关于终端零结论** ✓）；内嵌浏览器（无网络夹具 ✓，未跑 ✓）；真实 Git 仓库下的审阅（diff/行评论/大 diff 限制/刷新失败重试 ✓ —— 它们有自己的门禁 ✓）；从聊天产物卡打开文件（需一次会写文件的 run ✓，未做 ✓）；跨会话草稿隔离（只测了"全新会话"这一例 ✓，草稿归属是**读源码**得到 ✓）；屏幕阅读器实际输出（只查了 role/属性 ✓，不是 AT 行为 ✓）；两个审批同时排队 ✓；未走新流程的四张设置页 ✓。**未追**（按指示 ✓）：UI 连续性门禁的原生几何断言 ✓、门禁的两处上限失败 ✓。
+
+**它建议的修复顺序** ✓：①脏标签关闭给三选一并说明被拒 ✓ ②完全访问警告的初始焦点 ✓ ③清除网站数据的确认 ✓（若要最便宜的一胜 ✓：④供应商编辑器 Esc 注册 ~2 行 ✓）✓ —— 与我的排序一致 ✓。
