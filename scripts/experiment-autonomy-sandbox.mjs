@@ -1021,6 +1021,10 @@ async function runModelCase(args) {
 
   // SB-05: run the real entry with the sandbox backend selected. The selection is an experiment-only
   // environment contract, so the product keeps its default host shell unless a host opts in.
+  // SB-05 compares two authorization shapes under the same sandbox and the same task: range authorization
+  // ('full', where the boundary decides and the approval callback is never consulted) and per-command
+  // approval ('research', where every write or execute needs an answer). The prompt count is the measure.
+  const policy = args.policy === 'research' ? 'research' : 'full';
   const sandboxEnabled = caseId === 'SB-05';
   if (sandboxEnabled) {
     process.env.LS_EXPERIMENT_EXEC_BACKEND = 'wsl2-bwrap';
@@ -1053,6 +1057,7 @@ async function runModelCase(args) {
   let runner;
   let result;
   let loopBudget = null;
+  let approvalsGiven = 0;
   let timedOut = false;
   let failure = null;
   const abort = new AbortController();
@@ -1078,8 +1083,8 @@ async function runModelCase(args) {
         text: fixture.prompt,
         cwd: workspace,
         origin: 'test',
-        permissionPolicyId: 'full',
-        approve: async () => true,
+        permissionPolicyId: policy,
+        approve: async () => { approvalsGiven += 1; return true; },
         onToolEvent: (event) => toolEvents.push(event),
         signal: abort.signal,
       }),
@@ -1129,7 +1134,7 @@ async function runModelCase(args) {
     sourceHash: source.digest,
     promptHash: promptHash(fixture.prompt),
     configHash: configDigest(config),
-    authorizationRef: 'permissionPolicyId=full;approve=always-true;isolated-data-root',
+    authorizationRef: `permissionPolicyId=${policy};approve=always-true;isolated-data-root`,
     requestedBackend: 'host',
     actualBackend: 'host',
     injection: injector.state.applied,
@@ -1137,7 +1142,7 @@ async function runModelCase(args) {
     outcome: outcomeLabel,
     artifactChecks,
     interventions: summary
-      ? [{ kind: 'permission_prompts', count: summary.permissionPromptCount }, { kind: 'human_interventions', count: 0, note: 'auto-approved experiment; counts are structural, not user effort' }]
+      ? [{ kind: 'permission_prompts', count: summary.permissionPromptCount }, { kind: 'approval_callbacks', count: approvalsGiven }, { kind: 'human_interventions', count: 0, note: 'auto-approved experiment; counts are structural, not user effort' }]
       : [],
     refusals: summary?.refusals ?? [],
     usage: usageOf(result),

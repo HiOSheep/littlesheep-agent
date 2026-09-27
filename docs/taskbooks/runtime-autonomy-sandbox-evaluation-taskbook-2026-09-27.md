@@ -1,8 +1,8 @@
 # Runtime 自主执行与沙箱边界验证任务书 2026-09-27
 
-最后更新：2026-09-28 00:34:00
+最后更新：2026-09-28 00:48:00
 
-状态：**接近完成**。EV-00、RT-01～RT-05、SB-01～SB-04 已执行并回填；SB-05 的"真实模型经沙箱跑通"部分通过（单次 run）、**Electron 与打包验收未跑**、审批对照臂未做。第 7 节台账与第 8 节回传模板按实际结果回填，失败、受阻与未验证项原样保留。执行后的候选补丁全部反向回退，工作树未保留任何候选改动；正式采用与否仍由用户决定。
+状态：**接近完成**。EV-00、RT-01～RT-05、SB-01～SB-04 已执行并回填；SB-05 的审批对照与真实入口已通过（各 3 次 run）、**Electron 与打包验收仍未跑**。RT-01 是唯一未通过的项（证据不足 + 两个既有缺口）。第 7 节台账与第 8 节回传模板按实际结果回填，失败、受阻与未验证项原样保留。执行后的候选补丁全部反向回退，工作树未保留任何候选改动；正式采用与否仍由用户决定。
 
 ## 1. 目标、交付与范围
 
@@ -254,7 +254,7 @@ Harness / Runner / 公共契约修改按仓库规则运行 `pnpm.cmd run verify:
 | SB-02 | pass | 候选 `patches/sb02-b.patch`：新增 `packages/tools/src/builtin/exec-sandbox.ts`（后端定义、预检、审计、`requested/actual` 元数据），`exec.ts` 在原有参数校验/授权/审批/版本检查/观察冻结**之后**才选择进程后端；后端建立不起来时返回 `sandbox_unavailable` 并停止，**没有静默回退**；`WSL_UTF8=1` 并丢弃 wsl.exe 的代理提示，避免把宿主基础设施文本当成命令输出喂给模型 | `node scripts/experiment-autonomy-sandbox.mjs sandbox --json=<ev>\sandbox\sandbox-report.json`；宿主侧独立观测 `<ev>\sandbox\scratch\sb0*\sandbox-audit.jsonl` | **四行全部通过**：`research` 模式下拒绝授权 → 命令没跑且 `denied.txt` 不存在（工具原话 `Approval denied: this command requires user approval.`）；同一模式放行 → 在沙箱里真的跑了；不可用后端（不存在的发行版）→ 不执行、不回落；`host` 后端 → `actualBackend=host`。宿主侧审计独立记录 `requestedBackend`/`actualBackend`/`commandHash`/`workspace`/`network`（SB-03 11 行、SB-04 14 行）。**修正记录**：第一版用 `permissionMode=full` 测"拒绝"，那等于没测——`full` 下边界直接 allow、审批回调根本不会被调用；改用 `research` 才是真实的授权路径。**未验证**：`ToolInvocationRecord` 仍无 isolation 字段，账本层面的隔离事实靠工具 `meta.sandbox` + 宿主审计文件，不是产品持久化字段 |
 | SB-03 | pass | 同上（`patches/sb02-b.patch`）；兼容性经**真实 `exec` 工具**执行 | `sandbox` 模式 sb03-workload 11 行；宿主侧验收在报告 `hostChecks` | **11 行全部经沙箱执行，3 项宿主侧验收通过**：版本探测、文件读、写后读回（宿主能看到 `out.txt`）、建目录、空格+中文路径、`git init`/`git status`、`node -e` 脚本、输出截断、同命令重测。失败退出码一行如实返回 `exit code 3`。沙箱需要显式声明只读工具链（`/home/dev/.nvm/versions/node/v22.23.3`），因为 `/home` 被遮蔽——这正是 SB-01 要求的"冻结只读工具链"。**未验证**：包管理/依赖安装链路、冷热启动计时、资源占用读数、原生与 WSL2 的换行/权限语义对比。**该后端不提供任何资源上限**（沙箱内 `ulimit` 为 memory/time unlimited、process 31715） |
 | SB-04 | pass | 同上（`patches/sb02-b.patch`）；敌意矩阵现在**经真实 `exec` 工具**执行，另有直接 bwrap 探测作交叉核对 | `sandbox` 模式 sb04-boundary 14 行 + `hostChecks`；直接探测 `<ev>\sandbox\probe.sh`～`probe4.sh`；`<ev>\sb02-04-sandbox-findings.md` | **矩阵内未发现突破，但发现一条必须显式关闭的通道**。经 exec 工具复核且宿主侧验收全部通过：越界读宿主的 workspace 外哨兵、越界写、读 LS 数据根、读 WSL 家目录/SSH、`..` 穿越、只读根写入、子孙进程、无 Provider 密钥进入环境、Windows 控制面不可达、默认无网络；正向对照（workspace 写入）落地、哨兵哈希不变、**interop 证明文件不存在**、超时后心跳停止。**发现并已缓解**：`binfmt_misc` 的 `WSLInterop` 是内核级注册、`/init` 又在只读根里，所以**沙箱内可见的任何 Windows PE 都会作为宿主进程运行**——直接把 `cmd.exe` 放进被绑定工作区后，它在**沙箱完全未暴露的宿主路径**上写出了文件；加 `--ro-bind /dev/null /init` 后 exit=126、宿主侧无文件（两种定义都实测过）。**另一条**：`--ro-bind / /` 单独使用时 `/mnt/c`、`/mnt/d` 与 WSL 家目录都可读（`.ssh` 下私钥文件**可被列出，未读取内容**），必须遮蔽 `/mnt` 与 `/home`。允许路径对照：带宿主代理时 `curl https://www.example.com` → 200。**未验证**：回环"拒绝接收端"没有真正的监听者（`Connection refused` 不算证据）；链接替换竞态未构造；取消/超时只有心跳计数，未做进程级存活核对；seccomp 未安装 |
-| SB-05 | unverified | 同上（`patches/sb02-b.patch`） | `node scripts/experiment-autonomy-sandbox.mjs model --case=SB-05 --arm=B --trial=1 --batch=RASB-2026-09-27-SB05`；账本 `ledger.jsonl` 中 batchId 为 `RASB-2026-09-27-SB05` 的记录 | **非 Electron 部分通过（单次 run，样本不足）**：真实模型提议 `node tools/build_report.mjs` → Tool Execution Service → 真实沙箱进程 → 宿主产物 `report.json`（`total=12`）→ 回复报出 total；宿主侧审计文件确认 `actualBackend=wsl2-bwrap` 且**没有任何一次 exec 跑在宿主 shell 上**。权限提示与完成率的"逐命令审批 vs 范围授权"对照**未执行**（这里只有范围授权一臂）。Electron 与打包验收**未跑**：需要 `pnpm run package:win` 与真实桌面入口，明确排除"发布就绪"结论。**单次样本不构成比例证据** |
+| SB-05 | pass | 同上（`patches/sb02-b.patch`） | 批次 `RASB-2026-09-27-SB05AUTH2-FULL` / `-RESEARCH`（各 3 次 run，`--policy=full|research`，同一夹具、同一沙箱、同一任务）；早前单次 run 为 `RASB-2026-09-27-SB05` | **两端都通过，审批提示从 1 次/run 降到 0 次/run**。真实模型提议 `node tools/build_report.mjs` → Tool Execution Service → 真实沙箱进程 → 宿主产物 `report.json`（`total=12`）→ 回复报出 total。范围授权（`full`）3/3 通过、0 权限提示、109,748 token；逐命令审批（`research`）3/3 通过、3 次权限提示（每 run 1 次）、87,956 token。两臂的 3 个 run 都带宿主审计文件，审计里 `actualBackend` 全部是 `wsl2-bwrap`——**没有任何一次 exec 跑在宿主 shell 上**。**过程中的真实错误**：先跑的 `RASB-2026-09-27-SB05AUTH-*` 6 条 run 在补丁已回退、dist 未同步的状态下执行，审计文件缺失暴露了它们其实跑在宿主 shell 上，这 6 条**不计入沙箱证据**、原样留在账本里。**未验证**：n=3 且只有一种任务形状，不构成比例证据；Electron 与打包验收**未跑**（需 `pnpm run package:win` 与真实桌面入口），明确排除发布就绪结论；`ToolInvocationRecord` 仍无 isolation 字段 |
 | RV-01 | pass | 无源码改动 | 本任务书第 7、8 节；`<ev>\EVIDENCE-INDEX.md`；`<ev>\rt-summary.json`；四个 `patches\*.patch`；两笔提交 `a5535d3e`、`92a64912` | 已回填本表与第 8 节，逐项给出保留/调整/否决/证据不足建议，列出复现步骤、回滚方式与残留清理。**未完成**：RT-05 的组合负载、SB-02/03/05。结论不构成正式启用、产品修复或退役批准 |
 
 ## 8. 结果回传模板
@@ -365,7 +365,7 @@ Sandbox 各后端：正常负载结果、边界矩阵、真实进程身份、冷
   真实 OS 隔离：具备（非 Electron 路径）——SB-02/03/04 的全部用例都经真实 exec 工具进入
   bwrap 命名空间执行，并有宿主侧审计文件独立记录 requested/actual 后端；
   越界、凭据、网络、子孙进程与 interop 通道均按矩阵拒绝，interop 逃逸在关闭后复测为失败。
-  Electron：不具备（未跑）。
+  SB-05 授权对照：范围授权 3/3 通过 0 提示 vs 逐命令审批 3/3 通过 3 提示（每 run 1 次），两端都带宿主审计。`n  Electron：不具备（未跑）。
   打包：不具备（未跑 pnpm run package:win）。
 
 安全回归 / 失败 / 超时 / 取消 / 缺失 usage：
@@ -421,7 +421,7 @@ Sandbox 各后端：正常负载结果、边界矩阵、真实进程身份、冷
     缺一不可：`--ro-bind /dev/null /init` 必须存在（否则 WSLInterop 直接逃逸）、`/mnt` 与 `/home`
     必须遮蔽、只读工具链必须由宿主显式声明。它**不提供资源上限**，也**不是** `read → observation →
     validate → mutate` 的替代品；`ToolInvocationRecord` 仍缺 isolation 字段。
-  SB-05 → **证据不足**。真实模型经沙箱跑通的一种情形已通过，但只有 1 次 run，且缺"逐命令审批 vs 范围授权"
+  SB-05 → **证据不足（已补对照，仍不足以给比例结论）**。真实模型经沙箱跑通的一种情形已通过，但只有 1 次 run，且缺"逐命令审批 vs 范围授权"
     的对照臂与 Electron/打包验收；不足以支撑"降低审批"的产品结论。
 
 清理情况 / 残留资源 / 待用户决定：
