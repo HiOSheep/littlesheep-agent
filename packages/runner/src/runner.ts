@@ -48,7 +48,7 @@ import {
   DurableHarnessKernel,
   collectConversationSourceRecords,
   settleDeferredFinalReply,
-  isSupportedWorkPolicy,
+  isSupportedPersistedWorkPolicy,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type Infrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -2428,7 +2428,7 @@ function restoreContinuationContext(
 ): void {
   const state = checkpoint.resumeState;
   if (!state) throw new Error('checkpoint has no resumable runtime state');
-  if (state.classification?.workPolicy !== undefined && !isSupportedWorkPolicy(state.classification.workPolicy)) {
+  if (state.classification?.workPolicy !== undefined && !isSupportedPersistedWorkPolicy(state.classification.workPolicy)) {
     throw new Error('checkpoint uses an unsupported work policy version or shape');
   }
 

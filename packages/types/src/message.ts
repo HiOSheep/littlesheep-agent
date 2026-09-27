@@ -199,7 +199,13 @@ export function filterAuthoritativeUserFacingMessages(messages: readonly Message
   return messages.filter(isAuthoritativeUserFacingMessage);
 }
 
-/** Stage names that may tag a message (imported lazily to avoid cycle). */
+/**
+ * Stage names that may tag a message (imported lazily to avoid cycle).
+ *
+ * Deliberately wider than the live graph: transcripts written before the second execution system was
+ * deleted carry `decide`, `evolve` and `capture`, and history has to stay readable. `stage-transitions.ts`
+ * keeps the same split as `StageName` / `CurrentStageName`.
+ */
 type StageName =
   | 'enter'
   | 'classify'

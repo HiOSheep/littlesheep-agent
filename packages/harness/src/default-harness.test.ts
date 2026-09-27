@@ -293,6 +293,48 @@ describe('createDefaultHarness state machine', () => {
     ]);
   });
 
+  // The re-entry above happens once per event. A stage that never consumes a deferred user message must not
+  // trap the driver: bouncing every other stage back into EXECUTE for an event nobody takes is an unbounded
+  // loop, and that is what this did — the run never ended and the worker ran out of memory (124s, OOM).
+  it('does not trap the run when a deferred user message is never consumed', async () => {
+    let executeCalls = 0;
+    const h = makeHarness(createMockLlm(textResponse('unused')));
+    const runtimeQueue = createMutableRuntimeTaskQueue();
+    h.registerStage('classify', async (ctx) => {
+      ctx.classification = { type: 'problem', confidence: 1, source: 'rules', reason: 'integration test' };
+      return { stage: 'classify', next: 'execute', ok: true };
+    });
+    h.registerStage('execute', async (ctx) => {
+      executeCalls += 1;
+      if (executeCalls === 1) {
+        runtimeQueue.enqueue({
+          version: RUNTIME_EVENT_VERSION,
+          id: 'runtime-update-unconsumed',
+          runId: ctx.runId,
+          sessionId: ctx.sessionId,
+          sequence: 1,
+          type: 'user_message',
+          source: 'app',
+          status: 'queued',
+          receivedAt: '2026-07-18T11:00:00.000Z',
+          payload: { text: 'This event is never consumed by any stage.' },
+        });
+      }
+      return { stage: 'execute', next: 'finalize', ok: true };
+    });
+    h.registerStage('finalize', async () => ({ stage: 'finalize', next: 'exit', ok: true }));
+    const ctx = makeCtx({ inbound: textMessage('user', 'complete the task') });
+    ctx.runtimeEventQueue = runtimeQueue.port;
+
+    const result = await h.run(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(result.next).toBe('exit');
+    // Handed to the loop once, then the loop's own decision stands even though the event stays deferred.
+    expect(executeCalls).toBe(2);
+    expect(ctx.deferredRuntimeEventIds).toEqual(['runtime-update-unconsumed']);
+  });
+
   it('unmatched path: enter → classify(loop) → execute → verify → finalize → exit', async () => {
     // 'asdf qwer' matches no rule, so it goes to the main loop: the model's own
     // text is the answer and no clarification checkpoint is created.

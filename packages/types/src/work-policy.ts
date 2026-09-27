@@ -23,7 +23,27 @@ export type ClassificationReasonCode =
   | 'deterministic_default_execute'
   | 'classifier_failed';
 
-export type ExecutionWorkMode = 'bounded_loop' | 'task_book';
+/**
+ * Execution modes this build can run. There is exactly one: every request, new or resumed, executes in
+ * the single main loop. Nothing selects a second mode, and the type says so instead of offering a
+ * retired one as if it were still a choice.
+ */
+export type ExecutionWorkMode = 'bounded_loop';
+
+/**
+ * Execution modes an **older build** persisted, and the reader still has to accept.
+ *
+ * `task_book` belonged to the second execution system, which was deleted; a checkpoint written before
+ * that still carries the value in `WorkPolicy.executionMode`. It is a historical wire value, not an
+ * execution option: restore validates it so old data keeps opening, and the live path never reads it —
+ * no code branches on it any more, and a policy carrying it is downgraded to the main loop by the
+ * normalization in the checkpoint reader.
+ *
+ * Supported versions: work-policy version 1 written up to 2026-09-24.
+ * Consumer: checkpoint restore validation (`isSupportedPersistedWorkPolicy`).
+ * Removal condition: no supported data root contains a persisted policy with this value.
+ */
+export type PersistedExecutionWorkMode = ExecutionWorkMode | 'task_book';
 
 export type WorkPolicyReasonCode =
   | 'bounded_single_goal'
@@ -45,4 +65,13 @@ export interface WorkPolicy {
   readonly sourceMessageId: string;
   readonly executionMode?: ExecutionWorkMode;
   readonly reasonCode: WorkPolicyReasonCode | ClassificationReasonCode;
+}
+
+/**
+ * The on-disk shape of a work policy: what a reader may encounter, including values a retired build
+ * wrote. Persisted state is typed with this, execution with `WorkPolicy`, so a historical value cannot
+ * quietly become an execution option again.
+ */
+export interface PersistedWorkPolicy extends Omit<WorkPolicy, 'executionMode'> {
+  readonly executionMode?: PersistedExecutionWorkMode;
 }

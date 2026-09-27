@@ -1,4 +1,4 @@
-import type { Classification, RunContext, WorkPolicy } from '@littlesheep/types';
+import type { Classification, PersistedWorkPolicy, RunContext, WorkPolicy } from '@littlesheep/types';
 import { assessRetrievalIntent } from './retrieval-intent.js';
 
 const WORK_POLICY_VERSION = 1 as const;
@@ -56,38 +56,16 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
   return policy(sourceMessageId, 'bounded_loop', 'bounded_default');
 }
 
-/** Resolve a policy at EXECUTE, downgrading persisted plans to the one loop. */
-export function resolveExecutionWorkPolicy(ctx: RunContext): WorkPolicy {
-  const existing = ctx.classification?.workPolicy as unknown;
-  if (existing !== undefined) {
-    if (!isSupportedWorkPolicy(existing)) throw new Error('unsupported work policy version or shape');
-    if (existing.route !== 'execute' || !existing.executionMode) {
-      throw new Error('execution requires an execute work policy');
-    }
-    // A persisted `task_book` policy belongs to a run that planned before the
-    // second executor was deleted. Its TaskBook is read-only history now, so the
-    // policy downgrades to the same loop every other run uses; the original
-    // reason code stays in the audit trail.
-    if (existing.executionMode === 'task_book') {
-      return policy(existing.sourceMessageId, 'bounded_loop', existing.reasonCode);
-    }
-    return existing;
-  }
-  if (ctx.resumedFromCheckpointId) {
-    return policy(String(ctx.inbound.id), 'bounded_loop', 'legacy_checkpoint');
-  }
-  if (!ctx.classification) throw new Error('execution requires a classification');
-  return selectWorkPolicy(ctx, ctx.classification);
-}
-
-/** Compatibility facade retained while callers migrate to the policy object. */
-export function canUseLeanWorkLoop(ctx: RunContext): boolean {
-  return resolveExecutionWorkPolicy(ctx).executionMode === 'bounded_loop';
-}
-
-export function isSupportedWorkPolicy(value: unknown): value is WorkPolicy {
+/**
+ * Accept a **persisted** policy, including the execution mode a retired build wrote.
+ *
+ * This is the restore gate, so it must keep opening old checkpoints; it is also the only place that
+ * accepts `task_book`, and it hands back the persisted shape so callers cannot mistake it for a mode
+ * this build can run. Supported: version 1, written up to 2026-09-24 (`task_book`).
+ */
+export function isSupportedPersistedWorkPolicy(value: unknown): value is PersistedWorkPolicy {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const candidate = value as Partial<WorkPolicy>;
+  const candidate = value as Partial<PersistedWorkPolicy>;
   if (candidate.version !== WORK_POLICY_VERSION
     || (candidate.route !== 'respond' && candidate.route !== 'execute' && candidate.route !== 'clarify')
     || typeof candidate.sourceMessageId !== 'string' || !candidate.sourceMessageId.trim()

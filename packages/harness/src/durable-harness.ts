@@ -40,6 +40,8 @@ export function createDurableHarness(opts: DefaultHarnessOptions): AgentHarness 
       let current: StageName | 'exit' = resolveCheckpointResumeStage(ctx, ctx.entryStage ?? 'enter');
       const trace: Array<{ name: StageName; startedAt: string; endedAt: string; ok: boolean }> = [];
       let attempt = 0;
+      /** Runtime events already handed to the main loop once; see the re-entry bounds below. */
+      const deliveredRuntimeEventIds = new Set<string>();
       let lastResult: StageResult = {
         stage: 'enter',
         next: 'exit',
@@ -115,21 +117,38 @@ export function createDurableHarness(opts: DefaultHarnessOptions): AgentHarness 
         }
         // Same boundary as the default driver: a queued runtime task event
         // re-enters the single main loop, not the deleted planner.
-        if (runtimeTasks.shouldReplan && stageName !== 'execute') {
+        //
+        // Each hand-off happens once per event. The main loop is where a deferred event is consumed, and if
+        // it routes somewhere else while the event is still deferred, that decision is the answer: bouncing
+        // every other stage back into `execute` for an event nobody consumes is an unbounded loop, which is
+        // exactly what this used to do (measured before the bound: a stage that never consumes the event
+        // never let the run end, and the harness test spun until the worker ran out of memory).
+        const claimedRuntimeEventIds = [...runtimeTasks.settledEventIds, ...runtimeTasks.deferredEventIds];
+        const undeliveredReplan = runtimeTasks.shouldReplan
+          && claimedRuntimeEventIds.some((id) => !deliveredRuntimeEventIds.has(id));
+        if (undeliveredReplan && stageName !== 'execute') {
+          for (const id of claimedRuntimeEventIds) deliveredRuntimeEventIds.add(id);
           current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
         // A user update captured before CLASSIFY still belongs to the active
         // run. Once route facts exist, deliver it through the single EXECUTE
         // loop even if the original turn would otherwise have taken REPLY.
-        const hasDeferredUserMessage = ctx.deferredRuntimeEvents?.some((event) => (
+        const deferredUserMessages = (ctx.deferredRuntimeEvents ?? []).filter((event) => (
           event.type === 'user_message' && typeof event.payload.text === 'string'
-        )) ?? false;
-        if (hasDeferredUserMessage && stageName !== 'execute' && stageName !== 'classify') {
+        ));
+        const undeliveredUserMessages = deferredUserMessages
+          .filter((event) => !deliveredRuntimeEventIds.has(event.id));
+        if (undeliveredUserMessages.length > 0 && stageName !== 'execute' && stageName !== 'classify') {
+          for (const event of undeliveredUserMessages) deliveredRuntimeEventIds.add(event.id);
           current = ctx.classification ? 'execute' : 'classify';
           continue;
         }
-        if (runtimeTasks.taskBookChanged && stageName !== 'execute' && !runtimeTasks.shouldReplan) {
+        if (runtimeTasks.taskBookChanged
+          && stageName !== 'execute'
+          && !runtimeTasks.shouldReplan
+          && claimedRuntimeEventIds.some((id) => !deliveredRuntimeEventIds.has(id))) {
+          for (const id of claimedRuntimeEventIds) deliveredRuntimeEventIds.add(id);
           current = ctx.classification ? 'execute' : 'classify';
           continue;
         }

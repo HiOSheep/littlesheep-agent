@@ -2,9 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { textMessage, type Classification } from '@littlesheep/types';
 import { makeCtx } from './tests/helpers.js';
 import {
-  canUseLeanWorkLoop,
-  isSupportedWorkPolicy,
-  resolveExecutionWorkPolicy,
+  isSupportedPersistedWorkPolicy,
   selectWorkPolicy,
 } from './lean-work-policy.js';
 
@@ -67,32 +65,48 @@ describe('work policy', () => {
     expect(selectWorkPolicy(ctx, action())).toMatchObject({ executionMode: 'bounded_loop', reasonCode });
   });
 
-  it('requires a supported persisted policy but has an explicit legacy checkpoint interpretation', () => {
-    const legacy = makeCtx({ inbound: textMessage('user', '帮我写一个函数'), classification: action() });
-    legacy.resumedFromCheckpointId = 'checkpoint-legacy';
-    expect(resolveExecutionWorkPolicy(legacy)).toMatchObject({
+  // The persisted boundary is the only place a retired execution mode is still accepted, and accepting it
+  // is not the same as running it: the gate hands back the persisted shape, and nothing in the live path
+  // reads `executionMode` to pick a mode any more (the second executor is gone).
+  it('accepts a retired execution mode at the persisted boundary so old checkpoints still open', () => {
+    expect(isSupportedPersistedWorkPolicy({
+      version: 1,
+      route: 'execute',
+      sourceMessageId: 'message-1',
+      executionMode: 'task_book',
+      reasonCode: 'complex_scope',
+    })).toBe(true);
+    expect(isSupportedPersistedWorkPolicy({
+      version: 1,
+      route: 'execute',
+      sourceMessageId: 'message-1',
       executionMode: 'bounded_loop',
-      reasonCode: 'legacy_checkpoint',
-    });
-
-    const invalid = makeCtx({ inbound: textMessage('user', '帮我写一个函数'), classification: action() });
-    invalid.classification!.workPolicy = { version: 2 } as never;
-    expect(() => canUseLeanWorkLoop(invalid)).toThrow(/unsupported work policy/);
+      reasonCode: 'bounded_default',
+    })).toBe(true);
   });
 
-  it('rejects malformed policy shapes at the persisted boundary', () => {
-    expect(isSupportedWorkPolicy({
+  it('rejects malformed or unknown policy shapes at the persisted boundary', () => {
+    expect(isSupportedPersistedWorkPolicy({
       version: 1,
       route: 'execute',
       sourceMessageId: 'message-1',
       reasonCode: 'bounded_single_goal',
     })).toBe(false);
-    expect(isSupportedWorkPolicy({
+    expect(isSupportedPersistedWorkPolicy({
       version: 1,
       route: 'respond',
       sourceMessageId: 'message-1',
       executionMode: 'bounded_loop',
       reasonCode: 'greeting',
     })).toBe(false);
+    expect(isSupportedPersistedWorkPolicy({
+      version: 1,
+      route: 'execute',
+      sourceMessageId: 'message-1',
+      executionMode: 'second_executor',
+      reasonCode: 'complex_scope',
+    })).toBe(false);
+    expect(isSupportedPersistedWorkPolicy({ version: 2, route: 'execute', sourceMessageId: 'm', reasonCode: 'x' }))
+      .toBe(false);
   });
 });

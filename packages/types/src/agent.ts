@@ -11,7 +11,7 @@ import type { AgentTool, ToolContext } from './tool.js';
 import type { ToolStreamEvent } from './activity.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
-import type { ClassificationReasonCode, WorkPolicy } from './work-policy.js';
+import type { ClassificationReasonCode, PersistedWorkPolicy } from './work-policy.js';
 import type {
   NeedAssessment,
   PartialReplanRequest,
@@ -84,7 +84,11 @@ export interface Classification {
   /** Runtime-owned retrieval boundary inferred only from the inbound user message. */
   retrievalIntent?: RetrievalIntent;
   /** Runtime-selected work policy. Missing only on legacy checkpoints/projections. */
-  workPolicy?: WorkPolicy;
+  /**
+   * Parsed from the routing boundary or restored from a checkpoint, so it keeps the persisted shape: an
+   * older record may carry a retired execution mode. Execution narrows it — see ExecutionWorkMode.
+   */
+  workPolicy?: PersistedWorkPolicy;
 }
 
 export interface RuntimeMemoryContextWorkingSet {
@@ -441,14 +445,6 @@ export interface AgentHarness {
   on(hook: AnyHook): void;
   /** Replace a stage (Layer 2). */
   registerStage(name: StageName, stage: Stage): void;
-}
-
-/** Registry for harnesses (Layer 1: full replacement). */
-export interface HarnessRegistry {
-  register(name: string, harness: AgentHarness): void;
-  get(name: string): AgentHarness | undefined;
-  /** Default harness (Core Flow). */
-  default: AgentHarness;
 }
 
 // ─── Run lifecycle ───────────────────────────────────────────────────────

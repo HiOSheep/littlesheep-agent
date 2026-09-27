@@ -84,9 +84,7 @@ export {
 } from './harness-path-comparison.js';
 export { capabilityProbeEvent } from './capability-events.js';
 export {
-  canUseLeanWorkLoop,
-  isSupportedWorkPolicy,
-  resolveExecutionWorkPolicy,
+  isSupportedPersistedWorkPolicy,
   selectWorkPolicy,
 } from './lean-work-policy.js';
 export {

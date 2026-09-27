@@ -29,6 +29,15 @@ const MAX_RESUME_EVENTS = 32;
 const MAX_RESUME_PATCH_IDS = 128;
 const MAX_RESUME_VERIFICATION = 32;
 
+/**
+ * Stage names a checkpoint may contain, retired ones included.
+ *
+ * Supported versions: every checkpoint this build can open, including those written before the second
+ * execution system was deleted. decide, volve and capture are read-only history here: the live graph
+ * (llowedTransitions in @littlesheep/types) has no edge into them, and resume normalizes a retired
+ * entry stage to the main loop. Consumer: alidateCheckpoint. Removal condition: when no supported data
+ * root contains a checkpoint naming one of them.
+ */
 const STAGE_NAMES: ReadonlySet<StageName> = new Set([
   'enter', 'classify', 'reply', 'ask_user', 'decide', 'execute',
   'recover', 'verify', 'evolve', 'capture', 'finalize',
