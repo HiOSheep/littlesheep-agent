@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 02:33:58
+最后更新：2026-09-27 10:46:25
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -177,3 +177,4 @@ pnpm.cmd run verify:electron-deepseek-hours
 - **终端专项门与三个修复**（UX-30 第 1、2 条）：`verify:workspace-terminal` 独立走查终端（Shell 下拉、恰好一个会话、新建得到两个标签、两个会话各自收到自己的输入、关闭只移除那一个）；修复"打开面板泄漏第二个会话""隐藏面板会杀掉所有会话""重复的清空按钮"。
 
 - 工具事件与运行流恢复（2026-09-27）：Main 侧 `local-app-api/run-tool-event-projection.ts` 把过大的工具事件压到本地 SSE 单事件上限（32 KiB）内并保留路径与真实行数；Renderer 侧 `chat/run-transport-recovery.ts` 把 SSE 只当观察者——连接断开不等于 run 失败，先回读权威执行日志再决定是否抹掉预览。
+- UI 门与热点（2026-09-27）：本轮新增的聊天样式回到门的要求——圆角只用语义 token（含设置列表角的 --floating-panel-inner-radius）、普通交互控件不用 pointer 光标；enderer/chat/run-actions.ts 回到 349 行登记上限以内（348），断流对账接线集中在 enderer/chat/run-transport-recovery.ts。
