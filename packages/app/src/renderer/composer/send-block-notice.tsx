@@ -8,6 +8,11 @@
 // alone would never say why. The sentence is the Runtime's own fact, not copy
 // invented here, and the disabled control carries the same sentence as its
 // accessible name.
+//
+// It states a different fact than the startup stage sentence, so it keeps its own
+// class (`composer-send-block`) instead of borrowing `.composer-readiness-hint`:
+// one class in the DOM means one thing. It only shares that sentence's appearance,
+// through the selector list in `styles/11-runtime-readiness.css`.
 
 export function ComposerSendBlockNotice({
   executionReason,
@@ -20,7 +25,7 @@ export function ComposerSendBlockNotice({
 }) {
   if (executionReason || !modelReason) return null
   return (
-    <span className="composer-readiness-hint composer-send-block" role="status" title={modelReason}>
+    <span className="composer-send-block" role="status" title={modelReason}>
       {modelReason}
     </span>
   )

@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 00:46:04
+最后更新：2026-09-28 00:59:54
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
@@ -9,6 +9,7 @@
 
 - `verify-*.mjs` 是可直接运行的验收入口；根目录 `package.json` 中的 `verify:*` 命令负责先准备对应构建，再启动门。
 - `pnpm run verify:composer-send-gate` 走两遍发送入口：全新数据根（`OPENAI_API_KEY`/`DEEPSEEK_API_KEY`/`GLM_API_KEY` 在本次启动里被删掉，否则夹具就不算"未配置"）且执行已就绪时，断言发送控件禁用、就地写出"设置 → 模型供应商"的原因、可访问名与它一致、空对话文案同句，并按 Enter 与按钮各拒一次（无消息、无 run、无会话）；再把确定性 Provider 配上，断言同一入口照常发送、Provider 请求都用配置的模型并结算出固定回答。
+- `verify-composer-send-model-gate.mjs`（`node scripts/verify-composer-send-model-gate.mjs --case=blocked|ready|both`，默认 `both`）是同一个发送入口在**线级**上的证据入口，把上面那条拆成可单独重跑的两个 case，报告与截图写在仓库外（`lib/run-artifacts.mjs` 的 `composer-send-model-gate/`）。`--case=blocked`：全新数据根、三个内置 Provider 密钥在本次启动里删掉、默认模型 ref（`openai/gpt-5.6`）留在配置里，先断言执行已就绪，所以下面的拒绝只可能来自模型事实；再现"发送控件禁用 + 就地原因 + 可访问名与空对话文案同句"，然后**按 Enter 与点按按钮各拒一次**，两次都要求页面级 `fetch` 探针上 `POST /run/stream` 计数为 0、Local App API 的 `/application/active-runs` 为空、转录里没有消息、草稿原样保留。`--case=ready`：确定性 Provider 配好后同一条入口必须走通——同一探针记到 1 次 run 路由 POST（这是"计数 0"的正例，证明负例不是探针坏了）、Provider 收到带草稿的请求、带固定锚点的回答进入转录、run 结算且 active-run 列表重新为空。
 - `pnpm run verify:composer-focus` 在真实窗口核对光标归属：新窗口无点击即把光标放进输入框且真实 CDP 按键能插入文字；点侧栏"新对话"后光标回到输入框；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。三、四、五三个负例注入的是 `newSession()` 自己派发的那次性窗口事件（事件名从源码读），因为真实命令会关掉搜索面板、模态又挡住点击。**它先把窗口停到屏幕外**（`park-offscreen`）：隐藏窗口不派发动画帧，而侧栏搜索面板要两帧才可见，不停放这个负例根本到不了"用户正在别处输入"的状态。
 - `verify-startup-failure-retry.mjs`（根 `package.json` 里是 `pnpm run verify:startup-failure-retry`）把渲染器接管**之前**的启动失败做真：`config.json` 故意无法解析，断言独立失败页有且仅有一个可用的重试控件、点击后真的跑了一次 Main 的有界重试（Electron 日志出现 `[retry] execution retry 1/3 failed`）、页面写出真实原因并继续提供重试；修好配置再点一次后渲染器接管窗口、`/runtime/readiness` 就绪、并且能在恢复后的窗口里跑完一轮。该夹具从来没有 locator（阶段 1 就失败），所以前半段按 CDP 目标连接、不走 Local App API。
 - `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。

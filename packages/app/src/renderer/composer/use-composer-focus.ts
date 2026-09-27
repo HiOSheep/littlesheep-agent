@@ -18,13 +18,27 @@ import {
   type ComposerFocusIntent,
 } from './focus-routing'
 
+/**
+ * How long a new-conversation request may keep asking, and how often.
+ *
+ * The command that asks for the caret also closes things: a sidebar panel goes
+ * away over its own exit transition, and a settled prompt leaves the layer stack
+ * a frame or two later. One look would read the surface that is on its way out
+ * and drop the caret on the floor, so the request keeps asking until it is
+ * answered - for a bounded time, and through the same guard every time, so a
+ * live dialog or a caret the user moved still wins.
+ */
+const FOCUS_REQUEST_SETTLE_MS = 250
+const FOCUS_REQUEST_STEP_MS = 25
+
 export function useComposerFocus(inputRef: RefObject<HTMLTextAreaElement>): void {
-  const focusComposer = useCallback((intent: ComposerFocusIntent) => {
+  const focusComposer = useCallback((intent: ComposerFocusIntent): boolean => {
     const target = inputRef.current
-    if (!target) return
+    if (!target) return false
     const activeElement = typeof document === 'undefined' ? null : document.activeElement
-    if (!shouldTakeComposerFocus({ intent, activeElement, layerDepth: modalLayers.depth(), target })) return
+    if (!shouldTakeComposerFocus({ intent, activeElement, layerDepth: modalLayers.depth(), target })) return false
     target.focus({ preventScroll: true })
+    return true
   }, [inputRef])
 
   useEffect(() => {
@@ -34,11 +48,17 @@ export function useComposerFocus(inputRef: RefObject<HTMLTextAreaElement>): void
   useEffect(() => {
     let timer = 0
     const handleFocusRequest = () => {
-      // One turn later: the command that asked for this (a new conversation, or
-      // the dialog it settled) is still committing, so the guard has to read the
-      // focus that exists then rather than the focus it is replacing.
+      // One turn later, then while the surfaces the command closes are still
+      // leaving: the guard has to read the focus that exists then rather than the
+      // focus it is replacing.
       window.clearTimeout(timer)
-      timer = window.setTimeout(() => focusComposer('new-session'), 0)
+      const deadline = Date.now() + FOCUS_REQUEST_SETTLE_MS
+      const attempt = () => {
+        if (focusComposer('new-session')) return
+        if (Date.now() >= deadline) return
+        timer = window.setTimeout(attempt, FOCUS_REQUEST_STEP_MS)
+      }
+      timer = window.setTimeout(attempt, 0)
     }
     window.addEventListener(COMPOSER_FOCUS_REQUEST_EVENT, handleFocusRequest)
     return () => {

@@ -1,6 +1,6 @@
 # 产品级 UI/UX 差距审计 2026-09-27（按用户可感知程度排序）
 
-最后更新：2026-09-28 01:15:20
+最后更新：2026-09-28 01:17:00
 
 本文件是"低于成熟桌面 AI 工具正常体验水平"问题的**唯一排序清单**，由四组并行的界面区域审计产出后合并去重。它的用途是决定**先修什么**，不是罗列所有可改之处。
 
@@ -180,3 +180,21 @@ GFM 表格（无 fixture 渲染 ✓，只有源码事实 ✓）；跨会话切�
 2. **测试完整性隐患** ✓（不是 UX 缺陷 ✓）：`.sidebar-section-action.sidebar-new-action` 被"新对话"与"新项目"**两个按钮共用** ✗（`conversation-section-view.tsx:91` ✓、`project-section.tsx:217` ✓）→ 随便 `querySelector` 会打开"新项目"对话框 ✗ → 后续写门禁的人必须按文本或位置区分 ✓。
 
 **它建议的修复顺序** ✓：①每会话草稿+附件 ✓ ②失败回合重试 ✓ ③自己的消息可编辑重发 ✓ —— 与我的排序一致 ✓。
+
+### 状态更新：#1 / #2 / #3 达到完成标准（2026-09-28 01:2x）
+
+**表内 #1（未配置模型仍可发送，P0）→ 已修复 ✓，且被两个独立门禁证实 ✓**
+
+- **拒绝路径**（全新根、三个供应商 `hasKey:false`、readiness=ready ✓ → 拒绝依据是**模型事实**而非启动窗口 ✓）：发送 disabled ✓ 且原因在 `aria-label` ✓；`.composer-send-block` 与 `.empty-copy` 同句 ✓；**指针点击**与**真实 CDP Enter（带草稿）**两条入口都拒 ✓ → `/run/stream` fetch 计数 **0** ✓、`GET /application/active-runs` **`[]`** ✓、无用户消息 ✓、草稿完好 ✓；
+- **可用路径**（配确定性 provider）：发送可用 ✓ → `POST /run/stream` **恰好 1 次** ✓ ←**这条是正对照** ✓，它证明拒绝侧的 0 **不是探针失效** ✓（这一点做得对 ✓）；2 次 provider 请求 ✓、流式答案含锚点 ✓、结算 ✓、草稿清空 ✓；
+- 报告：`%TEMP%\littlesheep-run-artifacts\composer-send-model-gate\composer-send-model-gate-{blocked,ready}.json` + `unconfigured-refusal.png` ✓（均在仓库外 ✓，scratch 已删 ✓）。
+
+**表内 #2（启动后必须点输入框才能打字）→ 已修复 ✓**：`verify-composer-focus.mjs` exit 0 / `ok:true` / `failures: []` ✓。
+
+**表内 #3（渲染器加载前失败无退路）→ 已修复 ✓**：`verify-startup-failure-retry.mjs` exit 0 / `ok:true` / `failures: []` ✓。
+
+**#1 引入的类名回归 → 已修并复验 ✓**：类名歧义在 01:04:28 由组件侧修掉 ✓（组件现在只输出 `composer-send-block` ✓；`styles/11-runtime-readiness.css` 里改为 `.composer-readiness-hint, .composer-send-block` ✓）→ 复跑 `verify-desktop-cold-start-interaction.mjs` **exit 0 / `failures: []`** ✓，拒绝侧刷新后 `sendReason.className` 已是**单一类名** ✓。
+
+**两个曾被记为"红"的测试：断言未被放宽 ✓**（原作者在 23:58:47 重写 ✓，独立包逐条判定了"改的是哪一侧" ✓）：①样式断言本身**未动且非空洞** ✓（仍读真实规则块 ✓，如 `06-composer.css:2030` 的 `.composer-tab-control{height:var(--composer-control-surface-size)…}` ✓ 与 `:2041/:2076` 的 28px 覆盖 ✓ —— 规则若消失断言必失败 ✓）；改的只是 `disabled` 的**接线** ✓，因为 P0 刻意把"执行 + 模型"合并成**一个决策** ✓，使**禁用与文案不可能互相矛盾** ✓ → 新断言**更强** ✓；②picker 的断言从"必须调用 `describeRuntimeAvailability`"改为"picker 只接 `availability` 属性、**不得**自己推导、由 hook 推导、controller 调 `useModelAvailability`、composer 传入" ✓ —— 因为保留旧断言反而会**要求**那个 P0 正要消除的第二次推导 ✓。已核实生产代码里 `describeRuntimeAvailability(` **只在一处**被调用 ✓（`use-model-availability.ts` ✓）。
+
+**未变的两条边界** ✓：①Run B 用的是本地确定性 provider 桩 ✓ → 证明的是**派发/流式/结算端到端** ✓，**不**证明真实 provider 可达 ✓；②构建仍被并发编辑反复作废 ✓，每次运行都自行重建并重新断言新鲜度 ✓（死于 staleness 的尝试已重试 ✓）；它在仓库外用了一个 `pnpm` shim 来构建 ✓（因为 `pnpm` 不在 PATH ✓）✓，仓库内无残留 ✓。

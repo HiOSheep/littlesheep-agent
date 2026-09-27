@@ -7,7 +7,12 @@
  *   user reads the reason and decides whether to retry.
  * Main owns the wording; this file only owns the surfaces. */
 
-.composer-readiness-hint {
+/* One appearance, two sentences that must never be confused: `.composer-readiness-hint`
+ * is the Runtime's startup stage text and nothing else; `.composer-send-block` is the
+ * model prerequisite the send entry refuses on (`composer/send-block-notice.tsx`).
+ * They share this row and this look, not a class. */
+.composer-readiness-hint,
+.composer-send-block {
   /* A floor, not a fixed width: the sentence may ellipsize, but it must not be
    * squeezed to nothing when the window is at its minimum width and the right
    * workspace panel is open. The disabled send entry carries the same reason in

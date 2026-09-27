@@ -1,5 +1,5 @@
 # Renderer 输入栏
-最后更新：2026-09-28 00:09:10
+最后更新：2026-09-28 01:04:53
 
 这里负责用户输入、附件、工作区上下文、权限模式、模型/推理选择和上下文占用展示。
 
@@ -9,10 +9,10 @@
 - `runtime-picker.tsx`、`context-usage-indicator.tsx`：模型与推理档位选择、上下文占用展示。选择器不再自己算可用性，而是渲染 `use-model-availability.ts` 给出的那一份（`availability` prop），因此它和发送入口不可能对同一份配置给出不同结论。
 - `runtime-availability.ts`：无可用模型时的唯一状态来源。区分“配置读取中”“读取失败（可重试）”“还没有配置（给出配置入口）”“已保存但不可用（缺密钥或缺模型条目）”“供应商可用但还没选模型（`no-selection`）”，并用设置页同一个 `isConfiguredProvider` 判定“已配置”，因此选择器与供应商页不会对同一份配置给出不同结论；`runtime-picker.tsx` 的空菜单据此显示“配置模型 / 检查供应商配置 / 重试读取”，并保留当前草稿不动。**`no-selection` 与 `unusable` 必须分开**：供应商已保存、密钥和模型条目都在、只是还没选模型时，选择器要说“还没有选择模型”并指向菜单里的模型列表；说成“可能缺少 API 密钥，或没有填写模型条目”会把用户送回设置页去改一份本来正确的配置（UX-11 实机验收发现并修掉）。
 - `use-model-availability.ts`：可用性的唯一一次计算（控制器调用，`modelAvailability` 字段同时投影给 composer 与 chat）。三个表面共用它：选择器、发送入口、空对话文案。
-- `send-readiness.ts`：**发送是否必须被拒绝**的唯一判据，把 Runtime 就绪原因与上面的可用性合成一个决定（`blocked` / `reason` / `executionReason` / `modelReason` / `action`）。没有可用模型时发送被拒**并且说明原因**：默认模型引用 (`openai/gpt-5.6`) 指向没有密钥的供应商，实测那一轮停在工作态 1 分 14 秒、零字符、无错误也无结算，而 ChatGPT / Cursor / VS Code 都拒绝这种提交并把人指向模型设置。`composer-view.tsx` 的按钮与 Enter 是同一条入口，两者按同一判据拒绝；`send-block-notice.tsx` 把原因就地写在控件旁（启动阶段的文字仍归 `runtime-readiness/composer-readiness-hint`，两者互斥），禁用控件的可访问名携带同一句原因；`app-shell/chat-view.tsx` 的空对话文案也用同一句，不再邀请一次发不出去的任务。真实窗口门 `pnpm run verify:composer-send-gate`（未配置时拒绝且不产生 run，配置好后照常发送并结算）。
+- `send-readiness.ts`：**发送是否必须被拒绝**的唯一判据，把 Runtime 就绪原因与上面的可用性合成一个决定（`blocked` / `reason` / `executionReason` / `modelReason` / `action`）。没有可用模型时发送被拒**并且说明原因**：默认模型引用 (`openai/gpt-5.6`) 指向没有密钥的供应商，实测那一轮停在工作态 1 分 14 秒、零字符、无错误也无结算，而 ChatGPT / Cursor / VS Code 都拒绝这种提交并把人指向模型设置。`composer-view.tsx` 的按钮与 Enter 是同一条入口，两者按同一判据拒绝；`send-block-notice.tsx` 把原因就地写在控件旁（启动阶段的文字仍归 `runtime-readiness/composer-readiness-hint`，两者互斥；它用自己的 `.composer-send-block` 类，**不借用** `.composer-readiness-hint`，只共享 `../styles/11-runtime-readiness.css` 里那条选择器列表的外观——一个类名在 DOM 里只能有一个含义），禁用控件的可访问名携带同一句原因；`app-shell/chat-view.tsx` 的空对话文案也用同一句，不再邀请一次发不出去的任务。真实窗口门 `pnpm run verify:composer-send-gate`（未配置时拒绝且不产生 run，配置好后照常发送并结算）。
 - `context-usage-indicator.tsx` 的弹层同时给出上下文占用与会话累计缓存命中（`formatSessionCache`）；usage 未上报的请求会在文案里标注，不把局部读数当成完整读数。
 - `input-size.ts`、`focus-routing.ts`：输入框高度同步和输入焦点归属判定。`focus-routing.ts` 还导出一次性的 `COMPOSER_FOCUS_REQUEST_EVENT` 与它的判断函数 `shouldTakeComposerFocus`：`launch`（窗口刚可用）只在没有任何元素持有焦点时取走光标，`new-session`（用户刚新建对话）除非有对话框/审批/弹层打开、或用户正在别的文本表面里输入，否则取走；两种意图都在**事件触发时**重读实时焦点，而不是在请求发出时。
-- `use-composer-focus.ts`：把上面两条焦点请求接到输入框上——挂载时请求 `launch` 光标，收到新建对话的窗口事件时下一轮请求 `new-session`。真实窗口门 `pnpm run verify:composer-focus`：新窗口无点击即可收到真实按键；新建对话把光标交还输入框；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。
+- `use-composer-focus.ts`：把上面两条焦点请求接到输入框上——挂载时请求 `launch` 光标，收到新建对话的窗口事件时请求 `new-session`。`new-session` 会在**有界**（250 ms、每 25 ms 一次）的窗口内反复问同一个判据，因为发起它的那条命令同时也在关闭别的东西（侧栏面板要走完自己的退场、刚结算的提示下一两帧才离开层栈），只看一眼就会读到"正在离场"的表面而把光标丢在地上；每次都用同一个守卫，所以活着的对话框或用户自己移走的光标仍然赢。真实窗口门 `pnpm run verify:composer-focus`：新窗口无点击即可收到真实按键；新建对话把光标交还输入框（并且命令确实执行：它关掉了自己打开的那个面板）；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。
 - 发送入口的可用性：`app-shell/composer-view.tsx` 同时参考 Runtime 就绪事实（`runtime-readiness/use-runtime-readiness`）。窗口早于 Runner 出现，未就绪时发送必须在原地禁用并使用 Runtime 给出的原因，草稿与焦点不变；不得只凭“草稿非空”就放出可点击的发送入口。
 
 输入栏的 Enter、Shift+Enter 与输入法组词规则位于 `../ui/enter-confirm.ts`，由 `app-shell/composer-view.tsx` 使用；不要在这里或视图中另写 Enter 判断。
