@@ -206,11 +206,17 @@ describe('run checkpoint Local App API', () => {
     const fixture = await createFixture()
     const base = `http://127.0.0.1:${fixture.server.port}`
     try {
+      // Recovery is started by `setRunner` and no longer awaited by it, so the
+      // fixture settles it through the same gate the checkpoint routes use.
+      await fixture.server.waitForRecovery()
       expect(fixture.reconcileCompletedRuns).toHaveBeenCalledWith(
         'startup reconciled checkpoint with successful execution log',
       )
+      // The live-run answer is part of the contract: recovery must not release a
+      // resume this process is running (`DeferredRunRecovery`).
       expect(fixture.recoverInterruptedResumes).toHaveBeenCalledWith(
         'application restarted before checkpoint continuation completed',
+        { isRunActive: expect.any(Function) },
       )
       expect(fixture.recoverInterruptedResumes.mock.invocationCallOrder[0])
         .toBeLessThan(fixture.reconcileCompletedRuns.mock.invocationCallOrder[0]!)

@@ -175,7 +175,7 @@ describe('chat layout stability', () => {
     expect(assistantTurn).toContain('className="assistant-process-trigger"')
     expect(assistantTurn).toContain('className="assistant-process-content" hidden={!processOpen}')
     expect(toolRow).toContain('data-call-id={tool.callId}')
-    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*38px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
+    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*32px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
     expect(styles).toContain('.assistant-process-content[hidden]')
     expect(styles).toMatch(/\.agent-flow-row\.is-active::after\s*\{[^}]*animation:\s*agent-flow-sweep 2\.6s ease-out infinite;/u)
     expect(styles).not.toContain('.assistant-turn-header')

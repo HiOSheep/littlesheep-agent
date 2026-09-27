@@ -43,6 +43,16 @@ export interface RunCheckpointRouteHost {
     publish: (request: Parameters<RunApprovalBroker>[0] & { id: string; source: 'agent' }) => void,
     signal: AbortSignal,
   ): RunApprovalBroker
+  /**
+   * Settle startup recovery before reading checkpoint state.
+   *
+   * Every route here reads the checkpoint store, the disposition store or both,
+   * and startup recovery writes exactly those: it releases resume leases left by
+   * a dead process and seals checkpoints whose run has a successful execution
+   * log. A read that overtook it would show the user a recoverable run that is
+   * about to be released, or hide a resume that is about to be re-offered.
+   */
+  waitForRecovery(): Promise<void>
 }
 
 export async function routeRunCheckpoints(
@@ -59,6 +69,7 @@ export async function routeRunCheckpoints(
       json(res, 503, { error: 'runtime checkpoint storage is unavailable' })
       return true
     }
+    await host.waitForRecovery()
     const inspections = pendingCheckpointHeads(await control.list(MAX_CHECKPOINTS_FOR_STARTUP))
     const response: LocalAppRunCheckpointListResponse = {
       checkpoints: inspections.map(toCheckpointSummary),
@@ -74,6 +85,7 @@ export async function routeRunCheckpoints(
       json(res, 503, { error: 'runtime checkpoint continuation is unavailable' })
       return true
     }
+    await host.waitForRecovery()
     const body = await readJson(req) as LocalAppRunCheckpointResumeRequest
     const inspection = await control.inspect(resumeId)
     if (!inspection) {
@@ -135,6 +147,7 @@ export async function routeRunCheckpoints(
       json(res, 503, { error: 'runtime checkpoint storage is unavailable' })
       return true
     }
+    await host.waitForRecovery()
     const inspection = await control.inspect(abandonId)
     if (!inspection) {
       json(res, 404, { error: `run checkpoint not found: ${abandonId}` })
@@ -174,6 +187,7 @@ export async function routeRunCheckpoints(
       json(res, 503, { error: 'runtime checkpoint storage is unavailable' })
       return true
     }
+    await host.waitForRecovery()
     const inspection = await control.inspect(inspectId)
     if (!inspection) {
       json(res, 404, { error: `run checkpoint not found: ${inspectId}` })

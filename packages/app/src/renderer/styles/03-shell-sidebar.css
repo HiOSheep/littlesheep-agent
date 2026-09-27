@@ -2080,7 +2080,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   border-radius: var(--radius-pill);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
   backdrop-filter: blur(22px) saturate(150%);
-  cursor: default;
+  cursor: pointer;
   transition: background-color var(--motion-fast) var(--motion-ease);
 }
 

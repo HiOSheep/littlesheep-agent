@@ -1,7 +1,7 @@
 {
   "check": "desktop-first-token",
   "ok": true,
-  "measuredAt": "2026-09-27T03:32:40.739Z",
+  "measuredAt": "2026-09-27T05:45:52.671Z",
   "metric": "new conversation → first streamed token (real Electron window, deterministic local model)",
   "machine": {
     "platform": "win32",
@@ -15,7 +15,7 @@
   "app": {
     "kind": "dev",
     "entry": "packages/app/out (dev entry)",
-    "buildInputDigest": "5f3e521e1b9f6659bf24fa2ebf36c1cdfcd740d71b2dfb6b86e944aa9216764c",
+    "buildInputDigest": "88f3b17c9de54e2a3e521c3f11367eba7f6b833df67d1f12a1bfb98c3363ac2e",
     "timingSwitch": "LITTLESHEEP_BOOTSTRAP_TIMING=1"
   },
   "scenario": {
@@ -30,9 +30,9 @@
       "visibilityState": "visible"
     },
     "animationFrames": {
-      "frames": 247,
-      "firstFrameAt": 374.80000001192093,
-      "lastFrameAt": 2349.7000000178814
+      "frames": 303,
+      "firstFrameAt": 402.30000001192093,
+      "lastFrameAt": 2745
     },
     "chromiumFlags": [
       "--disable-background-timer-throttling",
@@ -48,293 +48,331 @@
     "lastState": "ready"
   },
   "milestones": {
-    "clickAt": 926,
-    "typedAt": 938.7,
-    "enterAt": 942.2,
-    "firstTokenAt": 1819.1,
-    "settledAt": 2346.6
+    "clickAt": 928,
+    "typedAt": 945.5,
+    "enterAt": 947.8,
+    "firstTokenAt": 2072.6,
+    "settledAt": 2741.9
   },
   "metrics": {
-    "clickToFirstTokenMs": 893.1,
-    "clickToEnterMs": 16.2,
-    "enterToFirstTokenMs": 876.9,
-    "enterToFirstModelOutputMs": 847.5,
-    "enterToToolRowMs": 847.5,
-    "typedToEnterMs": 3.5,
-    "enterToRunAcceptedMs": 16,
-    "runAcceptedNoticedByPollerMs": 537,
-    "enterToSettledMs": 1404.4,
-    "readinessWaitMs": 607,
-    "spawnToReadyMs": 1940,
-    "spawnToFirstTokenMs": 2835,
-    "clickToFirstTokenNodeClockMs": 888,
+    "clickToFirstTokenMs": 1144.6,
+    "clickToEnterMs": 19.8,
+    "enterToFirstTokenMs": 1124.8,
+    "enterToFirstModelOutputMs": 1124.8,
+    "enterToToolRowMs": 1124.8,
+    "typedToEnterMs": 2.3,
+    "enterToRunAcceptedMs": 14.1,
+    "runAcceptedNoticedByPollerMs": 757,
+    "enterToSettledMs": 1794.1,
+    "readinessWaitMs": 550,
+    "spawnToReadyMs": 2071,
+    "spawnToFirstTokenMs": 3219,
+    "clickToFirstTokenNodeClockMs": 1134,
     "firstTokenCharacters": 74,
     "replyCharactersAtSettle": 74,
     "pollIntervalMs": 25,
     "pollQuantizationMs": 25,
-    "pollCount": 23,
-    "appFirstTokenMarkToDomMs": 193.8
+    "pollCount": 31,
+    "appFirstTokenMarkToDomMs": 156.9
   },
   "runMarks": [
     {
+      "scope": "preimage",
+      "stage": "bootstrap-committed",
+      "paths": 8
+    },
+    {
+      "scope": "preimage",
+      "stage": "preimage-committed",
+      "paths": 10
+    },
+    {
       "scope": "run",
       "stage": "versioning-preimage",
-      "sinceRunStartMs": 448.3,
-      "durationMs": 448.3
+      "sinceRunStartMs": 647.3,
+      "durationMs": 647.3
     },
     {
       "scope": "run",
       "stage": "retired-proposals-and-durable-input",
-      "sinceRunStartMs": 495.5,
-      "durationMs": 47.2
+      "sinceRunStartMs": 725.3,
+      "durationMs": 78
     },
     {
       "scope": "run",
       "stage": "durable-user-input",
-      "sinceRunStartMs": 523.2,
-      "durationMs": 27.6
+      "sinceRunStartMs": 771,
+      "durationMs": 45.8
     },
     {
       "scope": "run",
       "stage": "workspace-resource-sync",
-      "sinceRunStartMs": 544.3,
-      "durationMs": 21.1
+      "sinceRunStartMs": 807.7,
+      "durationMs": 36.7
     },
     {
       "scope": "run",
       "stage": "context-assembled",
-      "sinceRunStartMs": 576.7,
-      "durationMs": 32.5
+      "sinceRunStartMs": 848.1,
+      "durationMs": 40.4
     },
     {
       "scope": "run",
       "stage": "harness-start",
-      "sinceRunStartMs": 576.9,
-      "durationMs": 0.2
+      "sinceRunStartMs": 848.3,
+      "durationMs": 0.1
     },
     {
       "scope": "run",
       "stage": "first-token",
-      "sinceRunStartMs": 667.1,
-      "durationMs": 90.2
+      "sinceRunStartMs": 953.8,
+      "durationMs": 105.5
     }
   ],
   "bootstrapMarks": [
     {
       "stage": "main-module-ready",
-      "processUptimeMs": 234.4
+      "processUptimeMs": 261.8
     },
     {
       "stage": "process-start",
-      "processUptimeMs": 236
+      "processUptimeMs": 263.5
     },
     {
       "stage": "electron-app-ready",
-      "processUptimeMs": 494.2
+      "processUptimeMs": 562.1
     },
     {
       "stage": "desktop-startup-visible",
-      "processUptimeMs": 562.4
+      "processUptimeMs": 637.1
     },
     {
       "stage": "bootstrap-start",
-      "processUptimeMs": 562.9
+      "processUptimeMs": 637.5
     },
     {
       "stage": "branding-ready",
-      "processUptimeMs": 580,
-      "durationMs": 17.1
+      "processUptimeMs": 657.2,
+      "durationMs": 19.8
     },
     {
       "stage": "data-root-ready",
-      "processUptimeMs": 581,
-      "durationMs": 1
+      "processUptimeMs": 658.7,
+      "durationMs": 1.4
     },
     {
       "stage": "user-data-layout-ready",
-      "processUptimeMs": 586.5,
-      "durationMs": 5.5
+      "processUptimeMs": 671.3,
+      "durationMs": 12.6
     },
     {
       "stage": "keychain-ready",
-      "processUptimeMs": 586.8,
+      "processUptimeMs": 671.6,
       "durationMs": 0.3
     },
     {
       "stage": "config-ready",
-      "processUptimeMs": 588.8,
-      "durationMs": 2
+      "processUptimeMs": 673.4,
+      "durationMs": 1.8
     },
     {
       "stage": "memory-v3-ready",
-      "processUptimeMs": 589.6,
-      "durationMs": 0.8
+      "processUptimeMs": 675.7,
+      "durationMs": 2.3
     },
     {
       "stage": "durable-config-ready",
-      "processUptimeMs": 589.7,
+      "processUptimeMs": 675.8,
       "durationMs": 0.1
     },
     {
       "stage": "project-index-ready",
-      "processUptimeMs": 592,
-      "durationMs": 2.3
+      "processUptimeMs": 676.2,
+      "durationMs": 0.4
     },
     {
       "stage": "session-index-ready",
-      "processUptimeMs": 592.1,
+      "processUptimeMs": 676.3,
       "durationMs": 0.1
     },
     {
       "stage": "archive-index-ready",
-      "processUptimeMs": 594.5,
-      "durationMs": 2.4
+      "processUptimeMs": 678.5,
+      "durationMs": 2.2
     },
     {
       "stage": "ui-indexes-ready",
-      "processUptimeMs": 594.7,
-      "durationMs": 0.2
+      "processUptimeMs": 678.6,
+      "durationMs": 0.1
     },
     {
       "stage": "local-api-ready",
-      "processUptimeMs": 604.6,
-      "durationMs": 9.9
+      "processUptimeMs": 690.5,
+      "durationMs": 11.9
     },
     {
       "stage": "locator-written",
-      "processUptimeMs": 609.3,
-      "durationMs": 4.8
+      "processUptimeMs": 694.7,
+      "durationMs": 4.2
     },
     {
       "stage": "renderer-load-started",
-      "processUptimeMs": 626.1
+      "processUptimeMs": 712.2
     },
     {
       "stage": "desktop-shell-initialized",
-      "processUptimeMs": 629.4,
-      "durationMs": 20.1
+      "processUptimeMs": 716,
+      "durationMs": 21.3
     },
     {
       "stage": "execution-start",
-      "processUptimeMs": 629.6
+      "processUptimeMs": 716.2
     },
     {
       "stage": "runner-infra-observability-ready",
-      "processUptimeMs": 641.9,
-      "durationMs": 10
+      "processUptimeMs": 839.3,
+      "durationMs": 120.4
     },
     {
       "stage": "renderer-did-finish-load",
-      "processUptimeMs": 861.9
+      "processUptimeMs": 989.1
     },
     {
       "stage": "renderer-load-started",
-      "processUptimeMs": 877.9
+      "processUptimeMs": 1004.3
     },
     {
       "stage": "renderer-workspace-entries",
-      "processUptimeMs": 1260.7,
-      "durationMs": 205.5
+      "processUptimeMs": 1411.2,
+      "durationMs": 216.4
     },
     {
       "stage": "renderer-first-frame",
-      "processUptimeMs": 1305.7,
-      "durationMs": 250.8
+      "processUptimeMs": 1460.4,
+      "durationMs": 262.3
     },
     {
       "stage": "runner-infra-durable-events-ready",
-      "processUptimeMs": 1670,
-      "durationMs": 0.5
-    },
-    {
-      "stage": "runner-infra-durable-inbox-ready",
-      "processUptimeMs": 1677.4,
-      "durationMs": 7.9
+      "processUptimeMs": 1858,
+      "durationMs": 1.4
     },
     {
       "stage": "runner-infra-durable-run-leases-ready",
-      "processUptimeMs": 1677.6,
-      "durationMs": 8.1
+      "processUptimeMs": 1859,
+      "durationMs": 2.2
     },
     {
       "stage": "runner-infra-durable-effect-leases-ready",
-      "processUptimeMs": 1678,
-      "durationMs": 8.5
+      "processUptimeMs": 1859,
+      "durationMs": 2.3
     },
     {
-      "stage": "runner-infra-durable-ready",
-      "processUptimeMs": 1678.1,
+      "stage": "runner-infra-durable-inbox-ready",
+      "processUptimeMs": 1870.7,
+      "durationMs": 14
+    },
+    {
+      "stage": "runner-durable-inbox-deferred-read",
+      "processUptimeMs": 1870.9,
       "durationMs": 0
     },
     {
+      "stage": "runner-infra-durable-ready",
+      "processUptimeMs": 1870.9,
+      "durationMs": 0.1
+    },
+    {
       "stage": "runner-infra-checkpoint-store-ready",
-      "processUptimeMs": 1681.1,
-      "durationMs": 3
+      "processUptimeMs": 1872.5,
+      "durationMs": 1.6
     },
     {
       "stage": "runner-infra-embedding-ready",
-      "processUptimeMs": 1681.2,
-      "durationMs": 0.2
+      "processUptimeMs": 1872.7,
+      "durationMs": 0.1
     },
     {
       "stage": "runner-infra-memory-ready",
-      "processUptimeMs": 1690.4,
-      "durationMs": 9.1
+      "processUptimeMs": 1882.8,
+      "durationMs": 10.1
     },
     {
       "stage": "runner-infra-bootstrap-files-loaded",
-      "processUptimeMs": 1716.8,
-      "durationMs": 26.4
+      "processUptimeMs": 1912.4,
+      "durationMs": 29.5
     },
     {
       "stage": "runner-infra-skills-ready",
-      "processUptimeMs": 1720,
-      "durationMs": 3.1
+      "processUptimeMs": 1915.5,
+      "durationMs": 3
     },
     {
       "stage": "runner-infra-skill-resources-synced",
-      "processUptimeMs": 1731.6,
-      "durationMs": 11.6
+      "processUptimeMs": 1927.9,
+      "durationMs": 12.4
     },
     {
       "stage": "runner-infra-harness-ready",
-      "processUptimeMs": 1732.1,
+      "processUptimeMs": 1928.4,
       "durationMs": 0.4
     },
     {
       "stage": "runner-infra-returned",
-      "processUptimeMs": 1732.2,
+      "processUptimeMs": 1928.4,
       "durationMs": 0
     },
     {
       "stage": "runner-ready",
-      "processUptimeMs": 1732.4,
-      "durationMs": 1102.8
+      "processUptimeMs": 1928.8,
+      "durationMs": 1212.6
     },
     {
-      "stage": "attachment-protection-checkpoints",
-      "processUptimeMs": 1735.6,
-      "durationMs": 0.8
-    },
-    {
-      "stage": "attachment-protection",
-      "processUptimeMs": 1735.7,
-      "durationMs": 2.9
+      "stage": "run-recovery-start",
+      "processUptimeMs": 1929
     },
     {
       "stage": "execution-ready",
-      "processUptimeMs": 1782.7,
-      "durationMs": 50.3
+      "processUptimeMs": 1929.5,
+      "durationMs": 0.7
     },
     {
       "stage": "plugin-host-ready",
-      "processUptimeMs": 1783.2
+      "processUptimeMs": 1930
+    },
+    {
+      "stage": "run-recovery-settled",
+      "processUptimeMs": 1930.1
+    },
+    {
+      "stage": "attachment-protection-checkpoints",
+      "processUptimeMs": 1935.8,
+      "durationMs": 3
+    },
+    {
+      "stage": "attachment-protection",
+      "processUptimeMs": 1935.9,
+      "durationMs": 6.7
+    },
+    {
+      "stage": "run-recovery-runs-ready",
+      "processUptimeMs": 1993.8,
+      "durationMs": 64.9
+    },
+    {
+      "stage": "run-recovery-resumes-ready",
+      "processUptimeMs": 1994.4,
+      "durationMs": 0.6
+    },
+    {
+      "stage": "run-recovery-ready",
+      "processUptimeMs": 1995.5,
+      "durationMs": 1.1
     }
   ],
   "providerRequests": [
     {
       "requestIndex": 1,
-      "receivedAt": "2026-09-27T03:32:43.659Z",
+      "receivedAt": "2026-09-27T05:45:56.032Z",
       "model": "first-token",
       "stream": true,
       "tools": [
@@ -356,7 +394,7 @@
     },
     {
       "requestIndex": 2,
-      "receivedAt": "2026-09-27T03:32:43.688Z",
+      "receivedAt": "2026-09-27T05:45:56.063Z",
       "model": "first-token",
       "stream": true,
       "tools": [
@@ -380,15 +418,15 @@
   "runAcceptance": {
     "available": true,
     "observed": true,
-    "noticedAfterEnterMs": 537,
-    "runIdPrefix": "9431c56f",
+    "noticedAfterEnterMs": 757,
+    "runIdPrefix": "5ac3de0e",
     "phase": "starting",
     "controlStatus": "running",
-    "startedAt": "2026-09-27T03:32:43.022Z"
+    "startedAt": "2026-09-27T05:45:55.110Z"
   },
   "timeline": [
     {
-      "at": 961.9,
+      "at": 974.6,
       "event": "first-observation",
       "facts": {
         "userRowCount": 1,
@@ -403,27 +441,21 @@
       }
     },
     {
-      "at": 1789.7,
+      "at": 2072.6,
       "changed": {
+        "hasReplyText": {
+          "from": false,
+          "to": true
+        },
         "toolRows": {
           "from": 0,
           "to": 2
         }
       },
-      "replyCharacters": 0
-    },
-    {
-      "at": 1819.1,
-      "changed": {
-        "hasReplyText": {
-          "from": false,
-          "to": true
-        }
-      },
       "replyCharacters": 74
     },
     {
-      "at": 2346.6,
+      "at": 2741.9,
       "changed": {
         "streamState": {
           "from": "streaming",
@@ -438,7 +470,7 @@
     }
   ],
   "finalTranscriptSample": {
-    "at": 2346.5999999940395,
+    "at": 2741.9000000059605,
     "userRowCount": 1,
     "assistantTurnCount": 1,
     "turnClass": "assistant-turn done",

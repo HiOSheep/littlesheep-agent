@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-27 10:23:53
+最后更新：2026-09-27 13:47:35
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -13,8 +13,8 @@
 | `contracts.ts` | Server 构造参数和生命周期公共契约；`getRunner()` 返回 `AgentRunner \| undefined`，`getExecutionReadiness()` / `respondReadiness()` 提供 `/runtime/readiness`。 |
 | `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。`RuntimeNotReadyError`（503 `runtime-not-ready`）与 `resolveRunner()` 是"执行未就绪"的唯一失败语义。 |
 | `bearer-auth.ts` | 验收与校准类接口的 bearer token 校验。 |
-| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。`resolveRunWorkspace` 是每次 run 的**唯一工作区事实**：请求目录优先于 `agents.defaults.workspace`，再回落到 workplace，并在此归一化成绝对路径交给 Runner，因此提示、工具 cwd、权限分类和产物归属读的是同一个值。归一化保留非 ASCII 目录名与其中的空格（`run-support.test.ts` 断言中文路径既不转写也不转义），只统一分隔符与相对段。**项目会话只看自己的目录**：`resolveOwnedRunWorkspace` 先解析归属，项目会话用会话记录的目录（没有记录时用项目目录），渲染器随每次请求下发的 `runtime.workspace` 只是"没有自身绑定的会话"的默认值——否则保存一次默认目录、或在另一个窗口切换会话，就会把项目会话搬走，而收尾时的会话索引又会把这个搬迁写成永久事实（先失败后通过的回归在 `run-stream-api.test.ts`）。 |
-| `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；只把内部状态投影成有界诊断。`toCheckpointDiagnostics` 把 store **最近一次扫描**的结果映射成两个互斥计数：`invalidFiles` 是读不出来的记录数（每份文件算一次），`warningCount` 只统计不属于这些记录的发现（残留临时文件、目录 I/O）。此前 `warningCount` 直接取诊断条目总数，而每条不可读记录本身也贡献一条，于是同一份坏文件被同时说成"无法读取"和"不完整"。 |
+| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。带 `sessionId` 的 run 入口在开始前等待 `RunRouter.waitForRecovery()`（没有 `sessionId` 的全新对话不等待）。`resolveRunWorkspace` 是每次 run 的**唯一工作区事实**：请求目录优先于 `agents.defaults.workspace`，再回落到 workplace，并在此归一化成绝对路径交给 Runner，因此提示、工具 cwd、权限分类和产物归属读的是同一个值。归一化保留非 ASCII 目录名与其中的空格（`run-support.test.ts` 断言中文路径既不转写也不转义），只统一分隔符与相对段。**项目会话只看自己的目录**：`resolveOwnedRunWorkspace` 先解析归属，项目会话用会话记录的目录（没有记录时用项目目录），渲染器随每次请求下发的 `runtime.workspace` 只是"没有自身绑定的会话"的默认值——否则保存一次默认目录、或在另一个窗口切换会话，就会把项目会话搬走，而收尾时的会话索引又会把这个搬迁写成永久事实（先失败后通过的回归在 `run-stream-api.test.ts`）。 |
+| `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；四个入口都在读取 checkpoint/disposition 状态**之前**经 `host.waitForRecovery()` 与启动恢复汇合，避免读到"即将被释放的续跑"或漏掉"即将重新可用的续跑"。只把内部状态投影成有界诊断。`toCheckpointDiagnostics` 把 store **最近一次扫描**的结果映射成两个互斥计数：`invalidFiles` 是读不出来的记录数（每份文件算一次），`warningCount` 只统计不属于这些记录的发现（残留临时文件、目录 I/O）。此前 `warningCount` 直接取诊断条目总数，而每条不可读记录本身也贡献一条，于是同一份坏文件被同时说成"无法读取"和"不完整"。 |
 | `run-lifecycle-routes.ts` / `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制和 `/application/acceptance` 验收入口；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
 | `session-routes.ts` | 会话列表、分叉、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录。分叉以已保存的用户消息或已完成助手回复为截点，历史消息重绑新会话 ID，索引继承原会话的项目、工作区与权限模式；原会话的 settlement 身份不复制。重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。`PATCH /sessions/:id` 另接受 `workspacePath`，作为**项目会话显式换目录**的唯一入口（必须是已存在的绝对目录；独立会话没有自己的目录，请求该字段会被拒绝，因为它跟随请求与默认目录）。 |
@@ -50,11 +50,13 @@
 
 - **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。`/application/acceptance` 另提供仅隔离验收使用的 `resize`、`maximize`、`minimize`、`startup-page` 与 `startup-error` 动作（`resize` / `maximize` 供 CS-02 在多个窗口宽度与最大化/还原两种状态下核对原生覆盖区；`minimize` 供启动期间的窗口生命周期检查，最小化后窗口不参与截图、检查的是 DOM 状态；`startup-page` / `startup-error` 把生产同一份启动文档、真实失败文案交回窗口，以便对这两个靠等待无法到达的页面捕获像素），无对应能力时返回 501。
 - **失败关闭为 503 `runtime-not-ready`**：所有真正需要 Runner 的分支。它们必须用 `resolveRunner(context.getRunner)` **在用到该 Runner 的分支内**惰性解析——不得把 `getRunner()` 提到函数开头，否则 `/sessions` 这类元数据路由会在 Runner 未发布时一起失败（这正是实测中发现的缺陷：Runner 构建失败时侧栏会空白）。
-- **Runner 发布后启用**：`setRunner()` 同时构建 RunRouter 并初始化附件缓存，调用方在它 settle 之前不发布执行就绪，因此没有请求会看到半成品 router。
-- **恢复期间的路由隔离**：`local-app-api-server.ts` 不得在请求入口等待 `RunRouter.create()`；否则旧任务恢复会让 `/sessions`、`/runtime` 和工作区预览一起无响应。只在 RunRouter 完成后原子发布实例；此之前 Run/Checkpoint/审批入口返回 503，已有元数据路由继续服务。
-- **旧事件异步补扫**：RunRouter 先等待现代租约与收件箱中可恢复任务的检查，再开放执行；遍历所有历史事件分区的旧版兼容恢复在后台继续，已有租约的 run 不重复恢复。后台扫描在 router 停止后不得继续发起新的恢复。
+- **Runner 发布后启用**：`setRunner()` 发布 `RunRouter`（`run-router-publisher.ts` 拥有代次切换）并初始化附件缓存，因此没有请求会看到半成品 router。它**不等待**启动恢复：恢复是发布之后开始的工作，见下一条。
+- **恢复期间的路由隔离**：`local-app-api-server.ts` 不得在请求入口等待 `RunRouter.create()`；否则旧任务恢复会让 `/sessions`、`/runtime` 和工作区预览一起无响应。Run/Checkpoint/审批入口在 router 发布前返回 503，已有元数据路由继续服务。
+- **哪些路由等待恢复，哪些不等**（2026-09-27 起，实现在 `run-recovery.ts`）：等待的是**带 `sessionId` 的 run 入口**（`POST /runs`、`POST /runs/stream`，它们可能续上被恢复的那次运行）和**全部检查点路由**（`GET /run-checkpoints`、`GET /run-checkpoints/:id`、`POST /run-checkpoints/:id/resume/stream`、`POST /run-checkpoints/:id/abandon`，它们读的正是恢复会改写的 checkpoint 与 disposition 状态）。**不等待**的是没有 `sessionId` 的 run（全新对话不可能有历史可恢复）、运行事件 ingress（`POST /runs/:id/events`，只对已注册的活动 run 生效）、审批回执，以及全部元数据路由。这条判据不是"恢复发现过什么"，所以恢复跑完之后同样成立。
+- **恢复不得释放本进程正在跑的续跑**：`recoverInterruptedResumes` 只该回收死进程留下的续跑租约，它无法自己区分"刚启动的那次"。恢复把 `RunRouter` 的活动 run 注册表作为 `isRunActive` 传进去，逐条 disposition 询问；真实重启时注册表为空，行为与以前完全一致。去掉这个检查会让用户刚续跑的 checkpoint 立刻被改写成 `interrupted`（`run-checkpoint-api.test.ts` 的并发续跑用例就是这么发现的）。
+- **旧事件异步补扫**：队列恢复（现代租约与收件箱）是发布之后那条 promise 的内容；遍历所有历史事件分区的旧版兼容恢复在它之后继续，且从不被等待，已有租约的 run 不重复恢复。后台扫描在 router 停止后不得继续发起新的恢复。
 
-`getRunner()` 返回 `undefined` 表示"执行不可用"，由组合根持有该状态（`packages/app/src/main/index.ts` 的 `runner` 引用只在 `startExecution()` 中赋值）。
+`getRunner()` 返回 `undefined` 表示"执行不可用"，由组合根持有该状态（`packages/app/src/main/index.ts` 的 `runner` 引用只在 `startExecution()` 中赋值，现在由 `runner-lifecycle.ts` 发布）。
 
 ## 维护规则
 

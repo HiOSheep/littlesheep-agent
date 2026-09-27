@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { FileGlyphIcon } from '../ui/icons'
-import { formatMaybeDuration, toolFilePath } from './activity-model'
+import { formatMaybeDuration, shortToolPath, toolFilePath } from './activity-model'
 import {
   formatToolInput,
   formatToolResult,
@@ -32,6 +32,10 @@ export function AgentToolRow({
   const outputText = tool.error ? '' : formatToolResult(tool)
   const errorText = tool.error ? firstLine(tool.error) : ''
   const summary = errorText || toolSummaryText(tool) || (running ? 'Running…' : '')
+  // A query and a path are two different facts. Printing them as one string
+  // made the row read as noise, so the path is its own trailing chip — and only
+  // when the summary is not already the path.
+  const pathChip = targetPath && summary !== targetPath ? shortToolPath(targetPath) : ''
 
   return (
     <section className={`agent-tool-call ${statusClass} ${open ? 'open' : ''}`} data-call-id={tool.callId}>
@@ -50,6 +54,9 @@ export function AgentToolRow({
         <span className={`agent-flow-summary ${errorText ? 'is-error' : ''}`}>
           {summary}
         </span>
+        {pathChip && (
+          <span className="agent-flow-path" title={targetPath} aria-label={`路径 ${targetPath}`}>{pathChip}</span>
+        )}
         <ToolLineDeltaBadge name={tool.name} input={tool.input} progress={tool.lineProgress} running={running} />
         <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
         <span className={`agent-flow-chevron ${open ? 'open' : ''}`} aria-hidden="true" />
@@ -200,9 +207,8 @@ export function toolSummaryText(tool: LiveToolEvent): string {
   }
 
   const query = firstString(record, ['query', 'pattern', 'glob', 'url', 'href'])
-  if (query && targetPath) return shortActivityText(`${query} · ${targetPath}`, 180)
-  if (targetPath) return shortActivityText(targetPath, 180)
   if (query) return shortActivityText(query, 180)
+  if (targetPath) return shortActivityText(targetPath, 180)
 
   return shortActivityText(formatToolInput(tool).replace(/\s+/gu, ' ').trim(), 180)
 }

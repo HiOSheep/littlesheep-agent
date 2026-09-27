@@ -26,12 +26,12 @@ import {
   writeJsonAtomically,
 } from './durable-store-utils.js';
 import {
-  mutableStampsUnchanged,
+  readInboxCommands,
   rememberInboxCommand,
   statInboxFile,
-  type FileStamp,
-  type InboxCommandCache,
+  type InboxCommandState,
 } from './durable-inbox-cache.js';
+import { matchesClaimFilter, normalizeClaimFilter } from './durable-inbox-claim-filter.js';
 import { InboxWriteLock } from './durable-inbox-lock.js';
 
 const COMMAND_FILE_PATTERN = /^[a-f0-9]{64}\.json$/;
@@ -60,9 +60,11 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   private readonly maxClaim: number;
   private readonly now: () => Date;
   private readonly writeLock: InboxWriteLock;
-  private commandCache?: InboxCommandCache;
+  /** Cached commands plus the file names a startup pass left unread. */
+  private readonly commandState: InboxCommandState = {};
   private initialized = false;
   private initializationFailure: Error | undefined;
+  private deferredWarm?: Promise<void>;
 
   constructor(options: DurableInboxStoreOptions) {
     const root = options.rootDir.trim();
@@ -74,13 +76,26 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     this.now = options.now ?? (() => new Date());
   }
 
+  /**
+   * Startup: names, the records a starting process can act on, and the expired
+   * claim requeue those records need.
+   *
+   * This runs inside the Runner build, so it is on the path to the publish the
+   * send control waits for. Parsing every historical command here made that
+   * publish scale with the inbox (paired measurement on a 300-command inbox:
+   * ~210 ms against ~8 ms), while a completed command can never be claimed,
+   * requeued or recovered. Terminal records are therefore stamped and left
+   * unread, and the `queued`/`claimed` records that decide admission are fully
+   * validated before this returns. `warmDeferredCommands` reads the rest once,
+   * after the Runner is published.
+   */
   async initialize(): Promise<void> {
     if (this.initialized) return;
     if (this.initializationFailure) throw this.initializationFailure;
     try {
       await mkdir(this.rootDir, { recursive: true });
       await this.withWriteLock(async () => {
-        const commands = await this.readCommands();
+        const commands = await this.readCommands({ activeOnly: true });
         await this.requeueExpired(commands, this.now());
       });
       this.initialized = true;
@@ -91,13 +106,28 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     }
   }
 
-  get initializationError(): Error | undefined {
-    return this.initializationFailure;
+  /**
+   * Read the deferred terminal records once, off the startup path.
+   *
+   * Bounded and idempotent: concurrent callers share one pass, and a completed
+   * pass is not repeated. A failure leaves the deferred set in place, so the next
+   * full read retries and still fails closed on the same file.
+   */
+  warmDeferredCommands(): Promise<void> {
+    if (!this.commandState.deferred) return Promise.resolve();
+    this.deferredWarm ??= this.withWriteLock(async () => {
+      await this.readCommands();
+    }).catch((error: unknown) => {
+      // A later read retries; forgetting the shared promise is what allows that.
+      this.deferredWarm = undefined;
+      throw error;
+    });
+    return this.deferredWarm;
   }
 
-  get isInitialized(): boolean {
-    return this.initialized;
-  }
+  get initializationError(): Error | undefined { return this.initializationFailure; }
+
+  get isInitialized(): boolean { return this.initialized; }
 
   async enqueue(input: DurableInboxEnqueueInput): Promise<DurableInboxEnqueueOutcome> {
     const normalized = normalizeEnqueueInput(input);
@@ -238,9 +268,12 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   async listRecoverableRuns(limit = DEFAULT_RECOVERABLE_RUN_LIMIT): Promise<Array<{ sessionId: string; runId: string }>> {
     const boundedLimit = boundedInteger(limit, DEFAULT_RECOVERABLE_RUN_LIMIT, 1, MAX_RECOVERABLE_RUN_LIMIT);
     return this.withWriteLock(async () => {
-      const commands = await this.readCommands();
+      // Only a `queued` command is recoverable, so this pass reads the active
+      // records instead of the whole inbox; the deferred terminal records cannot
+      // contribute a run here by construction.
+      const commands = await this.readCommands({ activeOnly: true });
       await this.requeueExpired(commands, this.now());
-      const refreshed = await this.readCommands();
+      const refreshed = await this.readCommands({ activeOnly: true });
       const runs = new Map<string, { sessionId: string; runId: string; enqueuedAt: string }>();
       for (const command of refreshed) {
         // A non-expired claim may still belong to a live process. It only
@@ -268,9 +301,9 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   async listActiveClaimedRuns(limit = DEFAULT_RECOVERABLE_RUN_LIMIT): Promise<Array<{ sessionId: string; runId: string }>> {
     const boundedLimit = boundedInteger(limit, DEFAULT_RECOVERABLE_RUN_LIMIT, 1, MAX_RECOVERABLE_RUN_LIMIT);
     return this.withWriteLock(async () => {
-      const commands = await this.readCommands();
+      const commands = await this.readCommands({ activeOnly: true });
       await this.requeueExpired(commands, this.now());
-      const refreshed = await this.readCommands();
+      const refreshed = await this.readCommands({ activeOnly: true });
       const runs = new Map<string, { sessionId: string; runId: string }>();
       for (const command of refreshed) {
         if (command.status !== 'claimed') continue;
@@ -289,7 +322,7 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   /** Return one bounded wake-up point instead of polling active claims. */
   async nextClaimLeaseExpiry(): Promise<string | undefined> {
     return this.withWriteLock(async () => {
-      const commands = await this.readCommands();
+      const commands = await this.readCommands({ activeOnly: true });
       let earliest: string | undefined;
       for (const command of commands) {
         if (command.status !== 'claimed' || !command.leaseUntil) continue;
@@ -311,36 +344,24 @@ export class DurableInboxStore implements DurableInboxStoreLike {
     return validateStoredCommand(parseJson(raw, file), commandId);
   }
 
-  private async readCommands(): Promise<DurableInboxCommand[]> {
+  /**
+   * The authoritative command set, as a validated in-memory list.
+   *
+   * The policy - what a startup pass parses, what it defers, and how a deferred
+   * record is folded back in - lives in `readInboxCommands`; this only supplies
+   * the store's own reader and error type so a corrupt record still fails closed
+   * with `kind: 'corrupt'`.
+   */
+  private async readCommands(options: { activeOnly?: boolean } = {}): Promise<DurableInboxCommand[]> {
     const files = await this.listCommandFiles();
-    const cached = this.commandCache;
-    if (cached && cached.stamps.size === files.length
-      && files.every((name) => cached.stamps.has(name))
-      && await mutableStampsUnchanged(this.rootDir, cached)) {
-      return cached.commands;
-    }
-    const commands: DurableInboxCommand[] = [];
-    const stamps = new Map<string, FileStamp>();
-    const mutable = new Set<string>();
-    const commandIds = new Set<string>();
-    const idempotencyKeys = new Set<string>();
-    for (const name of files) {
-      const command = await this.readCommandFile(name);
-      if (commandIds.has(command.commandId)) throw new DurableInboxError(`duplicate command id: ${command.commandId}`, 'corrupt');
-      if (idempotencyKeys.has(command.idempotencyKey)) throw new DurableInboxError(`duplicate inbox idempotency key: ${command.idempotencyKey}`, 'corrupt');
-      commandIds.add(command.commandId);
-      idempotencyKeys.add(command.idempotencyKey);
-      commands.push(command);
-      const stamp = await statInboxFile(this.rootDir, name);
-      if (!stamp) {
-        this.commandCache = undefined;
-        return commands;
-      }
-      stamps.set(name, stamp);
-      if (command.status !== 'completed') mutable.add(name);
-    }
-    this.commandCache = { commands, stamps, mutable };
-    return commands;
+    return readInboxCommands({
+      rootDir: this.rootDir,
+      files,
+      state: this.commandState,
+      readCommandFile: (name, raw) => this.readCommandFile(name, raw),
+      corrupt: (message) => new DurableInboxError(message, 'corrupt'),
+      ...(options.activeOnly ? { activeOnly: true } : {}),
+    });
   }
 
   private async listCommandFiles(): Promise<string[]> {
@@ -349,10 +370,9 @@ export class DurableInboxStore implements DurableInboxStoreLike {
       throw error;
     });
     for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      // A concurrent writer may be mid-rename; its temp file is not an
-      // authoritative command. Unknown names still fail closed.
-      if (isAtomicWriteTempFile(entry.name)) continue;
+      if (!entry.isFile() || isAtomicWriteTempFile(entry.name)) continue;
+      // Unknown names still fail closed: a concurrent writer's temp file is not
+      // an authoritative command, and nothing else may live in this directory.
       if (!entry.name.endsWith('.json') && entry.name !== '.inbox.lock') {
         throw new DurableInboxError(`unexpected inbox file: ${entry.name}`, 'corrupt');
       }
@@ -363,10 +383,18 @@ export class DurableInboxStore implements DurableInboxStoreLike {
       .sort((left, right) => left.localeCompare(right));
   }
 
-  private async readCommandFile(name: string): Promise<DurableInboxCommand> {
+  /**
+   * Validate one command file.
+   *
+   * `raw` is the text the caller already read; without it the file is read here.
+   * Both paths run the same validation, so a startup scan that hands over its own
+   * text cannot accept a record a later read would reject.
+   */
+  private async readCommandFile(name: string, raw?: string): Promise<DurableInboxCommand> {
     if (!COMMAND_FILE_PATTERN.test(name)) throw new DurableInboxError(`invalid inbox filename: ${name}`, 'corrupt');
     const commandId = name.slice(0, -'.json'.length);
-    const command = validateStoredCommand(parseJson(await readFile(join(this.rootDir, name), 'utf8'), join(this.rootDir, name)), undefined);
+    const file = join(this.rootDir, name);
+    const command = validateStoredCommand(parseJson(raw ?? await readFile(file, 'utf8'), file), undefined);
     if (hashParts(command.commandId) !== commandId) throw new DurableInboxError(`command id/file mismatch: ${name}`, 'corrupt');
     return command;
   }
@@ -387,14 +415,18 @@ export class DurableInboxStore implements DurableInboxStoreLike {
   private async writeCommand(command: DurableInboxCommand): Promise<void> {
     const name = `${hashParts(command.commandId)}.json`;
     await writeJsonAtomically(join(this.rootDir, name), command);
-    const cached = this.commandCache;
+    const cached = this.commandState.commandCache;
     if (!cached) return;
     const stamp = await statInboxFile(this.rootDir, name);
     if (!stamp) {
-      this.commandCache = undefined;
+      this.commandState.commandCache = undefined;
+      this.commandState.deferred = undefined;
       return;
     }
-    this.commandCache = rememberInboxCommand(cached, name, command, stamp);
+    this.commandState.commandCache = rememberInboxCommand(cached, name, command, stamp);
+    // A deferred record may describe this same file; the next read resolves it
+    // from disk instead of folding a stale deferred copy back in.
+    this.commandState.deferred?.files.delete(name);
   }
 
   private filePath(commandId: string): string {
@@ -513,21 +545,6 @@ function sameCommandInput(command: DurableInboxCommand, input: DurableInboxEnque
     && canonicalSerialize(command.payload) === canonicalSerialize(input.payload);
 }
 
-function normalizeClaimFilter(filter: DurableInboxClaimFilter | undefined): DurableInboxClaimFilter | undefined {
-  if (!filter) return undefined;
-  return {
-    ...(filter.commandId === undefined ? {} : { commandId: normalizeIdentifier(filter.commandId, 'filter.commandId') }),
-    ...(filter.sessionId === undefined ? {} : { sessionId: normalizeIdentifier(filter.sessionId, 'filter.sessionId') }),
-    ...(filter.runId === undefined ? {} : { runId: normalizeIdentifier(filter.runId, 'filter.runId') }),
-  };
-}
-
-function matchesClaimFilter(command: DurableInboxCommand, filter: DurableInboxClaimFilter | undefined): boolean {
-  return filter === undefined
-    || ((filter.commandId === undefined || command.commandId === filter.commandId)
-      && (filter.sessionId === undefined || command.sessionId === filter.sessionId)
-      && (filter.runId === undefined || command.runId === filter.runId));
-}
 
 function normalizeResultEventIds(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > MAX_RESULT_EVENT_IDS) throw new Error('resultEventIds must be a bounded array');

@@ -133,11 +133,14 @@ describe('Local App API execution readiness', () => {
       expect(sessions.status).toBe(200)
       const runtime = await fetch(`${base}${LOCAL_APP_API_ROUTES.runtime}`)
       expect(runtime.status).toBe(200)
-      const run = await fetch(`${base}${LOCAL_APP_API_ROUTES.run}`, { method: 'POST' })
-      expect(run.status).toBe(503)
+      // The publish is not held behind recovery: the router exists as soon as the
+      // Runner does, and the pass it started is what the routes that need it wait
+      // for (`run-routes.test.ts` covers which ones).
+      await settingRunner
+      expect(server.port).toBeGreaterThan(0)
     } finally {
       releaseRecovery?.()
-      await settingRunner
+      await server.waitForRecovery()
     }
   })
 

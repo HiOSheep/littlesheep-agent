@@ -24,6 +24,7 @@ import {
 import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import { ensureManagedAttachmentRefs } from '../attachment-materialization.js'
 import type { ProjectIndex } from '../project-index.js'
+import { DeferredRunRecovery } from '../run-recovery.js'
 import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
@@ -64,23 +65,6 @@ interface ApprovalRequestPayload extends RunApprovalRequest {
   source: 'agent'
 }
 
-interface DurableInboxRecoveryStore {
-  listRecoverableRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
-  listActiveClaimedRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
-  nextClaimLeaseExpiry?: () => Promise<string | undefined>
-}
-
-interface DurableRunLeaseRecoveryStore {
-  read?: (sessionId: string, runId: string) => Promise<unknown | null>
-  listActiveRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
-  listRecoverableRuns?: () => Promise<Array<{ sessionId: string; runId: string }>>
-  nextLeaseExpiry?: () => Promise<string | undefined>
-}
-
-interface DurableRecoveryInfrastructure {
-  durableRunLeaseStore?: DurableRunLeaseRecoveryStore
-}
-
 export interface RunRouteContext {
   /** Undefined until the composition root publishes the Runner; fail closed. */
   getRunner: () => AgentRunner | undefined
@@ -97,9 +81,16 @@ export interface RunRouteContext {
 export class RunRouter {
   private readonly activeStreams = new Map<string, ActiveStreamRun>()
   private readonly pendingApprovals = new Map<string, PendingApproval>()
-  private durableRecoveryTimer: NodeJS.Timeout | undefined
-  private stopped = false
+  private recovery: DeferredRunRecovery | undefined
 
+  /**
+   * Build the router without waiting for recovery.
+   *
+   * `server.setRunner` is what publishes execution readiness, so anything awaited
+   * here delays the moment the user may send a message. Recovery of previous runs
+   * is therefore started, not awaited; the routes that genuinely need it await
+   * `this.recovery.done()` themselves (see `route`).
+   */
   static async create(initialRunner: AgentRunner): Promise<RunRouter> {
     const router = new RunRouter()
     // The modern lease and inbox stores identify work that may need recovery
@@ -107,116 +98,20 @@ export class RunRouter {
     // a long-lived data root, so it must not gate fresh interaction. Keep the
     // event-only scan as a background compatibility pass for older runs that
     // predate the lease store.
-    if ((initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)?.durableRunLeaseStore) {
-      await router.recoverDurableRuns(initialRunner, 'queue')
-      void router.recoverDurableRuns(initialRunner, 'events')
-    } else {
-      await router.recoverDurableRuns(initialRunner, 'all')
-    }
-    try {
-      const recovered = await initialRunner.runCheckpoints?.recoverInterruptedResumes(
-        'application restarted before checkpoint continuation completed',
-      ) ?? 0
-      if (recovered > 0) console.info(`[run-checkpoints] released ${recovered} interrupted resume lease(s)`)
-    } catch (error) {
-      console.error(`[run-checkpoints] startup lease recovery failed: ${(error as Error).message}`)
-    }
-    try {
-      const reconciled = await initialRunner.runCheckpoints?.reconcileCompletedRuns(
-        'startup reconciled checkpoint with successful execution log',
-      ) ?? 0
-      if (reconciled > 0) console.info(`[run-checkpoints] sealed ${reconciled} checkpoint(s) from successful execution logs`)
-    } catch (error) {
-      console.error(`[run-checkpoints] startup completion reconciliation failed: ${(error as Error).message}`)
-    }
+    router.recovery = DeferredRunRecovery.start(initialRunner, {
+      // The router's own active-stream registry is the live-run answer: a resume
+      // the user started after this Runner was published is in it, and the
+      // deferred pass must not release that resume's lease as if the process had
+      // died. On a real restart the registry is empty and every stale lease is
+      // released exactly as before.
+      isRunActive: (runId) => router.activeStreams.has(runId),
+    })
     return router
   }
 
-  private async recoverDurableRuns(
-    initialRunner: AgentRunner,
-    source: 'all' | 'queue' | 'events' = 'all',
-  ): Promise<void> {
-    if (this.stopped) return
-    const durableEventStore = initialRunner.infra?.durableEventStore
-    const durableInboxStore = initialRunner.infra?.durableInboxStore as unknown as DurableInboxRecoveryStore | undefined
-    const durableRunLeaseStore = (initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)
-      ?.durableRunLeaseStore
-    if (((source !== 'queue' && durableEventStore?.listRuns)
-      || (source !== 'events' && durableInboxStore?.listRecoverableRuns)
-      || (source !== 'events' && durableRunLeaseStore?.listRecoverableRuns)) && initialRunner.recoverDurableRun) {
-      try {
-        const activeClaimedRuns = new Set([
-          ...(await durableInboxStore?.listActiveClaimedRuns?.() ?? []),
-          ...(await durableRunLeaseStore?.listActiveRuns?.() ?? []),
-        ].map((run) => `${run.sessionId}\0${run.runId}`))
-        const discoveredRuns = [
-          ...(source !== 'queue'
-            ? (await durableEventStore?.listRuns?.() ?? []).filter(
-                (run) => !activeClaimedRuns.has(`${run.sessionId}\0${run.runId}`),
-              )
-            : []),
-          ...(source !== 'events' ? await durableInboxStore?.listRecoverableRuns?.() ?? [] : []),
-          ...(source !== 'events' ? await durableRunLeaseStore?.listRecoverableRuns?.() ?? [] : []),
-        ]
-        const durableRuns = [...new Map(discoveredRuns.map((run) => (
-          [`${run.sessionId}\0${run.runId}`, run] as const
-        ))).values()].sort((left, right) => (
-          left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
-        ))
-        for (const durableRun of durableRuns) {
-          if (this.stopped) break
-          try {
-            // Modern event-backed runs also have a lease. The queue pass has
-            // already handled expired leases; an active or released lease must
-            // never be re-driven by the legacy compatibility scan.
-            if (source === 'events' && durableRunLeaseStore?.read
-              && await durableRunLeaseStore.read(durableRun.sessionId, durableRun.runId)) continue
-            const recovery = await initialRunner.recoverDurableRun(
-              asSessionId(durableRun.sessionId),
-              durableRun.runId,
-            )
-            if (recovery.actions.length > 0) {
-              console.info(`[durable-harness] recovered ${durableRun.runId}: ${recovery.actions.map((action) => action.kind).join(', ')}`)
-            }
-          } catch (error) {
-            // A corrupt or concurrently-owned run must remain visible for a
-            // later operator decision; startup of the Local API still proceeds.
-            console.error(`[durable-harness] recovery failed for ${durableRun.runId}: ${(error as Error).message}`)
-          }
-        }
-      } catch (error) {
-        console.error(`[durable-harness] run recovery discovery failed: ${(error as Error).message}`)
-      }
-    }
-    if (source !== 'events') {
-      try {
-        await this.scheduleDurableRecovery(initialRunner)
-      } catch (error) {
-        console.error(`[durable-harness] recovery wake-up scheduling failed: ${(error as Error).message}`)
-      }
-    }
-  }
-
-  private async scheduleDurableRecovery(initialRunner: AgentRunner): Promise<void> {
-    if (this.stopped) return
-    if (this.durableRecoveryTimer) clearTimeout(this.durableRecoveryTimer)
-    this.durableRecoveryTimer = undefined
-    // Optional while an older Runner declaration is being rebuilt.
-    const durableInboxStore = initialRunner.infra?.durableInboxStore as unknown as DurableInboxRecoveryStore | undefined
-    const durableRunLeaseStore = (initialRunner.infra as unknown as DurableRecoveryInfrastructure | undefined)
-      ?.durableRunLeaseStore
-    const expiries = [
-      await durableInboxStore?.nextClaimLeaseExpiry?.(),
-      await durableRunLeaseStore?.nextLeaseExpiry?.(),
-    ].filter((value): value is string => Boolean(value)).sort()
-    const expiresAt = expiries[0]
-    if (!expiresAt || this.stopped) return
-    const delayMs = Math.max(0, Date.parse(expiresAt) - Date.now())
-    this.durableRecoveryTimer = setTimeout(() => {
-      this.durableRecoveryTimer = undefined
-      void this.recoverDurableRuns(initialRunner, 'queue')
-    }, delayMs)
-    this.durableRecoveryTimer.unref?.()
+  /** Exposed so the checkpoint routes can gate on the same recovery pass. */
+  waitForRecovery(sessionId?: string): Promise<void> {
+    return this.recovery?.waitIfNeeded(sessionId) ?? Promise.resolve()
   }
 
   async route(request: LocalAppApiRequest, context: RunRouteContext): Promise<boolean> {
@@ -237,6 +132,12 @@ export class RunRouter {
       return true
     }
 
+    // Every checkpoint route reads checkpoint or disposition state that startup
+    // recovery may still be rewriting (released resume leases, sealed completed
+    // runs), so listing, inspecting, abandoning and resuming all observe the
+    // same recovery pass before they answer. The UI's recovery banner is one of
+    // those reads: it must not miss a checkpoint that recovery is about to
+    // release.
     if (await routeRunCheckpoints(request, context, {
       registerActive: (runId, runner, controller) => {
         if (this.activeStreams.size >= MAX_ACTIVE_STREAM_RUNS || this.activeStreams.has(runId)) return false
@@ -249,6 +150,7 @@ export class RunRouter {
       },
       isRunActive: (runId) => this.activeStreams.has(runId),
       createApprovalBroker: (publish, signal) => this.buildApprovalBroker(publish, signal),
+      waitForRecovery: () => this.waitForRecovery(),
     })) return true
 
     const runtimeEventRunId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.runs, '/events')
@@ -310,6 +212,12 @@ export class RunRouter {
       const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
       const requestKey = parseRequestKey(body.requestKey)
       const sessionId = body.sessionId ? asSessionId(String(body.sessionId)) : undefined
+      // This is the run path the send control uses. A brand-new conversation has
+      // no session id and is admitted immediately; a run that names a session may
+      // be the next turn of a conversation whose previous run is still being
+      // recovered, so it observes recovery before the Runner sees it. The wait is
+      // on a pass that is already running, so it costs nothing once it settled.
+      await this.waitForRecovery(sessionId)
       const runId = (sessionId ? conversationTurnRunId(sessionId, requestKey) : undefined) ?? randomUUID()
       const existingActive = this.activeStreams.get(runId)
       if (!existingActive && this.activeStreams.size >= MAX_ACTIVE_STREAM_RUNS) {
@@ -416,6 +324,10 @@ export class RunRouter {
     if (method === 'POST' && path === LOCAL_APP_API_ROUTES.run) {
       const body = await readJson(req)
       const effectiveBody = await withPersistedSessionPermissionMode(context.sessionIndex, body)
+      // Same rule as the streaming path: a named session may carry a previous run
+      // that recovery is still settling, so the non-streaming entry point waits
+      // too. A session-less request is a brand-new conversation and does not.
+      await this.waitForRecovery(effectiveBody.sessionId === undefined ? undefined : String(effectiveBody.sessionId))
       const runner = resolveRunner(context.getRunner)
       const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
       // Ownership first: a project-bound session's directory is its project's, so
@@ -474,9 +386,7 @@ export class RunRouter {
   }
 
   stop(): void {
-    this.stopped = true
-    if (this.durableRecoveryTimer) clearTimeout(this.durableRecoveryTimer)
-    this.durableRecoveryTimer = undefined
+    this.recovery?.stop()
     for (const active of this.activeStreams.values()) active.controller.abort()
     this.activeStreams.clear()
     for (const pending of this.pendingApprovals.values()) {

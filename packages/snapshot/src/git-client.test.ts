@@ -32,6 +32,40 @@ describe('ShadowGitRepository', () => {
     }
   });
 
+  it('reports changed, deleted and untracked paths — and never the ignored ones', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-shadow-git-status-'));
+    try {
+      const workTree = join(root, 'worktree');
+      await mkdir(join(workTree, 'memory'), { recursive: true });
+      await mkdir(join(workTree, 'backups'), { recursive: true });
+      await writeFile(join(workTree, 'memory', 'modified.md'), 'v1', 'utf8');
+      await writeFile(join(workTree, 'memory', 'deleted.md'), 'v1', 'utf8');
+      const repository = new ShadowGitRepository({
+        gitDir: join(root, 'repository.git'),
+        workTree,
+        excludePatterns: ['backups/', '*.sqlite'],
+      });
+      await repository.commitPaths(['memory/modified.md', 'memory/deleted.md'], 'first', true);
+
+      await writeFile(join(workTree, 'memory', 'modified.md'), 'v2', 'utf8');
+      await rm(join(workTree, 'memory', 'deleted.md'), { force: true });
+      await writeFile(join(workTree, 'memory', 'added.md'), 'new', 'utf8');
+      await writeFile(join(workTree, 'memory', 'cache.sqlite'), 'ignored', 'utf8');
+      await writeFile(join(workTree, 'backups', 'manifest.json'), 'excluded', 'utf8');
+
+      const changes = await repository.workTreeChanges();
+
+      expect(changes).toContainEqual({ path: 'memory/modified.md', code: ' M', deleted: false });
+      expect(changes).toContainEqual({ path: 'memory/deleted.md', code: ' D', deleted: true });
+      expect(changes).toContainEqual({ path: 'memory/added.md', code: '??', deleted: false });
+      expect(changes.map((change) => change.path)).not.toContain('memory/cache.sqlite');
+      expect(changes.map((change) => change.path)).not.toContain('backups/manifest.json');
+      expect(await repository.isWorkTreeClean()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('waits for the shared repository mutation lock before committing', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ls-shadow-git-lock-'));
     try {

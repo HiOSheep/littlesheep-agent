@@ -25,6 +25,7 @@ import { routeRunLifecycle } from './local-app-api/run-lifecycle-routes.js'
 import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { WorkspacePreviewServers } from './local-app-api/workspace-preview-server.js'
 import { RunRouter } from './local-app-api/run-routes.js'
+import { RunRouterPublisher } from './run-router-publisher.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 import { WebProviderCheckCoordinator } from './local-app-api/web-provider-check.js'
 import { MemoryEmbeddingModelManager, type MemoryEmbeddingModelController } from './memory-embedding-model-control.js'
@@ -46,9 +47,7 @@ export async function startLocalAppApiServer(
   let currentConfig: Config = opts.config
   let sessionMutationQueue: Promise<void> = Promise.resolve()
   let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
-  let runRouterPromise: Promise<RunRouter> | undefined
-  let activeRunRouter: RunRouter | undefined
-  let runRouterGeneration = 0
+  const runRouters = new RunRouterPublisher()
   const mutateSession = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = sessionMutationQueue.then(operation)
     sessionMutationQueue = result.then(() => undefined, () => undefined)
@@ -138,7 +137,7 @@ export async function startLocalAppApiServer(
       }
       // Recovery can take much longer than the listener startup on an existing
       // data root. Never make metadata and workspace requests wait for it.
-      const runRouter = activeRunRouter
+      const runRouter = runRouters.current()
       return route(
         req,
         res,
@@ -166,15 +165,13 @@ export async function startLocalAppApiServer(
   const port = await bindFetchCompatibleHttpServer(server, opts.port ?? 0)
   return {
     port,
+    // The publish does not wait for startup recovery; `RunRouterPublisher` owns
+    // both the generation swap and the gate a route uses to observe that recovery.
     setRunner: async (r: AgentRunner) => {
-      const generation = ++runRouterGeneration
-      const pending = RunRouter.create(r)
-      runRouterPromise = pending
+      await runRouters.publish(r)
       await initializeForRunner(r)
-      const next = await pending
-      if (generation === runRouterGeneration) activeRunRouter = next
-      else next.stop()
     },
+    waitForRecovery: (sessionId?: string) => runRouters.waitForRecovery(sessionId),
     setPluginHost: (host: PluginHost) => {
       currentPluginHost = host
     },
@@ -183,9 +180,7 @@ export async function startLocalAppApiServer(
       currentConfig = c
     },
     stop: async () => {
-      const router = await runRouterPromise?.catch(() => undefined)
-      router?.stop()
-      if (activeRunRouter !== router) activeRunRouter?.stop()
+      await runRouters.stop()
       terminalRouter.stop()
   void workspacePreviewServers.stopAll()
       // Let the deferred attachment-protection pass finish before the data root goes away; it writes the

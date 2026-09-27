@@ -321,3 +321,15 @@ export function toolFilePath(input: unknown): string {
   }
   return ''
 }
+
+/**
+ * The end of a path, which is the part a reader recognises. A search row that
+ * prints the whole path next to its query spends its width on the prefix
+ * everybody shares and the file name is what gets cut.
+ */
+export function shortToolPath(path: string, maxSegments = 3): string {
+  const separator = path.includes('\\') ? '\\' : '/'
+  const segments = path.split(/[\\/]/u).filter(Boolean)
+  if (segments.length <= maxSegments) return path
+  return `…${separator}${segments.slice(-maxSegments).join(separator)}`
+}

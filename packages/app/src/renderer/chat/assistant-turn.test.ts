@@ -395,26 +395,33 @@ describe('assistant activity flow', () => {
 })
 
 describe('model transcript rendering', () => {
-  it('summarises a finished turn as 已思考 · N 次工具调用 · N 条消息', () => {
-    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
-      transcript: [
-        { kind: 'reasoning', id: 'turn-1:reasoning', text: '想过了。', status: 'done' },
-        { kind: 'text', id: 'turn-1:text', text: '先看目录。' },
-        { kind: 'tool', id: 'tool:call-1', callId: 'call-1' },
-      ],
-      activity: activity({
-        status: 'done',
-        visibility: 'progress',
-        durationMs: 2_400,
-        tools: [{ callId: 'call-1', name: 'glob', startedAt: 1_000, endedAt: 1_200, ok: true, input: {}, output: 'a' }],
-      }),
+  it('counts a finished turn as N 段思考 · N 次调用 on the process trigger', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '目录在这里。',
+        activity: activity({
+          status: 'done',
+          visibility: 'progress',
+          startedAt: 1_000,
+          endedAt: 4_000,
+          transcript: [
+            { kind: 'reasoning', id: 'turn-1:reasoning', text: '想过了。', status: 'done' },
+            { kind: 'text', id: 'turn-1:text', text: '先看目录。' },
+            { kind: 'tool', id: 'tool:call-1', callId: 'call-1' },
+          ],
+          tools: [{ callId: 'call-1', name: 'glob', startedAt: 1_000, endedAt: 1_200, ok: true, input: {}, output: 'a' }],
+        }),
+      },
+      messageKey: 'assistant-1',
       now: 4_000,
       onOpenFile: () => undefined,
     }))
-    expect(html).toContain('agent-transcript-summary')
-    expect(html).toContain('已思考')
-    expect(html).toContain('1 次工具调用')
-    expect(html).toContain('1 条消息')
+    // The counts ride on the process trigger, so a settled turn reads them once
+    // instead of repeating them under the answer as a second footer.
+    expect(html).toContain('1 段思考')
+    expect(html).toContain('1 次调用')
+    expect(html).not.toContain('0 条消息')
   })
 
   it('renders the system prompt row first and expandable', () => {

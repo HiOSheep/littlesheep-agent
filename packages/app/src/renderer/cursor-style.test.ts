@@ -13,11 +13,13 @@ function selectorDeclares(selector: string, declaration: string): boolean {
 
 
 describe('renderer cursor policy', () => {
-  it('keeps ordinary interactive controls on the default cursor', () => {
+  it('gives ordinary interactive controls the pointer', () => {
     const ordinaryControlRule = styles.match(/button,[\s\S]*?\[role='tab'\]\s*\{([^}]*)\}/u)?.[1] ?? ''
 
-    expect(ordinaryControlRule).toContain('cursor: default;')
-    expect(styles).not.toMatch(/cursor:\s*(?:pointer|grab|grabbing)\b/u)
+    expect(ordinaryControlRule).toContain('cursor: pointer;')
+    // The pointer is the ordinary action cursor; grab-style cursors stay out of
+    // the renderer because nothing here is a draggable surface.
+    expect(styles).not.toMatch(/cursor:\s*(?:grab|grabbing)\b/u)
   })
 
   it('reserves the resize cursor for the four custom-width handles', () => {

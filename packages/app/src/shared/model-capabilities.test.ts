@@ -44,8 +44,10 @@ describe('model reasoning capabilities', () => {
   })
 
   it('maps generic UI effort to each provider official request contract', () => {
+    // `auto` is the default: a thinking-capable model must think, or the
+    // transcript has no 思考 row to show.
     expect(resolveProviderReasoningRequest('deepseek', 'deepseek-v4-flash', 'auto')).toEqual({
-      thinking: { type: 'disabled' },
+      thinking: { type: 'enabled' },
     })
     expect(resolveProviderReasoningRequest('openai', 'gpt-5.6', 'ultra')).toEqual({
       reasoningEffort: 'max',

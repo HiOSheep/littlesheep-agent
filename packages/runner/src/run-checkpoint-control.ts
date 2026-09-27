@@ -10,6 +10,20 @@ import type { SessionId } from '@littlesheep/types'
 import type { RunCheckpointStore, RunCheckpointStoreDiagnostics } from './run-checkpoint-store.js'
 import type { ExecutionLogStore } from './execution-log.js'
 
+export interface RunCheckpointResumeRecoveryOptions {
+  /**
+   * Whether a resume run is live in the calling process right now.
+   *
+   * Recovery is about leases a *dead* process left behind, and it cannot tell one
+   * of those from a resume this process started after the Runner was published -
+   * those two are now concurrent, because recovery no longer finishes before the
+   * routes answer. The caller owns the live-run registry, so it answers this
+   * question and a live resume is left alone. With no option, every resuming
+   * disposition is released, which is the restart case.
+   */
+  isRunActive?: (runId: string) => boolean
+}
+
 export interface RunCheckpointControl {
   list(limit?: number): Promise<RunCheckpointInspection[]>
   inspect(checkpointId: string): Promise<RunCheckpointInspection | null>
@@ -19,7 +33,7 @@ export interface RunCheckpointControl {
   /** Reconcile successful execution logs with intermediate checkpoints left by older builds or crashes. */
   reconcileCompletedRuns(reason: string): Promise<number>
   /** Convert process-local resume leases into auditable, resumable interruptions. */
-  recoverInterruptedResumes(reason: string): Promise<number>
+  recoverInterruptedResumes(reason: string, options?: RunCheckpointResumeRecoveryOptions): Promise<number>
   diagnostics(): RunCheckpointStoreDiagnostics
 }
 
@@ -69,11 +83,14 @@ export function createRunCheckpointControl(
       }
       return reconciled
     },
-    recoverInterruptedResumes: async (reason) => {
+    recoverInterruptedResumes: async (reason, options) => {
       const dispositions = await controller.listResumingDispositions()
       let recovered = 0
       for (const disposition of dispositions) {
         if (!disposition.resumeRunId) continue
+        // Asked per disposition, not once for the batch: a resume may register
+        // itself while this loop is already running.
+        if (options?.isRunActive?.(disposition.resumeRunId)) continue
         const latestForResume = await checkpointStore.latestForRun(disposition.resumeRunId)
         const continuationCheckpoint = latestForResume?.id !== disposition.checkpointId
           ? latestForResume

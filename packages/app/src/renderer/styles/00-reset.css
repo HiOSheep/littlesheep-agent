@@ -4,8 +4,11 @@
   box-sizing: border-box;
 }
 
-/* Hover surfaces already communicate ordinary actions. Reserve cursor changes
- * for precision interactions such as resizing and text entry. */
+/* An ordinary action still says so with the pointer: it is the cheapest signal
+ * that a surface responds to a click. The pointer is withheld only where the
+ * surface cannot act — the disabled states that set `cursor: default`
+ * themselves — and replaced where precision matters, such as resizing and text
+ * entry. */
 button,
 a[href],
 summary,
@@ -21,5 +24,5 @@ input[type='submit'],
 [role='option'],
 [role='switch'],
 [role='tab'] {
-  cursor: default;
+  cursor: pointer;
 }

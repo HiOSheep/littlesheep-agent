@@ -81,7 +81,7 @@
   background: transparent;
   border: 0;
   border-radius: var(--radius-circle);
-  cursor: default;
+  cursor: pointer;
 }
 
 .task-progress-indicator.phase-failed,
@@ -2165,60 +2165,60 @@
 .message-artifacts-card {
   display: grid;
   width: min(760px, 100%);
-  margin-top: 14px;
+  margin-top: 10px;
   overflow: hidden;
-  background: #343436;
-  border: 1px solid #737376;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-floating-panel);
 }
 
+/* The card is a list of paths, not a hero panel: its header used to spend 88px
+ * on a 58px icon, which is more than the three rows under it. It now costs one
+ * row and the files keep the height. */
 .message-artifacts-head {
   display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 16px;
-  min-height: 88px;
-  padding: 14px 16px;
-  color: #f4f4f5;
-  border-bottom: 1px solid #747477;
+  column-gap: 8px;
+  min-height: 30px;
+  padding: 4px 12px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
 
 .message-artifacts-head-icon {
   display: grid;
   place-items: center;
-  grid-row: 1 / 3;
-  width: 58px;
-  height: 58px;
-  color: #e5fbff;
-  background: #66686c;
-  border: 1px solid #85868a;
-  border-radius: var(--radius-composer-input);
+  width: 20px;
+  height: 20px;
+  color: var(--text);
+  background: var(--control-active);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-icon);
 }
 
 .message-artifacts-head-icon svg {
-  width: 27px;
-  height: 27px;
+  width: 13px;
+  height: 13px;
 }
 
 .message-artifacts-head strong {
-  align-self: end;
-  font-size: 18px;
-  font-weight: 700;
+  align-self: center;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .message-artifacts-total {
   display: inline-flex;
-  align-self: start;
-  gap: 10px;
-  margin-top: 4px;
-  font-size: 13px;
+  align-self: center;
+  gap: 8px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .message-artifacts-rows {
   display: grid;
-  padding: 4px 12px;
+  padding: 2px 8px;
 }
 
 .message-artifacts-row {
@@ -2238,13 +2238,13 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  min-height: 46px;
-  padding: 0 10px;
-  color: #f4f4f5;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--text);
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 14px;
+  font-size: 13px;
   text-align: left;
 }
 
@@ -2263,19 +2263,19 @@
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  min-height: 38px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 13px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 /* Neutral until pointed at: the numbers carry no meaning as colour at rest. */
 .line-delta-add,
 .line-delta-remove {
-  color: #dedee0;
+  color: var(--muted);
   transition: color var(--motion-fast) var(--motion-ease);
 }
 
@@ -2293,14 +2293,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 48px;
-  margin: 4px 12px 8px;
+  min-height: 28px;
+  margin: 2px 8px 6px;
   padding: 0 10px;
-  color: #f4f4f5;
+  color: var(--text);
   background: transparent;
   border: 0;
   border-radius: var(--radius-icon);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .message-artifacts-more:hover {

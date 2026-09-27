@@ -2,10 +2,9 @@
 //
 // Owns one `git` invocation path for the versioning shadow repositories (data root and per-workspace), the
 // per-repository mutation queue and lock file that serialize writers, and the queries the checkpoint
-// coordinator asks of a repository: tracked paths, HEAD, work-tree cleanliness, commit-or-reuse. It does not
-// decide *what* to version — path selection and the manifest format live in git-checkpoint-files.ts and
-// git-checkpoint.ts.
-import { spawn } from 'node:child_process';
+// coordinator asks of a repository: tracked paths, HEAD, work-tree changes, commit-or-reuse. It does not decide
+// *what* to version — path selection and the preimage decision live in git-checkpoint-preimage.ts, the manifest
+// store in checkpoint-manifest-store.ts and the transaction facade in git-checkpoint.ts.
 import { spawn } from 'node:child_process';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -20,6 +19,23 @@ export interface ShadowGitRepositoryOptions {
   gitDir: string;
   workTree: string;
   excludePatterns?: readonly string[];
+}
+
+/** One path that differs from HEAD, with the porcelain code that says how. */
+export interface WorkTreeChange {
+  path: string;
+  /** The two porcelain status letters, e.g. `??`, ` M`, ` D`, `M `. */
+  code: string;
+  /** The work tree no longer holds this path, so the commit has to record a removal. */
+  deleted: boolean;
+}
+
+/** What `commitWorkTreeChanges` is allowed to stage. */
+export interface ManagedCommitSelection {
+  /** New paths to force-add, each one already selected and size-checked by the caller. */
+  changed: readonly string[];
+  /** Whether the index already holds tracked paths, so `git add -u` has something to update. */
+  updateTracked: boolean;
 }
 
 export class ShadowGitRepository {
@@ -102,14 +118,32 @@ export class ShadowGitRepository {
    * genuinely unnecessary.
    *
    * One caveat the callers honour: `--untracked-files=all` does not list *ignored* files, so a newly created
-   * managed path matching an exclude pattern would not appear here. The tracked-count guard the callers
-   * already apply is what keeps that case on the slow path.
+   * path matching an exclude pattern — the shadow repository's own or a `.gitignore` in the work tree — would
+   * not appear here. A caller that also drives its path selection from this answer therefore never versions
+   * such a path; the caller's explicit root-file list and the tracked set are what keep that from losing a
+   * file the previous preimage already covered.
    */
   async isWorkTreeClean(): Promise<boolean> {
+    return (await this.workTreeChanges()).length === 0;
+  }
+
+  /**
+   * Every path that differs from HEAD, in one process and with no per-path `stat`.
+   *
+   * This is the path *source* the checkpoint coordinator now uses, not just a cleanliness probe: the
+   * untracked entries are exactly the new files a commit has to force-add, and the modified/deleted entries
+   * say which already-tracked files moved. `--no-renames` keeps one entry per path (a rename then reads as a
+   * deletion plus an untracked addition) so no caller has to pair two records to find out what happened.
+   *
+   * Ignored paths are absent by design: the shadow repository's `info/exclude` is authoritative about what may
+   * enter the repository, and a caller must never pass a *directory* of this result to `git add -f`.
+   */
+  async workTreeChanges(): Promise<WorkTreeChange[]> {
     await this.initialize();
-    const result = await this.git(['status', '--porcelain', '-z', '--untracked-files=all'], [0, 128]);
-    if (result.code !== 0) return false;
-    return result.stdout.length === 0;
+    const result = await this.git([
+      'status', '--porcelain', '-z', '--untracked-files=all', '--no-renames',
+    ]);
+    return parseWorkTreeChanges(result.stdout);
   }
 
   async commitAll(message: string, allowEmpty = false): Promise<string | undefined> {
@@ -139,6 +173,36 @@ export class ShadowGitRepository {
       for (const batch of batches(existing, PATH_BATCH_SIZE)) {
         await this.git(['add', '-A', '-f', '--', ...batch]);
       }
+      return this.commitInternal(message, allowEmpty);
+    });
+  }
+
+  /**
+   * Commit a git-derived selection: `git add -u` for whatever the index already tracks, explicit paths for the
+   * few new files the caller force-adds.
+   *
+   * The difference from `commitPaths` is the cost model, and it is the whole point. `commitPaths` is told every
+   * managed path and answers with one `exists()` per path plus one `git add` per 128 of them — on a 31k-path
+   * data root that is 31k stats and ~240 processes, which is exactly the walk this selection replaces, moved
+   * into git. Here `git add -u -- .` stages every modification and removal of tracked paths in ONE process
+   * (git reads its own index; nothing stats a path from Node), and only the new/changed paths the caller
+   * already stat-ed are named explicitly. `-f` is applied to those explicit paths alone — never to a
+   * directory — so the repository's exclude patterns stay authoritative for everything else.
+   */
+  async commitWorkTreeChanges(
+    selection: ManagedCommitSelection,
+    message: string,
+    allowEmpty = false,
+  ): Promise<string | undefined> {
+    await this.initialize();
+    const changed = this.normalizePaths(selection.changed);
+    return this.enqueueMutation(async () => {
+      for (const batch of batches(changed, PATH_BATCH_SIZE)) {
+        await this.git(['add', '-A', '-f', '--', ...batch]);
+      }
+      // `git add -u` errors on an unborn index ("pathspec '.' did not match any file(s) known to git"), so the
+      // caller says whether the repository has tracked paths at all.
+      if (selection.updateTracked) await this.git(['add', '-u', '--', '.']);
       return this.commitInternal(message, allowEmpty);
     });
   }
@@ -308,6 +372,25 @@ async function exists(path: string): Promise<boolean> {
 
 function parseNullSeparated(value: string): string[] {
   return value.split('\0').filter(Boolean);
+}
+
+/**
+ * Read `status --porcelain -z`. With `-z` each record is `XY<space>path<NUL>`; rename/copy records (which
+ * `--no-renames` suppresses, kept here as a guard) append the original path as a further record.
+ */
+function parseWorkTreeChanges(stdout: string): WorkTreeChange[] {
+  const records = stdout.split('\0');
+  const changes: WorkTreeChange[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]!;
+    if (record.length < 4) continue;
+    const code = record.slice(0, 2);
+    const path = record.slice(3);
+    if (!path) continue;
+    changes.push({ path, code, deleted: code.includes('D') });
+    if (code.includes('R') || code.includes('C')) index += 1;
+  }
+  return changes;
 }
 
 function batches<T>(values: readonly T[], size: number): T[][] {

@@ -86,14 +86,19 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   const processLabel = activity.status === 'running' ? `正在工作 · ${formatMaybeDuration(activity.startedAt, undefined, now)}`
     : activity.status === 'done' ? `用时 ${formatMaybeDuration(activity.startedAt, activity.endedAt, now)}`
       : activity.status === 'aborted' ? '已停止' : activity.status === 'failed' ? '执行失败' : '等待处理'
+  const processCounts = turnCountsLine(activity)
+  // The verdict rides on the trigger too: while the run is still going it would
+  // read as a judgement on an unfinished turn.
+  const processVerification = activity.status === 'running' ? null : activityVerificationLine(activity)
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
       <button type="button" className="assistant-process-trigger" aria-expanded={processOpen}
         onClick={() => setProcessOpenOverride(!processOpen)}>
         <span>{processLabel}</span>
-        {activity.status === 'done' && activityVerificationLine(activity) && (
-          <span className="assistant-process-verification">{activityVerificationLine(activity)}</span>
+        {processCounts && <span className="assistant-process-counts">{processCounts}</span>}
+        {processVerification && (
+          <span className="assistant-process-verification">{processVerification}</span>
         )}
         <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
       </button>
@@ -389,10 +394,11 @@ export function AssistantTranscript({
   // decision or a fix: failed/denied rows and the activity-level attention line
   // stay readable (UX-16).
   const rows = compact ? compactTranscriptEntries(transcript, activity.tools) : transcript
+  // Compact mode keeps the facts that need a decision or a fix: failed/denied
+  // rows and the activity-level attention line stay readable (UX-16). The
+  // verdict and the per-turn counts live on the process trigger, so they are
+  // not repeated by a footer under the answer.
   const attention = compact ? activityAttentionLine(activity) : null
-  // The verification verdict is not a transcript row, so folding it into the compact attention
-  // line cannot be its only home: normal mode reads the same fact here (UX-16).
-  const verification = compact ? null : activityVerificationLine(activity)
   return (
     <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
       {rows.map((entry) => {
@@ -455,14 +461,6 @@ export function AssistantTranscript({
       {attention && (
         <div className="agent-transcript-summary agent-transcript-attention" role="status">{attention}</div>
       )}
-      {verification && (
-        <div className="agent-transcript-summary" data-transcript-verification="true" role="status">{verification}</div>
-      )}
-      {transcriptSummary(activity, transcript) ? (
-        <div className="agent-transcript-summary" data-transcript-summary="true">
-          {transcriptSummary(activity, transcript)}
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -494,8 +492,28 @@ function ContextProjectionRows({ rows }: { rows: NonNullable<AssistantTurnActivi
 }
 
 function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }) {
-  const parts = ['已思考', `${activity.tools.length} 次工具调用`, '0 条消息']
-  return <div className="agent-transcript-summary" data-transcript-summary="true">{parts.join(' · ')}</div>
+  const counts = turnCountsLine(activity)
+  if (!counts) return null
+  return <div className="agent-transcript-summary" data-transcript-summary="true">{counts}</div>
+}
+
+/**
+ * What a settled turn did, as one line on the process trigger: how much of the
+ * model's thinking it recorded and how many tools it called. Thinking is named
+ * here because it is otherwise invisible once the run settles and folds away —
+ * a reader should be able to tell that there is thinking to open. Zero parts
+ * are dropped rather than printed ("0 条消息" said nothing).
+ */
+function turnCountsLine(activity: AssistantTurnActivity): string {
+  const transcript = activity.transcript ?? []
+  const thinking = transcript.filter((entry) => entry.kind === 'reasoning').length
+  const toolCalls = transcript.length > 0
+    ? transcript.filter((entry) => entry.kind === 'tool').length
+    : activity.tools.length
+  return [
+    thinking > 0 ? `${thinking} 段思考` : '',
+    toolCalls > 0 ? `${toolCalls} 次调用` : '',
+  ].filter(Boolean).join(' · ')
 }
 
 /**
@@ -573,13 +591,3 @@ function cacheReasonLabel(reason: string): string {
   return CACHE_REASON_LABELS[reason] ?? reason
 }
 
-/**
- * Turn footer: once the turn is no longer running the process content is
- * summarised as 已思考 · N 次工具调用 · N 条消息.
- */
-function transcriptSummary(activity: AssistantTurnActivity, transcript: TranscriptEntry[]): string | undefined {
-  if (activity.status === 'running') return undefined
-  const toolCalls = transcript.filter((entry) => entry.kind === 'tool').length
-  const messages = transcript.filter((entry) => entry.kind === 'text').length
-  return `已思考 · ${toolCalls} 次工具调用 · ${messages} 条消息`
-}

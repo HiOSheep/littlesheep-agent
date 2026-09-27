@@ -115,7 +115,8 @@ describe('artifact count colours', () => {
       styles.indexOf('.line-delta-add,'),
       styles.indexOf('.message-artifacts-row-delta:hover .line-delta-add'),
     )
-    expect(rule).toContain('color: #dedee0')
+    // Neutral at rest, and the neutral is a token so a theme can move it.
+    expect(rule).toContain('color: var(--muted)')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-add,')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-remove,')
     expect(styles).toContain('.message-artifacts-row-delta:focus-visible .line-delta-add {')

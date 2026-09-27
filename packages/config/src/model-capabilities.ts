@@ -224,10 +224,14 @@ export function resolveProviderReasoningRequest(
     return { reasoningEffort: effort };
   }
   if (reasoning === 'auto') {
-    // DeepSeek V4 changes prompt framing with thinking mode. Keep the default
-    // low-cost path explicit so local accounting observes the request sent.
+    // `auto` is the default and it is the one a reader judges the product by: a
+    // thinking-capable model that never shows its thinking reads as a product
+    // that cannot think. DeepSeek V4 changes prompt framing with thinking mode,
+    // so the mode is still stated explicitly — local accounting observes the
+    // request it actually sent either way — but the default now asks for the
+    // thinking instead of switching it off.
     return provider === 'deepseek' && capability?.thinkingControl
-      ? { thinking: { type: 'disabled' } }
+      ? { thinking: { type: 'enabled' } }
       : {};
   }
   if (!capability || !capability.reasoningOptions.includes(reasoning)) return {};

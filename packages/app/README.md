@@ -1,6 +1,6 @@
 # @littlesheep/app
 
-最后更新：2026-09-27 11:07:45
+最后更新：2026-09-27 13:47:35
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
@@ -14,7 +14,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **右侧可用性**：拓展工作区进面板即可读目录与预览文件，不等待 Runner；两个可用性指标（首个目录行、首个文件正文可见）只在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时由渲染器上报，配对测量见 `docs/reference/cold-start-baseline/` 的 CS-08 一节。
 - **首屏按需加载**：Monaco、mermaid 与 `react-syntax-highlighter` 都不得进入入口 chunk。完整 Prism 构建单独求值约 380 ms，改为按需后入口 chunk −936 KB、真实首帧早约 148 ms（成对实测见 `docs/reference/cold-start-baseline/`）。**入口字节数在本应用里不是首帧的可靠代理**：Markdown 解析管线整条按需（−400 KB）与 dompurify 按需（−49 KB）都实测无收益并已回退，新增加载态前必须用成对实测证明收益。
 - **就绪是唯一事实**：`src/shared/runtime-readiness-{contracts,ipc}.ts` 定义载荷与通道，`src/main/runtime-readiness.ts` 拥有状态，renderer 经 `src/renderer/runtime-readiness/` 消费。未就绪时 metadata 路由照常应答、Runner 依赖路由以 503 `runtime-not-ready` 失败关闭；具体边界见 `src/main/local-app-api/README.md`。正常启动的阶段文字只在发送按钮旁就地显示（`composer-readiness-hint`），横跨整窗的条带只用于失败态与重试（CS-09）。
-- **恢复期仍可使用**：当前租约与收件箱里的待恢复任务先完成安全检查；对旧版事件分区的完整兼容扫描随后异步进行。事件存储初始化只确保根目录存在，分区内容在读取、写入或后台恢复时逐段严格验证。真实数据根的历史扫描可能耗时数十秒，Local App API 不在所有请求前等待它；会话索引、配置和工作区接口在恢复期间继续应答，执行入口在路由尚未建成时明确返回 503。
+- **恢复期仍可使用，且恢复不再挡在执行就绪前面**：启动恢复（活跃 run、过期租约、中断的续跑、已完成 run 的对账）在 Runner 发布**之后**开始，结果保存在 `src/main/run-recovery.ts` 的 promise 里，只有真正依赖它的路径才等待——带 `sessionId` 的 run 入口（`POST /runs`、`POST /runs/stream`）和全部检查点路由（发现、详情、放弃、续跑）。**全新对话**（没有 `sessionId`）不等待，因为不存在的会话不可能有历史可恢复（`isFreshConversation`，测试钉住）。对旧版事件分区的完整兼容扫描仍随后异步进行，且**仍然不等待**：`recoverDurableRun` 每次重读该 run 的租约并失败关闭，所以它不会接管一个正在跑的同名 run。恢复也会放过本进程正在跑的续跑（`RunRouter` 把活动 run 注册表作为 `isRunActive` 传进去），否则它会把用户刚续跑的那次运行当作死进程留下的租约释放掉——这是改成并发后实测到的一次真实回归（disposition 由 `resumed` 变 `interrupted`）。事件存储初始化只确保根目录存在，分区内容在读取、写入或后台恢复时逐段严格验证。会话索引、配置和工作区接口在恢复期间继续应答；执行入口在路由尚未建成时明确返回 503。
 - **启动恢复的诊断计数按最近一次扫描**：`src/main/local-app-api/run-checkpoint-view.ts` 把 store 的扫描结果投影成两个互斥计数（`invalidFiles` = 读不出来的记录数，`warningCount` = 不属于这些记录的目录级发现），`src/renderer/runtime-recovery/` 只负责如实展示。计数不再按进程生命周期累加，因此用户反复点"重新检查"不会把同一份坏记录越算越多（实机验收见 `pnpm run verify:recovery-states`，领域实现见 `@littlesheep/runner` 的 `run-checkpoint-scan.ts`；HTTP 契约与假 Runner 夹具见 `src/main/README.md` 的"测试与修改定位"）。
 - **一个功能只有一个名字**：同一功能从聊天、设置总览、设置侧边栏和工作模块直入页进入时，标题与导航条目必须同名，关闭设置回到打开设置前的那一页；面向用户的文案只描述当前可用能力（术语表见 `docs/principles/ui-interaction-guidelines.md`，源码扫描见 `terminology.test.ts`，真实窗口走查见 `pnpm run verify:settings-navigation-terminology`）。
 - **窄窗口与缩放下的表单可用性**：关键按钮必须始终可达（含滚动后可达），输入字段不得被压缩到无法输入，页面不出现非必要横向滚动，长路径既能完整查看也能复制。供应商模型行在 560px 以下由四列改为堆叠并显示每字段标签（实测最小窗口下原布局只剩 62px/44px，见 `src/renderer/README.md` 的 `styles/` 条目）；五组窗口×缩放组合的走查见 `pnpm run verify:narrow-high-dpi-forms`。
@@ -28,7 +28,7 @@ LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话�
 - **重启保留当前入口**：启动时恢复上次会话只装载会话历史与工作区，不会覆盖应用关闭前保存的设置页或模块路由；用户手动切换会话仍返回对话。真实退出/重开验收见 `pnpm run verify:electron-ui-state-continuity`。
 - **技能目录的空态与失败各有真实证据**：`MemorySkills.tsx` 只有 Runtime 成功返回空数组才显示“暂无技能”；列表刷新失败保留旧列表，详情失败保留可重试的选择。`pnpm run verify:skills-catalog-states` 的隔离窗口门覆盖 loading、成功有数据、成功空数组、列表/详情失败与详情快速切换。
 - **没有模型时的第一步是可用路径**：输入栏的选择器把"还没配置""配置读取失败""已保存但不可用""可用但还没选模型"分成四种事实（`src/renderer/composer/runtime-availability.ts`），空菜单直接给出"配置模型 / 检查供应商配置 / 重试读取"，打开设置只是路由切换、不清空草稿与附件；自定义供应商保存的模型条目是元数据对象，因此 Runtime 的模型引用校验必须按解析后的 id 比较（`src/main/local-app-api/runtime-routes.ts`）。整条路径由 `pnpm run verify:no-model-config-loop` 在真实窗口走查。
-- **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。
+- **启动计时**：`LITTLESHEEP_BOOTSTRAP_TIMING=1` 时主进程、Runner 基础设施与 renderer 自报首帧输出同一格式的 `[bootstrap-timing]` 阶段标；五时间点基线与回归护栏见 `docs/reference/cold-start-baseline/`。Runner 侧的 durable 存储并行初始化后，该阶段墙钟 36–40 ms → 10–13 ms、Runner 构建 114–116 → 99–101 ms（净约 14 ms，属阶段级收益，不声称首次可执行变快）。**2026-09-27 起 `execution-ready` 只包含发布本身**：启动恢复整体移出该窗口，`run-recovery-start` / `run-recovery-runs-ready` / `run-recovery-resumes-ready` / `run-recovery-ready` / `run-recovery-settled` 与 `runner-durable-inbox-deferred-read`、`runner-rebuilt` 是它的新标，全部出现在 `execution-ready` **之后**。大根夹具实测 `execution-ready` 10002 ms → 0.9 ms（冷）、2718 ms → 0.8 ms（温）；同一份数据上 `runner-infra-durable-inbox-ready` 183 ms → 53 ms、`runner-infra-durable-run-leases-ready` 198 ms → 15 ms（冷）；`spawnToReadyMs` 25098 → 12852（冷）、7773 → 1757（温），剩余差距由影子 Git 的 `versioning.initialize()` 支配，不属于本模块。
 - **启动失败页可取证**：`src/main/desktop-acceptance-actions.ts` 只在 `LITTLESHEEP_ELECTRON_ACCEPTANCE=1` 时装配隔离验收动作（`/application/acceptance` 的 `resize` / `startup-error` 等），后者把真实失败文案交给生产同一份 `showStartupError` 文档，使 CS-02 能对"启动失败"这一无法靠等待到达的状态取像素证据；生产运行不挂载这些动作。
 - **验收运行不占用用户的屏幕**：隔离验收脚本经调试协议驱动真实渲染器，窗口只需存在而不必可见——`desktop-visual-acceptance.ts` 判定"这次是否扣住窗口"，`desktop-shell.ts` 把这条判定放在**唯一的上屏出口 `showWindow()`** 里（启动页、渲染器就绪、恢复几何、`show()` 全部经过它；只在 `show()`/`showStartup()` 上设卡会漏掉内部调用，实测窗口照样弹出）。需要像素的检查必须先经验收动作显式放行，顺序有单元测试钉住。生产启动不受影响。**副产品（实测）**：窗口隐藏时渲染器仍报 `document.visibilityState === 'visible'`、DOM 与输入管线照常工作（`Input.insertText` 能改编辑器模型并让面板变脏），但 Chromium 不做布局与绘制——`.view-line` 为 0，**离屏 iframe 也没有调试目标**；一次 `Page.captureScreenshot` 会强制出帧，之后帧目标才出现（实测目标数 1 → 2），验收门因此先"预热一帧"再读帧内文档；隐藏窗口下的截图很慢（实测 5 s，下一次 12 s 超时），所以截图已改成有界、失败只记录不判定。
 - **HTML 运行入口是"运行 / 重新加载 / 停止"**（UX-26 第 1 条）：静态预览不执行脚本，运行经 Main 的有界 loopback 服务在既有浏览器 guest 里打开；运行中"运行"按钮禁用（避免再开一个标签），"重新加载"以 URL 寻址的窗口事件让**显示该页面的那个标签**重新加载（不重启服务，保存到磁盘的改动因此生效），停止释放服务。真实窗口验收在 `pnpm run verify:html-preview-baseline`。
@@ -105,7 +105,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\refresh-deskto
 
 | 路径 | 职责 |
 | --- | --- |
-| `src/main/index.ts` | Electron 主进程启动和退出；窗口、托盘、关闭策略和拖拽/退出前落盘 IPC 在 `src/main/desktop-shell.ts`。 |
+| `src/main/index.ts` | Electron 主进程启动和退出；窗口、托盘、关闭策略和拖拽/退出前落盘 IPC 在 `src/main/desktop-shell.ts`；Runner 的构建、重建与退役在 `src/main/runner-lifecycle.ts`，启动恢复在 `src/main/run-recovery.ts`，Runner→RunRouter 的发布与恢复闸门在 `src/main/run-router-publisher.ts`。 |
 | `src/main/local-app-api-server.ts` | Local App API、SSE、工作区和终端；长生命周期 SSE 由 `local-app-api/http.ts` 统一提供 15 秒心跳、512 KiB 单连接待写上限和清理。 |
 | `src/main/desktop-acceptance-snapshot.ts` | 只读桌面验收快照；采样进程/Electron 内存、句柄、活动请求、Runner、活动源和监听器，用于验证资源是否回落。 |
 | `src/main/attachment-cache.ts`、`attachments.ts` | 受管附件缓存、稳定索引、安全清理、按需解析和 run 所有权分类。 |

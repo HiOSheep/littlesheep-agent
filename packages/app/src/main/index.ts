@@ -25,9 +25,10 @@ import {
 } from '@littlesheep/config'
 import { loadBranding, dataSubdirs, type BrandingConfig } from '@littlesheep/branding'
 import { MemoryV2ToV3MigrationManager } from '@littlesheep/memory-tree'
-import { createRunner, type AgentRunner } from '@littlesheep/runner'
+import { createRunner } from '@littlesheep/runner'
 import type { PluginHost } from '@littlesheep/plugins'
 import { startLocalAppApiServer, type LocalAppApiServer, type LocalAppApiServerOptions } from './local-app-api-server.js'
+import { RunnerLifecycle } from './runner-lifecycle.js'
 import { BOOTSTRAP_TEMPLATES } from './bootstrap-templates.js'
 import { classifyAttachment } from './attachments.js'
 import { SessionIndex } from './session-index.js'
@@ -67,7 +68,6 @@ import {
   RUNTIME_RETRY_EXECUTION_CHANNEL,
 } from '../shared/runtime-readiness-ipc.js'
 
-let runner: AgentRunner | null = null
 let server: LocalAppApiServer | null = null
 let pluginHost: PluginHost | null = null
 let sessionIndex: SessionIndex | null = null
@@ -90,15 +90,10 @@ recordBootstrapTiming('process-start')
 // Module-level state for runner rebuild (triggered by API key change).
 let currentConfig: Config | null = null
 let currentBranding: BrandingConfig | null = null
-let currentModel: string = ''
 let currentDataDir: string = ''
 let currentBootstrapDir: string = ''
 let currentWorkplaceDir: string = ''
 let providerCalibrationToken = ''
-let rebuildMutex: Promise<void> | null = null
-const retiredRunners = new Map<AgentRunner, NodeJS.Timeout>()
-const MAX_RETIRED_RUNNERS = 4
-const RETIRED_RUNNER_POLL_MS = 1_000
 const desktopShell = new LittleSheepDesktopShell({
   activity: runActivity,
   getClosePolicy: () => currentConfig?.desktop.closePolicy ?? 'background-while-active',
@@ -108,11 +103,40 @@ const desktopShell = new LittleSheepDesktopShell({
   onQuit: requestApplicationQuit,
   onWarning: (message) => console.warn(`[desktop] ${message}`),
 })
+
+/**
+ * Runner lifetime: one build at a time, the published Runner, and the delayed
+ * shutdown of the Runner a rebuild replaced. See `runner-lifecycle.ts` for why
+ * the build is a queue rather than a mutex, and for why a rebuild requested
+ * during startup does not build a second Runner.
+ */
+const runners = new RunnerLifecycle({
+  activity: runActivity,
+  createRunner: (input) => createRunner({
+    config: input.config,
+    branding: input.branding,
+    model: input.model,
+    bootstrapDir: input.bootstrapDir,
+    containerRoot: input.dataDir,
+    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, input.dataDir),
+    tokenizerFetch: (fetchInput, init) => net.fetch(fetchInput instanceof URL ? fetchInput.href : fetchInput, init),
+  }),
+  server: () => server,
+  pluginHost: () => pluginHost,
+  config: () => currentConfig,
+  branding: () => currentBranding,
+  roots: () => ({ dataDir: currentDataDir, bootstrapDir: currentBootstrapDir }),
+  prepareConfig: (config) => prepareRuntimeConfig(config, currentWorkplaceDir),
+  applyConfig: (config) => { currentConfig = config },
+  onRunnerPublished: () => { recordDeferredRecoveryCompletion(server) },
+  log: (message, error) => console.error(`[runner] ${message}:`, error),
+})
+
 const desktopAcceptanceSnapshot = createDesktopAcceptanceSnapshotProvider({
   desktopShell,
   runActivity,
-  getCurrentRunner: () => runner,
-  getRetiredRunnerCount: () => retiredRunners.size,
+  getCurrentRunner: () => runners.current(),
+  getRetiredRunnerCount: () => runners.retiredCount(),
 })
 
 // Execution readiness is published to the visible window so the Renderer can
@@ -137,7 +161,6 @@ const executionRetry = createExecutionRetryController({
     if (!currentBranding || !currentDataDir) throw new Error('启动尚未完成，暂时无法重试。')
     const reloaded = prepareRuntimeConfig(await loadConfig({ dataDir: currentDataDir }), currentWorkplaceDir)
     currentConfig = reloaded.config
-    currentModel = reloaded.model
     await startExecution({
       branding: currentBranding,
       config: reloaded.config,
@@ -232,7 +255,7 @@ const updateRuntimeConfig = createRuntimeConfigUpdater({
   current: () => currentConfig,
   prepare: (config) => prepareRuntimeConfig(config, currentWorkplaceDir).config,
   persist: persistRuntimeConfig,
-  rebuild: rebuildRunner,
+  rebuild: async () => { await runners.rebuild() },
 })
 
 async function bootstrap(): Promise<void> {
@@ -293,7 +316,6 @@ async function bootstrap(): Promise<void> {
   }
   currentConfig = config
   currentBranding = branding
-  currentModel = model
   stageStartedAt = recordBootstrapTiming('durable-config-ready', stageStartedAt)
 
   // Stage 2 — UI metadata + the Local App API listener. These do not need the
@@ -340,14 +362,14 @@ async function bootstrap(): Promise<void> {
     getExecutionReadiness: () => readiness.current(),
     // The Runner is published later by `startExecution()`; until then every
     // Runner-backed route answers 503 runtime-not-ready.
-    getRunner: () => runner ?? undefined,
+    getRunner: () => runners.current() ?? undefined,
     desktopAcceptance: createDesktopAcceptanceActions({
       token: providerCalibrationToken,
       snapshot: desktopAcceptanceSnapshot,
       shell: desktopShell,
       quit: requestApplicationQuit,
     }),
-    rebuildRunner,
+    rebuildRunner: async () => { await runners.rebuild() },
     updateRuntimeConfig,
     listActiveRuns: () => runActivity.snapshot(),
     subscribeActiveRuns: (listener) => runActivity.subscribe(listener),
@@ -456,27 +478,24 @@ async function startExecution(input: {
   model: string
   dataDir: string
 }): Promise<void> {
-  const dataDir = input.dataDir
   let stageStartedAt = recordBootstrapTiming('execution-start')
-  const created = await createRunner({
+  const created = await runners.start({
     config: input.config,
     branding: input.branding,
     model: input.model,
-    bootstrapDir: dataDir,
-    containerRoot: dataDir,
-    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, dataDir),
-    tokenizerFetch: (fetchInput, init) => net.fetch(fetchInput instanceof URL ? fetchInput.href : fetchInput, init),
+    dataDir: input.dataDir,
+    bootstrapDir: input.dataDir,
   })
-  // Publish the Runner before the run router is built: every Runner-backed
-  // route reads this reference, and it stays undefined until now on purpose.
-  runner = created
+  // The Runner is published inside `runners.start`; the mark is the composition
+  // root's own account of when that happened.
   stageStartedAt = recordBootstrapTiming('runner-ready', stageStartedAt)
-  runActivity.setRunners([created])
 
-  // The run router owns interrupted-run recovery, so it is created together
-  // with the Runner rather than with the listener. Execution readiness is
-  // published after it settles, so no request observes a half-built router.
+  // `setRunner` no longer waits for run recovery: it publishes the run router,
+  // which starts recovery and lets the routes that need it wait for themselves
+  // (see `run-recovery.ts`). Execution readiness is published immediately after,
+  // so the send control is never gated on recovering previous work.
   await server?.setRunner(created)
+  recordDeferredRecoveryCompletion(server)
 
   // Execution is available now. Everything below is optional and must not delay
   // it: measured, the plugin host costs only ~2.8 ms, but it is an optional
@@ -491,7 +510,7 @@ async function startExecution(input: {
   recordBootstrapTiming('execution-ready', stageStartedAt)
   void loadPluginHost(
     { runner: created, branding: input.branding, config: input.config },
-    { isCurrent: (candidate) => !shutdownStarted && runner === candidate },
+    { isCurrent: (candidate) => !shutdownStarted && runners.current() === candidate },
   )
     .then((host) => {
       if (!host) return
@@ -502,110 +521,25 @@ async function startExecution(input: {
     .catch((error) => {
       console.error('[plugins] host failed to start:', error)
     })
+  // A saved key or provider that arrived while this build was running has been
+  // persisted into `currentConfig`; `RunnerLifecycle` replaces the Runner only
+  // when the published one no longer describes the saved revision, and never by
+  // starting a second build next to this one.
+  void runners.rebuildIfConfigChanged()
 }
 
 /**
- * Rebuild the runner after an API key change.
+ * Mark when the deferred recovery pass finishes.
  *
- * Strategy: "build new, then teardown old"
- *   1. Create new runner (new LLM client reads new env, new SQLite connection)
- *   2. Atomically swap the server's runner reference
- *   3. Delay 5s before closing old runner (lets in-flight runs finish)
- *
- * Mutex: concurrent calls share the same rebuild Promise (no parallel builds).
+ * The mark is emitted from the recovery promise, so it lands in the same
+ * `[bootstrap-timing]` stream the measurement reads - after `execution-ready`,
+ * which is the point of the whole change.
  */
-async function rebuildRunner(): Promise<void> {
-  if (rebuildMutex) return rebuildMutex
-  rebuildMutex = doRebuildRunner().finally(() => {
-    rebuildMutex = null
-  })
-  return rebuildMutex
+function recordDeferredRecoveryCompletion(api: LocalAppApiServer | null): void {
+  if (!api) return
+  const mark = () => recordBootstrapTiming('run-recovery-settled')
+  void api.waitForRecovery().then(mark, mark)
 }
-
-async function doRebuildRunner(): Promise<void> {
-  if (!currentConfig || !currentBranding || !server) return
-  await releaseIdleRetiredRunners()
-  if (retiredRunners.size >= MAX_RETIRED_RUNNERS) {
-    throw new Error(`cannot replace runtime while ${retiredRunners.size} previous runtime(s) still own active tasks`)
-  }
-
-  const oldRunner = runner
-
-  // 1. Create new runner (picks up new API key from process.env).
-  const runtime = prepareRuntimeConfig(currentConfig, currentWorkplaceDir)
-  currentConfig = runtime.config
-  currentModel = runtime.model
-
-  const newRunner = await createRunner({
-    config: currentConfig,
-    branding: currentBranding,
-    model: currentModel,
-    bootstrapDir: currentBootstrapDir || currentDataDir,
-    containerRoot: currentDataDir || currentBootstrapDir,
-    authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, currentDataDir || currentBootstrapDir),
-    tokenizerFetch: (input, init) => net.fetch(input instanceof URL ? input.href : input, init),
-  })
-
-  // 2. Atomically swap references.
-  runner = newRunner
-  server.setRunner(newRunner)
-  server.setConfig(currentConfig)
-  if (pluginHost) await pluginHost.setRunner(newRunner)
-  pluginHost?.setConfig(currentConfig)
-
-  // 3. Delay closing the old runner so in-flight requests can finish before
-  //    its Catalog and optional local embedding pipeline release their handles.
-  if (oldRunner) {
-    scheduleRetiredRunnerShutdown(oldRunner)
-  }
-  refreshActivitySources()
-}
-
-function scheduleRetiredRunnerShutdown(retiredRunner: AgentRunner): void {
-  const timer = setTimeout(() => inspectRetiredRunner(retiredRunner), RETIRED_RUNNER_POLL_MS)
-  timer.unref?.()
-  retiredRunners.set(retiredRunner, timer)
-  refreshActivitySources()
-}
-
-function inspectRetiredRunner(retiredRunner: AgentRunner): void {
-  if (!retiredRunners.has(retiredRunner)) return
-  if ((retiredRunner.activeRuns?.list().length ?? 0) > 0) {
-    const timer = setTimeout(() => inspectRetiredRunner(retiredRunner), RETIRED_RUNNER_POLL_MS)
-    timer.unref?.()
-    retiredRunners.set(retiredRunner, timer)
-    return
-  }
-  retiredRunners.delete(retiredRunner)
-  refreshActivitySources()
-  void retiredRunner.shutdown().catch(() => undefined)
-}
-
-async function releaseIdleRetiredRunners(): Promise<void> {
-  const idle = [...retiredRunners.entries()]
-    .filter(([retiredRunner]) => (retiredRunner.activeRuns?.list().length ?? 0) === 0)
-  for (const [retiredRunner, timer] of idle) {
-    clearTimeout(timer)
-    retiredRunners.delete(retiredRunner)
-  }
-  if (idle.length > 0) {
-    refreshActivitySources()
-    await Promise.all(idle.map(([retiredRunner]) => retiredRunner.shutdown().catch(() => undefined)))
-  }
-}
-
-function refreshActivitySources(): void {
-  runActivity.setRunners([runner, ...retiredRunners.keys()])
-}
-
-async function shutdownRetiredRunners(): Promise<void> {
-  const entries = [...retiredRunners.entries()]
-  retiredRunners.clear()
-  for (const [, timer] of entries) clearTimeout(timer)
-  await Promise.all(entries.map(([retiredRunner]) => retiredRunner.shutdown().catch(() => undefined)))
-  refreshActivitySources()
-}
-
 // Only the instance that holds the single-instance lock should bootstrap.
 // The losing instance calls app.quit() above and never reaches here.
 if (gotLock) {
@@ -649,8 +583,7 @@ if (gotLock) {
       },
       { name: 'local app API', run: () => server?.stop() },
       { name: 'plugins', run: () => pluginHost?.stop() },
-      { name: 'retired runners', run: shutdownRetiredRunners },
-      { name: 'runner', run: () => runner?.shutdown() },
+      { name: 'runners', run: () => runners.shutdown() },
       { name: 'run activity monitor', run: () => runActivity.dispose() },
     ], {
       stepTimeoutMs: 5000,

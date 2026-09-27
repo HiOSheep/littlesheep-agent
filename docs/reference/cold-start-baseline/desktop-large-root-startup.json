@@ -1,7 +1,7 @@
 {
   "check": "desktop-large-root-startup",
-  "label": "git-status-fastpath",
-  "measuredAt": "2026-09-27T04:28:23.031Z",
+  "label": "deferred-run-recovery",
+  "measuredAt": "2026-09-27T05:49:15.713Z",
   "question": "Which startup stage grows with the size of the data root, up to /runtime/readiness = ready?",
   "method": [
     "Real Electron app (repository entry) launched against an isolated data root in os.tmpdir()",
@@ -20,7 +20,7 @@
   },
   "buildFreshness": {
     "status": "stale",
-    "message": "App build artifacts are stale (manifest-unavailable): ENOENT: no such file or directory, lstat 'D:\\Repositories\\littlesheep\\packages\\app\\out\\.littlesheep-build-fingerprint.json'"
+    "message": "App build artifacts are stale (input-mismatch)."
   },
   "codeAttribution": [
     {
@@ -121,9 +121,9 @@
         "projects": 6
       },
       "versioningEnabled": true,
-      "prepareMs": 3876,
+      "prepareMs": 3599,
       "seed": {
-        "seedMs": 3875,
+        "seedMs": 3599,
         "sessionIds": 1200,
         "checkpoints": 280
       },
@@ -132,19 +132,19 @@
           "fixtureId": "synthetic-large",
           "launch": 1,
           "warm": false,
-          "pid": 17664,
+          "pid": 62112,
           "ok": true,
           "readinessState": "ready",
           "readinessPhase": "execution",
-          "probes": 524,
-          "spawnToLocatorMs": 897,
-          "spawnToReadyMs": 25098,
-          "processCreateToReadyMs": 25358.8,
-          "processStartedAfterSpawnMs": 260.8,
-          "readyUptimeMs": 24875.4,
-          "bootstrapStartUptimeMs": 613.5,
-          "bootstrapToReadyMs": 24261.9,
-          "stagedSumBeforeReadyMs": 27274.2,
+          "probes": 253,
+          "spawnToLocatorMs": 804,
+          "spawnToReadyMs": 12409,
+          "processCreateToReadyMs": 12643.2,
+          "processStartedAfterSpawnMs": 234.2,
+          "readyUptimeMs": 12267.3,
+          "bootstrapStartUptimeMs": 579.9,
+          "bootstrapToReadyMs": 11687.4,
+          "stagedSumBeforeReadyMs": 13059.6,
           "scale": {
             "sessions": 1200,
             "messagesPerSession": 8,
@@ -168,449 +168,447 @@
             {
               "index": 0,
               "stage": "main-module-ready",
-              "processUptimeMs": 259.6
+              "processUptimeMs": 233
             },
             {
               "index": 1,
               "stage": "process-start",
-              "processUptimeMs": 260.8
+              "processUptimeMs": 234.2
             },
             {
               "index": 2,
               "stage": "electron-app-ready",
-              "processUptimeMs": 541.1
+              "processUptimeMs": 512.3
             },
             {
               "index": 3,
               "stage": "desktop-startup-visible",
-              "processUptimeMs": 613.1
+              "processUptimeMs": 579.5
             },
             {
               "index": 4,
               "stage": "bootstrap-start",
-              "processUptimeMs": 613.5
+              "processUptimeMs": 579.9
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 630.5,
-              "durationMs": 17
+              "processUptimeMs": 595.8,
+              "durationMs": 15.9
             },
             {
               "index": 6,
               "stage": "data-root-ready",
-              "processUptimeMs": 631.2,
-              "durationMs": 0.7
+              "processUptimeMs": 596.6,
+              "durationMs": 0.8
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 640.6,
-              "durationMs": 9.4
+              "processUptimeMs": 612.1,
+              "durationMs": 15.5
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 640.9,
-              "durationMs": 0.3
+              "processUptimeMs": 612.6,
+              "durationMs": 0.5
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 643.1,
-              "durationMs": 2.2
+              "processUptimeMs": 614.9,
+              "durationMs": 2.3
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 644,
-              "durationMs": 0.9
+              "processUptimeMs": 615.7,
+              "durationMs": 0.8
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 644,
+              "processUptimeMs": 615.7,
               "durationMs": 0.1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 644.8,
+              "processUptimeMs": 616.6,
               "durationMs": 0.8
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 644.9,
+              "processUptimeMs": 616.7,
               "durationMs": 0.1
             },
             {
               "index": 14,
               "stage": "archive-index-ready",
-              "processUptimeMs": 665.2,
-              "durationMs": 20.2
+              "processUptimeMs": 632.5,
+              "durationMs": 15.8
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 665.4,
+              "processUptimeMs": 632.6,
               "durationMs": 0.2
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 685.9,
-              "durationMs": 20.5
+              "processUptimeMs": 643.1,
+              "durationMs": 10.5
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 688.5,
-              "durationMs": 2.7
+              "processUptimeMs": 644.6,
+              "durationMs": 1.5
             },
             {
               "index": 18,
               "stage": "renderer-load-started",
-              "processUptimeMs": 704.6
+              "processUptimeMs": 659.7
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 708.5,
-              "durationMs": 20
+              "processUptimeMs": 663.1,
+              "durationMs": 18.5
             },
             {
               "index": 20,
               "stage": "execution-start",
-              "processUptimeMs": 708.8
+              "processUptimeMs": 663.3
             },
             {
               "index": 21,
               "stage": "renderer-did-finish-load",
-              "processUptimeMs": 870.9
+              "processUptimeMs": 806.6
             },
             {
               "index": 22,
               "stage": "renderer-load-started",
-              "processUptimeMs": 871.8
+              "processUptimeMs": 808.9
             },
             {
               "index": 23,
               "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 874.8,
-              "durationMs": 163.3
+              "processUptimeMs": 824.2,
+              "durationMs": 158.6
             },
             {
               "index": 24,
               "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2072.6,
-              "durationMs": 1005.1
+              "processUptimeMs": 1982.7,
+              "durationMs": 1006.4
             },
             {
               "index": 25,
               "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 14455.4,
-              "durationMs": 1
+              "processUptimeMs": 12132.7,
+              "durationMs": 0.8
             },
             {
               "index": 26,
               "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 14537.6,
-              "durationMs": 83.1
+              "processUptimeMs": 12142.3,
+              "durationMs": 10.2
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 14681.5,
-              "durationMs": 227.1
+              "processUptimeMs": 12143.9,
+              "durationMs": 11.9
             },
             {
               "index": 28,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 14774.6,
-              "durationMs": 320.2
+              "processUptimeMs": 12185.7,
+              "durationMs": 53.8
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 14774.8,
-              "durationMs": 0
+              "processUptimeMs": 12185.9,
+              "durationMs": 0.1
             },
             {
               "index": 30,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 14780.2,
-              "durationMs": 5.4
+              "processUptimeMs": 12189.8,
+              "durationMs": 3.8
             },
             {
               "index": 31,
               "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 14780.4,
+              "processUptimeMs": 12190.1,
               "durationMs": 0.2
             },
             {
               "index": 32,
               "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 14795.9,
-              "durationMs": 15.5
+              "processUptimeMs": 12205.6,
+              "durationMs": 15.4
             },
             {
               "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 14847.6,
+              "stage": "runner-durable-inbox-deferred-read",
+              "processUptimeMs": 12237.5,
               "durationMs": 51.6
             },
             {
               "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 14853.4,
-              "durationMs": 5.7
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 12248.2,
+              "durationMs": 42.5
             },
             {
               "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 14872.1,
-              "durationMs": 18.6
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 12252.7,
+              "durationMs": 4.5
             },
             {
               "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 14872.7,
-              "durationMs": 0.6
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 12264.6,
+              "durationMs": 11.9
             },
             {
               "index": 37,
-              "stage": "runner-infra-returned",
-              "processUptimeMs": 14872.8,
-              "durationMs": 0
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 12265.3,
+              "durationMs": 0.6
             },
             {
               "index": 38,
-              "stage": "runner-ready",
-              "processUptimeMs": 14873.2,
-              "durationMs": 14164.4
+              "stage": "runner-infra-returned",
+              "processUptimeMs": 12265.4,
+              "durationMs": 0
             },
             {
               "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 15492.4,
-              "durationMs": 496.3
+              "stage": "runner-ready",
+              "processUptimeMs": 12266,
+              "durationMs": 11602.7
             },
             {
               "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 15492.4,
-              "durationMs": 618.7
+              "stage": "run-recovery-start",
+              "processUptimeMs": 12266.3
             },
             {
               "index": 41,
               "stage": "execution-ready",
-              "processUptimeMs": 24875.4,
-              "durationMs": 10002.3
+              "processUptimeMs": 12267.3,
+              "durationMs": 1.3
             },
             {
               "index": 42,
               "stage": "plugin-host-ready",
-              "processUptimeMs": 24876.3
+              "processUptimeMs": 12268.2
+            },
+            {
+              "index": 43,
+              "stage": "run-recovery-settled",
+              "processUptimeMs": 12268.2
             }
           ],
           "topStages": [
             {
-              "index": 38,
+              "index": 39,
               "stage": "runner-ready",
-              "processUptimeMs": 14873.2,
-              "durationMs": 14164.4
-            },
-            {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 24875.4,
-              "durationMs": 10002.3
+              "processUptimeMs": 12266,
+              "durationMs": 11602.7
             },
             {
               "index": 24,
               "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2072.6,
-              "durationMs": 1005.1
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 15492.4,
-              "durationMs": 618.7
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 15492.4,
-              "durationMs": 496.3
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 14774.6,
-              "durationMs": 320.2
-            },
-            {
-              "index": 27,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 14681.5,
-              "durationMs": 227.1
+              "processUptimeMs": 1982.7,
+              "durationMs": 1006.4
             },
             {
               "index": 23,
               "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 874.8,
-              "durationMs": 163.3
+              "processUptimeMs": 824.2,
+              "durationMs": 158.6
             },
             {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 14537.6,
-              "durationMs": 83.1
+              "index": 28,
+              "stage": "runner-infra-durable-inbox-ready",
+              "processUptimeMs": 12185.7,
+              "durationMs": 53.8
             },
             {
               "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 14847.6,
+              "stage": "runner-durable-inbox-deferred-read",
+              "processUptimeMs": 12237.5,
               "durationMs": 51.6
             },
             {
-              "index": 16,
-              "stage": "local-api-ready",
-              "processUptimeMs": 685.9,
-              "durationMs": 20.5
-            },
-            {
-              "index": 14,
-              "stage": "archive-index-ready",
-              "processUptimeMs": 665.2,
-              "durationMs": 20.2
+              "index": 34,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 12248.2,
+              "durationMs": 42.5
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 708.5,
-              "durationMs": 20
-            },
-            {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 14872.1,
-              "durationMs": 18.6
+              "processUptimeMs": 663.1,
+              "durationMs": 18.5
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 630.5,
-              "durationMs": 17
+              "processUptimeMs": 595.8,
+              "durationMs": 15.9
             },
             {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 14795.9,
-              "durationMs": 15.5
+              "index": 14,
+              "stage": "archive-index-ready",
+              "processUptimeMs": 632.5,
+              "durationMs": 15.8
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 640.6,
-              "durationMs": 9.4
+              "processUptimeMs": 612.1,
+              "durationMs": 15.5
             },
             {
-              "index": 34,
+              "index": 32,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 12205.6,
+              "durationMs": 15.4
+            },
+            {
+              "index": 27,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 12143.9,
+              "durationMs": 11.9
+            },
+            {
+              "index": 36,
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 12264.6,
+              "durationMs": 11.9
+            },
+            {
+              "index": 16,
+              "stage": "local-api-ready",
+              "processUptimeMs": 643.1,
+              "durationMs": 10.5
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 12142.3,
+              "durationMs": 10.2
+            },
+            {
+              "index": 35,
               "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 14853.4,
-              "durationMs": 5.7
+              "processUptimeMs": 12252.7,
+              "durationMs": 4.5
             },
             {
               "index": 30,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 14780.2,
-              "durationMs": 5.4
-            },
-            {
-              "index": 17,
-              "stage": "locator-written",
-              "processUptimeMs": 688.5,
-              "durationMs": 2.7
+              "processUptimeMs": 12189.8,
+              "durationMs": 3.8
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 643.1,
-              "durationMs": 2.2
+              "processUptimeMs": 614.9,
+              "durationMs": 2.3
             },
             {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 14455.4,
-              "durationMs": 1
+              "index": 17,
+              "stage": "locator-written",
+              "processUptimeMs": 644.6,
+              "durationMs": 1.5
             },
             {
-              "index": 10,
-              "stage": "memory-v3-ready",
-              "processUptimeMs": 644,
-              "durationMs": 0.9
-            },
-            {
-              "index": 12,
-              "stage": "project-index-ready",
-              "processUptimeMs": 644.8,
-              "durationMs": 0.8
+              "index": 41,
+              "stage": "execution-ready",
+              "processUptimeMs": 12267.3,
+              "durationMs": 1.3
             },
             {
               "index": 6,
               "stage": "data-root-ready",
-              "processUptimeMs": 631.2,
-              "durationMs": 0.7
+              "processUptimeMs": 596.6,
+              "durationMs": 0.8
             },
             {
-              "index": 36,
+              "index": 10,
+              "stage": "memory-v3-ready",
+              "processUptimeMs": 615.7,
+              "durationMs": 0.8
+            },
+            {
+              "index": 12,
+              "stage": "project-index-ready",
+              "processUptimeMs": 616.6,
+              "durationMs": 0.8
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 12132.7,
+              "durationMs": 0.8
+            },
+            {
+              "index": 37,
               "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 14872.7,
+              "processUptimeMs": 12265.3,
               "durationMs": 0.6
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 640.9,
-              "durationMs": 0.3
+              "processUptimeMs": 612.6,
+              "durationMs": 0.5
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 665.4,
+              "processUptimeMs": 632.6,
               "durationMs": 0.2
             },
             {
               "index": 31,
               "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 14780.4,
+              "processUptimeMs": 12190.1,
               "durationMs": 0.2
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 644,
+              "processUptimeMs": 615.7,
               "durationMs": 0.1
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 644.9,
+              "processUptimeMs": 616.7,
               "durationMs": 0.1
             },
             {
               "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 14774.8,
-              "durationMs": 0
+              "processUptimeMs": 12185.9,
+              "durationMs": 0.1
             },
             {
-              "index": 37,
+              "index": 38,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 14872.8,
+              "processUptimeMs": 12265.4,
               "durationMs": 0
             }
           ],
@@ -618,91 +616,46 @@
             {
               "from": "runner-infra-observability-ready",
               "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 874.8,
-              "toUptimeMs": 14455.4,
-              "gapMs": 13580.6,
-              "laterStageDurationMs": 1,
-              "unattributedMs": 13580.6
+              "fromUptimeMs": 824.2,
+              "toUptimeMs": 12132.7,
+              "gapMs": 11308.5,
+              "laterStageDurationMs": 0.8,
+              "unattributedMs": 11308.5
             },
             {
               "from": "process-start",
               "to": "electron-app-ready",
-              "fromUptimeMs": 260.8,
-              "toUptimeMs": 541.1,
-              "gapMs": 280.3,
+              "fromUptimeMs": 234.2,
+              "toUptimeMs": 512.3,
+              "gapMs": 278.1,
               "laterStageDurationMs": null,
-              "unattributedMs": 280.3
-            },
-            {
-              "from": "runner-ready",
-              "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 14873.2,
-              "toUptimeMs": 15492.4,
-              "gapMs": 619.2,
-              "laterStageDurationMs": 496.3,
-              "unattributedMs": 122.9
+              "unattributedMs": 278.1
             },
             {
               "from": "electron-app-ready",
               "to": "desktop-startup-visible",
-              "fromUptimeMs": 541.1,
-              "toUptimeMs": 613.1,
-              "gapMs": 72,
+              "fromUptimeMs": 512.3,
+              "toUptimeMs": 579.5,
+              "gapMs": 67.2,
               "laterStageDurationMs": null,
-              "unattributedMs": 72
+              "unattributedMs": 67.2
             },
             {
               "from": "execution-start",
               "to": "runner-infra-observability-ready",
-              "fromUptimeMs": 708.8,
-              "toUptimeMs": 874.8,
-              "gapMs": 166,
-              "laterStageDurationMs": 163.3,
-              "unattributedMs": 2.7
-            },
-            {
-              "from": "session-index-ready",
-              "to": "archive-index-ready",
-              "fromUptimeMs": 644.9,
-              "toUptimeMs": 665.2,
-              "gapMs": 20.3,
-              "laterStageDurationMs": 20.2,
-              "unattributedMs": 0.1
+              "fromUptimeMs": 663.3,
+              "toUptimeMs": 824.2,
+              "gapMs": 160.9,
+              "laterStageDurationMs": 158.6,
+              "unattributedMs": 2.3
             },
             {
               "from": "runner-infra-memory-ready",
-              "to": "runner-infra-bootstrap-files-loaded",
-              "fromUptimeMs": 14795.9,
-              "toUptimeMs": 14847.6,
-              "gapMs": 51.7,
+              "to": "runner-durable-inbox-deferred-read",
+              "fromUptimeMs": 12205.6,
+              "toUptimeMs": 12237.5,
+              "gapMs": 31.9,
               "laterStageDurationMs": 51.6,
-              "unattributedMs": 0.1
-            },
-            {
-              "from": "ui-indexes-ready",
-              "to": "local-api-ready",
-              "fromUptimeMs": 665.4,
-              "toUptimeMs": 685.9,
-              "gapMs": 20.5,
-              "laterStageDurationMs": 20.5,
-              "unattributedMs": 0
-            },
-            {
-              "from": "locator-written",
-              "to": "desktop-shell-initialized",
-              "fromUptimeMs": 688.5,
-              "toUptimeMs": 708.5,
-              "gapMs": 20,
-              "laterStageDurationMs": 20,
-              "unattributedMs": 0
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 15492.4,
-              "toUptimeMs": 24875.4,
-              "gapMs": 9383,
-              "laterStageDurationMs": 10002.3,
               "unattributedMs": 0
             }
           ],
@@ -719,9 +672,9 @@
             }
           },
           "logFacts": {
-            "attachmentProtectionCheckpoints": 496.3,
-            "attachmentProtection": 618.7,
-            "attachmentProtectionAtUptimeMs": 15492.4,
+            "attachmentProtectionCheckpoints": null,
+            "attachmentProtection": null,
+            "attachmentProtectionAtUptimeMs": null,
             "recoveredRuns": 0,
             "recoveryNotices": 0,
             "checkpointScanCapped": false,
@@ -738,26 +691,26 @@
             ],
             "readinessRetries": 0,
             "readinessFailures": 0,
-            "timingEntries": 43
+            "timingEntries": 44
           }
         },
         {
           "fixtureId": "synthetic-large",
           "launch": 2,
           "warm": true,
-          "pid": 63792,
+          "pid": 11168,
           "ok": true,
           "readinessState": "ready",
           "readinessPhase": "execution",
-          "probes": 149,
-          "spawnToLocatorMs": 1047,
-          "spawnToReadyMs": 7773,
-          "processCreateToReadyMs": 8064.2,
-          "processStartedAfterSpawnMs": 291.2,
-          "readyUptimeMs": 7577.8,
-          "bootstrapStartUptimeMs": 757.8,
-          "bootstrapToReadyMs": 6820,
-          "stagedSumBeforeReadyMs": 10856.5,
+          "probes": 20,
+          "spawnToLocatorMs": 754,
+          "spawnToReadyMs": 1591,
+          "processCreateToReadyMs": 1831.8,
+          "processStartedAfterSpawnMs": 240.8,
+          "readyUptimeMs": 1425.4,
+          "bootstrapStartUptimeMs": 555.5,
+          "bootstrapToReadyMs": 869.9,
+          "stagedSumBeforeReadyMs": 969.5,
           "scale": {
             "sessions": 1200,
             "messagesPerSession": 8,
@@ -781,449 +734,435 @@
             {
               "index": 0,
               "stage": "main-module-ready",
-              "processUptimeMs": 289.8
+              "processUptimeMs": 239.6
             },
             {
               "index": 1,
               "stage": "process-start",
-              "processUptimeMs": 291.2
+              "processUptimeMs": 240.8
             },
             {
               "index": 2,
               "stage": "electron-app-ready",
-              "processUptimeMs": 663.1
+              "processUptimeMs": 491.7
             },
             {
               "index": 3,
               "stage": "desktop-startup-visible",
-              "processUptimeMs": 757.4
+              "processUptimeMs": 555.1
             },
             {
               "index": 4,
               "stage": "bootstrap-start",
-              "processUptimeMs": 757.8
+              "processUptimeMs": 555.5
             },
             {
               "index": 5,
               "stage": "branding-ready",
-              "processUptimeMs": 784.8,
-              "durationMs": 27
+              "processUptimeMs": 571.7,
+              "durationMs": 16.2
             },
             {
               "index": 6,
               "stage": "data-root-ready",
-              "processUptimeMs": 785.9,
-              "durationMs": 1.1
+              "processUptimeMs": 572.7,
+              "durationMs": 1
             },
             {
               "index": 7,
               "stage": "user-data-layout-ready",
-              "processUptimeMs": 796.5,
-              "durationMs": 10.6
+              "processUptimeMs": 579.9,
+              "durationMs": 7.2
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 796.9,
-              "durationMs": 0.4
+              "processUptimeMs": 580.2,
+              "durationMs": 0.3
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 799.2,
-              "durationMs": 2.3
+              "processUptimeMs": 582.1,
+              "durationMs": 1.9
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 800.4,
-              "durationMs": 1.1
+              "processUptimeMs": 583.2,
+              "durationMs": 1.2
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 800.4,
+              "processUptimeMs": 583.3,
               "durationMs": 0.1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 801.3,
+              "processUptimeMs": 584.2,
               "durationMs": 0.9
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 801.4,
+              "processUptimeMs": 584.3,
               "durationMs": 0.1
             },
             {
               "index": 14,
               "stage": "archive-index-ready",
-              "processUptimeMs": 820.5,
-              "durationMs": 19.1
+              "processUptimeMs": 597.3,
+              "durationMs": 13
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 820.7,
+              "processUptimeMs": 597.4,
               "durationMs": 0.2
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 830.8,
-              "durationMs": 10.1
+              "processUptimeMs": 607.8,
+              "durationMs": 10.3
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 835.6,
-              "durationMs": 4.8
+              "processUptimeMs": 611.1,
+              "durationMs": 3.3
             },
             {
               "index": 18,
               "stage": "renderer-load-started",
-              "processUptimeMs": 854.9
+              "processUptimeMs": 627.1
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 860,
-              "durationMs": 24.4
+              "processUptimeMs": 630.5,
+              "durationMs": 19.4
             },
             {
               "index": 20,
               "stage": "execution-start",
-              "processUptimeMs": 860.4
+              "processUptimeMs": 630.7
             },
             {
               "index": 21,
               "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 891.7,
-              "durationMs": 28.7
+              "processUptimeMs": 641.1,
+              "durationMs": 8
             },
             {
               "index": 22,
               "stage": "renderer-did-finish-load",
-              "processUptimeMs": 1030.5
+              "processUptimeMs": 773.4
             },
             {
               "index": 23,
               "stage": "renderer-load-started",
-              "processUptimeMs": 1032.8
+              "processUptimeMs": 774.4
             },
             {
               "index": 24,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2266.4,
-              "durationMs": 1047
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 1349.8,
+              "durationMs": 0.6
             },
             {
               "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 4065,
-              "durationMs": 2.1
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 1357.2,
+              "durationMs": 7.9
             },
             {
               "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 4199.8,
-              "durationMs": 136.7
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 1357.8,
+              "durationMs": 8.5
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 4713.6,
-              "durationMs": 650.7
+              "processUptimeMs": 1388.1,
+              "durationMs": 38.8
             },
             {
               "index": 28,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 4805.4,
-              "durationMs": 742.4
-            },
-            {
-              "index": 29,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 4805.6,
+              "processUptimeMs": 1388.2,
               "durationMs": 0.1
             },
             {
-              "index": 30,
+              "index": 29,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 4810.3,
-              "durationMs": 4.7
+              "processUptimeMs": 1390.2,
+              "durationMs": 2
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 1390.4,
+              "durationMs": 0.2
             },
             {
               "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 4810.7,
-              "durationMs": 0.3
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 1394.2,
+              "durationMs": 3.7
             },
             {
               "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 4823,
-              "durationMs": 12.2
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 1410.3,
+              "durationMs": 16
             },
             {
               "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 4840.3,
-              "durationMs": 17.2
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 1417.3,
+              "durationMs": 7
             },
             {
               "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 4850.3,
-              "durationMs": 10
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 1423.8,
+              "durationMs": 6.5
             },
             {
               "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 4858.3,
-              "durationMs": 7.8
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 1424.2,
+              "durationMs": 0.4
             },
             {
               "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 4859,
-              "durationMs": 0.6
-            },
-            {
-              "index": 37,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 4859,
+              "processUptimeMs": 1424.3,
               "durationMs": 0
             },
             {
-              "index": 38,
+              "index": 37,
               "stage": "runner-ready",
-              "processUptimeMs": 4859.4,
-              "durationMs": 3999
+              "processUptimeMs": 1424.7,
+              "durationMs": 794
+            },
+            {
+              "index": 38,
+              "stage": "run-recovery-start",
+              "processUptimeMs": 1424.8
             },
             {
               "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 5551.7,
-              "durationMs": 684.7
+              "stage": "execution-ready",
+              "processUptimeMs": 1425.4,
+              "durationMs": 0.7
             },
             {
               "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 5551.8,
-              "durationMs": 691.7
+              "stage": "plugin-host-ready",
+              "processUptimeMs": 1425.9
             },
             {
               "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 7577.8,
-              "durationMs": 2718.4
+              "stage": "run-recovery-settled",
+              "processUptimeMs": 1425.9
             },
             {
               "index": 42,
-              "stage": "plugin-host-ready",
-              "processUptimeMs": 7578.6
+              "stage": "runner-durable-inbox-deferred-read",
+              "processUptimeMs": 1433.8,
+              "durationMs": 45.5
             }
           ],
           "topStages": [
             {
-              "index": 38,
+              "index": 37,
               "stage": "runner-ready",
-              "processUptimeMs": 4859.4,
-              "durationMs": 3999
+              "processUptimeMs": 1424.7,
+              "durationMs": 794
             },
             {
-              "index": 41,
-              "stage": "execution-ready",
-              "processUptimeMs": 7577.8,
-              "durationMs": 2718.4
-            },
-            {
-              "index": 24,
-              "stage": "renderer-workspace-entries",
-              "processUptimeMs": 2266.4,
-              "durationMs": 1047
-            },
-            {
-              "index": 28,
-              "stage": "runner-infra-durable-run-leases-ready",
-              "processUptimeMs": 4805.4,
-              "durationMs": 742.4
-            },
-            {
-              "index": 40,
-              "stage": "attachment-protection",
-              "processUptimeMs": 5551.8,
-              "durationMs": 691.7
-            },
-            {
-              "index": 39,
-              "stage": "attachment-protection-checkpoints",
-              "processUptimeMs": 5551.7,
-              "durationMs": 684.7
+              "index": 42,
+              "stage": "runner-durable-inbox-deferred-read",
+              "processUptimeMs": 1433.8,
+              "durationMs": 45.5
             },
             {
               "index": 27,
               "stage": "runner-infra-durable-inbox-ready",
-              "processUptimeMs": 4713.6,
-              "durationMs": 650.7
-            },
-            {
-              "index": 26,
-              "stage": "runner-infra-durable-effect-leases-ready",
-              "processUptimeMs": 4199.8,
-              "durationMs": 136.7
-            },
-            {
-              "index": 21,
-              "stage": "runner-infra-observability-ready",
-              "processUptimeMs": 891.7,
-              "durationMs": 28.7
-            },
-            {
-              "index": 5,
-              "stage": "branding-ready",
-              "processUptimeMs": 784.8,
-              "durationMs": 27
+              "processUptimeMs": 1388.1,
+              "durationMs": 38.8
             },
             {
               "index": 19,
               "stage": "desktop-shell-initialized",
-              "processUptimeMs": 860,
-              "durationMs": 24.4
+              "processUptimeMs": 630.5,
+              "durationMs": 19.4
+            },
+            {
+              "index": 5,
+              "stage": "branding-ready",
+              "processUptimeMs": 571.7,
+              "durationMs": 16.2
+            },
+            {
+              "index": 32,
+              "stage": "runner-infra-bootstrap-files-loaded",
+              "processUptimeMs": 1410.3,
+              "durationMs": 16
             },
             {
               "index": 14,
               "stage": "archive-index-ready",
-              "processUptimeMs": 820.5,
-              "durationMs": 19.1
-            },
-            {
-              "index": 33,
-              "stage": "runner-infra-bootstrap-files-loaded",
-              "processUptimeMs": 4840.3,
-              "durationMs": 17.2
-            },
-            {
-              "index": 32,
-              "stage": "runner-infra-memory-ready",
-              "processUptimeMs": 4823,
-              "durationMs": 12.2
-            },
-            {
-              "index": 7,
-              "stage": "user-data-layout-ready",
-              "processUptimeMs": 796.5,
-              "durationMs": 10.6
+              "processUptimeMs": 597.3,
+              "durationMs": 13
             },
             {
               "index": 16,
               "stage": "local-api-ready",
-              "processUptimeMs": 830.8,
-              "durationMs": 10.1
+              "processUptimeMs": 607.8,
+              "durationMs": 10.3
+            },
+            {
+              "index": 26,
+              "stage": "runner-infra-durable-run-leases-ready",
+              "processUptimeMs": 1357.8,
+              "durationMs": 8.5
+            },
+            {
+              "index": 21,
+              "stage": "runner-infra-observability-ready",
+              "processUptimeMs": 641.1,
+              "durationMs": 8
+            },
+            {
+              "index": 25,
+              "stage": "runner-infra-durable-effect-leases-ready",
+              "processUptimeMs": 1357.2,
+              "durationMs": 7.9
+            },
+            {
+              "index": 7,
+              "stage": "user-data-layout-ready",
+              "processUptimeMs": 579.9,
+              "durationMs": 7.2
+            },
+            {
+              "index": 33,
+              "stage": "runner-infra-skills-ready",
+              "processUptimeMs": 1417.3,
+              "durationMs": 7
             },
             {
               "index": 34,
-              "stage": "runner-infra-skills-ready",
-              "processUptimeMs": 4850.3,
-              "durationMs": 10
+              "stage": "runner-infra-skill-resources-synced",
+              "processUptimeMs": 1423.8,
+              "durationMs": 6.5
             },
             {
-              "index": 35,
-              "stage": "runner-infra-skill-resources-synced",
-              "processUptimeMs": 4858.3,
-              "durationMs": 7.8
+              "index": 31,
+              "stage": "runner-infra-memory-ready",
+              "processUptimeMs": 1394.2,
+              "durationMs": 3.7
             },
             {
               "index": 17,
               "stage": "locator-written",
-              "processUptimeMs": 835.6,
-              "durationMs": 4.8
+              "processUptimeMs": 611.1,
+              "durationMs": 3.3
             },
             {
-              "index": 30,
+              "index": 29,
               "stage": "runner-infra-checkpoint-store-ready",
-              "processUptimeMs": 4810.3,
-              "durationMs": 4.7
+              "processUptimeMs": 1390.2,
+              "durationMs": 2
             },
             {
               "index": 9,
               "stage": "config-ready",
-              "processUptimeMs": 799.2,
-              "durationMs": 2.3
-            },
-            {
-              "index": 25,
-              "stage": "runner-infra-durable-events-ready",
-              "processUptimeMs": 4065,
-              "durationMs": 2.1
-            },
-            {
-              "index": 6,
-              "stage": "data-root-ready",
-              "processUptimeMs": 785.9,
-              "durationMs": 1.1
+              "processUptimeMs": 582.1,
+              "durationMs": 1.9
             },
             {
               "index": 10,
               "stage": "memory-v3-ready",
-              "processUptimeMs": 800.4,
-              "durationMs": 1.1
+              "processUptimeMs": 583.2,
+              "durationMs": 1.2
+            },
+            {
+              "index": 6,
+              "stage": "data-root-ready",
+              "processUptimeMs": 572.7,
+              "durationMs": 1
             },
             {
               "index": 12,
               "stage": "project-index-ready",
-              "processUptimeMs": 801.3,
+              "processUptimeMs": 584.2,
               "durationMs": 0.9
             },
             {
-              "index": 36,
-              "stage": "runner-infra-harness-ready",
-              "processUptimeMs": 4859,
+              "index": 39,
+              "stage": "execution-ready",
+              "processUptimeMs": 1425.4,
+              "durationMs": 0.7
+            },
+            {
+              "index": 24,
+              "stage": "runner-infra-durable-events-ready",
+              "processUptimeMs": 1349.8,
               "durationMs": 0.6
+            },
+            {
+              "index": 35,
+              "stage": "runner-infra-harness-ready",
+              "processUptimeMs": 1424.2,
+              "durationMs": 0.4
             },
             {
               "index": 8,
               "stage": "keychain-ready",
-              "processUptimeMs": 796.9,
-              "durationMs": 0.4
-            },
-            {
-              "index": 31,
-              "stage": "runner-infra-embedding-ready",
-              "processUptimeMs": 4810.7,
+              "processUptimeMs": 580.2,
               "durationMs": 0.3
             },
             {
               "index": 15,
               "stage": "ui-indexes-ready",
-              "processUptimeMs": 820.7,
+              "processUptimeMs": 597.4,
+              "durationMs": 0.2
+            },
+            {
+              "index": 30,
+              "stage": "runner-infra-embedding-ready",
+              "processUptimeMs": 1390.4,
               "durationMs": 0.2
             },
             {
               "index": 11,
               "stage": "durable-config-ready",
-              "processUptimeMs": 800.4,
+              "processUptimeMs": 583.3,
               "durationMs": 0.1
             },
             {
               "index": 13,
               "stage": "session-index-ready",
-              "processUptimeMs": 801.4,
+              "processUptimeMs": 584.3,
               "durationMs": 0.1
             },
             {
-              "index": 29,
+              "index": 28,
               "stage": "runner-infra-durable-ready",
-              "processUptimeMs": 4805.6,
+              "processUptimeMs": 1388.2,
               "durationMs": 0.1
             },
             {
-              "index": 37,
+              "index": 36,
               "stage": "runner-infra-returned",
-              "processUptimeMs": 4859,
+              "processUptimeMs": 1424.3,
               "durationMs": 0
             }
           ],
@@ -1231,74 +1170,29 @@
             {
               "from": "runner-infra-observability-ready",
               "to": "runner-infra-durable-events-ready",
-              "fromUptimeMs": 891.7,
-              "toUptimeMs": 4065,
-              "gapMs": 3173.3,
-              "laterStageDurationMs": 2.1,
-              "unattributedMs": 3173.3
+              "fromUptimeMs": 641.1,
+              "toUptimeMs": 1349.8,
+              "gapMs": 708.7,
+              "laterStageDurationMs": 0.6,
+              "unattributedMs": 708.7
             },
             {
               "from": "process-start",
               "to": "electron-app-ready",
-              "fromUptimeMs": 291.2,
-              "toUptimeMs": 663.1,
-              "gapMs": 371.9,
+              "fromUptimeMs": 240.8,
+              "toUptimeMs": 491.7,
+              "gapMs": 250.9,
               "laterStageDurationMs": null,
-              "unattributedMs": 371.9
+              "unattributedMs": 250.9
             },
             {
               "from": "electron-app-ready",
               "to": "desktop-startup-visible",
-              "fromUptimeMs": 663.1,
-              "toUptimeMs": 757.4,
-              "gapMs": 94.3,
+              "fromUptimeMs": 491.7,
+              "toUptimeMs": 555.1,
+              "gapMs": 63.4,
               "laterStageDurationMs": null,
-              "unattributedMs": 94.3
-            },
-            {
-              "from": "runner-ready",
-              "to": "attachment-protection-checkpoints",
-              "fromUptimeMs": 4859.4,
-              "toUptimeMs": 5551.7,
-              "gapMs": 692.3,
-              "laterStageDurationMs": 684.7,
-              "unattributedMs": 7.6
-            },
-            {
-              "from": "execution-start",
-              "to": "runner-infra-observability-ready",
-              "fromUptimeMs": 860.4,
-              "toUptimeMs": 891.7,
-              "gapMs": 31.3,
-              "laterStageDurationMs": 28.7,
-              "unattributedMs": 2.6
-            },
-            {
-              "from": "bootstrap-start",
-              "to": "branding-ready",
-              "fromUptimeMs": 757.8,
-              "toUptimeMs": 784.8,
-              "gapMs": 27,
-              "laterStageDurationMs": 27,
-              "unattributedMs": 0
-            },
-            {
-              "from": "locator-written",
-              "to": "desktop-shell-initialized",
-              "fromUptimeMs": 835.6,
-              "toUptimeMs": 860,
-              "gapMs": 24.4,
-              "laterStageDurationMs": 24.4,
-              "unattributedMs": 0
-            },
-            {
-              "from": "attachment-protection",
-              "to": "execution-ready",
-              "fromUptimeMs": 5551.8,
-              "toUptimeMs": 7577.8,
-              "gapMs": 2026,
-              "laterStageDurationMs": 2718.4,
-              "unattributedMs": 0
+              "unattributedMs": 63.4
             }
           ],
           "runCheckpointsApi": {
@@ -1314,9 +1208,9 @@
             }
           },
           "logFacts": {
-            "attachmentProtectionCheckpoints": 684.7,
-            "attachmentProtection": 691.7,
-            "attachmentProtectionAtUptimeMs": 5551.8,
+            "attachmentProtectionCheckpoints": null,
+            "attachmentProtection": null,
+            "attachmentProtectionAtUptimeMs": null,
             "recoveredRuns": 0,
             "recoveryNotices": 0,
             "checkpointScanCapped": false,
@@ -1492,7 +1386,7 @@
   "gaps": [
     "The synthetic fixtures are written by this script in the shapes the product writes, not by the product;",
     "the app's own reader is what proves they are parseable (/run-checkpoints is read after readiness).",
-    "The app build did NOT match the source (App build artifacts are stale (manifest-unavailable): ENOENT: no such file or directory, lstat 'D:\\Repositories\\littlesheep\\packages\\app\\out\\.littlesheep-build-fingerprint.json'); these numbers belong to the built artifacts, not to HEAD.",
+    "The app build did NOT match the source (App build artifacts are stale (input-mismatch).); these numbers belong to the built artifacts, not to HEAD.",
     "readiness is observed by polling at 20 ms, so spawnToReadyMs carries up to ~20 ms of observation lag.",
     "memory v3 is not exercised by the synthetic fixtures (it needs a SQLite catalog and a local embedding",
     "model); the real-copy fixture reflects whatever backend that data root actually uses.",

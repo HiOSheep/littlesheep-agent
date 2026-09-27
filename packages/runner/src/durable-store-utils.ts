@@ -164,3 +164,30 @@ export function boundedInteger(value: number | undefined, fallback: number, min:
   }
   return candidate;
 }
+
+/**
+ * Result-preserving `map` with a bounded number of in-flight operations.
+ *
+ * A directory of 300 independent small files costs 300 sequential round trips on
+ * Windows if it is read with `for ... await`; the same reads overlapped are
+ * latency-bound instead. The bound keeps the store from opening one descriptor
+ * per record on a large data root. Results keep the input order, so a scan that
+ * sorts afterwards is unaffected.
+ */
+export async function mapWithConcurrency<TItem, TResult>(
+  items: readonly TItem[],
+  limit: number,
+  operation: (item: TItem, index: number) => Promise<TResult>,
+): Promise<TResult[]> {
+  const results = new Array<TResult>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await operation(items[index] as TItem, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}

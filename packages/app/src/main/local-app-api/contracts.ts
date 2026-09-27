@@ -121,5 +121,13 @@ export interface LocalAppApiServer {
   setRunner(runner: AgentRunner): void
   setPluginHost(host: PluginHost): void
   setConfig(config: Config): void
+  /**
+   * Settle the deferred startup recovery of the published Runner.
+   *
+   * Present so the composition root can mark when recovery finished without
+   * reaching into the router. Routes that need recovery await it themselves
+   * (`RunRouter`), so this is a reporting surface, not the gate.
+   */
+  waitForRecovery(sessionId?: string): Promise<void>
   stop(): Promise<void>
 }

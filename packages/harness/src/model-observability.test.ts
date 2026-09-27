@@ -268,7 +268,7 @@ describe('recordModelRequest', () => {
     });
   });
 
-  it('makes the DeepSeek V4 auto path explicit before local token accounting', () => {
+  it('makes the DeepSeek V4 auto path think, explicitly, before local token accounting', () => {
     const ctx = makeCtx();
     ctx.resolvedRunConfig = {
       version: 1,
@@ -296,7 +296,7 @@ describe('recordModelRequest', () => {
       id: 'deepseek-v4-provider-calibrated-tokenizer-v2',
       supports: (provider, model) => provider === 'deepseek' && model === 'deepseek-v4-pro',
       countRequest: (prepared) => {
-        expect(prepared.thinking).toEqual({ type: 'disabled' });
+        expect(prepared.thinking).toEqual({ type: 'enabled' });
         return 88;
       },
     });
@@ -306,8 +306,8 @@ describe('recordModelRequest', () => {
       model: 'deepseek-v4-pro',
     });
 
-    expect(prepared.thinking).toEqual({ type: 'disabled' });
-    expect(ctx.modelRequests?.[0]).toMatchObject({ thinkingMode: 'disabled' });
+    expect(prepared.thinking).toEqual({ type: 'enabled' });
+    expect(ctx.modelRequests?.[0]).toMatchObject({ thinkingMode: 'enabled' });
     expect(ctx.contextSnapshots?.[0]?.localTokenLedger).toMatchObject({
       accuracy: 'exact',
       promptTokens: 88,

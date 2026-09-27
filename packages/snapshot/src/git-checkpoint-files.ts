@@ -1,6 +1,7 @@
 // Checkpoint filesystem policy and manifest codec.
-// Keeps data/workspace traversal, exclusions, path identities and atomic JSON
-// persistence out of the coordinator's transaction flow.
+// Keeps workspace traversal, exclusions, path identities and atomic JSON persistence out of the coordinator's
+// transaction flow. The data root has no traversal here: which data paths a commit covers is git's answer
+// (git-checkpoint-preimage.ts), and these rules decide which of those paths may enter the shadow repository.
 
 import { createHash, randomUUID } from 'node:crypto';
 import type { Dirent, Stats } from 'node:fs';
@@ -13,7 +14,15 @@ export const DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const DEFAULT_MAX_WORKSPACE_FILES = 20_000;
 export const DEFAULT_MAX_WORKSPACE_BYTES = 512 * 1024 * 1024;
 
-const DATA_ROOT_FILES = new Set([
+/**
+ * Root files the data repository must always cover, whatever git happens to report.
+ *
+ * They are named rather than discovered because they are the state a rollback is for (memory, soul, sessions,
+ * config), and naming them keeps that coverage independent of the path *source*: git's status can omit a path
+ * (a work-tree `.gitignore`, an exclude pattern added later), and a data root whose memory file silently
+ * stopped being versioned would be a lost rollback point.
+ */
+export const DATA_ROOT_FILES = new Set([
   'AGENTS.md',
   'MEMORY.md',
   'PHILOSOPHY.md',
@@ -37,40 +46,6 @@ const WORKSPACE_EXCLUDED_SEGMENTS = new Set([
   '.git', '.hg', '.svn', '.cache', '.next', '.turbo', '.vite',
   'node_modules', 'coverage', 'dist', 'out', 'build', 'release', 'target',
 ]);
-
-export async function collectDataFiles(dataRoot: string, maxFileBytes: number): Promise<string[]> {
-  return (await collectDataFileStats(dataRoot, maxFileBytes)).map((entry) => entry.path);
-}
-
-/**
- * The same walk, keeping the size and mtime it already read.
- *
- * Those two facts are what let a run reuse the previous preimage instead of committing an identical one
- * (`preimage-signature.ts`); they cost nothing extra here, because `walkFiles` hands the stat to the visitor.
- */
-export async function collectDataFileStats(
-  dataRoot: string,
-  maxFileBytes: number,
-): Promise<Array<{ path: string; sizeBytes: number; mtimeMs: number }>> {
-  const result: Array<{ path: string; sizeBytes: number; mtimeMs: number }> = [];
-  for (const file of DATA_ROOT_FILES) {
-    const absolute = join(dataRoot, file);
-    const info = await safeLstat(absolute);
-    if (info?.isFile() && !info.isSymbolicLink() && info.size <= maxFileBytes) {
-      result.push({ path: file, sizeBytes: info.size, mtimeMs: info.mtimeMs });
-    }
-  }
-  for (const directory of DATA_ROOT_DIRS) {
-    const root = join(dataRoot, directory);
-    await walkFiles(root, async (absolute, info) => {
-      const path = toGitPath(relative(dataRoot, absolute));
-      if (info.size <= maxFileBytes && isManagedDataPath(path)) {
-        result.push({ path, sizeBytes: info.size, mtimeMs: info.mtimeMs });
-      }
-    }, (absolute) => dataDirectoryExcluded(toGitPath(relative(dataRoot, absolute))));
-  }
-  return result;
-}
 
 export function isManagedDataPath(path: string): boolean {
   const normalized = toGitPath(path);

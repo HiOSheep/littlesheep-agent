@@ -13,6 +13,25 @@ export interface DurableHarnessInfrastructure {
   durableHarnessInitializationError?: Error;
 }
 
+/**
+ * Marks for work this module moved off the Runner build.
+ *
+ * They are emitted straight to the `[bootstrap-timing]` stream instead of the
+ * caller's `mark` callback: the callback is the sequential stage timer used to
+ * attribute a *build*, and these entries finish after the build has returned.
+ * They carry their own measured duration, like the four overlapping store marks.
+ */
+const timingEnabled = process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] === '1';
+
+function markDeferred(stage: string, durationMs: number): void {
+  if (!timingEnabled) return;
+  console.log(`[bootstrap-timing] ${JSON.stringify({
+    stage,
+    processUptimeMs: Math.round(process.uptime() * 1_000 * 10) / 10,
+    durationMs: Math.round(durationMs * 10) / 10,
+  })}`);
+}
+
 export async function buildDurableHarnessInfrastructure(
   rootDir: string,
   log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void,
@@ -53,6 +72,24 @@ export async function buildDurableHarnessInfrastructure(
     { stage: 'runner-infra-durable-run-leases-ready', initialize: () => infrastructure.durableRunLeaseStore.initialize() },
     { stage: 'runner-infra-durable-effect-leases-ready', initialize: () => infrastructure.durableEffectLeaseStore.initialize() },
   ];
+  /**
+   * The part of store initialization that answers "may this process admit a
+   * new run" stays on this path; the part that only answers "what does history
+   * hold" does not.
+   *
+   * Paired measurement on the large-root fixture: the inbox and the run-lease
+   * store spent 210 ms and 198 ms parsing every historical record, against 10 ms
+   * on a root with no history. A fresh run never reads those records - it
+   * acquires its own lease by file name - so the two scans now do the work that
+   * admission depends on (directory validation, active records, expired-claim
+   * requeue) and the remaining records are read once, after the Runner is
+   * published. See `DurableInboxStore.initialize` and
+   * `DurableRunLeaseStore.initialize` for what each defers and why nothing that
+   * still needs the records can observe them missing.
+   *
+   * `warmDeferredDurableStores` is that after-publish pass. It is deliberately
+   * not awaited here: awaiting it would put the same cost back on the build.
+   */
   try {
     const settled = await Promise.allSettled(stores.map(async (store) => {
       // The mark carries this store's own elapsed time because the stores now
@@ -66,6 +103,7 @@ export async function buildDurableHarnessInfrastructure(
     }));
     const failure = settled.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
+    warmDeferredDurableStores(infrastructure, log);
   } catch (error) {
     // Legacy Harness remains usable; next-mode admission reads this failure
     // and closes before any semantic model or tool work begins.
@@ -73,4 +111,26 @@ export async function buildDurableHarnessInfrastructure(
     log?.('warn', `runner: durable Harness stores unavailable: ${infrastructure.durableHarnessInitializationError.message}`);
   }
   return infrastructure;
+}
+
+/**
+ * Read the records the startup scans deferred, once, off the publish path.
+ *
+ * A failure is recorded the same way a startup scan failure is and leaves the
+ * deferred set in place, so the next full read retries it and still fails closed
+ * on the same file - nothing downstream ever sees a command set that silently
+ * lost a record.
+ */
+export function warmDeferredDurableStores(
+  infrastructure: DurableHarnessInfrastructure,
+  log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void,
+): void {
+  const startedAt = performance.now();
+  void infrastructure.durableInboxStore.warmDeferredCommands().then(
+    () => markDeferred('runner-durable-inbox-deferred-read', performance.now() - startedAt),
+    (error: unknown) => {
+      markDeferred('runner-durable-inbox-deferred-read', performance.now() - startedAt);
+      log?.('warn', `runner: durable inbox deferred read failed: ${(error as Error).message}`);
+    },
+  );
 }

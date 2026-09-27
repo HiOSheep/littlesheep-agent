@@ -9,6 +9,7 @@ import {
   boundedInteger,
   hashParts,
   isAtomicWriteTempFile,
+  mapWithConcurrency,
   normalizeIdentifier,
   normalizeTime,
   parseJson,
@@ -23,6 +24,8 @@ const MIN_DURABLE_RUN_LEASE_MS = 1_000;
 const DEFAULT_LIST_LIMIT = 256;
 const MAX_LIST_LIMIT = 1_024;
 const LEASE_FILE_PATTERN = /^[a-f0-9]{64}\.json$/;
+/** In-flight file reads during one lease scan; see `mapWithConcurrency`. */
+const LEASE_SCAN_CONCURRENCY = 16;
 
 export interface DurableRunLease {
   readonly version: typeof DURABLE_RUN_LEASE_VERSION;
@@ -69,18 +72,56 @@ export class DurableRunLeaseStore {
     this.now = options.now ?? (() => new Date());
   }
 
+  /**
+   * Startup validation only: the directory and the names in it.
+   *
+   * This store is initialized inside the Runner build, which is on the path to
+   * the publish the send control waits for. Parsing every lease file here made
+   * that publish scale with the history of the data root - paired measurement on
+   * a 300-lease root: ~198 ms of parsing against ~4 ms for the listing - while
+   * answering a question no fresh run asks. Whether a lease is active, expired or
+   * released is only needed by admission (`acquire` reads its own file) and by
+   * recovery (deferred until after the Runner is published).
+   *
+   * What stays here is the part other code depends on being *decided*: an
+   * unexpected or malformed file name must still be reported as corrupt storage
+   * before anything writes into the directory. Lease *contents* are validated by
+   * the scan in `readLeases`, which every reader of the lease set still runs.
+   */
   async initialize(): Promise<void> {
     if (this.initialized) return;
     if (this.initializationFailure) throw this.initializationFailure;
     try {
       await mkdir(this.rootDir, { recursive: true });
-      await this.withWriteLock(() => this.readLeases().then(() => undefined));
+      await this.scanLeaseNames();
       this.initialized = true;
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
       this.initializationFailure = normalized;
       throw normalized;
     }
+  }
+
+  /** Names only: no lease file is opened, so this cost does not scale with history. */
+  private async scanLeaseNames(): Promise<string[]> {
+    const entries = await readdir(this.rootDir, { withFileTypes: true }).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (entry.name === '.run-leases.lock') continue;
+      // A concurrent writer may be mid-rename; its temp file is not an
+      // authoritative lease. Unknown names still fail closed.
+      if (isAtomicWriteTempFile(entry.name)) continue;
+      if (!LEASE_FILE_PATTERN.test(entry.name)) {
+        throw new DurableRunLeaseError(`unexpected run lease file: ${entry.name}`, 'corrupt');
+      }
+    }
+    return entries
+      .filter((entry) => entry.isFile() && LEASE_FILE_PATTERN.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((left, right) => left.localeCompare(right));
   }
 
   async acquire(sessionId: string, runId: string): Promise<DurableRunLeaseAcquireOutcome> {
@@ -223,30 +264,18 @@ export class DurableRunLeaseStore {
   }
 
   private async readLeases(): Promise<DurableRunLease[]> {
-    const entries = await readdir(this.rootDir, { withFileTypes: true }).catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw error;
-    });
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      if (entry.name === '.run-leases.lock') continue;
-      // A concurrent writer may be mid-rename; its temp file is not an
-      // authoritative lease. Unknown names still fail closed.
-      if (isAtomicWriteTempFile(entry.name)) continue;
-      if (!LEASE_FILE_PATTERN.test(entry.name)) {
-        throw new DurableRunLeaseError(`unexpected run lease file: ${entry.name}`, 'corrupt');
-      }
-    }
-    const leases: DurableRunLease[] = [];
-    for (const entry of entries.filter((item) => item.isFile() && LEASE_FILE_PATTERN.test(item.name)).sort((a, b) => a.name.localeCompare(b.name))) {
-      const file = join(this.rootDir, entry.name);
+    // The names were validated by `initialize`; re-listing keeps a lease another
+    // process wrote since then visible, and the per-file reads overlap because
+    // they are independent (see `mapWithConcurrency`).
+    const names = await this.scanLeaseNames();
+    return mapWithConcurrency(names, LEASE_SCAN_CONCURRENCY, async (name) => {
+      const file = join(this.rootDir, name);
       const lease = validateLease(parseJson(await readFile(file, 'utf8'), file));
-      if (`${hashParts(lease.sessionId, lease.runId)}.json` !== entry.name) {
-        throw new DurableRunLeaseError(`run lease identity/file mismatch: ${entry.name}`, 'corrupt');
+      if (`${hashParts(lease.sessionId, lease.runId)}.json` !== name) {
+        throw new DurableRunLeaseError(`run lease identity/file mismatch: ${name}`, 'corrupt');
       }
-      leases.push(lease);
-    }
-    return leases;
+      return lease;
+    });
   }
 
   private writeLease(lease: DurableRunLease): Promise<void> {

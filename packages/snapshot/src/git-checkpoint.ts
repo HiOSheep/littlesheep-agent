@@ -1,32 +1,31 @@
 // Coordinates two-phase data/workspace checkpoints and rollback transactions.
-// Filesystem policy and manifest codecs live in git-checkpoint-files.ts; raw
-// Git plumbing remains isolated in git-client.ts.
+// Path selection and preimage resolution live in git-checkpoint-preimage.ts, manifest persistence and recovery
+// in checkpoint-manifest-store.ts, filesystem policy in git-checkpoint-files.ts and raw Git plumbing in
+// git-client.ts.
 
 import { randomUUID } from 'node:crypto'
-import {
-  buildSignature,
-  clearSignature,
-  readSignature,
-  writeSignature,
-} from './preimage-signature.js';
-import { mkdir, readFile, rm, stat } from 'node:fs/promises';
+import { clearSignature } from './preimage-signature.js';
+import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type {
   VersionCheckpointManifest,
   VersionCheckpointSummary,
 } from '@littlesheep/types';
+import { CheckpointManifestStore } from './checkpoint-manifest-store.js';
 import { ShadowGitRepository } from './git-client.js';
+import { resolvePreimage, selectDataPaths } from './git-checkpoint-preimage.js';
+import type {
+  DataPathSelection,
+  DataPathSelectionOptions,
+  PreimageResolution,
+} from './git-checkpoint-preimage.js';
 import {
   DEFAULT_MAX_CHECKPOINTS,
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_WORKSPACE_BYTES,
   DEFAULT_MAX_WORKSPACE_FILES,
   atomicJsonWrite,
-  collectDataFileStats,
-  isManagedDataPath,
-  listJsonFiles,
   manifestSummary,
-  pathExists,
   safeLstat,
   toGitPath,
   walkWorkspaceFiles,
@@ -41,14 +40,6 @@ export interface GitCheckpointCoordinatorOptions {
   maxWorkspaceFiles?: number;
   maxWorkspaceBytes?: number;
   log?: (level: 'info' | 'warn' | 'error', message: string, data?: unknown) => void;
-}
-
-/**
- * Opt-in preimage timing, same switch and prefix as the runner's run marks so one report can show both.
- */
-function markPreimage(stage: string, paths: number): void {
-  if (process.env['LITTLESHEEP_BOOTSTRAP_TIMING'] !== '1') return
-  console.log(`[run-timing] ${JSON.stringify({ scope: 'preimage', stage, paths })}`)
 }
 
 export interface BeginRunCheckpointOptions {
@@ -189,26 +180,30 @@ export class RunGitCheckpoint implements VersioningMutationHook {
 export class GitCheckpointCoordinator {
   readonly dataRoot: string;
   readonly versionRoot: string;
-  private readonly manifestsDir: string;
+  private readonly manifests: CheckpointManifestStore;
   private readonly dataRepository: ShadowGitRepository;
   private readonly maxCheckpoints: number;
   private readonly maxFileBytes: number;
   private readonly maxWorkspaceFiles: number;
   private readonly maxWorkspaceBytes: number;
   private readonly log?: GitCheckpointCoordinatorOptions['log'];
-  private initialized = false;
   private initializePromise?: Promise<VersionCheckpointSummary>;
   private readonly workspaces = new Map<string, ShadowGitRepository>();
 
   constructor(options: GitCheckpointCoordinatorOptions) {
     this.dataRoot = resolve(options.dataRoot);
     this.versionRoot = join(this.dataRoot, 'backups', 'versioning');
-    this.manifestsDir = join(this.versionRoot, 'checkpoints');
     this.maxCheckpoints = Math.max(16, options.maxCheckpoints ?? DEFAULT_MAX_CHECKPOINTS);
     this.maxFileBytes = Math.max(1024, options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES);
     this.maxWorkspaceFiles = Math.max(100, options.maxWorkspaceFiles ?? DEFAULT_MAX_WORKSPACE_FILES);
     this.maxWorkspaceBytes = Math.max(this.maxFileBytes, options.maxWorkspaceBytes ?? DEFAULT_MAX_WORKSPACE_BYTES);
     this.log = options.log;
+    this.manifests = new CheckpointManifestStore({
+      manifestsDir: join(this.versionRoot, 'checkpoints'),
+      pendingRunsDir: join(this.versionRoot, 'pending-runs'),
+      maxCheckpoints: this.maxCheckpoints,
+      log: this.log,
+    });
     this.dataRepository = new ShadowGitRepository({
       gitDir: join(this.versionRoot, 'repositories', 'data.git'),
       workTree: this.dataRoot,
@@ -231,7 +226,7 @@ export class GitCheckpointCoordinator {
     const workspaceRoot = resolve(options.workspaceRoot);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const preimage = await this.resolvePreimage(`data preimage ${options.runId}`, false, 'preimage');
+    const preimage = await this.resolveDataPreimage(`data preimage ${options.runId}`, false, 'preimage');
     const dataBeforeCommit = preimage.commit;
     const repositoryId = workspaceRepositoryId(workspaceRoot);
     const workspaceRepository = this.workspaceRepository(workspaceRoot, repositoryId);
@@ -253,7 +248,15 @@ export class GitCheckpointCoordinator {
       },
       warningCodes: preimage.reused ? ['preimage-reused'] : [],
     };
-    await this.writeManifest(manifest);
+    // The pending record is written first, so the crash window between the two writes leaves a record whose
+    // manifest does not exist yet (recovery ignores it) instead of a pending manifest nothing points at.
+    await this.manifests.markPending(id);
+    try {
+      await this.writeManifest(manifest);
+    } catch (error) {
+      await this.manifests.clearPending(id);
+      throw error;
+    }
     return new RunGitCheckpoint(this, manifest, workspaceRoot, workspaceRepository);
   }
 
@@ -263,8 +266,8 @@ export class GitCheckpointCoordinator {
     await clearSignature(this.dataRepository.gitDir);
     const id = randomUUID();
     const createdAt = new Date().toISOString();
-    const dataPaths = await this.dataManagedPaths();
-    const dataCommit = await this.dataRepository.commitPaths(dataPaths, `shutdown freeze ${createdAt}`);
+    const dataPaths = await this.dataPathSelection();
+    const dataCommit = await this.dataRepository.commitWorkTreeChanges(dataPaths, `shutdown freeze ${createdAt}`);
     const manifest: VersionCheckpointManifest = {
       version: 1,
       id,
@@ -275,12 +278,12 @@ export class GitCheckpointCoordinator {
       data: {
         repositoryId: 'littlesheep-data',
         commit: dataCommit,
-        trackedPathCount: dataPaths.length,
+        trackedPathCount: dataPaths.paths.length,
       },
       warningCodes: [],
     };
     await this.writeManifest(manifest);
-    await this.pruneManifests();
+    await this.manifests.prune();
     return manifestSummary(manifest);
   }
 
@@ -297,8 +300,8 @@ export class GitCheckpointCoordinator {
     }
     const dataBeforeCommit = await this.dataRepository.head();
     await this.dataRepository.restore(targetDataCommit, ['.']);
-    const dataCommit = await this.dataRepository.commitPaths(
-      await this.dataManagedPaths(),
+    const dataCommit = await this.dataRepository.commitWorkTreeChanges(
+      await this.dataPathSelection(),
       `rollback data to ${checkpointId}`,
       true,
     );
@@ -343,7 +346,7 @@ export class GitCheckpointCoordinator {
       warningCodes,
     };
     await this.writeManifest(manifest);
-    await this.pruneManifests();
+    await this.manifests.prune();
     return manifestSummary(manifest);
   }
 
@@ -410,8 +413,8 @@ export class GitCheckpointCoordinator {
       );
       await this.writeWorkspaceLocator(checkpoint.repositoryId(), checkpoint.workspaceRoot);
     }
-    const dataPaths = await this.dataManagedPaths();
-    const dataCommit = await this.dataRepository.commitPaths(
+    const dataPaths = await this.dataPathSelection();
+    const dataCommit = await this.dataRepository.commitWorkTreeChanges(
       dataPaths,
       `data run ${checkpoint.runId}`,
       true,
@@ -425,7 +428,7 @@ export class GitCheckpointCoordinator {
       data: {
         ...pending.data,
         commit: dataCommit,
-        trackedPathCount: dataPaths.length,
+        trackedPathCount: dataPaths.paths.length,
       },
       workspace: workspacePaths.length > 0 ? {
         repositoryId: checkpoint.repositoryId(),
@@ -436,7 +439,12 @@ export class GitCheckpointCoordinator {
       warningCodes,
     };
     await this.writeManifest(manifest);
-    await this.pruneManifests();
+    // The run is settled, so its pending record has to go: recovery reads exactly the records that are left,
+    // and one record per finished run would turn that back into a read of the whole manifest directory. The
+    // record is cleared after the manifest, so a crash in between leaves a complete manifest with a stale
+    // record — recovery reads that one once, sees it settled, and clears it.
+    await this.manifests.clearPending(checkpoint.id);
+    await this.manifests.prune();
     return manifestSummary(manifest);
   }
 
@@ -446,51 +454,29 @@ export class GitCheckpointCoordinator {
     return manifestSummary(manifest);
   }
 
-  /**
-   * The commit this data root's preimage is at, and whether it had to be written.
-   *
-   * The fast path asks git two questions instead of walking the data root: is the work tree clean, and is HEAD
-   * still the recorded commit? Both are single processes; the walk they replace is a recursive readdir plus an
-   * `lstat` per managed file, measured at 8.3 s on a large fixture and far worse on a real 31k-file root, on the
-   * path to execution readiness. When either answer says no — a modified, added or removed path, or a HEAD that
-   * moved without a new signature — the full path runs, because missing a change would lose a rollback point.
-   */
-  private async resolvePreimage(
+  /** The commit this data root's preimage is at; see git-checkpoint-preimage.ts for how it is decided. */
+  private resolveDataPreimage(
     message: string,
     allowEmpty: boolean,
     stage: 'bootstrap' | 'preimage',
-  ): Promise<{ commit: string | undefined; trackedCount: number; reused: boolean }> {
-    const gitDir = this.dataRepository.gitDir;
-    const stored = await readSignature(gitDir);
-    const head = await this.dataRepository.head();
-    if (head !== undefined && await this.dataRepository.isWorkTreeClean()) {
-      if (stored?.commit === head) {
-        markPreimage(`${stage}-reused`, stored.trackedCount);
-        return { commit: head, trackedCount: stored.trackedCount, reused: true };
-      }
-      // HEAD moved without anything pending: the previous run's completion committed its own effects. HEAD is
-      // then the preimage, and the record only needs to point at it again — one `ls-files`, no walk, no commit.
-      const trackedCount = await this.dataRepository.trackedPaths()
-        .then((paths) => paths.length)
-        .catch(() => stored?.trackedCount ?? 0);
-      await writeSignature(gitDir, buildSignature(head, trackedCount));
-      markPreimage(`${stage}-reused`, trackedCount);
-      return { commit: head, trackedCount, reused: true };
-    }
-    const walked = await collectDataFileStats(this.dataRoot, this.maxFileBytes);
-    const paths = await this.dataManagedPaths(walked.map((entry) => entry.path));
-    const commit = await this.dataRepository.commitPaths(paths, message, allowEmpty);
-    markPreimage(`${stage}-committed`, walked.length);
-    if (commit) await writeSignature(gitDir, buildSignature(commit, paths.length));
-    return { commit, trackedCount: paths.length, reused: false };
+  ): Promise<PreimageResolution> {
+    return resolvePreimage(this.dataRepository, this.dataPathOptions(), message, allowEmpty, stage);
+  }
+
+  /** What a data commit covers, from git; see git-checkpoint-preimage.ts for the rules. */
+  private dataPathSelection(): Promise<DataPathSelection> {
+    return selectDataPaths(this.dataRepository, this.dataPathOptions());
+  }
+
+  private dataPathOptions(): DataPathSelectionOptions {
+    return { dataRoot: this.dataRoot, maxFileBytes: this.maxFileBytes };
   }
 
   private async initializeInternal(): Promise<VersionCheckpointSummary> {
-    await mkdir(this.manifestsDir, { recursive: true });
     await this.dataRepository.initialize();
-    await this.recoverPendingManifests();
+    await this.manifests.recoverPending();
     const createdAt = new Date().toISOString();
-    const preimage = await this.resolvePreimage(`bootstrap ${createdAt}`, true, 'bootstrap');
+    const preimage = await this.resolveDataPreimage(`bootstrap ${createdAt}`, true, 'bootstrap');
     const commit = preimage.commit;
     const manifest: VersionCheckpointManifest = {
       version: 1,
@@ -507,8 +493,7 @@ export class GitCheckpointCoordinator {
       warningCodes: preimage.reused ? ['preimage-reused'] : [],
     };
     await this.writeManifest(manifest);
-    await this.pruneManifests();
-    this.initialized = true;
+    await this.manifests.prune();
     return manifestSummary(manifest);
   }
 
@@ -527,51 +512,12 @@ export class GitCheckpointCoordinator {
     return repository;
   }
 
-  private async dataManagedPaths(walked?: readonly string[]): Promise<string[]> {
-    const current = walked ? [...walked] : (await collectDataFileStats(this.dataRoot, this.maxFileBytes)).map((e) => e.path);
-    const tracked = this.initialized || await pathExists(join(this.dataRepository.gitDir, 'HEAD'))
-      ? await this.dataRepository.trackedPaths().catch(() => [])
-      : [];
-    return [...new Set([...current, ...tracked.filter(isManagedDataPath)])].sort();
-  }
-
-  private manifestPath(id: string): string {
-    return join(this.manifestsDir, `${id}.json`);
-  }
-
   private async writeManifest(manifest: VersionCheckpointManifest): Promise<void> {
-    await atomicJsonWrite(this.manifestPath(manifest.id), manifest);
+    await this.manifests.write(manifest);
   }
 
   private async readManifest(id: string): Promise<VersionCheckpointManifest> {
-    const parsed = JSON.parse(await readFile(this.manifestPath(id), 'utf8')) as VersionCheckpointManifest;
-    if (parsed.version !== 1 || parsed.id !== id) throw new Error(`invalid checkpoint manifest ${id}`);
-    return parsed;
-  }
-
-  private async recoverPendingManifests(): Promise<void> {
-    for (const file of await listJsonFiles(this.manifestsDir)) {
-      try {
-        const manifest = JSON.parse(await readFile(file, 'utf8')) as VersionCheckpointManifest;
-        if (manifest.version !== 1 || manifest.status !== 'pending') continue;
-        await atomicJsonWrite(file, {
-          ...manifest,
-          status: 'partial',
-          completedAt: new Date().toISOString(),
-          warningCodes: [...new Set([...manifest.warningCodes, 'recovered-incomplete-checkpoint'])],
-        } satisfies VersionCheckpointManifest);
-      } catch (error) {
-        this.log?.('warn', `versioning: failed to recover pending manifest ${file}: ${(error as Error).message}`);
-      }
-    }
-  }
-
-  private async pruneManifests(): Promise<void> {
-    const files = await listJsonFiles(this.manifestsDir);
-    if (files.length <= this.maxCheckpoints) return;
-    const sorted = await Promise.all(files.map(async (file) => ({ file, modified: (await stat(file)).mtimeMs })));
-    sorted.sort((left, right) => right.modified - left.modified);
-    await Promise.all(sorted.slice(this.maxCheckpoints).map((entry) => rm(entry.file, { force: true })));
+    return this.manifests.read(id);
   }
 
   private async writeWorkspaceLocator(repositoryId: string, workspaceRoot: string): Promise<void> {
