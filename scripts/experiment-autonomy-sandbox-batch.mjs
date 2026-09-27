@@ -79,10 +79,28 @@ async function applyPatch(plan, patchName) {
   return patch;
 }
 
+/**
+ * Build one workspace package.
+ *
+ * This invokes the TypeScript compiler directly instead of `pnpm --filter ... run build`. The package's
+ * own build script *is* `tsc -p tsconfig.json`, and shelling out to a package-manager shim added a failure
+ * mode that has nothing to do with the experiment: `pnpm` is a `.cmd` on Windows, and a spawned `cmd.exe`
+ * intermittently failed to resolve it, aborting a batch mid-block.
+ */
 async function buildPackages(packages) {
   const results = [];
-  for (const pkg of packages) {
-    results.push({ pkg, ...(await run('pnpm.cmd', ['--filter', pkg, 'run', 'build'])) });
+  // Dependency order, not plan order. `@littlesheep/harness` consumes `@littlesheep/tools` types, so a
+  // build that ran harness first compiled against the *previous* tools dist and failed with "does not
+  // exist in type ToolExecutionServiceOptions" — a build-order artifact, not a candidate defect.
+  const rank = { '@littlesheep/types': 0, '@littlesheep/tools': 1, '@littlesheep/harness': 2, '@littlesheep/runner': 3 };
+  const ordered = [...packages].sort((left, right) => (rank[left] ?? 5) - (rank[right] ?? 5));
+  for (const pkg of ordered) {
+    const dir = join(REPO_ROOT, 'packages', pkg.replace(/^@littlesheep\//u, ''));
+    const tsconfig = join(dir, 'tsconfig.json');
+    results.push({
+      pkg,
+      ...(await run(process.execPath, [join(REPO_ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', tsconfig])),
+    });
   }
   return results;
 }
@@ -118,7 +136,7 @@ async function main() {
   }
   const plan = JSON.parse(readFileSync(args.file, 'utf8'));
   plan.patchDir = plan.patchDir ?? join(plan.evidenceDir, 'patches');
-  plan.ledger = plan.ledger ?? join(plan.evidenceDir, 'ledger.jsonl');
+  plan.ledger = args.ledger ?? plan.ledger ?? join(plan.evidenceDir, 'ledger.jsonl');
   plan.candidatePaths = plan.candidatePaths ?? [...new Set(plan.cases.flatMap((entry) => entry.paths ?? []))];
   const packages = [...new Set(plan.cases.flatMap((entry) => entry.packages ?? []))];
   ensureDir(plan.evidenceDir);
@@ -149,7 +167,17 @@ async function main() {
       const builds = await buildPackages(packages);
       const failedBuild = builds.find((build) => !build.ok);
       if (failedBuild) {
-        log({ step: 'build-failed', caseId: entry.caseId, arm, pkg: failedBuild.pkg, stderr: failedBuild.stderr.slice(-800) });
+        // `tsc` writes diagnostics to stdout, so both streams are kept: a failure reported with an empty
+        // reason cost one whole block during this experiment.
+        log({
+          step: 'build-failed',
+          caseId: entry.caseId,
+          arm,
+          pkg: failedBuild.pkg,
+          code: failedBuild.code ?? null,
+          stdout: failedBuild.stdout.slice(-1500),
+          stderr: failedBuild.stderr.slice(-800),
+        });
         throw new Error(`build failed for ${failedBuild.pkg} in arm ${arm}`);
       }
       log({ step: 'built', caseId: entry.caseId, arm, packages, elapsedMs: builds.reduce((t, b) => t + b.elapsedMs, 0) });

@@ -51,7 +51,8 @@ export const BUDGET = Object.freeze({
   maxRecoveryAttempts: 3,
   runWallClockMs: 300_000,
   trialsPerArmPerCase: 3,
-  realModelRunsPlanned: 24,
+  realModelRunsPlanned: 30,
+  realModelRunBreakdown: '24 primary A/B (RT-01..RT-04, 3 trials per arm) + 6 RT-04 polling control runs',
   combinationalRunsPlanned: 6,
   maxTotalTokens: 4_000_000,
   maxTotalRuns: 40,
@@ -495,26 +496,131 @@ async function rt03ExecDescriptorRow() {
   const execTool = tools.execTool ?? tools.createExecTool?.({ interactive: false });
   if (!execTool) return { id: 'exec_descriptor', available: false, note: 'execTool is not exported from @littlesheep/tools' };
   const input = { command: 'node tools/run_tests.mjs', cwd: 'D:\\fixture', timeout_ms: 120000 };
-  const resources = typeof execTool.execution?.resources === 'function'
-    ? execTool.execution.resources(input, { sessionId: 'precheck', runId: 'precheck', cwd: 'D:\\fixture' })
-    : [];
-  const descriptor = describeSideEffect(execTool, input, resources, undefined, 'c1');
+  const context = { sessionId: 'precheck', runId: 'precheck', cwd: 'D:\\fixture' };
+  const measure = () => {
+    const policy = tools.resolveToolExecutionPolicy
+      ? tools.resolveToolExecutionPolicy(execTool, input, context)
+      : { concurrency: 'exclusive', resources: execTool.execution?.resources?.(input, context) ?? [] };
+    const descriptor = describeSideEffect(execTool, input, policy.resources, undefined, 'c1');
+    return {
+      declaredReRunnable: execTool.reRunnableAfterResourceChange === true,
+      concurrency: policy.concurrency,
+      resolvedResources: policy.resources,
+      descriptor: descriptor
+        ? { idempotencyKey: descriptor.idempotencyKey, resourceKeys: descriptor.resourceKeys, effectKind: descriptor.effectKind, reRunnable: descriptor.reRunnable === true }
+        : null,
+    };
+  };
+  // Undeclared: the command is opaque whatever the candidate does.
+  const previous = process.env.LS_EXPERIMENT_EXEC_SCOPES;
+  delete process.env.LS_EXPERIMENT_EXEC_SCOPES;
+  const undeclared = measure();
+  // Declared by the host for this exact command.
+  process.env.LS_EXPERIMENT_EXEC_SCOPES = JSON.stringify([{
+    command: 'node tools/run_tests.mjs',
+    resources: [{ key: 'fs:d:\\fixture\\src\\subject.mjs', mode: 'write' }],
+  }]);
+  const declared = measure();
+  if (previous === undefined) delete process.env.LS_EXPERIMENT_EXEC_SCOPES;
+  else process.env.LS_EXPERIMENT_EXEC_SCOPES = previous;
   return {
     id: 'exec_descriptor',
     available: true,
-    declaredReRunnable: execTool.reRunnableAfterResourceChange === true,
-    resolvedResources: resources,
-    descriptor: descriptor
-      ? {
-        idempotencyKey: descriptor.idempotencyKey,
-        resourceKeys: descriptor.resourceKeys,
-        effectKind: descriptor.effectKind,
-        reRunnable: descriptor.reRunnable === true,
-      }
-      : null,
-    note: descriptor
-      ? 'exec is recorded as an opaque external effect: no write resources, so no resource-change warrant can ever open'
-      : 'exec resolves no side-effect descriptor at all',
+    undeclared,
+    declared,
+    note: 'an undeclared command stays an opaque external effect; only a host-declared command resolves write resources, which is what a resource-change warrant needs',
+  };
+}
+
+/**
+ * RT-04's candidate, exercised deterministically: the guard must let a fourth read through exactly when
+ * the host's change cursor advanced, and must still refuse it when the cursor did not.
+ */
+async function rt04CursorRows() {
+  const { ToolExecutionService } = await import('../packages/tools/dist/index.js');
+  const makeTool = (reads) => ({
+    name: 'read',
+    description: 'probe',
+    inputSchema: { parse: (value) => value },
+    execution: { concurrency: 'parallel', resources: () => [{ key: 'fs:probe', mode: 'read' }] },
+    async execute() {
+      reads.count += 1;
+      return { ok: true, output: `content-${reads.count}` };
+    },
+  });
+  const drive = async (cursorFor, attempts = 5) => {
+    const reads = { count: 0 };
+    const tool = makeTool(reads);
+    const service = new ToolExecutionService({
+      registrations: [{ tool, source: 'builtin' }],
+      toolContext: { sessionId: 'precheck', runId: 'precheck', cwd: process.cwd() },
+      maxRepeat: 3,
+      resourceChangeCursor: cursorFor,
+    });
+    const statuses = [];
+    for (let index = 0; index < attempts; index += 1) {
+      const results = await service.executeBatch([{ callId: `r${index}`, name: 'read', input: { file_path: 'probe.txt' } }]);
+      const record = service.snapshot().records.at(-1);
+      statuses.push({ attempt: index + 1, ok: results.get(0)?.ok === true, status: record?.status, errorKind: record?.errorKind ?? null });
+    }
+    return { statuses, executions: reads.count };
+  };
+
+  // The file changes between every read: a new settled change is recorded before each call.
+  let settledChanges = 0;
+  const changing = await drive(() => { settledChanges += 1; return settledChanges; }, 5);
+  // Two reads with nothing in between, then a change, then two more. The reads before the change share
+  // the plain key (occurrences 1 and 2); the post-change read gets its own key; the fourth read returns
+  // to the plain key as occurrence 3 and is therefore still allowed. The bound has not moved — it still
+  // counts occurrences of the same identity — it just stopped treating a changed resource as the same
+  // identity.
+  const interleaved = [];
+  {
+    const reads = { count: 0 };
+    const tool = makeTool(reads);
+    let cursor = 0;
+    const service = new ToolExecutionService({
+      registrations: [{ tool, source: 'builtin' }],
+      toolContext: { sessionId: 'precheck', runId: 'precheck', cwd: process.cwd() },
+      maxRepeat: 3,
+      resourceChangeCursor: () => cursor,
+    });
+    for (let index = 0; index < 6; index += 1) {
+      if (index === 2) cursor = 1;
+      const results = await service.executeBatch([{ callId: `i${index}`, name: 'read', input: { file_path: 'probe.txt' } }]);
+      const record = service.snapshot().records.at(-1);
+      interleaved.push({ attempt: index + 1, ok: results.get(0)?.ok === true, status: record?.status });
+    }
+  }
+  // The cursor never advances: the plain guard must still fire on the fourth call.
+  const unchanged = await drive(() => 0, 5);
+  // A write-capable call must not inherit the exemption even when the cursor advances.
+  const writeTool = {
+    name: 'write',
+    description: 'probe',
+    inputSchema: { parse: (value) => value },
+    execution: { concurrency: 'parallel', resources: () => [{ key: 'fs:probe', mode: 'write' }] },
+    async execute() { return { ok: true, output: 'written' }; },
+  };
+  const writeService = new ToolExecutionService({
+    registrations: [{ tool: writeTool, source: 'builtin' }],
+    toolContext: { sessionId: 'precheck', runId: 'precheck', cwd: process.cwd() },
+    maxRepeat: 3,
+    resourceChangeCursor: () => 99,
+  });
+  const writeStatuses = [];
+  for (let index = 0; index < 4; index += 1) {
+    const results = await writeService.executeBatch([{ callId: `w${index}`, name: 'write', input: { file_path: 'probe.txt', content: 'x' } }]);
+    writeStatuses.push({ attempt: index + 1, ok: results.get(0)?.ok === true, status: writeService.snapshot().records.at(-1)?.status });
+  }
+
+  return {
+    id: 'resource_version_guard',
+    changingFile: changing,
+    interleavedReads: interleaved,
+    unchangedFile: unchanged,
+    writeCapableCall: writeStatuses,
+    note: 'the exemption is read-only only: the same cursor that frees the fourth read does not free a write',
   };
 }
 
@@ -660,11 +766,12 @@ async function runPrecheck(args) {
     row.matchesExpectation = row.blockedAtAddressLayer === true;
   }
 
-  const [rt02, rt03, rt03Exec, rt04, provider] = [
+  const [rt02, rt03, rt03Exec, rt04, rt04Cursor, provider] = [
     rt02ContractRows(),
     await rt03LedgerRows(),
     await rt03ExecDescriptorRow(),
     await rt04ContractRow(),
+    await rt04CursorRows(),
     await probeProvider(),
   ];
 
@@ -684,8 +791,24 @@ async function runPrecheck(args) {
     { id: 'rt03_unprovable_states_are_blocked', pass: row('in_progress_is_blocked').kind === 'blocked' && row('unknown_is_blocked').kind === 'blocked', detail: [row('in_progress_is_blocked'), row('unknown_is_blocked')] },
     { id: 'rt03_opaque_tool_keeps_the_refusal', pass: row('opaque_tool_keeps_refusal').kind === 'duplicate', detail: row('opaque_tool_keeps_refusal') },
     { id: 'rt03_lease_conflict_is_blocked', pass: row('lease_conflict_is_blocked').kind === 'blocked', detail: row('lease_conflict_is_blocked') },
-    { id: 'rt03_exec_is_an_opaque_effect_today', pass: rt03Exec.available === true && (rt03Exec.descriptor?.resourceKeys?.length ?? -1) === 0, detail: rt03Exec },
+    { id: 'rt03_exec_is_an_opaque_effect_by_default', pass: rt03Exec.available === true && (rt03Exec.undeclared?.descriptor?.resourceKeys?.length ?? -1) === 0, detail: rt03Exec.undeclared },
     { id: 'rt04_fourth_identical_read_is_blocked_today', pass: rt04.fourthBlocked === true, detail: rt04.statuses },
+    {
+      id: 'rt04_read_only_exemption_is_cursor_gated',
+      pass: rt04Cursor.changingFile.statuses.filter((entry) => entry.ok).length === 5
+        && rt04Cursor.unchangedFile.statuses.filter((entry) => entry.ok).length === 3
+        // 4 allowed, then the plain key reaches its own fourth occurrence and the bound fires again.
+        && rt04Cursor.interleavedReads.filter((entry) => entry.ok).length === 4
+        && rt04Cursor.interleavedReads.at(-1)?.ok === false
+        && rt04Cursor.writeCapableCall.filter((entry) => entry.ok).length === 3,
+      detail: {
+        changingFile: rt04Cursor.changingFile,
+        unchangedFile: rt04Cursor.unchangedFile,
+        interleavedReads: rt04Cursor.interleavedReads,
+        writeCapableCall: rt04Cursor.writeCapableCall,
+      },
+      note: 'arm A reports 3/3/3/3 here because the current guard has no cursor at all; the row is a candidate contract, not an A-baseline fact',
+    },
     { id: 'provider_reachable', pass: provider.usable === true, detail: provider },
   ];
 
@@ -708,7 +831,7 @@ async function runPrecheck(args) {
       measuredIntent: row.intent,
       measuredAdmission: row.webAdmitted ? 'admitted' : 'withheld',
     })),
-    deterministic: { intentRows, urlRows, rt02, rt03, rt03Exec, rt04 },
+    deterministic: { intentRows, urlRows, rt02, rt03, rt03Exec, rt04, rt04Cursor },
     limits: [
       'The precheck proves what the current implementation does on frozen inputs. It does not measure task completion.',
       'The intent probes exercise assessRetrievalIntent directly; a real run also depends on the model.',
@@ -973,7 +1096,8 @@ async function runModelCase(args) {
 
   out(args, {
     mode: 'model', caseId, arm, trial, outcome: outcomeLabel, elapsedMs,
-    injection: injector.state.applied, usage: record.usage, artifactChecks,
+    injection: injector.state.applied, targetTriggered: record.targetTriggered,
+    usage: record.usage, artifactChecks,
     refusals: record.refusals, ledger: ledgerPath(args), runDir,
   }, outcomeLabel === 'pass' ? 0 : outcomeLabel === 'blocked' ? 3 : 1);
 }

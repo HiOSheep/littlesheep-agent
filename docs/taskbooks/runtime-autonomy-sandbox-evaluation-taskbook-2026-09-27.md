@@ -1,8 +1,8 @@
 # Runtime 自主执行与沙箱边界验证任务书 2026-09-27
 
-最后更新：2026-09-27 22:28:11
+最后更新：2026-09-27 23:59:00
 
-状态：待执行。已完成前置源码审查与相关现有测试；本任务书的对照实验、沙箱原型和真实隔离验收均未完成。执行后保留本书与证据，交回用户审阅，再决定正式改造与退役。
+状态：**部分执行**。EV-00、RT-01～RT-04、SB-01、SB-04 已执行并回填；RT-05 已汇总但**未做组合真实模型负载**；SB-02/SB-03 只在沙箱定义层验证，**未接入 exec 工具**；SB-05 未执行。第 7 节台账与第 8 节回传模板按实际结果回填，失败、受阻与未验证项原样保留。执行后的候选补丁全部反向回退，工作树未保留任何候选改动；正式采用与否仍由用户决定。
 
 ## 1. 目标、交付与范围
 
@@ -240,22 +240,22 @@ Harness / Runner / 公共契约修改按仓库规则运行 `pnpm.cmd run verify:
 
 ## 7. 执行台账
 
-状态仅使用 `todo / running / pass / fail / blocked / unverified`。`pass` 必须附证据；`blocked` 应写缺失条件；以下全部为待执行，前置 89 项通过不改变本表。
+状态仅使用 `todo / running / pass / fail / blocked / unverified`。`pass` 必须附证据；`blocked` 应写缺失条件。执行期间本仓库同时有另一项任务在提交（HEAD 从 `8faba260` 经 `c3f4b19d` 变到 `98b56ab5`），所以每条账本记录都带自己的 `sourceHash`，两个臂可以按字节区分；同一用例内 A/B 的前后顺序见 `batch-*-run.log`。
 
 | ID | 状态 | 执行版本 / 候选差异 | 命令 / run ID / 证据索引 | 结论与未验证边界 |
 | --- | --- | --- | --- | --- |
-| EV-00 | todo | — | — | — |
-| RT-01 | todo | — | — | — |
-| RT-02 | todo | — | — | — |
-| RT-03 | todo | — | — | — |
-| RT-04 | todo | — | — | — |
-| RT-05 | todo | — | — | — |
-| SB-01 | todo | — | — | — |
-| SB-02 | todo | — | — | — |
-| SB-03 | todo | — | — | — |
-| SB-04 | todo | — | — | — |
-| SB-05 | todo | — | — | — |
-| RV-01 | todo | — | — | — |
+| EV-00 | pass | 执行基线 HEAD `8faba260`（干净工作树 + 未跟踪的任务书；规划时记录的 `505682c6` 已被其他任务推进）。实验入口提交 `a5535d3e`，批次驱动/授权修正提交 `92a64912`。`sourceHash` 覆盖 6 个包的 `src` 与 5 个 `dist` 入口 | `node scripts/experiment-autonomy-sandbox.mjs budget`；`... precheck --json=<ev>/precheck.json`；`node node_modules/vitest/vitest.mjs run <§2 六个文件>`；账本 `D:\littlesheep-evidence\RASB-2026-09-27\ledger.jsonl`；证据目录同路径 | §2 六个测试文件在 EV-00 冻结时与全部实验结束后各跑一次，两次均 **89/89 通过**（6.1s / 6.4s）。预检查 13 项：基线 12 通过 + 1 项"仅候选成立"的行失败，合并候选下 13/13。预算在任何模型调用前冻结（`maxTotalRuns=40`、`maxTotalTokens=4,000,000`、单 run 墙钟 300s、5 条停止条件），实际用 39 run / 2.84M token，命中上限前完成。Provider 探针 HTTP 200。**未验证**：价格表未配置，费用按第 5 节写"未知"；本机 C: 仅剩 18.3 GB，未做长批次容量评估 |
+| RT-01 | fail | 候选 `patches/rt01-b.patch`：`retrieval-intent.ts` 把关键词意图从硬准入改为任务指导；新增"明确禁止联网"识别；补 `能/会` 能力问句措辞；`retrieval-intent.test.ts` 同步改写（该测试编码的是 A 的策略） | `node scripts/experiment-autonomy-sandbox-batch.mjs plan --file=<ev>\batch-plan-model.json`；批次 `RASB-2026-09-27-MODEL`；证据 `raw-runs\RASB-2026-09-27-MODEL-RT-01-*`、`precheck*.json` | **确定性部分成立**：p1/p2/p3 三句冻结表在 A、B 下都被复现；A 存在两个既有缺口——"只使用本地资料回答，不要联网" 被判成 `web_search` 而**放开** Web 工具，"你现在能联网搜索吗" 同样被判成检索请求；B 下这两个负向要求成立。URL/SSRF 15 行矩阵（元数据地址、v4/v6 回环、RFC1918、ULA、link-local、IPv4-mapped、CIDR、非 HTTP scheme、URL 凭据、敏感参数）在 A/B 下全部按预期拒绝，合法目标为对照。**真实模型部分未触发**：A/B 各 3 次 run 都没有产生任何 Web 工具事件（`targetTriggered=no`），事后对保留工作区的独立验收显示构建错误**在 6 次 run 中都被修好**——即这个模型在这条任务上不倾向联网，**候选的检索收益未被证明，证据不足**。另：本条在 run 内的验收只覆盖"是否有 Runtime 签发引用"，缺"构建是否真的修好"，该缺口在 RT-05 用事后静态验收补上，本轮 run 内判定维持原样 |
+| RT-02 | pass | 候选 `patches/rt02-b.patch`：`tool-failure-disposition.ts` 只把 `input_validation` 放回主循环，其余 `validation_failed`（`step_tool_not_allowed`、`parallel_step_contract`）与未知工具、授权拒绝、未结算副作用保持硬边界；纠错次数由 Runtime 已记录的同类失败次数封顶（3） | 批次 `RASB-2026-09-27-MODEL`（顺序 A→B）与 `SMOKE-2026-09-27`；注入器在 LLM 边界把**第一次** `exec` 提议的 `command` 改成数字 `42`，原始提议与变换后输入都进账本，两臂注入完全相同 | **A 3/3 失败、B 3/3 通过**，注入在 6 次 run 中全部生效。A：模型只发 2–3 次请求就被 `Runtime control: the latest tool boundary failed...` 收尾，`workplace/report.json` 从未生成。B：6–7 次请求，模型读到真实的 zod 校验错误后改正参数并完成任务，产物 `total=12` 与回复一致。确定性契约 9 行（`input_validation` 之外全部保持 authoritative）在 A 下成立、B 下只翻转 `input_validation` 一行。**边界**：该收益只证明"注入后的恢复"，**不能**宣称自然参数错误率下降；`step_tool_not_allowed` 与 `parallel_step_contract` 两类负向只做了确定性对照，未跑真实模型 |
+| RT-03 | pass | 首批候选（`MODEL` 批次 3 次）**未生效**：`exec` 声明了资源，但 `resolveToolExecutionPolicy` 对 `concurrency: 'exclusive'` 的工具一律返回空资源列表，warrant 永远打不开。修正候选 `patches/rt03-b.patch` 追加 `tool-execution-result.ts` 的改动（并发与资源身份分开处理），并同步 `current-path-contract.test.ts`（该断言原本写死"exec 不得声明可重跑"） | 批次 `RASB-2026-09-27-MODEL`（旧候选）、`RASB-2026-09-27-MODEL4`（修正候选，顺序 A→B）；证据 `raw-runs\*-RT-03-*`（含 `data\workplace\runs\executions.jsonl`） | 夹具 `tools/run_tests.mjs` 自记执行次数与被测内容哈希。**修正后 A 3/3 失败、B 3/3 通过**：A 的 `executions.jsonl` 只有 1 行，第二次同参数命令被 `repeated_call_blocked`（`side_effect_replay`）拒绝；B 有 2 行且两次 `subjectHash` 不同，即真实跑了两次。确定性账本 9 行：无变更时仍是 replay、记录到变更后发放 `:retry1` 新身份、`in_progress`/`unknown` 与租约冲突都 blocked、不声明能力的工具变更后仍拒绝。descriptor 探针显示未声明命令仍是 `effectKind=external`、资源为空。**未验证**：命令声明是宿主提供的信任输入，声明写错时 Runtime 会被误导，需要 SB 侧验证；并发租约冲突只有确定性对照 |
+| RT-04 | pass | 候选 `patches/rt04-b.patch`：`ToolExecutionService` 新增 `resourceChangeCursor`，只对**全部资源为只读**且游标真正前进的调用签发新计数身份；游标由 harness 从 `sideEffects` 里已结算成功的同资源效果数提供。写入类调用、未知工具、恢复去重不继承该豁免 | 批次 `RASB-2026-09-27-MODEL5`（顺序 B→A）、`RASB-2026-09-27-MODEL6`（轮询对照，顺序 A→B）；证据 `raw-runs\*-RT-04-*`、`raw-runs\*-RT-04-poll-*` | **B 3/3 通过、A 2/3 失败（另 1 次未触发：模型只读了 3 次）**。确定性游标夹具：文件每次都变则 5/5 读成功；文件不变仍 3/5（第 4 次照旧被拒）；交错场景 4 次通过后第 5 次回到基础计数被拒；写入类调用即使游标前进也仍 3/4。**未改阈值**（30 轮、连续 2 轮无进展原样）。轮询对照 A 3/3、B 3/3 通过——B 的空转没有被豁免掉。**未验证**：真实模型这侧只测了"文件变化"的场景，"文件不变时靠无进展停止"在真实模型下未单独触发 |
+| RT-05 | unverified | 未新增候选；只做汇总与确定性组合回归 | `node scripts/experiment-autonomy-sandbox-report.mjs --batches=... --json=<ev>\rt-summary.json`；合并四份补丁后 `node node_modules/vitest/vitest.mjs run <7 个受影响文件>` | 汇总：39 次真实模型 run、2,686,425 prompt token、151,323 completion token、usage 缺失 0、权限提示 0（`containerRoot` + `permissionPolicyId=full`，授权是配置而非候选差异）。合并候选下 7 个受影响文件 **113/113 通过**，且 §2 六个文件在基线仍 89/89——候选没有回归既有契约。**未做**：第 3 节要求的"组合负载"（简单直接回答 + 单文件任务）没有跑，因此**无法排除候选增加无谓查证或工具调用**；本表所有收益都是单项归因，缺组合证据。误拦截一列没有逐 callId 的冻结裁定依据，只有拒绝计数。费用未知 |
+| SB-01 | pass | 无源码改动；只读探测 + 官方资料复核 | 只读命令集与逐条输出见 `<ev>\sb01-machine-capability.md`；子代理原始报告 `<ev>\sb01-recon-full.txt` | Windows 11 Home（build 26200.9457）**Windows Sandbox 不可用**（`WindowsSandbox.exe`/`containers.dll`/`wsb.exe` 全不存在，Home SKU）；WDAG 策略键缺失、`WDAGUtilityAccount` 禁用；`*AppContainer*` cmdlet 一个都没有；可选功能 Enabled/Disabled **查不到**（`Get-WindowsOptionalFeature` → `请求的操作需要提升`，`dism` → `Error: 740`）。会话非提权、Administrators 为 deny-only，因此 `New-LocalUser`/`New-NetFirewallRule`/服务安装都做不了。WSL2（2.7.14.0，内核 6.18.33.2，Ubuntu 26.04，systemd running）里 `bwrap 0.11.1` 与 `unshare --user --map-root-user` **可用且已做功能验证**；`firejail`/`nsjail`/`docker`/`podman`/`iptables` 缺失。本机已存在一个在产参照实现（OpenAI Codex 的 `CodexSandboxOffline` 专用用户 + `CodexSandboxUsers` 组 + 3 条出站 Block 防火墙规则 + 自动启动服务），但它需要管理员权限才能安装，**属于用户决定，不是 Agent 能自行落地的**。C: 仅剩 18.34 GB，WSL 盘 4.349 GB 在 D: |
+| SB-02 | unverified | **未实现**：候选后端没有接入 `exec` 工具。`scripts/lib/experiment-sandbox.mjs` 只写了后端定义、`LS_EXPERIMENT_EXEC_BACKEND`/`LS_EXPERIMENT_SANDBOX` 契约与三个用例骨架，没有对 `packages/tools/src/builtin/exec.ts` 做任何改动 | 未执行 `node scripts/experiment-autonomy-sandbox.mjs sandbox`（该模式依赖尚不存在的 `exec` 后端选择） | 因此"参数校验/审批/输出清洗/取消/账本保持不变"**没有被验证**，"请求后端 vs 实际后端"进账本也**没有做到**——`ToolInvocationRecord` 本身没有 `sandboxed`/`backend` 字段，SB-05 的"UI 说沙箱、实际宿主执行"不一致性今天无法被账本证明。只完成了后端定义的只读验证（见 SB-03/SB-04）。**缺失条件**：需要把后端接入 `createExecTool` 并补一个可观测的审计通道 |
+| SB-03 | unverified | 同上，未接入 exec；兼容性只在 bwrap 定义层测 | `<ev>\sandbox\probe.sh` 的 A/C/I 行、`probe4.sh` 的 P4 行 | 在沙箱定义内已验证：workspace 读写、建目录、`git init`/`git status`、`node --version`（需显式 PATH，nvm 路径在遮蔽 `/home` 后不可见）、失败退出码、输出截断路径。**未验证**：完整"项目构建 + 冻结依赖 + 包管理安装"链路、冷/热启动计时、资源占用、空格/中文路径的完整用例、原生与 WSL2 的换行/权限语义对比。**与产品无关的读数**：该后端不提供任何资源上限（沙箱内 `ulimit` 显示 memory/time unlimited、process 31715） |
+| SB-04 | pass | 无源码改动；对候选后端定义做敌意矩阵 | `<ev>\sandbox\probe.sh`～`probe4.sh` 及逐条输出；`<ev>\sb02-04-sandbox-findings.md` | **矩阵内未发现突破，但发现一条必须显式关闭的通道**。挡住：越界读写宿主哨兵、读 LS 数据根、`..` 穿越（落在 tmpfs 合成目录）、符号链接逃逸、只读根写入、`/root`、`CapEff=0`/`CapBnd=0`/`NoNewPrivs=1`、后续子孙进程同样受限、默认无网络（`Errno 101`）、Windows 环境变量不进入 WSL（**Provider 密钥不泄漏**，`WSLENV` 未设置）。**发现并已缓解**：`binfmt_misc` 的 `WSLInterop` 是内核级注册，`/init` 又在只读根里，所以**沙箱内可见的任何 Windows PE 都会作为宿主进程运行**——实测把 `cmd.exe` 放进被绑定工作区后，它在**沙箱完全未暴露的宿主路径**上写出了文件；加 `--ro-bind /dev/null /init` 后 exit=126、宿主侧无文件，普通 Linux 负载不受影响。**另一条**：`--ro-bind / /` 单独使用时 `/mnt/c`、`/mnt/d` 与 WSL 家目录都可读（`.ssh` 下私钥文件**可被列出，未读取内容**），必须遮蔽 `/mnt` 与 `/home`。允许路径对照：带宿主代理时 `curl https://www.example.com` → 200。**未验证**：回环"拒绝接收端"没有真正的监听者（`Connection refused` 不算证据）；链接替换竞态未构造；取消/超时的后代存活只有心跳计数，未做进程级核对；seccomp 未安装 |
+| SB-05 | todo | 无 | — | **未执行**。需要 Runner 真实 run 串起模型提议→Tool Execution Service→真实沙箱进程→产物→回复，并跑 Electron 与打包环境验收。前置缺失：SB-02 的后端接入不存在；`ToolInvocationRecord` 无 isolation 字段；打包验收需要 `pnpm run package:win`（未跑）。明确排除"发布就绪"结论 |
+| RV-01 | pass | 无源码改动 | 本任务书第 7、8 节；`<ev>\EVIDENCE-INDEX.md`；`<ev>\rt-summary.json`；四个 `patches\*.patch`；两笔提交 `a5535d3e`、`92a64912` | 已回填本表与第 8 节，逐项给出保留/调整/否决/证据不足建议，列出复现步骤、回滚方式与残留清理。**未完成**：RT-05 的组合负载、SB-02/03/05。结论不构成正式启用、产品修复或退役批准 |
 
 ## 8. 结果回传模板
 
@@ -263,25 +263,170 @@ Harness / Runner / 公共契约修改按仓库规则运行 `pnpm.cmd run verify:
 
 ```text
 批次 ID / 开始结束时间：
+  账本内批次：SMOKE-2026-09-27（冒烟，2 run）、RASB-2026-09-27-MODEL（18 run）、
+  RASB-2026-09-27-MODEL2（2 run，被进程中断，保留）、RASB-2026-09-27-MODEL3（0 run，构建失败，保留）、
+  RASB-2026-09-27-MODEL4（6 run）、RASB-2026-09-27-MODEL5（9 run，轮询臂构建失败）、
+  RASB-2026-09-27-MODEL6（6 run）。有效批次合计 39 run。
+  开始 2026-09-27 22:38（EV-00 基线测试），首个真实模型 run 22:52，最后一个 23:58 前后。
+  台账见 <ev>\ledger.jsonl（逐 run 一行），批次日志 <ev>\batch-model*-run.log。
+
 执行 HEAD / 未提交差异摘要与哈希：
+  规划书记录 HEAD 505682c6f5f6c4d60021597f6f0974487d585dc1。
+  实际执行基线：8faba260da157bee0e916f9fdec5390e16c4c69d，工作树干净，仅任务书未跟踪。
+  执行期间本仓库另一项任务持续提交，HEAD 依次变为 c3f4b19d… / 98b56ab5…；
+  因此每条账本记录带自己的 sourceHash（覆盖 6 个包的 src 与 5 个 dist 入口），
+  而不是只记 HEAD。RT-01 的两个臂各出现 2–3 个不同 sourceHash，是这一点的直接体现。
+  本次执行只提交了自己的文件（a5535d3e、92a64912），未触碰其他任务的改动。
+
 候选 patch 或 commit / 回滚方式：
+  候选补丁在 <ev>\patches\：rt01-b.patch、rt02-b.patch、rt03-b.patch、rt04-b.patch（git diff --output 生成，LF）。
+  应用：git apply <patch>；回滚：git apply --reverse <patch>。批次驱动每次切臂前先全部反向回退再单独应用一个，
+  并在建库前断言"臂 A 的候选路径必须干净、臂 B 必须至少有一个候选路径被改动"，臂标签不靠人记。
+  执行结束时四个补丁全部已反向回退，工作树未保留任何候选改动（已核对：候选路径 git status 为空）。
+  实验基础设施提交：a5535d3e（EV-00 入口/夹具/账本 + 任务书）、92a64912（批次驱动、授权与 wire model 修正）。
+
 环境 / Provider / 模型 / 推理设置 / 配置哈希：
+  Windows 11 Home 26200.9457；Node v26.4.0；pnpm 11.9.0；git 2.50.1.windows.1。
+  Provider deepseek，baseURL https://api.deepseek.com，model ref deepseek/deepseek-flash，
+  wire model id deepseek-flash（createRunner 传入 llm 覆盖时不会解析 model ref，实验层统一归一化）。
+  推理设置 reasoning=auto；temperature 由主循环固定为 0；maxModelCallsPerRun=32；maxRecoveryAttempts=3；
+  单 run 墙钟 300s；memory.repositoryBackend=v2（无实验标记需求）。
+  configHash = 规范化配置（apiKey 先替换为 <redacted>）的 sha256，逐 run 记录在账本；
+  每次 run 的脱敏配置副本在 raw-runs\<run>\effective-config.redacted.json。
+  凭证：Provider 密钥只以 $DEEPSEEK_API_KEY 间接引用存在于隔离数据根，密钥值从未写入账本、报告、命令行或仓库。
+
 初始授权 / 网络与资源范围 / 预算上限：
+  授权：permissionPolicyId=full + containerRoot=本 run 的数据根（这样 permissionMode 真的有定义，
+  'full' 才等于产品语义的完全访问）+ approve=always-true。权限提示计数因此为 0，属配置而非候选差异。
+  网络：RT-01 的 A/B 都开 web.enabled=true（配对内一致）；RT-02/03/04 关闭。
+  资源：每次 run 独立数据根与合成工作区；无 Docker/沙箱；host 后端。
+  预算（在任何模型调用之前冻结）：maxTotalRuns=40、maxTotalTokens=4,000,000、单 run 墙钟 300s、
+  每臂每用例 3 次；5 条停止条件见 budget 输出。实际 39 run / 2,686,425 prompt + 151,323 completion token。
+  费用：未知——仓库与数据根都没有价格表，按第 5 节不填零。
+
 夹具和任务输入哈希 / A-B 顺序 / 故障注入说明：
+  夹具与 promptHash 逐 run 记录在账本；合成工作区留在 raw-runs\<run>\data\workplace 供事后独立验收。
+  顺序：RT-01 A→B、RT-02 B→A、RT-03 A→B、RT-04 B→A、RT-04-poll A→B（逐用例交替）。
+  故障注入只用于 RT-02：在 LLM 边界把**第一次** exec 提议的 command 改成数字 42，
+  原始提议、变换后输入与变换后参数哈希都进账本；两臂注入完全相同。
+
 实际可复跑命令（含工作目录、前置条件；不含密钥）：
+  工作目录 D:\Repositories\littlesheep；前置：packages/*/dist 已构建，DEEPSEEK_API_KEY 在进程环境。
+  1) 预算： node scripts/experiment-autonomy-sandbox.mjs budget
+  2) 预检查： node scripts/experiment-autonomy-sandbox.mjs precheck --json=<ev>\precheck.json
+  3) 真实模型 A/B（由驱动负责应用/回退补丁与重建 dist）：
+     node scripts/experiment-autonomy-sandbox-batch.mjs plan --file=<ev>\batch-plan-model5.json
+     单次调用形式：node scripts/experiment-autonomy-sandbox.mjs model \
+       --case=RT-04 --arm=B --trial=1 --batch=<id> --ledger=<ev>\ledger.jsonl --evidenceRoot=<ev>
+  4) 汇总： node scripts/experiment-autonomy-sandbox-report.mjs \
+       --batches=RASB-2026-09-27-MODEL,RASB-2026-09-27-MODEL4,RASB-2026-09-27-MODEL5,RASB-2026-09-27-MODEL6 \
+       --json=<ev>\rt-summary.json
+  5) 沙箱探测（只读、无源码改动）： wsl.exe -d Ubuntu-26.04 -e bash <ev>\sandbox\probe.sh（及 probe2/3/4.sh）
+  6) 计划文件：<ev>\batch-plan-model.json、-model4.json、-model5.json、-model6.json
+  所有入口都提供无模型费用的夹具模式（budget/precheck）与显式真实模型模式，验收失败返回非零退出码。
+
 预检查与确定性测试结果：
+  §2 六个测试文件两次运行均 89/89 通过（EV-00 冻结时、实验全部结束后各一次）。
+  预检查 13 项：基线 12 通过 + rt04_read_only_exemption_is_cursor_gated 失败（该项只在候选下成立）；
+  合并四份候选后 13/13。检索准入三句冻结表在 A/B 下都复现；
+  URL/SSRF 15 行矩阵 A/B 全部按预期；账本决策 9 行、失败分类 9 行、重复调用护栏均按设计。
+  合并候选下 7 个受影响测试文件 113/113 通过（含 current-path-contract、exec、tool-execution-service）。
+
 Runtime 各任务：A/B 启动数、通过数、未触发数、介入数、误拦截数、Token、费用、耗时：
+  RT-01  A 3 run：pass 0 / fail 3 / 未触发 3；B 3 run：pass 0 / fail 3 / 未触发 3。
+         两臂合计 1,484,556 prompt + 105,076 completion token，644,782 ms。
+         事后静态验收（构建是否被修好）A 3/3、B 3/3 通过 → 候选的检索收益未被证明。
+  RT-02  A 3 run：pass 0 / fail 3；B 3 run：pass 3 / fail 0。163,153 prompt + 5,440 completion token，59,158 ms。
+  RT-03  修正候选：A 3/3 fail、B 3/3 pass（旧候选 A/B 各 3 次都 fail，保留在账本）。
+         合计 445,154 prompt + 18,370 completion token，168,092 ms。
+  RT-04  B 3/3 pass、A 3 run 全 fail（其中 1 次未触发）；轮询对照 A 3/3、B 3/3 pass。
+         593,562 prompt + 22,437 completion token，183,941 ms。
+  介入：权限提示 0 次、人工补救 0 次（自动批准实验，计数是结构值不是用户负担）。
+  误拦截：账本只有拒绝总数（每条含 callId/status/reason），没有预先冻结的"合法却被拦"裁定依据，
+  因此本列不填，见 RT-05 的未验证边界。
+  费用：未知。usage 缺失 run：0。
+
 Sandbox 各后端：正常负载结果、边界矩阵、真实进程身份、冷/热开销、不可用原因：
+  wsl2-bwrap（WSL2 Ubuntu 26.04 内 bubblewrap 0.11.1）：定义已验证，**未接入 exec**。
+  边界矩阵见 sb02-04-sandbox-findings.md 与 probe*.sh；矩阵内未发现突破，
+  但发现 WSLInterop 逃逸通道（已用 --ro-bind /dev/null /init 缓解）与 --ro-bind / / 暴露 /mnt、/home。
+  真实进程身份：沙箱内 uid=1000、CapEff=0、CapBnd=0、NoNewPrivs=1；bwrap 在本机是 setuid-root。
+  冷/热开销：未测（SB-03 未执行到计时部分）。
+  Windows 原生后端：不可用——Home SKU 无 Windows Sandbox，会话非提权建不了用户/防火墙规则，
+  AppContainer 无工具链，WDAG 不可用；本机唯一在产参照是 Codex 的低权限用户+防火墙方案（需管理员）。
+  未接入 exec 的原因与缺失条件见第 7 节 SB-02。
+
 真实模型 / OS 隔离 / Electron / 打包证据分别是否具备：
+  真实模型：具备（39 次真实 DeepSeek run，usage 完整）。
+  真实 OS 隔离：部分具备——bwrap 的文件系统/网络/能力隔离在直接探测下已独立观测，
+  但没有一条证据来自 exec 工具的真实执行路径，也没有 Electron/打包环境下的证据。
+  Electron：不具备（未跑）。
+  打包：不具备（未跑 pnpm run package:win）。
+
 安全回归 / 失败 / 超时 / 取消 / 缺失 usage：
+  安全回归（应拒绝而实际成功）：尚未发现。RT-01 的 URL/SSRF 负向矩阵 15 行全部按预期拒绝；
+  沙箱矩阵中越界读写、数据根读取、穿越、符号链接、只读根、后代进程均未突破，
+  唯一真实逃逸（WSLInterop）在关闭该通道后被复测为失败。
+  失败：RT-01 的 6 次 run 全部未完成既定任务（模型没有联网也没有把验收项补齐）；
+  RT-04 arm A 有 1 次未触发。
+  超时：0 次命中 300s 墙钟上限（最慢一次 171.7s）。
+  取消：沙箱矩阵里 `timeout_ms=3000` 的后代心跳在约定窗口后停止增长；未做进程级存活核对。
+  缺失 usage：0 次。
+
 外部证据目录、manifest 与文件哈希（敏感信息仅在受控本地副本）：
+  D:\littlesheep-evidence\RASB-2026-09-27\（仓库外）
+  ledger.jsonl（逐 run 账本，39 有效 run + 保留的失败批次）、rt-summary.json、
+  precheck.json / precheck-armB.json、batch-plan-model*.json、batch-model*-run.log、
+  raw-runs\<batch>-<case>-<arm>-t<n>\（result-summary.json、tool-events.jsonl、ledger-record.json、
+  effective-config.redacted.json、data\ 下的隔离数据根与工作区）、
+  patches\*.patch、sandbox\（probe.sh～probe4.sh、sandbox-report.json、scratch\）、
+  sb01-machine-capability.md、sb02-04-sandbox-findings.md、EVIDENCE-INDEX.md（含逐文件 sha256）。
+  仓库内只保留：本任务书、实验脚本与夹具、脚本 README 条目；不含会话、Provider 请求、凭据或工作区产物。
+  凭据：从未进入任何文件；Provider 密钥只在进程环境中以名称引用。
+
 逐次账本最少字段：batchId, caseId, arm, trial, runId, sourceHash,
   promptHash, configHash, authorizationRef, requestedBackend, actualBackend,
   injection, targetTriggered, outcome, artifactChecks, interventions,
   refusals[{callId, reason, expectedDecision}], usage, retries, elapsedMs,
   sandboxChecks, evidenceRefs, limitations。
+  → 已实现并由 assertLedgerRecord 强制；实测 39 条有效记录全部通过该断言。
+  已知偏差：refusals 里的 expectedDecision 目前是"该状态是否属于预期拒绝类别"的说明，
+  不是逐 callId 的冻结裁定；requestedBackend/actualBackend 在沙箱未接入 exec 的当前状态下恒为 host。
+
 逐项建议：保留 / 调整后复测 / 否决 / 证据不足；理由：
+  RT-01 → **证据不足，且包含两个应立即单独修复的既有缺口**。真实模型从未触发检索路径（A/B 各 3 次都
+    没有 Web 工具事件），所以"关键词意图改为任务指导"的收益没有被证明，不能据此保留；
+    另一方面，A 现存的两个负向缺口（"不要联网"仍放开 Web 工具、能力问句"你能联网搜索吗"被判成检索请求）
+    与 B 的意图无关，是当前实现的缺陷，建议单独开条目修复后复测。
+  RT-02 → **建议保留（先小范围）**。A 3/3 失败 vs B 3/3 通过，确定性契约只翻转 `input_validation` 一行，
+    其余硬边界不动，合并候选下 113/113 回归通过。上线前需要补：真实模型下的未知工具、权限拒绝、
+    并行资源契约三类负向对照，以及幂等/纠错次数上限的端到端验证。
+  RT-03 → **建议保留（窄范围）**。修正后 A 3/3 失败 vs B 3/3 通过，且只在宿主**逐条声明**的命令上生效，
+    未声明命令仍是 opaque external effect（descriptor 探针可证）。必须同时接受两点：
+    声明是信任输入、需要 SB 侧验证；并且把一个共享 helper（`resolveToolExecutionPolicy`）的行为
+    从"exclusive 工具不解析资源"改成"并发与资源分开"，影响面超出 exec，需要单独评审。
+  RT-04 → **建议保留**。B 3/3 通过 vs A 2/3 失败（1 次未触发），游标夹具证明豁免只在只读且游标真正前进时
+    生效：文件不变仍 3/5、交错后仍会回到基础计数被拒、写入类调用不继承；轮询对照两臂都通过。
+    需要补的是真实模型下"文件不变靠无进展停止"这一条。
+  RT-05 → **证据不足**。缺组合负载，无法排除候选增加无谓工具调用；费用未知；误拦截缺逐 callId 裁定依据。
+  SB-01 → **建议按结论执行**：Windows 原生隔离在本机不可行（SKU + 权限），若要走 Codex 式低权限用户+ACL+
+    防火墙方案，需要用户提供管理员授权的安装步骤，不能由 Agent 自行落地。
+  SB-02/03/04 → **调整后复测**。bwrap 后端在"隔离是否有效"这一点上证据不错，但**没有接入 exec**，
+    因此"沙箱不替代授权与账本"这一条完全没有被验证。复测前提：把后端接进 `createExecTool`、
+    给 `ToolInvocationRecord` 或等价审计通道补 isolation 字段、并修好 `--ro-bind /dev/null /init`
+    与遮蔽 `/mnt`、`/home` 之后再跑完整矩阵。
+  SB-05 → **否决本轮结论**（未执行）。
+
 清理情况 / 残留资源 / 待用户决定：
+  已清理：四个候选补丁全部反向回退，候选路径 git status 为空；dist 已按基线重建；
+  沙箱 scratch 里的 `cmd.exe` 副本、哨兵、`interop-*-proof.txt` 与临时 home 已删除；
+  证据目录里的产物保留供审阅（仓库外）。
+  需清理：WSL `Ubuntu-26.04` 在探测前为 Stopped、现为 Running，恢复用
+    `wsl.exe --terminate Ubuntu-26.04`；`node_modules`/dist 因本实验被重建过，属正常构建产物。
+  待用户决定：(1) RT-02/03/04 三个候选是否进入正式改造，尤其是 RT-03 对共享 helper 的改动范围；
+  (2) RT-01 的两个既有负向缺口是否单独修复；(3) 是否愿意以管理员权限试点专用低权限用户 + ACL + 防火墙，
+  还是接受"Windows 原生隔离不可行、只评估 WSL2"；(4) 是否继续 SB-02/03/05 的接入与验收；
+  (5) RT-05 的组合负载与费用口径是否需要补测。
 ```
 
 ## 9. 官方调研依据与使用边界
