@@ -384,3 +384,15 @@ O2 长内容阅读 · O3 产物与引用 · O4 消息辅助操作 · O6 Token �
 - 停屏外窗口不得用于像素或原生断言（回答 `HTCLIENT`、`-32000` 返回缩放边框码、`visibilityState` 为 hidden 时焦点既非 `:focus` 也非 `:focus-visible`）。
 
 > 退役说明：本记录即任务书《前端简洁高效化任务书（2026-09-27）》的稳定事实收口。**任务书本体的删除被有意延后**：截至 2026-09-29 06:39 它仍被另一条工作线在编辑（最后修改 7 分钟前），而本会话已有两次"动在写文件导致他人改动被抹掉"的返工。删除应在该线落定后进行，届时同步更新 `docs/README.md` 的分层入口与索引。
+
+### O5 的独立第二线证据（2026-09-29，补入）
+
+除 13 项既有测试与折叠键判别实验外，O5 另有一份**独立**证据（真事件形状、非手写字面量），五项要求各有"错则红"的对照：
+
+- **只计一次**：真实 `createRunner` + 脚本化 `LlmClient`，真实重试（首答为空 → `stages/reply.ts` 生成 request id 2 并带 `retryOf` + `retryReason: 'empty_output'`；实测 2 starts、2 次 `model_response_received`、2 次 settlement、3 次 provider 调用）。绿：日总计 `{total: 286, input: 230, output: 56, requests: 3}`，coverage `{indexedRuns: 4, indexedSessions: 2, attempts: 3, duplicateAttempts: 3}`；重放每次都被答 `duplicate` 且存储事件数不变；重启后由事件重建出可比一致的序列；经产品自身路由 fork（`POST /sessions/:id/branch`）后 `listRunPartitions()==1` 且序列可比一致。**对照红**：去重被绕开（同一夹具）→ `{requests: 6, total: 572}`，原断言原样抛错（`expected { total: 572 … } to match { requests: 3, total: 286 }`）；把副本里的 Provider request id 重新签发 → 同样 6 / 572。
+- **无事件日 ≠ 零用量日**：真实运行报告 0/0（`usageStatus: 'available'`）→ 该日 `state: 'recorded'` 且 `missingResponses 0`；前一无事件日 `state: 'empty'`。
+- **有界响应**：400 天 → 200 且 `days.length 400`、`bounds {maxRangeDays 400, maxIdentities 64}`；401 天 → **400 拒绝**（不是截断）；默认 366 天。
+- **回填可取消可续接**：取消后 `status 'cancelled'` + cursor 仍在 + 部分投影 ≤ 145；以预算 1 续接 → `{requests: 3, total: 145, duplicateAttempts: 0, backfill complete}`，全量重扫 `indexed 0` 且总计一致。
+- **仅凭事件重建**：删掉 `usage-index/` 后由事件重建 → 与删除前可比一致，且与 provider 自报一致。
+
+**边界（该包明确不主张的部分）**：LS 的 fork 复制的是**消息**而非事件日志（`Message` 无 usage 字段），所以"fork 不重复计数"成立的原因是**fork 不复制事件**；跨 run 去重守卫由"逐字复制的事件日志"来检验，对照证明该守卫**确有负载**。**留给台账的告诫**：若将来 fork/导入**真的复制 durable 事件**，必须保留 Provider request id，否则聚合会翻倍（实测 572 vs 286）。另有两条不主张：LlmClient 内部的传输层重试只产生一条响应事件，早先被计费的物理尝试无法单独计数；该包**未使用 Electron 窗口**，故不主张任何像素或原生断言。
