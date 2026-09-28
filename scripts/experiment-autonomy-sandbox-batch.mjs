@@ -18,9 +18,10 @@
 // raw run directories and summaries stay in the evidence directory.
 import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { appendJsonLine, ensureDir, readJsonLines, writeJson } from './lib/experiment-ledger.mjs';
+import { appendJsonLine, ensureDir, readJsonLines, writeJson, sourceDistAgreement } from './lib/experiment-ledger.mjs';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -133,6 +134,44 @@ function budgetOf(ledgerPath) {
   return { runs: records.length, tokens };
 }
 
+/**
+ * RA-01: a batch that dies must leave a marker, and the next start must look at it before it does anything.
+ *
+ * `statePath` is written before the first arm and cleared only after the baseline has been restored. A
+ * marker found at startup means the previous process ended without restoring the tree — an uncatchable
+ * exit, a killed console, a machine reset — and the batch refuses to run until a human acknowledges it,
+ * because the source tree may still carry a candidate patch.
+ */
+async function readRecoveryState(statePath) {
+  if (!existsSync(statePath)) return null;
+  try {
+    return JSON.parse(readFileSync(statePath, 'utf8'));
+  } catch {
+    return { unreadable: true };
+  }
+}
+
+async function writeRecoveryState(statePath, value) {
+  writeJson(statePath, value);
+}
+
+/**
+ * RA-01: the budget ledger is per batch id, with the version, freeze time, scope and what was consumed.
+ * A later batch that raises a limit is a **new** entry with its own reason; it never edits an earlier one,
+ * so "the same frozen budget" cannot be claimed after the fact.
+ */
+function recordBudget(registryPath, plan, extra = {}) {
+  appendJsonLine(registryPath, {
+    batchId: plan.batchId,
+    frozenAt: new Date().toISOString(),
+    maxTotalRuns: plan.budget?.maxTotalRuns ?? null,
+    maxTotalTokens: plan.budget?.maxTotalTokens ?? null,
+    scope: plan.budgetScope ?? plan.cases.map((entry) => `${entry.caseId}:${entry.order ?? 'AB'}`),
+    trials: plan.trials ?? null,
+    ...extra,
+  });
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.mode !== 'plan' || !args.file) {
@@ -147,10 +186,45 @@ async function main() {
   const packages = [...new Set(plan.cases.flatMap((entry) => entry.packages ?? []))];
   ensureDir(plan.evidenceDir);
 
+  const statePath = join(plan.evidenceDir, 'batch-state.json');
+  const registryPath = join(plan.evidenceDir, 'budget-registry.jsonl');
+
   if (args['dry-run']) {
-    process.stdout.write(`${JSON.stringify({ plan, packages, budget: plan.budget }, null, 2)}\n`);
+    const recovery = await readRecoveryState(statePath);
+    const agreement = sourceDistAgreement(REPO_ROOT);
+    process.stdout.write(`${JSON.stringify({ plan, packages, budget: plan.budget, recovery, sourceDistAgreement: agreement }, null, 2)}\n`);
     return;
   }
+
+  // RA-01: never start on top of an unrestored tree. A marker means the previous run did not reach its
+  // baseline restore, so a candidate patch may still be applied.
+  const recovery = await readRecoveryState(statePath);
+  if (recovery && !args['ack-recovery']) {
+    process.stderr.write(
+      `a previous batch did not restore the baseline: ${JSON.stringify(recovery)}\n`
+      + 'inspect `git status` and the candidate paths, restore the baseline, then re-run with --ack-recovery\n',
+    );
+    process.exitCode = 2;
+    return;
+  }
+  if (recovery && args['ack-recovery']) {
+    await revertAll(plan);
+    const restored = await buildPackages(packages);
+    process.stdout.write(`${JSON.stringify({ step: 'recovery-acknowledged', recovery, rebuilt: restored.every((b) => b.ok) })}\n`);
+  }
+
+  // RA-01: a batch whose sources are newer than its built artefacts may be running code the sources do not
+  // describe. Refuse unless the operator explicitly accepts it.
+  const agreement = sourceDistAgreement(REPO_ROOT);
+  if (!agreement.agree && !args['allow-stale-dist']) {
+    process.stderr.write(
+      `source/dist agreement check failed: ${agreement.newestSource.path} is newer than every built module\n`
+      + 'rebuild the affected packages, or pass --allow-stale-dist to record the batch as possibly-stale\n',
+    );
+    process.exitCode = 2;
+    return;
+  }
+  recordBudget(registryPath, plan, { sourceDistAgreement: agreement, staleAccepted: Boolean(args['allow-stale-dist']) });
 
   const batchLog = [];
   const log = (entry) => {
@@ -163,6 +237,17 @@ async function main() {
     log({ step: 'case-start', caseId: entry.caseId, order, patch: entry.patch });
 
     for (const arm of order.split('')) {
+      // RA-01: the marker is written *before* the tree is touched and removed only after the baseline is
+      // restored, so any exit path that skips the restore leaves evidence the next start will read.
+      await writeRecoveryState(statePath, {
+        batchId: plan.batchId,
+        caseId: entry.caseId,
+        arm,
+        patches: patchNamesOf(entry),
+        candidatePaths: plan.candidatePaths,
+        startedAt: new Date().toISOString(),
+        pid: process.pid,
+      });
       // Every arm transition starts from the frozen baseline, so a leftover patch from the previous
       // case can never be attributed to this one.
       await revertAll(plan);
@@ -171,6 +256,11 @@ async function main() {
       }
       const changed = await assertArmState(plan, arm);
       log({ step: 'arm-state', caseId: entry.caseId, arm, changedPaths: changed });
+
+      // RA-01: re-check after the patch is applied. In arm B the sources have just changed, so the build
+      // below is what makes them and the artefacts agree; this records the state the batch is running from.
+      const armAgreement = sourceDistAgreement(REPO_ROOT);
+      log({ step: 'arm-agreement', caseId: entry.caseId, arm, agreeBeforeBuild: armAgreement.agree, newestSource: armAgreement.newestSource.path });
 
       const builds = await buildPackages(packages);
       const failedBuild = builds.find((build) => !build.ok);
@@ -194,7 +284,13 @@ async function main() {
         const used = budgetOf(plan.ledger);
         if (used.runs >= plan.budget.maxTotalRuns || used.tokens >= plan.budget.maxTotalTokens) {
           log({ step: 'budget-stop', used, budget: plan.budget });
-          writeJson(join(plan.evidenceDir, `batch-${plan.batchId}.json`), { plan, batchLog, stopped: 'budget' });
+          // RA-01: a budget stop is an orderly exit, so the baseline is restored and the marker cleared
+          // before recording what the batch consumed.
+          await revertAll(plan);
+          const restoredOnStop = await buildPackages(packages);
+          await rm(statePath, { force: true });
+          recordBudget(registryPath, plan, { stopReason: 'budget', consumed: used, restoredBaseline: restoredOnStop.every((build) => build.ok) });
+          writeJson(join(plan.evidenceDir, `batch-${plan.batchId}.json`), { plan, batchLog, stopped: 'budget', consumed: used });
           return;
         }
         const result = await run(process.execPath, [
@@ -227,8 +323,19 @@ async function main() {
 
   await revertAll(plan);
   const builds = await buildPackages(packages);
-  log({ step: 'restored-baseline', packages, ok: builds.every((build) => build.ok) });
-  writeJson(join(plan.evidenceDir, `batch-${plan.batchId}.json`), { plan, batchLog, stopped: 'complete' });
+  const restored = builds.every((build) => build.ok);
+  log({ step: 'restored-baseline', packages, ok: restored });
+  // The marker is cleared only here, and only when the sources really are back at the baseline.
+  const finalDiff = await run('git', ['diff', '--name-only', '--', ...plan.candidatePaths]);
+  const stillChanged = finalDiff.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (restored && stillChanged.length === 0) await rm(statePath, { force: true });
+  else log({ step: 'restore-incomplete', restored, stillChanged, note: 'the recovery marker is kept so the next start refuses to run on this tree' });
+  recordBudget(registryPath, plan, {
+    stopReason: 'complete',
+    consumed: budgetOf(plan.ledger),
+    restoredBaseline: restored && stillChanged.length === 0,
+  });
+  writeJson(join(plan.evidenceDir, `batch-${plan.batchId}.json`), { plan, batchLog, stopped: 'complete', restoredBaseline: restored && stillChanged.length === 0 });
   appendJsonLine(join(plan.evidenceDir, 'batch-log.jsonl'), { batchId: plan.batchId, completedAt: new Date().toISOString() });
 }
 

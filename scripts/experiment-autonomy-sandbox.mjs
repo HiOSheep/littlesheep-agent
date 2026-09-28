@@ -30,8 +30,8 @@ import { classifyToolFailure, toolRoundFailurePolicy } from '../packages/harness
 import { beginSideEffect, describeSideEffect, settlementForResult } from '../packages/harness/dist/stages/execute/side-effect-ledger.js';
 import { createRunner } from '../packages/runner/dist/runner.js';
 import {
-  appendJsonLine, armFingerprint, assertLedgerRecord, configDigest, ensureDir, ledgerRecord,
-  readJsonLines, redactConfig, sha256, sourceDigest, writeJson,
+  appendJsonLine, armFingerprint, assertLedgerRecord, buildManifest, configDigest, ensureDir, ledgerRecord,
+  readJsonLines, redactConfig, sha256, sourceDigest, sourceDistAgreement, writeJson,
 } from './lib/experiment-ledger.mjs';
 import { RETRIEVAL_PROBES, URL_POLICY_PROBES, fixtureFor, promptHash } from './lib/experiment-fixtures.mjs';
 
@@ -983,6 +983,11 @@ const CHECKERS = {
   'RT-05-singlefile': rt05SingleFileChecks,
 };
 
+/** The WSL toolchain the host declares, if any. Never a repository literal: RA-01 removed the machine path. */
+function sandboxToolchainPaths() {
+  return (process.env.LS_EXPERIMENT_WSL_TOOLCHAIN ?? '').split(';').map((entry) => entry.trim()).filter((entry) => entry.startsWith('/'));
+}
+
 /** Same normalisation the file tools use for a resource key, so a declaration can actually match. */
 function normaliseResourcePath(path) {
   const trimmed = path.replace(/[\\/]+$/u, '');
@@ -1029,7 +1034,7 @@ async function runModelCase(args) {
   if (sandboxEnabled) {
     process.env.LS_EXPERIMENT_EXEC_BACKEND = 'wsl2-bwrap';
     process.env.LS_EXPERIMENT_SANDBOX = JSON.stringify({
-      workspace, network: 'none', toolchainPaths: ['/home/dev/.nvm/versions/node/v22.23.3'],
+      workspace, network: 'none', toolchainPaths: sandboxToolchainPaths(),
     });
     process.env.LS_EXPERIMENT_SANDBOX_AUDIT = join(runDir, 'sandbox-audit.jsonl');
   }
@@ -1052,6 +1057,10 @@ async function runModelCase(args) {
   const llm = injector.wrap(realClient);
 
   const source = sourceDigest(REPO_ROOT);
+  // RA-01: freeze what was actually loaded (the real ESM graph, not a fixed entry list) and whether the
+  // built artefacts still describe the sources.
+  const buildManifestDigest = buildManifest(REPO_ROOT, { config }).digest;
+  const sourceAgreement = sourceDistAgreement(REPO_ROOT);
   const toolEvents = [];
   const started = performance.now();
   let runner;
@@ -1128,15 +1137,36 @@ async function runModelCase(args) {
     outcomeLabel = artifactChecks.every((check) => check.pass) ? 'pass' : 'fail';
   }
 
+  // Backend and retry facts come from records this run actually produced, never from a placeholder. When a
+  // fact cannot be recovered the field says `unknown` instead of a plausible-looking default: an audit file
+  // that is missing means "no evidence the sandbox ran", which is exactly what must not be written as host.
+  const sandboxAudit = readJsonLines(join(runDir, 'sandbox-audit.jsonl'));
+  const observedBackends = [...new Set(sandboxAudit.map((entry) => entry.actualBackend).filter(Boolean))];
+  const requestedBackends = [...new Set(sandboxAudit.map((entry) => entry.requestedBackend).filter(Boolean))];
+  const usage = usageOf(result);
+  const retryFacts = usage.status === 'reported'
+    && typeof usage.observedAttemptCount === 'number'
+    && typeof usage.requestCount === 'number'
+    ? Math.max(0, usage.observedAttemptCount - usage.requestCount)
+    : 'unknown';
+
   const record = ledgerRecord({
     batchId, caseId, arm, trial,
     runId: result?.runId ?? null,
     sourceHash: source.digest,
+    buildManifest: buildManifestDigest,
     promptHash: promptHash(fixture.prompt),
     configHash: configDigest(config),
     authorizationRef: `permissionPolicyId=${policy};approve=always-true;isolated-data-root`,
-    requestedBackend: 'host',
-    actualBackend: 'host',
+    requestedBackend: requestedBackends.length === 1 ? requestedBackends[0] : (requestedBackends.length === 0 ? 'unknown' : requestedBackends),
+    actualBackend: observedBackends.length === 1 ? observedBackends[0] : (observedBackends.length === 0 ? 'unknown' : observedBackends),
+    backendEvidence: {
+      source: sandboxAudit.length > 0 ? 'host-side sandbox audit file' : 'none',
+      auditLines: sandboxAudit.length,
+      note: sandboxAudit.length === 0
+        ? 'no audit line exists for this run, so no isolation claim is recorded'
+        : 'each audit line was written by the host around the process the tool started',
+    },
     injection: injector.state.applied,
     targetTriggered: targetTriggered(caseId, summary, injector.state.applied),
     outcome: outcomeLabel,
@@ -1145,14 +1175,17 @@ async function runModelCase(args) {
       ? [{ kind: 'permission_prompts', count: summary.permissionPromptCount }, { kind: 'approval_callbacks', count: approvalsGiven }, { kind: 'human_interventions', count: 0, note: 'auto-approved experiment; counts are structural, not user effort' }]
       : [],
     refusals: summary?.refusals ?? [],
-    usage: usageOf(result),
-    retries: 0,
+    usage,
+    retries: retryFacts,
     elapsedMs,
-    sandboxChecks: [],
+    sandboxChecks: sandboxAudit.map((entry) => ({ commandHash: entry.commandHash ?? null, actualBackend: entry.actualBackend })),
     evidenceRefs: [runDir],
     limitations: [
       'single-arm trial; section 5 requires the batch, not one trial, before any conclusion',
       'the reply is published by a real model, so a failed artifact check is a measurement, not by itself a runtime defect',
+      ...(sourceAgreement?.agree === false
+        ? ['the built artefacts were older than the newest source file when this run started, so the bytes that ran may not match the recorded sources']
+        : []),
     ],
     status: summary?.status ?? 'error',
     replyHash: summary ? sha256(summary.reply) : null,
@@ -1210,6 +1243,7 @@ function usageOf(result) {
     totalTokens: usage.totalTokens ?? null,
     cachedPromptTokens: usage.cachedPromptTokens ?? null,
     requestCount: usage.requestCount ?? null,
+    observedAttemptCount: usage.observedAttemptCount ?? null,
     usageCompleteness: usage.usageCompleteness ?? null,
     cost: BUDGET.pricing,
   };
@@ -1219,7 +1253,16 @@ function usageOf(result) {
 
 async function runSandboxMode(args) {
   const { runSandboxCases } = await import('./lib/experiment-sandbox.mjs');
-  return runSandboxCases(args, { BUDGET, EVIDENCE_ROOT: evidenceRootOf(args), REPO_ROOT, ledgerPath: ledgerPath(args), out, gitFacts, sourceDigest });
+  return runSandboxCases(args, {
+    BUDGET,
+    EVIDENCE_ROOT: evidenceRootOf(args),
+    REPO_ROOT,
+    ledgerPath: ledgerPath(args),
+    out,
+    gitFacts,
+    sourceDigest,
+    buildManifest: buildManifest(REPO_ROOT),
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────── main

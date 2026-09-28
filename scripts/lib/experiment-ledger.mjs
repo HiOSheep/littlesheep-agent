@@ -13,7 +13,7 @@
 // marker and `configDigest` hashes the redacted projection, so a digest can be published while the
 // configuration it identifies stays local.
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
 /** The section-8 minimum per-run ledger field set. `assertLedgerRecord` enforces presence. */
@@ -110,6 +110,106 @@ export function sourceDigest(repoRoot, options = {}) {
   return { digest: hash.digest('hex'), fileCount: files.length, dist };
 }
 
+/**
+ * What the run actually loaded, not just what was edited.
+ *
+ * RA-01 requires the frozen input to cover the built artefacts **and their transitive modules**: hashing a
+ * fixed list of five dist entry points cannot distinguish two trees whose loaded code differs, because the
+ * entry points import dozens of chunks. This walks the real ESM import graph from the entry points the
+ * runner resolves, so the digest changes when any loaded byte changes.
+ *
+ * It also reports whether `src` and `dist` agree, so a batch taken while a patch was applied to source but
+ * not rebuilt can be rejected instead of being reported under a source hash it never executed.
+ */
+export function buildManifest(repoRoot, options = {}) {
+  const entries = options.entries ?? [
+    'packages/runner/dist/runner.js',
+    'packages/harness/dist/index.js',
+    'packages/tools/dist/index.js',
+    'packages/safety/dist/index.js',
+    'packages/types/dist/index.js',
+    'packages/llm/dist/index.js',
+  ];
+  const seen = new Set();
+  const missing = [];
+  const walk = (relPath) => {
+    if (seen.has(relPath)) return;
+    const absolute = join(repoRoot, relPath);
+    if (!existsSync(absolute)) { missing.push(relPath); return; }
+    seen.add(relPath);
+    const source = readFileSync(absolute, 'utf8');
+    // Static ESM imports and re-exports, which is how this repository's dist is wired.
+    for (const match of source.matchAll(/(?:^|\n)\s*(?:import|export)[^'"\n]*?from\s*['"](\.[^'"]+)['"]/gu)) {
+      const target = relPath.slice(0, relPath.lastIndexOf('/') + 1) + match[1];
+      walk(target.replace(/\/\.\//gu, '/'));
+    }
+  };
+  for (const entry of entries) walk(entry);
+  const modules = [...seen].sort();
+  const hash = createHash('sha256');
+  for (const module of modules) {
+    hash.update(module).update('\0').update(readFileSync(join(repoRoot, module))).update('\0');
+  }
+  const lockfile = existsSync(join(repoRoot, 'pnpm-lock.yaml')) ? sha256File(join(repoRoot, 'pnpm-lock.yaml')) : null;
+  const fixtureFiles = (options.fixtures ?? [])
+    .filter((file) => existsSync(join(repoRoot, file)))
+    .map((file) => ({ file, sha256: sha256File(join(repoRoot, file)) }));
+  return {
+    digest: hash.digest('hex'),
+    moduleCount: modules.length,
+    modules,
+    missing,
+    lockfile,
+    fixtures: fixtureFiles,
+    configHash: options.config ? configDigest(options.config) : null,
+  };
+}
+
+/**
+ * Do the sources and the built artefacts describe the same tree?
+ *
+ * A batch that runs a patched `src` against an unpatched `dist` measures nothing, and that is exactly the
+ * mistake one round of this experiment made. The check is deliberately conservative: it compares the newest
+ * source modification against the entry points' modification times, so it can only report "possibly stale"
+ * — which is enough to refuse a batch rather than to certify it.
+ */
+export function sourceDistAgreement(repoRoot, packages = ['harness', 'tools', 'runner', 'safety', 'types', 'llm']) {
+  const newestSource = { path: null, mtimeMs: 0 };
+  for (const pkg of packages) {
+    const dir = join(repoRoot, 'packages', pkg, 'src');
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+      const path = join(entry.parentPath ?? dir, entry.name);
+      const { mtimeMs } = statSync(path);
+      if (mtimeMs > newestSource.mtimeMs) {
+        newestSource.mtimeMs = mtimeMs;
+        newestSource.path = relative(repoRoot, path).replaceAll('\\', '/');
+      }
+    }
+  }
+  const newestDist = { path: null, mtimeMs: 0 };
+  for (const pkg of packages) {
+    const dir = join(repoRoot, 'packages', pkg, 'dist');
+    if (!existsSync(dir)) continue;
+    for (const entry of readdirSync(dir, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
+      const path = join(entry.parentPath ?? dir, entry.name);
+      const { mtimeMs } = statSync(path);
+      if (mtimeMs > newestDist.mtimeMs) {
+        newestDist.mtimeMs = mtimeMs;
+        newestDist.path = relative(repoRoot, path).replaceAll('\\', '/');
+      }
+    }
+  }
+  return {
+    agree: newestSource.mtimeMs <= newestDist.mtimeMs,
+    newestSource,
+    newestDist,
+    note: 'a source file newer than every built module means the batch may have run code the sources do not describe',
+  };
+}
+
 /** Which arm the currently built tree represents, decided from facts rather than from a flag. */
 export function armFingerprint(repoRoot) {
   const tracked = [
@@ -191,6 +291,10 @@ export function ledgerRecord(input) {
     sandboxChecks: input.sandboxChecks ?? [],
     evidenceRefs: input.evidenceRefs ?? [],
     limitations: input.limitations ?? [],
+    // RA-01 additions: the frozen loaded-artefact digest and the provenance of the backend fact, so a
+    // reader can tell "no sandbox ran" from "a sandbox ran and was reported".
+    buildManifest: input.buildManifest ?? 'unknown',
+    backendEvidence: input.backendEvidence ?? { source: 'none', note: 'no backend evidence was collected for this record' },
     recordedAt: input.recordedAt ?? new Date().toISOString(),
     status: input.status ?? null,
     replyHash: input.replyHash ?? null,

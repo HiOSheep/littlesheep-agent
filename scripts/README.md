@@ -1,8 +1,25 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 14:40:12
+最后更新：2026-09-28 19:36:34
 
-`verify-window-layout.mjs`（根 `package.json` 里是 `pnpm run verify:window-layout`）验证真实 Electron 窗口的窗口镶边几何：Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，并逐状态断言**钉在窗口左上角的三个导航控件**（侧栏开关、返回、前进）坐标逐像素相同而侧栏轨道宽度确实在变（展开 / 折叠 / 拖宽中三态），按 1px 采样整条顶边确认 `.window-titlebar` 与 `.window-drag-band` 无缝覆盖 `[0,width)`（唯一不拖拽岛是控件自己），再用真实指针拖动 band 断言原生窗口位移等于请求值、真实点击开关能把折叠的侧栏打开。夹具跑在标准验收 Provider 上（`acceptance/slow-a`），窗口因此处于 Runtime 就绪的普通状态：早先的 `model: ""` 夹具解析配置就失败，整窗失败条会盖住工作区面板角标，脚本是在自己的夹具上失败而不是在它要测量的布局上失败。产出临时目录中的截图（含 `corner-*.png` 左上角特写）与 results.json。**真实命中区**（`nativeHitTest`）：每个状态的控件"可点"不能只由 `elementFromPoint` 或 CDP 合成点击证明——两者都在窗口的原生 draggable region **之下**，而用户真正的鼠标按下先被那一层过滤。脚本因此额外对窗口句柄发 `WM_NCHITTEST`（内联 `pwsh`，`SendMessage` 到 `layoutWindow.getNativeWindowHandle()`），断言三个控件中心是 `HTCLIENT`（1，页面收得到点击）、岛的左/右/下邻位与标题栏中心是 `HTCAPTION`（2，仍是窗口拖拽面），并用一个普通正文点做 `HTCLIENT` 对照证明这条探针确实在回答；`setup` 用窗口自身的几何换算坐标（`getContentBounds()` 是 DIP，乘所在显示器的 scale factor 得到 `WM_NCHITTEST` 需要的物理坐标），**不移动窗口**：搬动会经 DIP↔物理的往返把窗口尺寸每次放大一个像素，正好会破坏脚本下面断言的精确几何。`--desktop-backdrop` 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。
+`verify-window-layout.mjs`（根 `package.json` 里是 `pnpm run verify:window-layout`）验证真实 Electron 窗口的窗口镶边几何：Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，并逐状态断言**钉在窗口左上角的三个导航控件**（侧栏开关、返回、前进）坐标逐像素相同而侧栏轨道宽度确实在变（展开 / 折叠 / 拖宽中三态），按 1px 采样整条顶边确认 `.window-titlebar` 与 `.window-drag-band` 无缝覆盖 `[0,width)`（唯一不拖拽岛是控件自己），再用真实指针拖动 band 断言原生窗口位移等于请求值、真实点击开关能把折叠的侧栏打开。夹具跑在标准验收 Provider 上（`acceptance/slow-a`），窗口因此处于 Runtime 就绪的普通状态：早先的 `model: ""` 夹具解析配置就失败，整窗失败条会盖住工作区面板角标，脚本是在自己的夹具上失败而不是在它要测量的布局上失败。产出临时目录中的截图（含 `corner-*.png` 左上角特写）与 results.json。**真实命中区**（`nativeHitTest`）：每个状态的控件"可点"不能只由 `elementFromPoint` 或 CDP 合成点击证明——两者都在窗口的原生 draggable region **之下**，而用户真正的鼠标按下先被那一层过滤。脚本因此额外对窗口句柄发 `WM_NCHITTEST`（内联 `pwsh`，`SendMessage` 到 `layoutWindow.getNativeWindowHandle()`），断言三个控件中心是 `HTCLIENT`（1，页面收得到点击）、岛的左/右/下邻位与标题栏中心是 `HTCAPTION`（2，仍是窗口拖拽面），并用一个普通正文点做 `HTCLIENT` 对照证明这条探针确实在回答；`setup` 用窗口自身的几何换算坐标（`getContentBounds()` 是 DIP，乘所在显示器的 scale factor 得到 `WM_NCHITTEST` 需要的物理坐标），**不移动窗口**：搬动会经 DIP↔物理的往返把窗口尺寸每次放大一个像素，正好会破坏脚本下面断言的精确几何。探针本体已抽成共享库 `lib/native-hit-test.mjs`（约定见下），本脚本只保留自己的取样点与断言。`--desktop-backdrop` 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。
+
+## 约定：窗口 chrome 的"能不能点"按原生命中判定
+
+最后更新：2026-09-28 19:36:34
+
+**任何改动只要涉及窗口 chrome、拖动区（`-webkit-app-region`）、窗口顶边或顶栏控件，就必须用原生 `WM_NCHITTEST` 断言受影响的控件收到真实点击。** `document.elementFromPoint` 与 CDP 合成点击**不能**替代它：2026-09-28 实测，在"真实鼠标按下去没反应"的构建上这两项全部通过——渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 用窗口自己的 `WM_NCHITTEST` 解析它，控件中心返回 `HTCAPTION` 时那次按下变成 caption 交互，页面根本收不到。DOM 检查与 CDP 点击的结论只能作为补充证据，不能作为"用户点得到"的结论。
+
+判定 API 在 `scripts/lib/native-hit-test.mjs`：
+
+- `createNativeHitTest({ main, pointsPath })` 取一条连到 Electron 主进程的 CDP 客户端（`main`），返回探针；`pointsPath` 是可选的点位临时文件路径。
+- `probe(points)` 对每个 `{ label, x, y }`（**CSS 坐标，相对内容区**）返回 `{ label, hit, name, kind, client, caption, captionButton, css, physical }`。`kind` 只会是 `client` / `caption` / `caption-button` / `other` / `unavailable`；`client === true` 就是"真实按下会送到页面"。
+- `assertClientHits(points, label)` 是这条约定的直接断言：任一点不是 `HTCLIENT` 就抛错，错误信息带 `win32 hit test <值> <名字> at css <x>,<y>`。`assertCaptionHits(points, label)` 是镜像断言：这些点必须仍然是窗口拖拽面（`HTCAPTION`）。
+- `probeMap(points)` 返回 `{ [label]: hit }`，供想自己比对的调用方使用；`describeHit` / `describeHitName` / `isClientHit` / `isCaptionHit` / `isCaptionButton` 与 `HTCLIENT` / `HTCAPTION` 等常量一并导出。
+
+调用方要传的两个事实：库读 `layoutElectron` 与 `layoutWindow` 这两个主进程全局量（不存在时回退到 `BrowserWindow.getAllWindows()[0]`），坐标换算用**窗口自身**的 `getContentBounds()`（DIP）乘所在显示器的 scale factor 得到物理坐标；**窗口不会被移动**——搬动会经 DIP↔物理往返把尺寸每次放大约一个像素，破坏精确几何断言。探针经 `pwsh` 运行并先调用 `SetProcessDpiAwarenessContext`，因为非 DPI 感知进程拿到的是被虚拟化的坐标。**平台边界**：只在 Windows 上作答，其他平台 `probe()` 返回 `undefined`，调用方的断言显式跳过，而不是静默通过。
+
+判别力由 `scripts/probe-native-hit-test.mjs`（`node scripts/probe-native-hit-test.mjs`）证明，它每次启动一个真实窗口并跑两种情况：正常构建里侧栏开关中心是 `HTCLIENT`、`assertClientHits` 通过；把该控件的盒子用诊断样式改成 `-webkit-app-region: drag` 之后，**同一个点**变成 `HTCAPTION`、同一个断言失败，而两次 `elementFromPoint` 都报告控件自己在最上面。探针注入的是运行时样式、不改 `packages/`，报告写在仓库外（`lib/run-artifacts.mjs` 的 `native-hit-test-probe/`）。一个测不出差异的探针等于没有：这个脚本就是这台探针的自检，改库之后要重跑它。
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
