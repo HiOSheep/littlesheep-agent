@@ -1,6 +1,6 @@
 # LittleSheep 插件开发说明
 
-最后更新：2026-09-22 10:56:22
+最后更新：2026-09-28 23:56:38
 
 本文件定义 LittleSheep 插件系统的当前事实、开发契约和安全边界。插件用于给 LS 增加可选能力，但不能改变“本地核心在没有插件时仍可完整运行”的约束。
 
@@ -215,7 +215,9 @@ renderer 只通过这些接口管理插件，不直接 import 或执行第三方
 
 ## 维护与验证
 
-插件系统变更至少运行：
+验证范围按改动实际触及的边界选择，不按“文件发生过变化”升级为全量检查。
+
+贡献契约、manifest 校验、权限与信任边界、生命周期或迁移语义变化时，至少运行：
 
 ```powershell
 pnpm.cmd exec vitest run packages/skills/src/loader.test.ts packages/memory-tree/src/memory-service.test.ts packages/plugins/src/manifest.test.ts packages/plugins/src/host.test.ts packages/plugins/src/local-loader.test.ts packages/app/src/main/builtin-plugins.test.ts
@@ -223,7 +225,7 @@ pnpm.cmd --filter @littlesheep/plugins typecheck
 pnpm.cmd --filter @littlesheep/app typecheck
 ```
 
-合入前仍需执行全仓质量检查：
+同一改动还要按影响面继续扩大：跨进程契约、启动或恢复语义变化时，加跑全仓质量检查：
 
 ```powershell
 pnpm.cmd run check:repo
@@ -232,5 +234,7 @@ pnpm.cmd run typecheck
 pnpm.cmd run build
 pnpm.cmd run verify:app-recovery
 ```
+
+纯内部实现、私有 helper 和插件目录内的局部调整用定向测试加受影响包 typecheck 即可；无法证明影响范围时按扩大档执行。未运行或跳过的检查必须如实标注，不能当作通过。
 
 新增能力时必须覆盖：合法/非法 manifest、未启用不加载、显式信任、本地入口逃逸、重复 id、贡献冲突、激活失败隔离、Runner 重建迁移、插件 Skill 启停/移除/路径迁移/同名冲突、停用清理和内置目录与实际模块 manifest 一致性。

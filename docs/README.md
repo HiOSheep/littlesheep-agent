@@ -1,8 +1,8 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-27 22:28:11
+最后更新：2026-09-29 00:21:45
 
-本页是正式文档的唯一首要入口。日常决策先看本页，不要从任务书、仓库指南或架构长文开始阅读。
+本页是正式文档的唯一首要入口。它与[仓库指南](reference/repository-guide.md)的「开发约定（coding agent 的唯一短规则）」共同构成开发本仓库时的规则边界：本页只做导航，短规则与验证分档由仓库指南拥有，不要在这里维护第二份启动读序。
 
 ## 现在先做什么
 
@@ -36,8 +36,9 @@
 
 ## 已决定方向后再看任务书
 
-- [Runtime 自主执行与沙箱边界验证任务书 2026-09-27](taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md)：12 项实验任务，分别验证检索准入、参数纠错、相同命令重测与重复观察的真实代价，以及 Windows 原生 / WSL2 执行隔离的兼容性、安全边界与审批收益；含冻结条件、证据分层和结果回传模板。当前待执行，完成后交回审阅，再决定正式改造。
+- [Runtime 自主执行与沙箱边界验证任务书 2026-09-27](taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md)：首轮 12 项实验已交付，独立审阅发现 Runtime 候选、沙箱验收器和证据口径仍需补正；第 10 节新增 RA-01～RA-10 执行清单，按证据修正、Runtime 候选、沙箱边界、真实入口验收和再次审阅推进。原始结果保留，尚未批准候选正式采用或沙箱默认启用。
 - [LS 前端简洁高效化改造任务书 2026-09-27](taskbooks/frontend-simplification-taskbook-2026-09-27.md)：保留磨砂玻璃与连续圆角，按输出展示、设置页、图标与视觉、交互与动画划分 O1～O6、S1～S6、V1～V5、I1～I5 共 22 项任务；新增字号、深浅／系统主题、自定义配色及参考本地 DSH 插件的 Token 用量热力图，含数据口径、依赖、验收与执行台账。阶段 0 已开始；本次新增五项仅完成规划，尚未实施。
+- 仓库开发 Agent 约束瘦身（2026-09-28，任务书已退役）：GA-00～GA-03、GA-05 已落地——短规则与验证分档归入[仓库指南](reference/repository-guide.md)的「开发约定（coding agent 的唯一短规则）」，秒级时间戳与 README chronology 门已删除、行数类结构阈值改为提示而结构完整性仍是硬门，结论与样本边界见[项目状态](decision/project-status.md)的「仓库开发 Agent 约束瘦身」。**原文尚未进入 Git 历史**：退役删除还没有提交，文本目前是可被 gc 回收的悬挂 blob 与一份机器本地副本，取回方式见该节。
 - 整仓瘦身与冗余收口（2026-09-27，任务书已退役）：结果、实测数字、修正过的依赖边判断与仍开放项见[项目状态](decision/project-status.md)中的同名小节；改动前基线见[基线账本](reference/repository-slimming-baseline-2026-09-27.md)。任务书全文留在 Git 历史。
 - [整仓瘦身基线账本（SL-00）2026-09-27](reference/repository-slimming-baseline-2026-09-27.md)：把改动前基线绑定到 HEAD `ec527a7e` 与工作区差异摘要——`git ls-files` 1,930 项 / HEAD blob 18,351,219 字节、package TS/TSX 非测试 153,887 行与测试 96,273 行、`scripts/` 67,377 行、111 个误入库生成物（271,959 字节，测量时已由 SL-01 从工作树删除）、只读现算的 App 构建 input/output 指纹、本地目录字节与 win32/x64 平台；同时记录 SL-03 的改动前后与 taskbook Skill 取证输出。未重建、未运行，因此不含提速结论。
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
@@ -77,14 +78,15 @@
 | 2026-09-24 | 缓存基线 5 份被取代或只是账本渲染的文档 | [缓存基线](reference/cache-baseline/README.md) 的批次历史表；机器可读账本 `.json` 全部保留（gate 输入，且冷启动/重建/尾部三类分解的唯一副本） |
 | 2026-09-26 | 应用层 UI / UX 优化与统一任务书 2026-09-22（UX-32～UX-39） | [项目状态](decision/project-status.md) 的"应用层 UI 与工作区（2026-09-26）"（含"同一批验收记录的开放边界"）与各 package / 领域 README、`scripts/README.md`；本轮修掉的四个真实窗口缺陷（终端面板空面板、切回标签键盘失效、每会话一条流耗尽连接、重放污染下一条命令）记录在同文件的终端会话条目 |
 | 2026-09-27 | Runtime 状态一致性与必要记忆任务书 2026-09-22、Harness 当前语义与历史复杂度收口任务书 2026-09-25、对话任务连续性 P0 专项任务书 2026-08-13 | [项目状态](decision/project-status.md) 的三个对应小节（"文件一致性与受控记忆（2026-09-27）"、"Harness 当前语义（2026-09-27）"、"对话连续性（2026-09-27）"） |
+| 2026-09-29 | 仓库开发 Agent 约束瘦身任务书 2026-09-28（GA-00～GA-03、GA-05 落地；GA-04 只完成试点） | [仓库指南](reference/repository-guide.md)（开发约定短规则、README 同步口径与评审三问、L1～L4 验证分档）、[项目状态](decision/project-status.md) 的"仓库开发 Agent 约束瘦身（2026-09-29）"（批次结果、GA-04 试点读数与样本边界、退役原文的取回方式）与"P1：效率基线"（配对试验未完成） |
 
-本页保留的机器事实：`check:repo` 的 `required` 列表不固定任何任务书（`scripts/check-repository-hygiene.mjs:189-199`），任务书数量受[仓库指南](reference/repository-guide.md)所述预算约束。
+本页保留的机器事实：`check:repo` 的 `required` 列表不固定任何任务书（见 `scripts/check-repository-hygiene.mjs` 的 `checkCanonicalFiles`），任务书数量受[仓库指南](reference/repository-guide.md)所述预算约束，且该预算现在是提示而非硬门。
 
 任务书中出现的 `CLASSIFY`、`chat / problem / unclear`、旧测试数量和旧 Catalog 版本属于对应阶段的历史验收语境。当前活动路由只产出 `execute` 与能力/状态 `reply` 两条路径；`decide`、`evolve`、`capture` 只作为历史 stage 名保留在旧检查点与兼容字段里，不得再作为新的产品概念使用——路由与兼容边界由[项目状态](decision/project-status.md)的"核心流程（当前）"与 [Core Flow 状态契约](reference/core-flow-state-contract.md)拥有。
 
 ## 需要定位代码或维护仓库时
 
-- [仓库指南](reference/repository-guide.md)：需求类型对应的 package、入口、测试、依赖和维护流程。
+- [仓库指南](reference/repository-guide.md)：需求类型对应的 package、入口、测试、依赖和维护流程；开发本仓库的短规则、README 同步口径与 L1～L4 验证分档都在这里，不再另立一份入口。
 - [模块拆分地图](reference/module-split-map.md)：大型生产文件的所有权、上限和拆分边界。
 - [Core Flow 状态契约](reference/core-flow-state-contract.md)：唯一 Stage 转移 manifest、非法边拒绝和 RunContext ownership/lifecycle 边界。
 - [插件开发说明](reference/plugin-development.md)：插件贡献、权限、生命周期和兼容规则。
