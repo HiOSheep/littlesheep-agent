@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { VIEW_STATES, viewStateSpec } from './state-view'
+import { VIEW_STATES, viewStateSpec } from './state-view-specs'
 import { describe, expect, it } from 'vitest'
 
 /**

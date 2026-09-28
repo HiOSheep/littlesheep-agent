@@ -178,11 +178,11 @@ describe('settings workspace surface', () => {
     expect(control).toContain('border-radius: var(--settings-control-radius)')
   })
 
-  it('centres the settings empty state instead of stretching its rows', () => {
-    // The empty state is the settings twin of the shared `.state-view`; without
-    // `align-content` the `min-height` free space is shared out between the rows and the
-    // declared 7px gap renders as 26-29px with each child's box over its own line box.
-    expect(ruleBody('.settings-module-empty')).toContain('align-content: center')
+  it('centres the shared state view and keeps no settings-only empty twin', () => {
+    // The empty state used to be a settings twin of `.state-view` with its own
+    // `align-content` fix. V3 moved the settings pages onto the shared view, so the
+    // twin is deleted: a page that goes back to a bespoke empty box fails here.
     expect(ruleBody('.state-view')).toContain('align-content: center')
+    expect(styles).not.toContain('.settings-module-empty')
   })
 })

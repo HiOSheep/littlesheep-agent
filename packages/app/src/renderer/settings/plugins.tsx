@@ -10,6 +10,7 @@ import {
 } from '../api'
 import { PluginIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { StateView } from '../ui/state-view'
 
 
 export type PluginListFilter = 'all' | 'builtin' | 'local' | 'channel' | 'tool' | 'skill'
@@ -364,11 +365,15 @@ export function SettingsPluginsPage() {
       )}
 
       {!loading && status && filteredPlugins.length === 0 && (
-        <div className="settings-module-empty">
-          <div className="settings-module-empty-icon" aria-hidden="true"><PluginIcon /></div>
-          <strong>没有匹配的插件</strong>
-          <span>{query.trim() || filter !== 'all' ? '调整关键词或筛选条件后再试。' : '将插件放入用户插件目录后重新加载。'}</span>
-        </div>
+        // Empty, not unavailable: the plugin status was read successfully and the
+        // current query/filter matches nothing. The shared view keeps the neutral
+        // tray mark, so this can never be read as a failure or as a switched-off
+        // capability (V3; the two facts used to share one grey box).
+        <StateView
+          state="empty"
+          title="没有匹配的插件"
+          description={query.trim() || filter !== 'all' ? '调整关键词或筛选条件后再试。' : '将插件放入用户插件目录后重新加载。'}
+        />
       )}
 
       {status && status.diagnostics.length > 0 && (

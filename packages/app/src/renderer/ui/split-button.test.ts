@@ -19,6 +19,7 @@ import { SplitButton } from './split-button'
 ;(globalThis as { React?: typeof React }).React = React
 
 const base = {
+  icon: React.createElement('span'),
   label: '终端 Shell：没有可用的 Shell',
   primaryTip: '用 没有可用的 Shell 新建终端',
   menuLabel: '选择终端 Shell',

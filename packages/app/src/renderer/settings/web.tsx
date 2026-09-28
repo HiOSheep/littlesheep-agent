@@ -2,7 +2,7 @@ import { SettingsSelect } from './select'
 import { useEffect, useState } from 'react'
 import type { RuntimeWebPatch, RuntimeWebState } from '../../shared/runtime-api-contracts'
 import { checkWebProvider, clearWebCache, getRuntime, saveWebProvider, updateRuntime } from '../api/runtime'
-import { statusLabel } from './web-state'
+import { statusLabel, webProviderCheckBlockedReason } from './web-state'
 
 export function SettingsWebPage() {
   const [web, setWeb] = useState<RuntimeWebState | null>(null)
@@ -82,6 +82,16 @@ export function SettingsWebPage() {
 
   if (!web) return <div className="settings-module-page"><div className="web-settings-status">正在读取网络策略...</div></div>
 
+  // One judgement for both the button's disabled state and the reason it publishes,
+  // so a greyed-out control can never be silent about which fact stopped it.
+  const checkBlockedReason = webProviderCheckBlockedReason({
+    checking: checkingProvider,
+    savingKey: savingProvider,
+    providerConfigured: web.providerConfigured,
+    enabled: web.enabled,
+    readMode: web.readMode,
+  })
+
   return (
     <div className="settings-module-page web-settings-page">
       <header className="settings-module-heading">
@@ -142,11 +152,19 @@ export function SettingsWebPage() {
       <button
         type="button"
         className="web-provider-check"
-        disabled={checkingProvider || savingProvider || !web.providerConfigured || !web.enabled || web.readMode === 'disabled'}
+        disabled={checkBlockedReason !== null}
+        aria-describedby={checkBlockedReason ? 'web-provider-check-reason' : undefined}
+        title={checkBlockedReason ?? undefined}
         onClick={() => void checkProvider()}
       >
         {checkingProvider ? '检查中…' : '检查 Tavily 连接'}
       </button>
+      {checkBlockedReason && (
+        // The reason is published, not implied: a disabled control that cannot say
+        // why is a dead end (`ui/README.md`, V3 "禁用原因可查"). Same sentence in
+        // the accessible description, the tooltip and this visible line.
+        <small className="web-provider-note" id="web-provider-check-reason" role="status">{checkBlockedReason}</small>
+      )}
       <small className="web-provider-note">密钥由本机加密存储；网络开关、查询外发和网页读取仍由上方策略控制。</small>
         </div>
       </section>

@@ -7,7 +7,7 @@
 // and a sentence saying why.
 import type { ReactNode } from 'react'
 import { EmptyIcon, FailureIcon, UnavailableIcon } from './state-icons'
-import { viewStateSpec, type ViewState } from './state-view'
+import { viewStateSpec, type ViewState } from './state-view-specs'
 
 interface StateViewBaseProps {
   /** Short statement of the fact, in the user's words. */

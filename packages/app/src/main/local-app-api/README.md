@@ -1,6 +1,6 @@
 # Local App API
 
-最后更新：2026-09-27 23:12:01
+最后更新：2026-09-28 23:56:31
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
 
@@ -71,7 +71,7 @@
 - `writeSse()` 在响应已关闭时安全返回；Node 的普通背压不会立即断流，只有累计待写数据越过 512 KiB 上限才关闭该观察连接。不得通过无界排队补偿慢客户端。
 - Git 审阅必须复用同一份仓库快照：普通仓库使用一次带 `--branch --ahead-behind` 的状态查询解析分支、upstream 和 ahead/behind，staged Diff 同时兼容无首个 commit 的仓库；文件 Diff 必须携带快照 revision，陈旧 revision 返回 409，不能为旧树隐式重扫仓库。
 - 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
-- 修改后运行 App typecheck、对应 API 特征测试、全量测试、构建和恢复检查。
+- 验证按风险分级，不按目录一刀切：涉及权限或边界判定、路由或接口契约、恢复与持久化语义、生命周期变化时，保留 App typecheck + 对应 API 特征测试 + 恢复检查，跨包契约变化时升级 `verify:core`／`verify:full`；只改内部实现或修私有缺陷时，定向测试 + 受影响 typecheck 即可。selector 无法证明影响范围时扩大验证；`skipped` 不等于通过，也不能用旧结果放行没有重跑的检查。
 
 ## 静态服务的资源失败记录（UX-25 第 4 条）
 
