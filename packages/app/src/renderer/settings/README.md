@@ -1,5 +1,5 @@
 # Renderer 设置
-最后更新：2026-09-28 23:03:00
+最后更新：2026-09-28 23:14:25
 
 当前设置呈现采用参考图的分组卡片：分组标题位于卡片外，卡片统一 18px 圆角、细边框与内缩分隔线。setting-row.tsx 提供左侧说明/右侧控件布局，select.tsx 提供圆角值按钮和带选中勾的下拉菜单；界面密度、Agent 行为、关闭窗口方式及四种网络策略已接入，原配置值和保存接口不变。菜单支持方向键/Home/End、Enter、Escape、Tab、点击外部关闭；使用已有 Escape 层级，关闭菜单不会同时退出设置，菜单通过 portal 挂在 document.body 并在视口底部向上展开。菜单模糊仅存在于浮层，正文卡片保持实体底色。此段取代下方历史的“设置页不画框线”和展开式 profile-choice 布局说明。真实窗口验收：node scripts/verify-settings-cards.mjs，先运行 pnpm run ensure:app-build；覆盖选择与重载保留、菜单关闭、设置不误退出、800px 窄窗口和视口避让。
 
