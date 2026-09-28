@@ -191,3 +191,29 @@
   .settings-value-row { gap: 12px; }
   .settings-value-control { max-width: 180px; }
 }
+
+/* Surface fixes after the user reported three visible defects on the redesigned settings page: highlights that
+   do not fill their surface, controls whose styling drifts from the rest of the app, and separator lines that do
+   not read cleanly. The highlight rule is the standard pattern: the menu clips its own rounded corners, and the
+   rows inside it are full-bleed, so a hovered or selected row paints edge to edge instead of as an inset chip.
+   The same applies to a hovered settings row inside a card. Radii come from the app's own tokens so the new
+   controls cannot drift from every other control. */
+.settings-select-menu {
+  overflow: hidden;
+  padding-block: 4px;
+}
+.settings-select-menu > button {
+  width: 100%;
+  margin-inline: 0;
+  border-radius: 0;
+}
+.settings-workspace-body .settings-overview-row {
+  margin-inline: 0;
+  border-radius: 0;
+}
+.settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-additional-row, .settings-overview-row):last-child {
+  border-bottom: 0;
+}
+.settings-select {
+  border-radius: var(--radius-ui);
+}
