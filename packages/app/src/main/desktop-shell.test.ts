@@ -31,16 +31,25 @@ describe('desktop shell window cleanup', () => {
   })
 
   it('surfaces bootstrap failures on the visible startup page', async () => {
-    const [shell, entry] = await Promise.all([
+    const [shell, entry, startup] = await Promise.all([
       readFile(new URL('./desktop-shell.ts', import.meta.url), 'utf8'),
       readFile(new URL('./index.ts', import.meta.url), 'utf8'),
+      readFile(new URL('./desktop-startup-page.ts', import.meta.url), 'utf8'),
     ])
 
-    expect(shell).toContain('showStartupError(error: unknown)')
-    expect(shell).toContain('{ errorMessage: message }')
+    // The page is created *with* the failure: the handler loads the standalone
+    // document carrying the error and whether Main can offer a retry, and the
+    // document only grows the retry control when that flag arrives.
+    expect(shell).toContain('showStartupError(error: unknown, options: { retryable?: boolean } = {}): void')
+    expect(shell).toContain("const loading = win.loadURL(createDesktopStartupPageUrl(")
+    expect(shell).toContain('{ errorMessage: message, retryable: options.retryable === true }')
+    expect(startup).toContain("errorMessage && options.retryable === true")
+    // And the bootstrap failure is what reaches it: the catch marks the failure
+    // retryable, then shows it on the page while no renderer exists.
     expect(entry).toContain("void bootstrap().catch((error: unknown) => {")
-    expect(entry).toContain('desktopShell.showStartupError(error)')
-    expect(entry).toContain('readiness.fail(')
+    expect(entry).toContain('const failure = readiness.fail(')
+    expect(entry).toContain('{ retryable: true }')
+    expect(entry).toContain('desktopShell.showStartupError(error, { retryable: failure.retryable })')
   })
 
   it('keeps the standalone failure page for failures that precede the renderer', async () => {
@@ -55,7 +64,11 @@ describe('desktop shell window cleanup', () => {
     // instead of depending on which navigation wins a race.
     expect(shell).toContain('hasLoadedRenderer(): boolean')
     expect(shell).toContain('this.rendererLoadedWindows.has(window)')
-    expect(entry).toContain('if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error)')
+    expect(entry).toContain('if (!desktopShell.hasLoadedRenderer()) desktopShell.showStartupError(error, { retryable: failure.retryable })')
+    // The standalone page is a state, not the end: the retry's success path hands
+    // the same window to the renderer, which is what clears the guard above. The
+    // trailing `initialize()` is the retry's, not the one the normal startup runs.
+    expect(entry).toContain('desktopShell.initialize()\n  },\n  log: (message) => console.warn(`[retry] ${message}`),')
   })
 
   it('localizes one #101010 surface instead of a translucent startup overlay', async () => {
