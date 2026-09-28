@@ -1,6 +1,6 @@
 # LS 前端简洁高效化改造任务书 2026-09-27
 
-最后更新：2026-09-27 23:03:28
+最后更新：2026-09-28 14:52:31
 
 状态：实施中（阶段 0 已开始，见文末「阶段 0 执行记录」）。以用户编辑后的规划为准，现有 O1～O6、S1～S6、V1～V5、I1～I5 共 22 项任务。2026-09-27 追加自定义外观与 Token 用量热力图：O5、O6、S6、V4、V5 均为待实施；此次追加仅更新任务书与文档索引，不修改产品代码，不覆盖已有实施记录。
 
@@ -175,13 +175,13 @@ O1、I3 与基础样式整理可以独立推进；异常可见性不应等待设
 
 以下勾选表示任务已实现且对应验收通过，不表示规划已写好。实施时在每项后记录改动范围、验证方法、证据位置与仍未覆盖边界；I5 基线采集完成不等于 I5 最终验收完成。
 
-- [ ] O1：结果与异常层级。
+- [x] O1：结果与异常层级。（2026-09-28 补齐实机验收：`pnpm run verify:transcript-state-visibility` `ok: true`、59 项断言全过、18 张截图；四类组合在**普通与紧凑两种模式**下逐项取证——①整体完成但局部失败：`LS-O1-LOCAL-FAILURE-MARKER` 里一次 `read` 确定性失败而 run 仍以 `done` 结算，注意力行逐字为 `1 次调用失败 · 验证：未验证`；②非 `pass` 结论：触发行 `验证：未验证`，且同一条 run 在磁盘 execution log 中 `verificationHistory` 无任何 `pass`（末条 `unverified`），两种模式都不出现"验证通过"字样；③等待决定：独立数据根上强杀在途 run 后由 Runtime 恢复写出的 `waiting_user`，两模式读作 `等待你决定后继续`（触发行 `等待处理`）；④手动收起：两模式各"折起→再打开"一次，注意力行始终不在 `.assistant-process-content` 内。证据在仓库外 `<系统临时目录>/littlesheep-run-artifacts/transcript-state-visibility/`（`report.json` + 截图））
 - [ ] O2：长内容阅读。
 - [ ] O3：产物与引用。
 - [ ] O4：消息辅助操作。
 - [~] O5：跨日用量聚合与数据契约（2026-09-27 追加；**代码已落地，验收证据缺**：`packages/runner/src/provider-usage-daily-*.ts` 与 `packages/app/src/main/local-app-api/usage-routes.ts`、`packages/app/src/shared/local-app-api-routes.ts` 已在仓库中，随 `819b6085` 入库；其交付门禁未交回，跨日/分叉/重放/回填的验收证据均未取得，故不勾选）。
 - [ ] O6：Token 用量热力图（2026-09-27 追加；待实施）。
-- [ ] S1：信息架构重整。
+- [x] S1：信息架构重整。（2026-09-28 补齐实机验收：真实 Electron 窗口里四组按字面顺序渲染、14 条条目逐字记录；**14/14 常用条目两跳可达**（`.settings-entry-btn` 1 次 + 侧栏条目 1 次），总览的 4 条"常用设置"同样 2 次，没有需要 3 步或不可达的条目；`已安排` 已不在常用侧栏但仍能由设置搜索打开；返回/前进逐页可回放。探针 14 项断言 `ok: true`，同批复跑 `node scripts/verify-settings-navigation-terminology.mjs` 0 失败。证据在仓库外 `D:\littlesheep-evidence\S1-V3-2026-09-28\`；未覆盖边界见下方「执行记录」S1 行）
 - [ ] S2：页面布局与密度。
 - [ ] S3：字段级搜索。
 - [ ] S4：编辑与生效状态。
@@ -189,7 +189,7 @@ O1、I3 与基础样式整理可以独立推进；异常可见性不应等待设
 - [ ] S6：外观设置与字号偏好（2026-09-27 追加；待实施）。
 - [ ] V1：材质与层级收敛。
 - [ ] V2：图标语义与可发现性。
-- [ ] V3：状态与反馈视觉。
+- [ ] V3：状态与反馈视觉。（2026-09-28 补齐**部分**实机证据：按像素确认 `prefers-reduced-motion: reduce` 下动效确实塌陷（揭示过渡 93% 的改动落在首帧内，允许动效时首帧只占 18%；入口涟漪 520ms→1ms；侧栏 hover 中间色消失；0.9s infinite 旋转指示器连续 6 帧全 0，两模式落定像素逐字节相同）、键盘焦点环**按像素**可见（`settings-nav-item` 环 2538 px，四边 168/167/1113/1114；`settings-entry-btn` 532；另一批角色用填充代替环）、不可用与空数据在同一窗口取样。**但"不可用功能不显示成空数据"在实机仍未达成**：`已安排` 与"没有匹配的插件"共用同一个 `.settings-module-empty`，聊天空对话与发送不可用原因逐字同句；`禁用原因可查` 仍未接入；四态原语在实时 DOM 里计数为 0（`StateView` 无页面消费者）；设置搜索框没有可见焦点指示。故**不勾选**，逐条见下方「执行记录」V3 行）
 - [ ] V4：深浅主题与跟随系统（2026-09-27 追加；待实施）。
 - [ ] V5：自定义颜色与可读性保护（2026-09-27 追加；待实施）。
 - [ ] I1：输入与选择流程。
@@ -243,16 +243,45 @@ O1、I3 与基础样式整理可以独立推进；异常可见性不应等待设
 
 | 项 | 状态 | 提交 | 已有证据 | 仍缺的验收证据 |
 | --- | --- | --- | --- | --- |
-| **O1** 结果与异常层级 | **代码已落地** | `1f161ee4` | `renderer/chat` 143 文件 / 808 项通过；注意力行移到折叠面板之外（新 `attention-row.tsx`）；普通模式也渲染失败步骤计数；未通过结论不读成通过；陈旧门禁断言同步修正；拆分地图行同批更新 | **未做**真实窗口下的四类组合取证（整体完成但局部失败／非 pass 结论／等待决定／手动收起，两种模式）——工作包未交回该矩阵 |
-| **S1** 信息架构重整 | **代码已落地** | `505682c6` | 四组重排、总览压缩、归档与记忆树保留工作模块入口、"已安排"退出常用导航仍可搜索直达、旧标识映射；可达性由 `navigation-architecture.test.ts` 断言 | **未做**真实窗口逐项走查（工作包未交回实机记录）；常用设置"两跳可达"的实机复核 |
+| **O1** 结果与异常层级 | **代码已落地 + 实机验收已补（2026-09-28）** | `1f161ee4` | `renderer/chat` 143 文件 / 808 项通过；注意力行移到折叠面板之外（新 `attention-row.tsx`）；普通模式也渲染失败步骤计数；未通过结论不读成通过；陈旧门禁断言同步修正；拆分地图行同批更新。**本轮补**：`pnpm run verify:transcript-state-visibility` `ok: true`（59 项断言、0 失败、18 张截图），四类组合 × 两种模式全部取证 —— 整体完成但局部失败（`1 次调用失败 · 验证：未验证`）、非 `pass` 结论（DOM `验证：未验证` + execution log `verificationHistory` 无 `pass`）、等待决定（杀进程后 Runtime 恢复的 `waiting_user` → `等待你决定后继续`）、手动收起（两模式各折起/再打开，注意力行在 `.assistant-process-content` 之外） | **仍未覆盖**：①"部分完成"在本版本没有对应状态（`HistoryActivityStatus` 无 `partial`），按任务书要求改以真实状态 `本轮已停止` 取证；②运行中的回合不被紧凑模式折叠，因此"等待批准"这一类在紧凑模式的证据是实时状态行 + 未变化的转录，而不是注意力行（门的 `limits`）；③`waiting_user` 只能由崩溃恢复路径产生（运行中不再自己停在提问上），夹具是"在途强杀 + 同根重启"，不是运行路径；④同一夹具观察到恢复状态正文是 `packages/runner/src/authoritative-reply.ts:220` 的英文硬编码，中文界面下的语言一致性不在本项范围 |
+| **S1** 信息架构重整 | **代码已落地 + 实机验收已补（2026-09-28）** | `505682c6` | 四组重排、总览压缩、归档与记忆树保留工作模块入口、"已安排"退出常用导航仍可搜索直达、旧标识映射；可达性由 `navigation-architecture.test.ts` 断言。**本轮补**：真实窗口 14 项断言 `ok: true`——侧栏四组字面顺序 `通用｜模型与行为｜连接与扩展｜存储与环境｜工作模块`，14 条条目逐字记录；**每条都只用了 2 次选择**（入口 1 次 + 侧栏 1 次，实测记录 `clicks=2`），总览 4 条常用入口同样 2 次；入口一律落在总览（`heading=设置`/`activeNav=总览`），每页标题与条目同名；`已安排` 不在常用侧栏，输入"已安排"后被搜索命中并打开（`未接入 › 已安排`，正文 `…还没有接入 Runtime，这个页面暂时不可用。`）；返回/前进实测 `存储与数据→界面→总览→聊天` 再逐页回放。同批复跑仓库门禁 `node scripts/verify-settings-navigation-terminology.mjs` `ok: true`／0 失败。证据在仓库外 `D:\littlesheep-evidence\S1-V3-2026-09-28\`（`s1-evidence.json` + `screenshots/rail-common.png`、`overview.png`、`search-scheduled.png`） | **仍未覆盖**：只走查侧栏 14 条 + 总览 4 条 + 搜索 1 条，各设置页**内部**子流程没有逐页走查；窗口固定 1280×840 / dpr 1.5；返回/前进只覆盖一次两页往返（全局历史里重复的总览条目语义未判定，见证据里保留的原始游走序列） |
 | **V1** 材质与层级收敛 | **代码已落地** | `8419c890` | 新增 `styles/13-interaction-states.css` 统一角色状态；12 个样式表按令牌去重；玻璃限定区域；squircle 角色不变；`ui-material-roles.test.ts` 通过 | **未验**真实 `backdrop-filter` 合成（探针已能覆盖但报告未交回）、150%/200% 缩放对比度、圆角是否裁切焦点环 |
-| **V3** 状态与反馈视觉 | **代码已落地（部分）** | `8419c890` | 新增 `ui/state-view.ts(x)` + `ui/state-icons.tsx`（加载／无数据／不可用／失败四态 + 图标与文字）；状态矩阵断言**抓到一个真实缺陷**：`.runtime-menu-item:hover:not(:disabled)`（400）压过菜单按下组（300），按下态在真实窗口不可见 → 已修（按下组补 `:not([aria-disabled='true'])`） | **未验**减少动态效果、键盘可见焦点、不可用与空数据的实机区分；状态矩阵仅覆盖源码层 |
+| **V3** 状态与反馈视觉 | **代码已落地（部分）+ 实机证据已补（2026-09-28）** | `8419c890` | 新增 `ui/state-view.ts(x)` + `ui/state-icons.tsx`（加载／无数据／不可用／失败四态 + 图标与文字）；状态矩阵断言**抓到一个真实缺陷**：`.runtime-menu-item:hover:not(:disabled)`（400）压过菜单按下组（300），按下态在真实窗口不可见 → 已修（按下组补 `:not([aria-disabled='true'])`）。**本轮补（真实窗口 + 像素）**：①减少动态效果（应用内**没有**该开关，用 CDP `Emulation.setEmulatedMedia` 施加 `prefers-reduced-motion: reduce`，页内 `matchMedia` 读作 `true`）——设置页揭示过渡（560ms）允许动效时首帧只占 18% 的改动、其后再走 3 帧，`reduce` 下 93% 的改动在首帧内完成，两种模式落定像素**逐字节相同**（0 像素差）；入口涟漪 `running/currentTime 210→376/duration 520` → `finished/currentTime 1/duration 1`；侧栏 hover 由 `#252832→#363a41→#383b42` 变成 `#252832→#383b42`（中间色消失）；插件加载指示器（`plugin-loading-spin` 0.9s infinite）允许动效时连续 6 帧都在变（132–166 px、均差 ≈10.5），`reduce` 下 **6 帧全 0**。②键盘焦点环**按像素**确认：设置侧栏每条 `settings-nav-item` 环 **2538 px**、四边 168/167/1113/1114、环色 `#77797e` 一族（`rgba(226,226,226,0.32)` 叠行底色）、`:focus-visible` 两次读数均 `true`；`.settings-entry-btn` 532、`.runtime-picker-trigger` 1539、`.model-picker-trigger` 1152；另一批角色（`.add-menu-trigger` 1402、`.context-usage` 2025、`.sidebar-toggle-btn` 1926、`.workspace-panel-reopen-target` 1434、`.settings-sidebar-exit` 5848）用**填充**代替环。③不可用与空数据在同一窗口取样（失败外壳里红色通栏 `.runtime-readiness-notice.failed` + 空对话；无模型时聊天空对话与 `.composer-send-block`）。证据在仓库外 `D:\littlesheep-evidence\S1-V3-2026-09-28\`（`v3-evidence.json` + 7 张截图） | **仍未达成/未验**：①任务书 §2 的"不可用功能不显示成空数据"在实机**未达成**——`已安排`（不可用）与"没有匹配的插件"（无数据）共用同一个 `.settings-module-empty`（同类名、同图标位、同 `rgb(160,160,160)`），聊天空对话 `.empty-copy` 与发送不可用原因 `.composer-send-block` 逐字同句（`还没有配置任何供应商；在 设置 → 模型供应商 里添加服务、密钥和模型。`）；②"禁用原因可查"仍未接入（`disabledReason`/busy `title` 无调用点传入，本批未复测）；③四态原语在实时 DOM 里 `.state-view` 计数为 **0**（插件/技能/外部渠道/归档/已安排/失败外壳全为 0），按页面接入不完整（仅 failure 与 busy 生效）；④设置搜索框没有可见焦点指示：`.settings-sidebar-search input` 聚焦时环与填充像素**都是 0**（源码 `07-overlays-settings.css` 的 `input:focus { outline: 0 }`，且没有 `:focus-within` 替代）；⑤`reduce` 是 CDP 模拟的媒体特性，不是真的改了 Windows"显示动画"开关（应用内没有等价开关），且只测了上述表面 → **V3 不勾选** |
 | **O5** 跨日用量聚合与数据契约 | **代码已落地，验收证据缺** | `819b6085` | `provider-usage-daily-{facts,fold,index,index-codec,index-records,query,series,service,time}.ts`、`provider-usage-daily.test.ts`、`packages/types/src/usage-daily.ts`、`packages/app/src/main/local-app-api/usage-routes.ts`（+ 其测试）、`packages/app/src/shared/local-app-api-routes.ts` 已在仓库中 | **全部验收证据**：分叉/重放/重试只计一次；"没有事件的一天"与"用量为零的一天"可区分；有界响应；回填可取消可续接且不重复计数；仅凭事件可重建聚合。交付门禁未交回，故不勾选 |
 | O2／O3／O4、S2～S6、V2／V4／V5、I1～I5、O6 | **未实施** | — | 本任务书第 1、3 节的源码审查结论仍有效 | 全部。保留理由：本轮轮次预算用于把阶段 1 的四项做到"代码 + 单测 + 门禁"完整可提交，而不是同时铺开 22 项；每项的实施顺序与依赖见第 4 节 |
 
 **过程记录（值得保留的教训）**：一次状态矩阵断言失败被证明是断言工具自身的缺陷——按空白拆分选择器会把含空格的 `:is(…)` 组切碎，导致共享规则无法归属到任何角色，从而报出假的 `-Infinity`。修正为带括号深度跟踪的复合选择器拆分后，同一断言立刻抓到了上面那个**真实的** specificity 缺陷。因此"断言失败"不应先假定是代码错，也不应直接放宽断言。
 
 **未完成即未完成**：上表没有任何一行标为"验收通过"。任务书第 6 节规定勾选表示"已实现且对应验收通过"，因此本轮**不勾选任何项**；O1/S1/V1/V3 的勾选条件是补齐上表最后一列的实机证据。
+
+### S1 / V3 实机验收证据（2026-09-28，S1/V3 证据工作包）
+
+**方法**：`scripts/lib/electron-cdp-harness.mjs` + `scripts/lib/electron-acceptance-provider.mjs`，隔离数据根、窗口停到屏幕外（`park-offscreen` + `showInactive()`：仍然合成、可截图，但不上用户桌面），scratch 由 `mkdtemp` 产生。脚本、证据 JSON、截图与日志**全部在仓库外** `D:\littlesheep-evidence\S1-V3-2026-09-28\`（探针 `probe-s1-settings-reachability.mjs`、`probe-v3-states.mjs`；`s1-evidence.json`、`v3-evidence.json`、`screenshots/`）。两个探针**不是产品门禁**：它们只回答本任务书为 S1/V3 留的实机问题，通过不代表其它场景也通过。
+
+**S1（探针 14 项断言 `ok: true`，另复跑仓库门禁 0 失败）**
+
+- 侧栏四组按字面顺序渲染：`通用｜模型与行为｜连接与扩展｜存储与环境｜工作模块`（"未接入"分组不在常用导航里）。条目顺序逐字为 `总览、界面、应用与后台、模型供应商、Agent 行为、网络检索、内置浏览器、插件、技能、外部渠道、存储与数据、开发环境、归档、记忆树`，共 14 条。
+- **两跳可达**：对 14 条逐一重测，`clicks` 全部为 **2**（`.settings-entry-btn` 1 次 → 侧栏条目 1 次），`reached` 全部为真、`railMarksOpenPage` 全部为真；总览里 4 条"常用设置"（模型供应商／界面／网络检索／存储与数据）同样 2 次。**没有需要 3 步或不可达的条目。**
+- 入口一律落在总览（`heading=设置`、`activeNav=总览`）；每页标题与侧栏条目同名（总览页标题就是"设置"，因此按 `activeNav` 判定）。
+- `已安排`：不在常用侧栏的 14 条里，但输入"已安排"后设置搜索给出 `未接入 › 已安排` 并可打开，正文为 `计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用。` → **退出常用导航后仍可由搜索到达**。
+- 返回/前进：`存储与数据 →（返回）界面 →（返回）总览 →（返回）聊天`，再（前进）逐页回放到 `存储与数据`，未失效。原始游走序列（含全局历史里重复的总览条目）保留在 `s1-evidence.json` 的 `history` 观测里。
+- 未覆盖：只走查侧栏 14 条 + 总览 4 条 + 搜索 1 条；各设置页**内部**子流程没有逐页走查；窗口固定 1280×840 / dpr 1.5。
+
+**V3（探针 23 项断言 `ok: true`，但结论是"部分达成"）**
+
+- **减少动态效果**：应用内**没有**这个开关，只有 OS/Chromium 的 `prefers-reduced-motion`（`SETTINGS_NAV_GROUPS` 与各设置页里都没有对应项），所以用 CDP `Emulation.setEmulatedMedia` 在真实窗口上施加 `reduce`（**没有**改动系统设置），页内 `matchMedia('(prefers-reduced-motion: reduce)').matches` 读作 `true`。四路**像素**取证：①设置页揭示过渡（`.settings-workspace-body` 的 `opacity`，`--settings-reveal-motion` 560ms）：允许动效时帧对改动为 `34969 / 189696 / 28230 / 0…`（首帧只占 18%，其余在首帧之后到达）；`reduce` 下为 `176993 / 12898 / 0…`（93% 在首帧内完成）；两种模式落定像素**逐字节相同**（交叉比对 0 像素差）。②设置入口涟漪关键帧动画（`settings-entry-ripple` 520ms）：允许动效时 `playState=running`、`currentTime 210→376`、`duration 520`；`reduce` 下 `playState=finished`、`currentTime=1`、`duration=1`。③侧栏行 hover 过渡（140ms）：允许动效时像素色阶 `#252832 → #363a41 → #383b42`（采到中间色），`reduce` 下 `#252832 → #383b42`（一步到位）；hover 落定后的填充两模式相同（14591 px、均差 17.9）。④插件页加载指示器（`plugin-loading-spin` 0.9s infinite）：允许动效时连续 6 帧两两都在变（132–166 px、均差 ≈10.5），`reduce` 下 **6 帧全 0**，同一元素的计算值由 `0.9s`/`infinite` 变成 `0.001s`/`1`。
+- **键盘可见焦点（看像素，不看 computed `outline`）**：真实 Tab（`Input.dispatchKeyEvent`）走窗口镶边与设置侧栏，每个停点做"聚焦帧 vs 同一像素失焦帧"差分。设置侧栏每条 `settings-nav-item`：环像素 **2538**、四边 168/167/1113/1114、环色 `#77797e` 一族（`rgba(226,226,226,0.32)` 叠在行底色上）、`:focus-visible` 两次读数均 `true`；`.settings-entry-btn` 532（127/127/139/139）、`.runtime-picker-trigger` 1539、`.model-picker-trigger` 1152。**以填充代替环**的角色（`outline: 0px`、环像素 0、填充像素 >0）：`.add-menu-trigger` 1402、`.context-usage` 2025、`.sidebar-toggle-btn` 1926、`.workspace-panel-reopen-target` 1434、`.settings-sidebar-exit` 5848。截图 `screenshots/focus-ring-settings-rail.png` 里"内置浏览器"一行可见整圈焦点环。
+- **一个真实的焦点缺口**：`.settings-sidebar-search input` 聚焦时环与填充像素**都是 0**——这个输入框拿到焦点后没有任何可见变化。源码侧一致：`07-overlays-settings.css` 的 `.settings-sidebar-search input:focus { outline: 0 }`，且该容器没有 `:focus-within` 替代样式。
+- **不可用 vs 空数据（同一窗口内取样）**：
+  - 明确区分的一例：运行能力启动失败时，`.runtime-readiness-notice.failed` 是通栏 1281×30、`role=status`、`aria-live=assertive`、文字 `rgb(239,104,104)`、底色 `color(srgb 0.224… 0.171… 0.171…)`，同一张截图（`state-execution-failed.png`）里它在上方，中间是空对话 `今天要推进什么？` —— 屏幕与 DOM 都能分开。
+  - **未达成的一例**：`已安排`（页面自称"暂时不可用"）用的就是 `.settings-module-empty`，与"没有匹配的插件"（无数据）**同类名、同结构、同图标位、同 `rgb(160,160,160)`**；两者的区别只在一条页头小字和正文措辞里。
+  - **未达成的另一例**：没有配置供应商时，聊天空对话 `.empty-copy` 与发送不可用原因 `.composer-send-block` 是**逐字同句**（`还没有配置任何供应商；在 设置 → 模型供应商 里添加服务、密钥和模型。`），禁用发送按钮的可访问名也是这句 —— 屏幕上"这里还没有内容"和"这里不能用"合并成了一句。
+  - **共享四态原语没有任何页面消费者**：插件页、技能、外部渠道、归档、已安排、失败外壳上 `.state-view` 计数全为 **0**（`document.querySelectorAll('.state-view').length`），与 `ui/README.md` 记的"尚未接入"一致；本批只否定"它出现在实时 DOM 里"，不评价其代码质量。
+- 未覆盖/不声称：`reduce` 是 CDP 模拟的媒体特性而不是真的改了 Windows"显示动画"开关；只测了上述表面，没有逐页走查 V3 的每个接入点；`disabledReason`/busy `title` 的端到端仍未接入，本批未复测。
+
+**门禁复跑（2026-09-28）**：`node node_modules/typescript/bin/tsc -b tsconfig.workspace.json --pretty false` 退出 0；`node node_modules/vitest/vitest.mjs run packages/app/src/renderer` **147 文件 / 850 项全过**、退出 0；`node scripts/check-repository-hygiene.mjs` **37 通过 / 1 失败**，唯一失败是 `scripts/lib/experiment-sandbox.mjs` 里的本机账号字样（该门禁禁止公开文档与脚本出现本机路径或账号），属另一批在途工作，不是本批产物。
+
+**与上文"本轮不勾选任何项"的关系**：那句话写于 2026-09-27。O1 与 S1 在 2026-09-28 补齐各自最后一列的实机证据后按 §6 规则勾选；V3 的实机证据只补上了一部分（不依赖颜色、焦点可见、四态区分），**"不可用功能不显示成空数据"实机未达成**，所以仍然不勾选。
 
 ### V1 / V3 交付记录（2026-09-27，V1/V3 工作包自报）
 
