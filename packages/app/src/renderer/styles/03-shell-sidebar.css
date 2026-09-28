@@ -530,6 +530,47 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   outline: 0;
 }
 
+/* The no-drag hole the pinned controls punch through the window's drag surfaces.
+   Without it the three controls are painted on top of the window chrome but are not
+   clickable: `elementFromPoint` returns the button, while a real mouse press never
+   reaches it.
+
+   `-webkit-app-region` is not a paint-order property. The browser resolves these boxes
+   into the window's draggable region and hands that region to the OS, which decides
+   whether a press is a click the page receives or a caption interaction. The walk adds
+   `drag` boxes and subtracts `no-drag` boxes in DOM pre-order and ignores `z-index`, so
+   a `no-drag` box only carves the drag boxes contributed *before* it. `.app-nav-controls`
+   is the shell's first child, so its own `no-drag` is spent before the top bar and the
+   drag band have added anything, and those two — the band while the sidebar has width,
+   the top bar once it starts at x = 0, and the settings surface's own band on top of
+   both — then fill the island straight back in. Measured in the real window: the win32
+   hit test answered HTCAPTION for a press on all three controls in the expanded,
+   collapsed and mid-resize states alike. (Removing the band's `pointer-events` does not
+   help: the region is computed from `-webkit-app-region` alone, and it would cost the
+   band's pointer bridge.)
+
+   The hole is therefore the shell's own `::after`. A generated box is the last thing in
+   its originating element's pre-order subtree, so it comes after the top bar, after the
+   panel drag band and after the settings band that `.overlays` renders later still, and
+   subtracts the island from all of them at once. `pointer-events: none` keeps the hole
+   out of DOM hit testing: a hole that could be clicked itself would take the very clicks
+   the controls need. Its geometry repeats `.app-nav-controls` box for box — `left` and
+   `top` are the same declarations, and the 80x24 box is that rule's three 24px buttons
+   plus its two 4px gaps — and `chat-layout-stability.test.ts` derives the three numbers
+   from the controls rule so one cannot move without the other. Everything else on the
+   32px row stays draggable: above and below the island, on both sides of it, and the
+   whole band. The shell carries no other `::after`, so this rule owns that box. */
+.window-shell::after {
+  content: '';
+  position: fixed;
+  top: calc((var(--window-titlebar-height) - 24px) / 2);
+  left: 8px;
+  width: 80px;
+  height: 24px;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
 .sidebar-toggle-btn {
   display: grid;
   place-items: center;

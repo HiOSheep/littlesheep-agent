@@ -162,6 +162,65 @@ describe('chat layout stability', () => {
     expect(settingsContents).toContain('padding-top: calc(var(--window-titlebar-height) - var(--floating-panel-inset))')
   })
 
+  it('keeps the pinned controls inside the window\'s clickable region in every sidebar state', async () => {
+    const styles = await readRendererStyleSource()
+    const windowLayout = await readRendererFile('./styles/14-window-layout.css')
+    const px = (source: string, property: string): number => {
+      const match = source.match(new RegExp(`${property}:\\s*(\\d+)px`, 'u'))
+      expect(match, `${property} should be a pixel length`).not.toBeNull()
+      return Number(match?.[1] ?? 0)
+    }
+
+    // A real mouse press is filtered before the DOM sees it: the browser publishes the
+    // `-webkit-app-region` boxes to the OS as the window's draggable region, and Windows
+    // turns a press inside it into a caption interaction. `z-index` decides nothing here —
+    // the region is accumulated in DOM pre-order, subtracting `no-drag` boxes from the
+    // `drag` boxes contributed before them. The controls are the shell's first child, so
+    // their own `no-drag` is spent before the top bar and the drag band add the two boxes
+    // that overlap them, and the island is filled straight back in: the window's own win32
+    // hit test answered HTCAPTION for all three controls in the expanded, collapsed and
+    // mid-resize states, which is why a click there dragged/activated the window instead of
+    // pressing the button while `elementFromPoint` kept returning the button.
+    //
+    // The hole therefore has to be the *last* drag-relevant box in the shell. A generated
+    // `::after` box is exactly that (after the top bar, after the panel band and after the
+    // settings band that `.overlays` renders later still), and `pointer-events: none` keeps
+    // the hole itself out of DOM hit testing so it cannot take the clicks it carves out.
+    // The three-state, real-window half of this check — the win32 hit test on the same
+    // coordinates — lives in `verify:window-layout`, because no source-level assertion can
+    // observe what the OS does with a press.
+    const hole = directRuleBody(styles, '.window-shell::after')
+    expect(hole).toContain("content: ''")
+    expect(hole).toContain('position: fixed')
+    expect(hole).toContain('-webkit-app-region: no-drag')
+    expect(hole).toContain('pointer-events: none')
+    expect(hole).not.toContain('display: none')
+
+    // Box for box the same island as the controls: the same declarations for the offsets,
+    // and the 80x24 box that rule's three 24px buttons and two 4px gaps add up to. Derived
+    // rather than repeated, so a wider button or a larger gap cannot leave the hole behind.
+    const navControls = directRuleBody(styles, '.app-nav-controls')
+    const buttonBox = styles.match(/\.app-nav-controls > \.sidebar-toggle-btn,\r?\n\.app-nav-controls > \.app-nav-btn \{[\s\S]*?\r?\n\}/u)?.[0] ?? ''
+    const buttonWidth = px(buttonBox, 'width')
+    const buttonHeight = px(buttonBox, 'height')
+    const gap = px(navControls, 'gap')
+    expect(buttonWidth).toBeGreaterThan(0)
+    expect(px(hole, 'left')).toBe(px(navControls, 'left'))
+    expect(hole.match(/top:[^;]+;/u)?.[0]).toBe(navControls.match(/top:[^;]+;/u)?.[0])
+    expect(px(hole, 'width')).toBe((buttonWidth * 3) + (gap * 2))
+    expect(px(hole, 'height')).toBe(buttonHeight)
+
+    // Beta spans the top bar over the island instead of ending it at the sidebar, so the
+    // hole is not a layout-state exception: the layout layer must not scope it away.
+    expect(windowLayout).not.toContain('.window-shell::after')
+
+    // The band keeps both halves of its own drag behaviour; the hole is a second box, not
+    // a `pointer-events` cut-out (which the region computation ignores anyway).
+    const dragBand = directRuleBody(styles, '.window-drag-band')
+    expect(dragBand).toContain('-webkit-app-region: drag')
+    expect(dragBand).toContain('pointer-events: auto')
+  })
+
   it('uses the code-view surface for the titlebar, chat, and workspace materials', async () => {
     const styles = await readRendererStyleSource()
 
@@ -364,7 +423,10 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
     // Beta owns one shared chrome material rather than one per panel.
     expect(ruleBody(styles, "html[data-window-layout='beta'] .window-shell::before")).toContain('inset: 0')
-    expect(styles).not.toMatch(/\.window-shell::after\s*\{/u)
+    // The shell generates exactly two boxes: `::before` is that one chrome material, and
+    // `::after` is the pinned controls' no-drag hole. The hole is a hit region, not a
+    // layer — it must keep painting nothing at all, which is what this line forbids.
+    expect(styles).not.toMatch(/\.window-shell::after\s*\{[^}]*(?:background|border|box-shadow|backdrop-filter|filter):/u)
     expect(styles).not.toMatch(/\.primary-workspace::before\s*\{/u)
     expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)
     expect(styles).toMatch(/\.sidebar::before,\s*\.settings-sidebar-track::before\s*\{[\s\S]*?linear-gradient\(var\(--workspace-code-surface\),\s*var\(--workspace-code-surface\)\)[\s\S]*?radial-gradient[\s\S]*?var\(--radius-floating-panel\)/u)

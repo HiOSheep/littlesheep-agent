@@ -1,5 +1,6 @@
 // Real native-window geometry and desktop-composited backdrop acceptance.
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -102,6 +103,13 @@ async function chrome() {
       backDisabled: document.querySelector('.app-nav-btn.nav-back')?.disabled ?? null,
       forwardDisabled: document.querySelector('.app-nav-btn.nav-forward')?.disabled ?? null,
       sidebarTrack: box('.sidebar'), sidebarSurface: box('.sidebar-surface'),
+      controlTops: ['.app-nav-controls .sidebar-toggle-btn', '.app-nav-btn.nav-back', '.app-nav-btn.nav-forward'].map((selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return { selector, top: null, isControl: false };
+        const r = node.getBoundingClientRect();
+        const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return { selector, top: top ? (top.getAttribute('class') || top.tagName) : null, isControl: Boolean(top && node.contains(top)) };
+      }),
       surfaces, gaps, misrouted, seamHits, controlHits, width: innerWidth,
     };
   })()`)
@@ -116,6 +124,12 @@ function assertDragTiling(current, label) {
   assert(current.width > 0 && current.controlHits > 1, `${label}: the top edge was not sampled`)
   // The bounded resize-seam exception: 4px on either side of the boundary, one sample per 4px.
   assert(current.seamHits.length <= 2, `${label}: the sidebar resize seam grew into the top edge (${current.seamHits.length} samples)`)
+  // The DOM half of the controls' own contract: at each control's centre the element under
+  // the point is that control — not the band or the top bar that tile the same row, which
+  // paint below it but are the surfaces a real press would otherwise land on.
+  for (const control of current.controlTops ?? []) {
+    assert(control.isControl, `${label}: ${control.selector} is not the element under its own centre (${control.top})`)
+  }
 }
 /** One pinned position for all three controls, in every sidebar state. */
 function assertPinned(current, reference, label) {
@@ -124,6 +138,91 @@ function assertPinned(current, reference, label) {
   assert.deepEqual(current.toggle, reference.toggle, `${label}: the sidebar toggle moved`)
   assert.deepEqual(current.back, reference.back, `${label}: the back control moved`)
   assert.deepEqual(current.forward, reference.forward, `${label}: the forward control moved`)
+}
+/**
+ * What the *window* does with a real mouse press at these points.
+ *
+ * `elementFromPoint` and `Input.dispatchMouseEvent` both answer a layer above this one: a
+ * real press is filtered first by the window's draggable region, which the renderer
+ * publishes from `-webkit-app-region` and Windows consults through the window's own
+ * WM_NCHITTEST. HTCAPTION (2) there means the press becomes a caption interaction and the
+ * page never sees it; HTCLIENT (1) means it is delivered. That filter is why the pinned
+ * controls could look reachable to the DOM checks in this script — and to a CDP click —
+ * while a real click on them did nothing, so the three sidebar states are asserted here
+ * through the OS instead.
+ *
+ * The points are given in viewport coordinates and converted with the window's own
+ * geometry: `getContentBounds()` is in DIP, and the scale factor of the display it sits on
+ * takes that to the physical screen space WM_NCHITTEST speaks. The window is deliberately
+ * *not* moved onto a display for this: moving it re-applies its bounds through a
+ * DIP/physical round trip that ratchets its size about a pixel per call, which would break
+ * the exact geometry asserted below. A parked window answers correctly from where it is.
+ */
+function nativeHitScript(hwnd, pointsPath) {
+  return `
+$ErrorActionPreference = 'Stop'
+Add-Type -Namespace LsWindowLayout -Name Native -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+'@
+[void][LsWindowLayout.Native]::SetProcessDpiAwarenessContext([IntPtr](-4))
+$points = Get-Content -Raw -LiteralPath '${pointsPath.replaceAll("'", "''")}' | ConvertFrom-Json
+$out = foreach ($point in $points) {
+  $packed = ((([int64]$point.y -band 0xFFFF) -shl 16) -bor ([int64]$point.x -band 0xFFFF))
+  if ($packed -ge 0x80000000) { $packed -= 0x100000000 }
+  [pscustomobject]@{ label = [string]$point.label; hit = [int64][LsWindowLayout.Native]::SendMessage([IntPtr][int64]${hwnd}, 0x0084, [IntPtr]::Zero, [IntPtr][int64]$packed) }
+}
+ConvertTo-Json -InputObject @($out) -Compress
+`
+}
+async function nativeHitTest(points) {
+  if (process.platform !== 'win32') return undefined
+  const geometry = await main.evaluate(`(() => {
+    const content = layoutWindow.getContentBounds();
+    const scale = layoutElectron.screen.getDisplayMatching(layoutWindow.getBounds()).scaleFactor;
+    const handle = layoutWindow.getNativeWindowHandle();
+    return { hwnd: handle.readBigUInt64LE(0).toString(), content, scale };
+  })()`)
+  const pointsPath = join(root, 'native-hit-points.json')
+  await writeFile(pointsPath, JSON.stringify(points.map((point) => ({
+    label: point.label,
+    x: Math.round((geometry.content.x + point.x) * geometry.scale),
+    y: Math.round((geometry.content.y + point.y) * geometry.scale),
+  }))))
+  const stdout = execFileSync('pwsh', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', nativeHitScript(geometry.hwnd, pointsPath)], { encoding: 'utf8' })
+  return Object.fromEntries(JSON.parse(stdout).map((entry) => [entry.label, entry.hit]))
+}
+const HT_CLIENT = 1
+const HT_CAPTION = 2
+/** The island is the three buttons themselves; every neighbour of it stays grabbable. */
+function nativeChromePoints(dom) {
+  const centre = (box) => ({ x: box.x + (box.width / 2), y: box.y + (box.height / 2) })
+  const titlebar = dom.surfaces.find((surface) => surface.selector === '.window-titlebar')
+  return [
+    { label: 'toggle', ...centre(dom.toggle) },
+    { label: 'back', ...centre(dom.back) },
+    { label: 'forward', ...centre(dom.forward) },
+    { label: 'island-left', x: dom.controls.x - 4, y: 16 },
+    { label: 'island-right', x: dom.controls.x + dom.controls.width + 8, y: 16 },
+    { label: 'island-below', x: dom.controls.x + (dom.controls.width / 2), y: dom.controls.y + dom.controls.height + 3 },
+    { label: 'titlebar', x: titlebar.x + (titlebar.width / 2), y: 16 },
+    { label: 'chat-client', x: 600, y: 300 },
+  ]
+}
+function assertNativeHitTest(hits, label) {
+  if (!hits) return
+  for (const name of ['toggle', 'back', 'forward']) {
+    assert.equal(hits[name], HT_CLIENT, `${label}: a real mouse press on the ${name} control is not delivered to the page (win32 hit test ${hits[name]})`)
+  }
+  for (const name of ['island-left', 'island-right', 'island-below', 'titlebar']) {
+    assert.equal(hits[name], HT_CAPTION, `${label}: ${name} is no longer part of the window's draggable top edge (win32 hit test ${hits[name]})`)
+  }
+  assert.equal(hits['chat-client'], HT_CLIENT, `${label}: the win32 hit test did not answer for this window`)
+}
+async function assertNativeChrome(dom, label) {
+  const hits = await nativeHitTest(nativeChromePoints(dom))
+  assertNativeHitTest(hits, label)
+  return hits
 }
 async function windowBounds() {
   return main.evaluate(`(() => { const b = layoutWindow.getBounds(); return { x:b.x, y:b.y, width:b.width, height:b.height }; })()`)
@@ -189,6 +288,7 @@ try {
     assertDragTiling(expandedChrome, `${name} expanded`)
     assert.equal(expandedChrome.controls.x, 8)
     assert.equal(expandedChrome.controls.y, 4)
+    const expandedNative = await assertNativeChrome(expandedChrome, `${name} expanded`)
     await shot(name)
     await click('.sidebar-toggle-btn')
     const collapsedState = await state()
@@ -198,16 +298,20 @@ try {
     assertDragTiling(collapsedChrome, `${name} collapsed`)
     assertPinned(collapsedChrome, expandedChrome, `${name} collapsed`)
     assert.equal(collapsedChrome.sidebarTrack.width, 0)
+    const collapsedNative = await assertNativeChrome(collapsedChrome, `${name} collapsed`)
     await click('.sidebar-toggle-btn')
     await click('.settings-entry-btn')
     const settings = await state()
     assert(settings.settingsOpen)
     assert.equal(settings.settings.y, maximized ? 32 : 0)
+    // The settings rail renders its own drag band over the same 32px row, so the controls
+    // keep their island while that surface owns the left rail.
+    const settingsNative = await assertNativeChrome(await chrome(), `${name} settings open`)
     await click('.settings-entry-btn')
     await client.send('Page.reload')
     await harness.waitFor(async () => (await state()).layout === (maximized ? 'beta' : 'chali'), 20_000, 'reload layout')
     await delay(700)
-    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed', pinned: expandedChrome.controls, dragTiling: 'passed' })
+    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed', pinned: expandedChrome.controls, dragTiling: 'passed', native: { expanded: expandedNative, collapsed: collapsedNative, settings: settingsNative } })
   }
 
   // The pinned window-chrome controls: one position across every sidebar state, with
@@ -225,9 +329,14 @@ try {
   assert.equal(expanded.controls.height, 24)
   const expandedWidth = expanded.sidebarTrack.width
   assert(expandedWidth > 0, 'the expanded sidebar has no width to shrink from')
+  // ...and the whole top edge is only draggable if the three controls are *not*: a real
+  // press on the island is delivered to the page, a real press on its neighbours is window
+  // chrome. This is the half of the contract the DOM-level checks above cannot see.
+  const expandedNative = await assertNativeChrome(expanded, 'pinned expanded')
   await shotCorner('corner-expanded')
 
-  // Collapsed: the sidebar track is gone, the controls are where they were.
+  // Collapsed: the sidebar track is gone, the controls are where they were — and the top
+  // bar, which now starts at x = 0 and covers the island, must still let the clicks through.
   await click('.app-nav-controls .sidebar-toggle-btn')
   const collapsed = await chrome()
   assert.equal(collapsed.collapsed, true)
@@ -236,6 +345,7 @@ try {
   assert.equal(collapsed.toggleExpanded, 'false')
   assertPinned(collapsed, expanded, 'collapsed')
   assertDragTiling(collapsed, 'pinned collapsed')
+  const collapsedNative = await assertNativeChrome(collapsed, 'pinned collapsed')
   await shotCorner('corner-collapsed')
 
   // ...and a real pointer click on the pinned toggle brings the sidebar back: the
@@ -269,6 +379,10 @@ try {
   const widened = await chrome()
   assert(Math.abs(widened.sidebarTrack.width - (expandedWidth + 130)) < 2, `the resized sidebar did not commit (${widened.sidebarTrack.width})`)
   assertPinned(widened, expanded, 'resized')
+  // A sidebar that is wider than the pinned controls but not at its default width is the
+  // third state the controls have to survive: the drag band is under them and the top bar
+  // starts past their right edge.
+  const resizedNative = await assertNativeChrome(widened, 'resized')
 
   // The top edge is still grabbable where the controls are not: a real drag on the
   // band over the sidebar moves the native window by exactly the requested amount.
@@ -298,7 +412,9 @@ try {
     midResize,
     sidebarTrack: { expanded: expandedWidth, collapsed: collapsed.sidebarTrack.width, widened: widened.sidebarTrack.width },
     dragTiling: { expanded: expanded.surfaces, collapsed: collapsed.surfaces },
+    controlTops: { expanded: expanded.controlTops, collapsed: collapsed.controlTops, resized: widened.controlTops },
     seamHits: { expanded: expanded.seamHits, collapsed: collapsed.seamHits },
+    nativeHitTest: { expanded: expandedNative, collapsed: collapsedNative, resized: resizedNative },
     bandDrag,
   })
 
