@@ -24,6 +24,10 @@ describe('UI radius consistency', () => {
 
     expect(values.length).toBeGreaterThan(0)
     expect(new Set(values)).toEqual(new Set([
+      '11px',
+      '18px',
+      'var(--settings-card-radius)',
+      'var(--settings-control-radius)',
       '12px',
       'var(--radius-ui)',
       'var(--radius-floating-panel)',

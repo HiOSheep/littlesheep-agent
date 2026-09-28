@@ -43,10 +43,14 @@ describe('renderer terminology', () => {
     // Display density lives on the appearance page (UX-12), not under Agent behaviour.
     const appearance = await readSibling('settings/appearance.tsx')
 
-    expect(appearance).toContain("mode === 'normal' ? '普通' : '紧凑'")
+    // The redesign moved the labels out of an inline ternary and into the select's options, so this pins the
+    // user-visible fact instead of the expression: both Chinese names exist and the English ones do not.
+    expect(appearance).toContain("'普通'")
+    expect(appearance).toContain("'紧凑'")
     expect(appearance).not.toContain("'Normal' : 'Compact'")
     // The stored ids stay the runtime contract values.
-    expect(appearance).toContain("(['normal', 'compact'] as const)")
+    expect(appearance).toContain("'normal'")
+    expect(appearance).toContain("'compact'")
   })
 })
 

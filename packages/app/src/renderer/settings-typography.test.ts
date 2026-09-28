@@ -141,7 +141,7 @@ describe('settings body type scale', () => {
       '.settings-policy-row',
       '.development-environment-row',
       '.plugin-list-disclosure',
-      '.profile-choice-list > .profile-choice',
+      '.settings-value-row',
     ]) {
       expect(effective(selector, 'min-height'), selector).toBe('var(--settings-row-min-height)')
     }
@@ -243,7 +243,8 @@ describe('settings body type scale', () => {
       'development-environment-row',
       'development-environment-status',
       'application-background-section-heading',
-      'profile-choice-list',
+      'settings-value-row',
+      'settings-select',
       'plugin-list-disclosure',
       'plugin-list-title',
       'plugin-list-description',

@@ -429,7 +429,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 36px clamp(24px, 3vw, 40px) 56px;
+  padding: 36px clamp(24px, 5vw, 76px) 64px;
   background: var(--workspace-code-surface);
   isolation: isolate;
   pointer-events: auto;
@@ -988,7 +988,6 @@ body.is-resizing-column .settings-sidebar-resizer {
 }
 
 .web-settings-field {
-  min-height: 40px;
 }
 
 .web-settings-row,
@@ -1334,69 +1333,6 @@ body.is-resizing-column .settings-sidebar-resizer {
   50% { opacity: 1; }
 }
 
-.profile-choice-list {
-  display: grid;
-  gap: 0;
-  width: 100%;
-  margin-top: 0;
-}
-
-.profile-choice {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 48px;
-  gap: 12px;
-  padding: 0 10px;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  text-align: left;
-  transition:
-    background-color 160ms var(--motion-ease),
-    border-color 160ms var(--motion-ease),
-    color 160ms var(--motion-ease),
-    transform 160ms var(--motion-ease);
-}
-
-.profile-choice:hover,
-.profile-choice:focus-visible,
-.profile-choice.active {
-  color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
-}
-
-.profile-choice > span:first-child {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.profile-choice strong {
-  font-size: var(--settings-row-title-font-size);
-  font-weight: 730;
-  line-height: 1.35;
-}
-
-.profile-choice small {
-  color: var(--muted);
-  font-size: var(--settings-row-desc-font-size);
-  line-height: 1.45;
-}
-
-.profile-choice-check {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  color: var(--text-strong);
-  font-size: 12px;
-}
-
 .settings-policy-section {
   display: grid;
   gap: 0;
@@ -1538,15 +1474,6 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted-2);
   font-size: var(--settings-meta-font-size);
   line-height: 1.4;
-}
-
-.application-close-policy-list {
-  width: 100%;
-}
-
-.application-close-policy-list .profile-choice:disabled {
-  cursor: default;
-  opacity: var(--choice-disabled-opacity);
 }
 
 .application-background-refresh,
@@ -3642,8 +3569,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .storage-settings-row,
 .web-settings-row,
 .settings-policy-row,
-.development-environment-row,
-.profile-choice-list > .profile-choice {
+.development-environment-row {
   min-height: var(--settings-row-min-height);
   padding: 14px 20px;
   background: var(--surface-2);
@@ -3663,8 +3589,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-policy-row:first-child,
 .settings-policy-heading + .settings-policy-row,
 .development-environment-row:first-child,
-.settings-overview-row:first-child,
-.profile-choice-list > .profile-choice:first-child {
+.settings-overview-row:first-child {
   border-top: 1px solid var(--border);
   border-top-left-radius: var(--floating-panel-inner-radius);
   border-top-right-radius: var(--floating-panel-inner-radius);
@@ -3674,8 +3599,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row:last-child,
 .settings-policy-row:last-child,
 .development-environment-row:last-child,
-.settings-overview-row:last-child,
-.profile-choice-list > .profile-choice:last-child {
+.settings-overview-row:last-child {
   border-bottom-left-radius: var(--floating-panel-inner-radius);
   border-bottom-right-radius: var(--floating-panel-inner-radius);
 }
@@ -3684,7 +3608,6 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row strong,
 .settings-policy-row strong,
 .settings-overview-row strong,
-.profile-choice strong,
 .plugin-list-title strong {
   color: var(--text-strong);
   font-size: var(--settings-row-title-font-size);
@@ -3696,7 +3619,6 @@ body.is-resizing-column .settings-sidebar-resizer {
 .web-settings-row small,
 .settings-policy-row small,
 .settings-overview-row span,
-.profile-choice small,
 .plugin-list-description {
   color: var(--muted);
   font-size: var(--settings-row-desc-font-size);
@@ -3726,16 +3648,10 @@ body.is-resizing-column .settings-sidebar-resizer {
   font-size: var(--control-font-size);
 }
 
-.profile-choice-list > .profile-choice.active {
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-}
-
 @media (max-width: 760px) {
-  .settings-workspace-body { padding: 28px 18px 44px; }
+  .settings-workspace-body { padding: 36px clamp(24px, 5vw, 76px) 64px; }
   .settings-module-heading, .settings-home-heading { margin-bottom: 28px; }
-  .storage-settings-row, .web-settings-row, .settings-policy-row,
-  .development-environment-row, .settings-overview-row,
-  .profile-choice-list > .profile-choice { padding: 12px 16px; }
+  .storage-settings-row, .web-settings-row, .settings-policy-row, .development-environment-row, .settings-overview-row { padding: 12px 16px; }
 }
 
 /* The settings search field turned its outline off with no substitute, so a keyboard user had no visible

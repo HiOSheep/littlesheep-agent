@@ -87,6 +87,7 @@ export function SettingsStoragePage() {
           <strong>当前状态</strong>
           <span>{status?.managed === false ? '环境变量接管' : '应用管理'}</span>
         </div>
+        <div className="settings-card">
         <div className="storage-settings-row">
           <span>
             <strong>当前数据目录</strong>
@@ -99,6 +100,7 @@ export function SettingsStoragePage() {
             当前目录由 <code>LITTLESHEEP_DATA_DIR</code> 指定。应用内迁移与回滚已禁用，避免与环境配置冲突。
           </div>
         )}
+        </div>
       </section>
 
       {pending && (
@@ -107,6 +109,7 @@ export function SettingsStoragePage() {
             <strong>等待重启</strong>
             <span>{pendingMigration ? migrationPhaseLabel(pendingMigration.phase) : '等待回滚'}</span>
           </div>
+        <div className="settings-card">
           <div className="storage-settings-row">
             <span>
               <strong>{pendingMigration ? '迁移目标' : '回滚目标'}</strong>
@@ -136,6 +139,7 @@ export function SettingsStoragePage() {
               {busyAction === 'restart' ? '正在重启' : '重启并执行'}
             </button>
           </div>
+        </div>
         </section>
       )}
 
@@ -145,6 +149,7 @@ export function SettingsStoragePage() {
             <strong>目录管理</strong>
             <span>下次启动生效</span>
           </div>
+        <div className="settings-card">
           <div className="storage-settings-row">
             <span>
               <strong>迁移完整数据根</strong>
@@ -169,6 +174,7 @@ export function SettingsStoragePage() {
               </button>
             </div>
           )}
+        </div>
         </section>
       )}
 
@@ -178,6 +184,7 @@ export function SettingsStoragePage() {
             <strong>最近迁移</strong>
             <span>{new Date(status.lastMigration.completedAt).toLocaleString('zh-CN')}</span>
           </div>
+        <div className="settings-card">
           <div className="storage-settings-row compact">
             <span>
               <strong>{status.lastMigration.fileCount} 个文件</strong>
@@ -185,6 +192,7 @@ export function SettingsStoragePage() {
             </span>
             <code>{status.lastMigration.targetDir}</code>
           </div>
+        </div>
         </section>
       )}
 

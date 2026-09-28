@@ -1,3 +1,5 @@
+import { SettingsSelect } from './select'
+import { SettingRow } from './setting-row'
 // Settings navigation and page composition.
 // 设置 → 界面：显示密度和其它纯界面偏好。行为配置与权限不在这里。
 import { useState } from 'react'
@@ -23,26 +25,12 @@ export function SettingsAppearancePage() {
           <strong>对话显示</strong>
           <span>已完成轮次的过程内容</span>
         </div>
-        <div className="profile-choice-list compact-choice-list" role="radiogroup" aria-label="对话显示模式">
-          {(['normal', 'compact'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`profile-choice ${conversationDisplay === mode ? 'active' : ''}`}
-              role="radio"
-              aria-checked={conversationDisplay === mode}
-              onClick={() => {
-                setConversationDisplay(mode)
-                writeConversationDisplayMode(mode)
-              }}
-            >
-              <span>
-                <strong>{mode === 'normal' ? '普通' : '紧凑'}</strong>
-                <small>{mode === 'normal' ? '显示已完成轮次的过程行与摘要' : '只显示折叠摘要与最终回复'}</small>
-              </span>
-              <span className="profile-choice-check" aria-hidden="true">{conversationDisplay === mode ? '✓' : ''}</span>
-            </button>
-          ))}
+        <div className="settings-card">
+        <SettingRow title="对话显示密度" description="选择已完成轮次的过程内容如何显示。">
+          <SettingsSelect label="对话显示模式" value={conversationDisplay}
+            options={[{ value: 'normal', label: '普通' }, { value: 'compact', label: '紧凑' }]}
+            onChange={mode => { setConversationDisplay(mode); writeConversationDisplayMode(mode) }} />
+        </SettingRow>
         </div>
       </section>
     </div>

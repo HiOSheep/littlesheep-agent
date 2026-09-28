@@ -60,6 +60,7 @@ const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }>
   'float-glass': {
     selectors: [
       '.running-pill',
+      '.settings-select-menu',
       '.running-pill-panel',
       '.chat-jump-to-latest',
       '.sidebar-menu-panel',

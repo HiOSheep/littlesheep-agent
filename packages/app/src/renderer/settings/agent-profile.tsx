@@ -1,3 +1,5 @@
+import { SettingsSelect } from './select'
+import { SettingRow } from './setting-row'
 // Settings navigation and page composition.
 import { useEffect, useState } from 'react'
 import {
@@ -55,34 +57,22 @@ export function SettingsAgentProfilePage({
         <h2>Agent 行为</h2>
         <p>这里选择系统提示词侧的行为配置；权限仍由输入栏的权限模式单独控制。</p>
       </header>
-      <div className="profile-choice-list" role="radiogroup" aria-label="Agent 行为配置">
-        {PROFILE_OPTIONS.map((item) => {
-          const active = item.id === profile
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`profile-choice ${active ? 'active' : ''}`}
-              role="radio"
-              aria-checked={active}
-              onClick={() => {
-                if (!active) onChange(item.id)
-              }}
-            >
-              <span>
-                <strong>{item.label}</strong>
-                <small>{item.desc}</small>
-              </span>
-              <span className="profile-choice-check" aria-hidden="true">{active ? '✓' : ''}</span>
-            </button>
-          )
-        })}
-      </div>
+      <section className="settings-policy-section" aria-label="行为配置">
+        <div className="settings-policy-heading"><strong>行为配置</strong></div>
+        <div className="settings-card">
+        <SettingRow title="Agent 行为" description={PROFILE_OPTIONS.find(item => item.id === profile)?.desc}>
+          <SettingsSelect label="Agent 行为配置" value={profile}
+            options={PROFILE_OPTIONS.map(item => ({ value: item.id, label: item.label, description: item.desc }))}
+            onChange={onChange} />
+        </SettingRow>
+        </div>
+      </section>
       <section className="settings-policy-section" aria-label="上下文策略">
         <div className="settings-policy-heading">
           <strong>上下文</strong>
           <span>长期对话与模型窗口</span>
         </div>
+        <div className="settings-card">
         <details className="settings-advanced">
           <summary>高级上下文设置：压缩触发阈值</summary>
           <div className="settings-policy-row">
@@ -115,6 +105,7 @@ export function SettingsAgentProfilePage({
             onRetry={isFailureFeedback(thresholdFeedback) ? () => void saveCompressionThreshold() : undefined}
           />
         </details>
+        </div>
       </section>
     </div>
   )

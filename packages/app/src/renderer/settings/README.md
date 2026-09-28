@@ -1,5 +1,7 @@
 # Renderer 设置
-最后更新：2026-09-28 13:05:34
+最后更新：2026-09-28 19:54:01
+
+当前设置呈现采用参考图的分组卡片：分组标题位于卡片外，卡片统一 18px 圆角、细边框与内缩分隔线。setting-row.tsx 提供左侧说明/右侧控件布局，select.tsx 提供圆角值按钮和带选中勾的下拉菜单；界面密度、Agent 行为、关闭窗口方式及四种网络策略已接入，原配置值和保存接口不变。菜单支持方向键/Home/End、Enter、Escape、Tab、点击外部关闭；使用已有 Escape 层级，关闭菜单不会同时退出设置，菜单通过 portal 挂在 document.body 并在视口底部向上展开。菜单模糊仅存在于浮层，正文卡片保持实体底色。此段取代下方历史的“设置页不画框线”和展开式 profile-choice 布局说明。真实窗口验收：node scripts/verify-settings-cards.mjs，先运行 pnpm run ensure:app-build；覆盖选择与重载保留、菜单关闭、设置不误退出、800px 窄窗口和视口避让。
 
 设置页跟随窗口的 Beta/Chali 原生状态：Beta 侧栏从 32px 标题栏下方开始并隐藏独立拖拽带；Chali 侧栏贯通顶边。窗口左上角的三个导航控件始终可达（它们是窗口镶边层的固定层，见 `../README.md` 的 chali 段落），页面正文不透明。几何覆盖集中在 styles/14-window-layout.css，不由设置页另建窗口状态。
 
@@ -23,6 +25,8 @@
 长生命周期页面必须在卸载时中止 fetch/stream、清除重连 timer，并依赖 Main 的监听器释放契约；不得让设置页成为 Runtime 状态权威源。
 
 供应商编辑的草稿策略：设置容器按 `key={page}` 重新挂载页面，因此草稿保存在 `provider-editor-session.ts` 的**模块内存**里（不写 localStorage、不写日志、不落盘）：切换设置页再回来会恢复草稿并说明来源；提交时先清空草稿副本，避免保存中的内容在别的页面显示为待保存编辑；保存失败把可修正内容放回原处并就地显示失败；取消与保存中禁止关闭都会丢弃或推迟处理。明文密钥只在这份内存草稿里存在，保存或取消后立即丢弃。编辑器自身显示四种状态：未改动不提示、`已修改，尚未保存。`、`保存中…`、`保存失败：…`（`role="alert"`），头部关闭按钮在保存中禁用；`providerDraftIsDirty` 逐字段比较（含模型行与明文密钥），因此"改回原值"算干净。关闭是模态唯一出口，有未保存修改时先出现 `provider-editor-discard`（`role="alertdialog"`：继续编辑 / 丢弃修改），不会静默丢弃；由于编辑器是否渲染由会话草稿决定，带着未保存草稿切回该页会自动重新打开编辑器（实机验收记录在 `scripts/verify-provider-editor-draft.mjs`）。
+
+**Escape 与关闭入口是同一条出口**（2026-09-28）：编辑面板是页面级表面而不是模态对话框，因此只经 `ui/modal-surface.ts` 的 `useEscapeScope` 取 Escape，不捕获 Tab（同 `ChannelConnections.tsx`、`MemorySkills.tsx`）。Escape 走的就是 `onCancel={closeEditor}`：干净草稿直接关闭，有未保存修改时先弹出同一个 `provider-editor-discard` 询问，按键不会代替用户决定丢弃。两个状态用"不注册"而不是"收到按键再忽略"来表达——保存中不注册该作用域（中途离开会把结果留在已卸载的页面上），询问打开时编辑面板让位，由 `provider-editor-discard` 自己注册并压在最上层，此时 Escape 等价于「继续编辑」，编辑器和草稿都原地留下。同一个真实窗口验收里逐条覆盖：干净草稿 Escape 关闭、有修改 Escape 先询问、询问层 Escape 继续编辑、询问层仍可再用、保存中 Escape 不关闭。
 
 异步操作的反馈统一走 `ui/feedback.ts` 的结构：色调来自操作结果字段而不是解析文案，失败留在发起操作处并带可重试动作，长 Runtime 错误有界折叠。因此设置页的每一处写操作都必须把结果带回来：供应商保存/删除、插件启停与重载在页面内显示；压缩阈值保存经由 `applyRuntimePatchReporting` 把失败文本返回给页面（不再只写进聊天区的错误行），重新加载失败也不会留下旧的成功提示。
 

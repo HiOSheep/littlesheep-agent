@@ -1,3 +1,4 @@
+import { SettingsSelect } from './select'
 import { useEffect, useState } from 'react'
 import type { RuntimeWebPatch, RuntimeWebState } from '../../shared/runtime-api-contracts'
 import { checkWebProvider, clearWebCache, getRuntime, saveWebProvider, updateRuntime } from '../api/runtime'
@@ -90,6 +91,7 @@ export function SettingsWebPage() {
       </header>
 
       <section className="web-settings-section" aria-label="网络检索状态">
+        <div className="settings-card">
         <div className="web-settings-row">
           <span><strong>实时资料</strong><small>{statusLabel(web)}</small></span>
           <button
@@ -116,9 +118,11 @@ export function SettingsWebPage() {
             </div>
           </div>
         )}
+        </div>
       </section>
 
       <section className="web-settings-section" aria-label="搜索服务配置">
+        <div className="settings-card">
         <div className="web-settings-row">
           <span><strong>搜索服务</strong><small>{web.providerConfigured ? `${web.providerId ?? 'Tavily'} 已配置` : '尚未配置 Tavily'}</small></span>
         </div>
@@ -144,55 +148,52 @@ export function SettingsWebPage() {
         {checkingProvider ? '检查中…' : '检查 Tavily 连接'}
       </button>
       <small className="web-provider-note">密钥由本机加密存储；网络开关、查询外发和网页读取仍由上方策略控制。</small>
+        </div>
       </section>
 
       <section className="web-settings-section" aria-label="读取策略">
         <div className="web-settings-heading"><strong>读取策略</strong></div>
+        <div className="settings-card">
         <label className="web-settings-field">
           <span>公开读取模式</span>
-          <select value={web.readMode} disabled={busy} onChange={(event) => void patch({ readMode: event.target.value as RuntimeWebPatch['readMode'] })}>
-            <option value="public_anonymous">公开匿名读取</option>
-            <option value="configured_allowlist">仅允许域名</option>
-            <option value="disabled">关闭读取</option>
-          </select>
+          <SettingsSelect label="公开读取模式" value={web.readMode} disabled={busy}
+            options={[{ value: 'public_anonymous', label: '公开匿名读取' }, { value: 'configured_allowlist', label: '仅允许域名' }, { value: 'disabled', label: '关闭读取' }]}
+            onChange={value => void patch({ readMode: value })} />
         </label>
         <label className="web-settings-field">
           <span>域名解析</span>
-          <select value={web.dnsResolver} disabled={busy} onChange={(event) => void patch({ dnsResolver: event.target.value as RuntimeWebPatch['dnsResolver'] })}>
-            <option value="system">系统 DNS</option>
-            <option value="cloudflare_doh">Cloudflare DoH</option>
-          </select>
+          <SettingsSelect label="域名解析" value={web.dnsResolver} disabled={busy}
+            options={[{ value: 'system', label: '系统 DNS' }, { value: 'cloudflare_doh', label: 'Cloudflare DoH' }]}
+            onChange={value => void patch({ dnsResolver: value })} />
           <small>{web.dnsResolver === 'cloudflare_doh' ? '域名会发送给 Cloudflare 解析；目标地址仍会经过 SSRF 检查。' : '目标地址会经过 SSRF 检查。'}</small>
         </label>
         <label className="web-settings-row">
           <span><strong>严格读取审批</strong><small>所有 safe read 仍逐次确认</small></span>
-          <input type="checkbox" checked={web.strictReadApproval} disabled={busy} onChange={(event) => void patch({ strictReadApproval: event.target.checked })} />
+          <button type="button" className={`plugin-switch ${web.strictReadApproval ? 'checked' : ''}`} role="switch" aria-label="严格读取审批" aria-checked={web.strictReadApproval} disabled={busy} onClick={() => void patch({ strictReadApproval: !web.strictReadApproval })}><span /></button>
         </label>
         <label className="web-settings-field">
           <span>敏感查询</span>
-          <select value={web.sensitiveQueryPolicy} disabled={busy} onChange={(event) => void patch({ sensitiveQueryPolicy: event.target.value as RuntimeWebPatch['sensitiveQueryPolicy'] })}>
-            <option value="approve">外发前确认</option>
-            <option value="redact">脱敏后发送</option>
-            <option value="deny">拒绝外发</option>
-            <option value="allow">直接发送</option>
-          </select>
+          <SettingsSelect label="敏感查询" value={web.sensitiveQueryPolicy} disabled={busy}
+            options={[{ value: 'approve', label: '外发前确认' }, { value: 'redact', label: '脱敏后发送' }, { value: 'deny', label: '拒绝外发' }, { value: 'allow', label: '直接发送' }]}
+            onChange={value => void patch({ sensitiveQueryPolicy: value })} />
         </label>
         <label className="web-settings-field">
           <span>浏览器后备</span>
-          <select value={web.browserFallback} disabled={busy} onChange={(event) => void patch({ browserFallback: event.target.value as RuntimeWebPatch['browserFallback'] })}>
-            <option value="approval_required">需要批准</option>
-            <option value="full_only">仅完全访问</option>
-            <option value="disabled">禁用</option>
-          </select>
+          <SettingsSelect label="浏览器后备" value={web.browserFallback} disabled={busy}
+            options={[{ value: 'approval_required', label: '需要批准' }, { value: 'full_only', label: '仅完全访问' }, { value: 'disabled', label: '禁用' }]}
+            onChange={value => void patch({ browserFallback: value })} />
         </label>
+        </div>
       </section>
 
       <section className="web-settings-section" aria-label="网络资料缓存">
+        <div className="settings-card">
         <div className="web-settings-row">
           <span><strong>资料缓存</strong><small>{web.cacheEnabled ? `${web.cacheTtlSeconds} 秒保留` : '已关闭'}</small></span>
-          <input type="checkbox" checked={web.cacheEnabled} disabled={busy} onChange={(event) => void patch({ cacheEnabled: event.target.checked })} />
+          <button type="button" className={`plugin-switch ${web.cacheEnabled ? 'checked' : ''}`} role="switch" aria-label="资料缓存" aria-checked={web.cacheEnabled} disabled={busy} onClick={() => void patch({ cacheEnabled: !web.cacheEnabled })}><span /></button>
         </div>
         <button className="web-cache-clear" type="button" disabled={busy} onClick={() => void clearCache()}>清理网络缓存</button>
+        </div>
       </section>
 
       {notice && <div className="web-settings-notice" role="status">{notice}</div>}

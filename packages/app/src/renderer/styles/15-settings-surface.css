@@ -1,0 +1,193 @@
+/* Settings cards have their own geometry: window chrome can be flush without
+   flattening cards, value buttons or menus inside the settings page. */
+.settings-workspace-body {
+  --settings-card-radius: 18px;
+  --settings-control-radius: 11px;
+  --settings-row-min-height: 76px;
+  background: var(--bg-elevated);
+}
+
+.settings-workspace-body .settings-page-transition { background: transparent; }
+
+.settings-workspace-body :is(.settings-module-page, .settings-home) {
+  width: 100%;
+  max-width: 1040px;
+  margin-inline: auto;
+}
+
+.settings-workspace-body :is(.settings-card, .settings-overview-group-items) {
+  min-width: 0;
+  padding: 0 18px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--settings-card-radius);
+}
+
+.settings-workspace-body .settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row),
+.settings-value-row,
+.settings-workspace-body .settings-overview-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 24px;
+  min-height: var(--settings-row-min-height);
+  margin: 0;
+  padding: 17px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-value-row):last-child,
+.settings-workspace-body .settings-overview-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-value-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-value-copy strong,
+.settings-card .web-settings-field > span {
+  color: var(--text-strong);
+  font-size: var(--settings-row-title-font-size);
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.settings-value-copy small,
+.settings-card .web-settings-field > small {
+  color: var(--muted);
+  font-size: var(--settings-row-desc-font-size);
+  line-height: 1.5;
+}
+
+.settings-value-control {
+  min-width: 0;
+  max-width: 280px;
+  justify-self: end;
+}
+
+.settings-card .web-settings-field > .settings-select {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.settings-card .web-settings-field > small {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.settings-workspace-body .settings-overview-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  text-align: left;
+}
+
+.settings-workspace-body .settings-overview-row > strong { grid-column: 1; }
+.settings-workspace-body .settings-overview-row > span { grid-column: 1; }
+.settings-workspace-body .settings-overview-row > :is(button, svg) { grid-column: 2; grid-row: 1 / span 2; }
+.settings-workspace-body button.settings-overview-row:hover { background: var(--control-hover); }
+
+.settings-card > :is(.web-provider-key-form, .storage-settings-actions, .web-egress-confirmation, .settings-advanced) {
+  margin-block: 16px;
+}
+.settings-card > :is(.web-provider-check, .web-cache-clear) { margin-block: 12px; }
+.settings-card > .web-provider-note { display: block; margin-bottom: 16px; }
+.settings-card > .application-background-empty { background: transparent; }
+
+.settings-workspace-body :is(.storage-settings-row, .storage-settings-actions, .settings-policy-row, .web-settings-row) button:not(.plugin-switch),
+.settings-workspace-body :is(.web-provider-check, .web-cache-clear) {
+  border-radius: var(--settings-control-radius);
+}
+
+.settings-workspace-body :is(.provider-card, .development-environment-list, .plugin-list) {
+  border: 1px solid var(--border);
+  border-radius: var(--settings-card-radius);
+  background: var(--surface);
+}
+
+/* The selector is a value button, not an expanded collection of radio cards. */
+.settings-select,
+.settings-workspace-body .settings-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  min-width: 108px;
+  max-width: 100%;
+  padding: 5px 12px;
+  color: var(--text-strong);
+  background: var(--control-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: 11px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+.settings-select > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-select svg,
+.settings-select-menu svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.settings-select svg { color: var(--muted); }
+.settings-select:hover:not(:disabled),
+.settings-select[aria-expanded='true'] { background: var(--control-active); }
+.settings-select:disabled { opacity: var(--state-disabled-opacity, 0.42); cursor: default; }
+
+/* Portalled to document.body so cards and the settings scrollport cannot clip it. */
+.settings-select-menu {
+  position: fixed;
+  z-index: 1300;
+  display: grid;
+  align-content: start;
+  padding: 6px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  color: var(--text-strong);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  box-shadow: var(--shadow-menu);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+.settings-select-menu > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 11px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+}
+.settings-select-menu > button:hover:not(:disabled),
+.settings-select-menu > button:focus-visible { background: var(--control-hover); }
+.settings-select-menu > button:disabled { opacity: 0.42; cursor: default; }
+
+@media (max-width: 900px) {
+  .settings-workspace-body { padding: 28px 20px 48px; }
+  .settings-workspace-body :is(.settings-card, .settings-overview-group-items) { padding-inline: 14px; }
+  .settings-value-row { gap: 12px; }
+  .settings-value-control { max-width: 180px; }
+}

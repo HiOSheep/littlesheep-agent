@@ -16,6 +16,7 @@ export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/12-squircle-corners.css',
   './styles/13-interaction-states.css',
   './styles/14-window-layout.css',
+  './styles/15-settings-surface.css',
 ] as const
 
 export interface RendererStyleSourceFile {

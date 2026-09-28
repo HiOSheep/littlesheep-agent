@@ -78,7 +78,7 @@ describe('settings information architecture', () => {
     ])
 
     expect(appearance).toContain('readConversationDisplayMode')
-    expect(appearance).toContain("role=\"radiogroup\" aria-label=\"对话显示模式\"")
+    expect(appearance).toContain('<SettingsSelect label="对话显示模式"')
     expect(appearance).toContain('它改变信息怎么展示，不改变 Agent 行为或权限')
     // The behaviour page keeps behaviour and permissions, not display density.
     expect(agentProfile).not.toContain('readConversationDisplayMode')

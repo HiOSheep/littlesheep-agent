@@ -56,6 +56,7 @@ export function SettingsBrowserPage() {
           <strong>当前状态</strong>
           <span>{status?.persistent ? '持久化已启用' : '读取中...'}</span>
         </div>
+        <div className="settings-card">
         <div className="storage-settings-row">
           <span>
             <strong>浏览器分区</strong>
@@ -70,6 +71,7 @@ export function SettingsBrowserPage() {
           </span>
           <code>{status ? `${status.cookieCount} 个，来自 ${status.cookieDomainCount} 个域` : '读取中...'}</code>
         </div>
+        </div>
       </section>
 
       <section className="storage-settings-section" aria-label="内置浏览器数据操作">
@@ -77,6 +79,7 @@ export function SettingsBrowserPage() {
           <strong>数据管理</strong>
           <span>操作会影响所有内置浏览器标签</span>
         </div>
+        <div className="settings-card">
         <div className="storage-settings-row">
           <span>
             <strong>清除网页缓存</strong>
@@ -94,6 +97,7 @@ export function SettingsBrowserPage() {
           <button type="button" onClick={() => void runAction('data')} disabled={!!busyAction}>
             {busyAction === 'data' ? '清除中' : '清除网站数据'}
           </button>
+        </div>
         </div>
       </section>
 

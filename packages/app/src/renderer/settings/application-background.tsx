@@ -1,3 +1,5 @@
+import { SettingsSelect } from './select'
+import { SettingRow } from './setting-row'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RuntimeActiveRunAction, RuntimeActiveRunSnapshot } from '@littlesheep/types'
 import type { RuntimeState } from '../api'
@@ -148,28 +150,12 @@ export function SettingsApplicationBackgroundPage({
           </span>
           <span>{closePolicy ? '已同步' : '读取中'}</span>
         </div>
-        <div className="profile-choice-list application-close-policy-list" role="radiogroup" aria-label="窗口关闭方式">
-          {CLOSE_POLICY_OPTIONS.map((option) => {
-            const active = option.id === closePolicy
-            const saving = option.id === savingPolicy
-            return (
-              <button
-                key={option.id}
-                type="button"
-                className={`profile-choice ${active ? 'active' : ''}`}
-                role="radio"
-                aria-checked={active}
-                disabled={!closePolicy || !!savingPolicy}
-                onClick={() => void changeClosePolicy(option.id)}
-              >
-                <span>
-                  <strong>{option.label}</strong>
-                  <small>{option.description}</small>
-                </span>
-                <span className="profile-choice-check" aria-hidden="true">{saving ? '…' : active ? '✓' : ''}</span>
-              </button>
-            )
-          })}
+        <div className="settings-card">
+        <SettingRow title="窗口关闭方式" description={CLOSE_POLICY_OPTIONS.find(option => option.id === closePolicy)?.description}>
+          <SettingsSelect label="窗口关闭方式" value={closePolicy ?? 'always-background'}
+            options={CLOSE_POLICY_OPTIONS.map(option => ({ value: option.id, label: option.label, description: option.description }))}
+            disabled={savingPolicy !== null || !closePolicy} onChange={policy => void changeClosePolicy(policy)} />
+        </SettingRow>
         </div>
       </section>
 
@@ -190,6 +176,7 @@ export function SettingsApplicationBackgroundPage({
             <RefreshIcon />
           </button>
         </div>
+        <div className="settings-card">
 
         {loading && <div className="application-background-empty">正在读取活动任务...</div>}
         {!loading && runs.length === 0 && (
@@ -211,6 +198,7 @@ export function SettingsApplicationBackgroundPage({
             ))}
           </div>
         )}
+        </div>
       </section>
 
       {notice && <div className="storage-settings-notice" role="status">{notice}</div>}

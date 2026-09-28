@@ -11,6 +11,7 @@ import {
 } from './model-provider-draft'
 import { RUNTIME_REASONINGS } from '../../shared/model-capabilities'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { useEscapeScope } from '../ui/modal-surface'
 
 interface ModelProviderEditorProps {
   draft: ProviderEditorDraft
@@ -50,6 +51,18 @@ export function ModelProviderEditor({
   const stateText = saving
     ? '保存中…'
     : dirty ? '已修改，尚未保存。' : restored ? '已恢复上次离开时未保存的草稿。' : null
+
+  // This panel is a page-level surface, not a modal dialog, so it takes Escape through
+  // `useEscapeScope` and leaves Tab alone (`ui/modal-surface.ts`). Escape means the same thing the
+  // close entry means: it follows one exit path, which decides for itself whether there is
+  // anything to ask about. Two states have to stay out of its way, and both are expressed by not
+  // registering rather than by ignoring the key once it arrives:
+  //   - a save in flight (leaving would strand the result on an unmounted page);
+  //   - the discard question below, which is stacked on top and owns Escape while it is open.
+  useEscapeScope(onCancel, !saving && !discardConfirm)
+  // Escape answers the question the way 继续编辑 does: the editor and the draft stay, and the
+  // layer below is reachable again. Registering it second is what makes it the topmost layer.
+  useEscapeScope(onKeepEditing, discardConfirm)
 
   function patch(next: Partial<ProviderEditorDraft>) {
     onChange({ ...draft, ...next })
