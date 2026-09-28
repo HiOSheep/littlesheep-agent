@@ -2382,51 +2382,13 @@ body.is-resizing-column .settings-sidebar-resizer {
   line-height: 1.55;
 }
 
-/* The empty state is the settings twin of the shared `.state-view`
-   (`13-interaction-states.css`), so it centres the same way. Without the
-   `align-content` the declared `gap` was not the rendered gap: the `min-height`
-   left 37px of free space and the default `stretch` shared it out between the
-   three rows, so each child's box grew over its own line box — measured in a live
-   window on 2026-09-28, the icon-to-label space was 29.4px and the label-to-copy
-   space 26.2px against the declared 7px (+4px margin), and the label's 20px line
-   box sat at the top of a 38.5px box. */
-.settings-module-empty {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 7px;
-  min-height: 220px;
-  padding: 36px 18px;
-  color: var(--muted);
-  text-align: center;
-  animation: content-fade-in var(--motion-base) var(--motion-ease) both;
-}
-
-.settings-module-empty-icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-bottom: 4px;
-  color: var(--muted);
-  background: var(--control);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
-}
-
-.settings-module-empty strong {
-  color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.settings-module-empty span {
-  max-width: 360px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
+/* The settings module empty state used to live here as a twin of the shared
+   `.state-view` (`13-interaction-states.css`). It was the reason "已安排" (a
+   capability that is not connected) and "没有匹配的插件" (a query that matched
+   nothing) rendered as the same grey box: same class, same structure, same icon
+   slot, same colour. Both pages now render the shared view, which owns the role,
+   the glyph and the mandatory reason for `unavailable`, so this block is gone
+   (V3; audit finding #20). */
 .settings-workspace .overlay {
   position: relative;
   inset: auto;
@@ -3409,7 +3371,6 @@ body.is-resizing-column .settings-sidebar-resizer {
 .development-environment-action-row button,
 .approval-prompt,
 .approval-prompt pre,
-.settings-module-empty-icon,
 .dialog-hint,
 .feedback-action,
 .key-badge.literal,

@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-29 00:22:02
+最后更新：2026-09-29 07:05:49
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -261,7 +261,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 ### P1：效率基线
 
 - **与成熟 Agent 产品可比较的任务效率基线尚未建立**：需要简单/标准/复杂/长任务四档任务集，冻结相同输入、产物质量检查、任务终点与允许成本，并分别记录完成率、首次成功率、总耗时、用户打断次数、重复工具调用、恢复成本、Context 消耗、并行加速比、调度开销和无价值输出；对比裸模型、当前 LS 与条件允许时的成熟 Agent 同类任务，结论要能说明差距来自模型、Runtime、工具、Context 还是数据。工具准入本身仍按收益、权限面、Context 成本、维护成本和移除条件评审（见[架构原则](../principles/architecture-principles.md)）。只比较功能数量、或在前述能力形成可重复闭环前给出主观排名，都不算通过。该方向由已退役的《Agent Runtime 连续性任务书 2026-07-14》阶段 7 并入（原文可取回：`git log --follow -- docs/taskbooks/agent-runtime-continuity-taskbook-2026-07-14.md`）。
-- **开发侧治理成本的 coding-agent 配对试验仍未完成**（2026-09-29）：本轮只做了 1 对夹具 × 3 个场景的确定性门禁试点（见「仓库开发 Agent 约束瘦身」），没有会话级完成率、耗时或 token 读数，因此"纯治理耗时／工具调用下降 ≥20%"既未证明也未否证。要采用或撤回 B 规则包，需按退役任务书第 5 节在独立 checkout、冻结预算与固定模型版本下跑先导 12 次；在拿到这些读数之前，短规则的采用依据只是"保护未减弱 + 维护面下降"的定性判断，不得表述为已证明的效率提升。
+- **开发侧治理成本的 coding-agent 配对试验仍未完成**（2026-09-29）：本轮只做了 1 对夹具 × 3 个场景的确定性门禁试点（见「仓库开发 Agent 约束瘦身」），没有会话级完成率、耗时或 token 读数，因此"纯治理耗时／工具调用下降 ≥20%"既未证明也未否证。要采用或撤回 B 规则包，需按[仓库开发 Agent 约束瘦身任务书 2026-09-28](../taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md) 第 5 节在独立 checkout、冻结预算与固定模型版本下跑先导 12 次；在拿到这些读数之前，短规则的采用依据只是"保护未减弱 + 维护面下降"的定性判断，**未完成的部分由该任务书继续跟踪**，不得表述为已证明的效率提升。
 
 ### P1：桌面与生态
 
@@ -319,9 +319,13 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 
 **口径提醒**：以上"字节/行数"只用于源码维护成本；发布载荷收益现已由重新打包实测给出（见上一行），不再需要外推。
 
-## 仓库开发 Agent 约束瘦身（2026-09-29，任务书已退役）
+## 仓库开发 Agent 约束瘦身（2026-09-29，已落地部分；任务书未完成、继续跟踪）
 
-原「仓库开发 Agent 约束瘦身任务书 2026-09-28」已完成并退役（工作树与索引中都已删除）。**取回方式**：退役删除尚未提交，因此不能声称"全文留在 Git 历史"——文本目前以**悬挂 blob** `29993cab6de22dee726fd0c41d50f6a302367b61` 存在（`git cat-file -p 29993cab…` 可读，但在一次提交引用它之前可能被 gc 回收），另有一份工作副本在 `%TEMP%\littlesheep-retired-taskbooks\`（38,895 字节）。把这次退役删除纳入一次提交后，`git log --follow -- docs/taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md` 才会像上一份退役任务书那样可用。它审计的是**开发本仓库源码的 coding agent** 所受到的规则约束，不改变 LS 产品运行时的权限、核心源码只读保护、工具安全、Memory、状态机或用户数据边界。以下仍成立的事实由本节拥有，短规则与验证分档由[仓库指南](../reference/repository-guide.md)拥有。
+[仓库开发 Agent 约束瘦身任务书 2026-09-28](../taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md) 的 GA-01、GA-02 已落地，GA-00、GA-03 部分完成，**GA-04 未执行**；任务书因此**没有退役**，继续留在 `docs/taskbooks/`（实验协议、采用门槛与规则草案由它拥有）。本节只承载已经落地、可复核的事实与验证读数。
+
+> **2026-09-29 更正**：本任务书曾在 GA-04 未执行时被删除并列入退役（约 00:20），当天 07:03 还原并改回"未完成、继续跟踪"。退役的前提是工作完成且事实有归属；"未证明"只能记为开放项，不能替代未完成的工作。
+
+它审计的是**开发本仓库源码的 coding agent** 所受到的规则约束，不改变 LS 产品运行时的权限、核心源码只读保护、工具安全、Memory、状态机或用户数据边界。短规则与验证分档由[仓库指南](../reference/repository-guide.md)拥有。
 
 ### 已落地的治理改动
 
@@ -331,7 +335,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 | GA-02 去掉伪新鲜度 | 删除"每份 README／正式文档必须带秒级 `最后更新`"与"目录源码提交晚于 README 即失败"两条检查；保留 README 存在、文档可定位、任务书文件名与标题日期。任务书要求的"行为级评审用例检出公共入口变了但说明错误"由仓库指南的 README 同步口径 + 公共入口变化的评审清单承担，**不由机器断言**，也不声称机器已自动验证文档语义 | `scripts/check-repository-hygiene.mjs`、`scripts/check-repository-hygiene.test.mjs`（5 个用例，含固定时钟的临时仓库） |
 | GA-01 单一入口与软规则 | 新增[仓库指南](../reference/repository-guide.md)「开发约定（coding agent 的唯一短规则）」6 条 + 第 9 条 L1～L4 验证分档；根 README、[文档决策入口](../README.md)只做导航；架构原则第 17 节"七点论证"任务级化为公共契约／durable／安全边界变更；第 14 节生命周期验收收窄为持有监听、进程、异步请求或外部句柄的模块；`local-app-api`／`preload`／`harness`／`plugin-development` 的"每次改动全量验证"改为按风险分级 | 各文档 diff；产品契约描述未改 |
 | GA-03 结构阈值提示化 | 降级为提示的是**行数类判断**：任务书数量预算、组合热点超过登记上限、600 行文件超过受控上限、拆分地图里手写的行数（摘要写作 `N passed (+M advisory ok), K failed`）。**仍是硬失败的是结构完整性**：`300 行以上生产文件已登记`、热点登记文件不存在、600 行登记的缺登记／所有者或原因为空／`本轮复查到期` 缺失或过期／复查日期不写"同上"、拆分地图登记的文件不存在 | 门禁输出与新增用例（含"结构坏了仍是失败""超基线只是提示"两半） |
-| GA-05 落地与退役 | 本机 `AGENTS.md` 曾由 `.git/info/exclude` 排除、不是版本化规则，其 README 秒级时间戳段落已按新口径同步（本机未跟踪副本）；未引入版本化 `AGENTS.md`／`CLAUDE.md` 自动发现适配（缺真实客户端加载验证，属有条件工作） | `.git/info/exclude`、本文件 |
+| GA-05 部分落地 | 规则落地与索引同步已完成：本机 `AGENTS.md`（`.git/info/exclude` 排除、不是版本化规则）的 README 秒级时间戳段落已按新口径同步；**退役未执行**——GA-04 未跑，任务书继续跟踪。未引入版本化 `AGENTS.md`／`CLAUDE.md` 自动发现适配（缺真实客户端加载验证，属有条件工作） | `.git/info/exclude`、本文件 |
 
 ### GA-04 治理成本试点（不是完整 A/B 对照）
 
@@ -417,3 +421,13 @@ O2 长内容阅读 · O3 产物与引用 · O4 消息辅助操作 · O6 Token �
 - 干净复跑：`tsc -b` exit 0；`vitest run packages/runner packages/types packages/app/src/main` = **176 文件 / 887 用例通过，exit 0**（基线 173/880，差值 +3 文件/+7 用例正好等于新增证据）；`check:repo` = `ok (34 passed, 2 advisory, 0 failed)`。中途一次 exit 1 是负载抖动（`runner.test.ts` 单独复跑 75/75 通过），不是回归。
 
 **仍未证明（逐条保留）**：①**facet 上限缺 wire 级证据** —— app 层那句 `identities.providers.length <= 64` 在单身份夹具下**永远不会失败**，m5 只有既存 unit 用例（70→64）能抓；②**durable inbox 重投路线无 O5 证据**（现有只覆盖"重复 append 被答 duplicate"与"复制日志"，inbox 崩溃重投的幂等由 O5 之外的 `durable-inbox-recovery.test.ts` 覆盖）；③**取消落在"步骤在途"时未取证** —— `runPass` 在步骤末尾才写进度，故 cancel 与在途步骤重叠时持久化状态可能读作 `partial`（循环确实停下、cursor 保留、续接数字不受影响），属**标签精度**问题而非重复计数问题；④**跨午夜/跨年/闰日/夏令时/清空/永久删除保留**只有 unit 级证据（人工设定 `occurredAt`），无真实 run 证据，`clearThrough` 的"重建不复活"同理；⑤**渲染器不消费该接口**（`grep usageDaily packages/app/src/renderer` 无命中）⇒ O5 **不需要**真机 Electron 窗口，确定性测试即充分；O6 才是首个消费者，仍未验证。
+
+### V3 剩余范围的交付（2026-09-29）
+
+五面接入完成并留证：`settings/scheduled.tsx` = `unavailable` + 必填原因（表头正文未动，故 S1 引用的正文仍成立）；`settings/plugins.tsx` = `empty`，并**压缩到 392 行、把登记基线降到实测 392**（而非抬高上限）；`ChannelConnections.tsx` = loading / unconfigured→empty（配置入口放 action 槽）；`MemorySkills.tsx` = loading / empty / 首次加载失败（失败保留重试，角色清单仍有效）；`ArchiveManager.tsx` = 页面级 empty（**保留外层容器**，以免 `verify-shared-ui-roles` 的减动态取样点失效；列表级"暂无…"仍按行处理）。删除 `.settings-module-empty`（零消费者零规则）与 `.archive-empty-state` 两条已死的子规则（`13-interaction-states.css` 后导入、已拥有它们）。
+
+检查：`ui/state-view-adoption.test.ts`（消费者计数 5 文件 + 每面状态 + 自制标记必须消失）；`settings/web-disabled-reason.test.ts`（32 组合真值表："有原因 ⟺ 控件禁用"）；`settings/surface.test.ts` 增加"样式表内不得再出现 `.settings-module-empty`"；两处既有门禁（`verify-channel-entry-states.mjs`、`verify-skills-catalog-states.mjs`）改为读 `data-state`/原因/aria，并**修好了渠道门禁自 S1 起就无法通过的那段陈旧 UX-08 走查**（S1 `505682c6` 删掉了总览行与入口，门禁却仍在驱动它们）；技能门禁新增第 8 例（首次加载失败渲染共享失败态且重试可恢复）。
+
+绿/红对：接入检查在恢复 HEAD 的自制盒与五目 `disabled` 表达式时 `2 files failed | 4 failed | 3 passed (7)`，恢复后 `3 files passed | 19 passed`（文件按 sha256 逐字节还原）；样式孪生检查加回 `.settings-module-empty { display: grid; }` → 1 failed | 11 passed，移除 → 12 passed。真机（仓外探针，窗口**在显示器上**、1280×840、dpr 1.5、`visibilityState=visible`、`finally` 归位）：**14/14 全过**，`inputDigest e1b90bcc…` / `outputDigest 764b5ebf…`；两枚 34px 图标裁剪像素 **304 个不同（6.4%）**、最大通道差 174；上边框 y=9 中间 40% 一行 —— unavailable 有 **4 处虚线下陷**、empty 为 `52×20` **零下陷**；禁用原因的 AX 树返回 `description="还没有配置搜索服务，先保存 Tavily 密钥再检查。"` + `disabled=true`；归档与外部渠道亦在共享 empty 态实测。
+
+**该包如实声明的未能验证项**：①它改过的两处**真机门禁在本会话无法执行**（渠道门禁停在 "timed out waiting for Local App API locator"，因为本机 Electron 不加 `--no-sandbox` 起不来；它认为 `scripts/**` 无对应开关 —— 实际上 `ELECTRON_DISABLE_SANDBOX=1` **可用**，冷启动门禁在本会话正是靠它跑到断言阶段的）；②`tsc -b tsconfig.workspace.json` 因**他人在途未跟踪文件** `packages/app/src/renderer/chat/reading-continuity.test.ts:31`（TS2532）而失败，排除该文件后渲染器工程 exit 0；③渠道/技能的 `loading` 态**接入了并被消费者测试钉住，但没有窗口帧**（瞬态）；④`role` **不是** empty 与 unavailable 的区分点 —— 其门禁断言的是**共用** `role`，不是差异。

@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef } from 'react'
 import { listSkills, readSkill } from './api'
 import { Markdown } from './Markdown'
 import { useEscapeScope } from './ui/modal-surface'
+import { StateView } from './ui/state-view'
 import {
   initialSkillCatalogState,
   skillCatalogReducer,
@@ -96,12 +97,21 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
             </div>
           ) : (
             <div className="content-fade" key="skill-list">
-              {status === 'loading' && <div className="dialog-hint">正在加载技能…</div>}
+              {status === 'loading' && <StateView state="loading" title="正在加载技能" />}
               {status === 'error' && (
-                <div className="ms-feedback">
-                  <div className="ms-feedback-text error" role="alert">技能列表加载失败：{loadError}</div>
-                  <button className="ms-feedback-action" type="button" onClick={() => void loadSkills()}>重试</button>
-                </div>
+                // A first load that failed is this area's failure state: the shared
+                // view owns the danger glyph, the reason and the one retry, instead of
+                // a hint line that looked like the empty list below it.
+                <StateView
+                  state="failure"
+                  title="技能列表加载失败"
+                  description={loadError ?? undefined}
+                  action={(
+                    <button className="ms-feedback-action" type="button" onClick={() => void loadSkills()}>
+                      重试
+                    </button>
+                  )}
+                />
               )}
               {stale && (
                 <div className="ms-feedback">
@@ -121,7 +131,11 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
                   )}
                 </div>
               )}
-              {status === 'ready' && skills.length === 0 && <div className="dialog-hint">暂无技能</div>}
+              {status === 'ready' && skills.length === 0 && (
+                // Loaded and genuinely empty: the neutral tray, not the loading line
+                // and not a failure (all three used to be one `dialog-hint` box).
+                <StateView state="empty" title="暂无技能" />
+              )}
               {skills.map((s) => (
                 <button key={s.name} className="ms-item" type="button" onClick={() => void openSkill(s.name)}>
                   <div className="ms-item-name">{s.name}</div>

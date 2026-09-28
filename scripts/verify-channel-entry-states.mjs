@@ -6,7 +6,10 @@
 // nothing, and must not use a data-empty message ("no tasks yet") as a stand-in
 // for "not implemented". The same page is reachable from three entries (settings
 // overview, settings sidebar, the direct module entry in the app sidebar) and
-// all three have to say the same thing.
+// all three have to say the same thing. Since V3 that statement is the shared
+// four-state view (`ui/state-view.tsx`): the probe reads its `data-state`,
+// `aria-disabled` and mandatory reason, and asserts that no empty-data view is
+// rendered on the page (audit finding #20).
 //
 // UX-10: the overall channel badge must be derived from the per-item running
 // facts and the failure list — a configured channel or a non-empty list is not
@@ -14,7 +17,9 @@
 // the real page four times: nothing configured, everything configured but
 // disabled, one running with one failure, and everything running. Each fixture
 // compares the rendered label, counters, colours and per-row tags against the
-// payload the main process actually returned.
+// payload the main process actually returned. The unconfigured fixture is also
+// where V3's empty state is measured: it must be the shared `empty` view, and no
+// other fixture may claim the page is empty.
 //
 // Usage:
 //   node scripts/verify-channel-entry-states.mjs [--out=<dir>] [--keep]
@@ -42,7 +47,6 @@ const DANGER_TEXT = 'rgb(255, 210, 210)'
 const SCHEDULED_STATEMENT = '计划任务、提醒和周期执行还没有接入 Runtime，这个页面暂时不可用。'
 const SCHEDULED_EMPTY_TITLE = '功能尚未接入'
 const SCHEDULED_EMPTY_BODY = '当前版本不能创建或查看计划任务，因此这里没有可显示的数据，也没有筛选可用。'
-const SCHEDULED_NAV_DESC = '计划任务尚未接入'
 
 const GHOST_CHANNEL_TYPE = 'littlesheep-channel-not-installed'
 /** Runs locally on a loopback port the OS assigns, so the fixture needs no network. */
@@ -156,14 +160,35 @@ ${VISIBLE_HELPER}
   const toolbar = page
     ? [...page.querySelectorAll('.settings-module-toolbar, .settings-filter-pill, [role="toolbar"]')].filter(isVisible)
     : [];
+  // V3: the page states "not connected" through the shared four-state view. The
+  // probe reads that view, its ARIA answer and its glyph instead of the old
+  // bespoke box, and counts any empty-data view that must not be there.
+  const stateView = page ? [...page.querySelectorAll('.state-view')].find(isVisible) ?? null : null;
+  const glyph = stateView?.querySelector('.state-view-icon svg') ?? null;
   return {
     entry: root.classList.contains('direct-module-workspace') ? 'direct-module' : 'settings',
     ariaLabel: root.getAttribute('aria-label'),
     heading: text(page?.querySelector('h2')),
     kicker: text(page?.querySelector('.settings-module-kicker')),
     statement: text(page?.querySelector('.settings-module-heading p')),
-    emptyTitle: text(page?.querySelector('.settings-module-empty strong')),
-    emptyBody: text(page?.querySelector('.settings-module-empty span')),
+    stateView: stateView ? {
+      state: stateView.getAttribute('data-state'),
+      role: stateView.getAttribute('role'),
+      ariaDisabled: stateView.getAttribute('aria-disabled'),
+      ariaBusy: stateView.getAttribute('aria-busy'),
+      title: text(stateView.querySelector('strong')),
+      body: text(stateView.querySelector(':scope > p')),
+      reason: text(stateView.querySelector('.state-view-reason')),
+      borderStyle: stateView.querySelector('.state-view-icon')
+        ? getComputedStyle(stateView.querySelector('.state-view-icon')).borderStyle
+        : null,
+      glyphPaths: glyph ? glyph.querySelectorAll('path').length : 0,
+      glyphPath: glyph?.querySelector('path')?.getAttribute('d') ?? null,
+    } : null,
+    emptyViewCount: page
+      ? [...page.querySelectorAll(".state-view[data-state='empty']")].filter(isVisible).length
+      : null,
+    bespokeEmptyCount: page ? page.querySelectorAll('.settings-module-empty').length : null,
     pageText: text(page)?.slice(0, 600) ?? null,
     interactiveCount: interactive.length,
     interactiveLabels: interactive.map((node) => text(node)?.slice(0, 30) ?? ''),
@@ -171,11 +196,6 @@ ${VISIBLE_HELPER}
     noDataPhrase: /暂无|没有已安排|暂无数据/u.test(text(page) ?? ''),
     composerVisible: [...document.querySelectorAll('.composer textarea')].some(isVisible),
     activeNav: text(document.querySelector('.settings-nav-item.active')),
-    overviewRow: (() => {
-      const row = [...document.querySelectorAll('.settings-overview-row')]
-        .find((item) => text(item)?.includes('已安排'));
-      return row ? { title: text(row.querySelector('strong')), desc: text(row.querySelector('span')) } : null;
-    })(),
   };
 })()`
 
@@ -201,9 +221,12 @@ ${VISIBLE_HELPER}
       };
     }),
   }));
-  // The unconfigured hint is a plain dialog hint; the reload feedback notice
-  // reuses the same class with a tone, so it must not be read as the empty state.
-  const hint = [...document.querySelectorAll('.dialog-hint:not([data-tone])')].find(isVisible) ?? null;
+  // V3: "nothing configured yet" is the shared *empty* view and the read is the
+  // shared *loading* view. They used to be two dialog-hint boxes with the same
+  // class - and the reload feedback notice reuses that class with a tone - so the
+  // empty state is read from its own state attribute now.
+  const emptyView = [...document.querySelectorAll(".state-view[data-state='empty']")].find(isVisible) ?? null;
+  const loadingView = [...document.querySelectorAll(".state-view[data-state='loading']")].find(isVisible) ?? null;
   return {
     pageHeading: text(document.querySelector('.settings-workspace-body .dialog-header h2')),
     badge: badge ? {
@@ -214,9 +237,12 @@ ${VISIBLE_HELPER}
       title: badge.getAttribute('title'),
     } : null,
     sections,
-    hintText: hint ? text(hint)?.slice(0, 260) ?? null : null,
-    hintOpensDetails: hint ? Boolean(hint.querySelector('details')) : false,
-    loading: [...document.querySelectorAll('.dialog-hint')].some((node) => isVisible(node) && (node.textContent || '').includes('正在加载')),
+    hintText: emptyView ? text(emptyView)?.slice(0, 260) ?? null : null,
+    hintOpensDetails: emptyView ? Boolean(emptyView.querySelector('details')) : false,
+    loading: Boolean(loadingView),
+    visibleStates: [...document.querySelectorAll('.state-view')]
+      .filter(isVisible)
+      .map((node) => node.getAttribute('data-state')),
     reloadDisabled: document.querySelector('.channel-overall .reload-btn')?.disabled ?? null,
   };
 })()`
@@ -251,6 +277,29 @@ async function openSettings(client, label = null) {
   const clicked = await clickVisible(client, '.settings-nav-item', { contains: label })
   if (!clicked.clicked) throw new Error(`the ${label} navigation entry is missing`)
   await delay(400)
+}
+
+/** Types into the settings search and opens the first matching result. */
+async function openSettingsViaSearch(client, label) {
+  await openSettings(client)
+  const typeIntoSearch = (value) => evaluate(client, `(() => {
+    const input = document.querySelector('.settings-sidebar-search input');
+    if (!(input instanceof HTMLInputElement)) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`)
+  const typed = await typeIntoSearch(label)
+  if (!typed) throw new Error('the settings search input is missing')
+  await delay(400)
+  const clicked = await clickVisible(client, '.settings-nav-item', { contains: label })
+  if (!clicked.clicked) throw new Error(`the ${label} settings search result is missing`)
+  await delay(500)
+  // Leave the search empty again so later steps see the common navigation.
+  await typeIntoSearch('')
+  await delay(200)
+  return clicked
 }
 
 async function readSurface(client, expression) {
@@ -342,48 +391,45 @@ async function main() {
     }, harness.startTimeoutMs, 'execution readiness')
 
     // ---------------------------------------------------------------------
-    // UX-08: one unavailable page, three entries, no dead controls
+    // UX-08: one unavailable page, two reachable entries, no dead controls
+    //
+    // S1 (505682c6) moved 已安排 out of the common rail and compressed the overview
+    // to four common entries, so the entries that exist now are the settings search
+    // (the route the taskbook keeps for a search-only page) and the app sidebar's
+    // direct module entry. This walkthrough used to drive an overview row and a
+    // sidebar row; both were removed by S1, so the overview is only *recorded* now
+    // and the two live entries are asserted.
     // ---------------------------------------------------------------------
     await openSettings(client)
     await clickVisible(client, '.settings-nav-item', { contains: '总览' })
     const overview = await harness.waitFor(async () => {
       const surface = await readSurface(client, SCHEDULED_EXPRESSION)
-      return surface && surface.overviewRow ? surface : undefined
+      return surface && surface.heading ? surface : undefined
     }, harness.startTimeoutMs, 'the settings overview')
-    recorder.note({ step: 'scheduled-overview-row', row: overview.overviewRow })
-    recorder.check(
-      overview.overviewRow?.desc === SCHEDULED_NAV_DESC,
-      'the overview entry states that the capability is not connected',
-      { row: overview.overviewRow },
-    )
+    const overviewRows = await evaluate(client, `(() => {
+${VISIBLE_HELPER}
+      return [...document.querySelectorAll('.settings-overview-row')].filter(isVisible).map((row) => text(row));
+    })()`)
+    recorder.note({ step: 'scheduled-overview-rows', rows: overviewRows, overview: overview.heading })
 
-    // Entry 1: the settings overview row.
-    await clickVisible(client, '.settings-overview-row', { contains: '已安排' })
-    const fromOverview = await waitForScheduled(
+    // Entry 1: the settings search result.
+    await openSettingsViaSearch(client, '已安排')
+    const fromSearch = await waitForScheduled(
       client,
       (surface) => (surface.heading === '已安排' ? surface : undefined),
-      'the scheduled page from the overview',
+      'the scheduled page from the settings search',
     )
-    screenshots['scheduled-overview'] = await writePng(client, 'scheduled-overview')
-    recorder.note({ step: 'scheduled-from-overview', surface: fromOverview })
-    recorder.check(fromOverview.entry === 'settings', 'the overview entry opens the settings page', { entry: fromOverview.entry })
-    recorder.check(fromOverview.activeNav === '已安排', 'the settings page is the 已安排 page', { activeNav: fromOverview.activeNav })
+    screenshots['scheduled-search'] = await writePng(client, 'scheduled-search')
+    recorder.note({ step: 'scheduled-from-search', surface: fromSearch })
+    recorder.check(fromSearch.entry === 'settings', 'the search entry opens the settings page', { entry: fromSearch.entry })
+    recorder.check(fromSearch.activeNav === '已安排', 'the settings page is the 已安排 page', { activeNav: fromSearch.activeNav })
     recorder.check(
-      fromOverview.composerVisible === false,
+      fromSearch.composerVisible === false,
       'opening the page has a visible result: the chat is replaced',
-      { composerVisible: fromOverview.composerVisible },
+      { composerVisible: fromSearch.composerVisible },
     )
 
-    // Entry 2: the settings sidebar entry.
-    await openSettings(client, '已安排')
-    const fromSidebar = await waitForScheduled(
-      client,
-      (surface) => (surface.heading === '已安排' ? surface : undefined),
-      'the scheduled page from the settings sidebar',
-    )
-    recorder.note({ step: 'scheduled-from-sidebar', surface: fromSidebar })
-
-    // Entry 3: the app sidebar's direct module entry.
+    // Entry 2: the app sidebar's direct module entry.
     await evaluate(client, `(() => { document.querySelector('.settings-sidebar-exit')?.click(); return true })()`)
     await delay(400)
     const directClick = await clickVisible(client, '.sidebar-nav-button[aria-label="已安排"]')
@@ -397,23 +443,48 @@ async function main() {
     recorder.check(directClick.clicked, 'the direct module entry is reachable', directClick)
     recorder.check(fromDirect.ariaLabel === '已安排', 'the direct module page names the same feature', { ariaLabel: fromDirect.ariaLabel })
 
-    // Three entries, one page.
-    const entries = { overview: fromOverview, sidebar: fromSidebar, direct: fromDirect }
+    // Two entries, one page.
+    const entries = { search: fromSearch, direct: fromDirect }
     const bodies = Object.entries(entries).map(([key, surface]) => ({ key, text: surface.pageText }))
     const firstText = bodies[0].text
     const differing = bodies.filter((entry) => entry.text !== firstText)
     recorder.check(
       differing.length === 0 && firstText !== null,
-      'all three entries render the same page',
+      'both entries render the same page',
       { bodies: bodies.map((entry) => ({ key: entry.key, text: entry.text?.slice(0, 80) })) },
     )
     for (const [key, surface] of Object.entries(entries)) {
       recorder.check(
         surface.statement === SCHEDULED_STATEMENT
-        && surface.emptyTitle === SCHEDULED_EMPTY_TITLE
-        && surface.emptyBody === SCHEDULED_EMPTY_BODY,
+        && surface.stateView?.title === SCHEDULED_EMPTY_TITLE
+        && surface.stateView?.body === SCHEDULED_EMPTY_BODY,
         `the ${key} entry states that the capability is not connected`,
-        { statement: surface.statement, emptyTitle: surface.emptyTitle, emptyBody: surface.emptyBody },
+        { statement: surface.statement, stateView: surface.stateView },
+      )
+      // V3 (audit finding #20): the page must render the shared *unavailable*
+      // state - slashed glyph, `aria-disabled`, and a reason the type makes
+      // mandatory - and it must not render an empty-data state at all.
+      recorder.check(
+        surface.stateView?.state === 'unavailable'
+        && surface.stateView?.ariaDisabled === 'true'
+        && surface.stateView?.ariaBusy === null
+        && surface.stateView?.role === 'status'
+        && (surface.stateView?.reason ?? '').length > 0,
+        `the ${key} entry renders the shared unavailable state with its reason`,
+        { stateView: surface.stateView },
+      )
+      recorder.check(
+        surface.stateView?.borderStyle === 'dashed'
+        && surface.stateView?.glyphPaths >= 1
+        && surface.emptyViewCount === 0
+        && surface.bespokeEmptyCount === 0,
+        `the ${key} entry cannot be read as empty data`,
+        {
+          borderStyle: surface.stateView?.borderStyle ?? null,
+          glyphPath: surface.stateView?.glyphPath ?? null,
+          emptyViews: surface.emptyViewCount,
+          bespokeEmpty: surface.bespokeEmptyCount,
+        },
       )
       recorder.check(
         surface.interactiveCount === 0 && surface.toolbarCount === 0,
@@ -625,8 +696,18 @@ async function main() {
           'the unconfigured fixture explains where channels are configured',
           { hint: measured.hintText, opensDetails: measured.hintOpensDetails },
         )
+        recorder.check(
+          measured.visibleStates.join(',') === 'empty',
+          'the unconfigured fixture renders the shared empty state and nothing else',
+          { states: measured.visibleStates },
+        )
       } else {
         recorder.check(measured.hintText === null, `the ${fixture.key} fixture does not show the unconfigured hint`, { hint: measured.hintText })
+        recorder.check(
+          !measured.visibleStates.includes('empty'),
+          `the ${fixture.key} fixture does not claim the page is empty`,
+          { states: measured.visibleStates },
+        )
       }
     }
 

@@ -24,7 +24,7 @@
   - **R3 聚焦的控件必须看得见焦点**：控件要么显示环、要么显示填充。关掉全局 `:focus-visible` 环的规则必须给出替代，且**外层滚动容器不许把替代剪掉**——权限选择器 `.option-picker-list` 曾把每个聚焦项左右两侧的环剪到 **0.00** 覆盖。
 - `focus-indicator-rules.ts`：R3 的**样式表读法**（纯文本进、判断出，无 DOM）：这条规则是否把控件推进了焦点态、是否关掉 outline、是否画了可见替代，以及“这个滚动容器的内边距容不容得下里面控件的环”。R3 的两半分由 `focus-ownership.test.ts`（样式源 + 例外清单，**例外本身也要被验证**）与 `scripts/lib/focus-visibility.mjs`（真实窗口像素：聚焦帧 vs 同一批像素失焦帧，按控件自身边框盒分为环/填充，并给出环的**逐边覆盖**）断言——只有像素能发现“画了却被剪掉或被盖住”的环。两者都应作为**可调用**能力复用，不要重新手写一遍。
 - `danger-confirm.tsx`：不可逆删除的最小确认层，展示对象、影响和保留项，初始焦点在“取消”，请求进行中禁用两个动作并发布 `aria-busy`，失败行带共享失败字形。
-- `state-view.ts`、`state-view.tsx`、`state-icons.tsx`：**四种状态视图**（加载／无数据／不可用／失败）的状态表、结构与字形家族。四种状态的 role／busy／disabled／字形两两不同，`unavailable` 的原因在类型上必填（"这里不能用"不会渲染成"这里没有数据"）；状态标记独立成族，不增长冻结的 `icons.tsx`。契约见 `state-view.test.ts`，样式与整体矩阵见 `styles/13-interaction-states.css` 与 `ui-state-matrix.test.ts`。
+- `state-view-specs.ts`、`state-view.tsx`、`state-icons.tsx`：**四种状态视图**（加载／无数据／不可用／失败）的状态表、结构与字形家族。四种状态的 role／busy／disabled／字形两两不同，`unavailable` 的原因在类型上必填（"这里不能用"不会渲染成"这里没有数据"）；状态标记独立成族，不增长冻结的 `icons.tsx`。契约见 `state-view.test.ts` 与 `state-view-adoption.test.ts`（页面消费者计数：某个页面退回自制空态就会红），样式与整体矩阵见 `styles/13-interaction-states.css` 与 `ui-state-matrix.test.ts`。
 
 **平铺编辑页与模态对话框必须分开定义**：设置页里的编辑器、内嵌的渠道/技能页是页面级表面，只用 `useEscapeScope`，不捕获 Tab；只有真正覆盖其它内容、需要用户先处理的对话框才使用 `useModalSurface`。`active` 参数用于退出动画期间交还按键：只在下滑动画中存在的层不再消费 Escape，也不会重复触发已结算的操作。
 
@@ -45,7 +45,7 @@
 | 段内紧凑动作 | `settings-policy-row button`、`storage-settings-row button`、`storage-settings-actions button`、`web-cache-clear`、`ms-feedback-action`、`memory-file-save`、`provider-remove` | `--control-height-row` + `--control-font-size`（29px 与 30px 混用，已统一） |
 | 行内小动作 | `feedback-action` | `--control-height-sm` + `--control-font-size` |
 | 禁用态 | 上面所有角色 + `dialog-close`，以及设置页/恢复页/记忆文件页的动作按钮 | `--control-disabled-opacity`，由 `styles/13-interaction-states.css` 的**一条** `:is(...):disabled` 规则统一施加（本轮之前是 21 条逐角色复制，其中 `.danger-btn:disabled` 还用了字面量 `0.5`）；大块选择用 `--choice-disabled-opacity`；输入区自己的控件用 `--composer-control-disabled-opacity`（`0.48`）；密集行动作用 `--row-action-disabled-opacity`（`0.55`） |
-| 空态与只读 | `dialog-hint`、`settings-module-empty`、`provider-empty`、`WorkspacePlaceholder` | 沿用既有 token；四种状态视图的共享件见下文「四种状态视图」 |
+| 空态与只读 | `state-view`（共享四态，见下文）、`dialog-hint`、`provider-empty`、`WorkspacePlaceholder` | 沿用既有 token；设置页与工作模块的"没有数据／不可用／失败"已改走 `state-view`，设置专用的 `.settings-module-empty` 已删除 |
 
 **已知例外（不是漂移）**：`archive-action` 26px 与 `approval-action` 34px 是紧凑行操作和对话框主操作，`.provider-remove` 是 30px 胶囊（高度归段内动作，圆角仍是胶囊），`.provider-add` / `.profile-choice` 是 48px 大块选择；`.plugin-switch` 18px 是开关、`.provider-chip` 24px 是胶囊；圆角例外仍是 `--radius-icon: 3px`（`sidebar-toggle-btn`、`app-nav-btn`）。`.application-close-policy-list .profile-choice:disabled` 与 `.project-parent-picker:disabled` 保留更强的 `--choice-disabled-opacity`。
 
@@ -119,7 +119,19 @@
 
 **已经落地的位置**：失败态——`FeedbackNotice`（`ui/feedback-notice.tsx`，每个 tone 都有自己的字形，失败不再只靠红色）与不可逆删除确认（`ui/danger-confirm.tsx` 的错误行带失败图标，并发布 `aria-busy`）；忙碌态——`ui/split-button.tsx`（`aria-busy` + 底边进度条 + 禁用原因）、`runtime-recovery/checkpoint-recovery.tsx`、`workspace/browser.tsx` 已有的 `aria-busy` 现在有统一样式；不可用态——`sidebar-section-action[aria-disabled="true"]` 与 `web-source-row[aria-disabled="true"]` 有统一样式。
 
-**尚未接入（需要各自工作包接线，本包只提供共享件）**：设置模块空态（`settings-module-empty`，现为图标+标题+说明，语义等同 `empty`）、插件/渠道加载中（`plugin-loading-indicator`，等同 `loading`）、Runtime 未就绪（`runtime-readiness-notice`，等同 `unavailable`，已有原因文案）、聊天空会话与工作区空列表（`workspace-empty-launcher-item`）。这些面当前的类名与结构各自成立，但**没有**能力区分"没有数据"和"不能用"；把它们换成 `StateView` 属于对应页面的改动。
+**按页面接入（2026-09-29，V3）**：四态原语在过去只有共享件、实时 DOM 里计数为 0（审计发现 #20），现在这些面直接渲染 `state-view`，并由 `state-view-adoption.test.ts` 计数守着——某个面退回自制空态就会红：
+
+| 面 | 状态 | 原来是什么 |
+| --- | --- | --- |
+| `settings/scheduled.tsx`（已安排） | `unavailable` + 必填原因 | `.settings-module-empty`，与插件"没有匹配的插件"同类名／同结构／同灰色 |
+| `settings/plugins.tsx`（插件） | `empty` | 同上那个 `.settings-module-empty` |
+| `ChannelConnections.tsx`（外部渠道） | `loading`、`empty`（"在哪里配置"进动作槽） | 两个 `.dialog-hint`：加载与"还没配置"曾是同一个类 |
+| `MemorySkills.tsx`（技能） | `loading`、`empty`、`failure`（失败带重试） | 同样是 `.dialog-hint`，加载／空／首次加载失败三者不可分 |
+| `ArchiveManager.tsx`（归档） | `empty`（页面级空态） | `.archive-empty-state` 里的裸 `strong`＋`span`；列表内的"暂无…"行仍是行文本 |
+
+禁用原因也第一次有了调用点：`settings/web.tsx` 的"检查 Tavily 连接"由五个事实共同禁用，现在由 `settings/web-state.ts` 的 `webProviderCheckBlockedReason` 同时给出禁用态与那句原因（可见文本 + `aria-describedby` + `title`），契约在 `settings/web-disabled-reason.test.ts`（32 种组合的真值表：有原因 ⟺ 被禁用）。两段式控件自己的 `disabledReason` 由终端 Shell 选择器接通（见该文件与 `split-button.test.ts`）。
+
+**仍未接入（需要各自工作包接线，本包只提供共享件）**：插件页的列表加载指示器（`plugin-list-loading` + `plugin-loading-indicator`，等同 `loading`；保留它是因为 V3 的减动态像素证据就采在这个元素上，它用的 `plugin-loading-spin` 与 `.state-view-ring` 是同一支动画）、Runtime 未就绪（`runtime-readiness-notice`，等同 `unavailable`，已有原因文案）、聊天空会话与工作区空列表（`workspace-empty-launcher-item`）、插件页的设置模块空态之外的表单空态（`provider-empty`、`model-provider-editor` 的"还没有模型"）。归档页与渠道页列表内的"暂无…"行、`WorkspacePlaceholder` 仍按各自的行/占位角色保留。
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 

@@ -141,8 +141,20 @@ const SKILLS_STATE_EXPRESSION = `(() => {
     text: block.querySelector('.ms-feedback-text')?.textContent?.trim() ?? '',
     action: block.querySelector('.ms-feedback-action')?.textContent?.trim() ?? null,
   }))
+  // V3: loading, "genuinely empty" and "the first load failed" are the shared
+  // four-state view now, so which one is on screen is read from its own state
+  // attribute instead of from a shared hint class.
+  const stateView = page.querySelector('.state-view')
   return {
-    hint: page.querySelector('.dialog-hint')?.textContent?.trim() ?? null,
+    stateView: stateView ? {
+      state: stateView.getAttribute('data-state'),
+      role: stateView.getAttribute('role'),
+      ariaBusy: stateView.getAttribute('aria-busy'),
+      ariaDisabled: stateView.getAttribute('aria-disabled'),
+      title: stateView.querySelector('strong')?.textContent?.trim() ?? null,
+      body: stateView.querySelector(':scope > p')?.textContent?.trim() ?? null,
+      action: stateView.querySelector('.state-view-action-slot .ms-feedback-action')?.textContent?.trim() ?? null,
+    } : null,
     items: [...page.querySelectorAll('.ms-item-name')].map((element) => element.textContent?.trim() ?? ''),
     feedback,
     refreshLabel: [...page.querySelectorAll('.dialog-header .ms-feedback-action')].map((element) => element.textContent?.trim() ?? ''),
@@ -309,9 +321,36 @@ async function main() {
     })()`)
     const empty = await harness.waitFor(() => evaluate(client, `(() => {
       const state = ${SKILLS_STATE_EXPRESSION}
-      return state?.hint === '暂无技能' && state.items.length === 0 ? state : null
+      return state?.stateView?.state === 'empty' && state.stateView.title === '暂无技能' && state.items.length === 0 ? state : null
     })()`), 10_000, 'the successful empty skills state')
     const emptyScreenshot = await writePng(client, 'skills-empty')
+
+    // --- 8. a load that failed with nothing on screen is a failure, and its retry recovers ---------
+    // V3: with the list empty, the next failure has nothing to keep, so it is the
+    // area's *failure* state (danger glyph, `role="alert"`, reason, one retry) - a
+    // different state from both the empty view above and the warning below it.
+    await evaluate(client, `(() => { window.__lsSkillsProbe.failListTimes = 1; return true })()`)
+    const failedRefreshClicked = await evaluate(client, `(() => {
+      const button = [...document.querySelectorAll('.memory-skills-dialog .dialog-header .ms-feedback-action')][0]
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })()`)
+    const loadFailure = await harness.waitFor(() => evaluate(client, `(() => {
+      const state = ${SKILLS_STATE_EXPRESSION}
+      return state?.stateView?.state === 'failure' ? state : null
+    })()`), 10_000, 'the failed first load state')
+    const loadFailureScreenshot = await writePng(client, 'skills-load-failure')
+    const failureRetryClicked = await evaluate(client, `(() => {
+      const button = document.querySelector('.memory-skills-dialog .state-view-action-slot .ms-feedback-action')
+      if (!(button instanceof HTMLElement)) return false
+      button.click()
+      return true
+    })()`)
+    const failureRecovered = await harness.waitFor(() => evaluate(client, `(() => {
+      const state = ${SKILLS_STATE_EXPRESSION}
+      return state && state.stateView === null && state.items.length > 0 ? state : null
+    })()`), 10_000, 'the list after the failure retry')
     const probeState = await evaluate(client, `window.__lsSkillsProbe`)
 
     const results = {
@@ -326,19 +365,31 @@ async function main() {
       afterLateDetail,
       emptyRefreshClicked,
       empty,
+      failedRefreshClicked,
+      loadFailure,
+      failureRetryClicked,
+      failureRecovered,
       backToList,
       probeState,
-      screenshots: { loadingScreenshot, readyScreenshot, staleScreenshot, detailFailureScreenshot, emptyScreenshot },
+      screenshots: {
+        loadingScreenshot,
+        readyScreenshot,
+        staleScreenshot,
+        detailFailureScreenshot,
+        emptyScreenshot,
+        loadFailureScreenshot,
+      },
     }
 
     const failures = []
     const expect = (condition, message) => { if (!condition) failures.push(message) }
     // 1. loading is its own visible state.
-    expect(loading?.hint === '正在加载技能…', `the loading state was not shown: ${JSON.stringify(loading?.hint)}`)
+    expect(loading?.stateView?.state === 'loading' && loading.stateView.ariaBusy === 'true',
+      `the loading state was not shown: ${JSON.stringify(loading?.stateView)}`)
     expect(loading?.items.length === 0, 'the loading state listed skills')
     // 2. content arrives.
     expect(ready.items.length > 0, 'the ready state listed no skills')
-    expect(ready.hint === null, 'the ready state still showed a hint')
+    expect(ready.stateView === null, 'the ready state still showed a state view')
     expect(ready.refreshLabel.includes('刷新'), `no refresh entry is offered: ${JSON.stringify(ready.refreshLabel)}`)
     // 3. a failed reload keeps the list and says it is not refreshed.
     expect(refreshClicked, 'the refresh entry could not be clicked')
@@ -346,6 +397,7 @@ async function main() {
     expect(stale.feedback.some((entry) => entry.text.includes('未能刷新技能列表')), 'the failed reload was not explained')
     expect(stale.feedback.some((entry) => entry.action === '重新加载'), 'the failed reload offered no retry')
     expect(!stale.feedback.some((entry) => entry.text.includes('技能列表加载失败')), 'a failed rebuild was reported as a first-load failure')
+    expect(stale.stateView === null, 'a failed rebuild rendered the first-load failure state view')
     // 4. the retry recovers into the clean ready state.
     expect(recovered.feedback.length === 0, 'the recovery kept a failure notice')
     expect(recovered.items.length > 0, 'the recovery listed no skills')
@@ -359,8 +411,18 @@ async function main() {
     expect(afterLateDetail.detailTitle === secondSkill, `the slower earlier response replaced ${JSON.stringify(secondSkill)} with ${JSON.stringify(afterLateDetail.detailTitle)}`)
     expect(backToList.detailOpen === false && backToList.items.length > 0, '返回 did not restore the list after rapid switching')
     expect(emptyRefreshClicked, 'the empty-state refresh could not be clicked')
-    expect(empty.hint === '暂无技能' && empty.items.length === 0 && empty.feedback.length === 0,
+    expect(empty.stateView?.state === 'empty' && empty.stateView.title === '暂无技能'
+      && empty.items.length === 0 && empty.feedback.length === 0,
       `the successful empty response was not rendered as an empty state: ${JSON.stringify(empty)}`)
+    // 8. a load failure with nothing on screen is a distinct state with its own retry.
+    expect(failedRefreshClicked, 'the failing refresh could not be clicked')
+    expect(loadFailure.stateView?.role === 'alert' && loadFailure.stateView.ariaBusy === null,
+      `the failed load did not render the failure state: ${JSON.stringify(loadFailure?.stateView)}`)
+    expect((loadFailure.stateView?.body ?? '').length > 0, 'the failure state did not carry the reason')
+    expect(loadFailure.stateView?.action === '重试', `the failure state offered no retry: ${JSON.stringify(loadFailure.stateView?.action)}`)
+    expect(failureRetryClicked, 'the failure retry could not be clicked')
+    expect(failureRecovered.items.length > 0 && failureRecovered.feedback.length === 0,
+      'the failure retry did not recover into the list')
     expect(probeState.failures.some((entry) => entry.kind === 'empty-list'), 'the empty response was not injected')
 
     if (failures.length > 0) {

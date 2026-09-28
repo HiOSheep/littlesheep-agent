@@ -17,6 +17,7 @@ import {
   type DeletionImpact,
 } from './deletion-impact'
 import { DangerConfirmDialog } from './ui/danger-confirm'
+import { StateView } from './ui/state-view'
 import { sessionBelongsToProject as sessionHasProject } from '../shared/session-scope'
 
 interface ArchiveManagerProps {
@@ -278,9 +279,15 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
       </section>
 
       {!loading && !hasItems && (
+        // The page-level empty area goes through the shared state view. The two
+        // section lines above stay list rows: a list that happens to be empty is
+        // content, while "nothing is archived yet" is the area's state.
         <div className="archive-empty-state">
-          <strong>侧边栏已经很干净</strong>
-          <span>归档项目或对话后，它们会出现在这里。</span>
+          <StateView
+            state="empty"
+            title="侧边栏已经很干净"
+            description="归档项目或对话后，它们会出现在这里。"
+          />
         </div>
       )}
 

@@ -555,24 +555,16 @@
   font-size: 12px;
 }
 
+/* The empty area is the shared state view (`ui/state-view.tsx`); this element only
+   centres it on the page. Its former `strong`/`span` child rules were deleted with
+   the bespoke markup: `13-interaction-states.css` already owns `.state-view strong`
+   and `.state-view p`, and it is imported later, so those two declarations never
+   reached a rendered node once the view moved in (V3, audit finding #20). */
 .archive-empty-state {
   display: grid;
   justify-items: center;
-  gap: 6px;
   margin-top: 36px;
-  color: var(--muted);
-  text-align: center;
   animation: content-fade-in var(--motion-base) var(--motion-ease) both;
-}
-
-.archive-empty-state strong {
-  color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.archive-empty-state span {
-  font-size: 12px;
 }
 
 .archive-skeleton-row {

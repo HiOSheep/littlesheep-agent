@@ -9,6 +9,7 @@ import {
 } from './ui/feedback'
 import { FeedbackNotice } from './ui/feedback-notice'
 import { useEscapeScope } from './ui/modal-surface'
+import { StateView } from './ui/state-view'
 
 interface ChannelConnectionsProps {
   onClose: () => void
@@ -93,7 +94,7 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
           {!embedded && <button className="dialog-close" onClick={onClose}>×</button>}
         </div>
 
-        {loading && <div className="dialog-hint">正在加载...</div>}
+        {loading && <StateView state="loading" title="正在读取外部渠道状态" />}
         <FeedbackNotice
           feedback={feedback}
           busy={reloading || loading}
@@ -161,16 +162,23 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
             )}
 
             {status.configured.length === 0 && (
-              <div className="dialog-hint">
-                还没有配置外部渠道，当前没有渠道可以运行。这个版本还没有渠道配置界面。
-                <details className="feedback-detail">
-                  <summary>在哪里配置</summary>
-                  <p>
-                    在应用数据目录的 <code>config.json</code> 里按 <code>channels.channels</code> 添加渠道，
-                    保存后回到本页点“重新加载”。嵌套字段的完整含义见仓库的渠道插件说明。
-                  </p>
-                </details>
-              </div>
+              // Empty, and it says so: no channel is configured yet, which is a
+              // different fact from "this page cannot be used". The one next step
+              // (where to configure a channel) stays the view's single action slot.
+              <StateView
+                state="empty"
+                title="还没有配置外部渠道"
+                description="当前没有渠道可以运行。这个版本还没有渠道配置界面。"
+                action={(
+                  <details className="feedback-detail">
+                    <summary>在哪里配置</summary>
+                    <p>
+                      在应用数据目录的 <code>config.json</code> 里按 <code>channels.channels</code> 添加渠道，
+                      保存后回到本页点“重新加载”。嵌套字段的完整含义见仓库的渠道插件说明。
+                    </p>
+                  </details>
+                )}
+              />
             )}
           </>
         )}
