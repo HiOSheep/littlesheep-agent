@@ -39,6 +39,9 @@ export function WorkspaceTerminalShellPicker({
         : `用 ${currentLabel} 新建终端`}
       menuLabel="选择终端 Shell"
       disabled={available.length === 0}
+      disabledReason={available.length === 0
+        ? `本机没有可用的终端 Shell${missingHint ? `：\n${missingHint}` : ''}`
+        : undefined}
       busy={busy}
       items={[
         ...available.map((profile) => ({
