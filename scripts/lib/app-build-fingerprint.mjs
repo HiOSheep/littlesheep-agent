@@ -14,6 +14,7 @@ import {
   electronRuntimeContract,
   fingerprintPreparedElectronRuntime,
 } from './electron-runtime.mjs';
+import { pnpmFailureDetail, resolvePnpmInvocation } from './pnpm-invocation.mjs';
 import { ensureWorkspaceArtifacts } from './workspace-artifact-fingerprint.mjs';
 
 export const APP_BUILD_MANIFEST_VERSION = 1;
@@ -38,6 +39,7 @@ const ROOT_BUILD_INPUTS = Object.freeze([
   'scripts/lib/build-fingerprint.mjs',
   'scripts/lib/electron-runtime.mjs',
   'scripts/lib/app-build-fingerprint.mjs',
+  'scripts/lib/pnpm-invocation.mjs',
   'scripts/lib/workspace-artifact-fingerprint.mjs',
 ]);
 
@@ -358,21 +360,21 @@ async function defaultPrepareRuntime(repoRoot) {
 }
 
 function defaultBuild(repoRoot) {
-  const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const args = ['--filter', '@littlesheep/app', 'run', 'build'];
-  const invocation = process.platform === 'win32' && pnpm.toLowerCase().endsWith('.cmd')
-    ? {
-      command: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
-      args: ['/d', '/s', '/c', pnpm, ...args],
-    }
-    : { command: pnpm, args };
+  // Resolve pnpm before spawning anything: a missing package manager used to arrive as a
+  // generic `exit 1` from cmd.exe, with `'pnpm.cmd' is not recognized` left on an inherited
+  // stderr stream that a capturing caller never sees.
+  const invocation = resolvePnpmInvocation(['--filter', '@littlesheep/app', 'run', 'build'], {
+    env: { ...process.env, ComSpec: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe' },
+  });
   const result = spawnSync(invocation.command, invocation.args, {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: 'inherit',
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`App build failed with exit ${result.status ?? 'unknown'}.`);
+  const failure = pnpmFailureDetail(result, invocation);
+  if (failure) {
+    throw new Error(`App build failed: ${failure}. pnpm was resolved from ${invocation.source} (${invocation.executable}).`);
+  }
 }
 
 async function ensureWorkspaceBuildClosure(repoRoot) {
@@ -407,12 +409,46 @@ export async function recordAppBuildManifest(repoRoot, {
   return { manifest, input, output, runtime };
 }
 
+/**
+ * A build command that exits 0 is not evidence that a build happened.
+ *
+ * `out/` is only ever compared against the recorded inputs, so *whatever bytes are lying there*
+ * get recorded as current: a package manager resolving to a shim, a filter that matches nothing,
+ * or a script that no-ops all "succeed" and would leave the previous bundle declared fresh. That
+ * is the direction the failure has to be closed from — a required build must leave a mark, i.e.
+ * rewrite at least one required output after it started.
+ *
+ * The tolerance absorbs filesystem timestamp granularity, nothing else; a build that never ran
+ * is minutes or days older than this window.
+ */
+async function assertBuildRewroteOutputs(repoRoot, { buildStartedAt, toleranceMs = 2_000 }) {
+  const stamped = [];
+  for (const requiredPath of REQUIRED_APP_OUTPUTS) {
+    const absolutePath = resolve(repoRoot, requiredPath);
+    const info = await lstat(absolutePath).catch(() => null);
+    if (!info || !info.isFile()) {
+      throw new Error(`The App build reported success but did not produce ${requiredPath}.`);
+    }
+    stamped.push({ requiredPath, mtimeMs: info.mtimeMs });
+  }
+  const newest = stamped.reduce((latest, entry) => (entry.mtimeMs > latest.mtimeMs ? entry : latest));
+  if (newest.mtimeMs < buildStartedAt - toleranceMs) {
+    throw new Error(
+      'The App build reported success without rewriting the App outputs: the newest required output '
+      + `(${newest.requiredPath}) was written at ${new Date(newest.mtimeMs).toISOString()}, before this build `
+      + `started at ${new Date(buildStartedAt).toISOString()}. Refusing to record the existing bundle as current.`,
+    );
+  }
+  return stamped;
+}
+
 export async function ensureAppBuild(repoRoot, {
   force = false,
   prepareRuntime = defaultPrepareRuntime,
   resolveRuntime = fingerprintPreparedElectronRuntime,
   build = defaultBuild,
   ensureWorkspaceBuild = ensureWorkspaceBuildClosure,
+  now = () => Date.now(),
 } = {}) {
   await ensureWorkspaceBuild(repoRoot);
   const beforeRuntime = await prepareIdentity(repoRoot, prepareRuntime, resolveRuntime);
@@ -426,12 +462,17 @@ export async function ensureAppBuild(repoRoot, {
   }
 
   await invalidateAppBuildManifest(repoRoot);
+  const buildStartedAt = now();
   try {
     await build(repoRoot);
   } catch (error) {
     await invalidateAppBuildManifest(repoRoot);
     throw error;
   }
+  await assertBuildRewroteOutputs(repoRoot, { buildStartedAt }).catch(async (error) => {
+    await invalidateAppBuildManifest(repoRoot);
+    throw error;
+  });
 
   const afterRuntime = await prepareIdentity(repoRoot, prepareRuntime, resolveRuntime);
   const afterInput = await collectAppBuildInputs(repoRoot, afterRuntime);

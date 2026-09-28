@@ -12,6 +12,7 @@ import {
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { discoverWorkspaceProjects } from '../workspace-projects.mjs';
+import { pnpmFailureDetail, pnpmInvocation, resolvePnpmInvocation } from './pnpm-invocation.mjs';
 
 export const WORKSPACE_ARTIFACT_SCHEMA = 'littlesheep.workspace-artifact-fingerprint';
 export const WORKSPACE_ARTIFACT_VERSION = 1;
@@ -470,30 +471,35 @@ export async function assertWorkspaceArtifacts(options) {
 }
 
 function defaultBuildRunner(plan, options) {
-  const pnpmCommand = options.pnpmCommand ?? (process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm');
-  const args = [];
-  for (const targetName of plan.targetNames) args.push('--filter', `${targetName}...`);
-  args.push('run', 'build');
-  const invocation = process.platform === 'win32' && pnpmCommand.toLowerCase().endsWith('.cmd')
-    ? {
-      command: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe',
-      args: ['/d', '/s', '/c', pnpmCommand, ...args],
-    }
-    : { command: pnpmCommand, args };
+  // `options.pnpmCommand` stays the documented override; otherwise the executable is resolved
+  // instead of assumed to be on PATH (see lib/pnpm-invocation.mjs for why the assumption failed).
+  const explicit = options.pnpmCommand;
+  const invocation = explicit
+    ? pnpmInvocation(explicit, workspaceBuildArgs(plan), { platform: process.platform, env: process.env })
+    : resolvePnpmInvocation(workspaceBuildArgs(plan), {
+      env: { ...process.env, ComSpec: process.env.ComSpec || process.env.COMSPEC || 'cmd.exe' },
+    });
   const result = spawnSync(invocation.command, invocation.args, {
     cwd: plan.repoRoot,
     encoding: 'utf8',
     stdio: 'inherit',
     windowsHide: true,
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
+  const failure = pnpmFailureDetail(result, invocation);
+  if (failure) {
     throw new WorkspaceArtifactContractError(
-      `Workspace build failed with exit ${result.status ?? 'unknown'}.`,
-      { buildFailed: true },
+      `Workspace build failed: ${failure}`,
+      { buildFailed: true, executable: invocation.executable ?? explicit, source: invocation.source ?? 'explicit' },
     );
   }
-  return { command: invocation.command, args: invocation.args, displayCommand: [pnpmCommand, ...args] };
+  return { command: invocation.command, args: invocation.args, displayCommand: invocation.displayCommand };
+}
+
+function workspaceBuildArgs(plan) {
+  const args = [];
+  for (const targetName of plan.targetNames) args.push('--filter', `${targetName}...`);
+  args.push('run', 'build');
+  return args;
 }
 
 async function writeAtomicJson(path, value, root) {
