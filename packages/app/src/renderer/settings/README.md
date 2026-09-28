@@ -1,9 +1,11 @@
 # Renderer 设置
-最后更新：2026-09-28 21:38:44
+最后更新：2026-09-28 23:03:00
 
 当前设置呈现采用参考图的分组卡片：分组标题位于卡片外，卡片统一 18px 圆角、细边框与内缩分隔线。setting-row.tsx 提供左侧说明/右侧控件布局，select.tsx 提供圆角值按钮和带选中勾的下拉菜单；界面密度、Agent 行为、关闭窗口方式及四种网络策略已接入，原配置值和保存接口不变。菜单支持方向键/Home/End、Enter、Escape、Tab、点击外部关闭；使用已有 Escape 层级，关闭菜单不会同时退出设置，菜单通过 portal 挂在 document.body 并在视口底部向上展开。菜单模糊仅存在于浮层，正文卡片保持实体底色。此段取代下方历史的“设置页不画框线”和展开式 profile-choice 布局说明。真实窗口验收：node scripts/verify-settings-cards.mjs，先运行 pnpm run ensure:app-build；覆盖选择与重载保留、菜单关闭、设置不误退出、800px 窄窗口和视口避让。
 
 设置页跟随窗口的 Beta/Chali 原生状态：Beta 侧栏从 32px 标题栏下方开始并隐藏独立拖拽带；Chali 侧栏贯通顶边。窗口左上角的三个导航控件始终可达（它们是窗口镶边层的固定层，见 `../README.md` 的 chali 段落），页面正文不透明。几何覆盖集中在 styles/14-window-layout.css，不由设置页另建窗口状态。
+
+**卡片边界、行控件与空态节奏（2026-09-28 实窗实测修正）**：在隔离数据根、插件宿主已启动的真实窗口（1280×900）里逐个量过四类"多出来的线"和两个形状问题，修法都是删掉重复声明，没有新增令牌。①**分隔线只在两行之间**：原来的重置写的是 `:last-child`，而卡片最后一行后面常常还跟着自己的提示块/空态/动作块——存储页实测行底 `366.17` 与 `.storage-settings-notice` 顶 `374.17` 之间留着一条 0.67px 线，读起来像提示块自己画的边；现在选择器是 `:not(:has(+ :is(…行…)))`（`styles/15-settings-surface.css`），只有后面还有一行时才画线。②**每张卡只画一次边**：`.application-background-empty` 自己还声明了上下边，落在卡片边框内侧 0.67px、左右各短 16.7px；`.development-environment-row` 更明显——每行都在卡片框内 0.67px 处画自己的左/右/下边，首行连上边一起画（11 行 = 33 条多余的线），现在这些行与 storage / web / policy / value 行同属一个卡片行族（同一处 `:is()` 名单），行不再持有填充与边框。③`.plugin-list-item:last-child` 的 `border-bottom` 距列表自己的下边框只有 0.67px，由"卡片行不重复卡片边"的 `> :last-child` 规则去掉。④运行时页的 **保存 / 导入** 读的是 `border-radius: var(--radius-floating-panel)`（chali 在 `14-window-layout.css` 里把它压成 `0px`），而那条规则又没有 `border`，UA 的 `2px outset` 因此留了下来——实测 `0px` 圆角 + 白边直角矩形；现在它们进"设置不画框线"块并吃 `--settings-control-radius`（11px），与相邻的行操作是同一个角色。同一轮还修了两个形状/节奏问题：`.web-settings-row > button` 少了邻居规则早就写着的 `:not(.plugin-switch)`，把关掉的开关胶囊吃掉（实测 `999px → 0px`、高 `22px → 30px`；`07-overlays-settings.css` 里那条行控件规则现在三个 `> button` 都带排除）；`.settings-module-empty` 缺 `align-content: center`（它镜照的共享 `.state-view` 有这一条），`min-height: 220px` 的余量被默认 `stretch` 摊到三行上，声明的 `gap: 7px`（+图标 `margin-bottom: 4px`）实测渲染成 29.4px / 26.2px，标签的 20px 行盒还被撑进 38.5px 的盒子；产出成果卡里 `还有 N 个文件未显示` 用的 `.visually-hidden` 从来没有任何规则，于是它作为卡片的网格项渲染成 758.7×21.3 的可见行、左边距 0.7px（图标 12.7px、行路径 16.7px），现在在 `styles/06-composer.css` 补上视觉隐藏规则。回归：`settings-surface.test.ts` 的四个用例与 `chat-artifacts-card.test.ts` 的隐藏行用例逐条钉住这些声明，实窗证据见下方"未验证与遗留"。
 
 这里负责设置侧边栏、设置页和直接打开的记忆树/插件/已安排页面。设置与主页共用全局导航和侧边栏交互，但不复制运行时数据。
 

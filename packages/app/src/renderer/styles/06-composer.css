@@ -2175,6 +2175,24 @@
   font-size: 12px;
 }
 
+/* The card's screen-reader-only line (`还有 N 个文件未显示`). The class had no rule
+   anywhere, so the span was an ordinary grid item of the card and rendered as a
+   visible 16px line at the card's left edge — measured in a live window on
+   2026-09-28: a 758.7x21.3 box at a 0.7px inset, against 12.7px for the header
+   icon and 16.7px for a row's path, and it pushed the card's height by 21.3px.
+   Same declarations as the activity flow's `.agent-flow-sr-only` (08-activity.css);
+   `!important` is not needed because no other rule targets this span. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The chat's "产出成果" card: one card per turn, its files as rows, their line counts on the right.
    The counts are deliberately colourless until the pointer is on them — a turn that touched ten
    files would otherwise be a wall of green and red — and they are their own button, because a count

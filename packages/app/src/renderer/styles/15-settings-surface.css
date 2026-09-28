@@ -15,7 +15,11 @@
   margin-inline: auto;
 }
 
-.settings-workspace-body :is(.settings-card, .settings-overview-group-items) {
+/* One card geometry, for the plain card and for the row lists that are drawn as a
+   card (the development-environment list has been a card since the reference round;
+   it was simply missing from this group, which is why its rows kept their own
+   padding and frame and ended up as four rectangles inside one card). */
+.settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list) {
   min-width: 0;
   padding: 0 16px;
   overflow: hidden;
@@ -24,7 +28,7 @@
   border-radius: var(--settings-card-radius);
 }
 
-.settings-workspace-body .settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row),
+.settings-workspace-body :is(.settings-card, .development-environment-list) > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .development-environment-row),
 .settings-value-row,
 .settings-workspace-body .settings-overview-row {
   display: grid;
@@ -40,8 +44,16 @@
   border-radius: 0;
 }
 
-.settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-value-row):last-child,
-.settings-workspace-body .settings-overview-row:last-child {
+/* The hairline separates two rows, so it belongs to a row that has a row after it.
+   Resetting it on `:last-child` alone was not the same statement: a card whose last
+   row is followed by its own notice, empty block or action block kept the line, and
+   it read as an edge the following block already draws with its fill. Measured in a
+   live window on 2026-09-28: the storage card drew a 0.67px line under its row with
+   the `.storage-settings-notice` 8px below it, and every `.development-environment-row`
+   drew its own left/right/bottom edge 0.67px inside the card's border — the rows of
+   that page were four rectangles nested in one card. */
+:is(.settings-card, .development-environment-list) > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-value-row, .development-environment-row):not(:has(+ :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-value-row, .development-environment-row))),
+.settings-workspace-body .settings-overview-row:not(:has(+ .settings-overview-row)) {
   border-bottom: 0;
 }
 
@@ -97,17 +109,35 @@
 }
 .settings-card > :is(.web-provider-check, .web-cache-clear) { margin-block: 8px; }
 .settings-card > .web-provider-note { display: block; margin-bottom: 10px; }
-.settings-card > .application-background-empty { background: transparent; }
+/* The card owns its outer edge; this block used to draw the same two edges again,
+   0.67px inside the card's border and 16.7px short at both ends, which read as a
+   second line laid over the card's frame. */
+.settings-card > .application-background-empty {
+  background: transparent;
+  border-top: 0;
+  border-bottom: 0;
+}
 
-.settings-workspace-body :is(.storage-settings-row, .storage-settings-actions, .settings-policy-row, .web-settings-row) button:not(.plugin-switch),
+.settings-workspace-body :is(.storage-settings-row, .storage-settings-actions, .settings-policy-row, .web-settings-row, .development-environment-action-row) button:not(.plugin-switch),
 .settings-workspace-body :is(.web-provider-check, .web-cache-clear) {
   border-radius: var(--settings-control-radius);
 }
 
-.settings-workspace-body :is(.provider-card, .development-environment-list, .plugin-list) {
+/* The remaining row-list cards: the provider card is its own block, and the plugin
+   list keeps its rows' own padding (`plugin-list-disclosure` is the row). The
+   development-environment list is in the card group above, so its geometry is
+   declared once. */
+.settings-workspace-body :is(.provider-card, .plugin-list) {
   border: 1px solid var(--border);
   border-radius: var(--settings-card-radius);
   background: var(--surface);
+}
+
+/* The row lists that are drawn as one card follow the same rule as the cards: the
+   last row does not repeat the edge the card already draws. Measured: the plugin
+   list's last row kept `border-bottom: 0.67px` 0.67px above the list's own border. */
+.settings-workspace-body :is(.plugin-list, .development-environment-list) > :last-child {
+  border-bottom: 0;
 }
 
 /* The selector is a value button, not an expanded collection of radio cards. */
@@ -145,7 +175,7 @@
 .settings-select svg { color: var(--muted); }
 .settings-select:hover:not(:disabled),
 .settings-select[aria-expanded='true'] { background: var(--control-active); }
-.settings-select:disabled { opacity: var(--state-disabled-opacity, 0.42); cursor: default; }
+.settings-select:disabled { cursor: default; }
 
 /* Portalled to document.body so cards and the settings scrollport cannot clip it. */
 .settings-select-menu {
@@ -183,11 +213,11 @@
 }
 .settings-select-menu > button:hover:not(:disabled),
 .settings-select-menu > button:focus-visible { background: var(--control-hover); }
-.settings-select-menu > button:disabled { opacity: 0.42; cursor: default; }
+.settings-select-menu > button:disabled { cursor: default; }
 
 @media (max-width: 900px) {
   .settings-workspace-body { padding: 28px 20px 48px; }
-  .settings-workspace-body :is(.settings-card, .settings-overview-group-items) { padding-inline: 14px; }
+  .settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list) { padding-inline: 14px; }
   .settings-value-row { gap: 12px; }
   .settings-value-control { max-width: 180px; }
 }

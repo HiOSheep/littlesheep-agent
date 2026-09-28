@@ -108,4 +108,81 @@ describe('settings workspace surface', () => {
     )
     expect(nav).toContain('padding-right: var(--sidebar-content-inline-inset)')
   })
+
+  /**
+   * The four card-geometry defects of 2026-09-28, each pinned at the declaration
+   * that caused it. Every value here was measured in a live window first (see
+   * `settings/README.md`); these assertions keep the measurement from being undone
+   * by a later round that restates the same selector.
+   */
+  it('draws a row hairline only between two rows', () => {
+    const reset = styles.slice(styles.indexOf(
+      ':is(.settings-card, .development-environment-list) > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-value-row, .development-environment-row):not(',
+    ))
+    expect(reset).not.toBe('')
+    expect(reset.slice(0, 600)).toContain(':has(+ :is(')
+    expect(reset.slice(0, 600)).toContain('border-bottom: 0')
+    // A row followed by the card's own notice/empty/action block drew that line even
+    // though it was not the last row, which is what `:last-child` could not express.
+    expect(reset.slice(0, 600)).not.toContain(':last-child')
+  })
+
+  it('draws every card edge once', () => {
+    const emptyInCard = ruleBody('.settings-card > .application-background-empty')
+    expect(emptyInCard).toContain('border-top: 0')
+    expect(emptyInCard).toContain('border-bottom: 0')
+
+    const listCard = ruleBody('.settings-workspace-body :is(.plugin-list, .development-environment-list) > :last-child')
+    expect(listCard).toContain('border-bottom: 0')
+
+    // The rows of the development-environment card are card rows like every other
+    // settings row, so they do not draw their own frame inside the card's frame.
+    const cardRowStart = styles.indexOf(
+      '.settings-workspace-body :is(.settings-card, .development-environment-list) > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .development-environment-row)',
+    )
+    expect(cardRowStart).toBeGreaterThanOrEqual(0)
+    const cardRows = styles.slice(cardRowStart, styles.indexOf('}', cardRowStart))
+    expect(cardRows).toContain('border: 0')
+    expect(cardRows).toContain('background: transparent')
+
+    // The card geometry itself is declared once for both shapes of card.
+    const cardGroup = ruleBody('.settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list)')
+    expect(cardGroup).toContain('border-radius: var(--settings-card-radius)')
+  })
+
+  it('lets the switch keep its own shape inside a settings row', () => {
+    // `border-radius: var(--radius-floating-panel)` is `0px` in the window layouts that
+    // flatten floating panels, so any row-control rule that reaches the switch turns the
+    // track into a rectangle. The neighbouring rule already excluded it; this one did not.
+    const start = styles.indexOf('.web-settings-row select,')
+    const rowControls = styles.slice(start, styles.indexOf('}', start))
+    expect(start).toBeGreaterThanOrEqual(0)
+    for (const part of [
+      '.storage-settings-row > button',
+      '.web-settings-row > button',
+      '.settings-policy-row > button',
+    ]) {
+      expect(rowControls, `${part} should exclude the switch`).toContain(`${part}:not(.plugin-switch)`)
+    }
+    expect(ruleBody('.plugin-switch')).toContain('border-radius: var(--radius-pill)')
+  })
+
+  it('gives the runtime page actions the settings row-action role', () => {
+    const deFramed = styles.slice(styles.indexOf('/* Settings frames are off'))
+    expect(deFramed).toContain('.development-environment-action-row button,')
+
+    const controlStart = styles.indexOf('.settings-workspace-body :is(.storage-settings-row, .storage-settings-actions')
+    expect(controlStart).toBeGreaterThanOrEqual(0)
+    const control = styles.slice(controlStart, styles.indexOf('}', controlStart))
+    expect(control).toContain('.development-environment-action-row')
+    expect(control).toContain('border-radius: var(--settings-control-radius)')
+  })
+
+  it('centres the settings empty state instead of stretching its rows', () => {
+    // The empty state is the settings twin of the shared `.state-view`; without
+    // `align-content` the `min-height` free space is shared out between the rows and the
+    // declared 7px gap renders as 26-29px with each child's box over its own line box.
+    expect(ruleBody('.settings-module-empty')).toContain('align-content: center')
+    expect(ruleBody('.state-view')).toContain('align-content: center')
+  })
 })

@@ -3,7 +3,7 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
-import { readRendererStyleSource } from './style-source-test-utils'
+import { readRendererStyleSource, readRendererStyleSourceFiles } from './style-source-test-utils'
 import { ARTIFACT_CARD_VISIBLE_ROWS, MessageArtifactsCard } from './composer/message-artifacts-card'
 import { artifactDeltas, lineDeltaFor } from './composer/use-artifact-deltas'
 import type { WorkspaceReviewSnapshot } from '../shared/workspace-review-contracts'
@@ -120,5 +120,36 @@ describe('artifact count colours', () => {
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-add,')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-remove,')
     expect(styles).toContain('.message-artifacts-row-delta:focus-visible .line-delta-add {')
+  })
+})
+
+describe('the artifacts card keeps its own line rhythm', () => {
+  it('hides the hidden-count line instead of rendering it as another card row', async () => {
+    // The card is a grid, so a class with no rule made its screen-reader-only line an
+    // ordinary grid item: measured in a live window on 2026-09-28 it rendered as a
+    // visible 758.7x21.3 box at a 0.7px inset (against 12.7px for the header icon and
+    // 16.7px for a row's path) and added 21.3px to the card's height.
+    const files = await readRendererStyleSourceFiles()
+    const composer = files.find((file) => file.path === './styles/06-composer.css')?.source ?? ''
+    const component = await readFile(new URL('./composer/message-artifacts-card.tsx', import.meta.url), 'utf8')
+
+    const hiddenClass = component.match(/className="([\w-]+)">还有 \{hiddenCount\}/u)?.[1]
+    expect(hiddenClass).toBe('visually-hidden')
+
+    const rule = composer.slice(composer.indexOf(`.${hiddenClass} {`))
+    expect(composer).toContain(`.${hiddenClass} {`)
+    const body = rule.slice(0, rule.indexOf('}'))
+    for (const declaration of [
+      'position: absolute',
+      'width: 1px',
+      'height: 1px',
+      'overflow: hidden',
+      'white-space: nowrap',
+      'border: 0',
+    ]) {
+      expect(body, declaration).toContain(declaration)
+    }
+    // The parent banned `!important`, and nothing else targets this span.
+    expect(body).not.toContain('!important')
   })
 })
