@@ -789,6 +789,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: var(--settings-switch-width);
   height: var(--settings-switch-height);
   flex: 0 0 var(--settings-switch-width);
+  border-radius: var(--radius-pill);
   padding: 0;
   background: var(--border-strong);
   border: 0;
@@ -804,6 +805,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   left: 3px;
   width: var(--settings-switch-knob);
   height: var(--settings-switch-knob);
+  border-radius: var(--radius-circle);
   background: var(--text);
   border-radius: var(--radius-circle);
   transition:

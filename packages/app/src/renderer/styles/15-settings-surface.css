@@ -17,7 +17,7 @@
 
 .settings-workspace-body :is(.settings-card, .settings-overview-group-items) {
   min-width: 0;
-  padding: 0 18px;
+  padding: 0 16px;
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -33,7 +33,7 @@
   gap: 6px 24px;
   min-height: var(--settings-row-min-height);
   margin: 0;
-  padding: 17px 0;
+  padding: 11px 0;
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--border);
@@ -93,10 +93,10 @@
 .settings-workspace-body button.settings-overview-row:hover { background: var(--control-hover); }
 
 .settings-card > :is(.web-provider-key-form, .storage-settings-actions, .web-egress-confirmation, .settings-advanced) {
-  margin-block: 16px;
+  margin-block: 10px;
 }
-.settings-card > :is(.web-provider-check, .web-cache-clear) { margin-block: 12px; }
-.settings-card > .web-provider-note { display: block; margin-bottom: 16px; }
+.settings-card > :is(.web-provider-check, .web-cache-clear) { margin-block: 8px; }
+.settings-card > .web-provider-note { display: block; margin-bottom: 10px; }
 .settings-card > .application-background-empty { background: transparent; }
 
 .settings-workspace-body :is(.storage-settings-row, .storage-settings-actions, .settings-policy-row, .web-settings-row) button:not(.plugin-switch),
@@ -190,30 +190,4 @@
   .settings-workspace-body :is(.settings-card, .settings-overview-group-items) { padding-inline: 14px; }
   .settings-value-row { gap: 12px; }
   .settings-value-control { max-width: 180px; }
-}
-
-/* Surface fixes after the user reported three visible defects on the redesigned settings page: highlights that
-   do not fill their surface, controls whose styling drifts from the rest of the app, and separator lines that do
-   not read cleanly. The highlight rule is the standard pattern: the menu clips its own rounded corners, and the
-   rows inside it are full-bleed, so a hovered or selected row paints edge to edge instead of as an inset chip.
-   The same applies to a hovered settings row inside a card. Radii come from the app's own tokens so the new
-   controls cannot drift from every other control. */
-.settings-select-menu {
-  overflow: hidden;
-  padding-block: 4px;
-}
-.settings-select-menu > button {
-  width: 100%;
-  margin-inline: 0;
-  border-radius: 0;
-}
-.settings-workspace-body .settings-overview-row {
-  margin-inline: 0;
-  border-radius: 0;
-}
-.settings-card > :is(.storage-settings-row, .web-settings-row, .web-settings-field, .settings-policy-row, .settings-additional-row, .settings-overview-row):last-child {
-  border-bottom: 0;
-}
-.settings-select {
-  border-radius: var(--radius-ui);
 }
