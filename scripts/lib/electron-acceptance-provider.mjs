@@ -244,6 +244,15 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
       })
       : textChoice('重读之后修改成功。')
   }
+  // O1 fixture: one run that settles as a whole while a call inside it fails. The first
+  // request reads a file that deliberately does not exist, so the failure is the read tool's
+  // own deterministic result (no approval, no side effect); the second request answers, so
+  // VERIFY has a Provider-authored reply to publish and only loses the right to `pass`.
+  if (user.includes(O1_LOCAL_FAILURE_MARKER)) {
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice('o1-local-failure-read', 'read', { file_path: O1_MISSING_FILE })
+      : textChoice('本轮结束：目标文件不存在，读取失败已保留在运行记录里，验收结论需要人工判断。')
+  }
   if (user.includes('运行中的补充验收')) {
     return textChoice('已处理补充要求：运行中的补充验收。')
   }
@@ -353,6 +362,13 @@ export const FILE_CONSISTENCY_FILE = 'desktop-flow.txt'
 export const FILE_CONSISTENCY_DOCUMENT = 'desktop-report.docx'
 /** Fresh path for the denied write: it must not exist afterwards. */
 export const FILE_CONSISTENCY_DENIED_FILE = 'denied-write.txt'
+/**
+ * O1 acceptance fixture: the marker a gate puts in its prompt to get one settled run whose
+ * recorded evidence contains a locally failed call. {@link O1_MISSING_FILE} is never created,
+ * so the read is the deterministic `File not found` failure.
+ */
+export const O1_LOCAL_FAILURE_MARKER = 'LS-O1-LOCAL-FAILURE-MARKER'
+export const O1_MISSING_FILE = 'o1-missing-fixture.txt'
 
 const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
 

@@ -1,18 +1,23 @@
-// Real-window acceptance for the transcript facts a reader must not lose (taskbook UX-33).
+// Real-window acceptance for the transcript facts a reader must not lose (taskbooks UX-33 and O1).
 //
 // UX-33 asks the chat transcript to keep every "needs attention" fact readable in BOTH display
 // modes. Compact display folds the finished process away, so the facts that must survive it are
-// exactly the ones a user has to act on or fix. This gate produces the five classes the product
-// can really produce in one isolated window and samples the *same turn* in normal and compact
-// display:
+// exactly the ones a user has to act on or fix. This gate produces the classes the product can
+// really produce in one isolated window and samples the *same turn* in normal and compact display:
 //
-//   1. unverified       a completed run whose verification verdict is 未验证
+//   1. pass             a completed read-only run whose verdict passed (which renders no verdict
+//                       line and no attention row at all)
 //   2. failure          an unretryable transport failure (HTTP 401) that ends the turn
 //   3. aborted          the user stops a run whose Provider never answers
 //   4. pending-approval a running turn waiting for the user's write approval
 //   5. denied-tool      the same call, refused by the user, kept as a failed tool row after a
 //                       window reload (the live stream has no tool row for it)
-//   6. manual fold      the reader clicks the process trigger shut on the refused-call turn
+//   6. manual fold      the reader clicks the process trigger on the refused-call turn, in both
+//                       display modes, and the fact the fold must not hide stays readable
+//   7. local failure    O1: a run that settles as a whole while one call inside it failed, and
+//                       the verdict that failure forces (未验证) — read in both display modes
+//   8. waiting_user     O1: the user's decision is still pending after the app was killed
+//                       mid-run and its recovery settled the run as 等待你决定后继续
 //
 // What each sample must show:
 //   - normal mode: the rows and text a reader needs (the failed turn and its reason, the kept
@@ -23,24 +28,34 @@
 //   - both modes: the attention row is never a descendant of `.assistant-process-content`, the
 //     panel the reader (or compact display) folds — checked here, and again after a real click.
 //
-// Two classes the taskbook names cannot be produced by this build:
-//   - 待用户 (`waiting_user`) is only written by older versions / crash recovery
-//     (`packages/harness/src/durable-kernel.ts`); the live-producible equivalent is the pending
-//     approval state measured here, and no synthetic checkpoint is fabricated.
+// One class the taskbook names cannot be produced by this build:
 //   - 部分完成 does not exist: `HistoryActivityStatus` has no `partial` member, so the taskbook's
 //     instruction to rewrite it to a real state is followed with `aborted` (本轮已停止).
+//
+// 待用户 (`waiting_user`) *is* measurable, and category 8 measures it: a live run never parks
+// itself on a question any more (`run-checkpoint-controller.ts`: the clarification activity and
+// the derived status were removed), but killing the app while a model request is in flight and
+// restarting it on the same data root makes Runtime's recovery settle that run as `waiting_user`
+// (`durable-kernel.ts`), which the history projection renders as an attention row. No synthetic
+// checkpoint is fabricated; the fixture is a real kill and a real restart.
 //
 // Usage:
 //   node scripts/verify-transcript-state-visibility.mjs [--out=<dir>] [--keep]
 
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+import {
+  O1_LOCAL_FAILURE_MARKER,
+  O1_MISSING_FILE,
+  startElectronAcceptanceProvider,
+} from './lib/electron-acceptance-provider.mjs'
 import { createElectronHarness, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
+import { runArtifact } from './lib/run-artifacts.mjs'
 
 const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 30_000 })
-const outRoot = resolve(repoRoot, readOption('out', join(tmpdir(), 'littlesheep-transcript-state-visibility')))
+// Screenshots and the report stay outside the checkout (`lib/run-artifacts.mjs`); `--out` still wins.
+const outRoot = resolve(readOption('out', runArtifact('transcript-state-visibility')))
 const keepRoot = process.argv.includes('--keep')
 const WINDOW_SIZE = { width: 1100, height: 760 }
 const EVALUATE_TIMEOUT_MS = 20_000
@@ -48,6 +63,32 @@ const EVALUATE_TIMEOUT_MS = 20_000
 const DENIAL_PROMPT = '请使用 write 工具创建 UX07-APPROVAL-ESCAPE 验收文件'
 const PLAIN_PROMPT = '请简短确认这条转录状态验收消息。'
 const STOP_PROMPT = '请简短确认这条中止验收消息。'
+/**
+ * O1 category 7: the scripted Provider reads a file that does not exist, then answers. The run
+ * therefore settles as a whole *and* keeps a locally failed call plus the `unverified` verdict
+ * that failure forces; the prompt carries the marker the Provider matches on.
+ */
+const LOCAL_FAILURE_PROMPT = `${O1_LOCAL_FAILURE_MARKER} 请读取目标文件并汇报结果。`
+/**
+ * O1 category 8: this token only appears in the user text of the run that is killed mid-flight,
+ * which is how the Provider delay is aimed at its very first model request.
+ */
+const WAITING_ANCHOR = 'LS-O1-WAITING-USER-ANCHOR'
+const WAITING_PROMPT = `${WAITING_ANCHOR} 请等待这条决定验收消息。`
+/**
+ * The crash conversation's *first* turn must finish: the session index is written by the run
+ * completion path (`run-support.ts` `updateSessionIndex`), so a conversation whose only turn was
+ * killed is not listed in the sidebar and its recovered state would not be user-reachable. This
+ * marker becomes the session title, which is also how the fixture finds its row.
+ */
+const CRASH_TITLE_ANCHOR = 'LS-O1-CRASH-SESSION'
+const CRASH_TITLE_PROMPT = `${CRASH_TITLE_ANCHOR} 请简短确认这条会话标题验收消息。`
+const WAITING_DELAY_MS = 60_000
+/**
+ * Recovery may have to wait for the killed process's run lease (30 s) to expire before the queue
+ * pass can claim the run, so this budget covers a lease expiry plus a startup, not one poll.
+ */
+const WAITING_USER_TIMEOUT_MS = 180_000
 const DISPLAY_MODE_KEY = 'littlesheep.ui.conversationDisplayMode'
 const DISPLAY_MODE_EVENT = 'littlesheep:conversation-display-mode'
 const SETTLE_TIMEOUT_MS = 90_000
@@ -410,6 +451,92 @@ function recordStrings(recorder, step, sample) {
   })
 }
 
+/**
+ * The newest durable execution log whose inbound text carries a marker.
+ *
+ * The verdict a turn renders is recorded in this file before it is projected into the DOM, so
+ * category 7 can tie the literal line on screen back to a `verificationHistory` entry instead of
+ * trusting that the label it read came from the verdict it wanted.
+ */
+async function readExecutionLogByPrompt(dataDir, marker) {
+  const directory = join(dataDir, 'execution-logs')
+  const names = await readdir(directory).catch(() => [])
+  const files = []
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue
+    const path = join(directory, name)
+    const info = await stat(path).catch(() => undefined)
+    files.push({ path, name, mtimeMs: info?.mtimeMs ?? 0 })
+  }
+  files.sort((left, right) => right.mtimeMs - left.mtimeMs)
+  for (const file of files) {
+    const log = await readFile(file.path, 'utf8').then((text) => JSON.parse(text)).catch(() => undefined)
+    if (typeof log?.inboundText === 'string' && log.inboundText.includes(marker)) return { name: file.name, log }
+  }
+  return null
+}
+
+/**
+ * Whether anything this turn shows claims the verification passed. `验证通过` is the only string
+ * `verificationVerdictLabel` (chat/activity-model.ts) produces for a `pass` verdict, so its
+ * absence is what "a verdict that did not pass never reads as passed" means in the DOM.
+ */
+function readsAsPassed(sample) {
+  return /验证通过|通过验证|已通过/u.test([
+    sample.attentionText ?? '',
+    sample.triggerText ?? '',
+    sample.verificationText ?? '',
+    sample.responseText ?? '',
+    sample.runStatusError ?? '',
+  ].join(' '))
+}
+
+/**
+ * Wait for the Local App API to project a `waiting_user` turn — the same history projection the
+ * renderer reads (`GET /sessions/:id/messages` → `buildHistoryMessages`).
+ *
+ * Polling this instead of sleeping a fixed time is what keeps the fixture honest about *why* the
+ * state appears: the run is recovered only after the killed process's 30 s run lease expires, and
+ * the reason has to be the missing model response.
+ */
+async function waitForRecoveredWaitingProjection(locator, titleAnchor, timeoutMs = WAITING_USER_TIMEOUT_MS) {
+  const startedAt = Date.now()
+  let attempts = 0
+  let sessionsSeen = 0
+  return harness.waitFor(async () => {
+    attempts += 1
+    const list = await harness.fetchJson(locator, '/sessions').catch(() => undefined)
+    const sessions = list?.body?.sessions ?? []
+    sessionsSeen = Math.max(sessionsSeen, sessions.length)
+    const candidates = [
+      ...sessions.filter((session) => String(session.title ?? '').includes(titleAnchor)),
+      ...sessions.filter((session) => !String(session.title ?? '').includes(titleAnchor)),
+    ]
+    for (const session of candidates) {
+      const history = await harness.fetchJson(
+        locator,
+        `/sessions/${encodeURIComponent(String(session.id))}/messages`,
+      ).catch(() => undefined)
+      const waiting = (history?.body?.messages ?? [])
+        .find((message) => message?.activity?.status === 'waiting_user')
+      if (waiting) {
+        return {
+          sessionId: session.id,
+          title: session.title ?? null,
+          status: waiting.activity.status,
+          runtimeStatusReason: waiting.activity.runtimeStatus?.reason ?? null,
+          attentionText: '等待你决定后继续',
+          waitedMs: Date.now() - startedAt,
+          attempts,
+          sessionsSeen,
+        }
+      }
+    }
+    await delay(1_000)
+    return undefined
+  }, timeoutMs, 'the recovered waiting_user history projection')
+}
+
 async function main() {
   await harness.assertBuildFresh()
   const recorder = createRecorder()
@@ -420,18 +547,26 @@ async function main() {
   const workplaceDir = join(dataDir, 'workplace')
   const chromiumDir = join(root, 'chromium')
   const logPath = join(root, 'electron.log')
-  let handle
+  /** Every window this gate launches, so cleanup cannot miss one (category 8 launches two more). */
+  const windows = []
+  /** The isolated root category 8 kills and restarts; kept next to `root` when `--keep` is passed. */
+  let crashRoot
 
-  try {
-    await Promise.all([mkdir(workplaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
-    // The abort fixture hangs the request that carries this file's glob result (see
-    // ABORT_ANCHOR_FILE); the file itself is never read or written by the Agent.
-    await writeFile(join(workplaceDir, ABORT_ANCHOR_FILE), 'transcript state visibility anchor\n', 'utf8')
-    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
-
+  /**
+   * Launch one real window on a fixture root and wait until it can accept a prompt.
+   *
+   * Used for the main root and again for the crash fixture, whose window is killed mid-run and
+   * started again on the *same* data root — the only way this build produces a `waiting_user` run.
+   */
+  async function launchWindow(fixture) {
     const debuggingPort = await harness.reservePort()
-    const electron = await harness.startElectron({ dataDir, chromiumDir, debuggingPort, logPath })
-    const locator = await harness.waitForLocator(dataDir, electron.pid)
+    const electron = await harness.startElectron({
+      dataDir: fixture.dataDir,
+      chromiumDir: fixture.chromiumDir,
+      debuggingPort,
+      logPath: fixture.logPath,
+    })
+    const locator = await harness.waitForLocator(fixture.dataDir, electron.pid)
     await harness.waitForDesktop(locator)
     // Parked outside every display and shown inactively: the window still renders for screenshots.
     await harness.desktopAction(locator, 'park-offscreen')
@@ -440,7 +575,8 @@ async function main() {
     const client = await harness.connectRenderer(debuggingPort)
     await client.send('Runtime.enable')
     await client.send('Page.enable')
-    handle = { electron, locator, client }
+    const launched = { fixture, electron, locator, client, debuggingPort }
+    windows.push(launched)
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`),
       harness.startTimeoutMs,
@@ -450,6 +586,17 @@ async function main() {
       const readiness = await harness.fetchJson(locator, '/runtime/readiness').catch(() => undefined)
       return readiness?.body?.state === 'ready' ? readiness.body : undefined
     }, harness.startTimeoutMs, 'execution readiness')
+    return launched
+  }
+
+  try {
+    await Promise.all([mkdir(workplaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
+    // The abort fixture hangs the request that carries this file's glob result (see
+    // ABORT_ANCHOR_FILE); the file itself is never read or written by the Agent.
+    await writeFile(join(workplaceDir, ABORT_ANCHOR_FILE), 'transcript state visibility anchor\n', 'utf8')
+    await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
+
+    const { client } = await launchWindow({ dataDir, workplaceDir, chromiumDir, logPath })
 
     // ---------------------------------------------------------------------
     // 1. pass: a completed read-only run, measured so the verdict's absence is evidence
@@ -824,11 +971,13 @@ async function main() {
     if (!foldTarget) throw new Error('no assistant turn with an attention row was on screen for the manual-fold step')
     const foldExpression = `[...document.querySelectorAll('.assistant-turn')].reverse().find((candidate) => candidate.querySelector('.agent-transcript-attention'))`
 
-    // The fold is measured in normal display only, and deliberately so: compact display already
-    // folds the process by itself (`compactCompleted`), so a click there proves nothing about the
-    // click, and the two facts would be indistinguishable in one step. Normal display starts with
-    // the body open, so the click is the only thing that can close it.
-    for (const mode of ['normal']) {
+    // The fold is measured in BOTH display modes. Compact display folds the *rows* of a settled
+    // turn by itself (`compactCompleted`), but it does not fold the panel: the hand-off between
+    // the two is exactly what a reader can contradict, so the click has to be measured where the
+    // reader makes it. This turn is not `done`, so its panel starts open in both modes
+    // (`processOpen = status !== 'done'`) and the click is the only thing that can close it;
+    // clicking again then proves the reader's choice wins in the other direction too.
+    for (const mode of ['normal', 'compact']) {
       await setDisplayMode(client, mode)
       await delay(250)
       const toggled = await evaluate(client, `(() => {
@@ -881,6 +1030,36 @@ async function main() {
         },
       )
       screenshots[`manual-fold-${mode}`] = await writePng(client, `manual-fold-${mode}`)
+
+      // The other direction: the reader opens it again. A panel this turn's own state says should
+      // be open must come back, and the attention row must not have moved into it.
+      const reopened = await evaluate(client, `(() => {
+        const turn = ${foldExpression};
+        const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
+        if (!trigger) return null;
+        const before = trigger.getAttribute('aria-expanded');
+        trigger.click();
+        return { before };
+      })()`)
+      if (!reopened) throw new Error(`the process trigger could not be clicked a second time in ${mode} mode`)
+      await delay(400)
+      const afterReopen = await sampleTurn(client, 4, '', foldExpression)
+      recorder.note({ step: `manual-fold-${mode}-reopened`, toggled: reopened, sample: afterReopen })
+      recorder.check(
+        reopened.before === 'false'
+        && afterReopen.processBodyFolded === false
+        && afterReopen.triggerExpanded === 'true'
+        && afterReopen.attentionPresent === true
+        && afterReopen.attentionInProcessBody === false,
+        `the reader can open the folded process again in ${mode} mode without the attention row moving into it`,
+        {
+          before: reopened.before,
+          processBodyFolded: afterReopen.processBodyFolded,
+          triggerExpanded: afterReopen.triggerExpanded,
+          attentionPresent: afterReopen.attentionPresent,
+          attentionInProcessBody: afterReopen.attentionInProcessBody,
+        },
+      )
     }
 
     // What the transcript looks like once the page has settled, recorded rather than asserted:
@@ -898,21 +1077,419 @@ async function main() {
         loading: (document.querySelector('.messages')?.textContent ?? '').includes('加载历史消息'),
       }))()`),
     })
+
+    // ---------------------------------------------------------------------
+    // 7. O1: a run that settles as a whole with a locally failed call, and its 未验证 verdict
+    // ---------------------------------------------------------------------
+    // The combination the O1 row asks for is one turn, not two: the read fails, the Runtime
+    // records that negative result, VERIFY keeps the verdict at `unverified` (it may not read a
+    // recorded failure as a pass) and FINALIZE still publishes the answer. What has to survive
+    // both display modes is therefore the failure *and* the verdict that did not pass.
+    await startNewConversation(client)
+    await setDisplayMode(client, 'normal')
+    await submitPrompt(client, LOCAL_FAILURE_PROMPT)
+    const locallyFailedTurn = await waitForTurn(
+      client,
+      (sample) => sample.turnStatus !== 'running'
+        && (sample.attentionText ?? '').includes('次调用失败'),
+      'a settled turn that carries a locally failed call',
+    ).catch(async (error) => {
+      recorder.note({
+        step: 'local-failure-timeout',
+        error: String(error),
+        sample: await sampleTurn(client).catch(() => null),
+      })
+      throw error
+    })
+    recorder.note({ step: 'local-failure-settled', sample: locallyFailedTurn })
+    const localFailure = await captureBothModes({ client, recorder, screenshots, name: 'local-failure' })
+    recordStrings(recorder, 'local-failure-normal', localFailure.normal)
+    recordStrings(recorder, 'local-failure-compact', localFailure.compact)
+
+    // The recorded facts behind the rendered ones: the execution log on disk is what VERIFY wrote
+    // before any of this was projected. Reading it here is what makes the literal `验证：未验证`
+    // on screen evidence about a `verificationHistory` entry rather than about a label.
+    const localFailureLog = await harness.waitFor(
+      async () => await readExecutionLogByPrompt(dataDir, O1_LOCAL_FAILURE_MARKER),
+      30_000,
+      'the execution log of the locally failed run',
+    ).catch((error) => {
+      recorder.note({ step: 'local-failure-log-missing', error: String(error) })
+      return null
+    })
+    const verdicts = (localFailureLog?.log?.verificationHistory ?? []).map((record) => record.verdict)
+    const failedCalls = (localFailureLog?.log?.toolCalls ?? [])
+      .filter((call) => call?.result?.ok === false)
+      // Long enough to keep the fixture's own file name: the assertion below matches on it.
+      .map((call) => `${call.call?.name ?? 'unknown'}: ${String(call?.result?.error ?? '').slice(0, 240)}`)
+    recorder.note({
+      step: 'local-failure-record',
+      log: localFailureLog?.name ?? null,
+      verdicts,
+      failedCalls,
+      status: localFailureLog?.log?.status ?? null,
+    })
+    recorder.check(
+      localFailureLog !== null
+      && verdicts.length > 0
+      && verdicts.every((verdict) => verdict !== 'pass')
+      && verdicts.at(-1) === 'unverified',
+      'VERIFY recorded a verdict that is not `pass` for the run with a locally failed call',
+      { log: localFailureLog?.name ?? null, verdicts },
+    )
+    recorder.check(
+      failedCalls.length >= 1 && failedCalls.some((text) => text.includes(O1_MISSING_FILE)),
+      'the failed call is the fixture\'s missing-file read, recorded as a failed result rather than a missing one',
+      { failedCalls },
+    )
+    for (const [mode, sample] of [['normal', localFailure.normal], ['compact', localFailure.compact]]) {
+      recorder.check(
+        sample.turnStatus === 'done',
+        `${mode} mode reads the run as settled (整体完成) even though a call inside it failed`,
+        { turnClass: sample.turnClass, attentionText: sample.attentionText },
+      )
+      recorder.check(
+        (sample.attentionText ?? '').includes('次调用失败')
+        && (sample.attentionText ?? '').includes('验证：未验证')
+        && sample.attentionInProcessBody === false,
+        `${mode} mode keeps the local failure and the 未验证 verdict visible outside the folding panel`,
+        {
+          attentionText: sample.attentionText,
+          attentionInProcessBody: sample.attentionInProcessBody,
+          triggerText: sample.triggerText,
+          verificationText: sample.verificationText,
+        },
+      )
+      recorder.check(
+        sample.verificationText === '验证：未验证',
+        `${mode} mode renders the verdict on the process trigger as 验证：未验证`,
+        { verificationText: sample.verificationText, triggerText: sample.triggerText },
+      )
+      recorder.check(
+        readsAsPassed(sample) === false,
+        `${mode} mode never lets a verdict that did not pass read as 验证通过`,
+        {
+          attentionText: sample.attentionText,
+          verificationText: sample.verificationText,
+          triggerText: sample.triggerText,
+          responseText: sample.responseText,
+        },
+      )
+      recorder.check(
+        sample.transcriptFailedToolRows >= 1
+        && sample.failedToolTexts.some((text) => text.includes(O1_MISSING_FILE)),
+        `${mode} mode keeps the failed call readable as a failed tool row`,
+        {
+          transcriptFailedToolRows: sample.transcriptFailedToolRows,
+          failedToolRows: sample.failedToolRows,
+          failedToolTexts: sample.failedToolTexts,
+        },
+      )
+    }
+    recorder.check(
+      localFailure.compact.entryCount < localFailure.normal.entryCount,
+      'compact mode really folds the settled run\u2019s other transcript rows away',
+      { normalEntries: localFailure.normal.entryCount, compactEntries: localFailure.compact.entryCount },
+    )
+
+    // The reader's own fold, on this turn, in both modes: `done` starts with the panel closed, so
+    // the click is the only thing that can open it, and closing it again must take nothing with it.
+    for (const mode of ['normal', 'compact']) {
+      await setDisplayMode(client, mode)
+      await delay(250)
+      const opened = await evaluate(client, `(() => {
+        const turn = [...document.querySelectorAll('.assistant-turn')].reverse()
+          .find((candidate) => candidate.querySelector('.agent-transcript-attention'));
+        const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
+        if (!trigger) return null;
+        const before = trigger.getAttribute('aria-expanded');
+        trigger.click();
+        return { before };
+      })()`)
+      if (!opened) throw new Error(`the settled turn's process trigger could not be clicked in ${mode} mode`)
+      await delay(400)
+      const openSample = await sampleTurn(client, 4)
+      recorder.note({ step: `local-failure-${mode}-opened`, toggled: opened, sample: openSample })
+      recorder.check(
+        opened.before === 'false'
+        && openSample.processBodyFolded === false
+        && openSample.triggerExpanded === 'true'
+        && openSample.attentionPresent === true
+        && openSample.attentionInProcessBody === false
+        && (openSample.attentionText ?? '').includes('验证：未验证'),
+        `the reader can open the settled run's process in ${mode} mode and the 未验证 row stays outside it`,
+        {
+          before: opened.before,
+          processBodyFolded: openSample.processBodyFolded,
+          triggerExpanded: openSample.triggerExpanded,
+          attentionText: openSample.attentionText,
+          attentionInProcessBody: openSample.attentionInProcessBody,
+        },
+      )
+      const closed = await evaluate(client, `(() => {
+        const turn = [...document.querySelectorAll('.assistant-turn')].reverse()
+          .find((candidate) => candidate.querySelector('.agent-transcript-attention'));
+        const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
+        if (!trigger) return null;
+        const before = trigger.getAttribute('aria-expanded');
+        trigger.click();
+        return { before };
+      })()`)
+      if (!closed) throw new Error(`the settled turn's process trigger could not be closed in ${mode} mode`)
+      await delay(400)
+      const closedSample = await sampleTurn(client, 4)
+      recorder.note({ step: `local-failure-${mode}-closed`, toggled: closed, sample: closedSample })
+      recorder.check(
+        closed.before === 'true'
+        && closedSample.processBodyFolded === true
+        && closedSample.triggerExpanded === 'false'
+        && closedSample.attentionPresent === true
+        && closedSample.attentionInProcessBody === false
+        && (closedSample.attentionText ?? '').includes('次调用失败')
+        && (closedSample.attentionText ?? '').includes('验证：未验证'),
+        `the reader's fold wins in ${mode} mode and the failure and verdict stay outside the folded panel`,
+        {
+          before: closed.before,
+          processBodyFolded: closedSample.processBodyFolded,
+          triggerExpanded: closedSample.triggerExpanded,
+          attentionText: closedSample.attentionText,
+          attentionInProcessBody: closedSample.attentionInProcessBody,
+        },
+      )
+      screenshots[`local-failure-${mode}-manual-fold`] = await writePng(client, `local-failure-${mode}-manual-fold`)
+    }
+    await setDisplayMode(client, 'normal')
+
+    // ---------------------------------------------------------------------
+    // 8. O1: waiting for the user's decision (a killed run, recovered as `waiting_user`)
+    // ---------------------------------------------------------------------
+    // A live run never parks itself on a question any more, so the only honest way to reach the
+    // 等待你决定后继续 row is the path that writes it: Runtime's own recovery of a run whose model
+    // request was in flight when the process died. The fixture starts a run, lets its first
+    // Provider request go out, kills the window, and starts the app again on the same data root.
+    // Nothing is injected into the page or into the store.
+    //
+    // This scenario runs on its own isolated root, and that is a fixture decision with two
+    // measured reasons: at startup this build *auto-resumes* the first resumable checkpoint that is
+    // not waiting for input (`runtime-recovery/use-checkpoint-recovery.ts`), so on a root that
+    // already holds the earlier scenarios' parked runs the window navigates to one of those
+    // instead of to the crashed conversation; and the killed run must not be its session's first,
+    // because the session index is written by the run completion path (`updateSessionIndex`).
+    // The main window has delivered everything the first seven categories need; it is closed
+    // before the crash fixture starts, so only one application instance is ever running.
+    const mainWindow = windows[0]
+    mainWindow.client?.close()
+    if (mainWindow.electron?.exitCode === null) await harness.forceTerminate(mainWindow.electron)
+
+    const crashDirectory = await mkdtemp(join(tmpdir(), 'littlesheep-transcript-state-visibility-crash-'))
+    crashRoot = crashDirectory
+    const crashFixture = {
+      dataDir: join(crashDirectory, 'data'),
+      workplaceDir: join(crashDirectory, 'data', 'workplace'),
+      chromiumDir: join(crashDirectory, 'chromium'),
+      logPath: join(crashDirectory, 'electron.log'),
+    }
+    await Promise.all([
+      mkdir(crashFixture.workplaceDir, { recursive: true }),
+      mkdir(crashFixture.chromiumDir, { recursive: true }),
+    ])
+    await writeFile(
+      join(crashFixture.dataDir, 'config.json'),
+      `${JSON.stringify(buildConfig(crashFixture.workplaceDir, provider.baseURL), null, 2)}\n`,
+      'utf8',
+    )
+
+    const beforeCrash = await launchWindow(crashFixture)
+    await setDisplayMode(beforeCrash.client, 'normal')
+    // Turn 1 finishes, so the conversation is listed (`GET /sessions` → `sessionIndex.list()`) and
+    // its title carries the anchor the sidebar lookup below uses.
+    await submitPrompt(beforeCrash.client, CRASH_TITLE_PROMPT)
+    const firstTurn = await waitForTurn(
+      beforeCrash.client,
+      (sample) => sample.turnStatus !== 'running',
+      'the finished first turn of the crash conversation',
+      90_000,
+    )
+    recorder.note({ step: 'waiting-first-turn', sample: firstTurn })
+    // Recorded before the kill: without the index entry the conversation is not reachable in the
+    // sidebar at all, so this is what makes the recovered state a user-visible one.
+    const listedBeforeCrash = await harness.waitFor(async () => {
+      const list = await harness.fetchJson(beforeCrash.locator, '/sessions').catch(() => undefined)
+      const session = (list?.body?.sessions ?? [])
+        .find((candidate) => String(candidate.title ?? '').includes(CRASH_TITLE_ANCHOR))
+      return session ? { id: session.id, title: session.title } : undefined
+    }, 30_000, 'the crash conversation in the session index').catch(() => null)
+    recorder.note({ step: 'waiting-session-indexed', session: listedBeforeCrash })
+    // Turn 2 is the one that is killed: its Provider request goes out and never answers.
+    await provider.setDelay({ promptContains: WAITING_ANCHOR, delayMs: WAITING_DELAY_MS })
+    const requestsBeforeWaiting = provider.requests.length
+    await submitPrompt(beforeCrash.client, WAITING_PROMPT)
+    const inFlight = await waitForTurn(
+      beforeCrash.client,
+      (sample) => sample.turnStatus === 'running',
+      'the run to start before it is killed',
+      60_000,
+    )
+    await harness.waitFor(
+      () => Promise.resolve(provider.requests.length > requestsBeforeWaiting ? true : undefined),
+      20_000,
+      'the hanging Provider request of the killed run',
+    ).catch(() => undefined)
+    recorder.note({
+      step: 'waiting-before-kill',
+      sample: inFlight,
+      providerRequests: provider.requests.length - requestsBeforeWaiting,
+      fixtureRoot: crashDirectory,
+    })
+    // The request is on the wire and its durable `model_request_started` receipt is written; the
+    // kill therefore interrupts a run in flight rather than one that has not started.
+    await delay(700)
+    await harness.forceTerminate(beforeCrash.electron)
+    await provider.setDelay({ promptContains: WAITING_ANCHOR, delayMs: 0 })
+    recorder.note({ step: 'waiting-killed', pid: beforeCrash.electron.pid, exitCode: beforeCrash.electron.exitCode })
+
+    const afterCrash = await launchWindow(crashFixture)
+    const restartedClient = afterCrash.client
+    // The killed process still owned the run lease for 30 s, so Runtime recovers the run only after
+    // that lease expires (`durable-run-lease-store.ts` DEFAULT_DURABLE_RUN_LEASE_MS plus the
+    // scheduled wake-up in `run-recovery.ts`). The wait below polls the Local App API projection
+    // the renderer itself reads instead of sleeping a fixed number of seconds.
+    const recoveredProjection = await waitForRecoveredWaitingProjection(afterCrash.locator, CRASH_TITLE_ANCHOR)
+    recorder.note({ step: 'waiting-recovered-projection', projection: recoveredProjection })
+    // The window loaded its history before the recovery settled, so the state is re-read the way a
+    // user re-reads it: a real renderer reload, after which the transcript shows what the API says.
+    await reloadRenderer(restartedClient, 'the renderer after the waiting run was recovered')
+    await harness.waitFor(
+      () => evaluate(restartedClient, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`),
+      harness.startTimeoutMs,
+      'the composer after the reload',
+    )
+    await setDisplayMode(restartedClient, 'normal')
+    const waitingPredicate = (sample) => sample.turnStatus === 'waiting_user'
+      && (sample.attentionText ?? '').includes('等待你决定后继续')
+    // The pick resolves inside the turn (`candidate.querySelector(pick)`), so it names the row
+    // that makes this the turn under test rather than the turn's own status class.
+    let conversationClick = null
+    let recoveredWaiting = await waitForTurn(
+      restartedClient,
+      waitingPredicate,
+      'the recovered waiting_user attention row',
+      30_000,
+      '.agent-transcript-attention',
+    ).catch(() => null)
+    if (!recoveredWaiting) {
+      // The crash conversation is the only one on this root, and its title carries the anchor the
+      // first turn's prompt set, so opening it is unambiguous.
+      conversationClick = await evaluate(restartedClient, `(() => {
+        const rows = [...document.querySelectorAll('.session-item')];
+        const row = rows.find((candidate) => (candidate.textContent || '').includes('${CRASH_TITLE_ANCHOR}')) ?? rows[0];
+        if (!(row instanceof HTMLElement)) return null;
+        const label = (row.textContent || '').replace(/\\s+/gu, ' ').trim();
+        row.click();
+        return { label, rowCount: rows.length };
+      })()`)
+      recoveredWaiting = await waitForTurn(
+        restartedClient,
+        waitingPredicate,
+        'the recovered waiting_user attention row after opening the conversation',
+        60_000,
+        '.agent-transcript-attention',
+      ).catch(async (error) => {
+        recorder.note({
+          step: 'waiting-not-recovered',
+          error: String(error),
+          conversationClick,
+          projection: recoveredProjection,
+          sample: await sampleTurn(restartedClient).catch(() => null),
+          dom: await evaluate(restartedClient, `(() => ({
+            turns: document.querySelectorAll('.assistant-turn').length,
+            turnClasses: [...document.querySelectorAll('.assistant-turn')].map((turn) => turn.className),
+            attentionRows: [...document.querySelectorAll('.agent-transcript-attention')].map((row) => (row.textContent || '').trim()),
+            bodyText: (document.querySelector('.messages')?.textContent ?? '').replace(/\\s+/gu, ' ').trim().slice(0, 240),
+          }))()`).catch((cause) => ({ error: String(cause) })),
+        })
+        throw error
+      })
+    }
+    recorder.note({ step: 'waiting-after-recovery', sample: recoveredWaiting, conversationClick })
+    const waitingModes = await captureBothModes({
+      client: restartedClient,
+      recorder,
+      screenshots,
+      name: 'waiting-recovered',
+      pickSelector: '.agent-transcript-attention',
+    })
+    recordStrings(recorder, 'waiting-recovered-normal', waitingModes.normal)
+    recordStrings(recorder, 'waiting-recovered-compact', waitingModes.compact)
+    recorder.check(
+      recoveredProjection?.status === 'waiting_user'
+      && recoveredProjection?.runtimeStatusReason === 'model_response_missing',
+      'Runtime\'s own recovery settled the killed run as waiting_user for the missing model response',
+      { projection: recoveredProjection },
+    )
+    recorder.check(
+      typeof recoveredProjection?.title === 'string'
+      && recoveredProjection.title.includes(CRASH_TITLE_ANCHOR)
+      && recoveredProjection.sessionsSeen >= 1
+      && listedBeforeCrash !== null,
+      'the crashed conversation is listed in the session index, so the waiting state is reachable in the UI',
+      {
+        title: recoveredProjection?.title ?? null,
+        sessionsSeen: recoveredProjection?.sessionsSeen ?? null,
+        listedBeforeCrash,
+      },
+    )
+    for (const [mode, sample] of [['normal', waitingModes.normal], ['compact', waitingModes.compact]]) {
+      recorder.check(
+        sample.turnStatus === 'waiting_user'
+        && (sample.attentionText ?? '').includes('等待你决定后继续'),
+        `${mode} mode says the run is waiting for the user's decision`,
+        { turnClass: sample.turnClass, attentionText: sample.attentionText },
+      )
+      recorder.check(
+        (sample.triggerText ?? '').includes('等待处理')
+        // The turn is not finished, and what stands in place of an answer is Runtime's own status:
+        // the response area carries that status and nothing else (no model reply was published).
+        && (sample.responseText ?? '').trim() !== ''
+        && (sample.responseText ?? '') === (sample.runStatusError ?? '')
+        && /waiting for user action|no final reply was published|需要用户决定/u.test(sample.runStatusError ?? '')
+        && sample.approvalPrompt === null,
+        `${mode} mode does not read the waiting run as finished (Runtime status in place of an answer, no approval dialog)`,
+        {
+          triggerText: sample.triggerText,
+          responseText: sample.responseText,
+          runStatusError: sample.runStatusError,
+          responseState: sample.responseState,
+        },
+      )
+      recorder.check(
+        sample.attentionInProcessBody === false,
+        `${mode} mode keeps the pending decision outside the folding panel`,
+        { attentionInProcessBody: sample.attentionInProcessBody },
+      )
+    }
   } catch (error) {
-    recorder.check(false, 'the six transcript states were produced without an unexpected failure', {
+    recorder.check(false, 'the eight transcript states were produced without an unexpected failure', {
       error: error instanceof Error ? error.stack ?? error.message : String(error),
     })
   } finally {
-    handle?.client?.close()
-    if (handle?.electron?.exitCode === null) await harness.forceTerminate(handle.electron)
+    for (const window of windows) {
+      window.client?.close()
+      if (window.electron?.exitCode === null) await harness.forceTerminate(window.electron)
+    }
     await provider.close().catch(() => undefined)
-    if (!keepRoot) await harness.removeTemporaryRoot(root)
+    if (!keepRoot) {
+      await harness.removeTemporaryRoot(root)
+      if (crashRoot) await harness.removeTemporaryRoot(crashRoot)
+    }
   }
 
   const evidence = {
     check: 'transcript-state-visibility',
     capturedAt: new Date().toISOString(),
     fixtureRoot: keepRoot ? root : '<temporary root removed>',
+    crashFixtureRoot: keepRoot && crashRoot ? crashRoot : '<temporary root removed>',
+    outputRoot: outRoot,
     ok: recorder.failures.length === 0,
     checks: recorder.count(),
     assertions: recorder.assertions,
@@ -920,16 +1497,18 @@ async function main() {
     observations: recorder.observations,
     failures: recorder.failures,
     limits: [
-      '待用户 (waiting_user) is not producible by this build: `status: waiting_user` is only written by older versions / crash recovery (packages/harness/src/durable-kernel.ts), so no synthetic checkpoint was fabricated. The live-producible equivalent measured here is the pending write approval (category 4), whose fact is a running turn\'s status row rather than a settled attention line.',
+      '待用户 (`waiting_user`) is not producible by a *live* run: since the clarification activity and the derived status were removed (run-checkpoint-controller.ts `resolveWaitingUserHead`), a new run never parks itself on a question. Category 8 reaches the state the only way this build still writes it — a forced kill while a model request is in flight, then a restart on the same data root, so Runtime\'s own recovery (`durable-kernel.ts` `recoverRun`, `runtime_status_settled` with reason `model_response_missing`) settles the run and the history projection renders the attention row. The wait budget covers the 30 s run lease the killed process left behind.',
       '部分完成 does not exist: HistoryActivityStatus is running | done | failed | aborted | paused | waiting_user (packages/app/src/shared/history-activity.ts). Following the taskbook instruction to rewrite the phrase to a real state, the aborted class (本轮已停止) is measured instead (category 3).',
-      'Compact folding (and therefore the .agent-transcript-attention row) applies only to a turn that is no longer running (assistant-turn.tsx `compactCompleted`), so a *running* turn — including the pending-approval category — renders identically in both modes and its compact evidence is the live status row plus an unchanged transcript, not an attention line. The manual-fold category (6) is measured in normal display for the same reason: compact display folds the turn by itself, so a click there would not distinguish the reader\'s fold from compact display\'s own fold.',
+      'Compact folding (and therefore the compact transcript rows) applies only to a turn that is no longer running (assistant-turn.tsx `compactCompleted`), so a *running* turn — including the pending-approval category — renders identically in both modes and its compact evidence is the live status row plus an unchanged transcript, not an attention line. The manual-fold category (6) and the settled-failure fold in category 7 are measured in both modes: in compact display the *rows* are folded by the mode itself while the panel stays open (`processOpen = status !== \'done\'`), so a click there changes the panel and only the panel.',
       'The refused call has no live transcript tool row: category 5 is measured after a real window reload, where the durable history projection keeps it as .agent-tool-call.fail[data-call-id]. A later render of the same session was observed dropping that row again (`denied-after-settle`); that is recorded, not asserted, and it is not this change\'s subject.',
-      'The plain prompt settles as a Runtime `pass` (one successful builtin read-only call is the narrow pass shape), so no fixture in this gate renders a verdict that did not pass. What the gate does prove about verdicts is the negative half: a `pass` renders no verdict line and no attention row in either display mode, and `verify:transcript-state-visibility` records the trigger text verbatim for audit. The positive half (未验证 renders and never reads as 验证通过) is covered by `activity-visibility.test.ts` and `assistant-turn.test.ts` at the projection/component level.',
+      'Verdict evidence comes from two layers in category 7: the literal line the DOM renders in each mode (`验证：未验证` on the process trigger plus the attention row), and the durable execution log of the same run, read from the fixture root, whose `verificationHistory` is asserted to be non-empty, to contain no `pass` at all, and to end at `unverified`. A `pass` verdict renders no such line (category 1) — that is the negative half, asserted for the same trigger.',
       'The Provider is the deterministic acceptance fixture (scripted answers, injected faults); it is not a real model.',
       'Screenshots stay in the temporary output directory; the fixture data root is removed unless --keep is passed.',
     ],
   }
   console.log(JSON.stringify(evidence, null, 2))
+  await mkdir(outRoot, { recursive: true })
+  await writeFile(join(outRoot, 'report.json'), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
   if (!evidence.ok) process.exitCode = 1
 }
 

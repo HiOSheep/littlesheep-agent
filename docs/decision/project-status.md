@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-27 22:38:45
+最后更新：2026-09-28 14:41:03
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -232,7 +232,7 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 用户报告的"流式文字变色"在固定输入下**未能复现**（每类块全程只有一个样式签名）；继续追需要复现输入（推理/工具混合输出、更长代码块的高亮 chunk 时机、主题/缩放切换瞬间）或用户录屏，不据猜测改样式。
 - 重载后重开会话这一步实测：点击**已经是当前会话**的侧栏行会再起一次历史读取，60 s 内停在"加载历史消息"；门因此不点活动行，这条路径记为未验证而不是通过。
 - 面板全屏：门断言应用状态可达（`fullscreen` + shell fullscreen 类），但实测 aside 宽度仍是 ~0.8 px、面板表面维持拖动后的 409 px，**视觉加宽没有证据**，需要单独排查。
-- `waiting_user` 在本版本无法由运行产生（只由旧版本/崩溃恢复写入），因此"等用户决定"在真实窗口里以**待批准**形态取证；`verify:transcript-state-visibility` 的 `limits` 记录了这一替换。
+- `waiting_user` 仍不能由**运行中**的路径产生（澄清活动与派生状态已删除，`run-checkpoint-controller.ts` 说明新 run 不会再停在自己的提问上），但它不是"无法取证"：`verify:transcript-state-visibility` 第 8 类在独立数据根上先跑完一轮（会话因此进入索引、侧栏可达），第二轮模型请求在途时强杀进程、同根重启，Runtime 自己的恢复（`runtime_status_settled`，reason `model_response_missing`，发生在被杀进程 30 s run 租约到期后）把该 run 结算成 `waiting_user`，普通与紧凑两种显示模式都读作 `等待你决定后继续`（触发行 `等待处理`，答案位置是 Runtime 状态而不是模型回复）。运行中的"等用户决定"（写审批）仍由同一条门的第 4 类以**待批准**形态取证。**同一夹具观察到一处文案问题（未修）**：这条恢复状态的正文是 `packages/runner/src/authoritative-reply.ts` 里的英文硬编码（`Runtime is waiting for user action; no final reply was published. Reason: …`），中文界面下用户看到的是英文 Runtime 状态。
 - **第二个工作区根的跨工作区/重启归属已验收**（UX-39 第 3 条与 UX-33 的"跨重启会话级现场"）：`verify:electron-ui-state-continuity` 现在建两个工作区根，走"root A → 项目 root B → B 内新建会话 → 重启应用 → 回到 A"的往返，并断言：B 的文件树只列 B 自己的文件（`bravo-only.txt` / `bravo-only-dir`）、`GET /workspace/review` 对**非活动**根返回 **403** 而活动根 200、终端在两个根切换后都是 0 个会话、重启后仍停在 B 且**未保存草稿 `draftRestored: true`**、文件标签仍是 `dirty`、浏览器标签与展开目录都还在。这一轮为它修掉三处验收脚本缺陷（输入草稿落进文件导航的筛选框把树筛空、Monaco 只读表面未等待就打字、`Page.reload` 之后 CDP 执行上下文失效而不重连），它们都是脚本问题，不是产品缺陷。
 
 ## 未完成方向
