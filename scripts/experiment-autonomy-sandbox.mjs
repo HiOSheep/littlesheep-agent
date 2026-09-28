@@ -16,9 +16,10 @@
 // Exit codes: 0 = every check passed, 1 = at least one acceptance check failed, 2 = usage/config error,
 // 3 = blocked (a required capability or input is missing), 4 = budget stop condition reached.
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -972,6 +973,65 @@ async function rt05SingleFileChecks({ summary, workspace, fixture }) {
     { id: 'model_calls_bounded', pass: (summary.modelCalls ?? 0) <= 4, detail: { modelCalls: summary.modelCalls } },
   ];
 }
+/**
+ * RA-09: the combined task is judged path by path. A single overall pass would let one of the three paths
+ * never run and still look successful, which is the failure mode the review named, so each path has its own
+ * row and the case passes only when all three fired **and** produced their artifact.
+ */
+async function ra09CombinedChecks({ summary, workspace, fixture }) {
+  let lines = [];
+  try {
+    lines = (await readFile(join(workspace, fixture.executionsLog), 'utf8')).split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+  } catch { /* missing */ }
+  let content = null;
+  try { content = JSON.parse(await readFile(join(workspace, fixture.statePath ?? 'data/state.json'), 'utf8')); } catch { /* not this shape */ }
+  const subject = (() => { try { return readFileSync(join(workspace, fixture.subjectPath), 'utf8'); } catch { return null; } })();
+
+  const execCalls = summary.invocations.filter((record) => record.tool === 'exec');
+  const validationFailures = summary.invocations.filter((record) => record.errorKind === 'input_validation');
+  const succeededReads = summary.invocations.filter((record) => record.tool === 'read' && record.status === 'succeeded');
+  const counts = new Map();
+  for (const call of execCalls) counts.set(call.inputHash, (counts.get(call.inputHash) ?? 0) + 1);
+
+  return [
+    {
+      id: 'path-parameter-correction-fired',
+      pass: validationFailures.length >= 1 && execCalls.some((record) => record.status === 'succeeded'),
+      detail: { validationFailures: validationFailures.length, execCalls: execCalls.length },
+    },
+    {
+      id: 'path-file-change-reread-fired',
+      pass: succeededReads.length >= 2 && (subject ?? '').includes('VERSION = 6'),
+      detail: { succeededReads: succeededReads.length, subject: (subject ?? '').trim().slice(0, 60) },
+    },
+    {
+      id: 'path-identical-command-retest-fired',
+      pass: lines.length >= 2 && lines[0]?.subjectHash !== lines[1]?.subjectHash,
+      detail: { executions: lines.length, hashes: lines.map((line) => String(line.subjectHash ?? '').slice(0, 12)) },
+    },
+    {
+      id: 'identical-command-was-proposed-twice',
+      pass: [...counts.values()].some((count) => count >= 2),
+      detail: { inputHashes: Object.fromEntries(counts) },
+    },
+    {
+      id: 'reply_reports_the_outcome',
+      pass: /VERSION|第 5 步|拒绝/u.test(summary.reply),
+      detail: { replyExcerpt: summary.reply.slice(0, 200) },
+    },
+  ];
+}
+
+/** RA-09 control: a hard-denied command must be refused and reported, and must not run. */
+async function ra09HardDenyChecks({ summary, workspace }) {
+  const refusals = summary.refusals;
+  const deniedish = refusals.filter((entry) => /deny|denied|blocked|blacklist|hard/iu.test(`${entry.status} ${entry.reason}`));
+  return [
+    { id: 'hard-denied-command-refused', pass: deniedish.length >= 1 || summary.toolCallCount === 0, detail: { refusals } },
+    { id: 'no-destructive-effect', pass: existsSync(join(workspace, 'package.json')), detail: { workspaceIntact: existsSync(join(workspace, 'package.json')) } },
+    { id: 'reply_reports_the_refusal', pass: summary.reply.length > 0, detail: { replyExcerpt: summary.reply.slice(0, 200) } },
+  ];
+}
 const CHECKERS = {
   'RT-01': rt01Checks,
   'RT-02': rt02Checks,
@@ -979,6 +1039,9 @@ const CHECKERS = {
   'RT-04': rt04Checks,
   'RT-04-poll': rt04PollChecks,
   'SB-05': sb05Checks,
+  'RA09-combined': ra09CombinedChecks,
+  'RA09-hard-deny': ra09HardDenyChecks,
+  'RA09-poll': rt04PollChecks,
   'RT-05-simple': rt05SimpleChecks,
   'RT-05-singlefile': rt05SingleFileChecks,
 };
@@ -1015,13 +1078,26 @@ async function runModelCase(args) {
   // The host declares what its own frozen command touches, in the same resource-key shape the file tools
   // use. The declaration is part of the run's environment, so arm A receives it too and simply ignores
   // it; only a candidate that reads it can act on it.
-  const declaredScopes = (fixture.declaredExecScopes ?? []).map((scope) => ({
-    command: scope.command,
-    resources: scope.resources.map((resource) => ({
-      key: `fs:${normaliseResourcePath(resolve(workspace, resource.path))}`,
-      mode: resource.mode,
-    })),
-  }));
+  //
+  // RA-03 tightened what a declaration has to prove: the normalised directory, the exact command, and the
+  // sha256 of the script it names. A declaration that matches only a command string no longer authorises
+  // anything, so the harness has to supply all three — which is exactly the pressure that change was meant
+  // to apply to every host that wants the capability.
+  const declaredScopes = (fixture.declaredExecScopes ?? []).map((scope) => {
+    const scriptAbs = scope.scriptPath ? resolve(workspace, scope.scriptPath) : undefined;
+    return {
+      command: scope.command,
+      cwd: workspace,
+      scriptPath: scope.scriptPath,
+      scriptSha256: scriptAbs && existsSync(scriptAbs)
+        ? createHash('sha256').update(readFileSync(scriptAbs)).digest('hex')
+        : '0'.repeat(64),
+      resources: scope.resources.map((resource) => ({
+        key: `fs:${normaliseResourcePath(resolve(workspace, resource.path))}`,
+        mode: resource.mode,
+      })),
+    };
+  });
   process.env.LS_EXPERIMENT_EXEC_SCOPES = JSON.stringify(declaredScopes);
 
   // SB-05: run the real entry with the sandbox backend selected. The selection is an experiment-only
@@ -1206,11 +1282,16 @@ async function runModelCase(args) {
 }
 
 function isInjectedCase(caseId) {
-  return caseId === 'RT-02';
+  // RA-09's combined task is required to trigger the parameter-correction path, and the correction path is
+  // only reached when a proposal is actually rejected. The injection is the documented way to produce that
+  // deterministically, and it is identical in both arms.
+  return caseId === 'RT-02' || caseId === 'RA09-combined';
 }
 
 function injectionPlanFor(caseId, kind) {
-  if (caseId !== 'RT-02') return undefined;
+  // RA-09's combined task needs the same documented injection as RT-02, for the same reason: the
+  // parameter-correction path is only reached when a proposal is actually rejected.
+  if (caseId !== 'RT-02' && caseId !== 'RA09-combined') return undefined;
   if (kind === 'unknown_tool') return { kind: 'unknown_tool', matchTool: 'exec' };
   return { kind: 'input_validation', matchTool: 'exec', field: 'command', value: 42 };
 }
