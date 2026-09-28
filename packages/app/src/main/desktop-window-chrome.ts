@@ -40,7 +40,12 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
     if (process.platform === 'win32') {
       // In Beta the native caption buttons expose the same native acrylic as the
       // titlebar. Chali and the standalone startup page have an opaque titlebar.
-      window.setTitleBarOverlay({ color: renderer && layout === 'beta' && backdrop !== 'solid' ? '#00000000' : DESKTOP_STARTUP_SURFACE })
+      // The user asked for the caption buttons to sit on a transparent strip and stay on top. Only a fully
+// transparent overlay does that: the strip then shows whatever the renderer paints underneath (the app's own
+// top bar, all the way to the right edge), while Windows still draws its three buttons above it in the
+// non-client area. Cost, accepted by the user: with a transparent overlay Windows derives the caption hover
+// background as solid black, so a hover darkens the button itself rather than tinting a strip.
+  window.setTitleBarOverlay({ color: renderer ? '#00000000' : DESKTOP_STARTUP_SURFACE })
     }
     window.webContents.send(WINDOW_CHROME_CHANNEL, { layout, backdrop } satisfies WindowChromeState)
   }
