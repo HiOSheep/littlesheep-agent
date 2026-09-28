@@ -4,15 +4,26 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createElectronHarness, CdpClient, delay } from './lib/electron-cdp-harness.mjs'
+import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 
 const harness = createElectronHarness({ startTimeoutMs: 90_000 })
 await harness.assertBuildFresh()
+// A window whose Runtime reached `ready`. The previous fixture left `model` empty,
+// which fails the config parse ("invalid model ref"), and a failed start keeps the
+// window-wide `.runtime-readiness-notice` strip across the top of the content column —
+// a real surface that legitimately covers the workspace panel's corner toggle and made
+// this script fail on its own fixture rather than on the layout it measures.
+const provider = await startElectronAcceptanceProvider()
 const root = await mkdtemp(join(tmpdir(), 'littlesheep-window-layout-'))
 const dataDir = join(root, 'data')
 await mkdir(join(dataDir, 'workplace'), { recursive: true })
 await writeFile(join(dataDir, 'config.json'), JSON.stringify({
-  version: 1, providers: [],
-  agents: { defaults: { workspace: join(dataDir, 'workplace'), model: '', harness: 'core-flow' } },
+  version: 1,
+  providers: [{
+    id: 'acceptance', name: 'Electron Acceptance', baseURL: provider.baseURL,
+    apiKey: 'acceptance-key', timeoutSeconds: 10, models: ['slow-a'],
+  }],
+  agents: { defaults: { workspace: join(dataDir, 'workplace'), model: 'acceptance/slow-a', harness: 'core-flow' } },
   desktop: { closePolicy: 'always-background' },
 }))
 const debuggingPort = await harness.reservePort()
@@ -36,6 +47,99 @@ async function state() {
       width:innerWidth, height:innerHeight };
   })()`)
 }
+/**
+ * The pinned window-chrome controls, the sidebar geometry they must be independent of,
+ * and the window's top-edge drag tiling.
+ *
+ * `gaps` samples every x across the top edge and asks whether any drag surface's box
+ * covers it; `misrouted` samples the same edge and asks which element actually receives
+ * the pointer there. Two hit regions are deliberate and counted rather than reported as
+ * holes: the pinned controls (three buttons were already a no-drag island before they
+ * were pinned) and the sidebar's resize seam, whose box is 8px wide and straddles the
+ * grid boundary — its inner half sits under the band, its outer half above the top bar
+ * (z-index 20 against the bar's `auto`), so 4px of the top edge resizes the sidebar. That
+ * geometry predates the pinned controls and is bounded here so it cannot grow unnoticed.
+ */
+async function chrome() {
+  return client.evaluate(`(() => {
+    const box = (selector) => {
+      const node = document.querySelector(selector); if (!node) return null;
+      const r = node.getBoundingClientRect();
+      return { x:+r.x.toFixed(2), y:+r.y.toFixed(2), width:+r.width.toFixed(2), height:+r.height.toFixed(2) };
+    };
+    const controls = document.querySelector('.app-nav-controls');
+    const surfaces = ['.window-titlebar', '.window-drag-band'].flatMap((selector) => {
+      const node = document.querySelector(selector); if (!node) return [];
+      const style = getComputedStyle(node); if (style.display === 'none') return [];
+      const r = node.getBoundingClientRect();
+      return [{ selector, x:+r.x.toFixed(2), width:+r.width.toFixed(2), height:+r.height.toFixed(2),
+        appRegion: style.getPropertyValue('-webkit-app-region') }];
+    });
+    const gaps = [];
+    for (let x = 0; x < innerWidth; x += 1) {
+      if (!surfaces.some((surface) => x >= surface.x - 0.5 && x < surface.x + surface.width + 0.5)) gaps.push(x);
+    }
+    const misrouted = [];
+    const seamHits = [];
+    let controlHits = 0;
+    for (let x = 0.5; x < Math.floor(document.documentElement.clientWidth) - 1; x += 4) {
+      const hit = document.elementFromPoint(x, 16);
+      if (!(hit instanceof Element)) { misrouted.push({ x, hit: null }); continue; }
+      if (hit.closest('.app-nav-controls')) { controlHits += 1; continue; }
+      if (hit.closest('.sidebar-resizer')) { seamHits.push(x); continue; }
+      if (!hit.closest('.window-titlebar, .window-drag-band')) misrouted.push({ x, hit: hit.className || hit.tagName });
+    }
+    const toggle = document.querySelector('.app-nav-controls .sidebar-toggle-btn');
+    return {
+      layout: document.documentElement.dataset.windowLayout,
+      collapsed: document.querySelector('.window-shell').classList.contains('sidebar-collapsed'),
+      controls: box('.app-nav-controls'), toggle: box('.app-nav-controls .sidebar-toggle-btn'),
+      back: box('.app-nav-btn.nav-back'), forward: box('.app-nav-btn.nav-forward'),
+      position: controls ? getComputedStyle(controls).position : null,
+      zIndex: controls ? getComputedStyle(controls).zIndex : null,
+      toggleLabel: toggle?.getAttribute('aria-label') ?? null,
+      toggleExpanded: toggle?.getAttribute('aria-expanded') ?? null,
+      backDisabled: document.querySelector('.app-nav-btn.nav-back')?.disabled ?? null,
+      forwardDisabled: document.querySelector('.app-nav-btn.nav-forward')?.disabled ?? null,
+      sidebarTrack: box('.sidebar'), sidebarSurface: box('.sidebar-surface'),
+      surfaces, gaps, misrouted, seamHits, controlHits, width: innerWidth,
+    };
+  })()`)
+}
+function assertDragTiling(current, label) {
+  assert.deepEqual(current.gaps, [], `${label}: the drag surfaces leave a gap in the window's top edge`)
+  assert.deepEqual(current.misrouted, [], `${label}: part of the top edge is owned by something that is not a drag surface`)
+  for (const surface of current.surfaces) {
+    assert.equal(surface.appRegion, 'drag', `${label}: ${surface.selector} is not a drag surface`)
+  }
+  // Not vacuous: the top edge, and the controls' own island, were really sampled.
+  assert(current.width > 0 && current.controlHits > 1, `${label}: the top edge was not sampled`)
+  // The bounded resize-seam exception: 4px on either side of the boundary, one sample per 4px.
+  assert(current.seamHits.length <= 2, `${label}: the sidebar resize seam grew into the top edge (${current.seamHits.length} samples)`)
+}
+/** One pinned position for all three controls, in every sidebar state. */
+function assertPinned(current, reference, label) {
+  assert.equal(current.position, 'fixed', `${label}: the controls are not pinned to the window`)
+  assert.deepEqual(current.controls, reference.controls, `${label}: the pinned controls moved`)
+  assert.deepEqual(current.toggle, reference.toggle, `${label}: the sidebar toggle moved`)
+  assert.deepEqual(current.back, reference.back, `${label}: the back control moved`)
+  assert.deepEqual(current.forward, reference.forward, `${label}: the forward control moved`)
+}
+async function windowBounds() {
+  return main.evaluate(`(() => { const b = layoutWindow.getBounds(); return { x:b.x, y:b.y, width:b.width, height:b.height }; })()`)
+}
+/** A real pointer drag along the window's top edge, through the pointer bridge to Main. */
+async function dragTopEdge(x, dx, dy) {
+  const before = await windowBounds()
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y: 16, button: 'left', clickCount: 1 })
+  await delay(80)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx, y: 16 + dy, button: 'left', buttons: 1 })
+  await delay(200)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x + dx, y: 16 + dy, button: 'left', clickCount: 1 })
+  await delay(400)
+  const after = await windowBounds()
+  return { before, after, delta: { x: after.x - before.x, y: after.y - before.y }, requested: { x: dx, y: dy } }
+}
 async function click(selector) {
   const point = await client.evaluate(`(() => {const el=document.querySelector(${JSON.stringify(selector)});const r=el.getBoundingClientRect();const x=r.x+r.width/2,y=r.y+r.height/2;return {x,y,reachable:el.contains(document.elementFromPoint(x,y))};})()`)
   assert(point.reachable, `${selector} is covered`)
@@ -45,6 +149,15 @@ async function click(selector) {
 }
 async function shot(name) {
   const { data } = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+  await writeFile(join(root, `${name}.png`), Buffer.from(data, 'base64'))
+}
+/** The window's top-left corner, which is where the pinned controls live. */
+async function shotCorner(name) {
+  const { data } = await client.send('Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    clip: { x: 0, y: 0, width: 360, height: 64, scale: 1 },
+  })
   await writeFile(join(root, `${name}.png`), Buffer.from(data, 'base64'))
 }
 try {
@@ -72,10 +185,19 @@ try {
     assert.equal(s.sidebar.x, 0)
     assert.equal(s.sidebar.y + s.sidebar.height, s.height)
     assert.equal(s.core.radius, maximized ? '12px' : '0px')
+    const expandedChrome = await chrome()
+    assertDragTiling(expandedChrome, `${name} expanded`)
+    assert.equal(expandedChrome.controls.x, 8)
+    assert.equal(expandedChrome.controls.y, 4)
     await shot(name)
     await click('.sidebar-toggle-btn')
-    assert.equal((await state()).collapsed, true)
-    assert.equal((await state()).title.x, 0)
+    const collapsedState = await state()
+    assert.equal(collapsedState.collapsed, true)
+    assert.equal(collapsedState.title.x, 0)
+    const collapsedChrome = await chrome()
+    assertDragTiling(collapsedChrome, `${name} collapsed`)
+    assertPinned(collapsedChrome, expandedChrome, `${name} collapsed`)
+    assert.equal(collapsedChrome.sidebarTrack.width, 0)
     await click('.sidebar-toggle-btn')
     await click('.settings-entry-btn')
     const settings = await state()
@@ -85,8 +207,101 @@ try {
     await client.send('Page.reload')
     await harness.waitFor(async () => (await state()).layout === (maximized ? 'beta' : 'chali'), 20_000, 'reload layout')
     await delay(700)
-    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed' })
+    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed', pinned: expandedChrome.controls, dragTiling: 'passed' })
   }
+
+  // The pinned window-chrome controls: one position across every sidebar state, with
+  // the sidebar geometry — and only the sidebar geometry — changing around them.
+  await harness.desktopAction(locator, 'maximize', { maximized: false })
+  await harness.waitFor(async () => (await state()).layout === 'chali', 10_000, 'chali for pinned controls')
+  await delay(600)
+  const expanded = await chrome()
+  assertDragTiling(expanded, 'pinned expanded')
+  assert.equal(expanded.position, 'fixed')
+  assert.equal(expanded.toggleLabel, '收起侧边栏')
+  assert.equal(expanded.toggleExpanded, 'true')
+  assert.equal(expanded.controls.x, 8)
+  assert.equal(expanded.controls.y, 4)
+  assert.equal(expanded.controls.height, 24)
+  const expandedWidth = expanded.sidebarTrack.width
+  assert(expandedWidth > 0, 'the expanded sidebar has no width to shrink from')
+  await shotCorner('corner-expanded')
+
+  // Collapsed: the sidebar track is gone, the controls are where they were.
+  await click('.app-nav-controls .sidebar-toggle-btn')
+  const collapsed = await chrome()
+  assert.equal(collapsed.collapsed, true)
+  assert.equal(collapsed.sidebarTrack.width, 0)
+  assert.equal(collapsed.toggleLabel, '展开侧边栏')
+  assert.equal(collapsed.toggleExpanded, 'false')
+  assertPinned(collapsed, expanded, 'collapsed')
+  assertDragTiling(collapsed, 'pinned collapsed')
+  await shotCorner('corner-collapsed')
+
+  // ...and a real pointer click on the pinned toggle brings the sidebar back: the
+  // pinned corner is the only way out of a collapsed sidebar, so it has to work there.
+  await click('.app-nav-controls .sidebar-toggle-btn')
+  const reopened = await chrome()
+  assert.equal(reopened.collapsed, false)
+  assert.equal(reopened.toggleLabel, '收起侧边栏')
+  assert(Math.abs(reopened.sidebarTrack.width - expandedWidth) < 2, `the reopened sidebar lost its width (${reopened.sidebarTrack.width})`)
+  assertPinned(reopened, expanded, 'reopened')
+
+  // Mid-resize: a real pointer drag on the sidebar's seam, measured while the pointer
+  // is still down. The sidebar width changes frame by frame here; the controls do not.
+  const seam = await client.evaluate(`(() => { const r = document.querySelector('.sidebar-resizer').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`)
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: seam.x, y: seam.y, button: 'left', clickCount: 1 })
+  await delay(80)
+  const midResize = []
+  for (const dx of [40, 90, 130]) {
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: seam.x + dx, y: seam.y, button: 'left', buttons: 1 })
+    await delay(160)
+    const sample = await chrome()
+    assertPinned(sample, expanded, `mid-resize +${dx}`)
+    assertDragTiling(sample, `mid-resize +${dx}`)
+    assert(Math.abs(sample.sidebarTrack.width - (expandedWidth + dx)) < 2, `mid-resize +${dx}: the sidebar track did not follow the pointer (${sample.sidebarTrack.width})`)
+    assert(Math.abs(sample.sidebarSurface.width - (expandedWidth + dx)) < 2, `mid-resize +${dx}: the sidebar surface did not follow the pointer (${sample.sidebarSurface.width})`)
+    midResize.push({ dx, sidebarTrack: sample.sidebarTrack.width, controls: sample.controls })
+  }
+  await shotCorner('corner-mid-resize')
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: seam.x + 130, y: seam.y, button: 'left', clickCount: 1 })
+  await delay(700)
+  const widened = await chrome()
+  assert(Math.abs(widened.sidebarTrack.width - (expandedWidth + 130)) < 2, `the resized sidebar did not commit (${widened.sidebarTrack.width})`)
+  assertPinned(widened, expanded, 'resized')
+
+  // The top edge is still grabbable where the controls are not: a real drag on the
+  // band over the sidebar moves the native window by exactly the requested amount.
+  const bandDrag = await dragTopEdge(Math.round(expandedWidth - 40), 24, 12)
+  assert.deepEqual(bandDrag.delta, bandDrag.requested, 'the drag surface over the sidebar no longer moves the window')
+  await shotCorner('corner-dragged')
+
+  // Restore the sidebar the drag widened, through the same real interaction.
+  const settledSeam = await client.evaluate(`(() => { const r = document.querySelector('.sidebar-resizer').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`)
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: settledSeam.x, y: settledSeam.y, button: 'left', clickCount: 1 })
+  await delay(80)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: settledSeam.x - 130, y: settledSeam.y, button: 'left', buttons: 1 })
+  await delay(160)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: settledSeam.x - 130, y: settledSeam.y, button: 'left', clickCount: 1 })
+  await delay(700)
+  const restoredSidebar = await chrome()
+  assert(Math.abs(restoredSidebar.sidebarTrack.width - expandedWidth) < 2, `the sidebar width was not restored (${restoredSidebar.sidebarTrack.width})`)
+  assertPinned(restoredSidebar, expanded, 'sidebar width restored')
+  results.push({
+    name: 'pinned-window-chrome',
+    status: 'passed',
+    controls: expanded.controls,
+    toggle: expanded.toggle,
+    back: expanded.back,
+    forward: expanded.forward,
+    collapsedControls: collapsed.controls,
+    midResize,
+    sidebarTrack: { expanded: expandedWidth, collapsed: collapsed.sidebarTrack.width, widened: widened.sidebarTrack.width },
+    dragTiling: { expanded: expanded.surfaces, collapsed: collapsed.surfaces },
+    seamHits: { expanded: expanded.seamHits, collapsed: collapsed.seamHits },
+    bandDrag,
+  })
+
   // Native fullscreen uses the same layout facts as maximize.
   await main.evaluate('layoutWindow.setFullScreen(true); true')
   await harness.waitFor(async () => (await state()).layout === 'beta', 10_000, 'fullscreen Beta')
@@ -145,5 +360,6 @@ try {
   if (child.exitCode === null) {
     await harness.waitForExit(child, 10_000).catch(() => child.kill())
   }
+  await provider.close().catch(() => {})
   console.log(`Evidence: ${root}`)
 }

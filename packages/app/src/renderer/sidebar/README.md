@@ -1,5 +1,5 @@
 # Renderer 侧边栏
-最后更新：2026-09-28 12:38:06
+最后更新：2026-09-28 13:04:30
 
 Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各叠一层玻璃；交接处没有色差或分隔。两种窗口布局均已移除标题栏里的 LittleSheep 文字和小羊图标，侧栏自身内容不受影响。
 
@@ -7,7 +7,7 @@ Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各
 
 这里负责项目树、会话树、搜索、折叠、重命名、归档/删除菜单和侧边栏专属过渡。
 
-**窗口拖拽带与全局导航的分工（chali，2026-09-28）**：侧栏列现在整列贯通窗口顶边（`styles/03-shell-sidebar.css` 的 `.sidebar { grid-row: 1 / -1 }`），顶部条从它的右边缘才开始，所以"整宽标题栏"这条拖拽捷径不再存在。`global-titlebar.tsx` 因此导出 `WindowDragRegion`——一个不画像素、不可聚焦的 `div`，带 `-webkit-app-region: drag` 与 `startWindowDrag`/`moveWindowDrag`/`endWindowDrag` 指针桥（与标题栏同一份函数），由 `app-view.tsx` 以 `.window-drag-band` 渲染在 `.app` 的 `grid-column: 1; grid-row: 1`，`z-index: 21` 盖过侧栏本体与其分隔条；设置浮层里由 `settings/workspace.tsx` 渲染同一组件的第二份，覆盖设置侧栏那条 32px 带。真实窗口实测（1280×820）：band 为 `x=0 w=292 h=32`、`-webkit-app-region: drag`，折叠时随网格列归零；在同一窗口里分别对 band 与标题栏做一次真实指针拖动，窗口位移都是请求的 24×12（纯 CSS `app-region` 的对照元素在同一探针里位移为 0，说明这类合成输入下真正驱动窗口的是指针桥，而 app-region 是真实鼠标下的同款保底，与标题栏一直是同一套两件套）。**全局导航控件（侧栏开关、前进/后退）继续留在顶部条**：侧栏折叠时它们必须仍然可达（放进侧栏会随折叠一起消失），而顶部条也是设置浮层唯一没有覆盖的一条带；`aria-label`、`aria-expanded`、禁用态与悬停提示均未改动，真实指针点击开关会依次折叠与展开（`chat-layout-stability.test.ts` 的 chali 用例钉住结构与 `inert` 边界）。
+**窗口拖拽带与全局导航的分工（chali，2026-09-28）**：侧栏列现在整列贯通窗口顶边（`styles/03-shell-sidebar.css` 的 `.sidebar { grid-row: 1 / -1 }`），顶部条从它的右边缘才开始，所以"整宽标题栏"这条拖拽捷径不再存在。`global-titlebar.tsx` 因此导出 `WindowDragRegion`——一个不画像素、不可聚焦的 `div`，带 `-webkit-app-region: drag` 与 `startWindowDrag`/`moveWindowDrag`/`endWindowDrag` 指针桥（与标题栏同一份函数），由 `app-view.tsx` 以 `.window-drag-band` 渲染在 `.app` 的 `grid-column: 1; grid-row: 1`，`z-index: 21` 盖过侧栏本体与其分隔条；设置浮层里由 `settings/workspace.tsx` 渲染同一组件的第二份，覆盖设置侧栏那条 32px 带。真实窗口实测（1280×820）：band 为 `x=0 w=292 h=32`、`-webkit-app-region: drag`，折叠时随网格列归零；在同一窗口里分别对 band 与标题栏做一次真实指针拖动，窗口位移都是请求的 24×12（纯 CSS `app-region` 的对照元素在同一探针里位移为 0，说明这类合成输入下真正驱动窗口的是指针桥，而 app-region 是真实鼠标下的同款保底，与标题栏一直是同一套两件套）。**全局导航控件（侧栏开关、前进/后退）现在钉在窗口左上角**：它们原来跟着顶部条左端走，而那条条从侧栏右边缘开始，所以侧栏一折叠或拖宽控件就滑动——移动的正是"唯一能把侧栏打开"的开关。同文件的 `WindowNavControls` 由 `app-view.tsx` 作为壳层固定层渲染（在 `.primary-workspace` 之前，DOM 顺序因此保住裸类名查询的语义），`.app-nav-controls` 是 `position: fixed; top: calc((var(--window-titlebar-height) - 24px) / 2); left: 8px; z-index: 1003`：坐标就是顶部条从 `x=0` 开始时给出的同一位置，`1003` 是设置入口同款镶边层，因而高于拖拽带（21）与设置浮层。`aria-label`、`aria-expanded`、禁用态与悬停提示均未改动，真实指针点击开关会依次折叠与展开（`chat-layout-stability.test.ts` 的 chali 用例钉住结构、坐标与 `inert` 边界，真实窗口三种状态见 `verify:window-layout`）。
 
 **拖拽带曾经吃掉整个窗口（chali 首轮实测，2026-09-28）**：`.window-drag-band` 最早写成 `position: absolute; inset: 0`，而当时的 `.app` 并不是定位包含块，于是这条"32px 的网格带"逃到**视口**上，实测 `1280×820` 的全窗透明层：`elementFromPoint` 在侧栏导航、侧栏分隔条和顶部条三个控件的中心全部返回 `window-drag-band`，侧栏点不动、拖宽量 `276 → 277`（应到 366）、开关也点不到——`.app` 缺 `position: relative` 时，绝对定位子元素的 `grid-column` / `grid-row` 不生效。修法是让这条带**当普通网格项**（只留 `grid-column: 1; grid-row: 1`，没有 `position`/`inset`）：它和侧栏占同一个网格区域并叠在上面，宽度因此直接跟着网格列走，不需要第二个宽度计算。修后同一探针：band 为 `x=0 w=292 h=32`、侧栏导航与三个顶部条控件全部 `reachable`、侧栏拖宽 `276 → 366`、band 内真实指针拖动使原生窗口位移 `(206,99) → (536,264)`。**注意**：`.app` 上不能加回 `position: relative` 之外的定位技巧，band 也不能改回绝对定位。
 

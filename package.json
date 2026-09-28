@@ -125,6 +125,7 @@
     "verify:startup-failure-retry": "pnpm run ensure:app-build && node scripts/verify-startup-failure-retry.mjs",
     "verify:async-feedback": "pnpm run ensure:app-build && node scripts/verify-async-feedback.mjs",
     "verify:narrow-high-dpi-forms": "pnpm run ensure:app-build && node scripts/verify-narrow-high-dpi-forms.mjs",
+    "verify:window-layout": "pnpm run ensure:app-build && node scripts/verify-window-layout.mjs",
     "verify:settings-navigation-terminology": "pnpm run ensure:app-build && node scripts/verify-settings-navigation-terminology.mjs",
     "verify:shared-ui-roles": "pnpm run ensure:app-build && node scripts/verify-shared-ui-roles.mjs",
     "verify:channel-entry-states": "pnpm run ensure:app-build && node scripts/verify-channel-entry-states.mjs",

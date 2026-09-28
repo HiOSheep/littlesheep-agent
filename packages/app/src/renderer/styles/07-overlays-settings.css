@@ -112,8 +112,10 @@
    has to hold per region: the presence wrapper, the surface and its layout grid are
    click-through, and the regions that own pixels — the rail, the rail's resize seam,
    the page column and the drag band over the rail — take the pointer back. That is
-   what keeps the stationary top bar's navigation controls reachable while settings is
-   open, and what lets the window still be dragged from its top-left corner. */
+   what lets the window still be dragged from its top-left corner while settings is
+   open. The three navigation controls no longer depend on it: they are pinned in the
+   shell's window-chrome layer above this surface (`03-shell-sidebar.css`), and land in
+   the empty 32px band the settings rail already reserves under its own contents. */
 .presence-layer.settings-presence {
   pointer-events: none;
 }

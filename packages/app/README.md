@@ -1,10 +1,10 @@
 # @littlesheep/app
 
-最后更新：2026-09-28 12:38:06
+最后更新：2026-09-28 13:13:10
 
 Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各叠一层玻璃；交接处没有色差或分隔。两种窗口布局均已移除标题栏里的 LittleSheep 文字和小羊图标，侧栏自身内容不受影响。
 
-窗口布局按原生窗口状态切换：普通窗口使用 Chali（侧栏贯通顶边、实体标题栏只覆盖右侧），最大化或系统全屏使用 Beta（整宽玻璃标题栏、下方侧栏与聊天/工作区）。Windows 11 22H2+ 使用系统 Acrylic 透出应用后方窗口，macOS 使用 vibrancy；不支持的系统保留实体底色。启动页仍保持独立实体底色。验证：scripts/verify-window-layout.mjs（加 --desktop-backdrop 检查真实桌面合成）。
+窗口布局按原生窗口状态切换：普通窗口使用 Chali（侧栏贯通顶边、实体标题栏只覆盖右侧），最大化或系统全屏使用 Beta（整宽玻璃标题栏、下方侧栏与聊天/工作区）。Windows 11 22H2+ 使用系统 Acrylic 透出应用后方窗口，macOS 使用 vibrancy；不支持的系统保留实体底色。启动页仍保持独立实体底色。三个窗口导航控件（侧栏开关、返回、前进）钉在窗口左上角：它们是窗口镶边层（`z-index: 1003`，与设置入口同层）里的固定层，不随侧栏展开、折叠或拖宽移动，所以折叠侧栏后唯一的展开入口不会跟着顶部条滑走；真实窗口在展开 / 折叠 / 拖宽中三态实测坐标逐像素相同，顶边依旧可拖（细节见 `src/renderer/README.md`）。验证：scripts/verify-window-layout.mjs（三态坐标、按 1px 采样顶边拖拽覆盖与真实指针拖动；加 --desktop-backdrop 检查真实桌面合成）。
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 

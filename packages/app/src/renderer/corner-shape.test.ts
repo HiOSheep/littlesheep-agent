@@ -89,8 +89,13 @@ describe('corner shape', () => {
   })
 
   it('exempts exactly the capsules and circles, derived from the stylesheets', () => {
-    const exemption = shaped.find(({ body }) => body.includes('corner-shape: round'))
-    expect(exemption, 'no rule restores round corners').toBeDefined()
+    // Two rules carry `corner-shape: round` — this exemption list and the beta
+    // window layout's junction corner — so the exemption is identified by its own
+    // membership (the capsule list leads with `.active-run-indicator`) instead of by
+    // being whichever such rule the import order happens to reach first.
+    const exemptions = shaped.filter(({ body }) => body.includes('corner-shape: round'))
+    const exemption = exemptions.find(({ selector }) => selector.split(',').some((part) => part.trim() === '.active-run-indicator'))
+    expect(exemption, 'no rule restores round corners for the capsules and circles').toBeDefined()
     const exempt = new Set(exemption!.selector.split(',').map((part) => part.trim()).filter(Boolean))
     const { elements, pseudoElements } = capsuleRadii(styles)
 
@@ -106,6 +111,16 @@ describe('corner shape', () => {
     // Pseudo-elements are absent from the list on purpose — the blanket rule
     // cannot reach them, so listing them would be noise.
     for (const selector of pseudoElements) expect(exempt.has(selector)).toBe(false)
+
+    // A capsule must never be exempted through some other rule: the beta layout
+    // rounds two panel elements and nothing else.
+    const beta = exemptions.filter(({ selector }) => selector.includes("data-window-layout='beta'"))
+    expect(beta).toHaveLength(1)
+    for (const { selector } of beta) {
+      for (const part of selector.split(',')) {
+        expect(exempt.has(part.trim()), `the beta corner rule re-exempts a capsule: ${part.trim()}`).toBe(false)
+      }
+    }
   })
 
   it('keeps the floating panels and their material on the same corner geometry', () => {
@@ -146,6 +161,16 @@ describe('corner shape', () => {
     // rule) and the composer glass (.composer::before).
     expect(selectors.filter((selector) => selector.includes('::before'))).toHaveLength(2)
     expect(selectors.filter((selector) => selector.startsWith('.active-run-indicator'))).toHaveLength(1)
-    expect(selectors).toHaveLength(4)
+    // The one place outside `12-squircle-corners.css`: beta's window layout rounds the
+    // chat column's junction corner against the sidebar (`border-top-left-radius: 12px`
+    // in `14-window-layout.css`) and declares `round` there. That is a real pixel
+    // decision, not a duplicate of the blanket rule — measured in a maximized window,
+    // the 12px corner renders 671 bytes of PNG as shipped against 609 as
+    // `superellipse(1.5)` — so it stays, and the cost of staying is being listed here:
+    // exactly one window-layout rule may declare the property, and its selector has to
+    // say which layout it belongs to.
+    const beta = selectors.filter((selector) => selector.includes("data-window-layout='beta'"))
+    expect(beta).toEqual(["html[data-window-layout='beta'] :is(.core-workspace, .settings-workspace-body)"])
+    expect(selectors).toHaveLength(5)
   })
 })

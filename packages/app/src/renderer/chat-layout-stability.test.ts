@@ -88,6 +88,55 @@ describe('chat layout stability', () => {
     expect(globalTitlebar).toContain('bridge.startWindowDrag({ screenX: event.screenX, screenY: event.screenY })')
     expect(appView.match(/<WindowDragRegion\b/g)?.length).toBe(1)
     expect(appView).toContain('<WindowDragRegion className="window-drag-band" />')
+
+    // The three navigation controls are pinned to the window's own top-left corner
+    // instead of the bar's left end. The bar starts at the sidebar's right edge in
+    // chali, so controls laid out inside it move with every sidebar expand, collapse
+    // and resize — including the sidebar toggle, which is the only way back out of a
+    // collapsed sidebar. They are therefore a shell-level fixed layer, and the pinned
+    // box repeats the geometry the bar already gives them when it starts at x = 0:
+    // the same 32px row, the same 24px control box (`top` centers it) and the same
+    // 8px inline inset.
+    const navControls = directRuleBody(styles, '.app-nav-controls')
+    expect(navControls).toContain('position: fixed')
+    expect(navControls).toContain('top: calc((var(--window-titlebar-height) - 24px) / 2)')
+    expect(navControls).toContain('left: 8px')
+    expect(navControls).toContain('-webkit-app-region: no-drag')
+    // The bar's own inline inset is the number the pinned `left` repeats, so a change
+    // to one without the other would move the controls against the layout they are
+    // pinned into rather than inside it.
+    expect(titlebar).toContain('padding: 0 150px 0 8px')
+    // 1003 is the shell's window-chrome layer — `.settings-entry-global` — which sits
+    // above the panels, above the drag band and above the settings surface that owns
+    // the left rail in its state. It has to clear the band (21), or the band would
+    // keep the clicks; the band keeps its whole box, so the top edge stays grabbable
+    // everywhere except the controls' own 80x24 island.
+    expect(Number(navControls.match(/z-index:\s*(\d+)/u)?.[1] ?? 0)).toBe(1003)
+    expect(Number(navControls.match(/z-index:\s*(\d+)/u)?.[1] ?? 0)).toBeGreaterThan(
+      Number(dragBand.match(/z-index:\s*(\d+)/u)?.[1] ?? 0),
+    )
+    expect(styles).toMatch(/\.settings-entry-global\s*\{[^}]*z-index:\s*1003;/u)
+    // No layout switch may re-place the pinned controls: beta changes the bar's grid
+    // span and the sidebar's row, and moves nothing else.
+    expect(styles).not.toMatch(/\[data-window-layout[^{]*\.app-nav-controls/u)
+    expect(globalTitlebar).toContain('export function WindowNavControls')
+    expect(globalTitlebar).toContain('aria-label={sidebarToggleTip}')
+    expect(globalTitlebar).toContain('aria-label="返回"')
+    expect(globalTitlebar).toContain('aria-label="前进"')
+    // The shell-level layer is rendered before `.primary-workspace`, so a bare
+    // `.sidebar-toggle-btn` query still names the window's toggle: the workspace
+    // panel's corner toggle shares that class and lives inside the panels.
+    expect(appView).toContain('<WindowNavControls')
+    expect(appView.indexOf('<WindowNavControls')).toBeGreaterThanOrEqual(0)
+    expect(appView.indexOf('<WindowNavControls')).toBeLessThan(appView.indexOf('<div className="primary-workspace">'))
+    expect(appView).toContain('<GlobalTitlebar />')
+    // The bar is a pure drag surface now; the controls are not its children.
+    const titlebarElement = globalTitlebar.slice(
+      globalTitlebar.indexOf('export function GlobalTitlebar'),
+      globalTitlebar.indexOf('export function WindowNavControls'),
+    )
+    expect(titlebarElement).not.toContain('app-nav-controls')
+
     // The inert/aria-hidden boundary for the settings hand-off covers the two panels the
     // settings surface paints over — not the top bar and not the drag band, which both
     // stay usable while settings is open. The wrapper therefore has to be layout-neutral.

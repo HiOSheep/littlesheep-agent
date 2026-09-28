@@ -1,8 +1,8 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 12:38:06
+最后更新：2026-09-28 13:06:20
 
-verify-window-layout.mjs 验证真实 Electron 窗口 Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，产出临时目录中的截图与 results.json。--desktop-backdrop 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。运行前执行 pnpm run ensure:app-build。
+`verify-window-layout.mjs`（根 `package.json` 里是 `pnpm run verify:window-layout`）验证真实 Electron 窗口的窗口镶边几何：Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，并逐状态断言**钉在窗口左上角的三个导航控件**（侧栏开关、返回、前进）坐标逐像素相同而侧栏轨道宽度确实在变（展开 / 折叠 / 拖宽中三态），按 1px 采样整条顶边确认 `.window-titlebar` 与 `.window-drag-band` 无缝覆盖 `[0,width)`（唯一不拖拽岛是控件自己），再用真实指针拖动 band 断言原生窗口位移等于请求值、真实点击开关能把折叠的侧栏打开。夹具跑在标准验收 Provider 上（`acceptance/slow-a`），窗口因此处于 Runtime 就绪的普通状态：早先的 `model: ""` 夹具解析配置就失败，整窗失败条会盖住工作区面板角标，脚本是在自己的夹具上失败而不是在它要测量的布局上失败。产出临时目录中的截图（含 `corner-*.png` 左上角特写）与 results.json。`--desktop-backdrop` 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 

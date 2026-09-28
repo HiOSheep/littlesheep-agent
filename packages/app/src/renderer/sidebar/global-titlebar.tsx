@@ -1,6 +1,6 @@
-// Window chrome: the 32px top bar of the chat/workspace region, its navigation
-// controls, the settings entry, and the transparent drag surfaces that keep the
-// window grabbable along its whole top edge.
+// Window chrome: the 32px top bar of the chat/workspace region, the navigation
+// controls pinned to the window's top-left corner, the settings entry, and the
+// transparent drag surfaces that keep the window grabbable along its whole top edge.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
 import { HistoryBackIcon, HistoryForwardIcon } from '../ui/browser-icons'
@@ -53,7 +53,40 @@ export function WindowDragRegion({ className }: { className?: string }) {
   )
 }
 
-export function GlobalTitlebar({
+/**
+ * The 32px top bar over the chat+workspace column, and its half of the window's
+ * top-edge drag strip. It renders no content: `chali` hands the window's
+ * top-left corner to the sidebar, so the bar has to keep the whole column
+ * grabbable, and the navigation controls that used to sit at its left end are
+ * pinned to the window instead (see `WindowNavControls`).
+ */
+export function GlobalTitlebar() {
+  return (
+    <header
+      className="window-titlebar"
+      aria-label="LittleSheep titlebar"
+      onPointerDown={startWindowDrag}
+      onPointerMove={moveWindowDrag}
+      onPointerUp={endWindowDrag}
+      onPointerCancel={endWindowDrag}
+    />
+  )
+}
+
+/**
+ * The window's three chrome controls — sidebar toggle, back, forward — pinned to
+ * the window's own top-left corner in every sidebar state.
+ *
+ * They are a shell-level fixed layer rather than children of the top bar because
+ * `chali` starts that bar at the sidebar's right edge: laid out inside it, the
+ * three controls slide left with every expand and resize, and the sidebar toggle
+ * — the only way back out of a collapsed sidebar — is the control that moves.
+ * `app-view.tsx` renders this beside `SettingsEntryButton`, the shell's other
+ * persistent chrome control, for the same reason: `.primary-workspace` is a
+ * stacking context of its own, so a control inside it cannot stay above the
+ * settings surface that covers the left rail.
+ */
+export function WindowNavControls({
   sidebarCollapsed,
   sidebarToggleTip,
   canNavigateBack,
@@ -73,49 +106,40 @@ export function GlobalTitlebar({
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   return (
-    <header
-      className="window-titlebar"
-      aria-label="LittleSheep titlebar"
-      onPointerDown={startWindowDrag}
-      onPointerMove={moveWindowDrag}
-      onPointerUp={endWindowDrag}
-      onPointerCancel={endWindowDrag}
-    >
-      <div className="app-nav-controls" data-window-drag-ignore aria-label="全局导航">
-        <button
-          className="sidebar-toggle-btn"
-          type="button"
-          aria-label={sidebarToggleTip}
-          aria-expanded={!sidebarCollapsed}
-          onClick={onToggleSidebar}
-          onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(sidebarToggleTip, event.clientX, event.clientY))}
-          onMouseMove={(event) => onTipChange(buildFloatingHelpTip(sidebarToggleTip, event.clientX, event.clientY))}
-          onMouseLeave={() => onTipChange(null)}
-          onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(sidebarToggleTip, event.currentTarget))}
-          onBlur={() => onTipChange(null)}
-        >
-          <SidebarToggleIcon />
-        </button>
-        <button
-          className="app-nav-btn history-nav-btn nav-back"
-          type="button"
-          disabled={!canNavigateBack}
-          onClick={onBack}
-          aria-label="返回"
-        >
-          <HistoryBackIcon />
-        </button>
-        <button
-          className="app-nav-btn history-nav-btn nav-forward"
-          type="button"
-          disabled={!canNavigateForward}
-          onClick={onForward}
-          aria-label="前进"
-        >
-          <HistoryForwardIcon />
-        </button>
-      </div>
-    </header>
+    <div className="app-nav-controls" data-window-drag-ignore aria-label="全局导航">
+      <button
+        className="sidebar-toggle-btn"
+        type="button"
+        aria-label={sidebarToggleTip}
+        aria-expanded={!sidebarCollapsed}
+        onClick={onToggleSidebar}
+        onMouseEnter={(event) => onTipChange(buildFloatingHelpTip(sidebarToggleTip, event.clientX, event.clientY))}
+        onMouseMove={(event) => onTipChange(buildFloatingHelpTip(sidebarToggleTip, event.clientX, event.clientY))}
+        onMouseLeave={() => onTipChange(null)}
+        onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(sidebarToggleTip, event.currentTarget))}
+        onBlur={() => onTipChange(null)}
+      >
+        <SidebarToggleIcon />
+      </button>
+      <button
+        className="app-nav-btn history-nav-btn nav-back"
+        type="button"
+        disabled={!canNavigateBack}
+        onClick={onBack}
+        aria-label="返回"
+      >
+        <HistoryBackIcon />
+      </button>
+      <button
+        className="app-nav-btn history-nav-btn nav-forward"
+        type="button"
+        disabled={!canNavigateForward}
+        onClick={onForward}
+        aria-label="前进"
+      >
+        <HistoryForwardIcon />
+      </button>
+    </div>
   )
 }
 
