@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource } from './style-source-test-utils'
+import { loadWindowChromeContractSources, windowChromeContractViolations } from '../../../../scripts/lib/window-chrome-contract.mjs'
 import { describe, expect, it } from 'vitest'
 
 
@@ -99,13 +100,14 @@ describe('chat layout stability', () => {
     // 8px inline inset.
     const navControls = directRuleBody(styles, '.app-nav-controls')
     expect(navControls).toContain('position: fixed')
-    expect(navControls).toContain('top: calc((var(--window-titlebar-height) - 24px) / 2)')
-    expect(navControls).toContain('left: 8px')
+    expect(navControls).toContain('top: var(--window-nav-controls-top)')
+    expect(navControls).toContain('left: var(--window-nav-controls-inset)')
     expect(navControls).toContain('-webkit-app-region: no-drag')
-    // The bar's own inline inset is the number the pinned `left` repeats, so a change
+    // The bar's own inline inset is the number the pinned inset repeats, so a change
     // to one without the other would move the controls against the layout they are
     // pinned into rather than inside it.
     expect(titlebar).toContain('padding: 0 150px 0 8px')
+    expect(styles).toMatch(/--window-nav-controls-inset:\s*8px;/u)
     // 1003 is the shell's window-chrome layer — `.settings-entry-global` — which sits
     // above the panels, above the drag band and above the settings surface that owns
     // the left rail in its state. It has to clear the band (21), or the band would
@@ -163,62 +165,46 @@ describe('chat layout stability', () => {
   })
 
   it('keeps the pinned controls inside the window\'s clickable region in every sidebar state', async () => {
-    const styles = await readRendererStyleSource()
-    const windowLayout = await readRendererFile('./styles/14-window-layout.css')
-    const px = (source: string, property: string): number => {
-      const match = source.match(new RegExp(`${property}:\\s*(\\d+)px`, 'u'))
-      expect(match, `${property} should be a pixel length`).not.toBeNull()
-      return Number(match?.[1] ?? 0)
-    }
+    const sources = await loadWindowChromeContractSources()
 
-    // A real mouse press is filtered before the DOM sees it: the browser publishes the
-    // `-webkit-app-region` boxes to the OS as the window's draggable region, and Windows
-    // turns a press inside it into a caption interaction. `z-index` decides nothing here —
-    // the region is accumulated in DOM pre-order, subtracting `no-drag` boxes from the
-    // `drag` boxes contributed before them. The controls are the shell's first child, so
-    // their own `no-drag` is spent before the top bar and the drag band add the two boxes
-    // that overlap them, and the island is filled straight back in: the window's own win32
-    // hit test answered HTCAPTION for all three controls in the expanded, collapsed and
-    // mid-resize states, which is why a click there dragged/activated the window instead of
-    // pressing the button while `elementFromPoint` kept returning the button.
+    // One gate, two callers. The contract itself — which bands are draggable, which
+    // controls must be clickable, and the geometry that ties them (the top-bar row, the
+    // controls' island, and the hit-region hole that has to equal it) — is declared in
+    // `shared/window-chrome-contracts.ts`, including the rule this test exists for: the
+    // draggable region is accumulated in DOM pre-order and ignores `z-index`, so a
+    // `no-drag` box only subtracts the drag boxes contributed before it and the hole has
+    // to be the last box in its originating element's pre-order subtree.
     //
-    // The hole therefore has to be the *last* drag-relevant box in the shell. A generated
-    // `::after` box is exactly that (after the top bar, after the panel band and after the
-    // settings band that `.overlays` renders later still), and `pointer-events: none` keeps
-    // the hole itself out of DOM hit testing so it cannot take the clicks it carves out.
-    // The three-state, real-window half of this check — the win32 hit test on the same
-    // coordinates — lives in `verify:window-layout`, because no source-level assertion can
-    // observe what the OS does with a press.
-    const hole = directRuleBody(styles, '.window-shell::after')
-    expect(hole).toContain("content: ''")
-    expect(hole).toContain('position: fixed')
-    expect(hole).toContain('-webkit-app-region: no-drag')
-    expect(hole).toContain('pointer-events: none')
+    // `scripts/lib/window-chrome-contract.mjs` is the single implementation of the
+    // source-level half: it reads the declared numbers, evaluates the stylesheet's own
+    // tokens and calc() expressions, and reports which side has to move. The native half
+    // — the same contract asked of a real window through its own WM_NCHITTEST — lives in
+    // `scripts/verify-window-layout.mjs`, which calls the same gate before it starts a
+    // window. No source-level assertion can observe what the OS does with a press, which
+    // is why this test is the fast half rather than the whole check.
+    const violations = windowChromeContractViolations(sources)
+    expect(violations, violations.join('\n')).toEqual([])
+
+    // The two facts the gate reads from the stylesheet as a whole, asserted here against
+    // the rules the cascade actually leaves in charge: the hole must survive every layout
+    // (beta spans the top bar over the island instead of ending it at the sidebar) and it
+    // must stay a hit region rather than a layer.
+    const hole = directRuleBody(sources.styles, '.window-shell::after')
     expect(hole).not.toContain('display: none')
+    expect(sources.windowLayout).not.toContain('.window-shell::after')
+    expect(sources.styles).not.toMatch(/\.window-shell::after\s*\{[^}]*(?:background|border|box-shadow|backdrop-filter|filter):/u)
 
-    // Box for box the same island as the controls: the same declarations for the offsets,
-    // and the 80x24 box that rule's three 24px buttons and two 4px gaps add up to. Derived
-    // rather than repeated, so a wider button or a larger gap cannot leave the hole behind.
-    const navControls = directRuleBody(styles, '.app-nav-controls')
-    const buttonBox = styles.match(/\.app-nav-controls > \.sidebar-toggle-btn,\r?\n\.app-nav-controls > \.app-nav-btn \{[\s\S]*?\r?\n\}/u)?.[0] ?? ''
-    const buttonWidth = px(buttonBox, 'width')
-    const buttonHeight = px(buttonBox, 'height')
-    const gap = px(navControls, 'gap')
-    expect(buttonWidth).toBeGreaterThan(0)
-    expect(px(hole, 'left')).toBe(px(navControls, 'left'))
-    expect(hole.match(/top:[^;]+;/u)?.[0]).toBe(navControls.match(/top:[^;]+;/u)?.[0])
-    expect(px(hole, 'width')).toBe((buttonWidth * 3) + (gap * 2))
-    expect(px(hole, 'height')).toBe(buttonHeight)
-
-    // Beta spans the top bar over the island instead of ending it at the sidebar, so the
-    // hole is not a layout-state exception: the layout layer must not scope it away.
-    expect(windowLayout).not.toContain('.window-shell::after')
-
-    // The band keeps both halves of its own drag behaviour; the hole is a second box, not
-    // a `pointer-events` cut-out (which the region computation ignores anyway).
-    const dragBand = directRuleBody(styles, '.window-drag-band')
-    expect(dragBand).toContain('-webkit-app-region: drag')
-    expect(dragBand).toContain('pointer-events: auto')
+    // And the native half has to stay the same contract rather than a parallel copy of
+    // it: it reads the shared gate, derives its island from the contract, and probes the
+    // declared controls in all three sidebar states — mid-resize included, which is the
+    // state the controls were measured unclickable in.
+    const nativeGate = await readRendererFile('../../../../scripts/verify-window-layout.mjs')
+    expect(nativeGate).toContain("from './lib/window-chrome-contract.mjs'")
+    expect(nativeGate).toContain('windowChromeContractViolations')
+    expect(nativeGate).toContain('windowChromeControlsBox')
+    expect(nativeGate).toMatch(/assertChromeState\(sample, `mid-resize \+/u)
+    expect(nativeGate).toContain("'pinned expanded', { topEdge: true }")
+    expect(nativeGate).toContain("'pinned collapsed', { topEdge: true }")
   })
 
   it('uses the code-view surface for the titlebar, chat, and workspace materials', async () => {

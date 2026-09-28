@@ -130,6 +130,17 @@
      top bar over the chat+workspace column, the height of the window drag band over
      the sidebar column, and the offset of the settings page column. */
   --window-titlebar-height: 32px;
+  /* The pinned window-chrome controls and the no-drag hole they punch through the
+     drag surfaces are ONE box: both rules below consume these two, so the hole
+     cannot be positioned anywhere but under the controls. The remaining half of
+     that box — its 80x24 size — is bound to the controls' own literals by
+     `scripts/lib/window-chrome-contract.mjs` instead of by a third variable,
+     because `.app-nav-controls > .sidebar-toggle-btn, .app-nav-controls > .app-nav-btn`
+     already owns those numbers and other suites read them there. The contract
+     itself lives in `../shared/window-chrome-contracts.ts`; read its header for the
+     pre-order/z-index rule these two rules exist to satisfy. */
+  --window-nav-controls-top: calc((var(--window-titlebar-height) - 24px) / 2);
+  --window-nav-controls-inset: 8px;
   --sidebar-section-motion: 280ms;
   --sidebar-section-ease: cubic-bezier(0.65, 0, 0.35, 1);
   --sidebar-section-header-height: 30px;
@@ -512,8 +523,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
    surface that owns the left rail in its own state. */
 .app-nav-controls {
   position: fixed;
-  top: calc((var(--window-titlebar-height) - 24px) / 2);
-  left: 8px;
+  top: var(--window-nav-controls-top);
+  left: var(--window-nav-controls-inset);
   z-index: 1003;
   display: inline-flex;
   align-items: center;
@@ -554,17 +565,20 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
    panel drag band and after the settings band that `.overlays` renders later still, and
    subtracts the island from all of them at once. `pointer-events: none` keeps the hole
    out of DOM hit testing: a hole that could be clicked itself would take the very clicks
-   the controls need. Its geometry repeats `.app-nav-controls` box for box — `left` and
-   `top` are the same declarations, and the 80x24 box is that rule's three 24px buttons
-   plus its two 4px gaps — and `chat-layout-stability.test.ts` derives the three numbers
-   from the controls rule so one cannot move without the other. Everything else on the
-   32px row stays draggable: above and below the island, on both sides of it, and the
-   whole band. The shell carries no other `::after`, so this rule owns that box. */
+   the controls need. Its offsets are the controls' offsets — the same two custom
+   properties above, not a second copy of them — and its 80x24 box is that rule's three
+   24px buttons plus its two 4px gaps, bound to the declared contract by
+   `scripts/lib/window-chrome-contract.mjs` and measured against the live window by
+   `scripts/verify-window-layout.mjs`. Everything else on the 32px row stays draggable:
+   above and below the island, on both sides of it, and the whole band. The shell carries
+   no other `::after`, so this rule owns that box. The rule itself — pre-order, no
+   `z-index`, why the hole has to be last and why `pointer-events` on a band is not a
+   fix — is stated once in the header of `../shared/window-chrome-contracts.ts`. */
 .window-shell::after {
   content: '';
   position: fixed;
-  top: calc((var(--window-titlebar-height) - 24px) / 2);
-  left: 8px;
+  top: var(--window-nav-controls-top);
+  left: var(--window-nav-controls-inset);
   width: 80px;
   height: 24px;
   pointer-events: none;

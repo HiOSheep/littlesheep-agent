@@ -1,8 +1,13 @@
 // Native backdrop and maximize/fullscreen projection. No renderer-supplied state is trusted.
 import { release } from 'node:os'
 import { ipcMain, type BrowserWindow, type IpcMainEvent } from 'electron'
-import { WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL, type WindowChromeState } from '../shared/window-chrome-contracts.js'
-import { DESKTOP_STARTUP_SURFACE } from './desktop-startup-page.js'
+import {
+  WINDOW_CHROME_CHANNEL,
+  WINDOW_CHROME_QUERY_CHANNEL,
+  windowChromeNativeTitlebarMismatch,
+  type WindowChromeState,
+} from '../shared/window-chrome-contracts.js'
+import { DESKTOP_STARTUP_SURFACE, DESKTOP_TITLEBAR_HEIGHT } from './desktop-startup-page.js'
 
 export function nativeWindowBackdrop(platform = process.platform, version = release()): WindowChromeState['backdrop'] {
   if (platform === 'darwin') return 'vibrancy'
@@ -10,7 +15,20 @@ export function nativeWindowBackdrop(platform = process.platform, version = rele
   return 'solid'
 }
 
+/**
+ * The native caption row and the renderer's top bar are the same 32px row, and this
+ * module is where main paints over it (`setTitleBarOverlay` in Beta). The shared
+ * window-chrome contract declares that row once; this compares main's own constant
+ * against it, before the window is configured, so the two cannot drift apart into a
+ * caption overlay that lines up with nothing.
+ */
+export function nativeWindowChromeRowMismatch(): string | null {
+  return windowChromeNativeTitlebarMismatch(DESKTOP_TITLEBAR_HEIGHT)
+}
+
 export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: () => boolean): void {
+  const rowMismatch = nativeWindowChromeRowMismatch()
+  if (rowMismatch) throw new Error(`window chrome contract: ${rowMismatch}`)
   const backdrop = nativeWindowBackdrop()
   if (backdrop === 'acrylic') window.setBackgroundMaterial('acrylic')
   if (backdrop === 'vibrancy') window.setVibrancy('under-window')
