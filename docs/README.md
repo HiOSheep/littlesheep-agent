@@ -91,6 +91,7 @@
 - [自定义模型供应商](reference/custom-model-providers.md)：Provider/模型配置字段、密钥存放、未声明能力的未知语义，以及只支持 OpenAI 兼容接口的边界。
 - [前端界面检查点 2026-09-27](reference/frontend-ui-checkpoint-2026-09-27.md)：大规模前端重构前的回滚锚点（标签 `ui-baseline-2026-09-27` → `e601ca7e`）、三档回滚方式、当前界面契约门禁，以及"视觉基线 PNG 早于锚点三天、建议重构前先刷新"的诚实说明。
 - [产品级 UI/UX 差距审计 2026-09-27](reference/ui-ux-gap-audit-2026-09-27.md)：按用户可感知程度排序的 P0/P1/P2 清单、证据种类标注、以及"已解决的基础交互默认不创新"这一硬约束；每条修复必须用真实 Electron 或对应门禁证明。
+- [UI/UX 架构变更候选清单 2026-09-28](decision/ui-ux-architecture-candidates-2026-09-28.md)：只在用户授权下才考虑改/新增架构；每条的形态是"证据 → 为什么现有架构补不上 → 最小变更 → 成本与风险 → 否决后的替代"，全部为提案、未实施。
 - 论文材料：论文正文、图表和复核材料的范围及提交前边界见 `docs/paper/README.md`，正文源稿为 `docs/paper/littlesheep-thesis.md`。**这两份是本机材料、未纳入版本库**（`git ls-files docs/paper` 为空），因此这里只给路径而不做文档链接——链接会让仓库门禁依赖不存在于版本库中的文件。
 
 ## 文档冲突规则
