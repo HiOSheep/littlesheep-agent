@@ -13,6 +13,7 @@
 //
 // Usage: node scripts/experiment-autonomy-sandbox-report.mjs [--evidence=<dir>] [--json=<path>]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { readJsonLines, writeJson } from './lib/experiment-ledger.mjs';
 
@@ -31,6 +32,25 @@ function parseArgs(argv) {
  * fixed? The fixture parses JSON that contains `//` comments with a bare `JSON.parse`, and the fix has to
  * deal with the comments. Reading the artifact is enough to answer that; the run's own reply is not used.
  */
+/**
+ * RA-05 replaced a static reading with an execution. The previous check looked for comment-handling in the
+ * source, which cannot tell a real fix from code that was deleted, emptied or short-circuited — and those
+ * are exactly the shapes a model reaches for when it cannot solve the task. Running the fixture's own build
+ * is the independent semantic check: it fails unless the program actually parses the file it was failing on.
+ */
+function runRt01Build(workspace) {
+  const result = spawnSync(process.execPath, ['tools/build.mjs'], {
+    cwd: workspace, encoding: 'utf8', timeout: 30_000, windowsHide: true,
+  });
+  return {
+    ran: result.error === undefined,
+    exitCode: result.status,
+    stdout: String(result.stdout ?? '').slice(0, 300),
+    stderr: String(result.stderr ?? result.error?.message ?? '').slice(0, 300),
+    holds: result.status === 0 && /"retries"\s*:\s*2/u.test(String(result.stdout ?? '')),
+  };
+}
+
 function rt01ArtifactCheck(workspace) {
   const path = join(workspace, 'src', 'parse-config.mjs');
   if (!existsSync(path)) return { pass: false, reason: 'src/parse-config.mjs is missing' };
@@ -42,8 +62,10 @@ function rt01ArtifactCheck(workspace) {
     const configPath = join(workspace, 'config', 'app.json');
     return existsSync(configPath) && /\/\//u.test(readFileSync(configPath, 'utf8'));
   })();
+  const build = runRt01Build(workspace);
   return {
-    pass: exportsParseConfig && !stillBareJsonParse && handlesComments,
+    pass: build.holds,
+    executedBuild: build,
     exportsParseConfig,
     stillBareJsonParse,
     handlesComments,
