@@ -1,12 +1,14 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 19:49:50
+最后更新：2026-09-28 19:54:01
+
+verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与菜单验收，覆盖选择菜单的选中状态、键盘操作、点击外部/Escape/Tab 关闭、密度设置重载保留、页面导航及 800/1280px 视口避让；截图与 results.json 保存在输出的临时目录。先执行 pnpm run ensure:app-build。
 
 `verify-window-layout.mjs`（根 `package.json` 里是 `pnpm run verify:window-layout`）验证真实 Electron 窗口的窗口镶边几何：Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，并逐状态断言**钉在窗口左上角的三个导航控件**（侧栏开关、返回、前进）坐标逐像素相同而侧栏轨道宽度确实在变（展开 / 折叠 / 拖宽中三态），按 1px 采样整条顶边确认 `.window-titlebar` 与 `.window-drag-band` 无缝覆盖 `[0,width)`（唯一不拖拽岛是控件自己），再用真实指针拖动 band 断言原生窗口位移等于请求值、真实点击开关能把折叠的侧栏打开。夹具跑在标准验收 Provider 上（`acceptance/slow-a`），窗口因此处于 Runtime 就绪的普通状态：早先的 `model: ""` 夹具解析配置就失败，整窗失败条会盖住工作区面板角标，脚本是在自己的夹具上失败而不是在它要测量的布局上失败。产出临时目录中的截图（含 `corner-*.png` 左上角特写）与 results.json。**真实命中区**（`nativeHitTest`）：每个状态的控件"可点"不能只由 `elementFromPoint` 或 CDP 合成点击证明——两者都在窗口的原生 draggable region **之下**，而用户真正的鼠标按下先被那一层过滤。脚本因此额外对窗口句柄发 `WM_NCHITTEST`（内联 `pwsh`，`SendMessage` 到 `layoutWindow.getNativeWindowHandle()`），断言三个控件中心是 `HTCLIENT`（1，页面收得到点击）、岛的左/右/下邻位与标题栏中心是 `HTCAPTION`（2，仍是窗口拖拽面），并用一个普通正文点做 `HTCLIENT` 对照证明这条探针确实在回答；`setup` 用窗口自身的几何换算坐标（`getContentBounds()` 是 DIP，乘所在显示器的 scale factor 得到 `WM_NCHITTEST` 需要的物理坐标），**不移动窗口**：搬动会经 DIP↔物理的往返把窗口尺寸每次放大一个像素，正好会破坏脚本下面断言的精确几何。探针本体已抽成共享库 `lib/native-hit-test.mjs`（约定见下），本脚本只保留自己的取样点与断言。`--desktop-backdrop` 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。
 
 ## 约定：窗口 chrome 的"能不能点"按原生命中判定
 
-最后更新：2026-09-28 19:49:50
+最后更新：2026-09-28 20:03:00
 
 **任何改动只要涉及窗口 chrome、拖动区（`-webkit-app-region`）、窗口顶边或顶栏控件，就必须用原生 `WM_NCHITTEST` 断言受影响的控件收到真实点击。** `document.elementFromPoint` 与 CDP 合成点击**不能**替代它：2026-09-28 实测，在"真实鼠标按下去没反应"的构建上这两项全部通过——渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 用窗口自己的 `WM_NCHITTEST` 解析它，控件中心返回 `HTCAPTION` 时那次按下变成 caption 交互，页面根本收不到。DOM 检查与 CDP 点击的结论只能作为补充证据，不能作为"用户点得到"的结论。
 
@@ -61,7 +63,7 @@
 
 `verify:workspace-file-close-discard`（`scripts/verify-workspace-file-close-discard.mjs`）验证**关闭脏文件时的第三个答案**（工作区审计 P1 第 9 条）：真实窗口里打开工作区文件、进编辑态输入、点 ✕，断言弹出的仍是**权限**提示且只有"拒绝/本对话允许/仅本次"三个答案（放弃编辑不是权限系统的决定，对话框里没有"放弃修改"）；选"拒绝"后标签仍在且仍脏、磁盘一字未改、标签条上出现可见提示并带"放弃修改"；"继续编辑"收起提示且不改动任何东西；"放弃修改"关闭标签并丢弃草稿——重开同一个文件看到的是磁盘正文、草稿标记不再出现；最后 `仅本次` 仍照旧写盘并关标签。每条断言单独记进证据（`assertions[]`），窗口全程不上屏，"可见"按已布局且计算样式非隐藏判定，这两点写在门的 `limits` 里。
 
-`verify:transcript-state-visibility`（`scripts/verify-transcript-state-visibility.mjs`）用真实窗口把"需要注意的事实"在**普通与紧凑两种显示模式**下各测一遍，共八类场景：`pass` 结论（两种模式都不渲染结论行与注意力行——这是"未验证不得读成通过"的反面）、传输失败（401 × 8，`本轮未完成` + `.run-status-error` 原文）、被停止（`本轮已停止`）、等待用户批准（运行中回合，两模式渲染一致）、被拒绝的写调用（真实窗口重载后由持久历史投影成 `.agent-tool-call.fail`）、手动折叠（两种模式各"折起 → 再打开"一次，断言 `aria-hidden/inert` 真的落下、注意力行不是 `.assistant-process-content` 的后代、失败行仍在）、**O1 的整体完成但局部失败 + 非 `pass` 结论**（`LS-O1-LOCAL-FAILURE-MARKER`：一次 `read` 确定性失败、run 仍以 `done` 结算，两种模式下注意力行逐字读作 `1 次调用失败 · 验证：未验证`、触发行是 `验证：未验证`，并回读磁盘上的 execution log 断言 `verificationHistory` 里没有任何 `pass`）、以及 **O1 的等待决定**（独立数据根上先跑完一轮让会话进入索引，再在第二次模型请求在途时强杀进程、同根重启，Runtime 恢复写出的 `waiting_user` 在两种模式下读作 `等待你决定后继续` + 触发行 `等待处理`，答案位置是 Runtime 状态而不是模型回复）。报告与 18 张截图写在仓库外（`lib/run-artifacts.mjs` 的 `transcript-state-visibility/`，含 `report.json`）；`部分完成` 没有对应状态、紧凑模式不折叠运行中回合这两件事写在门的 `limits` 里，不用单测替代。
+`verify:transcript-state-visibility`（`scripts/verify-transcript-state-visibility.mjs`）用真实窗口把"需要注意的事实"在**普通与紧凑两种显示模式**下各测一遍，共八类场景：`pass` 结论（两种模式都不渲染结论行与注意力行——这是"未验证不得读成通过"的反面）、传输失败（401 × 8，`本轮未完成` + `.run-status-error` 原文）、被停止（`本轮已停止`）、等待用户批准（运行中回合，两模式渲染一致）、被拒绝的写调用（真实窗口重载后由持久历史投影成 `.agent-tool-call.fail`）、手动折叠（两种模式各"折起 → 再打开"一次，断言 `aria-hidden/inert` 真的落下、注意力行不是 `.assistant-process-content` 的后代、失败行仍在）、**O1 的整体完成但局部失败 + 非 `pass` 结论**（`LS-O1-LOCAL-FAILURE-MARKER`：一次 `read` 确定性失败、run 仍以 `done` 结算，两种模式下注意力行逐字读作 `1 次调用失败 · 验证：未验证`、触发行是 `验证：未验证`，并回读磁盘上的 execution log 断言 `verificationHistory` 里没有任何 `pass`）、以及 **O1 的等待决定**（独立数据根上先跑完一轮让会话进入索引，再在第二次模型请求在途时强杀进程、同根重启，Runtime 恢复写出的 `waiting_user` 在两种模式下读作 `等待你决定后继续` + 触发行 `等待处理`，答案位置是 Runtime 状态而不是模型回复）。**失败回合必须给出可做的事（2b）**：401 失败回合在两种模式下都要渲染重试动作（`.assistant-turn-retry`，文案 `重试`，位置在注意力行之后、`.assistant-process-content` 之外，紧凑模式的折叠与读者手动折叠都拿不走它），先量 DOM（`elementFromPoint` 在按钮中心命中的就是按钮本身），再对同一像素发真实 `Input.dispatchMouseEvent`，并用共享库 `lib/native-hit-test.mjs`（主进程 inspector 取窗口句柄）对同一物理像素发 `WM_NCHITTEST`：按钮中心 `HTCLIENT`、标题栏中心 `HTCAPTION`、正文对照点 `HTCLIENT`——后两点证明这条探针会答"不是"。按下之后断言：Provider 收到同一条指令（而不是输入栏里的草稿）、重试跑成新的一轮 `done`、失败回合保留原 `401` 原因与 `本轮未完成`、输入栏草稿原样未动、会话只多出一条指令和一轮。报告与 20 张截图写在仓库外（`lib/run-artifacts.mjs` 的 `transcript-state-visibility/`，含 `report.json`）；`部分完成` 没有对应状态、紧凑模式不折叠运行中回合这两件事写在门的 `limits` 里，不用单测替代。
 
 `verify:chat-reading-scenarios` 覆盖对话区阅读位置：顶部/中部/底部三种起始位置在插入历史与窗口变化后都按 `data-message-key` 锚定（容差 1 px），底部位置按"贴底 gap ≤ 1"判定；`回到最新` 按钮在普通/紧凑、800×660 最小窗口与 DPR 2 下的可达性（`elementFromPoint` 命中自身、不与输入栏相交、浮在实测 `--composer-overlay-height` 之上）；并断言**切回会话时按当前产品行为跳到最新**（`gap ≤ 1`、无 `回到最新` 按钮），不再是"只记录不判定"。门里另注明：`scripts/` 没有录屏能力，任务书要求的"截图/视频"以逐帧 DOM 采样 + 前后 PNG 替代，这一条写进 `limits`。
 
