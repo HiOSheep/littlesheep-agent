@@ -7,7 +7,11 @@
 //
 //   1. pass             a completed read-only run whose verdict passed (which renders no verdict
 //                       line and no attention row at all)
-//   2. failure          an unretryable transport failure (HTTP 401) that ends the turn
+//   2. failure          an unretryable transport failure (HTTP 401) that ends the turn — and the
+//                       retry action that turn must offer (2b): activating it re-dispatches the
+//                       turn's own recorded instruction through the composer's send path, so the
+//                       Provider receives that same text again, the new run settles as its own
+//                       turn, and the failed turn keeps its reason and its 本轮未完成 row
 //   3. aborted          the user stops a run whose Provider never answers
 //   4. pending-approval a running turn waiting for the user's write approval
 //   5. denied-tool      the same call, refused by the user, kept as a failed tool row after a
@@ -28,6 +32,15 @@
 //   - both modes: the attention row is never a descendant of `.assistant-process-content`, the
 //     panel the reader (or compact display) folds — checked here, and again after a real click.
 //
+// The failed turn's action (2b) is measured the way a user reaches it: a real pointer press at the
+// control's centre (after `elementFromPoint` says the control is what is under that point), plus a
+// native `WM_NCHITTEST` probe at the same pixel, because a CDP click and the DOM both answer a
+// layer above the window's own draggable region — tonight a control that looked clickable in CDP
+// was dead for a real mouse. The retry's own decisions are asserted with it: the failed turn keeps
+// its reason and attention line (a retry does not rewrite the record of what happened), the
+// composer draft the user has typed since is not consumed (the retry sends the turn's instruction,
+// not the draft), and the retried instruction really leaves the renderer — the Provider logs it.
+//
 // One class the taskbook names cannot be produced by this build:
 //   - 部分完成 does not exist: `HistoryActivityStatus` has no `partial` member, so the taskbook's
 //     instruction to rewrite it to a real state is followed with `aborted` (本轮已停止).
@@ -38,6 +51,14 @@
 // restarting it on the same data root makes Runtime's recovery settle that run as `waiting_user`
 // (`durable-kernel.ts`), which the history projection renders as an attention row. No synthetic
 // checkpoint is fabricated; the fixture is a real kill and a real restart.
+//
+// Category 8 is also where audit #18 (A1) is measured. The recovered turn used to answer with the
+// English literal `Runtime is waiting for user action; no final reply was published. Reason:
+// <settlement code>`; the answer slot must now carry the Runtime message catalogue's Chinese
+// sentence (`packages/runner/dist/runtime-messages.js`, read by this gate, so the assertion and the
+// product text cannot drift), and no user-visible string of that class may contain the settlement
+// code. The code is still published — as structured diagnostics in `runtimeStatus.reason`, which
+// this gate reads from the API projection — and the same is asserted for the run result.
 //
 // Usage:
 //   node scripts/verify-transcript-state-visibility.mjs [--out=<dir>] [--keep]
@@ -51,7 +72,11 @@ import {
   startElectronAcceptanceProvider,
 } from './lib/electron-acceptance-provider.mjs'
 import { createElectronHarness, delay, repoRoot } from './lib/electron-cdp-harness.mjs'
+import { HTCAPTION, HTCLIENT, createNativeHitTest } from './lib/native-hit-test.mjs'
 import { runArtifact } from './lib/run-artifacts.mjs'
+// The Runtime message catalogue (A1 / audit #18): the sentence the recovered turn must show is read
+// from the Runner module the bundle was built from, so this gate cannot drift from the product text.
+import { RUNTIME_MESSAGE_CATALOGUE } from '../packages/runner/dist/runtime-messages.js'
 
 const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 30_000 })
 // Screenshots and the report stay outside the checkout (`lib/run-artifacts.mjs`); `--out` still wins.
@@ -89,6 +114,16 @@ const WAITING_DELAY_MS = 60_000
  * pass can claim the run, so this budget covers a lease expiry plus a startup, not one poll.
  */
 const WAITING_USER_TIMEOUT_MS = 180_000
+/**
+ * A1 / audit #18: the sentence the recovered turn must show, read from the Runtime message
+ * catalogue instead of copied here. The pre-fix build showed the English original with the internal
+ * settlement code appended, and neither that text nor the code may be readable in the window: the
+ * code stays in the durable status (`runtimeStatus.reason`, which this gate reads through
+ * `waitForRecoveredWaitingProjection` and asserts separately).
+ */
+const RUNTIME_WAITING_SENTENCE =
+  RUNTIME_MESSAGE_CATALOGUE['Runtime is waiting for user action; no final reply was published.']
+const RUNTIME_DIAGNOSTIC_LEAK = /model_response_missing|Reason:\s|waiting for user action|no final reply was published/
 const DISPLAY_MODE_KEY = 'littlesheep.ui.conversationDisplayMode'
 const DISPLAY_MODE_EVENT = 'littlesheep:conversation-display-mode'
 const SETTLE_TIMEOUT_MS = 90_000
@@ -100,6 +135,15 @@ const SETTLE_TIMEOUT_MS = 90_000
  */
 const ABORT_ANCHOR_FILE = 'transcript-state-anchor.txt'
 const ABORT_DELAY_MS = 30_000
+/** The failed turn's own action (2b): the label the contract names, and the class it is measured by. */
+const RETRY_LABEL = '重试'
+const RETRY_SELECTOR = '.assistant-turn-retry'
+/**
+ * A draft typed into the composer *after* the failure. The retry must re-send the turn's own
+ * instruction and leave this text exactly where it is: the retry is not a composer send, so it
+ * consumes nothing the user has written since.
+ */
+const RETRY_DRAFT = 'LS-RETRY-DRAFT-ANCHOR：重试期间不要动这段草稿'
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`
@@ -145,7 +189,11 @@ async function writePng(client, name) {
   await client.send('Page.bringToFront').catch(() => undefined)
   const shot = await withTimeout(
     client.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false }),
-    10_000,
+    // A parked window is composited on demand, and this gate shares the desktop with the other
+    // Electron gates: a capture that normally answers in well under a second was measured timing
+    // out at 10 s while sibling windows were on screen. The budget is the RPC's, not a product
+    // commitment, and nothing asserted below depends on how long a screenshot took.
+    60_000,
     'Page.captureScreenshot',
   )
   await mkdir(join(outRoot, 'screenshots'), { recursive: true })
@@ -210,6 +258,15 @@ const TURN_SAMPLE_EXPRESSION = `(() => {
   const processBody = turn.querySelector('.assistant-process-content');
   const failedTools = [...turn.querySelectorAll('.agent-tool-call.fail[data-call-id]')];
   const allTools = [...turn.querySelectorAll('.agent-tool-call[data-call-id]')];
+  // The failed turn's action, its geometry (a real click needs the pixel), and whether the
+  // element under that pixel is the control itself.
+  const retry = turn.querySelector('.assistant-turn-retry');
+  const retryBox = retry instanceof HTMLElement ? retry.getBoundingClientRect() : null;
+  const retryCentre = retryBox
+    ? { x: retryBox.x + retryBox.width / 2, y: retryBox.y + retryBox.height / 2 }
+    : null;
+  const retryTop = retryCentre ? document.elementFromPoint(retryCentre.x, retryCentre.y) : null;
+  const composerInput = document.querySelector('.composer textarea');
   // Tool rows are rendered from transcript entries but carry data-call-id instead of
   // data-transcript-entry, so the container is queried separately for them.
   const transcriptTools = transcript ? [...transcript.querySelectorAll('.agent-tool-call[data-call-id]')] : [];
@@ -247,6 +304,16 @@ const TURN_SAMPLE_EXPRESSION = `(() => {
     transcriptToolRows: transcriptTools.length,
     transcriptFailedToolRows: transcriptFailedTools.length,
     failedToolTexts: failedTools.map((row) => text(row).slice(0, 200)),
+    // The retry action of this turn: present, named, usable, outside the folding body, and the
+    // element a real press at its centre would actually reach.
+    retryPresent: retry instanceof HTMLElement,
+    retryLabel: text(retry) || null,
+    retryDisabled: retry instanceof HTMLButtonElement ? retry.disabled : null,
+    retryInProcessBody: Boolean(retry && processBody && processBody.contains(retry)),
+    retryCentre,
+    retryReachable: retryCentre ? Boolean(retryTop && retry.contains(retryTop)) : null,
+    retryTopClass: retryTop ? (typeof retryTop.className === 'string' && retryTop.className ? retryTop.className : retryTop.tagName) : null,
+    composerDraft: composerInput instanceof HTMLTextAreaElement ? composerInput.value : null,
     activeStageTexts: stageRows.map((row) => text(row)),
     approvalPrompt: prompt
       ? {
@@ -375,6 +442,89 @@ async function clickStop(client) {
     button.click();
     return label;
   })()`)
+}
+
+/**
+ * What the *window* does with a real mouse press at these viewport points.
+ *
+ * `elementFromPoint` and `Input.dispatchMouseEvent` both answer a layer above this one: a real
+ * press is filtered first by the window's draggable region, which the renderer publishes from
+ * `-webkit-app-region` and Windows consults through the window's own WM_NCHITTEST. HTCAPTION (2)
+ * there means the press becomes a caption interaction and the page never sees it; HTCLIENT (1)
+ * means it is delivered. That filter is why a control can look reachable to the DOM checks in this
+ * script — and to a CDP click — while a real click on it does nothing, so the failed turn's retry
+ * is asserted through the OS as well.
+ *
+ * The probe itself is the shared `scripts/lib/native-hit-test.mjs` (the window is parked, never
+ * moved: moving it re-applies its bounds through a DIP/physical round trip). It reads the window
+ * handle and geometry from the main process, which is why the main window is launched with its own
+ * inspector; `createNativeHitTest` resolves the `layoutWindow` / `layoutElectron` globals the
+ * window-chrome gate publishes, so the same two are published here.
+ */
+function nativeProbeFor(mainClient) {
+  if (process.platform !== 'win32' || !mainClient) return null
+  return createNativeHitTest({ main: mainClient })
+}
+
+/**
+ * Press the failed turn's retry with a real pointer event, at the control's own centre.
+ *
+ * The button is scrolled into view first: the transcript sticks to its bottom, so a failed turn is
+ * where the reader left it and the centre has to be a point that is really on screen for a press
+ * to mean anything. The press is dispatched as `mousePressed` + `mouseReleased` — the same path a
+ * mouse takes — and the DOM's own answer (`elementFromPoint`) is recorded beside it.
+ */
+async function pressRetry(client) {
+  await evaluate(client, `(() => {
+    const button = document.querySelector(${JSON.stringify(RETRY_SELECTOR)});
+    if (!(button instanceof HTMLElement)) return null;
+    button.scrollIntoView({ block: 'center' });
+    return true;
+  })()`)
+  await delay(300)
+  const point = await evaluate(client, `(() => {
+    const button = document.querySelector(${JSON.stringify(RETRY_SELECTOR)});
+    if (!(button instanceof HTMLButtonElement)) return null;
+    const rect = button.getBoundingClientRect();
+    const x = rect.x + rect.width / 2;
+    const y = rect.y + rect.height / 2;
+    const top = document.elementFromPoint(x, y);
+    return {
+      x, y,
+      label: (button.textContent || '').trim(),
+      disabled: button.disabled,
+      reachable: Boolean(top && button.contains(top)),
+      topClass: top ? (typeof top.className === 'string' && top.className ? top.className : top.tagName) : null,
+    };
+  })()`)
+  if (!point) return null
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y, button: 'none' })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', clickCount: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', clickCount: 1 })
+  return point
+}
+
+/** Type a draft into the composer the way the reader does (the controlled textarea's own setter). */
+async function typeComposerDraft(client, draft) {
+  return evaluate(client, `(() => {
+    const textarea = document.querySelector('.composer textarea');
+    if (!(textarea instanceof HTMLTextAreaElement)) return null;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(textarea, ${JSON.stringify(draft)});
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    return textarea.value;
+  })()`)
+}
+
+/** The message counts a retry has to move, read from the same DOM every other sample comes from. */
+async function documentCounts(client) {
+  return evaluate(client, `(() => ({
+    turns: document.querySelectorAll('.assistant-turn').length,
+    userMessages: document.querySelectorAll('.message.user').length,
+    composerDraft: document.querySelector('.composer textarea') instanceof HTMLTextAreaElement
+      ? document.querySelector('.composer textarea').value
+      : null,
+  }))()`)
 }
 
 /** The dialog's first action is 拒绝; Escape means the same thing (`approval/prompt.tsx`). */
@@ -538,7 +688,9 @@ async function waitForRecoveredWaitingProjection(locator, titleAnchor, timeoutMs
 }
 
 async function main() {
-  await harness.assertBuildFresh()
+  // The report names the exact bundle it measured: a bundle identity that only exists in the
+  // console is not evidence a reader can check later.
+  const freshness = await harness.assertBuildFresh()
   const recorder = createRecorder()
   const screenshots = {}
   const provider = await startElectronAcceptanceProvider({ streamChunkDelayMs: 15, streamChunkCharacters: 40 })
@@ -557,13 +709,19 @@ async function main() {
    *
    * Used for the main root and again for the crash fixture, whose window is killed mid-run and
    * started again on the *same* data root — the only way this build produces a `waiting_user` run.
+   *
+   * `mainInspector` opens the main process's own debug port, which is what the native
+   * `WM_NCHITTEST` probe needs: only the main process can hand out the window handle and its
+   * geometry (`getContentBounds`, the display scale factor).
    */
-  async function launchWindow(fixture) {
+  async function launchWindow(fixture, { mainInspector = false } = {}) {
     const debuggingPort = await harness.reservePort()
+    const mainDebuggingPort = mainInspector ? await harness.reservePort() : undefined
     const electron = await harness.startElectron({
       dataDir: fixture.dataDir,
       chromiumDir: fixture.chromiumDir,
       debuggingPort,
+      mainDebuggingPort,
       logPath: fixture.logPath,
     })
     const locator = await harness.waitForLocator(fixture.dataDir, electron.pid)
@@ -575,8 +733,20 @@ async function main() {
     const client = await harness.connectRenderer(debuggingPort)
     await client.send('Runtime.enable')
     await client.send('Page.enable')
-    const launched = { fixture, electron, locator, client, debuggingPort }
+    const launched = { fixture, electron, locator, client, debuggingPort, mainClient: undefined }
     windows.push(launched)
+    if (mainInspector) {
+      launched.mainClient = await harness.connectDebugger(mainDebuggingPort, 'the main process inspector')
+      // The names the shared native hit-test probe resolves (`scripts/lib/native-hit-test.mjs`):
+      // the window handle and its geometry can only be read from the main process.
+      const ready = await launched.mainClient.evaluate(`(() => {
+        const require = process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json');
+        globalThis.layoutElectron = require('electron');
+        globalThis.layoutWindow = globalThis.layoutElectron.BrowserWindow.getAllWindows()[0];
+        return Boolean(globalThis.layoutWindow);
+      })()`)
+      if (!ready) throw new Error('the main process inspector could not reach the acceptance window')
+    }
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`),
       harness.startTimeoutMs,
@@ -596,7 +766,10 @@ async function main() {
     await writeFile(join(workplaceDir, ABORT_ANCHOR_FILE), 'transcript state visibility anchor\n', 'utf8')
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
 
-    const { client } = await launchWindow({ dataDir, workplaceDir, chromiumDir, logPath })
+    const { client, mainClient } = await launchWindow(
+      { dataDir, workplaceDir, chromiumDir, logPath },
+      { mainInspector: true },
+    )
 
     // ---------------------------------------------------------------------
     // 1. pass: a completed read-only run, measured so the verdict's absence is evidence
@@ -705,7 +878,285 @@ async function main() {
       'compact mode folds the failed turn\'s non-attention rows away',
       { normalEntries: failure.normal.entryCount, compactEntries: failure.compact.entryCount },
     )
+
+    // ---------------------------------------------------------------------
+    // 2b. the failed turn's retry: the one action a failure has to offer
+    // ---------------------------------------------------------------------
+    // The 401 turn above is the fixture: a failure that names its cause and offers nothing to do
+    // about it is a dead end (`ui/state-view.ts` says a failure allows an action; the transcript
+    // used to offer none). What is measured here is only what the reader can do — the action is
+    // pressed with a real pointer, the Provider has to receive the turn's own instruction again,
+    // and the failed turn's record has to survive the retry.
+    recorder.check(
+      failure.normal.retryPresent === true,
+      'normal mode: the failed turn offers its retry action',
+      {
+        retryPresent: failure.normal.retryPresent,
+        retryLabel: failure.normal.retryLabel,
+        retryDisabled: failure.normal.retryDisabled,
+        turnClass: failure.normal.turnClass,
+      },
+    )
+    recorder.check(
+      failure.compact.retryPresent === true,
+      'compact mode: the failed turn offers its retry action',
+      {
+        retryPresent: failure.compact.retryPresent,
+        retryLabel: failure.compact.retryLabel,
+        retryDisabled: failure.compact.retryDisabled,
+        turnClass: failure.compact.turnClass,
+      },
+    )
+    for (const [mode, sample] of [['normal', failure.normal], ['compact', failure.compact]]) {
+      recorder.check(
+        (sample.retryLabel ?? '').trim() === RETRY_LABEL,
+        `${mode} mode: the action is labelled ${RETRY_LABEL}`,
+        { retryLabel: sample.retryLabel },
+      )
+      // The same rule the attention row answers to (O1): the reader's own fold, and compact
+      // display's fold of the rows, must not be able to take the action away with the process.
+      recorder.check(
+        sample.retryInProcessBody === false,
+        `${mode} mode: the retry sits outside the collapsible process body`,
+        {
+          retryInProcessBody: sample.retryInProcessBody,
+          processBodyPresent: sample.processBodyPresent,
+          processBodyFolded: sample.processBodyFolded,
+        },
+      )
+      recorder.check(
+        sample.retryDisabled === false,
+        `${mode} mode: the retry is usable once the failed run has settled`,
+        { retryDisabled: sample.retryDisabled },
+      )
+    }
+    // ...and it is a control on a page, not a picture of one: a real press at the control's own
+    // centre has to reach the control. The measurement is taken after scrolling it into view —
+    // the transcript sticks to its bottom, and a turn taller than the window would otherwise put
+    // the control's centre outside the viewport, where nothing can be measured.
+    await setDisplayMode(client, 'normal')
+    await delay(300)
+    screenshots['failure-retry-normal'] = await writePng(client, 'failure-retry-normal')
+    const retryGeometry = await evaluate(client, `(() => {
+      const button = document.querySelector(${JSON.stringify(RETRY_SELECTOR)});
+      if (!(button instanceof HTMLElement)) return null;
+      button.scrollIntoView({ block: 'center' });
+      const rect = button.getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      const top = document.elementFromPoint(x, y);
+      // The window's own drag surface, measured rather than assumed: its answer is recorded next to
+      // the control's, so a reader can see where the draggable region really is in this build.
+      const band = document.querySelector('.window-drag-band') || document.querySelector('.window-titlebar');
+      const bandRect = band instanceof HTMLElement ? band.getBoundingClientRect() : null;
+      return {
+        x, y, width: rect.width, height: rect.height,
+        reachable: Boolean(top && button.contains(top)),
+        topClass: top ? (typeof top.className === 'string' && top.className ? top.className : top.tagName) : null,
+        disabled: button instanceof HTMLButtonElement ? button.disabled : null,
+        dragBandClass: band instanceof HTMLElement ? (typeof band.className === 'string' ? band.className : null) : null,
+        dragBandCentre: bandRect
+          ? { x: bandRect.x + bandRect.width / 2, y: bandRect.y + Math.min(bandRect.height / 2, 16) }
+          : null,
+      };
+    })()`)
+    recorder.check(
+      retryGeometry !== null && retryGeometry.reachable === true && retryGeometry.disabled === false,
+      'the retry is the element under its own centre and is not covered or disabled',
+      { retryGeometry, retryReachableAtSample: failure.normal.retryReachable, retryTopClass: failure.normal.retryTopClass },
+    )
+    // The press below must not be filtered by the window's own draggable region, so the same pixel
+    // is asked through the OS. Three points are probed: the control itself, the window's own drag
+    // surface (recorded, so the report says where that region is in this build), and a point the
+    // page cannot own at all — left of the content area, i.e. outside the window. The outside point
+    // is what keeps the measurement non-vacuous: a probe that always answers HTCLIENT would pass it
+    // too, and no drag-surface answer is needed to say so.
+    if (retryGeometry) {
+      const nativeProbe = nativeProbeFor(mainClient)
+      const probePoints = [
+        { label: 'retry', x: retryGeometry.x, y: retryGeometry.y },
+        { label: 'chat-body', x: 600, y: 300 },
+        { label: 'outside-window', x: -40, y: retryGeometry.y },
+        {
+          label: 'drag-band',
+          x: retryGeometry.dragBandCentre?.x ?? WINDOW_SIZE.width / 2,
+          y: retryGeometry.dragBandCentre?.y ?? 16,
+        },
+      ]
+      const entries = nativeProbe
+        ? await nativeProbe.probe(probePoints).catch((error) => ({ error: String(error) }))
+        : undefined
+      const hits = Array.isArray(entries)
+        ? Object.fromEntries(entries.map((entry) => [entry.label, {
+          hit: entry.hit, name: entry.name, client: entry.client, caption: entry.caption, css: entry.css, physical: entry.physical,
+        }]))
+        : undefined
+      recorder.note({ step: 'retry-native-hit-test', hits: hits ?? entries ?? null, geometry: retryGeometry })
+      if (hits) {
+        recorder.check(
+          hits.retry?.hit === HTCLIENT,
+          'a real mouse press at the retry\'s centre is delivered to the page (win32 hit test)',
+          { hits, geometry: retryGeometry },
+        )
+        recorder.check(
+          hits['outside-window']?.hit !== HTCLIENT,
+          'the same probe answers a point outside the window differently (it is not a constant)',
+          { hits, geometry: retryGeometry },
+        )
+        recorder.note({
+          step: 'retry-native-hit-test-drag-band',
+          dragBandClass: retryGeometry.dragBandClass,
+          dragBandHit: hits['drag-band'] ?? null,
+          dragBandIsCaption: hits['drag-band']?.hit === HTCAPTION,
+        })
+      } else if (nativeProbe) {
+        recorder.check(false, 'the native hit test at the retry answered', { entries, geometry: retryGeometry })
+      } else {
+        // No platform answer: recorded, not asserted. A gate on such a host makes no hit-region
+        // claim at all rather than passing one it did not measure.
+        recorder.note({
+          step: 'retry-native-hit-test-skipped',
+          platform: process.platform,
+          mainInspector: Boolean(mainClient),
+          geometry: retryGeometry,
+        })
+      }
+    } else {
+      recorder.check(false, 'the retry was on screen to probe at the native level', { retryGeometry })
+    }
+
+    // The retry is offered while nothing is running; wait for the composer to really be back to
+    // its send state, which is the same condition the control's own disabled state reads. This is
+    // measured *before* the draft is typed: a draft alone already brings the send control back, so
+    // typing first would make this wait pass while the run was still in flight.
+    await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.composer-run-actions .send-round:not(.stop)') ? true : null`),
+      30_000,
+      'the composer to leave the running state',
+    ).catch(() => undefined)
+    // The reader has typed something since the failure. The retry sends the *turn's* instruction,
+    // so this draft has to be exactly where the reader left it afterwards.
+    const typedDraft = await typeComposerDraft(client, RETRY_DRAFT).catch(() => null)
+    recorder.check(
+      typedDraft === RETRY_DRAFT,
+      'the fixture put a draft in the composer before the retry was pressed',
+      { typedDraft },
+    )
+
+    const retryRequestsBefore = provider.requests.length
+    const countsBefore = await documentCounts(client)
     await provider.setFaults(null)
+    const retryPoint = await pressRetry(client).catch((error) => {
+      recorder.note({ step: 'retry-press-failed', error: String(error) })
+      return null
+    })
+    recorder.check(
+      retryPoint !== null && retryPoint.reachable === true && retryPoint.disabled === false,
+      'a real pointer press lands on the failed turn\'s retry',
+      { retryPoint },
+    )
+
+    if (retryPoint) {
+      const dispatched = await harness.waitFor(() => {
+        const request = provider.requests.slice(retryRequestsBefore)
+          .find((candidate) => (candidate.messages ?? [])
+            .some((message) => message.role === 'user' && String(message.content ?? '').includes(PLAIN_PROMPT)))
+        return request ? {
+          requestIndex: request.requestIndex,
+          receivedAt: request.receivedAt,
+          fault: request.fault?.status ?? null,
+          userMessages: (request.messages ?? [])
+            .filter((message) => message.role === 'user')
+            .map((message) => String(message.content ?? '').slice(0, 120)),
+        } : undefined
+      }, 30_000, 'the Provider request carrying the retried instruction').catch((error) => {
+        recorder.note({ step: 'retry-not-dispatched', error: String(error) })
+        return null
+      })
+      recorder.check(
+        dispatched !== null,
+        'activating the retry dispatches a new run with the same instruction (the Provider received it)',
+        {
+          dispatched,
+          requestsBefore: retryRequestsBefore,
+          requestsAfter: provider.requests.length,
+        },
+      )
+      // The retry is the turn's instruction, never whatever the composer happened to hold: a
+      // "retry" that quietly sends the draft is a different run under the same name.
+      recorder.check(
+        dispatched !== null
+        && dispatched.userMessages.some((message) => message.includes(PLAIN_PROMPT))
+        && !dispatched.userMessages.some((message) => message.includes(RETRY_DRAFT)),
+        'the dispatched instruction is the failed turn\'s own text, not the composer draft',
+        { dispatched, draft: RETRY_DRAFT },
+      )
+
+      const settled = await waitForTurn(
+        client,
+        (sample) => sample.turnStatus !== 'running' && sample.turnCount === (countsBefore?.turns ?? 0) + 1,
+        'the retried run to settle as its own new turn',
+        90_000,
+      ).catch((error) => {
+        recorder.note({ step: 'retry-not-settled', error: String(error) })
+        return null
+      })
+      recorder.check(
+        settled !== null && settled.turnStatus === 'done',
+        'the retried run settles as a finished turn',
+        {
+          turnStatus: settled?.turnStatus ?? null,
+          turnClass: settled?.turnClass ?? null,
+          responseText: settled?.responseText ?? null,
+          turnCount: settled?.turnCount ?? null,
+        },
+      )
+      screenshots['failure-retry-settled'] = await writePng(client, 'failure-retry-settled')
+
+      // The failed turn is the record of what happened; a retry does not rewrite it. The sample
+      // follows the failed turn itself (a later render may append the retry's own turn after it).
+      const stillFailed = await sampleTurn(client, 6, '', `document.querySelector('.assistant-turn.failed')`)
+      recorder.note({ step: 'retry-failed-turn-after', sample: stillFailed })
+      recorder.check(
+        stillFailed.turnStatus === 'failed'
+        && (stillFailed.runStatusError ?? '').includes('401')
+        && stillFailed.retryPresent === true,
+        'the failed turn keeps its reason and its retry after the retry settled',
+        {
+          turnStatus: stillFailed.turnStatus,
+          runStatusError: stillFailed.runStatusError,
+          retryPresent: stillFailed.retryPresent,
+          attentionText: stillFailed.attentionText,
+        },
+      )
+      recorder.check(
+        (stillFailed.attentionText ?? '').includes('本轮未完成'),
+        'the failed turn keeps its 本轮未完成 attention line after the retry settled',
+        { attentionText: stillFailed.attentionText },
+      )
+
+      // What the retry did to the reader's own composer: nothing. It re-sent the turn's
+      // instruction, so the draft typed after the failure is still there to be sent by hand.
+      const countsAfter = await documentCounts(client)
+      recorder.check(
+        countsAfter?.composerDraft === RETRY_DRAFT,
+        'the composer draft survives the retry untouched',
+        { before: countsBefore?.composerDraft ?? null, after: countsAfter?.composerDraft ?? null },
+      )
+      // A retry is an ordinary run of this conversation, not a hidden duplicate of the turn: the
+      // user's instruction appears in the transcript again, once, with its own answer.
+      recorder.check(
+        countsAfter?.turns === (countsBefore?.turns ?? 0) + 1
+        && countsAfter?.userMessages === (countsBefore?.userMessages ?? 0) + 1,
+        'the retry appended one instruction and one turn to the transcript',
+        { before: countsBefore, after: countsAfter },
+      )
+    } else {
+      recorder.check(false, 'the failed turn\'s retry could not be pressed, so its dispatch is unmeasured', {
+        retryPoint,
+        samples: { normal: failure.normal.retryPresent, compact: failure.compact.retryPresent },
+      })
+    }
 
     // ---------------------------------------------------------------------
     // 3. aborted: the user stops a run that is waiting on its Provider
@@ -963,6 +1414,7 @@ async function main() {
       return {
         refusedRowPresent: Boolean(refused),
         refusedCallId: refused ? refused.getAttribute('data-call-id') : null,
+        turnClass: typeof attentionTurn.className === 'string' ? attentionTurn.className : null,
         attentionText: (attentionTurn.querySelector('.agent-transcript-attention')?.textContent || '').replace(/\\s+/gu, ' ').trim(),
         triggerExpanded: attentionTurn.querySelector('.assistant-process-trigger')?.getAttribute('aria-expanded') ?? null,
       };
@@ -974,12 +1426,27 @@ async function main() {
     // The fold is measured in BOTH display modes. Compact display folds the *rows* of a settled
     // turn by itself (`compactCompleted`), but it does not fold the panel: the hand-off between
     // the two is exactly what a reader can contradict, so the click has to be measured where the
-    // reader makes it. This turn is not `done`, so its panel starts open in both modes
-    // (`processOpen = status !== 'done'`) and the click is the only thing that can close it;
-    // clicking again then proves the reader's choice wins in the other direction too.
+    // reader makes it.
+    //
+    // The state under test is "the panel is open, and the reader's click is what closes it". Which
+    // turn the attention row belongs to in a given render is a race — the reload, the history
+    // projection and a run that is still settling all decide it — and a settled `done` turn arrives
+    // with its process folded (`processOpen = status !== 'done'`) while any other turn arrives
+    // open. The panel is therefore brought to open first, explicitly, and that normalization is
+    // recorded; the assertion afterwards is unchanged.
     for (const mode of ['normal', 'compact']) {
       await setDisplayMode(client, mode)
       await delay(250)
+      const normalized = await evaluate(client, `(() => {
+        const turn = ${foldExpression};
+        const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
+        if (!trigger) return null;
+        const before = trigger.getAttribute('aria-expanded');
+        if (before === 'false') trigger.click();
+        return { before, turnClass: typeof turn.className === 'string' ? turn.className : null };
+      })()`)
+      if (!normalized) throw new Error(`the process trigger could not be reached in ${mode} mode`)
+      await delay(400)
       const toggled = await evaluate(client, `(() => {
         const turn = ${foldExpression};
         const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
@@ -996,7 +1463,7 @@ async function main() {
       if (toggled.before !== 'true') throw new Error(`the process was already folded before the click in ${mode} mode`)
       await delay(400)
       const sample = await sampleTurn(client, 4, '', foldExpression)
-      recorder.note({ step: `manual-fold-${mode}`, toggled, sample })
+      recorder.note({ step: `manual-fold-${mode}`, normalized, toggled, sample })
       recorder.check(
         sample.processBodyFolded === true && sample.triggerExpanded === 'false',
         `the reader's click really folds the process body in ${mode} mode`,
@@ -1279,6 +1746,7 @@ async function main() {
     // before the crash fixture starts, so only one application instance is ever running.
     const mainWindow = windows[0]
     mainWindow.client?.close()
+    mainWindow.mainClient?.close()
     if (mainWindow.electron?.exitCode === null) await harness.forceTerminate(mainWindow.electron)
 
     const crashDirectory = await mkdtemp(join(tmpdir(), 'littlesheep-transcript-state-visibility-crash-'))
@@ -1452,15 +1920,40 @@ async function main() {
         // the response area carries that status and nothing else (no model reply was published).
         && (sample.responseText ?? '').trim() !== ''
         && (sample.responseText ?? '') === (sample.runStatusError ?? '')
-        && /waiting for user action|no final reply was published|需要用户决定/u.test(sample.runStatusError ?? '')
+        // A1/audit #18: the Runtime status is a sentence from the Runtime message catalogue
+        // (`packages/runner/src/runtime-messages.ts`), so the window must show the catalogued
+        // Chinese sentence — the exact same string, read from the same module the bundle was built
+        // from, not a copy of it kept in this gate. Before the fix this class read
+        // `Runtime is waiting for user action; no final reply was published. Reason:
+        // model_response_missing`: an English sentence with the internal settlement code inside it.
+        && RUNTIME_WAITING_SENTENCE === (sample.runStatusError ?? '')
         && sample.approvalPrompt === null,
-        `${mode} mode does not read the waiting run as finished (Runtime status in place of an answer, no approval dialog)`,
+        `${mode} mode does not read the waiting run as finished (catalogued Runtime status in place of an answer, no approval dialog)`,
         {
           triggerText: sample.triggerText,
           responseText: sample.responseText,
           runStatusError: sample.runStatusError,
           responseState: sample.responseState,
         },
+      )
+      // The reason code belongs to diagnostics: it is still in the durable status the API publishes
+      // (`waiting.activity.runtimeStatus.reason`, asserted above), and it must not be readable
+      // anywhere the user looks — the answer slot, the attention row, the trigger or the transcript.
+      const visibleStrings = [
+        sample.responseText,
+        sample.runStatusError,
+        sample.attentionText,
+        sample.triggerText,
+        sample.verificationText,
+        ...(sample.failedToolTexts ?? []),
+        ...(sample.activeStageTexts ?? []),
+        ...(sample.entries ?? []).map((entry) => entry.text),
+      ].filter((value) => typeof value === 'string')
+      const leaked = visibleStrings.filter((value) => RUNTIME_DIAGNOSTIC_LEAK.test(value))
+      recorder.check(
+        leaked.length === 0,
+        `${mode} mode: the internal reason code and the pre-fix English sentence appear in no user-visible text`,
+        { leaked, runtimeStatusReason: recoveredProjection?.runtimeStatusReason ?? null },
       )
       recorder.check(
         sample.attentionInProcessBody === false,
@@ -1475,18 +1968,41 @@ async function main() {
   } finally {
     for (const window of windows) {
       window.client?.close()
+      window.mainClient?.close()
       if (window.electron?.exitCode === null) await harness.forceTerminate(window.electron)
     }
     await provider.close().catch(() => undefined)
     if (!keepRoot) {
-      await harness.removeTemporaryRoot(root)
-      if (crashRoot) await harness.removeTemporaryRoot(crashRoot)
+      // Cleanup is not evidence. A killed window's Chromium can still hold a file in the fixture
+      // root for a moment (observed: EBUSY unlinking `declarative_performance_observer.db-journal`),
+      // and an exception here would replace the measurements of a completed run with a stack trace
+      // and lose the report. The leftover root stays a note in the evidence instead.
+      for (const temporaryRoot of [root, crashRoot].filter(Boolean)) {
+        try {
+          await harness.removeTemporaryRoot(temporaryRoot)
+        } catch (error) {
+          recorder.note({
+            step: 'temporary-root-cleanup-failed',
+            root: temporaryRoot,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
     }
   }
 
   const evidence = {
     check: 'transcript-state-visibility',
     capturedAt: new Date().toISOString(),
+    // The bundle this report is about: the App build manifest the gate asserted at startup, so a
+    // red or green result can be tied to the exact inputs and outputs that produced it.
+    build: {
+      inputDigest: freshness?.manifest?.input?.digest ?? null,
+      outputDigest: freshness?.manifest?.output?.digest ?? null,
+      builtAt: freshness?.manifest?.createdAt ?? null,
+      mode: freshness?.manifest?.mode ?? null,
+      electronVersion: freshness?.manifest?.runtime?.electronVersion ?? null,
+    },
     fixtureRoot: keepRoot ? root : '<temporary root removed>',
     crashFixtureRoot: keepRoot && crashRoot ? crashRoot : '<temporary root removed>',
     outputRoot: outRoot,
@@ -1502,6 +2018,8 @@ async function main() {
       'Compact folding (and therefore the compact transcript rows) applies only to a turn that is no longer running (assistant-turn.tsx `compactCompleted`), so a *running* turn — including the pending-approval category — renders identically in both modes and its compact evidence is the live status row plus an unchanged transcript, not an attention line. The manual-fold category (6) and the settled-failure fold in category 7 are measured in both modes: in compact display the *rows* are folded by the mode itself while the panel stays open (`processOpen = status !== \'done\'`), so a click there changes the panel and only the panel.',
       'The refused call has no live transcript tool row: category 5 is measured after a real window reload, where the durable history projection keeps it as .agent-tool-call.fail[data-call-id]. A later render of the same session was observed dropping that row again (`denied-after-settle`); that is recorded, not asserted, and it is not this change\'s subject.',
       'Verdict evidence comes from two layers in category 7: the literal line the DOM renders in each mode (`验证：未验证` on the process trigger plus the attention row), and the durable execution log of the same run, read from the fixture root, whose `verificationHistory` is asserted to be non-empty, to contain no `pass` at all, and to end at `unverified`. A `pass` verdict renders no such line (category 1) — that is the negative half, asserted for the same trigger.',
+      'The failed turn\'s retry (2b) re-dispatches the turn\'s recorded `instruction` through the composer\'s own send path, so it is text-only: the attachments of the original send are not part of the turn\'s activity and are not re-attached by the retry (the fixture send has none). The retry is offered by the turn and pressed through the window — the native WM_NCHITTEST probe is skipped on non-Windows hosts, where the gate records the DOM reachability of the control instead and the hit-region claim is not made.',
+      'A1 (#18): category 8 requires the catalogued Chinese Runtime sentence in the answer slot and rejects the settlement code in every string it samples. English Runtime text that another layer authors and the Runner only passes through is not covered by that assertion — for example the failure class reads `user-facing clarification generation failed: <provider text>` and the aborted class reads `run interrupted at a safe boundary` (`packages/harness/src/stages/*`); localizing those needs the catalogue below the harness boundary and is a separate change. They are recorded in the samples above, not asserted.',
       'The Provider is the deterministic acceptance fixture (scripted answers, injected faults); it is not a real model.',
       'Screenshots stay in the temporary output directory; the fixture data root is removed unless --keep is passed.',
     ],

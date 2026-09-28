@@ -45,6 +45,10 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     stop,
     setControlTip,
     modelAvailability,
+    // A failed turn's own action. The handler is stable and the turn decides whether it offers it,
+    // so every turn gets the same prop and only a `failed` one renders the control.
+    loading,
+    retryFailedTurn,
   } = controller
   // The turn's files are opened from here, so their line counts come from the same workspace.
   const artifactsWorkspaceRoot = projectPath
@@ -135,6 +139,8 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                 onOpenFile={openFileInWorkspace}
                 onOpenReview={openReviewInWorkspace}
                 onBranch={branchConversationFromMessage}
+                onRetryTurn={retryFailedTurn}
+                retryPending={loading}
               />
             ) : (
               <div key={m.id ?? i} data-message-key={m.id ?? `message-${i}`} className={`message-with-meta ${m.role}`}>

@@ -1,5 +1,5 @@
 # Renderer 对话
-最后更新：2026-09-27 22:01:09
+最后更新：2026-09-28 20:54:58
 
 
 
@@ -20,7 +20,7 @@
 
 - `types.ts`：消息、步骤、工具、转录行和执行活动的 Renderer 类型。
 - `assistant-turn.tsx`、`agent-tool-row.tsx`、`activity-visibility.ts`：回答与可折叠执行过程、工具行渲染，以及执行活动的渐进披露规则。步骤标题与最终回答都经 `../Markdown`；单行活动标签由 `../inline-markdown` 的有界扫描器渲染，因此活动行不必等待解析器、也不把 Markdown 插件链拉进入口依赖图。
-- `run-actions.ts`：一次流式 run 的 SSE 顺序、审批桥、停止、用户追加更新和最终收尾；`run-event-handlers.ts` 把流式工具事件归并为实时活动，`run-result-reducer.ts` 把已结束的 run 落到当前回合，`assistant-delta-buffer.ts` 按显示帧合并高频文本增量。
+- `run-actions.ts`：一次流式 run 的 SSE 顺序、审批桥、停止、用户追加更新和最终收尾；`run-event-handlers.ts` 把流式工具事件归并为实时活动，`run-result-reducer.ts` 把已结束的 run 落到当前回合，`assistant-delta-buffer.ts` 按显示帧合并高频文本增量。实时消息 id 与"末条助手文本更新"这两个纯 helper 从本文件拆到 `live-message-updates.ts`（2026-09-28）：`run-actions.ts` 是登记过的组合热点，重试动作必须落在它冻结的上限以内。
 - **失败在界面上不消失（CE-09 的现行契约，回归在 `run-actions.test.ts` / `run-result-reducer.test.ts`）**：`finally` 一定复位 `loading`，因此输入框不会永久停在运行中；确定性的流拒绝（`RunStreamServerError`，含服务端 `error` 帧）与"流结束却没有 result"都会把当前回合置为 `failed` 并原样带上 Runtime 的失败原因，同时把用户输入与附件还给输入栏；中止走 `aborted` 分支。失败回合的正文一律为空——流式预览会被撤回，Runtime 错误行是唯一的用户可见陈述，任何"道歉式"固定文案都不会被生成。
 - `run-actions.ts` 的 `stop()` 对同一 run 只提交一次中断请求（重复点击直接被拒绝），本地流的 "正在停止" 展示由输入栏持有，run 结束即复位。
 - `active-run-update.ts` 在 Runtime 接收运行中补充后按事件 id 将用户消息插入当前对话，重复响应不重复显示；真正执行由 Harness 的下一次模型请求决定。`verify:composer-stop-append` 以 Provider 请求记录确认补充进入同一 run。
@@ -81,3 +81,13 @@
 **调用失败分"仍未解决"和"已由后续调用恢复"。** 记录在案的失败不会因为后续成功而消失，但"还在影响结果的问题"和"已经翻篇的历史失败"必须能分开读。判据直接沿用 Runtime 自己的规则：`harness/stages/verify/task-state.ts` 的 `runtimeExecutionEvidenceGap` 认为**同一步骤里更晚的一次成功调用**会顶掉这次未成功的调用；`classifyCallFailures` 用同一条规则把失败分成 `recovered` 与未解决，注意力行分别写成"N 次调用失败"和"N 次失败已由后续调用恢复"，两者同时成立时再补一句"本轮无未解决失败"。没带 `stepId` 的调用**永远算未解决**：没有可顶替的步骤，猜一条别的规则就会让未解决的问题读成历史。
 
 **验证结论只留一个主位置。** 结论在触发行（`.assistant-process-verification`）渲染，两种模式下都在；紧凑模式的注意力行复述它，因为它属于"折起来也必须看得到"的那批事实。`verify:transcript-state-visibility` 的断言随结构一起改：它原先等的是 `[data-transcript-verification="true"]`，而那个元素在"元信息合并到触发行"（2026-09-27）时就已经不存在了，门因此**从那时起一直红在第一处等待上**（`timed out waiting for a settled turn with a verification verdict`），不是本轮引入的。同一条门新增第 6 类场景：在真实窗口里**点击触发行把过程折起来**，普通与紧凑两种模式各测一次，断言 `aria-hidden/inert` 真的落下、注意力行不是正文面板的后代、失败行仍在（折叠而不是丢弃）。
+
+## 失败的回合必须给出能做的事（2026-09-28）
+
+**重试动作落在失败的那一轮上。** 传输失败（401）的回合过去只有原因可读：注意力行 `本轮未完成`、正文里的 `.run-status-error`，而整轮里没有一个能按的动作；输入栏也没有拿回原指令，因为"run 以 `failed` 结算"和"Renderer 抛错"是两条路，只有后者会把文本还给输入栏（`run-actions.ts`）。失败因此是一条读得懂却做不了任何事的死路，同时违反 `ui/state-view.ts` 对失败态的契约（`role: 'alert'`、`allowsAction: true`）与 `ui/README.md` 的"原因 + 重试动作"。现在 `assistant-turn.tsx` 对 `activity.status === 'failed'` 渲染一个 `重试`（`.assistant-turn-retry`，穿共享的 `feedback-action` 角色），位置与注意力行同一簇、在 `.assistant-process-content` **之外**：读者自己折叠过程、或紧凑模式折叠行，都不能把它带走。只有失败回合给这个动作——`aborted` / `waiting_user` 要的是用户决定，`done` 没有要重做的事；`activity.instruction` 为空（没有可重新派发的指令）或应用还没有发送入口时同样不渲染。
+
+**重试就是一次普通发送。** `run-actions.ts` 的 `send()` 接受一个可选指令：给了就用它、没给就用输入栏草稿，其余（回合标识、审批作用域、流处理、结算与传输恢复）完全是同一条路径，所以没有第二套执行机制，也没有新增 IPC 或运行时能力；控制器暴露 `retryFailedTurn(instruction)`，视图只绑这一个动作（`app-controller-projections.ts` 把 `loading` 与 `retryFailedTurn` 一起放进 chat 投影）。`activity.instruction` 就是 Runtime 记录的这一轮指令（实时来自派发文本，持久历史来自 `log.inboundText`），所以重新派发的就是原来那句话。"从失败点继续"是 Harness 的 RECOVER，不在这里做。
+
+**两个决定，写在这里也写进门禁。** ①**失败回合原样保留**：不改成 `done`、不清掉 `.run-status-error`、不撤掉 `本轮未完成`——它是"当时发生了什么"的记录。重试的结果出现在它自己新加的那一轮里，失败回合仍然带着原因和自己的重试按钮，可以再按。②**输入栏草稿与附件一律不动**：重试发的是这一轮的指令，既不读也不清输入栏；失败落在 Renderer 侧时那条"把文本还给输入栏"的既有恢复（本来只在输入栏为空时生效）对重试路径不再执行，因为指令还在失败回合上、那里还有它自己的重试。运行中（`loading`）时按钮禁用并写明原因：把重试塞进另一轮正在跑的 run，不是用户按下去时想要的那个操作。重试只带指令文本，**不重发原附件**：附件不属于这一轮的 `activity` 记录。
+
+**证据。** 单测两处：`assistant-turn.test.ts`（两种显示模式下各渲染一个 `重试`、位置在注意力行之后且在可折叠正文之外、非失败回合/空指令/没有发送入口都不渲染、运行中禁用并给出原因），`run-actions.test.ts`（重试走 `send` 路径、发的是指令而不是草稿、草稿与附件零改动、运行中拒绝、重试自己失败也不碰输入栏）。真实窗口门 `verify:transcript-state-visibility` 第 2b 类在 401 失败回合上按下它：两种模式都存在该动作、`elementFromPoint` 命中的是按钮本身、真实指针按下、`WM_NCHITTEST` 为 `HTCLIENT`（标题栏对照点 `HTCAPTION`）、Provider 收到同一条指令、重试跑成新的一轮 `done`、失败回合保留 `401` 与 `本轮未完成`、草稿原样未动。

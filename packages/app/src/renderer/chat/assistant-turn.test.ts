@@ -630,3 +630,72 @@ describe('O1 keeps attention facts outside the folded process', () => {
     expect(html).not.toContain('agent-transcript-attention')
   })
 })
+
+/**
+ * The failed turn's own action (`ui/state-view.ts`: a failure keeps the danger tone and offers the
+ * retry). A failure that names its cause and offers nothing to do about it is a dead end, so the
+ * action is measured where a reader reaches it: on the failed turn, outside the panel a fold can
+ * close, and on no other turn.
+ */
+describe('a failed turn offers the action it can take', () => {
+  const retry = () => undefined
+
+  function renderRetryTurn(
+    activityOverrides: Partial<AssistantTurnActivity>,
+    props: { onRetryTurn?: (instruction: string) => void; retryPending?: boolean } = {},
+    mode: 'normal' | 'compact' = 'normal',
+  ): string {
+    vi.stubGlobal('window', { localStorage: { getItem: (key: string) => key === CONVERSATION_DISPLAY_MODE_KEY ? mode : null } })
+    return renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: '',
+        activity: activity({
+          status: 'failed',
+          startedAt: 1_000,
+          endedAt: 2_000,
+          error: 'provider request failed: 401',
+          ...activityOverrides,
+        }),
+      },
+      messageKey: `assistant-retry-${mode}`,
+      now: 5_000,
+      onOpenFile: () => undefined,
+      ...props,
+    }))
+  }
+
+  it('renders one 重试 action on a failed turn, outside the folding body, in both display modes', () => {
+    for (const mode of ['normal', 'compact'] as const) {
+      const html = renderRetryTurn({}, { onRetryTurn: retry }, mode)
+
+      expect(html.match(/class="feedback-action assistant-turn-retry"/gu), mode).toHaveLength(1)
+      expect(html, mode).toContain('>重试</button>')
+      // The reason and the action are one cluster: the action follows the attention row and both
+      // are outside the disclosure panel a reader (or compact display) can fold shut.
+      expect(html.indexOf('assistant-turn-retry'), mode)
+        .toBeGreaterThan(html.indexOf('data-transcript-attention="true"'))
+      expect(html.indexOf('assistant-turn-retry'), mode)
+        .toBeLessThan(html.indexOf('assistant-process-content'))
+      expect(html, mode).toContain('本轮未完成')
+      expect(html, mode).not.toContain('disabled=""')
+    }
+  })
+
+  it('offers the action only where there is something to re-dispatch', () => {
+    for (const status of ['running', 'done', 'aborted', 'paused', 'waiting_user'] as const) {
+      expect(renderRetryTurn({ status }, { onRetryTurn: retry }), status).not.toContain('assistant-turn-retry')
+    }
+    // No instruction to re-send, and no send path to re-send it through: neither offers an action.
+    expect(renderRetryTurn({ instruction: '   ' }, { onRetryTurn: retry })).not.toContain('assistant-turn-retry')
+    expect(renderRetryTurn({}, {})).not.toContain('assistant-turn-retry')
+  })
+
+  it('disables the action while a run is already in flight, and says why', () => {
+    const html = renderRetryTurn({}, { onRetryTurn: retry, retryPending: true })
+
+    expect(html).toContain('assistant-turn-retry')
+    expect(html).toContain('disabled=""')
+    expect(html).toContain('当前对话还有一轮正在运行，结束后可以重试')
+  })
+})

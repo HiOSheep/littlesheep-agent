@@ -267,6 +267,58 @@ describe('run actions active-run updates', () => {
     expect(fixture.input()).toBe('做一个小游戏吧')
     expect(fixture.context.setLoading).toHaveBeenLastCalledWith(false)
   })
+
+  // The transcript's retry action is the send path with the failed turn's own instruction. It is an
+  // ordinary run of this conversation, and it is not a composer send: the draft and attachments the
+  // user has prepared since the failure are neither read nor consumed.
+  it('re-runs a failed turn\'s own instruction without consuming the composer draft', async () => {
+    apiMocks.runAgentStream.mockImplementation(() => new Promise(() => {}))
+    const attachment = { path: 'C:\\managed\\keep.pdf', name: 'keep.pdf', kind: 'document' as const, cacheId: 'cache-keep' }
+    const fixture = contextFixture('草稿：重试期间不要动', null, { loading: false, attachments: [attachment] })
+
+    createRunActions(fixture.context).retryFailedTurn('请按同样的指令重新执行这一轮')
+
+    await vi.waitFor(() => expect(apiMocks.runAgentStream).toHaveBeenCalledOnce())
+    expect(apiMocks.runAgentStream.mock.calls[0]?.[0]).toBe('请按同样的指令重新执行这一轮')
+    // The retry carries the turn's instruction only: the composer's attachments stay in the composer.
+    expect(apiMocks.runAgentStream.mock.calls[0]?.[4]).toMatchObject({ attachments: [] })
+    expect(fixture.input()).toBe('草稿：重试期间不要动')
+    expect(fixture.attachments()).toEqual([attachment])
+    expect(fixture.context.setInput).not.toHaveBeenCalled()
+    expect(fixture.context.setAttachments).not.toHaveBeenCalled()
+    // The retry is visible as its own instruction pair, exactly like a send from the composer.
+    expect(fixture.messages().map((message) => message.role)).toEqual(['user', 'assistant'])
+    expect(fixture.messages()[0]?.text).toBe('请按同样的指令重新执行这一轮')
+    expect(fixture.messages()[1]?.activity).toMatchObject({
+      status: 'running',
+      instruction: '请按同样的指令重新执行这一轮',
+    })
+  })
+
+  it('refuses a retry while another run of this conversation is in flight', () => {
+    const fixture = contextFixture('草稿', 'run-1', { loading: true })
+
+    createRunActions(fixture.context).retryFailedTurn('请按同样的指令重新执行这一轮')
+
+    // A retry is not a mid-run supplement: queueing the instruction into a different run is a
+    // different operation than the one its user asked for.
+    expect(apiMocks.runAgentStream).not.toHaveBeenCalled()
+    expect(apiMocks.sendRuntimeTaskEvent).not.toHaveBeenCalled()
+    expect(fixture.input()).toBe('草稿')
+  })
+
+  it('keeps the composer untouched when the retried run fails as well', async () => {
+    apiMocks.runAgentStream.mockRejectedValue(new Error('Local app API stream ended without result'))
+    const fixture = contextFixture('草稿仍在', null, { loading: false })
+
+    createRunActions(fixture.context).retryFailedTurn('再试一次')
+
+    await vi.waitFor(() => expect(fixture.messages().at(-1)?.activity?.status).toBe('failed'))
+    // The instruction is still on the failed turn (with a retry of its own); the composer is the
+    // reader's, so a failed retry does not write anything into it.
+    expect(fixture.input()).toBe('草稿仍在')
+    expect(fixture.context.setInput).not.toHaveBeenCalled()
+  })
 })
 
 

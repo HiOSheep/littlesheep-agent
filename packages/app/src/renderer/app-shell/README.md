@@ -1,5 +1,5 @@
 # Renderer 应用壳
-最后更新：2026-09-28 13:04:58
+最后更新：2026-09-28 20:46:32
 
 Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各叠一层玻璃；交接处没有色差或分隔。两种窗口布局均已移除标题栏里的 LittleSheep 文字和小羊图标，侧栏自身内容不受影响。
 
@@ -21,6 +21,7 @@ Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各
 - `chat-view.tsx` 的空对话文案来自同一条 `sendReadiness`：没有可用模型时它说的就是那条原因并指向模型设置，而不是邀请一次发不出去的任务（`chat` 投影为此新增 `modelAvailability` 字段）。
 - `composer-drafts.ts`、`use-composer-drafts.ts`：**草稿属于一个对话**（P1，2026-09-28）。一份草稿是文字加它旁边的附件卡片，而卡片携带的是添加它们的那个对话的工作区路径；此前这两样都是控制器里的单一全局值，`session-actions.ts` 的 `switchSession` / `newSession` 都不碰它们，唯一的清空在发送时——实测在全新对话里打一段草稿再点侧栏另一个对话，转录切换了（那一行变 `.active`）而输入栏仍握着上一个对话的草稿且发送可用，按 Enter（光标本来就在输入框里）就把它发到错误的线程。现在 `composer-drafts.ts` 持有按 `currentSession ?? 'draft'` 分槽的地图，只有两个迁移：`activate`（显式导航：`switchSession`、`newSession`）显示**目标对话自己的**草稿，没有就是空的，切回来原样恢复；`adopt`（没人导航的迁移：运行结算成它刚创建的会话、当前对话被归档或删除、项目工作区切换）把用户手里的草稿**带走**而不是丢掉，目标槽已有草稿时以目标为准。发送仍经控制器自己的 setter 清空，所以只清被发送的那个对话；`use-app-persistence.ts` 继续只持久化它原来那一条草稿记录，分槽地图只活在运行时。真实窗口门：`pnpm run verify:composer-draft-scope`（切换后必须是空的输入栏、禁用的发送控件与 0 个附件卡片，切回来逐字恢复；并断言未发送的草稿从未到达 Provider）。
 - `use-app-controller.ts`：兼容控制器，协调领域动作，并持有有界会话首屏历史缓存、持久化默认工作区与当前选中会话的工作区覆盖；`use-app-view-controller.ts` 经 `app-controller-projections.ts` 投影出视图契约。启动恢复上次会话时使用保留路由的加载路径，避免覆盖持久化的设置页；普通手动切换仍进入对话。`runtime-actions.ts` 刷新配置和模型时更新默认工作区并保留当前会话的视图覆盖；用户显式选目录仍通过配置事务保存。`chat` 投影新增 `openReviewInWorkspace`、`projectPath`、`branchConversationFromMessage` 三个字段（产出卡片的双跳转与消息行的分叉按钮要用），只加字段、不加逻辑；`modelAvailability` 由 `composer/use-model-availability.ts` 算一次后同时进入 `composer` 与 `chat` 投影（选择器、发送入口、空对话文案共用，视图不得各自再算一份）。任务胶囊要的那份状态不在这里拼：`titlebar-task.ts` 把会话列表、转录与聊天时钟折成 `titlebarTask`（标题 / 是否有会话 / 最新 run 活动 / 时钟）并导出 `latestRunActivity`，胶囊与 composer 因此读同一份"最新活动"，组合面也不必为一个展示关注点继续增长。胶囊本身（2026-09-27 起）由 `chat-view.tsx` 渲染在聊天列顶边的 `.running-pill-shell` 浮层里（不再占标题栏），所以 `titlebarTask` 连同它要调用的 `renameSession`、`stop`、`setControlTip` 都走 `chat` 投影，`app` 投影不再持有 `titlebarTask`。
+- **失败回合的重试走同一份发送入口（2026-09-28）**：`chat` 投影再新增两个字段——`retryFailedTurn`（`chat/run-actions.ts` 的 `retryFailedTurn(instruction)`，即 `send()` 带上这一轮自己的指令）与 `loading`（它决定按钮此刻能不能按）。视图不新开动作通道，也不在壳层重算运行状态：`chat-view.tsx` 把这两个字段原样交给每个助手回合，由回合自己按 `activity.status === 'failed'` 决定是否渲染重试。
 - `runtime-actions.ts`、`attachment-actions.ts`、`link-navigation-actions.ts`、`session-permission-mode.ts`：运行时刷新与模型补丁、附件与拖放、内外链接策略、按会话解析权限模式。`applyRuntimePatch` 保持布尔结果；`applyRuntimePatchReporting` 走同一事务但把失败文本返回给调用方，供设置页在原地显示失败并重试。`chooseWorkspacePath` 是目录选择器的动作：项目会话按项目目录运行，保存默认目录并不会搬动它，所以用户这一次显式选择同时写入该会话的目录（`PATCH /sessions/:id`），独立会话仍只跟随默认目录。
 - `use-navigation-controller.ts`、`navigation.ts`、`types.ts`：有界的前进/后退历史、设置转场和全局路由。
 - `persistent-state.ts`、`use-app-persistence.ts`：版本化恢复快照与有界写入节流；瞬态 UI 和授权只留在内存。

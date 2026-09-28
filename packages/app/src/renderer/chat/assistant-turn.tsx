@@ -42,6 +42,13 @@ interface AssistantTurnMessageProps {
   onBranch?: (messageId: string) => void
   /** Opens one of the turn's files in the workspace review. */
   onOpenReview?: (path: string) => void
+  /**
+   * Re-runs a failed turn's own instruction. Present whenever the app can start a run at all; the
+   * turn decides whether it offers the action (only a failed turn can be retried).
+   */
+  onRetryTurn?: (instruction: string) => void
+  /** A run of this conversation is already in flight, so the retry cannot be dispatched yet. */
+  retryPending?: boolean
 }
 
 
@@ -53,6 +60,8 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   onOpenFile,
   onOpenReview,
   onBranch,
+  onRetryTurn,
+  retryPending = false,
 }: AssistantTurnMessageProps) {
   const displayMode = useConversationDisplayMode()
   const [processOpenOverride, setProcessOpenOverride] = useState<boolean | null>(null)
@@ -107,6 +116,26 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
       {/* Outside the panel on purpose: folding the process away must never take an unresolved
           failure, a pending decision or a verdict that did not pass with it (O1). */}
       <ActivityAttentionRow activity={activity} />
+      {/* The failed turn's action, in the same place for the same reason: a failure that states its
+          cause and offers nothing to do about it is a dead end (`ui/state-view.ts`: a failure allows
+          an action). Only a failed turn offers it — an aborted or waiting run needs a decision, and
+          a finished one has nothing to redo — and it is rendered outside the folding body so neither
+          display mode nor the reader's own fold can take it away. */}
+      {activity.status === 'failed' && onRetryTurn && activity.instruction.trim() !== '' && (
+        <div className="assistant-turn-retry-row">
+          <button
+            type="button"
+            className="feedback-action assistant-turn-retry"
+            disabled={retryPending}
+            title={retryPending
+              ? '当前对话还有一轮正在运行，结束后可以重试'
+              : '用这一轮的原指令重新运行'}
+            onClick={() => onRetryTurn(activity.instruction)}
+          >
+            重试
+          </button>
+        </div>
+      )}
       <DisclosurePanel open={processOpen} className="assistant-process-content">
         {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
         {(activity.transcript?.length ?? 0) > 0
@@ -156,6 +185,8 @@ function sameAssistantTurnProps(
     || previous.onOpenReview !== next.onOpenReview
     || previous.workspaceRoot !== next.workspaceRoot
     || previous.onBranch !== next.onBranch
+    || previous.onRetryTurn !== next.onRetryTurn
+    || previous.retryPending !== next.retryPending
   ) return false
   return previous.message.activity?.status !== 'running' || previous.now === next.now
 }

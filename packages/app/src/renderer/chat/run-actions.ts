@@ -21,6 +21,7 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
+import { localMessageId, updateLastAssistantText } from './live-message-updates'
 import { settleLiveReasoning } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { reduceCompletedRunMessages } from './run-result-reducer'
@@ -81,13 +82,15 @@ export function createRunActions(context: RunActionContext) {
     setLoading, setMessages, setWorkspaceArtifactVersion,
   } = context
 
-  async function send() {
-    const text = input.trim()
+  /** `instructionOverride` is the failed turn's own instruction (its retry action); without it the run sends the composer's draft. */
+  async function send(instructionOverride?: string) {
+    const retrying = instructionOverride !== undefined
+    const text = (instructionOverride ?? input).trim()
     if (loading) {
-      // Session switching aborts the previous controller before its SSE
-      // finally block releases the shared loading flag. Keep the new
-      // conversation's input local during that narrow handoff window.
-      if (abortRef.current?.signal.aborted) return
+      // A retry is not a mid-run supplement, and session switching aborts the previous controller
+      // before its SSE finally block releases the shared loading flag — the new conversation's
+      // input stays local during that narrow handoff window.
+      if (retrying || abortRef.current?.signal.aborted) return
       await sendActiveRunUpdate(text, {
         activeRunIdRef,
         appMountedRef,
@@ -99,8 +102,8 @@ export function createRunActions(context: RunActionContext) {
       })
       return
     }
-    if (!text && attachments.length === 0) return
-    const activeAttachments = attachments
+    if (!text && (retrying || attachments.length === 0)) return
+    const activeAttachments = retrying ? [] : attachments
     const turnFingerprint = conversationTurnFingerprint({
       text: text || '请根据附件继续处理。',
       sessionId: currentSession,
@@ -129,8 +132,8 @@ export function createRunActions(context: RunActionContext) {
     pendingRuntimeMessageRef.current = null
     stopRequestedRunIdRef.current = null
     publishRuntimeEventNotice(null)
-    setInput('')
-    setAttachments([])
+    if (!retrying) setInput('') // a retry consumes nothing: its text is the failed turn's
+    if (!retrying) setAttachments([])
     setActivityNow(activityStartedAt)
     setMessages((m) => [
       ...m,
@@ -241,8 +244,9 @@ export function createRunActions(context: RunActionContext) {
       }
       if (!ownsVisibleConversation()) return
       deltaBuffer.flush()
-      setInput((current) => current.trim() ? current : text)
-      setAttachments((current) => current.length > 0 ? current : activeAttachments)
+      // The text goes back only when the composer sent it; a retry never writes into the composer.
+      if (!retrying) setInput((current) => current.trim() ? current : text)
+      if (!retrying) setAttachments((current) => current.length > 0 ? current : activeAttachments)
       if ((failure as Error).name === 'AbortError') {
         setMessages((m) => {
           const next = [...m]
@@ -326,23 +330,14 @@ export function createRunActions(context: RunActionContext) {
         abortRef.current?.abort()
       })
   }
-  return { send, stop }
-}
-
-function localMessageId(role: 'user' | 'assistant'): string {
-  const uuid = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
-  return `live-${role}-${uuid}`
-}
-
-function updateLastAssistantText(
-  messages: ChatMessage[],
-  update: (text: string) => string,
-): ChatMessage[] {
-  const last = messages[messages.length - 1]
-  if (last?.role !== 'assistant') return messages
-  const next = [...messages]
-  next[next.length - 1] = { ...last, text: update(last.text) }
-  return next
+  /**
+   * Re-run a failed turn's own instruction — the transcript's retry action, and nothing more than
+   * the send entry above with that text: the failed turn keeps its failure (a successful retry
+   * appends its own instruction and turn), and resuming *from* the failure point is the harness's
+   * RECOVER route rather than this action.
+   */
+  function retryFailedTurn(instruction: string) {
+    void send(instruction)
+  }
+  return { send, retryFailedTurn, stop }
 }
