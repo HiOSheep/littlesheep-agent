@@ -1,5 +1,7 @@
 # Renderer 通用 UI
-最后更新：2026-09-28 12:38:06
+最后更新：2026-09-28 21:24:54
+
+设置菜单 .settings-select-menu 纳入 float-glass 材质角色，沿用 blur(18px) saturate(135%) 与菜单阴影；实现由 settings/select.tsx 拥有，并使用已有 useEscapeScope 加入浮层栈。设置页其他内容采用实体卡片，不新增正文模糊。
 
 窗口布局层 14-window-layout.css 取消工作区面板的背景模糊（新增显式 none 覆盖），工作区保持稳定实体底色；侧栏和 Beta 标题栏的应用外模糊由系统 Acrylic/vibrancy 提供，不新增 CSS blur 配方。ui-material-roles.test.ts 同步维护覆盖清单。
 
@@ -15,11 +17,18 @@
 - `display-frame.ts`、`display-synced-settle.ts`、`use-frame-coalesced-state.ts`：显示帧合并、布局收敛和高频状态合帧。
 - `code-wrap-preference.ts`、`code-wrap-toggle.tsx`：代码“自动换行”偏好的唯一来源与共享可访问按钮（taskbook UX-23）。对话 Markdown 和工作区编辑器读同一个 `localStorage` 键，并通过同一 Renderer 内订阅立即同步；默认关闭＝横向滚动，存储不可用时回落默认值，不让偏好读取影响渲染。`Markdown.tsx` 的高亮与纯文本回退共用头部栏；真实窗口验收门为 `pnpm run verify:code-wrap-control`。
 - `enter-confirm.ts`：Enter 确认语义的纯规则与输入法组词状态。普通 Enter 确认、Shift+Enter 换行、组词中的 Enter 交给输入法；主输入框与项目名输入框共用它，不要把 Enter 判断重新写回各自的 `onKeyDown`。
-- `modal-layer.ts`、`modal-surface.ts`：分层 UI 的键盘语义。`modal-layer.ts` 是纯规则（Escape 归属最上层、Tab 循环索引），`modal-surface.ts` 提供 `useEscapeScope`（页面级作用域：弹层、菜单、平铺设置页）与 `useModalSurface`（真正的模态对话框：进入焦点、Tab 约束、关闭后焦点回到触发点）。
+- `modal-layer.ts`、`modal-surface.ts`：分层 UI 的键盘语义。`modal-layer.ts` 是纯规则（Escape 归属最上层、Tab 循环索引），`modal-surface.ts` 提供 `useEscapeScope`（页面级作用域：弹层、菜单、平铺设置页）与 `useModalSurface`（模态对话框的按键契约：Escape 归属、Tab 约束）；**焦点生命周期不在这里**，见下一条。
+- `focus-ownership.ts`：**“谁持有焦点”的唯一归属**（架构候选 A2）。三条规则写在该文件头部，改它之前先读那段：
+  - **R1 打开即接管焦点**：优先用调用方声明的 `initialFocusRef`，否则用容器内第一个可聚焦元素；**逐帧重试直到落点成功或 `ENTRY_FOCUS_TIMEOUT_MS`（500ms）到期**。这是三处缺陷的共同根因：`useModalSurface` 原来只在 `active` 变化的那一次 effect 里聚焦一次，而经 `presence.tsx` 打开的浮层在那一帧渲染 `null`（`presence.tsx:88`），两个 ref 都还是空 → 焦点从未落地且**无人重试**（实测：完全访问警告打开后 `document.activeElement` 仍是 `BODY`，随后的 Enter 激活了后台控件并静默关掉警告）。同步挂载的表面（`danger-confirm.tsx`、`approval/prompt.tsx`）第一次就成功，不会多排一帧。
+  - **R2 关闭归还焦点**：回到打开前持有焦点的元素（仍可聚焦时才还）；**这个表面若从未真正取到焦点就不还**——没动过焦点的地方不许把焦点搬走。
+  - **R3 聚焦的控件必须看得见焦点**：控件要么显示环、要么显示填充。关掉全局 `:focus-visible` 环的规则必须给出替代，且**外层滚动容器不许把替代剪掉**——权限选择器 `.option-picker-list` 曾把每个聚焦项左右两侧的环剪到 **0.00** 覆盖。
+- `focus-indicator-rules.ts`：R3 的**样式表读法**（纯文本进、判断出，无 DOM）：这条规则是否把控件推进了焦点态、是否关掉 outline、是否画了可见替代，以及“这个滚动容器的内边距容不容得下里面控件的环”。R3 的两半分由 `focus-ownership.test.ts`（样式源 + 例外清单，**例外本身也要被验证**）与 `scripts/lib/focus-visibility.mjs`（真实窗口像素：聚焦帧 vs 同一批像素失焦帧，按控件自身边框盒分为环/填充，并给出环的**逐边覆盖**）断言——只有像素能发现“画了却被剪掉或被盖住”的环。两者都应作为**可调用**能力复用，不要重新手写一遍。
 - `danger-confirm.tsx`：不可逆删除的最小确认层，展示对象、影响和保留项，初始焦点在“取消”，请求进行中禁用两个动作并发布 `aria-busy`，失败行带共享失败字形。
 - `state-view.ts`、`state-view.tsx`、`state-icons.tsx`：**四种状态视图**（加载／无数据／不可用／失败）的状态表、结构与字形家族。四种状态的 role／busy／disabled／字形两两不同，`unavailable` 的原因在类型上必填（"这里不能用"不会渲染成"这里没有数据"）；状态标记独立成族，不增长冻结的 `icons.tsx`。契约见 `state-view.test.ts`，样式与整体矩阵见 `styles/13-interaction-states.css` 与 `ui-state-matrix.test.ts`。
 
 **平铺编辑页与模态对话框必须分开定义**：设置页里的编辑器、内嵌的渠道/技能页是页面级表面，只用 `useEscapeScope`，不捕获 Tab；只有真正覆盖其它内容、需要用户先处理的对话框才使用 `useModalSurface`。`active` 参数用于退出动画期间交还按键：只在下滑动画中存在的层不再消费 Escape，也不会重复触发已结算的操作。
+
+**焦点归属只有一处，新浮层不要自己写聚焦**：需要"打开时接管焦点、关闭时归还"的表面一律走 `focus-ownership.ts`（`useModalSurface` 已经接上）。不要再写 `ref.current?.focus()` 这种一次性聚焦——那正是本批三处缺陷的共同形状：经 `presence.tsx` 打开的浮层在打开那一帧还没有子节点，一次性聚焦必然落空且不会重试。第 3 条规则（R3）的已知缺口登记在 `focus-ownership.test.ts` 的例外清单里（清单里的 `compensated` 条目会被反过来验证，写成假的不通过）；往清单里加控件必须同时写清原因并改动该名单，不允许把新缺陷静默吸收进去。真实窗口的像素验收门是 `scripts/verify-focus-ownership.mjs`。
 
 ## 状态样本
 

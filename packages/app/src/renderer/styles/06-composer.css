@@ -1677,7 +1677,13 @@
 .mode-picker-panel .option-picker-list {
   display: grid;
   gap: 1px;
-  padding: 0;
+  /* The list clips (it scrolls) while the app-wide focus ring is drawn 2px
+     *outside* each option's border box (`outline-offset: 2px`, ring width 2px), so
+     every side of that ring is cut away unless the padding box gives it room.
+     With `padding: 0` the measured coverage of a focused option was left 0 /
+     right 0 / top 0; 2px restores all four sides. The modes stay flush with the
+     panel; this is exactly what the ring needs and nothing more. */
+  padding: 2px;
 }
 
 .reasoning-picker-panel {

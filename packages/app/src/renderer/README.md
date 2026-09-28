@@ -1,5 +1,7 @@
 # Electron Renderer
-最后更新：2026-09-28 20:28:45
+最后更新：2026-09-28 21:24:54
+
+失败的回合必须有可做的事（2026-09-28）：失败回合（`activity.status === 'failed'`）在注意力行旁渲染一个 `重试`（`.assistant-turn-retry`，穿共享的 `feedback-action` 角色，位置始终在 `.assistant-process-content` 之外，紧凑模式与读者手动折叠都拿不走它），按下后由 `chat/run-actions.ts` 的 `retryFailedTurn(instruction)` 用这一轮自己的指令走同一条发送路径。输入栏草稿与附件既不被读取也不被清空；失败回合保留原因、`本轮未完成` 与自己的重试，重试的结果作为新的一轮出现。实窗门：`verify:transcript-state-visibility` 第 2b 类，细节见 `chat/README.md`。
 
 设置视觉由 styles/15-settings-surface.css 统一负责：设置正文卡片与菜单使用独立圆角，不继承贴边窗口的零圆角；设置行在左侧展示名称和说明，在右侧展示当前值或操作。菜单通过 portal 避免滚动容器裁切，正文卡片不加模糊。
 

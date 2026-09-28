@@ -19,7 +19,7 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 2531 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、每轮 taskbook Skill 的有正文注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/runner.ts` | 2532 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、每轮 taskbook Skill 的有正文注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
 | `packages/harness/src/durable-kernel.ts` | 930 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 652 | 单一模型工具循环、审批、失败记录、消息续接和运行中用户补充投递 | 用户补充消费由 `runtime-control-boundary.ts` 持有结算，主循环只在请求前后纳入消息；后续如继续增长，分离补充消息的请求桥接与现有 invocation adapter，保持单一主循环 | E |
 | `packages/types/src/runtime-contracts.ts` | 872 | Context、事件、检查点、活动任务控制、执行证据、请求前缀变化原因和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`，effect ownership port 已迁入 `effect-lease.ts`，会话续接证据已迁入 `conversation-continuation.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
@@ -67,7 +67,7 @@
 | `packages/types/src/run-context-contract.ts` | 485 | 八组高频 RunContext 字段的 owner、读写阶段、生命周期和写入查询 | 保持 machine-readable manifest；继续由 `replan-state.ts`、`reply-state.ts`、`runtime-state.ts`、`memory-state.ts`、`usage-state.ts`、`decision-state.ts`、`failure-state.ts`、`execution-evidence-state.ts`、`model-observability-state.ts` 等领域边界消费，不把具体状态写入逻辑吸回 types | E |
 | `packages/web/src/fetch/dns-resolver.ts` | 397 | 系统/固定 Cloudflare DoH 解析、DNS wire 校验、TTL 缓存和取消边界 | 保持 DNS resolver 单一职责；若继续增长，拆分 wire codec、transport 与 cache，同时保持 URL policy 只接收已验证地址 | C |
 | `packages/app/src/renderer/sidebar/session-actions.ts` | 428 | 对话切换、历史分页、归档/删除及会话视图令牌失效；`newSession()` 结束时分发一次输入栏焦点请求，并按会话切换草稿槽位 | 保持会话生命周期 facade；历史加载和视图令牌继续共享同一会话代次边界 | B |
-| `packages/app/src/shared/history-activity.ts` | 349 | Runtime 执行日志到实时/历史对话活动的共享投影、用量与 transcript 兼容形状 | 保持无 UI 依赖的纯投影边界；流式水位和交互状态只留在 Renderer | B |
+| `packages/app/src/shared/history-activity.ts` | 351 | Runtime 执行日志到实时/历史对话活动的共享投影、用量与 transcript 兼容形状 | 保持无 UI 依赖的纯投影边界；流式水位和交互状态只留在 Renderer | B |
 | `packages/app/src/main/local-app-api/run-checkpoint-routes.ts` | 331 | checkpoint 发现、详情、补充信息、续跑、停止和放弃路由 | 保持路由 facade；将恢复准入和响应投影继续下沉到独立 adapter | C |
 | `packages/memory-tree/src/memory-repository/v3-resource-store.ts` | 573 | v3 资源元数据、生命周期事务、实体投影和恢复 | 分离 resource registry、transaction recovery 与 graph projection | D |
 | `packages/app/src/renderer/workspace/terminal.tsx` | 546 | 用户交互 PTY 生命周期、SSE、尺寸、命令历史和输入队列 | 保持终端事务边界，禁止吸收工作区导航或 Agent 审批职责；来源与 Agent 权限语义由 Main 明确拥有 | B |
@@ -111,7 +111,7 @@
 | `packages/memory-tree/src/v3/atom-store.ts` | 425 | atom 原子读写、轻量索引、扫描、层级和隔离 | 保持 store facade；规模验收稳定后分离 scanner/quarantine | D |
 | `packages/runner/src/infra.ts` | 762 | 默认基础设施创建、Provider/Web、Memory v3 与后台维护准入装配 | durable store 组装已下沉到 `durable-harness-infrastructure.ts`；继续保持组合根并下沉 Memory 服务组装 | E |
 | `packages/app/src/renderer/workspace/tab-strip.tsx` | 441 | 工作区标签渲染、关闭、重排、拖拽和溢出标签 | 将拖拽 controller 与标签视图继续保持独立，禁止吸收面板状态 | B |
-| `packages/app/src/renderer/app-shell/app-controller-projections.ts` | 323 | 每个 Renderer 视图能看到哪些控制器字段 | 只放字段清单与视图契约；字段增删在这里一行完成，不把投影逻辑搬进来 | B |
+| `packages/app/src/renderer/app-shell/app-controller-projections.ts` | 328 | 每个 Renderer 视图能看到哪些控制器字段 | 只放字段清单与视图契约；字段增删在这里一行完成，不把投影逻辑搬进来 | B |
 | `packages/app/src/renderer/workspace/panel.tsx` | 403 | 拓展工作区页面、评论状态和工作面装配 | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
 | `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务和终端环境派生 | 保持 facade；下载器不得回填此文件 | C |
 | `packages/app/src/renderer/workspace/browser.tsx` | 435 | 内置浏览器标签、导航、加载状态和网页内跳转 | 保持视图组合；历史算法和导航资格留在独立模块 | B |
@@ -124,7 +124,7 @@
 | `packages/app/src/renderer/settings/models.tsx` | 373 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 573 | 布局尺寸交互、标签命令、草稿编辑、关闭前保存编排与"拒绝保存后放弃修改"这一分支 | 关闭路径的布局写入已下沉到 `file-close-layout.ts`（关标签＝连同草稿一起离开会话现场，因此 2026-09-28 已从受控超限清单注销），会话布局持久化仍在 `use-workspace-session-layouts.ts`；保持交互 controller，不得继续吸收新职责（审计 P1 第 9 条的第三个答案只加了这一条分支，并同时把三处布局写入移出本文件） | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | 620 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 展开/折叠已从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程面与步骤组各多一层 `grid-template-rows` 过渡容器，因此由 593 涨到 624 行并越过 600 线（已进受控超限清单）；O1 再把注意力行移出可折叠正文（`chat/attention-row.tsx`），净减到 620 行；持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
+| `packages/app/src/renderer/chat/assistant-turn.tsx` | 651 | 思考摘要、执行过程、验证与最终产物的渐进式披露 | 展开/折叠已从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程面与步骤组各多一层 `grid-template-rows` 过渡容器，因此由 593 涨到 624 行并越过 600 线（已进受控超限清单）；O1 再把注意力行移出可折叠正文（`chat/attention-row.tsx`），净减到 620 行；2026-09-28 失败回合的重试动作（`onRetryTurn`/`retryPending` 与那一个按钮，仍在 `.assistant-process-content` 之外）回到 651 行，仍在 660 的受控上限内；持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 464 | 归档加载、树和操作，以及永久删除确认 | controller + project/session 视图；删除影响文案、确认层与同步防重复（`deletingRef`）已分别下沉到 `deletion-impact.ts`、`ui/danger-confirm.tsx` 与 ref 守卫 | B |
 | `packages/plugins/src/channel/manager.ts` | 388 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/main/local-app-api/memory-routes.ts` | 353 | 记忆文件、旧控制面兼容、资源、项目投影及迁移子路由组合 | 保持纯路由组合；新增治理进入独立子路由 | C |
@@ -135,13 +135,15 @@
 | `packages/app/src/renderer/workspace/review-inline-deleted-comments.tsx` | 410 | 单列删除行评论手势、view zone 编辑器和附件发布 | 与通用行评论共享纯 helper；后续下沉删除行 view-zone controller | B |
 | `packages/app/src/renderer/workspace/review-inline-deleted-line-numbers.ts` | 326 | 单列删除区域的源行号投影和交互目标同步 | 保持 Monaco view-zone adapter，不吸收评论编辑状态 | B |
 | `packages/app/src/renderer/chat/activity-model.ts` | 335 | Agent 活动、公开推理、工具步骤和完成态投影 | 保持纯活动模型；展示组件不得回填状态归并逻辑 | B |
-| `packages/app/src/renderer/chat/run-actions.ts` | 348 | 聊天发送、流式事件所有权和输入/附件重试保留 | turn fingerprint 与完成态消息归并已下沉；保持发送 facade，停止请求去重留在本模块 | B |
+| `packages/app/src/renderer/chat/run-actions.ts` | 343 | 聊天发送、流式事件所有权和输入/附件重试保留 | turn fingerprint 与完成态消息归并已下沉；2026-09-28 失败回合的重试动作只给 `send()` 加了一个可选指令（其余仍是同一条发送路径），并把实时消息 id 与末条助手文本更新下沉到 `chat/live-message-updates.ts`，因此热点从 348 降到 343；保持发送 facade，停止请求去重留在本模块 | B |
 | `packages/app/src/renderer/sidebar/project-section.tsx` | 480 | 项目树、折叠状态、项目菜单和持久化刷新 | 保持项目区视图边界；项目事务继续由 sidebar actions 拥有 | B |
 | `packages/app/src/renderer/sidebar/running-pill.tsx` | 305 | 聊天区顶部任务胶囊视图：对话标题与运行摘要、就地重命名、「进行中/已结束」分组浮层（终止入口、dsh 式历史折叠）与面板定位；2026-09-27 迁入聊天列顶边并新增重命名/终止/折叠后越过 300 行 | 保持"纯展示 + 纯函数（`taskCommands`/`foldFinishedCommands`/`normalizeRenameDraft`）"边界；若继续增长，把展开浮层拆成独立组件 | B |
 | `packages/app/src/main/workspace-layout-index.ts` | 393 | Main 多会话工作区镜像、旧单快照兼容、边界规范化与项目路径重绑定 | 保持持久化索引边界；继续增长时分离 store codec 与路径重绑定 | C |
 | `packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts` | 355 | Checkpoint 发现、续跑请求、恢复入口状态与资源/权限状态展示 | 状态选择与展示 helper 已下沉到 `checkpoint-recovery-state.ts`（含发现失败与损坏记录的入口派生）；保持恢复控制器，不要再吸收展示逻辑 | B |
 | `packages/runner/src/run-checkpoint-controller.ts` | 318 | Checkpoint inspect、唯一 head、claim 和 durable resume identity 查询 | 保持控制面 facade；后续分离 query/claim policy | E |
 | `packages/app/src/renderer/ui/icons.tsx` | 345 | 无状态声明式图标集合 | 浏览器图标家族与工作区文件/文件夹字形已拆出（`browser-icons.tsx`、`file-glyph-icons.tsx`）；其余继续按家族拆分，冻结期间不得继续增长 | B |
+| `packages/app/src/renderer/ui/focus-indicator-rules.ts` | 341 | 焦点可见性规则 R3 的样式表读法：识别焦点态规则、outline 抑制、可见替代，以及"滚动容器内边距容不容得下里面控件的焦点环"的算术 | 保持"纯文本进、判断出"的解析边界，不引入 DOM；继续增长时把 CSS 选择器解析（`subjectOf`/`ruleKeysOf`）与"抑制/替代"判定分成两个模块 | B |
+| `packages/app/src/renderer/ui/focus-ownership.ts` | 315 | "谁持有焦点"的唯一归属（规则 R1/R2/R3）：带界限重试的入场聚焦、关闭时归还、以及聚焦控件必须可见的规则声明 | 保持焦点生命周期单一归属；继续增长时把重试调度与焦点归还拆成独立模块，但 R1/R2 的三条规则文本必须留在同一处 | B |
 | `packages/memory-tree/src/memory-service.ts` | 343 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
 | `packages/channels/telegram/src/plugin.ts` | 342 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/memory-tree/src/memory-repository/v3-retrieval-materializer.ts` | 331 | 候选优先级、证据封套和治理读取投影 | 保持候选投影单一来源 | D |
@@ -260,4 +262,4 @@
 | `packages/session/src/manager.ts` | E / Runtime | C08C 压缩事务在前驱 CAS、候选回执与 activation 投影之间共享持久化不变量；先冻结崩溃/并发恢复特征测试，再把 compaction transaction 与 activation adapter 移出 facade | 660 | 同上 |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；RS-06 在此接入反自动合并守卫（+19 行）；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 650 | 同上 |
 | `packages/app/src/main/desktop-shell.ts` | C / App Main | 冷启动专项的隔离验收需要窗口状态与文档切换（启动页、失败页、最大化/还原、渲染器是否已接管），这些都必须触达私有窗口状态；先把窗口状态 codec 与验收快照保持在既有下沉模块，再把这两组辅助方法移出 | 620 | 同上 |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | B / Renderer | 2026-09-27 把执行流的展开/折叠从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程折叠面与 AgentStepGroup 各多出一层 `grid-template-rows` 过渡容器，实测由 593 涨到 624 行（原在软上限队列）。同日 O1 把"折起来也必须看得到"的事实移出可折叠正文（新 `chat/attention-row.tsx`，27 行，未达 300 行登记线），净减 4 行到 620 行。它仍同时持有“思考摘要 / 执行过程 / 验证与最终产物”三段渐进式披露的渲染与折叠状态，先冻结折叠与可见性的特征测试（`interaction-visibility.test.ts` 已按新结构更新、`chat-layout-stability.test.ts` 与 `assistant-turn.test.ts` 里"必须用原生 `details`/`hidden`"的断言已随契约演进），再把纯展示段拆出 | 660 | 同上 |
+| `packages/app/src/renderer/chat/assistant-turn.tsx` | B / Renderer | 2026-09-27 把执行流的展开/折叠从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程折叠面与 AgentStepGroup 各多出一层 `grid-template-rows` 过渡容器，实测由 593 涨到 624 行（原在软上限队列）。同日 O1 把"折起来也必须看得到"的事实移出可折叠正文（新 `chat/attention-row.tsx`，27 行，未达 300 行登记线），净减 4 行到 620 行；2026-09-28 失败回合的重试动作（`chat/README.md` 的"失败的回合必须给出能做的事"）让它回到 651 行，仍在 660 的受控上限内。它仍同时持有“思考摘要 / 执行过程 / 验证与最终产物”三段渐进式披露的渲染与折叠状态，先冻结折叠与可见性的特征测试（`interaction-visibility.test.ts` 已按新结构更新、`chat-layout-stability.test.ts` 与 `assistant-turn.test.ts` 里"必须用原生 `details`/`hidden`"的断言已随契约演进），再把纯展示段拆出 | 660 | 同上 |

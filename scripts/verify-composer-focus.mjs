@@ -315,12 +315,15 @@ async function main() {
       15_000,
       'the full-access warning',
     ).catch(() => undefined)
+    const warningInitial = await readFocus(handle.client)
     await handle.client.evaluate(`window.dispatchEvent(new CustomEvent(${JSON.stringify(focusEventName)}))`)
     await delay(200)
     const duringWarning = await readFocus(handle.client)
     recorder.note({
       step: 'dialog-open',
       warningOpen: Boolean(warning),
+      onOpen: warningInitial.active,
+      focusInsideFullAccessOnOpen: warningInitial.focusInsideFullAccess,
       beforeRequest: warning?.active ?? null,
       afterRequest: duringWarning.active,
       focusInsideFullAccess: duringWarning.focusInsideFullAccess,
@@ -330,6 +333,15 @@ async function main() {
       duringWarning.fullAccessWarningOpen === true && duringWarning.composerFocused === false,
       'an open dialog keeps the keyboard: the composer does not take the caret',
       duringWarning,
+    )
+    // The dialog owns the caret itself. It used to open with `document.activeElement`
+    // still on BODY - its initial-focus effect ran on the commit where `FadePresence`
+    // renders null, so nothing could be focused and nothing retried - which left the
+    // next Enter or Space free to reach a background control.
+    recorder.check(
+      duringWarning.focusInsideFullAccess === true,
+      'the dialog itself holds focus, so the next key cannot reach a background control',
+      { onOpen: warningInitial.active, afterRequest: duringWarning.active },
     )
     await clickElement(handle.client, '.full-access-warning .approval-action')
     await delay(400)
@@ -428,7 +440,7 @@ async function main() {
       'The sidebar controls in cases B and D are pressed through the DOM with the control focused first; whether a synthesized pointer reaches them is a hit-testing question owned by other gates, and the pointer path is still exercised in case C.',
       'The window is parked off every display so Chromium renders frames; it never lands on the user\'s desktop and `showInactive` keeps it from taking focus, so this proves DOM focus ownership and key delivery, not what a user sees painted.',
       'Case D polls with a forced frame because the search panel mounts from two animation frames and is `inert` until they arrive; the caret is then placed the way the user places it, and the assertion is about the composer not taking it away.',
-      'The full-access warning opens without taking focus itself (its `useModalSurface` initial-focus effect runs before `FadePresence` mounts the dialog), so case C asserts what is true there: the composer does not take the keyboard while that dialog is open. Case E carries the literal "the open surface keeps its focus" evidence.',
+      'The full-access warning now takes focus itself (its initial focus retries across animation frames until the dialog it belongs to has mounted, see `packages/app/src/renderer/ui/focus-ownership.ts`), so case C asserts both halves: the dialog holds the caret and the composer does not take it away. Before that fix the dialog opened with `document.activeElement` on BODY. Case E carries the same evidence for the approval prompt.',
       'Case E needs the Provider stub\'s deterministic write-tool branch; the approval prompt it opens is the same surface a real run uses.',
     ],
   }

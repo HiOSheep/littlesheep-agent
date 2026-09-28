@@ -1,16 +1,24 @@
 // React glue for stacked UI layers.
 //
-// The rules live in modal-layer.ts; this module only connects them to the DOM:
+// The rules live in modal-layer.ts and focus-ownership.ts; this module only
+// connects them to the DOM:
 //   - `useEscapeScope` gives a page-level surface Escape *only* while it is the
 //     topmost layer (settings pages, popovers, menus);
 //   - `useModalSurface` adds what a real modal dialog needs on top of that:
 //     initial focus on a deliberate target, Tab kept inside the dialog, and
 //     focus returned to the element that opened it on close.
 //
+// The focus half is not implemented here. `focus-ownership.ts` owns *who holds
+// focus* - including the bounded retry that makes initial focus survive a
+// subtree that is not mounted yet (every surface opening through
+// `FadePresence`) - and hands it back on close. This module keeps only what a
+// modal adds on top of a layer: the Escape/Tab key handling.
+//
 // A flat editing panel (the provider editor, an embedded settings page) is a
 // page-level surface, not a modal dialog: it uses `useEscapeScope` and never
 // traps Tab.
 import { useEffect, useId, useRef, type RefObject } from 'react'
+import { useFocusOwnership } from './focus-ownership'
 import { FOCUSABLE_SELECTOR, modalLayers, nextFocusIndex } from './modal-layer'
 
 export function useEscapeScope(onEscape: () => void, active = true): void {
@@ -52,20 +60,16 @@ export function useModalSurface(
 ): void {
   const id = useId()
   const onEscapeRef = useRef(onEscape)
-  const initialFocusTarget = useRef(initialFocusRef)
   onEscapeRef.current = onEscape
-  initialFocusTarget.current = initialFocusRef
+
+  // R1 (focus on open, retried until it lands) and R2 (focus returned on close)
+  // are owned by focus-ownership.ts. Registration in the layer stack stays here,
+  // because Escape and Tab are the modal's own contract.
+  useFocusOwnership({ active, containerRef, initialFocusRef, restoreFocus, focusableSelector: FOCUSABLE_SELECTOR })
 
   useEffect(() => {
     if (!active) return
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
     modalLayers.push(id)
-
-    const container = containerRef.current
-    const entry = initialFocusTarget.current?.current
-      ?? container?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-      ?? null
-    entry?.focus({ preventScroll: true })
 
     const focusables = () => {
       const scope = containerRef.current
@@ -107,7 +111,6 @@ export function useModalSurface(
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       modalLayers.remove(id)
-      if (restoreFocus && previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true })
     }
-  }, [active, containerRef, id, restoreFocus])
+  }, [active, containerRef, id])
 }

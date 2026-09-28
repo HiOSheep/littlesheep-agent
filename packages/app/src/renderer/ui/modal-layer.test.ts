@@ -65,16 +65,33 @@ describe('tab focus cycling', () => {
 })
 
 describe('modal surfaces wiring', () => {
-  it('arbitrates Escape, contains Tab and restores focus', async () => {
-    const surface = await readRendererFile('./modal-surface.ts')
+  it('arbitrates Escape, contains Tab and delegates the focus lifecycle', async () => {
+    const [surface, ownership] = await Promise.all([
+      readRendererFile('./modal-surface.ts'),
+      readRendererFile('./focus-ownership.ts'),
+    ])
 
     expect(surface).toContain('modalLayers.isTop(id)')
     expect(surface).toContain("event.key !== 'Escape' || event.defaultPrevented || event.isComposing")
     expect(surface).toContain("if (event.key !== 'Tab') return")
-    expect(surface).toContain('previouslyFocused?.isConnected')
     expect(surface).toContain('modalLayers.remove(id)')
     // A surface that only animates out must not take keys.
     expect(surface).toContain('if (!active) return')
+    // The caret's rules have one owner. A modal surface must not place or return
+    // focus itself: it delegates, which is what makes the bounded retry apply to
+    // every surface instead of only the ones that remembered to ask for it.
+    // (`focus()` still appears here for the Tab trap, which is the modal's own
+    // key contract - what must not appear is a second implementation of the
+    // entry/restore lifecycle.)
+    expect(surface).toContain('useFocusOwnership({ active, containerRef, initialFocusRef, restoreFocus')
+    expect(surface).not.toContain('previouslyFocused')
+    expect(surface).not.toContain('captureEntryFocus')
+    expect(surface).not.toContain('restoreFocusTo')
+    // ...and the owner has to carry both halves of the lifecycle.
+    expect(ownership).toContain('export function captureEntryFocus(')
+    expect(ownership).toContain('export function restoreFocusTo(')
+    expect(ownership).toContain('ENTRY_FOCUS_TIMEOUT_MS = 500')
+    expect(ownership).toContain('window.requestAnimationFrame(attempt)')
   })
 
   it('keeps the approval prompt rejecting on Escape and off the authorizing button', async () => {

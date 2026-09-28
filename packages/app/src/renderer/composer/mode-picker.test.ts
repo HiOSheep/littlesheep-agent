@@ -4,6 +4,29 @@ import { describe, expect, it } from 'vitest'
 import { requiresFullAccessConfirmation } from './mode-picker'
 
 describe('mode picker layout', () => {
+  it('leaves the scrolling option list room for the focus ring it clips', async () => {
+    const styles = await readRendererStyleSource()
+
+    // The list scrolls, so it clips its contents at its padding box, while the app-wide focus
+    // ring is drawn 2px *outside* each option's border box (`outline-offset: 2px`, 2px wide).
+    // With `padding: 0` the ring's left, right and top sides were cut away - measured on a
+    // focused option whose outline resolved correctly and whose per-side coverage was still
+    // 0 / 0 / 0. This is the fix for "the focused permission option is ring-less".
+    const list = /\.mode-picker-panel \.option-picker-list\s*\{([^}]*)\}/u.exec(styles)?.[1]
+    expect(list, 'the mode picker list rule is missing').toBeDefined()
+    const padding = /(?:^|[\s;{])padding:\s*([^;]+);/u.exec(list!)?.[1]?.trim()
+    expect(padding, 'the list must state a padding').toBeDefined()
+    // Every longhand the ring needs room against, so `2px 0` cannot pass as "has padding".
+    const values = padding!.split(/\s+/u).map((value) => Number.parseFloat(value))
+    const [block = 0, inline = block] = values
+    const sidesClearRing = [values[0] ?? 0, inline, values[2] ?? block, values[3] ?? inline]
+    expect(
+      sidesClearRing.every((value) => Number.isFinite(value) && value >= 2),
+      `the list clips the focus ring on a side with less padding than the ring's 2px reach (padding: ${padding})`,
+    ).toBe(true)
+    expect(block, 'the padding is the ring reach and nothing more').toBeLessThanOrEqual(4)
+  })
+
   it('keeps the permission menu at half the shared option-menu width', async () => {
     const styles = await readRendererStyleSource()
 
@@ -14,7 +37,7 @@ describe('mode picker layout', () => {
       /\.model-picker-panel\s*\{[\s\S]*?border:\s*0;/u,
     )
     expect(styles).toMatch(
-      /\.mode-picker-panel \.option-picker-list\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1px;[^}]*padding:\s*0;/u,
+      /\.mode-picker-panel \.option-picker-list\s*\{[^}]*display:\s*grid;[^}]*gap:\s*1px;[^}]*padding:\s*2px;/u,
     )
     // The permission menu is one of the composer's popovers: it shares the input surface's
     // material (translucent fill, backdrop blur, no border strokes) instead of an opaque fill of
