@@ -1,6 +1,6 @@
 # App Shared Contracts
 
-最后更新：2026-09-28 12:31:11
+最后更新：2026-09-28 21:40:47
 
 window-chrome-contracts.ts 定义 Beta/Chali 与 acrylic/vibrancy/solid 的窄状态以及固定查询/通知通道；Main 是窗口状态的唯一来源，Renderer 不按屏幕尺寸猜测是否最大化。
 
