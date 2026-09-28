@@ -1,6 +1,6 @@
 # Runtime 自主执行与沙箱边界验证任务书 2026-09-27
 
-最后更新：2026-09-28 20:22:00
+最后更新：2026-09-28 20:26:00
 
 状态：**首轮实验已交付，独立审阅未通过，进入补正阶段**。第 7、8 节保留首轮执行者的原始回填，其中 `pass` 是当时的实验判定，不能视为候选已获正式采用或全部验收已完成。2026-09-28 审阅确认了三个 Runtime 候选的边界缺口、沙箱验收器的漏判，以及证据口径不一致；审阅发现、候选取舍和下一轮执行清单统一见第 10 节。候选补丁已回退，Electron 与打包验收未执行；本书继续保留，不退役。
 
@@ -618,7 +618,7 @@ RA-01 证据/验收器修正 ─┬─ RA-02 参数纠错 ─┐
 | RA-03 | **pass（确定性）** | RA-01 | 见 10.6 |
 | RA-04 | **pass（确定性）** | RA-01 | 见 10.6 |
 | RA-05 | **pass（边界与验收）** | RA-01 | 见 10.7 |
-| RA-06 | todo | RA-01 | 生效策略、启动事实、后端能力矩阵与原生试点设计 |
+| RA-06 | **部分 pass** | RA-01 | 见 10.8 |
 | RA-07 | todo | RA-01、RA-06 | 逐项安全判定、正对照与宿主观测 |
 | RA-08 | todo | RA-06、RA-07 | 等权限范围对照、撤销/越界、逐 run 事实 |
 | RA-09 | todo | 对应分支 RA-02～RA-08 | 组合/构建/取消、Electron、打包及性能口径 |
@@ -659,3 +659,19 @@ RA-01 证据/验收器修正 ─┬─ RA-02 参数纠错 ─┐
 **修复前后对照**：旧基线 + 新回归 = **3 failed / 21 passed**；候选 = **24 passed**。候选 `patches/ra05-b.patch`，已回退。
 
 **未完成**：RA-05 还要求"收益夹具加入只能从冻结参考资料确定的事实，冻结版本、域名、期望事实及有效引用"——**没有做**。现有 RT-01 夹具仍可在本地修好而不查资料，所以"未触发检索"符合夹具性质，检索收益依旧**证据不足**。真实模型 A/B 未复跑。
+
+### 10.8 RA-06 回填（2026-09-28 第五轮）
+
+**F-06 / F-07 已修复；RA-06 的环境白名单探测、挂载/参数覆盖防回归与原生能力矩阵未做，因此记"部分 pass"。**
+
+**后端结论改为五态命名（F-07）**：`host-selected` / `sandbox-selected` / `configuration-error` / `backend-unavailable` / `unverified`。以前只有 requested/actual 加一段自由文本，于是"主动选择宿主""请求沙箱成功""沙箱请求根本没法满足"三件不同的事看起来一样。实测：backend 值为 `not-a-backend` → `configuration-error`；spec 缺失 → `configuration-error`；spec 的 workspace 与本调用被授权的目录不一致 → `configuration-error`；三种都不执行、都不落到宿主 shell。`host` → `host-selected`；合法 spec → `sandbox-selected`。
+
+**生效 cwd 绑定（F-06）**：spec 的 workspace 必须等于权限判定、版本检查与观察失效所基于的那个目录（用与资源键相同的规范化比较），不一致即拒绝，而不是让 namespace 悄悄 `--chdir` 到别处。
+
+**进程事实（F-06）**：审计从"spawn 前一行"改成生命周期。`preparing-to-start` 只记决策；`started` 记真实子进程 pid、namespace 实际拿到的 `--chdir`（与已授权 cwd 并列）、以及**从 argv 读回**的 `interopClosed`（不是假定）；`exited` 记退出码与信号；`start-failed` 记 `unverified`，永不报成隔离。实测 SB-04 用例：14 条 `preparing-to-start` / 14 条 `started` / 14 条 `exited`，每条 started 带 pid、两个 cwd、interop 标志与本后端**不**强制执行的限额清单。
+
+**网络（F-07）**：`policy.network` 只报 `none` 或 `shared`，不声称更细的粒度；proxy 变体不再被说成限制直连。不支持的限额（cpu 时间、内存、进程数、磁盘配额）随 policy 对象和每条 started 审计行一起走，因此"sandbox-selected"不能被读成"已完全受限"。
+
+**验证**：候选下受影响文件 59/59；回退后基线 52/52；SB-02/03/04 矩阵 overall pass（SB-04 的资源限额行仍如实记 not-run）。候选 `patches/ra06-b.patch`，已回退。
+
+**未完成**：RA-06 要求的"环境白名单 + 合成敏感变量验证 WSLENV 传播路径"、"挂载/参数覆盖防回归"、以及"原生 Windows 能力矩阵（Windows Sandbox / AppContainer / 专用低权限用户+ACL+防火墙 分别列支持条件、需提权步骤、兼容性、撤销与回退）"三项都未做。资源限额仍只有声明，没有实现。
