@@ -1,6 +1,8 @@
 # Electron Preload
 
-最后更新：2026-09-23 17:20:30
+最后更新：2026-09-28 12:38:06
+
+onWindowChrome 通过固定 window-chrome 通道订阅 Main 签发的布局和材质事实，先订阅再查询并重放缓存，覆盖最大化恢复和页面重载；只接受 shared/window-chrome-contracts.ts 校验过的状态。返回退订函数，不暴露设置窗口状态或原生材质的任意 IPC。
 
 Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小运行时信息。
 

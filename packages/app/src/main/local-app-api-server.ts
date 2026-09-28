@@ -15,6 +15,7 @@ import { HttpError, RuntimeNotReadyError, json, type LocalAppApiRequest } from '
 import { LOCAL_APP_API_ROUTES } from '../shared/local-app-api-routes.js'
 import { routeExtensions } from './local-app-api/extension-routes.js'
 import { routeRuntime } from './local-app-api/runtime-routes.js'
+import { routeUsage } from './local-app-api/usage-routes.js'
 import { routeMemory } from './local-app-api/memory-routes.js'
 import { routeSessions } from './local-app-api/session-routes.js'
 import { routeProjects } from './local-app-api/project-routes.js'
@@ -255,6 +256,13 @@ async function route(
     getConfig,
     setConfig,
     mutateRuntimeConfig,
+  })) return
+
+  if (await routeUsage(routeRequest, {
+    getRunner,
+    dataDir: opts.dataDir,
+    sessionIndex,
+    archiveIndex,
   })) return
 
   if (await routeDevelopmentEnvironments(routeRequest, {

@@ -1,8 +1,10 @@
 # @littlesheep/types
 
-最后更新：2026-09-27 02:33:58
+最后更新：2026-09-27 23:12:01
 
 保存跨 package 的纯 TypeScript 契约，是运行时协议的唯一公共类型来源。
+
+跨日 Provider 用量序列（O5，2026-09-27）由 `usage-daily.ts` 拥有：`ProviderUsageDailySeries` 是 Main 之后所有消费方（含热力图 UI）的唯一线协议，`ProviderUsageDailyDay.state` 明确区分 `recorded`／`partial`／`empty`／`future`，`coverage` 里带时区来源、缺失响应、无响应请求、无法重放的 run、被折叠的重复事件、清空截止、保留摘要与回填进度，因此"某天没有调用"和"某天实报 0"永远不会被下游混为一谈。范围上限（400 天）、默认范围（366 天）、身份分面上限（64）与单次刷新/回填步预算上限都以常量形式留在这里，Main 与 Runner 引用同一份数字而不是各自复制。
 
 ## 职责与边界
 

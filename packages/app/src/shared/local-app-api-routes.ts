@@ -14,6 +14,14 @@ export const LOCAL_APP_API_ROUTES = {
   readiness: '/runtime/readiness',
   webCache: '/runtime/web/cache',
   cacheQuality: '/runtime/cache-quality',
+  /** Bounded cross-day Provider usage series (O5). */
+  usageDaily: '/runtime/usage/daily',
+  /** Bounded incremental update of the usage projection. */
+  usageRefresh: '/runtime/usage/refresh',
+  /** Historical usage backfill: start, cancel or inspect progress. */
+  usageBackfill: '/runtime/usage/backfill',
+  /** Explicit "clear usage statistics" action with a recorded cutoff. */
+  usageClear: '/runtime/usage/clear',
   webProviderCheck: '/runtime/web/provider-check',
   providerCalibration: '/runtime/provider-calibration',
   developmentEnvironments: '/development-environments',

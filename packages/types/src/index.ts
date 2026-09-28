@@ -22,6 +22,7 @@ export * from './work-policy.js';
 export * from './agent.js';
 export * from './runtime-contracts.js';
 export * from './durable-harness.js';
+export * from './usage-daily.js';
 export * from './reconciliation-key.js';
 export * from './stage-transitions.js';
 export * from './run-context-contract.js';

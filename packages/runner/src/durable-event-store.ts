@@ -35,6 +35,17 @@ const MAX_EVENT_ID_LENGTH = 256;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
 const EVENT_FILE_PATTERN = /^(\d{12})-([a-f0-9]{64})\.json$/;
 
+export interface DurableRunPartitionRevision {
+  /** Directory name of the partition: the hash of session id and run id. */
+  readonly partitionKey: string;
+  readonly sessionId: string;
+  readonly runId: string;
+  readonly eventCount: number;
+  readonly lastFileName: string;
+  /** Changes whenever the log grows or one of its files is replaced. */
+  readonly revision: string;
+}
+
 export interface DurableEventStoreOptions {
   /** Directory under the active LS data root. */
   rootDir: string;
@@ -235,6 +246,50 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     return runs.sort((left, right) => (
       left.sessionId.localeCompare(right.sessionId) || left.runId.localeCompare(right.runId)
     ));
+  }
+
+  /**
+   * Names-only listing of the run partitions, for callers that keep their own
+   * inventory of what they have already read. `listRuns()` parses every event of
+   * every run, which is the wrong cost for a periodic "did anything change?"
+   * pass; this validates the same directory names and reads no event file.
+   */
+  async listRunPartitions(): Promise<string[]> {
+    await this.initialize();
+    const entries = await readdir(this.rootDir, { withFileTypes: true });
+    const partitions: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (!/^[a-f0-9]{64}$/.test(entry.name)) throw new DurableEventStoreError(`invalid event partition: ${entry.name}`, 'corrupt');
+      partitions.push(entry.name);
+    }
+    return partitions.sort((left, right) => left.localeCompare(right));
+  }
+
+  /**
+   * Identity and change revision of one partition without replaying it: the
+   * first event file carries the identity the partition name hashes, and the
+   * file count plus newest file name change whenever the log grows or is
+   * rewritten, which is all a "skip unchanged" pass needs.
+   */
+  async readRunRevision(partitionKey: string): Promise<DurableRunPartitionRevision | null> {
+    if (!/^[a-f0-9]{64}$/.test(partitionKey)) {
+      throw new DurableEventStoreError(`invalid event partition: ${partitionKey}`, 'corrupt');
+    }
+    const partition = join(this.rootDir, partitionKey);
+    const files = await this.listPartitionEventFiles(partition);
+    const firstFile = files[0];
+    const lastFile = files.at(-1);
+    if (!firstFile || !lastFile) return null;
+    const first = await this.readEventFile(partition, firstFile);
+    return {
+      partitionKey,
+      sessionId: first.sessionId,
+      runId: first.runId,
+      eventCount: files.length,
+      lastFileName: lastFile,
+      revision: `${files.length}:${lastFile}`,
+    };
   }
 
   private partitionPath(sessionId: string, runId: string): string {

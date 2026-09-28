@@ -1,6 +1,8 @@
 # Electron Main
 
-最后更新：2026-09-28 01:42:54
+最后更新：2026-09-28 12:38:06
+
+desktop-window-chrome.ts 拥有原生背景材质与窗口布局事实：按 maximize/unmaximize/enter-full-screen/leave-full-screen 和页面重载发布 Beta/Chali，查询只接受本窗口 webContents。Windows 11 22H2+ 启用 Acrylic，macOS 使用 under-window vibrancy；实体启动页不透底，Renderer 加载后背景透明。Beta 原生按钮底色透明，Chali 与启动页按钮底色为 #101010。desktop-visual-acceptance.ts 报告当前真实背景契约。
 
 主进程是桌面产品组合根：负责启动顺序、用户数据基础设施、Runner/PluginHost 装配、Local App API、窗口和退出。
 

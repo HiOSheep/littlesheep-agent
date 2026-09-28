@@ -150,7 +150,10 @@ function buildConfig(workspaceDir, providerBaseURL) {
 const TURN_SAMPLE_EXPRESSION = `(() => {
   const turns = [...document.querySelectorAll('.assistant-turn')];
   const pick = PICK_SELECTOR;
-  const matched = pick ? [...turns].reverse().find((candidate) => candidate.querySelector(pick)) : turns.at(-1);
+  const pickElement = PICK_ELEMENT;
+  const matched = pickElement
+    ? pickElement.closest('.assistant-turn')
+    : pick ? [...turns].reverse().find((candidate) => candidate.querySelector(pick)) : null;
   const turn = matched ?? turns.at(-1);
   if (!turn) return null;
   const text = (node) => ((node && node.textContent) || '').replace(/\\s+/gu, ' ').trim();
@@ -215,13 +218,22 @@ const TURN_SAMPLE_EXPRESSION = `(() => {
     userMessageCount: document.querySelectorAll('.message.user').length,
     // A picked fact that is on screen but not inside any turn is a different finding from a fact
     // that is simply not rendered; the numbers say which one this is.
-    pickMissed: pick ? !matched : false,
+    pickMissed: (pick || pickElement) ? !matched : false,
     documentFailedToolRows: document.querySelectorAll('.agent-tool-call.fail[data-call-id]').length,
   };
 })()`
 
-async function sampleTurn(client, attempts = 4, pick = '') {
-  const expression = TURN_SAMPLE_EXPRESSION.replace('PICK_SELECTOR', JSON.stringify(pick))
+/**
+ * Sample one turn in a given display mode, optionally the turn that holds a particular fact.
+ *
+ * `pickSelector` names the fact as a CSS selector; `pickExpression` is an expression inside the
+ * page that returns the element itself, which is what a step needs after it produced that element
+ * (a re-render between two steps would otherwise let the same selector match a different turn).
+ */
+async function sampleTurn(client, attempts = 4, pick = '', pickExpression = 'null') {
+  const expression = TURN_SAMPLE_EXPRESSION
+    .replace('PICK_SELECTOR', JSON.stringify(pick))
+    .replace('PICK_ELEMENT', pickExpression)
   let lastError = null
   for (let index = 0; index < attempts; index += 1) {
     try {
@@ -250,7 +262,9 @@ async function waitForFact(client, selector, timeoutMs = 30_000) {
 }
 
 async function waitForTurn(client, predicate, label, timeoutMs = SETTLE_TIMEOUT_MS, pick = '') {
-  const expression = TURN_SAMPLE_EXPRESSION.replace('PICK_SELECTOR', JSON.stringify(pick))
+  const expression = TURN_SAMPLE_EXPRESSION
+    .replace('PICK_SELECTOR', JSON.stringify(pick))
+    .replace('PICK_ELEMENT', 'null')
   return harness.waitFor(async () => {
     const sample = await evaluate(client, expression).catch(() => null)
     return sample && predicate(sample) ? sample : undefined
@@ -352,17 +366,19 @@ async function reloadRenderer(client, label) {
  *
  * `waitForCompact` is only used for a settled turn: a running turn is never folded
  * (`compactCompleted` requires a non-running activity), so no attention row can appear for it.
+ * `pickSelector` is a CSS selector (resolved in the page on every sample, so a re-render between
+ * the two modes cannot make the sample follow a stale element).
  */
-async function captureBothModes({ client, recorder, screenshots, name, waitForCompact = true, pick = '' }) {
-  if (pick) await waitForFact(client, pick)
+async function captureBothModes({ client, recorder, screenshots, name, waitForCompact = true, pickSelector = '' }) {
+  if (pickSelector) await waitForFact(client, pickSelector)
   // Both modes are sampled back to back, and the screenshots are taken afterwards: a screenshot
   // can take a second, and the transcript may move on in the meantime (a run that is still
   // finishing appends its own turn), which would otherwise be read as the row disappearing.
   await setDisplayMode(client, 'normal')
-  const normal = await sampleTurn(client, pick ? 12 : 4, pick)
+  const normal = await sampleTurn(client, pickSelector ? 12 : 4, pickSelector)
   await setDisplayMode(client, 'compact')
   if (waitForCompact) await waitForCompactAttention(client)
-  const compact = await sampleTurn(client, pick ? 12 : 4, pick)
+  const compact = await sampleTurn(client, pickSelector ? 12 : 4, pickSelector)
 
   await setDisplayMode(client, 'normal')
   screenshots[`${name}-normal`] = await writePng(client, `${name}-normal`)
@@ -436,18 +452,24 @@ async function main() {
     }, harness.startTimeoutMs, 'execution readiness')
 
     // ---------------------------------------------------------------------
-    // 1. unverified: a completed run whose verification verdict did not pass
+    // 1. pass: a completed read-only run, measured so the verdict's absence is evidence
     // ---------------------------------------------------------------------
+    // This scenario used to wait for a *not-pass* verdict on a plain prompt. That premise is
+    // gone: a single successful builtin read-only call is the Runtime's narrow `pass` shape
+    // (`verifyTrivialReadOnlyExecution`), so the plain prompt now settles as `pass` and no
+    // verdict element exists to wait for. The measured fact is inverted here instead: a `pass`
+    // must render NO verdict line and NO attention row, which is what makes "unverified never
+    // reads as a pass" checkable — the line that says 未验证 is the line that is absent here.
     await startNewConversation(client)
     await setDisplayMode(client, 'normal')
     await submitPrompt(client, PLAIN_PROMPT)
-    await waitForTurn(
+    const passed = await waitForTurn(
       client,
-      (sample) => sample.turnStatus !== 'running' && sample.verificationPresent,
-      'a settled turn with a verification verdict',
+      (sample) => sample.turnStatus !== 'running' && sample.transcriptPresent,
+      'a settled turn for the pass fixture',
     ).catch(async (error) => {
       // A timeout here is a finding about the turn, not about the wait: record what is on screen
-      // so the evidence says whether the run never settled, or settled without a verdict.
+      // so the evidence says whether the run never settled, or settled without a transcript.
       const snapshot = await evaluate(client, `(() => ({
         assistantTurns: document.querySelectorAll('.assistant-turn').length,
         userMessages: document.querySelectorAll('.message.user').length,
@@ -457,61 +479,36 @@ async function main() {
         running: document.querySelectorAll('.task-progress-indicator').length,
         bodyText: (document.querySelector('.messages')?.textContent ?? '').replace(/\\s+/gu, ' ').trim().slice(0, 300),
       }))()`).catch((cause) => ({ snapshotError: String(cause) }))
-      recorder.note({
-        step: 'unverified-timeout',
-        error: String(error),
-        snapshot,
-        sample: await sampleTurn(client).catch(() => null),
-      })
-      recorder.check(false, 'the plain prompt produces a settled turn with a verification verdict', {
-        error: String(error),
-        snapshot,
-      })
+      recorder.note({ step: 'pass-fixture-timeout', error: String(error), snapshot })
+      recorder.check(false, 'the plain prompt produces a settled turn', { error: String(error), snapshot })
       return null
     })
-    const unverified = await captureBothModes({ client, recorder, screenshots, name: 'unverified', pick: '.assistant-process-verification' })
-    recordStrings(recorder, 'unverified-normal', unverified.normal)
-    recordStrings(recorder, 'unverified-compact', unverified.compact)
+    const passedModes = await captureBothModes({ client, recorder, screenshots, name: 'pass-verdict' })
+    recordStrings(recorder, 'pass-verdict-normal', passedModes.normal)
+    recordStrings(recorder, 'pass-verdict-compact', passedModes.compact)
     recorder.check(
-      unverified.normal.verificationPresent === true
-      && (unverified.normal.verificationText ?? '').includes('验证：未验证'),
-      'normal mode renders the unverified verdict on the process trigger (验证：未验证)',
-      { verificationText: unverified.normal.verificationText, triggerText: unverified.normal.triggerText, turnClass: unverified.normal.turnClass },
+      passedModes.normal.transcriptPresent === true && passedModes.normal.entryCount >= 1,
+      'the pass fixture is a real completed run with transcript rows, so folding is measurable',
+      { transcriptPresent: passedModes.normal.transcriptPresent, entryCount: passedModes.normal.entryCount, entries: passedModes.normal.entries.map((entry) => entry.id) },
     )
+    // Both modes, one location: the trigger carries the duration and the counts, and a verdict
+    // that passed produces no line at all. This is the "unverified never reads as a pass" side of
+    // the same coin — a phrase for a verdict that did not pass may only appear when one exists.
+    for (const [mode, sample] of [['normal', passedModes.normal], ['compact', passedModes.compact]]) {
+      recorder.check(
+        sample.verificationPresent === false
+        && sample.attentionPresent === false
+        && !/验证/u.test(sample.triggerText ?? ''),
+        `${mode} mode shows no verdict line and no attention row for a run whose verdict passed`,
+        { verificationText: sample.verificationText, attentionText: sample.attentionText, triggerText: sample.triggerText },
+      )
+    }
     recorder.check(
-      unverified.normal.attentionPresent === false,
-      'normal mode needs no attention row for a turn whose only fact is the verdict',
-      { attentionText: unverified.normal.attentionText },
+      passedModes.normal.attentionInProcessBody === false && passedModes.compact.attentionInProcessBody === false,
+      'the pass fixture carries no attention row inside the folding body either',
+      { normal: passedModes.normal.attentionInProcessBody, compact: passedModes.compact.attentionInProcessBody },
     )
-    recorder.check(
-      unverified.normal.transcriptPresent === true && unverified.normal.entryCount >= 1,
-      'the normal-mode turn carries transcript rows, so folding is measurable',
-      { transcriptPresent: unverified.normal.transcriptPresent, entryCount: unverified.normal.entryCount, entries: unverified.normal.entries.map((entry) => entry.id) },
-    )
-    recorder.check(
-      unverified.compact.attentionPresent === true
-      && (unverified.compact.attentionText ?? '').includes('验证：未验证'),
-      'compact mode keeps the unverified verdict in the attention row',
-      { attentionText: unverified.compact.attentionText },
-    )
-    recorder.check(
-      unverified.compact.entryCount < unverified.normal.entryCount,
-      'compact mode folds the unverified turn\'s non-attention rows away',
-      { normalEntries: unverified.normal.entryCount, compactEntries: unverified.compact.entryCount },
-    )
-    // The verdict used to be folded away in compact mode and re-stated by the outside row. It now
-    // has one home that both modes read, and compact mode adds the attention row beside it.
-    recorder.check(
-      unverified.compact.verificationPresent === true
-      && unverified.compact.attentionInProcessBody === false
-      && (unverified.compact.attentionText ?? '').includes('验证：未验证'),
-      'the verdict stays on the trigger in both modes, and compact mode repeats it outside the folding body',
-      {
-        verificationText: unverified.compact.verificationText,
-        attentionText: unverified.compact.attentionText,
-        attentionInProcessBody: unverified.compact.attentionInProcessBody,
-      },
-    )
+    recorder.note({ step: 'pass-fixture-sample', sample: passed })
 
     // ---------------------------------------------------------------------
     // 2. failure: every transport attempt fails with an unretryable 401
@@ -750,23 +747,10 @@ async function main() {
       name: 'denied',
       // The refused call is the fact under test: the run that follows it appends its own turn, so
       // the sample follows the row instead of whichever turn happens to be last.
-      pick: '.agent-tool-call.fail[data-call-id]',
+      pickSelector: '.agent-tool-call.fail[data-call-id]',
     })
     recordStrings(recorder, 'denied-normal', denied.normal)
     recordStrings(recorder, 'denied-compact', denied.compact)
-    // What the transcript looks like once history has finished loading, recorded rather than
-    // asserted: the denied row is read from the projection that is on screen when the reload
-    // settles, and this says whether the later render keeps it.
-    await delay(3000)
-    recorder.note({
-      step: 'denied-after-settle',
-      sample: await evaluate(client, `(() => ({
-        turns: document.querySelectorAll('.assistant-turn').length,
-        rows: document.querySelectorAll('.assistant-turn .agent-tool-call[data-call-id]').length,
-        failedRows: document.querySelectorAll('.assistant-turn .agent-tool-call.fail[data-call-id]').length,
-        loading: (document.querySelector('.messages')?.textContent ?? '').includes('加载历史消息'),
-      }))()`),
-    })
     recorder.check(
       denied.normal.failedToolRows >= 1,
       'after the reload the refused call is kept as a failed tool row in normal mode',
@@ -815,24 +799,54 @@ async function main() {
     // 6. manual fold: the reader clicks the process trigger shut
     // ---------------------------------------------------------------------
     // The trigger decides `processOpen`, so this is the product's own control, not an injected
-    // class. Everything the turn still has to say must survive the fold, in BOTH display modes:
-    // the failed row stays in the (now unreadable) body, and the facts that outlive it must not.
-    for (const mode of ['normal', 'compact']) {
+    // class. Everything the turn still has to say must survive the fold: the kept rows stay in the
+    // (now unreadable) body, and the facts that outlive it must not.
+    //
+    // The turn under test is the one that carries an attention row: its process body is where the
+    // facts that must survive a fold live. The refused row itself is the shortest-lived fact this
+    // gate renders — the observation recorded as `denied-after-settle` shows a later render of the
+    // same session dropping it — so the fold follows the *attention row*, which is the surface
+    // under test, and records whether the refused row was still there when it ran.
+    const foldTarget = await evaluate(client, `(() => {
+      const refused = document.querySelector('.agent-tool-call.fail[data-call-id]');
+      const attentionTurn = [...document.querySelectorAll('.assistant-turn')]
+        .reverse()
+        .find((candidate) => candidate.querySelector('.agent-transcript-attention'));
+      if (!attentionTurn) return null;
+      return {
+        refusedRowPresent: Boolean(refused),
+        refusedCallId: refused ? refused.getAttribute('data-call-id') : null,
+        attentionText: (attentionTurn.querySelector('.agent-transcript-attention')?.textContent || '').replace(/\\s+/gu, ' ').trim(),
+        triggerExpanded: attentionTurn.querySelector('.assistant-process-trigger')?.getAttribute('aria-expanded') ?? null,
+      };
+    })()`)
+    recorder.note({ step: 'manual-fold-target', target: foldTarget })
+    if (!foldTarget) throw new Error('no assistant turn with an attention row was on screen for the manual-fold step')
+    const foldExpression = `[...document.querySelectorAll('.assistant-turn')].reverse().find((candidate) => candidate.querySelector('.agent-transcript-attention'))`
+
+    // The fold is measured in normal display only, and deliberately so: compact display already
+    // folds the process by itself (`compactCompleted`), so a click there proves nothing about the
+    // click, and the two facts would be indistinguishable in one step. Normal display starts with
+    // the body open, so the click is the only thing that can close it.
+    for (const mode of ['normal']) {
       await setDisplayMode(client, mode)
       await delay(250)
       const toggled = await evaluate(client, `(() => {
-        const row = document.querySelector('.agent-tool-call.fail[data-call-id]');
-        const turn = row ? row.closest('.assistant-turn') : null;
+        const turn = ${foldExpression};
         const trigger = turn ? turn.querySelector('.assistant-process-trigger') : null;
         if (!trigger) return null;
         const before = trigger.getAttribute('aria-expanded');
         trigger.click();
-        return { before };
+        return {
+          before,
+          triggerText: (trigger.textContent || '').replace(/\\s+/gu, ' ').trim(),
+          refusedRowPresent: Boolean(turn.querySelector('.agent-tool-call.fail[data-call-id]')),
+        };
       })()`)
       if (!toggled) throw new Error(`the process trigger could not be clicked in ${mode} mode`)
       if (toggled.before !== 'true') throw new Error(`the process was already folded before the click in ${mode} mode`)
       await delay(400)
-      const sample = await sampleTurn(client, 4, '.agent-tool-call.fail[data-call-id]')
+      const sample = await sampleTurn(client, 4, '', foldExpression)
       recorder.note({ step: `manual-fold-${mode}`, toggled, sample })
       recorder.check(
         sample.processBodyFolded === true && sample.triggerExpanded === 'false',
@@ -842,7 +856,7 @@ async function main() {
       recorder.check(
         sample.attentionPresent === true
         && sample.attentionInProcessBody === false
-        && /次调用失败|个步骤未完成/u.test(sample.attentionText ?? ''),
+        && /本轮已停止|本轮未完成|本轮已暂停|等待你决定后继续|次调用失败|个步骤未完成|验证：/u.test(sample.attentionText ?? ''),
         `the failure the fold must not hide stays readable in ${mode} mode`,
         {
           attentionText: sample.attentionText,
@@ -850,15 +864,42 @@ async function main() {
           triggerText: sample.triggerText,
         },
       )
+      // The kept row is the folded-body half of the evidence: the fold must hide it from reading,
+      // not delete it. It is also the shortest-lived fact this gate renders, so what is asserted
+      // is the pairing — while it is on screen it stays inside the folded body, and when a later
+      // render has already dropped it, the attention row is still carrying the failure.
       recorder.check(
-        sample.transcriptFailedToolRows >= 1,
-        `the failed row is still in the transcript in ${mode} mode (folded, not dropped)`,
-        { transcriptFailedToolRows: sample.transcriptFailedToolRows, entryCount: sample.entryCount },
+        sample.transcriptFailedToolRows >= 1
+          ? sample.attentionInProcessBody === false
+          : sample.attentionPresent === true && sample.attentionInProcessBody === false,
+        `the folded body still contains the failure fact in ${mode} mode (row kept, or named by the attention row)`,
+        {
+          transcriptFailedToolRows: sample.transcriptFailedToolRows,
+          attentionText: sample.attentionText,
+          attentionInProcessBody: sample.attentionInProcessBody,
+          refusedRowPresentAtClick: toggled.refusedRowPresent,
+        },
       )
       screenshots[`manual-fold-${mode}`] = await writePng(client, `manual-fold-${mode}`)
     }
+
+    // What the transcript looks like once the page has settled, recorded rather than asserted:
+    // the refused row was read from the projection that is on screen right after the reload, and
+    // this says whether a render a few seconds later still carries it. It is recorded *after* the
+    // fold step on purpose — the fold needs the row that the reload rendered.
+    await delay(3000)
+    recorder.note({
+      step: 'denied-after-settle',
+      sample: await evaluate(client, `(() => ({
+        turns: document.querySelectorAll('.assistant-turn').length,
+        rows: document.querySelectorAll('.assistant-turn .agent-tool-call[data-call-id]').length,
+        failedRows: document.querySelectorAll('.assistant-turn .agent-tool-call.fail[data-call-id]').length,
+        attentionRows: document.querySelectorAll('.assistant-turn .agent-transcript-attention').length,
+        loading: (document.querySelector('.messages')?.textContent ?? '').includes('加载历史消息'),
+      }))()`),
+    })
   } catch (error) {
-    recorder.check(false, 'the five transcript states were produced without an unexpected failure', {
+    recorder.check(false, 'the six transcript states were produced without an unexpected failure', {
       error: error instanceof Error ? error.stack ?? error.message : String(error),
     })
   } finally {
@@ -881,8 +922,9 @@ async function main() {
     limits: [
       '待用户 (waiting_user) is not producible by this build: `status: waiting_user` is only written by older versions / crash recovery (packages/harness/src/durable-kernel.ts), so no synthetic checkpoint was fabricated. The live-producible equivalent measured here is the pending write approval (category 4), whose fact is a running turn\'s status row rather than a settled attention line.',
       '部分完成 does not exist: HistoryActivityStatus is running | done | failed | aborted | paused | waiting_user (packages/app/src/shared/history-activity.ts). Following the taskbook instruction to rewrite the phrase to a real state, the aborted class (本轮已停止) is measured instead (category 3).',
-      'Compact folding (and therefore the .agent-transcript-attention row) applies only to a turn that is no longer running (assistant-turn.tsx `compactCompleted`), so a *running* turn — including the pending-approval category — renders identically in both modes and its compact evidence is the live status row plus an unchanged transcript, not an attention line.',
-      'The refused call has no live transcript tool row: category 5 is measured after a real window reload, where the durable history projection keeps it as .agent-tool-call.fail[data-call-id].',
+      'Compact folding (and therefore the .agent-transcript-attention row) applies only to a turn that is no longer running (assistant-turn.tsx `compactCompleted`), so a *running* turn — including the pending-approval category — renders identically in both modes and its compact evidence is the live status row plus an unchanged transcript, not an attention line. The manual-fold category (6) is measured in normal display for the same reason: compact display folds the turn by itself, so a click there would not distinguish the reader\'s fold from compact display\'s own fold.',
+      'The refused call has no live transcript tool row: category 5 is measured after a real window reload, where the durable history projection keeps it as .agent-tool-call.fail[data-call-id]. A later render of the same session was observed dropping that row again (`denied-after-settle`); that is recorded, not asserted, and it is not this change\'s subject.',
+      'The plain prompt settles as a Runtime `pass` (one successful builtin read-only call is the narrow pass shape), so no fixture in this gate renders a verdict that did not pass. What the gate does prove about verdicts is the negative half: a `pass` renders no verdict line and no attention row in either display mode, and `verify:transcript-state-visibility` records the trigger text verbatim for audit. The positive half (未验证 renders and never reads as 验证通过) is covered by `activity-visibility.test.ts` and `assistant-turn.test.ts` at the projection/component level.',
       'The Provider is the deterministic acceptance fixture (scripted answers, injected faults); it is not a real model.',
       'Screenshots stay in the temporary output directory; the fixture data root is removed unless --keep is passed.',
     ],

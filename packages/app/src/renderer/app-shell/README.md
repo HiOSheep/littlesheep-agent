@@ -1,9 +1,13 @@
 # Renderer 应用壳
-最后更新：2026-09-28 01:40:12
+最后更新：2026-09-28 12:38:06
+
+Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各叠一层玻璃；交接处没有色差或分隔。两种窗口布局均已移除标题栏里的 LittleSheep 文字和小羊图标，侧栏自身内容不受影响。
+
+窗口结构现在按原生状态切换：use-window-chrome.ts 通过 preload 订阅 Main，在根节点投影 data-window-layout 与 data-native-backdrop。app-view.tsx 保持同一组组件，14-window-layout.css 将最大化/全屏映射为 Beta（整宽标题栏、侧栏下移一行），普通窗口使用下面描述的 Chali；切换不丢失会话、输入或面板状态。
 
 这里负责把各 Renderer 领域组合成一个应用界面，不拥有会话、记忆、项目或工作区的权威数据。
 
-**窗口是 chali 结构（2026-09-28）**：`app-view.tsx` 把标题栏移进 `.app` 网格，侧栏那一列因此整列贯通窗口顶边，32px 顶部条只从侧栏右边缘开始、到窗口右边缘结束。`app-view.tsx` 同时渲染新的 `WindowDragRegion`（`.window-drag-band`，占 `grid-column: 1; grid-row: 1`），与标题栏一起拼出整条可拖拽顶边——折叠侧栏时它宽度归零，标题栏自动接管整条边。设置交接的 `aria-hidden` / `inert` 从 `.app` 移到新的 `.app-panels`（`display: contents`，只包侧栏与工作区），所以设置打开时顶部条与拖拽带仍然可用：这是 alpha 里整宽标题栏一直享有的契约。完整结构、实测数字与契约测试见 `../README.md` 的同名段落。
+**普通窗口的 Chali 结构（2026-09-28）**：`app-view.tsx` 把标题栏移进 `.app` 网格，侧栏那一列因此整列贯通窗口顶边，32px 顶部条只从侧栏右边缘开始、到窗口右边缘结束。`app-view.tsx` 同时渲染新的 `WindowDragRegion`（`.window-drag-band`，占 `grid-column: 1; grid-row: 1`），与标题栏一起拼出整条可拖拽顶边——折叠侧栏时它宽度归零，标题栏自动接管整条边。设置交接的 `aria-hidden` / `inert` 从 `.app` 移到新的 `.app-panels`（`display: contents`，只包侧栏与工作区），所以设置打开时顶部条与拖拽带仍然可用：这是 alpha 里整宽标题栏一直享有的契约。完整结构、实测数字与契约测试见 `../README.md` 的同名段落。
 
 `chat-view.tsx` 在普通消息与带执行过程的助手回合两条渲染路径上，都向产出卡片传入工作区路径和文件审阅动作；缺少工作区路径只影响 Git 行数读取，不应退回旧的文件网格。
 

@@ -9,6 +9,7 @@
 // queryable and subscribable so a missed notification can always be repaired.
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { isWindowChromeState, WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL, type WindowChromeState } from '../shared/window-chrome-contracts'
 import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
   APPLICATION_STATE_FLUSH_CHANNEL,
@@ -39,6 +40,17 @@ import {
  * as an error the renderer can show instead of a request that never settles.
  */
 const API_BASE_TIMEOUT_MS = 90_000
+
+// Replay current state to subscribers so restored/reloaded windows do not need
+// to catch the original native maximize event.
+let chromeState: WindowChromeState | undefined
+const chromeListeners = new Set<(state: WindowChromeState) => void>()
+ipcRenderer.on(WINDOW_CHROME_CHANNEL, (_event, payload: unknown) => {
+  if (!isWindowChromeState(payload)) return
+  chromeState = payload
+  for (const listener of chromeListeners) listener(payload)
+})
+ipcRenderer.send(WINDOW_CHROME_QUERY_CHANNEL)
 
 let readiness: RuntimeReadiness | undefined
 let apiBase: string | undefined
@@ -79,6 +91,12 @@ const apiBasePromise = new Promise<string>((resolve, reject) => {
 apiBasePromise.catch(() => undefined)
 
 contextBridge.exposeInMainWorld('littlesheep', {
+  onWindowChrome: (listener: (state: WindowChromeState) => void) => {
+    chromeListeners.add(listener)
+    if (chromeState) listener(chromeState)
+    ipcRenderer.send(WINDOW_CHROME_QUERY_CHANNEL)
+    return () => { chromeListeners.delete(listener) }
+  },
   /** Loopback base URL of the Local App API; resolves once it is listening. */
   localApiBase: () => apiBasePromise,
   /** Current execution readiness, including a stage the renderer may have missed. */

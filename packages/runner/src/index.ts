@@ -181,7 +181,31 @@ export {
   DEFAULT_DURABLE_EVENT_MAX_EVENTS_PER_RUN,
   DEFAULT_DURABLE_EVENT_MAX_PAYLOAD_BYTES,
   type DurableEventStoreOptions,
+  type DurableRunPartitionRevision,
 } from './durable-event-store.js';
+
+export {
+  ProviderUsageDailyService,
+  type ProviderUsageDailyPassResult,
+  type ProviderUsageDailyServiceOptions,
+  type ProviderUsageEventSource,
+} from './provider-usage-daily-service.js';
+
+export type { ProviderUsageDailyQueryInput } from './provider-usage-daily-query.js';
+
+export { ProviderUsageDailyIndexStore } from './provider-usage-daily-index.js';
+
+export {
+  ProviderUsageDailyRangeError,
+  assertBoundedDailyRange,
+  defaultDailyRange,
+  isSupportedTimeZone,
+  isValidLocalDate,
+  localDateRange,
+  localToday,
+  systemTimeZone,
+  zonedDateKey,
+} from './provider-usage-daily-time.js';
 
 export {
   DurableInboxStore,

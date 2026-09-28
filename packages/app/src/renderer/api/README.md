@@ -1,6 +1,8 @@
 # Renderer API 客户端
 
-最后更新：2026-09-27 09:30:23
+最后更新：2026-09-28 12:31:11
+
+common.ts 的 Window.littlesheep 增加只读 onWindowChrome 订阅类型；数据由 Main 经 preload 校验后发布，应用壳仅据此切换 Beta/Chali 样式。
 
 本目录承载 Electron Renderer 对 Local App API 的类型化 fetch/SSE 客户端。根级 `../api.ts` 是面向既有调用方的兼容入口，本目录按领域保存实现。 `workspace-files.ts` 另有"打开方式"三件套：`listWorkspaceOpenWith`（读候选）、`launchWorkspaceOpenWith`（只传 handlerId，由 Main 复核后再启动）、`revealWorkspacePath`（显示文件位置）。
 

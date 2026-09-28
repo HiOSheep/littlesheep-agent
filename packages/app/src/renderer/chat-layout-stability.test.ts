@@ -313,7 +313,8 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.window-shell\s*\{[^}]*border(?:-radius)?:/u)
     expect(styles).toMatch(/\.window-titlebar\s*\{[^}]*background:\s*var\(--workspace-code-surface\);[^}]*border-bottom:\s*0;/u)
     expect(styles).not.toMatch(/\.sidebar-resizer::before\s*\{/u)
-    expect(styles).not.toMatch(/\.window-shell::before\s*\{/u)
+    // Beta owns one shared chrome material rather than one per panel.
+    expect(ruleBody(styles, "html[data-window-layout='beta'] .window-shell::before")).toContain('inset: 0')
     expect(styles).not.toMatch(/\.window-shell::after\s*\{/u)
     expect(styles).not.toMatch(/\.primary-workspace::before\s*\{/u)
     expect(styles).not.toMatch(/\.window-titlebar::before\s*\{/u)
@@ -394,17 +395,15 @@ describe('chat layout stability', () => {
     expect(materialRule).toContain('-webkit-backdrop-filter: blur(20px) saturate(145%)')
     expect(materialRule).toContain('backdrop-filter: blur(20px) saturate(145%)')
     expect(materialRule).toContain('border-radius: var(--floating-panel-inner-radius)')
-    expect(styles).not.toMatch(/\.sidebar-surface::before\s*\{[^}]*background:\s*transparent;/u)
+    expect(ruleBody(styles, "html[data-window-layout='beta'] .sidebar-surface::before")).toContain('background: transparent')
     expect(styles).not.toContain('.sidebar-surface::after')
     expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).not.toContain('mask-image')
     expect(styles).not.toContain('sidebar-corner-mask')
     expect(desktopShell).toContain("transparent: false")
-    // 2026-09-23 cold-start unification: the window no longer layers acrylic
-    // over the native caption buttons. Acrylic plus a translucent page painted
-    // the visible seam, so the unified opaque #101010 surface is the verified
-    // scheme and the material flag must stay absent.
-    expect(desktopShell).not.toContain('backgroundMaterial')
+    // Native chrome owns acrylic and follows maximize/fullscreen independently
+    // of the panel controls. The standalone startup page remains opaque.
+    expect(desktopShell).toContain('installDesktopWindowChrome(win,')
     expect(desktopShell).toContain('color: DESKTOP_STARTUP_SURFACE')
     expect(desktopShell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
     expect(desktopShell).toContain('roundedCorners: true')

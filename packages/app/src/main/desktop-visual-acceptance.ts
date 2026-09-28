@@ -11,6 +11,7 @@
 
 import type { BrowserWindow } from 'electron'
 import { DESKTOP_STARTUP_SURFACE, DESKTOP_TITLEBAR_HEIGHT } from './desktop-startup-page.js'
+import { nativeWindowBackdrop } from './desktop-window-chrome.js'
 
 export interface DesktopVisualContract {
   titlebarHeight: number
@@ -22,12 +23,14 @@ export interface DesktopVisualContract {
   backgroundColor: string
 }
 
-export function desktopVisualContract(): DesktopVisualContract {
+export function desktopVisualContract(window?: BrowserWindow, renderer = false): DesktopVisualContract {
+  const glass = renderer && nativeWindowBackdrop() !== 'solid'
+  const beta = window && (window.isMaximized() || window.isFullScreen())
   return {
     titlebarHeight: DESKTOP_TITLEBAR_HEIGHT,
-    titlebarOverlayColor: DESKTOP_STARTUP_SURFACE,
+    titlebarOverlayColor: glass && beta ? '#00000000' : DESKTOP_STARTUP_SURFACE,
     startupSurface: DESKTOP_STARTUP_SURFACE,
-    backgroundColor: DESKTOP_STARTUP_SURFACE,
+    backgroundColor: glass ? '#00000000' : DESKTOP_STARTUP_SURFACE,
   }
 }
 

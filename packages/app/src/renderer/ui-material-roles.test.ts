@@ -90,6 +90,8 @@ const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }>
  *   modal), so no scrim dims or blurs the canvas behind it.
  */
 const BLUR_OVERRIDES = [
+  "html[data-window-layout='beta'] .sidebar-surface::before",
+  '.workspace-panel-surface::before',
   'body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel-surface::before, body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-active-item',
   '.settings-workspace .overlay',
 ]

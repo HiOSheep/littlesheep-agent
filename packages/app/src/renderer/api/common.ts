@@ -7,12 +7,14 @@
 // is still answered by the same listener instead of failing against port 0.
 
 import type { WindowDragPoint } from '../../shared/window-drag-contracts'
+import type { WindowChromeState } from '../../shared/window-chrome-contracts'
 import type { RuntimeReadiness } from '../../shared/runtime-readiness-contracts'
 import type { RendererTimingStage } from '../../shared/runtime-readiness-ipc'
 
 declare global {
   interface Window {
     littlesheep: {
+      onWindowChrome?: (listener: (state: WindowChromeState) => void) => () => void
       /** Legacy fixed base URL. Kept for tests and for preloads that predate readiness. */
       apiBase?: string
       localApiBase?: () => Promise<string>

@@ -599,26 +599,6 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   cursor: default;
 }
 
-.window-titlebar-brand {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.window-titlebar-icon {
-  display: block;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  object-fit: contain;
-}
-
 .app {
   display: grid;
   grid-template-columns:

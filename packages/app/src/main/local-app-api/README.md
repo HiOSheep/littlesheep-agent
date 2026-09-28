@@ -1,8 +1,10 @@
 # Local App API
 
-最后更新：2026-09-27 13:47:35
+最后更新：2026-09-27 23:12:01
 
 本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
+
+跨日用量统计（O5，2026-09-27）由 `usage-routes.ts` 独占四条路由，统计规则与持久化事实全部在 `@littlesheep/runner` 的 `provider-usage-daily-*.ts` 里，这一层只做参数校验、边界与响应装配：`GET /runtime/usage/daily` 返回有界日序列（`from`/`to` 同时给出或全省略取默认最近 366 天；范围上限 400 天，超出返回 400 而不是截断；`timezone` 为 IANA 名，缺省用系统时区并在响应里标明 `timezoneSource`；`provider`/`model` 精确匹配**实际记录到的身份**，没有位置维度），响应自带 `totals`/`peak`/`activeDays`/`identities` 与 `coverage`（缺失响应数、无响应请求数、无法重放的 run、next/shadow 分布、被折叠的重复事件、清空截止、保留摘要、回填进度，以及一句中文 `statement`），**渲染器不需要也不应该自己再求一次和**；空日、缺 usage 的部分日、未来日与"实报 0"在日行里是可区分的状态。`POST /runtime/usage/refresh` 做一次有界增量扫描（`budget` 默认 64），`POST /runtime/usage/backfill` 用 `{action: start|cancel|status}` 启动/取消/查询可续接的历史回填，`POST /runtime/usage/clear` 是显式的"清空用量统计"，`through`（ISO 时刻，缺省为当前时刻）记入**非派生**的 `<data-root>/usage-state/`，因此重建派生索引不会让已清空的消耗复活。`GET` 不触发任何扫描：它只读已保存的投影（运行时尚未就绪时也能照常回答），扫描类路由才需要 Runner 的事件存储，未就绪时按既有约定 503 `runtime-not-ready`。
 
 `open-with-routes.ts` 提供"用哪个应用打开"的三条路由（2026-09-26）：`GET /workspace/open-with` 返回本机为该扩展名注册的应用（按扩展名缓存 32 项，因为发现要跑 `reg.exe`），`POST /workspace/open-with` 用 `{ root, path, handlerId }` 启动其中一个，`POST /workspace/reveal` 走 `shell.showItemInFolder`。**渲染进程只传 id，不传命令行**：两条写路由都会重新发现一次再 spawn / 展示，id 失效时返回 400 而不是猜。它们独立成文件，让 `workspace-routes.ts` 保持在组合面的 300 行预算内（275 行）。
 会话上下文用量记录额外携带 `sessionCache`：本会话累计的输入/缓存读取/未缓存与精确命中率，供 composer 指示器展示；它是 provider 用量的汇总，不引入第二套真相来源。
@@ -19,6 +21,7 @@
 | `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
 | `session-routes.ts` | 会话列表、分叉、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录。分叉以已保存的用户消息或已完成助手回复为截点，历史消息重绑新会话 ID，索引继承原会话的项目、工作区与权限模式；原会话的 settlement 身份不复制。重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。`PATCH /sessions/:id` 另接受 `workspacePath`，作为**项目会话显式换目录**的唯一入口（必须是已存在的绝对目录；独立会话没有自己的目录，请求该字段会被拒绝，因为它跟随请求与默认目录）。 |
 | `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。模型引用校验（`validateModelRef`）必须按**解析后的模型 id** 比较：供应商的 `models` 既可能是裸 id 数组，也可能是带元数据的对象数组（设置页保存的自定义供应商就是后者），直接 `models.includes(model)` 会让自定义供应商的模型在选择器里可选、选中后却被 500 拒绝（UX-11 实机验收发现并修掉）。 |
+| `usage-routes.ts` | 跨日 Provider 用量的四条只读/显式动作路由（`/runtime/usage/daily`、`/refresh`、`/backfill`、`/clear`），见上文（O5）。服务实例按数据根缓存（最多 4 个），投影与清空记录的所有权在 `@littlesheep/runner`；本层只校验参数、施加 400 天与 64 个身份分面的上限并装载响应。 |
 | `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
 | `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |
 | `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |

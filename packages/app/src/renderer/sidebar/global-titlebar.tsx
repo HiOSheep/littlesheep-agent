@@ -4,7 +4,6 @@
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SettingsGearIcon, SidebarToggleIcon } from '../ui/icons'
 import { HistoryBackIcon, HistoryForwardIcon } from '../ui/browser-icons'
-import appIconUrl from '../../../resources/littlesheep-icon.png'
 
 function canBeginWindowDrag(target: EventTarget | null): boolean {
   return !(target instanceof Element && target.closest('[data-window-drag-ignore], button, a, input, textarea, select, [contenteditable="true"]'))
@@ -115,10 +114,6 @@ export function GlobalTitlebar({
         >
           <HistoryForwardIcon />
         </button>
-      </div>
-      <div className="window-titlebar-brand">
-        <img className="window-titlebar-icon" src={appIconUrl} alt="" aria-hidden="true" />
-        <span>LittleSheep</span>
       </div>
     </header>
   )

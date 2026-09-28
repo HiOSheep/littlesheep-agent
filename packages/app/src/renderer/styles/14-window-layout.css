@@ -1,0 +1,89 @@
+/* Chali is the normal-window layout. Beta follows native maximize/fullscreen
+   events, independently of sidebar and workspace panel expansion. */
+.window-shell {
+  --floating-panel-inset: 0px;
+  --floating-panel-inline-gutter: 0px;
+  --floating-panel-border-width: 0px;
+  --floating-panel-inner-radius: 0px;
+  --radius-floating-panel: 0px;
+  --floating-panel-shadow: none;
+}
+
+/* One edge-to-edge sidebar, with no opaque rail hiding the system backdrop. */
+.sidebar::before,
+.settings-sidebar-track::before {
+  display: none;
+}
+
+.sidebar-surface,
+.settings-sidebar {
+  border-radius: 0;
+  box-shadow: inset -1px 0 var(--border);
+}
+
+.sidebar-contents,
+.settings-sidebar-contents {
+  padding-top: calc(var(--window-titlebar-height) + 8px);
+}
+
+.workspace-panel-surface {
+  background: var(--workspace-code-surface);
+  box-shadow: inset 1px 0 var(--border);
+}
+
+.workspace-panel-surface::before {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* OS acrylic/vibrancy provides the blur behind the application. CSS blur alone
+   cannot sample other windows. Unsupported platforms keep a readable solid base. */
+html[data-native-backdrop='solid'] .window-shell {
+  background: var(--workspace-code-surface);
+}
+
+/* Beta has ONE material underneath its L-shaped chrome. Neither the titlebar
+   nor sidebar paints another tint/blur, so their meeting edge has no seam. */
+html[data-window-layout='beta'] .window-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--sidebar-glass-fill);
+  background-image: linear-gradient(var(--sidebar-glass-fill), var(--sidebar-glass-fill)),
+    linear-gradient(180deg, var(--sidebar-tint-top), var(--sidebar-tint-bottom));
+}
+
+html[data-window-layout='beta'] .sidebar-surface::before {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-window-layout='beta'] .sidebar-surface {
+  box-shadow: none;
+}
+
+html[data-window-layout='beta'] .window-titlebar {
+  grid-column: 1 / -1;
+  z-index: 22;
+  background: transparent;
+}
+
+html[data-window-layout='beta'] .window-drag-band {
+  display: none;
+}
+
+html[data-window-layout='beta'] :is(.sidebar, .sidebar-resizer, .settings-sidebar-track, .settings-sidebar-resizer) {
+  grid-row: 2;
+}
+
+html[data-window-layout='beta'] :is(.sidebar-contents, .settings-sidebar-contents) {
+  padding-top: var(--sidebar-content-block-inset);
+}
+
+html[data-window-layout='beta'] :is(.core-workspace, .settings-workspace-body) {
+  border-top-left-radius: 12px;
+  corner-shape: round;
+}

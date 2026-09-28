@@ -1,5 +1,7 @@
 # Renderer 通用 UI
-最后更新：2026-09-27 22:39:32
+最后更新：2026-09-28 12:38:06
+
+窗口布局层 14-window-layout.css 取消工作区面板的背景模糊（新增显式 none 覆盖），工作区保持稳定实体底色；侧栏和 Beta 标题栏的应用外模糊由系统 Acrylic/vibrancy 提供，不新增 CSS blur 配方。ui-material-roles.test.ts 同步维护覆盖清单。
 
 这里放跨领域复用的交互基元，而不是具体业务页面。
 

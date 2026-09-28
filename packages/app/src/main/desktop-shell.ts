@@ -32,6 +32,7 @@ import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
 import { recordBootstrapTiming } from './bootstrap-timing.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepTrayController } from './tray-controller.js'
+import { installDesktopWindowChrome } from './desktop-window-chrome.js'
 import {
   isWindowDragPoint,
   WINDOW_DRAG_END_CHANNEL,
@@ -184,7 +185,8 @@ export class LittleSheepDesktopShell {
 
   /** Native window facts the visual acceptance cannot read from the DOM. */
   visualContract(): DesktopVisualContract {
-    return desktopVisualContract()
+    const window = this.resolveWindow()
+    return desktopVisualContract(window, window !== undefined && this.rendererLoadedWindows.has(window))
   }
 
   /**
@@ -270,11 +272,8 @@ export class LittleSheepDesktopShell {
       title: 'LittleSheep',
       icon: resolveDesktopIcon(),
       titleBarStyle: 'hidden',
-      // One opaque surface for the startup page, the renderer titlebar and the
-      // native caption buttons. Acrylic composites the native overlay against a
-      // differently-lit backdrop than the page paints, which is the seam the
-      // cold-start screenshots showed; the unified solid surface is the
-      // verified scheme.
+      // Keep native resize/maximize behavior. The system backdrop is installed
+      // separately; only the standalone startup document remains opaque.
       transparent: false,
       roundedCorners: true,
       // Keep the native thick frame so Windows resizing, shadow, and window
@@ -311,6 +310,7 @@ export class LittleSheepDesktopShell {
     const windowWebContentsId = win.webContents.id
     configureEmbeddedBrowserWindow(win)
     this.mainWindow = win
+    installDesktopWindowChrome(win, () => this.rendererLoadedWindows.has(win))
     const restoredState = this.restoreWindowStateFor(win)
     const shouldRestoreMaximized = restoredState?.maximized === true
     let rendererReadyForInitialShow = false

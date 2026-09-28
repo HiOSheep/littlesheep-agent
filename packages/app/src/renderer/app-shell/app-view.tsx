@@ -6,9 +6,11 @@ import { CoreWorkspaceView } from './core-workspace-view'
 import { OverlaysView } from './overlays-view'
 import { SidebarView } from './sidebar-view'
 import type { AppViewController } from './app-controller-projections'
+import { useWindowChrome } from './use-window-chrome'
 
 
 export function AppView({ controller }: { controller: AppViewController }) {
+  useWindowChrome()
   const {
     shellRef,
     sidebarCollapsed,
@@ -53,10 +55,9 @@ export function AppView({ controller }: { controller: AppViewController }) {
         style={layoutStyle}
       >
         <div className="primary-workspace">
-          {/* chali: the sidebar owns the window's top-left corner, so the top bar covers
-              only the chat+workspace column and the sidebar column gets its own drag
-              surface over the same 32px band. Together they cover the whole top edge at
-              every sidebar width, including the collapsed one. */}
+          {/* Chali puts the sidebar against the top edge. Native maximize/fullscreen
+              projects Beta through preload: CSS spans the titlebar over all columns
+              and moves the sidebar below it, without remounting any panel. */}
           <div className="app">
             <GlobalTitlebar
               sidebarCollapsed={sidebarCollapsed}

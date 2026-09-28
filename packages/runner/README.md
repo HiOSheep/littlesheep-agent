@@ -1,6 +1,6 @@
 # @littlesheep/runner
 
-最后更新：2026-09-27 17:58:40
+最后更新：2026-09-27 23:12:01
 
 作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
 真实验收（RS-07，2026-09-27）：`pnpm run verify:memory-controlled-writes` 在隔离数据根里用**真实 runner、真实 Memory v3 仓库与真实会话存储**跑完受控记忆的验收表——可调用工具目录、明确记住→重启→新会话召回（以模型实际收到的请求为准）、必要写入与薄弱理由拒绝、闲聊不写与模型不能自授权、压力下不学习、用户纠正（5432→6432，重启后仍只有新事实）、用户忘记与撤销标记跨重启、六类拒绝各自可辨、§2.1 常驻回归。脚本用受控模型替身定位边界，并在报告的 `limits` 里明确写出"未做真实模型验收"，不把替身当真实模型。
@@ -14,6 +14,19 @@
 `DurableInboxStore.initialize()` 与 `DurableRunLeaseStore.initialize()` 只做"准入需要"的那部分（2026-09-27，大根夹具实测）：inbox 只解析 `queued`/`claimed` 记录、对终态记录只记文件名与 stamp 并把内容延后（`runner-durable-inbox-deferred-read` 标出那次延后读取），run lease store 只校验目录与文件名、不打开任何租约文件。原因是**全新 run 从不读历史记录**——它按文件名 acquire 自己的租约。实测（300 条 inbox + 300 条 lease 的合成根，同一台机器）：`inbox.initialize()` 210 ms → 18–33 ms，`run-lease.initialize()` 198 ms → 0.9–1.6 ms；延后读取约 20 ms，发生在 `execution-ready` 之后。被延后的记录**没有失去校验**：任何完整读取（`enqueue`/`claim`/`listRecoverableRuns` 的首次调用、或 `warmDeferredCommands`）都会解析它们，损坏仍然以 `kind: 'corrupt'` 失败关闭——`initialize` 返回后仍会拒绝一个坏记录，只是拒绝发生在真正用它的那次读取上。过期 claim 的 requeue 也照旧发生，只是同样落在恢复期而不是就绪前。启动扫描的逐文件工作并行进行（每次 16 个在飞）：同一目录上顺序 stat+read 约 100 ms，重叠后约 11 ms。
 
 `infra.ts` 的 `buildInfrastructure` 在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时输出以 `runner-infra-` 开头的 `[bootstrap-timing]` 阶段标（可观测性存储、durable harness 的四个存储、检查点存储、embedding、memory、bootstrap 文件、skill loader、harness 装配），并以 `runner-infra-returned` 收尾：该收尾标与 `execution-start`→`runner-ready` 的差值实测只差 0.2 ms（112.1/128.0/124.1 对 111.9/127.8/123.9），因此 `buildInfrastructure` 可以认定覆盖了 Runner 构建的全部成本，不要再为"还有别的东西没算进去"另设探针。`mark` 的第二个参数是给重叠阶段用的：`durable-harness-infrastructure.ts` 并行初始化四个存储（各自目录、各自目录内锁文件，互不共享状态），每个存储完成后用自己测得的耗时打标，而不是让共享计时器去量"两次打标之间的间隔"。配对实测（normal，每变体 8–10 次）：durable 阶段墙钟 36–40 ms → 10–13 ms，Runner 构建 114–116 ms → 99–101 ms，其中 10–16 ms 被紧随其后的 bootstrap 文件注册吸收，净收益约 14 ms；失败语义不变（按声明顺序报告第一个失败并关闭 next 模式准入）。延后读取的那条标走的是同一条 `[bootstrap-timing]` 流但**不经过调用方的 `mark` 回调**：那个回调是顺序阶段计时器，用来归因一次构建，而这些工作在构建返回之后才结束。Runner 构建仍是"进程启动 → 首次可执行"里唯一还有量级的成本（本次改动后中位约 100–116 ms）；这些阶段标只做诊断，正常启动不输出、不轮询，也不改变任何初始化顺序。
+
+## 跨日用量投影（O5，2026-09-27）
+
+跨日 Provider 用量统计的**唯一事实来源是持久化的 durable 事件**，不是消息、用量卡片或执行日志里的 `modelRequests` 副本。`provider-usage-daily-*.ts` 构成这条只读投影，分成五个边界：
+
+- `provider-usage-daily-facts.ts`：用 `reduceDurableRunProjection`（Harness kernel 的同一个 reducer）重放一个 run 的事件，把带 Provider 实报 usage 的 `model_response_received` 变成 attempt 事实。身份是 **requestId**（Harness 每次真实 Provider 调用都新生成一个随机 id；重试是新 id，因此是独立付费尝试）；响应存在但没有可用 usage 记 `response_without_usage`，只有 `model_request_started` 没有响应记 `request_without_response`。整份事件流无法重放的 run 记 `unreadableRuns`，不猜、不部分相信。
+- `provider-usage-daily-fold.ts`：按 requestId 去重。同一 requestId 只可能来自被复制的日志（分叉会话、重放、同一分区再读一次），所以复制件被折叠、真实重试不被合并；attempt 强于同名 missing mark；同一 id 取最早的 usage 事件时间，因此结果与遍历顺序无关。`duplicateAttempts` 是被折叠掉的条数。
+- `provider-usage-daily-time.ts` / `provider-usage-daily-series.ts`：原始时间是 UTC，日历日**在读取时**按请求里显式给出的 IANA 时区（`Intl.DateTimeFormat`）计算，所以换时区只是重新投影同一批事实。日状态区分 `empty`（当天没有调用记录）、`partial`（有调用但缺 usage）、`recorded`（有实报，`total: 0` 也是实报的 0）与 `future`（时区意义下的未来日期留空）。缓存读与推理是子集，永不重复计入总量；本地上下文计数、安全估算与 embedding 从不计入。
+- `provider-usage-daily-index*.ts`：派生索引写在 `<data-root>/usage-index/`，按 `分区:文件数:最新文件名` 修订跳过未变的 run；它只读 `usage-index/` 就可以整体删除，重建后逐字段相同（`provider-usage-daily.test.ts` 断言"同一批事件、新数据根、新索引得到同一份数列"）。显式"清空用量统计"的截止时间记在 `<data-root>/usage-state/`，**故意不在派生目录里**：重建索引不会让已清空的消耗复活。
+- `provider-usage-daily-service.ts`：增量刷新与历史回填是同一个有界 pass（默认预算 64、上限 512 个分区），cursor 持久化，取消只使当前后台循环失效、不丢进度；再次调用即从 cursor 续接。重复应用同一个 run 是替换而非累加，所以取消/续接/重跑都不会重复计数。
+- `durable-event-store.ts` 新增 `listRunPartitions()` 与 `readRunRevision()`：只列目录名、只读每个分区的第一个事件文件，供周期性"有没有变化"的扫描使用；不要为此再调用 `listRuns()`（它会解析全部历史事件）。
+
+归档不改变实际消耗（投影不读会话/归档索引）；永久删除会话后保留的是**不含内容**的用量摘要（只有 id、时间、provider/model 与计数），响应里的 `retainedAfterDeleteSessions` 给出这类会话数。数据根迁移不需要单独迁移用量索引：它在数据根内，且丢失后可从事件重建。
 
 ## 职责与边界
 
@@ -43,6 +56,7 @@
 
 - 运行行为和摘要接续在 `src/runner.test.ts`，摘要精确字段保真在 `src/session-summary-fidelity.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，压缩压力触发与摘要成本在 `src/session-compaction-scheduler.test.ts` 与 `src/session-compaction-input.test.ts`，退役候选的终止与留档在 `src/runner.test.ts`，durable 恢复在 `src/durable-*.test.ts`（含 `durable-harness-infrastructure.test.ts` 的"四个存储各自打标"与 `durable-inbox-store.test.ts` 的"终态记录延后读取仍会失败关闭"），负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。涉及会话转录的断言先过滤 `runtimeTail` 记录：它们为按字节回放而持久化，但不是对话。`session-compaction-input.test.ts` 的用例会驱动真实 run 与真实压缩调用，因此该文件显式把测试超时设为 90 秒——并行跑全量测试时它们曾因默认超时而失败，那与它们断言的行为无关。**2026-09-24 测得超时的真实成因**：开着影子 Git 版本检查点时，一次 run 会 spawn 约 56 个 `git` 进程（基线快照、逐次调用扫描 tracked paths、收尾提交），在 Windows 上约 10 秒/次，全量并行时把该文件里最长的一条推到 90 秒以上。该文件断言的是**压缩输入**，不看快照，所以按验收脚本的既有做法设 `config.versioning.enabled = false`：文件总时长 52 秒 → 30 秒，最长用例 20 秒 → 11.8 秒。需要验证快照行为的用例不要照抄这一行。
 - 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。
+- 跨日用量聚合的回归在 `src/provider-usage-daily.test.ts`（13 例）：同一夹具的逐请求／每日／区间总量一致、复制日志只计一次、真实重试分别计入、零用量日与无调用日可区分、缺 usage 不当零、范围与身份分面有界、回填可取消可续接且不重复、删除派生索引后逐字段重建、换时区/跨年/闰日/夏令时重新投影、清空后回填不复活、永久删除后仍保留不含内容的摘要，以及 `listRunPartitions()`/`readRunRevision()` 的修订语义。HTTP 契约（有界范围、时区校验、筛选、Runtime 未就绪时只读仍可用）在 `packages/app/src/main/local-app-api/usage-routes.test.ts`。
 - 续跑样本的断言必须按**当前**行为写：旧检查点的 `taskBook`/`taskExecution` 是只读历史，VERIFY 不再把它当成缺口，因此"预算耗尽后授予完全访问并重试"这一样本交付的是模型自己写的回答（2 次请求、轨迹 `[recover, execute, verify, finalize]`）。它此前断言的那次额外请求其实是 `ask_user` 的措辞调用——即工作已经做完却又问了一遍用户。
 - 检查点里的**任务状态**与**本轮额度**必须分开传递。`continuationLoopBudget`（`src/run-checkpoint.ts`）让续跑继承 taskBook、已完成步骤、副作用、验证历史和权限，但把模型调用数、工具循环次数、连续无进展计数与证据指纹重置为 0，并按**当前**配置取 `maxModelCallsPerRun`；`restoreContinuationContext` 同时清空来源轮的 `lastError` 与 `recoveryAttempts`。此前把"已花掉的额度"当作新 run 的已用额度，等于让耗尽预算后的用户重试在第一次模型请求之前就失败：用户每次说"再尝试一次"，得到的都是同一句升级提问，且没有任何新工作。本次改动前的复现是轨迹 `[recover, execute, recover, ask_user]` 且没有副作用；改动后为 `[recover, execute, verify, finalize]`。上一轮的耗尽事实不丢：它作为续接证据的 `handoff`（`previousFailure` 与 `runBudget`）记录在 `ConversationContinuationEvidence` 上，而不是重新施加到新 run。
 - 绑定续跑的历史投影只排除**本 run 自己那一轮 inbound**：等待用户回答的续跑里 inbound 是用户的回答，被续跑的原请求必须留在历史里（否则重试的 run 看不到自己在重试什么，只剩 Runtime 的提问和"再尝试一次"），只有已持久化的回答消息因本 run 会重新渲染才排除；被中断的 run 则以原消息为 inbound，因此排除的是原消息本身。

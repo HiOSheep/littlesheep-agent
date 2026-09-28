@@ -1,6 +1,10 @@
 # @littlesheep/app
 
-最后更新：2026-09-28 01:50:04
+最后更新：2026-09-28 12:38:06
+
+Beta 的标题栏与侧栏共用同一个 L 形底层材质，子区域不再各叠一层玻璃；交接处没有色差或分隔。两种窗口布局均已移除标题栏里的 LittleSheep 文字和小羊图标，侧栏自身内容不受影响。
+
+窗口布局按原生窗口状态切换：普通窗口使用 Chali（侧栏贯通顶边、实体标题栏只覆盖右侧），最大化或系统全屏使用 Beta（整宽玻璃标题栏、下方侧栏与聊天/工作区）。Windows 11 22H2+ 使用系统 Acrylic 透出应用后方窗口，macOS 使用 vibrancy；不支持的系统保留实体底色。启动页仍保持独立实体底色。验证：scripts/verify-window-layout.mjs（加 --desktop-backdrop 检查真实桌面合成）。
 
 LittleSheep 的 Electron 桌面应用。Agent Runner、记忆、工具、会话和可选渠道在主进程中装配；React renderer 通过 loopback Local App API 与主进程通信。
 
