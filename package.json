@@ -116,6 +116,7 @@
     "verify:skills-catalog-states": "pnpm run ensure:app-build && node scripts/verify-skills-catalog-states.mjs",
     "verify:provider-editor-draft": "pnpm run ensure:app-build && node scripts/verify-provider-editor-draft.mjs",
     "verify:settings-focus-ring": "pnpm run ensure:app-build && node scripts/verify-settings-focus-ring.mjs",
+    "verify:settings-escape-scopes": "pnpm run ensure:app-build && node scripts/verify-settings-escape-scopes.mjs",
     "verify:recovery-states": "pnpm run ensure:app-build && node scripts/verify-recovery-states.mjs",
     "verify:review-navigator-width": "pnpm run ensure:app-build && node scripts/verify-review-navigator-width.mjs",
     "verify:review-refresh-errors": "pnpm run ensure:app-build && node scripts/verify-review-refresh-errors.mjs",
