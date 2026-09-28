@@ -405,3 +405,15 @@ O2 长内容阅读 · O3 产物与引用 · O4 消息辅助操作 · O6 Token �
 - `composer/send-block-notice.tsx:26` —— `if (executionReason || !modelReason) return null`：**仅在模型未配置且无执行原因时**显示阻断原因，`role="status"` + `title`。
 
 该组件自己的头注释已把分工写死（"只有 `starting` 用这个面；失败不是过场阶段，它保留全窗提示条与重试控件，因为只禁用发送按钮会让原因不可见"）。**因此不改文案、不加检查**——为一个不存在的重复去改动用户可见文本，只会制造无收益的变更。V3 的其余三项阻塞（设置模块搜索焦点指示 #19 ④、`ui/README.md` 点名的其余未接入面、冷启动门禁期望已改但未获一次绿运行）状态不变。
+
+### O5 证据入库与未证明边界（2026-09-29，核验方交回）
+
+三份证据文件此前是**未跟踪**状态（不入库即等于没交），现已随本提交入库，并记录其最终摘要与证伪矩阵位置：
+
+- `packages/runner/src/provider-usage-daily-real-run.test.ts` — sha256 前 16 位 `D75ABE95523CA405`，3 用例全过；
+- `packages/runner/src/provider-usage-daily-dedup-control.test.ts` — `A54920E37A7A2E7C`（证伪时用的是 06:27 版 `BF719B45C5FA74D7`），2 用例全过；
+- `packages/app/src/main/local-app-api/usage-daily-real-events.test.ts` — `9D87FF5E034D40B4`，2 用例全过。
+- 证伪矩阵（仓库外 scratch 副本，checkout 全程未被改动）：control exit 0（4 文件/20 用例全过，夹具本身是绿的）→ m1（fold 的 entries 按 runId 分键）2/18 失败；m2（把 `retryOf` 当重复丢掉）2/18；m3（过去的日子一律零填充标 `recorded`）5/15；m4（删掉区间天数上限）2/18；m5（删掉 facet 的 `slice(0,64)`）1/19；m6（增量索引只重读"已认识"的分区 = 把缓存当权威）**16/4**；m7 2/18；m8（取消短路 + 累加替换 + 按 runId 分键三缺陷同上）4/14。报告与逐 mutant 日志：`%TEMP%\littlesheep-run-artifacts\o5-usage-daily\`。
+- 干净复跑：`tsc -b` exit 0；`vitest run packages/runner packages/types packages/app/src/main` = **176 文件 / 887 用例通过，exit 0**（基线 173/880，差值 +3 文件/+7 用例正好等于新增证据）；`check:repo` = `ok (34 passed, 2 advisory, 0 failed)`。中途一次 exit 1 是负载抖动（`runner.test.ts` 单独复跑 75/75 通过），不是回归。
+
+**仍未证明（逐条保留）**：①**facet 上限缺 wire 级证据** —— app 层那句 `identities.providers.length <= 64` 在单身份夹具下**永远不会失败**，m5 只有既存 unit 用例（70→64）能抓；②**durable inbox 重投路线无 O5 证据**（现有只覆盖"重复 append 被答 duplicate"与"复制日志"，inbox 崩溃重投的幂等由 O5 之外的 `durable-inbox-recovery.test.ts` 覆盖）；③**取消落在"步骤在途"时未取证** —— `runPass` 在步骤末尾才写进度，故 cancel 与在途步骤重叠时持久化状态可能读作 `partial`（循环确实停下、cursor 保留、续接数字不受影响），属**标签精度**问题而非重复计数问题；④**跨午夜/跨年/闰日/夏令时/清空/永久删除保留**只有 unit 级证据（人工设定 `occurredAt`），无真实 run 证据，`clearThrough` 的"重建不复活"同理；⑤**渲染器不消费该接口**（`grep usageDaily packages/app/src/renderer` 无命中）⇒ O5 **不需要**真机 Electron 窗口，确定性测试即充分；O6 才是首个消费者，仍未验证。

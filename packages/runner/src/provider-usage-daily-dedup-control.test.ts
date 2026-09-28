@@ -1,24 +1,25 @@
 // O5 negative control: the Step-1 assertions are load-bearing, not vacuous.
 //
-// provider-usage-daily-real-run.test.ts asserts that a copied real log does not
-// add consumption. This file takes the SAME fixture — real runner events plus a
-// verbatim copy of one run's log under a forked run identity — and shows that
-// the shipped numbers come out doubled when the cross-run dedup is bypassed.
-// Nothing here is a product requirement: it exists so the green test is
-// falsifiable, and so a future change that removes the dedup cannot silently
+// provider-usage-daily-real-run.test.ts asserts that a real retry plus a copied
+// real log still counts each Provider attempt once (3 attempts / 286 tokens).
+// This file builds the SAME fixture — the same scripted LlmClient, the same
+// capability turn whose empty first reply triggers a real `retryOf` retry, the
+// same follow-up turn, the same verbatim copy of both runs under forked run
+// identities — and shows that the shipped numbers double when the cross-run
+// deduplication is bypassed. Nothing here is a product requirement: it exists so
+// the green test is falsifiable, and so a change that removes the dedup cannot
 // keep the green test passing.
 //
 // How the bypass is built (same build, no source edit):
-//   1. The shipped `ProviderUsageDailyService` query path folds every indexed run
-//      through ONE `foldProviderUsageDailyRuns({ runs })` call, which is where
-//      "the same requestId counts once" lives. The bypass calls the same shipped
-//      fold once per run and concatenates the attempt facts — every other stage,
-//      including the fold's own ordering and missing-coverage handling, is the
-//      shipped code.
+//   1. The shipped query path folds every indexed run through ONE
+//      `foldProviderUsageDailyRuns({ runs })` call, which is where "the same
+//      requestId counts once" lives. The bypass calls the same shipped fold once
+//      per run and concatenates the attempt facts into the shipped series stage;
+//      every other stage is untouched.
 //   2. The identity-level bypass is empirical rather than structural: the same
 //      copied log with re-minted request ids runs through the untouched
-//      pipeline, which is what would happen if a copy did not preserve the
-//      Provider request id.
+//      pipeline, which is what a copy that did not preserve the Provider request
+//      id would look like.
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,7 +36,23 @@ import { buildProviderUsageDailySeries } from './provider-usage-daily-series.js'
 
 type LlmClient = NonNullable<CreateRunnerOptions['llm']>;
 type ChatRequest = Parameters<LlmClient['chat']>[0];
+type ChatResponse = Awaited<ReturnType<LlmClient['chat']>>;
 type StreamChunk = Parameters<Parameters<LlmClient['chatStream']>[1]>[0];
+
+/** One provider report exactly as the LlmClient returns it to the Harness. */
+function usageResponse(content: string, promptTokens: number, completionTokens: number): ChatResponse {
+  return {
+    content,
+    toolCalls: [],
+    finishReason: 'stop',
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      cachedPromptTokens: 0,
+    },
+  };
+}
 
 let dataDir: string;
 const runners: AgentRunner[] = [];
@@ -53,40 +70,65 @@ afterEach(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-async function realRun(): Promise<{ readonly runner: AgentRunner; readonly sessionId: string; readonly runId: string }> {
-  const config = structuredClone(DEFAULT_CONFIG);
-  config.agents.defaults.workspace = join(dataDir, 'workplace');
+interface ControlFixture {
+  readonly runner: AgentRunner;
+  readonly store: DurableEventStore;
+  readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly runId: string }>;
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * The Step-1 fixture, reproduced: a capability turn with an empty first reply
+ * (real retry, two billed attempts) plus a follow-up turn, both written by the
+ * real runner.
+ */
+async function stepOneFixture(): Promise<ControlFixture> {
+  const responses = [
+    usageResponse('', 50, 7),
+    usageResponse('Status answer', 60, 9),
+    usageResponse('Follow-up answer', 120, 40),
+  ];
+  const queue = [...responses];
+  const next = (): ChatResponse => {
+    const response = queue.shift();
+    if (!response) throw new Error('unexpected Provider call: the script is exhausted');
+    return response;
+  };
   const llm: LlmClient = {
-    chat: vi.fn(async (_request: ChatRequest) => ({
-      content: 'Control answer',
-      toolCalls: [],
-      finishReason: 'stop' as const,
-      usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120, cachedPromptTokens: 0 },
-    })),
+    chat: vi.fn(async (_request: ChatRequest) => next()),
     chatStream: vi.fn(async (_request: ChatRequest, onDelta: (chunk: StreamChunk) => void) => {
-      onDelta({ type: 'delta', delta: 'Control answer' });
-      onDelta({ type: 'done', finishReason: 'stop' });
-      return {
-        content: 'Control answer',
-        toolCalls: [],
-        finishReason: 'stop' as const,
-        usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120, cachedPromptTokens: 0 },
-      };
+      const response = next();
+      if (response.content) onDelta({ type: 'delta', delta: response.content });
+      onDelta({ type: 'done', finishReason: response.finishReason });
+      return response;
     }),
     embed: vi.fn(async () => ({ embeddings: [], model: 'test', usage: { promptTokens: 0 } })),
   };
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.agents.defaults.workspace = join(dataDir, 'workplace');
   const runner = await createRunner({
     config,
     branding: DEFAULT_BRANDING,
-    model: 'test/control-model',
+    model: 'test/model',
     llm,
     skillsDirs: [],
     containerRoot: dataDir,
   });
   runners.push(runner);
-  const run = await runner.run({ text: 'hello' });
-  expect(run.status).toBe('ok');
-  return { runner, sessionId: String(run.sessionId), runId: run.runId };
+  const capability = await runner.run({ text: '你能调用网络了吗？' });
+  expect(capability.status, capability.error).toBe('ok');
+  const followUp = await runner.run({ sessionId: capability.sessionId, text: 'hello' });
+  expect(followUp.status, followUp.error).toBe('ok');
+  const store = runner.infra.durableEventStore as unknown as DurableEventStore;
+  const sessions = [
+    { sessionId: String(capability.sessionId), runId: capability.runId },
+    { sessionId: String(followUp.sessionId), runId: followUp.runId },
+  ];
+  const responseEvent = (await store.read(sessions[0]!.sessionId, sessions[0]!.runId))
+    .find((event) => event.type === 'model_response_received');
+  const day = String(responseEvent?.occurredAt).slice(0, 10);
+  return { runner, store, sessions, from: day, to: day };
 }
 
 /**
@@ -95,10 +137,10 @@ async function realRun(): Promise<{ readonly runner: AgentRunner; readonly sessi
  * the copy. Only session/run identity, the identity-prefixed event ids and
  * (optionally) the request ids change; every usage byte is the real one.
  *
- * A re-mint has to replace the id everywhere it appears in a payload — the
- * durable reducer refuses a `model_request_started` whose cache observation
- * names a different request — so the replacement is textual over the whole
- * payload, which is also what "the copy minted new ids" means in practice.
+ * A re-mint replaces the id everywhere it appears in a payload — the durable
+ * reducer refuses a request whose cache observation names a different id — so
+ * the replacement is textual over the whole payload, which is also what "the
+ * copy minted new ids" means in practice.
  */
 async function copyLog(
   store: DurableEventStore,
@@ -150,37 +192,52 @@ async function indexAll(service: ProviderUsageDailyService): Promise<void> {
   throw new Error('indexing did not converge');
 }
 
+/** The Step-1 expectation, re-applied to a series, as a literal failure string. */
+function landedExpectationFailure(series: { totals: unknown }): string | undefined {
+  try {
+    expect(series.totals).toMatchObject({ requests: 3, total: 286, activeDays: 1 });
+    return undefined;
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
 describe('O5 dedup control', () => {
-  it('double counts the copied log when the cross-run fold is bypassed, so the landed assertion is falsifiable', async () => {
-    const run = await realRun();
-    const store = run.runner.infra.durableEventStore as unknown as DurableEventStore;
-    await copyLog(store, { sessionId: run.sessionId, runId: run.runId }, { reissueRequestIds: false });
-    expect(await store.listRunPartitions()).toHaveLength(2);
+  it('double counts the Step-1 fixture when the cross-run fold is bypassed', async () => {
+    const fixture = await stepOneFixture();
+    for (const run of fixture.sessions) {
+      await copyLog(fixture.store, run, { reissueRequestIds: false });
+    }
+    expect(await fixture.store.listRunPartitions()).toHaveLength(4);
 
     const service = serviceFor();
     await indexAll(service);
-    const from = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    const to = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-    const query = { from, to, timezone: 'UTC', timezoneSource: 'request' as const };
+    const query = {
+      from: fixture.from,
+      to: fixture.to,
+      timezone: 'UTC',
+      timezoneSource: 'request' as const,
+    };
 
-    // Landed behaviour: the copied attempt keeps its Provider request id, so it
-    // is the same billable attempt and counts once.
+    // Landed behaviour (what the Step-1 test asserts): the copied attempts keep
+    // their Provider request ids, so they are the same billable attempts.
     const landed = service.query(query);
-    expect(landed.totals).toMatchObject({ requests: 1, total: 120, activeDays: 1 });
-    expect(landed.coverage).toMatchObject({ indexedRuns: 2, attempts: 1, duplicateAttempts: 1 });
+    expect(landed.totals).toMatchObject({ requests: 3, total: 286, activeDays: 1 });
+    expect(landed.coverage).toMatchObject({ indexedRuns: 4, attempts: 3, duplicateAttempts: 3 });
+    expect(landedExpectationFailure(landed)).toBeUndefined();
 
     // Bypass 1 — dedup disabled: fold each indexed run on its own with the
     // shipped fold and concatenate, then feed the shipped series stage.
     const indexedRuns = service.indexStore.runs;
-    expect(indexedRuns).toHaveLength(2);
+    expect(indexedRuns).toHaveLength(4);
     const perRun = indexedRuns.flatMap((indexedRun) => (
       foldProviderUsageDailyRuns({ runs: [indexedRun] }).attempts
     ));
     const bypassed = buildProviderUsageDailySeries({
       timezone: 'UTC',
       timezoneSource: 'request',
-      from,
-      to,
+      from: fixture.from,
+      to: fixture.to,
       filters: {},
       attempts: perRun,
       missing: [],
@@ -206,48 +263,42 @@ describe('O5 dedup control', () => {
       },
       now: new Date(),
     });
-    // Red for the landed expectation above: the same fixture now reports 240.
-    expect(bypassed.totals).toMatchObject({ requests: 2, total: 240, activeDays: 1 });
+    expect(bypassed.totals).toMatchObject({ requests: 6, total: 572, activeDays: 1 });
     expect(bypassed.version).toBe(PROVIDER_USAGE_DAILY_VERSION);
 
-    // The literal red: the Step-1 assertion, applied to the dedup-bypassed
+    // The literal red: the Step-1 expectation, applied to the dedup-bypassed
     // series, throws instead of passing.
-    let failure: string | undefined;
-    try {
-      expect(bypassed.totals).toMatchObject({ requests: 1, total: 120, activeDays: 1 });
-    } catch (error) {
-      failure = (error as Error).message;
-    }
+    const failure = landedExpectationFailure(bypassed);
     expect(failure).toBeDefined();
-    expect(failure).toContain('240');
+    expect(failure).toContain('572');
     console.log(`O5 dedup control (fold bypassed): ${failure?.split('\n')[0]}`);
   });
 
-  it('double counts the same real log when the copy re-mints Provider request ids', async () => {
-    const run = await realRun();
-    const store = run.runner.infra.durableEventStore as unknown as DurableEventStore;
-    await copyLog(store, { sessionId: run.sessionId, runId: run.runId }, { reissueRequestIds: true });
+  it('double counts the Step-1 fixture when a copy re-mints Provider request ids', async () => {
+    const fixture = await stepOneFixture();
+    for (const run of fixture.sessions) {
+      await copyLog(fixture.store, run, { reissueRequestIds: true });
+    }
+    expect(await fixture.store.listRunPartitions()).toHaveLength(4);
 
     const service = serviceFor();
     await indexAll(service);
-    const from = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-    const to = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-    const series = service.query({ from, to, timezone: 'UTC', timezoneSource: 'request' });
+    const series = service.query({
+      from: fixture.from,
+      to: fixture.to,
+      timezone: 'UTC',
+      timezoneSource: 'request',
+    });
 
-    // The untouched pipeline has no way to tell the copy from a second real
-    // attempt: identity is the Provider request id, and the copy changed it.
-    expect(series.totals).toMatchObject({ requests: 2, total: 240 });
-    expect(series.coverage).toMatchObject({ indexedRuns: 2, attempts: 2, duplicateAttempts: 0 });
+    // The untouched pipeline cannot tell the copy from a second real attempt:
+    // identity is the Provider request id, and the copy changed it.
+    expect(series.totals).toMatchObject({ requests: 6, total: 572 });
+    expect(series.coverage).toMatchObject({ indexedRuns: 4, attempts: 6, duplicateAttempts: 0 });
 
     // The literal red for the same Step-1 expectation.
-    let failure: string | undefined;
-    try {
-      expect(series.totals).toMatchObject({ requests: 1, total: 120 });
-    } catch (error) {
-      failure = (error as Error).message;
-    }
+    const failure = landedExpectationFailure(series);
     expect(failure).toBeDefined();
-    expect(failure).toContain('240');
+    expect(failure).toContain('572');
     console.log(`O5 dedup control (ids reissued): ${failure?.split('\n')[0]}`);
   });
 });
