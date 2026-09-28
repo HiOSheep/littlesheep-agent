@@ -396,3 +396,12 @@ O2 长内容阅读 · O3 产物与引用 · O4 消息辅助操作 · O6 Token �
 - **仅凭事件重建**：删掉 `usage-index/` 后由事件重建 → 与删除前可比一致，且与 provider 自报一致。
 
 **边界（该包明确不主张的部分）**：LS 的 fork 复制的是**消息**而非事件日志（`Message` 无 usage 字段），所以"fork 不重复计数"成立的原因是**fork 不复制事件**；跨 run 去重守卫由"逐字复制的事件日志"来检验，对照证明该守卫**确有负载**。**留给台账的告诫**：若将来 fork/导入**真的复制 durable 事件**，必须保留 Provider request id，否则聚合会翻倍（实测 572 vs 286）。另有两条不主张：LlmClient 内部的传输层重试只产生一条响应事件，早先被计费的物理尝试无法单独计数；该包**未使用 Electron 窗口**，故不主张任何像素或原生断言。
+
+### V3 阻塞①核实结论：**不是缺陷**（2026-09-29，已证伪）
+
+台账原记"聊天区'空会话'与'发送被阻断'疑用同一条 readiness 文案"。落实后**证伪**：两处指示器都由 `useRuntimeReadiness()` 驱动，但**按状态互斥**，各有独立职责：
+
+- `runtime-readiness/composer-readiness-hint.tsx:21` —— `if (!reason || readiness?.state !== 'starting') return null`：**仅在 `starting`（启动过场）时**显示 Runtime 的阶段句，执行就绪即消失；
+- `composer/send-block-notice.tsx:26` —— `if (executionReason || !modelReason) return null`：**仅在模型未配置且无执行原因时**显示阻断原因，`role="status"` + `title`。
+
+该组件自己的头注释已把分工写死（"只有 `starting` 用这个面；失败不是过场阶段，它保留全窗提示条与重试控件，因为只禁用发送按钮会让原因不可见"）。**因此不改文案、不加检查**——为一个不存在的重复去改动用户可见文本，只会制造无收益的变更。V3 的其余三项阻塞（设置模块搜索焦点指示 #19 ④、`ui/README.md` 点名的其余未接入面、冷启动门禁期望已改但未获一次绿运行）状态不变。
