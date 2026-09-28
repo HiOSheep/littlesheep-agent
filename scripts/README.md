@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 21:38:44
+最后更新：2026-09-28 21:42:36
 
 verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与菜单验收，覆盖选择菜单的选中状态、键盘操作、点击外部/Escape/Tab 关闭、密度设置重载保留、页面导航及 800/1280px 视口避让；截图与 results.json 保存在输出的临时目录。先执行 pnpm run ensure:app-build。
 
@@ -8,7 +8,7 @@ verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与
 
 ## 约定：窗口 chrome 的"能不能点"按原生命中判定
 
-最后更新：2026-09-28 21:38:44
+最后更新：2026-09-28 21:42:36
 
 **任何改动只要涉及窗口 chrome、拖动区（`-webkit-app-region`）、窗口顶边或顶栏控件，就必须用原生 `WM_NCHITTEST` 断言受影响的控件收到真实点击。** `document.elementFromPoint` 与 CDP 合成点击**不能**替代它：2026-09-28 实测，在"真实鼠标按下去没反应"的构建上这两项全部通过——渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 用窗口自己的 `WM_NCHITTEST` 解析它，控件中心返回 `HTCAPTION` 时那次按下变成 caption 交互，页面根本收不到。DOM 检查与 CDP 点击的结论只能作为补充证据，不能作为"用户点得到"的结论。
 
