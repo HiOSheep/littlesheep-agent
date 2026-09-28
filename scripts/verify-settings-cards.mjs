@@ -55,7 +55,7 @@ try {
   await delay(650)
   await page('界面')
   const card = await client.evaluate(`(() => {const el=document.querySelector('.settings-card'),s=getComputedStyle(el);return {radius:s.borderRadius,border:s.borderTopWidth,overflow:el.scrollWidth>el.clientWidth};})()`)
-  assert.equal(card.radius,'18px'); assert.equal(card.border,'1px'); assert.equal(card.overflow,false)
+  assert.equal(card.radius,'18px'); assert.ok(card.border === '1px' || /^0\.\d+px$/.test(card.border), settings card border must be a hairline; computed  (a 1px border computes as 0.666667px at 1.5 display scale)); assert.equal(card.overflow,false)
   await click('.settings-select')
   let menu = await menuFacts()
   assert(menu.portalled); assert.equal(menu.count,2); assert.equal(menu.selected,'普通'); assert.equal(menu.focused,'普通')
