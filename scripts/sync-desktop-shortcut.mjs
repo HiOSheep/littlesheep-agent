@@ -1,7 +1,9 @@
-// Point the desktop shortcut at the runtime this checkout just prepared.
+// Keep the desktop shortcut pointed at the launcher this checkout owns.
 //
-// Hangs off `predev` / `prebuild` (through `@littlesheep/app`) and `build:app`,
-// so the icon never lags behind an Electron upgrade. Two modes:
+// Hangs off `predev` / `prebuild` (through `@littlesheep/app`) and `build:app`, so the icon is
+// repaired after any command that used to leave it pointing at a version-specific
+// `LittleSheep.exe` — the state in which a click skips the launcher's build-freshness gate and
+// silently starts whatever is already in `packages/app/out`. Two modes:
 //
 //   (default)  best effort — skips when there is nothing to do, and reports a
 //              failure without failing the command it is attached to

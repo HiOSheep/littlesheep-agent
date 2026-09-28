@@ -39,6 +39,7 @@ async function createFixture() {
     write(join(root, 'scripts/run-verified-electron.mjs'), 'export {}\n'),
     cp(new URL('./build-fingerprint.mjs', import.meta.url), join(root, 'scripts/lib/build-fingerprint.mjs')),
     cp(new URL('./electron-runtime.mjs', import.meta.url), join(root, 'scripts/lib/electron-runtime.mjs')),
+    cp(new URL('./pnpm-invocation.mjs', import.meta.url), join(root, 'scripts/lib/pnpm-invocation.mjs')),
     cp(new URL('./app-build-fingerprint.mjs', import.meta.url), join(root, 'scripts/lib/app-build-fingerprint.mjs')),
     cp(new URL('./workspace-artifact-fingerprint.mjs', import.meta.url), join(root, 'scripts/lib/workspace-artifact-fingerprint.mjs')),
   ]);
@@ -169,6 +170,40 @@ describe('App build fingerprint', () => {
     await write(join(fixture.root, 'packages/app/out/main/index.js'), 'tampered');
     await expect(assertAppBuildFresh(fixture.root, { resolveRuntime: fixture.resolveRuntime }))
       .rejects.toThrow(/output-mismatch/);
+  });
+
+  it('refuses a build that reported success without rewriting the App outputs', async () => {
+    // The silent fallback this covers: the build command exits 0 (a shim, a filter that matches
+    // nothing, a no-op script), `out/` still holds the previous bundle, and the fingerprint would
+    // happily record those bytes as current. A UI change then "does not work" after a restart.
+    const fixture = await createFixture();
+    await fixture.writeOutputs();
+    await expect(ensureAppBuild(fixture.root, {
+      prepareRuntime: fixture.prepareRuntime,
+      resolveRuntime: fixture.resolveRuntime,
+      build: async () => {},
+      ensureWorkspaceBuild: async () => {},
+      // Pretend the build started a minute after those outputs were written.
+      now: () => Date.now() + 60_000,
+    })).rejects.toThrow(/without rewriting the App outputs/);
+    await expect(readFile(appBuildManifestPath(fixture.root), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('names the missing package manager instead of reporting a generic build failure', async () => {
+    const fixture = await createFixture();
+    const previous = process.env.LITTLESHEEP_PNPM;
+    const missing = join(fixture.root, 'no-such-pnpm.cmd');
+    process.env.LITTLESHEEP_PNPM = missing;
+    try {
+      await expect(ensureAppBuild(fixture.root, {
+        prepareRuntime: fixture.prepareRuntime,
+        resolveRuntime: fixture.resolveRuntime,
+        ensureWorkspaceBuild: async () => {},
+      })).rejects.toThrow(/LITTLESHEEP_PNPM points at .*no-such-pnpm\.cmd, which does not exist/u);
+    } finally {
+      if (previous === undefined) delete process.env.LITTLESHEEP_PNPM;
+      else process.env.LITTLESHEEP_PNPM = previous;
+    }
   });
 
   it('does not leave a successful sidecar after build failure or an input race', async () => {

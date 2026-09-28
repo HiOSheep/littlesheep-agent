@@ -1,20 +1,19 @@
-// Keep the desktop shortcut pointing at the prepared Electron runtime.
+// Keep the desktop shortcut pointing at the launcher.
 //
-// The link target is
-// `packages/app/runtime/electron-v<version>-<platform>-<arch>/LittleSheep.exe`,
-// so upgrading Electron silently invalidates it: the desktop icon keeps
-// launching the previous Chromium, and a change that depends on a new engine
-// reads as "nothing happened". Chromium 136, for example, does not know
-// `corner-shape` and falls back to ordinary rounded corners without a word.
-// `scripts/build-app.ps1` always refreshed the link, but the pnpm entries did
+// The link target is `scripts/launch-littlesheep.ps1`, not
+// `packages/app/runtime/electron-v<version>-<platform>-<arch>/LittleSheep.exe`. Pointing at the
+// runtime executable directly was how the icon bypassed the one check that matters: the launcher
+// resolves the newest runtime *and* refuses to start a build it cannot prove current, so an
+// upgrade (Chromium 136, for example, does not know `corner-shape` and falls back to ordinary
+// rounded corners without a word) and a build that never happened both stop looking like "my
+// change did nothing". `scripts/build-app.ps1` always refreshed the link, but the pnpm entries did
 // not, and `pnpm run dev` is the one the dev loop actually uses.
 //
-// This module owns the cross-platform half: whether the platform can carry a
-// shortcut at all, how PowerShell is invoked, and staying non-fatal in auto
-// mode. Everything Windows-specific stays in the PowerShell script — including
-// the Desktop path, which can be redirected and is only trustworthy when read
-// back through .NET. Asking "is there a link?" or "is the build ready?" here
-// would duplicate the artifact list the script already owns.
+// This module owns the cross-platform half: whether the platform can carry a shortcut at all, how
+// PowerShell is invoked, and staying non-fatal in auto mode. Everything Windows-specific stays in
+// the PowerShell script — including the Desktop path, which can be redirected and is only
+// trustworthy when read back through .NET. Asking "is there a link?" or "is the build ready?" here
+// would duplicate what the script already owns.
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

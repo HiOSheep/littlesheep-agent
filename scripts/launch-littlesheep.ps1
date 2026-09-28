@@ -200,7 +200,6 @@ function Stop-WithStaleBuild {
   exit 3
 }
 
-$nodePath = Get-NodePath
 $script:staleOptInName = if ($AllowStaleBuild) { '-AllowStaleBuild' } elseif ($NoBuild) { '-NoBuild' } else { $null }
 
 Push-Location $repoRoot
@@ -214,6 +213,9 @@ try {
   if ($script:staleOptInName) {
     Write-Warning "Starting the build that is already on disk without checking it ($($script:staleOptInName))."
   } else {
+    # Node is resolved here rather than at the top of the script: pointing the shortcuts and
+    # cleaning stale runtimes stay usable on a machine without Node.js.
+    $script:nodePath = Get-NodePath
     Write-Host 'Checking the app build...'
     $ensure = Invoke-NodeScript @($ensureScript, '--ensure')
     foreach ($line in $ensure.Lines) { Write-Host $line }
@@ -252,6 +254,13 @@ try {
   Write-Host "Starting LittleSheep from $runtime"
   $process = Start-Process -FilePath $executable -ArgumentList '.' -WorkingDirectory $appRoot -PassThru
   $process.WaitForExit()
+} catch {
+  # Every other refusal gets the same treatment as a stale build: a shortcut launch has no console,
+  # so a thrown error would be silent exactly where it matters most.
+  $reason = $_.Exception.Message
+  Write-Host "LittleSheep did not start: $reason"
+  Show-FailureDialog -Title 'LittleSheep - launch failed' -Message "LittleSheep did not start:`n`n$reason"
+  exit 4
 } finally {
   Pop-Location
 }

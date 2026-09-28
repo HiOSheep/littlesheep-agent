@@ -8,11 +8,14 @@
 //   1. the desktop shortcut pointed straight at
 //      `packages/app/runtime/electron-v<version>-win32-x64/LittleSheep.exe`
 //      (`scripts/refresh-desktop-shortcut.ps1`, refreshed on every `predev` / `prebuild` /
-//      `build:app`), so the click never reached `scripts/launch-littlesheep.ps1` and nothing
-//      ever asked whether `packages/app/out` matched the sources;
-//   2. when the launcher *was* reached and the build could not run — `pnpm` is not on PATH on
-//      this machine, and the build used to fail behind an inherited stderr stream plus a generic
-//      exit code — the previous bundle was still there to be started, and nothing said otherwise.
+//      `build:app`), so the click never reached `scripts/launch-littlesheep.ps1`. Nothing asked
+//      whether `packages/app/out` matched the sources, and the icon started whatever bytes were
+//      lying there — a build that never happened left the previous UI on screen with no message
+//      anywhere;
+//   2. when the launcher *was* reached, `pnpm` is not on PATH on this machine, the build path
+//      reported that as a generic `exit 1` behind an inherited stderr stream, and the launcher's
+//      own failure was invisible from a shortcut (hidden window, no dialog): "the build never
+//      ran" and "the build is current" read the same to the person who clicked.
 //
 // This gate exercises both halves against the real artifacts, not a fixture:
 //
@@ -62,6 +65,7 @@ function run(command, args, options = {}) {
     timeout: options.timeoutMs ?? 10 * 60_000,
   });
   return {
+    pid: result.pid,
     status: result.status,
     signal: result.signal,
     error: result.error ? result.error.message : null,
@@ -140,11 +144,13 @@ function shortcutPaths() {
 
 function runningAppProcessIds() {
   const result = powershell(
-    "@(Get-Process -Name 'LittleSheep' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) | ConvertTo-Json -Compress",
+    "@(Get-CimInstance Win32_Process -Filter \"Name='LittleSheep.exe'\" | Select-Object ProcessId, ParentProcessId) | ConvertTo-Json -Depth 3 -Compress",
   );
   const parsed = jsonFrom(result.stdout);
   if (parsed === null) return [];
-  return (Array.isArray(parsed) ? parsed : [parsed]).map((value) => Number(value)).filter(Number.isFinite);
+  return (Array.isArray(parsed) ? parsed : [parsed])
+    .map((value) => ({ id: Number(value?.ProcessId), parentId: Number(value?.ParentProcessId) }))
+    .filter((value) => Number.isFinite(value.id));
 }
 
 function newestMtimeMs(directory) {
@@ -174,7 +180,15 @@ function newestMtimeMs(directory) {
   return newest;
 }
 
-/** What a launcher run did, and whether it started the app. */
+/**
+ * What a launcher run did, and whether it started the app.
+ *
+ * Whether Electron started is judged by *attribution*, not by a process diff: this checkout is
+ * shared, and another window appearing while the launcher runs says nothing about the launcher.
+ * The launcher waits for the Electron it started, so a `LittleSheep.exe` whose parent is this
+ * exact launcher process is one it started, and the launcher's own start line says the same
+ * thing in the output.
+ */
 function inspectLauncherRun(label, { env, expectedPnpmName = null }) {
   const before = runningAppProcessIds();
   // A launcher that (wrongly) starts the app waits for it to exit, so a failed assertion must not
@@ -184,9 +198,10 @@ function inspectLauncherRun(label, { env, expectedPnpmName = null }) {
     timeoutMs: 240_000,
   });
   const after = runningAppProcessIds();
-  const started = after.filter((id) => !before.includes(id));
+  const attributed = after.filter((process) => process.parentId === result.pid);
   const output = result.output;
   const tail = output.length > 4_000 ? output.slice(-4_000) : output;
+  const startedLine = /Starting LittleSheep from/u.test(output);
 
   check(
     `${label}: the launcher refuses instead of starting the previous build`,
@@ -194,9 +209,11 @@ function inspectLauncherRun(label, { env, expectedPnpmName = null }) {
     `exit=${result.status ?? 'null'}${result.signal ? ` signal=${result.signal}` : ''}`,
   );
   check(
-    `${label}: no Electron process was started`,
-    started.length === 0 && !/Starting LittleSheep from/u.test(output),
-    started.length > 0 ? `new LittleSheep pids: ${started.join(', ')}` : 'no new LittleSheep process, no start line',
+    `${label}: the launcher started no Electron process`,
+    attributed.length === 0 && !startedLine,
+    attributed.length > 0
+      ? `LittleSheep.exe children of the launcher (pid ${result.pid}): ${attributed.map((process) => process.id).join(', ')}`
+      : 'no child LittleSheep.exe, no start line',
   );
   check(
     `${label}: the reason is visible in the output`,
@@ -215,7 +232,45 @@ function inspectLauncherRun(label, { env, expectedPnpmName = null }) {
       '',
     );
   }
-  return { result, started, output: tail };
+  return { result, started: attributed, output: tail, startedLine, observedProcesses: after.length - before.length };
+}
+
+/**
+ * Run one fail-closed case, retrying when *another* process (a concurrent `ensure:app-build`, a
+ * dev server, another agent in the same checkout) rebuilds the App between the invalidation and
+ * the launcher run. That does not weaken the assertion — it restores the premise the assertion
+ * needs, namely a build the launcher cannot prove current.
+ */
+function runFailClosedCase({ label, env, expectedPnpmName, maxAttempts = 3 }) {
+  let last = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const invalidated = node([ensureScript, '--invalidate']);
+    if (invalidated.status !== 0) {
+      check(`${label}: the App fingerprint can be invalidated for the run`, false, invalidated.output.trim());
+      return last;
+    }
+    const stale = node([ensureScript, '--assert']);
+    if (stale.status === 0) {
+      notes.push(`${label}: the build was still current after invalidation; retrying.`);
+      continue;
+    }
+    if (attempt === 1) check('B1: an invalidated fingerprint reads as not current', true, `exit=${stale.status ?? 'null'}`);
+    last = { ...inspectLauncherRun(label, { env, expectedPnpmName }), attempt, invalidatedAt: new Date().toISOString() };
+    if (last.result.status !== 0 && !last.startedLine) return last;
+    notes.push(
+      `${label}: attempt ${attempt} started the app instead of refusing — something rebuilt `
+      + 'packages/app/out while the gate was running; retrying with a fresh invalidation.',
+    );
+  }
+  if (last === null) {
+    // Never let "the premise could not be established" read as a pass.
+    check(
+      `${label}: the build could not be made unprovable for this run`,
+      false,
+      `another process rebuilt packages/app/out after every one of ${maxAttempts} invalidations`,
+    );
+  }
+  return last;
 }
 
 function runGate() {
@@ -235,6 +290,7 @@ function runGate() {
       'The gate simulates the two failure conditions (a build command that fails, and a package manager that cannot be resolved); it does not corrupt the real toolchain.',
       'The healthy path — the launcher builds, verifies and starts the window — needs a real Electron window and is deliberately not started here. It is exercised by launching the app itself.',
       'The click path is asserted on the .lnk files Explorer reads; the gate does not simulate a mouse click on the icon.',
+      'Whether Electron started is attributed by parent process: a LittleSheep.exe started by another process while the gate runs is not counted, and every fail-closed case is retried when something else rebuilds packages/app/out mid-run.',
     ],
   };
 
@@ -296,32 +352,38 @@ function runGate() {
     // exactly that state, and it is restored below.
     const invalidated = node([ensureScript, '--invalidate']);
     check('B0: the App fingerprint can be invalidated for the run', invalidated.status === 0, invalidated.output.trim());
-    const stale = node([ensureScript, '--assert']);
-    check('B1: an invalidated fingerprint reads as not current', stale.status !== 0, `exit=${stale.status ?? 'null'}`);
 
     // ---- B. a build that fails -------------------------------------------------------------
-    const failing = inspectLauncherRun('B2', {
+    const failing = runFailClosedCase({
+      label: 'B2',
       env: { LITTLESHEEP_PNPM: stubPnpm },
       expectedPnpmName: 'pnpm-fail-stub',
     });
-    report.failingBuild = {
-      exitCode: failing.result.status,
-      startedProcessIds: failing.started,
-      output: failing.output,
-    };
+    report.failingBuild = failing
+      ? {
+        exitCode: failing.result.status,
+        attempts: failing.attempt,
+        childProcessIds: failing.started.map((process) => process.id),
+        output: failing.output,
+      }
+      : null;
 
     // ---- C. a package manager that cannot be resolved ---------------------------------------
     const missing = join(stubDirectory, 'pnpm-that-does-not-exist.cmd');
     rmSync(missing, { force: true });
-    const unresolved = inspectLauncherRun('C1', {
+    const unresolved = runFailClosedCase({
+      label: 'C1',
       env: { LITTLESHEEP_PNPM: missing },
       expectedPnpmName: 'pnpm-that-does-not-exist',
     });
-    report.missingPnpm = {
-      exitCode: unresolved.result.status,
-      startedProcessIds: unresolved.started,
-      output: unresolved.output,
-    };
+    report.missingPnpm = unresolved
+      ? {
+        exitCode: unresolved.result.status,
+        attempts: unresolved.attempt,
+        childProcessIds: unresolved.started.map((process) => process.id),
+        output: unresolved.output,
+      }
+      : null;
   } finally {
     const outputsAfter = newestMtimeMs(outDirectory);
     const rebuilt = outputsAfter > outputsBefore;
