@@ -1,12 +1,12 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 19:48:27
+最后更新：2026-09-28 19:49:50
 
 `verify-window-layout.mjs`（根 `package.json` 里是 `pnpm run verify:window-layout`）验证真实 Electron 窗口的窗口镶边几何：Chali → Beta → 还原、全屏、页面重载、侧栏折叠和设置交接，并逐状态断言**钉在窗口左上角的三个导航控件**（侧栏开关、返回、前进）坐标逐像素相同而侧栏轨道宽度确实在变（展开 / 折叠 / 拖宽中三态），按 1px 采样整条顶边确认 `.window-titlebar` 与 `.window-drag-band` 无缝覆盖 `[0,width)`（唯一不拖拽岛是控件自己），再用真实指针拖动 band 断言原生窗口位移等于请求值、真实点击开关能把折叠的侧栏打开。夹具跑在标准验收 Provider 上（`acceptance/slow-a`），窗口因此处于 Runtime 就绪的普通状态：早先的 `model: ""` 夹具解析配置就失败，整窗失败条会盖住工作区面板角标，脚本是在自己的夹具上失败而不是在它要测量的布局上失败。产出临时目录中的截图（含 `corner-*.png` 左上角特写）与 results.json。**真实命中区**（`nativeHitTest`）：每个状态的控件"可点"不能只由 `elementFromPoint` 或 CDP 合成点击证明——两者都在窗口的原生 draggable region **之下**，而用户真正的鼠标按下先被那一层过滤。脚本因此额外对窗口句柄发 `WM_NCHITTEST`（内联 `pwsh`，`SendMessage` 到 `layoutWindow.getNativeWindowHandle()`），断言三个控件中心是 `HTCLIENT`（1，页面收得到点击）、岛的左/右/下邻位与标题栏中心是 `HTCAPTION`（2，仍是窗口拖拽面），并用一个普通正文点做 `HTCLIENT` 对照证明这条探针确实在回答；`setup` 用窗口自身的几何换算坐标（`getContentBounds()` 是 DIP，乘所在显示器的 scale factor 得到 `WM_NCHITTEST` 需要的物理坐标），**不移动窗口**：搬动会经 DIP↔物理的往返把窗口尺寸每次放大一个像素，正好会破坏脚本下面断言的精确几何。探针本体已抽成共享库 `lib/native-hit-test.mjs`（约定见下），本脚本只保留自己的取样点与断言。`--desktop-backdrop` 会短暂显示隔离测试窗口，以红/蓝背景窗口切换检验桌面合成：侧栏均透底、仅 Beta 标题栏透底、聊天正文不透底；仅保存 LS 窗口矩形截图。
 
 ## 约定：窗口 chrome 的"能不能点"按原生命中判定
 
-最后更新：2026-09-28 19:48:27
+最后更新：2026-09-28 19:49:50
 
 **任何改动只要涉及窗口 chrome、拖动区（`-webkit-app-region`）、窗口顶边或顶栏控件，就必须用原生 `WM_NCHITTEST` 断言受影响的控件收到真实点击。** `document.elementFromPoint` 与 CDP 合成点击**不能**替代它：2026-09-28 实测，在"真实鼠标按下去没反应"的构建上这两项全部通过——渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 用窗口自己的 `WM_NCHITTEST` 解析它，控件中心返回 `HTCAPTION` 时那次按下变成 caption 交互，页面根本收不到。DOM 检查与 CDP 点击的结论只能作为补充证据，不能作为"用户点得到"的结论。
 
@@ -23,6 +23,7 @@
 
 `scripts/` 保存仓库检查、构建辅助和隔离的真实 Electron 验收入口。面向 UI 的验收脚本使用独立临时数据根、确定性 Provider 和可复现夹具，不读取用户的真实会话或密钥；临时截图与日志默认留在 `%TEMP%`，脚本失败时保留现场以便诊断。
 
+- RA-01 之后实验脚本的证据口径变了：`lib/experiment-sandbox.mjs` 的每一行都是 `{id, command, expected, arrival, observed, verdict}`，`arrival` 区分"真的测到目标行为"和"根本没跑到"，总判定闭合（任何必需行不是 pass 即 fail，没有回退到较弱检查集的路径），并带自我测试证明验收器在故意失败、前置未完成、空结果和显式 not-run 下都判失败。`experiment-evidence-index.mjs` 生成证据索引（**排除自身**：写索引会改变索引），并把第一轮账本里写死成常量的 `requestedBackend`/`actualBackend`/`retries` 另写成 `ledger-corrections.jsonl`，原账本不重写。批次驱动开工前检查恢复标记与"源码是否新于全部构建产物"：上一批没回到基线、或源码与 dist 不一致时拒绝运行，只有 `--ack-recovery` / `--allow-stale-dist` 才继续，并把预算版本、冻结时间、适用范围、已消费量与停止原因写进 `budget-registry.jsonl`。实验脚本不再含本机账号或机器相关工具链路径，宿主事实由 `LS_EXPERIMENT_WSL_DISTRO`、`LS_EXPERIMENT_WSL_TOOLCHAIN`、`LS_EXPERIMENT_WINDOWS_PE` 提供。
 - `experiment-autonomy-sandbox-batch.mjs` 是 A/B 批次驱动：按计划文件（`plan --file=...`；`--dry-run` 只打印计划）对每个用例先 `git apply --reverse` 清干净、再按 `order`（`AB` / `BA`，逐用例交替）应用单个候选补丁、重建 `packages/*/dist`、跑该臂的真实模型 run，并在每次 run 之前核对冻结预算（run 数与 token 数）后决定是否停止。每次切换臂之前它都断言"臂 A 的候选路径必须干净、臂 B 必须至少有一个候选路径被改动"，所以臂标签不靠人记。补丁、账本、原始 run 目录与批次汇总都写在证据目录（`--evidenceRoot` / `LS_EXPERIMENT_EVIDENCE_DIR`）。**凭证永远不进计划文件**：子进程从当前进程环境继承 Provider 密钥。
 - `experiment-autonomy-sandbox.mjs` + `lib/experiment-ledger.mjs` + `lib/experiment-fixtures.mjs` 是 `docs/taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md` 的实验入口，**不是**产品门禁：它只回答该任务书的问题，通过它不代表产品行为已变更。四个模式：`budget`（在任何模型调用之前打印冻结的批次预算与停止条件）、`precheck`（无模型费用的确定性夹具：检索准入探针、URL/SSRF 负向矩阵、`classifyToolFailure` 契约、副作用账本决策、`ToolExecutionService` 重复调用护栏、Provider 可达性）、`model --case=RT-0x --arm=A|B --trial=n --batch=id`（真实模型 A/B，每次一个隔离数据根与合成工作区）、`sandbox`（后端边界矩阵，见下）。逐 run 账本写在仓库外的证据目录（`LS_EXPERIMENT_EVIDENCE_DIR`，默认 `D:\littlesheep-evidence\RASB-2026-09-27`），字段集是任务书第 8 节的最小集合，由 `assertLedgerRecord` 强制；仓库里不留运行时会话、Provider 请求、凭据或工作区产物。`A` 臂跑的是未打补丁的工作树，`B` 臂在 `git apply` 候选补丁并重建 `dist` 之后跑，每条账本记录都带当时的 `sourceHash`，所以两个臂可以按字节区分。退出码：0 通过、1 有验收项失败、2 用法错误、3 前置能力缺失（blocked）、4 命中预算停止条件。
 
