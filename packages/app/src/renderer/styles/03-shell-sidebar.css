@@ -118,8 +118,8 @@
   --shadow-menu: 0 22px 54px rgba(0, 0, 0, 0.44);
   --radius-ui: 10px;
   --radius-floating-panel: 14px;
-  --radius-composer: 12px;
-  --radius-composer-input: 14px;
+  --radius-composer: 14px;
+  --radius-composer-input: 16px;
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
@@ -494,13 +494,30 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   pointer-events: auto;
 }
 
+/* The window's navigation controls — sidebar toggle, back, forward — are pinned to
+   the window's own top-left corner in every sidebar state.
+
+   They used to be laid out at the top bar's left end, and `chali` starts that bar at
+   the sidebar's right edge; from there they slid left with every sidebar expand,
+   collapse and resize, so the sidebar toggle — the only way back out of a collapsed
+   sidebar — was the control that moved. This box is therefore positioned against the
+   viewport (the window) rather than against the bar, and `app-view.tsx` renders it as
+   a shell-level layer beside `.settings-entry-global`. `top` centers the 24px control
+   box the rule below sets in the same 32px row the top bar occupies, and `left` is the
+   same 8px inset the bar gives its own content, so the pinned position is exactly the
+   position the controls already have whenever the bar starts at x = 0: `beta`, and
+   `chali` with the sidebar collapsed. `z-index: 1003` is the shell's window-chrome
+   layer — the one `.settings-entry-global` uses — which keeps the controls reachable
+   above the panels, the top-edge drag band and every overlay, including the settings
+   surface that owns the left rail in its own state. */
 .app-nav-controls {
-  position: relative;
-  z-index: 1;
+  position: fixed;
+  top: calc((var(--window-titlebar-height) - 24px) / 2);
+  left: 8px;
+  z-index: 1003;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex: 0 0 auto;
   -webkit-app-region: no-drag;
 }
 
