@@ -60,7 +60,22 @@ export async function interopFixControl({ facts, run, buildArgvFor, workspace, p
   // that depends on another row's side effects reports locked for a reason that has nothing to do with
   // the protection it is meant to test.
   if (facts.windowsPeSource && existsSync(facts.windowsPeSource)) await copyFile(facts.windowsPeSource, staged);
-  const attackCommand = `./payload.exe /c "echo PWNED > ${distroPathOf(proofWin)}" 2>&1; echo interop_exit=$?`;
+  // Quoting, twice over: `/bin/sh -c` must not eat the `>` redirect, and `cmd.exe /c` must receive the path
+  // without a nested quote pair of its own. Single quotes protect the first, and the proof directory has no
+  // spaces so cmd needs none for the second. The previous version double-quoted the whole `echo`, so cmd.exe
+  // was handed a path it could not resolve — and the control then could not tell a closed channel from a
+  // broken command line, which is precisely the confusion RA-07 exists to remove.
+  const attackCommand = `./payload.exe /c 'echo PWNED>${proofWin}' 2>&1; echo interop_exit=$?`;
+
+  /**
+   * Did a Windows process actually run?
+   *
+   * RA-07 asks whether Windows execution was **reached**, not whether one particular redirect happened to
+   * succeed. Either the payload wrote the proof file, or `cmd.exe` answered for itself in its own words —
+   * both mean the WSLInterop handler dispatched a Windows image.
+   */
+  const windowsExecutionObserved = (output, proofExists) => proofExists
+    || /系统找不到指定的路径|The system cannot find the path|不是内部或外部命令|is not recognized/u.test(output);
 
   const arm = async (label, argv, expectation) => {
     await rm(proofWin, { force: true });
@@ -71,15 +86,19 @@ export async function interopFixControl({ facts, run, buildArgvFor, workspace, p
     // to run -d as the program, which produced no output at all and made both arms look identical.
     const result = await runRawArgv(run, [...argv]);
     const proof = existsSync(proofWin);
+    const output = `${String(result.stdout ?? '')}${String(result.stderr ?? '')}`;
+    const windowsRan = windowsExecutionObserved(output, proof);
     return {
       label,
       expectation,
       arrival: 'reached',
       observed: {
-        holds: expectation === 'proof-file-absent' ? !proof : proof,
+        // The masked arm must reach no Windows process at all; the unmasked arm must reach one.
+        holds: expectation === 'proof-file-absent' ? !windowsRan : windowsRan,
         proofFileExists: proof,
         proofFileContent: proof ? readFileSync(proofWin, 'utf8').trim().slice(0, 80) : null,
-        output: String(result.stdout ?? '').slice(0, 200),
+        windowsExecutionObserved: windowsRan,
+        output: output.replace(/\s+/gu, ' ').trim().slice(0, 200),
         hasInteropMask: hasInteropMask(argv),
       },
     };
