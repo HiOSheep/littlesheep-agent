@@ -24,7 +24,7 @@ describe('UI radius consistency', () => {
 
     expect(values.length).toBeGreaterThan(0)
     expect(new Set(values)).toEqual(new Set([
-    '16px',
+      '12px',
       'var(--radius-ui)',
       'var(--radius-floating-panel)',
       'var(--floating-panel-inner-radius)',
