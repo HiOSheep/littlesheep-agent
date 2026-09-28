@@ -905,11 +905,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           ? 'finalize_persistence_failed'
           : 'finalize_publication_failed';
         await settleRuntimeFailureEvent(ctx, reason, opts.log);
+        // The settlement code is diagnostics, not an explanation: `runtimeFailureResult` publishes
+        // it as `runtimeStatus.reason` while the answer slot gets the catalogue's sentence.
         const failure = assembleResult({
           stage: 'finalize',
           next: 'exit',
           ok: false,
-          error: reason,
         }, ctx, sessionId, startedAt, false, undefined);
         result = runtimeFailureResult(failure, reason);
       }

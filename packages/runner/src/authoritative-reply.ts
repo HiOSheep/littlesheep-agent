@@ -7,6 +7,7 @@ import type {
 import { asSessionId } from '@littlesheep/types'
 import type { AgentRunner, RunnerResult } from './runner.js'
 import type { ExecutionLog } from './execution-log.js'
+import { runtimeUserSentence } from './runtime-messages.js'
 
 const MAX_RUNTIME_REASON_LENGTH = 160
 const MAX_FAILURE_MESSAGE_LENGTH = 512
@@ -223,19 +224,21 @@ function runtimeStatusMessage(status: RuntimeFinalStatus): string {
     : status.status === 'interrupted'
       ? 'Runtime interrupted before publishing a final reply.'
       : 'Runtime failed before publishing a final reply.'
-  return status.reason ? `${base} Reason: ${status.reason}` : base
+  // `status.reason` is a diagnostic code: it stays in `runtimeStatus.reason` (durable event and
+  // execution log) and never becomes part of the sentence the reader sees.
+  return runtimeUserSentence(base)
 }
 
 /**
- * The durable projection can prove that nothing was settled, but it does not
- * say why. The Runtime-owned failure text (never model prose) is the only
- * actionable explanation the user has, so a fail-closed result keeps it
- * instead of replacing it with an internal code.
+ * The durable projection can prove that nothing was settled, but it does not name the cause in
+ * user-facing words. The Runtime-owned failure text (never model prose) is the only actionable
+ * explanation the user has, so a fail-closed result keeps it while it exists. With no such text the
+ * caller publishes the localized status sentence instead — `runtimeStatus.reason` is an internal
+ * code and must never be republished as the user's explanation.
  */
-function runtimeFailureDetail(source: { error?: string; runtimeStatus?: RuntimeFinalStatus }): string | undefined {
+function runtimeFailureDetail(source: { error?: string }): string | undefined {
   const detail = source.error?.replace(/\s+/gu, ' ').trim()
-  if (detail) return detail
-  return source.runtimeStatus?.reason
+  return detail || undefined
 }
 
 function boundedFailureMessage(detail: string): string {

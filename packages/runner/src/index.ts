@@ -27,6 +27,11 @@ export {
 } from './authoritative-reply.js';
 
 export {
+  RUNTIME_MESSAGE_CATALOGUE,
+  runtimeUserSentence,
+} from './runtime-messages.js';
+
+export {
   conversationTurnInputDigest,
   conversationTurnMessageId,
   conversationTurnRunId,

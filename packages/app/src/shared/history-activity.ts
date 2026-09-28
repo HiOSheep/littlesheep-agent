@@ -206,7 +206,9 @@ export function runActivityOutcome(run: Pick<ExecutionLog, 'status' | 'runtimeCo
   return {
     status: waiting ? 'waiting_user' : paused ? 'paused' : run.status === 'ok' ? 'done' : run.status === 'aborted' ? 'aborted' : 'failed',
     error: waiting
-      ? run.error || `需要用户决定后才能继续。${run.runtimeStatus?.reason ? ` ${run.runtimeStatus.reason}` : ''}`
+      // The Runtime status sentence when one was published; otherwise this fallback. `reason` stays
+      // in `runtimeStatus` (durable event / execution log) and is never part of the user's sentence.
+      ? run.error || '需要用户决定后才能继续。'
       : paused ? '任务已暂停，现场已保存。' : run.error,
     runtimeStatus: run.runtimeStatus,
     runCheckpointId: run.runCheckpointId,

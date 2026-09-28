@@ -33,9 +33,12 @@ describe('next-path runtime failure publication', () => {
     expect(published.messages).toEqual([]);
   });
 
-  it('falls back to the bounded Runtime sentence when no detail exists', () => {
+  it('falls back to the localized Runtime sentence when no detail exists', () => {
     const published = runtimeFailureResult(failedResult({ error: undefined }), 'finalize_persistence_failed');
-    expect(published.error).toBe('Runtime failed before publishing a final reply. Reason: finalize_persistence_failed');
+    expect(published.error).toBe('本轮运行失败，没有发布最终回复。你可以重新发送这条消息重试。');
+    // The settlement code is diagnostics: it stays in the structured status, never in the sentence.
+    expect(published.error).not.toContain('finalize_persistence_failed');
+    expect(published.runtimeStatus).toMatchObject({ status: 'failed', reason: 'finalize_persistence_failed' });
   });
 
   it('bounds a very long failure detail', () => {

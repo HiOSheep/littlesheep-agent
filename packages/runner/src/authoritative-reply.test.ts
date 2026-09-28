@@ -154,6 +154,25 @@ describe('prepareAuthoritativeRunnerResult', () => {
       reason: 'effect_settlement_unknown',
     })
     expect(prepared.reply).toBe('')
+    // The reader gets the localized Runtime state; the settlement code stays in the status above.
+    expect(prepared.error).toBe('本轮运行在等待你的决定时停下，没有发布最终回复。请回复你的决定，或重新发送这条消息。')
+    expect(prepared.error).not.toContain('effect_settlement_unknown')
+  })
+
+  it('never publishes an internal reason code as the user-facing explanation', async () => {
+    const withoutDetail = result({ status: 'error', reply: '', runtimeStatus: undefined })
+    const prepared = await prepareAuthoritativeRunnerResult(nextRunner(vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'unavailable',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 7,
+      status: 'failed',
+      reason: 'terminal_without_settlement',
+    }))), withoutDetail)
+
+    expect(prepared.error).toBe('本轮运行失败，没有发布最终回复。你可以重新发送这条消息重试。')
+    expect(prepared.error).not.toContain('durable_final_reply_terminal_without_settlement')
+    expect(prepared.runtimeStatus?.reason).toBe('durable_final_reply_terminal_without_settlement')
   })
 
   it('fails closed when durable replay throws', async () => {

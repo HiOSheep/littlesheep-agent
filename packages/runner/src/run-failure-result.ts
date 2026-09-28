@@ -6,6 +6,7 @@
 import type { RunContext } from '@littlesheep/types';
 import type { LogFn } from './infra.js';
 import type { RunnerResult } from './runner.js';
+import { runtimeUserSentence } from './runtime-messages.js';
 
 /** Bounded user-facing failure detail kept from the underlying Runtime error. */
 const MAX_RUNTIME_FAILURE_DETAIL_LENGTH = 512;
@@ -38,13 +39,16 @@ export function runtimeFailureResult(result: RunnerResult, reason: string): Runn
     };
     // The Runtime-owned failure text is not model prose. Keep it visible so
     // the user sees the actionable cause (for example a Provider auth error)
-    // instead of only the internal settlement code.
+    // instead of only the internal settlement code. When there is no such text
+    // the catalogue's sentence stands in for it; `reason` itself is a
+    // diagnostic code and stays in `runtimeStatus.reason` plus the durable
+    // `runtime_status_settled` event written by `settleRuntimeFailureEvent`.
     const detail = result.error?.replace(/\s+/gu, ' ').trim().slice(0, MAX_RUNTIME_FAILURE_DETAIL_LENGTH);
     return {
       ...clearUnpublishedNextResult(result),
       status: 'error',
       runtimeStatus,
-      error: detail || `Runtime failed before publishing a final reply. Reason: ${reason}`,
+      error: detail || runtimeUserSentence('Runtime failed before publishing a final reply.'),
       webEvidence: undefined,
     };
 }
