@@ -4,7 +4,7 @@
   --settings-card-radius: 18px;
   --settings-control-radius: 11px;
   --settings-row-min-height: 76px;
-  background: var(--bg-elevated);
+  background: var(--workspace-code-surface);
 }
 
 .settings-workspace-body .settings-page-transition { background: transparent; }

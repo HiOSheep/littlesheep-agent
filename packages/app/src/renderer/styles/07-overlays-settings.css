@@ -789,7 +789,6 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: var(--settings-switch-width);
   height: var(--settings-switch-height);
   flex: 0 0 var(--settings-switch-width);
-  border-radius: var(--radius-pill);
   padding: 0;
   background: var(--border-strong);
   border: 0;
@@ -801,11 +800,10 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-switch > span {
   position: absolute;
-  top: 3px;
-  left: 3px;
+  top: calc((var(--settings-switch-height) - var(--settings-switch-knob)) / 2);
+  left: calc((var(--settings-switch-height) - var(--settings-switch-knob)) / 2);
   width: var(--settings-switch-knob);
   height: var(--settings-switch-knob);
-  border-radius: var(--radius-circle);
   background: var(--text);
   border-radius: var(--radius-circle);
   transition:
