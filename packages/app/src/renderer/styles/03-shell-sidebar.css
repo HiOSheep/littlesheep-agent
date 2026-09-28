@@ -814,10 +814,16 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   border-radius: var(--radius-floating-panel);
   box-shadow: var(--floating-panel-shadow);
   transform: translateX(var(--sidebar-surface-translate-x));
+  /* One collapse is one clock: the card's travel and the frame it paints on
+     that travel (border, and in chali the shadow, which is the card's only
+     edge) all read `--sidebar-collapse-motion`. They used to read
+     `--motion-fast` — the 140ms hover clock — so the frame finished fading at
+     140ms while the card kept moving until 320ms: at the instant every other
+     participant sat at 50% of its travel, the frame was already at 100%. */
   transition:
     transform var(--sidebar-collapse-motion) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    box-shadow var(--motion-fast) var(--motion-ease);
+    border-color var(--sidebar-collapse-motion) var(--motion-ease),
+    box-shadow var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 /* The absolute containing block starts at the surface's padding edge, which
@@ -950,12 +956,13 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 /* Keep the drag frame as the animation origin while React commits the durable
    collapsed state. The saved width is restored only after the card is clear
-   of the chat viewport. */
+   of the chat viewport. The re-declared transition is the same clock as the
+   rule above — it exists here only to survive the class swap mid-animation. */
 .window-shell.sidebar-collapse-settling .sidebar-surface {
   transition:
     transform var(--sidebar-collapse-motion) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    box-shadow var(--motion-fast) var(--motion-ease);
+    border-color var(--sidebar-collapse-motion) var(--motion-ease),
+    box-shadow var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 /* Commit a drag collapse with the saved width while the surface is already
@@ -987,10 +994,16 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   cursor: col-resize;
   -webkit-app-region: no-drag;
   opacity: var(--sidebar-resizer-opacity);
+  /* The seam is part of the same collapse as the track it straddles, so its
+     fade reads `--sidebar-collapse-motion` too. On `--motion-fast` it was 2.5x
+     ahead of the card for the whole move: at the instant the card, the track
+     and the footer were at 50% of their travel the seam was already at 82.5%
+     (expand) and 17.5% (collapse), and it was gone at 100ms while the card
+     still had 163ms of travel left. */
   transition:
     width var(--sidebar-collapse-motion) var(--motion-ease),
     margin var(--sidebar-collapse-motion) var(--motion-ease),
-    opacity var(--motion-fast) var(--motion-ease);
+    opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .window-shell.sidebar-collapsed .sidebar-resizer,

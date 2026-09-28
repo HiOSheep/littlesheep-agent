@@ -71,7 +71,9 @@
   .memory-file-save,
   .project-create-submit,
   .archive-refresh,
-  .archive-action
+  .archive-action,
+  .settings-select:disabled,
+  .settings-select-menu > button:disabled,
 ):disabled {
   cursor: default;
   opacity: var(--control-disabled-opacity);

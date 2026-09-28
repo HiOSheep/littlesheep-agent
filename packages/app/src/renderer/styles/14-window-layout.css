@@ -15,6 +15,16 @@
   display: none;
 }
 
+/* In chali this inset rule is the sidebar's *only* painted edge: there is no
+   radius, no outer rail and no shadow left to separate the card from the chat
+   column. The line therefore belongs to the collapse motion, not to the hover
+   feedback — `.sidebar-surface` transitions `box-shadow` on
+   `--sidebar-collapse-motion` (320ms), the same clock as the transform that
+   carries the card, so the edge and the card arrive together. Its collapsed
+   state (`box-shadow: none`) is on that same clock; on the 140ms
+   `--motion-fast` clock the line was already fully drawn or fully gone while
+   the card was still travelling, which reads as the frame starting before the
+   panel. Anything that changes this line has to keep that token. */
 .sidebar-surface,
 .settings-sidebar {
   border-radius: 0;
