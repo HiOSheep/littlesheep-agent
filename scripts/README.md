@@ -14,7 +14,7 @@ verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与
 
 判定 API 在 `scripts/lib/native-hit-test.mjs`：
 
-- `createNativeHitTest({ main, pointsPath })` 取一条连到 Electron 主进程的 CDP 客户端（`main`），返回探针；`pointsPath` 是可选的点位临时文件路径。
+- `createNativeHitTest({ main, pointsPath })` 取一条连到 Electron 主进程的 CDP 客户端（`main`），返回探针；`pointsPath` 是可选的点位临时文件路径。另有 `powerShell`、`platform`、`resolveGeometry` 三个可选覆盖项，给没有装 `layoutElectron` / `layoutWindow` 全局量的调用方使用。
 - `probe(points)` 对每个 `{ label, x, y }`（**CSS 坐标，相对内容区**）返回 `{ label, hit, name, kind, client, caption, captionButton, css, physical }`。`kind` 只会是 `client` / `caption` / `caption-button` / `other` / `unavailable`；`client === true` 就是"真实按下会送到页面"。
 - `assertClientHits(points, label)` 是这条约定的直接断言：任一点不是 `HTCLIENT` 就抛错，错误信息带 `win32 hit test <值> <名字> at css <x>,<y>`。`assertCaptionHits(points, label)` 是镜像断言：这些点必须仍然是窗口拖拽面（`HTCAPTION`）。
 - `probeMap(points)` 返回 `{ [label]: hit }`，供想自己比对的调用方使用；`describeHit` / `describeHitName` / `isClientHit` / `isCaptionHit` / `isCaptionButton` 与 `HTCLIENT` / `HTCAPTION` 等常量一并导出。

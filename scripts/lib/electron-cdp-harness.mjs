@@ -217,6 +217,52 @@ export function createElectronHarness({
     throw new Error(`timed out waiting for ${label}`)
   }
 
+  /**
+   * Poll the renderer through `adapter.client`, letting the adapter replace that
+   * client when the page is not answering.
+   *
+   * Measured 2026-09-28, on a host running several Electron gates at once: while
+   * a renderer is taking over from the standalone startup document it replaces
+   * its execution context, and `Runtime.evaluate` on the client attached a
+   * moment earlier then fails. The page renders correctly a moment later, so a
+   * wait that treats those failures as "not yet" — or that re-attaches through
+   * `connectRenderer` while the deadline runs out — times out on a healthy app.
+   * `waitFor` alone cannot separate that from a legitimate `undefined`.
+   *
+   * The re-attach is bounded by both `reconnectTimeoutMs` and a retry delay, so
+   * a dead target cannot turn the wait into a slow connect loop.
+   */
+  async function waitForRenderer(adapter, expression, timeoutMs, label, {
+    reconnect,
+    reconnectTimeoutMs = 15_000,
+    reconnectDelayMs = 500,
+  } = {}) {
+    let reconnecting = false
+    let lastReconnectAt = 0
+    return waitFor(async () => {
+      try {
+        return await adapter.client.evaluate(expression)
+      } catch {
+        const now = Date.now()
+        if (!reconnect || reconnecting || now - lastReconnectAt < reconnectDelayMs) return undefined
+        reconnecting = true
+        lastReconnectAt = now
+        try {
+          const replacement = await Promise.race([
+            reconnect(),
+            delay(reconnectTimeoutMs).then(() => undefined),
+          ])
+          if (replacement) adapter.client = replacement
+        } catch {
+          // The target may still be navigating; the next poll retries.
+        } finally {
+          reconnecting = false
+        }
+        return undefined
+      }
+    }, timeoutMs, label)
+  }
+
   async function waitForVisible(client, selector, start, timeoutMs = actionTimeoutMs) {
     const result = await waitFor(async () => {
       const current = await client.evaluate(`(() => {
@@ -342,6 +388,7 @@ export function createElectronHarness({
     connectRenderer,
     connectDebugger,
     waitFor,
+    waitForRenderer,
     waitForVisible,
     reservePort,
     apiUrl,

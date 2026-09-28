@@ -1,6 +1,6 @@
 # LittleSheep 仓库指南
 
-最后更新：2026-09-27 17:54:14
+最后更新：2026-09-28 20:47:00
 
 本文件说明源码仓库的边界和模块归属。它不描述用户运行时数据的具体内容，也不替代能力进度记录；进度以 [project-status.md](../decision/project-status.md) 为准。
 
@@ -230,7 +230,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 
 - `pnpm.cmd run build`：完整构建入口，先执行全 workspace typecheck，再执行 App 构建；阶段验收使用它的完整语义，不用于每次小改动。
 - `pnpm.cmd run build:app`：强制执行一次 App-only 构建，并写入 `packages/app/out/.littlesheep-build-fingerprint.json`；它不替代根 `build` 的全 workspace typecheck。
-- `pnpm.cmd run ensure:app-build`：准备并校验 Electron 运行时；App 输入和 `out/**` fingerprint 新鲜时返回 `reused`，否则构建并原子写入 sidecar。`pnpm.cmd run assert:app-build` 只读断言，不会触发构建，过期、缺失、篡改或来源不明的 App 产物会 fail-closed。
+- `pnpm.cmd run ensure:app-build`：准备并校验 Electron 运行时；App 输入和 `out/**` fingerprint 新鲜时返回 `reused`，否则构建并原子写入 sidecar。构建前会解析 pnpm（`LITTLESHEEP_PNPM` → PATH → `PNPM_HOME` → npm 全局前缀 → 常见安装目录），解析不到时列出每个查过的路径并失败；被要求执行的构建若退出 0 却没有重写 `out/` 产物，指纹会被作废而不是把旧字节记成当前。`pnpm.cmd run assert:app-build` 只读断言，不会触发构建，过期、缺失、篡改或来源不明的 App 产物会 fail-closed。
+- `pnpm.cmd run app:launch`：桌面与开始菜单快捷方式的实际入口（`scripts/launch-littlesheep.ps1`）。它先幂等重写两个 `.lnk` 指向自己，再把 App 构建核对到当前源码（`--ensure` 之后再用 `--assert` 独立重算一遍），然后启动 `packages/app/runtime` 下最新的 `LittleSheep.exe`。核对不通过时不启动任何东西：打印原因、弹出消息框（`-NoDialog` 关闭），退出码 3；启动旧构建要显式给 `-AllowStaleBuild`（`-NoBuild` 为旧名）。另有 `app:shortcuts`（只重写快捷方式）与 `app:clean-runtimes`（只清理暂存/更旧运行时）。回归门：`pnpm.cmd run verify:launch-staleness`。
 - `pnpm.cmd run ensure:workspace-build -- --package=@littlesheep/runner`：构建或复用目标包及其传递 workspace 依赖闭包，并在各目标 `dist/` 写入独立 sidecar；`pnpm.cmd run assert:workspace-build -- --package=<name>` 只断言，不会构建。App `out` sidecar 证明桌面应用入口与 Electron runtime 契约；workspace `dist` sidecar 证明声明的源码/依赖闭包和本地产物，两者不能互相替代。
 - `node scripts/run-verified-electron.mjs <script> [args...]`：在启动 Electron 专项脚本前只读断言 App fingerprint，并使用 sidecar 绑定且重新校验过的 prepared Electron 可执行文件；DeepSeek V4 tokenizer 和 Memory Provider 门通过此入口运行。
 - `pnpm.cmd run verify:task -- --files=<path>`：不读取 `origin/main`，只按显式任务文件执行直接同名测试或必要的 related fallback，并对所属 package 做局部 typecheck；同目录存在 `<name>.test.*`/`<name>.spec.*` 时优先只运行它。Renderer 或 shared 输入会单独执行 App web typecheck。该入口不会读取其他脏文件，也不会传播到 dependents，因此完成后仍需运行 `verify:changed`。
@@ -251,6 +252,7 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `test/core-agent-contracts.test.ts`：跨包核心 Agent 契约。
 - `test/e2e-cli.test.ts`、`test/e2e-webhook.test.ts`：跨包 CLI/渠道流程。
 - `scripts/check-repository-hygiene.mjs`：仓库结构质量检查，不参与运行时；检查正式文档、任务书日期、生成物、300/600 行登记、受控超限、热点增长、workspace 清单、深层 import、运行时依赖环和核心协议唯一来源。
+- `scripts/lib/native-hit-test.mjs`：**窗口 chrome"能不能点"的原生判定**。`document.elementFromPoint` 与 CDP 合成点击都在窗口的 draggable region **之下**——渲染器把 `-webkit-app-region` 的盒子发布为窗口拖拽区，Windows 用 `WM_NCHITTEST` 解析，`HTCAPTION` 表示那次按下变成 caption 交互、页面收不到（2026-09-28 实测：这两项在"真实点击无效"的构建上全部通过）。因此**任何涉及窗口 chrome、拖动区、窗口顶边或顶栏控件的改动，都必须用 `assertClientHits` 断言受影响的控件是原生 `HTCLIENT`**，`elementFromPoint` 与 CDP 点击只能作为补充证据。该判定以窗口仍被操作系统合成为前提：隐藏或整体移出显示器的窗口没有可观测的 draggable region，`WM_NCHITTEST` 会在整条 chrome 行上一律答 `HTCLIENT`，所以原生那一半必须让窗口可见，并在结束前恢复原状态。用法、坐标换算、平台边界与自检入口见 `scripts/README.md` 的"约定：窗口 chrome 的'能不能点'按原生命中判定"一节；判别力由 `scripts/probe-native-hit-test.mjs` 每次启动真实窗口证明（同一断言在正常状态通过、在被注入拖动区后失败）。
 - `scripts/workspace-projects.mjs`：workspace 包发现、依赖图、受影响包传播和 TypeScript config 路径的唯一实现。
 - `scripts/sync-typescript-projects.mjs`：同步或检查 TypeScript project references，避免手工维护的引用图与 package manifest 分叉。
 - `scripts/run-affected-verification.mjs`：按 Git 变更执行受影响 typecheck 与 related tests；配置文件变化不应误触发全部运行时测试；缺失 Git 基线必须 fail-closed，Vitest fallback 使用已解析的 merge-base 提交。
@@ -271,8 +273,8 @@ Context 已通过轻量 `ContextEngine` facade 接通来源分段、调用契约
 - `scripts/verify-memory-v3-migration-readiness.mjs`：用指定真实 V2 数据的隔离副本执行迁移就绪验收；必须在复制前后复核源 manifest/index 哈希，并区分业务 atom 与内部 scope root，不得在源数据根登记迁移。
 - `scripts/build-app.ps1`：构建 Electron 应用并刷新快捷方式。
 - `scripts/prepare-littlesheep-runtime.mjs`：按当前 Electron 版本在本机生成被命名为 `LittleSheep.exe` 的运行时副本；该副本属于安装/构建产物，不进入 Git。
-- `scripts/refresh-desktop-shortcut.ps1`：调用命名运行时准备脚本，按脚本所在仓库路径生成指向 `LittleSheep.exe` 的桌面快捷方式；目标、参数、工作目录、图标四项已一致时**不重写**文件（重存 `.lnk` 会丢掉资源管理器保存在文件之外的状态），`-Force` 强制重写，`-IfPresent` 把"这个桌面没有快捷方式"和"尚未构建出 `out/`"当作可跳过的状态而非错误。
-- `scripts/sync-desktop-shortcut.mjs`：把 `refresh-desktop-shortcut.ps1` 接到 `@littlesheep/app` 的 `predev` / `prebuild` 与根目录 `build:app` 之后的跨平台入口，让快捷方式随 Electron 版本自动前进——否则升级后桌面图标仍指向旧 Chromium，而旧引擎不认识新属性时会静默退回，看起来像改动没生效。默认尽力而为且失败不中断，`--strict`（`pnpm run refresh:desktop-shortcut`）为显式模式。
+- `scripts/refresh-desktop-shortcut.ps1`：把桌面 `LittleSheep.lnk` 指向 `scripts/launch-littlesheep.ps1`（隐藏窗口的 pwsh，工作目录 `packages/app`）。**不指向某个版本的 `LittleSheep.exe`**：那样点图标就绕过了启动器的构建新鲜度检查，一次没有真正发生的构建会表现为"改了没生效"且毫无提示。目标、参数、工作目录、图标四项已一致时**不重写**文件（重存 `.lnk` 会丢掉资源管理器保存在文件之外的状态），`-Force` 强制重写，`-IfPresent` 把"这个桌面没有快捷方式"当作可跳过的状态而非错误。该脚本由 `powershell.exe`（Windows PowerShell 5.1）执行，语法必须保持 5.1 兼容。
+- `scripts/sync-desktop-shortcut.mjs`：把 `refresh-desktop-shortcut.ps1` 接到 `@littlesheep/app` 的 `predev` / `prebuild` 与根目录 `build:app` 之后的跨平台入口，让快捷方式在这三条命令之后都回到启动器上——升级 Electron 与"构建没真正发生"这两个症状因此都由启动器一处负责（它每次点击解析最新运行时，并要求指纹证明构建就是源码描述的那一份）。默认尽力而为且失败不中断，`--strict`（`pnpm run refresh:desktop-shortcut`）为显式模式。回归门：`pnpm run verify:launch-staleness`。
 - `scripts/start-littlesheep.ps1`：位置无关的开发启动入口。
 
 ## 源码、生成物和用户数据边界

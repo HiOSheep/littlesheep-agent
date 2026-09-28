@@ -1,11 +1,32 @@
 // Real native-window geometry and desktop-composited backdrop acceptance.
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createElectronHarness, CdpClient, delay } from './lib/electron-cdp-harness.mjs'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
+import { createNativeHitTest, HTCLIENT, HTCAPTION, isCaptionButton } from './lib/native-hit-test.mjs'
+import { loadWindowChromeContractSources, windowChromeContractViolations } from './lib/window-chrome-contract.mjs'
+import {
+  WINDOW_CHROME_CAPTION_STRIP,
+  WINDOW_CHROME_CONTROLS,
+  WINDOW_CHROME_DRAG_BANDS,
+  WINDOW_CHROME_GEOMETRY,
+  WINDOW_CHROME_RESIZE_SEAM,
+  windowChromeControlsBox,
+} from '../packages/app/src/shared/window-chrome-contracts.ts'
+
+// The source-level half of the window-chrome contract first, before a window is
+// started: it costs a second and it is the half that can name the file that has to
+// change. The declared numbers live in `shared/window-chrome-contracts.ts`; the
+// assertions below measure the same contract against a real window through the OS.
+const contractViolations = windowChromeContractViolations(await loadWindowChromeContractSources())
+assert.deepEqual(
+  contractViolations,
+  [],
+  `the window-chrome contract and the sources that implement it disagree:\n  ${contractViolations.join('\n  ')}`,
+)
+const contractBox = windowChromeControlsBox()
 
 const harness = createElectronHarness({ startTimeoutMs: 90_000 })
 await harness.assertBuildFresh()
@@ -30,7 +51,7 @@ await writeFile(join(dataDir, 'config.json'), JSON.stringify({
 const debuggingPort = await harness.reservePort()
 const mainDebuggingPort = await harness.reservePort()
 const child = await harness.startElectron({ dataDir, chromiumDir: join(root, 'chromium'), debuggingPort, mainDebuggingPort, logPath: join(root, 'electron.log') })
-let client, main, locator
+let client, main, locator, windowWasVisible
 const results = []
 async function state() {
   return client.evaluate(`(() => {
@@ -62,18 +83,22 @@ async function state() {
  * geometry predates the pinned controls and is bounded here so it cannot grow unnoticed.
  */
 async function chrome() {
+  const declaredControls = JSON.stringify(WINDOW_CHROME_CONTROLS.map(({ id, selector }) => ({ id, selector })))
+  const declaredBands = JSON.stringify(WINDOW_CHROME_DRAG_BANDS.map(({ id, selector }) => ({ id, selector })))
   return client.evaluate(`(() => {
+    const declaredControls = ${declaredControls};
+    const declaredBands = ${declaredBands};
     const box = (selector) => {
       const node = document.querySelector(selector); if (!node) return null;
       const r = node.getBoundingClientRect();
       return { x:+r.x.toFixed(2), y:+r.y.toFixed(2), width:+r.width.toFixed(2), height:+r.height.toFixed(2) };
     };
     const controls = document.querySelector('.app-nav-controls');
-    const surfaces = ['.window-titlebar', '.window-drag-band'].flatMap((selector) => {
-      const node = document.querySelector(selector); if (!node) return [];
+    const surfaces = declaredBands.flatMap((band) => {
+      const node = document.querySelector(band.selector); if (!node) return [];
       const style = getComputedStyle(node); if (style.display === 'none') return [];
       const r = node.getBoundingClientRect();
-      return [{ selector, x:+r.x.toFixed(2), width:+r.width.toFixed(2), height:+r.height.toFixed(2),
+      return [{ id: band.id, selector: band.selector, x:+r.x.toFixed(2), width:+r.width.toFixed(2), height:+r.height.toFixed(2),
         appRegion: style.getPropertyValue('-webkit-app-region') }];
     });
     const gaps = [];
@@ -90,12 +115,25 @@ async function chrome() {
       if (hit.closest('.sidebar-resizer')) { seamHits.push(x); continue; }
       if (!hit.closest('.window-titlebar, .window-drag-band')) misrouted.push({ x, hit: hit.className || hit.tagName });
     }
+    // The declared controls, measured where they are actually painted rather than
+    // where the contract predicts them: the prediction is asserted against these
+    // boxes, and the native probe is sent to their centres.
+    const controlBoxes = declaredControls.map((control) => ({ ...control, box: box(control.selector) }));
+    const controlBox = (id) => controlBoxes.find((control) => control.id === id)?.box ?? null;
+    // The no-drag hole is a generated box, so it has no element to measure: its used
+    // geometry comes back through the originating element's ::after computed style,
+    // and its effect is measured natively below.
+    const shell = document.querySelector('.window-shell');
+    const holeStyle = getComputedStyle(shell, '::after');
+    const hole = { x: Number.parseFloat(holeStyle.left), y: Number.parseFloat(holeStyle.top),
+      width: Number.parseFloat(holeStyle.width), height: Number.parseFloat(holeStyle.height),
+      appRegion: holeStyle.getPropertyValue('-webkit-app-region'), pointerEvents: holeStyle.pointerEvents, content: holeStyle.content };
     const toggle = document.querySelector('.app-nav-controls .sidebar-toggle-btn');
     return {
       layout: document.documentElement.dataset.windowLayout,
       collapsed: document.querySelector('.window-shell').classList.contains('sidebar-collapsed'),
-      controls: box('.app-nav-controls'), toggle: box('.app-nav-controls .sidebar-toggle-btn'),
-      back: box('.app-nav-btn.nav-back'), forward: box('.app-nav-btn.nav-forward'),
+      controls: box('.app-nav-controls'), toggle: controlBox('sidebar-toggle'),
+      back: controlBox('nav-back'), forward: controlBox('nav-forward'), controlBoxes, hole,
       position: controls ? getComputedStyle(controls).position : null,
       zIndex: controls ? getComputedStyle(controls).zIndex : null,
       toggleLabel: toggle?.getAttribute('aria-label') ?? null,
@@ -103,12 +141,13 @@ async function chrome() {
       backDisabled: document.querySelector('.app-nav-btn.nav-back')?.disabled ?? null,
       forwardDisabled: document.querySelector('.app-nav-btn.nav-forward')?.disabled ?? null,
       sidebarTrack: box('.sidebar'), sidebarSurface: box('.sidebar-surface'),
-      controlTops: ['.app-nav-controls .sidebar-toggle-btn', '.app-nav-btn.nav-back', '.app-nav-btn.nav-forward'].map((selector) => {
-        const node = document.querySelector(selector);
-        if (!node) return { selector, top: null, isControl: false };
+      seam: box(${JSON.stringify(WINDOW_CHROME_RESIZE_SEAM.selector)}),
+      controlTops: controlBoxes.map((control) => {
+        if (!control.box) return { selector: control.selector, top: null, isControl: false };
+        const node = document.querySelector(control.selector);
         const r = node.getBoundingClientRect();
         const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-        return { selector, top: top ? (top.getAttribute('class') || top.tagName) : null, isControl: Boolean(top && node.contains(top)) };
+        return { selector: control.selector, top: top ? (top.getAttribute('class') || top.tagName) : null, isControl: Boolean(top && node.contains(top)) };
       }),
       surfaces, gaps, misrouted, seamHits, controlHits, width: innerWidth,
     };
@@ -142,90 +181,190 @@ function assertPinned(current, reference, label) {
 /**
  * What the *window* does with a real mouse press at these points.
  *
- * `elementFromPoint` and `Input.dispatchMouseEvent` both answer a layer above this one: a
- * real press is filtered first by the window's draggable region, which the renderer
- * publishes from `-webkit-app-region` and Windows consults through the window's own
- * WM_NCHITTEST. HTCAPTION (2) there means the press becomes a caption interaction and the
- * page never sees it; HTCLIENT (1) means it is delivered. That filter is why the pinned
- * controls could look reachable to the DOM checks in this script — and to a CDP click —
- * while a real click on them did nothing, so the three sidebar states are asserted here
- * through the OS instead.
- *
- * The points are given in viewport coordinates and converted with the window's own
- * geometry: `getContentBounds()` is in DIP, and the scale factor of the display it sits on
- * takes that to the physical screen space WM_NCHITTEST speaks. The window is deliberately
- * *not* moved onto a display for this: moving it re-applies its bounds through a
- * DIP/physical round trip that ratchets its size about a pixel per call, which would break
- * the exact geometry asserted below. A parked window answers correctly from where it is.
+ * The probe itself lives in `lib/native-hit-test.mjs` so every gate that touches window
+ * chrome, the drag regions or the top-bar controls can ask the same question; this script
+ * is its first caller and keeps only its own points and assertions. Reading the module
+ * header matters before trusting a "clickable" claim from `elementFromPoint` or a CDP click:
+ * measured on 2026-09-28, those two passed on a build where a real press on the pinned
+ * controls became a caption interaction and never reached the page. The window is
+ * deliberately *not* moved for the probe — see the module header for the DIP round trip
+ * that would ratchet its size and break the exact geometry asserted below.
  */
-function nativeHitScript(hwnd, pointsPath) {
-  return `
-$ErrorActionPreference = 'Stop'
-Add-Type -Namespace LsWindowLayout -Name Native -MemberDefinition @'
-[DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
-'@
-[void][LsWindowLayout.Native]::SetProcessDpiAwarenessContext([IntPtr](-4))
-$points = Get-Content -Raw -LiteralPath '${pointsPath.replaceAll("'", "''")}' | ConvertFrom-Json
-$out = foreach ($point in $points) {
-  $packed = ((([int64]$point.y -band 0xFFFF) -shl 16) -bor ([int64]$point.x -band 0xFFFF))
-  if ($packed -ge 0x80000000) { $packed -= 0x100000000 }
-  [pscustomobject]@{ label = [string]$point.label; hit = [int64][LsWindowLayout.Native]::SendMessage([IntPtr][int64]${hwnd}, 0x0084, [IntPtr]::Zero, [IntPtr][int64]$packed) }
+let native
+function nativeHitTest(points) {
+  native ??= createNativeHitTest({ main, pointsPath: join(root, 'native-hit-points.json') })
+  return native.probeMap(points)
 }
-ConvertTo-Json -InputObject @($out) -Compress
-`
-}
-async function nativeHitTest(points) {
-  if (process.platform !== 'win32') return undefined
-  const geometry = await main.evaluate(`(() => {
-    const content = layoutWindow.getContentBounds();
-    const scale = layoutElectron.screen.getDisplayMatching(layoutWindow.getBounds()).scaleFactor;
-    const handle = layoutWindow.getNativeWindowHandle();
-    return { hwnd: handle.readBigUInt64LE(0).toString(), content, scale };
-  })()`)
-  const pointsPath = join(root, 'native-hit-points.json')
-  await writeFile(pointsPath, JSON.stringify(points.map((point) => ({
-    label: point.label,
-    x: Math.round((geometry.content.x + point.x) * geometry.scale),
-    y: Math.round((geometry.content.y + point.y) * geometry.scale),
-  }))))
-  const stdout = execFileSync('pwsh', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', nativeHitScript(geometry.hwnd, pointsPath)], { encoding: 'utf8' })
-  return Object.fromEntries(JSON.parse(stdout).map((entry) => [entry.label, entry.hit]))
-}
-const HT_CLIENT = 1
-const HT_CAPTION = 2
-/** The island is the three buttons themselves; every neighbour of it stays grabbable. */
+/**
+ * The contract, as points: every control the contract declares must be clickable is
+ * asked about at the centre of the box it is actually painted in, every band it
+ * declares draggable at the middle of its own box, and the island's three neighbours
+ * inside the top-bar row. A hole larger than the controls would turn those neighbours
+ * into page content; a hole smaller than them would leave part of a control as caption.
+ *
+ * There is deliberately no "above the island" probe. The island starts 4px below the
+ * client top, and the pixels above it belong to the window's own resize border, which
+ * answers `HTTOP` (12) regardless of the draggable region — measured here on
+ * 2026-09-28, when that probe first ran. The upper edge of the hole is covered by
+ * `assertHoleBox` (its computed box) instead of by a native sample that would be
+ * measuring the OS frame rather than this contract.
+ */
 function nativeChromePoints(dom) {
   const centre = (box) => ({ x: box.x + (box.width / 2), y: box.y + (box.height / 2) })
-  const titlebar = dom.surfaces.find((surface) => surface.selector === '.window-titlebar')
   return [
-    { label: 'toggle', ...centre(dom.toggle) },
-    { label: 'back', ...centre(dom.back) },
-    { label: 'forward', ...centre(dom.forward) },
+    ...dom.controlBoxes.map((control) => ({ label: control.id, ...centre(control.box) })),
+    ...dom.surfaces.map((surface) => ({ label: `band:${surface.selector}`, x: surface.x + (surface.width / 2), y: 16 })),
     { label: 'island-left', x: dom.controls.x - 4, y: 16 },
     { label: 'island-right', x: dom.controls.x + dom.controls.width + 8, y: 16 },
     { label: 'island-below', x: dom.controls.x + (dom.controls.width / 2), y: dom.controls.y + dom.controls.height + 3 },
-    { label: 'titlebar', x: titlebar.x + (titlebar.width / 2), y: 16 },
     { label: 'chat-client', x: 600, y: 300 },
   ]
 }
-function assertNativeHitTest(hits, label) {
-  if (!hits) return
-  for (const name of ['toggle', 'back', 'forward']) {
-    assert.equal(hits[name], HT_CLIENT, `${label}: a real mouse press on the ${name} control is not delivered to the page (win32 hit test ${hits[name]})`)
-  }
-  for (const name of ['island-left', 'island-right', 'island-below', 'titlebar']) {
-    assert.equal(hits[name], HT_CAPTION, `${label}: ${name} is no longer part of the window's draggable top edge (win32 hit test ${hits[name]})`)
-  }
-  assert.equal(hits['chat-client'], HT_CLIENT, `${label}: the win32 hit test did not answer for this window`)
-}
 async function assertNativeChrome(dom, label) {
   const hits = await nativeHitTest(nativeChromePoints(dom))
-  assertNativeHitTest(hits, label)
+  if (!hits) return hits
+  for (const control of WINDOW_CHROME_CONTROLS) {
+    assert.equal(hits[control.id], HTCLIENT, `${label}: a real mouse press on the declared control ${control.id} is not delivered to the page (win32 hit test ${hits[control.id]})`)
+  }
+  for (const band of WINDOW_CHROME_DRAG_BANDS) {
+    const painted = dom.surfaces.some((surface) => surface.selector === band.selector)
+    assert.equal(painted, band.layouts.includes(dom.layout), `${label}: ${band.id} paints in ${dom.layout} but the contract declares it ${band.layouts.join('/')}`)
+    if (!painted) continue
+    assert.equal(hits[`band:${band.selector}`], HTCAPTION, `${label}: the declared draggable band ${band.selector} is not window chrome (win32 hit test ${hits[`band:${band.selector}`]})`)
+  }
+  for (const name of ['island-left', 'island-right', 'island-below']) {
+    assert.equal(hits[name], HTCAPTION, `${label}: ${name} is page content but it is outside the declared controls' box, so the no-drag hole is larger than the island (win32 hit test ${hits[name]})`)
+  }
+  assert.equal(hits['chat-client'], HTCLIENT, `${label}: the win32 hit test did not answer for this window`)
   return hits
+}
+/**
+ * The whole top edge, asked of the OS instead of the DOM.
+ *
+ * `assertDragTiling` answers the same question one layer up (which boxes cover x)
+ * and lets the layout answer it; this walks the edge through WM_NCHITTEST, where a
+ * gap is not "no box covers x" but "the OS delivers this pixel to the page". Four
+ * kinds of sample are expected, and three of them are declared in the contract rather
+ * than accepted here: the controls' island (HTCLIENT — the hole), the resize seam
+ * where it crosses this row (HTCLIENT, bounded by the declared 8px), the strip the top
+ * bar reserves for the native caption buttons (the OS's own buttons: HTCLOSE and
+ * friends, measured), and the rest of the row (HTCAPTION). Anything else — most of all
+ * a pixel the OS would deliver to the page outside the island — is reported as a run
+ * of x, so a single gap reads as one line instead of 600 samples.
+ */
+function runsOf(samples) {
+  const runs = []
+  for (const sample of samples) {
+    const last = runs.at(-1)
+    if (last && last.hit === sample.hit && Math.abs(sample.x - last.to) <= 2) {
+      last.to = sample.x
+      last.count += 1
+      continue
+    }
+    runs.push({ from: sample.x, to: sample.x, count: 1, hit: sample.hit, why: sample.why })
+  }
+  return runs
+}
+async function nativeTopEdge(dom, label, stride = 2) {
+  const points = []
+  for (let x = 0.5; x < dom.width; x += stride) points.push({ label: `x${Math.round(x)}`, x, y: 16 })
+  const hits = await nativeHitTest(points)
+  if (!hits) return undefined
+  const island = dom.controls
+  const topRow = contractBox.top + contractBox.height
+  // Only a seam that actually reaches the top-bar row can subtract from it: in beta the
+  // resizer moves to row 2 and this row is the full-width titlebar again.
+  const seam = dom.seam && dom.seam.width > 0 && dom.seam.y < topRow ? dom.seam : null
+  const captionStripFrom = dom.width - WINDOW_CHROME_CAPTION_STRIP.inset
+  const sampled = { island: 0, seam: 0, captionButtons: 0, caption: 0 }
+  const unexpected = []
+  // The island's box is half-open, exactly as a CSS box is: the hole covers x in
+  // [left, left + width), so the sample at `left + width` is outside it and HTCAPTION
+  // there is correct. (A ±0.5 window reported that one sample as a gap; that was this
+  // check's bug, not the window's — measured 2026-09-28.)
+  const insideIsland = (x) => x >= island.x && x < island.x + island.width
+  const insideSeam = (x) => seam !== null && x >= seam.x && x < seam.x + seam.width
+  for (const point of points) {
+    const hit = hits[point.label]
+    if (insideIsland(point.x)) {
+      sampled.island += 1
+      if (hit !== HTCLIENT) unexpected.push({ x: point.x, hit, why: 'inside the controls\' island but not delivered to the page' })
+      continue
+    }
+    if (insideSeam(point.x)) {
+      sampled.seam += 1
+      continue
+    }
+    if (point.x >= captionStripFrom) {
+      sampled.captionButtons += 1
+      // The OS owns these pixels (and where each button starts); the contract only owns
+      // the reservation that keeps page content out from under them.
+      if (hit === HTCAPTION || isCaptionButton(hit)) continue
+      unexpected.push({ x: point.x, hit, why: 'inside the strip reserved for the native caption buttons but not window chrome' })
+      continue
+    }
+    sampled.caption += 1
+    if (hit !== HTCAPTION) unexpected.push({ x: point.x, hit, why: 'not window chrome' })
+  }
+  const gaps = runsOf(unexpected)
+  assert.deepEqual(gaps, [], `${label}: the window's top edge is not one draggable strip (${gaps.length} run(s) the OS does not treat as caption: ${JSON.stringify(gaps.slice(0, 4))}; geometry ${JSON.stringify(await windowGeometry())})`)
+  assert(sampled.island > 4 && sampled.caption > 4 && sampled.captionButtons > 0, `${label}: the top edge was not sampled (${JSON.stringify(sampled)})`)
+  // The bounded exception, bounded by the contract rather than by whatever was measured.
+  assert(sampled.seam <= Math.ceil(WINDOW_CHROME_RESIZE_SEAM.width / stride) + 1, `${label}: the sidebar resize seam took ${sampled.seam} pixels of the top edge, more than the declared ${WINDOW_CHROME_RESIZE_SEAM.width}px`)
+  // What the row looks like to the OS, as runs: everything the row is *not* caption, with
+  // the declared reason where there is one. This is the evidence a reader needs when a
+  // scan fails, and the proof that its passes were not vacuous.
+  const nonCaption = runsOf(points
+    .filter((point) => hits[point.label] !== HTCAPTION)
+    .map((point) => ({
+      x: point.x,
+      hit: hits[point.label],
+      why: insideIsland(point.x) ? 'the controls\' island' : insideSeam(point.x) ? 'the declared resize seam' : point.x >= captionStripFrom ? 'the native caption buttons' : 'UNEXPECTED',
+    })))
+  return { stride, sampled, seam: seam ? { x: seam.x, width: seam.width } : null, captionStrip: { from: captionStripFrom, inset: WINDOW_CHROME_CAPTION_STRIP.inset }, gaps, nonCaption }
+}
+/**
+ * The hole is a generated box: its effect is measured natively above, and its
+ * declared geometry is the contract's island, box for box, in the live window.
+ */
+function assertHoleBox(dom, label) {
+  const expected = { x: contractBox.left, y: contractBox.top, width: contractBox.width, height: contractBox.height }
+  const measured = { x: dom.hole.x, y: dom.hole.y, width: dom.hole.width, height: dom.hole.height }
+  assert.deepEqual(measured, expected, `${label}: the no-drag hole is not the declared island (measured ${JSON.stringify(measured)}, contract ${JSON.stringify(expected)})`)
+  assert.equal(dom.hole.appRegion, 'no-drag', `${label}: the hole does not subtract anything from the draggable region`)
+  assert.equal(dom.hole.pointerEvents, 'none', `${label}: the hole is not click-through`)
+  assert.deepEqual(dom.controls, { x: expected.x, y: expected.y, width: expected.width, height: expected.height },
+    `${label}: the pinned controls are not the declared island (measured ${JSON.stringify(dom.controls)})`)
+  for (const [index, control] of dom.controlBoxes.entries()) {
+    const step = WINDOW_CHROME_GEOMETRY.controlWidth + WINDOW_CHROME_GEOMETRY.controlGap
+    assert.deepEqual(control.box, { x: expected.x + (index * step), y: expected.y, width: WINDOW_CHROME_GEOMETRY.controlWidth, height: WINDOW_CHROME_GEOMETRY.controlHeight },
+      `${label}: ${control.id} is not laid out at its declared position inside the island`)
+  }
+}
+/** One state of the window, asserted against the declared contract end to end. */
+async function assertChromeState(dom, label, { topEdge = false } = {}) {
+  assertHoleBox(dom, label)
+  const hits = await assertNativeChrome(dom, label)
+  const edge = topEdge ? await nativeTopEdge(dom, label) : undefined
+  return { layout: dom.layout, island: dom.controls, hole: dom.hole, hits, edge }
 }
 async function windowBounds() {
   return main.evaluate(`(() => { const b = layoutWindow.getBounds(); return { x:b.x, y:b.y, width:b.width, height:b.height }; })()`)
+}
+/**
+ * The window's own geometry, for a scan that has to explain what it measured: a hit
+ * test answers in screen coordinates, so a run of unexpected answers is only readable
+ * next to the bounds, the display scale and whether the window is maximized (a
+ * maximized window's frame is not its client rect).
+ */
+async function windowGeometry() {
+  return main.evaluate(`(() => {
+    const bounds = layoutWindow.getBounds();
+    const content = layoutWindow.getContentBounds();
+    const display = layoutElectron.screen.getDisplayMatching(bounds);
+    return { bounds, content, scale: display.scaleFactor, display: display.bounds,
+      maximized: layoutWindow.isMaximized(), fullScreen: layoutWindow.isFullScreen(), visible: layoutWindow.isVisible() };
+  })()`)
 }
 /** A real pointer drag along the window's top edge, through the pointer bridge to Main. */
 async function dragTopEdge(x, dx, dy) {
@@ -268,8 +407,33 @@ try {
   }, 30_000, 'main inspector')
   main = new CdpClient(target.webSocketDebuggerUrl)
   await main.evaluate(`globalThis.layoutElectron = process.getBuiltinModule('module').createRequire(process.cwd() + '/package.json')('electron'); globalThis.layoutWindow = layoutElectron.BrowserWindow.getAllWindows()[0]; true`)
-  await harness.desktopAction(locator, 'park-offscreen')
-  await harness.waitFor(async () => (await state()).layout === 'chali', 30_000, 'initial Chali')
+  /**
+   * A window the OS still composites, for the whole run.
+   *
+   * This gate used to `park-offscreen`, and that made its native assertions read
+   * a draggable region the OS was no longer publishing: measured 2026-09-28, a
+   * window parked with `setBounds({x:-32000,y:-32000})` + `showInactive()`
+   * answered `HTCLIENT` at the titlebar's centre, while the same point answered
+   * `HTCAPTION` once the window was on screen again — with the renderer's
+   * `-webkit-app-region` boxes unchanged throughout. Under that state "this is
+   * still window chrome" can pass or fail for reasons that have nothing to do
+   * with the chrome contract, which is exactly the false answer this gate exists
+   * to prevent. `showInactive` never takes focus, and the window is put back the
+   * way the run found it before the process quits.
+   */
+  windowWasVisible = await main.evaluate('layoutWindow.isVisible()')
+  if (!windowWasVisible) await harness.desktopAction(locator, 'show')
+  // Guarded wait, not `waitFor`: a renderer still taking over from the standalone
+  // startup document replaces its execution context, and `state()` then returns
+  // nothing at all on a healthy app (measured 2026-09-28 while several Electron
+  // gates ran on this host). `waitForRenderer` reports that as "not yet" and can
+  // re-attach; `waitFor` only saw `undefined` and timed out at the deadline.
+  const rendererAdapter = { client }
+  await harness.waitForRenderer(rendererAdapter, `document.documentElement.dataset.windowLayout ?? null`, 90_000, 'initial Chali', {
+    reconnect: () => harness.connectRenderer(debuggingPort),
+  })
+  client = rendererAdapter.client
+  await harness.waitFor(async () => (await state()).layout === 'chali', 30_000, 'initial Chali layout')
   await delay(700)
   await click('.workspace-panel-corner-toggle')
   for (const [name, maximized] of [['chali', false], ['beta', true], ['restored', false]]) {
@@ -286,9 +450,9 @@ try {
     assert.equal(s.core.radius, maximized ? '12px' : '0px')
     const expandedChrome = await chrome()
     assertDragTiling(expandedChrome, `${name} expanded`)
-    assert.equal(expandedChrome.controls.x, 8)
-    assert.equal(expandedChrome.controls.y, 4)
-    const expandedNative = await assertNativeChrome(expandedChrome, `${name} expanded`)
+    // The island is the contract's box and the hole equals it, in the live window: the
+    // two loose coordinates this script used to spot-check are now that whole assertion.
+    const expandedProof = await assertChromeState(expandedChrome, `${name} expanded`, { topEdge: true })
     await shot(name)
     await click('.sidebar-toggle-btn')
     const collapsedState = await state()
@@ -298,7 +462,7 @@ try {
     assertDragTiling(collapsedChrome, `${name} collapsed`)
     assertPinned(collapsedChrome, expandedChrome, `${name} collapsed`)
     assert.equal(collapsedChrome.sidebarTrack.width, 0)
-    const collapsedNative = await assertNativeChrome(collapsedChrome, `${name} collapsed`)
+    const collapsedProof = await assertChromeState(collapsedChrome, `${name} collapsed`)
     await click('.sidebar-toggle-btn')
     await click('.settings-entry-btn')
     const settings = await state()
@@ -306,12 +470,12 @@ try {
     assert.equal(settings.settings.y, maximized ? 32 : 0)
     // The settings rail renders its own drag band over the same 32px row, so the controls
     // keep their island while that surface owns the left rail.
-    const settingsNative = await assertNativeChrome(await chrome(), `${name} settings open`)
+    const settingsProof = await assertChromeState(await chrome(), `${name} settings open`)
     await click('.settings-entry-btn')
     await client.send('Page.reload')
     await harness.waitFor(async () => (await state()).layout === (maximized ? 'beta' : 'chali'), 20_000, 'reload layout')
     await delay(700)
-    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed', pinned: expandedChrome.controls, dragTiling: 'passed', native: { expanded: expandedNative, collapsed: collapsedNative, settings: settingsNative } })
+    results.push({ name, ...s, settings, controls: 'passed', reload: 'passed', pinned: expandedChrome.controls, dragTiling: 'passed', island: expandedChrome.controls, hole: expandedChrome.hole, native: { expanded: expandedProof, collapsed: collapsedProof, settings: settingsProof } })
   }
 
   // The pinned window-chrome controls: one position across every sidebar state, with
@@ -324,15 +488,13 @@ try {
   assert.equal(expanded.position, 'fixed')
   assert.equal(expanded.toggleLabel, '收起侧边栏')
   assert.equal(expanded.toggleExpanded, 'true')
-  assert.equal(expanded.controls.x, 8)
-  assert.equal(expanded.controls.y, 4)
-  assert.equal(expanded.controls.height, 24)
   const expandedWidth = expanded.sidebarTrack.width
   assert(expandedWidth > 0, 'the expanded sidebar has no width to shrink from')
   // ...and the whole top edge is only draggable if the three controls are *not*: a real
   // press on the island is delivered to the page, a real press on its neighbours is window
-  // chrome. This is the half of the contract the DOM-level checks above cannot see.
-  const expandedNative = await assertNativeChrome(expanded, 'pinned expanded')
+  // chrome, and every other pixel of the row is caption. This is the half of the contract
+  // the DOM-level checks above cannot see.
+  const expandedProof = await assertChromeState(expanded, 'pinned expanded', { topEdge: true })
   await shotCorner('corner-expanded')
 
   // Collapsed: the sidebar track is gone, the controls are where they were — and the top
@@ -345,7 +507,7 @@ try {
   assert.equal(collapsed.toggleExpanded, 'false')
   assertPinned(collapsed, expanded, 'collapsed')
   assertDragTiling(collapsed, 'pinned collapsed')
-  const collapsedNative = await assertNativeChrome(collapsed, 'pinned collapsed')
+  const collapsedProof = await assertChromeState(collapsed, 'pinned collapsed', { topEdge: true })
   await shotCorner('corner-collapsed')
 
   // ...and a real pointer click on the pinned toggle brings the sidebar back: the
@@ -371,7 +533,12 @@ try {
     assertDragTiling(sample, `mid-resize +${dx}`)
     assert(Math.abs(sample.sidebarTrack.width - (expandedWidth + dx)) < 2, `mid-resize +${dx}: the sidebar track did not follow the pointer (${sample.sidebarTrack.width})`)
     assert(Math.abs(sample.sidebarSurface.width - (expandedWidth + dx)) < 2, `mid-resize +${dx}: the sidebar surface did not follow the pointer (${sample.sidebarSurface.width})`)
-    midResize.push({ dx, sidebarTrack: sample.sidebarTrack.width, controls: sample.controls })
+    // While the pointer is still down and the sidebar is moving frame by frame, the
+    // controls and their hole are the same box as before the drag started — asked
+    // through the OS, because this is the state the historical failure was measured in
+    // (all three controls answered HTCAPTION mid-resize while every DOM check passed).
+    const proof = await assertChromeState(sample, `mid-resize +${dx}`)
+    midResize.push({ dx, sidebarTrack: sample.sidebarTrack.width, controls: sample.controls, native: proof })
   }
   await shotCorner('corner-mid-resize')
   await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: seam.x + 130, y: seam.y, button: 'left', clickCount: 1 })
@@ -382,7 +549,7 @@ try {
   // A sidebar that is wider than the pinned controls but not at its default width is the
   // third state the controls have to survive: the drag band is under them and the top bar
   // starts past their right edge.
-  const resizedNative = await assertNativeChrome(widened, 'resized')
+  const resizedProof = await assertChromeState(widened, 'resized', { topEdge: true })
 
   // The top edge is still grabbable where the controls are not: a real drag on the
   // band over the sidebar moves the native window by exactly the requested amount.
@@ -414,7 +581,11 @@ try {
     dragTiling: { expanded: expanded.surfaces, collapsed: collapsed.surfaces },
     controlTops: { expanded: expanded.controlTops, collapsed: collapsed.controlTops, resized: widened.controlTops },
     seamHits: { expanded: expanded.seamHits, collapsed: collapsed.seamHits },
-    nativeHitTest: { expanded: expandedNative, collapsed: collapsedNative, resized: resizedNative },
+    // What the declared contract was checked against: the island and the hole as the
+    // live window reports them, and the OS's answer for the control centres, the band
+    // centres, the island's four neighbours and the whole top edge.
+    contract: { box: contractBox, topBarHeight: WINDOW_CHROME_GEOMETRY.topBarHeight, controls: WINDOW_CHROME_CONTROLS, bands: WINDOW_CHROME_DRAG_BANDS, seam: WINDOW_CHROME_RESIZE_SEAM },
+    nativeHitTest: { expanded: expandedProof, collapsed: collapsedProof, resized: resizedProof },
     bandDrag,
   })
 
@@ -471,6 +642,9 @@ try {
 } finally {
   await writeFile(join(root, 'results.json'), JSON.stringify(results, null, 2))
   await main?.evaluate('if(globalThis.layoutBackdrop) layoutBackdrop.destroy(); true').catch(() => {})
+  // Put the user's screen back: this run showed the window for its native
+  // measurements, and it was hidden when the run started (`windowWasVisible`).
+  if (windowWasVisible === false) await main?.evaluate('layoutWindow.hide(); true').catch(() => {})
   client?.close(); main?.close()
   if (locator) await harness.desktopAction(locator, 'quit').catch(() => {})
   if (child.exitCode === null) {

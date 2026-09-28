@@ -1,6 +1,6 @@
 # 验收脚本场景矩阵（SL-05）
 
-最后更新：2026-09-27 19:03:20
+最后更新：2026-09-28 20:47:00
 
 本文件是整仓瘦身收口工作中 SL-05 的第一件交付物（任务书已退役，结果见[项目状态](../docs/decision/project-status.md)同名小节）：**先建立“场景—独有断言—证据层级—所属入口”表，再动手合并**。它记录的是改动前的取证（大脚本逐场景、其余脚本按共享形状聚类），以及改动后每条独有断言的去向。
 
@@ -10,6 +10,14 @@
 - **所属入口**：根 `package.json` 里调用它的脚本名；`none` 表示没有任何入口或文档引用它（下面单独列）。
 - 行数按 `ReadAllLines` 口径（文件末尾无换行的最后一行也计入）。
 - 本表不重复各门自己的 `limits`；门的“证明不了什么”以该脚本输出中的 `limits` 为准。
+
+## 0. `real Electron` 里还有一层：原生命中（2026-09-28）
+
+`real Electron` 这一层的下方还有一层过滤器：**窗口自己的 `WM_NCHITTEST`**。渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 在那里把落在拖拽区上的真实按下变成 caption 交互，页面根本收不到。2026-09-28 实测：在“真实点击无效”的构建上，`document.elementFromPoint` 与 CDP 合成点击**全部通过**，所以这两项都不构成“用户点得到”的证据。
+
+这段判定现在是共享库 `scripts/lib/native-hit-test.mjs`：按窗口句柄给出每个点位的 `WM_NCHITTEST`，并分类为 `client`（`HTCLIENT`，送达页面）/ `caption`（`HTCAPTION`，窗口拖拽面）/ `caption-button`（原生标题栏按钮）/ `other`。原属 `verify-window-layout.mjs` 的内联探针已改为调用它，门的断言与行为不变。**约定**：任何涉及窗口 chrome、拖动区、窗口顶边或顶栏控件的改动，必须用 `assertClientHits` 断言受影响的控件是原生 `HTCLIENT`；`elementFromPoint` 与 CDP 点击只能作为补充证据。判别力由 `scripts/probe-native-hit-test.mjs` 每次启动真实窗口自检——同一断言在正常状态通过、在被注入拖动区后失败。用法、坐标换算与平台边界见 `scripts/README.md` 的同名约定一节。
+
+这条判定还有一个**测量前提**：窗口必须是操作系统仍在合成的那一个。隐藏窗口、或已被整体移出所有显示器的窗口没有可观测的 draggable region，`WM_NCHITTEST` 会在整条 chrome 行上一律回答 `HTCLIENT`（2026-09-28 实测：停放窗口后标题栏中心是 `HTCLIENT`，移回屏内同一个点变回 `HTCAPTION`，渲染器的盒子全程没变）。所以**"`real Electron` + 停放窗口"**这一组合下的原生断言读数不可信——它可能因为与 chrome 契约无关的原因通过或失败；`verify-window-layout.mjs` 因此改为把窗口显示出来做原生那一半，并在退出前恢复可见状态。
 
 ## 1. 三个大型脚本
 
@@ -63,7 +71,7 @@
 | C. 真实模型 / SSE 验收 | `verify-electron-deepseek-*`（6 个入口）、`verify-memory-live-model`、`verify-ledger-reexecution-live`、`verify-harness-path-comparison`（live） | `lib/electron-deepseek-acceptance.mjs` 已经是它们共用的“无 CDP、走 Local App API `/run/stream`”验收面——与 A/B 的 CDP 面**不是**同一套语义（它要求 `windowVisible`、不注入调试端口），因此没有并入 harness |
 | D. 进程内夹具验收（不启动应用） | `verify-memory-v3-*`、`verify-file-consistency-faults`、`verify-legacy-data-root-upgrade`、`verify-web-*`、`verify-app-recovery-sources` 等 | 夹具各自独立；共享的是被测包本身，无跨脚本重复实现 |
 | E. 门与账本 | `run-verification-gate.mjs`（`verify:changed/core/full`）、`run-task-verification.mjs`（`verify:task`）、`run-affected-verification.mjs`（`test:changed`）、`measure-verification-baseline.mjs` | 已共用 `lib/affected-verification-*.mjs` 与 `lib/session-cache-ledger.mjs` |
-| F. 构建与指纹 | `ensure-app-build.mjs`、`ensure-workspace-artifacts.mjs`、`run-verified-electron.mjs`、`package-windows-release.mjs`、`prepare-littlesheep-runtime.mjs`、`sync-desktop-shortcut.mjs` | 已共用 `lib/app-build-fingerprint.mjs`、`lib/electron-runtime.mjs`、`lib/workspace-artifact-fingerprint.mjs` |
+| F. 构建与指纹 | `ensure-app-build.mjs`、`ensure-workspace-artifacts.mjs`、`run-verified-electron.mjs`、`package-windows-release.mjs`、`prepare-littlesheep-runtime.mjs`、`sync-desktop-shortcut.mjs`、`verify-launch-staleness.mjs`（启动链路的回归门：`.lnk` 必须指向启动器，且构建无法核对到当前时必须拒绝启动） | 已共用 `lib/app-build-fingerprint.mjs`、`lib/electron-runtime.mjs`、`lib/workspace-artifact-fingerprint.mjs`、`lib/pnpm-invocation.mjs` |
 | G. 离线诊断（读执行日志） | `audit-cache-usage.mjs`（`audit:cache`）、`analyze-cache-shapes.mjs`、`analyze-prompt-cache.mjs`、`report-memory-v3-workload.mjs`（`report:memory-v3-workload`）、`report-real-long-task-baseline.mjs`、`report-renderer-chunks.mjs` | 三个根目录一次性诊断脚本已被本表 §5 处理 |
 
 ## 3. 本次合并（每条独有断言的新归属）
