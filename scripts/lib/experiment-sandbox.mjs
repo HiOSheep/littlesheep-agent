@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { appendJsonLine, ensureDir, ledgerRecord, sha256, writeJson } from './experiment-ledger.mjs';
+import { interopFixControl, networkListenerControl } from './experiment-sandbox-controls.mjs';
 
 export const SANDBOX_BACKEND = 'wsl2-bwrap';
 
@@ -351,7 +352,7 @@ async function sb03Workload({ scratch, facts }) {
  * interop row stages its payload from the host so a copy failure inside the sandbox cannot look like a
  * closed channel.
  */
-async function sb04Boundary({ scratch, facts }) {
+async function sb04Boundary({ scratch, facts, run }) {
   const workspace = ensureDir(join(scratch, 'ws'));
   const auditPath = join(scratch, 'sandbox-audit.jsonl');
   const outsideSentinelWin = join(scratch, 'outside-sentinel.txt');
@@ -495,6 +496,16 @@ async function sb04Boundary({ scratch, facts }) {
     required: false,
     verdict: 'not-run',
   });
+
+  // RA-07 controls: the two rows that decide whether the rows above mean anything. Both are required, so a
+  // control that cannot be built fails the case instead of being quietly omitted.
+  rows.push(await interopFixControl({
+    facts, run, workspace, proofWin,
+    buildArgvFor: (attackCommand) => buildSandboxArgv(spec, attackCommand),
+  }));
+  rows.push(await networkListenerControl({
+    scratch, facts, run, exec, sharedSpec: specShared, restrictedSpec: spec,
+  }));
 
   return { caseId: 'SB-04', rows, spec, specShared, isolation: describeIsolation() };
 }
