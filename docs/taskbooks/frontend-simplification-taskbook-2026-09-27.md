@@ -303,3 +303,22 @@ O1、I3 与基础样式整理可以独立推进；异常可见性不应等待设
 **明确未验证（7 条）**：①150%/200% 缩放对比度（只在 OS dpr 1.5 采过）②减少动态效果（只读源码推理，未测量）③圆角是否裁切焦点环（只读 computed `outline`，未看像素）④`.settings-entry-btn` 按下态探针不可达（矩形在 x<0）+ 工作区文件树/浏览器/审阅行有意未纳入状态层（README 记为未收敛，连同实测但未动的 0.3–0.72 禁用字面量）⑤禁用原因端到端（`disabledReason`/busy `title` 已实现但**无调用点传入**，故窗口上不可见）⑥四态原语尚无页面消费者（接入属 S2/S5/I2）⑦`verify:electron-ui-state-continuity` 未通过（见下）。
 
 **关于 `verify:electron-ui-state-continuity` 的判定（主 Agent 回答）**：**判定为既有红灯**，不是本批引入。证据链：①该断言在 `assertWindowState`（脚本 :148）比较 **main 退出时落盘的原生窗口尺寸**，早于任何 UI 状态测量，渲染器 CSS/TSX 无法改变 `BrowserWindow` 的 DIP 边界；②本会话记录显示，**在 O1/S1/V1/V3 任何一批提交之前**，同一门禁在当时的 HEAD 上就以**完全相同的数值**失败（`expected 1115, received 1101`，容差 ±12px）；③V1/V3 两次重跑得到同一结果。**残留缺口**：尚未在干净检出（`ui-baseline-2026-09-27` 标签）上重跑一次以形成同口径对照——这一点如实保留为开放项，不声称已验证。
+
+## 状态更新 2026-09-29：finding #20 已关闭（真机双向证据）
+
+四态原语接入完成，消费者计数 **0 → 5 个页面**，四种状态各有页面代表；`.settings-module-empty` 现在**零消费者、零样式规则**（两个事实都有测试钉住）。
+
+- **已安排**：`<div class="settings-module-empty">`（无 `data-state`、无 `role`、无 aria，与"空"共用同一 class/结构/图标槽/灰色）→ `<div class="state-view" data-state="unavailable" role="status" aria-disabled="true">`，图标为斜杠圆（34×34，`rgb(216,180,92)` = `--warning`，`border-style: dashed`），并带**必填的可见原因行** `.state-view-reason`。
+- **插件**：同 class/结构/图标槽的空盒 → `<div class="state-view" data-state="empty" role="status">`，中性托盘图标（34×34，`rgb(133,133,133)` = `--muted-2`，`border-style: solid`），**无** `aria-disabled`、**无**原因行。
+- **实测区分点**：`data-state`、`aria-disabled`（true vs 缺席）、字形剪影（斜杠圆 vs 托盘）、图标色调与边框（warning/dashed vs muted/solid）、文案、以及**必填原因行的有无**。
+- **一处对早前假设的纠正**：`role` **不是**这两个状态的区分点 —— 四态表**有意**让 `empty` 与 `unavailable` 都用 `role="status"`（仅 `failure` 为 `alert`）。任何断言"两者 role 不同"的检查都是在断言原语故意不做的事。
+- **判别性**：接入检查在改动前 `3 failed | 1 passed (4)`（失败于消费者计数、每面状态、禁用自制空盒三项），改动后 `4 passed`；真机门禁 13 项读数 `allPass`，其中 `emptyIsDifferent: true`。
+- **基线**（供比对）：改动前包 `index-CJAuHGJ0.js` sha256 `a15f43926a835307`（`settings-module-empty` ×4、`StateView` 消费者 0）；改动后包 `index-D2BCsDHT.js` sha256 `612a298858383011`，对应构建 `inputDigest e050214aa0…` / `outputDigest e6d780c46f…`。
+- **未清事项**：门禁另有两条**非阻断 advisory** —— `plugins.tsx` 行数 399 > 登记上限 394，且 split-map 计数不一致（`plugins.tsx 394 ≠ 399`、`ArchiveManager.tsx 464 ≠ 471`）→ **接入方需更新热点登记与 split map**。
+
+### V3 台账更新 2026-09-29（不勾选整项）
+
+- **禁用原因可查：已完成** —— 两处：两段式控件（`workspace/terminal-shell-picker.tsx`，随 `0dd4ba52`）与网络检索的"检查 Tavily 连接"（`settings/web-state.ts` + `settings/web.tsx`，五条叠加原因经同一纯函数导出为可见说明行 + `aria-describedby` + `title`），并有 `settings/web-disabled-reason.test.ts` 的 32 组合真值表。
+- **"不可用 vs 空"（finding #20）：已关闭** —— 见上条状态更新，五面接入 + 真机双向证据。
+- **仍未完成，因此 V3 不勾**：①聊天区"空会话"与"composer 发送被阻断"的文案**目前是同一句**（`.empty-copy` / `.composer-send-block`，`packages/app/src/renderer/chat/**`）②设置模块搜索输入框的焦点指示（#19 ④）③`ui/README.md` 点名的其余未接入面（插件/渠道加载指示、`runtime-readiness-notice`、工作区空列表）④本轮门禁期望需随"标题栏透明"这一用户决定更新（`verify-desktop-cold-start-visuals.mjs` 两条检查）。
+- **环境事实（两次独立复现）**：本会话中 Electron 必须 `--no-sandbox`（否则连 `--version` 都退出 `0x80000003 STATUS_BREAKPOINT`）；构建必须把 `TEMP`/`TMP` 指到仓库内（esbuild 对 >1 MiB 输入写 `os.tmpdir()` 后删除被拒）。

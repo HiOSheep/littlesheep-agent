@@ -335,3 +335,15 @@ GFM 表格（无 fixture 渲染 ✓，只有源码事实 ✓）；跨会话切�
 **#5 交付的其他记录** ✓：失败回合**原样保留**（失败态 + 401 文本 + 本轮未完成 + 自己的重试 ✓），重试成功则**追加自己的指令与回合** ✓（不改写历史 ✓）；重试**不读不写 composer** ✓（草稿与附件零变化 ✓）；在途 run 时**禁用** ✓；**重试不重发原附件** ✓（附件不在该回合 activity 里 ✓，已如实声明 ✓）；`run-actions.ts` 作为**冻结热点**从 383 拆到 **343**（拆模块 ✓ **不是抬高上限** ✓✓）；门禁**能判别** ✓：修复前包 **exit 1 / 72 检查 / 10 失败全是重试族** ✓，交付包 **exit 0 / 81 检查 / 0 失败** ✓；原生命中：重试中心 **HTCLIENT** ✓、窗外点 **HTRIGHT**（证明探针不是常量 ✓）、拖动带 **HTCAPTION** ✓。
 
 **同期三门禁失败归属** ✓（都不属 #5 ✓）：`chat-layout-stability`（`desktop-window-chrome.ts does not compare its native titlebar row with the contract` ✓ → **A3 的在途契约检查** ✓）、`ui-state-consistency`（禁用色调 ✓ → **我名下** ✓）、`composer/mode-picker`（`.mode-picker-panel .option-picker-list` ✓ → **A2 的 padding 修法所在文件** ✓）。
+
+## 状态更新 2026-09-29：finding #20 已关闭（真机双向证据）
+
+四态原语接入完成，消费者计数 **0 → 5 个页面**，四种状态各有页面代表；`.settings-module-empty` 现在**零消费者、零样式规则**（两个事实都有测试钉住）。
+
+- **已安排**：`<div class="settings-module-empty">`（无 `data-state`、无 `role`、无 aria，与"空"共用同一 class/结构/图标槽/灰色）→ `<div class="state-view" data-state="unavailable" role="status" aria-disabled="true">`，图标为斜杠圆（34×34，`rgb(216,180,92)` = `--warning`，`border-style: dashed`），并带**必填的可见原因行** `.state-view-reason`。
+- **插件**：同 class/结构/图标槽的空盒 → `<div class="state-view" data-state="empty" role="status">`，中性托盘图标（34×34，`rgb(133,133,133)` = `--muted-2`，`border-style: solid`），**无** `aria-disabled`、**无**原因行。
+- **实测区分点**：`data-state`、`aria-disabled`（true vs 缺席）、字形剪影（斜杠圆 vs 托盘）、图标色调与边框（warning/dashed vs muted/solid）、文案、以及**必填原因行的有无**。
+- **一处对早前假设的纠正**：`role` **不是**这两个状态的区分点 —— 四态表**有意**让 `empty` 与 `unavailable` 都用 `role="status"`（仅 `failure` 为 `alert`）。任何断言"两者 role 不同"的检查都是在断言原语故意不做的事。
+- **判别性**：接入检查在改动前 `3 failed | 1 passed (4)`（失败于消费者计数、每面状态、禁用自制空盒三项），改动后 `4 passed`；真机门禁 13 项读数 `allPass`，其中 `emptyIsDifferent: true`。
+- **基线**（供比对）：改动前包 `index-CJAuHGJ0.js` sha256 `a15f43926a835307`（`settings-module-empty` ×4、`StateView` 消费者 0）；改动后包 `index-D2BCsDHT.js` sha256 `612a298858383011`，对应构建 `inputDigest e050214aa0…` / `outputDigest e6d780c46f…`。
+- **未清事项**：门禁另有两条**非阻断 advisory** —— `plugins.tsx` 行数 399 > 登记上限 394，且 split-map 计数不一致（`plugins.tsx 394 ≠ 399`、`ArchiveManager.tsx 464 ≠ 471`）→ **接入方需更新热点登记与 split map**。
