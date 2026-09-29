@@ -408,7 +408,6 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   }
 
   const copied = copyState === 'copied'
-  const failed = copyState === 'failed'
 
   return (
     <>
@@ -421,11 +420,14 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
-      {failed && (
-        <span className="code-copy-failed" role="status">
-          复制失败
-          <button type="button" onClick={() => void copy()}>重试</button>
-        </span>
+      {copyState === 'failed' && (
+        // The note and its retry are siblings, the way `.message-copy-failed-row` renders them, so the
+        // status line stays a status line and the retry stays a button. `failed` holds the toolbar open
+        // for as long as it stands, so neither leaves with the pointer.
+        <div className="code-copy-failed-row">
+          <span className="code-copy-failed" role="status">复制失败</span>
+          <button type="button" className="code-copy-retry" onClick={() => void copy()}>重试</button>
+        </div>
       )}
     </>
   )

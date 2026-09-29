@@ -1197,30 +1197,53 @@
   list-style: none;
 }
 
-/* O4: the code block's own copy button reports a refused clipboard write.
-   Same shape as the message action row's copy-failure row (05-chat-messages.css: .message-copy-failed-row) so the
-   two copy surfaces read as one contract rather than two. Scoped to the toolbar so it cannot leak into other rows. */
-.code-toolbar .code-copy-failed {
+/* O4: the code block's own copy button reports a refused clipboard write. Same shape as the message action row's
+   copy-failure row (.message-copy-failed-row / .message-copy-failed / .message-copy-retry) so the two copy surfaces
+   read as one contract rather than two, with the retry as its own classed button instead of inheriting the toolbar's
+   26px circular copy box. */
+.code-toolbar button[data-copy-state="failed"] {
+  color: var(--feedback-danger-text);
+}
+
+.code-copy-failed-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 0;
   padding-inline: 4px;
   font-size: 11px;
-  color: var(--warning, #d8b45c);
 }
 
-.code-toolbar .code-copy-failed button {
+.code-copy-failed {
+  color: var(--feedback-danger-text);
+}
+
+/* The retry sits inside `.code-toolbar`, where `.code-toolbar button` already sets the 26px circular copy box
+   (display, width, height, min-height, padding, border, radius). Only a selector that outranks it can hand the
+   retry the message row's metrics, so these two rules carry the full `button.code-copy-retry` compound. */
+.code-toolbar button.code-copy-retry {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  height: auto;
+  min-height: 20px;
+  padding: 0 6px;
+  color: var(--feedback-danger-text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-ui);
   font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
+  font-size: 11px;
   text-decoration: underline;
 }
 
-/* The Mermaid overlay's toolbar fades with the pointer, but a refused copy must stay readable: while the failure
-   note stands, the toolbar it lives in is held open (.mermaid-block > .code-toolbar is otherwise opacity 0). */.mermaid-block:has(.code-copy-failed) > .code-toolbar {
+.code-toolbar button.code-copy-retry:hover,
+.code-toolbar button.code-copy-retry:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
+
+/* The Mermaid overlay's toolbar is the one code surface that fades with the pointer, so while a refused copy stands
+   the toolbar holding the note is kept open rather than letting the explanation vanish on pointer-out. */
+.mermaid-block:has(.code-copy-failed-row) > .code-toolbar {
   opacity: 1;
 }
