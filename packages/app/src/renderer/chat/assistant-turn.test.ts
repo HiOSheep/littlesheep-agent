@@ -2,7 +2,7 @@ import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AssistantActivityFlow, AssistantTranscript, AssistantTurnMessage } from './assistant-turn'
-import { WebSources, webErrorLabel, webEvidenceStateLabel } from './assistant-turn'
+import { WEB_SOURCES_VISIBLE_ROWS, WebSources, webErrorLabel, webEvidenceStateLabel } from './web-sources'
 import { Markdown as MarkdownImplementation } from '../Markdown'
 import type { AssistantTurnActivity, ChatMessage } from './types'
 import { turnOutputRate, turnUsageFigures } from './turn-usage-card'
@@ -33,6 +33,37 @@ function renderFlow(next: Partial<AssistantTurnActivity> = {}): string {
     now: 1_500,
     onOpenFile: () => undefined,
   }))
+}
+
+
+/** Five citations covering every status the Runtime can project. */
+function manyCitations(): WebEvidenceProjection {
+  const base = {
+    origin: 'https://example.test',
+    urlHash: 'a'.repeat(64),
+    fetchedAt: '2026-09-29T00:00:00.000Z',
+    truncated: false,
+  }
+  return {
+    version: 1,
+    generatedAt: '2026-09-29T00:00:00.000Z',
+    completeness: 'partial',
+    citationIds: ['web-1', 'web-2', 'web-3', 'web-4', 'web-5'],
+    citations: [
+      { ...base, id: 'web-1', url: 'https://example.test/1', title: '已读取的来源', status: 'fetched' },
+      { ...base, id: 'web-2', url: 'https://example.test/2', title: '缓存里的来源', status: 'cached' },
+      { ...base, id: 'web-3', title: '被阻止的来源', status: 'blocked' },
+      { ...base, id: 'web-4', url: 'https://example.test/4', title: '只读到一部分的来源', status: 'partial', truncated: true },
+      { ...base, id: 'web-5', title: '只有安全投影的来源', status: 'fetched' },
+    ],
+    citationCount: 5,
+    documentCount: 5,
+    cached: true,
+    partial: true,
+    truncated: true,
+    blocked: true,
+    stale: false,
+  }
 }
 
 
@@ -71,8 +102,35 @@ describe('assistant activity flow', () => {
     expect(html).not.toContain('token=')
   })
 
-  it('maps every Runtime error category to a non-empty user-facing label', () => {
-    const kinds = [
+  it('summarises five citations as three rows plus an expand control, with the evidence limits on the summary', () => {
+    const html = renderToStaticMarkup(createElement(WebSources, { evidence: manyCitations() }))
+
+    expect(html.match(/class="web-source-row"/gu)).toHaveLength(WEB_SOURCES_VISIBLE_ROWS)
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('展开其余 2 项')
+    // The limits of the evidence stay readable with the list closed: one blocked, one cached and two
+    // partial citations are facts about the research, not details of a row.
+    expect(html).toContain('1 项被安全策略阻止')
+    expect(html).toContain('1 项只读到一部分')
+    expect(html).toContain('1 项来自缓存')
+  })
+
+  it('lists a short citation list in full and offers no disclosure for it', () => {
+    const evidence = manyCitations()
+    const html = renderToStaticMarkup(createElement(WebSources, {
+      evidence: {
+        ...evidence,
+        citations: (evidence.citations ?? []).slice(0, 2),
+        citationCount: 2,
+        citationIds: (evidence.citationIds ?? []).slice(0, 2),
+      },
+    }))
+
+    expect(html.match(/class="web-source-row"/gu)).toHaveLength(2)
+    expect(html).not.toContain('web-sources-toggle')
+  })
+
+  it('maps every Runtime error category to a non-empty user-facing label', () => {    const kinds = [
       'web_disabled', 'web_provider_unconfigured', 'web_provider_auth_failed', 'web_provider_rate_limited',
       'web_provider_unavailable', 'web_provider_invalid_response', 'web_invalid_query', 'web_sensitive_query_blocked',
       'web_url_invalid', 'web_scheme_blocked', 'web_ssrf_blocked', 'web_dns_check_failed', 'web_redirect_blocked',

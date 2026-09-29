@@ -1,6 +1,6 @@
 # LittleSheep 项目状态
 
-最后更新：2026-09-29 07:05:49
+最后更新：2026-09-29 07:59:03
 
 本文件是项目进度的正式来源，只记录**当前事实与可复现证据**。分轮开发记录、提交轨迹和一次性验收过程不保留在此处；需要追溯实现过程时使用 git 历史与对应任务书。
 
@@ -180,6 +180,8 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - **连续性由会话转录承载**：同一 `sessionId` 内每条用户消息恰好持久化一次；真实流程中 `conversationContinuation.resolution` 为 `none`，即没有隐藏的自动续接绑定在替用户接线。
 - **回答连续有交付物级硬门**（CTC-P0-12）：`pnpm run verify:conversation-continuity-live` 用真实 DeepSeek 执行"研究模式下缺权限被挡 → 用户答'给你权限和相关工具了，你再试试' → 完全访问下完成原任务"：第一轮必须**不**产出交付物并说明缺什么；第二轮必须产出可重新打开的 PDF、正文为中文、且最终回复**点名交付物**并**不**重复原问题（有界拒绝泛化追问）。跨重启的真实窗口回答连续由 `verify:electron-deepseek-reply-continuity` 覆盖。
 - **未覆盖 / 边界**：该门驱动的是应用 `/run/stream` 入口（桌面输入框使用的同一表面），不是窗口本身；回复检查是"交付物存在且校验通过 + 有界拒绝重问"，不是对措辞的语义评判，真实模型的表达波动会被如实记录为模型行为；`waiting_user` 的真实旧检查点迁移在本环境没有可用的历史数据根，只有夹具级证据。
+- **退役审计（2026-09-29）**：原任务书退役前自跟踪 **9 项**开放项，退役提交只按 **2 项**收口（回答连续门与 P0-E2E-001）。逐项取证后：已完成 2 项；改名承接 1 项（P0-E2E-001 ＝ `verify:conversation-continuity-live`，旧夹具脚本 `prepare-electron-conversation-continuity-e2e.mjs` 仍在仓库且零引用）；退役前已存在、仅搬移 2 项（附件 lease 保护在 `attachment-protection.ts`，工具恢复的 factory+version 在 `run-checkpoint-codec.ts`）；**5 项 + 半项至今无实现也无文档归属**，已登记进下方「未完成方向 P0：对话连续性的无归属项」。这是一次真实的静默丢项：退役时"登记而非完成"的口径没有落到这些条目上。
+
 ## Harness 当前语义（2026-09-27）
 
 原「Harness 当前语义与历史复杂度收口任务书 2026-09-25」于 2026-09-27 退役，HC-00～HC-06 全部落地，事实归入本节（原文见 git 历史）。
@@ -257,6 +259,21 @@ LittleSheep 当前是一个**可运行的本地 Agent alpha 原型**：硬控制
 - 外部系统副作用对账、真实网络中断和更长期真实用户负载待验收；正式数据根迁移待用户确认。
 - **并发负载门在"强杀重启后并发恢复检查点"处仍失败**：3 个并发真实 run 强杀重启后恢复时报 `run checkpoint resume conflict: checkpoint has an active resume lease`，而检查点在恢复前刚被判为 `resumable`。这是重启后租约状态的竞态/未释放问题，属运行状态一致性方向，不是对话执行路径的缺陷。
 - **受限模式的批准对话框仍未在真实窗口里走过**：三档权限的判定矩阵与"研究模式批准/拒绝"已有真实窗口证据，受限模式只有自动化覆盖。
+
+### P0：对话连续性的无归属项（2026-09-29 审计登记）
+
+来源：已退役的《对话任务连续性 P0 专项任务书 2026-08-13》（退役提交 `2919b69c`，2026-09-27 09:09）。退役时它自跟踪 9 项开放项、退役提交按 2 项收口，以下条目在退役后任何提交信息、本节与 `docs/README.md` 中都不再出现——即**既没有实现，也没有 owner**。它们不阻塞当前交付，但在被重新排期或明确否决前必须保持可见。
+
+| 项 | 内容 | 现状证据 | owner 与重新评估条件 |
+| --- | --- | --- | --- |
+| §10.2 发布指标门 | 会话连续性的 8 项硬计数聚合判定（重复 ASK_USER、双 claim、eligible waiting、资源恢复成功率等） | 全仓 grep 关键词 0 命中；最近的 `verify-conversation-execution-reliability.mjs` 是 9 场景交付门，按场景断言、不做计数聚合 | [核心 Agent 流程规范](../principles/core-agent-flow-guidelines.md)（验证分级）+ `scripts/README.md`；重新评估条件＝再次出现"发布级要按计数判定连续性"的需求 |
+| §11.2 只读迁移扫描 | 对旧检查点/会话数据做只读迁移扫描并出报告 | `scripts/` 只有 `verify-memory-v3-migration-readiness.mjs` 与 `verify-web-migration.mjs`（均非本项）；docs 搜"迁移扫描"0 命中 | 本文件「P0：运行连续性与数据边界」；条件＝出现真实旧数据根的迁移需求 |
+| §11.3 回滚演练 | 迁移/升级路径的回滚演练证据 | `scripts/` 无 rollback/revert 门；docs 搜"回滚演练"0 命中（`freeze-2026-09-02` tag 与前端回滚锚点是另一回事） | [生产依赖安全记录](../reference/production-dependency-security.md) 式的回滚 owner 待指定；条件＝任何真实数据迁移上线前 |
+| §4.1/§4.3 `ambiguous` 语义 | 续接分流遇到 `ambiguous` 时应保留 head 并要求用户选择 | 实现与要求相反：`packages/runner/src/runner.ts` 把 `kind === 'ambiguous'` 的旧检查点放弃并当新任务执行（`{kind:'cancel', source:'runtime_fallback'}`），行为自 `dad29392` 起未变，退役后该标识符 0 命中 | `packages/runner/README.md`；条件＝用户或评审认为"放弃旧头"会丢用户意图时 |
+| §8 阶段 0 baseline 报告 | 阶段 0 的故障夹具与基线报告作为独立产物 | 无独立产物，`scripts/prepare-electron-conversation-continuity-e2e.mjs` 零引用 | 本文件「P0：对话连续性」；条件＝下一次做连续性问题定位时 |
+| §5.4 `schema hash`（半项） | 临时工具恢复时按 factory ID + 版本 + **schema hash** 校验 | factory + version 已实现（`run-checkpoint-codec.ts` 校验 `version === 1` 与 `factory === 'inspect_attachment'`）；`git log -S'schemaHash' --all` 0 命中 | `packages/runner/README.md`；条件＝出现工具 schema 变更导致恢复误用的实例 |
+
+**同时记录两条账本事实**：① 退役表把 2026-09-22 的文档收口记成一行"7 份任务书 + 1 份参考"，而同日 10:56 的 `4a0711e4` 另删了 8 份任务书，退役表里没有它们的去向行——`git log --diff-filter=D --name-status -- docs/taskbooks/` 才是完整清单（历史上一共退役 32 份，含旧版被新版接管的）。② 被退役任务书的头部状态行多次陈旧或与正文矛盾（`runtime-state-consistency` 退役时状态行仍写 RS-06/06B/07/08"尚未开始"而正文已全勾；`real-long-task-cache` 状态行写"LT-02～08 未实施"而正文 34 项已勾；`harness-current-semantics` 提交称 HC-00～06 全部落地，但 HC-00 四条无任何产出）。**状态行不可单独作为退役依据**。
 
 ### P1：效率基线
 
@@ -431,3 +448,9 @@ O2 长内容阅读 · O3 产物与引用 · O4 消息辅助操作 · O6 Token �
 绿/红对：接入检查在恢复 HEAD 的自制盒与五目 `disabled` 表达式时 `2 files failed | 4 failed | 3 passed (7)`，恢复后 `3 files passed | 19 passed`（文件按 sha256 逐字节还原）；样式孪生检查加回 `.settings-module-empty { display: grid; }` → 1 failed | 11 passed，移除 → 12 passed。真机（仓外探针，窗口**在显示器上**、1280×840、dpr 1.5、`visibilityState=visible`、`finally` 归位）：**14/14 全过**，`inputDigest e1b90bcc…` / `outputDigest 764b5ebf…`；两枚 34px 图标裁剪像素 **304 个不同（6.4%）**、最大通道差 174；上边框 y=9 中间 40% 一行 —— unavailable 有 **4 处虚线下陷**、empty 为 `52×20` **零下陷**；禁用原因的 AX 树返回 `description="还没有配置搜索服务，先保存 Tavily 密钥再检查。"` + `disabled=true`；归档与外部渠道亦在共享 empty 态实测。
 
 **该包如实声明的未能验证项**：①它改过的两处**真机门禁在本会话无法执行**（渠道门禁停在 "timed out waiting for Local App API locator"，因为本机 Electron 不加 `--no-sandbox` 起不来；它认为 `scripts/**` 无对应开关 —— 实际上 `ELECTRON_DISABLE_SANDBOX=1` **可用**，冷启动门禁在本会话正是靠它跑到断言阶段的）；②`tsc -b tsconfig.workspace.json` 因**他人在途未跟踪文件** `packages/app/src/renderer/chat/reading-continuity.test.ts:31`（TS2532）而失败，排除该文件后渲染器工程 exit 0；③渠道/技能的 `loading` 态**接入了并被消费者测试钉住，但没有窗口帧**（瞬态）；④`role` **不是** empty 与 unavailable 的区分点 —— 其门禁断言的是**共用** `role`，不是差异。
+
+### O2/O3/O4 交付（2026-09-29）
+
+- **O3 产物与引用：已勾** ✓。三个真实缺陷在显示器上的窗口（1280×840、dpr 1.5）中复现并修好：附件条目单击原本要等 230ms 且**双击会静默 `POST /workspace/open`** ✗ → 现在一次按下一次动作（349–357ms → **116ms** ✓），系统打开改为显式控件 `.message-file-open-system`（aria-label `用系统默认应用打开 <name>` ✓，恰好 1 次请求 ✓），卡片中心 `WM_NCHITTEST`=**HTCLIENT** ✓；产物身份按分隔符+大小写归一（与行数查找同一 key ✓）→ `o3-out/notes.txt` 与 `O3-OUT/NOTES.TXT` 由 **2 个文件/2 行 → 1 个文件/1 行** ✓；来源五条引用 → 3 行 + `展开其余 2 项`（`aria-expanded` ✓）+ 可见标记行 `1 项被安全策略阻止 · 1 项只读到一部分 · 1 项来自缓存` ✓（抽取顺带把 `assistant-turn.tsx` 651 → **580 行**，离开 >600 受控名单 ✓）。真机 **23 项 0 失败**（pre/red 21 项 5 失败 ✓）；同一构建重建的单元对照：新断言在 HEAD 源码上 4 项失败 → 修复后 **37/37** ✓。**已声明缺口**：产物"行"仍无系统打开入口（仅附件有）、Markdown `_blank` 链接仍双击进系统、"外部应用真的打开了"只有请求层证据。
+- **O4 消息辅助操作：部分完成，不勾** ✗。消息操作行的复制已具备 `data-copy-state`（idle/copied/failed ✓），成功只在 `writeText` resolve 之后 ✓（700ms 延迟真实写入：250ms 时未显示成功、之后显示 ✓）；被拒写入渲染 `.message-copy-failed-row`（`role=status` `复制失败` + 重试 ✓）且位于**悬停淡出操作行之外** ✓；真实拒绝经 `Browser.setPermission` 复现（`Write permission denied.`）✓；指针离开后提示仍可读（宽 740px、opacity 1 ✓）；`Tab` 可达、行揭示（opacity 1）、2px 环、原生 HTCLIENT ✓。**未达成的验收点**：**代码块自带的复制按钮（`Markdown.tsx` 的 `CopyButton`）仍吞掉被拒写入、从不捕获** ✗（该文件当时被另一包持有）—— "复制控件"按字面包含代码块，故整项不勾。
+- **O2 长内容阅读：实测无缺陷，本包未改动，不勾** ✗。四个验收点在实测包上全部成立：流式中距底 247px 时 `scrollTop 60→60→60` ✓（首段下移 34px 是因为该回合自己的过程行改了高度，记为诊断而非断言 ✓）；`.chat-jump-to-latest`（`有新内容，回到最新` ✓）出现并回到底部 ✓；8 列表格在 `.markdown-table-wrap` **内部滚动**（包裹 739px vs 表格 1218px、列溢出 0、210 字符不可断串未被裁剪、代码块保留复制与换行开关 ✓）；结算后所有哨兵/单元格/代码行完好 ✓；800px 下栏宽 519/518 = 1px 亚像素、无可指认元凶 ✓。**待做**：其锚定行为来自另一包在写的 `chat/use-chat-scroll-controller.ts` + `chat/chat-scroll-anchor.ts`，须在其落定后按同一判据重新核验 ✓。

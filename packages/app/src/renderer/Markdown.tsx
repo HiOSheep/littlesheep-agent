@@ -242,6 +242,46 @@ function CodeToolbar({
   )
 }
 
+/**
+ * The wrap choice as box properties, applied to the scrolling element and to the
+ * code element inside it so `data-code-wrap` and the inline style cannot disagree.
+ */
+function codeWrapStyle(wrapped: boolean) {
+  return wrapped
+    ? { whiteSpace: 'pre-wrap' as const, overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const }
+    : { whiteSpace: 'pre' as const, overflowWrap: 'normal' as const, wordBreak: 'normal' as const }
+}
+
+/**
+ * The box the lazy highlighter gives a code block, taken from the style object the
+ * highlighter itself is configured with (`oneDark`'s `code[class*="language-"]`
+ * metrics, which Prism applies to the element it renders).
+ *
+ * Measured on the built renderer before this was shared: the plain fallback `<pre>`
+ * inherited the message's line height and `.markdown pre`'s bottom margin while the
+ * highlighted block carried Prism's metrics and no margin, so the swap moved every
+ * block below the code by 6.38px. Rendering both states into this one box is what
+ * makes the swap a no-op for the reader's position.
+ */
+function codeSourceStyle(wrapped: boolean) {
+  const prism = oneDark['code[class*="language-"]'] ?? {}
+  const wrap = codeWrapStyle(wrapped)
+  return {
+    source: {
+      ...prism,
+      margin: 0,
+      maxWidth: '100%',
+      overflowX: wrapped ? ('hidden' as const) : ('auto' as const),
+      overflowY: 'hidden' as const,
+      background: 'transparent',
+      backgroundColor: 'transparent',
+      padding: 'var(--code-block-inset)',
+      ...wrap,
+    },
+    code: { background: 'transparent', ...wrap },
+  }
+}
+
 function PlainCodeFallback({
   code,
   language,
@@ -253,24 +293,22 @@ function PlainCodeFallback({
   wrapped: boolean
   onToggleWrap: () => void
 }) {
+  const source = codeSourceStyle(wrapped)
   return (
     <div className="code-block">
       <CodeToolbar code={code} language={language} wrapped={wrapped} onToggleWrap={onToggleWrap} />
-      <pre
-        className="code-block-source"
-        data-code-wrap={wrapped ? 'on' : 'off'}
-      >
-        <code className={`language-${language}`} style={{ background: 'transparent' }}>{code}</code>
-      </pre>
+      {/* An element, not a `<pre>`: the highlighted state is a `div` (the highlighter's
+          `PreTag`), and only the same tag keeps `pre`-scoped rules from changing the box. */}
+      <div className="code-block-source" data-code-wrap={wrapped ? 'on' : 'off'} style={source.source}>
+        <code className={`language-${language}`} style={source.code}>{code}</code>
+      </div>
     </div>
   )
 }
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [wrapped, setWrapped] = useCodeWrapPreference()
-  const codeWrapStyle = wrapped
-    ? { whiteSpace: 'pre-wrap' as const, overflowWrap: 'anywhere' as const, wordBreak: 'break-word' as const }
-    : { whiteSpace: 'pre' as const, overflowWrap: 'normal' as const, wordBreak: 'normal' as const }
+  const source = codeSourceStyle(wrapped)
   return (
     <Suspense fallback={(
       <PlainCodeFallback
@@ -296,22 +334,9 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           wrapLongLines={wrapped}
           codeTagProps={{
             className: `language-${language}`,
-            style: {
-              background: 'transparent',
-              backgroundColor: 'transparent',
-              ...codeWrapStyle,
-            },
+            style: source.code,
           }}
-          customStyle={{
-            margin: 0,
-            maxWidth: '100%',
-            overflowX: wrapped ? 'hidden' : 'auto',
-            overflowY: 'hidden',
-            background: 'transparent',
-            backgroundColor: 'transparent',
-            padding: 'var(--code-block-inset)',
-            ...codeWrapStyle,
-          }}
+          customStyle={source.source}
         >
           {code}
         </SyntaxHighlighter>

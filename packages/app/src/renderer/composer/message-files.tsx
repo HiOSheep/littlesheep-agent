@@ -1,12 +1,12 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   type AttachmentRef
 } from '../api'
 import { useLinkNavigation } from '../link-navigation'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { CloseIcon, FileGlyphIcon } from '../ui/icons'
+import { CloseIcon, ExternalOpenIcon, FileGlyphIcon } from '../ui/icons'
 import { FadePresence } from '../ui/presence'
 import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
@@ -72,40 +72,37 @@ function MessageFileLink({
   onOpen: () => void
   onOpenSystem: () => void
 }) {
-  const clickTimerRef = useRef<number>()
-
-  useEffect(() => () => window.clearTimeout(clickTimerRef.current), [])
-
-  function handleClick(event: MouseEvent<HTMLButtonElement>) {
-    window.clearTimeout(clickTimerRef.current)
-    if (event.detail === 0) {
-      onOpen()
-      return
-    }
-    if (event.detail > 1) return
-    clickTimerRef.current = window.setTimeout(onOpen, 230)
-  }
-
-  function handleDoubleClick() {
-    window.clearTimeout(clickTimerRef.current)
-    onOpenSystem()
-  }
-
+  // One press, one action. The card used to wait 230ms to tell a single press from a double one and
+  // let a double press open the file with the system's own application — a hidden second action that
+  // no affordance announced (O3). Opening with the system is now what it looks like: its own control
+  // beside the card, with a name and a tooltip.
   return (
-    <button
-      className={`message-file-card ${file.action}`}
-      type="button"
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-    >
-      <span className="message-file-icon" aria-hidden="true">
-        <FileGlyphIcon name={file.name} />
-      </span>
-      <span className="message-file-main">
-        <strong>{file.name}</strong>
-        <small>{fileActionLabel(file.action)} · {compactPath(file.path)}</small>
-      </span>
-    </button>
+    <span className="message-file-entry">
+      <button
+        className={`message-file-card ${file.action}`}
+        type="button"
+        aria-label={`打开 ${file.name}`}
+        title={`打开 ${file.path}`}
+        onClick={onOpen}
+      >
+        <span className="message-file-icon" aria-hidden="true">
+          <FileGlyphIcon name={file.name} />
+        </span>
+        <span className="message-file-main">
+          <strong>{file.name}</strong>
+          <small>{fileActionLabel(file.action)} · {compactPath(file.path)}</small>
+        </span>
+      </button>
+      <button
+        className="message-file-open-system"
+        type="button"
+        aria-label={`用系统默认应用打开 ${file.name}`}
+        title="用系统默认应用打开"
+        onClick={onOpenSystem}
+      >
+        <ExternalOpenIcon />
+      </button>
+    </span>
   )
 }
 

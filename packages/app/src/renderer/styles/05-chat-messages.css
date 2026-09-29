@@ -337,6 +337,43 @@
   gap: 5px;
 }
 
+/* A file entry is the card plus the one secondary action it has: opening with the system's own
+   application. Both are visible targets; neither is hidden behind a double press (O3). */
+.message-file-entry {
+  display: inline-flex;
+  align-items: center;
+  max-width: min(360px, 100%);
+  gap: 2px;
+}
+
+.message-file-open-system {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  flex: 0 0 auto;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-circle);
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.message-file-open-system .workspace-panel-svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.message-file-open-system:hover,
+.message-file-open-system:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
+
 .message-file-card {
   display: inline-flex;
   align-items: center;
@@ -526,6 +563,19 @@
   min-width: 100%;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+/* A table wider than the chat column scrolls inside its own wrapper instead of being squeezed
+   into the column. Measured 2026-09-29 on the built renderer (1280x840, dpr 1.5): an
+   eight-column table whose content needs 1122.88px was compressed into the 739px wrapper — no
+   horizontal scrollbar at all (`scrollWidth` 739 = `clientWidth` 739), header cells 40.34 /
+   50.21 / 47.42px wide for two-glyph labels, and the six rows stood 397.96px tall (635.88px in
+   the 800x660 minimum window). `max-content` is the width the columns actually need and
+   `min-width: 100%` above still makes a narrow table fill its column, so the wrapper — which
+   keeps `width: 100%` and `overflow-x: auto` — is the only thing that scrolls. Scoped to the
+   chat reply: the workspace Markdown preview owns its own table sizing. */
+.message .markdown-table-wrap table {
+  min-width: max-content;
 }
 
 .markdown th,
@@ -838,6 +888,53 @@
   font-size: 12px;
 }
 
+/* The evidence's own limits, on the summary line: folding the list must never fold away the fact
+   that a source was blocked, truncated or served from cache (O3). */
+.web-sources-flags {
+  min-height: 18px;
+  padding: 0 6px;
+  color: var(--feedback-danger-text);
+  font-size: 10px;
+}
+
+.web-sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 26px;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.web-sources-toggle:hover,
+.web-sources-toggle:focus-visible {
+  color: var(--text);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+}
+
+.web-sources-toggle-arrow {
+  width: 6px;
+  height: 6px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.web-sources-toggle-arrow.open {
+  transform: rotate(-135deg) translateY(-1px);
+}
+
 .web-source-row {
   min-height: 42px;
   padding: 5px 6px;
@@ -940,6 +1037,43 @@
 }
 
 .message-meta-usage { display: inline-flex; align-items: center; }
+
+/* A refused copy keeps its own line under the action row. The row itself fades with the pointer
+   (that is its contract), so the failure is reported outside it and stays until the next attempt:
+   the reader's next move is the retry that sits right here (O4). */
+.message-copy-failed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding-inline: 4px;
+  font-size: 11px;
+}
+
+.message-with-meta.user .message-copy-failed-row {
+  justify-content: flex-end;
+}
+
+.message-copy-failed {
+  color: var(--feedback-danger-text);
+}
+
+.message-copy-retry {
+  min-height: 20px;
+  padding: 0 6px;
+  color: var(--feedback-danger-text);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-ui);
+  font-size: 11px;
+  text-decoration: underline;
+}
+
+.message-copy-retry:hover,
+.message-copy-retry:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
 
 /* The time reads at the size of the usage figures it sits beside, not larger than them. */
 .message-meta time {

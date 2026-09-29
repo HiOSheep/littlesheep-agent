@@ -48,6 +48,32 @@ describe('message metadata footer', () => {
     expect(source).toContain('<CheckIcon />')
   })
 
+  it('reports a refused copy beside the row and offers the retry there', async () => {
+    // The rejection itself is measured in a real window (`o4.copy-failure-is-visible-with-a-retry`);
+    // what a source-level check can pin is the shape that makes it work: the refused write is a state
+    // of its own (`failed`, not "not yet copied"), the note and its retry live *outside* the fading
+    // row, and the stylesheet keeps them visible.
+    const [styles, source] = await Promise.all([
+      readRendererStyleSource(),
+      readFile(new URL('./message-meta.tsx', import.meta.url), 'utf8'),
+    ])
+    const idle = renderToStaticMarkup(createElement(MessageMeta, {
+      role: 'assistant',
+      text: '需要复制的消息',
+      timestamp: '2026-08-25T09:07:00.000Z',
+    }))
+
+    expect(idle).toContain('data-copy-state="idle"')
+    expect(idle).not.toContain('message-copy-failed-row')
+    expect(source).toContain("setCopyState('failed')")
+    expect(source).toMatch(/catch\s*\{[\s\S]*?setCopyState\('failed'\)/)
+    expect(source).toContain('className="message-copy-failed" role="status"')
+    expect(source).toContain('className="message-copy-retry"')
+    expect(styles).toMatch(/\.message-copy-failed-row\s*\{[^}]*display:\s*flex;/u)
+    expect(styles).toMatch(/\.message-copy-failed\s*\{[^}]*color:\s*var\(--feedback-danger-text\);/u)
+    expect(styles).toMatch(/\.message-copy-retry:hover,[\s\S]*?\.message-copy-retry:focus-visible\s*\{/u)
+  })
+
   it('leaves no control on the row permanently visible', async () => {
     // The row carried a `:has(.message-meta-usage)` exception that pinned every answer's action row
     // open so the token figures could be read at a glance. Checking "an opacity rule exists" is not

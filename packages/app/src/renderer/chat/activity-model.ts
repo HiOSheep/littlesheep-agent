@@ -282,6 +282,10 @@ export function buildArtifactsFromToolCalls(
   toolCalls?: { name: string; input: unknown; ok: boolean }[],
 ): WorkspaceArtifactRef[] | undefined {
   if (!toolCalls?.length) return undefined
+  // Keyed by the file's identity, not by the spelling the tool happened to use: `o3-out/notes.txt`
+  // and `O3-OUT/NOTES.TXT` are one file on this platform, and a turn that writes it twice must not
+  // offer the reader two rows for it (O3). The same normalization is what the line counts are looked
+  // up with (`use-artifact-deltas`), so the row and its counts can no longer disagree either.
   const byPath = new Map<string, WorkspaceArtifactRef>()
   for (const tool of toolCalls) {
     if (!tool.ok) continue
@@ -289,14 +293,23 @@ export function buildArtifactsFromToolCalls(
     if (!path) continue
     const action = tool.name === 'write' || tool.name === 'write_file' ? 'created' : tool.name === 'edit' || tool.name === 'edit_file' ? 'modified' : null
     if (!action) continue
-    byPath.set(path, {
-      path,
-      name: lastPathSegment(path),
-      action,
+    const existing = byPath.get(artifactIdentity(path))
+    byPath.set(artifactIdentity(path), {
+      path: existing?.path ?? path,
+      name: lastPathSegment(existing?.path ?? path),
+      // The file was created by this turn if any of its calls created it: a later edit does not turn
+      // a new file into a modified one.
+      action: existing?.action === 'created' ? 'created' : action,
       toolName: tool.name,
     })
   }
   return byPath.size > 0 ? Array.from(byPath.values()) : undefined
+}
+
+
+/** The identity of a file path on the platform the app runs on. */
+export function artifactIdentity(path: string): string {
+  return path.replace(/\//gu, '\\').toLocaleLowerCase('en-US')
 }
 
 
