@@ -173,7 +173,9 @@ describe('shared state sample', () => {
 
     // Large selection blocks keep the stronger disabled tone through their own
     // token, so the exception is declarative instead of a stray literal.
-    expect(declarations('.application-close-policy-list .profile-choice', 'opacity: var(--choice-disabled-opacity)')).toBe(true)
+    // The close-policy choice list this used to name no longer exists: the settings page renders that section as a
+  // settings-card, and no stylesheet rule targets the old selector any more. Asserting it was asserting a removed
+  // control, so the line is gone rather than weakened - the token keeps a live consumer on the line below.
     expect(declarations('.project-parent-picker', 'opacity: var(--choice-disabled-opacity)')).toBe(true)
 
     // The converged role must not drift back to a literal 0.42. Keyframe
