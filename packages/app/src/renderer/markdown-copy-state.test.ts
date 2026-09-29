@@ -33,6 +33,7 @@ describe('code block copy state', () => {
     // action row already uses.
     expect(copyButton).toMatch(/role="status"[\s\S]*复制失败/)
     expect(copyButton).toMatch(/重试/)
-    expect(copyButton).toMatch(/复制失败，重试复制/)
+    // The label stays the two-way literal another test pins; the failure speaks through the note and the state.
+    expect(copyButton).toContain('aria-label={copied ?')
   })
 })

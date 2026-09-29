@@ -1219,3 +1219,8 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* The Mermaid overlay's toolbar fades with the pointer, but a refused copy must stay readable: while the failure
+   note stands, the toolbar it lives in is held open (.mermaid-block > .code-toolbar is otherwise opacity 0). */.mermaid-block:has(.code-copy-failed) > .code-toolbar {
+  opacity: 1;
+}

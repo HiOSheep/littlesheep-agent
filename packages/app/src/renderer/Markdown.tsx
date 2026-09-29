@@ -414,7 +414,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <>
       <button
         type="button"
-        aria-label={failed ? `复制失败，重试复制${label}` : copied ? `${label}已复制` : `复制${label}`}
+        aria-label={copied ? `${label}已复制` : `复制${label}`}
         data-copied={copied ? 'true' : 'false'}
         data-copy-state={copyState}
         onClick={() => void copy()}
