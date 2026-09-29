@@ -13,14 +13,7 @@ const advisories = []
 const advisoryPasses = []
 let trackedFilesCache
 
-/**
- * `最后更新：YYYY-MM-DD HH:mm:ss` is still written by hand into formal documents,
- * but it is no longer a maintenance obligation: the gate stopped requiring the
- * second-precision form (every unrelated edit used to have to touch the stamp)
- * and stopped comparing a README's commit time against its directory's sources.
- * Only the taskbook baseline date is still a rule, so the regex below accepts
- * either form and the date is what gets compared.
- */
+/** Optional taskbook date line. The filename and title carry the taskbook identity. */
 const DATE_STAMP = /^最后更新：(\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}:\d{2})?$/mu
 
 function pass(label, detail = '') {
@@ -148,24 +141,7 @@ async function checkPublishedSurface() {
   assert(hiddenRoots.length === 0, '未跟踪本地隐藏工作目录', hiddenRoots.join(', '))
 
   const readme = await readText(join(repoRoot, 'README.md'))
-  const docsIndexPath = join(repoRoot, 'docs', 'README.md')
-  const docsIndex = existsSync(docsIndexPath) ? await readText(docsIndexPath) : ''
-  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
-  const unlistedDocs = actualDocs
-    .filter((path) => path !== 'docs/README.md')
-    .filter((path) => !docsIndex.includes(path.slice('docs/'.length)))
   assert(readme.includes('docs/README.md'), '根 README 指向唯一文档入口')
-  assert(unlistedDocs.length === 0, '正式文档均可从分层入口定位', unlistedDocs.join(', '))
-
-  const progressiveSections = [
-    '## 现在先做什么',
-    '## 需要确认依据时',
-    '## 需要修改长期方向时',
-    '## 已决定方向后再看任务书',
-    '## 需要定位代码或维护仓库时',
-  ]
-  const missingSections = progressiveSections.filter((heading) => !docsIndex.includes(heading))
-  assert(missingSections.length === 0, '文档入口遵守渐进式披露层级', missingSections.join(', '))
 
   const publicTextExtensions = new Set([
     '.bat', '.cjs', '.css', '.html', '.js', '.json', '.jsx', '.md', '.mjs',
@@ -174,6 +150,7 @@ async function checkPublishedSurface() {
   const trackedTextFiles = tracked.filter((path) =>
     path !== 'pnpm-lock.yaml' && publicTextExtensions.has(extname(path).toLowerCase()) && existsSync(join(repoRoot, path)),
   )
+  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
   const textFiles = [...new Set([...trackedTextFiles, ...actualDocs])]
   const metadataFiles = textFiles.filter((path) =>
     path === 'README.md' ||
@@ -204,7 +181,7 @@ async function checkCanonicalFiles() {
   const required = [
     'docs/README.md',
     'docs/principles/architecture-principles.md',
-    'docs/decision/architecture-decision-report.md',
+    'docs/decision/README.md',
     'docs/decision/project-status.md',
     'docs/reference/repository-guide.md',
     'docs/reference/plugin-development.md',
@@ -249,7 +226,8 @@ async function checkCanonicalFiles() {
   assert(missingIgnoreRules.length === 0, '生成物已忽略', missingIgnoreRules.join(', '))
 
   const scriptFiles = trackedFiles().filter((path) =>
-    path.startsWith('scripts/') || path === 'build-app.bat' || path === 'start-littlesheep.bat',
+    (path.startsWith('scripts/') || path === 'build-app.bat' || path === 'start-littlesheep.bat') &&
+      existsSync(join(repoRoot, path)),
   )
   const hardcodedRoot = /[a-z]:[\\/]tools[\\/]littlesheep/i
   const hardcodedPaths = []
@@ -269,7 +247,7 @@ async function checkTaskbookBudget() {
    */
   const budget = 16
   const taskbooks = trackedFiles()
-    .filter((path) => path.startsWith('docs/taskbooks/') && path.endsWith('.md'))
+    .filter((path) => path.startsWith('docs/taskbooks/') && path.endsWith('.md') && !path.endsWith('/README.md'))
   advisory(
     taskbooks.length <= budget,
     '任务书数量在预算内（提示，非硬门）',
@@ -280,7 +258,7 @@ async function checkTaskbookBudget() {
 async function checkTaskbookNaming() {
   const documents = await collectMarkdownFiles(join(repoRoot, 'docs'))
   const taskbooks = documents
-    .filter((path) => path.includes('taskbook') && path.endsWith('.md'))
+    .filter((path) => path.includes('taskbook') && path.endsWith('.md') && !path.toLowerCase().endsWith('readme.md'))
   const violations = []
   for (const path of taskbooks) {
     const name = displayPath(path)
@@ -348,48 +326,44 @@ async function checkRepositoryNavigation() {
     .map(displayPath)
   assert(missingPackageReadmes.length === 0, 'workspace package README 完整', missingPackageReadmes.join(', '))
 
-  const requiredDomainReadmes = [
-    'packages/app/src/main',
-    'packages/app/src/main/local-app-api',
-    'packages/app/src/preload',
-    'packages/app/src/renderer',
-    'packages/app/src/renderer/api',
-    'packages/app/src/renderer/app-shell',
-    'packages/app/src/renderer/approval',
-    'packages/app/src/renderer/chat',
-    'packages/app/src/renderer/composer',
-    'packages/app/src/renderer/runtime',
-    'packages/app/src/renderer/settings',
-    'packages/app/src/renderer/sidebar',
-    'packages/app/src/renderer/ui',
-    'packages/app/src/renderer/workspace',
-    'packages/app/src/shared',
-    'packages/cli/src/commands',
-    'packages/context/src/context-engine',
-    'packages/harness/src/hooks',
-    'packages/harness/src/llm-call-contracts',
-    'packages/harness/src/stages',
-    'packages/harness/src/stages/execute',
-    'packages/harness/src/stages/verify',
-    'packages/memory-tree/src/memory-repository',
-    'packages/memory-tree/src/memory-service',
-    'packages/plugins/src/channel',
-    'packages/tools/src/builtin',
-  ]
-  const missingDomainReadmes = requiredDomainReadmes
-    .filter((path) => !existsSync(join(repoRoot, path, 'README.md')))
-  assert(missingDomainReadmes.length === 0, '独立领域 README 完整', missingDomainReadmes.join(', '))
+  // Package boundaries keep their public contract and verification notes.
+  // Source subdirectories get a README only when they own a distinct boundary.
+  const categories = ['decision', 'principles', 'taskbooks', 'reference']
+  const docsIndexPath = join(repoRoot, 'docs', 'README.md')
+  const docsIndex = existsSync(docsIndexPath) ? await readText(docsIndexPath) : ''
+  const missingCategoryIndexes = categories
+    .filter((category) => !existsSync(join(repoRoot, 'docs', category, 'README.md')))
+    .map((category) => `docs/${category}/README.md`)
+  assert(missingCategoryIndexes.length === 0, '文档分类索引完整', missingCategoryIndexes.join(', '))
+  const missingCategoryLinks = categories
+    .filter((category) => !docsIndex.includes(`${category}/README.md`))
+    .map((category) => `docs/${category}/README.md`)
+  assert(missingCategoryLinks.length === 0, '文档分类入口可从导航页到达', missingCategoryLinks.join(', '))
 
-  /**
-   * README freshness is deliberately NOT enforced here any more. The gate used to
-   * require a second-precision `最后更新` line in every README under `packages/`
-   * and to fail when a directory's sources were committed after its README. Both
-   * cost every unrelated edit a documentation diff without proving that the text
-   * still matched the code, and the comparison could not tell "README touched" from
-   * "README re-read". What stays machine-checked is that every owned directory HAS
-   * a README (above) and that a README's claims are reviewed when the surface it
-   * describes actually changes — a review obligation, not a timestamp.
-   */
+  const actualDocs = (await collectMarkdownFiles(join(repoRoot, 'docs'))).map(displayPath)
+  const unindexedDocs = []
+  for (const path of actualDocs) {
+    if (path === 'docs/README.md') continue
+    let ownerIndexDir = path.endsWith('/README.md') ? dirname(dirname(path)) : dirname(path)
+    while (ownerIndexDir !== 'docs' && !existsSync(join(repoRoot, ownerIndexDir, 'README.md'))) {
+      const parentDir = dirname(ownerIndexDir)
+      if (parentDir === ownerIndexDir) break
+      ownerIndexDir = parentDir
+    }
+    const ownerIndexPath = join(repoRoot, ownerIndexDir, 'README.md')
+    if (!existsSync(ownerIndexPath)) {
+      unindexedDocs.push(path)
+      continue
+    }
+    const ownerIndex = await readText(ownerIndexPath)
+    if (!ownerIndex.includes(path.slice(ownerIndexDir.length + 1))) unindexedDocs.push(path)
+  }
+  assert(unindexedDocs.length === 0, '正式文档可从所属分类索引定位', unindexedDocs.join(', '))
+
+  const requiredIndexSections = ['## 当前阶段', '## 当前方向', '## 文档入口', '## 快速定位']
+  const missingIndexSections = requiredIndexSections.filter((heading) => !docsIndex.includes(heading))
+  assert(missingIndexSections.length === 0, '文档导航保持为快速索引', missingIndexSections.join(', '))
+
   const sourceFiles = (await collectSourceFiles(join(repoRoot, 'packages')))
     .filter((file) => !/\.(test|spec)\.[^.]+$/u.test(file))
   const largeFiles = []

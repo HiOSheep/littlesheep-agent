@@ -1,31 +1,14 @@
 # @littlesheep/types
 
-最后更新：2026-09-27 23:12:01
+保存跨 package 的纯 TypeScript 契约，是运行时协议的唯一公共类型来源。公开入口为 `src/index.ts`；本包定义数据形状和端口，不实现文件系统、网络、Electron、Provider 或业务流程。
 
-保存跨 package 的纯 TypeScript 契约，是运行时协议的唯一公共类型来源。
+## 所有权边界
 
-跨日 Provider 用量序列（O5，2026-09-27）由 `usage-daily.ts` 拥有：`ProviderUsageDailySeries` 是 Main 之后所有消费方（含热力图 UI）的唯一线协议，`ProviderUsageDailyDay.state` 明确区分 `recorded`／`partial`／`empty`／`future`，`coverage` 里带时区来源、缺失响应、无响应请求、无法重放的 run、被折叠的重复事件、清空截止、保留摘要与回填进度，因此"某天没有调用"和"某天实报 0"永远不会被下游混为一谈。范围上限（400 天）、默认范围（366 天）、身份分面上限（64）与单次刷新/回填步预算上限都以常量形式留在这里，Main 与 Runner 引用同一份数字而不是各自复制。
+- Core Flow 当前可达状态图由 `stage-transitions.ts` 唯一声明；旧检查点格式和 retired stage 只可通过显式历史解析兼容，不能重新成为活动路由。
+- `agent.ts`、`task.ts`、`message.ts` 和领域文件分别拥有 RunContext、任务、消息、工具、Memory、Web evidence、活动事件与运行状态契约。跨 package 应复用现有公共类型，不复制另一份相似 schema。
+- 当前执行协议和历史读取协议分开：兼容类型供安全恢复旧记录，不扩展当前可执行能力。
+- ToolContext 的文件观察与版本检查点是不同端口：前者记录本会话中模型读取的内容版本，后者服务于 run 副作用前像与回滚。
+- 类型本身不拥有数据；生产者、消费者和持久化位置由对应领域 owner 说明。持久协议变更必须有兼容读取或明确迁移。
+- Web durable projection 不保存网页正文、完整 query 或 Provider 原始响应；run-local 正文不得混入 checkpoint 或 execution log。
 
-## 职责与边界
-
-- 公开入口是 `src/index.ts`；`conversation-continuation.ts` 拥有会话续接审计证据（`ConversationContinuationEvidence` 与它的版本常量，含 `handoff`），`task.ts` 拥有需求校准、TaskBook、步骤执行与验证契约（已持久化的 TaskBook 在当前 runtime 里是只读历史，`TaskComplexity` 等由已删除的 DECIDE 产生的字段只作兼容），`agent.ts` 拥有状态机、RunContext 与 Hook 契约（`RunContext.modelHistory` 是"模型回放用的任务区间转录"，与只含 prose 的 `history` 分开），`message.ts` 拥有 Message/ContentBlock/ToolCall/ToolResult 契约（`ToolCall.rawArguments`、`tool_result.modelContent`、assistant 的文本前言与 `reasoning`、`Message.runtimeTail`/`runtimeTailId` 都是任务区间按字节回放所需：原始参数串只在工具没有输入 projector 时保存，带 `webEvidence` 的结果永不保存模型看到的正文，`runtimeTail` 消息不得进入 prose/UI/连续性投影、也不计入压缩阈值与摘要计数，`runtimeTailId` 让下一轮识别"同一条目、同样文本"从而不重复发送），`stage-transitions.ts` 是 Core Flow 边的唯一来源（唯一驱动会用 `inspectStageTransition` 校验每一次实际转移，因此新增路由必须同时登记该边；`execute` 边上 `ask_user` 是**真实**可达目标——主循环内模型可调用 `request_user_input`，漏登会让一次合法提问判定整轮失败；`decide`/`evolve`/`capture` 只作为历史 stage 名与旧记录的兼容边保留，供旧检查点读取与改派），`runtime-contracts.ts` 的 `RuntimeActiveRunPhase` 用 `starting`/`executing`/`verifying`/`finalizing` 描述活动 run，未产生步骤、工具或验证证据的阶段就是 `starting`，不存在规划阶段，`web-retrieval.ts` 拥有 provider 无关、可序列化且有界的网络策略、搜索、抓取、引用、错误和证据投影契约，其余消息、会话、工具、记忆和运行协议也按领域文件分组。
-- 活动事件契约新增工具参数的就地进度投影（2026-09-27）：`ToolStreamEvent` 上增加临时的 `lineProgress`（`{ additions, deletions|null }`）与 `argumentSummary`（有界路径/命令预览），二者只在参数生成期间有效，完成后的工具调用仍是权威事实。
-- `AgentTool.reRunnableAfterResourceChange`（2026-09-27，HC-04）是**能力声明**：工具说明“同一参数在 Runtime 记录了同资源变更后可以是一次新执行”，授权仍由副作用账本用自己记录的事实判定；未声明或效果种类为 `unknown` 的工具不受影响。
-- **当前执行契约与历史读取契约分开表达**（2026-09-27，HC-02）：`ExecutionWorkMode` 只有 `bounded_loop`（本构建唯一可执行的模式），旧构建写下的 `task_book` 属于 `PersistedExecutionWorkMode` / `PersistedWorkPolicy`，只由恢复校验 `isSupportedPersistedWorkPolicy` 接受，运行路径不再读取它；`stage-transitions.ts` 同样分成当前图 `allowedTransitions`（只含已注册 stage，`inspectStageTransition` 对它校验，遇到退休 stage 一律 fail closed 并说明是 `not-an-edge` 还是 `retired-stage`）与只读历史 `historicalStageTransitions` / `historicalStageNames`。每个保留值都在声明处写明支持的版本、消费者与移除条件。
-- 只定义稳定数据结构和端口，不实现文件系统、网络、Electron、Provider 或业务流程。
-- `ConversationContinuationEvidence.handoff` 是"新 run 故意没有继承什么"的公开字段：任务进度随 checkpoint 继承，限制单轮自主工作量的额度不继承，因此 `previousFailure` 与 `runBudget`（来源轮的模型调用数、工具循环次数，以及本 run 按当前配置拿到的额度）只作记录，不重新施加。`RunContext` 契约里 `lastError`、`recoveryAttempts`、`modelCallCount`、`loopBudget` 的 `purpose` 同步写明这条边界：续接只继承任务状态。
-- `tool.ts` 定义工具契约与 `ToolContext` 的两个宿主端口：`versioning` 是 run 级的回滚 preimage 钩子，`observation` 是**会话级**的"模型实际读过哪个文件版本"登记端口（`FileObservationPort`，含登记、查询、失效、挂起与同路径互斥），两者不得互相替代：前者记录改动前的内容、随 run 结算，后者记录模型所见、随每次读写复核并随会话表退出。
-- 禁止依赖其他 workspace package（当前 `package.json` 没有声明任何依赖），禁止放入只被单一文件使用的内部实现类型。
-
-## 数据所有权
-
-- 类型不拥有数据；生产者、消费者和持久化位置必须在对应领域说明中明确。
-- 版本化持久协议变更必须保留兼容解析或显式迁移。
-- `FetchedDocument.content` 只用于 run-local 证据；`ToolResult`、checkpoint 和 execution log 只能持久化不含正文和原始 query 的 `WebEvidenceProjection`。
-
-## 测试与修改定位
-
-- 运行契约测试位于 `src/runtime-contracts.test.ts`，状态机边与 RunContext 契约位于 `src/stage-transitions.test.ts` 与 `src/run-context-contract.test.ts`，Web 证据与检索契约位于 `src/web-retrieval.test.ts` 与 `src/web-evidence-format.test.ts`，activation 投影与 reconciliation key 位于 `src/activation.test.ts`、`src/activation-projection.test.ts` 与 `src/reconciliation-key.test.ts`。
-- 修改公共字段时搜索所有生产者、消费者、日志、恢复路径和 renderer 类型投影。
-
-`activity.ts` 的 `tool_preparing` / `tool_start` 可带 `lineProgress` 数字投影，供界面显示逐步变化的文件行数。
+本包没有 workspace package 依赖。契约测试与源码同目录；修改公共字段时检查生产者、消费者、持久化、恢复与 Renderer projection。

@@ -1,64 +1,16 @@
 # @littlesheep/runner
 
-最后更新：2026-09-28 21:43:27
+Runner 是应用层 run 创建、请求装配、Harness 集成、事件持久化、最终结算与恢复的 owner。公开入口为 `src/index.ts`。它组合 Context、Harness、Session、Tools、Memory 与 Safety；Electron 和渠道适配器提供外层宿主。
 
-作为核心应用服务装配 Harness、Context、Memory、Tools、Session、Skills 和执行日志，并提供单次 run 接口。
-真实验收（RS-07，2026-09-27）：`pnpm run verify:memory-controlled-writes` 在隔离数据根里用**真实 runner、真实 Memory v3 仓库与真实会话存储**跑完受控记忆的验收表——可调用工具目录、明确记住→重启→新会话召回（以模型实际收到的请求为准）、必要写入与薄弱理由拒绝、闲聊不写与模型不能自授权、压力下不学习、用户纠正（5432→6432，重启后仍只有新事实）、用户忘记与撤销标记跨重启、六类拒绝各自可辨、§2.1 常驻回归。脚本用受控模型替身定位边界，并在报告的 `limits` 里明确写出"未做真实模型验收"，不把替身当真实模型。
+## 持久边界
 
-`memory_manage` 与 `memory_write` 都在 `infra.ts` 注册（RS-06/06B，2026-09-27）：忘记工具拿到的是管理门面（`inspectNode`/`manageAtom`）、本轮导航台账（`listLedgers`，用于"本轮真的见过"）与会话消息窗口；提交成功后写入 `state.memoryAtomCorrections`，finalize 读取并清空它，进而设置会话的 `memoryRevokedAt`。`memory_write`：它把 `memoryService.write`、本会话最近 400 条消息（供来源核对）与 `resolveMemoryWriteEpistemic`（以中性的 `tool` stage）注入受控写入工具；`memory_tree` 仍是只读导航，两者权限档位相反——写入工具始终需要批准。注册表守卫测试同时断言两者在册、遗留的 `write_memory`/`record_experience` 不在册。
+- ExecutionLog 保存已结算 run 证据；RunCheckpoint 保存活动 run 的可恢复状态，两者用途不同。
+- Run 与 tool identity 支持幂等结算。续跑前校验 durable lease；未完成或状态未知的副作用须停止并明确处理。
+- FINALIZE 按唯一 settlement 身份登记并持久化权威模型回复。没有有效模型回复时可报告 Runtime 状态，不能伪造 Agent 答案。
+- 会话压缩保存带 source／predecessor 校验的版本化摘要，不写 durable Memory。
+- 长期 Memory 变更走 `memory_write` 或 `memory_manage`，并满足授权、来源和 revision 检查。
+- 工作区、会话、checkpoint、事件日志、索引和用户配置属于活动数据根；测试使用隔离根与合成输入。
 
-## 冷启动计时
+Runner 负责组合，不重写协作者的契约：Harness 拥有状态转移；Context 拥有提示候选和预算；Session 拥有转录／摘要持久化；Tools 拥有工具执行；Memory 拥有索引记忆；Safety 拥有权限决策。Checkpoint decoder 只接受受支持历史格式；续跑不得重放已结算副作用。
 
-`DurableEventStore.initialize()` 只确保事件根目录存在；分区目录名由后台旧版恢复扫描检查，每个分区的文件名、版本、游标和完整性在实际读取/追加及扫描时逐段严格验证。发现损坏会让对应操作失败并留下诊断，不再用全部历史事件文件阻塞无关的新会话。现代待恢复任务仍由租约和收件箱检查，但**不再由 Runner 构建或执行就绪代付**：这两件事已下沉到 app 的 `run-recovery.ts`，在 Runner 发布之后运行。
-
-`DurableInboxStore.initialize()` 与 `DurableRunLeaseStore.initialize()` 只做"准入需要"的那部分（2026-09-27，大根夹具实测）：inbox 只解析 `queued`/`claimed` 记录、对终态记录只记文件名与 stamp 并把内容延后（`runner-durable-inbox-deferred-read` 标出那次延后读取），run lease store 只校验目录与文件名、不打开任何租约文件。原因是**全新 run 从不读历史记录**——它按文件名 acquire 自己的租约。实测（300 条 inbox + 300 条 lease 的合成根，同一台机器）：`inbox.initialize()` 210 ms → 18–33 ms，`run-lease.initialize()` 198 ms → 0.9–1.6 ms；延后读取约 20 ms，发生在 `execution-ready` 之后。被延后的记录**没有失去校验**：任何完整读取（`enqueue`/`claim`/`listRecoverableRuns` 的首次调用、或 `warmDeferredCommands`）都会解析它们，损坏仍然以 `kind: 'corrupt'` 失败关闭——`initialize` 返回后仍会拒绝一个坏记录，只是拒绝发生在真正用它的那次读取上。过期 claim 的 requeue 也照旧发生，只是同样落在恢复期而不是就绪前。启动扫描的逐文件工作并行进行（每次 16 个在飞）：同一目录上顺序 stat+read 约 100 ms，重叠后约 11 ms。
-
-`infra.ts` 的 `buildInfrastructure` 在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时输出以 `runner-infra-` 开头的 `[bootstrap-timing]` 阶段标（可观测性存储、durable harness 的四个存储、检查点存储、embedding、memory、bootstrap 文件、skill loader、harness 装配），并以 `runner-infra-returned` 收尾：该收尾标与 `execution-start`→`runner-ready` 的差值实测只差 0.2 ms（112.1/128.0/124.1 对 111.9/127.8/123.9），因此 `buildInfrastructure` 可以认定覆盖了 Runner 构建的全部成本，不要再为"还有别的东西没算进去"另设探针。`mark` 的第二个参数是给重叠阶段用的：`durable-harness-infrastructure.ts` 并行初始化四个存储（各自目录、各自目录内锁文件，互不共享状态），每个存储完成后用自己测得的耗时打标，而不是让共享计时器去量"两次打标之间的间隔"。配对实测（normal，每变体 8–10 次）：durable 阶段墙钟 36–40 ms → 10–13 ms，Runner 构建 114–116 ms → 99–101 ms，其中 10–16 ms 被紧随其后的 bootstrap 文件注册吸收，净收益约 14 ms；失败语义不变（按声明顺序报告第一个失败并关闭 next 模式准入）。延后读取的那条标走的是同一条 `[bootstrap-timing]` 流但**不经过调用方的 `mark` 回调**：那个回调是顺序阶段计时器，用来归因一次构建，而这些工作在构建返回之后才结束。Runner 构建仍是"进程启动 → 首次可执行"里唯一还有量级的成本（本次改动后中位约 100–116 ms）；这些阶段标只做诊断，正常启动不输出、不轮询，也不改变任何初始化顺序。
-
-## 跨日用量投影（O5，2026-09-27）
-
-跨日 Provider 用量统计的**唯一事实来源是持久化的 durable 事件**，不是消息、用量卡片或执行日志里的 `modelRequests` 副本。`provider-usage-daily-*.ts` 构成这条只读投影，分成五个边界：
-
-- `provider-usage-daily-facts.ts`：用 `reduceDurableRunProjection`（Harness kernel 的同一个 reducer）重放一个 run 的事件，把带 Provider 实报 usage 的 `model_response_received` 变成 attempt 事实。身份是 **requestId**（Harness 每次真实 Provider 调用都新生成一个随机 id；重试是新 id，因此是独立付费尝试）；响应存在但没有可用 usage 记 `response_without_usage`，只有 `model_request_started` 没有响应记 `request_without_response`。整份事件流无法重放的 run 记 `unreadableRuns`，不猜、不部分相信。
-- `provider-usage-daily-fold.ts`：按 requestId 去重。同一 requestId 只可能来自被复制的日志（分叉会话、重放、同一分区再读一次），所以复制件被折叠、真实重试不被合并；attempt 强于同名 missing mark；同一 id 取最早的 usage 事件时间，因此结果与遍历顺序无关。`duplicateAttempts` 是被折叠掉的条数。
-- `provider-usage-daily-time.ts` / `provider-usage-daily-series.ts`：原始时间是 UTC，日历日**在读取时**按请求里显式给出的 IANA 时区（`Intl.DateTimeFormat`）计算，所以换时区只是重新投影同一批事实。日状态区分 `empty`（当天没有调用记录）、`partial`（有调用但缺 usage）、`recorded`（有实报，`total: 0` 也是实报的 0）与 `future`（时区意义下的未来日期留空）。缓存读与推理是子集，永不重复计入总量；本地上下文计数、安全估算与 embedding 从不计入。
-- `provider-usage-daily-index*.ts`：派生索引写在 `<data-root>/usage-index/`，按 `分区:文件数:最新文件名` 修订跳过未变的 run；它只读 `usage-index/` 就可以整体删除，重建后逐字段相同（`provider-usage-daily.test.ts` 断言"同一批事件、新数据根、新索引得到同一份数列"）。显式"清空用量统计"的截止时间记在 `<data-root>/usage-state/`，**故意不在派生目录里**：重建索引不会让已清空的消耗复活。
-- `provider-usage-daily-service.ts`：增量刷新与历史回填是同一个有界 pass（默认预算 64、上限 512 个分区），cursor 持久化，取消只使当前后台循环失效、不丢进度；再次调用即从 cursor 续接。重复应用同一个 run 是替换而非累加，所以取消/续接/重跑都不会重复计数。
-- `durable-event-store.ts` 新增 `listRunPartitions()` 与 `readRunRevision()`：只列目录名、只读每个分区的第一个事件文件，供周期性"有没有变化"的扫描使用；不要为此再调用 `listRuns()`（它会解析全部历史事件）。
-
-归档不改变实际消耗（投影不读会话/归档索引）；永久删除会话后保留的是**不含内容**的用量摘要（只有 id、时间、provider/model 与计数），响应里的 `retainedAfterDeleteSessions` 给出这类会话数。数据根迁移不需要单独迁移用量索引：它在数据根内，且丢失后可从事件重建。
-
-## 职责与边界
-
-- 公开入口是 `src/index.ts`；`runner.ts` 负责 run 生命周期装配，`continuation-evidence.ts` 装配续接审计证据（绑定/推迟/放弃、shadow 审计、执行前被拒三种形状，只从检查点事实构造），`runner-finalize.ts` 是 FINALIZE 阶段（证据/反馈登记、结果装配、按压力触发压缩），单一 harness（2026-09-27，HC-01）：`infra.ts` 只构建一个 harness（`createDefaultHarness`，内部调用 `createDurableHarness`）。此前每次启动会构建两个完全相同的实例，而 runner 实际驱动的是 `infra.nextHarness`、`infra.harness` 被赋值后从未读取；两者合并为一个字段。
-
-退役压缩提案的扫描（RS-05/RS-08，2026-09-27）：`terminateRetiredCompactionProposals` 已从 `session-continuity` 导出，并在 `runner.ts` 的 run 开始时（`state.sessionId` 之后）调用一次，随后压缩路径也会调用（幂等）。它把"已提交但未结算"的旧 memoryProposal 逐个候选记为 `rejected` 并盖上 `terminatedAt`/`terminationReason`，pending 文件保留为审计。注意：本次调用**不足以**先于会话恢复——触发恢复的那次读取发生在续接/检查点加载阶段，早于 run 主体；因此真实旧数据根上仍会先被恢复隔离，详见任务书该条目的记录。
-
-`session-continuity.ts` 负责压力触发的会话压缩与摘要结算（`runner-finalize` → `compactSessionAfterRun` → `maybeCompact`；2026-09-27 起只维护摘要，不再提交或结算长期候选，升级前的 pending 候选被终止并留档；持久记忆的写入方是受控的 `memory_write`/`memory_manage`；默认 `threshold 400`、`keepRecent 200`、`background false`，见 `packages/config/src/defaults.ts`），`session-compaction-scheduler.ts` 的 `SessionCompactionScheduler` 持有每会话 single-flight、合并、软并发上限、取消和有界操作历史（`SessionCompactionUsage` 记录 `requestCount` 与可选 `retryRequests`/`failedRequests`，未上报的 token 保持缺失而非 0），`session-summary-fidelity.ts` 从明确要求记住的用户字段重建最多 24 项 Runtime 权威精确字段并附加到概率摘要，`run-config.ts` 冻结决议，`version-checkpoint-lifecycle.ts` 协调每轮数据/工作区检查点，`execution-log.ts` 持久化证据和按会话原子替换的上一轮摘要，`session-run-summary.ts` 生成有界进度/耗时摘要，`memory-workload-observability.ts` 聚合不含正文、路径和 Atom ID 的 Memory v3 质量/成本信号，`runtime-resource-observation.ts` 每轮只采集两次资源快照，`core-source-protection.ts` 从实际 workspace 标记发现 LS 核心源码只读根。
-- 只运行单一 harness 驱动：`durableHarnessMode` 只保留历史持久标签（`readDurableHarnessMode` 从 durable 事实读取，早于该字段的 run 只要有 durable 事实就按 `next` 处理），shadow/next 双驱动切换已删除，按 session/origin/profile 的覆盖项不再生效（只剩未读取的类型字段残留），`resolveDurableHarnessMode` 只返回 `opts.durableHarnessMode ?? 'next'`。durable event store、durable inbox、run/effect lease store、权威 final-reply settlement 与崩溃恢复构成唯一的恢复边界：重启的 run 重放一次已持久化 transcript，已结算的副作用绝不重放。
-- **每轮的 taskbook Skill 只在有正文时注册**（SL-03，2026-09-27）：以前每个 run 都注册动态 `taskbook` 条目，而 `renderTaskbookSkillBody` 在既无 taskBook 又无 plan 时返回 undefined，于是 `use_skill` 的描述里出现一个名字、调用却得到 `Skill "taskbook" not found. Available: …, taskbook`。实测（`src/taskbook-skill-registration.test.ts` 的探针在模型请求里读实时描述与 `loadBody`）：普通新 run 的目录项是 `taskbook`、正文 undefined；现在是 `(none)`、正文仍为 undefined。注册位置移到 `restoreContinuationContext` 之后并先渲染一次正文——旧检查点的 plan 正是在那里恢复的（同一次实测：旧 `decide` 检查点仍 advertise `taskbook`，正文为 `Proposed plan:\n1. finish the legacy plan step`，轨迹里 `execute` 只出现一次）。正文仍是闭包（按 load 时的 ctx 渲染），条目在首个请求之前注册、在 `finally` 注销，所以同一次 run 内工具目录形状固定。
-- 负责依赖注入和运行生命周期，不吸收各领域内部算法或 Electron UI 逻辑。
-- `session-file-observations.ts` 的 `SessionFileObservationRegistry` 随进程存活、按 `sessionId` 取表：每个会话一张有界观察表（默认 16 张表、每表 512 条，LRU 淘汰整表），会话之间不能互相借用观察；全 host 共享一张同路径互斥表，使两个会话对同一文件的"复核 + 写入"串行。观察表**不持久化**，Runner 重建或应用重启后模型需要重读；`runner.ts` 在 shutdown 时释放它，并在每次 `buildRunContext` 时把该会话的表注入 `ToolContext.observation`。淘汰和释放只约束内存：已经交给在飞 run 的那个端口仍持有自己的有界表，不会在写入中途被抽走依据。
-- 禁止让渠道、插件私有实现或 renderer 状态成为核心 run 的必要依赖。
-- Runner 只把真实状态、证据和已在持久化会话注册表中原子占用的模型文案交给上层；面向用户的回复、任务说明、验证说明和交付语气必须由真实 LLM 调用结合运行时 `SOUL.md` 构思，并携带 `ReplyProvenance`。Runner 不用固定模板替代 Agent 人格表达，模型、注册表或改写失败时只返回错误状态。
-- 会话摘要是 Context 来源，不是“已经记住”的结论。Runner 只登记版本化摘要和最终回答实际采用的摘要 id；记忆连续性的最终判定由 Harness 对 LS 用户可见回答执行，只有回答级 `supported` 才能反馈摘要被真实承接。压缩的输入与计数只针对对话消息：带 `runtimeTail` 的 Runtime 尾部记录随转录保存以便按字节回放，但既不进入摘要输入，也不计入压缩阈值与 keepRecent 窗口。**压缩由真实上下文压力触发**：预算已知时（`contextSnapshot.budget.status === 'known'`）只允许 `compressionRecommended` 启动压缩，消息条数阈值退化为"窗口不可知"时的兜底——压缩会重写转录、让下一次请求重付整段前缀（实测 28 回合长任务里 6 次按条数触发的压缩在窗口充裕时白白重付了约 288k tokens）。
-
-## 依赖与数据
-
-- Runner 可以组合基础设施，但跨领域只使用公开入口。
-- 拥有 execution log 与 run checkpoint 生命周期协调；检查点保存最多 4 个 `activeStepIds`（单循环内串行步骤的当前活动集，不再是并行执行器）并保留 `currentStepId` 兼容入口。会话、记忆、配置和 shadow Git 存储仍由各自服务拥有。Runner 关闭时先释放 SQLite/Embedding，再请求版本服务执行退出冻结。
-- **检查点持久化按 codec / scan / store 分层**：`run-checkpoint-codec.ts` 拥有 schema、序列化与文件名哈希（含 64 条写入窗口与 128 条历史兼容读取窗口），`run-checkpoint-scan.ts` 拥有"一次目录报告"（记录、计数、逐文件发现），`run-checkpoint-store.ts` 只拥有文件、原子写入、容量、保留期和账本。**计数按最近一次扫描给出**：`scannedFiles/readFiles/validFiles/invalidFiles` 与逐记录发现曾按进程生命周期累加，于是同一份坏文件在用户每重试一次发现后就被多算一份（实机复现：一份坏文件在第一次检查显示 1、点"重新检查"后显示 2）。扫描看不到的事实（启动时的残留 `.tmp`、裁剪失败、定向读写的失败）保留在 store 的常驻账本里，并作为与记录无关的 `warningFindings` 暴露；两者不重叠，所以一份坏记录不会被同时说成"无法读取"和"目录异常"。
-- **durable 清单元数据按 active/terminal 分流**：`durable-inbox-cache.ts` 拥有"哪些命令缓存到内存、哪些文件名被延后读取"这整条策略（`readInboxCommands`），`durable-inbox-store.ts` 只提供自己的读取器与错误类型；`durable-inbox-claim-filter.ts` 单独拥有 claim 过滤（store 已到软上限）。inbox 的缓存命中判定要求"缓存覆盖目录里**每一个**文件名"，所以一份被延后的记录永远不会让调用方看到一份缺记录的命令列表：`readInboxCommands` 要么在返回前把延后项读进来，要么走完整读取。
-- 精确 tokenizer 不属于桌面启动前置条件。Runner 创建只装配轻量惰性代理，首次真实 run 与会话装配并行预热经过校验的本地资源；准备中的请求由 Context Engine 保守估算保护，重复准备合并，失败重试退避，关闭时取消未完成准备。
-- **验收专用退避覆盖（`acceptanceRetryOptions`）**：`resolveLlm` 构造客户端时会在**验收构建**（`LITTLESHEEP_ELECTRON_ACCEPTANCE=1`）里读取 `LITTLESHEEP_ACCEPTANCE_RETRY_BASE_DELAY_MS`，只把基数缩到 1–250 ms 并关掉抖动，**重试预算、可重试状态码与其余策略仍取自生产默认**。真实窗口的重试验收必须让 Provider 连续失败，生产退避（500 ms × 2 + 抖动）会把 5 次重试拉成几十秒，既慢又不稳定。该开关在验收构建之外完全不生效，回归在 `src/infra-acceptance-retry.test.ts`（含"越界值被夹紧"与"预算仍是 6 次尝试"）。
-
-## 测试与修改定位
-
-- 运行行为和摘要接续在 `src/runner.test.ts`，摘要精确字段保真在 `src/session-summary-fidelity.test.ts`，决议在 `src/run-config.test.ts`，活动 run 检查点在 `src/run-checkpoint*.ts` 与 `src/runner-continuation.test.ts`，版本检查点收尾在 `src/version-checkpoint-lifecycle.ts` 及 `@littlesheep/snapshot` 测试，日志及摘要原子替换在 `src/execution-log.test.ts`，压缩压力触发与摘要成本在 `src/session-compaction-scheduler.test.ts` 与 `src/session-compaction-input.test.ts`，退役候选的终止与留档在 `src/runner.test.ts`，durable 恢复在 `src/durable-*.test.ts`（含 `durable-harness-infrastructure.test.ts` 的"四个存储各自打标"与 `durable-inbox-store.test.ts` 的"终态记录延后读取仍会失败关闭"），负载报告的脱敏、有界、质量、成本和资源契约在 `src/memory-workload-observability.test.ts` 与 `src/runtime-resource-observation.test.ts`。涉及会话转录的断言先过滤 `runtimeTail` 记录：它们为按字节回放而持久化，但不是对话。`session-compaction-input.test.ts` 的用例会驱动真实 run 与真实压缩调用，因此该文件显式把测试超时设为 90 秒——并行跑全量测试时它们曾因默认超时而失败，那与它们断言的行为无关。**2026-09-24 测得超时的真实成因**：开着影子 Git 版本检查点时，一次 run 会 spawn 约 56 个 `git` 进程（基线快照、逐次调用扫描 tracked paths、收尾提交），在 Windows 上约 10 秒/次，全量并行时把该文件里最长的一条推到 90 秒以上。该文件断言的是**压缩输入**，不看快照，所以按验收脚本的既有做法设 `config.versioning.enabled = false`：文件总时长 52 秒 → 30 秒，最长用例 20 秒 → 11.8 秒。需要验证快照行为的用例不要照抄这一行。
-- 新 run 输入或事件必须同步公共契约、历史恢复和 Local App API 消费方。
-- 跨日用量聚合的回归在 `src/provider-usage-daily.test.ts`（13 例）：同一夹具的逐请求／每日／区间总量一致、复制日志只计一次、真实重试分别计入、零用量日与无调用日可区分、缺 usage 不当零、范围与身份分面有界、回填可取消可续接且不重复、删除派生索引后逐字段重建、换时区/跨年/闰日/夏令时重新投影、清空后回填不复活、永久删除后仍保留不含内容的摘要，以及 `listRunPartitions()`/`readRunRevision()` 的修订语义。HTTP 契约（有界范围、时区校验、筛选、Runtime 未就绪时只读仍可用）在 `packages/app/src/main/local-app-api/usage-routes.test.ts`。
-- 续跑样本的断言必须按**当前**行为写：旧检查点的 `taskBook`/`taskExecution` 是只读历史，VERIFY 不再把它当成缺口，因此"预算耗尽后授予完全访问并重试"这一样本交付的是模型自己写的回答（2 次请求、轨迹 `[recover, execute, verify, finalize]`）。它此前断言的那次额外请求其实是 `ask_user` 的措辞调用——即工作已经做完却又问了一遍用户。
-- 检查点里的**任务状态**与**本轮额度**必须分开传递。`continuationLoopBudget`（`src/run-checkpoint.ts`）让续跑继承 taskBook、已完成步骤、副作用、验证历史和权限，但把模型调用数、工具循环次数、连续无进展计数与证据指纹重置为 0，并按**当前**配置取 `maxModelCallsPerRun`；`restoreContinuationContext` 同时清空来源轮的 `lastError` 与 `recoveryAttempts`。此前把"已花掉的额度"当作新 run 的已用额度，等于让耗尽预算后的用户重试在第一次模型请求之前就失败：用户每次说"再尝试一次"，得到的都是同一句升级提问，且没有任何新工作。本次改动前的复现是轨迹 `[recover, execute, recover, ask_user]` 且没有副作用；改动后为 `[recover, execute, verify, finalize]`。上一轮的耗尽事实不丢：它作为续接证据的 `handoff`（`previousFailure` 与 `runBudget`）记录在 `ConversationContinuationEvidence` 上，而不是重新施加到新 run。
-- 绑定续跑的历史投影只排除**本 run 自己那一轮 inbound**：等待用户回答的续跑里 inbound 是用户的回答，被续跑的原请求必须留在历史里（否则重试的 run 看不到自己在重试什么，只剩 Runtime 的提问和"再尝试一次"），只有已持久化的回答消息因本 run 会重新渲染才排除；被中断的 run 则以原消息为 inbound，因此排除的是原消息本身。
-- `run-context-notice-delivery.test.ts` 守住"没送到就不算送达"：FINALIZE 的每条失败路径都不写 `produced`，所以传输层失败的 run 不会把环境简报留在转录里，下一次 run 必然重新投递。
-- `taskbook-skill-registration.test.ts` 固定"有正文才注册"这一条：探针在模型请求内部读 `use_skill` 的实时描述和 `skillLoader.loadBody('taskbook')`，普通新 run 必须既不 advertise 也没有正文，旧 `decide` 检查点必须读到恢复的 plan 且轨迹只含一个 `execute`。改注册条件时不要只改断言——先确认旧检查点的 plan 仍在 `restoreContinuationContext` 之后可读。
+局部 codec、恢复和结算运行 package typecheck 与 Runner 定向测试。`verify:app-recovery`、`verify:file-consistency-faults`、受控记忆和真实 Electron 连续性检查覆盖更广边界；按改动契约选择。单测不证明跨进程 lease 恢复。

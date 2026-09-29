@@ -1,85 +1,24 @@
-# Renderer 拓展工作区
-最后更新：2026-09-28 12:31:11
+# Renderer Workspace
 
-窗口布局改为 Beta/Chali 贴边分区：工作区无外侧浮卡间距，正文保持不透明，并保留与聊天区的细分隔线。侧栏和标题栏的应用外磨砂背景由 Main 提供，工作区不承担该原生材质。
+Workspace 呈现文件／目录、预览、Git review、浏览器标签和用户控制的终端。Main 与领域服务拥有文件系统访问、执行和路径授权。
 
-这里负责右侧拓展工作区的布局、标签、文件树、预览、终端、产物和 Git 审阅。
+## 资源与权限边界
 
-- `panel.tsx`、`add-menu.tsx`：工作区壳和标签内容。审阅不再装配第二个“现场”子页；Runtime 的任务恢复现场仍由 `runtime-recovery/` 独立负责。标签入口里尚未接通的“侧边聊天”只声明未接入（空态写“侧边聊天尚未接入”），不承诺后续能力，也不提供无效控件。
-- `artifacts.tsx`、`file-view.tsx`、`file-close.ts`、`empty-launcher.tsx`：产物列表与筛选、单个文件标签的缓存加载/保存审批/预览交接、关闭恢复，以及空工作区的快捷启动入口。
-- **关闭脏文件必须有第三个答案**（`file-close.ts`、`file-close-refusal.tsx`、`file-close-layout.ts`，2026-09-28 修复工作区审计 P1 第 9 条）：点 ✕ 关闭有未保存改动的文件时弹出的是**权限**提示「允许保存工作区文件？」，它的三个答案（拒绝/本对话允许/仅本次）都只回答"能否写盘"，所以选"拒绝"过去会让标签静默留在原地且仍脏——没有任何提示，也没有任何入口能丢弃草稿，用户只能保存或被困住。现在权限提示一个字未改（放弃编辑不是权限系统的决定，`approval/prompt.tsx` 仍是三个答案），拒绝后由**标签条自己**给出第三个答案：一行提示「已拒绝保存「NOTES.txt」：标签保持打开，未保存的修改还在，磁盘文件没有被改动。」＋ **放弃修改 / 继续编辑**。载体是 `file-close.ts` 的 `WorkspaceFileCloseRequest.discardDraft`（只有用户真的点了"放弃修改"才会被置位），接线在 `file-close-refusal.tsx`（`WorkspaceTabStripWithCloseRefusal` 包住标签条、只拦关闭回调，所以状态就长在产生 ✕ 的地方；提示用 `position: absolute` 浮在面板体底部，不改标签行几何，也不进对话区），布局写入在 `file-close-layout.ts`（关标签＝连同草稿一起离开会话现场，因此被丢弃的草稿不可能被之后的保存写出去）。拒绝写盘、批准照常写盘并关标签这两条语义没有变化。**被丢弃的正文不会从 Monaco 缓存里回来**（同一次改动）：模型缓存按 URI 跨重挂载保留正文，而 `@monaco-editor/react` 有意不把 `value` 应用到自己没创建的模型上——所以"放弃修改"关掉的标签会留下一个仍带草稿正文的模型，重开同一文件时会在**干净**标签下显示已放弃的文字。`code-editor.tsx` 的 `adoptMountedEditorValue` 让新挂载的编辑器采纳当前表面的正文（脏时是草稿、干净时是磁盘正文），而挂载后的值变化仍由库自己的 `value` 通道处理。真实窗口验收：`pnpm run verify:workspace-file-close-discard`（拒绝后标签仍在且仍脏、磁盘未改动、提示可见且带"放弃修改"、"继续编辑"不改动任何东西、"放弃修改"关标签且重开文件看到的是磁盘正文即草稿确实被丢弃而非保存、`仅本次` 写入并关闭）。
-- `navigator-frame.tsx`、`file-navigator.tsx`、`review-tree.tsx`：普通目录树与 Git 稀疏更改树共用同一个右侧导航外壳、折叠轨、工具栏高度、筛选框、树行缩进和选中/hover 契约；两种导航的数据源、缓存和刷新请求保持隔离，Git 刷新不会触发完整目录扫描；目录树仍按已展开行全量渲染，尚未做虚拟化，这是当前的已知缺口。**两种导航的宽度互不覆盖**（UX-18）：普通目录树用会话现场的 `fileNavigatorWidth`，审阅更改树用同一现场的 `reviewNavigatorWidth`（`WORKSPACE_FILE_NAVIGATOR_WIDTH_*` 同一组上下限，默认都是 214），`panel.tsx` 把审阅标签接到后者，因此拖宽审阅列表不会移动文件导航；两个字段都随会话现场持久化并在重启后恢复，旧快照缺 `reviewNavigatorWidth` 时回落到默认值而不是继承文件导航的宽度。**审阅导航占据布局空间**（UX-18 实机验收发现并修复）：普通导航由 `.workspace-shared-file-navigator` 这个 flex 项占位，而审阅导航是 `.workspace-review` 的直接子元素，只有 `position: absolute` 时它会被画出 flex 行、盖住 Diff 表面——实机测得 Diff 标题行的两个图标按钮与导航自己的刷新按钮落在同一个矩形上，指针点不到，Diff 代码也被树压住；`04-workspace.css` 因此让 `.workspace-files > .workspace-files-navigator` 回到行内（`position: relative` + `flex: 0 0 var(--workspace-files-navigator-width)`），折叠时再按共享外壳的规则收缩到折叠轨宽度。真实窗口验收：`pnpm run verify:review-navigator-width`。**两种导航共用同一套行字形**：文件夹是圆角琥珀色板（带浅色横条），文件是圆角纸张 + 浅色折角 + 该类型官方标记与配色，实现在 `../ui/file-glyph-icons.tsx` 与 `04-workspace.css` 的 `.file-glyph-*` 色表；树行本身不画图标，只放 `<FolderGlyphIcon />` / `<FileGlyphIcon name={...} />`，所以改字形只改这两处。**展开缩进引导线随指针出现**（2026-09-26）：`.workspace-tree-entry.expanded::before` / `.workspace-review-tree-branch.expanded::before` 默认 `opacity: 0`，只有 `.workspace-tree:hover` 或 `:focus-within` 时才为 1，并用 `opacity var(--motion-base)` 过渡——引导线是给指针所在那一列看的阅读辅助，不是常驻装饰；reduced-motion 由全局规则把过渡压成瞬时。真实窗口实测（鼠标在对话区 → 移到树上 → 移开）：`0 → 0.909（60 ms 中间帧）→ 1 → 0.083 → 0`，计算出的过渡是 `opacity 0.18s`，线色仍是 `--border`。**筛选框不带描边**（2026-09-26）：`.workspace-file-filter`（普通目录树与审阅树共用）和 `.workspace-artifacts-search` 都改成 `border: 0`，悬停/聚焦只改变填充（`background: var(--control-hover)`）与文字色，不再画 `--border-strong` 的边线；字段靠填充而非边框区分，因此焦点态仍然可见。真实窗口实测：rest / hover / focus 三种状态的 `border-*-width` 都是 `0px`，聚焦时填充为 `rgb(51, 51, 51)`。
-- `directory-cache.ts`、`directory-preload.ts`、`preview-pane.tsx`、`preview-actions.tsx`、`terminal.tsx`、`browser.tsx`：文件、终端和内置浏览器能力；目录快照由有界的跨挂载 stale-while-revalidate 缓存统一拥有，同一路径的并发刷新必须合并，折叠或切换后先显示旧树再后台校准。`main.tsx` 只会在已持久化的工作区面板可见、文件导航展开且当前标签确实需要普通文件导航时，预热同一个根目录 in-flight 请求；审阅页、折叠面板和折叠导航不触发普通目录扫描，组件挂载后复用该请求。普通文件标签中的 Markdown 默认使用共享 `Markdown` 组件渲染；标题栏的“查看源代码”位于“编辑”左侧并按需挂载共享 Monaco，点击“编辑”会直接进入可编辑源码。渲染预览始终使用当前草稿正文，因此未保存改动可在预览与源码之间往返且仍走原有保存审批；按钮、提示与可访问性属性由 `preview-actions.tsx` 维护，文件内容和草稿状态继续只由 `preview-pane.tsx` 持有。代码预览的“自动换行”按钮由 `preview-actions.tsx` 提供，读取 UI 的 `code-wrap-preference.ts`，与对话代码块共享状态并驱动 Monaco 的 `wordWrap`；对话与工作区联动的隔离 Electron 验收见 `pnpm run verify:code-wrap-control`。`terminal-input-controller.ts` 拥有交互终端的原始输入队列。
-- **草稿的存续规则**（`preview-draft.ts` 的 `workspaceDraftOutcome`，2026-09-25 修复）：面板刚挂载时文件预览还没到，此时 `editable` 为 false——旧实现据此把该标签的会话草稿**删掉**，于是任何未保存改动都活不过一次重挂载（重载、切换会话、重启都会丢）。现在只有"**已加载**且确实不是文本类预览"才丢弃草稿（图片/文档），预览未到一律 `keep`；规则是纯函数并有单测钉住"不要退回成裸 `else` 删除"。真实窗口实测（隐藏窗口、`Input.insertText`）证明这条链路成立：草稿 dirty、预览渲染草稿、运行前先问。
-- **HTML 运行入口**（UX-26，`html-run.ts`、`use-html-run.ts`、`html-run-notice.tsx`、`preview-actions.tsx`）：静态预览不执行脚本，所以"运行"是另一件事——工具条提供 **运行 / 停止**，运行请求 Main 的 `/workspace/preview-server`（绑定 loopback、URL 带随机 token、限定工作区根），成功后经既有 `onOpenBrowserTab` 在**浏览器标签**里打开（复用既有 `webview` guest 与生命周期，不新建第二套运行视图）。状态规则集中在 `html-run.ts`（`idle/starting/running/stopped/failed` 与每档可用动作、反馈），`use-html-run.ts` 把它们做成一个事务：**只用磁盘上的版本**、脏草稿先问（提示渲染在面板体里，`保存并运行 / 取消`，保存失败不运行）、停止即释放服务、换文件或外部改动回到未运行。门 `pnpm run verify:html-preview-baseline` 实测（窗口全程不上屏）：运行后 canvas 上色、真实输入使计分变化、guest 内无 LS bridge / 无 Node 集成 / 独立来源与空存储、穿越与错误 token 被拒、停止后 URL 拒连、多文件页面的 CSS / module / JSON / SVG 全部 200；**脏草稿链路也已断言**——编辑态输入后会话草稿为 dirty 且带标记、预览帧渲染的就是草稿正文、点"运行"先问"有未保存的修改…保存并运行/取消"且此刻与取消后都没有任何服务启动。**诊断读数**（`run-diagnostics.tsx`，UX-26 第 3 条的一半）：运行成功后，运行提示旁会显示"脚本报错 N · 资源失败 M（查看详情）"，展开后是页面自己产生的原文与来源行号——数据来自 Main 的有界记录（`/browser/diagnostics?url=…`），4 秒轮询一次，不在渲染器里重新解析页面；没有问题时显示"运行中：页面暂未报告脚本错误或资源失败。"。**重新加载**（`browser-reload.ts`）：工具条在运行中给出"重新加载"，请求以 URL 寻址的窗口事件直达显示该页面的浏览器标签（只让 URL 相同的标签刷新，其他标签不动），不重启服务——真实窗口实测 guest 的 `performance.timeOrigin` 变化且服务 `startedAt` 不变。**磁盘版本与未保存草稿（UX-25 第 3 条，已实测）**：`preview-disk-state.ts`（纯规则）+ `use-workspace-disk-watch.ts`（5 秒轮询 `GET /workspace/file-stat`，只取 `exists`/`modifiedAt`，挂载与每次保存后立即复查）+ `preview-disk-notice.tsx`（提示条）。规则：mtime 相同 = 一致、变了 = "磁盘上的版本已变化"、文件不在 = "已不在磁盘上"（失败色）、拿不到 = 沉默（不猜）。编辑中同时给"保留我的修改 / 重新加载磁盘版本"，未编辑只给重载；提示**从不丢弃草稿**，关闭只按当前情形记住。保存失败的 403/409/413/415 直接显示服务端那句可执行的话（`workspaceSaveErrorMessage`），不再一律"稍后重试"。
-**静态预览的相对资源（UX-25 第 2 条，已实测）**：帧是 `sandbox=""` 的不透明来源，Chromium 拒绝 `file:` 子资源，所以**没有**放宽 sandbox/webSecurity（那等于把整块磁盘交出去），而是复用 Main 的有界 loopback 服务：`html-preview-assets.ts` 把净化后文档里的相对引用（`img/source/video/audio/track/input/image/use/link` 的 `src|href|poster|data|srcset`、行内 `style` 与 `<style>` 里的 `url()`/`@import`）改写成服务地址，逐段**先解码再编码**（所以 `shots/shot%231.svg`、`100%25.svg` 不会被二次编码），`..` 解析越界即拒绝；`use-html-preview-assets.ts` 只在文档**确实引用本地资源**时启动服务，`html-preview.tsx` 把 CSP 收紧到 `data: blob: <该回环来源>`（原来的 `http(s)` 已去掉，提示语承诺的"不发起网络请求"因此成立），并只放行 `link` 的 stylesheet 形态；`html-preview-surface.tsx` 把帧、资源基址与失败提示绑在一起，`html-preview-asset-notice.tsx` 给出"N 个资源未能加载（查看详情）"+ 逐条原因 + 重试。真实窗口实测：子目录 / 中文+空格 / `#` / `%` 四例图片 `naturalWidth` 均为 64，缺失资源保持 0 并出现在提示里，多文件页的**外部样式表真正生效**（`.board` 计算背景 `rgb(28, 42, 31)`），`@font-face` 的 `src` 在帧内读出来指向回环服务。
-**验收可驱动**：标签项带 `data-workspace-tab-kind`（`file`/`browser`/功能页），验收脚本据此定位浏览器标签——浏览器标签是按页面标题或主机命名的，用文件名匹配会误关文件标签（实测）。**第 6 条已实测**：发往运行页面的按键与点击不改变宿主界面任何一项（活动标签、composer 文本、页面/导航/标签条滚动）；切标签后页面照常运行、调整窗口后 guest 视口跟着变、关闭浏览器标签后 guest 被释放（webview 元素 1→0、调试目标消失）。**音频**：夹具在运行 guest 里点击播放后 `paused === false`（一次性探针证据；接进门时偶发不被装载，夹具与就绪判定待修）。
-**韧性（已实测）**：脚本死循环（`while (true)`）或 guest 崩溃后，主界面文档仍以 1–2 ms 应答，**停止与重新加载都能点、都生效**（停止后服务 URL 立即拒连、服务列表清空）；探针必须给卡死渲染进程的 CDP 调用加超时，且 Electron 不回 `Page.crash` 的应答——崩溃按"guest 之后彻底沉默"判定。运行提示的措辞是"已在隔离的本地地址中打开…页面自己报告的问题显示在下面"，不替页面宣称它初始化成功。
-- **HTML 预览的文档结构与当前边界**（`html-preview.tsx`，UX-24 基线 + UX-25 修复，门 `pnpm run verify:html-preview-baseline`）：净化必须按**整份文档**处理（`WHOLE_DOCUMENT: true`）并单独放行 `title`，否则 `<head>` 连同所有 `<style>` 规则一起被丢掉，重样式的页面会退化成无样式黑字白底（UX-24 实测、UX-25 修复；真实窗口已测到 `styleSheets=1`、`body` 背景取到夹具自己的 `rgb(16, 20, 24)`、`canvas` 取到 `rgb(18, 52, 86)`）。**帧只为一个真实文档创建，并以文档身份作为 `key`**：`srcdoc` 在帧仍在加载初始空文档时被更新，Chromium 可能忽略它，留下永久空白（UX-24 实测的"全白"）；现在内容为空时显示占位，内容变化时换一个新帧，三个夹具都稳定渲染。`meta`、`link` 仍在禁止清单里（`meta` 可做 `http-equiv` 跳转、`link` 会引入外部样式表请求），注入的 head 自带 `<meta charset="utf-8">`、CSP 与 `file:` base；静态预览在工具条下方明说"不运行页面脚本，也不发起网络请求"。**仍未解决**：本地相对资源（`<link>`/`<img>`/CSS `url()`/字体）在沙箱帧里加载不到（`file:` 子资源被 Chromium 拒绝，实测图片 `naturalWidth=0`）——正确出路是上面的运行入口，而不是放宽 sandbox；"预览跟随未保存草稿"这一步在门里只记录不判定——实测草稿已进入会话草稿存储（`markerInDraft: true`）但已挂载的预览仍是磁盘内容（`srcdoc` 长度不变），UX-25 第 3 条因此保持未完成。
-- `code-editor.tsx`、`monaco-model-cache.ts`：工作区唯一的 Monaco 懒加载、主题、默认配置和模型生命周期基元；普通代码查看、编辑与 Git 审阅必须复用它，不得各自打包或初始化第二套编辑器运行时。运行时只加载 `editor.api` 核心，当前文件的 Monarch tokenizer 在模型创建前按语言惰性准备，不打包 TypeScript/JSON/CSS/HTML 语言服务 worker；模型和视图状态按最多 40 条/20 MiB 有界，活动编辑器模型不强制淘汰，离开后才按 LRU 收敛。代码区统一使用 `13px` 字号和 `23px` 行高，约比旧密度增加 30%；行号至少预留 4 个字符，行号与代码之间保留 12px 装饰间距，滚动条采用轻量尺寸；Markdown、Office 和图片预览不继承这组代码参数。
-- `review.tsx`、`review-cache.ts`、`review-diff.tsx`、`review-diff-model.ts`、`review-refresh-notice.ts`：Git 变更快照、有界快照/Diff 缓存、分层审阅和 Monaco 差异模型；审阅保留 staged/unstaged/untracked 语义，主区域与普通文件查看同为边到边、无外围圆角/边框/整面 hover 的编辑器表面，右侧文件导航贴边且只保留左分隔线。重挂载先恢复同一快照版本的树与 Diff，再后台校准；Diff 缓存同时受条目数和估算字节预算约束。Main 快照返回 opaque revision，文件 Diff 必须绑定该 revision，旧版本返回 409 后由 Renderer 自动刷新；快速切换会取消无人等待的旧请求。**保留旧内容必须自报状态**（UX-27 第一项）：刷新进行中、更新失败、以及差异属于上一个 revision，都不允许看起来像刚读到的成功——`review-refresh-notice.ts` 是唯一派生这些提示的纯规则（色调是字段，不从文案里猜），快照与单文件 Diff **各自**报告失败并各带一个重试动作；快照失败时用仍在屏上的 `generatedAt` 说明上次成功读取时间，"重试差异"以 `force` 绕过 Diff TTL 真正重新请求；提示由共享 `ui/feedback-notice.tsx` 渲染（`role`/`data-tone` 随色调，Runtime 原文进有界"技术详情"），`10-git-review.css` 只负责版面。真实窗口验收：`pnpm run verify:review-refresh-errors`（含"重试确实发出新请求"的探针断言）。审阅文件支持临时路径/状态过滤以及筛选框中的上下键和 Enter 导航，过滤条件不持久化；标题行图标按钮显式切换 Monaco 单列/双列，偏好由 `WORKSPACE_REVIEW_SIDE_BY_SIDE_KEY` 持久化。审阅关闭精简构建中会退化为小方块的 Monaco 内置增删指示符，也不设置会把零宽变化画成方框的 Diff text border；增删变化行各自只绘制一层柔和的 50% 透明底色，字符级 Diff 背景保持透明，左侧用连续的 5px 纯色色带表达增删；单列模式的内联删除视图区必须复用整段红色左缘，不能按代码行断开。Git 审阅中的 Markdown 不走渲染预览，仍优先显示带 Markdown 词法着色、原始行号和红绿增减背景的 Monaco 源代码 Diff。
-- `line-comments.tsx`、`line-comment-surface.tsx`、`line-comment-model.ts`、`line-comment-gesture.ts`、`line-comment-view-zones.ts`、`review-line-comments.ts`、`review-inline-deleted-comments.tsx`、`review-inline-deleted-line-numbers.ts`：普通文件与 Git 审阅共用的 Monaco 行评论交互、行号映射、view zone 和发布边界。评论在行手势或选中后创建，发布时经 `line-comment-attachments.ts` 归并进 composer 附件（`AttachmentRef.lineComments`），删除附件会同步清理面板内的临时视图状态；没有独立的评论存储或第二份评论数据。审阅评论绑定当前快照的 layer 与修改前/后侧别，并把所选源码摘录写入附件上下文，源码行号到模型行号的投影由 `review-inline-deleted-line-numbers.ts` 维护。
-- `file-preview-cache.ts`、`bounded-byte-lru.ts`：普通文件预览跨标签挂载共享，按 TTL、条目数和估算字节数有界；缓存命中先恢复旧正文，后台读取只在同一请求代次仍有效时覆盖，保存结果会优先于较早的读取响应。淘汰只作用于已完成数据，不保留无限增长的 Monaco 输入正文。
-- `monaco-language-support.ts`、`monaco-language-loaders.ts`、`monaco-theme.ts`：Monaco 的 worker-free 语言着色注册、按需 tokenizer 映射和 LS 中性黑灰高对比主题；主题底色、加载占位和状态栏必须保持一致且不引入蓝色背景偏向，普通代码、审阅差异、注释、行号和主要语法色不得退化为低对比或低饱和灰色。审阅的变化行号、增删计数和连续 5px 左缘使用不透明的 `#02A243` 与 `#DE352E`；代码行表面分别使用 `#23452780` 与 `#5D291D80`，在 `#101010` 编辑器底色上合成为参考图的 `#1A2B1C` 与 `#371D17`。字符级背景和整块 gutter 背景透明，避免同一代码行叠出多重色块。生产构建只从 Monaco 官方基础语言模块保留 `conf`/`language` 词法定义，隔离其附带的完整编辑器贡献副作用，并硬拒绝语言 worker、建议记忆与代码动作服务回流，避免惰性语言加载增大产物或在已初始化的服务容器中产生未知服务错误；隔离 Electron 性能验收还会监听真实 Renderer 控制台并拒绝任何未知服务错误，并校验文件/审阅主表面的边到边几何、无外围框计算样式、文件导航单一左分隔线、真实 Diff 行号、单层底色及单列删除左缘。
-- `tab-strip.tsx`：拓展工作区标签条；`use-browser-controller.ts`、`browser-persistence.ts` 和 `browser-tabs.ts`：浏览器标签状态、恢复元数据和有界导航历史。
-- `resize-interaction.ts`、`use-workspace-layout-controller.ts`、`use-workspace-session-layouts.ts`：独立于左侧栏的布局、拖动、折叠和恢复；按会话分桶、草稿采纳和镜像恢复由 `use-workspace-session-layouts.ts` 拥有。
-- `layout-ownership.ts`：**启动期草稿布局归属哪一段会话**的纯规则。窗口在会话选定前就可用，此时打开的文件落在 `__draft__` 桶，而侧栏已经高亮某段会话，所以"进入的第一段会话"要把它认领过去（CS-08 实机缺陷的修复）；判据是**用户真正产生的内容**——默认标签之外的新标签、指向文件的 `openRequest`、未保存草稿或浏览器标签；切换会话时应用自己写入的那一个 `expandedPaths` 对齐项不算内容（实机实测形状见基线文档的 CS-08 补充），空草稿永不带过去，已有自己内容的会话永不被覆盖。
-- `path-utils.ts`、`types.ts`：纯数据与路径边界；`WorkspaceArtifactRef` 仍供聊天和产物入口使用，审阅活动聚合类型已删除。
+- 除非路径位于应用数据根内，用户选择的项目或目录仍是外部资源。选择用于显示不等于允许 Agent 扫描或执行。
+- 研究与受限模式须先取得相应批准，才能自动读取外部或范围不明资源。完全访问遵循用户显式确认后的策略；Main 仍执行硬拒绝。
+- Renderer 通过 Local App API 请求文件和终端能力；不使用 Node 文件 API，也不把界面选中的路径当作授权。
+- Main 重新检查 Agent shell 操作。用户自行打开和输入的交互终端属于用户操作，不弹 Agent 审批。
 
-`workspace-timing.ts`：CS-08 的两个可用性指标——`reportWorkspaceEntriesVisible()`（首个目录行绘制后）与 `reportWorkspacePreviewVisible()`（首个文件正文绘制后，占位/错误/空面板不发布）；每个渲染器只发布一次，仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 时有产出。
-文件读写、终端进程和产物索引必须通过 Local App API；从文件树打开文件要创建标签，重启恢复只使用用户数据中的受控快照。
+## 文件编辑与 review
 
-关闭当前标签时激活最近的剩余标签；关闭最后一个标签不会折叠面板，而是显示审查、产物、终端、空白浏览器和侧边聊天快捷启动空态。面板折叠后同时保留对话区右上角固定入口和右侧全高悬浮感应入口，二者共享同一折叠状态与过渡。
+- 完整、未清洗的文件读取才可建立观察版本；partial、truncated、二进制预览或清洗后的读取不能授权覆盖。
+- 修改已有文件前，Main 复核已观察的内容哈希。其他操作者已改文件时返回 stale／missing observation 并保留用户草稿。
+- 保存与 review 响应有界且明确标记失败或截断。保存失败不能清空草稿。
+- Git review 是仓库快照，不是单个脏文件的原子快照；opaque revision 和不稳定读取状态须保留，不得夸大一致性。
+- Monaco 在文件查看、编辑和 Git review 之间共享；模型、预览与浏览器历史需有界。
 
-浏览器的前进、后退和刷新只作用于 `browser-history.ts` 管理的独立 URL 栈，最多保留 50 条 URL，不进入全局应用导航快照。网页内部链接和新窗口请求留在 LS 的 `webview` 中；地址加载、重定向、刷新和历史移动都会在导航事件完成后清理挂起状态，避免重复加载或重复写入历史。切换标签后 webview 可以重建，因此工具栏以后端的逻辑 URL 栈为准，不直接依赖 Chromium 的原生历史栈。网页绘制由 Chromium 当前显示器 VSync 调度，刷新率是有效帧率上限；静态页面不由 LS 发起持续重绘。窗口最小化时保留 webview 实例并依赖 Chromium 后台节流，避免恢复时丢失页面状态；只有用户主动折叠拓展工作区时才卸载当前视图。
+## 预览与验证
 
-文件预览按资源上限执行：代码和普通文本进入共享 Monaco；Markdown 普通查看默认渲染，只有查看源码或编辑时才按需挂载同一个 Monaco，Git 审阅则始终优先显示源代码 Diff；Markdown 与 Office/OpenDocument 保留独立于应用 UI 的预览字体。Office/OpenDocument 只读提取正文或表格/幻灯片文本，主进程先检查文件大小，再限制 ZIP 条目数量和 XML 展开规模。完整排版、编辑和旧式二进制 Office 兼容不属于当前预览契约。
+静态 HTML 使用 sandbox frame，不执行页面 JavaScript。相对资源只经 Main 的有界 loopback preview service 和路径检查提供。运行页面是单独的显式操作，使用隔离 guest，不自动启动项目脚本。
 
-## 软上限说明
-
-以下文件是当前体积最大、暂按单一交互事务保留的生产文件：
-
-- `terminal.tsx`：PTY 生命周期、SSE、尺寸同步和命令历史必须共同清理。
-- `line-comments.tsx`：Monaco 行评论的交互、view zone、草稿状态和附件发布共享同一套行号映射，拆分前必须先补特征测试。
-- `file-navigator.tsx`：目录缓存、筛选、展开路径和树行渲染共享同一导航状态；外壳由 `navigator-frame.tsx` 复用，根目录请求在首个可见布局提交前启动并受折叠状态保护。
-- `preview-pane.tsx`：文件类型分派、编辑草稿、保存审批和预览错误共同组成一次文件打开事务。保存结果只有一条状态行：失败留在原地并保留草稿（`文件保存失败，请稍后重试。`，原因进 console.debug），成功显示 `已保存`——而一次成功的保存会重新读取文件（`modifiedAt` 变化）并触发本组件的重置，所以成功提示必须跨过这次由它自己引起的刷新（`savedStatusPathRef` 只豁免这一次；切换文件或外部改动仍会清空），否则用户根本看不到确认（UX-09 实机验收发现并修掉）。
-- `panel.tsx`：只协调工作区标签壳；旧的单页 `files.tsx`、审阅“现场”页和重复活动聚合已由文件标签、共享导航器及独立 Runtime 恢复控制面取代，不得恢复第二套目录加载、预览或审阅活动状态。
-- `use-workspace-layout-controller.ts`：统一拥有布局偏好、恢复镜像、标签/草稿持久化和拖动入口；两套长拖动算法已另行拆出。
-
-这些文件不得吸收新的独立领域；达到 600 行前必须先补特征测试并再次拆分。
-
-**审阅读取不一致时的提示（UX-27 第 2 条）**：快照带 `unstable` 时 `review-refresh-notice.ts` 输出 warning 级"仓库在读取期间仍在变化，这份更改列表可能混合了两个状态；刷新会重新读取。"——数据照常显示（隐藏真实数据更糟），但明确说明它不是一次已结算的读取。
-
-**无文本 hunk 的变更（UX-28 第 3 条）**：`review-diff-metadata.ts` 把 `metadata` 里的 extended header 变成人话（重命名自/为、复制自/为、相似度、旧/新权限，权限号额外标注普通文件/可执行文件/符号链接/子模块），`review-diff.tsx` 在差异层里列出来；只有既无 hunk 又无元数据时才显示"没有可显示的行差异"。
-
-**审阅上限怎么显示（UX-28 第 5 条）**：列表被截断时显示"显示前 2000 个，共 2100 个文件"（`reviewSummaryLabel`，替换了原来含糊的 `2000/2100`），旁边的合计在计数不完整时带"行数超过审阅扫描预算"提示；每层的截断在提示条里写明是 MB 上限还是 5000 行上限。
-- `workspace/review-limits.ts` 的 `reviewLimitNotice`：导航器折叠时把列表/差异层的上限语句交给差异面板显示（展开时返回 null，不重复）；`review-diff.tsx` 用 `.workspace-review-limit-notice` 渲染（UX-28 第 5 条）。
-
-**评论锚点（UX-28 第 4 条）**：`line-comment-model.ts` 的 `lineCommentAnchorState` 判定评论是否仍指向当初的代码（`anchored`/`moved`/`unknown`，缺锚点或读不到源码时不作结论）；`AttachmentLineComment.anchorText` 记录创建时的行内容，评论卡片在 `moved` 时显示"代码行已变化"。
-
-**差异交互的验收边界（UX-28 第 4 条，2026-09-26）**：键盘选择与"回到源文件"在真实窗口里走查；行号由 `review-diff-model` 保证（`newStart` → 真实源码行号、远距离 hunk 之间给 `...`）；长行换行与删除行评论层在隐藏窗口里不可见（Monaco 无布局、评论层按行几何挂载），因此只有配置级与单元级证据。
-
-**编辑器布局不再依赖动画帧（2026-09-26，UX-28 第 4 条排查副产品）**：`code-editor.tsx` 的布局调度改为同步执行 `layout()`（`ResizeObserver` 每帧最多回调一次，帧回调无可合并），并在挂载与窗口重新可见时立即布局。理由是被遮挡/最小化的窗口不产生动画帧，布局不该依赖帧到达；**实测说明**：这没有改变"隐藏窗口里编辑器根节点只有 5 px、只渲染 1 行"的测量（pane 715 px），那条差异的原因是高度链只在控件真正渲染时才解析；删除行评论层按行几何挂载，因此在该宿主里不会出现。
-- **审阅差异面板缺陷（记录）**：在真实渲染的窗口里实测，`.monaco-diff-editor` 仍带 inline `height: 5px`、父链明确 716 px、只渲染 1 行与 1 个 gutter 行号；已排除渲染节流、帧合并、模型变化后布局、延迟布局与应用自身 resize 事件五条假设。
-- **编辑器盒子由应用自己测量（UX-28 第 4 条修复）**：`code-editor.tsx` 的 `measureEditorBox` 向上有界取最大盒子并显式 `layout({width,height})`；修复前审阅差异面板只有 5 px／1 行／1 个行号，修复后 716 px／12 行／行号 1,2,3。差异交互的窗口级验收用 `park-offscreen`（窗口移出所有显示器后 `showInactive()`），因此需要真实布局的检查不会出现在用户桌面上。
-- **Shell 下拉与真实名称**（UX-29）：`workspace/terminal-shell-picker.tsx` 提供下拉（不可用项在提示里说明缺什么），`terminal-shell-choice.ts` 决定选中项并在**偏好失效时明确提示**（原因 + 配置路径 + 已改用的 Shell），终端标题与中断/重启提示都使用真实运行中的 Shell 名称；最近命令列表抽到 `terminal-activity.tsx`、工具按钮抽到 `terminal-toolbar.tsx`。
-- **多终端标签模型**（UX-30）：`workspace/terminal-sessions.ts` 是纯 reducer（标签带 Shell、cwd、状态、退出码与有上限的回放缓存；超过 8 个标签拒绝并说明；关闭后选中项落到邻位；`terminalInputTarget` 保证输入永远不会送到启动中/已退出/失败的会话），`terminal-tabs.tsx` 渲染标签条，`use-terminal-shell-selection.ts` 持有探测与偏好；`terminal.tsx` 用该模型跟随真实会话状态。
-
-**多会话接线与终端冒烟（UX-30，2026-09-26）**：`use-terminal-sessions.ts` 接管会话集合与流，`terminal.tsx` 只保留 xterm 与渲染。**同一时刻只读一个会话**：`attach()` 中止上一条流并为当前显示的会话建流，`{ type: 'attached' }` 先清掉该标签在本地的回放缓存，再由 Main `replayTo` 把有界历史重新送回来。此前"每个会话一条流"的做法在 6 个会话时耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接，之后的创建/输入/尺寸/目录请求全部排队不返回，界面既不报错也不拒绝（UX-37 复查实测：点了 8 次创建、只settle 6 次）。`verify-conversation-workspace-scenarios.mjs` 的终端步骤断言面板起来并列出本机探测到的 Shell，且单会话不显示标签条；该门把窗口停在屏幕外渲染，以便截图和布局检查。
-
-## 多终端：创建、切换与关闭（UX-30 第 1 条，2026-09-26）
-
-工具栏新增**新建**（提示写明"正在运行的终端不受影响"），第二个会话出现后标签条显示每个会话的真实 Shell 与状态，并且中断/重启/清空的提示补上影响范围（"只影响这一个，共 N 个终端"）；工作区或会话切换时 `closeAll` 终止所有会话。真实窗口走查：点新建后得到 2 个标签、恰好 1 个选中、第一个会话状态不受影响（实测 `终端 1运行中 / 终端 2启动中`），关闭第二个后标签条消失且剩下的会话仍为运行中。
-
-## 终端专项门与四个修复（UX-30 / UX-37，2026-09-26）
-
-独立门 `pnpm run verify:workspace-terminal` 断言 Shell 下拉列出本机真实 Shell、初始单会话、新建后两个标签且恰好一个选中、切回第一个标签后仍能把命令写进它自己的标记文件、关闭当前标签只移除那一个（每次命令都先等 xterm helper textarea 的 `readOnly` 变为 false：它是 `disableStdin` 的镜像，置位时 xterm 丢弃全部输入）。`verify:transcript-state-visibility` 之外的门不重复这些断言。
-
-四个真实缺陷由这轮门与复查发现并修复，都影响用户：
-
-- **打开面板只创建一个会话**（StrictMode/快速重挂载会起两个 shell）；
-- **切换工作区或会话后终端变成空面板**：`startedRef` 只在首次挂载置位、从不复位，而清理会 `closeAll`，于是新身份既没有会话也不会再启动；现在身份变化时先复位该守卫；
-- **切回一个已在运行的标签后键盘失效**：`onActiveChange` 曾无条件 `setTerminalInputEnabled(false)`，只有会话再输出才会打开，而空闲的 shell 停在自己的提示符上不会再输出；现在切到的标签已 `ready` 就直接放行；
-- **重放历史把设备查询又答一次**：Main 的 `replayTo` 现在剥掉 `CSI c` / `CSI > c` / `CSI 5n` / `CSI 6n` 这类由终端回答的查询（`stripTerminalDeviceQueries`），否则终端会把答案当成用户输入发给 shell——实测切回标签后的命令以 `\x1b[?1;2cSet-Content …` 到达，PowerShell 直接报"`[` 后面缺少"。
-
-隐藏面板保活，关闭终端标签或切换工作区/会话时关闭所有会话（面板标签的提示写明这两条）。8 会话上限在 Main 创建之前判定并给出可见拒绝。切标签清空待发送输入。中断按钮在 PTY 与兼容模式下措辞不同（后者是强制结束进程树）。最近命令列表带上命令所在会话的真实 Shell 名（旧记录与 Agent 运行命令没有该字段时省略，不猜）。**终端标签不跨重启持久化**（已决定不做）：`localStorage` 只保存 Shell 偏好，重启后是零标签，界面也不暗示旧进程仍在运行。
+观察与写入使用 `verify:file-consistency-faults`、`verify:desktop-file-consistency`；预览使用 `verify:html-preview-baseline`；Git 刷新使用 `verify:review-refresh-errors`；工作区与交互终端使用 `verify:conversation-workspace-scenarios`。这些入口证明不同边界。

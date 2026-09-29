@@ -57,7 +57,7 @@
 
 重要的负面发现：可见版本化来源中没有全仓“不得跨 package 修改”“所有删除必须用户批准”“所有改动必须先写失败测试”或“普通报告必须列 hash／每命令／每次工具尝试”。这四项不列为待删除成果；应防止新任务书凭空制造它们再声称瘦身。三个当前 tracked taskbook 只作专项／实验来源：`single-level-subagent-taskbook-2026-09-24.md`、`runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md`、`frontend-simplification-taskbook-2026-09-27.md`；`docs/README.md:64-81` 规定完成后归纳事实再退役，`check-repository-hygiene.mjs:190-199,251-262` 只保留数量与命名／日期等机器形状，不把任何任务书列为永久 required。
 
-机器门禁现状必须如实限定：根 `package.json` 提供 `check:repo`、`verify:task`、`verify:changed`、`verify:core`、`verify:full`、`test`、`typecheck`、`build:app`；`check:repo` 还检查文档入口章节、任务书预算／日期、README 完整性与 Git chronology、生成物／workspace references／协议唯一来源、深层 import／依赖环／旧 gateway／中文文档等（`scripts/check-repository-hygiene.mjs:136-145,190-291,294-331,573-667,701-849`）。本任务开始前 tracked `docs/taskbooks/` 有 3 份，加入本任务书后工作树有 4 份；预算是 16，不是日常必须保留的任务书清单。仓库没有 `.github` workflow、tracked hook 或配置的 `core.hooksPath`，因此这些命令不会自动在每次提交或远端合并执行。`verify:core` 和 `verify:full` 是可调用本地编排，不是现有 CI 强制门；未来 CI 需单独设计、接入和验收。构建 fingerprint、workspace references、依赖／协议唯一来源、生成物和敏感数据形状仍有实际保护价值，不能与文档 freshness／行数偏好一起删除。
+初始门禁快照（审计 HEAD `33e6d0a`）记录了当时的 README chronology、requiredDomainReadmes 与全路径文档清单要求，供 GA-00 的 A/B 基线复现；这些不是当前规则。GA-01/02 落地后，`check:repo` 保留 package 根 README、四类文档分层索引、任务书命名日期、生成物、workspace references、依赖方向与协议唯一来源等检查，不要求 README 时间戳或 Git chronology；目录级 README 由 owner 按独立边界决定。仓库没有 `.github` workflow、tracked hook 或配置的 `core.hooksPath`，所以这些命令不会自动在每次提交或远端合并执行；`verify:core` 与 `verify:full` 仍是本地编排，不是 CI 强制门。构建 fingerprint、workspace references、依赖／协议唯一来源、生成物和敏感数据形状仍有实际保护价值，不能与文档 freshness／行数偏好一起删除。
 
 ### 2.1 活动任务书与候选文档的任务级边界
 

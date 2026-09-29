@@ -1,110 +1,16 @@
-# Renderer 对话
-最后更新：2026-09-28 21:36:11
+# Renderer Chat
 
+Chat 呈现对话记录并管理阅读交互。Main 与 Runner 拥有已保存消息、run 结算、执行证据、授权和恢复状态。
 
+## 职责与边界
 
-## 消息行与用量（2026-09-26）
+- 呈现已保存消息、流式输出、工具／活动摘要、验证状态、附件、引用和最终产物。
+- 失败、中止、暂停、等待用户与未验证状态保留 Runtime 给出的原因；不补造部分状态，也不以固定文案替代缺失的模型回复。
+- Web 资料始终是不可信输入；blocked、partial、stale、timeout 与 cached 状态按来源 projection 保留。
+- retry、branch、copy 与 usage 等操作通过明确回调请求；Main 判断分支或持久化动作是否合法。
+- `use-chat-scroll-controller` 管理阅读位置：读者在底部时跟随新内容，否则保留可见消息锚点并提供可达的“回到最新”。真实会话切换可重置位置，加载旧历史或分配草稿 session id 不应重置。
+- 重载后展示与持久化结算一致的文本；Renderer 不复制或改写模型最终回复。
 
-每条消息下面的操作行按阅读方向排列：agent 回复为 `[复制][分叉][用量][时间]`、靠左；用户消息为 `[时间][分叉][复制]`、靠右。整行同进同退——光标停在这一行上、或焦点落进行内时才出现，详细数字仍在胶囊弹层。复制字形在 `ui/message-icons.tsx` 画成两张圆角纸，分叉字形画成一条路径分向两个端点。分叉按钮调用 `branchConversationFromMessage`：Main 在 `POST /sessions/:id/branch` 按选中的任意已保存用户消息或已完成助手回复截取原始历史，重绑新会话 ID，复制会话所属项目、工作区与权限模式，再打开新分支。
+对话活动是 Runtime 状态的展示，不是第二份任务状态。工具输出可折叠，失败、授权决定与验证限制必须可见。Markdown／代码展示要保留复制失败、引用、清洗与长输出边界；引用只能来自本轮 Runtime 签发的 citation。
 
-原先压在每条回复下面的那行数字（四种 token、两级缓存命中、速率）改成**一颗胶囊**：`turn-usage-card.tsx` 的 `TurnUsageButton` 打开参考图那样的卡片（供应商/模型、缓存命中、未缓存输入、缓存读取、缓存写入、输出、其中推理、用时、输出速率、请求数），逐调用缓存明细也搬进同一张卡。诚实规则原样保留并集中到 `turnUsageFigures`/`turnOutputRate`：缓存比例只有在每个请求都报了缓存 token 时才是百分比，否则说"部分提供/未提供"；未被上报的数字写"未提供"而不是 0；**统计不完整的回合不给速率**（`usageCompleteness === 'partial'` 直接返回 null），速率优先用 provider 自己计时的请求，没有才退回回合时长。
-## 执行过程的展示（2026-09-26）
-
-思考行（`reasoning-row.tsx`，从 `assistant-turn.tsx` 拆出、行内自带折叠状态；`activity-glyph.tsx` 保存各行的图形）在模型还在思考时**自己展开**，文字照旧流式写入同一份 Markdown；一旦读者自己点过，就以读者的选择为准（`reasoningOpenIds`）。这不是新数据源，只是让"思维链要看得到"这件事默认成立。
-
-写入/编辑类工具行多了行数徽章：`tool-line-delta.ts` 从调用参数本身算——`write` 报新增、**不报删除**（被覆盖文件的旧行不在参数里，宁可少一个数字），`edit` 报两侧，补丁按 `+`/`-` 行逐行统计，其它工具**什么都不显示**而不是猜。数字用 `use-animated-count.ts` 从当前显示值继续走到新值（260ms、ease-out，`prefers-reduced-motion` 下直接给值），连续流式更新不会退回旧起点。这一处的红绿是**常显**的（`agent-flow-delta-add/remove`），与产出卡片"悬停才变色"的规则不同。
-
-执行步骤与工具行可各自展开；即使工具没有可展示参数或输出，展开后仍给出明确空态。思考行仅在运行中自动展开，用户点击后由用户的选择控制，正文用流式 Markdown 渲染。以下后续段落保留各领域契约。
-
-这里负责消息、执行过程和渐进式披露的展示，以及把一次流式 run 的事件归并为 UI 状态。
-
-- `types.ts`：消息、步骤、工具、转录行和执行活动的 Renderer 类型。
-- `assistant-turn.tsx`、`agent-tool-row.tsx`、`activity-visibility.ts`：回答与可折叠执行过程、工具行渲染，以及执行活动的渐进披露规则。步骤标题与最终回答都经 `../Markdown`；单行活动标签由 `../inline-markdown` 的有界扫描器渲染，因此活动行不必等待解析器、也不把 Markdown 插件链拉进入口依赖图。
-- `run-actions.ts`：一次流式 run 的 SSE 顺序、审批桥、停止、用户追加更新和最终收尾；`run-event-handlers.ts` 把流式工具事件归并为实时活动，`run-result-reducer.ts` 把已结束的 run 落到当前回合，`assistant-delta-buffer.ts` 按显示帧合并高频文本增量。实时消息 id 与"末条助手文本更新"这两个纯 helper 从本文件拆到 `live-message-updates.ts`（2026-09-28）：`run-actions.ts` 是登记过的组合热点，重试动作必须落在它冻结的上限以内。
-- **失败在界面上不消失（CE-09 的现行契约，回归在 `run-actions.test.ts` / `run-result-reducer.test.ts`）**：`finally` 一定复位 `loading`，因此输入框不会永久停在运行中；确定性的流拒绝（`RunStreamServerError`，含服务端 `error` 帧）与"流结束却没有 result"都会把当前回合置为 `failed` 并原样带上 Runtime 的失败原因，同时把用户输入与附件还给输入栏；中止走 `aborted` 分支。失败回合的正文一律为空——流式预览会被撤回，Runtime 错误行是唯一的用户可见陈述，任何"道歉式"固定文案都不会被生成。
-- `run-actions.ts` 的 `stop()` 对同一 run 只提交一次中断请求（重复点击直接被拒绝），本地流的 "正在停止" 展示由输入栏持有，run 结束即复位。
-- `active-run-update.ts` 在 Runtime 接收运行中补充后按事件 id 将用户消息插入当前对话，重复响应不重复显示；真正执行由 Harness 的下一次模型请求决定。`verify:composer-stop-append` 以 Provider 请求记录确认补充进入同一 run。
-- `activity-model.ts`、`task-progress-indicator.tsx`、`message-meta.tsx`、`chat-scroll-anchor.ts`、`conversation-display.ts`：活动数据变换、进度控件、消息页脚、滚动锚定和显示密度。
-- **滚动位置只有一个所有者（UX-19）**：`use-chat-scroll-controller.ts` 持有底部吸附、阅读锚点与"回到最新"状态，`app-shell/chat-view.tsx` 只渲染它给出的 `onScroll`/`onClickCapture` 与按钮。读者在底部附近（`CHAT_STICKY_BOTTOM_THRESHOLD` 内）时视口变化按底边修复；**离开底部后锚点是"正在读的那条消息"而不是"离底部的距离"**——`selectChatVisibleAnchor` 记下第一条仍在视口内的 `data-message-key` 及其位置，`resolveAnchoredScrollTop` 在重排后把它放回原处，并用有界的 display-settle 逐帧收敛（宽度变化会在 ResizeObserver 通知之后继续重排，只测一次会留下尾部跳动）；锚点已不在（历史窗口替换）时不猜、不改动。新输出到达而读者不在底部时只置 `hasNewContent`，由 `.chat-jump-to-latest` 提供可达的返回入口，不把人拽到底部。**这个入口是一个圆形玻璃按钮**（2026-09-26）：与输入框同一种半透明磨砂材质、无描边、只画一个向下的天蓝箭头（`--jump-to-latest-arrow`），底边固定在**输入框可见上沿上方 3px**（`--composer-overlay-height` 从输入栏外壳量起，所以要减去外壳自己的 `--composer-shell-inset-top`；真实窗口实测 gap = 3px）。它从输入框边缘"长出来"、也"收回"输入框：`data-motion` 的三个值（`entering`/`settled`/`exiting`）由 `app-shell/chat-view.tsx` 的状态机给出，视图在 `readingAway` 变假后**多挂载一个动画时长（180 ms）**再卸载；判断"读者是否还在上面"要看 `data-motion` 或等元素消失，不要在退出窗口里按存在与否下结论（`verify:electron-ui-state-continuity` 因此把这步改成有界等待）。箭头是装饰（`pointer-events: none`），命中测试必须落在按钮本身（`verify:chat-reading-scenarios` 的 `hitIsButton` 会因此抓到图标抢命中）。**只有"换了一段对话"才重新贴底**：草稿会话在首次 run 里取得持久 id 时转写并没有换（真实窗口实测：这个瞬间重新贴底会把已经向上滚动的读者拽回底部），加载更早消息会改变首条消息 id 但会话没变——两者都必须保持读者位置；"有新内容"用消息数 + 末条 id + 末条正文长度判定，流式增长同样算新内容。**修复循环必须让位给读者**：hook 记住自己写过的 `scrollTop`，`onScroll` 看到不是自己写的滚动就立刻取消逐帧修复（真实验收里这条是必需项——不取消时"回到最新"会被旧锚点拉回，按钮永不消失）。回归：`chat-scroll-anchor.test.ts`（纯算术）与 `chat-scroll-controller-wiring.test.ts`（接线、让位规则与 CSS 契约）；真实窗口数字由 `verify:electron-ui-state-continuity` 与 `verify:chat-streaming-rendering` 记录。
-- `activity-visibility.ts`：渐进披露规则。紧凑显示只折叠"无需关注"的已完成行；未成功的工具调用（含 Runtime 报告的权限拒绝）、失败或中止的准备行、失败的思考行、未通过的验证与失败／结果未知的步骤都必须继续可见（`compactTranscriptEntries` / `activityAttentionLine`），不得因为减少噪声而隐藏需要决定或修复的事实。**折叠只对"已不再运行"的回合生效**（`compactCompleted`），因此等待用户批准的运行中回合在两种模式下的渲染完全相同，"正在等待 write 的权限批准"这条事实在两种模式下都可读。
-- `context-projections.ts`、`conversation-turn-fingerprint.ts`：上下文快照的有界无正文投影，以及跨文本、运行时、工作区和附件的稳定回合标识。
-- `stream-text-integrity.test.ts`：流式文字完整性的分层探针（UX-20），用一份含标题/列表/链接/引用/代码围栏/中文标点/长段落的确定性样本驱动**真实**的 `consumeRunStream` + `assistant-delta-buffer` + `run-result-reducer`，固定住四条边界：正常流逐字节一致；畸形帧只被跳过、不连累邻居；**结果帧本身无法解析时仍以"结束却没有 result"拒绝，不静默成功**；`aborted`/`failed` 撤回预览而成功 run 用 settlement 文案覆盖预览。增删流式层的语义前先在这里改断言。
-
-验证结论必须按 Runtime 记录呈现：`pass` 显示为“验证通过”，`unverified` 显示为“未验证”，不得渲染成“验证通过”。**两种显示模式都要能读到它**：验证结论属于活动而不是转录行，触发行 `.assistant-process-verification` 在两种模式下都渲染它（`activityVerificationLine`），紧凑模式再由注意力行复述一次。普通模式下每个已结算回合都是 `unverified`，因此这条陈述是常态而不是告警——但它必须存在，否则同一份 run 在一种显示模式下"从未验证过"这件事会完全消失。活动状态只有 `running / done / failed / aborted / paused / waiting_user`，没有 partial：需要"没做完"的说法时用 `aborted`（本轮已停止）、`paused`（本轮已暂停）或 `needs_replan`（验证：需要调整），不要为清单虚构状态。LLM、工具权限和执行状态的权威实现不放在 Renderer；新增事件必须先更新 shared contract 和特征测试。
-
-**执行过程中的"说的话"按正文颜色渲染**：`.assistant-activity-flow` 整体用 `--muted`，好让步骤、工具与思考摘要退到背景；但转录里的散文行（`.agent-transcript-prose`，模型在工具调用之间说给用户的话）不是机械过程，必须显式取回 `--text`，否则用户读到的解释比最终回答更淡、像脚注。只把这一个类改回正文色，步骤/工具/摘要/运行中状态行仍然保持 muted。真实窗口实测：散文行计算色 `rgb(232, 232, 232)`（= `--text` = `.assistant-turn` = 正文），同一容器 `rgb(160, 160, 160)`（= `--muted`）。
-
-`run-actions.ts` 为 337 行，略高于 300 行，因为一次 run 的 SSE 顺序、步骤/工具归并、审批、停止和最终收尾必须维持同一事务边界。后续只有在建立独立事件 reducer 特征测试后才继续拆分，当前不得继续增长。
-
-本地 SSE 观察中断时，`run-transport-recovery.ts` 按 runId 等待权威日志结算，保留已有流式内容；若最终回读仍失败，已收到的预览文字继续保留并明确标记为失败。超大工具输入仍显示准确行数。
-
-工具参数生成时显示可展开的动作行及有界目标摘要；真正的 `tool_start` 到来时，同名准备行原位变为可展开的执行行，避免重复出现“准备 write / exec”。
-
-同模型只读任务对照后，完成的回合默认收起过程，只留“用时”和验证状态；运行中、失败或等待处理默认展开。读者手动展开或收起优先于自动状态，最终回答始终在过程外可见，工具和思考各自的展开仍独立。
-
-- 传输恢复的接线集中在 `run-transport-recovery.ts`（2026-09-27）：`attemptStreamLossRecovery` 负责守卫（服务端流错误不算断流、会话已切走不再套用）、恢复期间的运行中活动行，以及把权威结果应用到会话；`run-actions.ts` 的每回合 catch 只保留调用与两个分支，文件因此回到登记上限以内。
-
-## 一轮只说一遍：触发行、工具行与产出卡（2026-09-27）
-
-**元信息合并到触发行。** 一轮收起后原本把同一件事说三遍：触发行“用时 1m11s / 验证：未验证”、过程末尾再一行验证结论、回答下面再一行“已思考 · N 次工具调用 · 0 条消息”。现在触发行一次说完：`用时 …` + `N 段思考 · N 次调用`（`turnCountsLine`）+ 验证结论；末尾两行删除，并且不再打印“0 条消息”这种零信息量字段。验证结论的显示条件从“仅 `done`”放宽到“只要不在运行中”，失败/中止的回合因此不会丢掉结论；紧凑模式的 `.agent-transcript-attention` 仍然独立保留。`legacy` 无转录的回合回退按 `activity.tools.length` 计数。
-
-**思考必须被看见，所以计数里点名。** `turnCountsLine` 单独数 `kind === 'reasoning'` 的转录行：思考一旦存在，收起的回合也有一行“N 段思考”提示里面有东西可以展开。
-
-**工具行压缩 + 路径独立成块。** `.agent-flow-row` 从 `min-height: 38px` / `padding: 4px` 降到 `32px` / `2px`（14 行常见回合省掉一条消息的高度）。搜索类工具原先把查询词和路径拼成一个字符串（`query · C://…`），现在摘要只留查询词，路径走 `.agent-flow-path` 自己的格子（`shortToolPath` 保留末尾三段），`.agent-tool-row` 的网格因此是 8 列。
-
-**产出成果卡瘦身。** 头部曾是一个 58px 图标撑起 88px 的横幅，比它下面三个文件行还高。现在头部一行 30px（图标 20px），行高 46px→28px、差值按钮 38px→28px、“全部 N 个文件”48px→28px，三个文件的卡片从约 300px 降到约 120px。顺带把卡片里硬编码的 `#343436` / `#737376` / `#f4f4f5` / `#dedee0` 换成 `--surface-3` / `--border-strong` / `--text` / `--muted`，避免以后做亮色主题时整批失效。
-
-## 折叠不再瞬开瞬关，任务行悬停只亮字（2026-09-27）
-
-**每一处折叠都走同一个原语。** `docs/principles/ui-interaction-guidelines.md` 要求"展开/折叠表面使用 `disclosure-panel` 模式，不允许瞬间挂载或卸载"，但执行流里还有四处用原生 `<details>`（思考行、系统提示词、AgentStepGroup、工具参数准备行），过程折叠面则用 `hidden` 属性切 `display`——点一下就是瞬时切换，于是同一屏里工具行是平滑的、它上一行却是硬跳。这五处现在全部走 `chat/disclosure-panel.tsx` 的 `DisclosurePanel`：面板始终留在 DOM 里，`.agent-flow-disclosure` 用 `grid-template-rows: 0fr → 1fr` 配 `opacity` 过渡（`--motion-base` / `--motion-fast`），关闭态由 `inert` + `aria-hidden` 把子树移出 tab 顺序，`disclosure-panel:not(.open)` 继续持有 `interaction-visibility.test.ts` 断言的"关闭时禁指针"。`agent-tool-row.tsx` 里既有的 `agent-tool-details-panel` 是同一技术的既有实现，新的 `.agent-flow-disclosure` 就是它的共享名字。
-
-**两条契约断言随之演进，方向是收紧而不是放宽。** `chat-layout-stability.test.ts` 与 `assistant-turn.test.ts` 原先断言的是**实现手段**——"过程正文必须带 `hidden={!processOpen}`"、"系统提示词必须是 `<details>`"。那两条断言恰好把修好这件事本身挡住了：它们钉住的正是要换掉的东西。现在改成断言新结构（`DisclosurePanel` + 常驻面板 + `disclosure-panel` 语义类），`interaction-visibility.test.ts` 的清单也把新面板纳入；"不许瞬时挂载/卸载"这条约束由此才真正可执行。
-
-**任务行不再弹原生悬浮框。** `agent-tool-row.tsx` 的路径块与行数徽章原先是聊天区里两个漏网的 `title=`（原生悬浮提示）；仓库的悬浮提示统一在 `ui/floating-help.tsx`，聊天区不在其中。两处 `title` 已删除，`aria-label` 保留（无障碍名称不变），悬停反馈改成**只改文字色**——`button.agent-flow-row:hover` / `:focus-visible` 把 `.agent-flow-title`、`.agent-flow-summary`、`.agent-flow-meta`、`.agent-flow-path` 提到 `--text-strong`，不再铺 `rgba(255, 255, 255, 0.028)` 的背景块；已展开的工具行（`.agent-tool-call.open > .agent-tool-row`）同样只亮字。
-
-**执行流的字号回到同一梯度。** `08-activity.css` 里 `.agent-flow-row` 曾硬编码 `font-size: 15px`——比对话正文（`--chat-message-font-size`，14px）还大，且与它所在容器 `.assistant-activity-flow` 的 13px 打架；行内 meta/path 12px、行数徽章 11px 也是散值。现在该文件的 **20 处 `font-size` 全部走 `:root` 的三个令牌**：行 13px（`--activity-row-font-size`）、元信息 12px（`--activity-meta-font-size`）、徽章 11px（`--activity-badge-font-size`）。
-
-## 操作行整行同进同退，间距按字形量（2026-09-27）
-
-**用量胶囊不再常显。** `05-chat-messages.css` 里 `.message-meta` 一直是 `opacity: 0`、靠 `:hover`/`:focus-within` 淡入，但后面跟了一条 `.message-meta:has(.message-meta-usage) { opacity: 1 }`：带用量胶囊的助手回复整行被钉住常显。结果同一行里胶囊永远亮着、复制/分叉/时间却随悬停闪进闪出——看起来不像同一层表面的东西，也是那一行里唯一无法让它消失的元素。那条例外已删除，复制、分叉、用量、时间**同进同退**。
-
-`pointer-events` 即使 `opacity: 0` 也保持 `auto`：隐藏的行仍是一个活的命中面（鼠标要能落在它上面才能把它唤出来），不是一条死带。这条靠 `message-meta.test.ts` 守住——断言不是"存在一条 opacity 规则"，而是**枚举每一条设置该行自身 opacity 的规则**，要求只有"基础隐藏"和"共享的 hover/focus 显示"两种状态；把 `:has(...)` 例外加回去会立刻失败。
-
-**间距从"命中盒之间"改到"字形之间"。** 图标按钮原本是 28×28 的盒子套 16px 字形，每边藏着 6px 看不见的内边距，于是行自己的 8px `gap` 渲染出来是：字形↔字形 20px、字形↔用量胶囊 14px、胶囊↔时间 8px——三级递减，同一行里三个不一样的节奏。现在按钮盒收到 **24×24**（字形仍 16px，每边 4px，24 也是这一行允许的最小点击目标），再用 `margin-inline: -4px` 把这 4px 交还给布局，行自己补 `padding-inline: 4px`，首尾图标因此与消息正文对齐。三处可见间距统一为 **8px**，且相邻命中盒正好相接、不重叠（悬停不会有死区，也不会有两块区域争同一次点击）。四个数字（盒 24、字形 16、行 padding 4、按钮负 margin -4）在 `message-meta.test.ts` 里一起断言，单独动其中一个就会破坏节奏。
-
-## 关键状态不随过程一起折叠（O1，2026-09-27）
-
-**注意力行搬出可折叠区。** `activityAttentionLine` 原先渲染在过程正文（`DisclosurePanel`）里面：紧凑模式折起正文时读者还能看到那一行，但**读者自己在普通模式点一下触发行把它折起来，同一批事实就一起消失了**——而"失败、权限拒绝、未验证、待决策始终可见"恰恰要在读者折叠之后也成立。现在这一行由 `chat/attention-row.tsx` 渲染在触发行与过程正文**之间**（`assistant-turn.tsx`），在两种显示模式下都只有一个位置，正文里不再有第二份；`AssistantTranscript` 因此不再需要 `activityAttentionLine`，也顺带去掉了它和触发行重复的那条页脚。`.agent-transcript-attention` 只加了两条布局属性（`max-width: 820px`、`margin: 4px 0 0`），因为它不再是正文里的一行、而要顶住其后正文的上边缘。
-
-**"未完成的步骤"包括结果未知的那一种。** 原判据只数 `status === 'failed'` 的步骤。一轮在工具还没回报结果时结束时，Reducer 会把该步骤标成 `unknown`（`run-result-reducer.ts`）——那不是失败，但也不是完成；折起来读就是"缺失的结果"被当成"做完了"。现在 `failed` 与 `unknown` 一起计入，措辞从"N 个步骤失败"改成"N 个步骤未完成"（覆盖两种状态，且不把未知说成失败）。
-
-**调用失败分"仍未解决"和"已由后续调用恢复"。** 记录在案的失败不会因为后续成功而消失，但"还在影响结果的问题"和"已经翻篇的历史失败"必须能分开读。判据直接沿用 Runtime 自己的规则：`harness/stages/verify/task-state.ts` 的 `runtimeExecutionEvidenceGap` 认为**同一步骤里更晚的一次成功调用**会顶掉这次未成功的调用；`classifyCallFailures` 用同一条规则把失败分成 `recovered` 与未解决，注意力行分别写成"N 次调用失败"和"N 次失败已由后续调用恢复"，两者同时成立时再补一句"本轮无未解决失败"。没带 `stepId` 的调用**永远算未解决**：没有可顶替的步骤，猜一条别的规则就会让未解决的问题读成历史。
-
-**验证结论只留一个主位置。** 结论在触发行（`.assistant-process-verification`）渲染，两种模式下都在；紧凑模式的注意力行复述它，因为它属于"折起来也必须看得到"的那批事实。`verify:transcript-state-visibility` 的断言随结构一起改：它原先等的是 `[data-transcript-verification="true"]`，而那个元素在"元信息合并到触发行"（2026-09-27）时就已经不存在了，门因此**从那时起一直红在第一处等待上**（`timed out waiting for a settled turn with a verification verdict`），不是本轮引入的。同一条门新增第 6 类场景：在真实窗口里**点击触发行把过程折起来**，普通与紧凑两种模式各测一次，断言 `aria-hidden/inert` 真的落下、注意力行不是正文面板的后代、失败行仍在（折叠而不是丢弃）。
-
-## 失败的回合必须给出能做的事（2026-09-28）
-
-**重试动作落在失败的那一轮上。** 传输失败（401）的回合过去只有原因可读：注意力行 `本轮未完成`、正文里的 `.run-status-error`，而整轮里没有一个能按的动作；输入栏也没有拿回原指令，因为"run 以 `failed` 结算"和"Renderer 抛错"是两条路，只有后者会把文本还给输入栏（`run-actions.ts`）。失败因此是一条读得懂却做不了任何事的死路，同时违反 `ui/state-view.ts` 对失败态的契约（`role: 'alert'`、`allowsAction: true`）与 `ui/README.md` 的"原因 + 重试动作"。现在 `assistant-turn.tsx` 对 `activity.status === 'failed'` 渲染一个 `重试`（`.assistant-turn-retry`，穿共享的 `feedback-action` 角色），位置与注意力行同一簇、在 `.assistant-process-content` **之外**：读者自己折叠过程、或紧凑模式折叠行，都不能把它带走。只有失败回合给这个动作——`aborted` / `waiting_user` 要的是用户决定，`done` 没有要重做的事；`activity.instruction` 为空（没有可重新派发的指令）或应用还没有发送入口时同样不渲染。
-
-**重试就是一次普通发送。** `run-actions.ts` 的 `send()` 接受一个可选指令：给了就用它、没给就用输入栏草稿，其余（回合标识、审批作用域、流处理、结算与传输恢复）完全是同一条路径，所以没有第二套执行机制，也没有新增 IPC 或运行时能力；控制器暴露 `retryFailedTurn(instruction)`，视图只绑这一个动作（`app-controller-projections.ts` 把 `loading` 与 `retryFailedTurn` 一起放进 chat 投影）。`activity.instruction` 就是 Runtime 记录的这一轮指令（实时来自派发文本，持久历史来自 `log.inboundText`），所以重新派发的就是原来那句话。"从失败点继续"是 Harness 的 RECOVER，不在这里做。
-
-**两个决定，写在这里也写进门禁。** ①**失败回合原样保留**：不改成 `done`、不清掉 `.run-status-error`、不撤掉 `本轮未完成`——它是"当时发生了什么"的记录。重试的结果出现在它自己新加的那一轮里，失败回合仍然带着原因和自己的重试按钮，可以再按。②**输入栏草稿与附件一律不动**：重试发的是这一轮的指令，既不读也不清输入栏；失败落在 Renderer 侧时那条"把文本还给输入栏"的既有恢复（本来只在输入栏为空时生效）对重试路径不再执行，因为指令还在失败回合上、那里还有它自己的重试。运行中（`loading`）时按钮禁用并写明原因：把重试塞进另一轮正在跑的 run，不是用户按下去时想要的那个操作。重试只带指令文本，**不重发原附件**：附件不属于这一轮的 `activity` 记录。
-
-**证据。** 单测两处：`assistant-turn.test.ts`（两种显示模式下各渲染一个 `重试`、位置在注意力行之后且在可折叠正文之外、非失败回合/空指令/没有发送入口都不渲染、运行中禁用并给出原因），`run-actions.test.ts`（重试走 `send` 路径、发的是指令而不是草稿、草稿与附件零改动、运行中拒绝、重试自己失败也不碰输入栏）。真实窗口门 `verify:transcript-state-visibility` 第 2b 类在 401 失败回合上按下它：两种模式都存在该动作、`elementFromPoint` 命中的是按钮本身、真实指针按下、`WM_NCHITTEST` 为 `HTCLIENT`（标题栏对照点 `HTCAPTION`）、Provider 收到同一条指令、重试跑成新的一轮 `done`、失败回合保留 `401` 与 `本轮未完成`、草稿原样未动。
-
-## 长内容阅读：列宽、表格滚动与阅读锚点（O2，2026-09-29）
-
-**宽表格在自身内部横向滚动，不再被压进列里。** 读者列宽由 `--chat-content-max-width`（= `--composer-max-width`，740px）决定，回复正文、代码块和表格都以此为宽——真实窗口实测（1280×840、dpr 1.5）：`.messages-content` 740px、`.message.assistant` 740px、代码块 740px，正文列没有任何横向溢出（`.messages` 的 `scrollWidth == clientWidth`，文档级同样为 0）。表格是唯一的例外：`.markdown-table-wrap` 一直是 `width: 100%` + `overflow-x: auto`，但表体自己也是 `width: 100%; min-width: 100%`，单元格又继承了正文的 `overflow-wrap: anywhere`，于是浏览器把**每一列都压到能塞进 740px 为止**——八列表格内容需要 1122.88px，实际被压到 738.67px，包装容器的 `scrollWidth` 739 正好等于 `clientWidth` 739（**根本没有横向滚动**），两字表头只剩 40.34 / 50.21 / 47.42px，六行表格高 397.96px（800×660 最小窗口下 635.88px、列宽降到 36.78px）。现在 `05-chat-messages.css` 末尾追加一条**聊天作用域**规则 `.message .markdown-table-wrap table { min-width: max-content }`（0,2,1 压过共享的 `.markdown-table-wrap table` 0,1,1，位置在后）：同一夹具下容器 `scrollWidth` 1131 / `clientWidth` 739，**横向滚动量 392px**（最小窗口 614px），表格高 230.08px，列宽回到 `[46.67, 388.84, 102.67, 130.67, 64.61, 229.49, 108.24, 60]`。共享规则原样保留，工作区 Markdown 预览的表尺寸仍归它自己。边界：`min-width: max-content` 只在聊天回复内生效，预览页不改。
-
-**高亮加载前后的代码块必须是同一个盒子。** 代码块在懒加载的高亮器到达前先渲染 `PlainCodeFallback`。它在同一构建上按"把高亮 DOM 换回纯文本形态"重建后实测：**回退态比高亮态高 6.38px**——`.markdown pre` 给回退的 `<pre>` 加了 `0 0 10px` 外边距，而高亮态是 Prism 的 `div`（`margin: 0`），两者的行高（继承正文 1.7 = 23.8px vs Prism 的 1.5 = 21px）与内边距（0 vs `var(--code-block-inset)`）也不同。现在 `Markdown.tsx` 的 `codeSourceStyle(wrapped)` 是两态唯一的盒子来源：`source` 用 `oneDark['code[class*="language-"]']` 的度量 + `margin: 0` / `padding: var(--code-block-inset)` / 换行三属性，`code` 用同一份换行属性；`PlainCodeFallback` 渲染 `<div class="code-block-source" data-code-wrap=… style={source.source}>`（不再用 `<pre>`，只有同一种标签才能让 `pre` 作用域的规则不再伸手进来），`CodeBlock` 的 `customStyle` / `codeTagProps.style` 读同一对对象。残留（如实记录）：纯文本与 Prism token 的**字体度量**仍有差别（注释 token 是斜体），同一重建下回退态比高亮态**矮 3.62px**，即切换瞬间下方内容仍有 ~3.6px 的位移；盒子层面的 10px 与行高差已消除。复制、语言标签与换行开关两态都保留（`verify:code-wrap-control` 断言的选择器与文案未变）。
-
-**阅读锚点量不到"轮内"的高度变化（已测量，未修；本轮的修法已撤回）。** 既有的 `data-message-key` 锚点以"轮"为单位，而结算时发生的变化在**轮内**：一轮结束时 `processOpen` 自动从 `true` 变 `false`，过程面板折叠（0fr 后高度 0，折叠前 76px），回复正文整体上移 68px，而那一轮的 `top` 只动了 +8px。真实窗口实测（1280×840、dpr 1.5，读者停在回复正文内：`scrollTop 479.33`、`gapToBottom 516.67`）：结算后 `scrollTop` 一字未改，`replyTop` 与首个/末个标题全部 **−68px**，`scrollHeight` 1792 → 1724；正文长度 2497 → 2510（**结算不丢字**）。**本轮试过并撤回**：在 `chat-scroll-anchor.ts` 加"内容锚点"（视口顶端所在的 `.markdown > *`，按文本头找回、索引兜底；顶端在回复正文之外时退回轮本身），由内容框的 `ResizeObserver` 触发并复用 display-settle 逐帧修正。同一个**静态** 100px 高度变化（无过渡）能被它精确抵消——真实窗口：滚动量正好 +100、读者块位移 0；移除后 −100 / 0。但**动画折叠**在真实结算里一次都没生效：探针侧挂在 `.messages-content` 上的 `ResizeObserver` 在同一时刻收到 24 次通知（高度 1531.28 → 1529.77），而应用侧 `scrollTop` 始终未变；重建的开关折叠只抵消约一半（面板 146px：滚动 +74.67、读者块仍移动 71.34px）。它在探针里还**两次把程序化滚动拉回旧位置**（锚点过期后按旧位置修正），风险大于收益，因此那一段改动（内容锚点与控制器接线）已整体撤回，只留结论与数字。要修需要一个能读到"过渡这一帧之后"的布局的机制，或换一种不依赖动画中间态的收拢方式。回归只剩本轮真正交付的两件事：`reading-continuity.test.ts`（表规则的作用域与优先级、回退盒子来源）。
-
-
-## 引用摘要、产物身份与复制失败（O3 / O4，2026-09-29）
-
-**来源区块折叠为"数量摘要 + 展开"，但证据限制留在摘要层。** 原先 `WebSources` 把 `evidence.citations` 逐条铺开：一次引用十个网页就在回答与下一轮之间塞十行，而"被阻止 / 只读到一部分 / 来自缓存"这些**证据本身的限制**只写在每一行里，一旦要折叠就会跟着消失。现在来源区块拆到 `chat/web-sources.tsx`（129 行，`assistant-turn.tsx` 因此由 651 降到 580 行并退出受控超限清单）：标题行不变（`来源` + `webEvidenceStateLabel` + `citationCount` 项），下面多一行 `.web-sources-flags`，由 `webSourceFlags()` 从投影里数出"1 项被安全策略阻止 · 1 项只读到一部分 · 1 项来自缓存"，**列表折起时它照样在**；引用超过 `WEB_SOURCES_VISIBLE_ROWS`（3）时只列前三条，并给出 `.web-sources-toggle`（`aria-expanded`，文案 `展开其余 N 项` / `收起来源`），展开后五行与各自的 `阻止/截断/缓存/已读取` 状态原样回来。正文里的引用链接不受影响（它们仍在 `.markdown` 内）。真实窗口（`o3.sources-show-a-count-summary-and-expandable-list`、`o3.sources-expand-reveals-every-citation`）：五条投影渲染为 3 行 + `展开其余 2 项` + 可见 flags 行；展开后 5 行、状态 `["已读取","缓存","阻止","截断","已读取"]`。注意夹具侧的一个真实约束：Runtime 的 `sanitizeWebEvidenceProjection` 只保留 `id` 形如 `web-…` 的引用（`/^web-[A-Za-z0-9-]{1,196}$/`），种子数据里写成别的名字会得到 `citationCount: 5` 却零行。
-
-**产物行按文件身份去重，而不是按工具调用时的拼写。** `buildArtifactsFromToolCalls` 原来以 `path` 原串为 key：同一轮里先写 `o3-out/notes.txt` 再写 `O3-OUT/NOTES.TXT`，卡片就报"已产出 2 个文件"、列出两行——在本平台上它们是同一个文件，而行数查询（`use-artifact-deltas` 的 `comparablePath`）本来就按大小写归一，于是"行"和"该行的数字"还可能各说各话。现在统一走 `artifactIdentity()`（分隔符与大小写归一），保留第一次出现的拼写与 `created` 动作（创建过的文件不因后续编辑变成"修改"）。真实窗口红绿：同一次写入两种拼写，改前 `已产出 2 个文件` / 2 行，改后 `已产出 1 个文件` / 1 行；单测 `activity-model.test.ts` 的"artifact rows identify a file, not a spelling"三条在 pre-fix 源上 2 红、修好后全绿。
-
-**复制失败必须就地可见并可重试。** `message-meta.tsx` 的 `copyMessage` 过去 `catch { return }`：剪贴板被拒绝时行里什么都不变，读者既不知道没复制成功、也没有第二次机会。现在复制控件有三个状态（`data-copy-state` = `idle` / `copied` / `failed`）：只有 `writeText` **兑现之后**才显示成功（`copied`，1200ms 后回 `idle`），被拒绝时进入 `failed` 并把 `.message-copy-failed-row` 渲染在操作行**之外**——操作行是悬停面（`.message-meta` 的 `opacity: 0` 契约，见上文"操作行整行同进同退"），把失败写在里面等于指针一移开就消失。这一行给出 `role="status"` 的 `复制失败` 与 `.message-copy-retry`（`重试`），可访问名变成 `复制失败，重试复制`。真实窗口（`o4.copy-failure-is-visible-with-a-retry`）：`Browser.setPermission` 拒绝剪贴板写入后按下复制，`writeText` 以 `NotAllowedError` 拒绝，DOM 里 `data-copy-state="failed"`、note 宽 740px、`opacity: 1`（指针移开后仍然可读）、重试按钮在；`o4.success-is-not-shown-before-the-write-resolves` 用一次 700ms 的延迟写入证明 250ms 时还没有成功态、兑现后才出现。同一缺陷在代码块的复制按钮（`Markdown.tsx` 的 `CopyButton`）里**也曾存在，并已于同日闭合**：原先它是**无处理器的裸 await**（被拒即成 unhandled rejection、成功分支永不执行、控件看着毫无变化——比消息行的 `catch { return }` 更隐蔽），现为同样的 `idle/copied/failed` 三态 + `data-copy-state`，被拒时渲染 `.code-copy-failed-row`（`role="status"` 的 `复制失败` + `.code-copy-retry` 的 `重试`，与消息行同形）；重试须用复合选择器 `.code-toolbar button.code-copy-retry`（裸类名会把盒宽输给工具栏 26px 圆形复制盒），且 `.mermaid-block:has(.code-copy-failed-row) > .code-toolbar { opacity: 1 }` 让**唯一随指针淡出的代码工具栏**在失败期间保持可见。判别证据：哈希守卫式回退旧 `CopyButton` → 5 条断言中 4 条转红，字节还原后 5/5 绿，邻接套件 26/26；真机拒绝未跑（被渲染器构建失败所阻），重试盒宽只有级联层证据。。
+定向测试覆盖组件行为；`verify:chat-streaming-rendering` 检查流式文本与结算一致，`verify:electron-ui-state-continuity` 检查真实窗口的滚动与会话行为。源码测试不能证明 Electron 几何或辅助技术输出。

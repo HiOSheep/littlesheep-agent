@@ -1,141 +1,23 @@
 # Local App API
 
-最后更新：2026-09-28 23:56:31
+本目录拥有 Renderer 与桌面验收工具使用的 loopback HTTP/SSE 接口。它是本地应用 API，不是公开网络服务。Main 拥有服务器生命周期、授权、数据访问和 Runner 依赖。
 
-本目录承载 Electron Main 与 Renderer 之间的 loopback HTTP/SSE 桥。它是本地应用内部接口，不是外部渠道网关；外部渠道由插件宿主提供。
+## 契约
 
-跨日用量统计（O5，2026-09-27）由 `usage-routes.ts` 独占四条路由，统计规则与持久化事实全部在 `@littlesheep/runner` 的 `provider-usage-daily-*.ts` 里，这一层只做参数校验、边界与响应装配：`GET /runtime/usage/daily` 返回有界日序列（`from`/`to` 同时给出或全省略取默认最近 366 天；范围上限 400 天，超出返回 400 而不是截断；`timezone` 为 IANA 名，缺省用系统时区并在响应里标明 `timezoneSource`；`provider`/`model` 精确匹配**实际记录到的身份**，没有位置维度），响应自带 `totals`/`peak`/`activeDays`/`identities` 与 `coverage`（缺失响应数、无响应请求数、无法重放的 run、next/shadow 分布、被折叠的重复事件、清空截止、保留摘要、回填进度，以及一句中文 `statement`），**渲染器不需要也不应该自己再求一次和**；空日、缺 usage 的部分日、未来日与"实报 0"在日行里是可区分的状态。`POST /runtime/usage/refresh` 做一次有界增量扫描（`budget` 默认 64），`POST /runtime/usage/backfill` 用 `{action: start|cancel|status}` 启动/取消/查询可续接的历史回填，`POST /runtime/usage/clear` 是显式的"清空用量统计"，`through`（ISO 时刻，缺省为当前时刻）记入**非派生**的 `<data-root>/usage-state/`，因此重建派生索引不会让已清空的消耗复活。`GET` 不触发任何扫描：它只读已保存的投影（运行时尚未就绪时也能照常回答），扫描类路由才需要 Runner 的事件存储，未就绪时按既有约定 503 `runtime-not-ready`。
+- 绑定运行时选择的 loopback 地址，并校验应用客户端使用的实例能力。Renderer projection 不暴露密钥或任意上游 header。
+- 路由名和 wire type 由 `packages/app/src/shared` 统一维护；endpoint 按领域放入路由模块，server 文件只组合 router 与资源 owner。
+- 请求和响应有大小、超时、取消与脱敏上限；partial 或 truncated 结果必须如实呈现。
+- 只依赖元数据、readiness 或安全工作区读取的路由可早于 Runner 恢复响应；run、checkpoint、approval 路由须在 owner 就绪后才开放。
+- Runner 与 router 的替换按 generation 隔离；普通 API 请求不应等待完整恢复，也不能读到半初始化 router。
+- 文件、Git、终端和浏览器路径都由 Main 复核。HTTP body 中的 workspace path 是请求，不是所有权或批准证明。
+- 长连接使用有界队列与 heartbeat。客户端断开不应隐式取消 Main 所有的工作，除非路由契约明确这样规定。
 
-`open-with-routes.ts` 提供"用哪个应用打开"的三条路由（2026-09-26）：`GET /workspace/open-with` 返回本机为该扩展名注册的应用（按扩展名缓存 32 项，因为发现要跑 `reg.exe`），`POST /workspace/open-with` 用 `{ root, path, handlerId }` 启动其中一个，`POST /workspace/reveal` 走 `shell.showItemInFolder`。**渲染进程只传 id，不传命令行**：两条写路由都会重新发现一次再 spawn / 展示，id 失效时返回 400 而不是猜。它们独立成文件，让 `workspace-routes.ts` 保持在组合面的 300 行预算内（275 行）。
-会话上下文用量记录额外携带 `sessionCache`：本会话累计的输入/缓存读取/未缓存与精确命中率，供 composer 指示器展示；它是 provider 用量的汇总，不引入第二套真相来源。
-## 结构
+## 路由与证据边界
 
-| 模块 | 职责 |
-| --- | --- |
-| `contracts.ts` | Server 构造参数和生命周期公共契约；`getRunner()` 返回 `AgentRunner \| undefined`，`getExecutionReadiness()` / `respondReadiness()` 提供 `/runtime/readiness`。 |
-| `http.ts` | JSON、SSE、请求体上限和 HTTP 错误基元；`openSse()` 统一发送响应头与 15 秒注释心跳，单连接待写数据达到 512 KiB 前主动断开慢观察者，并幂等释放 timer/listener。`RuntimeNotReadyError`（503 `runtime-not-ready`）与 `resolveRunner()` 是"执行未就绪"的唯一失败语义。 |
-| `bearer-auth.ts` | 验收与校准类接口的 bearer token 校验。 |
-| `run-routes.ts` / `run-support.ts` | Agent run、流式事件、审批、中断、会话归属和产物；内部再接入 `run-checkpoint-routes.ts` 与 `runtime-event-request.ts`。带 `sessionId` 的 run 入口在开始前等待 `RunRouter.waitForRecovery()`（没有 `sessionId` 的全新对话不等待）。`resolveRunWorkspace` 是每次 run 的**唯一工作区事实**：请求目录优先于 `agents.defaults.workspace`，再回落到 workplace，并在此归一化成绝对路径交给 Runner，因此提示、工具 cwd、权限分类和产物归属读的是同一个值。归一化保留非 ASCII 目录名与其中的空格（`run-support.test.ts` 断言中文路径既不转写也不转义），只统一分隔符与相对段。**项目会话只看自己的目录**：`resolveOwnedRunWorkspace` 先解析归属，项目会话用会话记录的目录（没有记录时用项目目录），渲染器随每次请求下发的 `runtime.workspace` 只是"没有自身绑定的会话"的默认值——否则保存一次默认目录、或在另一个窗口切换会话，就会把项目会话搬走，而收尾时的会话索引又会把这个搬迁写成永久事实（先失败后通过的回归在 `run-stream-api.test.ts`）。 |
-| `run-checkpoint-routes.ts` / `run-checkpoint-view.ts` | 启动检查点发现、详情、续跑流和放弃；四个入口都在读取 checkpoint/disposition 状态**之前**经 `host.waitForRecovery()` 与启动恢复汇合，避免读到"即将被释放的续跑"或漏掉"即将重新可用的续跑"。只把内部状态投影成有界诊断。`toCheckpointDiagnostics` 把 store **最近一次扫描**的结果映射成两个互斥计数：`invalidFiles` 是读不出来的记录数（每份文件算一次），`warningCount` 只统计不属于这些记录的发现（残留临时文件、目录 I/O）。此前 `warningCount` 直接取诊断条目总数，而每条不可读记录本身也贡献一条，于是同一份坏文件被同时说成"无法读取"和"不完整"。 |
-| `run-lifecycle-routes.ts` / `application-lifecycle-routes.ts` | 活动任务快照、`active_runs` SSE、暂停/继续/中断控制和 `/application/acceptance` 验收入口；监听器生命周期归 Main 的 `RunActivityMonitor`。 |
-| `project-routes.ts` | 项目注册、重绑定、归档转换和目录创建。 |
-| `session-routes.ts` | 会话列表、分叉、独立/项目会话重命名、归档、删除、执行日志重放和上下文用量记录。分叉以已保存的用户消息或已完成助手回复为截点，历史消息重绑新会话 ID，索引继承原会话的项目、工作区与权限模式；原会话的 settlement 身份不复制。重命名同时更新会话 metadata 与 UI 索引，索引失败时回滚 metadata。`PATCH /sessions/:id` 另接受 `workspacePath`，作为**项目会话显式换目录**的唯一入口（必须是已存在的绝对目录；独立会话没有自己的目录，请求该字段会被拒绝，因为它跟随请求与默认目录）。 |
-| `runtime-routes.ts` / `provider-routes.ts` / `provider-calibration-route.ts` / `runtime-payload.ts` | Runtime、Provider key、数据根、应用重启、Provider 校准和 RuntimeState 投影。模型引用校验（`validateModelRef`）必须按**解析后的模型 id** 比较：供应商的 `models` 既可能是裸 id 数组，也可能是带元数据的对象数组（设置页保存的自定义供应商就是后者），直接 `models.includes(model)` 会让自定义供应商的模型在选择器里可选、选中后却被 500 拒绝（UX-11 实机验收发现并修掉）。 |
-| `usage-routes.ts` | 跨日 Provider 用量的四条只读/显式动作路由（`/runtime/usage/daily`、`/refresh`、`/backfill`、`/clear`），见上文（O5）。服务实例按数据根缓存（最多 4 个），投影与清空记录的所有权在 `@littlesheep/runner`；本层只校验参数、施加 400 天与 64 个身份分面的上限并装载响应。 |
-| `web-provider-check.ts` | 用户主动触发、进程内保存结果的 SearchProvider 检查协调器；Web 配置变化或 Runner 重建即失效。 |
-| `memory-routes.ts` / `memory-atom-routes.ts` | Skills、记忆树、记忆策略、项目记忆投影和 Atom 证据导出。 |
-| `memory-migration-routes.ts` | Memory v3 迁移、回滚和固定本地向量模型准备。 |
-| `workspace-routes.ts` | 附件导入、文件、布局、产物、Git 审阅入口，以及 HTML 运行服务（`/workspace/preview-server` 的 `POST`/`DELETE`/`GET`）。 |
-| `workspace-file-service.ts` | 安全目录列表、预览和文本保存。 |
-| `workspace-preview-server.ts` | 运行工作区 HTML 页面的**有界 loopback 静态服务**（UX-26）：每个工作区根一个监听，绑定 `127.0.0.1` 的临时端口，URL 形如 `http://127.0.0.1:<port>/<32 位 token>/<相对路径>`。只答 `GET`/`HEAD`；`Host` 必须是 loopback；请求必须带 token，解码后拒绝 `..`/`.`/NUL；解析结果再经 `realpath` 校验仍在根内（符号链接逃逸拒绝）；目录只在存在 `index.html` 时按其回应，**从不列目录**；单文件上限 32 MiB，带 `nosniff`/`no-store`，**不发 CORS 头**；最多 4 个服务（超出淘汰最久未用）、30 分钟空闲回收、显式 `stop`/`stopAll`。它不代理进程、不执行项目脚本、不安装依赖。 |
-| `workspace-git-*.ts` | 仓库/分支定位、只读命令、过滤器安全策略、porcelain/numstat/diff 解析、未跟踪扫描、分层 staged/unstaged/untracked 审阅快照和按 revision 绑定的 Diff；状态扫描按工作区有界缓存并合并 in-flight 请求，Diff 并发受限，调用方取消不会取消其他观察者。 |
-| `workspace-support.ts` | 工作区边界、scope 和资源索引同步。 |
-| `terminal-*.ts` | PTY/进程、终端会话、命令捕获、一次性命令和终端路由；`terminal-permission.ts` 区分用户自控终端与 Agent 发起的命令。 |
-| `browser-routes.ts` | 内置浏览器分区状态与缓存/数据清理，以及 `/browser/diagnostics`（运行页面报告过的脚本报错/资源失败，来自 `../embedded-browser-diagnostics.ts` 的有界记录）。 |
-| `development-environment-routes.ts` | 开发环境状态、版本偏好、导入和移除接口。 |
-| `extension-routes.ts` | 插件与外部渠道控制面。 |
-| `vscode-launcher.ts` | VS Code 命令发现与启动。 |
+run/checkpoint、会话与项目、运行设置与 readiness、附件、工作区文件与 review、浏览器、终端、usage、插件和桌面生命周期分别由领域路由负责。只读 projection 不包含 Provider 密钥、完整事件日志或不受限文件正文。
 
-## 路由领域
+Git review revision 标识仓库级观察，不代表单个脏文件的原子快照；不稳定读取和截断状态必须可见。
 
-- Run：`/run`、`/run/stream`、`/approvals/:id`、`/run-checkpoints`（`/:id` 详情、`/:id/resume/stream` 续跑、`/:id/abandon` 放弃）。
-- 会话：`/sessions`、`/projects`、`/archive`、`/runs/:id`。
-- Runtime：`/state`、`/runtime`、`/runtime/readiness`、`/runtime/web/*`、`/runtime/cache-quality`、`/runtime/provider-calibration`、`/config/*`、`/data-root/*`、`/application/restart`、`/application/acceptance`、`/application/active-runs`（含 `/stream` 与 `/:id/control`）。
-- 工作区：`/workspace/*`（含 `/workspace/review/*`、`/workspace/terminal/*`）、`/attachments/*`、`/external/open`。
-- 记忆：`/skills/*`、`/memory/*`。
-- 扩展与其余控制面：`/plugins/*`、`/channels/*`、`/browser/*`、`/development-environments/*`。
+## 验证
 
-静态路由、动态前缀和 ID 编解码只以 `../../shared/local-app-api-routes.ts` 为准。
-
-## 执行未就绪时的行为
-
-监听在 Runner 之前建立（窗口要早于执行能力可用），因此路由分成三类：
-
-- **未就绪也照常应答**：`/runtime/readiness`（由 `respondReadiness` 短路）、`/sessions`、`/projects`、`/archive`、`/runtime`，以及整个应用生命周期域（`/application/acceptance`、`/application/active-runs`，后者的控制与 SSE 在无 Runner 时失败关闭）。`/application/acceptance` 另提供仅隔离验收使用的 `resize`、`maximize`、`minimize`、`startup-page` 与 `startup-error` 动作（`resize` / `maximize` 供 CS-02 在多个窗口宽度与最大化/还原两种状态下核对原生覆盖区；`minimize` 供启动期间的窗口生命周期检查，最小化后窗口不参与截图、检查的是 DOM 状态；`startup-page` / `startup-error` 把生产同一份启动文档、真实失败文案交回窗口，以便对这两个靠等待无法到达的页面捕获像素），无对应能力时返回 501。
-- **失败关闭为 503 `runtime-not-ready`**：所有真正需要 Runner 的分支。它们必须用 `resolveRunner(context.getRunner)` **在用到该 Runner 的分支内**惰性解析——不得把 `getRunner()` 提到函数开头，否则 `/sessions` 这类元数据路由会在 Runner 未发布时一起失败（这正是实测中发现的缺陷：Runner 构建失败时侧栏会空白）。
-- **Runner 发布后启用**：`setRunner()` 发布 `RunRouter`（`run-router-publisher.ts` 拥有代次切换）并初始化附件缓存，因此没有请求会看到半成品 router。它**不等待**启动恢复：恢复是发布之后开始的工作，见下一条。
-- **恢复期间的路由隔离**：`local-app-api-server.ts` 不得在请求入口等待 `RunRouter.create()`；否则旧任务恢复会让 `/sessions`、`/runtime` 和工作区预览一起无响应。Run/Checkpoint/审批入口在 router 发布前返回 503，已有元数据路由继续服务。
-- **哪些路由等待恢复，哪些不等**（2026-09-27 起，实现在 `run-recovery.ts`）：等待的是**带 `sessionId` 的 run 入口**（`POST /runs`、`POST /runs/stream`，它们可能续上被恢复的那次运行）和**全部检查点路由**（`GET /run-checkpoints`、`GET /run-checkpoints/:id`、`POST /run-checkpoints/:id/resume/stream`、`POST /run-checkpoints/:id/abandon`，它们读的正是恢复会改写的 checkpoint 与 disposition 状态）。**不等待**的是没有 `sessionId` 的 run（全新对话不可能有历史可恢复）、运行事件 ingress（`POST /runs/:id/events`，只对已注册的活动 run 生效）、审批回执，以及全部元数据路由。这条判据不是"恢复发现过什么"，所以恢复跑完之后同样成立。
-- **恢复不得释放本进程正在跑的续跑**：`recoverInterruptedResumes` 只该回收死进程留下的续跑租约，它无法自己区分"刚启动的那次"。恢复把 `RunRouter` 的活动 run 注册表作为 `isRunActive` 传进去，逐条 disposition 询问；真实重启时注册表为空，行为与以前完全一致。去掉这个检查会让用户刚续跑的 checkpoint 立刻被改写成 `interrupted`（`run-checkpoint-api.test.ts` 的并发续跑用例就是这么发现的）。
-- **旧事件异步补扫**：队列恢复（现代租约与收件箱）是发布之后那条 promise 的内容；遍历所有历史事件分区的旧版兼容恢复在它之后继续，且从不被等待，已有租约的 run 不重复恢复。后台扫描在 router 停止后不得继续发起新的恢复。
-
-`getRunner()` 返回 `undefined` 表示"执行不可用"，由组合根持有该状态（`packages/app/src/main/index.ts` 的 `runner` 引用只在 `startExecution()` 中赋值，现在由 `runner-lifecycle.ts` 发布）。
-
-## 维护规则
-
-- `../local-app-api-server.ts` 只负责组合和生命周期，不新增领域实现。
-- 路由返回 `true` 表示已处理；未匹配必须返回 `false`，由总入口统一生成 404。
-- 长生命周期资源必须归属一个 router/server 实例，并在 `stop()` 中释放 controller、timer、listener 和子进程。
-- SSE 路由统一调用 `openSse()`，不能复制响应头、心跳或缓冲策略；必须同时处理请求中止、响应关闭和订阅建立期间的竞态，任何退出路径只能释放一次 timer、listener 和订阅。
-- 普通 Agent run、Checkpoint 续跑和活动任务订阅的 SSE 只是观察连接；观察者断开不会取消 Main 持有的任务。显式中断必须走活动任务控制入口。终端主动命令保持独立语义，观察连接断开时仍取消对应命令；用户自己输入的交互终端不读取 Agent 权限模式，只有 Agent 发起的命令才经过 `terminal-permission.ts` 的边界判定。
-- `writeSse()` 在响应已关闭时安全返回；Node 的普通背压不会立即断流，只有累计待写数据越过 512 KiB 上限才关闭该观察连接。不得通过无界排队补偿慢客户端。
-- Git 审阅必须复用同一份仓库快照：普通仓库使用一次带 `--branch --ahead-behind` 的状态查询解析分支、upstream 和 ahead/behind，staged Diff 同时兼容无首个 commit 的仓库；文件 Diff 必须携带快照 revision，陈旧 revision 返回 409，不能为旧树隐式重扫仓库。
-- 不复制 shared contracts，不改变既有 URL、SSE 事件名、状态码或持久化语义。
-- 验证按风险分级，不按目录一刀切：涉及权限或边界判定、路由或接口契约、恢复与持久化语义、生命周期变化时，保留 App typecheck + 对应 API 特征测试 + 恢复检查，跨包契约变化时升级 `verify:core`／`verify:full`；只改内部实现或修私有缺陷时，定向测试 + 受影响 typecheck 即可。selector 无法证明影响范围时扩大验证；`skipped` 不等于通过，也不能用旧结果放行没有重跑的检查。
-
-## 静态服务的资源失败记录（UX-25 第 4 条）
-
-`workspace-preview-server.ts` 的有界 loopback 服务按条目记录**被拒绝的子资源请求**（路径、状态、时间，上限 30 条）与成功计数：静态预览不运行脚本，帧内看不到缺失的样式表或图片，这个服务是唯一目击者。记录随 `GET /workspace/preview-server` 一起返回（`assetFailures`/`assetSuccesses`），渲染器据此在预览上方列出原因并提供重试。
-
-## 文件磁盘状态查询（UX-25 第 3 条，2026-09-26）
-
-`GET /workspace/file-stat?root&path` 只回 `{ path, relativePath, exists, modifiedAt, size }`：静态预览面板据此在用户编辑期间发现"磁盘上的版本已变化"或"文件已被删除"，而不是等保存时撞 409。实现是 `statWorkspaceFile`（不读内容、不做预览工作），路径校验与预览/保存共用同一套 `resolveWorkspaceRoot`/`resolveWorkspaceTarget`。
-
-`GET /workspace/list` 的可选 `filter` 在 Main 对当前目录排序后、320 项截断前筛选名称；仍使用同一目录读取路径，最多接收 256 字符，不递归扫描未展开目录。这样当前目录里排序在第 320 项之后的文件仍可按名称找到。
-
-## Git 审阅读取的一致性（UX-27 第 2 条，2026-09-26）
-
-`workspace-git-review-consistency.ts` + `workspace-git-review.ts`：一次审阅读取由多条只读 Git 命令组成，**不是**原子快照。因此在装配前取指纹（`HEAD`、`.git/index` 的 mtime/size、以及**与装配同参数**的 `status --porcelain -z` 指纹），装配后重新取一次；不一致就**有界重读**（默认 2 次尝试，即 1 次重试）。两次都赶上变化时快照照常返回，但带 `unstable: true`，界面据此显示"仓库在读取期间仍在变化"，而不是把混合状态当成新结果。指纹必须用同一组参数取（用更窄的探针会让每次读取都被判成竞态，集成测试当场抓到过这个假阳性）。
-
-覆盖边界：HEAD/index/status 均未变化时，一个已脏文件再次保存可能不被检测到；这一层不提供当前文件的内容级快照保证。Renderer 的 Diff 409 自动刷新最多两次，持续冲突会停止并提示手动重试。
-
-## Git 读取失败的分类（UX-28 第 1 条，2026-09-26）
-
-`workspace-git-failure.ts` 把整次审阅读取的失败按 Git 自己的 stderr 分类（`not-repository` / `dubious-ownership` / `permission-denied` / `corrupt-repository` / `timed-out` / `cancelled` / `git-unavailable` / `unknown`），每类给一句可执行的原因与下一步，原始 stderr 只保留首行且不超过 200 字符。分类作用于整次读取（index 损坏只让 `status` 失败而 `rev-parse` 仍成功），并映射为快照的 `availability` 与 `message`；取消仍然抛出（调用方按 AbortError 处理）。绝不自动写 `safe.directory` 或任何全局配置——属主不符时只把 Git 的话转达给用户。
-
-## 无文本 hunk 的元数据变更（UX-28 第 3 条，2026-09-26）
-
-纯重命名（或权限变化）只有 extended header，没有 `@@`：`parseDiffMetadata` 把它们解析成 `metadata`（`rename from/to`、`similarity index`、`old/new mode` 等，键保持 Git 原文），`readDiffLayer` 据此返回，而"该层使用了普通 unified diff 之外的格式"提示只在既没有 hunk 也没有元数据时出现。计数语义（分层增删之和，不是 HEAD 到工作树净变化）与两层并存的行为有 `workspace-git-layers.test.ts` 与 `workspace-git-review-metadata.test.ts` 钉住。
-
-## 审阅上限与截断的可见性（UX-28 第 5 条，2026-09-26）
-
-上限仍在原处（列表 2,000 个文件、每层 5,000 行、每层 8 MB），但现在都有实测：`workspace-git-review-limits.test.ts` 用 2,100 个未跟踪文件断言 `filesTruncated: true`、`files.length === 2000`、`totalFiles === 2100`，并且**合计被标成不完整**（`countsComplete: false`，因为 `additions`/`deletions` 只覆盖被列出的文件）；用 6,000 行改动断言该层 `truncated: true` 且提示里写明 5000 行上限。
-
-## 与命令行基线一致（UX-28 第 2 条，2026-09-26）
-
-`workspace-git-review-baseline.test.ts` 用真实 Git 造出每个形态，先取 `git status --porcelain -z --untracked-files=all`，再问审阅同一批路径，两边必须给出同一组路径与同一类状态：**子目录**（审阅给工作区相对路径，且必须能被自己的 diff API 取到）、**linked worktree**（`.git` 是文件；分支标签取该 worktree 的分支）、**detached HEAD**（标签形如 `detached@ea8cd6f`）、**未解决冲突**（`UU` → `conflicted`）、**子模块**（gitlink 的 ` M`）、**中文与空格路径 + 空文件 + 二进制**。此前已有：仓库根、无 HEAD、重命名/删除/新增、二进制、不支持格式的限制说明。
-
-## 失败分类的实际复现（UX-28 第 1 条，2026-09-26）
-
-`workspace-git-review-unavailable.test.ts` 在真机上复现两类：**Git 未安装**（清空 PATH 并重新导入模块，绕过可执行文件缓存 → `git-unavailable`）与**权限拒绝**（`icacls .git\index /deny <用户>:(R)` 让 Git 自己报 `Permission denied` → `permission-denied`，恢复 ACL 后仓库恢复可用）。另有一条把"不自动修改全局 `safe.directory`"变成实测：读损坏仓库前后 `git config --global --list` 完全一致。ownership 与 timeout 在本机无法复现（需要别的账户拥有的目录／真的挂住的 git），保持分类级证据。
-- `park-offscreen` 验收动作：窗口移到屏幕外后 `showInactive()` 渲染，用于需要真实布局的检查（只有验收环境注册该动作）。
-
-## 终端会话的读流与重放（UX-37，2026-09-26）
-
-渲染器同一时刻只读**一个**会话（当前显示的那个），切换标签时中止旧流并重新 `GET /workspace/session/<id>/stream`；`replayTo` 在挂流时先发 `start`，再把该会话有界的历史（512 KB 上限）逐条送回，因此重连后屏幕能重建而不是空白。**重放必须先剥掉由终端回答的设备查询**（`stripTerminalDeviceQueries`：`CSI c` / `CSI > c` / `CSI 5n` / `CSI 6n`）：把查询再喂给终端会让它再答一次，而那个答案会作为用户输入写进 shell——实测切回标签后的命令以 `\x1b[?1;2cSet-Content …` 到达并被 PowerShell 拒绝。只有重放被过滤，实时输出逐字节保留（终端本来就必须回答第一次）。此前的"每个会话一条 SSE"在 6 个会话时耗尽浏览器对同一 origin 的 6 条 HTTP/1.1 连接，创建/输入/尺寸请求全部排队不返回；单流是这条的连接层修复。
-
-## Shell 探测与选择（UX-29，2026-09-26）
-
-`workspace-shell-discovery.ts` 一次探测 Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL：每项带 `available` 与 `reason` + `configHint`，不可用项留在列表里而不是被隐藏。从 PATH 的 `Git\cmd\git.exe` 反推非默认安装根的 `bin\bash.exe`；`isGitBashPath` 仍拒绝 `System32\bash.exe`（WSL 启动器）。WSL 按真实发行版逐条列出。会话创建显式指定未知或不可用 id 时返回 400 和可见错误，不指定 id 时才选默认 Shell；由 Main 重新探测后决定 executable/args/env。
-
-## 终端 Shell 的真实验收（UX-29 第 4 条 PowerShell 侧，2026-09-26）
-
-`workspace-terminal-shell-acceptance.test.ts` 用应用的会话管理器启动真实终端并断言：`$PSVersionTable.PSVersion.Major` 与实际启动的 Shell 一致（pwsh ≥7 / Windows PowerShell = 5）、`(Get-Process -Id $PID).Path` 等于探测到的可执行文件、cwd 落在工作区根、中文输出原样回显、环境变量继承、一次写入多行都按序执行且会话仍可用。顺带修掉：可执行文件在探测后消失时 `spawn` 的异步失败会让 `create` 返回一个假活会话（现在启动前检查并抛出可读错误）；终止从未启动的进程会抛 `EINVAL` 并从退出路径逃逸（现在安全失败）。
-
-## WSL 的路径映射与按会话启动参数（UX-29 第 3 条，2026-09-26）
-
-WSL 是唯一一个启动参数依赖会话目录的 Shell：`shellLaunch(profile, workspacePath)` 用 `windowsPathToWslPath`（UNC 返回 null）生成 `--cd`，映射不出来时退回 `~`。会话启动前还会检查可执行文件是否存在，避免"假活会话"。
-
-## 多个终端会话共存（UX-30，2026-09-26）
-
-`workspace-terminal-sessions.test.ts` 在同一管理器里开两个真实会话：输出互不串台、关闭其中一个后另一个仍可继续执行命令、超过上限的创建被明确拒绝（`too many workspace terminal sessions`）。
-
-## WSL 会话的探测与失败处理（UX-29，2026-09-26）
-
-`workspace-terminal-wsl-acceptance.test.ts`：能启动 WSL 的机器上验证真实 Bash（`$BASH_VERSION`、`PWD` = 映射后的 `/mnt/...`、`uname -s`）；本机 WSL 会话因宿主代理配置无法启动，验证的是"失败被如实报出、不假装活着"。`checkWslDistroReal` 的探测只说明发行版可执行普通命令，不预测终端会话能否启动。
-
-## WSL 会话验收的修正（UX-29 第 4 条，2026-09-26）
-
-`workspace-terminal-wsl-acceptance.test.ts` 的等待改为按状态判定（等 `BASH_VERSION` 输出；只有会话真的退出或创建报错才算失败），因为 `wsl.exe` 在本机每次都会打印 `检测到 localhost 代理配置…` 却仍 exit 0——用文本匹配会把警告当失败。修正后实测通过：真实 Bash、`uname -s` = Linux、`PWD` = 映射后的 `/mnt/...` 工作区、`LANG`/`TERM` 来自 profile、中文回环与多行粘贴。
-
-`run-tool-event-projection.ts` 将超大工具输入投影为路径和准确的行数，避免单条 SSE 事件超过缓冲区；`run-routes.ts` 对较大的最终结果改发 `result_ref`，Renderer 从已持久化的 run 日志回读。
+Schema 与状态码由 Local App API 定向测试覆盖；跨 Main、Runner 或文件系统的行为还需隔离数据根或 Electron 验收。启动与 readiness、工作区修改与 review 的入口见 [脚本索引](../../../../../scripts/README.md)。

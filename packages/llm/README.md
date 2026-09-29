@@ -1,26 +1,13 @@
 # @littlesheep/llm
 
-最后更新：2026-09-25 01:28:40
+适配 OpenAI-compatible 聊天与流式接口，提供响应校验、有限重试、usage 归一化和请求类型。公开入口为 `src/index.ts`；本包不决定 Workflow、工具权限、Context 来源或长期状态，也不持久化会话。
 
-提供 OpenAI-compatible 的聊天、流式输出、重试、usage 和请求类型适配。
+## 请求与失败边界
 
-## 职责与边界
+- 请求取消、自有 deadline 与 Provider 错误分开表达。只重试被判定为可重放的传输错误和限流；认证、无效请求及调用方取消不重试。
+- 重试次数与等待有上限；遵循 Provider 的 `Retry-After`，但仍受配置最大延迟约束。每次尝试向上层报告，避免隐藏传输重试被统计为单次请求。
+- 流式响应必须收到 `[DONE]` 或明确的 `finish_reason` 才算完成。有内容但未收到完成信号时按可重试传输失败处理，不能把截断文本当成结算回复。
+- Provider 文本中编码的 DSML 工具调用只有在完整、有效且属于已注册工具时才转成结构化调用。畸形、截断或未授权标记失败关闭；普通引用或代码示例保持原文。
+- Provider 密钥不得进入日志、快照或错误正文。协议差异留在本包适配，不向上层扩散特例。
 
-- 公开入口是 `src/index.ts`；`types.ts` 拥有协议类型（`ChatRequest`/`ChatMessage`/`ChatResponse`/`StreamChunk`/`EmbedRequest`/`EmbedResponse`/`LlmClient`），`client.ts` 负责请求，`retry.ts` 负责有界重试，`request-deadline.ts` 负责请求 deadline（并在一个地方区分"自家超时"与"调用方取消"），`schema.ts` 负责响应校验，`dsml-tool-calls.ts` 与 `dsml-stream-scanner.ts` 负责把供应商以文本返回的 DSML 工具调用恢复为结构化调用（含跨 chunk 切分），`transport-timing.ts` 是内部计时 helper（不导出）。
-- **重试契约（UX-21）**：`maxAttempts` 是**总请求数**，默认 `DEFAULT_MAX_RETRIES + 1` = **首次请求 + 最多 5 次重试**（`maxRetries` 是等价写法，只在未传 `maxAttempts` 时生效）。`classifyFailure` 把失败分成 `transient`（网络失败、5xx、408、空 choices）、`rate_limited`（429）、`auth`（401/403）、`request`（其他 4xx）、`cancelled` 与 `unknown`，**只有前两类会被重放**；认证、参数、取消和无法判定的失败第一次就抛给上层（不盲目重试，也不重放可能已产生副作用的调用）。退避为指数 + 抖动，`Retry-After`（秒数或 HTTP 日期，来自 429/503）作为**下限**抬高本次等待，单次等待受 `maxDelayMs`（默认 30 s）封顶，因此 5 次重试的最坏等待约 15.5 s。等待期间监听 `AbortSignal`：取消后立即停止等待并抛 `AbortError`，不再发起下一次请求。每次重试前调用 `onRetry({ retry, maxRetries, delayMs, failureClass, status })`，供上层显示"第 n 次重试 / 最多 5 次"并记账；`attachTransportUsage` 同时给每次成功调用带上 `transportAttempt` 与 `observedAttemptCount`，隐藏重试不会被算成"单次调用"。
-- **自家超时 ≠ 用户取消（UX-21，真实窗口实测）**：两者都用同一个 `AbortError` 打断同一个 fetch，因此 Provider 挂起超过 `timeoutMs` 时曾与用户取消归为同一类（`cancelled`）而**永不重试**——正好与"重试传输故障、尊重取消"相反。现在 `request-deadline.ts` 是唯一持有 timer 与调用方 signal 链的地方：只有自家 deadline 真的触发且调用方未取消时，`translate()` 才把错误翻译成可重放的 `LlmError(408, 'Request timed out after <ms>ms', true)`；调用方 `AbortSignal` 中止仍是 `AbortError`（`cancelled`，不重试）。`callApi`（流式与非流式共用）与 `embed` 都走这一条路径；回归在 `request-deadline.test.ts` 与 `client.test.ts` 的两条端到端用例（挂起的首次尝试被重放后成功；调用方取消只发出一次请求）。
-- **流式完成信号是必需的（UX-20/UX-21，真实窗口实测）**：`parseStream` 只在收到 `[DONE]` 或带 `finish_reason` 的分片时才算完成。**传输在答案中途断开时，响应体的结束与正常结束一模一样**，把"读取器结束"当成完成会把截断的答案当成已结算回复发布（真实验收注入一次流中断即可复现：那次运行没有重试、答案缺尾）。现在：已经收到内容（正文、reasoning 或工具参数）却从未收到完成信号 → `LlmError(502, 'Stream ended before the provider signalled completion', true)`，落回可重放的传输类，由有界重试重发；重放时 `chatStream` 会先发 `reset` 分片，上层据此清空已显示的预览，因此重连不会重复文本。空流不在此列（空输出的有界处理在上层）。
-- DSML 的三层保护（CE-11 的现行契约，回归在 `client.test.ts`）：**完整且只含工具调用的信封**恢复为结构化调用，并把已流出的文本用 `reset` 撤回；**畸形/截断/不在授权工具内的标记**在流结束时以 `reset` + `LlmError(502)` 失败关闭，被撤回的文本不会成为模型回答；**围栏、行内与转义示例**保持惰性，既不触发撤回也不被解析成调用。流式扫描器只认 `calls`/`tool_calls` 开头（因此正文先流、随后到达的 `invoke` 会在结束时统一撤回），判定与发布边界共用 `containsUnquotedDsmlControlMarkup`，二者结论一致。
-- 只负责 Provider 通信和协议归一化，不决定 Workflow、工具权限、Context 来源或长期状态。
-- 禁止把供应商密钥写入日志、快照或错误正文。
-
-## 依赖与数据
-
-- 本包没有任何 workspace 依赖（`package.json` 只依赖 `zod`），协议类型自带于 `src/types.ts`；由上层 Context/Harness/Runner 决定何时调用。
-- 不持久化会话，usage 只作为带来源的调用结果返回。
-
-## 测试与修改定位
-
-- 客户端、请求体、流式、中断、reasoning、DSML 恢复和重试测试位于 `src/client.test.ts`（含截断/畸形标记失败关闭、无信封 `invoke`、未注册工具与文档示例惰性的流式用例，以及"有内容但无完成信号 → 重试一次后成功""`[DONE]` 或 `finish_reason` 任一存在即接受""空流交给上层"三条完成信号用例）；DSML 解析与增量扫描分别位于 `src/dsml-tool-calls.test.ts` 与 `src/dsml-stream-scanner.test.ts`。
-- 重试策略本身在 `src/retry.test.ts`：默认首次请求 + 5 次重试、`onRetry` 的编号与计划等待、各类失败的分类与"不重放"断言、`Retry-After` 下限与 `maxDelayMs` 封顶、取消前不发起请求、退避期间取消立即返回（该用例用 5 s 退避 + 20 ms 取消，断言总耗时 < 1 s）。客户端测试的固定装置显式传 `retry: { maxAttempts: 3, baseDelayMs: 1, jitter: false }`，避免失败路径睡满生产退避。
-- 新 Provider 差异优先通过能力声明和协议适配解决，不向上泄漏分支。
+包内仅依赖 `zod`；上层 Context、Harness 与 Runner 决定何时发起请求。客户端、重试、请求时限、流式和 DSML 契约由本包定向测试覆盖。

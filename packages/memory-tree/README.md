@@ -1,48 +1,28 @@
 # @littlesheep/memory-tree
 
-最后更新：2026-09-27 17:54:14
+Memory Tree 拥有索引式长期记忆、实体边界、证据来源和受控持久化变更。公开入口为 `src/index.ts`。UI 是只读 projection；durable 修改由 Runtime 工具与 package API 管理。
 
-实现索引优先的记忆树、统一 Memory Service、T0-T3 资源注册、项目投影、Memory v3 数据层和资源生命周期。
-受控启动拒绝（RS-08，2026-09-27）：v3 后端在打开数据根前要求隔离数据标识或有效的迁移 locator，否则直接拒绝（"refusing to open this data root"）。这就是回滚构建不能悄悄恢复自动写入的机制之一；`verify:memory-controlled-writes` 把它作为常驻场景断言（另两条证据：遗留写入器不在注册表、压缩不产生原子）。
+## 检索
 
-受控的忘记与纠正（RS-06B，2026-09-27）：`memory-manage-tool.ts` 提供 `memory_manage`（同样 `requiresApproval: true`）。`forget` 要求模型给出**具体 atomId 与它看到的 revision**，并且至少要引用一条**真的说了"忘记/记错了"的用户消息**——Runtime 读原文核对，模型不能替用户授权。目标逐个核对：不存在、不可见（不在本轮导航台账里）、已被忘记、revision 过期、或是结构性的分支根，各有各的拒绝理由，绝不按相似度挑目标；已被忘记的重复请求返回"已不在使用"而不是报错（幂等）。提交成功后才调用 `recordRevocation`，由 runner 的 finalize 写成会话的撤销标记，使**忘记之前产生的摘要不再作为当前记忆注入**。`correct`（同轮补齐）按三步提交：先写替代（`supersedesAtomId` 标记，使这次写入**跳过相似度合并**——把纠正合并回它要纠正的那条正是守卫要阻止的行为），再由 `v3-atom-management.relateCorrection` 记录一条 `replaces` 关系（两端各取**各自**的实体，因为图谱拒绝自环；证据是用户消息的不可变引用；关系 id 由请求哈希而来所以重试复用），最后才 supersede 旧原子。任一步失败都如实报告停在哪里（`memory_manage_partial`，写明"旧记忆仍然有效"与如何重试），并照常写入撤销记录——绝不出现两个都被当作当前事实的原子。相关校验复用既有 `validateAtomCorrectionBoundary` 的边界语义（同分支/作用域/父节点/领域/陈述类别）。
+每个 run 从有界根索引开始，按“根索引 → 分支索引 → 展开”导航。只有同一分支索引仍不足时才可深搜；向量只在该深搜边界提名候选，不能决定实体、事实、纠正目标或合并。
 
-真实模型验收的后续修正（2026-09-27，同一轮）：① **形状宽容、策略严格**——`memory_write` 的 `summary`/`retrievalKeys`/`reason` 与 `memory_manage` 的 `reason` 都改为可选（缺省值由已有字段推导），因为实测有一次真实模型漏传 `reason`，调用在**校验阶段**就被拒、根本没走到策略；授权、来源、来源完整性、目标 revision 与幂等这些策略仍然照旧严格。② **过期的工具描述会直接改变模型行为**：`memory_manage` 的描述里一直写着"纠正尚不支持"（那是更早一轮的措辞），真实模型因此**拒绝纠正**、只回"旧记忆无法原地修改"；改成如实描述 `forget`/`correct` 之后，真实模型立刻用 `memory_manage` 完成纠正与忘记，验收从 4/5 变为 **5/5**。③ 测量修正：`listNodes` 返回的是**投影节点**，被取代或失效的原子在节点上仍是 `active`，因此"是否仍被注入"必须读**原子自身**（`management.inspectNode`）；此前用节点状态判断，曾把一次成功的忘记误报成失败。
-来源引用是可选的（2026-09-27，真实模型验收发现）：`memory_write` 与 `memory_manage` 都不再要求模型给 `sourceMessageIds`——模型无法知道会话的消息 id，要求它必然失败（实测：真实模型两次都把自造 id 交给工具，被 `memory_write_source_missing` 拒绝，durable 写入完全不可用）。现在**不引用时**以**本轮的会话消息**为来源（Runtime 自己读用户原话），引用时仍必须存在、仍必须真的含指令；原子记录里的 `conversation-source:` 引用始终来自真实消息。常驻验收：`pnpm run verify:memory-live-model`（真实 DeepSeek 提供方，需要 `DEEPSEEK_API_KEY`）。
+检索须受作用域、预算、去重和来源约束。不得默认注入全树正文或跨树向量搜索。名称、路径、共现和相似度有助导航，但不能证明实体相同。
 
-受控写入与反自动合并（RS-06，2026-09-27）：
+## 持久写入
 
-- `memory-write-tool.ts` 是**唯一**的 durable 写入入口（`memory_write`，`requiresApproval: true`，每次 run 上限 4 条）。它只接受两种有记录的理由：`user-request`（必须引用本条会话里**真的写了"记住/别忘记"之类指令**的用户消息，Runtime 自己读原文核对——模型不能自己授权）与 `necessary`（`reason` 必须说清用途与不保存会失去什么）。引用的来源必须存在于本会话；摘要、内容、检索键与理由都有长度上限。写入身份由「会话 + 分支 + 作用域 + 规范化内容 + 来源」哈希而来，因此重试是同一操作、内容不同则是另一操作。
-- 写入前的两道重验（同一次调用内，批准之后才执行）：引用来源里**任何一个被截断/清洗**的消息都会拒绝（`memory_write_source_incomplete`，且只看被引用的那些——别处的截断不牵连合法写入）；在需要批准的权限档位（非 `full`）里没有本次调用的批准凭据时拒绝（`memory_write_not_approved`），已持久化的旧批准不会扩大这次写入的范围。- `merge-guard.ts` 把「相似度只能提名、不能决定」钉在两个写入路径（`v3-node-store.ts` 与 `intent-writer.ts`）上：值与否定条件不同（5432/6432、肯定/否定）、或双方实体集合非空且不相交的相似记忆**拒绝合并**，返回 `rejected` 并把拒绝写进写入审计，旧记录与旧来源一字不改；只有同一事实的复述才继续走合并/强化。
+`memory_tree` 只读导航。添加 durable 事实唯一走经批准的 `memory_write`，每 run 最多四条，只接受：
 
-## 职责与边界
+- `user-request`：会话来源中必须有真实的记忆指令；
+- `necessary`：说明用途，以及不保存会失去什么。
 
-- 公开入口是 `src/index.ts`；`memory-service.ts` 与 `memory-repository.ts` 是稳定公共接口，内部协调器分别位于 `memory-service/` 和 `memory-repository/`，`memory-tree.ts` 负责导航。模型可调用的记忆工具是只读导航 `memory-tool.ts` 的 `memory_tree`（动作恰好五个：`root_index`、`branch_index`、`expand`、`deep_search`、`release`）与受控写入 `memory-write-tool.ts` 的 `memory_write`、`memory-manage-tool.ts` 的 `memory_manage`（两者都在 Runner `infra.ts` 注册且始终需要批准，见上文 RS-06/RS-06B）；Runner 的压缩路径（`compactSessionAfterRun`）只维护会话摘要，不再是持久记忆的写入方。
-- `conversation-source-store.ts` 保存用户输入与对话区可见内容形成的对话原始来源；`src/v3/` 拥有 atom projections、投影变更记录、有界事件/操作 journal、SQLite catalog、FTS/向量、启动恢复协调、有界维护 worker、实体关系与引用治理。对话来源证明当时收到了或展示了什么；投影变更记录只负责幂等、恢复和审计；atom 是可治理投影。
-- `src/memory-repository/v3-migration*.ts` 与 `repository-locator.ts` 负责隔离的 v2→v3 快照、映射、构建、校验、原子提交、恢复和回滚；运行中的 v3 backend 通过同一验证核心提供只读回滚就绪检查，只有 v2 源与 v3 当前状态均未变化时才允许登记重启回滚。它们不会自动迁移正式用户数据。
-- 读取遵循根索引、分支索引、按需展开和分支内深搜；`task-query.ts` 先把当前请求解析为有界任务语义，只有真实指代才继承最多 2 条最近 user/assistant 文本；近期仍缺任务锚点时，才从版本化会话摘要提取最多 4 段、1,000 字符作为低权重回退。硬排除、负向约束和任务转向在所有检索层共用；`task-relevance.ts` 计算当前任务匹配，不混入 confidence、importance 或历史 usefulness。D1 在已限定 branch/scope 内用 FTS 找精确候选并补少量近期候选，不调用向量；prime 在每分支最多 80 个 D1 条目中只接纳 `task relevance > 0.25` 且属于最强相关簇的候选，再按完整治理优先级选择有界 D2 working set，执行中可 release 当前 Atom。弱相关尾部保持可发现但不为填满上限自动注入。分支内深搜在高置信候选与后续候选出现清晰 task-relevance 断层时停止，不为填满 limit 注入噪声；分数整体偏弱或连续时不武断截断。物理目录和 parent 层级只负责持久化、恢复、人工治理和限定候选空间；Runtime 决定本轮发现、采用、保留、释放和重新激活哪些 Atom。最终注入由任务匹配、作用域、权威、可信度、认识状态、时效、已验证收益、有界 routing feedback、有效关系相关度和预算共同决定。routing 派生相关度会随时间回归中性，新反馈先衰减旧有效权重，避免历史负反馈复活。同一次分支内深搜只生成一次查询向量并复用于已授权作用域。写入先持久化 Atom 引用的对话原始来源，再写投影变更记录，并更新带 parent、scope、tier、`sourceRefs`、`evidenceRefs` 和认识状态的 Atom 投影。
-- `src/memory-repository/v3-write-graph-projection.ts` 把一次 Atom 写入携带的有界实体与关系 hints 投影为 proposed 图记录（在 `v3-node-store.ts` 的写入路径上 `prepare`，不再由已删除的 EVOLVE/CAPTURE stage 触发）；`v3-write-graph-policy.ts` 校验实体边界、方向、来源、证据与 scope，并由 Runtime 决定 confidence、authority、status 和 resolution；`v3-write-graph-activation.ts` 在 Atom 成功提交和引用后激活满足证据门的关系，并在启动时有界补偿中断激活。关系提交失败或证据不足时保持 proposed，不参与自动注入；`similar-to` 只用于导航。
-- `memory-reconciliation-contracts.ts`、`memory-reconciliation-validation.ts` 与 `memory-reconciliation.ts` 组成模型提案的重复 Atom 调和边界。模型只能引用本轮 adopted KnownState 中的当前 revision；Runtime 另行校验 scope、parent、认识边界、确定性语义锚点及 `conflicts-with`/`replaces` 关系。单轮最多 2 个提案、每项最多 4 个 source；多源提交复用现有原子 merge mutation，部分失败保留未提交 source，重试会识别已完成合并。该路径不扫描全库、不调用向量，也不允许模型重写 canonical 内容或事实状态。
-- `memory-hierarchy-contracts.ts`、`memory-hierarchy-validation.ts` 与 `memory-hierarchy.ts` 组成显式关系驱动的叶子 Atom 跨 parent 重组边界。模型只能引用本轮 adopted 的当前 D2/D3 Atom；Runtime 校验同 scope、叶子状态、关系方向、active/resolved 状态、来源证据、confidence/relevance、revision、循环和恢复。单轮最多 1 项，超额提案进入拒绝审计；真实 V3 Backend 集成覆盖提交、重启、Catalog、关系邻域和投影记录。该路径不重写正文、不搬迁非叶子子树、不扫描全库、不调用向量。
-- `memory-subtree-contracts.ts`、`memory-subtree-validation.ts` 与 `memory-subtree.ts` 组成独立的非叶子子树移动边界。模型只能引用本轮 adopted 的完整 D3 根与目标 parent；Runtime 校验同 branch/scope、active descendant 有界计数、根至少 1 个且最多 128 个 active descendants、关系方向/强度、revision、循环和恢复。单轮最多 1 项，超额提案进入拒绝审计；真实 V3 Backend 集成覆盖只移动根、后代保持、Catalog 计数、重启、关系邻域、投影记录和 noop 恢复。该路径不重写正文、不扫描全库、不调用向量，且不放宽叶子 reparent 协议。
-- `memory-correction-contracts.ts`、`memory-correction-validation.ts` 与 `memory-correction.ts` 组成有证据约束的事实纠正/冲突替代边界。模型只能引用本轮通过验证、完整 D3、当前 revision 的两个既有 Atom；Runtime 校验同 branch/scope/parent/statement kind、权威与证据、方向正确且已 resolved 的 `replaces`/`conflicts-with` 关系，再以 supersession mutation 原子提交。旧 Atom 保留正文、来源与历史，只改变生命周期投影为 `superseded`；普通检索排除它，管理与恢复路径仍可读取它。单轮最多 1 项，响应丢失重试返回 noop；该路径不创建新 Atom、不覆盖原始数据、不扫描全库、不调用向量。
-- `MemoryRunCoordinator.refine` 与 `MemoryTree.refine`（公共接口 `refineRun`）保留有界的二次选择能力：goal、success criteria、未完成步骤和 acceptance criteria 作为独立任务锚点评分；默认单次最多 2 Atom/400 tokens，单 run 最多 4 次，规范化重复 query 直接跳过。新增 Atom 仍进入同一 working set、KnownState 与访问账本，不建立旁路 Context。DECIDE 已删除，`refineRun` 当前没有 runtime 调用方，只有纯边界测试覆盖。
-- 调和、层级、子树、纠正与修订服务（以及 `MemoryDailyConsolidationService.consolidateDailyMemory`）当前只作为公开 API 导出：runtime 没有调用方，仅由各自边界与真实 V3 Backend 测试覆盖；记忆变更现在只由受控写入工具（`memory_write`/`memory_manage`）产生，这些服务不在那条路径上。
-- 文件位置、语义 `parentId`、D0-D3 披露和缓存压缩深度都不是 Atom 的动态热度。连续、惰性衰减的 activation score 已统一用于持久记忆和语义缓存：真实采用并产生验证价值才升温，长期不用或无帮助逐渐降温；两类资源共享计算契约，但隔离 namespace、TTL 与删除规则。任务相关度、作用域和认识状态始终先于 activation，前端只显示带滞回的高/中/低三层只读投影。
-- Atom 完整 `contentHash` 用于文件完整性；Catalog v9 的 `embeddingHash` 只覆盖真正进入本地向量模型的语义内容。纯反馈、层级、关系权重和治理元数据变化不得重建向量；只有 active Atom 保留可检索向量，归档或 tombstone 会释放向量，恢复为 active 后重新进入有界维护队列。
-- 禁止默认跨树向量召回、复制 UI 专用记忆，或让用户项目文件自动变成长期记忆。
-- 普通 GUI 不展示 Atom、关系、向量或压缩投影，只展示应用数据根中的权威记忆文件（`AGENTS.md`、`SOUL.md`、`USER.md`、`PHILOSOPHY.md`、`TOOLS.md`、`MEMORY.md`），且只有 `SOUL.md` 可编辑，其余只读；Runtime 仍保留完整结构，LLM 通过有界根索引按需展开 Atom。用户可见的回复、过程说明、验证说明和记忆变化表达由 LLM 结合 `SOUL.md` 构思，Renderer 只呈现 Runtime 事实与模型文案。
+Runtime 核对来源是否存在且完整、作用域与幂等身份。清洗、截断或 external-untrusted 内容不能成为持久事实来源。
 
-## 依赖与数据
+`memory_manage` 处理用户要求的遗忘与纠正。目标须存在于本轮导航记录且 revision 一致；纠正按“写替代、记关系、再 supersede”提交，部分失败如实记录停点。
 
-- 依赖 memory-core、安全和公共契约；Runner、Harness 和 App 只通过公开服务访问。
-- 拥有记忆树仓库、资源注册表、审计、项目投影和工作区元数据索引，不拥有外部文件正文。
-- 正式用户数据当前由 v3 接管；backend 仍以数据根中的 locator 为权威并默认拒绝。v2 实现与迁移 snapshot 继续保留用于兼容读取、验证和受约束回滚，不再承接正式新写入。
+相似度只能提名候选。值冲突、单侧否定或实体不相交时不得合并。会话压缩只生成摘要，不写长期记忆。
 
-## 测试与修改定位
+## 所有权与验证
 
-- 双后端行为契约位于 `src/memory-repository.contract.test.ts`。
-- v2→v3 安全迁移、实时回滚预检与故障注入位于 `src/memory-repository/v3-migration.test.ts`；App validator 透传位于 `packages/app/src/main/memory-v3-migration-control.test.ts`。
-- 对话原始来源不可改写测试位于 `src/conversation-source-store.test.ts`；重复 Atom 合并的幂等、部分失败重试、语义锚点和关系阻断位于 `src/memory-reconciliation.test.ts`，写入认识状态门（`packages/harness/src/stages/memory-epistemic-policy.ts`，其测试文件当前只驱动历史 `evolve`/`capture` 语义）位于 `packages/harness/src/stages/memory-epistemic-policy.test.ts` 与 `src/memory-service-v3.test.ts`；受控写入工具本身的策略覆盖在 `src/memory-write-tool.test.ts`、`src/memory-manage-tool.test.ts`。任务语义组合、多轮指代、压缩摘要回退、否定条件、任务相关度、D1 admission、最强相关簇、旧 Atom 精确召回、综合优先级、动态 feedback 衰减、连续 activation、缓存隔离、重复 active Atom 去重和 D1 零向量边界位于 `src/task-query.test.ts`、`src/task-relevance.test.ts`、`src/memory-prime-relevance.test.ts`、`src/memory-feedback.test.ts`、`src/memory-tree-evidence.test.ts`、`src/memory-tree.test.ts`、`src/memory-service-v3.test.ts`、`src/memory-repository/v3-retrieval-activation.test.ts`、`../types/src/activation.test.ts`、`../session/src/cache-activation-store.test.ts` 与 `src/memory-repository/v3-backend.test.ts`。Memory v3 的投影变更记录保留/孤儿恢复、10,000 Atom 扫描、Catalog 重建、离线向量批处理、inactive 向量释放、due 补偿、关系引用治理、提交后关系激活和故障重放测试位于 `src/v3/*.test.ts` 与 `src/memory-repository/v3-*.test.ts`。统一规模与运行时路由验收位于 `scripts/verify-memory-v3-soak.mjs` 和 `scripts/lib/memory-v3-runtime-soak.mjs`；`verify:memory-v3-bge-soak` 使用真实本地 BGE 验证 512 维批处理、暂时不可用、瞬时失败恢复、离线和释放生命周期；`verify:memory-v3-relevance` 分开量化 D1 与 branch-scoped deep search 的 Recall@K、误注入、scope 泄漏、token 和查询向量调用边界；`verify:memory-v3-evolution` 验证真实请求释放/重入、KnownState、旧反馈衰减、验证收益分层、重启保持和 vector deep search；`verify:memory-v3-intent-routing` 验证中英文指代、LS 方案引用、硬排除/负向约束、任务转向和项目作用域；`verify:memory-v3-compaction-continuity` 验证版本化摘要回退、重启连续性和弱相关尾部不自动注入；`verify:memory-v3-atom-reconciliation` 验证有界 hints、proposed→active、提交失败隔离、跨 scope 拒绝、替代方向、未验证建议和重启一致性；`verify:memory-v3-taskbook-refinement` 验证模糊请求延迟注入、结构化锚点独立评分、working set/KnownState 同步、重复 query 去重、预算和零网络边界。实际负载质量、成本和资源聚合位于 `@littlesheep/runner`，不会由 memory-tree 启动常驻采样。
-- 叶子层级重组的纯边界测试位于 `src/memory-hierarchy.test.ts`，真实 V3 Backend 提交、关系邻域、投影记录和重启一致性位于 `src/memory-hierarchy-backend.test.ts`；非叶子子树的纯边界和真实 V3 Backend 重启/响应丢失测试位于 `src/memory-subtree.test.ts`、`src/memory-subtree-backend.test.ts`；事实纠正的纯边界和真实 V3 Backend 重启/响应丢失测试位于 `src/memory-correction.test.ts`、`src/memory-correction-backend.test.ts`；修订、单轮上限和超额拒绝审计由对应的 `src/memory-revision*.test.ts`、`src/memory-subtree.test.ts`、`src/memory-correction.test.ts` 与 `src/memory-hierarchy.test.ts` 覆盖（这些服务已无 EVOLVE stage 调用方）。
-- 修改持久格式时必须提供版本化迁移、回滚、重启恢复和防数据丢失证据。
+活动应用数据根拥有 Memory 文件和内部索引。普通 GUI 仅展示权威记忆文件，且只有 `SOUL.md` 可直接编辑；Atom、关系、向量与审计状态属于 Runtime 内部。
+
+仓库测试覆盖 schema、索引导航、作用域、revision 与幂等。`verify:memory-controlled-writes` 检查隔离根与真实存储路径；`verify:memory-live-model` 属于真实 Provider 证据。迁移与 Provider 连续性须使用隔离副本或明确提供的测试数据，不能使用用户实时记忆。

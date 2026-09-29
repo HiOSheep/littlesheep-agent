@@ -55,7 +55,7 @@ const GIT_ENV = Object.freeze({
   GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
 })
 
-/** A fixed clock, so "which commit is later" is a fact of the fixture, not of the machine. */
+/** A fixed clock keeps fixture commit metadata independent of the machine. */
 const FIXTURE_CLOCK = Date.parse('2026-09-01T00:00:00Z')
 
 async function writeFixture(root, [directory, name, content]) {
@@ -138,29 +138,34 @@ function runGate(root) {
  */
 async function createScratchRepository() {
   const root = await mkdtemp(join(tmpdir(), 'ls-hygiene-'))
-  await mkdir(join(root, 'docs', 'reference'), { recursive: true })
+  for (const category of ['decision', 'principles', 'taskbooks', 'reference']) {
+    await mkdir(join(root, 'docs', category), { recursive: true })
+  }
   await mkdir(join(root, 'packages', 'channels'), { recursive: true })
   await mkdir(join(root, 'scripts'), { recursive: true })
   await writeFile(join(root, 'scripts', 'check-repository-hygiene.mjs'), await readFile(gateSource, 'utf8'))
   await writeFile(join(root, '.gitignore'), GITIGNORE)
   await writeFile(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n  - 'packages/channels/*'\n")
-  await writeFile(join(root, 'README.md'), '# 隔离夹具\n\n最后更新：2026-09-27 00:00:00\n\n入口见 docs/README.md。\n')
+  await writeFile(join(root, 'README.md'), '# 隔离夹具\n\n入口见 docs/README.md。\n')
   await writeFile(join(root, 'docs', 'README.md'), [
     '# 夹具文档',
     '',
-    '最后更新：2026-09-27 00:00:00',
-    '',
-    '## 现在先做什么',
-    '## 需要确认依据时',
-    '## 需要修改长期方向时',
-    '## 已决定方向后再看任务书',
-    '## 需要定位代码或维护仓库时',
+    '## 当前阶段',
+    '## 当前方向',
+    '## 文档入口',
+    '[decision](decision/README.md) [principles](principles/README.md) [taskbooks](taskbooks/README.md) [reference](reference/README.md)',
+    '## 快速定位',
     '',
   ].join('\n'))
+  await writeFile(join(root, 'docs', 'decision', 'README.md'), '# Decisions\n')
+  await writeFile(join(root, 'docs', 'principles', 'README.md'), '# Principles\n')
+  await writeFile(join(root, 'docs', 'taskbooks', 'README.md'), '# Taskbooks\n')
+  await mkdir(join(root, 'docs', 'reference', 'nested'), { recursive: true })
+  await writeFile(join(root, 'docs', 'reference', 'README.md'), '# References\n\nmodule-split-map.md\nnested/README.md\n')
+  await writeFile(join(root, 'docs', 'reference', 'nested', 'README.md'), '# Nested reference\n\ndetail.md\n')
+  await writeFile(join(root, 'docs', 'reference', 'nested', 'detail.md'), '# Detail\n\nNested fact.\n')
   await writeFile(join(root, 'docs', 'reference', 'module-split-map.md'), [
     '# 模块拆分地图',
-    '',
-    '最后更新：2026-09-27 00:00:00',
     '',
     '本轮复查到期：2099-01-01',
     '',
@@ -180,21 +185,19 @@ async function createScratchRepository() {
     '正文。',
     '',
   ].join('\n'))
+  await writeFile(join(root, 'docs', 'taskbooks', 'README.md'), '# Taskbooks\n\nfixture-taskbook-2026-09-01.md\n')
   git(root, ['init', '-q'])
   return root
 }
 
 /**
- * The surface the README-freshness rule used to be measured on: one package with
- * a README, one private source file and one test file, all committed.
+ * One package with a README, private source, and test, all committed.
  */
 async function createPackageReaderRepository() {
   const root = await createScratchRepository()
   await writeFixture(root, ['packages/alpha', 'package.json', '{"name":"@fixture/alpha"}\n'])
   await writeFixture(root, ['packages/alpha', 'README.md', [
     '# 夹具包',
-    '',
-    '最后更新：2026-09-01 00:00:00',
     '',
     '职责：夹具。',
     '',
@@ -236,11 +239,7 @@ describe('repository hygiene gate', () => {
   }, 60_000)
 
   /**
-   * The rule that was removed: a directory's sources committed after its README
-   * used to fail. Editing a private helper, its test or a stylesheet is not a
-   * change to what the README describes, so the gate must not demand a README
-   * diff (or a fresh timestamp) for it. This is the assertion that keeps the
-   * removal from being silently restored.
+   * A private source, test, or style edit needs no corresponding README edit.
    */
   it('accepts a package source or test commit that does not touch the README', async () => {
     const root = await createPackageReaderRepository()
@@ -252,15 +251,11 @@ describe('repository hygiene gate', () => {
       commitAll(root, 'private helper, test and styles only', FIXTURE_CLOCK / 1000 + 3600)
 
       const result = runGate(root)
-      // The two removed checks have no label any more, so a passing run proves the
-      // gate no longer demands a README diff for a private source commit. What this
-      // fixture pins down is that the README it did not touch is still on disk
-      // unchanged — nothing in the gate rewrote or required it.
-      expect(hasFailure(result.stderr, 'package README 带秒级最后更新')).toBe(false)
-      expect(hasFailure(result.stderr, 'package README 与源码同步更新')).toBe(false)
+      // The README has no timestamp and stays byte-for-byte unchanged after a later source commit.
+      expect(failurePaths(result.stderr, 'workspace package README 完整')).toBeNull()
       expect(hasFailure(result.stderr, '任务书文件名与基线日期有效')).toBe(false)
-      expect(hasFailure(result.stderr, '文档秒级更新时间与任务书基线日期有效')).toBe(false)
       expect(await readFile(join(root, 'packages/alpha/README.md'), 'utf8')).toBe(readmeBefore)
+      expect(await readFile(gateSource, 'utf8')).not.toContain('requiredDomainReadmes')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

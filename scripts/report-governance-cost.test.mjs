@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import {
   collectEntryReading,
   collectFixturePlans,
-  collectFreshnessSurface,
   parseArgs,
 } from './report-governance-cost.mjs';
 
@@ -50,8 +49,6 @@ function runScript(root, args) {
 const PROJECT_STATUS = [
   '# 项目状态',
   '',
-  '最后更新：2026-09-01 00:00:00',
-  '',
   '夹具正文。',
   '',
 ].join('\n');
@@ -59,21 +56,21 @@ const PROJECT_STATUS = [
 const ARCHITECTURE_PRINCIPLES = [
   '# 架构原则',
   '',
-  '没有秒级时间行。',
+  '架构边界。',
   '',
 ].join('\n');
 
 const PACKAGE_X_README = [
   '# x 包',
   '',
-  '最后更新：2026-09-01 00:00:00',
+  '职责与入口。',
   '',
 ].join('\n');
 
 const PACKAGE_Y_README = [
   '# y 包',
   '',
-  '没有秒级时间行。',
+  '职责与入口。',
   '',
 ].join('\n');
 
@@ -81,8 +78,6 @@ const E1_SOURCE = 'export const wrap = true;\n';
 
 const ENTRY_DOCUMENT = [
   '# 夹具文档入口',
-  '',
-  '最后更新：2026-09-01 00:00:00',
   '',
   '- [项目状态](decision/project-status.md)',
   '- [架构原则](principles/architecture-principles.md)',
@@ -162,33 +157,6 @@ describe('governance cost pilot report', () => {
       expect(reading.documents).toHaveLength(3);
       expect(reading.totalBytes)
         .toBe(Buffer.byteLength(PROJECT_STATUS) + Buffer.byteLength(ARCHITECTURE_PRINCIPLES));
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it('counts the tracked second-precision stamp surface per group', async () => {
-    const root = await createFixtureRepository();
-    try {
-      const freshness = collectFreshnessSurface(root);
-
-      expect(freshness.stampPattern).toContain('最后更新');
-      expect(freshness.candidateDocsCount).toBe(3);
-      expect(freshness.trackedPackagesReadmeCount).toBe(2);
-      expect(freshness.matchedFileCount).toBe(3);
-      expect(freshness.matchedDocsCount).toBe(2);
-      expect(freshness.matchedPackagesCount).toBe(1);
-      expect(freshness.matchedPaths).toEqual([
-        'docs/README.md',
-        'docs/decision/project-status.md',
-        'packages/x/README.md',
-      ]);
-      expect(freshness.matchedBytes).toBe(
-        Buffer.byteLength(ENTRY_DOCUMENT)
-          + Buffer.byteLength(PROJECT_STATUS)
-          + Buffer.byteLength(PACKAGE_X_README),
-      );
-      expect(freshness.unreadable).toEqual([]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

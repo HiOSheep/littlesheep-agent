@@ -3,13 +3,11 @@
 // Governance-cost pilot measurement for the repository agent constraints slimming taskbook
 // (docs/taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md, GA-04 in section 4
 // and the comparison plan in section 5). It is a read-only, deterministic measurement of the three
-// static facts a coding agent pays for under the current rule package:
+// two static facts a coding agent pays for under the current rule package:
 //
 //   (a) entry reading   — which local Markdown documents docs/README.md points at, their bytes and
 //                         SHA-256, so "how much must be read to start" is a number, not an opinion
-//   (b) freshness surface — how many tracked docs/**/*.md and packages/**/README.md files carry the
-//                         second-precision 最后更新 stamp, and how many bytes that format spans
-//   (c) verification surface — what the affected-verification selector chooses for the current tree,
+//   (b) verification surface — what the affected-verification selector chooses for the current tree,
 //                         plus the same plan for explicit change fixtures
 //
 // It is NOT the paired coding-agent experiment section 5 describes: no sessions, no model calls, no
@@ -36,14 +34,6 @@ const SELECTOR_SCRIPT = 'scripts/run-affected-verification.mjs';
 const ENTRY_LINK_PATTERN = /\[[^\]]*\]\(([^)]+)\)/g;
 const EXTERNAL_LINK_PATTERN = /^[a-z][a-z\d+.-]*:/iu;
 const selectorMaxBuffer = 32 * 1024 * 1024;
-
-/**
- * The exact shape this pilot counts: a line that is only the second-precision stamp. It is the
- * format this repository long wrote into every README, so counting it answers "how large is that
- * hand-maintained surface today". The pilot does not assert that a gate still requires the format;
- * it only measures how much of it exists.
- */
-export const SECOND_PRECISION_STAMP = /^最后更新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/mu;
 
 export function parseArgs(argv = process.argv.slice(2)) {
   const options = {
@@ -93,7 +83,7 @@ function usage() {
     '--fixtures points at {"fixtures":[{"id":"E1","files":["packages/..."]}]} and adds the',
     'affected-verification plan each fixture file list would select.',
     '',
-    'This is a deterministic pilot measurement of entry reading, stamp maintenance surface and',
+    'This is a deterministic pilot measurement of entry reading and',
     'verification selection. It is not the multi-session coding-agent A/B experiment and not a',
     'product gate: it says nothing about completion rate, wall-clock time or token usage.',
   ].join('\n');
@@ -173,58 +163,7 @@ export function collectEntryReading(repoRoot) {
 }
 
 /**
- * (b) The pseudo-freshness maintenance surface: tracked Markdown under docs/ and every tracked
- * README under packages/ that carries the second-precision stamp. Counts and bytes only — the
- * pilot deliberately does not spend one `git log` per file on a field nothing here consumes.
- */
-export function collectFreshnessSurface(repoRoot) {
-  const tracked = runGit(repoRoot, ['ls-files', '-z'])
-    .split('\0')
-    .filter(Boolean)
-    .map(normalizeRepoPath);
-  const isDocsMarkdown = (path) => path.startsWith('docs/') && path.toLowerCase().endsWith('.md');
-  const isPackageReadme = (path) => path.startsWith('packages/') && path.endsWith('README.md');
-  const candidates = [
-    ...tracked.filter(isDocsMarkdown),
-    ...tracked.filter(isPackageReadme),
-  ].sort(comparePaths);
-
-  const matchedPaths = [];
-  const unreadable = [];
-  let matchedBytes = 0;
-  let matchedDocsCount = 0;
-  let matchedPackagesCount = 0;
-
-  for (const path of candidates) {
-    let buffer;
-    try {
-      buffer = readFileSync(resolve(repoRoot, path));
-    } catch (error) {
-      unreadable.push({ path, reason: error instanceof Error ? error.message : String(error) });
-      continue;
-    }
-    if (!SECOND_PRECISION_STAMP.test(buffer.toString('utf8'))) continue;
-    matchedPaths.push(path);
-    matchedBytes += buffer.length;
-    if (isDocsMarkdown(path)) matchedDocsCount += 1;
-    if (isPackageReadme(path)) matchedPackagesCount += 1;
-  }
-
-  return {
-    stampPattern: String(SECOND_PRECISION_STAMP),
-    candidateDocsCount: tracked.filter(isDocsMarkdown).length,
-    trackedPackagesReadmeCount: tracked.filter(isPackageReadme).length,
-    matchedFileCount: matchedPaths.length,
-    matchedBytes,
-    matchedDocsCount,
-    matchedPackagesCount,
-    matchedPaths,
-    unreadable,
-  };
-}
-
-/**
- * (c) What the affected-verification selector picks for the current tree. The selector stays the
+ * (b) What the affected-verification selector picks for the current tree. The selector stays the
  * single authority; this only projects its JSON onto counts so two rule packages can be diffed.
  * A selector that cannot run is a hard failure: an empty surface would read as "nothing to verify".
  */
@@ -329,19 +268,15 @@ function collectNullFields(value, prefix = '') {
 
 function buildNotes(options, report) {
   const notes = [
-    '这是确定性的静态治理成本试点测量，只覆盖三类可复核事实：入口阅读量、秒级时间戳格式面、验证选择面。它不是任务书第 5 节的多会话 coding-agent A/B 对照：没有会话、没有模型调用，也没有完成率、墙钟耗时或 token 数字，因此不得据此宣称效率提升或统计显著。',
+    '这是确定性的静态治理成本试点测量，只覆盖两类可复核事实：入口阅读量和验证选择面。它不是任务书第 5 节的多会话 coding-agent A/B 对照：没有会话、没有模型调用，也没有完成率、墙钟耗时或 token 数字，因此不得据此宣称效率提升或统计显著。',
     '真实多会话 A/B 对照未执行（受本次会话成本与客户端限制）；结论只覆盖本报告内可复核的静态治理成本，不代表规则包候选的正确性或安全性。',
     '本脚本只读工作树、不访问网络、不调用任何 Provider；唯一写入是 --out 指定的报告文件。',
     'entryReading 只统计 docs/README.md 链接到的本地 Markdown 文档；入口文档自身的字节不重复计入。',
-    'freshnessSurface 只统计 tracked 的 docs/**/*.md 与 packages/**/README.md 中含秒级时间戳的文件数与字节；它回答"现在还有多大的手写格式面"，不判断该格式是否仍被门禁强制。也不采集每个文件的最后提交时间（试点不需要该字段，逐文件 git log 的开销与 A/B diff 噪声大于收益）。',
     `verificationSurface 来自 ${report.verificationSurface.command}，只记录数量、testPlan.mode 与 appBuildSensitive，不记录具体文件清单。`,
   ];
   const { missing } = report.entryReading;
   if (missing.length > 0) {
     notes.push(`入口链接中有 ${missing.length} 份本地 Markdown 在当前工作树不存在，按 exists:false 记入 missing、不做估算：${missing.join(', ')}。`);
-  }
-  if (report.freshnessSurface.unreadable.length > 0) {
-    notes.push(`freshnessSurface 有 ${report.freshnessSurface.unreadable.length} 个 tracked 文件读取失败，未计入匹配数：${report.freshnessSurface.unreadable.map((entry) => entry.path).join(', ')}。`);
   }
   if (options.fixtures) {
     notes.push('fixtures 的计划由 createAffectedTestPlan(files, baseResolved, repo, {}) 与 isAppBuildSensitivePath(file, <该 fixture 的受影响包集合>) 直接计算，不经过 selector 的 --changed 路径；fixture 只描述文件清单，不代表真实改动已经存在。');
@@ -373,7 +308,6 @@ export async function createReport(options) {
     base: options.base,
     baseResolved,
     entryReading: collectEntryReading(repoRoot),
-    freshnessSurface: collectFreshnessSurface(repoRoot),
     verificationSurface: collectVerificationSurface(repoRoot, options.base),
     fixtures: options.fixtures ? await collectFixturePlans(repoRoot, baseResolved, loadFixtureFile(options.fixtures)) : [],
     notes: [],

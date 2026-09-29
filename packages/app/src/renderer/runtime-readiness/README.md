@@ -1,22 +1,13 @@
-# Renderer 运行就绪
+# Renderer Runtime 就绪状态
 
-最后更新：2026-09-29 00:21:18
+本目录展示“现在能否执行任务，以及 Main 给出的原因”。窗口可以早于 Runner 显示；本目录不拥有调度或 readiness 真相。
 
-窗口在 Runner 存在之前就已经可见，本目录只回答一个问题：现在能不能执行任务，如果不能，Main 报告的原因是什么。它不是进度条，也不拥有任何调度能力。
+## 契约
 
-## 边界
+- `runtime-readiness-state.ts` 提供非 React 状态查询、订阅与有界等待；`use-runtime-readiness.ts` 将它投影给界面。没有 preload bridge 的非 Electron 环境不新增等待。
+- `runtime-readiness-notice.tsx` 只展示失败原因和 Main 允许的重试入口。重试权限与次数由 Main 决定；Renderer 不重置 Runtime 状态。
+- 正常启动阶段提示只出现在 Composer 发送区附近，不显示整窗等待遮罩或自行编写阶段进度。
+- 就绪变化不清空草稿、改变会话或窃取焦点。当前会话和输入状态由其 owner 管理。
+- 启动时间投影只在明确 opt-in 时产生，阶段名和有界 payload 由 shared readiness contract 校验；业务组件不扩展协议。
 
-- `runtime-readiness-state.ts`：非 React 的就绪事实与订阅（`currentRuntimeReadiness` / `subscribeRuntimeReadiness` / `isExecutionReady`），以及 `waitForExecutionReady(timeoutMs)`：给"必须有 Runner 才能做"的调用者用（例如加载某段对话的历史），先查一次 bridge（缓存是异步填充的，否则首次调用会误判为未知），再进行等待；已就绪/已失败立即返回，就绪**未知**（无 bridge，如单测或非 Electron 宿主）也立即返回，不新增阻塞。先订阅再补读，保证挂载前发生的状态变化不会丢失。启动恢复等非视图消费者订阅它，避免把就绪沿组件属性链传递。
-- `use-runtime-readiness.ts`：React 视图，返回 `{ readiness, executable, reason }`，`executable` 只在 `state === 'ready'` 时为真。
-- `runtime-readiness-notice.tsx`：**只承载失败**。只有 `state === 'failed'` 才在标题栏下方显示整窗一行：失败必须停留可见，直到用户读完原因并决定是否重试，`role="assertive"`。没有百分比、没有预计时间、没有固定等待文案。失败且可重试时附一个重试入口（`.runtime-readiness-retry`），它调用 preload 的 `retryExecution()`；**是否允许重试由 Main 决定**，渲染器只按下面的规则决定是否展示，不自行放宽预算。
-- `composer-readiness-hint.tsx`：正常启动的阶段文字，就地渲染在发送按钮左侧的 `.composer-right` 里，只在 `state === 'starting'` 出现，文案就是 Main 给的阶段原因（无自有等待文案），就绪后消失。它不占整窗：普通启动没有横跨视野的全局加载条（CS-09，实拍与几何断言见 `scripts/verify-desktop-readiness-placement.mjs`）。窄窗下用省略号截断但保留 `7ch` 下限，不允许被压成零宽。**`composer-readiness-hint` 这个类名只表示这句话本身**：模型缺失时发送入口的阻断提示（`../composer/send-block-notice.tsx`）说的是另一件事，用自己的 `.composer-send-block` 类，两者只共享 `../styles/11-runtime-readiness.css` 里那条选择器列表的外观，绝不共享类名——同一个类在 DOM 里只能有一个含义，否则按类名取"阶段文字"的探针会读到模型句子。
-- `execution-retry-state.ts`：重试入口的纯状态（`canRetry` / `pending` / 剩余次数）。只有 `state === 'failed' && retryable` 且预算未耗尽才展示；重试进行中显示进度而不是邀请第二次点击。
-- `renderer-timing.ts`：除首帧外还提供 `rendererElapsedMs()` 与 `reportRendererStage()`，供工作区上报 `renderer-workspace-entries` / `renderer-workspace-preview` 两个阶段（CS-08 的可用性指标）。仅在 `LITTLESHEEP_BOOTSTRAP_TIMING=1` 下有产出的启动计时标（`renderer-first-mount`、`renderer-first-frame`）。真实首帧由渲染器自己上报：调试器在导航后附加时 Chromium 的 paint 条目可能已被回收，实测第一版基线因此拿不到 FCP。载荷只含白名单阶段名与有界毫秒数。
-- 载荷类型与校验来自 `../../shared/runtime-readiness-contracts.ts`，通道名与阶段白名单来自 `../../shared/runtime-readiness-ipc.ts`；本目录不新增协议。
-- 输入草稿、焦点和当前会话不归本目录管理：就绪变化不得清空输入或切换会话，能力启用是原地发生的事件。
-
-## 验证
-
-- 验证按风险分级：只改渲染器内部的展示或事件细节时，跑本目录的定向测试与 `pnpm.cmd --filter @littlesheep/app run typecheck`；改动到启动契约、IPC 通道、阶段名或 `../shared/runtime-readiness-*.ts` 的形状时，再加上 App build 与下一条的真实窗口验收。
-- 真实窗口下验证：慢初始化期间可连续输入、草稿保留；在未就绪窗口里打开另一段对话不产生错误横幅（`pnpm run verify:desktop-cold-start-interaction` 覆盖）；失败态显示 Runtime 给出的原因而不是通用错误页；阶段文字的摆放、窄窗截断与三档设备像素比见 `pnpm run verify:desktop-readiness-placement`。
-- 五指标计时与逐次原始样本见 `docs/reference/cold-start-baseline/`。
+就绪状态、IPC 阶段名与 payload 在 `packages/app/src/shared` 定义。局部状态由同目录测试覆盖；慢启动／恢复使用 `verify:desktop-cold-start-interaction`，提示布局使用 `verify:desktop-readiness-placement`。
