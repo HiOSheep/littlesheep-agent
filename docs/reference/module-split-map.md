@@ -92,7 +92,7 @@
 | `packages/app/src/main/local-app-api/workspace-preview-server.ts` | 336 | 工作区根作用域的有界 loopback 静态服务：token、真实路径与符号链接校验、内容类型、空闲回收与资源失败记录 | 保持"每个根一个监听 + 每次请求都重新校验路径"的边界；若继续增长，把 MIME/路径解析与监听生命周期拆开，但不得引入目录列举、CORS 头或写方法 | C |
 | `packages/app/src/main/local-app-api/workspace-git-review.ts` | 472 | Git 审阅快照与单文件差异的分层读取、项目范围校验、有界一致性重读（HEAD/index/status 指纹） | 保持"读取一次 + 有界重读"的组合层；指纹规则在 `workspace-git-review-consistency.ts`，失败分类在 `workspace-git-failure.ts`，解析在 `workspace-git-review-parsers.ts`，不新增调度层 | C |
 | `packages/app/src/main/local-app-api/workspace-git-review-cache.ts` | 323 | Main Git 审阅快照缓存、revision、并发、取消、TTL 和容量预算 | 保持缓存策略与 Git 解析、路由分离 | C |
-| `packages/app/src/renderer/Markdown.tsx` | 412 | 聊天与预览中的 Markdown、流式分段、安全链接、代码块和 Mermaid 图表渲染 | 保持纯展示与链接导航边界；若继续增长，拆出 Mermaid/代码块渲染 adapter | B |
+| `packages/app/src/renderer/Markdown.tsx` | 434 | 聊天与预览中的 Markdown、流式分段、安全链接、代码块和 Mermaid 图表渲染 | 保持纯展示与链接导航边界；若继续增长，拆出 Mermaid/代码块渲染 adapter | B |
 | `packages/app/src/renderer/workspace/review.tsx` | 352 | 审阅可见生命周期、single-flight 快照刷新、共享导航装配和树/差异选择 | 陈旧提示的派生与重试接线已下沉 `review-refresh-notice.ts`，文件差异的缓存读取、重试身份与 409 有界重读已下沉 `use-workspace-review-diff.ts`，本文件不再持有提示文案与差异请求；保持 policy、model 与 view helper 分离，单双列偏好留在 Renderer UI 层 | B |
 | `packages/app/src/main/memory-tree-control.ts` | 474 | 记忆控制面查询、v3 D0-D3 详情适配和既有管理命令 | 分离 query/detail、resource、projection command | C |
 | `packages/harness/src/runtime-control-boundary.ts` | 375 | Runtime 控制事件、任务变更和运行中用户补充的队列结算与有界暂存 | 保持事件结算为单一职责；后续增长时把控制事件判定和补充暂存拆为各自的纯 helper | E |
@@ -177,6 +177,8 @@
 | `packages/app/src/renderer/workspace/line-comments.tsx` | 619 | 普通文件与双列 diff 的行号映射、手势、装饰、共享评论 surface 装配和附件发布 | 保留 Monaco 映射与交互 adapter；draft、表单、卡片、几何和通用 view-zone 生命周期由共享模块维护 | B |
 | `packages/skills/src/loader.ts` | 320 | skill 索引与正文装载；新增 per-run 生成的动态正文注册（如 taskbook）后越过 300 行 | 后续按索引构建、正文装载、动态注册分离 | D |
 | `packages/app/src/renderer/chat/use-chat-scroll-controller.ts` | 367 | 对话区滚动位置的唯一所有者：底部吸附、阅读锚点、resize burst 修复队列与"回到最新"状态 | 保持"位置状态只有这一个所有者"的边界，`app-shell/chat-view.tsx` 只渲染；若继续增长，把 resize burst（观测器 + 事件 + 逐帧收敛）拆成独立模块，锚点算术必须留在 `chat-scroll-anchor.ts` 的纯函数里 | B |
+| `packages/app/src/renderer/settings/search-index.ts` | 575 | 设置字段级索引（S3）：字段 id、标签、别名、所在分组/页面/小节、可安全发布的当前值与"不索引"的理由，以及落地入口 `revealSettingsField`（滚到该行、展开折叠区、把光标放到该行控件、短暂强调） | 保持"只登记与定位、不渲染"的边界：页面只通过 `data-settings-field` 属性对接，不 import 本模块；若继续增长，先把登记数据（`SETTINGS_FIELD_INDEX`/`SETTINGS_UNINDEXED_FIELDS`）与 DOM 落地流程分成两个模块，机密字段的理由说明必须留在数据里 | B |
+| `packages/app/src/renderer/settings/workspace.tsx` | 381 | 设置壳：页面装配、侧栏导航与分隔条、搜索框（页面级过滤 + S3 字段级结果与组合框键盘约定）以及"等目标行出现"的有界落地循环 | 保持壳的职责：字段登记与值读取留在 `search-index.ts`，页面内容留在各页组件，焦点生命周期仍归 `ui/focus-ownership.ts`；若继续增长，先把搜索控件（输入 + 结果列表 + 键盘 + 落地等待）拆成独立组件，不要在壳里新增第三个职责 | B |
 
 ## 已完成拆分
 

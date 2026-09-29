@@ -88,7 +88,7 @@ export function SettingsStoragePage() {
           <span>{status?.managed === false ? '环境变量接管' : '应用管理'}</span>
         </div>
         <div className="settings-card">
-        <div className="storage-settings-row">
+        <div className="storage-settings-row" data-settings-field="storage.current-data-dir">
           <span>
             <strong>当前数据目录</strong>
             <small>LS 当前读取和写入的权威目录</small>
@@ -150,7 +150,7 @@ export function SettingsStoragePage() {
             <span>下次启动生效</span>
           </div>
         <div className="settings-card">
-          <div className="storage-settings-row">
+          <div className="storage-settings-row" data-settings-field="storage.migrate">
             <span>
               <strong>迁移完整数据根</strong>
               <small>目标必须不存在或为空；复制、重绑定和哈希校验成功后才会原子切换</small>
@@ -160,7 +160,7 @@ export function SettingsStoragePage() {
             </button>
           </div>
           {status?.canRollback && status.previousDataDir && (
-            <div className="storage-settings-row">
+            <div className="storage-settings-row" data-settings-field="storage.rollback">
               <span>
                 <strong>回滚到前一个目录</strong>
                 <small>{status.previousDataDir}</small>
@@ -185,7 +185,7 @@ export function SettingsStoragePage() {
             <span>{new Date(status.lastMigration.completedAt).toLocaleString('zh-CN')}</span>
           </div>
         <div className="settings-card">
-          <div className="storage-settings-row compact">
+          <div className="storage-settings-row compact" data-settings-field="storage.last-migration">
             <span>
               <strong>{status.lastMigration.fileCount} 个文件</strong>
               <small>{formatDataSize(status.lastMigration.totalBytes)}，完整清单已通过 SHA-256 校验</small>

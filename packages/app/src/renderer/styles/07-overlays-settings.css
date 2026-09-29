@@ -245,6 +245,82 @@
   font-size: 12px;
 }
 
+/* S3 字段级搜索结果：搜索框下面先列“设置项”，每条给出 分组 › 页面 › 设置项 与可发布的当前值。
+   它和下面的页面条目共用同一套侧栏几何，但用不同的类名，所以 `.settings-nav-item` 的计数、
+   `active` 标记和既有门禁看到的仍然只是页面条目。 */
+.settings-field-results {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.settings-field-result {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 7px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-ui);
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+}
+
+.settings-field-result:hover,
+.settings-field-result:focus-visible {
+  background-color: var(--sidebar-interaction-hover);
+}
+
+/* 键盘环（aria-activedescendant 指到的那条）不靠颜色单独表达：填充之外还有一道强调色条。
+   用伪元素而不是内嵌阴影，因为审阅差异行已经占用了那种内嵌色条的写法，别处不应复用同一字面量
+   （`workspace/code-editor-unification.test.ts` 会在整份样式语料里检查它）。 */
+.settings-field-result::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 2px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  opacity: 0;
+}
+
+.settings-field-result.active {
+  background-color: var(--sidebar-interaction-active);
+}
+
+.settings-field-result.active::before {
+  opacity: 1;
+}
+
+.settings-field-result-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-field-result-value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-search-note {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .presence-layer.presence-exiting .settings-sidebar-contents {
   opacity: 0;
   visibility: visible;
@@ -3643,4 +3719,13 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-sidebar-search input:focus-visible {
   outline: 2px solid rgba(226, 226, 226, 0.32);
   outline-offset: 2px;
+}
+
+/* S3：选中一条搜索结果后，目标行被带进视野并短暂强调（`search-index.ts` 的
+   SETTINGS_FIELD_LANDED_MS，1600ms 后移除属性）。强调是画出来的轮廓而不是动画，所以
+   “减少动态效果”下它仍然可见，只是没有任何过渡；轮廓也让“它现在在这里”这件事可被像素读到。 */
+[data-settings-field-landed] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-ui);
 }

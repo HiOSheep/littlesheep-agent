@@ -1,4 +1,35 @@
 import type { RuntimeWebState } from '../../shared/runtime-api-contracts'
+import type { SettingsOption } from './select'
+
+/**
+ * 读取策略四个下拉的选项。
+ *
+ * 页面渲染它们、字段搜索索引读取它们的当前值——同一份定义，所以“索引显示的值”和“用户在页面上
+ * 看到的值”不可能各说一套（S3：搜索数据复用字段定义，不维护第二套目录）。
+ */
+export const WEB_READ_MODE_OPTIONS: readonly SettingsOption<RuntimeWebState['readMode']>[] = [
+  { value: 'public_anonymous', label: '公开匿名读取' },
+  { value: 'configured_allowlist', label: '仅允许域名' },
+  { value: 'disabled', label: '关闭读取' },
+]
+
+export const WEB_DNS_RESOLVER_OPTIONS: readonly SettingsOption<RuntimeWebState['dnsResolver']>[] = [
+  { value: 'system', label: '系统 DNS' },
+  { value: 'cloudflare_doh', label: 'Cloudflare DoH' },
+]
+
+export const WEB_SENSITIVE_QUERY_OPTIONS: readonly SettingsOption<RuntimeWebState['sensitiveQueryPolicy']>[] = [
+  { value: 'approve', label: '外发前确认' },
+  { value: 'redact', label: '脱敏后发送' },
+  { value: 'deny', label: '拒绝外发' },
+  { value: 'allow', label: '直接发送' },
+]
+
+export const WEB_BROWSER_FALLBACK_OPTIONS: readonly SettingsOption<RuntimeWebState['browserFallback']>[] = [
+  { value: 'approval_required', label: '需要批准' },
+  { value: 'full_only', label: '仅完全访问' },
+  { value: 'disabled', label: '禁用' },
+]
 
 export function statusLabel(web: RuntimeWebState): string {
   if (web.status === 'disabled') return '已关闭'

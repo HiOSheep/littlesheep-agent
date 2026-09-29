@@ -17,7 +17,11 @@
 
 **信息架构（S1，2026-09-27）**：侧栏从“通用承载 9 项”的五组改为按用户意图分的四组——**通用**（`home`、`appearance`、`application`）、**模型与行为**（`api`、`agent`）、**连接与扩展**（`web`、`browser`、`plugins`、`skills`、`channels`）、**存储与环境**（`storage`、`developmentEnvironments`）——另加**工作模块**（`archive`、`memoryTree`）与**未接入**（`scheduled`）。页面身份（`SettingsPage` 的 15 个 id）没有改名，所以持久化路由、返回/前进历史和 `openSettingsPage(id)` 深链接照旧解析；新增的 `LEGACY_SETTINGS_PAGE_GROUPS` 是「旧页面标识 → 新分组」的映射表，`RENAMED_SETTINGS_PAGE_IDS` 与 `REMOVED_SETTINGS_PAGE_IDS` 为后续重排预留，`resolveSettingsPage(id)` 保证旧标识要么落到同一个页面、要么落到有明确去向的页面，不会出现空白页。自动化证明在 `navigation-architecture.test.ts`：15 项清单逐个断言去向、四个分组的页面集合、归档/记忆树的去向、已安排只在搜索索引里、每个常用页从设置入口 ≤2 次选择可达、以及旧标识全部仍能解析。
 
-- `navigation.ts`、`types.ts`：设置分组、搜索索引和页面契约。`searchOnly` 条目（目前只有 `scheduled`）仍可从设置搜索打开，因此 `filteredNavGroups` 在没有搜索词时用 `commonSettingsNavGroups()`、有搜索词时用 `settingsSearchNavGroups()`。
+**字段级搜索（S3，2026-09-29）**：搜索框不再只过滤页面入口。`search-index.ts` 为**实际字段行**维护一份登记（字段 id、标签、别名、分组/页面/小节、可安全发布的当前值），结果先给出「设置项」，每条显示 `分组 › 页面 › 设置项` 与当前值，下面是原来那批页面条目。搜索框是同一个（`workspace.tsx` 的 `.settings-sidebar-search`，没有第二个搜索框），键盘约定是组合框：上下箭头移动结果环（`aria-activedescendant`，光标始终留在输入框里），Enter 落地到字段，Escape 归最上层——列表开着时它只关列表、把光标留在搜索框、不改查询也不翻页；列表关着时这个 Escape 作用域不注册，`<input type="search">` 的原生清除行为保持原样（第二下 Escape 仍清空查询）。选中结果后：打开目标页面 → 必要时先点一次 `reveal` 指定的控件（折叠的「高级上下文设置」、供应商编辑器）→ 滚到该行 → 把光标放到该行的控件上（没有可聚焦控件的行自己接受焦点）→ 给行加 `data-settings-field-landed` 1.6 秒（`styles/07-overlays-settings.css` 里画轮廓，不依赖动画）。**焦点生命周期没有第二套所有者**：进入/离开表面的规则仍是 `ui/focus-ownership.ts`，`workspace.tsx` 的落地循环只等一个元素出现（页面渲染/Runtime 就绪/展开折叠区都可能让它晚到），有上限，超时就在侧栏里写明「没能定位」，不会静默失败。索引与页面**一一对应**：页面在行上写 `data-settings-field="<id>"`，`search-index.test.ts` 双向扫描设置页面源码——新增字段不登记、删字段留索引、改标签不改索引、别名凭空发明都会变红。值索引的边界写在数据里：能安全发布的（Runtime 快照与客户端显示偏好）用 `readValue`，其余每条都带 `valueNotIndexed` 说明原因；**密钥值永不进入索引**（`web.provider-key`、`api.provider-key` 只登记位置），动态区域与工作模块页面记在 `SETTINGS_UNINDEXED_FIELDS`。真机证据（可见且聚焦的窗口、真实按键、截图）在仓库外 `D:\littlesheep-evidence\S3-2026-09-29\`。
+
+- `navigation.ts`、`types.ts`：设置分组、页面级搜索索引和页面契约。`searchOnly` 条目（目前只有 `scheduled`）仍可从设置搜索打开，因此 `filteredNavGroups` 在没有搜索词时用 `commonSettingsNavGroups()`、有搜索词时用 `settingsSearchNavGroups()`。
+- `search-index.ts`：字段级索引（S3）的唯一声明。页面只按 `data-settings-field` 属性与它对接，因此页面不依赖搜索模块；下拉选项标签复用 `web-state.ts` 的 `WEB_*_OPTIONS`、`application-background-state.ts` 的 `CLOSE_POLICY_OPTIONS` 和 `runtime/options.ts` 的 `PROFILE_OPTIONS`，不另抄一份措辞。
+
 - `workspace.tsx`、`home.tsx`：设置壳与总览；归档、技能和外部渠道页复用 Renderer 根目录的 `ArchiveManager.tsx`、`MemorySkills.tsx`、`ChannelConnections.tsx`。
 - `home.tsx`：**总览只列出** 4 个常用入口（模型供应商、界面、网络检索、存储与数据）和**有证据**的配置问题（`settingsHomeProblems()` 只读 `runtime.providers`，用设置页自己的 `isConfiguredProvider` 判定“还没有配置模型 / 已配置的供应商还没有可用模型”）。它不再复制整份目录，也不做状态仪表盘；“网络检索未配置”这类偏好性提示故意不做，因为 Runtime 没有把“用户需要处理”作为事实给出。
 - `agent-profile.tsx`、`appearance.tsx`、`storage.tsx`、`scheduled.tsx`、`plugins.tsx`、`direct-module.tsx`：领域页面；`appearance.tsx` 只放显示偏好（对话显示密度，普通/紧凑，存储仍是 `normal`/`compact`），`agent-profile.tsx` 只放 profile 与上下文策略（压缩阈值收在“高级上下文设置”折叠里），术语统一遵循 `docs/principles/ui-interaction-guidelines.md` 的术语表。
@@ -50,7 +54,7 @@
 | --- | --- | --- |
 | 侧边栏「设置」 | 设置总览 `home` | 关闭设置回到打开设置前的路由（`settingsReturnRouteRef`），前进/后退按钮走全局历史 |
 | 设置侧边栏（14 项，四组 + 工作模块）/ 总览常用入口（4 项） | 对应设置页（含「界面」`appearance`） | 同一设置壳内切换；关闭设置回到进入前的路由 |
-| 设置搜索结果 | 常用页 + 未接入的「已安排」 | 与点侧栏一致：`onOpenPage(id)` 走同一条路由，因此返回/前进历史照旧 |
+| 设置搜索结果 | 字段行（`search-index.ts` 登记的 `data-settings-field` 行）+ 页面条目（常用页 + 未接入的「已安排」） | 与点侧栏一致：`onOpenPage(id)` 走同一条路由，因此返回/前进历史照旧；字段结果在同一页面内滚动定位并把光标放到该行 |
 | 侧边栏「记忆树」「已安排」「插件」 | 直接模块页 `DirectModuleWorkspace` | 全局返回按钮回到进入前的路由，不再叠加一层设置壳 |
 | 设置「归档」「技能」「外部渠道」 | 复用 `ArchiveManager`、`MemorySkills`、`ChannelConnections`（embedded） | 关闭动作与 Escape 回设置总览；这三页不新增自己的返回栈 |
 

@@ -26,7 +26,7 @@ export function SettingsAppearancePage() {
           <span>已完成轮次的过程内容</span>
         </div>
         <div className="settings-card">
-        <SettingRow title="对话显示密度" description="选择已完成轮次的过程内容如何显示。">
+        <SettingRow field="appearance.conversation-display" title="对话显示密度" description="选择已完成轮次的过程内容如何显示。">
           <SettingsSelect label="对话显示模式" value={conversationDisplay}
             options={[{ value: 'normal', label: '普通' }, { value: 'compact', label: '紧凑' }]}
             onChange={mode => { setConversationDisplay(mode); writeConversationDisplayMode(mode) }} />

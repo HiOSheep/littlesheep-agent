@@ -57,14 +57,14 @@ export function SettingsBrowserPage() {
           <span>{status?.persistent ? '持久化已启用' : '读取中...'}</span>
         </div>
         <div className="settings-card">
-        <div className="storage-settings-row">
+        <div className="storage-settings-row" data-settings-field="browser.partition">
           <span>
             <strong>浏览器分区</strong>
             <small>应用重启后仍使用同一站点数据空间</small>
           </span>
           <code>{status?.partition ?? '读取中...'}</code>
         </div>
-        <div className="storage-settings-row">
+        <div className="storage-settings-row" data-settings-field="browser.cookie-count">
           <span>
             <strong>已保存 Cookie</strong>
             <small>仅显示数量，不展示具体站点或值</small>
@@ -80,7 +80,7 @@ export function SettingsBrowserPage() {
           <span>操作会影响所有内置浏览器标签</span>
         </div>
         <div className="settings-card">
-        <div className="storage-settings-row">
+        <div className="storage-settings-row" data-settings-field="browser.clear-cache">
           <span>
             <strong>清除网页缓存</strong>
             <small>保留登录状态和网站本地数据，用于处理网页加载异常</small>
@@ -89,7 +89,7 @@ export function SettingsBrowserPage() {
             {busyAction === 'cache' ? '清除中' : '清除缓存'}
           </button>
         </div>
-        <div className="storage-settings-row">
+        <div className="storage-settings-row" data-settings-field="browser.clear-data">
           <span>
             <strong>清除所有网站数据</strong>
             <small>会退出网站登录，并删除 Cookie、本地存储、IndexedDB、Service Worker 和缓存</small>

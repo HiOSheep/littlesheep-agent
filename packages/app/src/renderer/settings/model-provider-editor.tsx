@@ -110,7 +110,7 @@ export function ModelProviderEditor({
           />
         </label>
 
-        <label className="settings-inline-field">
+        <label className="settings-inline-field" data-settings-field="api.provider-key">
           <span>API 密钥</span>
           <input
             type="password"

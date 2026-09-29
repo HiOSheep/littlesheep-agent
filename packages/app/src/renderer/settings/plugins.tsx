@@ -201,7 +201,7 @@ export function SettingsPluginsPage() {
         </button>
       </header>
 
-      <section ref={trustSectionRef} className="plugin-trust-section" aria-label="本地插件信任">
+      <section ref={trustSectionRef} className="plugin-trust-section" aria-label="本地插件信任" data-settings-field="plugins.trust-local-code">
         <div className="plugin-trust-summary">
           <span className="plugin-trust-icon" aria-hidden="true"><PluginIcon /></span>
           <span className="plugin-trust-copy">

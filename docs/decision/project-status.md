@@ -478,3 +478,11 @@ ensure-app-build.mjs --assert             → exit 1   ✗（亚秒内即失效�
 **结论**：`packages/app/out` 与其指纹 sidecar 是**单写者资源**，而本会话**多个写者在持续重建** ✓，替换间隔**小于一次 record→assert 往返** ✗ → **只要并发构建者在跑，该门禁无法取得一次 "fresh" 读数** ✓，`readiness-*.png` 因此仍是 2026-09-24 ✓。**这不是无人处理，而是环境不允许** ✓；且**不得**用 `--AllowStaleBuild` 之类绕过（那等于把过期产物登记为最新，正是本会话两次假成功的成因）✓。
 
 **已就绪、只差一次安静窗口**：门禁中"整窗一个统一表面"的旧期望已改为用户实际要的契约（背景可透明 ✓、**150px 条必须与顶栏行同色** ✓ —— 正是用户拍照看到的黑块所违反的那条 ✓），且保留了可失败性（条与行不同色仍会红 ✓）；`ELECTRON_DISABLE_SANDBOX=1` 已证明能让门禁越过 Electron 启动进入断言阶段 ✓。
+
+### O4 收尾：代码块复制的洞已闭合（2026-09-29）
+
+`Markdown.tsx` 的 `CopyButton` 原形是**无处理器的裸 await**（`await navigator.clipboard.writeText(text); setCopied(true)`）—— 与任务书早先记的"`catch { return }`"不同 ✓：那是**消息行**的旧形态；这里被拒时是 **unhandled rejection**，`setCopied(true)` 永不执行，**控件看着毫无变化** ✓（同一缺陷、更隐蔽的形态）。现值：`copyState` 三态 + 成功仅在 resolve 之后 ✓ + `catch` 置 `failed` ✓ + `data-copy-state` ✓ + 失败行 `.code-copy-failed-row`（`<span className="code-copy-failed" role="status">复制失败</span>` 与 `<button className="code-copy-retry">重试</button>` 并列为兄弟 ✓，与消息行同形 ✓）+ **被钉住的二选一 `aria-label` 原样保持** ✓ + 语言标签 / `CodeWrapToggle` 的 `aria-pressed` / `codeSourceStyle(wrapped)` / `div.code-block-source` 回退**均未动** ✓。样式：失败态用危险色 token ✓；重试写**复合选择器** `.code-toolbar button.code-copy-retry` ✓（裸类名会输给 `.code-toolbar button` 的 26px 圆形复制盒 —— 该 bug 曾真实存在于盘上并已修 ✓）；`.mermaid-block:has(.code-copy-failed-row) > .code-toolbar { opacity: 1 }` ✓（mermaid 浮层是**唯一**随指针淡出的代码工具栏 ✓，失败期间保持可见 ✓）。无 `!important`、无新 token ✓。
+
+**判别证据**（哈希守卫式回退 `CopyButton` → 跑检查 → 字节还原）：对旧版 `Tests 4 failed | 1 passed (5)` ✗（四条失败消息已记录：成功时机 `expected -1 to be greater than 5` ✓、无 `catch` ✓、空闲态不应带失败标记 ✓、指针离开后仍可读 ✓）→ 还原后 `Tests 5 passed` ✓；既有邻接套件合计 **26 passed** ✓（含 `workspace/markdown-preview.test.ts:109` 被钉住的字面量重新匹配 ✓，且 `message-meta.tsx` 未被动 ✓）。
+
+**未验证** ✗：**真机拒绝未跑**（被渲染器构建失败所阻 —— `usage/api/usage.ts` 的 `'../../shared/local-app-api-routes'` 解析失败使 renderer bundle 未产出，`out/renderer` 仍是 08:47 且**不含**该修复 ✓）；重试按钮的盒宽只有**级联层**证据 ✓，无窗口度量 ✓。

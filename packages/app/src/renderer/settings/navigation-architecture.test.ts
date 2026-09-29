@@ -18,6 +18,10 @@ import {
  * The settings entry inventory as of the S1 reorganisation (2026-09-27): the five
  * groups and fifteen entries the taskbook counted, written out explicitly so that
  * dropping one of them fails this test instead of silently disappearing.
+ *
+ * 2026-09-29: O6 added `usage` ("Token 用量") to 模型与行为, so the inventory now
+ * carries sixteen entries. The list stays explicit: the new row is added here as
+ * a reviewed decision rather than the assertion being loosened to a subset.
  */
 const S1_ENTRY_INVENTORY: Array<{ page: SettingsPage; title: string }> = [
   // 通用 (was the overloaded group; now display + runtime basics)
@@ -26,6 +30,7 @@ const S1_ENTRY_INVENTORY: Array<{ page: SettingsPage; title: string }> = [
   { page: 'appearance', title: '界面' },
   { page: 'agent', title: 'Agent 行为' },
   { page: 'api', title: '模型供应商' },
+  { page: 'usage', title: 'Token 用量' },
   { page: 'web', title: '网络检索' },
   { page: 'storage', title: '存储与数据' },
   { page: 'browser', title: '内置浏览器' },
@@ -45,7 +50,7 @@ const S1_ENTRY_INVENTORY: Array<{ page: SettingsPage; title: string }> = [
 /** What the taskbook asks the four groups to contain (§2), as page ids. */
 const S1_EXPECTED_GROUPS: Array<{ title: string; pages: SettingsPage[] }> = [
   { title: '通用', pages: ['home', 'appearance', 'application'] },
-  { title: '模型与行为', pages: ['api', 'agent'] },
+  { title: '模型与行为', pages: ['api', 'agent', 'usage'] },
   { title: '连接与扩展', pages: ['web', 'browser', 'plugins', 'skills', 'channels'] },
   { title: '存储与环境', pages: ['storage', 'developmentEnvironments'] },
 ]
@@ -89,7 +94,7 @@ function reachPathsFromSettingsEntry(): { paths: Map<SettingsPage, string[]>; si
 }
 
 describe('settings information architecture (S1)', () => {
-  it('keeps the fifteen-entry inventory and gives every page exactly one destination', () => {
+  it('keeps the S1 inventory (plus the O6 usage page) and gives every page exactly one destination', () => {
     const destinations = S1_ENTRY_INVENTORY.map((entry) => settingsDestination(entry.page))
 
     expect(destinations.filter(Boolean)).toHaveLength(S1_ENTRY_INVENTORY.length)
@@ -122,7 +127,7 @@ describe('settings information architecture (S1)', () => {
       .toEqual([...S1_EXPECTED_GROUPS.map((group) => group.title), '工作模块'])
     expect(commonSettingsNavGroups().flatMap((group) => group.items).map((item) => item.title)).toEqual([
       '总览', '界面', '应用与后台',
-      '模型供应商', 'Agent 行为',
+      '模型供应商', 'Agent 行为', 'Token 用量',
       '网络检索', '内置浏览器', '插件', '技能', '外部渠道',
       '存储与数据', '开发环境',
       '归档', '记忆树',

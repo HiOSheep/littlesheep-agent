@@ -1,6 +1,6 @@
 # Renderer 运行就绪
 
-最后更新：2026-09-28 01:04:53
+最后更新：2026-09-29 00:21:18
 
 窗口在 Runner 存在之前就已经可见，本目录只回答一个问题：现在能不能执行任务，如果不能，Main 报告的原因是什么。它不是进度条，也不拥有任何调度能力。
 
@@ -17,6 +17,6 @@
 
 ## 验证
 
-- 修改后运行 `pnpm.cmd --filter @littlesheep/app run typecheck` 与 App 测试。
+- 验证按风险分级：只改渲染器内部的展示或事件细节时，跑本目录的定向测试与 `pnpm.cmd --filter @littlesheep/app run typecheck`；改动到启动契约、IPC 通道、阶段名或 `../shared/runtime-readiness-*.ts` 的形状时，再加上 App build 与下一条的真实窗口验收。
 - 真实窗口下验证：慢初始化期间可连续输入、草稿保留；在未就绪窗口里打开另一段对话不产生错误横幅（`pnpm run verify:desktop-cold-start-interaction` 覆盖）；失败态显示 Runtime 给出的原因而不是通用错误页；阶段文字的摆放、窄窗截断与三档设备像素比见 `pnpm run verify:desktop-readiness-placement`。
 - 五指标计时与逐次原始样本见 `docs/reference/cold-start-baseline/`。

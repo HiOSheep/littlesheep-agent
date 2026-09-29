@@ -11,6 +11,7 @@
 // 这一份数据同时驱动侧栏、设置搜索索引、总览的常用入口和重启恢复校验：页面身份的唯一
 // 声明仍是 `types.ts` 的 `SettingsPage`，新增页面必须在这里登记，否则导航与恢复都会丢弃它。
 import { SettingsNavGroup, SettingsPage } from './types'
+import { USAGE_SETTINGS_NAV_ITEM } from '../usage/settings-usage-entry'
 
 
 export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
@@ -27,6 +28,9 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     items: [
       { page: 'api', title: '模型供应商', desc: 'API 密钥与可用模型' },
       { page: 'agent', title: 'Agent 行为', desc: '通用与编程两套系统提示词，上下文参数在高级设置里' },
+      // O6：Token 用量热力图。条目本身由用法领域声明（`../usage/settings-usage-entry.ts`），
+      // 这里只决定它出现在哪一组，标题与说明不会在导航和页面之间漂移。
+      USAGE_SETTINGS_NAV_ITEM,
     ],
   },
   {
@@ -74,7 +78,7 @@ export function settingsSearchNavGroups(): SettingsNavGroup[] {
   return SETTINGS_NAV_GROUPS.map((group) => ({ ...group, items: [...group.items] }))
 }
 
-/** 设置搜索的过滤规则：组名命中保留整组，否则按条目标题与说明过滤。 */
+/** 设置搜索的过滤规则：组名命中保留整组，否则按条目标题、说明与别名过滤。 */
 export function filterSettingsNavGroups(
   query: string,
   groups: SettingsNavGroup[] = settingsSearchNavGroups(),
@@ -87,7 +91,10 @@ export function filterSettingsNavGroups(
       : {
         ...group,
         items: group.items.filter((item) => (
-          `${item.title} ${item.desc}`.toLocaleLowerCase().includes(normalized)
+          [item.title, item.desc, ...(item.searchAliases ?? [])]
+            .join(' ')
+            .toLocaleLowerCase()
+            .includes(normalized)
         )),
       }))
     .filter((group) => group.items.length > 0)
@@ -150,6 +157,7 @@ export const LEGACY_SETTINGS_PAGE_GROUPS: LegacySettingsPageMapping[] = [
   { legacyId: 'appearance', resolvedPage: 'appearance', group: '通用', searchOnly: false },
   { legacyId: 'agent', resolvedPage: 'agent', group: '模型与行为', searchOnly: false },
   { legacyId: 'api', resolvedPage: 'api', group: '模型与行为', searchOnly: false },
+  { legacyId: 'usage', resolvedPage: 'usage', group: '模型与行为', searchOnly: false },
   { legacyId: 'web', resolvedPage: 'web', group: '连接与扩展', searchOnly: false },
   { legacyId: 'storage', resolvedPage: 'storage', group: '存储与环境', searchOnly: false },
   { legacyId: 'browser', resolvedPage: 'browser', group: '连接与扩展', searchOnly: false },

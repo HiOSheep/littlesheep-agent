@@ -60,7 +60,7 @@ export function SettingsAgentProfilePage({
       <section className="settings-policy-section" aria-label="行为配置">
         <div className="settings-policy-heading"><strong>行为配置</strong></div>
         <div className="settings-card">
-        <SettingRow title="Agent 行为" description={PROFILE_OPTIONS.find(item => item.id === profile)?.desc}>
+        <SettingRow field="agent.profile" title="Agent 行为" description={PROFILE_OPTIONS.find(item => item.id === profile)?.desc}>
           <SettingsSelect label="Agent 行为配置" value={profile}
             options={PROFILE_OPTIONS.map(item => ({ value: item.id, label: item.label, description: item.desc }))}
             onChange={onChange} />
@@ -75,7 +75,7 @@ export function SettingsAgentProfilePage({
         <div className="settings-card">
         <details className="settings-advanced">
           <summary>高级上下文设置：压缩触发阈值</summary>
-          <div className="settings-policy-row">
+          <div className="settings-policy-row" data-settings-field="agent.compression-threshold">
             <span>
               <strong>压缩触发阈值</strong>
               <small>达到模型上下文占用比例后生成可追溯摘要</small>

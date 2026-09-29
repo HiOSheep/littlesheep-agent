@@ -151,7 +151,7 @@ export function SettingsApplicationBackgroundPage({
           <span>{closePolicy ? '已同步' : '读取中'}</span>
         </div>
         <div className="settings-card">
-        <SettingRow title="窗口关闭方式" description={CLOSE_POLICY_OPTIONS.find(option => option.id === closePolicy)?.description}>
+        <SettingRow field="application.close-policy" title="窗口关闭方式" description={CLOSE_POLICY_OPTIONS.find(option => option.id === closePolicy)?.description}>
           <SettingsSelect label="窗口关闭方式" value={closePolicy ?? 'always-background'}
             options={CLOSE_POLICY_OPTIONS.map(option => ({ value: option.id, label: option.label, description: option.description }))}
             disabled={savingPolicy !== null || !closePolicy} onChange={policy => void changeClosePolicy(policy)} />

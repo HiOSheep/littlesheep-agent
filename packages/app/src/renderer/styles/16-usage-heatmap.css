@@ -1,0 +1,302 @@
+/* Token 用量热力图（O6）——只属于设置里的“Token 用量”页。
+ *
+ * 色阶只覆盖“有记录”的日期，并且色相单一、明度递增，所以深浅主题下都读得出来；
+ * 无记录 / 未来 / 投影未覆盖 / 部分记录四个状态各有独立的非颜色提示（斜线、点、描边），
+ * 不靠颜色也能分辨。日期格、图例色块与月/周标签的尺寸由 --usage-* 令牌统一，
+ * 窄窗口只让热力图自己横向滚动，不撑开设置内容列。 */
+
+.usage-page {
+  --usage-cell: 13px;
+  --usage-cell-gap: 3px;
+  --usage-week-gap: 4px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.usage-page .usage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.usage-page .usage-toolbar .settings-select {
+  min-width: 116px;
+}
+
+.usage-page .usage-refresh {
+  height: var(--control-height-md);
+  padding-inline: 12px;
+  color: var(--text-strong);
+  font-size: var(--control-font-size-strong);
+  cursor: pointer;
+  background: var(--control);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--settings-control-radius);
+}
+
+.usage-page .usage-refresh:hover:not(:disabled) { background: var(--control-hover); }
+
+.usage-page .usage-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px 18px;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--settings-card-radius);
+}
+
+.usage-summary > div { display: grid; gap: 2px; }
+
+.usage-summary dt {
+  color: var(--muted);
+  font-size: var(--settings-meta-font-size);
+}
+
+.usage-summary dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: var(--settings-row-title-font-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-page .usage-refresh-failure,
+.usage-page .usage-coverage-notice {
+  margin: 0;
+  padding: var(--notice-padding-block) var(--notice-padding-inline);
+  font-size: var(--notice-font-size);
+  border-radius: var(--radius-ui);
+}
+
+.usage-page .usage-refresh-failure {
+  color: var(--feedback-danger-text);
+  background: var(--danger-soft);
+  border: 1px solid var(--feedback-danger-border);
+}
+
+.usage-page .usage-coverage-notice {
+  color: var(--text);
+  background: var(--warning-soft);
+  border: 1px solid var(--border);
+}
+
+/* The grid scrolls itself; the settings column and the page never do. */
+.usage-heatmap-scroll {
+  max-width: 100%;
+  padding: 2px 2px 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.usage-heatmap {
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  min-width: 0;
+}
+
+.usage-heatmap-head,
+.usage-heatmap-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--usage-cell);
+  gap: var(--usage-week-gap);
+}
+
+.usage-heatmap-head { align-items: end; }
+
+.usage-heatmap-weekdays {
+  display: grid;
+  grid-template-rows: repeat(7, var(--usage-cell));
+  gap: var(--usage-cell-gap);
+  padding-inline-end: 4px;
+}
+
+.usage-heatmap-weekdays span,
+.usage-heatmap-months span {
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: var(--usage-cell);
+  white-space: nowrap;
+}
+
+.usage-heatmap-weekdays span { text-align: end; }
+
+.usage-heatmap-months {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--usage-cell);
+  gap: var(--usage-week-gap);
+}
+
+.usage-heatmap-months span {
+  height: 14px;
+  overflow: visible;
+  line-height: 14px;
+}
+
+.usage-heatmap-week {
+  display: grid;
+  grid-template-rows: repeat(7, var(--usage-cell));
+  gap: var(--usage-cell-gap);
+}
+
+.usage-heatmap-week > * {
+  width: var(--usage-cell);
+  height: var(--usage-cell);
+  padding: 0;
+  border-radius: var(--radius-icon);
+}
+
+.usage-heatmap-week > button {
+  cursor: pointer;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+}
+
+/* Level 0 on a recorded day is "the provider really reported nothing": a slot
+ * that is filled less than level 1, never the hollow "no record" mark below. */
+.usage-heatmap-week > button[data-level='0'][data-state='recorded'] {
+  background: color-mix(in srgb, var(--text) 7%, var(--surface-2));
+}
+.usage-heatmap-week > button[data-level='1'] { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='2'] { background: color-mix(in srgb, var(--text) 38%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='3'] { background: color-mix(in srgb, var(--text) 54%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='4'] { background: color-mix(in srgb, var(--text) 72%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='5'] { background: color-mix(in srgb, var(--text) 90%, var(--surface-3)); }
+
+.usage-heatmap-week > button:hover:not(:disabled) {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 1px;
+}
+
+.usage-heatmap-week > button[data-state='empty'] {
+  background: transparent;
+  border-color: var(--border);
+}
+
+.usage-heatmap-week > button[data-state='missing'] {
+  background:
+    linear-gradient(to top right,
+      transparent calc(50% - 1px), var(--border-strong) calc(50% - 1px),
+      var(--border-strong) calc(50% + 1px), transparent calc(50% + 1px));
+  border-color: var(--border);
+}
+
+.usage-heatmap-week > button[data-state='future'] {
+  background: color-mix(in srgb, var(--muted-2) 12%, transparent);
+  border-color: var(--border);
+}
+
+.usage-heatmap-week > button[data-state='partial'] {
+  border-color: var(--warning);
+  box-shadow: inset 0 -2px 0 var(--warning);
+}
+
+.usage-heatmap-week > button[aria-pressed='true'] {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.usage-page .usage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--settings-meta-font-size);
+}
+
+.usage-legend-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.usage-legend-item i {
+  width: var(--usage-cell);
+  height: var(--usage-cell);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-icon);
+}
+
+.usage-legend-item i[data-level='1'] { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)); }
+.usage-legend-item i[data-level='2'] { background: color-mix(in srgb, var(--text) 38%, var(--surface-2)); }
+.usage-legend-item i[data-level='3'] { background: color-mix(in srgb, var(--text) 54%, var(--surface-2)); }
+.usage-legend-item i[data-level='4'] { background: color-mix(in srgb, var(--text) 72%, var(--surface-2)); }
+.usage-legend-item i[data-level='5'] { background: color-mix(in srgb, var(--text) 90%, var(--surface-3)); }
+.usage-legend-item i[data-level='0'] { background: color-mix(in srgb, var(--text) 7%, var(--surface-2)); }
+.usage-legend-item i[data-state='empty'] { background: transparent; }
+.usage-legend-item i[data-state='missing'] {
+  background:
+    linear-gradient(to top right,
+      transparent calc(50% - 1px), var(--border-strong) calc(50% - 1px),
+      var(--border-strong) calc(50% + 1px), transparent calc(50% + 1px));
+}
+.usage-legend-item i[data-state='future'] { background: color-mix(in srgb, var(--muted-2) 12%, transparent); }
+.usage-legend-item i[data-state='partial'] {
+  border-color: var(--warning);
+  box-shadow: inset 0 -2px 0 var(--warning);
+}
+
+.usage-page .usage-day-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--settings-card-radius);
+}
+
+.usage-day-panel > header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.usage-day-panel > header strong {
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-day-panel > header span { color: var(--muted); font-size: var(--settings-meta-font-size); }
+.usage-day-panel > header span[data-state='partial'] { color: var(--warning); }
+.usage-day-panel > header span[data-state='future'] { color: var(--muted-2); }
+
+.usage-day-panel dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 4px 18px;
+  margin: 0;
+}
+
+.usage-day-panel dl > div { display: flex; gap: 8px; justify-content: space-between; }
+
+.usage-day-panel dt { color: var(--muted); font-size: var(--settings-meta-font-size); }
+
+.usage-day-panel dd {
+  margin: 0;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-day-panel p {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--settings-row-desc-font-size);
+}
+
+.usage-day-panel .usage-day-partial { color: var(--warning); }
+
+.usage-page .usage-statement {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: var(--settings-meta-font-size);
+  line-height: 1.6;
+}
