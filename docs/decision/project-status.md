@@ -496,3 +496,12 @@ ensure-app-build.mjs --assert             → exit 1   ✗（亚秒内即失效�
 **判别实验（主线做的，与 O5 折叠键同一方法）** ✓：把索引**第一条 entry 的 id 改名**（等价于覆盖清单漂移）→ `search-index.test.ts` **5 项失败**（`expected [ …(23) ] to deeply equal [ …(23) ]`）→ **字节还原（sha256 一致）→ 10/10 通过**。
 
 **真实缺口（本轮查明，故 S3 不勾）** ✗：**字段级搜索控件没有任何键盘导航** —— 在设置页全部 `*.tsx` 中，`ArrowDown`/`ArrowUp`/`Enter`/`Escape` 的处理只出现在无关处（`development-environments.tsx` 的 Enter、`model-provider-editor.tsx` 的 `useEscapeScope`）；导航测试（`navigation.test.ts`、`navigation-architecture.test.ts`）对键盘**零覆盖**。任务书 S3 的判据含"键盘可达：输入 → 方向键 → 回车落到该字段，Esc 归还焦点且无副作用"，**该功能尚未实现**，不只是未验证。**补齐方式**：控件侧实现筛选后的 ↑↓ 选择、回车落到 `data-settings-field` 锚点、Esc 归还焦点，并配一条**移除键盘处理即红**的检查与真机按键验证。
+
+### 更正：S3 的键盘路径**早已存在**（2026-09-29，主线自我更正）
+
+**前一条记录写错了，此处更正。** 我曾在"真实缺口"一节写下"**字段级搜索控件没有任何键盘导航 … 该功能尚未实现**"。**这是错的** ✗：
+
+- `packages/app/src/renderer/settings/workspace.tsx:198-219` 早已实现组合框按键（`onSearchKeyDown`：ArrowDown/ArrowUp 移动 `activeFieldIndex` 并回绕 ✓、Enter → `takeFieldHit(activeHit)` ✓），`:112-121` 的 `useEscapeScope` 早已做 Escape → 关列表 + 把焦点还给输入框（查询不变、不关别的）✓ —— 这些都在 **`666b5413`（09:12:45）** 里，**早于**那条记录（`0aa88f43`，09:14:44）✗。
+- **真机按键证据也早已存在** ✓：`D:\littlesheep-evidence\S3-2026-09-29\after\s3-field-search.json`（`ok: true` ✓、`failures: []` ✓），窗口已显示并获得焦点；读数为：方向键移动 `aria-activedescendant`（`settings-field-option-0` → `-1`）✓、Enter 聚焦带 `data-settings-field` 的元素（`application.close-policy` 的 `BUTTON.settings-select` ✓、`agent.compression-threshold` 展开 `<details>` 内的 `INPUT` ✓）并显示落地描边 ✓、Escape 关列表而**保留** `inputValue: "缓存"` ✓、`aria-expanded: "false"` ✓、输入框保持焦点 ✓、设置页未关 ✓。
+- **我为什么会写错** ✗：我那次核查用 `Select-String … | Select-Object -First 8` **截断了输出** ✓，`workspace.tsx:198-219` 的 `onSearchKeyDown` 没出现在我看到的 8 行里 ✓ → 我据此下了"零覆盖"的结论 ✓。**这正是我一整晚在要求别人避免的错误** ✗：**用被截断的窄视角当全量** ✓。已记入教训 ✓。
+- **真正缺的是什么** ✗：一条**移除键盘处理后必须转红**的检查 —— `search-index.test.ts` 此前只断言**删掉处理器仍然成立**的字面量（`role="combobox"` ✓、`aria-activedescendant` ✓、`searchSettingsFields(settingsQuery` ✓、`revealSettingsField(` ✓）✗。另有两处**确实**的覆盖缺口（由核验方指出 ✓）：①**JSX 接线本身未被覆盖** ✗ —— 删掉 `<input>` 上的 `onKeyDown={onSearchKeyDown}` 后，那些子串断言**仍然绿** ✗；②**漫游项从不被滚入视野** ✗ —— `aria-activedescendant` 可能指向 `overflow-y: auto` 的 `.settings-nav-section` 视口之外（最多 23 条命中 ✓）。

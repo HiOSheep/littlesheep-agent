@@ -26,11 +26,13 @@ import { SettingsPage } from './types'
 import {
   SETTINGS_FIELD_LANDING_TIMEOUT_MS,
   SETTINGS_FIELD_LISTBOX_ID,
+  nextSettingsFieldIndex,
   revealSettingsField,
   searchSettingsFields,
   settingsFieldDefinition,
   settingsFieldOptionId,
   settingsFieldSelector,
+  settingsSearchKeyIntent,
   type SettingsFieldHit,
 } from './search-index'
 import { CloseIcon, SearchIcon, SettingsNavArrowIcon } from '../ui/icons'
@@ -102,6 +104,18 @@ export function SettingsWorkspace({
     ? Math.min(activeFieldIndex, fieldHits.length - 1)
     : -1
   const activeHit = activeHitIndex >= 0 ? fieldHits[activeHitIndex] ?? null : null
+
+  /**
+   * 环上的那一条必须真的在视野里。
+   *
+   * 结果列表住在 `.settings-nav-section` 里，而它是 `overflow-y: auto` 的滚动视口；索引有 23
+   * 条，方向键可以把 `aria-activedescendant` 移到可视区之外——选中还在，用户却看不见自己选到了
+   * 哪一条。`block: 'nearest'` 只在需要时滚动，不会把列表顶拽走。
+   */
+  useEffect(() => {
+    if (activeHitIndex < 0) return
+    document.getElementById(settingsFieldOptionId(activeHitIndex))?.scrollIntoView({ block: 'nearest' })
+  }, [activeHitIndex])
 
   // 侧栏默认只显示常用导航；搜索时切换到完整索引，因此未接入的占位页仍能被找到并打开。
   const filteredNavGroups = filterSettingsNavGroups(
@@ -195,29 +209,6 @@ export function SettingsWorkspace({
     setLandingNote('')
   }
 
-  /**
-   * 搜索框的键盘约定（组合框）：上下箭头移动结果环，Enter 打开当前结果，光标始终留在输入框里
-   * （`aria-activedescendant`，不是把焦点搬进列表），所以 Escape 不需要把焦点搬回来。
-   */
-  function onSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.nativeEvent.isComposing) return
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      if (fieldHits.length === 0) return
-      event.preventDefault()
-      setFieldResultsDismissed(false)
-      const step = event.key === 'ArrowDown' ? 1 : -1
-      setActiveFieldIndex((current) => {
-        const base = current < 0 ? (step === 1 ? -1 : 0) : current
-        return (base + step + fieldHits.length) % fieldHits.length
-      })
-      return
-    }
-    if (event.key === 'Enter' && activeHit) {
-      event.preventDefault()
-      takeFieldHit(activeHit)
-    }
-  }
-
   return (
     <div className="settings-workspace">
       <div className="settings-layout">
@@ -236,7 +227,6 @@ export function SettingsWorkspace({
                   type="search"
                   value={settingsQuery}
                   onChange={(event) => changeSearchQuery(event.target.value)}
-                  onKeyDown={onSearchKeyDown}
                   placeholder="搜索设置"
                   aria-label="搜索设置"
                   role="combobox"

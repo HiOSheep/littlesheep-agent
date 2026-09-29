@@ -527,6 +527,38 @@ export function settingsFieldOptionId(index: number): string {
   return `settings-field-option-${index}`
 }
 
+/** 搜索框上的一个按键对结果环的作用；`none` 表示这个键不归搜索管。 */
+export type SettingsSearchKeyIntent = 'next' | 'previous' | 'take' | 'none'
+
+/**
+ * 键盘约定本身（不是它的接线）：↑↓ 移动结果环，Enter 只在环已经落在某条结果上时取用它，
+ * Escape 不在这里处理——它归 `ui/modal-surface.ts` 的作用域所有者，好让“Escape 只作用于最上层”
+ * 这条规则只有一个实现。这里返回的是**决定**，组件负责执行，测试因此可以逐条断言。
+ */
+export function settingsSearchKeyIntent(key: string, hasActiveHit: boolean): SettingsSearchKeyIntent {
+  if (key === 'ArrowDown') return 'next'
+  if (key === 'ArrowUp') return 'previous'
+  if (key === 'Enter' && hasActiveHit) return 'take'
+  return 'none'
+}
+
+/**
+ * 结果环的下一个位置。
+ *
+ * 第一下从输入框落进第一条（`current` 为 -1），到底回卷，↑ 从输入框直接到最后一条；
+ * 没有结果时返回 -1，表示不存在环（此时 ↑↓ 不应该被吞掉）。
+ */
+export function nextSettingsFieldIndex(
+  current: number,
+  count: number,
+  intent: Extract<SettingsSearchKeyIntent, 'next' | 'previous'>,
+): number {
+  if (count <= 0) return -1
+  const direction = intent === 'next' ? 1 : -1
+  const base = current < 0 ? (direction === 1 ? -1 : 0) : current
+  return (base + direction + count) % count
+}
+
 export interface SettingsFieldLanding {
   readonly id: string
   /** 为了看见这一行而展开的容器（目前只有折叠的 `<details>`）。 */

@@ -238,6 +238,7 @@
 **本轮复查到期：2026-10-24**（下表所有条目共用这一日期，表格里一律写"同上"——续期只改这一处）。到期前必须逐条复查（路径仍存在、仍超过 600 行、未越过上限）；仓库卫生门在到期日已过时直接失败，日期不会自动续期。2026-09-24 已按此口径完成一次逐条复查。
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
+| `packages/app/src/renderer/settings/search-index.ts` | S3 | 字段级搜索索引（覆盖清单、别名、落地属性）；键盘与接线检查补齐前不拆分 | 620 | 同上 |
 | --- | --- | --- | ---: | --- |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 同上 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 同上 |

@@ -12,12 +12,14 @@ import {
   SETTINGS_FIELD_LANDING_TIMEOUT_MS,
   SETTINGS_FIELD_LISTBOX_ID,
   SETTINGS_UNINDEXED_FIELDS,
+  nextSettingsFieldIndex,
   revealSettingsField,
   searchSettingsFields,
   settingsFieldDefinition,
   settingsFieldOptionId,
   settingsFieldSelector,
   settingsFieldValue,
+  settingsSearchKeyIntent,
 } from './search-index'
 
 /**
@@ -392,6 +394,40 @@ describe('settings field index (S3)', () => {
     expect(workspace).toContain('aria-activedescendant')
     expect(workspace).toContain('searchSettingsFields(settingsQuery')
     expect(workspace).toContain('revealSettingsField(')
+  })
+
+  it('turns the search box keys into the combobox contract, and fails when that handling is removed', () => {
+    // 决定层：↑↓ 移动结果环，Enter 只在环已落在某条结果上时取用，Escape 不归搜索处理（它归
+    // `ui/modal-surface.ts` 的作用域所有者），其它键一律放行给输入框。
+    expect(settingsSearchKeyIntent('ArrowDown', false)).toBe('next')
+    expect(settingsSearchKeyIntent('ArrowDown', true)).toBe('next')
+    expect(settingsSearchKeyIntent('ArrowUp', false)).toBe('previous')
+    expect(settingsSearchKeyIntent('ArrowUp', true)).toBe('previous')
+    expect(settingsSearchKeyIntent('Enter', true)).toBe('take')
+    expect(settingsSearchKeyIntent('Enter', false)).toBe('none')
+    expect(settingsSearchKeyIntent('Escape', true)).toBe('none')
+    expect(settingsSearchKeyIntent(' ', true)).toBe('none')
+    expect(settingsSearchKeyIntent('a', true)).toBe('none')
+    expect(settingsSearchKeyIntent('Tab', true)).toBe('none')
+
+    // 环的走法：第一下从输入框落进第一条、到底回卷、↑ 从输入框直接到最后一条、空结果没有环。
+    expect(nextSettingsFieldIndex(-1, 3, 'next')).toBe(0)
+    expect(nextSettingsFieldIndex(0, 3, 'next')).toBe(1)
+    expect(nextSettingsFieldIndex(1, 3, 'next')).toBe(2)
+    expect(nextSettingsFieldIndex(2, 3, 'next')).toBe(0)
+    expect(nextSettingsFieldIndex(-1, 3, 'previous')).toBe(2)
+    expect(nextSettingsFieldIndex(0, 3, 'previous')).toBe(2)
+    expect(nextSettingsFieldIndex(-1, 0, 'next')).toBe(-1)
+    expect(nextSettingsFieldIndex(-1, 0, 'previous')).toBe(-1)
+
+    // 接线层：控件必须真的用这两个决定，并把 IME 组合与 Escape 交给它们的所有者。
+    const workspace = settingsSources.get('workspace.tsx')!
+    expect(workspace).toContain('settingsSearchKeyIntent(event.key')
+    expect(workspace).toContain('nextSettingsFieldIndex(current, fieldHits.length, intent)')
+    expect(workspace).toContain('if (event.nativeEvent.isComposing) return')
+    expect(workspace).toContain('role="listbox"')
+    expect(workspace.match(/role="option"/gu)?.length).toBe(1)
+    expect(workspace).toContain('aria-selected={index === activeHitIndex}')
   })
 
   it('pairs the landing emphasis with a drawn rule and a reduced-motion-safe timeout', async () => {
