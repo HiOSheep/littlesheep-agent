@@ -209,6 +209,29 @@ export function SettingsWorkspace({
     setLandingNote('')
   }
 
+  /**
+   * 搜索框的键盘约定（组合框）：上下箭头移动结果环，Enter 打开当前结果，光标始终留在输入框里
+   * （`aria-activedescendant`，不是把焦点搬进列表），所以 Escape 不需要把焦点搬回来。
+   * 决定本身在 `search-index.ts`（`settingsSearchKeyIntent` / `nextSettingsFieldIndex`），
+   * 这里只执行；删掉这里的接线会让 `search-index.test.ts` 的接线断言变红。
+   */
+  function onSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    // 输入法组合期间的 Enter/方向键属于候选词，不属于结果列表。
+    if (event.nativeEvent.isComposing) return
+    const intent = settingsSearchKeyIntent(event.key, activeHit !== null)
+    if (intent === 'none') return
+    if (intent === 'take') {
+      if (!activeHit) return
+      event.preventDefault()
+      takeFieldHit(activeHit)
+      return
+    }
+    if (fieldHits.length === 0) return
+    event.preventDefault()
+    setFieldResultsDismissed(false)
+    setActiveFieldIndex((current) => nextSettingsFieldIndex(current, fieldHits.length, intent))
+  }
+
   return (
     <div className="settings-workspace">
       <div className="settings-layout">
@@ -227,6 +250,7 @@ export function SettingsWorkspace({
                   type="search"
                   value={settingsQuery}
                   onChange={(event) => changeSearchQuery(event.target.value)}
+                  onKeyDown={onSearchKeyDown}
                   placeholder="搜索设置"
                   aria-label="搜索设置"
                   role="combobox"
