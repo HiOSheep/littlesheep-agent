@@ -1,6 +1,6 @@
 # LittleSheep 验收与维护脚本
 
-最后更新：2026-09-28 21:43:27
+最后更新：2026-09-29 00:21:45
 
 verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与菜单验收，覆盖选择菜单的选中状态、键盘操作、点击外部/Escape/Tab 关闭、密度设置重载保留、页面导航及 800/1280px 视口避让；截图与 results.json 保存在输出的临时目录。先执行 pnpm run ensure:app-build。
 
@@ -8,7 +8,7 @@ verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与
 
 ## 约定：窗口 chrome 的"能不能点"按原生命中判定
 
-最后更新：2026-09-28 21:43:27
+最后更新：2026-09-29 00:21:45
 
 **任何改动只要涉及窗口 chrome、拖动区（`-webkit-app-region`）、窗口顶边或顶栏控件，就必须用原生 `WM_NCHITTEST` 断言受影响的控件收到真实点击。** `document.elementFromPoint` 与 CDP 合成点击**不能**替代它：2026-09-28 实测，在"真实鼠标按下去没反应"的构建上这两项全部通过——渲染器把 `-webkit-app-region` 的盒子发布为窗口的 draggable region，Windows 用窗口自己的 `WM_NCHITTEST` 解析它，控件中心返回 `HTCAPTION` 时那次按下变成 caption 交互，页面根本收不到。DOM 检查与 CDP 点击的结论只能作为补充证据，不能作为"用户点得到"的结论。
 
@@ -40,6 +40,8 @@ verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与
 - `acceptance-matrix.md` 是这些门的**场景—独有断言—证据层级—所属入口**矩阵：三个最大脚本（`verify-html-preview-baseline`、`verify-electron-ui-state-continuity`、`verify-workspace-performance`）逐场景列出，其余脚本按共享形状聚类，并记录本轮合并后每条独有断言的新归属、明确没动的部分与实测前后行数。改动或退休任何门之前先看它，避免把独有断言连带删掉。
 - `lib/electron-cdp-harness.mjs` 与 `lib/electron-acceptance-provider.mjs` 提供隔离 Electron、CDP、窗口操作和确定性模型响应的共享夹具。harness 的所有权边界是**进程启动与退出、locator 握手、最小 CDP 客户端、轮询/取整原语**：`waitForExit(child, timeoutMs)` 只等退出并返回退出码（不杀进程，杀是 `forceTerminate`），`startElectron({ extraEnv })` 里值为 `undefined` 表示“本次运行删除这个环境变量”（夹具数据根必须能排除环境里已有的 Provider 密钥）。域断言和产品预算一律留在各门里，不要长在这个模块上。
 - `check-repository-hygiene.mjs`（`pnpm run check:repo` 的第一段）包含仓库卫生门。它按**形状**拒绝已跟踪的生成物，除了 out/dist/coverage/release/tsbuildinfo/log，还包括测试中断留在仓库根的 `cache-scope-matrix-*` / `cache-observation-store-*` 暂存目录，以及 Vite / electron-vite 打包 TS 配置时写下的 `vitest.config.ts.timestamp-*.mjs` / `electron.vite.config.<数字>.mjs`。这些形状曾经真的入库（110 个 JSON + 1 个配置包）而旧门禁全绿，所以同一改动补了 `.gitignore` 窄规则，并把四条规则本身纳入"生成物已忽略"断言——删掉规则是门禁失败，不是静默重新漏水。对应测试 `check-repository-hygiene.test.mjs` 把门禁脚本复制进一个临时 Git 仓库，用 `git add -f` 让四种形状真正被跟踪，断言门禁失败且**只**点名这四个路径，而 `cache-observation-store.ts` 这类同前缀真源码不被误判。
+- **文档新鲜度：格式义务已删除，只留语义义务。** 门禁此前要求每份 README 与每份正式文档都带秒级 `最后更新`，并比较"目录源码的提交时间是否晚于该目录 README"；两者都已删除，因为它们只证明文档被触碰、不证明文档仍与代码一致，而代价是每个无关改动都要制造一次文档 diff。仍然机器检查的是：每个 package 与独立领域目录必须有 README、正式文档必须能从分层入口定位、任务书的文件名与标题日期必须一致（正文里的 `最后更新` 行可以只有日期，秒级不再强制）。**"README 是否跟上了语义变化"不由机器判定**，它留在 code review；不要用另一张每次都必须填写的免责表替代它。对应测试用固定时钟的临时仓库证明：只改私有源码/测试/CSS 并单独提交时门禁通过，而缺 README、坏链接、缺正式文档仍然失败。
+- **结构增长是提示，不是硬门；结构完整性仍是硬门。** 四条判定降级为 `[ok-advisory]` / `[advisory]` 输出（不再阻断退出码，摘要行写作 `N passed (+M advisory ok), K failed`）：任务书数量预算、组合热点超过登记上限、600 行文件超过受控上限、拆分地图里手写的行数。**仍然是硬失败**的：`300 行以上生产文件已登记`、热点登记的文件不存在（改名或删除会让基线表指向空）、600 行登记的完整性（缺登记、所有者或原因为空、`本轮复查到期` 缺失或已过期、复查日期不写"同上"）、拆分地图中登记的文件不存在，以及 `大型生产文件有职责头注释`。判据是"行数长了"属于评审判断，"记录本身坏了"属于结构缺陷——后者不能跟着提示化一起放掉。
 - 执行日志的离线诊断入口是 `node scripts/audit-cache-usage.mjs <dataDir>`（即 `pnpm run audit:cache`，覆盖用量/缓存/延迟账本）、`node scripts/analyze-cache-shapes.mjs <dataDir>`（头部构成、跨 run 首次分歧、provider 消息头尾）与 `node scripts/analyze-prompt-cache.mjs <dataDir>`（按 purpose 的失效原因与组件 digest 抖动）。SL-05 退役了根目录三个从未挂到任何入口、也没有任何文档引用的一次性脚本 `head-sections.mjs` / `ts-keys.mjs` / `tool-keys.mjs`：`head-sections` 的“reply 调用头部条目 id 与字符数”读数已并入 `analyze-cache-shapes.mjs` 的最后一节（改报最新一个含 reply 调用的 run）；`ts-keys` / `tool-keys` 的“打印第一批键名”由 `packages/runner/src/execution-log.ts` 的类型契约与 `execution-log.test.ts` 的键/脱敏断言覆盖。
 - `pnpm run verify:code-wrap-control` 核对对话代码块与工作区 Monaco 的共享自动换行偏好、真实滚动/折行变化及按钮状态。
 - `pnpm run verify:skills-catalog-states` 使用可控 Local App API 响应验证技能页成功空列表、错误保留、重试和快速详情切换。
@@ -92,3 +94,9 @@ verify-settings-cards.mjs：隔离数据根中的真实 Electron 设置卡片与
 **漂移由一层门禁挡住，而不是靠人记。** `lib/window-chrome-contract.mjs` 是这层门禁的**唯一实现**，两处调用：`packages/app/src/renderer/chat-layout-stability.test.ts`（源码文本，毫秒级）与 `verify-window-layout.mjs`（在**启动窗口之前**先跑一遍，所以契约一改错，几秒内就红，不用等 Electron 起来）。它从 TypeScript 契约里读数字、把样式表里的 `var()` 与 `calc()` **求值**后比较——包括 `--window-nav-controls-top: calc((var(--window-titlebar-height) - 24px) / 2)` 这类表达式——所以任何一侧改动都会读成"不一致"，而不是"两个恰好相等的常量"。检查项：顶栏行 token、控件盒与间距、`.app-nav-controls` 与洞**共用同两个偏移 token**、洞是与控件盒**逐项相等**的单一无作用域规则（不多不少：大了会在拖拽条里开出死区，小了会让控件的一部分点不动）、洞没有绘制属性、band 仍是 drag 且没有被 `pointer-events: none` 掉、洞没有在布局层被重新作用域化、`DESKTOP_TITLEBAR_HEIGHT` 与契约的顶栏行一致、以及控件真的由 `global-titlebar.tsx` 渲染、岛仍是壳层第一个图层（这正是洞必须最后的原因）。
 
 **原生那半在同一门里**（`lib/native-hit-test.mjs` 提供探针，本门只留自己的点与断言）。探针按契约生成：每个声明控件的**中心**（展开 / 折叠 / **拖拽中**三态都要求 `HTCLIENT`）、每条声明 band 的中心（`HTCAPTION`）、命中岛左右上下各 3~4px 的邻位（必须仍是 `HTCAPTION`，即洞不比控件盒大）、以及**整条顶边**按 2px 采样（除了声明岛的 `HTCLIENT` 与声明的那 8px 侧栏分隔缝之外，每个像素都必须是 `HTCAPTION`，否则报出具体 x）。洞是生成盒、没有元素可量，所以它的**声明几何**由 `getComputedStyle(shell, '::after')` 读出并与契约逐项比较，它的**效果**由上面那批原生探针测量。`results.json` 里 `contract` 一节记录本次用的是哪份契约，`nativeHitTest` 一节按状态记录每个点的答案。
+
+## 治理成本试点测量（GA-04，2026-09-28）
+
+`scripts/report-governance-cost.mjs`（`node scripts/report-governance-cost.mjs [--repo=<path>] [--base=<ref>] [--out=<json>] [--fixtures=<json>]`）只读、零网络、零 Provider 调用，用固定 schema 输出当前规则包的三类可复核静态治理成本：入口阅读量（`docs/README.md` 链接到的本地 Markdown 文档、字节数与 SHA-256，缺失文件记 `exists:false`）、秒级时间戳格式面（tracked 的 `docs/**/*.md` 与 `packages/**/README.md` 中带 `最后更新：YYYY-MM-DD HH:mm:ss` 的文件数、总字节与 docs/packages 分组数量，另报全部 tracked package README 数）、验证选择面（`scripts/run-affected-verification.mjs --list --json --base=<base>` 的 changedFiles / affectedPackages / typecheckConfigPaths / `testPlan.mode` / appBuildSensitive；`--fixtures` 再对 `{"fixtures":[{"id":"E1","files":["packages/..."]}]}` 里每个文件清单直接调用 `scripts/lib/affected-verification-inputs.mjs` 的计划函数，报 mode / fullTests / appBuildSensitive / relatedCount）。base 不可解析或 selector 失败时以非零退出并打印可读原因；拿不到的字段写 `null` 并在 `notes` 里说明，不做估算。
+
+**这是试点测量，不是产品门禁**：它不进 `check:repo`、`verify:*` 或任何发布判定，跑通它不代表任何规则候选已被采用。**真实多会话 A/B 对照未执行**（本次会话的成本与客户端限制），因此结论只覆盖可复核的静态治理成本：报告里没有会话、模型调用、完成率、墙钟耗时或 token 数字，不得据此宣称效率提升或统计显著。回归测试 `scripts/report-governance-cost.test.mjs`（`npx vitest run scripts/report-governance-cost.test.mjs`）在临时 Git 仓库夹具上断言链接解析与 sha256、时间戳计数、fixture 计划模式，以及缺 base 时脚本非零退出。

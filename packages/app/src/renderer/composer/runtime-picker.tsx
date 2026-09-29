@@ -12,6 +12,7 @@ import { REASONING_OPTIONS } from '../runtime/options'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { RuntimeProvider } from './context-usage-indicator'
+import { useMenuFocusReturn } from './menu-focus-return'
 import type { RuntimeAvailability } from './runtime-availability'
 
 
@@ -67,6 +68,7 @@ export function RuntimePicker({
   const menuPositionFrameRef = useRef<number>()
   const [menuPosition, setMenuPosition] = useState<RuntimeMenuPosition | null>(null)
   const [closedWidth, setClosedWidth] = useState<number | null>(null)
+  const captureMenuCaret = useMenuFocusReturn({ open, panelRef: menuShellRef, triggerRef })
   const disabled = !runtime && availability.kind === 'loading'
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []
@@ -183,16 +185,17 @@ export function RuntimePicker({
 
   useEffect(() => {
     const handleComposerMenuOpen = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== 'runtime') {
-        setActiveSubmenu(null)
-        setOpen(false)
-      }
+      if ((event as CustomEvent<string>).detail !== 'runtime') closePicker()
     }
     window.addEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
     return () => window.removeEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
   }, [])
 
+  // The picker's one close path: choosing a reasoning level, a model or a
+  // provider, and dismissing the menu all go through here, so the caret the menu
+  // shell was holding goes back to the trigger (see `menu-focus-return.ts`).
   function closePicker() {
+    captureMenuCaret()
     window.clearTimeout(submenuCloseTimerRef.current)
     setActiveSubmenu(null)
     setOpen(false)

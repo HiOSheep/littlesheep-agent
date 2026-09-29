@@ -1,6 +1,6 @@
 # @littlesheep/harness
 
-最后更新：2026-09-27 18:04:45
+最后更新：2026-09-28 23:56:31
 
 实现 LittleSheep 的核心 Agent Runtime：硬控制流状态机负责活动路由、单一主循环执行、验证、Runtime 恢复、澄清和收尾。
 
@@ -53,4 +53,4 @@
 - 路由必须指向驱动实际注册的 stage：`src/stage-routing-registry.test.ts` 扫描 `src/stages/` 的 `next` 目标并与 `default-harness.ts` 的注册表比对，退役 stage 名（`decide`/`evolve`/`capture`）既不能作为路由目标，也不能重新注册。
 - 请求形状探针在 `src/probe/baseline.test.ts`（负载定义在 `src/probe/frozen-load.ts`）：它不调用 Provider，只统计每个冻结负载的逐请求字符数、共享前缀与工具目录摘要，并把渲染结果写到 `docs/reference/cache-baseline/latest.md`（需要冻结某次对比时把人可读的 `latest.md` 复制成 `baseline-<freeze>.md`）。**它只写 `latest.md`**：早期版本还会为每个负载各写一个同名 JSON 转储，那些文件没有任何读取方，2026-09-24 已随文件一起删除，不要恢复这种"测试顺手产出、却没人读"的产物。
 - 缓存观测的临时存储根放在系统临时目录：`cache-observation-store.test.ts` 与 `cache-scope-isolation-matrix.test.ts` 一律 `mkdtemp(join(tmpdir(), …))`，不再落在 `process.cwd()`。中断的测试进程跑不到 `afterEach`，留在仓库根的 `cache-scope-matrix-*` / `cache-observation-store-*` 目录是"可被 `git add` 收走"的产物（实测曾入库 10 个目录、110 个 JSON）。`check:repo` 现在按形状拒绝这类已跟踪产物，`.gitignore` 也覆盖该形状；同名前缀的真源码 `cache-observation-store.ts` 仍是正常跟踪文件，不被误判。
-- 修改状态转移先更新 stage 契约和特征测试，再调整实现。
+- 状态转移先更新 stage 契约和特征测试，再调整实现——这是**该领域的专项默认**（状态机行为只能靠契约与特征测试钉住），不是全仓"失败测试先行"规则：状态机之外的其他改动按风险自行选择验证方式即可。验证结论只认真实执行结果，`skipped`／未运行的检查不算通过，也不能用旧结果放行没有重跑的检查。

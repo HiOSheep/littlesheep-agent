@@ -8,6 +8,12 @@
 // saving, save failed). This fixture drives the real editor and checks each acceptance bullet:
 // edit → switch page → return; cancel; a failed save; and closing while saving.
 //
+// UX-47 adds the keyboard exit. The panel is a page-level surface, so Escape goes through the same
+// `closeEditor()` the × uses: it closes a clean draft outright and asks about a dirty one. The
+// discard question is a stacked layer whose own Escape means 继续编辑, and no Escape closes the
+// panel while a save is in flight. Every key here is a real `Input.dispatchKeyEvent`, and the
+// reported symptom - focus in the edited field, Escape doing nothing - is reproduced first.
+//
 // Usage:
 //   node scripts/verify-provider-editor-draft.mjs [--out=<dir>] [--keep]
 
@@ -29,6 +35,8 @@ const keepRoot = process.argv.includes('--keep')
 const WINDOW = { width: 1180, height: 780 }
 const EVALUATE_TIMEOUT_MS = 20_000
 const DRAFT_NAME = '草稿中的显示名称'
+/** A second edited value, so the Escape cases cannot be confused with the step-3 assertions. */
+const ESCAPE_DRAFT_NAME = 'Escape 之后仍在编辑的名字'
 
 function withTimeout(promise, timeoutMs, label) {
   let timer
@@ -178,6 +186,30 @@ async function openEditor(client) {
   return opened
 }
 
+async function pressEscape(client) {
+  const base = { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 }
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base })
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base })
+  await delay(200)
+}
+
+/** What the editor, the discard question and the field focus look like right now. */
+const ESCAPE_STATE_EXPRESSION = `(() => {
+  const editor = document.querySelector('.provider-editor')
+  const discard = document.querySelector('.provider-editor-discard')
+  const active = document.activeElement
+  return {
+    editorOpen: editor !== null,
+    discardOpen: discard !== null,
+    discardActions: discard ? [...discard.querySelectorAll('button')].map((button) => button.textContent?.trim() ?? '') : [],
+    focusInsideEditor: Boolean(editor && active && editor.contains(active)),
+    activeClass: typeof active?.className === 'string' ? active.className : null,
+    name: editor ? ([...editor.querySelectorAll('.settings-inline-field input')][1]?.value ?? null) : null,
+    status: editor?.querySelector('.provider-editor-status')?.textContent?.trim() ?? null,
+    saveLabel: editor?.querySelector('.save-btn')?.textContent?.trim() ?? null,
+  }
+})()`
+
 async function typeName(client, value) {
   return evaluate(client, `(() => {
     const input = [...document.querySelectorAll('.provider-editor .settings-inline-field input')][1]
@@ -320,6 +352,46 @@ async function main() {
     await evaluate(client, `document.querySelector('.provider-editor .close-btn')?.click()`)
     await delay(250)
 
+    // --- 3b. Escape is the same exit as the close entry, one layer at a time ---------------------
+    // The panel is a page-level surface (`ui/modal-surface.ts`), so Escape routes through the same
+    // `closeEditor()` the × uses: it closes when there is nothing to lose and asks when there is.
+    // The question is a stacked layer of its own, and its Escape means 继续编辑.
+    await openEditor(client)
+    const escapeBaseline = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    // A clean draft has nothing to ask about, so one Escape closes the panel.
+    await pressEscape(client)
+    await delay(250)
+    const escapeOnCleanDraft = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    // A dirty draft must not be dropped by one key: Escape asks, exactly like the × does.
+    await openEditor(client)
+    await typeName(client, ESCAPE_DRAFT_NAME)
+    // Put the caret in the edited field first: the reported symptom was exactly this state, with
+    // focus in the input and Escape doing nothing.
+    const escapeFocusInField = await evaluate(client, `(() => {
+      const input = [...document.querySelectorAll('.provider-editor .settings-inline-field input')][1]
+      if (!(input instanceof HTMLInputElement)) return false
+      input.focus()
+      return document.activeElement === input
+    })()`)
+    await delay(200)
+    await pressEscape(client)
+    const escapeOnDirtyDraft = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    const escapeQuestionScreenshot = await writePng(client, 'editor-escape-discard-question')
+    // Escape over the question means 继续编辑: the editor and the edits stay, the question closes.
+    await pressEscape(client)
+    const escapeOnDiscardQuestion = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    // The layer stack has to still be usable: the next Escape asks again, and 丢弃修改 still closes.
+    await pressEscape(client)
+    const escapeAsksAgain = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    await evaluate(client, `(() => {
+      const buttons = [...document.querySelectorAll('.provider-editor-discard button')]
+      buttons.find((button) => button.textContent?.includes('丢弃修改'))?.click()
+      return true
+    })()`)
+    await delay(300)
+    const escapeDiscardClosed = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    const savesAfterEscape = await evaluate(client, `window.__lsSaveProbe.saves`)
+
     // --- 4. a failed save keeps the editor and the editable content ----------------------------
     await openEditor(client)
     await typeName(client, DRAFT_NAME)
@@ -335,11 +407,16 @@ async function main() {
     const failureScreenshot = await writePng(client, 'editor-save-failed')
 
     // --- 5. the editor cannot be left while a save is in flight, and the save wins ---------------
-    await evaluate(client, `(() => { window.__lsSaveProbe.delayNextMs = 1500; return true })()`)
+    await evaluate(client, `(() => { window.__lsSaveProbe.delayNextMs = 3000; return true })()`)
     await evaluate(client, `document.querySelector('.provider-editor .save-btn')?.click()`)
     await delay(300)
     const saving = await evaluate(client, EDITOR_STATE_EXPRESSION)
     const savingScreenshot = await writePng(client, 'editor-saving')
+    // Escape must not close the editor while a save is in flight: the result would land on an
+    // unmounted page. The key is pressed for real, and the state is read immediately after it.
+    await pressEscape(client)
+    const savingAfterEscape = await evaluate(client, ESCAPE_STATE_EXPRESSION)
+    const savingAfterEscapeScreenshot = await writePng(client, 'editor-saving-after-escape')
     const closed = await harness.waitFor(() => evaluate(client, `document.querySelector('.provider-editor') ? null : true`), 30_000, 'the editor closing after the save')
     await delay(400)
     const cardsAfterSave = await evaluate(client, CARDS_EXPRESSION)
@@ -367,13 +444,22 @@ async function main() {
       closedByDiscard,
       afterDiscard,
       savesAfterDiscard,
+      escapeBaseline,
+      escapeFocusInField,
+      escapeOnCleanDraft,
+      escapeOnDirtyDraft,
+      escapeOnDiscardQuestion,
+      escapeAsksAgain,
+      escapeDiscardClosed,
+      savesAfterEscape,
       saveFailed,
       providersAfterFailure,
       saving,
+      savingAfterEscape,
       closed,
       cardsAfterSave,
       probeState,
-      screenshots: { modifiedScreenshot, restoredScreenshot, failureScreenshot, savingScreenshot },
+      screenshots: { modifiedScreenshot, restoredScreenshot, failureScreenshot, savingScreenshot, escapeQuestionScreenshot, savingAfterEscapeScreenshot },
     }
 
     const failures = []
@@ -410,6 +496,31 @@ async function main() {
       'the discarded secret was still in the editor or browser storage')
     expect(configFileClean && electronLogClean, 'the unsaved secret reached config or Electron log')
     expect(savesAfterDiscard === 0, `discarding issued ${savesAfterDiscard} save requests`)
+    // 3b. Escape is the close entry, one layer at a time.
+    expect(escapeBaseline.editorOpen === true, 'the editor could not be reopened for the Escape cases')
+    expect(escapeFocusInField === true, 'the edited field could not be focused before the Escape cases')
+    expect(escapeOnCleanDraft.editorOpen === false && escapeOnCleanDraft.discardOpen === false,
+      `Escape on a clean draft did not close the editor: ${JSON.stringify(escapeOnCleanDraft)}`)
+    expect(escapeOnDirtyDraft.editorOpen === true,
+      'Escape on a dirty draft closed the editor instead of asking')
+    expect(escapeOnDirtyDraft.discardOpen === true,
+      `Escape on a dirty draft did not ask before discarding: ${JSON.stringify(escapeOnDirtyDraft)}`)
+    expect(escapeOnDirtyDraft.name === ESCAPE_DRAFT_NAME,
+      `Escape on a dirty draft dropped the edits: ${JSON.stringify(escapeOnDirtyDraft.name)}`)
+    expect(escapeOnDirtyDraft.discardActions.some((label) => label.includes('继续编辑'))
+      && escapeOnDirtyDraft.discardActions.some((label) => label.includes('丢弃修改')),
+      `Escape asked with the wrong actions: ${JSON.stringify(escapeOnDirtyDraft.discardActions)}`)
+    expect(escapeOnDiscardQuestion.editorOpen === true && escapeOnDiscardQuestion.discardOpen === false,
+      `Escape on the discard question did not keep editing: ${JSON.stringify(escapeOnDiscardQuestion)}`)
+    expect(escapeOnDiscardQuestion.name === ESCAPE_DRAFT_NAME,
+      `Escape on the discard question dropped the edits: ${JSON.stringify(escapeOnDiscardQuestion.name)}`)
+    expect(escapeOnDiscardQuestion.focusInsideEditor === true,
+      `Escape on the discard question left focus outside the editor: ${JSON.stringify(escapeOnDiscardQuestion)}`)
+    expect(escapeAsksAgain.editorOpen === true && escapeAsksAgain.discardOpen === true,
+      `the discard layer was not reusable after Escape kept editing: ${JSON.stringify(escapeAsksAgain)}`)
+    expect(escapeDiscardClosed.editorOpen === false,
+      `丢弃修改 stopped closing the editor after the Escape cases: ${JSON.stringify(escapeDiscardClosed)}`)
+    expect(savesAfterEscape === 0, `the Escape cases issued ${savesAfterEscape} save requests`)
     // 4. a failed save explains itself, keeps the content, and does not change the list.
     expect(saveFailed.error.some((text) => text.includes('保存失败')), `no save failure was shown: ${JSON.stringify(saveFailed.error)}`)
     expect(saveFailed.name === DRAFT_NAME, `the failed save dropped the edited content: ${JSON.stringify(saveFailed.name)}`)
@@ -420,6 +531,11 @@ async function main() {
     expect(saving.closeDisabled === true, 'the close entry stayed enabled while saving')
     expect(saving.cancelDisabled === true, 'cancel stayed enabled while saving')
     expect(saving.status === '保存中…', `the saving state was not shown: ${JSON.stringify(saving.status)}`)
+    // Escape must leave the panel alone while the save is in flight.
+    expect(savingAfterEscape.editorOpen === true,
+      `Escape closed the editor while a save was in flight: ${JSON.stringify(savingAfterEscape)}`)
+    expect(savingAfterEscape.discardOpen === false,
+      `Escape raised the discard question while a save was in flight: ${JSON.stringify(savingAfterEscape)}`)
     expect(closed === true, 'the editor did not close after a successful save')
     expect(cardsAfterSave.some((card) => card.text.includes(DRAFT_NAME)), `the saved name is not in the list: ${JSON.stringify(cardsAfterSave)}`)
     expect(probeState.saves === 2, `expected two save attempts, saw ${probeState.saves}`)

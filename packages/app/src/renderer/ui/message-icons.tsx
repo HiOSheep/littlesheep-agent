@@ -18,8 +18,8 @@ export function BranchIcon() {
   return (
     <svg className="sidebar-svg-icon branch-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
       <path d="M2.5 8h3.1c2.4 0 2.3-4 4.8-4h1.3M5.6 8c2.4 0 2.3 4 4.8 4h1.3" />
-      <circle cx="13" cy="4" r="1.2" />
-      <circle cx="13" cy="12" r="1.2" />
+      <circle className="icon-dot" cx="13" cy="4" r="1.2" />
+      <circle className="icon-dot" cx="13" cy="12" r="1.2" />
     </svg>
   )
 }

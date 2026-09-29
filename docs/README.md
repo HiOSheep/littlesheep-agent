@@ -1,6 +1,6 @@
 # LittleSheep 文档决策入口
 
-最后更新：2026-09-29 00:21:45
+最后更新：2026-09-29 07:05:49
 
 本页是正式文档的唯一首要入口。它与[仓库指南](reference/repository-guide.md)的「开发约定（coding agent 的唯一短规则）」共同构成开发本仓库时的规则边界：本页只做导航，短规则与验证分档由仓库指南拥有，不要在这里维护第二份启动读序。
 
@@ -37,8 +37,8 @@
 ## 已决定方向后再看任务书
 
 - [Runtime 自主执行与沙箱边界验证任务书 2026-09-27](taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md)：首轮 12 项实验已交付，独立审阅发现 Runtime 候选、沙箱验收器和证据口径仍需补正；第 10 节新增 RA-01～RA-10 执行清单，按证据修正、Runtime 候选、沙箱边界、真实入口验收和再次审阅推进。原始结果保留，尚未批准候选正式采用或沙箱默认启用。
-- [LS 前端简洁高效化改造任务书 2026-09-27](decision/project-status.md)：保留磨砂玻璃与连续圆角，按输出展示、设置页、图标与视觉、交互与动画划分 O1～O6、S1～S6、V1～V5、I1～I5 共 22 项任务；新增字号、深浅／系统主题、自定义配色及参考本地 DSH 插件的 Token 用量热力图，含数据口径、依赖、验收与执行台账。阶段 0 已开始；本次新增五项仅完成规划，尚未实施。
-- 仓库开发 Agent 约束瘦身（2026-09-28，任务书已退役）：GA-00～GA-03、GA-05 已落地——短规则与验证分档归入[仓库指南](reference/repository-guide.md)的「开发约定（coding agent 的唯一短规则）」，秒级时间戳与 README chronology 门已删除、行数类结构阈值改为提示而结构完整性仍是硬门，结论与样本边界见[项目状态](decision/project-status.md)的「仓库开发 Agent 约束瘦身」。**原文尚未进入 Git 历史**：退役删除还没有提交，文本目前是可被 gc 回收的悬挂 blob 与一份机器本地副本，取回方式见该节。
+- [LS 前端简洁高效化改造任务书 2026-09-27](taskbooks/frontend-simplification-taskbook-2026-09-27.md)：保留磨砂玻璃与连续圆角，按输出展示、设置页、图标与视觉、交互与动画划分 O1～O6、S1～S6、V1～V5、I1～I5 共 22 项任务；新增字号、深浅／系统主题、自定义配色及参考本地 DSH 插件的 Token 用量热力图，含数据口径、依赖、验收与执行台账。阶段 0 已开始；本次新增五项仅完成规划，尚未实施。
+- [仓库开发 Agent 约束瘦身任务书 2026-09-28](taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md)：**未完成，继续跟踪**——GA-01／GA-02 已落地，GA-00、GA-03 部分完成（夹具与验收器未冻结、验证选择 fixture 未做成门），**GA-04 配对试验未执行**（先导 12 次／正式 36 次未跑，≥20% 门槛未证明也未否证），GA-05 的规则落地已完成但退役不成立。已落地部分的结论与样本边界见[项目状态](decision/project-status.md)的「仓库开发 Agent 约束瘦身（2026-09-29）」；实验协议与采用门槛仍由本任务书拥有。
 - 整仓瘦身与冗余收口（2026-09-27，任务书已退役）：结果、实测数字、修正过的依赖边判断与仍开放项见[项目状态](decision/project-status.md)中的同名小节；改动前基线见[基线账本](reference/repository-slimming-baseline-2026-09-27.md)。任务书全文留在 Git 历史。
 - [整仓瘦身基线账本（SL-00）2026-09-27](reference/repository-slimming-baseline-2026-09-27.md)：把改动前基线绑定到 HEAD `ec527a7e` 与工作区差异摘要——`git ls-files` 1,930 项 / HEAD blob 18,351,219 字节、package TS/TSX 非测试 153,887 行与测试 96,273 行、`scripts/` 67,377 行、111 个误入库生成物（271,959 字节，测量时已由 SL-01 从工作树删除）、只读现算的 App 构建 input/output 指纹、本地目录字节与 win32/x64 平台；同时记录 SL-03 的改动前后与 taskbook Skill 取证输出。未重建、未运行，因此不含提速结论。
 - [单层子 Agent 与执行效率任务书 2026-09-24](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：SA-00～SA-09 规划主 Agent 工具调用、禁止递归委派、只读并行、共享权限/预算、停止恢复、结果证据及真实效率验收；对照 Gemini CLI、Claude Code、OpenCode 与 OpenAI 官方设计后补入任务角色、模型选型、上下文收益及小样本边界。SA-11 与 SA-10 分别在测量后评估异步和受控写入。当前为方案，尚未实现或证明提速。
@@ -49,6 +49,7 @@
 - [Harness 开源底座评估 2026-09-02](reference/harness-open-source-evaluation-2026-09-02.md)：固定 DeepSeek Harness、Pi 与 nanoDeepSeekHarness 版本、许可证、供应链证据和 LS adapter 边界；当前决定保留自有 kernel、只吸收 durable event/session/stream 设计。
 - Harness 当前语义与历史复杂度收口任务书（2026-09-25）：**已于 2026-09-27 退役**（HC-00～HC-06 全部落地），事实归入[项目状态](decision/project-status.md)的「Harness 当前语义（2026-09-27）」。
 - 对话任务连续性 P0 专项任务书（2026-08-13）：**已于 2026-09-27 退役**，事实归入[项目状态](decision/project-status.md)的「对话连续性（2026-09-27）」。
+- [仓库开发 Agent 约束瘦身任务书 2026-09-28](taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md)：**未完成、继续跟踪**——GA-01／GA-02 已落地，GA-00／GA-03 部分完成，**GA-04 的 12 次先导与 36 次正式配对运行尚未执行**（"治理耗时／工具调用下降 ≥20%"采用门槛未证明也未否证）。已落地部分的结论、验证读数与样本边界见[项目状态](decision/project-status.md)的「仓库开发 Agent 约束瘦身（2026-09-29）」，实验协议与采用门槛仍由任务书拥有。
 - [缓存 95% 冻结负载验收规程](reference/cache-95-acceptance.md)：现行红线口径（会话累计、真实长任务节点、`pnpm run check:cache-acceptance`）、当前实测、冻结输入、测量规则、禁止做法、完成条件与仍未汇总项；仍然承重的历史结论集中在附录 A，逐轮测量日志已移出、只留在 git 历史。
 - [缓存请求形状基线](reference/cache-baseline/README.md)：同一探针在改前 checkout 上跑冻结负载的逐请求字符数、共享前缀与工具目录摘要对比，并维护**长任务批次历史表**（每一批的唯一事实与机器可读账本链接；逐批叙述已于 2026-09-24 退役）；[最新一次运行](reference/cache-baseline/latest.md)由 harness 测试自动重写，[改前冻结副本](reference/cache-baseline/pre-fix-cd6cabc.md)保留为对比依据（不含提示词正文、会话内容或密钥）。
 - [桌面冷启动基线 2026-09-23](reference/cold-start-baseline/README.md)：CS-01 的五时间点基线（进程启动、真实首帧、输入可用、当前会话可读、首次可执行）× 空/普通/大历史/待恢复四档隔离数据，含逐次原始机器可读账本、CS-04 执行准备预算拆解（Runner 构建 121 ms / RunRouter 50 ms / 插件宿主 2.8 ms）与两项已被实测证伪的"提速"改动记录；[原始账本](reference/cold-start-baseline/desktop-cold-start-baseline-2026-09-23.json)。
@@ -78,7 +79,8 @@
 | 2026-09-24 | 缓存基线 5 份被取代或只是账本渲染的文档 | [缓存基线](reference/cache-baseline/README.md) 的批次历史表；机器可读账本 `.json` 全部保留（gate 输入，且冷启动/重建/尾部三类分解的唯一副本） |
 | 2026-09-26 | 应用层 UI / UX 优化与统一任务书 2026-09-22（UX-32～UX-39） | [项目状态](decision/project-status.md) 的"应用层 UI 与工作区（2026-09-26）"（含"同一批验收记录的开放边界"）与各 package / 领域 README、`scripts/README.md`；本轮修掉的四个真实窗口缺陷（终端面板空面板、切回标签键盘失效、每会话一条流耗尽连接、重放污染下一条命令）记录在同文件的终端会话条目 |
 | 2026-09-27 | Runtime 状态一致性与必要记忆任务书 2026-09-22、Harness 当前语义与历史复杂度收口任务书 2026-09-25、对话任务连续性 P0 专项任务书 2026-08-13 | [项目状态](decision/project-status.md) 的三个对应小节（"文件一致性与受控记忆（2026-09-27）"、"Harness 当前语义（2026-09-27）"、"对话连续性（2026-09-27）"） |
-| 2026-09-29 | 仓库开发 Agent 约束瘦身任务书 2026-09-28（GA-00～GA-03、GA-05 落地；GA-04 只完成试点） | [仓库指南](reference/repository-guide.md)（开发约定短规则、README 同步口径与评审三问、L1～L4 验证分档）、[项目状态](decision/project-status.md) 的"仓库开发 Agent 约束瘦身（2026-09-29）"（批次结果、GA-04 试点读数与样本边界、退役原文的取回方式）与"P1：效率基线"（配对试验未完成） |
+
+> 2026-09-29 记录一次**退役回退**：[仓库开发 Agent 约束瘦身任务书 2026-09-28](taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md) 曾在 GA-04 未执行时被删除并列入退役，当天已还原并改回"未完成，继续跟踪"。退役的前提是工作完成且事实有归属；"未证明"只能记为开放项，不能替代未完成的工作。
 
 本页保留的机器事实：`check:repo` 的 `required` 列表不固定任何任务书（见 `scripts/check-repository-hygiene.mjs` 的 `checkCanonicalFiles`），任务书数量受[仓库指南](reference/repository-guide.md)所述预算约束，且该预算现在是提示而非硬门。
 

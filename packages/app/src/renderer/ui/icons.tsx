@@ -1,4 +1,8 @@
 // Reusable renderer interaction primitives and icons.
+//
+// A glyph that draws a *solid* mark says so with `icon-dot`; every other circle stays
+// an outline, because `styles/03-shell-sidebar.css` fills only `.icon-dot` (V2). Without
+// that split the blanket rule also flattened the magnifier's lens and the clock's face.
 import { ModeRisk } from '../runtime/options'
 import { type WorkspacePanelTab } from '../workspace-persistence'
 export { FileGlyphIcon, FolderGlyphIcon, fileGlyphKind, type FileGlyphKind } from './file-glyph-icons'
@@ -13,7 +17,7 @@ export function SidebarToggleIcon({ className = '' }: { className?: string }) {
 
 export function SettingsGearIcon() {
   return (
-    <svg className="settings-gear-icon" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="settings-gear-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
@@ -51,9 +55,9 @@ export function ScheduleIcon() {
 export function MemoryTreeNavIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="3.35" r="1.35" />
-      <circle cx="4.45" cy="11.85" r="1.35" />
-      <circle cx="11.55" cy="11.85" r="1.35" />
+      <circle className="icon-dot" cx="8" cy="3.35" r="1.35" />
+      <circle className="icon-dot" cx="4.45" cy="11.85" r="1.35" />
+      <circle className="icon-dot" cx="11.55" cy="11.85" r="1.35" />
       <path d="M8 4.75v2.25M8 7l-3.05 3.65M8 7l3.05 3.65" />
     </svg>
   )
@@ -98,9 +102,9 @@ export function SettingsNavArrowIcon() {
 export function MoreIcon() {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <circle cx="4" cy="8" r="1.25" />
-      <circle cx="8" cy="8" r="1.25" />
-      <circle cx="12" cy="8" r="1.25" />
+      <circle className="icon-dot" cx="4" cy="8" r="1.25" />
+      <circle className="icon-dot" cx="8" cy="8" r="1.25" />
+      <circle className="icon-dot" cx="12" cy="8" r="1.25" />
     </svg>
   )
 }
@@ -274,15 +278,6 @@ export function PanelFullscreenIcon({ active }: { active: boolean }) {
       ) : (
         <path d="M3.45 6.45v-3h3M9.55 3.45h3v3M12.55 9.55v3h-3M6.45 12.55h-3v-3M3.45 3.45l3 3M12.55 3.45l-3 3M12.55 12.55l-3-3M3.45 12.55l3-3" />
       )}
-    </svg>
-  )
-}
-
-
-export function PanelCollapseIcon() {
-  return (
-    <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M10.1 4.35 6.45 8l3.65 3.65" />
     </svg>
   )
 }

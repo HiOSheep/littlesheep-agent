@@ -123,6 +123,12 @@
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
+  /* One optical stroke for the action glyphs (V2). An SVG `stroke-width` is measured
+     in viewBox units, so the same 16-unit glyph rendered a 0.97px stroke in the 10px
+     chip and 1.74px in the 18px project row; both action families now declare the
+     stroke in CSS pixels with `vector-effect: non-scaling-stroke`, the way
+     `.sidebar-toggle-outline` already did for its own 18x14 box. */
+  --icon-stroke: 1.5px;
   --motion-fast: 140ms;
   --motion-base: 180ms;
   --motion-slow: 220ms;
@@ -1341,14 +1347,28 @@ body.is-window-resizing .window-shell *::after {
   height: 15px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.55;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
   shape-rendering: geometricPrecision;
   overflow: visible;
 }
 
-.sidebar-svg-icon circle {
+/* `vector-effect` is not an inherited property, so it has to sit on the shapes that are
+   actually stroked. Declared on the `<svg>` instead it does nothing, and the family keeps
+   scaling its stroke with the box (headless Chromium measured 0.94px at a 10px box and
+   1.69px at 18px with the declaration on the root). */
+.sidebar-svg-icon path,
+.sidebar-svg-icon rect,
+.sidebar-svg-icon circle,
+.sidebar-svg-icon ellipse {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Only the marks that are meant to be solid say so. Filling every circle turned the
+   magnifier's lens and the clock's face into discs, which reads as a different glyph
+   family rather than a smaller one. */
+.sidebar-svg-icon circle.icon-dot {
   fill: currentColor;
   stroke: none;
 }

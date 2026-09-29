@@ -1,6 +1,6 @@
 # LittleSheep 🐑
 
-最后更新：2026-09-27 08:55:26
+最后更新：2026-09-29 00:09:39
 
 **A local-first agent desktop app that turns goals into finished work.**
 
@@ -121,7 +121,9 @@ pnpm run build
 .\build-app.bat
 ```
 
-构建完成后，桌面的 `LittleSheep.lnk` 会指向当前仓库生成的 `LittleSheep.exe` 命名运行时，并使用当前 `packages/app` 作为工作目录。这一步是自动的：`pnpm run dev`、`pnpm run build` 与 `build-app.bat` 都会把它同步到刚准备好的运行时，升级 Electron 后不必手动重跑；需要显式创建或排错时用 `pnpm run refresh:desktop-shortcut`。
+构建完成后，桌面的 `LittleSheep.lnk` 会指向 `scripts/launch-littlesheep.ps1`，并使用当前 `packages/app` 作为工作目录。这一步是自动的：`pnpm run dev`、`pnpm run build` 与 `build-app.bat` 都会把它同步到这条链路上，升级 Electron 后不必手动重跑；需要显式创建或排错时用 `pnpm run refresh:desktop-shortcut`，只看快捷方式本身用 `pnpm run app:shortcuts`。
+
+启动器解析 `packages/app/runtime` 下最新的 `LittleSheep.exe`，并且在启动前核对 `packages/app/out` 是不是源码描述的那一份构建。**核对不通过时它不会启动任何东西**：打印原因、弹出说明为什么不能启动的消息框，并以退出码 3 结束——旧构建不会被悄悄启动。确实想启动磁盘上那一份旧构建时显式加 `-AllowStaleBuild`（例如 `pwsh -File scripts/launch-littlesheep.ps1 -AllowStaleBuild`）。构建找不到 pnpm 时，报错会列出查过的每个路径与修法（也可用 `LITTLESHEEP_PNPM` 指定完整路径），不会把"命令没跑起来"当成"检查通过"。
 
 开发模式：
 
@@ -195,25 +197,23 @@ LS 将活动应用数据根视为自己的逻辑容器，默认数据根为：
 
 ## 开发与验证
 
-日常开发可以使用基于 Git 变更传播范围的快速验证：
+开发本仓库的规则只有一个版本化来源：[仓库指南](docs/reference/repository-guide.md) 的「开发约定（coding agent 的唯一短规则）」。
+
+验证按真实变化与失败后果分档，不按文件数或目录一刀切：
+
+- L1 局部低风险（私有 helper、测试、普通 UI 微调、文档修正）：`verify:task` 或所属 package 的定向测试与 typecheck。
+- L2 跨模块／公共契约：受影响 typecheck 与契约测试，使用 `verify:changed`。
+- L3 核心流程／数据／安全（状态迁移、重启恢复、持久化格式、权限边界、共享 durable 协议）：`verify:core` 加对应专项。
+- L4 发布／全仓影响：`verify:full` 加本次发布范围对应的 Electron、打包与供应链专项。
 
 ```powershell
+pnpm.cmd run verify:task -- --files=<path>
 pnpm.cmd run verify:changed
-```
-
-修改 Harness、Runner、Context、Memory 或公共契约时：
-
-```powershell
 pnpm.cmd run verify:core
-```
-
-阶段结束、准备推送或发布前：
-
-```powershell
 pnpm.cmd run verify:full
 ```
 
-完整验证流程当前等价于：
+`verify:full` 当前等价于：
 
 ```powershell
 pnpm.cmd run check:repo
@@ -223,7 +223,7 @@ pnpm.cmd run build:app
 pnpm.cmd run verify:app-recovery
 ```
 
-TypeScript 检查使用 Project References 和增量缓存，并刷新本地声明产物，避免依赖包继续检查旧的 `dist/*.d.ts`。
+三层门不是简单的包含关系，`verify:full` 本身也不含全部 Electron／Provider 专项；任务门不替代 affected 门，报告中的 `skipped`、未运行和失败必须与通过分开。TypeScript 检查使用 Project References 和增量缓存，并刷新本地声明产物，避免依赖包继续检查旧的 `dist/*.d.ts`。
 
 最新测试和验收状态统一记录在 [Project Status](docs/decision/project-status.md)。
 

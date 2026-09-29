@@ -141,7 +141,7 @@
 | `packages/app/src/main/workspace-layout-index.ts` | 393 | Main 多会话工作区镜像、旧单快照兼容、边界规范化与项目路径重绑定 | 保持持久化索引边界；继续增长时分离 store codec 与路径重绑定 | C |
 | `packages/app/src/renderer/runtime-recovery/use-checkpoint-recovery.ts` | 355 | Checkpoint 发现、续跑请求、恢复入口状态与资源/权限状态展示 | 状态选择与展示 helper 已下沉到 `checkpoint-recovery-state.ts`（含发现失败与损坏记录的入口派生）；保持恢复控制器，不要再吸收展示逻辑 | B |
 | `packages/runner/src/run-checkpoint-controller.ts` | 318 | Checkpoint inspect、唯一 head、claim 和 durable resume identity 查询 | 保持控制面 facade；后续分离 query/claim policy | E |
-| `packages/app/src/renderer/ui/icons.tsx` | 345 | 无状态声明式图标集合 | 浏览器图标家族与工作区文件/文件夹字形已拆出（`browser-icons.tsx`、`file-glyph-icons.tsx`）；其余继续按家族拆分，冻结期间不得继续增长 | B |
+| `packages/app/src/renderer/ui/icons.tsx` | 340 | 无状态声明式图标集合（2026-09-29 V2 删掉零消费者的 `PanelCollapseIcon`，实测 340，冻结上限仍是 350） | 浏览器图标家族与工作区文件/文件夹字形已拆出（`browser-icons.tsx`、`file-glyph-icons.tsx`）；其余继续按家族拆分，冻结期间不得继续增长；动作语义与光学尺寸登记在 `icon-actions.test.ts` 与 `ui/README.md` | B |
 | `packages/app/src/renderer/ui/focus-indicator-rules.ts` | 341 | 焦点可见性规则 R3 的样式表读法：识别焦点态规则、outline 抑制、可见替代，以及"滚动容器内边距容不容得下里面控件的焦点环"的算术 | 保持"纯文本进、判断出"的解析边界，不引入 DOM；继续增长时把 CSS 选择器解析（`subjectOf`/`ruleKeysOf`）与"抑制/替代"判定分成两个模块 | B |
 | `packages/app/src/renderer/ui/focus-ownership.ts` | 315 | "谁持有焦点"的唯一归属（规则 R1/R2/R3）：带界限重试的入场聚焦、关闭时归还、以及聚焦控件必须可见的规则声明 | 保持焦点生命周期单一归属；继续增长时把重试调度与焦点归还拆成独立模块，但 R1/R2 的三条规则文本必须留在同一处 | B |
 | `packages/memory-tree/src/memory-service.ts` | 343 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
@@ -150,7 +150,7 @@
 | `packages/cli/src/commands/import-repo.ts` | 323 | 导入流程、Git、LLM 和进度 | 分离 source、distill、progress adapter | C |
 | `packages/memory-tree/src/index.ts` | 343 | Memory Tree 公共 barrel 与稳定导出 | 保持无逻辑导出层 | D |
 | `packages/channels/webhook/src/plugin.ts` | 319 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
-| `packages/app/src/renderer/composer/runtime-picker.tsx` | 453 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；继续增长时分离菜单定位与选项渲染 | B |
+| `packages/app/src/renderer/composer/runtime-picker.tsx` | 456 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；继续增长时分离菜单定位与选项渲染 | B |
 | `packages/app/src/renderer/app-shell/composer-view.tsx` | 324 | 输入栏表面：草稿、附件、控件行、发送/停止入口与就地原因 | 保持稳定表面；模型可用性与焦点归属分别下沉到 `composer/send-readiness.ts` 与 `composer/use-composer-focus.ts`，视图只渲染结果；继续增长时把控件行与提示拆成独立组件 | B |
 | `packages/context/src/tokenizers/deepseek-v4-encoding.ts` | 483 | DeepSeek V4/V4.1 消息、thinking、DSML 工具调用与 numeric reasoning budget 的官方请求 framing | 保持纯编码职责；继续增长时分离 DSML 工具序列化与 framing 变体表 | E |
 | `packages/context/src/tokenizers/deepseek-v4-counter.ts` | 497 | DeepSeek V4 官方 tokenizer 资源校验、下载、加载与有界精确计数缓存 | 继续增长时分离通用不可变资源下载器 | E |
@@ -177,8 +177,7 @@
 | `packages/app/src/renderer/workspace/line-comments.tsx` | 619 | 普通文件与双列 diff 的行号映射、手势、装饰、共享评论 surface 装配和附件发布 | 保留 Monaco 映射与交互 adapter；draft、表单、卡片、几何和通用 view-zone 生命周期由共享模块维护 | B |
 | `packages/skills/src/loader.ts` | 320 | skill 索引与正文装载；新增 per-run 生成的动态正文注册（如 taskbook）后越过 300 行 | 后续按索引构建、正文装载、动态注册分离 | D |
 | `packages/app/src/renderer/chat/use-chat-scroll-controller.ts` | 367 | 对话区滚动位置的唯一所有者：底部吸附、阅读锚点、resize burst 修复队列与"回到最新"状态 | 保持"位置状态只有这一个所有者"的边界，`app-shell/chat-view.tsx` 只渲染；若继续增长，把 resize burst（观测器 + 事件 + 逐帧收敛）拆成独立模块，锚点算术必须留在 `chat-scroll-anchor.ts` 的纯函数里 | B |
-| `packages/app/src/renderer/settings/search-index.ts` | 575 | 设置字段级索引（S3）：字段 id、标签、别名、所在分组/页面/小节、可安全发布的当前值与"不索引"的理由，以及落地入口 `revealSettingsField`（滚到该行、展开折叠区、把光标放到该行控件、短暂强调） | 保持"只登记与定位、不渲染"的边界：页面只通过 `data-settings-field` 属性对接，不 import 本模块；若继续增长，先把登记数据（`SETTINGS_FIELD_INDEX`/`SETTINGS_UNINDEXED_FIELDS`）与 DOM 落地流程分成两个模块，机密字段的理由说明必须留在数据里 | B |
-| `packages/app/src/renderer/settings/workspace.tsx` | 381 | 设置壳：页面装配、侧栏导航与分隔条、搜索框（页面级过滤 + S3 字段级结果与组合框键盘约定）以及"等目标行出现"的有界落地循环 | 保持壳的职责：字段登记与值读取留在 `search-index.ts`，页面内容留在各页组件，焦点生命周期仍归 `ui/focus-ownership.ts`；若继续增长，先把搜索控件（输入 + 结果列表 + 键盘 + 落地等待）拆成独立组件，不要在壳里新增第三个职责 | B |
+| `packages/app/src/renderer/settings/workspace.tsx` | 395 | 设置壳：页面装配、侧栏导航与分隔条、搜索框（页面级过滤 + S3 字段级结果、组合框键盘约定与环的滚动可见性）以及"等目标行出现"的有界落地循环 | 保持壳的职责：字段登记与值读取留在 `search-index.ts`，页面内容留在各页组件，焦点生命周期仍归 `ui/focus-ownership.ts`；若继续增长，先把搜索控件（输入 + 结果列表 + 键盘 + 落地等待）拆成独立组件，不要在壳里新增第三个职责 | B |
 
 ## 已完成拆分
 
@@ -238,8 +237,8 @@
 **本轮复查到期：2026-10-24**（下表所有条目共用这一日期，表格里一律写"同上"——续期只改这一处）。到期前必须逐条复查（路径仍存在、仍超过 600 行、未越过上限）；仓库卫生门在到期日已过时直接失败，日期不会自动续期。2026-09-24 已按此口径完成一次逐条复查。
 
 | 文件 | 所有者 | 暂缓原因 | 行数上限 | 复查日期 |
-| `packages/app/src/renderer/settings/search-index.ts` | S3 | 字段级搜索索引（覆盖清单、别名、落地属性）；键盘与接线检查补齐前不拆分 | 620 | 同上 |
 | --- | --- | --- | ---: | --- |
+| `packages/app/src/renderer/settings/search-index.ts` | B / Renderer（S3） | 字段级搜索索引（覆盖清单、别名、落地属性）实测 607 行；登记数据本身随设置表面增长，先冻结覆盖与落地特征测试，再决定按"登记数据 / DOM 落地"拆分 | 620 | 同上 |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | B / Renderer | 启动恢复、Runtime 设置与会话投影仍共享跨领域不变量；先冻结兼容 facade 和状态快照特征测试，再下沉持久化与恢复编排 | 700 | 同上 |
 | `packages/channels/qqbot/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与协议适配端口稳定后拆分；本轮只补充连续性 request identity 透传 | 820 | 同上 |
 | `packages/memory-tree/src/project-memory-projection.ts` | D / Memory | 投影事务、冲突与恢复必须在特征测试覆盖后迁移 | 780 | 同上 |

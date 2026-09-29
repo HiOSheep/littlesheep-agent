@@ -12,6 +12,11 @@
 - `send-readiness.ts`：**发送是否必须被拒绝**的唯一判据，把 Runtime 就绪原因与上面的可用性合成一个决定（`blocked` / `reason` / `executionReason` / `modelReason` / `action`）。没有可用模型时发送被拒**并且说明原因**：默认模型引用 (`openai/gpt-5.6`) 指向没有密钥的供应商，实测那一轮停在工作态 1 分 14 秒、零字符、无错误也无结算，而 ChatGPT / Cursor / VS Code 都拒绝这种提交并把人指向模型设置。`composer-view.tsx` 的按钮与 Enter 是同一条入口，两者按同一判据拒绝；`send-block-notice.tsx` 把原因就地写在控件旁（启动阶段的文字仍归 `runtime-readiness/composer-readiness-hint`，两者互斥；它用自己的 `.composer-send-block` 类，**不借用** `.composer-readiness-hint`，只共享 `../styles/11-runtime-readiness.css` 里那条选择器列表的外观——一个类名在 DOM 里只能有一个含义），禁用控件的可访问名携带同一句原因；`app-shell/chat-view.tsx` 的空对话文案也用同一句，不再邀请一次发不出去的任务。真实窗口门 `pnpm run verify:composer-send-gate`（未配置时拒绝且不产生 run，配置好后照常发送并结算）。
 - `context-usage-indicator.tsx` 的弹层同时给出上下文占用与会话累计缓存命中（`formatSessionCache`）；usage 未上报的请求会在文案里标注，不把局部读数当成完整读数。
 - `input-size.ts`、`focus-routing.ts`：输入框高度同步和输入焦点归属判定。`focus-routing.ts` 还导出一次性的 `COMPOSER_FOCUS_REQUEST_EVENT` 与它的判断函数 `shouldTakeComposerFocus`：`launch`（窗口刚可用）只在没有任何元素持有焦点时取走光标，`new-session`（用户刚新建对话）除非有对话框/审批/弹层打开、或用户正在别的文本表面里输入，否则取走；两种意图都在**事件触发时**重读实时焦点，而不是在请求发出时。
+- `menu-focus-return.ts`：**输入栏菜单关闭后的光标归属**（I1，2026-09-29）。`ui/focus-ownership.ts` 管的是模态那一半（打开时接管、关闭时归还）；这里管弹层欠下的那一半，而且只有一小条：弹层打开时从不取走光标（`ui/focus-ownership.ts` 已明确"页面级表面不得使用它"），所以关闭时只能**归还它本来就持有的**光标。判据是 `shouldReturnMenuCaret`：只有"关闭前光标在菜单里"且"关闭后光标落在页面 body（或仍停在这个即将被浏览器修正的菜单里）"才归还给触发器；焦点被一次外部点击移到真实元素上时（`elsewhere`）不动它。触发器是归还目标，因为这三个控件本来就是菜单按钮（`aria-haspopup="menu"` + `role="menu"` + `aria-expanded`），ARIA 菜单按钮模式与 ChatGPT／VS Code／Linear／Cursor 的既有做法都是"关闭后焦点回到打开它的按钮"，也与 R2 的"还给打开前持有光标的元素"一致。真实窗口实测（2026-09-29，1100×760，真指针 + 真按键）：
+  - **改前**：四条关闭路径——添加菜单按 Escape、权限菜单按 Escape、点选权限项、点选模型——`document.activeElement` 全部是 `BODY`（面板与状态同一次提交里变成 `inert`，Chromium 于是把焦点丢到 body），下一次按键落不到任何控件上。
+  - **改后**：四条路径都回到各自的触发器（`.add-menu-trigger`／`.mode-picker-trigger`／`.runtime-picker-trigger`）。
+  - 三个菜单各自只有**一条**关闭路径（`closeMenu()`／`closePicker()`），先 `captureMenuCaret()` 再改变 `open`：光标位置只有在菜单还在渲染时才读得到。判别实验：把某条关闭路径还原成原来的多入口 `setOpen(false)` → `menu-focus-return.test.ts` 转红（`expected 3 to be 1`）；只删掉 `captureMenuCaret()` 一行 → 同一文件转红（`the close path must capture the caret before it closes`）；字节还原后 7/7 绿。
+  - **未覆盖**：真实窗口探针不是产品门禁（`scripts/` 下没有对应 gate）；`window` 外点击落在不可聚焦区域时会回到触发器，其余情况不动。
 - `use-composer-focus.ts`：把上面两条焦点请求接到输入框上——挂载时请求 `launch` 光标，收到新建对话的窗口事件时请求 `new-session`。`new-session` 会在**有界**（250 ms、每 25 ms 一次）的窗口内反复问同一个判据，因为发起它的那条命令同时也在关闭别的东西（侧栏面板要走完自己的退场、刚结算的提示下一两帧才离开层栈），只看一眼就会读到"正在离场"的表面而把光标丢在地上；每次都用同一个守卫，所以活着的对话框或用户自己移走的光标仍然赢。真实窗口门 `pnpm run verify:composer-focus`：新窗口无点击即可收到真实按键；新建对话把光标交还输入框（并且命令确实执行：它关掉了自己打开的那个面板）；完全访问确认对话框打开时、侧栏搜索框正在输入时、运行中的审批提示打开时，光标都留在原处。
 - 发送入口的可用性：`app-shell/composer-view.tsx` 同时参考 Runtime 就绪事实（`runtime-readiness/use-runtime-readiness`）。窗口早于 Runner 出现，未就绪时发送必须在原地禁用并使用 Runtime 给出的原因，草稿与焦点不变；不得只凭“草稿非空”就放出可点击的发送入口。
 
@@ -26,3 +31,11 @@
 **隐含的单/双击语义已取消。** `message-files.tsx` 的 `MessageFileLink`（用户消息里的附件卡）原先把单击**延迟 230ms** 再打开预览，并把双击解释成"用系统应用打开"：一次打开要等一个计时器，而第二个动作没有任何提示，只有恰好双击的人才会发现它。现在卡片是普通按钮——按下立刻 `onOpen()`，双击只是两次打开同一个预览（幂等，不再触发别的动作）；"用系统默认应用打开"成为它旁边一个**显式**的次级控件 `.message-file-open-system`（`ExternalOpenIcon`、可访问名 `用系统默认应用打开 <文件名>`、`title` 同义，24px 圆形目标，与 `.message-meta-copy` 同一角色、同进 `12-squircle-corners.css` 的圆形豁免清单）。两者一起放在 `.message-file-entry` 里，卡片保留既有的悬停/焦点样式。
 
 真实窗口（`o3.single-press-opens-immediately-and-once`、`o3.double-press-does-not-trigger-a-second-action`、`o3.system-open-has-an-explicit-secondary-entry`、`o3.secondary-entry-opens-with-the-system-once`，均在真实指针按下 + `WM_NCHITTEST` = `HTCLIENT` 的前提下取证）：改前单次按下 **349-357ms** 才出现预览、双击发出 **1 次** `POST /workspace/open`；改后单次按下 **116ms**、双击 **0 次** `open`，次级控件按下发出**恰好 1 次** `/workspace/open`（同一测量用 `window.fetch` 记录路由，且按 pathname 精确匹配，避免把 `/workspace/open-with` 误记为系统打开）。未覆盖：附件缓存目录里的文件在系统打开时会落到默认应用（本批只验证请求次数与目标，不验证外部应用真的启动）；`_blank` 类正文超链接（`Markdown.tsx`）仍是单击内开、双击系统打开，不在本项范围内。
+
+## 输入与选择流程的三种状态（I1，2026-09-29）
+
+真实 Electron 窗口（1100×760 与最小窗 800×620，窗口**显示在屏幕上**后测量；真指针按键 + `WM_NCHITTEST`），除上面的光标归还外还取证了三条既有契约，**没有改动**：
+
+- **运行中保留停止与补充发送**：最小窗 800×620 下跑一轮流式回答并留下草稿，`.composer-run-actions .send-round.stop` 与 `:not(.stop)` 同时存在；停止键始终在 `.composer` 与 `.chat` 矩形内、矩形完全落在窗口内，中心点 `elementFromPoint` 命中按钮自身，`WM_NCHITTEST` = `HTCLIENT`（1）。工作区面板**同时停靠**（chat 列 299px，触发 520px 容器查询）时停止键仍在 composer 内可点；但此时控件行 `scrollWidth 421 > clientWidth 255`，工作区 chip 与模型选择器、上下文占用与权限选择器互相重叠——已记录，本项未改（不在本项验收点内）。
+- **等待决定**：审批提示打开时 `.approval-layer` 是命中层，composer 没有被 `inert`／`aria-hidden`，停止键仍在 DOM 里但点击不穿透；提示自身给出 `拒绝／本对话允许／仅本次`，选"拒绝"后层消失、run 结算、光标回到输入框。
+- **选择模型不隐式改变权限**：点选另一个模型只发出 `POST /runtime {"model":…,"reasoning":…}`（**没有** `permissionMode` 字段），权限选择器的可访问名逐字不变，随后那一轮的 `POST /run/stream` 仍带 `"permissionMode":"research"`。`applyModelPatch` 的类型本来就只收 `Pick<RuntimePatch,'model'|'reasoning'>`，这条是取证而非改动。

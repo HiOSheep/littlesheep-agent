@@ -761,17 +761,19 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 
 .workspace-panel-svg-icon path,
 .workspace-panel-svg-icon rect,
-.workspace-panel-svg-icon circle {
+.workspace-panel-svg-icon circle,
+.workspace-panel-svg-icon ellipse {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.35;
+  stroke-width: var(--icon-stroke);
+  vector-effect: non-scaling-stroke;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .history-navigation-icon .workspace-browser-arrow-shaft,
 .history-navigation-icon .workspace-browser-arrow-head {
-  stroke-width: 1.35;
+  stroke-width: var(--icon-stroke);
 }
 
 .workspace-panel-tabs {

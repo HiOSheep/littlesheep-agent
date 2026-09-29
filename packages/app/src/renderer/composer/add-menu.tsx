@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FloatingHelpTip } from '../ui/floating-help'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
+import { useMenuFocusReturn } from './menu-focus-return'
 
 
 export function AddMenu({
@@ -18,19 +19,30 @@ export function AddMenu({
 }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const captureMenuCaret = useMenuFocusReturn({ open, panelRef, triggerRef })
 
-  useDismissOnOutside(open, [rootRef], () => setOpen(false))
+  // One close path: every reason the menu can go away goes through here, so the
+  // caret the panel was holding is given back to the trigger (see
+  // `menu-focus-return.ts`) instead of being dropped on the body.
+  function closeMenu() {
+    captureMenuCaret()
+    setOpen(false)
+  }
+
+  useDismissOnOutside(open, [rootRef], closeMenu)
 
   useEffect(() => {
     const handleComposerMenuOpen = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== 'add') setOpen(false)
+      if ((event as CustomEvent<string>).detail !== 'add') closeMenu()
     }
     window.addEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
     return () => window.removeEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
   }, [])
 
   function runAction(action: () => void | Promise<void>) {
-    setOpen(false)
+    closeMenu()
     onTipChange(null)
     void action()
   }
@@ -39,6 +51,7 @@ export function AddMenu({
     <div ref={rootRef} className={`add-menu ${open ? 'open' : ''}`}>
       <button
         {...transientTriggerProps()}
+        ref={triggerRef}
         className="icon-btn add-menu-trigger composer-tab-control"
         type="button"
         aria-label={label}
@@ -46,16 +59,18 @@ export function AddMenu({
         aria-expanded={open}
         onClick={() => {
           onTipChange(null)
-          setOpen((value) => {
-            const next = !value
-            if (next) window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'add' }))
-            return next
-          })
+          if (open) {
+            closeMenu()
+            return
+          }
+          window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'add' }))
+          setOpen(true)
         }}
       >
         +
       </button>
       <div
+        ref={panelRef}
         className="add-menu-panel"
         role="menu"
         aria-label="添加"

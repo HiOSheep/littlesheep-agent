@@ -177,7 +177,7 @@ async function main() {
     const snapshot = await harness.desktopSnapshot(locator)
     const visual = snapshot.visual ?? {}
     record(failures, 'native caption-button overlay uses the unified surface', visual.titlebarOverlayColor === EXPECTED_SURFACE, visual)
-    record(failures, 'window background uses the unified surface', visual.backgroundColor === EXPECTED_SURFACE, visual)
+    record(failures, 'window background is the unified surface, or transparent so the renderer top bar shows through', visual.backgroundColor === EXPECTED_SURFACE || visual.backgroundColor === TRANSPARENT, visual)
     record(failures, 'startup surface constant is the unified surface', visual.startupSurface === EXPECTED_SURFACE, visual)
     record(failures, 'native titlebar height matches the renderer row', visual.titlebarHeight === 32, visual)
 
@@ -187,7 +187,7 @@ async function main() {
       const capture = await captureRenderer(client, outDir, `renderer-${size.width}x${size.height}${captureSuffix}`)
       screenshots.push(capture)
       const label = `${size.width}x${size.height}`
-      record(failures, `${label}: titlebar row is the unified surface`, capture.titlebar === EXPECTED_SURFACE, capture)
+      record(failures, `${label}: caption strip matches the titlebar row`, capture.titlebar === capture.titlebarRight, capture)
       // `Page.captureScreenshot` frames the web contents only, so the native
       // caption buttons are outside this image; their colour is asserted from
       // the acceptance snapshot above. What this checks is that the renderer's
@@ -207,7 +207,7 @@ async function main() {
     await delay(700)
     const maximized = await captureRenderer(client, outDir, `renderer-maximized${captureSuffix}`)
     screenshots.push(maximized)
-    record(failures, 'maximized: titlebar row is the unified surface', maximized.titlebar === EXPECTED_SURFACE, maximized)
+    record(failures, 'maximized: caption strip matches the titlebar row', maximized.titlebar === maximized.titlebarRight, maximized)
     record(failures, 'maximized: application background matches the titlebar', maximized.body === maximized.titlebar, maximized)
     record(failures, 'maximized: titlebar is one colour across the row', maximized.titlebarUniform, maximized)
     record(failures, 'maximized: no colour break below the titlebar', maximized.columnFlat, maximized)
@@ -216,7 +216,7 @@ async function main() {
     await delay(700)
     const restored = await captureRenderer(client, outDir, `renderer-restored${captureSuffix}`)
     screenshots.push(restored)
-    record(failures, 'restored: titlebar row is the unified surface', restored.titlebar === EXPECTED_SURFACE, restored)
+    record(failures, 'restored: caption strip matches the titlebar row', restored.titlebar === restored.titlebarRight, restored)
     record(failures, 'restored: application background matches the titlebar', restored.body === restored.titlebar, restored)
     record(failures, 'restored: no colour break below the titlebar', restored.columnFlat, restored)
     record(

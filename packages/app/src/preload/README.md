@@ -1,6 +1,6 @@
 # Electron Preload
 
-最后更新：2026-09-28 12:38:06
+最后更新：2026-09-28 23:56:31
 
 onWindowChrome 通过固定 window-chrome 通道订阅 Main 签发的布局和材质事实，先订阅再查询并重放缓存，覆盖最大化恢复和页面重载；只接受 shared/window-chrome-contracts.ts 校验过的状态。返回退订函数，不暴露设置窗口状态或原生材质的任意 IPC。
 
@@ -21,5 +21,6 @@ Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小�
 
 ## 验证
 
-- 修改后运行 App typecheck 和 build，并检查 renderer 在 `contextIsolation` 下正常启动。
+- 验证按风险分级：只有跨进程契约、暴露面（`contextBridge` API 形状）或生命周期变化时才要求 App typecheck 和 build，并检查 renderer 在 `contextIsolation` 下正常启动；纯内部调整跑定向测试即可。
+- 无法证明改动没碰到契约或暴露面时按上一档处理；`skipped` 不等于通过，也不能用旧结果放行没有重跑的检查。
 - 禁止把 preload 作为绕过权限或 Local App API 契约的捷径。

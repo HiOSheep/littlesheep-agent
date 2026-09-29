@@ -135,8 +135,37 @@
 
 所有临时浮层应支持点击其他区域收回；新增转场必须使用统一时长、可中断清理和 reduced-motion 兼容路径。
 
-`icons.tsx` 是无状态声明式图标集合，350 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350，上限同步下调），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行按钮由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合；它**按状态画两个不同图标**（`data-wrap-icon="off"`：中间那条线直着伸出右边缘、箭头朝外＝不换行；`"on"`：同一条线折到下一行、箭头折回＝自动换行），切换时同步替换 SVG，因此按钮自身的图形就能说明当前状态，不只靠 `aria-pressed`。契约断言在 `code-wrap-preference.test.ts`（每个状态画哪个图标）。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
+`icons.tsx` 是无状态声明式图标集合，340 行（`FolderGlyphIcon` 移入 `file-glyph-icons.tsx` 后由 359 降到 350；2026-09-29 V2 删掉零消费者的 `PanelCollapseIcon`，实测 340，冻结上限 350 不变），冻结期间不得增长；浏览器历史与工作区文件字形家族已经独立成文件。代码换行按钮由 `code-wrap-toggle.tsx` 的共享控件持有，沿用相同的 `sidebar-svg-icon` 视觉基元，避免扩张冻结的图标集合；它**按状态画两个不同图标**（`data-wrap-icon="off"`：中间那条线直着伸出右边缘、箭头朝外＝不换行；`"on"`：同一条线折到下一行、箭头折回＝自动换行），切换时同步替换 SVG，因此按钮自身的图形就能说明当前状态，不只靠 `aria-pressed`。契约断言在 `code-wrap-preference.test.ts`（每个状态画哪个图标）。**只有一个消费者的一次性图标就地画在使用处**：`app-shell/chat-view.tsx` 的"回到最新"向下箭头（`.chat-jump-to-latest-arrow`）写在组件内部，就是因为加进 `icons.tsx` 会让冻结热点继续增长——`check:repo` 的"核心组合热点未继续增长"会直接拦下这种增长，所以新图标要么进已拆出的家族文件，要么和唯一使用它的组件放一起。
 
 **文件字形在 16px 下要能看清**（2026-09-26）：`.workspace-tree-glyph-icon` 从 14px 提到 **16px**（正好填满行网格里那一列），类型标记的字号从 5px 提到 **7px**——14px 下的 5px 标记等于 4.4px，就是一团糊。字形宽度有上限（"MD" 在 7px 时量到 12px，比 11px 的纸面还宽），所以字样本身偏宽的标记降一档到 **6px**（`markdown` / `pdf` / `database` / `git`），YAML 的标记由 `YML` 改成 **`YL`**（与参考一致，也才放得下）。真实窗口实测：字形 16×16、标记 `font-size: 6–7px`（"MD" 10.4px、"JS" 8.5px、"TS" 9.3px、"YL" 8.9px、`{}` 5.3px），行高仍是 26px。门禁在 `workspace-glyph-legibility.test.ts` 与 `icons.test.ts` 里钉住几何与标记。
 **两段式控件 `split-button.tsx`**（2026-09-26）：左段是"当前选择"的图标、点一下就立即用当前选择做事，右段是箭头、点开列出其它选择；菜单通过 portal 渲染成 `.split-button-menu`（图标 + 文案 + 当前项高亮 + 可选的分隔线行），整块只有 30px 高、比"标签 + 下拉 + 独立按钮"省一行。它被终端头的 Shell 选择与预览工具栏的"打开方式"共用；用法上的约定是 **左段只做当前这件事、选择留在右段的列表里**，`onPrimary` 与 `items[].onSelect` 都由调用方提供。
 **工作区文件与文件夹字形的形状语言**（`file-glyph-icons.tsx` + `styles/04-workspace.css`，2026-09-26）：每个字形都是一块**圆角实心板**——文件夹是带圆角页签和浅色横条的琥珀色板（`--workspace-folder-glyph`），文件是圆角纸张 + 浅色折角 + 该类型自己的标记；标记与颜色对齐各类型官方标识（HTML5 橙配 "5"、CSS3 蓝配 "3"、JavaScript 黄配 "JS"、TypeScript 蓝、Markdown 蓝配 "MD"、Go 青配 "Go"、Git 橙、PDF 红……），几何则在 14px 下重画以保证圆角不糊。`generic` 只有纸张没有标记；浅色底（JS 黄、JSON 黄）的标记用深色，其余用白色。改这里的形状或配色时同步 `icons.test.ts` 的标记断言（"MD"/"5"）与 `04-workspace.css` 的色表。
+
+## 动作对照表与光学尺寸（V2）
+
+V2 的三条验收里，"同一动作不出现互相矛盾的图形"与"图标大小与点击区域合理"能由源码与几何前提保证（**100%／150%／200% 下的真实像素本项未采**，见下方缺口）；"键盘与辅助名称完整"的焦点部分有真实窗口的像素证据（`## 状态矩阵（V3）` 一节）。这里是**人读的一半**，机读的一半与全部断言在 `icon-actions.test.ts`：表里的行、`census`（每个字形画出的形状序列）与 `ICON_ONLY_CONTROLS`（25 个纯图标入口的可访问名）任一处与源码不一致就会红。
+
+**同一动作、同一图形**：一个动作可以由两个字形承担，但必须画同一张图——`dismiss` 在侧栏是 `CloseIcon`、在工作区页签是 `CloseMiniIcon`，两者都是 16 单位 viewBox 上的两道交叉笔画（尺寸不同、形状相同，断言比较"子路径数 + 直线／曲线"）。反向规则同样成立：**同一份字形不许为两条不同动作画出逐字节相同的 markup**。`create-in-list` 的方形加号同时用于"新对话"（会话分组）与"添加项目"（项目分组），这是容器相对的"新建"约定，两处各由可访问名区分（`新对话` / `添加项目`），不是同一动作的两种图形；全局入口的"新对话"仍是铅笔（`NavComposeIcon`，与 ChatGPT/Claude 的习惯一致）。
+
+**实心标记与轮廓**（2026-09-29）：`03-shell-sidebar.css` 原来用一条 `.sidebar-svg-icon circle { fill: currentColor }` 把所有圆形填实——本意只是省略号的三点与记忆树的三节点，结果把**放大镜的镜片和时钟的表盘也压成了实心圆盘**（同一家族里唯一的实心大块，读起来像另一个图标家族）。现在只有显式带 `icon-dot` 的标记被填充（`MoreIcon` 三点、`MemoryTreeNavIcon` 三节点、`BranchIcon` 两分支端点），`SearchIcon` 的镜片与 `ScheduleIcon` 的表盘恢复轮廓，与工作区家族的球体、状态家族的圆环一致。两侧都有断言：字形这一侧数 `dot`，样式表这一侧要求"填充圆形的规则只有 `.sidebar-svg-icon circle.icon-dot` 一条，且裸的 `.sidebar-svg-icon circle` 规则不存在"。
+
+**一个光学笔画**：SVG 的 `stroke-width` 以 viewBox 单位计，同一个 16 单位字形画进 10px 的胶囊只有 0.97px，画进 18px 的项目行是 1.74px。两个通用动作家族（`.sidebar-svg-icon`、`.workspace-panel-svg-icon`）改用 `stroke-width: var(--icon-stroke)`（`1.5px`）加 `vector-effect: non-scaling-stroke`，任意尺寸下都是同样的 CSS 像素宽度——这正是本文件里 `.sidebar-toggle-outline` 早就用过的做法。下表是 03／04 两张表的**全部**笔画决定，门禁从样式源推导这份清单，新增一处没登记的笔画（或改掉某个数）都会红；`actionSheets` 之外其它表的图标笔画是各自领域的决定，本项不改也不门禁。
+
+| 选择器 | 笔画 | 说明 |
+| --- | --- | --- |
+| `.sidebar-svg-icon` | `var(--icon-stroke)` = 1.5px + non-scaling | 侧栏／设置／聊天／输入区的通用动作字形 |
+| `.workspace-panel-svg-icon path, rect, circle` | `var(--icon-stroke)` + non-scaling | 工作区面板与预览工具栏 |
+| `.history-navigation-icon .workspace-browser-arrow-*` | `var(--icon-stroke)` | 前进／后退箭头（20px 框，原来另写 1.35） |
+| `.sidebar-toggle-outline, .sidebar-toggle-divider` | `1` + non-scaling | 18×14 的侧栏开关，既有做法 |
+| `.settings-gear-icon` | `2.15` | 24 单位 viewBox、19px 框，故数值更大（绝对重量 1.70） |
+| `.workspace-tree-chevron-icon path, .workspace-tree-glyph-icon path` | `1.35` | 与文件字形家族共用一条基础规则；文件字形本项不动 |
+| `.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold` | `0.9` | 折角 |
+| `.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains` | `1.15` | 图片字形的山形 |
+| `.workspace-tree-glyph-icon.file-glyph-lock .file-glyph-lock-shackle` | `1` | 锁梁 |
+| `.split-button-chevron-icon` | `1.5` | 两段式控件的 11px 箭头 |
+
+**点击区域与图形尺寸无关**：两个家族的字形框全是整数 px（10／12／13／14／15／16／18／20，门禁断言整数——小数框是 100%／150%／200% 缩放最容易糊的一种），命中盒归控件自己：`.message-meta-copy`／`.message-meta-branch` 24×24、`.app-nav-btn`／`.sidebar-toggle-btn` 24×24、`.code-toolbar button` 26×26（字形 14px）、`.workspace-context-remove` 18×18（字形 10px）。**已登记缺口**：`.workspace-context-remove` 的 18px 命中盒小于 24px 下限，它在 `styles/06-composer.css`（本项边界之外的域文件），本项只把尺寸关系记进表里，没有改它。
+
+**可访问名**：图标自身一律 `aria-hidden="true"` + `focusable="false"`（`SettingsGearIcon` 本轮补齐 `focusable`——它是唯一漏掉的一个），名字由外层控件提供；25 个纯图标入口的名字（含 `label=` 与同一文件里的悬浮提示变量、`` aria-label={`移除 ${name}`} `` 这类模板）登记在门禁里，删掉任意一个都会红。
+
+**本项未验证**：①100%／150%／200% 下的**真实像素清晰度**未采——本轮环境里 Electron 只能停到屏幕外（`park-offscreen`），而停靠窗口对像素与原生断言不可用，因此本项只证明了"整数框 + 单一绝对笔画 + `shape-rendering: geometricPrecision`"这三条几何前提；②`non-scaling-stroke` 之后 16–20px 字形的笔画比原来细 3%–11%、10–13px 的比原来粗 19%–55%，方向与参照习惯一致（小字形需要相对更粗），但**没有像素对照**；③纯图标入口的可访问名按源码登记，未做端到端 AT 走查。

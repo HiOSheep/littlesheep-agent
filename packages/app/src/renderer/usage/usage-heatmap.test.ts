@@ -325,6 +325,14 @@ describe('usage heatmap surface', () => {
     expect(html).toContain('aria-label="2026 年总量热力图"')
   })
 
+  it('says out loud when the facet lists it offers are not the whole list', () => {
+    const truncated: ProviderUsageDailySeries = { ...JULY, bounds: { ...JULY.bounds, identitiesTruncated: true } }
+    const html = render({ view: buildUsageHeatmapView({ series: truncated, metric: 'total' }) })
+    expect(html).toContain('usage-coverage-notice')
+    expect(html).toContain(`最高的 ${PROVIDER_USAGE_DAILY_MAX_IDENTITIES} 个已记录身份`)
+    expect(render()).not.toContain('usage-coverage-notice')
+  })
+
   it('keeps a readable year on screen when only the refresh failed', () => {
     const html = render({ error: { message: 'Runtime 还没有就绪，暂时读不到用量投影。', status: 503 } })
     expect(html).toContain('usage-refresh-failure')

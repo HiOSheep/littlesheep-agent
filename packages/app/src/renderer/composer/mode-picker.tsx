@@ -9,6 +9,7 @@ import { ModeRiskIcon } from '../ui/icons'
 import { useModalSurface } from '../ui/modal-surface'
 import { FadePresence, useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
+import { useMenuFocusReturn } from './menu-focus-return'
 
 
 export function ModePicker({
@@ -21,13 +22,23 @@ export function ModePicker({
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const captureMenuCaret = useMenuFocusReturn({ open, panelRef, triggerRef })
   const selected = MODE_OPTIONS.find((item) => item.id === value) ?? MODE_OPTIONS[0]!
 
-  useDismissOnOutside(open, [rootRef], () => setOpen(false))
+  // One close path for the permission menu, so choosing an option and dismissing
+  // it both hand the caret back to the trigger (see `menu-focus-return.ts`).
+  function closeMenu() {
+    captureMenuCaret()
+    setOpen(false)
+  }
+
+  useDismissOnOutside(open, [rootRef], closeMenu)
 
   useEffect(() => {
     const handleComposerMenuOpen = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== 'mode') setOpen(false)
+      if ((event as CustomEvent<string>).detail !== 'mode') closeMenu()
     }
     window.addEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
     return () => window.removeEventListener(COMPOSER_MENU_EVENT, handleComposerMenuOpen)
@@ -37,17 +48,19 @@ export function ModePicker({
     <div ref={rootRef} className={`model-picker option-picker mode-picker risk-${selected.risk} ${open ? 'open' : ''}`}>
       <button
         {...transientTriggerProps()}
+        ref={triggerRef}
         type="button"
         className="model-picker-trigger mode-picker-trigger composer-tab-control"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}`}
         onClick={() => {
-          setOpen((current) => {
-            const next = !current
-            if (next) window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'mode' }))
-            return next
-          })
+          if (open) {
+            closeMenu()
+            return
+          }
+          window.dispatchEvent(new CustomEvent(COMPOSER_MENU_EVENT, { detail: 'mode' }))
+          setOpen(true)
         }}
       >
         <span className="mode-picker-content">
@@ -56,6 +69,7 @@ export function ModePicker({
         </span>
       </button>
       <div
+        ref={panelRef}
         className="model-picker-panel option-picker-panel mode-picker-panel"
         role="dialog"
         aria-label="权限模式选择"
@@ -72,7 +86,7 @@ export function ModePicker({
                 className={`model-option option-picker-option mode-option risk-${item.risk} ${isActive ? 'active' : ''}`}
                 aria-label={`${item.label}: ${item.riskLabel}，${item.desc}`}
                 onClick={() => {
-                  setOpen(false)
+                  closeMenu()
                   if (isActive) return
                   if (requiresFullAccessConfirmation(value, item.id)) {
                     setConfirmingFullAccess(true)

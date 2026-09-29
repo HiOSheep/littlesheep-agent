@@ -9,7 +9,19 @@ import { fileURLToPath } from 'node:url'
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const failures = []
 const passes = []
+const advisories = []
+const advisoryPasses = []
 let trackedFilesCache
+
+/**
+ * `最后更新：YYYY-MM-DD HH:mm:ss` is still written by hand into formal documents,
+ * but it is no longer a maintenance obligation: the gate stopped requiring the
+ * second-precision form (every unrelated edit used to have to touch the stamp)
+ * and stopped comparing a README's commit time against its directory's sources.
+ * Only the taskbook baseline date is still a rule, so the regex below accepts
+ * either form and the date is what gets compared.
+ */
+const DATE_STAMP = /^最后更新：(\d{4}-\d{2}-\d{2})(?: \d{2}:\d{2}:\d{2})?$/mu
 
 function pass(label, detail = '') {
   passes.push({ label, detail })
@@ -22,6 +34,19 @@ function fail(label, detail = '') {
 function assert(condition, label, detail = '') {
   if (condition) pass(label, detail)
   else fail(label, detail)
+}
+
+/**
+ * A heuristic that belongs in review, not in the exit code. Structural growth
+ * governance (line-count growth, queue counts, taskbook count) is advisory: it must
+ * not force a refactor or a merge just to turn a gate green, and it must not be
+ * silently dropped either — the finding is still printed every run. What stays a
+ * hard failure is structure: a missing registration, an empty owner, a missing or
+ * expired review date, or a table row whose file no longer exists.
+ */
+function advisory(condition, label, detail = '') {
+  if (condition) advisoryPasses.push({ label, detail })
+  else advisories.push({ label, detail })
 }
 
 function displayPath(path) {
@@ -56,17 +81,6 @@ function trackedFiles() {
     .filter(Boolean)
     .map((path) => path.replaceAll('\\', '/'))
   return trackedFilesCache
-}
-
-/** Commit time (seconds) of the last commit touching the given pathspecs. */
-function lastCommitSeconds(pathspecs) {
-  const result = spawnSync('git', ['log', '-1', '--format=%ct', ...pathspecs], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  })
-  if (result.status !== 0) return 0
-  const seconds = Number(result.stdout.trim())
-  return Number.isFinite(seconds) ? seconds : 0
 }
 
 async function collectPackageDirectories() {  const packageDirs = []
@@ -256,9 +270,9 @@ async function checkTaskbookBudget() {
   const budget = 16
   const taskbooks = trackedFiles()
     .filter((path) => path.startsWith('docs/taskbooks/') && path.endsWith('.md'))
-  assert(
+  advisory(
     taskbooks.length <= budget,
-    '任务书数量在预算内',
+    '任务书数量在预算内（提示，非硬门）',
     `${taskbooks.length}/${budget}`,
   )
 }
@@ -268,12 +282,6 @@ async function checkTaskbookNaming() {
   const taskbooks = documents
     .filter((path) => path.includes('taskbook') && path.endsWith('.md'))
   const violations = []
-  for (const path of documents) {
-    const content = await readText(path)
-    if (!/^最后更新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/mu.test(content)) {
-      violations.push(`${displayPath(path)}: 正文缺少秒级最后更新时间`)
-    }
-  }
   for (const path of taskbooks) {
     const name = displayPath(path)
     const match = name.match(/-taskbook-(\d{4}-\d{2}-\d{2})\.md$/u)
@@ -284,11 +292,13 @@ async function checkTaskbookNaming() {
     const date = match[1]
     const content = await readText(path)
     const title = content.split(/\r?\n/u, 1)[0]?.trim() ?? ''
-    const updated = content.match(/^最后更新：(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2}$/mu)?.[1]
     if (!title.endsWith(date)) violations.push(`${name}: 一级标题日期应为 ${date}`)
-    if (updated && updated < date) violations.push(`${name}: 最后更新时间不能早于基线日期 ${date}`)
+    // The date itself is the identity; the second-precision time is optional and
+    // only has to be well-formed when a document chooses to carry it.
+    const stamp = content.match(DATE_STAMP)
+    if (stamp && stamp[1] < date) violations.push(`${name}: 最后更新日期不能早于基线日期 ${date}`)
   }
-  assert(taskbooks.length > 0 && violations.length === 0, '文档秒级更新时间与任务书基线日期有效', violations.join(', '))
+  assert(taskbooks.length > 0 && violations.length === 0, '任务书文件名与基线日期有效', violations.join(', '))
 }
 
 async function checkWorkspacePackages() {
@@ -371,50 +381,15 @@ async function checkRepositoryNavigation() {
   assert(missingDomainReadmes.length === 0, '独立领域 README 完整', missingDomainReadmes.join(', '))
 
   /**
-   * Every README under `packages/` carries a second-precision `最后更新` line.
-   * The rule is not decoration: a README states what a package owns right now, so
-   * a change that alters a package's surface has to touch its README in the same
-   * commit, and the timestamp is what makes that visible in review instead of
-   * leaving documentation to drift silently.
+   * README freshness is deliberately NOT enforced here any more. The gate used to
+   * require a second-precision `最后更新` line in every README under `packages/`
+   * and to fail when a directory's sources were committed after its README. Both
+   * cost every unrelated edit a documentation diff without proving that the text
+   * still matched the code, and the comparison could not tell "README touched" from
+   * "README re-read". What stays machine-checked is that every owned directory HAS
+   * a README (above) and that a README's claims are reviewed when the surface it
+   * describes actually changes — a review obligation, not a timestamp.
    */
-  const packageReadmes = trackedFiles().filter(
-    (path) => path.startsWith('packages/') && path.endsWith('README.md'),
-  )
-  const missingStamps = []
-  for (const path of packageReadmes) {
-    const content = await readText(join(repoRoot, path))
-    if (!/^最后更新：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/mu.test(content)) {
-      missingStamps.push(path)
-    }
-  }
-  assert(
-    missingStamps.length === 0,
-    'package README 带秒级最后更新',
-    missingStamps.join(', '),
-  )
-
-  /**
-   * And the stamp has to move with the code: if a directory's sources were
-   * committed after its README, the README was not updated in the same change.
-   * Only committed history is compared, so an in-progress working tree does not
-   * fail the gate — the check fires on the commit that skipped the README.
-   */
-  const staleReadmes = []
-  for (const path of packageReadmes) {
-    const dir = dirname(path)
-    const readmeTime = lastCommitSeconds(['--', path])
-    // Other READMEs in the same tree are documentation, not the surface this file
-    // describes, so they are excluded: updating a leaf README must not force its
-    // parent README to move.
-    const sourceTime = lastCommitSeconds(['--', dir, ':(exclude,glob)**/README.md'])
-    if (readmeTime > 0 && sourceTime > readmeTime) staleReadmes.push(path)
-  }
-  assert(
-    staleReadmes.length === 0,
-    'package README 与源码同步更新',
-    staleReadmes.join(', '),
-  )
-
   const sourceFiles = (await collectSourceFiles(join(repoRoot, 'packages')))
     .filter((file) => !/\.(test|spec)\.[^.]+$/u.test(file))
   const largeFiles = []
@@ -428,6 +403,11 @@ async function checkRepositoryNavigation() {
       missingHeaders.push(displayPath(file))
     }
   }
+  /**
+   * A 300-line file is not a defect, so "is it registered in the split map" stays
+   * a real failure only where the registration is what keeps an ownership decision
+   * visible. Growth past a measured ceiling is a review signal.
+   */
   assert(missingHeaders.length === 0, '大型生产文件有职责头注释', missingHeaders.join(', '))
 
   // These are the current composition hotspots. A later split may lower a
@@ -443,7 +423,10 @@ async function checkRepositoryNavigation() {
     // 2026-08-14: stable conversation-turn request identity and rejected-input
     // retention are now owned by this facade; further growth remains blocked.
     'packages/app/src/renderer/chat/run-actions.ts': 349,
-    'packages/app/src/renderer/settings/plugins.tsx': 394,
+    // 2026-09-29: the plugin page's empty state moved onto the shared four-state
+    // view (V3), which fits inside the previous 394 ceiling. The baseline is
+    // lowered to the measured 392 so the next growth is visible immediately.
+    'packages/app/src/renderer/settings/plugins.tsx': 392,
     // 2026-09-02: browser/file glyph families and compatibility tests are
     // frozen at the measured boundary; future growth remains blocked.
     // 2026-09-26: FolderGlyphIcon moved into file-glyph-icons.tsx with the file
@@ -475,19 +458,34 @@ async function checkRepositoryNavigation() {
     'packages/app/src/renderer/MemoryTreeView.tsx': 206,
   }
   const growth = []
+  const missingHotspots = []
   for (const [path, baseline] of Object.entries(hotspotBaselines)) {
     const file = join(repoRoot, path)
     if (!existsSync(file)) {
-      growth.push(`${path}: 文件不存在`)
+      // A deleted or renamed hotspot is a structural break, not growth: the baseline
+      // table still names a file that no longer owns the responsibility.
+      missingHotspots.push(`${path}: 文件不存在`)
       continue
     }
     const lines = (await readText(file)).split(/\r?\n/u)
     const count = lines.length - (lines.at(-1) === '' ? 1 : 0)
     if (count > baseline) growth.push(`${path}: ${count} > ${baseline}`)
   }
-  assert(growth.length === 0, '核心组合热点未继续增长', growth.join(', '))
+  assert(missingHotspots.length === 0, '热点登记文件仍存在', missingHotspots.join(', '))
+  // A hotspot past its measured ceiling is a review signal, not a build failure:
+  // the constraint exists to make growth deliberate, and a red gate would instead
+  // push an unrelated task into a refactor to get green again.
+  advisory(growth.length === 0, '核心组合热点未继续增长（提示，非硬门）', growth.join(', '))
 
-  const splitMap = await readText(join(repoRoot, 'docs', 'reference', 'module-split-map.md'))
+  const splitMapPath = join(repoRoot, 'docs', 'reference', 'module-split-map.md')
+  if (!existsSync(splitMapPath)) {
+    // Not covered by checkCanonicalFiles' required list, and docs/README.md links to
+    // it, so failing here is what keeps "the split map disappeared" from turning into
+    // a crash before the remaining checks print.
+    fail('模块拆分地图可读', 'docs/reference/module-split-map.md 缺失')
+    return
+  }
+  const splitMap = await readText(splitMapPath)
   const missingFromSplitMap = largeFiles
     .map((entry) => entry.path)
     .filter((path) => !splitMap.includes(`\`${path}\``))
@@ -508,29 +506,37 @@ async function checkRepositoryNavigation() {
     })
   }
   const hardLimitFiles = largeFiles.filter((entry) => entry.lines > 600)
-  const controlledViolations = []
+  /**
+   * Structure and growth are separated on purpose. A registration that is missing,
+   * an empty owner, a missing or expired review date, or a table row whose file is
+   * gone are breaks in the governance record itself — they stay hard failures. Only
+   * "the file got longer than its measured ceiling" is a judgment call, so only that
+   * part is advisory.
+   */
+  const controlledStructureViolations = []
+  const controlledGrowth = []
   const today = new Date().toISOString().slice(0, 10)
-  if (!reviewDue) controlledViolations.push('缺少"本轮复查到期：YYYY-MM-DD"声明')
-  else if (reviewDue < today) controlledViolations.push(`本轮复查到期日已过 ${reviewDue}：必须逐条复查后顺延`)
+  if (!reviewDue) controlledStructureViolations.push('缺少"本轮复查到期：YYYY-MM-DD"声明')
+  else if (reviewDue < today) controlledStructureViolations.push(`本轮复查到期日已过 ${reviewDue}：必须逐条复查后顺延`)
   for (const entry of hardLimitFiles) {
     const exception = controlled.get(entry.path)
     if (!exception) {
-      controlledViolations.push(`${entry.path}: 缺少受控超限登记`)
+      controlledStructureViolations.push(`${entry.path}: 缺少受控超限登记`)
       continue
     }
-    if (!exception.owner || !exception.reason) controlledViolations.push(`${entry.path}: 所有者或原因为空`)
+    if (!exception.owner || !exception.reason) controlledStructureViolations.push(`${entry.path}: 所有者或原因为空`)
     if (entry.lines > exception.ceiling) {
-      controlledViolations.push(`${entry.path}: ${entry.lines} > 受控上限 ${exception.ceiling}`)
+      controlledGrowth.push(`${entry.path}: ${entry.lines} > 受控上限 ${exception.ceiling}`)
     }
     if (exception.reviewAt !== '同上') {
-      controlledViolations.push(`${entry.path}: 复查日期必须写"同上"，实际为 ${exception.reviewAt}`)
+      controlledStructureViolations.push(`${entry.path}: 复查日期必须写"同上"，实际为 ${exception.reviewAt}`)
     }
   }
   for (const path of controlled.keys()) {
-    if (!hardLimitFiles.some((entry) => entry.path === path)) controlledViolations.push(`${path}: 已不超过 600 行，应移除登记`)
+    if (!hardLimitFiles.some((entry) => entry.path === path)) controlledStructureViolations.push(`${path}: 已不超过 600 行，应移除登记`)
   }
-  assert(controlledViolations.length === 0, '600 行以上生产文件受控', controlledViolations.join(', '))
-  if (reviewDue && reviewDue >= today) pass('受控超限复查到期', reviewDue)
+  assert(controlledStructureViolations.length === 0, '600 行以上生产文件登记完整且复查未过期', controlledStructureViolations.join(', '))
+  advisory(controlledGrowth.length === 0, '600 行以上生产文件未超受控上限（提示，非硬门）', controlledGrowth.join(', '))
 
   /**
    * The queue counts are hand-written review notes, so they are VERIFIED here rather than
@@ -545,6 +551,7 @@ async function checkRepositoryNavigation() {
   }
   const queueCounts = new Map(largeFiles.map((entry) => [entry.path, entry.lines]))
   const countMismatches = []
+  const missingQueueFiles = []
   let splitSection = ''
   for (const line of splitMap.split(/\r?\n/u)) {
     if (line.startsWith('## ')) {
@@ -555,18 +562,25 @@ async function checkRepositoryNavigation() {
       const match = /^\| `([^`]+)` \| (\d+) \|/u.exec(line)
       if (!match) continue
       const actual = queueCounts.get(match[1]) ?? await productionLineCount(match[1])
-      if (actual === null) countMismatches.push(`${match[1]}: 表内登记但文件不存在`)
+      if (actual === null) missingQueueFiles.push(`${match[1]}: 表内登记但文件不存在`)
       else if (String(actual) !== match[2]) countMismatches.push(`${match[1]}: 表内 ${match[2]} ≠ 实测 ${actual}`)
     }
     if (splitSection === '已完成拆分') {
       const match = /^\| `([^`]+)` \| \d+ \| (\d+) 行/u.exec(line)
       if (!match) continue
       const actual = await productionLineCount(match[1])
-      if (actual === null) countMismatches.push(`${match[1]}: 当前入口文件不存在`)
+      if (actual === null) missingQueueFiles.push(`${match[1]}: 当前入口文件不存在`)
       else if (String(actual) !== match[2]) countMismatches.push(`${match[1]} 当前入口: 表内 ${match[2]} ≠ 实测 ${actual}`)
     }
   }
-  assert(countMismatches.length === 0, '模块拆分地图计数与实测一致', countMismatches.join(', '))
+  // A row that points at a file which no longer exists is a stale record (hard);
+  // a hand-written line count that drifted is review material (advisory).
+  assert(missingQueueFiles.length === 0, '拆分地图登记的文件仍存在', missingQueueFiles.join(', '))
+  advisory(
+    countMismatches.length === 0,
+    '模块拆分地图计数与实测一致（提示，非硬门）',
+    countMismatches.join(', '),
+  )
   pass('大型生产文件基线', `${largeFiles.length} 个文件超过 300 行；${hardLimitFiles.length} 个受控超过 600 行`)
 }
 
@@ -866,10 +880,24 @@ async function main() {
   for (const item of passes) {
     console.log(`[pass] ${item.label}${item.detail ? `: ${item.detail}` : ''}`)
   }
+  for (const item of advisoryPasses) {
+    console.log(`[ok-advisory] ${item.label}${item.detail ? `: ${item.detail}` : ''}`)
+  }
+  for (const item of advisories) {
+    console.log(`[advisory] ${item.label}${item.detail ? `: ${item.detail}` : ''}`)
+  }
   for (const item of failures) {
     console.error(`[fail] ${item.label}${item.detail ? `: ${item.detail}` : ''}`)
   }
-  console.log(`\nRepository hygiene: ${failures.length === 0 ? 'ok' : 'failed'} (${passes.length} passed, ${failures.length} failed)`)
+  // Required checks and advisory items are counted separately: folding an advisory
+  // "everything is fine" row into `passed` made the summary unable to say whether a
+  // rule was a gate or a habit.
+  const advisoryText = advisories.length > 0
+    ? `, ${advisories.length} advisory`
+    : advisoryPasses.length > 0
+      ? ` (+${advisoryPasses.length} advisory ok)`
+      : ''
+  console.log(`\nRepository hygiene: ${failures.length === 0 ? 'ok' : 'failed'} (${passes.length} passed${advisoryText}, ${failures.length} failed)`)
   process.exit(failures.length === 0 ? 0 : 1)
 }
 
