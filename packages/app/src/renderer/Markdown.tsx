@@ -387,26 +387,46 @@ function MermaidBlock({ code }: { code: string }) {
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false)
+  // Copying used to await the clipboard write with nothing around it, so a rejected write became an unhandled
+  // rejection, the success branch never ran, and the user saw no difference between "nothing happened" and "the
+  // clipboard refused". Success is reported only after the write resolves, and a refusal says so and offers a retry -
+  // the same shape the message action row already uses, so there is one copy contract rather than two.
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const copiedTimerRef = useRef<number>()
 
   useEffect(() => () => window.clearTimeout(copiedTimerRef.current), [])
 
   async function copy() {
-    await navigator.clipboard.writeText(text)
-    setCopied(true)
     window.clearTimeout(copiedTimerRef.current)
-    copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyState('copied')
+      copiedTimerRef.current = window.setTimeout(() => setCopyState('idle'), 1200)
+    } catch {
+      setCopyState('failed')
+    }
   }
 
+  const copied = copyState === 'copied'
+  const failed = copyState === 'failed'
+
   return (
-    <button
-      type="button"
-      aria-label={copied ? `${label}已复制` : `复制${label}`}
-      data-copied={copied ? 'true' : 'false'}
-      onClick={() => void copy()}
-    >
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
+    <>
+      <button
+        type="button"
+        aria-label={failed ? `复制失败，重试复制${label}` : copied ? `${label}已复制` : `复制${label}`}
+        data-copied={copied ? 'true' : 'false'}
+        data-copy-state={copyState}
+        onClick={() => void copy()}
+      >
+        {copied ? <CheckIcon /> : <CopyIcon />}
+      </button>
+      {failed && (
+        <span className="code-copy-failed" role="status">
+          复制失败
+          <button type="button" onClick={() => void copy()}>重试</button>
+        </span>
+      )}
+    </>
   )
 }
