@@ -1196,3 +1196,26 @@
   padding: 0;
   list-style: none;
 }
+
+/* O4: the code block's own copy button reports a refused clipboard write.
+   Same shape as the message action row's copy-failure row (05-chat-messages.css: .message-copy-failed-row) so the
+   two copy surfaces read as one contract rather than two. Scoped to the toolbar so it cannot leak into other rows. */
+.code-toolbar .code-copy-failed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  padding-inline: 4px;
+  font-size: 11px;
+  color: var(--warning, #d8b45c);
+}
+
+.code-toolbar .code-copy-failed button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
