@@ -486,3 +486,13 @@ ensure-app-build.mjs --assert             → exit 1   ✗（亚秒内即失效�
 **判别证据**（哈希守卫式回退 `CopyButton` → 跑检查 → 字节还原）：对旧版 `Tests 4 failed | 1 passed (5)` ✗（四条失败消息已记录：成功时机 `expected -1 to be greater than 5` ✓、无 `catch` ✓、空闲态不应带失败标记 ✓、指针离开后仍可读 ✓）→ 还原后 `Tests 5 passed` ✓；既有邻接套件合计 **26 passed** ✓（含 `workspace/markdown-preview.test.ts:109` 被钉住的字面量重新匹配 ✓，且 `message-meta.tsx` 未被动 ✓）。
 
 **未验证** ✗：**真机拒绝未跑**（被渲染器构建失败所阻 —— `usage/api/usage.ts` 的 `'../../shared/local-app-api-routes'` 解析失败使 renderer bundle 未产出，`out/renderer` 仍是 08:47 且**不含**该修复 ✓）；重试按钮的盒宽只有**级联层**证据 ✓，无窗口度量 ✓。
+
+### S3 字段级搜索：已取证的部分与一条真实缺口（2026-09-29，主线复核）
+
+**我亲自跑的检查** ✓：`vitest run settings/search-index.test.ts settings/navigation-architecture.test.ts usage/usage-heatmap.test.ts usage/settings-usage-entry.test.ts main/local-app-api/usage-daily-facet-bound.test.ts` → **5 files / 38 tests 全过，exit 0** ✓。
+
+**判据强于要求** ✓：`search-index.test.ts:186` 断言索引 id **`toEqual`** 完整清单（精确覆盖，不是"至少包含"）、id 唯一、每字段都落在**可导航页面**且有**真实分组与页面标题**、`section` 与 `aliases` 非空；`:204` 断言**每个字段要么给出可索引的值、要么说明为何不可索引** —— 即"索引覆盖 + 诚实边界"两条都在 ✓。
+
+**判别实验（主线做的，与 O5 折叠键同一方法）** ✓：把索引**第一条 entry 的 id 改名**（等价于覆盖清单漂移）→ `search-index.test.ts` **5 项失败**（`expected [ …(23) ] to deeply equal [ …(23) ]`）→ **字节还原（sha256 一致）→ 10/10 通过**。
+
+**真实缺口（本轮查明，故 S3 不勾）** ✗：**字段级搜索控件没有任何键盘导航** —— 在设置页全部 `*.tsx` 中，`ArrowDown`/`ArrowUp`/`Enter`/`Escape` 的处理只出现在无关处（`development-environments.tsx` 的 Enter、`model-provider-editor.tsx` 的 `useEscapeScope`）；导航测试（`navigation.test.ts`、`navigation-architecture.test.ts`）对键盘**零覆盖**。任务书 S3 的判据含"键盘可达：输入 → 方向键 → 回车落到该字段，Esc 归还焦点且无副作用"，**该功能尚未实现**，不只是未验证。**补齐方式**：控件侧实现筛选后的 ↑↓ 选择、回车落到 `data-settings-field` 锚点、Esc 归还焦点，并配一条**移除键盘处理即红**的检查与真机按键验证。
