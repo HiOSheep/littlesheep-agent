@@ -117,8 +117,11 @@ node node_modules/vitest/vitest.mjs run scripts/ga04/e3-oracle.test.mjs
 3. **依赖**：把主 checkout 里每个 `node_modules`（根、`packages/*/node_modules`、`packages/channels/*/node_modules`）
    用 junction／符号链接链到工作树的同一相对路径。pnpm 的 workspace 链接是相对路径，因此
    `node_modules/@littlesheep/<pkg>` 会解析到工作树自己的源码。
-   **不要**在一次性工作树里跑 `pnpm install`／`pnpm exec`／`npx`：本机没有 `node_modules/.bin`，而且 pnpm 会
-   因模块状态不符触发重装并失败。测试用 `node node_modules/vitest/vitest.mjs run <文件>`，类型检查用
+   **不要**在一次性工作树里跑 `pnpm install`／`pnpm exec`／`npx`：junction 会让 pnpm 的写入**穿透回主 checkout**，
+   删掉它的 `node_modules/.bin`、workspace 链接与 `.pnpm-workspace-state-v1.json`（2026-09-30 实测：主 checkout
+   里 `pnpm run typecheck` 变成 `tsc is not recognized`，而 pnpm 仍报 “Already up to date”；修复是删掉
+   `node_modules/.pnpm-workspace-state-v1.json` 后重跑 `pnpm install`）。测试用
+   `node node_modules/vitest/vitest.mjs run <文件>`，类型检查用
    `node node_modules/typescript/bin/tsc -b <tsconfig> --pretty false`。
 4. **两臂只差规则文档**：A 臂把 `docs/reference/repository-guide.md` 覆盖为 GA 前的版本
    （`git show <GA 前提交>:docs/reference/repository-guide.md`），B3 臂用收窄后的版本；各自记录 sha256 前 16 位。
