@@ -34,6 +34,7 @@ $ErrorActionPreference = 'Stop'
 $appDirectory = (Resolve-Path (Join-Path $PSScriptRoot '..\packages\app')).Path
 $iconPath = Join-Path $appDirectory 'resources\littlesheep.ico'
 $launcherPath = Join-Path $PSScriptRoot 'launch-littlesheep.ps1'
+$entryPath = Join-Path $PSScriptRoot 'launch-littlesheep.vbs'
 
 if (-not $ShortcutPath) {
   $desktop = [Environment]::GetFolderPath('Desktop')
@@ -54,20 +55,24 @@ if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
   throw "LittleSheep launcher was not found at $launcherPath"
 }
+if (-not (Test-Path -LiteralPath $entryPath -PathType Leaf)) {
+  throw "LittleSheep hidden entry was not found at $entryPath"
+}
 
 # A hidden PowerShell keeps the console window out of the way; the launcher still waits for
 # Electron, so closing the app ends the process tree. The two strings below are the same shape
 # `scripts/launch-littlesheep.ps1` installs for itself, and that script re-asserts them on every
 # launch, so a drift between the two writers is corrected rather than left behind.
 #
+# The hidden half goes through `scripts/launch-littlesheep.vbs` (Windows Script Host, window style
+# 0) rather than `pwsh -WindowStyle Hidden`: where Windows Terminal is the default terminal
+# application, the console host is a separate GUI process that shows a window anyway, and a
+# launcher waiting in that console dies with the window.
+#
 # `scripts/lib/desktop-shortcut.mjs` runs this file through `powershell.exe`, i.e. Windows
 # PowerShell 5.1, so the syntax here has to stay 5.1-compatible (no `?.`).
-$pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
-$expectedTarget = if ($pwshCommand) { $pwshCommand.Source } else { $null }
-if (-not $expectedTarget) {
-  $expectedTarget = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-}
-$expectedArguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcherPath`""
+$expectedTarget = Join-Path $env:SystemRoot 'System32\wscript.exe'
+$expectedArguments = "//B //Nologo `"$entryPath`""
 
 $iconPath = (Resolve-Path -LiteralPath $iconPath).Path
 $appDirectory = (Resolve-Path -LiteralPath $appDirectory).Path

@@ -19,9 +19,10 @@
 //
 // This gate exercises both halves against the real artifacts, not a fixture:
 //
-//   A. click path     — the installed `.lnk` files must target the launcher, not the runtime
-//                       executable (repaired through the launcher's own `-ShortcutsOnly` when a
-//                       link exists but points elsewhere);
+//   A. click path     — every installed `.lnk` this checkout owns (desktop, Start menu, and a
+//                       taskbar pin that starts the runtime executable directly) must target the
+//                       hidden launcher entry, not the runtime executable (repaired through the
+//                       launcher's own `-ShortcutsOnly` when a link exists but points elsewhere);
 //   B. failing build  — with the App fingerprint invalidated and `pnpm` replaced by a stub that
 //                       exits 7, the launcher must refuse, name the failure, name the
 //                       `-AllowStaleBuild` opt-in, and start no Electron process;
@@ -47,7 +48,10 @@ const launcherPath = join(repoRoot, 'scripts', 'launch-littlesheep.ps1');
 const ensureScript = join(repoRoot, 'scripts', 'ensure-app-build.mjs');
 const outDirectory = join(repoRoot, 'packages', 'app', 'out');
 const sidecarPath = join(outDirectory, '.littlesheep-build-fingerprint.json');
-const launcherRelative = join('scripts', 'launch-littlesheep.ps1');
+// The hidden entry the shortcuts name is Windows Script Host running this file. Naming PowerShell
+// directly stopped being equivalent where Windows Terminal is the default terminal application:
+// the console host shows a window anyway, and a launcher waiting inside it dies with the window.
+const launcherEntryRelative = join('scripts', 'launch-littlesheep.vbs');
 
 const assertions = [];
 const notes = [];
@@ -132,9 +136,11 @@ function shortcutPaths() {
   const script = [
     "$desktop = [Environment]::GetFolderPath('Desktop')",
     "$programs = Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'",
+    "$taskbar = Join-Path $env:APPDATA 'Microsoft\\Internet Explorer\\Quick Launch\\User Pinned\\TaskBar'",
     '@(',
     "  (Join-Path $desktop 'LittleSheep.lnk'),",
-    "  (Join-Path $programs 'LittleSheep.lnk')",
+    "  (Join-Path $programs 'LittleSheep.lnk'),",
+    "  (Join-Path $taskbar 'LittleSheep.lnk')",
     ') | ConvertTo-Json -Compress',
   ].join('\n');
   const result = powershell(script);
@@ -306,9 +312,9 @@ function runGate() {
     notes.push('No LittleSheep shortcut is installed on this desktop; the click-path assertion is skipped.');
   } else {
     const launcherTarget = (link) => typeof link.target === 'string'
-      && /(?:^|[\\/])pwsh\.exe$|(?:^|[\\/])powershell\.exe$/iu.test(link.target)
+      && /(?:^|[\\/])wscript\.exe$/iu.test(link.target)
       && typeof link.arguments === 'string'
-      && link.arguments.includes(launcherRelative);
+      && link.arguments.includes(launcherEntryRelative);
     const mispointed = installed.filter((link) => !launcherTarget(link));
     let repaired = false;
     if (mispointed.length > 0) {

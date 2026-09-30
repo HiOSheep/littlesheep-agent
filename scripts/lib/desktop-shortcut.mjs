@@ -1,6 +1,7 @@
 // Keep the desktop shortcut pointing at the launcher.
 //
-// The link target is `scripts/launch-littlesheep.ps1`, not
+// The link target is `scripts/launch-littlesheep.vbs` (Windows Script Host running
+// `scripts/launch-littlesheep.ps1`), not
 // `packages/app/runtime/electron-v<version>-<platform>-<arch>/LittleSheep.exe`. Pointing at the
 // runtime executable directly was how the icon bypassed the one check that matters: the launcher
 // resolves the newest runtime *and* refuses to start a build it cannot prove current, so an
