@@ -452,7 +452,6 @@ export async function ensureAppBuild(repoRoot, {
 } = {}) {
   await ensureWorkspaceBuild(repoRoot);
   const beforeRuntime = await prepareIdentity(repoRoot, prepareRuntime, resolveRuntime);
-  const beforeInput = await collectAppBuildInputs(repoRoot, beforeRuntime);
   if (!force) {
     const inspection = await inspectAppBuildFreshness(repoRoot, {
       runtimeIdentity: beforeRuntime,
@@ -461,6 +460,11 @@ export async function ensureAppBuild(repoRoot, {
     if (inspection.fresh) return { status: 'reused', ...inspection };
   }
 
+  // Only a build needs the "before" inputs. They exist to catch a source change while the build
+  // runs, and the freshness answer above already asked the same question against the manifest;
+  // hashing the whole tree again before that answer would only delay every launch of a current
+  // build.
+  const beforeInput = await collectAppBuildInputs(repoRoot, beforeRuntime);
   await invalidateAppBuildManifest(repoRoot);
   const buildStartedAt = now();
   try {

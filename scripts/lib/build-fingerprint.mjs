@@ -100,20 +100,28 @@ async function fingerprintFile(boundaryRoot, absolutePath, logicalPath) {
   };
 }
 
-async function collectPath(boundaryRoot, absolutePath, logicalPath, entries, shouldInclude) {
-  await assertCanonicalPathInside(boundaryRoot, absolutePath, {
-    rejectSymlink: true,
-    label: `fingerprint path ${logicalPath}`,
-  });
+/**
+ * Walk one fingerprinted path.
+ *
+ * `validated` carries the caller's proof that this entry was already checked: every path the
+ * caller passes in is asserted in full below, and every entry discovered here is checked the same
+ * way — a child that is a link is refused before it is descended into, and `fingerprintFile`
+ * re-asserts the boundary for each file it opens. Re-asserting the whole ancestor chain for all
+ * 1600+ files of this workspace was the largest single cost of a launch gate that otherwise hashes
+ * a dozen megabytes.
+ */
+async function collectPath(boundaryRoot, absolutePath, logicalPath, entries, shouldInclude, validated = false) {
+  if (!validated) {
+    await assertCanonicalPathInside(boundaryRoot, absolutePath, {
+      rejectSymlink: true,
+      label: `fingerprint path ${logicalPath}`,
+    });
+  }
   const info = await lstat(absolutePath);
   if (info.isSymbolicLink()) throw new Error(`Fingerprint path is a symbolic link: ${logicalPath}`);
   if (info.isFile()) {
     if (shouldInclude(logicalPath, false)) {
-      entries.set(normalizeFingerprintPath(logicalPath), await fingerprintFile(
-        boundaryRoot,
-        absolutePath,
-        logicalPath,
-      ));
+      entries.set(normalizeFingerprintPath(logicalPath), resolve(absolutePath));
     }
     return;
   }
@@ -134,12 +142,38 @@ async function collectPath(boundaryRoot, absolutePath, logicalPath, entries, sho
       childLogicalPath,
       entries,
       shouldInclude,
+      true,
     );
   }
 }
 
+/**
+ * Run `worker` over `items` with a fixed number of in-flight tasks.
+ *
+ * Hashing is where a fingerprint spends its time, and it is per-file work: the walk visits 1600+
+ * small files here, so awaiting each `readFile` and digest one after another costs seconds on a
+ * tree whose *content* is only a few megabytes. Every result is placed by index, so the digest
+ * never depends on completion order. The first failure rejects and no further item is started;
+ * whatever is already in flight settles.
+ */
+export async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 export async function fingerprintPaths(boundaryRoot, paths, {
   shouldInclude = () => true,
+  concurrency = 16,
 } = {}) {
   const absoluteRoot = resolve(boundaryRoot);
   await realpath(absoluteRoot);
@@ -160,7 +194,11 @@ export async function fingerprintPaths(boundaryRoot, paths, {
     );
   }
 
-  const files = [...entries.values()].sort((left, right) => left.path.localeCompare(right.path));
+  const listed = [...entries.entries()];
+  const fingerprinted = await mapWithConcurrency(listed, concurrency, ([logicalPath, absolutePath]) => (
+    fingerprintFile(absoluteRoot, absolutePath, logicalPath)
+  ));
+  const files = fingerprinted.sort((left, right) => left.path.localeCompare(right.path));
   return {
     digest: digestContract(files),
     fileCount: files.length,
