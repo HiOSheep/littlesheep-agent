@@ -5,7 +5,7 @@
 // 并且对无法评测的输入报退出码 2。夹具不依赖仓库外的任何样本工作树。
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -221,6 +221,9 @@ function createFixture(name, snapshotSource, capabilitySource = ALLOWLIST_CAPABI
   const root = mkdtempSync(join(tmpdir(), `ga04-e3-fixture-${name}-`))
   fixtures.push(root)
   writeFiles(root, {
+    // 真实 checkout 会忽略依赖目录；缺少这一行时，任何 node_modules（含 junction）都会出现在
+    // `git status` 里，让「评测前后工作树一致」的断言因为夹具本身不真实而失败。
+    '.gitignore': 'node_modules/\n',
     'packages/types/package.json': TYPES_PACKAGE,
     'packages/types/src/index.ts': TYPES_INDEX,
     'packages/types/src/capability.ts': capabilitySource,
@@ -412,6 +415,36 @@ describe('e3-oracle 判别力（合成隔离夹具）', () => {
     expect(run.json?.status).toBe('pass')
     expect(existsSync(join(root, PROBE_TEST_REL))).toBe(true)
     expect(run.json?.diagnostics?.gitStatus).toBe('skipped-keep-eval-file')
+  }, 120_000)
+
+  /**
+   * 借用的依赖树：工作树的 `node_modules` 常常是指向主 checkout 的 junction。评测结束时的清理
+   * 若跟着链接走，就会删掉主 checkout 里的真实缓存目录（2026-09-30 实测到这一点）。这条用例把
+   * `node_modules` 指向一个装了 `.vite` 标记的目录，断言评测后标记仍在，且诊断里写明跳过了清理。
+   */
+  it('node_modules 是链接时跳过清理，不删链接目标里的真实文件', () => {
+    const root = createFixture('linked-node-modules', ALLOWLIST_SNAPSHOT)
+    const target = mkdtempSync(join(tmpdir(), 'ga04-linked-deps-'))
+    fixtures.push(target)
+    const markerRel = join('.vite', 'keep.json')
+    mkdirSync(join(target, '.vite'), { recursive: true })
+    writeFileSync(join(target, markerRel), '{"marker":"keep"}\n')
+    symlinkSync(target, join(root, 'node_modules'), 'junction')
+
+    const run = runOracle(root, ['--json'])
+
+    expect(
+      run.status,
+      `oracle 退出码应为 0；criteria=${JSON.stringify(run.json?.criteria ?? null)} stderr=${run.stderr.slice(0, 300)}`,
+    ).toBe(0)
+    expect(run.json?.status).toBe('pass')
+    expect(
+      run.json?.diagnostics?.cleanup?.skippedLinkedNodeModules,
+      `diagnostics=${JSON.stringify(run.json?.diagnostics ?? null)}`,
+    ).toBe(true)
+    // 链接目标（等价于主 checkout 的 node_modules）必须原样存在。
+    expect(existsSync(join(target, markerRel))).toBe(true)
+    expect(readFileSync(join(target, markerRel), 'utf8')).toContain('keep')
   }, 120_000)
 })
 

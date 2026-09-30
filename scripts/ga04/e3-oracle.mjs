@@ -22,6 +22,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import {
   closeSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -1028,6 +1029,21 @@ function strategySummary(observations) {
   })
 }
 
+/**
+ * 路径本身是不是链接目录（junction／symlink）。借来的 `node_modules` 常常是 junction：
+ * 经它删除或写入会落到链接目标的真实文件上——也就是主 checkout。清理前必须先问这一句。
+ */
+function isLinkedDirectory(path) {
+  try {
+    return lstatSync(path).isSymbolicLink()
+  } catch (error) {
+    // 路径不存在＝不是链接；其它错误（例如依赖未导入）必须冒泡，否则会静默退化成"不是链接"，
+    // 而这条判断的全部价值就在于它不能失败开放。
+    if (error && error.code === 'ENOENT') return false
+    throw error
+  }
+}
+
 /** 只清理工作树内的临时产物；评测目录要等最后一次子进程调用之后由 removeWorkDir 删除。 */
 function cleanup({ worktree, tempTestFile, previousTestFile, keepEvalFile }) {
   const state = { removedTestFile: false, restoredForeignFile: false }
@@ -1042,13 +1058,21 @@ function cleanup({ worktree, tempTestFile, previousTestFile, keepEvalFile }) {
       state.removedTestFile = true
     }
     // vitest 可能在工作树内留下缓存目录；只删本 oracle 能确认的生成物。
-    for (const rel of ['node_modules/.vite', 'node_modules/.vitest']) {
-      const dir = join(worktree, rel)
-      if (existsSync(dir)) {
-        try {
-          rmSync(dir, { recursive: true, force: true })
-        } catch {
-          // 忽略：清理失败会让 git status 断言暴露它
+    // 但工作树的 node_modules 可能是指向主 checkout 的 junction，经它 rmSync 会删掉主 checkout
+    // 里的真实目录（2026-09-30 实测：主 checkout 的 node_modules/.vite 被评测清掉）。链接一律跳过，
+    // 并把跳过写进诊断——缓存留在借来的依赖树里无害，删到别人仓库里有害。
+    const nodeModules = join(worktree, 'node_modules')
+    if (isLinkedDirectory(nodeModules)) {
+      state.skippedLinkedNodeModules = true
+    } else {
+      for (const rel of ['node_modules/.vite', 'node_modules/.vitest']) {
+        const dir = join(worktree, rel)
+        if (existsSync(dir) && !isLinkedDirectory(dir)) {
+          try {
+            rmSync(dir, { recursive: true, force: true })
+          } catch {
+            // 忽略：清理失败会让 git status 断言暴露它
+          }
         }
       }
     }

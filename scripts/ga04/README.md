@@ -136,6 +136,12 @@ node node_modules/vitest/vitest.mjs run scripts/ga04/e3-oracle.test.mjs
 tracked 文件里时，候选会在自己的 `git status`／`git diff` 里看到标记。下一轮应把内容型哨兵放到任务不会触碰
 的文件，或只保留已提交、按哈希校验的哨兵。
 
+**借来的依赖树是只读的**：工作树的 `node_modules` 是 junction 时，任何经它进行的写入或删除都会落到链接
+目标（主 checkout）的真实文件上。2026-09-30 实测了两处：`pnpm exec` 删掉了主 checkout 的
+`node_modules/.bin` 与 workspace 状态文件；`e3-oracle` 的清理删掉了主 checkout 的 `node_modules/.vite`。
+现在 oracle 在清理前先判断 `node_modules` 是否为链接，是就整体跳过（诊断里写
+`cleanup.skippedLinkedNodeModules`），并有测试用「链接目标里的标记文件必须存活」钉住这条行为。
+
 ## 判别力证据
 
 `e3-oracle.test.mjs` 用 `git init` 出来的最小夹具（`packages/types` 与 `packages/runner` 各一份源码、
