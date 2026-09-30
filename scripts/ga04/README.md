@@ -1,8 +1,9 @@
 # GA-04 可复现实验：E3 capability reason 契约
 
 本目录是 GA-04（Agent 约束精简配对试验）中 **E3 跨包契约** 题的可复现实验定义，不是产品门禁：
-它不接入 `check:repo` 或 CI，不改变 Runtime 行为，也不给候选加载任何规则。任务书见
-[repository-agent-constraints-slimming-taskbook-2026-09-28.md](../../docs/taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md)。
+它不接入 `check:repo` 或 CI，不改变 Runtime 行为，也不给候选加载任何规则。试验结论、采用裁决与未证明项
+由[项目状态](../../docs/decision/project-status.md)的「未完成边界·效率与生态」拥有；产生它的任务书已于
+2026-09-30 退役，原文可从 Git 历史取回（`git log --follow -- docs/taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md`）。
 
 两个 E3 文件与两个哨兵文件：
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 //
-// Governance-cost pilot measurement for the repository agent constraints slimming taskbook
-// (docs/taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md, GA-04 in section 4
-// and the comparison plan in section 5). It is a read-only, deterministic measurement of the three
-// two static facts a coding agent pays for under the current rule package:
+// Governance-cost pilot measurement for the repository agent constraints slimming work
+// (formerly the 2026-09-28 taskbook, GA-04 in its section 4 and the comparison plan in
+// section 5; the taskbook is retired and its surviving facts live in
+// docs/decision/project-status.md). It is a read-only, deterministic measurement of two
+// static facts a coding agent pays for under the current rule package:
 //
 //   (a) entry reading   — which local Markdown documents docs/README.md points at, their bytes and
 //                         SHA-256, so "how much must be read to start" is a number, not an opinion

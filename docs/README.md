@@ -8,7 +8,6 @@ LittleSheep 已形成以单一主循环、受控工具执行和显式权限边�
 
 - [前端简洁高效化](taskbooks/frontend-simplification-taskbook-2026-09-27.md)：进行中的界面整理与验证。
 - [Runtime 自主执行与沙箱评估](taskbooks/runtime-autonomy-sandbox-evaluation-taskbook-2026-09-27.md)：首轮审阅未通过，按任务书补正后复核。
-- [仓库开发 Agent 约束瘦身](taskbooks/repository-agent-constraints-slimming-taskbook-2026-09-28.md)：已完成；采用裁决与未证明项见 §8。
 - [单层子 Agent 与执行效率](taskbooks/single-level-subagent-taskbook-2026-09-24.md)：方案仍未实现，效率收益未证明。
 - [UI/UX 架构变更候选](decision/ui-ux-architecture-candidates-2026-09-28.md)：提案，等待用户决定是否进入架构工作。
 
