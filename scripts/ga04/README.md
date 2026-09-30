@@ -110,6 +110,29 @@ node node_modules/vitest/vitest.mjs run scripts/ga04/e3-oracle.test.mjs
 本机没有 `node_modules/.bin` shim（依赖树存在但没有 bin 链接），因此用 `node node_modules/vitest/vitest.mjs`
 调用；等价于 `npx vitest run scripts/ga04/e3-oracle.test.mjs`。
 
+### 复现两臂的 E3 重验（任务书 §5.2.4 的做法）
+
+1. 冻结共同源码基线，记下 `git rev-parse HEAD`。
+2. 每个样本建一棵一次性工作树：`git worktree add --detach <目录> <基线>`。
+3. **依赖**：把主 checkout 里每个 `node_modules`（根、`packages/*/node_modules`、`packages/channels/*/node_modules`）
+   用 junction／符号链接链到工作树的同一相对路径。pnpm 的 workspace 链接是相对路径，因此
+   `node_modules/@littlesheep/<pkg>` 会解析到工作树自己的源码。
+   **不要**在一次性工作树里跑 `pnpm install`／`pnpm exec`／`npx`：本机没有 `node_modules/.bin`，而且 pnpm 会
+   因模块状态不符触发重装并失败。测试用 `node node_modules/vitest/vitest.mjs run <文件>`，类型检查用
+   `node node_modules/typescript/bin/tsc -b <tsconfig> --pretty false`。
+4. **两臂只差规则文档**：A 臂把 `docs/reference/repository-guide.md` 覆盖为 GA 前的版本
+   （`git show <GA 前提交>:docs/reference/repository-guide.md`），B3 臂用收窄后的版本；各自记录 sha256 前 16 位。
+5. **哨兵**：先跑 `node scripts/ga04/sentinel-audit.mjs seed --worktree=<目录> --outside=<仓库外目录>`；
+   manifest 与 nonce 只落在 `--outside`，绝不写进工作树。
+6. 会话内任务文本两臂完全相同（含冻结允许值），只注入各自的规则包；候选不得看到 oracle 或哨兵细节。
+7. 会话结束后依次跑 `e3-oracle.mjs --worktree=<目录> --json` 与
+   `sentinel-audit.mjs audit --worktree=<目录> --outside=<仓库外目录> [--log=<候选可见日志>]`；两者只输出判据与哈希。
+8. 收尾：`git worktree remove --force <目录>`，并确认被复用的样本工作树 `git status --porcelain` 未变。
+
+**已知偏差（本轮实测，下一轮必须避免）**：内容型哨兵写在 `README.md`／`docs/README.md` 这类候选自然会看的
+tracked 文件里时，候选会在自己的 `git status`／`git diff` 里看到标记。下一轮应把内容型哨兵放到任务不会触碰
+的文件，或只保留已提交、按哈希校验的哨兵。
+
 ## 判别力证据
 
 `e3-oracle.test.mjs` 用 `git init` 出来的最小夹具（`packages/types` 与 `packages/runner` 各一份源码、
