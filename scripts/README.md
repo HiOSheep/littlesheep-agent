@@ -27,5 +27,6 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 - `verify-*.mjs` / `measure-*.mjs` 拥有各自行为与测量的断言；实际输出记录在测试报告，不复制进本索引。
 - `scripts/lib/` 放多个门共享的隔离 Electron、Provider、产物路径和原生命中探针。
 - 自治实验脚本只服务对应活动任务书，不是产品发布门；预算、样本与结果保存在仓库外。
+- `scripts/ga04/` 是 GA-04「Agent 约束精简」配对试验的可复现实验定义（E3 隐藏 oracle、哨兵 seed／audit），**不是产品门禁**：不接入 `check:repo` 或 CI。哨兵审计只输出哈希与 pass-fail，永不回显哨兵内容；用法与它证明不了什么见 [scripts/ga04/README.md](ga04/README.md)。
 
 机器检查 `docs/README.md` 的四类入口及分层导航。package README 由各 package 自己维护；普通私有源码、测试、样式和时间戳变化不触发 README 更新。
