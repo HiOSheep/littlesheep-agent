@@ -29,3 +29,5 @@ The visual source lives in Renderer styles. The material-role test inventories b
 State colors are not the only distinction: shape and text identify status. Prefer shared StateView for loading, empty, unavailable and failure. Unavailable requires a visible reason; failure can expose a retry only when retry is real. Empty means a successful result with no entries.
 
 Focus ownership, destructive confirmation, split buttons, feedback notices, state view and icons are shared primitives. Their source-level behavior is covered by ui tests; real Electron checks are required for hit targets, window chrome, DPI and computed visual output.
+
+Current state-view consumers include the scheduled page (unavailable), plugins and channels (loading / empty), archived items and workspace artifacts (loading / empty / failure), skills, and daily Token usage. Each caller supplies only states it can prove from its own data source.

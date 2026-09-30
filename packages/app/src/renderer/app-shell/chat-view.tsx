@@ -5,12 +5,10 @@ import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { MessageFileStrip } from '../composer/message-files'
-import { describeComposerSendReadiness } from '../composer/send-readiness'
 import { Markdown } from '../Markdown'
 import { RunningPill } from '../sidebar/running-pill'
 import { TraceCard } from '../TraceCard'
 import { attachmentToArtifact } from '../workspace/path-utils'
-import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
 import type { ChatViewController } from './app-controller-projections'
 
 /** How long the way back takes to grow out of the composer's edge, and to drop back into it. */
@@ -44,7 +42,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     renameSession,
     stop,
     setControlTip,
-    modelAvailability,
+    openSettingsPage,
     // A failed turn's own action. The handler is stable and the turn decides whether it offers it,
     // so every turn gets the same prop and only a `failed` one renders the control.
     loading,
@@ -53,17 +51,9 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
   // The turn's files are opened from here, so their line counts come from the same workspace.
   const artifactsWorkspaceRoot = projectPath
 
-  // The empty conversation invites a send, so it must state the same fact the
-  // send entry refuses on: a first-run screen that says "hand it to LittleSheep"
-  // is exactly where a user with no model types and presses Enter.
-  const { reason: executionReason } = useRuntimeReadiness()
-  const sendReadiness = describeComposerSendReadiness({
-    availability: modelAvailability,
-    executionReason,
-  })
-  const emptyCopy = sendReadiness.blocked && sendReadiness.reason
-    ? sendReadiness.reason
-    : '选择模型、推理强度和工作目录后，直接交给 LittleSheep。'
+  // The transcript answers "what can I do here?" The composer answers the
+  // separate question "why can't I send this yet?" Keep those surfaces distinct.
+  const emptyCopy = '对话还没有消息。你可以在下方写下目标；发送条件会显示在输入区。'
 
   const {
     readingAway,
@@ -140,6 +130,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                 onOpenReview={openReviewInWorkspace}
                 onBranch={branchConversationFromMessage}
                 onRetryTurn={retryFailedTurn}
+                onOpenUsageHistory={() => openSettingsPage('usage')}
                 retryPending={loading}
               />
             ) : (

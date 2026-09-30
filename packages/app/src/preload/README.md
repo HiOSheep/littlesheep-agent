@@ -16,6 +16,7 @@ Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小�
 - `getPathForFile` 经 Electron `webUtils` 取本地路径，失败返回空串。
 - 只读事件桥：`onBrowserOpenNewTab`（只转发 HTTP(S) 载荷，返回退订函数）和 `onApplicationStateFlush`（监听器返回后回发 ACK；500 ms 超时归 `../main/desktop-shell.ts`）。
 - 窗口拖拽只暴露 `startWindowDrag`/`moveWindowDrag`/`endWindowDrag` 三个固定通道；点结构由 Main 用 `../shared/window-drag-contracts.ts` 的 `isWindowDragPoint` 复核。
+- `setWindowAppearance(isDark)` 只传递 Renderer 已解析的深浅文字模式；Main 将其限定用于原生标题栏前景和不透明窗口底色，并校验载荷及发送窗口，不暴露任意颜色或原生窗口设置。
 - 通道名与载荷类型只从 `../shared/*-contracts.ts` 读取；不直接暴露 Node.js、文件系统、shell、密钥或任意 IPC。
 - 业务请求统一走 Local App API；renderer 侧统一经 `../renderer/api/common.ts` 的 `localApiFetch` 发出，未就绪时不请求端口 0。
 

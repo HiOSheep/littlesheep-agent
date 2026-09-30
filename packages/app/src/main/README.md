@@ -15,6 +15,7 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 - 核心源码对 LS Runtime 工具保持宿主级只读；危险命令和硬拒绝优先于普通授权。
 - 凭据留在宿主密钥存储；日志与 API projection 有界且脱敏。插件与 guest 页面不得取得不受限的文件或进程句柄。
 - `index.ts` 与 `desktop-shell.ts` 组合进程和窗口；Local App API 在 `local-app-api-server.ts` 与 `local-app-api/`；路径和 run policy 由 `run-policy.ts` 与 safety package 所有。
+- 原生标题栏与启动页初始色跟随系统；Renderer 首帧应用持久主题后，通过窄布尔 `window-appearance-contracts.ts` 同步标题栏符号色及不透明底色。Main 仅接受本窗口的布尔主题事实；启动失败页仍跟随系统主题。
 
 ## 验证
 

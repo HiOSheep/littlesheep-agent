@@ -10,13 +10,15 @@ Renderer 拥有可见交互和临时客户端状态。Main 仍是会话、项目
 | `chat` | 展示消息、活动、结算结果和对话阅读位置。 |
 | `composer` | 管理草稿、模型就绪状态、焦点和 run 提交交互。 |
 | `sidebar` | 导航会话与项目，呈现归档和任务控制。 |
-| `settings` | 展示配置并通过 API 提交变更。 |
-| `workspace` | 呈现文件、预览、review、浏览器与用户控制的终端。 |
+| `settings` | 展示配置并通过 API 提交变更；外观偏好由 Renderer 单独版本化保存。 |
+| `workspace` | 呈现文件、预览、review、浏览器与用户控制的终端，并让 Monaco／终端跟随应用主题。 |
 | `approval` | 呈现待处理授权并收集用户选择；Main 重新判定授权。 |
 | `runtime`、`runtime-events` | 保存显示选项元数据并投影运行期任务事件，不决定执行策略。 |
 | `runtime-readiness`、`runtime-recovery` | 展示分阶段就绪状态和可操作的恢复信息。 |
 | `usage` | 呈现有界的每日用量 projection。 |
 | `ui`、`api` | 共享组件／token／焦点工具与 Local App API client；wire contract 在 `src/shared`。 |
+
+应用级外观偏好由 `app-shell/appearance-preferences.ts` 校验、保存并在首帧前应用；它不进入 Runtime 配置或 Agent 提示词。聊天、设置、弹层、编辑器、终端和 Token 用量图表消费同一组语义色与字号令牌。
 
 工作区路径选择只是请求；Main 按绑定的会话或项目重新检查范围。用户直接输入的交互终端不经过 Agent 审批。
 

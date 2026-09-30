@@ -10,6 +10,7 @@
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { isWindowChromeState, WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL, type WindowChromeState } from '../shared/window-chrome-contracts'
+import { WINDOW_APPEARANCE_CHANNEL } from '../shared/window-appearance-contracts'
 import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
   APPLICATION_STATE_FLUSH_CHANNEL,
@@ -160,4 +161,8 @@ contextBridge.exposeInMainWorld('littlesheep', {
   startWindowDrag: (point: WindowDragPoint) => ipcRenderer.send(WINDOW_DRAG_START_CHANNEL, point),
   moveWindowDrag: (point: WindowDragPoint) => ipcRenderer.send(WINDOW_DRAG_MOVE_CHANNEL, point),
   endWindowDrag: () => ipcRenderer.send(WINDOW_DRAG_END_CHANNEL),
+  setWindowAppearance: (isDark: boolean) => {
+    if (typeof isDark !== 'boolean') return
+    ipcRenderer.send(WINDOW_APPEARANCE_CHANNEL, { isDark })
+  },
 })

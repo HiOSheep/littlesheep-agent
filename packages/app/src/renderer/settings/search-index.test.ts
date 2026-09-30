@@ -37,6 +37,15 @@ import {
 /** 索引的字段清单（S3 交付时的字面量），少一条或多一条都会失败。 */
 const S3_FIELD_INVENTORY: string[] = [
   'appearance.conversation-display',
+  'appearance.interface-font-size',
+  'appearance.chat-font-size',
+  'appearance.theme-mode',
+  'appearance.palette',
+  'appearance.color-accent',
+  'appearance.color-background',
+  'appearance.color-surface',
+  'appearance.code-font-size',
+  'appearance.terminal-font-size',
   'application.close-policy',
   'agent.profile',
   'agent.compression-threshold',
@@ -178,6 +187,7 @@ const PAGE_SOURCE_FILE: Record<string, string> = {
   browser: 'browser.tsx',
   plugins: 'plugins.tsx',
   api: 'model-provider-editor.tsx',
+  // Appearance belongs to settings; its page is declared below this component folder.
 }
 
 function navTitles(): Map<string, string> {

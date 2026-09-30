@@ -108,6 +108,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'openReviewInWorkspace',
     'projectPath',
     'branchConversationFromMessage',
+    'openSettingsPage',
     // A failed turn's retry re-runs that turn's own instruction through the send path, so the
     // transcript reads the run state it decides on (`loading`) and the action it dispatches
     // (`retryFailedTurn`) from the same controller the composer does.

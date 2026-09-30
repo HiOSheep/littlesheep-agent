@@ -751,7 +751,7 @@ async function main() {
     if (!skipFalsification) {
       // B. the pre-fix reading: with the rule gone, keyboard focus draws nothing at all.
       expect(deletion?.deleted === true, `the fix rule could not be removed from the live stylesheet: ${JSON.stringify(deletion)}`)
-      expect((deletion?.text ?? '').includes('rgba(226, 226, 226, 0.32)') && (deletion?.text ?? '').includes('outline-offset: 2px'),
+      expect((deletion?.text ?? '').includes('var(--focus-ring-color)') && (deletion?.text ?? '').includes('outline-offset: 2px'),
         `the deleted rule is not the committed fix rule: ${JSON.stringify(deletion?.text)}`)
       expect(falsifiedKeyboard !== null && falsifiedKeyboard.walk.reached === true,
         'the search field was not reachable with real Tab presses after the rule was deleted')

@@ -2,12 +2,13 @@
 import { lazy, memo, Suspense, useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useLinkNavigation } from './link-navigation'
 import { StreamingMarkdownPartitioner } from './streaming-markdown'
 import { CheckIcon, CopyIcon } from './ui/icons'
 import { CodeWrapToggle } from './ui/code-wrap-toggle'
 import { useCodeWrapPreference } from './ui/code-wrap-preference'
+import { APPEARANCE_PREFERENCES_EVENT, isAppearanceDark } from './app-shell/appearance-preferences'
 
 // Single-line activity labels are rendered by a bounded scanner instead of the
 // parser below, so an activity row never depends on the Markdown plugin chain.
@@ -94,7 +95,7 @@ const MERMAID_LANGUAGE_ALIASES = new Set([
 const MERMAID_DEFINITION_PATTERN = /^\s*(?:stateDiagram(?:-v2)?|flowchart|graph|sequenceDiagram|classDiagram(?:-v2)?|erDiagram|journey|gantt|pie|mindmap|timeline|gitGraph|quadrantChart|requirementDiagram|c4Context|packet-beta|block-beta|architecture-beta)\b/iu
 
 let mermaidModulePromise: Promise<typeof import('mermaid')> | undefined
-let mermaidConfigured = false
+let mermaidRenderQueue: Promise<void> = Promise.resolve()
 
 function isMermaidCodeBlock(language: string | undefined, code: string): boolean {
   const normalizedLanguage = language?.trim().toLowerCase()
@@ -102,27 +103,31 @@ function isMermaidCodeBlock(language: string | undefined, code: string): boolean
   return MERMAID_DEFINITION_PATTERN.test(code)
 }
 
-async function renderMermaid(id: string, definition: string): Promise<string> {
-  mermaidModulePromise ??= import('mermaid')
-  const { default: mermaid } = await mermaidModulePromise
+export function mermaidThemeVariables(isDark: boolean) {
+  return isDark
+    ? {
+      background: 'transparent', primaryColor: '#2f2f2f', primaryTextColor: '#f4f4f4', primaryBorderColor: '#5a5a5a',
+      lineColor: '#a8a8a8', secondaryColor: '#282828', tertiaryColor: '#202020', edgeLabelBackground: '#202020',
+      clusterBkg: '#202020', clusterBorder: '#5a5a5a', textColor: '#f4f4f4',
+    }
+    : {
+      background: 'transparent', primaryColor: '#ffffff', primaryTextColor: '#30302e', primaryBorderColor: '#b8b8b4',
+      lineColor: '#5e5e5b', secondaryColor: '#f0f0ee', tertiaryColor: '#fafaf9', edgeLabelBackground: '#fafaf9',
+      clusterBkg: '#f0f0ee', clusterBorder: '#b8b8b4', textColor: '#30302e',
+    }
+}
 
-  if (!mermaidConfigured) {
+async function renderMermaid(id: string, definition: string, isDark: boolean): Promise<string> {
+  const render = mermaidRenderQueue.then(async () => {
+    mermaidModulePromise ??= import('mermaid')
+    const { default: mermaid } = await mermaidModulePromise
+    const theme = mermaidThemeVariables(isDark)
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
       theme: 'base',
       themeVariables: {
-        background: 'transparent',
-        primaryColor: '#2f2f2f',
-        primaryTextColor: '#f4f4f4',
-        primaryBorderColor: '#5a5a5a',
-        lineColor: '#a8a8a8',
-        secondaryColor: '#282828',
-        tertiaryColor: '#202020',
-        edgeLabelBackground: '#202020',
-        clusterBkg: '#202020',
-        clusterBorder: '#5a5a5a',
-        textColor: '#f4f4f4',
+        ...theme,
         fontFamily: 'Arial, "Microsoft YaHei", sans-serif',
         fontSize: '14px',
       },
@@ -137,21 +142,21 @@ async function renderMermaid(id: string, definition: string): Promise<string> {
           stroke-width: 1.2px;
         }
         .marker, .arrowheadPath {
-          fill: #a8a8a8;
-          stroke: #a8a8a8;
+          fill: ${theme.lineColor};
+          stroke: ${theme.lineColor};
         }
         .label, .nodeLabel, .edgeLabel, text, tspan {
-          color: #f4f4f4;
-          fill: #f4f4f4;
+          color: ${theme.textColor};
+          fill: ${theme.textColor};
         }
       `,
     })
-    mermaidConfigured = true
-  }
-
-  await mermaid.parse(definition)
-  const result = await mermaid.render(id, definition)
-  return result.svg
+    await mermaid.parse(definition)
+    const result = await mermaid.render(id, definition)
+    return result.svg
+  })
+  mermaidRenderQueue = render.then(() => undefined, () => undefined)
+  return render
 }
 
 const components: Components = {
@@ -254,8 +259,8 @@ function codeWrapStyle(wrapped: boolean) {
 
 /**
  * The box the lazy highlighter gives a code block, taken from the style object the
- * highlighter itself is configured with (`oneDark`'s `code[class*="language-"]`
- * metrics, which Prism applies to the element it renders).
+ * highlighter itself is configured with (`syntaxTheme`'s `code[class*="language-"]`
+ * metrics and colors, which Prism applies to the element it renders).
  *
  * Measured on the built renderer before this was shared: the plain fallback `<pre>`
  * inherited the message's line height and `.markdown pre`'s bottom margin while the
@@ -263,8 +268,8 @@ function codeWrapStyle(wrapped: boolean) {
  * block below the code by 6.38px. Rendering both states into this one box is what
  * makes the swap a no-op for the reader's position.
  */
-function codeSourceStyle(wrapped: boolean) {
-  const prism = oneDark['code[class*="language-"]'] ?? {}
+function codeSourceStyle(wrapped: boolean, syntaxTheme: typeof oneDark = oneDark) {
+  const prism = syntaxTheme['code[class*="language-"]'] ?? {}
   const wrap = codeWrapStyle(wrapped)
   return {
     source: {
@@ -286,14 +291,16 @@ function PlainCodeFallback({
   code,
   language,
   wrapped,
+  syntaxTheme,
   onToggleWrap,
 }: {
   code: string
   language: string
   wrapped: boolean
+  syntaxTheme: typeof oneDark
   onToggleWrap: () => void
 }) {
-  const source = codeSourceStyle(wrapped)
+  const source = codeSourceStyle(wrapped, syntaxTheme)
   return (
     <div className="code-block">
       <CodeToolbar code={code} language={language} wrapped={wrapped} onToggleWrap={onToggleWrap} />
@@ -308,13 +315,15 @@ function PlainCodeFallback({
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [wrapped, setWrapped] = useCodeWrapPreference()
-  const source = codeSourceStyle(wrapped)
+  const syntaxTheme = useSyntaxTheme()
+  const source = codeSourceStyle(wrapped, syntaxTheme)
   return (
     <Suspense fallback={(
       <PlainCodeFallback
         code={code}
         language={language}
         wrapped={wrapped}
+        syntaxTheme={syntaxTheme}
         onToggleWrap={() => setWrapped(!wrapped)}
       />
     )}>
@@ -329,7 +338,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           className="code-block-source"
           data-code-wrap={wrapped ? 'on' : 'off'}
           language={language}
-          style={oneDark}
+          style={syntaxTheme}
           PreTag="div"
           wrapLongLines={wrapped}
           codeTagProps={{
@@ -345,7 +354,23 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   )
 }
 
+function useAppearanceDark(): boolean {
+  const [dark, setDark] = useState(isAppearanceDark)
+  useEffect(() => {
+    const root = document.documentElement
+    const update = () => setDark(isAppearanceDark())
+    root.addEventListener(APPEARANCE_PREFERENCES_EVENT, update)
+    return () => root.removeEventListener(APPEARANCE_PREFERENCES_EVENT, update)
+  }, [])
+  return dark
+}
+
+function useSyntaxTheme(): typeof oneDark {
+  return useAppearanceDark() ? oneDark : oneLight
+}
+
 function MermaidBlock({ code }: { code: string }) {
+  const isDark = useAppearanceDark()
   const reactId = useId()
   const renderId = `littlesheep-mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/gu, '')}`
   const [svg, setSvg] = useState<string | null>(null)
@@ -356,7 +381,7 @@ function MermaidBlock({ code }: { code: string }) {
     setSvg(null)
     setRenderFailed(false)
 
-    void renderMermaid(renderId, code)
+    void renderMermaid(renderId, code, isDark)
       .then((nextSvg) => {
         if (!cancelled) setSvg(nextSvg)
       })
@@ -367,7 +392,7 @@ function MermaidBlock({ code }: { code: string }) {
     return () => {
       cancelled = true
     }
-  }, [code, renderId])
+  }, [code, isDark, renderId])
 
   if (renderFailed || !svg) return <CodeBlock code={code} language="text" />
 

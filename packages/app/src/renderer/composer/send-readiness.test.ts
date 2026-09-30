@@ -107,9 +107,11 @@ describe('send entry wiring', () => {
     // A disabled control never says why, so the reason has its own inline surface.
     expect(composer).toContain('<ComposerSendBlockNotice')
     expect(composer).toContain('modelReason={sendReadiness.modelReason}')
-    // The empty conversation is where the user is most likely to try, so it
-    // states the same fact instead of inviting a send that cannot run.
-    expect(chat).toContain('describeComposerSendReadiness({')
+    // The empty transcript names its own state; the composer separately explains
+    // why sending is blocked, so a blank conversation is not mislabeled as a gate.
+    expect(chat).toContain('对话还没有消息')
+    expect(chat).toContain('发送条件会显示在输入区')
+    expect(chat).not.toContain('describeComposerSendReadiness({')
     expect(chat).toContain('{emptyCopy}')
   })
 })

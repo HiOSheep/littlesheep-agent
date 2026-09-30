@@ -1014,25 +1014,6 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-left-color: var(--danger);
 }
 
-.plugin-list-loading {
-  display: flex;
-  align-items: center;
-  min-height: 92px;
-  gap: 8px;
-  padding: 0 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.plugin-loading-indicator {
-  width: 12px;
-  height: 12px;
-  border: 2px solid var(--border-strong);
-  border-top-color: var(--text);
-  border-radius: var(--radius-circle);
-  animation: plugin-loading-spin 0.9s linear infinite;
-}
-
 .plugin-list {
   display: grid;
   width: 100%;
@@ -3717,7 +3698,7 @@ body.is-resizing-column .settings-sidebar-resizer {
    field is now consistent with the app rather than special-cased; making it keyboard-only would need input
    modality tracking in JS. */
 .settings-sidebar-search input:focus-visible {
-  outline: 2px solid rgba(226, 226, 226, 0.32);
+  outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
 }
 

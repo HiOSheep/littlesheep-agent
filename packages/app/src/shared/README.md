@@ -4,6 +4,8 @@
 
 window-chrome-contracts.ts 定义 Beta/Chali 与 acrylic/vibrancy/solid 的窄状态以及固定查询/通知通道；Main 是窗口状态的唯一来源，Renderer 不按屏幕尺寸猜测是否最大化。
 
+`window-appearance-contracts.ts` 只承载 `{ isDark: boolean }`，由 Renderer 报告已解析的文字明暗，Main 据此调整原生标题栏符号对比与不透明底色；此主题事实不授予窗口操作能力。
+
 保存 Electron main 与 renderer 共同使用的纯数据模型和无副作用规则。 路由常量集中在 `local-app-api-routes.ts`：新增路由必须同时登记到 `LOCAL_APP_API_ROUTES`，动态前缀则进 `LOCAL_APP_API_PREFIXES`（后者要求以 `/` 结尾且不与该表重复，有单测把关）。
 
 ## 边界
@@ -20,7 +22,7 @@ window-chrome-contracts.ts 定义 Beta/Chali 与 acrylic/vibrancy/solid 的窄�
 - 只能依赖纯 TypeScript 契约，不依赖 Electron、React、文件系统或网络；测试可以用隔离临时目录。
 - 跨 package 的稳定协议应进入 `@littlesheep/types`；仅 App 两侧共享的模型留在此处。
 
-主要契约：`session-project-contracts.ts`、`session-scope.ts`、`workspace-contracts.ts`、`workspace-review-contracts.ts`、`runtime-api-contracts.ts`、`runtime-event-contracts.ts`、`application-state-contracts.ts`、`run-checkpoint-contracts.ts`、`run-usage.ts`、`compaction-operation-contracts.ts`、`context-usage-contracts.ts`、`cache-call-observations.ts`、`history-activity.ts`、`memory-control-contracts.ts`、`attachment-contracts.ts`、`plugin-control-contracts.ts`、`channel-control-contracts.ts`、`browser-control-contracts.ts`、`development-environment-contracts.ts`、`permission-modes.ts`、`model-capabilities.ts`、`window-drag-contracts.ts` 和 `local-app-api-routes.ts`。
+主要契约：`session-project-contracts.ts`、`session-scope.ts`、`workspace-contracts.ts`、`workspace-review-contracts.ts`、`runtime-api-contracts.ts`、`runtime-event-contracts.ts`、`application-state-contracts.ts`、`run-checkpoint-contracts.ts`、`run-usage.ts`、`compaction-operation-contracts.ts`、`context-usage-contracts.ts`、`cache-call-observations.ts`、`history-activity.ts`、`memory-control-contracts.ts`、`attachment-contracts.ts`、`plugin-control-contracts.ts`、`channel-control-contracts.ts`、`browser-control-contracts.ts`、`development-environment-contracts.ts`、`permission-modes.ts`、`model-capabilities.ts`、`window-drag-contracts.ts`、`window-appearance-contracts.ts` 和 `local-app-api-routes.ts`。
 
 ## 测试与修改定位
 

@@ -29,12 +29,14 @@ export function TurnUsageButton({
   label,
   figures,
   detail,
+  onOpenHistory,
   onTipChange,
 }: {
   /** What the pill itself says, e.g. `用量 20.7M tok`. */
   label: string
   figures: UsageFigure[]
   detail?: { title: string; lines: string[] }
+  onOpenHistory?: () => void
   onTipChange?: (tip: null) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -105,6 +107,11 @@ export function TurnUsageButton({
                 {detail.lines.map((line, index) => <li key={index}>{line}</li>)}
               </ul>
             </details>
+          )}
+          {onOpenHistory && (
+            <button type="button" className="turn-usage-history" onClick={() => { setOpen(false); onOpenHistory() }}>
+              查看历史用量
+            </button>
           )}
         </div>,
         document.body,

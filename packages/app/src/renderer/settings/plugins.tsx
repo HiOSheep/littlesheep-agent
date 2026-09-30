@@ -279,10 +279,7 @@ export function SettingsPluginsPage() {
       <FeedbackNotice className="plugin-page-error" feedback={error ? { tone: 'error', message: '插件操作未完成', detail: error } : null} busy={operationBusy} onRetry={error ? () => void loadStatus() : undefined} />
 
       {loading && (
-        <div className="plugin-list-loading">
-          <span className="plugin-loading-indicator" aria-hidden="true" />
-          正在读取插件状态
-        </div>
+        <StateView state="loading" title="正在读取插件状态" />
       )}
 
       {!loading && status && filteredPlugins.length > 0 && (

@@ -7,7 +7,11 @@ import {
   prepareLittleSheepMonacoLanguages,
 } from './monaco-language-support'
 import { workspaceMonacoModelRegistry } from './monaco-model-cache'
-import { LITTLE_SHEEP_MONACO_THEME } from './monaco-theme'
+import { LITTLE_SHEEP_MONACO_CUSTOM_THEME, LITTLE_SHEEP_MONACO_LIGHT_THEME,
+  LITTLE_SHEEP_MONACO_THEME,
+  updateLittleSheepMonacoCustomTheme } from './monaco-theme'
+import { APPEARANCE_PREFERENCES_EVENT, readAppearancePreferences,
+  type AppearancePreferencesEventDetail } from '../app-shell/appearance-preferences'
 import {
   COLUMN_RESIZE_END_EVENT,
   WORKSPACE_NAVIGATOR_MOTION_END_EVENT,
@@ -88,10 +92,11 @@ export function WorkspaceCodeEditor({
   ...props
 }: WorkspaceCodeEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
+  const appearance = useMonacoAppearance()
   const monacoReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
   const mergedOptions = useMemo(
-    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }),
-    [options],
+    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options, fontSize: appearance.codeFontSize }),
+    [appearance.codeFontSize, options],
   )
   useLayoutEffect(() => {
     const lifecycle = lifecycleRef.current
@@ -108,11 +113,12 @@ export function WorkspaceCodeEditor({
         {...props}
         path={path}
         loading={loading}
-        theme={LITTLE_SHEEP_MONACO_THEME}
+        theme={appearance.theme}
         beforeMount={configureLittleSheepMonaco}
         keepCurrentModel
         saveViewState={false}
         onMount={(editor, monaco) => {
+          appearance.bind(monaco)
           lifecycleRef.current?.dispose()
           lifecycleRef.current = trackWorkspaceEditorLifecycle(editor, true)
           adoptMountedEditorValue(editor, props.value)
@@ -133,6 +139,7 @@ export function WorkspaceCodeDiffEditor({
   ...props
 }: WorkspaceCodeDiffEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
+  const appearance = useMonacoAppearance()
   /** The diff editor itself, so layout can be re-run when its content changes. */
   const layoutRef = useRef<WorkspaceEditorLayoutTarget | null>(null)
   const monacoReady = usePreparedWorkspaceMonacoLanguages([
@@ -140,8 +147,8 @@ export function WorkspaceCodeDiffEditor({
     modifiedLanguage ?? 'plaintext',
   ])
   const mergedOptions = useMemo(
-    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options }),
-    [options],
+    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options, fontSize: appearance.codeFontSize }),
+    [appearance.codeFontSize, options],
   )
   useEffect(() => () => {
     lifecycleRef.current?.dispose()
@@ -165,11 +172,12 @@ export function WorkspaceCodeDiffEditor({
         originalLanguage={originalLanguage}
         modifiedLanguage={modifiedLanguage}
         loading={loading}
-        theme={LITTLE_SHEEP_MONACO_THEME}
+        theme={appearance.theme}
         beforeMount={configureLittleSheepMonaco}
         keepCurrentModifiedModel
         keepCurrentOriginalModel
         onMount={(editor, monaco) => {
+          appearance.bind(monaco)
           lifecycleRef.current?.dispose()
           const original = trackCodeEditorModel(editor.getOriginalEditor(), false)
           const modified = trackCodeEditorModel(editor.getModifiedEditor(), false)
@@ -449,3 +457,43 @@ function trackCodeEditorModel(
 
 const MonacoEditor = lazy(async () => ({ default: (await loadMonacoReact()).default }))
 const MonacoDiffEditor = lazy(async () => ({ default: (await loadMonacoReact()).DiffEditor }))
+
+function useMonacoAppearance() {
+  const [preferences, setPreferences] = useState(readAppearancePreferences)
+  const [theme, setTheme] = useState(resolveMonacoTheme)
+  const monacoRef = useRef<typeof Monaco | null>(null)
+
+  const activate = (monaco: typeof Monaco, name: string) => {
+    if (name === LITTLE_SHEEP_MONACO_CUSTOM_THEME) updateLittleSheepMonacoCustomTheme(monaco)
+    monaco.editor.setTheme(name)
+  }
+
+  useEffect(() => {
+    const update = (event?: Event) => {
+      const detail = event ? (event as CustomEvent<AppearancePreferencesEventDetail>).detail : null
+      const next = detail?.preferences ?? readAppearancePreferences()
+      const name = resolveMonacoTheme()
+      setPreferences(next)
+      setTheme(name)
+      if (monacoRef.current) activate(monacoRef.current, name)
+    }
+    const root = document.documentElement
+    root.addEventListener(APPEARANCE_PREFERENCES_EVENT, update)
+    return () => root.removeEventListener(APPEARANCE_PREFERENCES_EVENT, update)
+  }, [])
+
+  return {
+    theme,
+    codeFontSize: preferences.codeFontSize,
+    bind(monaco: typeof Monaco) {
+      monacoRef.current = monaco
+      activate(monaco, resolveMonacoTheme())
+    },
+  }
+}
+
+function resolveMonacoTheme(): string {
+  const root = typeof document === 'undefined' ? null : document.documentElement
+  if (root?.dataset.lsPalette === 'custom' && root.dataset.lsPaletteUsable === 'true') return LITTLE_SHEEP_MONACO_CUSTOM_THEME
+  return root?.dataset.lsTheme === 'light' ? LITTLE_SHEEP_MONACO_LIGHT_THEME : LITTLE_SHEEP_MONACO_THEME
+}

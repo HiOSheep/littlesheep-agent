@@ -74,8 +74,10 @@ describe('long-content reading layout (chat)', () => {
     const markdown = await source('../Markdown.tsx')
 
     // Both states go through one style source: the fallback is not a second set of numbers.
-    expect(markdown.match(/codeSourceStyle\(wrapped\)/gu)?.length).toBe(2)
-    expect(markdown).toContain("oneDark['code[class*=\"language-\"]']")
+    expect(markdown.match(/codeSourceStyle\(wrapped, syntaxTheme\)/gu)?.length).toBe(2)
+    expect(markdown).toContain('style={syntaxTheme}')
+    expect(markdown).toContain('APPEARANCE_PREFERENCES_EVENT')
+    expect(markdown).toContain("syntaxTheme['code[class*=\"language-\"]']")
     expect(markdown).toMatch(/padding:\s*'var\(--code-block-inset\)'/)
     expect(markdown).toMatch(/margin:\s*0,/)
 
@@ -105,6 +107,6 @@ describe('long-content reading layout (chat)', () => {
     const styles = await readRendererStyleSource()
     expect(declarations(styles, '.message .markdown-table-wrap table').get('min-width')).toBe('max-content')
     const markdown = await source('../Markdown.tsx')
-    expect(markdown.match(/codeSourceStyle\(wrapped\)/gu)?.length).toBe(2)
+    expect(markdown.match(/codeSourceStyle\(wrapped, syntaxTheme\)/gu)?.length).toBe(2)
   })
 })

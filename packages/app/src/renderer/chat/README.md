@@ -8,6 +8,7 @@ Chat 呈现对话记录并管理阅读交互。Main 与 Runner 拥有已保存�
 - 失败、中止、暂停、等待用户与未验证状态保留 Runtime 给出的原因；不补造部分状态，也不以固定文案替代缺失的模型回复。
 - Web 资料始终是不可信输入；blocked、partial、stale、timeout 与 cached 状态按来源 projection 保留。
 - retry、branch、copy 与 usage 等操作通过明确回调请求；Main 判断分支或持久化动作是否合法。
+- 单轮用量卡提供次级“查看历史用量”入口，并通过 App Shell 导航到设置中的 Token 用量页；日聚合仍只读取 Usage projection。
 - `use-chat-scroll-controller` 管理阅读位置：读者在底部时跟随新内容，否则保留可见消息锚点并提供可达的“回到最新”。真实会话切换可重置位置，加载旧历史或分配草稿 session id 不应重置。
 - 重载后展示与持久化结算一致的文本；Renderer 不复制或改写模型最终回复。
 

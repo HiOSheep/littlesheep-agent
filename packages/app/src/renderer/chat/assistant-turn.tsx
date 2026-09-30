@@ -42,6 +42,8 @@ interface AssistantTurnMessageProps {
   onBranch?: (messageId: string) => void
   /** Opens one of the turn's files in the workspace review. */
   onOpenReview?: (path: string) => void
+  /** Opens the durable daily usage history for this turn. */
+  onOpenUsageHistory?: () => void
   /**
    * Re-runs a failed turn's own instruction. Present whenever the app can start a run at all; the
    * turn decides whether it offers the action (only a failed turn can be retried).
@@ -59,6 +61,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   workspaceRoot,
   onOpenFile,
   onOpenReview,
+  onOpenUsageHistory,
   onBranch,
   onRetryTurn,
   retryPending = false,
@@ -84,7 +87,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
           text={message.text}
           timestamp={message.timestamp}
           onBranch={message.id && onBranch ? () => onBranch(message.id as string) : undefined}
-          usageAction={<TurnUsageAction message={message} />}
+          usageAction={<TurnUsageAction message={message} onOpenUsageHistory={onOpenUsageHistory} />}
         />
       </div>
     )
@@ -165,7 +168,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             text={message.text}
             timestamp={message.timestamp}
             onBranch={activity.status === 'done' && message.id && onBranch ? () => onBranch(message.id as string) : undefined}
-            usageAction={<TurnUsageAction message={message} />}
+          usageAction={<TurnUsageAction message={message} onOpenUsageHistory={onOpenUsageHistory} />}
           />
         </div>
       )}
@@ -508,7 +511,7 @@ function turnCountsLine(activity: AssistantTurnActivity): string {
  * rate four ways, four token kinds and the rate; it is reference material, so it lives in the card
  * the pill opens, together with the per-call cache detail.
  */
-function TurnUsageAction({ message }: { message: ChatMessage }) {
+function TurnUsageAction({ message, onOpenUsageHistory }: { message: ChatMessage; onOpenUsageHistory?: () => void }) {
   const usage = message.usage
   if (!usage) return null
   const calls = message.cacheCalls ?? []
@@ -530,6 +533,7 @@ function TurnUsageAction({ message }: { message: ChatMessage }) {
     <span className="message-meta-usage" aria-label="本轮用量">
       <TurnUsageButton
         label={turnUsageLabel(message)}
+        onOpenHistory={onOpenUsageHistory}
         figures={[
           ...turnUsageFigures(message),
           ...(callGroups === undefined ? [] : [

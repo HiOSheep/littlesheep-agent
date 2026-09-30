@@ -4,6 +4,59 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LittleSheep</title>
+    <script>
+      try {
+        const key = 'littlesheep.ui.appearance.v1'
+        const saved = JSON.parse(localStorage.getItem(key) || 'null')
+        const hasUiProfile = Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index) || '')
+          .some((name) => name.startsWith('littlesheep.ui.') && name !== key)
+        const mode = saved && saved.version === 1 && ['system', 'light', 'dark'].includes(saved.theme)
+          ? saved.theme
+          : hasUiProfile ? 'dark' : 'system'
+        const resolved = mode === 'system'
+          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : mode
+        document.documentElement.dataset.lsTheme = resolved
+        document.documentElement.dataset.lsThemeMode = mode
+        document.documentElement.dataset.lsPalette = saved?.palette || 'neutral'
+        const root = document.documentElement
+        const bounded = (value, fallback, min, max) => Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback
+        root.style.setProperty('--ui-font-scale', String(bounded(saved?.interfaceFontSize, 14, 12, 22) / 14))
+        root.style.setProperty('--chat-message-font-size', bounded(saved?.chatFontSize, 14, 12, 22) + 'px')
+        root.style.setProperty('--workspace-code-font-size', bounded(saved?.codeFontSize, 13, 11, 22) + 'px')
+        root.style.setProperty('--terminal-font-size', bounded(saved?.terminalFontSize, 12, 11, 22) + 'px')
+        const colors = saved?.colors || {}
+        const hex = (value) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : null
+        const luminance = (value) => {
+          const channels = value.slice(1).match(/.{2}/g).map((part) => parseInt(part, 16) / 255)
+            .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+          return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+        }
+        const ratio = (a, b) => { const x = luminance(a); const y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
+        const accent = hex(colors.accent)
+        const background = hex(colors.background)
+        const surface = hex(colors.surface)
+        if (root.dataset.lsPalette === 'custom' && accent && background && surface) {
+          const darkScore = Math.min(ratio('#111111', background), ratio('#111111', surface))
+          const lightScore = Math.min(ratio('#ffffff', background), ratio('#ffffff', surface))
+          const text = darkScore >= lightScore ? '#111111' : '#ffffff'
+          const usable = [background, surface].every((value) => ratio(text, value) >= 4.5 && ratio(accent, value) >= 3)
+          root.dataset.lsPaletteUsable = String(usable)
+          if (usable) {
+            root.style.setProperty('--ls-custom-accent', accent)
+            root.style.setProperty('--ls-custom-background', background)
+            root.style.setProperty('--ls-custom-surface', surface)
+            root.style.setProperty('--ls-custom-text', text)
+            root.style.setProperty('--ls-custom-muted', text === '#111111' ? '#555555' : '#bdbdbd')
+          }
+        } else {
+          root.dataset.lsPaletteUsable = root.dataset.lsPalette === 'custom' ? 'false' : 'true'
+        }
+        window.littlesheep?.setWindowAppearance?.(root.dataset.lsPalette === 'custom' && root.dataset.lsPaletteUsable === 'true'
+          ? root.style.getPropertyValue('--ls-custom-text').trim().toLowerCase() === '#ffffff'
+          : resolved === 'dark')
+      } catch { /* A broken preference must not prevent the app from starting. */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

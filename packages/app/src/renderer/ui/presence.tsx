@@ -6,6 +6,13 @@ import { isTransientTriggerTarget } from './transient'
 
 export type PresencePhase = 'entering' | 'open' | 'exiting'
 
+export function presenceMotionPlan(reducedMotion: boolean, exitMs: number, enterFrames: 0 | 1 | 2) {
+  return {
+    durationMs: reducedMotion ? 0 : Math.max(0, exitMs),
+    entryFrames: reducedMotion ? 0 : enterFrames,
+  }
+}
+
 
 export function FadePresence({
   show,
@@ -40,28 +47,31 @@ export function FadePresence({
     let innerFrame = 0
     let timer = 0
     let settleTimer = 0
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    const motionPlan = presenceMotionPlan(reducedMotion, exitMs, enterFrames)
+    const motionDuration = motionPlan.durationMs
 
     if (show) {
       setPhase('entering')
       setMounted(true)
       if (mounted) {
         setVisible(true)
-        settleTimer = window.setTimeout(() => setPhase('open'), exitMs)
-      } else if (enterFrames === 0) {
+        settleTimer = window.setTimeout(() => setPhase('open'), motionDuration)
+      } else if (motionPlan.entryFrames === 0) {
         setVisible(true)
-        settleTimer = window.setTimeout(() => setPhase('open'), exitMs)
-      } else if (enterFrames === 1) {
+        settleTimer = window.setTimeout(() => setPhase('open'), motionDuration)
+      } else if (motionPlan.entryFrames === 1) {
         setVisible(false)
         frame = window.requestAnimationFrame(() => {
           setVisible(true)
-          settleTimer = window.setTimeout(() => setPhase('open'), exitMs)
+          settleTimer = window.setTimeout(() => setPhase('open'), motionDuration)
         })
       } else {
         setVisible(false)
         frame = window.requestAnimationFrame(() => {
           innerFrame = window.requestAnimationFrame(() => {
             setVisible(true)
-            settleTimer = window.setTimeout(() => setPhase('open'), exitMs)
+            settleTimer = window.setTimeout(() => setPhase('open'), motionDuration)
           })
         })
       }
@@ -77,7 +87,7 @@ export function FadePresence({
     timer = window.setTimeout(() => {
       setMounted(false)
       onExitedRef.current?.()
-    }, exitMs)
+    }, motionDuration)
     return () => window.clearTimeout(timer)
   }, [enterFrames, exitMs, show])
 

@@ -15,6 +15,7 @@ declare global {
   interface Window {
     littlesheep: {
       onWindowChrome?: (listener: (state: WindowChromeState) => void) => () => void
+      setWindowAppearance?: (isDark: boolean) => void
       /** Legacy fixed base URL. Kept for tests and for preloads that predate readiness. */
       apiBase?: string
       localApiBase?: () => Promise<string>

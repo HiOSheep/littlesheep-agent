@@ -323,8 +323,8 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.workspace-terminal-shell \.xterm-selection > div\s*\{[\s\S]*?border-radius:\s*var\(--selection-radius\);/u)
     expect(monacoTheme).toContain('LITTLE_SHEEP_SELECTION_BACKGROUND')
     expect(monacoTheme).toContain("'editor.selectionBackground': LITTLE_SHEEP_SELECTION_BACKGROUND")
-    expect(terminal).toContain('selectionBackground: LITTLE_SHEEP_SELECTION_BACKGROUND')
-    expect(terminal).toContain('selectionForeground: LITTLE_SHEEP_SELECTION_FOREGROUND')
+    expect(terminal).toContain("color('--selection-background', dark ? '#333333' : '#c8d9f3')")
+    expect(terminal).toContain("color('--selection-foreground', dark ? '#f2f2f2' : '#181818')")
   })
 
   it('reserves symmetric scrollbar space and keeps the chat thumb visible', async () => {
@@ -573,7 +573,7 @@ describe('chat layout stability', () => {
     // Native chrome owns acrylic and follows maximize/fullscreen independently
     // of the panel controls. The standalone startup page remains opaque.
     expect(desktopShell).toContain('installDesktopWindowChrome(win,')
-    expect(desktopShell).toContain('color: DESKTOP_STARTUP_SURFACE')
+    expect(desktopShell).toContain('color: startupWindowBackgroundColor()')
     expect(desktopShell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
     expect(desktopShell).toContain('roundedCorners: true')
     expect(desktopShell).toContain('thickFrame: true')

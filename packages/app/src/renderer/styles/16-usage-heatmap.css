@@ -163,11 +163,11 @@
 .usage-heatmap-week > button[data-level='0'][data-state='recorded'] {
   background: color-mix(in srgb, var(--text) 7%, var(--surface-2));
 }
-.usage-heatmap-week > button[data-level='1'] { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)); }
-.usage-heatmap-week > button[data-level='2'] { background: color-mix(in srgb, var(--text) 38%, var(--surface-2)); }
-.usage-heatmap-week > button[data-level='3'] { background: color-mix(in srgb, var(--text) 54%, var(--surface-2)); }
-.usage-heatmap-week > button[data-level='4'] { background: color-mix(in srgb, var(--text) 72%, var(--surface-2)); }
-.usage-heatmap-week > button[data-level='5'] { background: color-mix(in srgb, var(--text) 90%, var(--surface-3)); }
+.usage-heatmap-week > button[data-level='1'] { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='2'] { background: color-mix(in srgb, var(--accent) 38%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='3'] { background: color-mix(in srgb, var(--accent) 54%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='4'] { background: color-mix(in srgb, var(--accent) 72%, var(--surface-2)); }
+.usage-heatmap-week > button[data-level='5'] { background: color-mix(in srgb, var(--accent) 90%, var(--surface-3)); }
 
 .usage-heatmap-week > button:hover:not(:disabled) {
   outline: 1px solid var(--border-strong);
@@ -225,11 +225,11 @@
   border-radius: var(--radius-icon);
 }
 
-.usage-legend-item i[data-level='1'] { background: color-mix(in srgb, var(--text) 22%, var(--surface-2)); }
-.usage-legend-item i[data-level='2'] { background: color-mix(in srgb, var(--text) 38%, var(--surface-2)); }
-.usage-legend-item i[data-level='3'] { background: color-mix(in srgb, var(--text) 54%, var(--surface-2)); }
-.usage-legend-item i[data-level='4'] { background: color-mix(in srgb, var(--text) 72%, var(--surface-2)); }
-.usage-legend-item i[data-level='5'] { background: color-mix(in srgb, var(--text) 90%, var(--surface-3)); }
+.usage-legend-item i[data-level='1'] { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); }
+.usage-legend-item i[data-level='2'] { background: color-mix(in srgb, var(--accent) 38%, var(--surface-2)); }
+.usage-legend-item i[data-level='3'] { background: color-mix(in srgb, var(--accent) 54%, var(--surface-2)); }
+.usage-legend-item i[data-level='4'] { background: color-mix(in srgb, var(--accent) 72%, var(--surface-2)); }
+.usage-legend-item i[data-level='5'] { background: color-mix(in srgb, var(--accent) 90%, var(--surface-3)); }
 .usage-legend-item i[data-level='0'] { background: color-mix(in srgb, var(--text) 7%, var(--surface-2)); }
 .usage-legend-item i[data-state='empty'] { background: transparent; }
 .usage-legend-item i[data-state='missing'] {

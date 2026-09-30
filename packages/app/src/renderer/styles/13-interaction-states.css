@@ -74,6 +74,7 @@
   .archive-action,
   .settings-select:disabled,
   .settings-select-menu > button:disabled,
+  .appearance-custom-actions button,
 ):disabled {
   cursor: default;
   opacity: var(--control-disabled-opacity);

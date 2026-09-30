@@ -16,6 +16,8 @@ describe('desktop startup page', () => {
     expect(DESKTOP_STARTUP_WINDOW_BACKGROUND).toBe(DESKTOP_STARTUP_SURFACE)
     expect(DESKTOP_TITLEBAR_HEIGHT).toBe(32)
     expect(html).toContain(`background: ${DESKTOP_STARTUP_SURFACE}`)
+    expect(html).toContain('@media (prefers-color-scheme: light)')
+    expect(html).toContain('background: #f4f4f2')
     // A translucent material over the native caption buttons is the seam this
     // page must not reintroduce.
     expect(html).not.toContain('backdrop-filter')

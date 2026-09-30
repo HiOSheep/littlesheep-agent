@@ -71,7 +71,7 @@ describe('desktop shell window cleanup', () => {
     expect(entry).toContain('desktopShell.initialize()\n  },\n  log: (message) => console.warn(`[retry] ${message}`),')
   })
 
-  it('localizes one #101010 surface instead of a translucent startup overlay', async () => {
+  it('keeps the startup surface opaque and resolves it from the system theme', async () => {
     const [startup, shell] = await Promise.all([
       readFile(new URL('./desktop-startup-page.ts', import.meta.url), 'utf8'),
       readFile(new URL('./desktop-shell.ts', import.meta.url), 'utf8'),
@@ -81,11 +81,13 @@ describe('desktop shell window cleanup', () => {
     // caption buttons: that is the visible seam CS-02 removes.
     expect(startup).toContain("export const DESKTOP_STARTUP_SURFACE = '#101010'")
     expect(startup).toContain('background: ${DESKTOP_STARTUP_SURFACE}')
+    expect(startup).toContain('@media (prefers-color-scheme: light)')
     expect(startup).not.toContain('backdrop-filter')
     expect(startup).toContain('export const DESKTOP_TITLEBAR_HEIGHT = 32')
     // The native titlebar overlay byte-identically matches the renderer's
     // --workspace-code-surface through that shared constant.
-    expect(shell).toContain('color: DESKTOP_STARTUP_SURFACE')
+    expect(shell).toContain('color: startupWindowBackgroundColor()')
+    expect(shell).toContain("return nativeTheme.shouldUseDarkColors ? DESKTOP_STARTUP_SURFACE : '#f4f4f2'")
     expect(shell).toContain('height: WINDOW_TITLEBAR_HEIGHT')
     expect(shell).toContain('export const WINDOW_TITLEBAR_HEIGHT = DESKTOP_TITLEBAR_HEIGHT')
   })

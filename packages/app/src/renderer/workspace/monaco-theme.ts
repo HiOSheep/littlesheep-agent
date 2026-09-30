@@ -4,8 +4,11 @@ import {
   LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
   LITTLE_SHEEP_SELECTION_FOREGROUND,
 } from '../selection-style'
+import { isAppearanceDark, readAppearanceCssColor } from '../app-shell/appearance-preferences'
 
 export const LITTLE_SHEEP_MONACO_THEME = 'littlesheep-midnight'
+export const LITTLE_SHEEP_MONACO_LIGHT_THEME = 'littlesheep-daylight'
+export const LITTLE_SHEEP_MONACO_CUSTOM_THEME = 'littlesheep-custom'
 
 // Use neutral charcoal surfaces without a blue cast, then reserve saturated
 // colour for syntax so code stays vivid against the darker editor.
@@ -112,6 +115,93 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
   },
 } satisfies Monaco.editor.IStandaloneThemeData
 
+const LIGHT_SYNTAX_COLORS: Record<string, string> = {
+  '': '252523', identifier: '252523', variable: '252523',
+  'variable.predefined': '7040A0', constant: '7040A0', number: '1C7131', 'number.hex': '1C7131',
+  string: '914600', 'string.key.json': '08788A', 'string.escape': '854000', regexp: '1C7131',
+  keyword: 'B4232D', 'keyword.control': '9F1C27', type: '087185', 'type.identifier': '087185',
+  class: '087185', constructor: '087185', namespace: '087185', function: '245F9B',
+  'function.call': '245F9B', method: '245F9B', tag: '087185', metatag: '7040A0',
+  'attribute.name': '08788A', 'attribute.value': '914600', key: '08788A', delimiter: '4A4A46',
+  operator: '745900', annotation: '745900', comment: '676767', 'comment.doc': '5C5C5C', invalid: 'B4232D',
+}
+export const LITTLE_SHEEP_MONACO_LIGHT_RULES = LITTLE_SHEEP_MONACO_THEME_DATA.rules.map((rule) => ({
+  ...rule,
+  foreground: LIGHT_SYNTAX_COLORS[rule.token] ?? rule.foreground,
+}))
+
 export function registerLittleSheepMonacoTheme(monaco: typeof Monaco): void {
   monaco.editor.defineTheme(LITTLE_SHEEP_MONACO_THEME, LITTLE_SHEEP_MONACO_THEME_DATA)
+  monaco.editor.defineTheme(LITTLE_SHEEP_MONACO_LIGHT_THEME, {
+    ...LITTLE_SHEEP_MONACO_THEME_DATA,
+    base: 'vs',
+    rules: LITTLE_SHEEP_MONACO_LIGHT_RULES,
+    colors: {
+      ...LITTLE_SHEEP_MONACO_THEME_DATA.colors,
+      'editor.background': '#e9e9e7',
+      'editor.foreground': '#252523',
+      'editorGutter.background': '#e9e9e7',
+      'editorLineNumber.foreground': '#73736f',
+      'editorLineNumber.activeForeground': '#292927',
+      'editorCursor.foreground': '#20201e',
+      'editor.selectionBackground': '#bfd1ee',
+      'editor.inactiveSelectionBackground': '#d3dce9',
+      'editor.selectionForeground': '#171716',
+      'editor.selectionHighlightBackground': '#8199bd44',
+      'editor.wordHighlightBackground': '#90a6c944',
+      'editor.wordHighlightStrongBackground': '#738dbb55',
+      'editor.lineHighlightBackground': '#e2e2df',
+      'editorWhitespace.foreground': '#b4b4af',
+      'editorIndentGuide.background1': '#cececa',
+      'editorIndentGuide.activeBackground1': '#92928c',
+      'editorSuggestWidget.background': '#fafaf9',
+      'editorSuggestWidget.border': '#b8b8b4',
+      'editorSuggestWidget.foreground': '#252523',
+      'editorSuggestWidget.selectedBackground': '#e0e8f3',
+      'editorWidget.background': '#fafaf9',
+      'editorWidget.border': '#c4c4c0',
+      'editorHoverWidget.background': '#fafaf9',
+      'editorHoverWidget.border': '#c4c4c0',
+      'diffEditor.insertedLineBackground': '#D8F1DC',
+      'diffEditor.removedLineBackground': '#F8DEDA',
+      'diffEditor.diagonalFill': '#D7D7D3',
+      'diffEditor.border': '#C4C4C0',
+    },
+  })
+  updateLittleSheepMonacoCustomTheme(monaco)
+}
+
+export function updateLittleSheepMonacoCustomTheme(monaco: typeof Monaco): void {
+  const root = typeof document === 'undefined' ? null : document.documentElement
+  const read = (name: string, fallback: string) => root ? readAppearanceCssColor(name, fallback) : fallback
+  const background = read('--workspace-code-surface', '#e9e9e7')
+  const foreground = read('--text-strong', '#252523')
+  monaco.editor.defineTheme(LITTLE_SHEEP_MONACO_CUSTOM_THEME, {
+    ...LITTLE_SHEEP_MONACO_THEME_DATA,
+    base: isAppearanceDark() ? 'vs-dark' : 'vs',
+    rules: isAppearanceDark() ? LITTLE_SHEEP_MONACO_THEME_DATA.rules : LITTLE_SHEEP_MONACO_LIGHT_RULES,
+    colors: {
+      ...LITTLE_SHEEP_MONACO_THEME_DATA.colors,
+      'editor.background': background,
+      'editor.foreground': foreground,
+      'editorGutter.background': background,
+      'editorLineNumber.foreground': read('--muted-2', '#858585'),
+      'editorLineNumber.activeForeground': foreground,
+      'editorCursor.foreground': foreground,
+      'editor.selectionBackground': read('--code-selection-background', '#454545'),
+      'editor.inactiveSelectionBackground': read('--code-selection-background-inactive', '#3a3a3a'),
+      'editor.selectionForeground': read('--selection-foreground', '#f2f2f2'),
+      'editorSuggestWidget.background': read('--surface', background),
+      'editorSuggestWidget.border': read('--border-strong', '#474747'),
+      'editorSuggestWidget.foreground': foreground,
+      'editorWidget.background': read('--surface', background),
+      'editorWidget.border': read('--border', '#343434'),
+      'editorHoverWidget.background': read('--surface', background),
+      'editorHoverWidget.border': read('--border', '#343434'),
+      'diffEditor.insertedLineBackground': isAppearanceDark() ? '#23452780' : '#D8F1DC',
+      'diffEditor.removedLineBackground': isAppearanceDark() ? '#5D291D80' : '#F8DEDA',
+      'diffEditor.diagonalFill': read('--surface-3', isAppearanceDark() ? '#2B2B2B' : '#D7D7D3'),
+      'diffEditor.border': read('--border', isAppearanceDark() ? '#303030' : '#C4C4C0'),
+    },
+  })
 }

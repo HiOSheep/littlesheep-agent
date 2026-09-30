@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { LITTLE_SHEEP_MONACO_THEME_DATA } from './monaco-theme'
+import {
+  LITTLE_SHEEP_MONACO_LIGHT_RULES,
+  LITTLE_SHEEP_MONACO_THEME_DATA,
+} from './monaco-theme'
 import {
   LITTLE_SHEEP_SELECTION_BACKGROUND,
   LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
@@ -9,6 +12,16 @@ import {
 } from '../selection-style'
 
 describe('LittleSheep Monaco theme', () => {
+  it('keeps light-theme syntax colors readable on the light editor surface', () => {
+    const background = '#e9e9e7'
+    const required = ['comment', 'keyword', 'string', 'number', 'type', 'function', 'tag']
+    for (const token of required) {
+      const foreground = LITTLE_SHEEP_MONACO_LIGHT_RULES.find((rule) => rule.token === token)?.foreground
+      expect(foreground, `missing light syntax color for ${token}`).toBeTruthy()
+      expect(contrastRatio(`#${foreground}`, background), `${token} contrast`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it('keeps the editor darker than the workspace surface and code text readable', () => {
     const background = LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.background']
     expect(background).toBe('#101010')

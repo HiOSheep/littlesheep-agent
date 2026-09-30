@@ -25,6 +25,7 @@
 
 import type { RuntimeState } from '../api'
 import { readConversationDisplayMode } from '../chat/conversation-display'
+import { readAppearancePreferences } from '../app-shell/appearance-preferences'
 import { PROFILE_OPTIONS } from '../runtime/options'
 import { FOCUSABLE_SELECTOR } from '../ui/modal-layer'
 import { CLOSE_POLICY_OPTIONS } from './application-background-state'
@@ -42,6 +43,9 @@ const CONVERSATION_DISPLAY_LABELS: Record<'normal' | 'compact', string> = {
   normal: '普通',
   compact: '紧凑',
 }
+
+const APPEARANCE_THEME_LABELS = { system: '跟随系统', dark: '深色', light: '浅色' } as const
+const APPEARANCE_PALETTE_LABELS = { neutral: '中性', ocean: '海蓝', forest: '林绿', custom: '自定义' } as const
 
 /** 行元素上的锚点属性：索引里的 id 与页面渲染的行靠它对应。 */
 export const SETTINGS_FIELD_ATTRIBUTE = 'data-settings-field'
@@ -134,6 +138,92 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     aliases: ['对话显示', '显示密度', '对话显示模式', '过程内容', '紧凑', '普通'],
     kind: 'field',
     readValue: () => CONVERSATION_DISPLAY_LABELS[readConversationDisplayMode()],
+  },
+  {
+    id: 'appearance.interface-font-size',
+    page: 'appearance',
+    section: '文字大小',
+    title: '界面字号',
+    aliases: ['界面字号', '界面字体大小', '文字大小', '字号'],
+    kind: 'field',
+    readValue: () => `${readAppearancePreferences().interfaceFontSize}px`,
+  },
+  {
+    id: 'appearance.chat-font-size',
+    page: 'appearance',
+    section: '文字大小',
+    title: '聊天字号',
+    aliases: ['聊天字号', '聊天正文字号', '聊天字体大小', '消息字体'],
+    kind: 'field',
+    readValue: () => `${readAppearancePreferences().chatFontSize}px`,
+  },
+  {
+    id: 'appearance.theme-mode',
+    page: 'appearance',
+    section: '主题',
+    title: '明暗模式',
+    aliases: ['明暗模式', '主题模式', '浅色', '深色', '跟随系统'],
+    kind: 'field',
+    readValue: () => APPEARANCE_THEME_LABELS[readAppearancePreferences().theme],
+  },
+  {
+    id: 'appearance.palette',
+    page: 'appearance',
+    section: '主题',
+    title: '配色',
+    aliases: ['主题配色', '配色预设', '自定义颜色'],
+    kind: 'field',
+    readValue: () => APPEARANCE_PALETTE_LABELS[readAppearancePreferences().palette],
+  },
+  {
+    id: 'appearance.color-accent',
+    page: 'appearance',
+    section: '自定义配色',
+    title: '强调色',
+    aliases: ['强调色', '强调颜色', '焦点颜色', '图表颜色'],
+    kind: 'field',
+    readValue: () => readAppearancePreferences().colors.accent,
+    reveal: 'button.appearance-custom-open',
+  },
+  {
+    id: 'appearance.color-background',
+    page: 'appearance',
+    section: '自定义配色',
+    title: '背景色',
+    aliases: ['背景色', '主背景色', '窗口背景', '底色'],
+    kind: 'field',
+    readValue: () => readAppearancePreferences().colors.background,
+    reveal: 'button.appearance-custom-open',
+  },
+  {
+    id: 'appearance.color-surface',
+    page: 'appearance',
+    section: '自定义配色',
+    title: '面板色调',
+    aliases: ['面板色调', '面板颜色', '玻璃表面颜色', '浮层颜色'],
+    kind: 'field',
+    readValue: () => readAppearancePreferences().colors.surface,
+    reveal: 'button.appearance-custom-open',
+  },
+  {
+    id: 'appearance.code-font-size',
+    page: 'appearance',
+    section: '高级文字设置',
+    title: '代码字号',
+    aliases: ['代码字号', '代码字体大小', '编辑器字号', 'Monaco 字体'],
+    kind: 'field',
+    readValue: () => `${readAppearancePreferences().codeFontSize}px`,
+    reveal: 'details.appearance-advanced > summary',
+  },
+  {
+    id: 'appearance.terminal-font-size',
+    page: 'appearance',
+    section: '高级文字设置',
+    title: '终端字号',
+    aliases: ['终端字号', '终端字体大小', '控制台字号'],
+    kind: 'field',
+    readValue: () => `${readAppearancePreferences().terminalFontSize}px`,
+    reveal: 'details.appearance-advanced > summary',
   },
 
   // ---- 通用 › 应用与后台 ------------------------------------------------------------------

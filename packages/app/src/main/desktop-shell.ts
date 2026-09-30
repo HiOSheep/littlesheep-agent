@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, screen } from 'electron'
 import type { DesktopClosePolicy } from '@littlesheep/config'
 import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
@@ -282,8 +282,8 @@ export class LittleSheepDesktopShell {
       thickFrame: true,
       hasShadow: true,
       titleBarOverlay: {
-        color: DESKTOP_STARTUP_SURFACE,
-        symbolColor: '#e8e8e8',
+        color: startupWindowBackgroundColor(),
+        symbolColor: nativeTheme.shouldUseDarkColors ? '#e8e8e8' : '#202020',
         height: WINDOW_TITLEBAR_HEIGHT,
       },
       backgroundColor: startupWindowBackgroundColor(),
@@ -372,7 +372,6 @@ export class LittleSheepDesktopShell {
       recordBootstrapTiming('renderer-did-finish-load')
       markRendererReadyForInitialShow()
       win.webContents.setZoomFactor(APPLICATION_ZOOM_FACTOR)
-      win.setBackgroundColor(applicationWindowBackgroundColor())
     })
     win.once('closed', () => {
       if (this.windowDragSession?.senderId === windowWebContentsId) this.windowDragSession = null
@@ -606,12 +605,8 @@ function resolveDesktopStartupIconDataUrl(): string | undefined {
   return icon.resize({ width: 112, height: 112, quality: 'best' }).toDataURL()
 }
 
-function applicationWindowBackgroundColor(): string {
-  return DESKTOP_STARTUP_SURFACE
-}
-
 function startupWindowBackgroundColor(): string {
-  return DESKTOP_STARTUP_SURFACE
+  return nativeTheme.shouldUseDarkColors ? DESKTOP_STARTUP_SURFACE : '#f4f4f2'
 }
 
 function isNavigationAbortedError(error: unknown): boolean {

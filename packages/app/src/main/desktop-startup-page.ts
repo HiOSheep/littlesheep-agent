@@ -59,11 +59,11 @@ export function createDesktopStartupPageHtml(
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <title>LittleSheep</title>
     <style>
       :root {
-        color-scheme: dark;
+        color-scheme: light dark;
         background: ${DESKTOP_STARTUP_SURFACE};
       }
 
@@ -75,6 +75,13 @@ export function createDesktopStartupPageHtml(
         height: 100%;
         margin: 0;
         overflow: hidden;
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root, body { background: #f4f4f2; }
+        .startup-error { color: rgba(20, 20, 20, 0.88); background: rgba(255, 255, 255, 0.72); }
+        .startup-error p, .startup-retry-note { color: rgba(20, 20, 20, 0.66); }
+        .startup-retry:hover:not(:disabled) { background: rgba(0, 0, 0, 0.06); }
       }
 
       body {

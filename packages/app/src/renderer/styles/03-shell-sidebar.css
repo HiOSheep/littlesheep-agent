@@ -41,6 +41,7 @@
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
   --accent-soft: rgba(226, 226, 226, 0.1);
+  --focus-ring-color: rgba(226, 226, 226, 0.32);
   /* The one control that points down into the composer. Its arrow is the sky-blue accent so the
      way back to the newest message reads as a direction, not as another grey chip. */
   --jump-to-latest-arrow: #7ec8ff;
@@ -64,20 +65,20 @@
   --control-height-sm: 26px;
   /* Row-level compact action inside a settings section. */
   --control-height-row: 30px;
-  --control-font-size: 12px;
-  --control-font-size-strong: 13px;
+  --control-font-size: calc(12px * var(--ui-font-scale, 1));
+  --control-font-size-strong: calc(13px * var(--ui-font-scale, 1));
   /* Settings body type scale (2026-09-27). The settings canvas is a content page like the archive
      page, so it follows the same proportions instead of a scale of its own: one page title, one
      page description, one group title, one row title, one row description, one meta size. A row
      aligns its title and description on this scale, and no settings page invents a sixth size —
      the plugin and model pages used to sit 4-6px below the storage and web pages, which read as
      two different products inside one settings area. */
-  --settings-page-title-font-size: 26px;
-  --settings-page-desc-font-size: 14px;
-  --settings-group-title-font-size: 15px;
-  --settings-row-title-font-size: 14px;
-  --settings-row-desc-font-size: 13px;
-  --settings-meta-font-size: 12px;
+  --settings-page-title-font-size: calc(26px * var(--ui-font-scale, 1));
+  --settings-page-desc-font-size: calc(14px * var(--ui-font-scale, 1));
+  --settings-group-title-font-size: calc(15px * var(--ui-font-scale, 1));
+  --settings-row-title-font-size: calc(14px * var(--ui-font-scale, 1));
+  --settings-row-desc-font-size: calc(13px * var(--ui-font-scale, 1));
+  --settings-meta-font-size: calc(12px * var(--ui-font-scale, 1));
   --settings-row-min-height: 68px;
   /* One switch geometry for every settings page. The plugin rows, the web rows and the
      close-policy rows all render `.plugin-switch`, so its box is a token instead of three
@@ -91,9 +92,9 @@
      it lives in is 13px and the answer it annotates is 14px, and its own meta, path and line
      badge were 12/12/11px. One row now reads top-down on one scale — row text, then its meta,
      then a badge. */
-  --activity-row-font-size: 13px;
-  --activity-meta-font-size: 12px;
-  --activity-badge-font-size: 11px;
+  --activity-row-font-size: calc(13px * var(--ui-font-scale, 1));
+  --activity-meta-font-size: calc(12px * var(--ui-font-scale, 1));
+  --activity-badge-font-size: calc(11px * var(--ui-font-scale, 1));
   /* One disabled tone for the shared control roles and the settings/dialog
      action buttons. Dense row, toolbar and picker roles keep their own scale
      (see ui/README.md) — this is a role token, not a blanket opacity.
@@ -303,7 +304,7 @@ summary:focus-visible,
 [role='option']:focus-visible,
 [role='switch']:focus-visible,
 [role='tab']:focus-visible {
-  outline: 2px solid rgba(226, 226, 226, 0.32);
+  outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
 }
 

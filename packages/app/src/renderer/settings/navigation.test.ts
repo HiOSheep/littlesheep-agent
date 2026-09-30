@@ -79,7 +79,7 @@ describe('settings information architecture', () => {
 
     expect(appearance).toContain('readConversationDisplayMode')
     expect(appearance).toContain('<SettingsSelect label="对话显示模式"')
-    expect(appearance).toContain('它改变信息怎么展示，不改变 Agent 行为或权限')
+    expect(appearance).toContain('不改变 Agent 行为、权限或用量统计')
     // The behaviour page keeps behaviour and permissions, not display density.
     expect(agentProfile).not.toContain('readConversationDisplayMode')
     expect(agentProfile).not.toContain('writeConversationDisplayMode')
@@ -101,7 +101,7 @@ describe('settings information architecture', () => {
   it('documents the entry → page → return mapping for user-visible modules', async () => {
     const readme = await readFile(new URL('./README.md', import.meta.url), 'utf8')
 
-    expect(readme).toContain('入口 → 页面 → 返回目标')
+    expect(readme).toContain('入口、页面与返回目标')
     for (const name of ['记忆树', '已安排', '插件', '归档', '技能', '外部渠道', '界面', '模型与行为', '连接与扩展', '存储与环境']) {
       expect(readme, name).toContain(name)
     }

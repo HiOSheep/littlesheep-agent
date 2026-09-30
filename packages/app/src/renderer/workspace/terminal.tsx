@@ -24,11 +24,6 @@ import {
   type TerminalActivityRecord
 } from '../api'
 import { FloatingHelpTip, buildFloatingHelpTip } from '../ui/floating-help'
-import {
-  LITTLE_SHEEP_SELECTION_BACKGROUND,
-  LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
-  LITTLE_SHEEP_SELECTION_FOREGROUND,
-} from '../selection-style'
 import { compactPath } from './path-utils'
 import { createTerminalFitScheduler } from './terminal-fit'
 import {
@@ -37,6 +32,12 @@ import {
   WORKSPACE_NAVIGATOR_MOTION_START_EVENT,
 } from '../ui/resize'
 import { createTerminalInputController, type TerminalInputController } from './terminal-input-controller'
+import {
+  APPEARANCE_PREFERENCES_EVENT,
+  isAppearanceDark,
+  readAppearanceCssColor,
+  readAppearancePreferences,
+} from '../app-shell/appearance-preferences'
 
 const TERMINAL_FONT_FAMILY = '"SimSun", "宋体", monospace'
 const TERMINAL_FONT_SIZE = 12
@@ -185,38 +186,23 @@ export function WorkspaceTerminal({
           disableStdin: true,
           scrollOnUserInput: true,
           fontFamily: TERMINAL_FONT_FAMILY,
-          fontSize: TERMINAL_FONT_SIZE,
+          fontSize: readAppearancePreferences().terminalFontSize,
           lineHeight: TERMINAL_LINE_HEIGHT,
-          theme: {
-            background: '#1f1f1f',
-            foreground: '#d7d7d7',
-            selectionBackground: LITTLE_SHEEP_SELECTION_BACKGROUND,
-            selectionForeground: LITTLE_SHEEP_SELECTION_FOREGROUND,
-            selectionInactiveBackground: LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE,
-            cursor: '#d7d7d7',
-            black: '#1f1f1f',
-            red: '#d86666',
-            green: '#77c38a',
-            yellow: '#d8b45c',
-            blue: '#7ea7d8',
-            magenta: '#b99ad9',
-            cyan: '#8ecaca',
-            white: '#d7d7d7',
-            brightBlack: '#777777',
-            brightRed: '#ef8b8b',
-            brightGreen: '#9ad8a9',
-            brightYellow: '#e4c879',
-            brightBlue: '#9bbfe3',
-            brightMagenta: '#cdb2ea',
-            brightCyan: '#a8dada',
-            brightWhite: '#f0f0f0',
-          },
+          theme: terminalAppearanceTheme(),
         })
         const fitAddon = new FitAddon()
         terminal.loadAddon(fitAddon)
         terminal.open(hostRef.current)
         terminalRef.current = terminal
         fitAddonRef.current = fitAddon
+        const applyAppearance = () => {
+          const rootStyles = getComputedStyle(document.documentElement)
+          const fontSize = Number.parseInt(rootStyles.getPropertyValue('--terminal-font-size'), 10)
+          terminal!.options.fontSize = Number.isFinite(fontSize) ? fontSize : TERMINAL_FONT_SIZE
+          terminal!.options.theme = terminalAppearanceTheme()
+        }
+        applyAppearance()
+        document.documentElement.addEventListener(APPEARANCE_PREFERENCES_EVENT, applyAppearance)
         inputDisposable = terminal.onData((data) => {
           if (!disposed && activeRef.current) inputController.queue(data)
         })
@@ -290,6 +276,7 @@ export function WorkspaceTerminal({
           if (!disposed) scheduleDisplayRefresh()
         })
         displayCleanup = () => {
+          document.documentElement.removeEventListener(APPEARANCE_PREFERENCES_EVENT, applyAppearance)
           resolutionQuery?.removeEventListener('change', handleResolutionChange)
           window.removeEventListener('resize', scheduleDisplayRefresh)
           window.visualViewport?.removeEventListener('resize', scheduleDisplayRefresh)
@@ -542,5 +529,34 @@ export function dedupeTerminalCommands(commands: string[]): string[] {
     result.push(normalized)
   }
   return result
+}
+
+function terminalAppearanceTheme() {
+  const dark = isAppearanceDark()
+  const color = (name: string, fallback: string) => readAppearanceCssColor(name, fallback)
+  return {
+    background: color('--workspace-code-surface', dark ? '#101010' : '#e9e9e7'),
+    foreground: color('--text', dark ? '#d7d7d7' : '#30302e'),
+    selectionBackground: color('--selection-background', dark ? '#333333' : '#c8d9f3'),
+    selectionForeground: color('--selection-foreground', dark ? '#f2f2f2' : '#181818'),
+    selectionInactiveBackground: color('--selection-background-inactive', dark ? '#2e2e2e' : '#d7dce4'),
+    cursor: color('--text-strong', dark ? '#d7d7d7' : '#171716'),
+    black: color('--workspace-code-surface', dark ? '#1f1f1f' : '#e9e9e7'),
+    red: dark ? '#d86666' : '#b4232d',
+    green: dark ? '#77c38a' : '#1f7a43',
+    yellow: dark ? '#d8b45c' : '#805b00',
+    blue: dark ? '#7ea7d8' : '#2c649c',
+    magenta: dark ? '#b99ad9' : '#7e3da0',
+    cyan: dark ? '#8ecaca' : '#187986',
+    white: color('--text', dark ? '#d7d7d7' : '#30302e'),
+    brightBlack: dark ? '#777777' : '#5e5e5b',
+    brightRed: dark ? '#ef8b8b' : '#8c1821',
+    brightGreen: dark ? '#9ad8a9' : '#176b36',
+    brightYellow: dark ? '#e4c879' : '#664700',
+    brightBlue: dark ? '#9bbfe3' : '#204d7a',
+    brightMagenta: dark ? '#cdb2ea' : '#653282',
+    brightCyan: dark ? '#a8dada' : '#12636c',
+    brightWhite: dark ? '#f0f0f0' : '#171716',
+  }
 }
 

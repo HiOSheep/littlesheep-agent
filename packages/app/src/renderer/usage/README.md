@@ -9,4 +9,4 @@ Token 用量页只读 Main 持久化的 Provider 日用量 projection，不自�
 - 时区、覆盖范围、未完成回填和身份列表截断均来自响应；Renderer 展示这些限制，不根据本机日期自行推断。
 - 仅在消费 API 允许的天数和身份数范围内请求；Renderer 不读取会话全文、密钥或隐藏模型数据。
 
-页面与导航由 Settings 组合；API 类型由 shared／types 和 Main usage route 所有。局部热力图与导航行为由相邻测试覆盖，服务聚合和隐私边界由 Main 测试验证。
+页面与导航由 Settings 组合；聊天单轮卡的历史入口通过 App Shell 打开此页。API 类型由 shared／types 和 Main usage route 所有。局部热力图与导航行为由相邻测试覆盖，服务聚合和隐私边界由 Main 测试验证。

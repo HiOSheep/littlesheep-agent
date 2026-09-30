@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserWindow } from 'electron'
 import { WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL } from '../shared/window-chrome-contracts.js'
 import { isWindowChromeState } from '../shared/window-chrome-contracts.js'
+import { WINDOW_APPEARANCE_CHANNEL } from '../shared/window-appearance-contracts.js'
 
-const { ipc } = vi.hoisted(() => ({ ipc: { on: vi.fn(), removeListener: vi.fn() } }))
-vi.mock('electron', () => ({ ipcMain: ipc }))
+const { ipc, theme } = vi.hoisted(() => ({
+  ipc: { on: vi.fn(), removeListener: vi.fn() },
+  theme: { shouldUseDarkColors: true, on: vi.fn(), removeListener: vi.fn() },
+}))
+vi.mock('electron', () => ({ ipcMain: ipc, nativeTheme: theme }))
 vi.mock('node:os', () => ({ release: () => '10.0.26200' }))
 import { installDesktopWindowChrome, nativeWindowBackdrop } from './desktop-window-chrome.js'
 
@@ -21,7 +25,12 @@ function fixture() {
   })
   let renderer = true
   installDesktopWindowChrome(win as unknown as BrowserWindow, () => renderer)
-  return { win, startup: () => { renderer = false }, query: ipc.on.mock.calls[0]![1] as (event: unknown) => void }
+  return {
+    win,
+    startup: () => { renderer = false },
+    query: ipc.on.mock.calls.find(([channel]) => channel === WINDOW_CHROME_QUERY_CHANNEL)![1] as (event: unknown) => void,
+    appearance: ipc.on.mock.calls.find(([channel]) => channel === WINDOW_APPEARANCE_CHANNEL)![1] as (event: unknown, payload: unknown) => void,
+  }
 }
 
 describe('native window chrome', () => {
@@ -61,6 +70,8 @@ describe('native window chrome', () => {
     expect(win.webContents.send).not.toHaveBeenCalled()
     win.emit('closed')
     expect(ipc.removeListener).toHaveBeenCalledWith(WINDOW_CHROME_QUERY_CHANNEL, query)
+    expect(ipc.removeListener).toHaveBeenCalledWith(WINDOW_APPEARANCE_CHANNEL, expect.any(Function))
+    expect(theme.removeListener).toHaveBeenCalledWith('updated', expect.any(Function))
     win.destroyed = true
     query({ sender: win.webContents })
     expect(win.webContents.send).not.toHaveBeenCalled()
@@ -72,11 +83,23 @@ describe('native window chrome', () => {
     win.emit('maximize')
     if (process.platform === 'win32') {
       expect(win.setBackgroundColor).toHaveBeenLastCalledWith('#00000000')
-      expect(win.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#00000000' })
+      expect(win.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#00000000', symbolColor: '#e8e8e8' })
     }
     startup(); win.webContents.emit('did-finish-load')
     expect(win.setBackgroundColor).toHaveBeenLastCalledWith('#101010')
-    if (process.platform === 'win32') expect(win.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#101010' })
+    if (process.platform === 'win32') expect(win.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#101010', symbolColor: '#e8e8e8' })
+  })
+
+  it('accepts only the owning renderer theme fact and updates native caption contrast', () => {
+    const { win, appearance } = fixture()
+    appearance({ sender: {} }, { isDark: false })
+    expect(win.setTitleBarOverlay).not.toHaveBeenCalled()
+    appearance({ sender: win.webContents }, { isDark: 'light' })
+    expect(win.setTitleBarOverlay).not.toHaveBeenCalled()
+    appearance({ sender: win.webContents }, { isDark: false })
+    if (process.platform === 'win32') {
+      expect(win.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#00000000', symbolColor: '#202020' })
+    }
   })
 
   it('only accepts the narrow state contract in preload', () => {

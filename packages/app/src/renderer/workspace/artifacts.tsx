@@ -9,7 +9,7 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { FileGlyphIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { compactPath, formatDateTime } from './path-utils'
-import { WorkspacePlaceholder } from './placeholder'
+import { StateView } from '../ui/state-view'
 import { WorkspaceArtifactActionFilter, WorkspaceArtifactScopeFilter, WorkspaceArtifactSourceFilter } from './types'
 import { workspaceErrorMessage } from './workspace-errors'
 
@@ -149,12 +149,20 @@ export function WorkspaceArtifacts({
         </label>
       </div>
       <div className={`workspace-artifacts-list ${filteredRecords.length === 0 ? 'empty' : ''}`}>
-        {loading && <WorkspacePlaceholder title="读取中" text="正在加载项目产物索引。" />}
-        {!loading && error && <WorkspacePlaceholder title="产物读取失败" text={error} />}
+        {loading && <StateView state="loading" title="正在读取产物" description="正在加载项目产物索引。" />}
+        {!loading && error && (
+          <StateView
+            state="failure"
+            title="产物读取失败"
+            description={error}
+            action={<button type="button" onClick={refreshArtifacts}>重试</button>}
+          />
+        )}
         {!loading && !error && filteredRecords.length === 0 && (
-          <WorkspacePlaceholder
+          <StateView
+            state="empty"
             title={records.length === 0 ? '暂无产物' : '没有匹配产物'}
-            text={records.length === 0 ? 'agent 写入、修改文件或你在内置编辑器保存文件后，会沉淀到这里。' : '调整筛选条件可以重新看到隐藏的产物。'}
+            description={records.length === 0 ? 'Agent 写入、修改文件或你在内置编辑器保存文件后，会出现在这里。' : '调整筛选条件可以重新看到隐藏的产物。'}
           />
         )}
         {!loading && !error && filteredRecords.length > 0 && filteredRecords.map((record) => (
