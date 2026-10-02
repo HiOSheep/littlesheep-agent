@@ -3025,14 +3025,16 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   min-width: 232px;
   max-width: min(320px, calc(100vw - 24px));
   max-height: min(360px, 60vh);
-  padding: 5px;
+  padding: 7px;
   overflow-x: hidden;
   overflow-y: auto;
   background: var(--composer-surface);
-  border-radius: var(--radius-ui);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-menu);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
+  gap: 3px;
+  border: 1px solid var(--border);
 }
 
 .split-button-menu-item {
@@ -3040,15 +3042,17 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  min-height: 30px;
-  padding: 0 8px;
+  min-height: 36px;
+  padding: 7px 10px;
   color: var(--text);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-icon);
-  font-size: 12px;
+  border-radius: var(--radius-ui);
+  font-size: var(--control-font-size-strong);
   text-align: left;
   cursor: pointer;
+  line-height: 1.4;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .split-button-menu-item:hover:not(:disabled),
@@ -3077,8 +3081,20 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 
 /* The last entry ("显示文件位置") is a different kind of action, so it sits behind a divider. */
 .split-button-menu-item + .split-button-menu-item.divider-before {
-  margin-top: 5px;
-  border-top: 1px solid var(--border);
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
+  margin-top: 9px;
+  border-top: 0;
+  border-top-left-radius: var(--radius-ui);
+  border-top-right-radius: var(--radius-ui);
+  position: relative;
+  overflow: visible;
+}
+
+.split-button-menu-item.divider-before::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 10px;
+  right: 10px;
+  height: 1px;
+  background: var(--border);
 }

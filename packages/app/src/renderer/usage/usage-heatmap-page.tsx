@@ -6,14 +6,14 @@
 //
 // 键盘与滚动：日期格是一个 roving-tabindex 网格，方向键移动、Home/End 到周首尾、
 // Enter/Space 选中；网格自己横向滚动（`overflow-x: auto`），不把页面撑宽或困住滚动。
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { StateView, type StateViewProps } from '../ui/state-view'
 import { SettingsSelect } from '../settings/select'
 import { formatTokenCount } from '../chat/turn-usage-card'
 import { usageDayDetail, usageHeatLevel, usageMetricValue, USAGE_METRICS, USAGE_METRIC_LABELS,
   type UsageHeatmapViewModel, type UsageMetric } from './usage-heatmap-model'
 import { UsageDayPanel, UsageHeatmapLegend, usageCellAria, usageCellTitle } from './usage-heatmap-detail'
-import { usageLocalDateRange } from './usage-heatmap-grid'
+import { usageLocalDateRange, usageDayNumber, usageWeekday } from './usage-heatmap-grid'
 
 const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -45,7 +45,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
   const { view, firstLoad, loading, error, unavailableReason } = props
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const gridRef = useRef<HTMLDivElement>(null)
-  const activeDate = selectedDate && view?.days.has(selectedDate) ? selectedDate : null
+  const activeDate = selectedDate && view && selectedDate >= view.range.from && selectedDate <= view.range.to ? selectedDate : null
 
   const dates = useMemo(
     () => (view ? usageLocalDateRange(view.range.from, view.range.to) : []),
@@ -66,7 +66,9 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
 
   const onCellKeyDown = (event: KeyboardEvent<HTMLElement>, date: string) => {
     const index = dates.indexOf(date)
-    const rowStart = Math.floor(Math.max(0, index) / 7) * 7
+    const weekday = usageWeekday(usageDayNumber(date)!)
+    const rowStart = Math.max(0, index - weekday)
+    const rowEnd = Math.min(dates.length - 1, index + 6 - weekday)
     const moves: Record<string, number> = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1 }
     const delta = moves[event.key]
     if (delta !== undefined) {
@@ -75,7 +77,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
       return
     }
     if (event.key === 'Home') { event.preventDefault(); moveFocus(date, rowStart - index) }
-    if (event.key === 'End') { event.preventDefault(); moveFocus(date, rowStart + 6 - index) }
+    if (event.key === 'End') { event.preventDefault(); moveFocus(date, rowEnd - index) }
     if (event.key === 'PageUp') { event.preventDefault(); moveFocus(date, -35) }
     if (event.key === 'PageDown') { event.preventDefault(); moveFocus(date, 35) }
     if (event.key === 'Enter' || event.key === ' ') {
@@ -89,7 +91,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
       <header className="settings-module-heading">
         <div className="settings-module-kicker">模型与行为</div>
         <h2>Token 用量</h2>
-        <p>按本地日历日汇总 Provider 实报的 token 用量；没有记录的日子不会当成 0。</p>
+        <p>查看模型用量与每日活动。仅统计供应商实报的数据，无记录不代表零用量。</p>
       </header>
 
       <div className="usage-toolbar">
@@ -130,10 +132,10 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
 
       {view && (
         <dl className="usage-summary">
-          <div><dt>总量</dt><dd>{formatTokenCount(view.totals.total)} tok</dd></div>
-          <div><dt>活跃天数</dt><dd>{view.totals.activeDays} 天</dd></div>
-          <div><dt>单日峰值</dt><dd>{view.totals.peak ? `${view.totals.peak.total} tok · ${view.totals.peak.date}` : '无记录'}</dd></div>
-          <div><dt>请求数</dt><dd>{view.totals.requests} 次</dd></div>
+          <div><dt>总用量</dt><dd title={`${view.totals.total.toLocaleString()} tok`}>{formatTokenCount(view.totals.total)} <span>tok</span></dd><small>当前筛选区间</small></div>
+          <div><dt>活跃天数</dt><dd>{view.totals.activeDays} <span>天</span></dd><small>有调用记录的日期</small></div>
+          <div><dt>单日峰值</dt><dd title={view.totals.peak ? `${view.totals.peak.total.toLocaleString()} tok` : undefined}>{view.totals.peak ? <>{formatTokenCount(view.totals.peak.total)} <span>tok</span></> : '无记录'}</dd><small>{view.totals.peak?.date ?? '尚无实报用量'}</small></div>
+          <div><dt>请求数</dt><dd>{view.totals.requests.toLocaleString()} <span>次</span></dd><small>去重后的模型请求</small></div>
         </dl>
       )}
 
@@ -166,6 +168,11 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
 
       {view && (
         <>
+          <section className="usage-chart" style={{ '--usage-weeks': view.weeks.weekCount } as CSSProperties} aria-label="年度用量概览">
+          <header className="usage-chart-heading">
+            <div><h3>年度活动</h3><p>每日实报{USAGE_METRIC_LABELS[view.metric]} · 点击日期查看明细</p></div>
+            <span>{view.year} 年</span>
+          </header>
           <div className="usage-heatmap-scroll">
             <div
               className="usage-heatmap"
@@ -173,14 +180,12 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
               aria-label={`${view.year} 年${USAGE_METRIC_LABELS[view.metric]}热力图`}
               ref={gridRef}
             >
-              <div className="usage-heatmap-head">
                 <div className="usage-heatmap-weekdays" aria-hidden="true">
                   {WEEKDAY_LABELS.map((label) => <span key={label}>{label}</span>)}
                 </div>
                 <div className="usage-heatmap-months" aria-hidden="true">
                   {monthBand.map((label, index) => <span key={index}>{label}</span>)}
                 </div>
-              </div>
               <div className="usage-heatmap-grid">
                 {view.weeks.weeks.map((week, weekIndex) => (
                   <div className="usage-heatmap-week" role="row" key={weekIndex}>
@@ -200,6 +205,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
                           data-state={state}
                           data-level={level}
                           role="gridcell"
+                          aria-selected={activeDate === cell.date}
                           tabIndex={focusable ? 0 : -1}
                           aria-label={`${cell.date} ${USAGE_METRIC_LABELS[view.metric]}${usageCellAria(state, value)}`}
                           title={usageCellTitle(cell.date, detail, state, view.metric, value)}
@@ -216,10 +222,17 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
           </div>
 
           <UsageHeatmapLegend view={view} />
+          </section>
 
           {activeDate && <UsageDayPanel date={activeDate} view={view} />}
 
-          <p className="usage-statement">{view.coverage.statement}</p>
+          <details className="usage-methodology">
+            <summary>
+              <span>统计口径与数据覆盖</span>
+              <span>{view.timezone}{view.coverage.backfill.status !== 'complete' && ' · 历史回填未完成'}</span>
+            </summary>
+            <p className="usage-statement">{view.coverage.statement}</p>
+          </details>
         </>
       )}
     </div>
@@ -253,12 +266,18 @@ function offlineState(
   }
 }
 
-/** One label per week column: the month whose 1st-7th falls in that week. */
-function usageMonthBand(view: UsageHeatmapViewModel | null): string[] {
+/** Label each month once, at its first visible date's week column. */
+export function usageMonthBand(view: UsageHeatmapViewModel | null): string[] {
   if (!view) return []
   const labels: string[] = new Array(view.weeks.weekCount).fill('')
-  for (const cell of view.weeks.weekStarts) {
-    if (cell && cell.dayOfMonth <= 7) labels[cell.week] = `${cell.month}月`
+  const seen = new Set<number>()
+  for (const week of view.weeks.weeks) {
+    for (const cell of week) {
+      if (cell && !seen.has(cell.month)) {
+        labels[cell.week] = `${cell.month}月`
+        seen.add(cell.month)
+      }
+    }
   }
   return labels
 }

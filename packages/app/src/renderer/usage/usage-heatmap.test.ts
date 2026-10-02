@@ -31,7 +31,9 @@ import {
   usageMetricValue, usageSeriesMismatch, usageTruncationNotice, usageYearOptions,
 } from './usage-heatmap-model'
 import { EMPTY_USAGE_STATE, usageHeatmapReducer } from './use-usage-heatmap'
-import { UsageHeatmapPage } from './usage-heatmap-page'
+import { UsageHeatmapPage, usageMonthBand } from './usage-heatmap-page'
+import { UsageDayPanel } from './usage-heatmap-detail'
+import { formatTokenCount } from '../chat/turn-usage-card'
 
 const DAY_MS = 86_400_000
 
@@ -142,6 +144,14 @@ function cellMarkup(html: string, date: string): string {
 }
 
 describe('usage heatmap calendar layout', () => {
+  it('labels every month once even when the year starts inside a padded week', () => {
+    for (const year of [2024, 2025, 2026, 2027]) {
+      const annual = seriesOf(`${year}-01-01`, `${year}-12-31`, [])
+      const band = usageMonthBand(buildUsageHeatmapView({ series: annual, metric: 'total' }))
+      expect(band.filter(Boolean)).toEqual(Array.from({ length: 12 }, (_, index) => `${index + 1}月`))
+      expect(band[0]).toBe('1月')
+    }
+  })
   it('covers every day of the requested range exactly once', () => {
     expect(usageRangeDays('2026-01-01', '2026-12-31')).toBe(365)
     expect(usageRangeDays('2024-01-01', '2024-12-31')).toBe(366)
@@ -292,6 +302,30 @@ describe('usage heatmap refresh state', () => {
 })
 
 describe('usage heatmap surface', () => {
+  it('formats the rounded million boundary without a misleading 1000k label', () => {
+    expect(formatTokenCount(999_499)).toBe('999k')
+    expect(formatTokenCount(999_615)).toBe('1.0M')
+    expect(formatTokenCount(1_000_000)).toBe('1.0M')
+  })
+  it('does not show invented zero figures in an empty, future or uncovered day panel', () => {
+    const view = buildUsageHeatmapView({ series: JULY, metric: 'total' })
+    for (const date of ['2026-07-02', '2026-07-06', '2026-07-10']) {
+      const html = renderToStaticMarkup(createElement(UsageDayPanel, { date, view }))
+      expect(html).not.toContain('<dl>')
+      expect(html).not.toContain('0 tok')
+    }
+    const zero = renderToStaticMarkup(createElement(UsageDayPanel, { date: '2026-07-04', view }))
+    expect(zero).toContain('<dl>')
+    expect(zero).toContain('0 <span>tok</span>')
+  })
+
+  it('keeps exact accounting available while long explanations start collapsed', () => {
+    const html = render()
+    expect(html).toContain('<details class="usage-methodology">')
+    expect(html).toContain(JULY.coverage.statement)
+    expect(html).toContain('<details class="usage-legend-details">')
+    expect(html).toContain('aria-selected="false"')
+  })
   it('draws the cell state the projection reported, not one grey grid', () => {
     const html = render()
     expect(cellMarkup(html, '2026-07-01')).toContain('data-state="recorded"')

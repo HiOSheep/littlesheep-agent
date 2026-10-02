@@ -10,3 +10,9 @@ Token 用量页只读 Main 持久化的 Provider 日用量 projection，不自�
 - 仅在消费 API 允许的天数和身份数范围内请求；Renderer 不读取会话全文、密钥或隐藏模型数据。
 
 页面与导航由 Settings 组合；聊天单轮卡的历史入口通过 App Shell 打开此页。API 类型由 shared／types 和 Main usage route 所有。局部热力图与导航行为由相邻测试覆盖，服务聚合和隐私边界由 Main 测试验证。
+
+## 窗口验证
+
+`node scripts/verify-ui-detail-polish.mjs --out=<外部证据目录>` 使用隔离数据根与显示的 Electron 窗口，在 Renderer fetch 边界提供包含实报、部分记录、无记录、未覆盖和未来日期的年度样例。验证星期对齐、月份唯一、365 个日期、桌面自适应、窄窗口滚动、大字号、日期选中、周首尾键盘导航、筛选及刷新失败保留旧图；同时核对文件打开菜单的完整圆角。PNG 与报告保存在源码外。
+
+这一门只证明布局、状态展示与交互，不替代 Main 的真实 Provider 聚合、时区归日与持久化验收。
