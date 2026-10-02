@@ -15,6 +15,8 @@ import { clampNumber } from '../app-shell/navigation'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, type FloatingHelpTip } from '../ui/floating-help'
 import { useDismissOnOutside } from '../ui/presence'
 import { transientTriggerProps } from '../ui/transient'
+import { VoidRing } from '../ui/void-ring'
+import { voidRingStateForActivity } from '../ui/void-ring-state'
 
 /** What the chat column hands the pill: the conversation, its newest run, and the ticking clock. */
 export interface TitlebarTask {
@@ -221,7 +223,7 @@ export function RunningPill({
     <div ref={rootRef} className={`running-pill-root ${isRunning ? 'running' : ''}`}>
       {editing ? (
         <div className="running-pill editing">
-          <span className="running-pill-ring" aria-hidden="true" />
+          <VoidRing state={voidRingStateForActivity(activity)} size={24} />
           <input
             className="running-pill-rename-input"
             defaultValue={title}
@@ -261,7 +263,7 @@ export function RunningPill({
           onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(tipText, event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          <span className="running-pill-ring" aria-hidden="true" />
+          <VoidRing state={voidRingStateForActivity(activity)} size={24} />
           <span className="running-pill-title">{title || '未命名对话'}</span>
           {summary && <span className="running-pill-summary">{summary}</span>}
         </button>

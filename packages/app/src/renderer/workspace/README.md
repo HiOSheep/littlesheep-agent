@@ -23,4 +23,4 @@ Workspace 呈现文件／目录、预览、Git review、浏览器标签和用户
 
 HTML 预览在打开时自动启动 Main 的有界 loopback preview service，并在 sandbox frame 里按浏览器语义运行页面脚本；frame 与 App 跨源，页面拿不到本窗口，`fileModifiedAt` 变化时原地重载而不换 URL（应用内浏览器标签因此不会失效）。相对资源只经该服务和路径检查提供。打开整页由读者决定：工具栏只提供应用内浏览器与系统浏览器两个入口，不自动跳转，也没有运行／重新加载／停止按键。
 
-观察与写入使用 `verify:file-consistency-faults`、`verify:desktop-file-consistency`；预览使用 `verify:html-preview-baseline`；Git 刷新使用 `verify:review-refresh-errors`；工作区与交互终端使用 `verify:conversation-workspace-scenarios`。这些入口证明不同边界。
+观察与写入使用 `verify:file-consistency-faults`、`verify:desktop-file-consistency`；HTML 预览使用 `verify:html-preview-baseline`，跨格式文件预览使用 `node scripts/verify-file-preview-content.mjs`。后者在隔离的真实 Electron 中核对冷启动、已预热编辑器和逐文件切换后实际显示的内容与磁盘一致，包括空文件；只读模型同步不作为用户修改写入草稿。Git 刷新使用 `verify:review-refresh-errors`；工作区与交互终端使用 `verify:conversation-workspace-scenarios`。这些入口证明不同边界。

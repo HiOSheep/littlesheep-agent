@@ -8,6 +8,7 @@ import { emptyHintFor } from '../chat/empty-hint'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { RunningPill } from '../sidebar/running-pill'
+import { VoidRing } from '../ui/void-ring'
 import { TraceCard } from '../TraceCard'
 import { attachmentToArtifact } from '../workspace/path-utils'
 import type { ChatViewController } from './app-controller-projections'
@@ -110,11 +111,13 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           )}
           {historyWindow.loading && messages.length === 0 && (
             <div className="history-loading loading" role="status" aria-live="polite">
+              <VoidRing state="loading" />
               加载历史消息...
             </div>
           )}
           {messages.length === 0 && !historyWindow.loading && (
             <div className="empty-hint">
+              <VoidRing state="idle" size={112} enter />
               <div className="empty-title">{emptyHint.title}</div>
               <div className="empty-copy">{emptyHint.copy}</div>
             </div>

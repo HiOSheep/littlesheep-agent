@@ -86,7 +86,7 @@ const GLYPHS: readonly GlyphRow[] = [
   ['BranchIcon', 'message-icons.tsx', 'branch', 'path dot dot'],
   ['UsageIcon', 'message-icons.tsx', 'usage', 'ellipse path path'],
   // File types keep their own recognition colours and marks (see the colour check below).
-  ['FolderGlyphIcon', 'file-glyph-icons.tsx', 'folder-type', 'path rect'],
+  ['FolderGlyphIcon', 'file-glyph-icons.tsx', 'folder-type', 'path path'],
   ['FileGlyphIcon', 'file-glyph-icons.tsx', 'file-type', 'variants'],
   ['WorkspaceFeatureIcon', 'icons.tsx', 'workspace-feature', 'variants'],
   // State marks (V3): one glyph per state, never a second picture for the same state.
@@ -100,8 +100,8 @@ const GLYPHS: readonly GlyphRow[] = [
 
 /**
  * Glyphs that render a different mark per prop. Their per-variant census is pinned here,
- * because one row cannot describe six drawings. `FileGlyphIcon` draws twenty type marks on
- * one plate: its composition is pinned by `icons.test.ts` and the colour table below.
+ * because one row cannot describe six drawings. `FileGlyphIcon` loads local vector format marks;
+ * its composition is pinned by `icons.test.ts`. Neutral outlines are registered below.
  */
 const VARIANTS: Readonly<Record<string, ReadonlyArray<readonly [string, string]>>> = {
   PinIcon: [['inactive', 'path'], ['active', 'path']],
@@ -197,26 +197,20 @@ const ICON_STROKE_RULES: ReadonlyArray<readonly [sheet: string, selector: string
   ['./styles/04-workspace.css', '.workspace-panel-svg-icon path, .workspace-panel-svg-icon rect, .workspace-panel-svg-icon circle, .workspace-panel-svg-icon ellipse', 'var(--icon-stroke)'],
   ['./styles/04-workspace.css', '.history-navigation-icon .workspace-browser-arrow-shaft, .history-navigation-icon .workspace-browser-arrow-head', 'var(--icon-stroke)'],
   ['./styles/04-workspace.css', '.workspace-tree-chevron-icon path, .workspace-tree-glyph-icon path', '1.35'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold', '0.9'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains', '1.15'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-lock .file-glyph-lock-shackle', '1'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet, .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold', '1.2'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body', '1.2'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-seam', '1.2'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-frame, .workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains', '1.2'],
   ['./styles/04-workspace.css', '.split-button-chevron-icon', '1.5'],
 ]
 
-/** The file-type recognition colours (V2 保留文件类型的识别色): the type's own class -> fill. */
+/** Imported assets own their colours. CSS only paints the neutral fallback, folder and image. */
 const FILE_GLYPH_COLOURS: ReadonlyArray<readonly [typeClass: string, fill: string]> = [
-  ['file-glyph-sheet', 'currentColor'],
-  ['file-glyph-fold-fill', 'rgba(255, 255, 255, 0.34)'],
   ['file-glyph-fold', 'none'],
-  ['file-glyph-label', '#ffffff'],
-  ['file-glyph-label-json', '#1b1b1b'],
-  ['folder-glyph-body', 'currentColor'],
-  ['folder-glyph-bar', 'rgba(255, 255, 255, 0.82)'],
-  ['file-glyph-image-frame', 'currentColor'],
-  ['file-glyph-image-sun', '#ffffff'],
+  ['folder-glyph-body', 'color-mix(in srgb, currentColor 10%, transparent)'],
+  ['folder-glyph-seam', 'none'],
+  ['file-glyph-image-sun', 'currentColor'],
   ['file-glyph-image-mountains', 'none'],
-  ['file-glyph-lock-body', '#ffffff'],
-  ['file-glyph-lock-shackle', 'none'],
 ]
 
 /** The families that must share one optical stroke, through one token. */

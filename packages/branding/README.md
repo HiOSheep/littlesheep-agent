@@ -21,4 +21,4 @@
 
 - 测试位于 `src/index.test.ts`。
 - 修改品牌名或默认目录时，同时检查 App 启动、脚本、恢复检查和迁移兼容。
-- Void Ring 的图形、尺寸、四种真实 Lottie、帧图和预览见 [实施说明](assets/LS_VoidRing/README_implementation.md) 与 [本地预览](assets/LS_VoidRing/preview.html)。循环动效让内圈反光、折射亮边和外晕共同流动，黑色实体几何固定。从 `assets/LS_VoidRing/tools/render_brand_assets.py` 重新生成时，以同一球体光照母版统一导出标准/低光 PNG、Windows ICO、透明动效层，并用真实播放器验证后输出 GIF；正式 SVG 内嵌光照纹理，纯路径矢量仅提供近似参考。该脚本会一并改写 `packages/app/resources/` 的两个应用图标槽位（`littlesheep-icon.png`、`littlesheep.ico`），导出后必须重跑 `pnpm run ensure:app-build`。仅改动效可使用实施说明中的独立导出入口。素材交付与真实 Renderer 状态接入分别验收。
+- Void Ring 的图形、尺寸、四种真实 Lottie、帧图和预览见 [实施说明](assets/LS_VoidRing/README_implementation.md) 与 [本地预览](assets/LS_VoidRing/preview.html)。循环动效让内圈反光、折射亮边和外晕共同流动，黑色实体几何固定。从 `assets/LS_VoidRing/tools/render_brand_assets.py` 重新生成时，以同一球体光照母版统一导出标准/低光 PNG、Windows ICO、透明动效层，并用真实播放器验证后输出 GIF；正式 SVG 内嵌光照纹理，纯路径矢量仅提供近似参考。`tools/export_app_motion.py` 再将已确认帧序列导出为 App 使用的无损 WebP；应用已接入启动、空白对话、任务条、历史读取与思考行。导出脚本会改写 `packages/app/resources/`，之后必须重跑 `pnpm run ensure:app-build`。仅改动效可使用实施说明中的独立导出入口。素材交付、真实 Renderer 状态接入与安装包分别验收。

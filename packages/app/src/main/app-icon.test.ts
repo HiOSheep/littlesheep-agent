@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
 import { resolve } from 'node:path'
-import { appIconCandidates, resolveAppIconPath, resolveAppPngIconPath } from './app-icon.js'
+import { appIconCandidates, resolveAppIconPath, resolveAppPngIconPath, resolveAppStartupMotionPath, resolveAppSurfaceMarkPath } from './app-icon.js'
 
 describe('app icon resolution', () => {
+  it('finds startup motion in packaged resources and tolerates its absence', () => {
+    const expected = join('/packaged/resources', 'resources', 'void-ring', 'startup.webp')
+    expect(resolveAppStartupMotionPath({ resourcesPath: '/packaged/resources', exists: path => path === expected })).toBe(expected)
+    expect(resolveAppStartupMotionPath({ appPath: '/missing', exists: () => false })).toBeUndefined()
+    const mark = join('/packaged/resources', 'resources', 'void-ring', 'mark.png')
+    expect(resolveAppSurfaceMarkPath({ resourcesPath: '/packaged/resources', exists: path => path === mark })).toBe(mark)
+  })
   it('orders repository resources before packaged resources', () => {
     const candidates = appIconCandidates({
       appPath: '/app',

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const ICON_FILES = ['littlesheep.ico', 'littlesheep-icon.png'] as const
 
@@ -45,4 +45,22 @@ export function resolveAppIconPath(options: AppIconPathOptions): string | undefi
 export function resolveAppPngIconPath(options: AppIconPathOptions): string | undefined {
   const exists = options.exists ?? existsSync
   return appIconCandidates(options).find((path) => path.endsWith('.png') && exists(path))
+}
+
+/** Small independent startup motion, from the same roots as the static icon. */
+export function resolveAppStartupMotionPath(options: AppIconPathOptions): string | undefined {
+  return resolveSurfaceResource(options, 'startup.webp')
+}
+
+/** Transparent still for in-app surfaces; native icons keep their black tile. */
+export function resolveAppSurfaceMarkPath(options: AppIconPathOptions): string | undefined {
+  return resolveSurfaceResource(options, 'mark.png')
+}
+
+function resolveSurfaceResource(options: AppIconPathOptions, file: 'startup.webp' | 'mark.png'): string | undefined {
+  const exists = options.exists ?? existsSync
+  return appIconCandidates(options)
+    .filter(path => path.endsWith('.png'))
+    .map(path => join(dirname(path), 'void-ring', file))
+    .find(path => exists(path))
 }

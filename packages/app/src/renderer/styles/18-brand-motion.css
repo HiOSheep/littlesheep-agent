@@ -1,0 +1,31 @@
+.void-ring {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  overflow: hidden;
+  vertical-align: middle;
+  background: transparent;
+  pointer-events: none;
+}
+.void-ring img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.void-ring .void-ring-open {
+  position: absolute;
+  inset: 0;
+  transform-origin: 46.875% 51.7578125%;
+  animation: void-ring-open 420ms cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes void-ring-open {
+  0% { transform: scale(.24); opacity: 1; }
+  28.5714% { transform: scale(1); }
+  71.4286% { opacity: 1; }
+  100% { transform: scale(6.4); opacity: 0; }
+}
+.empty-hint .void-ring { margin-bottom: 10px; }
+.messages.is-empty .empty-hint { margin-bottom: 272px; }
+.history-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.agent-flow-glyph .void-ring { overflow: hidden; }
+.agent-transcript-reasoning.running .agent-reasoning-glyph { width: 22px; height: 22px; }
+.agent-transcript-reasoning.running .agent-flow-row { grid-template-columns: 22px max-content 2px minmax(0, 1fr) auto 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .void-ring .void-ring-open { display: none; animation: none; }
+}

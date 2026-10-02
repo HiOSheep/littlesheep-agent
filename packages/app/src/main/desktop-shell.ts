@@ -8,7 +8,8 @@ import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
   APPLICATION_STATE_FLUSH_CHANNEL,
 } from '../shared/application-state-contracts.js'
-import { resolveAppIconPath, resolveAppPngIconPath } from './app-icon.js'
+import { resolveAppIconPath, resolveAppPngIconPath, resolveAppSurfaceMarkPath } from './app-icon.js'
+import { loadAppStartupMotionDataUrl } from './startup-motion.js'
 import { APPLICATION_ZOOM_FACTOR, isApplicationZoomShortcut } from './application-zoom.js'
 import { decideLastWindowClose } from './close-policy.js'
 import {
@@ -464,7 +465,9 @@ export class LittleSheepDesktopShell {
   private loadStartupPage(win: BrowserWindow): Promise<void> {
     if (win.isDestroyed()) return Promise.resolve()
     win.setBackgroundColor(startupWindowBackgroundColor())
-    const loading = win.loadURL(createDesktopStartupPageUrl(resolveDesktopStartupIconDataUrl())).catch((error) => {
+    const loading = win.loadURL(createDesktopStartupPageUrl(resolveDesktopStartupIconDataUrl(), {
+      motionDataUrl: loadAppStartupMotionDataUrl({ appPath: app.getAppPath(), moduleDir: __dirname, resourcesPath: process.resourcesPath }),
+    })).catch((error) => {
       if (!isNavigationAbortedError(error) && !this.rendererLoadedWindows.has(win)) {
         this.options.onWarning?.(`startup page failed to load: ${(error as Error).message}`)
       }
@@ -594,11 +597,12 @@ function resolveDesktopIcon(): string | undefined {
 }
 
 function resolveDesktopStartupIconDataUrl(): string | undefined {
-  const iconPath = resolveAppPngIconPath({
+  const paths = {
     appPath: app.getAppPath(),
     moduleDir: __dirname,
     resourcesPath: process.resourcesPath,
-  })
+  }
+  const iconPath = resolveAppSurfaceMarkPath(paths) ?? resolveAppPngIconPath(paths)
   if (!iconPath) return undefined
   const icon = nativeImage.createFromPath(iconPath)
   if (icon.isEmpty()) return undefined
@@ -608,7 +612,6 @@ function resolveDesktopStartupIconDataUrl(): string | undefined {
 function startupWindowBackgroundColor(): string {
   return nativeTheme.shouldUseDarkColors ? DESKTOP_STARTUP_SURFACE : '#f4f4f2'
 }
-
 function isNavigationAbortedError(error: unknown): boolean {
   return /ERR_ABORTED|\(-3\)/u.test(error instanceof Error ? error.message : String(error))
 }

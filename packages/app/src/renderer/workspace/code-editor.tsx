@@ -107,6 +107,11 @@ export function WorkspaceCodeEditor({
   ...props
 }: WorkspaceCodeEditorProps) {
   const lifecycleRef = useRef<EditorModelLifecycle | null>(null)
+  // Monaco React retains the first onMount callback while creating the editor asynchronously.
+  // The preview can resolve after that first render; adopting its captured empty value here
+  // would erase the loaded model and feed the empty text back into the conversation draft.
+  const mountedValueRef = useRef(props.value)
+  mountedValueRef.current = props.value
   const appearance = useMonacoAppearance()
   const monacoReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
   const mergedOptions = useMemo(
@@ -141,7 +146,7 @@ export function WorkspaceCodeEditor({
           appearance.bind(monaco)
           lifecycleRef.current?.dispose()
           lifecycleRef.current = trackWorkspaceEditorLifecycle(editor, true)
-          adoptMountedEditorValue(editor, props.value)
+          adoptMountedEditorValue(editor, mountedValueRef.current)
           onMount?.(editor, monaco)
         }}
         options={mergedOptions}

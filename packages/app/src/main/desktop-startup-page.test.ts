@@ -8,6 +8,16 @@ import {
 } from './desktop-startup-page.js'
 
 describe('desktop startup page', () => {
+  it('embeds only trusted local motion and retains static reduced-motion and error fallbacks', () => {
+    const icon = 'data:image/png;base64,AA=='
+    const motionDataUrl = 'data:image/webp;base64,AA=='
+    const html = createDesktopStartupPageHtml(icon, { motionDataUrl })
+    expect(html).toContain('media="(prefers-reduced-motion: no-preference)"')
+    expect(html).toContain(`srcset="${motionDataUrl}"`)
+    expect(html).toContain(`src="${icon}"`)
+    expect(createDesktopStartupPageHtml(icon, { motionDataUrl: 'https://external.test/x.webp' })).not.toContain('<picture>')
+    expect(createDesktopStartupPageHtml(icon, { motionDataUrl, errorMessage: 'failed' })).not.toContain('<picture>')
+  })
   it('renders only the centered LS icon on the unified opaque surface', () => {
     const iconDataUrl = 'data:image/png;base64,AA=='
     const html = createDesktopStartupPageHtml(iconDataUrl)

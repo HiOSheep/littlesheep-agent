@@ -67,21 +67,23 @@ describe('FileGlyphIcon', () => {
     const generic = renderToStaticMarkup(FileGlyphIcon({ name: 'unknown.custom' }))
 
     expect(markdown).toContain('file-glyph-markdown')
-    // The mark is the type's own, not a first letter: Markdown "MD", HTML5 "5".
-    expect(markdown).toContain('>MD</text>')
-    expect(html).toContain('>5</text>')
-    // YAML's mark is two characters so it fits the plate at the size the tree renders it.
+    // Use the actual vector format marks, without font-dependent miniature abbreviations.
+    expect(markdown).toContain('markdown.svg')
+    expect(html).toContain('html.svg')
     const yaml = renderToStaticMarkup(FileGlyphIcon({ name: 'pnpm-workspace.yaml' }))
-    expect(yaml).toContain('>YL</text>')
-    // Rounded plate: every sheet is the shared rounded path with a folded corner.
-    expect(markdown).toContain('file-glyph-sheet')
-    expect(markdown).toContain('file-glyph-fold')
+    expect(yaml).toContain('yaml.svg')
+    for (const mark of [markdown, html, yaml]) {
+      expect(mark).toContain('class="file-glyph-format-mark"')
+      expect(mark).not.toContain('<text')
+      expect(mark).not.toContain('file-glyph-sheet')
+    }
     expect(generic).toContain('file-glyph-generic')
-    expect(generic).not.toContain('file-glyph-label')
+    expect(generic).toContain('file-glyph-sheet')
+    expect(generic).toContain('file-glyph-fold')
 
     const folder = renderToStaticMarkup(FolderGlyphIcon())
     expect(folder).toContain('folder-glyph-icon')
     expect(folder).toContain('folder-glyph-body')
-    expect(folder).toContain('folder-glyph-bar')
+    expect(folder).toContain('folder-glyph-seam')
   })
 })

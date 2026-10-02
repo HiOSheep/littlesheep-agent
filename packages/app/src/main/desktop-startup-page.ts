@@ -20,6 +20,8 @@ export const DESKTOP_TITLEBAR_HEIGHT = 32
 const STARTUP_ICON_SIZE_PX = 112
 
 export interface DesktopStartupPageOptions {
+  /** Trusted embedded brand animation; no external resource or renderer dependency. */
+  motionDataUrl?: string
   errorMessage?: string
   /**
    * Whether Main's bounded retry can be offered for this failure.
@@ -40,9 +42,13 @@ export function createDesktopStartupPageHtml(
   iconDataUrl?: string,
   options: DesktopStartupPageOptions = {},
 ): string {
-  const icon = isPngDataUrl(iconDataUrl)
+  const staticIcon = isPngDataUrl(iconDataUrl)
     ? `<img class="startup-icon" src="${iconDataUrl}" alt="LittleSheep" />`
     : ''
+  const motion = !options.errorMessage && /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/u.test(options.motionDataUrl ?? '')
+  const icon = motion && staticIcon
+    ? `<picture><source media="(prefers-reduced-motion: no-preference)" srcset="${options.motionDataUrl}" />${staticIcon}</picture>`
+    : staticIcon
   const errorMessage = options.errorMessage?.trim()
   // The retry control only exists where Main said a retry is possible. Its label
   // is the same sentence the React notice uses (`execution-retry-state.ts`), so

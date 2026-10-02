@@ -75,6 +75,10 @@ extraResources:
     filter:
       - littlesheep.ico
       - littlesheep-icon.png
+      - void-ring/startup.webp
+      - void-ring/mark.png
+  - from: src/renderer/ui/file-glyph-assets/LICENSE
+    to: third-party-licenses/material-icon-theme-LICENSE
 
 # Files the main process loads by path at runtime stay outside the archive. node-pty,
 # onnxruntime-node, sharp and @huggingface/transformers are listed explicitly; electron-builder

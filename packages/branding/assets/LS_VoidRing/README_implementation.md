@@ -76,10 +76,12 @@ python packages/branding/assets/LS_VoidRing/tools/render_brand_assets.py
 
 验证覆盖：12 个 PNG 尺寸与纯黑背景/近黑不透明球体中心/透明角；128px 以上版本在球面内侧存在暖色反射，防止再退化为平面圆盘；7 个 Windows ICO 尺寸；App PNG 与主版一致；四个 JSON 被真实 lottie-web 5.12.2 成功加载并显示变化；前三种动效的黑色实体图层几何与变换固定，内圈反光、折射亮边及上/右/下/左四个外侧光晕区域均存在变化；循环末端帧差不超过普通相邻帧差的两倍；展开最终内容淡出；减少动态效果静态显示；390px 预览无横向溢出；无浏览器脚本错误。视觉判断仍需要结合母图、32px 实际图与动效预览，不以结构检查代替审美判断。
 
-播放器副本位于 `preview/lottie_svg.min.js`，来自 airbnb/lottie-web 官方 `v5.12.2`，MIT 许可证随交付保存在 `preview/LOTTIE_LICENSE.md`。预览不需要 CDN 或网络。
+播放器副本位于 `preview/lottie_svg.min.js`，来自 airbnb/lottie-web 官方 `v5.12.2`，MIT 许可证原文随交付保存在 `LOTTIE_LICENSE`。预览不需要 CDN 或网络。
 
 ## 产品接入范围
 
 导出同步更新 `packages/app/resources/littlesheep-icon.png` 与 `littlesheep.ico`。ICO 包含 16、24、32、48、64、128、256 像素，每个尺寸由同一球体光照母版导出。资源文件名保持现有 App 窗口、托盘、启动页、安装器与快捷方式的加载约定，重新生成后须重跑 `pnpm run ensure:app-build`。
 
-四种动效已作为可运行设计素材交付，并在独立浏览器预览验证；尚未绑定 LittleSheep Renderer 的真实请求/加载/思考/展开状态。独立浏览器证据不证明真实 Electron 界面、系统图标缓存或安装包已经更新。
+四种动效已接入 LittleSheep：启动与空白对话使用待机呼吸，空白对话初次挂载播放一次 420ms 展开，历史读取使用加载环流，顶部任务条按真实运行/工具/思考状态切换，正在接收的思考行使用思考潮汐。失败、暂停与等待用户时停止工作动效；系统减少动态效果、页面隐藏和图标离开视口时使用静态母版。
+
+应用使用 `tools/export_app_motion.py` 从已确认 PNG 序列导出三份透明无损 WebP、小尺寸启动素材和透明静态 `mark.png`，只合成不透明黑色球体与完整光照，不叠加黑色圆角底板。静态回退与展开也使用透明图；桌面/托盘等原生图标保留已确认底板。动效保持 30fps 的完整光照变化，不增加 App 运行时依赖。导出到 `packages/app/resources/void-ring/` 后须重新运行 `pnpm run ensure:app-build`。产品状态映射与真实 Electron 验收分别验证；这些结果不证明安装包或系统图标缓存已更新。

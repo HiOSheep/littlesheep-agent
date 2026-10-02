@@ -8,6 +8,7 @@ import { shortActivityText } from './task-progress-indicator'
 import { Markdown } from '../Markdown'
 import { ActivityGlyph } from './activity-glyph'
 import { DisclosurePanel } from './disclosure-panel'
+import { VoidRing } from '../ui/void-ring'
 
 export function ReasoningRow({
   id,
@@ -31,7 +32,8 @@ export function ReasoningRow({
         aria-expanded={open}
         onClick={() => setPinnedOpen(!open)}
       >
-        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
+        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true">{status === 'running'
+          ? <VoidRing state="thinking" size={22} /> : <ActivityGlyph kind="reasoning" />}</span>
         <span className="agent-flow-title">思考</span>
         <span className="agent-flow-separator" aria-hidden="true" />
         <span className="agent-flow-summary">{shortActivityText(text, 200)}</span>

@@ -19,6 +19,7 @@ export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/15-settings-surface.css',
   './styles/16-usage-heatmap.css',
   './styles/17-appearance-theme.css',
+  './styles/18-brand-motion.css',
 ] as const
 
 export interface RendererStyleSourceFile {

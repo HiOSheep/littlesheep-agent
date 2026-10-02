@@ -34,9 +34,9 @@ export function useTitlebarTask({
   const activity = latestRunActivity(messages)
   return useMemo(() => ({
     title: sessions.find((session) => session.id === currentSession)?.title?.trim() ?? '',
-    // A conversation that has not been named yet still has a run worth reporting, so the pill keys
-    // off the session existing rather than off its title.
-    hasSession: Boolean(currentSession),
+    // The first request has live activity before its durable session id arrives.
+    // Show that activity immediately, including unnamed draft conversations.
+    hasSession: Boolean(currentSession || activity),
     activity,
     now: activityNow,
   }), [activity, activityNow, currentSession, sessions])

@@ -1702,117 +1702,57 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   stroke-linejoin: round;
 }
 
+/* Imported format marks retain their own vector colours and geometry. Only our
+   neutral document, image and folder shapes use the shared outline treatment. */
 .workspace-tree-glyph-icon.file-glyph-icon {
   overflow: visible;
 }
 
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet {
-  fill: currentColor;
-  stroke: none;
+.workspace-tree-glyph-icon.file-glyph-generic {
+  color: var(--muted);
 }
 
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold-fill {
-  fill: rgba(255, 255, 255, 0.34);
-  stroke: none;
-}
-
+.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet,
 .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.66);
-  stroke-width: 0.9;
+  stroke: currentColor;
+  stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label {
-  fill: #ffffff;
-  stroke: none;
-  font-family: var(--font);
-  /* Readable at the 16px the tree renders: at 5px the type mark was a smudge. */
-  font-size: 7px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-/* Marks whose own letterforms are wide step down one size so they still fit inside the plate:
-   three characters ("PDF"), and "MD", which measures 12px at 7px against a 11px plate. */
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-markdown,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-pdf,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-database,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-git {
-  font-size: 6px;
-}
-
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-javascript,
-.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-label-json {
-  fill: #1b1b1b;
-}
-
-/* The folder is the same rounded plate as the sheets, with a light bar instead of a type mark. */
 .workspace-tree-glyph-icon.folder-glyph-icon {
   color: var(--workspace-folder-glyph);
 }
 
 .workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body {
-  fill: currentColor;
-  stroke: none;
+  fill: color-mix(in srgb, currentColor 10%, transparent);
+  stroke: currentColor;
+  stroke-width: 1.2;
 }
 
-.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-bar {
-  fill: rgba(255, 255, 255, 0.82);
-  stroke: none;
+.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-seam {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
 }
 
-/* Official marks and colours: HTML5 orange "5", CSS3 blue "3", JavaScript yellow "JS", TypeScript
-   blue "TS", Markdown blue "MD", Python blue "Py", Go cyan "Go", Git orange "git", Adobe red "PDF". */
-.workspace-tree-glyph-icon.file-glyph-markdown { color: #4a86e8; }
-.workspace-tree-glyph-icon.file-glyph-typescript { color: #3178c6; }
-.workspace-tree-glyph-icon.file-glyph-javascript { color: #f7df1e; }
-.workspace-tree-glyph-icon.file-glyph-python { color: #3776ab; }
-.workspace-tree-glyph-icon.file-glyph-json { color: #cbcb41; }
-.workspace-tree-glyph-icon.file-glyph-css { color: #2965f1; }
-.workspace-tree-glyph-icon.file-glyph-html { color: #e34f26; }
-.workspace-tree-glyph-icon.file-glyph-yaml { color: #cb171e; }
-.workspace-tree-glyph-icon.file-glyph-shell { color: #4eaa25; }
-.workspace-tree-glyph-icon.file-glyph-rust { color: #d28b62; }
-.workspace-tree-glyph-icon.file-glyph-go { color: #00add8; }
-.workspace-tree-glyph-icon.file-glyph-java { color: #e76f00; }
-.workspace-tree-glyph-icon.file-glyph-csharp { color: #8a4bbd; }
-.workspace-tree-glyph-icon.file-glyph-git { color: #f05032; }
-.workspace-tree-glyph-icon.file-glyph-lock { color: #bd7182; }
-.workspace-tree-glyph-icon.file-glyph-image { color: #9a74c3; }
-.workspace-tree-glyph-icon.file-glyph-pdf { color: #e0393e; }
-.workspace-tree-glyph-icon.file-glyph-database { color: #6589b8; }
-.workspace-tree-glyph-icon.file-glyph-config { color: #848b96; }
-
-.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-frame {
-  fill: currentColor;
-  stroke: none;
+.workspace-tree-glyph-icon.file-glyph-image {
+  color: #b08aca;
 }
 
-.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-sun {
-  fill: #ffffff;
-  stroke: none;
-}
-
+.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-frame,
 .workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains {
   fill: none;
-  stroke: #ffffff;
-  stroke-width: 1.15;
+  stroke: currentColor;
+  stroke-width: 1.2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.workspace-tree-glyph-icon.file-glyph-lock .file-glyph-lock-body {
-  fill: #ffffff;
+.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-sun {
+  fill: currentColor;
   stroke: none;
-}
-
-.workspace-tree-glyph-icon.file-glyph-lock .file-glyph-lock-shackle {
-  fill: none;
-  stroke: #ffffff;
-  stroke-width: 1;
-  stroke-linecap: round;
 }
 
 .workspace-tree-name {

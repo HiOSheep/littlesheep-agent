@@ -386,7 +386,8 @@ export function WorkspacePreviewPane({
               path={workspaceEditorModelPath(workspacePath, preview.path, workspaceSessionKey(sessionId))}
               value={editorText}
               loading={<WorkspacePlaceholder title="载入编辑器" text="正在打开内置代码编辑器。" />}
-                onChange={(value) => updateEditorText(value ?? '')}
+                // Read-only model synchronization is not a user edit and must never write a draft.
+                onChange={(value) => { if (editing) updateEditorText(value ?? '') }}
                 onMount={(editor, monaco) => setEditorHandle({ editor, monaco })}
               options={editorOptions}
               />

@@ -2,6 +2,10 @@
 
 This area owns reusable visual roles, focus primitives, icons, notices, state views and interaction tokens. Domain components should consume these primitives instead of creating another local style system.
 
+`FileGlyphIcon` / `FolderGlyphIcon` 统一供文件树、审查树、文件标签、附件和记忆文件入口使用。文件格式使用本地 SVG 标志，保留格式的识别形状和颜色；文件夹与未知文件使用轻量轮廓，16px 图标不再依赖字体渲染微型缩写。素材来源、固定版本和许可见 [图标素材说明](file-glyph-assets/README.md)，归类与共享图标契约由 `icons.test.ts`、`icon-actions.test.ts` 和 `workspace-glyph-legibility.test.ts` 验证。
+
+`VoidRing` 是品牌动效的共享入口，播放已确认母版导出的无损 WebP，外部透明、黑色球体不透明，组件不绘制黑色底板。`voidRingStateForActivity` 只把真实活动投影为待机、加载、思考或静态；失败、暂停与等待决定不播放工作动效。系统减少动态效果、页面隐藏或图标离开视口时使用透明的 `mark.png`。空白对话提供一次 420ms 展开过渡，动效不拦截输入或延迟界面就绪。
+
 ## 材质角色与分层（V1）
 
 Glass identifies a floating surface. Long reading surfaces, code and dense settings remain on stable opaque surfaces. Keep the established rounded, translucent visual language; use one blur layer per visual surface and shared tokens for fill, border, shadow and radius.

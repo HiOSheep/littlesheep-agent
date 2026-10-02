@@ -17,6 +17,10 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 产品窗口验收应使用隔离数据根、确定性夹具，并将日志、截图和临时报告写到系统临时产物目录；不得读取用户会话或密钥。报告只证明其实际执行的断言。
 
+`node scripts/verify-void-ring.mjs` 在最新桌面构建中验证品牌动效：空白对话与启动页的真实像素变化、本地 SSE 夹具经 Runtime 驱动的加载/思考/完成状态、深浅主题下的透明外部与不透明球体、减少动态效果的透明静态回退以及图标与输入框的布局间距。它使用隔离数据根，不访问用户会话或真实 Provider。
+
+`node scripts/verify-file-preview-content.mjs` 使用隔离文件和真实 Electron，在编辑器首次加载及预热后逐个打开代码、配置、普通文本、Markdown、HTML 和图片。文本断言核对界面实际内容与磁盘一致，空文件允许为空；还通过真实键盘输入核对用户主动清空的草稿在切换和重新加载后保留。`--out=<绝对路径>` 可指定截图和报告位置，默认写入系统临时目录。
+
 涉及窗口顶栏、拖动区域或顶栏控件时，使用 `pnpm run verify:window-layout` 的原生命中检查。DOM 命中和 CDP 合成点击不能证明 Windows 原生鼠标按下会送到页面。共享探针在 `scripts/lib/native-hit-test.mjs`；自检入口为 `node scripts/probe-native-hit-test.mjs`，只验证探针能区分 `HTCLIENT` 与 `HTCAPTION`，不替代产品门。
 
 原生命中检查要求窗口保持可见并由系统合成；停放到屏幕外或隐藏窗口会使拖动区结果失真。其他 UI 验收是否需要显示窗口，以相应门的断言为准。
