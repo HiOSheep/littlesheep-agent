@@ -11,8 +11,8 @@ describe('composer control row layout', () => {
     const sendButtonRule = styles.match(/\.send-round\s*\{([^}]*)\}/u)?.[1] ?? ''
     const narrowWindowStyles = styles.slice(styles.indexOf('@container chat-pane (max-width: 520px)'))
 
-    expect(composerRule).toContain('--composer-padding-block: 10px;')
-    expect(composerRule).toContain('--composer-padding-inline: 12px;')
+    expect(composerRule).toContain('--composer-padding-block: 12px;')
+    expect(composerRule).toContain('--composer-padding-inline: 16px;')
     expect(composerRule).toContain('--composer-control-surface-size: 34px;')
     expect(composerRule).toContain('--composer-control-padding-inline: 10px;')
     expect(composerRule).toContain('--composer-control-row-height: 34px;')
@@ -25,7 +25,7 @@ describe('composer control row layout', () => {
     expect(composerRule).toMatch(
       /--mode-picker-compact-width:\s*calc\(\s*16px \+ 7px \+ \(2 \* var\(--composer-control-padding-inline\)\)\s*\);/u,
     )
-    expect(styles).toMatch(/:root\s*\{[\s\S]*?--chat-message-font-size:\s*14px;/u)
+    expect(styles).toMatch(/:root\s*\{[\s\S]*?--chat-message-font-size:\s*15px;/u)
     expect(styles).toMatch(/\.message\s*\{[^}]*font-size:\s*var\(--chat-message-font-size\);/u)
     expect(styles).toMatch(
       /\.model-picker-trigger\s*\{[^}]*font-size:\s*var\(--composer-control-font-size\);/u,

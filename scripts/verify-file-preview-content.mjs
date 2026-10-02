@@ -106,6 +106,7 @@ try {
   await evaluate(`[...document.querySelectorAll('.workspace-tab-view.active button')].find(x=>x.textContent.trim()==='编辑').click()`)
   await delay(250)
   await h.waitFor(()=>evaluate(`!!document.querySelector('.workspace-tab-view.active .monaco-editor .native-edit-context, .workspace-tab-view.active .monaco-editor textarea.inputarea')||null`),5000,'Monaco input area')
+  await client.send('Page.bringToFront')
   await evaluate(`document.querySelector('.workspace-tab-view.active .monaco-editor .native-edit-context, .workspace-tab-view.active .monaco-editor textarea.inputarea').focus()`)
   await client.send('Input.dispatchKeyEvent',{type:'rawKeyDown',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2})
   await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA',windowsVirtualKeyCode:65,modifiers:2})

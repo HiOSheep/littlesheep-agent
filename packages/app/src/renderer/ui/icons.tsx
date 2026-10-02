@@ -42,15 +42,6 @@ export function SearchIcon() {
 }
 
 
-export function ScheduleIcon() {
-  return (
-    <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="5.35" />
-      <path d="M8 4.65v3.55l2.35 1.35" />
-    </svg>
-  )
-}
-
 
 export function MemoryTreeNavIcon() {
   return (

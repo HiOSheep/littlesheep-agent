@@ -1,20 +1,20 @@
 
 :root {
   color-scheme: dark;
-  --bg: #141414;
-  --workspace-code-surface: #101010;
-  --bg-elevated: #1c1c1c;
-  --surface: #202020;
-  --surface-2: #252525;
-  --surface-3: #2c2c2c;
-  --control: #2a2a2a;
-  --control-hover: #333333;
-  --control-active: #383838;
+  --bg: #191b20;
+  --workspace-code-surface: #17191e;
+  --bg-elevated: #24272e;
+  --surface: #22252c;
+  --surface-2: #292d35;
+  --surface-3: #30353e;
+  --control: #2c3039;
+  --control-hover: #353b46;
+  --control-active: #3b4350;
   /* Sidebar rows sit above a dynamic glass surface. Keep their interaction
      treatment translucent so the mapped background remains visible. */
   --sidebar-interaction-hover: color-mix(in srgb, var(--text) 6%, transparent);
   --sidebar-interaction-active: color-mix(in srgb, var(--text) 10%, transparent);
-  --sidebar-menu-surface: rgba(8, 8, 8, 0.78);
+  --sidebar-menu-surface: rgba(28, 31, 38, 0.88);
   --workspace-tree-interaction-hover: color-mix(in srgb, var(--control-hover) 66%, transparent);
   --workspace-tree-interaction-active: color-mix(in srgb, var(--control-active) 68%, transparent);
   /* A quiet amber outline distinguishes folders from the format marks. */
@@ -23,24 +23,25 @@
   --settings-switch-on: #3f7fd8;
   --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
   --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
-  --composer-surface: rgba(32, 32, 32, 0.75);
+  --composer-surface: rgba(38, 42, 50, 0.82);
+  --composer-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
   --selection-background: #333333;
   --selection-background-inactive: #2e2e2e;
   --code-selection-background: #454545;
   --code-selection-background-inactive: #3a3a3a;
   --selection-foreground: #f2f2f2;
   --selection-radius: 3px;
-  --border: #343434;
-  --border-strong: #474747;
-  --text: #e8e8e8;
-  --text-strong: #ffffff;
-  --muted: #a0a0a0;
-  --muted-2: #858585;
-  --chat-message-font-size: 14px;
+  --border: #343943;
+  --border-strong: #4a5362;
+  --text: #e3e7ee;
+  --text-strong: #f6f8fc;
+  --muted: #a7afbd;
+  --muted-2: #8f99aa;
+  --chat-message-font-size: 15px;
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
   --accent-soft: rgba(226, 226, 226, 0.1);
-  --focus-ring-color: rgba(226, 226, 226, 0.32);
+  --focus-ring-color: rgba(132, 183, 255, 0.6);
   /* The one control that points down into the composer. Its arrow is the sky-blue accent so the
      way back to the newest message reads as a direction, not as another grey chip. */
   --jump-to-latest-arrow: #7ec8ff;
@@ -60,7 +61,7 @@
   --notice-padding-block: 8px;
   --notice-padding-inline: 10px;
   --notice-font-size: 12px;
-  --control-height-md: 32px;
+  --control-height-md: 34px;
   --control-height-sm: 26px;
   /* Row-level compact action inside a settings section. */
   --control-height-row: 30px;
@@ -72,7 +73,7 @@
      aligns its title and description on this scale, and no settings page invents a sixth size —
      the plugin and model pages used to sit 4-6px below the storage and web pages, which read as
      two different products inside one settings area. */
-  --settings-page-title-font-size: calc(26px * var(--ui-font-scale, 1));
+  --settings-page-title-font-size: calc(28px * var(--ui-font-scale, 1));
   --settings-page-desc-font-size: calc(14px * var(--ui-font-scale, 1));
   --settings-group-title-font-size: calc(15px * var(--ui-font-scale, 1));
   --settings-row-title-font-size: calc(14px * var(--ui-font-scale, 1));
@@ -108,7 +109,7 @@
   /* The press step for controls whose hover fill is already `--control-active`.
      The fill ramp is `--control` -> `--control-hover` -> `--control-active` ->
      `--control-pressed`; a press is always the next step up, never a new hue. */
-  --control-pressed: #424242;
+  --control-pressed: #465062;
   /* One shadow per elevation, not per panel. `--shadow` is the dialog, this is
      the floating menu/picker layer (seven panels used to repeat the literal),
      and `--floating-panel-shadow` is the resting floating card. Small floating
@@ -237,10 +238,10 @@
   --sidebar-resizer-active-color: #a0a0a0;
   --floating-panel-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
   --settings-entry-height: 34px;
-  --sidebar-width: clamp(220px, 21.5625vw, 460px);
+  --sidebar-width: clamp(220px, 18.75vw, 460px);
   --sidebar-min-readable-width: 220px;
   --sidebar-resizer-width: 0px;
-  --workspace-panel-width: clamp(280px, 28.125vw, 4096px);
+  --workspace-panel-width: clamp(280px, 37.5vw, 4096px);
   --two-stage-resize-motion: 320ms;
 }
 
@@ -1102,9 +1103,10 @@ body.is-window-resizing .window-shell *::after {
 
 .brand-title {
   color: var(--text-strong);
-  font-size: 16px;
-  font-weight: 800;
+  font-size: calc(17px * var(--ui-font-scale, 1));
+  font-weight: 650;
   line-height: 1.2;
+  letter-spacing: -0.025em;
 }
 
 .sidebar-quick-nav {
@@ -1118,14 +1120,14 @@ body.is-window-resizing .window-shell *::after {
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   width: 100%;
-  min-height: 28px;
+  min-height: 34px;
   gap: 8px;
-  padding: 0 7px;
+  padding: 0 10px;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   font-weight: 400;
   line-height: 18px;
   text-align: left;
@@ -1193,6 +1195,9 @@ body.is-window-resizing .window-shell *::after {
     color 140ms ease,
     transform 140ms ease,
     opacity 140ms ease;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
 }
 
 .settings-overview-row,
@@ -1265,11 +1270,11 @@ body.is-window-resizing .window-shell *::after {
   min-width: 0;
   gap: 7px;
   padding: 0 6px;
-  color: var(--text);
+  color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 13px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 400;
   line-height: 26px;
   transition:
@@ -1299,9 +1304,9 @@ body.is-window-resizing .window-shell *::after {
   flex: 0 0 var(--sidebar-action-column);
   gap: var(--sidebar-action-gap);
   margin-left: auto;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(4px);
+  opacity: 0.55;
+  pointer-events: auto;
+  transform: translateX(0);
   transition:
     opacity var(--motion-fast) var(--motion-ease),
     transform var(--motion-fast) var(--motion-ease);
@@ -1324,7 +1329,7 @@ body.is-window-resizing .window-shell *::after {
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 650;
   line-height: 1;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -1433,7 +1438,7 @@ body.is-window-resizing .window-shell *::after {
   border: 0;
   border-radius: var(--radius-ui);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   transition:
@@ -1533,6 +1538,13 @@ body.is-window-resizing .window-shell *::after {
     color var(--motion-fast) var(--motion-ease),
     opacity var(--sidebar-collapse-motion) var(--motion-ease),
     transform var(--sidebar-collapse-motion) var(--motion-ease);
+}
+
+/* The settings rail scrolls to the bottom edge. Its exit action is in the
+   search toolbar, so the global gear must not cover the last navigation row. */
+.window-shell.settings-open .settings-entry-global {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .settings-entry-btn::after {
@@ -1928,7 +1940,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   height: 22px;
   padding: 0 5px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0;
   white-space: nowrap;
 }
@@ -2073,7 +2085,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .sidebar-feature-header strong {
   color: var(--text-strong);
   font-size: 14px;
-  font-weight: 880;
+  font-weight: 650;
   line-height: 1.1;
 }
 
@@ -2190,7 +2202,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .sidebar-search-result small {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .sidebar-feature-placeholder,
@@ -2223,7 +2235,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .sidebar-feature-placeholder strong {
   color: var(--text-strong);
   font-size: 14px;
-  font-weight: 880;
+  font-weight: 650;
 }
 
 .sidebar-feature-placeholder p {
@@ -2245,7 +2257,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   font-size: 13px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .sidebar-feature-actions button:hover,
@@ -2257,7 +2269,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 
 .chat {
   position: relative;
-  --composer-max-width: 740px;
+  --composer-max-width: 800px;
   --chat-content-max-width: var(--composer-max-width);
   --chat-content-gutter: clamp(18px, 2.6vw, 40px);
   --composer-overlay-height: 116px;

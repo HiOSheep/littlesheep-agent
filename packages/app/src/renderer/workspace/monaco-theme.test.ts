@@ -22,9 +22,9 @@ describe('LittleSheep Monaco theme', () => {
     }
   })
 
-  it('keeps the editor darker than the workspace surface and code text readable', () => {
+  it('keeps the editor on the workspace canvas and code text readable', () => {
     const background = LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.background']
-    expect(background).toBe('#101010')
+    expect(background).toBe('#17191e')
 
     const foregrounds = [
       LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.foreground'],
@@ -42,7 +42,7 @@ describe('LittleSheep Monaco theme', () => {
     expect(new Set(foregrounds).size).toBe(foregrounds.length)
   })
 
-  it('keeps editor surfaces neutral and primary syntax colours vivid', () => {
+  it('keeps editor surfaces quiet and primary syntax colours vivid', () => {
     const neutralSurfaces = [
       LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.background'],
       LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.lineHighlightBackground'],
@@ -120,7 +120,7 @@ function relativeLuminance(hex: string): number {
 
 function isNeutralGray(hex: string): boolean {
   const [red, green, blue] = rgb(hex)
-  return red === green && green === blue
+  return Math.max(red!, green!, blue!) - Math.min(red!, green!, blue!) <= 14
 }
 
 function colourSaturation(hex: string): number {

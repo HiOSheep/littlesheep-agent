@@ -31,7 +31,7 @@ describe('message metadata footer', () => {
     expect(html).toContain('class="message-meta message-meta-user"')
     expect(html).toContain('aria-label="复制消息"')
     expect(html).toContain('data-copied="false"')
-    expect(styles).toMatch(/\.message-meta\s*\{[^}]*height:\s*28px;[^}]*font-size:\s*14px;[^}]*opacity:\s*0;[^}]*pointer-events:\s*auto;/u)
+    expect(styles).toMatch(/\.message-meta\s*\{[^}]*height:\s*28px;[^}]*font-size:\s*12px;[^}]*opacity:\s*0;[^}]*pointer-events:\s*auto;/u)
     expect(styles).toMatch(/\.message-meta:hover,[\s\S]*?\.message-meta:focus-within\s*\{[^}]*opacity:\s*1;/u)
     expect(styles).toMatch(/\.message-with-meta\.user\s*\{[^}]*width:\s*min\(820px,\s*100%\);[^}]*max-width:\s*min\(820px,\s*100%\);[^}]*margin-left:\s*auto;/u)
     expect(styles).toMatch(/\.message-with-meta > \.message\s*\{[^}]*margin-bottom:\s*0;/u)

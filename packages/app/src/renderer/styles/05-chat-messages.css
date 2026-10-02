@@ -162,7 +162,7 @@
 .empty-hint {
   display: grid;
   place-items: center;
-  gap: 6px;
+  gap: 10px;
   width: min(420px, 88%);
   min-height: 0;
   margin: 0;
@@ -177,15 +177,17 @@
 
 .empty-title {
   color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 800;
+  font-size: calc(23px * var(--ui-font-scale, 1));
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.35;
 }
 
 .empty-copy {
-  max-width: 380px;
+  max-width: 360px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: calc(13px * var(--ui-font-scale, 1));
+  line-height: 1.75;
 }
 
 .message {
@@ -204,7 +206,7 @@
 .message-with-meta {
   width: min(820px, 100%);
   max-width: min(820px, 100%);
-  margin-bottom: 14px;
+  margin-bottom: 24px;
 }
 
 .message-with-meta.user {
@@ -227,11 +229,12 @@
 
 .message.user {
   margin-left: auto;
-  padding: 4px 8px;
+  padding: 10px 14px;
   color: var(--text);
-  background: var(--composer-surface);
+  background: var(--surface-2);
   border: 0;
   box-shadow: none;
+  border-radius: var(--radius-card);
 }
 
 .message.assistant {
@@ -256,8 +259,8 @@
   height: 28px;
   margin-top: 4px;
   padding-inline: 4px;
-  color: rgba(218, 218, 218, 0.48);
-  font-size: 14px;
+  color: var(--muted-2);
+  font-size: 12px;
   line-height: 1;
   opacity: 0;
   pointer-events: auto;
@@ -327,7 +330,7 @@
 .message-file-strip-label {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 650;
   line-height: 1;
 }
 
@@ -442,13 +445,13 @@
 .message-file-main strong {
   color: inherit;
   font-size: 12px;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .message-file-main small {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .message.user .message-file-strip {
@@ -463,6 +466,7 @@
 
 .markdown {
   white-space: normal;
+  line-height: 1.8;
 }
 
 .markdown-inline {
@@ -639,8 +643,8 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  background: #202020;
-  border: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-ui);
   box-shadow: none;
 }
@@ -742,7 +746,7 @@
   overflow: hidden;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-overflow: ellipsis;
   text-transform: uppercase;

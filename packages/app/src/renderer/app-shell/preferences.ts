@@ -60,7 +60,7 @@ export const SIDEBAR_PROJECT_ORDER_KEY = 'littlesheep.ui.sidebarProjectOrder'
 
 export const ACTIVE_SESSION_KEY = 'littlesheep.ui.activeSession'
 
-export const SIDEBAR_WIDTH_DEFAULT = 276
+export const SIDEBAR_WIDTH_DEFAULT = 240
 
 export const SIDEBAR_WIDTH_MIN = 220
 

@@ -642,7 +642,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   border: 0;
   border-radius: var(--radius-ui);
   font-size: 13px;
-  font-weight: 820;
+  font-weight: 650;
   text-align: left;
   box-shadow: none;
   outline: 0;
@@ -705,7 +705,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 .workspace-panel-heading span {
   color: var(--text-strong);
   font-size: 13px;
-  font-weight: 900;
+  font-weight: 650;
   line-height: 1.2;
 }
 
@@ -813,7 +813,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
@@ -886,7 +886,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   border: 0;
   border-radius: var(--radius-ui);
   font-size: 15px;
-  font-weight: 820;
+  font-weight: 650;
   text-align: left;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -1002,7 +1002,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 .workspace-placeholder strong {
   color: var(--text-strong);
   font-size: 15px;
-  font-weight: 900;
+  font-weight: 650;
 }
 
 .workspace-placeholder span {
@@ -1183,6 +1183,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   transition:
     flex-basis var(--workspace-panel-motion) var(--motion-ease),
     margin-left var(--workspace-panel-motion) var(--motion-ease);
+  background: var(--bg);
 }
 
 /* A live pointer resize already supplies compositor-paced geometry. Do not
@@ -1403,7 +1404,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   overflow: hidden;
   color: var(--text-strong);
   font-size: 12px;
-  font-weight: 860;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1420,7 +1421,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border-radius: var(--radius-pill);
   font-size: 10px;
   font-style: normal;
-  font-weight: 820;
+  font-weight: 650;
   line-height: 1;
 }
 
@@ -1495,7 +1496,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border: 0;
   border-radius: var(--radius-ui);
   font-size: 11px;
-  font-weight: 780;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
   transition:
@@ -1531,13 +1532,13 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   display: grid;
   grid-template-columns: 17px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex: 0 0 auto;
-  min-height: 32px;
-  margin: 2px 6px 5px;
+  min-height: 34px;
+  margin: 8px 8px 10px;
   padding: 0 9px;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--surface-2);
   /* No frame: the field is told apart by its fill, and focus/hover only change that fill. */
   border: 0;
   border-radius: var(--radius-ui);
@@ -1565,8 +1566,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border: 0;
   outline: 0;
   font: inherit;
-  font-size: 12px;
-  font-weight: 650;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  font-weight: 400;
 }
 
 .workspace-file-filter input::placeholder {
@@ -1588,7 +1589,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   --workspace-tree-chevron-column-width: 15px;
   --workspace-tree-guide-offset: 7px;
   --workspace-tree-guide-width: 1px;
-  --workspace-tree-row-height: 26px;
+  --workspace-tree-row-height: 30px;
   position: relative;
   min-width: 0;
 }
@@ -1601,7 +1602,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   --workspace-tree-chevron-column-width: 15px;
   --workspace-tree-guide-offset: 7px;
   --workspace-tree-guide-width: 1px;
-  --workspace-tree-row-height: 26px;
+  --workspace-tree-row-height: 30px;
 }
 
 .workspace-tree-entry.expanded::before,
@@ -1758,9 +1759,9 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-name {
   min-width: 0;
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 680;
-  line-height: 1.2;
+  font-size: calc(13px * var(--ui-font-scale, 1));
+  font-weight: 400;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1799,7 +1800,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   overflow: hidden;
   color: var(--text);
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 500;
   line-height: 18px;
   white-space: nowrap;
 }
@@ -1833,7 +1834,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border-radius: var(--radius-ui);
   font: inherit;
   font-size: 12px;
-  font-weight: 680;
+  font-weight: 500;
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1855,7 +1856,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   overflow: hidden;
   color: var(--text-strong);
   font-style: normal;
-  font-weight: 760;
+  font-weight: 600;
   text-overflow: ellipsis;
 }
 
@@ -2090,7 +2091,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-line-comment-editor-heading strong {
   color: var(--text-strong);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workspace-line-comment-editor textarea {
@@ -2519,7 +2520,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-office-heading strong {
   color: var(--text-strong);
   font-size: 12px;
-  font-weight: 840;
+  font-weight: 650;
 }
 
 .workspace-office-heading span {
@@ -2544,7 +2545,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   margin: 0 0 6px;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 820;
+  font-weight: 650;
 }
 
 .workspace-office-section p {
@@ -2618,7 +2619,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   overflow: hidden;
   color: var(--text-strong);
   font-size: 13px;
-  font-weight: 860;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2645,7 +2646,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 600;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
@@ -2684,7 +2685,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-terminal-title span {
   color: var(--text-strong);
   font-size: 13px;
-  font-weight: 880;
+  font-weight: 650;
   line-height: 1.2;
 }
 
@@ -2709,7 +2710,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-terminal-status {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .workspace-terminal-status.running {
@@ -2743,7 +2744,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   padding: 0 3px;
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 820;
+  font-weight: 650;
 }
 
 .workspace-terminal-activity-refresh {
@@ -2832,7 +2833,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   min-width: 0;
   overflow: hidden;
   font-family: "SimSun", "宋体", monospace;
-  font-weight: 690;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2840,7 +2841,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-terminal-activity-meta {
   color: var(--muted-2);
   font-size: 11px;
-  font-weight: 720;
+  font-weight: 600;
   white-space: nowrap;
 }
 

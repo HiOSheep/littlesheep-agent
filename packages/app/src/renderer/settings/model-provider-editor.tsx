@@ -213,7 +213,9 @@ export function ModelProviderEditor({
           </small>
         </div>
 
-        {validation.error && <div className="dialog-error">{validation.error}</div>}
+        {validation.error && (
+          <div className={dirty || restored ? 'dialog-error' : 'dialog-hint'}>{validation.error}</div>
+        )}
         <FeedbackNotice
           className="dialog-error"
           feedback={saveError

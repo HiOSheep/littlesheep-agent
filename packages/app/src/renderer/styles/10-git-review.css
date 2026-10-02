@@ -88,7 +88,7 @@
   border-top: 1px solid rgba(255, 255, 255, 0.035);
   border-bottom: 1px solid var(--border);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .workspace-review-tree-summary > span:first-child {
@@ -124,7 +124,7 @@
   color: var(--muted-2);
   font-family: Consolas, ui-monospace, monospace;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 .workspace-review-file-status.added,
@@ -151,7 +151,7 @@
   gap: 6px;
   font-family: Consolas, ui-monospace, monospace;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -234,7 +234,7 @@
   overflow: hidden;
   color: var(--muted-2);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

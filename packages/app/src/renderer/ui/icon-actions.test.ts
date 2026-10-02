@@ -51,7 +51,6 @@ const GLYPHS: readonly GlyphRow[] = [
   ['NavComposeIcon', 'icons.tsx', 'compose-global', 'path'],
   ['ComposeIcon', 'icons.tsx', 'create-in-list', 'rect path'],
   ['SearchIcon', 'icons.tsx', 'search-filter', 'circle path'],
-  ['ScheduleIcon', 'icons.tsx', 'scheduled-module', 'circle path'],
   ['MemoryTreeNavIcon', 'icons.tsx', 'memory-tree-module', 'dot dot dot path'],
   ['PluginIcon', 'icons.tsx', 'plugins-module', 'path'],
   ['ProjectIcon', 'icons.tsx', 'project', 'path'],
@@ -165,7 +164,6 @@ const ICON_ONLY_CONTROLS: ReadonlyArray<readonly [file: string, glyph: string, n
   ['sidebar/quick-nav.tsx', 'NavComposeIcon', 'label="新对话"'],
   ['sidebar/quick-nav.tsx', 'SearchIcon', 'label="搜索"'],
   ['sidebar/quick-nav.tsx', 'MemoryTreeNavIcon', 'label="记忆树"'],
-  ['sidebar/quick-nav.tsx', 'ScheduleIcon', 'label="已安排"'],
   ['sidebar/quick-nav.tsx', 'PluginIcon', 'label="插件"'],
   ['sidebar/global-titlebar.tsx', 'SettingsGearIcon', "aria-label={settingsOpen ? '关闭设置' : '设置'}"],
   ['sidebar/global-titlebar.tsx', 'SidebarToggleIcon', 'aria-label={sidebarToggleTip}'],
@@ -294,7 +292,7 @@ const actionSheets = styleFiles.filter(({ path }) => path.endsWith('03-shell-sid
 
 describe('action glyph table', () => {
   it('lists every glyph the shared families export, and no others', async () => {
-    expect(GLYPHS).toHaveLength(43)
+    expect(GLYPHS).toHaveLength(42)
     // Counted from each module's own source, so a re-export in `icons.tsx`
     // (`FileGlyphIcon`, `CopyIcon`, …) is the module that draws it, not a second glyph.
     const exported: Array<readonly [string, ModuleName]> = []
@@ -374,7 +372,7 @@ describe('action glyph table', () => {
   })
 
   it('names every icon-only control it lists', async () => {
-    expect(ICON_ONLY_CONTROLS).toHaveLength(25)
+    expect(ICON_ONLY_CONTROLS).toHaveLength(24)
     for (const [file, glyph, name] of ICON_ONLY_CONTROLS) {
       const source = await readRendererFile(file)
       expect(source, `${file} no longer renders ${glyph}`).toMatch(new RegExp(`<${glyph}[\\s/>]`, 'u'))
@@ -394,7 +392,7 @@ describe('action glyph table', () => {
     const family = styleRules.find((rule) => rule.selector === '.sidebar-svg-icon')
     expect(declarationOf(family?.body ?? '', 'fill')).toBe('none')
     // And the glyph half: the two outline-only glyphs really are outlines.
-    for (const glyph of ['SearchIcon', 'ScheduleIcon'] as const) {
+    for (const glyph of ['SearchIcon'] as const) {
       expect(censusOf(render(glyph, 'icons.tsx')), `${glyph} must draw its circle as an outline`).toBe('circle path')
     }
   })

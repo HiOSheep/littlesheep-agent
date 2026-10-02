@@ -653,7 +653,7 @@ button.agent-flow-row.no-details,
   color: var(--muted-2);
   font-family: var(--font);
   font-size: var(--activity-badge-font-size);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 14px;
 }
 
@@ -770,7 +770,7 @@ button.agent-flow-row.no-details,
 .activity-step-title {
   min-width: 0;
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -791,7 +791,7 @@ button.agent-flow-row.no-details,
   gap: 7px;
   color: var(--muted-2);
   font-size: var(--activity-badge-font-size);
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
@@ -833,7 +833,7 @@ button.agent-flow-row.no-details,
   width: 14px;
   height: 14px;
   color: var(--warning);
-  font-weight: 800;
+  font-weight: 650;
   line-height: 1;
 }
 
@@ -850,7 +850,7 @@ button.agent-flow-row.no-details,
   color: var(--text);
   font-family: var(--mono);
   font-size: var(--activity-badge-font-size);
-  font-weight: 700;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -892,7 +892,7 @@ button.agent-flow-row.no-details,
 .tool-live-name {
   color: var(--text);
   font-family: var(--mono);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .tool-live-err {

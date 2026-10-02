@@ -3,11 +3,11 @@
 .settings-workspace-body {
   --settings-card-radius: 18px;
   --settings-control-radius: 11px;
-  --settings-row-min-height: 76px;
+  --settings-row-min-height: 72px;
   /* The overview rows carry the card's horizontal inset themselves (see
      `.settings-overview-row`), so this value has one home and the narrow layout
      can move the inset and the rows' text together. */
-  --settings-list-inline-inset: 16px;
+  --settings-list-inline-inset: 20px;
   background: var(--workspace-code-surface);
 }
 
@@ -15,7 +15,7 @@
 
 .settings-workspace-body :is(.settings-module-page, .settings-home) {
   width: 100%;
-  max-width: 1040px;
+  max-width: 960px;
   margin-inline: auto;
 }
 
@@ -25,7 +25,7 @@
    padding and frame and ended up as four rectangles inside one card). */
 .settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list) {
   min-width: 0;
-  padding: 0 16px;
+  padding: 0 var(--settings-list-inline-inset);
   overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -71,7 +71,7 @@
 .settings-card .web-settings-field > span {
   color: var(--text-strong);
   font-size: var(--settings-row-title-font-size);
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.4;
 }
 
@@ -175,7 +175,7 @@
   border: 1px solid var(--border-strong);
   border-radius: 11px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--settings-row-title-font-size);
   line-height: 1.4;
   text-align: left;
 }
@@ -226,7 +226,7 @@
   border: 0;
   border-radius: 11px;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--settings-row-title-font-size);
   line-height: 1.5;
   text-align: left;
 }

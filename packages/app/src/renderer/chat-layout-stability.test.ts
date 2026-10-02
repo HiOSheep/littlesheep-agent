@@ -101,8 +101,8 @@ describe('chat layout stability', () => {
   it('uses one proportional shell width rule across normal and maximized windows', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/--sidebar-width:\s*clamp\(220px,\s*21\.5625vw,\s*460px\);/u)
-    expect(styles).toMatch(/--workspace-panel-width:\s*clamp\(280px,\s*28\.125vw,\s*4096px\);/u)
+    expect(styles).toMatch(/--sidebar-width:\s*clamp\(220px,\s*18\.75vw,\s*460px\);/u)
+    expect(styles).toMatch(/--workspace-panel-width:\s*clamp\(280px,\s*37\.5vw,\s*4096px\);/u)
     expect(styles).toMatch(/--sidebar-resizer-active-color:\s*#a0a0a0;/u)
     expect(styles).not.toMatch(/@media\s*\(max-width:\s*860px\)[\s\S]*?--sidebar-width:\s*232px;/u)
   })
@@ -282,7 +282,7 @@ describe('chat layout stability', () => {
   it('uses the code-view surface for the titlebar, chat, and workspace materials', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/--workspace-code-surface:\s*#101010;/u)
+    expect(styles).toMatch(/--workspace-code-surface:\s*#17191e;/u)
     expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.chat\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
@@ -431,13 +431,13 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('.activity-command-header')
   })
 
-  it('matches user messages to the active workspace-tab surface without inheriting tab geometry', async () => {
+  it('keeps user bubbles distinct from the glass composer without inheriting tab geometry', async () => {
     const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-active-item:hover,[\s\S]*?\.workspace-active-item\.active\s*\{[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--workspace-tab-glass-fill\);/u)
-    expect(styles).toMatch(/--composer-surface:\s*rgba\(32, 32, 32, 0\.75\);/u)
+    expect(styles).toMatch(/--composer-surface:\s*rgba\(38, 42, 50, 0\.82\);/u)
     expect(styles).toMatch(/\.composer::before\s*\{[^}]*background:\s*var\(--composer-surface\);/u)
-    expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*4px 8px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
+    expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*10px 14px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--surface-2\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
     expect(styles).toMatch(/\.message\s*\{[^}]*max-width:\s*min\(820px, 78%\);[^}]*border-radius:\s*var\(--radius-ui\);[^}]*overflow-wrap:\s*anywhere;/u)
   })
 
@@ -517,7 +517,7 @@ describe('chat layout stability', () => {
     const styles = await readRendererStyleSource()
     const composer = await readRendererFile('./app-shell/composer-view.tsx')
 
-    expect(styles).toMatch(/\.chat\s*\{[\s\S]*?--composer-max-width:\s*740px;[\s\S]*?--chat-content-max-width:\s*var\(--composer-max-width\);/u)
+    expect(styles).toMatch(/\.chat\s*\{[\s\S]*?--composer-max-width:\s*800px;[\s\S]*?--chat-content-max-width:\s*var\(--composer-max-width\);/u)
     expect(styles).toMatch(/\.composer\s*\{[\s\S]*?width:\s*min\(var\(--composer-max-width\), 100%\);/u)
     expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\)[\s\S]*?calc\(var\(--chat-content-gutter\) \+ var\(--chat-workspace-scrollbar-overlap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
@@ -541,8 +541,8 @@ describe('chat layout stability', () => {
   it('keeps both sidebar variants as translucent acrylic material over their own floating surfaces', async () => {
     const styles = await readRendererStyleSource()
     const desktopShell = await readRendererFile('../main/desktop-shell.ts')
-    expect(styles).toMatch(/--bg:\s*#141414;/u)
-    expect(styles).toMatch(/--workspace-code-surface:\s*#101010;/u)
+    expect(styles).toMatch(/--bg:\s*#191b20;/u)
+    expect(styles).toMatch(/--workspace-code-surface:\s*#17191e;/u)
     expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 36%, transparent\);/u)
     expect(styles).not.toContain('sidebar-wash-dithered')
     expect(styles).toMatch(/--floating-panel-inner-radius:\s*calc\(\s*var\(--radius-floating-panel\) - var\(--floating-panel-border-width\)\s*\);/u)

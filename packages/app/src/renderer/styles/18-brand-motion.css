@@ -21,7 +21,7 @@
   100% { transform: scale(6.4); opacity: 0; }
 }
 .empty-hint .void-ring { margin-bottom: 10px; }
-.messages.is-empty .empty-hint { margin-bottom: 272px; }
+.messages.is-empty .empty-hint { margin-bottom: clamp(220px, 30vh, 272px); }
 .history-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .agent-flow-glyph .void-ring { overflow: hidden; }
 .agent-transcript-reasoning.running .agent-reasoning-glyph { width: 22px; height: 22px; }

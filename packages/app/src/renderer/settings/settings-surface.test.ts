@@ -54,11 +54,11 @@ describe('settings workspace surface', () => {
     const navItem = ruleBody('.settings-nav-item')
     const navGroupItems = ruleBody('.settings-nav-group-items')
 
-    expect(navGroupItems).toContain('padding-left: 8px')
+    expect(navGroupItems).toContain('padding-left: 0')
     expect(navItem).toContain('grid-template-columns: minmax(0, 1fr) 18px')
-    expect(navItem).toContain('min-height: 28px')
+    expect(navItem).toContain('min-height: 34px')
     expect(navItem).toContain('gap: 8px')
-    expect(navItem).toContain('padding: 0 7px')
+    expect(navItem).toContain('padding: 0 10px')
     // The row carries no frame in any state; the shared settings de-framing block owns that, and
     // the row shows hover and active through their fills.
     const deFramed = styles.slice(styles.indexOf('/* Settings frames are off'))
@@ -203,7 +203,7 @@ describe('settings workspace surface', () => {
       .toContain('border-radius: var(--settings-card-radius)')
     // One home for the value, and the narrow layout moves that value — it must not put the inset
     // back on the container, which would reintroduce the short fill on a narrow window.
-    expect(styles).toContain('--settings-list-inline-inset: 16px')
+    expect(styles).toContain('--settings-list-inline-inset: 20px')
     expect(styles).toContain('--settings-list-inline-inset: 14px')
     expect(styles).toContain('.settings-workspace-body :is(.settings-card, .development-environment-list) { padding-inline: 14px; }')
   })

@@ -34,14 +34,14 @@ export const APPEARANCE_DEFAULTS: AppearancePreferences = {
   theme: 'system',
   palette: 'neutral',
   interfaceFontSize: 14,
-  chatFontSize: 14,
+  chatFontSize: 15,
   codeFontSize: 13,
   terminalFontSize: 12,
-  colors: { accent: '#e2e2e2', background: '#141414', surface: '#202020' },
+  colors: { accent: '#e2e2e2', background: '#191b20', surface: '#22252c' },
 }
 
 export const APPEARANCE_PALETTES: Record<Exclude<AppearancePalette, 'custom'>, AppearanceColors> = {
-  neutral: { accent: '#e2e2e2', background: '#141414', surface: '#202020' },
+  neutral: { accent: '#e2e2e2', background: '#191b20', surface: '#22252c' },
   ocean: { accent: '#61b8e8', background: '#111a20', surface: '#1c2a32' },
   forest: { accent: '#78c79a', background: '#141d18', surface: '#202d25' },
 }
@@ -58,7 +58,7 @@ export function hydrateAppearancePreferences(input: unknown): AppearancePreferen
     theme: value.theme === 'light' || value.theme === 'dark' ? value.theme : 'system',
     palette: value.palette === 'ocean' || value.palette === 'forest' || value.palette === 'custom' ? value.palette : 'neutral',
     interfaceFontSize: boundedNumber(value.interfaceFontSize, 14, 12, 22),
-    chatFontSize: boundedNumber(value.chatFontSize, 14, 12, 22),
+    chatFontSize: boundedNumber(value.chatFontSize, 15, 12, 22),
     codeFontSize: boundedNumber(value.codeFontSize, 13, 11, 22),
     terminalFontSize: boundedNumber(value.terminalFontSize, 12, 11, 22),
     colors: {

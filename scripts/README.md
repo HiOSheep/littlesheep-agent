@@ -21,6 +21,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 `node scripts/verify-file-preview-content.mjs` 使用隔离文件和真实 Electron，在编辑器首次加载及预热后逐个打开代码、配置、普通文本、Markdown、HTML 和图片。文本断言核对界面实际内容与磁盘一致，空文件允许为空；还通过真实键盘输入核对用户主动清空的草稿在切换和重新加载后保留。`--out=<绝对路径>` 可指定截图和报告位置，默认写入系统临时目录。
 
+`node scripts/verify-ui-refinement.mjs` 使用显示的隔离 Electron 与本地确定性 Provider，留存首页、长回复、分屏／全屏文件预览、设置各页、供应商弹窗和添加菜单的深浅主题截图。它断言窗口无整体横向溢出、实际窗口尺寸切换、大字号通过界面保存、Escape 关闭弹窗，以及 Renderer 无未捕获异常。`--out=<绝对路径>` 指定报告目录；美观程度仍需查看真实截图，不由源码断言替代。
+
 涉及窗口顶栏、拖动区域或顶栏控件时，使用 `pnpm run verify:window-layout` 的原生命中检查。DOM 命中和 CDP 合成点击不能证明 Windows 原生鼠标按下会送到页面。共享探针在 `scripts/lib/native-hit-test.mjs`；自检入口为 `node scripts/probe-native-hit-test.mjs`，只验证探针能区分 `HTCLIENT` 与 `HTCAPTION`，不替代产品门。
 
 原生命中检查要求窗口保持可见并由系统合成；停放到屏幕外或隐藏窗口会使拖动区结果失真。其他 UI 验收是否需要显示窗口，以相应门的断言为准。

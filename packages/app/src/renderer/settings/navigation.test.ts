@@ -126,7 +126,7 @@ describe('settings information architecture', () => {
       .flatMap((group) => group.items)
       .find((item) => item.page === page)?.title
 
-    for (const page of ['memoryTree', 'scheduled', 'plugins']) {
+    for (const page of ['memoryTree', 'plugins']) {
       const label = labels.get(page)
       expect(label, `directModuleLabel(${page})`).toBeTruthy()
       // The sidebar button opens this module page and shows the same name.

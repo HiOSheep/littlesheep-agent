@@ -108,7 +108,7 @@ describe('sidebar section toggle layout', () => {
     expect(sessionHover).not.toContain('background: var(--control-hover)')
     expect(sessionActive).not.toContain('background: var(--control)')
     expect(root).toContain(
-      '--sidebar-menu-surface: rgba(8, 8, 8, 0.78);',
+      '--sidebar-menu-surface: rgba(28, 31, 38, 0.88);',
     )
     expect(menuPanel).toContain('background: var(--sidebar-menu-surface)')
     expect(menuPanel).toContain('-webkit-backdrop-filter: blur(18px) saturate(135%)')

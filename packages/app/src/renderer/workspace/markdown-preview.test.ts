@@ -83,7 +83,7 @@ describe('workspace Markdown preview modes', () => {
     expect(reviewDiff).not.toContain('<Markdown ')
   })
 
-  it('shares one opaque borderless gray code surface with conversation Markdown', async () => {
+  it('shares one opaque themed code surface with conversation Markdown', async () => {
     const previewPane = await source('./preview-pane.tsx')
     const assistantTurn = await source('../chat/assistant-turn.tsx')
       const styles = await readRendererStyleSource()
@@ -117,8 +117,8 @@ describe('workspace Markdown preview modes', () => {
     expect(inlineCodeRule).toContain('background: color-mix(in srgb, var(--text) 10%, transparent)')
     expect(inlineCodeRule).toContain('border: 0')
     expect(inlineCodeRule).toContain('box-shadow: none')
-    expect(blockRule).toContain('background: #202020')
-    expect(blockRule).toContain('border: 0')
+    expect(blockRule).toContain('background: var(--surface)')
+    expect(blockRule).toContain('border: 1px solid var(--border)')
     expect(blockRule).toContain('box-shadow: none')
     expect(blockRule).toContain('--code-block-inset: 6px')
     expect(blockRule).toContain('--code-copy-button-size: 26px')

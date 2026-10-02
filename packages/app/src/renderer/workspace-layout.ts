@@ -10,7 +10,7 @@ export {
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
 } from '../shared/workspace-contracts'
 
-export const WORKSPACE_PANEL_WIDTH_DEFAULT = 360
+export const WORKSPACE_PANEL_WIDTH_DEFAULT = 480
 export const WORKSPACE_PANEL_WIDTH_MIN = 280
 export const WORKSPACE_PANEL_WIDTH_MAX = 4096
 export const WORKSPACE_CHAT_MIN_WIDTH = 420

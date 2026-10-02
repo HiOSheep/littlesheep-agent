@@ -10,8 +10,7 @@ export const LITTLE_SHEEP_MONACO_THEME = 'littlesheep-midnight'
 export const LITTLE_SHEEP_MONACO_LIGHT_THEME = 'littlesheep-daylight'
 export const LITTLE_SHEEP_MONACO_CUSTOM_THEME = 'littlesheep-custom'
 
-// Use neutral charcoal surfaces without a blue cast, then reserve saturated
-// colour for syntax so code stays vivid against the darker editor.
+// Quiet charcoal matches the workspace canvas; saturated colour belongs to syntax.
 export const LITTLE_SHEEP_MONACO_THEME_DATA = {
   base: 'vs-dark',
   inherit: true,
@@ -50,9 +49,9 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
     { token: 'invalid', foreground: 'FF3B30', fontStyle: 'underline' },
   ],
   colors: {
-    'editor.background': '#101010',
+    'editor.background': '#17191e',
     'editor.foreground': '#F2F2F2',
-    'editorGutter.background': '#101010',
+    'editorGutter.background': '#17191e',
     'editorLineNumber.foreground': '#858585',
     'editorLineNumber.activeForeground': '#E6E6E6',
     'editorCursor.foreground': '#FFFFFF',
@@ -62,7 +61,7 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
     'editor.selectionHighlightBackground': '#45454566',
     'editor.wordHighlightBackground': '#55555555',
     'editor.wordHighlightStrongBackground': '#66666666',
-    'editor.lineHighlightBackground': '#181818',
+    'editor.lineHighlightBackground': '#22252c',
     'editor.lineHighlightBorder': '#00000000',
     'editorWhitespace.foreground': '#3A3A3A',
     'editorIndentGuide.background1': '#2D2D2D',
@@ -104,14 +103,14 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
     'scrollbarSlider.background': '#88888833',
     'scrollbarSlider.hoverBackground': '#99999955',
     'scrollbarSlider.activeBackground': '#B0B0B077',
-    'editorWidget.background': '#181818',
+    'editorWidget.background': '#22252c',
     'editorWidget.border': '#3A3A3A',
-    'editorHoverWidget.background': '#181818',
+    'editorHoverWidget.background': '#22252c',
     'editorHoverWidget.border': '#3A3A3A',
-    'editorSuggestWidget.background': '#181818',
+    'editorSuggestWidget.background': '#22252c',
     'editorSuggestWidget.border': '#3A3A3A',
     'editorSuggestWidget.foreground': '#F2F2F2',
-    'editorSuggestWidget.selectedBackground': '#303030',
+    'editorSuggestWidget.selectedBackground': '#30353e',
   },
 } satisfies Monaco.editor.IStandaloneThemeData
 
@@ -138,9 +137,9 @@ export function registerLittleSheepMonacoTheme(monaco: typeof Monaco): void {
     rules: LITTLE_SHEEP_MONACO_LIGHT_RULES,
     colors: {
       ...LITTLE_SHEEP_MONACO_THEME_DATA.colors,
-      'editor.background': '#e9e9e7',
-      'editor.foreground': '#252523',
-      'editorGutter.background': '#e9e9e7',
+      'editor.background': '#f7f8fb',
+      'editor.foreground': '#303847',
+      'editorGutter.background': '#f7f8fb',
       'editorLineNumber.foreground': '#73736f',
       'editorLineNumber.activeForeground': '#292927',
       'editorCursor.foreground': '#20201e',
@@ -150,7 +149,7 @@ export function registerLittleSheepMonacoTheme(monaco: typeof Monaco): void {
       'editor.selectionHighlightBackground': '#8199bd44',
       'editor.wordHighlightBackground': '#90a6c944',
       'editor.wordHighlightStrongBackground': '#738dbb55',
-      'editor.lineHighlightBackground': '#e2e2df',
+      'editor.lineHighlightBackground': '#edf0f6',
       'editorWhitespace.foreground': '#b4b4af',
       'editorIndentGuide.background1': '#cececa',
       'editorIndentGuide.activeBackground1': '#92928c',
