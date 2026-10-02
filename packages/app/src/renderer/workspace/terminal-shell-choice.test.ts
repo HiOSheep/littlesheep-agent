@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import type { WorkspaceShellProfile } from '../api/terminal'
 import {
   defaultTerminalShell,
@@ -99,5 +100,27 @@ describe('terminal shell choice', () => {
     expect(markup).toContain('aria-haspopup="menu"')
     // The list itself only exists once the chevron is used.
     expect(markup).not.toContain('split-button-menu-item')
+  })
+
+  it('keeps the xterm host class off the pill in the header', async () => {
+    // `.workspace-terminal-shell` is the terminal *host*: 10px padding, its own background and the
+    // SimSun stack. The picker borrowed the name, so those rules landed on a 25px control, its
+    // content box collapsed to 3px and the terminal glyph drew 6.5px below the pill's centre
+    // (measured on the reported screenshot, 2026-10-01). The first expectation is the guard: while
+    // the host keeps that padding, no control may share the name.
+    const styles = await readRendererStyleSource()
+    expect(styles).toMatch(/\.workspace-terminal-shell\s*\{[^}]*padding:\s*10px;/u)
+
+    const markup = renderToStaticMarkup(WorkspaceTerminalShellPicker({
+      profiles: MACHINE,
+      selectedId: 'windows-powershell',
+      busy: false,
+      onSelect: () => undefined,
+    }))
+    const rootClasses = (markup.match(/^<div class="([^"]*)"/u)?.[1] ?? '').split(/\s+/u).filter(Boolean)
+
+    expect(rootClasses).toContain('split-button')
+    expect(rootClasses).toContain('workspace-terminal-shell-picker')
+    expect(rootClasses).not.toContain('workspace-terminal-shell')
   })
 })

@@ -14,11 +14,10 @@ import {
   type WorkspacePanelTab,
   type WorkspacePanelTabId
 } from '../workspace-persistence'
-import { WorkspaceArtifacts } from './artifacts'
 import { WorkspaceBrowser } from './browser'
 import { WorkspaceFileView } from './file-view'
 import { WorkspaceFileNavigator } from './file-navigator'
-import { isSamePath } from './path-utils'
+import { isSamePath, workspaceAncestorPaths } from './path-utils'
 import { WorkspacePlaceholder } from './placeholder'
 import type { WorkspaceLineComment } from './line-comments'
 import {
@@ -118,13 +117,9 @@ export function WorkspacePanel({
   onBrowserTitleChange: (tabId: WorkspaceBrowserTabId, title: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const workspaceEntries: Array<{
-    id: WorkspacePanelTab
-    label: string
-    desc: string
-  }> = [
+  const workspaceEntries: Array<{ id: WorkspacePanelTab; label: string; desc: string }> = [
     { id: 'review', label: '审阅', desc: '审阅当前 Git 更改' },
-    { id: 'artifacts', label: '产物', desc: '按项目、来源和类型管理生成或保存的文件' },
+    { id: 'artifacts', label: '文件', desc: '和左侧文件夹栏一样浏览选中的文件夹' },
     { id: 'terminal', label: '终端', desc: '在你选择的 Shell 里交互；切到别的标签只隐藏面板，关闭这个标签会结束全部终端会话' },
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
     { id: 'sideChat', label: '侧边聊天', desc: '尚未接入的局部对话' },
@@ -190,6 +185,25 @@ export function WorkspacePanel({
   const sharedFileNavigatorStyle = {
     '--workspace-files-navigator-width': `${fileNavigatorWidth}px`,
   } as CSSProperties
+  // The folder column and the 文件 tab body are the same navigator through this one wiring.
+  const navigatorWiring = {
+    workspacePath: navigatorRoot,
+    defaultWorkspacePath,
+    usingTemporaryRoot: navigatorUsesTemporaryRoot,
+    navigatorCollapsed: fileNavigatorCollapsed,
+    navigatorWidth: fileNavigatorWidth,
+    expandedPaths,
+    selectedPath: navigatorSelectedPath,
+    onOpenFileTab: (root: string, path: string) => {
+      onRememberOpenPath(root, path)
+      onTabChange(workspaceFileTabId(root, path))
+    },
+    onReturnToDefaultWorkspace,
+    onNavigatorCollapsedChange: onFileNavigatorCollapsedChange,
+    onNavigatorWidthChange: onFileNavigatorWidthChange,
+    onExpandedPathsChange,
+    onTipChange,
+  }
 
   useEffect(() => {
     const nextRoot = activeFileTab?.root
@@ -221,14 +235,13 @@ export function WorkspacePanel({
     }
 
     if (tab === 'artifacts') {
+      // The 文件 tab *is* the folder column, not a second reading of the disk: the same navigator,
+      // through the same wiring. The shared column goes inactive while this tab is active — the
+      // review tab does the same with its own tree — so the folder tree is on screen exactly once.
       return (
-        <WorkspaceArtifacts
-          workspacePath={workspacePath}
-          sessionId={sessionId}
-          artifactVersion={artifactVersion}
-          onOpenFile={onOpenFile}
-          onTipChange={onTipChange}
-        />
+        <div className="workspace-files-tab-navigator">
+          <WorkspaceFileNavigator {...navigatorWiring} />
+        </div>
       )
     }
 
@@ -243,6 +256,7 @@ export function WorkspacePanel({
             root={fileTab.root}
             path={fileTab.path}
             sessionId={sessionId}
+            onRevealFolder={(folder) => onExpandedPathsChange((paths) => [...new Set([...paths, ...workspaceAncestorPaths(fileTab.root, folder)])])}
             draft={fileDrafts[tab]} onDraftChange={onFileDraftChange}
             onRequestFileSaveApproval={onRequestFileSaveApproval}
             onWorkspaceArtifactsChanged={onWorkspaceArtifactsChanged}
@@ -372,27 +386,10 @@ export function WorkspacePanel({
           })}
           {hasOpenTabs && (
             <div
-              className={`workspace-shared-file-navigator ${activeTab === 'review' ? 'inactive' : ''}`}
+              className={`workspace-shared-file-navigator ${activeTab === 'review' || activeTab === 'artifacts' ? 'inactive' : ''}`}
               style={sharedFileNavigatorStyle}
             >
-              <WorkspaceFileNavigator
-                workspacePath={navigatorRoot}
-                defaultWorkspacePath={defaultWorkspacePath}
-                usingTemporaryRoot={navigatorUsesTemporaryRoot}
-                navigatorCollapsed={fileNavigatorCollapsed}
-                navigatorWidth={fileNavigatorWidth}
-                expandedPaths={expandedPaths}
-                selectedPath={navigatorSelectedPath}
-                onOpenFileTab={(root, path) => {
-                  onRememberOpenPath(root, path)
-                  onTabChange(workspaceFileTabId(root, path))
-                }}
-                onReturnToDefaultWorkspace={onReturnToDefaultWorkspace}
-                onNavigatorCollapsedChange={onFileNavigatorCollapsedChange}
-                onNavigatorWidthChange={onFileNavigatorWidthChange}
-                onExpandedPathsChange={onExpandedPathsChange}
-                onTipChange={onTipChange}
-              />
+              <WorkspaceFileNavigator {...navigatorWiring} />
             </div>
           )}
         </div>

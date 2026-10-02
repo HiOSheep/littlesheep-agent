@@ -14,7 +14,22 @@
   pointer-events: none;
   transition:
     padding var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
+    border-color var(--motion-fast) var(--motion-ease),
+    bottom var(--workspace-panel-motion, 260ms) var(--motion-ease),
+    transform var(--workspace-panel-motion, 260ms) var(--motion-ease);
+}
+
+/* A new conversation floats the field in the middle of the column, where the reader is already
+   looking, and the first message settles it back to the bottom. `bottom` and `transform` are
+   lengths, so the move animates; the hint keeps its own room above the centred field instead of
+   sitting under it (2026-10-02). */
+.messages.is-empty ~ .composer-shell {
+  bottom: 50%;
+  transform: translateY(50%);
+}
+
+.messages.is-empty .empty-hint {
+  margin-bottom: 150px;
 }
 
 .composer-shell > .composer,
@@ -1194,6 +1209,8 @@
   border: 0;
   border-radius: var(--radius-composer-input);
   box-shadow: var(--shadow-menu);
+  /* Same material rule as the menu shell: painted from the first frame, moved into place rather
+     than faded in. */
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -1471,9 +1488,12 @@
   right: auto;
   bottom: auto;
   display: block;
-  width: 208px;
+  /* As wide as what it holds. The fixed 208px made the box re-lay out (and its label crawl) the
+     moment a model name or a locale changed, instead of following its content (reported
+     2026-10-02). */
+  width: max-content;
+  min-width: 208px;
   max-width: calc(100vw - 24px);
-  min-width: 0;
   height: auto;
   padding: 0;
   overflow: visible;
@@ -1481,6 +1501,9 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  /* No opacity ramp: a frosted panel that fades in shows the blur arriving with it. `visibility`
+     flips at once, so the material is painted from the first frame, and the entrance is the small
+     move below. */
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -1493,8 +1516,11 @@
   opacity: 1;
   pointer-events: auto;
   visibility: visible;
+  /* No opacity ramp on open. This menu is a `position: fixed` portal over the transcript, so a
+     fading element shows its own `backdrop-filter` arriving after it — fully transparent, then
+     frosted (reported 2026-10-02). The permission picker never showed it because its panel sits
+     inside the composer's own material, which is already there. Closing still fades out. */
   transition:
-    opacity var(--runtime-picker-transition) var(--motion-ease),
     visibility 0s;
 }
 
@@ -1620,14 +1646,19 @@
   left: 0;
   bottom: calc(100% + 10px);
   display: grid;
-  grid-template-columns: 158px minmax(210px, 1fr);
-  width: min(560px, calc(100vw - 56px));
+  grid-template-columns: max-content minmax(210px, max-content);
+  /* As wide as what it holds, up to the viewport — the fixed 560px made the two columns stretch
+     past their content instead of the panel following it (reported 2026-10-02). */
+  width: max-content;
+  max-width: min(560px, calc(100vw - 56px));
   max-height: min(360px, 56vh);
   overflow: hidden;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
   border-radius: var(--radius-composer-input);
   box-shadow: var(--shadow-menu);
+  /* Painted from the first frame and moved into place: an opacity ramp showed the blur arriving
+     with the panel instead of the panel simply being frosted. */
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -2202,9 +2233,15 @@
   width: min(760px, 100%);
   margin-top: 10px;
   overflow: hidden;
-  background: var(--surface-3);
+  /* One surface step deeper than `--surface-3`: on the reported screenshot (2026-10-01) the card
+     read as a light grey block against the `#101010` chat column it sits in. */
+  background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-floating-panel);
+  /* Not `--radius-floating-panel`: this is a transcript surface, not a floating panel, and
+     `.window-shell` flattens that token to `0px` (14-window-layout.css), which drew every corner
+     of the card in the screenshot as a right angle. `--radius-card` is the panel role; the numbers
+     previously drawn as `--radius-ui` corners read as too tight on a card this wide. */
+  border-radius: var(--radius-card);
 }
 
 /* The card is a list of paths, not a hero panel: its header used to spend 88px
@@ -2314,11 +2351,17 @@
   transition: color var(--motion-fast) var(--motion-ease);
 }
 
+/* Pointing at the row — not only at the numbers themselves — reveals them: the numbers are what the
+   row is about, and the row is what the reader is aiming at. */
+.message-artifacts-row:hover .line-delta-add,
+.message-artifacts-row:focus-within .line-delta-add,
 .message-artifacts-row-delta:hover .line-delta-add,
 .message-artifacts-row-delta:focus-visible .line-delta-add {
   color: var(--line-delta-add, #4ec26a);
 }
 
+.message-artifacts-row:hover .line-delta-remove,
+.message-artifacts-row:focus-within .line-delta-remove,
 .message-artifacts-row-delta:hover .line-delta-remove,
 .message-artifacts-row-delta:focus-visible .line-delta-remove {
   color: var(--line-delta-remove, #e5525c);

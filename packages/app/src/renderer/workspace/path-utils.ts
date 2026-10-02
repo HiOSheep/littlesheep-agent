@@ -92,6 +92,26 @@ export function workspaceAncestorPaths(root: string, path: string): string[] {
 }
 
 
+/**
+ * The folder each rendered breadcrumb label names, in the same order as `workspaceBreadcrumbs`.
+ *
+ * The two lists are built differently: the labels prepend the root's *name* and drop leading parts
+ * past the fifth, while `workspaceAncestorPaths` keeps the whole chain of real paths. Pairing the
+ * folder labels with the ancestors *from the end* is what keeps each one naming the folder it really
+ * is after that drop. The last label is the file itself, which names no folder and gets `null` —
+ * so a crumb is never a jump target to where the reader already is.
+ */
+export function workspaceBreadcrumbFolders(root: string, path: string): Array<string | null> {
+  const labels = workspaceBreadcrumbs(root, path)
+  const folderLabels = labels.slice(0, -1)
+  const ancestors = workspaceAncestorPaths(root, path)
+  return [
+    ...folderLabels.map((_, index) => ancestors[ancestors.length - folderLabels.length + index] ?? null),
+    null,
+  ]
+}
+
+
 export function dataTransferHasFiles(dataTransfer: DataTransfer): boolean {
   return Array.from(dataTransfer.types).includes('Files')
 }

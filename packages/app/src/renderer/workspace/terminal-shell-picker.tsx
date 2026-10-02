@@ -31,7 +31,11 @@ export function WorkspaceTerminalShellPicker({
 
   return (
     <SplitButton
-      className="workspace-terminal-shell"
+      // Not `workspace-terminal-shell`: that class belongs to the xterm host (10px padding, its own
+      // background, the SimSun stack). Borrowing it put 10px of padding inside this 25px pill, so
+      // the segments' content box collapsed to 3px and the terminal glyph rendered 6.5px below the
+      // pill's centre (measured on the reported screenshot, 2026-10-01).
+      className="workspace-terminal-shell-picker"
       icon={<WorkspaceFeatureIcon id="terminal" />}
       label={`终端 Shell：${currentLabel}`}
       primaryTip={missingHint

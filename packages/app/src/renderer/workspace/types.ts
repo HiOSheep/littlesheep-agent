@@ -8,9 +8,3 @@ export interface WorkspaceArtifactRef {
   toolName?: string
 }
 
-
-export type WorkspaceArtifactScopeFilter = 'project' | 'session'
-
-export type WorkspaceArtifactSourceFilter = 'all' | 'agent' | 'user'
-
-export type WorkspaceArtifactActionFilter = 'all' | WorkspaceArtifactRef['action']

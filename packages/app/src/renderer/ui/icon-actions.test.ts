@@ -120,7 +120,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   'open-settings': '设置 / 关闭设置',
   'compose-global': '新对话',
   'create-in-list': '新对话 / 添加项目',
-  'search-filter': '搜索 / 筛选文件 / 筛选更改文件 / 筛选产物',
+  'search-filter': '搜索 / 筛选文件 / 筛选更改文件',
   'scheduled-module': '已安排',
   'memory-tree-module': '记忆树',
   'plugins-module': '插件',

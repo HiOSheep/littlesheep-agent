@@ -873,7 +873,13 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-row-inset:\s*4px;[^}]*--workspace-tab-row-height:\s*30px;/u)
     expect(styles).toMatch(/\.workspace-tab-row-control\s*\{[^}]*position:\s*absolute;[^}]*top:\s*var\(--workspace-tab-row-inset\);[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*right:\s*12px;/u)
-    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-tab-row-gap\)/u)
+    // The two controls are the tab's own box, and the action keeps the row-height offset so the
+    // smaller boxes gain gap instead of overlapping.
+    expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-height:\s*26px;/u)
+    expect(styles).toMatch(/\.workspace-active-item\s*\{[^}]*height:\s*var\(--workspace-tab-height\);/u)
+    expect(styles).toMatch(/\.workspace-panel-action\s*\{[^}]*width:\s*var\(--workspace-tab-height\);[^}]*height:\s*var\(--workspace-tab-height\);/u)
+    expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*width:\s*var\(--workspace-tab-height\);[^}]*height:\s*var\(--workspace-tab-height\);/u)
+    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-panel-control-gap\)/u)
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*top:\s*var\(\s*--workspace-panel-toggle-top,\s*calc\(\s*var\(--floating-panel-inset\)\s*\+\s*var\(--floating-panel-border-width\)\s*\+\s*var\(--workspace-tab-row-inset\)\s*\)\s*\);/u)
     expect(dockView).toContain('useLayoutEffect')
     expect(dockView).toContain('--workspace-panel-toggle-top')
@@ -903,7 +909,7 @@ describe('chat layout stability', () => {
 
     expect(styles).toMatch(/\.workspace-panel-contents\s*\{[^}]*padding:\s*var\(--workspace-tab-row-inset\) 12px 12px var\(--workspace-tab-row-inset\);/u)
     expect(styles).toMatch(/\.workspace-panel-body\s*\{[^}]*margin:\s*8px 0 0 8px;/u)
-    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-tab-row-gap\)[\s\S]*?display:\s*inline-flex;[^}]*align-items:\s*center;/u)
+    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-panel-control-gap\)[\s\S]*?display:\s*inline-flex;[^}]*align-items:\s*center;/u)
     expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*67px;/u)
     expect(styles).toMatch(/\.workspace-panel-topbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
     expect(styles).not.toMatch(/\.window-shell\.workspace-panel-(?:drag-)?fullscreen \.workspace-panel-(?:contents|header|body)/u)
@@ -945,5 +951,16 @@ describe('chat layout stability', () => {
     // backdrop-filtered element, so the blur has a real backdrop to sample.
     expect(styles).toMatch(/\.running-pill\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
     expect(styles).toMatch(/\.running-pill-panel\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*border-radius:\s*var\(--radius-composer-input\);[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+  })
+
+  it('floats a new conversation\'s field in the middle and animates it back to the bottom', async () => {
+    const styles = await readRendererStyleSource()
+    // The empty state puts the field where the reader is looking; the first message returns it to
+    // its resting place. Both `bottom` and `transform` move, so the transition is a real move
+    // rather than a jump (2026-10-02).
+    expect(styles).toMatch(/\.messages\.is-empty ~ \.composer-shell\s*\{\s*bottom:\s*50%;\s*transform:\s*translateY\(50%\);\s*\}/u)
+    expect(styles).toMatch(/\.composer-shell\s*\{[^}]*transition:[\s\S]*?bottom var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\),[\s\S]*?transform var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\);/u)
+    // The hint keeps its room above the centred field instead of sitting under it.
+    expect(styles).toMatch(/\.messages\.is-empty \.empty-hint\s*\{\s*margin-bottom:\s*150px;\s*\}/u)
   })
 })

@@ -1,0 +1,12 @@
+/* Use the whole-corona animated SVG reference, or play the canonical Lottie.
+   <span class="void-ring-motion">
+     <object class="void-ring-fluid" data="idle_breath.svg" type="image/svg+xml"></object>
+     <img class="void-ring-static" src="void_ring_mark.png" alt="" />
+   </span>
+   The SVG displacement reference is lighter; the baked Lottie preserves the
+   approved phase-locked radial/angular wave field exactly.
+*/
+.void-ring-motion{position:relative;display:inline-block;width:var(--void-ring-size,256px);aspect-ratio:1;isolation:isolate;overflow:hidden}
+.void-ring-motion>object,.void-ring-motion>img{display:block;width:100%;height:100%;object-fit:contain}
+.void-ring-motion>.void-ring-static{display:none}
+@media(prefers-reduced-motion:reduce){.void-ring-motion>.void-ring-fluid{display:none}.void-ring-motion>.void-ring-static{display:block}}

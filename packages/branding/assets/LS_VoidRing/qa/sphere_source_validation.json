@@ -1,0 +1,15 @@
+{
+  "source": "User original mother image, without generative redrawing",
+  "framing": {
+    "scale": 1.5124657619521913,
+    "center": [
+      480,
+      530
+    ],
+    "radius": 310
+  },
+  "blackMatteRecompositionMaxChannelError": 3,
+  "emptyBackgroundNoiseFloor": 3,
+  "opaqueForegroundSphere": true,
+  "emptyBackgroundTransparent": true
+}

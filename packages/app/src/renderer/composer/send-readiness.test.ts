@@ -108,10 +108,11 @@ describe('send entry wiring', () => {
     expect(composer).toContain('<ComposerSendBlockNotice')
     expect(composer).toContain('modelReason={sendReadiness.modelReason}')
     // The empty transcript names its own state; the composer separately explains
-    // why sending is blocked, so a blank conversation is not mislabeled as a gate.
-    expect(chat).toContain('对话还没有消息')
-    expect(chat).toContain('发送条件会显示在输入区')
+    // why sending is blocked, so a blank conversation is not mislabeled as a gate. The wording
+    // itself lives in `chat/empty-hint.ts`, chosen per conversation.
+    expect(chat).toContain('emptyHintFor(currentSession')
+    expect(chat).toContain('{emptyHint.title}')
+    expect(chat).toContain('{emptyHint.copy}')
     expect(chat).not.toContain('describeComposerSendReadiness({')
-    expect(chat).toContain('{emptyCopy}')
   })
 })

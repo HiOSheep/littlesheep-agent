@@ -42,12 +42,6 @@ const ADOPTED: Array<{ file: string; states: string[]; bespoke: string[] }> = [
     states: ['empty'],
     bespoke: [],
   },
-  {
-    file: 'workspace/artifacts.tsx',
-    // Artifact loading, empty results and failed reads use the same state contract.
-    states: ['loading', 'empty', 'failure'],
-    bespoke: ['WorkspacePlaceholder'],
-  },
 ]
 
 async function readRendererFile(path: string): Promise<string> {

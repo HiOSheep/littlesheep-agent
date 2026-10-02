@@ -42,9 +42,13 @@ export function MessageArtifactsCard({
         </span>
         <strong>已产出 {files.length} 个文件</strong>
         {totals && (
-          <span className="message-artifacts-total" aria-label={`共新增 ${totals.additions} 行，删除 ${totals.deletions} 行`}>
+          <span className="message-artifacts-total" aria-label={totalDeltaLabel(totals)}>
             <span className="line-delta-add">+{totals.additions}</span>
-            <span className="line-delta-remove">-{totals.deletions}</span>
+            {/* Both numbers are always written, `-0` included: the count is read as a pair, and a
+                lone `+661` leaves the reader wondering whether the turn removed nothing or whether
+                this card simply does not say. Where the `0` stands in for lines nobody counted, the
+                label the reader hears says so instead of the number going missing. */}
+            <span className="line-delta-remove">-{totals.deletions ?? 0}</span>
           </span>
         )}
       </header>
@@ -101,16 +105,27 @@ function ArtifactRow({
         <button
           className="message-artifacts-row-delta"
           type="button"
-          aria-label={`查看 ${file.name} 的审阅：新增 ${delta.additions} 行，删除 ${delta.deletions} 行`}
+          aria-label={fileDeltaLabel(file.name, delta)}
           title="查看这个文件的审阅"
           onClick={onOpenReview}
         >
           <span className="line-delta-add">+{delta.additions}</span>
-          <span className="line-delta-remove">-{delta.deletions}</span>
+          <span className="line-delta-remove">-{delta.deletions ?? 0}</span>
         </button>
       )}
     </div>
   )
+}
+
+/** The count a reader hears: the same pair as the screen, plus where a `0` came from. */
+function fileDeltaLabel(name: string, delta: ArtifactLineDelta): string {
+  const spoken = `查看 ${name} 的审阅：新增 ${delta.additions} 行，删除 ${delta.deletions ?? 0} 行`
+  return delta.deletions === null ? `${spoken}（写入前的行数未知）` : spoken
+}
+
+function totalDeltaLabel(totals: ArtifactLineDelta): string {
+  const spoken = `共新增 ${totals.additions} 行，删除 ${totals.deletions ?? 0} 行`
+  return totals.deletions === null ? `${spoken}（部分文件写入前的行数未知）` : spoken
 }
 
 function totalDelta(
@@ -120,12 +135,16 @@ function totalDelta(
   let additions = 0
   let deletions = 0
   let counted = 0
+  // A file nobody counted contributes a displayed `0`, so the total has to say that its own `0` is
+  // partly an assumption: the sum stays a sum, and the label carries the caveat.
+  let deletionsKnown = true
   for (const file of files) {
     const delta = lineDeltaFor(deltas, file.path)
     if (!delta) continue
     additions += delta.additions
-    deletions += delta.deletions
+    if (delta.deletions === null) deletionsKnown = false
+    else deletions += delta.deletions
     counted += 1
   }
-  return counted > 0 ? { additions, deletions } : null
+  return counted > 0 ? { additions, deletions: deletionsKnown ? deletions : null } : null
 }

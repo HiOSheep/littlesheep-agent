@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
 import {
+  openExternalHref,
   type AttachmentRef,
   type WorkspacePreview
 } from '../api'
@@ -19,7 +20,8 @@ import { WorkspacePreviewDiskNotice } from './preview-disk-notice'
 import { workspaceDiskNotice } from './preview-disk-state'
 import { useWorkspaceDiskWatch } from './use-workspace-disk-watch'
 import { WorkspaceOfficePreview } from './office-preview-panel'
-import { attachmentExtLabel, attachmentFileUrl, countEditorLines, formatDateTime, formatEditorLanguageLabel, shouldOfferExternalVSCode, workspaceBreadcrumbs } from './path-utils'
+import { attachmentFileUrl, shouldOfferExternalVSCode } from './path-utils'
+import { WorkspacePreviewBreadcrumbs } from './preview-breadcrumbs'
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState, workspaceDraftOutcome } from './preview-draft'
 import { useWorkspaceOpenWith } from './use-workspace-open-with'
@@ -46,6 +48,7 @@ export function WorkspacePreviewPane({
   onSaveFile,
   onOpenBrowserTab,
   onReloadFromDisk,
+  onRevealFolder,
   onDraftChange,
   comments,
   onCommentsChange,
@@ -67,6 +70,8 @@ export function WorkspacePreviewPane({
   onOpenBrowserTab: (url: string) => void
   /** Re-read the file from disk; used by the external-change notice. */
   onReloadFromDisk?: () => void
+  /** Reveals one folder of this file's own path in the file navigator, so a crumb can jump. */
+  onRevealFolder?: (path: string) => void
   onDraftChange?: (tab: WorkspaceFileTabId, draft: WorkspaceFileDraftState | null) => void
   comments?: WorkspaceLineComment[]
   onCommentsChange?: (comments: WorkspaceLineComment[]) => void
@@ -75,10 +80,6 @@ export function WorkspacePreviewPane({
   onAddAttachment?: (attachment: AttachmentRef) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const breadcrumbs = selectedPath ? workspaceBreadcrumbs(workspacePath, selectedPath) : []
-  const pathParts = breadcrumbs.length > 0
-    ? breadcrumbs
-    : [preview?.relativePath || selectedPath || '选择一个文件查看内容']
   const isMarkdown = preview?.kind === 'markdown'
   const isHtml = preview?.kind === 'html'
   const editable = preview?.kind === 'text' || isMarkdown || isHtml
@@ -89,7 +90,6 @@ export function WorkspacePreviewPane({
     : preview?.kind === 'text'
       ? preview.language || 'text'
       : ''
-  const editorLanguageLabel = formatEditorLanguageLabel(editorLanguage)
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
   const openWith = useWorkspaceOpenWith({
     root: workspacePath,
@@ -145,9 +145,6 @@ export function WorkspacePreviewPane({
   })
   const diskNoticeKey = `${diskState}\0${preview?.modifiedAt ?? 0}`
   const diskNotice = diskKeptPath === diskNoticeKey ? null : workspaceDiskNotice(diskState, dirty)
-  const editorLineCount = editable ? countEditorLines(editorText) : null
-  const fileTypeLabel = editable ? editorLanguageLabel : (preview ? attachmentExtLabel(preview.name) : '')
-  const previewModifiedAt = preview?.modifiedAt ? formatDateTime(preview.modifiedAt) : ''
   const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
     bracketPairColorization: { enabled: true },
     cursorBlinking: 'smooth',
@@ -288,28 +285,23 @@ export function WorkspacePreviewPane({
     }
   }
 
-  /** Running always uses the saved file: a dirty draft asks first (UX-26). */
+  /** Previewing an HTML file starts its own local service; the toolbar only chooses where to open it. */
   const htmlRun = useHtmlRun({
     workspacePath,
     filePath: preview?.kind === 'html' ? preview.path : '',
     fileModifiedAt: preview?.modifiedAt ?? 0,
     isHtml,
-    dirty,
-    saveDraft: saveEditorContent,
-    onOpenBrowserTab,
   })
 
   return (
     <div className="workspace-preview-pane">
       <div className="workspace-preview-header workspace-page-leading-row">
-        <div className="workspace-preview-breadcrumbs" aria-label="文件路径">
-          {pathParts.map((part, index) => (
-            <span key={`${part}-${index}`}>
-              {index > 0 && <i aria-hidden="true">/</i>}
-              <em>{part}</em>
-            </span>
-          ))}
-        </div>
+        <WorkspacePreviewBreadcrumbs
+          root={workspacePath}
+          path={selectedPath}
+          fallbackLabel={preview?.relativePath || selectedPath || '选择一个文件查看内容'}
+          onRevealFolder={onRevealFolder}
+        />
         {selectedPath && (
           <WorkspacePreviewActions
             editable={editable}
@@ -320,9 +312,13 @@ export function WorkspacePreviewPane({
             showHtmlSource={showHtmlSource}
             canOpenExternalVSCode={canOpenExternalVSCode}
             showCodeWrapToggle={editorVisible} codeWrapEnabled={codeWrapEnabled}
-            htmlRun={htmlRun.state} onRunHtml={htmlRun.requestRun}
-            onReloadHtml={htmlRun.reload}
-            onStopHtml={htmlRun.stop}
+            htmlRun={htmlRun.state}
+            onOpenHtmlInApp={() => {
+              if (htmlRun.state.url) onOpenBrowserTab(htmlRun.state.url)
+            }}
+            onOpenHtmlExternal={() => {
+              if (htmlRun.state.url) void openExternalHref(htmlRun.state.url)
+            }}
             onToggleCodeWrap={() => setCodeWrapEnabled(!codeWrapEnabled)}
             onToggleMarkdownSource={toggleMarkdownSource}
             onToggleHtmlSource={toggleHtmlSource}
@@ -333,8 +329,8 @@ export function WorkspacePreviewPane({
           />
         )}
       </div>
-      {isHtml && (htmlRun.prompt || htmlRun.state.status !== 'idle') && (
-        <HtmlRunNotice run={htmlRun.state} prompt={htmlRun.prompt} onSaveAndRun={htmlRun.saveAndRun} onCancel={htmlRun.cancelPrompt} />
+      {isHtml && htmlRun.state.status !== 'idle' && (
+        <HtmlRunNotice run={htmlRun.state} draftUnsaved={dirty} />
       )}
       {(saveMessage || saveError) && (
         <div className={`workspace-editor-status ${saveError ? 'error' : ''}`}>
@@ -376,6 +372,10 @@ export function WorkspacePreviewPane({
             name={preview.name}
             content={editorText}
             enabled
+            liveUrl={htmlRun.state.status === 'running' ? htmlRun.state.url : ''}
+            /* Re-keyed by the file's timestamp: a save reloads the served page in place, without
+               restarting the service a browser tab may also be pointing at. */
+            liveKey={preview.modifiedAt ?? 0}
           />
         )}
         {!loading && !error && editorVisible && (
@@ -433,13 +433,6 @@ export function WorkspacePreviewPane({
           </div>
         )}
       </div>
-      {preview && (
-        <div className="workspace-preview-statusbar" aria-label="文件预览状态">
-          <span>{fileTypeLabel}</span>
-          {editorLineCount !== null && <span>{editorLineCount} 行</span>}
-          {previewModifiedAt && <span>{previewModifiedAt}</span>}
-        </div>
-      )}
     </div>
   )
 }

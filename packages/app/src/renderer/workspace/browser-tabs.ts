@@ -57,12 +57,32 @@ export function hydrateWorkspaceBrowserTabs(value: unknown): WorkspaceBrowserTab
   if (Array.isArray(value)) {
     for (const raw of value) {
       const tab = normalizeWorkspaceBrowserTab(raw)
-      if (!tab || tabs.some((item) => item.id === tab.id)) continue
+      if (!tab || isEphemeralPreviewUrl(tab.url)) continue
+      if (tabs.some((item) => item.id === tab.id)) continue
       tabs.push(tab)
       if (tabs.length >= MAX_WORKSPACE_BROWSER_TABS) break
     }
   }
   return tabs.slice(0, MAX_WORKSPACE_BROWSER_TABS)
+}
+
+/**
+ * True for a page served by a run's own preview listener.
+ *
+ * That listener is created per app run, bound to an ephemeral port with a random path token, so a
+ * tab pointing at it can only ever be a dead address next start. Previewing an HTML file used to
+ * open such a tab automatically, which is why every later start "popped up" the same stale ones
+ * again (reported 2026-10-02); the launcher now leaves them out of the restored layout entirely.
+ */
+export function isEphemeralPreviewUrl(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)) return false
+  return /^\/[0-9a-f]{32}\//u.test(parsed.pathname)
 }
 
 export function serializeWorkspaceBrowserTabs(tabs: WorkspaceBrowserTab[]): WorkspaceBrowserTab[] {

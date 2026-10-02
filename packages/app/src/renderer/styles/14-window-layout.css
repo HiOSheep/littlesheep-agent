@@ -38,7 +38,23 @@
 
 .workspace-panel-surface {
   background: var(--workspace-code-surface);
-  box-shadow: inset 1px 0 var(--border);
+}
+
+/* The seam against the chat column. It is its own layer above the panel's
+   contents rather than a `box-shadow` on the surface, because the edge-to-edge
+   file surface cancels the contents' left padding
+   (`.workspace-panel-body.file-surface-active` margin-left
+   `calc(0px - var(--workspace-tab-row-inset))`) and its opaque fill then covers
+   anything painted on the surface itself. Measured 2026-10-01 on the reported
+   screenshot: with a file or review tab active the divider was gone and only
+   reappeared where no body had started yet, so the two columns read as one. */
+.workspace-panel-surface::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-left: 1px solid var(--border);
+  pointer-events: none;
 }
 
 .workspace-panel-surface::before {

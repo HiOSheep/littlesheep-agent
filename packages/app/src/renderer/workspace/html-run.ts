@@ -11,7 +11,7 @@
 //
 // Running always uses the saved file: a dirty draft must be saved first (or the
 // run is cancelled), and a failed save never runs the previous version.
-import { failureFeedback, successFeedback, warningFeedback, type Feedback } from '../ui/feedback'
+import { failureFeedback, type Feedback } from '../ui/feedback'
 import {
   startWorkspacePreviewServer,
   stopWorkspacePreviewServer,
@@ -28,38 +28,15 @@ export interface HtmlRunState {
 export const IDLE_HTML_RUN: HtmlRunState = { status: 'idle', url: '', message: '' }
 
 /**
- * Which toolbar actions a state offers.
+ * What a run has to say, and nothing more.
  *
- * UX-26 asks for a coherent 运行 / 重新加载 / 停止 entry: while a page is running the
- * reload action is the one that makes sense (the served files may have changed on
- * disk), and the run action is disabled instead of silently opening a second tab.
+ * A healthy run says nothing: the served page is the answer, and a success banner over every
+ * preview is the kind of extra label ordinary use should not carry (reported 2026-10-02). Only a
+ * failure — the one state the reader cannot infer from the page itself — is reported here; the page
+ * reports its own script errors and failed resources through `run-diagnostics.tsx`.
  */
-export function htmlRunActions(state: HtmlRunState): {
-  run: boolean
-  reload: boolean
-  stop: boolean
-  label: string
-} {
-  switch (state.status) {
-    case 'starting':
-      return { run: false, reload: false, stop: false, label: '正在启动…' }
-    case 'running':
-      return { run: false, reload: true, stop: true, label: '运行' }
-    case 'stopped':
-      return { run: true, reload: false, stop: false, label: '运行' }
-    case 'failed':
-      return { run: true, reload: false, stop: false, label: '重试运行' }
-    default:
-      return { run: true, reload: false, stop: false, label: '运行' }
-  }
-}
-
 export function htmlRunFeedback(state: HtmlRunState): Feedback | null {
-  if (state.status === 'running') {
-    return successFeedback('页面已在隔离的本地地址中打开；脚本、样式和本地资源按浏览器语义加载，页面自己报告的问题显示在下面。')
-  }
-  if (state.status === 'stopped') return warningFeedback('运行服务已停止；页面重新加载会失败。')
-  if (state.status === 'failed') return failureFeedback('无法运行这个页面。', state.message)
+  if (state.status === 'failed') return failureFeedback('无法启动这个页面的本地服务。', state.message)
   return null
 }
 

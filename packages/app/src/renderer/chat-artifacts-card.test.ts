@@ -5,7 +5,7 @@ import { vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource, readRendererStyleSourceFiles } from './style-source-test-utils'
 import { ARTIFACT_CARD_VISIBLE_ROWS, MessageArtifactsCard } from './composer/message-artifacts-card'
-import { artifactDeltas, lineDeltaFor } from './composer/use-artifact-deltas'
+import { artifactDeltas, lineDeltaFor, mergeArtifactDeltas, toolCallDeltas } from './composer/use-artifact-deltas'
 import type { WorkspaceReviewSnapshot } from '../shared/workspace-review-contracts'
 import type { WorkspaceArtifactRef } from './workspace/types'
 
@@ -68,6 +68,52 @@ describe('artifact line deltas', () => {
   })
 })
 
+describe('artifact counts from the turn itself', () => {
+  it('answers from the turn\'s own calls where the workspace is not a repository', () => {
+    // The reported card (2026-10-02) came from a workplace with no repository at all, so the Git
+    // snapshot had nothing and every row dropped its counts. The turn's own calls carry the same
+    // numbers its transcript rows already show, so the card can answer without asking Git.
+    const deltas = toolCallDeltas([
+      { name: 'write', input: { file_path: 'C:\\ws\\game\\gomoku.html', content: 'a\nb\nc\n' } },
+      { name: 'edit', input: { file_path: 'C:\\ws\\game\\index.html', old_string: 'one\ntwo', new_string: 'one\ntwo\nthree' } },
+    ])
+
+    // `write` overwrites if the file exists, so its old lines are unknown — null, not zero.
+    expect(lineDeltaFor(deltas, 'C:\\WS\\game\\gomoku.html')).toEqual({ additions: 3, deletions: null })
+    expect(lineDeltaFor(deltas, 'C:\\ws\\game\\index.html')).toEqual({ additions: 3, deletions: 2 })
+  })
+
+  it('lets the snapshot answer first and keeps the turn\'s numbers for the rest', () => {
+    const tools = [
+      { name: 'write', input: { file_path: 'C:\\ws\\game\\pong.html', content: 'a\nb\n' } },
+      { name: 'write', input: { file_path: 'C:\\ws\\game\\notes.txt', content: 'x\n' } },
+    ]
+    const merged = mergeArtifactDeltas(
+      toolCallDeltas(tools),
+      artifactDeltas(snapshot([{ path: 'game/pong.html', additions: 400, deletions: 0 }])),
+    )
+
+    // Git is the working tree, so it wins where it has the file; the call fills in the rest.
+    expect(lineDeltaFor(merged, 'C:\\ws\\game\\pong.html')).toEqual({ additions: 400, deletions: 0 })
+    expect(lineDeltaFor(merged, 'C:\\ws\\game\\notes.txt')).toEqual({ additions: 1, deletions: null })
+  })
+
+  it('writes the unknown half as -0 and says where that 0 came from', () => {
+    // `write` overwrites if the file exists, so its old lines are nobody's count. The pair is still
+    // written as `+3 -0` — a lone `+3` leaves the reader wondering whether the turn removed nothing
+    // or whether this card just does not say (2026-10-02) — and the label says the 0 is assumed.
+    const markup = card([file('gomoku.html')], toolCallDeltas([
+      { name: 'write', input: { file_path: 'C:\\ws\\game\\gomoku.html', content: 'a\nb\nc\n' } },
+    ]))
+
+    expect(markup).toContain('已产出 1 个文件')
+    expect(markup).toContain('line-delta-add">+3</span>')
+    expect(markup).toContain('line-delta-remove">-0</span>')
+    expect(markup).toContain('aria-label="共新增 3 行，删除 0 行（部分文件写入前的行数未知）"')
+    expect(markup).toContain('aria-label="查看 gomoku.html 的审阅：新增 3 行，删除 0 行（写入前的行数未知）"')
+  })
+})
+
 describe('the chat artifacts card', () => {
   it('passes review and workspace context through the activity turn renderer', async () => {
     const chatView = await readFile(new URL('./app-shell/chat-view.tsx', import.meta.url), 'utf8')
@@ -117,6 +163,10 @@ describe('artifact count colours', () => {
     )
     // Neutral at rest, and the neutral is a token so a theme can move it.
     expect(rule).toContain('color: var(--muted)')
+    // Aiming at the row is enough; the numbers do not have to be hit themselves.
+    expect(styles).toContain('.message-artifacts-row:hover .line-delta-add,')
+    expect(styles).toContain('.message-artifacts-row:hover .line-delta-remove,')
+    expect(styles).toContain('.message-artifacts-row:focus-within .line-delta-add,')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-add,')
     expect(styles).toContain('.message-artifacts-row-delta:hover .line-delta-remove,')
     expect(styles).toContain('.message-artifacts-row-delta:focus-visible .line-delta-add {')
@@ -151,5 +201,40 @@ describe('the artifacts card keeps its own line rhythm', () => {
     }
     // The parent banned `!important`, and nothing else targets this span.
     expect(body).not.toContain('!important')
+  })
+})
+
+describe('the artifacts card is a transcript surface, not a floating panel', () => {
+  async function cardRule() {
+    const files = await readRendererStyleSourceFiles()
+    const composer = files.find((file) => file.path === './styles/06-composer.css')?.source ?? ''
+    const rule = composer.slice(composer.indexOf('.message-artifacts-card {'))
+    return {
+      files,
+      // Comments carry the reasoning and name the token that was wrong, so the assertions below
+      // read declarations only.
+      body: rule.slice(0, rule.indexOf('}')).replace(/\/\*[\s\S]*?\*\//g, ''),
+    }
+  }
+
+  it('keeps a real radius where the window layout flattens the floating-panel token', async () => {
+    // `.window-shell` zeroes `--radius-floating-panel` for the edge-to-edge chali layout, so a
+    // transcript card that borrowed that token drew square corners: reported 2026-10-01, every
+    // corner of this card at 0px against the chat column. The first expectation is the guard —
+    // if the window layout ever stops flattening the token, this rule can be revisited instead of
+    // silently keeping a radius chosen for a reason that no longer holds.
+    const { files, body } = await cardRule()
+    const windowLayout = files.find((file) => file.path === './styles/14-window-layout.css')?.source ?? ''
+
+    expect(windowLayout).toContain('--radius-floating-panel: 0px;')
+    expect(body).toContain('border-radius: var(--radius-card)')
+    expect(body).not.toContain('--radius-floating-panel')
+  })
+
+  it('fills one surface step deeper than the surface it read as a light block on', async () => {
+    const { body } = await cardRule()
+
+    expect(body).toContain('background: var(--surface-2)')
+    expect(body).not.toContain('background: var(--surface-3)')
   })
 })

@@ -185,4 +185,26 @@ describe('settings workspace surface', () => {
     expect(ruleBody('.state-view')).toContain('align-content: center')
     expect(styles).not.toContain('.settings-module-empty')
   })
+
+  it('gives the overview list its horizontal inset to the row, so the pointer fill reaches the card edge', () => {
+    // `.settings-overview-group-items` is one of the row-list cards, so it also carried their 16px
+    // inset. On a row card that inset belongs to the row — the shape `.plugin-list-disclosure`
+    // already has — because the row's own box is what the pointer fills: measured 2026-10-01, the
+    // fill stopped 16px short at both ends and read as an unfinished rectangle inside the card,
+    // and the row's hairline could not reach the card's edge either. The text keeps the inset, so
+    // nothing moves; only the row's box grows to the card.
+    const listCard = ruleBody('.settings-workspace-body .settings-overview-group-items')
+
+    expect(listCard).toContain('padding-inline: 0')
+    expect(styles).toContain('.settings-workspace-body .settings-overview-row {')
+    expect(styles).toContain('padding-inline: var(--settings-list-inline-inset);')
+    // The card frame itself is still declared once, for every row-list card.
+    expect(ruleBody('.settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list)'))
+      .toContain('border-radius: var(--settings-card-radius)')
+    // One home for the value, and the narrow layout moves that value — it must not put the inset
+    // back on the container, which would reintroduce the short fill on a narrow window.
+    expect(styles).toContain('--settings-list-inline-inset: 16px')
+    expect(styles).toContain('--settings-list-inline-inset: 14px')
+    expect(styles).toContain('.settings-workspace-body :is(.settings-card, .development-environment-list) { padding-inline: 14px; }')
+  })
 })

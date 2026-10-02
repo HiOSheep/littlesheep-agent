@@ -7,6 +7,7 @@ describe('workspace Markdown preview modes', () => {
   it('renders ordinary Markdown by default and mounts Monaco only for source mode', async () => {
     const previewPane = await source('./preview-pane.tsx')
     const previewActions = await source('./preview-actions.tsx')
+    const htmlSurface = await source('./html-preview-surface.tsx')
 
     expect(previewPane).toContain("import { Markdown } from '../Markdown'")
     expect(previewPane).toContain("const isMarkdown = preview?.kind === 'markdown'")
@@ -17,7 +18,11 @@ describe('workspace Markdown preview modes', () => {
     expect(previewPane).toContain('const editorVisible = editable && (!isMarkdown || showMarkdownSource)')
     expect(previewPane).toContain('isMarkdown && !showMarkdownSource && (')
     expect(previewPane).toContain('const [showHtmlSource, setShowHtmlSource] = useState(')
-    expect(previewPane).toContain('isHtml && !showHtmlSource && (')
+    // An HTML file previews twice through the same surface: the served page while its local service
+    // is up, and the static sanitized frame whenever it is not.
+    expect(previewPane).toContain("liveUrl={htmlRun.state.status === 'running' ? htmlRun.state.url : ''}")
+    expect(htmlSurface).toContain('className="workspace-preview-html-live"')
+    expect(htmlSurface).toContain('sandbox="allow-scripts allow-same-origin allow-forms allow-modals"')
     // UX-25 item 2: the static HTML preview is handed the served asset base so its
     // relative styles/images/fonts can load through Main's bounded loopback service.
     expect(previewPane).toContain('<WorkspaceHtmlPreview')
@@ -109,7 +114,7 @@ describe('workspace Markdown preview modes', () => {
       expect(markdown).toContain('aria-label={copied ? `${label}已复制` : `复制${label}`}')
       expect(markdownLinkRule).toContain('color: #5da1f7;')
       expect(markdownLinkRule).toContain('border-bottom: 1px solid rgba(93, 161, 247, 0.32);')
-    expect(inlineCodeRule).toContain('background: var(--control)')
+    expect(inlineCodeRule).toContain('background: color-mix(in srgb, var(--text) 10%, transparent)')
     expect(inlineCodeRule).toContain('border: 0')
     expect(inlineCodeRule).toContain('box-shadow: none')
     expect(blockRule).toContain('background: #202020')

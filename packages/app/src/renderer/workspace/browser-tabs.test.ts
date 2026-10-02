@@ -4,12 +4,31 @@ import {
   createNewWorkspaceBrowserTab,
   createWorkspaceBrowserTab,
   hydrateWorkspaceBrowserTabs,
+  isEphemeralPreviewUrl,
   isWorkspaceBrowserTabId,
   LEGACY_WORKSPACE_BROWSER_TAB_ID,
   serializeWorkspaceBrowserTabs,
 } from './browser-tabs'
 
 describe('embedded browser tabs', () => {
+  it('does not restore a tab pointing at a run-scoped preview listener', () => {
+    // The listener and its token live for one app run, so a restored tab could only show a dead
+    // address. Previewing an HTML file used to open one every time, which is why later starts
+    // "popped up" the same stale tabs again (reported 2026-10-02).
+    const tabs = hydrateWorkspaceBrowserTabs([
+      { id: 'browser:run', title: '2048', url: 'http://127.0.0.1:51234/0123456789abcdef0123456789abcdef/2048.html' },
+      { id: 'browser:site', title: 'example', url: 'https://example.test/' },
+      // A loopback page the reader opened themselves is not a preview token.
+      { id: 'browser:local', title: 'local', url: 'http://127.0.0.1:8080/app' },
+    ])
+
+    expect(tabs.map((tab) => tab.id)).toEqual(['browser:site', 'browser:local'])
+    expect(isEphemeralPreviewUrl('http://127.0.0.1:1/0123456789abcdef0123456789abcdef/x.html')).toBe(true)
+    expect(isEphemeralPreviewUrl('http://127.0.0.1:8080/app')).toBe(false)
+    // Persisting goes through the same filter, so the dead tab leaves the saved layout too.
+    expect(serializeWorkspaceBrowserTabs(tabs).map((tab) => tab.id)).toEqual(['browser:site', 'browser:local'])
+  })
+
   it('keeps bounded persisted metadata without injecting a default page', () => {
     const tabs = hydrateWorkspaceBrowserTabs(Array.from({ length: MAX_WORKSPACE_BROWSER_TABS + 4 }, (_, index) => ({
       id: `browser:tab-${index}`,

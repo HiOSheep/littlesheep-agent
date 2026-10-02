@@ -83,7 +83,12 @@ describe('workspace code editor unification', () => {
     const review = await source('./review-diff.tsx')
 
     expect(primitive).toContain('fontSize: 13')
-    expect(primitive).toContain('lineHeight: 23')
+    // One density for the file and review editors, decided as a ratio of the code font: the fixed
+    // 23px this replaced left the default font on a 1.77 line and did not move with 代码字号.
+    expect(primitive).not.toMatch(/^\s*lineHeight: 23,\s*$/mu)
+    expect(primitive).toContain('WORKSPACE_MONACO_LINE_HEIGHT_RATIO = 1.45')
+    expect(primitive).toContain('lineHeight: workspaceCodeLineHeight(appearance.codeFontSize)')
+    expect(primitive.split('lineHeight: workspaceCodeLineHeight(appearance.codeFontSize)').length - 1).toBe(2)
     expect(primitive).toContain('lineDecorationsWidth: WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH')
     expect(primitive).toContain('WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH = 28')
     expect(primitive).toContain('lineNumbersMinChars: WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS')

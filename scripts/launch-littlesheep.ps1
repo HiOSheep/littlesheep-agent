@@ -33,6 +33,12 @@ param(
 # this script with a hidden window and a silent fallback to the previous build is exactly what
 # makes a UI change look like it did not work.
 #
+# The desktop and Start-menu entries pass -AllowStaleBuild, so the icon always opens the build that
+# is on disk: a click has to produce the app, and a build that failed, or that is merely behind the
+# sources, must not be able to hold the app shut (reported 2026-10-02: a build that failed while its
+# inputs moved left the user with nothing but the refusal dialog). `pnpm run app:launch` keeps the
+# gate for the cases that want the bundle proven current.
+#
 # Step 3 starts the app through CreateProcess with its output redirected, because the shell's
 # "打开文件 - 安全警告" for this unsigned local binary is a prompt a hidden-window shortcut cannot
 # answer, and because an app that exits during startup has to leave its reason somewhere

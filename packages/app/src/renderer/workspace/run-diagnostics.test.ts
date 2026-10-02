@@ -33,8 +33,11 @@ describe('workspace run diagnostics', () => {
     expect(client).toContain('LOCAL_APP_API_ROUTES.browserDiagnostics')
     expect(component).toContain('getBrowserDiagnostics(url)')
     expect(component).toContain('POLL_INTERVAL_MS')
+    // Nothing reported is nothing to say: a healthy page renders no readout at all, so ordinary
+    // use carries no standing "no errors" label.
+    expect(component).toContain('if (!summary) return null')
     // The readout belongs to a run: while nothing runs there is nothing to report.
-    expect(notice).toContain("run.status === 'running' && run.url")
+    expect(notice).toContain('const running = run.status === \'running\' && Boolean(run.url)')
     expect(notice).toContain('<WorkspaceRunDiagnostics url={run.url} />')
   })
 })

@@ -5,7 +5,7 @@ import { FolderGlyphIcon, VSCodeIcon } from '../ui/icons'
 import { CodeWrapToggle } from '../ui/code-wrap-toggle'
 import { SplitButton } from '../ui/split-button'
 import { transientTriggerProps } from '../ui/transient'
-import { htmlRunActions, type HtmlRunState } from './html-run'
+import { type HtmlRunState } from './html-run'
 import { OPEN_WITH_REVEAL_ID, OPEN_WITH_VSCODE_ID, type WorkspaceOpenWith } from './use-workspace-open-with'
 
 const tipHandlers = (
@@ -30,9 +30,8 @@ export function WorkspacePreviewActions({
   showCodeWrapToggle,
   codeWrapEnabled,
   htmlRun,
-  onRunHtml,
-  onReloadHtml,
-  onStopHtml,
+  onOpenHtmlInApp,
+  onOpenHtmlExternal,
   onToggleCodeWrap,
   onToggleMarkdownSource,
   onToggleHtmlSource,
@@ -51,9 +50,10 @@ export function WorkspacePreviewActions({
   showCodeWrapToggle: boolean
   codeWrapEnabled: boolean
   htmlRun: HtmlRunState
-  onRunHtml: () => void
-  onReloadHtml: () => void
-  onStopHtml: () => void
+  /** Hands the already-running page to the in-app browser tab. */
+  onOpenHtmlInApp: () => void
+  /** Hands the already-running page to the system's default browser. */
+  onOpenHtmlExternal: () => void
   onToggleMarkdownSource: () => void
   onToggleHtmlSource: () => void
   onToggleEditing: () => void
@@ -65,44 +65,35 @@ export function WorkspacePreviewActions({
 }) {
   const markdownSourceTip = showMarkdownSource ? '返回渲染预览' : '查看 Markdown 源代码'
   const editingTip = editing ? '切换到只读代码视图' : '在内置 VS Code 编辑器中编辑'
-  const run = htmlRunActions(htmlRun)
-  const runTip = htmlRun.status === 'running'
-    ? '在隔离的本地地址重新打开这个页面'
-    : '运行这个页面：使用磁盘上的当前版本，脚本与本地资源按浏览器语义加载'
+  const htmlReady = htmlRun.status === 'running' && Boolean(htmlRun.url)
 
   return (
     <div className="workspace-preview-actions">
       {isHtml && (
         <>
+          {/* The page is already served and running inside the pane, so these two only decide *where*
+              the reader wants it opened next. Nothing navigates on its own any more, and the toolbar
+              carries no run/reload/stop controls: the service starts with the preview and the frame
+              is handed a fresh URL every time the file is saved. */}
           <button
             {...transientTriggerProps()}
             className="workspace-files-text-btn"
             type="button"
-            disabled={!run.run}
-            onClick={onRunHtml}
-            {...tipHandlers(runTip, onTipChange)}
+            disabled={!htmlReady}
+            onClick={onOpenHtmlInApp}
+            {...tipHandlers('在应用内浏览器中打开这个页面', onTipChange)}
           >
-            {run.label}
+            应用内浏览器
           </button>
           <button
             {...transientTriggerProps()}
             className="workspace-files-text-btn"
             type="button"
-            disabled={!run.reload}
-            onClick={onReloadHtml}
-            {...tipHandlers('重新加载运行中的页面：磁盘上已改动的文件会被重新读取', onTipChange)}
+            disabled={!htmlReady}
+            onClick={onOpenHtmlExternal}
+            {...tipHandlers('用系统默认浏览器打开这个页面', onTipChange)}
           >
-            重新加载
-          </button>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            disabled={!run.stop}
-            onClick={onStopHtml}
-            {...tipHandlers('停止本地运行服务；已打开的页面重新加载会失败', onTipChange)}
-          >
-            停止
+            系统浏览器
           </button>
         </>
       )}
@@ -181,6 +172,11 @@ export function WorkspacePreviewActions({
                 label: handler.isDefault ? `${handler.label}（默认）` : handler.label,
                 hint: handler.executable,
                 active: handler.id === openWith.currentId,
+                // Every option carries the icon of the program it would start; the folder glyph
+                // stays as the fallback for a host that could not read one (2026-10-02).
+                icon: handler.icon
+                  ? <img className="workspace-open-with-icon" src={handler.icon} alt="" aria-hidden="true" />
+                  : <FolderGlyphIcon />,
                 onSelect: () => openWith.openWith(handler.id),
               })),
               {

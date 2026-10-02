@@ -59,13 +59,10 @@ export function WorkspaceRunDiagnostics({ url }: { url: string }) {
   if (error) {
     return <p className="workspace-preview-run-message" role="status">{error}</p>
   }
-  if (!summary) {
-    return (
-      <p className="workspace-preview-run-diagnostics-clean" role="status">
-        运行中：页面暂未报告脚本错误或资源失败。
-      </p>
-    )
-  }
+  // Nothing reported is nothing to say: a healthy page is its own evidence, and a standing
+  // "no errors" line on every preview is the kind of extra label ordinary use should not carry
+  // (reported 2026-10-02).
+  if (!summary) return null
   return (
     <div className="workspace-preview-run-diagnostics" role="status">
       <button

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LS · Void Ring 图标与动效</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#070709;color:#eeeef4;font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif}main{max-width:1200px;margin:auto;padding:56px 40px 70px}header{display:flex;justify-content:space-between;align-items:end;gap:32px;margin-bottom:36px}.eyebrow{color:#91b6ff;letter-spacing:3px;font-size:12px}h1{font-size:44px;font-weight:500;letter-spacing:-2px;margin:12px 0}p{font-size:14px;color:#9898a8;line-height:1.8;margin:0}button{background:#1d2233;border:1px solid #303a52;color:#dce6ff;border-radius:12px;padding:11px 16px;cursor:pointer}button:hover{background:#2a3450}.static-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.card{background:#101013;border:1px solid #24242b;border-radius:22px;overflow:hidden}.art{height:280px;display:flex;align-items:center;justify-content:center;background:#000}.art img{width:280px;height:280px;object-fit:contain}.label{padding:20px 22px}.label strong{display:block;font-size:15px;font-weight:500;margin-bottom:8px}.label small{color:#8c8c9b;font-size:12px;line-height:1.8}h2{font-size:20px;font-weight:500;margin:42px 0 18px}.sizes{display:flex;align-items:center;gap:32px;padding:22px 26px;flex-wrap:wrap;background:#101013;border:1px solid #24242b;border-radius:20px}.size{text-align:center}.size img{display:block;margin:0 auto 12px}.size small{color:#88889b}#motion-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;background:#070709;padding:12px 0}.stage{height:360px;background:#000;overflow:hidden;position:relative}.stage>div{width:100%;height:100%}.motion .label{padding:20px}.motion .label strong{font-size:16px}.pill{font-size:12px;color:#91b6ff;margin-top:9px;display:block}footer{border-top:1px solid #24242b;margin-top:40px;padding-top:20px;display:flex;justify-content:space-between;gap:20px}a{color:#b0c8ff;text-decoration:none}.small{font-size:12px;color:#737386}.paused .stage::after{content:"静态预览";position:absolute;right:12px;top:12px;font-size:10px;color:#8893a9}@media(max-width:800px){main{padding:28px 20px}.static-grid{grid-template-columns:1fr}#motion-grid{grid-template-columns:1fr}.stage{height:320px}header{display:block}h1{font-size:34px}header button{margin-top:16px}.art{height:260px}footer{display:block}}
+</style></head><body><main>
+<header><div><div class="eyebrow">LITTLESHEEP / VOID RING</div><h1>安静的光，清晰的存在。</h1><p>以母图为视觉基准，将冷蓝光冠、深黑圆盘与暖金边缘落实为一套图标与动效。</p></div><button id="toggle">暂停动效</button></header>
+<div class="static-grid">
+<article class="card"><div class="art"><img src="icon/void_ring_reference.png" alt="用户母图"></div><div class="label"><strong>母图 · 设计基准</strong><small>保留原图，用于核对光线方向与圆盘气质。</small></div></article>
+<article class="card"><div class="art"><img src="icon/icon_master.png" alt="保留球面反射的标准光晕图标"></div><div class="label"><strong>标准光晕 · 球体母版</strong><small>保留球面内侧反射、光冠遮挡与折射；纯黑圆角底。</small></div></article>
+<article class="card"><div class="art"><img src="icon/icon_low_glow.png" alt="低光晕图标"></div><div class="label"><strong>低光晕 · 低强度版本</strong><small>降低外部辉光，保持核心轮廓与渐变一致。</small></div></article>
+</div>
+<h2>实际像素尺寸</h2><div class="sizes">
+<div class="size"><img src="icon/icon_sizes/256x256.png" width="256" height="256" alt="256像素"><small>256 × 256</small></div>
+<div class="size"><img src="icon/icon_sizes/128x128.png" width="128" height="128" alt="128像素"><small>128 × 128</small></div>
+<div class="size"><img src="icon/icon_sizes/64x64.png" width="64" height="64" alt="64像素"><small>64 × 64</small></div>
+<div class="size"><img src="icon/icon_sizes/32x32.png" width="32" height="32" alt="32像素"><small>32 × 32</small></div>
+<p>由同一球体光照母版导出。<br>1024 / 512 尺寸见资源目录。</p></div>
+<h2 id="motion">会呼吸的光晕</h2><p>内圈反光、折射亮边与外侧光冠一起舒展、流动、回落。只有黑色球体的形状与位置固定，光从里到外都在呼吸。</p>
+<div id="motion-grid">
+<article class="card motion"><div class="stage"><div id="idle_breath"></div></div><div class="label"><strong>A · 水感呼吸</strong><small>内圈反光随外晕向四周轻柔起伏，各处错开节奏，舒展后慢慢回落。</small><span class="pill">3.6 s · 柔和流体波 · 循环</span></div></article>
+<article class="card motion"><div class="stage"><div id="loading_orbit"></div></div><div class="label"><strong>B · 能量环流</strong><small>整片光晕绕球体流动，波峰向前推进，宽度随流动改变。</small><span class="pill">2.0 s · 流体绕行 · 循环</span></div></article>
+<article class="card motion"><div class="stage"><div id="thinking_pulse"></div></div><div class="label"><strong>C · 思考潮汐</strong><small>蓝光与暖光交替舒展，双重脉冲如潮汐般聚拢、释放。</small><span class="pill">3.2 s · 双重潮汐 · 循环</span></div></article>
+<article class="card motion"><div class="stage"><div id="open_transition"></div></div><div class="label"><strong>D · 展开过渡</strong><small>圆环放大并淡出，进入下一界面。</small><span class="pill">420 ms · 一次性 <button id="replay" style="padding:3px 9px;margin-left:8px">重播</button></span></div></article>
+</div>
+<footer><p class="small">主图标：纯黑圆角方形。动效：外部透明，圆盘保持黑色。<br>系统减少动态效果时，自动显示静态版本。</p><p class="small"><a href="README_implementation.md">实施说明</a> · <a href="qa/static_review.png">尺寸检查图</a> · <a href="preview.gif">动效 GIF</a></p></footer>
+</main><script src="preview/lottie_svg.min.js"></script><script src="preview/animations.js"></script><script>
+window.animations={};window.animationReady=false;
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let paused=reduced;
+const ready=Object.entries(VOID_RING_DATA).map(([name,data])=>new Promise((resolve,reject)=>{
+ const a=lottie.loadAnimation({container:document.getElementById(name),renderer:'svg',loop:data.meta.loop,autoplay:!reduced,animationData:data});
+ window.animations[name]=a;a.addEventListener('DOMLoaded',()=>{if(reduced)a.goToAndStop(name==='open_transition'?5:0,true);resolve()});a.addEventListener('data_failed',reject);
+}));
+Promise.all(ready).then(()=>{window.animationReady=true});
+function toggle(){paused=!paused;Object.values(animations).forEach(a=>paused?a.pause():a.play());document.getElementById('toggle').textContent=paused?'播放动效':'暂停动效';document.body.classList.toggle('paused',paused)}
+document.getElementById('toggle').onclick=toggle;
+document.getElementById('replay').onclick=()=>{const a=animations.open_transition;a.goToAndStop(reduced?5:0,true);if(!reduced)a.play()};
+if(reduced){document.body.classList.add('paused');document.getElementById('toggle').textContent='播放动效'}
+</script></body></html>

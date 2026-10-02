@@ -209,6 +209,8 @@ export interface WorkspaceOpenWithHandler {
   command: string
   executable: string
   isDefault: boolean
+  /** The executable's own icon as a data URL, when the host could read one. */
+  icon?: string
 }
 
 /** The applications this machine can open the file with, discovered from the desktop registry. */

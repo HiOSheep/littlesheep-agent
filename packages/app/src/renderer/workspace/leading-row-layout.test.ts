@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { readRendererStyleSource } from '../style-source-test-utils'
+import { readRendererStyleSource, readRendererStyleSourceFiles } from '../style-source-test-utils'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 let styles = ''
@@ -43,7 +43,6 @@ describe('workspace page leading row alignment', () => {
   it('uses the shared leading row on every workspace page with a first-line toolbar', async () => {
     const expectedClasses = new Map([
       ['./browser.tsx', 'workspace-browser-toolbar workspace-page-leading-row'],
-      ['./artifacts.tsx', 'workspace-artifacts-header workspace-page-leading-row'],
       ['./terminal.tsx', 'workspace-terminal-header workspace-page-leading-row'],
       ['./preview-pane.tsx', 'workspace-preview-header workspace-page-leading-row'],
       ['./review-diff.tsx', 'workspace-review-diff-header workspace-page-leading-row'],
@@ -58,7 +57,6 @@ describe('workspace page leading row alignment', () => {
 
   it('keeps page-specific rules horizontal and removes obsolete vertical compensation', () => {
     for (const selector of [
-      '.workspace-artifacts-header',
       '.workspace-browser-toolbar',
       '.workspace-files-toolbar,\n.workspace-preview-header',
       '.workspace-terminal-header',
@@ -83,10 +81,10 @@ describe('workspace page leading row alignment', () => {
     expect(styles).not.toContain('padding-right: 34px')
   })
 
-  it('uses one compact file-preview surface with metadata only in the bottom status row', async () => {
+  it('uses one compact file-preview surface with the path as its only metadata', async () => {
     const previewPane = await readFile(new URL('./preview-pane.tsx', import.meta.url), 'utf8')
+    const breadcrumbs = await readFile(new URL('./preview-breadcrumbs.tsx', import.meta.url), 'utf8')
     const editorBody = ruleBody('.workspace-preview-body.editor')
-    const statusbar = ruleBody('.workspace-preview-statusbar')
 
     expect(previewPane).not.toContain('workspace-preview-title')
     expect(previewPane).not.toContain('workspace-preview-editor-badge')
@@ -95,17 +93,28 @@ describe('workspace page leading row alignment', () => {
     expect(previewPane).not.toContain('detectEditorEol')
     expect(previewPane).not.toContain('formatFileSize')
     expect(previewPane).not.toContain('utf8ByteLength')
-    expect(previewPane).toContain('className="workspace-preview-breadcrumbs"')
-    expect(previewPane).toContain('className="workspace-preview-statusbar"')
-    expect(previewPane).toContain('const fileTypeLabel = editable ? editorLanguageLabel')
-    expect(previewPane).toContain('{editorLineCount !== null && <span>{editorLineCount} 行</span>}')
-    expect(previewPane).toContain('{previewModifiedAt && <span>{previewModifiedAt}</span>}')
+    expect(previewPane).toContain('<WorkspacePreviewBreadcrumbs')
+    expect(breadcrumbs).toContain('className="workspace-preview-breadcrumbs"')
+    // The bottom metadata row (type · lines · modified) was redundant next to the breadcrumb and the
+    // file itself: removed 2026-10-02, markup and styles together.
+    expect(previewPane).not.toContain('workspace-preview-statusbar')
+    expect(previewPane).not.toContain('const fileTypeLabel')
+    expect(previewPane).not.toContain('editorLineCount')
+    expect(styles).not.toContain('.workspace-preview-statusbar')
     expect(styles).toMatch(/\.workspace-preview-header\s*\{[^}]*box-shadow:\s*inset 0 -1px var\(--border\);/u)
     expect(editorBody).toContain('padding: 0')
-    expect(statusbar).toContain('border-top: 1px solid #303030')
     expect(styles).not.toContain('.workspace-preview-editor-badge')
     expect(styles).not.toContain('.workspace-preview-meta')
     expect(styles).not.toContain('.workspace-editor-shell')
+  })
+
+  it('drops the seam and the workspace shorthand inside the 文件 tab only', async () => {
+    // The tab is the folder column itself, so it keeps the concrete path but not the seam drawn
+    // against a pane it does not have, nor the workspace's shorthand name and badge above a list
+    // that already says where it is. The shared column keeps both (reported 2026-10-02).
+    expect(styles).toMatch(/\.workspace-files-tab-navigator > \.workspace-files-navigator\s*\{[^}]*border-left:\s*0;/u)
+    expect(styles).toMatch(/\.workspace-files-tab-navigator \.workspace-files-root > span\s*\{\s*display:\s*none;\s*\}/u)
+    expect(styles).toMatch(/\.workspace-files-navigator\s*\{[^}]*border-left:\s*1px solid var\(--border\);/u)
   })
 
   it('fills file and review pages without a floating or hover-reactive surface', async () => {
@@ -117,7 +126,6 @@ describe('workspace page leading row alignment', () => {
     const navigator = ruleBody('.workspace-files-navigator')
     const navigatorInner = ruleBody('.workspace-files-navigator-inner')
     const review = ruleBody('.workspace-review-diff')
-    const statusItem = ruleBody('.workspace-preview-statusbar span')
 
     expect(panel).toContain("const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review'")
     expect(panel).toContain("usesEdgeToEdgeFileSurface ? 'file-surface-active' : ''")
@@ -143,14 +151,36 @@ describe('workspace page leading row alignment', () => {
     expect(review).not.toContain('border:')
     expect(review).not.toContain('border-radius:')
     expect(review).not.toContain('transition:')
-    expect(statusItem).not.toContain('border-radius:')
-    expect(statusItem).not.toContain('transition:')
     expect(styles).not.toContain('.workspace-preview-pane:hover')
     expect(styles).not.toContain('.workspace-review-diff:hover')
-    expect(styles).not.toContain('.workspace-preview-statusbar span:hover')
     expect(styles).not.toContain('.workspace-files-tree')
     expect(styles).not.toContain('.workspace-review > .workspace-files-navigator')
     expect(styles).not.toContain('--workspace-files-surface-border-width')
+  })
+
+  it('keeps the panel seam above the surface that reaches its outer edge', async () => {
+    // The file surface above cancels the contents' left padding, so its opaque fill reaches the
+    // panel's outer edge. The seam against the chat column therefore has to be painted on a layer
+    // that outranks the contents: as a `box-shadow` on the surface it was covered, and on
+    // 2026-10-01 the divider disappeared for every file and review tab while the two columns read
+    // as one. Both halves of that causal pair are asserted, so neither can drift alone.
+    const fileSurfaceBody = ruleBody('.workspace-panel-body.file-surface-active')
+    const contents = ruleBody('.workspace-panel-contents')
+    const seam = ruleBody('.workspace-panel-surface::after')
+    const files = await readRendererStyleSourceFiles()
+    const windowLayout = files.find((file) => file.path === './styles/14-window-layout.css')?.source ?? ''
+    const surfaceStart = windowLayout.indexOf('.workspace-panel-surface {')
+    const surface = windowLayout.slice(surfaceStart, windowLayout.indexOf('\n}', surfaceStart))
+
+    expect(fileSurfaceBody).toContain('calc(0px - var(--workspace-tab-row-inset))')
+    expect(contents).toContain('z-index: 1')
+    expect(seam).toContain('position: absolute')
+    expect(seam).toContain('border-left: 1px solid var(--border)')
+    expect(seam).toContain('pointer-events: none')
+    expect(Number(seam.match(/z-index:\s*(\d+)/u)?.[1] ?? 0)).toBeGreaterThan(1)
+    // Nothing paints the seam on the surface itself any more, where a child could cover it.
+    expect(surfaceStart).toBeGreaterThanOrEqual(0)
+    expect(surface).not.toContain('box-shadow:')
   })
 
   it('lets file content reach the right edge while the navigator is collapsed', () => {

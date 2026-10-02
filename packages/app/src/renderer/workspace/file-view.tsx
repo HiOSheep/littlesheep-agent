@@ -30,6 +30,7 @@ export function WorkspaceFileView({
   onCommentDelete,
   onAddAttachment,
   onOpenBrowserTab,
+  onRevealFolder,
   onTipChange,
 }: {
   tabId: WorkspaceFileTabId
@@ -47,6 +48,8 @@ export function WorkspaceFileView({
   onCommentDelete: (comment: WorkspaceLineComment) => void
   onAddAttachment: (attachment: AttachmentRef) => void
   onOpenBrowserTab: (url: string) => void
+  /** Reveals a folder of this file's path in the file navigator, so a breadcrumb can jump. */
+  onRevealFolder?: (path: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [preview, setPreview] = useState<WorkspacePreview | null>(() => (
@@ -135,6 +138,7 @@ export function WorkspaceFileView({
       onSaveFile={saveFile}
       onOpenBrowserTab={onOpenBrowserTab}
       onReloadFromDisk={loadPreview}
+      onRevealFolder={onRevealFolder}
       onDraftChange={onDraftChange}
       comments={comments}
       onCommentsChange={onCommentsChange}

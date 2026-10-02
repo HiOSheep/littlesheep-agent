@@ -52,22 +52,25 @@ describe('workspace browser reload request', () => {
     expect(seen).toEqual(['http://127.0.0.1:1234/token/game.html'])
   })
 
-  it('is what the run controls and the browser both use', async () => {
+  it('is what the run hook and the browser both use', async () => {
     const hook = await source('./use-html-run.ts')
     const browser = await source('./browser.tsx')
     const actions = await source('./preview-actions.tsx')
 
-    // The pane reloads only a running page, and it does so through the event.
+    // Saving a previewed page asks the tab showing that URL to reload, so the tab does not keep the
+    // version from before the save.
     expect(hook).toContain('requestWorkspaceBrowserReload(state.url)')
-    expect(hook).toContain("if (state.status !== 'running') return")
+    expect(hook).toContain("state.status === 'running'")
     // The browser compares its own URL before reloading, so other tabs are untouched.
     expect(browser).toContain('WORKSPACE_BROWSER_RELOAD_EVENT')
     expect(browser).toContain('requested !== url')
     expect(browser).toContain('reload()')
-    // UX-26 item 1: the toolbar offers all three actions.
-    expect(actions).toContain('disabled={!run.reload}')
-    expect(actions).toContain('重新加载')
-    expect(actions).toContain('disabled={!run.stop}')
+    // The toolbar no longer carries run controls: the service starts with the preview, and the only
+    // page actions left are where to open it.
+    expect(actions).not.toContain('重新加载')
+    expect(actions).not.toContain('disabled={!run.reload}')
+    expect(actions).toContain('应用内浏览器')
+    expect(actions).toContain('系统浏览器')
   })
 })
 

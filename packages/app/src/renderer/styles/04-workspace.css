@@ -117,7 +117,8 @@
 .workspace-panel-corner-toggle {
   /* This switch is positioned against .core-workspace, whereas the tab row
      is inside the floating surface. Account for the surface inset and border
-     so both 30px controls share the exact same vertical center line. */
+     so both controls share the exact same vertical center line — and the tab's
+     own box, so their hover fill matches a tab's. */
   top: var(
     --workspace-panel-toggle-top,
     calc(
@@ -128,8 +129,8 @@
   );
   right: 12px;
   z-index: 24;
-  width: var(--workspace-tab-row-height);
-  height: var(--workspace-tab-row-height);
+  width: var(--workspace-tab-height);
+  height: var(--workspace-tab-height);
   border: 0;
   border-radius: var(--radius-ui);
   opacity: 1;
@@ -369,13 +370,16 @@
 
 .workspace-active-item {
   --workspace-tab-fill: var(--bg);
-  --workspace-tab-glass-fill: color-mix(in srgb, var(--control-hover) 74%, transparent);
+  /* A wash of the theme's text colour, not 74% of `--control-hover`: that lands on the right
+     value in the dark theme and on a 6% step in the light one, where the tab had no box at all
+     (reported 2026-10-02). 14% of the text colour reads the same on dark and is visible on light. */
+  --workspace-tab-glass-fill: color-mix(in srgb, var(--text) 14%, transparent);
   display: inline-grid;
   grid-template-columns: 16px minmax(0, auto) 16px;
   align-items: center;
   gap: 5px;
   flex: 0 0 auto;
-  height: 26px;
+  height: var(--workspace-tab-height);
   max-width: 180px;
   padding: 4px;
   color: var(--text);
@@ -544,9 +548,20 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   border: 0;
   border-radius: var(--radius-circle);
   padding: 0;
+  /* Hidden until the tab is in play: a strip of permanent crosses is noise, and the buttons that
+     stay reachable by keyboard still appear on focus (reported 2026-10-02). */
+  opacity: 0;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+.workspace-active-item:hover .workspace-active-close,
+.workspace-active-item:focus-within .workspace-active-close,
+.workspace-active-item.active .workspace-active-close,
+.workspace-active-close:focus-visible {
+  opacity: 1;
 }
 
 .workspace-active-close:hover,
@@ -701,13 +716,14 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 }
 
 .workspace-panel-actions {
-  /* Keep the fullscreen action exactly one tab gap left of the stationary
-     corner toggle. The border width is the only coordinate offset between
-     the panel content box and the core workspace containing the toggle. */
+  /* Keep the fullscreen action clear of the stationary corner toggle: the offset stays calibrated
+     on the tab row height while both boxes are the smaller tab height, plus the pair's own gap
+     (`--workspace-panel-control-gap`, not the tighter tab gap). The border width is the only
+     coordinate offset between the panel content box and the core workspace containing the toggle. */
   right: calc(
     var(--floating-panel-border-width) +
     var(--workspace-tab-row-height) +
-    var(--workspace-tab-row-gap)
+    var(--workspace-panel-control-gap)
   );
   z-index: 3;
   display: inline-flex;
@@ -718,8 +734,8 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 .workspace-panel-action {
   display: grid;
   place-items: center;
-  width: var(--workspace-tab-row-height);
-  height: var(--workspace-tab-row-height);
+  width: var(--workspace-tab-height);
+  height: var(--workspace-tab-height);
   color: var(--muted);
   background: transparent;
   border: 0;
@@ -944,268 +960,32 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   height: 100%;
 }
 
-.workspace-artifacts {
+/* The 文件 tab renders the shared file navigator itself, so it needs only the width contract the
+   shared column normally provides: the navigator inside takes the wrapper's full width instead of
+   the fixed `--workspace-files-navigator-width` it keeps as a rail. */
+.workspace-files-tab-navigator {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.workspace-artifacts-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.workspace-artifacts-title {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.workspace-artifacts-title strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-strong);
-  font-size: 13px;
-  font-weight: 880;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-artifacts-title small {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted-2);
-  font-size: 11px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-artifacts-controls {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 6px;
-  padding: 2px 6px 8px;
-}
-
-.workspace-artifacts-filter-group {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 3px;
-  min-width: 0;
-}
-
-.workspace-artifacts-filter {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 25px;
-  padding: 0 7px;
-  color: var(--muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  font-size: 12px;
-  font-weight: 780;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.workspace-artifacts-filter small {
-  color: var(--muted-2);
-  font-size: 10px;
-  font-weight: 820;
-}
-
-.workspace-artifacts-filter:hover,
-.workspace-artifacts-filter:focus-visible,
-.workspace-artifacts-filter.active {
-  color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
-  outline: 0;
-}
-
-.workspace-artifacts-filter:disabled {
-  color: var(--muted-2);
-  cursor: default;
-  opacity: 0.45;
-}
-
-.workspace-artifacts-filter:disabled:hover {
-  background: transparent;
-  border-color: transparent;
-}
-
-.workspace-artifacts-search {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  min-height: 30px;
-  padding: 0 8px;
-  color: var(--muted);
-  background: transparent;
-  /* Same call as the file filter: no frame, the fill carries the field. */
-  border: 0;
-  border-radius: var(--radius-ui);
-  transition:
-    background-color var(--motion-fast) var(--motion-ease);
-}
-
-.workspace-artifacts-search:hover,
-.workspace-artifacts-search:focus-within {
-  background: var(--control-hover);
-}
-
-.workspace-artifacts-search svg {
-  width: 14px;
-  height: 14px;
-}
-
-.workspace-artifacts-search input {
-  width: 100%;
-  min-width: 0;
-  color: var(--text);
-  background: transparent;
-  border: 0;
-  outline: 0;
-  font: inherit;
-  font-size: 12px;
-}
-
-.workspace-artifacts-search input::placeholder {
-  color: var(--muted-2);
-}
-
-.workspace-artifacts-list {
-  display: grid;
-  align-content: start;
   flex: 1 1 auto;
-  gap: 3px;
+  min-width: 0;
   min-height: 0;
-  padding: 2px 6px 8px;
-  overflow: auto;
-}
-
-.workspace-artifacts-list.empty {
-  align-content: stretch;
-}
-
-.workspace-artifact-row {
-  display: grid;
-  grid-template-columns: 19px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  padding: 4px 6px;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  text-align: left;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
-    color var(--motion-fast) var(--motion-ease);
-}
-
-.workspace-artifact-row:hover,
-.workspace-artifact-row:focus-visible {
-  color: var(--text-strong);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
-  outline: 0;
-}
-
-.workspace-artifact-row-icon {
-  display: grid;
-  place-items: center;
-  width: 19px;
-  height: 19px;
-  color: var(--muted);
-}
-
-.workspace-artifact-row.agent .workspace-artifact-row-icon {
-  color: var(--accent);
-}
-
-.workspace-artifact-row.user .workspace-artifact-row-icon {
-  color: var(--success);
-}
-
-.workspace-artifact-row-icon svg {
-  width: 15px;
-  height: 15px;
-}
-
-.workspace-artifact-row-main {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.workspace-artifact-row-main strong,
-.workspace-artifact-row-main small {
-  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.workspace-artifact-row-main strong {
-  font-size: 12px;
-  font-weight: 840;
-  line-height: 1.25;
+.workspace-files-tab-navigator > .workspace-files-navigator {
+  width: 100%;
+  flex: 1 1 auto;
 }
 
-.workspace-artifact-row-main small {
-  color: var(--muted-2);
-  font-size: 11px;
-  line-height: 1.25;
+/* This tab *is* the folder column, so it drops what only made sense beside a preview: the seam
+   drawn against the pane on its left, and the workspace's shorthand name and badge above a list
+   that already says where it is. The concrete path stays, and the shared column keeps both
+   (reported 2026-10-02). */
+.workspace-files-tab-navigator > .workspace-files-navigator {
+  border-left: 0;
 }
 
-.workspace-artifact-row-meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  color: var(--muted-2);
-  font-size: 10px;
-  font-weight: 780;
-  white-space: nowrap;
-}
-
-.workspace-artifact-row-meta em,
-.workspace-artifact-row-meta time {
-  font-style: normal;
-}
-
-.workspace-artifact-row-meta em {
-  padding: 0 4px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-}
-
-.workspace-artifact-row.created .workspace-artifact-row-meta em:nth-of-type(2) {
-  color: var(--success);
-}
-
-.workspace-artifact-row.modified .workspace-artifact-row-meta em:nth-of-type(2) {
-  color: var(--warning);
+.workspace-files-tab-navigator .workspace-files-root > span {
+  display: none;
 }
 
 .workspace-placeholder {
@@ -2097,11 +1877,54 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   opacity: 0.62;
 }
 
+/* The path reads as a trail: an ancestor sits back and the file it leads to is the brightest thing
+   in the row. Each ancestor is also a target the pointer can hit anywhere inside — the fill is the
+   whole segment, gap beside the separator included, not just the glyphs. */
+.workspace-preview-breadcrumbs .workspace-preview-crumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  margin: 0 -3px;
+  padding: 1px 3px;
+  overflow: hidden;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-ui);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 680;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.workspace-preview-breadcrumbs .workspace-preview-crumb:hover,
+.workspace-preview-breadcrumbs .workspace-preview-crumb:focus-visible {
+  color: var(--text-strong);
+  background: var(--control-hover);
+  outline: 0;
+}
+
 .workspace-preview-breadcrumbs em {
   min-width: 0;
   overflow: hidden;
+  color: var(--text-strong);
   font-style: normal;
+  font-weight: 760;
   text-overflow: ellipsis;
+}
+
+/* The icon a handler brought with it: the menu's glyph slot keeps its size, so text and icons line
+   up whichever an entry has. */
+.workspace-open-with-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
 }
 
 .workspace-preview-actions {
@@ -2504,30 +2327,6 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   content: '';
 }
 
-.workspace-preview-statusbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  min-width: 0;
-  min-height: 24px;
-  padding: 0 8px;
-  color: #b0b0b0;
-  background: #171717;
-  border-top: 1px solid #303030;
-  font-size: 11px;
-  font-weight: 760;
-  line-height: 1;
-}
-
-.workspace-preview-statusbar span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 18px;
-  padding: 0 5px;
-  white-space: nowrap;
-}
-
 .workspace-preview-markdown {
   min-height: 100%;
   padding: 12px 14px 24px;
@@ -2663,9 +2462,13 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 /* Run state of the HTML page: notice or the dirty-draft question, next to the actions. */
+/* A bar above the preview body, not a competing pane. This used to grow (`flex: 1 1 100%`) because
+   the running page lived in a browser tab and the notice was the only thing in the body; now the
+   served page renders in that body, and a growing bar pushed the frame out of view (measured
+   2026-10-02 on the reported 2048.html preview: notice in the vertical middle, game at the bottom). */
 .workspace-preview-run {
   display: flex;
-  flex: 1 1 100%;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -2731,6 +2534,17 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-preview-html {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: max(520px, 100%);
+  min-height: 520px;
+  border: 0;
+  background: #fff;
+}
+
+/* The served page, in the box the static frame uses: it is the same preview, one that runs. */
+.workspace-preview-html-live {
   display: block;
   flex: 1 1 auto;
   width: 100%;

@@ -120,7 +120,16 @@
   --radius-ui: 10px;
   --radius-floating-panel: 14px;
   --radius-composer: 14px;
-  --radius-composer-input: 16px;
+  /* The composer and the popovers that hang off it (`.composer`, its `::before` material, the add
+     menu and the runtime/model pickers). Two steps rounder than the plain control radius: 16px
+     still read as a tight box on the field (reported 2026-10-02), and the squircle gives up about
+     a quarter of the declared value, so 28px lands near a 21px corner. */
+  --radius-composer-input: 28px;
+  /* A panel that sits inside the transcript, not at the window edge. It is its own role because
+     the window layout flattens `--radius-floating-panel` to `0px`, and because the app-wide
+     `corner-shape: superellipse(1.5)` gives up ~24% of the declared radius: 18px reads as the
+     13-14px a round-cornered card of the same size would show. */
+  --radius-card: 18px;
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
@@ -212,7 +221,9 @@
      deliberately shallow — the first pass at 16% / 19% read as a coloured panel rather than a tint,
      so it is halved and the hue is left alone. */
   --sidebar-tint-top: rgba(86, 148, 255, 0.08);
-  --sidebar-tint-bottom: rgba(150, 104, 255, 0.1);
+  /* Blue into the brand's own amber rather than into violet: the ring's warm arc is the colour the
+     sidebar was already carrying in its mark (2026-10-02). */
+  --sidebar-tint-bottom: rgba(255, 154, 100, 0.1);
   --floating-panel-inset: 8px;
   --floating-panel-inline-gutter: 16px;
   /* Use one thin, low-contrast frame for every floating surface so straight
@@ -701,6 +712,14 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   --workspace-tab-row-inset: 4px;
   --workspace-tab-row-height: 30px;
   --workspace-tab-row-gap: 4px;
+  /* The tab's own box. The two panel-header controls (the fullscreen action and the stationary
+     corner toggle) are the same box, so one number keeps their hover fill identical to a tab's
+     (reported 2026-10-02: theirs were 30px, taller and wider than the tabs they sit beside). */
+  --workspace-tab-height: 26px;
+  /* The room between the two panel-header controls. The tab gap (4px) is right between tab chips,
+     which are wide and carry their own padding; between two icon buttons it reads as touching
+     (reported 2026-10-02), so the pair gets its own number. */
+  --workspace-panel-control-gap: 12px;
   --chat-workspace-scrollbar-gap: 2px;
   --chat-workspace-scrollbar-overlap: 0px;
   position: relative;

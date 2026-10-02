@@ -601,8 +601,14 @@
 
 .markdown-inline-code {
   padding: 2px 5px;
-  color: #eef2f7;
-  background: var(--control);
+  /* A token, not a hardcoded near-white: on the light themes this text sat at #eef2f7 on a light
+     background and disappeared entirely (reported 2026-10-02). `--text-strong` is the same value in
+     the dark theme and flips with every other theme. */
+  color: var(--text-strong);
+  /* A wash of the theme's own text colour, not `--control`: that fill is nearly the page colour on
+     the light themes, so the chip had no edge at all (reported 2026-10-02). Light gets a dark wash,
+     dark gets a light one, and every custom palette follows its own text colour. */
+  background: color-mix(in srgb, var(--text) 10%, transparent);
   border: 0;
   border-radius: var(--radius-ui);
   box-shadow: none;

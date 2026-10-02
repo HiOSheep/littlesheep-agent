@@ -1,5 +1,5 @@
 // Task composer controls, attachments, runtime selection, and sizing.
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   type AttachmentRef
@@ -11,7 +11,7 @@ import { FadePresence } from '../ui/presence'
 import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
 import { MessageArtifactsCard } from './message-artifacts-card'
-import { useArtifactDeltas } from './use-artifact-deltas'
+import { mergeArtifactDeltas, toolCallDeltas, useArtifactDeltas, type ArtifactToolCall } from './use-artifact-deltas'
 
 
 export function MessageFileStrip({
@@ -19,19 +19,26 @@ export function MessageFileStrip({
   label,
   workspaceRoot,
   artifactVersion = 0,
+  toolCalls,
   onOpenFile,
   onOpenReview,
 }: {
   files: WorkspaceArtifactRef[]
   label: string
-  /** The workspace the files live in: the source of their line counts. */
+  /** The workspace the files live in: one of the two sources of their line counts. */
   workspaceRoot?: string
   artifactVersion?: number
+  /** The turn's own calls: the other source, and the only one a non-repository workspace has. */
+  toolCalls?: readonly ArtifactToolCall[]
   onOpenFile: (path: string) => void
   onOpenReview?: (path: string) => void
 }) {
   const navigation = useLinkNavigation()
-  const deltas = useArtifactDeltas(workspaceRoot ?? '', artifactVersion)
+  const snapshotDeltas = useArtifactDeltas(workspaceRoot ?? '', artifactVersion)
+  const deltas = useMemo(
+    () => mergeArtifactDeltas(toolCallDeltas(toolCalls), snapshotDeltas),
+    [toolCalls, snapshotDeltas],
+  )
   if (files.length === 0) return null
 
   // The turn's own产出 is one card; attachments stay the compact strip they were.

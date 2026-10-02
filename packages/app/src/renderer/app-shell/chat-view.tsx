@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
+import { emptyHintFor } from '../chat/empty-hint'
 import { MessageFileStrip } from '../composer/message-files'
 import { Markdown } from '../Markdown'
 import { RunningPill } from '../sidebar/running-pill'
@@ -53,7 +54,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
 
   // The transcript answers "what can I do here?" The composer answers the
   // separate question "why can't I send this yet?" Keep those surfaces distinct.
-  const emptyCopy = '对话还没有消息。你可以在下方写下目标；发送条件会显示在输入区。'
+  const emptyHint = emptyHintFor(currentSession ?? '')
 
   const {
     readingAway,
@@ -114,8 +115,8 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           )}
           {messages.length === 0 && !historyWindow.loading && (
             <div className="empty-hint">
-              <div className="empty-title">今天要推进什么？</div>
-              <div className="empty-copy">{emptyCopy}</div>
+              <div className="empty-title">{emptyHint.title}</div>
+              <div className="empty-copy">{emptyHint.copy}</div>
             </div>
           )}
           {messages.map((m, i) => (
@@ -148,7 +149,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                     <TraceCard trace={m.trace} toolCalls={m.toolCalls} durationMs={m.durationMs} onOpenFile={openFileInWorkspace} />
                   )}
                   {m.role === 'assistant' && m.artifacts && m.artifacts.length > 0 && (
-                    <MessageFileStrip files={m.artifacts} label="产出成果" workspaceRoot={artifactsWorkspaceRoot} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
+                    <MessageFileStrip files={m.artifacts} label="产出成果" workspaceRoot={artifactsWorkspaceRoot} toolCalls={m.activity?.tools} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
                   )}
                 </div>
                 <MessageMeta

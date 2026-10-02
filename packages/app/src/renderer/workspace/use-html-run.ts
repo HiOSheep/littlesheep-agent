@@ -1,25 +1,15 @@
 // Hook that owns the HTML "run" state for the file preview pane (UX-26).
 //
-// Keeping it here rather than in `preview-pane.tsx` matters: that file is at its
-// composition ceiling, and the run rules (saved file only, ask about a dirty
-// draft, stop releases the service) are one transaction that belongs together.
-import { useCallback, useEffect, useState } from 'react'
+// Previewing an HTML file starts its own local service: the served page is the thing the reader
+// asked to see, so there is no 运行 button to press and nothing jumps to a browser on its own. The
+// service is released when the preview moves to another file, and the page can still be handed to
+// the in-app browser or the system browser from the toolbar — by the reader, not automatically.
+import { useEffect, useState } from 'react'
 import { requestWorkspaceBrowserReload } from './browser-reload'
-import {
-  IDLE_HTML_RUN,
-  startHtmlRun,
-  stopHtmlRun,
-  type HtmlRunState,
-} from './html-run'
+import { IDLE_HTML_RUN, startHtmlRun, stopHtmlRun, type HtmlRunState } from './html-run'
 
 export interface HtmlRunController {
   state: HtmlRunState
-  prompt: boolean
-  requestRun: () => void
-  saveAndRun: () => void
-  cancelPrompt: () => void
-  reload: () => void
-  stop: () => void
 }
 
 export function useHtmlRun({
@@ -27,78 +17,39 @@ export function useHtmlRun({
   filePath,
   fileModifiedAt,
   isHtml,
-  dirty,
-  saveDraft,
-  onOpenBrowserTab,
 }: {
   workspacePath: string
   filePath: string
   fileModifiedAt: number
   isHtml: boolean
-  dirty: boolean
-  /** Saves the current draft; false means the run must not happen. */
-  saveDraft: () => Promise<boolean>
-  onOpenBrowserTab: (url: string) => void
 }): HtmlRunController {
   const [state, setState] = useState<HtmlRunState>(IDLE_HTML_RUN)
-  const [prompt, setPrompt] = useState(false)
 
-  // A run belongs to the file that was running: a different file, or a refresh of
-  // the same one from disk, starts from "not running" again.
+  // One service per previewed file. The served page reads from disk on every request, so saving the
+  // file needs no new service — and a stable URL is what lets a browser tab opened from the toolbar
+  // keep working afterwards.
   useEffect(() => {
-    setState(IDLE_HTML_RUN)
-    setPrompt(false)
-  }, [filePath, fileModifiedAt])
-
-  const open = useCallback(async () => {
-    if (!isHtml || !filePath) return
-    setPrompt(false)
-    setState({ status: 'starting', url: '', message: '' })
-    const next = await startHtmlRun(workspacePath, filePath)
-    setState(next)
-    if (next.status === 'running') onOpenBrowserTab(next.url)
-  }, [filePath, isHtml, onOpenBrowserTab, workspacePath])
-
-  const requestRun = useCallback(() => {
-    if (!isHtml) return
-    if (dirty) {
-      setPrompt(true)
-      return
+    if (!isHtml || !filePath) {
+      setState(IDLE_HTML_RUN)
+      return undefined
     }
-    void open()
-  }, [dirty, isHtml, open])
+    let disposed = false
+    setState({ status: 'starting', url: '', message: '' })
+    void startHtmlRun(workspacePath, filePath).then((next) => {
+      if (!disposed) setState(next)
+    })
+    return () => {
+      disposed = true
+      void stopHtmlRun(workspacePath)
+    }
+  }, [filePath, isHtml, workspacePath])
 
-  const saveAndRun = useCallback(() => {
-    void (async () => {
-      const saved = await saveDraft()
-      if (!saved) return
-      await open()
-    })()
-  }, [open, saveDraft])
+  // A saved file is a new page: the pane re-keys its frame off `fileModifiedAt`, and a browser tab
+  // already showing this URL is asked to reload, so neither surface keeps the version from before
+  // the save. This is the reload the toolbar used to offer as a button.
+  useEffect(() => {
+    if (fileModifiedAt > 0 && state.status === 'running') requestWorkspaceBrowserReload(state.url)
+  }, [fileModifiedAt, state.status, state.url])
 
-  const stop = useCallback(() => {
-    void (async () => {
-      setPrompt(false)
-      setState({ status: 'starting', url: '', message: '' })
-      setState(await stopHtmlRun(workspacePath))
-    })()
-  }, [workspacePath])
-
-  // Reloading re-requests the page from the same service, so edits saved to disk show
-  // up without restarting anything; the request is addressed by URL so only the
-  // browser tab showing this run reloads.
-  const reload = useCallback(() => {
-    if (state.status !== 'running') return
-    requestWorkspaceBrowserReload(state.url)
-  }, [state.status, state.url])
-
-  return {
-    state,
-    prompt,
-    requestRun,
-    saveAndRun,
-    cancelPrompt: useCallback(() => setPrompt(false), []),
-    reload,
-    stop,
-  }
+  return { state }
 }

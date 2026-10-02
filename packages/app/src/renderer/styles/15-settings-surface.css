@@ -4,6 +4,10 @@
   --settings-card-radius: 18px;
   --settings-control-radius: 11px;
   --settings-row-min-height: 76px;
+  /* The overview rows carry the card's horizontal inset themselves (see
+     `.settings-overview-row`), so this value has one home and the narrow layout
+     can move the inset and the rows' text together. */
+  --settings-list-inline-inset: 16px;
   background: var(--workspace-code-surface);
 }
 
@@ -103,6 +107,21 @@
 .settings-workspace-body .settings-overview-row > span { grid-column: 1; }
 .settings-workspace-body .settings-overview-row > :is(button, svg) { grid-column: 2; grid-row: 1 / span 2; }
 .settings-workspace-body button.settings-overview-row:hover { background: var(--control-hover); }
+
+/* The inset belongs to the row, not to the container — the same shape
+   `.plugin-list-disclosure` already has, where the card carries no horizontal padding
+   and the row insets its own content. With `padding: 0 16px` on
+   `.settings-overview-group-items` the row's box stopped 16px short at both ends, so
+   the pointer's fill read as an unfinished rectangle floating inside the card and the
+   row's own hairline could not reach the card's edge either (reported 2026-10-01).
+   Text and title keep the exact position they had. */
+.settings-workspace-body .settings-overview-group-items {
+  padding-inline: 0;
+}
+
+.settings-workspace-body .settings-overview-row {
+  padding-inline: var(--settings-list-inline-inset);
+}
 
 .settings-card > :is(.web-provider-key-form, .storage-settings-actions, .web-egress-confirmation, .settings-advanced) {
   margin-block: 10px;
@@ -216,8 +235,8 @@
 .settings-select-menu > button:disabled { cursor: default; }
 
 @media (max-width: 900px) {
-  .settings-workspace-body { padding: 28px 20px 48px; }
-  .settings-workspace-body :is(.settings-card, .settings-overview-group-items, .development-environment-list) { padding-inline: 14px; }
+  .settings-workspace-body { padding: 28px 20px 48px; --settings-list-inline-inset: 14px; }
+  .settings-workspace-body :is(.settings-card, .development-environment-list) { padding-inline: 14px; }
   .settings-value-row { gap: 12px; }
   .settings-value-control { max-width: 180px; }
 }

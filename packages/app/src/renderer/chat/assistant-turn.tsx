@@ -78,7 +78,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
           )}
           {message.artifacts && message.artifacts.length > 0 && (
-            <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
+            <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
           )}
           {message.webEvidence && <WebSources evidence={message.webEvidence} />}
         </div>
@@ -159,7 +159,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
               <span className="run-status-error">{activity.error}</span>
             )}
             {message.artifacts && message.artifacts.length > 0 && (
-              <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
+              <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
             )}
             {message.webEvidence && <WebSources evidence={message.webEvidence} />}
           </div>

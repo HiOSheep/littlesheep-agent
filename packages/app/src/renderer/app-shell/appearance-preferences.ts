@@ -84,6 +84,13 @@ export function isAppearanceDark(): boolean {
   if (typeof document === 'undefined') return true
   const root = document.documentElement
   if (root.dataset.lsPalette === 'custom' && root.dataset.lsPaletteUsable === 'true') {
+    // Judge the surface the reader actually looks at, not the text colour. This used to accept only
+    // an exact `#ffffff` text as "dark", so a custom palette with a light background and near-white
+    // text was classified as dark, and every consumer that picks its own palette from this answer
+    // (Markdown syntax highlighting, mermaid diagrams) drew dark-theme text straight onto that light
+    // background - white on white (reported 2026-10-02).
+    const background = root.style.getPropertyValue('--ls-custom-background').trim()
+    if (/^#[0-9a-f]{6}$/iu.test(background)) return relativeLuminance(background) < 0.5
     return root.style.getPropertyValue('--ls-custom-text').trim().toLowerCase() === '#ffffff'
   }
   return root.dataset.lsTheme !== 'light'

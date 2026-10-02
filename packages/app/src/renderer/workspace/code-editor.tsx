@@ -37,6 +37,22 @@ export function workspaceEditorModelPath(root: string, path: string, scopeKey = 
   return `inmemory://littlesheep-file/${safeScopeKey}/${safeRoot}/${safePath}`
 }
 
+/**
+ * Leading as a ratio of the code font, not a fixed number of pixels.
+ *
+ * A code surface is read by the line, and the open-code surfaces used to carry a flat
+ * `lineHeight: 23`: that stayed put when the 代码字号 setting moved, so the default 13px font sat
+ * on a 1.77 line while a 20px font sat on a 1.15 one. Measured on the reported screenshot
+ * (2026-10-02) the 23px pitch showed ~18% fewer lines than the reference editor it was compared
+ * with (18.9px), so the ratio is what the two surfaces now share: 1.45 puts the default font on
+ * 19px and keeps the same density at every 代码字号 between 11 and 22.
+ */
+export const WORKSPACE_MONACO_LINE_HEIGHT_RATIO = 1.45
+
+export function workspaceCodeLineHeight(fontSize: number): number {
+  return Math.round(fontSize * WORKSPACE_MONACO_LINE_HEIGHT_RATIO)
+}
+
 export const WORKSPACE_MONACO_BASE_OPTIONS = {
   // Automatic layout recalculates Monaco's canvas on every resize-observer
   // notification. Column drags can produce one notification per frame, so the
@@ -45,7 +61,6 @@ export const WORKSPACE_MONACO_BASE_OPTIONS = {
   fontFamily: WORKSPACE_MONACO_FONT_FAMILY,
   fontSize: 13,
   fontWeight: '500',
-  lineHeight: 23,
   lineDecorationsWidth: WORKSPACE_MONACO_LINE_DECORATIONS_WIDTH,
   lineNumbersMinChars: WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS,
   minimap: { enabled: false },
@@ -95,7 +110,12 @@ export function WorkspaceCodeEditor({
   const appearance = useMonacoAppearance()
   const monacoReady = usePreparedWorkspaceMonacoLanguages([props.language ?? 'plaintext'])
   const mergedOptions = useMemo(
-    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options, fontSize: appearance.codeFontSize }),
+    () => ({
+      ...WORKSPACE_MONACO_BASE_OPTIONS,
+      ...options,
+      fontSize: appearance.codeFontSize,
+      lineHeight: workspaceCodeLineHeight(appearance.codeFontSize),
+    }),
     [appearance.codeFontSize, options],
   )
   useLayoutEffect(() => {
@@ -147,7 +167,12 @@ export function WorkspaceCodeDiffEditor({
     modifiedLanguage ?? 'plaintext',
   ])
   const mergedOptions = useMemo(
-    () => ({ ...WORKSPACE_MONACO_BASE_OPTIONS, ...options, fontSize: appearance.codeFontSize }),
+    () => ({
+      ...WORKSPACE_MONACO_BASE_OPTIONS,
+      ...options,
+      fontSize: appearance.codeFontSize,
+      lineHeight: workspaceCodeLineHeight(appearance.codeFontSize),
+    }),
     [appearance.codeFontSize, options],
   )
   useEffect(() => () => {

@@ -7,8 +7,11 @@
 ' opens a command window and LittleSheep never starts". Windows Script Host starts the same
 ' PowerShell with a hidden window and owns no console itself, so the click is silent.
 '
-' Nothing else moves: the fail-closed build gate, the newest prepared runtime, the start of the
-' app itself and its log live in scripts/launch-littlesheep.ps1.
+' Nothing else moves: the shortcut check, the newest prepared runtime, the start of the app itself
+' and its log live in scripts/launch-littlesheep.ps1. The icon starts the build that is already on
+' disk (`-AllowStaleBuild`): a click has to open the app, so a build that failed, or that is merely
+' behind the sources, must not be able to hold it shut. Use `pnpm run ensure:app-build` when the
+' bundle has to be brought up to date, or `pnpm run app:launch` to keep the fail-closed gate.
 Option Explicit
 
 Dim fileSystem, shell, scriptDirectory, launcherPath, powerShellPath, commandLine
@@ -34,7 +37,7 @@ If Not fileSystem.FileExists(powerShellPath) Then
   WScript.Quit 3
 End If
 
-commandLine = """" & powerShellPath & """ -NoProfile -ExecutionPolicy Bypass -File """ & launcherPath & """"
+commandLine = """" & powerShellPath & """ -NoProfile -ExecutionPolicy Bypass -File """ & launcherPath & """ -AllowStaleBuild"
 
 ' 0 = hidden window, False = do not wait: the launcher owns the application's lifetime.
 shell.Run commandLine, 0, False

@@ -15,8 +15,8 @@
   --control-hover: #e4e4e1;
   --control-active: #d9d9d6;
   --control-pressed: #cececa;
-  --sidebar-menu-surface: rgba(250, 250, 249, 0.94);
-  --composer-surface: rgba(250, 250, 249, 0.82);
+  --sidebar-menu-surface: rgba(250, 250, 249, 0.86);
+  --composer-surface: rgba(250, 250, 249, 0.78);
   --selection-background: #c8d9f3;
   --selection-background-inactive: #d7dce4;
   --code-selection-background: #c2d2eb;
@@ -41,9 +41,12 @@
   --feedback-danger-text: #8c1821;
   --feedback-danger-border: rgba(180, 35, 45, 0.35);
   --danger-control-text: #75131b;
-  --sidebar-glass-fill: color-mix(in srgb, var(--surface) 78%, transparent);
+  /* The dark recipe is 36% surface; 78% made the fill opaque enough that the blur behind it
+     showed nothing. Light surfaces need a little more fill than dark ones to keep text contrast,
+     but not that much (audited 2026-10-02). */
+  --sidebar-glass-fill: color-mix(in srgb, var(--surface) 42%, transparent);
   --sidebar-tint-top: rgba(89, 145, 215, 0.045);
-  --sidebar-tint-bottom: rgba(129, 104, 190, 0.045);
+  --sidebar-tint-bottom: rgba(215, 132, 89, 0.045);
   --floating-panel-border: color-mix(in srgb, var(--text) 13%, transparent);
   --floating-panel-resize-border: color-mix(in srgb, var(--text) 24%, transparent);
   --floating-panel-shadow: 0 6px 18px rgba(30, 30, 28, 0.14);
@@ -62,6 +65,7 @@
   --workspace-code-surface: color-mix(in srgb, var(--ls-custom-background) 94%, var(--ls-custom-text));
   --bg-elevated: var(--ls-custom-surface);
   --surface: var(--ls-custom-surface);
+  --sidebar-menu-surface: color-mix(in srgb, var(--ls-custom-surface) 86%, transparent);
   --surface-2: color-mix(in srgb, var(--ls-custom-surface) 92%, var(--ls-custom-text));
   --surface-3: color-mix(in srgb, var(--ls-custom-surface) 82%, var(--ls-custom-text));
   --control: color-mix(in srgb, var(--ls-custom-surface) 90%, var(--ls-custom-text));
@@ -78,8 +82,8 @@
   --accent-hover: color-mix(in srgb, var(--ls-custom-accent) 82%, var(--ls-custom-text));
   --accent-soft: color-mix(in srgb, var(--ls-custom-accent) 16%, transparent);
   --focus-ring-color: var(--ls-custom-accent);
-  --composer-surface: color-mix(in srgb, var(--ls-custom-surface) 82%, transparent);
-  --sidebar-glass-fill: color-mix(in srgb, var(--ls-custom-surface) 78%, transparent);
+  --composer-surface: color-mix(in srgb, var(--ls-custom-surface) 78%, transparent);
+  --sidebar-glass-fill: color-mix(in srgb, var(--ls-custom-surface) 42%, transparent);
   --selection-background: color-mix(in srgb, var(--ls-custom-accent) 28%, var(--ls-custom-surface));
   --selection-background-inactive: color-mix(in srgb, var(--ls-custom-accent) 16%, var(--ls-custom-surface));
   --code-selection-background: color-mix(in srgb, var(--ls-custom-accent) 38%, var(--ls-custom-surface));

@@ -1,0 +1,27 @@
+{
+  "fps": 30,
+  "cellSize": 384,
+  "foreground": "sphere_foreground.png",
+  "states": {
+    "idle_breath": {
+      "frames": 216,
+      "loop": true,
+      "durationMs": 3600
+    },
+    "loading_orbit": {
+      "frames": 120,
+      "loop": true,
+      "durationMs": 2000
+    },
+    "thinking_pulse": {
+      "frames": 192,
+      "loop": true,
+      "durationMs": 3200
+    },
+    "open_transition": {
+      "frames": 25.2,
+      "loop": false,
+      "durationMs": 420
+    }
+  }
+}

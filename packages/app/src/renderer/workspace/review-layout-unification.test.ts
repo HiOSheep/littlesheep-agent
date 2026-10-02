@@ -82,8 +82,10 @@ describe('workspace review layout unification', () => {
     // navigator keeps the file-navigator field, so the two can never move each other.
     expect(panel).toContain('fileNavigatorWidth={reviewNavigatorWidth}')
     expect(panel).toContain('onFileNavigatorWidthChange={onReviewNavigatorWidthChange}')
-    expect(panel).toContain('navigatorWidth={fileNavigatorWidth}')
-    expect(panel).toContain('onNavigatorWidthChange={onFileNavigatorWidthChange}')
+    // The shared navigator's own wiring keeps the file-navigator field — every mount of it spreads
+    // `navigatorWiring`, so the 文件 tab cannot pick up the review width either.
+    expect(panel).toContain('navigatorWidth: fileNavigatorWidth')
+    expect(panel).toContain('onNavigatorWidthChange: onFileNavigatorWidthChange')
     expect(sessionLayouts).toContain("setField('reviewNavigatorWidth', update)")
     expect(persistence).toContain('reviewNavigatorWidth: WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT')
     expect(persistence).toContain('reviewNavigatorWidth: normalizeWorkspaceFileNavigatorWidth(item.reviewNavigatorWidth)')

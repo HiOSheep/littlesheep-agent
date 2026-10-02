@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process'
 import { shell } from 'electron'
 import type { Config } from '@littlesheep/config'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
+import { executableIconDataUrl } from '../executable-icons.js'
 import { discoverOpenWithHandlers, resolveOpenWithInvocation } from '../workspace-open-with.js'
 import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
 import { resolveWorkspaceRoot, resolveWorkspaceRootFromValue, resolveWorkspaceTarget } from './workspace-support.js'
@@ -40,7 +41,13 @@ export async function routeOpenWith(
       if (cache.size >= CACHE_LIMIT) cache.clear()
       cache.set(extension, handlers)
     }
-    json(res, 200, { handlers })
+    // The list is what the menu draws: give every entry the icon of the executable it would
+    // start, so a name like `msedge` is not the only thing the reader has to go on.
+    const withIcons = await Promise.all(handlers.map(async (handler) => ({
+      ...handler,
+      icon: await executableIconDataUrl(handler.executable),
+    })))
+    json(res, 200, { handlers: withIcons })
     return true
   }
 

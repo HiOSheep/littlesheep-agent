@@ -17,10 +17,10 @@ Workspace 呈现文件／目录、预览、Git review、浏览器标签和用户
 - Git review 是仓库快照，不是单个脏文件的原子快照；opaque revision 和不稳定读取状态须保留，不得夸大一致性。
 - Monaco 在文件查看、编辑和 Git review 之间共享；模型、预览与浏览器历史需有界。
 - Monaco 与仍运行的 xterm 实例订阅应用外观变化并更新主题／字号，不因切换主题重建文件模型或终端会话；原始文档与 HTML 预览内容不强制反色。
-- 产物列表用共享状态视图区分加载、空结果和读取失败；失败状态的重试调用现有刷新动作。
+- 「文件」标签不是第二份文件列表，而是左侧文件夹栏本身：同一套原地展开、选中高亮和打开文件交接，激活该标签时共享栏隐藏，屏幕上只有一棵文件夹树。加载、空结果和读取失败沿用文件导航的共享状态视图与重试动作。
 
 ## 预览与验证
 
-静态 HTML 使用 sandbox frame，不执行页面 JavaScript。相对资源只经 Main 的有界 loopback preview service 和路径检查提供。运行页面是单独的显式操作，使用隔离 guest，不自动启动项目脚本。
+HTML 预览在打开时自动启动 Main 的有界 loopback preview service，并在 sandbox frame 里按浏览器语义运行页面脚本；frame 与 App 跨源，页面拿不到本窗口，`fileModifiedAt` 变化时原地重载而不换 URL（应用内浏览器标签因此不会失效）。相对资源只经该服务和路径检查提供。打开整页由读者决定：工具栏只提供应用内浏览器与系统浏览器两个入口，不自动跳转，也没有运行／重新加载／停止按键。
 
 观察与写入使用 `verify:file-consistency-faults`、`verify:desktop-file-consistency`；预览使用 `verify:html-preview-baseline`；Git 刷新使用 `verify:review-refresh-errors`；工作区与交互终端使用 `verify:conversation-workspace-scenarios`。这些入口证明不同边界。
