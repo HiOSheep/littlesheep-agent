@@ -46,5 +46,5 @@ export function reasoningPreview(text: string, running: boolean): string {
   const paragraphs = text.split(/\r?\n\s*\r?\n/u)
   const completed = running && paragraphs.length > 1 ? paragraphs.slice(0, -1) : paragraphs
   const paragraph = running ? completed[completed.length - 1] : completed[0]
-  return shortActivityText((paragraph ?? '').split(/\r?\n/u)[0].replaceAll('**', ''), 200)
+  return shortActivityText(((paragraph ?? '').split(/\r?\n/u)[0] ?? '').replaceAll('**', ''), 200)
 }

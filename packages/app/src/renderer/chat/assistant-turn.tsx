@@ -175,7 +175,7 @@ export function transcriptWithoutAnswer(transcript: TranscriptEntry[], answer: s
   if (!answer.trim()) return transcript
   let lastText = -1
   for (let index = transcript.length - 1; index >= 0; index--) {
-    if (transcript[index].kind === 'text') { lastText = index; break }
+    if (transcript[index]?.kind === 'text') { lastText = index; break }
   }
   const entry = transcript[lastText]
   return entry?.kind === 'text' && entry.text.trim() === answer.trim()
@@ -587,4 +587,3 @@ const CACHE_REASON_LABELS: Record<string, string> = {
 function cacheReasonLabel(reason: string): string {
   return CACHE_REASON_LABELS[reason] ?? reason
 }
-

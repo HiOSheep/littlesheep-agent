@@ -7,7 +7,6 @@
 // re-resolve the handler from a fresh discovery, so a stale list cannot make Main start anything
 // else, and an id that is no longer registered is refused instead of guessed.
 
-import { spawn } from 'node:child_process'
 import { shell } from 'electron'
 import type { Config } from '@littlesheep/config'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
@@ -15,6 +14,7 @@ import { executableIconDataUrl } from '../executable-icons.js'
 import { describeExecutables } from '../executable-descriptions.js'
 import { discoverOpenWithHandlers, resolveOpenWithInvocation } from '../workspace-open-with.js'
 import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
+import { launchOpenWith } from './open-with-launcher.js'
 import { resolveWorkspaceRoot, resolveWorkspaceRootFromValue, resolveWorkspaceTarget } from './workspace-support.js'
 
 export interface OpenWithRouteContext {
@@ -61,8 +61,7 @@ export async function routeOpenWith(
     if (!handler) throw new HttpError(400, '这个打开方式在这台机器上已不可用，请重新选择。')
     const invocation = resolveOpenWithInvocation(handler.command, target)
     if (!invocation) throw new HttpError(400, '这个打开方式没有可用的启动命令，请重新选择。')
-    const child = spawn(invocation.executable, invocation.args, { detached: true, stdio: 'ignore', windowsHide: false })
-    child.unref()
+    await launchOpenWith(invocation.executable, invocation.args)
     json(res, 200, { ok: true })
     return true
   }

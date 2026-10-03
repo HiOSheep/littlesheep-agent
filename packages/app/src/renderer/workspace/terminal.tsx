@@ -2,11 +2,10 @@
 import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { preferredShellId } from './terminal-shell-choice'
 import { useTerminalShellSelection } from './use-terminal-shell-selection'
 import { useTerminalSessions } from './use-terminal-sessions'
-import { terminalTabStatusLabel } from './terminal-sessions'
 export {
   formatDurationMs,
   terminalActivityStatus,
@@ -38,7 +37,6 @@ export function WorkspaceTerminal({
   workspacePath,
   sessionId,
   active = true,
-  onTipChange,
 }: {
   workspacePath: string
   sessionId?: string
@@ -59,7 +57,6 @@ export function WorkspaceTerminal({
   const sessions = useTerminalSessions({
     onStart: (event) => {
       terminalBackendRef.current = event.backend ?? 'spawn'
-      setStatus(`${event.shell} 正在连接`)
     },
     onActiveOutput: (text, tone) => {
       writeTerminalText(text, tone === 'stderr' ? 'stderr' : 'normal')
@@ -79,20 +76,16 @@ export function WorkspaceTerminal({
       // nothing, so nothing would ever turn the input back on (UX-30).
       setTerminalInputEnabled(tab?.status === 'ready')
       if (!tab) return
-      setStatus(terminalTabStatusLabel(tab))
       // No local replay here: attaching the stream makes Main replay the session's bounded
       // history into this buffer, so writing what we kept would duplicate it (UX-30).
     },
     onError: (_id, message) => {
       setTerminalInputEnabled(false)
       writeTerminalNotice(`\x1b[31m${message}\x1b[0m`)
-      setStatus('终端错误')
     },
   })
   activeSessionRef.current = sessions.activeTab?.id ?? ''
   terminalSessionRef.current = activeSessionRef.current
-  const [running, setRunning] = useState(false)
-  const [status, setStatus] = useState('启动中')
   // UX-29: the shells Main discovered, the saved preference, and what the running session
   // actually is. The picker chooses; Main validates the id and decides executable and args.
   const shellSelection = useTerminalShellSelection()
@@ -142,7 +135,7 @@ export function WorkspaceTerminal({
       getAppSessionId: () => sessionId,
       isDisposed: () => disposed || !mountedRef.current,
       writeLine: writeTerminalNotice,
-      setStatus,
+      setStatus: () => undefined,
       onCompletedCommand: () => undefined,
     })
     inputControllerRef.current = inputController
@@ -274,7 +267,7 @@ export function WorkspaceTerminal({
         void startTerminalSession(() => disposed)
       })
       .catch((err) => {
-        setStatus((err as Error).message)
+        if (!disposed && hostRef.current) hostRef.current.textContent = (err as Error).message
       })
 
     return () => {
@@ -319,15 +312,13 @@ export function WorkspaceTerminal({
    * Opens a session — the first one, or another one beside it (UX-30).
    *
    * The hook owns the tab, its stream and its bounded replay buffer; this only reports the
-   * outcome to the surface's own status line.
+   * failures directly in the terminal.
    */
   async function startTerminalSession(isDisposed: () => boolean) {
     const size = terminalSizeRef.current.cols > 0 && terminalSizeRef.current.rows > 0
       ? terminalSizeRef.current
       : undefined
     setTerminalInputEnabled(false)
-    setStatus('启动中')
-    setRunning(true)
     try {
       const id = await sessions.open({
         workspacePath,
@@ -341,10 +332,7 @@ export function WorkspaceTerminal({
     } catch (error) {
       if ((error as Error).name === 'AbortError' || isDisposed()) return
       setTerminalInputEnabled(false)
-      setStatus((error as Error).message)
       writeTerminalNotice(`\x1b[31m${(error as Error).message}\x1b[0m`)
-    } finally {
-      if (!isDisposed()) setRunning(false)
     }
   }
 
@@ -436,4 +424,3 @@ function terminalAppearanceTheme() {
     brightWhite: dark ? '#f0f0f0' : '#171716',
   }
 }
-

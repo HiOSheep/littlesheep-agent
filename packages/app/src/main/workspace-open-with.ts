@@ -255,24 +255,25 @@ export function resolveOpenWithInvocation(
   const parsed = splitCommandLine(command)
   if (!parsed) return null
   const rest = command.trim().slice(parsed.executable.length + (command.trim().startsWith('"') ? 2 : 0))
-  const substituted = rest.replace(/%[1lLsS*]/gu, filePath)
   const args: string[] = []
   let current = ''
   let quoted = false
-  for (const character of substituted) {
+  // Parse the registered arguments before substitution: spaces in the file path belong to
+  // that one argument even when the registry's placeholder is unquoted.
+  for (const character of rest) {
     if (character === '"') {
       quoted = !quoted
       continue
     }
     if (!quoted && /\s/u.test(character)) {
-      if (current) args.push(current)
+      if (current) args.push(current.replace(/%[1lLsS*]/gu, filePath))
       current = ''
       continue
     }
     current += character
   }
-  if (current) args.push(current)
+  if (current) args.push(current.replace(/%[1lLsS*]/gu, filePath))
   // A registry entry without a placeholder still expects the file as its argument.
-  if (!/%[1lLsS*]/u.test(rest) && args.length === 0) args.push(filePath)
+  if (!/%[1lLsS*]/u.test(rest)) args.push(filePath)
   return { executable: parsed.executable, args }
 }
