@@ -33,9 +33,9 @@ describe('message metadata footer', () => {
     expect(html).toContain('data-copied="false"')
     expect(styles).toMatch(/\.message-meta\s*\{[^}]*height:\s*28px;[^}]*font-size:\s*12px;[^}]*opacity:\s*0;[^}]*pointer-events:\s*auto;/u)
     expect(styles).toMatch(/\.message-meta:hover,[\s\S]*?\.message-meta:focus-within\s*\{[^}]*opacity:\s*1;/u)
-    expect(styles).toMatch(/\.message-with-meta\.user\s*\{[^}]*width:\s*min\(820px,\s*100%\);[^}]*max-width:\s*min\(820px,\s*100%\);[^}]*margin-left:\s*auto;/u)
+    expect(styles).toMatch(/\.message-with-meta\.user\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*margin-left:\s*auto;/u)
     expect(styles).toMatch(/\.message-with-meta > \.message\s*\{[^}]*margin-bottom:\s*0;/u)
-    expect(styles).toMatch(/\.message-with-meta\.user > \.message\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(820px,\s*78%\);[^}]*margin-left:\s*auto;/u)
+    expect(styles).toMatch(/\.message-with-meta\.user > \.message\s*\{[^}]*width:\s*fit-content;[^}]*max-width:\s*min\(620px,\s*82%\);[^}]*margin-left:\s*auto;/u)
     expect(styles).toMatch(/\.message-meta-copy\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;[^}]*min-height:\s*24px;[^}]*border:\s*0;[^}]*border-radius:\s*var\(--radius-circle\);/u)
     expect(styles).toMatch(/\.message-meta-copy\s*\{[^}]*font-size:\s*14px;/u)
     expect(styles).toMatch(/\.message-meta-copy \.sidebar-svg-icon\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px;/u)
@@ -74,25 +74,12 @@ describe('message metadata footer', () => {
     expect(styles).toMatch(/\.message-copy-retry:hover,[\s\S]*?\.message-copy-retry:focus-visible\s*\{/u)
   })
 
-  it('leaves no control on the row permanently visible', async () => {
-    // The row carried a `:has(.message-meta-usage)` exception that pinned every answer's action row
-    // open so the token figures could be read at a glance. Checking "an opacity rule exists" is not
-    // enough to catch that coming back, so this walks *every* rule that sets the row's own opacity
-    // and requires the only two states to be the hidden base and the shared hover/focus reveal.
-    // Comments are stripped first: the stylesheet documents the row by name in prose.
-    const styles = (await readRendererStyleSource()).replace(/\/\*[\s\S]*?\*\//gu, '')
-    const rowOpacity = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/gu)]
-      .map(([, selector, body]) => ({
-        selector: (selector ?? '').trim().replace(/\s+/gu, ' '),
-        opacity: /(?:^|;)\s*opacity\s*:\s*([^;]+)/u.exec(body ?? '')?.[1]?.trim(),
-      }))
-      .filter(({ selector }) => /(?:^|,\s*)\.message-meta(?:[:,]|$)/u.test(selector))
-      .filter(({ opacity }) => opacity !== undefined)
-
-    expect(rowOpacity.map(({ selector, opacity }) => `${selector} { opacity: ${opacity} }`)).toEqual([
-      '.message-meta { opacity: 0 }',
-      '.message-meta:hover, .message-meta:focus-within { opacity: 1 }',
-    ])
+  it('keeps actions discoverable and reveals their full contrast with pointer or keyboard', async () => {
+    const styles = await readRendererStyleSource()
+    expect(styles).toContain('.message-meta { opacity: 0; gap: 8px; }')
+    expect(styles).toContain('.message-with-meta:hover > .message-meta,')
+    expect(styles).toContain('.message-meta:focus-within { opacity: 1; }')
+    expect(styles).toContain('@media (hover: none) { .message-meta { opacity: 1; } }')
   })
 
   it('measures the row spacing between glyphs and pills rather than between hit areas', async () => {

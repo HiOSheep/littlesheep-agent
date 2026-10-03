@@ -11,6 +11,7 @@ import {
 
 /** The colour scale plus the three states that share no shade with it. */
 export function UsageHeatmapLegend({ view }: { view: UsageHeatmapViewModel }) {
+  const hasErrors = [...view.days.values()].some(day => day.state === 'recording_error' || day.state === 'partial')
   return (
     <div className="usage-legend" aria-label="色阶图例">
       <div className="usage-legend-scale">{view.effectiveMax > 0 ? <><span>少</span>{view.legend.map((step) => <span className="usage-legend-item" key={step.level} title={`${step.label} tok`}><i data-level={step.level} aria-hidden="true" /><span className="visually-hidden">{step.label}</span></span>)}<span>多</span></> : <span>尚无实报用量</span>}</div>
@@ -18,7 +19,7 @@ export function UsageHeatmapLegend({ view }: { view: UsageHeatmapViewModel }) {
         <span className="usage-legend-item" title="无记录（不是 0 用量）"><i data-state="empty" aria-hidden="true" />无记录</span>
         <span className="usage-legend-item" title="投影未覆盖的日期"><i data-state="missing" aria-hidden="true" />未覆盖</span>
         <span className="usage-legend-item"><i data-state="future" aria-hidden="true" />未来日期</span>
-        <span className="usage-legend-item" title="部分记录（有调用但未报 usage）"><i data-state="partial" aria-hidden="true" />部分记录</span>
+        {hasErrors && <span className="usage-legend-item" title="用量记录异常，缺少有效实报数据"><i data-state="recording_error" aria-hidden="true" />记录异常</span>}
       </div>
       <details className="usage-legend-details"><summary>查看色阶范围</summary><div>{view.legend.map(step => <span className="usage-legend-item" key={step.level}><i data-level={step.level} aria-hidden="true" />{step.label} tok</span>)}<span className="usage-legend-item"><i data-level="0" aria-hidden="true" />实报 0 tok</span></div></details>
     </div>
@@ -42,7 +43,7 @@ export function UsageDayPanel({ date, view }: { date: string; view: UsageHeatmap
           {detail ? detail.headline : '投影未覆盖这一天（不是 0 用量）'}
         </span>
       </header>
-      {detail && (day?.state === 'recorded' || day?.state === 'partial') ? (
+      {detail && (day?.state === 'recorded' || ((day?.state === 'partial' || day?.state === 'recording_error') && day.requests > 0)) ? (
         <>
           <dl>
             {detail.figures.map((figure) => (
@@ -54,23 +55,26 @@ export function UsageDayPanel({ date, view }: { date: string; view: UsageHeatmap
           </dl>
           {detail.usageIncomplete && (
             <p className="usage-day-partial">
-              这一天的部分请求没有实报 usage，因此上面的数字是已报告部分，不是当天全部消耗。
+              有响应未提供有效用量，以上仅显示已收到的实报数据。这是记录异常，无法据此确认当天总消耗。
             </p>
           )}
         </>
       ) : (
-        <p>{day?.state === 'empty' ? '这一天没有调用记录，用量未知。' : day?.state === 'future' ? '这一天尚未发生，没有用量数据。' : '这一天的日期在请求区间里，但投影没有为它返回任何行；它既不是 0 用量，也不是一次失败。'}</p>
+        <p>{day?.state === 'empty' ? '这一天没有有效用量记录，用量未知。' : day?.state === 'future' ? '这一天尚未发生，没有用量数据。' : detail?.usageIncomplete ? `没有收到有效实报数据，无法确认 token 用量。缺少用量 ${day?.missingResponses ?? 0} 次，缺少结算 ${day?.unreportedRequests ?? 0} 次。` : '这一天的日期在请求区间里，但投影没有为它返回任何行；它既不是 0 用量，也不是一次失败。'}</p>
+      )}
+      {day && ((day.failedRequests ?? 0) + (day.interruptedRequests ?? 0) + (day.pendingRequests ?? 0) > 0) && (
+        <p>调用状态：失败 {day.failedRequests ?? 0} 次 · 中断 {day.interruptedRequests ?? 0} 次 · 进行中 {day.pendingRequests ?? 0} 次；这些状态不作为 0 token 记录。</p>
       )}
     </section>
   )
 }
 
 /** The day cell's accessible name, one sentence per state. */
-export function usageCellAria(state: string, value: number): string {
+export function usageCellAria(state: string, value: number, hasReportedUsage = true): string {
   if (state === 'future') return '：未来日期'
   if (state === 'missing') return '：投影未覆盖（不是 0 用量）'
   if (state === 'empty') return '：没有记录到调用（不是 0 用量）'
-  if (state === 'partial') return `：部分记录 ${value} tok（有调用未报 usage）`
+  if (state === 'partial' || state === 'recording_error') return hasReportedUsage ? `：记录异常，已收到 ${value} tok（缺少有效用量）` : '：记录异常，没有有效实报用量'
   return `${value} tok`
 }
 
@@ -86,6 +90,6 @@ export function usageCellTitle(
   metric: UsageMetric,
   value: number,
 ): string {
-  if (!detail || state === 'empty') return `${date}｜${detail ? detail.headline : '投影未覆盖（不是 0 用量）'}`
+  if (!detail || state === 'empty' || (detail.usageIncomplete && detail.requests === 0)) return `${date}｜${detail ? detail.headline : '投影未覆盖（不是 0 用量）'}`
   return `${date}｜${detail.headline}｜${USAGE_METRIC_LABELS[metric]} ${formatTokenCount(value)} tok`
 }

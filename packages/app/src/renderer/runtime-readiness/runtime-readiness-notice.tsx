@@ -1,9 +1,7 @@
 // Startup failure strip.
 //
 // It carries exactly one case: the Runtime reported that execution cannot start.
-// A normal start states its stage next to the send control instead
-// (`composer-readiness-hint`), so ordinary startup does not put a bar across the
-// window; a failure keeps the full-width surface because it must stay visible
+// Normal startup adds no stage text to the composer or bar across the window; a failure keeps the full-width surface because it must stay visible
 // while the user reads the reason and decides whether to retry. It is not a
 // progress bar: there is no percentage and no estimated time, only the reason
 // Main reported.
@@ -32,7 +30,7 @@ export function RuntimeReadinessNotice({
   const [pending, setPending] = useState(false)
   const [attemptsUsed, setAttemptsUsed] = useState(0)
   // Only a real failure earns the window-wide surface. `reason` is also set while
-  // the Runtime is still starting, and that case belongs to the composer hint.
+  // the Runtime is still starting; that case needs no visible notice.
   if (!reason || readiness?.state !== 'failed') return null
   const retry = executionRetryUiState({ readiness, pending, attemptsUsed })
 

@@ -3,9 +3,27 @@ import {
   createLineCommentFromDraft,
   EMPTY_LINE_COMMENT_DRAFT,
   reduceLineCommentDraft,
+  snapToDevicePixels,
 } from './line-comment-model'
 
 describe('line comment model', () => {
+  it('snaps a fractional position onto the device pixel grid', () => {
+    // Monaco reports line tops like 159 CSS px, which is 238.5 device pixels at 1.5x: half a device
+    // pixel, and exactly what rasterises a 2px glyph asymmetrically (reported 2026-10-03).
+    expect(snapToDevicePixels(159, 1.5)).toBeCloseTo(159.333, 3)
+    expect(snapToDevicePixels(159, 1.5) * 1.5).toBeCloseTo(239, 6)
+    // A value already on a device pixel stays where it is.
+    expect(snapToDevicePixels(900, 1.5)).toBe(900)
+    expect(snapToDevicePixels(159.2, 1.5)).toBeCloseTo(159.333, 3)
+    expect(snapToDevicePixels(159.7, 1.5)).toBeCloseTo(160, 3)
+    // Whole-pixel displays keep the nearest whole pixel, and degenerate ratios are ignored.
+    expect(snapToDevicePixels(159.4, 1)).toBe(159)
+    expect(snapToDevicePixels(159.4, 2)).toBe(159.5)
+    for (const ratio of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(snapToDevicePixels(12.3, ratio)).toBe(12)
+    }
+  })
+
   it('begins a fresh draft and applies text changes', () => {
     const begun = reduceLineCommentDraft(EMPTY_LINE_COMMENT_DRAFT, {
       type: 'begin',

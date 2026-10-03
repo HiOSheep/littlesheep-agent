@@ -65,12 +65,14 @@ describe('workspace browser reload request', () => {
     expect(browser).toContain('WORKSPACE_BROWSER_RELOAD_EVENT')
     expect(browser).toContain('requested !== url')
     expect(browser).toContain('reload()')
-    // The toolbar no longer carries run controls: the service starts with the preview, and the only
-    // page actions left are where to open it.
+    // The toolbar no longer carries run controls, and it no longer carries the page's two
+    // destinations either: both live in the "打开方式" menu (asked for 2026-10-03), so the row itself
+    // keeps only the actions that change what the pane shows.
     expect(actions).not.toContain('重新加载')
     expect(actions).not.toContain('disabled={!run.reload}')
-    expect(actions).toContain('应用内浏览器')
-    expect(actions).toContain('系统浏览器')
+    expect(actions).toMatch(/id: HTML_BROWSER_IN_APP_ID,[\s\S]{0,120}label: '应用内浏览器'/u)
+    expect(actions).toMatch(/id: HTML_BROWSER_EXTERNAL_ID,[\s\S]{0,120}label: '系统浏览器'/u)
+    expect(actions).not.toMatch(/className="workspace-files-text-btn"[\s\S]{0,200}浏览器/u)
   })
 })
 

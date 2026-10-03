@@ -9,6 +9,8 @@ import { WORKSPACE_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import {
   type WorkspacePanelTab
 } from '../workspace-persistence'
+import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
+import { useTerminalShellSelection } from './use-terminal-shell-selection'
 import { resolveWorkspaceEntrySelection } from './entry-selection'
 
 
@@ -27,6 +29,8 @@ export function WorkspaceAddMenu({
   onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
+  const shells = useTerminalShellSelection()
+  const menuEntries = entries.filter((entry) => ['artifacts', 'review', 'terminal', 'browser'].includes(entry.id))
   const [mounted, setMounted] = useState(false)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -42,7 +46,7 @@ export function WorkspaceAddMenu({
     if (!trigger) return
     const rect = trigger.getBoundingClientRect()
     const margin = 10
-    const panelWidth = panelRef.current?.offsetWidth || 282
+    const panelWidth = panelRef.current?.offsetWidth || 224
     const panelHeight = panelRef.current?.offsetHeight || entries.length * 36 + 16
     const x = clampNumber(rect.left, margin, window.innerWidth - panelWidth - margin)
     const below = rect.bottom + 5
@@ -148,7 +152,14 @@ export function WorkspaceAddMenu({
           {...(!open ? { inert: '' } : {})}
           style={{ left: position.x, top: position.y }}
         >
-          {entries.map((entry) => {
+          {menuEntries.map((entry) => {
+            if (entry.id === 'terminal') return <div key={entry.id} className="workspace-add-terminal-row" role="group" aria-label="终端">
+              <span className="workspace-add-icon"><WorkspaceFeatureIcon id="terminal" /></span>
+              <span className="workspace-add-label">终端</span>
+              <WorkspaceTerminalShellPicker profiles={shells.profiles} selectedId={shells.shellId} busy={false}
+                onSelect={(id) => { shells.choose(id); selectEntry('terminal') }}
+                onTipChange={(tip) => onTipChange(tip ? buildFloatingHelpTip(tip.label, tip.x, tip.y) : null)} />
+            </div>
             const active = entry.id === activeTab
             const opened = openTabs.includes(entry.id)
             return (

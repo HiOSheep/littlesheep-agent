@@ -196,11 +196,13 @@ describe('shared state sample', () => {
   })
 
   it('keeps code language, wrapping, and copy actions in a shared toolbar role', () => {
-    expect(styles).toMatch(/\.code-toolbar\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;[^}]*background:\s*var\(--surface-2\);[^}]*border-bottom:\s*1px solid var\(--border\);/u)
+    // The banner keeps its own surface (DSH's code-block banner is its own swatch) and
+    // is separated from the block by the same hairline the rest of the conversation uses.
+    expect(styles).toMatch(/\.code-toolbar\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*space-between;[^}]*background:\s*var\(--surface-2\);[^}]*border-bottom:\s*\.5px solid var\(--chat-hairline-soft\);/u)
     expect(styles).toMatch(/\.code-language-label\s*\{[^}]*text-transform:\s*uppercase;[^}]*white-space:\s*nowrap;/u)
     expect(styles).toMatch(/\.code-block-source\[data-code-wrap="off"\]\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*pre;/u)
     expect(styles).toMatch(/\.code-block-source\[data-code-wrap="on"\]\s*\{[^}]*white-space:\s*pre-wrap;/u)
-    expect(styles).toMatch(/\.code-toolbar button:focus-visible\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.14\);/u)
+    expect(styles).toMatch(/\.code-toolbar button:focus-visible\s*\{[^}]*background:\s*var\(--chat-active-fill\);/u)
   })
 
   it('keeps the existing theme, motion and radius exceptions intact', () => {

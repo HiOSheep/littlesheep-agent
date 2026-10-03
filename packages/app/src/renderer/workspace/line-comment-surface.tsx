@@ -80,18 +80,25 @@ export function LineCommentAddButton({
   left: number
   onClick: () => void
 }) {
+  // The gutter reserves a 22px slot, but a compact code row can be shorter.
+  // Keep the button inside that row and centred in the same gutter slot.
+  const size = Math.max(1, Math.min(LINE_COMMENT_ADD_BUTTON_SIZE, lineHeight - 2))
   return (
     <button
       className="workspace-line-comment-add"
       type="button"
       aria-label={`为第 ${sourceLine} 行添加评论`}
       style={{
-        top: top + Math.max(0, (lineHeight - LINE_COMMENT_ADD_BUTTON_SIZE) / 2),
-        left,
+        top: top + (lineHeight - size) / 2,
+        left: left + (LINE_COMMENT_ADD_BUTTON_SIZE - size) / 2,
+        width: size,
+        height: size,
       }}
       onClick={onClick}
     >
-      <span className="workspace-line-comment-add-icon" aria-hidden="true" />
+      <svg className="workspace-line-comment-add-icon" viewBox="0 0 10 10" aria-hidden="true">
+        <path d="M5 1V9M1 5H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
     </button>
   )
 }

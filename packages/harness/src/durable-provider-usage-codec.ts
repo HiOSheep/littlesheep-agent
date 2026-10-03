@@ -1,6 +1,19 @@
 // Validates provider token, cache, timing, and local-calibration durable payloads.
-import type { DurableProviderUsageProjection } from '@littlesheep/types';
+import type { DurableProviderUsageProjection, DurableRunProjection } from '@littlesheep/types';
 import { DurableKernelError } from './durable-kernel-error.js';
+
+export function validateProviderReceipt(payload: Record<string, unknown>, projection: DurableRunProjection): void {
+  if (typeof payload.requestId !== 'string' || !projection.modelRequests.some(request => request.requestId === payload.requestId)) {
+    throw new DurableKernelError('provider receipt has no model request', 'transition');
+  }
+  if (!Number.isSafeInteger(payload.attempt) || (payload.attempt as number) < 1 || typeof payload.completed !== 'boolean') {
+    throw new DurableKernelError('provider receipt requires attempt and completion facts', 'invalid');
+  }
+  if (payload.usageStatus !== 'available' && payload.usageStatus !== 'unavailable') {
+    throw new DurableKernelError('provider receipt requires usage status', 'invalid');
+  }
+  readProviderUsage(payload);
+}
 
 export function readProviderUsage(payload: Record<string, unknown>): DurableProviderUsageProjection | undefined {
   const promptTokens = payload.promptTokens;

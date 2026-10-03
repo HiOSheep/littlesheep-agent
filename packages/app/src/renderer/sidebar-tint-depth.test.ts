@@ -20,8 +20,9 @@ describe('sidebar tint depth', () => {
     expect(bottom).toBeGreaterThan(0)
     expect(top).toBeLessThanOrEqual(0.1)
     expect(bottom).toBeLessThanOrEqual(0.12)
-    // The violet end stays the stronger of the two, which is what gives the card its direction.
-    expect(bottom).toBeGreaterThan(top)
+    // The neutral reference palette has a subtle top light instead of a coloured lower wash.
+    expect(top).toBe(0.02)
+    expect(bottom).toBe(0.01)
   })
 
   it('paints it as one vertical wash over the sidebar surface only', () => {

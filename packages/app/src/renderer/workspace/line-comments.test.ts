@@ -127,8 +127,12 @@ describe('workspace line comments', () => {
     expect(deletedSource).toContain('<LineCommentAddButton')
     expect(surface.split('workspace-line-comment-add-icon').length - 1).toBe(1)
     expect(styles).toMatch(/\.workspace-line-comment-add\s*\{[^}]*border:\s*0;/s)
-    expect(styles).toMatch(/\.workspace-line-comment-add-icon::before\s*\{[^}]*width:\s*10px;[^}]*height:\s*2px;/s)
-    expect(styles).toMatch(/\.workspace-line-comment-add-icon::after\s*\{[^}]*width:\s*2px;[^}]*height:\s*10px;/s)
+    expect(surface).toContain('viewBox="0 0 10 10"')
+    expect(surface).toContain('d="M5 1V9M1 5H9"')
+    expect(surface).toContain('Math.min(LINE_COMMENT_ADD_BUTTON_SIZE, lineHeight - 2)')
+    expect(surface).toContain('top: top + (lineHeight - size) / 2')
+    expect(surface).toContain('left: left + (LINE_COMMENT_ADD_BUTTON_SIZE - size) / 2')
+    expect(styles).toMatch(/\.workspace-line-comment-add\s*\{[^}]*box-shadow:\s*none;/s)
     expect(source).toContain("marginClassName: 'workspace-comment-published-margin'")
     expect(source).not.toContain('workspace-comment-line-marker')
     expect(deletedSource).toContain('workspace-review-inline-deleted-comment-state selected')
@@ -183,7 +187,11 @@ describe('workspace line comments', () => {
     const lineRangeLabel = '<span>{formatLineRange(range.startLine, range.endLine)}</span>'
     expect(source.split(lineRangeLabel).length - 1).toBe(1)
     expect(source.split('<form').length - 1).toBe(1)
-    expect(styles).toMatch(/\.workspace-line-comment-editor,[\s\S]*?background:\s*var\(--surface\);[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*none;/s)
+    // One surface, one frame: the editor and a published comment are the same card, and in light
+    // mode a borderless #ffffff on the code surface's #f7f8fb is not a card at all (reported
+    // 2026-10-03). The frame is the app's interactive-card border and the lift is the floating-panel
+    // token, so both themes keep their own values.
+    expect(styles).toMatch(/\.workspace-line-comment-editor,[\s\S]*?background:\s*var\(--surface\);[\s\S]*?box-sizing:\s*border-box;[\s\S]*?border:\s*1px solid var\(--border-strong\);[\s\S]*?box-shadow:\s*var\(--floating-panel-shadow\);/s)
     expect(styles).toMatch(/\.workspace-line-comment-editor textarea\s*\{[\s\S]*?background:\s*transparent;[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*0;[\s\S]*?box-shadow:\s*none;/s)
     expect(styles).toMatch(/\.workspace-line-comment-editor textarea:focus-visible\s*\{[\s\S]*?outline:\s*0;[\s\S]*?outline-offset:\s*0;/s)
   })

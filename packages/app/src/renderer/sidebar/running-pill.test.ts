@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import type { HistoryActivity } from '../../shared/history-activity'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -138,5 +140,60 @@ describe('chat task pill rename', () => {
     expect(normalizeRenameDraft('旧名字', '旧名字')).toBeNull()
     expect(normalizeRenameDraft('   ', '旧名字')).toBeNull()
     expect(normalizeRenameDraft('', '旧名字')).toBeNull()
+  })
+})/**
+ * The bar's surface (2026-10-02, after the reference bar): it is the conversation's heading at the
+ * chat column's left edge, it leads with a larger name, it says the name is editable, and the
+ * background-task segment is the only thing that widens it. Asserted at the source level, the way
+ * the other renderer wiring contracts are, because a node test cannot lay the bar out.
+ */
+describe('chat task bar surface', () => {
+  const source = (path: string) => readFile(new URL(path, import.meta.url), 'utf8')
+
+  it('sits at the column\'s left edge instead of floating in the middle', async () => {
+    const styles = await readRendererStyleSource()
+    expect(styles).toMatch(/\.running-pill-shell\s*\{[\s\S]*?justify-content:\s*flex-start;[\s\S]*?padding:\s*var\(--task-pill-inset-top\) var\(--chat-content-gutter\) 0 2px;/u)
+  })
+
+  it('leads with a larger name and a pencil that opens the rename field', async () => {
+    const styles = await readRendererStyleSource()
+    const pill = await source('./running-pill.tsx')
+
+    expect(styles).toMatch(/\.running-pill-title\s*\{[\s\S]*?color:\s*var\(--text-strong\);[\s\S]*?font-size:\s*14px;[\s\S]*?font-weight:\s*600;/u)
+    expect(styles).toMatch(/\.running-pill-rename\s*\{[\s\S]*?width:\s*18px;[\s\S]*?flex:\s*0 0 18px;/u)
+    expect(pill).toContain('<RenameIcon />')
+    // The pointer path and the keyboard path both land in the same field.
+    expect(pill).toMatch(/className="running-pill-rename"[\s\S]*?setEditing\(true\)/u)
+    expect(pill).toContain("if (event.key !== 'F2') return")
+    expect(pill).toContain('aria-keyshortcuts="F2"')
+  })
+
+  it('widens only for the background-task segment, and that segment carries the chevron', async () => {
+    const styles = await readRendererStyleSource()
+    const pill = await source('./running-pill.tsx')
+
+    expect(pill).toContain('const taskLabel = `${commands.length} 项执行记录`')
+    expect(pill).toContain('{commands.length > 0 && (')
+    expect(pill).toContain('<span className="running-pill-chevron" aria-hidden="true" />')
+    expect(styles).toMatch(/\.running-pill-tasks\s*\{[\s\S]*?flex:\s*0 0 auto;/u)
+    // The state sentence is not a segment any more; it lives in the hover tip.
+    expect(pill).not.toContain('running-pill-summary')
+  })
+
+  it('keeps only the panel sections that have something in them', async () => {
+    const pill = await source('./running-pill.tsx')
+
+    expect(pill).toContain('{commands.length === 0 && <div className="running-pill-empty">这次运行还没有指令记录</div>}')
+    expect(pill).toContain('{running.length > 0 && (')
+    expect(pill).toContain('{finished.length > 0 && (')
+    // The two rows that reported nothing are gone: an empty running count and a line saying so.
+    expect(pill).not.toContain('当前没有正在运行的指令')
+    expect(pill).not.toContain('这次运行还没有已结束的指令')
+  })
+
+  it('opens the panel from the bar\'s own left edge', async () => {
+    const pill = await source('./running-pill.tsx')
+
+    expect(pill).toContain('const x = clampNumber(rect.left, 2, Math.max(2, window.innerWidth - panelWidth - edge))')
   })
 })

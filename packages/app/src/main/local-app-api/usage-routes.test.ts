@@ -175,8 +175,13 @@ async function daily(
 }
 
 describe('daily usage API', () => {
-  it('serves an explicit-timezone, explicitly bounded series after a refresh', async () => {
+  it('serves new calls without requiring a manual historical refresh', async () => {
     const app = await fixture()
+    const cold = await daily(app.context, 'from=2026-09-10&to=2026-09-10&timezone=Asia/Shanghai')
+    expect(cold.status).toBe(200)
+    expect(cold.series.coverage.projectionBuilt).toBe(false)
+    expect(cold.series.days[0]).toMatchObject({ state: 'empty', requests: 0 })
+    expect(cold.series.coverage.statement).toContain('尚未建立用量投影')
     await appendAttempt(app.store, {
       sessionId: 'session-known',
       runId: 'run-1',
@@ -196,19 +201,15 @@ describe('daily usage API', () => {
       model: 'gpt-x',
     })
 
-    // Before any refresh the projection is honestly empty, not zero-filled.
-    const cold = await daily(app.context, 'from=2026-09-10&to=2026-09-10&timezone=Asia/Shanghai')
-    expect(cold.status).toBe(200)
-    expect(cold.series.coverage.projectionBuilt).toBe(false)
-    expect(cold.series.days[0]).toMatchObject({ state: 'empty', requests: 0 })
-    expect(cold.series.coverage.statement).toContain('尚未建立用量投影')
+    const current = await daily(app.context, 'from=2026-09-10&to=2026-09-10&timezone=Asia/Shanghai')
+    expect(current.series.totals).toMatchObject({ total: 450, requests: 2 })
 
     const refreshed = await call(app.context, LOCAL_APP_API_ROUTES.usageRefresh, {
       method: 'POST',
       body: { budget: 64 },
     })
     expect(refreshed.status).toBe(200)
-    expect(refreshed.body.progress).toMatchObject({ status: 'complete', partitions: 2, indexed: 2 })
+    expect(refreshed.body.progress).toMatchObject({ status: 'complete', partitions: 2, indexed: 0 })
 
     const series = (await daily(app.context, 'from=2026-09-10&to=2026-09-10&timezone=Asia/Shanghai')).series
     expect(series).toMatchObject({

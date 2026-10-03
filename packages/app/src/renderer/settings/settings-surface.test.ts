@@ -186,6 +186,21 @@ describe('settings workspace surface', () => {
     expect(styles).not.toContain('.settings-module-empty')
   })
 
+  it('keeps the plugin list trailing control inside the card, at the row\'s own inline inset', () => {
+    // The list card draws no padding, so the row owns the inline inset (the same shape the overview
+    // rows were brought onto). A fixed 38px trailing column was narrower than the 40px switch and
+    // the summary reserved nothing on the right, so the control hung 1.3px over the card's edge
+    // while the row's text sat 9px inside the left one (reported 2026-10-02). Both ends now take the
+    // token, and the column follows the control's own width instead of a number that can drift.
+    const summary = ruleBody('.plugin-list-summary')
+    expect(summary).toContain('grid-template-columns: minmax(0, 1fr) auto')
+    expect(summary).toContain('padding-right: var(--settings-list-inline-inset)')
+    expect(ruleBody('.plugin-list-disclosure')).toContain('padding: 8px var(--settings-list-inline-inset)')
+    // The card frame is still the shared row-list card, not a second one for this page.
+    expect(ruleBody('.settings-workspace-body :is(.provider-card, .plugin-list)'))
+      .toContain('border-radius: var(--settings-card-radius)')
+  })
+
   it('gives the overview list its horizontal inset to the row, so the pointer fill reaches the card edge', () => {
     // `.settings-overview-group-items` is one of the row-list cards, so it also carried their 16px
     // inset. On a row card that inset belongs to the row — the shape `.plugin-list-disclosure`

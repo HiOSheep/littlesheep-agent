@@ -63,4 +63,12 @@ describe('composer input sizing', () => {
     expect(style.height).toBe('72px')
     expect(style.overflowY).toBe('hidden')
   })
+  it('allows scrolling when wrapped controls consume some of the requested field height', () => {
+    const next = createTextarea('multiline content', 180)
+    Object.defineProperty(next.textarea, 'clientHeight', { value: 120 })
+    syncComposerInputHeight(next.textarea, 220)
+    expect(next.style.height).toBe('180px')
+    expect(next.style.overflowY).toBe('auto')
+  })
+
 })

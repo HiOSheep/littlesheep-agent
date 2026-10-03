@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { ContextMenuSurface } from './ui/context-menu'
+import { warmVoidRingMotion } from './ui/void-ring'
 import { reportRendererFirstFrame } from './runtime-readiness/renderer-timing'
 import { preloadPersistedWorkspaceDirectory } from './workspace/directory-preload'
 import { bootstrapAppearancePreferences } from './app-shell/appearance-preferences'
@@ -14,4 +16,7 @@ if (!rootEl) throw new Error('Root element #root not found')
 reportRendererFirstFrame()
 bootstrapAppearancePreferences()
 void preloadPersistedWorkspaceDirectory()
-createRoot(rootEl).render(<App />)
+// Decode the empty conversation's mark while the app is still starting: a new conversation then
+// paints its animation directly instead of swapping artwork one frame in (reported 2026-10-03).
+void warmVoidRingMotion()
+createRoot(rootEl).render(<><App /><ContextMenuSurface /></>)

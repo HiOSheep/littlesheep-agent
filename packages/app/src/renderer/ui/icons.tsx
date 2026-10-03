@@ -111,6 +111,20 @@ export function ComposeIcon() {
 }
 
 
+/**
+ * The composer's attach trigger: a bare plus, drawn as one stroke pair so both arms weigh the same.
+ * It replaces two 1px pseudo-element bars, whose rotated arm rasterised across half pixels and read
+ * heavier than its partner (reported 2026-10-03).
+ */
+export function AddIcon() {
+  return (
+    <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M8 3.4v9.2M3.4 8h9.2" />
+    </svg>
+  )
+}
+
+
 export function PinIcon({ active }: { active: boolean }) {
   return (
     <svg className={`sidebar-svg-icon pin-icon ${active ? 'active' : ''}`} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -173,6 +187,15 @@ export function TrashIcon() {
 
 
 export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
+  if (id === 'home') {
+    // The navigation page: a compass, the same idea the reference launcher used for "开始".
+    return (
+      <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <circle cx="8" cy="8" r="5.35" />
+        <path d="m10.4 5.6-1.5 3.3-3.3 1.5 1.5-3.3z" />
+      </svg>
+    )
+  }
   if (id === 'review') {
     return (
       <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -265,9 +288,9 @@ export function PanelFullscreenIcon({ active }: { active: boolean }) {
   return (
     <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       {active ? (
-        <path d="M6.7 3.2H3.25v3.45M9.3 3.2h3.45v3.45M6.7 12.8H3.25V9.35M9.3 12.8h3.45V9.35M5.15 5.15l-1.9-1.9M10.85 5.15l1.9-1.9M5.15 10.85l-1.9 1.9M10.85 10.85l1.9 1.9" />
+        <path d="M3 6h3V3M10 3v3h3M13 10h-3v3M6 13v-3H3" />
       ) : (
-        <path d="M3.45 6.45v-3h3M9.55 3.45h3v3M12.55 9.55v3h-3M6.45 12.55h-3v-3M3.45 3.45l3 3M12.55 3.45l-3 3M12.55 12.55l-3-3M3.45 12.55l3-3" />
+        <path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" />
       )}
     </svg>
   )

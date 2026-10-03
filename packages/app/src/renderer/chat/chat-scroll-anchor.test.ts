@@ -11,6 +11,7 @@ import {
   resolveAnchoredScrollTop,
   resolveChatResizeScrollTop,
   resolveBottomAnchoredScrollTop,
+  resolveTurnJumpScrollTop,
   selectChatVisibleAnchor,
   type ChatAnchorProbe,
   type ChatScrollGeometry,
@@ -156,5 +157,21 @@ describe('chat visible anchor', () => {
 
   it('uses the message key attribute the transcript actually renders', () => {
     expect(CHAT_MESSAGE_ANCHOR_ATTRIBUTE).toBe('data-message-key')
+  })
+})
+
+describe('chat end positions', () => {
+  it('lands a jumped-to turn just below the clip edge', () => {
+    // A turn 1_200px down the transcript, jumped to with a 16px reading inset.
+    expect(resolveTurnJumpScrollTop(1_200, 16, 3_000, 800)).toBe(1_184)
+  })
+
+  it('clamps a jump to the top and to the bottom of what the container can reach', () => {
+    // The first turn: the inset would ask for a negative offset.
+    expect(resolveTurnJumpScrollTop(4, 16, 3_000, 800)).toBe(0)
+    // The last turn: the turn cannot be lifted to the top when there is nothing below it.
+    expect(resolveTurnJumpScrollTop(2_400, 16, 3_000, 800)).toBe(2_200)
+    // A conversation shorter than its viewport cannot scroll at all.
+    expect(resolveTurnJumpScrollTop(120, 16, 300, 800)).toBe(0)
   })
 })

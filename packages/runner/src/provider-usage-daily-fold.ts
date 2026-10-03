@@ -1,8 +1,8 @@
 // Deduplicating fold over persisted Provider usage facts (O5).
 //
-// Attempt identity is the Provider request id: the Harness mints a fresh random
-// request id per provider attempt (including each retry, which is a separate
-// billable call), and the durable event id is derived from run id + request id,
+// New attempt identity combines the Harness request id and physical HTTP attempt;
+// transport retries within one logical call are separate billable responses.
+// Legacy events retain their original logical request id. The durable event id is derived from run id + request id,
 // so the same request id can only appear twice when a log was copied — a forked
 // conversation, a replayed run, or the same partition read again. Folding by
 // request id therefore collapses exactly those copies and never merges two
@@ -104,7 +104,7 @@ export function foldProviderUsageDailyRuns(
     }
     missing.push(entry.mark);
     if (entry.mark.kind === 'response_without_usage') missingResponses += 1;
-    else unreportedRequests += 1;
+    else if (entry.mark.kind === 'request_without_response') unreportedRequests += 1;
   }
   if (options.knownSessionIds) {
     for (const sessionId of sessions) {

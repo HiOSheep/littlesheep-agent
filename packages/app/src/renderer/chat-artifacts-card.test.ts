@@ -234,7 +234,7 @@ describe('the artifacts card is a transcript surface, not a floating panel', () 
   it('fills one surface step deeper than the surface it read as a light block on', async () => {
     const { body } = await cardRule()
 
-    expect(body).toContain('background: var(--surface-2)')
+    expect(body).toContain('background: var(--chat-panel-fill)')
     expect(body).not.toContain('background: var(--surface-3)')
   })
 })

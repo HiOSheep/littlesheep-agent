@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ToolStreamEvent } from '@littlesheep/types'
 import type { LocalAppRunCheckpointSummary } from '../../shared/run-checkpoint-contracts'
 import {
+  pendingRecoveryCheckpoints,
   checkpointRecoveryDiagnosticText,
   checkpointRecoveryEntry,
   checkpointRecoveryProgressForEvent,
@@ -207,5 +208,20 @@ describe('checkpoint recovery wiring', () => {
     expect(hook).toContain("if (state.state === 'ready') runDiscovery()")
     expect(hook).toContain('if (isExecutionReady()) runDiscovery()')
     expect(hook).not.toContain('void refreshCheckpoints(false)\n  }, [])')
+  })
+})
+
+
+describe('explicit stop recovery visibility', () => {
+  it('excludes stopped runs and stopped recoveries but keeps crashes and waiting input', () => {
+    const records = [
+      { id: 'stopped', reason: 'user-requested-stop' },
+      { id: 'recovery-stopped', reason: 'user-stopped-checkpoint-recovery' },
+      { id: 'disposition-stopped', reason: 'interrupted', disposition: { reason: 'user-requested-stop' } },
+      { id: 'crashed', reason: 'process-interrupted' },
+      { id: 'waiting', reason: 'approval_denied', waitingForInput: true },
+    ] as LocalAppRunCheckpointSummary[]
+    expect(pendingRecoveryCheckpoints(records).map((record) => record.id)).toEqual(['crashed', 'waiting'])
+    expect(records).toHaveLength(5)
   })
 })

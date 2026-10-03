@@ -34,8 +34,11 @@ export interface WorkspaceOpenWithOptions {
   platform?: NodeJS.Platform
   /** Injectable so the parsing is testable without the matching machine. */
   regQuery?: (key: string, value?: string) => Promise<string>
-  /** Injectable: resolves an executable's own description for a friendlier label. */
-  describeExecutable?: (path: string) => Promise<string | null>
+  /**
+   * Injectable: the executables' own version descriptions, as one batch. The route supplies the
+   * Windows reader; without it a handler that has no registry name keeps its file name.
+   */
+  describeExecutables?: (paths: string[]) => Promise<Map<string, string>>
   limit?: number
 }
 
@@ -185,6 +188,12 @@ export async function discoverOpenWithHandlers(
     add(openWith ? parseRegValue(openWith) : null, friendly ? parseRegValue(friendly, 'FriendlyAppName') : null, isDefaultApplication)
   }
 
+  // A label that is nothing but the file name says nothing: `msedge` is a file, not a name. Ask the
+  // registry's own application name for every entry (only the `HKCR\Applications` branch used to,
+  // so the ProgId entries kept their file names), then the executable's version description, and keep
+  // the file name only when neither the machine nor the host can answer.
+  await resolveLabels(handlers, safeQuery, options.describeExecutables)
+
   return [...handlers.values()]
     .sort((left, right) => {
       if (left.isDefault !== right.isDefault) return left.isDefault ? -1 : 1
@@ -197,6 +206,39 @@ async function defaultRegQuery(key: string, value?: string): Promise<string> {
   const args = ['query', key, ...(value ? ['/v', value] : [])]
   const { stdout } = await run('reg.exe', args, { windowsHide: true, timeout: 4000, maxBuffer: 256 * 1024 })
   return stdout
+}
+
+/**
+ * Gives every unnamed handler a real name, in order of authority: the registry's `FriendlyAppName`,
+ * the executable's own version description, and lastly the file name it already had. Queries run
+ * together - the list is bounded and the route caches the result per extension.
+ */
+async function resolveLabels(
+  handlers: Map<string, WorkspaceOpenWithHandler>,
+  query: (key: string, value?: string) => Promise<string | null>,
+  describe?: (paths: string[]) => Promise<Map<string, string>>,
+): Promise<void> {
+  const labels = new Map<string, string>()
+  await Promise.all([...handlers.values()].map(async (handler) => {
+    if (handler.label !== labelFromExecutable(handler.executable)) return
+    const key = `HKCR\\Applications\\${basename(handler.executable)}`
+    const output = await query(key, 'FriendlyAppName')
+    const label = usableLabel(output ? parseRegValue(output, 'FriendlyAppName') : null, handler.executable)
+    if (label !== handler.label) labels.set(handler.id, label)
+  }))
+  const unresolved = [...handlers.values()].filter((handler) =>
+    (labels.get(handler.id) ?? handler.label) === labelFromExecutable(handler.executable))
+  if (describe && unresolved.length > 0) {
+    const described = await describe(unresolved.map((handler) => handler.executable))
+    for (const handler of unresolved) {
+      const label = usableLabel(described.get(handler.executable) ?? null, handler.executable)
+      if (label !== handler.label) labels.set(handler.id, label)
+    }
+  }
+  for (const [id, label] of labels) {
+    const handler = handlers.get(id)
+    if (handler) handlers.set(id, { ...handler, label })
+  }
 }
 
 /**

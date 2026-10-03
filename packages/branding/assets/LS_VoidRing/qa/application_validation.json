@@ -1,0 +1,24 @@
+{
+  "fixture": "isolated real Electron + deterministic local SSE provider",
+  "checks": {
+    "idlePixelDifference": 4.361429988662132,
+    "emptyHintClearOfComposer": true,
+    "surfaceAlpha": {
+      "cornerAlpha": 0,
+      "bodyAlpha": 255,
+      "background": "rgba(0, 0, 0, 0)"
+    },
+    "lightThemeTransparent": true,
+    "reducedMotionStatic": true,
+    "reducedMotionTransparent": true,
+    "realLoadingState": true,
+    "realThinkingState": true,
+    "thinkingPixelDifference": 3.762602880658436,
+    "completedReturnsToIdle": true,
+    "startupPixelDifference": 5.693582294028722,
+    "startupTransparent": true,
+    "startupReducedMotion": true,
+    "startupFallbackTransparent": true
+  },
+  "status": "passed"
+}

@@ -1,0 +1,55 @@
+.app-context-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 254px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+  padding: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: var(--floating-panel-shadow);
+  font-size: 13px;
+}
+.app-context-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.app-context-menu button:hover:not(:disabled), .app-context-menu button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+.app-context-menu button:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.app-context-menu button:disabled { opacity: .4; cursor: default; }
+.app-context-menu kbd { color: var(--text-muted); font: inherit; font-size: 11px; }
+.app-context-menu-divider { height: 1px; margin: 5px 8px; background: var(--border); }
+.app-context-menu-error {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10001;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px;
+  border: 1px solid var(--feedback-danger-border);
+  border-radius: var(--radius-card);
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: var(--floating-panel-shadow);
+}
+.app-context-menu-error button { margin-left: 14px; border: 0; background: transparent; color: inherit; cursor: pointer; }

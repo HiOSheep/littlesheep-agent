@@ -140,15 +140,15 @@ describe('corner shape', () => {
     expect(material!.body).not.toContain('clip-path')
   })
 
-  it('keeps the composer glass on the same corner geometry as the frame', () => {
-    // The composer material is an inset ::before (so the element is not a
-    // backdrop root for the popovers it opens); like the floating panels it
-    // cannot be reached by the blanket rule, so the shape has to be handed
-    // down or the glass and the frame's radius would draw different corners.
-    const glass = shaped.find(({ selector }) => selector === '.composer::before')
-    expect(glass, 'the composer glass rule is missing').toBeDefined()
+  it('keeps the floating-panel material on the same corner geometry as the frame', () => {
+    // The panel material is an inset ::before (so the element is not a backdrop
+    // root for the popovers it opens); like the floating panels it cannot be
+    // reached by the blanket rule, so the shape has to be handed down or the
+    // glass and the frame's radius would draw different corners. The composer
+    // card is an opaque surface now (DSH) and needs no layer of its own.
+    const glass = shaped.find(({ selector }) => selector.includes('.sidebar-surface::before'))
+    expect(glass, 'the floating-panel material rule is missing').toBeDefined()
     expect(glass!.body).toContain('corner-shape: var(--corner-shape)')
-    expect(glass!.body).toContain('border-radius: var(--radius-composer-input)')
   })
 
   it('keeps corner-shape in the places that may declare it', () => {
@@ -156,10 +156,9 @@ describe('corner shape', () => {
     // silently win or lose by specificity rather than by the rules above.
     const selectors = shaped.map(({ selector }) => selector)
     expect(selectors).toContain('*')
-    // The two inset material layers: the floating panels
-    // (.sidebar-surface::before and .workspace-panel-surface::before share one
-    // rule) and the composer glass (.composer::before).
-    expect(selectors.filter((selector) => selector.includes('::before'))).toHaveLength(2)
+    // The one inset material layer: the floating panels
+    // (.sidebar-surface::before and .workspace-panel-surface::before share one rule).
+    expect(selectors.filter((selector) => selector.includes('::before'))).toHaveLength(1)
     expect(selectors.filter((selector) => selector.startsWith('.active-run-indicator'))).toHaveLength(1)
     // The one place outside `12-squircle-corners.css`: beta's window layout rounds the
     // chat column's junction corner against the sidebar (`border-top-left-radius: 12px`
@@ -171,6 +170,6 @@ describe('corner shape', () => {
     // say which layout it belongs to.
     const beta = selectors.filter((selector) => selector.includes("data-window-layout='beta'"))
     expect(beta).toEqual(["html[data-window-layout='beta'] :is(.core-workspace, .settings-workspace-body)"])
-    expect(selectors).toHaveLength(5)
+    expect(selectors).toHaveLength(4)
   })
 })

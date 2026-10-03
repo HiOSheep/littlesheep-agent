@@ -35,5 +35,5 @@ folder.rmdir()
 report.pop("previewFrameDirectory")
 report["gifDurationMs"] = 7200
 report["gifSource"] = "lottie-web 5.12.2 / Chromium SVG renderer"
-(ROOT / "qa/validation.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+(ROOT / "qa/validation.json").write_text(json.dumps(report, indent=2), encoding="utf-8", newline="\n")
 print("Exported 7.2s four-state preview and 3.6s water-breathing GIF from the actual Lottie player.")

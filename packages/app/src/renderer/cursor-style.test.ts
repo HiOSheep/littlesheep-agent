@@ -17,9 +17,14 @@ describe('renderer cursor policy', () => {
     const ordinaryControlRule = styles.match(/button,[\s\S]*?\[role='tab'\]\s*\{([^}]*)\}/u)?.[1] ?? ''
 
     expect(ordinaryControlRule).toContain('cursor: pointer;')
-    // The pointer is the ordinary action cursor; grab-style cursors stay out of
-    // the renderer because nothing here is a draggable surface.
-    expect(styles).not.toMatch(/cursor:\s*(?:grab|grabbing)\b/u)
+    // The pointer is the ordinary action cursor. One surface is genuinely draggable — the floating
+    // task pill, which can be moved anywhere inside the conversation (asked for 2026-10-03) — so
+    // grab cursors are allowed on that bar and nowhere else.
+    const grabRules = [...styles.matchAll(/([^{}]+)\{([^{}]*cursor:\s*(?:grab|grabbing)\b[^{}]*)\}/gu)]
+    expect(grabRules.length).toBeGreaterThan(0)
+    for (const rule of grabRules) {
+      expect(rule[1], rule[1]?.trim()).toMatch(/\.running-pill\b/u)
+    }
   })
 
   it('reserves the resize cursor for the four custom-width handles', () => {

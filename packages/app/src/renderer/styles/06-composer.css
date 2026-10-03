@@ -32,6 +32,16 @@
   margin-bottom: 150px;
 }
 
+/* The loading row is the other thing an empty conversation shows while the field is floated, and it
+   needs the same room the hint takes. Measured at 1280x900 with the field centred: with no margin
+   the row's bottom sat 6.5px *inside* the field's top edge (the row is centred in a content box
+   whose bottom already reserves room for a field at the bottom of the column, which is not where
+   this field is). A margin of one `--composer-overlay-height` leaves about half of it as the visible
+   gap - 55px against the hint's 44.6px - and follows the field when a tall draft grows it. */
+.messages.is-empty .history-loading {
+  margin-bottom: var(--composer-overlay-height);
+}
+
 .composer-shell > .composer,
 .composer-shell > .task-progress-anchor {
   pointer-events: auto;
@@ -84,7 +94,8 @@
 }
 
 .task-progress-indicator {
-  --task-progress-color: #c7c7c7;
+  /* 进度环的静息色改用次级墨色 token，浅色主题不再继承写死的浅灰。 */
+  --task-progress-color: var(--muted-2);
   position: relative;
   display: grid;
   place-items: center;
@@ -112,15 +123,15 @@
   border-radius: var(--radius-circle);
   background: conic-gradient(
     var(--task-progress-color) var(--task-progress-angle),
-    rgba(190, 190, 190, 0.24) 0
+    color-mix(in srgb, var(--muted-2) 30%, transparent) 0
   );
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px var(--chat-hairline-soft);
 }
 
 .task-progress-ring::after {
   position: absolute;
   inset: 4px;
-  background: rgb(24, 24, 24);
+  background: var(--chat-card-fill);
   border-radius: var(--radius-circle);
   content: "";
 }
@@ -129,10 +140,10 @@
 .task-progress-indicator.phase-verifying .task-progress-ring {
   background: conic-gradient(
     from 0deg,
-    rgba(190, 190, 190, 0.22) 0deg,
+    color-mix(in srgb, var(--muted-2) 30%, transparent) 0deg,
     var(--task-progress-color) 70deg,
-    rgba(190, 190, 190, 0.22) 150deg,
-    rgba(190, 190, 190, 0.22) 360deg
+    color-mix(in srgb, var(--muted-2) 30%, transparent) 150deg,
+    color-mix(in srgb, var(--muted-2) 30%, transparent) 360deg
   );
   animation: task-progress-spin 1.8s linear infinite;
 }
@@ -151,16 +162,15 @@
   padding: 10px 12px;
   color: var(--text);
   background: var(--sidebar-menu-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-ui);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+  border: 0;
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
   transition:
     opacity var(--transient-motion) var(--motion-ease),
     visibility 0s linear var(--transient-motion);
-  border-color: var(--border);
 }
 
 .task-progress-popover.open {
@@ -204,6 +214,7 @@
   max-height: 150px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-top: 2px;
 }
 
@@ -246,6 +257,7 @@
   margin: 0 0 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .attachment-preview-card {
@@ -255,9 +267,9 @@
   min-height: 126px;
   overflow: hidden;
   color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-ui);
+  background: var(--chat-card-fill);
+  border: .5px solid var(--chat-hairline-soft);
+  border-radius: var(--radius-card);
   font-size: 12px;
   outline: none;
   transition:
@@ -310,7 +322,7 @@
   width: 100%;
   height: 78px;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: .5px solid var(--chat-hairline-soft);
 }
 
 .attachment-preview-thumb {
@@ -480,21 +492,25 @@
 }
 
 .composer {
-  --composer-padding-block: 12px;
-  --composer-padding-inline: 16px;
-  --composer-control-surface-size: 34px;
-  --composer-control-padding-inline: 10px;
-  --composer-control-row-height: 34px;
-  --composer-control-row-half-height: 17px;
-  --composer-control-gap: 3px;
-  --composer-control-font-size: 12px;
+  --composer-padding-block: 10px;
+  --composer-padding-inline: 12px;
+  --composer-control-surface-size: 28px;
+  /* 控制行的圆角固定为 8px：DSH 的行内控件是小圆角矩形，不再由控件高度推导，
+     28px 的方形控件也不会被拉成胶囊。 */
+  --composer-control-radius: 8px;
+  --composer-control-padding-inline: 8px;
+  --composer-control-row-height: 32px;
+  --composer-control-row-half-height: 16px;
+  --composer-control-gap: 8px;
+  --composer-control-font-size: 13px;
   /* The composer's own controls (the model/behaviour triggers and the bare
      `select`) dim less than a settings action: they sit on the input's glass and
      are still readable at this tone. One token instead of three literals. */
   --composer-control-disabled-opacity: 0.48;
-  --composer-leading-control-half-size: 17px;
-  --composer-trailing-control-half-size: 17px;
-  --composer-send-size: 30px;
+  /* 首尾控件半宽 = 28px 控制面的一半；中心内缩量据此保持控件中心落在圆角轴上。 */
+  --composer-leading-control-half-size: 14px;
+  --composer-trailing-control-half-size: 14px;
+  --composer-send-size: 34px;
   --mode-picker-compact-width: calc(
     16px + 7px + (2 * var(--composer-control-padding-inline))
   );
@@ -509,45 +525,18 @@
   width: min(var(--composer-max-width), 100%);
   margin: 0 auto;
   padding: var(--composer-padding-block) var(--composer-padding-inline);
-  /* The frame is intentionally transparent: the frosted material is painted by
-     the inset ::before below, so this element does not become a backdrop root.
-     If it carried the backdrop-filter itself it would be the backdrop root for
-     every popover it opens, and a descendant's blur only samples what its root
-     already painted - which for a popover floating outside this box is nothing,
-     so the add menu and the model/permission picker rendered the crisp page
-     through a 0.75 fill instead of frosted glass (measured on Chromium 152 as a
-     ~60/255 stripe step against the composer's ~1/255). */
+  /* 输入卡是一整块实心卡：DSH 的输入区用实心面 + 柔和投影，不再有内嵌玻璃层，
+     元素自身也就不再是弹层的 backdrop root。 */
   position: relative;
-  background: transparent;
+  background: var(--chat-card-fill);
   border: 0;
   border-radius: var(--radius-composer-input);
-  box-shadow: var(--composer-shadow);
-  gap: 8px;
-}
-
-.composer::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  /* z-index, not position, must stay the only thing below the in-flow content:
-     giving the composer a z-index would make it a stacking context and change
-     how the popovers layer against .task-progress-anchor. The negative layer
-     paints above the composer shell's transparent background - the shell's
-     z-index 40 is what keeps it above the page behind - and below the content. */
-  z-index: -1;
-  border-radius: var(--radius-composer-input);
-  corner-shape: var(--corner-shape);
-  background: var(--composer-surface);
-  -webkit-backdrop-filter: blur(18px) saturate(135%);
-  backdrop-filter: blur(18px) saturate(135%);
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 9%, transparent);
+  box-shadow: var(--chat-card-elevation);
+  gap: 12px;
 }
 
 .composer.drag-active {
-  box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.28),
-    0 0 0 2px rgba(226, 226, 226, 0.12) inset;
+  box-shadow: var(--chat-card-elevation), 0 0 0 2px var(--chat-business-soft);
 }
 
 .composer textarea {
@@ -555,19 +544,19 @@
   width: 100%;
   height: 36px;
   min-height: 36px;
-  max-height: min(30vh, 220px);
-  padding: 5px 4px 0;
+  max-height: var(--chat-input-max-height);
+  padding: 4px 6px 0 4px;
   overflow-y: hidden;
   resize: none;
-  color: var(--text-strong);
+  color: var(--text);
   background: transparent;
   border: 0;
   font-size: var(--chat-message-font-size);
-  line-height: 1.6;
+  line-height: var(--chat-message-line-height);
 }
 
 .composer textarea::placeholder {
-  color: var(--muted);
+  color: var(--muted-2);
 }
 
 .composer textarea:focus {
@@ -584,7 +573,6 @@
   width: 100%;
   gap: var(--composer-control-gap);
   flex-wrap: nowrap;
-  transform: translateY(2px);
 }
 
 .composer-left,
@@ -633,7 +621,6 @@
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-circle);
   font-size: 20px;
   line-height: 1;
 }
@@ -666,32 +653,21 @@
 .add-menu-trigger {
   position: relative;
   color: var(--muted);
-  font-size: 0;
-  font-weight: 300;
   line-height: 1;
 }
 
-.add-menu-trigger::before,
-.add-menu-trigger::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
+/* The plus is an icon, not two 1px pseudo-element bars: the rotated bar landed on half pixels and
+   rasterised heavier than its partner (reported 2026-10-03). */
+.add-menu-trigger .sidebar-svg-icon {
   width: 16px;
-  height: 1px;
-  background: currentColor;
-  border-radius: var(--radius-pill);
-  transform: translate(-50%, -50%);
-}
-
-.add-menu-trigger::after {
-  transform: translate(-50%, -50%) rotate(90deg);
+  height: 16px;
 }
 
 .add-menu.open .add-menu-trigger,
 .add-menu-trigger:hover:not(:disabled) {
   color: var(--text-strong);
-  background: var(--control-active);
+  /* 这一个控件改用对话区的填充色阶：静息 --chat-hover-fill、展开/悬停 --chat-active-fill。 */
+  background: var(--chat-active-fill);
 }
 
 .add-menu-panel {
@@ -702,8 +678,8 @@
   padding: 8px;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-composer-input);
-  box-shadow: var(--shadow-menu);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -734,12 +710,13 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 44px;
+  min-height: 36px;
   padding: 0 10px;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
+  font-size: var(--chat-font-size-secondary);
   text-align: left;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -748,8 +725,8 @@
 
 .add-menu-item:hover,
 .add-menu-item:focus-visible {
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: transparent;
 }
 
 .add-menu-icon {
@@ -797,10 +774,22 @@
 .model-picker-trigger {
   max-width: 240px;
   padding: 0 var(--composer-control-padding-inline);
-  color: var(--text);
+  /* 选择器触发器静息用次级墨色 + 透明底，强调色只在悬停/展开时出现。 */
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--composer-control-radius);
   font-size: var(--composer-control-font-size);
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1;
+}
+
+/* 悬停 / 键盘聚焦 / 展开：提升墨色并给出统一的对话区 hover 底。 */
+.model-picker-trigger:hover:not(:disabled),
+.model-picker-trigger:focus-visible,
+.model-picker-trigger[aria-expanded='true'] {
+  color: var(--text-strong);
+  background: var(--chat-hover-fill);
 }
 
 .pill-select {
@@ -871,8 +860,13 @@
   justify-content: flex-start;
   gap: var(--picker-arrow-gap);
   overflow: hidden;
+  /* 风险色（--mode-risk）不变，只把控件底与字号并入统一的选择器外观。 */
   color: var(--mode-risk);
+  background: transparent;
+  border: 0;
+  border-radius: var(--composer-control-radius);
   font-size: var(--composer-control-font-size);
+  font-weight: 500;
 }
 
 .mode-picker-mark {
@@ -935,8 +929,8 @@
   height: 7px;
   flex-basis: 7px;
   margin-left: 2px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid var(--muted-2);
+  border-bottom: 1.5px solid var(--muted-2);
   opacity: 0.76;
   transform: translateY(-1px) rotate(45deg) scale(1);
 }
@@ -947,8 +941,8 @@
   height: 7px;
   flex-basis: 7px;
   margin-left: 2px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid var(--muted-2);
+  border-bottom: 1.5px solid var(--muted-2);
   opacity: 0.76;
   transform: translateY(1px) rotate(225deg) scale(1);
 }
@@ -1021,7 +1015,8 @@
 }
 
 .context-usage {
-  --context-usage-color: #bdbdbd;
+  /* 默认进度色接入唯一业务蓝；warning/danger 的覆盖色调保持不变。 */
+  --context-usage-color: var(--chat-business);
   position: relative;
   z-index: 43;
   display: grid;
@@ -1066,7 +1061,7 @@
 }
 
 .context-usage-ring-track {
-  stroke: rgba(190, 190, 190, 0.3);
+  stroke: color-mix(in srgb, var(--muted-2) 30%, transparent);
 }
 
 .context-usage-ring-progress {
@@ -1115,8 +1110,8 @@
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 0;
-  border-radius: var(--radius-ui);
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   font-size: 13px;
   line-height: 1.25;
   opacity: 1;
@@ -1153,9 +1148,13 @@
   gap: var(--picker-arrow-gap);
   padding: 0 var(--composer-control-padding-inline);
   overflow: hidden;
-  color: var(--text);
+  /* 运行模型触发器静息为次级墨色 + 透明底；悬停/展开的底色见文件下方的状态规则。 */
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--composer-control-radius);
   font-size: var(--composer-control-font-size);
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .runtime-picker-trigger:disabled {
@@ -1209,8 +1208,8 @@
   color: var(--text);
   background: rgba(37, 37, 37, 0.98);
   border: 0;
-  border-radius: var(--radius-composer-input);
-  box-shadow: var(--shadow-menu);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   /* Same material rule as the menu shell: painted from the first frame, moved into place rather
      than faded in. */
   opacity: 0;
@@ -1239,7 +1238,7 @@
   grid-template-columns: 150px minmax(0, 1fr);
   min-height: 174px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--chat-hairline-soft);
   border-radius: var(--radius-ui);
 }
 
@@ -1250,11 +1249,12 @@
   padding: 6px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .runtime-provider-list {
   background: var(--bg);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--chat-hairline-soft);
 }
 
 .runtime-provider-option,
@@ -1279,7 +1279,7 @@
   min-height: 34px;
   gap: 8px;
   padding: 0 9px;
-  font-size: 12px;
+  font-size: var(--chat-font-size-secondary);
   font-weight: 650;
 }
 
@@ -1307,21 +1307,21 @@
 .runtime-provider-option:hover,
 .runtime-model-option:hover {
   color: var(--text-strong);
-  background: var(--composer-picker-option-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: transparent;
 }
 
 .runtime-model-option.active,
 .runtime-reasoning-option.active {
   color: var(--text-strong);
   background: var(--composer-picker-option-active);
-  border-color: var(--border-strong);
+  border-color: transparent;
 }
 
 .runtime-provider-option.active {
   color: var(--text-strong);
   background: var(--composer-picker-option-active);
-  border-color: var(--border-strong);
+  border-color: transparent;
 }
 
 .runtime-reasoning-list {
@@ -1335,15 +1335,16 @@
   gap: 2px;
   min-height: 54px;
   padding: 7px 9px;
+  font-size: var(--chat-font-size-secondary);
 }
 
 .runtime-reasoning-option:hover {
-  background: var(--composer-picker-option-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: transparent;
 }
 
 .runtime-reasoning-option span {
-  font-size: 12px;
+  font-size: var(--chat-font-size-secondary);
   font-weight: 650;
 }
 
@@ -1358,7 +1359,8 @@
 }
 
 .runtime-reasoning-option.active small {
-  color: rgba(24, 24, 24, 0.78);
+  /* 选中底是深色混合面，写死的深灰在深色主题下不可读；改用次级墨色 token。 */
+  color: var(--muted-2);
 }
 
 .runtime-empty {
@@ -1387,7 +1389,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-ui);
-  font-size: 12px;
+  font-size: var(--chat-font-size-secondary);
   font-weight: 650;
   text-align: left;
   transition:
@@ -1439,13 +1441,13 @@
 .runtime-menu-divider {
   height: 1px;
   margin: 2px 1px;
-  background: var(--border);
+  background: var(--chat-hairline-soft);
 }
 
 .runtime-menu-item:hover:not(:disabled),
 .runtime-menu-item:focus-visible {
   color: var(--text-strong);
-  background: var(--composer-picker-option-hover);
+  background: var(--chat-hover-fill);
   border-color: transparent;
 }
 
@@ -1556,8 +1558,8 @@
   overflow-y: auto;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-composer-input);
-  box-shadow: var(--shadow-menu);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   opacity: 1;
   pointer-events: auto;
   transform: none;
@@ -1584,8 +1586,8 @@
   overflow-y: auto;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-composer-input);
-  box-shadow: var(--shadow-menu);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -1610,7 +1612,7 @@
 .runtime-menu-shell .runtime-menu-item:hover:not(:disabled),
 .runtime-menu-shell .runtime-menu-item:focus-visible,
 .runtime-menu-shell .runtime-menu-item.active {
-  background: var(--composer-picker-option-hover);
+  background: var(--chat-hover-fill);
 }
 
 .runtime-menu-shell .runtime-menu-item.active {
@@ -1657,8 +1659,8 @@
   overflow: hidden;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-composer-input);
-  box-shadow: var(--shadow-menu);
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
   /* Painted from the first frame and moved into place: an opacity ramp showed the blur arriving
      with the panel instead of the panel simply being frosted. */
   opacity: 0;
@@ -1697,6 +1699,8 @@
   grid-template-columns: none;
   width: min(320px, calc(100vw - 56px));
   overflow: visible;
+  border: 0;
+  border-radius: var(--radius-card);
 }
 
 .option-picker-panel.mode-picker-panel {
@@ -1704,7 +1708,7 @@
   padding: 5px;
   /* The material comes from the shared composer-popover rule above; this panel only owns its
      size and shadow. */
-  box-shadow: var(--shadow-menu);
+  box-shadow: var(--chat-panel-elevation);
 }
 
 .mode-picker-panel .option-picker-list {
@@ -1728,6 +1732,7 @@
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .model-picker-providers {
@@ -1735,8 +1740,9 @@
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--bg);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--chat-hairline-soft);
 }
 
 .model-provider-option,
@@ -1754,7 +1760,7 @@
   gap: 8px;
   min-height: 34px;
   padding: 0 9px;
-  font-size: 12px;
+  font-size: var(--chat-font-size-secondary);
   font-weight: 650;
 }
 
@@ -1775,14 +1781,14 @@
 .model-provider-option:hover,
 .model-option:hover {
   color: var(--text-strong);
-  background: var(--composer-picker-option-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: transparent;
 }
 
 .model-provider-option.active {
   color: var(--text-strong);
   background: var(--composer-picker-option-active);
-  border-color: var(--border-strong);
+  border-color: transparent;
 }
 
 .model-picker-models {
@@ -1796,7 +1802,7 @@
   gap: 8px;
   min-height: 40px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--chat-hairline-soft);
 }
 
 .model-picker-heading span {
@@ -1821,6 +1827,7 @@
   padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .model-option {
@@ -1829,7 +1836,7 @@
   min-height: 34px;
   padding: 0 10px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--chat-font-size-secondary);
   font-weight: 650;
   text-align: left;
 }
@@ -1840,6 +1847,7 @@
   min-height: 36px;
   padding: 0 10px;
   font-family: var(--font);
+  font-size: var(--chat-font-size-secondary);
   gap: 8px;
   flex-direction: row;
 }
@@ -1865,7 +1873,7 @@
 .model-option.mode-option.active {
   color: var(--text-strong);
   background: var(--composer-picker-option-active);
-  border-color: var(--border-strong);
+  border-color: transparent;
 }
 
 .model-option span {
@@ -1876,14 +1884,14 @@
 }
 
 .model-option:hover {
-  background: var(--composer-picker-option-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: transparent;
 }
 
 .model-option.active {
   color: var(--text-strong);
   background: var(--composer-picker-option-active);
-  border-color: var(--accent);
+  border-color: transparent;
   font-weight: 650;
 }
 
@@ -1900,7 +1908,7 @@
 
 .mode-picker-panel .model-option:hover {
   color: var(--text-strong);
-  background: var(--composer-picker-option-hover);
+  background: var(--chat-hover-fill);
   border-color: transparent;
 }
 
@@ -1940,12 +1948,16 @@
   position: fixed;
   z-index: 2147483000;
   box-sizing: border-box;
-  width: var(--composer-hover-tip-width);
+  /* Sized by its own content: a fixed 80px box wrapped a long path into eight-character lines
+     (reported 2026-10-03). The token is the floor, the max-width the reading bound. */
+  width: max-content;
+  min-width: var(--composer-hover-tip-width);
   min-height: var(--composer-hover-tip-min-height);
   max-width: min(560px, calc(100vw - 24px));
   max-height: min(160px, calc(100vh - 24px));
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--composer-hover-tip-padding-block) var(--composer-hover-tip-padding-inline);
   color: var(--text);
   background: var(--composer-hover-tip-background);
@@ -2067,28 +2079,35 @@
 }
 
 .composer-tab-control {
+  /* The shared control rule sets `min-height: 34px` for the sidebar's buttons; left in place it
+     wins over this height and pins whichever controls it happens to list, which is how the row
+     ended up with 34px and 28px boxes side by side (measured 2026-10-03). */
+  min-height: 0;
   height: var(--composer-control-surface-size);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-ui);
+  border-radius: var(--composer-control-radius);
   outline: 0;
   transition:
     background-color var(--motion-fast) var(--motion-ease),
     color var(--motion-fast) var(--motion-ease);
 }
 
+/* The add action uses a circular surface with equal width and height. */
 .add-menu-trigger.composer-tab-control {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
+  width: var(--composer-control-surface-size);
+  height: var(--composer-control-surface-size);
+  flex: 0 0 var(--composer-control-surface-size);
+  /* 圆形按钮自带静息底色，悬停/展开时才加深。 */
+  background: var(--chat-hover-fill);
   border: 0;
-  border-radius: var(--radius-circle);
+  border-radius: var(--radius-pill);
 }
 
 .add-menu-trigger.composer-tab-control:hover:not(:disabled),
 .add-menu-trigger.composer-tab-control:focus-visible,
 .add-menu.open .add-menu-trigger.composer-tab-control {
-  background: var(--control-active);
+  background: var(--chat-active-fill);
   border: 0;
   outline: 0;
 }
@@ -2103,19 +2122,15 @@
 .runtime-picker-trigger.composer-tab-control:hover:not(:disabled),
 .runtime-picker-trigger.composer-tab-control:focus-visible,
 .runtime-picker.open .runtime-picker-trigger.composer-tab-control {
-  background: var(--control-active);
+  color: var(--text-strong);
+  background: var(--chat-hover-fill);
 }
 
 .mode-picker-trigger.composer-tab-control:hover:not(:disabled),
 .mode-picker-trigger.composer-tab-control:focus-visible,
 .mode-picker.open .mode-picker-trigger.composer-tab-control {
-  background: var(--control-active);
-}
-
-.runtime-picker-trigger.composer-tab-control,
-.mode-picker-trigger.composer-tab-control,
-.workspace-context-chip.composer-tab-control {
-  height: 28px;
+  color: var(--text-strong);
+  background: var(--chat-hover-fill);
 }
 
 .send-round {
@@ -2125,20 +2140,24 @@
   height: var(--composer-send-size);
   flex: 0 0 var(--composer-send-size);
   padding: 0;
-  color: var(--bg);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-circle);
+  color: var(--chat-business-ink);
+  background: var(--chat-business);
+  border: 0;
+  border-radius: var(--radius-pill);
   font-size: 15px;
   font-weight: 650;
   user-select: none;
   transition: none;
 }
 
+.send-round:hover:not(:disabled) {
+  background: var(--chat-business-hover);
+}
+
 .send-round.stop {
   color: var(--danger-control-text);
   background: var(--danger-soft);
-  border-color: rgba(239, 104, 104, 0.42);
+  border: 0;
 }
 
 .send-round-icon {
@@ -2184,11 +2203,12 @@
 }
 
 .runtime-event-notice.success {
-  color: #b9d9c4;
+  /* 写死的浅绿/浅黄在浅色主题下不可读，改用主题角色色。 */
+  color: var(--success);
 }
 
 .runtime-event-notice.warning {
-  color: #f0d3a0;
+  color: var(--warning);
 }
 
 .runtime-event-notice.error {
@@ -2235,14 +2255,10 @@
   width: min(760px, 100%);
   margin-top: 10px;
   overflow: hidden;
-  /* One surface step deeper than `--surface-3`: on the reported screenshot (2026-10-01) the card
-     read as a light grey block against the `#101010` chat column it sits in. */
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  /* Not `--radius-floating-panel`: this is a transcript surface, not a floating panel, and
-     `.window-shell` flattens that token to `0px` (14-window-layout.css), which drew every corner
-     of the card in the screenshot as a right angle. `--radius-card` is the panel role; the numbers
-     previously drawn as `--radius-ui` corners read as too tight on a card this wide. */
+  /* 产出成果卡是对话区面板：实心面板底 + 发丝线描边。圆角走面板角色 token
+     `--radius-card`；`--radius-floating-panel` 会被 14-window-layout.css 压成 0px，不能用。 */
+  background: var(--chat-panel-fill);
+  border: .5px solid var(--chat-hairline);
   border-radius: var(--radius-card);
 }
 
@@ -2257,7 +2273,7 @@
   min-height: 30px;
   padding: 4px 12px;
   color: var(--text);
-  border-bottom: 1px solid var(--border);
+  border-bottom: .5px solid var(--chat-hairline-soft);
 }
 
 .message-artifacts-head-icon {
@@ -2304,7 +2320,8 @@
 }
 
 .message-artifacts-row:hover {
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-strong);
+  background: var(--chat-hover-fill);
 }
 
 .message-artifacts-row-open {
@@ -2385,7 +2402,7 @@
 
 .message-artifacts-more:hover {
   color: var(--text);
-  background: var(--composer-picker-option-hover);
+  background: var(--chat-hover-fill);
 }
 
 .message-artifacts-more-arrow {

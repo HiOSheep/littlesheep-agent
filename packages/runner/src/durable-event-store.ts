@@ -28,6 +28,8 @@ import {
   writeJsonAtomically,
 } from './durable-store-utils.js';
 import { Buffer } from 'node:buffer';
+import { DurableUsagePending } from './durable-usage-pending.js';
+import { isEventType } from './durable-event-types.js';
 
 export const DEFAULT_DURABLE_EVENT_MAX_PAYLOAD_BYTES = DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES;
 export const DEFAULT_DURABLE_EVENT_MAX_EVENTS_PER_RUN = DURABLE_HARNESS_EVENT_MAX_EVENTS_PER_RUN;
@@ -61,6 +63,19 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
   private readonly maxEventsPerRun: number;
   private readonly now: () => Date;
   private readonly writeTails = new Map<string, Promise<void>>();
+  /** Crash-safe usage updates, consumed independently of historical replay. */
+  private readonly usagePending: DurableUsagePending;
+
+  async listChangedRunPartitions(): Promise<string[]> {
+    await this.initialize();
+    return this.usagePending.list();
+  }
+
+  /** Acknowledge only the revision saved in the derived index; a later append wins. */
+  async acknowledgeUsagePartition(partitionKey: string, revision: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(partitionKey)) throw new DurableEventStoreError('invalid usage partition', 'corrupt');
+    await this.usagePending.acknowledge(partitionKey, revision);
+  }
   /**
    * Verified per-partition event cache. Every append is preceded by a full
    * partition read from the Harness kernel, so re-parsing the whole log on each
@@ -86,6 +101,7 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
     const root = options.rootDir.trim();
     if (!root) throw new Error('durable event store rootDir must be non-empty');
     this.rootDir = root;
+    this.usagePending = new DurableUsagePending(root, this.writeTails, partition => this.readRunRevision(partition));
     this.maxPayloadBytes = boundedInteger(
       options.maxPayloadBytes,
       DEFAULT_DURABLE_EVENT_MAX_PAYLOAD_BYTES,
@@ -179,6 +195,7 @@ export class DurableEventStore implements DurableHarnessEventStoreLike {
           occurredAt: normalized.occurredAt,
           payload: normalized.payload as TPayload,
         };
+        await this.usagePending.mark(event);
         await writeEventFile(partition, event);
         const current = this.partitionCache.get(partition);
         const stamps = current?.stamps ?? [];
@@ -565,28 +582,6 @@ function cloneEvent<T extends DurableHarnessEvent>(event: T): T {
   return JSON.parse(JSON.stringify(event)) as T;
 }
 
-function isEventType(value: unknown): value is DurableHarnessEvent['type'] {
-  return value === 'run_accepted'
-    || value === 'user_input_appended'
-    || value === 'capability_snapshot_read'
-    || value === 'capability_probe_settled'
-    || value === 'stage_transition_recorded'
-    || value === 'route_decided'
-    || value === 'model_request_started'
-    || value === 'model_response_received'
-    || value === 'model_request_settled'
-    || value === 'tool_call_proposed'
-    || value === 'effect_intent_created'
-    || value === 'effect_settled'
-    || value === 'verification_recorded'
-    || value === 'checkpoint_written'
-    || value === 'final_reply_proposed'
-    || value === 'final_reply_settled'
-    || value === 'runtime_status_settled'
-    || value === 'run_failed'
-    || value === 'run_interrupted'
-    || value === 'run_completed';
-}
 
 function isEventSource(value: unknown): value is DurableHarnessEvent['source'] {
   return value === 'runtime' || value === 'model' || value === 'tool' || value === 'app' || value === 'channel' || value === 'system';

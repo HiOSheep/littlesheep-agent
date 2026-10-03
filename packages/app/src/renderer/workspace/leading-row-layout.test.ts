@@ -27,7 +27,8 @@ describe('workspace page leading row alignment', () => {
     expect(body).toContain('--workspace-files-control-top: 5px')
     expect(body).toContain('--workspace-page-inline-inset: 6px')
     expect(body).toContain('--workspace-files-navigator-width: 214px')
-    expect(body).toMatch(/--workspace-files-content-reserve:\s*calc\(\s*var\(--workspace-files-control-size\) \+\s*var\(--workspace-files-control-gap\)\s*\)/u)
+    expect(body).toContain('--workspace-files-control-gap: 6px')
+    expect(body).toMatch(/--workspace-files-content-reserve:\s*calc\(\s*var\(--workspace-panel-close-line\) \+\s*var\(--workspace-files-control-size\) \/ 2 \+\s*var\(--workspace-files-control-gap\) -\s*var\(--workspace-page-inline-inset\)\s*\)/u)
     expect(body).not.toContain('--workspace-files-navigator-collapsed-width')
     expect(body).toMatch(/--workspace-page-leading-row-height:\s*calc\(\s*var\(--workspace-files-control-top\) \+\s*var\(--workspace-files-control-size\) \+\s*var\(--workspace-files-control-top\)\s*\)/u)
     expect(body).not.toContain('padding-top:')
@@ -36,14 +37,29 @@ describe('workspace page leading row alignment', () => {
     expect(leadingRow).toContain('padding-inline: var(--workspace-page-inline-inset)')
     expect(leadingRow).toContain('padding-block: 0')
     expect(navigatorControl).toContain('top: var(--workspace-files-control-top, 5px)')
-    expect(navigatorControl).toContain('right: var(--workspace-files-control-edge, 6px)')
+    // The rail is centred on the window's close line, less its own column inset (asked for 2026-10-03).
+    expect(navigatorControl).toContain('--workspace-panel-close-line')
+    expect(navigatorControl).toContain('var(--workspace-files-control-size, 25px) / 2')
     expect(navigatorControl).toContain('height: var(--workspace-files-control-size, 25px)')
+  })
+
+  it('names the workspace root by its path alone', async () => {
+    const source = await readFile(new URL('./file-navigator.tsx', import.meta.url), 'utf8')
+
+    // The short folder name above the path, and the "当前工作区" badge beside it, repeated what the
+    // path already said (asked for 2026-10-03). The temporary root keeps its badge: that one is a
+    // state warning, not a label.
+    expect(source).toContain('<small>{usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}</small>')
+    expect(source).toContain('{usingTemporaryRoot && (')
+    expect(source).toContain('<b className="workspace-root-badge temporary">临时预览</b>')
+    expect(source).not.toContain('当前工作区</b>')
+    expect(source).not.toContain('{compactPath(workspacePath)}')
+    expect(source).toContain("import { isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'")
   })
 
   it('uses the shared leading row on every workspace page with a first-line toolbar', async () => {
     const expectedClasses = new Map([
       ['./browser.tsx', 'workspace-browser-toolbar workspace-page-leading-row'],
-      ['./terminal.tsx', 'workspace-terminal-header workspace-page-leading-row'],
       ['./preview-pane.tsx', 'workspace-preview-header workspace-page-leading-row'],
       ['./review-diff.tsx', 'workspace-review-diff-header workspace-page-leading-row'],
       ['./file-navigator.tsx', 'workspace-files-toolbar workspace-page-leading-row'],
@@ -76,9 +92,61 @@ describe('workspace page leading row alignment', () => {
     expect(ruleBody('.workspace-files')).not.toContain('--workspace-files-control-')
     expect(styles).not.toContain('.workspace-panel-view.with-file-navigator')
     expect(styles).not.toContain('.workspace-files.navigator-collapsed .workspace-files-navigator')
+    // The row keeps no trailing inset of its own: the buttons stop clear of the navigator's rail,
+    // which is the control that owns the window's close line (asked for 2026-10-03).
     expect(ruleBody('.workspace-preview-header')).not.toContain('padding-right:')
     expect(ruleBody('.workspace-review-diff-header')).not.toContain('padding-right:')
     expect(styles).not.toContain('padding-right: 34px')
+  })
+
+  it('opens the workspace on its navigation page', async () => {
+    const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
+    const launcher = await readFile(new URL('./empty-launcher.tsx', import.meta.url), 'utf8')
+    const persistence = await readFile(new URL('../workspace-persistence.ts', import.meta.url), 'utf8')
+    const preferences = await readFile(new URL('../app-shell/preferences.ts', import.meta.url), 'utf8')
+
+    expect(persistence).toContain('export const DEFAULT_WORKSPACE_PANEL_TABS: WorkspacePanelTabId[] = []')
+    expect(preferences).not.toContain("return 'home'")
+    expect(panel).not.toContain("{ id: 'home', label: '开始'")
+    expect(panel).toContain('const launcherEntries = workspaceEntries')
+    expect(panel.split('<WorkspaceEmptyLauncher').length - 1).toBe(1)
+    // Two lines per entry: where it goes, then what it is.
+    expect(launcher).toContain('className="workspace-empty-launcher-label"')
+    expect(launcher).toContain('className="workspace-empty-launcher-desc"')
+    expect(styles).toMatch(/\.workspace-empty-launcher-desc\s*\{[^}]*font-size:\s*12px;/u)
+  })
+
+  it('draws the file preview boundaries as real borders', () => {
+    // The header's separator used to be an inset box-shadow - a drawn line that does not belong to the
+    // box - and the column beside the preview dropped its left border, so the preview had no real right
+    // boundary (asked for 2026-10-03).
+    expect(styles).toMatch(/\.workspace-preview-header,\s*\.workspace-files-toolbar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\);/u)
+    expect(styles).not.toMatch(/\.workspace-preview-header\s*\{[^}]*box-shadow:/u)
+    expect(styles).toMatch(/\.workspace-shared-file-navigator > \.workspace-files-navigator\s*\{[^}]*border-left: 1px solid var\(--border\);/u)
+  })
+
+  it('keeps the navigator rail on one line in every tab', async () => {
+    const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
+
+    // The rail is the folder handle that marks the file column's collapse line. It is measured from the
+    // panel's right edge, so every tab that shows that column has to be edge-to-edge: the 文件 tab
+    // (`artifacts`) was missing from this list and its rail sat 12px further left than the others
+    // (reported 2026-10-03).
+    expect(panel).toContain("const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review' || activeTab === 'artifacts'")
+    expect(styles).toMatch(/\.workspace-panel-view:has\(> \.workspace-files-tab-navigator\),\s*\.workspace-panel-view:has\(> \.workspace-files\),\s*\.workspace-panel-view:has\(> \.workspace-preview-pane\)\s*\{[^}]*overflow:\s*hidden;[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*none;/u)
+  })
+
+  it('pins the add control with the window controls, outside the scrolling tabs', async () => {
+    const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
+    const strip = await readFile(new URL('./tab-strip.tsx', import.meta.url), 'utf8')
+
+    // The add control used to be the strip's last child, so a tab list wider than the panel scrolled
+    // it out of reach (reported 2026-10-03). It now sits in the header's fixed control cluster, in
+    // front of the window controls, and the strip only renders tabs.
+    expect(strip).not.toContain('<WorkspaceAddMenu')
+    expect(strip).not.toContain("from './add-menu'")
+    expect(panel).toMatch(/workspace-panel-actions workspace-tab-row-control[\s\S]{0,700}<WorkspaceAddMenu/u)
+    expect(panel).toContain('openTabs={openTabs.filter(isWorkspacePanelTab)}')
   })
 
   it('uses one compact file-preview surface with the path as its only metadata', async () => {
@@ -101,8 +169,9 @@ describe('workspace page leading row alignment', () => {
     expect(previewPane).not.toContain('const fileTypeLabel')
     expect(previewPane).not.toContain('editorLineCount')
     expect(styles).not.toContain('.workspace-preview-statusbar')
-    expect(styles).toMatch(/\.workspace-preview-header\s*\{[^}]*box-shadow:\s*inset 0 -1px var\(--border\);/u)
+    expect(styles).toMatch(/\.workspace-preview-header,\s*\.workspace-files-toolbar\s*\{[^}]*border-bottom:\s*1px solid var\(--border\);/u)
     expect(editorBody).toContain('padding: 0')
+    expect(editorBody).toContain('scrollbar-gutter: auto')
     expect(styles).not.toContain('.workspace-preview-editor-badge')
     expect(styles).not.toContain('.workspace-preview-meta')
     expect(styles).not.toContain('.workspace-editor-shell')
@@ -115,6 +184,9 @@ describe('workspace page leading row alignment', () => {
     expect(styles).toMatch(/\.workspace-files-tab-navigator > \.workspace-files-navigator\s*\{[^}]*border-left:\s*0;/u)
     expect(styles).toMatch(/\.workspace-files-tab-navigator \.workspace-files-root > span\s*\{\s*display:\s*none;\s*\}/u)
     expect(styles).toMatch(/\.workspace-files-navigator\s*\{[^}]*border-left:\s*1px solid var\(--border\);/u)
+    // The navigator's contents are absolute; without a definite wrapper height
+    // this standalone tab collapses and clipping hides the complete file tree.
+    expect(ruleBody('.workspace-files-tab-navigator')).toContain('height: 100%')
   })
 
   it('fills file and review pages without a floating or hover-reactive surface', async () => {
@@ -134,7 +206,7 @@ describe('workspace page leading row alignment', () => {
     expect(panel).not.toContain('with-file-navigator')
     expect(reviewSource).toMatch(/<div className=\{`workspace-review workspace-files \$\{sideBySide \? 'is-side-by-side' : ''\}`\}>/u)
     expect(reviewSource).not.toContain("'navigator-collapsed'")
-    expect(fileSurfaceBody).toMatch(/margin:\s*8px\s*-12px\s*-12px\s*calc\(0px - var\(--workspace-tab-row-inset\)\)/u)
+    expect(fileSurfaceBody).toMatch(/margin:\s*var\(--workspace-panel-body-gap\)\s*-12px\s*-12px\s*calc\(0px - var\(--workspace-tab-row-inset\)\)/u)
     expect(files).toContain('display: flex')
     expect(files).toContain('width: 100%')
     expect(sharedSurface).not.toContain('border:')
@@ -215,6 +287,50 @@ describe('workspace page leading row alignment', () => {
     expect(collapsedTopRowReserve).toContain('var(--workspace-page-inline-inset)')
     expect(collapsedTopRowReserve).toContain('var(--workspace-files-content-reserve)')
     expect(styles).toContain('> .workspace-panel-view.active .workspace-page-leading-row')
+    expect(styles).not.toContain('margin-right: var(--workspace-files-content-reserve)')
+  })
+
+  it('lets embedded documents own scrolling without a second inset frame', () => {
+    const embeddedBody = ruleBody('.workspace-preview-body:has(> .workspace-preview-html-shell),\n.workspace-preview-body:has(> .workspace-preview-html-live),\n.workspace-preview-body:has(> .workspace-preview-pdf)')
+    expect(embeddedBody).toContain('padding: 0')
+    expect(embeddedBody).toContain('scrollbar-gutter: auto')
+    expect(embeddedBody).toContain('overflow: hidden')
+    for (const selector of ['.workspace-preview-html-shell', '.workspace-preview-pdf']) {
+      expect(ruleBody(selector)).toContain('border: 0')
+      expect(ruleBody(selector)).toContain('border-radius: 0')
+      expect(ruleBody(selector)).toContain('min-height: 0')
+    }
+    for (const selector of ['.workspace-preview-html', '.workspace-preview-html-live']) {
+      expect(ruleBody(selector)).toContain('min-height: 0')
+      expect(ruleBody(selector)).toContain('height: 100%')
+    }
+  })
+
+  it('puts the panel header controls on the workspace rows\' trailing line', () => {
+    // The rows reach the line as the panel's inline inset plus the collapsed reserve (6 + 29), plus
+    // the 10px they sit inside the panel body: 45. Measured in the real window, the navigator
+    // toolbar's last button, the collapsed navigator's rail, the stationary collapse toggle and the
+    // header's window controls all share the window's close line: 23px from the panel's right edge
+    // (asked for 2026-10-03).
+    expect(ruleBody('.workspace-panel-actions')).toContain('var(--workspace-panel-close-line)')
+    expect(styles).not.toContain('--workspace-panel-trailing-inset')
+  })
+
+  it('moves the code-wrap strokes into their new shape instead of cross-fading', async () => {
+    const toggle = await readFile(new URL('../ui/code-wrap-toggle.tsx', import.meta.url), 'utf8')
+
+    // Every stroke keeps the same path commands in both states (`M H C H`, `M L L`, `M L`), which is
+    // what lets `d` interpolate; the stylesheet owns the wrapped values and the transition. Asked for
+    // 2026-10-03: the two strokes that differ must travel, not fade.
+    expect(toggle).toContain("strokePath('code-wrap-run', 'M2.5 7 H11.5 C11.5 7 13.5 7 13.5 7 C13.5 7 13.5 7 13.5 7 H13.5')")
+    expect(toggle).toContain("strokePath('code-wrap-arrow', 'M11.5 5 L13.5 7 L11.5 9')")
+    expect(toggle).toContain("strokePath('code-wrap-foot', 'M2.5 11 L5.5 11')")
+    expect(toggle).not.toContain('WrapOnIcon')
+    expect(toggle).not.toContain('WrapOffIcon')
+    expect(styles).toMatch(/\.code-wrap-stroke\s*\{\s*transition:\s*d var\(--motion-base\) var\(--motion-ease\);/u)
+    expect(styles).toContain("d: path('M2.5 7 H11.5 C12.6 7 13.5 7.9 13.5 9 C13.5 9.8 12.8 10.5 12 10.5 H8.5')")
+    expect(styles).toContain("d: path('M10.5 8.5 L8.5 10.5 L10.5 12.5')")
+    expect(styles).not.toContain(".code-wrap-toggle[data-wrapped='true'] .code-wrap-foot")
   })
 
   it('keeps top-row button groups on the shared control gap', () => {

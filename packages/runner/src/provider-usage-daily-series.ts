@@ -35,7 +35,7 @@ export interface ProviderUsageDailyCountedAttempt {
 export interface ProviderUsageDailyMissingFact {
   readonly requestId: string;
   readonly at: string;
-  readonly kind: 'response_without_usage' | 'request_without_response';
+  readonly kind: 'response_without_usage' | 'request_without_response' | 'failed_request' | 'interrupted_request' | 'pending_request';
   readonly provider: string;
   readonly model: string;
 }
@@ -110,10 +110,11 @@ export function buildProviderUsageDailySeries(
     const attempts = attemptsByDate.get(date) ?? [];
     const marks = missingByDate.get(date) ?? [];
     const missingResponses = marks.filter((mark) => mark.kind === 'response_without_usage').length;
-    const unreportedRequests = marks.length - missingResponses;
+    const unreportedRequests = marks.filter((mark) => mark.kind === 'request_without_response').length;
+    const errors = missingResponses + unreportedRequests;
     const state: ProviderUsageDailyDayState = attempts.length === 0
-      ? (marks.length === 0 ? 'empty' : 'partial')
-      : (marks.length === 0 ? 'recorded' : 'partial');
+      ? (errors === 0 ? 'empty' : 'recording_error')
+      : (errors === 0 ? 'recorded' : 'recording_error');
     const day: ProviderUsageDailyDay = {
       date,
       state,
@@ -125,6 +126,9 @@ export function buildProviderUsageDailySeries(
       reasoning: sum(attempts, (attempt) => attempt.reasoning),
       missingResponses,
       unreportedRequests,
+      ...(marks.some((mark) => mark.kind === 'failed_request') ? { failedRequests: marks.filter((mark) => mark.kind === 'failed_request').length } : {}),
+      ...(marks.some((mark) => mark.kind === 'interrupted_request') ? { interruptedRequests: marks.filter((mark) => mark.kind === 'interrupted_request').length } : {}),
+      ...(marks.some((mark) => mark.kind === 'pending_request') ? { pendingRequests: marks.filter((mark) => mark.kind === 'pending_request').length } : {}),
     };
     days.push(day);
     totals.total += day.total;
@@ -173,7 +177,7 @@ function coverageStatement(
 ): string {
   const parts = [
     `统计时区 ${coverage.timezone}（${coverage.timezoneSource === 'request' ? '请求指定' : '默认系统时区'}）`,
-    '按 Provider 实报 usage 的 model_response_received 事件时间归入本地日',
+    '按 Provider 实报用量的独立响应记录时间归入本地日；旧日志兼容读取响应事件',
     '总量取实报 totalTokens，缺失时按实报输入＋输出求和；缓存读写与推理是子集，不重复计入总量',
     '本地上下文计数、安全估算与 embedding 不计入',
     `同一 requestId 只计一次（已合并 ${coverage.duplicateAttempts} 条重复事件）`,

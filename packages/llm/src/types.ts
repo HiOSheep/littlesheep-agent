@@ -58,6 +58,14 @@ export interface ChatRequest {
    * "第 n 次重试 / 最多 5 次" and record it. Settings come from the client's retry options.
    */
   onTransportRetry?: (progress: import('./retry.js').RetryProgress) => void;
+  /** Await the usage receipt of each physical response before validating content or retrying. Never sent to the Provider. */
+  onProviderResponse?: (receipt: ProviderResponseReceipt) => void | Promise<void>;
+}
+
+export interface ProviderResponseReceipt {
+  attempt: number;
+  usage?: ChatResponse['usage'];
+  completed: boolean;
 }
 
 /** A tool call returned by the model. */

@@ -30,6 +30,23 @@ const base = {
 };
 
 describe('DurableEventStore', () => {
+  it('never acknowledges a usage revision newer than the saved projection', async () => {
+    const root = await newRoot();
+    const store = new DurableEventStore({ rootDir: root });
+    await store.append({ ...base, type: 'model_request_started', source: 'runtime', idempotencyKey: 'start', payload: { requestId: 'request-a' } });
+    const [partition] = await store.listChangedRunPartitions();
+    const old = await store.readRunRevision(partition!);
+    await store.append({ ...base, type: 'model_response_received', source: 'runtime', idempotencyKey: 'response', payload: { requestId: 'request-a' } });
+    await store.acknowledgeUsagePartition(partition!, old!.revision);
+    expect(await store.listChangedRunPartitions()).toEqual([partition]);
+    const latest = await store.readRunRevision(partition!);
+    await store.acknowledgeUsagePartition(partition!, latest!.revision);
+    expect(await store.listChangedRunPartitions()).toEqual([]);
+    // A subsequent write creates a new persistent intent after acknowledgement.
+    await store.append({ ...base, type: 'model_request_settled', source: 'runtime', idempotencyKey: 'settled', payload: { requestId: 'request-a' } });
+    expect(await new DurableEventStore({ rootDir: root }).listChangedRunPartitions()).toEqual([partition]);
+  });
+
   it('appends immutable events with contiguous cursors and cursor replay', async () => {
     const root = await newRoot();
     const store = new DurableEventStore({ rootDir: root });

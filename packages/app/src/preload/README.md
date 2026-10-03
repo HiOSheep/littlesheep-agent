@@ -8,6 +8,8 @@ Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小�
 
 ## 边界
 
+- `onContextMenu` 只订阅并校验 Main 签发的有界菜单投影，返回退订函数；`contextMenuAction(requestId, action)` 只转发封闭动作。Main 复核发送窗口、主 frame、一次性菜单身份、有效期和启用状态，桥不暴露任意 IPC 或剪贴板读写。
+
 - 入口是 `index.ts`；暴露面是固定形状的 `window.littlesheep`。
 - 就绪契约：`localApiBase()` 等待 Main 报告 Local App API 端口（有界 90 秒）后返回 `http://127.0.0.1:<port>`，不再在加载时快照 `LITTLESHEEP_API_PORT`——启动页与正式 renderer 共用同一 preload，端口当时还不存在。
 - 只读就绪桥：`getRuntimeReadiness()` 查询当前快照（订阅后补读，补回错过的通知），`onRuntimeReadiness()` 返回退订函数；载荷由 `../shared/runtime-readiness-contracts.ts` 的 `isRuntimeReadiness` 复核，仅接受 `apiVersion === 1`。

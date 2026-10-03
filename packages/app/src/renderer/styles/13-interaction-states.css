@@ -235,12 +235,12 @@
   background: var(--control-active);
 }
 
-/* The accent-filled send control keeps `transition: none` so the send/stop swap
+/* The business-filled send control keeps `transition: none` so the send/stop swap
    cannot animate, and it has no hover fill; its press is therefore a step toward
    the surface colour, which is visible in both the send and the stop state. */
 .send-round:active:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 82%, var(--bg));
-  border-color: color-mix(in srgb, var(--accent) 82%, var(--bg));
+  background: color-mix(in srgb, var(--chat-business) 82%, var(--bg));
+  border-color: color-mix(in srgb, var(--chat-business) 82%, var(--bg));
 }
 
 .send-round.stop:active:not(:disabled) {
@@ -249,7 +249,8 @@
 }
 
 /* The floating task pill, pressed. */
-.running-pill:active {
+.running-pill:active,
+.chat-header .running-pill:active {
   background: color-mix(in srgb, var(--composer-surface) 78%, var(--control-hover));
 }
 

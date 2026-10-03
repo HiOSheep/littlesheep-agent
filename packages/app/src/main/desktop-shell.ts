@@ -30,6 +30,7 @@ import {
   type DesktopVisualContract,
 } from './desktop-visual-acceptance.js'
 import { configureEmbeddedBrowserWindow } from './embedded-browser.js'
+import { installContextMenu } from './context-menu.js'
 import { recordBootstrapTiming } from './bootstrap-timing.js'
 import type { RunActivityMonitor } from './run-activity-monitor.js'
 import { LittleSheepTrayController } from './tray-controller.js'
@@ -310,6 +311,7 @@ export class LittleSheepDesktopShell {
     // BrowserWindow.webContents is already destroyed by the `closed` event.
     const windowWebContentsId = win.webContents.id
     configureEmbeddedBrowserWindow(win)
+    installContextMenu(win.webContents, win)
     this.mainWindow = win
     installDesktopWindowChrome(win, () => this.rendererLoadedWindows.has(win))
     const restoredState = this.restoreWindowStateFor(win)

@@ -37,5 +37,7 @@ export function syncComposerInputHeight(
   const measuredHeight = textarea.scrollHeight
   const nextHeight = clampComposerInputHeight(measuredHeight, maxHeight)
   textarea.style.height = `${nextHeight}px`
-  textarea.style.overflowY = measuredHeight > maxHeight ? 'auto' : 'hidden'
+  // Wrapped control rows can make the visible field shorter than its requested height.
+  const visibleHeight = textarea.clientHeight || nextHeight
+  textarea.style.overflowY = measuredHeight > visibleHeight ? 'auto' : 'hidden'
 }

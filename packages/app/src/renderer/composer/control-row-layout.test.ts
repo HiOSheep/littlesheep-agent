@@ -11,17 +11,20 @@ describe('composer control row layout', () => {
     const sendButtonRule = styles.match(/\.send-round\s*\{([^}]*)\}/u)?.[1] ?? ''
     const narrowWindowStyles = styles.slice(styles.indexOf('@container chat-pane (max-width: 520px)'))
 
-    expect(composerRule).toContain('--composer-padding-block: 12px;')
-    expect(composerRule).toContain('--composer-padding-inline: 16px;')
-    expect(composerRule).toContain('--composer-control-surface-size: 34px;')
-    expect(composerRule).toContain('--composer-control-padding-inline: 10px;')
-    expect(composerRule).toContain('--composer-control-row-height: 34px;')
-    expect(composerRule).toContain('--composer-control-row-half-height: 17px;')
-    expect(composerRule).toContain('--composer-control-gap: 3px;')
-    expect(composerRule).toContain('--composer-control-font-size: 12px;')
-    expect(composerRule).toContain('--composer-leading-control-half-size: 17px;')
-    expect(composerRule).toContain('--composer-trailing-control-half-size: 17px;')
-    expect(composerRule).toContain('--composer-send-size: 30px;')
+    // DSH's control row (2026-10-03): a 28px control surface on an 8px grid, tighter
+    // card padding and the summary/usage type at 13px, so the composer reads as one
+    // compact card instead of a 34px toolbar strip.
+    expect(composerRule).toContain('--composer-padding-block: 10px;')
+    expect(composerRule).toContain('--composer-padding-inline: 12px;')
+    expect(composerRule).toContain('--composer-control-surface-size: 28px;')
+    expect(composerRule).toContain('--composer-control-padding-inline: 8px;')
+    expect(composerRule).toContain('--composer-control-row-height: 32px;')
+    expect(composerRule).toContain('--composer-control-row-half-height: 16px;')
+    expect(composerRule).toContain('--composer-control-gap: 8px;')
+    expect(composerRule).toContain('--composer-control-font-size: 13px;')
+    expect(composerRule).toContain('--composer-leading-control-half-size: 14px;')
+    expect(composerRule).toContain('--composer-trailing-control-half-size: 14px;')
+    expect(composerRule).toContain('--composer-send-size: 34px;')
     expect(composerRule).toMatch(
       /--mode-picker-compact-width:\s*calc\(\s*16px \+ 7px \+ \(2 \* var\(--composer-control-padding-inline\)\)\s*\);/u,
     )
@@ -47,7 +50,6 @@ describe('composer control row layout', () => {
     )
     expect(controlsRule).toContain('min-height: var(--composer-control-row-height);')
     expect(controlsRule).toContain('gap: var(--composer-control-gap);')
-    expect(controlsRule).toContain('transform: translateY(2px);')
     expect(addMenuRule).toMatch(
       /margin-left:\s*calc\(\s*var\(--composer-control-center-inset\)\s*-\s*var\(--composer-padding-inline\)\s*-\s*var\(--composer-leading-control-half-size\)\s*\);/u,
     )
@@ -76,8 +78,10 @@ describe('composer control row layout', () => {
     expect(styles).toMatch(/\.send-round-icon\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/u)
     expect(styles).toMatch(/\.send-round-icon\.send\s*\{[^}]*transform:\s*none;/u)
     expect(styles).not.toMatch(/\.send-round-icon\.send\s*\{[^}]*translateX\(/u)
-    expect(styles).not.toMatch(/\.send-round:hover:not\(:disabled\)/u)
     expect(styles).not.toMatch(/\.composer-run-actions\s*>\s*\.send-round:last-child:hover/u)
+    // The send control is the conversation's one business-filled action, so it owns a
+    // hover step; the swap itself still cannot animate (`transition: none` above).
+    expect(styles).toMatch(/\.send-round:hover:not\(:disabled\)\s*\{[^}]*background:\s*var\(--chat-business-hover\);/u)
     expect(narrowWindowStyles).toMatch(
       /\.composer\s*\{[^}]*--composer-control-surface-size:\s*28px;[^}]*--composer-control-padding-inline:\s*8px;[^}]*--composer-leading-control-half-size:\s*14px;/u,
     )

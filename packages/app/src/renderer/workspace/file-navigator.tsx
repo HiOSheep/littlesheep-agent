@@ -7,10 +7,11 @@ import {
 } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { RefreshIcon, SearchIcon, VSCodeIcon } from '../ui/icons'
+import { SearchIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { updateWorkspaceDirectoryCache, workspaceDirectoryCache, type WorkspaceDirectoryState } from './directory-cache'
-import { compactPath, isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'
+import { isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'
+import { WORKSPACE_TREE_REFRESH_MS, useWorkspaceAutoRefresh } from './use-workspace-auto-refresh'
 import { WorkspaceNavigatorFrame } from './navigator-frame'
 import { isMissingWorkspacePathError } from './workspace-errors'
 import { reportWorkspaceEntriesVisible } from './workspace-timing'
@@ -237,7 +238,7 @@ export function WorkspaceFileNavigator({
       onExpandedPathsChange((paths) => paths.filter((item) => item !== path))
       return
     }
-    setTreeError('文件夹暂时无法读取，请点击刷新重试。')
+    setTreeError('文件夹暂时无法读取，稍后会自动重试。')
   }
 
   function handleWorkspaceActionError(error: unknown) {
@@ -249,11 +250,15 @@ export function WorkspaceFileNavigator({
     setTreeError('无法打开当前工作区，请稍后重试。')
   }
 
+  // No refresh button: the tree re-reads itself while it is on screen, so a file created by another
+  // program shows up on its own (asked for 2026-10-03).
   function refreshTree() {
     void loadDirectory(workspacePath, true)
     const ancestors = workspaceAncestorPaths(workspacePath, selectedPath)
     for (const path of ancestors) void loadDirectory(path, true)
   }
+
+  useWorkspaceAutoRefresh(refreshTree, WORKSPACE_TREE_REFRESH_MS)
 
   const shownDirectories = normalizedFilter
     ? filteredQuery === normalizedFilter ? filteredDirectories : {}
@@ -283,13 +288,15 @@ export function WorkspaceFileNavigator({
       onTipChange={onTipChange}
     >
         <div className="workspace-files-toolbar workspace-page-leading-row">
+          {/* The header names where the tree is rooted, and nothing else: the short folder name above
+              the path was a second, less precise address for the same thing (asked for 2026-10-03).
+              The temporary root keeps its badge: that one is a state warning, not a label. */}
           <div className="workspace-files-root">
-            <span>
-              {compactPath(workspacePath)}
-              <b className={`workspace-root-badge ${usingTemporaryRoot ? 'temporary' : ''}`}>
-                {usingTemporaryRoot ? '临时预览' : '当前工作区'}
-              </b>
-            </span>
+            {usingTemporaryRoot && (
+              <span>
+                <b className="workspace-root-badge temporary">临时预览</b>
+              </span>
+            )}
             <small>{usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}</small>
           </div>
           <div className="workspace-files-actions">
@@ -321,20 +328,6 @@ export function WorkspaceFileNavigator({
               onBlur={() => onTipChange(null)}
             >
               <VSCodeIcon />
-            </button>
-            <button
-              {...transientTriggerProps()}
-              className="workspace-files-icon-btn"
-              type="button"
-              aria-label="刷新文件树"
-              onClick={refreshTree}
-              onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('刷新文件树', event.clientX, event.clientY))}
-              onMouseMove={(event) => onTipChange(buildFloatingHelpTip('刷新文件树', event.clientX, event.clientY))}
-              onMouseLeave={() => onTipChange(null)}
-              onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('刷新文件树', event.currentTarget))}
-              onBlur={() => onTipChange(null)}
-            >
-              <RefreshIcon />
             </button>
           </div>
         </div>

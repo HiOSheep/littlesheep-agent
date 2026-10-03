@@ -177,6 +177,56 @@ HKEY_CLASSES_ROOT\\Applications\\Code.exe
     expect(handlers[0]?.label).toBe('Code')
   })
 
+  it('reads the executable\'s own description when the registry has no name', async () => {
+    // The ProgId entries never carried a FriendlyAppName, so those rows read `msedge` while Explorer
+    // calls the same program Microsoft Edge (reported 2026-10-03).
+    const asked: string[][] = []
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32',
+      describeExecutables: async (paths) => {
+        asked.push(paths)
+        return new Map([['C:\\Tools\\markdown.exe', 'Markdown Editor']])
+      },
+      regQuery: registry({
+        'HKCR\\.md\\OpenWithProgids': OPEN_WITH_PROGIDS,
+        'HKCR\\Markdown\\shell\\open\\command': MARKDOWN_COMMAND,
+      }),
+    })
+
+    expect(asked).toEqual([['C:\\Tools\\markdown.exe']])
+    expect(handlers.map((handler) => handler.label)).toEqual(['Markdown Editor'])
+  })
+
+  it('prefers the registry name for an entry that is not in the Applications branch', async () => {
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32',
+      describeExecutables: async () => new Map([['C:\\Tools\\markdown.exe', 'Never consulted']]),
+      regQuery: registry({
+        'HKCR\\.md\\OpenWithProgids': OPEN_WITH_PROGIDS,
+        'HKCR\\Markdown\\shell\\open\\command': MARKDOWN_COMMAND,
+        'HKCR\\Applications\\markdown.exe': `
+HKEY_CLASSES_ROOT\\Applications\\markdown.exe
+    FriendlyAppName    REG_SZ    Markdown
+`,
+      }),
+    })
+
+    expect(handlers.map((handler) => handler.label)).toEqual(['Markdown'])
+  })
+
+  it('keeps the file name when nothing on the machine names the program', async () => {
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32',
+      describeExecutables: async () => new Map(),
+      regQuery: registry({
+        'HKCR\\.md\\OpenWithProgids': OPEN_WITH_PROGIDS,
+        'HKCR\\Markdown\\shell\\open\\command': MARKDOWN_COMMAND,
+      }),
+    })
+
+    expect(handlers.map((handler) => handler.label)).toEqual(['markdown'])
+  })
+
   it('stays honest off Windows and for paths without an extension', async () => {
     const query = registry({})
     expect(await discoverOpenWithHandlers('C:\\work\\readme.md', { platform: 'darwin', regQuery: query })).toEqual([])

@@ -10,7 +10,9 @@ describe('workspace panel navigator persistence', () => {
     // column goes inactive while that tab is active, the way it already does for the review tab's
     // own tree, so the folder tree is on screen exactly once.
     expect(source.match(/<WorkspaceFileNavigator\b/gu)).toHaveLength(2)
-    expect(source).toContain('className={`workspace-shared-file-navigator ${activeTab === \'review\' || activeTab === \'artifacts\' ? \'inactive\' : \'\'}`}')
+    // The navigation page shows the launcher alone, and the review and 文件 tabs bring their own tree,
+    // so the shared folder column goes inactive for all three (2026-10-03).
+    expect(source).toContain("className={`workspace-shared-file-navigator ${activeTab === 'review' || activeTab === 'artifacts' || activeTab === 'home' || activeTab === 'terminal' ? 'inactive' : ''}`}")
     expect(source).toContain('const hasOpenFileTab = openTabs.some((tab) => Boolean(parseWorkspaceFileTabId(tab)))')
     expect(source).toContain('const navigatorRoot = activeFileTab?.root')
     expect(source).toContain('rememberedNavigatorRoot')

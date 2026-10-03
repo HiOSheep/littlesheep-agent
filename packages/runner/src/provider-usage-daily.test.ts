@@ -411,13 +411,14 @@ describe('provider usage daily aggregation', () => {
     const series = seriesFor(service, { from: '2026-09-13', to: '2026-09-13' });
 
     expect(series.days[0]).toMatchObject({
-      state: 'partial',
+      state: 'recording_error',
       requests: 0,
       total: 0,
       missingResponses: 1,
-      unreportedRequests: 1,
+      unreportedRequests: 0,
+      failedRequests: 1,
     });
-    expect(series.coverage).toMatchObject({ missingResponses: 1, unreportedRequests: 1 });
+    expect(series.coverage).toMatchObject({ missingResponses: 1, unreportedRequests: 0 });
     expect(series.coverage.statement).toContain('未报 usage');
   });
 
@@ -470,6 +471,24 @@ describe('provider usage daily aggregation', () => {
     expect(series.bounds).toMatchObject({ maxRangeDays: 400, maxIdentities: 64, identitiesTruncated: true });
     expect(series.identities.providers[0]).toMatchObject({ id: 'provider-00', total: 100 });
     expect(series.totals.requests).toBe(70);
+  });
+
+  it('continues scheduled incremental steps instead of stopping after the first budget', async () => {
+    const root = await newRoot();
+    const store = new DurableEventStore({ rootDir: join(root, 'durable-events') });
+    for (let index = 0; index < 3; index++) {
+      await appendRun(store, { sessionId: `session-${index}`, runId: `run-${index}`,
+        requests: [{ requestId: `req-${index}`, at: '2026-09-15T00:00:00.000Z', prompt: 12, completion: 3 }] });
+    }
+    const service = serviceFor(root, store);
+    const first = await service.startBackfill({ budgetPerStep: 1 });
+    expect(first.hasMore).toBe(true);
+    const deadline = Date.now() + 5000;
+    while ((await service.progress()).hasMore && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    expect(await service.progress()).toMatchObject({ status: 'complete', processed: 3, indexed: 3 });
+    expect(seriesFor(service, { from: '2026-09-15', to: '2026-09-15' }).totals.total).toBe(45);
   });
 
   it('cancels and resumes a backfill without double counting', async () => {

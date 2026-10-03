@@ -24,7 +24,7 @@ describe('LittleSheep Monaco theme', () => {
 
   it('keeps the editor on the workspace canvas and code text readable', () => {
     const background = LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.background']
-    expect(background).toBe('#17191e')
+    expect(background).toBe('#191919')
 
     const foregrounds = [
       LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.foreground'],
@@ -62,8 +62,8 @@ describe('LittleSheep Monaco theme', () => {
       .toBe(LITTLE_SHEEP_SELECTION_BACKGROUND_INACTIVE)
     expect(LITTLE_SHEEP_MONACO_THEME_DATA.colors['editor.selectionForeground'])
       .toBe(LITTLE_SHEEP_SELECTION_FOREGROUND)
-    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND).toBe('#454545')
-    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND_INACTIVE).toBe('#3A3A3A')
+    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND).toBe('#3D5F91')
+    expect(LITTLE_SHEEP_CODE_SELECTION_BACKGROUND_INACTIVE).toBe('#33507D')
   })
 
   it('composites one 50%-opaque review surface to the reference row tints', () => {

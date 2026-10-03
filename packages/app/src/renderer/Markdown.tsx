@@ -240,7 +240,7 @@ function CodeToolbar({
     <div className="code-toolbar">
       <span className="code-language-label">{(language || 'text').toUpperCase()}</span>
       <div className="code-toolbar-actions">
-        <CodeWrapToggle wrapped={wrapped} onToggle={onToggleWrap} />
+        <CodeWrapToggle showTooltip={false} wrapped={wrapped} onToggle={onToggleWrap} />
         <CopyButton text={code} label="代码" />
       </div>
     </div>

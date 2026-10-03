@@ -49,22 +49,19 @@ const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }>
     selectors: ['.sidebar-surface::before, .workspace-panel-surface::before'],
     recipes: ['blur(20px) saturate(145%)'],
   },
-  // The composer's own inset glass.
-  'composer-glass': {
-    selectors: ['.composer::before'],
-    recipes: ['blur(18px) saturate(135%)'],
-  },
-  // The floating surfaces that hover above the transcript and the composer:
-  // the task pill and its panel, the way back to the newest message, the sidebar
-  // menu and the two menu families.
+  // The floating surfaces that hover above the transcript and the composer: the
+  // task pill and its panel, the sidebar menu and the two menu families. The
+  // conversation's own floaters (the way back to the newest message, the turn
+  // directory) moved onto the opaque card + elevation recipe with the rest of the
+  // conversation area, so they are not glass any more.
   'float-glass': {
     selectors: [
       '.running-pill',
       '.settings-select-menu',
       '.running-pill-panel',
-      '.chat-jump-to-latest',
       '.sidebar-menu-panel',
       '.split-button-menu',
+      '.workspace-add-panel',
       '.add-menu-panel, .model-picker-panel, .runtime-menu-shell .runtime-picker-panel, .runtime-menu-shell .runtime-submenu',
     ],
     recipes: ['blur(18px) saturate(135%)'],
@@ -124,16 +121,18 @@ describe('material roles', () => {
   })
 
   it('keeps the big materials on inset pseudo-elements, so their panels are not backdrop roots', () => {
-    // The floating panels and the composer paint their material in an inset
-    // `::before`; the element itself stays transparent. If the material moved
-    // onto the element, every popover inside it would lose its own backdrop.
+    // The floating panels paint their material in an inset `::before`; the element
+    // itself stays transparent. If the material moved onto the element, every popover
+    // inside it would lose its own backdrop. The composer is deliberately not in this
+    // list any more: its card is an opaque surface (DSH), not a glass layer.
     const panel = rules(styles).find((rule) => rule.selector === '.sidebar-surface')
+    expect(panel, '.sidebar-surface rule is missing').toBeDefined()
+    expect(panel!.body).toContain('background: transparent;')
+    expect(backdropOf(panel!.body), '.sidebar-surface must not carry the blur itself').toBeNull()
+
     const composer = rules(styles).find((rule) => rule.selector === '.composer')
-    for (const [label, rule] of [['.sidebar-surface', panel], ['.composer', composer]] as const) {
-      expect(rule, `${label} rule is missing`).toBeDefined()
-      expect(rule!.body).toContain('background: transparent;')
-      expect(backdropOf(rule!.body), `${label} must not carry the blur itself`).toBeNull()
-    }
+    expect(composer, '.composer rule is missing').toBeDefined()
+    expect(backdropOf(composer!.body), '.composer must not carry a blur').toBeNull()
   })
 
   it('gives long content a stable fill instead of glass', () => {
@@ -164,7 +163,11 @@ describe('shadow roles', () => {
     expect(styles).toContain('--floating-panel-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);')
     // The menu/picker layer used to repeat this literal seven times.
     expect(styles).not.toContain('box-shadow: 0 22px 54px rgba(0, 0, 0, 0.44);')
+    // The conversation's own popovers moved to the panel-elevation token, so the
+    // menu-shadow family is smaller than it was; the role still has to be shared.
     const menuShadowUsers = rules(styles).filter((rule) => rule.body.includes('box-shadow: var(--shadow-menu);'))
-    expect(menuShadowUsers.length).toBeGreaterThanOrEqual(7)
+    expect(menuShadowUsers.length).toBeGreaterThanOrEqual(5)
+    const panelElevationUsers = rules(styles).filter((rule) => rule.body.includes('box-shadow: var(--chat-panel-elevation);'))
+    expect(panelElevationUsers.length).toBeGreaterThanOrEqual(5)
   })
 })

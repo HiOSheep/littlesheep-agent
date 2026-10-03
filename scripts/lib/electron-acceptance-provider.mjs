@@ -370,7 +370,7 @@ export const FILE_CONSISTENCY_DENIED_FILE = 'denied-write.txt'
 export const O1_LOCAL_FAILURE_MARKER = 'LS-O1-LOCAL-FAILURE-MARKER'
 export const O1_MISSING_FILE = 'o1-missing-fixture.txt'
 
-const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
+export const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
 
 /** Sentinels the fixture asserts on: the answer is only complete if both survive the stream. */
 export const LONG_MARKDOWN_START = 'FIXTURE-START-4c1d'

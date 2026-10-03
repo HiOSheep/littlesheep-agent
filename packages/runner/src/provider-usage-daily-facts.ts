@@ -35,7 +35,7 @@ export interface ProviderUsageAttemptFact {
 export interface ProviderUsageMissingFact {
   readonly requestId: string;
   readonly at: string;
-  readonly kind: 'response_without_usage' | 'request_without_response';
+  readonly kind: 'response_without_usage' | 'request_without_response' | 'failed_request' | 'interrupted_request' | 'pending_request';
   readonly provider: string;
   readonly model: string;
 }
@@ -68,9 +68,47 @@ export function readProviderUsageRunFacts(
   }
   const attempts: ProviderUsageAttemptFact[] = [];
   const missing: ProviderUsageMissingFact[] = [];
+  // Physical receipts are authoritative for new calls; the logical response is
+  // only a compatibility fallback for clients/logs without a receipt producer.
+  const receipts = new Map<string, DurableHarnessEvent[]>();
+  for (const event of events) {
+    if (event.type !== 'provider_usage_recorded') continue;
+    const requestId = event.payload.requestId as string;
+    const bucket = receipts.get(requestId) ?? [];
+    bucket.push(event);
+    receipts.set(requestId, bucket);
+  }
   for (const request of projection.modelRequests) {
     const provider = boundedIdentity(request.provider);
     const model = boundedIdentity(request.model);
+    const physical = receipts.get(request.requestId);
+    if (physical) {
+      for (const event of physical) {
+        const payload = event.payload;
+        const requestId = `${request.requestId}:http:${payload.attempt}`;
+        if (payload.usageStatus === 'available') {
+          const input = payload.promptTokens as number;
+          const output = payload.completionTokens as number;
+          attempts.push({ requestId, at: event.occurredAt, provider, model,
+            total: (payload.totalTokens as number | undefined) ?? input + output,
+            input, output, cached: (payload.cachedPromptTokens as number | undefined) ?? 0,
+            reasoning: (payload.reasoningTokens as number | undefined) ?? 0 });
+          if (payload.completed === false) missing.push({ requestId: `${requestId}:outcome`,
+            at: event.occurredAt, provider, model, kind: 'interrupted_request' });
+        } else {
+          missing.push({ requestId, at: event.occurredAt, provider, model,
+            kind: payload.completed === true ? 'response_without_usage' : 'interrupted_request' });
+        }
+      }
+      const interrupted = physical.some(event => event.payload.completed === false);
+      if (request.status === 'started' || request.status === 'failed' || request.status === 'rate_limit'
+        || (!interrupted && ['aborted', 'timeout', 'connection_reset'].includes(request.status))) {
+        missing.push({ requestId: `${request.requestId}:outcome`, at: request.respondedAt ?? request.startedAt!, provider, model,
+          kind: request.status === 'started' ? 'pending_request'
+            : request.status === 'failed' || request.status === 'rate_limit' ? 'failed_request' : 'interrupted_request' });
+      }
+      continue;
+    }
     const usage = request.providerUsage;
     if (usage && request.respondedAt) {
       // Section 2: total prefers the reported total; input + output are only a
@@ -93,7 +131,11 @@ export function readProviderUsageRunFacts(
     missing.push({
       requestId: request.requestId,
       at,
-      kind: request.status === 'received' ? 'response_without_usage' : 'request_without_response',
+      kind: request.status === 'received' ? 'response_without_usage'
+        : request.status === 'started' ? 'pending_request'
+        : request.status === 'missing' ? 'request_without_response'
+        : request.status === 'aborted' || request.status === 'timeout' || request.status === 'connection_reset'
+          ? 'interrupted_request' : 'failed_request',
       provider,
       model,
     });

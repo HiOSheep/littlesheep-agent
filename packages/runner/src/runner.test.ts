@@ -769,8 +769,8 @@ describe('createRunner run', () => {
       runner.run({ sessionId: sessionA.id, text: 'session a turn' }),
       runner.run({ sessionId: sessionB.id, text: 'session b turn' }),
     ]);
-    expect(first.status).toBe('ok');
-    expect(second.status).toBe('ok');
+    expect(first.status, first.error).toBe('ok');
+    expect(second.status, second.error).toBe('ok');
 
     const scope = (sessionId: SessionId) => ({
       sessionId: String(sessionId),

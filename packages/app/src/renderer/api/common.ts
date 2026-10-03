@@ -7,6 +7,7 @@
 // is still answered by the same listener instead of failing against port 0.
 
 import type { WindowDragPoint } from '../../shared/window-drag-contracts'
+import type { ContextMenuAction, NativeContextMenu } from '../../shared/context-menu-contracts'
 import type { WindowChromeState } from '../../shared/window-chrome-contracts'
 import type { RuntimeReadiness } from '../../shared/runtime-readiness-contracts'
 import type { RendererTimingStage } from '../../shared/runtime-readiness-ipc'
@@ -14,6 +15,8 @@ import type { RendererTimingStage } from '../../shared/runtime-readiness-ipc'
 declare global {
   interface Window {
     littlesheep: {
+      onContextMenu?: (listener: (menu: NativeContextMenu) => void) => () => void
+      contextMenuAction?: (requestId: string, action: ContextMenuAction) => void
       onWindowChrome?: (listener: (state: WindowChromeState) => void) => () => void
       setWindowAppearance?: (isDark: boolean) => void
       /** Legacy fixed base URL. Kept for tests and for preloads that predate readiness. */

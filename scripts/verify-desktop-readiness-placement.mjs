@@ -253,7 +253,7 @@ async function main() {
       notReadyWindowMs: NOT_READY_WINDOW_MS,
       narrowWindow: NARROW,
       marks: {
-        hint: '.composer-readiness-hint - the stage sentence next to the send control',
+        hint: '.composer-readiness-hint - must be absent during normal startup',
         strip: '.runtime-readiness-notice - the failure surface under the titlebar',
       },
       screenshots,
@@ -442,14 +442,8 @@ async function observeSlowedStart({ fixture }) {
     if (readinessAtDefault?.state !== 'starting') {
       failures.push({ check: 'the slowed window is still starting when the placement is read', detail: observation.atDefault })
     }
-    if (!atDefault.hintText) {
-      failures.push({ check: 'the startup stage text is on screen while starting', detail: observation.atDefault })
-    }
-    if (reason && atDefault.hintText !== reason) {
-      failures.push({ check: 'the stage text is the Runtime reason, not renderer copy', detail: { reason, text: atDefault.hintText } })
-    }
-    if (atDefault.hintInsideControlRow !== true) {
-      failures.push({ check: 'the stage text sits in the composer control row', detail: observation.atDefault })
+    if (atDefault.hintText !== null) {
+      failures.push({ check: 'startup stage text stays out of the composer', detail: observation.atDefault })
     }
     if (atDefault.stripText !== null) {
       failures.push({ check: 'a normal start raises no window-wide strip', detail: observation.atDefault })
@@ -480,10 +474,8 @@ async function observeSlowedStart({ fixture }) {
     if (atNarrow.viewport.width > NARROW.width + 40) {
       failures.push({ check: 'the narrow window really narrowed', detail: observation.atNarrow })
     }
-    // Being squeezed to zero width is the same as having no hint at all, which is
-    // what CS-09 rejects; the floor in the stylesheet is what this asserts.
-    if (!(atNarrow.hintBox?.width > 0) || !atNarrow.hintText) {
-      failures.push({ check: 'the stage text survives the narrow window instead of collapsing', detail: observation.atNarrow })
+    if (atNarrow.hintText !== null) {
+      failures.push({ check: 'startup stage text stays out of the narrow composer', detail: observation.atNarrow })
     }
     if (atNarrow.overflowX > 1) {
       failures.push({ check: 'the stage text does not overflow the narrow window', detail: observation.atNarrow })

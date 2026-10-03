@@ -3,12 +3,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   openWorkspacePathInVSCode,
   saveWorkspaceFile,
+  statWorkspaceFile,
   type AttachmentRef,
   type WorkspacePreview,
 } from '../api'
 import type { FloatingHelpTip } from '../ui/floating-help'
 import type { WorkspaceFileDraftState, WorkspaceFileTabId } from '../workspace-persistence'
 import { workspaceFilePreviewCache } from './file-preview-cache'
+import { WORKSPACE_FILE_REFRESH_MS, useWorkspaceAutoRefresh } from './use-workspace-auto-refresh'
 import type { WorkspaceLineComment } from './line-comments'
 import { workspaceBreadcrumbs } from './path-utils'
 import { WorkspacePreviewPane } from './preview-pane'
@@ -31,6 +33,7 @@ export function WorkspaceFileView({
   onAddAttachment,
   onOpenBrowserTab,
   onRevealFolder,
+  active = true,
   onTipChange,
 }: {
   tabId: WorkspaceFileTabId
@@ -50,6 +53,8 @@ export function WorkspaceFileView({
   onOpenBrowserTab: (url: string) => void
   /** Reveals a folder of this file's path in the file navigator, so a breadcrumb can jump. */
   onRevealFolder?: (path: string) => void
+  /** Whether this file's tab is the one on screen; a cached tab must not poll the disk. */
+  active?: boolean
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [preview, setPreview] = useState<WorkspacePreview | null>(() => (
@@ -92,6 +97,24 @@ export function WorkspaceFileView({
     setLoading(!cached)
     void loadPreview()
   }, [loadPreview, path, root])
+
+  // `modifiedAt` is the cheap question ("did this file change?"); the tick only re-reads the file
+  // when the answer changed. Unsaved edits keep their draft: the preview is not allowed to replace
+  // what the reader typed, so that case still goes through the disk notice (asked for 2026-10-03).
+  const previewModifiedAt = preview?.modifiedAt
+  const draftIsClean = !draft || (draft.editorText === draft.savedText && !draft.editing)
+  const autoReload = useCallback(async () => {
+    try {
+      const stat = await statWorkspaceFile(root, path)
+      if (!stat.exists) return
+      if (previewModifiedAt === undefined || stat.modifiedAt === previewModifiedAt) return
+      if (!draftIsClean) return
+      void loadPreview()
+    } catch (err) {
+      console.debug('[workspace-file-view] file stat probe failed', err)
+    }
+  }, [draftIsClean, loadPreview, path, previewModifiedAt, root])
+  useWorkspaceAutoRefresh(autoReload, WORKSPACE_FILE_REFRESH_MS, active)
 
   async function openInVSCode() {
     try {

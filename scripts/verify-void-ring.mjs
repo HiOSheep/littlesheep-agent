@@ -53,15 +53,19 @@ try {
   await Promise.all([mkdir(workspace,{recursive:true}),mkdir(chromiumDir,{recursive:true})])
   await writeFile(join(dataDir,'config.json'),JSON.stringify({version:1,providers:[{id:'acceptance',name:'Local fixture',baseURL,apiKey:'fixture-only',models:['brand']}],agents:{defaults:{workspace,model:'acceptance/brand',reasoning:'auto',profile:'general',timeoutSeconds:60,maxRecoveryAttempts:1,maxModelCallsPerRun:8}}}))
   const debuggingPort = await h.reservePort()
-  electron = await h.startElectron({dataDir,chromiumDir,debuggingPort,logPath:join(root,'electron.log')})
+  electron = await h.startElectron({dataDir,chromiumDir,debuggingPort,logPath:join(root,'electron.log'),extraArgs:['--disable-renderer-backgrounding','--disable-backgrounding-occluded-windows']})
   const locator = await h.waitForLocator(dataDir,electron.pid)
   await h.waitForDesktop(locator)
   await h.desktopAction(locator,'resize',{width:1280,height:900})
-  await h.desktopAction(locator,'show')
+  await h.desktopAction(locator,'park-offscreen')
   client = await h.connectRenderer(debuggingPort)
-  await h.waitFor(()=>evaluate(`document.querySelector('.empty-hint .void-ring[data-motion="playing"] img')?.complete || null`),20_000,'idle brand animation')
+  await client.send('Page.bringToFront')
+  // The still mark is painted immediately; the live canvas joins once the shader has drawn a frame.
+  await h.waitFor(()=>evaluate(`(() => {const mark=document.querySelector('.empty-hint .void-ring img');return mark?.complete&&mark.naturalWidth>0||null})()`),20_000,'still mark')
+  await h.waitFor(()=>evaluate(`document.querySelector('.empty-hint .void-ring[data-motion="playing"] canvas.void-ring-live')!==null||null`),20_000,'live idle ring')
+  report.checks.liveRingStarts=true
   await delay(500)
-  const a=await frame('idle-a','.empty-hint .void-ring');await delay(800);const b=await frame('idle-b','.empty-hint .void-ring')
+  const a=await frame('idle-a','.void-ring-companion');await delay(800);const b=await frame('idle-b','.void-ring-companion')
   report.checks.idlePixelDifference=await diff(a,b);assert.ok(report.checks.idlePixelDifference>.05)
   report.checks.emptyHintClearOfComposer=await evaluate(`(() => {const a=document.querySelector('.empty-hint').getBoundingClientRect(),b=document.querySelector('.composer').getBoundingClientRect();return a.bottom<b.top&&a.top>=32})()`)
   assert.ok(report.checks.emptyHintClearOfComposer,'brand and empty hint must not overlap input or window chrome')
@@ -69,6 +73,47 @@ try {
   report.checks.surfaceAlpha=await alpha('.empty-hint .void-ring')
   assert.equal(report.checks.surfaceAlpha.cornerAlpha,0);assert.equal(report.checks.surfaceAlpha.bodyAlpha,255)
   assert.equal(report.checks.surfaceAlpha.background,'rgba(0, 0, 0, 0)')
+  // Exercise the actual pointer and keyboard surface. The ring notices a pointer nearby, not only on top.
+  const companion = await evaluate(`(() => {const r=document.querySelector('.void-ring-companion').getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`)
+  const bodyTransform = () => evaluate(`document.querySelector('.void-ring-body').style.transform`)
+  const pointer = {x:companion.x+companion.width*1.6,y:companion.y+companion.height*.2}
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',...pointer})
+  await h.waitFor(async()=>{const m=/translate\(([-\d.]+)px/.exec(await bodyTransform());return m&&parseFloat(m[1])>0.5||null},5000,'ring leans toward a nearby pointer')
+  await delay(400);await frame('pointer-follow','.empty-hint')
+  report.checks.pointerFollow=true
+  const ringFrames = async (ms) => {const a=await frame('greet-a','.void-ring-companion');await delay(ms);return diff(a,await frame('greet-b','.void-ring-companion'))}
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:companion.x-400,y:companion.y})
+  await delay(900)
+  const quiet=await ringFrames(160)
+  const onRing={x:companion.x+companion.width*.47,y:companion.y+companion.height*.52}
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',...onRing})
+  await client.send('Input.dispatchMouseEvent',{type:'mousePressed',...onRing,button:'left',clickCount:1})
+  await h.waitFor(async()=>{const m=/scale\(([\d.]+)\)/.exec(await bodyTransform());return m&&parseFloat(m[1])<0.97||null},2000,'press squashes the ring')
+  await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',...onRing,button:'left',clickCount:1})
+  const greeted=await ringFrames(160)
+  await frame('greeting','.empty-hint')
+  report.checks.greeting={quiet,greeted};assert.ok(greeted>quiet*3,'a greeting visibly answers')
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:companion.x-400,y:companion.y})
+  await delay(1600)
+  // The native button receives focus; Space and Enter use its standard click behavior.
+  await evaluate(`document.querySelector('.void-ring-companion').focus()`)
+  for(const [key,code,windowsVirtualKeyCode] of [['Enter','Enter',13],[' ','Space',32]]) {
+    assert.ok(await evaluate(`document.activeElement.matches('.void-ring-companion')`),'greeting button owns keyboard focus')
+    const before=await frame('key-a','.void-ring-companion')
+    const text=key==='Enter'?'\r':' '
+    await client.send('Input.dispatchKeyEvent',{type:'keyDown',key,code,windowsVirtualKeyCode,nativeVirtualKeyCode:windowsVirtualKeyCode,text,unmodifiedText:text})
+    await client.send('Input.dispatchKeyEvent',{type:'keyUp',key,code,windowsVirtualKeyCode,nativeVirtualKeyCode:windowsVirtualKeyCode})
+    await delay(160)
+    assert.ok(await diff(before,await frame('key-b','.void-ring-companion'))>quiet*3,'keyboard greeting '+code)
+    await delay(1400)
+  }
+  report.checks.keyboardGreeting=true
+  // Off screen the ring stops drawing entirely and drops its canvas.
+  await evaluate(`document.querySelector('.void-ring-companion').style.visibility='hidden';document.querySelector('.void-ring-companion').style.position='fixed';document.querySelector('.void-ring-companion').style.top='-1000px'`)
+  await h.waitFor(()=>evaluate(`document.querySelector('.void-ring-companion').dataset.motion==='still'&&!document.querySelector('.empty-hint .void-ring canvas')||null`),5000,'offscreen stop')
+  report.checks.offscreenStops=true
+  await evaluate(`document.querySelector('.void-ring-companion').removeAttribute('style');document.querySelector('.void-ring-companion').blur()`)
+  await h.waitFor(()=>evaluate(`document.querySelector('.void-ring-companion').dataset.motion==='playing'||null`),5000,'onscreen resume')
   // Same real component against the application's light-theme surfaces.
   const theme=await evaluate(`document.documentElement.dataset.lsTheme`)
   await evaluate(`document.documentElement.dataset.lsTheme='light'`)
@@ -77,7 +122,9 @@ try {
   report.checks.lightThemeTransparent=true
   await evaluate(`document.documentElement.dataset.lsTheme=${JSON.stringify(theme)}`)
   await client.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]})
-  await h.waitFor(()=>evaluate(`document.querySelector('.empty-hint .void-ring')?.dataset.motion==='still'||null`),5000,'reduced motion')
+  await h.waitFor(()=>evaluate(`document.querySelector('.empty-hint .void-ring')?.dataset.motion==='still'&&!document.querySelector('.empty-hint .void-ring canvas')||null`),5000,'reduced motion')
+  await evaluate(`document.querySelector('.void-ring-companion').click()`)
+  report.checks.reducedMotionInteractionStatic=true
   const stillA=await frame('reduced-a','.empty-hint .void-ring');await delay(250);const stillB=await frame('reduced-b','.empty-hint .void-ring')
   assert.equal(await diff(stillA,stillB),0);report.checks.reducedMotionStatic=true
   const stillAlpha=await alpha('.empty-hint .void-ring');assert.equal(stillAlpha.cornerAlpha,0);assert.equal(stillAlpha.bodyAlpha,255)
@@ -93,6 +140,32 @@ try {
   report.checks.thinkingPixelDifference=await diff(thinkingA,thinkingB);assert.ok(report.checks.thinkingPixelDifference>.05)
   await h.waitFor(()=>evaluate(`document.querySelector('.assistant-turn.done')!==null&&document.querySelector('.running-pill .void-ring[data-void-ring-state="idle"]')!==null||null`),20_000,'settled idle')
   report.checks.completedReturnsToIdle=true
+  // Reopen through the real new-conversation action, sampling the very first frames: every frame must
+  // already show the whole mark, either drawn by the live canvas (frame 0 is the mark) or by the PNG.
+  await evaluate(`(() => {
+    window.__newChatFrames=[];
+    window.__newChatSamplingDone=false;
+    const start=performance.now();
+    function sample() {
+      const ring=document.querySelector('.empty-hint .void-ring');
+      if(ring) {
+        const still=ring.querySelector('img.void-ring-still');
+        const live=ring.querySelector('canvas.void-ring-live');window.__newChatFrames.push({ready:ring.dataset.motion==='playing'&&!!live&&live.width>0||!!still&&still.complete&&still.naturalWidth>0,stable:!!still&&getComputedStyle(still).transform==='none'&&getComputedStyle(still).opacity==='1'});
+      }
+      if(performance.now()-start<900) requestAnimationFrame(sample);
+      else window.__newChatSamplingDone=true;
+    }
+    requestAnimationFrame(sample);
+  })()`)
+  const newChatButton=await evaluate(`(() => {const r=[...document.querySelectorAll('.sidebar-quick-nav button')].find(button=>button.textContent.includes('新对话')).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`)
+  await client.send('Input.dispatchMouseEvent',{type:'mousePressed',...newChatButton,button:'left',clickCount:1})
+  await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',...newChatButton,button:'left',clickCount:1})
+  await h.waitFor(()=>evaluate(`window.__newChatSamplingDone||null`),5000,'new conversation first-frame samples')
+  const newChatFrames=await evaluate(`window.__newChatFrames`)
+  assert.ok(newChatFrames.length>=6,'sample the new conversation across multiple rendered frames')
+  assert.ok(newChatFrames.every(frame=>frame.ready&&frame.stable),'every new-conversation frame shows the complete, full-size mark')
+  report.checks.newConversationFirstFrames={samples:newChatFrames.length,stable:true}
+  await frame('reopened-conversation')
   // Show the actual independent Main startup document in the same Electron window.
   await h.desktopAction(locator,'startup-page')
   await h.waitFor(()=>evaluate(`document.querySelector('picture source')?.srcset.startsWith('data:image/webp;base64,')||null`),5000,'standalone startup motion')
@@ -109,7 +182,7 @@ try {
   report.status='passed'
 } catch(error) {
   report.status='failed';report.error=error.stack;report.providerRequests=providerRequests
-  if(client){report.page=await evaluate(`({hidden:document.hidden,icons:[...document.querySelectorAll('.void-ring')].map(x=>({state:x.dataset.voidRingState,motion:x.dataset.motion,src:x.querySelector('img').currentSrc})),turns:[...document.querySelectorAll('.assistant-turn')].map(x=>x.className)})`).catch(()=>null);await frame('failure').catch(()=>{})}
+  if(client){report.page=await evaluate(`({hidden:document.hidden,icons:[...document.querySelectorAll('.void-ring')].map(x=>({state:x.dataset.voidRingState,motion:x.dataset.motion,live:!!x.querySelector('canvas')})),turns:[...document.querySelectorAll('.assistant-turn')].map(x=>x.className)})`).catch(()=>null);await frame('failure').catch(()=>{})}
   throw error
 }
 finally {

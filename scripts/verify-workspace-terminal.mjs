@@ -9,7 +9,7 @@
 //
 //   node scripts/verify-workspace-terminal.mjs [--keep]
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
@@ -89,13 +89,12 @@ async function clickTerminalButton(client, label) {
 const terminalSurface = (client) => evaluate(client, `(() => {
   const pane = document.querySelector('.workspace-terminal')
   if (!(pane instanceof HTMLElement)) return null
-  const select = pane.querySelector('.workspace-terminal-shell-select')
+  const picker = pane.querySelector('.workspace-terminal-shell-picker')
+  const label = picker?.querySelector('button')?.getAttribute('aria-label') ?? ''
   const tabs = [...pane.querySelectorAll('.workspace-terminal-tab')]
   return {
-    shellOptions: select instanceof HTMLSelectElement
-      ? [...select.options].map((option) => option.textContent || '')
-      : [],
-    selectedShell: select instanceof HTMLSelectElement ? select.value : null,
+    shellOptions: label ? [label] : [],
+    selectedShell: label || null,
     tabs: tabs.length,
     states: tabs.map((node) => (node.querySelector('.workspace-terminal-tab-shell')?.textContent || '').trim()),
     activeTabs: tabs.filter((node) => node.getAttribute('aria-selected') === 'true').length,
@@ -169,8 +168,8 @@ async function main() {
       const layout = {
         collapsed: false,
         fullscreen: true,
-        activeTab: 'terminal',
-        openTabs: ['terminal'],
+        activeTab: 'review',
+        openTabs: [],
         fileNavigatorCollapsed: false,
         fileNavigatorWidth: 214,
         reviewNavigatorWidth: 214,
@@ -181,8 +180,8 @@ async function main() {
       const values = {
         'littlesheep.ui.workspacePanelCollapsed': 'false',
         'littlesheep.ui.workspacePanelFullscreen': 'true',
-        'littlesheep.ui.workspacePanelTab': 'terminal',
-        'littlesheep.ui.workspacePanelOpenTabs': JSON.stringify(['terminal']),
+        'littlesheep.ui.workspacePanelTab': 'review',
+        'littlesheep.ui.workspacePanelOpenTabs': JSON.stringify([]),
         'littlesheep.ui.workspacePanelOpenRoot': ${JSON.stringify(workplaceDir)},
         'littlesheep.ui.workspaceSessionLayouts': JSON.stringify({ __draft__: layout }),
       }
@@ -192,23 +191,23 @@ async function main() {
     const openedTerminal = { seeded: true }
     await client.send('Page.reload', { ignoreCache: false })
     await delay(2500)
-    await harness.waitFor(
-      () => evaluate(client, `document.querySelector('.workspace-terminal') ? true : null`),
-      60_000,
-      'terminal panel',
-    )
-
-    const first = await harness.waitFor(async () => {
-      const surface = await terminalSurface(client)
-      return surface && surface.selectedShell ? surface : null
-    }, 30_000, 'the terminal shell picker')
-
-    recorder.note({ step: 'terminal-open', openedTerminal, first })
-    recorder.check(
-      first.shellOptions.length > 0 && Boolean(first.selectedShell) && first.tabs === 0,
-      'the terminal opens one session for a shell discovery actually offered',
-      first,
-    )
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-start-shells button:not(:disabled)') ? true : null`), 30000, 'start page shell choices')
+    const homepage = await evaluate(client, `({ tabs: document.querySelectorAll('.workspace-active-item').length, visible: !!document.querySelector('.workspace-empty-launcher') })`)
+    recorder.check(homepage.tabs === 0 && homepage.visible, 'home is shown with no workspace tab', homepage)
+    const startShot = await client.send('Page.captureScreenshot', { format: 'png' })
+    await writeFile(join(root, 'start.png'), Buffer.from(startShot.data, 'base64'))
+    const selected = await evaluate(client, `(() => {
+      const buttons = [...document.querySelectorAll('.workspace-start-shells button')]
+      const button = buttons.find(x => !x.disabled)
+      const label = button?.getAttribute('aria-label')
+      button?.click()
+      return label
+    })()`)
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.workspace-terminal') ? true : null`), 30000, 'terminal opened from start page')
+    const first = await terminalSurface(client)
+    recorder.note({ step: 'terminal-open', selected, first })
+    recorder.check(Boolean(selected) && first && first.tabs === 0 && !first.selectedShell,
+      'start page chooses the shell and terminal opens without an internal picker', { selected, first })
 
     // The status line only reads 就绪 after a command has completed, so readiness is measured by
     // what the shell does: a marker file that only a live session can write. Waiting on the text
@@ -227,67 +226,37 @@ async function main() {
       { ready, firstReady },
     )
 
-    const marker = (name) => join(workplaceDir, name)
-    await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-1.txt -Value a1')
-    const created = await clickTerminalButton(client, '新建')
-    const twoTabs = await harness.waitFor(async () => {
-      const surface = await terminalSurface(client)
-      return surface && surface.tabs >= 2 ? surface : null
-    }, 90_000, 'a second terminal tab').catch(async () => await terminalSurface(client))
-    await delay(3000)
-    await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-b-1.txt -Value b1')
-    const backToFirst = await evaluate(client, `(() => {
-      const first = [...document.querySelectorAll('.workspace-terminal-tab')][0]
-        ?.querySelector('.workspace-terminal-tab-select')
-      if (!(first instanceof HTMLElement)) return { clicked: false }
-      first.click()
-      return { clicked: true }
-    })()`)
-    await delay(1500)
-    const afterBack = await terminalSurface(client)
-    await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-a-2.txt -Value a2')
-    const afterA2 = await evaluate(client, `(() => ({
-      status: (document.querySelector('.workspace-terminal-status')?.textContent || '').trim(),
-      notice: (document.querySelector('.workspace-terminal-shell-notice')?.textContent || '').trim(),
-      focused: document.activeElement?.tagName + '.' + String(document.activeElement?.className || ''),
-      selected: (document.querySelector('.workspace-terminal-tab[aria-selected="true"]')?.textContent || '').trim(),
+    const minimal = await evaluate(client, `(() => ({
+      picker: !!document.querySelector('.workspace-terminal .workspace-terminal-shell-picker'),
+      border: getComputedStyle(document.querySelector('.workspace-terminal-shell')).borderWidth,
+      radius: getComputedStyle(document.querySelector('.workspace-terminal-shell')).borderRadius,
+      extras: document.querySelectorAll('.workspace-terminal-status, .workspace-terminal-title, .workspace-terminal-activity, .workspace-terminal-tabs').length,
+      buttons: [...document.querySelectorAll('.workspace-terminal button')].map(x => x.textContent.trim()),
     }))()`)
-
-    const markers = {
-      a1: existsSync(marker('terminal-a-1.txt')),
-      b1: existsSync(marker('terminal-b-1.txt')),
-      a2: existsSync(marker('terminal-a-2.txt')),
-    }
+    recorder.check(!minimal.picker && minimal.border === '0px' && minimal.radius === '0px' && minimal.extras === 0
+      && !minimal.buttons.some(x => ['新建', '中断', '重启', '清空'].includes(x)),
+      'terminal content has no internal picker, toolbar or card frame', minimal)
+    const terminalShot = await client.send('Page.captureScreenshot', { format: 'png' })
+    await writeFile(join(root, 'terminal.png'), Buffer.from(terminalShot.data, 'base64'))
+    const pidPath = join(workplaceDir, 'terminal-pid.txt')
+    await sendTerminalCommand(client, 'Set-Content -LiteralPath .\\terminal-pid.txt -Value $PID')
+    await harness.waitFor(() => existsSync(pidPath), 10000, 'shell process identity')
+    const shellPid = Number((await readFile(pidPath, 'utf8')).replace(/^\uFEFF/, '').trim())
+    const alive = () => { try { process.kill(shellPid, 0); return true } catch { return false } }
+    recorder.check(Number.isInteger(shellPid) && shellPid > 0 && alive(), 'the terminal owns a live shell process', { shellPid })
     const closed = await evaluate(client, `(() => {
-      // Close the selected tab, which is the one the user would close.
-      const active = document.querySelector('.workspace-terminal-tab[aria-selected="true"]')
-      const button = active?.querySelector('.workspace-terminal-tab-close')
-      if (!(button instanceof HTMLElement)) return { clicked: false }
+      const active = document.querySelector('.workspace-active-item[aria-selected="true"]')
+      const button = active?.querySelector('button')
+      if (!(button instanceof HTMLElement)) return false
       button.click()
-      return { clicked: true }
+      return true
     })()`)
-    await delay(1200)
+    await harness.waitFor(() => !alive(), 15000, 'closing the terminal tab ends its shell')
     const afterClose = await terminalSurface(client)
+    const backHome = await evaluate(client, `!!document.querySelector('.workspace-empty-launcher') && document.querySelectorAll('.workspace-active-item').length === 0`)
+    recorder.check(closed && afterClose === null && !alive() && backHome,
+      'closing the workspace tab removes the terminal and ends its shell process', { closed, afterClose, shellPid })
 
-    recorder.note({ step: 'terminal-sessions', created, twoTabs, backToFirst, afterBack, afterA2, markers, closed, afterClose })
-    recorder.check(
-      created.clicked === true && twoTabs.tabs >= 2 && twoTabs.activeTabs === 1,
-      'creating another terminal adds a tab beside the running one',
-      { created, twoTabs },
-    )
-    // Every command was typed into the live xterm through CDP and executed by a real shell, so
-    // the marker files are filesystem evidence that the sessions ran what they were given: the
-    // first one before and after a second session existed, the second one while it was selected.
-    recorder.check(
-      markers.a1 && markers.b1 && markers.a2,
-      'both sessions run the commands they were given, and the first still works after a second is created',
-      markers,
-    )
-    recorder.check(
-      closed.clicked === true && afterClose.tabs <= 1,
-      'closing one terminal removes only that tab',
-      { closed, afterClose },
-    )
   } finally {
     // The parked app holds the process open; an acceptance run quits it explicitly.
     if (locator) await harness.desktopAction(locator, 'quit').catch(() => undefined)

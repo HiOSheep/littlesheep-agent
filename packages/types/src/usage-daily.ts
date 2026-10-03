@@ -1,8 +1,8 @@
 // Cross-day Provider usage aggregation contract (O5).
 //
 // Every counted number here comes from a persisted Provider-reported usage
-// event (a durable `model_response_received` event carrying a provider usage
-// projection). Local context ledgers, conservative safety estimates and
+// event (a durable physical `provider_usage_recorded` receipt, with legacy
+// logical-response compatibility). Local context ledgers, conservative safety estimates and
 // embedding usage are never counted. `cached` and `reasoning` are subsets of
 // `input` / `output` and are never added to `total`, so a consumer never has to
 // decide which of them overlaps.
@@ -24,9 +24,10 @@ export const PROVIDER_USAGE_DAILY_MAX_BACKFILL_STEP_BUDGET = 512;
  * How one local day looked. A day with no recorded call (`empty`) is a
  * different fact from a day whose calls reported zero tokens (`recorded` with
  * `total: 0`), and both differ from a day whose calls happened but reported no
- * usage at all (`partial` with no counted attempts).
+ * valid usage at all (`recording_error` with no counted attempts).
  */
-export type ProviderUsageDailyDayState = 'recorded' | 'partial' | 'empty' | 'future';
+/** `partial` is accepted only for older API consumers; new series emit recording_error. */
+export type ProviderUsageDailyDayState = 'recorded' | 'recording_error' | 'partial' | 'empty' | 'future';
 
 export interface ProviderUsageDailyDay {
   /** Calendar date in the series timezone, `YYYY-MM-DD`. */
@@ -46,6 +47,10 @@ export interface ProviderUsageDailyDay {
   readonly missingResponses: number;
   /** Requests that started and never recorded a response. */
   readonly unreportedRequests: number;
+  /** Execution outcomes, kept separate from usage recording errors. */
+  readonly failedRequests?: number;
+  readonly interruptedRequests?: number;
+  readonly pendingRequests?: number;
 }
 
 export interface ProviderUsageDailyIdentity {

@@ -74,7 +74,10 @@ describe('terminal shell choice', () => {
   it('is what the terminal surface renders', async () => {
     const terminal = await readFile(new URL('./terminal.tsx', import.meta.url), 'utf8')
     const picker = await readFile(new URL('./terminal-shell-picker.tsx', import.meta.url), 'utf8')
-    expect(terminal).toContain('WorkspaceTerminalShellPicker')
+    expect(terminal).not.toContain('WorkspaceTerminalShellPicker')
+    const launcher = await readFile(new URL('./empty-launcher.tsx', import.meta.url), 'utf8')
+    expect(launcher).toContain('shells.choose(id)')
+    expect(launcher).toContain("onSelect('terminal')")
     // The surface uses the hook that owns discovery + preference (UX-30 extraction).
     expect(terminal).toContain('useTerminalShellSelection')
     // The picker is the two-part pill: the right segment lists the shells, the left one starts the

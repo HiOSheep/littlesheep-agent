@@ -1,6 +1,7 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { useEffect, useRef, useState } from 'react'
 import { FloatingHelpTip } from '../ui/floating-help'
+import { AddIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { useMenuFocusReturn } from './menu-focus-return'
@@ -67,7 +68,7 @@ export function AddMenu({
           setOpen(true)
         }}
       >
-        +
+        <AddIcon />
       </button>
       <div
         ref={panelRef}

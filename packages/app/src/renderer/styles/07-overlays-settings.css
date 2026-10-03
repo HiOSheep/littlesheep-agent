@@ -42,6 +42,7 @@
   max-height: 82vh;
   padding: 24px;
   overflow: auto;
+  scrollbar-gutter: stable;
   resize: both;
   overscroll-behavior: contain;
   color: var(--text);
@@ -194,6 +195,14 @@
   color: var(--muted);
   background: var(--control);
   border-radius: var(--radius-pill);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* The field is borderless inside this capsule, so the capsule takes the focus state. The field
+   itself must not draw one: the app-wide ring is gone from text fields (reported 2026-10-02),
+   and a rectangle inside the pill is exactly what the report showed. */
+.settings-sidebar-search:focus-within {
+  background: var(--control-hover);
 }
 
 .settings-sidebar-search input {
@@ -392,6 +401,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap));
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-right: var(--sidebar-content-inline-inset);
 }
 
@@ -505,6 +515,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable both-edges;
   padding: 32px clamp(24px, 4vw, 64px) 56px;
   background: var(--workspace-code-surface);
   isolation: isolate;
@@ -528,6 +539,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable both-edges;
   padding: clamp(42px, 7vh, 88px) clamp(22px, 5vw, 96px) 56px;
   background: var(--workspace-code-surface);
   isolation: isolate;
@@ -724,6 +736,13 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* Same shape as the settings search field: a borderless input inside a capsule, so the capsule
+   carries the focus state and the field draws nothing (reported 2026-10-02). */
+.settings-module-search:focus-within {
+  background: var(--control-hover);
 }
 
 .settings-module-search input {
@@ -1101,6 +1120,15 @@ body.is-resizing-column .settings-sidebar-resizer {
   border-radius: var(--radius-ui);
   min-height: 32px;
   padding: 0 8px;
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* A field is its own rounded surface here (the settings frames-off block above keeps the border
+   off and lets the fill carry it), so focus steps the fill up instead of drawing the app-wide
+   rectangle that text fields no longer take (reported 2026-10-02). */
+.web-provider-key-form input:focus {
+  outline: 0;
+  background: var(--control-hover);
 }
 
 .web-provider-key-form button {
@@ -1178,9 +1206,18 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .plugin-list-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  /* The column follows the control's own width. The fixed 38px it used to carry was narrower than
+     the 40px switch, and the card around this list draws no padding, so the trailing control hung
+     1.3px over the card's right edge while the row's text sat 9px inside the left one (reported
+     2026-10-02). */
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 3px;
+  /* The row card gives its inline inset to the row (see `15-settings-surface.css`), so the
+     trailing control reserves the same inset on its side: text and switch then stand the same
+     distance from the card's edge, and the value moves with the narrow layout like every other
+     card row. */
+  padding-right: var(--settings-list-inline-inset);
 }
 
 .plugin-list-disclosure {
@@ -1190,7 +1227,9 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: 100%;
   min-height: var(--settings-row-min-height);
   gap: 9px;
-  padding: 8px;
+  /* Vertical padding stays at 8px; the inline inset is the row-card token, the same one the
+     overview rows take, so the plugin list's text is inset like every other settings card. */
+  padding: 8px var(--settings-list-inline-inset);
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
@@ -1329,7 +1368,10 @@ body.is-resizing-column .settings-sidebar-resizer {
 .plugin-list-details-inner {
   display: grid;
   gap: 6px;
-  margin: 3px 46px 12px;
+  /* The expanded block hangs under the row's text: its left edge follows the row's own inline
+     inset plus the icon column and its gap (28 + 9), so the details stay aligned with the title
+     when the inset moves - including the narrow layout, where the token drops to 14px. */
+  margin: 3px calc(var(--settings-list-inline-inset) + 37px) 12px;
   padding: 5px 0 5px 12px;
   border-left: 1px solid var(--border-strong);
 }
@@ -2359,6 +2401,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   margin-top: 12px;
   padding: 10px;
   overflow: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   background: rgba(255, 255, 255, 0.045);
   border: 1px solid var(--border);
@@ -2628,6 +2671,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   margin-top: 6px;
   padding: 8px;
   overflow: auto;
+  scrollbar-gutter: stable;
   background: rgba(0, 0, 0, 0.25);
   border-radius: var(--radius-ui);
   font-family: var(--mono);
@@ -2717,10 +2761,15 @@ body.is-resizing-column .settings-sidebar-resizer {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
-  font-size: var(--control-font-size-strong);}
+  font-size: var(--control-font-size-strong);
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
 
+/* The frames-off block below zeroes this field's border, so the fill is what a reader can see;
+   it steps up on focus instead of the app-wide rectangle text fields no longer draw. */
 .provider-input input:focus {
-  border-color: var(--border-strong);
+  outline: 0;
+  background: var(--control-hover);
 }
 
 .toggle-btn,
@@ -3029,6 +3078,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   margin-top: 6px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   opacity: 1;
 }
 
@@ -3264,8 +3314,12 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 36px;
 }
 
-.settings-inline-field input:focus-visible {
-  outline: 1px solid var(--accent);
+/* The field's own surface carries focus: the frames-off block below zeroes its border, so the
+   fill steps up. The 1px accent outline that used to sit here was the last rectangle drawn
+   around a text field (reported 2026-10-02). */
+.settings-inline-field input:focus {
+  outline: 0;
+  background: var(--control-hover);
 }
 
 .provider-model-list {
@@ -3326,6 +3380,13 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--text);
   font-size: var(--control-font-size);
   min-height: 32px;
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* Same treatment as the provider key field: the fill is the focus state. */
+.provider-model-row input:focus {
+  outline: 0;
+  background: var(--control-hover);
 }
 
 .provider-model-remove {
@@ -3717,18 +3778,14 @@ body.is-resizing-column .settings-sidebar-resizer {
   .storage-settings-row, .web-settings-row, .settings-policy-row, .development-environment-row, .settings-overview-row { padding: 12px 16px; }
 }
 
-/* The settings search field turned its outline off with no substitute, so a keyboard user had no visible
-   focus at all (measured: 0 ring pixels against 2568 for a rail item, and 0 again when this rule is removed
-   from the live stylesheet). The shared ring values every other focused control uses are restored here.
-   Corrected after measurement: this does NOT leave mouse focus unchanged - Chromium matches :focus-visible
-   for a text input however focus arrived, so a click draws the same 1356 ring pixels. That is exactly what
-   the app-wide input:focus-visible treatment does (a pre-existing input measures 2486 on click), so this
-   field is now consistent with the app rather than special-cased; making it keyboard-only would need input
-   modality tracking in JS. */
-.settings-sidebar-search input:focus-visible {
-  outline: 2px solid var(--focus-ring-color);
-  outline-offset: 2px;
-}
+/* The settings search field had no visible focus at all (finding #19: 0 ring pixels against 2568
+   for a rail item), so a ring was restored on the field itself. That ring is gone again by user
+   decision (reported 2026-10-02): a rectangle inside the search capsule is the "extra box" that was
+   reported across the app, and Chromium matches `:focus-visible` for a text field on a plain click
+   too, so the ring appeared the moment the field was clicked. The visible focus now lives on
+   `.settings-sidebar-search:focus-within` above, the same treatment the app's other borderless
+   fields inside a rounded shell use. `verify-settings-focus-ring.mjs` measures that substitute in
+   a real window. */
 
 /* S3：选中一条搜索结果后，目标行被带进视野并短暂强调（`search-index.ts` 的
    SETTINGS_FIELD_LANDED_MS，1600ms 后移除属性）。强调是画出来的轮廓而不是动画，所以

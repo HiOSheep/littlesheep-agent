@@ -3,28 +3,19 @@ import type { FitAddon } from '@xterm/addon-fit'
 import type { Terminal as XTermTerminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState } from 'react'
+import { preferredShellId } from './terminal-shell-choice'
 import { useTerminalShellSelection } from './use-terminal-shell-selection'
 import { useTerminalSessions } from './use-terminal-sessions'
 import { terminalTabStatusLabel } from './terminal-sessions'
-import { WorkspaceTerminalTabs } from './terminal-tabs'
-import { WorkspaceTerminalShellPicker } from './terminal-shell-picker'
-import { WorkspaceTerminalToolbar } from './terminal-toolbar'
-import {
-  WorkspaceTerminalActivityList,
-} from './terminal-activity'
 export {
   formatDurationMs,
   terminalActivityStatus,
   terminalActivityTip,
 } from './terminal-activity'
 import {
-  interruptWorkspaceTerminalSession,
-  listWorkspaceTerminalActivity,
   resizeWorkspaceTerminalSession,
-  type TerminalActivityRecord
 } from '../api'
-import { FloatingHelpTip, buildFloatingHelpTip } from '../ui/floating-help'
-import { compactPath } from './path-utils'
+import { FloatingHelpTip } from '../ui/floating-help'
 import { createTerminalFitScheduler } from './terminal-fit'
 import {
   COLUMN_RESIZE_END_EVENT,
@@ -68,8 +59,6 @@ export function WorkspaceTerminal({
   const sessions = useTerminalSessions({
     onStart: (event) => {
       terminalBackendRef.current = event.backend ?? 'spawn'
-      setTerminalBackend(event.backend ?? 'spawn')
-      setRunningShell(event.shell)
       setStatus(`${event.shell} 正在连接`)
     },
     onActiveOutput: (text, tone) => {
@@ -85,8 +74,6 @@ export function WorkspaceTerminal({
       if (!terminal) return
       terminal.reset()
       terminalBackendRef.current = tab?.backend ?? 'spawn'
-      setTerminalBackend(tab?.backend ?? '')
-      setRunningShell(tab?.shellLabel ?? '')
       // A session that is already running keeps taking input. Disabling it unconditionally
       // left the keyboard dead after switching back: an idle shell at its prompt prints
       // nothing, so nothing would ever turn the input back on (UX-30).
@@ -106,23 +93,15 @@ export function WorkspaceTerminal({
   terminalSessionRef.current = activeSessionRef.current
   const [running, setRunning] = useState(false)
   const [status, setStatus] = useState('启动中')
-  const [terminalBackend, setTerminalBackend] = useState<'pty' | 'spawn' | ''>('')
-  const [activities, setActivities] = useState<TerminalActivityRecord[]>([])
-  const [activityError, setActivityError] = useState('')
   // UX-29: the shells Main discovered, the saved preference, and what the running session
   // actually is. The picker chooses; Main validates the id and decides executable and args.
   const shellSelection = useTerminalShellSelection()
-  const [runningShell, setRunningShell] = useState('')
-  const activityRequestRef = useRef(0)
   const mountedRef = useRef(true)
   const inputControllerRef = useRef<TerminalInputController | null>(null)
   const activeRef = useRef(active)
   const terminalInputEnabledRef = useRef(false)
   activeRef.current = active
 
-  useEffect(() => {
-    void refreshTerminalActivities()
-  }, [workspacePath, sessionId])
 
   // A workspace or conversation switch must not leave sessions running for something the user
   // has left, and must never route input to them (UX-30). Closing the *panel* is different:
@@ -146,7 +125,6 @@ export function WorkspaceTerminal({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      activityRequestRef.current += 1
       inputControllerRef.current?.dispose()
       inputControllerRef.current = null
     }
@@ -165,7 +143,7 @@ export function WorkspaceTerminal({
       isDisposed: () => disposed || !mountedRef.current,
       writeLine: writeTerminalNotice,
       setStatus,
-      onCompletedCommand: () => void refreshTerminalActivities(),
+      onCompletedCommand: () => undefined,
     })
     inputControllerRef.current = inputController
 
@@ -327,6 +305,16 @@ export function WorkspaceTerminal({
     if (active && terminalInputEnabledRef.current) terminal.focus()
   }, [active, sessions.activeTab?.status])
 
+  useEffect(() => {
+    if (!active) return
+    const selected = preferredShellId()
+    if (!selected || selected === shellSelection.shellIdRef.current) return
+    shellSelection.shellIdRef.current = selected
+    sessions.closeAll()
+    terminalRef.current?.reset()
+    void startTerminalSession(() => !mountedRef.current)
+  }, [active])
+
   /**
    * Opens a session — the first one, or another one beside it (UX-30).
    *
@@ -394,24 +382,6 @@ export function WorkspaceTerminal({
     }
   }
 
-  async function refreshTerminalActivities() {
-    const requestId = ++activityRequestRef.current
-    setActivityError('')
-    try {
-      const records = await listWorkspaceTerminalActivity(workspacePath, sessionId, 8)
-      if (!mountedRef.current || requestId !== activityRequestRef.current) return
-      setActivities(records)
-    } catch (err) {
-      if (!mountedRef.current || requestId !== activityRequestRef.current) return
-      setActivityError((err as Error).message)
-    }
-  }
-
-  function insertTerminalCommand(nextCommand: string) {
-    inputControllerRef.current?.queue(nextCommand)
-    terminalRef.current?.focus()
-  }
-
   function setTerminalInputEnabled(enabled: boolean) {
     terminalInputEnabledRef.current = enabled
     const terminal = terminalRef.current
@@ -420,101 +390,8 @@ export function WorkspaceTerminal({
     if (enabled && activeRef.current) terminal.focus()
   }
 
-  async function interruptTerminal() {
-    const activeSessionId = terminalSessionRef.current
-    if (!activeSessionId) return
-    try {
-      await interruptWorkspaceTerminalSession(activeSessionId)
-      setStatus(terminalBackendRef.current === 'pty' ? '已发送 Ctrl+C' : '已停止当前进程树')
-    } catch (err) {
-      const error = err as Error
-      writeTerminalNotice(`\x1b[31m${error.message}\x1b[0m`)
-      setStatus('中断失败')
-    }
-  }
-
-  async function stopAndRestartTerminal() {
-    const activeSessionId = terminalSessionRef.current
-    terminalSessionRef.current = ''
-    setTerminalInputEnabled(false)
-    inputControllerRef.current?.reset()
-    setRunning(true)
-    setStatus('正在停止')
-    if (activeSessionId) sessions.close(activeSessionId)
-    terminalRef.current?.reset()
-    void startTerminalSession(() => !mountedRef.current)
-    setRunning(false)
-  }
-
-  function clearTerminal() {
-    if (terminalSessionRef.current && terminalBackendRef.current === 'pty') {
-      inputControllerRef.current?.queue('\x0c')
-      terminalRef.current?.focus()
-      return
-    }
-    terminalRef.current?.clear()
-  }
-
-  // The real shell, never a hardcoded one: the label follows the running session (UX-29).
-  const shellLabel = runningShell || shellSelection.shellId || 'Shell'
   return (
     <div className="workspace-terminal">
-      {sessions.state.tabs.length > 1 && (
-        <WorkspaceTerminalTabs
-          tabs={sessions.state.tabs}
-          activeId={sessions.state.activeId}
-          busy={running}
-          onSelect={sessions.select}
-          onClose={(id) => {
-            sessions.close(id)
-            setStatus('已关闭一个终端会话')
-          }}
-          onNew={() => void startTerminalSession(() => !mountedRef.current)}
-          onTipChange={onTipChange}
-        />
-      )}
-      <header className="workspace-terminal-header workspace-page-leading-row">
-        <div className="workspace-terminal-title">
-          <span>终端</span>
-          <small>{compactPath(workspacePath)}{terminalBackend ? ` · ${terminalBackend === 'pty' ? 'PTY' : '兼容模式'}` : ''}</small>
-        </div>
-        <div className="workspace-terminal-actions">
-          <WorkspaceTerminalShellPicker
-            profiles={shellSelection.profiles}
-            selectedId={shellSelection.shellId}
-            busy={!running && status === '启动中'}
-            onSelect={(id) => {
-              shellSelection.choose(id)
-              void stopAndRestartTerminal()
-            }}
-            onTipChange={(tip) => onTipChange(tip ? buildFloatingHelpTip(tip.label, tip.x, tip.y) : null)}
-          />
-          <span className={`workspace-terminal-status ${running ? 'running' : ''}`}>{status}</span>
-          <WorkspaceTerminalToolbar
-            shellLabel={shellLabel}
-            backend={terminalBackend}
-            sessionCount={sessions.state.tabs.length}
-            onNew={() => void startTerminalSession(() => !mountedRef.current)}
-            onInterrupt={() => void interruptTerminal()}
-            onRestart={() => void stopAndRestartTerminal()}
-            onClear={clearTerminal}
-            onTipChange={onTipChange}
-          />
-        </div>
-        {/* A saved Shell that is no longer installed says so here instead of vanishing. */}
-        {(shellSelection.notice || sessions.state.notice || terminalBackend === 'spawn') && (
-          <p className="workspace-terminal-shell-notice" role="status">
-            {shellSelection.notice || sessions.state.notice || '兼容模式：中断会强制停止当前进程树，不能像 PTY 一样向程序发送 Ctrl+C。'}
-          </p>
-        )}
-      </header>
-      <WorkspaceTerminalActivityList
-        activities={activities}
-        activityError={activityError}
-        onInsertCommand={insertTerminalCommand}
-        onRefresh={() => void refreshTerminalActivities()}
-        onTipChange={onTipChange}
-      />
       <div className="workspace-terminal-shell" ref={hostRef} aria-label="终端输入与输出" />
     </div>
   )
@@ -535,13 +412,13 @@ function terminalAppearanceTheme() {
   const dark = isAppearanceDark()
   const color = (name: string, fallback: string) => readAppearanceCssColor(name, fallback)
   return {
-    background: color('--workspace-code-surface', dark ? '#101010' : '#e9e9e7'),
+    background: color('--bg', dark ? '#101010' : '#e9e9e7'),
     foreground: color('--text', dark ? '#d7d7d7' : '#30302e'),
-    selectionBackground: color('--selection-background', dark ? '#333333' : '#c8d9f3'),
+    selectionBackground: color('--selection-background', dark ? '#33507d' : '#c8d9f3'),
     selectionForeground: color('--selection-foreground', dark ? '#f2f2f2' : '#181818'),
-    selectionInactiveBackground: color('--selection-background-inactive', dark ? '#2e2e2e' : '#d7dce4'),
+    selectionInactiveBackground: color('--selection-background-inactive', dark ? '#2c4266' : '#d7dce4'),
     cursor: color('--text-strong', dark ? '#d7d7d7' : '#171716'),
-    black: color('--workspace-code-surface', dark ? '#1f1f1f' : '#e9e9e7'),
+    black: color('--bg', dark ? '#1f1f1f' : '#e9e9e7'),
     red: dark ? '#d86666' : '#b4232d',
     green: dark ? '#77c38a' : '#1f7a43',
     yellow: dark ? '#d8b45c' : '#805b00',

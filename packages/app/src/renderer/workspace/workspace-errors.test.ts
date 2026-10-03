@@ -32,6 +32,6 @@ describe('workspace save error message', () => {
 
   it('reports a vanished path as such instead of a save failure', () => {
     expect(workspaceSaveErrorMessage(apiError(404, 'ENOENT: no such file or directory'), 'fallback'))
-      .toBe('文件已不存在或已被移动，请刷新文件树后重试。')
+      .toBe('文件已不存在或已被移动。')
   })
 })

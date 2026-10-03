@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-02",
+  "date": "2026-10-03",
   "static": [
     {
       "folder": "icon_sizes",
@@ -104,17 +104,17 @@
       "fps": 60,
       "durationMs": 3600,
       "lottieLoaded": true,
-      "midFrameDifference": 2.715900815215106,
-      "loopSeamDifference": 0.26957937457006526,
-      "adjacentFrameDifference": 0.27990453556958256,
+      "midFrameDifference": 4.232337146192103,
+      "loopSeamDifference": 0.41278779346986966,
+      "adjacentFrameDifference": 0.4221542736142436,
       "blackBodyGeometryStationary": true,
-      "innerReflectionChange": 3.543655607087644,
-      "refractedRimChange": 17.06609304483521,
+      "innerReflectionChange": 3.097704840052329,
+      "refractedRimChange": 14.75971150196115,
       "outerHaloChange": {
-        "right": 20.410406504064944,
-        "bottom": 2.7270659238625905,
-        "left": 1.1236350175828276,
-        "top": 14.594069955987981
+        "right": 41.676655052264664,
+        "bottom": 6.063834726090979,
+        "left": 1.5843512863224267,
+        "top": 24.937410238591635
       }
     },
     {
@@ -122,17 +122,17 @@
       "fps": 60,
       "durationMs": 2000,
       "lottieLoaded": true,
-      "midFrameDifference": 19.454885656284322,
-      "loopSeamDifference": 1.6067793873524767,
-      "adjacentFrameDifference": 1.5869750591607001,
+      "midFrameDifference": 20.359947659389103,
+      "loopSeamDifference": 1.2701428098094916,
+      "adjacentFrameDifference": 1.2355462042124774,
       "blackBodyGeometryStationary": true,
-      "innerReflectionChange": 41.546890236651286,
-      "refractedRimChange": 153.8174532877808,
+      "innerReflectionChange": 43.24285884171722,
+      "refractedRimChange": 165.61044329157662,
       "outerHaloChange": {
-        "right": 49.00148664343791,
-        "bottom": 40.34791086350972,
-        "left": 55.51735147140488,
-        "top": 58.0100069492704
+        "right": 48.47930313588882,
+        "bottom": 45.188254410399225,
+        "left": 50.100684804738265,
+        "top": 65.40227009497336
       }
     },
     {
@@ -140,17 +140,17 @@
       "fps": 60,
       "durationMs": 3200,
       "lottieLoaded": true,
-      "midFrameDifference": 3.495244438389618,
-      "loopSeamDifference": 0.5546658324461331,
-      "adjacentFrameDifference": 0.5730523221100398,
+      "midFrameDifference": 3.8088070814559165,
+      "loopSeamDifference": 0.6032944983492189,
+      "adjacentFrameDifference": 0.6183844713884221,
       "blackBodyGeometryStationary": true,
-      "innerReflectionChange": 5.837293376144608,
-      "refractedRimChange": 29.625416508499114,
+      "innerReflectionChange": 4.709525508383906,
+      "refractedRimChange": 23.63022480914427,
       "outerHaloChange": {
-        "right": 17.117212543553954,
-        "bottom": 1.8960074280408596,
-        "left": 0.3249583564686226,
-        "top": 19.289830901088745
+        "right": 24.819512195122005,
+        "bottom": 4.758635097493026,
+        "left": 0.39843605404405086,
+        "top": 23.130831596015838
       }
     },
     {

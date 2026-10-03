@@ -1,5 +1,5 @@
 // Conversation rendering and execution-progress presentation.
-import { memo, useState } from 'react'
+import { memo, useId, useState } from 'react'
 import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
 import { ActivityGlyph } from './activity-glyph'
@@ -17,7 +17,6 @@ import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
 import { AgentToolRow, PreparingLineDeltaBadge, toolActionLabel } from './agent-tool-row'
 import { ActivityAttentionRow } from './attention-row'
 import { DisclosurePanel } from './disclosure-panel'
-import { shortActivityText } from './task-progress-indicator'
 import { MessageMeta } from './message-meta'
 import { WebSources } from './web-sources'
 import type {
@@ -27,9 +26,7 @@ import type {
   LiveToolEvent,
   TranscriptEntry,
 } from './types'
-import { useConversationDisplayMode } from './conversation-display'
-import { activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
-
+import { activityAttentionLine, activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
 
 interface AssistantTurnMessageProps {
   message: ChatMessage
@@ -53,7 +50,6 @@ interface AssistantTurnMessageProps {
   retryPending?: boolean
 }
 
-
 export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   message,
   messageKey,
@@ -66,8 +62,8 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   onRetryTurn,
   retryPending = false,
 }: AssistantTurnMessageProps) {
-  const displayMode = useConversationDisplayMode()
   const [processOpenOverride, setProcessOpenOverride] = useState<boolean | null>(null)
+  const processId = useId()
   const activity = message.activity
   if (!activity) {
     return (
@@ -95,26 +91,27 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
 
   const responseVisible = activity.status === 'running'
     || Boolean(message.text.trim() || activity.error || message.artifacts?.length)
-  const compactCompleted = displayMode === 'compact' && activity.status !== 'running'
-  const processOpen = processOpenOverride ?? (activity.status !== 'done')
+  const processLockedOpen = activity.status !== 'done'
+  const processOpen = processLockedOpen || (processOpenOverride ?? false)
+  const processTranscript = transcriptWithoutAnswer(activity.transcript ?? [], message.text)
   const processLabel = activity.status === 'running' ? `正在工作 · ${formatMaybeDuration(activity.startedAt, undefined, now)}`
     : activity.status === 'done' ? `用时 ${formatMaybeDuration(activity.startedAt, activity.endedAt, now)}`
       : activity.status === 'aborted' ? '已停止' : activity.status === 'failed' ? '执行失败' : '等待处理'
   const processCounts = turnCountsLine(activity)
   // The verdict rides on the trigger too: while the run is still going it would
   // read as a judgement on an unfinished turn.
-  const processVerification = activity.status === 'running' ? null : activityVerificationLine(activity)
+  const processVerification = activity.status === 'running' || activityAttentionLine(activity) ? null : activityVerificationLine(activity)
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
-      <button type="button" className="assistant-process-trigger" aria-expanded={processOpen}
+      <button type="button" className="assistant-process-trigger" aria-expanded={processOpen} aria-controls={processId} disabled={processLockedOpen}
         onClick={() => setProcessOpenOverride(!processOpen)}>
-        <span>{processLabel}</span>
+        <span className={`assistant-process-label${activity.status === 'running' ? ' is-running' : ''}`}>{processLabel}</span>
         {processCounts && <span className="assistant-process-counts">{processCounts}</span>}
         {processVerification && (
           <span className="assistant-process-verification">{processVerification}</span>
         )}
-        <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
+        {!processLockedOpen && <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />}
       </button>
       {/* Outside the panel on purpose: folding the process away must never take an unresolved
           failure, a pending decision or a verdict that did not pass with it (O1). */}
@@ -130,22 +127,19 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             type="button"
             className="feedback-action assistant-turn-retry"
             disabled={retryPending}
-            title={retryPending
-              ? '当前对话还有一轮正在运行，结束后可以重试'
-              : '用这一轮的原指令重新运行'}
+            aria-label="重试这一轮"
             onClick={() => onRetryTurn(activity.instruction)}
           >
             重试
           </button>
+          {retryPending && <span className="assistant-retry-hint">当前运行结束后可重试</span>}
         </div>
       )}
-      <DisclosurePanel open={processOpen} className="assistant-process-content">
-        {!compactCompleted && <ContextProjectionRows rows={activity.contextProjections ?? []} />}
+      <DisclosurePanel id={processId} open={processOpen} className="assistant-process-content">
+        <ContextProjectionRows rows={activity.contextProjections ?? []} />
         {(activity.transcript?.length ?? 0) > 0
-          ? <AssistantTranscript transcript={activity.transcript ?? []} activity={activity} now={now} onOpenFile={onOpenFile} compact={compactCompleted} />
-          : compactCompleted
-            ? <LegacyActivitySummary activity={activity} />
-            : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
+          ? <AssistantTranscript transcript={processTranscript} activity={activity} now={now} onOpenFile={onOpenFile} />
+          : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
       </DisclosurePanel>
       {responseVisible && (
         <div className="message-with-meta assistant">
@@ -176,6 +170,18 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   )
 }, sameAssistantTurnProps)
 
+/** Keep the final answer in one reading seat, without losing earlier model progress. */
+export function transcriptWithoutAnswer(transcript: TranscriptEntry[], answer: string): TranscriptEntry[] {
+  if (!answer.trim()) return transcript
+  let lastText = -1
+  for (let index = transcript.length - 1; index >= 0; index--) {
+    if (transcript[index].kind === 'text') { lastText = index; break }
+  }
+  const entry = transcript[lastText]
+  return entry?.kind === 'text' && entry.text.trim() === answer.trim()
+    ? transcript.filter((_, index) => index !== lastText)
+    : transcript
+}
 
 function sameAssistantTurnProps(
   previous: AssistantTurnMessageProps,
@@ -188,12 +194,12 @@ function sameAssistantTurnProps(
     || previous.onOpenReview !== next.onOpenReview
     || previous.workspaceRoot !== next.workspaceRoot
     || previous.onBranch !== next.onBranch
+    || previous.onOpenUsageHistory !== next.onOpenUsageHistory
     || previous.onRetryTurn !== next.onRetryTurn
     || previous.retryPending !== next.retryPending
   ) return false
   return previous.message.activity?.status !== 'running' || previous.now === next.now
 }
-
 
 export function AssistantActivityFlow({
   activity,
@@ -232,7 +238,6 @@ function isActivityProgressVisible(activity: AssistantTurnActivity): boolean {
   return activity.visibility === 'progress'
     || (activity.visibility === undefined && (activity.steps.length > 0 || activity.tools.length > 0))
 }
-
 
 function AgentStepGroup({
   step,
@@ -295,7 +300,6 @@ function AgentStepGroup({
   )
 }
 
-
 function AgentToolList({
   tools,
   now,
@@ -314,14 +318,12 @@ function AgentToolList({
   )
 }
 
-
 function distinctActivityText(value: string | undefined, title: string): string {
   if (!value) return ''
   const normalized = value.replace(/\s+/gu, ' ').trim()
   const normalizedTitle = title.replace(/\s+/gu, ' ').trim()
   return normalized && normalized !== normalizedTitle ? value : ''
 }
-
 
 export function historyMessageToChatMessage(message: HistoryMessage): ChatMessage {
   const artifacts = buildArtifactsFromLiveTools(message.activity?.tools)
@@ -409,7 +411,7 @@ function SystemPromptRow({ id, text }: { id: string; text: string }) {
         <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
         <span className="agent-flow-title">系统提示词</span>
         <span className="agent-flow-separator" aria-hidden="true" />
-        <span className="agent-flow-summary">{shortActivityText(text, 200)}</span>
+        <span className="agent-flow-summary">本轮实际提示词</span>
         <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
       </button>
       <DisclosurePanel open={open}>
@@ -420,7 +422,6 @@ function SystemPromptRow({ id, text }: { id: string; text: string }) {
     </div>
   )
 }
-
 
 /**
  * A tool call whose arguments were still streaming. It becomes a real tool row
@@ -435,7 +436,7 @@ function PreparingRow({ entry }: { entry: Extract<TranscriptEntry, { kind: 'prep
       : entry.status === 'aborted' ? '已中止' : '生成失败'
   return (
     <div className={`agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
-      <button type="button" className="agent-flow-row" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button type="button" className={`agent-flow-row${entry.status === 'running' ? ' is-active' : ''}`} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
         <span className="agent-flow-title">{action === '调用' ? entry.name : action}</span>
         <span className="agent-flow-separator" aria-hidden="true" />
@@ -454,7 +455,6 @@ function PreparingRow({ entry }: { entry: Extract<TranscriptEntry, { kind: 'prep
   )
 }
 
-
 function ActiveActivityStatus({ activity }: { activity: AssistantTurnActivity }) {
   if (activity.status !== 'running') return null
   const current = [...(activity.reasoning ?? [])].reverse().find((item) => item.status === 'running' && item.source)
@@ -470,21 +470,27 @@ function ActiveActivityStatus({ activity }: { activity: AssistantTurnActivity })
 }
 
 function ContextProjectionRows({ rows }: { rows: NonNullable<AssistantTurnActivity['contextProjections']> }) {
+  const [open, setOpen] = useState(false)
   if (!rows.length) return null
-  return <div className="assistant-context-projections">{rows.map((row) => (
-    <div key={row.kind} className={`agent-flow-row context-projection-row ${row.kind}`}>
-      <span className="agent-flow-glyph context-projection-glyph" aria-hidden="true"><ActivityGlyph kind={row.kind} /></span>
-      <span className="agent-flow-title">{row.label}</span>
+  return <div className="assistant-context-projections">
+    <button type="button" className="agent-flow-row" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
+      <span className="agent-flow-title">上下文</span>
       <span className="agent-flow-separator" aria-hidden="true" />
-      <span className="agent-flow-summary">{row.detail}</span>
-    </div>
-  ))}</div>
-}
-
-function LegacyActivitySummary({ activity }: { activity: AssistantTurnActivity }) {
-  const counts = turnCountsLine(activity)
-  if (!counts) return null
-  return <div className="agent-transcript-summary" data-transcript-summary="true">{counts}</div>
+      <span className="agent-flow-summary">{rows.length} 项上下文记录</span>
+      <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
+    </button>
+    <DisclosurePanel open={open}>
+      {rows.map((row) => (
+        <div key={row.kind} className={`agent-flow-row context-projection-row ${row.kind}`}>
+          <span className="agent-flow-glyph context-projection-glyph" aria-hidden="true"><ActivityGlyph kind={row.kind} /></span>
+          <span className="agent-flow-title">{row.label}</span>
+          <span className="agent-flow-separator" aria-hidden="true" />
+          <span className="agent-flow-summary">{row.detail}</span>
+        </div>
+      ))}
+    </DisclosurePanel>
+  </div>
 }
 
 /**

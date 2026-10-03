@@ -204,6 +204,7 @@
   align-content: start;
   padding: 6px;
   overflow: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   color: var(--text-strong);
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);

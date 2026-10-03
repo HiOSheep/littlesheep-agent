@@ -21,6 +21,7 @@ import type {
 import { isDurableRunTerminal, isTerminalAuditClosure } from './durable-kernel-guards.js';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
 import { DurableKernelError } from './durable-kernel-error.js';
+import { validateProviderReceipt } from './durable-provider-usage-codec.js';
 import { readVerificationRecordedPayload } from './durable-verification-codec.js';
 import {
   freezeDurableRunProjection,
@@ -542,6 +543,10 @@ function applyDurableHarnessEvent(
       }
       next.capabilityProbe = probe;
       if (next.status === 'accepted') next.status = 'running';
+      break;
+    }
+    case 'provider_usage_recorded': {
+      validateProviderReceipt(event.payload, next);
       break;
     }
     case 'user_input_appended':

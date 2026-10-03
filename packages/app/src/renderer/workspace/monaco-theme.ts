@@ -49,9 +49,9 @@ export const LITTLE_SHEEP_MONACO_THEME_DATA = {
     { token: 'invalid', foreground: 'FF3B30', fontStyle: 'underline' },
   ],
   colors: {
-    'editor.background': '#17191e',
+    'editor.background': '#191919',
     'editor.foreground': '#F2F2F2',
-    'editorGutter.background': '#17191e',
+    'editorGutter.background': '#191919',
     'editorLineNumber.foreground': '#858585',
     'editorLineNumber.activeForeground': '#E6E6E6',
     'editorCursor.foreground': '#FFFFFF',
@@ -137,9 +137,9 @@ export function registerLittleSheepMonacoTheme(monaco: typeof Monaco): void {
     rules: LITTLE_SHEEP_MONACO_LIGHT_RULES,
     colors: {
       ...LITTLE_SHEEP_MONACO_THEME_DATA.colors,
-      'editor.background': '#f7f8fb',
+      'editor.background': '#f3f5f9',
       'editor.foreground': '#303847',
-      'editorGutter.background': '#f7f8fb',
+      'editorGutter.background': '#f3f5f9',
       'editorLineNumber.foreground': '#73736f',
       'editorLineNumber.activeForeground': '#292927',
       'editorCursor.foreground': '#20201e',
@@ -173,7 +173,7 @@ export function registerLittleSheepMonacoTheme(monaco: typeof Monaco): void {
 export function updateLittleSheepMonacoCustomTheme(monaco: typeof Monaco): void {
   const root = typeof document === 'undefined' ? null : document.documentElement
   const read = (name: string, fallback: string) => root ? readAppearanceCssColor(name, fallback) : fallback
-  const background = read('--workspace-code-surface', '#e9e9e7')
+  const background = read('--bg', isAppearanceDark() ? '#191919' : '#f3f5f9')
   const foreground = read('--text-strong', '#252523')
   monaco.editor.defineTheme(LITTLE_SHEEP_MONACO_CUSTOM_THEME, {
     ...LITTLE_SHEEP_MONACO_THEME_DATA,
@@ -187,8 +187,8 @@ export function updateLittleSheepMonacoCustomTheme(monaco: typeof Monaco): void 
       'editorLineNumber.foreground': read('--muted-2', '#858585'),
       'editorLineNumber.activeForeground': foreground,
       'editorCursor.foreground': foreground,
-      'editor.selectionBackground': read('--code-selection-background', '#454545'),
-      'editor.inactiveSelectionBackground': read('--code-selection-background-inactive', '#3a3a3a'),
+      'editor.selectionBackground': read('--code-selection-background', '#3d5f91'),
+      'editor.inactiveSelectionBackground': read('--code-selection-background-inactive', '#33507d'),
       'editor.selectionForeground': read('--selection-foreground', '#f2f2f2'),
       'editorSuggestWidget.background': read('--surface', background),
       'editorSuggestWidget.border': read('--border-strong', '#474747'),

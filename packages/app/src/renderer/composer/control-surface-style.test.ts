@@ -31,17 +31,36 @@ describe('composer control surfaces', () => {
       styles.indexOf('@media (max-width: 860px)'),
     )
 
+    // The attach trigger draws one crisp icon inside the same rounded square as the pickers beside
+    // it. It used to be a 50%-radius circle in a 28x34 box, which drew an oval, over two 1px
+    // pseudo-element bars whose rotated arm rasterised heavier than its partner (reported
+    // 2026-10-03).
+    expect(addMenu).toContain('<AddIcon />')
     expect(styles).toMatch(
-      /\.add-menu-trigger::before,\s*\.add-menu-trigger::after\s*\{[^}]*height:\s*1px;/u,
+      /\.add-menu-trigger \.sidebar-svg-icon\s*\{[^}]*width:\s*16px;[^}]*height:\s*16px;/u,
     )
+    expect(styles).not.toMatch(/\.add-menu-trigger::(?:before|after)/u)
     expect(styles).toMatch(
-      /\.add-menu-trigger\.composer-tab-control\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px;[^}]*flex:\s*0 0 28px;[^}]*border-radius:\s*var\(--radius-circle\);/u,
+      /\.add-menu-trigger\.composer-tab-control\s*\{[^}]*width:\s*var\(--composer-control-surface-size\);[^}]*height:\s*var\(--composer-control-surface-size\);[^}]*flex:\s*0 0 var\(--composer-control-surface-size\);/u,
     )
+    expect(styles).not.toMatch(
+      /\.add-menu-trigger\.composer-tab-control\s*\{[^}]*--radius-circle/u,
+    )
+    // DSH's add action is the composer's round "+" button, so it takes the pill radius;
+    // the pickers beside it keep the shared control radius.
+    expect(styles).toMatch(
+      /\.add-menu-trigger\.composer-tab-control\s*\{[^}]*border-radius:\s*var\(--radius-pill\);/u,
+    )
+    expect(styles).not.toMatch(/\.icon-btn\s*\{[^}]*border-radius/u)
     expect(styles).toMatch(
       /\.add-menu-trigger\.composer-tab-control\s*\{[^}]*border:\s*0;/u,
     )
+    // One height for the whole row: nothing pins a control to a size of its own any more.
+    expect(styles).not.toMatch(
+      /\.mode-picker-trigger\.composer-tab-control,\s*\.workspace-context-chip[\s\S]{0,80}\{\s*height:/u,
+    )
     expect(styles).toMatch(
-      /\.add-menu-trigger\.composer-tab-control:hover:not\(:disabled\),\s*\.add-menu-trigger\.composer-tab-control:focus-visible,\s*\.add-menu\.open \.add-menu-trigger\.composer-tab-control\s*\{[^}]*background:\s*var\(--control-active\);[^}]*border:\s*0;[^}]*outline:\s*0;/u,
+      /\.add-menu-trigger\.composer-tab-control:hover:not\(:disabled\),\s*\.add-menu-trigger\.composer-tab-control:focus-visible,\s*\.add-menu\.open \.add-menu-trigger\.composer-tab-control\s*\{[^}]*background:\s*var\(--chat-active-fill\);[^}]*border:\s*0;[^}]*outline:\s*0;/u,
     )
     expect(addMenu).not.toContain('buildFloatingHelpTip')
     expect(addMenu).not.toMatch(/onMouseEnter=|onMouseMove=|onFocus=/u)
@@ -55,7 +74,10 @@ describe('composer control surfaces', () => {
     expect(sharedSurface).toContain('height: var(--composer-control-surface-size);')
     expect(sharedSurface).toContain('background: transparent;')
     expect(sharedSurface).toContain('border: 0;')
-    expect(sharedSurface).toContain('border-radius: var(--radius-ui);')
+    // The row's corner is the composer's own rounding, capped short of a capsule in the token: the
+    // compact row (28px controls) must not turn the boxes into pills either.
+    expect(sharedSurface).toContain('min-height: 0;')
+    expect(sharedSurface).toContain('border-radius: var(--composer-control-radius);')
     expect(sharedSurface).toContain('outline: 0;')
     expect(sharedSurface).toContain('background-color var(--motion-fast) var(--motion-ease)')
     expect(sharedSurface).toContain('color var(--motion-fast) var(--motion-ease)')
@@ -63,7 +85,7 @@ describe('composer control surfaces', () => {
       /\.composer-tab-control:hover:not\(:disabled\):not\(\.context-usage\),\s*\.composer-tab-control:focus-visible,\s*\.workspace-context-chip\.composer-tab-control:focus-within,\s*\.composer-tab-control\[aria-expanded="true"\]\s*\{[^}]*background:\s*var\(--control-hover\);/u,
     )
     expect(styles).toMatch(
-      /\.runtime-picker-trigger\.composer-tab-control:hover:not\(:disabled\),\s*\.runtime-picker-trigger\.composer-tab-control:focus-visible,\s*\.runtime-picker\.open \.runtime-picker-trigger\.composer-tab-control\s*\{[^}]*background:\s*var\(--control-active\);/u,
+      /\.runtime-picker-trigger\.composer-tab-control:hover:not\(:disabled\),\s*\.runtime-picker-trigger\.composer-tab-control:focus-visible,\s*\.runtime-picker\.open \.runtime-picker-trigger\.composer-tab-control\s*\{[^}]*background:\s*var\(--chat-hover-fill\);/u,
     )
     expect(styles.indexOf('.composer-tab-control {')).toBeGreaterThan(styles.indexOf('.workspace-context-chip {'))
     expect(styles).toMatch(/\.workspace-panel-surface\s*\{[^}]*box-sizing:\s*border-box;[^}]*background:\s*transparent;[^}]*border:\s*var\(--floating-panel-border-width\) solid var\(--floating-panel-frame-color\);[^}]*border-radius:\s*var\(--radius-floating-panel\);[^}]*box-shadow:\s*var\(--floating-panel-shadow\);/u)
@@ -77,7 +99,7 @@ describe('composer control surfaces', () => {
       /\.workspace-empty-launcher-item\s*\{[^}]*transition:[^}]*border-color/u,
     )
     expect(styles).toMatch(
-      /\.workspace-add-panel\s*\{[^}]*width:\s*min\(282px, calc\(100vw - 20px\)\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;[^}]*outline:\s*0;/u,
+      /\.workspace-add-panel\s*\{[^}]*width:\s*min\(224px, calc\(100vw - 20px\)\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*border:\s*1px solid var\(--floating-panel-border\);[^}]*box-shadow:\s*var\(--shadow-menu\);[^}]*outline:\s*0;/u,
     )
     expect(styles).toMatch(
       /\.workspace-add-item\s*\{[^}]*border:\s*0;[^}]*box-shadow:\s*none;[^}]*outline:\s*0;/u,
@@ -85,7 +107,7 @@ describe('composer control surfaces', () => {
     expect(styles).not.toMatch(
       /\.workspace-add-item:hover,[\s\S]*?\.workspace-add-item\.active\s*\{[^}]*border-color/u,
     )
-    expect(workspaceAddMenu).toContain('panelRef.current?.offsetWidth || 282')
+    expect(workspaceAddMenu).toContain('panelRef.current?.offsetWidth || 224')
     expect(styles).toMatch(
       /\.model-picker-trigger\s*\{[^}]*padding:\s*0 var\(--composer-control-padding-inline\);/u,
     )
@@ -144,7 +166,13 @@ describe('composer control surfaces', () => {
       /\.workspace-context-chip\s*\{[^}]*padding:\s*0 28px 0 var\(--composer-control-padding-inline\);/u,
     )
     expect(floatingHelpRule).toContain('box-sizing: border-box;')
-    expect(floatingHelpRule).toContain('width: var(--composer-hover-tip-width);')
+    // The bubble is sized by its own text, with the token as its floor: a fixed 80px width broke a
+    // long path into eight-character lines (reported 2026-10-03).
+    expect(floatingHelpRule).toContain('width: max-content;')
+    expect(floatingHelpRule).toContain('min-width: var(--composer-hover-tip-width);')
+    expect(floatingHelpRule).toContain('max-width: min(560px, calc(100vw - 24px));')
+    expect(floatingHelpRule).not.toMatch(/\n\s*width:\s*var\(--composer-hover-tip-width\);/u)
+    expect(styles).toMatch(/\.workspace-panel-reopen-label\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*var\(--composer-hover-tip-width\);/u)
     expect(floatingHelpRule).toContain('min-height: var(--composer-hover-tip-min-height);')
     expect(floatingHelpRule).toContain('background: var(--composer-hover-tip-background);')
     expect(floatingHelpRule).toContain('border: 0;')
@@ -162,13 +190,13 @@ describe('composer control surfaces', () => {
       '--composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));',
     )
     expect(styles).toMatch(
-      /\.runtime-menu-item:hover:not\(:disabled\),\s*\.runtime-menu-item:focus-visible\s*\{[^}]*background:\s*var\(--composer-picker-option-hover\);/u,
+      /\.runtime-menu-item:hover:not\(:disabled\),\s*\.runtime-menu-item:focus-visible\s*\{[^}]*background:\s*var\(--chat-hover-fill\);/u,
     )
     expect(styles).toMatch(
       /\.runtime-menu-item\.active,\s*\.runtime-model-option\.active,\s*\.runtime-reasoning-option\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-active\);/u,
     )
     expect(styles).toMatch(
-      /\.runtime-menu-shell \.runtime-menu-item:hover:not\(:disabled\),\s*\.runtime-menu-shell \.runtime-menu-item:focus-visible,\s*\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-hover\);/u,
+      /\.runtime-menu-shell \.runtime-menu-item:hover:not\(:disabled\),\s*\.runtime-menu-shell \.runtime-menu-item:focus-visible,\s*\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--chat-hover-fill\);/u,
     )
     expect(styles).toMatch(
       /\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-active\);/u,

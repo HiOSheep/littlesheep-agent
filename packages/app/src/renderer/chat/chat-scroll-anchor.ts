@@ -12,6 +12,12 @@ export const CHAT_GEOMETRY_EPSILON = 0.5
 export const CHAT_COMPOSER_OVERLAY_RESIZE_EVENT = 'littlesheep:chat-composer-overlay-resize'
 /** Every message carries this key, so a reading position can be named instead of guessed. */
 export const CHAT_MESSAGE_ANCHOR_ATTRIBUTE = 'data-message-key'
+/**
+ * How much of the previous turn stays visible above a turn that was jumped to: enough that the row
+ * does not start flush against the clip edge, small enough that the jumped-to turn is the first
+ * thing read.
+ */
+export const CHAT_TURN_JUMP_INSET = 16
 
 export interface ChatAnchorProbe {
   key: string
@@ -69,6 +75,22 @@ export function isChatNearBottom(
   const maximum = Math.max(0, geometry.scrollHeight - geometry.clientHeight)
   const top = clamp(geometry.scrollTop, 0, maximum)
   return maximum - top < threshold
+}
+
+/** True while the transcript is at (or within `threshold` of) its first line. */
+/**
+ * Where a turn lands when it is jumped to: its own top, lifted by `inset`, inside the transcript's
+ * scrollable range. The clamp is what keeps "jump to the last turn" from asking for a scrollTop the
+ * container cannot reach.
+ */
+export function resolveTurnJumpScrollTop(
+  anchorTop: number,
+  inset: number,
+  scrollHeight: number,
+  clientHeight: number,
+): number {
+  const maximum = Math.max(0, scrollHeight - clientHeight)
+  return clamp(anchorTop - inset, 0, maximum)
 }
 
 /**

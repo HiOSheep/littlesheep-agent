@@ -28,10 +28,11 @@ export function AgentToolRow({
   const running = tool.ok === undefined && tool.endedAt === undefined
   const title = running ? `${displayAction} · 执行中` : tool.ok === false ? `${displayAction}失败` : displayAction
   const targetPath = toolFilePath(tool.input)
-  const inputText = formatToolInput(tool)
+  const command = isRecord(tool.input) ? firstString(tool.input, ['command', 'cmd']) : ''
+  const inputText = command || formatToolInput(tool)
   const outputText = tool.error ? '' : formatToolResult(tool)
   const errorText = tool.error ? firstLine(tool.error) : ''
-  const summary = errorText || toolSummaryText(tool) || (running ? 'Running…' : '')
+  const summary = errorText || toolSummaryText(tool) || (running ? '执行中' : '')
   // A query and a path are two different facts. Printing them as one string
   // made the row read as noise, so the path is its own trailing chip — and only
   // when the summary is not already the path.
@@ -39,33 +40,40 @@ export function AgentToolRow({
 
   return (
     <section className={`agent-tool-call ${statusClass} ${open ? 'open' : ''}`} data-call-id={tool.callId}>
-      <button
-        type="button"
-        className={`agent-flow-row agent-tool-row ${running ? 'is-active' : ''}`}
-        aria-label={`${title}${summary ? `，${summary}` : ''}`}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="agent-tool-glyph" aria-hidden="true">
-          <ToolActivityIcon name={tool.name} />
-        </span>
-        <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>{title}</span>
-        <span className="agent-flow-separator" aria-hidden="true" />
-        <span className={`agent-flow-summary ${errorText ? 'is-error' : ''}`}>
-          {summary}
-        </span>
-        {pathChip && (
-          <span className="agent-flow-path" aria-label={`路径 ${targetPath}`}>{pathChip}</span>
-        )}
-        <ToolLineDeltaBadge name={tool.name} input={tool.input} progress={tool.lineProgress} running={running} />
-        <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
-        <span className={`agent-flow-chevron ${open ? 'open' : ''}`} aria-hidden="true" />
-        {running && (
-          <span className="agent-flow-sr-only" role="status" aria-live="polite">
-            正在{displayAction}{summary ? `：${summary}` : ''}
+      <div className="agent-tool-heading">
+        <button
+          type="button"
+          className={`agent-flow-row agent-tool-row ${running ? 'is-active' : ''}`}
+          aria-label={`${title}${summary ? `，${summary}` : ''}`}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span className="agent-tool-glyph" aria-hidden="true">
+            <ToolActivityIcon name={tool.name} />
           </span>
+          <span className={`agent-flow-title ${running ? 'is-running' : ''}`}>{title}</span>
+          <span className="agent-flow-separator" aria-hidden="true" />
+          <span className={`agent-flow-summary ${errorText ? 'is-error' : running ? 'is-running' : ''}`}>
+            {summary}
+          </span>
+          {pathChip && (
+            <span className="agent-flow-path" aria-label={`路径 ${targetPath}`}>{pathChip}</span>
+          )}
+          <ToolLineDeltaBadge name={tool.name} input={tool.input} progress={tool.lineProgress} running={running} />
+          <span className="agent-flow-meta">{formatMaybeDuration(tool.startedAt, tool.endedAt, now)}</span>
+          <span className={`agent-flow-chevron ${open ? 'open' : ''}`} aria-hidden="true" />
+          {running && (
+            <span className="agent-flow-sr-only" role="status" aria-live="polite">
+              正在{displayAction}{summary ? `：${summary}` : ''}
+            </span>
+          )}
+        </button>
+        {targetPath && onOpenFile && tool.ok !== false && (action === '读取' || action === '修改') && (
+          <button type="button" className="agent-tool-open-file" aria-label={`打开 ${targetPath}`} onClick={() => onOpenFile(targetPath)}>
+            <FileGlyphIcon name={targetPath} />
+          </button>
         )}
-      </button>
+      </div>
       <div
         className={`agent-tool-details-panel disclosure-panel ${open ? 'open' : ''}`}
         aria-hidden={!open}
@@ -84,17 +92,17 @@ export function AgentToolRow({
                 </button>
               )}
               {inputText && (
-                <ToolDetailSection label="Input">
+                <ToolDetailSection label={command ? "命令" : "输入"}>
                   <pre>{inputText}</pre>
                 </ToolDetailSection>
               )}
               {outputText && (
-                <ToolDetailSection label="Output">
+                <ToolDetailSection label="输出">
                   <pre>{outputText}</pre>
                 </ToolDetailSection>
               )}
               {errorText && (
-                <ToolDetailSection label="Output" error>
+                <ToolDetailSection label="输出" error>
                   <pre>{tool.error}</pre>
                 </ToolDetailSection>
               )}

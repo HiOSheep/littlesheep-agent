@@ -50,7 +50,11 @@ describe('workspace navigator motion', () => {
     )
 
     expect(navigator).not.toContain('transition:')
-    expect(styles).toMatch(/\.workspace-shared-file-navigator\s*\{[^}]*flex:\s*0 0 var\(--workspace-files-navigator-width\);/u)
+    // The column's basis is the saved preference, bounded by the two numbers the navigator's own
+    // resolver uses, so a width saved on a wider panel cannot take the file's view with it
+    // (reported 2026-10-03).
+    expect(styles).toMatch(/\.workspace-shared-file-navigator\s*\{[^}]*flex:\s*0 0 min\(\s*var\(--workspace-files-navigator-width\),\s*68%,\s*calc\(100% - var\(--workspace-file-content-min-width\)\)\s*\);/u)
+    expect(styles).toContain('--workspace-file-content-min-width: 96px;')
     expect(styles).toMatch(/\.workspace-shared-file-navigator:not\(\.inactive\):has\(> \.workspace-files-navigator\.navigator-collapsed\)\s*\{[^}]*flex-basis:\s*var\(--workspace-files-control-rail-width\);/u)
     expect(styles).not.toMatch(/\.workspace-shared-file-navigator\s*\{[^}]*flex:\s*0 0 auto;/u)
     expect(styles).toMatch(/body\.is-resizing-column\s+\.workspace-shared-file-navigator\s*\{[^}]*transition-duration:\s*0ms !important;/u)

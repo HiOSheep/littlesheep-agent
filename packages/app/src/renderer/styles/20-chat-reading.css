@@ -1,0 +1,272 @@
+/* A compact entrance keeps long conversations out of the reading surface. */
+.chat-turn-rail {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  z-index: 41;
+  transform: translateY(-50%);
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+.chat-turn-trigger {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  width: 30px;
+  min-height: 44px;
+  padding: 6px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ui);
+  color: var(--muted);
+  background: var(--composer-surface);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.chat-turn-trigger:hover,
+.chat-turn-trigger[aria-expanded="true"] { color: var(--text); background: var(--chat-hover-fill); }
+.chat-turn-panel {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(280px, calc(100vw - 64px));
+  max-height: min(56vh, 440px);
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  /* DSH floats a popover on an opaque layer with an elevation ring, not on glass. */
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--chat-card-fill);
+  box-shadow: var(--chat-panel-elevation);
+}
+.chat-turn-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 12px;
+  font-size: 12px;
+}
+.chat-turn-heading > span { color: var(--muted); }
+.chat-turn-list { min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.chat-turn-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-ui);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+}
+.chat-turn-entry:hover,
+.chat-turn-entry:focus-visible,
+.chat-turn-entry[aria-current="true"] { background: var(--chat-hover-fill); }
+.chat-turn-number { width: 24px; flex-shrink: 0; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.chat-turn-summary { display: grid; gap: 3px; min-width: 0; }
+.chat-turn-summary > small { color: var(--muted); font-size: 10px; }
+.chat-turn-summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+/* Reading layout: stable header and input, bounded secondary surfaces. */
+.chat-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px var(--chat-content-gutter);
+  z-index: 46;
+  background: var(--workspace-code-surface);
+  /* DSH separates the conversation title from the transcript with one hairline
+     instead of a second surface, so the top of the column stays flat (2026-10-03). */
+  border-bottom: .5px solid var(--chat-hairline);
+}
+.chat-header-title { color: var(--muted); font-size: 14px; font-weight: 500; }
+.chat-header .running-pill-root { min-width: 0; max-width: calc(100% - 114px); }
+.chat-header .running-pill { max-width: 100%; box-shadow: none; background: transparent; border-radius: var(--radius-ui); padding-inline: 6px; }
+.chat-header .running-pill-title { max-width: none; flex: 1 1 auto; }
+.chat-header .running-pill-rename-input { min-width: 0; width: 100%; }
+.chat-header .running-pill-tasks { flex-shrink: 0; }
+.chat-header .chat-turn-rail { position: relative; top: auto; left: auto; transform: none; margin-left: auto; flex-shrink: 0; }
+.chat-turn-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-height: 32px; padding: 5px 8px; font-size: 13px; border-color: transparent; background: transparent; }
+.chat-turn-position { color: var(--muted-2); font-size: 10px; font-variant-numeric: tabular-nums; }
+.chat-turn-panel { left: auto; right: 0; top: calc(100% + 8px); transform: none; width: min(320px, calc(100vw - 40px)); max-height: min(65vh, 520px); gap: 8px; }
+.chat-turn-heading { padding: 2px 4px; }
+.chat-turn-heading > button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-ui); color: var(--muted); background: transparent; font-size: 20px; }
+.chat-turn-heading > button:hover { background: var(--control-hover); }
+.chat-turn-search { flex: 0 0 auto; width: 100%; min-width: 0; padding: 9px 10px; border: .5px solid var(--chat-hairline); border-radius: var(--radius-ui); background: var(--surface-2); color: var(--text); font: inherit; font-size: 12px; }
+.chat-turn-list { scroll-padding: 4px; }
+.chat-turn-entry { gap: 8px; margin-bottom: 3px; min-height: 52px; }
+.chat-turn-summary { gap: 5px; flex: 1 1 auto; }
+.chat-turn-summary > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.chat-turn-summary > span { color: var(--muted); font-size: 11px; }
+.chat-turn-footer, .chat-turn-empty { color: var(--muted); padding: 6px 8px; font-size: 11px; }
+.chat-turn-empty { padding-block: 24px; text-align: center; }
+
+/* The input consumes layout height; transcript lines cannot leak below its surface. */
+.composer-shell { position: relative; flex: 0 0 auto; right: auto; left: auto; bottom: auto; width: 100%; }
+/* DSH reads on a 16px flow gap; the last line keeps one step of clearance before the
+   in-flow composer card instead of the old overlay reservation (2026-10-03). */
+.messages { margin-bottom: 0; padding-bottom: var(--chat-flow-gap); scroll-padding-bottom: var(--chat-flow-gap); }
+.messages.is-empty { padding-bottom: var(--chat-flow-gap); }
+.chat-jump-controls { bottom: calc(var(--composer-overlay-height) + 12px); }
+/* Keep the input where the reader will use it, including an empty conversation. */
+.messages.is-empty ~ .composer-shell { bottom: 0; transform: none; }
+.messages.is-empty .empty-hint { margin-bottom: 0; max-width: 480px; text-align: center; }
+.messages.is-empty { padding-top: 20px; }
+/* DSH's hero headline: one medium-weight line over a quiet paragraph, sitting on the
+   same reading measure as the transcript. */
+.empty-hint .empty-title { font-size: calc(26px * var(--ui-font-scale, 1)); font-weight: 500; letter-spacing: -0.01em; line-height: 32px; }
+.empty-hint .empty-copy { max-width: 42ch; color: var(--muted-2); font-size: var(--chat-font-size-secondary); line-height: var(--chat-line-height-secondary); }
+.messages.is-empty .history-loading { margin-bottom: 0; }
+.message-image-strip { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; width: 100%; margin-bottom: 8px; }
+.message-image-thumbnail { display: grid; place-items: center; width: 120px; height: 120px; max-width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: var(--radius-ui); background: var(--surface-3); cursor: pointer; }
+.message-image-thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.message-image-thumbnail:hover { filter: brightness(1.12); }
+.message.user:empty { display: none; }
+/* DSH keeps the action row out of the reading surface entirely until the pointer or
+   focus lands on the row; a resting half-opacity row still competes with the prose. */
+.message-meta { opacity: 0; gap: 8px; }
+.message-with-meta:hover > .message-meta,
+.message-meta:hover,
+.message-meta:focus-within { opacity: 1; }
+/* Compensate for the icon buttons' invisible padding so the visible glyphs,
+   usage pill and timestamp have the same spacing. Keep 24px hit targets. */
+.message-meta-copy, .message-meta-branch { width: 24px; height: 24px; min-height: 24px; flex: 0 0 24px; margin-inline: -4px; }
+.message-meta-copy:disabled { opacity: 0.4; }
+
+/* DSH's turn-process entry: one full-width row whose label is the whole hit target and
+   whose separation from the transcript is a hairline under it, not a chip around it. */
+.assistant-process-trigger { width: 100%; max-width: 100%; gap: 8px; border: 0; border-bottom: .5px solid var(--chat-hairline); padding: 0 0 8px; margin: 0 0 8px; min-height: 32px; border-radius: 0; flex-wrap: wrap; color: var(--muted); text-align: left; }
+.assistant-process-trigger:hover { color: var(--text-strong); }
+.assistant-process-label { font-weight: 500; }
+.assistant-process-content.open > .agent-flow-disclosure-inner { border-left: 1px solid var(--chat-hairline); padding-left: 12px; margin-bottom: 16px; }
+.turn-live-status { display: grid; gap: 6px; margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.turn-live-current { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.turn-live-current > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.turn-live-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: var(--radius-circle); background: var(--chat-business); }
+.turn-live-update { color: var(--text); font-size: var(--chat-message-font-size); line-height: var(--chat-message-line-height); }
+.turn-live-warning { color: var(--feedback-danger-text); }
+/* A turn note is a row, not a card (DSH): the state is carried by its own ink and a
+   leading rule, so a warning never competes with the prose it annotates. */
+.agent-transcript-attention { padding: 2px 0 2px 10px; border-left: 2px solid var(--chat-hairline); border-radius: 0; background: transparent; line-height: 1.6; }
+
+.composer { --composer-control-gap: 6px; }
+.composer-status { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 4px; }
+.composer-status:empty { display: none; }
+.composer-status .composer-readiness-hint,
+.composer-status .composer-send-block { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-bottom: 8px; }
+.composer-controls { transform: none; margin-top: 8px; }
+.composer-run-actions { flex-shrink: 0; }
+.composer textarea { flex: 0 1 auto; padding-inline: 4px; }
+
+@container chat-pane (max-width: 560px) {
+  .chat-header { padding-inline: 12px; gap: 8px; }
+  .chat-header .running-pill-tasks { display: none; }
+  .chat-header .running-pill-root { max-width: calc(100% - 102px); }
+  .chat-turn-position { display: none; }
+  .message-with-meta.user > .message { max-width: 96%; }
+  .composer-controls { flex-wrap: wrap; row-gap: 6px; }
+  .composer-left { flex: 1 1 auto; }
+  .composer-right { flex: 1 1 auto; max-width: 100%; }
+  .composer-right:has(.runtime-picker.open),
+  .composer-right:has(.runtime-picker-trigger:hover),
+  .composer-right:has(.runtime-picker-trigger:focus-visible) { flex: 1 1 auto; }
+  .composer-right .runtime-picker { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 90px); }
+  .composer-right .runtime-picker-trigger { max-width: 100%; }
+  .composer-right .runtime-picker-model { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .assistant-process-counts { display: none; }
+}
+@media (hover: none) { .message-meta { opacity: 1; } }
+
+/* Conversation hover brightens the target; disclosures are explicit clicks. */
+.chat-header .running-pill { --chat-header-hover: transparent; }
+.chat-header .running-pill:where(:hover) { background: var(--chat-header-hover); color: var(--text-strong); }
+.running-pill-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.running-pill-panel .running-pill-command-text { white-space: normal; overflow-wrap: anywhere; }
+.chat-panel-close { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; padding: 0; color: var(--muted); border: 0; background: transparent; border-radius: var(--radius-ui); font-size: 20px; }
+.chat-panel-close:hover { color: var(--text-strong); }
+
+.agent-transcript-attention[data-tone="warning"] { color: var(--warning); }
+.assistant-retry-hint { color: var(--muted); font-size: 12px; }
+
+.messages .mermaid-block > .code-toolbar { opacity: 0.6; pointer-events: auto; }
+.messages .mermaid-block:hover > .code-toolbar,
+.messages .mermaid-block:focus-within > .code-toolbar { opacity: 1; }
+
+.workspace-terminal-selection-row { justify-content: flex-end; min-height: 38px; padding: 0 0 6px; }
+
+/* The terminal is the workspace content itself, without a second card. */
+.workspace-terminal { padding: 0; gap: 0; grid-template-rows: minmax(0, 1fr); }
+.workspace-terminal-shell { display: block; flex: 1; width: 100%; padding: 8px 10px; background: var(--bg); border: 0; border-radius: 0; }
+.workspace-empty-launcher { align-content: center; width: min(400px, 100%); height: 100%; margin: 0 auto; padding: 24px 16px; gap: 12px; }
+.workspace-empty-launcher-item { min-height: 68px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; }
+.workspace-empty-launcher-desc { white-space: normal; line-height: 1.5; }
+.workspace-empty-launcher-item:hover { background: var(--control-hover); }
+.workspace-start-terminal-entry { grid-template-columns: 22px minmax(0, 1fr) auto; }
+.workspace-start-terminal-open { padding: 0; min-width: 0; color: var(--text); background: transparent; border: 0; text-align: left; }
+.workspace-start-shells { display: flex; align-items: center; }
+.workspace-start-terminal-entry .workspace-empty-launcher-icon { color: var(--jump-to-latest-arrow); }
+
+.workspace-start-shells .split-button { border-radius: 12px; }
+
+/* DSH source seats: ChatView, TurnProcessNodeView, ReasoningRow, DisclosureRow,
+   ToolRow and InputBar. Adapt their geometry to LS tokens and recorded events. */
+.chat {
+  --chat-row-height: calc(24px * var(--ui-font-scale, 1));
+  --chat-radius-row: 4px;
+  --chat-radius-detail: 12px;
+  --chat-radius-bubble: 20px;
+  --chat-radius-artifact: 16px;
+  --chat-content-max-width: min(748px, calc(min(var(--composer-max-width), 100%) - 32px));
+  --composer-max-width: 780px;
+}
+.assistant-process-trigger { height: 33px; min-height: 33px; flex-wrap: nowrap; font-size: var(--chat-font-size-secondary); }
+.assistant-process-trigger:disabled { cursor: default; opacity: 1; }
+.assistant-process-trigger:disabled:hover { color: var(--muted); }
+.assistant-process-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-process-counts { display: none; }
+.assistant-process-verification { margin-left: auto; flex-shrink: 0; font-size: var(--chat-font-size-caption); }
+.assistant-process-content.open > .agent-flow-disclosure-inner { border-left: 0; padding-left: 0; margin-bottom: 16px; }
+.assistant-transcript { gap: 8px; margin-bottom: 0; }
+.agent-transcript-prose { font-size: var(--chat-message-font-size); line-height: var(--chat-message-line-height); padding: 0; margin-block: 8px; }
+.agent-flow-row { border-radius: var(--chat-radius-row); min-height: var(--chat-row-height); height: var(--chat-row-height); overflow: hidden; }
+.agent-flow-title { font-weight: 400; }
+.agent-flow-summary { color: var(--muted-2); }
+.agent-flow-row:hover .agent-flow-title,
+.agent-flow-row:hover .agent-flow-summary:not(.is-error):not(.is-running) { color: var(--text-strong); }
+/* Leading icon changes into a disclosure chevron in the same seat. */
+.agent-flow-row[aria-expanded] > .agent-flow-chevron { position: absolute; left: 4px; top: 8px; opacity: 0; margin: 0; pointer-events: none; }
+.agent-flow-row[aria-expanded]:is(:hover, :focus-visible, [aria-expanded="true"]) > .agent-flow-chevron { opacity: 1; }
+.agent-flow-row[aria-expanded]:is(:hover, :focus-visible, [aria-expanded="true"]) > :is(.agent-flow-glyph, .agent-tool-glyph) { opacity: 0; }
+.agent-tool-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.agent-tool-heading > .agent-tool-row { flex: 1; width: auto; grid-template-columns: 16px max-content 2px minmax(0, 1fr) auto; }
+.agent-tool-row .agent-flow-path, .agent-tool-row .agent-flow-meta { display: none; }
+.agent-tool-row .agent-flow-delta { grid-column: 5; }
+.agent-tool-open-file { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 4px; border: 0; background: transparent; color: var(--muted-2); border-radius: var(--chat-radius-row); opacity: 0; }
+.agent-tool-heading:hover .agent-tool-open-file, .agent-tool-open-file:focus-visible { opacity: 1; }
+.agent-tool-open-file:hover { color: var(--text-strong); }
+.agent-tool-open-file svg { width: 14px; height: 14px; }
+.agent-tool-details { margin: 4px 0 4px 4px; border-radius: var(--chat-radius-detail); }
+.agent-tool-detail-section { grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; column-gap: 14px; padding: 12px 16px; }
+.agent-tool-detail-label { line-height: 18px; }
+.agent-tool-detail-section pre { max-height: 224px; font-size: var(--chat-font-size-secondary); line-height: 18px; }
+.agent-transcript-details { padding: 4px 0 4px 22px; border-left: 0; font-size: var(--chat-font-size-secondary); color: var(--muted); }
+.agent-transcript-reasoning.running > .agent-flow-row .agent-flow-summary { mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
+.message-meta { min-height: 28px; margin-top: 12px; }
+.message-artifacts-card { border-radius: var(--chat-radius-artifact); }
+.message.user { border-radius: var(--chat-radius-bubble); }
+.composer { padding: 12px 14px 8px; gap: 12px; }
+.composer textarea { padding: 4px 0 0; line-height: var(--chat-message-line-height); }
+.composer-controls { margin-top: 4px; gap: 12px; }
+.composer-left, .composer-right { gap: 12px; }
+@container chat-pane (max-width: 560px) {
+  .composer-left, .composer-right, .composer-controls { gap: 8px; }
+  .assistant-process-verification { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .agent-tool-detail-section { padding: 10px 12px; column-gap: 10px; }
+}
+@media (hover: none) { .agent-tool-open-file { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .chat .is-running { animation: none; background: none; color: var(--muted); } }

@@ -26,6 +26,9 @@ export type { ProviderUsageDailyQueryInput } from './provider-usage-daily-query.
 
 export interface ProviderUsageEventSource {
   listRunPartitions(): Promise<string[]>;
+  /** Pending new calls, including a prior process; never replays history. */
+  listChangedRunPartitions?(): Promise<string[]>;
+  acknowledgeUsagePartition?(partitionKey: string, revision: string): Promise<void>;
   readRunRevision(partitionKey: string): Promise<DurableRunPartitionRevision | null>;
   read(sessionId: string, runId: string): Promise<DurableHarnessEvent[]>;
 }
@@ -62,6 +65,31 @@ export class ProviderUsageDailyService {
   /** Bumped by every cancel/start so a stale scheduled step stops itself. */
   private loopToken = 0;
   private initialized = false;
+  private initialization: Promise<void> | undefined;
+  private writes: Promise<void> = Promise.resolve();
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.writes.catch(() => undefined).then(operation);
+    this.writes = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  /** Index pending new calls before serving a query, independently of backfill. */
+  synchronizeCurrent(): Promise<void> {
+    return this.serialize(async () => {
+      await this.initialize();
+      const partitions = await this.source.listChangedRunPartitions?.() ?? [];
+      for (const partition of partitions) {
+        await this.indexPartition(partition);
+      }
+      if (partitions.length > 0 && await this.persist()) {
+        for (const partition of partitions) {
+          const revision = this.store.revisionFor(partition);
+          if (revision) await this.source.acknowledgeUsagePartition?.(partition, revision);
+        }
+      }
+    });
+  }
 
   constructor(options: ProviderUsageDailyServiceOptions) {
     this.store = new ProviderUsageDailyIndexStore(
@@ -77,7 +105,15 @@ export class ProviderUsageDailyService {
     return this.store;
   }
 
-  async initialize(): Promise<void> {
+  initialize(): Promise<void> {
+    this.initialization ??= this.initializeOnce().catch(error => {
+      this.initialization = undefined;
+      throw error;
+    });
+    return this.initialization;
+  }
+
+  private async initializeOnce(): Promise<void> {
     if (this.initialized) return;
     await this.store.load();
     const persisted = this.store.backfill;
@@ -96,8 +132,14 @@ export class ProviderUsageDailyService {
    * One bounded pass over the partition listing. Unchanged partitions cost only
    * a directory listing, so this is cheap enough to run from a user refresh.
    */
-  async runPass(
+  runPass(
     options: { readonly budget?: number; readonly restart?: boolean } = {},
+  ): Promise<ProviderUsageDailyPassResult> {
+    return this.serialize(() => this.runPassLocked(options));
+  }
+
+  private async runPassLocked(
+    options: { readonly budget?: number; readonly restart?: boolean },
   ): Promise<ProviderUsageDailyPassResult> {
     await this.initialize();
     const budget = clampBudget(options.budget, PROVIDER_USAGE_DAILY_MAX_REFRESH_BUDGET);
@@ -137,21 +179,30 @@ export class ProviderUsageDailyService {
     options: { readonly budgetPerStep?: number } = {},
   ): Promise<ProviderUsageDailyPassResult> {
     const budget = clampBudget(options.budgetPerStep, PROVIDER_USAGE_DAILY_MAX_BACKFILL_STEP_BUDGET);
-    const token = this.loopToken + 1;
+    const token = ++this.loopToken;
     if (this.loop) clearTimeout(this.loop);
     this.loop = undefined;
-    const first = await this.runPass({ budget, restart: this.cursor === undefined });
-    if (!first.hasMore) return first;
-    this.status = 'running';
-    this.store.setBackfill(this.record());
-    await this.persist();
+    const first = await this.serialize(async () => {
+      await this.initialize();
+      if (this.loopToken !== token || this.status === 'complete') {
+        return { ...this.record(), hasMore: this.cursor !== undefined };
+      }
+      return this.runPassLocked({ budget, restart: this.cursor === undefined });
+    });
+    if (!first.hasMore || this.loopToken !== token) return first;
+    await this.serialize(async () => {
+      if (this.loopToken !== token) return;
+      this.status = 'running';
+      this.store.setBackfill(this.record());
+      await this.persist();
+    });
     const schedule = (): void => {
       this.loop = setTimeout(() => {
         this.loop = undefined;
         if (this.loopToken !== token) return;
-        void this.runPass({ budget })
+        void this.serialize(() => this.loopToken !== token ? Promise.resolve(undefined) : this.runPassLocked({ budget }))
           .then((result) => {
-            if (result.hasMore && this.loopToken === token) schedule();
+            if (result?.hasMore && this.loopToken === token) schedule();
           })
           .catch((error: unknown) => {
             const message = (error as Error).message;
@@ -170,23 +221,27 @@ export class ProviderUsageDailyService {
 
   /** Cancels a background backfill; the cursor stays for a later resume. */
   async cancelBackfill(): Promise<ProviderUsageDailyPassResult> {
-    await this.initialize();
     this.loopToken += 1;
     if (this.loop) {
       clearTimeout(this.loop);
       this.loop = undefined;
     }
-    this.status = 'cancelled';
-    const record = this.record();
-    this.store.setBackfill(record);
-    await this.persist();
-    return { ...record, hasMore: this.cursor !== undefined };
+    return this.serialize(async () => {
+      await this.initialize();
+      this.status = 'cancelled';
+      const record = this.record();
+      this.store.setBackfill(record);
+      await this.persist();
+      return { ...record, hasMore: this.cursor !== undefined };
+    });
   }
 
   /** Explicit clear: attempts at or before the instant stop being counted. */
   async clearThrough(clearedThrough: string): Promise<void> {
-    await this.initialize();
-    await this.store.recordClear(clearedThrough, this.now().toISOString());
+    await this.serialize(async () => {
+      await this.initialize();
+      await this.store.recordClear(clearedThrough, this.now().toISOString());
+    });
   }
 
   /** Current pass progress without starting any work. */
@@ -264,15 +319,17 @@ export class ProviderUsageDailyService {
     };
   }
 
-  private async persist(): Promise<void> {
+  private async persist(): Promise<boolean> {
     try {
+      if (this.store.lastError?.startsWith('usage index write failed')) this.store.setLastError(undefined);
       this.store.markScanned(this.now().toISOString());
       await this.store.save();
-      if (this.store.lastError?.startsWith('usage index write failed')) this.store.setLastError(undefined);
+      return true;
     } catch (error) {
       const message = `usage index write failed: ${(error as Error).message}`;
       this.store.setLastError(message);
       this.log?.('warn', message);
+      return false;
     }
   }
 }

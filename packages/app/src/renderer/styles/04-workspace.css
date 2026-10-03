@@ -35,6 +35,12 @@
   position: relative;
   z-index: 2;
   display: block;
+  /* The line every trailing row in the panel ends on: the header's window controls, the navigator's
+     toolbar, and the file view's leading row while the navigator is collapsed. Defined here because
+     the header sits outside `.workspace-panel-body` while the rows sit inside it. The rows reach it
+     as the panel's inline inset plus the collapsed reserve (6 + 29) plus the 10px they sit inside the
+     panel body; measured in the real window, all of them end 45px from the panel's right edge
+     (asked for 2026-10-03). */
   flex: 0 0 calc(var(--workspace-panel-active-width) + var(--floating-panel-inline-gutter));
   box-sizing: border-box;
   min-width: 0;
@@ -127,7 +133,7 @@
       var(--workspace-tab-row-inset)
     )
   );
-  right: 12px;
+  right: calc(var(--workspace-panel-close-line) - var(--workspace-tab-height) / 2);
   z-index: 24;
   width: var(--workspace-tab-height);
   height: var(--workspace-tab-height);
@@ -195,12 +201,15 @@
   top: calc(50% + 30px);
   right: calc(100% + 14px);
   box-sizing: border-box;
-  width: var(--composer-hover-tip-width);
+  /* Same recipe as the hover tip, including the content-driven width (see `06-composer.css`). */
+  width: max-content;
+  min-width: var(--composer-hover-tip-width);
   min-height: var(--composer-hover-tip-min-height);
   max-width: min(560px, calc(100vw - 24px));
   max-height: min(160px, calc(100vh - 24px));
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: var(--composer-hover-tip-padding-block) var(--composer-hover-tip-padding-inline);
   color: var(--text);
   background: var(--composer-hover-tip-background);
@@ -261,6 +270,8 @@
 }
 
 .workspace-panel-contents {
+  /* The room between the tab row and the body below it. */
+  --workspace-panel-body-gap: 8px;
   position: relative;
   z-index: 1;
   display: flex;
@@ -287,7 +298,19 @@
   justify-content: space-between;
   gap: 12px;
   height: var(--workspace-tab-row-height);
-  padding-right: 67px;
+  /* The add control and the window controls are painted over this row, so the tab strip has to end
+     before them: with the old 67px reserve the tabs scrolled under the + control and the label ran
+     through it (asked for 2026-10-03). Two control boxes and their gaps, measured from the close line,
+     plus one gap of daylight - less the 12px the panel contents already inset this header by. */
+  padding-right: calc(
+    var(--workspace-panel-close-line)
+    + var(--workspace-tab-height) / 2
+    + var(--workspace-tab-row-gap)
+    + var(--workspace-tab-height) * 2
+    + var(--workspace-tab-row-gap)
+    + 4px
+    - 12px
+  );
   flex: 0 0 auto;
 }
 
@@ -611,13 +634,14 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   z-index: 220;
   display: grid;
   gap: 2px;
-  width: min(282px, calc(100vw - 20px));
-  padding: 10px;
+  width: min(224px, calc(100vw - 20px));
+  padding: 8px;
   color: var(--text);
-  background: #2d2b2a;
-  border: 0;
-  border-radius: var(--radius-ui);
-  box-shadow: none;
+  background: var(--composer-surface);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid var(--floating-panel-border);
+  border-radius: var(--radius-floating-panel);
+  box-shadow: var(--shadow-menu);
   outline: 0;
   opacity: 0;
   pointer-events: none;
@@ -716,14 +740,12 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 }
 
 .workspace-panel-actions {
-  /* Keep the fullscreen action clear of the stationary corner toggle: the offset stays calibrated
-     on the tab row height while both boxes are the smaller tab height, plus the pair's own gap
-     (`--workspace-panel-control-gap`, not the tighter tab gap). The border width is the only
-     coordinate offset between the panel content box and the core workspace containing the toggle. */
+  /* The header's controls stop one gap short of the stationary collapse toggle, which is the control
+     that owns the window's close line on this row (asked for 2026-10-03). */
   right: calc(
-    var(--floating-panel-border-width) +
-    var(--workspace-tab-row-height) +
-    var(--workspace-panel-control-gap)
+    var(--workspace-panel-close-line)
+    + var(--workspace-tab-height) / 2
+    + var(--workspace-tab-row-gap)
   );
   z-index: 3;
   display: inline-flex;
@@ -836,12 +858,18 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
     var(--workspace-files-control-size) +
     var(--workspace-files-control-edge)
   );
-  --workspace-files-control-gap: 4px;
+  --workspace-files-control-gap: 6px;
   --workspace-files-content-reserve: calc(
-    var(--workspace-files-control-size) +
-    var(--workspace-files-control-gap)
+    var(--workspace-panel-close-line) +
+    var(--workspace-files-control-size) / 2 +
+    var(--workspace-files-control-gap) -
+    var(--workspace-page-inline-inset)
   );
   --workspace-files-navigator-width: 214px;
+  /* The file surface the folder column may never take. Must stay in sync with
+     WORKSPACE_FILE_CONTENT_MIN_WIDTH in `workspace-layout.ts`, which applies the same bound to the
+     navigator's own width. */
+  --workspace-file-content-min-width: 96px;
   --workspace-page-inline-inset: 6px;
   --workspace-page-leading-row-height: calc(
     var(--workspace-files-control-top) +
@@ -852,13 +880,13 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  margin: 8px 0 0 8px;
+  margin: var(--workspace-panel-body-gap) 0 0 8px;
   overflow: hidden;
 }
 
 .workspace-panel-body.file-surface-active {
   margin:
-    8px
+    var(--workspace-panel-body-gap)
     -12px
     -12px
     calc(0px - var(--workspace-tab-row-inset));
@@ -879,13 +907,14 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 46px;
-  padding: 0 14px;
+  /* Two lines per entry — where it goes, then what it is — like the reference launcher. */
+  min-height: 58px;
+  padding: 9px 14px;
   color: var(--text);
   background: transparent;
   border: 0;
   border-radius: var(--radius-ui);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
   text-align: left;
   transition:
@@ -913,11 +942,34 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   color: var(--text-strong);
 }
 
+.workspace-empty-launcher-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .workspace-empty-launcher-label {
   min-width: 0;
   overflow: hidden;
+  color: var(--text-strong);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The second line is the surface's own description, the same sentence its hover tip carries. It may
+   take two lines: these sentences explain a surface, and an ellipsis in the middle of one says less
+   than the line it replaces. */
+.workspace-empty-launcher-desc {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .workspace-panel-view {
@@ -926,6 +978,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 /* Keep visited workspace tabs alive while they are open. Inactive surfaces
@@ -966,6 +1019,9 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 .workspace-files-tab-navigator {
   display: flex;
   flex: 1 1 auto;
+  /* The tab view is a block container. Its child needs a definite height
+     before the navigator's absolutely positioned contents can fill it. */
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -981,7 +1037,26 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
    that already says where it is. The concrete path stays, and the shared column keeps both
    (reported 2026-10-02). */
 .workspace-files-tab-navigator > .workspace-files-navigator {
+  /* Fills its column rather than being right-aligned inside it by the base rule's absolute inset, which
+     left a 10px strip of panel between the preview and the column (reported 2026-10-03). */
+  position: relative;
+  inset: auto;
   border-left: 0;
+}
+
+/* With a preview pane beside it the boundary has to be a real line, in the box, and the column has to
+   reach the pane so the line sits exactly between the two regions (asked for 2026-10-03). The shared
+   wrapper (used when a file is open beside the column) has the same problem: its navigator is
+   absolutely positioned at the saved width, which leaves a strip of panel inside the column. */
+.workspace-panel-view:has(> .workspace-files) .workspace-files-tab-navigator > .workspace-files-navigator,
+.workspace-shared-file-navigator > .workspace-files-navigator {
+  border-left: 1px solid var(--border);
+}
+
+.workspace-shared-file-navigator > .workspace-files-navigator {
+  position: relative;
+  inset: auto;
+  width: 100%;
 }
 
 .workspace-files-tab-navigator .workspace-files-root > span {
@@ -1025,7 +1100,7 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 4px;
-  box-shadow: inset 0 -1px var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .workspace-browser-nav {
@@ -1158,6 +1233,10 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
 
 .workspace-files {
   display: flex;
+  /* Takes the row's leftover width so the preview reaches the file column: without it a 10px strip of
+     panel background sat between the two regions, so the boundary was neither filled nor drawn (asked
+     for 2026-10-03). */
+  flex: 1 1 auto;
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -1172,7 +1251,16 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   position: relative;
   z-index: 6;
   display: flex;
-  flex: 0 0 var(--workspace-files-navigator-width);
+  /* The column's basis is the *saved* preference, and it is applied here rather than to the
+     navigator inside. A saved width from a wider panel therefore used to take the whole row and
+     leave the file's own view at zero (reported 2026-10-03). The basis is bounded by the same two
+     numbers `resolveWorkspaceFileNavigatorLayout` applies to the column itself - at most 68% of the
+     row, and always 96px for the file surface - so the column and the view cannot disagree. */
+  flex: 0 0 min(
+    var(--workspace-files-navigator-width),
+    68%,
+    calc(100% - var(--workspace-file-content-min-width))
+  );
   height: 100%;
   min-width: 0;
   min-height: 0;
@@ -1183,7 +1271,9 @@ body.workspace-tab-dragging .workspace-active-item:not(.is-dragging) .workspace-
   transition:
     flex-basis var(--workspace-panel-motion) var(--motion-ease),
     margin-left var(--workspace-panel-motion) var(--motion-ease);
-  background: var(--bg);
+  /* No fill of its own: the column is separated from the file surface by its own 1px border, not by
+     a second background colour that made it read as a different material (asked for 2026-10-03). */
+  background: transparent;
 }
 
 /* A live pointer resize already supplies compositor-paced geometry. Do not
@@ -1200,6 +1290,10 @@ body.is-resizing-column .workspace-shared-file-navigator {
 .workspace-shared-file-navigator:not(.inactive):has(> .workspace-files-navigator.navigator-collapsed) {
   flex-basis: var(--workspace-files-control-rail-width);
   margin-left: calc(0px - var(--workspace-files-control-rail-width));
+  /* Only the rail is left, so the wrapper paints nothing: its `--bg` surface used to leave a 31px
+     band of a different colour down the panel's right edge, which read as a half-finished collapse
+     (reported 2026-10-03). The rail itself is transparent and floats over the file view. */
+  background: transparent;
 }
 
 .workspace-shared-file-navigator.inactive {
@@ -1257,6 +1351,24 @@ body.is-resizing-column .workspace-shared-file-navigator {
   position: relative;
   inset: auto;
   flex: 0 0 var(--workspace-files-navigator-width);
+}
+
+/* The 文件 tab is a panel-edge column, but its view reserved a symmetric scrollbar gutter - 10px on
+   each side - so the navigator's rail (the folder handle that marks the column's collapse line) sat at
+   45px from the panel's right edge where the file and review tabs put it at 23px (reported
+   2026-10-03). This view does not scroll itself: the tree inside it does, with its own scrollbar.
+   The file and review views are the same case - `.workspace-files` is a full-height box that clips,
+   and the preview, editor and diff scroll inside it - and their reserved gutters left the preview
+   header's line 10px short of the seam on its left and of the folder column's line on its right, so
+   the two boundaries never met (measured 2026-10-03: header 810-1056 in an 800-1066 view). */
+.workspace-panel-view:has(> .workspace-files-tab-navigator),
+.workspace-panel-view:has(> .workspace-files),
+.workspace-panel-view:has(> .workspace-preview-pane) {
+  /* These surfaces scroll inside their own body. An outer gutter would inset
+     the header rule and leave a gap at both adjoining vertical boundaries. */
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
 }
 
 /* The shared wrapper owns the animated column width (`flex-basis` plus the negative `margin-left`
@@ -1334,7 +1446,14 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-files-navigator-rail {
   position: absolute;
   top: var(--workspace-files-control-top, 5px);
-  right: var(--workspace-files-control-edge, 6px);
+  /* Centred on the window's close button, less this rail's own column inset (6px) - asked for
+     2026-10-03: it used to sit 1.5px inside that line. */
+  /* Centred on the window's close button, like the panel's stationary collapse toggle (asked for
+     2026-10-03). */
+  right: calc(
+    var(--workspace-panel-close-line)
+    - var(--workspace-files-control-size, 25px) / 2
+  );
   z-index: 2;
   display: grid;
   place-items: center;
@@ -1376,8 +1495,13 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   gap: 8px;
 }
 
-.workspace-preview-header {
-  box-shadow: inset 0 -1px var(--border);
+.workspace-preview-header,
+.workspace-files-toolbar {
+  /* A real 1px line, not an inset shadow: the row reads as a boundary only if the line belongs to the
+     box (asked for 2026-10-03). The row keeps its height, so nothing below it moves. The folder
+     column's toolbar is the same leading row at the same height, so it wears the same line: the
+     preview's line used to stop dead at the column, which left the column's header open to its tree. */
+  border-bottom: 1px solid var(--border);
 }
 
 .workspace-files:has(> .workspace-files-navigator.navigator-collapsed) > .workspace-preview-pane .workspace-page-leading-row,
@@ -1448,9 +1572,13 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   flex: 0 0 auto;
   height: var(--workspace-files-control-size, 25px);
   min-height: var(--workspace-files-control-size, 25px);
+  /* The rail sits at the end of this row, centred on the window's close line, so the buttons stop
+     clear of its left edge: that line, plus half the rail, plus the gap they keep from it. */
   padding-right: calc(
-    var(--workspace-files-control-size, 25px) +
-    var(--workspace-files-control-gap, 4px)
+    var(--workspace-panel-close-line)
+    + var(--workspace-files-control-size, 25px) / 2
+    + var(--workspace-files-control-gap, 4px)
+    - var(--workspace-page-inline-inset)
   );
 }
 
@@ -1483,6 +1611,24 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   width: 16px;
   height: 16px;
 }
+
+/* The code-wrap switch animates the strokes that differ instead of swapping two glyphs: every stroke
+   keeps the same path commands in both states, so `d` interpolates and the line with the arrow travels
+   into its new shape while the top and bottom lines stay fixed (asked
+   for 2026-10-03). The top line is shared and never moves. Reduced motion collapses the pass to 1ms
+   through the app-wide rule. */
+.code-wrap-stroke {
+  transition: d var(--motion-base) var(--motion-ease);
+}
+
+.code-wrap-toggle[data-wrapped='true'] .code-wrap-run {
+  d: path('M2.5 7 H11.5 C12.6 7 13.5 7.9 13.5 9 C13.5 9.8 12.8 10.5 12 10.5 H8.5');
+}
+
+.code-wrap-toggle[data-wrapped='true'] .code-wrap-arrow {
+  d: path('M10.5 8.5 L8.5 10.5 L10.5 12.5');
+}
+
 
 .workspace-files-text-btn {
   display: inline-flex;
@@ -1882,11 +2028,28 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 4px 6px 8px;
 }
 
 .workspace-preview-body.editor {
   overflow: hidden;
+  /* Monaco owns its scrollbars. Reserving another gutter on this clipped
+     parent leaves an empty strip between its scrollbar and the file tree. */
+  scrollbar-gutter: auto;
+  padding: 0;
+}
+
+/* Embedded documents own their scrolling and fill the region bounded by the
+   preview header, panel edge and navigator. Outer padding/gutters would create
+   a second inset frame on all four sides. */
+.workspace-preview-body:has(> .workspace-preview-html-shell),
+.workspace-preview-body:has(> .workspace-preview-html-live),
+.workspace-preview-body:has(> .workspace-preview-pdf) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  scrollbar-gutter: auto;
   padding: 0;
 }
 
@@ -1989,7 +2152,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   background: #315eea;
   border: 0;
   border-radius: var(--radius-ui);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  box-shadow: none;
   pointer-events: auto;
   transition:
     color var(--motion-fast) var(--motion-ease),
@@ -2011,36 +2174,20 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   pointer-events: none;
 }
 
-.workspace-line-comment-add-icon::before,
-.workspace-line-comment-add-icon::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  background: currentColor;
-  border-radius: var(--radius-pill);
-  transform: translate(-50%, -50%);
-}
-
-.workspace-line-comment-add-icon::before {
-  width: 10px;
-  height: 2px;
-}
-
-.workspace-line-comment-add-icon::after {
-  width: 2px;
-  height: 10px;
-}
-
 .workspace-line-comment-editor,
 .workspace-line-comment-card {
   width: min(560px, calc(100% - 20px));
   padding: 9px 10px;
   color: var(--text);
   background: var(--surface);
-  border: 0;
+  box-sizing: border-box;
+  /* Light mode puts this card's #ffffff on the code surface's #f7f8fb: an 8/255 step is not a
+     surface, it is a rumour, and the composer read as part of the code behind it (reported
+     2026-10-03). `--border-strong` is the frame the app already gives an interactive card, and it is
+     a theme token, so dark mode keeps its own value. */
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-ui);
-  box-shadow: none;
+  box-shadow: var(--floating-panel-shadow);
   pointer-events: auto;
 }
 
@@ -2346,6 +2493,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   margin: 0;
   padding: 10px;
   overflow: auto;
+  scrollbar-gutter: stable;
   color: #f2f2f2;
   background: var(--workspace-code-surface);
   border: 1px solid #303030;
@@ -2372,23 +2520,26 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 }
 
 .workspace-preview-pdf {
+  display: block;
+  flex: 1 1 0;
   width: 100%;
-  min-height: 100%;
-  height: 520px;
+  min-height: 0;
+  height: 100%;
   background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  border: 0;
+  border-radius: 0;
 }
 
 .workspace-preview-html-shell {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   width: 100%;
-  min-height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  border: 0;
+  border-radius: 0;
 }
 
 /* Static HTML previews keep the document's own styles but never run its scripts. */
@@ -2445,6 +2596,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   padding: 0 0 0 14px;
   max-height: 140px;
   overflow: auto;
+  scrollbar-gutter: stable;
   list-style: none;
   color: var(--muted);
   font-size: var(--notice-font-size);
@@ -2478,8 +2630,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   display: block;
   flex: 1 1 auto;
   width: 100%;
-  height: max(520px, 100%);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
   border: 0;
   background: #fff;
 }
@@ -2489,8 +2641,8 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   display: block;
   flex: 1 1 auto;
   width: 100%;
-  height: max(520px, 100%);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
   border: 0;
   background: #fff;
 }
@@ -2561,6 +2713,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-office-table-wrap {
   max-width: 100%;
   overflow: auto;
+  scrollbar-gutter: stable;
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
 }
@@ -2875,7 +3028,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 
 .workspace-terminal-shell .xterm-viewport,
 .workspace-terminal-shell .xterm-screen {
-  background: #1f1f1f !important;
+  background: var(--bg) !important;
 }
 
 .workspace-terminal-shell .xterm-selection > div {
@@ -3028,6 +3181,11 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   padding: 7px;
   overflow-x: hidden;
   overflow-y: auto;
+  /* The rows keep the same 7px inset on all four sides: reserving a gutter (one side or both) made the
+     side insets wider than the top and bottom ones - measured 17.7px against 7px - which read as a
+     lopsided, narrower box (reported 2026-10-03). A short popup can hide its scrollbar; wheel and
+     keyboard scrolling still work. */
+  scrollbar-width: none;
   background: var(--composer-surface);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-menu);
@@ -3098,3 +3256,5 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   height: 1px;
   background: var(--border);
 }
+
+.workspace-add-terminal-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 38px; padding: 0 8px; font-size: 13px; font-weight: 650; }

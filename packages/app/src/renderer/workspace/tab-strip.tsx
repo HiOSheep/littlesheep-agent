@@ -19,7 +19,6 @@ import {
   type WorkspacePanelTab,
   type WorkspacePanelTabId,
 } from '../workspace-persistence'
-import { WorkspaceAddMenu } from './add-menu'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
 import { lastPathSegment } from './path-utils'
 import { applyWorkspaceTabSubsetOrder, moveWorkspaceTab } from './tab-order'
@@ -66,7 +65,6 @@ export function WorkspaceTabStrip({
   onTabChange,
   onTabsReorder,
   onCloseTab,
-  onOpenBrowserTab,
   onTipChange,
 }: {
   activeTab: WorkspacePanelTabId
@@ -77,7 +75,6 @@ export function WorkspaceTabStrip({
   onTabChange: (tab: WorkspacePanelTabId) => void
   onTabsReorder: (tabs: WorkspacePanelTabId[]) => void
   onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
-  onOpenBrowserTab: (url: string) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const browserEntry = (tabId: WorkspaceBrowserTabId): DisplayedWorkspaceEntry => {
@@ -428,14 +425,6 @@ export function WorkspaceTabStrip({
           </div>
         )
       })}
-      <WorkspaceAddMenu
-        entries={workspaceEntries}
-        activeTab={isWorkspacePanelTab(activeTab) && displayedTabs.some((entry) => entry.id === activeTab) ? activeTab : null}
-        openTabs={displayedTabs.map((entry) => entry.id).filter(isWorkspacePanelTab)}
-        onSelect={onTabChange}
-        onOpenBrowserTab={onOpenBrowserTab}
-        onTipChange={onTipChange}
-      />
     </div>
   )
 }

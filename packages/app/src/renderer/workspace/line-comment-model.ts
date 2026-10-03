@@ -93,6 +93,18 @@ export function resolveLineCommentAddButtonLeft(layout: LineCommentGutterLayout)
   return gutterLeft + (gutterWidth - LINE_COMMENT_ADD_BUTTON_SIZE) / 2
 }
 
+/**
+ * Moves a position onto the device pixel grid. The add button is an odd 22px box whose glyph is
+ * drawn with 2px bars: on a fractional device offset (Monaco reports line tops like 238.5 device
+ * pixels at 1.5x) the bars rasterise asymmetrically and the "+" reads as off-centre even though its
+ * CSS box is exactly centred (reported 2026-10-03). Snapping the box fixes the rasterisation
+ * without moving anything the eye can follow.
+ */
+export function snapToDevicePixels(value: number, devicePixelRatio: number): number {
+  const ratio = Number.isFinite(devicePixelRatio) && devicePixelRatio > 0 ? devicePixelRatio : 1
+  return Math.round(value * ratio) / ratio
+}
+
 export function createCommentId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `line-comment-${crypto.randomUUID()}`

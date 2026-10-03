@@ -352,6 +352,8 @@ export function readWorkspacePanelTabPreference(key: string): WorkspacePanelTabI
   } catch {
     // Local UI preferences are best-effort only.
   }
+  // The panel opens on its navigation page («开始»), not on the Git review or a folder: expanding the
+  // workspace is a request to go somewhere (asked for 2026-10-03).
   return 'review'
 }
 

@@ -17,7 +17,6 @@ import { WorkspaceChip } from '../composer/workspace-chip'
 import { createImeCompositionState, resolveEnterAction } from '../ui/enter-confirm'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { SendRunIcon, StopRunIcon } from '../ui/icons'
-import { TaskProgressPresence } from '../chat/task-progress-indicator'
 import {
   CHAT_COMPOSER_OVERLAY_RESIZE_EVENT,
   isChatNearBottom,
@@ -26,14 +25,13 @@ import {
 import { syncComposerInputHeight } from '../composer/input-size'
 import { WINDOW_RESIZE_END_EVENT } from '../ui/resize'
 import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
-import { ComposerReadinessHint } from '../runtime-readiness/composer-readiness-hint'
 import type { ComposerViewController } from './app-controller-projections'
 
 export function ComposerView({ controller }: { controller: ComposerViewController }) {
   // Execution availability comes from the Runtime, not from local state: the
   // composer renders before the Runner exists, and only the readiness fact may
   // decide whether sending is possible yet.
-  const { readiness, reason: readinessReason } = useRuntimeReadiness()
+  const { reason: readinessReason } = useRuntimeReadiness()
   const executionUnavailable = readinessReason
   const {
     input,
@@ -49,14 +47,12 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     dragActive,
     runtimeError,
     runtimeEventNotice,
-    activityNow,
     selectableProviders,
     selectedModel,
     modelAvailability,
     workspaceIsWorkplace,
     workspaceTip,
     contextUsage,
-    latestTaskActivity,
     uploadTip,
     sendTip,
     stopTip,
@@ -179,8 +175,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
   }, [scrollRef])
 
   return (
-    <section ref={composerShellRef} className="composer-shell">
-      <TaskProgressPresence activity={latestTaskActivity} now={activityNow} />
+    <section ref={composerShellRef} className="composer-shell" aria-label="发送消息">
       <div
         className={`composer ${dragActive ? 'drag-active' : ''}`}
         onClick={(event) => {
@@ -226,9 +221,13 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             if (sendReadiness.blocked) return
             void send()
           }}
-          placeholder="给 LittleSheep 一个任务，或上传文件后直接发送"
+          aria-label="消息输入"
+          placeholder="输入消息，或添加文件…"
           rows={1}
         />
+        <div className="composer-status" role="status">
+          <ComposerSendBlockNotice executionReason={sendReadiness.executionReason} modelReason={sendReadiness.modelReason} />
+        </div>
         <div className="composer-controls">
           <div className="composer-left">
             <AddMenu
@@ -248,11 +247,6 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             )}
           </div>
           <div className="composer-right">
-            <ComposerReadinessHint readiness={readiness} reason={readinessReason} />
-            <ComposerSendBlockNotice
-              executionReason={sendReadiness.executionReason}
-              modelReason={sendReadiness.modelReason}
-            />
             <ContextUsageIndicator usage={contextUsage} />
             <RuntimePicker
               runtime={runtime}

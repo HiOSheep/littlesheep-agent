@@ -21,7 +21,7 @@ export function useTerminalShellSelection(): TerminalShellSelection {
   const [profiles, setProfiles] = useState<WorkspaceShellProfile[]>([])
   const [shellId, setShellId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
-  const shellIdRef = useRef<string | null>(null)
+  const shellIdRef = useRef<string | null>(preferredShellId())
 
   // Discovery changes when the machine changes (a Git install, a WSL distribution), so it is
   // read once per mount and every start asks Main again through the profile id.

@@ -17,10 +17,12 @@ import type { ReactNode } from 'react'
 
 export function DisclosurePanel({
   open,
+  id,
   className,
   innerClassName,
   children,
 }: {
+  id?: string
   open: boolean
   className?: string
   innerClassName?: string
@@ -28,6 +30,7 @@ export function DisclosurePanel({
 }) {
   return (
     <div
+      id={id}
       className={`agent-flow-disclosure disclosure-panel${open ? ' open' : ''}${className ? ` ${className}` : ''}`}
       aria-hidden={!open}
       {...(!open ? { inert: '' } : {})}

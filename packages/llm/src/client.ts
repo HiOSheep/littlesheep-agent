@@ -185,6 +185,12 @@ export class OpenAIClient implements LlmClient {
         const managed = await this.callApi(req, false, { transportAttempt: ++transportAttempt });
         try {
           const json = (await managed.response.json()) as OpenAIResponse;
+          const usage = parseUsage(json.usage);
+          await reportProviderResponse(req, {
+            attempt: managed.attempt,
+            usage: usage ? attachTransportUsage({ content: '', toolCalls: [], finishReason: 'stop', model: req.model, usage }, managed, 1, managed.startedAtMs).usage : undefined,
+            completed: true,
+          });
           const choice = json.choices[0];
           // Transient provider hiccup (empty choices) → retryable so retryWithBackoff
           // gets a chance instead of killing the call immediately.
@@ -226,6 +232,7 @@ export class OpenAIClient implements LlmClient {
             emit,
             req,
             (kind) => recordFirstStreamSignal(managed, kind),
+            managed,
           );
           return attachTransportUsage(parsed, managed, transportAttempt, logicalStartedAtMs);
         } finally {
@@ -381,6 +388,7 @@ export class OpenAIClient implements LlmClient {
     onDelta: (chunk: StreamChunk) => void,
     request: ChatRequest,
     onFirstSignal: (kind: 'content' | 'reasoning' | 'tool_arguments') => void,
+    timing: TransportTiming,
   ): Promise<{
     content: string;
     toolCalls: ToolCall[];
@@ -413,12 +421,13 @@ export class OpenAIClient implements LlmClient {
     let sawTerminalSignal = false;
     const dsmlScanner = createIncrementalDsmlControlScanner();
 
+    try {
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? ''; // keep partial line
+      if (done && buffer.trim()) { lines.push(buffer); buffer = ''; }
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data:')) continue;
@@ -438,8 +447,8 @@ export class OpenAIClient implements LlmClient {
         }
         const parsedUsage = parseUsage(chunk.usage ?? undefined);
         if (parsedUsage) usage = parsedUsage;
-        const delta = chunk.choices[0]?.delta;
-        const fr = chunk.choices[0]?.finish_reason;
+        const delta = chunk.choices?.[0]?.delta;
+        const fr = chunk.choices?.[0]?.finish_reason;
         if (fr) sawTerminalSignal = true;
         if (delta?.content) {
           onFirstSignal('content');
@@ -487,6 +496,18 @@ export class OpenAIClient implements LlmClient {
           }
         }
         if (fr) finishReason = this.mapFinishReason(fr);
+      }
+      if (done) break;
+    }
+    } finally {
+      try {
+        await reportProviderResponse(request, {
+          attempt: timing.attempt,
+          usage: usage ? attachTransportUsage({ content: '', toolCalls: [], finishReason: 'stop', model: request.model, usage }, timing, 1, timing.startedAtMs).usage : undefined,
+          completed: sawTerminalSignal,
+        });
+      } finally {
+        reader.releaseLock?.();
       }
     }
     // A stream that carried an answer but never signalled completion was cut in transit.
@@ -551,20 +572,26 @@ export class OpenAIClient implements LlmClient {
 
 function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'] | undefined {
   if (!usage) return undefined;
-  const promptTokens = usage.prompt_tokens ?? 0;
-  const completionTokens = usage.completion_tokens ?? 0;
+  const promptTokens = usage.prompt_tokens;
+  const completionTokens = usage.completion_tokens;
+  if (typeof promptTokens !== 'number' || !Number.isSafeInteger(promptTokens) || promptTokens < 0
+    || typeof completionTokens !== 'number' || !Number.isSafeInteger(completionTokens) || completionTokens < 0) return undefined;
   const totalTokens = usage.total_tokens ?? promptTokens + completionTokens;
+  if (!Number.isSafeInteger(totalTokens) || totalTokens < promptTokens + completionTokens) return undefined;
   // DeepSeek's native cache fields are authoritative; the OpenAI-compatible
   // `prompt_tokens_details.cached_tokens` is only a fallback, because a provider
   // that emits an explicit 0 there must not hide a real native hit.
-  const cachedPromptTokens = usage.prompt_cache_hit_tokens
-    ?? usage.prompt_tokens_details?.cached_tokens;
+  const counter = (value: unknown, max: number): number | undefined => typeof value === 'number'
+    && Number.isSafeInteger(value) && value >= 0 && value <= max ? value : undefined;
+  const cachedPromptTokens = counter(usage.prompt_cache_hit_tokens
+    ?? usage.prompt_tokens_details?.cached_tokens, promptTokens);
   // Keep the provider's own miss count when it reports one, so the three
   // counters stay disjoint (billed input = uncached + cached + cache write).
-  const uncachedPromptTokens = usage.prompt_cache_miss_tokens
-    ?? (cachedPromptTokens === undefined ? undefined : Math.max(0, promptTokens - cachedPromptTokens));
-  const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
-  const cacheWriteTokens = usage.cache_creation_input_tokens;
+  const uncachedPromptTokens = usage.prompt_cache_miss_tokens === undefined
+    ? (cachedPromptTokens === undefined ? undefined : promptTokens - cachedPromptTokens)
+    : counter(usage.prompt_cache_miss_tokens, promptTokens - (cachedPromptTokens ?? 0));
+  const reasoningTokens = counter(usage.completion_tokens_details?.reasoning_tokens, completionTokens);
+  const cacheWriteTokens = counter(usage.cache_creation_input_tokens, promptTokens);
   return {
     promptTokens,
     completionTokens,
@@ -574,6 +601,15 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
     ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
     ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
   };
+}
+
+async function reportProviderResponse(request: ChatRequest, receipt: Parameters<NonNullable<ChatRequest['onProviderResponse']>>[0]): Promise<void> {
+  try {
+    await request.onProviderResponse?.(receipt);
+  } catch {
+    // A persistence failure must never replay an already billed Provider response.
+    throw new LlmError(0, 'Provider usage receipt could not be durably recorded', false);
+  }
 }
 
 function requestToolNames(request: ChatRequest): Set<string> {

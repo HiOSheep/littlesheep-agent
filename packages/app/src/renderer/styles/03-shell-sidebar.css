@@ -1,20 +1,20 @@
 
 :root {
   color-scheme: dark;
-  --bg: #191b20;
-  --workspace-code-surface: #17191e;
-  --bg-elevated: #24272e;
-  --surface: #22252c;
-  --surface-2: #292d35;
-  --surface-3: #30353e;
-  --control: #2c3039;
-  --control-hover: #353b46;
-  --control-active: #3b4350;
+  --bg: #191919;
+  --workspace-code-surface: var(--bg);
+  --bg-elevated: #242424;
+  --surface: #242424;
+  --surface-2: #2b2b2b;
+  --surface-3: #333333;
+  --control: #2b2b2b;
+  --control-hover: #363636;
+  --control-active: #3f3f3f;
   /* Sidebar rows sit above a dynamic glass surface. Keep their interaction
      treatment translucent so the mapped background remains visible. */
   --sidebar-interaction-hover: color-mix(in srgb, var(--text) 6%, transparent);
   --sidebar-interaction-active: color-mix(in srgb, var(--text) 10%, transparent);
-  --sidebar-menu-surface: rgba(28, 31, 38, 0.88);
+  --sidebar-menu-surface: rgba(36, 36, 36, 0.9);
   --workspace-tree-interaction-hover: color-mix(in srgb, var(--control-hover) 66%, transparent);
   --workspace-tree-interaction-active: color-mix(in srgb, var(--control-active) 68%, transparent);
   /* A quiet amber outline distinguishes folders from the format marks. */
@@ -23,20 +23,24 @@
   --settings-switch-on: #3f7fd8;
   --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
   --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
-  --composer-surface: rgba(38, 42, 50, 0.82);
+  --composer-surface: rgba(39, 39, 39, 0.86);
   --composer-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
-  --selection-background: #333333;
-  --selection-background-inactive: #2e2e2e;
-  --code-selection-background: #454545;
-  --code-selection-background-inactive: #3a3a3a;
+  /* Selections are a colour, not a slightly lighter grey: on a dark transcript a grey highlight read
+     as an unstyled patch, so the reader could not see what was about to be copied (reported
+     2026-10-03). Same family as the light theme's #c8d9f3, dark enough for the #f2f2f2 foreground
+     (7:1) and for the code surface below it. */
+  --selection-background: #33507d;
+  --selection-background-inactive: #2c4266;
+  --code-selection-background: #3d5f91;
+  --code-selection-background-inactive: #33507d;
   --selection-foreground: #f2f2f2;
   --selection-radius: 3px;
-  --border: #343943;
-  --border-strong: #4a5362;
-  --text: #e3e7ee;
-  --text-strong: #f6f8fc;
-  --muted: #a7afbd;
-  --muted-2: #8f99aa;
+  --border: #333333;
+  --border-strong: #505050;
+  --text: #e2e2e2;
+  --text-strong: #f5f5f5;
+  --muted: #b3b3b3;
+  --muted-2: #969696;
   --chat-message-font-size: 15px;
   --accent: #e2e2e2;
   --accent-hover: #f4f4f4;
@@ -130,6 +134,9 @@
      `corner-shape: superellipse(1.5)` gives up ~24% of the declared radius: 18px reads as the
      13-14px a round-cornered card of the same size would show. */
   --radius-card: 18px;
+  /* The reader's own message: a step rounder than a card without reaching the composer input's
+     capsule (asked for 2026-10-03). */
+  --radius-message-bubble: 22px;
   --radius-icon: 3px;
   --radius-pill: 999px;
   --radius-circle: 50%;
@@ -146,6 +153,13 @@
      top bar over the chat+workspace column, the height of the window drag band over
      the sidebar column, and the offset of the settings page column. */
   --window-titlebar-height: 32px;
+  /* Windows draws the window's close button 23px in from the client's right edge (its caption buttons
+     are 46x32 CSS px and the last one ends on that edge). The app cannot read that metric, so it is
+     declared once here: the workspace panel's stationary collapse toggle and the file navigator's
+     rail are both centred on that line (asked for 2026-10-03). It lives here, not on the panel,
+     because the collapse toggle is positioned against the core workspace, outside the panel. */
+  --window-caption-control-width: 46px;
+  --workspace-panel-close-line: calc(var(--window-caption-control-width) / 2);
   /* The pinned window-chrome controls and the no-drag hole they punch through the
      drag surfaces are ONE box: both rules below consume these two, so the hole
      cannot be positioned anywhere but under the controls. The remaining half of
@@ -166,6 +180,9 @@
   --runtime-picker-hover-extra-width: 18px;
   --dialog-motion: 360ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* The hover tip grows with its own text up to a comfortable reading width; this is only the floor,
+     so a one-word tip still reads as a compact bubble (2026-10-03: a fixed width here broke a long
+     path into eight-character lines). */
   --composer-hover-tip-width: 80px;
   --composer-hover-tip-min-height: 27px;
   --composer-hover-tip-padding-block: 4px;
@@ -215,15 +232,9 @@
      (`ui-material-roles.test.ts`); glasses are never stacked inside one visual
      layer. */
   --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
-  /* The sidebar is the one floating card that is always on screen, and an untinted grey fill read
-     as washed out. A faint sky-blue → violet wash runs down its height; both ends stay dark enough
-     for the sidebar's own text, and the workspace panel beside it keeps the plain glass. The wash is
-     deliberately shallow — the first pass at 16% / 19% read as a coloured panel rather than a tint,
-     so it is halved and the hue is left alone. */
-  --sidebar-tint-top: rgba(86, 148, 255, 0.08);
-  /* Blue into the brand's own amber rather than into violet: the ring's warm arc is the colour the
-     sidebar was already carrying in its mark (2026-10-02). */
-  --sidebar-tint-bottom: rgba(255, 154, 100, 0.1);
+  /* Neutral glass follows the reference charcoal palette without coloured gradients. */
+  --sidebar-tint-top: rgba(255, 255, 255, 0.02);
+  --sidebar-tint-bottom: rgba(255, 255, 255, 0.01);
   --floating-panel-inset: 8px;
   --floating-panel-inline-gutter: 16px;
   /* Use one thin, low-contrast frame for every floating surface so straight
@@ -243,6 +254,47 @@
   --sidebar-resizer-width: 0px;
   --workspace-panel-width: clamp(280px, 37.5vw, 4096px);
   --two-stage-resize-motion: 320ms;
+  /* Conversation surface (2026-10-03). The transcript, its process stream and the
+     composer adopt the DeepSeek-Harness design language: one measured reading
+     column, hairline-separated single-line process rows, a tinted reader bubble,
+     one solid elevated composer card, and one restrained blue for the few business
+     affordances (send, links, the active turn mark, the running sweep, the focus
+     ring). The palette stays LittleSheep's own: every value below is derived from
+     the existing surface/text roles, so the custom palette keeps working. */
+  --chat-flow-gap: 16px;
+  --chat-flow-gap-tight: 8px;
+  --chat-message-line-height: calc(var(--chat-message-font-size) + 10px);
+  --chat-font-size-secondary: calc(13px * var(--ui-font-scale, 1));
+  --chat-line-height-secondary: 20px;
+  --chat-font-size-meta: calc(12px * var(--ui-font-scale, 1));
+  --chat-font-size-caption: calc(11px * var(--ui-font-scale, 1));
+  /* One process row: a 16px glyph, a title, a 2px rule and a summary sharing one
+     24px line box inside a 32px row. The row itself never paints a surface - the
+     pointer and the open state only move ink, which is what keeps a long run from
+     reading as a stack of cards. */
+  --chat-row-height: 32px;
+  --chat-row-line-height: 24px;
+  --chat-row-glyph: 16px;
+  /* Separation inside the conversation is a 1px-of-alpha hairline, never a second
+     border colour: the transcript is one flat surface. */
+  --chat-hairline: color-mix(in srgb, var(--text) 10%, transparent);
+  --chat-hairline-soft: color-mix(in srgb, var(--text) 7%, transparent);
+  --chat-raised-stroke: color-mix(in srgb, var(--text) 11%, transparent);
+  --chat-hover-fill: color-mix(in srgb, var(--text) 6%, transparent);
+  --chat-active-fill: color-mix(in srgb, var(--text) 11%, transparent);
+  /* The reader's own message, the composer card and every expanded detail panel.
+     Panels and the composer card take the existing `--radius-card` /
+     `--radius-composer-input` roles, so the conversation adds no radius of its own. */
+  --chat-bubble-fill: var(--surface-2);
+  --chat-card-fill: var(--surface);
+  --chat-panel-fill: color-mix(in srgb, var(--text) 5%, var(--workspace-code-surface));
+  --chat-business: #5686fe;
+  --chat-business-hover: #7aaaff;
+  --chat-business-soft: rgba(86, 134, 254, 0.16);
+  --chat-business-ink: #ffffff;
+  --chat-card-elevation: 0 0 0 1px var(--chat-raised-stroke), 0 4px 16px rgba(0, 0, 0, 0.22);
+  --chat-panel-elevation: 0 0 0 1px var(--chat-raised-stroke), 0 12px 32px rgba(0, 0, 0, 0.3);
+  --chat-input-max-height: 336px;
 }
 
 html,
@@ -303,10 +355,23 @@ button {
    next to the native ones because a `<div role="tab">` or a `[role="option"]`
    gets no ring from the user agent, and a keyboard user cannot see where they
    are. A surface that draws focus itself keeps doing so: its own
-   `:focus-visible` rule lives in a later domain file, so it still wins. */
+   `:focus-visible` rule lives in a later domain file, so it still wins.
+
+   Text fields are deliberately NOT in this list (reported 2026-10-02). Chromium
+   matches `:focus-visible` for a text field however focus arrived - including a
+   plain pointer click - so this ring reached every `input` and `textarea` on the
+   first click and framed the field in a rectangle that belongs to no surface:
+   the running pill's rename field drew a square blue box inside its own capsule,
+   and the same box appeared on the settings search field, the module search, the
+   memory editor and the two font sliders. A field shows focus through the surface
+   that owns it instead, which is how the app already treated its two most-used
+   fields (the composer textarea and the settings module search): the field's own
+   border or background steps up, or the rounded shell around it takes a fill on
+   `:focus-within`. `ui/focus-ownership.ts` still owns the rule that a focused
+   control must be visibly focused, and both halves of it are asserted
+   (`ui/focus-ownership.test.ts` over these stylesheets, `verify-focus-ownership`
+   over real pixels). */
 button:focus-visible,
-textarea:focus-visible,
-input:focus-visible,
 a[href]:focus-visible,
 summary:focus-visible,
 [role='button']:focus-visible,
@@ -317,6 +382,23 @@ summary:focus-visible,
 [role='tab']:focus-visible {
   outline: 2px solid var(--focus-ring-color);
   outline-offset: 2px;
+}
+
+/* A slider is not a text field and has no rounded box to step up, so it draws the same round
+   handle halo the app-wide ring would not give it: a soft ring around the control's own handle,
+   never a rectangle around the track (reported 2026-10-02). `border-radius` is required on the
+   handle for the shadow to come out round - without it the engine paints the handle's square box
+   as a halo, which is the rectangle the report was about. */
+input[type='range']:focus-visible {
+  outline: 0;
+}
+
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  border-radius: var(--radius-circle);
+  /* The colour leads the shadow on purpose: `focus-indicator-rules.ts` reads a declaration that
+     starts with a `0` length as "paints nothing", and the usual `0 0 0 4px <colour>` order would
+     therefore read this halo as no indicator at all. CSS allows the colour anywhere in the value. */
+  box-shadow: color-mix(in srgb, var(--text) 24%, transparent) 0 0 0 4px;
 }
 
 [inert],
@@ -664,6 +746,8 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
   width: 24px;
   height: 24px;
   padding: 0;
+  /* Window-chrome controls keep the subdued browser-history ink and take the
+     conversation's shared hover fill, with no border of their own (DSH, 2026-10-03). */
   color: var(--muted-2);
   background: transparent;
   border: 0;
@@ -679,7 +763,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 .app-nav-btn:hover:not(:disabled),
 .app-nav-btn:focus-visible {
   color: var(--text-strong);
-  background: var(--control-hover);
+  background: var(--chat-hover-fill);
   border: 0;
   outline: 0;
 }
@@ -1946,7 +2030,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 }
 
 .session-row-actions {
-  display: inline-flex;
+  display: none;
   grid-column: 2;
   grid-row: 1;
   align-items: center;
@@ -1964,13 +2048,16 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 }
 
 .session-item:hover .session-tail,
+.session-item:focus-visible .session-tail,
 .session-item:has(:focus-visible) .session-tail {
   opacity: 0;
   transform: translateX(-3px);
 }
 
 .session-item:hover .session-row-actions,
+.session-item:focus-visible .session-row-actions,
 .session-item:has(:focus-visible) .session-row-actions {
+  display: inline-flex;
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
@@ -2160,6 +2247,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   margin-top: 8px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .sidebar-search-result {
@@ -2269,9 +2357,16 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 
 .chat {
   position: relative;
-  --composer-max-width: 800px;
-  --chat-content-max-width: var(--composer-max-width);
-  --chat-content-gutter: clamp(18px, 2.6vw, 40px);
+  /* The DeepSeek-Harness reading measure (2026-10-03): the composer card is capped at
+     912px and the text column inside it is that card minus 32px, capped at 880px. Both
+     follow the pane, so a narrow window keeps the transcript and the input on one
+     measure instead of the transcript hitting a floor the card ignores. The old fixed
+     800px cap made a wide window read as one narrow strip with a lot of dead margin. */
+  --composer-max-width: 912px;
+  --chat-content-max-width: min(880px, calc(min(var(--composer-max-width), 100%) - 32px));
+  /* DSH's reading surface clears 16px to the pane on each side; the centered column
+     carries the rest of the measure. */
+  --chat-content-gutter: 16px;
   --composer-overlay-height: 116px;
   /* `.composer-shell`'s own top padding: the measured overlay height starts at the shell, so the
      input's visible top edge is this far below it. Anything that has to sit a fixed distance above
@@ -2283,7 +2378,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
      `.messages`) and at the input's bottom edge (margin-bottom), and its scroll padding keeps
      content out from under both overlays while scrolling. */
   --task-pill-inset-top: 8px;
-  --task-pill-height: 24px;
+  --task-pill-height: 32px;
   --task-pill-content-gap: 8px;
   --task-pill-overlay-height: calc(var(--task-pill-height) + var(--task-pill-content-gap));
   --composer-message-gap: 32px;
@@ -2309,22 +2404,40 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   pointer-events: none;
 }
 
-/* The chat column's task pill: the conversation on screen plus what it is running, floating at
-   the top edge of the chat column (to the right of the sidebar), symmetric to the composer shell
-   at the bottom. The shell is click-through except for the pill itself. Both the pill and its
-   panel wear the same glass as the composer — translucent fill, 18px backdrop blur, no border
-   strokes — and neither is nested inside another backdrop-filtered element, so the blur has a
-   real backdrop to sample (see `composer/README.md` for the backdrop-root failure mode). */
+/* The chat column's task bar: the conversation on screen plus what it is running, at the top edge
+   of the chat column (to the right of the sidebar). It starts at the column's left edge - the same
+   2px the turn rail sits at - instead of floating in the middle of the transcript (asked for
+   2026-10-02), and the right padding is only an overflow guard. The shell is click-through except
+   for the bar itself. Both the bar and its panel wear the same glass as the composer — translucent
+   fill, 18px backdrop blur, no border strokes — and neither is nested inside another
+   backdrop-filtered element, so the blur has a real backdrop to sample (see `composer/README.md`
+   for the backdrop-root failure mode). */
 .running-pill-shell {
   position: absolute;
   top: 0;
+  /* The shell also spans the column's height, so a dragged pill has the whole conversation to move
+     in; it stays `pointer-events: none`, so the transcript below keeps every click. */
+  bottom: 0;
   right: var(--chat-workspace-scrollbar-overlap);
   left: 0;
   z-index: 40;
   display: flex;
-  justify-content: center;
-  padding: var(--task-pill-inset-top) var(--chat-content-gutter) 0;
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: var(--task-pill-inset-top) var(--chat-content-gutter) 0 2px;
   pointer-events: none;
+}
+
+/* While the bar is being dragged (or sits off its docked spot) it is the thing the pointer is on,
+   and a scroll gesture that started on it must not scroll the transcript instead. */
+.running-pill-root.dragging .running-pill,
+.running-pill-root[data-dragged='true'] .running-pill {
+  touch-action: none;
+  cursor: grab;
+}
+
+.running-pill-root.dragging .running-pill {
+  cursor: grabbing;
 }
 
 .running-pill-root {
@@ -2356,10 +2469,23 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
   cursor: pointer;
+  /* The bar's quiet parts read their tone from one variable, so hovering the bar brightens them
+     without a descendant rule that starts from the bar's own `:hover` (which the state matrix
+     would read as a second hover fill for the role itself). */
+  --chat-bar-quiet: var(--muted-2);
   transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .running-pill:hover {
+  --chat-bar-quiet: var(--muted);
+  background: color-mix(in srgb, var(--composer-surface) 88%, var(--control-hover));
+}
+
+/* The rename field takes the caret without drawing anything of its own (text fields no longer
+   draw the app-wide ring), so the pill itself reports the editing state the way it reports
+   hover. Only the editing state: the resting button still shows keyboard focus with the shared
+   ring. */
+.running-pill.editing:focus-within {
   background: color-mix(in srgb, var(--composer-surface) 88%, var(--control-hover));
 }
 
@@ -2371,59 +2497,113 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   flex: 1 1 auto;
   min-width: 140px;
   padding: 0;
-  color: var(--text);
+  color: var(--text-strong);
   background: transparent;
   border: 0;
   outline: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .running-pill-title {
   min-width: 0;
-  /* A concrete cap, not a percentage: the pill hugs its content, so a relative cap would be
+  /* A concrete cap, not a percentage: the bar hugs its content, so a relative cap would be
      circular against the shrink-to-fit width. */
-  max-width: min(38vw, 320px);
+  max-width: min(34vw, 300px);
   overflow: hidden;
-  color: var(--text);
-  font-size: 12px;
+  color: var(--text-strong);
+  /* The bar leads with the conversation's name, so it reads one step above the row text around it
+     (asked for 2026-10-02: the title was 12px, the same size as the meta beside it). */
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.running-pill-summary {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted-2);
-  font-size: 11px;
+/* The pencil says the name is editable without waiting for a discovered double-click; the pointer
+   path and the F2 path both land in the same field. Decorative to a screen reader (the button
+   carries `aria-keyshortcuts`), so it is not a second tab stop inside a button. */
+.running-pill-rename {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--chat-bar-quiet);
+  border-radius: var(--radius-ui);
+  cursor: text;
+  transition:
+    color var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.running-pill-rename .sidebar-svg-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.running-pill-rename:hover {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
+
+/* The background-task segment: a count and the chevron that opens the panel behind it. It only
+   exists while the conversation has something to report, which is how the bar's width follows the
+   state (asked for 2026-10-02, after the reference bar's "4 个后台任务"). */
+.running-pill-tasks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
   white-space: nowrap;
-  text-overflow: ellipsis;
+}
+
+.running-pill-chevron {
+  width: 6px;
+  height: 6px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  opacity: 0.75;
+  transform: rotate(45deg) translate(-1px, 1px);
+  transition: transform var(--motion-slow) var(--motion-ease);
+}
+
+.running-pill[aria-expanded="true"] .running-pill-chevron {
+  transform: rotate(225deg) translate(-1px, 1px);
 }
 
 .running-pill-panel {
   position: fixed;
   z-index: 40;
   display: grid;
-  gap: 2px;
+  gap: 4px;
   width: min(420px, calc(100vw - 32px));
   max-height: min(420px, 64vh);
-  padding: 8px;
+  padding: 12px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: auto;
   /* The composer's own glass recipe, on a portal rooted at the document so the blur is real. */
   background: var(--composer-surface);
-  border: 0;
-  border-radius: var(--radius-composer-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-menu);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
   backdrop-filter: blur(18px) saturate(135%);
 }
 
 .running-pill-panel-title {
-  padding: 2px 8px 6px;
+  padding: 2px 4px 10px;
+  border-bottom: 1px solid var(--border);
   overflow: hidden;
   color: var(--text-strong, var(--text));
-  font-size: 12px;
+  /* The panel repeats the bar's own heading, so it repeats its size too. */
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2434,7 +2614,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 8px 4px;
+  padding: 6px 6px 2px;
   color: var(--muted-2);
   font-size: 11px;
 }
@@ -2445,6 +2625,9 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 }
 
 .running-pill-panel-count {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--control);
   color: var(--muted-2);
   font-variant-numeric: tabular-nums;
 }
@@ -2462,12 +2645,12 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   grid-template-columns: 10px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
-  border-radius: var(--radius-icon);
+  padding: 7px 6px;
+  border-radius: var(--radius-ui);
 }
 
 .running-pill-command:hover {
-  background: var(--composer-picker-option-hover);
+  background: var(--control-hover);
 }
 
 .running-pill-command-stop {
@@ -2502,11 +2685,12 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 /* The dsh-style history fold: the row that opens the older finished commands, or tucks them
    away again. */
 .running-pill-fold {
-  padding: 5px 8px;
+  margin-top: 4px;
+  padding: 8px 10px;
   color: var(--muted-2);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-icon);
+  border-radius: var(--radius-ui);
   font-size: 11px;
   text-align: left;
   cursor: pointer;
@@ -2518,7 +2702,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .running-pill-fold:hover,
 .running-pill-fold:focus-visible {
   color: var(--text);
-  background: var(--composer-picker-option-hover);
+  background: var(--control-hover);
   outline: 0;
 }
 

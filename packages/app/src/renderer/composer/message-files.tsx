@@ -89,7 +89,6 @@ function MessageFileLink({
         className={`message-file-card ${file.action}`}
         type="button"
         aria-label={`打开 ${file.name}`}
-        title={`打开 ${file.path}`}
         onClick={onOpen}
       >
         <span className="message-file-icon" aria-hidden="true">
@@ -104,7 +103,6 @@ function MessageFileLink({
         className="message-file-open-system"
         type="button"
         aria-label={`用系统默认应用打开 ${file.name}`}
-        title="用系统默认应用打开"
         onClick={onOpenSystem}
       >
         <ExternalOpenIcon />
@@ -113,6 +111,26 @@ function MessageFileLink({
   )
 }
 
+
+export function MessageImageStrip({ files }: { files: AttachmentRef[] }) {
+  const [preview, setPreview] = useState<AttachmentRef | null>(null)
+  const images = files.filter((file) => (file.kind ?? inferAttachmentKind(file.name ?? file.path)) === 'image')
+  if (!images.length) return null
+  return (
+    <>
+      <div className="message-image-strip" aria-label="图片附件">
+        {images.map((file) => (
+          <button key={file.path} type="button" className="message-image-thumbnail"
+            aria-label={`查看原图：${file.name ?? lastPathSegment(file.path)}`} onClick={() => setPreview(file)}>
+            <img src={attachmentFileUrl(file.path)} alt={file.name ?? '图片附件'} loading="lazy" />
+          </button>
+        ))}
+      </div>
+      {preview && <AttachmentImagePreview fileUrl={attachmentFileUrl(preview.path)}
+        name={preview.name ?? lastPathSegment(preview.path)} open onClose={() => setPreview(null)} />}
+    </>
+  )
+}
 
 export function fileActionLabel(action: WorkspaceArtifactRef['action']): string {
   if (action === 'attached') return '附件'

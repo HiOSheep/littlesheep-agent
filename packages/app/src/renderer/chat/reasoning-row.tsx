@@ -1,14 +1,11 @@
 // One reasoning entry of the model transcript.
 //
-// The chain of thought is the one row worth showing while it is still arriving, so it opens itself
-// for as long as the model is thinking; from the moment the reader clicks, their choice wins. The
-// text is the same Markdown either way — it streams in as it arrives.
+// Reasoning stays compact while streaming; the reader explicitly opens its complete text.
 import { useState } from 'react'
 import { shortActivityText } from './task-progress-indicator'
 import { Markdown } from '../Markdown'
 import { ActivityGlyph } from './activity-glyph'
 import { DisclosurePanel } from './disclosure-panel'
-import { VoidRing } from '../ui/void-ring'
 
 export function ReasoningRow({
   id,
@@ -19,10 +16,7 @@ export function ReasoningRow({
   text: string
   status: 'running' | 'done' | 'failed' | 'aborted'
 }) {
-  const [pinnedOpen, setPinnedOpen] = useState<boolean | null>(null)
-  // While the model is still thinking the row opens itself; from the reader's
-  // first click on, their choice wins.
-  const open = pinnedOpen ?? status === 'running'
+  const [open, setOpen] = useState(false)
 
   return (
     <div className={`agent-transcript-reasoning ${status}`} data-transcript-entry={id}>
@@ -30,13 +24,12 @@ export function ReasoningRow({
         type="button"
         className="agent-flow-row"
         aria-expanded={open}
-        onClick={() => setPinnedOpen(!open)}
+        onClick={() => setOpen(!open)}
       >
-        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true">{status === 'running'
-          ? <VoidRing state="thinking" size={22} /> : <ActivityGlyph kind="reasoning" />}</span>
-        <span className="agent-flow-title">思考</span>
+        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
+        <span className={`agent-flow-title${status === 'running' ? ' is-running' : ''}`}>思考</span>
         <span className="agent-flow-separator" aria-hidden="true" />
-        <span className="agent-flow-summary">{shortActivityText(text, 200)}</span>
+        <span className="agent-flow-summary">{reasoningPreview(text, status === 'running')}</span>
         <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
       </button>
       <DisclosurePanel open={open}>
@@ -46,4 +39,12 @@ export function ReasoningRow({
       </DisclosurePanel>
     </div>
   )
+}
+
+/** Advance a live preview as paragraphs complete instead of repeating the oldest thinking. */
+export function reasoningPreview(text: string, running: boolean): string {
+  const paragraphs = text.split(/\r?\n\s*\r?\n/u)
+  const completed = running && paragraphs.length > 1 ? paragraphs.slice(0, -1) : paragraphs
+  const paragraph = running ? completed[completed.length - 1] : completed[0]
+  return shortActivityText((paragraph ?? '').split(/\r?\n/u)[0].replaceAll('**', ''), 200)
 }

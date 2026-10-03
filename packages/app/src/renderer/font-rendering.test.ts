@@ -266,17 +266,17 @@ describe('frontend font rendering baseline', () => {
     expect(rowControls).toContain('position: absolute')
     expect(rowControls).toContain('top: var(--workspace-tab-row-inset)')
     expect(rowControls).toContain('height: var(--workspace-tab-row-height)')
-    // The two controls are the tab's own box; the action keeps the row-height offset so the
-    // smaller boxes gain gap instead of overlapping.
-    expect(actions).toContain('var(--workspace-tab-row-height)')
-    // The pair's own gap, not the tighter tab gap: two icon buttons 4px apart read as touching.
-    expect(actions).toContain('var(--workspace-panel-control-gap)')
+    // The two controls are the tab's own box; the panel's shared trailing line keeps them clear of
+    // the stationary corner toggle, and it is a wider offset than the old tab-row-height one, so the
+    // smaller boxes gain gap instead of overlapping (asked for 2026-10-03).
+    expect(actions.replaceAll(/\s+/gu, ' ')).toContain('var(--workspace-panel-close-line)')
     expect(cornerToggle).toContain('top: var(')
     expect(cornerToggle).toContain('--workspace-panel-toggle-top')
     expect(cornerToggle).toContain('var(--floating-panel-inset)')
     expect(cornerToggle).toContain('var(--floating-panel-border-width)')
     expect(cornerToggle).toContain('var(--workspace-tab-row-inset)')
-    expect(cornerToggle).toContain('right: 12px')
+    // Both collapse controls are centred on the window's close line (asked for 2026-10-03).
+    expect(cornerToggle.replaceAll(/\s+/gu, ' ')).toContain('var(--workspace-panel-close-line)')
     expect(cornerToggle).toContain('width: var(--workspace-tab-height)')
     expect(cornerToggle).toContain('height: var(--workspace-tab-height)')
     expect(cornerToggle).toContain('border: 0')

@@ -95,7 +95,7 @@ function ArtifactRow({
       <button
         className="message-artifacts-row-open"
         type="button"
-        title={`${fileActionLabel(file.action)} · ${file.path}`}
+        aria-label={`打开 ${file.path}`}
         onClick={onOpen}
       >
         <span className="message-artifacts-row-path">{compactPath(file.path)}</span>
@@ -106,7 +106,6 @@ function ArtifactRow({
           className="message-artifacts-row-delta"
           type="button"
           aria-label={fileDeltaLabel(file.name, delta)}
-          title="查看这个文件的审阅"
           onClick={onOpenReview}
         >
           <span className="line-delta-add">+{delta.additions}</span>

@@ -112,20 +112,22 @@ describe('workspace Markdown preview modes', () => {
     expect(markdown).not.toContain('<span>{language}</span>')
       expect(markdown).toContain('function CopyButton({ text, label }: { text: string; label: string })')
       expect(markdown).toContain('aria-label={copied ? `${label}已复制` : `复制${label}`}')
-      expect(markdownLinkRule).toContain('color: #5da1f7;')
-      expect(markdownLinkRule).toContain('border-bottom: 1px solid rgba(93, 161, 247, 0.32);')
+      expect(markdownLinkRule).toContain('color: var(--chat-business);')
+      expect(markdownLinkRule).toContain('border-bottom: 1px solid color-mix(in srgb, var(--chat-business) 32%, transparent);')
     expect(inlineCodeRule).toContain('background: color-mix(in srgb, var(--text) 10%, transparent)')
     expect(inlineCodeRule).toContain('border: 0')
     expect(inlineCodeRule).toContain('box-shadow: none')
-    expect(blockRule).toContain('background: var(--surface)')
-    expect(blockRule).toContain('border: 1px solid var(--border)')
+    // The conversation's code surface is the DSH panel (an opaque step on the page's code
+    // fill behind one hairline); the preview follows it so both render one material.
+    expect(blockRule).toContain('background: var(--chat-panel-fill)')
+    expect(blockRule).toContain('border: .5px solid var(--chat-hairline)')
     expect(blockRule).toContain('box-shadow: none')
     expect(blockRule).toContain('--code-block-inset: 6px')
     expect(blockRule).toContain('--code-copy-button-size: 26px')
     expect(blockRule).toContain('--code-copy-safe-gap: 6px')
     expect(blockRule).toContain('position: relative')
     expect(toolbarRule).toContain('background: var(--surface-2)')
-    expect(toolbarRule).toContain('border-bottom: 1px solid var(--border)')
+    expect(toolbarRule).toContain('border-bottom: .5px solid var(--chat-hairline-soft)')
     expect(toolbarRule).toContain('justify-content: space-between')
     expect(toolbarRule).toContain('min-height: 30px')
     expect(styles).toMatch(/\.mermaid-block > \.code-toolbar\s*\{[^}]*position:\s*absolute;[^}]*background:\s*transparent;/u)
@@ -140,7 +142,7 @@ describe('workspace Markdown preview modes', () => {
     expect(styles).toMatch(/\.code-block-source\[data-code-wrap="off"\]\s*\{[^}]*overflow-x:\s*auto;[^}]*white-space:\s*pre;/u)
     expect(styles).toMatch(/\.code-block-source\[data-code-wrap="on"\]\s*\{[^}]*white-space:\s*pre-wrap;/u)
     expect(styles).toMatch(/\.code-toolbar button\s*\{[\s\S]*?width:\s*var\(--code-copy-button-size\);[\s\S]*?height:\s*var\(--code-copy-button-size\);[\s\S]*?padding:\s*0;[\s\S]*?border:\s*1px solid transparent;[\s\S]*?border-radius:\s*var\(--radius-circle\);/u)
-    expect(styles).toMatch(/\.code-toolbar button:hover,[\s\S]*?\.code-toolbar button:focus-visible\s*\{[\s\S]*?background:\s*rgba\(255, 255, 255, 0\.14\);[\s\S]*?border-color:\s*transparent;/u)
+    expect(styles).toMatch(/\.code-toolbar button:hover,[\s\S]*?\.code-toolbar button:focus-visible\s*\{[\s\S]*?background:\s*var\(--chat-active-fill\);[\s\S]*?border-color:\s*transparent;/u)
   })
 
   it('uses larger, level-specific heading spacing in Markdown preview', async () => {
@@ -159,7 +161,7 @@ describe('workspace Markdown preview modes', () => {
   it('makes Markdown tables fill the available row and clip to rounded corners', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/\.markdown-table-wrap\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*border:\s*1px solid var\(--border\);[^}]*border-radius:\s*var\(--radius-ui\);/u)
+    expect(styles).toMatch(/\.markdown-table-wrap\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*border:\s*\.5px solid var\(--chat-hairline\);[^}]*border-radius:\s*var\(--radius-ui\);/u)
     expect(styles).toMatch(/\.markdown-table-wrap table\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*100%;[^}]*border-collapse:\s*separate;[^}]*border-spacing:\s*0;/u)
     expect(styles).toMatch(/\.markdown tr > :last-child\s*\{[^}]*border-right:\s*0;/u)
     expect(styles).toMatch(/\.markdown tbody tr:last-child > \*\s*\{[^}]*border-bottom:\s*0;/u)

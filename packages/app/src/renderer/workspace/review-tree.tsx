@@ -1,8 +1,7 @@
 // Renders Git's sparse changed-file tree inside the shared workspace navigator.
 import type { CSSProperties, KeyboardEvent } from 'react'
-import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FileGlyphIcon, FolderGlyphIcon, RefreshIcon, SearchIcon, TreeChevronIcon } from '../ui/icons'
-import { transientTriggerProps } from '../ui/transient'
+import type { FloatingHelpTip } from '../ui/floating-help'
+import { FileGlyphIcon, FolderGlyphIcon, SearchIcon, TreeChevronIcon } from '../ui/icons'
 import { WorkspaceNavigatorFrame } from './navigator-frame'
 import { compactPath } from './path-utils'
 import {
@@ -51,7 +50,6 @@ interface WorkspaceReviewTreeProps {
   emptyText?: string
   onFilterTextChange: (value: string) => void
   onFilterKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void
-  onRefresh: () => void
   onToggleFolder: (path: string) => void
   onSelectFile: (path: string) => void
   onNavigatorCollapsedChange: (collapsed: boolean) => void
@@ -80,7 +78,6 @@ export function WorkspaceReviewTree({
   emptyText,
   onFilterTextChange,
   onFilterKeyDown,
-  onRefresh,
   onToggleFolder,
   onSelectFile,
   onNavigatorCollapsedChange,
@@ -97,34 +94,20 @@ export function WorkspaceReviewTree({
       onTipChange={onTipChange}
     >
       <div className="workspace-files-toolbar workspace-page-leading-row">
+        {/* Same instinct as the file navigator, but kept honest about what is actually state: the
+            branch (and its upstream) is not in the path, so it stays; the "Git 审阅" badge only
+            repeated the tab's own name, so it goes (asked for 2026-10-03). */}
         <div className="workspace-files-root">
-          <span>
-            {repositoryLabel}
-            <b className="workspace-root-badge">Git 审阅</b>
-          </span>
+          <span>{repositoryLabel}</span>
           <small>
             {compactPath(workspacePath)}
             {ahead > 0 ? ` · 领先 ${ahead}` : ''}
             {behind > 0 ? ` · 落后 ${behind}` : ''}
           </small>
         </div>
-        <div className="workspace-files-actions">
-          <button
-            {...transientTriggerProps()}
-            className={`workspace-files-icon-btn ${refreshing ? 'refreshing' : ''}`}
-            type="button"
-            aria-label="刷新 Git 更改"
-            disabled={refreshing}
-            onClick={onRefresh}
-            onMouseEnter={(event) => onTipChange(buildFloatingHelpTip('刷新 Git 更改', event.clientX, event.clientY))}
-            onMouseMove={(event) => onTipChange(buildFloatingHelpTip('刷新 Git 更改', event.clientX, event.clientY))}
-            onMouseLeave={() => onTipChange(null)}
-            onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement('刷新 Git 更改', event.currentTarget))}
-            onBlur={() => onTipChange(null)}
-          >
-            <RefreshIcon />
-          </button>
-        </div>
+        {/* No refresh control: the review re-reads its snapshot while it is on screen, and the
+            `refreshing` flag still drives the tree's own settling state (asked for 2026-10-03). */}
+        <div className="workspace-files-actions" data-refreshing={refreshing ? 'true' : 'false'} />
       </div>
       <label className="workspace-file-filter">
         <span aria-hidden="true"><SearchIcon /></span>

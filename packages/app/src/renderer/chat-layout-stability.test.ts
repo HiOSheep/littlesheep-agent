@@ -282,7 +282,7 @@ describe('chat layout stability', () => {
   it('uses the code-view surface for the titlebar, chat, and workspace materials', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/--workspace-code-surface:\s*#17191e;/u)
+    expect(styles).toMatch(/--workspace-code-surface:\s*var\(--bg\);/u)
     expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.chat\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
@@ -310,10 +310,10 @@ describe('chat layout stability', () => {
     const monacoTheme = await readRendererFile('./workspace/monaco-theme.ts')
     const terminal = await readRendererFile('./workspace/terminal.tsx')
 
-    expect(styles).toMatch(/--selection-background:\s*#333333;/u)
-    expect(styles).toMatch(/--selection-background-inactive:\s*#2e2e2e;/u)
-    expect(styles).toMatch(/--code-selection-background:\s*#454545;/u)
-    expect(styles).toMatch(/--code-selection-background-inactive:\s*#3a3a3a;/u)
+    expect(styles).toMatch(/--selection-background:\s*#33507d;/u)
+    expect(styles).toMatch(/--selection-background-inactive:\s*#2c4266;/u)
+    expect(styles).toMatch(/--code-selection-background:\s*#3d5f91;/u)
+    expect(styles).toMatch(/--code-selection-background-inactive:\s*#33507d;/u)
     expect(styles).toMatch(/--selection-foreground:\s*#f2f2f2;/u)
     expect(styles).toMatch(/--selection-radius:\s*3px;/u)
     expect(styles).toMatch(/::selection\s*\{[\s\S]*?background-color:\s*var\(--selection-background\);/u)
@@ -323,7 +323,7 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.workspace-terminal-shell \.xterm-selection > div\s*\{[\s\S]*?border-radius:\s*var\(--selection-radius\);/u)
     expect(monacoTheme).toContain('LITTLE_SHEEP_SELECTION_BACKGROUND')
     expect(monacoTheme).toContain("'editor.selectionBackground': LITTLE_SHEEP_SELECTION_BACKGROUND")
-    expect(terminal).toContain("color('--selection-background', dark ? '#333333' : '#c8d9f3')")
+    expect(terminal).toContain("color('--selection-background', dark ? '#33507d' : '#c8d9f3')")
     expect(terminal).toContain("color('--selection-foreground', dark ? '#f2f2f2' : '#181818')")
   })
 
@@ -361,7 +361,7 @@ describe('chat layout stability', () => {
     expect(chatView).toContain('useChatScrollController(')
     expect(chatView).toContain('onClickCapture={onClickCapture}')
     expect(scrollController).toContain('const onClickCapture = useCallback')
-    expect(scrollController).toContain('.agent-tool-row, .trace-toggle')
+    expect(scrollController).toContain('.assistant-process-trigger, .agent-flow-row[aria-expanded], .trace-toggle, .message-artifacts-more')
     expect(scrollController).not.toContain('.agent-reasoning-toggle')
     expect(scrollController).toContain('stickToBottomRef.current = false')
     expect(scrollController).not.toContain("kind: 'anchor'")
@@ -420,7 +420,7 @@ describe('chat layout stability', () => {
     expect(assistantTurn).toContain('className="assistant-process-trigger"')
     expect(assistantTurn).toContain('open={processOpen} className="assistant-process-content"')
     expect(toolRow).toContain('data-call-id={tool.callId}')
-    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*32px;[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
+    expect(styles).toMatch(/\.agent-flow-row\s*\{[^}]*min-height:\s*var\(--chat-row-height\);[^}]*background:\s*transparent;[^}]*border:\s*0;/u)
     // The process body folds on the shared disclosure primitive. It used to be
     // `hidden`, which snapped the whole transcript open and shut with no transition
     // at all; the panel now keeps its box in the layout at 0fr and grows into 1fr.
@@ -431,14 +431,15 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('.activity-command-header')
   })
 
-  it('keeps user bubbles distinct from the glass composer without inheriting tab geometry', async () => {
+  it('keeps the reader bubble on the conversation tokens instead of the composer material', async () => {
     const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-active-item:hover,[\s\S]*?\.workspace-active-item\.active\s*\{[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--workspace-tab-glass-fill\);/u)
-    expect(styles).toMatch(/--composer-surface:\s*rgba\(38, 42, 50, 0\.82\);/u)
-    expect(styles).toMatch(/\.composer::before\s*\{[^}]*background:\s*var\(--composer-surface\);/u)
-    expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*10px 14px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--surface-2\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
-    expect(styles).toMatch(/\.message\s*\{[^}]*max-width:\s*min\(820px, 78%\);[^}]*border-radius:\s*var\(--radius-ui\);[^}]*overflow-wrap:\s*anywhere;/u)
+    expect(styles).toMatch(/--composer-surface:\s*rgba\(39, 39, 39, 0\.86\);/u)
+    // The reader's bubble is its own conversation surface now (DSH): a tinted plate on
+    // the transcript, sharing no token with the composer card or the workspace tab.
+    expect(styles).toMatch(/\.message\.user\s*\{[^}]*margin-left:\s*auto;[^}]*padding:\s*10px 16px;[^}]*color:\s*var\(--text\);[^}]*background:\s*var\(--chat-bubble-fill\);[^}]*border:\s*0;[^}]*box-shadow:\s*none;/u)
+    expect(styles).toMatch(/\.message\s*\{[^}]*max-width:\s*100%;[^}]*border-radius:\s*0;[^}]*overflow-wrap:\s*anywhere;/u)
   })
 
   it('keeps the workspace as a self-contained floating rounded surface while retaining its resize divider', async () => {
@@ -513,24 +514,20 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar-surface,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.settings-sidebar\s*\{[^}]*--floating-panel-frame-color:\s*var\(--floating-panel-resize-border\);/u)
   })
 
-  it('keeps the composer above messages with dynamic clearance and glass material', async () => {
+  it('keeps the composer in flow under one measured reading column', async () => {
     const styles = await readRendererStyleSource()
     const composer = await readRendererFile('./app-shell/composer-view.tsx')
 
-    expect(styles).toMatch(/\.chat\s*\{[\s\S]*?--composer-max-width:\s*800px;[\s\S]*?--chat-content-max-width:\s*var\(--composer-max-width\);/u)
+    expect(styles).toMatch(/\.chat\s*\{[\s\S]*?--composer-max-width:\s*912px;[\s\S]*?--chat-content-max-width:\s*min\(880px, calc\(min\(var\(--composer-max-width\), 100%\) - 32px\)\);/u)
     expect(styles).toMatch(/\.composer\s*\{[\s\S]*?width:\s*min\(var\(--composer-max-width\), 100%\);/u)
     expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\)[\s\S]*?calc\(var\(--chat-content-gutter\) \+ var\(--chat-workspace-scrollbar-overlap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
     expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*40;[\s\S]*?pointer-events:\s*none;/u)
-    // The glass material lives on an inset ::before, not on the element: an
-    // element that carries a backdrop-filter is the backdrop root for every
-    // popover it opens, and a descendant blur only samples what that root
-    // already painted, so the add menu and the model/permission picker lost
-    // their frost (Chromium 152: ~60/255 stripe step against ~1/255) until the
-    // material moved to a layer the popovers are not nested inside.
-    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*transparent;/u)
+    // DSH's input is one opaque card: the fill, the frame and the elevation live on the
+    // card element itself, and there is no inset material layer left to keep in sync.
+    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*var\(--chat-card-fill\);/u)
     expect(styles).not.toMatch(/\.composer\s*\{[^}]*backdrop-filter:/u)
-    expect(styles).toMatch(/\.composer::before\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    expect(styles).not.toMatch(/\.composer::before\s*\{/u)
     expect(styles).toMatch(/\.composer\s*\{[^}]*border:\s*0;/u)
     expect(styles).not.toMatch(/\.composer\.drag-active\s*\{[^}]*border-color:/u)
     expect(composer).toContain('useLayoutEffect')
@@ -541,8 +538,8 @@ describe('chat layout stability', () => {
   it('keeps both sidebar variants as translucent acrylic material over their own floating surfaces', async () => {
     const styles = await readRendererStyleSource()
     const desktopShell = await readRendererFile('../main/desktop-shell.ts')
-    expect(styles).toMatch(/--bg:\s*#191b20;/u)
-    expect(styles).toMatch(/--workspace-code-surface:\s*#17191e;/u)
+    expect(styles).toMatch(/--bg:\s*#191919;/u)
+    expect(styles).toMatch(/--workspace-code-surface:\s*var\(--bg\);/u)
     expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 36%, transparent\);/u)
     expect(styles).not.toContain('sidebar-wash-dithered')
     expect(styles).toMatch(/--floating-panel-inner-radius:\s*calc\(\s*var\(--radius-floating-panel\) - var\(--floating-panel-border-width\)\s*\);/u)
@@ -567,7 +564,7 @@ describe('chat layout stability', () => {
     expect(ruleBody(styles, "html[data-window-layout='beta'] .sidebar-surface::before")).toContain('background: transparent')
     expect(styles).not.toContain('.sidebar-surface::after')
     expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
-    expect(styles).not.toContain('mask-image')
+    expect(materialRule).not.toContain('mask-image')
     expect(styles).not.toContain('sidebar-corner-mask')
     expect(desktopShell).toContain("transparent: false")
     // Native chrome owns acrylic and follows maximize/fullscreen independently
@@ -767,10 +764,10 @@ describe('chat layout stability', () => {
     expect(desktopShell).not.toMatch(/if \(restoredState\?\.maximized\) win\.maximize\(\)/u)
   })
 
-  it('keeps answer separators as a single subdued white rule', async () => {
+  it('keeps answer separators as a single subdued hairline in every theme', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/\.message \.markdown hr\s*\{[\s\S]*?height:\s*0;[\s\S]*?border:\s*0;[\s\S]*?border-top:\s*1px solid rgba\(255, 255, 255, 0\.10\);/u)
+    expect(styles).toMatch(/\.message \.markdown hr\s*\{[\s\S]*?height:\s*0;[\s\S]*?border:\s*0;[\s\S]*?border-top:\s*\.5px solid var\(--chat-hairline\);/u)
   })
 
   it('keeps the settings entry equally inset from the sidebar left and bottom edges', async () => {
@@ -872,14 +869,18 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.workspace-panel-reopen-target\s*\{[\s\S]*?top:\s*50%;/u)
     expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-row-inset:\s*4px;[^}]*--workspace-tab-row-height:\s*30px;/u)
     expect(styles).toMatch(/\.workspace-tab-row-control\s*\{[^}]*position:\s*absolute;[^}]*top:\s*var\(--workspace-tab-row-inset\);[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
-    expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*right:\s*12px;/u)
+    expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*right:\s*calc\(\s*var\(--workspace-panel-close-line\)/u)
     // The two controls are the tab's own box, and the action keeps the row-height offset so the
     // smaller boxes gain gap instead of overlapping.
     expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-height:\s*26px;/u)
     expect(styles).toMatch(/\.workspace-active-item\s*\{[^}]*height:\s*var\(--workspace-tab-height\);/u)
     expect(styles).toMatch(/\.workspace-panel-action\s*\{[^}]*width:\s*var\(--workspace-tab-height\);[^}]*height:\s*var\(--workspace-tab-height\);/u)
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*width:\s*var\(--workspace-tab-height\);[^}]*height:\s*var\(--workspace-tab-height\);/u)
-    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-panel-control-gap\)/u)
+    // The header's window controls end on the panel's shared trailing line rather than the old
+    // tab-row-height offset: measured, that line is 3px wider, so the smaller boxes still gain gap
+    // instead of overlapping the stationary corner toggle (asked for 2026-10-03).
+    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\(\s*var\(--workspace-panel-close-line\)/u)
+    expect(styles).not.toContain('--workspace-panel-trailing-inset')
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*top:\s*var\(\s*--workspace-panel-toggle-top,\s*calc\(\s*var\(--floating-panel-inset\)\s*\+\s*var\(--floating-panel-border-width\)\s*\+\s*var\(--workspace-tab-row-inset\)\s*\)\s*\);/u)
     expect(dockView).toContain('useLayoutEffect')
     expect(dockView).toContain('--workspace-panel-toggle-top')
@@ -898,7 +899,13 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.sidebar-toggle-divider\s*\{[\s\S]*?transform var\(--sidebar-collapse-motion\) var\(--motion-ease\)/u)
     expect(styles).toMatch(/\.workspace-panel-toggle-icon \.sidebar-toggle-divider\s*\{[^}]*transform:\s*translateX\(-4px\);/u)
     expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel-toggle-icon \.sidebar-toggle-divider,[\s\S]*?transform:\s*translateX\(0\);/u)
-    expect(styles).toMatch(/\.messages\s*\{[^}]*padding:\s*24px var\(--chat-content-gutter\)/u)
+    // The transcript's top clearance lives on the content, not on the scrollport: padding on the
+    // scroller pushed the sticky fade band down with it, so the band sat well below the edge the
+    // transcript is really clipped at (reported 2026-10-03).
+    expect(styles).toMatch(/\.messages\s*\{[^}]*padding:\s*0 var\(--chat-content-gutter\)/u)
+    expect(styles).toMatch(/\.messages:not\(\.is-empty\) \.messages-content\s*\{\s*padding-top:\s*var\(--chat-flow-gap\);/u)
+    expect(styles).not.toMatch(/\.messages\s*\{[^}]*padding:\s*24px/u)
+    expect(styles).toMatch(/\.chat:has\(> \.running-pill-shell\[data-docked='true'\]\) \.messages:not\(\.is-empty\) \.messages-content\s*\{\s*padding-top:\s*var\(--task-pill-overlay-height\);/u)
     expect(styles).not.toContain('.window-shell.workspace-panel-collapsed .messages')
     expect(styles).not.toContain('.window-shell.workspace-panel-drag-collapsed .messages')
     expect(styles).not.toContain('transition: padding-top var(--workspace-panel-motion)')
@@ -908,49 +915,29 @@ describe('chat layout stability', () => {
     const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.workspace-panel-contents\s*\{[^}]*padding:\s*var\(--workspace-tab-row-inset\) 12px 12px var\(--workspace-tab-row-inset\);/u)
-    expect(styles).toMatch(/\.workspace-panel-body\s*\{[^}]*margin:\s*8px 0 0 8px;/u)
-    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[^}]*right:\s*calc\([\s\S]*?var\(--workspace-tab-row-height\)[\s\S]*?var\(--workspace-panel-control-gap\)[\s\S]*?display:\s*inline-flex;[^}]*align-items:\s*center;/u)
-    expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*67px;/u)
+    expect(styles).toMatch(/\.workspace-panel-body\s*\{[^}]*margin:\s*var\(--workspace-panel-body-gap\) 0 0 8px;/u)
+    expect(styles).toMatch(/\.workspace-panel-actions\s*\{[\s\S]*?right:\s*calc\([\s\S]*?var\(--workspace-panel-close-line\)[\s\S]*?display:\s*inline-flex;[^}]*align-items:\s*center;/u)
+    // The header reserves room for the add control and the window controls that are painted over it,
+    // so a long tab list ends before them instead of scrolling underneath (asked for 2026-10-03).
+    expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*calc\(/u)
+    expect(ruleBody(styles, '.workspace-panel-header')).toContain('--workspace-tab-height) * 2')
     expect(styles).toMatch(/\.workspace-panel-topbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
     expect(styles).not.toMatch(/\.window-shell\.workspace-panel-(?:drag-)?fullscreen \.workspace-panel-(?:contents|header|body)/u)
     expect(styles).not.toMatch(/\.workspace-panel-contents\s*\{[^}]*transition:[^}]*padding/u)
     expect(styles).not.toMatch(/\.workspace-panel-header\s*\{[^}]*transition:[^}]*padding-right/u)
   })
 
-  it('floats the task pill at the chat column top and clips the transcript to its edges', async () => {
+  it('keeps the conversation title and navigation in a header above the transcript', async () => {
     const styles = await readRendererStyleSource()
-    const chatView = await readRendererFile('./app-shell/chat-view.tsx')
-    const globalTitlebar = await readRendererFile('./sidebar/global-titlebar.tsx')
-    const projections = await readRendererFile('./app-shell/app-controller-projections.ts')
-
-    // The pill lives at the top of the chat column (to the right of the sidebar), not in the
-    // window titlebar, and the chat projection owns what it renders, renames and stops.
-    expect(chatView).toContain('className="running-pill-shell"')
-    expect(chatView).toContain('<RunningPill')
-    expect(globalTitlebar).not.toContain('RunningPill')
-    const chatFields = projections.slice(projections.indexOf('chat: ['), projections.indexOf('],', projections.indexOf('chat: [')))
-    expect(chatFields).toContain("'titlebarTask'")
-    expect(chatFields).toContain("'renameSession'")
-    expect(chatFields).toContain("'stop'")
-    const appFields = projections.slice(projections.indexOf('app: ['), projections.indexOf('],', projections.indexOf('app: [')))
-    expect(appFields).not.toContain("'titlebarTask'")
-
-    // The overlay is click-through except for the pill, symmetric to the composer shell below.
-    expect(styles).toMatch(/\.chat\s*\{[^}]*--task-pill-inset-top:\s*8px;[^}]*--task-pill-height:\s*24px;[^}]*--task-pill-overlay-height:\s*calc\(/u)
-    expect(styles).toMatch(/\.running-pill-shell\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;[^}]*z-index:\s*40;[^}]*pointer-events:\s*none;/u)
-    expect(styles).toMatch(/\.running-pill-shell > \.running-pill-root\s*\{[^}]*pointer-events:\s*auto;/u)
-
-    // The transcript's edges: clipped at the pill's top edge while it floats there, and never
-    // reaching below the input's own bottom edge.
-    expect(styles).toMatch(/\.chat\s*\{[^}]*--composer-shell-inset-bottom:\s*12px;/u)
-    expect(styles).toMatch(/\.composer-shell\s*\{[^}]*padding:\s*var\(--composer-shell-inset-top\) var\(--chat-content-gutter\) var\(--composer-shell-inset-bottom\);/u)
-    expect(styles).toMatch(/\.messages\s*\{[^}]*margin-bottom:\s*var\(--composer-shell-inset-bottom\);/u)
-    expect(styles).toMatch(/\.chat:has\(> \.running-pill-shell\) \.messages\s*\{[^}]*margin-top:\s*var\(--task-pill-inset-top\);[^}]*padding-top:\s*var\(--task-pill-overlay-height\);[^}]*scroll-padding-top:\s*var\(--task-pill-overlay-height\);/u)
-
-    // Pill and panel wear the composer's glass recipe; neither is nested inside another
-    // backdrop-filtered element, so the blur has a real backdrop to sample.
-    expect(styles).toMatch(/\.running-pill\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
-    expect(styles).toMatch(/\.running-pill-panel\s*\{[^}]*background:\s*var\(--composer-surface\);[^}]*border:\s*0;[^}]*border-radius:\s*var\(--radius-composer-input\);[^}]*-webkit-backdrop-filter:\s*blur\(18px\) saturate\(135%\);[^}]*backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    const view = await readRendererFile('./app-shell/chat-view.tsx')
+    expect(view).toContain('className="chat-header"')
+    expect(view.indexOf('className="chat-header"')).toBeLessThan(view.indexOf('className={`messages'))
+    expect(view).toContain('draggable={false}')
+    expect(view).not.toContain('className="running-pill-shell"')
+    expect(styles).toMatch(/\.chat-header\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*56px;/u)
+    expect(styles).toContain('.chat-header .chat-turn-rail { position: relative;')
+    expect(styles).toContain('.messages.is-empty ~ .composer-shell { bottom: 0; transform: none; }')
+    expect(styles).toContain('.composer-status:empty { display: none; }')
   })
 
   it('floats a new conversation\'s field in the middle and animates it back to the bottom', async () => {
@@ -962,5 +949,9 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.composer-shell\s*\{[^}]*transition:[\s\S]*?bottom var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\),[\s\S]*?transform var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\);/u)
     // The hint keeps its room above the centred field instead of sitting under it.
     expect(styles).toMatch(/\.messages\.is-empty \.empty-hint\s*\{\s*margin-bottom:\s*150px;\s*\}/u)
+    // The loading row is the same state's other content, so it takes room too: without a margin its
+    // bottom measured 6.5px *inside* the floated field (1280x900), and a margin of one composer
+    // overlay height leaves about half of it as the visible gap (2026-10-02).
+    expect(styles).toMatch(/\.messages\.is-empty \.history-loading\s*\{\s*margin-bottom:\s*var\(--composer-overlay-height\);\s*\}/u)
   })
 })

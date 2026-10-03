@@ -59,8 +59,9 @@ describe('workspace persistence helpers', () => {
       'terminal',
       fileTab,
     ])
-    expect(hydrateWorkspacePanelTabs(['bogus'])).toEqual(['review'])
-    expect(hydrateWorkspacePanelTabs(null)).toEqual(['review'])
+    // Nothing usable stored: the panel opens with the file navigation and the Git review.
+    expect(hydrateWorkspacePanelTabs(['bogus'])).toEqual([])
+    expect(hydrateWorkspacePanelTabs(null)).toEqual([])
     expect(hydrateWorkspacePanelTabs(['files'])).toEqual(['review'])
     expect(hydrateWorkspacePanelTabs(['browser'])).toEqual([LEGACY_WORKSPACE_BROWSER_TAB_ID])
     expect(hydrateWorkspacePanelTabs([])).toEqual([])
@@ -153,17 +154,20 @@ describe('workspace persistence helpers', () => {
     const adopted = adoptWorkspaceDraftSessionLayout(layouts, 'session-created-after-send')
 
     expect(adopted[workspaceSessionKey('session-created-after-send')]).toBe(draftLayout)
+    // What the emptied draft bucket falls back to: the defaults, which start on the navigation page.
     expect(adopted[workspaceSessionKey()]).toMatchObject({
       collapsed: true,
       activeTab: 'review',
-      openTabs: ['review'],
+      openTabs: [],
     })
     expect(layouts[workspaceSessionKey()]).toBe(draftLayout)
   })
 
   it('does not overwrite a session workspace that was already restored', () => {
     const draftLayout = normalizeWorkspaceSessionLayout({ activeTab: 'terminal', openTabs: ['terminal'] })
-    const restoredLayout = normalizeWorkspaceSessionLayout({ activeTab: 'artifacts', openTabs: ['artifacts'] })
+    // A restored session counts as produced content when it holds a tab beyond the defaults; one
+    // that only ever showed the default tabs is still the shape the switch just created.
+    const restoredLayout = normalizeWorkspaceSessionLayout({ activeTab: 'terminal', openTabs: ['home', 'terminal'] })
     const layouts = {
       [workspaceSessionKey()]: draftLayout,
       [workspaceSessionKey('session-a')]: restoredLayout,
@@ -415,7 +419,8 @@ describe('workspace persistence helpers', () => {
 
     expect(result.openRequest).toBeNull()
     expect(result.openTabs).toEqual(['terminal', activeFileTab])
-    expect(result.activeTab).toBe('review')
+    // The stale active tab falls back to a remaining tab: the navigation page.
+    expect(result.activeTab).toBe('terminal')
     expect(result.drafts).toEqual({
       [activeFileTab]: {
         path: 'D:\\work\\alpha\\src\\a.ts',
@@ -436,7 +441,7 @@ describe('workspace persistence helpers', () => {
       drafts: {},
     }, root)
 
-    expect(result.openTabs).toEqual(['review'])
+    expect(result.openTabs).toEqual([])
     expect(result.activeTab).toBe('review')
   })
 
@@ -466,4 +471,12 @@ describe('workspace persistence helpers', () => {
     expect(result.drafts[newTab]?.path).toBe(newFile)
     expect(rebindWorkspacePath(sibling, fromRoot, toRoot)).toBe(sibling)
   })
+})
+
+
+it('removes legacy home tabs without opening a replacement tab', () => {
+  expect(hydrateWorkspacePanelTabs(['home'])).toEqual([])
+  expect(hydrateWorkspacePanelTabs(['home', 'terminal'])).toEqual(['terminal'])
+  expect(normalizeWorkspaceSessionLayout({ activeTab: 'home', openTabs: ['home', 'terminal'] }))
+    .toMatchObject({ activeTab: 'terminal', openTabs: ['terminal'] })
 })

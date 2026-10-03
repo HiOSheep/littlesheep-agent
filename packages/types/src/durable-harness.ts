@@ -20,6 +20,7 @@ export type DurableHarnessEventType =
   | 'route_decided'
   | 'model_request_started'
   | 'model_response_received'
+  | 'provider_usage_recorded'
   | 'model_request_settled'
   | 'tool_call_proposed'
   | 'effect_intent_created'

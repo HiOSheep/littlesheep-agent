@@ -111,7 +111,7 @@ async function respondDailySeries(
   const provider = identityFilter(url.searchParams.get('provider'), 'provider')
   const model = identityFilter(url.searchParams.get('model'), 'model')
   const service = usageService(context)
-  await service.initialize()
+  await service.synchronizeCurrent()
   const series: ProviderUsageDailySeries = service.query({
     from: range.from,
     to: range.to,
@@ -182,6 +182,8 @@ function usageService(context: UsageRouteContext): ProviderUsageDailyService {
     dataRoot: context.dataDir,
     eventSource: {
       listRunPartitions: () => resolveRunner(context.getRunner).infra.durableEventStore.listRunPartitions(),
+      listChangedRunPartitions: () => context.getRunner()?.infra.durableEventStore.listChangedRunPartitions() ?? Promise.resolve([]),
+      acknowledgeUsagePartition: (partition, revision) => resolveRunner(context.getRunner).infra.durableEventStore.acknowledgeUsagePartition(partition, revision),
       readRunRevision: (partitionKey) => resolveRunner(context.getRunner).infra.durableEventStore.readRunRevision(partitionKey),
       read: (sessionId, runId) => resolveRunner(context.getRunner).infra.durableEventStore.read(sessionId, runId),
     },

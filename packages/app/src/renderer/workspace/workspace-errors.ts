@@ -16,7 +16,7 @@ export function workspaceErrorMessage(error: unknown, fallback: string): string 
 
 export function missingWorkspaceFileMessage(error: unknown): string {
   return isMissingWorkspacePathError(error)
-    ? '文件已不存在或已被移动，请刷新文件树后重试。'
+    ? '文件已不存在或已被移动。'
     : ''
 }
 

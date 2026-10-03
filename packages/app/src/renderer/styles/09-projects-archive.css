@@ -219,6 +219,7 @@
 }
 
 .project-name-input input:focus {
+  outline: 0;
   background: var(--control-hover);
   border-color: transparent;
 }
@@ -738,6 +739,7 @@
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border);

@@ -1,6 +1,6 @@
 // Placement contract for the startup stage text (CS-09).
 //
-// A normal start states its stage next to the send control; only a failure may
+// A normal start does not add text to the composer; only a failure may
 // span the window. These assertions exist because the two surfaces are easy to
 // merge back into one "loading bar", which is exactly what the taskbook rejects.
 
@@ -9,7 +9,6 @@ import { fileURLToPath } from 'node:url'
 import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { ComposerReadinessHint } from './composer-readiness-hint'
 import { RuntimeReadinessNotice } from './runtime-readiness-notice'
 import { readRendererStyleSource } from '../style-source-test-utils'
 import type { RuntimeReadiness } from '../../shared/runtime-readiness-contracts'
@@ -23,34 +22,11 @@ function readiness(state: RuntimeReadiness['state'], retryable = true): RuntimeR
   return { apiVersion: 1, state, phase: 'execution', reason: '正在准备运行能力', retryable }
 }
 
-function renderHint(state: RuntimeReadiness['state'] | undefined, reason: string | null): string {
-  return renderToStaticMarkup(createElement(ComposerReadinessHint, {
-    readiness: state ? readiness(state) : undefined,
-    reason,
-  }))
-}
-
 function renderNotice(state: RuntimeReadiness['state'], reason: string | null = '正在准备运行能力'): string {
   return renderToStaticMarkup(createElement(RuntimeReadinessNotice, { readiness: readiness(state), reason }))
 }
 
 describe('startup stage text placement', () => {
-  it('states the Runtime sentence next to the send control while starting', () => {
-    const html = renderHint('starting', '正在准备运行能力')
-    expect(html).toContain('composer-readiness-hint')
-    expect(html).toContain('正在准备运行能力')
-    // The reason is Main's, and the hint never invents waiting copy of its own.
-    expect(html).not.toContain('请稍候')
-  })
-
-  it('disappears as soon as execution is ready', () => {
-    expect(renderHint('ready', null)).toBe('')
-  })
-
-  it('does not carry a failure: that case keeps the window-wide strip', () => {
-    expect(renderHint('failed', '运行能力启动失败')).toBe('')
-  })
-
   it('keeps the failure visible, with the retry Main allows', () => {
     const html = renderNotice('failed', 'runner: no provider')
     expect(html).toContain('runtime-readiness-notice failed')
@@ -79,15 +55,13 @@ describe('startup stage text placement', () => {
     expect(strip).toMatch(/left:\s*0/u)
   })
 
-  it('mounts the hint inside the composer control row, next to the send actions', () => {
+  it('keeps startup stage text out of the composer', () => {
     const composer = readFileSync(
       fileURLToPath(new URL('../app-shell/composer-view.tsx', import.meta.url)),
       'utf8',
     )
-    const hintAt = composer.indexOf('<ComposerReadinessHint')
-    const sendAt = composer.indexOf('composer-run-actions')
-    expect(hintAt).toBeGreaterThan(-1)
-    expect(hintAt).toBeLessThan(sendAt)
+    expect(composer).not.toContain('ComposerReadinessHint')
+    expect(composer).not.toContain('composer-readiness-hint')
     expect(composer).toContain('className="composer-right"')
   })
 })

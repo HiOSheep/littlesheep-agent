@@ -397,3 +397,937 @@ S2、S4、S5、V2、I1、I2、I3 已有部分源码与组件证据，但其余�
 - `verify-ui-refinement.mjs` 扩展至聊天用量弹层，34 个场景通过，核对实际弹层 18px 圆角、视口内放置、无横向溢出与 Escape 退出。
 
 本节仅证明前端展示与交互。年度样例在 Renderer fetch 边界注入，不证明 Main 聚合正确或用户历史用量完整；用户随后提出的新调用记录链路问题另行追查，不能以本轮 UI 检查替代。
+
+## 2026-10-02 文本输入焦点框移除（用户反馈）
+
+用户报告"还有很多这种额外的框，显得很生硬，需要移除"，并给出一张输入区截图。同一路径在真实 Electron 窗口里按原样复现：双击对话标题条进入重命名后，字段自身的应用级 `:focus-visible` 轮廓把输入区框成一个方角矩形（实测字段 140×16 CSS px、`outline: 2px solid rgba(132,183,255,0.6)`、`outline-offset: 2px`，所在胶囊 24px 高，dpr 1.5），白色标题文字衬 `--selection-background` 底；胶囊、球体与选区的几何和像素都与截图一致。
+
+### 判定与实现
+
+- 文本框不再套用应用级 `:focus-visible` 轮廓。Chromium 对文本输入框在**任何**获得焦点的方式下（含单击）都匹配该伪类，所以这条规则实际等于"点进任何字段就多出一个方框"，而不是键盘专用提示；同一形状还出现在设置搜索框、设置模块搜索框、记忆编辑器、两个字号滑块和供应商密钥框等。
+- 焦点改由承载字段的表面表达：字段自己的圆角表面在 `:focus` 时抬升填充或边框，圆角外壳内的无边框字段由外壳 `:focus-within` 抬升填充；滑块不再框住轨道，改成手柄上的柔和圆环（手柄伪元素必须同时给 `border-radius`，否则引擎会把方形盒子当作光晕画出来——本轮实测到）。
+- 触及：运行任务条重命名（胶囊填充）、设置搜索与设置模块搜索（胶囊填充）、供应商密钥／供应商输入／模型行／设置行内字段（填充）、外观颜色值输入（填充 + 边框）、字号滑块（手柄圆环）、项目名输入（填充）。凡是不再画轮廓的地方同时显式 `outline: 0`，否则浏览器会退回 UA 默认焦点环，本轮实测到并一并修掉。
+- "聚焦必须可见"仍是 `ui/focus-ownership.ts` 的 R3：`ui/focus-ownership.test.ts` 的例外清单把两个搜索框从"未补偿缺口"改记为"由外壳补偿"，并断言外壳替换规则确实存在且会画出东西；`ui/README.md` 的 Focus 行与说明同步更新。
+
+### 本轮验证
+
+- Renderer 全量 167 个文件 / 994 项通过；`git diff --check` 通过。
+- `node scripts/verify-settings-focus-ring.mjs --out=<证据目录>`：ok。实机像素（dpr 1.5）——设置搜索框键盘聚焦时字段自身 2653 fill 像素、胶囊 3712 像素亮起、字段 `outline: 0px none`；从活动样式表删除 `.settings-sidebar-search:focus-within` 后两项分别归零 / 只剩 52 像素（仅光标），恢复后与删除前逐值相同；单击走同一条替换规则；同窗口对照输入框单击为 60326 fill / 0 圆环 / 无轮廓；设置导航行阳性对照 2145 圆环像素。
+- 逐表面截图与 `findings.json`（隔离数据根、真实窗口、深浅主题）记录每个字段聚焦前后的 computed 背景／边框／轮廓：所测字段聚焦时均为 `outline: none 0px`，变化落在自身填充或外壳填充上，浅色主题同向生效。证据目录 `D:\littlesheep-evidence\focus-boxes-2026-10-02\`（仓库外）：改动前 `before-pill-rename.png` / `before-settings-search-in-window.png`，改动后逐表面 `after-*.png` 与 `findings.json`，门禁报告 `settings-focus-ring-gate.json`、`focus-ownership-gate-{with-change,baseline}.json`。
+- `node scripts/verify-focus-ownership.mjs` 在本机不通过，且**与本改动无关**：先断言"警告弹层在开启提交上持有焦点"失败（实测落地 577ms），随后 native 命中测试超时。把本轮改动的 4 个样式文件 stash 回改动前、重新构建后复跑，得到同样两条失败；该门禁的 F 段（设置搜索框可见焦点）两次运行都通过，读数正好显示替换本身：改动前 ring 1002 / fill 52，改动后 ring 3438 / fill 3223。此项属既有离屏验收窗口问题，需要单独处理。
+
+本轮只证明 Renderer 呈现与焦点可见性；用户看到的这版界面是否满意仍需用户确认，滑块手柄光晕与胶囊填充的观感在 200% 缩放下未单独取样。
+
+## 2026-10-02 插件列表尾部控件越界（用户反馈）
+
+用户在同一轮指出插件页（设置 › 插件）的开关"位置也有问题"。真实窗口复现并实测（1280×900、dpr 1）：`.plugin-list-summary` 的尾部列固定 38px，而 `.plugin-switch` 自身宽 40px，列表卡片又由行自己承担内边距（`.plugin-list` 无 padding），于是开关右边缘比卡片外边框多出 **1.33px**，而左侧内容距卡片边缘只有 **9.33px**——右侧贴边、左侧留白，正是截图里读到的"位置不对"。
+
+### 实现与验证
+
+- 尾部列改为 `auto`（跟随控件自身的 40px），汇总行右侧改用 `--settings-list-inline-inset` 让出内边距；`.plugin-list-disclosure` 的横向内边距也从固定 8px 改用同一 token（纵向仍是 8px），于是插件列表与其它设置卡片一样由行承担内边距，文字与控件到卡片边缘距离一致。
+- 三版实机对比（仓库外 `plugin-list-before.png` / `plugin-list-variant-a-switch-only.png` / `plugin-list-after.png`）：改动前左 9.33 / 右 −1.33（越界 2.33）；只移动控件版左 9.33 / 右 8.67；采用卡片 token 后左 **21.33** / 右 **20.67**，开关在卡片内 19.67px（`plugin-geometry.json`）。窄窗口 900×700 时 token 变 14px，实测左 15.33 / 右 14.67、无越界（`plugin-list-after-compact.png`）。
+- `settings/settings-surface.test.ts` 增加源码契约：尾部列必须是 `auto`、汇总行必须保留该内边距、行必须使用该 token；把列改回 38px 时该测试转红（实测 1 failed / 13 passed），恢复后 14/14 绿。Renderer 全量 167 文件 / 994 项通过；`git diff --check` 通过。
+- 同一次改动里把展开块的缩进改为跟随同一 token（`calc(var(--settings-list-inline-inset) + 37px)`）：展开的行原本把详情缩进写死 46px，与行文字的左边缘对齐；行内边距改用 token 后，宽窗口（token 20px）与窄窗口（14px）实测详情左边框与标题文字左边缘只差 0.66px（即边框宽度），`plugin-list-expanded-compact.png` 为窄窗口展开态。最终 Renderer 全量 **167 文件 / 995 项**通过，构建新鲜度 assert 通过。
+
+## 2026-10-02 "加载历史消息"与输入框的距离（用户反馈）
+
+用户指出空对话加载历史时"加载历史消息与输入框距离需要调整"。真实窗口（1280×900、dpr 1.5）按组件在 `historyWindow.loading && messages.length === 0` 分支渲染的同一 DOM 复现：`.messages.is-empty` 下字段浮在列中线，`.messages-content` 的 `align-content: center` 把这行加载提示放在内容框中央——而内容框底部预留的是"字段在列底"时的高度，于是提示行底边落在字段顶边**内侧 6.5px**（`gap = −6.5px`），也就是截图里贴在一起的样子。同一状态下空对话问候块有 `margin-bottom: clamp(220px, 30vh, 272px)`，提示行此前没有任何让位规则。
+
+### 实现与验证
+
+- 新增 `.messages.is-empty .history-loading { margin-bottom: var(--composer-overlay-height) }`：与问候块同一处（`06-composer.css` 的空对话让位规则旁），提示行底边到字段顶边实测 **55.5px**，与问候块的 44.6px 同量级；用运行时 token 而不是字面值，草稿把字段撑高时让位随之变化。
+- 前后证据（仓库外 `history-loading-before.png` / `history-loading-after.png` / `empty-hint-reference.png` 与 `history-loading-geometry.json`）：改动前 gap −6.5px，改动后 55.5px；问候块参考值 44.6px。三个候选值（同问候块 270px → gap 128.5；其一半 135px → 61；token/2 → 24.5）实测后没有采用。
+- `chat-layout-stability.test.ts` 在空对话浮动字段那条断言后补上该规则的源码契约；删掉规则时该测试转红（实测 1 failed / 27 passed），恢复后全绿。Renderer 全量 **167 文件 / 995 项**通过；`git diff --check` 通过；构建新鲜度 assert 通过。
+
+测量方式说明：该状态是打开会话时的瞬时态，隔离数据根里无法稳定停在那一帧，所以提示行是按组件的真实类名与嵌套注入到 `.messages-content` 后测量的；注入的 DOM 与 `chat-view.tsx` 中该分支的输出逐类名一致。
+
+## 2026-10-02 对话区快速跳转与轮次标记条（用户反馈）
+
+用户先指出对话区"没有快速跳转的功能"，随后补充"会话多了后还有一定的动态效果"，最后给出两张参考图要求"显示样式应该像两个参考图那样有色差区分用户的话以及 agent 的话"，并要求标记条"贴合到最左侧"。
+
+### 实现
+
+- **首尾跳转**：原来的"回到最新"（离开底部时出现）之外新增"回到开头"（离开顶部时出现），两者共用一个 `.chat-jump-controls` 容器，沿用原来的水滴进场／退场动效；键盘 Ctrl/Cmd+Home、Ctrl/Cmd+End 到首尾。文本框保留自己的 Ctrl+Home（除非草稿为空——空草稿里移动光标不可见，此时让给对话区），弹层打开时不响应。
+- **轮次标记条**：对话区左侧 `left: 2px` 一条标记，每条消息一枚（用户与 assistant 都算），点击把该消息顶到视口顶部（`CHAT_TURN_JUMP_INSET` 16px）。消息数 ≥ `RAIL_MIN_ENTRIES`(4) 时出现；标记是按钮（Tab 可达，无障碍名说明角色），当前阅读位置带 `aria-current`。
+- **色差与长度**：颜色编码角色——用户 `--muted`、assistant `--border-strong`、当前 `--text-strong`；长度编码阅读位置——当前标记最长，每远一步缩短一档（参考图实测比例 1.00/0.77/0.54/0.38/0.23，本实现 20/16/12/8/6px）。
+- **动效**：条首次出现淡入，每条新消息的标记自带位移+缩放进场（每枚只播自己的那一次）；宽度随阅读位置过渡；`prefers-reduced-motion` 由应用级规则塌缩为 1ms。
+
+### 验证（真实窗口 1280×900 与 900×700，隔离数据根）
+
+- 标记随会话累积：1 轮无条，2 轮 4 枚、3 轮 6 枚、4 轮 8 枚；进场动画实测 `chat-turn-rail-enter`（首次出现 running）与 `chat-turn-mark-enter`（每枚新标记 running）。
+- 角色色差与剖面实测：user `rgb(167,175,189)` / assistant `rgb(74,83,98)` / 当前 `rgb(246,248,252)`；宽度 6,6,6,8,12,16,20(当前),16；`activeIndex` 随滚动变化（底部 6 / 中部 2 / 顶部 0）。
+- 跳转实测：点击第 3 枚 → 该消息距视口顶 16px；Ctrl+End 到 `max`、Ctrl+Home 到 0（焦点在空输入框时同样生效）；输入框有草稿时 Ctrl+Home 只移动光标、对话区不动。
+- 位置实测：`left: 2px`，与文本列不重叠（宽窗口间隙 25.3px，窄窗口 2px 且不重叠）；展开详情与标题文字仍对齐。
+- Renderer 全量 **168 文件 / 1014 项**通过；`pnpm run typecheck` 通过；`git diff --check` 通过；构建新鲜度 assert 通过。仓库外证据目录 `D:\littlesheep-evidence\focus-boxes-2026-10-02\chat-nav\`（标记条近景、三种滚动位置、窄窗口与面板打开态截屏与几何数据）。
+
+## 2026-10-02 对话任务条改为左侧标题栏（用户反馈）
+
+用户给出运行面板截图，要求"位置靠最左、大小调整、交互逻辑一定程度改变"，并在回答中明确：任务条与展开面板都贴最左；面板更紧凑；标题字号更大、要有更明确的改名符号、条宽随有无任务自适应；随后补了一张参考图（左侧大字标题 + 若干带图标的段 + "N 个后台任务 ⌄"）。
+
+### 实现
+
+- **位置**：`.running-pill-shell` 由 `justify-content: center` 改为 `flex-start` 且左内边距 2px——与轮次标记条同一列；面板改为从任务条自己的左边缘展开（`clampNumber(rect.left, 2, …)`），不再带 10px 的居中漂移。
+- **标题**：字号 12→14px、字重 600、颜色 `--text-strong`（重命名输入框与面板标题同步 14px）。
+- **改名引导**：标题后新增铅笔（`RenameIcon`，18px，`--muted-2`）；单击铅笔直接进入重命名，键盘新增 F2（按钮带 `aria-keyshortcuts="F2"`），双击路径保留。铅笔对读屏隐藏：它嵌在按钮内，键盘路径由 F2 承担，不制造第二个 Tab 停点。
+- **条宽自适应**：状态句子（"上次运行 1 分钟"／正在运行的指令）从条上移到悬停提示，条上只保留 `N 个后台任务` + chevron 段；没有任务时该段不存在。
+- **面板更紧凑**：没有运行中指令时不再渲染"进行中 0"标题与"当前没有正在运行的指令"空行；没有已结束指令时同样不渲染该段；整段为空时只留一行"这次运行还没有指令记录"。
+
+### 验证（真实窗口 1280×900，隔离数据根）
+
+- 位置：任务条 `x=242`、对话区左缘 240 → **2px**（与标记条同列）；面板 `x=242`，与任务条左缘间隙 **0**。
+- 条宽自适应实测：同一标题下，无指令 **318.4px**（无任务段），有 1 条指令 **405.2px**（"1 个后台任务"），差值 86.8px。
+- 面板紧凑实测：标题 + "已结束 1" + 1 行指令，**高度 113px**，`sections: ["已结束"]`、空行 0，面板标题 14px。
+- 标题与改名实测：标题 14px/600/`rgb(246,248,252)`；点铅笔后重命名输入框出现且带当前名称、字号 14px。
+- `sidebar/running-pill.test.ts` 新增 5 条源码契约（贴左、铅笔/F2、任务段与 chevron、只渲染有内容的分区、面板从条左缘展开），全部通过；Renderer 全量 **168 文件 / 1019 项**通过；`pnpm run typecheck`、`git diff --check`、构建新鲜度 assert 通过。证据目录 `D:\littlesheep-evidence\focus-boxes-2026-10-02\task-bar\`（无任务/有任务、面板近景、重命名态截屏）。
+
+### 追加（同轮反馈：高度与顶部淡出）
+
+- **高度**：`--task-pill-height` 24px→**32px**，14px 标题与 24px 球体之间留出余量；`--task-pill-overlay-height`（条高 + 8px）随之变化，transcript 的顶部裁剪与首行位置自动跟随，无需另改。`chat-layout-stability.test.ts` 里原来钉住 24px 的断言同步更新（改回 24px 即转红）。
+- **顶部淡出**：transcript 顶边原来直接切断文字，现在由一条 sticky 遮罩带溶解：`height: 28px; margin-bottom: -28px`、`linear-gradient(var(--workspace-code-surface), transparent)`、`top: 0` 贴在滚动容器顶边。用渐变覆盖而不是 `mask`，滚动条不受影响；空对话（内容居中、顶边只有内边距）由 `.messages.is-empty::before { display: none }` 关掉。实测：计算样式为 `position: sticky`、渐变取 `rgb(23,25,30)`（`--workspace-code-surface`）、滚动高度不变（2691 → 2691）；静止时首行完整不压暗、滚动中顶行按 28px 带淡出（`chat-fade\rest-top.png`、`chat-fade\scrolled-top.png`）。
+
+## 2026-10-03 滚动条出现/消失导致内容左右跳动（用户反馈）
+
+用户反馈"一些界面因为有无滚动条会发生窗口的左右抖动"。
+
+### 复现（真实窗口 1280×900，隔离数据根）
+
+`scrollbar-gutter` 当时只声明在 4 个容器上（`.messages`、`.session-list`、`.project-tree`、`.workspace-tree`），其余可滚动容器没有预留槽位，滚动条一出现内容箱就整块变窄：
+
+- 设置页：`.settings-workspace-body` 里 `总览` 等不滚动的页面把 `.settings-page-transition` 放在 `x=380`，`界面`／`网络检索` 出现 10px 滚动条后同一元素跑到 `x=375`——**逐页切换就有 5px 左移**（居中内容被单侧滚动条推走，实测 spread = 5）。
+- 预览面板：`.workspace-panel-view` 同样没有槽位，短文件与长文件切换时面板内容随之横向移动。
+
+### 实现
+
+- 给所有会随内容出现滚动条的容器补槽位：**页面级**（`.settings-workspace-body`、`.direct-module-workspace`、`.workspace-panel-view`）用 `scrollbar-gutter: stable both-edges`——两侧对称预留，居中页面中心不动，静止位置与改造前一致（实测仍 `x=380`）；**列表／面板／代码块／编辑器／菜单**（共 33 条规则，含 `.running-pill-panel`、`.memory-file-editor`、`.workspace-preview-code`、`.split-button-menu`、`.settings-select-menu`、`.app-context-menu`、`.dialog`、各类 `pre` 等）用 `scrollbar-gutter: stable`——左侧内容起点不动，只在右侧预留。
+- 唯一例外是运行时选择器（`.runtime-menu-shell` 及其面板／子菜单）：`composer/runtime-picker.test.ts` 明确禁止在那里预留槽位（宽度由 DOM 测量后写回 `--runtime-submenu-width`，测量值与绘制值必须是同一个数），且它是锚定触发器的浮层，自身滚动不会推动背后的页面。
+- 新增 **`scrollbar-gutter.test.ts`**：从样式表推导所有"可能长出滚动条"的规则（规则体内最后一个 `overflow(-y)` 为 `auto`/`scroll`），要求要么声明 `scrollbar-gutter`，要么声明 `scrollbar-width: none`（隐藏滚动条才没有槽位可留）；例外只有运行时选择器并写明理由。新增滚动容器必须回答这个问题才能通过。
+
+### 验证
+
+- 设置页 15 个页面逐一测量：改造后 `.settings-page-transition` 在**每个**页面都是 `x=380`（改造前滚动页为 375），spread body = 0、spread page = **0**。
+- 预览面板：`short.ts` 与 200 节的 `long.md` 切换时内容左缘都是 `x=810`，`.workspace-panel-view` 计算值 `stable both-edges`、`.workspace-preview-body` 为 `stable`。
+- 运行中扫描当前真正在滚动的元素：`.workspace-tree` 等全部带槽位。
+- `scrollbar-gutter.test.ts` 4 项通过（其中"至少 30 个滚动容器"防止空集通过）；Renderer 全量 **169 文件 / 1023 项**通过；`pnpm run typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 输入框控制行的形状（用户反馈）
+
+用户给截图指出：控制行的框变成了椭圆、`+` 的绘制有问题、模型选择／当前工作区／权限选择的圆角太小。
+
+### 测量（真实窗口 1280×900，隔离数据根）
+
+| 控件 | 尺寸 | 圆角 | corner-shape |
+| --- | --- | --- | --- |
+| 附加（`+`） | **28 × 34** | **50%** | `superellipse(1)` → 椭圆 |
+| 权限／模式选择 | 67 × 34 | 10px | `superellipse(1.5)` |
+| 模型选择 | 95.2 × **28** | 10px | `superellipse(1.5)` |
+| 发送 | 30 × 30 | 50% | 圆形（有意） |
+
+- **椭圆的根因**：`.icon-btn` 把宽度写成 `--composer-control-surface-size`(34)，附加触发器又把宽写成 28px，而高度被 `03-shell-sidebar.css` 那条共享规则的 `min-height: 34px` 顶住 → 28×34 的盒子配 50% 圆角 = 椭圆。同一条 `min-height` 也让模式选择停在 34px，而模型选择被 06 里那条 `height: 28px` 钉在 28px，一行内出现两种高度。
+- **`+` 的根因**：加号由两条 1px 伪元素拼成，旋转后的竖条落在半像素上（计算变换 `translate(-50%,-50%)`），放大后明显比横条粗、发虚。
+- **圆角太小的根因**：控制行沿用 `--radius-ui`(10px)，而输入框自身是 `--radius-composer-input`(28px)，中间缺一档。
+
+### 实现
+
+- 控制行统一取 `--composer-control-surface-size` 高度，并在 `.composer-tab-control` 上显式 `min-height: 0`，让共享的 34px `min-height` 不能再钉住其中几个控件；删除把三个控件单独钉成 28px 的规则。
+- 圆角收敛到一个新 token `--composer-control-radius: min(14px, calc(var(--composer-control-surface-size) / 2 - 2px))`：常规行 14px，紧凑行（28px 控件）自动收到 12px，永不成胶囊；`ui-radius-consistency.test.ts` 的半径词汇表加入该 token。
+- 附加按钮改为与邻座同一形状（`var(--composer-control-surface-size)` 的正方形 + 同一圆角），删除 `--radius-circle` 覆盖；`12-squircle-corners.css` 的胶囊豁免名单同步删掉这个已不再是圆形的条目（该测试本来就是靠推导发现陈旧条目）。
+- 加号改为单一 SVG 图标 `AddIcon`（`M8 3.4v9.2M3.4 8h9.2`，走共享 `--icon-stroke`、圆头），删除 `font-size: 0` 与两条伪元素规则；`icon-actions.test.ts` 的动作字形表新增一行（`add-attachment`，census `path`），表长 42→43。
+
+### 验证
+
+- 改造后实测：附加 **34 × 34 / 14px**，模式选择 67 × 34 / 14px，模型选择 95.2 × 34 / 14px（三者同高同圆角），发送仍 30 × 30 圆形；hover 填充形状一致（`superellipse` 圆角矩形，不再是椭圆）。
+- 放大 10 倍截图确认加号两臂等长等粗、居中，按钮背景是圆角方形而非椭圆。
+- 新增／更新的契约：`control-surface-style.test.ts`（加号是图标、触发器取 token 尺寸、行内没有单独钉高的规则）、`runtime-picker.test.ts`（高度来自 token，不再逐控件钉 28px）、`corner-shape.test.ts`、`ui-radius-consistency.test.ts`、`icon-actions.test.ts` 全绿；Renderer 全量 **169 文件 / 1023 项**通过；`typecheck`、`git diff --check` 通过。证据目录 `D:\littlesheep-evidence\focus-boxes-2026-10-02\control-row\`。
+
+### 追加（用户反馈：「+」的框有问题）
+
+用户复核后指出加号可以了，但**框**明显有问题。两条独立证据：
+
+- **圆角相对方形过大**：34×34 的按钮取行内 14px 圆角 = 边长的 41%，直边只剩 6px，实际读成一块圆斑（用户截图实测：42px 盒子里直边 13px，等效半径约 11.3px）。
+- **圆角类型与邻座不同**：`.icon-btn` 上残留的 `border-radius: var(--radius-circle)` 虽然已被 `.composer-tab-control` 覆盖成 14px，但这个声明仍让该按钮留在 `12-squircle-corners.css` 的胶囊豁免名单里 → 它拿到 `corner-shape: round`（`superellipse(1)`），而旁边的选择框是全局默认 `superellipse(1.5)`——同一行里两种角。这正是那份名单自己防范的"过期承诺"。
+
+修法：删掉 `.icon-btn` 上残留的圆声明（并从豁免名单移除），方形按钮改取共享 `--radius-ui`（34px 上 10px = 29%，与全局图标按钮一致），宽选择框保持行内 14px。
+
+验证：改造后实测附加 **34 × 34 / 10px / `superellipse(1.5)`**（与邻座同一种角），模式选择 67×34 / 14px、模型选择 95.2×34 / 14px；12 倍放大截图确认直边明显、四角对称（`add-box\add-hover.png`）；`control-surface-style.test.ts` 增加"方形按钮取 `--radius-ui`、`.icon-btn` 不再自带圆角"两条断言，`corner-shape.test.ts` 的推导名单随之收缩并通过；Renderer 全量 **169 文件 / 1023 项**通过。
+
+## 2026-10-03 预览工具行的浏览器入口收进「打开方式」（用户反馈）
+
+用户给出预览工具行与「打开方式」分体按钮的截图，要求去掉单独的「应用内浏览器」「系统浏览器」两个按钮，全部放进下拉选择里。
+
+### 实现
+
+- `preview-actions.tsx` 删除行内那两个 `workspace-files-text-btn`，改为 SplitButton 菜单里的两项：`HTML_BROWSER_IN_APP_ID`（`应用内浏览器`，复用 `WorkspaceFeatureIcon id="browser"` 的地球图标）与 `HTML_BROWSER_EXTERNAL_ID`（`系统浏览器`，`ExternalOpenIcon`），用 `dividerBefore` 与 open-with 列表分开；页面还没跑起来时两项 `disabled` 并给出 `hint: '页面还没有开始运行'`，而不是两个灰按钮。
+- 工具行剩下的都是"改变窗格显示内容"的动作：代码换行、查看预览／源代码、编辑，加上「打开方式」分体按钮本身。
+
+### 验证（真实窗口 1360×900，隔离数据根）
+
+面板会缓存标签页，读数限定在非 `.cached` 的标签上：
+
+- `notes.md`：行内 = 查看源代码 / 编辑 + 分体按钮；菜单 = Visual Studio Code（默认）/ WorkBuddy │ 显示文件位置。
+- `index.html`：行内**不再有**浏览器按钮（只剩 查看源代码 / 编辑 + 分体按钮）；页面已运行后打开菜单 = Visual Studio Code / msedge / chrome / devenv / iexplore / quark / WorkBuddy │ **应用内浏览器** / **系统浏览器** / 显示文件位置，两项均可用（`disabled: false`），截图 `open-with-menu\html-menu.png`。
+- `browser-reload.test.ts`、`html-run.test.ts` 的断言从"源码含这两个标签"改为"它们是分体按钮的菜单项"，并补了一条"行内文本按钮不再出现浏览器入口"。
+- Renderer 全量 **169 文件 / 1023 项**通过；`pnpm run typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 压缩后的轮次标记条让位（用户反馈）
+
+用户给出标记条压在一行行文字上的截图：对话区被压缩后，标记条需要隐藏，光标移过去才显示，不该始终占着那一列。
+
+### 实现
+
+- **判定用测量而不是猜宽度**：`use-chat-scroll-controller` 新增 `railInTheWay`，量的是标记条右缘与 `.messages-content` 左缘之间的间隙（内容列居中，只有这个间隙能说明它是否压住正文）；`railOverlapsText(gap)` 在间隙小于 `CHAT_RAIL_CLEARANCE`(8px) 时为真。刷新点与标记条测量一致：轮次变化的那次布局，以及每次宽度变化的 ResizeObserver 回调。
+- **隐藏与唤回**：`TurnRail` 输出 `data-overlap`；CSS 在 `[data-overlap='true']` 时 `opacity: 0`，`:hover` 或 `:focus-within` 时回到 1，带一段 `--motion-fast` 过渡。标记仍是可点、可 Tab 的按钮（命中区保留），所以指针移过去先显示再点击，键盘进入也一定可见。
+- **动效不再占用 opacity**：标记条自身的进场动画原本动画 `opacity` 且 `both` 填充，会把隐藏状态顶掉；现在它只动 `transform`（`translateY(calc(-50% - 6px))` → `translateY(-50%)`），逐枚标记自己的淡入不受影响。
+
+### 验证（真实窗口，隔离数据根）
+
+| 状态 | 对话区宽 | 间隙 | `data-overlap` | 计算 opacity |
+| --- | --- | --- | --- | --- |
+| 宽窗口（无面板） | 1040px | 96px | `false` | **1**（始终可见） |
+| 面板打开 + 900px 窗口 | 399px | **−4px**（压住正文） | `true` | **0**（隐藏） |
+| 同上，指针移到标记条上 | 399px | −4px | `true` | **1**（显示） |
+| 同上，指针移开 | 399px | −4px | `true` | **0** |
+| 同上，键盘 Tab 进标记 | 399px | −4px | `true` | **1**，且 `:focus-visible` 为真 |
+
+截图 `rail-hide\compressed-hidden.png`（隐藏，正文完全无遮挡）与 `rail-hide\compressed-hover.png`（悬停显示）。契约：`chat-scroll-controller-wiring.test.ts` 新增一条覆盖测量、唤回规则与"进场动画不碰 opacity"，`turn-navigation.test.ts` 覆盖间隙判定与两个选择器；Renderer 全量 **169 文件 / 1025 项**通过。
+
+## 2026-10-03 浅色模式下评论卡与背景分不清（用户反馈）
+
+用户给出浅色模式「发布评论」卡的截图，指出卡片和背景色分不清。
+
+### 测量（真实窗口 1360×900，`data-ls-theme='light'`，隔离数据根）
+
+打开 `demo.ts` 编辑器标签、点行上的添加评论按钮后读数：
+
+| 项 | 之前 | 之后 |
+| --- | --- | --- |
+| 卡片背景 | `rgb(255, 255, 255)`（`--surface`） | 同左 |
+| 代码区背景 | `rgb(247, 248, 251)`（`--workspace-code-surface` = #f7f8fb） | 同左 |
+| 边框 | `0px none` | `0.67px solid rgb(189, 200, 216)`（`--border-strong`，DPR 1.5 下的 1px） |
+| 阴影 | `none` | `var(--floating-panel-shadow)`（该停靠场景解析为 `none`，浮起布局才生效） |
+
+填充差只有 8/255（#ffffff 落在 #f7f8fb 上），又没有边框和阴影，卡片实际是"代码的一部分"；暗色模式 `--surface` 明显亮于代码区，所以只有浅色模式暴露这个问题。
+
+### 实现
+
+`.workspace-line-comment-editor, .workspace-line-comment-card` 由"无边框 + 无阴影"改为 `border: 1px solid var(--border-strong)` + `box-shadow: var(--floating-panel-shadow)`，并显式 `box-sizing: border-box`，让 1px 边框不改变盒子尺寸；两者都是主题 token，暗色模式保留自己的取值（实测暗色边框 `rgb(74, 83, 98)`、卡片 `rgb(34, 37, 44)`，观感不刺眼）。
+
+### 验证
+
+- 浅色实测边框 `rgb(189,200,216)`，与卡片白、与代码区 #f7f8fb 的每通道差 58–66；暗色同样有边框。
+- 截图 `comment-surface\light-editor.png`、`light-full.png`、`dark-editor.png`。
+- `line-comments.test.ts` 里原来钉住 `border: 0; box-shadow: none` 的那条断言同步改为新契约（改回去即转红）。
+- Renderer 全量 **169 文件 / 1025 项**通过；`pnpm run typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 文件主界面被文件夹栏挤没（用户反馈）
+
+用户给出「文件」标签的截图：整块面板只有文件夹栏，文件自己的主界面不见了，要求调整（文件夹栏行为不变）。
+
+### 复现（真实窗口 1280×900，隔离数据根）
+
+把「保存的文件夹栏宽度」当成 520px（在大窗口拖宽过），再缩小面板逐档测量 `.workspace-files > .workspace-preview-pane` 的宽度：
+
+| 面板宽 | 文件夹栏壳宽 | 主界面宽（之前） |
+| --- | --- | --- |
+| 480 | 520（固定基准） | **0** |
+| 586 | 520 | **46** |
+| 559 | 520 | **19.5** |
+| 460 | 520 | **0** |
+| 339 | 520 | **0** |
+
+根因：文件栏是 `flex: 0 0 var(--workspace-files-navigator-width)` 的 flex 项，而在**共享壳**（`.workspace-shared-file-navigator`，`panel.tsx` 渲染的那层）上写的是**保存的偏好宽度**，没有经过 `resolveWorkspaceFileNavigatorLayout` 的两条边界（≤68%、≥96px 内容）；主界面 `flex: 1 1 0; min-width: 0` 于是被压到 0。直接挂载的 `.workspace-files > .workspace-files-navigator` 用的是解析后的宽度，所以只有这一层漏了。
+
+### 实现
+
+- `.workspace-shared-file-navigator` 的 `flex-basis` 改为 `min(var(--workspace-files-navigator-width), 68%, calc(100% - var(--workspace-file-content-min-width)))`：与解析器同一组边界（`WORKSPACE_FILE_NAVIGATOR_MAX_RATIO`、`WORKSPACE_FILE_CONTENT_MIN_WIDTH`），列与视图不再各说各话；面板够宽时取值不变。
+- `.workspace-panel-body` 新增 token `--workspace-file-content-min-width: 96px`，注释写明必须与 `workspace-layout.ts` 的 `WORKSPACE_FILE_CONTENT_MIN_WIDTH` 同步。
+- `workspace-layout.test.ts` 新增一条：从常量推导出期望的 CSS 文本（`96px` 与 `68%`），任一侧改动而另一侧没跟上就直接转红；`navigator-motion.test.ts` 里原来钉住 `flex: 0 0 var(--workspace-files-navigator-width)` 的断言改成新的 clamp 形式。
+
+### 验证（同一组面板宽度重测）
+
+| 面板宽 | 文件夹栏壳宽（之后） | 主界面宽（之后） |
+| --- | --- | --- |
+| 480 | 326.4 | **133.6** |
+| 586 | 398.5 | **167.5** |
+| 559 | 380.5 | **159** |
+| 460 | 312.8 | **127.2** |
+| 339 | 230.9 | **88.6** |
+
+（最窄一档的 88.6px 与 96px 的差来自面板体到 `.workspace-files` 之间的内边距/外边距；关键是主界面再也不会变成 0。）截图 `file-collapse\narrow-panel.png`。Renderer 全量 **169 文件 / 1025 项**通过。
+
+## 2026-10-03 文件可以选择用 VS Code 还是文件夹打开（用户反馈）
+
+用户要求：文件应能选中"由 VS Code 还是文件夹打开"。
+
+### 实现
+
+- 之前菜单里的「显示文件位置」是**一次性**动作（`onSelect: openWith.reveal`），选了不改变主键的行为。现在它和启动器一样走记忆路径：`onSelect: () => openWith.openWith(OPEN_WITH_REVEAL_ID)`，并且 `active: currentIsFolder` 标出当前选择。
+- 主键随之认这个选择：`currentId === OPEN_WITH_REVEAL_ID` 时标签为「打开方式：文件夹」、图标为文件夹、tooltip 为「在文件夹中显示这个文件」（之前会掉到「系统默认应用」的兜底文案）。菜单项文案改成「文件夹（显示文件位置）」，让它既是文件夹动作也说明会定位到该文件。
+- 选择记在既有的 `littlesheep.ui.workspaceOpenWithApp` 里，跨会话保留；hook 侧的校验分支（`storedChoice === OPEN_WITH_REVEAL_ID`）原本就存在，这次把它真正接上。
+
+### 验证（真实窗口 1360×900，隔离数据根）
+
+- 选中前：主键 `aria-label` = `打开方式：Visual Studio Code`，图标为 VS Code，菜单里 VS Code 标记 active。
+- 点「文件夹（显示文件位置）」后：主键 `aria-label` = **`打开方式：文件夹`**，图标换成文件夹（截图 `open-with-folder\folder-primary.png`），菜单里该条变为 active、VS Code 不再 active。
+- `use-workspace-open-with.test.ts` 新增一条源码契约覆盖"记忆路径 + 主键文案 + active 标记"；Renderer 全量 **169 文件 / 1025 项**通过。
+
+## 2026-10-03 工作区尾部按钮的右对齐（用户反馈）
+
+用户给出两行图标的截图，要求工作区的按钮统一右对齐。
+
+### 测量（真实窗口 1360×900，隔离数据根；以面板右缘为基准）
+
+| 行 | 之前 | 之后 |
+| --- | --- | --- |
+| 面板头部的窗口控件（全屏／折叠） | 42px | **45px** |
+| 导航栏工具行（VS Code／刷新／文件夹） | 45px | 45px（不变） |
+| 收起文件夹栏时的页头行（文件／审阅） | 45px（35px 内边距 + 行本身距面板右缘 10px） | 45px（不变） |
+
+工作区自己的两行本来就在 45px 这条线上，只有面板头部的窗口控件在 42px（它原本按 `--floating-panel-border-width + --workspace-tab-row-height + --workspace-panel-control-gap` 标定，为了让全屏按钮避开固定的角落开关）。
+
+**第一次尝试走错了方向**：把收起时那行改成 `padding-right: 45px`，但那一行本身已经在面板右缘内 10px，按钮落到 55px、反而更不齐（实测确认后整段回退，`leading-row-layout.test.ts` 的断言也恢复原样）。确认方向后再按用户选择（以工作区的行为准）改，只动头部。
+
+### 实现
+
+- 新增 token `--workspace-panel-trailing-inset: 45px`，定义在 `.workspace-panel` 上：头部（`.workspace-panel-header`）在 `.workspace-panel-body` 之外，先定义在 body 上时 `var()` 解析为空、`right` 声明被整条丢弃，实测里窗口控件直接掉回静态位置（这一步同样是先量出来才发现）。
+- `.workspace-panel-actions { right: var(--workspace-panel-trailing-inset) }`，注释保留"避开固定角落开关"的原因。
+- `leading-row-layout.test.ts` 新增一条：头部窗口控件取该 token、token 值为 45px、且不再使用原来的 `calc()`。
+
+### 验证
+
+改造后实测（`expanded` / `collapsed` 两种状态）：窗口控件 **45**、导航栏工具行 **45**、收起时页头行 35px 内边距 + 10px 位置 = **45**，三行落在同一条线上；截图 `right-align\collapsed-rows.png`。Renderer 全量 169 文件通过（其中 `ui-radius-consistency.test.ts` 因**另一条工作流**在 `18-brand-motion.css` 新增的 `border-radius: 50%` 而失败，与本轮改动无关，未触碰该文件）。
+
+## 2026-10-03 回到最新水滴：去掉另一端、磨砂填充与更大的间距（用户反馈）
+
+用户给出两颗水滴的截图，要求：去掉「回到顶部」按钮、把「回到最新」做成半透明磨砂玻璃、并拉大它与输入框的距离。
+
+### 测量（真实窗口 1280×900，隔离数据根）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 中途滚动时出现的按钮 | `chat-jump-to-top` + `chat-jump-to-latest`（两颗） | 只有 `chat-jump-to-latest` |
+| 水滴底边到输入框可见顶边 | 3px | **16px** |
+| 填充 | `rgba(38, 42, 50, 0.82)` | `rgba(38, 42, 50, 0.45)`（`color-mix(in srgb, var(--composer-surface) 55%, transparent)`） |
+| 背板模糊 | `blur(18px) saturate(1.35)` | 不变 |
+
+截图里能直接看到正文从圆面透出来（`jump-droplet\droplet-mid.png`）。
+
+### 实现
+
+- `chat-view.tsx`：只渲染 `chat-jump-to-latest`；`showJumpControls = readingAway`；退场动画保留"当时在屏幕上的那一颗"（`offeredJumpRef`）；删除已无消费者的 `JumpToTopArrow`。
+- 顺带清掉随之变成死代码的 `atTop`：controller 的 state／返回值／`isChatAtTop` 与 `CHAT_TOP_THRESHOLD`（含其单元测试）都已无人读取，`typecheck` 的 TS6133 就是这一处报出来的。**键盘 Ctrl/Cmd+Home、轮次标记条都保留**——用户要求去掉的是按钮，不是回到开头的能力。
+- CSS：`bottom` 与 `transform-origin` 的 3px 一起改成 16px（水滴仍从输入框边缘长出来）；`background` 换成 55% 的 `color-mix`，模糊配方不动（material-role 测试仍钉着 `blur(18px) saturate(135%)`）。
+- `chat-scroll-controller-wiring.test.ts` 相应改成"只有一颗水滴 + 不再是 top 按钮 + 新的填充与 16px 原点"。
+
+### 验证
+
+改造后实测两种滚动状态都只有一颗水滴、间距 16px、填充 alpha 0.45、模糊不变；`chat-scroll-anchor.test.ts` 去掉 `isChatAtTop` 那组后仍全绿；`typecheck` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 深色模式的选中底色改成柔和蓝（用户反馈）
+
+用户指出复制选中文本的底色在深色模式下"有点看不清"，要求换成柔和一些的蓝色。
+
+### 测量（真实窗口 1280×900，隔离数据根；用真实 selection + 截图取样）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 正文选区 `--selection-background` | `#333333`（灰） | **`#33507d`** |
+| 代码选区 `--code-selection-background` | `#454545` | **`#3d5f91`** |
+| 未激活选区 | `#2e2e2e` / `#3a3a3a` | `#2c4266` / `#33507d` |
+| 选中文字色 | `#f2f2f2` | 不变 |
+
+- 实际取样的像素：正文选区 `(51, 80, 125)`、代码选区 `(61, 95, 145)`，选区外的底色分别是 `(23, 25, 30)` 与 `(34, 37, 44)`。
+- 选区与背景的对比：`#333333` 对正文底色只有 1.37:1（几乎看不出选了什么），`#33507d` 是 **2.13:1** 且带明确色相；选中文字对选区仍有 **7.2:1**（代码区 5.7:1），读数不受影响。
+- 与浅色主题同一族：浅色是 `#c8d9f3`（色相约 217°），新深色值 215–216°。
+
+### 实现
+
+- `03-shell-sidebar.css` 深色 token 换成柔和蓝（注释写明原因与对比度），浅色主题的取值不动。
+- 非 CSS 的选区表面同步：`selection-style.ts` 的四个常量（Monaco 主题数据用它）、`workspace/monaco-theme.ts` 的两个回退值、`workspace/terminal.tsx` 的深色回退值——否则编辑器/终端会继续显示旧的灰色选区。
+- `chat-layout-stability.test.ts`、`workspace/monaco-theme.test.ts` 里钉住旧颜色的断言同步更新（改回去即转红）。
+
+### 验证
+
+真实窗口里选中一段正文与一段代码后截图取样（`selection\paragraph.png`、`selection\code.png`），取样值即上表；`typecheck`、`git diff --check` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 折叠后的文件夹栏残留色带与预览滚动条位置（用户反馈）
+
+用户给出文件页右缘的截图：文件夹栏折叠后残留一条色带，文件预览的竖向滚动条位置也不对。
+
+### 测量（真实窗口 1360×900、dpr 1.5，隔离数据根）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 折叠后的共享壳（31px） | `background: rgb(25, 27, 32)`（`--bg`）→ 面板右缘一条 31px 色带，底色是 `rgb(23, 25, 30)`（`--workspace-code-surface`）→ 明显的色差与"半折叠"观感 | `rgba(0, 0, 0, 0)`（只剩浮起的 rail） |
+| Monaco 竖向滚动条 | `x 1330-1340`，**压在 rail（1319-1344）下面**，既看不见也拖不到 | `x 1301-1311`（预留 29px 后），与 rail 之间留 8px 空隙 |
+| 编辑器宿主右缘 | 1360（面板右缘） | 1311（`--workspace-files-content-reserve` = 29px） |
+
+- 色带的成因：`.workspace-shared-file-navigator` 的 `background: var(--bg)` 在折叠态仍然铺在负边距叠出来的 31px 上，而它下面是代码表面。
+- 滚动条的成因：rail 收在面板右缘（距右缘 16px），而 Monaco 的滚动条贴着自己宿主的 **padding box** 右缘 —— 所以给它加 `padding-right` 一点用都没有（实测滚动条仍在 1330-1340），必须改成 `margin-right` 把宿主本身收窄。
+
+### 实现
+
+- `.workspace-shared-file-navigator:not(.inactive):has(> .workspace-files-navigator.navigator-collapsed)` 增加 `background: transparent`。
+- 新增一条：折叠时 `.workspace-editor-monaco` / `.workspace-preview-code` 取 `margin-right: var(--workspace-files-content-reserve)`（与折叠时页头行的预留同一个 token），覆盖 `.workspace-files > .workspace-preview-pane`、审阅内容区与 `.workspace-panel-view.active` 三种布局。
+
+### 验证
+
+改造后同一状态下实测：共享壳背景 `rgba(0,0,0,0)`、宿主右缘 1311、滚动条 1301-1311、rail 1319-1344；截图逐像素扫描显示底带只剩下滚动条自身（`(28,30,35)` 的 10px 列），其余是均匀的 `(23,25,30)`（`workspace\collapsed-strip\collapsed-edge.png`）。`typecheck`、`git diff --check` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 自动换行开关的切换加过渡（用户反馈）
+
+用户给出文件工具行里自动换行按钮的截图，要求它的切换有过渡动画。
+
+### 测量（真实窗口 1360×900，隔离数据根；点一下后逐帧读计算值）
+
+| 时刻 | 关闭态图标 | 开启态图标 |
+| --- | --- | --- |
+| 静止（未换行） | `opacity 1`，`transform none` | `opacity 0`，`scale(0.7) translateY(2px)` |
+| 点击后 40ms | `opacity 0.26`，`scale 0.78`，**transition running** | `opacity 0.74`，`scale 0.92`，**transition running** |
+| 点击后 600ms | `opacity 0` | `opacity 1`，`transform none` |
+
+`aria-pressed` 与 `aria-label` 同步切换（`开启自动换行` → `关闭自动换行`）。
+
+### 实现
+
+- `ui/code-wrap-toggle.tsx` 原来按状态**换一个** SVG（`{wrapped ? <WrapOnIcon /> : <WrapOffIcon />}`），现在是两个图标同时挂载，按状态由 CSS 决定谁可见。
+- `04-workspace.css`：`.code-wrap-toggle` 用 `grid-template-areas: 'glyph'` 把两个图标叠在同一格；`.code-wrap-icon` 加 `opacity` + `transform` 的 `--motion-base` 过渡；可见的一个停在原位，另一个淡出并下沉缩小。按钮仍然只有一个无障碍名与一个 Tab 停点，图标本身是装饰。
+- 应用级 `prefers-reduced-motion` 规则把这段过渡塌缩为 1ms。
+
+### 验证
+
+真实窗口点击实测：40ms 时两个图标的不透明度分别为 0.26 / 0.74 且均有 running transition，600ms 后稳定在 0 / 1（截图 `wrap-toggle\off.png`、`mid.png`、`on.png`）。两条源码契约同步：`leading-row-layout.test.ts` 新增"两个图标都在 DOM、不再按状态二选一、过渡与两个状态的 opacity 规则"；`ui/code-wrap-preference.test.ts` 里"每个状态只画一个图标"的旧断言改成"两个图标都挂载、由 `data-wrapped` 决定谁被绘制"——改回去即转红。`typecheck`、`git diff --check` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 行评论"+"按钮的居中（用户反馈）
+
+用户给出编辑器行评论添加按钮（蓝底圆角方块 + 白色加号）的截图，觉得加号没有居中。
+
+### 测量（真实窗口 1360×900、dpr 1.5，隔离数据根）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 按钮/图标的 CSS 几何 | 按钮 22×22，图标 10×10，四边各内缩 **精确 6px** | 不变（依旧 6px） |
+| 按钮的**绝对设备**位置 | `y 159 CSS = 238.5 设备像素`（半像素 ✗） | `y 159.333 CSS = 239 设备像素` ✓ |
+| 内联 `top` | `50px` | `50.3333px`（把余数带上） |
+| 截图里按钮左上角 | 落在设备栅格之外 | 设备 `(1350, 239)`，正好在栅格上 |
+
+结论：**CSS 几何本来就是精确居中的**（4 条边各 6.00px，实测），用户看到的是**设备像素栅格化**问题——Monaco 把按钮放在半设备像素上，于是 2px 的加号笔画落在半像素边界，抗锯齿把"+"渲染得偏左上（用户截图取样：加号中心比按钮中心偏 −0.5 图像像素 = −0.33 CSS px）。
+
+### 实现
+
+- `line-comment-model.ts` 新增纯函数 `snapToDevicePixels(value, ratio)`：把位置吸附到设备像素栅格（非法/为 0 的 ratio 视为 1，保持整像素显示器行为不变）。
+- `line-comment-surface.tsx` 的 `LineCommentAddButton` 在 `useLayoutEffect` 里量一次自己真实落点，把"到设备栅格的距离"作为余数补进 `top` / `left`。**一次即收敛**：对齐后余数为 0，不再写状态（不会自激），也不会改变 6px 的居中关系。
+
+### 验证
+
+改造后实测：内联 `top` 由 `50px` 变 `50.3333px`，绝对设备坐标 `238.5 → 239`（`deviceY: 239`），按钮/图标仍各内缩 6.00px；全窗口截图里按钮左上角正好落在设备 `(1350, 239)`，8 倍放大后"+"视觉居中（截图 `plus-center\button-8x.png`）。`line-comment-model.test.ts` 新增 5 组纯函数断言（1.5x 半像素、已在栅格上、整像素、2x、0/负/NaN/Infinity 退化值）；`line-comments.test.ts` 的源码契约同步改成"量测余数并带入 top/left"。`typecheck`、`git diff --check` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 工作区头部只留地址（用户反馈）
+
+用户给出文件导航头部截图（粗体 `Repositories\littlesheep` + 「当前工作区」徽章 + 下面一行完整路径），要求只显示地址、不要额外的东西。
+
+### 测量（真实窗口 1360×900，隔离数据根）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 文件导航头部（打开文件时的共享导航栏） | 两行 + 徽章：`docs\…\workplace` / `当前工作区` / `D:\…\workplace` | **一行**：`D:\…\workplace`（`rows: 1`，无徽章） |
+| 审阅头部（Git 审阅） | `分支 -> upstream` + `Git 审阅` 徽章 + 路径 | 分支行**保留**（它不在路径里），只去掉重复标签的徽章 |
+
+判断依据：路径本身已经包含了文件夹名，所以导航头部的短名 + 「当前工作区」徽章是同一事实的第二遍；而审阅头部的分支（`… -> origin/…`）路径里没有，属于状态而非标签，保留。
+
+### 实现
+
+- `file-navigator.tsx`：头部只渲染 `<small>{workspacePath}</small>`；`临时预览` 时保留徽章与「来源不改变当前工作区：…」那行——那是状态警告而不是标签。随之删掉已无用的 `compactPath` 导入（该函数在消息附件等其他地方仍在用）。
+- `review-tree.tsx`：去掉只重复标签的 `Git 审阅` 徽章，保留分支行与路径行（含 ahead/behind 计数）。
+- `leading-row-layout.test.ts` 新增源码契约：头部只有一条 `<small>` 路径、不再有 `{compactPath(workspacePath)}` 与 `当前工作区` 徽章、`path-utils` 导入只剩两个名字。
+
+### 验证
+
+改造后实测共享导航头部 `rows: 1`、无徽章、文本就是完整路径（截图 `navigator-header\header-file-tab.png`）；审阅头部变成两行（分支 + 路径）、徽章消失（`header.png`）。`typecheck`、`git diff --check` 通过，Renderer 全量 169 文件（仅另一条工作流的 `ui-radius-consistency` 失败）。
+
+## 2026-10-03 「打开方式」菜单的图标清晰度与应用名（用户反馈）
+
+用户给出打开方式菜单截图：图标有明显锯齿，应用名也不对（`msedge`、`chrome`、`iexplore` 这些是文件名）。
+
+### 测量（真实窗口 1360×900、隔离数据根；名称源另外在真机上验证）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 图标位图 | `app.getFileIcon(exe, { size: 'small' })` = **16×16**，而菜单格子是 15px CSS（dpr 1.5 时需 22.5 设备像素）→ 被放大出锯齿 | `size: 'large'` = 实测 **48×48**，浏览器做缩小，1.5x/2x/3x 都够 |
+| 名称来源 | 只有 `HKCR\Applications` 分支查 `FriendlyAppName`；ProgId 来的条目直接用可执行文件名 | 每个条目依次查 `HKCR\Applications\<exe>` 的 `FriendlyAppName` → 可执行文件自身的版本信息 `FileDescription` → 文件名兜底 |
+| 「默认」标记 | 内置 VS Code 条目写死 `（默认）`，系统默认项也写 `（默认）` → 两行都自称默认 | 内置条目只叫 `Visual Studio Code`；系统那项改成 `（系统默认）` |
+
+- 名称源的机制在真机上直接验证：`msedge.exe → Microsoft Edge`、`chrome.exe → Google Chrome`、`notepad.exe → Notepad`（用菜单同一条 PowerShell 读 `VersionInfo.FileDescription`）。
+- `FileDescription` 用 PowerShell 一次性批量读（每个文件起一个进程比菜单本身还贵），输出按 UTF-8 取回，非 ASCII 名称不会被代码页弄成乱码；读不到时保持文件名，不猜。
+
+### 实现
+
+- `main/executable-icons.ts`：`size: 'small'` → `'large'`。
+- 新增 `main/executable-descriptions.ts`：批量 `FileDescription` 读取 + 可测的 `parseVersionDescriptions`（缓存、best-effort、非 Windows 直接空）。
+- `main/workspace-open-with.ts`：新增 `describeExecutables` 注入点，并在建表后统一解析名称（注册表名 → 版本信息 → 文件名）；`local-app-api/open-with-routes.ts` 注入真实实现。界面仍是 Renderer 只送 handler id，Main 重新解析，安全边界不变。
+- `renderer/workspace/preview-actions.tsx`：去掉内置 VS Code 条目的 `（默认）`，系统默认识别为 `（系统默认）`。
+
+### 验证
+
+菜单实测图标 `naturalWidth × naturalHeight = 48×48`（截图 `open-with-menu\menu.png`），标签为 `Visual Studio Code` / `WorkBuddy` 等。测试：`workspace-open-with.test.ts` 新增三条（注入 describer 时改用描述名、注册表名优先、都没有时保留文件名），新增 `executable-descriptions.test.ts` 三条解析断言（含非 ASCII 与非法行），`use-workspace-open-with.test.ts` 新增一条「默认只声明一次」。`typecheck`、`git diff --check` 通过。
+
+## 2026-10-03 对话顶部淡出的位置（用户反馈）
+
+用户给出对话顶部截图（浮动任务条 + 下面正在淡出的正文），指出淡出发生的位置不是正文真正消失的位置。
+
+### 测量（真实窗口 1280×900、隔离数据根；把粘性色带临时改成 8px 纯红，再从截图像素读出它的位置）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| `.messages` 的 `padding-top` | `24px`（有任务条时 `40px`） | **0**（顶部留白移到 `.messages-content`） |
+| 淡出色带顶边 | 页面 y ≈ **102**，即比真正的裁剪边（y=40）低 **62px** —— 落在正文中间 | 页面 y = **72**，正好是任务条的下沿（比裁剪边低 32px = 任务条高度） |
+| 无任务条时 | 比裁剪边低 24px | 正好在裁剪边 y=0 |
+
+根因有两层：
+1. **滚动容器的 `padding-top` 会把粘性子元素一起推下去** —— 色带是 `.messages` 的 `::before`（`position: sticky; top: 0`），而 `top: 0` 是相对滚动视口的，容器自身的 24px 顶内边距就让它整体下移了 24px。
+2. 有任务条时那条规则又加了 `padding-top: 40px`，于是色带被推到裁剪边下方 **64px**；而阅读者实际看到"正文消失"的位置是**任务条的下沿**（滚动视口自己的顶边被任务条挡住了），所以淡出与真实消失位置差了 62px。
+
+### 实现
+
+- `05-chat-messages.css`：`.messages` 的顶部内边距改成 0（保留 `scroll-padding-top: 24px` 维持原来的滚动行为），首行留白移到 `.messages:not(.is-empty) .messages-content { padding-top: 24px }`；有任务条时同样只改内容的内边距。
+- 新增 `.chat:has(> .running-pill-shell) .messages::before { top: calc(var(--task-pill-overlay-height) - var(--task-pill-inset-top)) }` —— `overlay - inset` 正好是任务条自身的高度，即它下沿相对滚动视口顶边的距离。
+
+### 验证
+
+实测色带顶边从 y≈102 移到 **y=72**（任务条下沿，误差 0），且滚动时不再漂移；无任务条时色带回到滚动视口顶边。`chat-layout-stability.test.ts` 同步改了两条断言并新增三条（顶部内边距只在内容上、`.messages` 不再有 24px 顶内边距、任务条状态下色带的 `top` 用 `overlay - inset`），改回去即转红。`typecheck`、`git diff --check` 通过。
+
+## 2026-10-03 任务条可以拖动，但不能出对话区（用户反馈）
+
+用户要求任务条"可以拖动着到处跑，但不能超出对话区的边界"。
+
+### 实测（真实窗口 1280×900、隔离数据根；用 CDP 派发真实指针事件拖动）
+
+| 状态 | 条的位置 | `data-docked` | `.messages` margin-top | 内容 padding-top | localStorage |
+| --- | --- | --- | --- | --- | --- |
+| 停靠 | 242,40 → 560,72 | `true` | 8px | 40px | 无 |
+| 拖向左上角外 | 240,32 → 558,64（夹住） | `false` | 0 | 24px | `{"x":-2,"y":-8}` |
+| 普通拖动 +300,+120 | 540,152 → 858,184 | `false` | 0 | 24px | `{"x":298,"y":112}` |
+| 刷新页面后 | 540,152 → 858,184（同位置） | `false` | 0 | 24px | 同上 |
+
+四种状态 `inside` 均为 `true` —— 即使往窗口左上/右下角拖，条也始终完整落在对话区内。
+
+### 实现
+
+- 新增 `sidebar/task-pill-drag.ts`：纯函数 `clampTaskPillOffset`（用"停靠矩形 + 对话区矩形"夹住位移，对话区比条还小时退回停靠位）、`isTaskPillDocked`（<2px 视为停靠），以及可注入的读写（非法 JSON／缺字段一律当作没存过）。
+- `sidebar/running-pill.tsx`：在条上挂 `onPointerDown/Move/Up/Cancel`。移动超过 3px 才算拖动（避免误触），拖动开始时 `setPointerCapture` 并关掉面板；结束拖动的那一下用 `swallowClickRef` 吞掉 click，所以不会顺手打开面板、也不会被当成改名双击的前半段。条的 `data-dragged` 与内联 `translate3d` 由它给出。
+- `app-shell/chat-view.tsx`：位置状态归对话视图所有（读一次 localStorage，之后写回），shell 的 `data-docked` 由此决定。
+- CSS：shell 改成 `inset: 0`（整列都能拖，仍 `pointer-events: none`），并新增 `touch-action: none` 与 `cursor: grab/grabbing`；`05-chat-messages.css` 里那三条"顶部留白／淡出边界"的规则改成只对 `[data-docked='true']` 生效——条一旦被拖走，对话区就收回那 40px，并让淡出回到滚动视口顶边。
+
+### 验证
+
+`sidebar/task-pill-drag.test.ts` 六条：夹取（普通、越界、列太窄）、停靠判定、记住/清除位置、坏数据、以及源码契约（指针处理、3px 阈值、吞 click、`data-docked` 与持久化接线）；`sidebar/README.md` 同步这条契约。真实窗口实测见上表，`typecheck`、`git diff --check` 通过。
+
+## 2026-10-03 打开新对话时的动效闪烁（接手另一条工作流）
+
+前一位 agent 做完了品牌动效（母版 WebP、`VoidRingCompanion` 交互），留下的问题是：**打开新对话时图标会闪一下**——先画一帧静态 `mark.png`，再换成当前状态的动图。额度用尽，由我接手。
+
+### 复现（真实窗口 1280×900、隔离数据根；点"新对话"后每 25ms 采一帧并记录光圈的 `data-motion` 与 `<img>.src`）
+
+| 帧 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 0（旧对话） | `playing` / `idle_breath.webp`（24px） | 同左 |
+| **1（新对话首帧）** | **`still` / `mark.png`**（112px）✗ | **`playing` / `idle_breath.webp`** ✓ |
+| 2+ | `playing` / `idle_breath.webp` | 同左（不再变化） |
+
+根因：`VoidRing` 用两个异步门决定画什么——`enabled`（等一个 effect 里的 `IntersectionObserver`/`matchMedia` 结果）和 `preparedSource`（等 `image.decode()`）——两者在第一帧都还是假，于是**首帧必然是静态图**，之后才换。
+
+### 实现
+
+- 新增 `ui/void-ring-motion.ts`：可注入、可测试的解码缓存（`prepareVoidRingSource` / `prepareVoidRingMotion` / `isVoidRingMotionReady` / `resetVoidRingMotionCache`）。
+- `ui/void-ring.tsx`：`enabled` 改为**同步初始化**（`prefers-reduced-motion` + `document.hidden`），`preparedSource` 的初值直接查缓存；`main.tsx` 在启动时调用 `warmVoidRingMotion()` 预解码 `mark.png` 与 `idle_breath.webp`。于是新对话的首帧就是动图。
+- 冷启动（缓存还没热）不再硬切：静态图常驻底层，动图作为 `.void-ring-live` 覆盖其上，仅在"挂载时资源未就绪"的情况下用 180ms 淡入（`data-swap='fade'`）。实测冷启动为 `op 0.35 → 0.69 → 0.88 → 0.99 → 1`，是溶解而不是闪。
+- 顺手修掉另一条工作流遗留的 `ui-radius-consistency` 红灯：`.void-ring-companion` 的 `border-radius: 50%` 改用 `var(--radius-circle)`，并把该选择器加入 `12-squircle-corners.css` 的圆／胶囊豁免表（`corner-shape.test.ts` 的派生列表随之对齐）。
+
+### 验证
+
+`ui/void-ring-motion.test.ts` 五条（解码后才算就绪、重复请求只加载一次、失败保留静态图且不被缓存为成功、批量预热不抛、以及源码契约：首帧查缓存 + 入口预解码）；真实窗口逐帧实测见上表，冷启动淡入曲线亦实测。Renderer 全量 **1043 项全绿**（含此前一直红的 `ui-radius-consistency` 与 `corner-shape`），`typecheck`、`git diff --check`、`check:repo` 通过。
+
+## 2026-10-03 工作区默认展开到文件导航，而不是直接进审阅（用户反馈）
+
+用户要求：工作区默认展开时应该落在导航（文件）上，而不是直接进入审阅。
+
+### 实测（真实窗口 1360×900、全新数据根、localStorage 为空）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 展开后的活动标签 | **审阅** | **文件** |
+| 标签栏 | 只有「审阅」 | 「文件」+「审阅」 |
+| 面板内容 | `workspace-review` 挂载 | 文件导航（路径头 + 筛选框 + 树行 = 2） |
+| `localStorage` | 无 | 无（走默认，不写死一个"用户选择"） |
+
+根因是两处默认值：`DEFAULT_WORKSPACE_PANEL_TABS = ['review']`（默认打开的标签）与 `readWorkspacePanelTabPreference()` 的兜底返回值 `'review'`（默认活动标签）。标签页本身不会被持久化（只有测试与目录预读会读这个 key），所以改兜底值对所有人生效。
+
+### 实现
+
+- `workspace-persistence.ts`：`DEFAULT_WORKSPACE_PANEL_TABS` 改为 `['artifacts', 'review']`（导航在前、审阅在后）；`alignWorkspacePanelStateToRoot` 与 `hydrateWorkspaceLayoutFallbackSnapshot` 里两处写死的 `'review'` 兜底改用默认表的第一项。
+- `app-shell/preferences.ts`：`readWorkspacePanelTabPreference` 的兜底改为 `'artifacts'`。
+- 语义边界未变：`hasWorkspaceLayoutContent` 仍以这份默认表为基线判断"用户是否真的产生过内容"，只是基线现在含导航标签——只显示过默认标签的会话仍算空。
+
+### 验证
+
+真实窗口实测展开后面板为文件导航、标签栏为「文件」+「审阅」且「文件」处于活动态（截图 `workspace-default-tab\expanded.png`）。`workspace-persistence.test.ts` 五处断言按新意图更新（default 列表、draft 兜底、根切换后的活动标签兜底、以及"已恢复的会话不被覆盖"改用真正含用户内容的标签组合），`workspace/README.md` 同步这条契约。Renderer 全量 **1043 项全绿**，`typecheck`、`git diff --check`、`check:repo` 通过。
+
+## 2026-10-03 悬浮提示的宽度（用户反馈）
+
+用户给出文件标签提示框的截图：一条完整路径被折成每行七八个字符的窄条，指出很多地方的小简介／悬浮提示宽度被写死，内容读起来很难受。
+
+### 实测（真实窗口 1360×900、隔离数据根；用真实指针 hover 后读提示框的 rect）
+
+| 提示内容 | 之前（`width: 80px`） | 之后（内容自适应） |
+| --- | --- | --- |
+| 长路径（约 110 字符，故意夸张） | 80px 宽 → 十几行 | **560px**（上限）→ 2 行，只在右缘换行 |
+| 描述句「和左侧文件夹栏一样浏览选中的文件夹」 | 80px 宽 → 4 行 | **230px** → 1 行 |
+| 短标签「刷新文件树」 | 80px | **86px**（仍是紧凑气泡，因为 token 变成下限） |
+
+报告里那条 `D:\Repositories\littlesheep\package.json`（约 42 字符 ≈ 285px）现在是一行。
+
+### 实现
+
+- `.floating-help-tip` 与 `.workspace-panel-reopen-label`（同一套提示配方的两个表面）把 `width: var(--composer-hover-tip-width)` 改成 `width: max-content` + `min-width: var(--composer-hover-tip-width)`；`max-width: min(560px, calc(100vw - 24px))` 不变。
+- `--composer-hover-tip-width: 80px` 保留但语义改为"下限"，注释写明原因。
+- `control-surface-style.test.ts` 的提示配方断言同步：内容宽度 + 下限 + 上限，且显式禁止再写回固定 `width`（用行首锚定的正则，避免被 `min-width` 误伤）；同时覆盖 `.workspace-panel-reopen-label`。
+
+### 验证
+
+真实窗口三种提示实测见上表（截图 `tip-width\tab-tip.png`）。Renderer 全量 **1043 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 工作区展开落在「开始」导航页（用户澄清，取代上面那条默认标签的做法）
+
+上一条把默认标签从「审阅」改成「文件」，用户随即用两张参考图澄清：要的是**类似那样的导航页**（参考图 1 = 一个带图标、名称、说明的入口列表，标题是「开始」；参考图 2 = 浏览器新标签页那种「工具／推荐／最近」的枢纽）。所以「文件」标签不是答案：面板应该先落在一张说清"能去哪儿"的页面上。
+
+### 实测（真实窗口 1360×900、全新数据根、localStorage 为空）
+
+| | 上一条之后 | 现在 |
+| --- | --- | --- |
+| 展开后的标签 | 文件（+ 审阅） | **开始**（只此一个） |
+| 面板内容 | 文件夹树 | 导航页：5 条入口，每条 360×58（「终端」因两行说明为 69.9） |
+| 共享文件夹栏 | 显示 | 隐藏（`navigatorInactive: true`） |
+| 审阅是否被挂载 | 否 | 否 |
+| `localStorage` | 空 | 空（走默认） |
+
+### 实现
+
+- `workspace-persistence.ts`：`WorkspacePanelTab` 增加 `'home'`，`DEFAULT_WORKSPACE_PANEL_TABS = ['home']`；`isWorkspacePanelTab` 接受它。`app-shell/preferences.ts` 的兜底改为 `'home'`。
+- `panel.tsx`：入口表新增 `{ id: 'home', label: '开始' }`（它自己不出现在入口列表里——`launcherEntries` 过滤掉自己）；`renderWorkspaceTab('home')` 渲染同一个 `WorkspaceEmptyLauncher`，所以"开始"是一个真实的地方，而不只是"标签全关掉"的状态；共享文件夹栏对 `home` 也置为 `inactive`，于是导航页独占面板（与参考图一致）。
+- `empty-launcher.tsx` + `04-workspace.css`：每条入口两行——图标 + 名称 + 该功能自己的说明（说明最多两行，不再用省略号截断；这两行与它的悬浮提示是同一句话）。
+- `ui/icons.tsx`：`WorkspaceFeatureIcon` 增加 `home` 的罗盘字形（对应参考图里的指南针）。
+- 未做的部分（参考图里有、我们没有）：入口右侧的快捷键标签（`Ctrl+P`／`` Ctrl+` ``／`Ctrl+T`／`Ctrl+Shift+G`）。这些键位在本应用里并不存在，显示了就是说谎；要的话我另开一轮把真实键位绑上再显示。参考图 2 的「推荐／最近」区块同理，属于新功能。
+
+### 验证
+
+真实窗口实测：展开后只有「开始」标签且处于活动态，导航页 5 条入口（含两行说明）、共享文件夹栏隐藏、未挂载审阅（截图 `workspace-default-tab\expanded.png`，对照参考图 1）。测试：`workspace-persistence.test.ts` 五处默认值断言更新；`leading-row-layout.test.ts` 新增一条导航页契约（home 类型 + 默认表 + 两处 launcher 渲染 + 两行结构）；`workspace-panel-navigator.test.ts` 的 `inactive` 条件断言同步（现在含 `home`）。Renderer 全量 **1044 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 用户消息气泡的圆角（用户反馈）
+
+用户给出自己那条消息的截图，要求"用户对话框的圆角改大一点"。
+
+### 实测（真实窗口 1280×900、隔离数据根）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| `.message.user` 的圆角 | `var(--radius-card)` = **18px** | `var(--radius-message-bubble)` = **22px** |
+| 单行气泡（133×47） | 18px（约为短边的 38%） | 22px（约 47%，仍有直边，不是胶囊） |
+| 多行气泡（624×74） | 18px | 22px |
+
+### 实现
+
+- `03-shell-sidebar.css` 的圆角 token 组新增 `--radius-message-bubble: 22px`（带注释：比卡片圆一档，但不到输入框胶囊那种程度）。
+- `05-chat-messages.css`：`.message.user` 改用该 token（原来借的是卡片 token，语义上也不合适）。
+- `ui-radius-consistency.test.ts`：第一条断言加入新 token 的字面值，第二条的允许值集合加入 `var(--radius-message-bubble)`——这条契约正是防止有人再写死一个裸 px 值。
+
+### 验证
+
+真实窗口实测两种气泡（单行 133×47、多行 624×74）圆角均为 **22px**（截图 `user-bubble\bubble.png`）。Renderer 全量 **1044 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 标签栏的「+」固定在窗口控件一侧（用户反馈）
+
+用户给出标签栏溢出时的截图，要求「+ 号键和展开键、折叠键一起固定在这里，不能被隐藏」。
+
+### 实测（真实窗口 1280×900、隔离数据根、打开 10 个长名文件标签）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 「+」的 DOM 位置 | `.workspace-tab-strip`（可横向滚动的那个元素）的最后一个子节点 | `.workspace-panel-actions`（头部固定的控件簇）的第一个子节点 |
+| 标签区溢出量 | —— | `scrollWidth - clientWidth = 1335px` |
+| `scrollLeft = 0` 时「+」的 x | 随标签滚动（在滚动容器内） | **1179** |
+| `scrollLeft = 1335`（滚到底）时「+」的 x | 移出可视区（被裁掉） | **1179**（不变；同一簇内还有全屏按钮，右缘 1235） |
+
+### 实现
+
+- `tab-strip.tsx`：不再渲染 `WorkspaceAddMenu`（连同 `onOpenBrowserTab` 这个只为它存在的 prop 一起移除），标签栏只渲染标签。
+- `panel.tsx`：`<WorkspaceAddMenu>` 移到 `.workspace-panel-actions` 内部、全屏按钮之前，于是"+"与窗口控件（全屏／收起）同属一个固定簇；`activeTab`／`openTabs` 从 `openTabs` 直接推导。
+- `leading-row-layout.test.ts` 新增源码契约：标签栏不含 add-menu，头部控件簇内必须出现它。
+
+### 验证
+
+真实窗口实测：10 个标签、溢出 1335px，`scrollLeft` 从 0 到最大时「+」的 x 恒为 1179、始终可见（截图 `tab-add-pinned\strip.png`）。workspace 目录 322 项测试全绿，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 文件夹栏去掉自己的底色（用户反馈）
+
+用户要求：工作区的文件夹栏不要另加底色，与其他底色保持一致。
+
+### 实测（真实窗口 1360×900、隔离数据根、打开一个文件）
+
+| 表面 | 之前 | 之后 |
+| --- | --- | --- |
+| `.workspace-shared-file-navigator`（文件夹栏外壳） | `background: var(--bg)` = **rgb(25,27,32)** | `transparent`（露出面板表面） |
+| `.workspace-panel-surface`（面板表面） | rgb(23,25,30) | 不变 |
+| `.workspace-editor-monaco` / `.messages`（文件与对话表面） | rgb(23,25,30) | 不变 |
+| 截图取样（文件夹栏区域） | (25, 27, 32) | **(23, 25, 30)**，与文件表面逐像素一致 |
+
+根因：面板表面、编辑器和对话都用 `--workspace-code-surface`（#17191e），只有文件夹栏外壳多刷了一层 `--bg`（#191b20），于是它看起来像另一种材质。
+
+### 实现
+
+- `04-workspace.css`：`.workspace-shared-file-navigator` 的 `background: var(--bg)` 改为 `transparent`，并注释说明"分隔靠它自己的 1px 边框，而不是第二层底色"。
+- 分隔线本身未动：`.workspace-files-navigator` 仍保留 `border-left: 1px solid var(--border)`（文件标签内那层按原设计不带，收缩态也不带）。
+- 上一轮已经处理过的"折叠态残留色带"是同一个 token 的另一个出口，现在两处都走透明。
+
+### 验证
+
+真实窗口截图逐像素取样：文件夹栏区域从 (25,27,32) 变为 **(23,25,30)**，与稿件区/编辑器完全一致（截图 `navigator-surface\panel.png`）。Renderer 全量 **1045 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 文件表面去掉刷新按钮，改成检测到变化自动刷新（用户反馈）
+
+用户要求：文件夹栏和文件那里都"检测到有刷新就自动刷新"，不要单独的刷新按钮。
+
+### 实测（真实窗口 1280×900、隔离数据根；文件由探针在应用外用 Node 写入，全程不碰任何按钮）
+
+| 场景 | 结果 |
+| --- | --- |
+| 应用外新建 `appeared-from-outside.md` | 文件夹栏在 **2016ms** 后自动出现该行（前后对比 `count: 1 → 2`） |
+| 应用外改写已打开的 `watched.ts`（编辑器无未保存改动） | 编辑器在 **2025ms** 后自动载入新内容（`AUTO-REFRESH-MARKER` 出现在 `view-line` 里） |
+| 标签栏里的刷新按钮 | 文件夹栏的「刷新文件树」与审阅的「刷新 Git 更改」都已移除 |
+
+### 实现
+
+- 新增 `workspace/use-workspace-auto-refresh.ts`：一个按间隔 tick、只在 `document.visibilityState === 'visible'` 时执行、并在窗口重新获得焦点时立刻执行的 hook；回调存在 ref 里，所以调用方每次渲染重建函数不会重启定时器。三档间隔：目录列表 4s、`file-stat` 4s、Git 快照 15s（审阅原本就有 15s 的 interval + focus 刷新，这次给它加上"只有该标签在屏幕上时才跑"）。
+- `file-navigator.tsx`：删掉刷新按钮与 `RefreshIcon` 导入，改为 `useWorkspaceAutoRefresh(refreshTree, …)`；错误文案从"请点击刷新重试"改为"稍后会自动重试"。
+- `file-view.tsx`：删无可删（本来就没有按钮），改为每 4s 打一次 `statWorkspaceFile`；只有 `modifiedAt` 与当前预览不同、且**编辑器没有未保存改动**时才重读。有改动时保持草稿，继续由"磁盘已改动"提示让读者决定——自动刷新不能替用户丢掉他正在写的东西。
+- `review-tree.tsx`：删除刷新按钮、`onRefresh` prop 与其 tooltip 依赖；`review.tsx` 的自动刷新 interval 加 `if (!active) return`，缓存标签不再在后台轮询 Git。
+- `panel.tsx`：把 `isActive` 传给审阅与文件视图，缓存标签不轮询。
+- 文案同步：`workspace-errors.ts` 的"请刷新文件树后重试"改为"文件已不存在或已被移动。"（树会自己刷新）。
+- 保留：浏览器标签的「刷新网页」（重新加载网页，不是文件变化）与终端活动列表的「刷新最近命令」。
+
+### 验证
+
+`use-workspace-auto-refresh.test.ts` 三条：tick/可见性/焦点与 ref 语义、三档间隔的相对关系（Git 必须比目录慢）、以及三个表面的接线契约（含"不再有刷新按钮""缓存标签不轮询"）。真实窗口两个场景见上表。`icon-actions.test.ts`、`file-navigator-tooltip.test.ts`、`workspace-errors.test.ts`、`file-navigator-error.test.ts` 按新契约更新（图标清单 24 → 23）。Renderer 全量 **1048 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 打开方式菜单的左右边距（用户反馈）
+
+用户给出打开方式菜单的截图，指出"框的左右边距不一致"。
+
+### 实测（真实窗口 1360×900、隔离数据根，打开菜单后读每个条目的几何）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| `.split-button-menu` 的 `scrollbar-gutter` | `stable`（只在末侧预留） | `stable both-edges` |
+| `clientWidth / offsetWidth` | 221 / **232**（11px 只留在右侧） | 221 / 232（两侧各留） |
+| 条目距菜单左缘 / 右缘 | **7.7px / 17.7px** | **17.7px / 17.7px** |
+| 条目内部（图标左距 / 文字右距） | 10px / 10px | 10px / 10px（不变） |
+
+根因：菜单自己有 `padding: 7px`，而 `scrollbar-gutter: stable` 又把滚动条槽位只加在末侧，于是右边比左边多出约 10px。这个菜单宽度是内容驱动（只有三项、并不滚动），所以那 10px 是纯占位。
+
+### 实现
+
+- `04-workspace.css`：`.split-button-menu` 的 `scrollbar-gutter` 改为 `stable both-edges`（与 `.messages`、会话列表等既有做法一致），并注释说明原因。
+- `scrollbar-gutter.test.ts` 新增一条断言（弹出菜单必须两侧对称），并把该文件的说明从"仅居中内容才用 both-edges"扩展为"居中内容与自带内边距的弹出层都用它"。
+- 其它下拉（`.settings-select-menu`、`.option-picker-list`、`.model-picker-*`）仍是单侧预留；它们不在本次反馈范围内，改法相同，需要的话一并处理。
+
+### 验证
+
+真实窗口实测条目左右边距 7.7/17.7 → **17.7/17.7**，菜单宽度不变（232px），标签未被截断（截图 `menu-insets\menu.png`）。`scrollbar-gutter.test.ts` 5 项全绿，Renderer 全量 **1049 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 自动换行开关改成笔画连续变形（用户澄清，取代上面那条淡入淡出的做法）
+
+上一条把切换做成了两个图标交叉淡入淡出，用户明确不要这个：要的是**逐笔画的连续运动**——"有变化的就是最下面的线条和有箭头的线条，让这两个线条连续不间断地运动到新的图标"。
+
+### 实测（真实窗口 1360×900、隔离数据根；点一下后每 16ms 读一次三个笔画的 computed `d`）
+
+| 笔画 | 之前 | 之后 |
+| --- | --- | --- |
+| 带箭头的横线（`.code-wrap-run`） | 与整幅图标一起淡入淡出 | 采样到 **7 个中间值**（`H 6.619 …` → `H 7.1 …`）：横线延伸并连续向下弯折 |
+| 箭头（`.code-wrap-arrow`） | 同上 | **7 个中间值**：箭头从"指向块外"连续移动到"指回折行" |
+| 最下面的线条（`.code-wrap-foot`） | 同上 | **7 个中间值**（如 `M 5.85 9.18 L 13.75 10.34`）：从横线连续滑成折行右侧的竖边 |
+| 顶线（`.code-wrap-top`） | —— | 不变（两态共用同一条，根本不参与动画） |
+
+### 实现
+
+- 两幅图标（`WrapOffIcon`/`WrapOnIcon`）合并为**一张 SVG、四条笔画**；只有会变的三条由样式表改 `d`。
+- **每个笔画在两种状态下保持完全相同的命令序列**（`M H C H`、`M L L`、`M L`），这是 `d` 能插值的前提：Off 态的折弯用一条"退化的三次曲线"（控制点与端点重合，画出来就是原来的直线），On 态把它弯下去。
+- `04-workspace.css`：`.code-wrap-stroke { transition: d var(--motion-base) var(--motion-ease) }`，加三条 `[data-wrapped='true'] .code-wrap-*` 的 `d: path(...)`；删掉原来的 `grid-template-areas`、`opacity`/`transform` 交叉淡入与 `.void-ring-live` 式的双图规则。减少动态效果时仍由应用级规则塌缩为 1ms。
+
+### 验证
+
+真实窗口逐帧采样见上表，中途帧截图 `wrap-morph\mid.png`（能同时看到横线正在下折、箭头在半途、底线斜着滑向竖边）。`ui/code-wrap-preference.test.ts` 与 `workspace/leading-row-layout.test.ts` 的契约改为"四条笔画 + 命令序列兼容 + `d` 过渡"，改回淡入淡出即转红。Renderer 全量 **1049 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 折叠按钮与关闭按钮的中心线（用户反馈；第一次做坏了，已回退重做）
+
+用户要求：工作区的折叠按钮与右上角窗口关闭按钮的中心线对齐，底下的文件按钮也要对齐（文件预览、文件、审阅三处）。
+
+### 第一次尝试做坏了什么（教训，保留）
+
+- 把 `--window-caption-control-width` / `--workspace-panel-close-line` 定义在 `.workspace-panel` 上，但**折叠按钮是"stationary"控件，挂在 `.core-workspace` 上、在面板之外**，拿不到这个变量 → `right: calc(var(--workspace-panel-close-line) - …)` 在计算值阶段失效、回退成 `auto` → 按钮飞到左侧（用户实测看到）。
+- 同时把文件导航栏的"轨道（rail）占位"当成只在收起态才需要，删掉了 29px 预留 → 那一行里 rail 与按钮重叠（用户实测看到）。
+- 两处都已回退。**规则**：跨面板的定位常量必须定义在双方都能继承的作用域（已移到 `03-shell-sidebar.css` 与 `--window-titlebar-height` 同处），而"某个可见元素占用一行末端"时，它的占位不能按状态假设删除。
+
+### 实测（真实窗口 1360×900、隔离数据根）
+
+| 控件 | 之前 | 现在 |
+| --- | --- | --- |
+| 折叠按钮（stationary corner toggle，中心 x） | 1335（距右侧 25px） | **1337（距右侧 23px）** |
+| 文件栏 rail（中心 x） | 1335.5（24.5px） | **1337（23px）** |
+| 全屏按钮右缘 | 1315 | 1320（比折叠按钮左缘 1324 靠左 4px，不重叠） |
+| 文件栏最后一个按钮右缘 | 1325 | 1320.5（比 rail 左缘 1324.5 靠左 4px，不重叠） |
+
+目标线取 23px（Windows 标题栏按钮 46×32 CSS px、最右一个贴客户区右缘，因此中心线在 23px 处；应用读不到该 OS 度量，故声明为 `--window-caption-control-width: 46px`）。
+
+### 实现
+
+- `03-shell-sidebar.css`：新增 `--window-caption-control-width: 46px` 与 `--workspace-panel-close-line: calc(… / 2)`，与 `--window-titlebar-height` 放在一起（面板外也能继承）。
+- `04-workspace.css`：
+  - 折叠按钮 `right: calc(var(--workspace-panel-close-line) - var(--workspace-tab-height) / 2)`；
+  - rail 同样以该线居中；
+  - 头部控件簇 `right: calc(close-line + tab-height / 2 + tab-row-gap)`（比折叠按钮左缘再让出一个 gap）；
+  - 文件/审阅行的按钮簇 `padding-right: calc(close-line + control-size / 2 + control-gap - page-inline-inset)`（停在 rail 左缘之左，留 4px）；
+  - 删掉已无人使用的 `--workspace-panel-trailing-inset: 45px`。
+- 相关契约（`leading-row-layout`、`chat-layout-stability`、`font-rendering`）改为断言"两处折叠控件都以 close line 居中、按钮停在它左侧且不重叠"。
+
+### 验证
+
+真实窗口实测见上表，右上角截图 `control-centrelines\corner.png`（折叠/全屏/加号三个控件互不重叠，折叠按钮在最右）。Renderer 全量 **1049 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+### 未满足的部分（如实说明）
+
+"底下这些文件按钮"**没有**和关闭按钮同心：那一行的末端被文件栏的 rail（收起/展开文件栏的手柄，5px 处、静止时透明、悬停出现）占着，按钮只能停到它左边（现在留 4px 空隙）。要真正让它们同心，需要把 rail 移出这一行（例如移到面板右下角）或让按钮变小；没有用户确认前不动。
+
+## 2026-10-03 YAML 文件标志（用户反馈）
+
+用户给出实际看到的图标（黄色挂锁）和参考图（YAML 官方标志：圆角浅色方块 + YAML 字样、A 为红色），要求换成参考那样。
+
+### 根因（两个叠在一起）
+
+1. `fileGlyphKind` 把 `pnpm-lock.yaml` 和三个其它锁文件一起按**文件名**归为 `lock`，于是 `.yaml` 文件显示挂锁而不是 YAML 标志。
+2. 连 `.yaml` 通用规则命中的 `yaml.svg` 本身也是上游的"红笔画文档"（`#ff5252` 的文档轮廓），16px 下与 JSON/PDF 一类文档标志区分度低。
+
+### 实测（真实窗口 1280×900、隔离数据根，同一棵树里放 5 个文件）
+
+| 文件 | 之前 | 之后 |
+| --- | --- | --- |
+| `demo.yaml` / `config.yml` | 红色文档轮廓 | **YAML 标志**（浅色圆角方块 + YAML 字样，A 红 `#cb171e`） |
+| `pnpm-lock.yaml` | **黄色挂锁**（用户截图的那一个） | **YAML 标志** |
+| `package-lock.json` | 黄色挂锁 | 黄色挂锁（不变） |
+| `yarn.lock` | 黄色挂锁 | 黄色挂锁（走扩展名规则，不变） |
+
+### 实现
+
+- `file-glyph-assets/yaml.svg` 重画为 YAML 官方标志的矢量版本（24×24，圆角方块 `#f2f2f2` + Y/M/L 深色笔画 + A 用标志红）；`file-glyph-assets/README.md` 注明这是本目录自制、不随上游更新的**唯一例外**，并给出原因与复核标准（原 18 个上游素材降为 17 个）。
+- `file-glyph-icons.tsx`：锁文件的**文件名**特例只保留 `package-lock.json`；`yarn.lock`/`cargo.lock` 由扩展名规则得到挂锁，`.yaml`/`.yml` 一律显示 YAML 标志。
+- `icon-actions.test.ts` 新增两条契约：`demo.yaml`/`config.yml`/`pnpm-lock.yaml` → `yaml`，`package-lock.json`/`yarn.lock`/`cargo.lock` → `lock`；素材必须是方块 + 标志红，且不再含上游的 `#ff5252`。
+
+### 验证
+
+真实窗口实测见上表与截图 `yaml-glyph\rows.png`（15 行文件树，五个文件各自的标志）。Renderer 全量 **1051 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 标签滚到末尾时压在「+」上的问题（用户反馈）
+
+用户给出截图：标签名与「+」「全屏」叠在一起，要求调整"其他标签的消失位置"。
+
+### 实测（真实窗口 1280×900、隔离数据根、打开 8 个长文件名标签并滚到末尾）
+
+| | 之前 | 之后 |
+| --- | --- | --- |
+| 标签栏裁剪边 | 67px 预留 → 标签可滚到加号**底下**（截图里标签文字穿过 + 和全屏） | 头部按控件簇实际宽度预留 |
+| 标签栏右缘 / 「+」左缘 | 重叠 | **1180 / 1184（4px 空隙）** |
+| 裁剪边与最后一个标签右缘 | —— | 1167.9 / 1179.9（标签本身也停在裁剪边内） |
+
+### 实现
+
+- `04-workspace.css`：`.workspace-panel-header` 的 `padding-right: 67px` 改成按 `--workspace-panel-close-line` 推导的算式——加号与窗口控件那一簇是两个 `--workspace-tab-height` 加它们的 gap，再留 4px 日光，最后减去面板内容已经内缩的 12px。加号/全屏是绝对定位、画在这一行**之上**的，所以必须在头部留出等价空间，标签才不会钻到它们下面。
+- `chat-layout-stability.test.ts` 的旧 `padding-right: 67px` 断言改为"必须是从 close line 推导的 calc，且算式包含两个控件宽度"。
+
+### 验证
+
+真实窗口实测见上表与截图 `tab-clip\header.png`（滚到末尾：最后一个标签 + 关闭按钮、4px 空隙、加号、全屏、折叠）。Renderer 全量 **1051 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 打开方式菜单的行宽（用户反馈，二次修正）
+
+用户要求"内部框宽度调宽一点，让两侧间距和上下间距相等"——即菜单里高亮行的左右内缩要等于上下内缩。
+
+### 实测（真实窗口 1360×900、隔离数据根，打开菜单后读每个条目的几何）
+
+| | 上一版（`stable both-edges`） | 现在（隐藏滚动条） |
+| --- | --- | --- |
+| `clientWidth / offsetWidth` | 221 / 232（两侧各留 ~5.5px 槽位） | **231 / 232**（只剩 1px 边框） |
+| 条目距菜单左缘 / 右缘 | 17.7 / 17.7 | **7.7 / 7.7** |
+| 菜单自身 `padding` | 7px（上下） | 7px（上下），两侧终于也是 7px |
+| 条目宽度 | 232 − 2×17.7 ≈ 197px | 232 − 2×7.7 ≈ 216px（宽了 ~19px） |
+
+### 实现
+
+- `04-workspace.css`：`.split-button-menu` 去掉 `scrollbar-gutter: stable both-edges`，改为 `scrollbar-width: none`——这是短弹出列表，滚动条不显示也不占位，于是四个方向都只剩菜单自己的 7px padding；滚轮与键盘滚动仍然有效。
+- `scrollbar-gutter.test.ts` 的对应契约从"必须两侧对称预留"改为"必须声明 `scrollbar-width: none` 且不得再声明 gutter"。
+
+### 验证
+
+真实窗口实测见上表与截图 `menu-insets\menu.png`。`scrollbar-gutter.test.ts` 5 项全绿，Renderer 全量 **1051 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+### 同一张截图里另外两个问题（未处理，等用户决定）
+
+用户截图里还有两条**坏掉的打开方式条目**：`@wmploc.dll,-102`（注册表里是资源 ID，没被解析成名字）和一条 `???????`（编码损坏）。它们来自 `workspace-open-with.ts` 的 `resolveLabels`——名字取不到时应当**不显示该条目**，而不是把资源 ID 或乱码端上来。本次只改了间距，没有动取名字的逻辑。
+
+## 2026-10-03 审阅与文件标签里的导航手柄没对齐（用户反馈）
+
+用户给出审阅和文件两个标签的截图：两处右上角的文件夹手柄（导航栏 rail）不在同一条竖线上。
+
+### 实测（真实窗口 1360×900、隔离数据根；同一窗口里依次读三个状态）
+
+| 状态 | 导航列右缘 | rail 中心 x | 距面板右缘 |
+| --- | --- | --- | --- |
+| 文件标签（`artifacts`，只有文件夹栏） | 1348 | **1325** | 45px ✗ |
+| 打开文件后的文件标签 | 1360 | **1337** | 23px ✓ |
+| 审阅标签 | 1360 | **1337** | 23px ✓ |
+
+两处原因叠加：
+1. 该视图（`.workspace-panel-view`）带 `scrollbar-gutter: stable both-edges`，两侧各留 ~10px 槽位；
+2. `usesEdgeToEdgeFileSurface` 只列了"有打开的文件"和 `review`，**漏了文件栏自己的标签 `artifacts`**，于是面板内容那 12px 内缩也没被抵消。
+
+### 实现
+
+- `04-workspace.css`：`.workspace-panel-view:has(> .workspace-files-tab-navigator)` 声明 `scrollbar-width: none`——这个视图自己不滚动（滚的是里面的树，树有自己的滚动条），两侧槽位本来就是白留的。
+- `panel.tsx`：`usesEdgeToEdgeFileSurface` 加上 `activeTab === 'artifacts'`，让文件栏标签和文件/审阅标签一样贴到面板边缘（这是 rail 的定位基准）。
+- `leading-row-layout.test.ts` 新增一条契约：这一串条件必须包含 `artifacts`，且该视图必须声明 `scrollbar-width: none`。
+
+### 验证
+
+真实窗口实测见上表：三个状态的 rail 中心**都是 1337**（距面板右缘 23px，即窗口关闭按钮的中心线）。Renderer 全量 **1051 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+## 2026-10-03 文件预览的边界线（用户反馈；线条已改真，还有一处未收口）
+
+用户给出文件预览截图，指出两点：预览不是"以真实的线条作为边界"，而且有的分界线没能完全隔开区域。
+
+### 实测（真实窗口 1360×900、隔离数据根，打开一个文件）
+
+| | 之前 | 现在 |
+| --- | --- | --- |
+| 预览头部下方的分隔线 | `box-shadow: inset 0 -1px var(--border)`（画出来的影子，不属于盒子） | **`border-bottom: 1px solid var(--border)`**（真实边框，实测计算值 0.667px = 1 设备像素） |
+| 预览右边界（预览 ↔ 文件夹栏之间） | `.workspace-files-tab-navigator > .workspace-files-navigator { border-left: 0 }`，没有任何线 | **`border-left: 1px solid var(--border)`**（实测 0.667px solid rgb(52,57,67)） |
+| 预览面板右缘 / 文件夹栏左传 | 1136 / 1146 | 1136 / 1146（**仍差 ~10px**） |
+
+### 实现
+
+- `04-workspace.css`：`.workspace-preview-header` 的 `box-shadow: inset …` 换成真实 `border-bottom`（行高不变，下面的内容不动）。
+- 同一文件：预览在侧时让文件夹栏保留自己的 1px 左边框；共享列（`file-surface-active` 布局用的就是 `.workspace-shared-file-navigator`）的 navigator 改为填满该列（`position: relative; inset: auto; width: 100%`），而不是按保存宽度右对齐。
+- `leading-row-layout.test.ts`：旧断言（`box-shadow: inset 0 -1px`）改为断言真实 `border-bottom`，并新增"共享列必须带真实 1px 左边框、预览头部不得再用 box-shadow"。
+
+### 验证
+
+真实窗口实测见上表（计算样式读数）。Renderer 全量 **1053 项全绿**，`typecheck`、`git diff --check`、`check:repo`、构建新鲜度断言通过。
+
+### 未收口的一处（如实说明）
+
+预览面板右缘（1136）与文件夹栏左传（1146）之间还留着 **约 10px 的面板底色带**：现在这条边界上有一条真实 1px 线（在 1146 处），但线左侧那 10px 仍与两侧区域不同——即"分界线没有完全隔开区域"这一点**只解决了一半**。三处尝试（给 `.workspace-files` 加 `flex: 1 1 auto`、给两种 navigator 容器补相对定位）都没能让预览长到这 10px 上，说明占位来自某个我还没定位到的祖先布局（`.workspace-panel-body.file-surface-active` 的负边距与内容层的 12px 内缩之间）。下一轮用"逐层打印 ancestor 的 padding/margin/width"的方式收口，不再猜。

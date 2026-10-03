@@ -7,11 +7,20 @@
 // "focused frame against the same pixels blurred". This gate measures the same way, in the same
 // window size, so the numbers stay comparable with that record.
 //
+// The treatment under test changed on 2026-10-02, by user decision: text fields no longer draw the
+// app-wide rectangle. Chromium matches `:focus-visible` for a text field however focus arrived -
+// including a plain click - so the restored ring drew a square blue box on the first click into
+// every field, and the report was exactly that box inside the search capsule. The field itself now
+// draws nothing and the capsule takes the focus state on `:focus-within` (the same treatment as the
+// app's other borderless fields inside a rounded shell). The field is transparent, so that capsule
+// fill is painted *inside* the field's own box: the measured indication is fill pixels where it
+// used to be ring pixels, and the gate asserts the fill is larger than a caret can be.
+//
 // Why pixels and not the computed outline: a resolved `outline` says what the cascade decided, not
 // what the user can see. A declaration can resolve to a non-zero outline that is clipped, covered or
 // drawn off the element, and an indication can also be a fill. The pixels decide; the computed
 // outline is recorded next to them only as a cross-check that the cascade changed the way the source
-// says it did.
+// says it did (for this field it must now resolve to no outline at all).
 //
 // Keyboard focus is always reached with real key presses (`Input.dispatchKeyEvent`), never by
 // calling `element.focus()`: `:focus-visible` is the browser's judgement about how focus arrived,
@@ -21,28 +30,24 @@
 // window and the same session it runs three measurements of the same field, changing exactly one
 // thing between them:
 //
-//   A  the shipped bundle                                        -> the ring must be there;
-//   B  the fix rule deleted from the live CSS object model       -> nothing may be drawn;
-//   C  the same rule text re-inserted at the same index          -> the ring must come back.
+//   A  the shipped bundle                                        -> the capsule fill must be there;
+//   B  the fix rule deleted from the live CSS object model       -> only a caret may remain;
+//   C  the same rule text re-inserted at the same index          -> the same fill must come back.
 //
 // B is the pre-fix reading. Deleting the rule from the loaded stylesheet leaves exactly the cascade
-// the pre-fix build had: the fix commit's only change to this element was adding that one rule (the
-// pre-fix file carried `.settings-sidebar-search input:focus { outline: 0 }` and no `:focus-visible`
-// rule), and nothing else in the sheet moves. Doing it in one window rather than two removes every
-// other variable - build, display, DPI, theme, fixture state - so the delta can only be the rule.
-// The rule text is recorded and checked against the source before it is removed, and C proves the
-// measurement did not simply drift.
+// the pre-fix build had, and nothing else in the sheet moves. Doing it in one window rather than two
+// removes every other variable - build, display, DPI, theme, fixture state - so the delta can only
+// be the rule. The rule text is recorded and checked against the source before it is removed, and C
+// proves the measurement did not simply drift.
 //
 // Usage:
 //   node scripts/verify-settings-focus-ring.mjs [--out=<dir>] [--keep] [--skip-falsification]
 //
-// What the mouse half of this gate establishes, and what it does not: the fix is a `:focus-visible`
-// rule, so pointer focus draws the field's indication whenever Chromium matches that pseudo-class.
-// For a text input Chromium matches it for a pointer click as well, so the ring does appear on
-// click; the gate measures a text input that already had a `:focus-visible` rule before the fix
-// (`.settings-inline-field input`) and requires the search field to answer the same way, which is
-// the claim that can be defended - "this is the app-wide rule, reaching one more field" - rather
-// than "nothing changed for the mouse", which the browser's own heuristic does not allow.
+// What the mouse half of this gate establishes, and what it does not: the substitute is a
+// `:focus-within` fill, so pointer focus shows it whenever the field holds the caret - which for a
+// text field is any click. The gate therefore asserts the click case directly (a click paints the
+// capsule fill) rather than claiming "nothing changed for the mouse", which the browser's own
+// heuristic does not allow.
 
 import { mkdir, mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -74,13 +79,21 @@ const MAX_TAB_STEPS = 80
 const SEARCH_SELECTOR = '.settings-sidebar-search input'
 const RAIL_SELECTOR = '.settings-nav-item'
 /**
- * A text input that already carried a `:focus-visible` rule before this fix, used as the control
- * for "what does a pointer click do to a text input in this app". The second field is 显示名称; the
- * first is the provider id, which is disabled while editing an existing provider and so cannot take
- * focus at all.
+ * A text input that draws its own focus fill (`.settings-inline-field input:focus`), used as the
+ * control for "what a pointer click does to a text field in this app now". The second field is
+ * 显示名称; the first is the provider id, which is disabled while editing an existing provider and
+ * so cannot take focus at all.
  */
 const CONTROL_SELECTOR = '.provider-editor-body > .settings-inline-field:nth-child(2) input'
-const FIX_RULE_SELECTOR = '.settings-sidebar-search input:focus-visible'
+/** The rule that carries the substitute: the capsule's fill while the field holds the caret. */
+const FIX_RULE_SELECTOR = '.settings-sidebar-search:focus-within'
+/**
+ * The caret is the only indication left when the substitute is deleted; it is one thin bar inside
+ * the field. Anything a reader could call a treatment is orders of magnitude larger, so the two
+ * readings are told apart by size in device pixels (the field is 105x17 CSS pixels, which is
+ * thousands of device pixels at any supported DPI).
+ */
+const CARET_MAX_FILL_PIXELS = 128
 /**
  * Repeats per measurement. A focused text field blinks a caret, which lands inside the element's own
  * box and would otherwise be read as a focus fill; the ring is unaffected by it. Taking the extreme
@@ -457,10 +470,10 @@ async function measureByClick(client, selector, { shotName = null } = {}) {
  * an unrelated file was saved a second earlier. What this gate actually needs is narrower: the
  * built stylesheet must be newer than the source stylesheets that can change this control's focus
  * appearance. That set is derived from content rather than listed by hand - a file that names the
- * search field, or that declares the app-wide `input:focus-visible` ring the fix reuses, is in it -
- * so adding a rule elsewhere keeps the check honest without keeping it fragile. A structurally
- * stale bundle cannot slip through either: the Tab walk still has to reach both controls, and the
- * built CSS still has to carry the fix rule.
+ * search field, or that declares a `:focus-within` substitute, is in it - so adding a rule
+ * elsewhere keeps the check honest without keeping it fragile. A structurally stale bundle cannot
+ * slip through either: the Tab walk still has to reach both controls, and the built CSS still has
+ * to carry the fix rule.
  */
 async function inspectStylesheetFreshness(carryingNames) {
   const stylesDir = join(repoRoot, 'packages', 'app', 'src', 'renderer', 'styles')
@@ -469,7 +482,7 @@ async function inspectStylesheetFreshness(carryingNames) {
   const relevant = []
   for (const name of sourceNames) {
     const contents = await readFile(join(stylesDir, name), 'utf8')
-    if (contents.includes('.settings-sidebar-search') || contents.includes('input:focus-visible')) {
+    if (contents.includes('.settings-sidebar-search') || contents.includes(':focus-within')) {
       relevant.push({ name, mtimeMs: (await stat(join(stylesDir, name))).mtimeMs })
     }
   }
@@ -727,58 +740,59 @@ async function main() {
     expect(rail.walk.reached === true, `a settings rail row was not reachable with ${MAX_TAB_STEPS} real Tab presses`)
     expect((rail.ringPixels?.max ?? 0) >= RAIL_CONTROL_MINIMUM_RING_PIXELS,
       `the rail-row positive control drew ${rail.ringPixels?.max ?? 'no'} ring pixels, so a zero elsewhere would prove nothing`)
-    // A. the fix: keyboard focus shows the app-wide ring, drawn outside the field's own box.
+    // A. the fix: the capsule's fill reaches into the field's own box (the field is transparent),
+    // and the field itself resolves to no outline at all.
     expect(fixedKeyboard.walk.reached === true,
       `the settings search field was not reachable with ${MAX_TAB_STEPS} real Tab presses: ${JSON.stringify(fixedKeyboard.walk.trace.map((stop) => stop.className || stop.tag))}`)
     expect(fixedKeyboard.focusVisible === true, 'the search field was entered by a real Tab press but reported :focus-visible false')
+    expect((fixedKeyboard.fillPixels?.min ?? 0) > CARET_MAX_FILL_PIXELS,
+      `the fixed build drew ${fixedKeyboard.fillPixels?.min ?? 'no'} fill pixels inside the field, which is no more than a caret`)
+    // The capsule around it lights up too - that is the surface the substitute belongs to - while
+    // the field's own box must not resolve to an outline.
     expect((fixedKeyboard.ringPixels?.min ?? 0) > 0,
-      `the fixed build drew ${fixedKeyboard.ringPixels?.min ?? 'no'} ring pixels for keyboard focus`)
-    expect(fixedKeyboard.outlineBefore?.outlineStyle === 'solid' && fixedKeyboard.outlineBefore?.outlineWidth === '2px',
-      `the focused field resolved to ${JSON.stringify(fixedKeyboard.outlineBefore)}`)
-    // Whatever Chromium decides for a pointer click on a text field, the drawn indication has to
-    // follow `:focus-visible` exactly: it appears when the pseudo-class matches and not otherwise.
-    // That is stated as the rule the stylesheet uses, not as a guess about the browser's answer.
-    expect(fixedMouse.focusVisible === ((fixedMouse.measured?.ringPixels ?? 0) > 0 || (fixedMouse.measured?.fillPixels ?? 0) > 0),
-      `the click indication ${JSON.stringify({ ring: fixedMouse.ringPixels, fill: fixedMouse.fillPixels })} does not follow :focus-visible (${fixedMouse.focusVisible})`)
-    // And it has to be the app-wide answer, not a new one: a text input that already had a
-    // `:focus-visible` rule before this fix must behave the same way under the same click.
+      `the capsule around the focused field painted nothing: ${JSON.stringify(fixedKeyboard.ringPixels)}`)
+    expect(fixedKeyboard.outlineBefore?.outlineStyle === 'none' && fixedKeyboard.outlineBefore?.outlineWidth === '0px',
+      `the focused field resolved to ${JSON.stringify(fixedKeyboard.outlineBefore)}; the rectangle was to be removed`)
+    // A pointer click has to reach the same substitute: the capsule fill, inside the field's box
+    // and in the capsule's own padding.
+    expect(fixedMouse.focusVisible === true && (fixedMouse.fillPixels?.min ?? 0) > CARET_MAX_FILL_PIXELS,
+      `the clicked field reported :focus-visible ${fixedMouse.focusVisible} and ${JSON.stringify({ ring: fixedMouse.ringPixels, fill: fixedMouse.fillPixels })}`)
+    expect((fixedMouse.ringPixels?.min ?? 0) > 0,
+      `a click left the capsule around the field unpainted: ${JSON.stringify(fixedMouse.ringPixels)}`)
+    // And it has to be the app-wide answer, not a new one: another text field that draws its own
+    // focus fill must answer the same click the same way, and that one has no capsule, so the
+    // indication stays inside its own box.
     expect(controlOpened === true && controlMouse !== null,
       `the control text input could not be measured: ${JSON.stringify({ controlOpened, controlDiagnostics })}`)
-    expect(controlMouse !== null && controlMouse.focusVisible === (fixedMouse.focusVisible === true),
-      `the control input reported :focus-visible ${controlMouse?.focusVisible} while the search field reported ${fixedMouse.focusVisible}`)
-    expect(controlMouse !== null && ((controlMouse.ringPixels?.max ?? 0) > 0) === ((fixedMouse.ringPixels?.max ?? 0) > 0),
-      `a click rings the control input ${JSON.stringify(controlMouse?.ringPixels)} but the search field ${JSON.stringify(fixedMouse.ringPixels)}`)
+    expect((controlMouse?.fillPixels?.max ?? 0) > CARET_MAX_FILL_PIXELS && (controlMouse?.ringPixels?.max ?? -1) === 0,
+      `a click on the control input drew ${JSON.stringify({ ring: controlMouse?.ringPixels, fill: controlMouse?.fillPixels })}; a text field shows a fill on its own surface, never a rectangle around it`)
     if (!skipFalsification) {
-      // B. the pre-fix reading: with the rule gone, keyboard focus draws nothing at all.
+      // B. the pre-fix reading: with the substitute gone, keyboard focus draws nothing but the caret.
       expect(deletion?.deleted === true, `the fix rule could not be removed from the live stylesheet: ${JSON.stringify(deletion)}`)
-      expect((deletion?.text ?? '').includes('var(--focus-ring-color)') && (deletion?.text ?? '').includes('outline-offset: 2px'),
-        `the deleted rule is not the committed fix rule: ${JSON.stringify(deletion?.text)}`)
+      expect((deletion?.text ?? '').includes('background') && (deletion?.text ?? '').includes('--control-hover'),
+        `the deleted rule is not the committed substitute: ${JSON.stringify(deletion?.text)}`)
       expect(falsifiedKeyboard !== null && falsifiedKeyboard.walk.reached === true,
         'the search field was not reachable with real Tab presses after the rule was deleted')
       expect((falsifiedKeyboard?.ringPixels?.max ?? -1) === 0,
-        `with the fix rule deleted the field still drew ${falsifiedKeyboard?.ringPixels?.max} ring pixels`)
-      expect((falsifiedKeyboard?.ringPixels?.max ?? -1) === 0,
-        `with the fix rule deleted the field still drew ${falsifiedKeyboard?.ringPixels?.max} ring pixels`)
-      // Fill pixels are not a focus indication here: a focused text field paints a caret *inside*
-      // its own box, so the two states have to show the same caret and differ only outside the box.
-      // (The audit recorded 0 fill pixels for this field; in this window the caret is painted
-      // steadily at a small, constant size, so the honest claim is equality, not zero.)
-      expect(falsifiedKeyboard?.fillPixels?.max === fixedKeyboard.fillPixels?.max,
-        `deleting the fix rule changed fill pixels from ${fixedKeyboard.fillPixels?.max} to ${falsifiedKeyboard?.fillPixels?.max}, so the fill is not just the caret`)
-      expect((falsifiedKeyboard?.fillPixels?.max ?? 1e9) <= 128,
-        `the residual fill is ${falsifiedKeyboard?.fillPixels?.max} pixels, too large to be a caret`)
+        `with the substitute deleted the field still drew ${falsifiedKeyboard?.ringPixels?.max} ring pixels`)
+      // A focused text field paints a caret *inside* its own box; that is the only thing allowed to
+      // remain. The audit recorded 0 fill pixels for this field, and the caret is small and steady
+      // in this window, so the honest claim is "no more than a caret", not zero.
+      expect((falsifiedKeyboard?.fillPixels?.max ?? 1e9) <= CARET_MAX_FILL_PIXELS,
+        `with the substitute deleted the field still drew ${falsifiedKeyboard?.fillPixels?.max} fill pixels, too many to be a caret`)
+      expect((fixedKeyboard.fillPixels?.min ?? 0) > (falsifiedKeyboard?.fillPixels?.max ?? 0),
+        `the substitute is not what was measured: ${fixedKeyboard.fillPixels?.min} fixed against ${falsifiedKeyboard?.fillPixels?.max} without the rule`)
       expect(falsifiedKeyboard?.outlineBefore?.outlineStyle === 'none' && falsifiedKeyboard?.outlineBefore?.outlineWidth === '0px',
-        `with the fix rule deleted the focused field resolved to ${JSON.stringify(falsifiedKeyboard?.outlineBefore)}`)
-      // C. putting the same rule back has to bring the same ring back.
+        `with the substitute deleted the focused field resolved to ${JSON.stringify(falsifiedKeyboard?.outlineBefore)}`)
+      // C. putting the same rule back has to bring the same fill back.
       expect(restoration?.restored === true, `the fix rule was not restored: ${JSON.stringify(restoration)}`)
-      expect(restoredKeyboard?.ringPixels?.min === fixedKeyboard.ringPixels?.min && restoredKeyboard?.ringPixels?.max === fixedKeyboard.ringPixels?.max,
-        `restoring the rule gave ${JSON.stringify(restoredKeyboard?.ringPixels)} against ${JSON.stringify(fixedKeyboard.ringPixels)} before it was removed`)
-      // The mouse reading is recorded before and after the rule is removed. It is deliberately
-      // reported rather than asserted to be unchanged: `:focus-visible` is Chromium's judgement,
-      // and a text input is one of the cases it can match for a pointer click too.
-      results.mouseAppearanceUnchangedByFix =
-        JSON.stringify(fixedMouse.ringPixels) === JSON.stringify(falsifiedMouse?.ringPixels)
-        && JSON.stringify(fixedMouse.fillPixels) === JSON.stringify(falsifiedMouse?.fillPixels)
+      expect(restoredKeyboard?.fillPixels?.min === fixedKeyboard.fillPixels?.min && restoredKeyboard?.fillPixels?.max === fixedKeyboard.fillPixels?.max,
+        `restoring the rule gave ${JSON.stringify(restoredKeyboard?.fillPixels)} against ${JSON.stringify(fixedKeyboard.fillPixels)} before it was removed`)
+      // The mouse reading is recorded before and after the rule is removed: a click takes the same
+      // substitute as Tab, so removing the rule has to remove it for the pointer too.
+      results.mouseAppearanceFollowsTheRule =
+        (fixedMouse.fillPixels?.min ?? 0) > CARET_MAX_FILL_PIXELS
+        && (falsifiedMouse?.fillPixels?.max ?? 1e9) <= CARET_MAX_FILL_PIXELS
     }
 
     await mkdir(outRoot, { recursive: true })
@@ -802,9 +816,10 @@ async function main() {
         falsifiedKeyboardFillPixels: results.falsification.keyboard?.fillPixels ?? null,
         falsifiedKeyboardOutline: results.falsification.keyboard?.outline ?? null,
         restoredKeyboardRingPixels: results.falsification.restoredKeyboard?.ringPixels ?? null,
+        restoredKeyboardFillPixels: results.falsification.restoredKeyboard?.fillPixels ?? null,
         mouseFocused: { ring: fixedMouse.ringPixels, fill: fixedMouse.fillPixels, focusVisible: fixedMouse.focusVisible },
         mouseRuleDeleted: results.falsification.mouse ? { ring: results.falsification.mouse.ringPixels, fill: results.falsification.mouse.fillPixels, focusVisible: results.falsification.mouse.focusVisible } : null,
-        mouseAppearanceUnchangedByFix: results.mouseAppearanceUnchangedByFix ?? null,
+        mouseAppearanceFollowsTheRule: results.mouseAppearanceFollowsTheRule ?? null,
         controlInput: {
           selector: CONTROL_SELECTOR,
           focusedOutline: controlOutline,

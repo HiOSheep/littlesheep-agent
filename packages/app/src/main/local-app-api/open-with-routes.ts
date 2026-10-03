@@ -12,6 +12,7 @@ import { shell } from 'electron'
 import type { Config } from '@littlesheep/config'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { executableIconDataUrl } from '../executable-icons.js'
+import { describeExecutables } from '../executable-descriptions.js'
 import { discoverOpenWithHandlers, resolveOpenWithInvocation } from '../workspace-open-with.js'
 import { HttpError, json, readJson, type LocalAppApiRequest } from './http.js'
 import { resolveWorkspaceRoot, resolveWorkspaceRootFromValue, resolveWorkspaceTarget } from './workspace-support.js'
@@ -36,7 +37,7 @@ export async function routeOpenWith(
     const target = resolveWorkspaceTarget(root, url.searchParams.get('path') ?? '')
     const extension = extensionOf(target)
     const cached = extension ? cache.get(extension) : undefined
-    const handlers = cached ?? await discoverOpenWithHandlers(target)
+    const handlers = cached ?? await discoverOpenWithHandlers(target, { describeExecutables })
     if (extension && !cached) {
       if (cache.size >= CACHE_LIMIT) cache.clear()
       cache.set(extension, handlers)

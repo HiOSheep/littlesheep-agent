@@ -131,14 +131,17 @@ describe('terminal session tabs', () => {
     expect(reduceTerminalSessions(reset, { type: 'reset' })).toBe(reset)
   })
 
-  it('offers a new session without giving up the running one, and says what a command affects', async () => {
-    const toolbar = await readFile(new URL('./terminal-toolbar.tsx', import.meta.url), 'utf8')
+  it('shows only shell selection and terminal content; closing the tab releases sessions', async () => {
     const surface = await readFile(new URL('./terminal.tsx', import.meta.url), 'utf8')
-    expect(toolbar).toContain("label: '新建'")
-    expect(toolbar).toContain('正在运行的终端不受影响')
-    // The scope wording appears as soon as more than one session exists.
-    expect(toolbar).toContain('只影响这一个')
-    expect(surface).toContain('sessionCount={sessions.state.tabs.length}')
+    const hook = await readFile(new URL('./use-terminal-sessions.ts', import.meta.url), 'utf8')
+    const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
+    expect(surface).not.toContain('<WorkspaceTerminalShellPicker')
+    expect(surface).not.toContain('WorkspaceTerminalToolbar')
+    expect(surface).not.toContain('WorkspaceTerminalActivityList')
+    expect(surface).not.toContain('WorkspaceTerminalTabs')
     expect(surface).toContain('sessions.closeAll()')
+    expect(panel).toContain('mountedTabs.filter((tab) => openTabs.includes(tab))')
+    expect(hook).toContain('useEffect(() => () => {')
+    expect(hook).toContain('for (const id of ownedIds.current) void closeWorkspaceTerminalSession(id)')
   })
 })

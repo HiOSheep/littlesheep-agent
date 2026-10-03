@@ -228,8 +228,10 @@ export function usageTruncationNotice(series: ProviderUsageDailySeries): string 
     const cap = Math.min(series.bounds.maxIdentities, PROVIDER_USAGE_DAILY_MAX_IDENTITIES)
     parts.push(`供应商／模型筛选只列出用量最高的 ${cap} 个已记录身份（接口上限 ${series.bounds.maxIdentities}），不是全部`)
   }
-  if (series.coverage.missingResponses > 0 || series.coverage.unreportedRequests > 0) {
-    parts.push(`覆盖不完整：${series.coverage.missingResponses} 个响应未报 usage、${series.coverage.unreportedRequests} 个请求无响应`)
+  const missingResponses = series.days.reduce((sum, day) => sum + day.missingResponses, 0)
+  const unreportedRequests = series.days.reduce((sum, day) => sum + day.unreportedRequests, 0)
+  if (missingResponses > 0 || unreportedRequests > 0) {
+    parts.push(`用量记录异常：当前区间有 ${missingResponses} 个响应缺少有效用量、${unreportedRequests} 个请求缺少结算记录`)
   }
   if (series.coverage.unreadableRuns > 0) parts.push(`${series.coverage.unreadableRuns} 个 run 无法重放，未计入`)
   if (series.coverage.stale) parts.push('最近一次更新失败，显示的是上一次成功保存的投影')
@@ -241,7 +243,8 @@ export function usageTruncationNotice(series: ProviderUsageDailySeries): string 
 export function usageDayDetail(day: ProviderUsageDailyDay): UsageDayDetail {
   const headlines: Record<ProviderUsageDailyDay['state'], string> = {
     recorded: '有实报调用',
-    partial: '有调用，但部分请求没有实报 usage',
+    partial: '用量记录异常，缺少有效实报数据',
+    recording_error: '用量记录异常，缺少有效实报数据',
     empty: '没有记录到调用（不是 0 用量）',
     future: '未来日期，还没有发生',
   }
@@ -249,7 +252,7 @@ export function usageDayDetail(day: ProviderUsageDailyDay): UsageDayDetail {
     date: day.date,
     state: day.state,
     headline: headlines[day.state],
-    usageIncomplete: day.state === 'partial',
+    usageIncomplete: day.state === 'partial' || day.state === 'recording_error',
     requests: day.requests,
     missingResponses: day.missingResponses,
     unreportedRequests: day.unreportedRequests,
@@ -274,6 +277,7 @@ export function usageDayCellLabel(day: ProviderUsageDailyDay | undefined, metric
   const value = usageMetricValue(day, metric)
   if (day.state === 'future') return '未来日期'
   if (day.state === 'empty') return `${USAGE_METRIC_LABELS[metric]}：没有记录到调用（不是 0）`
-  const prefix = day.state === 'partial' ? '部分记录' : '已记录'
+  if ((day.state === 'recording_error' || day.state === 'partial') && day.requests === 0) return '用量记录异常，没有有效实报数据'
+  const prefix = day.state === 'partial' || day.state === 'recording_error' ? '记录异常，已收到' : '已记录'
   return `${prefix}${USAGE_METRIC_LABELS[metric]} ${value} tok，${day.requests} 次调用`
 }

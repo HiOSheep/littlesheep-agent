@@ -249,6 +249,29 @@ describe('usage heatmap honesty rules', () => {
     expect(usageTruncationNotice(JULY)).toBeNull()
   })
 
+  it('scopes recording errors to queried days instead of all historical coverage', () => {
+    const history = { ...JULY.coverage, missingResponses: 138, unreportedRequests: 266 }
+    expect(usageTruncationNotice({ ...JULY, coverage: history })).toBeNull()
+    const affected = day('2026-07-05', 'recording_error', 40, 1)
+    const notice = usageTruncationNotice({ ...JULY, coverage: history,
+      days: JULY.days.map(existing => existing.date === affected.date ? { ...affected, missingResponses: 1, unreportedRequests: 0 } : existing) })
+    expect(notice).toContain('当前区间有 1 个响应')
+    expect(notice).not.toContain('138')
+    expect(usageDayDetail(affected).headline).toContain('记录异常')
+  })
+
+  it('shows unknown usage instead of fabricated zeros when no valid report exists', () => {
+    const affected = { ...day('2026-07-05', 'recording_error'), missingResponses: 1 }
+    const view = buildUsageHeatmapView({ series: seriesOf('2026-07-01', '2026-08-31', [affected]), metric: 'total' })
+    const detail = renderToStaticMarkup(createElement(UsageDayPanel, { date: affected.date, view }))
+    expect(detail).toContain('没有收到有效实报数据')
+    expect(detail).not.toContain('<dl>')
+    expect(detail).not.toContain('0 <span>tok')
+    const page = render({ view })
+    expect(page).toContain('无实报数据')
+    expect(page).not.toContain('title="0 tok"')
+  })
+
   it('refuses to plot a response that does not answer the request', () => {
     expect(usageSeriesMismatch(JULY, { from: '2026-07-01', to: '2026-08-31' })).toBeNull()
     expect(usageSeriesMismatch(JULY, { from: '2026-01-01', to: '2026-12-31' })).toContain('不是请求的')
@@ -354,7 +377,7 @@ describe('usage heatmap surface', () => {
     expect(html).toContain('801 以上')
     expect(html).toContain('无记录（不是 0 用量）')
     expect(html).toContain('未来日期')
-    expect(html).toContain('部分记录（有调用但未报 usage）')
+    expect(html).toContain('用量记录异常，缺少有效实报数据')
     expect(html.match(/data-date="[^"]+"[^>]*tabindex="0"/gu)).toHaveLength(1)
     expect(html).toContain('aria-label="2026 年总量热力图"')
   })

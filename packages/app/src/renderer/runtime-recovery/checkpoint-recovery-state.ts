@@ -206,3 +206,10 @@ function bounded(value: string | undefined): string | undefined {
   const normalized = value.trim()
   return normalized.length <= 180 ? normalized : `${normalized.slice(0, 179)}…`
 }
+
+/** Explicit stops finish the user's operation; they are not startup recovery work. */
+export function pendingRecoveryCheckpoints(checkpoints: LocalAppRunCheckpointSummary[]): LocalAppRunCheckpointSummary[] {
+  return checkpoints.filter((checkpoint) => ![
+    checkpoint.reason, checkpoint.disposition?.reason,
+  ].some((reason) => reason === 'user-requested-stop' || reason === 'user-stopped-checkpoint-recovery'))
+}

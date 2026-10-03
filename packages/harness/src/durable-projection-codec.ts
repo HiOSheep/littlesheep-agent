@@ -41,6 +41,7 @@ export function validateSource(event: DurableHarnessEventAppendInput | DurableHa
     stage_transition_recorded: ['runtime'],
     model_request_started: ['runtime'],
     model_response_received: ['model', 'runtime'],
+    provider_usage_recorded: ['runtime'],
     model_request_settled: ['runtime'],
     tool_call_proposed: ['model', 'runtime'],
     effect_intent_created: ['runtime'],

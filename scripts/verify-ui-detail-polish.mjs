@@ -52,9 +52,9 @@ function installUsageFixture() {
   const recorded = { '2026-09-22': 925415, '2026-09-30': 74200 }
   const days = dates.filter(date => date !== '2026-08-10').map(date => {
     const total = recorded[date] || 0
-    const state = total ? 'recorded' : date === '2026-09-23' ? 'partial' : date > '2026-10-02' ? 'future' : 'empty'
+    const state = total ? 'recorded' : date === '2026-09-23' ? 'recording_error' : date > '2026-10-02' ? 'future' : 'empty'
     return { date, state, total, input: Math.round(total * .8), output: total - Math.round(total * .8), cached: 0, reasoning: 0,
-      requests: total ? 10 : state === 'partial' ? 2 : 0, missingResponses: state === 'partial' ? 1 : 0, unreportedRequests: state === 'partial' ? 1 : 0 }
+      requests: total ? 10 : 0, missingResponses: state === 'recording_error' ? 1 : 0, unreportedRequests: state === 'recording_error' ? 1 : 0 }
   })
   const payload = { version: 1, timezone: 'Asia/Hong_Kong', range: { from: dates[0], to: dates.at(-1), days: 365 },
     bounds: { maxRangeDays: 400, maxIdentities: 64, identitiesTruncated: false }, filters: {}, days,
@@ -97,6 +97,13 @@ try {
   await h.waitFor(() => evaluate(`document.querySelector('[data-date="2026-09-22"]').getAttribute('aria-selected')==='true'||null`), 5000, 'selected cell')
   assert.ok((await evaluate(`document.querySelector('.usage-day-panel').innerText`)).includes('925,415'))
   await screenshot('usage-day-detail')
+  await evaluate(`document.querySelector('[data-date="2026-09-23"]').click()`)
+  const recordingError = await evaluate(`({text:document.querySelector('.usage-day-panel').innerText,figures:document.querySelectorAll('.usage-day-panel dl').length})`)
+  assert.ok(recordingError.text.includes('没有收到有效实报数据'))
+  assert.equal(recordingError.figures,0,'missing Provider counters are not displayed as zero figures')
+  assert.ok((await evaluate(`document.querySelector('.usage-coverage-notice').innerText`)).includes('当前区间有 1 个响应'))
+  await screenshot('usage-recording-error')
+  report.checks.recordingError=recordingError
   await evaluate(`document.querySelector('[data-date="2026-08-10"]').click()`)
   assert.ok((await evaluate(`document.querySelector('.usage-day-panel').innerText`)).includes('投影未覆盖'))
   assert.equal(await evaluate(`document.querySelector('[data-date="2026-08-10"]').tabIndex`), 0)

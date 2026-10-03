@@ -17,6 +17,6 @@ Electron 桌面应用组合包。Main 拥有应用服务与策略执行；preloa
 - 类型：`pnpm --filter @littlesheep/app run typecheck`；定向测试：`pnpm exec vitest run packages/app`。
 - 窗口、恢复、权限、工作区与发布包行为须运行对应的 `verify:*`，入口见 [脚本索引](../../scripts/README.md)。Renderer 单测不能证明真实 Electron 或发布包行为。
 
-界面沿用圆润半透明的视觉语言；共享 token 与行为契约见 Renderer 文档。
+界面沿用圆润的视觉语言；对话区（`src/renderer/chat`、`src/renderer/composer`）自 2026-10-03 起采用 DeepSeek-Harness 的平面化设计语言（单列阅读宽度、发丝线、实心输入卡）。共享 token 与行为契约见 Renderer 文档。
 
 外观偏好由 Renderer 本地持久化并在首帧应用；Main 只接收窄化的明暗事实，用于原生标题栏符号与不透明启动表面的对比同步。该桥接契约位于 `src/shared/window-appearance-contracts.ts`。

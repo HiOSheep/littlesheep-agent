@@ -45,16 +45,25 @@ describe('code wrap preference', () => {
     expect(codeWrapToggleLabel(true)).toBe('关闭自动换行')
   })
 
-  it('draws one icon per wrap state, so the button shows the state it is in', () => {
+  it('draws the strokes that can move, with both states in the stylesheet', () => {
     const off = renderToStaticMarkup(CodeWrapToggle({ wrapped: false, onToggle: () => {} }))
     const on = renderToStaticMarkup(CodeWrapToggle({ wrapped: true, onToggle: () => {} }))
 
-    expect(off).toContain('data-wrap-icon="off"')
-    expect(on).toContain('data-wrap-icon="on"')
-    expect(off).not.toContain('data-wrap-icon="on"')
-    expect(on).not.toContain('data-wrap-icon="off"')
+    // One glyph, four strokes; only the run, the arrow head and the bottom stroke are redrawn by the
+    // stylesheet, and each keeps the same path commands in both states so `d` can interpolate
+    // (asked for 2026-10-03: a continuous move, not a cross-fade).
+    for (const markup of [off, on]) {
+      expect(markup).toContain('class="code-wrap-stroke code-wrap-top"')
+      expect(markup).toContain('class="code-wrap-stroke code-wrap-run"')
+      expect(markup).toContain('class="code-wrap-stroke code-wrap-arrow"')
+      expect(markup).toContain('class="code-wrap-stroke code-wrap-foot"')
+    }
+    expect(off).toContain('data-wrapped="false"')
+    expect(on).toContain('data-wrapped="true"')
     expect(off).toContain('aria-pressed="false"')
     expect(on).toContain('aria-pressed="true"')
+    // The still states are identical whichever way it is toggled: the markup never swaps.
+    expect(off).toBe(renderToStaticMarkup(CodeWrapToggle({ wrapped: false, onToggle: () => {} })))
   })
 
   it('notifies every mounted code surface when the shared switch changes', () => {

@@ -250,7 +250,7 @@ describe('O5 daily usage API evidence', () => {
       expect(reports).toMatchObject({ total: 160, responses: 1 })
       const range = `from=${reports.from}&to=${reports.to}&timezone=UTC`
 
-      await app.call(LOCAL_APP_API_ROUTES.usageRefresh, { method: 'POST', body: { budget: 64 } })
+      // New calls are visible through GET alone, without a historical refresh.
       const before = await app.daily(range)
       expect(before.status).toBe(200)
       expect(before.series.totals).toMatchObject({
@@ -286,7 +286,6 @@ describe('O5 daily usage API evidence', () => {
       // Continuing the branch is a genuinely new Provider call, counted once:
       // the copied history is not billed again.
       await app.run('continue in the branch', branchId)
-      await app.call(LOCAL_APP_API_ROUTES.usageRefresh, { method: 'POST', body: { budget: 64 } })
       const afterBranchRun = await app.daily(range)
       expect(afterBranchRun.series.totals).toMatchObject({
         requests: 2,
@@ -398,7 +397,8 @@ describe('O5 daily usage API evidence', () => {
         attempts: 3,
         duplicateAttempts: 0,
         unreadableRuns: 0,
-        backfill: { status: 'complete', partitions: 3, processed: 3, indexed: 3, failed: 0 },
+        // GET already indexed new calls, independently of the bounded backfill.
+        backfill: { status: 'complete', partitions: 3, processed: 3, failed: 0 },
       })
 
       // A full re-scan over the same events changes nothing: applying a run

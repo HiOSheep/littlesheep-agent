@@ -13,13 +13,11 @@ import {
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
 } from './workspace-layout'
-
 export interface WorkspaceOpenRequest {
   id: number
   root: string
   path: string
 }
-
 /**
  * A one-shot "show me this file's review" request. It is transient by design: it carries the intent
  * of a single click, so it is not part of the persisted session layout.
@@ -28,7 +26,6 @@ export interface WorkspaceReviewRequest {
   id: number
   path: string
 }
-
 export interface WorkspaceFileDraftState {
   path: string
   modifiedAt?: number
@@ -36,12 +33,17 @@ export interface WorkspaceFileDraftState {
   savedText: string
   editing: boolean
 }
-
-export type WorkspacePanelTab = 'review' | 'artifacts' | 'terminal' | 'browser' | 'sideChat'
+export type WorkspacePanelTab = 'home' | 'review' | 'artifacts' | 'terminal' | 'browser' | 'sideChat'
 export type WorkspaceFileTabId = `file:${string}`
 export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId | WorkspaceBrowserTabId
 
-export const DEFAULT_WORKSPACE_PANEL_TABS: WorkspacePanelTabId[] = ['review']
+/**
+ * What a workspace that has never been touched opens with: the navigation page («开始»), which lists
+ * the surfaces the panel can show. Expanding the workspace is a request to go somewhere, so it opens
+ * on the place that says where to go, not on the Git review or a folder (asked for 2026-10-03, after
+ * the reference launcher).
+ */
+export const DEFAULT_WORKSPACE_PANEL_TABS: WorkspacePanelTabId[] = []
 export const WORKSPACE_PANEL_OPEN_TABS_MAX = 64
 export const WORKSPACE_FILE_DRAFT_MAX_CHARS = 256 * 1024
 export const WORKSPACE_FILE_DRAFTS_MAX_CHARS = 1024 * 1024
@@ -188,6 +190,7 @@ export function isWorkspacePanelTabId(value: unknown): value is WorkspacePanelTa
 }
 
 export function normalizeWorkspacePanelTabId(value: unknown): WorkspacePanelTabId | null {
+  if (value === 'home') return null
   // `browser` is now a launcher action. Persisted values from older builds
   // refer to the former fixed browser page and migrate to a normal tab.
   const normalized = value === 'browser'
@@ -201,6 +204,7 @@ export function normalizeWorkspacePanelTabId(value: unknown): WorkspacePanelTabI
 export function dedupeWorkspacePanelTabs(tabs: WorkspacePanelTabId[]): WorkspacePanelTabId[] {
   const next: WorkspacePanelTabId[] = []
   for (const tab of tabs) {
+    if (tab === 'home') continue
     if (!next.includes(tab)) next.push(tab)
     if (next.length >= WORKSPACE_PANEL_OPEN_TABS_MAX) break
   }
@@ -280,8 +284,8 @@ export function normalizeWorkspaceSessionLayout(value: unknown): WorkspaceSessio
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
 
   const item = value as Record<string, unknown>
-  const activeTab = normalizeWorkspacePanelTabId(item.activeTab) ?? fallback.activeTab
   const hydratedTabs = hydrateWorkspacePanelTabs(item.openTabs)
+  const activeTab = normalizeWorkspacePanelTabId(item.activeTab) ?? hydratedTabs[0] ?? fallback.activeTab
   const openTabs = hydratedTabs.length === 0
     ? []
     : hydratedTabs.includes(activeTab)
@@ -420,8 +424,8 @@ export function hydrateWorkspaceLayoutFallbackSnapshot(value: unknown): Workspac
   const item = value as Record<string, unknown>
   const workspacePath = typeof item.workspacePath === 'string' ? item.workspacePath.trim() : ''
   if (!workspacePath) return null
-  const activeTab = normalizeWorkspacePanelTabId(item.activeTab) ?? 'review'
   const openTabs = hydrateWorkspacePanelTabs(item.openTabs)
+  const activeTab = normalizeWorkspacePanelTabId(item.activeTab) ?? openTabs[0] ?? 'review'
   const openRequest = normalizeWorkspaceOpenRequest(item.openRequest)
   const drafts = hydrateWorkspaceFileDrafts(item.drafts)
   const state = alignWorkspacePanelStateToRoot({
@@ -472,9 +476,11 @@ export function alignWorkspacePanelStateToRoot(
       ? dedupeWorkspacePanelTabs(filteredTabs)
       : DEFAULT_WORKSPACE_PANEL_TABS
   const activeFileTab = parseWorkspaceFileTabId(state.activeTab)
+  // A tab from a folder this workspace no longer owns falls back to the default opening view, which
+  // is the file navigation.
   const activeTab = !activeFileTab || isWorkspaceFileInsideRoot(activeFileTab, normalizedRoot)
     ? state.activeTab
-    : 'review'
+    : openTabs[0] ?? 'review'
   const drafts: Record<string, WorkspaceFileDraftState> = {}
 
   for (const [tab, draft] of Object.entries(state.drafts)) {

@@ -10,6 +10,7 @@ import {
   workspaceFileTabId,
   type WorkspaceFileDraftState,
   type WorkspaceFileTabId,
+  isWorkspacePanelTab,
   type WorkspaceOpenRequest,
   type WorkspacePanelTab,
   type WorkspacePanelTabId
@@ -32,6 +33,7 @@ import type { WorkspaceBrowserHistory } from './browser-history'
 import { isWorkspaceBrowserTabId, type WorkspaceBrowserTab, type WorkspaceBrowserTabId } from './browser-tabs'
 import { WorkspaceTabStripWithCloseRefusal, type WorkspaceFileTabCloseHandler } from './file-close-refusal'
 import { WorkspaceEmptyLauncher } from './empty-launcher'
+import { WorkspaceAddMenu } from './add-menu'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 export function WorkspacePanel({
@@ -124,6 +126,7 @@ export function WorkspacePanel({
     { id: 'browser', label: '浏览器', desc: '在拓展工作区预览对话中的网页链接' },
     { id: 'sideChat', label: '侧边聊天', desc: '尚未接入的局部对话' },
   ]
+  const launcherEntries = workspaceEntries
   const activeFileTab = parseWorkspaceFileTabId(activeTab)
   const fullscreenTip = fullscreen ? '退出全屏工作区' : '全屏展开工作区'
   const hasOpenTabs = openTabs.length > 0
@@ -171,7 +174,11 @@ export function WorkspacePanel({
   const workspaceViewTabs = hasOpenTabs && openTabs.includes(activeTab) && !mountedWorkspaceTabs.includes(activeTab)
     ? [...mountedWorkspaceTabs, activeTab]
     : mountedWorkspaceTabs
-  const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review'
+  // The file column and the review column are panel-edge columns: their navigator reaches the panel's
+  // right edge, which is where its rail - the folder handle that marks the column's collapse line - has
+  // to land. The file column's own tab (`artifacts`, labelled 文件) was missing from this list, so its
+  // rail sat 12px further left than the file and review tabs (reported 2026-10-03).
+  const usesEdgeToEdgeFileSurface = Boolean(activeFileTab) || activeTab === 'review' || activeTab === 'artifacts' || activeTab === 'terminal'
   const hasOpenFileTab = openTabs.some((tab) => Boolean(parseWorkspaceFileTabId(tab)))
   const navigatorRoot = activeFileTab?.root
     ?? (hasOpenFileTab ? rememberedNavigatorRoot : workspacePath)
@@ -218,6 +225,7 @@ export function WorkspacePanel({
       return (
         <WorkspaceReview
           workspacePath={workspacePath}
+          active={isActive}
           artifactVersion={artifactVersion}
           focusRequest={reviewFocusRequest}
           fileNavigatorCollapsed={fileNavigatorCollapsed}
@@ -256,6 +264,7 @@ export function WorkspacePanel({
             root={fileTab.root}
             path={fileTab.path}
             sessionId={sessionId}
+            active={isActive}
             onRevealFolder={(folder) => onExpandedPathsChange((paths) => [...new Set([...paths, ...workspaceAncestorPaths(fileTab.root, folder)])])}
             draft={fileDrafts[tab]} onDraftChange={onFileDraftChange}
             onRequestFileSaveApproval={onRequestFileSaveApproval}
@@ -340,11 +349,21 @@ export function WorkspacePanel({
               onTabChange={onTabChange}
               onTabsReorder={onTabsReorder}
               onCloseTab={onCloseTab}
-              onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
             />
           </div>
           <div className="workspace-panel-actions workspace-tab-row-control">
+            {/* The add control is pinned here with the window controls, outside the scrolling tab
+                strip: it used to be the strip's last child, so a tab list wider than the panel
+                scrolled it out of reach (reported 2026-10-03). */}
+            <WorkspaceAddMenu
+              entries={workspaceEntries}
+              activeTab={isWorkspacePanelTab(activeTab) && openTabs.some((tab) => tab === activeTab) ? activeTab : null}
+              openTabs={openTabs.filter(isWorkspacePanelTab)}
+              onSelect={onTabChange}
+              onOpenBrowserTab={onBrowserOpenNewTab}
+              onTipChange={onTipChange}
+            />
             <button
               {...transientTriggerProps()}
               className="workspace-panel-action workspace-panel-collapse-action"
@@ -365,7 +384,7 @@ export function WorkspacePanel({
         <div className={`workspace-panel-body ${usesEdgeToEdgeFileSurface ? 'file-surface-active' : ''}`}>
           {!hasOpenTabs && (
             <WorkspaceEmptyLauncher
-              entries={workspaceEntries}
+              entries={launcherEntries}
               onSelect={onTabChange}
               onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
@@ -386,7 +405,9 @@ export function WorkspacePanel({
           })}
           {hasOpenTabs && (
             <div
-              className={`workspace-shared-file-navigator ${activeTab === 'review' || activeTab === 'artifacts' ? 'inactive' : ''}`}
+              /* The navigation page and the two surfaces that bring their own folder column keep the
+                 shared one out of the way: the launcher is the whole area, as in the reference. */
+              className={`workspace-shared-file-navigator ${activeTab === 'review' || activeTab === 'artifacts' || activeTab === 'home' || activeTab === 'terminal' ? 'inactive' : ''}`}
               style={sharedFileNavigatorStyle}
             >
               <WorkspaceFileNavigator {...navigatorWiring} />

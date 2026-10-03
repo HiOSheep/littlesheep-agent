@@ -20,4 +20,6 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 
 ## 验证
 
+`context-menu.ts` 根据 Electron 的真实编辑能力、选区、链接和图片签发一次性右键操作。应用窗口使用 Renderer 的统一圆角菜单，独立浏览器 guest 使用原生菜单；编辑由原来的 WebContents 执行。IPC 只接受签发窗口主 frame、当前未过期菜单中已启用的动作，导航和执行后失效，不接受任意命令、路径或剪贴板内容。链接在应用内浏览器打开；文件打开与位置操作仍经过既有 Local App API。
+
 局部改动运行 App typecheck 与 Main 定向测试。路径授权、启动恢复、文件修改、原生窗口行为和发布产物分别使用 [脚本索引](../../../../scripts/README.md) 中相应验证；Electron 检查前运行 `pnpm run ensure:app-build`。

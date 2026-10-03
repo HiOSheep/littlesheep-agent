@@ -10,21 +10,43 @@
   /* The content's bottom edge never reaches past the input's own bottom edge: the viewport is
      clipped there instead of letting text slide into the strip below the composer. */
   margin-bottom: var(--composer-shell-inset-bottom);
-  padding: 24px var(--chat-content-gutter)
+  /* No top padding on the scrollport itself: padding on a scroller pushes a sticky child down with
+     it, so the fade band below ended up 24px (and, with the task pill, 64px) below the edge the
+     transcript is really clipped at (reported 2026-10-03). The first line's clearance lives on the
+     content instead. */
+  padding: 0 var(--chat-content-gutter)
     calc(var(--composer-overlay-height) + var(--composer-message-gap))
     calc(var(--chat-content-gutter) + var(--chat-workspace-scrollbar-overlap));
   background: var(--workspace-code-surface);
+  scroll-padding-top: 24px;
   scroll-padding-bottom:
     calc(var(--composer-overlay-height) + var(--composer-message-gap));
 }
 
+/* The first line's clearance from the transcript's top edge, on the content rather than on the
+   scrollport (see above). DSH reads on a 16px flow gap, so the first line keeps exactly one. */
+.messages:not(.is-empty) .messages-content {
+  padding-top: var(--chat-flow-gap);
+}
+
 /* While the task pill floats over the chat column, the transcript's top edge is clipped at the
    pill's own top edge — content can scroll under the pill's glass but never appears above it —
-   and at rest the first line starts below the pill. */
-.chat:has(> .running-pill-shell) .messages {
+   and at rest the first line starts below the pill. Only while the bar is still docked: once it has
+   been dragged elsewhere the column owes it no strip, so the transcript takes the top back. */
+.chat:has(> .running-pill-shell[data-docked='true']) .messages {
   margin-top: var(--task-pill-inset-top);
-  padding-top: var(--task-pill-overlay-height);
   scroll-padding-top: var(--task-pill-overlay-height);
+}
+
+.chat:has(> .running-pill-shell[data-docked='true']) .messages:not(.is-empty) .messages-content {
+  padding-top: var(--task-pill-overlay-height);
+}
+
+/* The transcript clips at its own edge (DSH). LS used to dissolve the top line with a
+   sticky gradient so text never looked cut mid-line; that band is a second surface
+   tone and a second scroll affordance the replaced reading surface does not carry. */
+.messages::before {
+  display: none;
 }
 
 .messages-content {
@@ -70,17 +92,44 @@
   opacity: var(--row-action-disabled-opacity);
 }
 
-/* The reachable way back to the newest message, shown only while the reader is above the
-   sticky-bottom band. It floats 3px above the composer overlay (whose height is measured at
-   runtime), so it never covers the input surface or the line being read, and it wears the same
-   glass as the input it points into: translucent fill, backdrop blur, no border strokes. */
-.chat-jump-to-latest {
+/* The reachable way back from where the reader is: one droplet for the newest message, floated above
+   the composer overlay (whose height is measured at runtime) with a real gap, so it covers neither
+   the input surface nor the line being read. It grows out of the composer's edge and wears a
+   frosted glass of its own - a translucent fill over the transcript's own blur. The way back to the
+   first line is the rail and Ctrl+Home; a second circle here was one control too many (asked for
+   2026-10-03). */
+.chat-jump-controls {
   position: absolute;
-  /* 3px above the input's visible top edge: the measured overlay height starts at the composer
-     shell, which has its own top padding, so that inset comes back off. */
-  bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-top) + 3px);
+  /* 16px above the input's visible top edge (asked for 2026-10-03: 3px read as attached to the
+     composer): the measured overlay height starts at the composer shell, which has its own top
+     padding, so that inset comes back off. */
+  bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-top) + 16px);
   left: 50%;
   z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* The droplet grows out of the composer's top edge: the origin sits on the pair's own bottom
+     edge, which is that edge plus the same 16px gap. */
+  transform: translateX(-50%) translateY(0) scale(1);
+  transform-origin: 50% calc(100% + 16px);
+  transition:
+    transform var(--motion-base) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease);
+}
+
+/* Mounted but not offered yet (`entering` is the first painted frame, `exiting` is the way back
+   out): a small drop at the composer's edge instead of a button. */
+.chat-jump-controls[data-motion="entering"],
+.chat-jump-controls[data-motion="exiting"] {
+  opacity: 0;
+  transform: translateX(-50%) translateY(14px) scale(0.18);
+  pointer-events: none;
+}
+
+.chat-jump-button {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -88,17 +137,14 @@
   width: 34px;
   height: 34px;
   padding: 0;
-  /* The droplet grows out of the composer's top edge: the origin sits on the button's own bottom
-     edge, which is that edge plus the same 3px gap. */
-  transform: translateX(-50%) translateY(0) scale(1);
-  transform-origin: 50% calc(100% + 3px);
   color: var(--jump-to-latest-arrow);
-  background: var(--composer-surface);
+  /* DSH floats this control on the layer above the transcript: an opaque raised
+     button, not a frosted droplet, so it reads as chrome instead of as content
+     (2026-10-03). The arrow keeps its own accent colour. */
+  background: var(--chat-card-fill);
   border: 0;
   border-radius: var(--radius-circle);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
-  -webkit-backdrop-filter: blur(18px) saturate(135%);
-  backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: var(--chat-panel-elevation);
   transition:
     transform var(--motion-base) var(--motion-ease),
     opacity var(--motion-fast) var(--motion-ease),
@@ -106,16 +152,7 @@
     color var(--motion-fast) var(--motion-ease);
 }
 
-/* Mounted but not offered yet (`entering` is the first painted frame, `exiting` is the way back
-   out): a small drop at the composer's edge instead of a button. */
-.chat-jump-to-latest[data-motion="entering"],
-.chat-jump-to-latest[data-motion="exiting"] {
-  opacity: 0;
-  transform: translateX(-50%) translateY(14px) scale(0.18);
-  pointer-events: none;
-}
-
-.chat-jump-to-latest-arrow {
+.chat-jump-icon {
   width: 16px;
   height: 16px;
   /* The icon is decoration inside the control: the button itself has to stay the hit target. */
@@ -127,10 +164,10 @@
   stroke-linejoin: round;
 }
 
-.chat-jump-to-latest:hover,
-.chat-jump-to-latest:focus-visible {
-  background: color-mix(in srgb, var(--composer-surface) 78%, var(--accent));
-  color: var(--accent-hover);
+.chat-jump-button:hover,
+.chat-jump-button:focus-visible {
+  background: var(--chat-hover-fill);
+  color: var(--jump-to-latest-arrow);
 }
 
 /* New output while away is a fact the reader must be able to notice without scrolling; the arrow
@@ -190,28 +227,31 @@
   line-height: 1.75;
 }
 
+/* One shape for every message row. Only the reader's own message draws a surface;
+   the agent's reply is plain prose on the transcript's own fill, which is what makes
+   a long answer read as writing rather than as a card (DSH, 2026-10-03). */
 .message {
   width: fit-content;
-  max-width: min(820px, 78%);
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-radius: var(--radius-ui);
+  max-width: 100%;
+  margin-bottom: 0;
+  padding: 0;
+  border-radius: 0;
   color: var(--text);
   font-size: var(--chat-message-font-size);
-  line-height: 1.7;
+  line-height: var(--chat-message-line-height);
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
 .message-with-meta {
-  width: min(820px, 100%);
-  max-width: min(820px, 100%);
-  margin-bottom: 24px;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: var(--chat-flow-gap);
 }
 
 .message-with-meta.user {
-  width: min(820px, 100%);
-  max-width: min(820px, 100%);
+  width: 100%;
+  max-width: 100%;
   margin-left: auto;
 }
 
@@ -221,25 +261,28 @@
   margin-bottom: 0;
 }
 
+/* DSH caps the reader's stack at ~70% of the reading column: a short question stays a
+   bubble, and a long paste still keeps a visible agent margin beside it. */
 .message-with-meta.user > .message {
   width: fit-content;
-  max-width: min(820px, 78%);
+  max-width: min(620px, 82%);
   margin-left: auto;
 }
 
 .message.user {
   margin-left: auto;
-  padding: 10px 14px;
+  padding: 10px 16px;
   color: var(--text);
-  background: var(--surface-2);
+  background: var(--chat-bubble-fill);
   border: 0;
   box-shadow: none;
-  border-radius: var(--radius-card);
+  /* The reader's own words stay a step rounder than a card. */
+  border-radius: var(--radius-message-bubble);
 }
 
 .message.assistant {
-  width: min(820px, 100%);
-  max-width: min(820px, 100%);
+  width: 100%;
+  max-width: 100%;
   padding: 0;
   color: var(--text);
   background: transparent;
@@ -318,7 +361,9 @@
 .message-meta-copy:hover,
 .message-meta-copy:focus-visible {
   color: var(--text);
-  background: var(--surface-3);
+  /* DSH's message actions are bare glyphs on the shared hover fill - no second
+     surface tone appears in the transcript's action row (2026-10-03). */
+  background: var(--chat-hover-fill);
 }
 
 .message-file-strip {
@@ -403,16 +448,16 @@
 }
 
 .message-file-strip.result-links .message-file-card {
-  color: #b8d8ff;
+  color: var(--chat-business);
 }
 
 .message-file-strip.result-links .message-file-card:hover,
 .message-file-strip.result-links .message-file-card:focus-visible {
-  color: #d7eaff;
+  color: var(--chat-business-hover);
 }
 
 .message-file-strip.result-links .message-file-main small {
-  color: rgba(184, 216, 255, 0.62);
+  color: color-mix(in srgb, var(--chat-business) 62%, transparent);
 }
 
 .message-file-icon {
@@ -466,7 +511,10 @@
 
 .markdown {
   white-space: normal;
-  line-height: 1.8;
+  /* Long prose follows the reader's own chat font size instead of a fixed 1.8
+     multiple: at 14px DSH reads on a 24px line, and a 15px setting must not push
+     the transcript to 27px (2026-10-03). */
+  line-height: var(--chat-message-line-height);
 }
 
 .markdown-inline {
@@ -478,9 +526,9 @@
 }
 
 .markdown-inline-link {
-  color: #b8d8ff;
+  color: var(--chat-business);
   text-decoration: underline;
-  text-decoration-color: rgba(184, 216, 255, 0.36);
+  text-decoration-color: color-mix(in srgb, var(--chat-business) 36%, transparent);
   text-underline-offset: 2px;
 }
 
@@ -488,7 +536,9 @@
   height: 0;
   margin: 14px 0;
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  /* A theme-derived hairline, not a white rule: the fixed white line was invisible
+     on the light themes (2026-10-03). */
+  border-top: .5px solid var(--chat-hairline);
 }
 
 .markdown p,
@@ -537,9 +587,9 @@
 }
 
 .markdown a {
-  color: #5da1f7;
+  color: var(--chat-business);
   text-decoration: none;
-  border-bottom: 1px solid rgba(93, 161, 247, 0.32);
+  border-bottom: 1px solid color-mix(in srgb, var(--chat-business) 32%, transparent);
   transition: color var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
 }
 
@@ -557,7 +607,7 @@
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--border);
+  border: .5px solid var(--chat-hairline);
   border-radius: var(--radius-ui);
   scrollbar-width: thin;
 }
@@ -585,8 +635,8 @@
 .markdown th,
 .markdown td {
   padding: 7px 9px;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-right: .5px solid var(--chat-hairline-soft);
+  border-bottom: .5px solid var(--chat-hairline-soft);
   text-align: left;
 }
 
@@ -600,7 +650,7 @@
 
 .markdown th {
   color: var(--text-strong);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--chat-hover-fill);
 }
 
 .markdown-inline-code {
@@ -643,9 +693,12 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  /* DSH draws code on the page's own code surface behind one hairline, so a long
+     answer with three blocks reads as three quiet panels instead of three cards
+     competing with the prose (2026-10-03). */
+  background: var(--chat-panel-fill);
+  border: .5px solid var(--chat-hairline);
+  border-radius: var(--radius-card);
   box-shadow: none;
 }
 
@@ -670,6 +723,7 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 34px 18px 18px;
 }
 
@@ -736,8 +790,10 @@
   min-height: 30px;
   padding: 3px 8px;
   color: var(--muted);
+  /* The banner keeps its own surface (DSH's code-block banner is its own swatch) but
+     the frame below it is a hairline, not a second border colour. */
   background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: .5px solid var(--chat-hairline-soft);
   font-size: 11px;
 }
 
@@ -865,7 +921,8 @@
 
 .code-toolbar button:hover,
 .code-toolbar button:focus-visible {
-  background: rgba(255, 255, 255, 0.14);
+  /* A theme-derived wash: the fixed white wash was invisible on the light themes. */
+  background: var(--chat-active-fill);
   border-color: transparent;
 }
 
@@ -875,7 +932,7 @@
   gap: 2px;
   margin-top: 14px;
   padding-top: 9px;
-  border-top: 1px solid var(--border);
+  border-top: .5px solid var(--chat-hairline);
 }
 
 .web-sources-heading,
@@ -917,7 +974,7 @@
   padding: 0 8px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid var(--border);
+  border: .5px solid var(--chat-hairline);
   border-radius: var(--radius-ui);
   font-size: 11px;
   transition:
@@ -929,8 +986,8 @@
 .web-sources-toggle:hover,
 .web-sources-toggle:focus-visible {
   color: var(--text);
-  background: var(--control-hover);
-  border-color: var(--border-strong);
+  background: var(--chat-hover-fill);
+  border-color: var(--chat-raised-stroke);
 }
 
 .web-sources-toggle-arrow {
@@ -1035,7 +1092,7 @@
 .message-meta-branch:hover,
 .message-meta-branch:focus-visible {
   color: var(--text);
-  background: var(--surface-3);
+  background: var(--chat-hover-fill);
 }
 
 .branch-icon {
@@ -1097,9 +1154,11 @@
   align-items: center;
   gap: 6px;
   height: 22px;
-  padding: 0 9px;
-  color: var(--muted);
-  background: var(--surface-3);
+  padding: 0 8px;
+  color: var(--muted-2);
+  /* DSH's stats pills are bare text on a hover fill, not a filled chip: a run's
+     measurements must not read as another badge in the row (2026-10-03). */
+  background: transparent;
   border: 0;
   border-radius: var(--radius-pill);
   font-size: 11px;
@@ -1111,7 +1170,7 @@
 .turn-usage-button:hover,
 .turn-usage-button[aria-expanded="true"] {
   color: var(--text);
-  background: var(--control-hover);
+  background: var(--chat-hover-fill);
 }
 
 .turn-usage-button .sidebar-svg-icon {
@@ -1127,7 +1186,7 @@
   width: min(340px, calc(100vw - 32px));
   padding: 16px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: .5px solid var(--chat-hairline);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-menu);
 }
@@ -1137,7 +1196,7 @@
   align-items: center;
   gap: 8px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: .5px solid var(--chat-hairline-soft);
   color: var(--text);
   font-size: var(--control-font-size-strong);
 }
@@ -1274,3 +1333,13 @@
 .mermaid-block:has(.code-copy-failed-row) > .code-toolbar {
   opacity: 1;
 }
+
+.message-meta-copy:hover:not(:active),
+.message-meta-branch:hover:not(:active),
+.message-file-open-system:hover:not(:active),
+.message-file-card:hover:not(:active),
+.web-sources-toggle:hover:not(:active),
+.web-source-row:hover:not(:active),
+.code-toolbar button:hover:not(:active) { color: var(--text-strong); background: transparent; }
+.message-file-card:hover:not(:active) { border-color: transparent; }
+.turn-usage-button:hover:not(:active) { color: var(--text-strong); background: var(--surface-3); }

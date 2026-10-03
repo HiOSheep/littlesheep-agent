@@ -75,6 +75,7 @@
   place-items: center;
   padding: 24px;
   overflow: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   background: rgba(8, 8, 8, 0);
   opacity: 0;
@@ -92,6 +93,7 @@
   width: min(720px, calc(100vw - 48px));
   max-height: min(760px, calc(100vh - 48px));
   overflow: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   color: var(--text);
   background: var(--surface);

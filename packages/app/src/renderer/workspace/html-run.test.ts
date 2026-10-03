@@ -59,9 +59,10 @@ describe('workspace html run state', () => {
     expect(pane).toContain('void openExternalHref(htmlRun.state.url)')
     expect(pane).toContain('onOpenBrowserTab(htmlRun.state.url)')
 
-    // The toolbar only decides where the already-running page opens next.
-    expect(actions).toContain('应用内浏览器')
-    expect(actions).toContain('系统浏览器')
+    // The toolbar only decides where the already-running page opens next, and it does that from the
+    // "打开方式" menu (asked for 2026-10-03) instead of two labelled buttons of its own.
+    expect(actions).toMatch(/id: HTML_BROWSER_IN_APP_ID,[\s\S]{0,120}label: '应用内浏览器'/u)
+    expect(actions).toMatch(/id: HTML_BROWSER_EXTERNAL_ID,[\s\S]{0,120}label: '系统浏览器'/u)
     expect(actions).not.toContain('重新加载')
     expect(actions).not.toContain('停止')
     // It still owns no save affordance; that note lives in the notice the pane renders.

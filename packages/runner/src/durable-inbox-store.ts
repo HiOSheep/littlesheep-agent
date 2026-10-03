@@ -1,6 +1,7 @@
 // Durable Harness command inbox: leased claims, restart recovery and
 // idempotent completion without owning tool or model execution.
 import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { isEventType } from './durable-event-types.js';
 import { Buffer } from 'node:buffer';
 import { join } from 'node:path';
 import type {
@@ -564,28 +565,6 @@ function cloneCommand(command: DurableInboxCommand): DurableInboxCommand {
   return JSON.parse(JSON.stringify(command)) as DurableInboxCommand;
 }
 
-function isEventType(value: unknown): value is DurableInboxCommand['type'] {
-  return value === 'run_accepted'
-    || value === 'user_input_appended'
-    || value === 'capability_snapshot_read'
-    || value === 'capability_probe_settled'
-    || value === 'stage_transition_recorded'
-    || value === 'route_decided'
-    || value === 'model_request_started'
-    || value === 'model_response_received'
-    || value === 'model_request_settled'
-    || value === 'tool_call_proposed'
-    || value === 'effect_intent_created'
-    || value === 'effect_settled'
-    || value === 'verification_recorded'
-    || value === 'checkpoint_written'
-    || value === 'final_reply_proposed'
-    || value === 'final_reply_settled'
-    || value === 'runtime_status_settled'
-    || value === 'run_failed'
-    || value === 'run_interrupted'
-    || value === 'run_completed';
-}
 
 function isEventSource(value: unknown): value is NonNullable<DurableInboxCommand['source']> {
   return value === 'runtime' || value === 'model' || value === 'tool'

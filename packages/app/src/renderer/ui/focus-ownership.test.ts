@@ -74,6 +74,18 @@ const COMPENSATED: FocusException[] = [
     compensatedBy: '.attachment-preview-card:focus-within',
     reason: 'the card draws the ring for whichever control inside it holds focus',
   },
+  {
+    key: '.settings-sidebar-search input',
+    kind: 'compensated',
+    compensatedBy: '.settings-sidebar-search:focus-within',
+    reason: 'the borderless field has no box of its own; the search capsule takes the fill while it holds focus',
+  },
+  {
+    key: '.settings-module-search input',
+    kind: 'compensated',
+    compensatedBy: '.settings-module-search:focus-within',
+    reason: 'same shape as the settings search: a borderless field inside a capsule, and the capsule takes the fill',
+  },
 ]
 
 /**
@@ -95,15 +107,15 @@ const UNGUARDED_OUT_OF_SCOPE: FocusException[] = [
 
 /**
  * Unguarded controls in files this change *could* reach, which are left alone on
- * purpose. Both are text fields whose editable surface is a borderless child of
- * a rounded shell, so framing the field itself would put a rectangle inside the
- * pill; the shell is what would have to take the ring, and that is a visual
- * change to the app's two most-used surfaces - out of scope for a change whose
- * brief is three focus defects and no redesign.
+ * purpose. The composer's field is a borderless editable surface that fills its
+ * own rounded shell, so framing the field itself would put a rectangle inside the
+ * capsule; the caret is the indication and the shell owns the surface. Its two
+ * search-shaped siblings (`.settings-sidebar-search input`,
+ * `.settings-module-search input`) used to be recorded here as the same shape and
+ * now carry the shell substitute instead, so they live in `COMPENSATED` above.
  */
 const UNGUARDED_IN_REACH_BUT_VISUAL: FocusException[] = [
   { key: '.composer textarea', kind: 'gap', reason: 'the main input; the ring would have to go on the .composer shell, which is a visual change of its own' },
-  { key: '.settings-module-search input', kind: 'gap', reason: 'same shape as the composer field: a borderless input inside a rounded shell' },
 ]
 
 const NAMED_EXCEPTIONS: FocusException[] = [...COMPENSATED, ...UNGUARDED_OUT_OF_SCOPE, ...UNGUARDED_IN_REACH_BUT_VISUAL]
@@ -205,16 +217,17 @@ describe('a focused control is visibly focused (R3)', () => {
     expect(cardRing!.declarations.some((declaration) => declaration.property === 'outline' && declaration.value.startsWith('2px solid'))).toBe(true)
   })
 
-  it('keeps the settings search field ring, which is the substitute for its own reset', () => {
-    // #19's exact shape: this rule removes the ring for pointer focus...
+  it('keeps the settings search field visibly focused, on the capsule rather than on the field', () => {
+    // #19's exact shape: this rule removes the ring the field would otherwise take...
     const reset = styleRules.find((rule) => rule.selector === '.settings-sidebar-search input:focus')
     expect(reset, 'the pointer-focus reset for the settings search field is gone').toBeDefined()
-    // ...and the keyboard ring has to be drawn for the same control, with the
-    // shared values, or the field is invisible to a keyboard user again.
-    const ring = styleRules.find((rule) => rule.selector === '.settings-sidebar-search input:focus-visible')
-    expect(ring, 'the settings search field has no visible focus ring').toBeDefined()
-    expect(ring!.declarations.some((declaration) => declaration.property === 'outline' && declaration.value.startsWith('2px solid'))).toBe(true)
-    expect(ring!.declarations.some((declaration) => declaration.property === 'outline-offset')).toBe(true)
+    expect(suppressesOutline(reset!)).toBe(true)
+    // ...and the visible focus lives on the capsule around it. A ring restored on the field itself
+    // was measured here before; it is gone by user decision (reported 2026-10-02), because a
+    // rectangle inside the search capsule is the "extra box" that was reported across the app.
+    const shell = styleRules.find((rule) => rule.selector === '.settings-sidebar-search:focus-within')
+    expect(shell, 'the settings search capsule draws no visible focus substitute').toBeDefined()
+    expect(isFocusRule(shell!) && drawsIndicator(shell!) && !suppressesOutline(shell!)).toBe(true)
   })
 
   it('does not let a scrolling container clip the focus ring of the controls inside it', () => {

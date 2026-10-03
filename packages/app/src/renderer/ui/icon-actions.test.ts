@@ -55,6 +55,8 @@ const GLYPHS: readonly GlyphRow[] = [
   ['PluginIcon', 'icons.tsx', 'plugins-module', 'path'],
   ['ProjectIcon', 'icons.tsx', 'project', 'path'],
   ['SettingsNavArrowIcon', 'icons.tsx', 'open-details', 'path'],
+  // The composer's attach trigger: a bare plus, not the pencil-with-box beside it.
+  ['AddIcon', 'icons.tsx', 'add-attachment', 'path'],
   // Row and menu actions.
   ['MoreIcon', 'icons.tsx', 'more-actions', 'dot dot dot'],
   ['PinIcon', 'icons.tsx', 'pin-session', 'variants'],
@@ -119,6 +121,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   'open-settings': '设置 / 关闭设置',
   'compose-global': '新对话',
   'create-in-list': '新对话 / 添加项目',
+  'add-attachment': '添加文件或工作区',
   'search-filter': '搜索 / 筛选文件 / 筛选更改文件',
   'scheduled-module': '已安排',
   'memory-tree-module': '记忆树',
@@ -181,7 +184,6 @@ const ICON_ONLY_CONTROLS: ReadonlyArray<readonly [file: string, glyph: string, n
   ['composer/message-files.tsx', 'CloseIcon', 'aria-label={`移除 ${name}`}'],
   ['runtime-recovery/checkpoint-recovery.tsx', 'CloseIcon', 'aria-label="稍后处理"'],
   ['workspace/file-navigator.tsx', 'VSCodeIcon', 'aria-label="用外部 VS Code 打开工作区"'],
-  ['workspace/file-navigator.tsx', 'RefreshIcon', 'aria-label="刷新文件树"'],
   ['workspace/panel.tsx', 'PanelFullscreenIcon', 'aria-label={fullscreenTip}'],
   ['workspace/tab-strip.tsx', 'CloseMiniIcon', 'aria-label={`关闭${entry.label}标签`}'],
   ['MemoryTreeView.tsx', 'RefreshIcon', 'aria-label="刷新记忆文件"'],
@@ -290,9 +292,34 @@ const styleFiles = await readRendererStyleSourceFiles()
 const styleRules = rulesOf(styleFiles.map(({ path, source }) => ({ path, source })))
 const actionSheets = styleFiles.filter(({ path }) => path.endsWith('03-shell-sidebar.css') || path.endsWith('04-workspace.css'))
 
+describe('file format marks', () => {
+  it('gives a YAML file the YAML mark, not a padlock', async () => {
+    const { fileGlyphKind } = fileGlyphs
+    // `pnpm-lock.yaml` used to be listed with the lockfiles and showed a padlock, which hides what the
+    // file actually is (asked for 2026-10-03). `*.lock` files keep the padlock through the extension
+    // rule, so only the JSON lockfile still needs its name listed.
+    expect(fileGlyphKind('demo.yaml')).toBe('yaml')
+    expect(fileGlyphKind('config.yml')).toBe('yaml')
+    expect(fileGlyphKind('pnpm-lock.yaml')).toBe('yaml')
+    expect(fileGlyphKind('package-lock.json')).toBe('lock')
+    expect(fileGlyphKind('yarn.lock')).toBe('lock')
+    expect(fileGlyphKind('cargo.lock')).toBe('lock')
+  })
+
+  it('draws the YAML mark as a tile with the logo red, not a document outline', async () => {
+    const asset = await readFile(new URL('./file-glyph-assets/yaml.svg', import.meta.url), 'utf8')
+
+    // The upstream asset is a red-ruled document; the mark is a light tile carrying the YAML wordmark
+    // with the A in the logo's red (asked for 2026-10-03, against the supplied reference).
+    expect(asset).toContain('<rect')
+    expect(asset).toContain('#cb171e')
+    expect(asset).not.toContain('#ff5252')
+  })
+})
+
 describe('action glyph table', () => {
   it('lists every glyph the shared families export, and no others', async () => {
-    expect(GLYPHS).toHaveLength(42)
+    expect(GLYPHS).toHaveLength(43)
     // Counted from each module's own source, so a re-export in `icons.tsx`
     // (`FileGlyphIcon`, `CopyIcon`, …) is the module that draws it, not a second glyph.
     const exported: Array<readonly [string, ModuleName]> = []
@@ -372,7 +399,7 @@ describe('action glyph table', () => {
   })
 
   it('names every icon-only control it lists', async () => {
-    expect(ICON_ONLY_CONTROLS).toHaveLength(24)
+    expect(ICON_ONLY_CONTROLS).toHaveLength(23)
     for (const [file, glyph, name] of ICON_ONLY_CONTROLS) {
       const source = await readRendererFile(file)
       expect(source, `${file} no longer renders ${glyph}`).toMatch(new RegExp(`<${glyph}[\\s/>]`, 'u'))

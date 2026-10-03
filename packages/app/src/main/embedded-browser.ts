@@ -1,6 +1,7 @@
 // Electron adapter for the persistent embedded-browser session and webviews.
 // Renderer state and Local App API contracts stay outside this host boundary.
 import { session, shell } from 'electron'
+import { installContextMenu } from './context-menu.js'
 import {
   BROWSER_OPEN_NEW_TAB_CHANNEL,
   EMBEDDED_BROWSER_PARTITION,
@@ -119,6 +120,7 @@ export function configureEmbeddedBrowserWindow(win: Electron.BrowserWindow): voi
   })
 
   win.webContents.on('did-attach-webview', (_event, guestContents) => {
+    installContextMenu(guestContents, win, true)
     guestContents.setUserAgent(buildEmbeddedBrowserUserAgent())
     guestContents.setWindowOpenHandler(({ url, disposition }) => {
       if (/^https?:\/\//iu.test(url)) {

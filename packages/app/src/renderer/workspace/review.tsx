@@ -35,6 +35,7 @@ import { useWorkspaceReviewDiff } from './use-workspace-review-diff'
 const REVIEW_REFRESH_INTERVAL_MS = 30_000
 
 export function WorkspaceReview({
+  active = true,
   workspacePath,
   artifactVersion,
   fileNavigatorCollapsed,
@@ -52,6 +53,8 @@ export function WorkspaceReview({
 }: {
   workspacePath: string
   artifactVersion: number
+  /** Whether this tab is the one on screen; a cached tab must not poll Git in the background. */
+  active?: boolean
   fileNavigatorCollapsed: boolean
   fileNavigatorWidth: number
   /** A one-shot "show this file" request, from a click outside the panel (the chat's artifact card). */
@@ -129,7 +132,11 @@ export function WorkspaceReview({
     return () => window.removeEventListener(APPLICATION_PERSISTENCE_FLUSH_EVENT, flushReviewPreference)
   }, [sideBySide])
 
+  // The snapshot keeps itself current: a slow interval plus the moment the window regains focus. It
+  // only runs while this tab is the one on screen, because a cached tab polling Git in the background
+  // is work nobody sees. The refresh button this replaced is gone (asked for 2026-10-03).
   useEffect(() => {
+    if (!active) return
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'visible') requestSnapshotRefresh(false)
     }, REVIEW_REFRESH_INTERVAL_MS)
@@ -139,7 +146,7 @@ export function WorkspaceReview({
       window.clearInterval(interval)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [requestSnapshotRefresh])
+  }, [active, requestSnapshotRefresh])
 
   useEffect(() => {
     if (artifactVersionRef.current === artifactVersion) return
@@ -335,7 +342,6 @@ export function WorkspaceReview({
         emptyText={filterText.trim() ? '没有匹配的更改' : snapshotReady ? '没有未提交更改' : '正在读取 Git 更改...'}
         onFilterTextChange={setFilterText}
         onFilterKeyDown={handleFilterKeyDown}
-        onRefresh={retrySnapshot}
         onToggleFolder={(path) => setExpandedFolders((current) => {
           const next = new Set(current)
           if (next.has(path)) next.delete(path)

@@ -11,7 +11,9 @@ describe('workspace file navigator tooltips', () => {
     expect(treeRows).not.toContain('buildFloatingHelpTipFromElement')
     expect(treeRows).not.toContain('onTipChange')
     expect(treeRows).not.toContain('const tip = `${entry.name}\\n${entry.path}`')
-    expect(source).toContain("buildFloatingHelpTip('刷新文件树'")
+    // No refresh control: the tree re-reads itself, so there is no tooltip for one (2026-10-03).
+    expect(source).not.toContain("刷新文件树")
+    expect(source).toContain('useWorkspaceAutoRefresh(refreshTree, WORKSPACE_TREE_REFRESH_MS)')
   })
 
   it('does not show path or status summaries for review tree rows', async () => {
@@ -25,7 +27,8 @@ describe('workspace file navigator tooltips', () => {
     expect(treeRows).toContain('aria-label={statusText}')
     expect(source).not.toContain('title={repositoryLabel}')
     expect(source).not.toContain('title={workspacePath}')
-    expect(source).toContain("buildFloatingHelpTip('刷新 Git 更改'")
+    // Same for the review: the snapshot keeps itself current, so the button and its tooltip are gone.
+    expect(source).not.toContain("刷新 Git 更改")
   })
 })
 

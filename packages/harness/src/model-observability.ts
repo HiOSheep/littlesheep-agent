@@ -21,6 +21,7 @@ import type {
 } from '@littlesheep/types';
 import type { ChatRequest, ChatResponse, ChatTransportMetrics, LlmClient, StreamChunk } from '@littlesheep/llm';
 import { resolveLlmCallContract } from './llm-call-contracts/registry.js';
+import { acceptProviderReceipt, completeProviderTransportAccounting, type ProviderReceiptAccounting } from './model-provider-receipt.js';
 import { applyResolvedReasoning, validateModelRequest } from './model-request-contract.js';
 import { injectRuntimeAwareness } from './runtime-awareness.js';
 import { injectMemoryKnownState } from './memory-known-state.js';
@@ -57,7 +58,7 @@ const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();
 const requestModelIds = new WeakMap<ChatRequest, string>();
-interface ModelRequestLifecycle extends CacheObservationPersistenceState, ProviderUsageAcceptanceState {
+interface ModelRequestLifecycle extends CacheObservationPersistenceState, ProviderUsageAcceptanceState, ProviderReceiptAccounting {
   readonly snapshot: ModelRequestSnapshot;
   readonly started: Promise<void>;
   providerStartedAtMs?: number;
@@ -196,6 +197,11 @@ function withTransportRetryActivity(ctx: RunContext, request: ChatRequest): Chat
   const callerObserver = request.onTransportRetry;
   return {
     ...request,
+    onProviderResponse: async (receipt) => {
+      await lifecycle.started;
+      await acceptProviderReceipt(ctx, lifecycle.snapshot, lifecycle, receipt);
+      await request.onProviderResponse?.(receipt);
+    },
     onTransportRetry: (progress) => {
       emitModelRequestRetryActivity(ctx, lifecycle.snapshot, progress);
       callerObserver?.(progress);
@@ -331,8 +337,9 @@ export function recordProviderUsage(
   const snapshot = ctx.contextSnapshots[index]!;
   const requestSnapshot = ctx.modelRequests?.find((request) => request.contextSnapshotId === snapshotId);
   if (!requestSnapshot) return;
-  if (lifecycle && !acceptProviderUsageState(ctx, requestSnapshot.stage, lifecycle, usage)) return;
+  if (lifecycle && !lifecycle.receipts?.size && !acceptProviderUsageState(ctx, requestSnapshot.stage, lifecycle, usage)) return;
   if (!lifecycle) return;
+  completeProviderTransportAccounting(ctx, requestSnapshot, lifecycle, transportTiming);
   const cacheUsage = classifyProviderCacheUsage(usage);
   updateModelRequestCacheObservation(ctx, requestSnapshot.stage, requestSnapshot.id, (current) => ({
     ...current,

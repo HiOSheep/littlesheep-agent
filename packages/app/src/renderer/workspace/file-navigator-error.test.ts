@@ -36,7 +36,7 @@ describe('workspace file navigator errors', () => {
   it('provides an inline file-preview message for a missing file', () => {
     const error = new Error("ENOENT: no such file or directory, stat 'C:\\missing.html'")
 
-    expect(missingWorkspaceFileMessage(error)).toBe('文件已不存在或已被移动，请刷新文件树后重试。')
+    expect(missingWorkspaceFileMessage(error)).toBe('文件已不存在或已被移动。')
     expect(missingWorkspaceFileMessage(new Error('permission denied'))).toBe('')
   })
 })

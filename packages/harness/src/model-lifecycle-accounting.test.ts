@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ChatRequest } from '@littlesheep/llm';
+import { OpenAIClient } from '@littlesheep/llm';
 import type { DurableHarnessEvent, RunContext } from '@littlesheep/types';
 import { reduceDurableRunProjection } from './durable-kernel.js';
 import {
   flushModelRequestLifecycles,
+  callModelChat,
   prepareModelRequest,
   recordModelRequestFailure,
   recordProviderUsage,
@@ -47,6 +49,24 @@ function durableRecorder(ctx: RunContext): DurableHarnessEvent[] {
 }
 
 describe('model request lifecycle accounting', () => {
+  it('retains physical retry counts without counting the final logical response twice', async () => {
+    const ctx = makeCtx();
+    const events = durableRecorder(ctx);
+    await ctx.appendDurableEvent?.({ type: 'run_accepted', source: 'runtime', idempotencyKey: 'accepted', payload: {} });
+    let calls = 0;
+    const llm = new OpenAIClient({ baseURL: 'http://provider.fixture', retry: { maxAttempts: 2, baseDelayMs: 1, jitter: false },
+      fetch: async () => ++calls === 1 ? Response.json({ error: { message: 'retry fixture' } }, { status: 500 }) : Response.json({
+        model: 'fixture', choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      }) });
+    const prepared = prepareModelRequest(ctx, 'reply', request(false));
+    await callModelChat(ctx, llm, prepared);
+    await flushModelRequestLifecycles(ctx);
+    expect(ctx.usage).toMatchObject({ totalTokens: 15, requestCount: 1, observedAttemptCount: 2, usageCompleteness: 'complete' });
+    expect(events.filter(event => event.type === 'provider_usage_recorded')).toHaveLength(1);
+    expect(reduceDurableRunProjection(events).pendingModelRequestIds).toEqual([]);
+  });
+
   it('persists cache fingerprints, Provider usage and reconciliation on the same request', async () => {
     const ctx = makeCtx();
     ctx.cacheObservationKey = 'model-lifecycle-fixture-key';

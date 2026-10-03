@@ -39,7 +39,6 @@ export function WebSources({ evidence }: { evidence: WebEvidenceProjection }) {
           className="web-source-row"
           href={citation.url}
           {...(!citation.url ? { 'aria-disabled': true, onClick: (event) => event.preventDefault() } : {})}
-          title={citation.url ? `打开 ${citation.origin}` : '安全投影未保留完整链接'}
         >
           <span className="web-source-copy">
             <strong>{citation.title || citation.origin}</strong>

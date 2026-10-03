@@ -5,6 +5,7 @@ export type {
   ChatMessage,
   ChatContentPart,
   ChatResponse,
+  ProviderResponseReceipt,
   ChatTransportMetrics,
   ToolSpec,
   ToolCall,

@@ -60,6 +60,7 @@ export const MessageMeta = memo(function MessageMeta({
           aria-label={copyState === 'copied' ? '消息已复制' : copyState === 'failed' ? '复制失败，重试复制' : '复制消息'}
           data-copied={copyState === 'copied' ? 'true' : 'false'}
           data-copy-state={copyState}
+          disabled={!text.trim()}
           onClick={() => void copyMessage()}
         >
           {copyState === 'copied' ? <CheckIcon /> : <CopyIcon />}
@@ -69,7 +70,6 @@ export const MessageMeta = memo(function MessageMeta({
             type="button"
             className="message-meta-branch"
             aria-label="从这里分叉对话"
-            title="从这里分叉：复制这段对话到新分支后继续"
             disabled={branching}
             onClick={() => onBranch()}
           >

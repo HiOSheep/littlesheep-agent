@@ -4,7 +4,7 @@
 // the rate) is reference material, not something to read every turn: it is now a pill that opens the
 // card in the reference — the provider and model, then one row per figure, with the per-call cache
 // detail inside the same card instead of a second disclosure under the message.
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { clampNumber } from '../app-shell/navigation'
 import type { ChatMessage } from '../chat/types'
@@ -40,11 +40,14 @@ export function TurnUsageButton({
   onTipChange?: (tip: null) => void
 }) {
   const [open, setOpen] = useState(false)
+  const panelId = useId()
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const buttonRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  useDismissOnOutside(open, [panelRef], () => setOpen(false))
+  useDismissOnOutside(open, [buttonRef, panelRef], () => setOpen(false))
+
+  useEffect(() => { if (open) panelRef.current?.focus({ preventScroll: true }) }, [open])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -70,6 +73,7 @@ export function TurnUsageButton({
         className="turn-usage-button"
         aria-label="本轮用量与缓存命中"
         aria-expanded={open}
+        aria-controls={panelId}
         aria-haspopup="dialog"
         onClick={() => {
           onTipChange?.(null)
@@ -81,7 +85,8 @@ export function TurnUsageButton({
       </button>
       {open && createPortal(
         <div
-          ref={panelRef}
+          ref={panelRef} id={panelId} tabIndex={-1}
+          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); buttonRef.current?.focus() } }}
           className="turn-usage-panel"
           role="dialog"
           aria-label="本轮用量"
@@ -91,6 +96,7 @@ export function TurnUsageButton({
             <span className="turn-usage-panel-head-icon" aria-hidden="true"><UsageIcon /></span>
             <strong>本轮用量</strong>
             <span className="turn-usage-panel-head-value">{label.replace(/^用量\s*/u, '')}</span>
+            <button type="button" className="chat-panel-close" aria-label="关闭本轮用量" onClick={() => { setOpen(false); buttonRef.current?.focus() }}>×</button>
           </div>
           <dl className="turn-usage-panel-rows">
             {figures.map((figure) => (
@@ -156,7 +162,7 @@ export function turnUsageFigures(message: ChatMessage): UsageFigure[] {
     ...(message.durationMs ? [{ label: '用时', value: formatDuration(message.durationMs) }] : []),
     ...(rate === null ? [] : [{ label: '输出速率', value: `${rate.toFixed(1)} tok/s` }]),
     { label: '请求数', value: `${usage.requestCount} 次` },
-    ...(usage.usageCompleteness === 'partial' ? [{ label: '完整性', value: '用量统计不完整' }] : []),
+    ...(usage.usageCompleteness === 'partial' ? [{ label: '记录状态', value: '存在用量记录异常' }] : []),
   ]
 }
 

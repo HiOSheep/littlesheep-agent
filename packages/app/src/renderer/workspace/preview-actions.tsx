@@ -1,12 +1,20 @@
 // File preview toolbar controls; preview and draft state remain owned by preview-pane.
 import type { FocusEvent, MouseEvent } from 'react'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { FolderGlyphIcon, VSCodeIcon } from '../ui/icons'
+import { ExternalOpenIcon, FolderGlyphIcon, VSCodeIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { CodeWrapToggle } from '../ui/code-wrap-toggle'
 import { SplitButton } from '../ui/split-button'
 import { transientTriggerProps } from '../ui/transient'
 import { type HtmlRunState } from './html-run'
 import { OPEN_WITH_REVEAL_ID, OPEN_WITH_VSCODE_ID, type WorkspaceOpenWith } from './use-workspace-open-with'
+
+/**
+ * The two destinations for an already-running HTML page, offered inside the "打开方式" menu rather
+ * than as two labelled buttons of their own (asked for 2026-10-03: the row should carry only what
+ * changes what the pane shows).
+ */
+export const HTML_BROWSER_IN_APP_ID = 'html-browser-in-app'
+export const HTML_BROWSER_EXTERNAL_ID = 'html-browser-external'
 
 const tipHandlers = (
   label: string,
@@ -69,34 +77,6 @@ export function WorkspacePreviewActions({
 
   return (
     <div className="workspace-preview-actions">
-      {isHtml && (
-        <>
-          {/* The page is already served and running inside the pane, so these two only decide *where*
-              the reader wants it opened next. Nothing navigates on its own any more, and the toolbar
-              carries no run/reload/stop controls: the service starts with the preview and the frame
-              is handed a fresh URL every time the file is saved. */}
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            disabled={!htmlReady}
-            onClick={onOpenHtmlInApp}
-            {...tipHandlers('在应用内浏览器中打开这个页面', onTipChange)}
-          >
-            应用内浏览器
-          </button>
-          <button
-            {...transientTriggerProps()}
-            className="workspace-files-text-btn"
-            type="button"
-            disabled={!htmlReady}
-            onClick={onOpenHtmlExternal}
-            {...tipHandlers('用系统默认浏览器打开这个页面', onTipChange)}
-          >
-            系统浏览器
-          </button>
-        </>
-      )}
       {showCodeWrapToggle && (
         <CodeWrapToggle
           className="workspace-files-icon-btn code-wrap-toggle"
@@ -145,15 +125,21 @@ export function WorkspacePreviewActions({
       {openWith && (() => {
         const currentHandler = openWith.handlers.find((handler) => handler.id === openWith.currentId) ?? null
         const currentIsVSCode = openWith.currentId === OPEN_WITH_VSCODE_ID
-        const currentLabel = currentIsVSCode
-          ? 'Visual Studio Code'
-          : currentHandler?.label ?? '系统默认应用'
+        // The folder is a choice like any other, not only a one-off entry in the list: picking it
+        // makes the primary segment reveal the file from then on (asked for 2026-10-03,
+        // "the file should let me choose whether VS Code or the folder opens it").
+        const currentIsFolder = openWith.currentId === OPEN_WITH_REVEAL_ID
+        const currentLabel = currentIsFolder
+          ? '文件夹'
+          : currentIsVSCode
+            ? 'Visual Studio Code'
+            : currentHandler?.label ?? '系统默认应用'
         return (
           <SplitButton
             className="workspace-preview-open-with"
             icon={currentIsVSCode ? <VSCodeIcon /> : <FolderGlyphIcon />}
             label={`打开方式：${currentLabel}`}
-            primaryTip={`用 ${currentLabel} 打开这个文件`}
+            primaryTip={currentIsFolder ? '在文件夹中显示这个文件' : `用 ${currentLabel} 打开这个文件`}
             menuLabel="选择打开方式"
             onPrimary={openWith.openWithCurrent}
             onTipChange={onTipChange}
@@ -161,7 +147,11 @@ export function WorkspacePreviewActions({
               ...(canOpenExternalVSCode
                 ? [{
                     id: OPEN_WITH_VSCODE_ID,
-                    label: 'Visual Studio Code（默认）',
+                    // No "（默认）" here: the system already has a default handler for this file, and
+                    // it is marked on its own row. Two rows claiming to be the default read as a bug
+                    // (reported 2026-10-03); the current choice is carried by the `active` mark and
+                    // by the button itself.
+                    label: 'Visual Studio Code',
                     icon: <VSCodeIcon />,
                     active: currentIsVSCode,
                     onSelect: () => openWith.openWith(OPEN_WITH_VSCODE_ID),
@@ -169,7 +159,7 @@ export function WorkspacePreviewActions({
                 : []),
               ...openWith.handlers.map((handler) => ({
                 id: handler.id,
-                label: handler.isDefault ? `${handler.label}（默认）` : handler.label,
+                label: handler.isDefault ? `${handler.label}（系统默认）` : handler.label,
                 hint: handler.executable,
                 active: handler.id === openWith.currentId,
                 // Every option carries the icon of the program it would start; the folder glyph
@@ -179,12 +169,38 @@ export function WorkspacePreviewActions({
                   : <FolderGlyphIcon />,
                 onSelect: () => openWith.openWith(handler.id),
               })),
+              // A running page asks a different question from "which program opens this file":
+              // where to hand the *running* page. Both answers belong beside the open-with list.
+              ...(isHtml
+                ? [
+                    {
+                      id: HTML_BROWSER_IN_APP_ID,
+                      label: '应用内浏览器',
+                      icon: <WorkspaceFeatureIcon id="browser" />,
+                      ...(htmlReady ? {} : { hint: '页面还没有开始运行' }),
+                      disabled: !htmlReady,
+                      dividerBefore: true,
+                      onSelect: onOpenHtmlInApp,
+                    },
+                    {
+                      id: HTML_BROWSER_EXTERNAL_ID,
+                      label: '系统浏览器',
+                      icon: <ExternalOpenIcon />,
+                      ...(htmlReady ? {} : { hint: '页面还没有开始运行' }),
+                      disabled: !htmlReady,
+                      onSelect: onOpenHtmlExternal,
+                    },
+                  ]
+                : []),
               {
                 id: OPEN_WITH_REVEAL_ID,
-                label: '显示文件位置',
+                label: '文件夹（显示文件位置）',
                 icon: <FolderGlyphIcon />,
+                // Selecting it both reveals now and stays the choice, exactly like the launchers
+                // above: the primary segment is whatever the reader picked last.
+                active: currentIsFolder,
                 dividerBefore: true,
-                onSelect: openWith.reveal,
+                onSelect: () => openWith.openWith(OPEN_WITH_REVEAL_ID),
               },
             ]}
           />

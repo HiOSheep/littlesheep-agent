@@ -38,8 +38,14 @@ describe('runtime picker labels', () => {
     expect(compactComposerStyles).toMatch(/\.runtime-picker\.open\s*\{[\s\S]*?width: var\(--runtime-picker-open-width, 208px\);/u)
     expect(compactComposerStyles).toMatch(/\.runtime-picker-trigger\s*\{[\s\S]*?width: max-content;[\s\S]*?max-width: 100%;/u)
     expect(compactComposerStyles).toMatch(/\.runtime-picker-model\s*\{[\s\S]*?flex: 0 0 auto;[\s\S]*?text-align: left;/u)
+    // The row's controls all take their height from the token, so the compact composer (28px)
+    // shrinks every box together instead of pinning three of them to a size of their own - which
+    // is what left the runtime picker 28px tall beside 34px neighbours (measured 2026-10-03).
     expect(styles).toMatch(
-      /\.runtime-picker-trigger\.composer-tab-control,[\s\S]*?\.mode-picker-trigger\.composer-tab-control,[\s\S]*?\.workspace-context-chip\.composer-tab-control\s*\{[\s\S]*?height: 28px;/u,
+      /\.composer-tab-control\s*\{[^}]*height: var\(--composer-control-surface-size\);/u,
+    )
+    expect(styles).not.toMatch(
+      /\.runtime-picker-trigger\.composer-tab-control,[\s\S]{0,160}\{\s*height:/u,
     )
     expect(source).toMatch(
       /<span className="runtime-picker-label-group">[\s\S]*?runtime-picker-model[\s\S]*?runtime-picker-reasoning[\s\S]*?<\/span>/u,
@@ -119,7 +125,7 @@ describe('runtime picker labels', () => {
       expect(body).not.toContain('background')
     }
     expect(styles).toMatch(
-      /\.runtime-menu-shell \.runtime-menu-item:hover:not\(:disabled\),[\s\S]*?\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--composer-picker-option-hover\);/u,
+      /\.runtime-menu-shell \.runtime-menu-item:hover:not\(:disabled\),[\s\S]*?\.runtime-menu-shell \.runtime-menu-item\.active\s*\{[^}]*background:\s*var\(--chat-hover-fill\);/u,
     )
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-section-title\s*\{[^}]*padding:\s*3px 7px 5px;/u)
     expect(styles).toMatch(

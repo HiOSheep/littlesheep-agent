@@ -31,7 +31,10 @@ const FILE_GLYPH_ASSETS: Record<Exclude<FileGlyphKind, 'generic' | 'image'>, str
 export function fileGlyphKind(name = ''): FileGlyphKind {
   const fileName = name.replace(/\\/g, '/').split('/').at(-1)?.toLowerCase() ?? ''
   if (!fileName) return 'generic'
-  if (fileName === 'package-lock.json' || fileName === 'yarn.lock' || fileName === 'pnpm-lock.yaml' || fileName === 'cargo.lock') return 'lock'
+  // Only lockfiles whose own extension would name a different format: `yarn.lock` and `cargo.lock`
+  // keep the padlock through the extension rule below, and a `.yaml` file shows the YAML mark the
+  // reader expects instead of a padlock (asked for 2026-10-03).
+  if (fileName === 'package-lock.json') return 'lock'
   if (fileName === '.gitignore' || fileName === '.gitattributes' || fileName === '.gitmodules' || fileName === '.gitkeep') return 'git'
   if (fileName === 'dockerfile' || fileName === 'makefile' || fileName === 'justfile') return 'config'
   if (fileName.startsWith('.env')) return 'config'

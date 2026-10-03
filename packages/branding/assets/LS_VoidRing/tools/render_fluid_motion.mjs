@@ -30,37 +30,46 @@ function haloFrame(name,phase,source) {
   const env=smooth(d/70)*Math.exp(-Math.pow(d/240,2)),inner=smooth(r/R);
   // Integer spatial/temporal harmonics guarantee a seamless return to phase zero.
   const wave=.52*Math.sin(3*a-w)+.30*Math.sin(5*a+2*w)+.18*Math.sin(2*a-3*w);
-  let stretch,shift,turn,gain,ripple;
+  // Light leads, the broad corona follows: a shared angular sway keeps the rim
+  // attached while the radial phase lag gives the glow a soft trailing response.
+  const lag=env*.72;
+  let stretch,shift,turn,gain,ripple,sway;
   if(name==='idle_breath') {
-   stretch=1+.065*Math.sin(w);
-   shift=env*(17*Math.sin(w)+26*wave);
-   turn=.09*env*Math.sin(2*a+w);
-   gain=.91+.16*Math.sin(w+.4)+.13*wave*env;
-   ripple=.032*(.72+.28*Math.sin(w-2*a));
+   sway=.18*Math.sin(w)+.055*Math.sin(2*w+.4);
+   stretch=1+.085*Math.sin(w-lag);
+   shift=env*(22*Math.sin(w-lag)+32*wave);
+   turn=sway+.13*env*Math.sin(2*a+w-lag);
+   gain=.94+.13*Math.sin(w+.4-lag)+.16*wave*env;
+   ripple=.038*(.72+.28*Math.sin(w-2*a-lag));
   } else if(name==='loading_orbit') {
-   stretch=1+.075*Math.sin(2*w+2*a);
-   shift=env*(22*wave+9*Math.sin(w+4*a));
-   turn=-w+.16*env*Math.sin(3*a-2*w);
-   gain=.96+.17*Math.sin(3*a-w)*env;
-   ripple=.043*(.7+.3*Math.sin(3*a-w));
+   sway=-w+.24*Math.sin(w);
+   stretch=1+.095*Math.sin(2*w+2*a-lag);
+   shift=env*(28*wave+13*Math.sin(w+4*a-lag));
+   turn=sway+.21*env*Math.sin(3*a-2*w-lag);
+   gain=.97+.19*Math.sin(3*a-w-lag)*env;
+   ripple=.05*(.7+.3*Math.sin(3*a-w-lag));
   } else {
-   stretch=1+.11*Math.sin(w)+.035*Math.sin(2*w);
-   shift=env*(31*wave+15*Math.sin(2*w-2*a));
-   turn=.18*env*Math.sin(w+2*a);
-   gain=.83+.24*Math.sin(w+.6)+.18*Math.sin(2*w-.3);
-   ripple=.044*(.65+.35*Math.sin(2*w-a));
+   sway=.27*Math.sin(w)+.09*Math.sin(2*w-.5);
+   stretch=1+.12*Math.sin(w-lag)+.045*Math.sin(2*w-lag);
+   shift=env*(36*wave+18*Math.sin(2*w-2*a-lag));
+   turn=sway+.22*env*Math.sin(w+2*a-lag);
+   gain=.92+.17*Math.sin(w+.6-lag)+.12*Math.sin(2*w-.3-lag);
+   ripple=.048*(.65+.35*Math.sin(2*w-a-lag));
   }
   const outerR=R+(d-shift)/stretch;
-  const innerR=r*(1+.018*Math.sin(w)+.012*wave*inner);
-  const innerTurn=name==='loading_orbit'?-w+.025*Math.sin(2*a-w)*inner:name==='thinking_pulse'?.08*Math.sin(w+2*a)*inner:.055*Math.sin(2*a+w)*inner;
+  const innerR=r*(1+.008*Math.sin(w)+.006*wave*inner);
+  const innerTurn=sway+.035*Math.sin(2*a+w)*inner;
   const blend=smooth((r-(R-18))/64);
   const sr=innerR*(1-blend)+outerR*blend,sa=a+innerTurn*(1-blend)+turn*blend,sx=(C[0]+sr*Math.cos(sa))/2,sy=(C[1]+sr*Math.sin(sa))/2;
   const rippleCenter=R+53+25*wave+13*Math.sin(w-a);
   const fog=ripple*Math.exp(-Math.pow((r-rippleCenter)/43,2))*smooth(d/12);
+  // Broad travelling reflection, never a separate particle or a flashing point.
+  const caustic=(.5+.5*Math.cos(a+w+.5))**7;
+  const rimGain=1+.16*caustic*Math.exp(-Math.pow(d/28,2));
   // Very faint liquid shoulders carry breathing to left/bottom as well as crown.
   const cool=.5+.5*Math.cos(a-3.55),blue=[48,105,255],warm=[255,157,121];
   const lightGain=r<R?1+(gain-1)*inner:gain;
-  const rgb=[0,1,2].map(ch=>clamp(sample(source,sx,sy,ch)*lightGain+255*fog*(blue[ch]*cool+warm[ch]*(1-cool))/255,0,255));
+  const rgb=[0,1,2].map(ch=>clamp(sample(source,sx,sy,ch)*lightGain*rimGain+255*fog*(blue[ch]*cool+warm[ch]*(1-cool))/255,0,255));
   const alpha=Math.max(...rgb),j=(py*SIZE+px)*4;
   if(alpha<.65)continue;
   out[j+3]=Math.round(alpha);

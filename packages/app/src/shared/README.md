@@ -10,6 +10,8 @@ window-chrome-contracts.ts 定义 Beta/Chali 与 acrylic/vibrancy/solid 的窄�
 
 ## 边界
 
+`context-menu-contracts.ts` 定义固定的菜单通知／动作通道、封闭的原生编辑动作和有界菜单投影。请求身份只由 Main 在真实右键事件后签发；Renderer 不创建原生操作授权。
+
 - 当前包含权限模式、模型能力、会话/项目与 session scope、工作区与 Git 审阅、运行时与应用状态、数据根、运行检查点/用量/压缩操作、记忆控制面、附件、插件/渠道、浏览器控制、开发环境和历史活动等共享规则。
 - `permission-modes.ts` 只描述三档授权策略并兼容旧 id；行为 profile（`general`/`coding`）由 `@littlesheep/prompt` 的 `AgentProfileId` 管理，`../main/modes.ts` 只是转发 shim。逻辑容器根由 Main 解析，Renderer 不拥有最终边界判断。
 - `workspace-contracts.ts` 的 `WorkspaceLayoutSnapshot` 现在同时带 `fileNavigatorWidth` 与 `reviewNavigatorWidth`（后者可选，UX-18）：普通文件导航与审阅更改列表各有自己的宽度，共用 `WORKSPACE_FILE_NAVIGATOR_WIDTH_*` 上下限；旧快照缺该字段时由两侧各自回落默认值，不能继承另一个宽度。

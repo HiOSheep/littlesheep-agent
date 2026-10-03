@@ -339,7 +339,7 @@ describe('assistant activity flow', () => {
     expect(figures.get('缓存命中')).toBe('未提供')
     expect(figures.get('未缓存输入')).toBe('未提供')
     expect(figures.get('输出')).toBe('1100 tok')
-    expect(figures.get('完整性')).toBe('用量统计不完整')
+    expect(figures.get('记录状态')).toBe('存在用量记录异常')
   })
 
   it('HA-03-06 distinguishes a real zero cache hit and accounts reasoning only as an output subset', () => {
@@ -736,7 +736,7 @@ describe('a failed turn offers the action it can take', () => {
       expect(html.indexOf('assistant-turn-retry'), mode)
         .toBeLessThan(html.indexOf('assistant-process-content'))
       expect(html, mode).toContain('本轮未完成')
-      expect(html, mode).not.toContain('disabled=""')
+      expect(/<button[^>]*class="feedback-action assistant-turn-retry"[^>]*>/u.exec(html)?.[0], mode).not.toContain('disabled')
     }
   })
 
@@ -754,6 +754,6 @@ describe('a failed turn offers the action it can take', () => {
 
     expect(html).toContain('assistant-turn-retry')
     expect(html).toContain('disabled=""')
-    expect(html).toContain('当前对话还有一轮正在运行，结束后可以重试')
+    expect(html).toContain('当前运行结束后可重试')
   })
 })

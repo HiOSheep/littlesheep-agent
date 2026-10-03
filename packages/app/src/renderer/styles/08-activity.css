@@ -1,8 +1,9 @@
 
+/* 宽度交给外层单列正文，间距走对话流 token，不再自带一个偏窄的上限。 */
 .assistant-turn {
   display: block;
-  width: min(820px, 100%);
-  margin: 0 0 24px;
+  width: 100%;
+  margin: 0 0 var(--chat-flow-gap);
   color: var(--text);
   animation: content-fade-in var(--motion-base) var(--motion-ease) both;
 }
@@ -33,8 +34,8 @@
 .assistant-activity-flow {
   display: grid;
   gap: 2px;
-  width: min(820px, 100%);
-  margin: 0 0 10px;
+  width: 100%;
+  margin: 0 0 var(--chat-flow-gap-tight);
   color: var(--muted);
   font-size: var(--activity-row-font-size);
 }
@@ -58,9 +59,9 @@
   min-width: 0;
   /* 14 tool rows in a turn is ordinary, so the row buys its height once and
    * spends it on the summary rather than on padding. */
-  min-height: 32px;
+  min-height: var(--chat-row-height);
   gap: 8px;
-  padding: 2px 3px;
+  padding: 0;
   overflow: hidden;
   color: var(--muted);
   background: transparent;
@@ -69,7 +70,7 @@
   font-family: var(--font);
   font-size: var(--activity-row-font-size);
   font-weight: 400;
-  line-height: 28px;
+  line-height: var(--chat-row-line-height);
   letter-spacing: 0;
   text-align: left;
 }
@@ -85,7 +86,8 @@
   max-width: min(34%, 320px);
   overflow: hidden;
   color: var(--muted-2);
-  font-size: var(--activity-meta-font-size);
+  font-size: var(--chat-font-size-meta);
+  line-height: var(--chat-row-line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -137,13 +139,14 @@ button.agent-flow-row.no-details,
   position: absolute;
   inset: 0;
   z-index: 0;
+  /* 扫光由文本色派生：写死的白色渐变在浅色主题里完全看不见。 */
   background-image: linear-gradient(
     90deg,
     transparent 0,
     transparent 14%,
-    rgba(255, 255, 255, 0.055) 48%,
-    rgba(255, 255, 255, 0.085) 50%,
-    rgba(255, 255, 255, 0.055) 52%,
+    color-mix(in srgb, var(--text) 7%, transparent) 48%,
+    color-mix(in srgb, var(--text) 11%, transparent) 50%,
+    color-mix(in srgb, var(--text) 7%, transparent) 52%,
     transparent 86%,
     transparent 100%
   );
@@ -170,8 +173,8 @@ button.agent-flow-row.no-details,
 .agent-tool-glyph {
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: var(--chat-row-glyph);
+  height: var(--chat-row-glyph);
   color: var(--muted-2);
 }
 
@@ -236,7 +239,7 @@ button.agent-flow-row.no-details,
 .agent-transcript-reasoning .agent-transcript-details {
   margin: 2px 0 6px 26px;
   padding: 8px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--muted-2) 40%, transparent);
+  border-left: 2px solid var(--chat-hairline);
   color: var(--muted-2);
   font-size: var(--activity-meta-font-size);
   opacity: 0.9;
@@ -270,9 +273,11 @@ button.agent-flow-row.no-details,
   color: var(--muted-2);
 }
 
+/* 标题是行的主文本但静止时故意压暗，摘要更暗一层；两者都只在 hover/focus/open 时提到
+   --text-strong，过程流因此始终是一列文字而不是一沓卡片。 */
 .agent-flow-title {
   min-width: 0;
-  color: var(--text);
+  color: var(--muted);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -288,7 +293,7 @@ button.agent-flow-row.no-details,
 .agent-flow-summary {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--muted-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -342,9 +347,9 @@ button.agent-flow-row.no-details,
 
 .agent-flow-meta {
   color: var(--muted-2);
-  font-size: var(--activity-meta-font-size);
+  font-size: var(--chat-font-size-meta);
   font-weight: 400;
-  line-height: 24px;
+  line-height: var(--chat-row-line-height);
   white-space: nowrap;
 }
 
@@ -442,7 +447,8 @@ button.agent-flow-row.no-details,
 .agent-flow-children {
   margin-left: 7px;
   padding-left: 14px;
-  border-left: 1px solid var(--border);
+  /* 缩进层级用发丝线，而不是第二根实体边框色。 */
+  border-left: 1px solid var(--chat-hairline);
 }
 
 .agent-step-result {
@@ -527,6 +533,7 @@ button.agent-flow-row.no-details,
   min-width: 0;
   gap: 7px;
   color: var(--muted-2);
+  font-size: var(--chat-font-size-secondary);
   line-height: 20px;
 }
 
@@ -563,7 +570,7 @@ button.agent-flow-row.no-details,
 
 .agent-reasoning-assessment {
   padding-top: 7px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-top: 0.5px solid var(--chat-hairline-soft);
 }
 
 .agent-tool-activity-icon {
@@ -588,14 +595,17 @@ button.agent-flow-row.no-details,
   stroke-linejoin: round;
 }
 
+/* 展开的读取/工具正文是一块扁平代码面：面板底色 + 半像素发丝描边，
+   不再借用第三层表面色的卡片。 */
 .agent-tool-details {
   margin: 4px 0 6px 22px;
   overflow: hidden;
   color: var(--text);
-  background: var(--surface-3);
-  border-radius: var(--radius-ui);
+  background: var(--chat-panel-fill);
+  border: 0.5px solid var(--chat-hairline);
+  border-radius: var(--radius-card);
   font-family: var(--mono);
-  font-size: var(--activity-meta-font-size);
+  font-size: var(--chat-font-size-secondary);
   line-height: 1.5;
 }
 
@@ -607,7 +617,7 @@ button.agent-flow-row.no-details,
   gap: 6px;
   padding: 4px 8px;
   overflow: hidden;
-  color: #b8d8ff;
+  color: var(--chat-business);
   background: transparent;
   border: 0;
   font-family: var(--font);
@@ -615,11 +625,17 @@ button.agent-flow-row.no-details,
   text-align: left;
 }
 
+/* The file action is a real button, so it keeps a visible ring on keyboard focus:
+   `outline: 0` here used to cancel the app-wide ring with nothing in its place. */
 .agent-tool-file-action:hover,
 .agent-tool-file-action:focus-visible {
-  color: #d7eaff;
+  color: var(--chat-business-hover);
   background: var(--control-hover);
-  outline: 0;
+}
+
+.agent-tool-file-action:focus-visible {
+  outline: 2px solid var(--chat-business);
+  outline-offset: 2px;
 }
 
 .agent-tool-file-action .workspace-tree-glyph-icon {
@@ -632,7 +648,7 @@ button.agent-flow-row.no-details,
   min-width: 0;
   overflow: hidden;
   text-decoration: underline;
-  text-decoration-color: rgba(184, 216, 255, 0.36);
+  text-decoration-color: color-mix(in srgb, var(--chat-business) 40%, transparent);
   text-overflow: ellipsis;
   text-underline-offset: 2px;
   white-space: nowrap;
@@ -640,20 +656,20 @@ button.agent-flow-row.no-details,
 
 .agent-tool-file-action + .agent-tool-detail-section,
 .agent-tool-detail-section + .agent-tool-detail-section {
-  border-top: 1px solid var(--border);
+  border-top: 0.5px solid var(--chat-hairline-soft);
 }
 
 .agent-tool-detail-section {
   display: grid;
   gap: 3px;
-  padding: 7px 8px 8px;
+  padding: 10px 14px;
 }
 
 .agent-tool-detail-label {
   color: var(--muted-2);
   font-family: var(--font);
-  font-size: var(--activity-badge-font-size);
-  font-weight: 600;
+  font-size: var(--chat-font-size-caption);
+  font-weight: 500;
   line-height: 14px;
 }
 
@@ -662,6 +678,7 @@ button.agent-flow-row.no-details,
   margin: 0;
   overflow-x: auto;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--text);
   background: transparent;
   border: 0;
@@ -710,7 +727,8 @@ button.agent-flow-row.no-details,
 
 .activity-step-list {
   display: grid;
-  gap: 3px;
+  /* 行与行之间只留发丝线，靠 .activity-step + .activity-step 画，不再用间距堆叠。 */
+  gap: 0;
 }
 
 .activity-step {
@@ -718,11 +736,11 @@ button.agent-flow-row.no-details,
   grid-template-columns: 10px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 30px;
-  padding: 3px 6px;
+  min-height: var(--chat-row-height);
+  padding: 0;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-ui);
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -731,10 +749,13 @@ button.agent-flow-row.no-details,
     transform var(--motion-fast) var(--motion-ease);
 }
 
+.activity-step + .activity-step {
+  border-top: 0.5px solid var(--chat-hairline-soft);
+}
+
 .activity-live:hover .activity-step,
 .activity-live:focus-within .activity-step {
-  background: var(--control);
-  border-color: var(--border);
+  background: var(--chat-hover-fill);
 }
 
 .activity-step-dot {
@@ -757,7 +778,7 @@ button.agent-flow-row.no-details,
 
 .activity-step.skipped .activity-step-dot {
   background: var(--muted-2);
-  box-shadow: 0 0 0 4px rgba(116, 116, 116, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--muted-2) 12%, transparent);
 }
 
 .activity-step-main {
@@ -813,7 +834,7 @@ button.agent-flow-row.no-details,
   padding: 0 6px;
   color: var(--muted);
   background: transparent;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--radius-ui);
   transition:
     background-color var(--motion-fast) var(--motion-ease),
@@ -823,8 +844,7 @@ button.agent-flow-row.no-details,
 
 .activity-live:hover .activity-tool,
 .activity-live:focus-within .activity-tool {
-  background: rgba(255, 255, 255, 0.026);
-  border-color: var(--border);
+  background: var(--chat-hover-fill);
 }
 
 .activity-tool-icon {
@@ -870,9 +890,10 @@ button.agent-flow-row.no-details,
   margin: 0 0 14px;
   padding: 8px 10px;
   color: var(--muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-ui);
+  /* 实时工具块和展开详情同一块面板底色，不再是独立的不透明卡片。 */
+  background: var(--chat-panel-fill);
+  border: 0.5px solid var(--chat-hairline);
+  border-radius: var(--radius-card);
   font-size: var(--activity-meta-font-size);
 }
 

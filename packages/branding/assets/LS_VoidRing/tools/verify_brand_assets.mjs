@@ -10,7 +10,7 @@ const sharp=require(path.join(deps,'sharp'));
 const {chromium}=require(path.join(deps,'playwright'));
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const temp=await fs.mkdtemp(path.join(os.tmpdir(),'ls-void-ring-preview-'));
-const report={date:'2026-10-02',static:[],motion:[],previewFps:30,previewFrames:216};
+const report={date:new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Hong_Kong'}),static:[],motion:[],previewFps:30,previewFrames:216};
 for(const folder of ['icon_sizes','icon_sizes_low_glow'])for(const n of [1024,512,256,128,64,32]) {
  const img=sharp(path.join(root,`icon/${folder}/${n}x${n}.png`));const {data,info}=await img.ensureAlpha().raw().toBuffer({resolveWithObject:true});
  assert.equal(info.width,n);assert.equal(info.height,n);

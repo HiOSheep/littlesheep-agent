@@ -12,6 +12,7 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 - VERIFY 只评估 Runtime 证据。窄结构成功可记为 pass；需要人工判断的其他完整 run 保持 unverified。
 - RECOVER 作出有界的确定性重试、停止或升级用户决定；已结算副作用不重复执行。
 - 面向用户的最终自然语言必须来自真实 LLM 调用，并在发布前按 settlement 身份登记。
+- `model-observability` 在正文校验前按逻辑请求身份与物理 attempt 持久化 `provider_usage_recorded`；每个回执只累加一次，之后的逻辑响应结算不再重复累加。Provider 已返回用量而正文无效时，用量仍保留。
 - Hooks 可在受控策略下扩展生命周期，但不能取得状态机所有权或跳过权限、验证、证据与收尾；失败降级规则有界。
 
 合法状态转移与旧检查点规范化由 `packages/types` 和 [Core Flow 状态契约](../../docs/reference/core-flow-state-contract.md)维护。

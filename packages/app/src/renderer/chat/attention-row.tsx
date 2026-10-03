@@ -5,7 +5,7 @@
 // while it is folded therefore cannot live inside that panel — it is rendered here, as the
 // turn's own status row between the process trigger and the collapsible body, and it is the
 // single home of those facts in both display modes.
-import { activityAttentionLine } from './activity-visibility'
+import { activityAttentionLine, classifyCallFailures } from './activity-visibility'
 import type { AssistantTurnActivity } from './types'
 
 
@@ -19,6 +19,7 @@ export function ActivityAttentionRow({ activity }: { activity: AssistantTurnActi
     <div
       className="agent-transcript-summary agent-transcript-attention"
       data-transcript-attention="true"
+      data-tone={activity.status === 'failed' || classifyCallFailures(activity.tools).some((failure) => !failure.recovered) ? 'danger' : 'warning'}
       role="status"
     >
       {line}

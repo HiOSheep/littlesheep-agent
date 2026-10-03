@@ -4,7 +4,9 @@
 import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject, type UIEvent } from 'react'
 import {
   CHAT_COMPOSER_OVERLAY_RESIZE_EVENT,
+  CHAT_MESSAGE_ANCHOR_ATTRIBUTE,
   CHAT_STICKY_BOTTOM_THRESHOLD,
+  CHAT_TURN_JUMP_INSET,
   didChatViewportResize,
   isChatNearBottom,
   readChatAnchorProbes,
@@ -12,10 +14,19 @@ import {
   resolveAnchoredScrollTop,
   resolveBottomAnchoredScrollTop,
   resolveChatResizeScrollTop,
+  resolveTurnJumpScrollTop,
   selectChatVisibleAnchor,
   type ChatScrollGeometry,
   type ChatVisibleAnchor,
 } from './chat-scroll-anchor'
+import {
+  CHAT_MESSAGE_CONTENT_SELECTOR,
+  CHAT_RAIL_ANCHOR_SELECTOR,
+  CHAT_TURN_RAIL_SELECTOR,
+  activeTurnKey,
+  railOverlapsText,
+  type TurnAnchor,
+} from './turn-navigation'
 import {
   WINDOW_RESIZE_END_EVENT,
   WINDOW_RESIZE_START_EVENT,
@@ -47,7 +58,15 @@ export interface ChatScrollController {
   readingAway: boolean
   /** True when output arrived after the reader left the bottom. */
   hasNewContent: boolean
+  /** The user turn the reader is looking at, or null when the conversation has none yet. */
+  activeTurnKey: string | null
+  /** True while the rail would sit on the transcript's own text (a compressed chat column). */
+  railInTheWay: boolean
   scrollToLatest: () => void
+  /** Jump to the first line of the conversation. */
+  scrollToTop: () => void
+  /** Put the user turn with this `data-message-key` at the top of the viewport. */
+  scrollToTurn: (key: string) => void
   prepareOlderHistoryLoad: () => void
   onScroll: (event: UIEvent<HTMLDivElement>) => void
   onClickCapture: (event: MouseEvent<HTMLDivElement>) => void
@@ -75,8 +94,18 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   /** Which conversation the transcript belongs to; see the session effect below. */
   const sessionKeyRef = useRef<string | undefined>(undefined)
   const transcriptIdentityRef = useRef<string | null | undefined>(undefined)
+  /**
+   * The user turns, measured once per turn added and per layout change instead of per scroll: a
+   * long transcript would otherwise read one rect per turn on every scroll event.
+   */
+  const turnAnchorCacheRef = useRef<TurnAnchor[]>([])
+  /** The `scrollHeight` those anchors were measured at; content growth invalidates them. */
+  const turnAnchorHeightRef = useRef(-1)
+  const activeTurnKeyRef = useRef<string | null>(null)
+  const [railInTheWay, setRailInTheWay] = useState(false)
   const [readingAway, setReadingAway] = useState(false)
   const [hasNewContent, setHasNewContent] = useState(false)
+  const [activeTurn, setActiveTurn] = useState<string | null>(null)
 
   const rememberScrollGeometry = useCallback((container: HTMLElement) => {
     scrollGeometryRef.current = readChatScrollGeometry(container)
@@ -99,6 +128,50 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     repairFrameRef.current = null
   }, [])
 
+  /**
+   * Measure every user turn in the transcript's own scroll coordinates. The DOM read lives here;
+   * `turn-navigation.ts` decides what the measurements mean.
+   */
+  const readTurnAnchors = useCallback(() => {
+    const container = scrollRef.current
+    if (!container) {
+      turnAnchorCacheRef.current = []
+      return
+    }
+    const viewportTop = container.getBoundingClientRect().top
+    const scrollTop = container.scrollTop
+    turnAnchorCacheRef.current = Array.from(
+      container.querySelectorAll<HTMLElement>(CHAT_RAIL_ANCHOR_SELECTOR),
+    ).map((element) => ({
+      key: element.getAttribute(CHAT_MESSAGE_ANCHOR_ATTRIBUTE) ?? '',
+      top: element.getBoundingClientRect().top - viewportTop + scrollTop,
+    }))
+    turnAnchorHeightRef.current = container.scrollHeight
+  }, [scrollRef])
+
+  /** Publish the active turn only when it changes: this runs on every scroll event. */
+  const syncActiveTurn = useCallback((container: HTMLElement) => {
+    const next = activeTurnKey(turnAnchorCacheRef.current, container.scrollTop)
+    if (next === activeTurnKeyRef.current) return
+    activeTurnKeyRef.current = next
+    setActiveTurn(next)
+  }, [])
+
+  /**
+   * Whether the rail is covering the transcript's own text. Measured rather than guessed from a
+   * width: the content column is centred inside the scroll container, so the gap between the rail's
+   * right edge and the column's left edge is the whole answer (a compressed chat column leaves no
+   * gutter, and the marks then sit on the first characters of every line).
+   */
+  const syncRailClearance = useCallback((container: HTMLElement) => {
+    const rail = container.parentElement?.querySelector<HTMLElement>(CHAT_TURN_RAIL_SELECTOR) ?? null
+    const content = container.querySelector<HTMLElement>(CHAT_MESSAGE_CONTENT_SELECTOR)
+    const next = rail && content
+      ? railOverlapsText(content.getBoundingClientRect().left - rail.getBoundingClientRect().right)
+      : false
+    setRailInTheWay((current) => (current === next ? current : next))
+  }, [])
+
   /** The reader's own position decides both flags; nothing else may clear them. */
   const readReaderPosition = useCallback((container: HTMLElement): boolean => {
     const geometry = readChatScrollGeometry(container)
@@ -106,8 +179,9 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     stickToBottomRef.current = nearBottom
     setReadingAway(!nearBottom)
     if (nearBottom) setHasNewContent(false)
+    syncActiveTurn(container)
     return nearBottom
-  }, [])
+  }, [syncActiveTurn])
 
   const scrollToLatest = useCallback(() => {
     const container = scrollRef.current
@@ -119,8 +193,48 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     setHasNewContent(false)
     if (!container) return
     writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
+    syncActiveTurn(container)
     rememberScrollGeometry(container)
-  }, [cancelRepairFrames, rememberScrollGeometry, scrollRef, writeScrollTop])
+  }, [cancelRepairFrames, rememberScrollGeometry, scrollRef, syncActiveTurn, writeScrollTop])
+
+  /**
+   * Jump to the first line. The flags are not set here either: the position that was just written
+   * is what decides them, so a conversation short enough to fit stays "at the bottom" while it is
+   * also "at the top".
+   */
+  const scrollToTop = useCallback(() => {
+    const container = scrollRef.current
+    scrollRepairRef.current = null
+    resizeRepairRef.current = null
+    cancelRepairFrames()
+    if (!container) return
+    writeScrollTop(container, 0)
+    readReaderPosition(container)
+    rememberScrollGeometry(container)
+  }, [cancelRepairFrames, readReaderPosition, rememberScrollGeometry, scrollRef, writeScrollTop])
+
+  /** Put one user turn at the top of the viewport, the way the rail's marks ask for. */
+  const scrollToTurn = useCallback((key: string) => {
+    const container = scrollRef.current
+    if (!container) return
+    const target = Array.from(container.querySelectorAll<HTMLElement>(CHAT_RAIL_ANCHOR_SELECTOR))
+      .find((element) => element.getAttribute(CHAT_MESSAGE_ANCHOR_ATTRIBUTE) === key)
+    if (!target) return
+    scrollRepairRef.current = null
+    resizeRepairRef.current = null
+    cancelRepairFrames()
+    const anchorTop = target.getBoundingClientRect().top
+      - container.getBoundingClientRect().top
+      + container.scrollTop
+    writeScrollTop(
+      container,
+      resolveTurnJumpScrollTop(anchorTop, CHAT_TURN_JUMP_INSET, container.scrollHeight, container.clientHeight),
+    )
+    // A jump is the reader's own move: re-derive every flag from where they landed instead of
+    // assuming they arrived at the bottom.
+    readReaderPosition(container)
+    rememberScrollGeometry(container)
+  }, [cancelRepairFrames, readReaderPosition, rememberScrollGeometry, scrollRef, writeScrollTop])
 
   useLayoutEffect(() => {
     const container = scrollRef.current
@@ -172,6 +286,20 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
   useLayoutEffect(() => () => {
     if (repairFrameRef.current !== null) window.cancelAnimationFrame(repairFrameRef.current)
   }, [])
+
+  // The rail lists user turns, so its measurements have to be refreshed when one appears (a send,
+  // older history being prepended) or the conversation changes. Deliberately *not* on every
+  // `messages` change: streaming replaces the array per chunk without adding a turn, and measuring
+  // would read one rect per turn each time.
+  const userTurnCount = messages.reduce((count, message) => (message.role === 'user' ? count + 1 : count), 0)
+  useLayoutEffect(() => {
+    readTurnAnchors()
+    const container = scrollRef.current
+    if (container) {
+      syncActiveTurn(container)
+      syncRailClearance(container)
+    }
+  }, [readTurnAnchors, scrollRef, sessionKey, syncActiveTurn, syncRailClearance, userTurnCount])
 
   useLayoutEffect(() => {
     // Opening a conversation starts at its newest message — but only a *conversation* change
@@ -298,6 +426,12 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       if (previous && didChatViewportResize(previous, current)) {
         scheduleResizeRepair(previous)
       }
+      // A width change re-wraps every turn, so the rails' measurements are stale in the same
+      // notification that made them stale — and it is also what decides whether the rail still has
+      // its own gutter at all.
+      readTurnAnchors()
+      syncActiveTurn(container)
+      syncRailClearance(container)
       rememberScrollGeometry(container)
     })
     observer.observe(container)
@@ -321,7 +455,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       window.removeEventListener(WINDOW_RESIZE_END_EVENT, handleWindowResizeEnd)
       resizeRepairRef.current = null
     }
-  }, [rememberScrollGeometry, scrollRef])
+  }, [readTurnAnchors, rememberScrollGeometry, scrollRef, syncActiveTurn, syncRailClearance])
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget
@@ -331,13 +465,17 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     const written = writtenScrollTopRef.current
     writtenScrollTopRef.current = null
     if (written === null || Math.abs(element.scrollTop - written) > 1) cancelRepairFrames()
+    // Content that grew under the reader (an image, a rendered diagram) moved every turn below it.
+    // The height is the cheap witness for that: re-measure before reading the position so the
+    // active mark and the flags describe the layout that is on screen now.
+    if (element.scrollHeight !== turnAnchorHeightRef.current) readTurnAnchors()
     readReaderPosition(element)
     rememberScrollGeometry(element)
-  }, [cancelRepairFrames, readReaderPosition, rememberScrollGeometry])
+  }, [cancelRepairFrames, readReaderPosition, readTurnAnchors, rememberScrollGeometry])
 
   const onClickCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
-    if (!target.closest('.agent-tool-row, .trace-toggle')) return
+    if (!target.closest('.assistant-process-trigger, .agent-flow-row[aria-expanded], .trace-toggle, .message-artifacts-more')) return
     // Expanding a nested disclosure is a reading action, not new-message
     // arrival. Leave scrollTop untouched while CSS animates the content height.
     stickToBottomRef.current = false
@@ -352,7 +490,18 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     })
   }, [loadOlderMessages, scrollRef])
 
-  return { readingAway, hasNewContent, scrollToLatest, prepareOlderHistoryLoad, onScroll, onClickCapture }
+  return {
+    readingAway,
+    hasNewContent,
+    activeTurnKey: activeTurn,
+    railInTheWay,
+    scrollToLatest,
+    scrollToTop,
+    scrollToTurn,
+    prepareOlderHistoryLoad,
+    onScroll,
+    onClickCapture,
+  }
 }
 
 /**

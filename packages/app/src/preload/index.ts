@@ -9,6 +9,7 @@
 // queryable and subscribable so a missed notification can always be repaired.
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_OPEN_CHANNEL, isContextMenuAction, isNativeContextMenu, type NativeContextMenu, type ContextMenuAction } from '../shared/context-menu-contracts'
 import { isWindowChromeState, WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL, type WindowChromeState } from '../shared/window-chrome-contracts'
 import { WINDOW_APPEARANCE_CHANNEL } from '../shared/window-appearance-contracts'
 import {
@@ -92,6 +93,17 @@ const apiBasePromise = new Promise<string>((resolve, reject) => {
 apiBasePromise.catch(() => undefined)
 
 contextBridge.exposeInMainWorld('littlesheep', {
+  onContextMenu: (listener: (menu: NativeContextMenu) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      if (isNativeContextMenu(payload)) listener(payload)
+    }
+    ipcRenderer.on(CONTEXT_MENU_OPEN_CHANNEL, handler)
+    return () => ipcRenderer.removeListener(CONTEXT_MENU_OPEN_CHANNEL, handler)
+  },
+  contextMenuAction: (requestId: string, action: ContextMenuAction) => {
+    if (typeof requestId !== 'string' || requestId.length > 128 || !isContextMenuAction(action)) return
+    ipcRenderer.send(CONTEXT_MENU_ACTION_CHANNEL, requestId, action)
+  },
   onWindowChrome: (listener: (state: WindowChromeState) => void) => {
     chromeListeners.add(listener)
     if (chromeState) listener(chromeState)

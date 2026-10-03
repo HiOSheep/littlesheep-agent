@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { readRendererStyleSource } from './style-source-test-utils'
 import {
   WORKSPACE_FILE_NAVIGATOR_WIDTH_DEFAULT,
+  WORKSPACE_FILE_CONTENT_MIN_WIDTH,
   WORKSPACE_FILE_NAVIGATOR_MAX_RATIO,
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MAX,
   WORKSPACE_FILE_NAVIGATOR_WIDTH_MIN,
@@ -176,6 +178,17 @@ describe('workspace file navigator responsive layout', () => {
     expect(layout.maxWidth).toBe(Math.floor(600 * WORKSPACE_FILE_NAVIGATOR_MAX_RATIO))
     expect(layout.width).toBe(layout.maxWidth)
     expect(600 - layout.width).toBeGreaterThanOrEqual(192)
+  })
+
+  it('declares the same two bounds in the stylesheet that this resolver applies in code', async () => {
+    const styles = await readRendererStyleSource()
+
+    // The shared column's `flex-basis` is the saved preference, so the same bounds have to hold
+    // there: a width saved while the panel was wide used to take the file's own view to zero
+    // (reported 2026-10-03). Deriving the expected text from the constants means a change here that
+    // the stylesheet does not follow fails right here.
+    expect(styles).toContain(`--workspace-file-content-min-width: ${WORKSPACE_FILE_CONTENT_MIN_WIDTH}px;`)
+    expect(styles).toContain(`${Math.round(WORKSPACE_FILE_NAVIGATOR_MAX_RATIO * 100)}%,`)
   })
 
   it('adapts below the nominal minimum only when the whole panel is narrow', () => {

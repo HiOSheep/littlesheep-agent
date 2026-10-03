@@ -18,6 +18,7 @@ import {
 type StoredAttempt = [string, number, number, number, number, number, string, string, string];
 /** `[at, kind, provider, model, requestId]`, kind 0 = response without usage. */
 type StoredMissing = [string, number, string, string, string];
+const MISSING_KINDS = ['response_without_usage', 'request_without_response', 'failed_request', 'interrupted_request', 'pending_request'] as const;
 
 interface StoredRun {
   sessionId: string;
@@ -117,7 +118,7 @@ function encodeRun(record: ProviderUsageDailyRunRecord): StoredRun {
       attempt.requestId,
     ]),
     missing: record.missing.map((mark) => (
-      [mark.at, mark.kind === 'response_without_usage' ? 0 : 1, mark.provider, mark.model, mark.requestId]
+      [mark.at, MISSING_KINDS.indexOf(mark.kind), mark.provider, mark.model, mark.requestId]
     )),
     ...(record.unreadable ? { unreadable: true } : {}),
     ...(record.reason === undefined ? {} : { reason: record.reason }),
@@ -194,10 +195,10 @@ function decodeMissing(value: unknown): ProviderUsageDailyMissingFact | undefine
   const providerId = asBoundedText(provider, 128);
   const modelId = asBoundedText(model, 128);
   const request = asBoundedText(requestId, 256);
-  if (!timestamp || (kind !== 0 && kind !== 1) || !providerId || !modelId || !request) return undefined;
+  if (!timestamp || !Number.isInteger(kind) || !MISSING_KINDS[kind] || !providerId || !modelId || !request) return undefined;
   return {
     at: timestamp,
-    kind: kind === 0 ? 'response_without_usage' : 'request_without_response',
+    kind: MISSING_KINDS[kind]!,
     provider: providerId,
     model: modelId,
     requestId: request,
