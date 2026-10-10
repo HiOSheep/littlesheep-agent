@@ -82,6 +82,16 @@ describe('permission boundary', () => {
     expect(shouldRequestPermissionApproval('restricted', documentRead)).toBe(true)
   })
 
+  it('keeps retired memory writer names classified as writes for legacy safety decisions', async () => {
+    const fixture = await makeFixture()
+    for (const name of ['write_memory', 'record_experience']) {
+      const descriptor = describeToolAccess(name, {}, fixture)
+      expect(descriptor.action).toBe('write')
+      expect(shouldRequestPermissionApproval('research', descriptor)).toBe(true)
+      expect(shouldRequestPermissionApproval('restricted', descriptor)).toBe(true)
+    }
+  })
+
   it('treats explicit external command paths and dynamic shell access conservatively', async () => {
     const fixture = await makeFixture()
     const explicit = describeToolAccess('exec', {

@@ -3,10 +3,9 @@
 // over the target. Same-volume rename is atomic on NTFS/ext4/APFS, so readers
 // never see a partially-written file.
 //
-// Why this exists: MEMORY.md is read on every prompt build and written by the
-// `write_memory` tool. A partial write (process killed mid-write, Electron
-// multi-window race, WAL crash — see project_memory.md lessons) would corrupt
-// the T1 core memory. atomicWrite (tmp + rename) makes corruption impossible:
+// Why this exists: a partial write (process killed mid-write, Electron
+// multi-window race, WAL crash — see project_memory.md lessons) could corrupt
+// runtime indexes and user data. atomicWrite (tmp + rename) makes corruption impossible:
 // either the old file or the new file is fully visible, never a half-written
 // hybrid.
 //
@@ -21,8 +20,8 @@
 // while making concurrent writes converge instead of failing.
 //
 // Trade-off: if the process crashes between write+rename, the tmp file leaks.
-// Callers may sweep stale `*.tmp` files on startup (not done here — write_memory
-// is low-frequency, so leakage is negligible).
+// Callers may sweep stale `*.tmp` files on startup; cleanup is not part of this
+// primitive because atomic writes serve multiple, independently-owned stores.
 
 import { writeFile, rename, unlink } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';

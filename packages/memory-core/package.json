@@ -17,8 +17,6 @@
         "typecheck": "tsc -p tsconfig.json --noEmit"
     },
     "dependencies": {
-        "@littlesheep/types": "workspace:*",
-        "@littlesheep/safety": "workspace:*",
-        "zod": "^3.23.0"
+        "@littlesheep/types": "workspace:*"
     }
 }
