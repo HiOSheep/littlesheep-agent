@@ -27,7 +27,13 @@
       "path": "../memory-core"
     },
     {
+      "path": "../memory-tree"
+    },
+    {
       "path": "../runner"
+    },
+    {
+      "path": "../safety"
     },
     {
       "path": "../snapshot"

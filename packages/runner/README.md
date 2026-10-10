@@ -6,6 +6,7 @@ Runner 是应用层 run 创建、请求装配、Harness 集成、事件持久化
 
 - ExecutionLog 保存已结算 run 证据；RunCheckpoint 保存活动 run 的可恢复状态，两者用途不同。
 - Run 与 tool identity 支持幂等结算。续跑前校验 durable lease；未完成或状态未知的副作用须停止并明确处理。
+- 每个新 run 都使用严格 durable 持久化与结算；执行模式选择和 per-session/origin/profile overrides 已移除。旧 `shadow` 标签只供历史记录读取、回放和用量报告。
 - FINALIZE 按唯一 settlement 身份登记并持久化权威模型回复。没有有效模型回复时可报告 Runtime 状态，不能伪造 Agent 答案。
 - 会话压缩保存带 source／predecessor 校验的版本化摘要，不写 durable Memory。
 - 长期 Memory 变更走 `memory_write` 或 `memory_manage`，并满足授权、来源和 revision 检查。

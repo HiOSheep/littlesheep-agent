@@ -1,7 +1,7 @@
 // @littlesheep/config — defaults.ts
 // Default config (used when no config file exists).
 
-import type { Config, ModelProvider } from './schema.js';
+import { ConfigSchema, type Config, type ModelProvider } from './schema.js';
 import { mergeProviderModelEntries, resolveProviderModelIds } from './provider-models.js';
 
 export const PROVIDER_PRESETS: ModelProvider[] = [
@@ -29,120 +29,8 @@ export const PROVIDER_PRESETS: ModelProvider[] = [
   },
 ];
 
-/** Default config. Matches ConfigSchema defaults. */
-export const DEFAULT_CONFIG: Config = {
-  version: 1,
-  providers: [],
-  agents: {
-    defaults: {
-      workspace: process.cwd(),
-      model: 'openai/gpt-5.6',
-      reasoning: 'auto',
-      profile: 'general',
-      timeoutSeconds: 172800,
-      maxRecoveryAttempts: 3,
-      timeFormat: 'auto',
-      bootstrapMaxChars: 20000,
-      bootstrapTotalMaxChars: 60000,
-      contextCompressionThresholdRatio: 0.8,
-      maxModelCallsPerRun: 32,
-      harness: 'core-flow',
-    },
-  },
-  desktop: {
-    closePolicy: 'background-while-active',
-  },
-  tools: {
-    exec: {
-      whitelist: [
-        'git status', 'git log', 'git diff', 'git branch',
-        'ls', 'dir', 'Get-ChildItem', 'pwd', 'echo',
-        'node --version', 'npm --version', 'pnpm --version',
-      ],
-      blacklist: [
-        'rm -rf /', 'format', 'mkfs', 'dd if=', 'shutdown', 'reboot',
-      ],
-      approvalMode: 'interactive',
-    },
-    maxOutputChars: 10000,
-    stripImages: true,
-    maxParallel: 4,
-    invocationTimeoutMs: 120000,
-  },
-  memory: {
-    repositoryBackend: 'v2' as const,
-    treeRunTokenBudget: 3200,
-    treeBranchTokenBudget: 1200,
-    treeRootIndexMaxChars: 1600,
-    experienceWriteThreshold: 0.65,
-  },
-  web: {
-    enabled: false,
-    readMode: 'public_anonymous',
-    strictReadApproval: false,
-    allowDomains: [],
-    blockDomains: [],
-    dnsResolver: 'system',
-    maxQueryChars: 2_000,
-    maxResults: 10,
-    maxFetchesPerRun: 4,
-    maxQueriesPerRun: 4,
-    maxConcurrentRequests: 4,
-    searchTimeoutMs: 15_000,
-    fetchTimeoutMs: 20_000,
-    totalTimeoutMs: 90_000,
-    maxResponseBytes: 2 * 1024 * 1024,
-    maxExtractedChars: 40_000,
-    maxRedirects: 5,
-    cache: {
-      enabled: true,
-      ttlSeconds: 300,
-      maxBytes: 64 * 1024 * 1024,
-    },
-    browserFallback: 'approval_required',
-    sensitiveQueryPolicy: 'approve',
-    providers: [],
-  },
-  safety: {
-    enabled: true,
-    maxEntryChars: 500,
-    quarantineDir: 'quarantine',
-    blockInjectionPatterns: true,
-    sanitizePrelude: true,
-  },
-  sessions: {
-    writeLock: {
-      acquireTimeoutMs: 60000,
-    },
-    compaction: {
-      threshold: 400,
-      keepRecent: 200,
-      background: false,
-    },
-  },
-  skills: {
-    extraDirs: [],
-    disabled: [],
-  },
-  plugins: {
-    disabled: [],
-    extraDirs: [],
-    allowLocalCode: false,
-  },
-  mcp: {
-    servers: [],
-  },
-  channels: {
-    channels: [],
-  },
-  versioning: {
-    enabled: true,
-    maxCheckpoints: 256,
-    maxFileBytes: 8 * 1024 * 1024,
-    maxWorkspaceFiles: 20000,
-    maxWorkspaceBytes: 512 * 1024 * 1024,
-  },
-};
+/** Generated from the schema so no-file loads share the validated defaults. */
+export const DEFAULT_CONFIG: Config = ConfigSchema.parse({});
 
 export function withProviderPresets(config: Config): Config {
   const presetsById = new Map(PROVIDER_PRESETS.map((p) => [p.id, p]));

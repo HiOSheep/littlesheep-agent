@@ -1,5 +1,5 @@
 // @littlesheep/harness - stages/verify/routing.ts
-// VERIFY routing: records evidence, publishes verified replies, and routes bounded recovery outcomes.
+// VERIFY routing: records evidence and routes bounded recovery outcomes.
 
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -52,14 +52,6 @@ export async function recordVerification(
 }
 
 /**
- * VERIFY records evidence only. FINALIZE owns the sole user-facing settlement
- * and channel projections consume that settlement from the completed result.
- */
-export function publishVerifiedReply(_ctx: RunContext): void {
-  return;
-}
-
-/**
  * The narrow read-only pass, judged from the evidence a current run actually produces.
  *
  * This used to require a `taskBook` step and its `taskExecution` result, which no run creates any more:
@@ -89,7 +81,6 @@ export async function verifyTrivialReadOnlyExecution(ctx: RunContext): Promise<S
     ? '运行时已确认本次运行只有一次只读工具调用且成功、输出完整，并未产生任何写入或外部副作用。'
     : 'Runtime confirmed the run made exactly one read-only tool call, it succeeded with an intact output, and no write or external side effect occurred.';
   await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
-  publishVerifiedReply(ctx);
   return {
     stage: 'verify',
     next: 'finalize',
@@ -145,7 +136,6 @@ export async function verifyDeterministicWriteReadExecution(ctx: RunContext): Pr
     ? 'Runtime 已确认写入调用成功并持久记录副作用，随后同一路径的只读调用读回了与写入参数完全一致的内容。'
     : 'Runtime confirmed the write call succeeded with a recorded side effect, and a later read of the same path returned exactly the bytes the write was given.';
   await recordVerification(ctx, { verdict: 'pass', reason, source: 'structural' });
-  publishVerifiedReply(ctx);
   return {
     stage: 'verify',
     next: 'finalize',

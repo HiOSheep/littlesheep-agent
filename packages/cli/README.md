@@ -8,6 +8,7 @@
 
 - 公开入口是 `src/index.ts`（`runCli`），可执行入口是 `src/bin.ts`；参数解析在 `src/args.ts`，REPL 在 `src/repl.ts`，命令位于 `src/commands/`。
 - CLI 是 Runner 和记忆/经验服务的 adapter，不复制 Agent Workflow 或存储实现；单次运行在 next 持久化模式下发布 settlement 后的权威回复（其余模式用 runner 返回的 reply），并附加 Runtime 签发的 Web 来源。
+- `memory import-repo` 通过正常 Runner 启动完成旧 ExperienceStore 数据迁移，再经 `MemoryWriteService` 写入当前 experience 分支；重试使用稳定写入身份。
 - 子命令在加载 provider 之前完成前置判断：`memory rollback` 与 `memory experience decay` 只需 branding，`memory archive` 已退役并显式拒绝，未知 flag 直接失败。
 - 禁止在命令层绕过配置校验、权限、安全写入和数据备份。
 

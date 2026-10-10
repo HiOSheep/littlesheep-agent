@@ -171,7 +171,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           )}
           {messages.length === 0 && !historyWindow.loading && (
             <div className="empty-hint">
-              <VoidRing state="idle" size={64} interactive />
+              <VoidRing state="idle" size={28} interactive />
               <div className="empty-title">{emptyHint.title}</div>
               <div className="empty-copy">{emptyHint.copy}</div>
             </div>
@@ -214,7 +214,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                   role={m.role}
                   text={m.text}
                   timestamp={m.timestamp}
-                  onBranch={m.id
+                  onBranch={m.role === 'assistant' && m.id
                     ? () => void branchConversationFromMessage(m.id as string)
                     : undefined}
                 />

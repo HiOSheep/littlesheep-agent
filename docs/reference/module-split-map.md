@@ -19,7 +19,8 @@
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
-| `packages/runner/src/runner.ts` | 2532 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、每轮 taskbook Skill 的有正文注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、durable recovery、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/runner.ts` | 2193 | run 生命周期、输入装配、Memory 反馈、日志、检查点持久化/续跑、活动任务注册、每轮 taskbook Skill 的有正文注册、后台维护准入透传、C07 压缩 operation owner、durable final-reply publication 和资源收尾 | 保持应用服务 facade；run/effect ownership、已完成对话恢复（`conversation-turn-recovery.ts`）、effect 对账查询（`durable-effect-query.ts`）、run 模式读取（`durable-run-mode.ts`）、Runtime 失败发布（`run-failure-result.ts`）、压缩 scheduler（`session-compaction-scheduler.ts`）与续接证据装配（`continuation-evidence.ts`）已下沉，继续下沉日志、检查点、finalize publication 和收尾协调；checkpoint 预算 reconcile 保持在 `run-checkpoint.ts` 边界 | E |
+| `packages/runner/src/conversation-turn-recovery.ts` | 367 | 已完成对话回放与恢复：协调 transcript、durable event、ExecutionLog 和 checkpoint 的恢复证据 | 保持明确依赖注入的恢复 owner；行为策略仍由 Runner 提供回调，若继续增长再按恢复证据来源拆分 | E |
 | `packages/harness/src/durable-kernel.ts` | 935 | durable event command validation、capability evidence、stage transition audit、effect owner/settlement lifecycle、crash recovery、projection rebuild 和 final settlement reducer | inbox claim/materialize 已拆到独立 processor；先冻结恢复、并发和 reducer 特征测试，后续再拆 event reducer、recovery policy 与 settlement policy | E |
 | `packages/harness/src/stages/execute/tool-loop.ts` | 652 | 单一模型工具循环、审批、失败记录、消息续接和运行中用户补充投递 | 用户补充消费由 `runtime-control-boundary.ts` 持有结算，主循环只在请求前后纳入消息；后续如继续增长，分离补充消息的请求桥接与现有 invocation adapter，保持单一主循环 | E |
 | `packages/types/src/runtime-contracts.ts` | 872 | Context、事件、检查点、活动任务控制、执行证据、请求前缀变化原因和版本化运行时契约 | Token 账本已迁入 `token-ledger.ts`，effect ownership port 已迁入 `effect-lease.ts`，会话续接证据已迁入 `conversation-continuation.ts`；继续按 context、event、checkpoint、active-run、execution 分组并保持 barrel | E |
@@ -147,7 +148,7 @@
 | `packages/memory-tree/src/memory-service.ts` | 343 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
 | `packages/channels/telegram/src/plugin.ts` | 342 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/memory-tree/src/memory-repository/v3-retrieval-materializer.ts` | 331 | 候选优先级、证据封套和治理读取投影 | 保持候选投影单一来源 | D |
-| `packages/cli/src/commands/import-repo.ts` | 323 | 导入流程、Git、LLM 和进度 | 分离 source、distill、progress adapter | C |
+| `packages/cli/src/commands/import-repo.ts` | 361 | 导入流程、Git、LLM、Memory 写入与进度 | 分离 source、distill、progress adapter | C |
 | `packages/memory-tree/src/index.ts` | 343 | Memory Tree 公共 barrel 与稳定导出 | 保持无逻辑导出层 | D |
 | `packages/channels/webhook/src/plugin.ts` | 319 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/app/src/renderer/composer/runtime-picker.tsx` | 456 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；继续增长时分离菜单定位与选项渲染 | B |
@@ -199,6 +200,7 @@
 | `packages/harness/src/stages/recover.ts` | 150 | 161 行恢复入口 | Runtime 自有恢复路由：有界重试、显式停止、升级到 ASK_USER（不再请求恢复模型）；恢复策略留在 `stages/recover/policy.ts`，入口只做状态编排；不得重新引入模型裁决或第二套恢复入口 | 2026-09-20 |
 | `packages/app/src/renderer/MemoryTreeView.tsx` | 1007 | 205 行用户记忆文件视图 | GUI 只展示六份记忆文件并仅允许编辑 `SOUL.md`；Atom、关系、向量、迁移和审计退回 Runtime 与内部治理 API | 2026-07-16 |
 | `packages/app/src/main/workspace-office-preview.ts` | 339 | 27 行路径适配器 | 有界 Office/OpenDocument 只读解析器已迁入 `@littlesheep/documents/office-preview`，Main 只保留路径感知与预览预算适配 | 2026-09-22 |
+| `packages/runner/src/runner.ts` | 2532 | `runner.ts`（2217）+ `conversation-turn-recovery.ts`（367） | 已完成对话回放与恢复由显式声明 Session、durable event、ExecutionLog 和 checkpoint 依赖的 helper 持有；Runner 继续负责请求生命周期与发布组合。源码拆分后合计行数增加 52，收益是恢复依赖和 owner 可直接检查，不以 LOC 减少作为收益 | 2026-10-10 |
 
 以下文件已回落到 300 行以下，退出软上限队列；再次越过 300 行时重新登记：`packages/harness/src/runtime-awareness.ts`（285）、`packages/app/src/main/local-app-api/terminal-routes.ts`（290）、`packages/memory-tree/src/v3/maintenance-worker.ts`（293）、`packages/memory-tree/src/v3/storage-coordinator.ts`（299）、`packages/app/src/renderer/api/workspace-files.ts`（212）。`packages/harness/src/stages/memory-intent-gate.ts` 已随 CAPTURE 删除，登记行已移除。
 

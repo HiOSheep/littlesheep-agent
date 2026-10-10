@@ -124,6 +124,7 @@ export function applyMemoryIntent(
     sourceRunIds: [intent.sourceRunId],
     sourceStages: [intent.sourceStage],
     sourceRefs: intent.sourceRefs,
+    evidenceRefs: intent.evidenceRefs,
     status: 'active',
     createdAt: now,
     updatedAt: now,
@@ -166,6 +167,7 @@ function reinforceMemoryNode(node: MemoryNode, intent: MemoryWriteIntent): void 
   node.sourceRunIds = unique([...node.sourceRunIds, intent.sourceRunId]);
   node.sourceStages = unique([...node.sourceStages, intent.sourceStage]);
   node.sourceRefs = unique([...(node.sourceRefs ?? []), ...(intent.sourceRefs ?? [])]);
+  node.evidenceRefs = unique([...(node.evidenceRefs ?? []), ...(intent.evidenceRefs ?? [])]);
   node.reason = intent.reason || node.reason;
   node.updatedAt = new Date().toISOString();
 }
@@ -182,6 +184,7 @@ function mergeMemoryNode(node: MemoryNode, intent: MemoryWriteIntent): void {
   node.sourceRunIds = unique([...node.sourceRunIds, intent.sourceRunId]);
   node.sourceStages = unique([...node.sourceStages, intent.sourceStage]);
   node.sourceRefs = unique([...(node.sourceRefs ?? []), ...(intent.sourceRefs ?? [])]);
+  node.evidenceRefs = unique([...(node.evidenceRefs ?? []), ...(intent.evidenceRefs ?? [])]);
   node.mergedFrom = unique([...(node.mergedFrom ?? []), intent.id!]);
   node.importance = Math.max(node.importance, intent.importance);
   node.confidence = Math.max(node.confidence, intent.confidence);

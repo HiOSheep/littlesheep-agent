@@ -139,7 +139,7 @@ class MemoryInboxStore implements DurableInboxStoreLike {
 
 const accepted = durableEvent('run_accepted', 'runtime', 'run:accepted', { origin: 'test', model: 'test/model' });
 
-describe('DurableRunRecorder admission and append modes', () => {
+describe('DurableRunRecorder admission and append', () => {
   it('initializes event and inbox stores before strict ingress is accepted', async () => {
     const eventStore = new MemoryEventStore();
     const inboxStore = new MemoryInboxStore();
@@ -148,7 +148,6 @@ describe('DurableRunRecorder admission and append modes', () => {
       inboxStore,
       sessionId: 'session-a',
       runId: 'run-a',
-      mode: 'next',
     });
 
     recorder.startIngress(accepted);
@@ -172,11 +171,11 @@ describe('DurableRunRecorder admission and append modes', () => {
     const log = vi.fn();
     const recorder = createDurableRunRecorder({
       eventStore,
+      inboxStore: new MemoryInboxStore(),
       sessionId: 'session-a',
       runId: 'run-a',
       origin: 'test',
       model: 'test/model',
-      mode: 'next',
       log,
     });
 
@@ -194,7 +193,6 @@ describe('DurableRunRecorder admission and append modes', () => {
       inboxStore,
       sessionId: 'session-a',
       runId: 'run-a',
-      mode: 'next',
     });
     first.startIngress(accepted);
     await first.ready;
@@ -204,7 +202,6 @@ describe('DurableRunRecorder admission and append modes', () => {
       inboxStore,
       sessionId: 'session-a',
       runId: 'run-a',
-      mode: 'next',
     });
     second.startIngress(accepted);
 
@@ -212,20 +209,19 @@ describe('DurableRunRecorder admission and append modes', () => {
     expect(eventStore.events.filter((event) => event.type === 'run_accepted')).toHaveLength(1);
   });
 
-  it('keeps shadow admission compatible and does not expose append failures', async () => {
-    const eventStore = new MemoryEventStore(undefined, new Error('disk full'));
+  it('records the strict current mode for each newly accepted run', async () => {
+    const eventStore = new MemoryEventStore();
     const recorder = createDurableRunRecorder({
       eventStore,
+      inboxStore: new MemoryInboxStore(),
       sessionId: 'session-a',
       runId: 'run-a',
       origin: 'test',
       model: 'test/model',
-      mode: 'shadow',
     });
 
     await expect(recorder.ready).resolves.toBeUndefined();
-    await recorder.flushBestEffort();
-    expect(recorder.error?.message).toBe('disk full');
+    expect(eventStore.events.find((event) => event.type === 'run_accepted')?.payload.durableHarnessMode).toBe('next');
   });
 
   it('propagates strict append failures to the caller', async () => {
@@ -236,7 +232,6 @@ describe('DurableRunRecorder admission and append modes', () => {
       inboxStore,
       sessionId: 'session-a',
       runId: 'run-a',
-      mode: 'next',
     });
 
     await expect(recorder.append(accepted)).rejects.toThrow('append unavailable');

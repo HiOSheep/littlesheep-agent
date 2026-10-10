@@ -10,7 +10,7 @@ const harness = createElectronHarness()
 const provider = await startElectronAcceptanceProvider({ streamChunkDelayMs: 20, streamChunkCharacters: 60 })
 const root = await mkdtemp(join(tmpdir(), 'littlesheep-chat-layout-'))
 const dataDir = join(root, 'data')
-const workspace = join(dataDir, 'workplace')
+const workspace = join(dataDir, 'projects', 'long-workspace-name-for-composer-layout')
 const report = { checks: [], measurements: {}, screenshots: [] }
 let child, client
 const record = (name) => { report.checks.push(name); console.log(`PASS ${name}`) }
@@ -43,7 +43,7 @@ async function screenshot(name) {
 const geometry = `(() => {
   const rect = (selector) => { const el=document.querySelector(selector); if(!el)return null;const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height} };
   const messages=document.querySelector('.messages'); const textarea=document.querySelector('.composer textarea');
-  return {header:rect('.chat-header'),messages:rect('.messages'),composer:rect('.composer'),shell:rect('.composer-shell'),chat:rect('.chat'),
+  return {header:rect('.chat-header'),messages:rect('.messages'),composer:rect('.composer'),shell:rect('.composer-shell'),chat:rect('.chat'),hint:rect('.empty-hint'),
     controls:rect('.composer-controls'),actions:rect('.composer-run-actions'),panel:rect('.chat-turn-panel'),
     overflow:messages.scrollWidth-messages.clientWidth,documentOverflow:document.documentElement.scrollWidth-innerWidth,
     draft:textarea.value,gap:messages.scrollHeight-messages.clientHeight-messages.scrollTop,
@@ -74,9 +74,74 @@ try {
   const empty = await evaluate(geometry)
   assert(empty.messages.top >= empty.header.bottom - 1)
   assert(empty.composer.bottom <= empty.chat.bottom + 1)
-  assert(empty.messages.bottom <= empty.shell.top + 1)
+  assert(Math.abs((empty.shell.top + empty.shell.bottom) / 2 - (empty.chat.top + empty.chat.bottom) / 2 - 24) <= 1)
+  assert.equal(empty.header.height, 0)
+  assert(empty.hint.bottom < empty.composer.top - 12, 'heading must sit above the input')
+  assert(Math.abs((empty.hint.left + empty.hint.right) / 2 - (empty.composer.left + empty.composer.right) / 2) <= 1, 'heading and input must share a centre')
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.empty-copy')).display"), 'none')
   await screenshot('empty')
 
+  const controlsGeometry = `(() => {
+    const rect = e => {const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2}};
+    const add=document.querySelector('.add-menu-trigger');
+    return {composer:rect(document.querySelector('.composer')),controls:rect(document.querySelector('.composer-controls')),
+      add:rect(add),glyph:rect(add.querySelector('svg')),fill:getComputedStyle(add).backgroundColor,
+      buttons:[...document.querySelectorAll('.composer-controls button')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height&&!e.closest('[aria-hidden="true"]')).map(rect)};
+  })()`
+  await client.send('Input.dispatchMouseEvent', {type:'mouseMoved',x:1,y:1})
+  const originalChatStyle = await evaluate("document.querySelector('.chat').getAttribute('style')")
+  let baseComposerHeight
+  report.measurements.composerWidths = []
+  for (const width of [700, 560, 480, 430, 360, 320]) {
+    await evaluate(`Object.assign(document.querySelector('.chat').style,{width:'${width}px',maxWidth:'${width}px',minWidth:'0'})`)
+    await delay(250)
+    const sample = await evaluate(controlsGeometry)
+    baseComposerHeight ??= sample.composer.height
+    assert(Math.abs(sample.composer.height-baseComposerHeight)<=1, `composer height changed at ${width}px`)
+    assert(Math.abs(sample.add.cx-sample.glyph.cx)<=.5 && Math.abs(sample.add.cy-sample.glyph.cy)<=.5, 'add glyph is not centered')
+    assert.equal(sample.fill,'rgba(0, 0, 0, 0)')
+    for (const button of sample.buttons) {
+      assert(button.left>=sample.composer.left-1 && button.right<=sample.composer.right+1, `control overflow at ${width}px`)
+      assert(button.top>=sample.controls.top-1 && button.bottom<=sample.controls.bottom+1, `control wrapped at ${width}px`)
+    }
+    report.measurements.composerWidths.push({width,...sample})
+  }
+  await screenshot('composer-320')
+  await draft('宽度变化时这一段草稿应该在现有输入区域内换行并滚动，不应撑高输入框。'.repeat(4))
+  const beforeResize = await evaluate(geometry)
+  await evaluate("Object.assign(document.querySelector('.chat').style,{width:'700px',maxWidth:'700px'})")
+  await delay(250)
+  const wideDraft = await evaluate(geometry)
+  await evaluate("Object.assign(document.querySelector('.chat').style,{width:'320px',maxWidth:'320px'})")
+  await delay(250)
+  const wrappedDraft = await evaluate(geometry)
+  assert(Math.abs(beforeResize.composer.height-wideDraft.composer.height)<=1)
+  assert(Math.abs(wrappedDraft.composer.height-wideDraft.composer.height)<=1)
+  assert.equal(wrappedDraft.draft,wideDraft.draft)
+  await draft('')
+  const addGeometry = (await evaluate(controlsGeometry)).add
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:addGeometry.cx,y:addGeometry.cy})
+  await delay(150)
+  assert.notEqual((await evaluate(controlsGeometry)).fill,'rgba(0, 0, 0, 0)')
+  await client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:1,y:1})
+  await delay(150)
+  assert.equal((await evaluate(controlsGeometry)).fill,'rgba(0, 0, 0, 0)')
+  await evaluate(`document.querySelector('.chat').setAttribute('style',${JSON.stringify(originalChatStyle ?? '')})`)
+  await delay(250)
+  record('composer remains one height from 700px to 320px, wrapped drafts scroll, and centered add circle appears only on hover')
+
+  await evaluate(`(() => {
+    window.composerMotionFrames = [];
+    const sample = time => {
+      const shell = document.querySelector('.composer-shell');
+      const r = shell.getBoundingClientRect();
+      window.composerMotionFrames.push({time, top:r.top, bottom:getComputedStyle(shell).bottom,
+        empty:document.querySelector('.messages').classList.contains('is-empty')});
+      if (!window.composerMotionFrames.some(frame => !frame.empty)
+        || time-window.composerMotionFrames.find(frame => !frame.empty).time < 600) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  })()`)
   await submit(`请输出验收文档：${LONG_MARKDOWN_MARKER}`)
   await wait("document.querySelector('.assistant-turn.running .assistant-process-content.open') ? true : null", 'bounded running state')
   assert.equal(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').getAttribute('aria-expanded')"), 'true')
@@ -84,9 +149,41 @@ try {
   assert(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').disabled"))
   record('DSH live process stays open and Stop remains reachable')
   await settled()
+  const motion = await evaluate('window.composerMotionFrames')
+  const moving = motion.filter(frame => !frame.empty)
+  assert(moving.length > 3, 'must sample multiple transition frames')
+  assert(moving.every(frame => frame.bottom === '0px'), 'bottom must stay fixed during movement')
+  for (let i=1;i<moving.length;i++) assert(moving[i].top >= moving[i-1].top-1, 'composer must not rebound upward')
+  assert(moving.some((frame,i) => i && frame.top > moving[i-1].top+1), 'must observe animated movement')
+  report.measurements.composerMotionFrames = motion
+  record('centre-to-bottom animation keeps bottom fixed and moves without upward rebound')
   const first = await evaluate(geometry)
-  assert(Math.abs(first.composer.bottom - empty.composer.bottom) < 1)
-  record('input stays at the same bottom position before and after sending')
+  assert(Math.abs(first.composer.bottom - first.chat.bottom) < 20)
+  record('input settles at the bottom after sending the first message')
+  await evaluate("(() => {const list=document.querySelector('.messages');list.scrollTop=list.scrollHeight-list.clientHeight-80})()")
+  await delay(250)
+  const glass = await evaluate(`(() => {
+    const composer=document.querySelector('.composer'),list=document.querySelector('.messages');
+    const bounds=composer.getBoundingClientRect(),styles=getComputedStyle(composer);
+    const walker=document.createTreeWalker(document.querySelector('.messages-content'),NodeFilter.SHOW_TEXT);
+    let linesBehind=0,node;
+    while(node=walker.nextNode()) {
+      if(!node.textContent.trim())continue;
+      const range=document.createRange();range.selectNodeContents(node);
+      for(const r of range.getClientRects()) if(r.top>=bounds.top&&r.bottom<=bounds.bottom&&r.left>=bounds.left&&r.right<=bounds.right)linesBehind++;
+    }
+    return {bottom:bounds.bottom,clipBottom:list.getBoundingClientRect().bottom,fill:styles.backgroundColor,blur:styles.backdropFilter,opacity:styles.opacity,linesBehind};
+  })()`)
+  assert(Math.abs(glass.clipBottom-glass.bottom)<=1)
+  assert(glass.linesBehind>0, 'transcript must continue behind the composer glass')
+  assert(glass.blur.includes('blur(20px)'))
+  assert(/(?:\/\s*|,\s*)0\.7\s*\)/u.test(glass.fill), 'composer must have a translucent fill')
+  assert.equal(glass.opacity,'1')
+  report.measurements.composerGlass=glass
+  await screenshot('composer-glass-scroll')
+  record('transcript scrolls behind translucent input glass and clips at its bottom edge')
+  await evaluate("document.querySelector('.messages').scrollTop=document.querySelector('.messages').scrollHeight")
+  await delay(100)
   await submit('请使用 glob 工具列出当前工作区顶层条目')
   await settled()
   assert.equal(await evaluate("document.querySelector('.assistant-turn:last-child .assistant-process-trigger').getAttribute('aria-expanded')"), 'false')
@@ -163,7 +260,7 @@ try {
   assert(narrow.overflow <= 1 && narrow.documentOverflow <= 1)
   assert(narrow.actions.left >= narrow.composer.left && narrow.actions.right <= narrow.composer.right + 1)
   assert(narrow.composer.top > narrow.header.bottom)
-  assert(narrow.messages.bottom <= narrow.shell.top + 1)
+  assert(Math.abs(narrow.messages.bottom-narrow.composer.bottom)<=1)
   assert(narrow.messages.height >= 80)
   await screenshot('narrow-draft')
   // Open the real split workspace to exercise a chat column below the responsive threshold.
@@ -174,7 +271,7 @@ try {
   assert(split.overflow <= 1 && split.documentOverflow <= 1)
   assert(split.actions.right <= split.composer.right + 1 && split.actions.left >= split.composer.left)
   assert(split.actions.bottom <= split.composer.bottom - 7, 'wrapped controls must retain the input surface bottom padding')
-  assert(split.messages.bottom <= split.shell.top + 1)
+  assert(Math.abs(split.messages.bottom-split.composer.bottom)<=1)
   await screenshot('split-draft')
   report.measurements.split = split
   report.measurements = { ...report.measurements, empty, first, narrow }

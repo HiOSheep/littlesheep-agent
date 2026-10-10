@@ -44,6 +44,10 @@ function backdropOf(body: string): string | null {
 
 /** The only declarations the renderer may carry, keyed by material role. */
 const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }> = {
+  'composer-glass': {
+    selectors: ['.composer'],
+    recipes: ['blur(20px) saturate(135%)'],
+  },
   // Floating panels: the sidebar card and the workspace panel.
   'panel-glass': {
     selectors: ['.sidebar-surface::before, .workspace-panel-surface::before'],
@@ -123,8 +127,8 @@ describe('material roles', () => {
   it('keeps the big materials on inset pseudo-elements, so their panels are not backdrop roots', () => {
     // The floating panels paint their material in an inset `::before`; the element
     // itself stays transparent. If the material moved onto the element, every popover
-    // inside it would lose its own backdrop. The composer is deliberately not in this
-    // list any more: its card is an opaque surface (DSH), not a glass layer.
+    // inside it would lose its own backdrop. The input is a separate floating glass
+    // surface whose requested material is checked below.
     const panel = rules(styles).find((rule) => rule.selector === '.sidebar-surface')
     expect(panel, '.sidebar-surface rule is missing').toBeDefined()
     expect(panel!.body).toContain('background: transparent;')
@@ -132,7 +136,7 @@ describe('material roles', () => {
 
     const composer = rules(styles).find((rule) => rule.selector === '.composer')
     expect(composer, '.composer rule is missing').toBeDefined()
-    expect(backdropOf(composer!.body), '.composer must not carry a blur').toBeNull()
+    expect(backdropOf(composer!.body)).toBe('blur(20px) saturate(135%)')
   })
 
   it('gives long content a stable fill instead of glass', () => {

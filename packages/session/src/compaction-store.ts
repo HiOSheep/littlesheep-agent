@@ -25,8 +25,6 @@ import {
   isCompactionSummaryV2,
   parsePendingTransaction,
   type CompactionCommitPrecondition,
-  type CompactionMemoryCandidateOutcome,
-  type CompactionMemoryProposal,
   type PendingCompactionTransaction,
   type SessionSummaryActivationRecord,
 } from './compaction-store-codec.js';
@@ -49,7 +47,6 @@ export class SessionCompactionStore {
     summary: CompactionSummaryV2,
     preconditionOrApply: CompactionCommitPrecondition | ((summary: CompactionSummaryV2) => Promise<void>),
     applyTransaction?: (transaction: PendingCompactionTransaction) => Promise<void>,
-    memoryProposal?: CompactionMemoryProposal,
   ): Promise<void> {
     const legacyApply = typeof preconditionOrApply === 'function' ? preconditionOrApply : undefined;
     await this.ensureLayout(sessionId);
@@ -66,7 +63,6 @@ export class SessionCompactionStore {
           sessionId: String(sessionId),
           summary,
           precondition: preconditionOrApply as CompactionCommitPrecondition,
-          ...(memoryProposal ? { memoryProposal } : {}),
           createdAt: new Date().toISOString(),
         };
     const pendingPath = this.pendingPath(sessionId, summary.id);
@@ -76,14 +72,9 @@ export class SessionCompactionStore {
       if (legacyApply) await legacyApply(summary);
       else await applyTransaction!(transaction);
       await this.pruneActivationRecords(sessionId, summary.id);
-      if (transaction.version === COMPACTION_TRANSACTION_VERSION && transaction.memoryProposal) {
-        transaction.summaryCommittedAt = new Date().toISOString();
-        await atomicWriteText(pendingPath, JSON.stringify(transaction, null, 2));
-      } else {
-        await unlink(pendingPath).catch((error: unknown) => {
-          if (errorCode(error) !== 'ENOENT') throw error;
-        });
-      }
+      await unlink(pendingPath).catch((error: unknown) => {
+        if (errorCode(error) !== 'ENOENT') throw error;
+      });
     } catch (error) {
       // Keep transient failures pending so recovery can retry them; only isolate terminal conflicts.
       if (isTerminalCompactionConflict(error)) {
@@ -155,23 +146,6 @@ export class SessionCompactionStore {
     return transactions;
   }
 
-  async recordCandidateOutcome(
-    sessionId: SessionId,
-    summaryId: string,
-    outcome: CompactionMemoryCandidateOutcome,
-  ): Promise<void> {
-    const path = this.pendingPath(sessionId, summaryId);
-    if (!existsSync(path)) return;
-    const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
-    if (transaction.version !== 2 || !transaction.memoryProposal) return;
-    const candidateIds = new Set(transaction.memoryProposal.candidates.map((candidate) => candidate.id));
-    if (!candidateIds.has(outcome.candidateId)) throw new Error(`Unknown compaction candidate: ${outcome.candidateId}`);
-    const outcomes = transaction.memoryProposal.outcomes.filter((entry) => entry.candidateId !== outcome.candidateId);
-    outcomes.push(structuredClone(outcome));
-    transaction.memoryProposal.outcomes = outcomes;
-    await atomicWriteText(path, JSON.stringify(transaction, null, 2));
-  }
-
   /**
    * Closes a proposal that will never be settled (RS-05): every candidate without an outcome is
    * recorded as rejected with the given reason, and the proposal carries a termination stamp. The
@@ -199,20 +173,6 @@ export class SessionCompactionStore {
     transaction.memoryProposal.terminatedAt = updatedAt;
     transaction.memoryProposal.terminationReason = reason;
     await atomicWriteText(path, JSON.stringify(transaction, null, 2));
-  }
-
-  async completeMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
-    const path = this.pendingPath(sessionId, summaryId);
-    if (!existsSync(path)) return;
-    const transaction = parsePendingTransaction(await readFile(path, 'utf8'), String(sessionId));
-    if (transaction.version !== 2 || !transaction.memoryProposal) return;
-    const candidateIds = new Set(transaction.memoryProposal.candidates.map((candidate) => candidate.id));
-    const outcomeIds = new Set(transaction.memoryProposal.outcomes.map((outcome) => outcome.candidateId));
-    if ([...candidateIds].some((id) => !outcomeIds.has(id))) {
-      throw new Error(`Compaction memory proposal ${summaryId} still has pending candidates.`);
-    }
-    await unlink(path);
-    await rmdir(this.pendingDir(sessionId)).catch(() => undefined);
   }
 
   async load(sessionId: SessionId, summaryId: string): Promise<CompactionSummary | undefined> {

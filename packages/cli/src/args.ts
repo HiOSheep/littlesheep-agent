@@ -35,7 +35,7 @@ export const USAGE = `Usage: littlesheep [options] [text]
     memory experience decay
                           Decay experience confidence + prune low-confidence entries
     memory import-repo <path-or-url>
-                          Distill a repo's knowledge into the experience DB via LLM
+                          Distill a repo's knowledge into experience memory via LLM
 
   If [text] is given, run single-shot and exit. Otherwise start REPL.`;
 

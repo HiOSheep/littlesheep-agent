@@ -22,7 +22,7 @@ import {
   writeBooleanPreference,
   writeNumberPreference,
 } from '../app-shell/preferences'
-import { syncComposerInputHeight } from '../composer/input-size'
+import { syncComposerInputHeight, syncComposerInputOverflow } from '../composer/input-size'
 import { beginSidebarResizeInteraction } from '../sidebar/resize-interaction'
 import { FloatingHelpTip } from '../ui/floating-help'
 import {
@@ -239,7 +239,11 @@ export function useWorkspaceLayoutController({
 
   useLayoutEffect(() => {
     syncComposerInputHeight(inputRef.current)
-  }, [input, sidebarCollapsed, sidebarWidth, viewportWidth, workspacePanelCollapsed, workspacePanelLayout.width])
+  }, [input])
+
+  useLayoutEffect(() => {
+    syncComposerInputOverflow(inputRef.current)
+  }, [sidebarCollapsed, sidebarWidth, viewportWidth, workspacePanelCollapsed, workspacePanelLayout.width])
 
   useEffect(() => {
     const textarea = inputRef.current
@@ -341,7 +345,7 @@ export function useWorkspaceLayoutController({
     window.cancelAnimationFrame(composerSyncFrameRef.current ?? 0)
     composerSyncFrameRef.current = window.requestAnimationFrame(() => {
       composerSyncFrameRef.current = undefined
-      syncComposerInputHeight(inputRef.current)
+      syncComposerInputOverflow(inputRef.current)
     })
   }
 

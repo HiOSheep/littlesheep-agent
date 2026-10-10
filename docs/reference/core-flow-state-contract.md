@@ -60,7 +60,7 @@ manifest 另外保留以下**兼容边**，它们只服务旧检查点读取与�
 
 ## Runner Coordinator
 
-Runner 的最小 coordinator 由 `packages/runner/src/runner-coordinator.ts` 约束，固定执行 `prepare -> execute -> finalize -> persist`。`runner-execute.ts` 只负责 Harness 与运行时 checkpoint，`runner-finalize.ts` 负责记忆/会话收尾与结果装配，`runner-persist.ts` 负责 execution log、上一轮摘要和版本 checkpoint 完成；这些 helper 不重新承担 LLM 语义决策。当前只有一个驱动：每次 run 都走 durable 路径，`durableHarnessMode` 只是持久化事件里的**历史标签**，默认 `next`，按 session/origin/profile 的覆盖已不能把 run 降级到已删除的 shadow 路径。
+Runner 的最小 coordinator 由 `packages/runner/src/runner-coordinator.ts` 约束，固定执行 `prepare -> execute -> finalize -> persist`。`runner-execute.ts` 只负责 Harness 与运行时 checkpoint，`runner-finalize.ts` 负责记忆/会话收尾与结果装配，`runner-persist.ts` 负责 execution log、上一轮摘要和版本 checkpoint 完成；这些 helper 不重新承担 LLM 语义决策。每个新 run 固定走严格 durable 路径，并记录 `next`；执行模式与 session/origin/profile overrides 已从 Runner 接口移除。`shadow` 只作为历史事件、用量索引和回放记录的兼容标签读取。
 
 ## RunContext Ownership
 

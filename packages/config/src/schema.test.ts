@@ -46,6 +46,10 @@ describe('config schema', () => {
     });
   });
 
+  it('derives DEFAULT_CONFIG from the schema defaults', () => {
+    expect(DEFAULT_CONFIG).toEqual(ConfigSchema.parse({}));
+  });
+
   it('accepts full config and merges defaults', () => {
     const cfg = ConfigSchema.parse({
       version: 1,
@@ -56,6 +60,9 @@ describe('config schema', () => {
     expect(cfg.agents.defaults.profile).toBe('general');
     expect(cfg.agents.defaults.maxRecoveryAttempts).toBe(3);
     expect(cfg.tools.exec.whitelist.length).toBeGreaterThan(0);
+    expect(cfg.tools).toEqual(DEFAULT_CONFIG.tools);
+    expect(cfg.web).toEqual(DEFAULT_CONFIG.web);
+    expect(cfg.sessions).toEqual(DEFAULT_CONFIG.sessions);
   });
 
   it('accepts coding as a behavior profile', () => {

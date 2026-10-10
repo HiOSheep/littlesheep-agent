@@ -24,6 +24,7 @@ import {
   withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { resolveReasoning } from './runtime-routes.js'
+import { writeToolEventSse } from './run-tool-event-projection.js'
 import {
   pendingCheckpointHeads,
   toCheckpointDetail,
@@ -276,7 +277,7 @@ async function streamCheckpointResume(
       continuationDirective: 'answer',
       onAssistantDelta: (delta) => writeSse(res, 'delta', { delta }),
       onAssistantReplace: (replacement) => writeSse(res, 'replace', { text: replacement }),
-      onToolEvent: (event) => writeSse(res, event.type, event),
+      onToolEvent: (event) => writeToolEventSse(res, event),
     })
     if (result.runId !== runId) throw new Error('runner returned an unexpected resumed run id')
     const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'

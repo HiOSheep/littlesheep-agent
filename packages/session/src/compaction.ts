@@ -7,7 +7,6 @@ import {
   type SessionId,
 } from '@littlesheep/types';
 import type { SessionManager } from './manager.js';
-import type { CompactionMemoryCandidate, CompactionMemoryProposal } from './compaction-store-codec.js';
 
 const MAX_COMPACTION_SOURCE_RUN_IDS = 64;
 const COMPACTION_POLICY_VERSION = 3;
@@ -25,9 +24,6 @@ export interface CompactionSummaryInput {
 export interface CompactionSummaryOutput {
   summary: string;
   model?: string;
-  requestId?: string;
-  memoryCandidates?: CompactionMemoryCandidate[];
-  memoryEvidenceComplete?: boolean;
 }
 
 export interface CompactionOptions {
@@ -177,22 +173,13 @@ export async function maybeCompact(
     sourceHash,
     lineageHash,
   });
-  const memoryProposal: CompactionMemoryProposal | undefined = output.memoryCandidates
-    ? {
-        version: 1,
-        requestId: output.requestId,
-        evidenceComplete: output.memoryEvidenceComplete === true,
-        candidates: structuredClone(output.memoryCandidates.slice(0, 8)),
-        outcomes: [],
-      }
-    : undefined;
   await manager.commitCompaction(sessionId, record, {
     expectedPreviousSummaryId: previous?.id ?? null,
     sourceEndMessageId: last.id,
     sourceHash,
     policyVersion: COMPACTION_POLICY_VERSION,
     transactionKey,
-  }, memoryProposal);
+  });
   return record;
 }
 

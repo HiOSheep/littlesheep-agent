@@ -12,15 +12,15 @@ This area owns reusable visual roles, focus primitives, icons, notices, state vi
 
 `ContextMenuSurface` 为应用窗口提供统一右键菜单：18px 外圆角、11px 选项圆角，沿用菜单背景、边框、阴影与主题色；窗口边缘自动翻转定位，方向键／Home／End 导航，Escape／Tab 退出，点击外部、滚动和失焦关闭。原生输入、选中文字、链接和图片动作来自 Main 的能力投影；文件树与预览通过 `openContextMenu` 提供已有领域操作。执行前恢复原焦点，失败明确显示，不用 DOM 编辑替代原生撤销或剪贴板。
 
-Glass identifies a floating surface. Long reading surfaces, code and dense settings remain on stable opaque surfaces. Keep the established rounded visual language; use one blur layer per visual surface and shared tokens for fill, border, shadow and radius. The conversation area (2026-10-03) follows the DeepSeek-Harness design language instead of the glass language: one measured reading column, hairline separation, a tinted reader bubble, a solid elevated composer card and flat detail panels. Its tokens (`--chat-*`, defined in `styles/03-shell-sidebar.css` and refined per theme in `styles/17-appearance-theme.css`) derive from the existing surface/text roles, so the custom palette keeps working.
+Glass identifies a floating surface. Long reading surfaces, code and dense settings remain on stable opaque surfaces. Keep the established rounded visual language; use one blur layer per visual surface and shared tokens for fill, border, shadow and radius. The conversation area (2026-10-03) combines DeepSeek-Harness's measured reading column, hairline separation, tinted reader bubble and flat detail panels with a translucent frosted composer overlay. The transcript scrolls behind this input surface and clips at its bottom edge. Its tokens (`--chat-*`, defined in `styles/03-shell-sidebar.css` and refined per theme in `styles/17-appearance-theme.css`) derive from the existing surface/text roles, so the custom palette keeps working.
 
 | Role | Use |
 | --- | --- |
 | Floating panel | Sidebar and workspace surfaces that sit above the application canvas. |
-| Composer and menu | Floating task strip, the two ways out of the transcript (first line / newest message), pickers and action menus. |
+| Composer and menu | Frosted input overlay, floating task strip, transcript navigation, pickers and action menus. |
 | Workspace tab | A lighter glass layer for the active tab above the chat column. |
 | Scrim | Darkens the background behind a modal; it is not a content surface. |
-| Stable surface | Messages, the composer card, conversation panels, code, settings canvas, lists and other dense reading areas. |
+| Stable surface | Messages, conversation panels, code, settings canvas, lists and other dense reading areas. |
 
 The visual source lives in Renderer styles. The material-role test inventories backdrop-filter declarations so a new blur surface must have an explicit role.
 

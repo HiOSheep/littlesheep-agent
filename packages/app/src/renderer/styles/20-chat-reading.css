@@ -106,22 +106,43 @@
 .chat-turn-footer, .chat-turn-empty { color: var(--muted); padding: 6px 8px; font-size: 11px; }
 .chat-turn-empty { padding-block: 24px; text-align: center; }
 
-/* The input consumes layout height; transcript lines cannot leak below its surface. */
-.composer-shell { position: relative; flex: 0 0 auto; right: auto; left: auto; bottom: auto; width: 100%; }
-/* DSH reads on a 16px flow gap; the last line keeps one step of clearance before the
-   in-flow composer card instead of the old overlay reservation (2026-10-03). */
-.messages { margin-bottom: 0; padding-bottom: var(--chat-flow-gap); scroll-padding-bottom: var(--chat-flow-gap); }
-.messages.is-empty { padding-bottom: var(--chat-flow-gap); }
+/* The transcript scrolls behind the input glass and clips at the input's bottom edge. */
+.composer-shell { position: absolute; flex: 0 0 auto; right: var(--chat-workspace-scrollbar-overlap); left: 0; bottom: 0; }
+.messages {
+  margin-bottom: var(--composer-shell-inset-bottom);
+  padding-bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-bottom) + var(--chat-flow-gap));
+  scroll-padding-bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-bottom) + var(--chat-flow-gap));
+}
+.messages.is-empty { padding-bottom: calc(var(--composer-overlay-height) - var(--composer-shell-inset-bottom) + var(--chat-flow-gap)); }
 .chat-jump-controls { bottom: calc(var(--composer-overlay-height) + 12px); }
-/* Keep the input where the reader will use it, including an empty conversation. */
-.messages.is-empty ~ .composer-shell { bottom: 0; transform: none; }
-.messages.is-empty .empty-hint { margin-bottom: 0; max-width: 480px; text-align: center; }
-.messages.is-empty { padding-top: 20px; }
-/* DSH's hero headline: one medium-weight line over a quiet paragraph, sitting on the
-   same reading measure as the transcript. */
-.empty-hint .empty-title { font-size: calc(26px * var(--ui-font-scale, 1)); font-weight: 500; letter-spacing: -0.01em; line-height: 32px; }
-.empty-hint .empty-copy { max-width: 42ch; color: var(--muted-2); font-size: var(--chat-font-size-secondary); line-height: var(--chat-line-height-secondary); }
-.messages.is-empty .history-loading { margin-bottom: 0; }
+/* The empty conversation is one compact, centred entrance. The measured shell
+   height keeps the heading above attachments and growing drafts. */
+.chat:has(.messages.is-empty) .chat-header { display: none; }
+.messages.is-empty { padding: 0; margin-bottom: 0; }
+.messages.is-empty ~ .composer-shell {
+  bottom: 0;
+  transform: translateY(calc((var(--composer-overlay-height) - var(--composer-viewport-height)) / 2 + 24px));
+}
+.messages.is-empty .empty-hint,
+.messages.is-empty .history-loading {
+  position: absolute;
+  top: calc(50% - var(--composer-overlay-height) / 2 - 24px);
+  left: 0;
+  right: var(--chat-workspace-scrollbar-overlap);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0 var(--chat-content-gutter);
+  transform: translateY(-50%);
+}
+.messages.is-empty .empty-hint .void-ring-companion { width: 28px; height: 28px; flex: 0 0 28px; margin: 0; }
+.messages.is-empty .empty-hint .void-ring { width: 28px; height: 28px; margin: 0; }
+.empty-hint .empty-title { font-size: calc(22px * var(--ui-font-scale, 1)); font-weight: 500; letter-spacing: -0.01em; line-height: 30px; }
+.messages.is-empty .empty-copy { display: none; }
 .message-image-strip { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; width: 100%; margin-bottom: 8px; }
 .message-image-thumbnail { display: grid; place-items: center; width: 120px; height: 120px; max-width: 100%; padding: 0; overflow: hidden; border: 0; border-radius: var(--radius-ui); background: var(--surface-3); cursor: pointer; }
 .message-image-thumbnail img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -169,15 +190,18 @@
   .chat-header .running-pill-root { max-width: calc(100% - 102px); }
   .chat-turn-position { display: none; }
   .message-with-meta.user > .message { max-width: 96%; }
-  .composer-controls { flex-wrap: wrap; row-gap: 6px; }
+  .composer-controls { flex-wrap: nowrap; }
   .composer-left { flex: 1 1 auto; }
-  .composer-right { flex: 1 1 auto; max-width: 100%; }
+  .composer-right { flex: 0 1 auto; max-width: 100%; }
   .composer-right:has(.runtime-picker.open),
   .composer-right:has(.runtime-picker-trigger:hover),
-  .composer-right:has(.runtime-picker-trigger:focus-visible) { flex: 1 1 auto; }
-  .composer-right .runtime-picker { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 90px); }
+  .composer-right:has(.runtime-picker-trigger:focus-visible) { flex: 0 1 auto; }
+  .composer-right .runtime-picker { flex: 0 1 auto; min-width: 0; max-width: 100%; }
   .composer-right .runtime-picker-trigger { max-width: 100%; }
+  .composer-right .runtime-picker-label-group { flex: 1 1 auto; min-width: 0; }
   .composer-right .runtime-picker-model { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .composer-left .workspace-context-chip { min-width: 0; }
+  .composer-left .workspace-context-label { display: none; }
   .assistant-process-counts { display: none; }
 }
 @media (hover: none) { .message-meta { opacity: 1; } }
@@ -267,6 +291,14 @@
   .composer-left, .composer-right, .composer-controls { gap: 8px; }
   .assistant-process-verification { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .agent-tool-detail-section { padding: 10px 12px; column-gap: 10px; }
+}
+@container chat-pane (max-width: 480px) {
+  .composer-left .mode-picker { flex: 0 0 var(--mode-picker-compact-width); width: var(--mode-picker-compact-width); }
+  .composer-left .mode-picker-content .model-picker-current { display: none; }
+}
+@container chat-pane (max-width: 380px) {
+  .composer-left .workspace-context-chip { display: none; }
+  .composer-right .runtime-picker-reasoning { display: none; }
 }
 @media (hover: none) { .agent-tool-open-file { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .chat .is-running { animation: none; background: none; color: var(--muted); } }

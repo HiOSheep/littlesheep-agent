@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { textMessage, type CompactionSummaryV2, type Message } from '@littlesheep/types';
 import { SessionManager, StaleCompactionError } from './manager.js';
-import { hashCompactionMessages, maybeCompact } from './compaction.js';
+import { hashCompactionMessages, maybeCompact, type CompactionSummaryOutput } from './compaction.js';
 
 const tempDirs: string[] = [];
 
@@ -239,38 +239,22 @@ describe('maybeCompact', () => {
     expect((await manager.read(sessionId))).toHaveLength(10);
   });
 
-  it('persists memory candidates in the same compaction transaction before projection settlement', async () => {
+  it('writes a summary-only transaction when an old summarizer returns retired candidate fields', async () => {
     const { manager, sessionId } = await managerWithMessages(7);
+    const legacyOutput = {
+      summary: 'summary with retired candidates',
+      memoryEvidenceComplete: true,
+      memoryCandidates: [{ id: 'candidate-1', summary: 'must not be persisted' }],
+    } as unknown as CompactionSummaryOutput;
     const result = await maybeCompact(manager, sessionId, {
       threshold: 1,
       keepRecent: 2,
-      summarize: async () => ({
-        summary: 'summary with candidate',
-        memoryEvidenceComplete: true,
-        memoryCandidates: [{
-          id: 'candidate-1',
-          branch: 'long-term',
-          parentNodeId: 'long-term:root',
-          scope: 'global',
-          summary: 'User preference',
-          content: 'The user prefers concise responses.',
-          retrievalKeys: ['preference', 'concise'],
-          sourceMessageIds: ['message-1'],
-          importance: 0.8,
-          confidence: 0.9,
-          reason: 'Explicit preference in the covered source.',
-        }],
-      }),
+      summarize: async () => legacyOutput,
     });
 
-    expect(await manager.listPendingCompactions(sessionId)).toMatchObject([{
-      summary: { id: result?.id },
-      memoryProposal: {
-        evidenceComplete: true,
-        candidates: [{ id: 'candidate-1', sourceMessageIds: ['message-1'] }],
-        outcomes: [],
-      },
-    }]);
+    expect(result?.summary).toBe(legacyOutput.summary);
+    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
+    expect((await manager.loadMetadata(sessionId))?.compaction?.id).toBe(result?.id);
   });
 
   // C10A: a failed model call before persistence leaves no summary and no durable proposal.
@@ -287,68 +271,6 @@ describe('maybeCompact', () => {
     expect((await manager.loadMetadata(sessionId))?.compaction).toBeUndefined();
     expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
     expect(await manager.read(sessionId)).toHaveLength(7);
-  });
-
-  // HC-05: an empty candidate list is a legal complete proposal and needs no further model work.
-  it('accepts an empty candidate list as a complete compaction proposal', async () => {
-    const { manager, sessionId } = await managerWithMessages(7);
-    const result = await maybeCompact(manager, sessionId, {
-      threshold: 1,
-      keepRecent: 2,
-      summarize: async () => ({
-        summary: 'summary without durable candidates',
-        memoryEvidenceComplete: true,
-        memoryCandidates: [],
-      }),
-    });
-    expect(result).toBeTruthy();
-
-    expect(await manager.listPendingCompactions(sessionId)).toMatchObject([{
-      summary: { id: result?.id },
-      memoryProposal: { candidates: [], outcomes: [] },
-    }]);
-    await manager.completeCompactionMemoryProposal(sessionId, result!.id);
-    expect(await manager.listPendingCompactions(sessionId)).toEqual([]);
-    expect((await manager.loadMetadata(sessionId))?.compaction?.id).toBe(result!.id);
-  });
-
-  // C10A: the pending proposal survives a process restart and each candidate outcome stays single-write.
-  it('recovers a committed proposal after a manager restart and settles each candidate once', async () => {
-    const { manager, sessionId, dir } = await managerWithMessages(7);
-    const first = await maybeCompact(manager, sessionId, {
-      threshold: 1,
-      keepRecent: 2,
-      summarize: async () => ({
-        summary: 'summary with two candidates',
-        memoryEvidenceComplete: true,
-        memoryCandidates: [candidate('candidate-a'), candidate('candidate-b')],
-      }),
-    });
-    expect(first).toBeTruthy();
-
-    const reopened = new SessionManager({ sessionsDir: dir });
-    expect(await reopened.listPendingCompactions(sessionId)).toMatchObject([{
-      version: 2,
-      summary: { id: first!.id },
-      summaryCommittedAt: expect.any(String),
-      memoryProposal: { candidates: [{ id: 'candidate-a' }, { id: 'candidate-b' }], outcomes: [] },
-    }]);
-
-    await reopened.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-a'));
-    await reopened.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-a'));
-
-    // Simulate another crash between partial candidate commits.
-    const afterCrash = new SessionManager({ sessionsDir: dir });
-    const partial = (await afterCrash.listPendingCompactions(sessionId))[0];
-    expect(partial?.version).toBe(2);
-    expect(partial?.version === 2 ? partial.memoryProposal?.outcomes : []).toHaveLength(1);
-
-    await afterCrash.recordCompactionCandidateOutcome(sessionId, first!.id, candidateOutcome('candidate-b'));
-    await afterCrash.completeCompactionMemoryProposal(sessionId, first!.id);
-
-    expect(await afterCrash.listPendingCompactions(sessionId)).toEqual([]);
-    expect((await afterCrash.loadMetadata(sessionId))?.compaction?.id).toBe(first!.id);
-    await expect(afterCrash.loadCompactionProjection(sessionId, first!.id)).resolves.toBeTruthy();
   });
 
   // C10A: an old compactor losing the predecessor race must not replace the active summary.
@@ -523,29 +445,3 @@ describe('maybeCompact', () => {
     expect(extended.sourceRunIdsTruncated).toBe(true);
   });
 });
-
-function candidate(id: string) {
-  return {
-    id,
-    branch: 'long-term' as const,
-    parentNodeId: 'long-term:root',
-    scope: 'global' as const,
-    summary: `Candidate ${id}`,
-    content: `Durable candidate ${id}.`,
-    retrievalKeys: [id, 'durable'],
-    sourceMessageIds: ['message-1'],
-    importance: 0.8,
-    confidence: 0.9,
-    reason: 'Synthetic durable candidate for the restart contract.',
-  };
-}
-
-function candidateOutcome(candidateId: string) {
-  return {
-    candidateId,
-    status: 'committed' as const,
-    nodeId: `node-${candidateId}`,
-    reason: 'created',
-    updatedAt: new Date().toISOString(),
-  };
-}

@@ -30,8 +30,6 @@ import { SessionCompactionStore } from './compaction-store.js';
 import { hashCompactionMessages } from './compaction.js';
 import type {
   CompactionCommitPrecondition,
-  CompactionMemoryCandidateOutcome,
-  CompactionMemoryProposal,
   PendingCompactionTransaction,
 } from './compaction-store-codec.js';
 import { ReplyFingerprintStore } from './reply-fingerprint-store.js';
@@ -421,7 +419,6 @@ export class SessionManager implements SessionManagerLike {
     sessionId: SessionId,
     summary: CompactionSummaryV2,
     precondition?: CompactionCommitPrecondition,
-    memoryProposal?: CompactionMemoryProposal,
   ): Promise<void> {
     const file = this.sessionFile(sessionId);
     let handle: LockHandle | null = null;
@@ -430,7 +427,7 @@ export class SessionManager implements SessionManagerLike {
       if (precondition) {
         await this.compactions.commit(sessionId, summary, precondition, async (transaction) => {
           await this.applyCompactionTransactionWithoutLock(sessionId, transaction);
-        }, memoryProposal);
+        });
       } else {
         // Legacy callers keep the version-1 protocol: no source-prefix CAS, recovery stays retryable.
         await this.compactions.commit(sessionId, summary, async (committed) => {
@@ -447,35 +444,11 @@ export class SessionManager implements SessionManagerLike {
     return this.compactions.listPending(sessionId);
   }
 
-  async recordCompactionCandidateOutcome(
-    sessionId: SessionId,
-    summaryId: string,
-    outcome: CompactionMemoryCandidateOutcome,
-  ): Promise<void> {
-    const file = this.sessionFile(sessionId);
-    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
-    try {
-      await this.compactions.recordCandidateOutcome(sessionId, summaryId, outcome);
-    } finally {
-      await handle.release();
-    }
-  }
-
   async terminateCompactionMemoryProposal(sessionId: SessionId, summaryId: string, reason: string): Promise<void> {
     const file = this.sessionFile(sessionId);
     const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
     try {
       await this.compactions.terminateMemoryProposal(sessionId, summaryId, reason);
-    } finally {
-      await handle.release();
-    }
-  }
-
-  async completeCompactionMemoryProposal(sessionId: SessionId, summaryId: string): Promise<void> {
-    const file = this.sessionFile(sessionId);
-    const handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
-    try {
-      await this.compactions.completeMemoryProposal(sessionId, summaryId);
     } finally {
       await handle.release();
     }

@@ -237,9 +237,15 @@ importers:
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core
+      '@littlesheep/memory-tree':
+        specifier: workspace:*
+        version: link:../memory-tree
       '@littlesheep/runner':
         specifier: workspace:*
         version: link:../runner
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
       '@littlesheep/snapshot':
         specifier: workspace:*
         version: link:../snapshot
@@ -376,15 +382,9 @@ importers:
 
   packages/memory-core:
     dependencies:
-      '@littlesheep/safety':
-        specifier: workspace:*
-        version: link:../safety
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types
-      zod:
-        specifier: ^3.23.0
-        version: 3.25.76
 
   packages/memory-tree:
     dependencies:

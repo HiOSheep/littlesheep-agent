@@ -1,13 +1,12 @@
 import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { asSessionId, type CompactionSummaryV2 } from '@littlesheep/types';
 import type {
   CompactionCommitPrecondition,
-  CompactionMemoryCandidateOutcome,
   CompactionMemoryProposal,
 } from './compaction-store-codec.js';
 import { SessionCompactionStore } from './compaction-store.js';
@@ -19,38 +18,25 @@ afterEach(async () => {
 });
 
 describe('SessionCompactionStore', () => {
-  it('retains candidate progress across reopen and closes only after every outcome is durable', async () => {
+  it('writes current compaction transactions without a legacy proposal', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
+    tempDirs.push(directory);
+    const sessionId = asSessionId('session-summary-only');
+    const item = summary({ id: 'summary-only' });
+    const store = new SessionCompactionStore(directory);
+    await store.commit(sessionId, item, preconditionFor(item), async () => undefined);
+
+    expect(await store.listPending(sessionId)).toEqual([]);
+    await expect(store.load(sessionId, item.id)).resolves.toEqual(item);
+  });
+
+  it('decodes and terminates an old proposal while preserving its audit across replay', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
     tempDirs.push(directory);
     const sessionId = asSessionId('session-candidates');
     const item = summary({ id: 'summary-candidates' });
-    const precondition: CompactionCommitPrecondition = {
-      expectedPreviousSummaryId: null,
-      sourceEndMessageId: item.sourceEndMessageId,
-      sourceHash: item.sourceHash,
-      policyVersion: 3,
-      transactionKey: item.id,
-    };
-    const proposal: CompactionMemoryProposal = {
-      version: 1,
-      evidenceComplete: true,
-      outcomes: [],
-      candidates: ['a', 'b'].map((id) => ({
-        id,
-        branch: 'long-term' as const,
-        parentNodeId: 'long-term:root',
-        scope: 'global' as const,
-        summary: `candidate-${id}`,
-        content: `content-${id}`,
-        retrievalKeys: [id],
-        sourceMessageIds: ['message-1'],
-        importance: 0.8,
-        confidence: 0.8,
-        reason: 'durable candidate test',
-      })),
-    };
     const store = new SessionCompactionStore(directory);
-    await store.commit(sessionId, item, precondition, async () => undefined, proposal);
+    await seedLegacyProposal(store, directory, sessionId, item, legacyProposalFor(['a', 'b']));
 
     const reopened = new SessionCompactionStore(directory);
     expect(await reopened.listPending(sessionId)).toMatchObject([{
@@ -58,49 +44,22 @@ describe('SessionCompactionStore', () => {
       summary: { id: item.id },
       memoryProposal: { candidates: [{ id: 'a' }, { id: 'b' }], outcomes: [] },
     }]);
-    await reopened.recordCandidateOutcome(sessionId, item.id, {
-      candidateId: 'a', status: 'committed', nodeId: 'node-a', reason: 'created', updatedAt: new Date().toISOString(),
-    });
-    const pending = (await reopened.listPending(sessionId))[0];
-    expect(pending?.version).toBe(2);
-    expect(pending?.version === 2 ? pending.memoryProposal?.outcomes : undefined).toHaveLength(1);
-    await reopened.recordCandidateOutcome(sessionId, item.id, {
-      candidateId: 'b', status: 'rejected', reason: 'gate rejected', updatedAt: new Date().toISOString(),
-    });
-    expect(await reopened.listPending(sessionId)).toHaveLength(1);
-    await reopened.completeMemoryProposal(sessionId, item.id);
-    expect(await reopened.listPending(sessionId)).toEqual([]);
-  });
+    await reopened.terminateMemoryProposal(sessionId, item.id, 'retired by the running build');
+    const terminated = (await reopened.listPending(sessionId))[0];
+    expect(terminated?.version).toBe(2);
+    const proposal = terminated?.version === 2 ? terminated.memoryProposal : undefined;
+    expect(proposal?.terminatedAt).toBeTruthy();
+    expect(proposal?.terminationReason).toBe('retired by the running build');
+    expect(proposal?.outcomes).toHaveLength(2);
+    expect(proposal?.outcomes.every((outcome) => outcome.status === 'rejected')).toBe(true);
 
-  // C10A: a crash after the summary commit but before candidate settlement must stay recoverable.
-  it('re-applies a committed proposal on recovery and refuses to close before every outcome is durable', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
-    tempDirs.push(directory);
-    const sessionId = asSessionId('session-recovery');
-    const item = summary({ id: 'summary-recovery' });
-    const store = new SessionCompactionStore(directory);
-    await store.commit(sessionId, item, preconditionFor(item), async () => undefined, proposalFor(['a', 'b']));
-
-    const reopened = new SessionCompactionStore(directory);
-    const applied: string[] = [];
-    expect(await reopened.recover(sessionId, async (transaction) => {
-      applied.push(transaction.summary.id);
-    })).toBe(1);
-    expect(applied).toEqual([item.id]);
-    await expect(reopened.load(sessionId, item.id)).resolves.toEqual(item);
-    expect(await reopened.listPending(sessionId)).toMatchObject([{
-      version: 2,
-      summary: { id: item.id },
-      summaryCommittedAt: expect.any(String),
-      memoryProposal: { outcomes: [] },
-    }]);
-
-    await expect(reopened.completeMemoryProposal(sessionId, item.id))
-      .rejects.toThrow('still has pending candidates');
-    await reopened.recordCandidateOutcome(sessionId, item.id, outcomeFor('a'));
-    await reopened.recordCandidateOutcome(sessionId, item.id, outcomeFor('b'));
-    await reopened.completeMemoryProposal(sessionId, item.id);
-    expect(await reopened.listPending(sessionId)).toEqual([]);
+    const terminatedAt = proposal?.terminatedAt;
+    await new SessionCompactionStore(directory)
+      .terminateMemoryProposal(sessionId, item.id, 'different replay reason');
+    const replayed = (await reopened.listPending(sessionId))[0];
+    expect(replayed?.version === 2 ? replayed.memoryProposal?.terminatedAt : undefined).toBe(terminatedAt);
+    expect(replayed?.version === 2 ? replayed.memoryProposal?.terminationReason : undefined)
+      .toBe('retired by the running build');
   });
 
   // RS-08: a transaction that was already committed before this process started must stay open. It used
@@ -112,13 +71,7 @@ describe('SessionCompactionStore', () => {
     const sessionId = asSessionId('session-committed-pending');
     const item = summary({ id: 'summary-committed-pending' });
     const store = new SessionCompactionStore(directory);
-    await store.commit(
-      sessionId,
-      item,
-      preconditionFor(item),
-      async () => undefined,
-      proposalFor(['a', 'b']),
-    );
+    await seedLegacyProposal(store, directory, sessionId, item, legacyProposalFor(['a', 'b']));
 
     const reopened = new SessionCompactionStore(directory);
     expect(await reopened.recover(sessionId, async () => undefined)).toBe(1);
@@ -128,18 +81,18 @@ describe('SessionCompactionStore', () => {
       summaryCommittedAt: expect.any(String),
       memoryProposal: { outcomes: [] },
     }]);
-    const digest = createHash('sha256').update(item.id, 'utf8').digest('hex');
+    const digest = createHash('sha256').update(String(sessionId), 'utf8').digest('hex');
     expect(await readdir(join(directory, '.compactions', digest, 'failed')).catch(() => [])).toEqual([]);
   });
 
-  // C10A: an old writer waking up after a newer summary became active must not commit or overwrite it.
-  it('quarantines an older pending proposal once a newer summary is active', async () => {
+  // A historical proposal with a stale predecessor stays reachable for the Runner retirement sweep.
+  it('keeps an older pending proposal reachable once a newer summary is active', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
     tempDirs.push(directory);
     const sessionId = asSessionId('session-late-writer');
     const store = new SessionCompactionStore(directory);
     const older = summary({ id: 'summary-older' });
-    await store.commit(sessionId, older, preconditionFor(older), async () => undefined, proposalFor(['a']));
+    await seedLegacyProposal(store, directory, sessionId, older, legacyProposalFor(['a']));
 
     let activeSummaryId: string | null = null;
     const newer = summary({ id: 'summary-newer' });
@@ -173,21 +126,14 @@ describe('SessionCompactionStore', () => {
     await expect(failedFiles(directory, sessionId)).resolves.toHaveLength(0);
   });
 
-  // A stale proposal without a proposal left to settle is still isolated, which keeps the quarantine
-  // path honest rather than unreachable.
-  it('still quarantines a stale committed transaction that has nothing left to settle', async () => {
+  // A terminated historical proposal has no remaining audit work and can be isolated after conflict.
+  it('quarantines a stale committed transaction after legacy proposal termination', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'ls-compaction-store-'));
     tempDirs.push(directory);
     const sessionId = asSessionId('session-late-writer-no-proposal');
     const store = new SessionCompactionStore(directory);
     const older = summary({ id: 'summary-older-clean' });
-    await store.commit(
-      sessionId,
-      older,
-      preconditionFor(older),
-      async () => undefined,
-      proposalFor(['a']),
-    );
+    await seedLegacyProposal(store, directory, sessionId, older, legacyProposalFor(['a']));
     // Settled: the proposal carries its termination stamp, so there is nothing left for anyone to
     // terminate and the stale transaction can be isolated as before.
     await store.terminateMemoryProposal(sessionId, older.id, 'retired by the running build');
@@ -320,7 +266,30 @@ function preconditionFor(
   };
 }
 
-function proposalFor(ids: string[]): CompactionMemoryProposal {
+async function seedLegacyProposal(
+  store: SessionCompactionStore,
+  directory: string,
+  sessionId: ReturnType<typeof asSessionId>,
+  item: CompactionSummaryV2,
+  memoryProposal: CompactionMemoryProposal,
+): Promise<void> {
+  const precondition = preconditionFor(item, item.previousSummaryId ?? null);
+  await store.commit(sessionId, item, precondition, async () => undefined);
+  const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+  const pendingDir = join(directory, '.compactions', digest(String(sessionId)), 'pending');
+  await mkdir(pendingDir, { recursive: true });
+  await writeFile(join(pendingDir, `${digest(item.id)}.pending.json`), JSON.stringify({
+    version: 2,
+    sessionId: String(sessionId),
+    summary: item,
+    precondition,
+    memoryProposal,
+    summaryCommittedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  }, null, 2), 'utf8');
+}
+
+function legacyProposalFor(ids: string[]): CompactionMemoryProposal {
   return {
     version: 1,
     evidenceComplete: true,
@@ -338,16 +307,6 @@ function proposalFor(ids: string[]): CompactionMemoryProposal {
       confidence: 0.8,
       reason: 'durable candidate test',
     })),
-  };
-}
-
-function outcomeFor(candidateId: string): CompactionMemoryCandidateOutcome {
-  return {
-    candidateId,
-    status: 'committed',
-    nodeId: `node-${candidateId}`,
-    reason: 'created',
-    updatedAt: new Date().toISOString(),
   };
 }
 

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import { Readable } from 'node:stream'
+import type { ServerResponse } from 'node:http'
+import { DEFAULT_CONFIG } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
+import { asSessionId, type ToolStreamEvent } from '@littlesheep/types'
+import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { RunRouter } from './run-routes.js'
 
 afterEach(() => {
@@ -213,3 +219,91 @@ describe('RunRouter durable recovery', () => {
     router.stop()
   })
 })
+
+describe('RunRouter tool event streaming', () => {
+  const workspaceDir = process.cwd()
+
+  it.each([
+    ['ordinary run', {}],
+    ['conversation continuation', { sessionId: 'session-continuation', requestKey: 'turn-2' }],
+  ])('bounds large tool arguments for %s', async (_label, requestFields) => {
+    const event = {
+      type: 'tool_start' as const,
+      callId: 'large-write',
+      name: 'write',
+      input: { file_path: 'src/large.ts', content: 'line\n'.repeat(8_000) },
+    }
+    const runStream = vi.fn(async (input: { runId?: string; sessionId?: string; onToolEvent?: (event: ToolStreamEvent) => void }) => {
+      input.onToolEvent?.(event)
+      return {
+        runId: input.runId!,
+        sessionId: input.sessionId ?? asSessionId('new-session'),
+        status: 'ok',
+        reply: 'done',
+        messages: [],
+        trace: [],
+        durationMs: 1,
+        durableHarnessMode: 'shadow',
+      }
+    })
+    const runner = { runStream, durableHarnessMode: 'shadow' } as unknown as AgentRunner
+    const router = new RunRouter()
+    const response = new FakeResponse()
+    const sessionIndex = {
+      list: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue(undefined),
+    }
+    const requestBody = { text: 'write it', workspace: workspaceDir, ...requestFields }
+
+    await router.route({
+      req: Readable.from([JSON.stringify(requestBody)]) as never,
+      res: response as unknown as ServerResponse,
+      url: new URL(`http://localhost${LOCAL_APP_API_ROUTES.runStream}`),
+      path: LOCAL_APP_API_ROUTES.runStream,
+      method: 'POST',
+    }, {
+      getRunner: () => runner,
+      getConfig: () => DEFAULT_CONFIG,
+      dataDir: workspaceDir,
+      workplaceDir: workspaceDir,
+      sessionIndex: sessionIndex as never,
+      projectIndex: {} as never,
+      workspaceArtifactIndex: {} as never,
+      attachmentCache: {} as never,
+    })
+
+    const frame = response.writes.find((value) => value.startsWith('event: tool_start\n'))
+    expect(frame).toBeDefined()
+    expect(Buffer.byteLength(frame!, 'utf8')).toBeLessThan(32 * 1024)
+    const payload = JSON.parse(frame!.split('data: ')[1]!.trim()) as { input: unknown; lineProgress: unknown }
+    expect(payload.input).toEqual({ file_path: 'src/large.ts', truncated: true })
+    expect(payload.lineProgress).toEqual({ additions: 8_000, deletions: null })
+    expect(response.writableEnded).toBe(true)
+  })
+})
+
+class FakeResponse extends EventEmitter {
+  destroyed = false
+  writableEnded = false
+  writableLength = 0
+  writes: string[] = []
+  writeHead = vi.fn()
+  flushHeaders = vi.fn()
+
+  write(value: string): boolean {
+    this.writes.push(value)
+    return true
+  }
+
+  end(): this {
+    this.writableEnded = true
+    this.emit('finish')
+    return this
+  }
+
+  destroy(): this {
+    this.destroyed = true
+    this.emit('close')
+    return this
+  }
+}

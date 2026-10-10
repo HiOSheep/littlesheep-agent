@@ -16,7 +16,6 @@
 // retry away or the model may claim as a pass.
 import type { RunContext, StageResult } from '@littlesheep/types';
 import {
-  publishVerifiedReply,
   recordVerification,
   routeKnownIncompleteExecution,
   verifyDeterministicWriteReadExecution,
@@ -65,7 +64,6 @@ export function createVerifyStage() {
     if (recordedFailures.length > 0) {
       const reason = recordedFailureReason(ctx, recordedFailures);
       await recordVerification(ctx, { verdict: 'unverified', reason, source: 'structural' });
-      publishVerifiedReply(ctx);
       return {
         stage: 'verify',
         next: 'finalize',
@@ -76,7 +74,6 @@ export function createVerifyStage() {
 
     const reason = unverifiedAcceptanceReason(ctx);
     await recordVerification(ctx, { verdict: 'unverified', reason, source: 'structural' });
-    publishVerifiedReply(ctx);
     return {
       stage: 'verify',
       next: 'finalize',

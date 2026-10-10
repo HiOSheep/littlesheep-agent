@@ -176,7 +176,6 @@ describe('durable inbox restart recovery', () => {
       ...firstStores,
       sessionId: command.sessionId,
       runId: command.runId,
-      mode: 'next',
     });
     first.startIngress(ingress);
     await first.ready;
@@ -186,7 +185,6 @@ describe('durable inbox restart recovery', () => {
       ...secondStores,
       sessionId: command.sessionId,
       runId: command.runId,
-      mode: 'next',
     });
     second.startIngress(ingress);
 

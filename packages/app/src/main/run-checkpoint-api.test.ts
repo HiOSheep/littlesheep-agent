@@ -10,6 +10,7 @@ import {
   textMessage,
   type RunCheckpoint,
   type RunCheckpointDisposition,
+  type ToolStreamEvent,
 } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -202,6 +203,48 @@ async function createFixture(
 }
 
 describe('run checkpoint Local App API', () => {
+  it('projects large tool arguments through the bounded SSE path when resuming a checkpoint', async () => {
+    const event: ToolStreamEvent = {
+      type: 'tool_start',
+      callId: 'resume-large-write',
+      name: 'write',
+      input: { file_path: 'src/large.ts', content: 'line\n'.repeat(8_000) },
+    }
+    const fixture = await createFixture(async (_id, options = {}) => {
+      options.onToolEvent?.(event)
+      return {
+        runId: options.runId!,
+        sessionId: asSessionId('checkpoint-session'),
+        status: 'ok',
+        reply: 'continued',
+        messages: [],
+        trace: [],
+        durationMs: 1,
+      }
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'continue', requestKey: 'large-resume-turn' }),
+      })
+      const stream = await response.text()
+      expect(response.status).toBe(200)
+      const frame = stream.split('\n\n').find((part) => part.startsWith('event: tool_start\n'))
+      expect(frame).toBeDefined()
+      expect(Buffer.byteLength(`${frame}\n\n`, 'utf8')).toBeLessThan(32 * 1024)
+      const payload = JSON.parse(frame!.split('data: ')[1]!) as ToolStreamEvent
+      expect(payload.input).toEqual({ file_path: 'src/large.ts', truncated: true })
+      expect(payload.lineProgress).toEqual({ additions: 8_000, deletions: null })
+      expect(stream).toContain('event: result')
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('discovers, inspects and resumes a checkpoint through bounded HTTP and SSE contracts', async () => {
     const fixture = await createFixture()
     const base = `http://127.0.0.1:${fixture.server.port}`

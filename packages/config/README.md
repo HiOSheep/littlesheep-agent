@@ -11,6 +11,7 @@
 - 拥有压缩与上下文默认值：`compaction.threshold=400`、`keepRecent=200`、`background=false`，以及 `contextCompressionThresholdRatio=0.8`（取值 0.5–0.95）。
 - 拥有模型/Provider 登记查询：`model-capabilities.ts` 提供上下文窗口、tokenizer 与 reasoning 能力（`resolveProviderReasoningRequest` 的 `auto` 档对支持 `thinking` 的 Provider，即 DeepSeek V4 系，显式下发 `thinking: { type: 'enabled' }`——默认关掉思考会让“模型会思考”在界面上完全看不见；代价是思考会改变 V4 的 prompt framing，本地计费仍按实际发出的请求记账），`provider-models.ts` 归一化 Provider 的模型声明，`configured-models.ts` 把用户声明的模型元数据注册进能力表。
 - `web` 是独立、默认关闭的网络读取域，旧配置缺失该字段时只补默认值，不会自动选择 provider 或发起网络请求。
+- `schema.ts` 是配置默认值的唯一来源；`DEFAULT_CONFIG` 在模块初始化时由 schema 生成供无配置文件加载使用，部分配置仍在解析时补齐缺省字段。
 - 负责验证配置形状，不负责保存明文密钥或执行 Provider 请求。
 - `web.providers[].apiKeyRef` 只登记环境变量/密钥链引用；配置包不解析密钥，也不允许 Renderer 或模型把 endpoint、header 或 credential 注入一次工具调用。
 - `web.dnsResolver` 只允许 `system` 或显式 `cloudflare_doh`；DoH 是额外的域名外发路径，不能由模型、Renderer 或单次工具调用指定任意 resolver endpoint。

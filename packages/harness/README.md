@@ -21,4 +21,4 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 
 `stages/execute` 拥有请求循环和工具协作；`stages/verify` 分类证据；`stages/recover` 决定重试／停止／升级；`llm-call-contracts` 定义请求身份与输出契约；`durable-kernel.ts`、`checkpoint-resume.ts` 管理事件与续跑边界。
 
-测试与 stage 同目录；`current-path-contract.test.ts` 防止第二执行路径或退役路由回流。局部改动用 Harness 定向测试；权限、持久化或重启变化还需相应 Runtime 与 Electron 验收。跨包使用公开导出，不深层导入私有实现。
+测试与 stage 同目录；`current-path-contract.test.ts` 防止第二执行路径或退役路由回流。缓存质量报告只描述实际记录的当前运行；版本对比必须来自不同 checkout，不能用 durable 记录模式标签制造第二条 Harness 路径。局部改动用 Harness 定向测试；权限、持久化或重启变化还需相应 Runtime 与 Electron 验收。跨包使用公开导出，不深层导入私有实现。
