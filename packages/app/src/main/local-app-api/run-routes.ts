@@ -38,7 +38,7 @@ import {
   withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { routeRunCheckpoints } from './run-checkpoint-routes.js'
-import { projectToolEventForStream } from './run-tool-event-projection.js'
+import { writeToolEventSse } from './run-tool-event-projection.js'
 import {
   MAX_RUNTIME_EVENT_REASON_LENGTH,
   parseRuntimeTaskEventBody,
@@ -275,7 +275,7 @@ export class RunRouter {
             requestKey,
             workspaceContext,
             signal: controller.signal,
-            onToolEvent: (event) => writeSse(res, event.type, projectToolEventForStream(event)),
+            onToolEvent: (event) => writeToolEventSse(res, event),
             onAssistantReplace: (text) => writeSse(res, 'replace', { text }),
             ...resolveRunPolicy(
               effectiveBody,

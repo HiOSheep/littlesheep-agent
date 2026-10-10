@@ -1,8 +1,16 @@
 import type { ToolStreamEvent } from '@littlesheep/types'
+import type { ServerResponse } from 'node:http'
+import { writeSse } from './http.js'
 
 // Tool arguments may contain an entire file. Keep one event well below the
 // local SSE socket limit while retaining the path and an honest line count.
 const MAX_TOOL_EVENT_BYTES = 32 * 1024
+
+/** Apply the same bounded projection before any run stream reaches the SSE socket. */
+export function writeToolEventSse(res: ServerResponse, event: ToolStreamEvent): boolean {
+  const projected = projectToolEventForStream(event)
+  return writeSse(res, projected.type, projected)
+}
 
 export function projectToolEventForStream(event: ToolStreamEvent): ToolStreamEvent {
   if (event.type !== 'tool_start' || !event.input) return event
