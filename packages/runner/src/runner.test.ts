@@ -540,10 +540,33 @@ describe('createRunner run', () => {
         llm: replayLlm,
       });
       createdRunners.push(restarted);
+      let failExecutionLogPromotion = true;
+      const settleExecutionLog = restarted.infra.executionLogStore.settleFinalReply.bind(
+        restarted.infra.executionLogStore,
+      );
+      const settleExecutionLogSpy = vi.spyOn(restarted.infra.executionLogStore, 'settleFinalReply')
+        .mockImplementation(async (targetRunId, settlement) => {
+          if (failExecutionLogPromotion) {
+            failExecutionLogPromotion = false;
+            throw new Error('simulated ExecutionLog projection failure during recovery');
+          }
+          return settleExecutionLog(targetRunId, settlement);
+        });
       const recovery = await restarted.recoverDurableRun!(session.id, runId);
       expect(recovery.projection.status).toBe('completed');
       expect(recovery.projection.finalReply.state).toBe('settled');
       expect(replayLlm.chat).not.toHaveBeenCalled();
+      expect((await restarted.infra.executionLogStore.read(runId))?.finalReplySettlement?.status).toBe('proposed');
+
+      const afterFirstRecovery = await restarted.infra.durableEventStore.read(String(session.id), runId);
+      expect(afterFirstRecovery.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+      expect(afterFirstRecovery.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+
+      const retriedRecovery = await restarted.recoverDurableRun!(session.id, runId);
+      expect(retriedRecovery.projection.status).toBe('completed');
+      expect(retriedRecovery.projection.finalReply.state).toBe('settled');
+      expect(settleExecutionLogSpy).toHaveBeenCalledTimes(2);
+      expect((await restarted.infra.executionLogStore.read(runId))?.finalReplySettlement?.status).toBe('settled');
 
       const afterRestart = await restarted.infra.durableEventStore.read(String(session.id), runId);
       expect(afterRestart.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
