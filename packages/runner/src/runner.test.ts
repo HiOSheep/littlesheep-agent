@@ -479,6 +479,84 @@ describe('createRunner run', () => {
     expect(reduceDurableRunProjection(events).finalReply.state).toBe('proposed');
   });
 
+  it.each(['durable event', 'reply registry'] as const)(
+    'recovers a committed final-reply %s write whose acknowledgement was lost',
+    async (boundary) => {
+      const firstRunner = await createRunner({
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        llm: makeMockLlm(textResponse(`reply committed before ${boundary} acknowledgement loss`)),
+      });
+      createdRunners.push(firstRunner);
+      const session = await firstRunner.sessionManager.create('test/model');
+      const runId = `h03-${boundary.replaceAll(' ', '-')}-ack-lost`;
+      let lostAcknowledgement = false;
+
+      if (boundary === 'durable event') {
+        const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
+        vi.spyOn(firstRunner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+          const outcome = await append(input);
+          if (input.type === 'final_reply_settled' && !lostAcknowledgement) {
+            lostAcknowledgement = true;
+            throw new Error('simulated acknowledgement loss after durable event append');
+          }
+          return outcome;
+        });
+      } else {
+        const settle = firstRunner.infra.sessionManager.settleAssistantReplySettlement.bind(
+          firstRunner.infra.sessionManager,
+        );
+        vi.spyOn(firstRunner.infra.sessionManager, 'settleAssistantReplySettlement')
+          .mockImplementation(async (sessionId, reservation) => {
+            await settle(sessionId, reservation);
+            if (!lostAcknowledgement) {
+              lostAcknowledgement = true;
+              throw new Error('simulated acknowledgement loss after reply registry settlement');
+            }
+          });
+      }
+
+      const first = await firstRunner.run({ sessionId: session.id, runId, text: 'recover committed reply' });
+      expect(lostAcknowledgement).toBe(true);
+      expect(first.status).toBe('error');
+      expect(first.reply).toBe('');
+      expect(first.runtimeStatus).toMatchObject({ status: 'failed', reason: 'final_reply_settlement_failed' });
+
+      const beforeRestart = await firstRunner.infra.durableEventStore.read(String(session.id), runId);
+      expect(beforeRestart.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+      expect(beforeRestart.filter((event) => event.type === 'run_completed')).toHaveLength(0);
+      expect((await firstRunner.infra.executionLogStore.read(runId))?.finalReplySettlement?.status).toBe('proposed');
+      const settlementId = String(beforeRestart.find((event) => event.type === 'final_reply_settled')?.payload.settlementId);
+      expect(settlementId).toContain(`${runId}:final-reply:`);
+      await firstRunner.shutdown();
+      createdRunners.pop();
+
+      const replayLlm = makeMockLlm(textResponse('must not run during recovery'));
+      const restarted = await createRunner({
+        config: DEFAULT_CONFIG,
+        branding: DEFAULT_BRANDING,
+        model: 'test/model',
+        llm: replayLlm,
+      });
+      createdRunners.push(restarted);
+      const recovery = await restarted.recoverDurableRun!(session.id, runId);
+      expect(recovery.projection.status).toBe('completed');
+      expect(recovery.projection.finalReply.state).toBe('settled');
+      expect(replayLlm.chat).not.toHaveBeenCalled();
+
+      const afterRestart = await restarted.infra.durableEventStore.read(String(session.id), runId);
+      expect(afterRestart.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+      expect(afterRestart.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+      expect(await restarted.sessionManager.assistantReplySettlementStatus(session.id, settlementId)).toBe('settled');
+      const transcript = (await restarted.sessionManager.read(session.id))
+        .filter((message) => message.role === 'assistant' && message.stage === 'finalize');
+      expect(transcript).toHaveLength(1);
+      expect(transcript[0]?.finalReplySettlement?.status).toBe('settled');
+      expect((await restarted.infra.executionLogStore.read(runId))?.finalReplySettlement?.status).toBe('settled');
+    },
+  );
+
   it('retries a failed next run by returning bounded Runtime status across runner restart', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
@@ -812,6 +890,101 @@ describe('createRunner run', () => {
     expect(llm.chat).toHaveBeenCalledTimes(modelCallsBeforeRecovery);
     expect((await runner.sessionManager.read(result.sessionId)).filter((message) => message.role === 'assistant'))
       .toHaveLength(1);
+  });
+
+  it('keeps one completed receipt when its append succeeded but the acknowledgement was lost', async () => {
+    const effectPath = join(dataDir, 'h03-completed-effect.txt');
+    let effectExecutions = 0;
+    const tool: AgentTool = {
+      name: 'h03_completed_write',
+      description: 'Write one marker so recovery can prove a completed side effect was not repeated.',
+      inputSchema: { parse: (input) => input, jsonSchema: { type: 'object' } },
+      execution: {
+        concurrency: 'exclusive',
+        resources: () => [{ key: 'workspace:h03-completed-write', mode: 'write' }],
+      },
+      async execute() {
+        effectExecutions += 1;
+        writeFileSync(effectPath, 'committed once', 'utf8');
+        return { callId: '', ok: true, output: 'write complete' };
+      },
+    };
+    const llm = makeMockLlm([
+      {
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{
+          id: 'h03-completed-write-call',
+          type: 'function',
+          function: { name: 'h03_completed_write', arguments: '{}' },
+        }],
+      },
+      textResponse('reply before completed receipt acknowledgement loss'),
+      textResponse('{"verdict":"pass","reason":"write completed"}'),
+      textResponse('{"memories":[],"createSkill":null}'),
+      textResponse('{"observations":[]}'),
+    ]);
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm,
+    });
+    createdRunners.push(runner);
+    const session = await runner.sessionManager.create('test/model');
+    const append = runner.infra.durableEventStore.append.bind(runner.infra.durableEventStore);
+    let lostAcknowledgement = false;
+    vi.spyOn(runner.infra.durableEventStore, 'append').mockImplementation(async (input) => {
+      const outcome = await append(input);
+      if (input.type === 'run_completed' && !lostAcknowledgement) {
+        lostAcknowledgement = true;
+        throw new Error('simulated acknowledgement loss after run_completed append');
+      }
+      return outcome;
+    });
+
+    const result = await runner.run({
+      sessionId: session.id,
+      requestKey: 'h03-completed-replay',
+      text: 'completed receipt acknowledgement loss',
+      additionalTools: [tool],
+    });
+    const runId = result.runId;
+    expect(result).toMatchObject({ status: 'ok', reply: 'reply before completed receipt acknowledgement loss' });
+    expect(lostAcknowledgement).toBe(true);
+    expect(effectExecutions).toBe(1);
+    expect(readFileSync(effectPath, 'utf8')).toBe('committed once');
+    const events = await runner.infra.durableEventStore.read(String(session.id), runId);
+    expect(events.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'run_completed')).toHaveLength(1);
+
+    await runner.shutdown();
+    createdRunners.pop();
+    const replayLlm = makeMockLlm(textResponse('must not run after recovery'));
+    const restarted = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: replayLlm,
+    });
+    createdRunners.push(restarted);
+
+    const recovery = await restarted.recoverDurableRun!(session.id, runId);
+    expect(recovery.projection.status).toBe('completed');
+    expect(recovery.actions).toEqual([]);
+    expect((await restarted.infra.durableEventStore.read(String(session.id), runId))
+      .filter((event) => event.type === 'run_completed')).toHaveLength(1);
+    expect((await restarted.sessionManager.read(session.id))
+      .filter((message) => message.role === 'assistant' && message.stage === 'finalize')).toHaveLength(1);
+    const replayed = await restarted.run({
+      sessionId: session.id,
+      requestKey: 'h03-completed-replay',
+      text: 'completed receipt acknowledgement loss',
+      additionalTools: [tool],
+    });
+    expect(replayed).toMatchObject({ status: 'ok', reply: 'reply before completed receipt acknowledgement loss' });
+    expect(effectExecutions).toBe(1);
+    expect(replayLlm.chat).not.toHaveBeenCalled();
   });
 
   it('publishes the same wording again after runner restart instead of rewriting it', async () => {
