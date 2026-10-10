@@ -1,12 +1,10 @@
 // @littlesheep/cli — commands/import-repo.ts
 // `littlesheep memory import-repo <path-or-url>` — distill a repository's
-// durable knowledge into the experience DB via LLM.
+// durable knowledge into indexed experience memory via LLM.
 //
-// This is the second write path into ExperienceStore (the first being EVOLVE
-// double-write). External repo content is a high-risk injection vector, so
-// every distilled entry passes through validateMemoryContent inside
-// ExperienceStore.append. Rejects are skipped with a warning (no quarantine —
-// quarantine is memory-tier only).
+// External repo content is a high-risk injection vector, so entries retain the
+// legacy 500-character validation and pass through MemoryRepository's current
+// write-side validation before becoming indexed experience memories.
 //
 // URL sources are shallow-cloned via `git clone --depth 1` to a tmpdir; the
 // user running this CLI command is explicit authorization (the agent exec
@@ -15,12 +13,14 @@
 import { readFile, readdir, stat, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import type { LlmClient, ChatMessage } from '@littlesheep/llm';
 import { callLlmForJson } from '@littlesheep/harness';
-import type { ExperienceStore } from '@littlesheep/experience';
+import { MemoryRepository, InjectionTier, type MemoryWriteServiceLike } from '@littlesheep/memory-tree';
+import { validateMemoryContent } from '@littlesheep/safety';
 
 const execFileP = promisify(execFile);
 
@@ -37,7 +37,7 @@ export interface ImportRepoFlags {
 
 export const IMPORT_REPO_USAGE = `Usage: littlesheep memory import-repo <path-or-url> [options]
 
-  Distill a repository's durable knowledge into the experience DB via LLM.
+  Distill a repository's durable knowledge into experience memory via LLM.
   External content is validated against injection patterns on insert.
 
   Arguments:
@@ -195,7 +195,7 @@ export interface RunImportRepoOptions {
   flags: ImportRepoFlags;
   llm: LlmClient;
   model: string;
-  experienceStore: ExperienceStore;
+  memoryWriteService: Pick<MemoryWriteServiceLike, 'write'>;
   /** Injectable stdout (tests). */
   out?: (msg: string) => void;
   /** Injectable stderr (tests). */
@@ -278,36 +278,78 @@ export async function runImportRepo(opts: RunImportRepoOptions): Promise<void> {
       return;
     }
 
-    // 6. Insert into experience DB. Each append validates content against
-    //    injection patterns; rejects throw and are skipped with a warning.
+    // 6. Write to the current indexed experience branch. Intent IDs derive from
+    //    the source snapshot and entry content so rerunning a failed import is
+    //    safe and does not duplicate already committed entries.
     let imported = 0;
     let rejected = 0;
+    let queued = 0;
+    let failed = 0;
+    const sourceSnapshot = createHash('sha256').update(`${source}\0${repoName}\0${content}`).digest('hex');
+    const sourceRef = `repo-import:${sourceSnapshot}`;
+    const importRunId = `repo-import:${sourceSnapshot}`;
     for (const e of entries) {
-      try {
-        await opts.experienceStore.append({
-          category: 'repo-import',
-          content: e.content,
-          confidence: e.confidence,
-          source: 'import-repo',
-          provenance: repoName,
-          tags: e.tags,
-        });
-        imported++;
-      } catch (e2) {
-        err(`Warning: rejected entry from ${repoName}: ${(e2 as Error).message}\n`);
+      const validation = validateMemoryContent(e.content);
+      if (!validation.ok) {
+        err(`Warning: rejected entry from ${repoName}: ${validation.reason ?? 'unsafe content'}\n`);
         rejected++;
+        continue;
+      }
+      const safeContent = validation.cleaned ?? e.content;
+      const intentId = `repo-import:${createHash('sha256').update(`${sourceRef}\0${safeContent}`).digest('hex')}`;
+      const retrievalKeys = [...new Set([repoName, ...e.tags].flatMap((key) => {
+        const checked = validateMemoryContent(key.trim(), { maxLength: 80 });
+        return checked.ok && checked.cleaned ? [checked.cleaned] : [];
+      }))].slice(0, 16);
+      try {
+        const result = await opts.memoryWriteService.write({
+          id: intentId,
+          branch: 'experience',
+          parentNodeId: MemoryRepository.branchRootId('experience'),
+          scope: 'global',
+          tier: InjectionTier.T2_RELEVANT,
+          summary: safeContent.replace(/\s+/g, ' ').slice(0, 220),
+          content: safeContent,
+          retrievalKeys,
+          sourceRunId: importRunId,
+          sourceStage: 'tool',
+          evidenceRefs: [sourceRef],
+          importance: 0.68,
+          // Legacy experience migration used this same floor before moving
+          // imported entries into the current repository.
+          confidence: Math.max(0.7, e.confidence),
+          reason: 'The user invoked memory import-repo to retain durable repository guidance for future retrieval; without this write, the distilled guidance would be lost after this import.',
+          epistemic: {
+            domain: 'experience',
+            statementKind: 'factual-claim',
+            epistemicStatus: 'unverified',
+            authorityScope: { kind: 'external-source', scope: 'global', topics: [repoName] },
+            assertedBy: { kind: 'external', id: sourceRef, label: repoName },
+            evidenceRefs: [sourceRef],
+          },
+        });
+        if (result.decision === 'created' || result.decision === 'merged' || result.decision === 'reinforced') {
+          imported++;
+        } else {
+          err(`Warning: ${result.decision} entry from ${repoName}: ${result.reason}\n`);
+          if (result.decision === 'queued') queued++;
+          else rejected++;
+        }
+      } catch (e2) {
+        err(`Warning: write failed for entry from ${repoName}: ${(e2 as Error).message}\n`);
+        failed++;
       }
     }
 
     // 7. Output summary.
-    out(
-      `Imported ${imported} entries from ${repoName}`
-      + (rejected > 0 ? ` (${rejected} rejected)` : '')
-      + '\n',
-    );
+    const failures = rejected + queued + failed;
+    if (failures > 0) process.exitCode = 1;
+    out(`Imported ${imported} entries from ${repoName}`
+      + (failures > 0 ? ` (${rejected} rejected, ${queued} queued, ${failed} failed)` : '')
+      + '\n');
   } catch (e) {
-    // Operational failure (LLM error, scan error, etc.). Per-entry append
-    // rejections are already handled above; this catches the rest.
+    // Operational failure (LLM error, scan error, etc.). Per-entry write
+    // outcomes are handled above; this catches the rest.
     err(`import-repo failed: ${(e as Error).message}\n`);
     process.exitCode = 1;
   } finally {

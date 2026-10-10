@@ -147,7 +147,7 @@
 | `packages/memory-tree/src/memory-service.ts` | 343 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
 | `packages/channels/telegram/src/plugin.ts` | 342 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/memory-tree/src/memory-repository/v3-retrieval-materializer.ts` | 331 | 候选优先级、证据封套和治理读取投影 | 保持候选投影单一来源 | D |
-| `packages/cli/src/commands/import-repo.ts` | 323 | 导入流程、Git、LLM 和进度 | 分离 source、distill、progress adapter | C |
+| `packages/cli/src/commands/import-repo.ts` | 361 | 导入流程、Git、LLM、Memory 写入与进度 | 分离 source、distill、progress adapter | C |
 | `packages/memory-tree/src/index.ts` | 343 | Memory Tree 公共 barrel 与稳定导出 | 保持无逻辑导出层 | D |
 | `packages/channels/webhook/src/plugin.ts` | 319 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
 | `packages/app/src/renderer/composer/runtime-picker.tsx` | 456 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；继续增长时分离菜单定位与选项渲染 | B |

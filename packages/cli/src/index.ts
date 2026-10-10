@@ -67,22 +67,36 @@ export async function runCli(argv: string[]): Promise<void> {
     return;
   }
 
-  // Subcommand: 'memory import-repo' (needs config + LLM + ExperienceStore).
-  // Reuses the same fail-fast provider/apiKey verification as the main flow
-  // (via resolveLlm), but loads its own config so the main path stays untouched.
+  // Subcommand: 'memory import-repo' uses normal Runner startup so legacy
+  // ExperienceStore records migrate before new entries use MemoryWriteService.
   if (args.memoryImportRepo !== undefined) {
     const flags = parseImportRepoFlags(args.memoryImportRepo);
     let config = await loadConfig({ dataDir: dataDir.root });
     if (config.providers.length === 0) config = defaultConfigWithOpenAI();
     registerConfiguredModelCapabilities(config);
     const model = flags.model ?? config.agents.defaults.model;
+    let runner: Awaited<ReturnType<typeof createRunner>> | undefined;
     try {
       const { llm } = resolveLlm(config, model);
-      const experienceStore = new ExperienceStore({ rootDir: dataDir.experience });
-      await runImportRepo({ flags, llm, model, experienceStore });
+      runner = await createRunner({
+        config,
+        branding,
+        model,
+        llm,
+        bootstrapDir: dataDir.root,
+        containerRoot: dataDir.root,
+      });
+      await runImportRepo({ flags, llm, model, memoryWriteService: runner.infra.memoryWriteService });
     } catch (e) {
       process.stderr.write(`${(e as Error).message}\n`);
       process.exitCode = 1;
+    } finally {
+      if (runner) {
+        await runner.shutdown().catch((e) => {
+          process.stderr.write(`Runtime shutdown failed: ${(e as Error).message}\n`);
+          process.exitCode = 1;
+        });
+      }
     }
     return;
   }

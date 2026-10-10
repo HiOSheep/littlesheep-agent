@@ -11,7 +11,7 @@ vi.mock('@littlesheep/runner');
 
 // Import AFTER vi.mock so the mock takes effect.
 import { runCli } from './index.js';
-import { createRunner } from '@littlesheep/runner';
+import { createRunner, resolveLlm } from '@littlesheep/runner';
 import { asSessionId } from '@littlesheep/types';
 import type { RunnerResult } from '@littlesheep/runner';
 
@@ -45,6 +45,8 @@ beforeEach(() => {
 
   // Reset + re-set runner mock before each test.
   vi.mocked(createRunner).mockReset();
+  vi.mocked(resolveLlm).mockReset();
+  vi.mocked(resolveLlm).mockReturnValue({ llm: {} as never, modelName: 'gpt-4o' });
   vi.mocked(createRunner).mockResolvedValue({
     run: mockRun,
     runStream: mockRun,
@@ -62,6 +64,7 @@ beforeEach(() => {
 
   mockRun.mockReset();
   mockShutdown.mockReset();
+  mockShutdown.mockResolvedValue(undefined);
   mockRun.mockResolvedValue({
     runId: 'r1',
     sessionId: asSessionId('s1'),
@@ -140,5 +143,14 @@ describe('runCli', () => {
     expect(vi.mocked(createRunner)).not.toHaveBeenCalled();
     expect(readdirSync(dataDir).sort()).toEqual(beforeEntries);
     expect(readFileSync(configPath, 'utf8')).toBe(invalidConfig);
+  });
+
+  it('starts and shuts down the Runner for memory import-repo before reporting a missing source', async () => {
+    await runCli(['memory', 'import-repo']);
+
+    expect(vi.mocked(createRunner)).toHaveBeenCalledTimes(1);
+    expect(process.exitCode).toBe(2);
+    expect(stderrSpy.mock.calls.map((call) => String(call[0])).join('')).toContain('Usage:');
+    expect(mockShutdown).toHaveBeenCalledTimes(1);
   });
 });

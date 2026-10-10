@@ -237,9 +237,15 @@ importers:
       '@littlesheep/memory-core':
         specifier: workspace:*
         version: link:../memory-core
+      '@littlesheep/memory-tree':
+        specifier: workspace:*
+        version: link:../memory-tree
       '@littlesheep/runner':
         specifier: workspace:*
         version: link:../runner
+      '@littlesheep/safety':
+        specifier: workspace:*
+        version: link:../safety
       '@littlesheep/snapshot':
         specifier: workspace:*
         version: link:../snapshot
