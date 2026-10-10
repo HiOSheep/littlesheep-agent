@@ -17,9 +17,12 @@ export interface CompactionCommitPrecondition {
   transactionKey: string;
 }
 
+/** @deprecated Read-only shape retained for pre-RS-05 compaction transaction recovery. */
 export type CompactionMemoryCandidateBranch = 'long-term' | 'project' | 'experience';
+/** @deprecated Read-only shape retained for pre-RS-05 compaction transaction recovery. */
 export type CompactionMemoryCandidateScope = 'global' | 'workspace' | 'project';
 
+/** @deprecated Compaction no longer proposes durable memory; decode this only to close old records. */
 export interface CompactionMemoryCandidate {
   id: string;
   branch: CompactionMemoryCandidateBranch;
@@ -36,6 +39,7 @@ export interface CompactionMemoryCandidate {
   epistemic?: Record<string, unknown>;
 }
 
+/** @deprecated Historical settlement data is preserved when old proposals are terminated. */
 export interface CompactionMemoryCandidateOutcome {
   candidateId: string;
   status: 'committed' | 'rejected' | 'superseded';
@@ -44,6 +48,7 @@ export interface CompactionMemoryCandidateOutcome {
   updatedAt: string;
 }
 
+/** @deprecated Historical transaction field. Current compaction writes summaries only. */
 export interface CompactionMemoryProposal {
   version: 1;
   requestId?: string;
@@ -71,6 +76,7 @@ export interface PendingCompactionTransactionV2 {
   sessionId: string;
   summary: CompactionSummaryV2;
   precondition: CompactionCommitPrecondition;
+  /** Present only in transactions written before RS-05; retained for recovery and audit. */
   memoryProposal?: CompactionMemoryProposal;
   summaryCommittedAt?: string;
   createdAt: string;

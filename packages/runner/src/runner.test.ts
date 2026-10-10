@@ -3,6 +3,7 @@
 // Validates createRunner run wiring + inbound persistence order.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -2961,10 +2962,7 @@ describe('createRunner run', () => {
   });
 });
 
-/**
- * C10A fixture: commit a summary plus a bounded candidate proposal and crash before settlement.
- * The session store keeps the v2 pending transaction so a later Runner can settle it from disk.
- */
+/** Seed a pre-RS-05 transaction on disk so the Runner's history adapter can close it. */
 async function seedCommittedCompactionProposal(
   sessionsDir: string,
   marker: string,
@@ -2985,24 +2983,51 @@ async function seedCommittedCompactionProposal(
     threshold: 1,
     keepRecent: 1,
     summarize: async () => ({
-      summary: `${marker} seeded summary awaiting candidate settlement.`,
-      memoryEvidenceComplete: true,
-      memoryCandidates: [{
-        id: `${marker}-candidate`,
-        branch: 'long-term' as const,
-        parentNodeId: 'long-term:root',
-        scope: 'global' as const,
-        summary: `${marker} durable candidate`,
-        content: `Durable candidate created by ${marker}.`,
-        retrievalKeys: [marker, 'durable'],
-        sourceMessageIds: [`${marker}-seed-1`],
-        importance: 0.8,
-        confidence: 0.9,
-        reason: 'Synthetic candidate for the crash-resume contract.',
-      }],
+      summary: `${marker} seeded summary awaiting legacy proposal termination.`,
     }),
   });
-  if (!summary) throw new Error('Expected a seeded compaction summary.');
+  if (!summary || summary.version !== 2) throw new Error('Expected a seeded compaction summary.');
+
+  const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex');
+  const pendingDir = join(sessionsDir, '.compactions', digest(String(session.id)), 'pending');
+  mkdirSync(pendingDir, { recursive: true });
+  const memoryProposal = {
+    version: 1,
+    evidenceComplete: true,
+    candidates: [{
+      id: `${marker}-candidate`,
+      branch: 'long-term',
+      parentNodeId: 'long-term:root',
+      scope: 'global',
+      summary: `${marker} durable candidate`,
+      content: `Durable candidate created by ${marker}.`,
+      retrievalKeys: [marker, 'durable'],
+      sourceMessageIds: [`${marker}-seed-1`],
+      importance: 0.8,
+      confidence: 0.9,
+      reason: 'Synthetic candidate for the crash-resume contract.',
+    }],
+    outcomes: [],
+  };
+  const transaction = {
+    version: 2,
+    sessionId: String(session.id),
+    summary,
+    precondition: {
+      expectedPreviousSummaryId: summary.previousSummaryId ?? null,
+      sourceEndMessageId: summary.sourceEndMessageId,
+      sourceHash: summary.sourceHash,
+      policyVersion: 3,
+      transactionKey: summary.id,
+    },
+    memoryProposal,
+    summaryCommittedAt: new Date().toISOString(),
+    createdAt: summary.compactedAt,
+  };
+  writeFileSync(
+    join(pendingDir, `${digest(summary.id)}.pending.json`),
+    JSON.stringify(transaction, null, 2),
+  );
   return { sessionId: session.id, summaryId: summary.id };
 }
 

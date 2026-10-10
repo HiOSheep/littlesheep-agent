@@ -176,12 +176,12 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
   }),
   session_compaction: template({
     purpose: 'session_compaction', stage: 'capture', modelCall: 'optional',
-    goal: () => 'Merge older transcript evidence into a versioned summary and bounded durable-memory candidates.',
+    goal: () => 'Merge older transcript evidence into a versioned session summary.',
     allowedContextKinds: ['system_prompt', 'summary_memory', 'workflow_state', 'output_constraint', 'runtime_event'],
     requiredContextKinds: ['system_prompt', 'workflow_state'], history: 'none', attachments: 'none',
-    allowedDecisions: ['produce_summary_and_candidates'], outputSchema: json('session-compaction-proposal.v1', 'Traceable summary plus zero to eight source-bound memory candidates.'),
-    memoryIntents: ['write'], requiresMemoryEvidence: true,
-    writableBranches: ['long-term', 'project', 'experience'], toolMode: 'none', runtimeApprovalRequired: false,
+    allowedDecisions: ['produce_summary'], outputSchema: json('session-compaction-summary.v1', 'Traceable session summary only.'),
+    memoryIntents: NO_MEMORY, requiresMemoryEvidence: false,
+    toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_200, maxPromptTokens: 12_000, temperature: 0,
   }),
 };
