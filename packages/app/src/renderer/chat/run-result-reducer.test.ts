@@ -32,6 +32,33 @@ describe('completed assistant message metadata', () => {
     expect(reduceCompletedRunMessages([message], result)[0]?.activity?.tools).toHaveLength(1)
   })
 
+  it('folds a replayed settled result into the same assistant turn exactly once', () => {
+    const result = {
+      runId: 'replayed-run',
+      sessionId: 'replayed-session',
+      status: 'ok' as const,
+      reply: 'stream preview',
+      durationMs: 100,
+      finalReplySettlement: {
+        version: 1 as const,
+        status: 'settled' as const,
+        settlementId: 'replayed-run:final-reply:stable-fingerprint',
+        reply: 'authoritative final reply',
+        replyFingerprint: 'stable-fingerprint',
+        modelRequestId: 'provider-request-1',
+      },
+    }
+
+    const activeTurn = [{ ...preview()[0]!, id: 'replayed-assistant-turn' }]
+    const firstDelivery = reduceCompletedRunMessages(activeTurn, result)
+    const replayDelivery = reduceCompletedRunMessages(firstDelivery, result)
+
+    expect(replayDelivery).toHaveLength(1)
+    expect(replayDelivery[0]?.id).toBe('replayed-assistant-turn')
+    expect(replayDelivery[0]?.text).toBe('authoritative final reply')
+    expect(JSON.stringify(replayDelivery)).not.toContain('stream preview')
+  })
+
   it('keeps waiting-user state and reason identical across live completion and history reload', () => {
     const runtimeStatus = { version: 1 as const, status: 'waiting_user' as const, reason: 'effect_settlement_unknown' }
     const result = { runId: 'r', sessionId: 's', status: 'error' as const, reply: '', durationMs: 100,

@@ -361,13 +361,48 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     authorizeRead: opts.authorizeDurableEffectRead,
     log: opts.log,
   });
-  const recoverDurableRun = createDurableRunRecovery({
+  const recoverDurableRunProjection = createDurableRunRecovery({
     kernel: durableKernel,
     leaseStore: infra.durableRunLeaseStore,
     effectLeaseStore: infra.durableEffectLeaseStore,
     sessionManager: infra.sessionManager,
     queryEffectOutcome: durableEffectOutcomeQuery,
   });
+  const recoverDurableRun = async (sessionId: SessionId, runId: string): Promise<DurableRunRecoveryResult> => {
+    const recovery = await recoverDurableRunProjection(sessionId, runId);
+    if (recovery.projection.status !== 'completed' || recovery.projection.finalReply.state !== 'settled') {
+      return recovery;
+    }
+
+    // Durable events and the reply registry own publication. ExecutionLog is a
+    // history projection, so recovery repairs it only after the completed-run
+    // gate and registry are settled; a missing or unavailable proof stays
+    // fail-closed and can be retried on the next recovery pass.
+    try {
+      const replay = await durableKernel.replayFinalReply(String(sessionId), runId);
+      if (replay.kind !== 'settled') return recovery;
+      const registryStatus = await infra.sessionManager.assistantReplySettlementStatus(
+        sessionId,
+        replay.settlementId,
+      );
+      if (registryStatus === 'settled') {
+        await promoteExecutionLogSettlement(infra.executionLogStore, {
+          runId,
+          finalReplySettlement: {
+            version: 1,
+            status: 'settled',
+            settlementId: replay.settlementId,
+            reply: replay.reply,
+            replyFingerprint: replay.replyFingerprint,
+            modelRequestId: replay.modelRequestId,
+          },
+        }, opts.log);
+      }
+    } catch (error) {
+      opts.log?.('warn', `runner: settled execution-log recovery deferred: ${(error as Error).message}`);
+    }
+    return recovery;
+  };
   const conversationTurns = new Map<string, CoordinatedConversationTurn>();
   const checkpointController = infra.runCheckpointStore
     ? new RunCheckpointController({
