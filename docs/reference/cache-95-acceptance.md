@@ -59,19 +59,19 @@ pnpm run check:cache-acceptance
 
 ## 1. 冻结什么
 
-一次有效的对比要求两组运行使用完全相同的下列输入，任何一项不同即作废重跑：
+当前 Harness 检查是单路径验收，不生成版本间性能结论。为便于复跑，需记录以下输入：
 
 | 项 | 冻结值 | 出处 |
 | --- | --- | --- |
-| 任务集 | 脚本内 `TASKS` 列表（20 条短对话任务） | `scripts/verify-harness-path-comparison.mjs` |
-| 模型 | 正式对比用配置中的当前 Provider 模型；离线自检用 `acceptance/slow-a` | 同上（`OFFLINE` 分支） |
-| 轮数 | `LITTLESHEEP_COMPARISON_ROUNDS`（默认正式 2、离线 1） | 同上 |
-| 会话组织 | `LITTLESHEEP_COMPARISON_SHARED_SESSION=1` 时同一会话连续多轮；`LITTLESHEEP_COMPARISON_UNIQUE_TURNS=1` 区分重复轮 | 同上 |
-| 负载形状 | `LITTLESHEEP_COMPARISON_TOOL_WORK=1`（工具工作）、`LITTLESHEEP_COMPARISON_FULL_ACCESS=1`（完全访问）、`LITTLESHEEP_COMPARISON_RESTART=<turn>`（回合前重启）同样改变负载，**未声明的差异一并作废重跑** | 同上 |
-| 压缩阈值 | 默认配置；若本轮覆盖压缩场景则 `LITTLESHEEP_COMPARISON_COMPACTION=1` | 同上 |
-| 数据根 | 每次运行使用隔离数据根，用户数据不受影响 | 同上 |
+| 任务集 | 脚本内 `TASKS` 列表（20 条短对话任务）；`LITTLESHEEP_HARNESS_TOOL_WORK=1` 切换到工具任务集 | `scripts/verify-harness-current-path.mjs` |
+| 模型 | 正式检查用当前 Provider 模型；离线自检用 `acceptance/slow-a` | 同上（`OFFLINE` 分支） |
+| 轮数 | `LITTLESHEEP_HARNESS_ROUNDS`（默认正式 2、离线 1） | 同上 |
+| 会话组织 | `LITTLESHEEP_HARNESS_SHARED_SESSION=1` 时同一会话连续多轮；`LITTLESHEEP_HARNESS_UNIQUE_TURNS=1` 区分重复轮 | 同上 |
+| 负载形状 | `LITTLESHEEP_HARNESS_FULL_ACCESS=1`（完全访问）、`LITTLESHEEP_HARNESS_RESTART=1`（中途重启）会改变负载 | 同上 |
+| 压缩阈值 | 默认配置；若覆盖压缩场景则 `LITTLESHEEP_HARNESS_COMPACTION=1` | 同上 |
+| 数据根 | 每次运行使用一个隔离数据根，用户数据不受影响 | 同上 |
 
-**版本对比（旧实现 vs 当前实现）已不再是现行判定的一部分**：它原先依赖 runner 的 shadow/next 双驱动，而该路径已删除（`packages/runner/README.md`）。若将来仍需要版本对比，必须用**两个真正的 checkout**（旧提交的 worktree + 当前 `main`），不能用同一份驱动的两种模式冒充；历史的两组读数见附录 A.1。
+**版本对比（旧实现 vs 当前实现）不是本脚本的判定**：Runner 只有一条 Harness 执行路径；`shadow`/`next` 是 durable 记录策略标签，不是两个执行器。若要比较版本，必须用**两个真正的 checkout**（旧提交的 worktree + 当前 `main`），不能把同一份驱动的两次运行当成两套 Harness；历史读数见附录 A.1。
 
 ## 2. 测量规则
 

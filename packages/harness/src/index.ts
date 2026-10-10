@@ -76,12 +76,6 @@ export {
   type CacheRequestOutcomeSummary,
   type CacheLedgerSummary,
 } from './cache-quality-report.js';
-export {
-  compareHarnessPaths,
-  type HarnessPathComparison,
-  type HarnessPathLabel,
-  type HarnessPathSummary,
-} from './harness-path-comparison.js';
 export { capabilityProbeEvent } from './capability-events.js';
 export {
   isSupportedPersistedWorkPolicy,

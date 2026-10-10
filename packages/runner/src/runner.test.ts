@@ -16,7 +16,7 @@ import {
   attachmentResourceId,
   createMemoryV3ExperimentMarker,
 } from '@littlesheep/memory-tree';
-import { compareHarnessPaths, reduceDurableRunProjection } from '@littlesheep/harness';
+import { reduceDurableRunProjection } from '@littlesheep/harness';
 import { SessionManager, maybeCompact } from '@littlesheep/session';
 
 // ─── Mock LlmClient ─────────────────────────────────────────────────────
@@ -1105,51 +1105,33 @@ describe('createRunner run', () => {
     expect(report.report.releaseGate.reasons).not.toContain('verification_failures_present');
   });
 
-  it('reports a CACHE-09 path comparison from real shadow and next observations', async () => {
-    const runMode = async (mode: 'shadow' | 'next') => {
-      const runner = await createRunner({
-        config: DEFAULT_CONFIG,
-        branding: DEFAULT_BRANDING,
-        model: 'test/model',
-        llm: makeMockLlm({
-          ...textResponse('path comparison reply'),
-          usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 0 },
-        }),
-        durableHarnessMode: mode,
-      });
-      createdRunners.push(runner);
-      const result = await runner.run({ text: 'path comparison input' });
-      expect(result.status).toBe('ok');
-      const projection = await runner.infra.loadSessionDurableProjection?.(String(result.sessionId));
-      const key = runner.infra.cacheObservationKey;
-      const report = await runner.infra.cacheObservationStore?.report({
-        sessionId: String(result.sessionId),
-        workspaceScope: DEFAULT_CONFIG.agents.defaults.workspace,
-        permissionPolicyId: result.resolvedRunConfig?.permissionPolicyId ?? 'research',
-        key,
-        modelRequests: projection?.modelRequests,
-        verifications: projection?.verifications,
-      });
-      if (report?.status !== 'available') throw new Error(`cache quality report unavailable for ${mode}`);
-      return report.report;
-    };
-
-    const shadow = await runMode('shadow');
-    const next = await runMode('next');
-    const comparison = compareHarnessPaths([
-      { label: 'shadow', report: shadow },
-      { label: 'next', report: next },
-    ]);
-    expect(comparison.paths.map((entry) => entry.label)).toEqual(['shadow', 'next']);
-    for (const path of comparison.paths) {
-      expect(path.summary.requestCount).toBeGreaterThan(0);
-      expect(path.summary.promptTokens).toBeGreaterThan(0);
-      expect(path.summary.releaseGateStatus).toBe('blocked');
-    }
-    expect(comparison.deltas.promptTokens).toBe(0);
-    expect(comparison.deltas.requestCount).toBe(0);
-    expect(shadow.providerPrompt.hitRatio).toBe(0);
-    expect(next.providerPrompt.hitRatio).toBe(0);
+  it('reports CACHE-09 observations from the current unified Harness path', async () => {
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/model',
+      llm: makeMockLlm({
+        ...textResponse('current path reply'),
+        usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 0 },
+      }),
+    });
+    createdRunners.push(runner);
+    const result = await runner.run({ text: 'current path input' });
+    expect(result.status).toBe('ok');
+    const projection = await runner.infra.loadSessionDurableProjection?.(String(result.sessionId));
+    const report = await runner.infra.cacheObservationStore?.report({
+      sessionId: String(result.sessionId),
+      workspaceScope: DEFAULT_CONFIG.agents.defaults.workspace,
+      permissionPolicyId: result.resolvedRunConfig?.permissionPolicyId ?? 'research',
+      key: runner.infra.cacheObservationKey,
+      modelRequests: projection?.modelRequests,
+      verifications: projection?.verifications,
+    });
+    if (report?.status !== 'available') throw new Error('cache quality report unavailable for current path');
+    expect(report.report.requestCount).toBeGreaterThan(0);
+    expect(report.report.providerTokens.promptTokens).toBeGreaterThan(0);
+    expect(report.report.releaseGate.status).toBe('blocked');
+    expect(report.report.providerPrompt.hitRatio).toBe(0);
   });
 
   it('keeps a normal Runner reply successful when cache observation persistence fails', async () => {

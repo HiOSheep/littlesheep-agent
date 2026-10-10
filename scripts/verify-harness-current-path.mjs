@@ -1,13 +1,14 @@
-// Real shadow/next comparison on a live Provider.
+// Current Harness acceptance on a live Provider.
 //
-// Runs the same fixed task set once with the durable Harness in shadow mode and
-// once in next mode, collects each path's production cache-quality report from
-// the Local App API, and compares them with compareHarnessPaths. Everything
-// runs against an isolated data root so the user's sessions are untouched.
+// Runs a fixed task set once through the current durable Harness, collects its
+// production cache-quality report from the Local App API, and checks runtime
+// outcomes. Shadow and next are durable-recording policies on the same executor,
+// so comparing them cannot establish an engine delta.
+// Everything runs against an isolated data root so the user's sessions are untouched.
 //
-// Usage: DEEPSEEK_API_KEY=... node scripts/verify-harness-path-comparison.mjs
+// Usage: DEEPSEEK_API_KEY=... node scripts/verify-harness-current-path.mjs
 // Offline self-check (no key, deterministic acceptance Provider, reduced set):
-//        node scripts/verify-harness-path-comparison.mjs --offline
+//        node scripts/verify-harness-current-path.mjs --offline
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -17,38 +18,36 @@ import { fileURLToPath } from 'node:url'
 import { assertAppBuildFresh } from './lib/app-build-fingerprint.mjs'
 import { startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 import { resolveVerifiedElectronExecutable } from './lib/electron-runtime.mjs'
-import { compareHarnessPaths } from '../packages/harness/dist/index.js'
-import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
+import { runArtifact } from './lib/run-artifacts.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const appRoot = join(repoRoot, 'packages', 'app')
 const START_TIMEOUT_MS = 90_000
 const RUN_TIMEOUT_MS = 180_000
 const POLICIES = ['full', 'research', 'restricted']
-const OUTPUT_PATH = runArtifact('harness-path-comparison.json')
-const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_COMPARISON_OFFLINE === '1'
-/** Force a low compaction threshold so the paired sample covers the compaction round class. */
-const COMPACTION_LOW = process.env.LITTLESHEEP_COMPARISON_COMPACTION === '1'
+const OUTPUT_PATH = runArtifact('harness-current-path.json')
+const OFFLINE = process.argv.includes('--offline') || process.env.LITTLESHEEP_HARNESS_OFFLINE === '1'
+/** Force a low compaction threshold so the sample covers a compaction round. */
+const COMPACTION_LOW = process.env.LITTLESHEEP_HARNESS_COMPACTION === '1'
 /**
- * Restart scenario (plan §6.5 requires it reported separately): stop both app
- * instances halfway through the load and continue the SAME session against the
- * same data root. The plan's acceptance list includes "重启不重复执行" and
+ * Restart scenario: stop the app halfway through the load and continue the
+ * same session against the same data root. The acceptance list includes "重启不重复执行" and
  * "重启后目标连续", which a single-process run can never exercise.
  */
-const RESTART = process.env.LITTLESHEEP_COMPARISON_RESTART === '1'
+const RESTART = process.env.LITTLESHEEP_HARNESS_RESTART === '1'
 /**
  * Keep one conversation alive across rounds, as a long DSH-style session.
  * A restart is only meaningful inside one continuing conversation, so RESTART
  * implies it unless the caller explicitly disables sharing.
  */
-const SHARED_SESSION = process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION === '1'
-  || (RESTART && process.env.LITTLESHEEP_COMPARISON_SHARED_SESSION !== '0')
+const SHARED_SESSION = process.env.LITTLESHEEP_HARNESS_SHARED_SESSION === '1'
+  || (RESTART && process.env.LITTLESHEEP_HARNESS_SHARED_SESSION !== '0')
 /** Keep the isolated data roots so request-level prefix diffs stay inspectable. */
-const KEEP_DATA = process.argv.includes('--keep-data') || process.env.LITTLESHEEP_COMPARISON_KEEP_DATA === '1'
+const KEEP_DATA = process.argv.includes('--keep-data') || process.env.LITTLESHEEP_HARNESS_KEEP_DATA === '1'
 /** Distinguish repeated rounds in one session (default on for shared sessions). */
-const UNIQUE_TURNS = process.env.LITTLESHEEP_COMPARISON_UNIQUE_TURNS === '1' || SHARED_SESSION
+const UNIQUE_TURNS = process.env.LITTLESHEEP_HARNESS_UNIQUE_TURNS === '1' || SHARED_SESSION
 
-const ROUNDS = Number(process.env.LITTLESHEEP_COMPARISON_ROUNDS ?? (OFFLINE ? 1 : 2))
+const ROUNDS = Number(process.env.LITTLESHEEP_HARNESS_ROUNDS ?? (OFFLINE ? 1 : 2))
 
 const TASKS = [
   '用一句话说明 HTTP 404 的含义，不要调用任何工具。',
@@ -88,7 +87,7 @@ const TOOL_TASKS = [
 ]
 
 /** Continuous tool work instead of the conversation-only task set. */
-const TOOL_WORK = process.env.LITTLESHEEP_COMPARISON_TOOL_WORK === '1'
+const TOOL_WORK = process.env.LITTLESHEEP_HARNESS_TOOL_WORK === '1'
 
 /**
  * Run the load under full access. Needed to verify the two acceptance items that
@@ -97,7 +96,7 @@ const TOOL_WORK = process.env.LITTLESHEEP_COMPARISON_TOOL_WORK === '1'
  * Under the default research policy every write is `approval_denied`, so neither
  * can be observed. Only the isolated temp data root is affected.
  */
-const FULL_ACCESS = process.env.LITTLESHEEP_COMPARISON_FULL_ACCESS === '1'
+const FULL_ACCESS = process.env.LITTLESHEEP_HARNESS_FULL_ACCESS === '1'
 
 async function main() {
   await assertAppBuildFresh(repoRoot)
@@ -107,97 +106,71 @@ async function main() {
   }
   const model = OFFLINE
     ? 'acceptance/slow-a'
-    : process.env.LITTLESHEEP_COMPARISON_MODEL?.trim() || 'deepseek/deepseek-flash'
+    : process.env.LITTLESHEEP_HARNESS_MODEL?.trim() || 'deepseek/deepseek-flash'
   const acceptance = OFFLINE ? await startElectronAcceptanceProvider() : undefined
 
-  const paths = {}
+  let path
   const roots = []
   const restarts = []
   try {
-    // Interleaved pairing: both modes stay alive and alternate task by task so
-    // machine/Provider drift affects both sides of the comparison instead of
-    // biasing whichever path happened to run first.
-    const started = {}
-    for (const mode of ['shadow', 'next']) {
-      started[mode] = await startPath({ mode, apiKey, model, provider: acceptance })
-      roots.push(started[mode].root)
-    }
+    path = await startCurrentPath({ apiKey, model, provider: acceptance })
+    roots.push(path.root)
     const tasks = taskList()
     // DSH measures provider prefix caching across one long append-only
     // conversation. A fresh session per round can never show that, so the
     // shared-session mode keeps one conversation alive and records how the
     // cumulative hit ratio behaves as the prefix grows.
-    const sharedSessions = { shadow: null, next: null }
+    let sharedSession = null
     const restartAtRound = RESTART ? Math.max(1, Math.floor(ROUNDS / 2)) : -1
     for (let round = 0; round < ROUNDS; round += 1) {
-      // Restart mid-load: stop both app instances and bring them back against the
-      // same data root, then keep going in the same session. Round < restartAtRound
-      // ran on the first process; the rest run on the second.
+      // Restart mid-load against the same data root, then continue the same
+      // session. Round < restartAtRound ran on the first process.
       if (round === restartAtRound) {
-        for (const mode of ['shadow', 'next']) {
-          await stopApp(started[mode])
-          await launchApp(started[mode], { apiKey })
-        }
-        restarts.push({
-          atRound: round,
-          sessions: Object.fromEntries(['shadow', 'next'].map((mode) => [
-            mode,
-            sharedSessions[mode] ?? started[mode].sessions.at(-1)?.sessionId ?? null,
-          ])),
-        })
+        await stopApp(path)
+        await launchApp(path, { apiKey })
+        restarts.push({ atRound: round, sessionId: sharedSession ?? path.sessions.at(-1)?.sessionId ?? null })
       }
-      const roundSession = { shadow: null, next: null }
-      const order = round % 2 === 0 ? ['shadow', 'next'] : ['next', 'shadow']
+      let roundSession = null
       for (let index = 0; index < tasks.length; index += 1) {
-        for (const mode of order) {
-          const path = started[mode]
-          if (SHARED_SESSION) {
-            sharedSessions[mode] ??= `verify-path-${mode}-shared-${randomUUID().slice(0, 6)}`
-            roundSession[mode] = sharedSessions[mode]
-          } else {
-            roundSession[mode] ??= `verify-path-${mode}-r${round}-s${path.sessions.length}-${randomUUID().slice(0, 6)}`
-          }
-          const ok = await runTask(path, { round, index, sessionId: roundSession[mode] })
-          if (!ok && !SHARED_SESSION) {
-            path.sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: index })
-            roundSession[mode] = null
-          }
+        if (SHARED_SESSION) {
+          sharedSession ??= `verify-current-shared-${randomUUID().slice(0, 6)}`
+          roundSession = sharedSession
+        } else {
+          roundSession ??= `verify-current-r${round}-s${path.sessions.length}-${randomUUID().slice(0, 6)}`
+        }
+        const ok = await runTask(path, { round, index, sessionId: roundSession })
+        if (!ok && !SHARED_SESSION) {
+          path.sessions.push({ sessionId: roundSession, round, lastTaskIndex: index })
+          roundSession = null
         }
       }
-      for (const mode of ['shadow', 'next']) {
-        if (roundSession[mode]) {
-          started[mode].sessions.push({ sessionId: roundSession[mode], round, lastTaskIndex: tasks.length - 1 })
-          if (SHARED_SESSION) {
-            const trend = await readCacheQuality({
-              baseUrl: started[mode].baseUrl,
-              locator: started[mode].locator,
-              sessionId: roundSession[mode],
-              workplaceDir: started[mode].workplaceDir,
-              dataDir: started[mode].dataDir,
-            })
-            started[mode].cacheTrend.push({
-              round,
-              requestCount: trend.report?.provider?.requestCount ?? trend.report?.requestCount ?? 0,
-              promptTokens: trend.report?.providerPrompt?.tokenCount,
-              cachedPromptTokens: trend.report?.providerPrompt?.cachedTokenCount,
-              cacheHitRatio: trend.report?.providerPrompt?.hitRatio,
-              report: trend.report,
-            })
-          }
+      if (roundSession) {
+        path.sessions.push({ sessionId: roundSession, round, lastTaskIndex: tasks.length - 1 })
+        if (SHARED_SESSION) {
+          const trend = await readCacheQuality({
+            baseUrl: path.baseUrl,
+            locator: path.locator,
+            sessionId: roundSession,
+            workplaceDir: path.workplaceDir,
+            dataDir: path.dataDir,
+          })
+          path.cacheTrend.push({
+            round,
+            requestCount: trend.report?.provider?.requestCount ?? trend.report?.requestCount ?? 0,
+            promptTokens: trend.report?.providerPrompt?.tokenCount,
+            cachedPromptTokens: trend.report?.providerPrompt?.cachedTokenCount,
+            cacheHitRatio: trend.report?.providerPrompt?.hitRatio,
+            report: trend.report,
+          })
         }
       }
     }
-    for (const mode of ['shadow', 'next']) paths[mode] = await finishPath(started[mode])
-
-    const comparison = compareHarnessPaths([
-      { label: 'shadow', report: paths.shadow.report },
-      { label: 'next', report: paths.next.report },
-    ])
-    const gate = evaluateGate({ compaction: COMPACTION_LOW, comparison, paths })
+    path = await finishPath(path)
+    const gate = evaluateGate({ compaction: COMPACTION_LOW, path })
 
     const output = {
-      check: 'harness-path-comparison',
-      ok: true,
+      check: 'harness-current-path',
+      ok: gate.passed,
       mode: OFFLINE ? 'offline-self-check' : 'live-provider',
       model,
       taskCount: taskList().length,
@@ -212,19 +185,16 @@ async function main() {
       // Evidence that the restart actually happened mid-load, and which session
       // was continued across it.
       restarts,
-      paths: {
-        shadow: summarize(paths.shadow),
-        next: summarize(paths.next),
-      },
-      comparison,
+      path: summarize(path),
       gate,
     }
     await mkdir(dirname(OUTPUT_PATH), { recursive: true })
     await writeFile(OUTPUT_PATH, `${JSON.stringify(output, null, 2)}\n`, 'utf8')
     console.log(JSON.stringify(output, null, 2))
+    if (!gate.passed) process.exitCode = 1
   } catch (error) {
     console.error(JSON.stringify({
-      check: 'harness-path-comparison',
+      check: 'harness-current-path',
       ok: false,
       roots,
       error: error instanceof Error ? error.message : String(error),
@@ -234,7 +204,7 @@ async function main() {
     if (KEEP_DATA) {
       // Prefix-cache forensics: keep the execution logs so the next request can
       // be diffed byte by byte against its predecessor.
-      console.log(JSON.stringify({ check: 'harness-path-comparison-kept-data', roots }))
+      console.log(JSON.stringify({ check: 'harness-current-path-kept-data', roots }))
     } else {
       for (const root of roots) await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => undefined)
     }
@@ -246,15 +216,15 @@ function taskList() {
   // A shorter live list keeps a shared-session run clear of clarification
   // round-trips that would otherwise swamp the cache measurement.
   const source = TOOL_WORK ? TOOL_TASKS : TASKS
-  const requested = Number(process.env.LITTLESHEEP_COMPARISON_TASKS ?? (OFFLINE ? 4 : source.length))
+  const requested = Number(process.env.LITTLESHEEP_HARNESS_TASKS ?? (OFFLINE ? 4 : source.length))
   const limit = Number.isFinite(requested) && requested > 0
     ? Math.min(source.length, Math.floor(requested))
     : (OFFLINE ? 4 : source.length)
   return source.slice(0, limit)
 }
 
-async function startPath({ mode, apiKey, model, provider }) {
-  const root = await mkdtemp(join(tmpdir(), `littlesheep-path-${mode}-`))
+async function startCurrentPath({ apiKey, model, provider }) {
+  const root = await mkdtemp(join(tmpdir(), 'littlesheep-current-path-'))
   const dataDir = join(root, 'data')
   const chromiumDir = join(root, 'chromium')
   const workplaceDir = join(dataDir, 'workplace')
@@ -279,7 +249,6 @@ async function startPath({ mode, apiKey, model, provider }) {
   await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, model, provider), null, 2)}\n`, 'utf8')
 
   const path = {
-    mode,
     root,
     dataDir,
     workplaceDir,
@@ -320,7 +289,30 @@ async function launchApp(path, { apiKey }) {
   path.log = log
   path.locator = locator
   path.baseUrl = `http://${locator.host}:${locator.port}`
+  await waitForExecutionReady(path)
   return path
+}
+
+async function waitForExecutionReady(path) {
+  const deadline = Date.now() + START_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchJson(`${path.baseUrl}/runtime/readiness`, {
+        headers: { Authorization: `Bearer ${path.locator.token}` },
+        signal: AbortSignal.timeout(5_000),
+      })
+      const readiness = response.payload?.readiness ?? response.payload
+      if (readiness?.state === 'ready') return readiness
+      if (readiness?.state === 'failed') {
+        throw new Error(`Runtime startup failed: ${readiness.reason ?? 'no reason provided'}`)
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Runtime startup failed:')) throw error
+      // The listener may be reachable before its readiness route is registered.
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 250))
+  }
+  throw new Error(`Runtime execution was not ready within ${START_TIMEOUT_MS}ms`)
 }
 
 /** Stop the app for a path without collecting its reports. */
@@ -348,7 +340,7 @@ async function runTask(path, { round, index, sessionId }) {
     body: JSON.stringify({
       sessionId,
       text,
-      requestKey: `${path.mode}-round-${round}-task-${index}`,
+      requestKey: `current-round-${round}-task-${index}`,
       workspace: path.workplaceDir,
       ...(FULL_ACCESS ? { permissionMode: 'full' } : {}),
     }),
@@ -526,65 +518,32 @@ async function readCacheQuality({ baseUrl, locator, sessionId, workplaceDir, dat
   return { policy: best.policy, report: best.report, policies, observationFiles }
 }
 
-/**
- * Pairing gate for the phase-C comparison.
- *
- * The taskbook's 5% relative gate compares the second-batch state with the
- * third-batch candidate; this script necessarily compares the legacy (shadow)
- * engine with the next engine, whose per-run strict-path bookkeeping is a
- * structural, not accidental, difference. The gate therefore keeps the 5%
- * relative threshold but applies it to the metrics that isolate the candidate
- * delta (per-run p50/p95 latency, and for the compaction class median/p95 plus
- * request count), while the end-to-end median stays informational. Correctness
- * guards apply to both classes.
- */
-function evaluateGate({ compaction, comparison, paths }) {
-  const summary = Object.fromEntries(comparison.paths.map((entry) => [entry.label, entry.summary ?? {}]))
-  const next = summary.next ?? {}
-  const shadow = summary.shadow ?? {}
-  const nextPath = summarize(paths.next)
-  const shadowPath = summarize(paths.shadow)
-  const deltas = comparison.deltas ?? {}
-  const pct = (delta, base) => (base ? (delta / base) * 100 : 0)
+/** Check the current path's runtime evidence without inventing a comparison baseline. */
+function evaluateGate({ compaction, path }) {
+  const current = summarize(path)
+  const receivedRate = path.report.outcomes.receivedRate
   const criteria = []
   const add = (name, value, limit, passed) => criteria.push({ name, value, limit, passed })
-  // Latency comparisons are noise-type criteria: two consecutive samples on the
-  // same code gave +6.5% and -1% for the median delta, so they are reported with
-  // their value but do not gate. Correctness criteria above still do.
-  const advise = (name, value, limit, withinLimit) => criteria.push({
-    name, value, limit, passed: true, advisory: true, withinLimit,
-  })
-  add('failedRuns', nextPath.failedRuns, 0, nextPath.failedRuns === 0)
+  add('failedRuns', current.failedRuns, 0, current.failedRuns === 0)
   // The gate only enforces the state-machine failures; a transport blip is
   // reported (and visible) but must not mask a semantic regression the way a
   // single `fetch failed` did in the no-park confirmation run.
-  add('semanticFailures', nextPath.semanticFailures ?? 0, 0, (nextPath.semanticFailures ?? 0) === 0)
-  add('transportFailures', nextPath.transportFailures ?? 0, 0, true)
+  add('semanticFailures', current.semanticFailures ?? 0, 0, (current.semanticFailures ?? 0) === 0)
+  add('transportFailures', current.transportFailures ?? 0, 0, true)
   // A run that answers 200 without a reply and without pausing is the silent
   // ending the state-machine work eliminated; enforce it so a regression is
   // caught by this gate instead of by manual inspection.
-  add('silentRuns', nextPath.silentRuns ?? 0, 0, (nextPath.silentRuns ?? 0) === 0)
-  add('receivedRate', next.receivedRate ?? 0, 1, (next.receivedRate ?? 0) >= 1)
-  add('verificationPassRateDelta', deltas.verificationPassRate ?? 0, 0, (deltas.verificationPassRate ?? 0) >= 0)
-  const p50DeltaPct = pct((next.latencyP50Ms ?? 0) - (shadow.latencyP50Ms ?? 0), shadow.latencyP50Ms ?? 0)
-  const p95DeltaPct = pct(deltas.latencyP95Ms ?? 0, shadow.latencyP95Ms ?? 0)
-  if (compaction) {
-    const medianDeltaPct = pct(nextPath.medianRunMs - shadowPath.medianRunMs, shadowPath.medianRunMs)
-    add('compactionMedianDeltaPct', Number(medianDeltaPct.toFixed(1)), 5, medianDeltaPct <= 5)
-    add('compactionP95DeltaPct', Number(p95DeltaPct.toFixed(1)), 5, p95DeltaPct <= 5)
-    add('requestCountDelta', deltas.requestCount ?? 0, 0, (deltas.requestCount ?? 0) <= 0)
-  } else {
-    advise('shortTurnP50DeltaPct', Number(p50DeltaPct.toFixed(1)), 5, p50DeltaPct <= 5)
-    advise('shortTurnP95DeltaPct', Number(p95DeltaPct.toFixed(1)), 5, p95DeltaPct <= 5)
-  }
+  add('silentRuns', current.silentRuns ?? 0, 0, (current.silentRuns ?? 0) === 0)
+  add('receivedRate', receivedRate ?? 0, 1, receivedRate === 1)
   return {
     class: compaction ? 'compaction' : 'short-turn',
     passed: criteria.every((criterion) => criterion.passed),
-    // Informational: the strict path writes durable state per run, so the
-    // end-to-end median carries a bounded fixed cost by design.
-    informational: {
-      medianDeltaPct: Number(pct(nextPath.medianRunMs - shadowPath.medianRunMs, shadowPath.medianRunMs).toFixed(1)),
-      internalMedianDeltaMs: nextPath.medianRunInternalMs - shadowPath.medianRunInternalMs,
+    observed: {
+      runCount: current.runCount,
+      medianRunMs: current.medianRunMs,
+      requestCount: path.report.requestCount,
+      verification: path.report.verification,
+      latency: path.report.latency,
     },
     criteria,
   }
