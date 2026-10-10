@@ -37,7 +37,13 @@ export function syncComposerInputHeight(
   const measuredHeight = textarea.scrollHeight
   const nextHeight = clampComposerInputHeight(measuredHeight, maxHeight)
   textarea.style.height = `${nextHeight}px`
-  // Wrapped control rows can make the visible field shorter than its requested height.
   const visibleHeight = textarea.clientHeight || nextHeight
   textarea.style.overflowY = measuredHeight > visibleHeight ? 'auto' : 'hidden'
+}
+
+/** Width changes wrap the draft inside its existing reading area, without growing the dock. */
+export function syncComposerInputOverflow(textarea: HTMLTextAreaElement | null): void {
+  if (!textarea) return
+  const visibleHeight = textarea.clientHeight || Number.parseFloat(textarea.style.height) || COMPOSER_INPUT_MIN_HEIGHT
+  textarea.style.overflowY = textarea.value && textarea.scrollHeight > visibleHeight ? 'auto' : 'hidden'
 }

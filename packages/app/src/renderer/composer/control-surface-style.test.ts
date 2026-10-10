@@ -60,7 +60,7 @@ describe('composer control surfaces', () => {
       /\.mode-picker-trigger\.composer-tab-control,\s*\.workspace-context-chip[\s\S]{0,80}\{\s*height:/u,
     )
     expect(styles).toMatch(
-      /\.add-menu-trigger\.composer-tab-control:hover:not\(:disabled\),\s*\.add-menu-trigger\.composer-tab-control:focus-visible,\s*\.add-menu\.open \.add-menu-trigger\.composer-tab-control\s*\{[^}]*background:\s*var\(--chat-active-fill\);[^}]*border:\s*0;[^}]*outline:\s*0;/u,
+      /\.add-menu-trigger\.composer-tab-control:hover:not\(:disabled\)\s*\{[^}]*background:\s*var\(--chat-active-fill\);[^}]*border:\s*0;[^}]*outline:\s*0;/u,
     )
     expect(addMenu).not.toContain('buildFloatingHelpTip')
     expect(addMenu).not.toMatch(/onMouseEnter=|onMouseMove=|onFocus=/u)
@@ -74,8 +74,7 @@ describe('composer control surfaces', () => {
     expect(sharedSurface).toContain('height: var(--composer-control-surface-size);')
     expect(sharedSurface).toContain('background: transparent;')
     expect(sharedSurface).toContain('border: 0;')
-    // The row's corner is the composer's own rounding, capped short of a capsule in the token: the
-    // compact row (28px controls) must not turn the boxes into pills either.
+    // Model, permission and workspace controls share the same corner radius.
     expect(sharedSurface).toContain('min-height: 0;')
     expect(sharedSurface).toContain('border-radius: var(--composer-control-radius);')
     expect(sharedSurface).toContain('outline: 0;')

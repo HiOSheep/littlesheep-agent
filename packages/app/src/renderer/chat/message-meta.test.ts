@@ -24,6 +24,7 @@ describe('message metadata footer', () => {
     ])
     const html = renderToStaticMarkup(createElement(MessageMeta, {
       role: 'user',
+      onBranch: () => undefined,
       text: '需要复制的消息',
       timestamp: '2026-08-25T09:07:00.000Z',
     }))
@@ -31,6 +32,7 @@ describe('message metadata footer', () => {
     expect(html).toContain('class="message-meta message-meta-user"')
     expect(html).toContain('aria-label="复制消息"')
     expect(html).toContain('data-copied="false"')
+    expect(html).not.toContain('message-meta-branch')
     expect(styles).toMatch(/\.message-meta\s*\{[^}]*height:\s*28px;[^}]*font-size:\s*12px;[^}]*opacity:\s*0;[^}]*pointer-events:\s*auto;/u)
     expect(styles).toMatch(/\.message-meta:hover,[\s\S]*?\.message-meta:focus-within\s*\{[^}]*opacity:\s*1;/u)
     expect(styles).toMatch(/\.message-with-meta\.user\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*100%;[^}]*margin-left:\s*auto;/u)
@@ -59,11 +61,13 @@ describe('message metadata footer', () => {
     ])
     const idle = renderToStaticMarkup(createElement(MessageMeta, {
       role: 'assistant',
+      onBranch: () => undefined,
       text: '需要复制的消息',
       timestamp: '2026-08-25T09:07:00.000Z',
     }))
 
     expect(idle).toContain('data-copy-state="idle"')
+    expect(idle).toContain('message-meta-branch')
     expect(idle).not.toContain('message-copy-failed-row')
     expect(source).toContain("setCopyState('failed')")
     expect(source).toMatch(/catch\s*\{[\s\S]*?setCopyState\('failed'\)/)

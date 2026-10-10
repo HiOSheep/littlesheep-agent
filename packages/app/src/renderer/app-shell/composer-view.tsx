@@ -22,7 +22,7 @@ import {
   isChatNearBottom,
   readChatScrollGeometry,
 } from '../chat/chat-scroll-anchor'
-import { syncComposerInputHeight } from '../composer/input-size'
+import { syncComposerInputHeight, syncComposerInputOverflow } from '../composer/input-size'
 import { WINDOW_RESIZE_END_EVENT } from '../ui/resize'
 import { useRuntimeReadiness } from '../runtime-readiness/use-runtime-readiness'
 import type { ComposerViewController } from './app-controller-projections'
@@ -121,16 +121,17 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     let measuredWidth = -1
 
     const updateOverlayClearance = (immediate = false) => {
+      chat.style.setProperty('--composer-viewport-height', `${chat.clientHeight}px`)
       const nextWidth = Math.ceil(shell.getBoundingClientRect().width)
       if (nextWidth > 0 && nextWidth !== measuredWidth) {
         measuredWidth = nextWidth
-        // A fixed textarea height becomes stale when column changes wrap an
-        // existing draft. Recalculate before measuring the composer shell.
+        // Column resizing must keep the dock height stable. Wrapped draft text
+        // scrolls inside the current field; typing still owns automatic growth.
         if (
           !document.body.classList.contains('is-resizing-column')
           && !document.body.classList.contains('is-window-resizing')
         ) {
-          syncComposerInputHeight(inputRef.current)
+          syncComposerInputOverflow(inputRef.current)
         }
       }
 
@@ -160,17 +161,22 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
 
     updateOverlayClearance(true)
     if (typeof ResizeObserver === 'undefined') {
-      return () => chat.style.removeProperty('--composer-overlay-height')
+      return () => {
+        chat.style.removeProperty('--composer-overlay-height')
+        chat.style.removeProperty('--composer-viewport-height')
+      }
     }
 
     const observer = new ResizeObserver(() => updateOverlayClearance())
     observer.observe(shell)
+    observer.observe(chat)
     const handleWindowResizeEnd = () => updateOverlayClearance(true)
     window.addEventListener(WINDOW_RESIZE_END_EVENT, handleWindowResizeEnd)
     return () => {
       observer.disconnect()
       window.removeEventListener(WINDOW_RESIZE_END_EVENT, handleWindowResizeEnd)
       chat.style.removeProperty('--composer-overlay-height')
+      chat.style.removeProperty('--composer-viewport-height')
     }
   }, [scrollRef])
 

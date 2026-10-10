@@ -15,31 +15,7 @@
   transition:
     padding var(--motion-fast) var(--motion-ease),
     border-color var(--motion-fast) var(--motion-ease),
-    bottom var(--workspace-panel-motion, 260ms) var(--motion-ease),
     transform var(--workspace-panel-motion, 260ms) var(--motion-ease);
-}
-
-/* A new conversation floats the field in the middle of the column, where the reader is already
-   looking, and the first message settles it back to the bottom. `bottom` and `transform` are
-   lengths, so the move animates; the hint keeps its own room above the centred field instead of
-   sitting under it (2026-10-02). */
-.messages.is-empty ~ .composer-shell {
-  bottom: 50%;
-  transform: translateY(50%);
-}
-
-.messages.is-empty .empty-hint {
-  margin-bottom: 150px;
-}
-
-/* The loading row is the other thing an empty conversation shows while the field is floated, and it
-   needs the same room the hint takes. Measured at 1280x900 with the field centred: with no margin
-   the row's bottom sat 6.5px *inside* the field's top edge (the row is centred in a content box
-   whose bottom already reserves room for a field at the bottom of the column, which is not where
-   this field is). A margin of one `--composer-overlay-height` leaves about half of it as the visible
-   gap - 55px against the hint's 44.6px - and follows the field when a tall draft grows it. */
-.messages.is-empty .history-loading {
-  margin-bottom: var(--composer-overlay-height);
 }
 
 .composer-shell > .composer,
@@ -495,9 +471,8 @@
   --composer-padding-block: 10px;
   --composer-padding-inline: 12px;
   --composer-control-surface-size: 28px;
-  /* 控制行的圆角固定为 8px：DSH 的行内控件是小圆角矩形，不再由控件高度推导，
-     28px 的方形控件也不会被拉成胶囊。 */
-  --composer-control-radius: 8px;
+  /* 模型、权限和工作区控件共用较柔和的圆角。 */
+  --composer-control-radius: 12px;
   --composer-control-padding-inline: 8px;
   --composer-control-row-height: 32px;
   --composer-control-row-half-height: 16px;
@@ -525,13 +500,14 @@
   width: min(var(--composer-max-width), 100%);
   margin: 0 auto;
   padding: var(--composer-padding-block) var(--composer-padding-inline);
-  /* 输入卡是一整块实心卡：DSH 的输入区用实心面 + 柔和投影，不再有内嵌玻璃层，
-     元素自身也就不再是弹层的 backdrop root。 */
+  /* Only the input surface blurs the transcript behind it; text and controls stay crisp. */
   position: relative;
-  background: var(--chat-card-fill);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  backdrop-filter: blur(20px) saturate(135%);
   border: 0;
   border-radius: var(--radius-composer-input);
-  box-shadow: var(--chat-card-elevation);
+  box-shadow: var(--chat-card-elevation), inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
   gap: 12px;
 }
 
@@ -2095,21 +2071,30 @@
 
 /* The add action uses a circular surface with equal width and height. */
 .add-menu-trigger.composer-tab-control {
+  display: grid;
+  place-items: center;
   width: var(--composer-control-surface-size);
   height: var(--composer-control-surface-size);
   flex: 0 0 var(--composer-control-surface-size);
-  /* 圆形按钮自带静息底色，悬停/展开时才加深。 */
-  background: var(--chat-hover-fill);
+  padding: 0;
+  background: transparent;
   border: 0;
   border-radius: var(--radius-pill);
 }
 
-.add-menu-trigger.composer-tab-control:hover:not(:disabled),
-.add-menu-trigger.composer-tab-control:focus-visible,
-.add-menu.open .add-menu-trigger.composer-tab-control {
+.add-menu-trigger.composer-tab-control:hover:not(:disabled) {
   background: var(--chat-active-fill);
   border: 0;
   outline: 0;
+}
+
+.add-menu-trigger.composer-tab-control:not(:hover) {
+  background: transparent;
+}
+
+.add-menu-trigger.composer-tab-control:focus-visible {
+  outline: 2px solid var(--border-strong);
+  outline-offset: 2px;
 }
 
 .composer-tab-control:hover:not(:disabled):not(.context-usage),

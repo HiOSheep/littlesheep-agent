@@ -5,7 +5,7 @@ interface MessageMetaProps {
   role: 'user' | 'assistant'
   text: string
   timestamp?: string
-  /** Forks the conversation at this message; absent for messages that cannot branch yet. */
+  /** Forks at an assistant reply; user messages never offer a branch action. */
   onBranch?: () => void
   branching?: boolean
   usageAction?: ReactNode
@@ -45,7 +45,7 @@ export const MessageMeta = memo(function MessageMeta({
 
   // The assistant's own reply leads with its controls, the reader's message ends with them, so the
   // row always reads away from the bubble it belongs to: [copy][branch][usage][time] on the left for the
-  // agent, [time][branch][copy] on the right for the user.
+  // agent, [time][copy] on the right for the user.
   //
   // A refused copy is reported *beside* the row rather than inside it: the row is a hover surface
   // (`opacity: 0` until the pointer or focus is on it, see the stylesheet's contract), and a failure
@@ -65,7 +65,7 @@ export const MessageMeta = memo(function MessageMeta({
         >
           {copyState === 'copied' ? <CheckIcon /> : <CopyIcon />}
         </button>
-        {onBranch && (
+        {role === 'assistant' && onBranch && (
           <button
             type="button"
             className="message-meta-branch"

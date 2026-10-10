@@ -4,6 +4,7 @@ import {
   clampComposerInputHeight,
   getComposerInputMaxHeight,
   syncComposerInputHeight,
+  syncComposerInputOverflow,
 } from './input-size'
 
 
@@ -15,6 +16,16 @@ function createTextarea(value: string, scrollHeight: number, initialHeight = '22
 
 
 describe('composer input sizing', () => {
+  it('keeps the same field height when narrowing wraps the draft and when widening removes overflow', () => {
+    const { style, textarea } = createTextarea('draft that wraps on resize', 160, '72px')
+    syncComposerInputOverflow(textarea)
+    expect(style.height).toBe('72px')
+    expect(style.overflowY).toBe('auto')
+    Object.defineProperty(textarea, 'scrollHeight', { value: 50 })
+    syncComposerInputOverflow(textarea)
+    expect(style.height).toBe('72px')
+    expect(style.overflowY).toBe('hidden')
+  })
   it('keeps the viewport-derived cap inside the supported range', () => {
     expect(getComposerInputMaxHeight(1024)).toBe(220)
     expect(getComposerInputMaxHeight(480)).toBe(144)

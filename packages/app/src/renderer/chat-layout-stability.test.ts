@@ -400,7 +400,7 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/body\.is-window-resizing \.window-shell,[\s\S]*?transition-duration:\s*0ms !important;/u)
     expect(composer).toContain('CHAT_COMPOSER_OVERLAY_RESIZE_EVENT')
     expect(composer).toContain('chat.dispatchEvent(new CustomEvent(CHAT_COMPOSER_OVERLAY_RESIZE_EVENT')
-    expect(composer).toContain('syncComposerInputHeight(inputRef.current)')
+    expect(composer).toContain('syncComposerInputOverflow(inputRef.current)')
     expect(composer).toContain('WINDOW_RESIZE_END_EVENT')
     expect(composer).toContain("!document.body.classList.contains('is-window-resizing')")
     expect(composer).not.toContain('scheduleBottomRepair')
@@ -514,7 +514,7 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.primary-workspace:has\(\.sidebar-resizer:hover\) \.sidebar-surface,[\s\S]*?body\.is-resizing-column \.window-shell\.sidebar-drag-live \.settings-sidebar\s*\{[^}]*--floating-panel-frame-color:\s*var\(--floating-panel-resize-border\);/u)
   })
 
-  it('keeps the composer in flow under one measured reading column', async () => {
+  it('keeps the input glass above one measured reading column', async () => {
     const styles = await readRendererStyleSource()
     const composer = await readRendererFile('./app-shell/composer-view.tsx')
 
@@ -523,10 +523,9 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/--composer-overlay-height:\s*116px;/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--composer-overlay-height\) \+ var\(--composer-message-gap\)\)[\s\S]*?calc\(var\(--chat-content-gutter\) \+ var\(--chat-workspace-scrollbar-overlap\)\);[\s\S]*?scroll-padding-bottom:[\s\S]*?var\(--composer-overlay-height\)/u)
     expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*0;[\s\S]*?z-index:\s*40;[\s\S]*?pointer-events:\s*none;/u)
-    // DSH's input is one opaque card: the fill, the frame and the elevation live on the
-    // card element itself, and there is no inset material layer left to keep in sync.
-    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*var\(--chat-card-fill\);/u)
-    expect(styles).not.toMatch(/\.composer\s*\{[^}]*backdrop-filter:/u)
+    // The material belongs to the input surface; its contents retain full opacity.
+    expect(styles).toMatch(/\.composer\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--surface\) 70%, transparent\);/u)
+    expect(styles).toMatch(/\.composer\s*\{[^}]*backdrop-filter:\s*blur\(20px\) saturate\(135%\);/u)
     expect(styles).not.toMatch(/\.composer::before\s*\{/u)
     expect(styles).toMatch(/\.composer\s*\{[^}]*border:\s*0;/u)
     expect(styles).not.toMatch(/\.composer\.drag-active\s*\{[^}]*border-color:/u)
@@ -936,22 +935,17 @@ describe('chat layout stability', () => {
     expect(view).not.toContain('className="running-pill-shell"')
     expect(styles).toMatch(/\.chat-header\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*56px;/u)
     expect(styles).toContain('.chat-header .chat-turn-rail { position: relative;')
-    expect(styles).toContain('.messages.is-empty ~ .composer-shell { bottom: 0; transform: none; }')
+    expect(styles).toContain('.chat:has(.messages.is-empty) .chat-header { display: none; }')
+    expect(styles).toContain('transform: translateY(calc((var(--composer-overlay-height) - var(--composer-viewport-height)) / 2 + 24px));')
     expect(styles).toContain('.composer-status:empty { display: none; }')
   })
 
   it('floats a new conversation\'s field in the middle and animates it back to the bottom', async () => {
     const styles = await readRendererStyleSource()
-    // The empty state puts the field where the reader is looking; the first message returns it to
-    // its resting place. Both `bottom` and `transform` move, so the transition is a real move
-    // rather than a jump (2026-10-02).
-    expect(styles).toMatch(/\.messages\.is-empty ~ \.composer-shell\s*\{\s*bottom:\s*50%;\s*transform:\s*translateY\(50%\);\s*\}/u)
-    expect(styles).toMatch(/\.composer-shell\s*\{[^}]*transition:[\s\S]*?bottom var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\),[\s\S]*?transform var\(--workspace-panel-motion, 260ms\) var\(--motion-ease\);/u)
-    // The hint keeps its room above the centred field instead of sitting under it.
-    expect(styles).toMatch(/\.messages\.is-empty \.empty-hint\s*\{\s*margin-bottom:\s*150px;\s*\}/u)
-    // The loading row is the same state's other content, so it takes room too: without a margin its
-    // bottom measured 6.5px *inside* the floated field (1280x900), and a margin of one composer
-    // overlay height leaves about half of it as the visible gap (2026-10-02).
-    expect(styles).toMatch(/\.messages\.is-empty \.history-loading\s*\{\s*margin-bottom:\s*var\(--composer-overlay-height\);\s*\}/u)
+    // A single transform moves the field without animating layout on every frame.
+    expect(styles).toContain('transform: translateY(calc((var(--composer-overlay-height) - var(--composer-viewport-height)) / 2 + 24px));')
+    const shellRule = styles.match(/\.composer-shell\s*\{[^}]*transition:[^}]*\}/u)?.[0]
+    expect(shellRule).toContain('transform var(--workspace-panel-motion, 260ms) var(--motion-ease)')
+    expect(shellRule).not.toContain('bottom var(')
   })
 })
