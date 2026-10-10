@@ -114,7 +114,7 @@ export type RunnerResult = AgentResult & {
   memoryAccess?: MemoryAccessLedger;
   runCheckpointId?: string;
   memorySourceCapture?: { status: 'degraded'; reason: string };
-  /** Effective durable Harness mode for this run (global or session override). */
+  /** Persisted durable Harness label; legacy results can still contain `shadow`. */
   durableHarnessMode?: 'shadow' | 'next';
 };
 interface ContinuationInput {
@@ -176,14 +176,6 @@ export interface CreateRunnerOptions {
   maxActiveRuns?: number;
   /** Rollout gate for ordinary-chat checkpoint binding. Defaults to `full`. */
   conversationContinuationMode?: 'off' | 'shadow' | 'full';
-  /** Durable Harness rollout mode. Defaults to observational `shadow`. */
-  durableHarnessMode?: 'shadow' | 'next';
-  /** Per-session durable Harness overrides; unlisted sessions use durableHarnessMode. */
-  durableHarnessSessionOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
-  /** Per-request-origin durable Harness overrides; session overrides take precedence. */
-  durableHarnessOriginOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
-  /** Per-behavior-profile durable Harness overrides; session/origin overrides take precedence. */
-  durableHarnessProfileOverrides?: Readonly<Record<string, 'shadow' | 'next'>>;
   /** Host-owned external effect reconciliation used by durable recovery. */
   queryDurableEffectOutcome?: (
     effect: DurableEffectProjection,
@@ -318,10 +310,8 @@ export interface AgentRunner {
   readonly infra: import('./infra.js').Infrastructure;
   /** Current model ref. */
   readonly model: string;
-  /** Harness rollout mode used by the runner; legacy callers omit this field. */
+  /** New runs use strict durable settlement; old persisted labels are read per run. */
   readonly durableHarnessMode?: 'shadow' | 'next';
-  /** Resolve the effective mode for one session, including overrides. */
-  durableHarnessModeForSession?(sessionId: string, origin?: string, profile?: string): 'shadow' | 'next';
   durableHarnessModeForRun?(sessionId: string, runId: string): Promise<'shadow' | 'next' | undefined>;
 }
 
@@ -332,13 +322,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
   );
-  // One driver now: every run takes the durable path. The mode remains only as a
-  // legacy label for persisted events, so it defaults to 'next' and the
-  // per-session/origin/profile overrides can no longer downgrade a run to the
-  // removed shadow path.
-  const resolveDurableHarnessMode = (_sessionId?: string, _origin?: string, _profile?: string): 'shadow' | 'next' => (
-    opts.durableHarnessMode ?? 'next'
-  );
+  // Durable execution is the only current Runner path. The legacy `shadow`
+  // label is decoded from old records, never selected for a new run.
+  const durableHarnessMode = 'next' as const;
   const state: RunnerState = { sessionId: undefined, model };
   const protectedWriteRoots = opts.protectedWriteRoots
     ?? discoverLittleSheepCoreRoots([process.cwd(), process.argv[1] ?? '']);
@@ -481,13 +467,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } catch (error) {
         opts.log?.('warn', 'runner: retired compaction proposal sweep degraded: ' + (error as Error).message);
       }
-      const runProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile)?.id;
-      const durableHarnessMode = resolveDurableHarnessMode(String(sessionId), origin, runProfile);
       durableRecorder = createDurableRunRecorder({
         eventStore: infra.durableEventStore,
         inboxStore: infra.durableInboxStore,
         sessionId: String(sessionId), runId, origin, model,
-        mode: durableHarnessMode,
         initializationError: infra.durableHarnessInitializationError,
         reserveFinalReply: (replySessionId, reservation) => infra.sessionManager.reserveAssistantReplySettlement(
           asSessionId(replySessionId), reservation,
@@ -495,19 +478,17 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         log: opts.log,
       });
       await durableRecorder.ready;
-      if (true) {
-        durableRunOwnership = await DurableRunOwnership.acquire({
-          runStore: infra.durableRunLeaseStore,
-          effectStore: infra.durableEffectLeaseStore,
-          sessionId: String(sessionId),
-          runId,
-          onOwnershipLost: (kind, error) => {
-            opts.log?.('error', `runner: durable ${kind} lease lost: ${error.message}`);
-            abortControl.registration.interrupt?.(`durable ${kind} lease ownership lost`);
-          },
-        });
-        infra.durableEventStore.trustExclusiveRunOwnership(String(sessionId), runId);
-      }
+      durableRunOwnership = await DurableRunOwnership.acquire({
+        runStore: infra.durableRunLeaseStore,
+        effectStore: infra.durableEffectLeaseStore,
+        sessionId: String(sessionId),
+        runId,
+        onOwnershipLost: (kind, error) => {
+          opts.log?.('error', `runner: durable ${kind} lease lost: ${error.message}`);
+          abortControl.registration.interrupt?.(`durable ${kind} lease ownership lost`);
+        },
+      });
+      infra.durableEventStore.trustExclusiveRunOwnership(String(sessionId), runId);
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
       const onToolEvent = (event: ToolStreamEvent): void => {
@@ -659,7 +640,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         attachments: input.attachments,
         resolvedRunConfig,
         appendDurableEvent: durableRecorder
-          ? (event) => durableRecorder!.appendObserved(event)
+          ? (event) => durableRecorder!.append(event)
           : undefined,
         effectLeases: durableRunOwnership?.effectLeases,
         deferFinalReplySettlement: true,
@@ -877,11 +858,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
           },
           persist: async (finalizedRun) => {
-            if (true) {
-              // FINALIZE/compaction may prepare one last model request. Close
-              // that lifecycle before the audit receipt and final settlement.
-              await flushModelRequestLifecycles(ctx);
-            }
+            // FINALIZE/compaction may prepare one last model request. Close
+            // that lifecycle before the audit receipt and final settlement.
+            await flushModelRequestLifecycles(ctx);
             await persistRunnerPhase({
               result: finalizedRun.result,
               sessionId,
@@ -1976,10 +1955,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     sessionManager: infra.sessionManager,
     infra,
     model,
-    durableHarnessMode: opts.durableHarnessMode ?? 'shadow',
-    durableHarnessModeForSession: (sessionId: string, origin?: string, profile?: string) => (
-      resolveDurableHarnessMode(sessionId, origin, profile)
-    ),
+    durableHarnessMode,
   };
   }
 

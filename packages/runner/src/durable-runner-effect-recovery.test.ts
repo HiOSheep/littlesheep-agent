@@ -56,7 +56,6 @@ describe('full Runner effect process recovery', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     runners.push(runner);
     const events = await runner.infra.durableEventStore.read(sessionId!, 'run-effect-process-killed');

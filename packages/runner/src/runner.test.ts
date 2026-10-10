@@ -203,7 +203,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -256,7 +255,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const session = await runner.sessionManager.create('test/model');
@@ -320,7 +318,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const session = await runner.sessionManager.create('test/model');
@@ -355,7 +352,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not publish')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     vi.spyOn(runner.infra.executionLogStore, 'write').mockRejectedValue(new Error('audit disk full'));
@@ -387,7 +383,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not publish summary outage')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     vi.spyOn(runner.infra.executionLogStore, 'writeLatestForSession')
@@ -410,7 +405,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not publish transcript outage')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const append = runner.infra.sessionManager.append.bind(runner.infra.sessionManager);
@@ -444,7 +438,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not publish registry outage')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     vi.spyOn(runner.infra.sessionManager, 'settleAssistantReplySettlement')
@@ -467,7 +460,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not publish event outage')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const append = runner.infra.durableEventStore.append.bind(runner.infra.durableEventStore);
@@ -493,7 +485,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must remain a proposal')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     const session = await firstRunner.sessionManager.create('test/model');
@@ -519,7 +510,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(restarted);
 
@@ -538,15 +528,15 @@ describe('createRunner run', () => {
       .toBe(false);
   });
 
-  it('switches next to shadow and back without duplicating replies or settlements', async () => {
+  it('keeps new runs on the strict durable mode across Runner restarts', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('next reply one')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
+    expect(firstRunner.durableHarnessMode).toBe('next');
     const first = await firstRunner.run({ text: 'first turn' });
     expect(first).toMatchObject({
       status: 'ok',
@@ -554,29 +544,32 @@ describe('createRunner run', () => {
       durableHarnessMode: 'next',
     });
     const sessionId = first.sessionId;
+    const firstRunAccepted = await firstRunner.infra.durableEventStore.read(String(sessionId), first.runId);
+    expect(firstRunAccepted.find((event) => event.type === 'run_accepted')?.payload.durableHarnessMode).toBe('next');
     await firstRunner.shutdown();
     createdRunners.pop();
 
-    const shadowRunner = await createRunner({
+    const secondRunner = await createRunner({
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
-      llm: makeMockLlm(textResponse('shadow reply two')),
-      durableHarnessMode: 'shadow',
+      llm: makeMockLlm(textResponse('second strict reply')),
     });
-    createdRunners.push(shadowRunner);
-    const second = await shadowRunner.run({ sessionId, text: 'second turn' });
+    createdRunners.push(secondRunner);
+    const second = await secondRunner.run({ sessionId, text: 'second turn' });
     expect(second).toMatchObject({
       status: 'ok',
-      reply: 'shadow reply two',
-      durableHarnessMode: 'shadow',
+      reply: 'second strict reply',
+      durableHarnessMode: 'next',
     });
-    expect(assistantTexts(await shadowRunner.sessionManager.read(sessionId)))
-      .toEqual(['next reply one', 'shadow reply two']);
-    const firstRunEvents = await shadowRunner.infra.durableEventStore.read(String(sessionId), first.runId);
+    expect(assistantTexts(await secondRunner.sessionManager.read(sessionId)))
+      .toEqual(['next reply one', 'second strict reply']);
+    const secondRunEvents = await secondRunner.infra.durableEventStore.read(String(sessionId), second.runId);
+    expect(secondRunEvents.find((event) => event.type === 'run_accepted')?.payload.durableHarnessMode).toBe('next');
+    const firstRunEvents = await secondRunner.infra.durableEventStore.read(String(sessionId), first.runId);
     expect(firstRunEvents.filter((event) => event.type === 'final_reply_settled')).toHaveLength(1);
     expect(firstRunEvents.filter((event) => event.type === 'run_completed')).toHaveLength(1);
-    await shadowRunner.shutdown();
+    await secondRunner.shutdown();
     createdRunners.pop();
 
     const nextAgainRunner = await createRunner({
@@ -584,7 +577,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('next reply three')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(nextAgainRunner);
     const third = await nextAgainRunner.run({ sessionId, text: 'third turn' });
@@ -595,7 +587,7 @@ describe('createRunner run', () => {
     });
     expect(third.finalReplySettlement?.status).toBe('settled');
     expect(assistantTexts(await nextAgainRunner.sessionManager.read(sessionId)))
-      .toEqual(['next reply one', 'shadow reply two', 'next reply three']);
+      .toEqual(['next reply one', 'second strict reply', 'next reply three']);
   });
 
   it('explains a cross-run model change from the persisted cache observation', async () => {
@@ -654,18 +646,17 @@ describe('createRunner run', () => {
     expect(observation?.invalidationReasons).toContain('system_policy_changed');
   });
 
-  it('explains a harness path switch from the persisted cache observation', async () => {
-    const shadowRunner = await createRunner({
+  it('explains a route switch from the persisted cache observation', async () => {
+    const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
-      llm: makeMockLlm(textResponse('shadow path reply')),
-      durableHarnessMode: 'shadow',
+      llm: makeMockLlm(textResponse('first route reply')),
     });
-    createdRunners.push(shadowRunner);
-    const first = await shadowRunner.run({ text: 'path switch turn' });
-    expect(first).toMatchObject({ status: 'ok', durableHarnessMode: 'shadow' });
-    await shadowRunner.shutdown();
+    createdRunners.push(firstRunner);
+    const first = await firstRunner.run({ text: 'route switch turn' });
+    expect(first).toMatchObject({ status: 'ok', durableHarnessMode: 'next' });
+    await firstRunner.shutdown();
     createdRunners.pop();
 
     const nextRunner = await createRunner({
@@ -673,13 +664,10 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('next path reply')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(nextRunner);
-    // The follow-up turn takes a different route: a capability question keeps the
-    // dedicated minimal Runtime-facts reply contract, while the first turn ran in
-    // the main loop, so its first request assembles a different prompt than the
-    // persisted observation.
+    // The follow-up capability question uses the minimal Runtime-facts reply
+    // contract, while the first turn ran in the main loop, so its prompt differs.
     const second = await nextRunner.run({ sessionId: first.sessionId, text: '你能调用网络了吗？' });
     expect(second).toMatchObject({ status: 'ok', durableHarnessMode: 'next' });
 
@@ -704,7 +692,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -722,13 +709,12 @@ describe('createRunner run', () => {
     expect(replay?.error).toContain('Authentication Fails')
   })
 
-  it('replays a completed request through the per-session durable mode', async () => {
+  it('replays a completed request after Runner restart without another model call', async () => {
     const firstRunner = await createRunner({
       config: DEFAULT_CONFIG,
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('settled replay reply')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     const session = await firstRunner.sessionManager.create('test/model');
@@ -744,8 +730,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: replayLlm,
-      durableHarnessMode: 'shadow',
-      durableHarnessSessionOverrides: { [String(session.id)]: 'next' },
     });
     createdRunners.push(secondRunner);
     const replayed = await secondRunner.run({ sessionId: session.id, text: 'replay me', requestKey });
@@ -796,7 +780,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const append = runner.infra.durableEventStore.append.bind(runner.infra.durableEventStore);
@@ -893,7 +876,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1017,7 +999,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('cache quality request reply')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1048,7 +1029,6 @@ describe('createRunner run', () => {
           usage: { promptTokens: 100, completionTokens: 10, cachedPromptTokens: 60 },
         },
       ]),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1195,7 +1175,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('next reply without usage')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1403,7 +1382,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 
@@ -1479,7 +1457,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
@@ -1513,7 +1490,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not execute on recovery')),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(restarted);
 
@@ -1588,7 +1564,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
@@ -1620,7 +1595,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not execute on recovery')),
-      durableHarnessMode: 'next',
       queryDurableEffectOutcome: async (effect) => {
         queried.push(effect.effectId);
         return { known: true, status: 'succeeded', evidenceRef: 'external:reconciled' };
@@ -1698,7 +1672,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
@@ -1727,7 +1700,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(textResponse('must not execute on recovery')),
-      durableHarnessMode: 'next',
       authorizeDurableEffectRead: async () => false,
     });
     createdRunners.push(restarted);
@@ -1822,7 +1794,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(firstRunner);
     firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
@@ -1855,7 +1826,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: restartLlm,
-      durableHarnessMode: 'next',
       authorizeDurableEffectRead: async (path, identity) => {
         authorizedReads.push({ path, runId: identity.runId });
         return true;
@@ -2503,7 +2473,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const deltas: string[] = [];
@@ -2603,7 +2572,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
     const runId = 'run-aborted-provider';
@@ -2634,7 +2602,6 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm: makeMockLlm(() => { throw new Error('provider timeout'); }),
-      durableHarnessMode: 'next',
     });
     createdRunners.push(runner);
 

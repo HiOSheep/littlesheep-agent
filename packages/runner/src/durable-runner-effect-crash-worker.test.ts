@@ -37,7 +37,6 @@ it('holds a real effect open until its parent kills the Runner process', async (
     branding: DEFAULT_BRANDING,
     model: 'test/model',
     llm: queueLlm(responses),
-    durableHarnessMode: 'next',
   });
   const session = await runner.sessionManager.create('test/model');
   const tool: AgentTool = {

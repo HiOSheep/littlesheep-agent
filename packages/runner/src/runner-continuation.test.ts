@@ -705,7 +705,6 @@ describe('runner checkpoint continuation', () => {
       model: 'test/model',
       llm: mockLlm(textResponse('One accepted next reply.')),
       skillsDirs: [],
-      durableHarnessMode: 'next',
     })
     try {
       const session = await runner.sessionManager.create('test/model')
@@ -1440,7 +1439,6 @@ describe('runner checkpoint continuation', () => {
       model: 'test/model',
       llm: firstModel,
       skillsDirs: [],
-      durableHarnessMode: 'next',
     })
     let second: Awaited<ReturnType<typeof createRunner>> | undefined
     let firstStopped = false
@@ -1463,7 +1461,6 @@ describe('runner checkpoint continuation', () => {
         model: 'test/model',
         llm: replayModel,
         skillsDirs: [],
-        durableHarnessMode: 'next',
       })
       const replayed = await second.run(input)
 
