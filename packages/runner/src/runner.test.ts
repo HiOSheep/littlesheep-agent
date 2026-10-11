@@ -318,6 +318,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
     const session = await runner.sessionManager.create('test/model');
@@ -952,6 +953,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
     const session = await runner.sessionManager.create('test/model');
@@ -1443,6 +1445,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
     const calls: string[] = [];
@@ -1578,6 +1581,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
 
@@ -1653,6 +1657,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(firstRunner);
     const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
@@ -1760,6 +1765,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(firstRunner);
     const append = firstRunner.infra.durableEventStore.append.bind(firstRunner.infra.durableEventStore);
@@ -1868,6 +1874,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(firstRunner);
     firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
@@ -1990,6 +1997,7 @@ describe('createRunner run', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(firstRunner);
     firstRunner.infra.registry.register(mutateProbe, 'run-scoped');
@@ -2536,16 +2544,23 @@ describe('createRunner run', () => {
         toolCalls: [{
           id: 'read-1',
           type: 'function',
-          function: { name: 'read_prefix_fixture', arguments: '{"path":"file.txt"}' },
+          function: { name: 'read_prefix_fixture', arguments: JSON.stringify({ path: join(dataDir, 'file.txt') }) },
         }],
       } as ChatResponse,
       textResponse(`Noted ${marker}.`),
     ]);
-    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'openai/gpt-test', llm });
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'openai/gpt-test',
+      llm,
+      approve: async () => true,
+    });
     createdRunners.push(runner);
 
     const result = await runner.run({
       text: `For this chat only, note ${marker}.`,
+      cwd: dataDir,
       additionalTools: [readFileTool],
     });
     expect(result.status).toBe('ok');
@@ -3444,6 +3459,7 @@ describe('file observation wiring', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
     const session = await runner.sessionManager.create('test/model');
@@ -3483,6 +3499,7 @@ describe('file observation wiring', () => {
       branding: DEFAULT_BRANDING,
       model: 'test/model',
       llm,
+      approve: async () => true,
     });
     createdRunners.push(runner);
     const first = await runner.sessionManager.create('test/model');
