@@ -168,6 +168,11 @@ export function makeCtx(opts: MakeCtxOptions = {}): RunContext {
       sessionId,
       runId,
       cwd: process.cwd(),
+      // Stage tests exercise Harness behavior with an already approved
+      // workspace request by default. Approval-specific cases can override
+      // this callback (including `undefined`) to test denial and interruption.
+      permissionMode: 'research',
+      approve: async () => true,
       ...opts.toolContext,
     },
     history: opts.history ?? [],

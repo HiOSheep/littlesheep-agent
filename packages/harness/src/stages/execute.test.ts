@@ -652,7 +652,11 @@ describe('executeStage', () => {
       textResponse('after-deny'),
     ]);
     const stage = createExecuteStage({ ...deps, llm });
-    const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'go') });
+    const ctx = makeCtx({
+      tools: [tool],
+      inbound: textMessage('user', 'go'),
+      toolContext: { approve: undefined },
+    });
 
     await stage(ctx);
 
@@ -1327,7 +1331,7 @@ describe('executeStage', () => {
     expect(ctx.effectLeases.release).not.toHaveBeenCalled();
   });
 
-  it('settles a pre-invocation abort as cancelled without invoking the effectful tool', async () => {
+  it('does not enter effect settlement when approval is interrupted before invocation', async () => {
     const tool = makeTool('mutate', { ok: true, output: 'must not run' });
     const llm = createMockLlm([
       toolCallResponse([{ id: 'aborted-effect-call', name: 'mutate', args: { value: 'x' } }]),
@@ -1347,11 +1351,11 @@ describe('executeStage', () => {
     await stage(ctx);
 
     expect(tool.calls).toHaveLength(0);
-    expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'cancelled', toolName: 'mutate' });
-    expect(settlements).toEqual([expect.objectContaining({ status: 'cancelled' })]);
+    expect(ctx.sideEffects ?? []).toEqual([]);
+    expect(settlements).toEqual([]);
     expect(ctx.toolInvocations?.[0]).toMatchObject({
       status: 'aborted',
-      errorKind: 'run_aborted_before_effect',
+      errorKind: 'approval_aborted',
     });
   });
 
