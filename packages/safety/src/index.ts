@@ -38,6 +38,8 @@ export {
   type PermissionEffect,
   type PermissionEgress,
   type PermissionBoundaryContext,
+  type PermissionResourceScope,
+  type PermissionPolicySelection,
   type PermissionTrust,
   type SafeReadClass,
   type SensitiveWebQueryClassification,

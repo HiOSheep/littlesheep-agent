@@ -2,8 +2,9 @@
 
 import { stat } from 'node:fs/promises'
 import type { Config } from '@littlesheep/config'
+import type { AgentRunner } from '@littlesheep/runner'
+import { normalizePermissionModeId } from '../../shared/permission-modes.js'
 import {
-  resolveTerminalPermissionMode,
   assertTerminalOperationAllowed,
 } from './terminal-permission.js'
 import {
@@ -11,6 +12,7 @@ import {
   LOCAL_APP_API_ROUTES,
 } from '../../shared/local-app-api-routes.js'
 import type { TerminalActivityIndex } from '../terminal-activity-index.js'
+import type { SessionIndex } from '../session-index.js'
 import type { DevelopmentEnvironmentManager } from '../development-environments.js'
 import { HttpError, json, openSse, readJson, writeSse, type LocalAppApiRequest } from './http.js'
 import {
@@ -35,8 +37,10 @@ const MAX_TERMINAL_INPUT_BYTES = 64 * 1024
 
 export interface TerminalRouteContext {
   getConfig: () => Config
+  getRunner: () => AgentRunner | undefined
   dataDir?: string
   workplaceDir: string
+  sessionIndex: SessionIndex
   terminalActivityIndex: TerminalActivityIndex
   developmentEnvironmentManager?: DevelopmentEnvironmentManager
 }
@@ -209,12 +213,15 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
-      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
+      const permissionMode = await resolveAgentPermissionMode(context.sessionIndex, body.sessionId)
       assertTerminalOperationAllowed({
         source: 'agent',
         command,
         cwd: root,
         containerRoot: context.dataDir ?? context.workplaceDir,
+        dataRoot: context.dataDir,
+        workspaceRoot: root,
+        protectedRoots: context.getRunner()?.protectedWriteRoots,
         permissionMode,
         approved: body.approved === true,
       })
@@ -258,12 +265,15 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
-      const permissionMode = resolveTerminalPermissionMode(body.permissionMode)
+      const permissionMode = await resolveAgentPermissionMode(context.sessionIndex, body.sessionId)
       assertTerminalOperationAllowed({
         source: 'agent',
         command,
         cwd: root,
         containerRoot: context.dataDir ?? context.workplaceDir,
+        dataRoot: context.dataDir,
+        workspaceRoot: root,
+        protectedRoots: context.getRunner()?.protectedWriteRoots,
         permissionMode,
         approved: body.approved === true,
       })
@@ -310,4 +320,13 @@ export class TerminalRouter {
     this.captures.stop()
     this.sessions.closeAll()
   }
+}
+
+async function resolveAgentPermissionMode(sessionIndex: SessionIndex, sessionId: unknown) {
+  const id = typeof sessionId === 'string' ? sessionId.trim() : ''
+  if (!id) return 'research' as const
+  const session = (await sessionIndex.list()).find((item) => item.id === id)
+  // Permission claims in a terminal request body are renderer input. A missing
+  // or unknown session cannot grant full access.
+  return normalizePermissionModeId(session?.mode)
 }

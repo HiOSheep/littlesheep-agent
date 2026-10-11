@@ -65,7 +65,7 @@ import {
 import { RunCheckpointController } from './run-checkpoint-controller.js';
 import { createRunCheckpointControl, type RunCheckpointControl } from './run-checkpoint-control.js';
 import { createRunAbortControl, resolveRunTimeoutMs } from './run-abort-control.js';
-import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
+import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { resolveRunTools } from './run-tools.js';
 import { buildRunnerCapabilityState } from './capability-snapshot.js';
 import { runRunnerCoordinator } from './runner-coordinator.js';
@@ -281,6 +281,8 @@ interface AuthoritativeResumeCheckpointOptions extends ResumeCheckpointOptions {
 }
 
 export interface AgentRunner {
+  /** Host-owned source roots kept read-only by every Runtime permission mode. */
+  readonly protectedWriteRoots?: readonly string[]
   run(input: RunInput): Promise<RunnerResult>;
   runStream(input: RunInput, onDelta: (delta: string) => void): Promise<RunnerResult>;
   /** Inspect and explicitly continue a durable runtime checkpoint. */
@@ -613,11 +615,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const workspaceScan = containerRoot
         ? describeToolAccess('read', { path: cwd }, { cwd, containerRoot })
         : undefined;
-      const workspaceScanNeedsApproval = permissionMode !== undefined
-        && workspaceScan !== undefined
-        && shouldRequestPermissionApproval(permissionMode, workspaceScan)
+      const workspaceScanDecision = permissionMode !== undefined && workspaceScan !== undefined
+        ? resolvePermissionDecision(permissionMode, workspaceScan)
+        : 'unavailable';
+      const workspaceScanNeedsApproval = workspaceScanDecision === 'approval'
         && input.workspaceAccessApproved !== true;
-      if (!workspaceScanNeedsApproval) {
+      const workspaceScanBlocked = workspaceScanDecision === 'deny' || workspaceScanDecision === 'unavailable';
+      if (!workspaceScanNeedsApproval && !workspaceScanBlocked) {
         try {
           await infra.memoryService.syncWorkspaceResources(cwd, input.workspaceContext);
           await infra.memoryService.syncWorkspaceDocuments(cwd);
@@ -630,7 +634,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const { snapshot: capabilitySnapshot, permissionEvent: capabilityPermissionEvent } = buildRunnerCapabilityState({
         tools: resolvedTools, toolSources, approvalRequiredToolNames: resolvedRunConfig.approvalRequiredToolNames,
         permissionPolicyId: resolvedRunConfig.permissionPolicyId,
-        workspaceAccess: !containerRoot ? 'unavailable' : workspaceScan?.hardDecision === 'deny' ? 'denied' : workspaceScanNeedsApproval ? 'approval_required' : 'available',
+        workspaceAccess: !containerRoot || workspaceScanDecision === 'unavailable'
+          ? 'unavailable'
+          : workspaceScanDecision === 'deny'
+            ? 'denied'
+            : workspaceScanNeedsApproval ? 'approval_required' : 'available',
         networkEnabled: resolvedRunConfig.networkPolicy?.enabled === true, webProvider: resolvedRunConfig.webProvider,
         now: new Date(startedAt), permissionEventId: `${runId}:workspace-scan-permission`,
       });
@@ -658,6 +666,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         cwd,
         protectedWriteRoots,
         containerRoot,
+        dataRoot: containerRoot,
+        workspaceRoot: cwd,
         permissionMode,
         signal,
         approve: input.approve ?? opts.approve,
@@ -1987,6 +1997,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       await infra.versioning?.freeze();
     },
     state,
+    protectedWriteRoots,
     sessionManager: infra.sessionManager,
     infra,
     model,

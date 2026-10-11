@@ -1,5 +1,45 @@
+import type { PermissionConstraintAvailability, PermissionPresetId } from '@littlesheep/types'
+
+export type { ApprovalPolicyId } from '@littlesheep/types'
+
 export type PermissionModeId = 'full' | 'research' | 'restricted'
 export type PermissionRisk = 'low' | 'medium' | 'critical'
+
+export interface PermissionPresetV2 {
+  id: PermissionPresetId
+  label: string
+  description: string
+  risk: PermissionRisk
+}
+
+/** Permission V2 access presets. The legacy mode contract below remains readable. */
+export const PERMISSION_PRESETS_V2: readonly PermissionPresetV2[] = [
+  {
+    id: 'read-only',
+    label: '只读',
+    description: '允许工作区内可证明安全的读取；写入需要明确升级权限。',
+    risk: 'low',
+  },
+  {
+    id: 'workspace-write',
+    label: '工作区写入',
+    description: '工作区内普通文件操作可在可靠执行约束生效后自动进行。',
+    risk: 'medium',
+  },
+  {
+    id: 'full-access',
+    label: '完全访问',
+    description: '经用户明确确认后放宽本地资源范围；强制审批和硬拒绝仍然生效。',
+    risk: 'critical',
+  },
+]
+
+/** New sessions may select workspace-write only after its enforcement is active. */
+export function resolveFutureDefaultPermissionPreset(input: {
+  workspaceFileWrites: PermissionConstraintAvailability
+}): PermissionPresetId | undefined {
+  return input.workspaceFileWrites === 'available' ? 'workspace-write' : undefined
+}
 
 /**
  * Authorization policy only. General/coding behavior profiles live in the

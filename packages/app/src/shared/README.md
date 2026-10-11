@@ -13,7 +13,7 @@ window-chrome-contracts.ts 定义 Beta/Chali 与 acrylic/vibrancy/solid 的窄�
 `context-menu-contracts.ts` 定义固定的菜单通知／动作通道、封闭的原生编辑动作和有界菜单投影。请求身份只由 Main 在真实右键事件后签发；Renderer 不创建原生操作授权。
 
 - 当前包含权限模式、模型能力、会话/项目与 session scope、工作区与 Git 审阅、运行时与应用状态、数据根、运行检查点/用量/压缩操作、记忆控制面、附件、插件/渠道、浏览器控制、开发环境和历史活动等共享规则。
-- `permission-modes.ts` 只描述三档授权策略并兼容旧 id；行为 profile（`general`/`coding`）由 `@littlesheep/prompt` 的 `AgentProfileId` 管理，`../main/modes.ts` 只是转发 shim。逻辑容器根由 Main 解析，Renderer 不拥有最终边界判断。
+- `permission-modes.ts` 同时描述旧三档授权兼容和独立的 V2 三预设；V2 的 `workspace-write` 未来默认只在文件执行约束可用时开放，当前旧 id 的读取与恢复语义不变。行为 profile（`general`/`coding`）由 `@littlesheep/prompt` 的 `AgentProfileId` 管理，`../main/modes.ts` 只是转发 shim。资源根由 Main 解析，Renderer 不拥有最终边界判断。
 - `workspace-contracts.ts` 的 `WorkspaceLayoutSnapshot` 现在同时带 `fileNavigatorWidth` 与 `reviewNavigatorWidth`（后者可选，UX-18）：普通文件导航与审阅更改列表各有自己的宽度，共用 `WORKSPACE_FILE_NAVIGATOR_WIDTH_*` 上下限；旧快照缺该字段时由两侧各自回落默认值，不能继承另一个宽度。
 - `context-usage-contracts.ts` 的 `SessionContextUsageRecord` 增加 `sessionCache`（`SessionCumulativeCacheUsage`）：会话累计缓存复用，字段与验收账本一致，精确值不做取整。
 - `run-checkpoint-contracts.ts` 的 `LocalAppRunCheckpointDiagnostics` 两个计数**互斥**：`invalidFiles` 是最近一次扫描读不出来的记录数（每份文件算一次），`warningCount` 只统计不属于这些记录的发现（残留临时文件、目录 I/O）。此前 `warningCount` 取诊断条目总数，而每条坏记录自己也贡献一条，同一份文件因此被同时说成"无法读取"和"不完整"；领域实现见 `@littlesheep/runner` 的 `run-checkpoint-scan.ts`。

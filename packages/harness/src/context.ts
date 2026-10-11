@@ -108,8 +108,19 @@ export interface BuildRunContextOptions {
   protectedWriteRoots?: readonly string[];
   /** Active movable application-data root used as the logical LS container. */
   containerRoot?: string;
+  /** Application data root, kept distinct from the run's authorized workspace. */
+  dataRoot?: string;
+  /** Main-resolved workspace root for the owning run. */
+  workspaceRoot?: string;
   /** Resolved permission policy, when the owning adapter supplies a container. */
   permissionMode?: import('@littlesheep/types').PermissionPolicyId;
+  /** Additive Permission V2 authorization preset and independent approval behavior. */
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId;
+  approvalPolicy?: import('@littlesheep/types').ApprovalPolicyId;
+  permissionPolicyV2?: import('@littlesheep/types').PermissionPolicyV2Snapshot;
+  workspaceFileWrites?: import('@littlesheep/types').PermissionConstraintAvailability;
+  shellIsolation?: import('@littlesheep/types').PermissionConstraintAvailability;
+  fullAccessConfirmed?: boolean;
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
   /** Approval callback handed to tools. */
@@ -266,7 +277,15 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     cwd,
     protectedWriteRoots: opts.protectedWriteRoots,
     containerRoot: opts.containerRoot,
+    dataRoot: opts.dataRoot ?? opts.containerRoot,
+    workspaceRoot: opts.workspaceRoot ?? cwd,
     permissionMode: opts.permissionMode,
+    permissionPreset: opts.permissionPreset,
+    approvalPolicy: opts.approvalPolicy,
+    permissionPolicyV2: opts.permissionPolicyV2,
+    workspaceFileWrites: opts.workspaceFileWrites,
+    shellIsolation: opts.shellIsolation,
+    fullAccessConfirmed: opts.fullAccessConfirmed,
     approve: opts.approve,
     signal: opts.signal,
     networkPolicy: opts.resolvedRunConfig?.networkPolicy,

@@ -12,7 +12,7 @@ import type {
   ToolResult,
   ToolStreamEvent,
 } from '@littlesheep/types';
-import { describeToolAccess, shouldRequestPermissionApproval } from '@littlesheep/safety';
+import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 import {
   executeToolWaves,
@@ -355,14 +355,51 @@ export class ToolExecutionService {
         errorKind: 'hard_deny',
       };
     }
+    if (descriptor.hardDecision === 'unavailable') {
+      record.approval.required = false;
+      record.approval.decision = 'blocked';
+      record.approval.decidedAt = this.timestamp();
+      record.approval.reason = descriptor.reason;
+      this.publishRecord(record, retained);
+      return {
+        ok: false,
+        status: 'hard_denied',
+        error: `tool execution cannot proceed because required safety enforcement is unavailable: ${descriptor.reason}`,
+        errorKind: 'permission_safety_unavailable',
+      };
+    }
     const mode = this.options.toolContext.permissionMode;
-    const required = mode
-      ? shouldRequestPermissionApproval(
-          mode,
-          descriptor,
-          { strictReadApproval: this.options.toolContext.networkPolicy?.strictReadApproval === true },
-        )
-      : tool.requiresApproval === true;
+    const snapshot = this.options.toolContext.permissionPolicyV2;
+    const selectedPolicy = snapshot?.preset ?? this.options.toolContext.permissionPreset ?? mode;
+    const decision = selectedPolicy
+      ? resolvePermissionDecision(selectedPolicy, descriptor, {
+          strictReadApproval: this.options.toolContext.networkPolicy?.strictReadApproval === true,
+          approvalPolicy: snapshot?.approvalPolicy ?? this.options.toolContext.approvalPolicy,
+          workspaceFileWrites: snapshot?.constraints.workspaceFileWrites ?? this.options.toolContext.workspaceFileWrites,
+          shellIsolation: snapshot?.constraints.shellIsolation ?? this.options.toolContext.shellIsolation,
+          fullAccessConfirmed: snapshot?.fullAccessConfirmed ?? this.options.toolContext.fullAccessConfirmed,
+        })
+      : descriptor.hardDecision === 'approval' || tool.requiresApproval === true
+        ? 'approval'
+        : 'allow';
+    if (decision === 'deny' || decision === 'unavailable') {
+      record.approval.required = false;
+      record.approval.decision = 'blocked';
+      record.approval.decidedAt = this.timestamp();
+      record.approval.reason = decision === 'unavailable'
+        ? 'required permission enforcement is unavailable'
+        : descriptor.reason;
+      this.publishRecord(record, retained);
+      return {
+        ok: false,
+        status: 'hard_denied',
+        error: decision === 'unavailable'
+          ? 'tool execution cannot proceed because required safety enforcement is unavailable'
+          : `tool execution blocked by runtime safety policy: ${descriptor.reason}`,
+        errorKind: decision === 'unavailable' ? 'permission_safety_unavailable' : 'hard_deny',
+      };
+    }
+    const required = decision === 'approval';
     record.approval.required = required;
     if (!required) {
       record.approval.decision = 'not_required';

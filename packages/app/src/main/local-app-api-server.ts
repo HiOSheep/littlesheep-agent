@@ -287,8 +287,10 @@ async function route(
 
   if (await terminalRouter.route(routeRequest, {
     getConfig,
+    getRunner: opts.getRunner,
     dataDir: opts.dataDir,
     workplaceDir: opts.workplaceDir,
+    sessionIndex: opts.sessionIndex,
     terminalActivityIndex,
     developmentEnvironmentManager,
   })) return

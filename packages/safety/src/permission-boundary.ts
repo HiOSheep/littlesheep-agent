@@ -1,7 +1,14 @@
 // Central path, network, safe-read, and hard-deny authorization descriptor.
 import { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
-import type { NetworkReadPolicy, PermissionPolicyId } from '@littlesheep/types'
+import type {
+  ApprovalPolicyId,
+  NetworkReadPolicy,
+  PermissionConstraintAvailability,
+  PermissionPolicyId,
+  PermissionPolicyV2Snapshot,
+  PermissionPresetId,
+} from '@littlesheep/types'
 
 /** The logical LS container is the active, movable application data root. */
 export type ContainerBoundary = 'inside' | 'outside' | 'unknown'
@@ -9,6 +16,7 @@ export type PermissionAction = 'read' | 'write' | 'execute' | 'unknown'
 export type PermissionEffect = 'none' | 'read' | 'write' | 'execute' | 'external'
 export type PermissionEgress = 'none' | 'public_query' | 'public_url' | 'authenticated' | 'unknown'
 export type PermissionTrust = 'runtime_owned' | 'external_untrusted'
+export type PermissionResourceScope = 'workspace' | 'data_root' | 'protected' | 'outside' | 'unknown' | 'runtime' | 'external'
 export type SafeReadClass =
   | 'local_memory'
   | 'local_session'
@@ -17,13 +25,25 @@ export type SafeReadClass =
   | 'authenticated_read'
   | 'arbitrary_read'
   | 'none'
-export type HardDecision = 'allow' | 'approval' | 'deny'
-export type PermissionDecision = 'allow' | 'approval' | 'deny'
+export type HardDecision = 'allow' | 'approval' | 'deny' | 'unavailable'
+export type PermissionDecision = 'allow' | 'approval' | 'deny' | 'unavailable'
+export type PermissionPolicySelection = PermissionPolicyId | PermissionPresetId
 
 export interface PermissionBoundaryContext {
   cwd: string
   containerRoot?: string
+  dataRoot?: string
+  workspaceRoot?: string
+  protectedRoots?: readonly string[]
+  protectedWriteRoots?: readonly string[]
   permissionMode?: PermissionPolicyId
+  permissionPreset?: PermissionPresetId
+  approvalPolicy?: ApprovalPolicyId
+  workspaceFileWrites?: PermissionConstraintAvailability
+  shellIsolation?: PermissionConstraintAvailability
+  fullAccessConfirmed?: boolean
+  /** Main-owned versioned snapshot. Its roots and capabilities are immutable for the run. */
+  permissionPolicyV2?: PermissionPolicyV2Snapshot
   approve?: (action: string, detail?: unknown) => Promise<boolean>
   /** Set by the Harness after it has approved this exact tool invocation. */
   approvalGranted?: boolean
@@ -38,6 +58,7 @@ export interface ToolAccessDescriptor {
   trust: PermissionTrust
   safeReadClass: SafeReadClass
   hardDecision: HardDecision
+  resourceScope?: PermissionResourceScope
   boundary: ContainerBoundary
   paths: readonly string[]
   urls?: readonly string[]
@@ -46,11 +67,12 @@ export interface ToolAccessDescriptor {
 
 type PartialToolAccessDescriptor = Omit<
   ToolAccessDescriptor,
-  'effect' | 'egress' | 'trust' | 'safeReadClass' | 'hardDecision'
-> & Partial<Pick<ToolAccessDescriptor, 'effect' | 'egress' | 'trust' | 'safeReadClass' | 'hardDecision'>>
+  'effect' | 'egress' | 'trust' | 'safeReadClass' | 'hardDecision' | 'resourceScope'
+> & Partial<Pick<ToolAccessDescriptor, 'effect' | 'egress' | 'trust' | 'safeReadClass' | 'hardDecision' | 'resourceScope'>>
 
 export interface ToolAuthorization {
   allowed: boolean
+  decision: PermissionDecision
   boundary: ContainerBoundary
   /** True when this call was approved by the policy or by a caller approval. */
   approvedByPolicy: boolean
@@ -80,23 +102,28 @@ const WRITE_TOOLS = new Set([
 export function describeToolAccess(
   toolName: string,
   input: unknown,
-  context: Pick<PermissionBoundaryContext, 'cwd' | 'containerRoot' | 'networkPolicy'>,
+  context: Pick<PermissionBoundaryContext,
+    'cwd' | 'containerRoot' | 'dataRoot' | 'workspaceRoot' | 'protectedRoots' | 'protectedWriteRoots' | 'permissionPolicyV2' | 'networkPolicy'>,
 ): ToolAccessDescriptor {
+  const finish = (descriptor: PartialToolAccessDescriptor): ToolAccessDescriptor => {
+    const normalized = withDescriptorDefaults(descriptor)
+    return applyResourceClassification(normalized, context)
+  }
   const action = actionForTool(toolName, input)
   const record = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown>
     : {}
 
   if (toolName === 'exec' || toolName === 'terminal' || action === 'execute') {
-    return withDescriptorDefaults(describeCommandAccess(record, context))
+    return finish(describeCommandAccess(record, context))
   }
 
   if (toolName === 'web_search' || toolName === 'web_fetch') {
-    return describeWebAccess(toolName, record, context)
+    return finish(describeWebAccess(toolName, record, context))
   }
 
   if (toolName === 'session_status' && record.action === 'set') {
-    return withDescriptorDefaults({
+    return finish({
       action: 'write',
       effect: 'write',
       egress: 'none',
@@ -110,7 +137,7 @@ export function describeToolAccess(
   }
 
   if (LOCAL_MEMORY_TOOLS.has(toolName) || LOCAL_SESSION_TOOLS.has(toolName)) {
-    return withDescriptorDefaults({
+    return finish({
       action: 'read',
       effect: 'read',
       egress: 'none',
@@ -127,7 +154,7 @@ export function describeToolAccess(
 
   const candidates = pathCandidates(record, action)
   if (candidates.length === 0 && isInternalTool(toolName)) {
-    return withDescriptorDefaults({
+    return finish({
       action,
       boundary: context.containerRoot ? 'inside' : 'unknown',
       paths: [],
@@ -136,7 +163,7 @@ export function describeToolAccess(
   }
 
   const paths = candidates.map((candidate) => resolve(context.cwd, candidate))
-  return withDescriptorDefaults({
+  return finish({
     action,
     boundary: classifyPaths(paths, context.containerRoot),
     paths,
@@ -146,9 +173,15 @@ export function describeToolAccess(
 
 /** Decide whether a policy must ask the user before this resource is touched. */
 export function shouldRequestPermissionApproval(
-  mode: PermissionPolicyId,
+  mode: PermissionPolicySelection,
   descriptor: ToolAccessDescriptor,
-  options: { strictReadApproval?: boolean } = {},
+  options: {
+    strictReadApproval?: boolean
+    approvalPolicy?: ApprovalPolicyId
+    workspaceFileWrites?: PermissionConstraintAvailability
+    shellIsolation?: PermissionConstraintAvailability
+    fullAccessConfirmed?: boolean
+  } = {},
 ): boolean {
   return resolvePermissionDecision(mode, descriptor, options) === 'approval'
 }
@@ -159,11 +192,22 @@ export function shouldRequestPermissionApproval(
  * must handle `deny` before considering approval.
  */
 export function resolvePermissionDecision(
-  mode: PermissionPolicyId,
+  mode: PermissionPolicySelection,
   descriptor: ToolAccessDescriptor,
-  options: { strictReadApproval?: boolean } = {},
+  options: {
+    strictReadApproval?: boolean
+    approvalPolicy?: ApprovalPolicyId
+    workspaceFileWrites?: PermissionConstraintAvailability
+    shellIsolation?: PermissionConstraintAvailability
+    fullAccessConfirmed?: boolean
+  } = {},
 ): PermissionDecision {
   if (descriptor.hardDecision === 'deny') return 'deny'
+  if (descriptor.hardDecision === 'unavailable') return 'unavailable'
+  // A hard approval is a Main-owned requirement. No permission preset may
+  // convert it into automatic execution.
+  if (descriptor.hardDecision === 'approval') return 'approval'
+  if (isPermissionPreset(mode)) return resolvePresetDecision(mode, descriptor, options)
   if (mode === 'full') return 'allow'
   const isSafeRead = descriptor.safeReadClass === 'local_memory'
     || descriptor.safeReadClass === 'local_session'
@@ -174,6 +218,55 @@ export function resolvePermissionDecision(
   if (mode === 'restricted') return 'approval'
   if (descriptor.boundary !== 'inside') return 'approval'
   return descriptor.action !== 'read' ? 'approval' : 'allow'
+}
+
+/**
+ * Resolve the V2 access preset using Main-classified resource roots and the
+ * enforcement capabilities that are actually active for this run.
+ */
+function resolvePresetDecision(
+  preset: PermissionPresetId,
+  descriptor: ToolAccessDescriptor,
+  options: {
+    approvalPolicy?: ApprovalPolicyId
+    workspaceFileWrites?: PermissionConstraintAvailability
+    shellIsolation?: PermissionConstraintAvailability
+    fullAccessConfirmed?: boolean
+  },
+): PermissionDecision {
+  const scope = descriptor.resourceScope ?? 'unknown'
+  const askOrDeny = (): PermissionDecision => options.approvalPolicy === 'deny' ? 'deny' : 'approval'
+
+  if (scope === 'protected' && descriptor.action !== 'read') return 'deny'
+
+  if (preset === 'read-only') {
+    return descriptor.action === 'read' && scope === 'workspace' ? 'allow' : askOrDeny()
+  }
+
+  if (preset === 'workspace-write') {
+    if (descriptor.action === 'read' && scope === 'workspace') return 'allow'
+    if (descriptor.action === 'write' && scope === 'workspace') {
+      // Without the reliable file guard, fall back to a per-operation decision;
+      // the preset must not turn an app path heuristic into automatic writing.
+      return options.workspaceFileWrites === 'available' ? 'allow' : askOrDeny()
+    }
+    if (descriptor.action === 'execute' && scope === 'workspace') {
+      // Shell commands remain individually approvable until a real OS isolation
+      // layer is active. P1 never turns a path heuristic into shell confinement.
+      return options.shellIsolation === 'available' ? 'allow' : askOrDeny()
+    }
+    return askOrDeny()
+  }
+
+  // Full local access is an explicit user choice. Even after that confirmation,
+  // opaque shell execution remains per-call until OS isolation is active.
+  if (options.fullAccessConfirmed !== true) return 'unavailable'
+  if (descriptor.action === 'execute' && options.shellIsolation !== 'available') return askOrDeny()
+  return 'allow'
+}
+
+function isPermissionPreset(value: PermissionPolicySelection): value is PermissionPresetId {
+  return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
 }
 
 /**
@@ -191,6 +284,16 @@ export async function authorizeToolAccess(
   if (descriptor.hardDecision === 'deny') {
     return {
       allowed: false,
+      decision: 'deny',
+      boundary: descriptor.boundary,
+      approvedByPolicy: false,
+      reason: descriptor.reason,
+    }
+  }
+  if (descriptor.hardDecision === 'unavailable') {
+    return {
+      allowed: false,
+      decision: 'unavailable',
       boundary: descriptor.boundary,
       approvedByPolicy: false,
       reason: descriptor.reason,
@@ -200,18 +303,29 @@ export async function authorizeToolAccess(
   // restricted modes fail closed; confirmed full access deliberately covers
   // host resources regardless of boundary classification.
   const hasRuntimePolicy = context.permissionMode !== undefined
+    || context.permissionPreset !== undefined
+    || context.permissionPolicyV2 !== undefined
+  const snapshot = context.permissionPolicyV2
+  const selectedPolicy: PermissionPolicySelection | undefined = snapshot?.preset ?? context.permissionPreset ?? context.permissionMode
   const decision: PermissionDecision = hasRuntimePolicy
-    ? resolvePermissionDecision(context.permissionMode!, descriptor, {
+    ? resolvePermissionDecision(selectedPolicy!, descriptor, {
         strictReadApproval: context.networkPolicy?.strictReadApproval === true,
+        approvalPolicy: snapshot?.approvalPolicy ?? context.approvalPolicy,
+        workspaceFileWrites: snapshot?.constraints.workspaceFileWrites ?? context.workspaceFileWrites,
+        shellIsolation: snapshot?.constraints.shellIsolation ?? context.shellIsolation,
+        fullAccessConfirmed: snapshot?.fullAccessConfirmed ?? context.fullAccessConfirmed,
       })
-    : options.defaultRequiresApproval === true ? 'approval' : 'allow'
+    : descriptor.hardDecision === 'approval'
+      ? 'approval'
+      : options.defaultRequiresApproval === true ? 'approval' : 'allow'
 
-  if (decision === 'deny') {
+  if (decision === 'deny' || decision === 'unavailable') {
     return {
       allowed: false,
+      decision,
       boundary: descriptor.boundary,
       approvedByPolicy: false,
-      reason: descriptor.reason,
+      reason: decision === 'unavailable' ? 'required permission enforcement is unavailable' : descriptor.reason,
     }
   }
 
@@ -220,13 +334,16 @@ export async function authorizeToolAccess(
   if (!needsApproval) {
     return {
       allowed: true,
+      decision: 'allow',
       boundary: descriptor.boundary,
-      approvedByPolicy: context.permissionMode === 'full',
+      approvedByPolicy: selectedPolicy === 'full'
+        || (selectedPolicy === 'full-access' && (snapshot?.fullAccessConfirmed ?? context.fullAccessConfirmed) === true),
     }
   }
   if (context.approvalGranted === true) {
     return {
       allowed: true,
+      decision: 'approval',
       boundary: descriptor.boundary,
       approvedByPolicy: true,
     }
@@ -234,6 +351,7 @@ export async function authorizeToolAccess(
   const approved = await context.approve?.(toolName, input) ?? false
   return {
     allowed: approved,
+    decision: 'approval',
     boundary: descriptor.boundary,
     approvedByPolicy: approved,
     reason: approved ? undefined : 'approval denied',
@@ -444,7 +562,85 @@ function withDescriptorDefaults(
     trust: descriptor.trust ?? 'runtime_owned',
     safeReadClass: descriptor.safeReadClass ?? (action === 'read' ? 'arbitrary_read' : 'none'),
     hardDecision: descriptor.hardDecision ?? (action === 'unknown' ? 'approval' : 'allow'),
+    resourceScope: descriptor.resourceScope ?? 'unknown',
   }
+}
+
+function applyResourceClassification(
+  descriptor: ToolAccessDescriptor,
+  context: Pick<PermissionBoundaryContext,
+    'containerRoot' | 'dataRoot' | 'workspaceRoot' | 'protectedRoots' | 'protectedWriteRoots' | 'permissionPolicyV2'>,
+): ToolAccessDescriptor {
+  const snapshot = context.permissionPolicyV2
+  const resourceScope = classifyPermissionResourceScope(descriptor.paths, {
+    dataRoot: snapshot?.dataRoot ?? context.dataRoot ?? context.containerRoot,
+    workspaceRoot: snapshot?.workspaceRoot ?? context.workspaceRoot,
+    protectedRoots: snapshot?.protectedRoots ?? context.protectedRoots ?? context.protectedWriteRoots,
+    safeReadClass: descriptor.safeReadClass,
+  })
+  if (descriptor.egress !== 'none') return { ...descriptor, resourceScope: 'external' }
+  // A Shell command with a dynamic or otherwise unprovable target remains
+  // unknown even when its working directory is inside the workspace.
+  const effectiveScope = descriptor.action === 'execute' && descriptor.boundary === 'unknown'
+    ? 'unknown'
+    : resourceScope
+  if (
+    effectiveScope === 'protected'
+    && (descriptor.action === 'write' || descriptor.action === 'unknown')
+    && descriptor.hardDecision !== 'deny'
+  ) {
+    return {
+      ...descriptor,
+      resourceScope: effectiveScope,
+      hardDecision: 'deny',
+      reason: 'tool input targets a protected resource that must remain read-only',
+    }
+  }
+  return { ...descriptor, resourceScope: effectiveScope }
+}
+
+/** Classify paths against distinct Main-owned resource roots. */
+export function classifyPermissionResourceScope(
+  paths: readonly string[],
+  roots: {
+    dataRoot?: string
+    workspaceRoot?: string
+    protectedRoots?: readonly string[]
+    safeReadClass?: SafeReadClass
+  },
+): PermissionResourceScope {
+  if (paths.length === 0) {
+    return roots.safeReadClass === 'local_memory' || roots.safeReadClass === 'local_session'
+      ? 'runtime'
+      : 'unknown'
+  }
+
+  const protectedRoots = roots.protectedRoots ?? []
+  for (const path of paths) {
+    for (const root of protectedRoots) {
+      const boundary = classifyPath(path, root)
+      if (boundary === 'inside') return 'protected'
+      if (boundary === 'unknown') return 'unknown'
+    }
+  }
+
+  const workspaceBoundary = classifyAllPaths(paths, roots.workspaceRoot)
+  if (workspaceBoundary === 'inside') return 'workspace'
+  const dataBoundary = classifyAllPaths(paths, roots.dataRoot)
+  if (dataBoundary === 'inside') return 'data_root'
+  if (workspaceBoundary === 'unknown' || dataBoundary === 'unknown') return 'unknown'
+  return roots.workspaceRoot || roots.dataRoot ? 'outside' : 'unknown'
+}
+
+function classifyAllPaths(paths: readonly string[], root?: string): ContainerBoundary {
+  if (!root) return 'unknown'
+  let unknown = false
+  for (const path of paths) {
+    const boundary = classifyPath(path, root)
+    if (boundary === 'outside') return 'outside'
+    if (boundary === 'unknown') unknown = true
+  }
+  return unknown ? 'unknown' : 'inside'
 }
 
 function matchesDomain(hostname: string, domains: readonly string[]): boolean {

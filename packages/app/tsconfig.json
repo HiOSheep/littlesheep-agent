@@ -53,6 +53,9 @@
       "path": "../safety"
     },
     {
+      "path": "../tools"
+    },
+    {
       "path": "../types"
     },
     {

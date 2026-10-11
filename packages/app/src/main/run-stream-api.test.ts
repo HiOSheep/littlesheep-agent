@@ -283,7 +283,6 @@ describe('run stream Local App API', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: '执行测试',
-          sessionId,
           requestKey: 'conversation-turn-1',
           permissionMode: 'full',
         }),
@@ -306,7 +305,7 @@ describe('run stream Local App API', () => {
       expect(body).toMatch(/event: start\ndata: \{"ok":true,"runId":"[^"]+"\}/)
       expect(runStream).toHaveBeenCalledOnce()
       expect(runStream).toHaveBeenCalledWith(expect.objectContaining({
-        sessionId,
+        sessionId: undefined,
         requestKey: 'conversation-turn-1',
         permissionPolicyId: 'full',
         restoreCheckpointResources: expect.any(Function),

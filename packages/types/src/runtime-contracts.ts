@@ -26,6 +26,30 @@ export const TOOL_INVOCATION_RECORD_VERSION = 1 as const;
 export const EXECUTION_EVIDENCE_VERSION = 1 as const;
 
 export type PermissionPolicyId = 'full' | 'research' | 'restricted';
+/** Resource scope presets for the additive Permission V2 contract. */
+export type PermissionPresetId = 'read-only' | 'workspace-write' | 'full-access';
+/** What Main does when a policy decision needs a user approval. */
+export type ApprovalPolicyId = 'prompt' | 'deny';
+export type PermissionConstraintAvailability = 'available' | 'unavailable';
+
+/**
+ * Immutable V2 policy facts captured by Main for one run. Roots and confirmed
+ * capabilities are runtime facts; a request body must never replace this once
+ * execution has started.
+ */
+export interface PermissionPolicyV2Snapshot {
+  readonly version: 2;
+  readonly preset: PermissionPresetId;
+  readonly approvalPolicy: ApprovalPolicyId;
+  readonly dataRoot?: string;
+  readonly workspaceRoot?: string;
+  readonly protectedRoots: readonly string[];
+  readonly constraints: {
+    readonly workspaceFileWrites: PermissionConstraintAvailability;
+    readonly shellIsolation: PermissionConstraintAvailability;
+  };
+  readonly fullAccessConfirmed: boolean;
+}
 export type ReasoningLevel = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
 export type RunConfigOrigin = 'app' | 'channel' | 'cli' | 'test';
 

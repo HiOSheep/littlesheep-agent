@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,18 +12,35 @@ import {
 
 const roots: string[] = []
 
-async function makeFixture(): Promise<{ containerRoot: string; cwd: string; insideFile: string; outsideFile: string }> {
+async function makeFixture(): Promise<{
+  containerRoot: string
+  workspaceRoot: string
+  outsideRoot: string
+  protectedRoot: string
+  cwd: string
+  insideFile: string
+  outsideFile: string
+  dataOnlyFile: string
+  protectedFile: string
+}> {
   const parent = await mkdtemp(join(tmpdir(), 'littlesheep-permission-'))
   roots.push(parent)
   const containerRoot = join(parent, 'container')
   const outsideRoot = join(parent, 'outside')
-  await mkdir(join(containerRoot, 'workplace'), { recursive: true })
+  const workspaceRoot = join(containerRoot, 'workplace')
+  const protectedRoot = join(parent, 'protected-source')
+  await mkdir(workspaceRoot, { recursive: true })
   await mkdir(outsideRoot, { recursive: true })
+  await mkdir(protectedRoot, { recursive: true })
   const insideFile = join(containerRoot, 'workplace', 'inside.txt')
   const outsideFile = join(outsideRoot, 'outside.txt')
+  const dataOnlyFile = join(containerRoot, 'settings.json')
+  const protectedFile = join(protectedRoot, 'source.ts')
   await writeFile(insideFile, 'inside', 'utf8')
   await writeFile(outsideFile, 'outside', 'utf8')
-  return { containerRoot, cwd: containerRoot, insideFile, outsideFile }
+  await writeFile(dataOnlyFile, '{}', 'utf8')
+  await writeFile(protectedFile, 'source', 'utf8')
+  return { containerRoot, workspaceRoot, outsideRoot, protectedRoot, cwd: containerRoot, insideFile, outsideFile, dataOnlyFile, protectedFile }
 }
 
 afterEach(async () => {
@@ -52,7 +69,7 @@ describe('permission boundary', () => {
     expect(shouldRequestPermissionApproval('full', insideWrite)).toBe(false)
     expect(shouldRequestPermissionApproval('full', insideExec)).toBe(false)
     expect(shouldRequestPermissionApproval('full', outsideRead)).toBe(false)
-    expect(shouldRequestPermissionApproval('full', {
+    const forcedApproval = {
       action: 'execute',
       effect: 'execute',
       egress: 'none',
@@ -62,7 +79,9 @@ describe('permission boundary', () => {
       boundary: 'unknown',
       paths: [],
       reason: 'dynamic command',
-    })).toBe(false)
+    } as const
+    expect(shouldRequestPermissionApproval('full', forcedApproval)).toBe(true)
+    expect(resolvePermissionDecision('full', forcedApproval)).toBe('approval')
     expect(shouldRequestPermissionApproval('research', insideRead)).toBe(false)
     expect(shouldRequestPermissionApproval('research', insideWrite)).toBe(true)
     expect(shouldRequestPermissionApproval('research', insideExec)).toBe(true)
@@ -137,6 +156,7 @@ describe('permission boundary', () => {
     }
     await expect(authorizeToolAccess('write', { file_path: fixture.insideFile }, context)).resolves.toMatchObject({
       allowed: true,
+      decision: 'approval',
       approvedByPolicy: true,
     })
     expect(approve).toHaveBeenCalledTimes(1)
@@ -277,6 +297,88 @@ describe('permission boundary', () => {
     const insideRead = describeToolAccess('read', { file_path: fixture.insideFile }, fixture)
     expect(resolvePermissionDecision('research', insideRead, { strictReadApproval: true })).toBe('allow')
     expect(resolvePermissionDecision('restricted', insideRead, { strictReadApproval: true })).toBe('approval')
+  })
+
+  it('applies the V2 preset matrix without treating the data root as the workspace', async () => {
+    const fixture = await makeFixture()
+    const context = {
+      cwd: fixture.workspaceRoot,
+      containerRoot: fixture.containerRoot,
+      dataRoot: fixture.containerRoot,
+      workspaceRoot: fixture.workspaceRoot,
+      protectedRoots: [fixture.protectedRoot],
+    }
+    const workspaceRead = describeToolAccess('read', { file_path: fixture.insideFile }, context)
+    const workspaceWrite = describeToolAccess('write', { file_path: fixture.insideFile }, context)
+    const dataRead = describeToolAccess('read', { file_path: fixture.dataOnlyFile }, context)
+    const outsideRead = describeToolAccess('read', { file_path: fixture.outsideFile }, context)
+    const shell = describeToolAccess('exec', { command: 'Get-ChildItem', cwd: fixture.workspaceRoot }, context)
+
+    expect([workspaceRead.resourceScope, workspaceWrite.resourceScope, dataRead.resourceScope, outsideRead.resourceScope])
+      .toEqual(['workspace', 'workspace', 'data_root', 'outside'])
+    expect(resolvePermissionDecision('read-only', workspaceRead)).toBe('allow')
+    expect(resolvePermissionDecision('read-only', workspaceWrite)).toBe('approval')
+    expect(resolvePermissionDecision('read-only', dataRead)).toBe('approval')
+    expect(resolvePermissionDecision('read-only', outsideRead)).toBe('approval')
+    expect(resolvePermissionDecision('read-only', outsideRead, { approvalPolicy: 'deny' })).toBe('deny')
+
+    expect(resolvePermissionDecision('workspace-write', workspaceRead)).toBe('allow')
+    expect(resolvePermissionDecision('workspace-write', workspaceWrite)).toBe('approval')
+    expect(resolvePermissionDecision('workspace-write', workspaceWrite, { workspaceFileWrites: 'available' }))
+      .toBe('allow')
+    expect(resolvePermissionDecision('workspace-write', outsideRead)).toBe('approval')
+    expect(resolvePermissionDecision('workspace-write', shell)).toBe('approval')
+    expect(resolvePermissionDecision('workspace-write', shell, { shellIsolation: 'available' })).toBe('allow')
+
+    const fullAccess = { fullAccessConfirmed: true }
+    expect(resolvePermissionDecision('full-access', outsideRead, fullAccess)).toBe('allow')
+    expect(resolvePermissionDecision('full-access', shell, fullAccess)).toBe('approval')
+    expect(resolvePermissionDecision('full-access', shell, { ...fullAccess, shellIsolation: 'available' }))
+      .toBe('allow')
+    expect(resolvePermissionDecision('full-access', outsideRead)).toBe('unavailable')
+  })
+
+  it('keeps hard deny and forced approval ahead of V2 presets and approval policy', async () => {
+    const fixture = await makeFixture()
+    const blockedWrite = describeToolAccess('write', { file_path: fixture.protectedFile }, {
+      cwd: fixture.workspaceRoot,
+      dataRoot: fixture.containerRoot,
+      workspaceRoot: fixture.workspaceRoot,
+      protectedRoots: [fixture.protectedRoot],
+    })
+    const forced = {
+      action: 'read', effect: 'external', egress: 'public_query', trust: 'external_untrusted',
+      safeReadClass: 'none', hardDecision: 'approval', boundary: 'outside', paths: [], reason: 'sensitive query',
+    } as const
+    expect(blockedWrite.hardDecision).toBe('deny')
+    for (const preset of ['read-only', 'workspace-write', 'full-access'] as const) {
+      expect(resolvePermissionDecision(preset, blockedWrite, { fullAccessConfirmed: true })).toBe('deny')
+      expect(resolvePermissionDecision(preset, forced, { approvalPolicy: 'deny', fullAccessConfirmed: true }))
+        .toBe('approval')
+    }
+  })
+
+  it('keeps traversal, symlink and dynamic Shell targets outside or unknown', async () => {
+    const fixture = await makeFixture()
+    const traversal = describeToolAccess('read', {
+      file_path: join(fixture.workspaceRoot, '..', '..', 'outside', 'outside.txt'),
+    }, { cwd: fixture.workspaceRoot, workspaceRoot: fixture.workspaceRoot, dataRoot: fixture.containerRoot })
+    expect(traversal.resourceScope).toBe('outside')
+
+    const link = join(fixture.workspaceRoot, 'external-link')
+    await symlink(fixture.outsideRoot, link, process.platform === 'win32' ? 'junction' : 'dir')
+    const linked = describeToolAccess('read', { file_path: join(link, 'outside.txt') }, {
+      cwd: fixture.workspaceRoot,
+      workspaceRoot: fixture.workspaceRoot,
+      dataRoot: fixture.containerRoot,
+    })
+    expect(linked.resourceScope).toBe('outside')
+
+    const dynamic = describeToolAccess('exec', {
+      command: 'Get-Content $HOME\\secret.txt', cwd: fixture.workspaceRoot,
+    }, { cwd: fixture.workspaceRoot, workspaceRoot: fixture.workspaceRoot, dataRoot: fixture.containerRoot })
+    expect(dynamic).toMatchObject({ boundary: 'unknown', resourceScope: 'unknown' })
+    expect(resolvePermissionDecision('workspace-write', dynamic, { shellIsolation: 'available' })).toBe('approval')
   })
 })
 

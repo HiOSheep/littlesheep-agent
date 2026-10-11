@@ -8,6 +8,7 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 
 - 普通会话和任务进入同一 execute 主循环；另一条可路由路径仅用于 Runtime 能力／状态事实回复。
 - 模型可直接回答或请求注册工具；Runtime 校验并执行请求、记录结果，再追加回同一循环。
+- `ToolContext` 接收由宿主捕获的 Permission V2 快照，包含资源根、独立审批策略和约束可用性；权限判定不是 Harness 提示词或行为 profile 的一部分。
 - TaskBook 步骤执行、DECIDE、验证模型、恢复模型和 CAPTURE 不属于当前执行路径；持久 TaskBook 仅作只读历史。
 - VERIFY 只评估 Runtime 证据。窄结构成功可记为 pass；需要人工判断的其他完整 run 保持 unverified。
 - RECOVER 作出有界的确定性重试、停止或升级用户决定；已结算副作用不重复执行。

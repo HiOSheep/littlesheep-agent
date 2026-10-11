@@ -12,6 +12,66 @@ import { asSessionId } from '@littlesheep/types';
 import { ToolExecutionService } from './tool-execution-service.js';
 
 describe('ToolExecutionService', () => {
+  it('forces approval for an opaque plugin tool even when legacy full mode is selected', async () => {
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult))
+    const approve = vi.fn(async () => false)
+    const pluginTool: AgentTool = {
+      name: 'plugin_custom_action',
+      description: 'opaque plugin action',
+      inputSchema: z.object({ payload: z.string() }),
+      execute,
+    }
+    const service = createService([registration(pluginTool, 'plugin:sample')], {
+      toolContext: { permissionMode: 'full', approve },
+    })
+
+    const result = await service.executeBatch([{
+      callId: 'plugin-forced-approval', name: 'plugin_custom_action', input: { payload: 'change something' },
+    }])
+
+    expect(result.get(0)?.ok).toBe(false)
+    expect(approve).toHaveBeenCalledTimes(1)
+    expect(execute).not.toHaveBeenCalled()
+    expect(service.snapshot().records[0]).toMatchObject({
+      toolSource: 'plugin:sample',
+      status: 'approval_denied',
+      approval: { required: true, decision: 'denied' },
+    })
+  })
+
+  it('does not auto-execute Shell commands when V2 shell isolation is unavailable', async () => {
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult))
+    const shell: AgentTool = {
+      name: 'exec',
+      description: 'shell fixture',
+      inputSchema: z.object({ command: z.string(), cwd: z.string().optional() }),
+      execute,
+    }
+    const service = createService([registration(shell, 'builtin')], {
+      toolContext: {
+        cwd: process.cwd(),
+        containerRoot: process.cwd(),
+        dataRoot: process.cwd(),
+        workspaceRoot: process.cwd(),
+        permissionPreset: 'workspace-write',
+        approvalPolicy: 'prompt',
+        workspaceFileWrites: 'available',
+        shellIsolation: 'unavailable',
+        approve: undefined,
+      },
+    })
+
+    const result = await service.executeBatch([{
+      callId: 'shell-needs-approval', name: 'exec', input: { command: 'Get-ChildItem', cwd: process.cwd() },
+    }])
+
+    expect(result.get(0)?.ok).toBe(false)
+    expect(execute).not.toHaveBeenCalled()
+    expect(service.snapshot().records[0]).toMatchObject({
+      status: 'approval_unavailable', approval: { required: true, decision: 'unavailable' },
+    })
+  })
+
   it('owns validation, execution, sanitation, events, and source-aware records', async () => {
     const execute = vi.fn(async (input: unknown) => ({
       callId: '', ok: true, output: { accepted: input },
@@ -30,13 +90,15 @@ describe('ToolExecutionService', () => {
       { value: 'yes' },
       expect.objectContaining({ runId: 'run-1' }),
     );
-    expect(events.map((event) => event.type)).toEqual(['tool_start', 'tool_end']);
+    expect(events.map((event) => event.type)).toEqual([
+      'runtime_activity', 'runtime_activity', 'tool_start', 'tool_end',
+    ]);
     expect(service.snapshot().records[0]).toMatchObject({
       callId: 'call-1',
       toolName: 'inspect',
       toolSource: 'plugin:sample',
       status: 'succeeded',
-      approval: { required: false, decision: 'not_required' },
+      approval: { required: true, decision: 'approved' },
       stepId: 'step-1',
     });
   });
@@ -183,7 +245,7 @@ describe('ToolExecutionService', () => {
     const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult));
     const unavailable = createService([
       registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
-    ]);
+    ], { toolContext: { approve: undefined } });
     const errored = createService([
       registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
     ], { toolContext: { approve: async () => { throw new Error('approval transport failed'); } } });
@@ -623,12 +685,16 @@ function createService(
     onToolEvent?: (event: ToolStreamEvent) => void;
   } = {},
 ): ToolExecutionService {
+  // Most service tests use synthetic tool names that are deliberately unknown
+  // to the permission catalog. Grant those calls through a test broker so the
+  // assertions can focus on execution mechanics; approval-failure cases opt out.
   return new ToolExecutionService({
     registrations,
     toolContext: {
       runId: 'run-1',
       sessionId: asSessionId('session-1'),
       cwd: process.cwd(),
+      approve: async () => true,
       ...options.toolContext,
     },
     timeoutMs: options.timeoutMs,

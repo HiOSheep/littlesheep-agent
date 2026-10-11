@@ -284,7 +284,13 @@ export class RunRouter {
                 (approval) => writeSse(res, 'approval_request', approval),
                 controller.signal,
               ),
-              { containerRoot: context.dataDir ?? context.workplaceDir, cwd },
+              {
+                containerRoot: context.dataDir ?? context.workplaceDir,
+                dataRoot: context.dataDir,
+                workspaceRoot: cwd,
+                protectedRoots: runner.protectedWriteRoots,
+                cwd,
+              },
             ),
           },
           (delta) => writeSse(res, 'delta', { delta }),
@@ -365,6 +371,9 @@ export class RunRouter {
         workspaceContext,
         ...resolveRunPolicy(effectiveBody, context.getConfig(), undefined, {
           containerRoot: context.dataDir ?? context.workplaceDir,
+          dataRoot: context.dataDir,
+          workspaceRoot: cwd,
+          protectedRoots: runner.protectedWriteRoots,
           cwd,
         }),
       })
@@ -429,7 +438,7 @@ export class RunRouter {
     requestApproval: (request: ApprovalRequestPayload) => void,
     signal?: AbortSignal,
   ): RunApprovalBroker {
-    return async ({ action, detail, permissionMode, boundary }) => {
+    return async ({ action, detail, permissionMode, boundary, requiresExplicitUserApproval }) => {
       const id = randomUUID()
       return new Promise<boolean>((resolveApproval) => {
         let settled = false
@@ -461,7 +470,15 @@ export class RunRouter {
         }
         signal?.addEventListener('abort', onAbort, { once: true })
         try {
-          requestApproval({ id, action, detail, permissionMode, boundary, source: 'agent' })
+          requestApproval({
+            id,
+            action,
+            detail,
+            permissionMode,
+            boundary,
+            ...(requiresExplicitUserApproval ? { requiresExplicitUserApproval: true } : {}),
+            source: 'agent',
+          })
         } catch {
           settle(false)
         }

@@ -252,7 +252,13 @@ async function streamCheckpointResume(
       resumeBody,
       context.getConfig(),
       approvalBroker,
-      { containerRoot: context.dataDir ?? context.workplaceDir, cwd: state.cwd },
+      {
+        containerRoot: context.dataDir ?? context.workplaceDir,
+        dataRoot: context.dataDir,
+        workspaceRoot: state.cwd,
+        protectedRoots: runner.protectedWriteRoots,
+        cwd: state.cwd,
+      },
     )
     const restoreCheckpointResources = createCheckpointResourceResolver({
       managedCache: context.attachmentCache,
@@ -308,13 +314,12 @@ function checkpointResumeDefaults(
   state: NonNullable<import('@littlesheep/types').RunCheckpoint['resumeState']>,
 ): Record<string, unknown> {
   const effective = { ...body }
-  const hasLegacyMode = typeof body.mode === 'string'
-  if (body.permissionMode === undefined && !hasLegacyMode) {
-    effective.permissionMode = state.permissionPolicyId
-  }
-  if (body.profile === undefined && !hasLegacyMode) {
-    effective.profile = state.behaviorModeId
-  }
+  // A checkpoint continues the already-authorized run. A resume request cannot
+  // replace its permission snapshot; changing a session's stored mode is a
+  // separate explicit session operation and affects future runs.
+  effective.permissionMode = state.permissionPolicyId
+  delete effective.mode
+  if (body.profile === undefined) effective.profile = state.behaviorModeId
   if (body.reasoning === undefined) effective.reasoning = state.reasoning
   return effective
 }

@@ -42,6 +42,45 @@ describe('run permission mode continuity', () => {
     }
   })
 
+  it('allows a run to narrow permission but requires a persisted change before elevation', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
+    try {
+      const sessionIndex = new SessionIndex({ dataDir })
+      await sessionIndex.upsert('session-1', { mode: 'research', scope: 'standalone' })
+
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'session-1', text: 'run', permissionMode: 'full',
+      })).resolves.toMatchObject({ permissionMode: 'research' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'session-1', text: 'run', permissionMode: 'restricted',
+      })).resolves.toMatchObject({ permissionMode: 'restricted' })
+
+      // The dedicated session mutation is the authority for an upgrade.
+      await sessionIndex.upsert('session-1', { mode: 'full' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'session-1', text: 'run', permissionMode: 'full',
+      })).resolves.toMatchObject({ permissionMode: 'full' })
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('uses the conservative default for an unknown named session but preserves new-run choices', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
+    try {
+      const sessionIndex = new SessionIndex({ dataDir })
+
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'session-not-indexed', text: 'run', permissionMode: 'full',
+      })).resolves.toMatchObject({ permissionMode: 'research' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        text: 'run', permissionMode: 'full',
+      })).resolves.toMatchObject({ permissionMode: 'full' })
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('does not let a legacy coding behavior request overwrite the permission policy', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
@@ -59,7 +98,7 @@ describe('run permission mode continuity', () => {
     }
   })
 
-  it('keeps the actual resolved mode when checkpoint completion updates the index', async () => {
+  it('does not persist a per-run permission choice over an existing session', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const workplaceDir = join(dataDir, 'workplace')
@@ -69,7 +108,23 @@ describe('run permission mode continuity', () => {
         scope: 'standalone',
       }, workplaceDir)
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-1', mode: 'full' }),
+        expect.objectContaining({ id: 'session-1', mode: 'research' }),
+      ])
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('initializes a new session from the explicitly selected run permission', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
+    try {
+      const workplaceDir = join(dataDir, 'workplace')
+      const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+      await updateSessionIndex(sessionIndex, 'session-new', { permissionMode: 'restricted' }, {
+        scope: 'standalone',
+      }, workplaceDir)
+      await expect(sessionIndex.list()).resolves.toEqual([
+        expect.objectContaining({ id: 'session-new', mode: 'restricted' }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })

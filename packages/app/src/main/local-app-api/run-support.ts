@@ -21,19 +21,29 @@ export interface RunResourceContext {
 
 /**
  * Keep older/partial run callers aligned with the session's persisted policy.
- * The renderer normally sends permissionMode explicitly, but a missing field
- * must never silently downgrade a session or overwrite its mode on completion.
+ * An explicit permissionMode may narrow a run, but cannot raise an existing
+ * session above its persisted authority. Permission upgrades use the dedicated
+ * session mutation route; new sessions can still start from their chosen mode.
  */
 export async function withPersistedSessionPermissionMode(
   sessionIndex: SessionIndex,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  if (hasExplicitPermissionMode(body)) return body
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
   if (!sessionId) return body
   const existing = (await sessionIndex.list()).find((session) => session.id === sessionId)
-  if (!existing) return body
-  return { ...body, permissionMode: normalizePermissionModeId(existing.mode) }
+  // A named session missing from the UI index has no Main-owned permission
+  // snapshot, so it gets the conservative legacy default until indexed.
+  const storedMode = existing ? normalizePermissionModeId(existing.mode) : 'research'
+  const requestedMode = explicitPermissionMode(body)
+  if (!requestedMode) return { ...body, permissionMode: storedMode }
+
+  const normalizedRequestedMode = normalizePermissionModeId(requestedMode)
+  const rank = { restricted: 0, research: 1, full: 2 } as const
+  const runMode = rank[normalizedRequestedMode] <= rank[storedMode]
+    ? normalizedRequestedMode
+    : storedMode
+  return { ...body, permissionMode: runMode }
 }
 
 export async function finishRunResources(
@@ -78,19 +88,13 @@ export async function updateSessionIndex(
     workspacePath: string
   } = {
     lastMessageAt: Date.now(),
-    mode: normalizePermissionModeId(
-      explicitPermissionMode(body) ?? existing?.mode,
-    ),
+    mode: normalizePermissionModeId(existing?.mode ?? explicitPermissionMode(body)),
     scope: ownership.scope,
     projectId: ownership.projectId,
     workspacePath,
   }
   if (!existing) updates.title = String(body.text ?? '').slice(0, 60) || 'New session'
   await sessionIndex.upsert(sessionId, updates)
-}
-
-function hasExplicitPermissionMode(body: Record<string, unknown>): boolean {
-  return explicitPermissionMode(body) !== undefined
 }
 
 function explicitPermissionMode(body: Record<string, unknown>): string | undefined {

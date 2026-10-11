@@ -163,6 +163,8 @@ export interface ApprovalRequest {
   action: string
   detail?: unknown
   permissionMode: PermissionModeId
+  /** Main requires an explicit decision even when the session is full-access. */
+  requiresExplicitUserApproval?: boolean
   /** Boundary calculated by the Main process for Agent requests. */
   boundary?: 'inside' | 'outside' | 'unknown'
   source?: 'agent' | 'workspace'

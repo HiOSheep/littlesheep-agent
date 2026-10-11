@@ -283,7 +283,9 @@ describe('run checkpoint Local App API', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reason: 'resume from test',
-          permissionMode: 'research',
+          // A checkpoint resumes the original policy snapshot even if a stale
+          // or untrusted request body tries to replace it.
+          permissionMode: 'full',
           reasoning: 'auto',
           profile: 'general',
           requestKey: 'explicit-resume-turn',

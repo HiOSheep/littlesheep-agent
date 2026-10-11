@@ -7,9 +7,9 @@
 ## 职责与边界
 
 - 根公开入口是 `src/index.ts`；校验在 `validate.ts`，注入模式在 `patterns.ts`，清洗在 `sanitize-prelude.ts`，隔离在 `quarantine.ts`，安全存储包装在 `safe-memory-store.ts`。
-- `permission-boundary.ts` 拥有逻辑容器边界、路径/符号链接规范化、Shell 范围保守判定、safe read 分类、敏感 query 识别和三档权限决策（`describeToolAccess`、`resolvePermissionDecision`、`authorizeToolAccess`）；产品层仍负责审批 UI 和生命周期，不得绕过这些判定。
+- `permission-boundary.ts` 拥有旧三档权限与 V2 预设的统一决策（自动允许／审批／硬拒绝／约束不可用）、路径/符号链接规范化、`dataRoot`、`workspaceRoot`、受保护根分类、Shell 保守判定、safe read 分类和敏感 query 识别（`describeToolAccess`、`resolvePermissionDecision`、`authorizeToolAccess`）。硬拒绝和强制审批先于普通预设；产品层仍负责审批 UI 和生命周期。
 - Node 专用的 `@littlesheep/safety/verified-asset` 子路径提供有界哈希、下载完整性校验、临时文件恢复和原子发布机械层；模型注册、URL、重试策略、manifest 与生命周期仍由调用领域拥有。
-- 当前边界是 Main 进程中的 fail-closed 逻辑约束，不等同于真实 Docker/OS 沙箱；`unknown` 始终保留保守分类。研究/受限模式必须升级到用户审批（公共 Web safe read 与本地记忆导航免逐次批准，但仍受网络总开关与硬拒绝约束），已经显式确认的完全访问按策略直接放行；核心源码只读和危险命令硬拒绝不受权限模式影响。
+- 当前边界是 Main 进程中的 fail-closed 逻辑约束，不等同于真实 Docker/OS 沙箱；`unknown` 始终保留保守分类。V2 工作区写入只有在真实文件约束可用时才能自动允许；Shell 在隔离能力不可用时仍逐次审批。旧研究/受限/完全访问语义继续读取；核心源码只读和危险命令硬拒绝不受普通模式覆盖。
 - 禁止吞掉风险或把隔离内容重新注入 Context。
 
 ## 依赖与数据

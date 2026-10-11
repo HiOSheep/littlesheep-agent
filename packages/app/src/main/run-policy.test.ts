@@ -99,6 +99,23 @@ describe('local app run policy', () => {
     }))
   })
 
+  it('keeps forced Main approval visible to Renderer even in legacy full mode', async () => {
+    const broker = vi.fn(async () => true)
+    const policy = resolveRunPolicy(
+      { permissionMode: 'full' },
+      DEFAULT_CONFIG,
+      broker,
+      { networkPolicy: webPolicy({ mode: 'configured_allowlist', allowDomains: ['allowed.example.com'] }) },
+    )
+
+    await expect(policy.approve('web_fetch', { url: 'https://outside.example.com/page' })).resolves.toBe(true)
+    expect(broker).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'web_fetch',
+      permissionMode: 'full',
+      requiresExplicitUserApproval: true,
+    }))
+  })
+
   it('hard-denies disabled and private web reads in Main without consulting the broker', async () => {
     const broker = vi.fn(async () => true)
     const disabled = resolveRunPolicy({ permissionMode: 'research' }, DEFAULT_CONFIG, broker)

@@ -118,6 +118,9 @@ importers:
       '@littlesheep/safety':
         specifier: workspace:*
         version: link:../safety
+      '@littlesheep/tools':
+        specifier: workspace:*
+        version: link:../tools
       '@littlesheep/types':
         specifier: workspace:*
         version: link:../types

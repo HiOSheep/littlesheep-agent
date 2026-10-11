@@ -17,10 +17,20 @@ const terminalProcessMocks = vi.hoisted(() => ({
   createWorkspaceTerminalProcess: vi.fn(),
   writes: [] as string[],
 }))
+const workspaceShellMocks = vi.hoisted(() => ({
+  discoverWorkspaceShells: vi.fn(),
+}))
 
 vi.mock('./local-app-api/terminal-process.js', () => ({
   createWorkspaceTerminalProcess: terminalProcessMocks.createWorkspaceTerminalProcess,
 }))
+vi.mock('./workspace-shell-discovery.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./workspace-shell-discovery.js')>()
+  return {
+    ...actual,
+    discoverWorkspaceShells: workspaceShellMocks.discoverWorkspaceShells,
+  }
+})
 
 import { startLocalAppApiServer } from './local-app-api-server.js'
 
@@ -40,6 +50,23 @@ describe('workspace terminal authority API', () => {
       onExit: vi.fn(() => () => undefined),
       onError: vi.fn(() => () => undefined),
     }))
+    workspaceShellMocks.discoverWorkspaceShells.mockResolvedValue([
+      {
+        id: 'windows-powershell',
+        kind: 'windows-powershell',
+        label: 'Windows PowerShell',
+        available: true,
+        executable: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+        args: [],
+      },
+      {
+        id: 'missing-shell',
+        kind: 'cmd',
+        label: 'Unavailable shell',
+        available: false,
+        reason: 'not installed',
+      },
+    ])
   })
 
   it('bypasses Agent permission mode only for the user-owned interactive terminal', async () => {
@@ -48,6 +75,13 @@ describe('workspace terminal authority API', () => {
     mkdirSync(workplaceDir, { recursive: true })
     const config = structuredClone(DEFAULT_CONFIG)
     const runner = { state: { model: config.agents.defaults.model } } as unknown as AgentRunner
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    await sessionIndex.upsert('research-session', {
+      title: 'Research session',
+      mode: 'research',
+      scope: 'standalone',
+      workspacePath: workplaceDir,
+    })
     const developmentEnvironmentManager = {
       initialize: vi.fn(async () => undefined),
       terminalEnvironment: vi.fn(async () => process.env),
@@ -55,7 +89,7 @@ describe('workspace terminal authority API', () => {
     const server = await startLocalAppApiServer({
     getRunner: () => runner,
       port: 0,
-      sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
+      sessionIndex,
       projectIndex: new ProjectIndex({ dataDir }),
       archiveIndex: new ArchiveIndex({ dataDir, workplaceDir }),
       terminalActivityIndex: new TerminalActivityIndex({ dataDir }),
@@ -78,11 +112,26 @@ describe('workspace terminal authority API', () => {
         body: JSON.stringify({
           root: workplaceDir,
           command: 'Write-Output blocked-agent-command',
-          permissionMode: 'research',
+          sessionId: 'research-session',
+          // Renderer-supplied mode cannot replace Main's persisted session mode.
+          permissionMode: 'full',
           approved: false,
         }),
       })
       expect(agentCommand.status).toBe(403)
+      const streamedAgentCommand = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalStream}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root: workplaceDir,
+          command: 'Write-Output blocked-agent-command',
+          sessionId: 'research-session',
+          permissionMode: 'full',
+          approved: false,
+        }),
+      })
+      expect(streamedAgentCommand.status).toBe(403)
+      expect(terminalProcessMocks.createWorkspaceTerminalProcess).not.toHaveBeenCalled()
 
       // UX-29: the renderer asks for the shells this machine can run before it offers a picker.
       const shells = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalShells}`)

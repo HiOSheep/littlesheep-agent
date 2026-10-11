@@ -68,4 +68,16 @@ describe('terminal operation authority', () => {
       approved: false,
     })).toThrow()
   })
+
+  it('keeps protected source roots read-only even with full mode and an approval result', () => {
+    expect(() => assertTerminalOperationAllowed({
+      source: 'agent',
+      command: 'Set-Content -LiteralPath source.ts -Value changed',
+      cwd: containerRoot,
+      containerRoot,
+      protectedRoots: [containerRoot],
+      permissionMode: 'full',
+      approved: true,
+    })).toThrow(/read-only/u)
+  })
 })

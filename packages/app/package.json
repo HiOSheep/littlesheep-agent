@@ -27,6 +27,7 @@
     "@littlesheep/prompt": "workspace:*",
     "@littlesheep/runner": "workspace:*",
     "@littlesheep/safety": "workspace:*",
+    "@littlesheep/tools": "workspace:*",
     "@littlesheep/types": "workspace:*",
     "@littlesheep/web": "workspace:*",
     "@types/node": "^22.0.0",

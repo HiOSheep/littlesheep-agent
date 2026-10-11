@@ -3,7 +3,13 @@
 
 import type { ToolResult } from './message.js';
 import type { SessionId } from './session.js';
-import type { PermissionPolicyId } from './runtime-contracts.js';
+import type {
+  ApprovalPolicyId,
+  PermissionConstraintAvailability,
+  PermissionPolicyId,
+  PermissionPolicyV2Snapshot,
+  PermissionPresetId,
+} from './runtime-contracts.js';
 import type { NetworkReadPolicy, WebEvidenceSink, WebRetrievalRuntimePort } from './web-retrieval.js';
 import type { DurableEffectOutcomeQueryResult, DurableEffectProjection, EffectReconcileContext } from './durable-harness.js';
 
@@ -101,8 +107,24 @@ export interface ToolContext {
   protectedWriteRoots?: readonly string[];
   /** Active movable application-data root that defines the logical LS container. */
   containerRoot?: string;
+  /** LS application data root; it is not itself an authorized user workspace. */
+  dataRoot?: string;
+  /** Workspace fact resolved by Main for this run. */
+  workspaceRoot?: string;
   /** Permission policy for this run; behavior profiles are intentionally separate. */
   permissionMode?: PermissionPolicyId;
+  /** Additive Permission V2 preset, kept separate from legacy permission modes. */
+  permissionPreset?: PermissionPresetId;
+  /** Approval handling is independent from resource scope and isolation. */
+  approvalPolicy?: ApprovalPolicyId;
+  /** Whether workspace file writes have a real enforcement layer. */
+  workspaceFileWrites?: PermissionConstraintAvailability;
+  /** Whether Shell commands are confined by an OS-level sandbox. */
+  shellIsolation?: PermissionConstraintAvailability;
+  /** Explicit confirmation for the V2 full-access preset. */
+  fullAccessConfirmed?: boolean;
+  /** Immutable V2 policy snapshot captured by Main before this run. */
+  permissionPolicyV2?: PermissionPolicyV2Snapshot;
   /** Approval callback: returns true if the action is permitted. */
   approve?: (action: string, detail?: unknown) => Promise<boolean>;
   /** Set only for the current invocation after the Harness has approved it. */

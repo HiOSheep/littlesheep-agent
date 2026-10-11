@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   ALL_PERMISSION_MODES,
+  PERMISSION_PRESETS_V2,
   normalizePermissionModeId,
   resolvePermissionModePolicy,
+  resolveFutureDefaultPermissionPreset,
 } from './permission-modes.js'
 
 describe('permission modes', () => {
@@ -36,5 +38,17 @@ describe('permission modes', () => {
     const full = ALL_PERMISSION_MODES.find((mode) => mode.id === 'full')
     expect(full?.description).toContain('容器内外')
     expect(full?.description).toContain('不再逐次请求批准')
+  })
+
+  it('keeps the three V2 access presets separate from legacy ids and gates the future default', () => {
+    expect(PERMISSION_PRESETS_V2.map((preset) => preset.id)).toEqual([
+      'read-only', 'workspace-write', 'full-access',
+    ])
+    expect(resolveFutureDefaultPermissionPreset({ workspaceFileWrites: 'unavailable' })).toBeUndefined()
+    expect(resolveFutureDefaultPermissionPreset({ workspaceFileWrites: 'available' })).toBe('workspace-write')
+    // V2 identifiers travel in a separate `preset` field; old mode migration
+    // stays unchanged for sessions and checkpoints that store `mode`.
+    expect(normalizePermissionModeId('workspace-write')).toBe('research')
+    expect(normalizePermissionModeId('read-only')).toBe('research')
   })
 })
