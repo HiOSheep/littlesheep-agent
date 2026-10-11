@@ -247,6 +247,12 @@ describe('run checkpoint Local App API', () => {
 
   it('discovers, inspects and resumes a checkpoint through bounded HTTP and SSE contracts', async () => {
     const fixture = await createFixture()
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'full',
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
     const base = `http://127.0.0.1:${fixture.server.port}`
     try {
       // Recovery is started by `setRunner` and no longer awaited by it, so the
@@ -324,6 +330,12 @@ describe('run checkpoint Local App API', () => {
       behaviorModeId: 'coding',
       reasoning: 'high',
     })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'full',
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
     const base = `http://127.0.0.1:${fixture.server.port}`
     const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
     try {
@@ -344,6 +356,39 @@ describe('run checkpoint Local App API', () => {
         reasoning: 'high',
         profile: 'coding',
       })
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('caps checkpoint authority at the current persisted session mode after a downgrade', async () => {
+    const fixture = await createFixture(undefined, { permissionPolicyId: 'full' })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'restricted',
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'resume after permission downgrade',
+          permissionMode: 'full',
+          requestKey: 'downgraded-checkpoint-resume',
+          continuationDirective: 'answer',
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]?.permissionPolicyId).toBe('restricted')
+      expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')?.mode)
+        .toBe('restricted')
     } finally {
       await fixture.server.stop()
       rmSync(fixture.dataDir, { recursive: true, force: true })

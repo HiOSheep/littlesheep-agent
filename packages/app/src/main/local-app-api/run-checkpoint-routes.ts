@@ -13,6 +13,7 @@ import type {
   LocalAppRunCheckpointListResponse,
   LocalAppRunCheckpointResumeRequest,
 } from '../../shared/run-checkpoint-contracts.js'
+import { normalizePermissionModeId } from '../../shared/permission-modes.js'
 import { createCheckpointResourceResolver } from '../attachments.js'
 import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
 import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiRequest } from './http.js'
@@ -244,7 +245,12 @@ async function streamCheckpointResume(
     const resumeBody = checkpointResumeDefaults(
       await withPersistedSessionPermissionMode(
         context.sessionIndex,
-        body as unknown as Record<string, unknown>,
+        {
+          ...(body as unknown as Record<string, unknown>),
+          // Checkpoint ownership is Main-resolved. The body cannot choose which
+          // persisted session policy caps the checkpoint snapshot.
+          sessionId: String(inspection.checkpoint.sessionId),
+        },
       ),
       state,
     )
@@ -314,10 +320,17 @@ function checkpointResumeDefaults(
   state: NonNullable<import('@littlesheep/types').RunCheckpoint['resumeState']>,
 ): Record<string, unknown> {
   const effective = { ...body }
-  // A checkpoint continues the already-authorized run. A resume request cannot
-  // replace its permission snapshot; changing a session's stored mode is a
-  // separate explicit session operation and affects future runs.
-  effective.permissionMode = state.permissionPolicyId
+  // Keep both authorization ceilings: the original run snapshot prevents a
+  // resume request from upgrading the checkpoint, while the current persisted
+  // session mode lets a later downgrade revoke authority from that snapshot.
+  const rank = { restricted: 0, research: 1, full: 2 } as const
+  const checkpointMode = normalizePermissionModeId(state.permissionPolicyId)
+  const currentSessionMode = normalizePermissionModeId(
+    typeof body.permissionMode === 'string' ? body.permissionMode : checkpointMode,
+  )
+  effective.permissionMode = rank[currentSessionMode] <= rank[checkpointMode]
+    ? currentSessionMode
+    : checkpointMode
   delete effective.mode
   if (body.profile === undefined) effective.profile = state.behaviorModeId
   if (body.reasoning === undefined) effective.reasoning = state.reasoning
