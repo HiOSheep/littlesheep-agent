@@ -105,6 +105,7 @@ describe('the run workspace fact', () => {
       cwd: requested,
       additionalTools: [probe],
       permissionPolicyId: 'full',
+      approve: async () => true,
     })
 
     expect(observedCwd).toEqual([requested])

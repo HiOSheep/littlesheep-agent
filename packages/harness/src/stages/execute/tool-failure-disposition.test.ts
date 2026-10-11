@@ -214,7 +214,11 @@ describe('the main loop after a failed call', () => {
     });
     const write = makeTool('write', { ok: true, output: 'written' }, { requiresApproval: true });
     const stage = createExecuteStage({ ...deps, llm });
-    const ctx = makeCtx({ tools: [write], inbound: textMessage('user', 'write into the core source') });
+    const ctx = makeCtx({
+      tools: [write],
+      inbound: textMessage('user', 'write into the core source'),
+      toolContext: { approve: async () => false },
+    });
 
     const result = await stage(ctx);
 
