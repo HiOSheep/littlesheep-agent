@@ -34,7 +34,7 @@ describe('session permission mode resolution', () => {
 
   it('starts a new draft with its own default mode', () => {
     expect(resolveSessionPermissionMode(undefined, sessions, {}, 'restricted')).toBe('restricted')
-    expect(resolveSessionPermissionMode(undefined, sessions, {})).toBe('research')
+    expect(resolveSessionPermissionMode(undefined, sessions, {})).toBe('workspace-write')
   })
 
   it('falls back to research for an unknown persisted mode', () => {
