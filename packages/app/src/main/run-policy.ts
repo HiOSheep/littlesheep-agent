@@ -45,7 +45,11 @@ export interface RunPolicyBoundaryOptions {
 
 export interface ResolvedRunPolicy {
   requireApprovalForAllTools: boolean
-  approve: (action: string, detail?: unknown) => Promise<boolean>
+  approve: (
+    action: string,
+    detail?: unknown,
+    approvalOptions?: { requiresExplicitUserApproval?: boolean },
+  ) => Promise<boolean>
   profile?: AgentProfileId
   permissionPolicyId: PermissionModeId
 }
@@ -86,11 +90,15 @@ export function createPermissionApprover(
   permissionMode: PermissionModeId,
   approvalBroker?: RunApprovalBroker,
   boundaryOptions: RunPolicyBoundaryOptions = {},
-): (action: string, detail?: unknown) => Promise<boolean> {
+): (
+  action: string,
+  detail?: unknown,
+  approvalOptions?: { requiresExplicitUserApproval?: boolean },
+) => Promise<boolean> {
   const containerRoot = boundaryOptions.containerRoot
   const cwd = boundaryOptions.cwd ?? containerRoot ?? process.cwd()
   const networkPolicy = boundaryOptions.networkPolicy
-  return async (action, detail) => {
+  return async (action, detail, approvalOptions) => {
     const descriptor = describeToolAccess(action, detail, {
       cwd,
       containerRoot,
@@ -99,9 +107,12 @@ export function createPermissionApprover(
       protectedRoots: boundaryOptions.protectedRoots,
       networkPolicy,
     })
-    const decision = resolvePermissionDecision(permissionMode, descriptor, {
+    let decision = resolvePermissionDecision(permissionMode, descriptor, {
       strictReadApproval: networkPolicy?.strictReadApproval === true,
     })
+    if (approvalOptions?.requiresExplicitUserApproval === true && decision === 'allow') {
+      decision = 'approval'
+    }
     if (decision === 'deny' || decision === 'unavailable') return false
     if (decision === 'allow') return true
     if (!approvalBroker) return false
@@ -110,7 +121,9 @@ export function createPermissionApprover(
       detail,
       permissionMode,
       boundary: descriptor.boundary,
-      ...(descriptor.hardDecision === 'approval' ? { requiresExplicitUserApproval: true } : {}),
+      ...(approvalOptions?.requiresExplicitUserApproval === true || descriptor.hardDecision === 'approval'
+        ? { requiresExplicitUserApproval: true }
+        : {}),
     })
   }
 }

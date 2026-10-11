@@ -434,7 +434,9 @@ export class ToolExecutionService {
         summary: `正在等待 ${tool.name} 的权限批准`,
       });
       const approved = await this.withApprovalLock(approvalSignal, () => waitForAbort(
-        Promise.resolve().then(() => approve(tool.name, projectToolInput(tool, input))),
+        Promise.resolve().then(() => approve(tool.name, projectToolInput(tool, input), {
+          requiresExplicitUserApproval: true,
+        })),
         approvalSignal,
         'approval aborted',
       ));

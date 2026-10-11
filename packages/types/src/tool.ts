@@ -126,7 +126,11 @@ export interface ToolContext {
   /** Immutable V2 policy snapshot captured by Main before this run. */
   permissionPolicyV2?: PermissionPolicyV2Snapshot;
   /** Approval callback: returns true if the action is permitted. */
-  approve?: (action: string, detail?: unknown) => Promise<boolean>;
+  approve?: (
+    action: string,
+    detail?: unknown,
+    options?: { requiresExplicitUserApproval?: boolean },
+  ) => Promise<boolean>;
   /** Set only for the current invocation after the Harness has approved it. */
   approvalGranted?: boolean;
   /** Abort signal for the owning run. */
