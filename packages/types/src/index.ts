@@ -21,6 +21,7 @@ export * from './activity.js';
 export * from './work-policy.js';
 export * from './agent.js';
 export * from './runtime-contracts.js';
+export * from './sandbox-capabilities.js';
 export * from './durable-harness.js';
 export * from './usage-daily.js';
 export * from './reconciliation-key.js';

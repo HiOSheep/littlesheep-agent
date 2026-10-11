@@ -11,6 +11,7 @@
 - ToolContext 的文件观察与版本检查点是不同端口：前者记录本会话中模型读取的内容版本，后者服务于 run 副作用前像与回滚。
 - Permission V2 在 `PermissionPolicyV2Snapshot` 中将只读／工作区写入／完全访问预设、审批策略、`dataRoot`、`workspaceRoot`、受保护根和执行约束能力分开；快照是 Main 为一次运行生成的内存事实。旧 `PermissionPolicyId` 与检查点字段继续兼容读取，SessionIndex 在既有字符串 `mode` 字段中记录新会话显式选择的 V2 preset id，不增加 checkpoint 或 execution-log 持久字段。
 - `ToolContext.approve` 是调用级回调；ToolExecutionService 为每次执行创建包装，复用本次工具批准时限定工具身份，并将其它嵌套请求强制送入 Main 逐次审批。审批结果与原生文件工具资格不作为可由工具参数伪造的 `ToolContext` 字段暴露。
+- P3-0 的跨平台沙箱能力契约位于 `sandbox-capabilities.ts`：仅声明能力证据、操作需求和 run/workspace 作用域匹配。它不负责 OS 隔离、不修改 Permission V2 的实际授权，也不能将客户端提交的能力对象当成可信证据；详见 `docs/reference/cross-platform-sandbox-contract.md`。
 - 类型本身不拥有数据；生产者、消费者和持久化位置由对应领域 owner 说明。持久协议变更必须有兼容读取或明确迁移。
 - Web durable projection 不保存网页正文、完整 query 或 Provider 原始响应；run-local 正文不得混入 checkpoint 或 execution log。
 
