@@ -174,21 +174,15 @@ export function createRecoveryReadAuthorizer(
     const session = (await getSessionIndex()?.list())?.find((item) => item.id === identity.sessionId)
     if (!session) return false
     const selection = normalizePermissionSelectionId(session.mode)
-    const v2Snapshot = isPermissionSelectionPreset(selection)
-      ? buildPermissionPolicySnapshot(selection, {
-          containerRoot,
-          dataRoot: containerRoot,
-          workspaceRoot: session.workspacePath,
-          protectedRoots: [],
-          cwd: session.workspacePath ?? containerRoot,
-        }, resolveExistingDirectory(session.workspacePath))
-      : undefined
+    // The startup reconciler only receives a boolean, then reads by path. It
+    // cannot hold the native directory lease through that read. Do not grant
+    // V2 workspace auto-read to this unguarded entry; retain unknown outcome.
+    if (isPermissionSelectionPreset(selection)) return false
     return createPermissionApprover(selection, undefined, {
       containerRoot,
       dataRoot: containerRoot,
       workspaceRoot: session.workspacePath,
       cwd: session.workspacePath ?? containerRoot,
-      ...(v2Snapshot ? { permissionPolicyV2: v2Snapshot } : {}),
     })('read', { file_path: path })
   }
 }

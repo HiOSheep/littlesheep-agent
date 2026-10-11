@@ -24,6 +24,15 @@ describe('local app run policy', () => {
     expect(await authorize(inside, { ...identity, sessionId: 'missing' })).toBe(false)
     expect(await createRecoveryReadAuthorizer(() => null, containerRoot)(inside, identity)).toBe(false)
   })
+  it.each(['read-only', 'workspace-write'])('keeps unguarded startup reconciliation reads unknown for %s', async (mode) => {
+    const workspaceRoot = process.cwd()
+    const authorize = createRecoveryReadAuthorizer(() => ({ list: async () => [{
+      id: 'v2-session', title: 'V2 session', mode, workspacePath: workspaceRoot,
+      createdAt: 0, lastMessageAt: 0, scope: 'standalone' as const,
+    }] }), workspaceRoot)
+    expect(await authorize(join(workspaceRoot, 'package.json'), { sessionId: 'v2-session', runId: 'r' }))
+      .toBe(false)
+  })
   it('keeps behavior profile and permission policy independent', async () => {
     const broker = vi.fn(async () => true)
     const policy = resolveRunPolicy({ profile: 'coding', permissionMode: 'research' }, DEFAULT_CONFIG, broker)
