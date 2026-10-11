@@ -111,6 +111,11 @@ export const writeTool: AgentTool = {
             async () => !guard.safe || await guard.revalidate(),
           );
           if (!replaced.ok) {
+            if (replaced.reason === 'security_unavailable') return {
+              ok: false as const,
+              errorKind: 'permission_safety_unavailable' as const,
+              error: 'The replacement cannot preserve the Windows file access rules or ordinary file metadata.',
+            };
             return {
               ok: false as const,
               errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
@@ -122,7 +127,12 @@ export const writeTool: AgentTool = {
           return { ok: true as const };
         });
         ctx.observation?.invalidate(targetPath);
-        if (!committed.ok) return observationFailure(committed);
+        if (!committed.ok) {
+          if (committed.errorKind === 'permission_safety_unavailable') return {
+            ok: false, error: committed.error, meta: { errorKind: committed.errorKind },
+          };
+          return observationFailure(committed);
+        }
         ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
         return { output: `Wrote ${content.length} chars to ${targetPath}` };
       }
