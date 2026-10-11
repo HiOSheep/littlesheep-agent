@@ -115,7 +115,7 @@ describe('workspace terminal authority API', () => {
           sessionId: 'research-session',
           // Renderer-supplied mode cannot replace Main's persisted session mode.
           permissionMode: 'full',
-          approved: false,
+          approved: true,
         }),
       })
       expect(agentCommand.status).toBe(403)
@@ -127,7 +127,7 @@ describe('workspace terminal authority API', () => {
           command: 'Write-Output blocked-agent-command',
           sessionId: 'research-session',
           permissionMode: 'full',
-          approved: false,
+          approved: true,
         }),
       })
       expect(streamedAgentCommand.status).toBe(403)

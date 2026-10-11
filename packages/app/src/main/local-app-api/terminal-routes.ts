@@ -223,7 +223,9 @@ export class TerminalRouter {
         workspaceRoot: root,
         protectedRoots: context.getRunner()?.protectedWriteRoots,
         permissionMode,
-        approved: body.approved === true,
+        // A Renderer boolean is not a Main-owned approval record. This route
+        // has no approval broker, so research/restricted Agent commands stay blocked.
+        approved: false,
       })
       const terminalEnvironment = context.developmentEnvironmentManager
         ? await context.developmentEnvironmentManager.terminalEnvironment()
@@ -275,7 +277,8 @@ export class TerminalRouter {
         workspaceRoot: root,
         protectedRoots: context.getRunner()?.protectedWriteRoots,
         permissionMode,
-        approved: body.approved === true,
+        // Keep the stream entry point under the same Main-only approval rule.
+        approved: false,
       })
       const timeoutMs = clampTerminalTimeout(body.timeoutMs)
       const terminalEnvironment = context.developmentEnvironmentManager
