@@ -126,7 +126,7 @@ describe('web_search built-in', () => {
 
   it('allows an explicitly approved sensitive query without exposing it in the approval projection', async () => {
     const port = runtime();
-    const ctx = { ...context(port), approvalGranted: true };
+    const ctx = { ...context(port), approvalGranted: true, approvalGrantedToolName: 'web_search' };
     const result = await webSearchTool.execute({ query: 'find api_key=fixture-secret docs' }, ctx);
     expect(result.ok).toBe(true);
     expect(port.search).toHaveBeenCalledWith(expect.objectContaining({ query: 'find api_key=fixture-secret docs' }), undefined);

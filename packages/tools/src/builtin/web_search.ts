@@ -44,7 +44,9 @@ export const webSearchTool: AgentTool = {
     let query = parsed.query;
     if (sensitive.sensitive) {
       if (policy.sensitiveQueryPolicy === 'deny') return webFailure({ kind: 'web_sensitive_query_blocked' });
-      if (policy.sensitiveQueryPolicy === 'approve' && ctx.approvalGranted !== true && ctx.permissionMode !== 'full') {
+      if (policy.sensitiveQueryPolicy === 'approve'
+        && !(ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'web_search')
+        && ctx.permissionMode !== 'full') {
         return webFailure({ kind: 'web_sensitive_query_blocked' });
       }
       if (policy.sensitiveQueryPolicy === 'redact') {

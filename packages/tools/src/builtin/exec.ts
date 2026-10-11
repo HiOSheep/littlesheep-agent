@@ -118,7 +118,8 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         return { ok: false, error: `Approval denied: ${approval.reason}` };
       }
       if (approval.decision === 'escalate') {
-        if (authorization.approvedByPolicy || ctx.approvalGranted === true) {
+        if (authorization.approvedByPolicy
+          || (ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'exec')) {
           // The boundary policy already authorized this invocation. Keep the
           // blacklist check above, but do not ask for the same command twice.
         } else if (opts.interactive) {

@@ -163,7 +163,17 @@ describe('permission boundary', () => {
     await expect(authorizeToolAccess('read', { file_path: fixture.insideFile }, {
       ...context,
       approvalGranted: true,
+      approvalGrantedToolName: 'read',
     })).resolves.toMatchObject({ allowed: true, approvedByPolicy: false })
+    const unscopedGrant = vi.fn(async () => false)
+    await expect(authorizeToolAccess('read', { file_path: fixture.insideFile }, {
+      ...context,
+      approve: unscopedGrant,
+      approvalGranted: true,
+    })).resolves.toMatchObject({ allowed: false, reason: 'approval denied' })
+    expect(unscopedGrant).toHaveBeenCalledWith('read', { file_path: fixture.insideFile }, {
+      requiresExplicitUserApproval: true,
+    })
     await expect(authorizeToolAccess('write', { file_path: fixture.insideFile }, {
       ...context,
       approve: async () => false,

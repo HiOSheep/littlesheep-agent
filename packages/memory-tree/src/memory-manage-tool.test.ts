@@ -53,7 +53,10 @@ function harness(options: {
     recordRevocation,
     ...(options.withCorrectionPorts === false ? {} : { writeReplacement, relateReplacement, supersede }),
   })
-  const ctx = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', approvalGranted: true } as never
+  const ctx = {
+    sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws',
+    approvalGranted: true, approvalGrantedToolName: 'memory_manage',
+  } as never
   return { tool, invalidate, writeReplacement, relateReplacement, supersede, recordRevocation, ctx }
 }
 

@@ -575,7 +575,12 @@ export class ToolExecutionService {
         (signal) => registration.tool.execute(input, {
           ...this.options.toolContext,
           signal,
-          ...(approvalGranted ? { approvalGranted: true } : {}),
+          approvalGranted,
+          approvalGrantedToolName: approvalGranted ? registration.tool.name : undefined,
+          nativeWorkspaceFileToolInvocation: registration.source === 'builtin'
+            && (registration.tool.name === 'read' || registration.tool.name === 'write' || registration.tool.name === 'edit')
+            ? registration.tool.name
+            : undefined,
         }),
         this.options.timeoutMs,
         signal,

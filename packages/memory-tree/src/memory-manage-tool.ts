@@ -165,7 +165,8 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
             : 'The user asked for this memory to be corrected.'),
       }
 
-      if (ctx.permissionMode && ctx.permissionMode !== 'full' && ctx.approvalGranted !== true) {
+      if (ctx.permissionMode && ctx.permissionMode !== 'full'
+        && !(ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'memory_manage')) {
         return failure('memory_manage_not_approved',
           `Changing a memory needs the user's approval in ${ctx.permissionMode} mode; this call has none.`)
       }

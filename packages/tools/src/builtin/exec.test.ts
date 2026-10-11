@@ -287,7 +287,7 @@ describe('execTool approval gate', () => {
 
     const result = await exec.execute(
       { command: 'echo service-approved' },
-      { ...baseCtx, approve, approvalGranted: true },
+      { ...baseCtx, approve, approvalGranted: true, approvalGrantedToolName: 'exec' },
     );
 
     expect(result.ok).toBe(true);

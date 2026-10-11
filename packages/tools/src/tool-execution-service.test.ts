@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   AgentTool,
   NetworkReadPolicy,
@@ -10,11 +13,14 @@ import type {
 } from '@littlesheep/types';
 import { asSessionId } from '@littlesheep/types';
 import { ToolExecutionService } from './tool-execution-service.js';
+import { writeTool } from './builtin/write.js';
 
 describe('ToolExecutionService', () => {
   it('forces approval for an opaque plugin tool even when legacy full mode is selected', async () => {
     const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult))
-    const approve = vi.fn(async () => false)
+    const approve = vi.fn(async (_action: string, _detail: unknown, options?: { requiresExplicitUserApproval?: boolean }) => (
+      options?.requiresExplicitUserApproval === true ? false : true
+    ))
     const pluginTool: AgentTool = {
       name: 'plugin_custom_action',
       description: 'opaque plugin action',
@@ -30,7 +36,9 @@ describe('ToolExecutionService', () => {
     }])
 
     expect(result.get(0)?.ok).toBe(false)
-    expect(approve).toHaveBeenCalledTimes(1)
+    expect(approve).toHaveBeenCalledWith('plugin_custom_action', { payload: 'change something' }, {
+      requiresExplicitUserApproval: true,
+    })
     expect(execute).not.toHaveBeenCalled()
     expect(service.snapshot().records[0]).toMatchObject({
       toolSource: 'plugin:sample',
@@ -215,7 +223,7 @@ describe('ToolExecutionService', () => {
     expect(String(results.get(0)?.modelOutput)).toContain('externalUntrusted');
     expect(approve).toHaveBeenCalledWith('web_search', expect.objectContaining({
       queryHash: expect.any(String), sensitiveQuery: true, sensitiveCategories: ['credential'],
-    }));
+    }), { requiresExplicitUserApproval: true });
     const durableAudit = JSON.stringify({ events, snapshot: service.snapshot() });
     expect(durableAudit).not.toContain(secret);
     expect(durableAudit).not.toContain(pageBody);
@@ -266,7 +274,7 @@ describe('ToolExecutionService', () => {
     const approve = vi.fn(async () => true);
     const events: ToolStreamEvent[] = [];
     const execute = vi.fn(async (_input: unknown, context: ToolContext) => ({
-      callId: '', ok: context.approvalGranted === true,
+      callId: '', ok: context.approvalGranted === true && context.approvalGrantedToolName === 'guarded',
     } satisfies ToolResult));
     const service = createService([
       registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
@@ -279,6 +287,7 @@ describe('ToolExecutionService', () => {
     expect(results.get(0)?.ok).toBe(true);
     expect(approve).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[1]?.approvalGranted).toBe(true);
+    expect(execute.mock.calls[0]?.[1]?.approvalGrantedToolName).toBe('guarded');
     expect(events.map((event) => [event.type, event.activityStatus])).toEqual([
       ['runtime_activity', 'running'],
       ['runtime_activity', 'done'],
@@ -289,6 +298,57 @@ describe('ToolExecutionService', () => {
       activityKind: 'runtime_waiting_approval', callId: 'approved', name: 'guarded',
     });
   });
+
+  it('does not let an approved plugin invocation reuse its grant for a nested file write', async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), 'ls-plugin-nested-write-'))
+    const target = join(workspaceRoot, 'nested.txt')
+    const approve = vi.fn(async (action: string) => action === 'plugin_custom_action')
+    const pluginTool: AgentTool = {
+      name: 'plugin_custom_action',
+      description: 'plugin that attempts a nested native write',
+      inputSchema: z.object({ file_path: z.string() }),
+      execute: async (input, context) => writeTool.execute({
+        file_path: (input as { file_path: string }).file_path,
+        content: 'must remain absent',
+      }, context),
+    }
+    const service = createService([registration(pluginTool, 'plugin:sample')], {
+      toolContext: {
+        cwd: workspaceRoot,
+        permissionPreset: 'workspace-write',
+        permissionPolicyV2: {
+          version: 2,
+          preset: 'workspace-write',
+          approvalPolicy: 'prompt',
+          workspaceRoot,
+          protectedRoots: [],
+          constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' },
+          fullAccessConfirmed: false,
+        },
+        approve,
+      },
+    })
+
+    try {
+      const result = await service.executeBatch([{
+        callId: 'plugin-nested-write',
+        name: 'plugin_custom_action',
+        input: { file_path: target },
+      }])
+
+      expect(result.get(0)?.ok).toBe(false)
+      expect(approve).toHaveBeenCalledTimes(2)
+      expect(approve).toHaveBeenNthCalledWith(1, 'plugin_custom_action', expect.anything(), {
+        requiresExplicitUserApproval: true,
+      })
+      expect(approve).toHaveBeenNthCalledWith(2, 'write', expect.anything(), {
+        requiresExplicitUserApproval: true,
+      })
+      await expect(readFile(target, 'utf8')).rejects.toThrow()
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true })
+    }
+  })
 
   it('interrupts approval waiting without invoking an already-aborted approver', async () => {
     const controller = new AbortController();

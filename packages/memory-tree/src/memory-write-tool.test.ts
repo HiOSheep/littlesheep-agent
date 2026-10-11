@@ -53,7 +53,10 @@ function harness(options: {
     }),
   })
   // The tool only ever runs after the harness granted approval for this call.
-  const ctx = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', approvalGranted: true } as never
+  const ctx = {
+    sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws',
+    approvalGranted: true, approvalGrantedToolName: 'memory_write',
+  } as never
   return { tool, write, writes, ctx }
 }
 

@@ -53,6 +53,8 @@ export interface PermissionBoundaryContext {
   ) => Promise<boolean>
   /** Set by the Harness after it has approved this exact tool invocation. */
   approvalGranted?: boolean
+  /** Exact tool name authorized by ToolExecutionService for this invocation. */
+  approvalGrantedToolName?: string
   /** Immutable network policy resolved before this run. */
   networkPolicy?: Readonly<NetworkReadPolicy>
 }
@@ -346,7 +348,7 @@ export async function authorizeToolAccess(
         || (selectedPolicy === 'full-access' && (snapshot?.fullAccessConfirmed ?? context.fullAccessConfirmed) === true),
     }
   }
-  if (context.approvalGranted === true) {
+  if (context.approvalGranted === true && context.approvalGrantedToolName === toolName) {
     return {
       allowed: true,
       decision: 'approval',
