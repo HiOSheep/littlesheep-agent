@@ -60,6 +60,7 @@ it('holds a real effect open until its parent kills the Runner process', async (
     text: 'execute the crash effect',
     cwd: workspace,
     additionalTools: [tool],
+    approve: async () => true,
   });
 }, 90_000);
 
