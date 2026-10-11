@@ -1,6 +1,7 @@
 // Owns pending approval UI state and session-scoped approval grants.
 import { useEffect, useRef, useState } from 'react'
-import type { ApprovalRequest, PermissionModeId } from '../api'
+import type { ApprovalRequest, PermissionSelectionId } from '../api'
+import { isPermissionSelectionPreset } from '../../shared/permission-modes'
 import {
   SessionApprovalGrantStore,
   createDraftApprovalScopeKey,
@@ -14,7 +15,7 @@ export function useApprovalController({
   permissionMode,
 }: {
   currentSession: string | undefined
-  permissionMode: PermissionModeId
+  permissionMode: PermissionSelectionId
 }) {
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalPrompt | null>(null)
   const pendingApprovalRef = useRef<PendingApprovalPrompt | null>(null)
@@ -54,7 +55,9 @@ export function useApprovalController({
       id: `workspace-save-${Date.now()}`,
       action: 'save_file',
       detail,
-      permissionMode,
+      ...(isPermissionSelectionPreset(permissionMode)
+        ? { permissionMode: 'research' as const, permissionPreset: permissionMode }
+        : { permissionMode }),
       source: 'workspace',
     }, activeApprovalScopeKey())
   }
@@ -64,7 +67,9 @@ export function useApprovalController({
       id: `workspace-command-${Date.now()}`,
       action: 'exec',
       detail,
-      permissionMode,
+      ...(isPermissionSelectionPreset(permissionMode)
+        ? { permissionMode: 'research' as const, permissionPreset: permissionMode }
+        : { permissionMode }),
       source: 'workspace',
     }, activeApprovalScopeKey())
   }

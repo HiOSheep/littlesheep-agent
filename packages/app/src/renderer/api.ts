@@ -1,7 +1,7 @@
 // Compatibility barrel for the renderer Local App API clients.
 // Domain implementations live under ./api and existing imports stay stable.
 export type { AgentProfileId } from '@littlesheep/prompt'
-export type { PermissionModeId } from '../shared/permission-modes'
+export type { PermissionModeId, PermissionSelectionId } from '../shared/permission-modes'
 export type * from '../shared/attachment-contracts'
 export type * from '../shared/memory-control-contracts'
 export type * from '../shared/runtime-api-contracts'

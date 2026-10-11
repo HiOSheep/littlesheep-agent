@@ -6,7 +6,7 @@ import {
   sendRuntimeControlEvent,
   type ApprovalRequest,
   type AttachmentRef,
-  type PermissionModeId,
+  type PermissionSelectionId,
   type RuntimeState,
   type SessionMeta
 } from '../api'
@@ -43,7 +43,7 @@ export interface RunActionContext {
   input: string
   liveToolStepRef: MutableRefObject<Map<string, string>>
   loading: boolean
-  permissionMode: PermissionModeId
+  permissionMode: PermissionSelectionId
   pendingRuntimeMessageRef: MutableRefObject<{
     runId: string
     text: string

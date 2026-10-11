@@ -3,6 +3,7 @@ import {
   ALL_PERMISSION_MODES,
   PERMISSION_PRESETS_V2,
   normalizePermissionModeId,
+  normalizePermissionSelectionId,
   resolvePermissionModePolicy,
   resolveFutureDefaultPermissionPreset,
 } from './permission-modes.js'
@@ -50,5 +51,13 @@ describe('permission modes', () => {
     // stays unchanged for sessions and checkpoints that store `mode`.
     expect(normalizePermissionModeId('workspace-write')).toBe('research')
     expect(normalizePermissionModeId('read-only')).toBe('research')
+  })
+
+  it('preserves only explicitly supported V2 session selections without changing legacy migration', () => {
+    expect(normalizePermissionSelectionId('workspace-write')).toBe('workspace-write')
+    expect(normalizePermissionSelectionId('read-only')).toBe('read-only')
+    expect(normalizePermissionSelectionId('full-access')).toBe('full')
+    expect(normalizePermissionSelectionId('coding')).toBe('research')
+    expect(normalizePermissionSelectionId('unknown')).toBe('research')
   })
 })

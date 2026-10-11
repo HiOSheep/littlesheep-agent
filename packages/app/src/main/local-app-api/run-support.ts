@@ -5,7 +5,7 @@ import type { Config } from '@littlesheep/config'
 import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
 import { isSessionScope, type SessionScope } from '../../shared/session-scope.js'
-import { normalizePermissionModeId } from '../modes.js'
+import { normalizePermissionModeId, normalizePermissionSelectionId, isPermissionSelectionPreset } from '../../shared/permission-modes.js'
 import { sameBoundPath } from '../path-rebinding.js'
 import type { ProjectIndex } from '../project-index.js'
 import type { SessionIndex } from '../session-index.js'
@@ -30,20 +30,81 @@ export async function withPersistedSessionPermissionMode(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
+  const existing = sessionId
+    ? (await sessionIndex.list()).find((session) => session.id === sessionId)
+    : undefined
+  const requestedPreset = isPermissionSelectionPreset(body.permissionPreset)
+    ? body.permissionPreset
+    : undefined
+
+  // A session-less first run can choose a V2 preset. A named session missing
+  // from the Main index remains on the conservative legacy fallback.
+  if (!sessionId && requestedPreset && !explicitPermissionMode(body)) return body
+  if (!sessionId && requestedPreset) {
+    const requestedLegacy = normalizePermissionModeId(explicitPermissionMode(body))
+    if (requestedLegacy === 'restricted') {
+      const effective: Record<string, unknown> = { ...body, permissionMode: 'restricted' }
+      delete effective.permissionPreset
+      return effective
+    }
+    if (requestedLegacy === 'research') {
+      const effective: Record<string, unknown> = { ...body, permissionPreset: 'read-only' }
+      delete effective.permissionMode
+      return effective
+    }
+    const effective: Record<string, unknown> = { ...body, permissionPreset: requestedPreset }
+    delete effective.permissionMode
+    return effective
+  }
+
+  if (existing) {
+    const storedSelection = normalizePermissionSelectionId(existing.mode)
+    if (isPermissionSelectionPreset(storedSelection)) {
+      const requestedLegacyMode = explicitPermissionMode(body)
+      if (requestedLegacyMode) {
+        const normalized = normalizePermissionModeId(requestedLegacyMode)
+        if (normalized === 'restricted') {
+          const effective: Record<string, unknown> = { ...body, permissionMode: 'restricted' }
+          delete effective.permissionPreset
+          return effective
+        }
+        if (normalized === 'research') {
+          const effective: Record<string, unknown> = { ...body, permissionPreset: 'read-only' }
+          delete effective.permissionMode
+          return effective
+        }
+      }
+      const selected = requestedPreset ?? storedSelection
+      const rank = { 'read-only': 0, 'workspace-write': 1 } as const
+      const effectivePreset = rank[selected] <= rank[storedSelection] ? selected : storedSelection
+      const effective: Record<string, unknown> = { ...body, permissionPreset: effectivePreset }
+      delete effective.permissionMode
+      return effective
+    }
+  }
+
+  if (!sessionId && !explicitPermissionMode(body)) {
+    return { ...body, permissionPreset: requestedPreset ?? 'workspace-write' }
+  }
   if (!sessionId) return body
-  const existing = (await sessionIndex.list()).find((session) => session.id === sessionId)
   // A named session missing from the UI index has no Main-owned permission
   // snapshot, so it gets the conservative legacy default until indexed.
   const storedMode = existing ? normalizePermissionModeId(existing.mode) : 'research'
   const requestedMode = explicitPermissionMode(body)
-  if (!requestedMode) return { ...body, permissionMode: storedMode }
+  if (!requestedMode) {
+    const effective: Record<string, unknown> = { ...body, permissionMode: storedMode }
+    delete effective.permissionPreset
+    return effective
+  }
 
   const normalizedRequestedMode = normalizePermissionModeId(requestedMode)
   const rank = { restricted: 0, research: 1, full: 2 } as const
   const runMode = rank[normalizedRequestedMode] <= rank[storedMode]
     ? normalizedRequestedMode
     : storedMode
-  return { ...body, permissionMode: runMode }
+  const effective: Record<string, unknown> = { ...body, permissionMode: runMode }
+  delete effective.permissionPreset
+  return effective
 }
 
 export async function finishRunResources(
@@ -88,7 +149,7 @@ export async function updateSessionIndex(
     workspacePath: string
   } = {
     lastMessageAt: Date.now(),
-    mode: normalizePermissionModeId(existing?.mode ?? explicitPermissionMode(body)),
+    mode: normalizePermissionSelectionId(existing?.mode ?? explicitPermissionSelection(body)),
     scope: ownership.scope,
     projectId: ownership.projectId,
     workspacePath,
@@ -105,6 +166,11 @@ function explicitPermissionMode(body: Record<string, unknown>): string | undefin
     return body.mode.trim()
   }
   return undefined
+}
+
+function explicitPermissionSelection(body: Record<string, unknown>): string | undefined {
+  if (isPermissionSelectionPreset(body.permissionPreset)) return body.permissionPreset
+  return explicitPermissionMode(body)
 }
 
 export async function resolveRunSessionOwnership(

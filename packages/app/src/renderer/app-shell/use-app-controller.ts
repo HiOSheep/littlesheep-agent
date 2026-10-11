@@ -6,7 +6,7 @@ import {
   listProjects,
   listSessions,
   selectWorkspace,
-  type PermissionModeId,
+  type PermissionSelectionId,
   type ProjectMeta,
   type RuntimeState,
   type SessionMeta,
@@ -58,12 +58,12 @@ import { createAttachmentActions } from './attachment-actions'
 import { createRuntimeActions, type PendingModelPatch } from './runtime-actions'
 import { useModelAvailability } from '../composer/use-model-availability'
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
-import { normalizePermissionModeId } from '../../shared/permission-modes'
+import { normalizePermissionSelectionId } from '../../shared/permission-modes'
 
 type PendingSessionPermissionMode = {
   sequence: number
-  mode: PermissionModeId
-  baseline: PermissionModeId
+  mode: PermissionSelectionId
+  baseline: PermissionSelectionId
 }
 
 export function useAppController() {
@@ -78,8 +78,8 @@ export function useAppController() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [historyWindow, setHistoryWindow] = useState<SessionHistoryWindow>({ hasMore: false, loading: false })
   const [loading, setLoading] = useState(false)
-  const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionModeId>('research')
-  const [sessionPermissionModeOverrides, setSessionPermissionModeOverrides] = useState<Record<string, PermissionModeId>>({})
+  const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionSelectionId>('workspace-write')
+  const [sessionPermissionModeOverrides, setSessionPermissionModeOverrides] = useState<Record<string, PermissionSelectionId>>({})
   const [runtime, setRuntime] = useState<RuntimeState | null>(null)
   const [attachmentRemoval, setAttachmentRemoval] = useState<LineCommentAttachmentRemoval | null>(null)
   const attachmentRemovalIdRef = useRef(0)
@@ -130,7 +130,7 @@ export function useAppController() {
   const permissionModeWriteSequenceRef = useRef(0)
   const pendingPermissionModeRef = useRef(new Map<string, PendingSessionPermissionMode>())
   const permissionModeWriteQueueRef = useRef(new Map<string, Promise<void>>())
-  const knownSessionPermissionModesRef = useRef(new Map<string, PermissionModeId>())
+  const knownSessionPermissionModesRef = useRef(new Map<string, PermissionSelectionId>())
   currentSessionRef.current = currentSession
   sessionsRef.current = sessions
   const attachmentActions = createAttachmentActions({
@@ -146,7 +146,7 @@ export function useAppController() {
     () => resolveSessionPermissionMode(currentSession, sessions, sessionPermissionModeOverrides, draftPermissionMode),
     [currentSession, draftPermissionMode, sessionPermissionModeOverrides, sessions],
   )
-  const setPermissionMode = useCallback((next: PermissionModeId) => {
+  const setPermissionMode = useCallback((next: PermissionSelectionId) => {
     const sessionId = currentSession
     if (!sessionId) {
       setDraftPermissionMode(next)
@@ -154,7 +154,7 @@ export function useAppController() {
     }
 
     const pending = pendingPermissionModeRef.current.get(sessionId)
-    const baseline = pending?.baseline ?? normalizePermissionModeId(
+    const baseline = pending?.baseline ?? normalizePermissionSelectionId(
       sessionsRef.current.find((session) => session.id === sessionId)?.mode,
     )
     const sequence = ++permissionModeWriteSequenceRef.current
@@ -171,7 +171,7 @@ export function useAppController() {
         const { session } = await updateSessionPermissionMode(sessionId, next)
         if (!appMountedRef.current) return
         const latest = pendingPermissionModeRef.current.get(sessionId)
-        knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionModeId(session.mode))
+        knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionSelectionId(session.mode))
         if (!latest || latest.sequence !== sequence) return
         pendingPermissionModeRef.current.delete(sessionId)
         setSessionPermissionModeOverrides((current) => {
@@ -204,7 +204,7 @@ export function useAppController() {
         })
         if (refreshed) {
           const persisted = refreshed.find((item) => item.id === sessionId)
-          if (persisted) knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionModeId(persisted.mode))
+          if (persisted) knownSessionPermissionModesRef.current.set(sessionId, normalizePermissionSelectionId(persisted.mode))
           setSessions(refreshed)
         } else {
           // The known map contains the optimistic value while this write is pending;
@@ -226,7 +226,7 @@ export function useAppController() {
     })
     permissionModeWriteQueueRef.current.set(sessionId, write)
   }, [currentSession])
-  const resetDraftPermissionMode = useCallback(() => setDraftPermissionMode('research'), [])
+  const resetDraftPermissionMode = useCallback(() => setDraftPermissionMode('workspace-write'), [])
   const forgetSessionPermissionMode = useCallback((sessionId: string) => {
     pendingPermissionModeRef.current.delete(sessionId)
     knownSessionPermissionModesRef.current.delete(sessionId)
@@ -257,7 +257,7 @@ export function useAppController() {
     requestWorkspaceSaveApproval,
     settleApprovalPrompt,
   } = useApprovalController({ currentSession, permissionMode })
-  const getSessionPermissionMode = useCallback((sessionId: string): PermissionModeId => (
+  const getSessionPermissionMode = useCallback((sessionId: string): PermissionSelectionId => (
     knownSessionPermissionModesRef.current.get(sessionId)
       ?? resolveSessionPermissionMode(sessionId, sessions, sessionPermissionModeOverrides, permissionMode)
   ), [permissionMode, sessionPermissionModeOverrides, sessions])

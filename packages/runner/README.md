@@ -16,4 +16,6 @@ Runner 是应用层 run 创建、请求装配、Harness 集成、事件持久化
 
 Runner 负责组合，不重写协作者的契约：Harness 拥有状态转移；Context 拥有提示候选和预算；Session 拥有转录／摘要持久化；Tools 拥有工具执行；Memory 拥有索引记忆；Safety 拥有权限决策。宿主保护源码根通过 `AgentRunner.protectedWriteRoots` 暴露给 Main 侧执行入口复用。Checkpoint decoder 只接受受支持历史格式；续跑不得重放已结算副作用。
 
+Main 在每次普通 run、continuation 与 checkpoint resume 时提供当前工作区事实和不可变 Permission V2 决策快照；Runner 只在运行时上下文中传递它，并将工具授权交给 Safety 与 Main 审批入口。Runner 不把新权限快照写入 checkpoint 或 execution log；旧 checkpoint 的权限上限由 Main 按历史可证明的 legacy mode 保守解析。
+
 局部 codec、恢复和结算运行 package typecheck 与 Runner 定向测试。Runner 的 settlement ack-lost 用例覆盖写入成功但确认丢失、重启修复历史投影、completed receipt 幂等与副作用不重放；`verify:app-recovery`、`verify:file-consistency-faults`、受控记忆和真实 Electron 连续性检查覆盖更广边界，按改动契约选择。单测不证明跨进程 lease 恢复。

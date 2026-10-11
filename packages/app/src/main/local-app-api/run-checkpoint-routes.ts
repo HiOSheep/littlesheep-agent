@@ -13,7 +13,10 @@ import type {
   LocalAppRunCheckpointListResponse,
   LocalAppRunCheckpointResumeRequest,
 } from '../../shared/run-checkpoint-contracts.js'
-import { normalizePermissionModeId } from '../../shared/permission-modes.js'
+import {
+  isPermissionSelectionPreset,
+  normalizePermissionModeId,
+} from '../../shared/permission-modes.js'
 import { createCheckpointResourceResolver } from '../attachments.js'
 import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
 import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiRequest } from './http.js'
@@ -287,6 +290,8 @@ async function streamCheckpointResume(
       restoreCheckpointResources,
       requestKey,
       continuationDirective: 'answer',
+      permissionPreset: runPolicy.permissionPreset,
+      permissionPolicyV2: runPolicy.permissionPolicyV2,
       onAssistantDelta: (delta) => writeSse(res, 'delta', { delta }),
       onAssistantReplace: (replacement) => writeSse(res, 'replace', { text: replacement }),
       onToolEvent: (event) => writeToolEventSse(res, event),
@@ -325,6 +330,24 @@ function checkpointResumeDefaults(
   // session mode lets a later downgrade revoke authority from that snapshot.
   const rank = { restricted: 0, research: 1, full: 2 } as const
   const checkpointMode = normalizePermissionModeId(state.permissionPolicyId)
+  if (isPermissionSelectionPreset(body.permissionPreset)) {
+    // The existing durable checkpoint format only records the legacy mode.
+    // A research checkpoint might be an old research run or a V2 workspace-
+    // write run, so cap it to read-only until the checkpoint can prove which.
+    if (checkpointMode === 'restricted') {
+      effective.permissionMode = 'restricted'
+      delete effective.permissionPreset
+    } else if (checkpointMode === 'research') {
+      effective.permissionPreset = 'read-only'
+      delete effective.permissionMode
+    } else {
+      delete effective.permissionMode
+    }
+    delete effective.mode
+    if (body.profile === undefined) effective.profile = state.behaviorModeId
+    if (body.reasoning === undefined) effective.reasoning = state.reasoning
+    return effective
+  }
   const currentSessionMode = normalizePermissionModeId(
     typeof body.permissionMode === 'string' ? body.permissionMode : checkpointMode,
   )

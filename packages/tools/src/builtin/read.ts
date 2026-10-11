@@ -8,6 +8,8 @@ import { sanitizeOutput, DEFAULT_SANITIZE, isBinary, binaryPreview } from '../sa
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
 import { hashFileBytes, observationSnapshot } from '../file-observation.js';
+import { inspectWorkspaceFilePath } from '../workspace-file-guard.js';
+import { isNativeWorkspaceFileInvocation } from '../native-workspace-file-invocation.js';
 
 const ReadInput = z.object({
   file_path: z.string().describe('Absolute path to the file to read.'),
@@ -22,10 +24,21 @@ export const readTool: AgentTool = {
   execution: parallelFilePolicy('file_path', 'read'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, offset, limit } = ReadInput.parse(input);
-    const targetPath = resolve(ctx.cwd, file_path);
-    const authorization = await authorizeToolAccess('read', { file_path: targetPath }, ctx);
+    const requestedPath = resolve(ctx.cwd, file_path);
+    const guard = await inspectWorkspaceFilePath(file_path, ctx, 'read');
+    const targetPath = guard.safe && guard.targetPath ? guard.targetPath : requestedPath;
+    if (guard.attemptedWorkspace && !guard.safe) {
+      return { ok: false, error: `Workspace path could not be verified: ${guard.reason ?? 'unknown boundary'}` };
+    }
+    const authorization = await authorizeToolAccess('read', { file_path: targetPath }, ctx, {
+      workspaceFileReadGuard: guard.safe && isNativeWorkspaceFileInvocation(ctx, 'read'),
+      forceApproval: guard.attemptedWorkspace && !guard.safe,
+    });
     if (!authorization.allowed) {
       return { ok: false, error: 'Approval denied: reading this path requires user approval.' };
+    }
+    if (guard.safe && !await guard.revalidate()) {
+      return { ok: false, error: 'Workspace path changed before it could be read; retry after the workspace is stable.' };
     }
     // Read through one handle so the bytes, the size and the mtime all describe
     // the same file version. A read that fails simply produces no observation.
@@ -35,6 +48,9 @@ export const readTool: AgentTool = {
     try {
       const handle = await open(targetPath, 'r');
       try {
+        if (guard.safe && (!await guard.revalidate() || !await guard.verifyOpenedHandle(handle))) {
+          return { ok: false, error: 'Workspace path changed while it was being opened; retry after the workspace is stable.' };
+        }
         const stats = await handle.stat();
         if (!stats.isFile()) {
           return { ok: false, error: `Not a regular file: ${targetPath}` };

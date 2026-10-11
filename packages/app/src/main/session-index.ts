@@ -8,7 +8,7 @@ import { readFile, mkdir } from 'node:fs/promises'
 import { atomicWrite } from '@littlesheep/memory-core'
 import { isSessionScope, type SessionScope } from '../shared/session-scope.js'
 import type { SessionMeta } from '../shared/session-project-contracts.js'
-import { normalizePermissionModeId } from '../shared/permission-modes.js'
+import { normalizePermissionSelectionId } from '../shared/permission-modes.js'
 import { isRetiredApplicationWorkspace } from './runtime-config.js'
 import { normalizeBoundPath } from './path-rebinding.js'
 
@@ -150,7 +150,7 @@ export function normalizeSessionMeta(value: unknown, workplaceDir: string): Sess
     title: item.title,
     createdAt: item.createdAt,
     lastMessageAt: item.lastMessageAt,
-    mode: normalizePermissionModeId(item.mode),
+    mode: normalizePermissionSelectionId(item.mode),
     scope,
     projectId: scope === 'project' ? projectId : undefined,
     workspacePath,

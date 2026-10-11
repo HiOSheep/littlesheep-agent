@@ -3,10 +3,13 @@ import { ALL_AGENT_PROFILES } from '@littlesheep/prompt'
 import {
   type RuntimeReasoning
 } from '../../shared/model-capabilities'
-import { ALL_PERMISSION_MODES } from '../../shared/permission-modes'
+import {
+  ALL_PERMISSION_MODES,
+  SELECTABLE_PERMISSION_PRESETS_V2,
+  type PermissionSelectionId,
+} from '../../shared/permission-modes'
 import {
   type AgentProfileId,
-  type PermissionModeId
 } from '../api'
 
 
@@ -14,18 +17,27 @@ export type ModeRisk = 'low' | 'medium' | 'high' | 'critical'
 
 
 export const MODE_OPTIONS: Array<{
-  id: PermissionModeId
+  id: PermissionSelectionId
   label: string
   desc: string
   risk: ModeRisk
   riskLabel: string
-}> = ALL_PERMISSION_MODES.map((mode) => ({
-  id: mode.id,
-  label: mode.label,
-  desc: mode.description,
-  risk: mode.risk,
-  riskLabel: mode.riskLabel,
-}))
+}> = [
+  ...SELECTABLE_PERMISSION_PRESETS_V2.map((preset) => ({
+    id: preset.id,
+    label: preset.label,
+    desc: preset.description,
+    risk: preset.risk,
+    riskLabel: preset.id === 'workspace-write' ? '工作区授权' as const : '只读授权' as const,
+  })),
+  ...ALL_PERMISSION_MODES.map((mode) => ({
+    id: mode.id,
+    label: mode.label,
+    desc: mode.description,
+    risk: mode.risk,
+    riskLabel: mode.riskLabel,
+  })),
+]
 
 
 export const PROFILE_OPTIONS: Array<{

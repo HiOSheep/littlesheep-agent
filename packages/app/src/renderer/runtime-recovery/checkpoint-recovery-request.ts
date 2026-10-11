@@ -1,6 +1,6 @@
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { RuntimeReasoning } from '../../shared/model-capabilities'
-import type { PermissionModeId } from '../../shared/permission-modes'
+import type { PermissionSelectionId } from '../../shared/permission-modes'
 
 export interface CheckpointRecoveryTurnIdentity {
   fingerprint: string
@@ -10,7 +10,7 @@ export interface CheckpointRecoveryTurnIdentity {
 export interface CheckpointRecoveryTurnInput {
   checkpointId: string
   text: string
-  permissionMode: PermissionModeId
+  permissionMode: PermissionSelectionId
   reasoning?: RuntimeReasoning
   profile?: AgentProfileId
 }

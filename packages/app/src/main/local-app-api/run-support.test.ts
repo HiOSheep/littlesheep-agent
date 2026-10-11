@@ -130,6 +130,52 @@ describe('run permission mode continuity', () => {
       rmSync(dataDir, { recursive: true, force: true })
     }
   })
+
+  it('defaults new sessions to workspace-write while retaining explicit V2 choices', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
+    try {
+      const sessionIndex = new SessionIndex({ dataDir })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        text: 'new run',
+      })).resolves.toMatchObject({ permissionPreset: 'workspace-write' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        text: 'new read-only run', permissionPreset: 'read-only',
+      })).resolves.toMatchObject({ permissionPreset: 'read-only' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'not-indexed', text: 'unknown session', permissionPreset: 'workspace-write',
+      })).resolves.toMatchObject({ permissionMode: 'research' })
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps legacy sessions at their stored permission and only narrows V2 sessions per run', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
+    try {
+      const sessionIndex = new SessionIndex({ dataDir })
+      await sessionIndex.upsert('legacy', { mode: 'restricted', scope: 'standalone' })
+      await sessionIndex.upsert('v2-write', { mode: 'workspace-write', scope: 'standalone' })
+      await sessionIndex.upsert('v2-read', { mode: 'read-only', scope: 'standalone' })
+
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'legacy', text: 'run', permissionPreset: 'workspace-write',
+      })).resolves.toMatchObject({ permissionMode: 'restricted' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'v2-write', text: 'run', permissionMode: 'full',
+      })).resolves.toMatchObject({ permissionPreset: 'workspace-write' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'v2-write', text: 'run', permissionMode: 'research',
+      })).resolves.toMatchObject({ permissionPreset: 'read-only' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'v2-write', text: 'run', permissionMode: 'restricted',
+      })).resolves.toMatchObject({ permissionMode: 'restricted' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'v2-read', text: 'run', permissionPreset: 'workspace-write',
+      })).resolves.toMatchObject({ permissionPreset: 'read-only' })
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
 })
 
 // CE-01/CE-02: one workspace fact per run, resolved at the run entry.

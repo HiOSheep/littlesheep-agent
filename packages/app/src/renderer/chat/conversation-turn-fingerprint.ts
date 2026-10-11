@@ -1,7 +1,7 @@
 // Owns stable renderer request identity across text, runtime, workspace, and attachment context.
 import type {
   AttachmentRef,
-  PermissionModeId,
+  PermissionSelectionId,
   RuntimeState,
   SessionMeta,
 } from '../api'
@@ -9,7 +9,7 @@ import type {
 interface ConversationTurnFingerprintInput {
   text: string
   sessionId?: string
-  permissionMode: PermissionModeId
+  permissionMode: PermissionSelectionId
   workspace?: string
   sessionScope: SessionMeta['scope']
   projectId?: string

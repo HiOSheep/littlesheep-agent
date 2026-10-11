@@ -12,7 +12,7 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 ## 安全与模块归属
 
 - Main 在 Agent 操作实际执行时重新分类路径；Renderer 的批准状态本身不授予权限。
-- 普通 run 从 Main 解析一次 workspace；checkpoint resume 使用检查点保存的 workspace，并以当前 SessionIndex 权限封顶原权限快照，因此会话降权会撤销旧检查点中的较高授权，续跑请求体不能替换这两个 Main 权限事实。旧模式继续兼容读取；单 run 选择和 session 权限持久化是独立操作。
+- 普通 run 从 Main 解析一次 workspace，并签发与 `dataRoot` 分离的 V2 权限快照；checkpoint resume 使用检查点保存的 workspace，并以当前 SessionIndex 权限封顶原权限快照，因此会话降权会撤销旧检查点中的较高授权，续跑请求体不能替换这两个 Main 权限事实。既有检查点只保存旧权限 id，旧 `research` 检查点恢复 V2 会话时保守降到 `read-only`，避免无法证明的写入授权；不改变 Runner 检查点历史格式。旧模式继续兼容读取；单 run 选择和 session 权限持久化是独立操作。
 - Agent 工具与 Agent Shell 命令使用相同路径和权限策略；用户直接操作的交互终端走另一条路由。
 - 核心源码对 LS Runtime 工具保持宿主级只读；危险命令和硬拒绝优先于普通授权。
 - 凭据留在宿主密钥存储；日志与 API projection 有界且脱敏。插件与 guest 页面不得取得不受限的文件或进程句柄。

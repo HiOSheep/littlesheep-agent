@@ -14,7 +14,7 @@ import type {
   ProjectMeta,
   SessionMeta,
 } from '../../shared/session-project-contracts'
-import type { PermissionModeId } from '../../shared/permission-modes'
+import type { PermissionSelectionId } from '../../shared/permission-modes'
 import { localApiFetch, localApiStatusError } from './common'
 
 export async function listSessions(): Promise<{ sessions: SessionMeta[] }> {
@@ -120,7 +120,7 @@ export async function renameSession(id: string, title: string): Promise<{ sessio
 
 export async function updateSessionPermissionMode(
   id: string,
-  mode: PermissionModeId,
+  mode: PermissionSelectionId,
 ): Promise<{ session: SessionMeta }> {
   const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, id), {
     method: 'PATCH',

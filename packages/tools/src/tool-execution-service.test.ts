@@ -80,6 +80,93 @@ describe('ToolExecutionService', () => {
     })
   })
 
+  it('requires approval for plugin file writes in a workspace even when native writes are available', async () => {
+    const execute = vi.fn(async () => ({ callId: '', ok: true } satisfies ToolResult))
+    const approve = vi.fn(async (_action: string, _detail: unknown, options?: { requiresExplicitUserApproval?: boolean }) => (
+      options?.requiresExplicitUserApproval === true ? false : true
+    ))
+    const workspaceRoot = process.cwd()
+    const pluginWriter: AgentTool = {
+      name: 'write_file',
+      description: 'plugin file writer',
+      inputSchema: z.object({ file_path: z.string() }),
+      execute,
+    }
+    const service = createService([registration(pluginWriter, 'plugin:writer')], {
+      toolContext: {
+        cwd: workspaceRoot,
+        permissionPreset: 'workspace-write',
+        permissionPolicyV2: {
+          version: 2,
+          preset: 'workspace-write',
+          approvalPolicy: 'prompt',
+          workspaceRoot,
+          protectedRoots: [],
+          constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' },
+          fullAccessConfirmed: false,
+        },
+        approve,
+      },
+    })
+
+    const result = await service.executeBatch([{
+      callId: 'plugin-writer-needs-approval',
+      name: 'write_file',
+      input: { file_path: join(workspaceRoot, 'plugin-output.txt') },
+    }])
+
+    expect(result.get(0)?.ok).toBe(false)
+    expect(approve).toHaveBeenCalledWith('write_file', { file_path: join(workspaceRoot, 'plugin-output.txt') }, {
+      requiresExplicitUserApproval: true,
+    })
+    expect(execute).not.toHaveBeenCalled()
+    expect(service.snapshot().records[0]).toMatchObject({
+      toolSource: 'plugin:writer',
+      status: 'approval_denied',
+      approval: { required: true, decision: 'denied' },
+    })
+  })
+
+  it('does not auto-read workspace paths through plugin tools without the native file guard', async () => {
+    const execute = vi.fn(async () => ({ callId: '', ok: true, output: 'should not run' } satisfies ToolResult))
+    const approve = vi.fn(async () => false)
+    const pluginReader: AgentTool = {
+      name: 'grep',
+      description: 'plugin recursive reader',
+      inputSchema: z.object({ path: z.string() }),
+      execute,
+    }
+    const workspaceRoot = process.cwd()
+    const service = createService([registration(pluginReader, 'plugin:reader')], {
+      toolContext: {
+        cwd: workspaceRoot,
+        permissionPreset: 'workspace-write',
+        permissionPolicyV2: {
+          version: 2,
+          preset: 'workspace-write',
+          approvalPolicy: 'prompt',
+          workspaceRoot,
+          protectedRoots: [],
+          constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' },
+          fullAccessConfirmed: false,
+        },
+        approve,
+      },
+    })
+
+    const result = await service.executeBatch([{
+      callId: 'plugin-reader-needs-approval',
+      name: 'grep',
+      input: { path: workspaceRoot },
+    }])
+
+    expect(result.get(0)?.ok).toBe(false)
+    expect(approve).toHaveBeenCalledWith('grep', { path: workspaceRoot }, {
+      requiresExplicitUserApproval: true,
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it('owns validation, execution, sanitation, events, and source-aware records', async () => {
     const execute = vi.fn(async (input: unknown) => ({
       callId: '', ok: true, output: { accepted: input },

@@ -212,6 +212,9 @@ export interface RunInput {
   requireApprovalForAllTools?: boolean;
   /** Permission policy resolved by the owning adapter. */
   permissionPolicyId?: PermissionPolicyId;
+  /** Additive V2 selection and immutable Main-owned decision snapshot. */
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId;
+  permissionPolicyV2?: import('@littlesheep/types').PermissionPolicyV2Snapshot;
   /** Set only when the caller has explicitly approved the initial workspace scan. */
   workspaceAccessApproved?: boolean;
   /** Per-run reasoning budget selected by the user. */
@@ -262,6 +265,8 @@ export interface ResumeCheckpointOptions {
   origin?: RunOrigin;
   cwd?: string;
   permissionPolicyId?: PermissionPolicyId;
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId;
+  permissionPolicyV2?: import('@littlesheep/types').PermissionPolicyV2Snapshot;
   reasoning?: Config['agents']['defaults']['reasoning'];
   profile?: AgentProfileId;
   workspaceContext?: RunInput['workspaceContext'];
@@ -613,10 +618,23 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         ? (input.permissionPolicyId ?? (input.requireApprovalForAllTools ? 'restricted' : 'research'))
         : undefined;
       const workspaceScan = containerRoot
-        ? describeToolAccess('read', { path: cwd }, { cwd, containerRoot })
+        ? describeToolAccess('read', { file_path: cwd }, {
+            cwd,
+            containerRoot,
+            dataRoot: containerRoot,
+            workspaceRoot: input.permissionPolicyV2?.workspaceRoot ?? cwd,
+            protectedRoots: input.permissionPolicyV2?.protectedRoots ?? protectedWriteRoots,
+            permissionPolicyV2: input.permissionPolicyV2,
+          })
         : undefined;
-      const workspaceScanDecision = permissionMode !== undefined && workspaceScan !== undefined
-        ? resolvePermissionDecision(permissionMode, workspaceScan)
+      const activePermissionPolicy = input.permissionPolicyV2?.preset ?? input.permissionPreset ?? permissionMode
+      const workspaceScanDecision = activePermissionPolicy !== undefined && workspaceScan !== undefined
+        ? resolvePermissionDecision(activePermissionPolicy, workspaceScan, {
+            approvalPolicy: input.permissionPolicyV2?.approvalPolicy,
+            workspaceFileWrites: input.permissionPolicyV2?.constraints.workspaceFileWrites,
+            shellIsolation: input.permissionPolicyV2?.constraints.shellIsolation,
+            fullAccessConfirmed: input.permissionPolicyV2?.fullAccessConfirmed,
+          })
         : 'unavailable';
       const workspaceScanNeedsApproval = workspaceScanDecision === 'approval'
         && input.workspaceAccessApproved !== true;
@@ -669,6 +687,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         dataRoot: containerRoot,
         workspaceRoot: cwd,
         permissionMode,
+        permissionPreset: input.permissionPreset,
+        permissionPolicyV2: input.permissionPolicyV2,
+        approvalPolicy: input.permissionPolicyV2?.approvalPolicy,
+        workspaceFileWrites: input.permissionPolicyV2?.constraints.workspaceFileWrites,
+        shellIsolation: input.permissionPolicyV2?.constraints.shellIsolation,
+        fullAccessConfirmed: input.permissionPolicyV2?.fullAccessConfirmed,
         signal,
         approve: input.approve ?? opts.approve,
         log: opts.log,
@@ -1149,6 +1173,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       origin: input.origin,
       cwd: input.cwd,
       permissionPolicyId: input.permissionPolicyId,
+      // Checkpoint state predates the V2 snapshot. Until its durable format can
+      // carry that authorization ceiling, a human continuation resumes under
+      // the conservative legacy permission instead of inferring a higher preset
+      // from the current session selection.
       reasoning: input.reasoning,
       profile: input.profile,
       workspaceContext: input.workspaceContext,
@@ -1336,6 +1364,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         onAssistantReplace: options.onAssistantReplace,
         onToolEvent: options.onToolEvent,
         permissionPolicyId: options.permissionPolicyId ?? 'research',
+        permissionPreset: options.permissionPreset,
+        permissionPolicyV2: options.permissionPolicyV2,
         reasoning: options.reasoning ?? state.reasoning,
         profile: options.profile ?? normalizeAgentProfileId(state.behaviorModeId),
         workspaceContext: options.workspaceContext ?? state.workspaceContext,
@@ -1390,6 +1420,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         onAssistantReplace: options.onAssistantReplace,
         onToolEvent: options.onToolEvent,
         permissionPolicyId: options.permissionPolicyId ?? 'research',
+        permissionPreset: options.permissionPreset,
+        permissionPolicyV2: options.permissionPolicyV2,
         reasoning: options.reasoning,
         profile: options.profile,
         workspaceContext: options.workspaceContext,
@@ -1550,6 +1582,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         onAssistantReplace: options.onAssistantReplace,
         onToolEvent: options.onToolEvent,
         permissionPolicyId: options.permissionPolicyId ?? 'research',
+        permissionPreset: options.permissionPreset,
+        permissionPolicyV2: options.permissionPolicyV2,
         reasoning: options.reasoning ?? recoveryState.reasoning,
         profile: options.profile ?? normalizeAgentProfileId(recoveryState.behaviorModeId),
         workspaceContext: options.workspaceContext ?? recoveryState.workspaceContext,
@@ -2123,6 +2157,8 @@ function resumeTurnInput(
     toolFilter: options.toolFilter,
     requireApprovalForAllTools: options.requireApprovalForAllTools,
     permissionPolicyId: options.permissionPolicyId,
+    permissionPreset: options.permissionPreset,
+    permissionPolicyV2: options.permissionPolicyV2,
     workspaceAccessApproved: options.workspaceAccessApproved,
     reasoning: options.reasoning,
     profile: options.profile,

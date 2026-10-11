@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
 import { createRunner, type AgentRunner, type CreateRunnerOptions, type RunCheckpointInspection } from '@littlesheep/runner'
 import { DEFAULT_BRANDING } from '@littlesheep/branding'
+import { WORKSPACE_FILE_GUARD_AVAILABLE } from '@littlesheep/tools'
 import {
   asSessionId,
   textMessage,
@@ -389,6 +390,94 @@ describe('run checkpoint Local App API', () => {
       expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]?.permissionPolicyId).toBe('restricted')
       expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')?.mode)
         .toBe('restricted')
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rebuilds the current V2 workspace snapshot for checkpoint resume without trusting the request mode', async () => {
+    const fixture = await createFixture(undefined, { permissionPolicyId: 'full' })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'workspace-write',
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'resume under the persisted V2 workspace permission',
+          permissionMode: 'full',
+          requestKey: 'v2-checkpoint-resume',
+          continuationDirective: 'answer',
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+      const options = fixture.resumeCheckpoint.mock.calls[0]?.[1]
+      expect(options).toMatchObject({
+        permissionPolicyId: 'research',
+        permissionPreset: 'workspace-write',
+        permissionPolicyV2: {
+          version: 2,
+          preset: 'workspace-write',
+          dataRoot: fixture.dataDir,
+          workspaceRoot: join(fixture.dataDir, 'workplace'),
+          constraints: {
+            workspaceFileWrites: WORKSPACE_FILE_GUARD_AVAILABLE ? 'available' : 'unavailable',
+            shellIsolation: 'unavailable',
+          },
+          fullAccessConfirmed: false,
+        },
+      })
+      expect(options?.permissionPolicyV2?.dataRoot).not.toBe(options?.permissionPolicyV2?.workspaceRoot)
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('caps an ambiguous research checkpoint to read-only for a V2 session resume', async () => {
+    const fixture = await createFixture(undefined, { permissionPolicyId: 'research' })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'workspace-write',
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: 'resume with an ambiguous legacy checkpoint ceiling',
+          permissionMode: 'full',
+          requestKey: 'ambiguous-research-checkpoint-resume',
+          continuationDirective: 'answer',
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]).toMatchObject({
+        permissionPolicyId: 'research',
+        permissionPreset: 'read-only',
+        permissionPolicyV2: {
+          preset: 'read-only',
+          constraints: {
+            workspaceFileWrites: 'unavailable',
+            shellIsolation: 'unavailable',
+          },
+        },
+      })
     } finally {
       await fixture.server.stop()
       rmSync(fixture.dataDir, { recursive: true, force: true })

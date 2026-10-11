@@ -74,7 +74,7 @@ export function ApprovalPromptSurface({
       >
         <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
         <h2 ref={headingRef} tabIndex={-1}>{approvalActionTitle(request.action)}</h2>
-        <p>{approvalModeDescription(request.permissionMode)}</p>
+        <p>{approvalModeDescription(request.permissionMode, request.permissionPreset)}</p>
         <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary)}</p>
         <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
         <pre>{formatApprovalDetail(request.detail)}</pre>
@@ -107,7 +107,10 @@ export function approvalActionTitle(action: string): string {
 }
 
 
-export function approvalModeDescription(mode: PermissionModeId): string {
+export function approvalModeDescription(mode: PermissionModeId, preset?: ApprovalRequest['permissionPreset']): string {
+  if (preset === 'read-only') return '当前为只读授权；工作区内可安全读取，写入需要明确升级权限。'
+  if (preset === 'workspace-write') return '当前为工作区写入授权；普通文件操作仅在工作区约束有效时自动执行，Shell 与插件操作仍需确认。'
+  if (preset === 'full-access') return '当前为完全访问授权；本次操作仍需要你明确确认。'
   if (mode === 'restricted') return '当前为受限权限，所有工具操作都需要你批准，包括容器内查看。'
   if (mode === 'research') return '当前为研究权限，容器内读取可直接进行；修改、删除、执行和容器外访问需要你批准。'
   return '当前为完全访问权限。启用时已确认风险，普通工具操作不再逐次请求批准。'

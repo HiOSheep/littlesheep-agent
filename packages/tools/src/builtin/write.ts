@@ -1,7 +1,7 @@
 // @littlesheep/tools — builtin/write.ts
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
-import { writeFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -22,6 +22,9 @@ import {
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
 import { observationFailure, readVerifiedFile } from '../file-observation.js';
+import { inspectWorkspaceFilePath } from '../workspace-file-guard.js';
+import { createFileAtomically, replaceFileAtomically } from '../workspace-file-operations.js';
+import { isNativeWorkspaceFileInvocation } from '../native-workspace-file-invocation.js';
 
 const WriteInput = z.object({
   file_path: z.string().describe('Absolute path to write.'),
@@ -54,7 +57,9 @@ export const writeTool: AgentTool = {
   },
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, content } = WriteInput.parse(input);
-    const targetPath = resolveToolPath(file_path, ctx.cwd);
+    const requestedPath = resolveToolPath(file_path, ctx.cwd);
+    const guard = await inspectWorkspaceFilePath(file_path, ctx, 'write');
+    const targetPath = guard.safe && guard.targetPath ? guard.targetPath : requestedPath;
     const protectedRoot = findProtectedWriteRoot(targetPath, ctx);
     if (protectedRoot) {
       return {
@@ -63,10 +68,18 @@ export const writeTool: AgentTool = {
         meta: { errorKind: CORE_SOURCE_READ_ONLY_KIND },
       };
     }
+    if (guard.attemptedWorkspace && !guard.safe) {
+      return { ok: false, error: `Workspace path could not be verified: ${guard.reason ?? 'unknown boundary'}` };
+    }
     const authorization = await authorizeToolAccess('write', { file_path: targetPath }, ctx, {
       defaultRequiresApproval: true,
+      workspaceFileWriteGuard: isNativeWorkspaceFileInvocation(ctx, 'write'),
+      forceApproval: guard.attemptedWorkspace && !guard.safe,
     });
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
+    if (guard.safe && !await guard.revalidate()) {
+      return { ok: false, error: 'Workspace path changed before the write; retry after the workspace is stable.' };
+    }
     const targetExists = existsSync(targetPath);
     if (targetExists) {
       // Overwriting is only allowed for a file this session actually read in
@@ -79,11 +92,32 @@ export const writeTool: AgentTool = {
       }
       await ctx.versioning?.beforeFileMutation(targetPath);
       const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+        if (guard.safe && !await guard.revalidate()) {
+          return {
+            ok: false as const,
+            errorKind: 'observation_missing' as const,
+            error: 'Workspace directory identity changed before the write; read the file again after the workspace is stable.',
+          };
+        }
         // Re-verify inside the lock: another session of this host may have
         // written the same path while this call was waiting for approval.
         const locked = await readVerifiedFile(ctx, targetPath, 'full');
         if (!locked.ok) return locked;
-        await writeFile(targetPath, content, 'utf8');
+        const replaced = await replaceFileAtomically(
+          targetPath,
+          locked.bytes,
+          content,
+          async () => !guard.safe || await guard.revalidate(),
+        );
+        if (!replaced.ok) {
+          return {
+            ok: false as const,
+            errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
+            error: replaced.reason === 'target_changed'
+              ? 'The file changed while the replacement was being prepared; read it again before retrying.'
+              : 'Workspace path changed before the replacement could be committed.',
+          };
+        }
         return { ok: true as const };
       });
       ctx.observation?.invalidate(targetPath);
@@ -95,18 +129,24 @@ export const writeTool: AgentTool = {
     // exclusive create flag is what makes it safe, so a racing creator loses
     // instead of being silently replaced.
     await ctx.versioning?.beforeFileMutation(targetPath);
-    await mkdir(dirname(targetPath), { recursive: true });
-    try {
-      await writeFile(targetPath, content, { encoding: 'utf8', flag: 'wx' });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+    if (guard.safe && !await guard.revalidate()) {
+      return { ok: false, error: 'Workspace directory identity changed before creating the file.' };
+    }
+    if (!guard.attemptedWorkspace || !guard.safe) await mkdir(dirname(targetPath), { recursive: true });
+    const created = await createFileAtomically(
+      targetPath,
+      content,
+      async () => !guard.safe || await guard.revalidate(),
+    );
+    if (!created.ok) {
+      if (created.reason === 'target_exists' || (created.reason === 'path_changed' && existsSync(targetPath))) {
         return observationFailure({
           ok: false,
           errorKind: 'target_exists',
           error: `${targetPath} appeared while this write was being prepared; read it before overwriting it`,
         });
       }
-      throw error;
+      return { ok: false, error: 'Workspace path changed before creating the file.' };
     }
     ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
     return { output: `Wrote ${content.length} chars to ${targetPath}` };

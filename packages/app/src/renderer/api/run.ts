@@ -26,7 +26,8 @@ import type {
   RunUsage,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
-import type { PermissionModeId } from '../../shared/permission-modes'
+import type { PermissionPresetId } from '@littlesheep/types'
+import { isPermissionSelectionPreset, type PermissionModeId, type PermissionSelectionId } from '../../shared/permission-modes'
 import type {
   LocalAppRuntimeControlEventResponse,
   LocalAppRuntimeControlEventType,
@@ -122,13 +123,20 @@ export interface RunResult {
 export async function runAgent(
   text: string,
   sessionId?: string,
-  permissionMode?: PermissionModeId,
+  permissionMode?: PermissionSelectionId,
   profile?: AgentProfileId,
 ): Promise<RunResult> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.run, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, sessionId, permissionMode, profile }),
+    body: JSON.stringify({
+      text,
+      sessionId,
+      ...(isPermissionSelectionPreset(permissionMode)
+        ? { permissionPreset: permissionMode }
+        : { permissionMode }),
+      profile,
+    }),
   })
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<RunResult>
@@ -163,6 +171,7 @@ export interface ApprovalRequest {
   action: string
   detail?: unknown
   permissionMode: PermissionModeId
+  permissionPreset?: PermissionPresetId
   /** Main requires an explicit decision even when the session is full-access. */
   requiresExplicitUserApproval?: boolean
   /** Boundary calculated by the Main process for Agent requests. */
@@ -183,14 +192,21 @@ export interface RunOptions {
 export async function runAgentStream(
   text: string,
   sessionId: string | undefined,
-  permissionMode: PermissionModeId | undefined,
+  permissionMode: PermissionSelectionId | undefined,
   handlers: RunStreamHandlers,
   options: RunOptions = {},
 ): Promise<RunResult> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.runStream, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, sessionId, permissionMode, ...options }),
+    body: JSON.stringify({
+      text,
+      sessionId,
+      ...(isPermissionSelectionPreset(permissionMode)
+        ? { permissionPreset: permissionMode }
+        : { permissionMode }),
+      ...options,
+    }),
     signal: handlers.signal,
   })
   return consumeRunStream(res, handlers)

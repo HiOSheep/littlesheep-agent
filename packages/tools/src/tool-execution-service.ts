@@ -13,6 +13,8 @@ import type {
   ToolStreamEvent,
 } from '@littlesheep/types';
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
+import { inspectWorkspaceFilePath } from './workspace-file-guard.js';
+import { markNativeWorkspaceFileInvocation } from './native-workspace-file-invocation.js';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 import {
   executeToolWaves,
@@ -230,7 +232,7 @@ export class ToolExecutionService {
       }
 
       const descriptor = describeToolAccess(registration.tool.name, input, this.options.toolContext);
-      const approval = await this.approve(registration.tool, input, descriptor, record, retained, request.signal);
+      const approval = await this.approve(registration, input, descriptor, record, retained, request.signal);
       if (!approval.ok) {
         immediate.set(index, this.finishWithoutExecution(
           record,
@@ -332,7 +334,7 @@ export class ToolExecutionService {
   }
 
   private async approve(
-    tool: AgentTool,
+    registration: ToolRegistration,
     input: unknown,
     descriptor: ReturnType<typeof describeToolAccess>,
     record: ToolInvocationRecord,
@@ -342,6 +344,7 @@ export class ToolExecutionService {
     | { ok: true; granted: boolean }
     | { ok: false; status: 'hard_denied' | 'approval_denied' | 'approval_unavailable' | 'aborted'; error: string; errorKind: string }
   > {
+    const tool = registration.tool
     if (descriptor.hardDecision === 'deny') {
       record.approval.required = false;
       record.approval.decision = 'blocked';
@@ -371,7 +374,36 @@ export class ToolExecutionService {
     const mode = this.options.toolContext.permissionMode;
     const snapshot = this.options.toolContext.permissionPolicyV2;
     const selectedPolicy = snapshot?.preset ?? this.options.toolContext.permissionPreset ?? mode;
-    const decision = selectedPolicy
+    const isNativeWorkspaceFileTool = registration.source === 'builtin'
+      && (tool.name === 'read' || tool.name === 'write' || tool.name === 'edit');
+    const filePath = typeof input === 'object' && input !== null && 'file_path' in input
+      && typeof (input as { file_path?: unknown }).file_path === 'string'
+      ? (input as { file_path: string }).file_path
+      : undefined;
+    if (snapshot && isNativeWorkspaceFileTool && filePath !== undefined) {
+      const pathGuard = await inspectWorkspaceFilePath(
+        filePath,
+        this.options.toolContext,
+        tool.name === 'read' ? 'read' : 'write',
+      );
+      // An unsafe alias that purports to be inside the authorized workspace
+      // cannot be approved by the displayed lexical path. Outside absolute
+      // paths remain eligible for the ordinary per-call approval flow.
+      if (pathGuard.attemptedWorkspace && !pathGuard.safe) {
+        record.approval.required = false;
+        record.approval.decision = 'blocked';
+        record.approval.decidedAt = this.timestamp();
+        record.approval.reason = pathGuard.reason ?? 'workspace path identity could not be verified';
+        this.publishRecord(record, retained);
+        return {
+          ok: false,
+          status: 'hard_denied',
+          error: `native file operation blocked because the workspace path could not be verified: ${record.approval.reason}`,
+          errorKind: 'permission_safety_unavailable',
+        };
+      }
+    }
+    const resolvedDecision = selectedPolicy
       ? resolvePermissionDecision(selectedPolicy, descriptor, {
           strictReadApproval: this.options.toolContext.networkPolicy?.strictReadApproval === true,
           approvalPolicy: snapshot?.approvalPolicy ?? this.options.toolContext.approvalPolicy,
@@ -382,6 +414,37 @@ export class ToolExecutionService {
       : descriptor.hardDecision === 'approval' || tool.requiresApproval === true
         ? 'approval'
         : 'allow';
+    // workspace-write's native auto-write capability belongs only to the
+    // guarded builtin write/edit implementations. Plugin and document tools
+    // keep using this same service but remain explicitly approvable.
+    const isNativeWorkspaceFileWriter = registration.source === 'builtin'
+      && (tool.name === 'write' || tool.name === 'edit');
+    const isNativeWorkspaceFileReader = registration.source === 'builtin' && tool.name === 'read';
+    const guardedNativeWorkspaceFileWriter = selectedPolicy === 'workspace-write'
+      && isNativeWorkspaceFileWriter
+      && descriptor.action === 'write'
+      && descriptor.resourceScope === 'workspace'
+      && filePath !== undefined
+      && (await inspectWorkspaceFilePath(filePath, this.options.toolContext, 'write')).safe
+    const guardedNativeWorkspaceFileReader = (selectedPolicy === 'workspace-write' || selectedPolicy === 'read-only')
+      && isNativeWorkspaceFileReader
+      && descriptor.action === 'read'
+      && descriptor.resourceScope === 'workspace'
+      && filePath !== undefined
+      && (await inspectWorkspaceFilePath(filePath, this.options.toolContext, 'read')).safe
+    const requiresNativeFileConstraint = (selectedPolicy === 'workspace-write'
+      && descriptor.action === 'write'
+      && descriptor.resourceScope === 'workspace'
+      && !guardedNativeWorkspaceFileWriter)
+      || ((selectedPolicy === 'workspace-write' || selectedPolicy === 'read-only')
+          && descriptor.action === 'read'
+          && descriptor.resourceScope === 'workspace'
+          && !guardedNativeWorkspaceFileReader)
+    const decision = requiresNativeFileConstraint && resolvedDecision === 'allow'
+      ? snapshot?.approvalPolicy === 'deny' || this.options.toolContext.approvalPolicy === 'deny'
+        ? 'deny'
+        : 'approval'
+      : resolvedDecision
     if (decision === 'deny' || decision === 'unavailable') {
       record.approval.required = false;
       record.approval.decision = 'blocked';
@@ -589,6 +652,10 @@ export class ToolExecutionService {
           }) ?? false;
         },
       };
+      if (registration.source === 'builtin'
+        && (toolName === 'read' || toolName === 'write' || toolName === 'edit')) {
+        markNativeWorkspaceFileInvocation(invocationContext, toolName);
+      }
       const result = await invokeWithTimeout(
         (toolSignal) => {
           invocationContext.signal = toolSignal;

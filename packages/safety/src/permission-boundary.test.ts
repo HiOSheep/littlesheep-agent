@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { NetworkReadPolicy } from '@littlesheep/types'
+import type { NetworkReadPolicy, PermissionPolicyV2Snapshot } from '@littlesheep/types'
 import {
   authorizeToolAccess,
   describeToolAccess,
@@ -363,6 +363,47 @@ describe('permission boundary', () => {
       expect(resolvePermissionDecision(preset, forced, { approvalPolicy: 'deny', fullAccessConfirmed: true }))
         .toBe('approval')
     }
+  })
+
+  it('scopes a one-call approval to its exact tool and applies approval deny to forced prompts', async () => {
+    const fixture = await makeFixture()
+    const snapshot: PermissionPolicyV2Snapshot = {
+      version: 2,
+      preset: 'workspace-write',
+      approvalPolicy: 'prompt',
+      workspaceRoot: fixture.workspaceRoot,
+      protectedRoots: [],
+      constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' },
+      fullAccessConfirmed: false,
+    }
+    const approve = vi.fn(async () => false)
+    const unrelatedGrant = await authorizeToolAccess('write', { file_path: fixture.insideFile }, {
+      cwd: fixture.workspaceRoot,
+      permissionPolicyV2: snapshot,
+      approve,
+    })
+    expect(unrelatedGrant).toMatchObject({ allowed: false, decision: 'approval' })
+    expect(approve).toHaveBeenCalledWith('write', { file_path: fixture.insideFile }, {
+      requiresExplicitUserApproval: true,
+    })
+
+    const matchingGrant = await authorizeToolAccess('write', { file_path: fixture.insideFile }, {
+      cwd: fixture.workspaceRoot,
+      permissionPolicyV2: snapshot,
+      approve: async () => true,
+    })
+    expect(matchingGrant).toMatchObject({ allowed: true, decision: 'approval', approvedByPolicy: true })
+
+    const noApprovals: PermissionPolicyV2Snapshot = {
+      ...snapshot,
+      approvalPolicy: 'deny',
+    }
+    const denied = await authorizeToolAccess('write', { file_path: fixture.insideFile }, {
+      cwd: fixture.workspaceRoot,
+      permissionPolicyV2: noApprovals,
+      approve,
+    }, { workspaceFileWriteGuard: true, forceApproval: true })
+    expect(denied).toMatchObject({ allowed: false, decision: 'deny' })
   })
 
   it('keeps traversal, symlink and dynamic Shell targets outside or unknown', async () => {

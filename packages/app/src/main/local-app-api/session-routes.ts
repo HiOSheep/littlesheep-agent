@@ -16,7 +16,9 @@ import {
 } from '../../shared/session-project-contracts.js'
 import {
   getPermissionMode,
+  isPermissionSelectionPreset,
   normalizePermissionModeId,
+  normalizePermissionSelectionId,
 } from '../../shared/permission-modes.js'
 import type {
   ArchiveIndex,
@@ -211,11 +213,14 @@ export async function routeSessions(
           || requestedMode === 'info'
           || requestedMode === 'physical'
           || requestedMode === 'coding'
-        if (!getPermissionMode(requestedMode) && !isLegacyMode) {
+        const isV2Selection = isPermissionSelectionPreset(requestedMode)
+        if (!getPermissionMode(requestedMode) && !isLegacyMode && !isV2Selection) {
           json(res, 400, { error: 'session permission mode is invalid' })
           return true
         }
-        mode = normalizePermissionModeId(requestedMode)
+        mode = isV2Selection
+          ? normalizePermissionSelectionId(requestedMode)
+          : normalizePermissionModeId(requestedMode)
       }
       // The explicit switch of where one session works. A project-bound session
       // otherwise follows its project, so this is the deliberate way to move it;

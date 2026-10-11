@@ -280,7 +280,15 @@ export async function authorizeToolAccess(
   toolName: string,
   input: unknown,
   context: PermissionBoundaryContext,
-  options: { defaultRequiresApproval?: boolean } = {},
+  options: {
+    defaultRequiresApproval?: boolean
+    /** True only after the native reader has inspected and revalidated its path. */
+    workspaceFileReadGuard?: boolean
+    /** True only for native file tools that execute the workspace path guard. */
+    workspaceFileWriteGuard?: boolean
+    /** Convert an otherwise automatic decision into the same user-approval path. */
+    forceApproval?: boolean
+  } = {},
 ): Promise<ToolAuthorization> {
   const descriptor = describeToolAccess(toolName, input, context)
   if (descriptor.hardDecision === 'deny') {
@@ -309,29 +317,42 @@ export async function authorizeToolAccess(
     || context.permissionPolicyV2 !== undefined
   const snapshot = context.permissionPolicyV2
   const selectedPolicy: PermissionPolicySelection | undefined = snapshot?.preset ?? context.permissionPreset ?? context.permissionMode
+  const guardedWorkspaceRead = options.workspaceFileReadGuard === true
   const decision: PermissionDecision = hasRuntimePolicy
     ? resolvePermissionDecision(selectedPolicy!, descriptor, {
         strictReadApproval: context.networkPolicy?.strictReadApproval === true,
         approvalPolicy: snapshot?.approvalPolicy ?? context.approvalPolicy,
-        workspaceFileWrites: snapshot?.constraints.workspaceFileWrites ?? context.workspaceFileWrites,
+        workspaceFileWrites: options.workspaceFileWriteGuard === true
+          ? snapshot?.constraints.workspaceFileWrites ?? context.workspaceFileWrites
+          : 'unavailable',
         shellIsolation: snapshot?.constraints.shellIsolation ?? context.shellIsolation,
         fullAccessConfirmed: snapshot?.fullAccessConfirmed ?? context.fullAccessConfirmed,
       })
     : descriptor.hardDecision === 'approval'
       ? 'approval'
       : options.defaultRequiresApproval === true ? 'approval' : 'allow'
+  const unguardedV2WorkspaceRead = snapshot !== undefined
+    && (snapshot.preset === 'read-only' || snapshot.preset === 'workspace-write')
+    && descriptor.action === 'read'
+    && descriptor.resourceScope === 'workspace'
+    && !guardedWorkspaceRead
+  const forcedApproval = (options.forceApproval === true || unguardedV2WorkspaceRead)
+    && decision === 'allow'
+  const effectiveDecision = forcedApproval
+    ? snapshot?.approvalPolicy === 'deny' || context.approvalPolicy === 'deny' ? 'deny' : 'approval'
+    : decision
 
-  if (decision === 'deny' || decision === 'unavailable') {
+  if (effectiveDecision === 'deny' || effectiveDecision === 'unavailable') {
     return {
       allowed: false,
-      decision,
+      decision: effectiveDecision,
       boundary: descriptor.boundary,
       approvedByPolicy: false,
-      reason: decision === 'unavailable' ? 'required permission enforcement is unavailable' : descriptor.reason,
+      reason: effectiveDecision === 'unavailable' ? 'required permission enforcement is unavailable' : descriptor.reason,
     }
   }
 
-  const needsApproval = decision === 'approval'
+  const needsApproval = effectiveDecision === 'approval'
 
   if (!needsApproval) {
     return {

@@ -6,6 +6,16 @@ export { sanitizeOutput, truncateText, stripImages, isBinary, binaryPreview, DEF
 export { withToolTiming, type ToolHandler } from './wrapper.js';
 export { parallelFilePolicy } from './execution-policy.js';
 export {
+  inspectWorkspaceFilePath,
+  WORKSPACE_FILE_GUARD_AVAILABLE,
+  type WorkspaceFileGuardInspection,
+} from './workspace-file-guard.js';
+export {
+  createFileAtomically,
+  replaceFileAtomically,
+  type WorkspaceFileCommitResult,
+} from './workspace-file-operations.js';
+export {
   CORE_SOURCE_READ_ONLY_ERROR,
   CORE_SOURCE_READ_ONLY_KIND,
   commandReferencesProtectedRoot,

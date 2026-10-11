@@ -115,6 +115,7 @@ export interface LocalAppRunCheckpointResumeRequest {
   text?: string
   reason?: string
   permissionMode?: import('./permission-modes.js').PermissionModeId
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId
   reasoning?: import('./model-capabilities.js').RuntimeReasoning
   profile?: import('@littlesheep/prompt').AgentProfileId
   requestKey?: string

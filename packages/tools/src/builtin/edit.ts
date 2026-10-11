@@ -1,6 +1,5 @@
 // @littlesheep/tools — builtin/edit.ts
 import { z } from 'zod';
-import { writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { AgentTool } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
@@ -13,6 +12,9 @@ import {
 import { withToolTiming } from '../wrapper.js';
 import { parallelFilePolicy } from '../execution-policy.js';
 import { observationFailure, observedRangeCoversMatch, readVerifiedFile } from '../file-observation.js';
+import { inspectWorkspaceFilePath } from '../workspace-file-guard.js';
+import { replaceFileAtomically } from '../workspace-file-operations.js';
+import { isNativeWorkspaceFileInvocation } from '../native-workspace-file-invocation.js';
 
 const EditInput = z.object({
   file_path: z.string(),
@@ -31,7 +33,9 @@ export const editTool: AgentTool = {
   execution: parallelFilePolicy('file_path', 'write'),
   execute: withToolTiming(async (input, ctx) => {
     const { file_path, old_string, new_string } = EditInput.parse(input);
-    const targetPath = resolveToolPath(file_path, ctx.cwd);
+    const requestedPath = resolveToolPath(file_path, ctx.cwd);
+    const guard = await inspectWorkspaceFilePath(file_path, ctx, 'write');
+    const targetPath = guard.safe && guard.targetPath ? guard.targetPath : requestedPath;
     const protectedRoot = findProtectedWriteRoot(targetPath, ctx);
     if (protectedRoot) {
       return {
@@ -40,10 +44,18 @@ export const editTool: AgentTool = {
         meta: { errorKind: CORE_SOURCE_READ_ONLY_KIND },
       };
     }
+    if (guard.attemptedWorkspace && !guard.safe) {
+      return { ok: false, error: `Workspace path could not be verified: ${guard.reason ?? 'unknown boundary'}` };
+    }
     const authorization = await authorizeToolAccess('edit', { file_path: targetPath }, ctx, {
       defaultRequiresApproval: true,
+      workspaceFileWriteGuard: isNativeWorkspaceFileInvocation(ctx, 'edit'),
+      forceApproval: guard.attemptedWorkspace && !guard.safe,
     });
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
+    if (guard.safe && !await guard.revalidate()) {
+      return { ok: false, error: 'Workspace path changed before the edit; retry after the workspace is stable.' };
+    }
     if (!existsSync(targetPath)) {
       return { ok: false, error: `File not found: ${targetPath}` };
     }
@@ -56,6 +68,13 @@ export const editTool: AgentTool = {
     }
     await ctx.versioning?.beforeFileMutation(targetPath);
     const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+      if (guard.safe && !await guard.revalidate()) {
+        return {
+          ok: false as const,
+          errorKind: 'observation_missing' as const,
+          error: 'Workspace directory identity changed before the edit; read the file again after the workspace is stable.',
+        };
+      }
       // Re-verify and match against the same bytes inside the lock, so the
       // unique match this edit relies on is still true when the write happens.
       const locked = await readVerifiedFile(ctx, targetPath, 'any');
@@ -76,7 +95,21 @@ export const editTool: AgentTool = {
           error: `${targetPath}: this edit is outside the lines that were read; read that range before editing it`,
         };
       }
-      await writeFile(targetPath, content.replace(old_string, new_string), 'utf8');
+      const replaced = await replaceFileAtomically(
+        targetPath,
+        locked.bytes,
+        content.replace(old_string, new_string),
+        async () => !guard.safe || await guard.revalidate(),
+      );
+      if (!replaced.ok) {
+        return {
+          ok: false as const,
+          errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
+          error: replaced.reason === 'target_changed'
+            ? 'The file changed while the replacement was being prepared; read it again before retrying.'
+            : 'Workspace path changed before the replacement could be committed.',
+        };
+      }
       return { ok: true as const };
     });
     ctx.observation?.invalidate(targetPath);

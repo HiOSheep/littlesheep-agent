@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  type PermissionModeId
+  type PermissionSelectionId
 } from '../api'
 import { MODE_OPTIONS } from '../runtime/options'
 import { ModeRiskIcon } from '../ui/icons'
@@ -16,8 +16,8 @@ export function ModePicker({
   value,
   onChange,
 }: {
-  value: PermissionModeId
-  onChange: (value: PermissionModeId) => void
+  value: PermissionSelectionId
+  onChange: (value: PermissionSelectionId) => void
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
@@ -117,8 +117,8 @@ export function ModePicker({
 }
 
 export function requiresFullAccessConfirmation(
-  current: PermissionModeId,
-  next: PermissionModeId,
+  current: PermissionSelectionId,
+  next: PermissionSelectionId,
 ): boolean {
   return current !== 'full' && next === 'full'
 }

@@ -52,6 +52,7 @@
 
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
+| `packages/app/src/main/local-app-api/run-support.ts` | 359 | 普通 run 与 checkpoint 共用的 session 权限封顶、workspace 事实解析、artifact 与资源收尾 | 保持 Local App API 共享适配边界；权限决策仍由 `run-policy.ts` 持有，若继续增长再拆 session permission resolver 与 workspace facts | C |
 | `packages/app/src/main/index.ts` | 599 | Electron 启动和组合：数据前置、UI 索引与监听、Runner 构建与就绪发布；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样、内置浏览器宿主、启动文件模板、Runner 构建/重建/退役（`runner-lifecycle.ts`）与 run 启动恢复（`run-recovery.ts`）均已下沉 | 入口只保留装配顺序与阶段标记；已从强制拆分队列降到软上限（Runner 构建下沉后实测 593 行，启动重试的"配置阶段之前失败就重跑 bootstrap"与成功后交接窗口 +6 行），下一次改动若再吸收职责应先拆 Local App API 选项对象 | C |
 | `packages/app/src/main/run-recovery.ts` | 298 | 启动恢复的编排：活跃 run、过期租约、中断续跑与已完成 run 对账，全部在 Runner 发布之后运行；`waitIfNeeded` 只让带 sessionId 的请求等待，`isRunActive` 让恢复放过本进程正在跑的续跑 | 保持"只编排、不决策"的边界；若继续增长，把恢复的发现（lease/inbox/event 三源合并）与"哪些路径需要等待"的策略分开 | C |
 | `packages/app/src/main/runner-lifecycle.ts` | 244 | Runner 的构建队列（一次只构建一个）、发布、plugin host 交接，以及被替换 Runner 的延迟退役；重建请求先看已发布 Runner 是否已描述当前配置 | 保持"构建与退役"单一职责；若继续增长，把退役轮询（`inspectRetired`/`releaseIdleRetiredRunners`）拆出 | C |

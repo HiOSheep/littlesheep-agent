@@ -18,7 +18,7 @@ import type {
 } from '../../shared/run-checkpoint-contracts'
 import { sessionApprovalScopeKey, type ApprovalDecision } from '../approval-grants'
 import { isExecutionReady, subscribeRuntimeReadiness } from '../runtime-readiness/runtime-readiness-state'
-import type { PermissionModeId } from '../../shared/permission-modes'
+import { isPermissionSelectionPreset, type PermissionSelectionId } from '../../shared/permission-modes'
 import { buildContextUsageSnapshot, type ContextUsageSnapshot } from '../context-usage'
 import {
   pendingRecoveryCheckpoints,
@@ -40,7 +40,7 @@ export interface UseCheckpointRecoveryOptions {
   activeRunIdRef: MutableRefObject<string | null>
   appMountedRef: MutableRefObject<boolean>
   loading: boolean
-  getSessionPermissionMode: (sessionId: string) => PermissionModeId
+  getSessionPermissionMode: (sessionId: string) => PermissionSelectionId
   runtime: RuntimeState | null
   stopRequestedRunIdRef: MutableRefObject<string | null>
   refreshProjects: () => Promise<void>
@@ -229,7 +229,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       const result = await resumeRunCheckpointStream(checkpoint.id, {
         ...(clarification ? { text: clarification } : {}),
         reason: 'user resumed checkpoint from the desktop recovery control',
-        permissionMode: recoveryPermissionMode,
+        ...(isPermissionSelectionPreset(recoveryPermissionMode)
+          ? { permissionPreset: recoveryPermissionMode }
+          : { permissionMode: recoveryPermissionMode }),
         reasoning: runtime?.reasoning,
         profile: runtime?.profile,
         requestKey: turnIdentity.requestKey,

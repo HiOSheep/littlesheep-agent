@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
 import type { NetworkReadPolicy } from '@littlesheep/types'
 import { createPermissionApprover, createRecoveryReadAuthorizer, resolveRunPolicy } from './run-policy.js'
+import { WORKSPACE_FILE_GUARD_AVAILABLE } from '@littlesheep/tools'
 import { join } from 'node:path'
 
 describe('local app run policy', () => {
@@ -59,6 +60,32 @@ describe('local app run policy', () => {
     await approve('exec', detail)
 
     expect(broker).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps dataRoot distinct from workspaceRoot and advertises only active file constraints', async () => {
+    const broker = vi.fn(async () => false)
+    const workspaceRoot = process.cwd()
+    const dataRoot = join(process.cwd(), 'packages')
+    const policy = resolveRunPolicy(
+      { permissionPreset: 'workspace-write' },
+      DEFAULT_CONFIG,
+      broker,
+      { dataRoot, workspaceRoot, cwd: workspaceRoot },
+    )
+
+    expect(policy.permissionPolicyV2).toMatchObject({
+      preset: 'workspace-write',
+      dataRoot,
+      workspaceRoot,
+      constraints: {
+        workspaceFileWrites: WORKSPACE_FILE_GUARD_AVAILABLE ? 'available' : 'unavailable',
+        shellIsolation: 'unavailable',
+      },
+    })
+    expect(policy.permissionPolicyV2?.dataRoot).not.toBe(policy.permissionPolicyV2?.workspaceRoot)
+    await expect(policy.approve('write', { file_path: join(workspaceRoot, 'ordinary.txt') })).resolves.toBe(true)
+    expect(broker).not.toHaveBeenCalled()
+
   })
 
   it('allows full access for inside, outside, and unknown host boundaries', async () => {

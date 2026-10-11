@@ -496,6 +496,24 @@ describe('explicit session workspace switch', () => {
     }
   })
 
+  it('persists an explicit V2 permission change only through the session mutation route', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-permission-'))
+    try {
+      const sessionIndex = new SessionIndex({ dataDir, workplaceDir: join(dataDir, 'workplace') })
+      await sessionIndex.upsert('session-v2', { title: 'V2', mode: 'research', scope: 'standalone' })
+
+      const response = await patchSession(sessionIndex, 'session-v2', { mode: 'workspace-write' })
+
+      expect(response.status).toBe(200)
+      expect(response.body.session).toMatchObject({ id: 'session-v2', mode: 'workspace-write' })
+      await expect(sessionIndex.list()).resolves.toEqual([
+        expect.objectContaining({ id: 'session-v2', mode: 'workspace-write' }),
+      ])
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('refuses a relative path and a session that has no workspace of its own', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-workspace-'))
     try {
