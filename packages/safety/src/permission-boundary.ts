@@ -44,17 +44,11 @@ export interface PermissionBoundaryContext {
   fullAccessConfirmed?: boolean
   /** Main-owned versioned snapshot. Its roots and capabilities are immutable for the run. */
   permissionPolicyV2?: PermissionPolicyV2Snapshot
-  /** Set by ToolExecutionService only for the guarded native file reader/writers. */
-  nativeWorkspaceFileToolInvocation?: 'read' | 'write' | 'edit'
   approve?: (
     action: string,
     detail?: unknown,
     options?: { requiresExplicitUserApproval?: boolean },
   ) => Promise<boolean>
-  /** Set by the Harness after it has approved this exact tool invocation. */
-  approvalGranted?: boolean
-  /** Exact tool name authorized by ToolExecutionService for this invocation. */
-  approvalGrantedToolName?: string
   /** Immutable network policy resolved before this run. */
   networkPolicy?: Readonly<NetworkReadPolicy>
 }
@@ -346,14 +340,6 @@ export async function authorizeToolAccess(
       boundary: descriptor.boundary,
       approvedByPolicy: selectedPolicy === 'full'
         || (selectedPolicy === 'full-access' && (snapshot?.fullAccessConfirmed ?? context.fullAccessConfirmed) === true),
-    }
-  }
-  if (context.approvalGranted === true && context.approvalGrantedToolName === toolName) {
-    return {
-      allowed: true,
-      decision: 'approval',
-      boundary: descriptor.boundary,
-      approvedByPolicy: true,
     }
   }
   const approved = await context.approve?.(toolName, input, {

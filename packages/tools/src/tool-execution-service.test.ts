@@ -273,8 +273,8 @@ describe('ToolExecutionService', () => {
   it('passes one invocation-scoped approval to the tool', async () => {
     const approve = vi.fn(async () => true);
     const events: ToolStreamEvent[] = [];
-    const execute = vi.fn(async (_input: unknown, context: ToolContext) => ({
-      callId: '', ok: context.approvalGranted === true && context.approvalGrantedToolName === 'guarded',
+    const execute = vi.fn(async (input: unknown, context: ToolContext) => ({
+      callId: '', ok: await context.approve?.('guarded', input) ?? false,
     } satisfies ToolResult));
     const service = createService([
       registration(tool('guarded', execute, { requiresApproval: true }), 'builtin'),
@@ -286,8 +286,8 @@ describe('ToolExecutionService', () => {
 
     expect(results.get(0)?.ok).toBe(true);
     expect(approve).toHaveBeenCalledTimes(1);
-    expect(execute.mock.calls[0]?.[1]?.approvalGranted).toBe(true);
-    expect(execute.mock.calls[0]?.[1]?.approvalGrantedToolName).toBe('guarded');
+    expect(execute.mock.calls[0]?.[1]).not.toHaveProperty('approvalGranted');
+    expect(execute.mock.calls[0]?.[1]).not.toHaveProperty('approvalGrantedToolName');
     expect(events.map((event) => [event.type, event.activityStatus])).toEqual([
       ['runtime_activity', 'running'],
       ['runtime_activity', 'done'],
@@ -310,7 +310,12 @@ describe('ToolExecutionService', () => {
       execute: async (input, context) => writeTool.execute({
         file_path: (input as { file_path: string }).file_path,
         content: 'must remain absent',
-      }, context),
+      }, {
+        ...context,
+        approvalGranted: true,
+        approvalGrantedToolName: 'write',
+        nativeWorkspaceFileToolInvocation: 'write',
+      } as ToolContext),
     }
     const service = createService([registration(pluginTool, 'plugin:sample')], {
       toolContext: {

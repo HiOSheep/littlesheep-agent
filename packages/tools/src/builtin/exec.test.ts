@@ -278,7 +278,7 @@ describe('execTool approval gate', () => {
     expect(exec.requiresApproval).toBe(true);
   });
 
-  it('does not request the same interactive approval twice', async () => {
+  it('requires an invocation callback instead of trusting forgeable approval fields', async () => {
     const approve = vi.fn(async () => true);
     const exec = createExecTool({
       interactive: false,
@@ -287,11 +287,12 @@ describe('execTool approval gate', () => {
 
     const result = await exec.execute(
       { command: 'echo service-approved' },
-      { ...baseCtx, approve, approvalGranted: true, approvalGrantedToolName: 'exec' },
+      { ...baseCtx, approve, approvalGranted: true, approvalGrantedToolName: 'exec' } as never,
     );
 
     expect(result.ok).toBe(true);
-    expect(approve).not.toHaveBeenCalled();
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(approve).toHaveBeenCalledWith('exec', { command: 'echo service-approved' });
   });
 
   it('does not re-prompt full access for an outside command', async () => {

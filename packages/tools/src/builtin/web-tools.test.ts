@@ -126,9 +126,12 @@ describe('web_search built-in', () => {
 
   it('allows an explicitly approved sensitive query without exposing it in the approval projection', async () => {
     const port = runtime();
-    const ctx = { ...context(port), approvalGranted: true, approvalGrantedToolName: 'web_search' };
+    const approve = vi.fn(async (_action: string, _detail?: unknown) => true);
+    const ctx = { ...context(port), approve };
     const result = await webSearchTool.execute({ query: 'find api_key=fixture-secret docs' }, ctx);
     expect(result.ok).toBe(true);
+    expect(approve).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(approve.mock.calls[0]?.[1])).not.toContain('fixture-secret');
     expect(port.search).toHaveBeenCalledWith(expect.objectContaining({ query: 'find api_key=fixture-secret docs' }), undefined);
     const projected = webSearchTool.persistence?.projectInput({ query: 'find api_key=fixture-secret docs' });
     expect(JSON.stringify(projected)).not.toContain('fixture-secret');

@@ -14,6 +14,7 @@
 // each case has its own refusal, and the user can re-read the memory and ask again.
 
 import { z } from 'zod';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import type { AgentTool, ToolContext, ToolResult } from '@littlesheep/types'
 
 export const MEMORY_MANAGE_TOOL_NAME = 'memory_manage'
@@ -154,6 +155,13 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
       if (!parsed.success) {
         return failure('memory_manage_invalid_input', parsed.error.issues.map((issue) => issue.message).join('; '))
       }
+      const authorization = await authorizeToolAccess('memory_manage', parsed.data, ctx, {
+        defaultRequiresApproval: true,
+      })
+      if (!authorization.allowed) {
+        return failure('memory_manage_not_approved',
+          `Changing a memory needs the user's approval in ${ctx.permissionMode ?? 'the current mode'} mode; this call has none.`)
+      }
       // Same tolerance as the write tool: a missing reason is plumbing, not policy. Authorization, the
       // target's existence and revision, and the evidence behind the change are all still checked.
       const parsedData = parsed.data
@@ -163,12 +171,6 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
           ?? (parsedData.action === 'forget'
             ? 'The user asked for this memory to be forgotten.'
             : 'The user asked for this memory to be corrected.'),
-      }
-
-      if (ctx.permissionMode && ctx.permissionMode !== 'full'
-        && !(ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'memory_manage')) {
-        return failure('memory_manage_not_approved',
-          `Changing a memory needs the user's approval in ${ctx.permissionMode} mode; this call has none.`)
       }
 
       // The user's own instruction, verified from the message text: the model cannot mark its own

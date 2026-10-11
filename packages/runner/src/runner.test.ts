@@ -3262,7 +3262,7 @@ describe('host file write entry points', () => {
       retrievalKeys: ['端口', '本地'],
       reason: '用户要求记住。',
       sourceMessageIds: ['remember-1'],
-    }, { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never);
+    }, { sessionId: session.id, runId: 'run-1', cwd: dataDir, approve: async () => true } as never);
     expect(written.ok).toBe(true);
     const original = written.meta?.memoryWriteAtomId as string;
     const originalInspection = await runner.infra.memoryRepository.management.inspectNode(original, 'D3');
@@ -3286,7 +3286,7 @@ describe('host file write entry points', () => {
         content: '本地开发端口是 6432。',
         retrievalKeys: ['端口', '本地'],
       },
-    }, { sessionId: session.id, runId: 'run-2', cwd: dataDir, approvalGranted: true } as never);
+    }, { sessionId: session.id, runId: 'run-2', cwd: dataDir, approve: async () => true } as never);
     expect(corrected.error ?? '').toBe('');
     expect(corrected.ok).toBe(true);
     expect(corrected.meta?.memoryManageOutcome).toBe('committed');
@@ -3329,7 +3329,7 @@ describe('host file write entry points', () => {
     ]);
 
     const writeTool = runner.infra.registry.get('memory_write')!.tool;
-    const writeCtx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never;
+    const writeCtx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approve: async () => true } as never;
     const written = await writeTool.execute({
       reasonKind: 'user-request',
       summary: '本地端口',
@@ -3357,7 +3357,7 @@ describe('host file write entry points', () => {
     await runner.infra.memoryService.expand('run-2', { branchId: 'long-term', query: '端口' });
 
     const manageTool = runner.infra.registry.get('memory_manage')!.tool;
-    const forgetCtx = { sessionId: session.id, runId: 'run-2', cwd: dataDir, approvalGranted: true } as never;
+    const forgetCtx = { sessionId: session.id, runId: 'run-2', cwd: dataDir, approve: async () => true } as never;
     const forgotten = await manageTool.execute({
       action: 'forget',
       atomId: atom.id,
@@ -3400,7 +3400,7 @@ describe('host file write entry points', () => {
     ]);
 
     const tool = runner.infra.registry.get('memory_write')!.tool;
-    const ctx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approvalGranted: true } as never;
+    const ctx = { sessionId: session.id, runId: 'run-1', cwd: dataDir, approve: async () => true } as never;
     const request = {
       reasonKind: 'user-request' as const,
       summary: '工程进度回复偏好',

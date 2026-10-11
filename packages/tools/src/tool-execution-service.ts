@@ -571,17 +571,29 @@ export class ToolExecutionService {
     const { registration, input, approvalGranted, request } = invocation;
     const signal = request.signal ?? this.options.toolContext.signal;
     try {
+      const toolName = registration.tool.name;
+      const invocationContext: ToolContext = {
+        ...this.options.toolContext,
+        signal,
+        // Tool code only receives a callback scoped to this invocation. A
+        // nested or direct tool call cannot ask Main to auto-allow another
+        // action by omitting the explicit-approval flag.
+        approve: async (action, detail, approvalOptions) => {
+          const sameApprovedInvocation = approvalGranted
+            && action === toolName
+            && (registration.source === 'builtin' || hashToolInput(detail) === hashToolInput(input));
+          if (sameApprovedInvocation) return true;
+          return await this.options.toolContext.approve?.(action, detail, {
+            ...approvalOptions,
+            requiresExplicitUserApproval: true,
+          }) ?? false;
+        },
+      };
       const result = await invokeWithTimeout(
-        (signal) => registration.tool.execute(input, {
-          ...this.options.toolContext,
-          signal,
-          approvalGranted,
-          approvalGrantedToolName: approvalGranted ? registration.tool.name : undefined,
-          nativeWorkspaceFileToolInvocation: registration.source === 'builtin'
-            && (registration.tool.name === 'read' || registration.tool.name === 'write' || registration.tool.name === 'edit')
-            ? registration.tool.name
-            : undefined,
-        }),
+        (toolSignal) => {
+          invocationContext.signal = toolSignal;
+          return registration.tool.execute(input, invocationContext);
+        },
         this.options.timeoutMs,
         signal,
       );

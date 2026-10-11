@@ -52,10 +52,10 @@ function harness(options: {
       relationRefs: [],
     }),
   })
-  // The tool only ever runs after the harness granted approval for this call.
+  // Unit tests supply the same per-invocation approval callback the service provides.
   const ctx = {
     sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws',
-    approvalGranted: true, approvalGrantedToolName: 'memory_write',
+    approve: async () => true,
   } as never
   return { tool, write, writes, ctx }
 }
@@ -234,9 +234,13 @@ describe('memory write evidence and approval', () => {
     expect(result.meta?.errorKind).toBe('memory_write_not_approved')
     expect(write).not.toHaveBeenCalled()
 
-    // The full mode is never asked for a grant, so a write there is not refused for lacking one.
-    const fullMode = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', permissionMode: 'full' } as never
-    const allowed = await tool.execute(baseInput, fullMode)
+    // Hard approval remains mandatory even in full mode.
+    const fullMode = { sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws', permissionMode: 'full' as const }
+    const blocked = await tool.execute(baseInput, fullMode as never)
+    expect(blocked.ok).toBe(false)
+    expect(blocked.meta?.errorKind).toBe('memory_write_not_approved')
+
+    const allowed = await tool.execute(baseInput, { ...fullMode, approve: async () => true } as never)
     expect(allowed.ok).toBe(true)
   })
 })

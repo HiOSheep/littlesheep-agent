@@ -131,12 +131,6 @@ export interface ToolContext {
     detail?: unknown,
     options?: { requiresExplicitUserApproval?: boolean },
   ) => Promise<boolean>;
-  /** Set only for the current invocation after the Harness has approved it. */
-  approvalGranted?: boolean;
-  /** Exact tool name authorized by ToolExecutionService for this invocation. */
-  approvalGrantedToolName?: string;
-  /** Set by ToolExecutionService only while invoking the guarded native file tool. */
-  nativeWorkspaceFileToolInvocation?: 'read' | 'write' | 'edit';
   /** Abort signal for the owning run. */
   signal?: AbortSignal;
   /** Immutable network-read policy resolved before the run starts. */

@@ -16,6 +16,7 @@
 
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { authorizeToolAccess } from '@littlesheep/safety';
 import type { AgentTool, ToolContext, ToolResult } from '@littlesheep/types';
 import type { MemoryWriteEpistemicMetadata } from './epistemic.js';
 import type { MemoryWriteIntent, MemoryWriteResult } from './types.js';
@@ -155,6 +156,13 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
       // Fill in what a model may reasonably leave out, from what it did provide. `reasonKind` still has to
       // be one of the two recorded reasons, and a necessary write still needs a substantive one.
       const parsedData = parsed.data
+      const authorization = await authorizeToolAccess('memory_write', parsedData, ctx, {
+        defaultRequiresApproval: true,
+      })
+      if (!authorization.allowed) {
+        return failure('memory_write_not_approved',
+          `A durable write needs the user's approval in ${ctx.permissionMode ?? 'the current mode'} mode; this call has none.`)
+      }
       const derivedSummary = (parsedData.summary ?? parsedData.content.split('\n')[0] ?? '').trim().slice(0, 240)
       const request = {
         ...parsedData,
@@ -163,16 +171,6 @@ export function createMemoryWriteTool(options: MemoryWriteToolOptions): AgentToo
         reason: parsedData.reason ?? (parsedData.reasonKind === 'user-request'
           ? 'The user asked for this to be remembered in this run.'
           : ''),
-      }
-
-      // The body only runs after the approval service allowed this call, and both of the things that
-      // approval was about are verified again here: the grant (in the modes that require one) and the
-      // sources below. A persisted older grant must not widen what this call may write, and the full
-      // mode is not asked for a grant at all, so it is not refused for lacking one.
-      if (ctx.permissionMode && ctx.permissionMode !== 'full'
-        && !(ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'memory_write')) {
-        return failure('memory_write_not_approved',
-          `A durable write needs the user's approval in ${ctx.permissionMode} mode; this call has none.`)
       }
 
       const used = writesByRun.get(ctx.runId) ?? 0

@@ -55,7 +55,7 @@ function harness(options: {
   })
   const ctx = {
     sessionId: 'session-1', runId: 'run-1', cwd: 'C:\\ws',
-    approvalGranted: true, approvalGrantedToolName: 'memory_manage',
+    approve: async () => true,
   } as never
   return { tool, invalidate, writeReplacement, relateReplacement, supersede, recordRevocation, ctx }
 }

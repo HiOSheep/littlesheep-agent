@@ -44,18 +44,15 @@ export const webSearchTool: AgentTool = {
     let query = parsed.query;
     if (sensitive.sensitive) {
       if (policy.sensitiveQueryPolicy === 'deny') return webFailure({ kind: 'web_sensitive_query_blocked' });
-      if (policy.sensitiveQueryPolicy === 'approve'
-        && !(ctx.approvalGranted === true && ctx.approvalGrantedToolName === 'web_search')
-        && ctx.permissionMode !== 'full') {
-        return webFailure({ kind: 'web_sensitive_query_blocked' });
-      }
       if (policy.sensitiveQueryPolicy === 'redact') {
         query = redactSensitiveWebQuery(query);
         if (!query || query.length > policy.maxQueryChars) return webFailure({ kind: 'web_sensitive_query_blocked' });
       }
     }
 
-    const authorization = await authorizeToolAccess('web_search', webSearchInputProjection(parsed), ctx);
+    const authorization = await authorizeToolAccess('web_search', webSearchInputProjection(parsed), ctx, {
+      forceApproval: sensitive.sensitive && policy.sensitiveQueryPolicy === 'approve',
+    });
     if (!authorization.allowed) return webFailure({ kind: 'web_sensitive_query_blocked' });
     const request: SearchRequest = {
       query,
