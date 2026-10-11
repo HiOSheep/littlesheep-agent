@@ -1,0 +1,137 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+import { resolve } from 'node:path';
+
+const typesModuleUrl = pathToFileURL(resolve('packages/types/dist/sandbox-capabilities.js')).href;
+const { assessSandboxReadiness, SANDBOX_CAPABILITY_SNAPSHOT_VERSION } = await import(typesModuleUrl);
+
+function allTrue(values) {
+  return values.every((value) => value === true);
+}
+
+function statusFor(passed, attempted) {
+  if (passed) return 'verified';
+  return attempted ? 'partial' : 'unavailable';
+}
+
+function explain(status, passText, missingText, unavailableText) {
+  if (status === 'verified') return passText;
+  return status === 'unavailable' ? unavailableText : missingText;
+}
+
+function parseJsonString(value) {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return undefined; }
+}
+
+async function readEvidenceJson(path) {
+  if (typeof path !== 'string') return undefined;
+  try { return JSON.parse(await readFile(path, 'utf8')); } catch { return undefined; }
+}
+
+export async function addSandboxAssessment(report) {
+  const evidence = report.evidence;
+  const apiAvailable = report.host?.processModelApiAvailable === true;
+  const filesystemChecks = [
+    evidence.filesystem.workspaceRead,
+    evidence.filesystem.workspaceWrite,
+    evidence.filesystem.outsideReadDenied,
+    evidence.filesystem.outsideWriteDenied,
+    evidence.filesystem.pathTraversalDenied,
+    evidence.filesystem.junctionDenied,
+    evidence.filesystem.symbolicLinkDenied,
+    evidence.filesystem.protectedSourceWriteDenied,
+    evidence.filesystem.profileGitConfigReadDenied,
+    evidence.filesystem.profilePowerShellHistoryReadDenied,
+    evidence.filesystem.directoryReplacementBlocked,
+  ];
+  const networkChecks = [
+    evidence.network.hostExternalBaseline === 'connected',
+    evidence.network.hostLoopbackBaseline === 'connected',
+    evidence.network.powershellExternalDenied,
+    evidence.network.nodeExternalDenied,
+    evidence.network.powershellLoopbackDenied,
+    evidence.network.nodeLoopbackDenied,
+  ];
+  const childChecks = [
+    evidence.childProcess.powershellLaunchedNode,
+    evidence.childProcess.nodeRestrictionsMatched,
+    evidence.childProcess.gitVersion,
+    evidence.childProcess.gitInit,
+    evidence.childProcess.gitStatus,
+  ];
+  const terminationChecks = [
+    evidence.termination.timeoutObserved,
+    evidence.termination.timeoutTreeTerminated,
+    evidence.termination.hostCancellationObserved,
+    evidence.termination.hostCancellationTreeTerminated,
+  ];
+
+  const checks = {
+    filesystem: allTrue(filesystemChecks),
+    network: allTrue(networkChecks),
+    childProcess: allTrue(childChecks),
+    processTree: allTrue(terminationChecks),
+  };
+  const payloadStarted = evidence.execution?.powershellPayloadStarted === true
+    || evidence.execution?.nodePayloadStarted === true;
+  const gitVersionProcessResult = parseJsonString(report.raw?.gitVersionProcessResult)
+    ?? await readEvidenceJson(report.raw?.gitVersionProcessResultPath);
+  const shellProcessResult = parseJsonString(report.raw?.shellProcessResult)
+    ?? await readEvidenceJson(report.raw?.shellProcessResultPath);
+  const gitProbeReachedPayload = gitVersionProcessResult?.exitCode === 0;
+  const descendantStarted = evidence.termination?.timeoutDescendantStarted === true
+    || evidence.termination?.cancellationDescendantStarted === true;
+  const rootExitCode = shellProcessResult?.rootExitCodeBeforeTermination || shellProcessResult?.exitCode;
+  const rootExitCodeHex = Number.isInteger(rootExitCode)
+    ? `0x${(rootExitCode >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
+    : null;
+  const payloadUnavailableReason = !apiAvailable
+    ? 'The experimental processmodel export is unavailable on this host.'
+    : rootExitCodeHex
+      ? `The API export is present, but the sandbox payload failed during process initialization (root status ${rootExitCodeHex}); no payload probes ran.`
+      : 'No sandbox payload reached its first probe marker.';
+  const terminationUnavailableReason = descendantStarted
+    ? 'A sandbox descendant was not observed to survive into the timeout or cancellation probe.'
+    : payloadStarted
+      ? 'No tracked Node descendant PID was observed, so process-tree cleanup could not be verified.'
+      : payloadUnavailableReason;
+  const statuses = {
+    'native-file-read-confinement': 'unavailable',
+    'native-file-write-confinement': 'unavailable',
+    'process-filesystem-confinement': statusFor(checks.filesystem, payloadStarted),
+    'process-network-confinement': statusFor(checks.network, payloadStarted),
+    'child-process-containment': statusFor(checks.childProcess, payloadStarted || gitProbeReachedPayload),
+    'process-tree-termination': statusFor(checks.processTree, descendantStarted),
+  };
+  const reasons = {
+    'native-file-read-confinement': 'This PoC launches shell processes; it does not assess native file tools.',
+    'native-file-write-confinement': 'This PoC launches shell processes; it does not assess native file tools.',
+    'process-filesystem-confinement': explain(statuses['process-filesystem-confinement'], 'Workspace, outside-root, junction, symlink, traversal, protected-source, and replacement probes passed.', 'At least one filesystem probe failed or could not run after payload startup.', payloadUnavailableReason),
+    'process-network-confinement': explain(statuses['process-network-confinement'], 'Host-reachable external and loopback TCP probes were denied to PowerShell and its Node child.', 'Network baseline or one of the sandbox network-denial probes was incomplete after payload startup.', payloadUnavailableReason),
+    'child-process-containment': explain(statuses['child-process-containment'], 'Node inherited the restrictions; Git version, init, and status completed inside the allowed scope.', 'A child-process restriction or Git compatibility probe failed after payload startup.', payloadUnavailableReason),
+    'process-tree-termination': explain(statuses['process-tree-termination'], 'Timeout and forced worker termination both ended the tracked Node child.', 'Timeout/cancellation or descendant cleanup was incomplete after a child started.', terminationUnavailableReason),
+  };
+
+  const snapshot = {
+    version: SANDBOX_CAPABILITY_SNAPSHOT_VERSION,
+    backendId: report.backendId,
+    scope: report.scope,
+    capabilities: Object.fromEntries(Object.entries(statuses).map(([id, status]) => [id, { status, reason: reasons[id] }])),
+  };
+  return {
+    ...report,
+    capabilitySnapshot: snapshot,
+    shellReadiness: assessSandboxReadiness('shell', report.scope, snapshot),
+    readinessIsAuthorization: false,
+  };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  const reportPath = process.argv[2];
+  if (!reportPath) throw new Error('Usage: evaluate-report.mjs REPORT.json');
+  const report = JSON.parse(await readFile(reportPath, 'utf8'));
+  const assessed = await addSandboxAssessment(report);
+  await writeFile(reportPath, `${JSON.stringify(assessed, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(assessed.shellReadiness)}\n`);
+}

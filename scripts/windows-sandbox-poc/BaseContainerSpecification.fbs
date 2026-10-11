@@ -1,0 +1,20 @@
+// Minimal field-order subset for Experimental_CreateProcessInSandbox.
+// The field order through fs_read_only follows Microsoft's published
+// SandboxSpec field documentation. Do not reorder fields or claim compatibility
+// with a different OS schema version without a real API probe.
+namespace LittleSheep.WindowsSandboxPoc;
+
+table SandboxSpec {
+  version:string (required);
+  app_container:bool = false;
+  integrity_level:uint32 = 0 (deprecated);
+  disallow_win32k_system_calls:bool = false;
+  ui_restrictions:uint64 = 0;
+  least_privilege:bool = false;
+  capabilities:string;
+  fs_read_write:[string];
+  fs_read_only:[string];
+}
+
+root_type SandboxSpec;
+file_identifier "SBOX";
