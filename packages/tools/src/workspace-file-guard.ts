@@ -1,7 +1,8 @@
 import type { BigIntStats } from 'node:fs'
 import { lstat, realpath, type FileHandle } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep, dirname } from 'node:path'
+import { isAbsolute, relative, resolve, sep, dirname, parse } from 'node:path'
 import type { ToolContext } from '@littlesheep/types'
+import { withPinnedWorkspaceDirectories, type PinnedDirectoryResult } from './workspace-directory-pins.js'
 
 // Automatic P2 writes are enabled only on the Windows path where the actual
 // filesystem operations are covered by the native integration tests.
@@ -17,6 +18,8 @@ export interface WorkspaceFileGuardInspection {
   revalidate(): Promise<boolean>
   /** Confirms an opened handle is the same file object captured by inspect. */
   verifyOpenedHandle(handle: FileHandle): Promise<boolean>
+  /** Hold native directory handles across all filesystem access, including cleanup. */
+  withPinnedDirectories<T>(operation: () => Promise<T>): Promise<PinnedDirectoryResult<T>>
 }
 
 interface PathIdentity {
@@ -31,8 +34,8 @@ interface PathIdentity {
 /**
  * Verify a native file operation against Main's immutable workspace root.
  * This is an application path guard, not OS process confinement. It rejects
- * reparse points and checks directory identities again immediately before the
- * operation so a detected replacement is never treated as an automatic write.
+ * reparse points, then holds native directory handles and rechecks identities
+ * before accessing files so ordinary directory replacement cannot redirect it.
  */
 export async function inspectWorkspaceFilePath(
   requestedPath: string,
@@ -46,6 +49,7 @@ export async function inspectWorkspaceFilePath(
       safe: true,
       revalidate: async () => true,
       verifyOpenedHandle: async () => true,
+      withPinnedDirectories: async (operation) => ({ ok: true, value: await operation() }),
     }
   }
   const rootValue = snapshot.workspaceRoot
@@ -56,6 +60,7 @@ export async function inspectWorkspaceFilePath(
       reason: 'Main did not provide a trusted workspace root',
       revalidate: async () => false,
       verifyOpenedHandle: async () => false,
+      withPinnedDirectories: async () => ({ ok: false, reason: 'trusted workspace root is unavailable' }),
     }
   }
 
@@ -77,6 +82,9 @@ export async function inspectWorkspaceFilePath(
         reason: 'the resolved path is outside the authorized workspace',
         revalidate: async () => false,
         verifyOpenedHandle: async () => false,
+        withPinnedDirectories: async (operation) => isAbsolute(requestedPath)
+          ? { ok: true, value: await operation() }
+          : { ok: false, reason: 'the path escaped the workspace' },
       }
     }
     if (hasUnsafeWindowsSegment(relativeTarget)) {
@@ -89,8 +97,10 @@ export async function inspectWorkspaceFilePath(
       : undefined
     if (protectedRoot) return failed(`the target is under a protected root: ${protectedRoot}`)
 
+    let isLeaseActive: (() => boolean) | undefined
     const revalidate = async () => {
       try {
+        if (isLeaseActive && !isLeaseActive()) return false
         if (!samePath(resolve(await realpath(root)), root)) return false
         const current = await capturePathIdentities(root, target)
         return identitiesEqual(targetIdentity, current)
@@ -116,6 +126,18 @@ export async function inspectWorkspaceFilePath(
       targetPath: target,
       revalidate,
       verifyOpenedHandle,
+      withPinnedDirectories: async (operation) => {
+        const directories: string[] = []
+        for (let cursor = dirname(target); ; cursor = dirname(cursor)) {
+          directories.unshift(cursor)
+          if (cursor === parse(cursor).root) break
+        }
+        return withPinnedWorkspaceDirectories(directories, revalidate, async (active) => {
+          isLeaseActive = active
+          try { return await operation() }
+          finally { isLeaseActive = undefined }
+        })
+      },
     }
   } catch (error) {
     return failed(error instanceof Error ? error.message : String(error))
@@ -128,6 +150,7 @@ export async function inspectWorkspaceFilePath(
       reason,
       revalidate: async () => false,
       verifyOpenedHandle: async () => false,
+      withPinnedDirectories: async () => ({ ok: false, reason }),
     }
   }
 }

@@ -53,64 +53,65 @@ export const editTool: AgentTool = {
       forceApproval: guard.attemptedWorkspace && !guard.safe,
     });
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
-    if (guard.safe && !await guard.revalidate()) {
-      return { ok: false, error: 'Workspace path changed before the edit; retry after the workspace is stable.' };
-    }
-    if (!existsSync(targetPath)) {
-      return { ok: false, error: `File not found: ${targetPath}` };
-    }
-    // The version check runs before the checkpoint: a stale target must not
-    // produce a rollback preimage for an edit that will be refused anyway.
-    const verified = await readVerifiedFile(ctx, targetPath, 'any');
-    if (!verified.ok) {
-      ctx.observation?.invalidate(targetPath);
-      return observationFailure(verified);
-    }
-    await ctx.versioning?.beforeFileMutation(targetPath);
-    const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+    const pinned = await guard.withPinnedDirectories(async () => {
       if (guard.safe && !await guard.revalidate()) {
-        return {
-          ok: false as const,
-          errorKind: 'observation_missing' as const,
-          error: 'Workspace directory identity changed before the edit; read the file again after the workspace is stable.',
-        };
+        return { ok: false, error: 'Workspace path changed before the edit; retry after the workspace is stable.' };
       }
-      // Re-verify and match against the same bytes inside the lock, so the
-      // unique match this edit relies on is still true when the write happens.
-      const locked = await readVerifiedFile(ctx, targetPath, 'any');
-      if (!locked.ok) return locked;
-      const content = locked.bytes.toString('utf8');
-      const occurrences = content.split(old_string).length - 1;
-      if (occurrences === 0) {
-        return { ok: false as const, error: 'old_string not found in file' };
+      if (!existsSync(targetPath)) {
+        return { ok: false, error: `File not found: ${targetPath}` };
       }
-      if (occurrences > 1) {
-        return { ok: false as const, error: `old_string is not unique (${occurrences} matches)` };
+      // The version check runs before the checkpoint: a stale target must not
+      // produce a rollback preimage for an edit that will be refused anyway.
+      const verified = await readVerifiedFile(ctx, targetPath, 'any');
+      if (!verified.ok) {
+        ctx.observation?.invalidate(targetPath);
+        return observationFailure(verified);
       }
-      const matchIndex = content.indexOf(old_string);
-      if (!observedRangeCoversMatch(locked.snapshot, content, matchIndex, old_string)) {
-        return {
-          ok: false as const,
-          errorKind: 'observation_missing' as const,
-          error: `${targetPath}: this edit is outside the lines that were read; read that range before editing it`,
-        };
-      }
-      const replaced = await replaceFileAtomically(
-        targetPath,
-        locked.bytes,
-        content.replace(old_string, new_string),
-        async () => !guard.safe || await guard.revalidate(),
-      );
-      if (!replaced.ok) {
-        return {
-          ok: false as const,
-          errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
-          error: replaced.reason === 'target_changed'
-            ? 'The file changed while the replacement was being prepared; read it again before retrying.'
-            : 'Workspace path changed before the replacement could be committed.',
-        };
-      }
-      return { ok: true as const };
+      await ctx.versioning?.beforeFileMutation(targetPath);
+      const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+        if (guard.safe && !await guard.revalidate()) {
+          return {
+            ok: false as const,
+            errorKind: 'observation_missing' as const,
+            error: 'Workspace directory identity changed before the edit; read the file again after the workspace is stable.',
+          };
+        }
+        // Re-verify and match against the same bytes inside the lock, so the
+        // unique match this edit relies on is still true when the write happens.
+        const locked = await readVerifiedFile(ctx, targetPath, 'any');
+        if (!locked.ok) return locked;
+        const content = locked.bytes.toString('utf8');
+        const occurrences = content.split(old_string).length - 1;
+        if (occurrences === 0) {
+          return { ok: false as const, error: 'old_string not found in file' };
+        }
+        if (occurrences > 1) {
+          return { ok: false as const, error: `old_string is not unique (${occurrences} matches)` };
+        }
+        const matchIndex = content.indexOf(old_string);
+        if (!observedRangeCoversMatch(locked.snapshot, content, matchIndex, old_string)) {
+          return {
+            ok: false as const,
+            errorKind: 'observation_missing' as const,
+            error: `${targetPath}: this edit is outside the lines that were read; read that range before editing it`,
+          };
+        }
+        const replaced = await replaceFileAtomically(
+          targetPath,
+          locked.bytes,
+          content.replace(old_string, new_string),
+          async () => !guard.safe || await guard.revalidate(),
+        );
+        if (!replaced.ok) {
+          return {
+            ok: false as const,
+            errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
+            error: replaced.reason === 'target_changed'
+              ? 'The file changed while the replacement was being prepared; read it again before retrying.'
+              : 'Workspace path changed before the replacement could be committed.',
+          };
+        }
+        return { ok: true as const };
     });
     ctx.observation?.invalidate(targetPath);
     if (!committed.ok) {
@@ -120,5 +121,10 @@ export const editTool: AgentTool = {
     }
     ctx.log?.('info', `edited ${targetPath}`);
     return { output: `Edited ${targetPath}: replaced ${old_string.length} chars` };
+    });
+    return pinned.ok ? pinned.value : {
+      ok: false, error: `Workspace directory protection unavailable: ${pinned.reason}`,
+      meta: { errorKind: 'permission_safety_unavailable' },
+    };
   }),
 };

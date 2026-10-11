@@ -77,79 +77,85 @@ export const writeTool: AgentTool = {
       forceApproval: guard.attemptedWorkspace && !guard.safe,
     });
     if (!authorization.allowed) return { ok: false, error: 'Approval denied' };
-    if (guard.safe && !await guard.revalidate()) {
-      return { ok: false, error: 'Workspace path changed before the write; retry after the workspace is stable.' };
-    }
-    const targetExists = existsSync(targetPath);
-    if (targetExists) {
-      // Overwriting is only allowed for a file this session actually read in
-      // full, and the check happens before the checkpoint so a stale target
-      // never produces a rollback preimage for a write that will not happen.
-      const verified = await readVerifiedFile(ctx, targetPath, 'full');
-      if (!verified.ok) {
-        ctx.observation?.invalidate(targetPath);
-        return observationFailure(verified);
+    const pinned = await guard.withPinnedDirectories(async () => {
+      if (guard.safe && !await guard.revalidate()) {
+        return { ok: false, error: 'Workspace path changed before the write; retry after the workspace is stable.' };
       }
+      const targetExists = existsSync(targetPath);
+      if (targetExists) {
+        // Overwriting is only allowed for a file this session actually read in
+        // full, and the check happens before the checkpoint so a stale target
+        // never produces a rollback preimage for a write that will not happen.
+        const verified = await readVerifiedFile(ctx, targetPath, 'full');
+        if (!verified.ok) {
+          ctx.observation?.invalidate(targetPath);
+          return observationFailure(verified);
+        }
+        await ctx.versioning?.beforeFileMutation(targetPath);
+        const committed = await ctx.observation!.withPathLock(targetPath, async () => {
+          if (guard.safe && !await guard.revalidate()) {
+            return {
+              ok: false as const,
+              errorKind: 'observation_missing' as const,
+              error: 'Workspace directory identity changed before the write; read the file again after the workspace is stable.',
+            };
+          }
+          // Re-verify inside the lock: another session of this host may have
+          // written the same path while this call was waiting for approval.
+          const locked = await readVerifiedFile(ctx, targetPath, 'full');
+          if (!locked.ok) return locked;
+          const replaced = await replaceFileAtomically(
+            targetPath,
+            locked.bytes,
+            content,
+            async () => !guard.safe || await guard.revalidate(),
+          );
+          if (!replaced.ok) {
+            return {
+              ok: false as const,
+              errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
+              error: replaced.reason === 'target_changed'
+                ? 'The file changed while the replacement was being prepared; read it again before retrying.'
+                : 'Workspace path changed before the replacement could be committed.',
+            };
+          }
+          return { ok: true as const };
+        });
+        ctx.observation?.invalidate(targetPath);
+        if (!committed.ok) return observationFailure(committed);
+        ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
+        return { output: `Wrote ${content.length} chars to ${targetPath}` };
+      }
+      // A new file needs no observation: there is no version to overwrite. The
+      // exclusive create flag is what makes it safe, so a racing creator loses
+      // instead of being silently replaced.
       await ctx.versioning?.beforeFileMutation(targetPath);
-      const committed = await ctx.observation!.withPathLock(targetPath, async () => {
-        if (guard.safe && !await guard.revalidate()) {
-          return {
-            ok: false as const,
-            errorKind: 'observation_missing' as const,
-            error: 'Workspace directory identity changed before the write; read the file again after the workspace is stable.',
-          };
+      if (guard.safe && !await guard.revalidate()) {
+        return { ok: false, error: 'Workspace directory identity changed before creating the file.' };
+      }
+      if (!guard.attemptedWorkspace || !guard.safe) await mkdir(dirname(targetPath), { recursive: true });
+      const created = await createFileAtomically(
+        targetPath,
+        content,
+        async () => !guard.safe || await guard.revalidate(),
+      );
+      if (!created.ok) {
+        if (created.reason === 'target_exists' || (created.reason === 'path_changed' && existsSync(targetPath))) {
+          return observationFailure({
+            ok: false,
+            errorKind: 'target_exists',
+            error: `${targetPath} appeared while this write was being prepared; read it before overwriting it`,
+          });
         }
-        // Re-verify inside the lock: another session of this host may have
-        // written the same path while this call was waiting for approval.
-        const locked = await readVerifiedFile(ctx, targetPath, 'full');
-        if (!locked.ok) return locked;
-        const replaced = await replaceFileAtomically(
-          targetPath,
-          locked.bytes,
-          content,
-          async () => !guard.safe || await guard.revalidate(),
-        );
-        if (!replaced.ok) {
-          return {
-            ok: false as const,
-            errorKind: replaced.reason === 'target_changed' ? 'observation_stale' as const : 'observation_missing' as const,
-            error: replaced.reason === 'target_changed'
-              ? 'The file changed while the replacement was being prepared; read it again before retrying.'
-              : 'Workspace path changed before the replacement could be committed.',
-          };
-        }
-        return { ok: true as const };
-      });
-      ctx.observation?.invalidate(targetPath);
-      if (!committed.ok) return observationFailure(committed);
+        return { ok: false, error: 'Workspace path changed before creating the file.' };
+      }
       ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
       return { output: `Wrote ${content.length} chars to ${targetPath}` };
-    }
-    // A new file needs no observation: there is no version to overwrite. The
-    // exclusive create flag is what makes it safe, so a racing creator loses
-    // instead of being silently replaced.
-    await ctx.versioning?.beforeFileMutation(targetPath);
-    if (guard.safe && !await guard.revalidate()) {
-      return { ok: false, error: 'Workspace directory identity changed before creating the file.' };
-    }
-    if (!guard.attemptedWorkspace || !guard.safe) await mkdir(dirname(targetPath), { recursive: true });
-    const created = await createFileAtomically(
-      targetPath,
-      content,
-      async () => !guard.safe || await guard.revalidate(),
-    );
-    if (!created.ok) {
-      if (created.reason === 'target_exists' || (created.reason === 'path_changed' && existsSync(targetPath))) {
-        return observationFailure({
-          ok: false,
-          errorKind: 'target_exists',
-          error: `${targetPath} appeared while this write was being prepared; read it before overwriting it`,
-        });
-      }
-      return { ok: false, error: 'Workspace path changed before creating the file.' };
-    }
-    ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
-    return { output: `Wrote ${content.length} chars to ${targetPath}` };
+    });
+    return pinned.ok ? pinned.value : {
+      ok: false, error: `Workspace directory protection unavailable: ${pinned.reason}`,
+      meta: { errorKind: 'permission_safety_unavailable' },
+    };
   }),
 };
 

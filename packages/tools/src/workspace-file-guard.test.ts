@@ -247,6 +247,7 @@ describe('Permission V2 native file tools on the real filesystem', () => {
     }])).get(0)!
     expect(result.ok).toBe(false)
     expect(await readFile(outsideFile, 'utf8')).toBe('outside-original')
-    await expect(readFile(join(retiredDir, 'sentinel.txt'), 'utf8')).resolves.toBe('workspace-original')
+    await expect(readFile(target, 'utf8')).resolves.toBe('workspace-original')
+    await expect(readFile(join(retiredDir, 'sentinel.txt'), 'utf8')).rejects.toThrow()
   })
 })

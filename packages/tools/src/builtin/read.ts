@@ -37,72 +37,78 @@ export const readTool: AgentTool = {
     if (!authorization.allowed) {
       return { ok: false, error: 'Approval denied: reading this path requires user approval.' };
     }
-    if (guard.safe && !await guard.revalidate()) {
-      return { ok: false, error: 'Workspace path changed before it could be read; retry after the workspace is stable.' };
-    }
-    // Read through one handle so the bytes, the size and the mtime all describe
-    // the same file version. A read that fails simply produces no observation.
-    let buffer: Buffer;
-    let sizeBytes: number;
-    let mtimeMs: number;
-    try {
-      const handle = await open(targetPath, 'r');
+    const pinned = await guard.withPinnedDirectories(async () => {
+      if (guard.safe && !await guard.revalidate()) {
+        return { ok: false, error: 'Workspace path changed before it could be read; retry after the workspace is stable.' };
+      }
+      // Read through one handle so the bytes, the size and the mtime all describe
+      // the same file version. A read that fails simply produces no observation.
+      let buffer: Buffer;
+      let sizeBytes: number;
+      let mtimeMs: number;
       try {
-        if (guard.safe && (!await guard.revalidate() || !await guard.verifyOpenedHandle(handle))) {
-          return { ok: false, error: 'Workspace path changed while it was being opened; retry after the workspace is stable.' };
+        const handle = await open(targetPath, 'r');
+        try {
+          if (guard.safe && (!await guard.revalidate() || !await guard.verifyOpenedHandle(handle))) {
+            return { ok: false, error: 'Workspace path changed while it was being opened; retry after the workspace is stable.' };
+          }
+          const stats = await handle.stat();
+          if (!stats.isFile()) {
+            return { ok: false, error: `Not a regular file: ${targetPath}` };
+          }
+          sizeBytes = stats.size;
+          mtimeMs = stats.mtimeMs;
+          buffer = await handle.readFile();
+        } finally {
+          await handle.close();
         }
-        const stats = await handle.stat();
-        if (!stats.isFile()) {
-          return { ok: false, error: `Not a regular file: ${targetPath}` };
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return { ok: false, error: `File not found: ${targetPath}` };
         }
-        sizeBytes = stats.size;
-        mtimeMs = stats.mtimeMs;
-        buffer = await handle.readFile();
-      } finally {
-        await handle.close();
+        throw error;
       }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return { ok: false, error: `File not found: ${targetPath}` };
+      // Binary files: return hex preview directly (offset/limit don't apply).
+      // A preview is not "having read the file", so it registers no observation.
+      if (isBinary(buffer)) {
+        const preview = binaryPreview(buffer);
+        ctx.log?.('info', `read binary ${targetPath} (${buffer.length} bytes)`);
+        return { output: preview, sanitized: true };
       }
-      throw error;
-    }
-    // Binary files: return hex preview directly (offset/limit don't apply).
-    // A preview is not "having read the file", so it registers no observation.
-    if (isBinary(buffer)) {
-      const preview = binaryPreview(buffer);
-      ctx.log?.('info', `read binary ${targetPath} (${buffer.length} bytes)`);
-      return { output: preview, sanitized: true };
-    }
-    const text = buffer.toString('utf8');
-    let lines = text.split('\n');
-    if (offset) {
-      lines = lines.slice(offset - 1);
-    }
-    if (limit) {
-      lines = lines.slice(0, limit);
-    }
-    const visibleLines = lines.join('\n');
-    const { output, sanitized, truncated } = sanitizeOutput(visibleLines, DEFAULT_SANITIZE);
-    // Only an unmodified delivery counts as an observation: truncation or
-    // redaction means the model did not see this file's content as it is, so a
-    // later overwrite must be refused rather than checked against a guess.
-    if (!sanitized && !truncated && lines.length > 0) {
-      const start = offset ?? 1;
-      const coverage = offset === undefined && limit === undefined ? 'full' : 'partial';
-      ctx.observation?.recordRead({
-        absPath: targetPath,
-        snapshot: observationSnapshot({
-          version: hashFileBytes(buffer),
-          sizeBytes,
-          mtimeMs,
-          coverage,
-          ...(coverage === 'partial' ? { visibleLineRange: { start, end: start + lines.length - 1 } } : {}),
-          runId: ctx.runId,
-        }),
-      });
-    }
-    ctx.log?.('info', `read ${targetPath} (${visibleLines.length} chars)`);
-    return { output, sanitized };
+      const text = buffer.toString('utf8');
+      let lines = text.split('\n');
+      if (offset) {
+        lines = lines.slice(offset - 1);
+      }
+      if (limit) {
+        lines = lines.slice(0, limit);
+      }
+      const visibleLines = lines.join('\n');
+      const { output, sanitized, truncated } = sanitizeOutput(visibleLines, DEFAULT_SANITIZE);
+      // Only an unmodified delivery counts as an observation: truncation or
+      // redaction means the model did not see this file's content as it is, so a
+      // later overwrite must be refused rather than checked against a guess.
+      if (!sanitized && !truncated && lines.length > 0) {
+        const start = offset ?? 1;
+        const coverage = offset === undefined && limit === undefined ? 'full' : 'partial';
+        ctx.observation?.recordRead({
+          absPath: targetPath,
+          snapshot: observationSnapshot({
+            version: hashFileBytes(buffer),
+            sizeBytes,
+            mtimeMs,
+            coverage,
+            ...(coverage === 'partial' ? { visibleLineRange: { start, end: start + lines.length - 1 } } : {}),
+            runId: ctx.runId,
+          }),
+        });
+      }
+      ctx.log?.('info', `read ${targetPath} (${visibleLines.length} chars)`);
+      return { output, sanitized };
+    });
+    return pinned.ok ? pinned.value : {
+      ok: false, error: `Workspace directory protection unavailable: ${pinned.reason}`,
+      meta: { errorKind: 'permission_safety_unavailable' },
+    };
   }),
 };
