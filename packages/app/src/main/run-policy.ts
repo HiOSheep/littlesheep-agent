@@ -149,6 +149,7 @@ export function createPermissionApprover(
         ? 'deny'
         : 'approval'
     }
+    if (decision === 'approval' && boundaryOptions.permissionPolicyV2?.approvalPolicy === 'deny') return false
     if (decision === 'deny' || decision === 'unavailable') return false
     if (decision === 'allow') return true
     if (!approvalBroker) return false

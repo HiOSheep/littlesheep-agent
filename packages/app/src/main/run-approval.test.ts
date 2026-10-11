@@ -3,6 +3,20 @@ import { resolve } from 'node:path'
 import { createPermissionApprover } from './run-policy.js'
 
 describe('Main approval recheck', () => {
+  it.each(['read-only', 'workspace-write', 'full-access'] as const)('does not consult the broker for mandatory approval when approval policy is deny in %s', async (preset) => {
+    const broker = vi.fn(async () => true)
+    const approve = createPermissionApprover(preset, broker, {
+      permissionPolicyV2: {
+        version: 2, preset, approvalPolicy: 'deny', workspaceRoot: process.cwd(), protectedRoots: [],
+        constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' }, fullAccessConfirmed: true,
+      },
+    })
+    await expect(approve('plugin_custom_action', { payload: 'opaque effect' }, {
+      requiresExplicitUserApproval: true,
+    })).resolves.toBe(false)
+    expect(broker).not.toHaveBeenCalled()
+  })
+
   it.each(['full', 'workspace-write'] as const)('preserves service-required approval for an otherwise allowed native read in %s', async (selection) => {
     const broker = vi.fn(async () => false)
     const approve = createPermissionApprover(selection, broker, { workspaceRoot: process.cwd() })
