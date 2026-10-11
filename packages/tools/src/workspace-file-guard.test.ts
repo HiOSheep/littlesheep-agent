@@ -250,4 +250,21 @@ describe('Permission V2 native file tools on the real filesystem', () => {
     await expect(readFile(target, 'utf8')).resolves.toBe('workspace-original')
     await expect(readFile(join(retiredDir, 'sentinel.txt'), 'utf8')).rejects.toThrow()
   })
+
+  it.skipIf(!WORKSPACE_FILE_GUARD_AVAILABLE)('does not commit a native workspace write after cancellation during checkpoint preparation', async () => {
+    const workspace = await root('workspace-cancelled')
+    const target = join(workspace, 'cancelled.txt')
+    const controller = new AbortController()
+    const ctx = context(workspace, { beforeFileMutation: async () => controller.abort() })
+    ctx.signal = controller.signal
+    const service = new ToolExecutionService({
+      registrations: [{ tool: writeTool, source: 'builtin' }],
+      toolContext: ctx,
+    })
+    const result = (await service.executeBatch([{
+      callId: 'cancelled-create', name: 'write', input: { file_path: target, content: 'must not commit' },
+    }])).get(0)!
+    expect(result.ok).toBe(false)
+    await expect(readFile(target, 'utf8')).rejects.toThrow()
+  })
 })

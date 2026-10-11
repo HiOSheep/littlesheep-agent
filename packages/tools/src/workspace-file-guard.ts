@@ -100,6 +100,7 @@ export async function inspectWorkspaceFilePath(
     let isLeaseActive: (() => boolean) | undefined
     const revalidate = async () => {
       try {
+        if (context.signal?.aborted) return false
         if (isLeaseActive && !isLeaseActive()) return false
         if (!samePath(resolve(await realpath(root)), root)) return false
         const current = await capturePathIdentities(root, target)
