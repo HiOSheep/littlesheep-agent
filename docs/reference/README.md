@@ -8,7 +8,7 @@
 - [插件开发说明](plugin-development.md)：插件贡献、权限与生命周期。
 - [自定义模型供应商](custom-model-providers.md)：Provider 配置和能力语义。
 - [跨平台沙箱能力契约](cross-platform-sandbox-contract.md)：P3-0 能力证据、边界所有权和失败行为。
-- [Windows Shell Sandbox PoC](windows-shell-sandbox-poc.md)：P3-A 实验实现、Windows 实机证据和未完成的隔离要求。
+- [Windows Shell Sandbox PoC](windows-shell-sandbox-poc.md)：P3-A/P3-A2 实验、Windows 实机证据、后端路线评估和未完成的隔离要求。
 
 ## 安全与发布
 

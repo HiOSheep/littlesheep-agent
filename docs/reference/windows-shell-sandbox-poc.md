@@ -1,77 +1,73 @@
-# Windows Shell Sandbox PoC（P3-A）
+# Windows Shell Sandbox PoC（P3-A / P3-A2）
 
 ## 结论
 
-这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或任何自动审批路径。当前 AppContainer 配置**未通过文件系统隔离门槛**。Shell 继续沿用现有审批策略。
+这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或自动审批路径。P3-A 证明了部分 AppContainer 运行可行；P3-A2 同时发现一个真实的工作区外硬链接读写越界。Windows Shell 隔离未通过安全验收，不进入 P3-B。
 
-本次使用任务开始时最新的 `main` 基线：`55d9e0a80e37542933fdee0cab88c74ceabcead7`。实测主机为 Windows 11 Home China、Build 26200、x64。最终窄授权报告生成于 `2026-10-11T17:33:28Z`，临时目录为 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-8b813cb181eb4fa5b3acbad29a0885d8`。首次包含卷根授权的报告仍保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-fea0b8613f4743c0beac23ad1fec08ba`。这些都是本机实验记录，不是入库的测试产物。
+实验基于 `main` 的 P3-0 提交 `55d9e0a80e37542933fdee0cab88c74ceabcead7`。最终 P3-A2 实测主机为 Windows 11 Home China、Build 26200、x64；PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1`。报告生成于 `2026-10-12T03:05:33Z`，runId 为 `5989b2e9886649c099d8bdba1542500b`，本机完整报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-3ae33f971b0d4d2faee5ea8407ead84f`。这是本机实验记录，不是入库测试产物。
 
-报告通过 `SandboxCapabilitySnapshot` 和 `assessSandboxReadiness` 表达结果，Shell readiness 为 `ready: false`，并且 `readinessIsAuthorization` 明确为 `false`。
+报告通过 `SandboxCapabilitySnapshot` 和 `assessSandboxReadiness` 表达结果。Shell readiness 为 `ready: false`，原因是文件系统、网络和子进程能力未验证；`readinessIsAuthorization` 为 `false`。没有用放宽 readiness 门槛来把实验结果转成执行授权。
 
-## Windows 技术方案比较
+## P3-A 首轮记录（保留）
 
-| 机制 | 可以提供的能力 | 单独使用的限制与本次选择 |
-| --- | --- | --- |
-| Windows Sandbox | 基于 Hypervisor 的一次性虚拟机，拥有隔离的内核。 | 是更强 VM 边界的候选方案，但 Microsoft 不支持 Windows Home；本机没有 `WindowsSandbox.exe`，因此无法实测。默认启用网络，映射目录也必须谨慎配置。[版本要求](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/) · [配置](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file) |
-| AppContainer / `Experimental_CreateProcessInSandbox` | 创建低权限 AppContainer，可传入显式文件系统授权和网络能力。 | 由于本机 Windows 11 存在该 export，选择它进行真实进程探测。API 与 schema 仍是实验性的，需要动态查找 export，且没有公开 SDK 头文件。第一轮错误地把 `C:\` 和 `D:\` 卷根加入只读授权；Microsoft 文档说明只读路径会递归授权，因此这直接暴露了整卷内的文件。移除卷根后，本次可测的外部读取、穿越和 junction 探测均被拒绝；但 symlink 未能创建，不能把文件系统能力提升为 `verified`。[API](https://learn.microsoft.com/en-us/windows/win32/secauthz/createprocessinsandbox) · [AppContainer 隔离](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation) |
-| Restricted Token | 可禁用 SID、删除特权，并在访问检查中添加 restricting SID。 | 是有用的最小权限组成部分，但它本身不定义文件路径白名单，也不限制网络出口；仍需正确设计 ACL 和独立网络控制。本 PoC 未测试此方案。[CreateRestrictedToken](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken) |
-| Windows ACL / DACL | 对文件、目录等对象实施逐对象允许/拒绝规则。 | 能表达资源授权，但独立 ACL 方案需安全覆盖全部运行时依赖、子进程、继承权限、reparse point 和并发路径替换。本 PoC 使用 AppContainer API 的路径授权，没有改写宿主 ACL。[访问控制列表](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control-lists) |
-| Job Object | 将一组进程作为整体管理，施加部分资源/进程限制并终止关联进程；关闭句柄时的 kill-on-close 可作为清理后备。 | 本 PoC 只用它管理进程生命周期。Job Object 不提供文件或网络隔离。[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) |
+P3-A 的首轮卷根授权报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-fea0b8613f4743c0beac23ad1fec08ba`；移除卷根后的报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-8b813cb181eb4fa5b3acbad29a0885d8`。首轮把 `C:\` 和 `D:\` 加入只读授权后，沙箱能读取相邻目录哨兵、当前用户 `.gitconfig` 和 PowerShell 历史，也能经 `..` 与 junction 读取工作区外文件。该授权随后已从 PoC 中移除，不能作为候选配置。
 
-## Windows 实测结果
+P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、junction 和受保护源码写入表现符合预期，但文件 symlink 因当时的宿主创建方式失败，未获得测试证据。其外网测试使用 `1.1.1.1:443`，宿主同样无法建立连接，所以外网隔离当时不可判定。P3-A 还记录 `disallow_win32k_system_calls` 会阻断 CLI 初始化，因此 PoC 未启用该缓解选项；这只是兼容性观察，不是安全建议。P3-A2 重新创建并测试了 symlink、使用宿主成功的网络目标，并新增硬链接与目录替换探针；它发现的硬链接越界没有被旧报告覆盖。
+
+## P3-A2 实测发现
 
 | 探测项 | 结果 | 证据与限制 |
 | --- | --- | --- |
-| 工作区读取和写入 | 通过 | PowerShell 与 Node 能读取工作区文件并在生成的工作区内创建文件。 |
-| 首轮卷根只读授权 | **失败，已移除** | 首轮把运行时所在的 `C:\`、`D:\` 卷根作为 `fs_read_only` 路径；当时 AppContainer 能读取相邻目录哨兵、当前用户 `.gitconfig` 和 PowerShell 历史，也能经 `..` 与 junction 读取工作区外文件。探测仅记录读是否成功，不把文件内容复制到报告。 |
-| 窄授权后的工作区外与敏感文件读取 | 本次探测拒绝 | 移除卷根授权、只保留 Node/Git/PowerShell/Windows System32 等精确运行时目录后，PowerShell 与 Node 均不能读取相邻目录哨兵、当前用户 `.gitconfig` 或 PowerShell 历史。 |
-| 窄授权后的工作区外写入 | 通过 | 向配置的可写工作区外写入被拒绝。 |
-| 窄授权后的路径穿越 | 本次探测拒绝 | 使用 `..` 的路径未能读取工作区外哨兵。 |
-| 窄授权后的目录 junction | 本次探测拒绝 | 实际创建 junction 指向工作区外目录，但不能通过它读取目标文件。 |
-| 文件符号链接 | 不可用 | 因宿主权限不足，创建 symlink fixture 失败（`mklink file symlink exit=1`），未能验证这种链接。 |
-| 受保护 LS 源码写入 | 通过 | 进程无法以写入方式打开 `packages/tools/src/builtin/exec.ts`。这只覆盖本机的这个目标，不证明所有受保护根和替换手法都安全。 |
-| 工作区目录替换 | 本次竞态测试通过 | helper 持有一个不共享删除权限的目录句柄时，重命名/替换被阻止。这只证明该技术在测试时段的效果，不涵盖所有 reparse point 或命名空间竞态。 |
-| 网络：loopback | 对本次目标通过 | 宿主 loopback listener 的控制探测成功；沙箱内 PowerShell 与 Node 的 TCP 连接被拒绝。 |
-| 网络：外网 | 无法判定 | 沙箱 PowerShell 和 Node 连接 `1.1.1.1:443` 失败，但宿主对同一地址的基线也超时。宿主没能证明目标可达，因此不能据此确认外网出口被隔离。 |
-| PowerShell → Node 子进程 | 部分通过 | PowerShell 成功启动 Node；窄授权下 Node 与 PowerShell 对工作区外读取、写入、穿越和 loopback 的探测结果一致。整体能力仍为 `partial`，因为 Git 基础仓库命令失败。 |
-| Git | **部分兼容** | `git --version` 成功。窄授权下，分别把 Git 安装根目录和工作区设为当前目录执行 `git init` / `git status`，都以 128 退出，并报告 `unable to get current working directory: Permission denied`。首轮卷根授权时这两个命令通过，但该授权范围不安全，不能作为可接受兼容性方案。 |
-| 超时和宿主取消 | 本次进程树测试通过 | 两种场景都先启动了 Node 后代进程。Job Object 超时处理和 worker 取消均已完成；之后再次检查记录的子进程 PID，均已不存在。此结果不证明断电、内核故障、恶意逃离机制或所有外部 Job 嵌套场景的清理。 |
-| 无效沙箱规范 | fail-closed 测试通过 | 无效规范以退出码 70 拒绝执行，payload 未启动，且记录 `noHostFallback`。这只是 PoC 测试，不能代替生产回退路径审计。 |
+| 工作区普通读取和写入 | 通过 | PowerShell 和 Node 均能在授权工作区读取及创建文件。 |
+| 越界读取/写入、`..` 穿越 | 本次拒绝 | PowerShell 和 Node 对工作区外哨兵的读取、写入与路径穿越均被拒绝。 |
+| 静态 junction 与文件 symlink | 本次拒绝 | 两种链接都真实创建成功，PowerShell 和 Node 通过链接读取外部哨兵均被拒绝。Symlink 使用 `CreateSymbolicLinkW` 的 unprivileged flag；未更改主机设置。 |
+| 硬链接 | **隔离失败，已复现越界读写** | 宿主在授权工作区内为工作区外哨兵创建同卷硬链接。AppContainer 下 PowerShell 和 Node 都能通过该别名读取并覆盖外部文件；报告中 `hardLinkReadDenied=false`、`hardLinkWriteDenied=false`、`hardLinkTargetUnchanged=false`。测试确认外部哨兵实际被改写。这是阻断 Shell 隔离验收的真实安全风险。 |
+| 工作区子目录替换竞态 | 本次目标未越界 | 沙箱 reader 启动后，宿主将其工作区内目标目录移走并放入指向外部目录的 junction。替换成功，但 reader 未读到外部哨兵，外部目标未变化。该单一竞态用例不能覆盖所有 reparse point、文件系统或时序。 |
+| 工作区根目录替换 | 本次被阻止 | launcher 固定工作区目录句柄后，宿主无法重命名该根目录。它与“子目录被替换后仍拒绝访问”的测试是不同场景。 |
+| 受保护 LS 源码 | 本次写打开被拒绝 | 只覆盖本机 `packages/tools/src/builtin/exec.ts` 目标，不证明全部受保护根和文件替换方式。 |
+| 网络：宿主正向基线 | DNS、域名 IPv4、loopback、系统代理均可达 | 宿主可以解析并直连 `www.microsoft.com:443` 和所解析的 IPv4；PowerShell 与 Node 也都能通过当前系统代理完成 HTTPS HEAD。代理地址不写入报告。 |
+| 网络：沙箱负向结果 | IPv4、DNS、loopback、系统代理连接被拒 | PowerShell 与 Node 的域名/IPv4 直连、DNS、loopback 和已配置系统代理 HTTPS 均失败，失败类型为访问拒绝或解析失败。它们是本机和本次路由上的证据。 |
+| 网络：IPv6 | **不可判定** | 宿主直连固定 IPv6 目标 `[2606:4700:4700::1111]:443` 返回 `NetworkUnreachable`，没有宿主正向基线。沙箱 PowerShell 和 Node 都返回网络不可达类结果；这不能证明是隔离策略拒绝，任意 IPv6 出口仍未验证。 |
+| PowerShell → Node 子进程 | 部分通过 | PowerShell 成功启动 Node；在已测的网络与常规路径探针上，Node 表现为继承同类约束。但硬链接测试失败，且 Git 仓库命令失败，不能得出通用子进程约束已验证。 |
+| Git 窄授权兼容 | **未通过** | `git --version` 成功，宿主预置的有效仓库 fixture 也存在。AppContainer 下 `git init` 和 `git status` 仍以 128 退出。Git Trace2 记录 `unable to get current working directory: Permission denied`、`Unable to read current working directory: Permission denied`；其他 CWD 组合还出现目标目录 `mkdir` 被拒。仅向只含 workspace 的 `workspace-scope` 父目录增加只读授权，未修复问题。 |
+| Git CWD 诊断 | 有线索，根因未完全证明 | 独立 Node 探针的 `process.cwd()` 能返回授权 workspace；但 `realpathSync` 在 workspace 和已授权父目录也返回 `EPERM`，更上层目录的元数据/枚举被拒。Git 上游源码中的 `strbuf_getcwd` 调用 `getcwd`，与本机 Trace2 错误相符；这只是源码路径说明，不是对本机 Git 2.50.1 的内核调用追踪。[Git `strbuf_getcwd`](https://github.com/git/git/blob/master/strbuf.c) 没有 Procmon/内核访问跟踪，不能断言某一个具体拒绝的系统调用就是唯一根因。没有授权 `%TEMP%`、用户目录或卷根来追求 Git 通过。 |
+| 超时和宿主取消 | 本次进程树用例通过 | 两种测试均观察到 Node 后代启动；超时终止和强制终止 launcher worker 后，记录的进程树已清理。快照保留 `process-tree-termination: verified`，但证据仅覆盖本机这两个具体场景，不代表崩溃、断电、Job 嵌套或所有逃逸方式。 |
+| 初始化失败 | fail-closed 用例通过 | 无效沙箱规范被拒，payload 未启动；没有静默回退到宿主 PowerShell。这是 PoC 局部行为，不替代生产路径审计。 |
 
-报告不包含敏感宿主文件内容。完整本机 JSON 报告保留在上面的临时 fixture 目录。
+本轮曾因独立 CWD 探针脚本未运行而拿到无效诊断，也发现目录竞态脚本的生成文本可能失效。现在两个探针在启动前做语法校验；以上结论来自之后生成的真实 Windows 报告。
 
 ## 能力快照
 
-| 能力 | 状态 | 原因 |
+| 能力 | 状态 | 本轮理由 |
 | --- | --- | --- |
-| `native-file-read-confinement` | `unavailable` | 本 PoC 测试 Shell 进程，不测试原生 LS 文件工具。 |
-| `native-file-write-confinement` | `unavailable` | 本 PoC 测试 Shell 进程，不测试原生 LS 文件工具。 |
-| `process-filesystem-confinement` | `partial` | 窄授权下本次工作区外读取、写入、路径穿越、junction、敏感文件和受保护源码写入探测均符合预期；symlink 无法创建，未测试，因此整体仍是 `partial`。首轮卷根授权泄漏已从实现中移除。 |
-| `process-network-confinement` | `partial` | loopback 被拦截，但宿主外网正向基线不可用。 |
-| `child-process-containment` | `partial` | Node 继承了本次验证的 AppContainer 文件和网络限制，但 Git 仓库命令因当前工作目录访问错误未通过。 |
-| `process-tree-termination` | `verified`（仅本次超时/取消用例） | 两个测试用例中的跟踪子进程清理后均不存在。结论只适用于本次主机、系统版本和测试场景。 |
+| `native-file-read-confinement` | `unavailable` | 本 PoC 测试进程 Shell，不测试 LS 原生文件工具。 |
+| `native-file-write-confinement` | `unavailable` | 本 PoC 测试进程 Shell，不测试 LS 原生文件工具。 |
+| `process-filesystem-confinement` | `partial` | 普通路径、静态链接和本次目录替换探针表现符合预期，但硬链接可越界读写。 |
+| `process-network-confinement` | `partial` | 已有 IPv4/DNS/loopback/代理正反向证据；缺少宿主可达的 IPv6 正向基线。 |
+| `child-process-containment` | `partial` | Node 在受测条件下继承约束；Git 的 CWD 和仓库命令仍失败，且文件系统约束本身存在硬链接越界。 |
+| `process-tree-termination` | `verified`（限具体测试场景） | 仅本机本轮超时和 launcher worker 强制终止测试中的已跟踪 Node 后代。 |
 
-Shell readiness 因文件系统隔离、网络隔离和子进程约束未验证而返回 `capability_unverified`。readiness 结果不是权限，也不会授予自动执行。
+能力快照只总结本机实验探针。它不是权限来源，也不启用 Shell 自动审批。
 
-## PowerShell、Node、Git 兼容性与部署代价
+## Windows 后端路线比较
 
-- 本机版本：Windows PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1`。
-- 禁用 `disallow_win32k_system_calls` 后，PowerShell 和 Node payload 能启动。启用该缓解选项曾阻断 CLI 初始化；因此 PoC 保持禁用。该结果是兼容性观察，不是安全建议。
-- `git --version` 成功，但在不授予卷根读取权限时，`git init` / `git status` 均因无法解析当前工作目录而失败。给卷根授权虽可让命令通过，却会递归放开不应访问的目录，不能采用。其他 Git 工作流、hooks、credential helper、submodule、LFS、远程网络和任意仓库内容也未验证。
-- launcher helper 是 C# P/Invoke 源码，由 Windows PowerShell `Add-Type` 在运行时编译；PoC 没有加入预编译原生可执行文件。正式部署前需定义稳定且受支持的 launcher 协议、CPU 架构和系统版本范围。如果采用编译 helper，还需要签名、分发和更新策略，并覆盖实际支持的 PowerShell/.NET 与 Node/Git 发行版。
-- spec builder 为编码文档化的 `SBOX` FlatBuffer schema 子集而新增 `flatbuffers` 开发依赖。Windows API 需要动态查找实验性的 `processmodel.dll` export；Microsoft 文档说明 schema 当前为 `0.1.0`、API 仍是实验性且没有公开头文件，因此不能假设它是稳定的生产 ABI。
-- 运行时根目录、环境变量、用户 profile、模块、Git 配置、可执行文件搜索路径和临时目录仍需逐项完成最小权限设计。PoC 的环境变量整理只是兼容性 fixture，不能修复已经观察到的文件读取泄漏。
+| 路线 | 支持与可行性 | 主要代价和未解决项 |
+| --- | --- | --- |
+| AppContainer + `CreateProcessW` / `STARTUPINFOEX` | 微软文档化的 Win32 启动路径：建立 AppContainer profile 与 `SECURITY_CAPABILITIES`，将其通过 `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` 交给 `CreateProcessW`。该属性文档标为 Windows 8 / Server 2012 起支持，属于比当前实验 export 更稳定的 API 候选。[启动 AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer) · [`UpdateProcThreadAttribute`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute) · [`CreateProcessW`](https://learn.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-createprocessw) · [AppContainer 文件和网络边界](https://learn.microsoft.com/en-us/windows/win32/secauthz/appcontainer-isolation) | 仍需实现能力 SID、profile 清理、最小 DACL、运行时读取、启动属性列表和 Job Object 生命周期，并在目标 Windows 版本实测。稳定的启动 API 不会自动解决硬链接别名、Git 祖先路径解析、reparse point 或网络正向验收；不得把它视作已验证替代品。 |
+| 当前 `Experimental_CreateProcessInSandbox` | P3-A 的最小实验入口，在本机能启动 PowerShell 和 Node；Windows 文档将 API 标记为 experimental、subject to change，并规定当前 schema 版本 `0.1.0`。[API 与 schema](https://learn.microsoft.com/en-us/windows/win32/secauthz/createprocessinsandbox) | 依赖动态 export 和实验性 ABI；不能作为普通用户长期分发的默认基础。当前实测已经发现硬链接越界，Git 也未在窄授权下兼容。 |
+| Windows Sandbox | Hypervisor 提供独立内核，是更强 VM 边界候选；可在 `.wsb` 配置中关闭网络并映射只读目录。[概览](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/) · [配置](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file) | 当前实测主机为 Windows Home，不支持该功能；每台机器同一时间只能运行一个实例。网络默认开启；可写映射的更改会留在宿主。若用于产品还需验证冷启动、并发/排队、运行时供给、RPC/结果回传与 workspace 挂载边界。 |
+| Windows Container + Hyper-V isolation | Windows 11 Pro/Enterprise 可用，需启用 Hyper-V 角色。[系统要求](https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/system-requirements) | 当前 Windows Home 主机不能实测。需要维护容器镜像和运行时。官方网络文档说明容器默认出站允许，即使 Hyper-V isolation 也不能假设默认阻网，仍要制定和测试网络规则。[网络隔离与安全](https://learn.microsoft.com/en-us/virtualization/windowscontainers/container-networking/network-isolation-security) |
+| Restricted Token、ACL、Job Object | 可作为纵深防御组件。Job Object 可约束并结束进程组；ACL/DACL 可限制具体对象访问。[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) · [ACL](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control-lists) | 单独不构成完整文件系统与网络隔离，也不自动处理 workspace 绑定、链接别名、网络 egress 和父子进程生命周期。P3-A2 未实测 Restricted Token 替代后端。 |
 
-## P3-B 正式集成前置条件
+建议下一步先对“文档化 AppContainer 启动 API + 显式 DACL + Job Object”做独立可行性试验，并与 Windows Sandbox/Hyper-V isolation 的系统版本、并发、冷启动和文件回传成本比较。路线选择必须重新运行硬链接、Git、网络及链接竞态测试；不能从本轮 AppContainer 证据直接继承 `verified`。
 
-在下列条件都获得宿主侧证据之前，不要连接生产 `exec` 路径。每个受支持的 Windows 版本和系统构建都需单独验证：
+## P3-B 前置门槛
 
-1. 保持精确运行时目录授权，不能再把卷根加入白名单；确认窄授权方案可覆盖必要的合法运行时读取。重新测试相邻路径、用户 profile 敏感文件、凭据、注册表数据和所有受保护根，并拒绝 traversal、junction、symlink 及其他 reparse point。
-2. 在实际执行约束内测试路径替换与 reparse point 竞态，而非只做 helper 预检。验证别名、硬链接、替代路径和进程替换不能修改受保护文件。
-3. 通过具备宿主正向连通基线的测试，证明 PowerShell 及其后代无法访问外网与本地网络；覆盖后端相关的 DNS、IPv4/IPv6、重定向/代理和其他网络通道。
-4. 验证后代不能逃离进程约束，并证明超时、用户取消、worker 崩溃、API 错误、Job 嵌套和宿主异常关机时都能清理。保留当前 durable 副作用结算及取消语义。
-5. 使用实际打包的运行时和代表性子进程测试 PowerShell、Node、Git。解决 Git 在窄授权下读取当前目录失败的问题时不得扩大到卷根授权。任何不支持的命令或缺失能力都必须拒绝执行，不能回退到宿主 Shell。
-6. 由 Main 后端产生绑定规范工作区和 run 的新鲜证据。保持 readiness 与 Permission V2 决策分离；Renderer、模型、插件和工具参数均不能提交能力声明。
-7. 完成安全评审、原生 helper 的签名/分发计划、Windows 版本支持决策及可重复的 Windows CI 或硬件测试覆盖。
+1. 解决硬链接别名读取和写入越界，并用真实外部文件哨兵证明所有支持的工作区存储布局都无法越界；不允许靠卷根或用户临时目录授权掩盖问题。
+2. 以最小、可审计的目录遍历权限修复 Git 的 `getcwd` / CWD 解析，并证明不会暴露父目录同级内容；若无法做到，明确拒绝该类工作流，不扩大授权。
+3. 在宿主可达的受控 IPv4 和 IPv6 目标上分别验证宿主成功、PowerShell/Node 及其子进程被阻断；覆盖 DNS、系统代理和本地网络路径。
+4. 在候选的正式 API 后端本身重跑绝对/相对路径、symlink、junction、其他 reparse point、硬链接、目录替换、进程逃逸及超时/取消测试，并覆盖具体支持 Windows 构建。
+5. 明确 PowerShell、Node、Git 的支持版本、运行时读取范围、容器或 helper 的部署与更新策略；故障时只能拒绝执行，不能退回宿主 Shell。
+6. 所有成功证据由可信 Main/宿主后端针对本次工作区和 run 生成。权限审批、能力证据和隔离实施继续分离；不能改变 Runner durable 恢复或副作用结算。
 
-完成这些门槛前，P3-A 只能作为实验诊断工具：Shell 保持逐次审批；`workspace-write` 不代表 Shell 可自动执行；P2 文件守卫不能替代操作系统进程隔离。
+完成以上门槛之前，Shell 保持逐次审批；`workspace-write` 不代表 Shell 可以自动执行。P2 文件工具约束也不替代操作系统进程隔离。

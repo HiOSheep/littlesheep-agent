@@ -1,28 +1,34 @@
-# Windows Shell Sandbox PoC
+# Windows Shell 沙箱 PoC
 
-This directory contains a test-only launcher for Microsoft's experimental `Experimental_CreateProcessInSandbox` API. It is not wired into `exec`, `ToolExecutionService`, Main policy, or any production automatic-approval path.
+此目录包含仅用于实验的 launcher，调用 Microsoft 实验性 `Experimental_CreateProcessInSandbox` API。它没有接入 `exec`、`ToolExecutionService`、Main 权限策略、Runner 生命周期或任何生产自动审批路径。
 
-## Run on Windows
+## 在 Windows 上运行
 
-From the repository root, run:
+从仓库根目录运行：
 
 ```powershell
 pnpm run poc:windows-sandbox
 ```
 
-The runner creates a disposable fixture under the current user's `%TEMP%`, starts payloads only through `processmodel.dll`, records the probe report there, and removes test AppContainer profiles. If the API, schema, workspace pin, Job Object assignment, or sandbox launch fails, the runner exits with an error. It does not invoke a host-shell fallback.
+测试会在当前用户 `%TEMP%` 下创建临时 fixture，只通过 `processmodel.dll` 启动 payload，在该目录写入 JSON 报告，并清理测试用 AppContainer profile。如果 API、规范、工作区 pin、Job Object 分配或沙箱启动失败，runner 会拒绝执行，不会回退到宿主 Shell。
 
-The test host needs Windows PowerShell 5.1, Node.js, Git, and the repository's installed Node dependencies. The sandbox's read-only roots are the discovered PowerShell, Node, Git, Windows runtime, and optional shared PowerShell module directories; the launcher rejects volume-root read grants. Only the generated workspace root is configured read/write. The network probe uses a local listening socket and a TCP connect to `1.1.1.1:443`; the host-side connection must succeed before network confinement can be marked verified.
+主机需要 Windows PowerShell 5.1、Node.js、Git 和仓库已安装的 Node 依赖。只读根包括发现的 PowerShell、Node、Git、Windows runtime、可选共享 PowerShell module，以及只包含本次工作区的专用父目录。只有生成的工作区配置为可读写；构建器拒绝卷根授权。网络探针先记录宿主 DNS、域名、IPv4、IPv6、loopback 和系统代理的正向基线，再判断沙箱结果。
 
-## What it proves
+## 探针与当前结果
 
-The runner probes workspace reads/writes, host fixture reads/writes, path traversal, a directory junction, a file symbolic link when the host permits creating one, a write handle to protected LS source, PowerShell-to-Node inheritance, Git basics, network attempts from PowerShell and Node, Job Object timeout cleanup, forced launcher termination, and a directory rename while the workspace handle is pinned. The `SandboxCapabilitySnapshot` and `assessSandboxReadiness` output are experimental evidence only. They are never consumed by the application.
+探针覆盖工作区读写、越界读取与写入、路径穿越、junction、文件 symlink、硬链接读写、运行中替换工作区子目录、LS 受保护源码写入、PowerShell 到 Node 的限制继承、Git `version/init/status`、当前目录元数据与规范化、PowerShell 和 Node 的网络访问、Job Object 超时/取消清理、工作区根替换，以及无效规范的 fail-closed 行为。生成的 PowerShell 探针会在启动前做语法校验。
 
-See [the result and limitations](../../docs/reference/windows-shell-sandbox-poc.md) for the current host's evidence, compatibility notes, and P3-B prerequisites.
+最新 Windows 实测报告见[结果与限制](../../docs/reference/windows-shell-sandbox-poc.md)。PowerShell 和 Node 能通过硬链接读取并覆盖工作区外目标，所以文件系统隔离为 `partial`。窄授权下 Git 仓库命令失败；宿主 IPv6 不可达，IPv6 隔离没有验证。Shell readiness 保持 `false`。
 
-## Implementation notes
+能力评估的回归测试：
 
-- `SandboxProcessApi.cs` dynamically resolves the OS export from System32, builds a sanitized child environment, pins the workspace directory without delete sharing, creates the process suspended, assigns a kill-on-close Job Object, then resumes it.
-- `BaseContainerSpecification.fbs` documents the field-order subset used by the FlatBuffers builder. It is tied to the published experimental schema version `0.1.0`, not a stable Windows SDK header.
-- `flatbuffers` is a development dependency used only to encode the documented `SBOX` buffer.
-- This launch path is experimental and host-build-dependent. A present DLL export is not sufficient; only the executed positive and negative probes contribute evidence.
+```powershell
+pnpm exec vitest run scripts/windows-sandbox-poc/build-sandbox-spec.test.mjs scripts/windows-sandbox-poc/evaluate-report.test.mjs
+```
+
+## 实现说明
+
+- `SandboxProcessApi.cs` 从 System32 动态查找 OS export，整理子进程环境，固定工作区目录句柄（不共享删除权限），先挂起创建进程，将其分配到启用 kill-on-close 的 Job Object，再恢复执行。
+- `BaseContainerSpecification.fbs` 记录 FlatBuffers builder 编码的字段顺序子集，绑定当前公开的实验 schema `0.1.0`，不是稳定 Windows SDK header。
+- `flatbuffers` 是只用于编码文档化 `SBOX` buffer 的开发依赖。
+- 文档化的 `CreateProcessW` + `STARTUPINFOEX` AppContainer 启动方式仍只是调研候选。本 PoC 没有实现该路线，也没有证据证明它能修复硬链接越界或 Git 兼容问题。
