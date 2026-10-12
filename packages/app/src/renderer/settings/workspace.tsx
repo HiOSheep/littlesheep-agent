@@ -172,6 +172,12 @@ export function SettingsWorkspace({
     }
     const attempt = () => {
       if (cancelled) return
+      // Either the animation frame or timer may win; cancel the other before
+      // scheduling again so a delayed page does not multiply pending callbacks.
+      if (frame) window.cancelAnimationFrame(frame)
+      if (timer !== null) window.clearTimeout(timer)
+      frame = 0
+      timer = null
       const selector = settingsFieldSelector(pendingLanding.id)
       if (page === pendingLanding.page && document.querySelector(selector)) {
         revealSettingsField(pendingLanding.id)

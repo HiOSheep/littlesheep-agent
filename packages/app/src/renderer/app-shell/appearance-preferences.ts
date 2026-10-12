@@ -5,6 +5,7 @@ export interface AppearanceColors {
   accent: string
   background: string
   surface: string
+  foreground?: string
 }
 
 export interface AppearancePreferences {
@@ -15,6 +16,7 @@ export interface AppearancePreferences {
   chatFontSize: number
   codeFontSize: number
   terminalFontSize: number
+  reducedMotion: 'system' | 'on' | 'off'
   colors: AppearanceColors
 }
 
@@ -37,6 +39,7 @@ export const APPEARANCE_DEFAULTS: AppearancePreferences = {
   chatFontSize: 15,
   codeFontSize: 13,
   terminalFontSize: 12,
+  reducedMotion: 'system',
   colors: { accent: '#e2e2e2', background: '#191b20', surface: '#22252c' },
 }
 
@@ -61,10 +64,12 @@ export function hydrateAppearancePreferences(input: unknown): AppearancePreferen
     chatFontSize: boundedNumber(value.chatFontSize, 15, 12, 22),
     codeFontSize: boundedNumber(value.codeFontSize, 13, 11, 22),
     terminalFontSize: boundedNumber(value.terminalFontSize, 12, 11, 22),
+    reducedMotion: value.reducedMotion === 'on' || value.reducedMotion === 'off' ? value.reducedMotion : 'system',
     colors: {
       accent: normalizeHex(colors.accent) ?? APPEARANCE_DEFAULTS.colors.accent,
       background: normalizeHex(colors.background) ?? APPEARANCE_DEFAULTS.colors.background,
       surface: normalizeHex(colors.surface) ?? APPEARANCE_DEFAULTS.colors.surface,
+      ...(normalizeHex(colors.foreground) ? { foreground: normalizeHex(colors.foreground)! } : {}),
     },
   }
 }
@@ -94,6 +99,15 @@ export function isAppearanceDark(): boolean {
     return root.style.getPropertyValue('--ls-custom-text').trim().toLowerCase() === '#ffffff'
   }
   return root.dataset.lsTheme !== 'light'
+}
+
+export function isAppearanceReducedMotion(): boolean {
+  if (typeof document !== 'undefined') {
+    const value = document.documentElement?.dataset.lsReducedMotion
+    if (value === 'true' || value === 'false') return value === 'true'
+  }
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 /** Resolve a semantic CSS color to a concrete color accepted by canvas-based editors. */
@@ -128,7 +142,7 @@ export function readAppearanceCssColor(property: string, fallback: string): stri
 }
 
 export function appearanceColorsAreReadable(colors: AppearanceColors): boolean {
-  const text = bestReadableText([colors.background, colors.surface])
+  const text = colors.foreground ?? bestReadableText([colors.background, colors.surface])
   return [colors.background, colors.surface].every((background) => (
     contrastRatio(text, background) >= 4.5 && contrastRatio(colors.accent, background) >= 3
   ))
@@ -148,21 +162,42 @@ export function applyAppearancePreferences(
 ): AppearancePreferences {
   const preferences = hydrateAppearancePreferences(preferencesInput)
   if (!documentElement) return preferences
+  // Seed the first custom palette from the colors actually on screen. Registered color
+  // properties then interpolate one shared palette across every dependent surface.
+  if (preferences.palette === 'custom' && appearanceColorsAreReadable(preferences.colors)
+    && !(documentElement.dataset.lsPalette === 'custom' && documentElement.dataset.lsPaletteUsable === 'true')
+    && typeof document !== 'undefined' && typeof document.createElement === 'function'
+    && documentElement === document.documentElement && typeof getComputedStyle === 'function') {
+    documentElement.dataset.lsAppearanceTransition = 'false'
+    const seeds = {
+      '--ls-custom-background': readAppearanceCssColor('--bg', preferences.colors.background),
+      '--ls-custom-surface': readAppearanceCssColor('--surface', preferences.colors.surface),
+      '--ls-custom-accent': readAppearanceCssColor('--accent', preferences.colors.accent),
+      '--ls-custom-text': readAppearanceCssColor('--text', '#ffffff'),
+      '--ls-custom-muted': readAppearanceCssColor('--muted', '#bdbdbd'),
+    }
+    for (const [property, value] of Object.entries(seeds)) documentElement.style.setProperty(property, value)
+    getComputedStyle(documentElement).getPropertyValue('--ls-custom-background')
+  }
+  documentElement.dataset.lsAppearanceTransition = documentElement.dataset.lsTheme ? 'true' : 'false'
   const resolvedTheme = resolveAppearanceTheme(preferences.theme, systemPrefersDark)
   documentElement.dataset.lsTheme = resolvedTheme
   documentElement.dataset.lsThemeMode = preferences.theme
   documentElement.dataset.lsPalette = preferences.palette
+  const systemMotion = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  documentElement.dataset.lsReducedMotion = String(preferences.reducedMotion === 'on' || (preferences.reducedMotion === 'system' && systemMotion))
   documentElement.style.setProperty('--ui-font-scale', String(preferences.interfaceFontSize / 14))
   documentElement.style.setProperty('--chat-message-font-size', `${preferences.chatFontSize}px`)
   documentElement.style.setProperty('--workspace-code-font-size', `${preferences.codeFontSize}px`)
   documentElement.style.setProperty('--terminal-font-size', `${preferences.terminalFontSize}px`)
   if (preferences.palette === 'custom' && appearanceColorsAreReadable(preferences.colors)) {
-    const text = bestReadableText([preferences.colors.background, preferences.colors.surface])
+    const text = preferences.colors.foreground ?? bestReadableText([preferences.colors.background, preferences.colors.surface])
     documentElement.style.setProperty('--ls-custom-accent', preferences.colors.accent)
     documentElement.style.setProperty('--ls-custom-background', preferences.colors.background)
     documentElement.style.setProperty('--ls-custom-surface', preferences.colors.surface)
     documentElement.style.setProperty('--ls-custom-text', text)
-    documentElement.style.setProperty('--ls-custom-muted', text === '#111111' ? '#555555' : '#bdbdbd')
+    documentElement.style.setProperty('--ls-custom-muted', bestReadableText([preferences.colors.background, preferences.colors.surface]) === '#111111' ? '#555555' : '#bdbdbd')
     documentElement.dataset.lsPaletteUsable = 'true'
   } else {
     for (const property of ['--ls-custom-accent', '--ls-custom-background', '--ls-custom-surface', '--ls-custom-text', '--ls-custom-muted']) {
@@ -219,9 +254,13 @@ export function bootstrapAppearancePreferences(): () => void {
     if (event.key === APPEARANCE_PREFERENCES_KEY) applyAppearancePreferences(readAppearancePreferences(), media?.matches ?? false, undefined, true)
   }
   media?.addEventListener?.('change', updateSystem)
+  const motionMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null
+  const updateMotion = () => applyAppearancePreferences(readAppearancePreferences())
+  motionMedia?.addEventListener?.('change', updateMotion)
   window.addEventListener('storage', updateStorage)
   return () => {
     media?.removeEventListener?.('change', updateSystem)
+    motionMedia?.removeEventListener?.('change', updateMotion)
     window.removeEventListener('storage', updateStorage)
   }
 }

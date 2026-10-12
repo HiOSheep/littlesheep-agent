@@ -1,8 +1,10 @@
 // Settings navigation and page composition.
-import { MemoryTreeView } from '../MemoryTreeView'
-import { SettingsPluginsPage } from './plugins'
-import { SettingsScheduledPage } from './scheduled'
+import { lazy, Suspense } from 'react'
 import { DirectModulePage } from './types'
+
+const MemoryTreeView = lazy(async () => ({ default: (await import('../MemoryTreeView')).MemoryTreeView }))
+const SettingsPluginsPage = lazy(async () => ({ default: (await import('./plugins')).SettingsPluginsPage }))
+const SettingsScheduledPage = lazy(async () => ({ default: (await import('./scheduled')).SettingsScheduledPage }))
 
 
 export function DirectModuleWorkspace({ page }: { page: DirectModulePage }) {
@@ -17,9 +19,9 @@ export function DirectModuleWorkspace({ page }: { page: DirectModulePage }) {
 
 
 export function DirectModulePageContent({ page }: { page: DirectModulePage }) {
-  if (page === 'memoryTree') return <MemoryTreeView />
-  if (page === 'scheduled') return <SettingsScheduledPage />
-  return <SettingsPluginsPage />
+  return <Suspense fallback={<div role="status">加载{directModuleLabel(page)}…</div>}>
+    {page === 'memoryTree' ? <MemoryTreeView /> : page === 'scheduled' ? <SettingsScheduledPage /> : <SettingsPluginsPage />}
+  </Suspense>
 }
 
 

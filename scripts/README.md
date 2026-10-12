@@ -19,6 +19,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 产品窗口验收应使用隔离数据根、确定性夹具，并将日志、截图和临时报告写到系统临时产物目录；不得读取用户会话或密钥。报告只证明其实际执行的断言。
 
+`node scripts/verify-appearance-settings.mjs` 验证外观设置的真实点击、颜色对比拒绝、字号与减少动态效果保存、刷新恢复、深浅模式及窄窗口可用性，截图保存到系统临时目录。
+
 `pnpm run verify:desktop-permission-v2` 通过真实 Renderer 和本地确定性 Provider 检查权限预设、对话持久化、审批／拒绝、文件边界、Shell 单次审批与降权恢复。检查点场景由 Runner 生成真实中断现场，再使用仍受支持的旧版 `waiting_user` 形态验证 Renderer 恢复；它不改变 durable 恢复机制。该门不验证 OS 级 Shell 沙箱。
 
 `node scripts/verify-void-ring.mjs` 在最新桌面构建中验证品牌动效：空白对话与启动页的真实像素变化、本地 SSE 夹具经 Runtime 驱动的加载/思考/完成状态、深浅主题下的透明外部与不透明球体、减少动态效果的透明静态回退以及图标与输入框的布局间距。它使用隔离数据根，不访问用户会话或真实 Provider。
@@ -33,7 +35,11 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 `node scripts/verify-chat-reading-layout.mjs` 在显示的隔离 Electron 中验证对话区布局：输入前后保持底部位置且正文不被输入区遮盖，悬浮无提示框、点击打开用量／执行记录并用 Esc 返回焦点，运行过程默认收起，停止入口可用，目录合并问答、搜索及键盘跳转，窄窗口保留多行草稿且不溢出，失败折叠后仍有提示和重试。数据、截图和报告写入系统临时目录，不读取用户会话或真实 Provider。
 
+`node scripts/verify-chat-navigation.mjs` 使用隔离历史对话和显示的 Electron，验证左侧刻度、悬停预览及离开收起、消息跳转、完整目录入口、标题单击编辑与保存／取消、刷新恢复，以及 320 像素聊天区中的弹层边界和横向溢出。无需 Provider，截图与报告写入系统临时目录。
+
 ## 脚本所有权
+
+`node scripts/measure-session-history.mjs` 使用隔离的 240 条富文本历史与显示的 Electron，测量首次打开、缓存切换到绘制的时间，并检查更早内容分页后消息无重复、当前内容保留。数据与报告写入系统临时目录；耗时取决于本机和夹具，不代表所有用户对话。
 
 - `check-repository-hygiene.mjs` 与相邻测试拥有仓库导航和结构门禁。
 - `verify-*.mjs` / `measure-*.mjs` 拥有各自行为与测量的断言；实际输出记录在测试报告，不复制进本索引。

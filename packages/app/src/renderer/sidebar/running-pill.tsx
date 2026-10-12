@@ -161,7 +161,9 @@ export function RunningPill({
   onTipChange,
   draggable = true,
   showTips = true,
+  compactTitle = false,
 }: {
+  compactTitle?: boolean
   showTips?: boolean
   draggable?: boolean
   title: string
@@ -310,13 +312,13 @@ export function RunningPill({
   return (
     <div
       ref={rootRef}
-      className={`running-pill-root ${isRunning ? 'running' : ''} ${dragging ? 'dragging' : ''}`}
+      className={`running-pill-root ${isRunning ? 'running' : ''} ${dragging ? 'dragging' : ''} ${compactTitle ? 'compact-title' : ''}`}
       data-dragged={translate ? 'true' : 'false'}
       style={pillStyle}
     >
       {editing ? (
         <div className="running-pill editing">
-          <VoidRing state={voidRingStateForActivity(activity)} size={24} />
+          {compactTitle ? <ConversationFolder /> : <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
           <input
             className="running-pill-rename-input"
             defaultValue={title}
@@ -336,10 +338,10 @@ export function RunningPill({
           ref={buttonRef}
           className="running-pill"
           type="button"
-          aria-label={`当前对话与运行指令：${title}${commands.length > 0 ? `（${taskLabel}）` : ''}`}
+          aria-label={compactTitle ? `重命名对话：${title}` : `当前对话与运行指令：${title}${commands.length > 0 ? `（${taskLabel}）` : ''}`}
           aria-keyshortcuts="F2"
-          aria-expanded={open}
-          aria-haspopup="dialog"
+          aria-expanded={compactTitle ? undefined : open}
+          aria-haspopup={compactTitle ? undefined : 'dialog'}
           onPointerDown={beginDrag}
           onPointerMove={moveDrag}
           onPointerUp={endDrag}
@@ -357,7 +359,8 @@ export function RunningPill({
             // A press that dragged the bar is not also a request to open the panel.
             if (swallowClickRef.current) return
             onTipChange(null)
-            setOpen((value) => !value)
+            if (compactTitle) { setOpen(false); setEditing(true) }
+            else setOpen((value) => !value)
           }}
           onDoubleClick={() => {
             if (swallowClickRef.current) return
@@ -373,7 +376,7 @@ export function RunningPill({
           onFocus={(event) => showTips && onTipChange(buildFloatingHelpTipFromElement(tipText, event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          <VoidRing state={voidRingStateForActivity(activity)} size={24} />
+          {compactTitle ? <ConversationFolder /> : <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
           <span className="running-pill-title">{title || '未命名对话'}</span>
           <span
             className="running-pill-rename"
@@ -390,7 +393,7 @@ export function RunningPill({
           >
             <RenameIcon />
           </span>
-          {commands.length > 0 && (
+          {commands.length > 0 && !compactTitle && (
             <span className="running-pill-tasks">
               {taskLabel}
               <span className="running-pill-chevron" aria-hidden="true" />
@@ -398,6 +401,8 @@ export function RunningPill({
           )}
         </button>
       )}
+      {compactTitle && commands.length > 0 && <button type="button" className="chat-title-records" aria-label="查看运行记录"
+        aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(value => !value)}>···</button>}
       {open && createPortal(
         <div
           ref={panelRef}
@@ -445,4 +450,10 @@ export function RunningPill({
       )}
     </div>
   )
+}
+
+function ConversationFolder() {
+  return <svg className="chat-title-folder" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+    <path d="M3 6.5V5a1.5 1.5 0 0 1 1.5-1.5H8l2 2h5.5A1.5 1.5 0 0 1 17 7v7.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5v-8Zm0 1h14" />
+  </svg>
 }

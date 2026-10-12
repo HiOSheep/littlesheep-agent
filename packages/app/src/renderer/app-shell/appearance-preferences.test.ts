@@ -90,6 +90,24 @@ describe('application appearance preferences', () => {
     expect(resolveAppearanceTheme('light', true)).toBe('light')
   })
 
+  it('migrates old profiles and applies explicit readable foreground and reduced motion', () => {
+    const old = hydrateAppearancePreferences({ version: 1, palette: 'custom', colors: { accent: '#61b8e8', background: '#101010', surface: '#1c1c1c' } })
+    expect(old.reducedMotion).toBe('system')
+    expect(old.colors.foreground).toBeUndefined()
+    const custom = { ...old, reducedMotion: 'on', colors: { ...old.colors, foreground: '#eeeeee' } }
+    expect(appearanceColorsAreReadable(custom.colors)).toBe(true)
+    const result = writeAppearancePreferences(custom)
+    expect(result.persisted).toBe(true)
+    expect(readAppearancePreferences().colors.foreground).toBe('#eeeeee')
+    expect(root.style.getPropertyValue('--ls-custom-text')).toBe('#eeeeee')
+    expect(root.dataset.lsReducedMotion).toBe('true')
+    applyAppearancePreferences({ ...custom, reducedMotion: 'off' }, true, root as unknown as HTMLElement)
+    expect(root.dataset.lsReducedMotion).toBe('false')
+    applyAppearancePreferences({ ...custom, colors: { ...custom.colors, foreground: '#151515' } }, true, root as unknown as HTMLElement)
+    expect(root.dataset.lsPaletteUsable).toBe('false')
+    expect(root.style.getPropertyValue('--ls-custom-text')).toBe('')
+  })
+
   it('requires readable text and a visible accent over both user surfaces', () => {
     expect(appearanceColorsAreReadable({ accent: '#176b98', background: '#f2f2f0', surface: '#fafaf9' })).toBe(true)
     expect(appearanceColorsAreReadable({ accent: '#f3f3f3', background: '#f2f2f0', surface: '#fafaf9' })).toBe(false)

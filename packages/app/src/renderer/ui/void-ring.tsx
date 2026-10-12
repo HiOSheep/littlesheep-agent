@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import staticIcon from '../../../resources/void-ring/mark.png?url'
+import { APPEARANCE_PREFERENCES_EVENT, isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 import type { VoidRingState } from './void-ring-state'
 import { createVoidRingMotion, pointerRelativeToDisc, type VoidRingMode, type VoidRingPointer } from './void-ring-motion'
 import { isVoidRingRendererReady, onVoidRingFrame, prepareVoidRingRenderer, renderVoidRing } from './void-ring-renderer'
@@ -13,8 +14,7 @@ export function warmVoidRingMotion(): Promise<boolean> {
 }
 
 function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return isAppearanceReducedMotion()
 }
 
 const modeFor = (state: VoidRingState): VoidRingMode => (state === 'static' ? 'rest' : state)
@@ -47,18 +47,20 @@ export function VoidRing({ state = 'idle', size = 28, interactive = false, class
   useEffect(() => {
     const preference = matchMedia('(prefers-reduced-motion: reduce)')
     let visible = true
-    const update = () => setAllowed(visible && !document.hidden && !preference.matches)
+    const update = () => setAllowed(visible && !document.hidden && !prefersReducedMotion())
     const observer = new IntersectionObserver(entries => {
       visible = entries.some(entry => entry.isIntersecting)
       update()
     })
     if (host.current) observer.observe(host.current)
     preference.addEventListener('change', update)
+    document.documentElement.addEventListener(APPEARANCE_PREFERENCES_EVENT, update)
     document.addEventListener('visibilitychange', update)
     update()
     return () => {
       observer.disconnect()
       preference.removeEventListener('change', update)
+      document.documentElement.removeEventListener(APPEARANCE_PREFERENCES_EVENT, update)
       document.removeEventListener('visibilitychange', update)
     }
   }, [])

@@ -79,12 +79,12 @@ describe('settings information architecture', () => {
 
     expect(appearance).toContain('readConversationDisplayMode')
     expect(appearance).toContain('<SettingsSelect label="对话显示模式"')
-    expect(appearance).toContain('不改变 Agent 行为、权限或用量统计')
+    expect(appearance).toContain('<h2>外观</h2>')
     // The behaviour page keeps behaviour and permissions, not display density.
     expect(agentProfile).not.toContain('readConversationDisplayMode')
     expect(agentProfile).not.toContain('writeConversationDisplayMode')
     expect(agentProfile).toContain('权限仍由输入栏的权限模式单独控制')
-    expect(navigation).toContain("title: '界面', desc: '对话显示密度与显示偏好'")
+    expect(navigation).toContain("title: '外观', desc: '主题、颜色、字号与动态效果'")
     expect(navigation).toContain("title: 'Agent 行为'")
   })
 
@@ -102,7 +102,7 @@ describe('settings information architecture', () => {
     const readme = await readFile(new URL('./README.md', import.meta.url), 'utf8')
 
     expect(readme).toContain('入口、页面与返回目标')
-    for (const name of ['记忆树', '已安排', '插件', '归档', '技能', '外部渠道', '界面', '模型与行为', '连接与扩展', '存储与环境']) {
+    for (const name of ['记忆树', '已安排', '插件', '归档', '技能', '外部渠道', '外观', '模型与行为', '连接与扩展', '存储与环境']) {
       expect(readme, name).toContain(name)
     }
     // The overview no longer mirrors the directory, so the README documents what it does show.

@@ -84,7 +84,7 @@ describe('session switching', () => {
     })
 
     expect(mockedWaitForExecutionReady).toHaveBeenCalledTimes(1)
-    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 120 })
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 40 })
     expect(context.pushRoute).toHaveBeenCalledWith({ section: 'chat' })
   })
 
@@ -101,7 +101,7 @@ describe('session switching', () => {
       scope: 'standalone',
     }, { preserveRoute: true })
 
-    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 120 })
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-2', { limit: 40 })
     expect(context.setCurrentSession).toHaveBeenCalledWith('session-2')
     expect(context.pushRoute).not.toHaveBeenCalled()
   })
@@ -223,7 +223,7 @@ describe('session switching', () => {
     const second = { id: 'second', title: '二', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' } as const
 
     const loadingFirst = actions.switchSession(first)
-    await vi.waitFor(() => expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('first', { limit: 120 }))
+    await vi.waitFor(() => expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('first', { limit: 40 }))
     await actions.switchSession(second)
     finishFirst?.({ messages: [{ id: 'first-message', role: 'assistant', text: '第一段已加载', timestamp: '2026-09-24T00:00:00.000Z' }], hasMore: false })
     await loadingFirst
@@ -290,7 +290,7 @@ describe('session switching', () => {
     expect(abort).not.toHaveBeenCalled()
     expect(context.setCurrentSession).not.toHaveBeenCalled()
     expect(context.setContextUsageSnapshot).not.toHaveBeenCalled()
-    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-1', { limit: 120 })
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('session-1', { limit: 40 })
     expect(context.setMessages).toHaveBeenLastCalledWith([
       expect.objectContaining({ role: 'assistant', text: '恢复后的结果' }),
     ])

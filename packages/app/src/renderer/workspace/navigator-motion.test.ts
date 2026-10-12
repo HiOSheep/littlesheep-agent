@@ -102,7 +102,7 @@ describe('workspace navigator motion', () => {
   it('bypasses transient motion when the OS requests reduced motion', async () => {
     const frame = await source('./navigator-frame.tsx')
     const styles = await readRendererStyleSource()
-    expect(frame).toContain("matchMedia('(prefers-reduced-motion: reduce)').matches")
+    expect(frame).toContain('isAppearanceReducedMotion()')
     expect(styles).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?transition-duration:\s*1ms !important;/u,
     )

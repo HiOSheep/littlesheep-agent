@@ -468,8 +468,8 @@ async function main() {
     // --- 5. rendered terminology and the re-arranged settings pages ------------
     await openSettingsFromEntry(client)
     const commonNavigation = (await readSurface(client)).visibleNavItems
-    const appearance = await openSettingsPage(client, '界面')
-    await waitForSurface(client, (surface) => (surface.heading === '界面' ? surface : undefined), 20_000, 'the appearance page')
+    const appearance = await openSettingsPage(client, '外观')
+    await waitForSurface(client, (surface) => (surface.heading === '外观' ? surface : undefined), 20_000, 'the appearance page')
     const appearanceSurface = await readSurface(client)
     const appearanceText = appearanceSurface.pageText ?? ''
     const agentPage = await openSettingsPage(client, 'Agent 行为')
@@ -543,7 +543,7 @@ async function main() {
     )
     recorder.check(
       commonNavigation.length >= 14 && commonNavigation.includes('归档') && commonNavigation.includes('记忆树')
-      && commonNavigation.includes('界面'),
+      && commonNavigation.includes('外观'),
       'the common settings navigation lists the four groups plus the work modules',
       { navItems: commonNavigation },
     )

@@ -926,15 +926,15 @@ describe('chat layout stability', () => {
     expect(styles).not.toMatch(/\.workspace-panel-header\s*\{[^}]*transition:[^}]*padding-right/u)
   })
 
-  it('keeps the conversation title and navigation in a header above the transcript', async () => {
+  it('keeps the compact title above the transcript and navigation at its left edge', async () => {
     const styles = await readRendererStyleSource()
     const view = await readRendererFile('./app-shell/chat-view.tsx')
     expect(view).toContain('className="chat-header"')
     expect(view.indexOf('className="chat-header"')).toBeLessThan(view.indexOf('className={`messages'))
     expect(view).toContain('draggable={false}')
     expect(view).not.toContain('className="running-pill-shell"')
-    expect(styles).toMatch(/\.chat-header\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*56px;/u)
-    expect(styles).toContain('.chat-header .chat-turn-rail { position: relative;')
+    expect(styles).toMatch(/\.chat-header\s*\{[^}]*flex:\s*0 0 auto;[^}]*min-height:\s*44px;/u)
+    expect(styles).toMatch(/\.chat-turn-rail\s*\{[^}]*position:\s*absolute;[^}]*left:\s*4px;/u)
     expect(styles).toContain('.chat:has(.messages.is-empty) .chat-header { display: none; }')
     expect(styles).toContain('transform: translateY(calc((var(--composer-overlay-height) - var(--composer-viewport-height)) / 2 + 24px));')
     expect(styles).toContain('.composer-status:empty { display: none; }')

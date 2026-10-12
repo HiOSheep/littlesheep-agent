@@ -108,6 +108,8 @@ export interface SessionHistoryWindow {
 }
 
 const SESSION_HISTORY_PAGE_SIZE = 120
+// Paint the recent conversation first; older history keeps the larger page size.
+const SESSION_HISTORY_INITIAL_PAGE_SIZE = 40
 const SESSION_HISTORY_MEMORY_MAX = 480
 
 export function createSessionActions(context: SessionActionContext) {
@@ -217,7 +219,7 @@ export function createSessionActions(context: SessionActionContext) {
       : (async () => {
         const readiness = await waitForExecutionReady()
         if (readiness?.state === 'failed') throw new SessionExecutionFailedError()
-        return getSessionMessagePage(id, { limit: SESSION_HISTORY_PAGE_SIZE })
+        return getSessionMessagePage(id, { limit: SESSION_HISTORY_INITIAL_PAGE_SIZE })
       })()
     if (page !== cached?.page) {
       cache.delete(id)

@@ -1,15 +1,17 @@
 // Pure renderer composition view. Runtime authority and side effects stay in the controller.
 import '@xterm/xterm/css/xterm.css'
+import { lazy, Suspense, useRef } from 'react'
 import {
   selectWorkspace
 } from '../api'
 import { ApprovalPrompt } from '../approval/prompt'
-import { SettingsWorkspace } from '../settings/workspace'
 import { ProjectCreatorDialog } from '../sidebar/project-creator'
 import { CheckpointRecovery } from '../runtime-recovery/checkpoint-recovery'
 import { FloatingHelpTooltip } from '../ui/floating-help'
 import { FadePresence } from '../ui/presence'
 import type { OverlaysViewController } from './app-controller-projections'
+
+const SettingsWorkspace = lazy(async () => ({ default: (await import('../settings/workspace')).SettingsWorkspace }))
 
 
 
@@ -39,6 +41,10 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
     nudgeSidebar,
     setSidebarWidth,
   } = controller
+  // Retain settings state after the first visit without mounting its pages or
+  // starting their requests during an ordinary chat startup.
+  const settingsVisited = useRef(settingsOpen)
+  if (settingsOpen) settingsVisited.current = true
   return (
 <>
       <FadePresence
@@ -50,7 +56,7 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
         onExited={finishSettingsReturn}
         className="settings-presence"
       >
-        <SettingsWorkspace
+        {settingsVisited.current && <Suspense fallback={<div className="settings-workspace" role="status">加载设置…</div>}><SettingsWorkspace
           page={settingsPage}
           runtime={runtime}
           sidebarCollapsed={sidebarCollapsed}
@@ -69,7 +75,7 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
             void refreshProjects()
             void refreshSessions()
           }}
-        />
+        /></Suspense>}
       </FadePresence>
       <ProjectCreatorDialog
         show={projectCreatorOpen}

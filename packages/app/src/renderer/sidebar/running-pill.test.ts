@@ -173,7 +173,7 @@ describe('chat task bar surface', () => {
     const pill = await source('./running-pill.tsx')
 
     expect(pill).toContain('const taskLabel = `${commands.length} 项执行记录`')
-    expect(pill).toContain('{commands.length > 0 && (')
+    expect(pill).toContain('{commands.length > 0 && !compactTitle && (')
     expect(pill).toContain('<span className="running-pill-chevron" aria-hidden="true" />')
     expect(styles).toMatch(/\.running-pill-tasks\s*\{[\s\S]*?flex:\s*0 0 auto;/u)
     // The state sentence is not a segment any more; it lives in the hover tip.

@@ -51,29 +51,39 @@ try {
   await h.desktopAction(locator,'resize',{width:1280,height:1000})
   await h.desktopAction(locator,'show')
   client = await h.connectRenderer(debuggingPort)
-  await evaluate(`(() => {
+  const fixturePreferences = `(() => {
     const values = {
       'littlesheep.ui.workspacePanelCollapsed':'false',
       'littlesheep.ui.workspacePanelFullscreen':'true',
-      'littlesheep.ui.workspacePanelTab':'files',
-      'littlesheep.ui.workspacePanelOpenTabs':JSON.stringify(['files']),
+      'littlesheep.ui.workspacePanelTab':'artifacts',
+      'littlesheep.ui.workspacePanelOpenTabs':JSON.stringify(['artifacts']),
+      'littlesheep.ui.workspacePanelOpenRoot':${JSON.stringify(workspace)},
+      'littlesheep.ui.workspacePanelOpenPath':${JSON.stringify(join(workspace,'README.md'))},
       'littlesheep.ui.workspaceFileNavigatorCollapsed':'false',
-      'littlesheep.ui.workspaceSessionLayouts':JSON.stringify({__draft__:{collapsed:false,fullscreen:true,activeTab:'files',openTabs:['files'],openRequest:null,fileNavigatorCollapsed:false,expandedPaths:[],drafts:{},browserTabs:[]}})
+      'littlesheep.ui.workspaceSessionLayouts':JSON.stringify({__draft__:{collapsed:false,fullscreen:true,activeTab:'artifacts',openTabs:['artifacts'],openRequest:{root:${JSON.stringify(workspace)},path:${JSON.stringify(join(workspace,'README.md'))}},fileNavigatorCollapsed:false,expandedPaths:[],drafts:{},browserTabs:[]}})
     };
     for(const [key,value] of Object.entries(values))localStorage.setItem(key,value);
-  })()`)
+  })()`
+  // Seed before the new document hydrates. The old document flushes its own
+  // layout during unload and can overwrite a one-off localStorage setup.
+  const { identifier } = await client.send('Page.addScriptToEvaluateOnNewDocument', { source: fixturePreferences })
   await client.send('Page.reload',{ignoreCache:true})
   await client.send('Runtime.enable');await client.send('Log.enable');
-  await h.waitFor(()=>evaluate(`document.querySelectorAll('.workspace-tree-row.file').length===${names.length}||null`),30_000,'fixture file tree')
+  await h.waitFor(()=>evaluate("!!document.querySelector('.workspace-tree-row.file') || !!document.querySelector('.workspace-empty-launcher-item')"),30_000,'workspace surface hydration')
+  // Main may restore its persisted empty layout after local preferences.
+  // Enter the file surface through the same control a reader uses.
+  await evaluate("[...document.querySelectorAll('button.workspace-empty-launcher-item')].find(button=>button.textContent.includes('工作区文件'))?.click()")
+  await h.waitFor(()=>evaluate(`${JSON.stringify(names)}.every(name=>[...document.querySelectorAll('.workspace-tree-row.file')].some(row=>row.getBoundingClientRect().width>0&&row.textContent.trim()===name))||null`),30_000,'visible fixture files')
+  await client.send('Page.removeScriptToEvaluateOnNewDocument', { identifier })
   // The persisted layout is hydrated from Main; open a file through the actual UI after hydration.
   await delay(600)
-  await evaluate(`[...document.querySelectorAll('.workspace-tree-row.file')].find(row=>row.textContent.trim()==='README.md').click()`)
+  await evaluate(`[...document.querySelectorAll('.workspace-tree-row.file')].find(row=>row.getBoundingClientRect().width>0&&row.textContent.trim()==='README.md').click()`)
   await h.waitFor(()=>evaluate(`document.querySelector('.workspace-tab-strip .file-glyph-markdown image')!==null||null`),15_000,'opened file tab format mark')
   await evaluate(`document.querySelector('button[aria-label="全屏展开工作区"]')?.click()`)
   await delay(600)
   report.checks.previews=[];
   for (const name of names) {
-    await evaluate(`[...document.querySelectorAll('.workspace-tree-row.file')].find(row=>row.textContent.trim()===${JSON.stringify(name)}).click()`);
+    await evaluate(`[...document.querySelectorAll('.workspace-tree-row.file')].find(row=>row.getBoundingClientRect().width>0&&row.textContent.trim()===${JSON.stringify(name)}).click()`);
     await h.waitFor(()=>evaluate(`!!document.querySelector('.workspace-tab-view.active .workspace-preview-body')||null`),10_000,'active preview body');
     if (!['README.md','page.html','photo.svg'].includes(name)) {
       await h.waitFor(()=>evaluate(`!!document.querySelector('.workspace-tab-view.active .monaco-editor')||null`),15_000,'code editor mount');

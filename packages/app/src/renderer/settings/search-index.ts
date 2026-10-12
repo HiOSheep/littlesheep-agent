@@ -45,7 +45,7 @@ const CONVERSATION_DISPLAY_LABELS: Record<'normal' | 'compact', string> = {
 }
 
 const APPEARANCE_THEME_LABELS = { system: '跟随系统', dark: '深色', light: '浅色' } as const
-const APPEARANCE_PALETTE_LABELS = { neutral: '中性', ocean: '海蓝', forest: '林绿', custom: '自定义' } as const
+const APPEARANCE_PALETTE_LABELS = { neutral: 'LittleSheep', ocean: '海蓝', forest: '林绿', custom: '自定义' } as const
 
 /** 行元素上的锚点属性：索引里的 id 与页面渲染的行靠它对应。 */
 export const SETTINGS_FIELD_ATTRIBUTE = 'data-settings-field'
@@ -142,20 +142,22 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
   {
     id: 'appearance.interface-font-size',
     page: 'appearance',
-    section: '文字大小',
+    section: '高级',
     title: '界面字号',
     aliases: ['界面字号', '界面字体大小', '文字大小', '字号'],
     kind: 'field',
     readValue: () => `${readAppearancePreferences().interfaceFontSize}px`,
+    reveal: 'details.appearance-advanced > summary',
   },
   {
     id: 'appearance.chat-font-size',
     page: 'appearance',
-    section: '文字大小',
+    section: '高级',
     title: '聊天字号',
     aliases: ['聊天字号', '聊天正文字号', '聊天字体大小', '消息字体'],
     kind: 'field',
     readValue: () => `${readAppearancePreferences().chatFontSize}px`,
+    reveal: 'details.appearance-advanced > summary',
   },
   {
     id: 'appearance.theme-mode',
@@ -183,7 +185,6 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     aliases: ['强调色', '强调颜色', '焦点颜色', '图表颜色'],
     kind: 'field',
     readValue: () => readAppearancePreferences().colors.accent,
-    reveal: 'button.appearance-custom-open',
   },
   {
     id: 'appearance.color-background',
@@ -193,7 +194,6 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     aliases: ['背景色', '主背景色', '窗口背景', '底色'],
     kind: 'field',
     readValue: () => readAppearancePreferences().colors.background,
-    reveal: 'button.appearance-custom-open',
   },
   {
     id: 'appearance.color-surface',
@@ -203,12 +203,12 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     aliases: ['面板色调', '面板颜色', '玻璃表面颜色', '浮层颜色'],
     kind: 'field',
     readValue: () => readAppearancePreferences().colors.surface,
-    reveal: 'button.appearance-custom-open',
+    reveal: 'details.appearance-advanced > summary',
   },
   {
     id: 'appearance.code-font-size',
     page: 'appearance',
-    section: '高级文字设置',
+    section: '高级',
     title: '代码字号',
     aliases: ['代码字号', '代码字体大小', '编辑器字号', 'Monaco 字体'],
     kind: 'field',
@@ -218,7 +218,7 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
   {
     id: 'appearance.terminal-font-size',
     page: 'appearance',
-    section: '高级文字设置',
+    section: '高级',
     title: '终端字号',
     aliases: ['终端字号', '终端字体大小', '控制台字号'],
     kind: 'field',
@@ -226,6 +226,17 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     reveal: 'details.appearance-advanced > summary',
   },
 
+  {
+    id: 'appearance.color-foreground', page: 'appearance', section: '视觉风格', title: '前景色',
+    aliases: ['前景色', '文字颜色'], kind: 'field',
+    readValue: () => readAppearancePreferences().colors.foreground ?? '自动',
+  },
+  {
+    id: 'appearance.reduced-motion', page: 'appearance', section: '高级', title: '减少动态效果',
+    aliases: ['减少动态效果', '动画'], kind: 'field',
+    readValue: () => ({ system: '系统', on: '开启', off: '关闭' })[readAppearancePreferences().reducedMotion],
+    reveal: 'details.appearance-advanced > summary',
+  },
   // ---- 通用 › 应用与后台 ------------------------------------------------------------------
   {
     id: 'application.close-policy',

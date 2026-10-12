@@ -46,6 +46,8 @@ const S3_FIELD_INVENTORY: string[] = [
   'appearance.color-surface',
   'appearance.code-font-size',
   'appearance.terminal-font-size',
+  'appearance.color-foreground',
+  'appearance.reduced-motion',
   'application.close-policy',
   'agent.profile',
   'agent.compression-threshold',

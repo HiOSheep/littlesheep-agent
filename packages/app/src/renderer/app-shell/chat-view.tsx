@@ -136,15 +136,15 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
         <header className="chat-header" aria-label="当前对话">
           {titlebarTask.hasSession ? <RunningPill
             title={titlebarTask.title} activity={titlebarTask.activity} now={titlebarTask.now}
-            offset={{ x: 0, y: 0 }} draggable={false} showTips={false} onOffsetChange={() => undefined}
+            offset={{ x: 0, y: 0 }} draggable={false} showTips={false} compactTitle onOffsetChange={() => undefined}
             onRename={(next) => { if (currentSession) void renameSession(currentSession, next) }}
             onStop={stop} onTipChange={setControlTip}
           /> : <span className="chat-header-title">新对话</span>}
+        </header>
           {railTurns.length >= RAIL_MIN_ENTRIES && (
             <TurnRail key={currentSession ?? 'draft'} entries={railTurns} activeKey={activeTurnKey}
               overlapsText={railInTheWay} onJump={scrollToTurn} onTipChange={setControlTip} />
           )}
-        </header>
         <div
           role="region" aria-label="对话消息"
           className={`messages ${messages.length === 0 ? 'is-empty' : ''}`}

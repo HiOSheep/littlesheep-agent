@@ -5,13 +5,12 @@
 // value over a short window keeps the change legible, and a reader who prefers no motion gets the
 // value immediately.
 import { useEffect, useRef, useState } from 'react'
+import { isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 
 export const LINE_COUNT_MOTION_MS = 260
 
 export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return isAppearanceReducedMotion()
 }
 
 /**

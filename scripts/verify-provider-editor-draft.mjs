@@ -298,7 +298,7 @@ async function main() {
     // to come back: that is what the module-scoped editing session exists for.
     const navAttempt = await evaluate(client, `(() => {
       const items = [...document.querySelectorAll('.settings-nav-item')]
-      const target = items.find((item) => item.textContent?.includes('界面'))
+      const target = items.find((item) => item.textContent?.includes('外观'))
       if (!(target instanceof HTMLElement)) return 'missing'
       target.click()
       return 'clicked'
@@ -473,7 +473,7 @@ async function main() {
     // 2. the page switch unmounts the editor and returning restores the draft.
     expect(navAttempt === 'clicked', 'the settings navigation could not be clicked')
     expect(afterSwitch.editorOpen === false, 'switching pages left the editor mounted')
-    expect(afterSwitch.activeNav === '界面', `the page did not switch: ${JSON.stringify(afterSwitch.activeNav)}`)
+    expect(afterSwitch.activeNav === '外观', `the page did not switch: ${JSON.stringify(afterSwitch.activeNav)}`)
     expect(restored.name === DRAFT_NAME, `the draft was lost across pages: ${JSON.stringify(restored.name)}`)
     expect(secretAfterReturn.draftPresent && secretAfterReturn.browserStorageClean,
       'the secret did not remain only in the in-memory draft across pages')

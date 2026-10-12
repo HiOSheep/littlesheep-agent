@@ -27,7 +27,7 @@ const S1_ENTRY_INVENTORY: Array<{ page: SettingsPage; title: string }> = [
   // 通用 (was the overloaded group; now display + runtime basics)
   { page: 'home', title: '总览' },
   { page: 'application', title: '应用与后台' },
-  { page: 'appearance', title: '界面' },
+  { page: 'appearance', title: '外观' },
   { page: 'agent', title: 'Agent 行为' },
   { page: 'api', title: '模型供应商' },
   { page: 'usage', title: 'Token 用量' },
@@ -126,7 +126,7 @@ describe('settings information architecture (S1)', () => {
     expect(commonSettingsNavGroups().map((group) => group.title))
       .toEqual([...S1_EXPECTED_GROUPS.map((group) => group.title), '工作模块'])
     expect(commonSettingsNavGroups().flatMap((group) => group.items).map((item) => item.title)).toEqual([
-      '总览', '界面', '应用与后台',
+      '总览', '外观', '应用与后台',
       '模型供应商', 'Agent 行为', 'Token 用量',
       '网络检索', '内置浏览器', '插件', '技能', '外部渠道',
       '存储与数据', '开发环境',

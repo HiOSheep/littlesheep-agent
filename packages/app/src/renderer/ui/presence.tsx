@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { useEscapeScope } from './modal-surface'
 import { isTransientTriggerTarget } from './transient'
+import { isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 
 
 export type PresencePhase = 'entering' | 'open' | 'exiting'
@@ -47,7 +48,7 @@ export function FadePresence({
     let innerFrame = 0
     let timer = 0
     let settleTimer = 0
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+    const reducedMotion = isAppearanceReducedMotion()
     const motionPlan = presenceMotionPlan(reducedMotion, exitMs, enterFrames)
     const motionDuration = motionPlan.durationMs
 

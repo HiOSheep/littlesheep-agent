@@ -19,7 +19,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     title: '通用',
     items: [
       { page: 'home', title: '总览', desc: '常用入口与需要处理的配置问题' },
-      { page: 'appearance', title: '界面', desc: '对话显示密度与显示偏好' },
+      { page: 'appearance', title: '外观', desc: '主题、颜色、字号与动态效果', searchAliases: ['界面', '显示偏好'] },
       { page: 'application', title: '应用与后台', desc: '窗口关闭方式与活动任务控制' },
     ],
   },

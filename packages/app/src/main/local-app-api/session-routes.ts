@@ -110,10 +110,12 @@ export async function routeSessions(
     const beforeId = url.searchParams.get('before')?.trim() || undefined
     const window = await runner.sessionManager.readWindow(asSessionId(sessionMessagesId), limit, beforeId)
     const messages = window.messages
-    const logsByRunId = await loadExecutionLogsByRunId(runner, messages, sessionMessagesId)
-    const compactionOperations: readonly CompactionOperationRecord[] | undefined = runner.compactionOperationHistory
-      ? await runner.compactionOperationHistory(asSessionId(sessionMessagesId)).catch(() => undefined)
-      : undefined
+    const [logsByRunId, compactionOperations] = await Promise.all([
+      loadExecutionLogsByRunId(runner, messages, sessionMessagesId),
+      runner.compactionOperationHistory
+        ? runner.compactionOperationHistory(asSessionId(sessionMessagesId)).catch(() => undefined)
+        : undefined,
+    ])
     json(res, 200, {
       messages: buildHistoryMessages(messages, logsByRunId),
       hasMore: window.hasMore,
@@ -384,11 +386,14 @@ async function loadExecutionLogsByRunId(
   messages: Message[],
   sessionId: string,
 ): Promise<Map<string, ExecutionLog>> {
-  const logs = new Map<string, ExecutionLog>()
   const runIds = [...new Set(messages.map((message) => message.runId).filter((runId): runId is string => !!runId))]
-  for (const runId of runIds) {
+  const projectedLogs: Array<ExecutionLog | undefined> = new Array(runIds.length)
+  let nextIndex = 0
+  // Overlap disk reads and durable replay, but bound concurrent log memory and
+  // filesystem pressure. Keep results in transcript order, regardless of timing.
+  const load = async (runId: string): Promise<ExecutionLog | undefined> => {
     let log = await runner.replay(runId)
-    if (log && log.sessionId !== sessionId) continue
+    if (log && log.sessionId !== sessionId) return undefined
     if (!log) {
       // A crash may leave durable run facts and user input without an audit
       // log. Still consult the settlement; never hide recovery behind a 404.
@@ -399,13 +404,19 @@ async function loadExecutionLogsByRunId(
         startedAt: timestamp, endedAt: timestamp, durationMs: 0, trace: [], toolCalls: [],
       }
       const projected = await prepareAuthoritativeExecutionLog(runner, log)
-      if (!projected.runtimeStatus && projected.durableHarnessMode !== 'next') continue
-      logs.set(runId, projected)
+      if (!projected.runtimeStatus && projected.durableHarnessMode !== 'next') return undefined
+      return projected
     } else {
-      logs.set(log.runId, await prepareAuthoritativeExecutionLog(runner, log))
+      return prepareAuthoritativeExecutionLog(runner, log)
     }
   }
-  return logs
+  await Promise.all(Array.from({ length: Math.min(8, runIds.length) }, async () => {
+    while (nextIndex < runIds.length) {
+      const index = nextIndex++
+      projectedLogs[index] = await load(runIds[index]!)
+    }
+  }))
+  return new Map(projectedLogs.filter((log): log is ExecutionLog => log !== undefined).map(log => [log.runId, log]))
 }
 
 /**

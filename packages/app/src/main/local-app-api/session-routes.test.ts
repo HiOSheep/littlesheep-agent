@@ -189,6 +189,44 @@ describe('session context usage history projection', () => {
 })
 
 describe('next-mode execution-log replay boundary', () => {
+  it('overlaps at most eight history replays while keeping durable replies in transcript order', async () => {
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let active = 0, peak = 0
+    const durable = vi.fn(async (_sessionId: string, runId: string) => ({
+      kind: 'settled' as const, sessionId: 'session-1', runId, cursor: 8,
+      settlementId: `settlement-${runId}`, reply: `settled ${runId}`,
+      replyFingerprint: `fp-${runId}`, modelRequestId: `request-${runId}`,
+    }))
+    const runner = mockReplayRunner(durable)
+    const base = await runner.replay('run-1')
+    const replay = vi.fn(async (runId: string) => {
+      active++; peak = Math.max(peak, active)
+      await gate
+      active--
+      return { ...base!, runId, reply: 'untrusted log text' }
+    })
+    Object.assign(runner, {
+      replay,
+      sessionManager: { readWindow: async () => ({ messages: Array.from({ length: 12 }, (_, i) => ({
+        id: `a-${i}`, runId: `run-${i}`, role: 'assistant', stage: 'finalize',
+        content: [{ type: 'text', text: 'untrusted proposal' }], timestamp: '2026-10-12T00:00:00Z',
+      })), hasMore: false }) },
+    })
+    const pending = invokeReplay(runner, 'unused', '/sessions/session-1/messages')
+    try {
+      await vi.waitFor(() => expect(replay).toHaveBeenCalledTimes(8))
+      expect(active).toBe(8)
+    } finally { release() }
+    const response = await pending
+    expect(response.status).toBe(200)
+    expect(peak).toBe(8)
+    expect(durable).toHaveBeenCalledTimes(12)
+    expect((response.body.messages as Array<{ text: string }>).map(message => message.text))
+      .toEqual(Array.from({ length: 12 }, (_, i) => `settled run-${i}`))
+    expect(JSON.stringify(response.body)).not.toContain('untrusted')
+  })
+
   it('shows a recovered waiting status even when the crash left no assistant message or execution log', async () => {
     const runner = mockReplayRunner(vi.fn().mockResolvedValue({ kind: 'runtime_status', sessionId: 'session-1', runId: 'run-1',
       cursor: 8, settlementId: 'runtime-1', status: 'waiting_user', reason: 'effect_settlement_unknown' }))

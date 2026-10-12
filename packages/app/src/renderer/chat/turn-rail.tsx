@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { FloatingHelpTip } from '../ui/floating-help'
 import type { RailEntry } from './turn-navigation'
 import { filterNavigationTurns, navigationTurns } from './navigation-model'
+import { railEntryLabel, railScaleStep } from './turn-navigation'
 
 export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
   entries: readonly RailEntry[]
@@ -12,28 +13,50 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [pinned, setPinned] = useState(false)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
+  const [panelWidth, setPanelWidth] = useState(320)
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const root = useRef<HTMLElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const search = useRef<HTMLInputElement>(null)
   const panelId = useId()
   const turns = useMemo(() => navigationTurns(entries), [entries])
-  const visible = useMemo(() => filterNavigationTurns(turns, query), [turns, query])
-  const current = turns.find((turn) => activeKey && turn.keys.includes(activeKey))
-  const close = () => { setOpen(false); trigger.current?.focus({ preventScroll: true }) }
+  const filtered = useMemo(() => filterNavigationTurns(turns, query), [turns, query])
+  const marks = useMemo(() => entries.length <= 64 ? entries : entries.filter((_, index) => index === entries.length - 1 || index % Math.ceil(entries.length / 63) === 0), [entries])
+  const focusKey = hoverKey ?? activeKey
+  const exactIndex = marks.findIndex(entry => entry.key === focusKey)
+  const focusIndex = exactIndex >= 0 ? exactIndex : Math.max(0, marks.findIndex(entry => entry.turn >= (entries.find(entry => entry.key === focusKey)?.turn ?? 1)))
+  const hoverTurn = entries.find(entry => entry.key === focusKey)?.turn
+  const previewIndex = Math.max(0, turns.findIndex(turn => turn.turn === hoverTurn))
+  const visible = pinned ? filtered : turns.slice(Math.max(0, previewIndex - 2), previewIndex + 3)
+  const close = () => { setOpen(false); setPinned(false); trigger.current?.focus({ preventScroll: true }) }
+
+  useEffect(() => () => clearTimeout(leaveTimer.current), [])
+  useEffect(() => {
+    const chat = root.current?.parentElement
+    if (!chat) return
+    const update = () => setPanelWidth(Math.max(180, Math.min(320, chat.clientWidth - 64)))
+    const observer = new ResizeObserver(update)
+    observer.observe(chat); update()
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (!open) return
-    search.current?.focus({ preventScroll: true })
+    if (pinned) search.current?.focus({ preventScroll: true })
     root.current?.querySelector('.chat-turn-entry[aria-current="true"]')?.scrollIntoView({ block: 'nearest' })
     const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false)
+      if (event.target instanceof Node && !root.current?.contains(event.target)) { setOpen(false); setPinned(false) }
     }
     document.addEventListener('pointerdown', dismiss)
     return () => document.removeEventListener('pointerdown', dismiss)
-  }, [open])
+  }, [open, pinned])
 
   return (
-    <nav ref={root} className="chat-turn-rail" aria-label="对话目录"
+    <nav ref={root} className="chat-turn-rail" aria-label="对话目录" data-expanded={open} data-pinned={pinned}
+      onMouseEnter={() => { clearTimeout(leaveTimer.current); onTipChange(null); setOpen(true) }}
+      onMouseLeave={() => { leaveTimer.current = setTimeout(() => { if (!pinned) setOpen(false) }, 150) }}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
@@ -44,7 +67,7 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
         if (inSearch && !['ArrowDown', 'ArrowUp'].includes(event.key)) return
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
         event.preventDefault()
-        if (!open) { onTipChange(null); setQuery(''); setOpen(true); return }
+        if (!open) { onTipChange(null); setQuery(''); setPinned(true); setOpen(true); return }
         const buttons = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('.chat-turn-entry') ?? [])
         const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
         const active = buttons.findIndex((button) => button.getAttribute('aria-current') === 'true')
@@ -54,18 +77,17 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
         buttons[next]?.focus({ preventScroll: true })
         buttons[next]?.scrollIntoView({ block: 'nearest' })
       }}>
-      <button ref={trigger} type="button" className="chat-turn-trigger" aria-label="打开对话目录"
-        aria-expanded={open} aria-controls={panelId}
-        onClick={() => { onTipChange(null); setQuery(''); setOpen(!open) }}>
-        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
-          <path d="M5 4H13M5 8H13M5 12H13M2 4H2.1M2 8H2.1M2 12H2.1" />
-        </svg>
-        <span>目录</span><span className="chat-turn-position">{current?.turn ?? turns[0]?.turn ?? 1} / {turns.at(-1)?.turn ?? 0}</span>
-      </button>
-      {open && <div id={panelId} className="chat-turn-panel">
-        <div className="chat-turn-heading"><strong>对话目录</strong><button type="button" aria-label="关闭对话目录" onClick={close}>×</button></div>
-        <input ref={search} className="chat-turn-search" type="search" aria-label="搜索轮次与内容摘要"
-          placeholder="搜索轮次或内容摘要…" value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="chat-turn-marks">{marks.map((entry, index) => <button key={entry.key} ref={index === 0 ? trigger : undefined}
+        type="button" className="chat-turn-trigger" data-role={entry.role} aria-label={railEntryLabel(entry)}
+        aria-current={entry.key === activeKey ? 'true' : undefined} aria-expanded={open} aria-controls={panelId}
+        onMouseEnter={() => { clearTimeout(leaveTimer.current); setHoverKey(entry.key); setOpen(true) }} onFocus={() => setHoverKey(entry.key)}
+        onClick={() => { onJump(entry.key); setOpen(false); setPinned(false) }}>
+        <span aria-hidden="true" style={{ width: `${[24, 18, 13, 9, 6][railScaleStep(focusIndex, index)]}px` }} />
+      </button>)}</div>
+      {open && <div id={panelId} className="chat-turn-panel" style={{ width: panelWidth }}>
+        {pinned && <div className="chat-turn-heading"><strong>对话目录</strong><button type="button" aria-label="关闭对话目录" onClick={close}>×</button></div>}
+        {pinned && <input ref={search} className="chat-turn-search" type="search" aria-label="搜索轮次与内容摘要"
+          placeholder="搜索轮次或内容摘要…" value={query} onChange={(event) => setQuery(event.target.value)} />}
         <div className="chat-turn-list" aria-label="对话轮次">
           {visible.map((turn) => <button key={turn.key} type="button" className="chat-turn-entry"
             aria-label={`第 ${turn.turn} 轮：${turn.question || turn.answer}`} aria-current={activeKey && turn.keys.includes(activeKey) ? 'true' : undefined}
@@ -75,7 +97,8 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
           </button>)}
           {visible.length === 0 && <div className="chat-turn-empty" role="status">没有匹配的轮次</div>}
         </div>
-        <div className="chat-turn-footer">{visible.length} 轮 · ↑↓ 选择 · Enter 跳转 · Esc 关闭</div>
+        {pinned ? <div className="chat-turn-footer">{visible.length} 轮 · ↑↓ 选择 · Enter 跳转 · Esc 关闭</div>
+          : <button className="chat-turn-expand" type="button" onClick={() => { setQuery(''); setPinned(true) }}>查看全部 {turns.length} 轮</button>}
       </div>}
     </nav>
   )

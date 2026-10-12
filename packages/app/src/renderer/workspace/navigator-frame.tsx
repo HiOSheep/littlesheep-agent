@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import { WORKSPACE_PANEL_MOTION_MS } from '../app-shell/preferences'
+import { isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { FolderGlyphIcon } from '../ui/icons'
 import {
@@ -156,7 +157,7 @@ export function WorkspaceNavigatorFrame({
 
     flushSync(() => onCollapsedChange(nextCollapsed))
 
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches || typeof inner.animate !== 'function') {
+    if (isAppearanceReducedMotion() || typeof inner.animate !== 'function') {
       finishNavigatorMotion(navigator)
       return
     }
