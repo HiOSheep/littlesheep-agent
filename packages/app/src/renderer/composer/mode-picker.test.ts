@@ -78,6 +78,8 @@ describe('mode picker layout', () => {
 
     const source = await readFile(new URL('./mode-picker.tsx', import.meta.url), 'utf8')
     expect(source).toContain('启用完全访问？')
+    expect(source).toContain('Shell 命令会在当前用户的宿主环境运行，没有 OS 级沙箱；工作区范围不会限制命令')
+    expect(source).toContain('命令可能访问此用户可访问的其他文件、启动本地进程或使用网络')
     expect(source).toContain('approval-action primary danger')
     expect(source).toContain("onChange('full')")
     expect(source).toContain('className="mode-option-copy"')

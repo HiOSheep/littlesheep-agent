@@ -127,7 +127,12 @@ export function approvalBoundaryDescription(boundary: ApprovalRequest['boundary'
 
 export function approvalActionRiskDescription(action: string, source: 'agent' | 'workspace'): string {
   const actor = source === 'workspace' ? '你在拓展工作区发起的操作' : 'Agent 为完成当前任务发起的操作'
-  if (action === 'exec') return `${actor}将执行命令，可能修改工作区文件或启动本地进程。`
+  if (action === 'exec') {
+    if (source === 'workspace') {
+      return `${actor}将执行命令。该命令会在你的交互式终端中以当前用户权限运行；LS 不会为该终端命令提供操作系统级沙箱，其可访问范围由命令和用户账户权限决定。`
+    }
+    return `${actor}将执行命令。命令会在当前用户的宿主环境运行；LS 当前没有为 Agent Shell 提供操作系统级沙箱，工作区边界不会限制该命令。它可能访问此用户可访问的其他文件、启动本地进程或使用网络。`
+  }
   if (action === 'write' || action === 'edit' || action === 'save_file') {
     return `${actor}将修改所示文件；请确认目标路径和变更范围。`
   }

@@ -64,7 +64,7 @@ export interface PermissionMode {
 export const FULL_ACCESS_MODE: PermissionMode = {
   id: 'full',
   label: '完全访问',
-  description: '确认风险后，LS 可直接读取、修改、删除和执行容器内外资源，不再逐次请求批准。',
+  description: '确认风险后，LS 可直接读取、修改、删除和执行容器内外资源，不再逐次请求批准；Shell 在宿主以当前用户权限运行，没有 OS 级沙箱。',
   risk: 'critical',
   riskLabel: '最高权限',
 }

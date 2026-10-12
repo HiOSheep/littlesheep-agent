@@ -158,7 +158,8 @@ function FullAccessWarning({
           <p>启用后，LittleSheep 无需逐次询问即可访问容器内外及范围不明的资源。</p>
           <ul className="full-access-warning-list">
             <li>读取、创建、修改或删除外部文件与目录</li>
-            <li>在外部工作区执行命令并启动本地进程</li>
+            <li>Shell 命令会在当前用户的宿主环境运行，没有 OS 级沙箱；工作区范围不会限制命令</li>
+            <li>命令可能访问此用户可访问的其他文件、启动本地进程或使用网络</li>
             <li>访问动态命令涉及的宿主资源</li>
           </ul>
           <p className="approval-session-note">LS 核心源码只读保护和危险命令硬拒绝仍然有效。你可以随时切回研究或受限模式。</p>
