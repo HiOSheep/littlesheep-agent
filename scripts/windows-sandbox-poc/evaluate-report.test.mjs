@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addSandboxAssessment } from './evaluate-report.mjs';
+import { addSandboxAssessment, addSnapshotAssessment } from './evaluate-report.mjs';
 
 function createPassingReport() {
   return {
@@ -102,5 +102,27 @@ describe('Windows sandbox capability evidence', () => {
 
     expect(assessed.capabilitySnapshot.capabilities['child-process-containment'].status).toBe('partial');
     expect(assessed.shellReadiness.ready).toBe(false);
+  });
+
+  it('keeps snapshot isolation partial when the report records a hard-link escape and does not authorize shell readiness', () => {
+    const report = {
+      backendId: 'windows-snapshot-filesystem-poc',
+      scope: { platform: 'win32', runId: 'snapshot-run', workspaceRoot: 'C:\\poc\\snapshot' },
+      evidence: {
+        directWorkspaceHardLink: { payloadStarted: true, outsideTargetChanged: true },
+        snapshotProcess: { payloadStarted: true, payloadResult: { nodeChildExitCode: 0 } },
+        git: { payloadStarted: true, payloadExitCode: 128 },
+      },
+    };
+
+    const assessed = addSnapshotAssessment(report);
+
+    expect(assessed.capabilitySnapshot.capabilities['process-filesystem-confinement'].status).toBe('partial');
+    expect(assessed.capabilitySnapshot.capabilities['process-network-confinement'].status).toBe('unavailable');
+    expect(assessed.capabilitySnapshot.capabilities['child-process-containment'].status).toBe('partial');
+    expect(assessed.capabilitySnapshot.capabilities['process-tree-termination'].status).toBe('unavailable');
+    expect(Object.values(assessed.capabilitySnapshot.capabilities).some((capability) => capability.status === 'verified')).toBe(false);
+    expect(assessed.shellReadiness.ready).toBe(false);
+    expect(assessed.readinessIsAuthorization).toBe(false);
   });
 });

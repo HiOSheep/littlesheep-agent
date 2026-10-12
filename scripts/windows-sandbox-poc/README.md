@@ -20,6 +20,18 @@ pnpm run poc:windows-sandbox
 
 最新 Windows 实测报告见[结果与限制](../../docs/reference/windows-shell-sandbox-poc.md)。PowerShell 和 Node 能通过硬链接读取并覆盖工作区外目标，所以文件系统隔离为 `partial`。窄授权下 Git 仓库命令失败；宿主 IPv6 不可达，IPv6 隔离没有验证。Shell readiness 保持 `false`。
 
+## P3-A3 临时快照实验
+
+在 Windows PowerShell 5.1 上运行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows-sandbox-poc/Invoke-WindowsSnapshotSandboxPoc.ps1
+```
+
+该实验只在当前用户 `%TEMP%` 下创建哨兵、硬链接、junction 和短期工作区副本。它会复现直接授权时的硬链接越界，拒绝含多链接文件或 reparse point 的快照输入，将无链接的普通文件复制成新文件对象，再通过现有实验性 launcher 运行 PowerShell、Node `-e` 与 Git 探针。报告附带 `SandboxCapabilitySnapshot` 和 `assessSandboxReadiness()` 结果；不连接生产执行路径，也不产生自动 Shell 授权。
+
+本实验的快照构建只用于验证文件对象分离。路径预检与复制之间仍有竞态，未覆盖 NTFS 命名流、稀疏/EFS 文件、全量目录替换或同用户其他进程改写快照；不能作为生产快照器或隔离证明。
+
 能力评估的回归测试：
 
 ```powershell

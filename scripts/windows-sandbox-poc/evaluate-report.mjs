@@ -148,11 +148,65 @@ export async function addSandboxAssessment(report) {
   };
 }
 
+export function addSnapshotAssessment(report) {
+  const evidence = report.evidence ?? {};
+  const directHardLinkAttempted = evidence.directWorkspaceHardLink?.payloadStarted === true;
+  const snapshotWriteAttempted = evidence.snapshotProcess?.payloadStarted === true;
+  const gitAttempted = evidence.git?.payloadStarted === true;
+  const filesystemAttempted = directHardLinkAttempted || snapshotWriteAttempted;
+  const childAttempted = evidence.snapshotProcess?.payloadResult?.nodeChildExitCode !== undefined || gitAttempted;
+  const nodeFileExitCode = evidence.snapshotProcess?.payloadResult?.nodeFileEntryExitCode;
+  const nodeChildExitCode = evidence.snapshotProcess?.payloadResult?.nodeChildExitCode;
+  const gitExitCode = evidence.git?.payloadExitCode;
+  const gitError = evidence.git?.trace2ErrorMessage;
+  const childProbeReasons = [];
+  if (nodeFileExitCode !== undefined) {
+    childProbeReasons.push(`Node file-entry exit=${nodeFileExitCode}; Node -e child exit=${nodeChildExitCode}.`);
+  }
+  if (gitAttempted) {
+    childProbeReasons.push(`Git init exit=${gitExitCode}${gitError ? ` (${gitError})` : ''}.`);
+  }
+  const statuses = {
+    'native-file-read-confinement': 'unavailable',
+    'native-file-write-confinement': 'unavailable',
+    'process-filesystem-confinement': filesystemAttempted ? 'partial' : 'unavailable',
+    'process-network-confinement': 'unavailable',
+    'child-process-containment': childAttempted ? 'partial' : 'unavailable',
+    'process-tree-termination': 'unavailable',
+  };
+  const reasons = {
+    'native-file-read-confinement': 'This experiment launches processes and does not assess LS native file tools.',
+    'native-file-write-confinement': 'This experiment launches processes and does not assess LS native file tools.',
+    'process-filesystem-confinement': directHardLinkAttempted && evidence.directWorkspaceHardLink.outsideTargetChanged
+      ? 'Direct workspace authorization allowed a hard-link alias to modify an outside sentinel. A separate clean copy isolated the tested object, but hard-link, reparse, copy-race, metadata-stream, and concurrent-mutation coverage is incomplete.'
+      : 'The experiment did not establish full process filesystem confinement; the copy tests cover only a clean fixture and preflight rejection cases.',
+    'process-network-confinement': 'Network confinement was not tested in this snapshot experiment; this run had no host-positive IPv6 baseline.',
+    'child-process-containment': childAttempted
+      ? `${childProbeReasons.join(' ')} These narrow probes do not establish general child-process compatibility or process-tree containment.`
+      : 'Child-process restrictions and runtime compatibility were not tested.',
+    'process-tree-termination': 'This experiment did not test timeout, cancellation, abnormal exit, or escaped descendants.',
+  };
+  const snapshot = {
+    version: SANDBOX_CAPABILITY_SNAPSHOT_VERSION,
+    backendId: report.backendId,
+    scope: report.scope,
+    capabilities: Object.fromEntries(Object.entries(statuses).map(([id, status]) => [id, { status, reason: reasons[id] }])),
+  };
+  return {
+    ...report,
+    capabilitySnapshot: snapshot,
+    shellReadiness: assessSandboxReadiness('shell', report.scope, snapshot),
+    readinessIsAuthorization: false,
+  };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const reportPath = process.argv[2];
   if (!reportPath) throw new Error('Usage: evaluate-report.mjs REPORT.json');
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  const assessed = await addSandboxAssessment(report);
+  const assessed = report.backendId === 'windows-snapshot-filesystem-poc'
+    ? addSnapshotAssessment(report)
+    : await addSandboxAssessment(report);
   await writeFile(reportPath, `${JSON.stringify(assessed, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(assessed.shellReadiness)}\n`);
 }

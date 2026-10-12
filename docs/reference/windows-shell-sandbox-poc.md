@@ -1,8 +1,8 @@
-# Windows Shell Sandbox PoC（P3-A / P3-A2）
+# Windows Shell Sandbox PoC（P3-A / P3-A2 / P3-A3）
 
 ## 结论
 
-这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或自动审批路径。P3-A 证明了部分 AppContainer 运行可行；P3-A2 同时发现一个真实的工作区外硬链接读写越界。Windows Shell 隔离未通过安全验收，不进入 P3-B。
+这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或自动审批路径。P3-A 证明了部分 AppContainer 运行可行；P3-A2/P3-A3 在真实 NTFS 硬链接上复现了工作区外修改。普通文件复制产生独立文件对象，并能在本机实验沙箱里被 PowerShell 与 Node `-e` 修改，而原文件保持不变；这只证明了受限 fixture 的可行性。Windows Shell 隔离未通过安全验收，不进入 P3-B。
 
 实验基于 `main` 的 P3-0 提交 `55d9e0a80e37542933fdee0cab88c74ceabcead7`。最终 P3-A2 实测主机为 Windows 11 Home China、Build 26200、x64；PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1`。报告生成于 `2026-10-12T03:05:33Z`，runId 为 `5989b2e9886649c099d8bdba1542500b`，本机完整报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-3ae33f971b0d4d2faee5ea8407ead84f`。这是本机实验记录，不是入库测试产物。
 
@@ -49,6 +49,32 @@ P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、ju
 
 能力快照只总结本机实验探针。它不是权限来源，也不启用 Shell 自动审批。
 
+## P3-A3 临时快照实验
+
+本轮从本地 `main` 的 P3-A2 基线 `5cffabe4` 开始。实验脚本：`scripts/windows-sandbox-poc/Invoke-WindowsSnapshotSandboxPoc.ps1`。结果报告生成于 `2026-10-12T03:46:23Z`，runId 为 `9275fd2fb79e4fb7a8a45d10de91b59b`，本机完整报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-snapshot-poc-55730a183b844bb8b0edb210b2638eb8`。该证据由 Windows 11 Home China Build 26200、PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1` 生成；仅用于 PoC，没有进入 `exec` 或 Main 权限策略。
+
+| 探测项 | 结果 | 证据与限制 |
+| --- | --- | --- |
+| 直接授权目录内的硬链接 | **越界修改复现** | 在临时 fixture 中，工作区别名与外部哨兵具有相同卷序列号/文件 ID，链接数为 2。现有实验 launcher 下 PowerShell 通过别名把哨兵改为 `modified-through-direct-workspace-hardlink`。这重现了 P3-A2 的对象别名问题。 |
+| 快照硬链接预检 | 本次拒绝 | `GetFileInformationByHandle` 返回链接数大于 1 时，在创建快照目标之前拒绝整棵源树；测试未复制别名内容，目标路径未创建。预检与复制之间仍有竞态，不能作为生产安全保证。 |
+| 快照 reparse point 预检 | 本次拒绝 | 真实创建 junction 后，快照构建器识别 `FILE_ATTRIBUTE_REPARSE_POINT` 并拒绝，未创建目标目录。只覆盖这一个静态 junction fixture；并未覆盖所有 reparse tag 和并发替换。 |
+| 普通文件对象复制 | 本次分离 | SHA-256 内容匹配；复制后源文件与快照文件的卷/文件 ID 不同，二者链接数均为 1。暂存目录通过同父目录改名提升为快照。PowerShell 沙箱进程与其 Node `-e` 子进程能修改副本；测试源文件和外部哨兵内容保持不变。未验证掉电持久性或完整回滚语义。 |
+| Node 文件入口 | 失败 | `node <snapshot>\write-child.mjs` 在 Node 解析入口路径时，对 `C:\` 的 `lstat` 返回 `EPERM`。Node `-e` 可以运行并写入快照。当前窄权限因此只证明了 `-e` 形态，不能宣称 Node 项目脚本兼容。 |
+| Git `init` | 失败 | Git Trace2 记录 `unable to get current working directory: Permission denied`，退出码 128，未创建仓库。失败发生在目标目录写入前。 |
+| Git 文件访问追踪 | 不可用 | 主机没有 Procmon。系统内置 WPR 能列出 `FileIO` profile，但当前非提升会话启动 `wpr -start FileIO -filemode` 返回 `0x80070005 ACCESS_DENIED`。没有内核文件访问事件证据，不能把 Trace2 错误等同于具体被拒的 Win32/NT 调用。 |
+| IPv6 网络 | 不可判定 | 本机没有 IPv6 默认路由，固定 IPv6 目标没有宿主正向可达基线；本轮未测试沙箱 IPv6 egress。 |
+| 并发修改快照、进程生命周期 | 未测试 | 本轮未覆盖宿主在沙箱运行中替换快照子目录、进程异常退出、逃逸或完整进程树清理。 |
+
+实验的 `SandboxCapabilitySnapshot` 使用 P3-0 的结构，并通过现有 `assessSandboxReadiness()` 评估：文件系统 `partial`、网络 `unavailable`、子进程 `partial`、进程树终止 `unavailable`；Shell readiness 为 `false`，没有任何能力被标记为 `verified`。Ready 结果不作为授权输入。
+
+### 文件对象隔离路线判断
+
+NTFS 硬链接是同一文件对象的多个目录项；微软 API 返回的 `BY_HANDLE_FILE_INFORMATION.nNumberOfLinks` 和文件 ID 可用于本机预检，但路径检查本身不是完整隔离。直接授权工作区中的文件对象后，硬链接别名仍指向该对象。更换进程启动 API 不会自动创建新文件对象，因此 `CreateProcessW + STARTUPINFOEX + SECURITY_CAPABILITIES` 的稳定性优势不能解决这个文件系统边界问题。[硬链接与 junction 语义](https://learn.microsoft.com/en-us/windows/win32/fileio/file-and-directory-linking) · [`BY_HANDLE_FILE_INFORMATION`](https://learn.microsoft.com/en-us/windows/desktop/api/fileapi/ns-fileapi-by_handle_file_information)。
+
+文档化 AppContainer 启动路线仍是长期 API 候选：使用 `InitializeProcThreadAttributeList` / `UpdateProcThreadAttribute` 配置 `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`，再调用 `CreateProcessW`。它比 `Experimental_CreateProcessInSandbox` 的 ABI 稳定，但授权的目录/文件仍需 DACL 配置，且更换 launcher 不会修复共享文件对象别名、Git 的 CWD 解析或本轮 Node 入口失败。[Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer) · [`UpdateProcThreadAttribute`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)。本轮没有重写 launcher，因为先要解决快照输入边界。
+
+快照路线在本机普通文件 fixture 上有部分可行性，但当前构建器仍不能用于真实 workspace。后续若继续验证，必须先用句柄相对路径遍历和固定对象句柄消除“预检后重开路径”的竞态；拒绝未明确支持的命名流、特殊文件和 reparse tag；为运行期间的快照建立可验证的访问控制/不可替换约束；再设计失败清理、磁盘额度、Git 一致性、变化冲突与 P2 受控回传。这个实验没有实现其中任何生产机制，也没有实现完整变更回放。
+
 ## Windows 后端路线比较
 
 | 路线 | 支持与可行性 | 主要代价和未解决项 |
@@ -59,7 +85,7 @@ P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、ju
 | Windows Container + Hyper-V isolation | Windows 11 Pro/Enterprise 可用，需启用 Hyper-V 角色。[系统要求](https://learn.microsoft.com/en-us/virtualization/windowscontainers/deploy-containers/system-requirements) | 当前 Windows Home 主机不能实测。需要维护容器镜像和运行时。官方网络文档说明容器默认出站允许，即使 Hyper-V isolation 也不能假设默认阻网，仍要制定和测试网络规则。[网络隔离与安全](https://learn.microsoft.com/en-us/virtualization/windowscontainers/container-networking/network-isolation-security) |
 | Restricted Token、ACL、Job Object | 可作为纵深防御组件。Job Object 可约束并结束进程组；ACL/DACL 可限制具体对象访问。[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) · [ACL](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-control-lists) | 单独不构成完整文件系统与网络隔离，也不自动处理 workspace 绑定、链接别名、网络 egress 和父子进程生命周期。P3-A2 未实测 Restricted Token 替代后端。 |
 
-建议下一步先对“文档化 AppContainer 启动 API + 显式 DACL + Job Object”做独立可行性试验，并与 Windows Sandbox/Hyper-V isolation 的系统版本、并发、冷启动和文件回传成本比较。路线选择必须重新运行硬链接、Git、网络及链接竞态测试；不能从本轮 AppContainer 证据直接继承 `verified`。
+下一轮优先完成工作区快照边界验证：固定并遍历源目录句柄、消除检查后重开路径的竞态、拒绝硬链接/reparse/special stream，并测试运行中同用户进程替换快照。只有文件对象隔离方案先通过哨兵测试后，才值得做文档化 AppContainer API 的最小 launcher 实验。Git CWD 仍需在可提升的 Windows 环境中通过 WPR/Procmon 追踪具体访问失败；IPv6 需要宿主可达的测试网络。路线比较再纳入 Windows Sandbox/Hyper-V isolation 的版本、并发、冷启动、磁盘开销和回传成本。
 
 ## P3-B 前置门槛
 
