@@ -219,6 +219,7 @@ export async function readSse(locator, path, body, options = {}) {
     }
     const events = []
     let result
+    let resultRef
     let error
     let buffer = ''
     for await (const chunk of response.body) {
@@ -235,10 +236,21 @@ export async function readSse(locator, path, body, options = {}) {
           await answerApproval(locator, event.data, approvalAnswer, approvals)
         }
         if (event.event === 'result') result = event.data
+        if (event.event === 'result_ref') resultRef = event.data?.runId
         if (event.event === 'error') error = event.data?.error ?? 'unknown SSE error'
       }
     }
     if (error) throw new Error(`${path}: ${error}`)
+    if (!result && resultRef) {
+      const startedRunId = events.find((event) => event.event === 'start')?.data?.runId
+      if (startedRunId && resultRef !== startedRunId) {
+        throw new Error(`${path}: result reference does not match start metadata`)
+      }
+      result = await getJson(locator, `/runs/${encodeURIComponent(resultRef)}`)
+      if (result.runId !== resultRef) {
+        throw new Error(`${path}: replayed result does not match its reference`)
+      }
+    }
     if (!result) throw new Error(`${path}: SSE ended without a result`)
     return { result, approvals, events }
   } finally {
