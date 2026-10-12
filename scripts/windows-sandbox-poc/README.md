@@ -16,7 +16,7 @@ pnpm run poc:windows-sandbox
 
 ## 探针与当前结果
 
-探针覆盖工作区读写、越界读取与写入、路径穿越、junction、文件 symlink、硬链接读写、运行中替换工作区子目录、LS 受保护源码写入、PowerShell 到 Node 的限制继承、Git `version/init/status`、当前目录元数据与规范化、PowerShell 和 Node 的网络访问、Job Object 超时/取消清理、工作区根替换，以及无效规范的 fail-closed 行为。生成的 PowerShell 探针会在启动前做语法校验。
+探针覆盖工作区读写、越界读取与写入、路径穿越、junction、文件 symlink 创建、硬链接读写、运行中替换工作区子目录、LS 受保护源码写入、PowerShell 到 Node 的限制继承、Git `version/init/status`、当前目录元数据与规范化、PowerShell 和 Node 的网络访问、Job Object 超时/取消清理、工作区根替换，以及无效规范的 fail-closed 行为。Symlink 结果只有在 API 返回成功且路径实际存在时才计入；旧 P3-A2 symlink 结果因返回值封送错误已从报告中撤回。
 
 最新 Windows 实测报告见[结果与限制](../../docs/reference/windows-shell-sandbox-poc.md)。PowerShell 和 Node 能通过硬链接读取并覆盖工作区外目标，所以文件系统隔离为 `partial`。窄授权下 Git 仓库命令失败；宿主 IPv6 不可达，IPv6 隔离没有验证。Shell readiness 保持 `false`。
 
@@ -31,6 +31,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/windows-sandbox-
 该实验只在当前用户 `%TEMP%` 下创建哨兵、硬链接、junction 和短期工作区副本。它会复现直接授权时的硬链接越界，拒绝含多链接文件或 reparse point 的快照输入，将无链接的普通文件复制成新文件对象，再通过现有实验性 launcher 运行 PowerShell、Node `-e` 与 Git 探针。报告附带 `SandboxCapabilitySnapshot` 和 `assessSandboxReadiness()` 结果；不连接生产执行路径，也不产生自动 Shell 授权。
 
 本实验的快照构建只用于验证文件对象分离。路径预检与复制之间仍有竞态，未覆盖 NTFS 命名流、稀疏/EFS 文件、全量目录替换或同用户其他进程改写快照；不能作为生产快照器或隔离证明。
+
+## P3-A4 句柄固定快照实验
+
+在 Windows PowerShell 5.1 上运行：
+
+```powershell
+pnpm run poc:windows-snapshot-a4
+```
+
+该独立实验仅接受固定本地 NTFS 卷，使用 `NtCreateFile` 目录句柄相对打开、`GetFileInformationByHandleEx` 句柄枚举，并从保留的源文件句柄复制内容。它覆盖 hardlink 新对象物化、ADS/junction 拒绝、枚举后文件对象替换检测、目录替换竞态、运行中快照根/子目录和文件改动，以及当前仓库的 `.git` / `node_modules` 只读 census。运行中同用户进程能改写普通快照文件；这不是可抵御同用户宿主进程的边界。完整数据和停止条件见[结果与限制](../../docs/reference/windows-shell-sandbox-poc.md)。
+
+该 PoC 不接入正式 `exec`，不会开放 Shell 自动执行。它只验证当前 Windows 主机上的实验路径；非 NTFS、文件 symlink 创建、未知 reparse 类型、完整项目复制时间以及 Git/Node 项目脚本兼容性仍是未验证或受限状态。
 
 能力评估的回归测试：
 

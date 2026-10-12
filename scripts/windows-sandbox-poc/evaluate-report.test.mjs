@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addSandboxAssessment, addSnapshotAssessment } from './evaluate-report.mjs';
+import { addHandleSnapshotAssessment, addSandboxAssessment, addSnapshotAssessment } from './evaluate-report.mjs';
 
 function createPassingReport() {
   return {
@@ -116,6 +116,26 @@ describe('Windows sandbox capability evidence', () => {
     };
 
     const assessed = addSnapshotAssessment(report);
+
+    expect(assessed.capabilitySnapshot.capabilities['process-filesystem-confinement'].status).toBe('partial');
+    expect(assessed.capabilitySnapshot.capabilities['process-network-confinement'].status).toBe('unavailable');
+    expect(assessed.capabilitySnapshot.capabilities['child-process-containment'].status).toBe('partial');
+    expect(assessed.capabilitySnapshot.capabilities['process-tree-termination'].status).toBe('unavailable');
+    expect(Object.values(assessed.capabilitySnapshot.capabilities).some((capability) => capability.status === 'verified')).toBe(false);
+    expect(assessed.shellReadiness.ready).toBe(false);
+    expect(assessed.readinessIsAuthorization).toBe(false);
+  });
+
+  it('keeps handle-anchored snapshot evidence partial and shell readiness disabled', () => {
+    const assessed = addHandleSnapshotAssessment({
+      backendId: 'windows-handle-snapshot-poc',
+      scope: { platform: 'win32', runId: 'handle-run', workspaceRoot: 'C:\\poc\\snapshot' },
+      evidence: {
+        handleCopy: { promotedAtomically: true },
+        sourceDirectorySwap: { copierUsedHeldDirectoryHandle: true },
+        runtimeSnapshotMutation: { sandboxPayloadStarted: true },
+      },
+    });
 
     expect(assessed.capabilitySnapshot.capabilities['process-filesystem-confinement'].status).toBe('partial');
     expect(assessed.capabilitySnapshot.capabilities['process-network-confinement'].status).toBe('unavailable');

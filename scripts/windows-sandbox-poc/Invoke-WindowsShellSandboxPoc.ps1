@@ -83,7 +83,7 @@ try {
 using System.Runtime.InteropServices;
 public static class LsWindowsSandboxSymlinkProbe {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-  [return: MarshalAs(UnmanagedType.Bool)]
+  [return: MarshalAs(UnmanagedType.I1)]
   public static extern bool CreateSymbolicLinkW(string link, string target, uint flags);
 }
 '@ -ErrorAction Stop
@@ -92,6 +92,7 @@ public static class LsWindowsSandboxSymlinkProbe {
   # it does not change host policy or enable Developer Mode.
   $symlinkCreated = [LsWindowsSandboxSymlinkProbe]::CreateSymbolicLinkW($symlinkPath, $outsideSecret, 2)
   if (-not $symlinkCreated) { $symlinkError = "CreateSymbolicLinkW error=$([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
+  elseif (-not (Test-Path -LiteralPath $symlinkPath)) { $symlinkCreated = $false; $symlinkError = 'CreateSymbolicLinkW reported success but the link path is missing.' }
 }
 catch { $symlinkError = $_.Exception.Message }
 

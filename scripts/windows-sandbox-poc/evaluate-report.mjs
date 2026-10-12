@@ -200,13 +200,56 @@ export function addSnapshotAssessment(report) {
   };
 }
 
+export function addHandleSnapshotAssessment(report) {
+  const evidence = report.evidence ?? {};
+  const copy = evidence.handleCopy ?? {};
+  const sourceRace = evidence.sourceDirectorySwap ?? {};
+  const runtimeMutation = evidence.runtimeSnapshotMutation ?? {};
+  const snapshotAttempted = copy.promotedAtomically === true || sourceRace.copierUsedHeldDirectoryHandle === true;
+  const sandboxAttempted = runtimeMutation.sandboxPayloadStarted === true;
+  const statuses = {
+    'native-file-read-confinement': 'unavailable',
+    'native-file-write-confinement': 'unavailable',
+    'process-filesystem-confinement': snapshotAttempted ? 'partial' : 'unavailable',
+    'process-network-confinement': 'unavailable',
+    'child-process-containment': sandboxAttempted ? 'partial' : 'unavailable',
+    'process-tree-termination': 'unavailable',
+  };
+  const reasons = {
+    'native-file-read-confinement': 'This experiment does not assess LS native file tools.',
+    'native-file-write-confinement': 'This experiment does not assess LS native file tools.',
+    'process-filesystem-confinement': snapshotAttempted
+      ? 'Handle-relative enumeration and pinned-handle copying were exercised, but reparse points and named streams are rejected, same-user host mutation was probed separately, and the experimental process backend is not established as a security boundary.'
+      : 'No handle-anchored snapshot evidence was recorded.',
+    'process-network-confinement': 'Network isolation was not tested in this file-object experiment.',
+    'child-process-containment': sandboxAttempted
+      ? 'One PowerShell payload ran under the existing experimental launcher; it does not establish general child-process compatibility.'
+      : 'The experimental launcher did not run a payload in this report.',
+    'process-tree-termination': 'This experiment did not test timeout, cancellation, abnormal exit, or escaped descendants.',
+  };
+  const capabilitySnapshot = {
+    version: SANDBOX_CAPABILITY_SNAPSHOT_VERSION,
+    backendId: report.backendId,
+    scope: report.scope,
+    capabilities: Object.fromEntries(Object.entries(statuses).map(([id, status]) => [id, { status, reason: reasons[id] }])),
+  };
+  return {
+    ...report,
+    capabilitySnapshot,
+    shellReadiness: assessSandboxReadiness('shell', report.scope, capabilitySnapshot),
+    readinessIsAuthorization: false,
+  };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const reportPath = process.argv[2];
   if (!reportPath) throw new Error('Usage: evaluate-report.mjs REPORT.json');
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
   const assessed = report.backendId === 'windows-snapshot-filesystem-poc'
     ? addSnapshotAssessment(report)
-    : await addSandboxAssessment(report);
+    : report.backendId === 'windows-handle-snapshot-poc'
+      ? addHandleSnapshotAssessment(report)
+      : await addSandboxAssessment(report);
   await writeFile(reportPath, `${JSON.stringify(assessed, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify(assessed.shellReadiness)}\n`);
 }

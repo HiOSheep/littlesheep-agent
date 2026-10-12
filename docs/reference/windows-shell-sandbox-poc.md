@@ -1,8 +1,8 @@
-# Windows Shell Sandbox PoC（P3-A / P3-A2 / P3-A3）
+# Windows Shell Sandbox PoC（P3-A / P3-A2 / P3-A3 / P3-A4）
 
 ## 结论
 
-这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或自动审批路径。P3-A 证明了部分 AppContainer 运行可行；P3-A2/P3-A3 在真实 NTFS 硬链接上复现了工作区外修改。普通文件复制产生独立文件对象，并能在本机实验沙箱里被 PowerShell 与 Node `-e` 修改，而原文件保持不变；这只证明了受限 fixture 的可行性。Windows Shell 隔离未通过安全验收，不进入 P3-B。
+这是仅供实验的 Windows launcher，没有接入 `exec`、Main 权限策略、`ToolExecutionService` 或自动审批路径。P3-A2/P3-A3 在真实 NTFS 硬链接上复现了工作区外修改；P3-A4 又证明了句柄相对遍历和从固定文件句柄物化硬链接内容的可行性，也发现运行期同用户进程仍能改写快照文件。Windows Shell 隔离未通过安全验收，不进入 P3-B。
 
 实验基于 `main` 的 P3-0 提交 `55d9e0a80e37542933fdee0cab88c74ceabcead7`。最终 P3-A2 实测主机为 Windows 11 Home China、Build 26200、x64；PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1`。报告生成于 `2026-10-12T03:05:33Z`，runId 为 `5989b2e9886649c099d8bdba1542500b`，本机完整报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-3ae33f971b0d4d2faee5ea8407ead84f`。这是本机实验记录，不是入库测试产物。
 
@@ -12,7 +12,7 @@
 
 P3-A 的首轮卷根授权报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-fea0b8613f4743c0beac23ad1fec08ba`；移除卷根后的报告保留在 `%LOCALAPPDATA%\Temp\ls-windows-sandbox-poc-8b813cb181eb4fa5b3acbad29a0885d8`。首轮把 `C:\` 和 `D:\` 加入只读授权后，沙箱能读取相邻目录哨兵、当前用户 `.gitconfig` 和 PowerShell 历史，也能经 `..` 与 junction 读取工作区外文件。该授权随后已从 PoC 中移除，不能作为候选配置。
 
-P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、junction 和受保护源码写入表现符合预期，但文件 symlink 因当时的宿主创建方式失败，未获得测试证据。其外网测试使用 `1.1.1.1:443`，宿主同样无法建立连接，所以外网隔离当时不可判定。P3-A 还记录 `disallow_win32k_system_calls` 会阻断 CLI 初始化，因此 PoC 未启用该缓解选项；这只是兼容性观察，不是安全建议。P3-A2 重新创建并测试了 symlink、使用宿主成功的网络目标，并新增硬链接与目录替换探针；它发现的硬链接越界没有被旧报告覆盖。
+P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、junction 和受保护源码写入表现符合预期，但文件 symlink 因当时的宿主创建方式失败，未获得测试证据。其外网测试使用 `1.1.1.1:443`，宿主同样无法建立连接，所以外网隔离当时不可判定。P3-A 还记录 `disallow_win32k_system_calls` 会阻断 CLI 初始化，因此 PoC 未启用该缓解选项；这只是兼容性观察，不是安全建议。P3-A2 的后续源码审计发现，它的 `CreateSymbolicLinkW` P/Invoke 把 Win32 `BOOLEAN` 返回值按 4 字节 `BOOL` 解读，且未确认链接路径存在，因此旧报告中的文件 symlink 拒绝结果撤回。P3-A4 修正返回类型后，本机文件 symlink 创建仍以错误 1314 失败，无法补做该负向沙箱测试。
 
 ## P3-A2 实测发现
 
@@ -20,7 +20,8 @@ P3-A 窄授权轮次中，PowerShell/Node 对已测的外部路径、穿越、ju
 | --- | --- | --- |
 | 工作区普通读取和写入 | 通过 | PowerShell 和 Node 均能在授权工作区读取及创建文件。 |
 | 越界读取/写入、`..` 穿越 | 本次拒绝 | PowerShell 和 Node 对工作区外哨兵的读取、写入与路径穿越均被拒绝。 |
-| 静态 junction 与文件 symlink | 本次拒绝 | 两种链接都真实创建成功，PowerShell 和 Node 通过链接读取外部哨兵均被拒绝。Symlink 使用 `CreateSymbolicLinkW` 的 unprivileged flag；未更改主机设置。 |
+| 静态 junction | 本次拒绝 | junction 实际创建成功，PowerShell 和 Node 通过 junction 读取外部哨兵均被拒绝。 |
+| 文件 symlink | **未验证；旧结果撤回** | 旧 P3-A2 测试对 `CreateSymbolicLinkW` 的 `BOOLEAN` 返回值使用了 4 字节 `BOOL` 封送，且没有确认链接路径存在。修正为 1 字节 `BOOLEAN` 并检查路径后，P3-A4 在本机得到 Win32 错误 1314，未创建 symlink；因此不能声称 AppContainer 拒绝了该 symlink 目标。 |
 | 硬链接 | **隔离失败，已复现越界读写** | 宿主在授权工作区内为工作区外哨兵创建同卷硬链接。AppContainer 下 PowerShell 和 Node 都能通过该别名读取并覆盖外部文件；报告中 `hardLinkReadDenied=false`、`hardLinkWriteDenied=false`、`hardLinkTargetUnchanged=false`。测试确认外部哨兵实际被改写。这是阻断 Shell 隔离验收的真实安全风险。 |
 | 工作区子目录替换竞态 | 本次目标未越界 | 沙箱 reader 启动后，宿主将其工作区内目标目录移走并放入指向外部目录的 junction。替换成功，但 reader 未读到外部哨兵，外部目标未变化。该单一竞态用例不能覆盖所有 reparse point、文件系统或时序。 |
 | 工作区根目录替换 | 本次被阻止 | launcher 固定工作区目录句柄后，宿主无法重命名该根目录。它与“子目录被替换后仍拒绝访问”的测试是不同场景。 |
@@ -73,7 +74,32 @@ NTFS 硬链接是同一文件对象的多个目录项；微软 API 返回的 `BY
 
 文档化 AppContainer 启动路线仍是长期 API 候选：使用 `InitializeProcThreadAttributeList` / `UpdateProcThreadAttribute` 配置 `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`，再调用 `CreateProcessW`。它比 `Experimental_CreateProcessInSandbox` 的 ABI 稳定，但授权的目录/文件仍需 DACL 配置，且更换 launcher 不会修复共享文件对象别名、Git 的 CWD 解析或本轮 Node 入口失败。[Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer) · [`UpdateProcThreadAttribute`](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)。本轮没有重写 launcher，因为先要解决快照输入边界。
 
-快照路线在本机普通文件 fixture 上有部分可行性，但当前构建器仍不能用于真实 workspace。后续若继续验证，必须先用句柄相对路径遍历和固定对象句柄消除“预检后重开路径”的竞态；拒绝未明确支持的命名流、特殊文件和 reparse tag；为运行期间的快照建立可验证的访问控制/不可替换约束；再设计失败清理、磁盘额度、Git 一致性、变化冲突与 P2 受控回传。这个实验没有实现其中任何生产机制，也没有实现完整变更回放。
+P3-A3 只对普通文件做路径预检后复制；P3-A4 在受限 NTFS fixture 上补测了句柄相对遍历、固定源文件句柄、命名流拒绝、目录替换和快照期间宿主改动。这些仍是实验工具：没有可抵御同用户宿主进程的快照完整性、硬链接读取授权规则、真实全项目快照、Git/Node 脚本兼容或完整变更回放。
+
+## P3-A4 句柄固定快照实验
+
+实验入口：`pnpm run poc:windows-snapshot-a4`，实现位于 `scripts/windows-sandbox-poc/Invoke-WindowsSnapshotHandlePoc.ps1` 与 `SnapshotHandleNative.cs`。本机报告生成于 `2026-10-12T05:00:09Z`，runId 为 `bce3de2221be4ba9842fa902ab2ea6c4`，证据目录为 `%LOCALAPPDATA%\Temp\ls-windows-handle-snapshot-poc-82c4cdfbd8094c51aeba62ffa0c90632`。运行环境是 Windows 11 Home China Build 26200、Windows PowerShell `5.1.26100.9444`、Node.js `v26.4.0`、Git `2.50.1.windows.1`。该轮没有改动正式 `exec`、Runner、Harness 或 `ToolExecutionService`。
+
+威胁模型以恶意 Agent 命令为对象，并信任 Main、操作系统和快照构建器。另用独立同用户进程探测快照竞争；结果不支持把同用户宿主进程纳入隔离保证。
+
+构建器只接受固定本地 NTFS 卷。它从卷根目录句柄逐级打开源路径，使用文档化的用户态 `NtCreateFile` `RootDirectory` 相对打开单个子项，并以 `FILE_OPEN_REPARSE_POINT` 检查而不跟随叶 reparse point；目录和流信息通过现有文件句柄查询。每个目录枚举项携带 FileId，打开名称后会与同一父句柄枚举到的 ID 比对；替换成不同对象时停止并清理暂存目录。文件数据从保留的源句柄读取，在新建目标文件对象时直接散列，复制后重新计算 SHA-256，并验证源与目标文件 ID 不同、目标链接数为 1。所有文件先写入同父暂存目录，最后通过同卷目录改名提升。句柄相对打开和返回数据结构依据 [NtCreateFile 的 Win32 用户态文档](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile)、[GetFileInformationByHandleEx](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandleex) 与 [FILE_STREAM_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_stream_info)。本轮仅在一台 Windows 11 主机验证，没有覆盖 Windows 版本兼容矩阵。
+
+| 探测项 | 结果 | 证据与限制 |
+| --- | --- | --- |
+| pnpm 形态 hardlink 物化 | 本次通过 | 临时项目含 `.git`、`node_modules/.pnpm` 和指向项目外 content-store 文件的硬链接。5 个文件、173 字节在 102 ms 内复制到新文件对象；源链接计数为 2，目标 ID 不同且链接数为 1。修改快照副本后 store 文件内容保持不变。该 fixture 是手工构造的布局，不是运行 `pnpm install` 生成的项目。 |
+| 枚举后替换普通文件 | 本次拒绝替换对象 | 独立宿主进程在目录枚举后、相对打开前把文件名换成指向外部哨兵的硬链接。构建器比对目录项 FileId 与打开句柄 FileId，检测到不一致后拒绝提升，清理暂存目录；外部哨兵未变化，也没有被复制。 |
+| 检查后替换源子目录 | 本次通过 | 独立宿主进程在构建器已打开 `nested` 目录句柄后，把路径改名并放入指向外部哨兵目录的 junction。构建器仍通过原目录句柄复制原文件；输出中没有外部哨兵。只覆盖此 NTFS/时序用例。 |
+| 运行期间替换快照根 | 本次被阻止 | launcher 固定根目录句柄后，同用户宿主进程的根目录改名失败。 |
+| 运行期间替换快照子目录 | 沙箱外目标拒绝；快照完整性未保护 | 独立宿主进程成功移走快照子目录并放入外部 junction。被测 AppContainer PowerShell 对 junction 外哨兵的读取和写入均得到 `UnauthorizedAccessException`，哨兵内容未变。但宿主也成功原子替换快照根下的普通文件，payload 随后读取到了宿主写入的新内容。快照 DACL 不是抵御同用户进程的安全边界。 |
+| NTFS 替代数据流 | 本次拒绝 | 通过文件句柄查询发现新增命名流；严格复制拒绝提升快照。 |
+| junction / reparse point | junction 本次拒绝 | 创建出的 junction 标签为 `0xA0000003`，构建器没有跟随它，拒绝提升快照。未知 reparse tag 没有逐类创建；实现对所有带 `FILE_ATTRIBUTE_REPARSE_POINT` 的条目默认拒绝。 |
+| 文件 symlink | 未验证 | 修正 `CreateSymbolicLinkW` 返回类型后，真实 Windows PowerShell 5.1 探针得到错误 1314，文件链接未创建；因此没有针对这个 fixture 的 symlink 隔离结论。当前仓库 census 另发现 20 个 `IO_REPARSE_TAG_SYMLINK`，并确认句柄 census 能识别其 tag，但没有对每个目标运行 shell 访问探针。微软文档规定该 API 返回 1 字节 `BOOLEAN`，且未提升进程使用 unprivileged flag 需要 Developer Mode。[CreateSymbolicLinkW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw) |
+| 真实 LS 项目兼容性 | 有明显代价 | 对当前仓库及实际 `node_modules` 做 23.1 秒句柄 census：118,197 个子项、92,051 个文件、24,163 个目录；33,463 个文件路径的链接数大于 1，1,983 个 reparse point，未发现命名流。其中 1,963 个是 `IO_REPARSE_TAG_MOUNT_POINT`（junction），20 个是 `IO_REPARSE_TAG_SYMLINK`。pnpm 文档说明 `node_modules` 文件会从内容寻址 store 建立硬链接。[pnpm 的 store 与硬链接](https://pnpm.io/motivation) |
+| 全项目快照 | 未执行 | 估算需要复制 6,007,247,318 字节逻辑数据；源文件分配量合计 6,153,011,104 字节。由于需要复制约 5.6 GiB 且项目含大量 reparse point，没有对 6 GB 项目执行整树复制。全树复制耗时未测。 |
+
+硬链接物化只证明目标文件对象独立，**不证明读取授权正确**：若工作区内 hardlink 指向 workspace 外的秘密文件，构建器仍会从该链接句柄读出内容并复制到快照；PnPM store 文件也是 workspace 外对象。P3-A4 没有制定“依赖内容可读”与“任意外部硬链接目标不可读”之间的产品授权规则，也没有枚举每个对象的全部外部别名。因此，不能据此允许含任意 hardlink 的用户项目自动进入 Shell。
+
+兼容性和安全证据仍不足以进入 P3-B：现有仓库有大量 pnpm junction，当前策略会拒绝这些条目；若复制并物化 hardlink，还需确定其源内容授权和链接关系变化语义。即便 shell payload 在单次外部 junction 测试中被拒绝，同用户宿主仍可改写快照输入。Git 仓库命令、Node 文件入口、网络隔离、变更回传、崩溃清理和跨版本行为也未验证。P3-A4 的能力快照保持文件系统 `partial`、子进程 `partial`、网络与进程树终止 `unavailable`，Shell readiness 为 `false`，没有能力被标为 `verified`。
 
 ## Windows 后端路线比较
 
@@ -90,10 +116,12 @@ NTFS 硬链接是同一文件对象的多个目录项；微软 API 返回的 `BY
 ## P3-B 前置门槛
 
 1. 解决硬链接别名读取和写入越界，并用真实外部文件哨兵证明所有支持的工作区存储布局都无法越界；不允许靠卷根或用户临时目录授权掩盖问题。
-2. 以最小、可审计的目录遍历权限修复 Git 的 `getcwd` / CWD 解析，并证明不会暴露父目录同级内容；若无法做到，明确拒绝该类工作流，不扩大授权。
-3. 在宿主可达的受控 IPv4 和 IPv6 目标上分别验证宿主成功、PowerShell/Node 及其子进程被阻断；覆盖 DNS、系统代理和本地网络路径。
-4. 在候选的正式 API 后端本身重跑绝对/相对路径、symlink、junction、其他 reparse point、硬链接、目录替换、进程逃逸及超时/取消测试，并覆盖具体支持 Windows 构建。
-5. 明确 PowerShell、Node、Git 的支持版本、运行时读取范围、容器或 helper 的部署与更新策略；故障时只能拒绝执行，不能退回宿主 Shell。
-6. 所有成功证据由可信 Main/宿主后端针对本次工作区和 run 生成。权限审批、能力证据和隔离实施继续分离；不能改变 Runner durable 恢复或副作用结算。
+2. 明确 hardlink 的读取授权：证明允许 pnpm store 等 workspace 外依赖内容进入沙箱，同时阻止任意 workspace hardlink 把外部秘密复制进快照；仅检查目标 FileId 与复制后对象分离不足以通过。
+3. 以最小、可审计的目录遍历权限修复 Git 的 `getcwd` / CWD 解析，并证明不会暴露父目录同级内容；若无法做到，明确拒绝该类工作流，不扩大授权。
+4. 在宿主可达的受控 IPv4 和 IPv6 目标上分别验证宿主成功、PowerShell/Node 及其子进程被阻断；覆盖 DNS、系统代理和本地网络路径。
+5. 在候选的正式 API 后端本身重跑绝对/相对路径、symlink、junction、其他 reparse point、硬链接、目录替换、进程逃逸及超时/取消测试，并覆盖具体支持 Windows 构建。
+6. 明确 PowerShell、Node、Git 的支持版本、运行时读取范围、容器或 helper 的部署与更新策略；故障时只能拒绝执行，不能退回宿主 Shell。
+7. 明确同用户恶意宿主进程是否在防御范围内；若在范围内，当前用户可修改的快照不足以形成隔离边界，须使用独立安全主体或 VM 并重新实测。
+8. 所有成功证据由可信 Main/宿主后端针对本次工作区和 run 生成。权限审批、能力证据和隔离实施继续分离；不能改变 Runner durable 恢复或副作用结算。
 
 完成以上门槛之前，Shell 保持逐次审批；`workspace-write` 不代表 Shell 可以自动执行。P2 文件工具约束也不替代操作系统进程隔离。
