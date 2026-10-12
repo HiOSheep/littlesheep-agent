@@ -438,7 +438,7 @@ export class RunRouter {
     requestApproval: (request: ApprovalRequestPayload) => void,
     signal?: AbortSignal,
   ): RunApprovalBroker {
-    return async ({ action, detail, permissionMode, boundary, requiresExplicitUserApproval }) => {
+    return async ({ action, detail, permissionMode, permissionPreset, boundary, requiresExplicitUserApproval }) => {
       const id = randomUUID()
       return new Promise<boolean>((resolveApproval) => {
         let settled = false
@@ -475,6 +475,7 @@ export class RunRouter {
             action,
             detail,
             permissionMode,
+            ...(permissionPreset ? { permissionPreset } : {}),
             boundary,
             ...(requiresExplicitUserApproval ? { requiresExplicitUserApproval: true } : {}),
             source: 'agent',

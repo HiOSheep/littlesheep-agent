@@ -5,7 +5,7 @@ import type { ServerResponse } from 'node:http'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type ToolStreamEvent } from '@littlesheep/types'
-import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
+import { LOCAL_APP_API_PREFIXES, LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { RunRouter } from './run-routes.js'
 
 afterEach(() => {
@@ -222,6 +222,71 @@ describe('RunRouter durable recovery', () => {
 
 describe('RunRouter tool event streaming', () => {
   const workspaceDir = process.cwd()
+
+  it('forwards the Permission V2 preset into Renderer approval requests', async () => {
+    const runStream = vi.fn(async (input: {
+      runId?: string
+      sessionId?: string
+      approve: (action: string, detail?: unknown) => Promise<boolean>
+    }) => {
+      await input.approve('exec', { command: 'git status --short' })
+      return {
+        runId: input.runId!,
+        sessionId: input.sessionId ?? asSessionId('approval-session'),
+        status: 'ok',
+        reply: 'done',
+        messages: [],
+        trace: [],
+        durationMs: 1,
+        durableHarnessMode: 'shadow',
+      }
+    })
+    const runner = { runStream, durableHarnessMode: 'shadow' } as unknown as AgentRunner
+    const router = new RunRouter()
+    const response = new FakeResponse()
+    const context = {
+      getRunner: () => runner,
+      getConfig: () => DEFAULT_CONFIG,
+      dataDir: workspaceDir,
+      workplaceDir: workspaceDir,
+      sessionIndex: { list: vi.fn().mockResolvedValue([]), upsert: vi.fn().mockResolvedValue(undefined) } as never,
+      projectIndex: {} as never,
+      workspaceArtifactIndex: {} as never,
+      attachmentCache: {} as never,
+    }
+
+    try {
+      const routePromise = router.route({
+        req: Readable.from([JSON.stringify({
+          text: 'check git',
+          workspace: workspaceDir,
+          permissionPreset: 'workspace-write',
+        })]) as never,
+        res: response as unknown as ServerResponse,
+        url: new URL(`http://localhost${LOCAL_APP_API_ROUTES.runStream}`),
+        path: LOCAL_APP_API_ROUTES.runStream,
+        method: 'POST',
+      }, context)
+
+      await vi.waitFor(() => expect(response.writes.some((value) => value.startsWith('event: approval_request\n'))).toBe(true))
+      const frame = response.writes.find((value) => value.startsWith('event: approval_request\n'))!
+      const approval = JSON.parse(frame.split('data: ')[1]!.trim()) as { id: string; permissionPreset?: string }
+      const approvalResponse = new FakeResponse()
+      await router.route({
+        req: Readable.from([JSON.stringify({ approved: true })]) as never,
+        res: approvalResponse as unknown as ServerResponse,
+        url: new URL(`http://localhost${LOCAL_APP_API_PREFIXES.approvals}${approval.id}`),
+        path: `${LOCAL_APP_API_PREFIXES.approvals}${approval.id}`,
+        method: 'POST',
+      }, context)
+      await routePromise
+
+      expect(approval.permissionPreset).toBe('workspace-write')
+      expect(response.writableEnded).toBe(true)
+    } finally {
+      router.stop()
+    }
+  })
 
   it.each([
     ['ordinary run', {}],
