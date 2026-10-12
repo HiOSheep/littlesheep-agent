@@ -78,6 +78,9 @@ importers:
       remark-parse:
         specifier: ^11.0.0
         version: 11.0.0
+      sharp:
+        specifier: 0.35.4
+        version: 0.35.4(@types/node@22.20.0)
       unified:
         specifier: ^11.0.5
         version: 11.0.5
@@ -166,6 +169,31 @@ importers:
       vite:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@22.20.0)
+    optionalDependencies:
+      '@img/sharp-darwin-arm64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-darwin-x64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-linux-arm64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-linux-x64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-linuxmusl-arm64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-linuxmusl-x64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-win32-arm64':
+        specifier: 0.35.4
+        version: 0.35.4
+      '@img/sharp-win32-x64':
+        specifier: 0.35.4
+        version: 0.35.4
 
   packages/branding: {}
 

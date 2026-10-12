@@ -57,6 +57,17 @@
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
+    "sharp": "0.35.4",
     "unified": "^11.0.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-darwin-arm64": "0.35.4",
+    "@img/sharp-darwin-x64": "0.35.4",
+    "@img/sharp-linux-arm64": "0.35.4",
+    "@img/sharp-linux-x64": "0.35.4",
+    "@img/sharp-linuxmusl-arm64": "0.35.4",
+    "@img/sharp-linuxmusl-x64": "0.35.4",
+    "@img/sharp-win32-arm64": "0.35.4",
+    "@img/sharp-win32-x64": "0.35.4"
   }
 }

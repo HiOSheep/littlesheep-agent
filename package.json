@@ -20,6 +20,7 @@
     "app:clean-runtimes": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/launch-littlesheep.ps1 -CleanOnly",
     "package:win": "node scripts/package-windows-release.mjs --dir",
     "package:win-installer": "node scripts/package-windows-release.mjs --installer",
+    "verify:packaged-runtime-manifest": "node scripts/verify-packaged-runtime-manifest.mjs",
     "ensure:app-build": "node scripts/ensure-app-build.mjs --ensure",
     "assert:app-build": "node scripts/ensure-app-build.mjs --assert",
     "ensure:workspace-build": "node scripts/ensure-workspace-artifacts.mjs",

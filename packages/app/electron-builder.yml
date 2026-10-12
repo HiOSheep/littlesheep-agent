@@ -10,7 +10,9 @@ directories:
   output: ../../release
   buildResources: resources
 
-# The `files` list below is the whole packaging contract. Two shape rules apply to it:
+# The `files` list below is the shared packaging contract. Windows-only native payload trimming
+# lives under `win.files` so macOS and Linux retain the native slices they need. Two shape rules
+# apply to these lists:
 #   * Every `!node_modules/...` pattern is a node_modules exclusion. electron-builder hands exactly
 #     those negations to its node-module matcher (`app-builder-lib/out/fileMatcher.js`
 #     `getNodeModuleFileMatcher`, which collects "only excludes"), matched against paths relative to
@@ -25,21 +27,9 @@ files:
   - package.json
   - '!**/*.cov.*'
 
-  # --- 1. Non-target platform and architecture (Windows x64 only) -------------------------------
-  # onnxruntime-node ships every `napi-v6/<platform>/<arch>` slice in one tarball. Only win32/x64 is
-  # loadable on this target; the rest is measured dead weight (SL-04 numbers in
-  # docs/decision/project-status.md).
-  - '!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}{,/**/*}'
-  - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**/*}'
-  # node-pty keeps prebuilds for four targets plus a per-architecture ConPTY.
-  # `@napi-rs/*` and `@img/*` need no rule: pnpm installs only the win32-x64 variant of each on this
-  # host, and electron-builder reports the other variants as "not present" instead of bundling them.
-  - '!node_modules/node-pty/prebuilds/{darwin-arm64,darwin-x64,win32-arm64}{,/**/*}'
-  - '!node_modules/node-pty/third_party/conpty/*/win10-arm64{,/**/*}'
-
-  # --- 2. Already compiled into `out`, never resolved from node_modules at runtime ---------------
-  # electron.vite.config.ts externalises only `better-sqlite3`, `node-pty`,
-  # `@huggingface/transformers` and `onnxruntime-node`; a scan of the built bundle finds no other
+  # --- 1. Already compiled into `out`, never resolved from node_modules at runtime ---------------
+  # electron.vite.config.ts externalises `node-pty`, `@huggingface/transformers` and
+  # `onnxruntime-node`; a scan of the built bundle finds no other
   # non-builtin `require()` / `import()`. Every directory below is therefore a second copy of code
   # that already sits inside `app.asar/out`.
   #
@@ -81,9 +71,10 @@ extraResources:
     to: third-party-licenses/material-icon-theme-LICENSE
 
 # Files the main process loads by path at runtime stay outside the archive. node-pty,
-# onnxruntime-node, sharp and @huggingface/transformers are listed explicitly; electron-builder
-# additionally auto-unpacks `@napi-rs/canvas`, which `out/main/chunks/pdf-*.js` requires through a
-# `createRequire` call.
+# onnxruntime-node, sharp, its target-specific @img bindings and @huggingface/transformers are
+# explicit because native addons and runtime-loaded assets must remain available outside the
+# archive on every target. PDF.js' optional @napi-rs/canvas hook is not part of the app dependency
+# graph; current PDF support extracts text and does not render canvases.
 asar: true
 npmRebuild: false
 buildDependenciesFromSource: false
@@ -91,6 +82,8 @@ asarUnpack:
   - node_modules/node-pty/**
   - node_modules/onnxruntime-node/**
   - node_modules/sharp/**
+  - node_modules/@img/sharp-*/**
+  - node_modules/@img/sharp-libvips-*/**
   - node_modules/@huggingface/transformers/**
 
 win:
@@ -99,6 +92,27 @@ win:
     - target: nsis
       arch:
         - x64
+  # Keep the measured Windows x64 payload trim without removing native slices from macOS/Linux.
+  # These are additive exclusions passed only to the Windows node-module matcher.
+  files:
+    # onnxruntime-node ships every `napi-v6/<platform>/<arch>` slice in one tarball. Only win32/x64
+    # is loadable on this target; the rest is measured dead weight (SL-04 numbers in
+    # docs/decision/project-status.md).
+    - '!node_modules/onnxruntime-node/bin/napi-v6/{darwin,linux}{,/**/*}'
+    - '!node_modules/onnxruntime-node/bin/napi-v6/win32/arm64{,/**/*}'
+    # node-pty keeps prebuilds for four targets plus a per-architecture ConPTY.
+    - '!node_modules/node-pty/prebuilds/{darwin-arm64,darwin-x64,win32-arm64}{,/**/*}'
+    - '!node_modules/node-pty/third_party/conpty/*/win10-arm64{,/**/*}'
+    # sharp's optional platform bindings are direct app dependencies so bundlers can discover them.
+    # Keep Windows x64 lean by dropping every other binding and its libvips companion.
+    - '!node_modules/@img/sharp-darwin-*{,/**/*}'
+    - '!node_modules/@img/sharp-linux-*{,/**/*}'
+    - '!node_modules/@img/sharp-linuxmusl-*{,/**/*}'
+    - '!node_modules/@img/sharp-win32-arm64{,/**/*}'
+    - '!node_modules/@img/sharp-libvips-darwin-*{,/**/*}'
+    - '!node_modules/@img/sharp-libvips-linux-*{,/**/*}'
+    - '!node_modules/@img/sharp-libvips-linuxmusl-*{,/**/*}'
+    - '!node_modules/@img/sharp-libvips-win32-arm64{,/**/*}'
 
 nsis:
   oneClick: false

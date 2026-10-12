@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -102,6 +102,36 @@ afterEach(async () => {
 });
 
 describe('App build fingerprint', () => {
+  it('uses the installed macOS Electron.app executable without a renamed runtime copy', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'littlesheep-macos-electron-runtime-'));
+    roots.push(root);
+    const packageRoot = join(root, '.electron-fixture');
+    const bundleRoot = join(packageRoot, 'dist', 'Electron.app');
+    const executablePath = join(bundleRoot, 'Contents', 'MacOS', 'Electron');
+    const installation = {
+      version: '44.4.5',
+      packageRoot,
+      executablePath,
+    };
+
+    await Promise.all([
+      mkdir(join(root, 'packages/app/runtime'), { recursive: true }),
+      write(join(bundleRoot, 'Contents/Info.plist'), '<plist/>'),
+      write(executablePath, 'signed-electron-binary'),
+      write(join(bundleRoot, 'Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework'), 'framework'),
+      write(join(bundleRoot, 'Contents/Resources/default_app.asar'), 'asar'),
+    ]);
+
+    const runtime = await fingerprintPreparedElectronRuntime(root, executablePath, {
+      installation,
+      platform: 'darwin',
+      arch: 'arm64',
+    });
+
+    expect(runtime.preparedExecutable.path).toBe((await realpath(executablePath)).replaceAll('\\', '/'));
+    expect(runtime.preparedRuntimeDirectory).toBe((await realpath(bundleRoot)).replaceAll('\\', '/'));
+  })
+
   it('includes transitive workspace source in the App input closure', async () => {
     const fixture = await createFixture();
     const runtime = await fixture.resolveRuntime(fixture.root, fixture.runtimePath);

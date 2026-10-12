@@ -10,6 +10,8 @@
 - `pnpm run ensure:app-build` / `pnpm run assert:app-build`：分别准备或只检查 Electron 构建新鲜度。真实窗口门通常先准备构建；基线检查工具通常要求构建已新鲜。
 - `pnpm run check:cache-acceptance`：执行当前缓存验收规则。
 - `pnpm run package:win` / `pnpm run package:win-installer`：生成 Windows 发布产物。
+- `pnpm run verify:packaged-runtime-manifest`：核对 Windows 发布包里的 Electron 原生运行时清单，并在同主机目标上 smoke-load 原生模块；仍需真实桌面与完整功能验收。
+- `scripts/prepare-littlesheep-runtime.mjs` 按 Electron 安装包的 `path.txt` 定位运行时；macOS 原样使用 `Electron.app`，不平铺或改名其内部二进制。macOS/Linux 打包与启动仍需对应主机实测。
 
 Provider、Memory、文件一致性、Electron、桌面启动和工作区专项均由 `package.json` 中对应的 `verify:*` / `measure:*` 命令提供。验证选择应跟随受影响的契约和失败后果；构建、源码检查与真实窗口、真实 Provider、发布包证据不是同一层。
 

@@ -1,6 +1,6 @@
-import { copyFile, cp, mkdir, readFile, readdir, stat, unlink } from 'node:fs/promises'
+import { copyFile, cp, mkdir, readFile, readdir, realpath, stat, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -83,9 +83,9 @@ async function isCompleteRuntime(runtimeDirectory, runtimePath, sourceDirectory,
   return present.every(Boolean)
 }
 
-async function readElectronVersion(electronPath) {
+async function readElectronVersion(electronPackageRoot) {
   try {
-    const packagePath = join(dirname(dirname(electronPath)), 'package.json')
+    const packagePath = join(electronPackageRoot, 'package.json')
     const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
     if (typeof packageJson.version === 'string' && packageJson.version.trim()) {
       return packageJson.version.trim()
@@ -117,10 +117,12 @@ async function findPreparedRuntime() {
 }
 
 let electronPath
+let electronPackageRoot
 try {
-  electronPath = resolve(String(appRequire('electron')).trim())
+  electronPackageRoot = await realpath(dirname(appRequire.resolve('electron/package.json')))
+  electronPath = await realpath(resolve(String(appRequire('electron')).trim()))
 } catch (error) {
-  const prepared = await findPreparedRuntime()
+  const prepared = process.platform === 'darwin' ? undefined : await findPreparedRuntime()
   if (prepared) {
     console.log(prepared)
     process.exit(0)
@@ -132,7 +134,7 @@ let source
 try {
   source = await stat(electronPath)
 } catch (error) {
-  const prepared = await findPreparedRuntime()
+  const prepared = process.platform === 'darwin' ? undefined : await findPreparedRuntime()
   if (prepared) {
     console.log(prepared)
     process.exit(0)
@@ -140,61 +142,97 @@ try {
   throw new Error(`Electron executable was not found at ${electronPath}: ${error instanceof Error ? error.message : String(error)}`)
 }
 if (!source.isFile()) throw new Error(`Electron executable is not a file: ${electronPath}`)
-const sourceDirectory = dirname(electronPath)
-const sourceBinaryName = basename(electronPath)
-const electronVersion = await readElectronVersion(electronPath)
-const runtimeDirectoryName = `electron-v${electronVersion}-${process.platform}-${process.arch}`
-let runtimeDirectory = join(runtimeRoot, runtimeDirectoryName)
-let electronRuntimePath = join(runtimeDirectory, `LittleSheep${extname(electronPath)}`)
+const installedDistRoot = await realpath(join(electronPackageRoot, 'dist'))
+const executableRelativeToDist = relative(installedDistRoot, electronPath)
+if (executableRelativeToDist === '..'
+  || executableRelativeToDist.startsWith(`..${sep}`)
+  || isAbsolute(executableRelativeToDist)) {
+  throw new Error(`Electron executable is outside the installed distribution: ${electronPath}`)
+}
 
-if (force || !(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
-  // Keep each prepared runtime isolated. This avoids replacing DLLs that a
-  // currently running LittleSheep process may still have open.
-  if (await stat(runtimeDirectory).then(() => true).catch(() => false)) {
-    runtimeDirectory = join(runtimeRoot, `${runtimeDirectoryName}-${Date.now()}`)
-    electronRuntimePath = join(runtimeDirectory, `LittleSheep${extname(electronPath)}`)
+let electronRuntimePath
+if (process.platform === 'darwin') {
+  let appBundleRoot = dirname(electronPath)
+  while (appBundleRoot !== dirname(appBundleRoot) && !basename(appBundleRoot).endsWith('.app')) {
+    appBundleRoot = dirname(appBundleRoot)
   }
-  await mkdir(runtimeDirectory, { recursive: true })
-  await cp(sourceDirectory, runtimeDirectory, { recursive: true, force: true })
+  if (!basename(appBundleRoot).endsWith('.app')) {
+    throw new Error(`Electron executable is not inside a macOS .app bundle: ${electronPath}`)
+  }
+  const bundleExecutable = join(appBundleRoot, 'Contents', 'MacOS', basename(electronPath))
+  if (resolve(bundleExecutable) !== electronPath) {
+    throw new Error(`Electron executable is outside the expected macOS bundle location: ${electronPath}`)
+  }
+  const requiredBundleEntries = [
+    ['Contents/Info.plist', 'file'],
+    ['Contents/Frameworks', 'directory'],
+    ['Contents/Resources', 'directory'],
+  ]
+  for (const [relativePath, type] of requiredBundleEntries) {
+    if (!(await entryIs(join(appBundleRoot, relativePath), type))) {
+      throw new Error(`Installed Electron .app bundle is incomplete: ${join(appBundleRoot, relativePath)}`)
+    }
+  }
+  // Keep the installed bundle structure intact: do not flatten it or rename its internal
+  // executable. electron-vite and the build fingerprint use this original path.
+  electronRuntimePath = electronPath
+} else {
+  const sourceDirectory = dirname(electronPath)
+  const sourceBinaryName = basename(electronPath)
+  const electronVersion = await readElectronVersion(electronPackageRoot)
+  const runtimeDirectoryName = `electron-v${electronVersion}-${process.platform}-${process.arch}`
+  let runtimeDirectory = join(runtimeRoot, runtimeDirectoryName)
+  electronRuntimePath = join(runtimeDirectory, `LittleSheep${extname(electronPath)}`)
+
+  if (force || !(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
+    // Keep each prepared runtime isolated. This avoids replacing DLLs that a
+    // currently running LittleSheep process may still have open.
+    if (await stat(runtimeDirectory).then(() => true).catch(() => false)) {
+      runtimeDirectory = join(runtimeRoot, `${runtimeDirectoryName}-${Date.now()}`)
+      electronRuntimePath = join(runtimeDirectory, `LittleSheep${extname(electronPath)}`)
+    }
+    await mkdir(runtimeDirectory, { recursive: true })
+    await cp(sourceDirectory, runtimeDirectory, { recursive: true, force: true })
+    if (sourceBinaryName !== basename(electronRuntimePath)) {
+      // The stable runtime only needs the renamed executable. Keeping the
+      // original electron.exe would duplicate a ~200 MB binary on Windows.
+      await unlink(join(runtimeDirectory, sourceBinaryName)).catch(() => {})
+      await copyFile(electronPath, electronRuntimePath)
+    }
+  }
+
+  if (!(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
+    throw new Error(`Prepared Electron runtime is incomplete at ${runtimeDirectory}`)
+  }
   if (sourceBinaryName !== basename(electronRuntimePath)) {
-    // The stable runtime only needs the renamed executable. Keeping the
-    // original electron.exe would duplicate a ~200 MB binary on Windows.
+    // Older preparations copied both names. Remove the redundant original when
+    // it is not held open, while leaving a running process untouched.
     await unlink(join(runtimeDirectory, sourceBinaryName)).catch(() => {})
-    await copyFile(electronPath, electronRuntimePath)
   }
-}
 
-if (!(await isCompleteRuntime(runtimeDirectory, electronRuntimePath, sourceDirectory, sourceBinaryName, source.size))) {
-  throw new Error(`Prepared Electron runtime is incomplete at ${runtimeDirectory}`)
-}
-if (sourceBinaryName !== basename(electronRuntimePath)) {
-  // Older preparations copied both names. Remove the redundant original when
-  // it is not held open, while leaving a running process untouched.
-  await unlink(join(runtimeDirectory, sourceBinaryName)).catch(() => {})
-}
-
-// Keep the package-local alias for electron-vite and existing diagnostics;
-// the desktop shortcut itself points at the stable runtime directory above.
-const packageRuntimePath = join(sourceDirectory, `LittleSheep${extname(electronPath)}`)
-let packageRuntimeIsCurrent = false
-try {
-  const packageRuntime = await stat(packageRuntimePath)
-  packageRuntimeIsCurrent = packageRuntime.isFile()
-    && packageRuntime.size === source.size
-    && packageRuntime.mtimeMs >= source.mtimeMs
-} catch {
-  packageRuntimeIsCurrent = false
-}
-if (force || !packageRuntimeIsCurrent) {
+  // Keep the package-local alias for electron-vite and existing diagnostics;
+  // the desktop shortcut itself points at the stable runtime directory above.
+  const packageRuntimePath = join(sourceDirectory, `LittleSheep${extname(electronPath)}`)
+  let packageRuntimeIsCurrent = false
   try {
-    await copyFile(electronPath, packageRuntimePath)
-  } catch (error) {
-    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
-    const packageRuntimeExists = await stat(packageRuntimePath).then((entry) => entry.isFile()).catch(() => false)
-    if (!packageRuntimeExists || !['EACCES', 'EBUSY', 'EPERM'].includes(code)) throw error
-    // A running app can keep the package-local alias open. The stable runtime
-    // is already valid, so leave the old alias in place and let the build continue.
-    console.error(`Unable to refresh the package-local Electron alias (${code}); keeping the existing file.`)
+    const packageRuntime = await stat(packageRuntimePath)
+    packageRuntimeIsCurrent = packageRuntime.isFile()
+      && packageRuntime.size === source.size
+      && packageRuntime.mtimeMs >= source.mtimeMs
+  } catch {
+    packageRuntimeIsCurrent = false
+  }
+  if (force || !packageRuntimeIsCurrent) {
+    try {
+      await copyFile(electronPath, packageRuntimePath)
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+      const packageRuntimeExists = await stat(packageRuntimePath).then((entry) => entry.isFile()).catch(() => false)
+      if (!packageRuntimeExists || !['EACCES', 'EBUSY', 'EPERM'].includes(code)) throw error
+      // A running app can keep the package-local alias open. The stable runtime
+      // is already valid, so leave the old alias in place and let the build continue.
+      console.error(`Unable to refresh the package-local Electron alias (${code}); keeping the existing file.`)
+    }
   }
 }
 

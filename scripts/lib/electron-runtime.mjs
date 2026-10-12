@@ -142,6 +142,41 @@ function expectedPreparedName(sourcePath) {
   return `LittleSheep${extname(sourcePath)}`;
 }
 
+function assertMacElectronAppBundle(executablePath, installation) {
+  const canonicalExecutable = realpathSync(executablePath);
+  const canonicalSource = realpathSync(installation.executablePath);
+  if (canonicalExecutable !== canonicalSource) {
+    throw new Error('macOS Electron must use the executable in its installed app bundle; a renamed or copied binary is not accepted.');
+  }
+
+  let bundleRoot = dirname(canonicalExecutable);
+  while (bundleRoot !== dirname(bundleRoot) && !basename(bundleRoot).endsWith('.app')) {
+    bundleRoot = dirname(bundleRoot);
+  }
+  if (!basename(bundleRoot).endsWith('.app')) {
+    throw new Error(`Electron executable is not inside a macOS .app bundle: ${canonicalExecutable}`);
+  }
+  const executableRelativePath = relative(bundleRoot, canonicalExecutable).split(sep).join('/');
+  if (!/^Contents\/MacOS\/[^/]+$/u.test(executableRelativePath)) {
+    throw new Error(`Electron executable is outside the expected macOS bundle location: ${canonicalExecutable}`);
+  }
+
+  const distRoot = realpathSync(join(installation.packageRoot, 'dist'));
+  const canonicalBundleRoot = realpathSync(bundleRoot);
+  if (isOutside(distRoot, canonicalBundleRoot)) {
+    throw new Error(`Electron .app bundle is outside the installed package distribution: ${canonicalBundleRoot}`);
+  }
+  for (const [path, type, label] of [
+    [join(canonicalBundleRoot, 'Contents', 'Info.plist'), 'file', 'Electron bundle Info.plist'],
+    [canonicalExecutable, 'file', 'Electron bundle executable'],
+    [join(canonicalBundleRoot, 'Contents', 'Frameworks'), 'directory', 'Electron bundle frameworks'],
+    [join(canonicalBundleRoot, 'Contents', 'Resources'), 'directory', 'Electron bundle resources'],
+  ]) {
+    assertRuntimeEntrySync(path, type, label);
+  }
+  return canonicalBundleRoot;
+}
+
 function assertRuntimeEntrySync(path, type, label) {
   const info = lstatSync(path);
   if (info.isSymbolicLink()) throw new Error(`${label} is a symbolic link: ${path}`);
@@ -157,6 +192,25 @@ async function assertRuntimeEntry(path, type, label) {
 }
 
 function fingerprintPreparedElectronRuntimeSync(repoRoot, preparedExecutablePath, installation) {
+  if (process.platform === 'darwin') {
+    const preparedPath = resolve(preparedExecutablePath);
+    const bundleRoot = assertMacElectronAppBundle(preparedPath, installation);
+    const sourceExecutable = fileIdentitySync(installation.executablePath);
+    const preparedExecutable = fileIdentitySync(preparedPath);
+    if (sourceExecutable.size !== preparedExecutable.size || sourceExecutable.sha256 !== preparedExecutable.sha256) {
+      throw new Error('Prepared Electron executable does not match the installed Electron executable.');
+    }
+    return {
+      electronVersion: installation.version,
+      platform: process.platform,
+      arch: process.arch,
+      packageRoot: normalizeFingerprintPath(realpathSync(installation.packageRoot)),
+      sourceExecutable,
+      preparedExecutable,
+      preparedRuntimeDirectory: normalizeFingerprintPath(bundleRoot),
+    };
+  }
+
   const runtimeRoot = resolve(repoRoot, 'packages/app/runtime');
   const preparedPath = resolve(preparedExecutablePath);
   const preparedInfo = lstatSync(preparedPath);
@@ -259,6 +313,8 @@ function cacheToken(paths) {
 }
 
 function preparedRuntimeCandidates(repoRoot, installation) {
+  if (process.platform === 'darwin') return [installation.executablePath];
+
   const runtimeRoot = resolve(repoRoot, 'packages/app/runtime');
   const rootInfo = lstatSync(runtimeRoot);
   if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
@@ -334,6 +390,27 @@ export async function fingerprintPreparedElectronRuntime(repoRoot, preparedExecu
   arch = process.arch,
 } = {}) {
   const resolvedInstallation = installation ?? await resolveElectronInstallation(repoRoot);
+  if (platform === 'darwin') {
+    const preparedPath = resolve(preparedExecutablePath);
+    const bundleRoot = assertMacElectronAppBundle(preparedPath, resolvedInstallation);
+    const [sourceExecutable, preparedExecutable] = await Promise.all([
+      fileIdentity(resolvedInstallation.executablePath),
+      fileIdentity(preparedPath),
+    ]);
+    if (sourceExecutable.size !== preparedExecutable.size || sourceExecutable.sha256 !== preparedExecutable.sha256) {
+      throw new Error('Prepared Electron executable does not match the installed Electron executable.');
+    }
+    return {
+      electronVersion: resolvedInstallation.version,
+      platform,
+      arch,
+      packageRoot: normalizeFingerprintPath(await realpath(resolvedInstallation.packageRoot)),
+      sourceExecutable,
+      preparedExecutable,
+      preparedRuntimeDirectory: normalizeFingerprintPath(bundleRoot),
+    };
+  }
+
   const runtimeRoot = resolve(repoRoot, 'packages/app/runtime');
   const preparedPath = resolve(preparedExecutablePath);
   const runtimeRootInfo = await lstat(runtimeRoot);

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, relative, resolve } from 'node:path';
@@ -70,8 +70,9 @@ try {
   if (configured === config) throw new Error('Release configuration does not contain the staging input path.');
   await writeFile(temporaryConfigPath, configured, 'utf8');
   await cp(resolve(appRoot, 'out'), releaseStagingOut, { recursive: true, force: false, errorOnExist: true });
-  const electronExecutable = resolve(String(appRequire('electron')).trim());
-  await cp(dirname(electronExecutable), releaseStagingElectron, { recursive: true, force: false, errorOnExist: true });
+  const electronPackageRoot = await realpath(dirname(appRequire.resolve('electron/package.json')));
+  const electronDistRoot = resolve(electronPackageRoot, 'dist');
+  await cp(electronDistRoot, releaseStagingElectron, { recursive: true, force: false, errorOnExist: true });
   await run(process.execPath, [
     resolve(repoRoot, 'node_modules', 'electron-builder', 'cli.js'),
     '--project', appRoot,
@@ -79,6 +80,12 @@ try {
     '--win',
     '--x64',
     ...(mode === 'dir' ? ['--dir'] : []),
+  ]);
+  await run(process.execPath, [
+    resolve(repoRoot, 'scripts', 'verify-packaged-runtime-manifest.mjs'),
+    `--resources=${resolve(outputRoot, 'win-unpacked', 'resources')}`,
+    '--platform=win32',
+    '--arch=x64',
   ]);
 } finally {
   if (temporaryConfigPath) await rm(temporaryConfigPath, { force: true });

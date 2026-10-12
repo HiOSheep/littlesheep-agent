@@ -14,22 +14,30 @@ import { defineConfig } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { existsSync, readFileSync } from 'node:fs'
 import { builtinModules, createRequire } from 'node:module'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 const configRequire = createRequire(import.meta.url)
-const electronPackageRoot = dirname(configRequire.resolve('electron'))
-const electronBinaryName = readFileSync(join(electronPackageRoot, 'path.txt'), 'utf8').trim()
-const namedElectronPath = join(
-  electronPackageRoot,
-  'dist',
-  `LittleSheep${extname(electronBinaryName)}`,
-)
-if (existsSync(namedElectronPath)) {
-  process.env.ELECTRON_EXEC_PATH = namedElectronPath
+const electronPackageRoot = dirname(configRequire.resolve('electron/package.json'))
+const electronBinaryRelativePath = readFileSync(join(electronPackageRoot, 'path.txt'), 'utf8').trim()
+if (!electronBinaryRelativePath || isAbsolute(electronBinaryRelativePath)) {
+  throw new Error(`Electron path.txt contains an invalid executable path: ${electronBinaryRelativePath}`)
 }
+const electronDistRoot = resolve(electronPackageRoot, 'dist')
+const electronExecutablePath = resolve(electronDistRoot, electronBinaryRelativePath)
+const electronRelativePath = relative(electronDistRoot, electronExecutablePath)
+if (electronRelativePath === '..' || electronRelativePath.startsWith(`..${sep}`) || isAbsolute(electronRelativePath)) {
+  throw new Error(`Electron path.txt points outside the installed distribution: ${electronBinaryRelativePath}`)
+}
+const windowsRuntimeAlias = join(dirname(electronExecutablePath), `LittleSheep${extname(electronBinaryRelativePath)}`)
+const configuredElectronPath = process.platform === 'win32' && existsSync(windowsRuntimeAlias)
+  ? windowsRuntimeAlias
+  : electronExecutablePath
+if (!existsSync(configuredElectronPath)) {
+  throw new Error(`Electron executable is missing at ${configuredElectronPath}`)
+}
+process.env.ELECTRON_EXEC_PATH = configuredElectronPath
 
 const runtimeExternals = [
-  'better-sqlite3',
   'node-pty',
   '@huggingface/transformers',
   'onnxruntime-node',

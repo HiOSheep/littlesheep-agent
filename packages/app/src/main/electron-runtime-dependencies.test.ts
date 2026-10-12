@@ -36,6 +36,41 @@ describe('Electron main-process runtime dependencies', () => {
     expect(overrides).not.toMatch(/^\s+sharp:/mu)
   })
 
+  it('keeps only shipped runtime dependencies external and explicitly unpacks native modules', async () => {
+    const [configSource, builderConfig] = await Promise.all([
+      readFile(new URL('../../electron.vite.config.ts', import.meta.url), 'utf8'),
+      readFile(new URL('../../electron-builder.yml', import.meta.url), 'utf8'),
+    ])
+
+    expect(configSource).not.toContain("'better-sqlite3'")
+    expect(builderConfig).toContain('node_modules/node-pty/**')
+    expect(builderConfig).toContain('node_modules/onnxruntime-node/**')
+    expect(builderConfig).toContain('node_modules/sharp/**')
+    expect(builderConfig).toContain('node_modules/@img/sharp-*/**')
+    expect(builderConfig).toContain('node_modules/@img/sharp-libvips-*/**')
+    expect(builderConfig).not.toContain('node_modules/@napi-rs/canvas/**')
+  })
+
+  it('declares the Transformers image binding variants needed by each supported desktop target', async () => {
+    const packageSource = await readFile(new URL('../../package.json', import.meta.url), 'utf8')
+    const packageJson = JSON.parse(packageSource) as {
+      dependencies?: Record<string, string>
+      optionalDependencies?: Record<string, string>
+    }
+
+    expect(packageJson.dependencies?.sharp).toBe('0.35.4')
+    expect(packageJson.optionalDependencies).toMatchObject({
+      '@img/sharp-win32-x64': '0.35.4',
+      '@img/sharp-win32-arm64': '0.35.4',
+      '@img/sharp-darwin-x64': '0.35.4',
+      '@img/sharp-darwin-arm64': '0.35.4',
+      '@img/sharp-linux-x64': '0.35.4',
+      '@img/sharp-linux-arm64': '0.35.4',
+      '@img/sharp-linuxmusl-x64': '0.35.4',
+      '@img/sharp-linuxmusl-arm64': '0.35.4',
+    })
+  })
+
   it('pins Monaco DOMPurify to the reviewed security floor', async () => {
     const [packageSource, workspaceSource] = await Promise.all([
       readFile(new URL('../../package.json', import.meta.url), 'utf8'),

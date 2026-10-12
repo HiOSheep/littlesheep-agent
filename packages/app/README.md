@@ -14,6 +14,7 @@ Electron 桌面应用组合包。Main 拥有应用服务与策略执行；preloa
 ## 开发与验证
 
 - 开发：`pnpm run dev`；准备 Electron 构建：`pnpm run ensure:app-build`，保持输入与产物 fingerprint 一致。
+- Electron 开发路径按安装包 `path.txt` 解析。Windows/Linux 使用准备后的桌面可执行文件；macOS 直接使用原始 `Electron.app` 内的程序，不复制或改名 Bundle 内部文件。`sharp` 与其 `@img` 平台绑定由应用依赖声明共同固定，Windows 发布清单会检查目标原生载荷并尝试加载原生模块；PDF 当前只提取文本，PDF.js 的可选 Node Canvas 渲染适配器不列为运行时依赖。Windows x64 的体积裁剪只应用于 Windows 配置。该配置尚未替代 macOS/Linux 实机打包与签名验收。
 - 类型：`pnpm --filter @littlesheep/app run typecheck`；定向测试：`pnpm exec vitest run packages/app`。
 - 窗口、恢复、权限、工作区与发布包行为须运行对应的 `verify:*`，入口见 [脚本索引](../../scripts/README.md)。Renderer 单测不能证明真实 Electron 或发布包行为。
 
