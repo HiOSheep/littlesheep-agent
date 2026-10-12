@@ -40,18 +40,39 @@ export async function addSandboxAssessment(report) {
     evidence.filesystem.pathTraversalDenied,
     evidence.filesystem.junctionDenied,
     evidence.filesystem.symbolicLinkDenied,
+    evidence.filesystem.hardLinkReadDenied,
+    evidence.filesystem.hardLinkWriteDenied,
+    evidence.filesystem.hardLinkTargetUnchanged,
+    evidence.filesystem.nestedDirectorySwapSucceeded,
+    evidence.filesystem.nestedReplacementReadDenied,
+    evidence.filesystem.nestedDirectoryTargetUnchanged,
     evidence.filesystem.protectedSourceWriteDenied,
     evidence.filesystem.profileGitConfigReadDenied,
     evidence.filesystem.profilePowerShellHistoryReadDenied,
     evidence.filesystem.directoryReplacementBlocked,
   ];
+  const proxyChecks = evidence.network.hostSystemProxyConfigured === true
+    && evidence.network.hostSystemProxyHttpsBaseline === true
+    && evidence.network.hostNodeProxyHttpsBaseline === true
+    && evidence.network.powershellSystemProxyBlocked === true
+    && evidence.network.nodeSystemProxyBlocked === true;
   const networkChecks = [
     evidence.network.hostExternalBaseline === 'connected',
+    evidence.network.hostDnsBaseline === true,
+    evidence.network.hostExternalIpv4Baseline === 'connected',
+    evidence.network.hostExternalIpv6Baseline === 'connected',
     evidence.network.hostLoopbackBaseline === 'connected',
     evidence.network.powershellExternalDenied,
     evidence.network.nodeExternalDenied,
+    evidence.network.powershellIpv4Denied,
+    evidence.network.nodeIpv4Denied,
+    evidence.network.powershellIpv6Denied,
+    evidence.network.nodeIpv6Denied,
+    evidence.network.powershellDnsDenied,
+    evidence.network.nodeDnsDenied,
     evidence.network.powershellLoopbackDenied,
     evidence.network.nodeLoopbackDenied,
+    proxyChecks,
   ];
   const childChecks = [
     evidence.childProcess.powershellLaunchedNode,
@@ -107,8 +128,8 @@ export async function addSandboxAssessment(report) {
   const reasons = {
     'native-file-read-confinement': 'This PoC launches shell processes; it does not assess native file tools.',
     'native-file-write-confinement': 'This PoC launches shell processes; it does not assess native file tools.',
-    'process-filesystem-confinement': explain(statuses['process-filesystem-confinement'], 'Workspace, outside-root, junction, symlink, traversal, protected-source, and replacement probes passed.', 'At least one filesystem probe failed or could not run after payload startup.', payloadUnavailableReason),
-    'process-network-confinement': explain(statuses['process-network-confinement'], 'Host-reachable external and loopback TCP probes were denied to PowerShell and its Node child.', 'Network baseline or one of the sandbox network-denial probes was incomplete after payload startup.', payloadUnavailableReason),
+    'process-filesystem-confinement': explain(statuses['process-filesystem-confinement'], 'Workspace, outside-root, junction, symlink, hard-link, traversal, protected-source, and replacement probes passed.', 'At least one filesystem probe failed or could not run after payload startup; hard-link aliases are included in the confinement gate.', payloadUnavailableReason),
+    'process-network-confinement': explain(statuses['process-network-confinement'], 'Host-positive DNS, IPv4, IPv6, loopback, and system-proxy paths were blocked to PowerShell and its Node child.', 'A host-positive DNS, address-family, loopback, or configured-proxy check was incomplete or not denied after payload startup.', payloadUnavailableReason),
     'child-process-containment': explain(statuses['child-process-containment'], 'Node inherited the restrictions; Git version, init, and status completed inside the allowed scope.', 'A child-process restriction or Git compatibility probe failed after payload startup.', payloadUnavailableReason),
     'process-tree-termination': explain(statuses['process-tree-termination'], 'Timeout and forced worker termination both ended the tracked Node child.', 'Timeout/cancellation or descendant cleanup was incomplete after a child started.', terminationUnavailableReason),
   };
