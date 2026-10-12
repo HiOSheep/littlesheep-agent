@@ -139,7 +139,7 @@ export interface WorkspaceTerminalSessionHandlers {
 /** One Shell this machine can run, as Main discovered it (UX-29). */
 export interface WorkspaceShellProfile {
   id: string
-  kind: 'windows-powershell' | 'powershell-7' | 'git-bash' | 'cmd' | 'wsl'
+  kind: 'windows-powershell' | 'powershell-7' | 'git-bash' | 'cmd' | 'wsl' | 'posix-shell'
   label: string
   available: boolean
   distro?: string

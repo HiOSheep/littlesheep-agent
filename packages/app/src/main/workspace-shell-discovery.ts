@@ -13,7 +13,7 @@ import { promisify } from 'node:util'
 
 const run = promisify(execFile)
 
-export type WorkspaceShellKind = 'windows-powershell' | 'powershell-7' | 'git-bash' | 'cmd' | 'wsl'
+export type WorkspaceShellKind = 'windows-powershell' | 'powershell-7' | 'git-bash' | 'cmd' | 'wsl' | 'posix-shell'
 
 export interface WorkspaceShellProfile {
   /** Stable id the renderer sends back; Main validates it against a fresh discovery. */
@@ -211,8 +211,8 @@ export async function discoverWorkspaceShells(
     const shell = env['SHELL'] || '/bin/sh'
     return [{
       id: 'posix-shell',
-      kind: 'git-bash',
-      label: shell.split('/').at(-1) ?? 'sh',
+      kind: 'posix-shell',
+      label: basename(shell) || 'sh',
       available: fileExists(shell),
       executable: shell,
       args: ['-l'],

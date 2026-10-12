@@ -11,6 +11,7 @@
 - Runner 与 router 的替换按 generation 隔离；普通 API 请求不应等待完整恢复，也不能读到半初始化 router。
 - 文件、Git、终端和浏览器路径都由 Main 复核。HTTP body 中的 workspace path 是请求，不是所有权或批准证明。
 - 长连接使用有界队列与 heartbeat。客户端断开不应隐式取消 Main 所有的工作，除非路由契约明确这样规定。
+- 终端发现返回当前主机可启动的 Shell 配置；macOS/Linux 的 `$SHELL` 或 `/bin/sh` 使用 `posix-shell` 类型。交互终端仍由用户直接控制，不因此获得 Agent 工具权限或 OS 沙箱保证。
 
 ## 路由与证据边界
 

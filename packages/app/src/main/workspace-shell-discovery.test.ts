@@ -15,6 +15,7 @@ import {
   powershellArgs,
   wslArgs,
 } from './workspace-shell-discovery'
+import { shellLaunch } from './local-app-api/terminal-process'
 
 const WSL_EXE = 'C:\\Windows\\System32\\wsl.exe'
 
@@ -45,6 +46,30 @@ function discovery(options: {
 }
 
 describe('workspace shell discovery', () => {
+  it.each(['darwin', 'linux'] as const)('discovers the configured %s shell with a POSIX profile', async (platform) => {
+    const profiles = await discoverWorkspaceShells({
+      platform,
+      env: { SHELL: '/usr/bin/zsh' },
+      fileExists: (path) => path === '/usr/bin/zsh',
+    })
+
+    expect(profiles).toEqual([expect.objectContaining({
+      id: 'posix-shell',
+      kind: 'posix-shell',
+      label: 'zsh',
+      available: true,
+      executable: '/usr/bin/zsh',
+      args: ['-l'],
+    })])
+    expect(defaultWorkspaceShellProfile(profiles)?.id).toBe('posix-shell')
+    expect(shellLaunch(profiles[0], '/work space')).toEqual({
+      command: '/usr/bin/zsh',
+      args: ['-l'],
+      env: {},
+      label: 'zsh',
+    })
+  })
+
   it('offers PowerShell 7, Windows PowerShell and cmd when they exist', async () => {
     const profiles = await discovery({
       files: [
