@@ -162,7 +162,7 @@ function FullAccessWarning({
             <li>命令可能访问此用户可访问的其他文件、启动本地进程或使用网络</li>
             <li>访问动态命令涉及的宿主资源</li>
           </ul>
-          <p className="approval-session-note">LS 核心源码只读保护和危险命令硬拒绝仍然有效。你可以随时切回研究或受限模式。</p>
+          <p className="approval-session-note">LS 会对内置工具执行核心源码保护检查；宿主 Shell 未经过 OS 级隔离，因此无法保证命令或其子进程不能绕过应用层检查并改写这些文件。内置硬拒绝规则仍会执行，但不构成宿主级防护。你可以随时切回研究或受限模式。</p>
           <div className="approval-actions">
             <button type="button" className="approval-action" onClick={onCancel}>
               取消
