@@ -2,10 +2,60 @@ import { describe, expect, it } from 'vitest'
 import {
   SessionApprovalGrantStore,
   approvalGrantKey,
+  hasReusableSessionApproval,
+  isPerCallApprovalRequest,
   sessionApprovalScopeKey,
 } from './approval-grants.js'
 
 describe('session approval grants', () => {
+  it('keeps forced approvals and V2 Agent Shell calls out of reusable grants', () => {
+    expect(isPerCallApprovalRequest({
+      source: 'agent',
+      action: 'write',
+      requiresExplicitUserApproval: true,
+    })).toBe(true)
+    expect(isPerCallApprovalRequest({
+      source: 'agent',
+      action: 'exec',
+      permissionPreset: 'workspace-write',
+    })).toBe(true)
+    expect(isPerCallApprovalRequest({
+      action: 'exec',
+      permissionPreset: 'read-only',
+    })).toBe(true)
+  })
+
+  it('retains ordinary legacy and user-workspace session-grant behavior', () => {
+    expect(isPerCallApprovalRequest({ source: 'agent', action: 'exec' })).toBe(false)
+    expect(isPerCallApprovalRequest({
+      source: 'workspace',
+      action: 'exec',
+      permissionPreset: 'workspace-write',
+    })).toBe(false)
+  })
+
+  it('does not let a cached action grant satisfy a forced approval or V2 Agent exec', () => {
+    const grants = new SessionApprovalGrantStore()
+    const scope = sessionApprovalScopeKey('cached-grant')
+    grants.grant(scope, { source: 'agent', action: 'exec' })
+    grants.grant(scope, { source: 'agent', action: 'write' })
+
+    expect(hasReusableSessionApproval(grants, scope, {
+      source: 'agent',
+      action: 'exec',
+      permissionPreset: 'workspace-write',
+    })).toBe(false)
+    expect(hasReusableSessionApproval(grants, scope, {
+      source: 'agent',
+      action: 'write',
+      requiresExplicitUserApproval: true,
+    })).toBe(false)
+    expect(hasReusableSessionApproval(grants, scope, {
+      source: 'agent',
+      action: 'exec',
+    })).toBe(true)
+  })
+
   it('isolates grants by conversation, source, and operation type', () => {
     const grants = new SessionApprovalGrantStore()
     const first = sessionApprovalScopeKey('first')

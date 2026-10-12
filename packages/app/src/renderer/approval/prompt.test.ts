@@ -1,5 +1,62 @@
-import { describe, expect, it } from 'vitest'
-import { approvalActionRiskDescription } from './prompt'
+import { afterAll, describe, expect, it, vi } from 'vitest'
+import * as React from 'react'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { approvalActionRiskDescription, ApprovalPromptSurface } from './prompt'
+import type { PendingApprovalPrompt } from './types'
+
+vi.stubGlobal('React', React)
+afterAll(() => vi.unstubAllGlobals())
+
+function promptMarkup(request: PendingApprovalPrompt['request']): string {
+  return renderToStaticMarkup(createElement(ApprovalPromptSurface, {
+    prompt: { request, resolve: () => undefined },
+    onResolve: () => undefined,
+  }))
+}
+
+describe('approval prompt scope', () => {
+  it('offers only deny and once for V2 Agent Shell approvals', () => {
+    const markup = promptMarkup({
+      id: 'approval-v2-exec',
+      action: 'exec',
+      permissionMode: 'research',
+      permissionPreset: 'workspace-write',
+      source: 'agent',
+      boundary: 'unknown',
+    })
+
+    expect(markup).toContain('拒绝')
+    expect(markup).toContain('仅本次')
+    expect(markup).not.toContain('本对话允许')
+  })
+
+  it('does not offer a reusable grant for Main-forced approvals', () => {
+    const markup = promptMarkup({
+      id: 'approval-forced',
+      action: 'write',
+      permissionMode: 'full',
+      requiresExplicitUserApproval: true,
+      source: 'agent',
+      boundary: 'inside',
+    })
+
+    expect(markup).toContain('仅本次')
+    expect(markup).not.toContain('本对话允许')
+  })
+
+  it('keeps session grants for ordinary legacy approvals', () => {
+    const markup = promptMarkup({
+      id: 'approval-legacy',
+      action: 'write',
+      permissionMode: 'research',
+      source: 'agent',
+      boundary: 'inside',
+    })
+
+    expect(markup).toContain('本对话允许')
+  })
+})
 
 describe('approvalActionRiskDescription', () => {
   it('identifies approved Agent commands as host execution without OS isolation', () => {

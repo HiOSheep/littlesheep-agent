@@ -5,6 +5,8 @@ import { isPermissionSelectionPreset } from '../../shared/permission-modes'
 import {
   SessionApprovalGrantStore,
   createDraftApprovalScopeKey,
+  hasReusableSessionApproval,
+  isPerCallApprovalRequest,
   sessionApprovalScopeKey,
   type ApprovalDecision,
 } from '../approval-grants'
@@ -38,15 +40,16 @@ export function useApprovalController({
   }
 
   async function requestApprovalForScope(request: ApprovalRequest, scopeKey: string): Promise<boolean> {
+    const perCallApproval = isPerCallApprovalRequest(request)
     // Ordinary calls in a confirmed full-access run need no per-call prompt.
     // Main-marked forced approvals still require a user decision, and changing
     // the current session mode never rewrites an in-flight run's snapshot.
     if (request.permissionMode === 'full' && request.requiresExplicitUserApproval !== true) return true
-    if (approvalGrantsRef.current.allows(scopeKey, request)) return true
+    if (hasReusableSessionApproval(approvalGrantsRef.current, scopeKey, request)) return true
     const decision = await new Promise<ApprovalDecision>((resolve) => {
       openApprovalPrompt({ request, resolve })
     })
-    if (decision === 'session') approvalGrantsRef.current.grant(scopeKey, request)
+    if (decision === 'session' && !perCallApproval) approvalGrantsRef.current.grant(scopeKey, request)
     return decision !== 'deny'
   }
 

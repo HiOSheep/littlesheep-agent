@@ -1,9 +1,28 @@
+import type { PermissionPresetId } from '@littlesheep/types'
+
 export type ApprovalDecision = 'deny' | 'once' | 'session'
 export type ApprovalSource = 'agent' | 'workspace'
 
 export interface ApprovalGrantTarget {
   action: string
   source?: ApprovalSource
+}
+
+export interface ApprovalRequestGrantPolicy extends ApprovalGrantTarget {
+  permissionPreset?: PermissionPresetId
+  requiresExplicitUserApproval?: boolean
+}
+
+/**
+ * Main-forced decisions and V2 Agent Shell calls are scoped to one request.
+ * They must not reuse or create a conversation-wide grant.
+ */
+export function isPerCallApprovalRequest(request: ApprovalRequestGrantPolicy): boolean {
+  if (request.requiresExplicitUserApproval === true) return true
+  const source = request.source ?? 'agent'
+  return source === 'agent'
+    && request.action.trim().toLowerCase() === 'exec'
+    && request.permissionPreset !== undefined
 }
 
 const MAX_APPROVAL_SCOPES = 128
@@ -69,4 +88,12 @@ export class SessionApprovalGrantStore {
   clear(scopeKey: string): void {
     this.grants.delete(scopeKey)
   }
+}
+
+export function hasReusableSessionApproval(
+  grants: SessionApprovalGrantStore,
+  scopeKey: string,
+  request: ApprovalRequestGrantPolicy,
+): boolean {
+  return !isPerCallApprovalRequest(request) && grants.allows(scopeKey, request)
 }

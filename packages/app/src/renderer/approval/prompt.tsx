@@ -5,9 +5,7 @@ import {
   type ApprovalRequest,
   type PermissionModeId
 } from '../api'
-import {
-  type ApprovalDecision
-} from '../approval-grants'
+import { isPerCallApprovalRequest, type ApprovalDecision } from '../approval-grants'
 import { FadePresence } from '../ui/presence'
 import { useModalSurface } from '../ui/modal-surface'
 import { PendingApprovalPrompt } from './types'
@@ -52,6 +50,7 @@ export function ApprovalPromptSurface({
 }) {
   const { request } = prompt
   const source = request.source ?? 'agent'
+  const perCallApproval = isPerCallApprovalRequest(request)
   const dialogRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   // Escape keeps its rejection meaning. The dialog itself takes the initial
@@ -78,14 +77,18 @@ export function ApprovalPromptSurface({
         <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary)}</p>
         <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
         <pre>{formatApprovalDetail(request.detail)}</pre>
-        <p className="approval-session-note">“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。</p>
+        <p className="approval-session-note">{perCallApproval
+          ? '此操作需要单独确认；授权仅作用于本次请求。'
+          : '“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。'}</p>
         <div className="approval-actions">
           <button type="button" className="approval-action" onClick={() => onResolve('deny')}>
             拒绝
           </button>
-          <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
-            本对话允许
-          </button>
+          {!perCallApproval && (
+            <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
+              本对话允许
+            </button>
+          )}
           <button type="button" className="approval-action primary" onClick={() => onResolve('once')}>
             仅本次
           </button>
