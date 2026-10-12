@@ -67,16 +67,19 @@ export async function startElectronAcceptanceProvider(options = {}) {
       ? state.promptDelay.delayMs
       : undefined
     const delayMs = state.modelDelayMs.get(model) ?? promptDelayMs ?? state.requestDelayMs
-    requests.push({
+    const requestLog = {
       requestIndex,
       receivedAt: new Date().toISOString(),
+      delayMs,
       model,
       stream: body.stream === true,
       messages: boundedMessages(body.messages),
       tools: boundedTools(body.tools),
-    })
+    }
+    requests.push(requestLog)
     if (requests.length > MAX_LOGGED_REQUESTS) requests.splice(0, requests.length - MAX_LOGGED_REQUESTS)
     await delay(delayMs)
+    requestLog.respondedAt = new Date().toISOString()
     // Faults are consumed per Provider request and logged on that request, so a fixture can
     // map every transport attempt to what the Provider actually did with it.
     const fault = takeFault(state)
@@ -92,6 +95,7 @@ export async function startElectronAcceptanceProvider(options = {}) {
     }
     if (fault?.kind === 'hang') await delay(fault.ms)
     const response = buildResponse(body, requestIndex, model)
+    requestLog.responseSummary = messageText(response.choices?.[0]?.message).slice(0, 240)
     if (fault?.kind === 'stream_break' && body.stream === true) {
       await writeBrokenStream(res, response, state, fault.afterChunks)
       return
@@ -253,6 +257,62 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
       ? toolChoice('o1-local-failure-read', 'read', { file_path: O1_MISSING_FILE })
       : textChoice('本轮结束：目标文件不存在，读取失败已保留在运行记录里，验收结论需要人工判断。')
   }
+  if (user.includes(P4_OUTSIDE_WRITE_MARKER)) {
+    const path = user.match(/P4-OUTSIDE-WRITE:(\S+)/u)?.[1] ?? '../../p4-outside-permission-sentinel.txt'
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice('p4-outside-write', 'write', {
+        file_path: path,
+        content: 'this outside write must be denied\n',
+      })
+      : textChoice('越界写入未获批准。')
+  }
+  if (user.includes(P4_READ_CONTINUATION_MARKER)) {
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice('p4-read-continuation', 'read', { file_path: 'p4-stale.txt' })
+      : textChoice('只读授权下的 continuation 已完成。')
+  }
+  if (user.includes(P4_PROTECTED_WRITE_MARKER)) {
+    const path = user.match(/P4-PROTECTED-WRITE:(\S+)/u)?.[1]
+    if (!path) return textChoice('受保护目标测试缺少路径。')
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice('p4-protected-write', 'write', {
+        file_path: path,
+        content: 'this protected write must be hard-denied\n',
+      })
+      : textChoice('受保护目标没有改变。')
+  }
+  if (user.includes(P4_STALE_OBSERVATION_MARKER)) {
+    const toolCount = toolMessagesThisTurn(messages).length
+    if (toolCount === 0) return toolChoice('p4-stale-read', 'read', { file_path: 'p4-stale.txt' })
+    if (toolCount === 1) {
+      return toolChoice('p4-stale-edit', 'edit', {
+        file_path: 'p4-stale.txt',
+        old_string: 'before-external-change',
+        new_string: 'this-stale-write-must-not-land',
+      })
+    }
+    return textChoice('过期观察后的修改已按运行时结果处理。')
+  }
+  if (user.includes('P4-SECOND-SESSION-PERSISTENCE')) {
+    return textChoice('独立会话已建立，权限模式保持 runtime-continuity-anchor-4827。')
+  }
+  const execMarker = user.match(/P4-V2-EXEC-([A-Z0-9]+)/u)?.[1]
+  if (execMarker) {
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice(`p4-exec-${execMarker}`, 'exec', {
+        command: `node -e "process.stdout.write('p4-host-exec-${execMarker}')"`,
+      })
+      : textChoice(`P4-EXEC-${execMarker}-DONE`)
+  }
+  const checkpointExecMarker = user.match(/P4-CHECKPOINT-(CREATE|RESUME)-EXEC/u)?.[1]
+  if (checkpointExecMarker) {
+    const stage = checkpointExecMarker.toLowerCase()
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice(`p4-checkpoint-${stage}-exec`, 'exec', {
+        command: `node -e "process.stdout.write('p4-checkpoint-host-exec-${stage}')"`,
+      })
+      : textChoice(`P4-CHECKPOINT-${checkpointExecMarker}-EXEC-DONE`)
+  }
   if (user.includes('运行中的补充验收')) {
     return textChoice('已处理补充要求：运行中的补充验收。')
   }
@@ -371,6 +431,11 @@ export const O1_LOCAL_FAILURE_MARKER = 'LS-O1-LOCAL-FAILURE-MARKER'
 export const O1_MISSING_FILE = 'o1-missing-fixture.txt'
 
 export const LONG_MARKDOWN_MARKER = 'MARKDOWN-LONG-FIXTURE'
+export const P4_OUTSIDE_WRITE_MARKER = 'P4-OUTSIDE-WRITE'
+export const P4_READ_CONTINUATION_MARKER = 'P4-READ-CONTINUATION'
+export const P4_PROTECTED_WRITE_MARKER = 'P4-PROTECTED-WRITE'
+export const P4_STALE_OBSERVATION_MARKER = 'P4-STALE-OBSERVATION'
+export const P4_CHECKPOINT_RESUME_EXEC_MARKER = 'P4-CHECKPOINT-RESUME-EXEC'
 
 /** Sentinels the fixture asserts on: the answer is only complete if both survive the stream. */
 export const LONG_MARKDOWN_START = 'FIXTURE-START-4c1d'
