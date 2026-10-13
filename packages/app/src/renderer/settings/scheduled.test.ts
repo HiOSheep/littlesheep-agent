@@ -40,6 +40,9 @@ describe('scheduled page placeholder', () => {
     // Settings overview, the direct module page and the sidebar all read the same
     // navigation index, so they cannot disagree about its state.
     expect(home).toContain('commonSettingsNavGroups')
-    expect(directModule).toContain("if (page === 'scheduled') return <SettingsScheduledPage />")
+    // The branch shape is the composition's own business (it has been an early
+    // return and is now a ternary arm); the claim is that the `scheduled` id
+    // resolves to the placeholder page rather than to a sibling's view.
+    expect(directModule).toMatch(/page === 'scheduled'[\s\S]{0,80}?<SettingsScheduledPage \/>/u)
   })
 })

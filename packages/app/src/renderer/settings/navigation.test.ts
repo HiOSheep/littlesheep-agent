@@ -53,7 +53,10 @@ describe('settings page identity', () => {
       .matchAll(/'([^']+)'/gu)].map((match) => match[1]!)
     const explicitDirectPages = [...directModule.matchAll(/page === '([^']+)'/gu)].map((match) => match[1]!)
     // The last branch is the documented default (plugins), so it carries no id.
-    const defaultDirectPage = /return <SettingsPluginsPage \/>/u.test(directModule) ? 'plugins' : ''
+    // The composition spells that fallback as either an early return or the final
+    // ternary arm; both keep `plugins` reachable without its own id check.
+    const rendersPluginsFallback = /(?::|return)\s*<SettingsPluginsPage\s*\/>/u.test(directModule)
+    const defaultDirectPage = rendersPluginsFallback && !explicitDirectPages.includes('plugins') ? 'plugins' : ''
 
     const missing = declared.filter((page) => {
       if (page === 'home') return !workspace.includes("page === 'home'")

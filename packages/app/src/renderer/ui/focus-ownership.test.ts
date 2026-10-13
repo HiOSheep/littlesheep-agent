@@ -86,6 +86,12 @@ const COMPENSATED: FocusException[] = [
     compensatedBy: '.settings-module-search:focus-within',
     reason: 'same shape as the settings search: a borderless field inside a capsule, and the capsule takes the fill',
   },
+  {
+    key: '.appearance-color-input input',
+    kind: 'compensated',
+    compensatedBy: '.appearance-color-input:focus-within',
+    reason: 'the colour field is borderless inside its pill; the pill takes the border and the ring while it holds focus',
+  },
 ]
 
 /**
