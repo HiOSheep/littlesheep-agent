@@ -47,6 +47,11 @@ export function resolveAppPngIconPath(options: AppIconPathOptions): string | und
   return appIconCandidates(options).find((path) => path.endsWith('.png') && exists(path))
 }
 
+/** Linux tray hosts accept raster icons reliably; `.ico` is not a supported nativeImage source there. */
+export function resolveAppTrayIconPath(options: AppIconPathOptions, platform: NodeJS.Platform): string | undefined {
+  return platform === 'linux' ? resolveAppPngIconPath(options) : resolveAppIconPath(options)
+}
+
 /** Small independent startup motion, from the same roots as the static icon. */
 export function resolveAppStartupMotionPath(options: AppIconPathOptions): string | undefined {
   return resolveSurfaceResource(options, 'startup.webp')

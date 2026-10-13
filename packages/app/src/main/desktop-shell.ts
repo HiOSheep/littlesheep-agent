@@ -8,7 +8,7 @@ import {
   APPLICATION_STATE_FLUSH_ACK_CHANNEL,
   APPLICATION_STATE_FLUSH_CHANNEL,
 } from '../shared/application-state-contracts.js'
-import { resolveAppIconPath, resolveAppPngIconPath, resolveAppSurfaceMarkPath } from './app-icon.js'
+import { resolveAppTrayIconPath, resolveAppPngIconPath, resolveAppSurfaceMarkPath } from './app-icon.js'
 import { loadAppStartupMotionDataUrl } from './startup-motion.js'
 import { APPLICATION_ZOOM_FACTOR, isApplicationZoomShortcut } from './application-zoom.js'
 import { decideLastWindowClose } from './close-policy.js'
@@ -595,7 +595,7 @@ function showWindow(win: BrowserWindow): void {
 }
 
 function resolveDesktopIcon(): string | undefined {
-  return resolveAppIconPath({ appPath: app.getAppPath(), moduleDir: __dirname, resourcesPath: process.resourcesPath })
+  return resolveAppTrayIconPath({ appPath: app.getAppPath(), moduleDir: __dirname, resourcesPath: process.resourcesPath }, process.platform)
 }
 
 function resolveDesktopStartupIconDataUrl(): string | undefined {

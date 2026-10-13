@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { join } from 'node:path'
 import { resolve } from 'node:path'
-import { appIconCandidates, resolveAppIconPath, resolveAppPngIconPath, resolveAppStartupMotionPath, resolveAppSurfaceMarkPath } from './app-icon.js'
+import { appIconCandidates, resolveAppIconPath, resolveAppPngIconPath, resolveAppStartupMotionPath, resolveAppSurfaceMarkPath, resolveAppTrayIconPath } from './app-icon.js'
 
 describe('app icon resolution', () => {
   it('finds startup motion in packaged resources and tolerates its absence', () => {
@@ -59,6 +59,12 @@ describe('app icon resolution', () => {
     })
 
     expect(resolved).toBe(join('/app', 'resources', 'littlesheep-icon.png'))
+  })
+
+  it('prefers the existing PNG for a Linux tray while preserving native icons elsewhere', () => {
+    const exists = (path: string) => path.endsWith('.ico') || path.endsWith('.png')
+    expect(resolveAppTrayIconPath({ appPath: '/app', exists }, 'linux')).toBe(join('/app', 'resources', 'littlesheep-icon.png'))
+    expect(resolveAppTrayIconPath({ appPath: '/app', exists }, 'win32')).toBe(join('/app', 'resources', 'littlesheep.ico'))
   })
 
   it('resolves the checked-in application icon', () => {
