@@ -286,6 +286,8 @@ interface AuthoritativeResumeCheckpointOptions extends ResumeCheckpointOptions {
 }
 
 export interface AgentRunner {
+  /** Read only pre-redacted loaded history and live snapshots; never replay raw logs. */
+  inspectContext?(sessionId: string): import('./context-inspection.js').ContextInspection;
   /** Host-owned source roots kept read-only by every Runtime permission mode. */
   readonly protectedWriteRoots?: readonly string[]
   run(input: RunInput): Promise<RunnerResult>;
@@ -359,6 +361,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     ),
   });
   const activeRuns = new ActiveRunRegistry({ maxActiveRuns: opts.maxActiveRuns });
+  const inspectionContexts = new Map<string, RunContext>();
   const compactionScheduler = infra.compactionScheduler;
   // Recovery-time effect reconciliation is delegated so this facade keeps its
   // size budget; the host still owns approval and the tool owns the query.
@@ -732,6 +735,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           webRetrieval: webRetrievalRuntime,
         });
       runContext = ctx;
+      inspectionContexts.set(ctx.runId, ctx);
       onToolEvent({
         type: 'capability_snapshot',
         visibility: 'silent',
@@ -1057,6 +1061,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       infra.durableEventStore.releaseExclusiveRunOwnership(runId);
       webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
+      inspectionContexts.delete(runId);
       if (activeCheckpoint && !checkpointCompleted) {
         try {
           await activeCheckpoint.abort();
@@ -2002,6 +2007,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     resumeCheckpoint,
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),
+    inspectContext: (sessionId: string) => infra.executionLogStore.contextInspection.inspect(sessionId, [...inspectionContexts.values()]),
     durableHarnessModeForRun,
     isResultAuthoritativePrepared: (result: RunnerResult) => isAuthoritativePrepared(result),
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
@@ -2020,6 +2026,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       // claiming what the model read, so the model reads again.
       infra.fileObservations.dispose();
       activeRuns.dispose();
+      inspectionContexts.clear();
       infra.disposeTokenCounter();
       // Close long-lived SQLite connections before adapters replace or delete the data root.
       await infra.memoryRepository.shutdown();

@@ -53,6 +53,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     workspaceIsWorkplace,
     workspaceTip,
     contextUsage,
+    openContextInspector,
     uploadTip,
     sendTip,
     stopTip,
@@ -253,7 +254,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             )}
           </div>
           <div className="composer-right">
-            <ContextUsageIndicator usage={contextUsage} />
+            <ContextUsageIndicator usage={contextUsage} onOpen={openContextInspector} />
             <RuntimePicker
               runtime={runtime}
               availability={modelAvailability}

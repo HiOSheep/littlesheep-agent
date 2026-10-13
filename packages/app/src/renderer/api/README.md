@@ -9,6 +9,7 @@
 - client 只发送 Main 定义的请求并展示响应。工作区路径、文件内容、权限、数据归属和服务生命周期都由 Main 复核。
 - Workspace preview client 只持有 loopback token URL 与生命周期请求；路径范围、静态资源读取和安全策略由 Main preview service 所有。
 - SSE 断开仅说明 Renderer 不再观察流；Agent run 是否停止按 API 契约决定。
+- `context-inspector.ts` 使用共享 `/sessions/:id/context` 契约，只获取脱敏 Trace；不复用聊天原文／日志回放接口。响应必须匹配请求会话，页面退出或换会话时取消读取；Usage、本地计数与有限已载入历史分开显示。
 
 `run`、checkpoint、session、runtime、attachment、workspace、review、terminal、browser、memory 与 extensions client 按领域维护；父级 `api.ts` 作为既有调用方的兼容 barrel。
 

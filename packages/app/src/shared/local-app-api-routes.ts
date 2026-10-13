@@ -1,4 +1,5 @@
 // Canonical Local App API route catalog shared by server and renderer clients.
+export const SESSION_CONTEXT_SUFFIX = '/context'
 
 export const LOCAL_APP_API_ROUTES = {
   run: '/run',

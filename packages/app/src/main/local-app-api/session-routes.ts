@@ -30,6 +30,7 @@ import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
 import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
+import { routeContextInspector } from './context-inspector-routes.js'
 
 /** Bounded like the other session fields: a path, not a document. */
 const SESSION_WORKSPACE_PATH_MAX_LENGTH = 4_096
@@ -48,6 +49,7 @@ export async function routeSessions(
 ): Promise<boolean> {
   const { res, url, path, method } = request
   const { sessionIndex, projectIndex, archiveIndex } = context
+  if (await routeContextInspector(request, context)) return true
 
   // Session metadata comes from the UI index and must stay readable while the
   // Runner is still starting; only the branches below resolve it, lazily.

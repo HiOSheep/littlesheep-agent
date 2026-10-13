@@ -233,11 +233,11 @@ export function renderTailEntries(
 export function spliceTailMessages(
   messages: ChatMessage[],
   delta: RunTailDelta,
-): Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }> {
-  const kinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef }>();
+): Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef; scope: ContextScope }> {
+  const kinds = new Map<ChatMessage, { kind: ContextItemKind; source: ContextSourceRef; scope: ContextScope }>();
   for (const [index, message] of delta.messages.entries()) {
     const declared = delta.entries[index];
-    if (declared) kinds.set(message, { kind: declared.kind, source: declared.source });
+    if (declared) kinds.set(message, { kind: declared.kind, source: declared.source, scope: declared.scope });
   }
   let primaryUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {

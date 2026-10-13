@@ -15,6 +15,7 @@ import { existsSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
+import { ContextInspectionStore } from './context-inspection.js';
 import type {
   Message,
   ReplyProvenance,
@@ -174,6 +175,7 @@ export interface ExecutionLogStoreOptions {
 }
 
 export class ExecutionLogStore {
+  readonly contextInspection = new ContextInspectionStore();
   private readonly rootDir: string;
   private readonly summaryWrites = new Map<string, Promise<void>>();
 
@@ -280,6 +282,7 @@ export class ExecutionLogStore {
         await rm(temporary, { force: true }).catch(() => undefined);
         throw error;
       }
+      this.contextInspection.observe(log);
       return log;
     } finally {
       await lock.release();
@@ -361,7 +364,9 @@ export class ExecutionLogStore {
     if (!existsSync(file)) return null;
     try {
       const raw = await readFile(file, 'utf8');
-      return JSON.parse(raw) as ExecutionLog;
+      const log = JSON.parse(raw) as ExecutionLog;
+      this.contextInspection.observe(log);
+      return log;
     } catch {
       return null;
     }

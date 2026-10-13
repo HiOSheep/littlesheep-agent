@@ -16,9 +16,12 @@
 
 - 依赖配置、LLM 计数能力和公共契约；由 Harness 组织候选后调用。
 - `ContextSnapshot` 是执行证据，正文权威来源仍属于原领域。
+- Trace 的 `sourceKinds` 仅放行有限来源类别，字符计数缺失时标记 unavailable；这些字段是只读诊断元数据，不改变请求组装或记忆权限。
+- `buildContextTrace(snapshot, request)` 按需投影已有匹配快照为来源／作用域计数、字符数及独立的本地与 Provider Token 账本；不读取正文、不建立新存储。投影显式排除路径、名称、id、hash 和自由文本原因，拒绝跨 run/session/model 的关联；调用方仍负责授权。原生工具 schema 大小与逐来源 Token 尚不可从旧快照恢复，覆盖状态明确返回 unavailable；字符数不得展示为 Token。
 - 模型专用精确 tokenizer 使用固定 revision、大小和 SHA-256 校验；Runner 创建时只装配惰性计数器。首次真实 Agent run 才 single-flight 准备本地资源，未就绪或准备失败时使用保守请求预算，失败重试带退避，不阻塞应用启动或普通工作区浏览。
 
 ## 测试与修改定位
 
 - 行为测试在 `src/engine.test.ts`，请求差异在 `src/request-prefix-diff.test.ts`，DeepSeek V4 资源、编码与惰性生命周期在 `src/tokenizers/deepseek-v4-counter.test.ts`、`src/tokenizers/deepseek-v4-encoding.test.ts`，内部所有权说明见 `src/context-engine/README.md`。
+- Trace 隐私、缺失账本、截断与关联边界见 `src/context-trace.test.ts`；隔离 Runner 六场景基线见 `packages/runner/src/context-baseline.test.ts`，默认离线且不声称 Provider 实报。
 - 修改预算算法时必须覆盖未知计数器、必需内容超限、淘汰顺序和脱敏快照。

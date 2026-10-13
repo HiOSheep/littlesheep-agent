@@ -213,7 +213,11 @@ export async function runToolLoop(
     // Append this round's tail additions before the request is assembled. An
     // unchanged fact adds nothing here, so the messages already sent stay put.
     const tailDelta = tailLedger.update(ctx, systemSegments, tailSegments);
-    for (const message of tailDelta.messages) tailMessageSet.add(message);
+    for (const [index, message] of tailDelta.messages.entries()) {
+      tailMessageSet.add(message);
+      const entry = tailDelta.entries[index];
+      if (entry) tailKinds.set(message, { kind: entry.kind, source: entry.source, scope: entry.scope });
+    }
     messages.push(...tailDelta.messages);
     persistRuntimeTailMessages(ctx, produced, tailDelta.messages);
     try {

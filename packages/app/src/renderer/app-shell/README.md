@@ -6,6 +6,7 @@ App Shell 组合桌面页面，并协调聊天、设置和扩展工作区之间�
 
 - 功能状态留在各自区域：chat、composer、sidebar、settings、workspace、runtime readiness 或 runtime recovery。
 - App Shell 负责挂载页面、投影活动会话／工作区，并把用户动作交回领域回调。
+- Context Inspector 复用 `section: 'context'` 导航；打开时保留聊天 DOM 和 Agent 生命周期，后台设 inert 并隐藏绘制，返回时恢复圆环焦点。新会话仍可打开，页面不创建会话或重置草稿；诊断数据由授权 Main 接口提供。此页面导航是临时状态，重启回到聊天。
 - 设置代码按首次打开加载，关闭后保留已挂载视图，普通聊天启动不提前挂载设置或发起其页面读取；直接入口中的记忆树、插件和已安排页面也按需加载。
 - 活动项目、会话工作区绑定、就绪状态、恢复和已保存布局以 Main 为准；不能从侧栏高亮项推断。
 - 就绪状态与 checkpoint 恢复不同。可恢复故障不应阻塞可用的壳层；只有依赖未就绪 Runner 的动作显示不可用状态。

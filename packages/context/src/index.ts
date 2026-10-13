@@ -1,4 +1,5 @@
 export * from './engine.js';
+export { buildContextTrace, type ContextTrace, type ContextTraceSource } from './context-trace.js';
 export {
   diffContextSnapshots,
   diffModelRequestSnapshots,

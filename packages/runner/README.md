@@ -4,6 +4,7 @@ Runner 是应用层 run 创建、请求装配、Harness 集成、事件持久化
 
 ## 持久边界
 
+- `AgentRunner.inspectContext(sessionId)` 只读取已有聊天／日志读写时产生的有界内存脱敏投影和当前运行快照；没有原文回放、额外 tokenization 或新磁盘存储。历史范围为 loaded_history（最多返回 32 请求），不能代表会话累计账单。外层 Main 必须先验证会话归属；旧日志缺快照时保持不可用。隐私／归属测试见 `context-inspection.test.ts`，Electron 入口验收见 `scripts/verify-context-inspector.mjs`。
 - ExecutionLog 保存已结算 run 证据；RunCheckpoint 保存活动 run 的可恢复状态，两者用途不同。
 - Run 与 tool identity 支持幂等结算。续跑前校验 durable lease；未完成或状态未知的副作用须停止并明确处理。
 - 每个新 run 都使用严格 durable 持久化与结算；执行模式选择和 per-session/origin/profile overrides 已移除。旧 `shadow` 标签只供历史记录读取、回放和用量报告。

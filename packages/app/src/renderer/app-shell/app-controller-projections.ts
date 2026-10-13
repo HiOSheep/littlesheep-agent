@@ -8,6 +8,7 @@ import type { AppController } from './use-app-controller'
 
 export const APP_CONTROLLER_VIEW_FIELDS = {
   app: [
+    'contextInspectorOpen', 'contextInspectorModelRef', 'openContextInspector', 'closeContextInspector', 'currentSession', 'loading',
     'shellRef',
     'sidebarCollapsed',
     'workspacePanelCollapsed',
@@ -131,6 +132,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'modelAvailability',
   ],
   composer: [
+    'openContextInspector',
     'input',
     'setInput',
     'inputRef',

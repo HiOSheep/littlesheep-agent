@@ -7,6 +7,7 @@ import { OverlaysView } from './overlays-view'
 import { SidebarView } from './sidebar-view'
 import type { AppViewController } from './app-controller-projections'
 import { useWindowChrome } from './use-window-chrome'
+import { ContextInspectorPage } from '../context-inspector/page'
 
 
 export function AppView({ controller }: { controller: AppViewController }) {
@@ -18,6 +19,7 @@ export function AppView({ controller }: { controller: AppViewController }) {
     workspacePanelFullscreen,
     directModulePage,
     settingsOpen,
+    contextInspectorOpen, contextInspectorModelRef, currentSession, loading, closeContextInspector,
     settingsReturning,
     layoutStyle,
     sidebarToggleTip,
@@ -50,6 +52,7 @@ export function AppView({ controller }: { controller: AppViewController }) {
           workspacePanelFullscreen ? 'workspace-panel-fullscreen' : '',
           directModulePage ? 'direct-module-open' : '',
           settingsOpen ? 'settings-open' : '',
+          contextInspectorOpen ? 'context-inspector-open' : '',
           settingsReturning ? 'settings-returning' : '',
         ].filter(Boolean).join(' ')}
         style={layoutStyle}
@@ -81,10 +84,11 @@ export function AppView({ controller }: { controller: AppViewController }) {
                 The inert/aria-hidden boundary follows what is actually behind it, so the
                 top bar's drag band stays usable while settings is open — the same contract
                 the full-width title bar had. */}
-            <div className="app-panels" aria-hidden={settingsOpen} {...(settingsOpen ? { inert: '' } : {})}>
+            <div className="app-panels" aria-hidden={settingsOpen || contextInspectorOpen} {...(settingsOpen || contextInspectorOpen ? { inert: '' } : {})}>
               <SidebarView controller={sidebar} />
               <CoreWorkspaceView controller={coreWorkspace} />
             </div>
+            {contextInspectorOpen ? <ContextInspectorPage sessionId={currentSession ?? null} modelRef={contextInspectorModelRef} running={loading} onClose={closeContextInspector} /> : null}
           </div>
         </div>
         <SettingsEntryButton

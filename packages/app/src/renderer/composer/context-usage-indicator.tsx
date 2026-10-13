@@ -10,7 +10,7 @@ import {
 export type RuntimeProvider = RuntimeState['providers'][number]
 
 
-export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
+export function ContextUsageIndicator({ usage, onOpen }: { usage: ContextUsage; onOpen?: () => void }) {
   const windowKnown = usage.maxTokens > 0
   const tone = usage.available && usage.percent >= 90 ? 'danger' : usage.available && usage.percent >= 70 ? 'warning' : 'normal'
   const usagePercent = usage.available ? Math.max(0, Math.min(100, usage.percent)) : 0
@@ -23,11 +23,12 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
     : `${formatLocalTokenizerState(usage)}，共 ${formatTokenCount(usage.maxTokens)}`
 
   return (
-    <div
+    <button
+      type="button"
       className={`context-usage composer-tab-control tone-${tone}`}
-      role="status"
-      tabIndex={0}
-      aria-label={cacheLabel ? `${ariaLabel}；${cacheLabel}` : ariaLabel}
+      onClick={onOpen}
+      aria-label={`打开 Context Inspector；${cacheLabel ? `${ariaLabel}；${cacheLabel}` : ariaLabel}`}
+      title="查看上下文详情"
     >
       <svg className="context-usage-ring" viewBox="0 0 16 16" aria-hidden="true">
         <circle className="context-usage-ring-track" cx="8" cy="8" r="6.5" />
@@ -72,7 +73,7 @@ export function ContextUsageIndicator({ usage }: { usage: ContextUsage }) {
           </span>
         ) : null}
       </span>
-    </div>
+    </button>
   )
 }
 

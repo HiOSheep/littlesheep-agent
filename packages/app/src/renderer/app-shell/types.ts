@@ -7,6 +7,7 @@ import {
 
 export type AppRoute =
   | { section: 'chat' }
+  | { section: 'context' }
   | { section: 'settings'; page: SettingsPage }
   | { section: 'module'; page: DirectModulePage }
 

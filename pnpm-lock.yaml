@@ -103,6 +103,9 @@ importers:
       '@littlesheep/config':
         specifier: workspace:*
         version: link:../config
+      '@littlesheep/context':
+        specifier: workspace:*
+        version: link:../context
       '@littlesheep/embedding':
         specifier: workspace:*
         version: link:../embedding

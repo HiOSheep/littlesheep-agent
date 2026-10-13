@@ -10,6 +10,7 @@ import { AppNavigationSnapshot, AppRoute } from './types'
 export function routesEqual(left: AppRoute | undefined, right: AppRoute): boolean {
   if (!left || left.section !== right.section) return false
   if (left.section === 'chat' && right.section === 'chat') return true
+  if (left.section === 'context' && right.section === 'context') return true
   if (left.section === 'settings' && right.section === 'settings') return left.page === right.page
   if (left.section === 'module' && right.section === 'module') return left.page === right.page
   return false

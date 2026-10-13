@@ -1,5 +1,7 @@
 # 脚本与验证入口
 
+`node scripts/verify-context-inspector.mjs` 用隔离数据根与本地 HTTP Provider 启动真实 Electron，检查圆环／键盘入口、缺失与 partial、计数账本、会话切换、返回焦点／草稿／滚动及运行中任务保留。截图和 `result.json` 默认写入系统临时目录，`--out=<绝对路径>` 可指定；5000/5100 等本地和 Provider 数字是显式 UI 夹具，不代表外部模型实报校准。验收不读取个人日志或记忆。
+
 `package.json` 是可运行命令的唯一清单。本页说明入口如何选择，以及少数不能从命令名看出的验证边界。
 
 ## 常用入口

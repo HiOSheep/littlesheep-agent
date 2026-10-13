@@ -7,6 +7,7 @@
 //
 // The runner is the core execution entry point; optional extensions call it
 // through their declared contribution contracts.
+export { type ContextInspection, type ContextInspectionRequest } from './context-inspection.js';
 
 export {
   createRunner,

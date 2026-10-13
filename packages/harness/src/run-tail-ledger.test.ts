@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { textMessage } from '@littlesheep/types';
 import type { RunContext } from '@littlesheep/types';
-import { RunTailLedger, renderTailEntries } from './run-tail-ledger.js';
+import { RunTailLedger, renderTailEntries, spliceTailMessages } from './run-tail-ledger.js';
 import { persistRuntimeTailMessages } from './stages/execute/tool-result-persistence.js';
 import { makeCtx } from './tests/helpers.js';
 
@@ -52,6 +52,18 @@ function withKnownStateRevision(ctx: RunContext, revision: number): RunContext {
 }
 
 describe('RunTailLedger', () => {
+  it('preserves declared diagnostic scopes without changing outbound messages', () => {
+    const messages = [{ role: 'user' as const, content: 'hello' }];
+    const delta = new RunTailLedger().update(makeCtx(), [], [{
+      id: 'summary-fixture', order: 0, text: 'session summary', kind: 'summary_memory',
+      source: { kind: 'memory', id: 'fixture' }, scope: 'session', priority: 88, required: true, sensitive: true,
+    }]);
+    const kinds = spliceTailMessages(messages, delta);
+    const summary = delta.messages.find((message) => message.content === 'session summary')!;
+    expect(kinds.get(summary)).toMatchObject({ kind: 'summary_memory', scope: 'session' });
+    expect(messages[0]).toEqual({ role: 'user', content: 'hello' });
+    expect(messages.slice(1)).toEqual(delta.messages);
+  });
   it('sends the stable interval slots once and then adds nothing for an unchanged run', () => {
     const ctx = makeCtx({ inbound: textMessage('user', 'hello') });
     const ledger = new RunTailLedger();

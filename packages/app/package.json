@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@littlesheep/branding": "workspace:*",
+    "@littlesheep/context": "workspace:*",
     "@littlesheep/channel-feishu": "workspace:*",
     "@littlesheep/channel-qqbot": "workspace:*",
     "@littlesheep/channel-telegram": "workspace:*",

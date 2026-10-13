@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "checks": [
+    "new conversation draft survives",
+    "opening does not create a session",
+    "local and Provider ledgers stay separate",
+    "missing cache write and model window are explicit",
+    "page does not display private raw content",
+    "endpoint excludes raw diagnostics",
+    "loaded conversation draft survives",
+    "chat scroll position survives",
+    "focus returns to ring: BUTTON",
+    "native Enter and Escape navigation",
+    "switching sessions cannot leak prior Usage",
+    "navigation preserves active run and draft",
+    "unknown session is denied"
+  ],
+  "evidence": [
+    "empty.png",
+    "overview.png",
+    "partial.png",
+    "active.png"
+  ],
+  "provider": "isolated synthetic HTTP",
+  "fixtureCounts": true
+}
