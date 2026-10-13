@@ -749,9 +749,11 @@ function extractCommandPaths(command: string): string[] {
   const values: string[] = []
   const windows = command.match(/[A-Za-z]:[\\/][^\s"'`<>|;&()]+/gu) ?? []
   const unc = command.match(/\\\\[^\s"'`<>|;&()]+/gu) ?? []
-  const unix = command.match(/(?:^|\s)(\/(?:[^\s"'`<>|;&()]+))/gu) ?? []
+  // Paths quoted for POSIX shells are still explicit resources. Include the
+  // quote as a valid boundary so `/tmp/file` is found in `cat "/tmp/file"`.
+  const unix = command.match(/(?:^|[\s"'`])(\/(?:[^\s"'`<>|;&()]+))/gu) ?? []
   const traversal = command.match(/((?:\.\.[\\/])+[^\s"'`<>|;&()]+)/gu) ?? []
-  values.push(...windows, ...unc, ...unix.map((value) => value.trim()), ...traversal)
+  values.push(...windows, ...unc, ...unix.map((value) => value.replace(/^[\s"'`]+/u, '')), ...traversal)
   if (/\.\.[\\/]/u.test(command)) values.push('..')
   return [...new Set(values)]
 }

@@ -114,11 +114,13 @@ describe('permission boundary', () => {
   it('treats explicit external command paths and dynamic shell access conservatively', async () => {
     const fixture = await makeFixture()
     const explicit = describeToolAccess('exec', {
-      command: `Get-Content "${fixture.outsideFile}"`,
+      command: process.platform === 'win32'
+        ? `Get-Content "${fixture.outsideFile}"`
+        : `cat "${fixture.outsideFile}"`,
       cwd: fixture.containerRoot,
     }, fixture)
     const parentTraversal = describeToolAccess('exec', {
-      command: 'Get-Content ..\\..\\outside\\outside.txt',
+      command: `Get-Content ${join('..', '..', 'outside', 'outside.txt')}`,
       cwd: join(fixture.containerRoot, 'workplace'),
     }, fixture)
     const dynamic = describeToolAccess('exec', {

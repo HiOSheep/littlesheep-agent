@@ -92,8 +92,9 @@ describe('local app run policy', () => {
       },
     })
     expect(policy.permissionPolicyV2?.dataRoot).not.toBe(policy.permissionPolicyV2?.workspaceRoot)
-    await expect(policy.approve('write', { file_path: join(workspaceRoot, 'ordinary.txt') })).resolves.toBe(true)
-    expect(broker).not.toHaveBeenCalled()
+    await expect(policy.approve('write', { file_path: join(workspaceRoot, 'ordinary.txt') }))
+      .resolves.toBe(WORKSPACE_FILE_GUARD_AVAILABLE)
+    expect(broker).toHaveBeenCalledTimes(WORKSPACE_FILE_GUARD_AVAILABLE ? 0 : 1)
 
   })
 
