@@ -24,7 +24,6 @@
   --composer-picker-option-hover: color-mix(in srgb, var(--text) 12%, var(--control-hover));
   --composer-picker-option-active: color-mix(in srgb, var(--text) 18%, var(--control-hover));
   --composer-surface: rgba(39, 39, 39, 0.86);
-  --composer-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
   /* Selections are a colour, not a slightly lighter grey: on a dark transcript a grey highlight read
      as an unstyled patch, so the reader could not see what was about to be copied (reported
      2026-10-03). Same family as the light theme's #c8d9f3, dark enough for the #f2f2f2 foreground
@@ -198,7 +197,7 @@
   --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", monospace;
   --sidebar-content-block-inset: 18px;
   --sidebar-content-inline-inset: 14px;
-  --sidebar-scrollbar-edge-gap: 2px;
+  --sidebar-scrollbar-edge-gap: 0px;
   /* The button lives inside a floating sidebar surface. Include that outer
      inset so its fixed transition bridge shares the same global anchor. */
   --settings-entry-edge-inset: 3px;
@@ -406,37 +405,39 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   pointer-events: none !important;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+:root {
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: color-mix(in srgb, var(--text-strong) 28%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-strong) 46%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--text-strong) 60%, transparent);
 }
 
-::-webkit-scrollbar:horizontal {
-  height: 3px;
-}
+::-webkit-scrollbar { width: var(--scrollbar-size); height: var(--scrollbar-size); }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #383838;
-  border: 2px solid transparent;
+  background: var(--scrollbar-thumb);
+  border: 0;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-pill);
   background-clip: content-box;
+  min-height: 24px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #484848;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: var(--scrollbar-thumb-hover);
 }
+
+::-webkit-scrollbar-thumb:active { background: var(--scrollbar-thumb-active); }
+::-webkit-scrollbar-corner { background: transparent; }
 
 ::-webkit-scrollbar-thumb:horizontal,
 ::-webkit-scrollbar-thumb:horizontal:hover {
-  background: var(--border-strong);
   border: 0;
-  border-radius: var(--radius-pill);
+  border-top: 2px solid transparent;
 }
 
 @keyframes content-fade-in {
@@ -804,7 +805,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
      which are wide and carry their own padding; between two icon buttons it reads as touching
      (reported 2026-10-02), so the pair gets its own number. */
   --workspace-panel-control-gap: 12px;
-  --chat-workspace-scrollbar-gap: 2px;
+  --chat-workspace-scrollbar-gap: 0px;
   --chat-workspace-scrollbar-overlap: 0px;
   position: relative;
   grid-column: 3;
@@ -819,7 +820,7 @@ body.is-resizing-column .window-shell.workspace-panel-drag-live:not(.workspace-p
 
 /* The chat scroller should end just before the visible floating workspace
    frame. The flex seam is one pixel wide and the frame is inset by eight;
-   reclaim the difference so the native scrollbar keeps a precise 2px gap. */
+   reclaim the difference so the native scrollbar meets the visible frame. */
 .core-workspace:has(> .workspace-panel:not(.collapsed):not(.fullscreen)) {
   --chat-workspace-scrollbar-overlap: max(
     0px,
@@ -1801,7 +1802,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   max-height: min(360px, 38vh);
   /* The contents rail has a 14px inset. Extend the scroll viewport back
      toward the card edge while replacing that inset as inner padding, so the
-     rows keep their width and the scrollbar stays 2px from the frame. */
+     rows keep their width and the scrollbar meets the frame. */
   width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap));
   overflow-x: hidden;
   overflow-y: auto;
@@ -2590,7 +2591,7 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   scrollbar-gutter: auto;
   /* The composer's own glass recipe, on a portal rooted at the document so the blur is real. */
   background: var(--composer-surface);
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-menu);
   -webkit-backdrop-filter: blur(18px) saturate(135%);

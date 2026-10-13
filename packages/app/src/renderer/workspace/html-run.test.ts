@@ -56,7 +56,7 @@ describe('workspace html run state', () => {
     expect(pane).toContain("liveUrl={htmlRun.state.status === 'running' ? htmlRun.state.url : ''}")
     expect(surface).toContain('className="workspace-preview-html-live"')
     expect(surface).toContain('sandbox="allow-scripts allow-same-origin allow-forms allow-modals"')
-    expect(pane).toContain('void openExternalHref(htmlRun.state.url)')
+    expect(pane).toContain('return openExternalHref(htmlRun.state.url)')
     expect(pane).toContain('onOpenBrowserTab(htmlRun.state.url)')
 
     // The toolbar only decides where the already-running page opens next, and it does that from the

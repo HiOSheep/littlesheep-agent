@@ -5,6 +5,7 @@ import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { TurnRail } from '../chat/turn-rail'
+import { ConversationResources } from '../chat/conversation-resources'
 import { RAIL_MIN_ENTRIES, chatJumpShortcut, railEntries } from '../chat/turn-navigation'
 import { emptyHintFor } from '../chat/empty-hint'
 import { MessageFileStrip, MessageImageStrip } from '../composer/message-files'
@@ -34,6 +35,7 @@ function JumpToLatestArrow() {
 export function ChatView({ controller }: { controller: ChatViewController }) {
   const {
     currentSession,
+    attachments, addAttachments, workspacePanelCollapsed, workspacePanelRoot, workspaceArtifactVersion, openWorkspacePanelTab,
     messages,
     historyWindow,
     loadOlderMessages,
@@ -133,6 +135,11 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
 
   return (
     <>
+        <ConversationResources key={`resources:${currentSession ?? 'draft'}`} messages={messages} attachments={attachments}
+          root={workspacePanelRoot} version={workspaceArtifactVersion} collapsed={workspacePanelCollapsed}
+          hasOlderHistory={historyWindow.hasMore} onOpenFile={openFileInWorkspace}
+          onOpenReview={() => openWorkspacePanelTab('review')} onBrowseOutputs={() => openWorkspacePanelTab('artifacts')}
+          onAddSources={() => { void addAttachments() }} />
         <header className="chat-header" aria-label="当前对话">
           {titlebarTask.hasSession ? <RunningPill
             title={titlebarTask.title} activity={titlebarTask.activity} now={titlebarTask.now}
@@ -142,7 +149,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
           /> : <span className="chat-header-title">新对话</span>}
         </header>
           {railTurns.length >= RAIL_MIN_ENTRIES && (
-            <TurnRail key={currentSession ?? 'draft'} entries={railTurns} activeKey={activeTurnKey}
+            <TurnRail key={`turn-rail:${currentSession ?? 'draft'}`} entries={railTurns} activeKey={activeTurnKey}
               overlapsText={railInTheWay} onJump={scrollToTurn} onTipChange={setControlTip} />
           )}
         <div

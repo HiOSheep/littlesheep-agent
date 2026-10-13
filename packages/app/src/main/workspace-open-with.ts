@@ -1,8 +1,9 @@
 // @littlesheep/app - workspace-open-with.ts
 // "Open with" for a workspace file: which applications this machine can actually open it with.
 //
-// Windows keeps that list in the registry, and the desktop's own picker is built from the same
-// places, so there is no API to ask — the entries are read from the same keys Explorer reads:
+// Windows Shell's SHAssocEnumHandlers provides the full association list and Unicode names.
+// Registered commands and the user's default are resolved through the registry; if Shell fails,
+// the registry candidates remain the fallback:
 //   HKCU\...\FileExts\<ext>\UserChoice   → the user's chosen ProgId (the real default)
 //   HKCR\<ext>                           → the ProgId default plus OpenWithProgids / OpenWithList
 //   HKCR\Applications\<exe>\SupportedTypes → applications that register the extension themselves
@@ -10,11 +11,13 @@
 //
 // Honesty rules, the same ones the terminal shell discovery follows: nothing is offered that Main
 // cannot start, an entry without a usable command is dropped rather than guessed, the list is
-// bounded, and discovery never blocks a preview — a failed query is an empty list, not an error.
+// bounded, executables are checked for existence, and discovery never blocks a preview.
 
 import { execFile } from 'node:child_process'
 import { basename, extname } from 'node:path'
 import { promisify } from 'node:util'
+import { stat } from 'node:fs/promises'
+import { queryWindowsAssociatedApplications, type WindowsAssociatedApp } from './windows-associated-apps.js'
 
 const run = promisify(execFile)
 
@@ -40,9 +43,37 @@ export interface WorkspaceOpenWithOptions {
    */
   describeExecutables?: (paths: string[]) => Promise<Map<string, string>>
   limit?: number
+  enumerateShellHandlers?: (extension: string) => Promise<WindowsAssociatedApp[]>
+  isExecutableAvailable?: (executable: string) => Promise<boolean>
 }
 
-const DEFAULT_LIMIT = 12
+const DEFAULT_LIMIT = 32
+
+export function parseRegSubkeyNames(output: string): string[] {
+  const keys = output.split(/\r?\n/u).map(line => line.trim()).filter(line => /^HKEY_/u.test(line))
+  const root = keys[0]
+  if (!root) return []
+  return keys.filter(key => key.startsWith(`${root}\\`)).map(key => key.slice(root.length + 1)).filter(key => !key.includes('\\'))
+}
+
+function openWithExecutables(output: string | null): string[] {
+  if (!output) return []
+  return [...parseRegValueNames(output), ...parseRegSubkeyNames(output), ...output.split(/\r?\n/u).flatMap(line => {
+    const match = /\s{4,}REG_SZ\s{4,}(.+)$/u.exec(line)
+    return match?.[1] ? [match[1].trim()] : []
+  })].filter(name => /\.exe$/iu.test(name))
+}
+
+async function executableAvailable(executable: string): Promise<boolean> {
+  try { return (await stat(executable)).isFile() } catch { return false }
+}
+
+async function mapBounded<T>(values: readonly T[], work: (value: T) => Promise<void>): Promise<void> {
+  let index = 0
+  await Promise.all(Array.from({ length: Math.min(8, values.length) }, async () => {
+    while (index < values.length) { const value = values[index++]; if (value !== undefined) await work(value) }
+  }))
+}
 
 /** `reg query` prints `    (Default)    REG_SZ    value`; this pulls the value out. */
 export function parseRegValue(output: string, valueName?: string): string | null {
@@ -122,32 +153,39 @@ export async function discoverOpenWithHandlers(
     }
   }
 
-  const userChoice = await safeQuery(
+  let shellApplications: WindowsAssociatedApp[] | null = null
+  try {
+    if (options.enumerateShellHandlers || !options.regQuery) shellApplications = await (options.enumerateShellHandlers ?? queryWindowsAssociatedApplications)(extension)
+  } catch { /* The registry fallback remains available if the Shell API fails. */ }
+  const userBase = `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\${extension}`
+  const [userChoice, extensionKey, openWithProgids, openWithList, userProgids, userList, applications] = await Promise.all([
+    safeQuery(
     `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\${extension}\\UserChoice`,
     'ProgId',
-  )
+    ), safeQuery(`HKCR\\${extension}`), safeQuery(`HKCR\\${extension}\\OpenWithProgids`),
+    safeQuery(`HKCR\\${extension}\\OpenWithList`), safeQuery(`${userBase}\\OpenWithProgids`),
+    safeQuery(`${userBase}\\OpenWithList`), shellApplications === null ? safeQuery('HKCR\\Applications') : Promise.resolve(null),
+  ])
   // `reg query /v <name>` prints that value under its own name, not as `(Default)`.
   const defaultProgId = userChoice ? parseRegValue(userChoice, 'ProgId') : null
-  const extensionKey = await safeQuery(`HKCR\\${extension}`)
   const extensionProgId = extensionKey ? parseRegValue(extensionKey) : null
-  const openWithProgids = await safeQuery(`HKCR\\${extension}\\OpenWithProgids`)
-  const openWithList = await safeQuery(`HKCR\\${extension}\\OpenWithList`)
-  const applications = await safeQuery('HKCR\\Applications')
 
   const progIds = new Set<string>()
   if (defaultProgId) progIds.add(defaultProgId)
   if (extensionProgId) progIds.add(extensionProgId)
   for (const name of openWithProgids ? parseRegValueNames(openWithProgids) : []) progIds.add(name)
-  const executables = new Set<string>()
-  for (const name of openWithList ? parseRegValueNames(openWithList) : []) executables.add(name)
-  for (const name of applications ? parseRegValueNames(applications) : []) {
+  for (const name of userProgids ? parseRegValueNames(userProgids) : []) progIds.add(name)
+  const explicitExecutables = new Set([...openWithExecutables(openWithList), ...openWithExecutables(userList)].map(name => name.toLowerCase()))
+  const executables = new Set<string>(explicitExecutables)
+  for (const name of applications ? [...parseRegValueNames(applications), ...parseRegSubkeyNames(applications)] : []) {
     if (name.toLowerCase().endsWith('.exe')) executables.add(name)
   }
 
   const handlers = new Map<string, WorkspaceOpenWithHandler>()
   const add = (command: string | null, labelHint: string | null, isDefault: boolean) => {
     if (!command) return
-    const parsed = splitCommandLine(command)
+    const expanded = command.replace(/%([a-z_][a-z_0-9()]*)%/giu, (value, name: string) => process.env[name] ?? value)
+    const parsed = splitCommandLine(expanded)
     if (!parsed) return
     const id = parsed.executable.toLowerCase()
     const existing = handlers.get(id)
@@ -164,18 +202,26 @@ export async function discoverOpenWithHandlers(
     })
   }
 
-  for (const progId of progIds) {
-    if (!progId) continue
+  await mapBounded([...progIds], async (progId) => {
+    if (!progId) return
     const command = await safeQuery(`HKCR\\${progId}\\shell\\open\\command`)
-    if (handlers.size >= limit) break
     add(command ? parseRegValue(command) : null, null, progId === defaultProgId)
-  }
+  })
 
-  for (const executable of executables) {
-    if (handlers.size >= limit) break
+  await mapBounded(shellApplications ?? [], async (application) => {
+    if (!/\.exe$/iu.test(application.executable) || application.executable.includes('"')) return
+    const command = await safeQuery(`HKCR\\Applications\\${basename(application.executable)}\\shell\\open\\command`)
+    add(command ? parseRegValue(command) : `"${application.executable}" "%1"`, application.label, false)
+    // Preserve the Shell's Unicode application label when the same handler was found as a ProgId.
+    const parsed = splitCommandLine(command ? parseRegValue(command) ?? '' : `"${application.executable}" "%1"`)
+    const existing = parsed && handlers.get(parsed.executable.toLowerCase())
+    if (existing && application.label) handlers.set(existing.id, { ...existing, label: application.label })
+  })
+
+  await mapBounded([...executables].slice(0, 128), async (executable) => {
     const id = executable.toLowerCase()
-    if (handlers.has(id)) continue
-    if (!executable.toLowerCase().endsWith('.exe')) continue
+    if (handlers.has(id)) return
+    if (!executable.toLowerCase().endsWith('.exe')) return
     // Applications that register the extension themselves: only offered when they really list it.
     const supported = await safeQuery(`HKCR\\Applications\\${executable}\\SupportedTypes`)
     const openWith = await safeQuery(`HKCR\\Applications\\${executable}\\shell\\open\\command`)
@@ -183,10 +229,15 @@ export async function discoverOpenWithHandlers(
       ? parseRegValueNames(supported).some((name) => name.toLowerCase() === extension)
       : false
     const isDefaultApplication = executable.toLowerCase() === (defaultProgId ?? '').toLowerCase()
-    if (!listsExtension && !isDefaultApplication) continue
+    if (!listsExtension && !isDefaultApplication && !explicitExecutables.has(id)) return
     const friendly = await safeQuery(`HKCR\\Applications\\${executable}`, 'FriendlyAppName')
     add(openWith ? parseRegValue(openWith) : null, friendly ? parseRegValue(friendly, 'FriendlyAppName') : null, isDefaultApplication)
-  }
+  })
+
+  const available = options.isExecutableAvailable ?? (options.regQuery ? null : executableAvailable)
+  if (available) await mapBounded([...handlers.values()], async handler => {
+    if (!await available(handler.executable)) handlers.delete(handler.id)
+  })
 
   // A label that is nothing but the file name says nothing: `msedge` is a file, not a name. Ask the
   // registry's own application name for every entry (only the `HKCR\Applications` branch used to,

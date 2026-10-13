@@ -15,6 +15,15 @@ export function SidebarToggleIcon({ className = '' }: { className?: string }) {
   )
 }
 
+export function ConversationResourcesIcon() {
+  return (
+    <svg className="conversation-resources-icon" viewBox="0 0 18 14" aria-hidden="true" focusable="false" shapeRendering="geometricPrecision">
+      <circle cx="3" cy="2" r="1.5" /><circle cx="3" cy="7" r="1.5" /><circle cx="3" cy="12" r="1.5" />
+      <path d="M8 2h8M8 7h8M8 12h8" />
+    </svg>
+  )
+}
+
 export function SettingsGearIcon() {
   return (
     <svg className="settings-gear-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">

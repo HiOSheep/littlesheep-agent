@@ -609,7 +609,6 @@
   overflow-x: auto;
   border: .5px solid var(--chat-hairline);
   border-radius: var(--radius-ui);
-  scrollbar-width: thin;
 }
 
 .markdown-table-wrap table {

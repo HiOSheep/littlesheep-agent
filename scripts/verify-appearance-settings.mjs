@@ -41,6 +41,8 @@ try {
   client=await harness.connectRenderer(debuggingPort)
   await harness.desktopAction(locator,'resize',{width:1280,height:1400})
   await harness.desktopAction(locator,'show')
+  await client.send('Page.bringToFront')
+  await client.send('Emulation.setFocusEmulationEnabled',{enabled:true})
   await harness.waitFor(()=>client.evaluate('!!document.querySelector(".settings-entry-btn")'),30000)
   await click('.settings-entry-btn')
   await harness.waitFor(()=>client.evaluate('!!document.querySelector(".settings-nav-item")'),10000)
@@ -50,12 +52,43 @@ try {
   await harness.waitFor(()=>client.evaluate('!!document.querySelector(".appearance-settings-page")'),10000)
   await click('.appearance-mode-option[aria-label="深色"]')
   assert.equal((await readSaved()).theme,'dark')
+  await click('input[aria-label="强调色颜色值"]')
+  await key('a','KeyA',65,2)
+  await client.send('Input.insertText',{text:'#971B1D'})
+  assert.equal((await readSaved()).colors.accent,'#971b1d')
+  assert.equal(await client.evaluate('document.documentElement.style.getPropertyValue("--ls-custom-accent")'),'#971b1d')
+  await click('button[aria-label="强调色颜色选择器"]')
+  const blackPoint=await client.evaluate(`(() => {const r=document.querySelector('.appearance-picker-field').getBoundingClientRect();return {x:r.left+r.width/2,y:r.bottom-0.1}})()`)
+  await client.send('Input.dispatchMouseEvent',{type:'mousePressed',...blackPoint,button:'left',clickCount:1})
+  await client.send('Input.dispatchMouseEvent',{type:'mouseReleased',...blackPoint,button:'left',clickCount:1})
+  await delay(100)
+  assert.equal((await readSaved()).colors.accent,'#000000')
+  assert.equal(await client.evaluate('!!document.querySelector(".appearance-picker-warning")'),false)
+  await key('Escape','Escape',27)
+  checks.push('low contrast red hex applies before blur; color field accepts black without contrast rejection')
+  for(const mode of ['深色','浅色']){
+    await click(`.appearance-mode-option[aria-label="${mode}"]`)
+    for(const [index,palette,accent,background] of mode==='深色'
+      ? [[2,'ocean','#61b8e8','#111a20'],[3,'forest','#78c79a','#141d18']]
+      : [[2,'ocean','#176b98','#edf5fa'],[3,'forest','#28724a','#edf5ef']]){
+      await click('.settings-select[aria-label="主题配色"]')
+      await click(`.settings-select-menu button:nth-child(${index})`)
+      assert.equal((await readSaved()).palette,palette)
+      assert.equal(await client.evaluate('document.querySelector("input[aria-label=强调色颜色值]").value'),accent.toUpperCase())
+      await delay(300)
+      const actual=await client.evaluate(`(() => {const probe=document.createElement('span');probe.style.color='var(--chat-business)';document.body.append(probe);const business=getComputedStyle(probe).color;probe.style.color='var(--bg)';const bg=getComputedStyle(probe).color;probe.remove();return {business,bg}})()`)
+      const rgb=hex=>'rgb('+[1,3,5].map(offset=>parseInt(hex.slice(offset,offset+2),16)).join(', ')+')'
+      assert.equal(actual.business,rgb(accent));assert.equal(actual.bg,rgb(background))
+      checks.push({name:`${mode} ${palette} changes actual business and background colors immediately`,actual})
+    }
+  }
+  await click('.appearance-mode-option[aria-label="深色"]')
   await edit('input[aria-label="前景色颜色值"]','#EEEEEE')
   assert.equal((await readSaved()).colors.foreground,'#eeeeee')
   assert.equal(await client.evaluate('document.documentElement.style.getPropertyValue("--ls-custom-text")'),'#eeeeee')
   await edit('input[aria-label="前景色颜色值"]','#191B20')
-  assert.equal((await readSaved()).colors.foreground,'#eeeeee')
-  assert(await client.evaluate('document.querySelector("input[aria-label=前景色颜色值]").getAttribute("aria-invalid")==="true"'))
+  assert.equal((await readSaved()).colors.foreground,'#191b20')
+  assert(await client.evaluate('document.querySelector("input[aria-label=前景色颜色值]").getAttribute("aria-invalid")==="false"'))
   await edit('input[aria-label="前景色颜色值"]','#EEEEEE')
   await edit('input[aria-label="界面字号"]','16')
   assert.equal((await readSaved()).interfaceFontSize,16)
@@ -63,15 +96,10 @@ try {
   await click('.appearance-segments button:nth-child(3)')
   await click('input[aria-label="背景色颜色值"]')
   await key('a','KeyA',65,2)
+  await client.evaluate(`window.__appearanceFrames=[getComputedStyle(document.documentElement).getPropertyValue('--ls-custom-background').trim()];window.__appearanceTimer=setInterval(()=>window.__appearanceFrames.push(getComputedStyle(document.documentElement).getPropertyValue('--ls-custom-background').trim()),20)` )
   await client.send('Input.insertText',{text:'#343434'})
-  await delay(60)
-  const colorFrames = await client.evaluate(`(async () => {
-    const root=document.documentElement;
-    const samples=[getComputedStyle(root).getPropertyValue('--ls-custom-background').trim()];
-    document.querySelector('input[aria-label="背景色颜色值"]').blur();
-    for(let i=0;i<12;i++){await new Promise(resolve=>setTimeout(resolve,25));samples.push(getComputedStyle(root).getPropertyValue('--ls-custom-background').trim())}
-    return samples;
-  })()`)
+  await harness.waitFor(()=>client.evaluate('window.__appearanceFrames.length>=13'),5000)
+  const colorFrames = await client.evaluate('(() => {clearInterval(window.__appearanceTimer);return window.__appearanceFrames})()')
   assert.equal((await readSaved()).colors.background,'#343434')
   assert(new Set(colorFrames).size >= 3, `Colors must interpolate through intermediate frames: ${JSON.stringify(colorFrames)}`)
   checks.push({name:'palette transition contains intermediate colors',colorFrames})
@@ -96,7 +124,7 @@ try {
   assert(await client.evaluate('document.activeElement===document.querySelector("button[aria-label=前景色颜色选择器]")'))
   await edit('input[aria-label="前景色颜色值"]','#EEEEEE')
   checks.push({name:'rounded color popup, RGB editing, viewport bounds and Escape focus return',pickerFacts})
-  checks.push('mode, foreground, contrast rejection, font size and reduced motion applied')
+  checks.push('mode, foreground, unrestricted contrast, font size and reduced motion applied')
   await client.send('Page.reload')
   await delay(800)
   await harness.waitFor(()=>client.evaluate('!!document.querySelector(".appearance-settings-page")'),20000)

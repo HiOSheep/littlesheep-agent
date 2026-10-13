@@ -38,8 +38,6 @@ export function WorkspacePreviewActions({
   showCodeWrapToggle,
   codeWrapEnabled,
   htmlRun,
-  onOpenHtmlInApp,
-  onOpenHtmlExternal,
   onToggleCodeWrap,
   onToggleMarkdownSource,
   onToggleHtmlSource,
@@ -58,10 +56,6 @@ export function WorkspacePreviewActions({
   showCodeWrapToggle: boolean
   codeWrapEnabled: boolean
   htmlRun: HtmlRunState
-  /** Hands the already-running page to the in-app browser tab. */
-  onOpenHtmlInApp: () => void
-  /** Hands the already-running page to the system's default browser. */
-  onOpenHtmlExternal: () => void
   onToggleMarkdownSource: () => void
   onToggleHtmlSource: () => void
   onToggleEditing: () => void
@@ -129,8 +123,12 @@ export function WorkspacePreviewActions({
         // makes the primary segment reveal the file from then on (asked for 2026-10-03,
         // "the file should let me choose whether VS Code or the folder opens it").
         const currentIsFolder = openWith.currentId === OPEN_WITH_REVEAL_ID
+        const currentIsInAppBrowser = openWith.currentId === HTML_BROWSER_IN_APP_ID
+        const currentIsExternalBrowser = openWith.currentId === HTML_BROWSER_EXTERNAL_ID
         const currentLabel = currentIsFolder
           ? '文件夹'
+          : currentIsInAppBrowser ? '应用内浏览器'
+          : currentIsExternalBrowser ? '系统浏览器'
           : currentIsVSCode
             ? 'Visual Studio Code'
             : currentHandler?.label ?? '系统默认应用'
@@ -139,7 +137,7 @@ export function WorkspacePreviewActions({
             className="workspace-preview-open-with"
             icon={currentIsVSCode ? <VSCodeIcon /> : <FolderGlyphIcon />}
             label={`打开方式：${currentLabel}`}
-            primaryTip={currentIsFolder ? '在文件夹中显示这个文件' : `用 ${currentLabel} 打开这个文件`}
+            primaryTip={currentIsFolder ? '在文件夹中显示这个文件' : currentIsInAppBrowser || currentIsExternalBrowser ? `在${currentLabel}打开运行中的页面` : `用 ${currentLabel} 打开这个文件`}
             menuLabel="选择打开方式"
             onPrimary={openWith.openWithCurrent}
             onTipChange={onTipChange}
@@ -151,7 +149,7 @@ export function WorkspacePreviewActions({
                     // it is marked on its own row. Two rows claiming to be the default read as a bug
                     // (reported 2026-10-03); the current choice is carried by the `active` mark and
                     // by the button itself.
-                    label: 'Visual Studio Code',
+                    label: openWith.isVSCodeDefault ? 'Visual Studio Code（系统默认）' : 'Visual Studio Code',
                     icon: <VSCodeIcon />,
                     active: currentIsVSCode,
                     onSelect: () => openWith.openWith(OPEN_WITH_VSCODE_ID),
@@ -166,7 +164,7 @@ export function WorkspacePreviewActions({
                 // stays as the fallback for a host that could not read one (2026-10-02).
                 icon: handler.icon
                   ? <img className="workspace-open-with-icon" src={handler.icon} alt="" aria-hidden="true" />
-                  : <FolderGlyphIcon />,
+                  : <ExternalOpenIcon />,
                 onSelect: () => openWith.openWith(handler.id),
               })),
               // A running page asks a different question from "which program opens this file":
@@ -179,8 +177,9 @@ export function WorkspacePreviewActions({
                       icon: <WorkspaceFeatureIcon id="browser" />,
                       ...(htmlReady ? {} : { hint: '页面还没有开始运行' }),
                       disabled: !htmlReady,
+                      active: currentIsInAppBrowser,
                       dividerBefore: true,
-                      onSelect: onOpenHtmlInApp,
+                      onSelect: () => openWith.openWith(HTML_BROWSER_IN_APP_ID),
                     },
                     {
                       id: HTML_BROWSER_EXTERNAL_ID,
@@ -188,7 +187,8 @@ export function WorkspacePreviewActions({
                       icon: <ExternalOpenIcon />,
                       ...(htmlReady ? {} : { hint: '页面还没有开始运行' }),
                       disabled: !htmlReady,
-                      onSelect: onOpenHtmlExternal,
+                      active: currentIsExternalBrowser,
+                      onSelect: () => openWith.openWith(HTML_BROWSER_EXTERNAL_ID),
                     },
                   ]
                 : []),

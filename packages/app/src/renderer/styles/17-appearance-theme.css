@@ -1,4 +1,4 @@
-/* Application theme and constrained user palette (V4/V5).
+/* Application theme and user palette (V4/V5).
    Theme is resolved on <html> before the renderer mounts, so a saved choice is
    visible on the first content paint. Stable reading surfaces stay opaque;
    glass surfaces keep one translucent layer and the established rounded roles. */
@@ -17,7 +17,6 @@
   --control-pressed: #c8d5e8;
   --sidebar-menu-surface: rgba(255, 255, 255, 0.9);
   --composer-surface: rgba(255, 255, 255, 0.84);
-  --composer-shadow: 0 8px 24px rgba(38, 50, 75, 0.12);
   --selection-background: #c8d9f3;
   --selection-background-inactive: #d7dce4;
   --code-selection-background: #c2d2eb;
@@ -67,12 +66,7 @@
   --chat-panel-elevation: 0 0 0 1px var(--chat-raised-stroke), 0 12px 32px rgba(38, 50, 75, 0.16);
 }
 
-:root[data-ls-theme='dark'][data-ls-palette='ocean'] { --accent: #61b8e8; --accent-hover: #83cef5; --accent-soft: rgba(97, 184, 232, 0.15); }
-:root[data-ls-theme='light'][data-ls-palette='ocean'] { --accent: #176b98; --accent-hover: #0f5276; --accent-soft: rgba(23, 107, 152, 0.12); }
-:root[data-ls-theme='dark'][data-ls-palette='forest'] { --accent: #78c79a; --accent-hover: #9cddb5; --accent-soft: rgba(120, 199, 154, 0.15); }
-:root[data-ls-theme='light'][data-ls-palette='forest'] { --accent: #28724a; --accent-hover: #1d5939; --accent-soft: rgba(40, 114, 74, 0.12); }
-
-:root[data-ls-palette='custom'][data-ls-palette-usable='true'] {
+:root:is([data-ls-palette='custom'], [data-ls-palette='ocean'], [data-ls-palette='forest'])[data-ls-palette-usable='true'] {
   --bg: var(--ls-custom-background);
   --workspace-code-surface: var(--bg);
   --bg-elevated: var(--ls-custom-surface);
@@ -166,7 +160,7 @@
 .appearance-color-swatch { flex: 0 0 17px; width: 17px; height: 17px; padding: 0; border: 1px solid #8884; border-radius: 50%; cursor: pointer; }
 .appearance-color-input input[type='text'] { width: 80px; min-height: 24px; padding: 0; color: var(--text-strong); background: transparent; border: 0; font: inherit; font-variant-numeric: tabular-nums; }
 .appearance-color-input input[type='text']:focus { outline: none; }
-.appearance-color-picker { position: fixed; z-index: 10000; box-sizing: border-box; max-height: calc(100vh - 24px); overflow: auto; padding: 12px; color: var(--text-strong); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 20px; box-shadow: var(--shadow-menu); }
+.appearance-color-picker { position: fixed; z-index: 10000; box-sizing: border-box; max-height: calc(100vh - 24px); overflow: auto; scrollbar-gutter: stable; padding: 12px; color: var(--text-strong); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 20px; box-shadow: var(--shadow-menu); }
 .appearance-picker-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: var(--settings-row-desc-font-size); }
 .appearance-picker-heading button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; color: var(--muted); background: var(--control); font: inherit; cursor: pointer; }
 .appearance-picker-field { position: relative; height: 176px; border-radius: 12px; background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent); touch-action: none; cursor: crosshair; }

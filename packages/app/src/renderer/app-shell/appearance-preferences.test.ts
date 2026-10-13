@@ -5,9 +5,11 @@ import {
   APPEARANCE_PREFERENCES_KEY,
   appearanceColorsAreReadable,
   applyAppearancePreferences,
+  bootstrapAppearancePreferences,
   hydrateAppearancePreferences,
   readAppearancePreferences,
   resolveAppearanceTheme,
+  resolveAppearanceColors,
   writeAppearancePreferences,
 } from './appearance-preferences'
 
@@ -104,8 +106,8 @@ describe('application appearance preferences', () => {
     applyAppearancePreferences({ ...custom, reducedMotion: 'off' }, true, root as unknown as HTMLElement)
     expect(root.dataset.lsReducedMotion).toBe('false')
     applyAppearancePreferences({ ...custom, colors: { ...custom.colors, foreground: '#151515' } }, true, root as unknown as HTMLElement)
-    expect(root.dataset.lsPaletteUsable).toBe('false')
-    expect(root.style.getPropertyValue('--ls-custom-text')).toBe('')
+    expect(root.dataset.lsPaletteUsable).toBe('true')
+    expect(root.style.getPropertyValue('--ls-custom-text')).toBe('#151515')
   })
 
   it('requires readable text and a visible accent over both user surfaces', () => {
@@ -140,8 +142,33 @@ describe('application appearance preferences', () => {
       palette: 'custom',
       colors: { accent: '#f2f2f2', background: '#f2f2f0', surface: '#fafaf9' },
     }, false, root as unknown as HTMLElement)
-    expect(root.dataset.lsPaletteUsable).toBe('false')
-    expect(root.style.getPropertyValue('--ls-custom-background')).toBe('')
+    expect(root.dataset.lsPaletteUsable).toBe('true')
+    expect(root.style.getPropertyValue('--ls-custom-background')).toBe('#f2f2f0')
+  })
+
+  it('applies low contrast colors unchanged and restores their saved targets', () => {
+    const colors = { accent: '#971b1d', background: '#101010', surface: '#101010', foreground: '#101010' }
+    expect(appearanceColorsAreReadable(colors)).toBe(false)
+    writeAppearancePreferences({ ...APPEARANCE_DEFAULTS, palette: 'custom', colors })
+    expect(readAppearancePreferences().colors).toEqual(colors)
+    expect(root.style.getPropertyValue('--ls-custom-accent')).toBe(colors.accent)
+    expect(root.style.getPropertyValue('--ls-custom-text')).toBe(colors.foreground)
+    applyAppearancePreferences(readAppearancePreferences())
+    expect(root.dataset.lsPaletteUsable).toBe('true')
+  })
+
+  it('resolves preset colors for the chosen mode and applies all shared tokens', () => {
+    for (const theme of ['dark', 'light'] as const) {
+      for (const palette of ['ocean', 'forest'] as const) {
+        const preferences = { ...APPEARANCE_DEFAULTS, theme, palette }
+        const colors = resolveAppearanceColors(preferences)
+        applyAppearancePreferences(preferences)
+        expect(root.style.getPropertyValue('--ls-custom-accent')).toBe(colors.accent)
+        expect(root.style.getPropertyValue('--ls-custom-background')).toBe(colors.background)
+        expect(root.style.getPropertyValue('--ls-custom-surface')).toBe(colors.surface)
+        expect(root.style.getPropertyValue('--ls-custom-text')).toBe(colors.foreground)
+      }
+    }
   })
 
   it('follows the OS for a fresh profile and retains dark for a pre-existing UI profile', () => {
@@ -168,5 +195,18 @@ describe('application appearance preferences', () => {
     const result = writeAppearancePreferences({ ...APPEARANCE_DEFAULTS, theme: 'light' })
     expect(result.persisted).toBe(false)
     expect(result.preferences.theme).toBe('light')
+  })
+
+  it('notifies canvas consumers after interpolation with the actually applied preference', () => {
+    const dispose = bootstrapAppearancePreferences()
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    const result = writeAppearancePreferences({ ...APPEARANCE_DEFAULTS, palette: 'forest' })
+    const settle = listeners.get('transitionend')!
+    settle({ target: root, propertyName: '--ls-custom-accent' })
+    const event = root.dispatchEvent.mock.calls.at(-1)?.[0] as unknown as CustomEvent
+    expect(event.detail.preferences).toEqual(result.preferences)
+    expect(event.detail.persisted).toBe(false)
+    dispose()
+    expect(listeners.has('transitionend')).toBe(false)
   })
 })

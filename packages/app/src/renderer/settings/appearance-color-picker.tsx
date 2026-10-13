@@ -25,7 +25,6 @@ export function AppearanceColorPicker({ label, value, anchor, onChange, onClose 
   onChange: (value: string) => boolean; onClose: () => void
 }) {
   const [hsv, setHsv] = useState(() => toHsv(value))
-  const [invalid, setInvalid] = useState(false)
   const [position, setPosition] = useState({ left: 12, top: 12, width: 300 })
   const panel = useRef<HTMLDivElement>(null)
   const field = useRef<HTMLDivElement>(null)
@@ -60,7 +59,7 @@ export function AppearanceColorPicker({ label, value, anchor, onChange, onClose 
 
   function update(next: Hsv) {
     setHsv(next)
-    setInvalid(!onChange(toHex(next)))
+    onChange(toHex(next))
   }
   function pick(event: PointerEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -97,6 +96,5 @@ export function AppearanceColorPicker({ label, value, anchor, onChange, onClose 
           const next = channels.map((current, channelIndex) => channelIndex === index ? Math.round(clamp(Number(event.target.value), 255)) : current)
           update(toHsv('#' + next.map(current => current.toString(16).padStart(2, '0')).join('')))
         }} /><span>{channel}</span></label>)}</div>
-    {invalid && <small className="appearance-picker-warning" role="status">颜色对比不足，已保留原配色</small>}
   </div>, document.body)
 }

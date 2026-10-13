@@ -98,11 +98,11 @@ describe('settings workspace surface', () => {
     expect(ruleBody('.settings-workspace')).toContain('background: transparent')
   })
 
-  it('keeps the settings sidebar scrollbar two pixels from the floating frame', () => {
+  it('keeps the settings sidebar scrollbar against the floating frame', () => {
     const root = ruleBody(':root')
     const nav = ruleBody('.settings-nav-section')
 
-    expect(root).toContain('--sidebar-scrollbar-edge-gap: 2px')
+    expect(root).toContain('--sidebar-scrollbar-edge-gap: 0px')
     expect(nav).toContain(
       'width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap))',
     )

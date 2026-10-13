@@ -13,6 +13,7 @@ import {
 } from '../api/workspace-files'
 
 const OPEN_WITH_STORAGE_KEY = 'littlesheep.ui.workspaceOpenWithApp'
+const OPEN_WITH_CHOICE_EVENT = 'littlesheep:workspace-open-with-choice'
 /** The external editor entry is addressed by a constant id: it is not a registry handler. */
 export const OPEN_WITH_VSCODE_ID = '__vscode__'
 export const OPEN_WITH_REVEAL_ID = '__reveal__'
@@ -37,10 +38,12 @@ function storeChoice(id: string) {
   } catch {
     // A blocked storage only costs the memory of this session.
   }
+  window.dispatchEvent(new CustomEvent<string>(OPEN_WITH_CHOICE_EVENT, { detail: id }))
 }
 
 export interface WorkspaceOpenWith {
   handlers: WorkspaceOpenWithHandler[]
+  isVSCodeDefault?: boolean
   /** The handler the primary segment would use right now. */
   currentId: string
   choose: (id: string) => void
@@ -56,25 +59,42 @@ export function useWorkspaceOpenWith({
   canOpenInVSCode,
   onOpenInVSCode,
   onError,
+  additionalChoices = [],
 }: {
   root: string
   path: string | null
   canOpenInVSCode: boolean
   onOpenInVSCode: () => void | Promise<void>
   onError?: (message: string) => void
+  additionalChoices?: readonly { id: string; available: boolean; open: () => void | Promise<void> }[]
 }): WorkspaceOpenWith {
   const [handlers, setHandlers] = useState<WorkspaceOpenWithHandler[]>([])
+  const [isVSCodeDefault, setIsVSCodeDefault] = useState(false)
   const [storedChoice, setStoredChoice] = useState<string | null>(() => readStoredChoice())
+  useEffect(() => {
+    const changed = (event: Event) => setStoredChoice((event as CustomEvent<string>).detail)
+    const storage = (event: StorageEvent) => {
+      if (event.key === OPEN_WITH_STORAGE_KEY || event.key === null) setStoredChoice(readStoredChoice())
+    }
+    window.addEventListener(OPEN_WITH_CHOICE_EVENT, changed)
+    window.addEventListener('storage', storage)
+    return () => {
+      window.removeEventListener(OPEN_WITH_CHOICE_EVENT, changed)
+      window.removeEventListener('storage', storage)
+    }
+  }, [])
 
   useEffect(() => {
     if (!path) {
       setHandlers([])
+      setIsVSCodeDefault(false)
       return
     }
     let alive = true
     void listWorkspaceOpenWith(root, path)
       .then((discovered) => {
         if (!alive) return
+        setIsVSCodeDefault(discovered.some(handler => handler.isDefault && isSameExecutableAsVSCode(handler.executable)))
         // The external editor has its own entry and its own launcher, so the registry's copy of it
         // is dropped rather than shown twice.
         setHandlers(canOpenInVSCode
@@ -82,7 +102,7 @@ export function useWorkspaceOpenWith({
           : discovered)
       })
       .catch(() => {
-        if (alive) setHandlers([])
+        if (alive) { setHandlers([]); setIsVSCodeDefault(false) }
       })
     return () => {
       alive = false
@@ -95,6 +115,13 @@ export function useWorkspaceOpenWith({
   }, [])
 
   const openWith = useCallback((id: string) => {
+    const additional = additionalChoices.find(choice => choice.id === id)
+    if (additional) {
+      if (!additional.available) return
+      choose(id)
+      void Promise.resolve().then(additional.open).catch((error: unknown) => onError?.(error instanceof Error ? error.message : String(error)))
+      return
+    }
     choose(id)
     if (id === OPEN_WITH_VSCODE_ID) {
       void onOpenInVSCode()
@@ -109,7 +136,7 @@ export function useWorkspaceOpenWith({
     void launchWorkspaceOpenWith(root, path, id).catch((error: unknown) => {
       onError?.(error instanceof Error ? error.message : String(error))
     })
-  }, [choose, onError, onOpenInVSCode, path, root])
+  }, [additionalChoices, choose, onError, onOpenInVSCode, path, root])
 
   const reveal = useCallback(() => {
     if (!path) return
@@ -125,12 +152,14 @@ export function useWorkspaceOpenWith({
     storedChoice === OPEN_WITH_VSCODE_ID
       ? canOpenInVSCode
       : storedChoice === OPEN_WITH_REVEAL_ID || handlers.some((handler) => handler.id === storedChoice)
+        || additionalChoices.some(choice => choice.id === storedChoice && choice.available)
   )
     ? storedChoice
     : defaultId
 
   return {
     handlers,
+    isVSCodeDefault,
     currentId,
     choose,
     openWithCurrent: () => openWith(currentId),

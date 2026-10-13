@@ -1,7 +1,7 @@
 
 .composer-shell {
   position: absolute;
-  right: var(--chat-workspace-scrollbar-overlap);
+  right: 0;
   bottom: 0;
   left: 0;
   z-index: 40;
@@ -507,12 +507,12 @@
   backdrop-filter: blur(20px) saturate(135%);
   border: 0;
   border-radius: var(--radius-composer-input);
-  box-shadow: var(--chat-card-elevation), inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: none;
   gap: 12px;
 }
 
 .composer.drag-active {
-  box-shadow: var(--chat-card-elevation), 0 0 0 2px var(--chat-business-soft);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
 }
 
 .composer textarea {
@@ -1681,7 +1681,8 @@
 
 .option-picker-panel.mode-picker-panel {
   width: min(280px, calc(100vw - 24px));
-  padding: 5px;
+  padding: 5px 0 5px 5px;
+  overflow: hidden;
   /* The material comes from the shared composer-popover rule above; this panel only owns its
      size and shadow. */
   box-shadow: var(--chat-panel-elevation);
@@ -1690,6 +1691,7 @@
 .mode-picker-panel .option-picker-list {
   display: grid;
   gap: 1px;
+  max-height: calc(min(360px, 56vh) - 10px);
   /* The list clips (it scrolls) while the app-wide focus ring is drawn 2px
      *outside* each option's border box (`outline-offset: 2px`, ring width 2px), so
      every side of that ring is cut away unless the padding box gives it room.

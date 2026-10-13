@@ -11,6 +11,8 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 
 ## 安全与模块归属
 
+工作区打开方式由 Main 只读枚举 Windows Shell 关联应用（`windows-associated-apps.ts` / `SHAssocEnumHandlers`），并结合用户默认项及注册表启动命令。Shell 不可用时回退到用户级／系统级 ProgIds、OpenWithList 与 Applications 子项；MRU 的应用数据与子键分别解析。候选按可执行文件去重、检查文件存在、最多返回 32 项；注册表查询以 8 个并发上限运行。Renderer 只回传候选 id，启动前重新发现并校验，不接受 Renderer 命令行。定向验证由 `workspace-open-with.test.ts` 和隔离 Electron 的真实菜单检查覆盖。
+
 - Main 在 Agent 操作实际执行时重新分类路径；Renderer 的批准状态本身不授予权限。
 - 普通 run 从 Main 解析一次 workspace，并签发与 `dataRoot` 分离的 V2 权限快照；checkpoint resume 使用检查点保存的 workspace，并以当前 SessionIndex 权限封顶原权限快照，因此会话降权会撤销旧检查点中的较高授权，续跑请求体不能替换这两个 Main 权限事实。既有检查点只保存旧权限 id，旧 `research` 检查点恢复 V2 会话时保守降到 `read-only`，避免无法证明的写入授权；不改变 Runner 检查点历史格式。旧模式继续兼容读取；单 run 选择和 session 权限持久化是独立操作。
 - Agent 工具与 Agent Shell 命令使用相同路径和权限策略；用户直接操作的交互终端走另一条路由。

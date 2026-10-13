@@ -67,6 +67,8 @@
 
 /* Capsules and circles: the shapes a superellipse would redraw. */
 .active-run-indicator,
+.monaco-scrollable-element > .scrollbar > .slider,
+.xterm-scrollable-element > .scrollbar > .slider,
 .add-menu-trigger.composer-tab-control,
 .activity-step-dot,
 .agent-flow-separator,

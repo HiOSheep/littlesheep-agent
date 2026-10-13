@@ -94,7 +94,7 @@ describe('workspace code editor unification', () => {
     expect(primitive).toContain('lineNumbersMinChars: WORKSPACE_MONACO_LINE_NUMBERS_MIN_CHARS')
     expect(primitive).toContain('hideCursorInOverviewRuler: true')
     expect(primitive).toContain('padding: { top: 12, bottom: 12 }')
-    expect(primitive).toContain('verticalScrollbarSize: 10')
+    expect(primitive).toContain('verticalScrollbarSize: 8')
     expect(primitive.split('const mergedOptions = useMemo(').length - 1).toBe(2)
     expect(primitive.split('options={mergedOptions}').length - 1).toBe(2)
     expect(preview).toContain('const editorOptions = useMemo<Monaco.editor.IStandaloneEditorConstructionOptions>')

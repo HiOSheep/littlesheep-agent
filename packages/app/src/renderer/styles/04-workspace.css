@@ -134,7 +134,8 @@
     )
   );
   right: calc(var(--workspace-panel-close-line) - var(--workspace-tab-height) / 2);
-  z-index: 24;
+  /* Stay above the chat header when the workspace is collapsed. */
+  z-index: 48;
   width: var(--workspace-tab-height);
   height: var(--workspace-tab-height);
   border: 0;

@@ -43,7 +43,7 @@ describe('mode picker layout', () => {
     // material (translucent fill, backdrop blur, no border strokes) instead of an opaque fill of
     // its own. The shared rule owns that material, so this panel body only carries geometry.
     expect(styles).toMatch(
-      /\.option-picker-panel\.mode-picker-panel\s*\{[^}]*padding:\s*5px;[^}]*\}/u,
+      /\.option-picker-panel\.mode-picker-panel\s*\{[^}]*padding:\s*5px 0 5px 5px;[^}]*\}/u,
     )
     expect(/\.option-picker-panel\.mode-picker-panel\s*\{([^}]*)\}/u.exec(styles)?.[1] ?? '')
       .not.toContain('background')

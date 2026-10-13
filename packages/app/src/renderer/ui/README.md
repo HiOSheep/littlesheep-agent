@@ -10,6 +10,17 @@ This area owns reusable visual roles, focus primitives, icons, notices, state vi
 
 ## 材质角色与分层（V1）
 
+`SplitButton` 的选中菜单项提供主按钮图标，领域组件提供同一当前选择对应的名称、提示和执行回调；不可用选项不能成为主按钮目标。选择状态由领域持有，控件不额外复制一份选中状态。文件打开方式和终端 Shell 共用这一契约。
+
+### 滚动条规范
+
+- 应用内原生滚动条由 `styles/03-shell-sidebar.css` 的 `--scrollbar-*` 令牌统一：纵横轨道均为 8px、透明轨道、圆角滑块；静止／悬浮／拖动分别使用前景色的 28%／46%／60%，随浅色、深色及自定义主题变化。
+- 纵向滑块右侧和横向滑块底部不留透明边框；仅在靠内容的一侧留 2px，避免文字贴住滑块。轨道贴合所拥有滚动区域的最近边界，内容留白不能成为轨道的外侧空隙。
+- 面板自身滚动时保留自身 padding；带内边距的外层菜单包着滚动列表时，仅补偿列表所在方向的父级内边距，不整体删除内容 padding。权限菜单、侧栏列表、设置导航、搜索、记忆文件与对话目录已经应用此规则；尺寸适配集中于 `styles/21-scrollbar-adapters.css`。
+- 每个区域只保留一个滚动所有者；分页、锚点、稳定 gutter、轮转与键盘焦点契约继续由各组件负责，不通过全局改写 overflow 改变它们。标签条、活动标签带等刻意隐藏的滚动条保留原有行为。
+- Monaco 使用 8px 原生配置，Monaco／xterm 的 DOM 滑块通过同一颜色及圆角令牌适配；Git 对比保留唯一同步轨道并复用全局样式。嵌入浏览器中的第三方网页及 PDF／Office 自带阅读器的内部滚动条由对应内容引擎拥有，LS 只统一外层容器，不注入页面样式。
+- 审查覆盖聊天、输入菜单／模型／权限选择、附件、对话目录／记录、侧栏／搜索、设置／直接页面／用量、记忆文件、恢复／批准／错误／工具详情、文件树／预览、Git Review、终端、右键菜单、外观色盘与表格横向滚动。验收需实际窗口确认轨道边界、长列表末项／横向末端可达和键盘焦点，源码断言只验证契约。
+
 `ContextMenuSurface` 为应用窗口提供统一右键菜单：18px 外圆角、11px 选项圆角，沿用菜单背景、边框、阴影与主题色；窗口边缘自动翻转定位，方向键／Home／End 导航，Escape／Tab 退出，点击外部、滚动和失焦关闭。原生输入、选中文字、链接和图片动作来自 Main 的能力投影；文件树与预览通过 `openContextMenu` 提供已有领域操作。执行前恢复原焦点，失败明确显示，不用 DOM 编辑替代原生撤销或剪贴板。
 
 Glass identifies a floating surface. Long reading surfaces, code and dense settings remain on stable opaque surfaces. Keep the established rounded visual language; use one blur layer per visual surface and shared tokens for fill, border, shadow and radius. The conversation area (2026-10-03) combines DeepSeek-Harness's measured reading column, hairline separation, tinted reader bubble and flat detail panels with a translucent frosted composer overlay. The transcript scrolls behind this input surface and clips at its bottom edge. Its tokens (`--chat-*`, defined in `styles/03-shell-sidebar.css` and refined per theme in `styles/17-appearance-theme.css`) derive from the existing surface/text roles, so the custom palette keeps working.

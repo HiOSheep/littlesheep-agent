@@ -331,18 +331,18 @@ describe('chat layout stability', () => {
     const styles = await readRendererStyleSource()
 
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?scrollbar-gutter:\s*stable both-edges;/u)
-    expect(styles).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*#383838;[^}]*background-clip:\s*content-box;/u)
-    expect(styles).toMatch(/::-webkit-scrollbar-thumb:hover\s*\{[^}]*background:\s*#484848;[^}]*background-clip:\s*content-box;/u)
+    expect(styles).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*var\(--scrollbar-thumb\);[^}]*background-clip:\s*content-box;/u)
+    expect(styles).toMatch(/::-webkit-scrollbar-thumb:hover\s*\{[^}]*background:\s*var\(--scrollbar-thumb-hover\);/u)
     expect(styles).not.toContain('.messages::-webkit-scrollbar-thumb')
   })
 
-  it('keeps the chat scrollbar two pixels from the floating workspace frame', async () => {
+  it('keeps the chat scrollbar against the floating workspace frame and centres the composer', async () => {
     const styles = await readRendererStyleSource()
 
-    expect(styles).toMatch(/\.core-workspace\s*\{[\s\S]*?--chat-workspace-scrollbar-gap:\s*2px;/u)
+    expect(styles).toMatch(/\.core-workspace\s*\{[\s\S]*?--chat-workspace-scrollbar-gap:\s*0px;/u)
     expect(styles).toMatch(/\.core-workspace:has\(> \.workspace-panel:not\(\.collapsed\):not\(\.fullscreen\)\)\s*\{[\s\S]*?--chat-workspace-scrollbar-overlap:\s*max\(/u)
     expect(styles).toMatch(/\.chat\s*\{[\s\S]*?margin-right:\s*calc\(0px - var\(--chat-workspace-scrollbar-overlap\)\);/u)
-    expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?right:\s*var\(--chat-workspace-scrollbar-overlap\);/u)
+    expect(styles).toMatch(/\.composer-shell\s*\{[\s\S]*?right:\s*0;/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?calc\(var\(--chat-content-gutter\) \+ var\(--chat-workspace-scrollbar-overlap\)\);/u)
   })
 

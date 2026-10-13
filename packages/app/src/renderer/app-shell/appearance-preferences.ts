@@ -1,3 +1,4 @@
+// Renderer appearance targets, local persistence, system preferences and shared theme events.
 export type AppearanceThemeMode = 'system' | 'light' | 'dark'
 export type AppearancePalette = 'neutral' | 'ocean' | 'forest' | 'custom'
 
@@ -49,6 +50,22 @@ export const APPEARANCE_PALETTES: Record<Exclude<AppearancePalette, 'custom'>, A
   forest: { accent: '#78c79a', background: '#141d18', surface: '#202d25' },
 }
 
+/** Target colors, independent of intermediate animation frames. */
+export function resolveAppearanceColors(preferences: AppearancePreferences, systemPrefersDark = readSystemDarkPreference()): Required<AppearanceColors> {
+  const dark = resolveAppearanceTheme(preferences.theme, systemPrefersDark) === 'dark'
+  const lightPalettes: Record<Exclude<AppearancePalette, 'custom'>, AppearanceColors> = {
+    neutral: { accent: '#343431', background: '#f3f5f9', surface: '#ffffff', foreground: '#303847' },
+    ocean: { accent: '#176b98', background: '#edf5fa', surface: '#f7fbfe', foreground: '#243744' },
+    forest: { accent: '#28724a', background: '#edf5ef', surface: '#f7fbf8', foreground: '#283b30' },
+  }
+  const colors = preferences.palette === 'custom' ? preferences.colors
+    : dark ? preferences.palette === 'neutral'
+      ? { accent: '#e2e2e2', background: '#191919', surface: '#242424', foreground: '#e2e2e2' }
+      : APPEARANCE_PALETTES[preferences.palette]
+    : lightPalettes[preferences.palette]
+  return { ...colors, foreground: colors.foreground ?? bestReadableText([colors.background, colors.surface]) }
+}
+
 export function hydrateAppearancePreferences(input: unknown): AppearancePreferences {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { ...APPEARANCE_DEFAULTS, colors: { ...APPEARANCE_DEFAULTS.colors } }
   const value = input as Record<string, unknown>
@@ -88,7 +105,7 @@ export function resolveAppearanceTheme(
 export function isAppearanceDark(): boolean {
   if (typeof document === 'undefined') return true
   const root = document.documentElement
-  if (root.dataset.lsPalette === 'custom' && root.dataset.lsPaletteUsable === 'true') {
+  if (root.dataset.lsPalette !== 'neutral' && root.dataset.lsPaletteUsable === 'true') {
     // Judge the surface the reader actually looks at, not the text colour. This used to accept only
     // an exact `#ffffff` text as "dark", so a custom palette with a light background and near-white
     // text was classified as dark, and every consumer that picks its own palette from this answer
@@ -164,8 +181,9 @@ export function applyAppearancePreferences(
   if (!documentElement) return preferences
   // Seed the first custom palette from the colors actually on screen. Registered color
   // properties then interpolate one shared palette across every dependent surface.
-  if (preferences.palette === 'custom' && appearanceColorsAreReadable(preferences.colors)
-    && !(documentElement.dataset.lsPalette === 'custom' && documentElement.dataset.lsPaletteUsable === 'true')
+  const colors = resolveAppearanceColors(preferences, systemPrefersDark)
+  if (preferences.palette !== 'neutral'
+    && !(documentElement.dataset.lsPalette && documentElement.dataset.lsPalette !== 'neutral' && documentElement.dataset.lsPaletteUsable === 'true')
     && typeof document !== 'undefined' && typeof document.createElement === 'function'
     && documentElement === document.documentElement && typeof getComputedStyle === 'function') {
     documentElement.dataset.lsAppearanceTransition = 'false'
@@ -191,19 +209,19 @@ export function applyAppearancePreferences(
   documentElement.style.setProperty('--chat-message-font-size', `${preferences.chatFontSize}px`)
   documentElement.style.setProperty('--workspace-code-font-size', `${preferences.codeFontSize}px`)
   documentElement.style.setProperty('--terminal-font-size', `${preferences.terminalFontSize}px`)
-  if (preferences.palette === 'custom' && appearanceColorsAreReadable(preferences.colors)) {
-    const text = preferences.colors.foreground ?? bestReadableText([preferences.colors.background, preferences.colors.surface])
-    documentElement.style.setProperty('--ls-custom-accent', preferences.colors.accent)
-    documentElement.style.setProperty('--ls-custom-background', preferences.colors.background)
-    documentElement.style.setProperty('--ls-custom-surface', preferences.colors.surface)
+  if (preferences.palette !== 'neutral') {
+    const text = colors.foreground
+    documentElement.style.setProperty('--ls-custom-accent', colors.accent)
+    documentElement.style.setProperty('--ls-custom-background', colors.background)
+    documentElement.style.setProperty('--ls-custom-surface', colors.surface)
     documentElement.style.setProperty('--ls-custom-text', text)
-    documentElement.style.setProperty('--ls-custom-muted', bestReadableText([preferences.colors.background, preferences.colors.surface]) === '#111111' ? '#555555' : '#bdbdbd')
+    documentElement.style.setProperty('--ls-custom-muted', bestReadableText([colors.background, colors.surface]) === '#111111' ? '#555555' : '#bdbdbd')
     documentElement.dataset.lsPaletteUsable = 'true'
   } else {
     for (const property of ['--ls-custom-accent', '--ls-custom-background', '--ls-custom-surface', '--ls-custom-text', '--ls-custom-muted']) {
       documentElement.style.removeProperty(property)
     }
-    documentElement.dataset.lsPaletteUsable = preferences.palette === 'custom' ? 'false' : 'true'
+    documentElement.dataset.lsPaletteUsable = 'true'
   }
   documentElement.dispatchEvent(new CustomEvent<AppearancePreferencesEventDetail>(APPEARANCE_PREFERENCES_EVENT, {
     detail: { preferences, persisted },
@@ -243,6 +261,21 @@ export function writeAppearancePreferences(input: unknown): AppearancePreference
 export function bootstrapAppearancePreferences(): () => void {
   const preferences = readAppearancePreferences()
   applyAppearancePreferences(preferences)
+  // Canvas editors sample concrete colors when notified. Notify them again after
+  // interpolation so they do not retain the first frame of the previous palette.
+  const root = document.documentElement
+  let appliedPreferences = preferences
+  const rememberApplied = (event: Event) => {
+    appliedPreferences = (event as CustomEvent<AppearancePreferencesEventDetail>).detail.preferences
+  }
+  const settleColors = (event: TransitionEvent) => {
+    if (event.target !== root || !event.propertyName.startsWith('--ls-custom-')) return
+    root.dispatchEvent(new CustomEvent<AppearancePreferencesEventDetail>(APPEARANCE_PREFERENCES_EVENT, {
+      detail: { preferences: appliedPreferences, persisted: false },
+    }))
+  }
+  root.addEventListener(APPEARANCE_PREFERENCES_EVENT, rememberApplied)
+  root.addEventListener('transitionend', settleColors)
   const media = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-color-scheme: dark)')
     : null
@@ -259,6 +292,8 @@ export function bootstrapAppearancePreferences(): () => void {
   motionMedia?.addEventListener?.('change', updateMotion)
   window.addEventListener('storage', updateStorage)
   return () => {
+    root.removeEventListener(APPEARANCE_PREFERENCES_EVENT, rememberApplied)
+    root.removeEventListener('transitionend', settleColors)
     media?.removeEventListener?.('change', updateSystem)
     motionMedia?.removeEventListener?.('change', updateMotion)
     window.removeEventListener('storage', updateStorage)

@@ -318,7 +318,7 @@ export function RunningPill({
     >
       {editing ? (
         <div className="running-pill editing">
-          {compactTitle ? <ConversationFolder /> : <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
+          {!compactTitle && <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
           <input
             className="running-pill-rename-input"
             defaultValue={title}
@@ -376,9 +376,9 @@ export function RunningPill({
           onFocus={(event) => showTips && onTipChange(buildFloatingHelpTipFromElement(tipText, event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          {compactTitle ? <ConversationFolder /> : <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
+          {!compactTitle && <VoidRing state={voidRingStateForActivity(activity)} size={24} />}
           <span className="running-pill-title">{title || '未命名对话'}</span>
-          <span
+          {!compactTitle && <span
             className="running-pill-rename"
             aria-hidden="true"
             title={showTips ? '重命名对话（F2）' : undefined}
@@ -392,7 +392,7 @@ export function RunningPill({
             }}
           >
             <RenameIcon />
-          </span>
+          </span>}
           {commands.length > 0 && !compactTitle && (
             <span className="running-pill-tasks">
               {taskLabel}
@@ -450,10 +450,4 @@ export function RunningPill({
       )}
     </div>
   )
-}
-
-function ConversationFolder() {
-  return <svg className="chat-title-folder" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
-    <path d="M3 6.5V5a1.5 1.5 0 0 1 1.5-1.5H8l2 2h5.5A1.5 1.5 0 0 1 17 7v7.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5v-8Zm0 1h14" />
-  </svg>
 }

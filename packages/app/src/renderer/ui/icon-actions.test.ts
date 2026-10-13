@@ -47,6 +47,7 @@ type GlyphRow = readonly [glyph: string, module: ModuleName, action: string, cen
 const GLYPHS: readonly GlyphRow[] = [
   // Shell, settings and sidebar entries.
   ['SidebarToggleIcon', 'icons.tsx', 'toggle-sidebar', 'rect path'],
+  ['ConversationResourcesIcon', 'icons.tsx', 'open-conversation-resources', 'circle circle circle path'],
   ['SettingsGearIcon', 'icons.tsx', 'open-settings', 'path circle'],
   ['NavComposeIcon', 'icons.tsx', 'compose-global', 'path'],
   ['ComposeIcon', 'icons.tsx', 'create-in-list', 'rect path'],
@@ -118,6 +119,7 @@ const VARIANTS: Readonly<Record<string, ReadonlyArray<readonly [string, string]>
 /** The human name the product uses for each action, quoted from the control that draws it. */
 const ACTION_LABELS: Readonly<Record<string, string>> = {
   'toggle-sidebar': '收起侧栏 / 展开侧栏',
+  'open-conversation-resources': '对话文件与来源',
   'open-settings': '设置 / 关闭设置',
   'compose-global': '新对话',
   'create-in-list': '新对话 / 添加项目',
@@ -319,7 +321,7 @@ describe('file format marks', () => {
 
 describe('action glyph table', () => {
   it('lists every glyph the shared families export, and no others', async () => {
-    expect(GLYPHS).toHaveLength(43)
+    expect(GLYPHS).toHaveLength(44)
     // Counted from each module's own source, so a re-export in `icons.tsx`
     // (`FileGlyphIcon`, `CopyIcon`, …) is the module that draws it, not a second glyph.
     const exported: Array<readonly [string, ModuleName]> = []

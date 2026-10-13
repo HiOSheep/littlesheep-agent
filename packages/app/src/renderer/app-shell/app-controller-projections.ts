@@ -98,6 +98,12 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'switchSession',
   ],
   chat: [
+    'attachments',
+    'addAttachments',
+    'workspacePanelCollapsed',
+    'workspacePanelRoot',
+    'workspaceArtifactVersion',
+    'openWorkspacePanelTab',
     'currentSession',
     'messages',
     'historyWindow',

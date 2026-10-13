@@ -3,21 +3,13 @@ import { SettingsSelect } from './select'
 import { SettingRow } from './setting-row'
 import { AppearanceColorPicker } from './appearance-color-picker'
 import { APPEARANCE_DEFAULTS, APPEARANCE_PALETTES, APPEARANCE_PREFERENCES_EVENT,
-  appearanceColorsAreReadable, bestReadableText, normalizeHex, readAppearanceCssColor,
+  normalizeHex, resolveAppearanceColors,
   readAppearancePreferences, writeAppearancePreferences,
   type AppearanceColors, type AppearancePreferences, type AppearancePreferencesEventDetail } from '../app-shell/appearance-preferences'
 import { readConversationDisplayMode, writeConversationDisplayMode, type ConversationDisplayMode } from '../chat/conversation-display'
 
 function currentColors(preferences = readAppearancePreferences()): Required<AppearanceColors> {
-  if (preferences.palette === 'custom' && appearanceColorsAreReadable(preferences.colors)) {
-    return { ...preferences.colors, foreground: preferences.colors.foreground ?? bestReadableText([preferences.colors.background, preferences.colors.surface]) }
-  }
-  return {
-    accent: readAppearanceCssColor('--accent', '#e2e2e2').slice(0, 7),
-    background: readAppearanceCssColor('--bg', '#191b20').slice(0, 7),
-    surface: readAppearanceCssColor('--surface', '#22252c').slice(0, 7),
-    foreground: readAppearanceCssColor('--text', '#ffffff').slice(0, 7),
-  }
+  return resolveAppearanceColors(preferences)
 }
 
 export function SettingsAppearancePage() {
@@ -28,7 +20,7 @@ export function SettingsAppearancePage() {
   useEffect(() => {
     const sync = (event: Event) => {
       const detail = (event as CustomEvent<AppearancePreferencesEventDetail>).detail
-      if (detail?.persisted) setPreferences(detail.preferences)
+      if (detail) setPreferences(detail.preferences)
       setColors(currentColors(detail?.preferences))
     }
     document.documentElement.addEventListener(APPEARANCE_PREFERENCES_EVENT, sync)
@@ -44,10 +36,6 @@ export function SettingsAppearancePage() {
   function changeColor(field: keyof AppearanceColors, value: string) {
     if (colors[field] === value) return true
     const next = { ...colors, [field]: value }
-    if (!appearanceColorsAreReadable(next)) {
-      setSavedNote('颜色对比不足，请选择更清晰的颜色；当前配色已保留。')
-      return false
-    }
     save({ palette: 'custom', colors: next })
     return true
   }
@@ -146,7 +134,12 @@ function FontSizeRow({ field, title, description, value, min, max, onChange }: {
   return <SettingRow field={field} title={title} description={description}>
     <div className="appearance-font-control">
       <input type="number" aria-label={title} min={min} max={max} step={1} value={draft}
-        onChange={event => setDraft(event.target.value)} onBlur={commit}
+        onChange={event => {
+          const text = event.target.value
+          setDraft(text)
+          const next = Number(text)
+          if (text.trim() && Number.isFinite(next) && next >= min && next <= max) onChange(Math.round(next))
+        }} onBlur={commit}
         onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }} />
       <span>px</span>
     </div>
@@ -168,7 +161,12 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
     <button ref={swatch} type="button" className="appearance-color-swatch" aria-label={`${label}颜色选择器`} aria-haspopup="dialog" aria-expanded={open}
       style={{ backgroundColor: value }} onClick={() => setOpen(current => !current)} />
     <input type="text" aria-label={`${label}颜色值`} value={draft} maxLength={7} spellCheck={false}
-      aria-invalid={invalid} onChange={event => { setDraft(event.target.value); setInvalid(false) }} onBlur={commit}
+      aria-invalid={invalid} onChange={event => {
+        const text = event.target.value
+        setDraft(text); setInvalid(false)
+        const hex = normalizeHex(text)
+        if (hex) onChange(hex)
+      }} onBlur={commit}
       onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(value.toUpperCase()); setInvalid(false) } }} />
     {open && <AppearanceColorPicker label={label} value={value} anchor={swatch} onChange={onChange} onClose={() => setOpen(false)} />}
   </div>

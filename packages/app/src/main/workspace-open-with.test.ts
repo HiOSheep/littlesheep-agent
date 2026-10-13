@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   discoverOpenWithHandlers,
   parseRegValue,
@@ -76,6 +76,49 @@ describe('registry parsing', () => {
 })
 
 describe('open-with discovery', () => {
+  it('expands ProgramFiles(x86) while leaving file placeholders intact', async () => {
+    vi.stubEnv('ProgramFiles(x86)', 'C:\\Apps (x86)')
+    try {
+      const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+        platform: 'win32', regQuery: registry({
+          'HKCR\\.md': EXTENSION_KEY,
+          'HKCR\\Markdown\\shell\\open\\command': '    (Default)    REG_EXPAND_SZ    "%ProgramFiles(x86)%\\player.exe" /Open "%L"\n',
+        }),
+      })
+      expect(handlers[0]).toMatchObject({ executable: 'C:\\Apps (x86)\\player.exe', command: '"C:\\Apps (x86)\\player.exe" /Open "%L"' })
+    } finally { vi.unstubAllEnvs() }
+  })
+  it('merges native Shell apps without SupportedTypes and removes missing executables', async () => {
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32', regQuery: registry({}),
+      enumerateShellHandlers: async () => [{ executable: 'C:\\Apps\\wps.exe', label: 'WPS Office' }, { executable: 'C:\\Apps\\notepad.exe', label: '记事本' }, { executable: 'C:\\Gone\\old.exe', label: '已卸载程序' }],
+      isExecutableAvailable: async path => !path.includes('Gone'),
+    })
+    expect(handlers.map(handler => handler.label)).toEqual(['记事本', 'WPS Office'])
+    expect(handlers.every(handler => handler.command.includes('"%1"'))).toBe(true)
+  })
+  it('reads Applications subkeys when native enumeration fails', async () => {
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32', enumerateShellHandlers: async () => { throw new Error('Shell unavailable') },
+      regQuery: registry({
+        'HKCR\\Applications': 'HKEY_CLASSES_ROOT\\Applications\nHKEY_CLASSES_ROOT\\Applications\\notepad.exe\n',
+        'HKCR\\Applications\\notepad.exe\\SupportedTypes': '    .md    REG_SZ\n',
+        'HKCR\\Applications\\notepad.exe\\shell\\open\\command': NOTEPAD_COMMAND,
+      }),
+    })
+    expect(handlers).toHaveLength(1)
+    expect(handlers[0]?.executable.toLowerCase()).toContain('notepad.exe')
+  })
+  it('reads user OpenWithList data without misreading MRU value names', async () => {
+    const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
+      platform: 'win32', regQuery: registry({
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.md\\OpenWithList': '    a    REG_SZ    Obsidian.exe\n    MRUList    REG_SZ    a\n',
+        'HKCR\\Applications\\obsidian.exe\\shell\\open\\command': '    (Default)    REG_SZ    "C:\\Programs\\Obsidian\\Obsidian.exe" "%1"\n',
+      }),
+    })
+    expect(handlers).toHaveLength(1)
+    expect(handlers[0]?.executable).toContain('Obsidian.exe')
+  })
   it('offers the user-chosen default first, then the other registered handlers', async () => {
     const handlers = await discoverOpenWithHandlers('C:\\work\\readme.md', {
       platform: 'win32',

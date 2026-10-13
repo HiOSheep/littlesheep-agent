@@ -70,9 +70,9 @@ export const WORKSPACE_MONACO_BASE_OPTIONS = {
   renderLineHighlight: 'none',
   scrollBeyondLastLine: false,
   scrollbar: {
-    horizontalScrollbarSize: 10,
+    horizontalScrollbarSize: 8,
     useShadows: false,
-    verticalScrollbarSize: 10,
+    verticalScrollbarSize: 8,
   },
   smoothScrolling: true,
   wordWrap: 'on',
@@ -524,6 +524,6 @@ function useMonacoAppearance() {
 
 function resolveMonacoTheme(): string {
   const root = typeof document === 'undefined' ? null : document.documentElement
-  if (root?.dataset.lsPalette === 'custom' && root.dataset.lsPaletteUsable === 'true') return LITTLE_SHEEP_MONACO_CUSTOM_THEME
+  if (root?.dataset.lsPalette && root.dataset.lsPalette !== 'neutral' && root.dataset.lsPaletteUsable === 'true') return LITTLE_SHEEP_MONACO_CUSTOM_THEME
   return root?.dataset.lsTheme === 'light' ? LITTLE_SHEEP_MONACO_LIGHT_THEME : LITTLE_SHEEP_MONACO_THEME
 }

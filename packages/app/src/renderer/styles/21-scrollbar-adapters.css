@@ -1,0 +1,27 @@
+/* Global native scrollbar tokens and parts live in 03-shell-sidebar.css.
+   These adapters only remove parent insets or style library-owned sliders. */
+.chat-turn-list { width: calc(100% + 8px); margin-right: -8px; }
+.sidebar-search-results { width: calc(100% + 10px); margin-right: -10px; }
+.memory-files-list { width: calc(100% + 12px); margin-right: -12px; }
+
+/* Monaco and xterm draw DOM sliders instead of native scrollbar parts. */
+.xterm-scrollable-element > .scrollbar.vertical { width: var(--scrollbar-size) !important; }
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar.vertical > .slider {
+  width: calc(var(--scrollbar-size) - 2px) !important;
+  left: 2px !important;
+}
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar.horizontal > .slider {
+  height: calc(var(--scrollbar-size) - 2px) !important;
+  top: 2px !important;
+}
+.monaco-scrollable-element > .scrollbar > .slider,
+.xterm-scrollable-element > .scrollbar > .slider {
+  background: var(--scrollbar-thumb) !important;
+  border-radius: var(--radius-pill);
+}
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar > .slider:hover {
+  background: var(--scrollbar-thumb-hover) !important;
+}
+:is(.monaco-scrollable-element, .xterm-scrollable-element) > .scrollbar > .slider:active {
+  background: var(--scrollbar-thumb-active) !important;
+}

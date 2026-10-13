@@ -44,7 +44,7 @@ describe('open-with folder choice', () => {
 
     // Two rows used to read "（默认）": the built-in VS Code entry and the system's own handler for
     // the extension (reported 2026-10-03). Only the system's keeps the claim, and it says whose.
-    expect(actions).toContain("label: 'Visual Studio Code',")
+    expect(actions).toContain("label: openWith.isVSCodeDefault ? 'Visual Studio Code（系统默认）' : 'Visual Studio Code',")
     expect(actions).not.toContain('Visual Studio Code（默认）')
     expect(actions).toContain('label: handler.isDefault ? `${handler.label}（系统默认）` : handler.label,')
   })

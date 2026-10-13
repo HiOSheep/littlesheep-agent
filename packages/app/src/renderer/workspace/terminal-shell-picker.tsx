@@ -8,6 +8,14 @@ import type { WorkspaceShellProfile } from '../api/terminal'
 import { SplitButton } from '../ui/split-button'
 import { WorkspaceFeatureIcon } from '../ui/icons'
 
+function TerminalShellGlyph({ kind }: { kind: WorkspaceShellProfile['kind'] }) {
+  const powershell = kind === 'windows-powershell' || kind === 'powershell-7'
+  return <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true" data-shell-kind={kind}>
+    <rect x="1" y="3" width="18" height="14" rx="3" fill={powershell ? '#2879cf' : 'currentColor'} fillOpacity={powershell ? 1 : .18} />
+    <text x="10" y="12.8" textAnchor="middle" fill={powershell ? '#fff' : 'currentColor'} fontFamily="monospace" fontSize="7.5" fontWeight="600">{powershell ? 'PS' : kind === 'wsl' ? 'WSL' : kind === 'cmd' ? '>_' : '$_'}</text>
+  </svg>
+}
+
 export function WorkspaceTerminalShellPicker({
   profiles,
   selectedId,
@@ -36,7 +44,7 @@ export function WorkspaceTerminalShellPicker({
       // the segments' content box collapsed to 3px and the terminal glyph rendered 6.5px below the
       // pill's centre (measured on the reported screenshot, 2026-10-01).
       className="workspace-terminal-shell-picker"
-      icon={<WorkspaceFeatureIcon id="terminal" />}
+      icon={current ? <TerminalShellGlyph kind={current.kind} /> : <WorkspaceFeatureIcon id="terminal" />}
       label={`终端 Shell：${currentLabel}`}
       primaryTip={missingHint
         ? `用 ${currentLabel} 新建终端。本机缺少：\n${missingHint}`
@@ -51,6 +59,7 @@ export function WorkspaceTerminalShellPicker({
         ...available.map((profile) => ({
           id: profile.id,
           label: profile.label,
+          icon: <TerminalShellGlyph kind={profile.kind} />,
           active: profile.id === current?.id,
           onSelect: () => onSelect(profile.id),
         })),

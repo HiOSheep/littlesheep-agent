@@ -12,6 +12,7 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const [query, setQuery] = useState('')
   const [pinned, setPinned] = useState(false)
   const [hoverKey, setHoverKey] = useState<string | null>(null)
@@ -23,11 +24,17 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
   const panelId = useId()
   const turns = useMemo(() => navigationTurns(entries), [entries])
   const filtered = useMemo(() => filterNavigationTurns(turns, query), [turns, query])
-  const marks = useMemo(() => entries.length <= 64 ? entries : entries.filter((_, index) => index === entries.length - 1 || index % Math.ceil(entries.length / 63) === 0), [entries])
+  const marks = useMemo(() => {
+    const byKey = new Map(entries.map(entry => [entry.key, entry]))
+    const representatives = turns.map(turn => byKey.get(turn.key)!)
+    return representatives.length <= 64 ? representatives
+      : Array.from({ length: 64 }, (_, index) => representatives[Math.round(index * (representatives.length - 1) / 63)]!)
+  }, [entries, turns])
   const focusKey = hoverKey ?? activeKey
-  const exactIndex = marks.findIndex(entry => entry.key === focusKey)
-  const focusIndex = exactIndex >= 0 ? exactIndex : Math.max(0, marks.findIndex(entry => entry.turn >= (entries.find(entry => entry.key === focusKey)?.turn ?? 1)))
   const hoverTurn = entries.find(entry => entry.key === focusKey)?.turn
+  const activeTurn = entries.find(entry => entry.key === activeKey)?.turn
+  const exactIndex = marks.findIndex(entry => entry.turn === hoverTurn)
+  const focusIndex = exactIndex >= 0 ? exactIndex : Math.max(0, marks.findIndex(entry => entry.turn >= (hoverTurn ?? 1)))
   const previewIndex = Math.max(0, turns.findIndex(turn => turn.turn === hoverTurn))
   const visible = pinned ? filtered : turns.slice(Math.max(0, previewIndex - 2), previewIndex + 3)
   const close = () => { setOpen(false); setPinned(false); trigger.current?.focus({ preventScroll: true }) }
@@ -55,8 +62,8 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
 
   return (
     <nav ref={root} className="chat-turn-rail" aria-label="对话目录" data-expanded={open} data-pinned={pinned}
-      onMouseEnter={() => { clearTimeout(leaveTimer.current); onTipChange(null); setOpen(true) }}
-      onMouseLeave={() => { leaveTimer.current = setTimeout(() => { if (!pinned) setOpen(false) }, 150) }}
+      onMouseEnter={() => { clearTimeout(leaveTimer.current); setHovered(true); onTipChange(null); setOpen(true) }}
+      onMouseLeave={() => { setHovered(false); leaveTimer.current = setTimeout(() => { if (!pinned) setOpen(false) }, 150) }}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false) }}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
@@ -77,12 +84,12 @@ export function TurnRail({ entries, activeKey, onJump, onTipChange }: {
         buttons[next]?.focus({ preventScroll: true })
         buttons[next]?.scrollIntoView({ block: 'nearest' })
       }}>
-      <div className="chat-turn-marks">{marks.map((entry, index) => <button key={entry.key} ref={index === 0 ? trigger : undefined}
+      <div className="chat-turn-marks" style={{ height: `min(${marks.length * 10}px, 34vh, 240px)` }}>{marks.map((entry, index) => <button key={entry.key} ref={index === 0 ? trigger : undefined}
         type="button" className="chat-turn-trigger" data-role={entry.role} aria-label={railEntryLabel(entry)}
-        aria-current={entry.key === activeKey ? 'true' : undefined} aria-expanded={open} aria-controls={panelId}
+        aria-current={entry.turn === activeTurn ? 'true' : undefined} aria-expanded={open} aria-controls={panelId}
         onMouseEnter={() => { clearTimeout(leaveTimer.current); setHoverKey(entry.key); setOpen(true) }} onFocus={() => setHoverKey(entry.key)}
         onClick={() => { onJump(entry.key); setOpen(false); setPinned(false) }}>
-        <span aria-hidden="true" style={{ width: `${[24, 18, 13, 9, 6][railScaleStep(focusIndex, index)]}px` }} />
+        <span aria-hidden="true" style={{ width: `${hovered ? [24, 18, 13, 9, 6][railScaleStep(focusIndex, index)] : 6}px` }} />
       </button>)}</div>
       {open && <div id={panelId} className="chat-turn-panel" style={{ width: panelWidth }}>
         {pinned && <div className="chat-turn-heading"><strong>对话目录</strong><button type="button" aria-label="关闭对话目录" onClick={close}>×</button></div>}

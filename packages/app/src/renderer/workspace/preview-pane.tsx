@@ -26,7 +26,7 @@ import { WorkspacePreviewBreadcrumbs } from './preview-breadcrumbs'
 import { WorkspacePlaceholder } from './placeholder'
 import { resolveWorkspacePreviewEditorState, workspaceDraftOutcome } from './preview-draft'
 import { useWorkspaceOpenWith } from './use-workspace-open-with'
-import { WorkspacePreviewActions } from './preview-actions'
+import { WorkspacePreviewActions, HTML_BROWSER_IN_APP_ID, HTML_BROWSER_EXTERNAL_ID } from './preview-actions'
 import { HtmlRunNotice } from './html-run-notice'
 import { useHtmlRun } from './use-html-run'
 import { useCodeWrapPreference } from '../ui/code-wrap-preference'
@@ -92,15 +92,6 @@ export function WorkspacePreviewPane({
       ? preview.language || 'text'
       : ''
   const canOpenExternalVSCode = preview ? shouldOfferExternalVSCode(preview) : false
-  const openWith = useWorkspaceOpenWith({
-    root: workspacePath,
-    path: selectedPath,
-    canOpenInVSCode: canOpenExternalVSCode,
-    onOpenInVSCode,
-    // An open-with failure is an action error like a failed save, and the pane already shows one
-    // line for those, right above the status bar.
-    onError: (message) => setSaveError(message),
-  })
   // CS-08: first file body on screen. Placeholders, errors and an empty pane are
   // explicitly excluded, so a "读取中" state cannot be mistaken for availability.
   const previewContentVisible = !loading && !error && preview !== null
@@ -293,6 +284,17 @@ export function WorkspacePreviewPane({
     fileModifiedAt: preview?.modifiedAt ?? 0,
     isHtml,
   })
+  const openWith = useWorkspaceOpenWith({
+    root: workspacePath,
+    path: selectedPath,
+    canOpenInVSCode: canOpenExternalVSCode,
+    onOpenInVSCode,
+    onError: (message) => setSaveError(message),
+    additionalChoices: [
+      { id: HTML_BROWSER_IN_APP_ID, available: isHtml && htmlRun.state.status === 'running' && Boolean(htmlRun.state.url), open: () => { if (htmlRun.state.url) onOpenBrowserTab(htmlRun.state.url) } },
+      { id: HTML_BROWSER_EXTERNAL_ID, available: isHtml && htmlRun.state.status === 'running' && Boolean(htmlRun.state.url), open: () => { if (htmlRun.state.url) return openExternalHref(htmlRun.state.url) } },
+    ],
+  })
 
   return (
     <div className="workspace-preview-pane" onContextMenu={(event) => {
@@ -300,7 +302,7 @@ export function WorkspacePreviewPane({
       if ((event.target as Element).closest('input, textarea, [contenteditable="true"], .monaco-editor, a[href]')) return
       event.preventDefault()
       openContextMenu(event.clientX, event.clientY, [
-        { id: 'open-with', label: '用默认应用打开', run: openWith.openWithCurrent },
+        { id: 'open-with', label: '按所选方式打开', run: openWith.openWithCurrent },
         { id: 'reveal', label: '显示文件位置', run: openWith.reveal },
         { id: 'copy-path', label: '复制完整路径', dividerBefore: true, run: () => navigator.clipboard.writeText(selectedPath) },
       ])
@@ -323,12 +325,6 @@ export function WorkspacePreviewPane({
             canOpenExternalVSCode={canOpenExternalVSCode}
             showCodeWrapToggle={editorVisible} codeWrapEnabled={codeWrapEnabled}
             htmlRun={htmlRun.state}
-            onOpenHtmlInApp={() => {
-              if (htmlRun.state.url) onOpenBrowserTab(htmlRun.state.url)
-            }}
-            onOpenHtmlExternal={() => {
-              if (htmlRun.state.url) void openExternalHref(htmlRun.state.url)
-            }}
             onToggleCodeWrap={() => setCodeWrapEnabled(!codeWrapEnabled)}
             onToggleMarkdownSource={toggleMarkdownSource}
             onToggleHtmlSource={toggleHtmlSource}

@@ -22,6 +22,7 @@ export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/18-brand-motion.css',
   './styles/19-context-menu.css',
   './styles/20-chat-reading.css',
+  './styles/21-scrollbar-adapters.css',
 ] as const
 
 export interface RendererStyleSourceFile {

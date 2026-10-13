@@ -35,33 +35,13 @@
   top: var(--workspace-page-leading-row-height);
   right: 0;
   bottom: 0;
-  width: 11px;
+  width: var(--scrollbar-size);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   background: transparent;
-  scrollbar-color: rgba(160, 160, 160, 0.48) transparent;
-  scrollbar-width: thin;
-}
-
-.workspace-review-scroll-rail::-webkit-scrollbar {
-  width: 8px;
-}
-
-.workspace-review-scroll-rail::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.workspace-review-scroll-rail::-webkit-scrollbar-thumb {
-  min-height: 24px;
-  background: rgba(160, 160, 160, 0.42);
-  border-radius: var(--radius-pill);
-}
-
-.workspace-review-scroll-rail:hover::-webkit-scrollbar-thumb {
-  background: rgba(190, 190, 190, 0.56);
 }
 
 .workspace-review-scroll-rail > div {

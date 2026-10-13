@@ -92,6 +92,8 @@ export function SplitButton({
   })
 
   const reason = busy ? '正在执行，完成或失败后可以再用' : disabled ? disabledReason : undefined
+  // The active option owns its glyph in both the menu and the primary segment.
+  const currentItem = items.find((item) => item.active && !item.disabled)
 
   return (
     <div
@@ -109,7 +111,7 @@ export function SplitButton({
         onClick={() => void onPrimary()}
         {...tip(primaryTip)}
       >
-        <span className="split-button-icon" aria-hidden="true">{icon}</span>
+        <span className="split-button-icon" aria-hidden="true">{currentItem?.icon ?? icon}</span>
       </button>
       <button
         {...transientTriggerProps()}
