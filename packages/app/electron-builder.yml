@@ -114,6 +114,16 @@ win:
     - '!node_modules/@img/sharp-libvips-linuxmusl-*{,/**/*}'
     - '!node_modules/@img/sharp-libvips-win32-arm64{,/**/*}'
 
+linux:
+  icon: resources/littlesheep-icon.png
+  syncDesktopName: true
+  category: Utility
+  maintainer: HiOSheep
+  target:
+    - target: deb
+      arch:
+        - x64
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

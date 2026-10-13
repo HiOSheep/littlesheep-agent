@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "description": "LittleSheep desktop application — Electron + Vite + embedded Runner.",
+  "homepage": "https://github.com/HiOSheep/littlesheep-agent",
+  "desktopName": "LittleSheep",
   "main": "./out/main/index.js",
   "scripts": {
     "predev": "node ../../scripts/prepare-littlesheep-runtime.mjs && node ../../scripts/sync-desktop-shortcut.mjs",

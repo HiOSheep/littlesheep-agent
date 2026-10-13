@@ -14,7 +14,7 @@ Electron 桌面应用组合包。Main 拥有应用服务与策略执行；preloa
 ## 开发与验证
 
 - 开发：`pnpm run dev`；准备 Electron 构建：`pnpm run ensure:app-build`，保持输入与产物 fingerprint 一致。
-- Electron 开发路径按安装包 `path.txt` 解析。Windows/Linux 使用准备后的桌面可执行文件；macOS 直接使用原始 `Electron.app` 内的程序，不复制或改名 Bundle 内部文件。`sharp` 与其 `@img` 平台绑定由应用依赖声明共同固定，Windows 发布清单会检查目标原生载荷并尝试加载原生模块；PDF 当前只提取文本，PDF.js 的可选 Node Canvas 渲染适配器不列为运行时依赖。Windows x64 的体积裁剪只应用于 Windows 配置。该配置尚未替代 macOS/Linux 实机打包与签名验收。
+- Electron 开发路径按安装包 `path.txt` 解析。Windows/Linux 使用准备后的桌面可执行文件；macOS 直接使用原始 `Electron.app` 内的程序，不复制或改名 Bundle 内部文件。Windows x64 的体积裁剪只应用于 Windows 配置。Linux 使用现有 PNG 资源作为托盘和 Debian 包图标；打包清单检查 Transformers、ONNX Runtime、node-pty 原生载荷，并在 Linux 主机上运行真实 PTY。Linux 的 `sharp` 图像操作目前不受支持，独立诊断子进程记录其 Electron 崩溃但不纳入普通功能门；若增加 Electron 进程内图像处理，必须重新设为阻断验收。Linux 发布仍需在打包环境完成哈希校验模型的文本推理及安装包安装验收；WSL2 的 unpacked 包测试不能替代干净 Linux 安装。macOS 实机打包与签名验收仍待进行。
 - 类型：`pnpm --filter @littlesheep/app run typecheck`；定向测试：`pnpm exec vitest run packages/app`。
 - 窗口、恢复、权限、工作区与发布包行为须运行对应的 `verify:*`，入口见 [脚本索引](../../scripts/README.md)。Renderer 单测不能证明真实 Electron 或发布包行为。
 

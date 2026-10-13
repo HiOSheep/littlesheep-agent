@@ -81,3 +81,31 @@ describe('Windows release packaging', () => {
     expect(scanner).toContain('collectExtractedFiles')
   })
 })
+
+describe('Linux release packaging', () => {
+  it('uses the PNG brand asset and declares Debian package metadata and target', async () => {
+    const [config, packageContents] = await Promise.all([
+      readFile(new URL('../../electron-builder.yml', import.meta.url), 'utf8'),
+      readFile(new URL('../../package.json', import.meta.url), 'utf8'),
+    ])
+    const packageJson = JSON.parse(packageContents) as { homepage?: string; desktopName?: string }
+
+    expect(config).toContain('linux:')
+    expect(config).toContain('icon: resources/littlesheep-icon.png')
+    expect(config).toContain('syncDesktopName: true')
+    expect(config).toContain('maintainer: HiOSheep')
+    expect(config).toContain('target: deb')
+    expect(packageJson.homepage).toBe('https://github.com/HiOSheep/littlesheep-agent')
+    expect(packageJson.desktopName).toBe('LittleSheep')
+  })
+
+  it('requires verified local embedding inference while keeping Linux sharp diagnostic-only', async () => {
+    const runtimeManifest = await readFile(new URL('../../../../scripts/verify-packaged-runtime-manifest.mjs', import.meta.url), 'utf8')
+
+    expect(runtimeManifest).toContain('LS_PACKAGED_EMBEDDING_MODEL_ROOT')
+    expect(runtimeManifest).toContain("pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5'")
+    expect(runtimeManifest).toContain("'known-incompatible'")
+    expect(runtimeManifest).toContain("capability: 'unsupported'")
+    expect(runtimeManifest).toContain('nativeLoadSmoke.status !== \'passed\' || embeddingSmoke.status !== \'passed\'')
+  })
+})
