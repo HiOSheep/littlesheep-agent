@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
+  type ReactNode,
 } from 'react'
 import { APPLICATION_PERSISTENCE_FLUSH_EVENT } from '../../shared/application-state-contracts'
 import { projectSessions } from '../../shared/session-scope'
@@ -20,6 +21,7 @@ import {
   PROJECT_SECTION_COLLAPSED_KEY,
   PROJECT_SORT_KEY,
   SIDEBAR_PROJECT_ORDER_KEY,
+  PINNED_PROJECT_IDS_KEY,
   readBooleanPreference,
   readProjectSortPreference,
   readStringListPreference,
@@ -30,7 +32,7 @@ import {
   writeStringSetPreference,
 } from '../app-shell/preferences'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
-import { ArchiveIcon, CheckIcon, ComposeIcon, MoreIcon, ProjectIcon, SortIcon, TrashIcon } from '../ui/icons'
+import { ArchiveIcon, CheckIcon, ComposeIcon, MoreIcon, PinIcon, ProjectIcon, SortIcon, TrashIcon } from '../ui/icons'
 import { OverflowingLabel } from '../ui/overflowing-label'
 import { isSamePath, lastPathSegment } from '../workspace/path-utils'
 import { SidebarActionMenu } from './action-menu'
@@ -40,6 +42,7 @@ import { ProjectSortMode } from './types'
 
 
 export function SidebarProjectSection({
+  pinnedConversations, hasPinnedConversations,
   projects,
   sessions,
   currentSession,
@@ -61,6 +64,8 @@ export function SidebarProjectSection({
   onReorderSessions,
   onTipChange,
 }: {
+  pinnedConversations?: ReactNode
+  hasPinnedConversations?: boolean
   projects: ProjectMeta[]
   sessions: SessionMeta[]
   currentSession?: string
@@ -82,13 +87,16 @@ export function SidebarProjectSection({
   onReorderSessions: (sessionIds: string[]) => void
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
+  const [pinnedProjectIds, setPinnedProjectIds] = useState(() => readStringSetPreference(PINNED_PROJECT_IDS_KEY))
   const [collapsed, setCollapsed] = useState(() => readBooleanPreference(PROJECT_SECTION_COLLAPSED_KEY, false))
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(() => (
     readStringSetPreference(EXPANDED_PROJECT_IDS_KEY)
   ))
   const [sortMode, setSortMode] = useState<ProjectSortMode>(() => readProjectSortPreference(PROJECT_SORT_KEY))
   const [projectOrder, setProjectOrder] = useState(() => readStringListPreference(SIDEBAR_PROJECT_ORDER_KEY))
+  useEffect(() => { writeStringSetPreference(PINNED_PROJECT_IDS_KEY, pinnedProjectIds) }, [pinnedProjectIds])
   const durableProjectSectionRef = useRef({ collapsed, expandedProjectIds, sortMode, projectOrder })
+  const pinnedProjectTreeRef = useRef<HTMLDivElement>(null)
   const projectTreeRef = useRef<HTMLDivElement>(null)
   durableProjectSectionRef.current = { collapsed, expandedProjectIds, sortMode, projectOrder }
   const baseProjects = useMemo(
@@ -104,7 +112,7 @@ export function SidebarProjectSection({
     [visibleProjects],
   )
   const projectDrag = useSidebarListDrag(
-    visibleProjects.map((project) => project.id),
+    visibleProjects.filter(project => !pinnedProjectIds.has(project.id)).map(project => project.id),
     {
       scrollContainerRef: projectTreeRef,
       onReorder: (projectIds) => {
@@ -114,7 +122,13 @@ export function SidebarProjectSection({
       onDragStart: () => onTipChange(null),
     },
   )
-  const displayedProjects = projectDrag.orderedIds
+  const pinnedProjectDrag = useSidebarListDrag(
+    visibleProjects.filter(project => pinnedProjectIds.has(project.id)).map(project => project.id),
+    { scrollContainerRef: pinnedProjectTreeRef,
+      onReorder: ids => { setProjectOrder(current => mergeOrderedList(ids, current)); setSortMode('fixed') },
+      onDragStart: () => onTipChange(null) },
+  )
+  const displayedProjects = [...pinnedProjectDrag.orderedIds, ...projectDrag.orderedIds]
     .map((id) => projectsById.get(id))
     .filter((project): project is ProjectMeta => Boolean(project))
   const activeProject = visibleProjects.find((project) => project.id === activeProjectId)
@@ -158,19 +172,60 @@ export function SidebarProjectSection({
   }, [activeProject?.id])
 
   function toggleProject(project: ProjectMeta, active: boolean) {
+    const opening = !expandedProjectIds.has(project.id)
     setExpandedProjectIds((ids) => {
       const next = new Set(ids)
-      if (active && next.has(project.id)) {
+      if (next.has(project.id)) {
         next.delete(project.id)
       } else {
         next.add(project.id)
       }
       return next
     })
-    if (!active) onOpenProject(project)
+    if (opening && !active) onOpenProject(project)
   }
 
-  return (
+  const renderProject = (project: ProjectMeta) => {
+    const pinned = pinnedProjectIds.has(project.id)
+    const drag = pinned ? pinnedProjectDrag : projectDrag
+    return (
+          <SidebarProjectGroup
+            key={project.id}
+            project={project}
+            sessions={sessionsForSidebarProject(sessions, project)}
+            currentSession={currentSession}
+            pinnedSessionIds={pinnedSessionIds}
+            now={now}
+            pinned={pinnedProjectIds.has(project.id)}
+            onToggleProjectPin={() => setPinnedProjectIds(ids => { const next = new Set(ids); if (next.has(project.id)) next.delete(project.id); else next.add(project.id); return next })}
+            active={project.id === activeProjectId}
+            expanded={expandedProjectIds.has(project.id)}
+            projectTreeRef={pinned ? pinnedProjectTreeRef : projectTreeRef}
+            dragging={drag.draggingId === project.id}
+            projectItemRef={drag.itemRef(project.id)}
+            onProjectPointerDown={drag.onPointerDown(project.id)}
+            onProjectClickCapture={drag.onClickCapture}
+            onToggleProject={() => toggleProject(project, project.id === activeProjectId)}
+            onCreateConversation={() => onCreateProjectConversation(project)}
+            onOpenSession={onOpenSession}
+            onTogglePin={onTogglePin}
+            onRenameSession={onRenameSession}
+            onArchiveSession={onArchiveSession}
+            onDeleteSession={onDeleteSession}
+            onArchiveProject={() => onArchiveProject(project)}
+            onRebindProject={() => onRebindProject(project)}
+            onDeleteProject={() => onDeleteProject(project)}
+            onReorderSessions={onReorderSessions}
+            onTipChange={onTipChange}
+          />
+  )
+  }
+  return <>
+    {(hasPinnedConversations || displayedProjects.some(project => pinnedProjectIds.has(project.id))) && <section className="sidebar-section pinned-section" aria-label="置顶">
+      <div className="sidebar-section-header"><span className="sidebar-group-heading">置顶</span></div>
+      <div ref={pinnedProjectTreeRef} className="project-tree pinned-project-tree">{displayedProjects.filter(project => pinnedProjectIds.has(project.id)).map(renderProject)}</div>
+      {pinnedConversations}
+    </section>}
     <section className={`sidebar-section project-section ${collapsed ? 'collapsed' : ''}`} aria-label="项目">
       <div className="sidebar-section-header">
         <button
@@ -234,43 +289,17 @@ export function SidebarProjectSection({
         aria-hidden={collapsed}
         {...(collapsed ? { inert: '' } : {})}
       >
-        {displayedProjects.map((project) => (
-          <SidebarProjectGroup
-            key={project.id}
-            project={project}
-            sessions={sessionsForSidebarProject(sessions, project)}
-            currentSession={currentSession}
-            pinnedSessionIds={pinnedSessionIds}
-            now={now}
-            active={project.id === activeProjectId}
-            expanded={expandedProjectIds.has(project.id)}
-            projectTreeRef={projectTreeRef}
-            dragging={projectDrag.draggingId === project.id}
-            projectItemRef={projectDrag.itemRef(project.id)}
-            onProjectPointerDown={projectDrag.onPointerDown(project.id)}
-            onProjectClickCapture={projectDrag.onClickCapture}
-            onToggleProject={() => toggleProject(project, project.id === activeProjectId)}
-            onCreateConversation={() => onCreateProjectConversation(project)}
-            onOpenSession={onOpenSession}
-            onTogglePin={onTogglePin}
-            onRenameSession={onRenameSession}
-            onArchiveSession={onArchiveSession}
-            onDeleteSession={onDeleteSession}
-            onArchiveProject={() => onArchiveProject(project)}
-            onRebindProject={() => onRebindProject(project)}
-            onDeleteProject={() => onDeleteProject(project)}
-            onReorderSessions={onReorderSessions}
-            onTipChange={onTipChange}
-          />
-        ))}
+        {displayedProjects.filter(project => !pinnedProjectIds.has(project.id)).map(renderProject)}
       </div>
     </section>
-  )
+  </>
 }
 
 
 interface SidebarProjectGroupProps {
   project: ProjectMeta
+  pinned: boolean
+  onToggleProjectPin: () => void
   sessions: SessionMeta[]
   currentSession?: string
   pinnedSessionIds: Set<string>
@@ -298,6 +327,7 @@ interface SidebarProjectGroupProps {
 
 
 function SidebarProjectGroup({
+  pinned, onToggleProjectPin,
   project,
   sessions,
   currentSession,
@@ -378,8 +408,7 @@ function SidebarProjectGroup({
           onFocus={(event) => onTipChange(buildFloatingHelpTipFromElement(tip, event.currentTarget))}
           onBlur={() => onTipChange(null)}
         >
-          <span className="project-row-arrow" aria-hidden="true" />
-          <ProjectIcon />
+          <ProjectIcon expanded={expanded} />
           <OverflowingLabel
             label={project.name || lastPathSegment(project.path)}
             className="sidebar-overflowing-label project-row-title"
@@ -412,6 +441,11 @@ function SidebarProjectGroup({
             label="项目菜单"
             onTipChange={onTipChange}
             items={[
+              {
+                label: pinned ? '取消置顶项目' : '置顶项目',
+                icon: <PinIcon active={pinned} />,
+                onSelect: onToggleProjectPin,
+              },
               {
                 label: '重新定位项目',
                 icon: <ProjectIcon />,
@@ -464,7 +498,7 @@ function SidebarProjectGroup({
             )
           })
         ) : (
-          <div className="project-session-empty">暂无对话</div>
+          <div className="project-session-empty">暂无聊天</div>
         )}
       </div>
     </div>

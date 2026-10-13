@@ -11,7 +11,7 @@ import type { ConversationSectionViewController } from './app-controller-project
 
 
 
-export function ConversationSectionView({ controller }: { controller: ConversationSectionViewController }) {
+export function ConversationSectionView({ controller, pinnedOnly = false }: { controller: ConversationSectionViewController; pinnedOnly?: boolean }) {
   const {
     conversationCollapsed,
     setConversationCollapsed,
@@ -58,19 +58,21 @@ export function ConversationSectionView({ controller }: { controller: Conversati
     ...pinnedDrag.orderedIds,
     ...unpinnedDrag.orderedIds,
   ].map((id) => sessionsById.get(id)).filter((session) => Boolean(session))
+  const rows = orderedSessions.filter(session => session && pinnedSessionIds.has(session.id) === pinnedOnly)
+  if (pinnedOnly && rows.length === 0) return null
   return (
         <section
-          className={`sidebar-section conversation-section ${conversationCollapsed ? 'collapsed' : ''}`}
-          aria-label="对话"
+          className={`sidebar-section conversation-section ${!pinnedOnly && conversationCollapsed ? 'collapsed' : ''}`}
+          aria-label={pinnedOnly ? "置顶独立对话" : "最近"}
         >
-          <div className="sidebar-section-header">
+          {!pinnedOnly && <div className="sidebar-section-header">
             <button
               className="sidebar-section-toggle"
               type="button"
               aria-expanded={!conversationCollapsed}
               onClick={() => setConversationCollapsed((value) => !value)}
             >
-              <span>对话</span>
+              <span>最近</span>
               <span className="sidebar-section-arrow" aria-hidden="true" />
             </button>
             <div className="sidebar-section-actions" aria-hidden={conversationCollapsed ? undefined : false}>
@@ -101,14 +103,14 @@ export function ConversationSectionView({ controller }: { controller: Conversati
                 <ComposeIcon />
               </button>
             </div>
-          </div>
+          </div>}
           <div
             ref={sessionListRef}
             className="session-list"
-            aria-hidden={conversationCollapsed}
-            {...(conversationCollapsed ? { inert: '' } : {})}
+            aria-hidden={!pinnedOnly && conversationCollapsed}
+            {...(!pinnedOnly && conversationCollapsed ? { inert: '' } : {})}
           >
-            {orderedSessions.map((s) => {
+            {rows.map((s) => {
               if (!s) return null
               const drag = pinnedSessionIds.has(s.id) ? pinnedDrag : unpinnedDrag
               return (

@@ -4,7 +4,7 @@
 .conversation-resources-toggle { display: grid; place-items: center; width: var(--workspace-tab-height); height: var(--workspace-tab-height); padding: 0; border: 0; border-radius: var(--radius-ui); color: var(--muted); background: transparent; cursor: pointer; }
 .conversation-resources-icon { display: block; width: 18px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 .conversation-resources-toggle:hover, .conversation-resources-toggle[aria-expanded='true'] { color: var(--text-strong); background: var(--control-hover); }
-.conversation-resources-panel { position: absolute; top: calc(var(--workspace-tab-height) + var(--workspace-panel-control-gap)); right: 0; width: min(340px, calc(100vw - 100px)); max-height: min(70vh, 620px); overflow: auto; scrollbar-gutter: stable; padding: 18px 20px; border: 1px solid var(--chat-hairline); border-radius: 22px; background: var(--surface-3); box-shadow: var(--chat-panel-elevation); color: var(--text); }
+.conversation-resources-panel { position: absolute; top: calc(var(--workspace-tab-height) + var(--workspace-panel-control-gap)); right: 0; width: min(340px, calc(100vw - 100px)); max-height: min(70vh, 620px); overflow: auto; scrollbar-gutter: stable; padding: 18px 20px; border: 0; border-radius: 22px; background: color-mix(in srgb, var(--surface-3) 70%, transparent); -webkit-backdrop-filter: blur(20px) saturate(135%); backdrop-filter: blur(20px) saturate(135%); box-shadow: none; color: var(--text); }
 .conversation-resources-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; margin-bottom: 12px; }
 .conversation-resources-changes > button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border: 0; background: transparent; color: var(--text-strong); cursor: pointer; font: inherit; }
 .conversation-resources-changes strong { font-weight: 500; }
@@ -49,12 +49,12 @@
 .chat-header-title { color: var(--muted); font-size: 14px; font-weight: 500; }
 .chat-header .running-pill-root { min-width: 0; max-width: 100%; }
 .chat-header .running-pill-root.compact-title { display: flex; align-items: center; gap: 4px; }
-.chat-header .running-pill { flex: 0 1 auto; min-width: 0; min-height: 30px; max-width: 100%; gap: 0; padding: 3px 8px; background: transparent; box-shadow: none; border: 1px solid transparent; border-radius: 7px; cursor: text; transition: border-color 140ms ease-out, background-color 140ms ease-out; }
-.chat-header .running-pill:hover, .chat-header .running-pill:focus-visible, .chat-header .running-pill.editing { border-color: var(--border-strong); background: var(--chat-hover-fill); }
+.chat-header .running-pill { flex: 0 1 auto; min-width: 0; min-height: var(--workspace-tab-height); height: var(--workspace-tab-height); max-width: 100%; gap: 0; padding: 3px 8px; background: transparent; box-shadow: none; border: 0; border-radius: var(--radius-ui); cursor: text; transition: background-color var(--motion-fast) var(--motion-ease); }
+.chat-header .running-pill:hover, .chat-header .running-pill:focus-visible, .chat-header .running-pill.editing { background: var(--control-hover); }
 .chat-header .running-pill-title { max-width: none; flex: 1 1 auto; color: var(--text-strong); font-size: 14px; font-weight: 550; }
 .chat-header .running-pill-rename-input { min-width: 0; width: clamp(150px, 24vw, 360px); font-size: 14px; }
-.chat-title-records { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
-.chat-title-records:hover { background: var(--chat-hover-fill); color: var(--text); }
+.chat-title-records { display: grid; place-items: center; flex: 0 0 var(--workspace-tab-height); width: var(--workspace-tab-height); height: var(--workspace-tab-height); padding: 0; border: 0; border-radius: var(--radius-ui); background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.chat-title-records:hover { background: var(--control-hover); color: var(--text-strong); }
 .chat:has(.chat-turn-rail) .messages { padding-left: 40px; }
 
 /* The transcript scrolls behind the input glass and clips at the input's bottom edge. */

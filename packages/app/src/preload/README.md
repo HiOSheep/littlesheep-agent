@@ -27,3 +27,5 @@ Preload 只通过安全的 context bridge 暴露 renderer 启动所需的最小�
 - 验证按风险分级：只有跨进程契约、暴露面（`contextBridge` API 形状）或生命周期变化时才要求 App typecheck 和 build，并检查 renderer 在 `contextIsolation` 下正常启动；纯内部调整跑定向测试即可。
 - 无法证明改动没碰到契约或暴露面时按上一档处理；`skipped` 不等于通过，也不能用旧结果放行没有重跑的检查。
 - 禁止把 preload 作为绕过权限或 Local App API 契约的捷径。
+
+布局投影带递增 revision；旧消息被丢弃，相同布局不重复通知。Preload 在 DOM 就绪或收到快照时直接更新根属性，提前于 React 挂载；各订阅者隔离异常，订阅缓存与查询仍保持原有只读边界。

@@ -1718,9 +1718,9 @@ body.is-window-resizing .window-shell *::after {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   min-height: 34px;
-  margin-bottom: 4px;
-  padding: 0 11px 0 18px;
-  border: 1px solid transparent;
+  margin-bottom: 2px;
+  padding: 0 2px 0 7px;
+  border: 0;
   border-radius: var(--radius-ui);
   color: var(--text);
   font-size: 13px;
@@ -1807,8 +1807,8 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
-  scrollbar-gutter: stable both-edges;
-  padding-right: var(--sidebar-content-inline-inset);
+  scrollbar-gutter: stable;
+  padding-right: calc(var(--sidebar-content-inline-inset) - var(--scrollbar-size));
   opacity: 1;
   transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
@@ -1826,18 +1826,18 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .project-item {
   min-height: 32px;
   margin-bottom: 2px;
-  padding-left: 4px;
+  padding-left: 7px;
 }
 
 .project-row-trigger {
   display: grid;
   grid-column: 1;
   grid-row: 1;
-  grid-template-columns: 9px 18px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   align-self: stretch;
   min-width: 0;
-  gap: 6px;
+  gap: 8px;
   padding: 0;
   color: inherit;
   background: transparent;
@@ -1899,12 +1899,12 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .project-session-item {
   min-height: 32px;
   margin-bottom: 2px;
-  padding-left: 38px;
+  padding-left: 33px;
 }
 
 .project-session-empty {
   min-height: 28px;
-  padding: 8px 8px 8px 38px;
+  padding: 8px 8px 8px 33px;
   color: var(--muted-2);
   font-size: 12px;
   line-height: 1;
@@ -2101,10 +2101,10 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
   width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap));
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
   overflow-anchor: none;
   opacity: 1;
-  padding-right: var(--sidebar-content-inline-inset);
+  padding-right: calc(var(--sidebar-content-inline-inset) - var(--scrollbar-size));
   transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease);
 }
 
@@ -2746,3 +2746,10 @@ body.sidebar-list-dragging .session-item:not(.is-dragging):not(.active):focus-vi
 .running-pill-command-time {
   font-variant-numeric: tabular-nums;
 }
+
+/* Sidebar ownership is expressed by indentation; pinned items keep their project parent. */
+.pinned-section { flex: 0 1 auto; margin-bottom: 14px; }
+.sidebar-group-heading { padding: 0 7px; color: var(--muted); font-size: calc(12px * var(--ui-font-scale, 1)); }
+.pinned-section .conversation-section { flex: 0 1 auto; }
+.pinned-project-tree:empty { display: none; }
+.project-section { margin-bottom: 18px; }

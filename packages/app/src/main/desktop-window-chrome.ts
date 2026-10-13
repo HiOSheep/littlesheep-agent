@@ -35,23 +35,59 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
   let isDark = nativeTheme.shouldUseDarkColors
   if (backdrop === 'acrylic') window.setBackgroundMaterial('acrylic')
   if (backdrop === 'vibrancy') window.setVibrancy('under-window')
-  const publish = () => {
+  let maximized = window.isMaximized()
+  let fullscreen = window.isFullScreen()
+  let revision = 0
+  let lastState: WindowChromeState | undefined
+  let background: string | undefined
+  let overlayKey: string | undefined
+  let reconcileTimer: ReturnType<typeof setTimeout> | undefined
+  const publish = (force = false) => {
     if (window.isDestroyed() || window.webContents.isDestroyed()) return
-    const layout = window.isMaximized() || window.isFullScreen() ? 'beta' : 'chali'
+    const layout = maximized || fullscreen ? 'beta' : 'chali'
     const renderer = isRenderer()
     const surface = isDark ? DESKTOP_STARTUP_SURFACE : '#f4f4f2'
-    window.setBackgroundColor(renderer && backdrop !== 'solid' ? '#00000000' : surface)
-    if (process.platform === 'win32') {
-      // In Beta the native caption buttons expose the same native acrylic as the
-      // titlebar. Chali and the standalone startup page have an opaque titlebar.
-      // A transparent overlay lets the renderer paint to the right edge while
-      // keeping the native buttons above it in the non-client area.
-      window.setTitleBarOverlay({ color: renderer && backdrop !== 'solid' ? '#00000000' : surface, symbolColor: isDark ? '#e8e8e8' : '#202020' })
+    const nextBackground = renderer && backdrop !== 'solid' ? '#00000000' : surface
+    if (background !== nextBackground) {
+      window.setBackgroundColor(nextBackground)
+      background = nextBackground
     }
-    window.webContents.send(WINDOW_CHROME_CHANNEL, { layout, backdrop } satisfies WindowChromeState)
+    if (process.platform === 'win32') {
+      const symbolColor = isDark ? '#e8e8e8' : '#202020'
+      const nextOverlayKey = `${nextBackground}:${symbolColor}`
+      if (overlayKey !== nextOverlayKey) {
+        window.setTitleBarOverlay({ color: nextBackground, symbolColor })
+        overlayKey = nextOverlayKey
+      }
+    }
+    if (!lastState || lastState.layout !== layout || lastState.backdrop !== backdrop) {
+      lastState = { layout, backdrop, revision: ++revision }
+      window.webContents.send(WINDOW_CHROME_CHANNEL, lastState)
+    } else if (force) window.webContents.send(WINDOW_CHROME_CHANNEL, lastState)
+  }
+  const reconcile = () => {
+    reconcileTimer = undefined
+    if (window.isDestroyed() || window.webContents.isDestroyed()) return
+    maximized = window.isMaximized()
+    fullscreen = window.isFullScreen()
+    publish()
+  }
+  const scheduleReconcile = () => {
+    if (reconcileTimer) clearTimeout(reconcileTimer)
+    reconcileTimer = setTimeout(reconcile, 16)
+  }
+  const onMaximize = () => { maximized = true; publish(); scheduleReconcile() }
+  const onUnmaximize = () => { maximized = false; publish(); scheduleReconcile() }
+  const onEnterFullscreen = () => { fullscreen = true; publish(); scheduleReconcile() }
+  const onLeaveFullscreen = () => { fullscreen = false; publish(); scheduleReconcile() }
+  const onLoaded = () => {
+    maximized = window.isMaximized(); fullscreen = window.isFullScreen()
+    publish(true)
   }
   const query = (event: IpcMainEvent) => {
-    if (!window.isDestroyed() && event.sender === window.webContents) publish()
+    if (!window.isDestroyed() && event.sender === window.webContents) {
+      publish(true)
+    }
   }
   const appearance = (event: IpcMainEvent, payload: unknown) => {
     if (window.isDestroyed() || event.sender !== window.webContents || !isWindowAppearance(payload)) return
@@ -66,14 +102,23 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
   ipcMain.on(WINDOW_CHROME_QUERY_CHANNEL, query)
   ipcMain.on(WINDOW_APPEARANCE_CHANNEL, appearance)
   nativeTheme.on('updated', systemThemeChanged)
-  window.on('maximize', publish)
-  window.on('unmaximize', publish)
-  // On Windows these events precede the isFullScreen() update (observed in a
-  // real window). Read the native fact after the current transition settles.
-  window.on('enter-full-screen', () => { setImmediate(publish) })
-  window.on('leave-full-screen', () => { setImmediate(publish) })
-  window.webContents.on('did-finish-load', publish)
+  window.on('maximize', onMaximize)
+  window.on('unmaximize', onUnmaximize)
+  // Event identities are authoritative while Electron's query flags catch up.
+  window.on('enter-full-screen', onEnterFullscreen)
+  window.on('leave-full-screen', onLeaveFullscreen)
+  window.on('resize', scheduleReconcile)
+  window.on('restore', scheduleReconcile)
+  window.webContents.on('did-finish-load', onLoaded)
   window.once('closed', () => {
+    if (reconcileTimer) clearTimeout(reconcileTimer)
+    window.removeListener('resize', scheduleReconcile)
+    window.removeListener('restore', scheduleReconcile)
+    window.removeListener('maximize', onMaximize)
+    window.removeListener('unmaximize', onUnmaximize)
+    window.removeListener('enter-full-screen', onEnterFullscreen)
+    window.removeListener('leave-full-screen', onLeaveFullscreen)
+    window.webContents.removeListener('did-finish-load', onLoaded)
     ipcMain.removeListener(WINDOW_CHROME_QUERY_CHANNEL, query)
     ipcMain.removeListener(WINDOW_APPEARANCE_CHANNEL, appearance)
     nativeTheme.removeListener('updated', systemThemeChanged)

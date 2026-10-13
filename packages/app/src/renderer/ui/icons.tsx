@@ -73,10 +73,13 @@ export function PluginIcon() {
 }
 
 
-export function ProjectIcon() {
+export function ProjectIcon({ expanded = false }: { expanded?: boolean } = {}) {
   return (
     <svg className="sidebar-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M3.2 3.95h2.9c.4 0 .72.19.96.51l.75 1H12.8c.55 0 1 .45 1 1v4.85c0 .55-.45 1-1 1H3.2c-.55 0-1-.45-1-1V4.95c0-.55.45-1 1-1z" />
+      {expanded ? <>
+        <path d="M2.1 11.45V4.6c0-.7.55-1.25 1.25-1.25H5.7c.35 0 .65.15.85.4l.85 1.1h4.35c.7 0 1.25.55 1.25 1.25v.85" />
+        <path d="M2.1 11.45 3.8 7.7c.2-.45.6-.7 1.1-.7h8.45c.65 0 1 .55.7 1.1l-1.65 3.7c-.2.45-.6.7-1.1.7H3.25c-.9 0-1.5-.45-1.15-1.05z" />
+      </> : <path d="M3.2 3.95h2.9c.4 0 .72.19.96.51l.75 1H12.8c.55 0 1 .45 1 1v4.85c0 .55-.45 1-1 1H3.2c-.55 0-1-.45-1-1V4.95c0-.55.45-1 1-1z" />}
     </svg>
   )
 }

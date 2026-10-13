@@ -67,9 +67,12 @@ describe('scroll stability', () => {
     }
   })
 
-  it('keeps the transcript and both sidebar lists symmetric, where they already reserved space', () => {
-    for (const selector of ['.messages', '.session-list', '.project-tree']) {
+  it('centres the transcript and aligns sidebar lists with their section headers', () => {
+    for (const selector of ['.messages']) {
       expect(styles).toMatch(new RegExp(`\\${selector}\\s*\\{[^}]*scrollbar-gutter:\\s*stable both-edges;`, 'u'))
+    }
+    for (const selector of ['.session-list', '.project-tree']) {
+      expect(styles).toMatch(new RegExp(`\\${selector}\\s*\\{[^}]*scrollbar-gutter:\\s*stable;`, 'u'))
     }
     expect(styles).toMatch(/\.workspace-tree\s*\{[^}]*scrollbar-gutter:\s*stable;/u)
   })

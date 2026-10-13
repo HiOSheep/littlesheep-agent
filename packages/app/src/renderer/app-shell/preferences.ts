@@ -56,6 +56,7 @@ export const EXPANDED_PROJECT_IDS_KEY = 'littlesheep.ui.expandedProjectIds'
 
 export const SIDEBAR_SESSION_ORDER_KEY = 'littlesheep.ui.sidebarSessionOrder'
 
+export const PINNED_PROJECT_IDS_KEY = 'littlesheep.ui.pinnedProjectIds'
 export const SIDEBAR_PROJECT_ORDER_KEY = 'littlesheep.ui.sidebarProjectOrder'
 
 export const ACTIVE_SESSION_KEY = 'littlesheep.ui.activeSession'

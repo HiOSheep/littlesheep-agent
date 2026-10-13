@@ -17,3 +17,7 @@ App Shell 组合桌面页面，并协调聊天、设置和扩展工作区之间�
 - 空白对话与历史读取使用共享 `VoidRing` 品牌动效；活动任务条和思考行从真实 Runtime 活动切换状态，不创建第二份运行状态。
 
 局部 reducer 与 projection adapter 由同目录测试覆盖；导航、会话／工作区恢复和窗口生命周期使用 `verify:electron-ui-state-continuity`。
+
+SidebarView 将独立置顶对话交给项目侧栏组合在同一置顶分组中，最近列表只展示未置顶的独立对话；项目内对话仅在所属项目树展示。
+
+原生窗口布局在 Preload 提前投影；useWindowChrome 仅按变化同步根属性，不缓存或猜测全屏状态，窗口切换不重挂载对话。

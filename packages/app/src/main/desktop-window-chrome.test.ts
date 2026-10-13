@@ -102,6 +102,54 @@ describe('native window chrome', () => {
     }
   })
 
+  it('publishes event facts immediately while native query flags lag', async () => {
+    const { win, query } = fixture()
+    query({ sender: win.webContents })
+    win.emit('maximize')
+    expect(win.webContents.send.mock.lastCall?.[1].layout).toBe('beta')
+    win.maximized = true
+    win.emit('unmaximize')
+    expect(win.webContents.send.mock.lastCall?.[1].layout).toBe('chali')
+    win.maximized = false
+    win.emit('enter-full-screen')
+    expect(win.webContents.send.mock.lastCall?.[1].layout).toBe('beta')
+    win.fullscreen = true
+    win.emit('leave-full-screen')
+    expect(win.webContents.send.mock.lastCall?.[1].layout).toBe('chali')
+    win.fullscreen = false
+    win.emit('closed')
+  })
+
+  it('coalesces resize reconciliation and corrects a missed native restore event', async () => {
+    vi.useFakeTimers()
+    try {
+      const { win, query } = fixture()
+      win.maximized = true; win.emit('maximize')
+      const firstRevision = win.webContents.send.mock.lastCall?.[1].revision
+      win.maximized = false
+      for (let i = 0; i < 40; i++) win.emit('resize')
+      await vi.advanceTimersByTimeAsync(16)
+      expect(win.webContents.send.mock.lastCall?.[1].layout).toBe('chali')
+      expect(win.webContents.send).toHaveBeenCalledTimes(2)
+      expect(win.webContents.send.mock.lastCall?.[1].revision).toBeGreaterThan(firstRevision)
+      query({ sender: win.webContents })
+      expect(win.webContents.send).toHaveBeenCalledTimes(3)
+      win.emit('closed')
+      await vi.advanceTimersByTimeAsync(50)
+      expect(win.webContents.send).toHaveBeenCalledTimes(3)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('avoids native material and IPC work for repeated identical appearance changes', () => {
+    const { win, query, appearance } = fixture()
+    query({ sender: win.webContents })
+    for (let i = 0; i < 100; i++) appearance({ sender: win.webContents }, { isDark: true })
+    expect(win.setBackgroundColor).toHaveBeenCalledTimes(1)
+    if (process.platform === 'win32') expect(win.setTitleBarOverlay).toHaveBeenCalledTimes(1)
+    expect(win.webContents.send).toHaveBeenCalledTimes(1)
+    win.emit('closed')
+  })
+
   it('only accepts the narrow state contract in preload', () => {
     expect(isWindowChromeState({ layout: 'beta', backdrop: 'acrylic' })).toBe(true)
     expect(isWindowChromeState({ layout: 'chali', backdrop: 'solid' })).toBe(true)

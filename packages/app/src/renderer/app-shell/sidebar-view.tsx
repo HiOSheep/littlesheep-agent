@@ -56,6 +56,8 @@ export function SidebarView({ controller }: { controller: SidebarViewController 
           onTipChange={setControlTip}
         />
         <SidebarProjectSection
+          pinnedConversations={<ConversationSectionView controller={conversation} pinnedOnly />}
+          hasPinnedConversations={conversation.visibleSessions.some(session => pinnedSessionIds.has(session.id))}
           projects={projects}
           sessions={displayedSessions}
           currentSession={currentSession}

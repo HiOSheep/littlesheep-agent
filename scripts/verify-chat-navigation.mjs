@@ -21,6 +21,16 @@ for(const rounds of [3,30,100]){
  await writeFile(join(dataDir,'sessions',fixtureId+'.jsonl'),fixtureLines.join('\n')+'\n')
  sessions.push({id:fixtureId,title:fixtureTitle,createdAt:now-24000,lastMessageAt:now-rounds,scope:'standalone',mode:'research'})
 }
+if(process.argv.includes('--sidebar-hierarchy-only')){
+ const projects=[]
+ for(const [projectId,name] of [['project-alpha','Alpha 项目'],['project-beta','Beta 空项目']]){
+  const path=join(root,projectId);await mkdir(path,{recursive:true});projects.push({id:projectId,name,path,createdAt:new Date(now).toISOString(),lastActiveAt:new Date(now).toISOString()})
+ }
+ await mkdir(join(dataDir,'projects'),{recursive:true});await writeFile(join(dataDir,'projects','index.json'),JSON.stringify({projects}))
+ const projectSession={id:'project-alpha-chat',title:'项目内对话',createdAt:now,lastMessageAt:now,scope:'project',projectId:'project-alpha',workspacePath:projects[0].path,mode:'research'}
+ sessions.push(projectSession)
+ await writeFile(join(dataDir,'sessions',projectSession.id+'.jsonl'),JSON.stringify({type:'metadata',metadata:{...projectSession,createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString(),messageCount:0}})+'\n')
+}
 await writeFile(join(dataDir,'sessions.json'),JSON.stringify({sessions}))
 await writeFile(join(dataDir,'config.json'),JSON.stringify({version:1,providers:[],agents:{defaults:{workspace:join(dataDir,'workplace'),model:'',harness:'core-flow'}}}))
 const port=await harness.reservePort(),child=await harness.startElectron({dataDir,chromiumDir:join(root,'chromium'),debuggingPort:port,logPath:join(root,'electron.log')})
@@ -43,18 +53,50 @@ try{
  await mouse('mouseMoved',{x:1,y:1});await delay(200)
  await idleWidths(12)
  assert.equal(await client.evaluate('document.querySelector(".chat-turn-marks").getBoundingClientRect().height'),120)
- const titleAppearance=()=>client.evaluate(`(() => {const button=document.querySelector('.chat-header .running-pill'),text=button.querySelector('.running-pill-title'),r=button.getBoundingClientRect(),c=document.querySelector('.chat').getBoundingClientRect(),s=getComputedStyle(button);return {border:s.borderColor,fill:s.backgroundColor,textLeft:text.getBoundingClientRect().left-c.left,top:r.top,height:r.height,icons:button.querySelectorAll('svg,.running-pill-rename').length}})()`)
+ const titleAppearance=()=>client.evaluate(`(() => {const button=document.querySelector('.chat-header .running-pill'),text=button.querySelector('.running-pill-title'),r=button.getBoundingClientRect(),c=document.querySelector('.chat').getBoundingClientRect(),s=getComputedStyle(button);return {border:s.borderTopWidth,radius:s.borderRadius,foldRadius:getComputedStyle(document.querySelector(".workspace-panel-corner-toggle")).borderRadius,fill:s.backgroundColor,textLeft:text.getBoundingClientRect().left-c.left,top:r.top,height:r.height,icons:button.querySelectorAll('svg,.running-pill-rename').length}})()`)
  const titleIdle=await titleAppearance()
  assert.equal(titleIdle.icons,0);assert(titleIdle.textLeft>=20&&titleIdle.textLeft<=22)
- assert.equal(titleIdle.border,'rgba(0, 0, 0, 0)')
+ assert.equal(titleIdle.border,'0px');assert.equal(titleIdle.radius,titleIdle.foldRadius);assert.equal(titleIdle.height,26)
  await mouse('mouseMoved',await point('.chat-header .running-pill'))
- await harness.waitFor(async()=>{const hovered=await titleAppearance();return hovered.border!==titleIdle.border&&hovered.fill!==titleIdle.fill},5000)
+ await harness.waitFor(async()=>{const hovered=await titleAppearance();return hovered.border===titleIdle.border&&hovered.fill!==titleIdle.fill},5000)
  await delay(200);await shot('conversation-title-hover')
  await mouse('mouseMoved',{x:1,y:1});await delay(250)
  await harness.waitFor(async()=>{const idle=await titleAppearance();return idle.border===titleIdle.border&&idle.fill===titleIdle.fill},5000)
  await shot('conversation-title-idle')
- checks.push({name:'title has no leading or rename icon, aligns at the left inset and strengthens its frame on hover',titleIdle})
- if(process.argv.includes('--resources-style-only')){
+ checks.push({name:'title has no leading or rename icon, aligns at the left inset and uses a borderless background on hover with the workspace toggle radius',titleIdle})
+ if(process.argv.includes('--sidebar-hierarchy-only')){
+  await harness.waitFor(()=>client.evaluate('document.querySelectorAll(".project-row-trigger").length===2'),20000)
+  await mouse('mouseMoved',await point('.project-group .project-row-trigger'));await delay(200)
+  await click('.project-group .sidebar-action-menu-trigger')
+  await harness.waitFor(()=>client.evaluate('!![...document.querySelectorAll(".sidebar-menu-item")].find(el=>el.textContent.includes("置顶项目"))'),5000)
+  await client.evaluate('[...document.querySelectorAll(".sidebar-menu-item")].find(el=>el.textContent.includes("置顶项目")).click()')
+  await harness.waitFor(()=>client.evaluate('!!document.querySelector(".pinned-section .project-row-trigger")'),5000)
+  await client.evaluate('[...document.querySelectorAll(".conversation-section .session-item")].find(el=>el.textContent.includes("刻度高度 100 轮")).querySelector(".session-pin-action").click()')
+  await click('.pinned-section .project-row-trigger');await delay(600)
+  await click('.project-section .project-row-trigger');await delay(600)
+  await harness.waitFor(()=>client.evaluate('!!document.querySelector(".pinned-section .project-session-item")'),10000)
+  const facts=await client.evaluate(`(() => {const pinned=document.querySelector('.pinned-section'),recent=document.querySelector('.conversation-section[aria-label="最近"]'),parent=pinned.querySelector('.project-row-title').getBoundingClientRect(),child=pinned.querySelector('.project-session-item .session-title').getBoundingClientRect(),independent=recent.querySelector('.session-title').getBoundingClientRect();return {sections:[...document.querySelectorAll('.sidebar-group-heading,.sidebar-section-toggle > span:first-child')].map(el=>el.textContent),parentLeft:parent.left,childLeft:child.left,independentLeft:independent.left,projectRows:pinned.querySelectorAll('.project-group').length,pinnedIndependent:pinned.querySelectorAll('.conversation-section .session-item').length,duplicates:recent.textContent.includes('刻度高度 100 轮'),empty:document.querySelector('.project-section .project-session-empty').textContent}})()`)
+  assert.equal(facts.childLeft,facts.parentLeft);assert(facts.independentLeft<facts.childLeft);assert.equal(facts.pinnedIndependent,1);assert.equal(facts.projectRows,1);assert.equal(facts.duplicates,false);assert.equal(facts.empty,'暂无聊天')
+  await shot('sidebar-project-hierarchy')
+  const selector='.pinned-section .project-row-trigger'
+  assert.equal(await client.evaluate(`document.querySelector('${selector}').querySelectorAll('svg path').length`),2)
+  await click(selector);await delay(500)
+  assert.equal(await client.evaluate(`document.querySelector('${selector}').getAttribute('aria-expanded')`),'false')
+  assert.equal(await client.evaluate(`document.querySelector('${selector}').querySelectorAll('svg path').length`),1)
+  await click(selector);await delay(400)
+  assert.equal(await client.evaluate(`document.querySelector('${selector}').querySelectorAll('svg path').length`),2)
+  await client.send('Page.reload');await delay(800)
+  await harness.waitFor(()=>client.evaluate('!!document.querySelector(".pinned-section .project-row-trigger")'),20000)
+  assert.deepEqual(await client.evaluate('JSON.parse(localStorage.getItem("littlesheep.ui.pinnedProjectIds"))'),['project-alpha'])
+  checks.push({name:'pinned project and standalone grouping, ownership indentation, distinct folder states and persistence',facts})
+ }else if(process.argv.includes('--sidebar-alignment-only')){
+  const geometry=()=>client.evaluate(`(() => {const section=document.querySelector('.conversation-section'),header=section.querySelector('.sidebar-section-header').getBoundingClientRect(),label=section.querySelector('.sidebar-section-toggle > span').getBoundingClientRect(),headerAction=[...section.querySelectorAll('.sidebar-section-actions .sidebar-section-action')].at(-1).getBoundingClientRect(),rows=[...section.querySelectorAll('.session-item')];return rows.map((el,i)=>{const r=el.getBoundingClientRect(),text=el.querySelector('.session-title').getBoundingClientRect(),actions=el.querySelector('.session-row-actions').getBoundingClientRect(),tail=el.querySelector('.session-tail').getBoundingClientRect();return {left:r.left,right:r.right,headerLeft:header.left,headerRight:header.right,textLeft:text.left,labelLeft:label.left,actionRight:actions.right,headerActionRight:headerAction.right,tailRight:tail.right,rowRight:r.right,gap:i<rows.length-1?rows[i+1].getBoundingClientRect().top-r.bottom:null}})})()`)
+  const idle=await geometry()
+  for(const row of idle){assert(Math.abs(row.left-row.headerLeft)<1);assert(Math.abs(row.right-row.headerRight)<1);assert(Math.abs(row.textLeft-row.labelLeft)<1);assert(Math.abs(row.tailRight-row.headerActionRight)<1);if(row.gap!==null)assert.equal(row.gap,2)}
+  await mouse('mouseMoved',await point('.conversation-section .session-item.active'));await delay(250)
+  const hovered=await geometry();assert(Math.abs(hovered[0].actionRight-hovered[0].headerActionRight)<1)
+  await shot('sidebar-aligned-compact-rows');checks.push({name:'sidebar row frames, titles and actions align with section header, with 2px row gaps',idle,hovered})
+ }else if(process.argv.includes('--resources-style-only')){
   const geometry=()=>client.evaluate(`(() => {const button=document.querySelector('.conversation-resources-toggle'),r=button.getBoundingClientRect(),fold=document.querySelector('.workspace-panel-corner-toggle').getBoundingClientRect(),chat=document.querySelector('.chat').getBoundingClientRect();return {width:r.width,height:r.height,foldWidth:fold.width,foldHeight:fold.height,centerOffset:r.top+r.height/2-fold.top-fold.height/2,gap:fold.left-r.right,rightGap:chat.right-r.right,insideChat:r.left>=chat.left&&r.right<=chat.right,circles:button.querySelectorAll('circle').length,path:button.querySelector('path').getAttribute('d'),clickable:button.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))}})()`)
   for(const state of ['collapsed','expanded']){
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-toggle").length'),1)
@@ -68,6 +110,9 @@ try{
    else assert.equal(value.rightGap,10)
    await click('.conversation-resources-toggle')
    assert(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'))
+   const material=await client.evaluate(`(() => {const s=getComputedStyle(document.querySelector('.conversation-resources-panel'));return {border:s.borderTopWidth,shadow:s.boxShadow,background:s.backgroundColor,blur:s.backdropFilter}})()`)
+   assert.equal(material.border,'0px');assert.equal(material.shadow,'none');assert(material.blur.includes('blur(20px)'))
+   assert(material.background.includes('0.7'),JSON.stringify(material))
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-changes > button > .workspace-panel-svg-icon").length'),1)
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-heading > button > .sidebar-svg-icon").length'),2)
    assert.equal(await client.evaluate('/[⊞▤]/u.test(document.querySelector(".conversation-resources-panel").textContent)'),false)

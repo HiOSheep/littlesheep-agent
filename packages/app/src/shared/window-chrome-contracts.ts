@@ -3,6 +3,7 @@ export const WINDOW_CHROME_QUERY_CHANNEL = 'littlesheep:window-chrome-query'
 export const WINDOW_CHROME_CHANNEL = 'littlesheep:window-chrome'
 
 export interface WindowChromeState {
+  revision?: number
   layout: 'beta' | 'chali'
   backdrop: 'acrylic' | 'vibrancy' | 'solid'
 }
@@ -11,6 +12,7 @@ export function isWindowChromeState(value: unknown): value is WindowChromeState 
   if (!value || typeof value !== 'object') return false
   const state = value as Partial<WindowChromeState>
   return (state.layout === 'beta' || state.layout === 'chali')
+    && (state.revision === undefined || (Number.isSafeInteger(state.revision) && state.revision! >= 0))
     && (state.backdrop === 'acrylic' || state.backdrop === 'vibrancy' || state.backdrop === 'solid')
 }
 

@@ -47,23 +47,23 @@ describe('sidebar section toggle layout', () => {
     expect(collapsed).toContain('max-height: var(--sidebar-section-collapsed-height)')
     expect(collapsed).not.toContain('flex: 0 0 auto')
     expect(header).toContain('flex: 0 0 var(--sidebar-section-header-height)')
-    expect(projectTree).toContain('scrollbar-gutter: stable both-edges')
+    expect(projectTree).toContain('scrollbar-gutter: stable')
     expect(projectTree).toContain('overflow-anchor: none')
     expect(projectTree).toContain('min-height: 0')
     expect(projectTree).toContain(
       'width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap))',
     )
-    expect(projectTree).toContain('padding-right: var(--sidebar-content-inline-inset)')
+    expect(projectTree).toContain('padding-right: calc(var(--sidebar-content-inline-inset) - var(--scrollbar-size))')
     expect(projectTree).toContain(
       'transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease)',
     )
     expect(projectCollapsed).not.toContain('max-height: 0')
-    expect(sessionList).toContain('scrollbar-gutter: stable both-edges')
+    expect(sessionList).toContain('scrollbar-gutter: stable')
     expect(sessionList).toContain('overflow-anchor: none')
     expect(sessionList).toContain(
       'width: calc(100% + var(--sidebar-content-inline-inset) - var(--sidebar-scrollbar-edge-gap))',
     )
-    expect(sessionList).toContain('padding-right: var(--sidebar-content-inline-inset)')
+    expect(sessionList).toContain('padding-right: calc(var(--sidebar-content-inline-inset) - var(--scrollbar-size))')
     expect(sessionList).toContain(
       'transition: opacity var(--sidebar-section-motion) var(--sidebar-section-ease)',
     )

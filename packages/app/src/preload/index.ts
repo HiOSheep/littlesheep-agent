@@ -47,10 +47,27 @@ const API_BASE_TIMEOUT_MS = 90_000
 // to catch the original native maximize event.
 let chromeState: WindowChromeState | undefined
 const chromeListeners = new Set<(state: WindowChromeState) => void>()
+const chromeDocument = (globalThis as unknown as { document: {
+  documentElement: { dataset: Record<string, string | undefined> } | null
+  addEventListener: (name: string, listener: () => void, options: { once: boolean }) => void
+} }).document
+const applyChromeAttributes = () => {
+  const root = chromeDocument.documentElement
+  if (!root || !chromeState) return
+  if (root.dataset.windowLayout !== chromeState.layout) root.dataset.windowLayout = chromeState.layout
+  if (root.dataset.nativeBackdrop !== chromeState.backdrop) root.dataset.nativeBackdrop = chromeState.backdrop
+}
+chromeDocument.addEventListener('DOMContentLoaded', applyChromeAttributes, { once: true })
 ipcRenderer.on(WINDOW_CHROME_CHANNEL, (_event, payload: unknown) => {
   if (!isWindowChromeState(payload)) return
+  if (chromeState?.revision !== undefined && (payload.revision === undefined || payload.revision < chromeState.revision)) return
+  const same = chromeState?.layout === payload.layout && chromeState.backdrop === payload.backdrop
   chromeState = payload
-  for (const listener of chromeListeners) listener(payload)
+  applyChromeAttributes()
+  if (same) return
+  for (const listener of [...chromeListeners]) {
+    try { listener(payload) } catch { /* A failing subscriber cannot block native state projection. */ }
+  }
 })
 ipcRenderer.send(WINDOW_CHROME_QUERY_CHANNEL)
 
@@ -106,7 +123,7 @@ contextBridge.exposeInMainWorld('littlesheep', {
   },
   onWindowChrome: (listener: (state: WindowChromeState) => void) => {
     chromeListeners.add(listener)
-    if (chromeState) listener(chromeState)
+    if (chromeState) { try { listener(chromeState) } catch { /* Keep subscription/query available. */ } }
     ipcRenderer.send(WINDOW_CHROME_QUERY_CHANNEL)
     return () => { chromeListeners.delete(listener) }
   },

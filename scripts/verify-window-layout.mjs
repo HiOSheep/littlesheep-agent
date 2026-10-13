@@ -434,6 +434,40 @@ try {
   })
   client = rendererAdapter.client
   await harness.waitFor(async () => (await state()).layout === 'chali', 30_000, 'initial Chali layout')
+  if (process.argv.includes('--stress-only')) {
+    await main.evaluate(`globalThis.layoutOverlayCalls=0;globalThis.layoutOverlayOriginal=layoutWindow.setTitleBarOverlay.bind(layoutWindow);layoutWindow.setTitleBarOverlay=(...args)=>{layoutOverlayCalls++;return layoutOverlayOriginal(...args)};true`)
+    await client.evaluate(`window.__chromeStates=[];window.__chromeMutations=0;window.littlesheep.onWindowChrome(state=>window.__chromeStates.push(state));new MutationObserver(records=>{window.__chromeMutations+=records.length}).observe(document.documentElement,{attributes:true,attributeFilter:['data-window-layout','data-native-backdrop']})`)
+    await delay(100)
+    await client.evaluate(`window.__chromeCore=document.querySelector('.core-workspace');window.__chromeComposer=document.querySelector('.composer textarea');window.__chromeComposer.focus()`)
+    await client.send('Input.insertText',{text:'窗口切换草稿保留检查'})
+    const before = await main.evaluate('layoutOverlayCalls')
+    const mutationsBefore = await client.evaluate('window.__chromeMutations')
+    await client.evaluate('for(let i=0;i<100;i++)window.littlesheep.setWindowAppearance(true)')
+    await delay(150)
+    assert((await main.evaluate('layoutOverlayCalls'))-before<=1)
+    assert.equal(await client.evaluate('window.__chromeMutations'),mutationsBefore)
+    for(let i=0;i<4;i++){
+      for(const expression of ['layoutWindow.maximize()','layoutWindow.unmaximize()','layoutWindow.setFullScreen(true)','layoutWindow.setFullScreen(false)']){
+        await main.evaluate(expression+';true')
+        await delay(80)
+        await harness.waitFor(async()=>{const native=await main.evaluate('layoutWindow.isMaximized()||layoutWindow.isFullScreen()');return (await state()).layout===(native?'beta':'chali')},5000,'native and renderer state converge')
+        assert(await client.evaluate(`document.querySelector('.core-workspace')===window.__chromeCore&&document.querySelector('.composer textarea')===window.__chromeComposer&&window.__chromeComposer.value==='窗口切换草稿保留检查'`))
+        const geometry=await client.evaluate(`({layout:document.documentElement.dataset.windowLayout,row:getComputedStyle(document.querySelector('.sidebar')).gridRowStart})`)
+        assert.equal(geometry.row,geometry.layout==='beta'?'2':'1')
+      }
+    }
+    await main.evaluate('layoutWindow.setFullScreen(false);layoutWindow.unmaximize();true')
+    await harness.waitFor(async()=>!(await main.evaluate('layoutWindow.isMaximized()||layoutWindow.isFullScreen()'))&&(await state()).layout==='chali',10000,'normal window restore')
+    await client.evaluate('window.littlesheep.onWindowChrome(state=>window.__latestChrome=state)')
+    await delay(100)
+    const latest=await client.evaluate('window.__latestChrome')
+    await main.evaluate(`layoutWindow.webContents.send('littlesheep:window-chrome',{layout:'beta',backdrop:${JSON.stringify('acrylic')},revision:${0}});true`)
+    await delay(100);assert.equal((await state()).layout,'chali')
+    await client.send('Page.reload');await delay(1000)
+    await harness.waitFor(async()=>(await state()).layout==='chali',10000,'reload preserves normal layout')
+    await shotCorner('normal-after-stress')
+    results.push({name:'16 maximize/fullscreen transitions preserve controls and draft, match native state and CSS geometry; stale IPC rejection, appearance deduplication and reload',status:'passed',latest})
+  } else {
   await delay(700)
   await click('.workspace-panel-corner-toggle')
   for (const [name, maximized] of [['chali', false], ['beta', true], ['restored', false]]) {
@@ -637,6 +671,7 @@ try {
         assert(Math.max(...frame.joinAbove.map((v, i) => Math.abs(v - frame.joinBelow[i]))) < 8, 'Beta titlebar/sidebar material must have no seam')
       }
     }
+  }
   }
   console.log(JSON.stringify({ root, results, status:'passed' }, null, 2))
 } finally {
