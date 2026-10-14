@@ -5,8 +5,13 @@ import { artifactIdentity, buildArtifactsFromLiveTools } from './activity-model'
 import type { ChatMessage } from './types'
 import { attachmentToArtifact, lastPathSegment } from '../workspace/path-utils'
 import { workspaceReviewCache } from '../workspace/review-cache'
+import { FadePresence } from '../ui/presence'
 import { AddIcon, ConversationResourcesIcon, FileGlyphIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import type { WorkspaceArtifactRef } from '../workspace/types'
+
+// Deliberately longer than the panel's slide transition (`--motion-slow`, 220ms):
+// this is the unmount deadline, so it must outlast the retract rather than match it.
+const RESOURCES_PANEL_MOTION_MS = 280
 
 export function conversationResources(messages: readonly ChatMessage[], attachments: readonly AttachmentRef[]) {
   const outputs = new Map<string, WorkspaceArtifactRef>()
@@ -66,20 +71,22 @@ export function ConversationResources({ messages, attachments, root, version, co
       onClick={() => { setAll(false); setOpen(!open) }}>
       <ConversationResourcesIcon />
     </button>
-    {open && <section id={id} className="conversation-resources-panel" style={{ width: panelWidth }} aria-label="对话文件与来源">
-      <div className="conversation-resources-title">{lastPathSegment(root) || '当前对话'}</div>
-      <ResourceChanges root={root} version={version} onOpen={() => act(onOpenReview)} />
-      {(['outputs', 'sources'] as const).map(kind => <section key={kind} className="conversation-resources-section">
-        <div className="conversation-resources-heading"><span>{kind === 'outputs' ? '产物' : '来源'}</span>
-          <button type="button" aria-label={kind === 'outputs' ? '浏览工作区文件' : '添加来源附件'} onClick={() => act(kind === 'outputs' ? onBrowseOutputs : onAddSources)}><AddIcon /></button>
-        </div>
-        {resources[kind].length ? (all ? resources[kind] : resources[kind].slice(-3)).map(file => <button key={artifactIdentity(file.path)} type="button" className="conversation-resources-file" onClick={() => act(() => onOpenFile(file.path))}>
-          <FileGlyphIcon name={file.name} /><span>{file.name}</span>
-        </button>) : <p>{kind === 'outputs' ? '暂无对话产物' : '暂无来源附件'}</p>}
-      </section>)}
-      {(resources.outputs.length > 3 || resources.sources.length > 3) && <button type="button" className="conversation-resources-all" onClick={() => setAll(!all)}>{all ? '收起列表' : `查看全部 ${resources.outputs.length + resources.sources.length} 个文件`}</button>}
-      {hasOlderHistory && <p className="conversation-resources-history">当前显示已加载对话中的文件；加载更早内容后继续补充。</p>}
-    </section>}
+    <FadePresence show={open} exitMs={RESOURCES_PANEL_MOTION_MS} className="conversation-resources-presence">
+      <section id={id} className="conversation-resources-panel" style={{ width: panelWidth }} aria-label="对话文件与来源">
+        <div className="conversation-resources-title">{lastPathSegment(root) || '当前对话'}</div>
+        <ResourceChanges root={root} version={version} onOpen={() => act(onOpenReview)} />
+        {(['outputs', 'sources'] as const).map(kind => <section key={kind} className="conversation-resources-section">
+          <div className="conversation-resources-heading"><span>{kind === 'outputs' ? '产物' : '来源'}</span>
+            <button type="button" aria-label={kind === 'outputs' ? '浏览工作区文件' : '添加来源附件'} onClick={() => act(kind === 'outputs' ? onBrowseOutputs : onAddSources)}><AddIcon /></button>
+          </div>
+          {resources[kind].length ? (all ? resources[kind] : resources[kind].slice(-3)).map(file => <button key={artifactIdentity(file.path)} type="button" className="conversation-resources-file" onClick={() => act(() => onOpenFile(file.path))}>
+            <FileGlyphIcon name={file.name} /><span>{file.name}</span>
+          </button>) : <p>{kind === 'outputs' ? '暂无对话产物' : '暂无来源附件'}</p>}
+        </section>)}
+        {(resources.outputs.length > 3 || resources.sources.length > 3) && <button type="button" className="conversation-resources-all" onClick={() => setAll(!all)}>{all ? '收起列表' : `查看全部 ${resources.outputs.length + resources.sources.length} 个文件`}</button>}
+        {hasOlderHistory && <p className="conversation-resources-history">当前显示已加载对话中的文件；加载更早内容后继续补充。</p>}
+      </section>
+    </FadePresence>
   </div>
 }
 

@@ -4,7 +4,39 @@
 .conversation-resources-toggle { display: grid; place-items: center; width: var(--workspace-tab-height); height: var(--workspace-tab-height); padding: 0; border: 0; border-radius: var(--radius-ui); color: var(--muted); background: transparent; cursor: pointer; }
 .conversation-resources-icon { display: block; width: 18px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 .conversation-resources-toggle:hover, .conversation-resources-toggle[aria-expanded='true'] { color: var(--text-strong); background: var(--control-hover); }
-.conversation-resources-panel { position: absolute; top: calc(var(--workspace-tab-height) + var(--workspace-panel-control-gap)); right: 0; width: min(340px, calc(100vw - 100px)); max-height: min(70vh, 620px); overflow: auto; scrollbar-gutter: stable; padding: 18px 20px; border: 1px solid var(--chat-hairline); border-radius: 22px; background: var(--chat-card-fill); box-shadow: var(--chat-panel-elevation); color: var(--text); }
+/* The resources popover is drawn by its own shadow instead of a stroke, so the
+   panel takes the borderless elevation role rather than the raised-stroke-bearing
+   `--chat-panel-elevation` shared by the conversation's other popovers. The role
+   is themed (see 17-appearance-theme.css) so light surfaces keep a softer shadow. */
+.conversation-resources-presence { display: contents; }
+.conversation-resources-panel {
+  position: absolute;
+  top: calc(var(--workspace-tab-height) + var(--workspace-panel-control-gap));
+  right: 0;
+  width: min(340px, calc(100vw - 100px));
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  overflow-x: clip;
+  scrollbar-gutter: stable;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--chat-card-fill);
+  box-shadow: var(--chat-panel-borderless-elevation);
+  color: var(--text);
+  opacity: 0;
+  transform: translateX(24px);
+  transition: transform var(--motion-slow) var(--motion-ease), opacity var(--motion-slow) var(--motion-ease);
+}
+/* The primitive commits `visible` one frame after mount, so the panel animates
+   from this closed state out to the right edge's resting position. */
+.conversation-resources-presence.visible .conversation-resources-panel { opacity: 1; transform: translateX(0); }
+/* The positioning root is only the trigger's 26px box: the panel is a ~340px-wide
+   absolutely positioned child, so this element must NOT clip - `overflow-x: clip`
+   here cut the expanded panel off at the trigger's right edge and it never showed.
+   The closed-state 24px retract is contained one level up instead: `.chat` is
+   `position: relative; overflow: hidden`, and this root is its child, so the
+   displacement is clipped by the chat pane with nothing extra needed here. */
 .conversation-resources-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; margin-bottom: 12px; }
 .conversation-resources-changes > button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border: 0; background: transparent; color: var(--text-strong); cursor: pointer; font: inherit; }
 .conversation-resources-changes strong { font-weight: 500; }
@@ -252,3 +284,17 @@
 @media (hover: none) { .agent-tool-open-file { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { :root:not([data-ls-reduced-motion='false']) .chat .is-running { animation: none; background: none; color: var(--muted); } }
 :root[data-ls-reduced-motion='true'] .chat .is-running { animation: none; background: none; color: var(--muted); }
+
+/* The resources popover honours the appearance preference on both paths: with
+   motion off it appears and disappears at its resting position instead of
+   sliding in from the right edge. */
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-ls-reduced-motion='false']) .conversation-resources-panel {
+    transition: none;
+    transform: none;
+  }
+}
+:root[data-ls-reduced-motion='true'] .conversation-resources-panel {
+  transition: none;
+  transform: none;
+}

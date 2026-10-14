@@ -64,6 +64,8 @@
   --chat-business-soft: rgba(65, 118, 230, 0.12);
   --chat-card-elevation: 0 0 0 1px var(--chat-raised-stroke), 0 4px 16px rgba(38, 50, 75, 0.1);
   --chat-panel-elevation: 0 0 0 1px var(--chat-raised-stroke), 0 12px 32px rgba(38, 50, 75, 0.16);
+  /* Light surfaces need a much softer shadow than the dark recipe's 30% black. */
+  --chat-panel-borderless-elevation: 0 12px 32px rgba(38, 50, 75, 0.16);
 }
 
 :root:is([data-ls-palette='custom'], [data-ls-palette='ocean'], [data-ls-palette='forest'])[data-ls-palette-usable='true'] {

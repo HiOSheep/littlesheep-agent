@@ -111,12 +111,18 @@ try{
    await click('.conversation-resources-toggle')
    assert(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'))
    const material=await client.evaluate(`(() => {const s=getComputedStyle(document.querySelector('.conversation-resources-panel'));return {border:s.borderTopWidth,shadow:s.boxShadow,background:s.backgroundColor,blur:s.backdropFilter}})()`)
-   assert.equal(material.border,'0px');assert.equal(material.shadow,'none');assert(material.blur.includes('blur(20px)'))
-   assert(material.background.includes('0.7'),JSON.stringify(material))
+   // The resources popover is deliberately borderless: it is drawn by its own
+   // drop shadow instead of a stroke, so it takes a local elevation without the
+   // `0 0 0 1px` ring `--chat-panel-elevation` carries. It is also an opaque
+   // popover over the chat surface, not the composer's frosted glass.
+   assert.equal(material.border,'0px');assert(!/0px 0px 0px 1px/u.test(material.shadow)&&material.shadow!=='none',JSON.stringify(material))
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-changes > button > .workspace-panel-svg-icon").length'),1)
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-heading > button > .sidebar-svg-icon").length'),2)
    assert.equal(await client.evaluate('/[⊞▤]/u.test(document.querySelector(".conversation-resources-panel").textContent)'),false)
    await shot(`resources-style-${state}`);await key('Escape','Escape',27)
+   // Escape starts the retract to the right edge; the panel node outlives the key
+   // press by the exit motion and is removed once it settles.
+   await delay(500)
    assert.equal(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'),false)
    checks.push({name:`three-line resource button coordinates with workspace toggle while ${state}`, ...value})
    if(state==='collapsed'){await click('.workspace-panel-corner-toggle');await delay(800)}
@@ -271,6 +277,7 @@ try{
  assert(await client.evaluate('document.querySelector(".conversation-resources-panel").textContent.includes("产物") && document.querySelector(".conversation-resources-panel").textContent.includes("来源")'))
  await shot('conversation-resources-collapsed')
  await key('Escape','Escape',27)
+ await delay(500)
  assert.equal(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'),false)
  assert(await client.evaluate('document.activeElement===document.querySelector(".conversation-resources-toggle")'))
  await click('.workspace-panel-corner-toggle');await delay(650)
@@ -286,6 +293,7 @@ try{
  assert(resourcePanel.left>=resourcePanel.chatLeft&&resourcePanel.right<=resourcePanel.chatRight)
  await shot('conversation-resources-expanded')
  await mouse('mouseMoved',{x:1,y:1});await mouse('mousePressed',{x:1,y:1});await mouse('mouseReleased',{x:1,y:1})
+ await delay(500)
  assert.equal(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'),false)
  await shot('workspace-corner-toggled')
  await click('.workspace-panel-corner-toggle');await delay(650)
@@ -297,10 +305,12 @@ try{
  checks.push({name:'resources stay within chat, adjust right spacing, open and dismiss in either workspace state',resourceBefore,resourceAfter,resourcePanel})
  await click('.conversation-resources-toggle');await click('.conversation-resources-panel button[aria-label="浏览工作区文件"]')
  await harness.waitFor(()=>client.evaluate('!!document.querySelector(".workspace-tab-view.active .workspace-files-tab-navigator")'),10000)
+ await delay(500)
  assert.equal(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'),false)
  await click('.workspace-panel-corner-toggle');await delay(650)
  await click('.conversation-resources-toggle');await click('.conversation-resources-changes > button')
  await harness.waitFor(()=>client.evaluate('!!document.querySelector(".workspace-tab-view.active .workspace-review")'),10000)
+ await delay(500)
  assert.equal(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'),false)
  await click('.workspace-panel-corner-toggle');await delay(650)
  checks.push('resource actions open the real file navigator and review workspace, then close the popover')
