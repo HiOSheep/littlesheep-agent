@@ -19,10 +19,22 @@ export { LlmError } from './types.js';
 export {
   OpenAIClient,
   buildOpenAICompatibleChatCompletionsBody,
-  createLlmClient,
   type OpenAIClientOptions,
   type OpenAICompatibleChatBodyOptions,
 } from './client.js';
+export { createLlmClient, type LlmProviderConfig } from './create-client.js';
+export { AnthropicMessagesClient, type AnthropicMessagesClientOptions } from './anthropic-client.js';
+export { OpenAIResponsesClient, type OpenAIResponsesClientOptions } from './responses-client.js';
+export {
+  IMPLEMENTED_API_PROTOCOLS,
+  PROTOCOL_DESCRIPTORS,
+  isImplementedApiProtocol,
+  protocolHeaders,
+  protocolUrl,
+  type ApiProtocol,
+  type ProtocolClientOptions,
+  type ProtocolDescriptor,
+} from './protocols.js';
 export {
   retryWithBackoff,
   isRetryable,

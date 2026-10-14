@@ -12,7 +12,12 @@ import type {
 } from './types.js';
 import { LlmError } from './types.js';
 import { retryWithBackoff, DEFAULT_RETRY, type RetryOptions, type RetryProgress } from './retry.js';
-import { createRequestDeadline } from './request-deadline.js';
+import {
+  ManagedResponse,
+  callApi,
+  reportProviderResponse,
+  streamChunkOperation,
+} from './protocol-transport.js';
 import {
   attachTransportUsage,
   monotonicNow,
@@ -21,6 +26,7 @@ import {
 } from './transport-timing.js';
 import { containsUnquotedDsmlControlMarkup, parseDsmlToolCalls } from './dsml-tool-calls.js';
 import { createIncrementalDsmlControlScanner } from './dsml-stream-scanner.js';
+import { createProviderSessionId, providerRequestHeaders } from './provider-headers.js';
 
 export interface OpenAIClientOptions {
   baseURL: string;
@@ -101,11 +107,6 @@ interface OpenAIEmbeddingResponse {
   usage?: { prompt_tokens: number };
 }
 
-interface ManagedResponse extends TransportTiming {
-  response: Response;
-  cleanup: () => void;
-}
-
 export interface OpenAICompatibleChatBodyOptions {
   includeStreamUsage?: boolean;
 }
@@ -142,6 +143,7 @@ export class OpenAIClient implements LlmClient {
   private readonly fetchFn: typeof fetch;
   private readonly retry: RetryOptions;
   private readonly headers: Record<string, string>;
+  private readonly fallbackSessionId = createProviderSessionId();
 
   constructor(opts: OpenAIClientOptions) {
     this.baseURL = opts.baseURL.replace(/\/$/, '');
@@ -152,14 +154,10 @@ export class OpenAIClient implements LlmClient {
     this.headers = opts.headers ?? {};
   }
 
-  /** Build request headers. */
-  private buildHeaders(): Record<string, string> {
-    const h: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...this.headers,
-    };
-    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
-    return h;
+  /** Build request headers, including the gateway session id when this endpoint wants one. */
+  private buildHeaders(req?: ChatRequest): Record<string, string> {
+    const { baseURL, apiKey, headers, fallbackSessionId } = this;
+    return providerRequestHeaders({ baseURL, apiKey, configured: headers, fallbackSessionId }, req?.conversationId);
   }
 
   /** Client retry options plus a request-level progress observer, when the caller passed one. */
@@ -254,30 +252,23 @@ export class OpenAIClient implements LlmClient {
         };
         if (req.dimensions !== undefined) body.dimensions = req.dimensions;
 
-        const timeout = req.timeoutMs ?? this.timeoutMs;
-        const deadline = createRequestDeadline(timeout, req.signal);
-
-        try {
-          const res = await this.fetchFn(`${this.baseURL}/embeddings`, {
+        const managed = await callApi(
+          this.fetchFn,
+          `${this.baseURL}/embeddings`,
+          {
             method: 'POST',
             headers: this.buildHeaders(),
             body: JSON.stringify(body),
-            signal: deadline.signal,
-          });
-          if (!res.ok) {
-            let errMsg = `HTTP ${res.status}`;
-            try {
-              const errBody = (await res.json()) as { error?: { message: string } };
-              if (errBody?.error?.message) errMsg = errBody.error.message;
-            } catch { /* ignore parse failure */ }
-            throw new LlmError(
-              res.status,
-              errMsg,
-              this.retry.retryableStatuses.includes(res.status),
-              parseRetryAfterMs(res.headers),
-            );
-          }
-          const json = (await res.json()) as OpenAIEmbeddingResponse;
+          },
+          {
+            timeoutMs: req.timeoutMs ?? this.timeoutMs,
+            signal: req.signal,
+            retry: this.retry,
+            transportAttempt: 1,
+          },
+        );
+        try {
+          const json = (await managed.response.json()) as OpenAIEmbeddingResponse;
           // Sort by index to guarantee input order (OpenAI returns in order, but be defensive).
           const sorted = [...json.data].sort((a, b) => a.index - b.index);
           return {
@@ -285,10 +276,8 @@ export class OpenAIClient implements LlmClient {
             model: json.model,
             usage: { promptTokens: json.usage?.prompt_tokens ?? 0 },
           };
-        } catch (err) {
-          throw deadline.translate(err);
         } finally {
-          deadline.cleanup();
+          managed.cleanup();
         }
       },
       // Embeddings take the client-level retry options: only chat/stream requests carry a
@@ -324,33 +313,24 @@ export class OpenAIClient implements LlmClient {
     opts: { includeStreamUsage?: boolean; transportAttempt: number },
   ): Promise<ManagedResponse> {
     const body = buildOpenAICompatibleChatCompletionsBody(req, stream, opts);
-
-    const timeout = req.timeoutMs ?? this.timeoutMs;
-    const deadline = createRequestDeadline(timeout, req.signal);
-
-    const startedAtMs = monotonicNow();
-    try {
-      const res = await this.fetchFn(`${this.baseURL}/chat/completions`, {
+    // The deadline, the non-ok translation and the retryable-status decision are shared
+    // with the other protocol clients (`protocol-transport.ts`); what stays here is the
+    // chat-completions body, URL and headers.
+    return callApi(
+      this.fetchFn,
+      `${this.baseURL}/chat/completions`,
+      {
         method: 'POST',
-        headers: this.buildHeaders(),
+        headers: this.buildHeaders(req),
         body: JSON.stringify(body),
-        signal: deadline.signal,
-      });
-      if (!res.ok) {
-        let errMsg = `HTTP ${res.status}`;
-        let retryable = false;
-        try {
-          const errBody = (await res.json()) as { error?: { message?: string } };
-          if (errBody?.error?.message) errMsg = errBody.error.message;
-        } catch { /* ignore parse failure */ }
-        if (this.retry.retryableStatuses.includes(res.status)) retryable = true;
-        throw new LlmError(res.status, errMsg, retryable, parseRetryAfterMs(res.headers));
-      }
-      return { response: res, cleanup: () => deadline.cleanup(), attempt: opts.transportAttempt, startedAtMs };
-    } catch (err) {
-      deadline.cleanup();
-      throw deadline.translate(err);
-    }
+      },
+      {
+        timeoutMs: req.timeoutMs ?? this.timeoutMs,
+        signal: req.signal,
+        retry: this.retry,
+        transportAttempt: opts.transportAttempt,
+      },
+    );
   }
   /** Parse a non-streaming choice into ChatResponse. */
   private parseChoice(choice: OpenAIChoice, raw: OpenAIResponse, request: ChatRequest): ChatResponse {
@@ -603,15 +583,6 @@ function parseUsage(usage: OpenAIUsage | null | undefined): ChatResponse['usage'
   };
 }
 
-async function reportProviderResponse(request: ChatRequest, receipt: Parameters<NonNullable<ChatRequest['onProviderResponse']>>[0]): Promise<void> {
-  try {
-    await request.onProviderResponse?.(receipt);
-  } catch {
-    // A persistence failure must never replay an already billed Provider response.
-    throw new LlmError(0, 'Provider usage receipt could not be durably recorded', false);
-  }
-}
-
 function requestToolNames(request: ChatRequest): Set<string> {
   return new Set((request.tools ?? []).map((tool) => tool.function.name));
 }
@@ -620,41 +591,3 @@ function dsmlInvokeName(value: string): string | undefined {
   return /<\s*[｜|]{1,2}\s*DSML\s*[｜|]{1,2}\s*invoke\s+name="([^"]+)"/iu.exec(value)?.[1];
 }
 
-function streamChunkOperation(chunk: StreamChunk): NonNullable<StreamChunk['operation']> {
-  if (chunk.type === 'reset') return 'reset';
-  if (chunk.type === 'done') return 'replace';
-  return 'append';
-}
-
-/**
- * `Retry-After` as milliseconds. Accepts delay-seconds and an HTTP-date, clamps to a sane
- * ceiling, and returns undefined when the header is absent or unusable — a provider hint is
- * a floor for the next wait, never a reason to wait forever.
- */
-function parseRetryAfterMs(headers: Headers | undefined): number | undefined {
-  const raw = typeof headers?.get === 'function' ? headers.get('retry-after') : null;
-  if (!raw) return undefined;
-  const seconds = Number(raw.trim());
-  if (Number.isFinite(seconds) && seconds > 0) return Math.min(120_000, Math.floor(seconds * 1000));
-  const at = Date.parse(raw);
-  if (Number.isFinite(at)) {
-    const delta = at - Date.now();
-    return delta > 0 ? Math.min(120_000, delta) : undefined;
-  }
-  return undefined;
-}
-
-/** Build an LlmClient from a ModelProvider config. */
-export function createLlmClient(provider: {
-  baseURL: string;
-  apiKey?: string;
-  timeoutSeconds?: number;
-}, opts?: { fetch?: typeof fetch; retry?: Partial<RetryOptions> }): LlmClient {
-  return new OpenAIClient({
-    baseURL: provider.baseURL,
-    apiKey: provider.apiKey,
-    timeoutMs: provider.timeoutSeconds ? provider.timeoutSeconds * 1000 : undefined,
-    fetch: opts?.fetch,
-    retry: opts?.retry,
-  });
-}

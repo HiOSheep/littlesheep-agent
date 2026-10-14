@@ -10,6 +10,23 @@ import { z } from 'zod';
 export const MODEL_REASONING_OPTIONS = ['auto', 'low', 'medium', 'high', 'ultra'] as const;
 
 /**
+ * Wire protocols a provider may speak.
+ *
+ * This is a closed enum on purpose: a provider whose protocol LS cannot speak must
+ * be rejected at load time rather than sent chat-completions the endpoint never
+ * implements, which fails as an opaque 4xx at run time. Adding a member here is a
+ * promise that `@littlesheep/llm` has a conforming client for it
+ * (`packages/llm/src/client-conformance.test.ts`).
+ */
+export const PROVIDER_API_PROTOCOLS = [
+  'openai-chat-completions',
+  'openai-responses',
+  'anthropic-messages',
+] as const;
+
+export type ProviderApiProtocol = typeof PROVIDER_API_PROTOCOLS[number];
+
+/**
  * A user-declared model entry.
  *
  * LS never invents capability numbers: when a model is not in the built-in
@@ -44,9 +61,9 @@ export const ProviderModelSchema = z.union([
 /**
  * A model provider.
  *
- * `api` is explicitly enumerated: LS only implements OpenAI-compatible chat
- * completions, and an unknown protocol is rejected instead of being sent as
- * if it were compatible.
+ * `api` is explicitly enumerated: only protocols `@littlesheep/llm` actually
+ * implements are accepted, so an unknown one is rejected at load time instead of
+ * being sent as if it were compatible.
  */
 export const ModelProviderSchema = z.object({
   /** Provider id (e.g. "openai", "openrouter", "ollama"). */
@@ -57,8 +74,8 @@ export const ModelProviderSchema = z.object({
   baseURL: z.string().url(),
   /** API key (or env var name prefixed with $). */
   apiKey: z.string().optional(),
-  /** Wire protocol. Only the implemented OpenAI-compatible shape is accepted. */
-  api: z.enum(['openai-chat-completions']).optional(),
+  /** Wire protocol. Only implemented protocols are accepted. */
+  api: z.enum(PROVIDER_API_PROTOCOLS).optional(),
   /** Extra request headers (e.g. gateway routing headers). */
   headers: z.record(z.string().max(1000)).optional(),
   /** Provider-specific HTTP timeout in seconds. */

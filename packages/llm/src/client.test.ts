@@ -3,8 +3,10 @@ import { z } from 'zod';
 import {
   OpenAIClient,
   buildOpenAICompatibleChatCompletionsBody,
-  createLlmClient,
 } from './client.js';
+// The protocol dispatch lives in its own module so `client.ts` stays the
+// chat-completions wire implementation rather than also owning protocol selection.
+import { createLlmClient } from './create-client.js';
 import { LlmError, type ChatResponse } from './types.js';
 import { zodToJsonSchema, buildToolSpec } from './schema.js';
 import { retryAfterHintMs, retryWithBackoff, type RetryProgress } from './retry.js';
@@ -971,5 +973,51 @@ describe('createLlmClient', () => {
     );
     const res = await client.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
     expect(res.content).toBe('ok');
+  });
+
+  it('sends the provider-configured headers the config contract promises', async () => {
+    const fetch = mockFetch([{
+      json: { id: 'x', model: 'gpt-4o', choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] },
+    }]);
+    const client = createLlmClient(
+      { baseURL: 'https://gw.example.com/v1', apiKey: 'sk-test', headers: { 'x-gateway-route': 'lane-a' } },
+      { fetch },
+    );
+    await client.chat({ model: 'gpt-4o', messages: [{ role: 'user', content: 'hi' }] });
+    const headers = (fetch.mock.calls[0]![1] as { headers: Record<string, string> }).headers;
+    expect(headers['x-gateway-route']).toBe('lane-a');
+  });
+
+  it('routes an opencode Go request by conversation and keeps it out of the body', async () => {
+    const fetch = mockFetch([{
+      json: { id: 'x', model: 'deepseek-v4.1-flash', choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] },
+    }]);
+    const client = createLlmClient(
+      { baseURL: 'https://opencode.ai/inference/go/v1', apiKey: 'sk-test' },
+      { fetch },
+    );
+    await client.chat({
+      model: 'deepseek-v4.1-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+      conversationId: 'conversation-1',
+    });
+    const init = fetch.mock.calls[0]![1] as { headers: Record<string, string>; body: string };
+    // The gateway answers 400 MissingSessionID before it looks at the credential.
+    expect(init.headers['x-opencode-session']).toBe('conversation-1');
+    expect(init.headers['User-Agent']).toBe('LittleSheep/0.1');
+    expect(JSON.parse(init.body)).not.toHaveProperty('conversationId');
+  });
+
+  it('keeps a request without a conversation routable through the client session id', async () => {
+    const fetch = mockFetch([{
+      json: { id: 'x', model: 'deepseek-v4.1-flash', choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] },
+    }]);
+    const client = createLlmClient(
+      { baseURL: 'https://opencode.ai/inference/go/v1', apiKey: 'sk-test' },
+      { fetch },
+    );
+    await client.chat({ model: 'deepseek-v4.1-flash', messages: [{ role: 'user', content: 'hi' }] });
+    const headers = (fetch.mock.calls[0]![1] as { headers: Record<string, string> }).headers;
+    expect(headers['x-opencode-session']).toMatch(/^littlesheep-/);
   });
 });

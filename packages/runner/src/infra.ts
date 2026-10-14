@@ -154,6 +154,7 @@ export interface Infrastructure extends DurableHarnessInfrastructure {
 }
 
 export interface BuildInfrastructureOptions {
+  memoryOwnershipBindings?: import('@littlesheep/memory-tree').MemoryOwnershipBindingStore;
   config: Config;
   branding: BrandingConfig;
   model: string;
@@ -188,7 +189,13 @@ export function resolveLlm(
   const llm = createLlmClient({
     baseURL: provider.baseURL,
     apiKey,
+    // The wire protocol the provider speaks. Without this every provider was driven
+    // with chat-completions bodies regardless of how it was configured.
+    api: provider.api,
     timeoutSeconds: provider.timeoutSeconds,
+    // `providers[].headers` exists for gateways that route on their own headers; without
+    // this the configured value never reached the wire.
+    headers: provider.headers,
   }, acceptanceRetryOptions());
   return { llm, modelName };
 }
@@ -440,7 +447,8 @@ export async function buildInfrastructure(
     experience: legacyMigrationCompleted ? [] : [new LegacyExperienceBranch(experienceStore)],
   } as const;
   for (const spec of DEFAULT_BRANCH_SPECS) {
-    const stored = new TreeMemoryBranch({ repository: memoryRepository, ...spec });
+    const stored = new TreeMemoryBranch({ repository: memoryRepository, ...spec,
+      authorization: (runId) => memoryService.atomReadAuthorization(runId) });
     memoryTree.register(new CompositeMemoryBranch({
       id: spec.kind,
       displayName: spec.displayName,
@@ -448,6 +456,7 @@ export async function buildInfrastructure(
       whenToUse: spec.whenToUse,
       searchHints: spec.searchHints,
       sources: [stored, ...externalSources[spec.kind]],
+      atomOnly: async (runId) => !!await memoryService.atomReadAuthorization(runId),
     }));
   }
   const memoryWriteService = new MemoryWriteService({
@@ -456,6 +465,7 @@ export async function buildInfrastructure(
     log: opts.log,
   });
   const memoryService = new MemoryService({
+    ownershipBindings: opts.memoryOwnershipBindings,
     tree: memoryTree,
     repository: memoryRepository,
     writer: memoryWriteService,
