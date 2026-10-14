@@ -877,6 +877,7 @@ describe('run stream Local App API', () => {
         body: JSON.stringify({ text: '等待控制事件' }),
       })
       expect(streamResponse.status).toBe(200)
+      await vi.waitFor(() => expect(runStream).toHaveBeenCalledOnce())
       const runId = runStream.mock.calls[0]?.[0].runId
       expect(runId).toEqual(expect.any(String))
       const eventPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runs, String(runId), '/events')
@@ -1013,6 +1014,7 @@ describe('run stream Local App API', () => {
         signal: controller.signal,
       })
       expect(response.status).toBe(200)
+      await vi.waitFor(() => expect(runStream).toHaveBeenCalledOnce())
       const runId = runStream.mock.calls[0]?.[0].runId
       expect(runId).toEqual(expect.any(String))
 

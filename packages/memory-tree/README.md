@@ -4,6 +4,10 @@ Memory Tree 拥有索引式长期记忆、实体边界、证据来源和受控�
 
 ## 检索
 
+CMv2 P1B-1 在 `memory-access-context.ts` 定义进程内 Host grant/context，MemoryService 持有每 run 的只读授权投影及 freshness 检查端口。它不改变 Branch 检索或 Write/Manage 默认语义。`memory-ownership-bindings.ts` 只有受限内存 CAS 基础，不是已经落盘的 sidecar 或旧数据授权证明；正式持久化与迁移留待 P1B-4。
+
+授权绑定在异步解析前后检查 freshness，`beginRun` 同时校验 run/session/root/workspace。所有权 CAS 支持初次创建和更新的相同内容重试；失败不覆盖旧映射。这些检查不代替后续各检索入口的权限执行。
+
 CMv2 P1A 的 `memory-access-policy.ts` 提供纯权限判定与默认写入目标选择，公共契约位于 `@littlesheep/types`。它尚未接入生产读取、写入、索引、工具或恢复链路，不改变当前默认行为。形状验证不等于身份认证；Main 必须核对所有权与用户设置，Runner 必须保留子任务的祖先权限交集。迁移与接入门槛见 [P1A 报告](../../docs/reference/cmv2-p1a-memory-access-2026-10-14.md)。
 
 每个 run 从有界根索引开始，按“根索引 → 分支索引 → 展开”导航。只有同一分支索引仍不足时才可深搜；向量只在该深搜边界提名候选，不能决定实体、事实、纠正目标或合并。

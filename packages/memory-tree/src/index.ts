@@ -1,4 +1,10 @@
 // @littlesheep/memory-tree — public API
+export { InMemoryOwnershipBindings, type MemoryOwnershipBinding, type MemoryOwnershipBindingStore } from './memory-ownership-bindings.js';
+export { MemoryAccessAuthorizationError, memoryAccessRootId, issueMemoryAccessGrant, bindMemoryAccessGrant,
+  inspectMemoryAccessContext, memoryAccessContextIsCurrent, closeMemoryAccessContext, evaluateMemoryAccessContext,
+  issueStandaloneMemoryAccessGrant, issueChildMemoryAccessGrant, type MemoryAccessGrant, type MemoryAccessContext,
+  type MemoryAccessBinding, type MemoryAccessSnapshot } from './memory-access-context.js';
+
 export { isMemoryAccessPolicy, isMemoryAccessTarget, evaluateMemoryRead, evaluateMemoryWrite,
   defaultMemoryWriteScope, intersectMemoryAccessDecisions } from './memory-access-policy.js';
 

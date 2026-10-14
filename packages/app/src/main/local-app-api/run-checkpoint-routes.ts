@@ -1,6 +1,7 @@
 // Startup checkpoint discovery, inspection, abandonment and streamed continuation.
 
 import { randomUUID } from 'node:crypto'
+import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -23,6 +24,7 @@ import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiReque
 import type { RunRouteContext } from './run-routes.js'
 import {
   finishRunResources,
+  assertClientMemoryAuthorizationAbsent,
   resolveRunSessionOwnership,
   resolveRunWorkspaceContext,
   withPersistedSessionPermissionMode,
@@ -92,6 +94,7 @@ export async function routeRunCheckpoints(
     }
     await host.waitForRecovery()
     const body = await readJson(req) as LocalAppRunCheckpointResumeRequest
+    assertClientMemoryAuthorizationAbsent(body as unknown as Record<string, unknown>)
     const inspection = await control.inspect(resumeId)
     if (!inspection) {
       json(res, 404, { error: `run checkpoint not found: ${resumeId}` })
@@ -276,6 +279,9 @@ async function streamCheckpointResume(
       projectId: ownership.projectId,
     })
     const result = await runner.resumeCheckpoint!(checkpointId, {
+      memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
+        runId, sessionId: String(inspection.checkpoint.sessionId), workspace: state.cwd,
+        ownership, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
       runId,
       text,
       reason,

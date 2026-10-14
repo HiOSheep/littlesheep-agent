@@ -1,6 +1,7 @@
 // Agent run, streaming, approval and run-owned resource lifecycle routes.
 
 import { randomUUID } from 'node:crypto'
+import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import type { Config } from '@littlesheep/config'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type RuntimeEventIngressOutcome } from '@littlesheep/types'
@@ -264,6 +265,9 @@ export class RunRouter {
         const runPromise = runner.runStream(
           {
             runId,
+            memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
+              runId, sessionId: sessionId ? String(sessionId) : undefined, workspace: cwd, ownership,
+              sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
             text: String(body.text ?? ''),
             sessionId,
             origin: 'app',
@@ -358,8 +362,15 @@ export class RunRouter {
       )
       const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
       const inspectAttachmentTool = createInspectAttachmentTool(attachments)
+      const hostRunId = body.sessionId
+        ? conversationTurnRunId(asSessionId(String(body.sessionId)), parseRequestKey(body.requestKey)) ?? randomUUID()
+        : randomUUID()
       const result = await runner.run({
+        runId: hostRunId,
         text: String(body.text ?? ''),
+        memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
+          runId: hostRunId, sessionId: body.sessionId ? String(body.sessionId) : undefined,
+          workspace: cwd, ownership, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
         sessionId: body.sessionId ? asSessionId(String(body.sessionId)) : undefined,
         origin: 'app',
         cwd,

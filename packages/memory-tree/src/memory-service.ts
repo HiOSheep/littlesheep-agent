@@ -1,6 +1,9 @@
 // Stable runtime facade over scoped memory resource coordinators.
 
 import { resolve } from 'node:path';
+import { MemoryAccessAuthorizationError, bindMemoryAccessGrant, closeMemoryAccessContext, inspectMemoryAccessContext, issueStandaloneMemoryAccessGrant, issueChildMemoryAccessGrant,
+  memoryAccessContextIsCurrent, memoryAccessRootId, type MemoryAccessBinding,
+  type MemoryAccessContext, type MemoryAccessGrant } from './memory-access-context.js';
 import type {
   CompactionSummary,
   RunAttachment,
@@ -92,6 +95,8 @@ export {
 const MAX_T0_DIRECTORY_ENTRIES = 12;
 
 export class MemoryService {
+  private readonly accessContexts = new Map<string, { context: MemoryAccessContext; sessionId: string }>();
+  private readonly accessRootId: string;
   private readonly tree: MemoryTree;
   private readonly repository: MemoryRepository;
   private readonly writer: MemoryWriteService;
@@ -110,6 +115,7 @@ export class MemoryService {
   private readonly consolidation: MemoryDailyConsolidationService;
 
   constructor(options: MemoryServiceOptions) {
+    this.accessRootId = memoryAccessRootId(options.dataDir);
     this.tree = options.tree;
     this.repository = options.repository;
     this.writer = options.writer;
@@ -185,11 +191,51 @@ export class MemoryService {
     return combined.slice(0, Math.max(0, this.rootIndexMaxChars - marker.length)) + marker;
   }
 
-  beginRun(input: MemoryRunRegistration): Promise<MemoryRunStart> { return this.runs.begin(input); }
+  async createRunAccessContext(binding: MemoryAccessBinding, grant?: MemoryAccessGrant): Promise<MemoryAccessContext> {
+    return bindMemoryAccessGrant(grant === undefined ? issueStandaloneMemoryAccessGrant(this.accessRootId, binding) : grant, binding, this.accessRootId);
+  }
+
+  getMemoryAccessContext(runId: string) {
+    const context = this.accessContexts.get(runId);
+    if (!context) return undefined;
+    return inspectMemoryAccessContext(context.context, { runId, sessionId: context.sessionId, rootId: this.accessRootId });
+  }
+
+  async isMemoryAccessCurrent(runId: string): Promise<boolean> {
+    const context = this.accessContexts.get(runId);
+    return !!context && await memoryAccessContextIsCurrent(context.context);
+  }
+
+  closeRunAccess(runId: string): void {
+    const context = this.accessContexts.get(runId);
+    if (context) closeMemoryAccessContext(context.context);
+    this.accessContexts.delete(runId);
+  }
+
+  createChildRunAccessGrant(parentRunId: string, runId: string, workspace: string): MemoryAccessGrant {
+    const parent = this.accessContexts.get(parentRunId);
+    if (!parent) throw new Error('Memory child requires an active parent');
+    return issueChildMemoryAccessGrant(parent.context, runId, workspace);
+  }
+
+  async beginRun(input: MemoryRunRegistration, supplied?: MemoryAccessContext): Promise<MemoryRunStart> {
+    const context = supplied === undefined ? await this.createRunAccessContext({ runId: input.runId, sessionId: String(input.sessionId), workspace: input.workspace }) : supplied;
+    inspectMemoryAccessContext(context, { runId: input.runId, sessionId: String(input.sessionId), rootId: this.accessRootId, workspace: input.workspace });
+    if (!await memoryAccessContextIsCurrent(context)) throw new MemoryAccessAuthorizationError('Stale memory access context');
+    if (this.accessContexts.has(input.runId)) throw new MemoryAccessAuthorizationError('Memory access run is already active');
+    this.accessContexts.set(input.runId, { context, sessionId: String(input.sessionId) });
+    // Operational branch failures may degrade; retain valid authority until Runner's cleanup.
+    return this.runs.begin(input);
+  }
 
   refineRun(input: MemoryRunRefinementInput): Promise<MemoryRunRefinement> { return this.runs.refine(input); }
 
-  finishRun(runId: string): Promise<MemoryAccessLedger | undefined> { return this.runs.finish(runId); }
+  async finishRun(runId: string): Promise<MemoryAccessLedger | undefined> {
+    try { return await this.runs.finish(runId); }
+    finally {
+      this.closeRunAccess(runId);
+    }
+  }
 
   branchIndex(runId: string, branchId: string): Promise<BranchIndex> { return this.tree.branchIndex(runId, branchId); }
 

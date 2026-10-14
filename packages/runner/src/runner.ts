@@ -1,5 +1,6 @@
 // @littlesheep/runner — runner.ts: shared agent runner used by the app and channels.
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
+import { MemoryAccessAuthorizationError } from '@littlesheep/memory-tree';
 import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, renderTaskbookSkillBody } from '@littlesheep/harness';
 import type {
   AgentResult,
@@ -186,6 +187,8 @@ export interface CreateRunnerOptions {
 }
 
 export interface RunInput {
+  /** Process-local Host capability; JSON policy claims cannot substitute for it. */
+  memoryAccessGrant?: import('@littlesheep/memory-tree').MemoryAccessGrant;
   sessionId?: SessionId;
   text: string;
   cwd?: string;
@@ -251,6 +254,8 @@ export type CheckpointResourceResolver = (
 ) => Promise<RestoredCheckpointResources>;
 
 export interface ResumeCheckpointOptions {
+  /** Fresh Host capability; never reconstructed from checkpoint JSON. */
+  memoryAccessGrant?: RunInput['memoryAccessGrant'];
   /** Required only when the checkpoint was waiting for a clarification. */
   text?: string;
   /** Human-readable reason retained in the disposition audit. */
@@ -498,6 +503,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      const memoryAccessContext = await infra.memoryService.createRunAccessContext({
+        runId, sessionId: String(sessionId), workspace: cwd,
+      }, input.memoryAccessGrant);
       // Retired compaction memory proposals are closed here, before anything reads the session: the
       // manager's recovery would otherwise quarantine a proposal whose predecessor has since changed (a
       // later compaction commits exactly that way), and the quarantine would take the proposal away from
@@ -837,7 +845,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           } : undefined,
           workspace: cwd,
           signal,
-        });
+        }, memoryAccessContext);
         usedContinuitySummaryId = memoryRun.continuitySummaryId;
         const memoryContextWorkingSet = memoryRun.initialContext ? {
             revision: 1,
@@ -854,6 +862,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           memoryContextWorkingSet,
         });
       } catch (err) {
+        if (err instanceof MemoryAccessAuthorizationError) throw err;
         opts.log?.('warn', `runner: memory tree start degraded: ${(err as Error).message}`);
       }
 
@@ -1062,6 +1071,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       webRetrievalRuntime?.dispose();
       if (runtimeQueueRegistered) activeRuns.unregister(runId);
       inspectionContexts.delete(runId);
+      infra.memoryService.closeRunAccess(runId);
       if (activeCheckpoint && !checkpointCompleted) {
         try {
           await activeCheckpoint.abort();
@@ -1167,6 +1177,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       )
     }
     return resumeCheckpointAuthoritative(resolution.checkpointId, {
+      memoryAccessGrant: input.memoryAccessGrant,
       text: input.text,
       reason: 'ordinary conversation turn bound to the session waiting-user checkpoint',
       runId: input.runId,
@@ -1358,6 +1369,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const cancellationRunId = options.runId?.trim() || continuationInbound.runId || randomUUID()
       continuationInbound.runId = cancellationRunId
       return executeRun({
+        memoryAccessGrant: options.memoryAccessGrant,
         sessionId: checkpoint.sessionId,
         text: answerText!,
         cwd: options.cwd ?? state.cwd,
@@ -1416,6 +1428,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       return executeRun({
         sessionId: checkpoint.sessionId,
         text: answerText!,
+        memoryAccessGrant: options.memoryAccessGrant,
         cwd: options.cwd,
         runId: newTaskRunId,
         origin: options.origin ?? 'app',
@@ -1578,6 +1591,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const result = await executeRun({
         sessionId: checkpoint.sessionId,
         text: isClarification ? answerText! : messageText(inbound),
+        memoryAccessGrant: options.memoryAccessGrant,
         cwd: options.cwd ?? recoveryState.cwd,
         runId: resumeRunId,
         origin: options.origin ?? recoveryState.origin,
@@ -2154,6 +2168,7 @@ function resumeTurnInput(
   return {
     sessionId: checkpoint.sessionId,
     text,
+    memoryAccessGrant: options.memoryAccessGrant,
     runId: options.runId,
     signal: options.signal,
     approve: options.approve,

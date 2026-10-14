@@ -19,6 +19,12 @@ export interface RunResourceContext {
   workspaceArtifactIndex: WorkspaceArtifactIndex
 }
 
+export function assertClientMemoryAuthorizationAbsent(body: Record<string, unknown>): void {
+  if (['memoryAccessPolicy', 'memoryAccessGrant', 'memoryAccessContext', 'memoryPolicy'].some((key) => key in body)) {
+    throw new HttpError(400, 'memory authorization cannot be supplied by the client')
+  }
+}
+
 /**
  * Keep older/partial run callers aligned with the session's persisted policy.
  * An explicit permissionMode may narrow a run, but cannot raise an existing
@@ -178,6 +184,7 @@ export async function resolveRunSessionOwnership(
   projectIndex: ProjectIndex,
   body: Record<string, unknown>,
 ): Promise<{ scope: SessionScope; projectId?: string }> {
+  assertClientMemoryAuthorizationAbsent(body)
   const requestedScope = isSessionScope(body.sessionScope) ? body.sessionScope : undefined
   const requestedProjectId = typeof body.projectId === 'string' && body.projectId.trim()
     ? body.projectId.trim()
@@ -192,7 +199,7 @@ export async function resolveRunSessionOwnership(
     if (requestedScope && requestedScope !== existing.scope) {
       throw new HttpError(409, 'session ownership cannot be changed')
     }
-    if (existing.scope === 'project' && requestedProjectId && requestedProjectId !== existing.projectId) {
+    if (requestedProjectId && requestedProjectId !== existing.projectId) {
       throw new HttpError(409, 'session belongs to a different project')
     }
     return { scope: existing.scope, projectId: existing.projectId }
