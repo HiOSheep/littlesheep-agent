@@ -50,6 +50,12 @@ export interface ChatRequest {
   };
   stream?: boolean;
   signal?: AbortSignal;
+  /**
+   * Stable identity of the conversation this request belongs to. Never serialized into the
+   * body: a Provider adapter may map it to the gateway session header that keeps routing and
+   * prompt caching per conversation.
+   */
+  conversationId?: string;
   /** Override per-request timeout (ms). */
   timeoutMs?: number;
   /**
