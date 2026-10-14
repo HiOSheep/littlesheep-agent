@@ -6,6 +6,8 @@ Runner 是应用层 run 创建、请求装配、Harness 集成、事件持久化
 
 CMv2 P1B-1 的 `RunInput.memoryAccessGrant` 是 Main 在进程内签发的一次性句柄。Runner 将最终 session/run/cwd 绑定并传给 MemoryService，不把授权放入 Prompt、ToolContext、执行日志或 checkpoint。缺句柄的 CLI、渠道与直接调用使用无项目、无全局授权的 standalone adapter；这仅是授权传递，旧检索与写入行为仍保留，不能宣称完成读取隔离。恢复须取得新句柄，子任务通过 MemoryService 的 `createChildRunAccessGrant` 保留祖先限制。详见 [P1B-1 报告](../../docs/reference/cmv2-p1b-1-memory-authority-2026-10-14.md)。
 
+P1B-2A 的 `CreateRunnerOptions.memoryOwnershipBindings` 是可信 Host/隔离测试依赖，不来自普通 Config、Renderer 或工具参数。只有 sealed grant 的 `enforced` 模式消费该依赖；缺绑定、版本变化或授权过期时受保护 Atom 读取失败关闭。生产仍为原有传播模式，六类请求组装基线不变。本阶段不提供整个 Prompt 的撤销或完整记忆隔离保证。
+
 - `AgentRunner.inspectContext(sessionId)` 只读取已有聊天／日志读写时产生的有界内存脱敏投影和当前运行快照；没有原文回放、额外 tokenization 或新磁盘存储。历史范围为 loaded_history（最多返回 32 请求），不能代表会话累计账单。外层 Main 必须先验证会话归属；旧日志缺快照时保持不可用。隐私／归属测试见 `context-inspection.test.ts`，Electron 入口验收见 `scripts/verify-context-inspector.mjs`。
 - ExecutionLog 保存已结算 run 证据；RunCheckpoint 保存活动 run 的可恢复状态，两者用途不同。
 - Run 与 tool identity 支持幂等结算。续跑前校验 durable lease；未完成或状态未知的副作用须停止并明确处理。

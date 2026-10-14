@@ -9,6 +9,7 @@ export interface MemoryOwnershipBinding {
   target: MemoryAccessTarget;
 }
 export interface MemoryOwnershipBindingStore {
+  list(): readonly MemoryOwnershipBinding[];
   get(reference: MemoryAccessReference): MemoryOwnershipBinding | undefined;
   compareAndSet(binding: MemoryOwnershipBinding, expectedRevision: number | undefined): void;
 }
@@ -16,6 +17,7 @@ export class InMemoryOwnershipBindings implements MemoryOwnershipBindingStore {
   private readonly entries = new Map<string, MemoryOwnershipBinding>();
   constructor(private readonly capacity = 1024) {}
   private key(ref: MemoryAccessReference) { return JSON.stringify([ref.kind, ref.id]); }
+  list(): readonly MemoryOwnershipBinding[] { return [...this.entries.values()].map((entry) => structuredClone(entry)); }
   get(reference: MemoryAccessReference) {
     const entry = this.entries.get(this.key(reference));
     return entry ? structuredClone(entry) : undefined;

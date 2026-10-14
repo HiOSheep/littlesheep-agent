@@ -165,9 +165,16 @@ export function selectMixedWorkingSet(
   return { fragments: selected, excluded, overflowIndex, tokensUsed, dedupedCount, truncated };
 }
 
+/** Why atoms left the working set; defaults to the explicit model release wording. */
+export interface MemoryReleaseAttribution {
+  reason: string;
+  stage: string;
+}
+
 export function releaseWorkingSetAtoms(
   run: ActiveMemoryRun,
   atomIds: string[],
+  attribution?: MemoryReleaseAttribution,
 ): MemoryReleaseResult & { requestedCount: number } {
   const requested = [...new Set(atomIds.map((atomId) => atomId.trim()).filter(Boolean))].slice(0, 30);
   const releasedAtomIds: string[] = [];
@@ -196,8 +203,8 @@ export function releaseWorkingSetAtoms(
       return reference ? [{
         envelope: reference.envelope,
         decision: 'excluded' as const,
-        reason: 'Released from the current run context by an explicit model decision.',
-        stage: 'context-release',
+        reason: attribution?.reason ?? 'Released from the current run context by an explicit model decision.',
+        stage: attribution?.stage ?? 'context-release',
       }] : [];
     }),
     new Date().toISOString(),

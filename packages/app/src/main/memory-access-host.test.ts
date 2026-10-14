@@ -61,7 +61,7 @@ describe('Main registry-backed memory identity', () => {
   it('rejects Renderer policy claims and forged project ownership of an existing standalone session', async () => {
     await sessions.upsert('s', { scope: 'standalone' });
     await expect(resolveRunSessionOwnership(sessions, projects, { sessionId: 's', projectId: 'forged' })).rejects.toThrow();
-    for (const key of ['memoryAccessPolicy', 'memoryAccessGrant', 'memoryAccessContext', 'memoryPolicy']) {
+    for (const key of ['memoryAccessPolicy', 'memoryAccessGrant', 'memoryAccessContext', 'memoryPolicy', 'memoryAccessEnforcement', 'memoryOwnershipBindings']) {
       await expect(resolveRunSessionOwnership(sessions, projects, { sessionId: 's', [key]: {} })).rejects.toThrow();
     }
   });

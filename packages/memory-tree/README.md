@@ -8,6 +8,8 @@ CMv2 P1B-1 在 `memory-access-context.ts` 定义进程内 Host grant/context，M
 
 授权绑定在异步解析前后检查 freshness，`beginRun` 同时校验 run/session/root/workspace。所有权 CAS 支持初次创建和更新的相同内容重试；失败不覆盖旧映射。这些检查不代替后续各检索入口的权限执行。
 
+CMv2 P1B-2A 允许可信 Host 测试句柄选择 `enforced`，生产 Main 和无句柄适配仍为 `propagation-only`。`atom-read-authorization.ts` 从绑定到 run 的 sealed context 和 Host 注入的 ownership store 判断 Atom；未知绑定视为 pending，v2 使用完整节点指纹，v3 使用 Atom revision，不从存储 scope 推导许可。`branchIndex`/`refineRun`/`expand`/`deepSearch`/`release` 等受保护读取前后各核对一次授权并清理失效 Atom 的 run 状态；TreeMemoryBranch、v3 Catalog 候选/关系查询及最终投影先过滤再排序/限额；enforced Composite 不回退 legacy，授权失败抛出统一错误。Resource、USER/bootstrap、管理入口及 Harness 最终发送撤销不属于本阶段，详见 [P1B-2A 报告](../../docs/reference/cmv2-p1b-2a-atom-retrieval-2026-10-14.md)。
+
 CMv2 P1A 的 `memory-access-policy.ts` 提供纯权限判定与默认写入目标选择，公共契约位于 `@littlesheep/types`。它尚未接入生产读取、写入、索引、工具或恢复链路，不改变当前默认行为。形状验证不等于身份认证；Main 必须核对所有权与用户设置，Runner 必须保留子任务的祖先权限交集。迁移与接入门槛见 [P1A 报告](../../docs/reference/cmv2-p1a-memory-access-2026-10-14.md)。
 
 每个 run 从有界根索引开始，按“根索引 → 分支索引 → 展开”导航。只有同一分支索引仍不足时才可深搜；向量只在该深搜边界提名候选，不能决定实体、事实、纠正目标或合并。

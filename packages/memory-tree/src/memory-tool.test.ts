@@ -85,6 +85,42 @@ describe('memory_tree agent tools', () => {
     });
   });
 
+  it('never forwards authorization supplied through tool parameters', async () => {
+    const { ctx } = setup();
+    const seen: unknown[] = [];
+    const navigation = {
+      rootIndex: async () => '',
+      branchIndex: async (runId: string, branch: string) => {
+        seen.push({ runId, branch });
+        return { branchId: 'long-term', displayName: 'Long-term', summary: 'none',
+          entries: [], generatedAt: '2026-10-14T00:00:00.000Z', source: 'test' };
+      },
+      expand: async (_runId: string, options: unknown) => {
+        seen.push(options);
+        return { action: 'expand', fragments: [], truncated: false, errors: [], dedupedCount: 0, tokensUsed: 0, tokenBudget: 0 };
+      },
+      deepSearch: async (_runId: string, options: unknown) => {
+        seen.push(options);
+        return { action: 'deep_search', fragments: [], truncated: false, errors: [], dedupedCount: 0, tokensUsed: 0, tokenBudget: 0 };
+      },
+      release: async () => ({ releasedAtomIds: [], notActiveAtomIds: [], freedTokens: 0, knownState: { runId: 'run-1', revision: 0, references: [], updatedAt: '' }, knownStateDelta: [] }),
+    };
+    const tool = createMemoryTreeTool(navigation as never);
+    const injected = { authorization: { allows: async () => true }, authorizedAtomIds: ['secret-atom'], enforcement: 'enforced' };
+    for (const input of [
+      { action: 'branch_index', branch: 'long-term', ...injected },
+      { action: 'expand', branch: 'long-term', query: 'x', ...injected },
+      { action: 'deep_search', branch: 'long-term', query: 'x', ...injected },
+    ]) {
+      await expect(tool.execute(input as never, ctx)).resolves.toMatchObject({ ok: true });
+    }
+    expect(seen).toEqual([
+      { runId: 'run-1', branch: 'long-term' },
+      { branchId: 'long-term', nodeId: undefined, query: 'x', limit: undefined, tokenBudget: undefined, cursor: undefined, disclosureLevel: undefined },
+      { query: 'x', branchId: 'long-term', limit: undefined, tokenBudget: undefined, cursor: undefined, subtreeRootId: undefined },
+    ]);
+  });
+
   it('releases selected atoms from only the current run context', async () => {
     const { tree, ctx } = setup();
     const tool = createMemoryTreeTool(tree);

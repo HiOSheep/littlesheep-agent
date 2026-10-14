@@ -20,7 +20,7 @@ export interface RunResourceContext {
 }
 
 export function assertClientMemoryAuthorizationAbsent(body: Record<string, unknown>): void {
-  if (['memoryAccessPolicy', 'memoryAccessGrant', 'memoryAccessContext', 'memoryPolicy'].some((key) => key in body)) {
+  if (['memoryAccessPolicy', 'memoryAccessGrant', 'memoryAccessContext', 'memoryPolicy', 'memoryAccessEnforcement', 'memoryOwnershipBindings'].some((key) => key in body)) {
     throw new HttpError(400, 'memory authorization cannot be supplied by the client')
   }
 }

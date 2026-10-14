@@ -1,6 +1,8 @@
 // @littlesheep/memory-tree - branch adapter for indexed MemoryRepository nodes.
 
 import { randomUUID } from 'node:crypto';
+import { MemoryAccessAuthorizationError } from './memory-access-context.js';
+import { assertAtomReadAuthorization, memoryNodeAccessRevision, type AtomReadAuthorization } from './atom-read-authorization.js';
 import type {
   BranchDescription,
   BranchExpansion,
@@ -28,6 +30,7 @@ import {
 import { composeMemoryTaskQuery } from './task-query.js';
 
 export interface TreeMemoryBranchOptions {
+  authorization?: (runId: string) => Promise<AtomReadAuthorization | undefined>;
   repository: MemoryRepository;
   kind: MemoryBranchKind;
   displayName: string;
@@ -44,6 +47,7 @@ export class TreeMemoryBranch implements MemoryBranch {
   readonly whenToUse: string;
   readonly searchHints: readonly string[];
   private readonly repository: MemoryRepository;
+  private readonly authorization?: TreeMemoryBranchOptions['authorization'];
 
   constructor(options: TreeMemoryBranchOptions) {
     this.id = options.kind;
@@ -53,6 +57,7 @@ export class TreeMemoryBranch implements MemoryBranch {
     this.whenToUse = options.whenToUse;
     this.searchHints = options.searchHints;
     this.repository = options.repository;
+    this.authorization = options.authorization;
   }
 
   describe(): BranchDescription {
@@ -68,9 +73,15 @@ export class TreeMemoryBranch implements MemoryBranch {
   }
 
   async getIndex(ctx: MemoryBranchContext): Promise<BranchIndex> {
+    return this.protectedRead(ctx, () => this.indexImpl(ctx));
+  }
+
+  private async indexImpl(ctx: MemoryBranchContext): Promise<BranchIndex> {
+    const authorization = await this.authorization?.(ctx.runId);
     if (this.repository.retrieval.supported) {
       const taskQuery = ctx.taskQuery ?? composeMemoryTaskQuery(ctx.query);
       const candidates = await this.repository.retrieval.indexMemory({
+        authorization,
         branch: this.kind,
         scopes: retrievalScopes(ctx),
         query: taskQuery.retrievalText || ctx.query,
@@ -90,7 +101,7 @@ export class TreeMemoryBranch implements MemoryBranch {
         nextCursor: candidates.length >= 80 ? '80' : undefined,
       };
     }
-    const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
+    const nodes = await this.nodes(ctx, authorization);
     return {
       branchId: this.id,
       displayName: this.displayName,
@@ -107,6 +118,11 @@ export class TreeMemoryBranch implements MemoryBranch {
     ctx: MemoryBranchContext,
     request: BranchExpandRequest,
   ): Promise<BranchExpansion> {
+    return this.protectedRead(ctx, () => this.expandImpl(ctx, request));
+  }
+
+  private async expandImpl(ctx: MemoryBranchContext, request: BranchExpandRequest): Promise<BranchExpansion> {
+    const authorization = await this.authorization?.(ctx.runId);
     if (this.repository.retrieval.supported) {
       const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query ?? ctx.query);
       const disclosureLevel = request.disclosureLevel ?? 'D2';
@@ -114,6 +130,7 @@ export class TreeMemoryBranch implements MemoryBranch {
         throw new Error('Memory D3 disclosure requires one selected atom id; broad audit expansion is forbidden.');
       }
       const candidates = await this.repository.retrieval.retrieveMemory({
+        authorization,
         branch: this.kind,
         scopes: retrievalScopes(ctx),
         query: taskQuery.retrievalText || request.query || '',
@@ -129,6 +146,7 @@ export class TreeMemoryBranch implements MemoryBranch {
       }) ?? [];
       const childCandidates = request.nodeId
         ? await this.repository.retrieval.indexMemory({
+            authorization,
             branch: this.kind,
             scopes: retrievalScopes(ctx),
             query: taskQuery.retrievalText || request.query || ctx.query,
@@ -148,11 +166,11 @@ export class TreeMemoryBranch implements MemoryBranch {
         truncated: candidates.length >= request.limit || childCandidates.length >= request.limit,
       };
     }
-    const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
+    const nodes = await this.nodes(ctx, authorization);
     let selected: MemoryNode[];
     let matchReason: string;
     if (request.nodeId && request.nodeId !== MemoryRepository.branchRootId(this.kind)) {
-      const node = await this.repository.getNode(request.nodeId);
+      const node = authorization ? nodes.find((entry) => entry.id === request.nodeId) : await this.repository.getNode(request.nodeId);
       selected = node && node.branch === this.kind && node.status === 'active' ? [node] : [];
       matchReason = `Selected indexed node ${request.nodeId}.`;
     } else if (request.query?.trim()) {
@@ -171,7 +189,7 @@ export class TreeMemoryBranch implements MemoryBranch {
     }
 
     const childIndex = request.nodeId
-      ? (await this.repository.children(request.nodeId)).map(legacyNodeIndexEntry)
+      ? (authorization ? nodes.filter((node) => node.parentNodeId === request.nodeId) : await this.repository.children(request.nodeId)).map(legacyNodeIndexEntry)
       : undefined;
     return {
       branchId: this.id,
@@ -190,9 +208,15 @@ export class TreeMemoryBranch implements MemoryBranch {
   }
 
   async search(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]> {
+    return this.protectedRead(ctx, () => this.searchImpl(ctx, request));
+  }
+
+  private async searchImpl(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]> {
+    const authorization = await this.authorization?.(ctx.runId);
     if (this.repository.retrieval.supported) {
       const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
       const candidates = await this.repository.retrieval.retrieveMemory({
+        authorization,
         branch: this.kind,
         scopes: retrievalScopes(ctx),
         query: taskQuery.retrievalText || request.query,
@@ -206,7 +230,19 @@ export class TreeMemoryBranch implements MemoryBranch {
       }) ?? [];
       return candidates.map((candidate) => toV3Fragment(candidate, this.id));
     }
-    const nodes = await this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
+    let nodes = await this.nodes(ctx, authorization);
+    if (authorization && request.subtreeRootId && request.subtreeRootId !== MemoryRepository.branchRootId(this.kind)) {
+      const byId = new Map(nodes.map((node) => [node.id, node]));
+      nodes = nodes.filter((node) => {
+        const seen = new Set<string>();
+        let current: MemoryNode | undefined = node;
+        while (current && !seen.has(current.id)) {
+          if (current.id === request.subtreeRootId) return true;
+          seen.add(current.id); current = current.parentNodeId ? byId.get(current.parentNodeId) : undefined;
+        }
+        return false;
+      });
+    }
     return nodes
       .map((node) => ({ node, score: legacyNodeRelevance(node, request.query) }))
       .filter((entry) => entry.score > 0.15)
@@ -234,6 +270,48 @@ export class TreeMemoryBranch implements MemoryBranch {
       tokensUsed: observation.tokensUsed,
       accessedAt: new Date().toISOString(),
     })));
+  }
+
+  private async nodes(ctx: MemoryBranchContext, gate?: AtomReadAuthorization): Promise<MemoryNode[]> {
+    if (!gate) return this.repository.listNodes(this.kind, this.kind === 'project' ? ctx.workspace : undefined);
+    const nodes: MemoryNode[] = [];
+    for (const id of await gate.references()) {
+      if (!await gate.allows(id)) continue;
+      const node = await this.repository.getNode(id);
+      if (!node || node.isBranchRoot || node.branch !== this.kind || node.status !== 'active'
+        || !await gate.allows(id, memoryNodeAccessRevision(node))) continue;
+      const again = await this.repository.getNode(id);
+      if (!again || memoryNodeAccessRevision(again) !== memoryNodeAccessRevision(node)) continue;
+      nodes.push(node);
+    }
+    for (let index = nodes.length - 1; index >= 0; index--) {
+      const node = nodes[index]!;
+      const current = await this.repository.getNode(node.id);
+      if (!current || memoryNodeAccessRevision(current) !== memoryNodeAccessRevision(node)
+        || !await gate.allows(node.id, memoryNodeAccessRevision(current))) nodes.splice(index, 1);
+    }
+    const ids = new Set(nodes.map((node) => node.id));
+    const branchRootId = MemoryRepository.branchRootId(this.kind);
+    await gate.assertCurrent();
+    return nodes.map((node) => ({ ...node, childIds: node.childIds.filter((id) => ids.has(id)),
+      // The branch root is a fixed navigation id, not an Atom body; keeping it lets the run reach the
+      // authorized children of the root without widening the read to unbound Atoms.
+      parentNodeId: node.parentNodeId && (ids.has(node.parentNodeId) || node.parentNodeId === branchRootId)
+        ? node.parentNodeId : undefined,
+      entityRefs: [], relationRefs: [] }));
+  }
+
+  private async protectedRead<T>(ctx: MemoryBranchContext, read: () => Promise<T>): Promise<T> {
+    const gate = await this.authorization?.(ctx.runId);
+    if (gate) assertAtomReadAuthorization(gate);
+    try {
+      const result = await read();
+      await gate?.assertCurrent();
+      return result;
+    } catch (error) {
+      if (gate) throw new MemoryAccessAuthorizationError('Memory authorization unavailable');
+      throw error;
+    }
   }
 }
 

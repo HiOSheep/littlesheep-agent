@@ -19,10 +19,10 @@ export function searchMemoryCatalogFts(
   if (!ftsQuery) return [];
   const limit = boundedLimit(options.limit, 20, 200);
   const { sql, prefixParams } = scopedAtomQuery(options, `
-    SELECT a.*, bm25(atom_fts) AS fts_rank
+    SELECT a.*, ${options.authorizedAtomIds ? '0' : 'bm25(atom_fts)'} AS fts_rank
     FROM atom_fts
     JOIN atoms a ON a.atom_id = atom_fts.atom_id
-  `, `atom_fts MATCH ?`, 'fts_rank ASC, a.updated_at DESC', limit);
+  `, `atom_fts MATCH ?`, options.authorizedAtomIds ? 'fts_rank ASC, a.updated_at DESC, a.atom_id ASC' : 'fts_rank ASC, a.updated_at DESC', limit);
   const rows = db.prepare(sql).all(...prefixParams, ftsQuery) as unknown as Array<AtomRow & { fts_rank: number }>;
   return rows.map((row) => ({
     entry: rowToEntry(row),

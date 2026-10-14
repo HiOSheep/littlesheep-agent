@@ -1,4 +1,5 @@
 // @littlesheep/memory-tree — public API
+export { memoryNodeAccessRevision, type AtomReadAuthorization } from './atom-read-authorization.js';
 export { InMemoryOwnershipBindings, type MemoryOwnershipBinding, type MemoryOwnershipBindingStore } from './memory-ownership-bindings.js';
 export { MemoryAccessAuthorizationError, memoryAccessRootId, issueMemoryAccessGrant, bindMemoryAccessGrant,
   inspectMemoryAccessContext, memoryAccessContextIsCurrent, closeMemoryAccessContext, evaluateMemoryAccessContext,

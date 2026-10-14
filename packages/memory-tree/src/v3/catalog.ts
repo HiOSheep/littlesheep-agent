@@ -80,6 +80,7 @@ export interface MemoryCatalogRebuildItem {
 }
 
 export interface MemoryCatalogListOptions {
+  authorizedAtomIds?: readonly string[];
   branch?: MemoryAtom['branch'];
   scope?: MemoryAtom['scope'];
   scopeKey?: string;
@@ -140,6 +141,10 @@ export class MemoryCatalog {
     else if (options.scopeKey !== undefined) throw new Error('Memory catalog scopeKey requires an explicit scope.');
     const where: string[] = [];
     const params: Array<string | null> = [];
+    if (options.authorizedAtomIds) {
+      where.push('atom_id IN (SELECT value FROM json_each(?))');
+      params.push(JSON.stringify(options.authorizedAtomIds));
+    }
     if (options.branch) {
       where.push('branch = ?');
       params.push(options.branch);
@@ -194,14 +199,16 @@ export class MemoryCatalog {
     return Number(row?.count ?? 0);
   }
 
-  listChildren(parentId: string, options: Pick<MemoryCatalogSearchOptions, 'branch' | 'scope' | 'scopeKey' | 'includeArchived'>): MemoryCatalogEntry[] {
+  listChildren(parentId: string, options: Pick<MemoryCatalogSearchOptions, 'branch' | 'scope' | 'scopeKey' | 'includeArchived' | 'authorizedAtomIds'>): MemoryCatalogEntry[] {
     assertScope(options);
     const rows = this.db.prepare(`
       SELECT * FROM atoms
       WHERE parent_id = ? AND branch = ? AND scope = ? AND scope_key IS ?
         ${options.includeArchived ? '' : "AND status = 'active'"}
+        ${options.authorizedAtomIds ? 'AND atom_id IN (SELECT value FROM json_each(?))' : ''}
       ORDER BY updated_at DESC, atom_id ASC
-    `).all(parentId, options.branch, options.scope, options.scopeKey ?? null) as unknown as AtomRow[];
+    `).all(parentId, options.branch, options.scope, options.scopeKey ?? null,
+      ...(options.authorizedAtomIds ? [JSON.stringify(options.authorizedAtomIds)] : [])) as unknown as AtomRow[];
     return rows.map(rowToEntry);
   }
 

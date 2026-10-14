@@ -17,6 +17,9 @@ export interface MemoryRetrievalScope {
 }
 
 export interface MemoryRepositoryIndexRequest {
+  /** Internal run-bound gate. Never populated from model parameters. */
+  authorization?: import('../atom-read-authorization.js').AtomReadAuthorization;
+  authorizedAtomIds?: readonly string[];
   branch: MemoryBranchKind;
   scopes: MemoryRetrievalScope[];
   query: string;

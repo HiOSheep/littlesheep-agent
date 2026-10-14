@@ -27,6 +27,7 @@ export interface MemoryRelationRoutingCandidate {
 }
 
 export interface MemoryRelationRoutingOptions {
+  authorizedAtomIds?: readonly string[];
   branch: MemoryCatalogEntry['branch'];
   subtreeRootId?: string;
   limit?: number;
@@ -60,8 +61,9 @@ export function listRelationRoutingCandidates(
     parameters(root_id) AS (SELECT CAST(? AS TEXT)),
     subtree(atom_id) AS (
       SELECT root_id FROM parameters WHERE root_id IS NOT NULL
-      UNION ALL
+      ${options.authorizedAtomIds ? 'UNION' : 'UNION ALL'}
       SELECT child.atom_id FROM atoms child JOIN subtree parent ON child.parent_id = parent.atom_id
+      ${options.authorizedAtomIds ? 'WHERE child.atom_id IN (SELECT value FROM json_each(?))' : ''}
     ),
     seed(atom_id) AS (VALUES ${seedValues}),
     seed_entities AS (
@@ -161,12 +163,14 @@ export function listRelationRoutingCandidates(
       AND candidate.scope = link.relation_scope
       AND candidate.scope_key IS link.relation_scope_key
       AND candidate.status = 'active'
+      ${options.authorizedAtomIds ? 'AND candidate.atom_id IN (SELECT value FROM json_each(?))' : ''}
       AND ((SELECT root_id FROM parameters) IS NULL OR candidate.atom_id IN (SELECT atom_id FROM subtree))
     ORDER BY link.relation_relevance DESC, link.relation_confidence DESC,
       candidate.updated_at DESC, candidate.atom_id ASC
     LIMIT ?
   `).all(
     options.subtreeRootId ?? null,
+    ...(options.authorizedAtomIds ? [JSON.stringify(options.authorizedAtomIds)] : []),
     ...seedIds,
     options.branch,
     MIN_RELATION_CONFIDENCE,
@@ -174,6 +178,7 @@ export function listRelationRoutingCandidates(
     now,
     now,
     options.branch,
+    ...(options.authorizedAtomIds ? [JSON.stringify(options.authorizedAtomIds)] : []),
     rawLimit,
   ) as unknown as RelationRouteRow[];
 

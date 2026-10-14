@@ -1,6 +1,7 @@
 // Stable runtime facade over scoped memory resource coordinators.
 
 import { resolve } from 'node:path';
+import { createAtomReadAuthorization, memoryNodeAccessRevision, type AtomReadAuthorization } from './atom-read-authorization.js';
 import { MemoryAccessAuthorizationError, bindMemoryAccessGrant, closeMemoryAccessContext, inspectMemoryAccessContext, issueStandaloneMemoryAccessGrant, issueChildMemoryAccessGrant,
   memoryAccessContextIsCurrent, memoryAccessRootId, type MemoryAccessBinding,
   type MemoryAccessContext, type MemoryAccessGrant } from './memory-access-context.js';
@@ -97,6 +98,7 @@ const MAX_T0_DIRECTORY_ENTRIES = 12;
 export class MemoryService {
   private readonly accessContexts = new Map<string, { context: MemoryAccessContext; sessionId: string }>();
   private readonly accessRootId: string;
+  private readonly ownershipBindings: MemoryServiceOptions['ownershipBindings'];
   private readonly tree: MemoryTree;
   private readonly repository: MemoryRepository;
   private readonly writer: MemoryWriteService;
@@ -116,6 +118,7 @@ export class MemoryService {
 
   constructor(options: MemoryServiceOptions) {
     this.accessRootId = memoryAccessRootId(options.dataDir);
+    this.ownershipBindings = options.ownershipBindings;
     this.tree = options.tree;
     this.repository = options.repository;
     this.writer = options.writer;
@@ -206,6 +209,25 @@ export class MemoryService {
     return !!context && await memoryAccessContextIsCurrent(context.context);
   }
 
+  async atomReadAuthorization(runId: string): Promise<AtomReadAuthorization | undefined> {
+    const record = this.accessContexts.get(runId);
+    if (!record) throw new MemoryAccessAuthorizationError('Memory authorization unavailable');
+    const snapshot = this.getMemoryAccessContext(runId)!;
+    if (snapshot.enforcement !== 'enforced') return undefined;
+    if (!this.ownershipBindings) throw new MemoryAccessAuthorizationError('Memory authorization unavailable');
+    const gate = createAtomReadAuthorization(record.context, this.ownershipBindings);
+    try {
+      await gate.assertCurrent();
+      await this.tree.pruneAtomReadState(runId, async (id) => {
+        if (!await gate.allows(id)) return false;
+        const node = await this.repository.getNode(id);
+        return !!node && node.status === 'active' && await gate.allows(id,
+          this.repository.backendKind === 'v3' ? `v3:${node.atomRevision}` : memoryNodeAccessRevision(node));
+      });
+      return gate;
+    } catch { throw new MemoryAccessAuthorizationError('Memory authorization unavailable'); }
+  }
+
   closeRunAccess(runId: string): void {
     const context = this.accessContexts.get(runId);
     if (context) closeMemoryAccessContext(context.context);
@@ -224,11 +246,25 @@ export class MemoryService {
     if (!await memoryAccessContextIsCurrent(context)) throw new MemoryAccessAuthorizationError('Stale memory access context');
     if (this.accessContexts.has(input.runId)) throw new MemoryAccessAuthorizationError('Memory access run is already active');
     this.accessContexts.set(input.runId, { context, sessionId: String(input.sessionId) });
+    try { await this.atomReadAuthorization(input.runId); }
+    catch (error) { this.closeRunAccess(input.runId); throw error; }
     // Operational branch failures may degrade; retain valid authority until Runner's cleanup.
-    return this.runs.begin(input);
+    try { return await this.runs.begin(input); }
+    catch (error) {
+      if (this.getMemoryAccessContext(input.runId)?.enforcement === 'enforced') {
+        this.closeRunAccess(input.runId);
+        throw new MemoryAccessAuthorizationError('Memory authorization unavailable');
+      }
+      throw error;
+    }
   }
 
-  refineRun(input: MemoryRunRefinementInput): Promise<MemoryRunRefinement> { return this.runs.refine(input); }
+  async refineRun(input: MemoryRunRefinementInput): Promise<MemoryRunRefinement> {
+    await this.atomReadAuthorization(input.runId);
+    const result = await this.runs.refine(input);
+    await this.atomReadAuthorization(input.runId);
+    return result;
+  }
 
   async finishRun(runId: string): Promise<MemoryAccessLedger | undefined> {
     try { return await this.runs.finish(runId); }
@@ -237,13 +273,33 @@ export class MemoryService {
     }
   }
 
-  branchIndex(runId: string, branchId: string): Promise<BranchIndex> { return this.tree.branchIndex(runId, branchId); }
+  async branchIndex(runId: string, branchId: string): Promise<BranchIndex> {
+    await this.atomReadAuthorization(runId);
+    const result = await this.tree.branchIndex(runId, branchId);
+    await this.atomReadAuthorization(runId);
+    return result;
+  }
 
-  expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> { return this.tree.expand(runId, options); }
+  async expand(runId: string, options: MemoryExpandOptions): Promise<MemoryQueryResult> {
+    await this.atomReadAuthorization(runId);
+    const result = await this.tree.expand(runId, options);
+    await this.atomReadAuthorization(runId);
+    return result;
+  }
 
-  deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> { return this.tree.deepSearch(runId, options); }
+  async deepSearch(runId: string, options: MemorySearchOptions): Promise<MemoryQueryResult> {
+    await this.atomReadAuthorization(runId);
+    const result = await this.tree.deepSearch(runId, options);
+    await this.atomReadAuthorization(runId);
+    return result;
+  }
 
-  release(runId: string, atomIds: string[]): Promise<MemoryReleaseResult> { return this.tree.release(runId, atomIds); }
+  async release(runId: string, atomIds: string[]): Promise<MemoryReleaseResult> {
+    await this.atomReadAuthorization(runId);
+    const result = await this.tree.release(runId, atomIds);
+    await this.atomReadAuthorization(runId);
+    return result;
+  }
 
   listBranches(): BranchDescription[] { return this.tree.list(); }
 

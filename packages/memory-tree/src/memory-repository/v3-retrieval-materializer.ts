@@ -53,12 +53,20 @@ export class MemoryV3CandidateMaterializer {
     request: MemoryRepositoryIndexRequest,
     disclosureLevel: MemoryDisclosureLevel,
   ): Promise<MemoryRepositoryCandidate[]> {
+    if (request.authorization) {
+      const allowed: MemoryV3ScoredCandidate[] = [];
+      for (const candidate of pool) {
+        if (await request.authorization.allows(candidate.atom.id, `v3:${candidate.atom.revision}`)) allowed.push(candidate);
+      }
+      pool = allowed;
+    }
     const deduped = new Map<string, MemoryV3ScoredCandidate>();
     for (const candidate of pool) {
       const current = deduped.get(candidate.atom.id);
       if (!current || candidate.relevance > current.relevance) deduped.set(candidate.atom.id, candidate);
     }
-    const relationshipRelevance = this.catalog.relationRelevanceForAtoms([...deduped.keys()], request.now);
+    const relationshipRelevance = request.authorization ? new Map<string, number>()
+      : this.catalog.relationRelevanceForAtoms([...deduped.keys()], request.now);
     const scored = [...deduped.values()].map((candidate) => ({
       candidate,
       priority: this.priority(
@@ -79,7 +87,25 @@ export class MemoryV3CandidateMaterializer {
     const selected = isDeepSearchRequest(request)
       ? selectDeepSearchCluster(scored, limit)
       : scored.slice(0, limit);
-    return Promise.all(selected.map(async ({ candidate, priority }) => {
+    const results = await Promise.all(selected.map(async ({ candidate, priority }): Promise<MemoryRepositoryCandidate | undefined> => {
+      if (request.authorization) {
+        const current = await this.atomStore.read(candidate.atom.id);
+        if (!current || current.revision !== candidate.atom.revision
+          || !await request.authorization.allows(current.id, `v3:${current.revision}`)) return undefined;
+        const ids = request.authorizedAtomIds ?? [];
+        candidate = { ...candidate, atom: { ...candidate.atom,
+          parentId: candidate.atom.parentId && ids.includes(candidate.atom.parentId) ? candidate.atom.parentId : undefined,
+          entityRefs: [], relationRefs: [], mergedFromAtomIds: candidate.atom.mergedFromAtomIds?.filter((id) => ids.includes(id)) } };
+      }
+      const children = this.catalog.listChildrenByParent(candidate.atom.id);
+      let hasChildren = false;
+      for (const child of children) {
+        if (isMemoryV3InternalRootId(child.atomId)) continue;
+        if (!request.authorization) { hasChildren = true; break; }
+        if (!request.authorizedAtomIds?.includes(child.atomId)) continue;
+        const atom = await this.atomStore.read(child.atomId);
+        if (atom && await request.authorization.allows(atom.id, `v3:${atom.revision}`)) { hasChildren = true; break; }
+      }
       const conflict = isConflict(candidate.atom);
       const envelope = evidenceEnvelope(
         candidate,
@@ -97,12 +123,13 @@ export class MemoryV3CandidateMaterializer {
         envelope,
         priority,
         retrievalPath: candidate.retrievalPath,
-        hasChildren: this.catalog.listChildrenByParent(candidate.atom.id)
-          .some((entry) => !isMemoryV3InternalRootId(entry.atomId)),
-        neighborhood: includeDetails ? await this.neighborhood(candidate.atom) : undefined,
-        history: disclosureLevel === 'D3' ? this.history(candidate.atom) : undefined,
+        hasChildren,
+        neighborhood: includeDetails && !request.authorization ? await this.neighborhood(candidate.atom) : undefined,
+        history: disclosureLevel === 'D3' && !request.authorization ? this.history(candidate.atom) : undefined,
       };
     }));
+    await request.authorization?.assertCurrent();
+    return results.filter((item): item is MemoryRepositoryCandidate => item !== undefined);
   }
 
   /**

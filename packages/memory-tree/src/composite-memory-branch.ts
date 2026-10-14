@@ -14,6 +14,8 @@ import type {
 } from './types.js';
 
 export interface CompositeMemoryBranchOptions {
+  /** Host-owned run mode; enforced Atom reads never fall back to external sources. */
+  atomOnly?: (runId: string) => Promise<boolean>;
   id: MemoryBranchKind;
   displayName: string;
   purpose: string;
@@ -30,6 +32,7 @@ export class CompositeMemoryBranch implements MemoryBranch {
   readonly whenToUse: string;
   readonly searchHints: readonly string[];
   private readonly sources: MemoryBranch[];
+  private readonly atomOnly?: CompositeMemoryBranchOptions['atomOnly'];
 
   constructor(options: CompositeMemoryBranchOptions) {
     this.id = options.id;
@@ -39,6 +42,7 @@ export class CompositeMemoryBranch implements MemoryBranch {
     this.whenToUse = options.whenToUse;
     this.searchHints = options.searchHints;
     this.sources = options.sources;
+    this.atomOnly = options.atomOnly;
   }
 
   describe(): BranchDescription {
@@ -54,6 +58,7 @@ export class CompositeMemoryBranch implements MemoryBranch {
   }
 
   async getIndex(ctx: MemoryBranchContext): Promise<BranchIndex> {
+    if (await this.atomOnly?.(ctx.runId)) return this.sources[0]!.getIndex(ctx);
     const settled = await Promise.allSettled(this.sources.map((source) => source.getIndex(ctx)));
     const indexes = settled
       .filter((entry): entry is PromiseFulfilledResult<BranchIndex> => entry.status === 'fulfilled')
@@ -78,6 +83,7 @@ export class CompositeMemoryBranch implements MemoryBranch {
   }
 
   async expand(ctx: MemoryBranchContext, request: BranchExpandRequest): Promise<BranchExpansion> {
+    if (await this.atomOnly?.(ctx.runId)) return this.sources[0]!.expand(ctx, request);
     const settled = await Promise.allSettled(this.sources.map((source) => source.expand(ctx, request)));
     const expansions = settled
       .filter((entry): entry is PromiseFulfilledResult<BranchExpansion> => entry.status === 'fulfilled')
@@ -94,6 +100,7 @@ export class CompositeMemoryBranch implements MemoryBranch {
   }
 
   async search(ctx: MemoryBranchContext, request: BranchSearchRequest): Promise<MemoryFragment[]> {
+    if (await this.atomOnly?.(ctx.runId)) return this.sources[0]!.search(ctx, request);
     const settled = await Promise.allSettled(this.sources.map((source) => source.search(ctx, request)));
     return this.uniqueFragments(
       settled

@@ -49,18 +49,22 @@ export function scopedAtomQuery(
     sql: `
       WITH RECURSIVE subtree(atom_id) AS (
         SELECT CAST(? AS TEXT)
-        UNION ALL
+        ${options.authorizedAtomIds ? 'UNION' : 'UNION ALL'}
         SELECT child.atom_id FROM atoms child JOIN subtree parent ON child.parent_id = parent.atom_id
+        ${options.authorizedAtomIds ? 'WHERE child.atom_id IN (SELECT value FROM json_each(?))' : ''}
       )
       ${selectSql}
       WHERE a.branch = ? AND a.scope = ? AND a.scope_key IS ?
         ${options.includeArchived ? '' : "AND a.status = 'active'"}
         AND (? IS NULL OR a.atom_id IN (SELECT atom_id FROM subtree))
+        ${options.authorizedAtomIds ? 'AND a.atom_id IN (SELECT value FROM json_each(?))' : ''}
         AND ${additionalWhere}
       ORDER BY ${orderBy}
       LIMIT ${limit}
     `,
-    prefixParams: [root, options.branch, options.scope, options.scopeKey ?? null, root],
+    prefixParams: [root, ...(options.authorizedAtomIds ? [JSON.stringify(options.authorizedAtomIds)] : []),
+      options.branch, options.scope, options.scopeKey ?? null, root,
+      ...(options.authorizedAtomIds ? [JSON.stringify(options.authorizedAtomIds)] : [])],
   };
 }
 

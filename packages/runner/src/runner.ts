@@ -151,6 +151,8 @@ const MAX_RETAINED_CONVERSATION_TURNS = 256;
 export type RunOrigin = RunConfigOrigin;
 
 export interface CreateRunnerOptions {
+  /** Privileged Host/test dependency; not read from ordinary Config. */
+  memoryOwnershipBindings?: import('@littlesheep/memory-tree').MemoryOwnershipBindingStore;
   config: Config;
   branding: BrandingConfig;
   /** Model ref (provider/model). Defaults to config.agents.defaults.model. */
@@ -344,6 +346,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     ?? discoverLittleSheepCoreRoots([process.cwd(), process.argv[1] ?? '']);
   const containerRoot = opts.containerRoot ?? opts.bootstrapDir;
   const infra = await buildInfrastructure({
+    memoryOwnershipBindings: opts.memoryOwnershipBindings,
     config: opts.config,
     branding: opts.branding,
     model,

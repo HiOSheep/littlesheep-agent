@@ -11,7 +11,7 @@ export interface MemoryAccessContext { readonly [contextBrand]: true }
 export interface MemoryAccessBinding { runId: string; sessionId: string; workspace: string }
 export interface MemoryAccessSnapshot {
   policy: MemoryAccessPolicy;
-  enforcement: 'propagation-only';
+  enforcement: 'propagation-only' | 'enforced';
   source: 'host' | 'standalone-adapter';
   projectIdentityVersion?: number;
   /** Fingerprint of the verified current registry binding, separate from entity revision. */
@@ -29,7 +29,7 @@ interface GrantRecord {
   runId: string;
   sessionId?: string;
   workspace: string;
-  resolve: (binding: MemoryAccessBinding) => Promise<Omit<MemoryAccessSnapshot, 'ancestors' | 'enforcement'>>;
+  resolve: (binding: MemoryAccessBinding) => Promise<Omit<MemoryAccessSnapshot, 'ancestors' | 'enforcement'> & { enforcement?: MemoryAccessSnapshot['enforcement'] }>;
   current: () => Promise<boolean>;
   parent?: MemoryAccessContext;
   consumed: boolean;
@@ -64,6 +64,7 @@ export async function bindMemoryAccessGrant(grant: MemoryAccessGrant, binding: M
   if (!await record.current()) throw new Error('Stale memory access grant');
   const resolved = await record.resolve(binding);
   const p = resolved.policy;
+  if (resolved.enforcement !== undefined && !['propagation-only', 'enforced'].includes(resolved.enforcement)) throw new MemoryAccessAuthorizationError('Invalid memory execution mode');
   if (!isMemoryAccessPolicy(p) || p.dataRootId !== rootId || p.principalId !== `local:${rootId}`
     || p.runId !== binding.runId || p.sessionId !== binding.sessionId
     || !['host', 'standalone-adapter'].includes(resolved.source)
@@ -83,7 +84,7 @@ export async function bindMemoryAccessGrant(grant: MemoryAccessGrant, binding: M
     globalWriteGranted: p.globalWriteGranted };
   const snapshot = structuredClone({ source: resolved.source, policy: minimizedPolicy,
     projectIdentityVersion: resolved.projectIdentityVersion, projectBindingRevision: resolved.projectBindingRevision,
-    enforcement: 'propagation-only' as const,
+    enforcement: parent?.snapshot.enforcement ?? resolved.enforcement ?? 'propagation-only',
     ancestors: parent ? [...parent.snapshot.ancestors, parent.snapshot.policy] : [] });
   const context = Object.freeze({});
   contexts.set(context, { active: true, workspace: record.workspace, snapshot, current: async () => await record.current() && (!parent || (parent.active && await parent.current())) });
@@ -117,6 +118,7 @@ export function issueChildMemoryAccessGrant(parent: MemoryAccessContext, runId: 
   return issueMemoryAccessGrant({ rootId: p.dataRootId, runId, sessionId: p.sessionId, workspace, parent,
     current: () => memoryAccessContextIsCurrent(parent), resolve: async () => ({
       source: record.snapshot.source, projectIdentityVersion: record.snapshot.projectIdentityVersion,
+      enforcement: record.snapshot.enforcement,
       projectBindingRevision: record.snapshot.projectBindingRevision, policy: { ...p, runId },
     }) });
 }

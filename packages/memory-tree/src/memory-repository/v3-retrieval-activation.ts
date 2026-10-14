@@ -12,6 +12,7 @@ export function listActivationFallback(
 ) {
   const poolLimit = Math.min(400, Math.max(limit * 2, 80));
   const common = {
+    authorizedAtomIds: request.authorizedAtomIds,
     branch: request.branch,
     scope: scope.scope,
     scopeKey: scope.storageScopeKey,

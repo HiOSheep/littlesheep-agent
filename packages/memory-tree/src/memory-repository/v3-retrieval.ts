@@ -1,6 +1,7 @@
 // Owns branch/scope-constrained Memory v3 retrieval and exact management inspection routing.
 
 import { randomUUID } from 'node:crypto';
+import { assertAtomReadAuthorization } from '../atom-read-authorization.js';
 import type { MemoryAtomStore } from '../v3/atom-store.js';
 import type { MemoryCatalog } from '../v3/catalog.js';
 import type { MemoryAccessRecord, MemoryAtom, MemoryDisclosureLevel } from '../v3/contracts.js';
@@ -61,6 +62,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
   }
 
   async indexMemory(request: MemoryRepositoryIndexRequest): Promise<MemoryRepositoryCandidate[]> {
+    request = await this.authorizedRequest(request);
     const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
     const retrievalQuery = taskQuery.retrievalText || request.query;
     const scopes = await this.resolveScopes(request.scopes);
@@ -74,6 +76,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
       if (!request.parentNodeId && retrievalQuery.trim()) {
         const ftsLimit = Math.min(200, Math.max(request.limit * 2, 40));
         for (const result of this.catalog.searchFts(retrievalQuery, {
+          authorizedAtomIds: request.authorizedAtomIds,
           branch: request.branch,
           scope: scope.scope,
           scopeKey: scope.storageScopeKey,
@@ -84,6 +87,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
       }
       const fallback = request.parentNodeId
         ? this.catalog.listChildren(request.parentNodeId, {
+            authorizedAtomIds: request.authorizedAtomIds,
             branch: request.branch,
             scope: scope.scope,
             scopeKey: scope.storageScopeKey,
@@ -100,7 +104,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
       for (const { entry, retrievalPath } of entries.values()) {
         throwIfAborted(request.signal);
         if (isMemoryV3InternalRootId(entry.atomId)) continue;
-        const atom = await this.atomStore.read(entry.atomId);
+        const atom = await this.readAuthorized(entry.atomId, request);
         if (!atom) continue;
         const relevance = taskRelevance(atom, taskQuery);
         if (relevance.blockedByExclusion) continue;
@@ -122,13 +126,14 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
   }
 
   async retrieveMemory(request: MemoryRepositoryRetrievalRequest): Promise<MemoryRepositoryCandidate[]> {
+    request = await this.authorizedRequest(request);
     const taskQuery = request.taskQuery ?? composeMemoryTaskQuery(request.query);
     const retrievalQuery = taskQuery.retrievalText || request.query;
     const scopes = await this.resolveScopes(request.scopes);
     throwIfAborted(request.signal);
     let pool: MemoryV3ScoredCandidate[] = [];
     if (request.nodeId) {
-      const exact = await this.atomStore.read(request.nodeId);
+      const exact = await this.readAuthorized(request.nodeId, request);
       if (exact && !isMemoryV3InternalRootId(exact.id)
         && exact.branch === request.branch
         && this.scopeAllowed(exact, scopes)
@@ -147,6 +152,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
       for (const scope of scopes) {
         throwIfAborted(request.signal);
         const entries = this.catalog.listAtoms({
+          authorizedAtomIds: request.authorizedAtomIds,
           branch: request.branch,
           scope: scope.scope,
           scopeKey: scope.storageScopeKey,
@@ -156,7 +162,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
         for (const entry of entries) {
           throwIfAborted(request.signal);
           if (isMemoryV3InternalRootId(entry.atomId)) continue;
-          const atom = await this.atomStore.read(entry.atomId);
+          const atom = await this.readAuthorized(entry.atomId, request);
           if (!atom || !await this.insideSubtree(atom, request.subtreeRootId)) continue;
           pool.push({
             atom: this.materializer.publicAtom(atom),
@@ -212,6 +218,7 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
     for (const scope of scopes) {
       throwIfAborted(request.signal);
       const options = {
+        authorizedAtomIds: request.authorizedAtomIds,
         branch: request.branch,
         scope: scope.scope,
         scopeKey: scope.storageScopeKey,
@@ -219,11 +226,11 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
         limit: perScopeLimit,
       } as const;
       for (const result of this.catalog.searchFts(retrievalQuery, options)) {
-        await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'fts', taskQuery);
+        await this.mergeSearchResult(merged, result.entry.atomId, request.authorization ? 0 : result.score, 'fts', taskQuery, request);
       }
       if (preparedVector) {
         for (const result of this.catalog.searchPreparedVector(preparedVector, options)) {
-          await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'vector', taskQuery);
+          await this.mergeSearchResult(merged, result.entry.atomId, result.score, 'vector', taskQuery, request);
         }
       }
     }
@@ -236,9 +243,10 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
     score: number,
     path: Extract<MemoryAccessRecord['path'], 'fts' | 'vector'>,
     taskQuery: MemoryTaskQuery,
+    request: MemoryRepositoryIndexRequest,
   ): Promise<void> {
     if (isMemoryV3InternalRootId(atomId)) return;
-    const atom = await this.atomStore.read(atomId);
+    const atom = await this.readAuthorized(atomId, request);
     if (!atom) return;
     const lexical = taskRelevance(atom, taskQuery);
     if (lexical.blockedByExclusion) return;
@@ -283,6 +291,36 @@ export class MemoryV3Retrieval implements MemoryRepositoryRetrievalBackend {
       current = current.parentId ? await this.atomStore.read(current.parentId) : undefined;
     }
     return false;
+  }
+
+  private async authorizedRequest<T extends MemoryRepositoryIndexRequest>(request: T): Promise<T> {
+    const gate = request.authorization;
+    if (!gate) return request;
+    assertAtomReadAuthorization(gate);
+    const ids: string[] = [];
+    for (const id of await gate.references()) {
+      const entry = this.catalog.getAtom(id);
+      if (entry && await gate.allows(id, `v3:${entry.revision}`)) {
+        const atom = await this.atomStore.read(id);
+        if (atom && atom.revision === entry.revision && await gate.allows(id, `v3:${atom.revision}`)) ids.push(id);
+      }
+    }
+    const root = request.parentNodeId ?? ('subtreeRootId' in request ? request.subtreeRootId as string | undefined : undefined);
+    if (root && !isMemoryV3InternalRootId(root) && root !== `${request.branch}:root` && !ids.includes(root)) ids.length = 0;
+    await gate.assertCurrent();
+    return { ...request, authorizedAtomIds: ids };
+  }
+
+  private async readAuthorized(id: string, request: MemoryRepositoryIndexRequest): Promise<MemoryAtom | undefined> {
+    const gate = request.authorization;
+    if (gate) {
+      if (!request.authorizedAtomIds?.includes(id)) return undefined;
+      const entry = this.catalog.getAtom(id);
+      if (!entry || !await gate.allows(id, `v3:${entry.revision}`)) return undefined;
+    }
+    const atom = await this.atomStore.read(id);
+    if (atom && gate && !await gate.allows(id, `v3:${atom.revision}`)) return undefined;
+    return atom;
   }
 
 }

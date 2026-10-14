@@ -1,6 +1,7 @@
 // @littlesheep/memory-tree - index-first registry, retrieval and run ledger.
 
 import { randomUUID } from 'node:crypto';
+import { MemoryAccessAuthorizationError } from './memory-access-context.js';
 import type {
   BranchDescription,
   BranchIndex,
@@ -207,6 +208,27 @@ export class MemoryTree {
     return query ? structuredClone(query) : undefined;
   }
 
+  /** Atom-only pruning before a protected read; does not alter transcript/Harness Context. */
+  async pruneAtomReadState(runId: string, allowed: (id: string) => Promise<boolean>): Promise<void> {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    const removed: string[] = [];
+    for (const [id, fragment] of run.activeFragments) {
+      if ((fragment.dedupKey.startsWith('memory-v3:') || fragment.dedupKey.startsWith('tree-node:')) && !await allowed(id)) removed.push(id);
+    }
+    releaseWorkingSetAtoms(run, removed, {
+      reason: 'The run is no longer authorized to read this atom.',
+      stage: 'authorization-prune',
+    });
+    const retained = [];
+    for (const reference of run.ledger.knownState.references) if (await allowed(reference.atomId)) retained.push(reference);
+    if (retained.length !== run.ledger.knownState.references.length) {
+      run.ledger.knownState.references = retained;
+      run.ledger.knownState.revision++;
+      run.ledger.knownState.updatedAt = new Date().toISOString();
+    }
+  }
+
   getLedger(runId: string): MemoryAccessLedger | undefined {
     const active = this.runs.get(runId)?.ledger;
     const completed = this.completedLedgers.get(runId);
@@ -249,6 +271,7 @@ export class MemoryTree {
       });
       return fitted;
     } catch (error) {
+      if (error instanceof MemoryAccessAuthorizationError) throw error;
       const message = (error as Error).message;
       this.options.log?.('warn', `memory-tree: branch index failed for "${branchId}": ${message}`);
       this.record(run, {
@@ -307,6 +330,7 @@ export class MemoryTree {
           });
         });
       } catch (error) {
+        if (error instanceof MemoryAccessAuthorizationError) throw error;
         this.options.log?.('warn', `memory-tree: initial index inspection failed for "${branch.id}": ${(error as Error).message}`);
         this.record(run, {
           action: 'branch_index',
@@ -425,6 +449,7 @@ export class MemoryTree {
       this.recordQuery(run, 'expand', result, options.query, options.nodeId);
       return result;
     } catch (error) {
+      if (error instanceof MemoryAccessAuthorizationError) throw error;
       return this.queryFailure(run, 'expand', branch.id, options.query, options.nodeId, budget, error);
     }
   }
@@ -461,6 +486,7 @@ export class MemoryTree {
         subtreeRootId: options.subtreeRootId,
       });
     } catch (error) {
+      if (error instanceof MemoryAccessAuthorizationError) throw error;
       const message = (error as Error).message;
       errors.push({ branchId: branch.id, message });
       this.options.log?.('warn', `memory-tree: deep search failed for "${branch.id}": ${message}`);
@@ -515,6 +541,7 @@ export class MemoryTree {
     try {
       await branch.invalidate?.();
     } catch (error) {
+      if (error instanceof MemoryAccessAuthorizationError) throw error;
       this.options.log?.('warn', `memory-tree: branch "${id}" invalidate failed: ${(error as Error).message}`);
     }
   }

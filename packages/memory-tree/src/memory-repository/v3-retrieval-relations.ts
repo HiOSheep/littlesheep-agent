@@ -48,6 +48,7 @@ export async function addMemoryV3RelationCandidates(
   const routes = options.catalog.listRelationRoutingCandidates(
     seeds.map((candidate) => candidate.atom.id),
     {
+      authorizedAtomIds: options.request.authorizedAtomIds,
       branch: options.request.branch,
       subtreeRootId: 'subtreeRootId' in options.request ? options.request.subtreeRootId : undefined,
       limit: Math.min(MAX_RELATION_CANDIDATES, Math.max(options.request.limit * 3, 6)),
@@ -56,8 +57,10 @@ export async function addMemoryV3RelationCandidates(
   );
   for (const route of routes) {
     throwIfAborted(options.request.signal);
+    if (options.request.authorization && !await options.request.authorization.allows(route.entry.atomId, `v3:${route.entry.revision}`)) continue;
     const atom = await options.atomStore.read(route.entry.atomId);
     if (!atom || isMemoryV3InternalRootId(atom.id)) continue;
+    if (options.request.authorization && !await options.request.authorization.allows(atom.id, `v3:${atom.revision}`)) continue;
     const relevance = scoreMemoryTaskRelevance(options.taskQuery, {
       title: atom.title,
       summary: atom.summary,

@@ -24,6 +24,8 @@ import type { MemoryTaskQuery } from '../task-query.js';
 import type { WorkspaceResourceIndexLimits } from '../workspace-resource-index.js';
 
 export interface MemoryServiceOptions {
+  /** Trusted Host/test dependency, never Config/Renderer/tool data. */
+  ownershipBindings?: import('../memory-ownership-bindings.js').MemoryOwnershipBindingStore;
   tree: MemoryTree;
   repository: MemoryRepository;
   writer: MemoryWriteService;

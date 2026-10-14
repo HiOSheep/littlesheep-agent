@@ -530,6 +530,8 @@ export interface MemoryCatalogScope {
 }
 
 export interface MemoryCatalogSearchOptions extends MemoryCatalogScope {
+  /** Trusted retrieval predicate; applied before ranking and limits. */
+  authorizedAtomIds?: readonly string[];
   limit?: number;
   includeArchived?: boolean;
 }
