@@ -199,6 +199,7 @@ export function TrashIcon() {
 
 
 export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
+  if (id === 'context') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth="3" /></svg>
   if (id === 'home') {
     // The navigation page: a compass, the same idea the reference launcher used for "开始".
     return (

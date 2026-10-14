@@ -10,7 +10,7 @@ describe('Context Inspector API privacy boundary', () => {
     const inspectContext = vi.fn((sessionId: string) => ({ version: 1, sessionId, coverage: 'loaded_history', requests: [], retainedRequests: 0, truncated: false, active: false }))
     const runner = { inspectContext, replay: vi.fn(() => { throw new Error('raw log read'); }),
       sessionManager: { read: vi.fn(() => { throw new Error('transcript read'); }) } } as unknown as AgentRunner
-    const context = { getRunner: () => runner, sessionIndex: { list: vi.fn(async () => [{ id: 'owned' }]) } } as unknown as SessionRouteContext
+    const context = { getRunner: () => runner, sessionIndex: { list: vi.fn(async () => [{ id: 'owned', title: 'Owned conversation', createdAt: 1, lastMessageAt: 2, workspacePath: 'PRIVATE_PATH', projectId: 'PRIVATE_PROJECT' }]) } } as unknown as SessionRouteContext
     const server = createServer((req, res) => {
       const url = new URL(req.url!, 'http://localhost')
       void routeContextInspector({ req, res, url, path: url.pathname, method: req.method! }, context).catch(() => { res.writeHead(500); res.end() })
@@ -22,7 +22,9 @@ describe('Context Inspector API privacy boundary', () => {
       expect(inspectContext).not.toHaveBeenCalled()
       const response = await fetch(`http://127.0.0.1:${port}/sessions/owned/context`)
       expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({ sessionId: 'owned', requests: [] })
+      const payload = await response.json()
+      expect(payload).toMatchObject({ sessionId: 'owned', requests: [], session: { title: 'Owned conversation', createdAt: 1, lastMessageAt: 2 } })
+      expect(JSON.stringify(payload)).not.toContain('PRIVATE_')
       expect(runner.replay).not.toHaveBeenCalled()
       expect(runner.sessionManager.read).not.toHaveBeenCalled()
     } finally { server.close(); await once(server, 'close') }

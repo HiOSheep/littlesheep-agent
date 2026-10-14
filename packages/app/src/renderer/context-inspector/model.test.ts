@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ContextEngine, buildContextTrace } from '@littlesheep/context'
 import { asSessionId } from '@littlesheep/types'
-import { contextOccupancy, selectContextRequest, tokenValue } from './model'
+import { contextOccupancy, loadedContextUsage, selectContextRequest, tokenValue } from './model'
 
 function data() {
   const prepared = new ContextEngine().prepare({ runId: 'run', sessionId: asSessionId('session'), stage: 'execute', requestIndex: 1,
@@ -12,6 +12,16 @@ function data() {
 }
 
 describe('Inspector request adaptation', () => {
+  it('aggregates only unique loaded Provider reports and marks missing fields partial', () => {
+    const inspection = data()
+    inspection.requests[0]!.trace.tokens.provider = { status: 'reported', promptTokens: 10, completionTokens: 2, cachedPromptTokens: 0 }
+    inspection.requests[0]!.trace.tokens.local = { status: 'exact', promptTokens: 999 }
+    inspection.requests.push({ ...inspection.requests[0]! })
+    expect(loadedContextUsage(inspection)).toMatchObject({ requests: 1, input: { value: 10, partial: false }, cached: { value: 0, partial: false }, written: { value: undefined, partial: true } })
+    inspection.requests.push({ ...inspection.requests[0]!, requestId: 'missing', trace: { ...inspection.requests[0]!.trace, tokens: { local: { status: 'unavailable' }, provider: { status: 'unavailable' } } } })
+    expect(loadedContextUsage(inspection).input).toEqual({ value: 10, partial: true })
+    expect(loadedContextUsage(null).input.value).toBeUndefined()
+  })
   it('refuses stale sessions, missing traces and unknown counts without manufacturing zero', () => {
     const inspection = data()
     expect(selectContextRequest(inspection, 'different', 'test/model')).toBeUndefined()

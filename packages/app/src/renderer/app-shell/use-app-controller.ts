@@ -631,18 +631,8 @@ export function useAppController() {
     resetDraftPermissionMode,
     setWorkspaceOpenRequest,
   })
-  const inspectorWasOpenRef = useRef(false)
-  useEffect(() => {
-    if (inspectorWasOpenRef.current && activeRoute.section === 'chat') {
-      document.querySelector<HTMLButtonElement>('.context-usage')?.focus({ preventScroll: true })
-    }
-    inspectorWasOpenRef.current = activeRoute.section === 'context'
-  }, [activeRoute.section])
   function openContextInspector() {
-    pushRoute({ section: 'context' })
-  }
-  function closeContextInspector() {
-    pushRoute({ section: 'chat' })
+    openWorkspacePanelTab('context')
   }
   function alignWorkspacePanelToWorkspaceRoot(
     root: string,
@@ -654,7 +644,7 @@ export function useAppController() {
     projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, removeAttachment, removeLineCommentAttachment, updatePublishedLineCommentAttachment, attachmentRemoval, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
     workspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceReviewRequest, openReviewInWorkspace, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceReviewNavigatorWidth, setWorkspaceReviewNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion,
-    contextInspectorOpen: activeRoute.section === 'context', contextInspectorModelRef: runtime?.model, openContextInspector, closeContextInspector,
+    contextInspectorModelRef: runtime?.model, openContextInspector,
     controlTip, setControlTip, pendingApproval, settingsEntryRippling, sidebarWidth, setSidebarWidth, setWorkspacePanelWidth, workspacePanelLayout, layoutStyle, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn, selectableProviders, modelAvailability,
     selectedModel, displayedSessions, visibleSessions, reorderSidebarSessions, workspaceIsWorkplace, workspaceTip, projectPath, contextUsage, latestTaskActivity, titlebarTask, branchConversationFromMessage, sidebarToggleTip, moreConversationTip, newConversationTip, uploadTip, sendTip, stopTip, requestWorkspaceSaveApproval, settleApprovalPrompt, refreshSessions, refreshProjects, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch, refreshRuntime, addAttachments, chooseWorkspace,
     openProjectCreator, activateProjectWorkspace, chooseProjectFolder, createProjectInFolder, relocateProject, resetWorkspace, openFileInWorkspace, openHyperlinkInside, openHyperlinkWithSystem, handleComposerDragEnter, handleComposerDragOver, handleComposerDragLeave, handleComposerDrop, handleComposerPaste, send, retryFailedTurn, stop, notifyRuntimeWorkspaceFileSaved, createConversationFromSidebar, createProjectConversationFromSidebar,

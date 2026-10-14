@@ -21,6 +21,7 @@ import type { WorkspaceDockViewController } from './app-controller-projections'
 
 export function WorkspaceDockView({ controller }: { controller: WorkspaceDockViewController }) {
   const {
+    contextInspectorModelRef, loading,
     currentSession,
     workspacePanelCollapsed,
     workspacePanelReopenActive,
@@ -139,6 +140,8 @@ export function WorkspaceDockView({ controller }: { controller: WorkspaceDockVie
         }}
       />
       <WorkspacePanel
+        contextModelRef={contextInspectorModelRef}
+        running={loading}
         key={workspaceSessionKey(currentSession)}
         collapsed={workspacePanelCollapsed}
         fullscreen={workspacePanelFullscreen}

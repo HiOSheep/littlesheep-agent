@@ -3,10 +3,10 @@ import { navigationSnapshotOwnsWorkspace, navigationSnapshotsEqual, routesEqual 
 import type { AppNavigationSnapshot } from './types'
 
 describe('application navigation snapshots', () => {
-  it('routes Inspector independently while retaining conversation layout snapshots', () => {
-    expect(routesEqual({ section: 'context' }, { section: 'context' })).toBe(true)
-    expect(routesEqual({ section: 'chat' }, { section: 'context' })).toBe(false)
-    expect(navigationSnapshotsEqual(snapshot({ route: { section: 'context' } }), snapshot({ route: { section: 'chat' } }))).toBe(false)
+  it('stores Inspector in ordinary workspace layout snapshots', () => {
+    expect(routesEqual({ section: 'chat' }, { section: 'chat' })).toBe(true)
+    expect(navigationSnapshotsEqual(snapshot({ workspacePanelTab: 'context', workspacePanelOpenTabs: ['review', 'context'] }),
+      snapshot({ workspacePanelTab: 'review', workspacePanelOpenTabs: ['review', 'context'] }))).toBe(false)
   })
   it('does not mix embedded browser history into global back and forward history', () => {
     const first = snapshot()

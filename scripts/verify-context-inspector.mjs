@@ -30,7 +30,7 @@ async function open() {
   await harness.waitFor(() => evaluate(`!!document.querySelector('.context-inspector-surface')`), 10000, 'Inspector opens')
 }
 async function close() {
-  await evaluate(`document.querySelector('.context-inspector-back').click()`)
+  await evaluate(`document.querySelector('.workspace-active-item.active .workspace-active-close').click()`)
   await harness.waitFor(() => evaluate(`!document.querySelector('.context-inspector-surface')`), 10000, 'Inspector closes')
   await delay(250)
 }
@@ -73,11 +73,39 @@ try {
   client = await harness.connectRenderer(Number(debuggingArg.split('=')[1]))
   await harness.waitFor(() => evaluate(`!!document.querySelector('.composer textarea')`), 90000, 'composer')
   await draft('新会话草稿')
+  const controls = await evaluate(`(() => {
+    const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, right: r.right, y: r.y, height: r.height }; };
+    return { ring: rect('.context-usage-ring'), model: rect('.runtime-picker-trigger'), send: rect('.send-round') };
+  })()`)
+  assert(Math.abs(controls.ring.y + controls.ring.height / 2 - controls.model.y - controls.model.height / 2) <= 1
+    && Math.abs(controls.ring.y + controls.ring.height / 2 - controls.send.y - controls.send.height / 2) <= 1, 'composer controls share a vertical center')
+  await shot('composer')
   const initialSessions = (await harness.fetchJson(locator, '/sessions')).body.sessions.length
   await open(); await harness.waitFor(() => evaluate(`document.querySelector('.context-inspector-empty')?.textContent.includes('尚未发送')`), 10000, 'new conversation empty state')
+  await delay(350)
+  const placement = await evaluate(`(() => {
+    const page = document.querySelector('.context-inspector-surface');
+    const panel = document.querySelector('.workspace-panel');
+    const r = page.getBoundingClientRect(), p = panel.querySelector('.workspace-panel-surface').getBoundingClientRect();
+    return { contained: panel.contains(page), left: r.left, right: r.right, panelLeft: p.left, panelRight: p.right,
+      appInert: document.querySelector('.app-panels').hasAttribute('inert'),
+      chatVisibility: getComputedStyle(document.querySelector('.chat')).visibility,
+      workspaceInert: document.querySelector('.workspace-panel-contents').hasAttribute('inert') };
+  })()`)
+  await shot('empty')
+  assert(placement.contained && placement.left >= placement.panelLeft && placement.right <= placement.panelRight + 1
+    && !placement.appInert && placement.chatVisibility === 'visible' && !placement.workspaceInert,
+    `Inspector stays inside workspace while chat remains interactive: ${JSON.stringify(placement)}`)
   await shot('empty'); await close()
   assert(await evaluate(`document.querySelector('.composer textarea').value === '新会话草稿'`), 'new conversation draft survives')
   assert((await harness.fetchJson(locator, '/sessions')).body.sessions.length === initialSessions, 'opening does not create a session')
+  await evaluate(`[...document.querySelectorAll('.workspace-empty-launcher-item')].find((item) => item.textContent.includes('审阅')).click()`)
+  await open()
+  assert(await evaluate(`document.querySelectorAll('.workspace-active-item').length === 2 && document.querySelector('.workspace-active-item.active').textContent.includes('上下文')`), 'Inspector uses shared workspace tab strip')
+  await evaluate(`[...document.querySelectorAll('.workspace-active-item')].find((item) => item.textContent.includes('审阅')).click()`)
+  await harness.waitFor(() => evaluate(`document.querySelector('.context-inspector-surface')?.closest('.workspace-tab-view')?.hasAttribute('inert')`), 10000, 'Inspector caches as an inactive tab')
+  await open(); await close()
+  assert(await evaluate(`document.querySelector('.workspace-active-item.active')?.textContent.includes('审阅')`), 'native close restores the preceding workspace tab')
   await session('上下文完整验收'); await draft('保留的检查草稿')
   await evaluate(`document.querySelector('.messages').scrollTop = 160`); await delay(150)
   const scroll = await evaluate(`document.querySelector('.messages').scrollTop`)
@@ -87,20 +115,43 @@ try {
   assert(content.includes('5,000') && content.includes('5,100'), 'local and Provider ledgers stay separate')
   assert(content.includes('不可用') && content.includes('128,000'), 'missing cache write and model window are explicit')
   assert(!content.includes('PRIVATE_'), 'page does not display private raw content')
+  const density = await evaluate(`(() => {
+    const fields = [...document.querySelectorAll('.context-inspector-card')];
+    const rects = fields.map((field) => field.getBoundingClientRect());
+    const firstGrid = document.querySelector('.context-inspector-cards').getBoundingClientRect();
+    return { count: fields.length, columns: Math.abs(rects[0].top - rects[1].top) < 1 && rects[1].left >= rects[0].right,
+      maxFieldHeight: Math.max(...rects.map((rect) => rect.height)), overviewHeight: firstGrid.height };
+  })()`)
+  assert(density.count === 14 && density.columns && density.maxFieldHeight <= 90 && density.overviewHeight <= 260,
+    `compact two-column fields fit the workspace: ${JSON.stringify(density)}`)
+  assert(await evaluate(`!document.querySelector('.context-inspector-table-scroll') && !document.querySelector('.context-inspector-overview .context-inspector-card small') && !!document.querySelector('.context-inspector-timeline-row')`),
+    'session overview has no field explanations or single-request source table')
   const response = await harness.fetchJson(locator, '/sessions/inspector-full/context')
   assert(!JSON.stringify(response.body).includes('PRIVATE_') && !JSON.stringify(response.body).includes('systemPromptProjection'), 'endpoint excludes raw diagnostics')
   await shot('overview')
+  await evaluate(`document.querySelector('.context-inspector-timeline-row').click()`)
+  await harness.waitFor(() => evaluate(`!!document.querySelector('.context-inspector-table-scroll') && !!document.querySelector('.context-inspector-back')`), 10000, 'trajectory opens request detail')
+  assert(await evaluate(`document.querySelector('.context-inspector-content').textContent.includes('5,000') && document.querySelector('.context-inspector-content').textContent.includes('5,100')`), 'trajectory detail preserves independent local and Provider counts')
+  await shot('detail')
+  await evaluate(`document.querySelector('.context-inspector-back').click()`)
+  assert(await evaluate(`!!document.querySelector('.context-inspector-overview') && !document.querySelector('.context-inspector-table-scroll')`), 'request detail returns to session overview in the same workspace tab')
+  await evaluate(`document.querySelector('.workspace-panel-collapse-action').click()`)
+  await harness.waitFor(() => evaluate(`document.querySelector('.workspace-panel').classList.contains('fullscreen')`), 10000, 'native workspace fullscreen')
+  assert(await evaluate(`!!document.querySelector('.workspace-panel.fullscreen .context-inspector-surface')`), 'Inspector follows native workspace fullscreen')
+  await evaluate(`document.querySelector('.workspace-panel-collapse-action').click()`)
   await close()
   assert(await evaluate(`document.querySelector('.composer textarea').value === '保留的检查草稿'`), 'loaded conversation draft survives')
   assert(Math.abs(await evaluate(`document.querySelector('.messages').scrollTop`) - scroll) <= 1, 'chat scroll position survives')
-  assert(await evaluate(`document.activeElement === document.querySelector('.context-usage')`), `focus returns to ring: ${await evaluate(`document.activeElement?.tagName`)}`)
-  // Native keyboard activation and Escape close.
+  await evaluate(`document.querySelector('.context-usage').focus()`)
+  // Native keyboard activation and the shared workspace close control.
   await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' })
   await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 })
   await harness.waitFor(() => evaluate(`!!document.querySelector('.context-inspector-surface')`), 10000, 'keyboard opens Inspector')
-  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
-  await harness.waitFor(() => evaluate(`!document.querySelector('.context-inspector-surface')`), 10000, 'Escape returns to chat')
-  checks.push('native Enter and Escape navigation')
+  await evaluate(`document.querySelector('.workspace-active-item.active .workspace-active-close').focus()`)
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  await harness.waitFor(() => evaluate(`!document.querySelector('.context-inspector-surface')`), 10000, 'workspace keyboard closes Inspector')
+  checks.push('native keyboard entry and shared tab close')
   await session('上下文缺失验收'); await open()
   await harness.waitFor(() => evaluate(`document.querySelector('.context-inspector-content').textContent.includes('部分数据')`), 10000, 'partial snapshot')
   assert(!await evaluate(`document.querySelector('.context-inspector-content').textContent.includes('5,100')`), 'switching sessions cannot leak prior Usage')

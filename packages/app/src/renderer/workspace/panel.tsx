@@ -1,5 +1,6 @@
 // Extension workspace panels, files, terminal, artifacts, and view helpers.
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { ContextInspectorPage } from '../context-inspector/page'
 import type { AttachmentRef } from '../api'
 import { StringListUpdater } from '../app-shell/types'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
@@ -37,6 +38,7 @@ import { WorkspaceAddMenu } from './add-menu'
 
 const EMPTY_LINE_COMMENTS: WorkspaceLineComment[] = []
 export function WorkspacePanel({
+  contextModelRef, running,
   collapsed,
   fullscreen,
   activeTab, openTabs, browserTabs, browserUrl, browserHistory,
@@ -71,6 +73,8 @@ export function WorkspacePanel({
   onOpenFile, onBrowserNavigate, onBrowserHistoryMove, onBrowserOpenNewTab, onBrowserTitleChange,
   onTipChange,
 }: {
+  contextModelRef?: string
+  running?: boolean
   collapsed: boolean
   fullscreen: boolean
   activeTab: WorkspacePanelTabId
@@ -120,6 +124,7 @@ export function WorkspacePanel({
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const workspaceEntries: Array<{ id: WorkspacePanelTab; label: string; desc: string }> = [
+    { id: 'context', label: '上下文', desc: '查看当前会话的上下文与模型用量' },
     { id: 'review', label: '审阅', desc: '审阅当前 Git 更改' },
     { id: 'artifacts', label: '文件', desc: '和左侧文件夹栏一样浏览选中的文件夹' },
     { id: 'terminal', label: '终端', desc: '在你选择的 Shell 里交互；切到别的标签只隐藏面板，关闭这个标签会结束全部终端会话' },
@@ -221,6 +226,7 @@ export function WorkspacePanel({
   }, [activeFileTab?.root, hasOpenFileTab, workspacePath])
 
   function renderWorkspaceTab(tab: WorkspacePanelTabId, isActive: boolean) {
+    if (tab === 'context') return <ContextInspectorPage sessionId={sessionId ?? null} modelRef={contextModelRef} running={!!running} active={isActive && !collapsed} />
     if (tab === 'review') {
       return (
         <WorkspaceReview
@@ -407,7 +413,7 @@ export function WorkspacePanel({
             <div
               /* The navigation page and the two surfaces that bring their own folder column keep the
                  shared one out of the way: the launcher is the whole area, as in the reference. */
-              className={`workspace-shared-file-navigator ${activeTab === 'review' || activeTab === 'artifacts' || activeTab === 'home' || activeTab === 'terminal' ? 'inactive' : ''}`}
+              className={`workspace-shared-file-navigator ${activeTab === 'context' || activeTab === 'review' || activeTab === 'artifacts' || activeTab === 'home' || activeTab === 'terminal' ? 'inactive' : ''}`}
               style={sharedFileNavigatorStyle}
             >
               <WorkspaceFileNavigator {...navigatorWiring} />

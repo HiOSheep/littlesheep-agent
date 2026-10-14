@@ -33,7 +33,7 @@ export interface WorkspaceFileDraftState {
   savedText: string
   editing: boolean
 }
-export type WorkspacePanelTab = 'home' | 'review' | 'artifacts' | 'terminal' | 'browser' | 'sideChat'
+export type WorkspacePanelTab = 'home' | 'review' | 'artifacts' | 'terminal' | 'browser' | 'sideChat' | 'context'
 export type WorkspaceFileTabId = `file:${string}`
 export type WorkspacePanelTabId = WorkspacePanelTab | WorkspaceFileTabId | WorkspaceBrowserTabId
 
@@ -181,7 +181,7 @@ export function isWorkspacePanelTab(value: unknown): value is WorkspacePanelTab 
     value === 'artifacts' ||
     value === 'terminal' ||
     value === 'browser' ||
-    value === 'sideChat'
+    value === 'sideChat' || value === 'context'
 }
 
 export function isWorkspacePanelTabId(value: unknown): value is WorkspacePanelTabId {

@@ -7,7 +7,7 @@ export async function routeContextInspector(request: LocalAppApiRequest, context
   const sessionId = matchLocalAppApiItemPath(request.path, LOCAL_APP_API_PREFIXES.sessions, SESSION_CONTEXT_SUFFIX);
   if (request.method !== 'GET' || sessionId === null) return false;
   const availableRunner = context.getRunner();
-  const listed = (await context.sessionIndex.list()).some((session) => session.id === sessionId);
+  const listed = (await context.sessionIndex.list()).find((session) => session.id === sessionId);
   const active = availableRunner?.activeRuns?.list().some((run) => run.sessionId === sessionId);
   if (!listed && !active) {
     json(request.res, 404, { error: '当前会话不可用，请返回聊天后重新打开。' });
@@ -23,6 +23,8 @@ export async function routeContextInspector(request: LocalAppApiRequest, context
     json(request.res, 409, { error: '上下文快照不匹配，请刷新后重试。' });
     return true;
   }
-  json(request.res, 200, inspection);
+  json(request.res, 200, { ...inspection, ...(listed ? { session: {
+    title: listed.title, createdAt: listed.createdAt, lastMessageAt: listed.lastMessageAt,
+  } } : {}) });
   return true;
 }

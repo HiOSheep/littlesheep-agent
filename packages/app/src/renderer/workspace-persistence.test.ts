@@ -25,6 +25,14 @@ import { LEGACY_WORKSPACE_BROWSER_TAB_ID } from './workspace/browser-tabs'
 import { adoptWorkspaceDraftSessionLayout, hasWorkspaceLayoutContent } from './workspace/layout-ownership'
 
 describe('workspace persistence helpers', () => {
+  it('restores Context Inspector through the same session tab layout', () => {
+    const layout = normalizeWorkspaceSessionLayout({ activeTab: 'context', openTabs: ['review', 'context', 'terminal'], collapsed: false });
+    expect(layout.activeTab).toBe('context');
+    expect(layout.openTabs).toEqual(['review', 'context', 'terminal']);
+    const restored = hydrateWorkspaceSessionLayouts(serializeWorkspaceSessionLayouts({ 'session:fixture': layout }));
+    expect(restored['session:fixture']?.activeTab).toBe('context');
+    expect(restored['session:fixture']?.openTabs).toEqual(layout.openTabs);
+  })
   it('restores old navigator snapshots and bounds custom widths', () => {
     expect(normalizeWorkspaceSessionLayout({}).fileNavigatorWidth).toBe(214)
     expect(normalizeWorkspaceFileNavigatorWidth(120)).toBe(160)
