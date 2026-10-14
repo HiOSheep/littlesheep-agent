@@ -135,8 +135,13 @@ describe('runtime picker labels', () => {
       /\.runtime-model-option\.active,[\s\S]*?\.runtime-reasoning-option\.active\s*\{[\s\S]*?border-color:\s*transparent;/u,
     )
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-submenu\s*\{[\s\S]*?left: calc\(100% \+ 8px\);[\s\S]*?right: auto;/u)
-    expect(styles).toMatch(/\.runtime-menu-shell \.runtime-model-menu\s*\{[\s\S]*?width: min\(143px, var\(--runtime-submenu-width, 220px\)\);/u)
+    // The model flyout follows its labels instead of a fixed 143px cap, which cut
+    // model ids short of the part that separates two versions; the picker measures
+    // the longest label off-screen and caps it against the viewport (2026-10-14).
+    expect(styles).toMatch(/\.runtime-menu-shell \.runtime-model-menu\s*\{[\s\S]*?width: var\(--runtime-submenu-width, 220px\);/u)
+    expect(styles).not.toMatch(/\.runtime-menu-shell \.runtime-model-menu\s*\{[^}]*min\(143px/u)
     expect(styles).toMatch(/\.runtime-menu-shell \.runtime-provider-menu\s*\{[\s\S]*?width: min\(220px, var\(--runtime-submenu-width, 220px\)\);/u)
+    expect(styles).toMatch(/\.runtime-submenu-measure\s*\{[^}]*position: absolute;[^}]*visibility: hidden;/u)
     expect(styles).not.toMatch(/\.runtime-menu-shell(?:\s+[^,{]+)?\s*\{[^}]*scrollbar-gutter:\s*stable/u)
     expect(styles).toMatch(/\.runtime-model-option > span:not\(\.runtime-menu-check\):not\(\.runtime-submenu-arrow\)/u)
     expect(styles).toMatch(/\.runtime-menu-check,[\s\S]*?flex: 0 0 14px;/u)
@@ -156,9 +161,13 @@ describe('runtime picker labels', () => {
     expect(source).not.toContain("value === 'model' ? null : 'model'")
     expect(source).not.toContain("value === 'provider' ? null : 'provider'")
     expect(source).toContain('const minimumSubmenuWidth = 143')
-    expect(source).toContain('const maximumSubmenuWidth = 220')
     expect(source).toContain('const minimumMenuWidth = 176')
     expect(source).toContain('const maximumMenuWidth = 208')
+    // The flyout is sized from the measured label, not from a fixed budget.
+    expect(source).toContain('submenuMeasureRef')
+    expect(source).toContain('const measuredLabel = submenuMeasureRef.current?.offsetWidth ?? 0')
+    expect(source).toMatch(/const maximumSubmenuWidth = Math\.min\(\s*contentSubmenuWidth,/u)
+    expect(source).not.toContain('const maximumSubmenuWidth = 220')
     expect(source.match(/onMouseLeave=\{\(\) => scheduleRuntimeSubmenuClose/g)).toHaveLength(1)
   })
 })

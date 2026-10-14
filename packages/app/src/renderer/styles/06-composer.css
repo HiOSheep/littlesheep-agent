@@ -1595,14 +1595,41 @@
   background: var(--composer-picker-option-active);
 }
 
+/* The flyout is as wide as the names it shows, bounded by the width the picker
+   measured against the viewport (`--runtime-submenu-width`). A fixed 143px cap cut
+   model ids short of the part that separates two versions. */
 .runtime-menu-shell .runtime-model-menu {
-  width: min(143px, var(--runtime-submenu-width, 220px));
+  width: var(--runtime-submenu-width, 220px);
   max-width: calc(100vw - 24px);
 }
 
 .runtime-menu-shell .runtime-provider-menu {
   width: min(220px, var(--runtime-submenu-width, 220px));
   max-width: calc(100vw - 24px);
+}
+
+/* The off-screen ruler the picker measures labels with. It is never painted and
+   never receives a click; it exists so the flyout can be sized to the real font.
+   Its metrics must match `.runtime-model-option` (mono, 9px side padding) or the
+   measured width would not be the width the option actually needs. */
+.runtime-submenu-measure {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: max-content;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.runtime-submenu-measure span {
+  padding: 0 9px;
+  font-family: var(--mono);
+  font-size: var(--chat-font-size-secondary);
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .runtime-submenu-trigger {

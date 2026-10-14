@@ -27,11 +27,18 @@ interface RuntimeMenuPosition {
   bottom: number
   width: number
   submenuWidth: number
+  /** Longest model label, measured so the submenu can fit names instead of ellipsizing them. */
+  submenuContentWidth: number
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+/** Width of the trailing check-mark column plus its gap, from `.runtime-menu-item`. */
+const CHECK_COLUMN_WIDTH = 20
+/** The submenu's own left+right padding, from `.runtime-menu-shell .runtime-submenu`. */
+const SUBMENU_PADDING = 10
 
 export function RuntimePicker({
   runtime,
@@ -64,6 +71,7 @@ export function RuntimePicker({
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuShellRef = useRef<HTMLDivElement>(null)
+  const submenuMeasureRef = useRef<HTMLDivElement>(null)
   const submenuCloseTimerRef = useRef<number>()
   const menuPositionFrameRef = useRef<number>()
   const [menuPosition, setMenuPosition] = useState<RuntimeMenuPosition | null>(null)
@@ -130,16 +138,26 @@ export function RuntimePicker({
       const minimumMenuWidth = 176
       const maximumMenuWidth = 208
       const minimumSubmenuWidth = 143
-      const maximumSubmenuWidth = 220
+      // Model names are as long as the vendor made them ("deepseek-v4.1-flash",
+      // "claude-sonnet-4-5-20250929"). A fixed 220px budget ellipsized them mid-name,
+      // which is not enough to tell two versions apart. The longest label is measured
+      // off-screen and the submenu grows to fit it, up to whatever the viewport has
+      // left after the main menu.
+      const measuredLabel = submenuMeasureRef.current?.offsetWidth ?? 0
+      // The row adds the check-mark column and its gap, the submenu its own padding.
+      const contentSubmenuWidth = measuredLabel > 0
+        ? measuredLabel + CHECK_COLUMN_WIDTH + SUBMENU_PADDING
+        : minimumSubmenuWidth
       const availableWidth = Math.max(320, window.innerWidth - margin * 2)
       const width = Math.min(maximumMenuWidth, Math.max(
         minimumMenuWidth,
-        availableWidth - gap - minimumSubmenuWidth,
+        availableWidth - gap - contentSubmenuWidth,
       ))
-      const submenuWidth = Math.min(maximumSubmenuWidth, Math.max(
-        minimumSubmenuWidth,
-        availableWidth - width - gap,
-      ))
+      const maximumSubmenuWidth = Math.min(
+        contentSubmenuWidth,
+        Math.max(minimumSubmenuWidth, availableWidth - width - gap),
+      )
+      const submenuWidth = Math.max(minimumSubmenuWidth, maximumSubmenuWidth)
       const maxLeft = window.innerWidth - margin - width - gap - submenuWidth
 
       setMenuPosition({
@@ -147,6 +165,7 @@ export function RuntimePicker({
         bottom: Math.max(margin, window.innerHeight - rect.top + 10),
         width,
         submenuWidth,
+        submenuContentWidth: measuredLabel,
       })
     }
 
@@ -224,6 +243,7 @@ export function RuntimePicker({
     bottom: 0,
     width: 208,
     submenuWidth: 220,
+    submenuContentWidth: 0,
   }
 
   const menuShell = (
@@ -241,6 +261,26 @@ export function RuntimePicker({
       onMouseEnter={cancelRuntimeSubmenuClose}
       onMouseLeave={() => scheduleRuntimeSubmenuClose(80)}
     >
+      {/* Off-screen ruler: the widest label the submenus would have to show, measured
+          in the real font so the flyout can be sized to fit names instead of
+          ellipsizing them. `aria-hidden` + `inert` keep it out of the accessibility
+          tree and out of hit-testing; it is never painted. */}
+      <div
+        ref={submenuMeasureRef}
+        className="runtime-submenu-measure"
+        aria-hidden="true"
+        {...{ inert: '' }}
+      >
+        {activeSubmenu === 'provider'
+          ? providers.map((provider) => <span key={provider.id}>{provider.name}</span>)
+          : activeModels.map((model) => (
+            <span key={model.id}>
+              {model.declared && model.name !== model.id
+                ? model.name
+                : formatRuntimeModelLabel(model.id, activeProvider?.id, activeProvider?.name)}
+            </span>
+          ))}
+      </div>
       <div className="runtime-picker-panel runtime-menu-panel" role="menu" aria-label="模型和推理选择">
         <div className="runtime-section-title">推理程度</div>
         <div
