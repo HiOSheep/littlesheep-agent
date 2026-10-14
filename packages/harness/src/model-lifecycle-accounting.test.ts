@@ -67,6 +67,40 @@ describe('model request lifecycle accounting', () => {
     expect(reduceDurableRunProjection(events).pendingModelRequestIds).toEqual([]);
   });
 
+  it('stamps the conversation id on the outgoing gateway request, not on the recording', async () => {
+    const ctx = makeCtx();
+    const events = durableRecorder(ctx);
+    await ctx.appendDurableEvent?.({
+      type: 'run_accepted',
+      source: 'runtime',
+      eventId: `${ctx.runId}:accepted`,
+      idempotencyKey: `${ctx.runId}:accepted`,
+      payload: {},
+    });
+    let observedHeaders: Record<string, string> | undefined;
+    const llm = new OpenAIClient({
+      baseURL: 'https://opencode.ai/inference/go/v1',
+      apiKey: 'sk-fixture',
+      fetch: async (_url, init) => {
+        observedHeaders = (init as { headers: Record<string, string> }).headers;
+        return Response.json({
+          model: 'fixture',
+          choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        });
+      },
+    });
+
+    const prepared = prepareModelRequest(ctx, 'reply', request(false));
+    await callModelChat(ctx, llm, prepared);
+    await flushModelRequestLifecycles(ctx);
+
+    expect(observedHeaders?.['x-opencode-session']).toBe(String(ctx.sessionId));
+    // The recorded request keeps the identity the snapshot and lifecycle map were built with.
+    expect(prepared.conversationId).toBeUndefined();
+    expect(ctx.modelRequests?.[0]?.payloadHash).toBeDefined();
+    expect(events.filter((event) => event.type === 'model_request_settled')).toHaveLength(1);
+  });
+
   it('persists cache fingerprints, Provider usage and reconciliation on the same request', async () => {
     const ctx = makeCtx();
     ctx.cacheObservationKey = 'model-lifecycle-fixture-key';

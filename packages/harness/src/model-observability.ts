@@ -155,7 +155,7 @@ export async function callModelChat(
   const lifecycle = requestLifecycles.get(request);
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
-    const response = await llm.chat(withTransportRetryActivity(ctx, request));
+    const response = await llm.chat(withConversation(ctx, withTransportRetryActivity(ctx, request)));
     recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
@@ -174,7 +174,7 @@ export async function callModelChatStream(
   const lifecycle = requestLifecycles.get(request);
   if (lifecycle) lifecycle.providerStartedAtMs = Date.now();
   try {
-    const response = await llm.chatStream(withTransportRetryActivity(ctx, request), onDelta);
+    const response = await llm.chatStream(withConversation(ctx, withTransportRetryActivity(ctx, request)), onDelta);
     recordProviderUsage(ctx, request, response.usage, response.transport);
     return response;
   } catch (error) {
@@ -208,6 +208,14 @@ function withTransportRetryActivity(ctx: RunContext, request: ChatRequest): Chat
     },
   };
 }
+
+/**
+ * Stamp the outgoing request with the conversation it belongs to: a gateway may refuse
+ * routable traffic without a stable per-conversation session id. The stamp stays on the
+ * outgoing copy, so the recorded request, snapshot and lifecycle entry keep their identity.
+ */
+const withConversation = (ctx: RunContext, request: ChatRequest): ChatRequest =>
+  request.conversationId ? request : { ...request, conversationId: ctx.sessionId };
 
 /** Best-effort error settlement helper for transport and cancellation paths. */
 export async function recordModelRequestFailure(
