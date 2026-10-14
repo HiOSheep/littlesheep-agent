@@ -22,16 +22,33 @@ export interface ConfiguredModelCapability {
   ultraEffort?: 'high' | 'xhigh' | 'max';
   vision?: boolean;
   sourceUrl?: string;
+  /**
+   * True when the config entry carried metadata; false for a bare id. A bare id
+   * means "the user listed this model but declared nothing", which is when the
+   * assumed defaults apply.
+   */
+  declared?: boolean;
 }
 
 const configuredModels = new Map<string, ConfiguredModelCapability>();
 
-/** Replace the registry with the declarations of the given config. */
+/**
+ * Replace the registry with the declarations of the given config.
+ *
+ * EVERY model a provider lists is registered, not only the ones written as metadata
+ * objects. A bare id (`models: ["vendor-model"]`) is the user saying "this model
+ * exists" while declaring nothing about it, which is exactly the case the defaults
+ * exist for: skipping it left such a model with no capability entry at all, so it
+ * resolved to "unknown" and the provider was unusable until the user filled in
+ * numbers they often cannot find.
+ *
+ * Built-in vendor facts still win — `resolveModelContextWindow` consults the
+ * built-in registry first, so nothing here can overwrite a documented value.
+ */
 export function registerConfiguredModelCapabilities(config: Pick<Config, 'providers'>): void {
   configuredModels.clear();
   for (const provider of config.providers ?? []) {
     for (const model of resolveProviderModels(provider)) {
-      if (!model.declared) continue;
       configuredModels.set(configuredModelRefKey(provider.id, model.id), {
         providerId: provider.id.trim().toLowerCase(),
         modelId: model.id,
@@ -42,6 +59,9 @@ export function registerConfiguredModelCapabilities(config: Pick<Config, 'provid
         ultraEffort: model.ultraEffort,
         vision: model.vision,
         sourceUrl: model.sourceUrl,
+        // Records that this entry came from the user's provider list rather than
+        // from a metadata object, so `assumed-default` can be attributed correctly.
+        declared: model.declared,
       });
     }
   }

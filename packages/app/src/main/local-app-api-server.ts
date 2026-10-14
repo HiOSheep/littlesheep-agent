@@ -6,7 +6,7 @@ import { deferAttachmentProtection } from './attachment-protection.js'
 import { bindFetchCompatibleHttpServer } from './fetch-compatible-port.js'
 import { join } from 'node:path'
 import type { AgentRunner } from '@littlesheep/runner'
-import type { Config } from '@littlesheep/config'
+import { registerConfiguredModelCapabilities, withProviderPresets, type Config } from '@littlesheep/config'
 import { ProjectRebindingService } from './project-rebinding.js'
 import { sameBoundPath } from './path-rebinding.js'
 import { ManagedAttachmentCache } from './attachment-cache.js'
@@ -46,6 +46,11 @@ export async function startLocalAppApiServer(
     return current
   }
   let currentConfig: Config = opts.config
+  // The registry must describe the config from the FIRST request, not only after a
+  // save: a data root whose providers were configured in an earlier session has to
+  // resolve their bare model ids immediately, or the picker shows no window until
+  // something happens to rebuild the Runner.
+  registerConfiguredModelCapabilities(withProviderPresets(opts.config))
   let sessionMutationQueue: Promise<void> = Promise.resolve()
   let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
   const runRouters = new RunRouterPublisher()
@@ -145,7 +150,18 @@ export async function startLocalAppApiServer(
         requireRunner,
         () => currentPluginHost,
         () => currentConfig,
-        (c: Config) => { webProviderCheck.invalidateIfWebChanged(c); currentConfig = c },
+        (c: Config) => {
+          webProviderCheck.invalidateIfWebChanged(c)
+          currentConfig = c
+          // User-declared model capabilities live in a process-global registry that
+          // `prepareRuntimeConfig` fills in. The provider routes replace the config
+          // without going through that function, so a provider saved from the settings
+          // page used to resolve its bare model ids to "unknown" until some later
+          // runner rebuild happened to re-register them — the model showed no context
+          // window in the picker and could not be used. Keeping the registry in step
+          // with the config it describes removes that ordering dependency.
+          registerConfiguredModelCapabilities(withProviderPresets(c))
+        },
         routeOptions,
         mutateSession,
         mutateRuntimeConfig,

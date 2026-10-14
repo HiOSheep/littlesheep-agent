@@ -10,6 +10,26 @@ import { resolveConfiguredModelCapability } from './configured-models.js';
 export const RUNTIME_REASONINGS = ['auto', 'low', 'medium', 'high', 'ultra'] as const;
 
 export type RuntimeReasoning = typeof RUNTIME_REASONINGS[number];
+
+/**
+ * Defaults for a user-declared model that leaves these fields out.
+ *
+ * These are DEFAULTS, not measured facts, and the distinction is load-bearing:
+ * `source: 'assumed-default'` travels with every resolved capability so a consumer
+ * can tell "the vendor documented 256K" from "nobody declared anything, so LS
+ * assumed 256K". Before these existed an undeclared model had NO context window,
+ * which made a freshly added custom provider unusable until the user looked up
+ * numbers they often cannot find — the cost of that honesty was higher than the
+ * cost of stating an assumption as an assumption.
+ *
+ * What an assumption must never do is masquerade as a measurement: the UI must be
+ * able to render "assumed 256K" (see `source`), and context compaction keeps using
+ * the number as a budget because a wrong-but-stated budget still lets a run work.
+ */
+export const DEFAULT_MODEL_CONTEXT_WINDOW = 256_000;
+export const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 32_000;
+/** Every runtime reasoning level, since the user expressed no preference. */
+export const DEFAULT_MODEL_REASONING_OPTIONS: readonly RuntimeReasoning[] = RUNTIME_REASONINGS;
 export type ProviderReasoningEffort =
   | 'none'
   | 'minimal'
@@ -22,7 +42,12 @@ export type ProviderReasoningEffort =
 export interface ModelContextWindowCapability {
   maxContextTokens: number;
   maxOutputTokens?: number;
-  source: 'official-provider-doc' | 'builtin-model-registry' | 'user-config';
+  /**
+   * Where the number came from. `assumed-default` means the user declared a model
+   * without this field and LS applied `DEFAULT_MODEL_CONTEXT_WINDOW`; it is NOT a
+   * vendor fact and must be rendered as an assumption wherever it is shown.
+   */
+  source: 'official-provider-doc' | 'builtin-model-registry' | 'user-config' | 'assumed-default';
   sourceUrl?: string;
   verifiedAt?: string;
 }
@@ -179,10 +204,13 @@ export function getSupportedReasoningOptions(providerId: string, model: string):
   const exact = MODEL_CAPABILITIES.get(`${provider}/${modelId}`);
   if (exact) return exact.reasoningOptions;
 
-  // User-declared models are the only authority LS has for names it does not
-  // know; an undeclared model stays "auto" only.
+  // A user-declared list is the user's own statement and still wins.
   const configured = resolveConfiguredModelCapability(provider, modelId);
   if (configured?.reasoningOptions?.length) return configured.reasoningOptions;
+  // A model the user declared without naming reasoning levels gets all of them,
+  // rather than `auto` alone. The alternative was a picker that silently hid
+  // 低/中/高/极致 for a model the user had just added themselves.
+  if (configured) return DEFAULT_MODEL_REASONING_OPTIONS;
 
   if (provider === 'openai' && (
     modelId.startsWith('o1') || modelId.startsWith('o3') || modelId.startsWith('o4')
@@ -245,6 +273,16 @@ export function resolveProviderReasoningRequest(
   };
 }
 
+/**
+ * The context window for a `provider/model`.
+ *
+ * Resolution order is unchanged: built-in vendor facts win, then the user's own
+ * declaration. What changed is the last resort — a model the user declared without
+ * a context window now gets `DEFAULT_MODEL_CONTEXT_WINDOW` marked
+ * `source: 'assumed-default'`, instead of resolving to nothing and leaving the
+ * provider unusable. A model that is NOT registered at all still resolves to
+ * `undefined`: LS only assumes for something the user actually added.
+ */
 export function resolveModelContextWindow(
   providerId: string,
   model: string,
@@ -253,11 +291,14 @@ export function resolveModelContextWindow(
   const capability = MODEL_CAPABILITIES.get(key);
   if (!capability) {
     const configured = resolveConfiguredModelCapability(providerId, model);
-    if (configured?.maxContextTokens === undefined) return undefined;
+    // Unknown model entirely: no assumption, because nothing declared it.
+    if (!configured) return undefined;
+    const assumedWindow = configured.maxContextTokens === undefined;
     return {
-      maxContextTokens: configured.maxContextTokens,
-      maxOutputTokens: configured.maxOutputTokens,
-      source: 'user-config',
+      maxContextTokens: configured.maxContextTokens ?? DEFAULT_MODEL_CONTEXT_WINDOW,
+      maxOutputTokens: configured.maxOutputTokens
+        ?? (assumedWindow ? DEFAULT_MODEL_MAX_OUTPUT_TOKENS : undefined),
+      source: assumedWindow ? 'assumed-default' : 'user-config',
       sourceUrl: configured.sourceUrl,
     };
   }
