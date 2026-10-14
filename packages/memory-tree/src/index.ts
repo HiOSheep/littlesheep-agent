@@ -1,4 +1,6 @@
 // @littlesheep/memory-tree — public API
+export { isMemoryAccessPolicy, isMemoryAccessTarget, evaluateMemoryRead, evaluateMemoryWrite,
+  defaultMemoryWriteScope, intersectMemoryAccessDecisions } from './memory-access-policy.js';
 
 export {
   InjectionTier,

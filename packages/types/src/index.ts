@@ -14,6 +14,7 @@ export * from './tool.js';
 export * from './effect-lease.js';
 export * from './web-retrieval.js';
 export * from './memory.js';
+export * from './memory-access-policy.js';
 export * from './memory-evidence.js';
 export * from './memory-continuity.js';
 export * from './task.js';

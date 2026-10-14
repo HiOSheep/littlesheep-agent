@@ -20,6 +20,7 @@
 
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。
+- [CMv2-P1A 记忆权限与作用域基础](cmv2-p1a-memory-access-2026-10-14.md)：访问边界审计、独立读写策略、项目身份与迁移方案、权限测试矩阵及 P1B/P1C 接入清单。
 - [缓存验收规程](cache-95-acceptance.md)：现行口径和正式验收命令。
 - [缓存基线目录](cache-baseline/README.md)：冻结账本及批次索引。
 - [桌面冷启动基线](cold-start-baseline/README.md)：冷启动、就绪态与窗口行为的原始验收输入。

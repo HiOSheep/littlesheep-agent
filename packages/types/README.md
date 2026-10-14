@@ -13,6 +13,7 @@
 - `ToolContext.approve` 是调用级回调；ToolExecutionService 为每次执行创建包装，复用本次工具批准时限定工具身份，并将其它嵌套请求强制送入 Main 逐次审批。审批结果与原生文件工具资格不作为可由工具参数伪造的 `ToolContext` 字段暴露。
 - P3-0 的跨平台沙箱能力契约位于 `sandbox-capabilities.ts`：仅声明能力证据、操作需求和 run/workspace 作用域匹配。它不负责 OS 隔离、不修改 Permission V2 的实际授权，也不能将客户端提交的能力对象当成可信证据；详见 `docs/reference/cross-platform-sandbox-contract.md`。
 - 类型本身不拥有数据；生产者、消费者和持久化位置由对应领域 owner 说明。持久协议变更必须有兼容读取或明确迁移。
+- CMv2 P1A 的 `memory-access-policy.ts` 定义独立的长期记忆读写策略及 Host 解析后的目标所有权。它尚未成为运行时或持久协议；模型、工具参数和 Renderer 提交的对象不能作为可信策略直接使用。
 - Web durable projection 不保存网页正文、完整 query 或 Provider 原始响应；run-local 正文不得混入 checkpoint 或 execution log。
 
 本包没有 workspace package 依赖。契约测试与源码同目录；修改公共字段时检查生产者、消费者、持久化、恢复与 Renderer projection。
