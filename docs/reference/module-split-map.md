@@ -30,7 +30,7 @@
 | `packages/runner/src/run-checkpoint-disposition-store.ts` | 683 | waiting-user disposition、claim、恢复租约与有界审计持久化 | 分离 disposition codec、query 与 retention；保持原子 claim facade | E |
 | `packages/harness/src/model-observability.ts` | 697 | 模型请求快照、Context 关联、Provider usage、缓存观测绑定与 C09 前缀变化原因；真实模型活动投影（含传输重试进度）已下沉到 `model-activity.ts` | 保持请求观测 facade；后续将 provider reconciliation 与 request snapshot projection 下沉 | E |
 | `packages/app/src/renderer/app-shell/use-app-controller.ts` | 651 | Renderer 跨领域兼容协调、启动恢复、Runtime 设置和视图快照 | 保持装配 facade；启动恢复、持久化和领域投影继续下沉，冻结期间不得继续吸收新职责（模型可用性已下沉到 `composer/use-model-availability.ts`，草稿已下沉到 `use-composer-drafts.ts`）；已回落到 655 的热点上限以内 | B |
-| `packages/memory-tree/src/memory-tree.ts` | 654 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search | D |
+| `packages/memory-tree/src/memory-tree.ts` | 681 | 根索引、导航、展开和搜索；working set 预算/去重/释放已拆出 | tree facade + index、navigation、expansion、branch-search；P1B-2A 的 Atom 授权清理超出 600+ 受控上限，下一步下沉 | D |
 | `packages/memory-tree/src/memory-write-tool.ts` | 318 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
 | `packages/memory-tree/src/memory-manage-tool.ts` | 388 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
 | `packages/tools/src/tool-execution-service.ts` | 660 | 工具查找、校验、审批、执行生命周期、事件与结构化记录 facade | 调度、中断、记录摘要和结果处理已拆分；facade 不吸收 Harness 编排或副作用状态所有权。**已到受控上限 660**：结果收尾逻辑已移入 `tool-execution-result.ts`，下一次改动必须先完成 invocation lifecycle 拆分，不能再往上加行 | E |
@@ -42,9 +42,16 @@
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | 639 | v3 节点查询、写入编排、层级和实体关联，含 HC-12 撤销屏障 | 已进入受控超限清单；后续分离 query projection、revocation query 与 write coordinator | D |
 | `packages/safety/src/permission-boundary.ts` | 614 | 三档权限矩阵、网络 safe-read descriptor、路径边界、SSRF 前置语法和 hard-deny 统一判定 | 先冻结三档权限矩阵和网络 contract，再拆 network descriptor adapter | C |
 | `packages/harness/src/cache-observability.ts` | 610 | Provider、Context、Memory/Embedding 三套缓存账本、脱敏指纹和失效原因；可缓存头的切分与消息规范化已迁至 `cache-prefix-split.ts` | 保持观测适配器边界；实际 Provider 对账与 durable event log 接入后按 ledger、fingerprint、report 拆分 | E |
-| `packages/llm/src/client.ts` | E / Runtime | 请求生命周期、错误分类、流式解析与重试接线共享同一状态机；先冻结协议解码与观察者接线的特征测试，再拆 request builder、stream parser、response mapper 与 retry observer 接线 | 660 | 同上 |
+| `packages/llm/src/client.ts` | 593 | OpenAI chat-completions 的请求构造、流式解析、reasoning/usage 归属、完成信号判定与 DSML/native 工具冲突适配 | 多协议改造后本文件只负责 chat-completions 这一条线：协议无关的传输（deadline、`Retry-After`、错误分类、usage 回执、SSE 分帧）已下沉到 `protocol-transport.ts`，协议选择已下沉到 `create-client.ts`；继续增长时再拆 stream parser 与 response mapper | E |
 | `packages/app/src/main/desktop-shell.ts` | 619 | Electron 窗口、托盘、关闭策略、窗口状态和退出前刷新 | 保持 DesktopShell 生命周期边界；状态 codec 留在 `desktop-window-state.ts`，隔离验收动作（缩放、最大化/还原、启动页、启动失败页、验收期是否显示窗口）留在 `desktop-acceptance-actions.ts` + `desktop-visual-acceptance.ts`；按规则从软上限队列移入。`initialize()` 现在幂等（托盘已存在就不重建），供启动重试成功后把窗口交给渲染器 | C |
-| `packages/llm/src/client.ts` | 660 | 请求构造、流式解析、reasoning/usage 归属、`Retry-After` 解析、重试接线、完成信号判定与 DSML/native 工具冲突适配 | 分离 request builder、stream parser、response mapper 与 retry observer 接线；请求 deadline 与"超时 ≠ 取消"的判定已下沉到 `request-deadline.ts`；协议解码不向 Harness/Renderer 扩散 | E |
+| `packages/llm/src/protocol-transport.ts` | 217 | 协议无关的传输层：请求 deadline、`Retry-After`、可重试状态判定、usage 回执派发、SSE 分帧与 `data:` 解析 | 只放与厂商无关的东西；任何需要知道 `tool_use` 或 `response.output_item.added` 的逻辑都必须留在各自协议文件里，否则这个"共享"模块会比它替换掉的重复代码更糟 | E |
+| `packages/llm/src/create-client.ts` | 53 | 按 `providers[].api` 选择协议客户端，并对未知协议抛错 | 只做选择与构参；各协议的实现分别在 `client.ts`、`anthropic-client.ts`、`responses-client.ts`，不要在这里放协议细节 | E |
+| `packages/llm/src/protocols.ts` | 111 | 已实现协议清单、每个协议的路径/鉴权/必需头/模型目录路径，以及 URL 与请求头构造 | 与 `@littlesheep/config` 的 `PROVIDER_API_PROTOCOLS` 必须保持一致（`client-conformance.test.ts` 断言两者相同）；新增协议时两边同步 | E |
+| `packages/llm/src/anthropic-translate.ts` | 473 | Anthropic Messages 的线格式类型与请求/响应翻译：顶层 `system`、`tool_use`/`tool_result` 合并、`input_schema`、`budget_tokens` 与 `max_tokens` 关系、stop_reason 与 usage 映射 | 保持纯翻译（无 fetch、无状态）；传输在 `anthropic-client.ts`，协议无关部分在 `protocol-transport.ts` | E |
+| `packages/llm/src/responses-translate.ts` | 441 | OpenAI Responses 的线格式类型与请求/响应翻译：`input` 条目、`function_call` 独立条目、`max_output_tokens`、output 读取与 usage 映射 | 保持纯翻译（无 fetch）；有状态的流式事件解释器留在 `responses-client.ts`，因为 `ParsedEvent` 依赖流内的 tool-call 累积表 | E |
+| `packages/llm/src/responses-client.ts` | 538 | OpenAI Responses 客户端：HTTP 调用、重试循环、typed SSE 事件解释与有状态的流式 tool-call 累积 | 传输归 `protocol-transport.ts`，纯翻译归 `responses-translate.ts`；有状态的流解释器留在这里，因为 `ParsedEvent` 依赖流内的累积表 | E |
+| `packages/app/src/shared/provider-protocols.ts` | 92 | 设置页展示的协议清单、标签、说明与请求路径 | 渲染进程**不能**以值的形式 import `@littlesheep/config`（会把它的 Node-only loader 拖进 renderer bundle 并让构建失败），所以这里保留本地副本，由 `provider-protocols.test.ts` 断言与 config 的 `PROVIDER_API_PROTOCOLS` 完全一致 | B |
+| `packages/llm/src/anthropic-client.ts` | 402 | Anthropic Messages 客户端：HTTP 调用、重试循环、SSE 事件解释与流式状态机 | 传输细节归 `protocol-transport.ts`，翻译归 `anthropic-translate.ts`；本文件只做驱动与事件状态 | E |
 
 ## 软上限审查队列
 
@@ -125,7 +132,11 @@
 | `packages/app/src/renderer/app-shell/preferences.ts` | 378 | Renderer 本地偏好键、基础 codec、旧工作区布局迁移与镜像应用判定 | 保持兼容偏好入口；后续将旧布局迁移下沉到 workspace persistence adapter | B |
 | `packages/prompt/src/builder.ts` | 499 | Prompt 分段、缓存边界之上的稳定装配（`stableText`/`stableSegments`）与边界之下尾段的渲染 | 保留 builder facade；缓存边界常量与判定见 `prompt/src/cache-boundary.ts`，复杂 section 继续移入 `sections` | E |
 | `packages/app/src/renderer/settings/plugins.tsx` | 392 | 插件发现、筛选、启停、来源确认和代码授权 | 新能力进入插件宿主或独立设置组件；2026-09-29 空态改走共享四态视图（`ui/state-view.tsx` 的 `empty`）后实测 392 行，仍在 394 的登记上限内 | B |
-| `packages/app/src/renderer/settings/models.tsx` | 373 | 供应商卡片、编辑/删除事务、会话草稿与"丢弃未保存修改"确认 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
+| `packages/app/src/renderer/settings/models.tsx` | 541 | 供应商卡片（含模型总数与折叠预览）、编辑/删除事务、会话草稿、"丢弃未保存修改"确认与"获取模型"事务 | 表单状态规则已下沉到 `model-provider-draft.ts` 与 `provider-editor-session.ts`，"获取模型"的 HTTP 已下沉到 `provider-model-list-client.ts`，可用性判定在 `provider-model-fetch-gate.ts`；卡片与编辑视图后续拆出独立组件，不要在页面里继续堆领域逻辑 | B |
+| `packages/app/src/renderer/settings/provider-model-list-client.ts` | 181 | OpenAI 兼容 `/models` 目录的 URL 构造、payload 解析与失败分类 | 只做一次 GET 并归一化结果；不写配置、不缓存、不把密钥放进 URL 或错误文案 | B |
+| `packages/app/src/renderer/settings/model-provider-draft.ts` | 375 | 供应商草稿的校验、运行时投影互转、目录合并与行清理（无 React、无 fetch） | 保持纯函数：校验规则、合并规则与计数都留在这里，HTTP 归 `provider-model-list-client.ts`，渲染归 `model-provider-editor.tsx` | B |
+| `packages/app/src/renderer/settings/provider-model-fetch-gate.ts` | 45 | “获取模型”的可用性判定与禁用原因措辞 | 只做判定与措辞，不发请求、不读状态；新增可用性条件加在这里并在 `provider-model-fetch-gate.test.ts` 固定 | B |
+| `packages/app/src/renderer/settings/model-provider-editor.tsx` | 358 | 供应商编辑面板的字段、模型行与"获取模型"控件渲染 | 纯校验与合并规则留在 `model-provider-draft.ts`，请求留在 `provider-model-list-client.ts`；继续只做渲染，不要在本文件里新增网络或持久化 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 573 | 布局尺寸交互、标签命令、草稿编辑、关闭前保存编排与"拒绝保存后放弃修改"这一分支 | 关闭路径的布局写入已下沉到 `file-close-layout.ts`（关标签＝连同草稿一起离开会话现场，因此 2026-09-28 已从受控超限清单注销），会话布局持久化仍在 `use-workspace-session-layouts.ts`；保持交互 controller，不得继续吸收新职责（审计 P1 第 9 条的第三个答案只加了这一条分支，并同时把三处布局写入移出本文件） | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
 | `packages/app/src/renderer/chat/assistant-turn.tsx` | 586 | 思考摘要、执行过程与最终产物的渐进式披露 | 展开/折叠已从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程面与步骤组各多一层 `grid-template-rows` 过渡容器，因此由 593 涨到 624 行（越 600 线进受控清单）；O1 再把注意力行移出可折叠正文（`chat/attention-row.tsx`），净减到 620 行；2026-09-28 失败回合的重试动作（`onRetryTurn`/`retryPending` 与那一个按钮，仍在 `.assistant-process-content` 之外）回到 651 行；2026-09-29 O3 把来源区块整块拆到 `chat/web-sources.tsx`（129 行，未达 300 行登记线），实测 580 行并退出受控超限清单；持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
@@ -149,12 +160,13 @@
 | `packages/app/src/renderer/ui/focus-indicator-rules.ts` | 341 | 焦点可见性规则 R3 的样式表读法：识别焦点态规则、outline 抑制、可见替代，以及"滚动容器内边距容不容得下里面控件的焦点环"的算术 | 保持"纯文本进、判断出"的解析边界，不引入 DOM；继续增长时把 CSS 选择器解析（`subjectOf`/`ruleKeysOf`）与"抑制/替代"判定分成两个模块 | B |
 | `packages/app/src/renderer/ui/focus-ownership.ts` | 315 | "谁持有焦点"的唯一归属（规则 R1/R2/R3）：带界限重试的入场聚焦、关闭时归还、以及聚焦控件必须可见的规则声明 | 保持焦点生命周期单一归属；继续增长时把重试调度与焦点归还拆成独立模块，但 R1/R2 的三条规则文本必须留在同一处 | B |
 | `packages/memory-tree/src/memory-service.ts` | 343 | Memory Service facade 与运行协调器组合 | 保持 facade；新增能力进入领域协调器 | D |
+| `packages/memory-tree/src/tree-memory-branch.ts` | 347 | v2/v3 Atom 检索适配、受保护读取及索引投影 | 权限证明与绑定检查位于 `atom-read-authorization.ts`；保留分支适配边界，不吸收 Resource 或 Host 身份解析 | D |
 | `packages/channels/telegram/src/plugin.ts` | 342 | Telegram 协议和生命周期 | 分离 transport、mapper、sender | C |
 | `packages/memory-tree/src/memory-repository/v3-retrieval-materializer.ts` | 331 | 候选优先级、证据封套和治理读取投影 | 保持候选投影单一来源 | D |
 | `packages/cli/src/commands/import-repo.ts` | 361 | 导入流程、Git、LLM、Memory 写入与进度 | 分离 source、distill、progress adapter | C |
 | `packages/memory-tree/src/index.ts` | 343 | Memory Tree 公共 barrel 与稳定导出 | 保持无逻辑导出层 | D |
 | `packages/channels/webhook/src/plugin.ts` | 319 | Webhook server、鉴权和消息 | 分离 server、auth、mapper、sender | C |
-| `packages/app/src/renderer/composer/runtime-picker.tsx` | 456 | 输入栏模型、供应商和推理程度选择器及二级菜单定位 | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；继续增长时分离菜单定位与选项渲染 | B |
+| `packages/app/src/renderer/composer/runtime-picker.tsx` | 496 | 输入栏模型、供应商和推理程度选择器及二级菜单定位（含按内容测量二级菜单宽度） | 保持选择器视图编排；可用性不再自己计算，改由 `use-model-availability.ts` 算一次后传入；二级菜单宽度由离屏标尺实测标签宽度后按视口夹取，不要回到固定宽度；继续增长时分离菜单定位与选项渲染 | B |
 | `packages/app/src/renderer/app-shell/composer-view.tsx` | 324 | 输入栏表面：草稿、附件、控件行、发送/停止入口与就地原因 | 保持稳定表面；模型可用性与焦点归属分别下沉到 `composer/send-readiness.ts` 与 `composer/use-composer-focus.ts`，视图只渲染结果；继续增长时把控件行与提示拆成独立组件 | B |
 | `packages/context/src/tokenizers/deepseek-v4-encoding.ts` | 483 | DeepSeek V4/V4.1 消息、thinking、DSML 工具调用与 numeric reasoning budget 的官方请求 framing | 保持纯编码职责；继续增长时分离 DSML 工具序列化与 framing 变体表 | E |
 | `packages/context/src/tokenizers/deepseek-v4-counter.ts` | 497 | DeepSeek V4 官方 tokenizer 资源校验、下载、加载与有界精确计数缓存 | 继续增长时分离通用不可变资源下载器 | E |
@@ -254,7 +266,7 @@
 | `packages/runner/src/execution-log.ts` | E / Runtime | execution log 现在还负责 final-reply settlement promotion；必须先保持审计、transcript 和 settlement identity 一致，再拆分 codec/store/query | 680 | 同上 |
 | `packages/types/src/runtime-contracts.ts` | E / Runtime | Context、事件、检查点、执行证据、请求前缀变化原因仍共享版本边界；会话续接证据已迁入 `conversation-continuation.ts`，其余拆分时必须保持现有 barrel 与持久化兼容 | 925 | 同上 |
 | `packages/runner/src/runtime-event-queue.ts` | E / Runtime | 安全边界接入已经完成；租约、结算、快照恢复与 ActiveRunRegistry 契约刚稳定，补齐拆分特征测试后再下沉 codec/registry | 760 | 同上 |
-| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade | 660 | 同上 |
+| `packages/memory-tree/src/memory-tree.ts` | D / Memory | 根索引、导航和预算状态共享不变量，先冻结 facade；P1B-2A 增加了 Atom 授权清理与 `MemoryAccessAuthorizationError` 直通，实测 681 已超受控上限 660，下一步先把 `pruneAtomReadState` 与授权异常直通拆到独立模块 | 660 | 同上 |
 | `packages/memory-tree/src/memory-write-tool.ts` | 318 | 受控 durable 写入入口：两种有记录理由、来源校验（可引用也可用本轮消息）、来源完整性、幂等身份与如实报告 | 下一步把来源解析拆到独立模块 |
 | `packages/memory-tree/src/memory-manage-tool.ts` | 388 | 受控的 forget/correct：授权核对、目标核对、三步纠正提交与失败时的可恢复报告 | 下一步把纠正端口契约拆到独立模块 |
 | `packages/channels/feishu/src/plugin.ts` | C / Channel Plugins | 等待渠道 transport 与事件验签端口稳定后拆分；本轮只补充连续性 request identity 透传 | 640 | 同上 |
