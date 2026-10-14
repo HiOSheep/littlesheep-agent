@@ -69,6 +69,7 @@ const S3_FIELD_INVENTORY: string[] = [
   'browser.clear-cache',
   'browser.clear-data',
   'plugins.trust-local-code',
+  'api.protocol',
   'api.provider-key',
 ]
 

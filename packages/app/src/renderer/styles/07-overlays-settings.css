@@ -649,9 +649,14 @@ body.is-resizing-column .settings-sidebar-resizer {
   line-height: 1.4;
 }
 
+/* Rows reuse the sidebar interaction frame (see `sidebar-section-toggle.test.ts`):
+   radius from the token, no border, one hover fill. What they must NOT have is a
+   gap between them: with the grid's 2px gap the rounded hover fill stopped short of
+   the cell it belongs to and the rows showed through as a strip above and below the
+   highlight (reported 2026-10-14). Joined rows keep the frame and fill the cell. */
 .settings-overview-group-items {
   display: grid;
-  gap: 2px;
+  gap: 0;
 }
 
 .settings-overview-row {
@@ -660,7 +665,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   width: 100%;
   min-height: 42px;
   gap: 12px;
-  padding: 0 8px;
+  padding: 0 16px;
   color: var(--text);
   background: transparent;
   border: 0;
@@ -3201,6 +3206,41 @@ body.is-resizing-column .settings-sidebar-resizer {
   margin-top: 9px;
 }
 
+/* The count is stated in words next to the badges: a wall of chips does not say how
+   many models a provider actually declares. */
+.provider-model-count {
+  color: var(--muted);
+  font-size: var(--settings-meta-font-size);
+  line-height: 19px;
+}
+
+.provider-card-notes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.provider-models-toggle {
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: var(--settings-meta-font-size);
+}
+
+.provider-models-toggle:hover {
+  background: var(--control-hover);
+}
+
+.provider-card-note {
+  color: var(--muted-2);
+  font-size: var(--settings-meta-font-size);
+  line-height: 1.5;
+}
+
 .provider-model-chip {
   display: inline-flex;
   align-items: center;
@@ -3215,6 +3255,12 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted-2);
   font-size: var(--settings-meta-font-size);
   font-style: normal;
+}
+
+/* An assumed window reads differently from a declared one: it is LS's default, not
+   this model's measured value, so it must not look like a vendor fact. */
+.provider-model-chip em.provider-model-chip-assumed {
+  color: var(--warning);
 }
 
 .provider-card-actions {
@@ -3303,7 +3349,10 @@ body.is-resizing-column .settings-sidebar-resizer {
   color: var(--muted);
 }
 
-.settings-inline-field input {
+/* Inputs and the protocol select share one surface: a select that kept the native
+   chrome next to the flat fields read as a control from another app. */
+.settings-inline-field input,
+.settings-inline-field select {
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-ui);
@@ -3314,12 +3363,24 @@ body.is-resizing-column .settings-sidebar-resizer {
   min-height: 36px;
 }
 
+.settings-inline-field select {
+  appearance: none;
+  /* Room for the chevron the native marker used to draw. */
+  padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: right 15px center, right 10px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
 /* The field's own surface carries focus: the frames-off block below zeroes its border, so the
    fill steps up. The 1px accent outline that used to sit here was the last rectangle drawn
    around a text field (reported 2026-10-02). */
-.settings-inline-field input:focus {
+.settings-inline-field input:focus,
+.settings-inline-field select:focus {
   outline: 0;
-  background: var(--control-hover);
+  background-color: var(--control-hover);
 }
 
 .provider-model-list {
@@ -3444,6 +3505,18 @@ body.is-resizing-column .settings-sidebar-resizer {
     grid-column: 2;
     grid-row: 1;
   }
+
+  /* Three controls plus the count do not fit on one line at the minimum window
+     width; the actions drop below the title instead of overflowing the panel. */
+  .provider-model-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .provider-model-header-actions {
+    flex-wrap: wrap;
+  }
 }
 
 .provider-chip {
@@ -3459,6 +3532,84 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-chip.active {
   border-color: var(--accent);
   color: var(--text-strong);
+}
+
+.provider-chip:disabled {
+  color: var(--muted-2);
+  cursor: not-allowed;
+}
+
+/* The editor reads as grouped questions — 接口 / 模型 — instead of one column of
+   unlabelled fields. The fill-only convention above is kept: the group is told
+   apart by its own surface, not by a frame. */
+.provider-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-ui);
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.provider-editor-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.provider-editor-section-heading strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.provider-editor-section-heading small {
+  color: var(--muted-2);
+  font-size: var(--settings-meta-font-size);
+  line-height: 1.5;
+}
+
+/* A field that was rejected says so where the value is, not only in a summary at
+   the bottom of the panel. */
+.provider-field-error {
+  color: var(--danger);
+  font-size: var(--settings-meta-font-size);
+  line-height: 1.5;
+}
+
+.provider-model-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.provider-model-title small {
+  color: var(--muted-2);
+  font-size: var(--settings-meta-font-size);
+  font-weight: 400;
+}
+
+.provider-model-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.provider-fetch-models {
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.provider-fetch-note {
+  color: var(--muted);
+  font-size: var(--settings-meta-font-size);
+  line-height: 1.5;
+}
+
+.provider-fetch-result {
+  margin: 0;
 }
 
 .provider-template-list {
@@ -3524,9 +3675,11 @@ body.is-resizing-column .settings-sidebar-resizer {
 .provider-card,
 .provider-badge,
 .provider-model-chip,
+.provider-models-toggle,
 .provider-remove,
 .provider-editor-discard,
 .settings-inline-field input,
+.settings-inline-field select,
 .provider-model-row input,
 .provider-model-remove,
 .provider-chip,

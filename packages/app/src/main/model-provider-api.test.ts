@@ -155,6 +155,48 @@ describe('model provider Local App API', () => {
     }
   })
 
+  it('keeps gateway headers and provider facts the settings editor cannot express', async () => {
+    const { server, updates } = await startServer([{
+      id: 'my-gw',
+      name: 'My Gateway',
+      baseURL: 'https://gw.example.com/v1',
+      apiKey: '$MY_GW_API_KEY',
+      headers: { 'x-gateway-route': 'lane-a' },
+      timeoutSeconds: 30,
+      models: ['vendor-model'],
+    }])
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/config/providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Exactly what the editor sends: it has no field for headers or timeoutSeconds.
+          provider: { id: 'my-gw', name: 'Renamed Gateway', baseURL: 'https://gw.example.com/v1', models: ['vendor-model'] },
+        }),
+      })
+      expect(response.status).toBe(200)
+      const stored = updates.at(-1)?.providers.find((item) => item.id === 'my-gw')
+      expect(stored).toMatchObject({
+        name: 'Renamed Gateway',
+        headers: { 'x-gateway-route': 'lane-a' },
+        timeoutSeconds: 30,
+      })
+
+      const explicit = await fetch(`http://127.0.0.1:${server.port}/config/providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: { id: 'my-gw', baseURL: 'https://gw.example.com/v1', headers: { 'x-gateway-route': 'lane-b' } },
+        }),
+      })
+      expect(explicit.status).toBe(200)
+      expect(updates.at(-1)?.providers.find((item) => item.id === 'my-gw')?.headers)
+        .toEqual({ 'x-gateway-route': 'lane-b' })
+    } finally {
+      await server.stop()
+    }
+  })
+
   it('clears the key reference only when the draft sends an explicit empty key', async () => {
     const { server, updates } = await startServer([{
       id: 'my-gw',

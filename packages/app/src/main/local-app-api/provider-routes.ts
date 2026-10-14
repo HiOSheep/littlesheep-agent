@@ -88,6 +88,15 @@ export async function routeModelProviders(
         }
       }
       const provider: ModelProvider = { ...parsed.data }
+      if (existing) {
+        // The settings editor carries only id/name/baseURL/apiKey/models. Fields it cannot
+        // express must survive an unrelated edit instead of being silently dropped: `headers`
+        // is a real gateway routing contract now, and `timeoutSeconds`/`api` are provider
+        // facts the UI does not edit.
+        provider.headers ??= existing.headers
+        provider.timeoutSeconds ??= existing.timeoutSeconds
+        provider.api ??= existing.api
+      }
       if (apiKey) provider.apiKey = apiKey
       else delete provider.apiKey
       const providers = existing

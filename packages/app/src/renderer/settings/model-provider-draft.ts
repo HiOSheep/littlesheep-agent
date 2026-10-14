@@ -2,10 +2,12 @@
 // provider payload and an editable form, plus validation. No React and no
 // fetch, so the settings page can unit-test its rules directly.
 
+import type { ProviderApiProtocol } from '@littlesheep/config'
 import {
   RUNTIME_REASONINGS,
   type RuntimeReasoning,
 } from '../../shared/model-capabilities'
+import { DEFAULT_PROVIDER_PROTOCOL } from '../../shared/provider-protocols'
 import type {
   ProviderDraft,
   ProviderModelDraft,
@@ -57,6 +59,12 @@ export interface ProviderEditorDraft {
   id: string
   name: string
   baseURL: string
+  /**
+   * Wire protocol this provider speaks. Only protocols `@littlesheep/llm`
+   * implements can be saved — the config schema rejects anything else — so the
+   * editor offers this closed list rather than a free-text field.
+   */
+  api: ProviderApiProtocol
   /** Plaintext key typed by the user; empty keeps the stored reference. */
   apiKey: string
   models: ModelDraftRow[]
@@ -74,6 +82,7 @@ export function createEmptyProviderDraft(): ProviderEditorDraft {
     id: '',
     name: '',
     baseURL: '',
+    api: DEFAULT_PROVIDER_PROTOCOL,
     apiKey: '',
     models: [createEmptyModelRow()],
     originalId: null,
@@ -109,11 +118,106 @@ export function createEmptyModelRow(): ModelDraftRow {
   }
 }
 
+export interface FetchedModelMerge {
+  models: ModelDraftRow[]
+  /** Model ids the endpoint reported that the draft did not have yet. */
+  added: string[]
+  /** Draft model ids the endpoint did not report; kept, because a catalog is not an inventory. */
+  kept: string[]
+}
+
+/**
+ * Merge a fetched model catalog into the editable rows.
+ *
+ * Three rules make this safe to press on a provider the user has already
+ * configured:
+ *   - an id that is already present keeps every declared number the user typed;
+ *   - existing rows that the endpoint does not list are kept, only re-sorted, so
+ *     pressing the button can never silently delete a model;
+ *   - only ids are added. Nothing is guessed about a fetched model, so its
+ *     context window and reasoning options stay unknown until declared.
+ */
+export function mergeFetchedModels(
+  rows: readonly ModelDraftRow[],
+  fetched: readonly RuntimeProviderModel[],
+): FetchedModelMerge {
+  const order: string[] = []
+  const fetchedById = new Map<string, RuntimeProviderModel>()
+  for (const model of fetched) {
+    const id = model.id.trim()
+    if (!id || fetchedById.has(id)) continue
+    fetchedById.set(id, model)
+    order.push(id)
+  }
+  const existingById = new Map<string, ModelDraftRow>()
+  for (const row of rows) {
+    const id = row.id.trim()
+    if (!id) continue
+    existingById.set(id, row)
+  }
+
+  const models: ModelDraftRow[] = []
+  const added: string[] = []
+  const emitted = new Set<string>()
+  for (const id of order) {
+    const existing = existingById.get(id)
+    if (existing) {
+      models.push(existing)
+      emitted.add(id)
+      continue
+    }
+    const model = fetchedById.get(id)!
+    models.push({
+      id,
+      name: model.name && model.name !== id ? model.name : '',
+      contextWindow: '',
+      maxOutputTokens: '',
+      reasoningOptions: [],
+    })
+    emitted.add(id)
+    added.push(id)
+  }
+  const kept: string[] = []
+  for (const row of rows) {
+    const id = row.id.trim()
+    // A row the first pass already emitted must not be appended a second time;
+    // a blank row has no id to lose and stays where it was, below the list.
+    if (id && !emitted.has(id)) kept.push(id)
+    if (!emitted.has(id)) models.push(row)
+  }
+  return { models, added, kept }
+}
+
+/**
+ * Keep only the rows a save would actually declare, leaving one editable row.
+ *
+ * "清空" and "at least one row" are the same rule: deleting every row, or the
+ * single row the list has, must leave the user somewhere to type rather than an
+ * empty list. A blank row that carries a reasoning declaration is content and
+ * survives, because that is a real declaration the user made.
+ */
+export function withoutEmptyModelRow(rows: readonly ModelDraftRow[]): ModelDraftRow[] {
+  const hasContent = (row: ModelDraftRow) =>
+    row.id.trim().length > 0
+    || row.name.trim().length > 0
+    || row.contextWindow.trim().length > 0
+    || row.maxOutputTokens.trim().length > 0
+    || row.reasoningOptions.length > 0
+  const rest = rows.filter(hasContent)
+  return rest.length > 0 ? rest : [createEmptyModelRow()]
+}
+
+/** Count the model entries a save would actually write (blank rows are dropped). */
+export function declaredModelCount(rows: readonly ModelDraftRow[]): number {
+  return rows.filter((row) => row.id.trim().length > 0).length
+}
+
 export function draftFromRuntimeProvider(provider: RuntimeProvider): ProviderEditorDraft {
   return {
     id: provider.id,
     name: provider.name === provider.id ? '' : provider.name,
     baseURL: provider.baseURL,
+    api: provider.api,
     apiKey: '',
     models: provider.models.map(modelRowFromRuntimeModel),
     originalId: provider.id,
@@ -182,6 +286,7 @@ export function toProviderDraft(draft: ProviderEditorDraft): ProviderDraft {
   const provider: ProviderDraft = {
     id: draft.id.trim(),
     baseURL: draft.baseURL.trim(),
+    api: draft.api,
     models,
   }
   const name = draft.name.trim()
@@ -204,6 +309,7 @@ export function providerDraftIsDirty(
     current.id !== baseline.id
     || current.name !== baseline.name
     || current.baseURL !== baseline.baseURL
+    || current.api !== baseline.api
     || current.apiKey !== baseline.apiKey
     || current.originalId !== baseline.originalId
     || current.models.length !== baseline.models.length

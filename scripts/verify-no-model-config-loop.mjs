@@ -28,6 +28,8 @@ const ATTACHMENT_NAME = 'no-model-fixture.txt'
 const PROVIDER_ID = 'acceptance-gw'
 const PROVIDER_NAME = '验收网关'
 const MODEL_ID = 'slow-a'
+/** Listed by the acceptance catalog but never present in the seeded config. */
+const CATALOG_ONLY_MODEL_ID = 'vendor-listed'
 const API_KEY = 'acceptance-key'
 
 /**
@@ -106,6 +108,8 @@ const SURFACE_EXPRESSION = `(() => {
       if (!editor) return null;
       const inputs = [...editor.querySelectorAll('.settings-inline-field input')];
       const keyInput = inputs.find((input) => input.type === 'password');
+      const fetchButton = editor.querySelector('.provider-fetch-models');
+      const fetchResult = editor.querySelector('.provider-fetch-result');
       return {
         label: editor.getAttribute('aria-label'),
         id: inputs[0]?.value ?? null,
@@ -113,8 +117,19 @@ const SURFACE_EXPRESSION = `(() => {
         name: inputs[1]?.value ?? null,
         baseURL: inputs[2]?.value ?? null,
         keyFilled: Boolean(keyInput && keyInput.value),
-        modelRows: editor.querySelectorAll('.provider-model-row').length,
         modelIds: [...editor.querySelectorAll('.provider-model-row .provider-model-id')].map((input) => input.value),
+        modelRows: [...editor.querySelectorAll('.provider-model-row')].map((row) => ({
+          id: row.querySelector('.provider-model-id')?.value ?? null,
+          contextWindow: row.querySelectorAll('input')[2]?.value ?? null,
+          maxOutputTokens: row.querySelectorAll('input')[3]?.value ?? null,
+        })),
+        fetchDisabled: fetchButton ? fetchButton.disabled === true : null,
+        fetchBusy: fetchButton ? fetchButton.getAttribute('aria-busy') === 'true' : null,
+        fetchBlockedReason: editor.querySelector('#provider-fetch-blocked')?.textContent?.trim() ?? null,
+        fetchResult: fetchResult ? (fetchResult.textContent || '').trim() : null,
+        fetchActionResult: fetchResult
+          ? fetchResult.getAttribute('role') === 'status' || fetchResult.getAttribute('aria-live') !== null
+          : null,
         status: editor.querySelector('.provider-editor-status')?.textContent?.trim() ?? null,
         validationError: editor.querySelector('.dialog-error')?.textContent?.trim() ?? null,
       };
@@ -296,6 +311,13 @@ async function closePickerMenu(client) {
   await delay(250)
 }
 
+/** Capture one UI state, so the report shows what the fixture actually rendered. */
+async function screenshot(client, name) {
+  await client.send('Page.enable')
+  const shot = await client.send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(screenshotDir, `${name}.png`), Buffer.from(shot.data, 'base64'))
+}
+
 /** Pick one model from the open picker menu. */
 async function client_clickModelOption(client, modelId) {
   const clicked = await client.evaluate(`(() => {
@@ -314,7 +336,13 @@ async function main() {
   await harness.assertBuildFresh()
   const keep = process.argv.includes('--keep')
   const recorder = createRecorder()
-  const provider = await startElectronAcceptanceProvider({ streamChunkDelayMs: 0, streamChunkCharacters: 200 })
+  const provider = await startElectronAcceptanceProvider({
+    streamChunkDelayMs: 0,
+    streamChunkCharacters: 200,
+    // The catalog the editor's 获取模型 control reads back; MODEL_ID is deliberately
+    // not something the fixture ever types into a field.
+    models: [MODEL_ID, CATALOG_ONLY_MODEL_ID],
+  })
   const root = await mkdtemp(join(tmpdir(), 'littlesheep-no-model-'))
   const dataDir = join(root, 'data')
   const workspaceDir = join(dataDir, 'workplace')
@@ -323,7 +351,11 @@ async function main() {
   const screenshotDir = join(root, 'screenshots')
   let handle
   try {
-    await Promise.all([mkdir(workspaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
+    await Promise.all([
+      mkdir(workspaceDir, { recursive: true }),
+      mkdir(chromiumDir, { recursive: true }),
+      mkdir(screenshotDir, { recursive: true }),
+    ])
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workspaceDir), null, 2)}\n`, 'utf8')
 
     // --- 1. first run: nothing is configured, and the composer says so ----------
@@ -492,21 +524,80 @@ async function main() {
     })
     recorder.check(unusable.composerError === null, 'the configuration read itself did not fail', { composerError: unusable.composerError })
 
-    // --- 5. add the key and the model: the picker becomes ready -----------------
+    // --- 5. add the key, then let the editor read the endpoint's catalog --------
     await click(handle.client, '.runtime-configure-action')
     await waitForSurface(handle.client, (surface) => (surface.settingsOpen ? surface : undefined), 30_000, 'provider settings again')
     await click(handle.client, '.provider-card .save-btn')
     await waitForSurface(handle.client, (surface) => (surface.editor ? surface : undefined), 20_000, 'the provider editor for an existing provider')
     const reopened = await readSurface(handle.client)
     recorder.check(reopened.editor?.idDisabled === true, 'an existing provider keeps its id fixed', reopened.editor)
-    await click(handle.client, '.provider-model-list .provider-chip')
-    await setInput(handle.client, '.provider-model-row .provider-model-id', MODEL_ID)
+
+    // Without a key in the draft, the catalog call cannot identify itself, and the
+    // control has to say which fact is missing instead of failing later.
+    const blockedFetch = await waitForSurface(
+      handle.client,
+      (surface) => (surface.editor?.fetchBlockedReason ? surface : undefined),
+      20_000,
+      'the reason 获取模型 is unavailable',
+    )
+    recorder.note({ step: 'fetch-blocked', editor: blockedFetch.editor })
+    recorder.check(
+      (blockedFetch.editor?.fetchBlockedReason ?? '').includes('API 密钥'),
+      'a keyless fetch states which fact stopped it before anything is sent',
+      blockedFetch.editor,
+    )
+    recorder.check(
+      blockedFetch.editor?.fetchDisabled === true && blockedFetch.editor?.fetchBusy === false,
+      'the disabled control is really disabled while it explains itself',
+      blockedFetch.editor,
+    )
+
+    const catalogBefore = provider.requests.length
     await setInput(handle.client, '.provider-editor .settings-inline-field input[type="password"]', API_KEY)
-    const filledAgain = await readSurface(handle.client)
-    recorder.note({ step: 'editor-filled-again', editor: filledAgain.editor })
-    recorder.check(filledAgain.editor?.modelIds.includes(MODEL_ID), 'the model id can be typed', filledAgain.editor)
-    recorder.check(filledAgain.editor?.keyFilled === true, 'the API key can be typed', filledAgain.editor)
-    recorder.check(filledAgain.editor?.validationError === null, 'the completed provider draft is valid', filledAgain.editor)
+    const fetchable = await waitForSurface(
+      handle.client,
+      (surface) => (surface.editor && !surface.editor.fetchBlockedReason ? surface : undefined),
+      20_000,
+      '获取模型 to become available once a key is typed',
+    )
+    recorder.check(fetchable.editor?.fetchDisabled === false, 'a typed key makes the catalog call available', fetchable.editor)
+
+    let fetched
+    try {
+      fetched = await waitForSurface(
+        handle.client,
+        (surface) => (surface.editor?.fetchResult ? surface : undefined),
+        30_000,
+        'the model catalog to be read back into the editor',
+      )
+    } catch (error) {
+      recorder.note({ step: 'fetch-timeout', surface: await readSurface(handle.client) })
+      throw error
+    }
+    recorder.note({ step: 'fetched-models', editor: fetched.editor })
+    recorder.check(
+      fetched.editor?.modelIds.includes(MODEL_ID),
+      'the catalog id appears in the editor without being typed',
+      fetched.editor,
+    )
+    recorder.check(
+      fetched.editor?.fetchActionResult === true,
+      'the fetch result is announced as a successful action, not only as text',
+      fetched.editor,
+    )
+    recorder.check(
+      provider.requests.length === catalogBefore,
+      'reading the catalog sends no chat completion',
+      { before: catalogBefore, after: provider.requests.length },
+    )
+    // The catalog is a list of ids: nothing about a fetched model may be invented.
+    const fetchedRow = fetched.editor?.modelRows.find((row) => row.id === MODEL_ID) ?? null
+    recorder.check(
+      fetchedRow?.contextWindow === '' && fetchedRow?.maxOutputTokens === '',
+      'a fetched model keeps its numbers unknown instead of guessing them',
+      fetchedRow,
+    )
+    await screenshot(handle.client, 'provider-models-fetched')
     await click(handle.client, '.provider-editor .save-btn')
     let configured
     try {
@@ -694,6 +785,7 @@ async function main() {
     check: 'no-model-config-loop',
     capturedAt: new Date().toISOString(),
     fixtureRoot: keep ? root : '<temporary root removed>',
+    screenshots: keep ? screenshotDir : null,
     injectedResponses: ['GET /runtime answered with HTTP 500 by the page fetch probe (load-failure state only)'],
     ok: recorder.failures.length === 0,
     observations: recorder.observations,
@@ -701,6 +793,7 @@ async function main() {
     limits: [
       'The fixture saves a custom OpenAI-compatible endpoint pointing at the acceptance Provider stub; the gate proves the configuration round trip, not that any real provider is reachable.',
       'No connection check exists in this path, so "saved but unusable" is judged from the Runtime payload (key presence and model entries), exactly as the taskbook allows; adding a real check would need its own network-cost decision.',
+      'The catalog step runs against that same stub over real loopback HTTP (GET /v1/models), so it covers the editor\'s request shape and merge, not any vendor\'s own catalog behaviour.',
       'The attachment is a synthetic paste into the composer, not an OS file-dialog pick; the gate covers that the composer keeps its attachment across the settings trip.',
     ],
   }

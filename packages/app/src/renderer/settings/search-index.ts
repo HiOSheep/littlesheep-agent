@@ -455,6 +455,18 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
 
   // ---- 模型与行为 › 模型供应商（嵌套编辑器里的密钥字段） ----------------------------------
   {
+    id: 'api.protocol',
+    page: 'api',
+    section: '供应商编辑器',
+    title: 'API 协议',
+    aliases: ['协议', 'API 协议', 'wire protocol', 'OpenAI Chat Completions', 'OpenAI Responses', 'Anthropic Messages'],
+    kind: 'field',
+    valueNotIndexed: '协议是编辑器里的选择项，打开供应商编辑器后才能读到当前值。',
+    // 与其他编辑器字段一样：落地时先点某个供应商卡片上的“编辑”。
+    reveal: '.provider-card .save-btn',
+    conditional: true,
+  },
+  {
     id: 'api.provider-key',
     page: 'api',
     section: '供应商编辑器',

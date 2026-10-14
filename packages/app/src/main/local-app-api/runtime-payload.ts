@@ -56,6 +56,9 @@ export function buildRuntimeProvider(provider: ModelProvider): RuntimeProvider {
           ? [...model.reasoningOptions]
           : [...getSupportedReasoningOptions(provider.id, model.id)],
         vision: model.vision,
+        // Says whether the numbers above are the user's own declaration or LS's
+        // assumed defaults, so the UI can label an assumption as one.
+        ...(capability?.source === 'assumed-default' ? { assumedDefaults: true } : {}),
       }
     }),
     headerNames: Object.keys(provider.headers ?? {}).sort(),

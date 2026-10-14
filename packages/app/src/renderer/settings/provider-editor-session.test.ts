@@ -58,7 +58,13 @@ describe('provider editor draft wiring', () => {
 
     // Restored on mount through the session store, not through page state alone.
     expect(models).toContain('useState<ProviderEditorDraft | null>(() => readProviderEditorSession()?.draft ?? null)')
-    expect(models).toContain('applyEditorSession({ draft: next, baseline: baseline ?? next })')
+    // Every edit is written through the store, with the baseline preserved, and the
+    // draft always keeps one row to type into.
+    expect(models).toMatch(/function applyEditorSession\(next: ProviderEditorSession \| null\) \{[\s\S]*?setBaseline\(next\?\.baseline \?\? null\)/u)
+    expect(models).toMatch(/function changeDraft\(next: ProviderEditorDraft\) \{[\s\S]*?applyEditorSession\(\{ draft: safe, baseline: baseline \?\? safe \}\)/u)
+    expect(models).toContain('const safe = next.models.length === 0 ? { ...next, models: [createEmptyModelRow()] } : next')
+    // Opening a saved provider with no models must not render an empty list either.
+    expect(models).toMatch(/function openEditor\(next: ProviderEditorDraft\) \{[\s\S]*?models: \[createEmptyModelRow\(\)\]/u)
     // Submitting clears the stored copy, and a failure puts the content back.
     expect(models).toContain('writeProviderEditorSession(null)')
     expect(models).toContain('writeProviderEditorSession({ draft: submitted, baseline: submittedBaseline })')

@@ -6,7 +6,7 @@ import type {
   PendingDataRootRollback,
 } from '@littlesheep/branding'
 import type { AgentProfileId } from '@littlesheep/prompt'
-import type { DesktopClosePolicy } from '@littlesheep/config'
+import type { DesktopClosePolicy, ProviderApiProtocol } from '@littlesheep/config'
 import type {
   BrowserFallbackMode,
   NetworkDnsResolver,
@@ -36,13 +36,20 @@ export interface RuntimeProviderModel {
   maxOutputTokens?: number
   reasoningOptions: RuntimeReasoning[]
   vision?: boolean
+  /**
+   * True when these numbers were NOT declared by the user but filled from LS's
+   * defaults (256K window / 32K output). The UI renders them as assumptions rather
+   * than as facts about the model, because a wrong window changes when context
+   * compaction runs, and because the user may still want to replace them.
+   */
+  assumedDefaults?: boolean
 }
 
 export interface RuntimeProvider {
   id: string
   name: string
   baseURL: string
-  api: 'openai-chat-completions'
+  api: ProviderApiProtocol
   models: RuntimeProviderModel[]
   /** Header names only; values may carry gateway secrets and stay in config. */
   headerNames: string[]
@@ -72,7 +79,8 @@ export interface ProviderDraft {
   baseURL: string
   /** Either an env reference ("$MY_KEY") or a plaintext key stored in keychain. */
   apiKey?: string
-  api?: 'openai-chat-completions'
+  /** Wire protocol this provider speaks; the schema rejects anything else. */
+  api?: ProviderApiProtocol
   headers?: Record<string, string>
   timeoutSeconds?: number
   models?: Array<string | ProviderModelDraft>

@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeProvider } from '../../shared/runtime-api-contracts'
+import type { RuntimeProvider, RuntimeProviderModel } from '../../shared/runtime-api-contracts'
 import {
   PROVIDER_TEMPLATES,
   createEmptyModelRow,
   createEmptyProviderDraft,
   createProviderDraftFromTemplate,
+  declaredModelCount,
   draftFromRuntimeProvider,
   formatTokenCount,
   isConfiguredProvider,
+  mergeFetchedModels,
   providerDraftIsDirty,
   toggleReasoningOption,
+  withoutEmptyModelRow,
   toProviderDraft,
   validateProviderDraft,
+  type ModelDraftRow,
 } from './model-provider-draft'
 
 const provider: RuntimeProvider = {
@@ -131,9 +135,28 @@ describe('provider editor draft', () => {
     expect(body).toEqual({
       id: 'my-gw',
       baseURL: 'https://gw.example.com/v1',
+      // The protocol travels with every save, so a provider cannot silently fall back
+      // to chat-completions after the user chose another one.
+      api: 'openai-chat-completions',
       apiKey: 'sk-live',
       models: [{ id: 'vendor-model' }],
     })
+  })
+
+  it('round-trips the chosen protocol through the draft and the request', () => {
+    const draft = {
+      ...createEmptyProviderDraft(),
+      id: 'my-gw',
+      baseURL: 'https://gw.example.com/v1',
+      api: 'anthropic-messages' as const,
+    }
+    expect(toProviderDraft(draft).api).toBe('anthropic-messages')
+    // Changing only the protocol is unsaved content, not a no-op.
+    expect(providerDraftIsDirty(
+      { ...draft, api: 'openai-responses' },
+      draft,
+    )).toBe(true)
+    expect(providerDraftIsDirty(draft, draft)).toBe(false)
   })
 
   it('prefills templates without inventing model ids', () => {
@@ -199,5 +222,88 @@ describe('provider editor draft', () => {
     )).toBe(true)
     expect(providerDraftIsDirty({ ...cloned, models: cloned.models.slice(1) }, baseline)).toBe(true)
     expect(providerDraftIsDirty({ ...cloned, models: [...cloned.models, createEmptyModelRow()] }, baseline)).toBe(true)
+  })
+})
+
+describe('fetched model catalog merge', () => {
+  const fetched = (...ids: string[]): RuntimeProviderModel[] =>
+    ids.map((id) => ({ id, name: id, declared: true, reasoningOptions: [] }))
+
+  it('adds the reported ids in the order the endpoint gave them', () => {
+    const merged = mergeFetchedModels([createEmptyModelRow()], fetched('vendor-b', 'vendor-a'))
+    expect(merged.added).toEqual(['vendor-b', 'vendor-a'])
+    expect(merged.models.map((row) => row.id)).toEqual(['vendor-b', 'vendor-a', ''])
+    // Nothing is invented for an id the catalog only names.
+    expect(merged.models[0]).toEqual({
+      id: 'vendor-b',
+      name: '',
+      contextWindow: '',
+      maxOutputTokens: '',
+      reasoningOptions: [],
+    })
+  })
+
+  it('keeps the declared numbers of a model the user already configured, exactly once', () => {
+    const declared: ModelDraftRow[] = [{
+      id: 'vendor-b',
+      name: 'Vendor B',
+      contextWindow: '256000',
+      maxOutputTokens: '32000',
+      reasoningOptions: ['auto', 'high'],
+    }]
+    const merged = mergeFetchedModels(declared, fetched('vendor-b', 'vendor-a'))
+    expect(merged.added).toEqual(['vendor-a'])
+    // The whole list, not just its head: an already-present row that is appended a
+    // second time would duplicate the id and make the draft unsaveable.
+    expect(merged.models.map((row) => row.id)).toEqual(['vendor-b', 'vendor-a'])
+    expect(merged.models[0]).toEqual(declared[0])
+  })
+
+  it('is idempotent: pressing the button twice changes nothing the second time', () => {
+    const start: ModelDraftRow[] = [
+      { id: 'vendor-b', name: 'Vendor B', contextWindow: '256000', maxOutputTokens: '', reasoningOptions: ['auto'] },
+      createEmptyModelRow(),
+    ]
+    const catalog = fetched('vendor-b', 'vendor-a')
+    const once = mergeFetchedModels(start, catalog)
+    const twice = mergeFetchedModels(once.models, catalog)
+    expect(twice.models.map((row) => row.id)).toEqual(['vendor-b', 'vendor-a', ''])
+    expect(twice.added).toEqual([])
+    expect(twice.kept).toEqual([])
+    // A duplicated id is exactly what a save refuses, so this is the real invariant.
+    expect(validateProviderDraft({
+      id: 'my-gw',
+      name: '',
+      baseURL: 'https://gw.example.com/v1',
+      api: 'openai-chat-completions',
+      apiKey: '',
+      models: twice.models,
+      originalId: null,
+    }, []).error).toBeNull()
+  })
+
+  it('reports the rows a catalog did not mention, once each', () => {
+    const merged = mergeFetchedModels(
+      [
+        { id: 'retired-model', name: 'Retired', contextWindow: '128000', maxOutputTokens: '', reasoningOptions: [] },
+        { id: 'another-retired', name: '', contextWindow: '', maxOutputTokens: '', reasoningOptions: [] },
+        createEmptyModelRow(),
+      ],
+      fetched('vendor-a', 'retired-model'),
+    )
+    expect(merged.kept).toEqual(['another-retired'])
+    expect(merged.models.map((row) => row.id)).toEqual(['vendor-a', 'retired-model', 'another-retired', ''])
+  })
+
+  it('counts only rows a save would write, and clears without leaving the list empty', () => {
+    expect(declaredModelCount([createEmptyModelRow()])).toBe(0)
+    expect(declaredModelCount([{ ...createEmptyModelRow(), id: 'a' }, createEmptyModelRow()])).toBe(1)
+
+    expect(withoutEmptyModelRow([])).toEqual([createEmptyModelRow()])
+    const declared: ModelDraftRow[] = [{ ...createEmptyModelRow(), id: 'a' }, createEmptyModelRow()]
+    expect(withoutEmptyModelRow(declared)).toEqual([{ ...createEmptyModelRow(), id: 'a' }])
+    // A blank row that carries a reasoning declaration is content, not an empty row.
+    expect(withoutEmptyModelRow([{ ...createEmptyModelRow(), reasoningOptions: ['high'] }]))
+      .toEqual([{ ...createEmptyModelRow(), reasoningOptions: ['high'] }])
   })
 })

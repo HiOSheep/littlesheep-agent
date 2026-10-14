@@ -5,12 +5,16 @@ const MAX_LOGGED_REQUESTS = 512
 
 export async function startElectronAcceptanceProvider(options = {}) {
   const requests = []
+  /** Path the stub serves its OpenAI-compatible surface under, `''` included. */
+  let baseURLPath = normalizeBaseURLPath(options.baseURLPath)
   const state = {
     requestDelayMs: Math.max(0, Number(options.requestDelayMs ?? 0)),
     streamChunkDelayMs: boundedDelay(options.streamChunkDelayMs ?? 0),
     streamChunkCharacters: Math.max(0, Math.min(10_000, Math.round(Number(options.streamChunkCharacters) || 0))),
     modelDelayMs: new Map(),
     promptDelay: null,
+    /** Catalog answered by GET /v1/models; set per fixture through `/control`. */
+    models: normalizeModelIds(options.models),
     /** Faults consumed by successive Provider requests; see `normalizeFaults`. */
     faults: normalizeFaults(options.faults),
   }
@@ -38,6 +42,8 @@ export async function startElectronAcceptanceProvider(options = {}) {
         state.streamChunkCharacters = Math.max(0, Math.min(10_000, Math.round(body.streamChunkCharacters)))
       }
       if (body.clearFaults === true) state.faults = []
+      if (Array.isArray(body.models)) state.models = normalizeModelIds(body.models)
+      if (typeof body.baseURLPath === 'string') baseURLPath = normalizeBaseURLPath(body.baseURLPath)
       if (Array.isArray(body.faults)) state.faults = normalizeFaults(body.faults)
       writeJson(res, 200, {
         ok: true,
@@ -54,7 +60,19 @@ export async function startElectronAcceptanceProvider(options = {}) {
       writeJson(res, 200, { requests })
       return
     }
-    if (req.method !== 'POST' || url.pathname !== '/v1/chat/completions') {
+    // The model catalog the settings page reads through 获取模型. It is part of the
+    // OpenAI-compatible surface this stub already speaks, so the editor's lookup
+    // runs against a real HTTP endpoint instead of a mocked `fetch`. A fixture that
+    // serves its API at the host root (`/models`, no `/v1`) covers gateways that
+    // publish no version prefix.
+    if (req.method === 'GET' && (url.pathname === '/v1/models' || url.pathname === `${baseURLPath}/models`)) {
+      writeJson(res, 200, {
+        object: 'list',
+        data: state.models.map((id, index) => ({ id, object: 'model', created: 1_700_000_000 + index })),
+      })
+      return
+    }
+    if (req.method !== 'POST' || url.pathname !== `${baseURLPath}/chat/completions`) {
       writeJson(res, 404, { error: 'not found' })
       return
     }
@@ -111,10 +129,16 @@ export async function startElectronAcceptanceProvider(options = {}) {
   const address = server.address()
   if (!address || typeof address === 'string') throw new Error('acceptance provider did not bind a TCP port')
   return {
-    baseURL: `http://127.0.0.1:${address.port}/v1`,
+    baseURL: `http://127.0.0.1:${address.port}${baseURLPath}`,
     controlURL: `http://127.0.0.1:${address.port}/control`,
     requestsURL: `http://127.0.0.1:${address.port}/requests`,
     requests,
+    /** Current catalog, so a fixture can assert the endpoint still answers the same list. */
+    models: state.models,
+    setModels: (models) => {
+      state.models = normalizeModelIds(models)
+      return state.models
+    },
     /** Current fault queue, so a fixture can assert what is still pending. */
     faults: state.faults,
     setFaults: async (faults) => {
@@ -592,6 +616,19 @@ function boundedTools(value) {
 
 function boundedDelay(value) {
   return Math.max(0, Math.min(120_000, Math.round(Number(value) || 0)))
+}
+
+/** Default `/v1`, or any explicit path prefix; `''` serves the API at the host root. */
+function normalizeBaseURLPath(value) {
+  if (value === undefined) return '/v1'
+  const trimmed = String(value).trim().replace(/\/+$/u, '')
+  if (!trimmed || trimmed === '/') return ''
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+}
+
+function normalizeModelIds(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim()))]
 }
 
 /**
