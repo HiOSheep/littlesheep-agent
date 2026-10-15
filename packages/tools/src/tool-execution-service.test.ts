@@ -76,7 +76,7 @@ describe('ToolExecutionService', () => {
     expect(result.get(0)?.ok).toBe(false)
     expect(execute).not.toHaveBeenCalled()
     expect(service.snapshot().records[0]).toMatchObject({
-      status: 'approval_unavailable', approval: { required: true, decision: 'unavailable' },
+      status: 'hard_denied', approval: { required: true, decision: 'blocked' },
     })
   })
 
@@ -816,12 +816,12 @@ describe('ToolExecutionService', () => {
     ]);
 
     expect([...results.values()].every((result) => result.ok === false)).toBe(true);
-    expect(approve).toHaveBeenCalledTimes(3);
+    expect(approve).toHaveBeenCalledTimes(2);
     for (const execute of executions.values()) expect(execute).not.toHaveBeenCalled();
     expect(service.snapshot().records.map((record) => record.status)).toEqual([
       'approval_denied',
       'approval_denied',
-      'approval_denied',
+      'hard_denied',
     ]);
   });
 });

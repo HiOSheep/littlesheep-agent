@@ -11,6 +11,7 @@ export * from './activation-projection.js';
 export * from './versioning.js';
 export * from './session.js';
 export * from './tool.js';
+export * from './shell-authorization.js';
 export * from './effect-lease.js';
 export * from './web-retrieval.js';
 export * from './memory.js';

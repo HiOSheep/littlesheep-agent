@@ -320,6 +320,14 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
   if (user.includes('P4-SECOND-SESSION-PERSISTENCE')) {
     return textChoice('独立会话已建立，权限模式保持 runtime-continuity-anchor-4827。')
   }
+  if (user.includes('P4-V2-EXEC-BATCH')) {
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoices([
+        ['p4-exec-batch-one', 'exec', { command: `node -e "process.stdout.write('p4-host-exec-batch-one')"` }],
+        ['p4-exec-batch-two', 'exec', { command: `node -e "process.stdout.write('p4-host-exec-batch-two')"` }],
+      ])
+      : textChoice('P4-EXEC-BATCH-DONE')
+  }
   const execMarker = user.match(/P4-V2-EXEC-([A-Z0-9]+)/u)?.[1]
   if (execMarker) {
     return toolMessagesThisTurn(messages).length === 0
@@ -508,15 +516,19 @@ export function longMarkdownAnswer() {
 }
 
 function toolChoice(id, name, input) {
+  return toolChoices([[id, name, input]])
+}
+
+function toolChoices(calls) {
   return {
     message: {
       role: 'assistant',
       content: '',
-      tool_calls: [{
+      tool_calls: calls.map(([id, name, input]) => ({
         id,
         type: 'function',
         function: { name, arguments: JSON.stringify(input) },
-      }],
+      })),
     },
     finishReason: 'tool_calls',
   }

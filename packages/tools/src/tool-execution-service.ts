@@ -15,6 +15,8 @@ import type {
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { inspectWorkspaceFilePath } from './workspace-file-guard.js';
 import { markNativeWorkspaceFileInvocation } from './native-workspace-file-invocation.js';
+import { attachShellInvocation } from './shell-authorization.js';
+import { prepareShellToolBatch } from './shell-tool-batch.js';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 import {
   executeToolWaves,
@@ -112,6 +114,7 @@ interface PreparedInvocation {
   record: ToolInvocationRecord;
   retained: boolean;
   approvalGranted: boolean;
+  shellGrant?: object;
   concurrency: 'parallel' | 'exclusive';
   resources: readonly ToolResourceAccess[];
 }
@@ -162,8 +165,16 @@ export class ToolExecutionService {
   ): Promise<Map<number, ToolResult>> {
     const immediate = new Map<number, ToolResult>();
     const prepared: PreparedInvocation[] = [];
+    // Snapshot request identities before the batch can suspend on an approval.
+    const batchRequests = requests.map((request) => ({ ...request }));
+    const { inputs: shellInputs, batch: shellBatch } = await prepareShellToolBatch({
+      requests: batchRequests, registrations: this.registrations, context: this.options.toolContext,
+      timeoutMs: this.options.timeoutMs, allowedToolNames,
+      serialize: (task) => this.withApprovalLock(this.options.toolContext.signal, task),
+    });
 
-    for (const [index, request] of requests.entries()) {
+    try {
+    for (const [index, request] of batchRequests.entries()) {
       const registration = this.registrations.get(request.name);
       const auditInput = registration
         ? projectToolInput(registration.tool, request.input)
@@ -200,7 +211,7 @@ export class ToolExecutionService {
 
       let input: unknown;
       try {
-        input = registration.tool.inputSchema.parse(request.input);
+        input = shellInputs.get(index) ?? registration.tool.inputSchema.parse(request.input);
         record.validatedAt = this.timestamp();
         this.publishRecord(record, retained);
       } catch (error) {
@@ -232,7 +243,23 @@ export class ToolExecutionService {
       }
 
       const descriptor = describeToolAccess(registration.tool.name, input, this.options.toolContext);
-      const approval = await this.approve(registration, input, descriptor, record, retained, request.signal);
+      const shellGrant = shellBatch.grants.get(index);
+      const shellError = shellBatch.failures.get(index);
+      const shellFailure = shellError;
+      const approval = request.name === 'exec'
+        ? shellGrant
+          ? { ok: true as const, granted: true }
+          : { ok: false as const, status: shellFailure?.status ?? 'hard_denied' as const,
+              error: shellFailure?.message ?? 'Shell authorization unavailable: untrusted executor',
+              errorKind: shellFailure?.errorKind ?? 'shell_authorization_invalid' }
+        : await this.approve(registration, input, descriptor, record, retained, request.signal);
+      if (request.name === 'exec') {
+        record.approval = { required: true, decision: approval.ok ? 'approved'
+          : shellFailure?.status === 'hard_denied' || !shellFailure ? 'blocked'
+            : shellFailure?.status === 'approval_denied' || shellFailure?.status === 'aborted' ? 'denied' : 'unavailable',
+          decidedAt: this.timestamp(), ...(shellFailure ? { reason: shellFailure.message } : {}) };
+        this.publishRecord(record, retained);
+      }
       if (!approval.ok) {
         immediate.set(index, this.finishWithoutExecution(
           record,
@@ -267,6 +294,7 @@ export class ToolExecutionService {
         record,
         retained,
         approvalGranted: approval.granted,
+        shellGrant,
         ...policy,
       });
     }
@@ -282,6 +310,7 @@ export class ToolExecutionService {
       Math.min(this.options.maxParallel, boundedInteger(maxParallel, 1, 8, this.options.maxParallel)),
     );
     return new Map([...immediate, ...completed]);
+    } finally { shellBatch.close(); }
   }
 
   snapshot(): { records: ToolInvocationRecord[]; truncated: boolean } {
@@ -652,6 +681,7 @@ export class ToolExecutionService {
           }) ?? false;
         },
       };
+      if (invocation.shellGrant) attachShellInvocation(invocationContext, registration.tool, invocation.shellGrant);
       if (registration.source === 'builtin'
         && (toolName === 'read' || toolName === 'write' || toolName === 'edit')) {
         markNativeWorkspaceFileInvocation(invocationContext, toolName);
@@ -691,7 +721,7 @@ export class ToolExecutionService {
     error: string,
     errorKind: string,
   ): ToolResult {
-    const result = stampToolStep({ callId: request.callId, ok: false, error }, request.stepId);
+    const result = stampToolStep({ callId: request.callId, ok: false, error, meta: { errorKind } }, request.stepId);
     this.finishRecord(record, retained, status, result, errorKind);
     return result;
   }

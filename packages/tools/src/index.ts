@@ -1,6 +1,7 @@
 ﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿// @littlesheep/tools — public API
 
 export { ToolRegistry } from './registry.js';
+export { bindShellApprovalAuthority, shellApprovalMetrics, type ShellAuthorityOptions } from './shell-authorization.js';
 export { checkApproval, interactiveApprove, DEFAULT_APPROVAL, type ApprovalConfig } from './approval.js';
 export { sanitizeOutput, truncateText, stripImages, isBinary, binaryPreview, DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 export { withToolTiming, type ToolHandler } from './wrapper.js';

@@ -44,7 +44,7 @@ export function useApprovalController({
     // Ordinary calls in a confirmed full-access run need no per-call prompt.
     // Main-marked forced approvals still require a user decision, and changing
     // the current session mode never rewrites an in-flight run's snapshot.
-    if (request.permissionMode === 'full' && request.requiresExplicitUserApproval !== true) return true
+    if (request.permissionMode === 'full' && request.requiresExplicitUserApproval !== true && !request.shellBatch) return true
     if (hasReusableSessionApproval(approvalGrantsRef.current, scopeKey, request)) return true
     const decision = await new Promise<ApprovalDecision>((resolve) => {
       openApprovalPrompt({ request, resolve })

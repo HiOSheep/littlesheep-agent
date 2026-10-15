@@ -1,6 +1,7 @@
 // Startup checkpoint discovery, inspection, abandonment and streamed continuation.
 
 import { randomUUID } from 'node:crypto'
+import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import {
@@ -265,6 +266,8 @@ async function streamCheckpointResume(
       context.getConfig(),
       approvalBroker,
       {
+        shellScope: await captureShellAuthorizationScope({ runId, sessionId: String(inspection.checkpoint.sessionId),
+          projectId: ownership.projectId, signal: controller.signal, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
         containerRoot: context.dataDir ?? context.workplaceDir,
         dataRoot: context.dataDir,
         workspaceRoot: state.cwd,

@@ -25,6 +25,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 `pnpm run verify:desktop-permission-v2` 通过真实 Renderer 和本地确定性 Provider 检查权限预设、对话持久化、审批／拒绝、文件边界、Shell 单次审批与降权恢复。检查点场景由 Runner 生成真实中断现场，再使用仍受支持的旧版 `waiting_user` 形态验证 Renderer 恢复；它不改变 durable 恢复机制。该门不验证 OS 级 Shell 沙箱。
 
+`node scripts/verify-posix-shell-authorization.mjs` 在 Linux 或 WSL 上使用真实 `/bin/sh` 和编译后的 ToolExecutionService 验证有限清单的逐 invocation 授权、命令篡改拒绝、硬拒绝和凭据不进入输出；它不替代 Windows Electron Renderer 验收，也不证明 Shell 被 OS 隔离。
+
 `node scripts/verify-void-ring.mjs` 在最新桌面构建中验证品牌动效：空白对话与启动页的真实像素变化、本地 SSE 夹具经 Runtime 驱动的加载/思考/完成状态、深浅主题下的透明外部与不透明球体、减少动态效果的透明静态回退以及图标与输入框的布局间距。它使用隔离数据根，不访问用户会话或真实 Provider。
 
 `node scripts/verify-file-preview-content.mjs` 使用隔离文件和真实 Electron，在编辑器首次加载及预热后逐个打开代码、配置、普通文本、Markdown、HTML 和图片。文本断言核对界面实际内容与磁盘一致，空文件允许为空；还通过真实键盘输入核对用户主动清空的草稿在切换和重新加载后保留。`--out=<绝对路径>` 可指定截图和报告位置，默认写入系统临时目录。

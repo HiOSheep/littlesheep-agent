@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { AgentTool } from '@littlesheep/types';
-import { authorizeToolAccess } from '@littlesheep/safety';
-import { checkApproval, interactiveApprove, type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
+import type { AgentTool, ToolResult } from '@littlesheep/types';
+import { type ApprovalConfig, DEFAULT_APPROVAL } from '../approval.js';
+import { hasShellInvocation, registerShellExecutor, startAuthorizedShell } from '../shell-authorization.js';
+import { fingerprint } from '../shell-execution-plan.js';
 import {
   CORE_SOURCE_READ_ONLY_KIND,
   commandReferencesProtectedRoot,
@@ -69,7 +70,7 @@ export interface ExecToolOptions {
 
 export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
   const approvalConfig = opts.approvalConfig ?? DEFAULT_APPROVAL;
-  return {
+  const tool: AgentTool = {
     name: 'exec',
     description: [
       'Execute one shell command line.',
@@ -83,7 +84,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
           + 'cmd.exe `&&` and Bash syntax are not available.'
         : 'Runs: /bin/sh -c "<command>" (POSIX sh, not bash). '
           + 'Use POSIX sh syntax, quote paths containing spaces, and do not rely on bash-only constructs.',
-      'Whitelisted commands auto-approve; others require approval.',
+      'Main authorizes each exact invocation. A frozen list of commands may be explicitly approved together; prefix whitelists never grant execution permission.',
       // The ledger treats every exec as opaque, so an identical successful call
       // is refused as a replay. Saying so here is what lets the model pick the
       // structured tool *before* it burns a round on a refusal.
@@ -92,6 +93,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
     ].join(' '),
     inputSchema: ExecInput,
     requiresApproval: true,
+    persistence: { projectInput: (input) => ({ commandHash: fingerprint(['shell-input-v1', input]) }) },
     execution: { concurrency: 'exclusive' },
     execute: withToolTiming(async (input, ctx) => {
       const { command, cwd, timeout_ms } = ExecInput.parse(input);
@@ -109,31 +111,8 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         };
       }
 
-      const authorization = await authorizeToolAccess('exec', { command, cwd: workDir }, ctx);
-      if (!authorization.allowed) return { ok: false, error: 'Approval denied: this command requires user approval.' };
-
-      // Approval gate
-      const approval = checkApproval(command, approvalConfig);
-      if (approval.decision === 'denied') {
-        return { ok: false, error: `Approval denied: ${approval.reason}` };
-      }
-      if (approval.decision === 'escalate') {
-        if (authorization.approvedByPolicy) {
-          // The boundary policy already authorized this invocation. Keep the
-          // blacklist check above, but do not ask for the same command twice.
-        } else if (opts.interactive) {
-          const ok = await interactiveApprove(command);
-          if (!ok) {
-            return { ok: false, error: 'User denied command' };
-          }
-        } else {
-          const ok = await ctx.approve?.('exec', { command }) ?? false;
-          if (!ok) {
-            return { ok: false, error: 'Approval denied' };
-          }
-        }
-      }
-
+      if (!hasShellInvocation(ctx, tool)) return { ok: false, error: 'Approval denied: Main invocation authorization unavailable',
+        meta: { errorKind: 'shell_authorization_invalid' } };
       if (!isLikelyReadOnlyCommand(command)) {
         await ctx.versioning?.beforeWorkspaceMutation(workDir);
       }
@@ -142,15 +121,13 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
       // this session is dropped afterwards. This deliberately ignores the
       // read-only heuristic above: a command name is not proof of what it did.
       const releaseObservations = ctx.observation?.suspend();
-      ctx.log?.('info', `exec: ${command} (cwd: ${workDir})`);
+      ctx.log?.('info', 'exec: host invocation', { commandHash: fingerprint(['shell-command-v1', command]) });
 
-      // Use PowerShell on Windows (per TOOLS.md convention), sh on Unix
-      const shell = EXEC_SHELL_BINARY;
-      const shellArgs: string[] = [...EXEC_SHELL_ARGS, command];
-
-      return await new Promise((resolve) => {
-        const proc = spawn(shell, shellArgs, {
-          cwd: workDir,
+      try {
+        return await startAuthorizedShell(ctx, tool, { command, cwd, timeout_ms }, (plan) => new Promise<ToolResult>((resolve) => {
+        const proc = spawn(plan.description.shell.path, [...plan.description.shell.args, plan.description.command], {
+          cwd: plan.description.cwd.path,
+          env: plan.env,
           stdio: ['ignore', 'pipe', 'pipe'],
           detached: process.platform !== 'win32',
           windowsHide: true,
@@ -164,7 +141,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         let forceSettleTimer: NodeJS.Timeout | undefined;
         const timeoutTimer = setTimeout(() => {
           requestTermination('timed_out');
-        }, timeout_ms);
+        }, plan.description.timeoutMs);
 
         const cleanup = () => {
           clearTimeout(timeoutTimer);
@@ -215,6 +192,7 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
           const sanitizedOutput = sanitizeOutput(combined, DEFAULT_SANITIZE);
           const succeeded = !terminationReason && !spawnError && code === 0;
           return {
+            callId: '',
             ok: succeeded,
             output: sanitizedOutput.output,
             error: terminationReason === 'timed_out'
@@ -263,9 +241,15 @@ export function createExecTool(opts: ExecToolOptions = {}): AgentTool {
         proc.once('close', onClose);
         if (ctx.signal?.aborted) onAbort();
         else ctx.signal?.addEventListener('abort', onAbort, { once: true });
-      });
+      }));
+      } catch (error) {
+        releaseObservations?.();
+        return { ok: false, error: error instanceof Error ? error.message : 'Shell authorization unavailable',
+          meta: { errorKind: 'shell_authorization_invalid' } };
+      }
     }),
   };
+  return registerShellExecutor(tool, approvalConfig);
 }
 
 /** Default exec tool instance (interactive mode). */

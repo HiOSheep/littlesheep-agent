@@ -241,13 +241,13 @@ describe('the main loop after a failed call', () => {
     const llm = createMockLlm((request) => {
       requests.push(request);
       turn += 1;
-      if (turn === 1) return toolCallResponse([{ id: 'exec-1', name: 'exec', args: { command: 'node build.js' } }]);
+      if (turn === 1) return toolCallResponse([{ id: 'write-1', name: 'write', args: { file_path: 'build.log', content: 'build output' } }]);
       return textResponse('the build failed; I inspected the output directory first');
     });
-    const exec = makeTool('exec', { ok: false, error: 'exit code 1' });
-    exec.execution = { concurrency: 'exclusive', resources: () => [{ key: 'external:process', mode: 'write' }] };
+    const write = makeTool('write', { ok: false, error: 'exit code 1' });
+    write.execution = { concurrency: 'exclusive', resources: () => [{ key: 'external:process', mode: 'write' }] };
     const stage = createExecuteStage({ ...deps, llm });
-    const ctx = makeCtx({ tools: [exec], inbound: textMessage('user', 'run the build') });
+    const ctx = makeCtx({ tools: [write], inbound: textMessage('user', 'run the build') });
 
     const result = await stage(ctx);
 
@@ -259,7 +259,7 @@ describe('the main loop after a failed call', () => {
       }),
     ]));
     // The runtime does not replay it: exactly one invocation was attempted.
-    expect(exec.calls).toHaveLength(1);
+    expect(write.calls).toHaveLength(1);
   });
 
   // CE-04: a batch that half succeeds must keep the half that worked. The

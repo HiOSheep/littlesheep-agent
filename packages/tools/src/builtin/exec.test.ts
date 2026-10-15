@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createExecTool } from './exec.js';
+import { createExecTool as createRawExecTool, type ExecToolOptions } from './exec.js';
+import { ToolExecutionService } from '../tool-execution-service.js';
+import { bindShellApprovalAuthority } from '../shell-authorization.js';
 import { readTool } from './read.js';
 import {
   describeToolAccess,
@@ -17,6 +19,22 @@ const baseCtx: ToolContext = {
   runId: 'r1',
   cwd: process.cwd(),
 };
+
+// Runtime/output tests now enter through a real service and a test Host authority.
+// Direct-entry refusal is tested separately below; no legacy whitelist grants execution.
+function createExecTool(options: ExecToolOptions = {}) {
+  const tool = createRawExecTool(options);
+  return { ...tool, async execute(input: unknown, ctx: ToolContext) {
+    const approve = ctx.approve ?? (async () => true);
+    bindShellApprovalAuthority(approve, { runId: ctx.runId, sessionId: String(ctx.sessionId), workspaceRoot: ctx.cwd,
+      permission: ctx.permissionMode ?? 'research', current: async () => 'test-host-scope',
+      decide: () => ctx.permissionMode === 'full' ? 'allow' : 'approval',
+      request: async (batch) => approve('exec', batch, { requiresExplicitUserApproval: true }),
+    });
+    const service = new ToolExecutionService({ registrations: [{ tool, source: 'builtin' }], toolContext: { ...ctx, approve } });
+    return (await service.executeBatch([{ callId: 'exec-fixture', name: 'exec', input }])).get(0)!;
+  } };
+}
 
 describe('execTool approval gate', () => {
   it('blacklist denies (format)', async () => {
@@ -33,12 +51,11 @@ describe('execTool approval gate', () => {
     expect(result.error).toMatch(/Approval denied.*blacklist/);
   });
 
-  it('whitelist approves (echo)', async () => {
-    const exec = createExecTool({ interactive: false });
+  it('direct whitelist command without Main authorization fails closed (regression)', async () => {
+    const exec = createRawExecTool({ interactive: false });
     const result = await exec.execute({ command: 'echo littlesheep-test' }, baseCtx);
-    expect(result.ok).toBe(true);
-    const output = result.output as string;
-    expect(output).toContain('littlesheep-test');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Main invocation authorization unavailable');
   });
 
   it('unknown command escalates; ctx.approve=true proceeds', async () => {
@@ -60,11 +77,11 @@ describe('execTool approval gate', () => {
     };
     const result = await exec.execute({ command: 'some-unknown-cmd-xyz' }, ctx);
     expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/Approval denied/);
+    expect(result.error).toMatch(/approval denied/i);
   });
 
   it('unknown command without approve callback denies', async () => {
-    const exec = createExecTool({ interactive: false });
+    const exec = createRawExecTool({ interactive: false });
     const result = await exec.execute({ command: 'unknown-cmd-123' }, baseCtx);
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/Approval denied/);
@@ -81,8 +98,8 @@ describe('execTool approval gate', () => {
     expect(meta.exitCode).toBe(42);
   });
 
-  it('respects custom approvalConfig', async () => {
-    const exec = createExecTool({
+  it('custom auto-approve config cannot authorize direct execution', async () => {
+    const exec = createRawExecTool({
       interactive: false,
       approvalConfig: {
         whitelist: [],
@@ -90,10 +107,10 @@ describe('execTool approval gate', () => {
         approvalMode: 'auto-approve',
       },
     });
-    // auto-approve mode bypasses escalation for unknown commands
+    // Legacy configuration cannot substitute for Main authorization.
     const result = await exec.execute({ command: 'echo custom-config' }, baseCtx);
-    expect(result.ok).toBe(true);
-    expect(result.output).toContain('custom-config');
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Main invocation authorization unavailable');
   });
 
   it('respects cwd option', async () => {
@@ -278,9 +295,9 @@ describe('execTool approval gate', () => {
     expect(exec.requiresApproval).toBe(true);
   });
 
-  it('requires an invocation callback instead of trusting forgeable approval fields', async () => {
+  it('rejects a generic callback and forgeable approval fields without Main capability', async () => {
     const approve = vi.fn(async () => true);
-    const exec = createExecTool({
+    const exec = createRawExecTool({
       interactive: false,
       approvalConfig: { whitelist: [], blacklist: [], approvalMode: 'interactive' },
     });
@@ -290,9 +307,8 @@ describe('execTool approval gate', () => {
       { ...baseCtx, approve, approvalGranted: true, approvalGrantedToolName: 'exec' } as never,
     );
 
-    expect(result.ok).toBe(true);
-    expect(approve).toHaveBeenCalledTimes(1);
-    expect(approve).toHaveBeenCalledWith('exec', { command: 'echo service-approved' });
+    expect(result.ok).toBe(false);
+    expect(approve).not.toHaveBeenCalled();
   });
 
   it('does not re-prompt full access for an outside command', async () => {

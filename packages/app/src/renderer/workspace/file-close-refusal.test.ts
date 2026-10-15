@@ -85,15 +85,15 @@ describe('the refused close reaches the user', () => {
       source('./file-close-refusal.tsx'),
     ])
 
-    // The permission contract keeps its three answers and never grows a fourth:
-    // abandoning an edit is decided on the tab strip, not in the permission dialog.
+    // The single-call permission contract keeps its three answers; the same
+    // buttons serve a fixed Shell batch without adding a fourth decision.
     expect(prompt).toContain("if (action === 'save_file') return '允许保存工作区文件？'")
     expect(prompt).toContain("onResolve('deny')")
     expect(prompt).toContain("onResolve('session')")
     expect(prompt).toContain("onResolve('once')")
-    expect(prompt).toMatch(/>\s*拒绝\s*</u)
+    expect(prompt).toContain("request.shellBatch?.scope === 'batch' ? '拒绝整个批次' : '拒绝'")
     expect(prompt).toMatch(/>\s*本对话允许\s*</u)
-    expect(prompt).toMatch(/>\s*仅本次\s*</u)
+    expect(prompt).toContain("request.shellBatch?.scope === 'batch' ? '批准以上全部命令' : '仅本次'")
     expect(prompt).not.toContain('放弃修改')
     expect(prompt).not.toContain('不保存')
     expect(refusalModule).not.toContain('ApprovalPrompt')

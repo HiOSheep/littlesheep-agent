@@ -74,15 +74,29 @@ export function ApprovalPromptSurface({
         <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
         <h2 ref={headingRef} tabIndex={-1}>{approvalActionTitle(request.action)}</h2>
         <p>{approvalModeDescription(request.permissionMode, request.permissionPreset)}</p>
-        <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary)}</p>
+        <p className="approval-boundary-note">{approvalBoundaryDescription(request.boundary, request.permissionPreset)}</p>
         <p className="approval-risk-note">{approvalActionRiskDescription(request.action, source)}</p>
-        <pre>{formatApprovalDetail(request.detail)}</pre>
+        {request.shellBatch ? <div className="approval-shell-batch">
+          <p>对话：{request.shellBatch.commands[0]?.sessionId} · 运行：{request.shellBatch.commands[0]?.runId}</p>
+          {request.shellBatch.commands.map((command, index) => <section key={command.invocationId} className="approval-shell-command">
+            <strong>命令 {index + 1} / {request.shellBatch!.commands.length}</strong>
+            <pre>{command.command}</pre>
+            <dl>
+              <dt>Shell</dt><dd>{command.shell.path} {command.shell.args.join(' ')}</dd>
+              <dt>工作目录</dt><dd>{command.cwd.path}</dd>
+              <dt>工作区</dt><dd>{command.workspace.path}</dd>
+              <dt>执行身份</dt><dd>当前宿主用户：{command.user}</dd>
+              <dt>执行上限</dt><dd>{command.timeoutMs / 1000} 秒</dd>
+            </dl>
+          </section>)}
+          <p>仅限以上已列出的调用，每条只能执行一次；批次结束或取消立即失效，最迟于 {new Date(request.shellBatch.expiresAt).toLocaleTimeString()} 失效。后续命令仍需确认。</p>
+        </div> : <pre>{formatApprovalDetail(request.detail)}</pre>}
         <p className="approval-session-note">{perCallApproval
           ? '此操作需要单独确认；授权仅作用于本次请求。'
           : '“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。'}</p>
         <div className="approval-actions">
           <button type="button" className="approval-action" onClick={() => onResolve('deny')}>
-            拒绝
+            {request.shellBatch?.scope === 'batch' ? '拒绝整个批次' : '拒绝'}
           </button>
           {!perCallApproval && (
             <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
@@ -90,7 +104,7 @@ export function ApprovalPromptSurface({
             </button>
           )}
           <button type="button" className="approval-action primary" onClick={() => onResolve('once')}>
-            仅本次
+            {request.shellBatch?.scope === 'batch' ? '批准以上全部命令' : '仅本次'}
           </button>
         </div>
       </section>
@@ -120,7 +134,13 @@ export function approvalModeDescription(mode: PermissionModeId, preset?: Approva
 }
 
 
-export function approvalBoundaryDescription(boundary: ApprovalRequest['boundary']): string {
+export function approvalBoundaryDescription(boundary: ApprovalRequest['boundary'], preset?: ApprovalRequest['permissionPreset']): string {
+  if (preset) {
+    if (boundary === 'unknown') return '此工具的访问范围无法由工作区文件约束保证，需要你确认。'
+    // The legacy boundary is measured against dataRoot, not workspaceRoot.
+    // Never label a user workspace as "outside" from this field alone.
+    return '本次调用需要额外授权；请核对下面的目标路径或命令。'
+  }
   if (boundary === 'outside') return '范围判定：容器外资源。此次操作必须由你明确批准。'
   if (boundary === 'unknown') return '范围判定：无法证明留在容器内。此次操作按高风险处理并要求批准。'
   if (boundary === 'inside') return '范围判定：LS 容器内资源。'

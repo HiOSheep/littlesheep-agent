@@ -199,25 +199,25 @@ describe('evidence outside the narrow shapes stays unverified', () => {
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
   });
 
-  it('does not pass a single call to a tool outside the read-only set', async () => {
-    const exec = makeTool('exec', { ok: true, output: 'build done' });
+  it('does not pass a single call to an effectful tool outside the read-only set', async () => {
+    const write = makeTool('write', { ok: true, output: 'build done' });
     const llm = createMockLlm([
-      toolCallResponse([{ id: 'exec-1', name: 'exec', args: { command: 'pnpm build' } }]),
+      toolCallResponse([{ id: 'write-1', name: 'write', args: { file_path: 'build.log', content: 'build done' } }]),
       textResponse('The build finished.'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
       inbound: textMessage('user', 'Run the build once and report what it printed.'),
-      tools: [exec],
+      tools: [write],
     });
 
     const result = await h.run(ctx);
 
     expect(result.next).toBe('exit');
-    expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['exec']);
+    expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['write']);
     // The call succeeded and settled an effect: it is an external action, so it is
     // outside the read-only shape no matter how clean the result looks.
-    expect(ctx.sideEffects?.map((effect) => effect.toolName)).toEqual(['exec']);
+    expect(ctx.sideEffects?.map((effect) => effect.toolName)).toEqual(['write']);
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
   });
 

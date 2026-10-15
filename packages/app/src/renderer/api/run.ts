@@ -167,6 +167,7 @@ export class RunStreamServerError extends Error {
 }
 
 export interface ApprovalRequest {
+  shellBatch?: import('@littlesheep/types').ShellApprovalBatch
   id: string
   action: string
   detail?: unknown

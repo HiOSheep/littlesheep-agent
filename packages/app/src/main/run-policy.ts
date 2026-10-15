@@ -7,7 +7,8 @@ import type {
   PermissionPresetId,
 } from '@littlesheep/types'
 import { resolveNetworkReadPolicy } from '@littlesheep/runner'
-import { WORKSPACE_FILE_GUARD_AVAILABLE } from '@littlesheep/tools'
+import { WORKSPACE_FILE_GUARD_AVAILABLE, bindShellApprovalAuthority } from '@littlesheep/tools'
+import type { ShellApprovalBatch } from '@littlesheep/types'
 import {
   describeToolAccess,
   resolvePermissionDecision,
@@ -31,6 +32,7 @@ export interface RunApprovalRequest {
   boundary: ContainerBoundary
   /** A Main-owned forced approval; full access cannot auto-confirm it. */
   requiresExplicitUserApproval?: boolean
+  shellBatch?: ShellApprovalBatch
 }
 
 export type RunApprovalBroker = (request: RunApprovalRequest) => Promise<boolean>
@@ -53,6 +55,8 @@ export interface RunPolicyBoundaryOptions {
   /** V2 confirmation is a Main-owned fact; request bodies cannot set it. */
   fullAccessConfirmed?: boolean
   permissionPolicyV2?: PermissionPolicyV2Snapshot
+  /** Process-local Shell authority scope, assembled by Main; never accepted from request JSON. */
+  shellScope?: { runId: string; sessionId?: string; workspaceId?: string; signal?: AbortSignal; current(): Promise<string> }
 }
 
 export interface ResolvedRunPolicy {
@@ -97,13 +101,35 @@ export function resolveRunPolicy(
     : undefined
   const selectedPolicy = permissionPolicyV2?.preset ?? permissionPolicy.mode
 
+  const approve = createPermissionApprover(selectedPolicy, approvalBroker, {
+    ...boundaryOptions, networkPolicy, ...(permissionPolicyV2 ? { permissionPolicyV2 } : {}),
+  })
+  const permissionFacts = { selectedPolicy, permissionPolicyV2, protectedRoots: boundaryOptions.protectedRoots,
+    networkPolicy, fullAccessConfirmed: boundaryOptions.fullAccessConfirmed }
+  bindShellApprovalAuthority(approve, {
+    ...boundaryOptions.shellScope,
+    workspaceRoot: workspaceRoot ?? boundaryOptions.cwd ?? process.cwd(),
+    permission: permissionFacts,
+    current: boundaryOptions.shellScope?.current ?? (async () => JSON.stringify(permissionFacts)),
+    decide: (input) => {
+      const descriptor = describeToolAccess('exec', input, {
+        ...boundaryOptions, cwd: boundaryOptions.cwd ?? workspaceRoot ?? process.cwd(), networkPolicy,
+        permissionPolicyV2,
+      })
+      return resolvePermissionDecision(selectedPolicy, descriptor, {
+        approvalPolicy: permissionPolicyV2?.approvalPolicy,
+        shellIsolation: permissionPolicyV2?.constraints.shellIsolation,
+        fullAccessConfirmed: permissionPolicyV2?.fullAccessConfirmed ?? boundaryOptions.fullAccessConfirmed,
+      })
+    },
+    request: async (shellBatch) => approvalBroker ? approvalBroker({ action: 'exec', detail: shellBatch,
+      shellBatch, permissionMode: isLegacyPermissionMode(selectedPolicy) ? selectedPolicy : 'research',
+      ...(isPermissionPresetId(selectedPolicy) ? { permissionPreset: selectedPolicy } : {}),
+      boundary: 'unknown', requiresExplicitUserApproval: true }) : false,
+  })
   return {
     requireApprovalForAllTools: permissionPolicy.requireApprovalForAllTools,
-    approve: createPermissionApprover(selectedPolicy, approvalBroker, {
-      ...boundaryOptions,
-      networkPolicy,
-      ...(permissionPolicyV2 ? { permissionPolicyV2 } : {}),
-    }),
+    approve,
     profile: profile?.id,
     permissionPolicyId: permissionPolicy.mode,
     ...(permissionPolicyV2 ? {

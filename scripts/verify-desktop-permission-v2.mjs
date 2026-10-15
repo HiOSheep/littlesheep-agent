@@ -35,7 +35,7 @@ const report = {
   limits: [
     'The Windows workspace-file guard is available in this environment; an unavailable native backend is covered by Main and tool-service tests, not simulated as an Electron capability.',
     'Checkpoint resume starts from a Runner-persisted interrupted run shaped as the supported legacy waiting-user record. The persisted session is downgraded before an orderly Electron restart; resume and the fresh Shell decision use the real Renderer.',
-    'Shell remains approval-gated. The two Node commands in this fixture print a marker only and are explicitly approved one at a time.',
+    'Shell remains approval-gated. The two preceding Node commands print marker text and are approved one at a time; the batch fixture contains two marker-only commands explicitly listed and approved together.',
   ],
 }
 
@@ -478,6 +478,22 @@ async function main() {
     await waitForReply(`P4-EXEC-${id}-DONE`)
     await waitForToolStatus(protectedSession.id, `p4-exec-${id}`, 'succeeded')
   }
+
+  await typeAndSend('P4-V2-EXEC-BATCH')
+  const batchPrompt = await waitForApproval('fixed Shell invocation batch approval')
+  assert.match(batchPrompt, /p4-host-exec-batch-one/u)
+  assert.match(batchPrompt, /p4-host-exec-batch-two/u)
+  assert.match(batchPrompt, /powershell\.exe/u)
+  assert.match(batchPrompt, /当前宿主用户：/u)
+  assert.match(batchPrompt, /批准以上全部命令/u)
+  assert.match(batchPrompt, /每条只能执行一次/u)
+  assert.match(batchPrompt, /没有为 Agent Shell 提供操作系统级沙箱/u)
+  note('Renderer lists both full concrete Shell calls and discloses host identity and one-batch scope')
+  await decideApproval('批准以上全部命令')
+  await waitForReply('P4-EXEC-BATCH-DONE')
+  await waitForToolStatus(protectedSession.id, 'p4-exec-batch-one', 'succeeded')
+  await waitForToolStatus(protectedSession.id, 'p4-exec-batch-two', 'succeeded')
+  note('Main executes both approved batch invocations once and independently records success')
 
   await harness.waitFor(async () => (await activeSessionTitle()) === thirdSession.title || null,
     harness.actionTimeoutMs, 'third conversation activation in the Renderer')

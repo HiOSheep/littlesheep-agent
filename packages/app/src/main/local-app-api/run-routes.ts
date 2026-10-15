@@ -1,6 +1,7 @@
 // Agent run, streaming, approval and run-owned resource lifecycle routes.
 
 import { randomUUID } from 'node:crypto'
+import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import type { Config } from '@littlesheep/config'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
@@ -289,6 +290,8 @@ export class RunRouter {
                 controller.signal,
               ),
               {
+                shellScope: await captureShellAuthorizationScope({ runId, sessionId: sessionId ? String(sessionId) : undefined,
+                  projectId: ownership.projectId, signal: controller.signal, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
                 containerRoot: context.dataDir ?? context.workplaceDir,
                 dataRoot: context.dataDir,
                 workspaceRoot: cwd,
@@ -381,6 +384,8 @@ export class RunRouter {
         requestKey: parseRequestKey(body.requestKey),
         workspaceContext,
         ...resolveRunPolicy(effectiveBody, context.getConfig(), undefined, {
+          shellScope: await captureShellAuthorizationScope({ runId: hostRunId, sessionId: body.sessionId ? String(body.sessionId) : undefined,
+            projectId: ownership.projectId, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
           containerRoot: context.dataDir ?? context.workplaceDir,
           dataRoot: context.dataDir,
           workspaceRoot: cwd,
@@ -449,7 +454,7 @@ export class RunRouter {
     requestApproval: (request: ApprovalRequestPayload) => void,
     signal?: AbortSignal,
   ): RunApprovalBroker {
-    return async ({ action, detail, permissionMode, permissionPreset, boundary, requiresExplicitUserApproval }) => {
+    return async ({ action, detail, permissionMode, permissionPreset, boundary, requiresExplicitUserApproval, shellBatch }) => {
       const id = randomUUID()
       return new Promise<boolean>((resolveApproval) => {
         let settled = false
@@ -490,6 +495,7 @@ export class RunRouter {
             boundary,
             ...(requiresExplicitUserApproval ? { requiresExplicitUserApproval: true } : {}),
             source: 'agent',
+            ...(shellBatch ? { shellBatch } : {}),
           })
         } catch {
           settle(false)
