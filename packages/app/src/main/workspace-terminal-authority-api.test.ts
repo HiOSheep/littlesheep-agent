@@ -78,7 +78,8 @@ describe('workspace terminal authority API', () => {
     const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
     await sessionIndex.upsert('research-session', {
       title: 'Research session',
-      mode: 'research',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: workplaceDir,
     })

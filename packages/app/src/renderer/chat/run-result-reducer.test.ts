@@ -7,6 +7,20 @@ import type { ExecutionLog } from '@littlesheep/runner'
 import { asSessionId } from '@littlesheep/types'
 
 describe('completed assistant message metadata', () => {
+  it('settles progress without moving thinking ahead of earlier prose or dropping a failed preparation', () => {
+    const transcript = [
+      { kind: 'text' as const, id: 'prose', text: '先读取。', status: 'done' as const },
+      { kind: 'tool' as const, id: 'tool:read', callId: 'read' },
+      { kind: 'reasoning' as const, id: 'think', text: '读取后判断', status: 'done' as const },
+      { kind: 'preparing' as const, id: 'failed-prep', receivedCharacters: 8, status: 'failed' as const },
+      { kind: 'text' as const, id: 'final', text: '完成。', status: 'done' as const },
+    ]
+    const message = reduceCompletedRunMessages([{ role: 'assistant', text: '', activity: {
+      status: 'running', instruction: 'task', startedAt: 0, steps: [], tools: [], transcript,
+    } }], { runId: 'r', sessionId: 's', status: 'ok', reply: '完成。', durationMs: 10,
+      conversationTranscript: transcript.filter((entry) => entry.kind === 'text' || entry.kind === 'tool') })[0]!
+    expect(message.activity?.transcript?.map((entry) => entry.id)).toEqual(['prose', 'tool:read', 'think', 'failed-prep', 'final'])
+  })
   const preview = (): ChatMessage[] => [{ role: 'assistant', text: 'preview', activity: {
     status: 'running', instruction: 'task', startedAt: 1_000,
     steps: [{ stepId: 'step-1', title: 'step', status: 'running', activeTools: 1, toolCount: 1 }],
@@ -83,10 +97,7 @@ describe('completed assistant message metadata', () => {
     expect(activity.tools[0]?.error).toBeTruthy()
   })
 
-  // CE-09: the failure must replace the preview, not sit next to it. A run that
-  // settled as an error publishes no model text at all — the Runtime error row is
-  // the whole user-visible statement, and no wording is invented to soften it.
-  it('retracts a streamed preview when the run settles as a failure', () => {
+  it('retains a failed preview as incomplete progress while leaving the final answer empty', () => {
     const message = reduceCompletedRunMessages(preview(), {
       runId: 'r', sessionId: 's', status: 'error', reply: '', durationMs: 10,
       error: 'provider request failed: 502',
@@ -94,7 +105,7 @@ describe('completed assistant message metadata', () => {
 
     expect(message.text).toBe('')
     expect(message.activity).toMatchObject({ status: 'failed', error: 'provider request failed: 502' })
-    expect(JSON.stringify(message)).not.toContain('preview')
+    expect(message.activity?.transcript).toContainEqual(expect.objectContaining({ kind: 'text', text: 'preview', status: 'aborted' }))
     expect(JSON.stringify(message)).not.toMatch(/抱歉|sorry,/i)
   })
   it('records the assistant completion time separately from the user turn time', () => {

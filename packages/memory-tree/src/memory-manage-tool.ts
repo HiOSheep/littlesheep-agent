@@ -74,7 +74,7 @@ export interface MemoryManageToolOptions {
     revision: number
     action: 'invalidate' | 'supersede'
     replacementAtomId?: string
-  }) => void
+  }, runId: string, sessionId: string) => void | Promise<void>
   /**
    * Correction ports. A correction writes the replacement, relates it to the atom it replaces, and
    * then supersedes that atom — three steps the runtime performs in this order so an interruption
@@ -91,6 +91,7 @@ export interface MemoryManageToolOptions {
     parentNodeId: string
     sourceRefs: string[]
     runId: string
+    sessionId: string
   }) => Promise<{ atomId: string; revision: number; decision: string }>
   /** Creates the `replaces` relation between the replacement and the atom it replaces. */
   relateReplacement?: (input: {
@@ -269,6 +270,7 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
             parentNodeId: target.parentNodeId,
             sourceRefs,
             runId: ctx.runId,
+            sessionId: String(ctx.sessionId),
           })
         } catch (error) {
           return failure('memory_manage_failed',
@@ -293,12 +295,12 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
           // The replacement exists and is a current statement of the same subject; the old one has not
           // been superseded yet. Saying exactly that is what makes the retry (or the user's decision)
           // possible — never a second atom quietly treated as the current fact.
-          options.recordRevocation?.({
+          await options.recordRevocation?.({
             atomId: target.atomId,
             revision: target.revision,
             action: 'supersede',
             replacementAtomId: replacement.atomId,
-          })
+          }, ctx.runId, String(ctx.sessionId))
           return failure('memory_manage_partial',
             `The new version was written (${replacement.atomId}) but relating it to the earlier memory failed, so that memory still stands: ${String(error)}`)
         }
@@ -314,23 +316,23 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
             evidenceRefs: sourceRefs,
           })
         } catch (error) {
-          options.recordRevocation?.({
+          await options.recordRevocation?.({
             atomId: target.atomId,
             revision: target.revision,
             action: 'supersede',
             replacementAtomId: replacement.atomId,
-          })
+          }, ctx.runId, String(ctx.sessionId))
           return failure('memory_manage_partial',
             `The new version (${replacement.atomId}) and its relation (${relationId}) exist, but the earlier memory was not superseded: ${String(error)}. `
             + 'The earlier memory still stands; retry this call with the same atom and revision to finish it.')
         }
 
-        options.recordRevocation?.({
+        await options.recordRevocation?.({
           atomId: target.atomId,
           revision: target.revision,
           action: 'supersede',
           replacementAtomId: replacement.atomId,
-        })
+        }, ctx.runId, String(ctx.sessionId))
         options.log?.('info', `memory_manage: corrected atom ${target.atomId} with ${replacement.atomId}`)
         return {
           callId: '',
@@ -363,7 +365,7 @@ export function createMemoryManageTool(options: MemoryManageToolOptions): AgentT
       } catch (error) {
         return failure('memory_manage_failed', `Forgetting this memory failed and the record is unchanged: ${String(error)}`)
       }
-      options.recordRevocation?.({ atomId: target.atomId, revision: target.revision, action: 'invalidate' })
+      await options.recordRevocation?.({ atomId: target.atomId, revision: target.revision, action: 'invalidate' }, ctx.runId, String(ctx.sessionId))
       options.log?.('info', `memory_manage: forgot atom ${target.atomId} at revision ${target.revision}`)
       return {
         callId: '',

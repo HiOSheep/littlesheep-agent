@@ -127,6 +127,53 @@ try {
   await evaluate(`document.querySelector('button[aria-label="退出设置页"]').click()`)
   await theme('dark'); await screenshot('home-compact'); await resize(1280,900)
   await evaluate(`document.querySelector('.add-menu-trigger').click()`)
+  // The add sheet's rows read as `[mark] name  what it does`, with no stroke, and the panel hugs
+  // them instead of holding a fixed width; the pointer paints the row it is over (asked for
+  // 2026-10-15).
+  const addSheet = await evaluate(`(() => {
+    const panel = document.querySelector('.add-menu-panel');
+    const items = [...panel.querySelectorAll('.add-menu-item')];
+    return {
+      visible: getComputedStyle(panel).visibility,
+      width: Math.round(panel.getBoundingClientRect().width),
+      content: Math.round(panel.scrollWidth),
+      title: (panel.querySelector('.add-menu-title')?.textContent || '').trim(),
+      rows: items.map((item) => {
+        const name = item.querySelector('strong'), note = item.querySelector('small');
+        const nameBox = name.getBoundingClientRect(), noteBox = note.getBoundingClientRect();
+        return {
+          label: name.textContent.trim(),
+          inline: Math.abs((nameBox.top + nameBox.height / 2) - (noteBox.top + noteBox.height / 2)) <= 2,
+          gap: Math.round(noteBox.left - nameBox.right),
+          height: Math.round(item.getBoundingClientRect().height),
+          border: getComputedStyle(item).borderTopWidth,
+          radius: getComputedStyle(item).borderRadius,
+          fill: getComputedStyle(item).backgroundColor,
+          mark: item.querySelector('svg')?.tagName ?? null,
+        };
+      }),
+    };
+  })()`)
+  assert.equal(addSheet.visible, 'visible')
+  assert.equal(addSheet.title, '添加')
+  assert(addSheet.rows.length >= 2)
+  for (const row of addSheet.rows) {
+    assert(row.inline, `a row's name and note must share one line: ${JSON.stringify(row)}`)
+    assert(row.gap >= 4 && row.gap <= 14, `the note must sit right after the name: ${JSON.stringify(row)}`)
+    assert(row.height >= 38 && row.height <= 40, `rows must keep the sheet's height: ${JSON.stringify(row)}`)
+    assert.equal(row.border, '0px', `rows must carry no stroke: ${JSON.stringify(row)}`)
+    assert.equal(row.radius, '12px', `rows must keep the sheet's corner: ${JSON.stringify(row)}`)
+    assert.equal(row.mark, 'svg', `rows must carry the app's own glyph: ${JSON.stringify(row)}`)
+  }
+  assert.equal(addSheet.width, addSheet.content,
+    `the sheet must hug its rows: ${JSON.stringify({ width: addSheet.width, content: addSheet.content })}`)
+  const rowPoint = await evaluate(`(() => {const r=document.querySelector('.add-menu-item').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()`)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...rowPoint })
+  await delay(200)
+  const hoveredFill = await evaluate(`getComputedStyle(document.querySelector('.add-menu-item')).backgroundColor`)
+  assert.notEqual(hoveredFill, addSheet.rows[0].fill, 'hover must paint the row it is over')
+  report.checks.addSheet = { ...addSheet, hoveredFill }
+  // Left hovering: the screenshot then shows the row the pointer is on, the way the reference does.
   await screenshot('composer-add-menu')
   await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27})
   await resize(1600,1000); await screenshot('home-wide'); await resize(1280,900)

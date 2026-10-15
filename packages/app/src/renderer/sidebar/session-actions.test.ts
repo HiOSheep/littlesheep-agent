@@ -70,6 +70,22 @@ describe('session switching', () => {
     })
   })
 
+  it('finishes the pending history when the current conversation is selected again', async () => {
+    const context = createSwitchContext()
+    let finish!: (page: { messages: []; hasMore: boolean; beforeId: string }) => void
+    mockedGetSessionMessagePage.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const session = { id: 'session-2', title: '第二个会话', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' } as const
+    const pending = createSessionActions(context).switchSession(session)
+    await vi.waitFor(() => expect(mockedGetSessionMessagePage).toHaveBeenCalledTimes(1))
+    // React has already published the selection while its first page is still pending.
+    await createSessionActions({ ...context, currentSession: session.id }).switchSession(session)
+    finish({ messages: [], hasMore: true, beforeId: 'first-page' })
+    await pending
+    expect(context.setHistoryWindow).toHaveBeenLastCalledWith({ hasMore: true, beforeId: 'first-page', loading: false })
+    expect(context.setRuntimeError).toHaveBeenLastCalledWith(null)
+    expect(mockedGetSessionMessagePage).toHaveBeenCalledTimes(1)
+  })
+
   it('waits for execution before requesting a conversation history', async () => {
     const context = createSwitchContext()
     const { switchSession } = createSessionActions(context)
@@ -79,7 +95,8 @@ describe('session switching', () => {
       title: '第二个会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     })
 
@@ -97,7 +114,8 @@ describe('session switching', () => {
       title: '第二个会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     }, { preserveRoute: true })
 
@@ -122,7 +140,8 @@ describe('session switching', () => {
       title: '第二个会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     })
 
@@ -141,7 +160,8 @@ describe('session switching', () => {
       title: '第二个会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     })
 
@@ -175,7 +195,8 @@ describe('session switching', () => {
       title: '第二个会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     })
 
@@ -202,7 +223,8 @@ describe('session switching', () => {
       title: '当前会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     }, { forceReload: true })
 
@@ -219,8 +241,8 @@ describe('session switching', () => {
       .mockResolvedValueOnce({ messages: [], hasMore: false })
     const context = createSwitchContext()
     const actions = createSessionActions(context)
-    const first = { id: 'first', title: '一', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' } as const
-    const second = { id: 'second', title: '二', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' } as const
+    const first = { id: 'first', title: '一', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' } as const
+    const second = { id: 'second', title: '二', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' } as const
 
     const loadingFirst = actions.switchSession(first)
     await vi.waitFor(() => expect(mockedGetSessionMessagePage).toHaveBeenCalledWith('first', { limit: 40 }))
@@ -237,7 +259,7 @@ describe('session switching', () => {
   it('switches workspace locally without rebuilding the global runtime', async () => {
     const context = createSwitchContext({ runtime: { workspace: 'D:\\default' } as SessionActionContext['runtime'] })
     const actions = createSessionActions(context)
-    await actions.switchSession({ id: 'project-session', title: '项目', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'project', workspacePath: 'D:\\project' })
+    await actions.switchSession({ id: 'project-session', title: '项目', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2, scope: 'project', workspacePath: 'D:\\project' })
     expect(context.selectedSessionWorkspaceRef.current).toBe('D:\\project')
     expect(context.setRuntime).toHaveBeenCalledWith(expect.any(Function))
     expect(context.setCurrentSession).toHaveBeenCalledWith('project-session')
@@ -249,7 +271,7 @@ describe('session switching', () => {
       selectedSessionWorkspaceRef: { current: 'D:\\project' },
     })
     const actions = createSessionActions(context)
-    await actions.switchSession({ id: 'standalone', title: '独立', createdAt: 1, lastMessageAt: 2, mode: 'general', scope: 'standalone' })
+    await actions.switchSession({ id: 'standalone', title: '独立', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' })
     expect(context.selectedSessionWorkspaceRef.current).toBeUndefined()
     const switched = vi.mocked(context.setRuntime).mock.lastCall?.[0] as (state: SessionActionContext['runtime']) => SessionActionContext['runtime']
     expect(switched(context.runtime)?.workspace).toBe('D:\\default')
@@ -283,7 +305,8 @@ describe('session switching', () => {
       title: '当前会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     }, { forceReload: true })
 
@@ -319,7 +342,8 @@ describe('session switching', () => {
       title: '当前会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     }, { forceReload: true })
 
@@ -365,7 +389,8 @@ describe('session switching', () => {
       title: '当前会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     }, { forceReload: true })
 
@@ -400,7 +425,8 @@ describe('session switching', () => {
       title: '有历史计数的会话',
       createdAt: 1,
       lastMessageAt: 2,
-      mode: 'general',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
     })
 

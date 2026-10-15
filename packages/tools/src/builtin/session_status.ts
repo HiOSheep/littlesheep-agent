@@ -1,6 +1,6 @@
 // @littlesheep/tools — builtin/session_status.ts
 import { z } from 'zod';
-import type { AgentTool } from '@littlesheep/types';
+import type { AgentTool, ToolContext } from '@littlesheep/types';
 import type { SessionManager } from '@littlesheep/session';
 import { withToolTiming } from '../wrapper.js';
 
@@ -12,15 +12,15 @@ const StatusInput = z.object({
 export function createSessionStatusTool(opts: {
   sessionId: () => string;
   sessionManager: SessionManager;
-  model: () => string;
+  model: (context?: ToolContext) => string;
 }): AgentTool {
   return {
     name: 'session_status',
     description: 'Get current session status (timestamp, model, message count) or set model override.',
     inputSchema: StatusInput,
-    execute: withToolTiming(async (input) => {
+    execute: withToolTiming(async (input, context) => {
       const { action, model } = StatusInput.parse(input);
-      const sid = opts.sessionId();
+      const sid = context.sessionId || opts.sessionId();
       const meta = await opts.sessionManager.loadMetadata(sid as any);
       if (action === 'set' && model) {
         await opts.sessionManager.updateMetadata(sid as any, { model });
@@ -28,7 +28,7 @@ export function createSessionStatusTool(opts: {
       }
       const lines = [
         `Session: ${sid}`,
-        `Model: ${meta?.model ?? opts.model()}`,
+        `Model: ${opts.model(context) || meta?.model}`,
         `Messages: ${meta?.messageCount ?? 0}`,
         `Created: ${meta?.createdAt ?? 'unknown'}`,
         `Updated: ${meta?.updatedAt ?? 'unknown'}`,

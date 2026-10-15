@@ -2,6 +2,8 @@ import { SettingsSelect } from './select'
 import { useEffect, useState } from 'react'
 import type { RuntimeWebPatch, RuntimeWebState } from '../../shared/runtime-api-contracts'
 import { checkWebProvider, clearWebCache, getRuntime, saveWebProvider, updateRuntime } from '../api/runtime'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import { statusLabel, webProviderCheckBlockedReason } from './web-state'
 import {
   WEB_BROWSER_FALLBACK_OPTIONS,
@@ -17,7 +19,8 @@ export function SettingsWebPage() {
   const [providerKey, setProviderKey] = useState('')
   const [savingProvider, setSavingProvider] = useState(false)
   const [checkingProvider, setCheckingProvider] = useState(false)
-  const [notice, setNotice] = useState('')
+  // A success confirmation floats and clears itself; a failure stays on the page.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -30,7 +33,7 @@ export function SettingsWebPage() {
   async function patch(value: RuntimeWebPatch) {
     setBusy(true)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const runtime = await updateRuntime({ web: value })
       setWeb(runtime.web)
@@ -46,7 +49,7 @@ export function SettingsWebPage() {
     setError('')
     try {
       await clearWebCache()
-      setNotice('网络资料缓存已清理。')
+      showNotice('网络资料缓存已清理。')
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -58,12 +61,12 @@ export function SettingsWebPage() {
     if (!providerKey.trim()) return
     setSavingProvider(true)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const runtime = await saveWebProvider(providerKey)
       setWeb(runtime.web)
       setProviderKey('')
-      setNotice('Tavily 已保存，网络检索仍需单独启用。')
+      showNotice('Tavily 已保存，网络检索仍需单独启用。')
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -74,11 +77,11 @@ export function SettingsWebPage() {
   async function checkProvider() {
     setCheckingProvider(true)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const runtime = await checkWebProvider()
       setWeb(runtime.web)
-      setNotice(runtime.web.status === 'ready' ? 'Tavily 检查通过。' : 'Tavily 检查未通过，请查看当前状态。')
+      showNotice(runtime.web.status === 'ready' ? 'Tavily 检查通过。' : 'Tavily 检查未通过，请查看当前状态。')
     } catch (reason) {
       setError((reason as Error).message)
     } finally {
@@ -220,7 +223,7 @@ export function SettingsWebPage() {
         </div>
       </section>
 
-      {notice && <div className="web-settings-notice" role="status">{notice}</div>}
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="web-settings-notice error" role="alert">{error}</div>}
     </div>
   )

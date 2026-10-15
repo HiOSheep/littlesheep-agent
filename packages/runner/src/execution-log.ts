@@ -46,6 +46,7 @@ import type {
   SideEffectCheckpoint,
   WebEvidenceProjection,
   FinalReplySettlement,
+  ConversationTranscriptEntry,
 } from '@littlesheep/types';
 import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
@@ -68,6 +69,7 @@ export interface StageTraceEntry {
 
 /** A persisted execution log for one run. */
 export interface ExecutionLog {
+  conversationTranscript?: ConversationTranscriptEntry[];
   runId: string;
   sessionId: string;
   startedAt: string;
@@ -123,6 +125,7 @@ export interface ExecutionLog {
 
 /** Input to write(): includes messages for tool-call extraction. */
 export interface ExecutionLogInput {
+  conversationTranscript?: ConversationTranscriptEntry[];
   runId: string;
   sessionId: string;
   startedAt: string;
@@ -246,6 +249,7 @@ export class ExecutionLogStore {
       conversationContinuation: input.conversationContinuation,
       usage: input.usage,
       systemPromptProjection: input.systemPromptProjection,
+      conversationTranscript: input.conversationTranscript,
       sideEffects: input.sideEffects,
       memoryAccess: input.memoryAccess,
       resolvedRunConfig: input.resolvedRunConfig,

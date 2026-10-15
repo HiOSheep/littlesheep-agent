@@ -36,6 +36,7 @@ const report = {
     'The Windows workspace-file guard is available in this environment; an unavailable native backend is covered by Main and tool-service tests, not simulated as an Electron capability.',
     'Checkpoint resume starts from a Runner-persisted interrupted run shaped as the supported legacy waiting-user record. The persisted session is downgraded before an orderly Electron restart; resume and the fresh Shell decision use the real Renderer.',
     'Shell remains approval-gated. The two preceding Node commands print marker text and are approved one at a time; the batch fixture contains two marker-only commands explicitly listed and approved together.',
+    'The fixed S2 candidate is exercised in real PowerShell: one explicit remember choice, an exact second invocation without a prompt, no authorization viewing/revocation UI or API, then a read-only downgrade that requires a fresh decision.',
   ],
 }
 
@@ -254,6 +255,24 @@ async function waitForToolStatus(sessionId, callId, status) {
     `tool ${callId} to record ${status}`)
 }
 
+async function waitForToolOutput(sessionId, callId) {
+  return harness.waitFor(async () => {
+    try {
+      const source = await readFile(join(dataDir, 'sessions', `${sessionId}.jsonl`), 'utf8')
+      const messages = source.split(/\r?\n/u).filter(Boolean).map((line) => JSON.parse(line))
+      for (const message of messages) {
+        if (message.role !== 'tool') continue
+        const result = message.content?.find((part) => part.type === 'tool_result' && part.result?.callId === callId)?.result
+        if (result?.ok && typeof result.output === 'string') return result.output
+      }
+      return undefined
+    } catch (error) {
+      if (error?.code === 'ENOENT') return undefined
+      throw error
+    }
+  }, harness.actionTimeoutMs, `persisted host Shell output for ${callId}`)
+}
+
 async function waitForToolInvocation(sessionId, callId, predicate, label = `tool ${callId}`) {
   return harness.waitFor(async () => {
     const directory = join(dataDir, 'execution-logs')
@@ -323,6 +342,10 @@ async function main() {
   await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workplaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
   await writeFile(outsideSentinel, 'outside sentinel stays unchanged\n', 'utf8')
   await writeFile(stalePath, 'before-external-change\n', 'utf8')
+  await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({ sessions: [{
+    id: 'retired-permission-session-fixture', title: 'Retired permission fixture',
+    createdAt: 1, lastMessageAt: 1, mode: 'full', scope: 'standalone',
+  }] }, null, 2)}\n`, 'utf8')
   protectedSourceBytes = await readFile(protectedPath)
   const protectedHashBefore = createHash('sha256').update(protectedSourceBytes).digest('hex')
 
@@ -330,27 +353,14 @@ async function main() {
 
   assert.equal(await selectedMode(), '工作区写入', 'new draft should start in workspace-write on this Windows host')
   note('new conversation starts with workspace-write')
-  // Seed one pre-V2 session only inside this acceptance data root. On reload,
-  // Main must downgrade it and keep the migration marker until the user picks
-  // one of the three current presets.
-  const legacySession = {
-    id: 'legacy-permission-migration-fixture',
-    title: 'Legacy permission migration fixture',
-    createdAt: 1,
-    lastMessageAt: 1,
-    mode: 'full',
-    scope: 'standalone',
-  }
-  await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({ sessions: [legacySession] }, null, 2)}\n`, 'utf8')
-  await client.send('Page.reload', { ignoreCache: true })
-  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.composer textarea')) || null`),
-    harness.startTimeoutMs, 'composer after loading the historical session fixture')
-  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.session-item .session-title')) || null`),
-    harness.actionTimeoutMs, 'historical session in the Renderer sidebar')
-  await readSessions(locator)
-  await clickSessionByTitle(legacySession.title, '只读')
-  const migrationNotice = await evaluate(`document.querySelector('.composer-status')?.innerText ?? ''`)
-  assert.match(migrationNotice, /历史权限“full”已暂时降为只读/u)
+  const visibleSessions = await readSessions(locator)
+  assert.equal(visibleSessions.some((session) => session.id === 'retired-permission-session-fixture'), false)
+  const currentSessionIndex = JSON.parse(await readFile(join(dataDir, 'sessions.json'), 'utf8'))
+  assert.deepEqual(currentSessionIndex.sessions, [], 'retired permission records were retained in the current session index')
+  const initialStatus = await evaluate(`document.querySelector('.composer-status')?.innerText ?? ''`)
+  assert.doesNotMatch(initialStatus, /历史权限|迁移/u)
+  note('unversioned retired permission records are discarded, without a migration notice or compatibility prompt')
+
   await click('.mode-picker-trigger', 'inspect public permission presets')
   await harness.waitFor(() => evaluate(`document.querySelector('.mode-picker-panel')?.getAttribute('aria-hidden') === 'false' || null`),
     harness.actionTimeoutMs, 'public permission preset list')
@@ -359,24 +369,6 @@ async function main() {
   assert.deepEqual(publicPermissionOptions.map((label) => label.split(':')[0]), ['只读', '工作区写入', '完全访问'])
   assert.ok(publicPermissionOptions.every((label) => !/研究|受限/u.test(label)))
   await click('.mode-picker-trigger', 'close permission preset list')
-  const blockedRun = await harness.fetchJson(locator, '/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: legacySession.id, text: 'must not execute before migration', permissionPreset: 'read-only' }),
-  })
-  assert.equal(blockedRun.status, 409, `Main did not block the unmigrated session: ${JSON.stringify(blockedRun.body)}`)
-  note('historical full is visibly read-only, Main blocks its run, and only three current presets are exposed')
-  await chooseMode('只读')
-  await harness.waitFor(async () => {
-    const sessions = await readSessions(locator)
-    return sessions.find((session) => session.id === legacySession.id)?.permissionMigration === undefined || undefined
-  }, harness.actionTimeoutMs, 'explicit safe migration of historical permissions')
-  await harness.waitFor(() => evaluate(`!document.querySelector('.composer-status')?.innerText.includes('历史权限') || null`),
-    harness.actionTimeoutMs, 'historical permission notice to clear')
-  note('selecting the visible read-only preset explicitly migrates the session in Main')
-  await click('button.sidebar-nav-button[aria-label="新对话"]', 'new conversation after historical mode migration')
-  await harness.waitFor(async () => (await selectedMode()) === '工作区写入' || null,
-    harness.actionTimeoutMs, 'new draft after historical permission migration')
 
   await chooseMode('只读')
   assert.equal(await selectedMode(), '只读')
@@ -385,6 +377,18 @@ async function main() {
   assert.match(readOnlyPrompt, /当前为只读授权/u)
   assert.match(readOnlyPrompt, /允许写入文件/u)
   note('Renderer shows the read-only preset for a write approval')
+  const inlineApproval = await evaluate(`(() => {
+    const prompt = document.querySelector('.approval-inline .approval-prompt');
+    const presence = prompt?.closest('.presence-layer');
+    const input = document.querySelector('.composer textarea');
+    return { role: prompt?.getAttribute('role'), position: presence ? getComputedStyle(presence).position : null,
+      composerEnabled: input instanceof HTMLTextAreaElement && !input.disabled,
+      focusStayedInComposer: document.activeElement === input };
+  })()`)
+  assert.deepEqual(inlineApproval, { role: 'region', position: 'static', composerEnabled: true, focusStayedInComposer: true })
+  const approvalScreenshot = await client.send('Page.captureScreenshot', { format: 'png' })
+  await writeFile(join(root, 'inline-approval.png'), Buffer.from(approvalScreenshot.data, 'base64'))
+  note('Agent approval stays inline without trapping focus or blocking the composer', inlineApproval)
   await decideApproval('拒绝')
   await waitForReply('runtime-continuity-anchor-4827', 'post-denial recovery prompt')
   const firstSession = await harness.waitFor(async () => {
@@ -407,7 +411,7 @@ async function main() {
   assert.equal(await readFile(workspaceWritePath, 'utf8'), 'This file must not exist after Escape denies approval.\n')
   const secondSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    const session = sessions.find((candidate) => candidate.id !== firstSession.id && candidate.id !== legacySession.id)
+    const session = sessions.find((candidate) => candidate.id !== firstSession.id)
     return session?.id ? session : undefined
   }, harness.actionTimeoutMs, 'second session persistence')
   await waitForToolStatus(secondSession.id, 'ux07-approval-write', 'succeeded')
@@ -463,7 +467,7 @@ async function main() {
   await waitForReply('过期观察后的修改已按运行时结果处理')
   const thirdSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    return sessions.find((candidate) => ![legacySession.id, firstSession.id, secondSession.id].includes(candidate.id))
+    return sessions.find((candidate) => ![firstSession.id, secondSession.id].includes(candidate.id))
   }, harness.actionTimeoutMs, 'third session persistence')
   await waitForToolStatus(thirdSession.id, 'p4-stale-read', 'succeeded')
   const staleEditInvocation = await waitForToolInvocation(
@@ -542,6 +546,61 @@ async function main() {
   await waitForToolStatus(protectedSession.id, 'p4-exec-batch-two', 'succeeded')
   note('Main executes both approved batch invocations once and independently records success')
 
+  await typeAndSend('P4-V2-REPEAT-FIRST')
+  const repeatPrompt = await waitForApproval('eligible exact Shell repeat authorization')
+  assert.match(repeatPrompt, /命令 1 \/ 1[\s\S]*pwd/u)
+  assert.match(repeatPrompt, /本对话允许这条命令/u)
+  assert.match(repeatPrompt, /最多再匹配 20 次或 30 分钟/u)
+  assert.match(repeatPrompt, /没有 OS 级沙箱/u)
+  assert.match(repeatPrompt, /工作区外文件、网络和子进程风险仍然存在/u)
+  const repeatChoices = await evaluate(`({
+    exact: [...document.querySelectorAll('.approval-action')].filter(button => button.textContent?.trim() === '本对话允许这条命令').length,
+    generic: [...document.querySelectorAll('.approval-action')].filter(button => button.textContent?.trim() === '本对话允许').length,
+  })`)
+  assert.deepEqual(repeatChoices, { exact: 1, generic: 0 })
+  note('Main offers only the exact fixed command choice and discloses expiry, host identity, and Shell risks')
+  await decideApproval('本对话允许这条命令')
+  await waitForReply('P4-REPEAT-FIRST-DONE')
+  await waitForToolStatus(protectedSession.id, 'p4-repeat-first', 'succeeded')
+
+  await typeAndSend('P4-V2-REPEAT-SECOND')
+  await waitForReply('P4-REPEAT-SECOND-DONE')
+  await waitForToolStatus(protectedSession.id, 'p4-repeat-second', 'succeeded')
+  const secondPwdOutput = await waitForToolOutput(protectedSession.id, 'p4-repeat-second')
+  assert.ok(secondPwdOutput.includes(workplaceDir), `PowerShell pwd output did not identify the isolated workspace: ${secondPwdOutput}`)
+  assert.equal(await approvalText(), null, 'same exact Shell command unexpectedly asked again')
+  note('a second sequential exact pwd invocation launched in PowerShell without another approval prompt')
+
+  const removedManagementApi = await harness.fetchJson(locator,
+    `/shell-repeat-authorizations?sessionId=${encodeURIComponent(protectedSession.id)}`)
+  assert.equal(removedManagementApi.status, 404, 'Shell repeat authorization listing API is still exposed')
+  note('Main no longer exposes an API for listing or revoking exact Shell authorizations')
+
+  await click('.mode-picker-trigger', 'inspect permission menu for authorization-management controls')
+  await harness.waitFor(() => evaluate(`document.querySelector('.mode-picker-panel')?.getAttribute('aria-hidden') === 'false' || null`),
+    harness.actionTimeoutMs, 'permission menu opened')
+  const repeatManagementControls = await evaluate(`({
+    heading: [...document.querySelectorAll('.mode-picker-panel h1, .mode-picker-panel h2, .mode-picker-panel h3')]
+      .some(node => node.textContent?.includes('当前对话允许重复执行的精确命令')),
+    records: document.querySelectorAll('.shell-repeat-authorization, .shell-repeat-authorizations').length,
+    revokeButtons: [...document.querySelectorAll('.mode-picker-panel button')]
+      .filter(button => /撤销/u.test(button.textContent ?? '')).length,
+  })`)
+  assert.deepEqual(repeatManagementControls, { heading: false, records: 0, revokeButtons: 0 })
+  await click('.mode-picker-trigger', 'close permission menu')
+  note('the permission menu has no exact Shell authorization viewing or revocation entry')
+
+  await chooseMode('只读')
+  await waitForSessionMode(locator, protectedSession.id, 'read-only')
+  await typeAndSend('P4-V2-REPEAT-READONLY')
+  const downgradedRepeatPrompt = await waitForApproval('Shell approval after read-only permission downgrade')
+  assert.match(downgradedRepeatPrompt, /当前为只读授权/u)
+  assert.match(downgradedRepeatPrompt, /没有 OS 级沙箱/u)
+  await decideApproval('仅本次')
+  await waitForReply('P4-REPEAT-READONLY-DONE')
+  await waitForToolStatus(protectedSession.id, 'p4-repeat-readonly', 'succeeded')
+  note('read-only downgrade invalidates the previous exact grant and forces a fresh host Shell decision')
+
   await harness.waitFor(async () => (await activeSessionTitle()) === thirdSession.title || null,
     harness.actionTimeoutMs, 'third conversation activation in the Renderer')
   await chooseMode('完全访问')
@@ -577,7 +636,7 @@ async function main() {
   await waitForReply('runtime-continuity-anchor-4827', 'second session completion')
   const fourthSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    return sessions.find((session) => ![legacySession.id, firstSession.id, secondSession.id, thirdSession.id].includes(session.id))
+    return sessions.find((session) => ![firstSession.id, secondSession.id, thirdSession.id].includes(session.id))
   }, harness.actionTimeoutMs, 'fourth session persistence')
   assert.ok(fourthSession?.id)
   assert.equal(fourthSession.mode, 'workspace-write')
@@ -703,27 +762,21 @@ async function main() {
   assert.equal(restoredCheckpoint.resumable, true,
     `the interrupted checkpoint became blocked during restart: ${JSON.stringify(restoredCheckpoint.blockers)}`)
   assert.equal(restoredCheckpoint.waitingForInput, true, 'the Renderer should show the legacy checkpoint answer flow')
-  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.checkpoint-recovery-trigger')) || null`),
-    harness.startTimeoutMs, 'waiting checkpoint recovery entry after restart')
-  await click('.checkpoint-recovery-trigger', 'open startup checkpoint recovery')
-  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.checkpoint-recovery-answer textarea')) || null`),
-    harness.actionTimeoutMs, 'checkpoint clarification field')
+  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.composer .send-round[aria-label="补充信息后继续任务"]')) || null`),
+    harness.startTimeoutMs, 'conversation-local play action after restart')
+  assert.equal(await evaluate(`Boolean(document.querySelector('.checkpoint-recovery-trigger, .checkpoint-recovery-layer'))`), false,
+    'legacy recovery modal and floating launcher must be removed')
   const checkpointInput = await evaluate(`(() => {
-    const textarea = document.querySelector('.checkpoint-recovery-answer textarea');
-    if (!(textarea instanceof HTMLTextAreaElement)) return false;
+    const textarea = document.querySelector('.composer textarea');
     const value = ${JSON.stringify(P4_CHECKPOINT_RESUME_EXEC_MARKER)};
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-    if (!setter) return false;
-    setter.call(textarea, value);
-    textarea.dispatchEvent(new InputEvent('input', { bubbles: true, data: value, inputType: 'insertText' }));
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, value);
+    textarea.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
     return textarea.value === value;
   })()`)
-  assert.equal(checkpointInput, true, 'could not enter the checkpoint continuation through the Renderer')
-  await harness.waitFor(() => evaluate(`(() => {
-    const button = document.querySelector('.checkpoint-recovery-actions button.primary');
-    return button instanceof HTMLButtonElement && !button.disabled ? true : null;
-  })()`), harness.actionTimeoutMs, 'enabled checkpoint resume button')
-  await click('.checkpoint-recovery-actions button.primary', 'resume checkpoint from the Renderer')
+  assert.equal(checkpointInput, true)
+  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.composer .send-round[aria-label="继续执行任务"]:not(:disabled)')) || null`),
+    harness.actionTimeoutMs, 'enabled inline play action')
+  await click('.composer .send-round[aria-label="继续执行任务"]', 'resume through the composer play action')
   const resumedShellPrompt = await waitForApproval('read-only Shell approval after checkpoint resume')
   assert.match(resumedShellPrompt, /当前为只读授权/u)
   assert.match(resumedShellPrompt, /当前用户的宿主环境运行/u)
@@ -816,6 +869,7 @@ try {
     } catch { /* preserve the original acceptance failure */ }
   }
   if (!keepRoot) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined)
+  else await writeFile(join(root, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')
 }
 
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)

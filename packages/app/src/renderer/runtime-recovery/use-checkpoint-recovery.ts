@@ -16,12 +16,11 @@ import type {
   LocalAppRunCheckpointDiagnostics,
   LocalAppRunCheckpointSummary,
 } from '../../shared/run-checkpoint-contracts'
-import { sessionApprovalScopeKey, type ApprovalDecision } from '../approval-grants'
+import { sessionApprovalScopeKey, type ApprovalDecision, type ApprovalReply } from '../approval-grants'
 import { isExecutionReady, subscribeRuntimeReadiness } from '../runtime-readiness/runtime-readiness-state'
-import { isPermissionSelectionPreset, type PermissionSelectionId } from '../../shared/permission-modes'
+import type { PermissionSelectionId } from '../../shared/permission-modes'
 import { buildContextUsageSnapshot, type ContextUsageSnapshot } from '../context-usage'
 import {
-  pendingRecoveryCheckpoints,
   checkpointRecoveryDiagnosticText,
   checkpointRecoveryEntry,
   checkpointRecoveryProgressForEvent,
@@ -40,12 +39,13 @@ export interface UseCheckpointRecoveryOptions {
   activeRunIdRef: MutableRefObject<string | null>
   appMountedRef: MutableRefObject<boolean>
   loading: boolean
+  currentSession?: string
   getSessionPermissionMode: (sessionId: string) => PermissionSelectionId
   runtime: RuntimeState | null
   stopRequestedRunIdRef: MutableRefObject<string | null>
   refreshProjects: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
-  requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<boolean>
+  requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<ApprovalReply>
   settleApprovalPrompt: (decision: ApprovalDecision) => void
   switchSession: (session: SessionMeta, options?: { forceReload?: boolean }) => Promise<void>
   setActivityNow: Dispatch<SetStateAction<number>>
@@ -89,6 +89,11 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   const inspectionRequestRef = useRef(0)
   const pendingRecoveryTurnRef = useRef<CheckpointRecoveryTurnIdentity | null>(null)
   const startupRecoveryAttemptedRef = useRef(false)
+  const visibleSessionRef = useRef(options.currentSession)
+  visibleSessionRef.current = options.currentSession
+  const discoveryRequestRef = useRef(0)
+  const errorSessionRef = useRef<string | undefined>(undefined)
+  useEffect(() => { setError(null) }, [options.currentSession])
 
   useEffect(() => {
     // Startup discovery needs the Local App API, which exists before the Runner
@@ -108,12 +113,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
   }, [])
 
   useEffect(() => {
-    if (startupRecoveryAttemptedRef.current || checkpoints.length === 0 || loading) return
-    const checkpoint = checkpoints.find((item) => item.resumable && !item.waitingForInput)
-    if (!checkpoint) return
-    startupRecoveryAttemptedRef.current = true
-    void resumeSelected(checkpoint)
-  }, [checkpoints, loading])
+    // Discovery offers a continuation on its own conversation; execution always needs a click.
+    if (!loading && isExecutionReady()) void refreshCheckpoints(false)
+  }, [loading, options.currentSession])
 
   const selected = checkpoints.find((item) => item.id === selectedId) ?? checkpoints[0] ?? null
 
@@ -121,13 +123,14 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     openWhenPending: boolean,
     options: { preserveBusy?: boolean; preserveError?: boolean } = {},
   ): Promise<LocalAppRunCheckpointSummary[]> {
+    const requestId = ++discoveryRequestRef.current
     const preserveBusy = options.preserveBusy === true
     if (!preserveBusy) setBusy('loading')
     if (!options.preserveError) setError(null)
     try {
       const response = await listRunCheckpoints()
-      if (!appMountedRef.current) return []
-      const pending = pendingRecoveryCheckpoints(response.checkpoints)
+      if (!appMountedRef.current || requestId !== discoveryRequestRef.current) return []
+      const pending = response.checkpoints
       setDiscoveryFailed(false)
       setCheckpoints(pending)
       setDiagnostics(response.diagnostics)
@@ -146,13 +149,13 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       }
       return pending
     } catch (cause) {
-      if (appMountedRef.current) {
+      if (appMountedRef.current && requestId === discoveryRequestRef.current) {
         setDiscoveryFailed(true)
         setError((cause as Error).message)
       }
       return []
     } finally {
-      if (appMountedRef.current && !preserveBusy) setBusy(null)
+      if (appMountedRef.current && requestId === discoveryRequestRef.current && !preserveBusy) setBusy(null)
     }
   }
 
@@ -199,13 +202,15 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     }
   }
 
-  async function resumeSelected(checkpoint = selected) {
-    if (!checkpoint || busy || loading || !checkpoint.resumable) return
-    const clarification = clarificationText.trim()
+  async function resumeSelected(checkpoint = selected, clarificationOverride?: string) {
+    if (!checkpoint || busy || loading || !checkpoint.resumable || checkpoint.blockers.length > 0) return
+    const clarification = (clarificationOverride ?? clarificationText).trim()
     if (checkpoint.waitingForInput && !clarification) {
       setError('这个任务正在等待补充信息，请填写后再继续。')
       return
     }
+    errorSessionRef.current = checkpoint.sessionId
+    const ownsVisibleSession = () => visibleSessionRef.current === checkpoint.sessionId
     const controller = new AbortController()
     abortRef.current = controller
     activeRunIdRef.current = null
@@ -229,9 +234,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       const result = await resumeRunCheckpointStream(checkpoint.id, {
         ...(clarification ? { text: clarification } : {}),
         reason: 'user resumed checkpoint from the desktop recovery control',
-        ...(isPermissionSelectionPreset(recoveryPermissionMode)
-          ? { permissionPreset: recoveryPermissionMode }
-          : { permissionMode: recoveryPermissionMode }),
+        permissionPreset: recoveryPermissionMode,
         reasoning: runtime?.reasoning,
         profile: runtime?.profile,
         requestKey: turnIdentity.requestKey,
@@ -252,7 +255,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
         pendingRecoveryTurnRef.current = null
       }
       if (!appMountedRef.current) return
-      setContextUsageSnapshot(buildContextUsageSnapshot(
+      if (ownsVisibleSession()) setContextUsageSnapshot(buildContextUsageSnapshot(
         runtime?.model,
         result.usage,
         result.contextSnapshots,
@@ -261,13 +264,13 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       setWorkspaceArtifactVersion((value) => value + 1)
       const nextSessions = await refreshSessions()
       const recoveredSession = nextSessions.find((session) => session.id === result.sessionId)
-      if (recoveredSession) await switchSession(recoveredSession, { forceReload: true })
+      if (recoveredSession && ownsVisibleSession()) await switchSession(recoveredSession, { forceReload: true })
       void refreshProjects()
       if (result.status === 'ok' || stopRequestedRunIdRef.current) {
         await refreshCheckpoints(false, { preserveBusy: true })
         setVisible(false)
       } else {
-        setError(result.error || (result.status === 'aborted' ? '恢复已停止，新的现场已保留。' : '恢复未完成，新的现场已保留。'))
+        if (ownsVisibleSession()) setError(result.error || (result.status === 'aborted' ? '恢复已停止，新的现场已保留。' : '恢复未完成，新的现场已保留。'))
         await refreshCheckpoints(!startupRecoveryAttemptedRef.current, { preserveBusy: true, preserveError: true })
       }
     } catch (cause) {
@@ -284,7 +287,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
         await refreshCheckpoints(false, { preserveBusy: true })
         return
       }
-      setError((cause as Error).name === 'AbortError'
+      if (ownsVisibleSession()) setError((cause as Error).name === 'AbortError'
         ? '恢复已停止，现场仍然保留。'
         : (cause as Error).message)
       await refreshCheckpoints(!startupRecoveryAttemptedRef.current, { preserveBusy: true, preserveError: true })
@@ -335,7 +338,9 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
       .catch(() => abortRef.current?.abort())
   }
 
+  const currentCheckpoint = checkpoints.find(item => item.sessionId === options.currentSession) ?? null
   return {
+    currentCheckpoint,
     checkpoints,
     diagnostics,
     diagnosticText,
@@ -346,7 +351,7 @@ export function useCheckpointRecovery(options: UseCheckpointRecoveryOptions) {
     visible,
     detailsOpen,
     busy,
-    error,
+    error: currentCheckpoint && errorSessionRef.current === options.currentSession ? error : null,
     clarificationText,
     progress,
     stopRequested,

@@ -616,7 +616,8 @@
 }
 
 .add-menu {
-  position: relative;
+  /* The composer owns the sheet bounds, so it follows the full input width. */
+  position: static;
   z-index: 45;
   flex: 0 0 auto;
   margin-left: calc(
@@ -649,12 +650,19 @@
 .add-menu-panel {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 10px);
-  width: min(420px, calc(100vw - 56px));
-  padding: 8px;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  width: auto;
+  max-height: min(440px, 45vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 8px 6px;
   color: var(--text);
   /* Material (fill, blur, no border) comes from the shared composer-popover rule below. */
-  border-radius: var(--radius-card);
+  border-radius: 24px;
   box-shadow: var(--chat-panel-elevation);
   opacity: 0;
   pointer-events: none;
@@ -673,7 +681,6 @@
     visibility 0s;
 }
 
-.add-menu-title,
 .runtime-section-title {
   padding: 4px 10px 8px;
   color: var(--muted);
@@ -681,28 +688,38 @@
   font-weight: 650;
 }
 
+/* Muted section heading above the full-width action rows. */
+.add-menu-title {
+  padding: 4px 12px 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .add-menu-item {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 42px;
+  padding: 8px 12px;
   color: var(--text);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-ui);
-  font-size: var(--chat-font-size-secondary);
+  border: 0;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
   text-align: left;
-  transition:
-    background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease);
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .add-menu-item:hover,
 .add-menu-item:focus-visible {
-  background: var(--chat-hover-fill);
-  border-color: transparent;
+  background: var(--chat-active-fill);
+}
+
+.add-menu-item:hover .add-menu-icon,
+.add-menu-item:focus-visible .add-menu-icon {
+  color: var(--text);
 }
 
 .add-menu-icon {
@@ -712,24 +729,34 @@
   height: 20px;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 18px;
-  font-weight: 600;
 }
 
+.add-menu-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Name and explanation share one line, the way the reference reads. */
 .add-menu-text {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
 }
 
 .add-menu-text strong {
   color: var(--text-strong);
   font-size: 14px;
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
 .add-menu-text small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pill-select,
@@ -869,7 +896,7 @@
 .mode-risk-ring {
   fill: var(--mode-risk-soft);
   stroke: currentColor;
-  stroke-width: 2;
+  stroke-width: var(--icon-stroke);
 }
 
 .mode-risk-stem,
@@ -1970,7 +1997,9 @@
   border-radius: var(--radius-ui);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.44);
   font-size: var(--composer-hover-tip-font-size);
-  font-weight: 600;
+  /* The tip's sentence is body copy, not a label: it reads at the transcript's own weight
+     (asked for 2026-10-15). */
+  font-weight: 400;
   line-height: 1.35;
   pointer-events: none;
   white-space: pre-wrap;
@@ -2176,12 +2205,16 @@
 
 .send-round-icon {
   display: block;
-  width: 14px;
-  height: 14px;
+  /* The button's whole glyph, sized to the 34px circle it sits in: at 14px the arrow
+     read as a speck in the middle of the blue disc (asked for 2026-10-15), and the
+     path only spans 10 of its 16 units, so the drawn arrow is ~12.5px. The stop square
+     in the same circle scales with it. */
+  width: 20px;
+  height: 20px;
   overflow: visible;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }

@@ -24,7 +24,7 @@ function runtimeState(workspace: string): RuntimeState {
   return { workspace } as RuntimeState
 }
 
-function actions(overrides: { mounted?: boolean; selectedWorkspace?: string } = {}) {
+function actions(overrides: { mounted?: boolean; selectedWorkspace?: string; applyConversationWorkspace?: (path: string) => void; ownsVisibleConversation?: (sessionId?: string) => boolean } = {}) {
   const setRuntime = vi.fn()
   const setRuntimeError = vi.fn()
   const created = createRuntimeActions({
@@ -39,6 +39,8 @@ function actions(overrides: { mounted?: boolean; selectedWorkspace?: string } = 
     pendingModelPatchRef: { current: null },
     selectedSessionWorkspaceRef: { current: overrides.selectedWorkspace },
     defaultWorkspaceRef: { current: undefined },
+    applyConversationWorkspace: overrides.applyConversationWorkspace,
+    ownsVisibleConversation: overrides.ownsVisibleConversation,
   })
   return { created, setRuntime, setRuntimeError }
 }
@@ -119,4 +121,24 @@ describe('chooseWorkspacePath', () => {
     expect(setRuntimeError).toHaveBeenCalledWith('session workspace is not an existing directory')
     expect(updateRuntime).not.toHaveBeenCalled()
   })
+})
+
+
+it('saves a standalone directory choice to its conversation without mutating the application default', async () => {
+  const applyConversationWorkspace = vi.fn()
+  const { created } = actions({ applyConversationWorkspace })
+  await created.chooseWorkspacePath({ selectDirectory: async () => 'D:\\picked', sessionId: 'standalone-a', sessionScope: 'standalone' })
+  expect(updateSessionWorkspace).toHaveBeenCalledWith('standalone-a', 'D:\\picked')
+  expect(applyConversationWorkspace).toHaveBeenCalledWith('D:\\picked')
+  expect(updateRuntime).not.toHaveBeenCalled()
+})
+
+
+it('does not apply a delayed directory picker to the conversation opened meanwhile', async () => {
+  const applyConversationWorkspace = vi.fn()
+  const { created } = actions({ applyConversationWorkspace, ownsVisibleConversation: () => false })
+  await created.chooseWorkspacePath({ selectDirectory: async () => 'D:\\picked', sessionId: 'session-A', sessionScope: 'standalone' })
+  expect(updateSessionWorkspace).toHaveBeenCalledWith('session-A', 'D:\\picked')
+  expect(applyConversationWorkspace).not.toHaveBeenCalled()
+  expect(updateRuntime).not.toHaveBeenCalled()
 })

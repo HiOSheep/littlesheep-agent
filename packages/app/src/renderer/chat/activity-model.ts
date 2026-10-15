@@ -139,6 +139,9 @@ export function upsertLiveTool(
 ): LiveToolEvent[] {
   const existing = tools.find((tool) => tool.callId === next.callId)
   const merged: LiveToolEvent = {
+    approvalPending: next.approvalPending ?? existing?.approvalPending,
+    invocationStatus: next.invocationStatus ?? existing?.invocationStatus,
+    errorKind: next.errorKind ?? existing?.errorKind,
     callId: next.callId,
     name: next.name || existing?.name || 'tool',
     stepId: next.stepId ?? existing?.stepId,

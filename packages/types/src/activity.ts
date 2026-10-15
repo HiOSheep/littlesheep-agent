@@ -29,6 +29,11 @@ export type ObservableActivityKind =
 
 export type ObservableActivityStatus = 'running' | 'done' | 'failed' | 'aborted'
 
+/** Ordered conversation progress; separate from a settled final reply. */
+export type ConversationTranscriptEntry =
+  | { kind: 'text'; id: string; text: string; status?: ObservableActivityStatus }
+  | { kind: 'tool'; id: string; callId: string };
+
 export interface ToolStreamEvent {
   type: 'reasoning' | 'model_activity' | 'runtime_activity' | 'model_reasoning' | 'model_text' | 'tool_preparing' | 'system_prompt' | 'task_book' | 'step_start' | 'step_done' | 'step_failed' | 'step_skipped' | 'tool_start' | 'tool_end' | 'verification_start' | 'verification' | 'final_delta' | 'capability_snapshot' | 'capability_probe'
   visibility?: 'silent' | 'progress'

@@ -74,6 +74,17 @@ function tailRecord(text: string, id = RUNTIME_CONTEXT_TAIL_ID): Message {
 }
 
 describe('runtime context brief', () => {
+  it('reports Main V2 capabilities instead of the compatibility research label', () => {
+    const ctx = runContext()
+    ctx.toolContext.permissionPolicyV2 = { version: 2, preset: 'workspace-write', approvalPolicy: 'prompt',
+      workspaceRoot: ctx.cwd, protectedRoots: [], fullAccessConfirmed: false,
+      constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' } }
+    const notice = renderRuntimeContextNotice(ctx)!
+    expect(notice).toContain('permission=workspace-write')
+    expect(notice).toContain('native_file_writes=available')
+    expect(notice).toContain('use read/write/edit')
+    expect(notice).not.toContain('permission=research')
+  })
   it('states the effective provider, model, workspace, shell, access and tool count', () => {
     const ctx = runContext();
 

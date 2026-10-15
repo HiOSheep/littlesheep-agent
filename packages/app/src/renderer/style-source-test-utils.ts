@@ -24,6 +24,7 @@ export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/20-chat-reading.css',
   './styles/21-scrollbar-adapters.css',
   './styles/22-context-inspector.css',
+  './styles/23-iconography.css',
 ] as const
 
 export interface RendererStyleSourceFile {

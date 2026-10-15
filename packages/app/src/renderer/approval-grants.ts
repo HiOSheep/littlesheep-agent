@@ -1,6 +1,7 @@
 import type { PermissionPresetId } from '@littlesheep/types'
 
-export type ApprovalDecision = 'deny' | 'once' | 'session'
+export type ApprovalDecision = 'deny' | 'once' | 'session' | 'remember-shell'
+export type ApprovalReply = boolean | { approved: true; rememberShellCommand: true }
 export type ApprovalSource = 'agent' | 'workspace'
 
 export interface ApprovalGrantTarget {

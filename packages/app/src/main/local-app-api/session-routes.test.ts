@@ -23,7 +23,7 @@ describe('session branching', () => {
     const runner = { sessionManager: manager } as unknown as AgentRunner
     const context = {
       getRunner: () => runner,
-      sessionIndex: { list: vi.fn().mockResolvedValue([{ id: 'source', title: '原对话', mode: 'limited',
+      sessionIndex: { list: vi.fn().mockResolvedValue([{ id: 'source', title: '原对话', mode: 'read-only', permissionVersion: 2,
         scope: 'project', projectId: 'project-1', workspacePath: 'D:\\project' }]), upsert },
       projectIndex: {}, archiveIndex: {},
     } as unknown as SessionRouteContext
@@ -50,7 +50,7 @@ describe('session branching', () => {
 
     expect(await call('u-1')).toMatchObject({ status: 200, body: { sessionId: 'branch', messages: 1 } })
     expect(append).toHaveBeenLastCalledWith('branch', [{ ...source[0], sessionId: 'branch' }])
-    expect(upsert).toHaveBeenCalledWith('branch', expect.objectContaining({ scope: 'project', projectId: 'project-1', workspacePath: 'D:\\project', mode: 'limited' }))
+    expect(upsert).toHaveBeenCalledWith('branch', expect.objectContaining({ scope: 'project', projectId: 'project-1', workspacePath: 'D:\\project', mode: 'read-only' }))
 
     expect(await call('a-1')).toMatchObject({ status: 200, body: { messages: 2 } })
     expect(append.mock.lastCall?.[1]).toEqual([
@@ -490,7 +490,7 @@ describe('explicit session workspace switch', () => {
     mkdirSync(join(dataDir, 'moved'), { recursive: true })
     await sessionIndex.upsert('session-project', {
       title: 'Alpha',
-      mode: 'research',
+      mode: 'workspace-write',
       scope: 'project',
       projectId: 'project-alpha',
       workspacePath: join(dataDir, 'alpha'),
@@ -534,29 +534,19 @@ describe('explicit session workspace switch', () => {
     }
   })
 
-  it('requires an explicit V2 selection to migrate historical permissions', async () => {
+  it('accepts current V2 permission updates and rejects retired permission values', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-permission-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir: join(dataDir, 'workplace') })
-      await sessionIndex.upsert('session-v2', { title: 'V2', mode: 'full', scope: 'standalone' })
-
-      await expect(sessionIndex.list()).resolves.toMatchObject([{
-        id: 'session-v2', mode: 'read-only', permissionMigration: { version: 1, from: 'full' },
-      }])
+      await sessionIndex.upsert('session-v2', { title: 'V2', mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' })
 
       const rejected = await patchSession(sessionIndex, 'session-v2', { mode: 'full' })
       expect(rejected.status).toBe(400)
-
-      const acknowledgeSafeDefault = await patchSession(sessionIndex, 'session-v2', { mode: 'read-only' })
-      expect(acknowledgeSafeDefault.status).toBe(200)
-      expect(acknowledgeSafeDefault.body).toMatchObject({ session: { mode: 'read-only', permissionVersion: 2 } })
-      expect((acknowledgeSafeDefault.body as { session: Record<string, unknown> }).session).not.toHaveProperty('permissionMigration')
 
       const response = await patchSession(sessionIndex, 'session-v2', { mode: 'workspace-write' })
 
       expect(response.status).toBe(200)
       expect(response.body.session).toMatchObject({ id: 'session-v2', mode: 'workspace-write', permissionVersion: 2 })
-      expect((response.body as { session: Record<string, unknown> }).session).not.toHaveProperty('permissionMigration')
       await expect(sessionIndex.list()).resolves.toEqual([
         expect.objectContaining({ id: 'session-v2', mode: 'workspace-write', permissionVersion: 2 }),
       ])
@@ -565,11 +555,11 @@ describe('explicit session workspace switch', () => {
     }
   })
 
-  it('refuses a relative path and a session that has no workspace of its own', async () => {
+  it('refuses relative paths and accepts explicit standalone workspace bindings', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-workspace-'))
     try {
       const sessionIndex = await projectSession(dataDir)
-      await sessionIndex.upsert('session-standalone', { title: 'Chat', mode: 'research', scope: 'standalone' })
+      await sessionIndex.upsert('session-standalone', { title: 'Chat', mode: 'workspace-write', scope: 'standalone' })
 
       const relative = await patchSession(sessionIndex, 'session-project', { workspacePath: 'moved' })
       expect(relative.status).toBe(400)
@@ -578,8 +568,8 @@ describe('explicit session workspace switch', () => {
       const standalone = await patchSession(sessionIndex, 'session-standalone', {
         workspacePath: join(dataDir, 'moved'),
       })
-      expect(standalone.status).toBe(400)
-      expect(String(standalone.body.error)).toContain('only a project session')
+      expect(standalone.status).toBe(200)
+      expect(standalone.body).toMatchObject({ session: { workspacePath: join(dataDir, 'moved') } })
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }

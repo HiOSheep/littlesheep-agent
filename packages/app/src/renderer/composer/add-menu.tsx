@@ -1,7 +1,7 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { useEffect, useRef, useState } from 'react'
 import { FloatingHelpTip } from '../ui/floating-help'
-import { AddIcon } from '../ui/icons'
+import { AddIcon, ProjectIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
 import { useMenuFocusReturn } from './menu-focus-return'
@@ -80,14 +80,14 @@ export function AddMenu({
       >
         <div className="add-menu-title">添加</div>
         <button className="add-menu-item" type="button" role="menuitem" onClick={() => runAction(onAddFiles)}>
-          <span className="add-menu-icon">+</span>
+          <span className="add-menu-icon"><WorkspaceFeatureIcon id="artifacts" /></span>
           <span className="add-menu-text">
-            <strong>文件</strong>
-            <small>添加图片或文档到这次请求</small>
+            <strong>添加照片和文件</strong>
+            <small>从计算机上传</small>
           </span>
         </button>
         <button className="add-menu-item" type="button" role="menuitem" onClick={() => runAction(onChooseWorkspace)}>
-          <span className="add-menu-icon">#</span>
+          <span className="add-menu-icon"><ProjectIcon /></span>
           <span className="add-menu-text">
             <strong>目标工作区</strong>
             <small>指定这次任务在哪个文件夹里工作</small>

@@ -119,7 +119,7 @@ function buildConfig(workspaceDir, providerBaseURL) {
 const SAMPLE_EXPRESSION = `(() => {
   const messages = document.querySelector('.messages')
   const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
-  const response = turn?.querySelector('.assistant-response-stream')
+  const response = turn?.querySelector('.assistant-response-stream') ?? [...(turn?.querySelectorAll('.agent-transcript-prose') ?? [])].at(-1)
   if (!(messages instanceof HTMLElement) || !response) return null
   const viewportTop = messages.getBoundingClientRect().top
   const keyed = [...messages.querySelectorAll('[data-message-key]')]
@@ -147,7 +147,7 @@ const SAMPLE_EXPRESSION = `(() => {
 /** Computed colours of one settled answer: the blocks whose look could "suddenly change". */
 const COLOR_EXPRESSION = `(() => {
   const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
-  const response = turn?.querySelector('.assistant-response-stream')
+  const response = turn?.querySelector('.assistant-response-stream') ?? [...(turn?.querySelectorAll('.agent-transcript-prose') ?? [])].at(-1)
   if (!response) return null
   const read = (selector) => {
     const element = response.querySelector(selector)
@@ -239,7 +239,7 @@ const STYLE_RECORDER_EXPRESSION = `(() => {
   const tick = () => {
     if (!running) return
     const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
-    const response = turn?.querySelector('.assistant-response-stream')
+    const response = turn?.querySelector('.assistant-response-stream') ?? [...(turn?.querySelectorAll('.agent-transcript-prose') ?? [])].at(-1)
     if (response) {
       const characters = (response.textContent ?? '').length
       record('heading', response.querySelector('h2'), characters)
@@ -526,6 +526,12 @@ async function main() {
 
     await evaluate(client, `document.querySelector('.chat-jump-to-latest')?.click()`)
     await delay(500)
+    // This offscreen window has no spontaneous animation frames. Let the
+    // actual exit motion finish before checking that its button unmounted.
+    await harness.waitFor(async () => {
+      await forcePaint(client)
+      return await evaluate(client, `document.querySelector('.chat-jump-to-latest') === null || null`)
+    }, harness.actionTimeoutMs, 'jump button exit after returning to newest')
     const returned = await evaluate(client, `(() => {
       const messages = document.querySelector('.messages')
       return {
@@ -652,9 +658,8 @@ async function main() {
         ? rows.find((element) => (element.querySelector('.session-title')?.textContent?.trim() ?? '') === title)
         : rows[0]
       if (!(target instanceof HTMLElement)) return null
-      // A row that is already active is the conversation the reload itself restored: clicking it
-      // starts a second history load while the first is still running.
-      if (!target.classList.contains('active')) target.click()
+      // Repeat selection must preserve the restored conversation and any pending history.
+      target.click()
       return true
     })()`), harness.startTimeoutMs, 'the conversation row after the reload')
     const reopened = await waitForSettledAnswer(client, harness.startTimeoutMs, 'the reopened settlement')
@@ -681,7 +686,7 @@ async function main() {
     }
     const reopenedScreenshot = await writePng(client, 'reopened-session')
 
-    console.log(JSON.stringify({
+    const report = {
       check: 'chat-streaming-rendering',
       ok: true,
       evidence: {
@@ -735,16 +740,18 @@ async function main() {
           'The user report "some characters change colour and some text looks swallowed" is NOT reproduced by this fixture: with this fixed input the frame-level recorder shows exactly one style signature per block kind in normal mode and again in compact mode, and every before/after computed colour pair is identical. Continuing needs a reproduction input — a reasoning- or tool-mixed answer, a longer code block whose highlighter chunks arrive at a different moment, or the instant of a theme/zoom switch — or a recording from the user. No styling was changed on a guess.',
           'Compact display mode is applied through the same localStorage + CustomEvent contract the settings UI writes. The gate asserts the stored mode; whether the finished rows actually folded is recorded (signalBefore/signalAfter) rather than asserted, because the fold has no dedicated DOM marker on every turn shape.',
           'The reopened-session check drives the sidebar row by title and re-reads the persisted settlement over the Local App API. It proves the renderer reproduces the settlement after a reload; it does not re-run the provider, so a longer conversation served from a different history window is out of scope.',
-          'Measured while writing this step: clicking the conversation row that the reload had ALREADY restored started a second history load and the transcript stayed on 加载历史消息 for the full 60 s wait, so the check does not click an active row. Re-clicking the conversation you are already in is therefore recorded as unverified here, not asserted either way.',
+          'Reselecting the restored active conversation is exercised here; a deliberately paused history response is covered by verify-conversation-timeline.',
         ],
       },
-    }))
+    }
+    await writeFile(join(outRoot, 'report.json'), JSON.stringify(report, null, 2))
+    console.log(JSON.stringify(report))
   } catch (error) {
     preserve = true
     const diagnostics = {
       dom: await evaluate(client, `(() => {
         const turn = [...document.querySelectorAll('.assistant-turn')].at(-1)
-        const response = turn?.querySelector('.assistant-response-stream')
+        const response = turn?.querySelector('.assistant-response-stream') ?? [...(turn?.querySelectorAll('.agent-transcript-prose') ?? [])].at(-1)
         return response ? { state: response.getAttribute('data-stream-state'), characters: (response.textContent ?? '').length, tail: (response.textContent ?? '').slice(-160) } : null
       })()`).catch(() => null),
       turns: await evaluate(client, `document.querySelectorAll('.assistant-turn').length`).catch(() => null),

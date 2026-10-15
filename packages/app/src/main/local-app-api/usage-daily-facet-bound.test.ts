@@ -46,7 +46,7 @@ async function fixture(): Promise<{ root: string; store: DurableEventStore; cont
   const store = new DurableEventStore({ rootDir: join(root, 'durable-events') })
   const sessionIndex = new SessionIndex({ dataDir: root })
   await sessionIndex.upsert('session-facets', {
-    title: 'facets', createdAt: 1, lastMessageAt: 1, mode: 'limited', scope: 'standalone',
+    title: 'facets', createdAt: 1, lastMessageAt: 1, mode: 'read-only', scope: 'standalone',
   })
   const runner = { infra: { durableEventStore: store } } as unknown as AgentRunner
   return {

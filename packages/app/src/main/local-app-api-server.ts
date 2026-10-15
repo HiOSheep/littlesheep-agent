@@ -27,6 +27,7 @@ import { TerminalRouter } from './local-app-api/terminal-routes.js'
 import { WorkspacePreviewServers } from './local-app-api/workspace-preview-server.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 import { RunRouterPublisher } from './run-router-publisher.js'
+import { ShellRepeatAuthorizationStore } from './shell-repeat-authorization-store.js'
 import type { LocalAppApiServer, LocalAppApiServerOptions } from './local-app-api/contracts.js'
 import { WebProviderCheckCoordinator } from './local-app-api/web-provider-check.js'
 import { MemoryEmbeddingModelManager, type MemoryEmbeddingModelController } from './memory-embedding-model-control.js'
@@ -53,7 +54,8 @@ export async function startLocalAppApiServer(
   registerConfiguredModelCapabilities(withProviderPresets(opts.config))
   let sessionMutationQueue: Promise<void> = Promise.resolve()
   let runtimeConfigMutationQueue: Promise<void> = Promise.resolve()
-  const runRouters = new RunRouterPublisher()
+  const shellRepeatAuthorizations = new ShellRepeatAuthorizationStore()
+  const runRouters = new RunRouterPublisher(shellRepeatAuthorizations)
   const mutateSession = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = sessionMutationQueue.then(operation)
     sessionMutationQueue = result.then(() => undefined, () => undefined)
@@ -116,6 +118,7 @@ export async function startLocalAppApiServer(
   })
   const routeOptions = {
     ...opts,
+    shellRepeatAuthorizations,
     getRunner: requireRunner,
     respondReadiness: respondReadinessToPath,
     memoryEmbeddingModelManager: embeddingModelManager,
@@ -219,7 +222,10 @@ async function route(
   getPluginHost: PluginHostGetter,
   getConfig: () => Config,
   setConfig: (c: Config) => void,
-  opts: LocalAppApiServerOptions & { memoryEmbeddingModelManager: MemoryEmbeddingModelController },
+  opts: LocalAppApiServerOptions & {
+    memoryEmbeddingModelManager: MemoryEmbeddingModelController
+    shellRepeatAuthorizations: ShellRepeatAuthorizationStore
+  },
   mutateSession: <T>(operation: () => Promise<T>) => Promise<T>,
   mutateRuntimeConfig: <T>(operation: () => Promise<T>) => Promise<T>,
   projectRebinding: ProjectRebindingService,
@@ -256,6 +262,7 @@ async function route(
     projectIndex,
     archiveIndex,
     projectRebinding,
+    shellRepeatAuthorizations: opts.shellRepeatAuthorizations,
   })) return
 
   if (await routeSessions(routeRequest, {
@@ -264,6 +271,7 @@ async function route(
     projectIndex,
     archiveIndex,
     mutateSession,
+    shellRepeatAuthorizations: opts.shellRepeatAuthorizations,
   })) return
 
   if (await routeRuntime(routeRequest, {

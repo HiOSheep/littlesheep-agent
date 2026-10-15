@@ -26,12 +26,17 @@ export function AgentToolRow({
   const action = toolActionLabel(tool.name)
   const displayAction = action === '调用' ? tool.name : action
   const running = tool.ok === undefined && tool.endedAt === undefined
-  const title = running ? `${displayAction} · 执行中` : tool.ok === false ? `${displayAction}失败` : displayAction
+  const title = tool.approvalPending ? `${displayAction} · 等待授权`
+    : tool.invocationStatus === 'approval_denied' ? `${displayAction} · 未获授权`
+    : tool.invocationStatus === 'hard_denied' ? `${displayAction} · 已阻断`
+    : running ? `${displayAction} · 执行中` : tool.ok === false ? `${displayAction}失败` : displayAction
   const targetPath = toolFilePath(tool.input)
   const command = isRecord(tool.input) ? firstString(tool.input, ['command', 'cmd']) : ''
   const inputText = command || formatToolInput(tool)
   const outputText = tool.error ? '' : formatToolResult(tool)
-  const errorText = tool.error ? firstLine(tool.error) : ''
+  const errorText = tool.errorKind === 'permission_safety_unavailable' ? '工作区约束不可用，请检查工作区设置'
+    : tool.invocationStatus === 'approval_denied' ? '本次操作未获授权'
+    : tool.error ? firstLine(tool.error) : ''
   const summary = errorText || toolSummaryText(tool) || (running ? '执行中' : '')
   // A query and a path are two different facts. Printing them as one string
   // made the row read as noise, so the path is its own trailing chip — and only

@@ -1,6 +1,7 @@
 // Stable Local App API contracts shared by the main and renderer processes.
 
 import type { SessionScope } from './session-scope'
+import type { PermissionPresetId } from '@littlesheep/types'
 
 export const SESSION_TITLE_MAX_LENGTH = 60
 
@@ -13,12 +14,8 @@ export interface SessionMeta {
   title: string
   createdAt: number
   lastMessageAt: number
-  mode: string
-  permissionVersion?: 2
-  permissionMigration?: {
-    version: 1
-    from: string
-  }
+  mode: PermissionPresetId
+  permissionVersion: 2
   scope: SessionScope
   projectId?: string
   workspacePath?: string

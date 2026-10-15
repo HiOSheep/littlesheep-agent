@@ -11,6 +11,7 @@ import { MAX_PROGRESS_ARGUMENT_CHARACTERS, toolArgumentLineProgress, toolArgumen
 
 /** Bounded per-row transcript text; the UI never receives unbounded model text. */
 const MAX_TRANSCRIPT_TEXT_LENGTH = 4_000;
+const MAX_TRANSCRIPT_PROSE_LENGTH = 16_000;
 const TRANSCRIPT_PROGRESS_BATCH_CHARACTERS = 64;
 const TRUNCATION_MARKER = '\u2026 [truncated]';
 
@@ -22,6 +23,9 @@ export interface TranscriptTurn {
   pendingReasoningDelta: string;
   reasoningPublished: boolean;
   text: string;
+  textTruncated: boolean;
+  pendingTextDelta: string;
+  textPublished: boolean;
   preparingTools: Map<number, {
     name: string;
     receivedCharacters: number;
@@ -48,6 +52,9 @@ export function createTranscriptTurn(
     pendingReasoningDelta: '',
     reasoningPublished: false,
     text: '',
+    textTruncated: false,
+    pendingTextDelta: '',
+    textPublished: false,
     preparingTools: new Map(),
     transportAttempt: 1,
     sequence: 0,
@@ -78,14 +85,13 @@ export async function runTranscriptModelTurn(
 }
 
 /**
- * Close the turn: thinking is published once as a settled row, and prose is
- * published only for tool-calling turns because the final answer turn reaches
- * the user through the normal reply publication.
+ * Close both thinking and prose in place. Final reply settlement remains a
+ * separate authority; progress is retained even when publication cannot finish.
  */
 export function closeTranscriptTurn(
   ctx: RunContext,
   turn: TranscriptTurn,
-  finishReason: ChatResponse['finishReason'],
+  _finishReason: ChatResponse['finishReason'],
 ): void {
   if (!turn.enabled) return;
   if (turn.reasoning.trim()) {
@@ -97,17 +103,14 @@ export function closeTranscriptTurn(
       streamRef: nextStreamRef(ctx, turn, 'replace'),
     });
   }
-  if (turn.text.trim() && finishReason === 'tool_calls') {
+  if (turn.text.trim()) {
     emitTranscript(ctx, {
       type: 'model_text',
       phaseId: turn.phaseId,
       reasoningStatus: 'done',
-      summary: turn.text.trim(),
+      summary: finalizedProse(turn),
       streamRef: nextStreamRef(ctx, turn, 'replace'),
     });
-    // Tool-turn prose belongs in the process transcript, not in the live final
-    // answer bubble. Retract the provisional stream before the tool starts.
-    ctx.onAssistantReplace?.('');
   }
   for (const [toolCallIndex, preparing] of turn.preparingTools) {
     emitTranscript(ctx, {
@@ -132,6 +135,10 @@ export function abortTranscriptTurn(
   status: 'failed' | 'aborted',
 ): void {
   if (!turn.enabled) return;
+  if (turn.text) {
+    emitTranscript(ctx, { type: 'model_text', phaseId: turn.phaseId, reasoningStatus: status,
+      summary: finalizedProse(turn), streamRef: nextStreamRef(ctx, turn, 'replace') });
+  }
   if (turn.reasoning) {
     emitTranscript(ctx, {
       type: 'model_reasoning',
@@ -166,6 +173,8 @@ function collectTranscriptChunk(
   if (chunk.type === 'reset') {
     if (chunk.transportAttempt) turn.transportAttempt = chunk.transportAttempt;
     turn.sequence = 0;
+    emitTranscript(ctx, { type: 'model_text', phaseId: turn.phaseId, reasoningStatus: 'aborted',
+      summary: '', streamRef: nextStreamRef(ctx, turn, 'reset') });
     emitTranscript(ctx, {
       type: 'model_reasoning',
       phaseId: turn.phaseId,
@@ -189,6 +198,9 @@ function collectTranscriptChunk(
     turn.pendingReasoningDelta = '';
     turn.reasoningPublished = false;
     turn.text = '';
+    turn.textTruncated = false;
+    turn.pendingTextDelta = '';
+    turn.textPublished = false;
     turn.preparingTools.clear();
     ctx.onAssistantReplace?.('');
     return;
@@ -219,10 +231,16 @@ function collectTranscriptChunk(
     return;
   }
   if (chunk.type === 'delta' && chunk.delta) {
-    turn.text = appendBoundedTranscriptText(turn.text, chunk.delta).text;
-    // EXECUTE uses the same assistant preview channel as direct REPLY so the
-    // final model turn paints while tokens arrive instead of at run settlement.
-    ctx.onAssistantDelta?.(chunk.delta);
+    const accepted = chunk.delta.slice(0, Math.max(0, MAX_TRANSCRIPT_PROSE_LENGTH - turn.text.length));
+    turn.text += accepted;
+    turn.textTruncated ||= accepted.length < chunk.delta.length;
+    turn.pendingTextDelta += accepted;
+    if (!turn.textPublished || turn.pendingTextDelta.length >= TRANSCRIPT_PROGRESS_BATCH_CHARACTERS) {
+      emitTranscript(ctx, { type: 'model_text', phaseId: turn.phaseId, reasoningStatus: 'running',
+        summary: turn.pendingTextDelta, streamRef: nextStreamRef(ctx, turn, 'append') });
+      turn.pendingTextDelta = '';
+      turn.textPublished = true;
+    }
     return;
   }
   if (chunk.type === 'tool_call_delta') {
@@ -272,6 +290,10 @@ function collectTranscriptChunk(
       preparing.publishedCharacters = preparing.receivedCharacters;
     }
   }
+}
+
+function finalizedProse(turn: TranscriptTurn): string {
+  return turn.textTruncated ? `${turn.text.slice(0, MAX_TRANSCRIPT_PROSE_LENGTH - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}` : turn.text;
 }
 
 function nextStreamRef(

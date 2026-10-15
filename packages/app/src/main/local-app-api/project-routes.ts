@@ -15,6 +15,7 @@ import type { ArchiveIndex } from '../archive-index.js'
 import { ProjectPathConflictError, type ProjectIndex } from '../project-index.js'
 import type { ProjectRebindingService } from '../project-rebinding.js'
 import type { SessionIndex } from '../session-index.js'
+import type { ShellRepeatAuthorizationStore } from '../shell-repeat-authorization-store.js'
 import { json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { buildRuntimePayload } from './runtime-routes.js'
 
@@ -26,6 +27,7 @@ export interface ProjectRouteContext {
   projectIndex: ProjectIndex
   archiveIndex: ArchiveIndex
   projectRebinding: ProjectRebindingService
+  shellRepeatAuthorizations?: ShellRepeatAuthorizationStore
 }
 
 export async function routeProjects(
@@ -88,6 +90,7 @@ export async function routeProjects(
     }
     try {
       const result = await context.projectRebinding.rebind(projectRebindId, folderPath)
+      context.shellRepeatAuthorizations?.invalidateWorkspace(`project:${projectRebindId}`)
       json(res, 200, {
         ...result,
         runtime: buildRuntimePayload(context.getConfig(), context.workplaceDir),
@@ -111,9 +114,11 @@ export async function routeProjects(
     }
     const sessions = await sessionIndex.list()
     const projectSessions = sessions.filter((session) => sessionBelongsToProject(session, removed.id))
+    context.shellRepeatAuthorizations?.invalidateWorkspace(`project:${removed.id}`)
     if (url.searchParams.get('hard') === '1') {
       const runner = resolveRunner(context.getRunner)
       for (const session of projectSessions) {
+        context.shellRepeatAuthorizations?.invalidateSession(session.id)
         await sessionIndex.remove(session.id)
         await runner.sessionManager.delete(asSessionId(session.id))
       }
@@ -121,6 +126,7 @@ export async function routeProjects(
       const archivedAt = Date.now()
       await archiveIndex.archiveProject(removed, archivedAt)
       for (const session of projectSessions) {
+        context.shellRepeatAuthorizations?.invalidateSession(session.id)
         await archiveIndex.archiveSession(session, archivedAt)
         await sessionIndex.remove(session.id)
       }

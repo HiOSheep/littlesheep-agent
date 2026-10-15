@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
+import type { ShellExecutionDescription } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -51,6 +52,8 @@ export interface RunCheckpointRouteHost {
     publish: (request: Parameters<RunApprovalBroker>[0] & { id: string; source: 'agent' }) => void,
     signal: AbortSignal,
   ): RunApprovalBroker
+  consumeShellRepeatAuthorization(description: ShellExecutionDescription): boolean
+  rememberShellRepeatAuthorization(description: ShellExecutionDescription): (() => void) | undefined
   /**
    * Settle startup recovery before reading checkpoint state.
    *
@@ -274,6 +277,10 @@ async function streamCheckpointResume(
         protectedRoots: runner.protectedWriteRoots,
         cwd: state.cwd,
         fullAccessConfirmed: resumeBody.permissionPreset === 'full-access',
+        shellRepeatAuthorization: {
+          consume: host.consumeShellRepeatAuthorization,
+          remember: host.rememberShellRepeatAuthorization,
+        },
       },
     )
     const restoreCheckpointResources = createCheckpointResourceResolver({

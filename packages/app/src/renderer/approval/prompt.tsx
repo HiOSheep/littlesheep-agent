@@ -21,19 +21,25 @@ export function ApprovalPrompt({
   onResolve: (decision: ApprovalDecision) => void
 }) {
   const lastPromptRef = useRef<PendingApprovalPrompt | null>(prompt)
+  const lastInlineTargetRef = useRef<Element | null>(null)
   if (prompt) lastPromptRef.current = prompt
   const displayedPrompt = prompt ?? lastPromptRef.current
+  const nextInlineTarget = (displayedPrompt?.request.source ?? 'agent') === 'agent'
+    ? document.querySelector('.assistant-turn.running .assistant-approval-seat') : null
+  if (prompt) lastInlineTargetRef.current = nextInlineTarget
+  const inlineTarget = prompt ? nextInlineTarget : lastInlineTargetRef.current?.isConnected ? lastInlineTargetRef.current : null
   return createPortal(
-    <FadePresence show={Boolean(prompt)} exitMs={APPROVAL_PROMPT_MOTION_MS} className="approval-presence">
+    <FadePresence show={Boolean(prompt)} exitMs={APPROVAL_PROMPT_MOTION_MS} className={`approval-presence${inlineTarget ? ' approval-presence-inline' : ''}`}>
       {displayedPrompt && (
         <ApprovalPromptSurface
           prompt={displayedPrompt}
           active={Boolean(prompt)}
+          inline={Boolean(inlineTarget)}
           onResolve={onResolve}
         />
       )}
     </FadePresence>,
-    document.body,
+    inlineTarget ?? document.body,
   )
 }
 
@@ -41,11 +47,13 @@ export function ApprovalPrompt({
 export function ApprovalPromptSurface({
   prompt,
   active = true,
+  inline = false,
   onResolve,
 }: {
   prompt: PendingApprovalPrompt
   /** False while the prompt only animates out; it must not take keys then. */
   active?: boolean
+  inline?: boolean
   onResolve: (decision: ApprovalDecision) => void
 }) {
   const { request } = prompt
@@ -57,19 +65,22 @@ export function ApprovalPromptSurface({
   // focus, so a held Enter cannot authorize anything: granting still requires
   // moving to a specific action button.
   useModalSurface(dialogRef, {
-    active,
+    active: active && !inline,
     onEscape: () => onResolve('deny'),
     initialFocusRef: headingRef,
   })
   return (
-    <div className="approval-layer" role="presentation">
+    <div className={`approval-layer${inline ? ' approval-inline' : ''}`} role="presentation">
       <section
         ref={dialogRef}
         className="approval-prompt"
-        role="dialog"
-        aria-modal="true"
+        role={inline ? 'region' : 'dialog'}
+        aria-modal={inline ? undefined : true}
         aria-label="权限确认"
         tabIndex={-1}
+        onKeyDown={inline ? (event) => {
+          if (event.key === 'Escape') { event.stopPropagation(); onResolve('deny') }
+        } : undefined}
       >
         <div className="approval-kicker">{source === 'workspace' ? '用户工作区操作' : 'Agent 工具调用'}</div>
         <h2 ref={headingRef} tabIndex={-1}>{approvalActionTitle(request.action)}</h2>
@@ -89,10 +100,14 @@ export function ApprovalPromptSurface({
               <dt>执行上限</dt><dd>{command.timeoutMs / 1000} 秒</dd>
             </dl>
           </section>)}
-          <p>仅限以上已列出的调用，每条只能执行一次；批次结束或取消立即失效，最迟于 {new Date(request.shellBatch.expiresAt).toLocaleTimeString()} 失效。后续命令仍需确认。</p>
+          <p>{request.rememberShellCommandAvailable
+            ? '该命令默认仅批准本次。只有你主动选择下方选项，Main 才会在本对话记住这条精确命令；最多再匹配 20 次或 30 分钟，以先到者为准。'
+            : `仅限以上已列出的调用，每条只能执行一次；批次结束或取消立即失效，最迟于 ${new Date(request.shellBatch.expiresAt).toLocaleTimeString()} 失效。后续命令仍需确认。`}</p>
         </div> : <pre>{formatApprovalDetail(request.detail)}</pre>}
-        <p className="approval-session-note">{perCallApproval
-          ? '此操作需要单独确认；授权仅作用于本次请求。'
+        <p className="approval-session-note">{request.rememberShellCommandAvailable
+          ? 'Shell 仍以当前宿主用户权限运行，没有 OS 级沙箱；工作区外文件、网络和子进程风险仍然存在。授权只适用于当前对话和绑定的工作区与执行环境。'
+          : perCallApproval
+            ? '此操作需要单独确认；授权仅作用于本次请求。'
           : '“本对话允许”只授权当前对话中的同来源、同类操作；切换类别或重启应用后仍会重新询问。'}</p>
         <div className="approval-actions">
           <button type="button" className="approval-action" onClick={() => onResolve('deny')}>
@@ -101,6 +116,11 @@ export function ApprovalPromptSurface({
           {!perCallApproval && (
             <button type="button" className="approval-action session" onClick={() => onResolve('session')}>
               本对话允许
+            </button>
+          )}
+          {request.rememberShellCommandAvailable && (
+            <button type="button" className="approval-action session" onClick={() => onResolve('remember-shell')}>
+              本对话允许这条命令
             </button>
           )}
           <button type="button" className="approval-action primary" onClick={() => onResolve('once')}>
@@ -128,9 +148,9 @@ export function approvalModeDescription(mode: PermissionModeId, preset?: Approva
   if (preset === 'read-only') return '当前为只读授权；工作区内可安全读取，写入需要明确升级权限。'
   if (preset === 'workspace-write') return '当前为工作区写入授权；普通文件操作仅在工作区约束有效时自动执行，Shell 与插件操作仍需确认。'
   if (preset === 'full-access') return '当前为完全访问授权；本次操作仍需要你明确确认。'
-  if (mode === 'restricted') return '当前为受限权限，所有工具操作都需要你批准，包括容器内查看。'
-  if (mode === 'research') return '当前为研究权限，容器内读取可直接进行；修改、删除、执行和容器外访问需要你批准。'
-  return '当前为完全访问权限。启用时已确认风险，普通工具操作不再逐次请求批准。'
+  if (mode === 'restricted') return '当前策略要求每次工具操作都获得明确批准。'
+  if (mode === 'research') return '当前操作需要额外授权；请核对目标路径或命令。'
+  return '当前操作按旧版兼容策略处理；本次仍需核对授权范围。'
 }
 
 

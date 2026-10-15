@@ -9,7 +9,7 @@ describe('checkpoint recovery request identity', () => {
     const input = {
       checkpointId: 'checkpoint-1',
       text: 'Permission is enabled. Continue.',
-      permissionMode: 'full' as const,
+      permissionMode: 'full-access' as const,
       reasoning: 'high' as const,
       profile: 'general' as const,
     }
@@ -29,12 +29,12 @@ describe('checkpoint recovery request identity', () => {
     const first = resolveCheckpointRecoveryTurnIdentity(null, {
       checkpointId: 'checkpoint-1',
       text: 'Continue.',
-      permissionMode: 'research',
+      permissionMode: 'read-only',
     }, createRequestKey)
     const changed = resolveCheckpointRecoveryTurnIdentity(first, {
       checkpointId: 'checkpoint-2',
       text: 'Continue.',
-      permissionMode: 'full',
+      permissionMode: 'full-access',
     }, createRequestKey)
 
     expect(changed.requestKey).toBe('recovery-key-2')

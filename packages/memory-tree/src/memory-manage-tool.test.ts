@@ -79,7 +79,7 @@ describe('memory manage authorization', () => {
 
     expect(result.ok).toBe(true)
     expect(invalidate).toHaveBeenCalledWith({ atomId: 'atom-1', expectedRevision: 3, reason: baseInput.reason })
-    expect(recordRevocation).toHaveBeenCalledWith({ atomId: 'atom-1', revision: 3, action: 'invalidate' })
+    expect(recordRevocation).toHaveBeenCalledWith({ atomId: 'atom-1', revision: 3, action: 'invalidate' }, 'run-1', 'session-1')
     expect(result.meta?.memoryManageOutcome).toBe('committed')
     expect(result.output).toContain('Memory forgotten')
   })
@@ -217,7 +217,7 @@ describe('memory correction', () => {
     expect(relateReplacement.mock.invocationCallOrder[0]!).toBeLessThan(supersede.mock.invocationCallOrder[0]!)
     expect(recordRevocation).toHaveBeenCalledWith({
       atomId: 'atom-1', revision: 3, action: 'supersede', replacementAtomId: 'atom-2',
-    })
+    }, 'run-1', 'session-1')
     expect(result.meta?.memoryManageOutcome).toBe('committed')
     expect(result.output).toContain('Memory corrected')
   })

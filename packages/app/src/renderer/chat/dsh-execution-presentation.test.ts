@@ -27,8 +27,10 @@ function render(status: AssistantTurnActivity['status']) {
 describe('DSH execution presentation', () => {
   it.each(['running', 'failed', 'aborted', 'paused', 'waiting_user'] as const)('keeps %s process visible', (status) => {
     const html = render(status)
-    expect(html).toMatch(/class="assistant-process-trigger"[^>]*aria-expanded="true"[^>]*disabled=""/u)
-    expect(html).toContain('assistant-process-content')
+    expect(html).toMatch(/class="assistant-process-trigger"[^>]*aria-expanded="false"/u)
+    expect(html).toContain('assistant-conversation-timeline')
+    expect(html.indexOf('assistant-conversation-timeline')).toBeGreaterThan(html.indexOf('assistant-process-content'))
+    expect(html).toContain('data-call-id="call"')
     expect(html).toContain('真实内容')
   })
 

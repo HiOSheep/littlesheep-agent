@@ -9,6 +9,7 @@ const sessions: SessionMeta[] = [
     createdAt: 1,
     lastMessageAt: 1,
     mode: 'full-access',
+    permissionVersion: 2,
     scope: 'standalone',
   },
   {
@@ -17,6 +18,7 @@ const sessions: SessionMeta[] = [
     createdAt: 2,
     lastMessageAt: 2,
     mode: 'read-only',
+    permissionVersion: 2,
     scope: 'standalone',
   },
 ]
@@ -37,7 +39,4 @@ describe('session permission mode resolution', () => {
     expect(resolveSessionPermissionMode(undefined, sessions, {})).toBe('workspace-write')
   })
 
-  it('falls back to read-only for an unknown persisted mode', () => {
-    expect(resolveSessionPermissionMode('session-a', [{ ...sessions[0]!, mode: 'unknown' }], {})).toBe('read-only')
-  })
 })

@@ -69,6 +69,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       conversationContinuation: result.conversationContinuation as never,
       usage: result.usage as never,
       systemPromptProjection: result.systemPromptProjection,
+      conversationTranscript: result.conversationTranscript,
       sideEffects: result.sideEffects as never,
       memoryAccess: result.memoryAccess as never,
       resolvedRunConfig: result.resolvedRunConfig as never,

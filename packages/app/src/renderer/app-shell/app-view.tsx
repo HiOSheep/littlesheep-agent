@@ -3,7 +3,7 @@ import '@xterm/xterm/css/xterm.css'
 import { LinkNavigationProvider } from '../link-navigation'
 import { GlobalTitlebar, SettingsEntryButton, WindowDragRegion, WindowNavControls } from '../sidebar/global-titlebar'
 import { CoreWorkspaceView } from './core-workspace-view'
-import { OverlaysView } from './overlays-view'
+import { OverlaysView, prepareSettingsWorkspace } from './overlays-view'
 import { SidebarView } from './sidebar-view'
 import type { AppViewController } from './app-controller-projections'
 import { useWindowChrome } from './use-window-chrome'
@@ -88,6 +88,7 @@ export function AppView({ controller }: { controller: AppViewController }) {
           </div>
         </div>
         <SettingsEntryButton
+          onPrepare={prepareSettingsWorkspace}
           settingsOpen={settingsOpen}
           onOpen={openSettingsFromEntry}
           onClose={closeSettingsFromEntry}

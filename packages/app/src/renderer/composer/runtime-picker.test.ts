@@ -52,7 +52,15 @@ describe('runtime picker labels', () => {
     )
     expect(source).toContain("'--runtime-picker-open-width': `${menuPosition?.width ?? 208}px`")
     expect(source).toContain("'--runtime-picker-closed-width': closedWidth ? `${closedWidth}px` : undefined")
-    expect(source).toContain('const width = trigger.getBoundingClientRect().width')
+    // The closed width follows the label's own content width (label group + trigger padding),
+    // so a longer model widens the chip instead of staying at the width it had when the label
+    // changed — the trigger's own box is clipped and hover-inflated, so it cannot be the ruler
+    // (asked for 2026-10-15).
+    expect(source).toContain('const label = trigger?.querySelector(\'.runtime-picker-label-group\')')
+    expect(source).toContain('label.getBoundingClientRect().width')
+    expect(source).toContain('+ parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),')
+    expect(source).not.toContain('trigger.getBoundingClientRect().width')
+    expect(source).not.toContain('trigger.scrollWidth')
     expect(source).toContain('const renderedMenuPosition = menuPosition ??')
     expect(source).toMatch(/if \(!open\) \{[\s\S]*?updateMenuPosition\(\)[\s\S]*?return/u)
     expect(source).toContain('if (open) {')

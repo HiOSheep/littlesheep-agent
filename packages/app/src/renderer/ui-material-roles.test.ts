@@ -61,19 +61,27 @@ const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }>
   'float-glass': {
     selectors: [
       '.running-pill',
+      // The reach-latest droplet floats over the transcript like the rest of the
+      // floating controls, so it takes the same glass instead of an opaque chip.
+      '.chat-jump-button',
       '.settings-select-menu',
       '.running-pill-panel',
       '.sidebar-menu-panel',
       '.split-button-menu',
       '.workspace-add-panel',
       '.add-menu-panel, .model-picker-panel, .runtime-menu-shell .runtime-picker-panel, .runtime-menu-shell .runtime-submenu',
+      // The transient confirmation that clears itself: it floats over whatever page
+      // raised it, so it takes the same menu glass as the other floaters.
+      '.transient-toast',
+      '.conversation-resources-panel',
     ],
     recipes: ['blur(18px) saturate(135%)'],
   },
   // The workspace tab plate inside the panel: a 26px chip that has to stay
-  // legible over the chat column, so it carries a lighter blur of its own.
+  // legible over the chat column, so it carries a lighter blur of its own. The chip
+  // that reopens a collapsed workspace is that same tab-row plate.
   'tab-glass': {
-    selectors: ['.workspace-active-item'],
+    selectors: ['.workspace-active-item', '.workspace-panel-reopen-icon'],
     recipes: ['blur(12px) saturate(135%)'],
   },
   // Scrims dim the page behind a modal surface. They are not a material: no
@@ -96,6 +104,7 @@ const BLUR_OVERRIDES = [
   '.workspace-panel-surface::before',
   'body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-panel-surface::before, body.is-resizing-column .window-shell.workspace-panel-drag-live .workspace-active-item',
   '.settings-workspace .overlay',
+  '.approval-presence .approval-inline, .approval-presence.visible .approval-inline',
 ]
 
 describe('material roles', () => {
@@ -173,5 +182,21 @@ describe('shadow roles', () => {
     expect(menuShadowUsers.length).toBeGreaterThanOrEqual(5)
     const panelElevationUsers = rules(styles).filter((rule) => rule.body.includes('box-shadow: var(--chat-panel-elevation);'))
     expect(panelElevationUsers.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('keeps the two floating glass panels the user reads shadowless', () => {
+    // Asked for 2026-10-15: the wide dark drop shadow of the resources popover and
+    // of the task pill's panel read as a halo around them against the dark
+    // transcript, so their translucent fill alone marks the float. The same rule is
+    // measured in real Electron by `scripts/verify-conversation-resources-motion.mjs`
+    // and `scripts/verify-chat-navigation.mjs`.
+    for (const cls of ['.conversation-resources-panel', '.running-pill-panel']) {
+      const token = new RegExp(`${cls.replace('.', '\\.')}(?![\\w-])`, 'u')
+      const offenders = rules(styles)
+        .filter((rule) => rule.selector.split(',').some((part) => token.test(part.trim())))
+        .filter((rule) => rule.body.includes('box-shadow:'))
+      expect(offenders.map((rule) => rule.selector), `${cls} must not paint a box shadow`).toEqual([])
+      expect(rules(styles).some((rule) => rule.selector === cls), `${cls} rule is missing`).toBe(true)
+    }
   })
 })

@@ -35,6 +35,9 @@ export interface ChatMessage {
 
 
 export interface LiveToolEvent {
+  approvalPending?: boolean
+  invocationStatus?: import('@littlesheep/types').ToolInvocationRecord['status']
+  errorKind?: string
   callId: string
   name: string
   stepId?: string
@@ -85,7 +88,7 @@ export interface LiveReasoningEvent {
 /** One ordered row of the model transcript (thinking / prose / tool). */
 export type TranscriptEntry =
   | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
-  | { kind: 'text'; id: string; text: string }
+  | { kind: 'text'; id: string; text: string; status?: import('@littlesheep/types').ObservableActivityStatus }
   | { kind: 'system'; id: string; text: string }
   | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; lineProgress?: { additions: number; deletions: number | null }; argumentSummary?: string; status: 'running' | 'done' | 'failed' | 'aborted' }
   | { kind: 'tool'; id: string; callId: string }

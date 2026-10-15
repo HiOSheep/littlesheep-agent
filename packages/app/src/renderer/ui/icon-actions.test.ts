@@ -110,8 +110,8 @@ const VARIANTS: Readonly<Record<string, ReadonlyArray<readonly [string, string]>
   PanelFullscreenIcon: [['inactive', 'path'], ['active', 'path']],
   ModeRiskIcon: [['normal', 'circle circle'], ['warning', 'circle rect circle']],
   WorkspaceFeatureIcon: [
-    ['files', 'path'], ['review', 'rect path path'], ['terminal', 'rect path'],
-    ['artifacts', 'path path path'], ['browser', 'circle path'], ['sideChat', 'path path'],
+    ['files', 'path'], ['review', 'path rect path'], ['terminal', 'rect path'],
+    ['artifacts', 'path path'], ['browser', 'circle path'], ['sideChat', 'path path'],
   ],
   FileGlyphIcon: [],
 }
@@ -193,17 +193,17 @@ const ICON_ONLY_CONTROLS: ReadonlyArray<readonly [file: string, glyph: string, n
 
 /** Every `stroke-width` the two action families are drawn with (V2 光学尺寸). */
 const ICON_STROKE_RULES: ReadonlyArray<readonly [sheet: string, selector: string, value: string]> = [
-  ['./styles/03-shell-sidebar.css', '.sidebar-toggle-outline, .sidebar-toggle-divider', '1'],
-  ['./styles/03-shell-sidebar.css', '.settings-gear-icon', '2.15'],
+  ['./styles/03-shell-sidebar.css', '.sidebar-toggle-outline, .sidebar-toggle-divider', 'var(--icon-stroke)'],
+  ['./styles/03-shell-sidebar.css', '.settings-gear-icon', 'var(--icon-stroke)'],
   ['./styles/03-shell-sidebar.css', '.sidebar-svg-icon', 'var(--icon-stroke)'],
   ['./styles/04-workspace.css', '.workspace-panel-svg-icon path, .workspace-panel-svg-icon rect, .workspace-panel-svg-icon circle, .workspace-panel-svg-icon ellipse', 'var(--icon-stroke)'],
   ['./styles/04-workspace.css', '.history-navigation-icon .workspace-browser-arrow-shaft, .history-navigation-icon .workspace-browser-arrow-head', 'var(--icon-stroke)'],
-  ['./styles/04-workspace.css', '.workspace-tree-chevron-icon path, .workspace-tree-glyph-icon path', '1.35'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet, .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold', '1.2'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body', '1.2'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-seam', '1.2'],
-  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-frame, .workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains', '1.2'],
-  ['./styles/04-workspace.css', '.split-button-chevron-icon', '1.5'],
+  ['./styles/04-workspace.css', '.workspace-tree-chevron-icon path, .workspace-tree-glyph-icon path', 'var(--icon-stroke)'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet, .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold', 'var(--icon-stroke)'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body', 'var(--icon-stroke)'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-seam', 'var(--icon-stroke)'],
+  ['./styles/04-workspace.css', '.workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-frame, .workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains', 'var(--icon-stroke)'],
+  ['./styles/04-workspace.css', '.split-button-chevron-icon', 'var(--icon-stroke)'],
 ]
 
 /** Imported assets own their colours. CSS only paints the neutral fallback, folder and image. */
@@ -432,8 +432,8 @@ describe('action glyph table', () => {
     expect(tokenRules).toHaveLength(1)
     const token = declarationOf(tokenRules[0]!.body, '--icon-stroke') ?? ''
     expect(token.endsWith('px')).toBe(true)
-    expect(Number.parseFloat(token)).toBeGreaterThanOrEqual(1.4)
-    expect(Number.parseFloat(token)).toBeLessThanOrEqual(1.6)
+    expect(Number.parseFloat(token)).toBeGreaterThanOrEqual(1.05)
+    expect(Number.parseFloat(token)).toBeLessThanOrEqual(1.2)
 
     // Both families declare that token, so the stroke is the same number of CSS pixels at a
     // 10px box and at an 18px one. `vector-effect` is *not* inherited: it has to sit on the

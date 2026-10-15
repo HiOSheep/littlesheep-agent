@@ -58,6 +58,8 @@ const panelProbe = `(() => {
     chatBox: box(chat),
     expandable: document.querySelector('.conversation-resources-toggle')?.getAttribute('aria-expanded') ?? null,
     opacity: panelStyle?.opacity ?? null,
+    background: panelStyle?.backgroundColor ?? null,
+    backdrop: panelStyle?.backdropFilter ?? null,
     panelTransform: panelStyle?.transform ?? null,
     panelTx: (() => { const v = panelStyle?.transform; if (!v || v === 'none') return 0;
       const m = v.match(/matrix\(([^)]+)\)/u); return m ? Number(m[1].split(',')[4]) : 0 })(),
@@ -163,18 +165,21 @@ try {
   report.measurements.open = open
   assert.equal(open.exists, true, 'the panel must exist after opening')
   assert.equal(open.expandable, 'true')
+  assert.equal(await evaluate(`document.querySelectorAll('.conversation-resources-heading button').length`),0,'section headings must not show inactive add controls')
+  assert.equal(await evaluate(`!!document.querySelector('.conversation-resources-history')`),false,'verbose footer must be removed')
+  assert.equal(open.transition,'0.32s','panel should use the slower 320ms slide')
   assert(open.changesMounted, 'the change snapshot mounts with the panel')
 
-  // Borderless: no CSS border box and no 1px shadow ring.
+  // Borderless and shadowless: no CSS border box, no 1px shadow ring and no drop
+  // shadow. The wide dark shadow read as a halo around the panel against the dark
+  // transcript, so the translucent glass fill alone marks the float (2026-10-15).
   for (const side of ['borderTop', 'borderRight', 'borderBottom', 'borderLeft']) {
     assert.equal(open[side], '0px', `${side} must be 0px, received ${open[side]}`)
   }
-  const ringLayers = open.boxShadow.split(/,(?![^(]*\))/u).map((layer) => layer.trim())
-    .filter((layer) => /(?:^|\s)0(?:px)?\s+0(?:px)?\s+0(?:px)?\s+1px/u.test(layer) || /^inset\b.*\s1px/u.test(layer))
-  assert.deepEqual(ringLayers, [], `the panel must not paint a 1px ring, found: ${JSON.stringify(ringLayers)}`)
-  assert(open.boxShadow !== 'none', 'the panel must keep a drop shadow so it still reads as elevated')
-  assert(/0(?:px)?\s+12px\s+32px/u.test(open.boxShadow), `expected the 12px/32px drop shadow, received: ${open.boxShadow}`)
-  record('panel paints no border and no 1px shadow ring, and keeps its drop shadow')
+  assert.equal(open.boxShadow, 'none', `the panel must not paint a drop shadow, received ${open.boxShadow}`)
+  assert.match(open.backdrop, /blur\(18px\)/u, 'panel must use the shared glass blur')
+  assert.match(open.background, /rgba\([^)]*,\s*0\./u, 'glass fill must remain translucent')
+  record('panel uses translucent glass with 18px blur and paints no border or shadow')
 
   // Slide origin: the panel rests flush with its host's right edge. The enter
   // motion is still running when the frames above are sampled, so the resting
@@ -207,9 +212,19 @@ try {
   assert(offsetOf(firstEnter) > 1, `the first enter frame must start displaced to the right, received ${firstEnter.transform}`)
   assert(entering.some((frame, i) => i > 0 && Math.abs(offsetOf(frame)) < Math.abs(offsetOf(entering[i - 1]))),
     'the enter motion must converge leftwards to the resting position')
-  assert(Number(entering.at(-1).opacity) === 1, 'the enter motion must settle fully opaque')
+  assert(entering.every(frame => Number(frame.opacity) === 1), 'opening must move the solid panel without fading')
+  assert(offsetOf(firstEnter) >= settledOpen.panelBox.width, 'opening must move the entire panel in from outside')
   assert.equal(offsetOf(entering.at(-1)), 0, 'the enter motion must settle at translateX(0)')
   record('opening slides the panel leftwards out of the right edge into its resting position')
+  const hoverBox = await evaluate(`(() => {const r=document.querySelector('.conversation-resources-changes > button').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`)
+  await client.send('Input.dispatchMouseEvent', {type:'mouseMoved',...hoverBox})
+  const compact = await evaluate(`(() => {const e=document.querySelector('.conversation-resources-changes > button');const s=getComputedStyle(e);return {hover:e.matches(':hover'),radius:parseFloat(s.borderRadius),height:e.getBoundingClientRect().height,padding:getComputedStyle(document.querySelector('.conversation-resources-panel')).paddingTop}})()`)
+  assert.equal(compact.hover,true)
+  assert(compact.radius>=12,'hover row needs generous rounded corners')
+  assert(compact.height<=36,'resource rows should remain compact')
+  assert.equal(compact.padding,'12px')
+  report.measurements.compact=compact
+  record('hover rows have 12px corners and compact height, with reduced panel padding')
   report.measurements.openScreenshot = await screenshot('resources-open')
 
   // No transient horizontal overflow while the panel is at the right edge.
@@ -221,7 +236,7 @@ try {
   // --- closing ------------------------------------------------------------
   await evaluate("document.querySelector('.conversation-resources-toggle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))")
   const exitFrames = await evaluate(sampleFrames(90))
-  // The exit motion is unmount-deferred; wait past the 280ms deadline before
+  // The exit motion is unmount-deferred; wait past the 380ms deadline before
   // asserting removal so the check cannot race the retract.
   await delay(700)
   const afterExit = await evaluate(panelProbe)
@@ -229,11 +244,8 @@ try {
   report.measurements.afterExit = afterExit
   const exiting = exitFrames.filter((frame) => frame.exists)
   assert(exiting.length > 1, 'the exit transition must paint before the subtree unmounts')
-  // The first sampled frame can still precede React's commit of the exit class,
-  // so the fade is proven by the frames after it rather than by frame zero.
-  assert(exiting.slice(1).some((frame) => Number(frame.opacity) < 1),
-    `the exit motion must fade the panel, received ${JSON.stringify(exiting.slice(0, 4).map((f) => f.opacity))}`)
-  assert(offsetOf(exiting.at(-1)) > 1, `the panel must retract rightwards, received ${exiting.at(-1).transform}`)
+  assert(exiting.every(frame => Number(frame.opacity) === 1), 'closing must move the solid panel without fading')
+  assert(offsetOf(exiting.at(-1)) >= settledOpen.panelBox.width, 'closing must move the entire panel outside before unmount')
   assert.equal(afterExit.exists, false, 'the panel must be removed after the exit motion settles')
   assert.equal(afterExit.expandable, 'false')
   assert.equal(afterExit.changesMounted, false, 'the change snapshot must unmount after closing')
@@ -297,6 +309,55 @@ try {
   const restored = await evaluate(panelProbe)
   assert.equal(restored.panelTx, 0, 'the resting panel stays at translateX(0) when motion returns')
   record('turning motion back on keeps the open panel at its resting position')
+
+  // --- collapsed workspace: the two top-right controls share one row --------
+  // Collapsed, the panel's stationary toggle sits on the close line and this control uses the
+  // tab row's own gap. It used to keep the 12px the panel's popover reserves below the toggle,
+  // so the pair read as two unrelated controls (asked for 2026-10-15).
+  if (!await evaluate("document.querySelector('.conversation-resources').dataset.workspaceCollapsed === 'true'")) {
+    await evaluate("document.querySelector('.workspace-panel-corner-toggle').click()")
+    await wait("document.querySelector('.conversation-resources').dataset.workspaceCollapsed === 'true' ? true : null", 'collapsed resources control')
+  }
+  await delay(400)
+  const collapsedRow = await evaluate(`(() => {
+    const resources = document.querySelector('.conversation-resources-toggle').getBoundingClientRect();
+    const fold = document.querySelector('.workspace-panel-corner-toggle').getBoundingClientRect();
+    return {
+      gap: Math.round((fold.left - resources.right) * 100) / 100,
+      resourcesRight: Math.round(resources.right),
+      foldLeft: Math.round(fold.left),
+      collapsed: document.querySelector('.conversation-resources').dataset.workspaceCollapsed,
+    };
+  })()`)
+  report.measurements.collapsedRow = collapsedRow
+  assert.equal(collapsedRow.collapsed, 'true')
+  assert.equal(collapsedRow.gap, 4,
+    `collapsed workspace must space the two controls by 4px, received ${JSON.stringify(collapsedRow)}`)
+  record('collapsed workspace spaces the chat and panel controls by the tab row gap')
+  await screenshot('resources-collapsed-workspace')
+
+  // The chip that reopens the workspace is the tab row's own plate: translucent frosted glass
+  // with no stroke and the tab's corner (asked for 2026-10-15). It used to be an opaque
+  // `--control-hover` box inside a `--border-strong` outline. Offered through focus, so the
+  // reading does not depend on where the pointer happens to be; a focus-visible wash is fine.
+  await evaluate("document.querySelector('.workspace-panel-reopen-target').focus()")
+  await wait("document.querySelector('.workspace-panel-reopen-target').classList.contains('reopen-visible') ? true : null", 'the reopen chip to be offered')
+  await delay(200)
+  const reopenChip = await evaluate(`(() => {
+    const style = getComputedStyle(document.querySelector('.workspace-panel-reopen-icon'));
+    return {
+      background: style.backgroundColor,
+      border: style.borderTopWidth,
+      radius: style.borderRadius,
+      blur: style.backdropFilter,
+    };
+  })()`)
+  report.measurements.reopenChip = reopenChip
+  assert.equal(reopenChip.border, '0px', `the reopen chip must carry no stroke, received ${JSON.stringify(reopenChip)}`)
+  assert.equal(reopenChip.radius, '10px', `the reopen chip must take the tab's corner, received ${reopenChip.radius}`)
+  assert.match(reopenChip.blur, /blur\(12px\)/, 'the reopen chip must be frosted glass')
+  assert.match(reopenChip.background, /0\.(?:14|22)\)/, `the reopen chip fill must stay translucent, received ${reopenChip.background}`)
+  record('reopen workspace chip is borderless translucent glass at the tab row corner')
 
   report.ok = true
   console.log(JSON.stringify({ ok: true, checks: report.checks, measurements: report.measurements, screenshots: report.screenshots }, null, 2))

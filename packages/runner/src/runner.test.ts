@@ -97,6 +97,21 @@ afterEach(async () => {
 // ─── Tests ──────────────────────────────────────────────────────────────
 
 describe('createRunner run', () => {
+  it('uses a per-run model without changing later runs or the host model', async () => {
+    const llm = makeMockLlm(textResponse('Selected model reply'));
+    const runner = await createRunner({ config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING, model: 'test/model-a', llm, skillsDirs: [] });
+    createdRunners.push(runner);
+    const first = await runner.run({ text: 'use B', model: 'test/model-b' });
+    expect(first.status).toBe('ok');
+    const selectedCalls = (llm.chat as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0] as ChatRequest);
+    expect(selectedCalls.length).toBeGreaterThan(0);
+    expect(selectedCalls.every(request => request.model === 'test/model-b')).toBe(true);
+    (llm.chat as ReturnType<typeof vi.fn>).mockClear();
+    await runner.run({ text: 'use default A' });
+    expect((llm.chat as ReturnType<typeof vi.fn>).mock.calls.every(call => (call[0] as ChatRequest).model === 'test/model-a')).toBe(true);
+    expect(runner.model).toBe('test/model-a');
+  });
+
   it('registers stable bootstrap authorities when the runner starts', async () => {
     writeFileSync(join(dataDir, 'AGENTS.md'), 'Verify every completed task.', 'utf8');
     writeFileSync(join(dataDir, 'SOUL.md'), 'Calm and factual.', 'utf8');
@@ -3376,12 +3391,13 @@ describe('host file write entry points', () => {
 
     // The runner recorded the correction, and the next run's finalize turns it into the session's
     // revocation marker — which is what stops a pre-forget summary from being injected as current.
-    expect(runner.infra.state.memoryAtomCorrections?.length).toBe(1);
+    expect(runner.infra.state.memoryAtomCorrectionsByRun?.get('run-2')?.length).toBe(1);
+    expect((await runner.sessionManager.loadMetadata(session.id))?.memoryRevokedAt).toBeTruthy();
     const run = await runner.run({ sessionId: session.id, text: '继续' });
     expect(run.status).toBe('ok');
     expect((await runner.sessionManager.loadMetadata(session.id))?.memoryRevokedAt).toBeTruthy();
     // The marker belongs to that run: the next one starts clean.
-    expect(runner.infra.state.memoryAtomCorrections).toEqual([]);
+    expect(runner.infra.state.memoryAtomCorrectionsByRun?.get(String(run.runId))).toBeUndefined();
   });
 
   // RS-06: the model may ask for a memory, but the Runtime decides whether the user authorized it.

@@ -180,6 +180,11 @@ describe('recorded call failures keep their resolution state', () => {
 })
 
 describe('the verification line', () => {
+  it('keeps an unverified acceptance as a neutral status instead of a warning on a clean run', () => {
+    const clean = activity({ status: 'done', verificationHistory: [{ attempt: 1, verdict: 'unverified', reason: 'human acceptance not judged', verifiedAt: '2026-10-14T00:00:00Z', source: 'structural' }] })
+    expect(activityAttentionLine(clean)).toBeNull()
+    expect(activityVerificationLine(clean)).toBe('验证：未验证')
+  })
   it('gives the same verification fact to both display modes', () => {
     const unverified = activity({
       status: 'done',

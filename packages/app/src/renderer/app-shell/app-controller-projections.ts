@@ -131,6 +131,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'modelAvailability',
   ],
   composer: [
+    'checkpointRecovery',
     'openContextInspector',
     'input',
     'setInput',
@@ -138,7 +139,6 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'scrollRef',
     'loading',
     'permissionMode',
-    'permissionMigration',
     'setPermissionMode',
     'runtime',
     'attachments',

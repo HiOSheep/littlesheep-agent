@@ -151,6 +151,18 @@
   transition: opacity var(--settings-reveal-motion) var(--motion-ease);
 }
 
+/* The rail is painted on the entry's first frame, in the same style update that
+   removes the ordinary rail. While the layer is hidden the exit rule below leaves
+   this track at opacity 0, so without this rule the track's own transition
+   animates the whole rail — card and labels — back in. Measured in a real window
+   on 2026-10-15: a warm entry took 230ms to paint a rail whose labels were already
+   opaque, and its first frames showed no rail at all; a cold entry showed the same
+   fade once the ordinary rail was handed over. Only the page body fades in. */
+.presence-layer.settings-presence.presence-entering .settings-sidebar-track {
+  opacity: 1;
+  transition: none;
+}
+
 .settings-sidebar-contents {
   position: relative;
   z-index: 1;
@@ -170,9 +182,15 @@
      rail's first row is the search field — a real control — so it keeps clear of the
      strip instead of sitting half inside a drag region. */
   padding-top: calc(var(--window-titlebar-height) - var(--floating-panel-inset));
+  /* The rail's labels are painted by the same style update that removes the
+     ordinary rail (`03-shell-sidebar.css` hides it on `.settings-open`), so the
+     hand-off is discrete and the track is never left without labels.
+     Measured in a real window on 2026-10-15: with an entry fade here the warm
+     entry painted three frames of an empty rail and took 140ms to read as
+     settings — the reported flicker. A cold visit is still gated by
+     `[data-ready='false']` below, which hides these labels until the lazy view
+     has a first frame while the ordinary rail stays painted. */
   opacity: var(--sidebar-content-opacity);
-  transition:
-    opacity var(--sidebar-collapse-motion) var(--motion-ease);
 }
 
 .settings-sidebar-toolbar {
@@ -333,7 +351,7 @@
 .presence-layer.presence-exiting .settings-sidebar-contents {
   opacity: 0;
   visibility: visible;
-  transition: opacity var(--settings-reveal-motion) var(--motion-ease);
+  transition: opacity var(--settings-sidebar-exit-content-motion) var(--motion-ease);
 }
 
 .presence-layer.presence-exiting .settings-sidebar-track {
@@ -492,7 +510,7 @@ body.is-resizing-column .settings-sidebar-resizer {
 .settings-nav-arrow path {
   fill: none;
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -530,6 +548,17 @@ body.is-resizing-column .settings-sidebar-resizer {
 
 .presence-layer.settings-presence.presence-exiting:not(.presence-hidden) .settings-workspace-body {
   opacity: 0;
+}
+
+/* A cold visit waits for the lazy settings view's first frame with the ordinary
+   rail still painted (`03-shell-sidebar.css`). Both halves of the swap read this
+   one attribute — the ordinary rail stops being displayed and the settings rail,
+   card included, becomes opaque — and `transition: none` keeps that swap in a
+   single frame instead of fading the rail in behind a track that is already
+   empty, or painting the card over the ordinary rail while it is still up. */
+.settings-presence .settings-workspace[data-ready='false'] :is(.settings-sidebar-track, .settings-sidebar-contents, .settings-workspace-body) {
+  opacity: 0;
+  transition: none;
 }
 
 .direct-module-workspace {
@@ -1632,7 +1661,7 @@ body.is-resizing-column .settings-sidebar-resizer {
   stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.35;
+  stroke-width: var(--icon-stroke);
 }
 
 .application-background-empty {
@@ -1950,6 +1979,72 @@ body.is-resizing-column .settings-sidebar-resizer {
   padding: 9px 8px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
+}
+
+/* The transient confirmation floats above the page instead of sitting in it.
+   Two reasons this is a fixed portal rather than a block in the flow:
+     - a notice that occupies layout pushes everything below it down and back up,
+       so merely confirming a save visibly moved the page it was confirming;
+     - the confirmation clears itself after a few seconds, and content that jumps
+       twice for a message nobody asked to keep is worse than no message. */
+.transient-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 2400;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 40px));
+  padding: 10px 12px 10px 14px;
+  color: var(--text);
+  background: var(--composer-surface);
+  border: 0;
+  border-radius: var(--radius-card);
+  box-shadow: var(--chat-panel-elevation);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+  /* Painted from the first frame and moved into place: the material is glass, so an
+     opacity ramp showed the blur arriving with the panel. */
+  transform: translate(-50%, 0);
+  animation: transient-toast-in var(--transient-motion) var(--motion-ease);
+}
+
+.transient-toast-notice {
+  min-width: 0;
+  color: var(--text-strong);
+}
+
+.transient-toast-dismiss {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-circle);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.transient-toast-dismiss:hover {
+  color: var(--text-strong);
+  background: var(--control-hover);
+}
+
+@keyframes transient-toast-in {
+  from { transform: translate(-50%, 8px); }
+  to { transform: translate(-50%, 0); }
+}
+
+/* Reduced motion: the confirmation still appears and still clears itself, it just
+   stops moving. Removing the timer instead would make the notice permanent. */
+@media (prefers-reduced-motion: reduce) {
+  .transient-toast {
+    animation: none;
+  }
 }
 
 .storage-settings-notice {

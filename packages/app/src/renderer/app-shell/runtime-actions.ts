@@ -23,6 +23,8 @@ interface RuntimeActionOptions {
   modelPatchSequenceRef: MutableRefObject<number>
   pendingModelPatchRef: MutableRefObject<PendingModelPatch | null>
   selectedSessionWorkspaceRef: MutableRefObject<string | undefined>
+  applyConversationWorkspace?: (path: string) => void
+  ownsVisibleConversation?: (sessionId?: string) => boolean
   defaultWorkspaceRef: MutableRefObject<string | undefined>
 }
 
@@ -150,9 +152,8 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
   /**
    * Pick a directory for the current session.
    *
-   * A project session runs where its project is, so saving the default alone
-   * would not move it: the user's explicit pick is also this session's new
-   * directory. A standalone session keeps following the default.
+   * An explicit pick belongs to this conversation, including standalone sessions.
+   * A delayed native picker result must not move the conversation opened meanwhile.
    */
   async function chooseWorkspacePath(input: {
     selectDirectory: () => Promise<string | null | undefined>
@@ -162,10 +163,12 @@ export function createRuntimeActions(options: RuntimeActionOptions) {
     try {
       const path = await input.selectDirectory()
       if (!options.appMountedRef.current || !path) return
-      if (input.sessionId && input.sessionScope === 'project') {
+      if (input.sessionId && (options.applyConversationWorkspace || input.sessionScope === 'project')) {
         await updateSessionWorkspace(input.sessionId, path)
       }
-      await applyRuntimePatch({ workspace: path })
+      if (options.ownsVisibleConversation && !options.ownsVisibleConversation(input.sessionId)) return
+      if (options.applyConversationWorkspace) options.applyConversationWorkspace(path)
+      else await applyRuntimePatch({ workspace: path })
     } catch (error) {
       if (options.appMountedRef.current) options.setRuntimeError((error as Error).message)
     }

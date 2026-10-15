@@ -14,6 +14,7 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 工作区打开方式由 Main 只读枚举 Windows Shell 关联应用（`windows-associated-apps.ts` / `SHAssocEnumHandlers`），并结合用户默认项及注册表启动命令。Shell 不可用时回退到用户级／系统级 ProgIds、OpenWithList 与 Applications 子项；MRU 的应用数据与子键分别解析。候选按可执行文件去重、检查文件存在、最多返回 32 项；注册表查询以 8 个并发上限运行。Renderer 只回传候选 id，启动前重新发现并校验，不接受 Renderer 命令行。定向验证由 `workspace-open-with.test.ts` 和隔离 Electron 的真实菜单检查覆盖。
 
 - Main 在 Agent 操作实际执行时重新分类路径；Renderer 的批准状态本身不授予权限。
+- 普通 run 在权限快照前检查用户选择的实际工作区；`workspace-write` 可准备尚不存在的目标目录，只读不会创建目录。目录不可用时在入口返回明确错误，不能带着缺失的可信根进入工具循环，也不能换成应用数据根。
 - 普通 run 从 Main 解析一次 workspace，并签发与 `dataRoot` 分离的 V2 权限快照；checkpoint resume 使用检查点保存的 workspace，并以当前 SessionIndex 权限封顶原权限快照，因此会话降权会撤销旧检查点中的较高授权，续跑请求体不能替换这两个 Main 权限事实。既有检查点只保存旧权限 id，旧 `research` 检查点恢复 V2 会话时保守降到 `read-only`，避免无法证明的写入授权；不改变 Runner 检查点历史格式。旧模式继续兼容读取；单 run 选择和 session 权限持久化是独立操作。
 - Agent 工具与 Agent Shell 命令使用相同路径和权限策略；用户直接操作的交互终端走另一条路由。
 - Agent Shell 的有效授权由 Main 绑定到一个 Run 的 Session/Project 身份及当前权限快照；一次审批可覆盖同一模型回复中已冻结清单的全部独立 invocation。Main 启动前重新检查清单项、目录对象、Shell 文件、环境、超时和当前会话归属；任何缺失或变化都拒绝启动。批准仍只授权宿主 Shell 命令，不构成 OS 隔离。
@@ -31,3 +32,5 @@ Main 是应用数据、窗口、Local App API、Runner 生命周期、文件系�
 局部改动运行 App typecheck 与 Main 定向测试。路径授权、启动恢复、文件修改、原生窗口行为和发布产物分别使用 [脚本索引](../../../../scripts/README.md) 中相应验证；Electron 检查前运行 `pnpm run ensure:app-build`。
 
 窗口布局由原生最大化／全屏事件即时投影，并在合并后的 resize／restore 校正中读取原生事实。递增 revision 防止旧投影覆盖新布局；相同材质、标题栏颜色及布局不重复设置，重载与查询仍重放当前快照。定向验证包含 desktop-window-chrome.test.ts 与 verify-window-layout.mjs --stress-only。
+
+会话 Run 的模型引用在 Main 校验后传入 Runner；应用默认模型不随对话输入框选择改变。普通会话和项目会话均优先使用各自保存的工作目录，没有绑定的会话才采用请求或默认目录。

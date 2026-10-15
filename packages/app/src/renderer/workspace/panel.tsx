@@ -357,11 +357,6 @@ export function WorkspacePanel({
               onCloseTab={onCloseTab}
               onTipChange={onTipChange}
             />
-          </div>
-          <div className="workspace-panel-actions workspace-tab-row-control">
-            {/* The add control is pinned here with the window controls, outside the scrolling tab
-                strip: it used to be the strip's last child, so a tab list wider than the panel
-                scrolled it out of reach (reported 2026-10-03). */}
             <WorkspaceAddMenu
               entries={workspaceEntries}
               activeTab={isWorkspacePanelTab(activeTab) && openTabs.some((tab) => tab === activeTab) ? activeTab : null}
@@ -370,6 +365,8 @@ export function WorkspacePanel({
               onOpenBrowserTab={onBrowserOpenNewTab}
               onTipChange={onTipChange}
             />
+          </div>
+          <div className="workspace-panel-actions workspace-tab-row-control">
             <button
               {...transientTriggerProps()}
               className="workspace-panel-action workspace-panel-collapse-action"

@@ -136,16 +136,14 @@ describe('workspace page leading row alignment', () => {
     expect(styles).toMatch(/\.workspace-panel-view:has\(> \.workspace-files-tab-navigator\),\s*\.workspace-panel-view:has\(> \.workspace-files\),\s*\.workspace-panel-view:has\(> \.workspace-preview-pane\)\s*\{[^}]*overflow:\s*hidden;[^}]*scrollbar-gutter:\s*auto;[^}]*scrollbar-width:\s*none;/u)
   })
 
-  it('pins the add control with the window controls, outside the scrolling tabs', async () => {
+  it('keeps the add control beside the tabs but outside their scrolling region', async () => {
     const panel = await readFile(new URL('./panel.tsx', import.meta.url), 'utf8')
     const strip = await readFile(new URL('./tab-strip.tsx', import.meta.url), 'utf8')
-
-    // The add control used to be the strip's last child, so a tab list wider than the panel scrolled
-    // it out of reach (reported 2026-10-03). It now sits in the header's fixed control cluster, in
-    // front of the window controls, and the strip only renders tabs.
     expect(strip).not.toContain('<WorkspaceAddMenu')
     expect(strip).not.toContain("from './add-menu'")
-    expect(panel).toMatch(/workspace-panel-actions workspace-tab-row-control[\s\S]{0,700}<WorkspaceAddMenu/u)
+    const topbar = panel.slice(panel.indexOf('className="workspace-panel-topbar"'), panel.indexOf('className="workspace-panel-actions'))
+    expect(topbar).toContain('<WorkspaceAddMenu')
+    expect(topbar.indexOf('<WorkspaceAddMenu')).toBeGreaterThan(topbar.indexOf('<WorkspaceTabStripWithCloseRefusal'))
     expect(panel).toContain('openTabs={openTabs.filter(isWorkspacePanelTab)}')
   })
 

@@ -106,16 +106,18 @@ try{
    assert.equal(value.width,value.foldWidth);assert.equal(value.height,value.foldHeight)
    assert.equal(value.width,26);assert.equal(value.centerOffset,0);assert.equal(value.circles,3)
    assert.equal(value.path,'M8 2h8M8 7h8M8 12h8');assert(value.insideChat&&value.clickable)
-   if(state==='collapsed')assert.equal(value.gap,12)
+   // Collapsed, the panel's stationary toggle and this control share one row and are spaced by
+   // the tab row's own 4px gap, not by the 12px the panel's popover reserves below the toggle
+   // (asked for 2026-10-15).
+   if(state==='collapsed')assert.equal(value.gap,4)
    else assert.equal(value.rightGap,10)
    await click('.conversation-resources-toggle')
    assert(await client.evaluate('!!document.querySelector(".conversation-resources-panel")'))
    const material=await client.evaluate(`(() => {const s=getComputedStyle(document.querySelector('.conversation-resources-panel'));return {border:s.borderTopWidth,shadow:s.boxShadow,background:s.backgroundColor,blur:s.backdropFilter}})()`)
-   // The resources popover is deliberately borderless: it is drawn by its own
-   // drop shadow instead of a stroke, so it takes a local elevation without the
-   // `0 0 0 1px` ring `--chat-panel-elevation` carries. It is also an opaque
-   // popover over the chat surface, not the composer's frosted glass.
-   assert.equal(material.border,'0px');assert(!/0px 0px 0px 1px/u.test(material.shadow)&&material.shadow!=='none',JSON.stringify(material))
+   // The resources popover is deliberately borderless and shadowless: no stroke and no
+   // drop shadow, so it takes neither the `0 0 0 1px` ring nor the wide halo of the
+   // conversation's other popovers (2026-10-15). Its glass fill marks the float.
+   assert.equal(material.border,'0px');assert.equal(material.shadow,'none',JSON.stringify(material))
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-changes > button > .workspace-panel-svg-icon").length'),1)
    assert.equal(await client.evaluate('document.querySelectorAll(".conversation-resources-heading > button > .sidebar-svg-icon").length'),2)
    assert.equal(await client.evaluate('/[⊞▤]/u.test(document.querySelector(".conversation-resources-panel").textContent)'),false)

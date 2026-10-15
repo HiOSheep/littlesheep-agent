@@ -31,6 +31,8 @@ export function nativeWindowChromeRowMismatch(): string | null {
 export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: () => boolean): void {
   const rowMismatch = nativeWindowChromeRowMismatch()
   if (rowMismatch) throw new Error(`window chrome contract: ${rowMismatch}`)
+  // The BrowserWindow getter is invalid by the time its closed event fires.
+  const webContents = window.webContents
   const backdrop = nativeWindowBackdrop()
   let isDark = nativeTheme.shouldUseDarkColors
   if (backdrop === 'acrylic') window.setBackgroundMaterial('acrylic')
@@ -43,7 +45,7 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
   let overlayKey: string | undefined
   let reconcileTimer: ReturnType<typeof setTimeout> | undefined
   const publish = (force = false) => {
-    if (window.isDestroyed() || window.webContents.isDestroyed()) return
+    if (window.isDestroyed() || webContents.isDestroyed()) return
     const layout = maximized || fullscreen ? 'beta' : 'chali'
     const renderer = isRenderer()
     const surface = isDark ? DESKTOP_STARTUP_SURFACE : '#f4f4f2'
@@ -62,12 +64,12 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
     }
     if (!lastState || lastState.layout !== layout || lastState.backdrop !== backdrop) {
       lastState = { layout, backdrop, revision: ++revision }
-      window.webContents.send(WINDOW_CHROME_CHANNEL, lastState)
-    } else if (force) window.webContents.send(WINDOW_CHROME_CHANNEL, lastState)
+      webContents.send(WINDOW_CHROME_CHANNEL, lastState)
+    } else if (force) webContents.send(WINDOW_CHROME_CHANNEL, lastState)
   }
   const reconcile = () => {
     reconcileTimer = undefined
-    if (window.isDestroyed() || window.webContents.isDestroyed()) return
+    if (window.isDestroyed() || webContents.isDestroyed()) return
     maximized = window.isMaximized()
     fullscreen = window.isFullScreen()
     publish()
@@ -85,12 +87,12 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
     publish(true)
   }
   const query = (event: IpcMainEvent) => {
-    if (!window.isDestroyed() && event.sender === window.webContents) {
+    if (!window.isDestroyed() && event.sender === webContents) {
       publish(true)
     }
   }
   const appearance = (event: IpcMainEvent, payload: unknown) => {
-    if (window.isDestroyed() || event.sender !== window.webContents || !isWindowAppearance(payload)) return
+    if (window.isDestroyed() || event.sender !== webContents || !isWindowAppearance(payload)) return
     isDark = payload.isDark
     publish()
   }
@@ -109,7 +111,7 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
   window.on('leave-full-screen', onLeaveFullscreen)
   window.on('resize', scheduleReconcile)
   window.on('restore', scheduleReconcile)
-  window.webContents.on('did-finish-load', onLoaded)
+  webContents.on('did-finish-load', onLoaded)
   window.once('closed', () => {
     if (reconcileTimer) clearTimeout(reconcileTimer)
     window.removeListener('resize', scheduleReconcile)
@@ -118,7 +120,7 @@ export function installDesktopWindowChrome(window: BrowserWindow, isRenderer: ()
     window.removeListener('unmaximize', onUnmaximize)
     window.removeListener('enter-full-screen', onEnterFullscreen)
     window.removeListener('leave-full-screen', onLeaveFullscreen)
-    window.webContents.removeListener('did-finish-load', onLoaded)
+    webContents.removeListener('did-finish-load', onLoaded)
     ipcMain.removeListener(WINDOW_CHROME_QUERY_CHANNEL, query)
     ipcMain.removeListener(WINDOW_APPEARANCE_CHANNEL, appearance)
     nativeTheme.removeListener('updated', systemThemeChanged)

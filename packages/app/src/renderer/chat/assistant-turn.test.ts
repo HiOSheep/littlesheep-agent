@@ -68,6 +68,16 @@ function manyCitations(): WebEvidenceProjection {
 
 
 describe('assistant activity flow', () => {
+  it('does not present completed argument generation as a completed file change', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTranscript, {
+      transcript: [{ kind: 'preparing', id: 'pending-write', name: 'write', receivedCharacters: 0, status: 'done', argumentSummary: 'target.txt' }],
+      activity: activity(), now: 1_500, onOpenFile: () => undefined,
+    }))
+    expect(html).toContain('准备修改')
+    expect(html).toContain('等待执行')
+    expect(html).not.toContain('m5.5 8 1.7 1.7 3.5-3.7')
+  })
+
   it('renders partial web evidence and stable safe error labels without exposing raw error ids', () => {
     const evidence: WebEvidenceProjection = {
       version: 1,
@@ -456,6 +466,20 @@ describe('assistant activity flow', () => {
 })
 
 describe('model transcript rendering', () => {
+  it('keeps progress prose outside the collapsed diagnostics and distinguishes partial text', () => {
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, { message: { role: 'assistant', text: '最终结果',
+      activity: activity({ status: 'done', transcript: [
+        { kind: 'system', id: 'system', text: '诊断提示词' },
+        { kind: 'text', id: 'first', text: '保留的过程正文', status: 'done' },
+        { kind: 'text', id: 'partial', text: '中断的片段', status: 'aborted' },
+        { kind: 'text', id: 'final', text: '最终结果', status: 'done' },
+      ] }) }, now: 1_500, onOpenFile: () => undefined }))
+    const timeline = html.indexOf('assistant-conversation-timeline')
+    expect(html.indexOf('保留的过程正文')).toBeGreaterThan(timeline)
+    expect(html.indexOf('中断的片段')).toBeGreaterThan(timeline)
+    expect(html).toContain('此段生成已中止')
+    expect(html.match(/最终结果/gu)).toHaveLength(1)
+  })
   it('counts a finished turn as N 段思考 · N 次调用 on the process trigger', () => {
     const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
       message: {

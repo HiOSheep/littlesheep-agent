@@ -95,10 +95,11 @@
 | `packages/app/src/main/attachment-cache.ts` | 557 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 500 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/app/src/shared/memory-control-contracts.ts` | 486 | 记忆文件、资源、投影、迁移和治理控制面公共契约 | 按普通文件视图与内部治理契约分组，保持 shared 无运行逻辑 | C |
-| `packages/app/src/main/local-app-api/run-routes.ts` | 484 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress 和收尾路由 | 保持 HTTP 路由组合；检查点恢复与应用生命周期控制面使用独立 adapter | C |
+| `packages/app/src/main/local-app-api/run-routes.ts` | 595 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress、审批 broker 和收尾路由 | HTTP 精确授权的查看/撤销位于 `shell-repeat-authorization-routes.ts`；保持 run 与 checkpoint 执行边界 | C |
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 365 |
 | `packages/app/src/main/workspace-shell-discovery.ts` | 379 | 本机 Shell 探测（Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL 发行版）、可用性与配置提示、WSL 路径映射 | 保持探测与映射边界；启动参数按 Shell 分支留在 `terminal-process.ts` | C | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
+| `packages/app/src/main/run-policy.ts` | 313 | Main 权限快照、工具决策、Shell invocation authority 与 approval 请求装配 | 保持 Main 是最终决策者；Shell 固定候选复用始终受 hard decision 与实时执行事实复核约束 | C |
 | `packages/app/src/renderer/workspace/preview-pane.tsx` | 449 | 编辑草稿、Monaco/Markdown/媒体预览和预览状态栏；路径面包屑已下沉到 `preview-breadcrumbs.tsx`（祖先段是跳转目标，`workspaceBreadcrumbFolders` 决定点哪个目录），HTML 的「运行/静态」选择下沉到 `html-preview-surface.tsx` | 文件加载与保存事务已下沉到 `file-view.tsx`，HTML 运行状态与提示下沉到 `use-html-run.ts`/`html-run-notice.tsx`，静态预览帧与资源失败提示下沉到 `html-preview-surface.tsx`，Office 正文下沉到 `office-preview-panel.tsx`；继续保持编辑与展示边界 | B |
 | `packages/app/src/main/local-app-api/workspace-preview-server.ts` | 336 | 工作区根作用域的有界 loopback 静态服务：token、真实路径与符号链接校验、内容类型、空闲回收与资源失败记录 | 保持"每个根一个监听 + 每次请求都重新校验路径"的边界；若继续增长，把 MIME/路径解析与监听生命周期拆开，但不得引入目录列举、CORS 头或写方法 | C |
 | `packages/app/src/main/local-app-api/workspace-git-review.ts` | 472 | Git 审阅快照与单文件差异的分层读取、项目范围校验、有界一致性重读（HEAD/index/status 指纹） | 保持"读取一次 + 有界重读"的组合层；指纹规则在 `workspace-git-review-consistency.ts`，失败分类在 `workspace-git-failure.ts`，解析在 `workspace-git-review-parsers.ts`，不新增调度层 | C |
@@ -125,6 +126,7 @@
 | `packages/app/src/renderer/app-shell/app-controller-projections.ts` | 328 | 每个 Renderer 视图能看到哪些控制器字段 | 只放字段清单与视图契约；字段增删在这里一行完成，不把投影逻辑搬进来 | B |
 | `packages/app/src/renderer/workspace/panel.tsx` | 400 | 拓展工作区页面、评论状态和工作面装配（「文件」标签通过共享的 `navigatorWiring` 复用文件夹栏导航，不是第二份文件列表） | 保持纯组合；标签条、浏览器和文件预览事务已分别下沉 | B |
 | `packages/app/src/main/development-environments.ts` | 421 | LS 工具链管理 facade、版本偏好、导入/移除事务和终端环境派生 | 保持 facade；下载器不得回填此文件 | C |
+| `packages/app/src/renderer/settings/development-environments.tsx` | 303 | 开发环境设置视图、导入移除交互和操作反馈 | 保持设置页装配；工具链事务归 Main，短暂反馈复用共享通知组件 | B |
 | `packages/app/src/renderer/workspace/browser.tsx` | 435 | 内置浏览器标签、导航、加载状态和网页内跳转 | 保持视图组合；历史算法和导航资格留在独立模块 | B |
 | `packages/app/src/renderer/workspace/code-editor.tsx` | 524 | Monaco 编辑器唯一懒加载、模型/视图生命周期和代码查看/编辑适配（含新挂载编辑器采纳当前表面正文，以及随字号走的行距 `WORKSPACE_MONACO_LINE_HEIGHT_RATIO`） | 保持编辑器运行时单一所有者；继续将语言支持与视图状态留在独立边界，不在普通文件/审阅组件重复初始化；`adoptMountedEditorValue` 只补上缓存模型与当前表面正文不一致时的挂载校正（2026-09-28，"放弃修改"后重开文件不得显示已丢弃的草稿） | B |
 | `packages/app/src/renderer/workspace-persistence.ts` | 591 | 会话工作区布局 schema、draft 迁移、路径重绑定、快照恢复与规范化 | 保持纯数据转换边界；继续增长时分离 schema/codec 与路径转换 | B |
@@ -139,7 +141,7 @@
 | `packages/app/src/renderer/settings/model-provider-editor.tsx` | 358 | 供应商编辑面板的字段、模型行与"获取模型"控件渲染 | 纯校验与合并规则留在 `model-provider-draft.ts`，请求留在 `provider-model-list-client.ts`；继续只做渲染，不要在本文件里新增网络或持久化 | B |
 | `packages/app/src/renderer/workspace/use-workspace-layout-controller.ts` | 573 | 布局尺寸交互、标签命令、草稿编辑、关闭前保存编排与"拒绝保存后放弃修改"这一分支 | 关闭路径的布局写入已下沉到 `file-close-layout.ts`（关标签＝连同草稿一起离开会话现场，因此 2026-09-28 已从受控超限清单注销），会话布局持久化仍在 `use-workspace-session-layouts.ts`；保持交互 controller，不得继续吸收新职责（审计 P1 第 9 条的第三个答案只加了这一条分支，并同时把三处布局写入移出本文件） | B |
 | `packages/types/src/activation.ts` | 390 | 持久 Atom 与语义缓存共用的连续 activation 契约和纯计算 | 按 evidence、scoring、projection 分组并保持 barrel | E |
-| `packages/app/src/renderer/chat/assistant-turn.tsx` | 586 | 思考摘要、执行过程与最终产物的渐进式披露 | 展开/折叠已从原生 `<details>` 换成共享的 `DisclosurePanel`（`chat/disclosure-panel.tsx`），过程面与步骤组各多一层 `grid-template-rows` 过渡容器，因此由 593 涨到 624 行（越 600 线进受控清单）；O1 再把注意力行移出可折叠正文（`chat/attention-row.tsx`），净减到 620 行；2026-09-28 失败回合的重试动作（`onRetryTurn`/`retryPending` 与那一个按钮，仍在 `.assistant-process-content` 之外）回到 651 行；2026-09-29 O3 把来源区块整块拆到 `chat/web-sources.tsx`（129 行，未达 300 行登记线），实测 580 行并退出受控超限清单；持续拆出纯展示段；禁止吸收状态决策；紧凑显示只折叠无需关注的行，失败与权限拒绝不得隐藏 | B |
+| `packages/app/src/renderer/chat/assistant-turn.tsx` | 469 | 对话轮次装配、最终回复、状态与重试入口 | 连续正文与执行行下沉到 `chat/assistant-transcript.tsx`；正文独立于诊断折叠，成功调用可分组收起，失败和待授权保持可见；不吸收 Runtime 决策 | B |
 | `packages/app/src/renderer/ArchiveManager.tsx` | 471 | 归档加载、树和操作，以及永久删除确认 | controller + project/session 视图；删除影响文案、确认层与同步防重复（`deletingRef`）已分别下沉到 `deletion-impact.ts`、`ui/danger-confirm.tsx` 与 ref 守卫；2026-09-29 页面级空态改走共享四态视图（`ui/state-view.tsx` 的 `empty`，列表内的"暂无…"行仍是行文本），实测 471 行 | B |
 | `packages/plugins/src/channel/manager.ts` | 388 | 渠道调度、会话和发送 | 分离 dispatch、session、delivery | C |
 | `packages/app/src/main/local-app-api/memory-routes.ts` | 353 | 记忆文件、旧控制面兼容、资源、项目投影及迁移子路由组合 | 保持纯路由组合；新增治理进入独立子路由 | C |

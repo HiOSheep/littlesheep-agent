@@ -97,7 +97,7 @@ export function LineCommentAddButton({
       onClick={onClick}
     >
       <svg className="workspace-line-comment-add-icon" viewBox="0 0 10 10" aria-hidden="true">
-        <path d="M5 1V9M1 5H9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        <path d="M5 1V9M1 5H9" fill="none" stroke="currentColor" strokeWidth="var(--icon-stroke)" strokeLinecap="round" />
       </svg>
     </button>
   )

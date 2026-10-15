@@ -1,56 +1,59 @@
 /* Left-side conversation marks reveal nearby turns without occupying the reading column. */
 .conversation-resources { position: absolute; top: var(--workspace-panel-toggle-top, calc(var(--floating-panel-inset) + var(--floating-panel-border-width) + var(--workspace-tab-row-inset))); right: 10px; z-index: 47; transition: right var(--workspace-panel-motion) var(--motion-ease); -webkit-app-region: no-drag; }
-.conversation-resources[data-workspace-collapsed='true'] { right: calc(var(--workspace-panel-close-line) + var(--workspace-tab-height) / 2 + var(--workspace-panel-control-gap)); }
+/* With the workspace panel collapsed, its stationary toggle and this control sit in one row at
+   the window's top-right, so the chat's control joins the tab row's own gap instead of keeping
+   the 12px the panel it opens reserves: the pair read as two unrelated controls (asked for
+   2026-10-15). `--workspace-panel-control-gap` still spaces the popover below the toggle. */
+.conversation-resources[data-workspace-collapsed='true'] { right: calc(var(--workspace-panel-close-line) + var(--workspace-tab-height) / 2 + var(--workspace-tab-row-gap)); }
 .conversation-resources-toggle { display: grid; place-items: center; width: var(--workspace-tab-height); height: var(--workspace-tab-height); padding: 0; border: 0; border-radius: var(--radius-ui); color: var(--muted); background: transparent; cursor: pointer; }
-.conversation-resources-icon { display: block; width: 18px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
+.conversation-resources-icon { display: block; width: 18px; height: 14px; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .conversation-resources-toggle:hover, .conversation-resources-toggle[aria-expanded='true'] { color: var(--text-strong); background: var(--control-hover); }
-/* The resources popover is drawn by its own shadow instead of a stroke, so the
-   panel takes the borderless elevation role rather than the raised-stroke-bearing
-   `--chat-panel-elevation` shared by the conversation's other popovers. The role
-   is themed (see 17-appearance-theme.css) so light surfaces keep a softer shadow. */
+/* The resources popover paints neither a stroke nor a drop shadow (asked for
+   2026-10-15): its wide dark shadow read as a halo around the panel against the
+   dark transcript, so the translucent glass fill alone marks the float. It
+   therefore does not take `--chat-panel-elevation`, whose 1px raised stroke the
+   conversation's other popovers keep. */
 .conversation-resources-presence { display: contents; }
 .conversation-resources-panel {
   position: absolute;
   top: calc(var(--workspace-tab-height) + var(--workspace-panel-control-gap));
   right: 0;
-  width: min(340px, calc(100vw - 100px));
+  width: min(320px, calc(100vw - 100px));
   max-height: min(70vh, 620px);
   overflow: auto;
   overflow-x: clip;
   scrollbar-gutter: stable;
-  padding: 18px 20px;
+  padding: 12px;
   border: 0;
   border-radius: 22px;
-  background: var(--chat-card-fill);
-  box-shadow: var(--chat-panel-borderless-elevation);
+  background: var(--composer-surface);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   color: var(--text);
-  opacity: 0;
-  transform: translateX(24px);
-  transition: transform var(--motion-slow) var(--motion-ease), opacity var(--motion-slow) var(--motion-ease);
+  opacity: 1;
+  transform: translateX(calc(100% + 96px));
+  transition: transform 320ms var(--motion-ease);
 }
 /* The primitive commits `visible` one frame after mount, so the panel animates
    from this closed state out to the right edge's resting position. */
 .conversation-resources-presence.visible .conversation-resources-panel { opacity: 1; transform: translateX(0); }
-/* The positioning root is only the trigger's 26px box: the panel is a ~340px-wide
-   absolutely positioned child, so this element must NOT clip - `overflow-x: clip`
-   here cut the expanded panel off at the trigger's right edge and it never showed.
-   The closed-state 24px retract is contained one level up instead: `.chat` is
-   `position: relative; overflow: hidden`, and this root is its child, so the
-   displacement is clipped by the chat pane with nothing extra needed here. */
-.conversation-resources-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; margin-bottom: 12px; }
-.conversation-resources-changes > button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border: 0; background: transparent; color: var(--text-strong); cursor: pointer; font: inherit; }
+/* Translate the whole panel beyond the chat's right clipping edge. The trigger
+   is a narrow positioning root and must not clip the panel itself. */
+.conversation-resources-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; margin: 2px 8px 8px; }
+.conversation-resources-changes > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 6px 8px; border: 0; border-radius: 12px; background: transparent; color: var(--text-strong); cursor: pointer; font: inherit; font-size: 14px; }
 .conversation-resources-changes strong { font-weight: 500; }
 .conversation-resources-counts { margin-left: auto; display: flex; gap: 8px; font-variant-numeric: tabular-nums; }
 .conversation-resources-counts > :first-child { color: var(--success); }
 .conversation-resources-counts > :last-child { color: var(--danger); }
-.conversation-resources-section { border-top: 1px solid var(--chat-hairline); margin-top: 12px; padding-top: 12px; }
-.conversation-resources-heading { display: flex; align-items: center; justify-content: space-between; color: var(--muted); }
-.conversation-resources-heading > button { display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--muted); width: 28px; height: 28px; cursor: pointer; }
-.conversation-resources-file { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 6px; padding: 8px 0; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
+.conversation-resources-section { border-top: 1px solid var(--chat-hairline); margin-top: 10px; padding-top: 10px; }
+.conversation-resources-heading { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px 6px; color: var(--muted); font-size: 13px; }
+.conversation-resources-file { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 12px; min-height: 32px; padding: 6px 8px; font-size: 14px; line-height: 20px; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
 .conversation-resources-file > :last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-resources-changes > button:hover,
+.conversation-resources-all:hover,
 .conversation-resources-file:hover { background: var(--chat-hover-fill); }
-.conversation-resources-panel p { margin: 8px 0; color: var(--muted); font-size: 12px; }
-.conversation-resources-all { border: 0; background: transparent; color: var(--muted); padding: 12px 0 0; cursor: pointer; }
+.conversation-resources-panel p { margin: 4px 8px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.conversation-resources-all { border: 0; background: transparent; color: var(--muted); border-radius: 12px; min-height: 32px; margin-top: 6px; padding: 6px 8px; cursor: pointer; }
 .core-workspace:has(.workspace-panel.collapsed) .chat-header { padding-right: 94px; }
 .chat-turn-rail { position: absolute; top: 50%; left: 4px; z-index: 41; transform: translateY(-50%); }
 .chat-turn-marks { display: flex; flex-direction: column; width: 34px; max-height: min(34vh, 240px); }
@@ -147,16 +150,15 @@
 .assistant-process-trigger { width: 100%; max-width: 100%; gap: 8px; border: 0; border-bottom: .5px solid var(--chat-hairline); padding: 0 0 8px; margin: 0 0 8px; min-height: 32px; border-radius: 0; flex-wrap: wrap; color: var(--muted); text-align: left; }
 .assistant-process-trigger:hover { color: var(--text-strong); }
 .assistant-process-label { font-weight: 500; }
-.assistant-process-content.open > .agent-flow-disclosure-inner { border-left: 1px solid var(--chat-hairline); padding-left: 12px; margin-bottom: 16px; }
+.assistant-process-content.open > .agent-flow-disclosure-inner { border-left: 0; padding-left: 0; margin-bottom: 16px; }
 .turn-live-status { display: grid; gap: 6px; margin: 0 0 12px; color: var(--muted); font-size: 12px; }
 .turn-live-current { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .turn-live-current > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .turn-live-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: var(--radius-circle); background: var(--chat-business); }
 .turn-live-update { color: var(--text); font-size: var(--chat-message-font-size); line-height: var(--chat-message-line-height); }
 .turn-live-warning { color: var(--feedback-danger-text); }
-/* A turn note is a row, not a card (DSH): the state is carried by its own ink and a
-   leading rule, so a warning never competes with the prose it annotates. */
-.agent-transcript-attention { padding: 2px 0 2px 10px; border-left: 2px solid var(--chat-hairline); border-radius: 0; background: transparent; line-height: 1.6; }
+/* Turn notes use text colour for state without a leading rule or reserved gutter. */
+.agent-transcript-attention { padding: 2px 0; border-left: 0; border-radius: 0; background: transparent; line-height: 1.6; }
 
 .composer { --composer-control-gap: 6px; }
 .composer-status { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 4px; }
@@ -259,7 +261,7 @@
 .agent-tool-detail-section { grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; column-gap: 14px; padding: 12px 16px; }
 .agent-tool-detail-label { line-height: 18px; }
 .agent-tool-detail-section pre { max-height: 224px; font-size: var(--chat-font-size-secondary); line-height: 18px; }
-.agent-transcript-details { padding: 4px 0 4px 22px; border-left: 0; font-size: var(--chat-font-size-secondary); color: var(--muted); }
+.agent-transcript-details { padding: 4px 0; border-left: 0; font-size: var(--chat-font-size-secondary); color: var(--muted); }
 .agent-transcript-reasoning.running > .agent-flow-row .agent-flow-summary { mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
 .message-meta { min-height: 28px; margin-top: 12px; }
 .message-artifacts-card { border-radius: var(--chat-radius-artifact); }

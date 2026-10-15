@@ -35,7 +35,7 @@ function JumpToLatestArrow() {
 export function ChatView({ controller }: { controller: ChatViewController }) {
   const {
     currentSession,
-    attachments, addAttachments, workspacePanelCollapsed, workspacePanelRoot, workspaceArtifactVersion, openWorkspacePanelTab,
+    attachments, workspacePanelCollapsed, workspacePanelRoot, workspaceArtifactVersion, openWorkspacePanelTab,
     messages,
     historyWindow,
     loadOlderMessages,
@@ -137,9 +137,9 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
     <>
         <ConversationResources key={`resources:${currentSession ?? 'draft'}`} messages={messages} attachments={attachments}
           root={workspacePanelRoot} version={workspaceArtifactVersion} collapsed={workspacePanelCollapsed}
-          hasOlderHistory={historyWindow.hasMore} onOpenFile={openFileInWorkspace}
-          onOpenReview={() => openWorkspacePanelTab('review')} onBrowseOutputs={() => openWorkspacePanelTab('artifacts')}
-          onAddSources={() => { void addAttachments() }} />
+          onOpenFile={openFileInWorkspace}
+          onOpenReview={() => openWorkspacePanelTab('review')}
+          />
         <header className="chat-header" aria-label="当前对话">
           {titlebarTask.hasSession ? <RunningPill
             title={titlebarTask.title} activity={titlebarTask.activity} now={titlebarTask.now}

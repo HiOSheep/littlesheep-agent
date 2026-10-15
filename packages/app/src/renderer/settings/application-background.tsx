@@ -5,6 +5,8 @@ import type { RuntimeActiveRunAction, RuntimeActiveRunSnapshot } from '@littlesh
 import type { RuntimeState } from '../api'
 import { controlActiveRun, listActiveRuns, subscribeActiveRuns } from '../api/application-lifecycle'
 import { RefreshIcon } from '../ui/icons'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import { ActiveRunRow } from './active-run-row'
 import {
   CLOSE_POLICY_OPTIONS,
@@ -28,7 +30,8 @@ export function SettingsApplicationBackgroundPage({
   const [savingPolicy, setSavingPolicy] = useState<RuntimeState['closePolicy'] | null>(null)
   const [busyRun, setBusyRun] = useState<{ runId: string; action: RuntimeActiveRunAction } | null>(null)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  // A success confirmation floats and clears itself; a failure stays on the page.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const aliveRef = useRef(true)
   const requestInFlightRef = useRef(false)
   const requestAbortRef = useRef<AbortController | null>(null)
@@ -98,12 +101,12 @@ export function SettingsApplicationBackgroundPage({
     if (!closePolicy || savingPolicy || policy === closePolicy) return
     setSavingPolicy(policy)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const saved = await onClosePolicyChange(policy)
       if (!aliveRef.current) return
       if (saved) {
-        setNotice('窗口关闭方式已更新。')
+        showNotice('窗口关闭方式已更新。')
       } else {
         setError('窗口关闭方式未能保存，请检查应用状态后重试。')
       }
@@ -116,7 +119,7 @@ export function SettingsApplicationBackgroundPage({
     if (busyRun || run.controlStatus === 'interrupt_requested') return
     setBusyRun({ runId: run.runId, action })
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const outcome = await controlActiveRun(run.runId, action, 'settings-application-background')
       if (!aliveRef.current) return
@@ -124,7 +127,7 @@ export function SettingsApplicationBackgroundPage({
         setError(controlRejectionMessage(outcome.reason, outcome.message))
       } else {
         setRuns((current) => replaceActiveRun(current, outcome.run))
-        setNotice(controlAcceptedMessage(action))
+        showNotice(controlAcceptedMessage(action))
       }
       await loadRuns('sync')
     } catch (cause) {
@@ -201,7 +204,7 @@ export function SettingsApplicationBackgroundPage({
         </div>
       </section>
 
-      {notice && <div className="storage-settings-notice" role="status">{notice}</div>}
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="storage-settings-notice" data-tone="error" role="alert">{error}</div>}
     </div>
   )

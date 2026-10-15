@@ -220,6 +220,11 @@ try {
   await evaluate("document.querySelector('.chat-title-records').click()")
   await delay(100)
   assert(await evaluate("!!document.querySelector('.running-pill-panel')"))
+  // No drop shadow (asked for 2026-10-15): the panel's wide dark shadow read as a
+  // halo around it against the dark transcript, so its glass fill alone marks the
+  // float. The popover's own fill and blur stay.
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.running-pill-panel')).boxShadow"), 'none')
+  assert.match(await evaluate("getComputedStyle(document.querySelector('.running-pill-panel')).backdropFilter"), /blur\(18px\)/u)
   await evaluate("document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
   assert(!(await evaluate("!!document.querySelector('.running-pill-panel')")))
   record('usage and execution records open only on click and return focus on Escape')
@@ -259,6 +264,22 @@ try {
   assert(!(await evaluate("!!document.querySelector('.chat-turn-panel')")))
   assert((await evaluate(geometry)).gap > 100)
   assert(await evaluate("!!document.querySelector('.chat-jump-to-latest')"))
+  // The droplet floats on the float/menu glass (translucent fill + a real 18px blur) and
+  // answers the pointer with a colour change instead of dropping its fill away, which used
+  // to leave it looking transparent (asked for 2026-10-15).
+  const jumpRest = await evaluate(`(() => {const s=getComputedStyle(document.querySelector('.chat-jump-to-latest'));return {background:s.backgroundColor,blur:s.backdropFilter,color:s.color}})()`)
+  assert.match(jumpRest.blur, /blur\(18px\)/u, `jump droplet must blur the transcript, received ${jumpRest.blur}`)
+  assert.match(jumpRest.background, /rgba\([^)]*,\s*0\./u, `jump droplet fill must stay translucent, received ${jumpRest.background}`)
+  const jumpBox = await evaluate("(() => {const r=document.querySelector('.chat-jump-to-latest').getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2}})()")
+  await client.send('Input.dispatchMouseEvent', {type:'mouseMoved', ...jumpBox})
+  await delay(260)
+  const jumpHover = await evaluate(`(() => {const e=document.querySelector('.chat-jump-to-latest');const s=getComputedStyle(e);return {background:s.backgroundColor,color:s.color,hover:e.matches(':hover')}})()`)
+  assert.equal(jumpHover.hover, true, 'the droplet must accept the pointer')
+  assert.notEqual(jumpHover.background, jumpRest.background, 'hover must change the droplet glass colour')
+  assert.notEqual(jumpHover.color, jumpRest.color, 'hover must change the arrow colour')
+  await client.send('Input.dispatchMouseEvent', {type:'mouseMoved', x:1, y:1})
+  await delay(120)
+  record('reach-latest droplet keeps its glass and changes colour under the pointer')
   record('directory groups turns, moves with keyboard and jumps into the real transcript')
   await evaluate("document.querySelector('.chat-turn-trigger').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))")
   await delay(80)

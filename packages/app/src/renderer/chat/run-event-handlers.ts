@@ -62,6 +62,9 @@ export function handleRunToolEvent(
         endedAt: evt.activityStatus === 'running' ? undefined : eventTime,
         durationMs: evt.durationMs,
       }),
+      ...(evt.activityKind === 'runtime_waiting_approval' && evt.callId && evt.name ? {
+        tools: upsertLiveTool(activity.tools, { callId: evt.callId, name: evt.name, approvalPending: evt.activityStatus === 'running' }),
+      } : {}),
     }))
     return
   }
@@ -93,14 +96,17 @@ export function handleRunToolEvent(
     })
     return
   }
-  if (evt.type === 'model_text' && evt.phaseId && evt.summary) {
+  if (evt.type === 'model_text' && evt.phaseId) {
     updateLastAssistantActivity(context.setMessages, (activity) => {
       const stream = acceptTranscriptStreamEvent(activity, evt)
       if (!stream.accepted) return activity
       const id = `${transcriptPhaseId(evt, evt.phaseId!)}:text`
-      const transcript = evt.streamRef?.operation === 'reset'
-        ? removeTranscriptEntry(stream.transcript, id)
-        : upsertTranscriptEntry(stream.transcript, { kind: 'text', id, text: evt.summary! })
+      const previous = stream.transcript.find((entry) => entry.id === id)
+      const text = evt.streamRef?.operation === 'append' && previous?.kind === 'text'
+        ? previous.text + (evt.summary ?? '') : evt.summary ?? ''
+      const transcript = evt.streamRef?.operation === 'reset' || !text
+        ? stream.transcript
+        : upsertTranscriptEntry(stream.transcript, { kind: 'text', id, text, status: evt.reasoningStatus ?? 'done' })
       return { ...activity, ...stream.state, ...mergeVisibility(activity.visibility, 'progress'), transcript }
     })
     return
@@ -223,6 +229,7 @@ export function handleRunToolEvent(
         name: evt.name ?? '',
         stepId,
         ok: evt.ok,
+        approvalPending: false,
         output: evt.output,
         error: evt.error,
         endedAt: Date.now(),
@@ -283,7 +290,8 @@ function acceptTranscriptStreamEvent(
     return { accepted: false, transcript: activity.transcript ?? [], state: {} }
   }
   const transcript = ref.transportAttempt > latestAttempt
-    ? (activity.transcript ?? []).filter((entry) => !entry.id.startsWith(`${requestKey}:`))
+    ? (activity.transcript ?? []).flatMap((entry): TranscriptEntry[] => !entry.id.startsWith(`${requestKey}:`)
+      ? [entry] : entry.kind === 'text' ? [{ ...entry, status: 'aborted' }] : [])
     : activity.transcript ?? []
   return {
     accepted: true,

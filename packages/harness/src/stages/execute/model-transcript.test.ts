@@ -12,6 +12,22 @@ import {
 const request: ChatRequest = { model: 'test', messages: [{ role: 'user', content: 'work' }] };
 
 describe('model transcript closure', () => {
+  it('streams prose in place before tools and retains an interrupted fragment', async () => {
+    const events: ToolStreamEvent[] = []
+    const ctx = makeCtx()
+    ctx.streamModelTranscript = true
+    ctx.onToolEvent = (event) => events.push(event)
+    const llm = { chatStream: async (_request, onDelta) => {
+      onDelta({ type: 'delta', delta: '我先创建文件。' })
+      onDelta({ type: 'tool_call_delta', toolCallIndex: 0, toolCallName: 'write', toolCallArgsDelta: '{}' })
+      throw new Error('disconnected')
+    } } as LlmClient
+    const turn = createTranscriptTurn(ctx, undefined, 1)
+    await expect(runTranscriptModelTurn(ctx, llm, request, turn)).rejects.toThrow('disconnected')
+    expect(events[0]).toMatchObject({ type: 'model_text', summary: '我先创建文件。', reasoningStatus: 'running' })
+    abortTranscriptTurn(ctx, turn, 'failed')
+    expect(events.filter((event) => event.type === 'model_text').at(-1)).toMatchObject({ summary: '我先创建文件。', reasoningStatus: 'failed' })
+  })
   it('publishes real numeric file progress as argument fragments arrive', async () => {
     const events: ToolStreamEvent[] = []
     const ctx = makeCtx()

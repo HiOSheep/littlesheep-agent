@@ -9,7 +9,7 @@ LittleSheep 已具备本地 Agent 的主要运行骨架：单一 Harness 主循�
 ## 当前实现
 
 - **执行与验证**：活动路由只进入常规执行主循环或 Runtime 事实回复。DECIDE、验证模型调用、恢复模型调用和 CAPTURE 不存在；旧 TaskBook 只作为历史数据读取。Runtime 根据已记录证据验证；需要人工判断的完成项标记为 unverified。
-- **工具与权限**：ToolExecutionService 是 Agent 工具的校验、授权、执行、清洗、取消和记录边界。旧完全访问、研究、受限语义仍可恢复；Permission V2 当前有只读和工作区写入两个可选预设，V2 完全访问尚未提供 Main 确认入口。Main 在执行前重新判定路径和权限；内置工具执行应用层核心源码保护检查，但宿主 Shell 及其子进程没有 OS 隔离，可能绕过该检查，不能视为宿主级只读边界。V2 预设下 Shell 要逐次审批；历史 `full` 仍在一次危险确认后免逐次审批，包括 Shell。Shell 实际以当前用户权限在宿主执行，没有 OS 级沙箱。
+- **工具与权限**：ToolExecutionService 是 Agent 工具的校验、授权、执行、清洗、取消和记录边界。公开权限选择统一为 `read-only`、`workspace-write` 和 `full-access`。当前会话索引只接受带 V2 版本标记的三种权限；旧 `full`、`research`、`restricted` 和无版本记录会从 `sessions.json` 索引移除，不再显示迁移提示，聊天记录文件不因此删除。Main 在执行前重新判定路径和权限；内置工具执行应用层核心源码保护检查，但宿主 Shell 及其子进程没有 OS 隔离，可能绕过该检查，不能视为宿主级只读边界。Shell 仅有 P3 ADR 明确批准的精确命令例外；Shell 实际以当前用户权限在宿主执行，没有 OS 级沙箱。
 - **文件与数据**：覆盖既有文件需有完整读取观察，提交时按内容哈希复核；部分、截断或清洗读取不能授权覆盖。应用数据根是 LS 的逻辑容器边界，workplace 只是默认工作区；外部项目不因被选中而成为容器内资源。当前路径容器是 Main 的分类与审批闸门，不是 OS/Docker 沙箱。
 - **Context 与缓存**：请求前缀按追加式账本保持；Context Engine 拥有候选、预算、淘汰和 token 账本。已发送前缀不能被预算裁剪。长任务缓存按现行规程达标；短任务的冷启动结构成本仍可能低于红线。
 - **Memory**：默认从受限根索引开始，再沿分支导航；向量只在已导航分支的深搜中作候选。memory_tree 只读；durable Memory 由受控 memory_write / memory_manage 提交并需批准，压缩只产生会话摘要。相似度只能提名，不能单独决定合并或纠正。
@@ -21,7 +21,7 @@ LittleSheep 已具备本地 Agent 的主要运行骨架：单一 Harness 主循�
 - 同批模型输出包含 request_user_input 时，兄弟工具调用不会执行；调用会带原因记入转录，提问仍正常发布。
 - 权限拒绝表示仍需用户决定；Runtime 在执行前确定性拒绝的调用和已记录失败则是已知负结果，不伪装成缺失证据。副作用未结算或运行中止时明确停止。
 - 恢复由 Runtime 决定且有界；已完成步骤不重复执行。模型调用预算耗尽直接升级；结构性证据缺口最多给主循环一次闭合机会。
-- 研究和受限模式下，外部或范围不明工作区未经批准不得自动扫描；完全访问须经一次危险确认。逻辑容器不提供宿主进程隔离。Permission V2 的 Shell 自动放行与 P3 生产集成已冻结；历史 `full` 的 Shell 执行仍遵循兼容语义，不受 OS 沙箱约束。直接授权工作区曾通过硬链接越界，快照实验也未证明运行期完整性。
+- V2 的一般 Shell 自动放行与 P3 生产集成保持冻结；历史 `full` 自动授权例外已退役，旧权限会话不作兼容迁移。唯一 Shell 重复执行例外是 P3 ADR 中用户主动启用的 Main 固定精确命令候选。所有 Shell 命令仍按当前用户身份在宿主运行；目录和文件检查不等于 OS 沙箱。直接授权工作区曾通过硬链接越界，快照实验也未证明运行期完整性。
 - Permission V2 的 `workspace-write` 自动文件守卫当前只在 Windows 可用；macOS/Linux 的写入自动授权保持关闭。Electron 发布包已配置 Windows x64 NSIS 与 Linux x64 Debian 目标；Linux 目标尚未完成安装包构建和安装验收（见下文 Linux x64 条目）。
 - Memory 写入的 user-request 理由必须有真实用户指令来源；necessary 必须说明用途及不保存的损失。普通聊天、压缩和外部网页不能自行生成长期记忆。
 - Web 与搜索结果是 external_untrusted；只有本轮 Runtime 签发的引用可以出现在最终回答中。受限、超时、截断和缓存状态不能表达为完整验证。
@@ -29,7 +29,7 @@ LittleSheep 已具备本地 Agent 的主要运行骨架：单一 Harness 主循�
 ## 主要验证结论与边界
 
 - 缓存长任务红线由 check:cache-acceptance 判定，当前基线在长任务、重启续接和 45 分钟空闲续接上达标。三回合短负载约 87–89% 是请求形状的冷启动上限；不通过填充、预热或排除调用追高。规程和账本分别见[缓存验收规程](../reference/cache-95-acceptance.md)与[缓存基线目录](../reference/cache-baseline/README.md)。
-- 文件一致性由 verify:file-consistency-faults 和 verify:desktop-file-consistency 覆盖；它们分别验证真实文件故障与桌面文件读取、拒绝和读回边界。2026-10-12 的 Electron 文件一致性实测 14 项通过，但沿用历史 `full` 模式并由 Local App API 驱动，不覆盖 V2 选择器、危险确认或 Renderer 审批弹窗；Permission V2 的真实桌面验收仍未完成。其覆盖之外的桌面回滚入口和 Windows junction / symlink 差异仍需留意。
+- 文件一致性由 verify:file-consistency-faults 和 verify:desktop-file-consistency 覆盖；它们分别验证真实文件故障与桌面文件读取、拒绝和读回边界。2026-10-12 的 Electron 文件一致性实测 14 项通过；该历史结果当时使用旧 `full` 参数，不代表当前 API 合约，也不覆盖 V2 选择器、危险确认或 Renderer 审批弹窗。其覆盖之外的桌面回滚入口和 Windows junction / symlink 差异仍需留意。
 - **Linux x64 实机验证（2026-10-13，WSL2 / Ubuntu 26.04，Electron 44.4.5）**：干净 `main` 副本的 `linux-unpacked` 包构建通过；asar 清单检查了 node-pty、onnxruntime-node、sharp、@huggingface 与 libvips 载荷。打包 Electron 进程中 Transformers 导入和 ONNX Runtime 1.30.0 加载通过；真实 node-pty shell 输入、输出、resize(101×37) 与退出通过。P4-2B3 实机记录包含四次 GUI 启动、窗口截图和 Runtime readiness；早期 SIGTRAP 本轮未复现，启动时间接近只构成相关性，原因仍未知，不再将其视为当前 GUI 启动阻断。(1) **sharp 图像操作暂不支持但不阻断当前 Linux 基础功能**：独立 Electron 子进程实际 PNG 编码仍以 SIGSEGV 退出，报告为 `known-incompatible`、`blocking:false`、`capability:unsupported`。已记录 GLib 符号冲突与上游问题；若 LS 增加 Electron 进程内图像处理，必须重新将该测试设为阻断项。(2) **Linux 正式发布尚未验收**：新增 Debian x64 目标、包主页、维护者和 PNG 图标元数据；本轮 electron-builder 的 FPM 请求中断，没有生成可安装 `.deb`，干净安装仍待验证。(3) **真实文本 Embedding 尚未验收**：清单 smoke 现在要求本地哈希校验模型并实际完成 512 维 ONNX 文本推理；本机与 WSL 的可信模型下载均因 Hugging Face 连接超时失败，因此本轮结果为 `not-attempted`，发布门正确保持失败。(4) **托盘验证部分通过**：Linux Electron 从打包资源加载 1024×1024 PNG 并创建 Tray 对象；当前 WSLg 没有 StatusNotifier 托盘宿主，图标在桌面面板中的可见性未验证。WSL 发行版缺 CJK 字体也仍是环境限制。
 - Memory 的确定性受控写入与迁移门已覆盖隔离数据根；真实模型下的长期质量、必要决定的按需写入及含糊指代拒绝仍未充分验证。verify:memory-v3-provider 当前要求已移除的 EVOLVE / CAPTURE 字段，修复前不能作为验收证据。
 - 真实 Electron、Provider、打包与本地单元测试是不同证据层。check:repo、typecheck 或 build 通过不代表这些场景已验证；具体有效入口见各 owner 文档和 scripts/README.md。

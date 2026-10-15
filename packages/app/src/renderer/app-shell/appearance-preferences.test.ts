@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readRendererStyleSource } from '../style-source-test-utils'
 import {
   APPEARANCE_DEFAULTS,
   APPEARANCE_PREFERENCES_EVENT,
@@ -83,6 +85,22 @@ describe('application appearance preferences', () => {
       terminalFontSize: 12,
       colors: { accent: '#e2e2e2', background: '#ffffff', surface: '#000000' },
     })
+  })
+
+  it('keeps one chat font default across the boot script, the styles and the preferences', async () => {
+    // The chat body default read 15px in the styles and in these preferences while the
+    // pre-paint boot script already used 14px, so the first frame and the hydrated frame
+    // disagreed (found 2026-10-15). The default has to move in all of them together; a
+    // profile that already stored a size keeps it, whatever that stored size is.
+    expect(APPEARANCE_DEFAULTS.chatFontSize).toBe(14)
+    expect(hydrateAppearancePreferences({ ...APPEARANCE_DEFAULTS, chatFontSize: undefined }).chatFontSize).toBe(14)
+    expect(hydrateAppearancePreferences({ ...APPEARANCE_DEFAULTS, chatFontSize: 15 }).chatFontSize).toBe(15)
+    expect(hydrateAppearancePreferences({ ...APPEARANCE_DEFAULTS, chatFontSize: 30 }).chatFontSize).toBe(22)
+    const styles = await readRendererStyleSource()
+    expect(styles).toMatch(/:root\s*\{[\s\S]*?--chat-message-font-size:\s*14px;/u)
+    const boot = await readFile(new URL('../index.html', import.meta.url), 'utf8')
+    expect(boot).toContain("bounded(saved?.chatFontSize, 14, 12, 22)")
+    expect(boot).toContain("'--chat-message-font-size'")
   })
 
   it('resolves system mode without overriding an explicit choice', () => {

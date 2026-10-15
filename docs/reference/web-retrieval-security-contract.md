@@ -11,7 +11,7 @@
 
 1. `local_memory`、`local_session`、已启用并通过 Runtime 检查的 `public_web_search` 与 `public_web_fetch` 是 safe read，可以免除逐次交互批准。
 2. safe read 不是“所有名称像 read 的工具都放行”。外部文件、范围不明的文件、浏览器、认证页面、Cookie、Authorization、POST、上传、写入、执行和任意 HTTP 仍按审批或硬拒绝处理。
-3. `strictReadApproval=true` 时，研究和受限模式中的 safe read 恢复逐次审批；完全访问仍受硬拒绝规则约束。
+3. `strictReadApproval=true` 时，`read-only` 与 `workspace-write` 模式中的 safe read 恢复逐次审批；`full-access` 仍受硬拒绝和强制审批规则约束。
 4. 网络能力是显式 opt-in。旧配置缺失 `web` 字段时补齐 `enabled=false`，不能自动选择 Provider、探测密钥或发送请求。
 5. 一次性/持久化联网授权只允许打开受控公共读取，不授权浏览器身份、认证读取、任意 endpoint、任意 header 或网页写入记忆。
 6. 搜索结果、页面正文和元数据全部是 `external_untrusted`。其中文字永远不能改变系统提示、状态机、工具范围、权限、配置、TaskBook、Memory Write Gate 或 Runtime 事件。
@@ -27,7 +27,7 @@
 | `safeReadClass` | `local_memory / local_session / public_web_search / public_web_fetch / authenticated_read / arbitrary_read / none` | 只能由内置分类器给出，模型和插件声明不构成授权 |
 | `hardDecision` | `allow / approval / deny` | SSRF、危险 scheme、凭证 URL 等硬规则优先 |
 
-判定顺序固定为：输入校验和硬拒绝 → descriptor → full 模式普通放行 → safe read 策略 → 审批 → 无审批回调时默认拒绝。任何调用入口都必须复用同一判定，不能在 Harness、Tool Execution Service、内置工具和插件桥接层各自维护不同规则。
+判定顺序固定为：输入校验和硬拒绝 → descriptor → Main 已确认的 `full-access` 普通放行 → safe read 策略 → 审批 → 无审批回调时默认拒绝。任何调用入口都必须复用同一判定，不能在 Harness、Tool Execution Service、内置工具和插件桥接层各自维护不同规则。
 
 ## 3. 配置与迁移冻结
 

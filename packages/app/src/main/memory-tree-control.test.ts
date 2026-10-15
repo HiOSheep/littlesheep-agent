@@ -597,7 +597,7 @@ describe('memory-tree control plane', () => {
     const project = await projectIndex.ensure(originalPath)
     const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
     await sessionIndex.upsert('project-session', {
-      title: 'Project session', createdAt: 1, lastMessageAt: 2, mode: 'research',
+      title: 'Project session', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2,
       scope: 'project', projectId: project.id, workspacePath: originalPath,
     })
     const runner = runnerWith()

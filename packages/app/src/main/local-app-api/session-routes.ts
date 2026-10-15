@@ -26,6 +26,7 @@ import type { ProjectIndex, ProjectMeta } from '../project-index.js'
 import type { SessionIndex, SessionMeta } from '../session-index.js'
 import type { SessionContextUsageRecord } from '../../shared/context-usage-contracts.js'
 import type { CompactionOperationRecord } from '../../shared/compaction-operation-contracts.js'
+import type { ShellRepeatAuthorizationStore } from '../shell-repeat-authorization-store.js'
 import { HttpError, json, readJson, resolveRunner, type LocalAppApiRequest } from './http.js'
 import { routeContextInspector } from './context-inspector-routes.js'
 
@@ -38,6 +39,7 @@ export interface SessionRouteContext {
   projectIndex: ProjectIndex
   archiveIndex: ArchiveIndex
   mutateSession?: <T>(operation: () => Promise<T>) => Promise<T>
+  shellRepeatAuthorizations?: ShellRepeatAuthorizationStore
 }
 
 export async function routeSessions(
@@ -222,10 +224,6 @@ export async function routeSessions(
       // and recording a directory for it here would claim a binding runs ignore.
       let workspacePath = existing.workspacePath
       if (hasWorkspace) {
-        if (existing.scope !== 'project') {
-          json(res, 400, { error: 'only a project session has a workspace of its own' })
-          return true
-        }
         const requested = typeof body.workspacePath === 'string' ? body.workspacePath.trim() : ''
         if (!requested || !isAbsolute(requested)) {
           json(res, 400, { error: 'session workspace path must be absolute' })
@@ -248,10 +246,7 @@ export async function routeSessions(
         }
         workspacePath = normalized
       }
-      const permissionNeedsConfirmation = hasMode && (
-        existing.permissionVersion !== 2 || existing.permissionMigration !== undefined
-      )
-      if (title === existing.title && mode === existing.mode && !permissionNeedsConfirmation && workspacePath === existing.workspacePath) {
+      if (title === existing.title && mode === existing.mode && workspacePath === existing.workspacePath) {
         json(res, 200, { session: existing })
         return true
       }
@@ -263,7 +258,7 @@ export async function routeSessions(
         await sessionIndex.upsert(sessionUpdateId, {
           ...(titleChanged ? { title } : {}),
           ...(mode !== existing.mode ? { mode } : {}),
-          ...(hasMode ? { permissionVersion: 2 as const, permissionMigration: undefined } : {}),
+          ...(hasMode ? { permissionVersion: 2 as const } : {}),
           ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
         })
       } catch (error) {
@@ -273,6 +268,9 @@ export async function routeSessions(
         throw error
       }
       const persisted = (await sessionIndex.list()).find((session) => session.id === sessionUpdateId)
+      if (hasMode || workspacePath !== existing.workspacePath) {
+        context.shellRepeatAuthorizations?.invalidateSession(sessionUpdateId)
+      }
       json(res, 200, { session: persisted ?? { ...existing, title, mode, workspacePath } })
       return true
     })
@@ -281,6 +279,7 @@ export async function routeSessions(
   const sessionDeleteId = matchLocalAppApiItemPath(path, LOCAL_APP_API_PREFIXES.sessions)
   if (method === 'DELETE' && sessionDeleteId !== null) {
     const removed = await sessionIndex.remove(sessionDeleteId)
+    context.shellRepeatAuthorizations?.invalidateSession(sessionDeleteId)
     if (url.searchParams.get('hard') === '1') {
       await resolveRunner(context.getRunner).sessionManager.delete(asSessionId(sessionDeleteId))
     } else if (removed) {

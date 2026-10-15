@@ -13,6 +13,7 @@ interface ConversationTurnFingerprintInput {
   workspace?: string
   sessionScope: SessionMeta['scope']
   projectId?: string
+  model?: string
   reasoning?: RuntimeState['reasoning']
   profile?: RuntimeState['profile']
   attachments: AttachmentRef[]
@@ -26,6 +27,7 @@ export function conversationTurnFingerprint(input: ConversationTurnFingerprintIn
     workspace: input.workspace ?? null,
     sessionScope: input.sessionScope,
     projectId: input.projectId ?? null,
+    model: input.model ?? null,
     reasoning: input.reasoning ?? null,
     profile: input.profile ?? null,
     attachments: input.attachments.map((attachment) => ({

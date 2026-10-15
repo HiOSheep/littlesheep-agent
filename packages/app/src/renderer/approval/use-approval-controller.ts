@@ -8,6 +8,7 @@ import {
   hasReusableSessionApproval,
   isPerCallApprovalRequest,
   sessionApprovalScopeKey,
+  type ApprovalReply,
   type ApprovalDecision,
 } from '../approval-grants'
 import type { PendingApprovalPrompt } from './types'
@@ -39,7 +40,7 @@ export function useApprovalController({
     draftApprovalScopeRef.current = createDraftApprovalScopeKey()
   }
 
-  async function requestApprovalForScope(request: ApprovalRequest, scopeKey: string): Promise<boolean> {
+  async function requestApprovalForScope(request: ApprovalRequest, scopeKey: string): Promise<ApprovalReply> {
     const perCallApproval = isPerCallApprovalRequest(request)
     // Ordinary calls in a confirmed full-access run need no per-call prompt.
     // Main-marked forced approvals still require a user decision, and changing
@@ -50,6 +51,11 @@ export function useApprovalController({
       openApprovalPrompt({ request, resolve })
     })
     if (decision === 'session' && !perCallApproval) approvalGrantsRef.current.grant(scopeKey, request)
+    if (decision === 'remember-shell') {
+      return request.rememberShellCommandAvailable === true
+        ? { approved: true, rememberShellCommand: true }
+        : false
+    }
     return decision !== 'deny'
   }
 
@@ -62,7 +68,7 @@ export function useApprovalController({
         ? { permissionMode: 'research' as const, permissionPreset: permissionMode }
         : { permissionMode }),
       source: 'workspace',
-    }, activeApprovalScopeKey())
+    }, activeApprovalScopeKey()).then(approval => typeof approval === 'boolean' ? approval : approval.approved)
   }
 
   function requestWorkspaceCommandApproval(detail: unknown): Promise<boolean> {
@@ -74,7 +80,7 @@ export function useApprovalController({
         ? { permissionMode: 'research' as const, permissionPreset: permissionMode }
         : { permissionMode }),
       source: 'workspace',
-    }, activeApprovalScopeKey())
+    }, activeApprovalScopeKey()).then(approval => typeof approval === 'boolean' ? approval : approval.approved)
   }
 
   function settleApprovalPrompt(decision: ApprovalDecision) {
@@ -84,6 +90,10 @@ export function useApprovalController({
     setPendingApproval(null)
     prompt.resolve(decision)
   }
+
+  // A prompt from the previous conversation/permission selection cannot remain
+  // actionable in the newly selected scope. Main separately rechecks ownership.
+  useEffect(() => { settleApprovalPrompt('deny') }, [currentSession, permissionMode])
 
   useEffect(() => () => {
     pendingApprovalRef.current?.resolve('deny')

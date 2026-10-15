@@ -51,6 +51,7 @@ import {
 import { SidebarPanel } from './types'
 import { resolveSessionPermissionMode } from './session-permission-mode'
 import { useAppPersistence } from './use-app-persistence'
+import { useConversationRuntime } from './use-conversation-runtime'
 import { useComposerDrafts } from './use-composer-drafts'
 import { useNavigationController } from './use-navigation-controller'
 import { isMissingWorkspacePathError } from '../workspace/workspace-errors'
@@ -80,7 +81,9 @@ export function useAppController() {
   const [loading, setLoading] = useState(false)
   const [draftPermissionMode, setDraftPermissionMode] = useState<PermissionSelectionId>('workspace-write')
   const [sessionPermissionModeOverrides, setSessionPermissionModeOverrides] = useState<Record<string, PermissionSelectionId>>({})
-  const [runtime, setRuntime] = useState<RuntimeState | null>(null)
+  const [defaultRuntime, setRuntime] = useState<RuntimeState | null>(null)
+  const conversationRuntime = useConversationRuntime({ currentSession, initialSessionId: initialActiveSessionId, defaults: defaultRuntime })
+  const runtime = conversationRuntime.runtime
   const [attachmentRemoval, setAttachmentRemoval] = useState<LineCommentAttachmentRemoval | null>(null)
   const attachmentRemovalIdRef = useRef(0)
   const [dragActive, setDragActive] = useState(false)
@@ -118,8 +121,12 @@ export function useAppController() {
   // The composer's draft — text and attachment chips — belongs to one conversation
   // (`use-composer-drafts.ts`); every write lands in the active slot.
   const {
-    input, setInput, inputValueRef, attachments, setAttachments, activateConversationDraft,
+    input, setInput, inputValueRef, attachments, setAttachments, activateConversationDraft: activateDraft,
   } = useComposerDrafts({ currentSession, initialSessionId: initialActiveSessionId, initialDraft: initialComposerDraft })
+  const activateConversationDraft = useCallback((sessionId?: string) => {
+    activateDraft(sessionId)
+    conversationRuntime.activate(sessionId)
+  }, [activateDraft, conversationRuntime.activate])
   const [activityNow, setActivityNow] = useState(() => Date.now())
   const liveToolStepRef = useRef(new Map<string, string>())
   const [contextUsageSnapshot, setContextUsageSnapshot] = useState<ContextUsageSnapshot | null>(null)
@@ -238,7 +245,7 @@ export function useAppController() {
     })
   }, [])
   const { runtimeEventNotice, pendingRuntimeMessageRef, publishRuntimeEventNotice,
-    notifyRuntimeSettingChanges, notifyRuntimeWorkspaceFileSaved: publishRuntimeWorkspaceFileSaved } = useRuntimeTaskEvents({ activeRunIdRef, appMountedRef, loading })
+    notifyRuntimeSettingChanges, notifyRuntimeWorkspaceFileSaved: publishRuntimeWorkspaceFileSaved } = useRuntimeTaskEvents({ activeRunIdRef, appMountedRef, loading, sessionKey: currentSession })
   function notifyRuntimeWorkspaceFileSaved(
     root: string,
     path: string,
@@ -420,8 +427,15 @@ export function useAppController() {
     appMountedRef, runtime, setRuntime, setRuntimeError, alignWorkspacePanelToWorkspaceRoot,
     notifyRuntimeSettingChanges, refreshProjects, modelPatchSequenceRef, pendingModelPatchRef,
     selectedSessionWorkspaceRef, defaultWorkspaceRef,
+    applyConversationWorkspace: path => {
+      selectedSessionWorkspaceRef.current = path
+      conversationRuntime.update({ workspace: path })
+      setRuntime(current => current ? { ...current, workspace: path } : current)
+      alignWorkspacePanelToWorkspaceRoot(path)
+    },
   })
-  const { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting, applyModelPatch } = runtimeActions
+  const { refreshRuntime, applyRuntimePatch, applyRuntimePatchReporting } = runtimeActions
+  const applyModelPatch = conversationRuntime.update
   const selectableProviders = useMemo(() => runtimeActions.selectableProviders(), [runtime])
   const selectedModel = useMemo(() => runtimeActions.selectedModel(selectableProviders), [runtime, selectableProviders])
   const modelAvailability = useModelAvailability({ runtime, runtimeError, selectableProviders, selectedModel })
@@ -585,7 +599,7 @@ export function useAppController() {
     settleApprovalPrompt,
     visibleSessions,
   })
-  const checkpointRecovery = useCheckpointRecovery({ abortRef, activeRunIdRef, appMountedRef, getSessionPermissionMode, loading, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
+  const checkpointRecovery = useCheckpointRecovery({ currentSession, abortRef, activeRunIdRef, appMountedRef, getSessionPermissionMode, loading, runtime, stopRequestedRunIdRef, refreshProjects, refreshSessions, requestApprovalForScope, settleApprovalPrompt, switchSession, setActivityNow, setContextUsageSnapshot, setLoading, setWorkspaceArtifactVersion })
   const {
     openProjectCreator,
     activateProjectWorkspace,
@@ -641,7 +655,7 @@ export function useAppController() {
     alignWorkspaceSessionToRoot(root, sessionId)
   }
   return {
-    projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, permissionMigration, setPermissionMode, runtime, attachments, setAttachments, removeAttachment, removeLineCommentAttachment, updatePublishedLineCommentAttachment, attachmentRemoval, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
+    projects, currentSession, sessionOwnership, messages, historyWindow, loadOlderMessages, input, setInput, loading, permissionMode, setPermissionMode, runtime, attachments, setAttachments, removeAttachment, removeLineCommentAttachment, updatePublishedLineCommentAttachment, attachmentRemoval, dragActive, runtimeError, runtimeEventNotice, checkpointRecovery, sidebarCollapsed, workspacePanelCollapsed, workspacePanelReopenActive, setWorkspacePanelReopenActive, workspacePanelFullscreen,
     workspacePanelTab, workspacePanelOpenTabs, setWorkspacePanelOpenTabs, workspaceBrowserTabs, workspaceBrowserUrl, workspaceBrowserHistory, navigateWorkspaceBrowser, openWorkspaceBrowserTab, updateWorkspaceBrowserTitle, moveWorkspaceBrowser, workspaceOpenRequest, setWorkspaceOpenRequest, workspaceReviewRequest, openReviewInWorkspace, workspaceFileDrafts, workspaceFileNavigatorCollapsed, setWorkspaceFileNavigatorCollapsed,
     workspaceFileNavigatorWidth, setWorkspaceFileNavigatorWidth, workspaceReviewNavigatorWidth, setWorkspaceReviewNavigatorWidth, workspaceExpandedPaths, setWorkspaceExpandedPaths, conversationCollapsed, setConversationCollapsed, now, pinnedSessionIds, sidebarPanel, sidebarSearch, setSidebarSearch, projectCreatorOpen, setProjectCreatorOpen, scrollRef, inputRef, shellRef, activityNow, workspaceArtifactVersion, setWorkspaceArtifactVersion,
     contextInspectorModelRef: runtime?.model, openContextInspector,

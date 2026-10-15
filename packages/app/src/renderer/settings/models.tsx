@@ -7,6 +7,8 @@ import type { RuntimeProvider, RuntimeState } from '../../shared/runtime-api-con
 import { providerDeletionImpact, type DeletionImpact } from '../deletion-impact'
 import { DangerConfirmDialog } from '../ui/danger-confirm'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
+import { useTransientNotice } from '../ui/use-transient-notice'
 import { IDLE_MODEL_FETCH, ModelProviderEditor, type ModelFetchState } from './model-provider-editor'
 import {
   PROVIDER_TEMPLATES,
@@ -45,7 +47,9 @@ export function SettingsModelsPage() {
   const [runtime, setRuntime] = useState<RuntimeState | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // A save/delete confirmation clears itself and floats; a failure does not (see
+  // `use-transient-notice.ts`). The page keeps its own error state for that reason.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const [draft, setDraft] = useState<ProviderEditorDraft | null>(() => readProviderEditorSession()?.draft ?? null)
   const [baseline, setBaseline] = useState<ProviderEditorDraft | null>(() => readProviderEditorSession()?.baseline ?? null)
   const [draftRestored, setDraftRestored] = useState(() => readProviderEditorSession() !== null)
@@ -95,7 +99,7 @@ export function SettingsModelsPage() {
     } catch (e) {
       if (!mountedRef.current || requestId !== requestRef.current) return
       // A failed reload must not leave an older success line next to it.
-      setNotice(null)
+      clearNotice()
       setError((e as Error).message)
     } finally {
       if (mountedRef.current && requestId === requestRef.current) setLoading(false)
@@ -116,7 +120,7 @@ export function SettingsModelsPage() {
   const modelFetchBlockedReason = modelFetchBlocked(draft, modelFetch, savedProvider)
 
   function openEditor(next: ProviderEditorDraft) {
-    setNotice(null)
+    clearNotice()
     setError(null)
     setSaveError(null)
     setTemplateOpen(false)
@@ -262,7 +266,7 @@ export function SettingsModelsPage() {
       setRuntime(state)
       setDraft(null)
       setBaseline(null)
-      setNotice(`已保存供应商 "${request.id}"。`)
+      showNotice(`已保存供应商 "${request.id}"。`)
     } catch (e) {
       if (!mountedRef.current) return
       // Keep the correctable content, both on screen and for a later visit.
@@ -275,7 +279,7 @@ export function SettingsModelsPage() {
 
   async function handleDelete(provider: RuntimeProvider) {
     setError(null)
-    setNotice(null)
+    clearNotice()
     setDeleteError(null)
     setPendingDelete({ providerId: provider.id, impact: providerDeletionImpact(provider, runtime?.model ?? '') })
   }
@@ -292,7 +296,7 @@ export function SettingsModelsPage() {
       if (!mountedRef.current) return
       setRuntime(state)
       setPendingDelete(null)
-      setNotice(`已删除供应商 "${pending.providerId}"。`)
+      showNotice(`已删除供应商 "${pending.providerId}"。`)
     } catch (e) {
       if (!mountedRef.current) return
       // Keep the dialog open with the failure so the target stays locatable.
@@ -313,7 +317,8 @@ export function SettingsModelsPage() {
     <div className="settings-module-page provider-page">
       {loading && <div className="dialog-hint">加载中…</div>}
       <FeedbackNotice className="dialog-error" feedback={error ? { tone: 'error', message: '读取模型配置失败', detail: error } : null} onRetry={error ? () => void load() : undefined} />
-      <FeedbackNotice feedback={notice ? { tone: 'success', message: notice, detail: null } : null} />
+      {/* Floats and clears itself: a confirmation must not occupy the page it confirms. */}
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
 
       {draft ? (
         // Settings keeps one panel per page: the editor replaces the list and

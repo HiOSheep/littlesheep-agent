@@ -343,7 +343,7 @@ function contextFixture(
     input: initialInput,
     liveToolStepRef: { current: new Map() },
     loading: options.loading ?? true,
-    permissionMode: 'research',
+    permissionMode: 'read-only',
     pendingRuntimeMessageRef: { current: null },
     pendingConversationTurnRef: { current: null },
     publishRuntimeEventNotice: (notice: { tone: string; text: string } | null) => notices.push(notice),

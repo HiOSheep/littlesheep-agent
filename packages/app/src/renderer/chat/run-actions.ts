@@ -13,6 +13,7 @@ import {
 import {
   SessionApprovalGrantStore,
   sessionApprovalScopeKey,
+  type ApprovalReply,
   type ApprovalDecision
 } from '../approval-grants'
 import { formatUserMessage } from '../composer/message-files'
@@ -21,7 +22,7 @@ import {
   type ContextUsageSnapshot
 } from '../context-usage'
 import { createAssistantDeltaBuffer } from './assistant-delta-buffer'
-import { localMessageId, updateLastAssistantText } from './live-message-updates'
+import { localMessageId, updateLastAssistantText, replaceAssistantPreview } from './live-message-updates'
 import { settleLiveReasoning } from './activity-model'
 import { handleRunToolEvent } from './run-event-handlers'
 import { reduceCompletedRunMessages } from './run-result-reducer'
@@ -56,7 +57,7 @@ export interface RunActionContext {
   publishRuntimeEventNotice: (notice: RuntimeTaskEventNotice | null) => void
   refreshProjects: () => Promise<void>
   refreshSessions: () => Promise<SessionMeta[]>
-  requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<boolean>
+  requestApprovalForScope: (request: ApprovalRequest, scopeKey: string) => Promise<ApprovalReply>
   runtime: RuntimeState | null
   sessionOwnership: Pick<SessionMeta, 'scope' | 'projectId'>
   setActivityNow: Dispatch<SetStateAction<number>>
@@ -111,6 +112,7 @@ export function createRunActions(context: RunActionContext) {
       workspace: runtime?.workspace,
       sessionScope: sessionOwnership.scope,
       projectId: sessionOwnership.projectId,
+      model: runtime?.model,
       reasoning: runtime?.reasoning,
       profile: runtime?.profile,
       attachments: activeAttachments,
@@ -191,10 +193,11 @@ export function createRunActions(context: RunActionContext) {
         },
         onReplace: (text) => {
           if (!ownsVisibleConversation()) return
-          deltaBuffer.clear()
-          setMessages((messages) => updateLastAssistantText(messages, () => text))
+          deltaBuffer.flush()
+          setMessages((messages) => replaceAssistantPreview(messages, text))
         },
       }, {
+        model: runtime?.model,
         workspace: runtime?.workspace,
         sessionScope: sessionOwnership.scope,
         projectId: sessionOwnership.projectId,
@@ -249,7 +252,7 @@ export function createRunActions(context: RunActionContext) {
       if (!retrying) setAttachments((current) => current.length > 0 ? current : activeAttachments)
       if ((failure as Error).name === 'AbortError') {
         setMessages((m) => {
-          const next = [...m]
+          const next = replaceAssistantPreview(m, '')
           const last = next[next.length - 1]
           if (last?.role === 'assistant') {
             const endedAt = Date.now()

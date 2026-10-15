@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -6,12 +6,42 @@ import { DEFAULT_CONFIG, type Config } from '@littlesheep/config'
 import { SessionIndex } from '../session-index.js'
 import { ProjectIndex } from '../project-index.js'
 import {
+  resolveRunModelRef,
   resolveOwnedRunWorkspace,
+  prepareRunWorkspace,
   resolveRunWorkspace,
   resolveRunWorkspaceContext,
   updateSessionIndex,
   withPersistedSessionPermissionMode,
 } from './run-support.js'
+import { resolveRunPolicy } from '../run-policy.js'
+
+describe('workspace preparation before permission snapshot', () => {
+  it('creates the selected writable workspace before resolving its native file capability', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ls-workspace-prepare-'))
+    try {
+      const selected = join(root, 'new workspace')
+      const body = { permissionPreset: 'workspace-write' }
+      const cwd = await prepareRunWorkspace(selected, body)
+      const policy = resolveRunPolicy(body, DEFAULT_CONFIG, undefined, { workspaceRoot: cwd, cwd })
+      expect(existsSync(selected)).toBe(true)
+      expect(policy.permissionPolicyV2?.workspaceRoot).toBe(cwd)
+      if (process.platform === 'win32') await expect(policy.approve('write', { file_path: join(cwd, 'new.txt') })).resolves.toBe(true)
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
+  it('does not create a missing directory for read-only and does not damage a file selected as workspace', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ls-workspace-invalid-'))
+    try {
+      const missing = join(root, 'missing')
+      await expect(prepareRunWorkspace(missing, { permissionPreset: 'read-only' })).rejects.toThrow('工作区无法使用')
+      expect(existsSync(missing)).toBe(false)
+      const file = join(root, 'file')
+      writeFileSync(file, 'retain me')
+      await expect(prepareRunWorkspace(file, { permissionPreset: 'workspace-write' })).rejects.toThrow('工作区无法使用')
+      expect(existsSync(file)).toBe(true)
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
+})
 
 describe('run permission mode continuity', () => {
   it('uses the persisted versioned preset when a partial run request omits it', async () => {
@@ -60,7 +90,7 @@ describe('run permission mode continuity', () => {
       })).rejects.toThrow('legacy permission modes are no longer accepted')
 
       // A Main-owned session update is the authority for an upgrade.
-      await sessionIndex.upsert('session-1', { mode: 'full-access', permissionVersion: 2, permissionMigration: undefined })
+      await sessionIndex.upsert('session-1', { mode: 'full-access', permissionVersion: 2 })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'session-1', text: 'run', permissionPreset: 'full-access',
       })).resolves.toMatchObject({ permissionPreset: 'full-access' })
@@ -153,17 +183,20 @@ describe('run permission mode continuity', () => {
     }
   })
 
-  it('blocks historical sessions until explicitly migrated and narrows versioned sessions', async () => {
+  it('drops retired permission sessions and narrows current V2 sessions', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir })
-      await sessionIndex.upsert('legacy', { mode: 'full', scope: 'standalone' })
+      writeFileSync(join(dataDir, 'sessions.json'), JSON.stringify({ sessions: [{
+        id: 'legacy', title: 'Retired', createdAt: 1, lastMessageAt: 1, mode: 'full', scope: 'standalone',
+      }] }))
       await sessionIndex.upsert('v2-write', { mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' })
       await sessionIndex.upsert('v2-read', { mode: 'read-only', permissionVersion: 2, scope: 'standalone' })
 
+      await expect(sessionIndex.list()).resolves.not.toContainEqual(expect.objectContaining({ id: 'legacy' }))
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'legacy', text: 'run', permissionPreset: 'workspace-write',
-      })).rejects.toThrow('needs an explicit permission selection')
+      })).rejects.toThrow('session permission state is unavailable')
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'v2-write', text: 'run', permissionPreset: 'full-access',
       })).resolves.toMatchObject({ permissionPreset: 'workspace-write' })
@@ -173,9 +206,6 @@ describe('run permission mode continuity', () => {
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'v2-read', text: 'run', permissionPreset: 'workspace-write',
       })).resolves.toMatchObject({ permissionPreset: 'read-only' })
-      await expect(updateSessionIndex(sessionIndex, 'legacy', { sessionId: 'legacy' }, {
-        scope: 'standalone',
-      }, dataDir)).rejects.toThrow('must be explicitly migrated')
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }
@@ -301,7 +331,7 @@ describe('resolveOwnedRunWorkspace', () => {
     const project = await projectIndex.ensure(resolve('D:\\projects\\alpha'))
     await sessionIndex.upsert('session-a', {
       title: 'Alpha session',
-      mode: 'research',
+      mode: 'workspace-write',
       scope: 'project',
       projectId: project.id,
       workspacePath: project.path,
@@ -339,6 +369,8 @@ describe('resolveOwnedRunWorkspace', () => {
       const workplaceDir = join(dataDir, 'workplace')
       const context = await contextWithProject(dataDir, workplaceDir)
       const chosen = join(dataDir, 'chosen')
+      await context.sessionIndex.upsert('bound-standalone', { title: 'Bound', mode: 'workspace-write', scope: 'standalone', workspacePath: chosen })
+      await expect(resolveOwnedRunWorkspace(context, { sessionId: 'bound-standalone', workspace: join(dataDir, 'elsewhere') }, { scope: 'standalone' }, config(join(dataDir, 'other')), workplaceDir)).resolves.toBe(resolve(chosen))
 
       await expect(resolveOwnedRunWorkspace(
         context,
@@ -349,6 +381,22 @@ describe('resolveOwnedRunWorkspace', () => {
       )).resolves.toBe(resolve(chosen))
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+})
+
+
+describe('conversation model selection', () => {
+  const configured = { ...DEFAULT_CONFIG, providers: [{ id: 'test', name: 'Test', apiKey: 'fixture', baseURL: 'http://localhost', models: ['model-a', 'model-b'] }] } as Config
+  it('accepts a configured per-run model without changing the default', () => {
+    const before = configured.agents.defaults.model
+    expect(resolveRunModelRef({ model: 'test/model-b' }, configured)).toBe('test/model-b')
+    expect(configured.agents.defaults.model).toBe(before)
+    expect(resolveRunModelRef({}, configured)).toBeUndefined()
+  })
+  it('rejects unknown models and malformed selections', () => {
+    for (const model of ['', 42, 'unknown/model-a', 'test/unknown']) {
+      expect(() => resolveRunModelRef({ model }, configured)).toThrow()
     }
   })
 })

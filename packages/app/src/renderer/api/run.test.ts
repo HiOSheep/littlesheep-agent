@@ -80,7 +80,7 @@ describe('renderer run API', () => {
     }), { status: 200 }))
 
     const deltas: string[] = []
-    const result = await api.runAgentStream('answer', 'session-1', 'research', {
+    const result = await api.runAgentStream('answer', 'session-1', 'read-only', {
       onDelta: (delta) => deltas.push(delta),
     })
     expect(deltas).toEqual(['完整回答'])
@@ -155,7 +155,7 @@ describe('renderer run API', () => {
     const result = await api.resumeRunCheckpointStream('checkpoint/a', {
       text: '继续',
       reason: 'user resumed',
-      permissionMode: 'full',
+      permissionPreset: 'full-access',
       requestKey: 'stable-recovery-key',
       continuationDirective: 'answer',
     }, {
@@ -173,7 +173,7 @@ describe('renderer run API', () => {
         body: JSON.stringify({
           text: '继续',
           reason: 'user resumed',
-          permissionMode: 'full',
+          permissionPreset: 'full-access',
           requestKey: 'stable-recovery-key',
           continuationDirective: 'answer',
         }),
@@ -187,6 +187,43 @@ describe('renderer run API', () => {
     expect(started).toEqual(['resume-run-1'])
     expect(events).toEqual([{ type: 'verification_start' }])
     expect(result).toMatchObject({ runId: 'resume-run-1', sessionId: 'session-1', status: 'ok' })
+  })
+
+  it('sends the explicit Main-approved exact Shell repeat choice without widening it to a session grant', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    vi.stubGlobal('fetch', fetchMock)
+    const api = await loadRunApi()
+    fetchMock
+      .mockResolvedValueOnce(streamResponse([
+        { name: 'start', data: { runId: 'run-repeat' } },
+        { name: 'approval_request', data: {
+          id: 'approval-repeat',
+          action: 'exec',
+          permissionMode: 'research',
+          permissionPreset: 'workspace-write',
+          requiresExplicitUserApproval: true,
+          rememberShellCommandAvailable: true,
+          shellBatch: { version: 1, batchId: 'batch-repeat', scope: 'once', expiresAt: 1234, commands: [{ command: 'pwd' }] },
+          boundary: 'unknown',
+          source: 'agent',
+        } },
+        { name: 'result', data: { runId: 'run-repeat', sessionId: 'session-1', status: 'ok', reply: 'done', durationMs: 1 } },
+      ]))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+
+    await api.runAgentStream('remember exact shell command', 'session-1', 'workspace-write', {
+      onDelta: () => undefined,
+      onApprovalRequest: () => ({ approved: true, rememberShellCommand: true }),
+    })
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://127.0.0.1:43127/approvals/approval-repeat',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ approved: true, rememberShellCommand: true }),
+      }),
+    )
   })
 
   it('keeps consuming an interrupted result while its cancelled approval prompt is unresolved', async () => {
@@ -218,7 +255,7 @@ describe('renderer run API', () => {
       settleApproval = resolve
     })
 
-    const result = await api.runAgentStream('read', undefined, 'research', {
+    const result = await api.runAgentStream('read', undefined, 'read-only', {
       onDelta: () => undefined,
       onApprovalRequest: () => approval,
     })

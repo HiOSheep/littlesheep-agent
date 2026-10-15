@@ -21,10 +21,10 @@ describe('workspace tree glyph legibility', () => {
     const sheet = ruleBody('.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-sheet,\n'
       + '.workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold')
     expect(sheet).toContain('fill: none')
-    expect(sheet).toContain('stroke-width: 1.2')
+    expect(sheet).toContain('stroke-width: var(--icon-stroke)')
     const folder = ruleBody('.workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body')
     expect(folder).toContain('currentColor 10%, transparent')
-    expect(folder).toContain('stroke-width: 1.2')
+    expect(folder).toContain('stroke-width: var(--icon-stroke)')
     expect(styles).not.toContain('.file-glyph-label')
     expect(styles).not.toMatch(/\.file-glyph-format-mark\s*\{[^}]*(?:filter|opacity)/u)
   })

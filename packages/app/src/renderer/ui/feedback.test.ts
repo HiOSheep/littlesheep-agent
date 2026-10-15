@@ -83,7 +83,7 @@ describe('feedback wiring', () => {
     expect(channels).toContain("setFeedback((current) => (current?.tone === 'error' ? null : current))")
     expect(channels).toContain("failureFeedback('读取渠道状态失败，当前列表可能不是最新的', e)")
     // Models: a failed reload clears an older success notice.
-    expect(models).toContain('setNotice(null)\n      setError((e as Error).message)')
+    expect(models).toContain('clearNotice()\n      setError((e as Error).message)')
   })
 
   it('shows the threshold failure where the change was made', async () => {

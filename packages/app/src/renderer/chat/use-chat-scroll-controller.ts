@@ -172,16 +172,21 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     setRailInTheWay((current) => (current === next ? current : next))
   }, [])
 
-  /** The reader's own position decides both flags; nothing else may clear them. */
-  const readReaderPosition = useCallback((container: HTMLElement): boolean => {
+  /** Button availability follows actual geometry, separately from the decision to follow output. */
+  const syncReaderPosition = useCallback((container: HTMLElement): boolean => {
     const geometry = readChatScrollGeometry(container)
     const nearBottom = isChatNearBottom(geometry, CHAT_STICKY_BOTTOM_THRESHOLD)
-    stickToBottomRef.current = nearBottom
     setReadingAway(!nearBottom)
     if (nearBottom) setHasNewContent(false)
     syncActiveTurn(container)
     return nearBottom
   }, [syncActiveTurn])
+
+  const readReaderPosition = useCallback((container: HTMLElement): boolean => {
+    const nearBottom = syncReaderPosition(container)
+    stickToBottomRef.current = nearBottom
+    return nearBottom
+  }, [syncReaderPosition])
 
   const scrollToLatest = useCallback(() => {
     const container = scrollRef.current
@@ -240,7 +245,6 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     const container = scrollRef.current
     if (!container) return
     if (repairFrameRef.current !== null) window.cancelAnimationFrame(repairFrameRef.current)
-    const previousGeometry = scrollGeometryRef.current
     resizeRepairRef.current = null
     const repair = scrollRepairRef.current
     scrollRepairRef.current = null
@@ -251,6 +255,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
         settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
         const nextTop = resolveBottomAnchoredScrollTop(repair, readChatScrollGeometry(container))
         if (Math.abs(container.scrollTop - nextTop) > 0.5) writeScrollTop(container, nextTop)
+        syncReaderPosition(container)
         rememberScrollGeometry(container)
         settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
         if (shouldContinueDisplaySettle(settleState, timestamp)) {
@@ -266,9 +271,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       observedContentRef.current = chatContentSignature(messages)
       return
     }
-    const shouldStickToBottom = previousGeometry
-      ? isChatNearBottom(previousGeometry, CHAT_STICKY_BOTTOM_THRESHOLD)
-      : stickToBottomRef.current
+    const shouldStickToBottom = stickToBottomRef.current
     const grew = chatContentSignature(messages) !== observedContentRef.current
     observedContentRef.current = chatContentSignature(messages)
     if (shouldStickToBottom) {
@@ -277,11 +280,11 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       setHasNewContent(false)
     } else {
       // Output arrived while the reader was away: say so instead of pulling them down.
-      setReadingAway(true)
-      if (grew) setHasNewContent(true)
+      const nearBottom = syncReaderPosition(container)
+      if (grew && !nearBottom) setHasNewContent(true)
     }
     rememberScrollGeometry(container)
-  }, [messages, rememberScrollGeometry, scrollRef])
+  }, [messages, rememberScrollGeometry, scrollRef, syncReaderPosition])
 
   useLayoutEffect(() => () => {
     if (repairFrameRef.current !== null) window.cancelAnimationFrame(repairFrameRef.current)
@@ -362,6 +365,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
         settleState ??= createDisplaySettleState(timestamp, readLayoutSignature())
         const nextTop = resolveAnchoredScrollTop(anchor, readChatAnchorProbes(container), container.scrollTop)
         if (nextTop !== null && Math.abs(container.scrollTop - nextTop) > 0.5) writeScrollTop(container, nextTop)
+        syncReaderPosition(container)
         rememberScrollGeometry(container)
         settleState = observeDisplaySettleFrame(settleState, timestamp, readLayoutSignature())
         repairFrameRef.current = shouldContinueDisplaySettle(settleState, timestamp)
@@ -380,7 +384,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
         // The geometry captured immediately before the resize is the only
         // reliable indication of where the reader was. A stale sticky flag
         // must not turn an intentional reading gap into bottom pinning.
-        stickToBottom: isChatNearBottom(previous),
+        stickToBottom: stickToBottomRef.current && isChatNearBottom(previous),
         anchor: selectChatVisibleAnchor(readChatAnchorProbes(container), previous.viewportHeight),
       }
       const repair = resizeRepairRef.current
@@ -425,7 +429,11 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       const current = readChatScrollGeometry(container)
       if (previous && didChatViewportResize(previous, current)) {
         scheduleResizeRepair(previous)
+      } else if (previous && current.scrollHeight !== previous.scrollHeight
+        && stickToBottomRef.current && !scrollRepairRef.current && repairFrameRef.current === null) {
+        writeScrollTop(container, Math.max(0, container.scrollHeight - container.clientHeight))
       }
+      syncReaderPosition(container)
       // A width change re-wraps every turn, so the rails' measurements are stale in the same
       // notification that made them stale — and it is also what decides whether the rail still has
       // its own gutter at all.
@@ -435,6 +443,8 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       rememberScrollGeometry(container)
     })
     observer.observe(container)
+    const content = container.querySelector(CHAT_MESSAGE_CONTENT_SELECTOR)
+    if (content) observer.observe(content)
     container.parentElement?.addEventListener(
       CHAT_COMPOSER_OVERLAY_RESIZE_EVENT,
       handleComposerOverlayResize,
@@ -455,7 +465,7 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
       window.removeEventListener(WINDOW_RESIZE_END_EVENT, handleWindowResizeEnd)
       resizeRepairRef.current = null
     }
-  }, [readTurnAnchors, rememberScrollGeometry, scrollRef, syncActiveTurn, syncRailClearance])
+  }, [readTurnAnchors, rememberScrollGeometry, scrollRef, syncActiveTurn, syncRailClearance, syncReaderPosition, writeScrollTop])
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget
@@ -469,9 +479,10 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     // The height is the cheap witness for that: re-measure before reading the position so the
     // active mark and the flags describe the layout that is on screen now.
     if (element.scrollHeight !== turnAnchorHeightRef.current) readTurnAnchors()
-    readReaderPosition(element)
+    if (written !== null && Math.abs(element.scrollTop - written) <= 1) syncReaderPosition(element)
+    else readReaderPosition(element)
     rememberScrollGeometry(element)
-  }, [cancelRepairFrames, readReaderPosition, readTurnAnchors, rememberScrollGeometry])
+  }, [cancelRepairFrames, readReaderPosition, readTurnAnchors, rememberScrollGeometry, syncReaderPosition])
 
   const onClickCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
@@ -479,8 +490,9 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
     // Expanding a nested disclosure is a reading action, not new-message
     // arrival. Leave scrollTop untouched while CSS animates the content height.
     stickToBottomRef.current = false
-    setReadingAway(true)
-  }, [])
+    cancelRepairFrames()
+    if (scrollRef.current) syncReaderPosition(scrollRef.current)
+  }, [cancelRepairFrames, scrollRef, syncReaderPosition])
 
   const prepareOlderHistoryLoad = useCallback(() => {
     const container = scrollRef.current
@@ -509,8 +521,13 @@ export function useChatScrollController(options: ChatScrollControllerOptions): C
  * the open turn's text grew. Deliberately cheap and non-cryptographic — it only
  * decides whether to show a hint.
  */
-function chatContentSignature(messages: readonly ChatMessage[]): string {
+export function chatContentSignature(messages: readonly ChatMessage[]): string {
   if (messages.length === 0) return '0'
   const last = messages[messages.length - 1]
-  return `${messages.length}:${last?.id ?? ''}:${last?.text?.length ?? 0}`
+  const progress = (last?.activity?.transcript ?? []).map((entry) => entry.kind === 'text'
+    ? `${entry.id}:${entry.text.length}` : entry.id).join('|')
+  const tools = (last?.activity?.tools ?? []).map((tool) => (
+    `${tool.callId}:${tool.ok ?? ''}:${tool.output?.length ?? 0}:${tool.error?.length ?? 0}`
+  )).join('|')
+  return `${messages.length}:${last?.id ?? ''}:${last?.text?.length ?? 0}:${progress}:${tools}`
 }

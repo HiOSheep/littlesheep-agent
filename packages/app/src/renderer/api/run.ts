@@ -1,6 +1,7 @@
 // Agent run and SSE stream client.
 
 import type { RuntimeReasoning } from '../../shared/model-capabilities'
+import type { ApprovalReply } from '../approval-grants'
 import type { SessionScope } from '../../shared/session-scope'
 import type { AttachmentRef } from '../../shared/attachment-contracts'
 import {
@@ -37,6 +38,7 @@ import type {
 import { localApiFetch, localApiResponseError, localApiStatusError, parseSseFrame } from './common'
 
 export interface RunResult {
+  conversationTranscript?: import('@littlesheep/types').ConversationTranscriptEntry[]
   runId: string
   sessionId: string
   status: 'ok' | 'error' | 'aborted'
@@ -147,7 +149,7 @@ export interface RunStreamHandlers {
   onStart?: (event: RunStreamStart) => void
   onDelta: (delta: string) => void
   onReplace?: (text: string) => void
-  onApprovalRequest?: (request: ApprovalRequest) => boolean | Promise<boolean>
+  onApprovalRequest?: (request: ApprovalRequest) => ApprovalReply | Promise<ApprovalReply>
   onToolEvent?: (evt: ToolStreamEvent) => void
 }
 
@@ -175,12 +177,15 @@ export interface ApprovalRequest {
   permissionPreset?: PermissionPresetId
   /** Main requires an explicit decision even when the session is full-access. */
   requiresExplicitUserApproval?: boolean
+  /** Main-computed eligibility for the single exact-command repeat option. */
+  rememberShellCommandAvailable?: boolean
   /** Boundary calculated by the Main process for Agent requests. */
   boundary?: 'inside' | 'outside' | 'unknown'
   source?: 'agent' | 'workspace'
 }
 
 export interface RunOptions {
+  model?: string
   workspace?: string
   sessionScope?: SessionScope
   projectId?: string
@@ -303,7 +308,7 @@ export async function consumeRunStream(
       } else if (event.name === 'approval_request') {
         const d = event.data as ApprovalRequest
         void Promise.resolve(handlers.onApprovalRequest?.(d) ?? false)
-          .then((approved) => respondApproval(String(d.id), approved))
+          .then((approval) => respondApproval(String(d.id), approval))
           .catch((error: unknown) => {
             // An interrupt can settle the server-side approval while its local
             // prompt is still visible. Keep consuming the authoritative result;
@@ -388,11 +393,14 @@ async function readRuntimeEventOutcome<T extends { outcome: RuntimeEventIngressO
   throw new Error('Local app API runtime event response is missing an outcome')
 }
 
-async function respondApproval(id: string, approved: boolean): Promise<void> {
+async function respondApproval(id: string, approval: ApprovalReply): Promise<void> {
+  const body = typeof approval === 'boolean'
+    ? { approved: approval }
+    : { approved: approval.approved, rememberShellCommand: approval.rememberShellCommand }
   const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.approvals, id), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approved }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw localApiStatusError(res.status)
 }

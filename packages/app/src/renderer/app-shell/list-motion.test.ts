@@ -9,7 +9,8 @@ const sessions: SessionMeta[] = [
     title: '独立 A',
     createdAt: 1,
     lastMessageAt: 1,
-    mode: 'research',
+    mode: 'workspace-write',
+    permissionVersion: 2,
     scope: 'standalone',
   },
   {
@@ -17,7 +18,8 @@ const sessions: SessionMeta[] = [
     title: '独立 B',
     createdAt: 2,
     lastMessageAt: 2,
-    mode: 'research',
+    mode: 'workspace-write',
+    permissionVersion: 2,
     scope: 'standalone',
   },
   {
@@ -25,7 +27,8 @@ const sessions: SessionMeta[] = [
     title: '独立 C',
     createdAt: 3,
     lastMessageAt: 3,
-    mode: 'research',
+    mode: 'workspace-write',
+    permissionVersion: 2,
     scope: 'standalone',
   },
 ]

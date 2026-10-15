@@ -1,11 +1,16 @@
 // Session ownership, workspace scope and artifact helpers shared by run routes.
 
 import { isAbsolute, resolve } from 'node:path'
-import type { Config } from '@littlesheep/config'
+import { mkdir, realpath, stat } from 'node:fs/promises'
+import { getProvider, parseModelRef, type Config } from '@littlesheep/config'
 import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
 import { isSessionScope, type SessionScope } from '../../shared/session-scope.js'
-import { normalizePermissionSelectionId, isPermissionSelectionPreset } from '../../shared/permission-modes.js'
+import {
+  normalizePermissionSelectionId,
+  isPermissionSelectionPreset,
+  type PermissionSelectionId,
+} from '../../shared/permission-modes.js'
 import { sameBoundPath } from '../path-rebinding.js'
 import type { ProjectIndex } from '../project-index.js'
 import type { SessionIndex } from '../session-index.js'
@@ -49,10 +54,6 @@ export async function withPersistedSessionPermissionMode(
   if (sessionId && !existing) {
     throw new HttpError(409, 'session permission state is unavailable; reload the session before running')
   }
-  if (existing?.permissionMigration) {
-    throw new HttpError(409, `legacy permission '${existing.permissionMigration.from}' needs an explicit permission selection before this session can run`)
-  }
-
   const requestedPreset = isPermissionSelectionPreset(body.permissionPreset) ? body.permissionPreset : undefined
   if (!existing) return { ...body, permissionPreset: requestedPreset ?? 'workspace-write' }
 
@@ -96,15 +97,11 @@ export async function updateSessionIndex(
   workspacePath: string,
 ): Promise<void> {
   const existing = (await sessionIndex.list()).find((session) => session.id === sessionId)
-  if (existing?.permissionMigration) {
-    throw new HttpError(409, 'legacy session permissions must be explicitly migrated before recording a run')
-  }
   const updates: {
     title?: string
     lastMessageAt: number
-    mode: string
+    mode: PermissionSelectionId
     permissionVersion: 2
-    permissionMigration: undefined
     scope: SessionScope
     projectId?: string
     workspacePath: string
@@ -112,7 +109,6 @@ export async function updateSessionIndex(
     lastMessageAt: Date.now(),
     mode: normalizePermissionSelectionId(existing?.mode ?? explicitPermissionSelection(body) ?? 'workspace-write'),
     permissionVersion: 2,
-    permissionMigration: undefined,
     scope: ownership.scope,
     projectId: ownership.projectId,
     workspacePath,
@@ -121,7 +117,7 @@ export async function updateSessionIndex(
   await sessionIndex.upsert(sessionId, updates)
 }
 
-function explicitPermissionSelection(body: Record<string, unknown>): string | undefined {
+function explicitPermissionSelection(body: Record<string, unknown>): PermissionSelectionId | undefined {
   if (isPermissionSelectionPreset(body.permissionPreset)) return body.permissionPreset
   return undefined
 }
@@ -246,8 +242,8 @@ export async function resolveOwnedRunWorkspace(
   config: Config,
   workplaceDir: string,
 ): Promise<string> {
-  if (!ownership.projectId) return resolveRunWorkspace(body, config, workplaceDir)
-  const project = (await context.projectIndex.list()).find((item) => item.id === ownership.projectId)
+  const project = ownership.projectId
+    ? (await context.projectIndex.list()).find((item) => item.id === ownership.projectId) : undefined
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : ''
   const session = sessionId
     ? (await context.sessionIndex.list()).find((item) => item.id === sessionId)
@@ -256,6 +252,19 @@ export async function resolveOwnedRunWorkspace(
     projectPath: project?.path,
     sessionWorkspacePath: session?.workspacePath,
   })
+}
+
+/** Establish the user-selected directory before Main snapshots its file permissions. */
+export async function prepareRunWorkspace(path: string, body: Record<string, unknown>): Promise<string> {
+  try {
+    // Creating the selected root is part of workspace-write, never an implicit
+    // upgrade of a read-only run or a fallback into LS's data directory.
+    if (body.permissionPreset === 'workspace-write') await mkdir(path, { recursive: true })
+    if (!(await stat(path)).isDirectory()) throw new Error('目标不是文件夹')
+    return await realpath(path)
+  } catch (error) {
+    throw new HttpError(400, `工作区无法使用：${path}。请在工作区设置中选择可访问的文件夹。${(error as Error).message}`)
+  }
 }
 
 function normalizeWorkspacePath(selected: string): string {
@@ -315,4 +324,19 @@ function toolInputFilePath(input: unknown): string {
   const record = input as Record<string, unknown>
   const value = record.file_path ?? record.path ?? record.filePath
   return typeof value === 'string' ? value.trim() : ''
+}
+
+/** A conversation may select a configured model without mutating the host default. */
+export function resolveRunModelRef(body: Record<string, unknown>, config: Config): string | undefined {
+  if (body.model === undefined) return undefined
+  if (typeof body.model !== 'string' || !body.model.trim() || body.model.length > 256) {
+    throw new HttpError(400, 'conversation model must be a configured model reference')
+  }
+  const ref = body.model.trim()
+  const parsed = parseModelRef(ref)
+  const provider = getProvider(config, parsed.provider)
+  if (!provider || provider.models?.length && !provider.models.some(entry => (typeof entry === 'string' ? entry : entry.id) === parsed.model)) {
+    throw new HttpError(400, '所选模型不在当前供应商配置中，请重新选择模型。')
+  }
+  return ref
 }

@@ -3,7 +3,8 @@ import { memo, useId, useState } from 'react'
 import type { HistoryMessage } from '../api'
 import { MessageFileStrip } from '../composer/message-files'
 import { ActivityGlyph } from './activity-glyph'
-import { ReasoningRow } from './reasoning-row'
+import { AssistantTranscript, ConversationTimeline } from './assistant-transcript'
+export { AssistantTranscript } from './assistant-transcript'
 import { TurnUsageButton, turnUsageFigures, turnUsageLabel } from './turn-usage-card'
 import { InlineMarkdown, Markdown } from '../Markdown'
 import { TraceCard } from '../TraceCard'
@@ -14,7 +15,7 @@ import {
 } from './activity-model'
 import { visibleActivitySteps } from './activity-visibility'
 import { summarizeCacheCallGroups } from '../../shared/cache-call-observations'
-import { AgentToolRow, PreparingLineDeltaBadge, toolActionLabel } from './agent-tool-row'
+import { AgentToolRow } from './agent-tool-row'
 import { ActivityAttentionRow } from './attention-row'
 import { DisclosurePanel } from './disclosure-panel'
 import { MessageMeta } from './message-meta'
@@ -26,7 +27,7 @@ import type {
   LiveToolEvent,
   TranscriptEntry,
 } from './types'
-import { activityAttentionLine, activityVerificationLine, compactTranscriptEntries } from './activity-visibility'
+import { activityAttentionLine, activityVerificationLine } from './activity-visibility'
 
 interface AssistantTurnMessageProps {
   message: ChatMessage
@@ -89,11 +90,12 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
     )
   }
 
-  const responseVisible = activity.status === 'running'
-    || Boolean(message.text.trim() || activity.error || message.artifacts?.length)
-  const processLockedOpen = activity.status !== 'done'
-  const processOpen = processLockedOpen || (processOpenOverride ?? false)
+  const responseVisible = Boolean(message.text.trim() || activity.error || message.artifacts?.length)
+    || (activity.status === 'running' && !activity.transcript?.some((entry) => entry.kind === 'text'))
+  const processOpen = processOpenOverride ?? false
   const processTranscript = transcriptWithoutAnswer(activity.transcript ?? [], message.text)
+  const timeline = processTranscript.filter((entry) => entry.kind !== 'system')
+  const diagnostics = processTranscript.filter((entry) => entry.kind === 'system')
   const processLabel = activity.status === 'running' ? `正在工作 · ${formatMaybeDuration(activity.startedAt, undefined, now)}`
     : activity.status === 'done' ? `用时 ${formatMaybeDuration(activity.startedAt, activity.endedAt, now)}`
       : activity.status === 'aborted' ? '已停止' : activity.status === 'failed' ? '执行失败' : '等待处理'
@@ -104,14 +106,14 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>
-      <button type="button" className="assistant-process-trigger" aria-expanded={processOpen} aria-controls={processId} disabled={processLockedOpen}
+      <button type="button" className="assistant-process-trigger" aria-expanded={processOpen} aria-controls={processId}
         onClick={() => setProcessOpenOverride(!processOpen)}>
         <span className={`assistant-process-label${activity.status === 'running' ? ' is-running' : ''}`}>{processLabel}</span>
         {processCounts && <span className="assistant-process-counts">{processCounts}</span>}
         {processVerification && (
           <span className="assistant-process-verification">{processVerification}</span>
         )}
-        {!processLockedOpen && <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />}
+        <span className={`agent-flow-chevron ${processOpen ? 'open' : ''}`} aria-hidden="true" />
       </button>
       {/* Outside the panel on purpose: folding the process away must never take an unresolved
           failure, a pending decision or a verdict that did not pass with it (O1). */}
@@ -137,10 +139,12 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
       )}
       <DisclosurePanel id={processId} open={processOpen} className="assistant-process-content">
         <ContextProjectionRows rows={activity.contextProjections ?? []} />
-        {(activity.transcript?.length ?? 0) > 0
-          ? <AssistantTranscript transcript={processTranscript} activity={activity} now={now} onOpenFile={onOpenFile} />
-          : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
+        <AssistantTranscript transcript={diagnostics} activity={activity} now={now} onOpenFile={onOpenFile} showStatus={false} />
       </DisclosurePanel>
+      {timeline.length > 0
+        ? <ConversationTimeline transcript={timeline} activity={activity} now={now} onOpenFile={onOpenFile} />
+        : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
+      <div className="assistant-approval-seat" />
       {responseVisible && (
         <div className="message-with-meta assistant">
           <div
@@ -149,7 +153,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             aria-live={activity.status === 'running' ? 'polite' : undefined}
           >
             <Markdown text={message.text} streaming={activity.status === 'running'} />
-            {!message.text && activity.error && (
+            {activity.error && (
               <span className="run-status-error">{activity.error}</span>
             )}
             {message.artifacts && message.artifacts.length > 0 && (
@@ -178,7 +182,9 @@ export function transcriptWithoutAnswer(transcript: TranscriptEntry[], answer: s
     if (transcript[index]?.kind === 'text') { lastText = index; break }
   }
   const entry = transcript[lastText]
-  return entry?.kind === 'text' && entry.text.trim() === answer.trim()
+  const matchesAnswer = entry?.kind === 'text' && (entry.text.trim() === answer.trim()
+    || (entry.text.endsWith('… [truncated]') && answer.startsWith(entry.text.slice(0, -'… [truncated]'.length))))
+  return entry?.kind === 'text' && entry.status !== 'failed' && entry.status !== 'aborted' && matchesAnswer
     ? transcript.filter((_, index) => index !== lastText)
     : transcript
 }
@@ -343,130 +349,6 @@ export function historyMessageToChatMessage(message: HistoryMessage): ChatMessag
     artifacts,
     webEvidence: message.webEvidence,
   }
-}
-
-/**
- * Model transcript: thinking, tool rows, and per-turn prose in the exact order
- * the model produced them. The single durable driver owns these entries; a run
- * without a transcript falls back to the activity-step layout.
- */
-export function AssistantTranscript({
-  transcript,
-  activity,
-  now,
-  onOpenFile,
-  compact = false,
-}: {
-  transcript: TranscriptEntry[]
-  activity: AssistantTurnActivity
-  now: number
-  onOpenFile: (path: string) => void
-  compact?: boolean
-}) {
-  const tools = new Map(activity.tools.map((tool) => [tool.callId, tool]))
-  // Compact mode folds the finished process away, never the facts that need a
-  // decision or a fix: failed/denied rows stay readable (UX-16), and the activity-level
-  // facts that outlive the fold are rendered by `ActivityAttentionRow` outside this body.
-  const rows = compact ? compactTranscriptEntries(transcript, activity.tools) : transcript
-  return (
-    <div className="assistant-activity-flow assistant-transcript" role="group" aria-label="Agent 工作过程">
-      {rows.map((entry) => {
-        if (entry.kind === 'system') {
-          return <SystemPromptRow key={entry.id} id={entry.id} text={entry.text} />
-        }
-        if (entry.kind === 'reasoning') {
-          return <ReasoningRow key={entry.id} id={entry.id} text={entry.text} status={entry.status} />
-        }
-
-        if (entry.kind === 'text') {
-          return (
-            <div key={entry.id} className="agent-transcript-prose" data-transcript-entry={entry.id}>
-              <Markdown text={entry.text} />
-            </div>
-          )
-        }
-        if (entry.kind === 'preparing') {
-          return <PreparingRow key={entry.id} entry={entry} />
-        }
-        const tool = tools.get(entry.callId)
-        return tool
-          ? <AgentToolRow key={entry.id} tool={tool} now={now} onOpenFile={onOpenFile} />
-          : null
-      })}
-      {!compact && <ActiveActivityStatus activity={activity} />}
-    </div>
-  )
-}
-
-/**
- * The system prompt the run was actually started with. It is reference material
- * and stays folded behind its own row — but folding it has to be the same smooth
- * disclosure as every other row, not an instant snap.
- */
-function SystemPromptRow({ id, text }: { id: string; text: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="agent-transcript-reasoning system" data-transcript-entry={id}>
-      <button type="button" className="agent-flow-row" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <span className="agent-flow-glyph agent-reasoning-glyph" aria-hidden="true"><ActivityGlyph kind="system" /></span>
-        <span className="agent-flow-title">系统提示词</span>
-        <span className="agent-flow-separator" aria-hidden="true" />
-        <span className="agent-flow-summary">本轮实际提示词</span>
-        <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
-      </button>
-      <DisclosurePanel open={open}>
-        <div className="agent-transcript-details">
-          <Markdown text={text} />
-        </div>
-      </DisclosurePanel>
-    </div>
-  )
-}
-
-/**
- * A tool call whose arguments were still streaming. It becomes a real tool row
- * once `tool_start` arrives; until then it expands on the same disclosure
- * primitive, so the two rows read as one continuous gesture.
- */
-function PreparingRow({ entry }: { entry: Extract<TranscriptEntry, { kind: 'preparing' }> }) {
-  const [open, setOpen] = useState(false)
-  const action = entry.name ? toolActionLabel(entry.name) : '调用工具'
-  const status = entry.status === 'running' ? '正在生成参数'
-    : entry.status === 'done' ? '参数已生成'
-      : entry.status === 'aborted' ? '已中止' : '生成失败'
-  return (
-    <div className={`agent-tool-preparing ${entry.status}`} data-transcript-entry={entry.id}>
-      <button type="button" className={`agent-flow-row${entry.status === 'running' ? ' is-active' : ''}`} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <span className="agent-flow-glyph" aria-hidden="true"><ActivityGlyph kind="step" /></span>
-        <span className="agent-flow-title">{action === '调用' ? entry.name : action}</span>
-        <span className="agent-flow-separator" aria-hidden="true" />
-        <span className="agent-flow-summary">{entry.argumentSummary || status}</span>
-        <PreparingLineDeltaBadge progress={entry.lineProgress} />
-        <span className={`agent-flow-chevron${open ? ' open' : ''}`} aria-hidden="true" />
-      </button>
-      <DisclosurePanel open={open}>
-        <div className="agent-flow-details">
-          <div>{status}{entry.name ? ` · 工具：${entry.name}` : ''}</div>
-          {entry.argumentSummary && <div>目标：{entry.argumentSummary}</div>}
-          <div>已接收 {entry.receivedCharacters} 个参数字符。实际执行结果见后续工具记录。</div>
-        </div>
-      </DisclosurePanel>
-    </div>
-  )
-}
-
-function ActiveActivityStatus({ activity }: { activity: AssistantTurnActivity }) {
-  if (activity.status !== 'running') return null
-  const current = [...(activity.reasoning ?? [])].reverse().find((item) => item.status === 'running' && item.source)
-  if (!current) return null
-  return (
-    <div className="agent-flow-row agent-active-stage-row" role="status" aria-live="polite">
-      <span className="agent-flow-glyph agent-active-stage-glyph" aria-hidden="true"><ActivityGlyph kind="reasoning" /></span>
-      <span className="agent-flow-title">{current.source === 'model' ? '模型' : '运行时'}</span>
-      <span className="agent-flow-separator" aria-hidden="true" />
-      <span className="agent-flow-summary">{current.summary}</span>
-    </div>
-  )
 }
 
 function ContextProjectionRows({ rows }: { rows: NonNullable<AssistantTurnActivity['contextProjections']> }) {

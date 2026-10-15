@@ -2,6 +2,7 @@
 // Constructs all infrastructure (LLM/Session/Memory/Tools/Harness) from
 // Config + Branding. The runner's `run()` drives the assembled harness.
 
+import { recordRunMemoryCorrection, type RunMemoryCorrections } from './run-memory-corrections.js';
 import { join, resolve } from 'node:path';
 import type { LlmClient } from '@littlesheep/llm';
 import { DEFAULT_RETRY, createLlmClient } from '@littlesheep/llm';
@@ -94,15 +95,16 @@ import {
 export type LogFn = (level: 'info' | 'warn' | 'error', msg: string, data?: unknown) => void;
 
 /** Mutable per-runner state (updated by run, read by session_status tool). */
-export interface RunnerState {
+export interface RunnerState extends RunMemoryCorrections {
   sessionId: SessionId | undefined;
   model: string;
+  modelsByRun?: Map<string, string>;
+  sessionsByRun?: Map<string, SessionId>;
   /**
    * Memory corrections committed during the current run. The tools record them here, and the
    * finalize step turns them into the session's revocation marker, so a summary written before a
    * forgotten fact stops being injected as current memory. Cleared for every run.
    */
-  memoryAtomCorrections?: Array<{ atomId: string; action: string; status: string; revision?: number }>;
 }
 
 /** The fully-assembled runtime. */
@@ -113,6 +115,8 @@ export interface Infrastructure extends DurableHarnessInfrastructure {
   disposeEmbedding: () => Promise<void>;
   registry: ToolRegistry;
   harness: AgentHarness;
+  /** A model-specific driver sharing the same host stores and tool authority. */
+  forModel(modelRef: string): Infrastructure;
   /** Independent durable transition driver used only after next-mode admission. */
   skillLoader: SkillLoader;
   executionLogStore: ExecutionLogStore;
@@ -549,11 +553,13 @@ export async function buildInfrastructure(
       // A correction is three commits the runtime performs in order: write the replacement, relate it to
       // the atom it replaces with the user's own words as evidence, then supersede that atom. Each step
       // is idempotent, so an interrupted correction is finished by repeating the call.
-      writeReplacement: async ({ supersededAtomId, summary, content, retrievalKeys, branch, scope, parentNodeId, sourceRefs, runId }) => {
+      writeReplacement: async ({ supersededAtomId, summary, content, retrievalKeys, branch, scope, parentNodeId, sourceRefs, runId, sessionId }) => {
         // The replacement's intent id is derived exactly like the write tool's, so repeating a corrected
         // call lands on the same atom instead of stacking versions.
+        const owningSession = opts.state.sessionsByRun?.get(runId) ?? sessionId
+        if (!owningSession) throw new Error('memory correction requires its owning session')
         const intentId = memoryWriteIntentId({
-          sessionId: String(opts.state.sessionId ?? ''), branch, scope, content, sourceRefs,
+          sessionId: String(owningSession), branch, scope, content, sourceRefs,
         })
         // The replacement carries the user's authority and the entity the relation is built on, and it
         // stays under the same semantic parent as the atom it replaces (the supersede boundary requires
@@ -646,15 +652,17 @@ export async function buildInfrastructure(
           runId: message.runId,
         }))
       },
-      recordRevocation: (record) => {
+      recordRevocation: async (record, runId, sessionId) => {
+        if (!sessionId) throw new Error('memory revocation requires its owning session')
+        await sessionManager.updateMetadata(sessionId as SessionId, { memoryRevokedAt: new Date().toISOString() });
         // The finalize step turns this into the session's memory-revocation marker, which is what
         // stops a summary written before the forget from being injected as current memory.
-        opts.state.memoryAtomCorrections = [...(opts.state.memoryAtomCorrections ?? []), {
+        recordRunMemoryCorrection(opts.state, runId, {
           atomId: record.atomId,
           action: 'invalidate',
           status: 'committed',
           revision: record.revision,
-        }]
+        })
       },
       log: (level, message) => opts.log?.(level, `runner: ${message}`),
     }),
@@ -694,7 +702,7 @@ export async function buildInfrastructure(
     createSessionStatusTool({
       sessionId: () => opts.state.sessionId ?? asSessionId(''),
       sessionManager,
-      model: () => opts.state.model,
+      model: context => (context ? opts.state.modelsByRun?.get(context.runId) : undefined) ?? opts.state.model,
     }),
     // Asking the user is a capability the model invokes, not a routing outcome.
     createRequestUserInputTool(),
@@ -723,6 +731,30 @@ export async function buildInfrastructure(
   });
   
 
+  const modelRuntimes = new Map<string, { llm: LlmClient; harness: AgentHarness; prepareTokenCounter?: () => Promise<void> }>();
+  const modelCounters = new Set<LazyExactContextTokenCounter>();
+  function forModel(modelRef: string): Infrastructure {
+    if (modelRef === opts.model) return infrastructure;
+    let runtime = modelRuntimes.get(modelRef);
+    if (!runtime) {
+      const resolved = resolveLlm(opts.config, modelRef, opts.llm);
+      const counter = createLazyLocalExactContextTokenCounter({
+        modelRef, modelRootDir: join(opts.bootstrapDir ?? dirs.root, 'models', 'tokenizer'),
+        fetchFn: opts.tokenizerFetch,
+        onPreparationError: error => opts.log?.('warn', `runner: model tokenizer unavailable: ${error.message}`),
+      });
+      if (counter) modelCounters.add(counter);
+      runtime = {
+        llm: resolved.llm,
+        harness: createDefaultHarness({ llm: resolved.llm, model: resolved.modelName, sessionManager,
+          memoryStore, config: opts.config, branding: opts.branding, log: opts.log, tokenCounter: counter }),
+        prepareTokenCounter: counter ? () => counter.prepare() : undefined,
+      };
+      modelRuntimes.set(modelRef, runtime);
+    }
+    return { ...infrastructure, ...runtime };
+  }
+
   void memoryRepository.startBackgroundMaintenance().catch((error) => {
     opts.log?.('warn', `memory-v3: background maintenance stopped: ${(error as Error).message}`);
   });
@@ -741,6 +773,7 @@ export async function buildInfrastructure(
     disposeEmbedding,
     registry,
     harness,
+    forModel,
     skillLoader,
     executionLogStore,
     ...durableHarnessInfrastructure,
@@ -762,7 +795,11 @@ export async function buildInfrastructure(
     prepareTokenCounter: lazyTokenCounter
       ? () => lazyTokenCounter.prepare()
       : undefined,
-    disposeTokenCounter: () => lazyTokenCounter?.dispose(),
+    disposeTokenCounter: () => {
+      lazyTokenCounter?.dispose();
+      for (const counter of modelCounters) counter.dispose();
+      modelCounters.clear(); modelRuntimes.clear();
+    },
     cacheObservationKey,
     cacheObservationStore,
     state: opts.state,

@@ -2,6 +2,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
+import { ShellRepeatAuthorizationStore } from '../shell-repeat-authorization-store.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import type { Config } from '@littlesheep/config'
 import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
@@ -28,6 +29,7 @@ import { ensureManagedAttachmentRefs } from '../attachment-materialization.js'
 import type { ProjectIndex } from '../project-index.js'
 import { DeferredRunRecovery } from '../run-recovery.js'
 import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
+import type { ShellApprovalResult } from '@littlesheep/tools'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
 import { json, openSse, readJson, resolveRunner, writeSse, type LocalAppApiRequest } from './http.js'
@@ -35,6 +37,8 @@ import { resolveReasoning } from './runtime-routes.js'
 import {
   finishRunResources,
   resolveOwnedRunWorkspace,
+  prepareRunWorkspace,
+  resolveRunModelRef,
   resolveRunSessionOwnership,
   resolveRunWorkspaceContext,
   withPersistedSessionPermissionMode,
@@ -53,8 +57,9 @@ const RUNTIME_EVENT_REGISTRATION_WAIT_MS = 2_000
 const RUNTIME_EVENT_REGISTRATION_POLL_MS = 20
 
 interface PendingApproval {
-  resolve: (approved: boolean) => void
+  resolve: (result: ShellApprovalResult) => void
   cleanup: () => void
+  rememberShellCommand?: () => boolean
 }
 
 interface ActiveStreamRun {
@@ -85,6 +90,8 @@ export class RunRouter {
   private readonly pendingApprovals = new Map<string, PendingApproval>()
   private recovery: DeferredRunRecovery | undefined
 
+  constructor(private readonly shellRepeatAuthorizations = new ShellRepeatAuthorizationStore()) {}
+
   /**
    * Build the router without waiting for recovery.
    *
@@ -93,8 +100,11 @@ export class RunRouter {
    * is therefore started, not awaited; the routes that genuinely need it await
    * `this.recovery.done()` themselves (see `route`).
    */
-  static async create(initialRunner: AgentRunner): Promise<RunRouter> {
-    const router = new RunRouter()
+  static async create(
+    initialRunner: AgentRunner,
+    shellRepeatAuthorizations = new ShellRepeatAuthorizationStore(),
+  ): Promise<RunRouter> {
+    const router = new RunRouter(shellRepeatAuthorizations)
     // The modern lease and inbox stores identify work that may need recovery
     // now. Scanning every historical event partition can be very expensive on
     // a long-lived data root, so it must not gate fresh interaction. Keep the
@@ -127,9 +137,28 @@ export class RunRouter {
         json(res, 404, { error: `approval request not found: ${approvalId}` })
         return true
       }
+      if (body.rememberShellCommand !== undefined && typeof body.rememberShellCommand !== 'boolean') {
+        json(res, 400, { error: 'rememberShellCommand must be a boolean' })
+        return true
+      }
+      const approved = body.approved === true
+      if (body.rememberShellCommand === true) {
+        let remembered = false
+        try { remembered = approved && pending.rememberShellCommand?.() === true }
+        catch { remembered = false }
+        if (!remembered) {
+          this.pendingApprovals.delete(approvalId)
+          pending.cleanup()
+          pending.resolve(false)
+          json(res, 409, { error: 'Shell repeat authorization is unavailable or no longer eligible' })
+          return true
+        }
+      }
       this.pendingApprovals.delete(approvalId)
       pending.cleanup()
-      pending.resolve(body.approved === true)
+      pending.resolve(approved && body.rememberShellCommand === true
+        ? { approved: true, rememberShellCommand: true }
+        : approved)
       json(res, 200, { ok: true })
       return true
     }
@@ -152,6 +181,8 @@ export class RunRouter {
       },
       isRunActive: (runId) => this.activeStreams.has(runId),
       createApprovalBroker: (publish, signal) => this.buildApprovalBroker(publish, signal),
+      consumeShellRepeatAuthorization: (description) => this.shellRepeatAuthorizations.consume(description),
+      rememberShellRepeatAuthorization: (description) => this.shellRepeatAuthorizations.remember(description),
       waitForRecovery: () => this.waitForRecovery(),
     })) return true
 
@@ -238,13 +269,14 @@ export class RunRouter {
       try {
         const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
         // Ownership first, then the directory: see `resolveOwnedRunWorkspace`.
-        const cwd = await resolveOwnedRunWorkspace(
+        const selectedWorkspace = await resolveOwnedRunWorkspace(
           context,
           effectiveBody,
           ownership,
           context.getConfig(),
           context.workplaceDir,
         )
+        const cwd = await prepareRunWorkspace(selectedWorkspace, effectiveBody)
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
         const attachmentOptions = {
           managedCache: context.attachmentCache,
@@ -272,6 +304,7 @@ export class RunRouter {
             text: String(body.text ?? ''),
             sessionId,
             origin: 'app',
+            model: resolveRunModelRef(body, context.getConfig()),
             cwd,
             reasoning: resolveReasoning(body, context.getConfig()),
             attachments,
@@ -298,6 +331,10 @@ export class RunRouter {
                 protectedRoots: runner.protectedWriteRoots,
                 cwd,
                 fullAccessConfirmed: effectiveBody.permissionPreset === 'full-access',
+                shellRepeatAuthorization: {
+                  consume: (description) => this.shellRepeatAuthorizations.consume(description),
+                  remember: (description) => this.shellRepeatAuthorizations.remember(description),
+                },
               },
             ),
           },
@@ -346,13 +383,14 @@ export class RunRouter {
       const ownership = await resolveRunSessionOwnership(context.sessionIndex, context.projectIndex, effectiveBody)
       // Ownership first: a project-bound session's directory is its project's, so
       // the request's workspace cannot move it.
-      const cwd = await resolveOwnedRunWorkspace(
+      const selectedWorkspace = await resolveOwnedRunWorkspace(
         context,
         effectiveBody,
         ownership,
         context.getConfig(),
         context.workplaceDir,
       )
+      const cwd = await prepareRunWorkspace(selectedWorkspace, effectiveBody)
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
       const attachmentOptions = {
         managedCache: context.attachmentCache,
@@ -377,6 +415,7 @@ export class RunRouter {
           workspace: cwd, ownership, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
         sessionId: body.sessionId ? asSessionId(String(body.sessionId)) : undefined,
         origin: 'app',
+        model: resolveRunModelRef(body, context.getConfig()),
         cwd,
         reasoning: resolveReasoning(body, context.getConfig()),
         attachments,
@@ -393,6 +432,10 @@ export class RunRouter {
           protectedRoots: runner.protectedWriteRoots,
           cwd,
           fullAccessConfirmed: effectiveBody.permissionPreset === 'full-access',
+          shellRepeatAuthorization: {
+            consume: (description) => this.shellRepeatAuthorizations.consume(description),
+            remember: (description) => this.shellRepeatAuthorizations.remember(description),
+          },
         }),
       })
       const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
@@ -456,9 +499,10 @@ export class RunRouter {
     requestApproval: (request: ApprovalRequestPayload) => void,
     signal?: AbortSignal,
   ): RunApprovalBroker {
-    return async ({ action, detail, permissionMode, permissionPreset, boundary, requiresExplicitUserApproval, shellBatch }) => {
+    return async ({ action, detail, permissionMode, permissionPreset, boundary, requiresExplicitUserApproval,
+      rememberShellCommandAvailable, shellBatch }) => {
       const id = randomUUID()
-      return new Promise<boolean>((resolveApproval) => {
+      return new Promise<ShellApprovalResult>((resolveApproval) => {
         let settled = false
         let timer: NodeJS.Timeout | undefined
         let onAbort: (() => void) | undefined
@@ -466,12 +510,12 @@ export class RunRouter {
           if (timer) clearTimeout(timer)
           if (onAbort) signal?.removeEventListener('abort', onAbort)
         }
-        const settle = (allowed: boolean) => {
+        const settle = (result: ShellApprovalResult) => {
           if (settled) return
           settled = true
           cleanup()
           this.pendingApprovals.delete(id)
-          resolveApproval(allowed)
+          resolveApproval(result)
         }
         onAbort = () => settle(false)
         timer = setTimeout(() => settle(false), 120_000)
@@ -481,7 +525,18 @@ export class RunRouter {
           oldest.cleanup()
           oldest.resolve(false)
         }
-        this.pendingApprovals.set(id, { resolve: settle, cleanup })
+        const rememberable = rememberShellCommandAvailable === true
+          && shellBatch?.scope === 'once' && shellBatch.commands.length === 1
+          && this.shellRepeatAuthorizations.canRemember(shellBatch.commands[0]!)
+          ? shellBatch.commands[0]
+          : undefined
+        this.pendingApprovals.set(id, {
+          resolve: settle,
+          cleanup,
+          ...(rememberable
+            ? { rememberShellCommand: () => !settled && !signal?.aborted }
+            : {}),
+        })
         if (signal?.aborted) {
           settle(false)
           return
@@ -496,6 +551,7 @@ export class RunRouter {
             ...(permissionPreset ? { permissionPreset } : {}),
             boundary,
             ...(requiresExplicitUserApproval ? { requiresExplicitUserApproval: true } : {}),
+            ...(rememberable ? { rememberShellCommandAvailable: true } : {}),
             source: 'agent',
             ...(shellBatch ? { shellBatch } : {}),
           })

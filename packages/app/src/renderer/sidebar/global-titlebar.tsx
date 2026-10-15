@@ -145,11 +145,13 @@ export function WindowNavControls({
 
 
 export function SettingsEntryButton({
+  onPrepare,
   settingsOpen,
   onOpen,
   onClose,
   rippling,
 }: {
+  onPrepare?: () => void
   settingsOpen: boolean
   onOpen: () => void
   onClose: () => void
@@ -161,6 +163,8 @@ export function SettingsEntryButton({
       type="button"
       aria-label={settingsOpen ? '关闭设置' : '设置'}
       aria-expanded={settingsOpen}
+      onPointerEnter={onPrepare}
+      onFocus={onPrepare}
       onClick={settingsOpen ? onClose : onOpen}
     >
       <SettingsGearIcon />

@@ -171,8 +171,20 @@ export function RuntimePicker({
 
     if (!open) {
       const trigger = triggerRef.current
-      if (trigger && !trigger.matches(':hover') && !trigger.matches(':focus-visible')) {
-        const width = trigger.getBoundingClientRect().width
+      const label = trigger?.querySelector('.runtime-picker-label-group')
+      // Measured from the label's own box plus the trigger's padding, never from the
+      // trigger's box. That box is clipped to the parent's recorded width (so re-reading it
+      // only re-reads the clip), and the hover/open recipe inflates it as well - both made
+      // the chip keep whatever width it happened to have when the label changed, so a longer
+      // model name stayed cut mid-word with no ellipsis (asked for 2026-10-15). The label
+      // group keeps its own content width even while the chip clips it, so this value can
+      // grow as well as shrink.
+      if (trigger && label instanceof HTMLElement) {
+        const style = getComputedStyle(trigger)
+        const width = Math.ceil(
+          label.getBoundingClientRect().width
+          + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight),
+        )
         if (width > 0) {
           setClosedWidth((current) => current === width ? current : width)
         }

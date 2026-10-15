@@ -28,8 +28,8 @@ Glass identifies a floating surface. Long reading surfaces, code and dense setti
 | Role | Use |
 | --- | --- |
 | Floating panel | Sidebar and workspace surfaces that sit above the application canvas. |
-| Composer and menu | Frosted input overlay, floating task strip, transcript navigation, pickers and action menus. |
-| Workspace tab | A lighter glass layer for the active tab above the chat column. |
+| Composer and menu | Frosted input overlay, floating task strip, the reach-latest droplet above the composer, transcript navigation, pickers, conversation resources and action menus. |
+| Workspace tab | A lighter glass layer for the active tab above the chat column and the chip that reopens a collapsed workspace. |
 | Scrim | Darkens the background behind a modal; it is not a content surface. |
 | Stable surface | Messages, conversation panels, code, settings canvas, lists and other dense reading areas. |
 

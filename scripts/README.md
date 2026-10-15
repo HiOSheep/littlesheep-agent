@@ -19,6 +19,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 ## Electron 验收约定
 
+`pnpm run verify:conversation-timeline` 用真实 Electron 与本地 HTTP Provider 验证连续正文／工具顺序、不撤回已显示正文、缺失工作区的初始化、原生创建／读取／编辑无重复审批，以及重载后正文不丢失或重复。报告和截图保存在输出的临时目录；不代表外部模型任务质量或 Shell 隔离验收。
+
 产品窗口验收应使用隔离数据根、确定性夹具，并将日志、截图和临时报告写到系统临时产物目录；不得读取用户会话或密钥。报告只证明其实际执行的断言。
 
 `node scripts/verify-appearance-settings.mjs` 验证外观设置的真实点击、颜色对比拒绝、字号与减少动态效果保存、刷新恢复、深浅模式及窄窗口可用性，截图保存到系统临时目录。
@@ -43,6 +45,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 `node scripts/verify-conversation-resources-motion.mjs` 在显示的隔离 Electron 中验收对话区右上角“对话文件与来源”面板：关闭时不挂载面板子树，打开后四边边框为 0、投影不含 1px 描边环且保留 12px/32px 阴影，面板停在容器右缘的静止位置并从右侧 24px 处滑入，关闭时先向右收回再由动画结束后卸载并交还焦点，退出动画期间重开只保留一个面板，窄聊天区不产生横向滚动条，开启减少动态效果时直接停在静止位置。数据、截图与报告写入系统临时目录，不读取用户会话或真实 Provider。
 
+`pnpm run verify:settings-transition` 在显示的隔离 Electron 中验收设置页的进入与返回：冷进入在懒加载视图首帧前保留原侧栏并在同一帧完成换轨，热进入首帧即绘制设置轨，两次侧栏文字不得同时出现或同时缺失，返回文字不等半秒且关闭控件在退出期间不可点击，连续反转不残留过期回调，草稿保留，减少动态效果仍生效。数据与截图写入系统临时目录，不读取用户会话或真实 Provider。
+
 ## 脚本所有权
 
 `node scripts/measure-session-history.mjs` 使用隔离的 240 条富文本历史与显示的 Electron，测量首次打开、缓存切换到绘制的时间，并检查更早内容分页后消息无重复、当前内容保留。数据与报告写入系统临时目录；耗时取决于本机和夹具，不代表所有用户对话。
@@ -55,3 +59,5 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 - `scripts/ga04/` 是 GA-04「Agent 约束精简」配对试验的可复现实验定义（E3 隐藏 oracle、哨兵 seed／audit），**不是产品门禁**：不接入 `check:repo` 或 CI。哨兵审计只输出哈希与 pass-fail，永不回显哨兵内容；用法与它证明不了什么见 [scripts/ga04/README.md](ga04/README.md)。
 
 机器检查 `docs/README.md` 的四类入口及分层导航。package README 由各 package 自己维护；普通私有源码、测试、样式和时间戳变化不触发 README 更新。
+
+`verify-conversation-timeline.mjs` 使用隔离 Electron 和本地 Provider 验证工具前后文字保留、原生文件操作、历史重载及短详情不会误显跳到底部按钮。`verify-conversation-model-isolation.mjs` 验证会话切换、重载后的模型与草稿隔离，并检查实际 HTTP 模型请求和应用默认值。恢复播放按钮与权限降级续跑由 `verify-desktop-permission-v2.mjs` 覆盖。

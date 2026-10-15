@@ -187,7 +187,7 @@
   flex: 0 0 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }

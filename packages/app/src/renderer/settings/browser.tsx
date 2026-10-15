@@ -1,6 +1,8 @@
 // Settings for the persistent embedded-browser session.
 
 import { useEffect, useState } from 'react'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import {
   clearBrowserCache,
   clearBrowserData,
@@ -12,7 +14,8 @@ export function SettingsBrowserPage() {
   const [status, setStatus] = useState<BrowserStorageStatus | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // A success confirmation floats and clears itself; a failure stays on the page.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
 
   async function refresh() {
     setError(null)
@@ -31,11 +34,11 @@ export function SettingsBrowserPage() {
     if (busyAction) return
     setBusyAction(action)
     setError(null)
-    setNotice(null)
+    clearNotice()
     try {
       const result = action === 'cache' ? await clearBrowserCache() : await clearBrowserData()
       setStatus(result.status)
-      setNotice(action === 'cache' ? '网页缓存已清除。' : '网站数据、登录状态和缓存已清除。')
+      showNotice(action === 'cache' ? '网页缓存已清除。' : '网站数据、登录状态和缓存已清除。')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -101,7 +104,7 @@ export function SettingsBrowserPage() {
         </div>
       </section>
 
-      {notice && <div className="storage-settings-notice" role="status">{notice}</div>}
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="storage-settings-notice" data-tone="error" role="alert">{error}</div>}
     </div>
   )

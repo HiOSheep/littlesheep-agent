@@ -1,11 +1,12 @@
 // Main-owned, process-local L0/L1 authority. No grants are serialized or reconstructed.
 import { randomUUID } from 'node:crypto';
-import type { AgentTool, ShellApprovalBatch, ToolContext } from '@littlesheep/types';
+import type { AgentTool, ShellApprovalBatch, ShellExecutionDescription, ToolContext } from '@littlesheep/types';
 import { DEFAULT_APPROVAL, checkApproval, type ApprovalConfig } from './approval.js';
 import { commandReferencesProtectedRoot, findProtectedWriteRoot, isReadOnlyCoreCommand } from './path-protection.js';
 import { fingerprint, prepareShellPlan, validateShellPlan, type ShellExecutionPlan } from './shell-execution-plan.js';
 
 type Decision = 'allow' | 'approval' | 'deny' | 'unavailable';
+export type ShellApprovalResult = boolean | { approved: true; rememberShellCommand: true };
 export interface ShellAuthorityOptions {
   runId?: string;
   sessionId?: string;
@@ -17,7 +18,11 @@ export interface ShellAuthorityOptions {
   decide(input: { command: string; cwd: string }): Decision;
   /** Re-read current Main-owned session/project/policy facts before authorization and launch. */
   current(): Promise<string>;
-  request(batch: ShellApprovalBatch): Promise<boolean>;
+  /** Optional Main-owned exact repeat check, evaluated only after hard denials and current policy. */
+  consumeRepeatAuthorization?(description: ShellExecutionDescription): boolean;
+  /** Commit an explicitly selected repeat choice only after final launch validation. */
+  rememberRepeatAuthorization?(description: ShellExecutionDescription): (() => void) | undefined;
+  request(batch: ShellApprovalBatch): Promise<ShellApprovalResult>;
 }
 interface Authority { options: ShellAuthorityOptions; sessionId?: string; runId?: string; metrics: ShellApprovalMetrics }
 export interface ShellApprovalMetrics {
@@ -26,7 +31,7 @@ export interface ShellApprovalMetrics {
 interface Grant {
   authority: Authority; plan: ShellExecutionPlan; current: string; expiresAt: number;
   permission: string;
-  signal?: AbortSignal; consumed: boolean; closed: boolean;
+  signal?: AbortSignal; consumed: boolean; closed: boolean; rememberRepeat: boolean;
 }
 export interface ShellBatchResult {
   grants: ReadonlyMap<number, object>;
@@ -102,14 +107,17 @@ export async function authorizeShellBatch(
       if (protectedRoot && !isReadOnlyCoreCommand(command)) throw new Error('core source is read-only. Write into a writable workspace.');
       const hard = checkApproval(command, { ...config, whitelist: [], approvalMode: 'interactive' });
       if (hard.decision === 'denied') throw new Error(`Approval denied: ${hard.reason}`);
-      const decision = options.decide({ command, cwd: cwd.path });
+      let decision = options.decide({ command, cwd: cwd.path });
       if (decision === 'deny' || decision === 'unavailable') {
         failures.set(item.index, failure('hard_denied', decision === 'deny' ? 'hard_deny' : 'permission_safety_unavailable', `Shell policy ${decision}`));
         continue;
       }
+      if (decision === 'approval' && options.consumeRepeatAuthorization?.(plan.description) === true) {
+        decision = 'allow'
+      }
       pending.push({ index: item.index, decision, grant: { authority, plan, current, expiresAt,
         permission: fingerprint(options.permission),
-        signal: item.signal ?? ctx.signal, consumed: false, closed: false } });
+        signal: item.signal ?? ctx.signal, consumed: false, closed: false, rememberRepeat: false } });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Shell authorization failed';
       failures.set(item.index, failure('hard_denied', message.startsWith('Approval denied:') ? 'hard_deny'
@@ -125,6 +133,7 @@ export async function authorizeShellBatch(
   }
   const asking = pending.filter((item) => item.decision === 'approval');
   let allowed = true;
+  let rememberRepeat = false;
   if (asking.length) {
     metrics.operations++;
     const started = Date.now();
@@ -133,7 +142,10 @@ export async function authorizeShellBatch(
         scope: asking.length === 1 ? 'once' : 'batch', expiresAt,
         commands: Object.freeze(asking.map((item) => item.grant.plan.description)) });
       // Race is owned here as well as by Main's broker: a missing UI callback cannot hang a run.
-      allowed = await waitForShellDecision(options.request, batch, options.signal, ctx.signal, ...items.map((item) => item.signal));
+      const decision = await waitForShellDecision(options.request, batch, options.signal, ctx.signal, ...items.map((item) => item.signal));
+      allowed = decision === true || (typeof decision === 'object' && decision.approved === true);
+      rememberRepeat = typeof decision === 'object' && decision.approved === true
+        && decision.rememberShellCommand === true && asking.length === 1;
     } catch { allowed = false; }
     finally { metrics.waitingMs += Date.now() - started; }
   }
@@ -146,6 +158,7 @@ export async function authorizeShellBatch(
         cancelled ? 'Shell approval cancelled' : expired ? 'Shell approval expired' : 'Shell approval denied'));
       metrics.denied++;
     } else {
+      item.grant.rememberRepeat = rememberRepeat && item.decision === 'approval';
       const token = Object.freeze({});
       grants.set(token, item.grant); issued.push(item.grant); approved.set(item.index, token); metrics.approved++;
     }
@@ -159,14 +172,14 @@ function failure(status: ShellAuthorizationFailure['status'], errorKind: string,
 
 function waitForShellDecision(
   request: ShellAuthorityOptions['request'], batch: ShellApprovalBatch, ...signals: (AbortSignal | undefined)[]
-): Promise<boolean> {
+): Promise<ShellApprovalResult> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (value: boolean) => {
+    const finish = (value: ShellApprovalResult) => {
       if (settled) return;
       settled = true; clearTimeout(timer);
       for (const signal of signals) signal?.removeEventListener('abort', abort);
-      resolve(value === true);
+      resolve(value === true || (typeof value === 'object' && value.approved === true) ? value : false);
     };
     const abort = () => finish(false);
     const timer = setTimeout(abort, Math.max(0, batch.expiresAt - Date.now()));
@@ -199,6 +212,14 @@ export async function startAuthorizedShell<T>(ctx: ToolContext, tool: AgentTool,
     if (fingerprint(options.permission) !== grant.permission || decision === 'deny' || decision === 'unavailable' || Date.now() >= grant.expiresAt
       || grant.closed || options.signal?.aborted || grant.signal?.aborted || ctx.signal?.aborted) throw new Error('Shell authorization revoked, expired or cancelled');
     validateShellPlan(grant.plan, input, ctx);
-    return start(grant.plan);
+    const revokeRemembered = grant.rememberRepeat
+      ? options.rememberRepeatAuthorization?.(grant.plan.description)
+      : undefined;
+    try {
+      return await start(grant.plan);
+    } catch (error) {
+      revokeRemembered?.();
+      throw error;
+    }
   } catch (error) { metrics.invalidated++; throw error; }
 }

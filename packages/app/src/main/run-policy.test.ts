@@ -6,28 +6,26 @@ import { WORKSPACE_FILE_GUARD_AVAILABLE } from '@littlesheep/tools'
 import { join } from 'node:path'
 
 describe('local app run policy', () => {
-  it('does not replay legacy or V2 session grants through startup recovery reads', async () => {
-    let mode = 'research'
+  it('does not replay a session permission preset through startup recovery reads', async () => {
     const containerRoot = process.cwd()
     const identity = { sessionId: 's', runId: 'r' }
     const authorize = createRecoveryReadAuthorizer(() => ({ list: async () => [{
-      id: 's', title: 'session', mode, createdAt: 0, lastMessageAt: 0, scope: 'standalone' as const,
+      id: 's', title: 'session', mode: 'read-only', permissionVersion: 2 as const,
+      createdAt: 0, lastMessageAt: 0, scope: 'standalone' as const,
     }] }), containerRoot)
     const inside = join(containerRoot, 'package.json')
     const outside = join(containerRoot, '..', 'outside.txt')
     expect(await authorize(inside, identity)).toBe(false)
     expect(await authorize(outside, identity)).toBe(false)
-    mode = 'restricted'
-    expect(await authorize(inside, identity)).toBe(false)
-    mode = 'full'
     expect(await authorize(outside, identity)).toBe(false)
     expect(await authorize(inside, { ...identity, sessionId: 'missing' })).toBe(false)
     expect(await createRecoveryReadAuthorizer(() => null, containerRoot)(inside, identity)).toBe(false)
   })
-  it.each(['read-only', 'workspace-write'])('keeps unguarded startup reconciliation reads unknown for %s', async (mode) => {
+  it.each(['read-only', 'workspace-write'] as const)('keeps unguarded startup reconciliation reads unknown for %s', async (mode) => {
     const workspaceRoot = process.cwd()
     const authorize = createRecoveryReadAuthorizer(() => ({ list: async () => [{
       id: 'v2-session', title: 'V2 session', mode, workspacePath: workspaceRoot,
+      permissionVersion: 2 as const,
       createdAt: 0, lastMessageAt: 0, scope: 'standalone' as const,
     }] }), workspaceRoot)
     expect(await authorize(join(workspaceRoot, 'package.json'), { sessionId: 'v2-session', runId: 'r' }))

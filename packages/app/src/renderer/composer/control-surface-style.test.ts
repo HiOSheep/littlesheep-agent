@@ -176,6 +176,10 @@ describe('composer control surfaces', () => {
     expect(floatingHelpRule).toContain('background: var(--composer-hover-tip-background);')
     expect(floatingHelpRule).toContain('border: 0;')
     expect(floatingHelpRule).toContain('font-size: var(--composer-hover-tip-font-size);')
+    // The tip's sentence is body copy: it reads at the transcript's own weight, not as a bold
+    // label (asked for 2026-10-15).
+    expect(floatingHelpRule).toContain('font-weight: 400;')
+    expect(styles).toMatch(/\.workspace-panel-reopen-label\s*\{[^}]*font-size:\s*var\(--composer-hover-tip-font-size\);[^}]*font-weight:\s*400;/u)
     expect(rootRule).toContain('--composer-hover-tip-width: 80px;')
     expect(rootRule).toContain('--composer-hover-tip-min-height: 27px;')
     expect(rootRule).toContain('--composer-hover-tip-padding-block: 4px;')
@@ -214,10 +218,25 @@ describe('composer control surfaces', () => {
     // is available, and whether a usable model is selected. Both arrive as one
     // decision, so the entry can never be disabled for one reason while its
     // label states another, and the draft and the focus stay untouched.
-    expect(composerView).toContain('disabled={sendReadiness.blocked || (!loading && !hasPendingInput)}')
+    expect(composerView).toContain('disabled={sendReadiness.blocked || (resumeAction ? Boolean(checkpointRecovery.busy) || Boolean(resumeNeedsInput) : !loading && !hasPendingInput)}')
     expect(composerView).toContain('executionReason: executionUnavailable')
     expect(composerView).toContain('useRuntimeReadiness()')
     expect(composerView).not.toContain('showStop')
     expect(composerView).not.toMatch(/className="send-round[^"]*composer-tab-control/u)
+  })
+
+  it('reads the add sheet as rows of a name and what it does', async () => {
+    const styles = await readRendererStyleSource()
+    const addMenu = await readFile(new URL('./add-menu.tsx', import.meta.url), 'utf8')
+
+    // The sheet follows the input bounds with inline descriptions and rounded action rows.
+    expect(addMenu).toContain('<span className="add-menu-icon"><WorkspaceFeatureIcon id="artifacts" /></span>')
+    expect(addMenu).toContain('<span className="add-menu-icon"><ProjectIcon /></span>')
+    expect(addMenu).not.toMatch(/className="add-menu-icon">[+#]/u)
+    expect(styles).toMatch(/\.add-menu-panel\s*\{[^}]*right: 0;[^}]*width: auto;[^}]*overflow-y: auto;/u)
+    expect(styles).toMatch(/\.add-menu-item\s*\{[^}]*min-height: 42px;[^}]*border: 0;[^}]*border-radius: var\(--radius-pill\);/u)
+    expect(styles).toMatch(/\.add-menu-item:hover,\s*\.add-menu-item:focus-visible\s*\{[^}]*background: var\(--chat-active-fill\);/u)
+    expect(styles).toMatch(/\.add-menu-text\s*\{[^}]*display: flex;[^}]*gap: 8px;/u)
+    expect(styles).toMatch(/\.add-menu-title\s*\{[^}]*font-size: 13px;[^}]*font-weight: 500;/u)
   })
 })

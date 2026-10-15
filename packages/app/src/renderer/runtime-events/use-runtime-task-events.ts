@@ -23,10 +23,12 @@ export function useRuntimeTaskEvents({
   activeRunIdRef,
   appMountedRef,
   loading,
+  sessionKey,
 }: {
   activeRunIdRef: MutableRefObject<string | null>
   appMountedRef: MutableRefObject<boolean>
   loading: boolean
+  sessionKey?: string
 }) {
   const [runtimeEventNotice, setRuntimeEventNotice] = useState<RuntimeTaskEventNotice | null>(null)
   const pendingRuntimeMessageRef = useRef<{
@@ -35,8 +37,14 @@ export function useRuntimeTaskEvents({
     identity: RuntimeTaskEventIdentity
   } | null>(null)
   const noticeTimerRef = useRef<number>()
+  const sessionRef = useRef(sessionKey)
+  sessionRef.current = sessionKey
 
   useEffect(() => () => window.clearTimeout(noticeTimerRef.current), [])
+  useEffect(() => {
+    window.clearTimeout(noticeTimerRef.current)
+    setRuntimeEventNotice(null)
+  }, [sessionKey])
 
   function publishRuntimeEventNotice(notice: RuntimeTaskEventNotice | null) {
     window.clearTimeout(noticeTimerRef.current)
@@ -53,6 +61,7 @@ export function useRuntimeTaskEvents({
   }
 
   async function notifyRuntimeSettingChanges(patch: RuntimePatch, next: RuntimeState) {
+    const ownerSession = sessionKey
     const runId = activeRunIdRef.current
     if (!loading || !runId) return
     const entries = runtimeSettingEventEntries(patch, next)
@@ -67,7 +76,7 @@ export function useRuntimeTaskEvents({
         payload: { key, value },
       })
     }))
-    if (!appMountedRef.current) return
+    if (!appMountedRef.current || activeRunIdRef.current !== runId || sessionRef.current !== ownerSession) return
     const outcomes: Array<Awaited<ReturnType<typeof sendRuntimeTaskEvent>>> = []
     const failures: unknown[] = []
     for (const item of settled) {
@@ -78,6 +87,7 @@ export function useRuntimeTaskEvents({
   }
 
   function notifyRuntimeWorkspaceFileSaved(root: string, path: string, preview: WorkspacePreview) {
+    const ownerSession = sessionKey
     const runId = activeRunIdRef.current
     if (!loading || !runId) return
     const relativePath = workspaceBreadcrumbs(root, path).join('/') || preview.relativePath || preview.name
@@ -94,9 +104,9 @@ export function useRuntimeTaskEvents({
         ...(preview.modifiedAt === undefined ? {} : { modifiedAt: preview.modifiedAt }),
       },
     }).then((outcome) => {
-      if (appMountedRef.current) publishRuntimeEventNotice(describeRuntimeTaskEventOutcome('file', outcome))
+      if (appMountedRef.current && activeRunIdRef.current === runId && sessionRef.current === ownerSession) publishRuntimeEventNotice(describeRuntimeTaskEventOutcome('file', outcome))
     }).catch((error) => {
-      if (appMountedRef.current) publishRuntimeEventNotice(describeRuntimeTaskEventFailure('file', error))
+      if (appMountedRef.current && activeRunIdRef.current === runId && sessionRef.current === ownerSession) publishRuntimeEventNotice(describeRuntimeTaskEventFailure('file', error))
     })
   }
 

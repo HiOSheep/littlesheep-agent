@@ -199,7 +199,7 @@ export function TrashIcon() {
 
 
 export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
-  if (id === 'context') return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M12 4a8 8 0 0 1 8 8" fill="none" stroke="currentColor" strokeWidth="3" /></svg>
+  if (id === 'context') return <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.25" /><path d="m8 8 2.6-2.6" /></svg>
   if (id === 'home') {
     // The navigation page: a compass, the same idea the reference launcher used for "开始".
     return (
@@ -212,17 +212,17 @@ export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
   if (id === 'review') {
     return (
       <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <rect x="3.05" y="2.75" width="9.9" height="10.5" rx="2.1" />
-        <path d="M5.55 6.15h4.9M5.55 8h4.9M5.55 9.85h2.7" />
-        <path d="M8 1.95v2.1M6.95 3h2.1" />
+        <path d="M5.5 3.25h-.75c-.83 0-1.5.67-1.5 1.5v7.5c0 .83.67 1.5 1.5 1.5h6.5c.83 0 1.5-.67 1.5-1.5v-7.5c0-.83-.67-1.5-1.5-1.5h-.75" />
+        <rect x="5.5" y="1.75" width="5" height="3" rx="1" />
+        <path d="M5.75 7.5h4.5M5.75 10.25h3.25" />
       </svg>
     )
   }
   if (id === 'terminal') {
     return (
       <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <rect x="2.65" y="3.25" width="10.7" height="9.5" rx="2.1" />
-        <path d="M5.05 6.4 6.65 8l-1.6 1.6M7.8 9.6h3.1" />
+        <rect x="2.25" y="3" width="11.5" height="10" rx="2" />
+        <path d="m5 6 2 2-2 2M9 10h2.25" />
       </svg>
     )
   }
@@ -230,8 +230,7 @@ export function WorkspaceFeatureIcon({ id }: { id: WorkspacePanelTab }) {
     return (
       <svg className="workspace-panel-svg-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="M4.25 2.75h5.05l2.45 2.45v6.05c0 .55-.45 1-1 1h-6.5c-.55 0-1-.45-1-1V3.75c0-.55.45-1 1-1z" />
-        <path d="M9.15 3.35v2.65h2.65M6 8.1h4M6 10.05h3" />
-        <path d="M3.1 5.15v7.05c0 .55.45 1 1 1h5.85" />
+        <path d="M9.3 2.75V5.2h2.45M5.75 8h3.75M5.75 10.25H8.5" />
       </svg>
     )
   }
@@ -354,11 +353,11 @@ export function ModeRiskIcon({ risk, className }: { risk: ModeRisk; className: s
       <circle className="mode-risk-ring" cx="8" cy="8" r="7" />
       {isWarning ? (
         <>
-          <rect className="mode-risk-stem" x="6.75" y="3" width="2.5" height="7.5" rx="1.25" />
-          <circle className="mode-risk-dot" cx="8" cy="12.25" r="1.35" />
+          <rect className="mode-risk-stem" x="7.3" y="3.5" width="1.4" height="6.5" rx="0.7" />
+          <circle className="mode-risk-dot" cx="8" cy="12" r="0.8" />
         </>
       ) : (
-        <circle className="mode-risk-dot" cx="8" cy="8" r="1.8" />
+        <circle className="mode-risk-dot" cx="8" cy="8" r="1.2" />
       )}
     </svg>
   )

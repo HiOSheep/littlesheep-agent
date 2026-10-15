@@ -36,6 +36,8 @@ export interface HistoryActivity {
     activeTools: number
   }>
   tools: Array<{
+    invocationStatus?: ToolInvocationRecord['status']
+    errorKind?: string
     callId: string
     name: string
     stepId?: string
@@ -53,7 +55,7 @@ export interface HistoryActivity {
   }>
   transcript?: Array<
     | { kind: 'reasoning'; id: string; text: string; status: 'running' | 'done' | 'failed' | 'aborted' }
-    | { kind: 'text'; id: string; text: string }
+    | { kind: 'text'; id: string; text: string; status?: import('@littlesheep/types').ObservableActivityStatus }
     | { kind: 'system'; id: string; text: string }
     | { kind: 'preparing'; id: string; name?: string; receivedCharacters: number; lineProgress?: { additions: number; deletions: number | null }; argumentSummary?: string; status: 'running' | 'done' | 'failed' | 'aborted' }
     | { kind: 'tool'; id: string; callId: string }
@@ -169,7 +171,7 @@ function historyTools(log: ExecutionLog, endedAt: number | undefined): HistoryAc
 }
 
 export function hasExecutionActivity(log: ExecutionLog): boolean {
-  return Boolean(log.durableHarnessMode === 'next' || log.taskBook?.steps?.length || log.taskExecution?.steps?.length || log.toolCalls.length || log.toolInvocations?.length || log.verificationHistory?.length)
+  return Boolean(log.conversationTranscript?.length || log.durableHarnessMode === 'next' || log.taskBook?.steps?.length || log.taskExecution?.steps?.length || log.toolCalls.length || log.toolInvocations?.length || log.verificationHistory?.length)
 }
 
 /**
@@ -188,6 +190,8 @@ export function applyInvocationStatus(
   return {
     ...previous,
     callId: record.callId,
+    invocationStatus: record.status,
+    errorKind: record.errorKind,
     name: previous?.name ?? record.toolName,
     stepId: previous?.stepId ?? record.stepId,
     input: previous?.input,
@@ -223,8 +227,10 @@ export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivit
   if (log.systemPromptProjection) {
     transcript.push({ kind: 'system', id: 'system-prompt', text: log.systemPromptProjection })
   }
+  if (log.conversationTranscript?.length) transcript.push(...log.conversationTranscript)
+  const recorded = new Set(transcript.filter((entry) => entry.kind === 'tool').map((entry) => entry.callId))
   for (const tool of tools) {
-    transcript.push({ kind: 'tool', id: `tool:${tool.callId}`, callId: tool.callId })
+    if (!recorded.has(tool.callId)) transcript.push({ kind: 'tool', id: `tool:${tool.callId}`, callId: tool.callId })
   }
   return {
     ...runActivityOutcome(log),
@@ -291,7 +297,7 @@ export function buildHistoryMessages(
   // input. Give that status a stable UI row without inventing Agent text or
   // writing a synthetic message into the authoritative transcript.
   const missingAssistantRuns = new Set([...logsByRunId.values()]
-    .filter((log) => log.runtimeStatus && !messages.some((message) => message.runId === log.runId && message.role === 'assistant'))
+    .filter((log) => (log.runtimeStatus || log.conversationTranscript?.length) && !messages.some((message) => message.runId === log.runId && message.role === 'assistant'))
     .map((log) => log.runId))
   const projectedMessages = messages.flatMap((message): Message[] => {
     if (message.role !== 'user' || !message.runId || !missingAssistantRuns.delete(message.runId)) return [message]
@@ -304,6 +310,9 @@ export function buildHistoryMessages(
       const runId = String(message.runId ?? '')
       const log = runId ? logsByRunId.get(runId) : undefined
       const ownsRun = message.role === 'assistant' && owners.get(runId) === index
+      // New runs have one ordered timeline; intermediate assistant tool-turn
+      // messages already live there and must not create duplicate chat bubbles.
+      if (message.role === 'assistant' && !ownsRun && log?.conversationTranscript?.length) return null
       const ownsActivity = ownsRun && !!log && (hasExecutionActivity(log) || !!log.runtimeStatus)
       const textFromMessage = messageText(message)
       const durableSettlement = ownsRun
@@ -317,7 +326,9 @@ export function buildHistoryMessages(
         && message.stage === 'finalize'
         && (message.finalReplySettlement !== undefined || log?.durableHarnessMode === 'next' || !!log?.runtimeStatus)
         && durableSettlement === undefined
-      const text = unconfirmedFinalProposal
+      const text = ownsRun && log?.conversationTranscript?.length && !durableSettlement
+        ? log.status === 'ok' && !log.runtimeStatus ? log.reply : ''
+        : unconfirmedFinalProposal
         ? ''
         : durableSettlement
           ? durableSettlement.reply

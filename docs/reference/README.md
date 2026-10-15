@@ -7,6 +7,7 @@
 - [Core Flow 状态契约](core-flow-state-contract.md)：唯一状态转移 manifest、RunContext 所有权与生命周期。
 - [插件开发说明](plugin-development.md)：插件贡献、权限与生命周期。
 - [自定义模型供应商](custom-model-providers.md)：Provider 配置和能力语义。
+- [即时性提示契约](transient-notice-contract.md)：确认自动消失、失败永不自动消失的口径、时间规则与真实窗口验收。
 - [跨平台沙箱能力契约](cross-platform-sandbox-contract.md)：P3-0 能力证据、边界所有权和失败行为。
 - [Windows Shell Sandbox PoC](windows-shell-sandbox-poc.md)：P3-A 至 P3-A4 实验、Windows 实机证据、失败边界和未完成的隔离要求；P3 生产集成与 Permission V2 Shell 自动放行已冻结，技术取舍见 [Decision](../decision/shell-isolation-decision-2026-10-12.md)。
 

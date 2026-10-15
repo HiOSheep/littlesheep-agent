@@ -6,7 +6,7 @@ import type {
   RunCheckpointController,
   WaitingUserHeadResolution,
 } from './run-checkpoint-controller.js'
-import type { SessionId } from '@littlesheep/types'
+import type { RunCheckpoint, SessionId } from '@littlesheep/types'
 import type { RunCheckpointStore, RunCheckpointStoreDiagnostics } from './run-checkpoint-store.js'
 import type { ExecutionLogStore } from './execution-log.js'
 
@@ -41,12 +41,18 @@ export function createRunCheckpointControl(
   controller: RunCheckpointController | undefined,
   checkpointStore: Pick<RunCheckpointStore, 'diagnostics' | 'latestForRun' | 'list'> | undefined,
   executionLogStore: Pick<ExecutionLogStore, 'read'> | undefined,
-  expectedModel: string,
+  expectedModel?: string,
+  validate?: (checkpoint: RunCheckpoint) => Promise<string[]>,
 ): RunCheckpointControl | undefined {
   if (!controller || !checkpointStore) return undefined
+  const validateInspection = async (inspection: RunCheckpointInspection | null) => {
+    if (!inspection || !validate) return inspection
+    const reasons = [...inspection.reasons, ...await validate(inspection.checkpoint)]
+    return { ...inspection, reasons, resumable: inspection.resumable && reasons.length === 0 }
+  }
   return {
-    list: (limit) => controller.list(limit, expectedModel),
-    inspect: (checkpointId) => controller.inspect(checkpointId, expectedModel),
+    list: async (limit) => Promise.all((await controller.list(limit, expectedModel)).map(async item => (await validateInspection(item))!)),
+    inspect: async (checkpointId) => validateInspection(await controller.inspect(checkpointId, expectedModel)),
     resolveWaitingUserHead: (sessionId) => controller.resolveWaitingUserHead(sessionId, expectedModel),
     abandon: (checkpointId, reason) => controller.abandon(checkpointId, reason),
     defer: (checkpointId, reason) => controller.defer(checkpointId, reason),

@@ -1,5 +1,6 @@
 // Settings navigation and page composition.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 import {
   type AgentProfileId,
   type RuntimeState
@@ -238,8 +239,17 @@ export function SettingsWorkspace({
     setActiveFieldIndex((current) => nextSettingsFieldIndex(current, fieldHits.length, intent))
   }
 
+  const [ready, setReady] = useState(false)
+  useLayoutEffect(() => {
+    if (isAppearanceReducedMotion()) { setReady(true); return }
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setReady(true))
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   return (
-    <div className="settings-workspace">
+    <div className="settings-workspace" data-ready={ready}>
       <div className="settings-layout">
         {/* The settings rail is the window's top-left corner while settings is open, so
             it carries the same transparent drag surface the app sidebar does; without it

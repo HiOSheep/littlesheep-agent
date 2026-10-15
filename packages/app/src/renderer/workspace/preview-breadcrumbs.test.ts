@@ -58,6 +58,12 @@ describe('preview breadcrumbs', () => {
     const restingCrumb = crumb.slice(0, crumb.indexOf('.workspace-preview-breadcrumbs .workspace-preview-crumb:hover'))
     expect(restingCrumb).toContain('margin: 0 -3px;')
     expect(restingCrumb).toContain('padding: 1px 3px;')
+    // The row clips, so the first crumb cannot carry the left half of that bleed: it would cut
+    // the fill's left 3px and leave the first folder flush against the row edge with its rounded
+    // corner shaved off (asked for 2026-10-15). Later crumbs keep it.
+    expect(styles).toMatch(
+      /\.workspace-preview-breadcrumbs > span:first-child > \.workspace-preview-crumb \{\s*margin-left: 0;\s*\}/u,
+    )
     expect(restingCrumb).toContain('color: var(--muted);')
     expect(restingCrumb).toContain('border-radius: var(--radius-ui);')
     // Ancestors sit back at rest and only come forward under the pointer.

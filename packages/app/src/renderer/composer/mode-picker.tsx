@@ -1,9 +1,7 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  type PermissionSelectionId
-} from '../api'
+import { type PermissionSelectionId } from '../api'
 import { MODE_OPTIONS } from '../runtime/options'
 import { ModeRiskIcon } from '../ui/icons'
 import { useModalSurface } from '../ui/modal-surface'
@@ -15,11 +13,9 @@ import { useMenuFocusReturn } from './menu-focus-return'
 export function ModePicker({
   value,
   onChange,
-  migration,
 }: {
   value: PermissionSelectionId
   onChange: (value: PermissionSelectionId) => void
-  migration?: { from: string }
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
@@ -55,7 +51,7 @@ export function ModePicker({
         className="model-picker-trigger mode-picker-trigger composer-tab-control"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}${migration ? '，历史权限待确认' : ''}`}
+        aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}`}
         onClick={() => {
           if (open) {
             closeMenu()
@@ -86,10 +82,10 @@ export function ModePicker({
                 key={item.id}
                 type="button"
                 className={`model-option option-picker-option mode-option risk-${item.risk} ${isActive ? 'active' : ''}`}
-                aria-label={`${item.label}: ${item.riskLabel}，${item.desc}${migration ? '，确认后迁移旧权限' : ''}`}
+                aria-label={`${item.label}: ${item.riskLabel}，${item.desc}`}
                 onClick={() => {
                   closeMenu()
-                  if (isActive && !migration) return
+                  if (isActive) return
                   if (requiresFullAccessConfirmation(value, item.id)) {
                     setConfirmingFullAccess(true)
                     return

@@ -1,0 +1,13 @@
+/* Shared optical weight for application-drawn UI marks. Format assets and content
+   diagrams keep their own artwork. Filled status dots retain their semantics. */
+:is(.sidebar-svg-icon, .workspace-panel-svg-icon, .settings-gear-icon,
+  .settings-nav-arrow, .workspace-tree-chevron-icon, .workspace-tree-glyph-icon,
+  .agent-tool-activity-icon, .agent-activity-svg, .state-icon, .feedback-icon,
+  .archive-glyph, .send-round-icon, .conversation-resources-icon,
+  .branch-icon, .split-button-chevron-icon, .workspace-line-comment-add-icon,
+  .settings-select, .settings-select-menu) :is(path, rect, circle, ellipse, line, polyline, polygon) {
+  vector-effect: non-scaling-stroke;
+}
+.mode-risk-ring {
+  vector-effect: non-scaling-stroke;
+}

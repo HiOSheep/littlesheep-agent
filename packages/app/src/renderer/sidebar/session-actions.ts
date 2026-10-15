@@ -182,8 +182,6 @@ export function createSessionActions(context: SessionActionContext) {
 
 
   async function switchSession(session: SessionMeta, options: { forceReload?: boolean; preserveRoute?: boolean } = {}) {
-    const requestId = ++sessionLoadRequestRef.current
-    historyLoadRequestRef.current = 0
     const { id, workspacePath } = session
     setSidebarPanel(null)
     if (!options.preserveRoute) pushRoute({ section: 'chat' })
@@ -196,6 +194,9 @@ export function createSessionActions(context: SessionActionContext) {
     setSessionOwnership({ scope: session.scope, projectId: session.projectId })
     const sessionChanged = id !== currentSession
     if (!sessionChanged && !options.forceReload) return
+    // A repeat selection must not invalidate the history already loading for this session.
+    const requestId = ++sessionLoadRequestRef.current
+    historyLoadRequestRef.current = 0
     if (sessionChanged) {
       abortRef.current?.abort()
       setCurrentSession(id)

@@ -13,6 +13,7 @@ Settings 呈现 Main 提供的配置与工具。它拥有页面导航和临时�
 - 调整预设和自定义颜色时，根级颜色令牌在 240ms 内平滑插值，颜色字段立即展示已保存目标值；首次启动和减少动态效果开启时立即应用。应用内调色板使用圆角浮层与色域，支持色域拖动／方向键、色相和 RGB 输入；Escape 关闭并归还焦点，浮层保持在窗口内。
 - 设置搜索只索引安全、可见的字段标签和值，支持键盘移动、选择、焦点转移和 Escape 返回。密钥、cookie 和私有草稿永不索引。
 - 禁用操作同时显示与禁用原因相同事实来源的说明。
+- 操作反馈分两类且行为不同：**确认**（成功）用 `TransientNoticeToast` 悬浮显示并在 3 秒后自动消失，**失败／警告**用 `FeedbackNotice` 留在页面流内且永不自动消失——一个自己消失的失败是用户可能完全错过的失败。悬浮框 portal 到 `body` 且 `position: fixed`，避免出现和消失时推动页面内容。时间规则与验收见 `docs/reference/transient-notice-contract.md`。
 - 总览的常用设置行复用侧栏的交互框（`border: 0` + `--radius-ui` + `--sidebar-interaction-hover`），并且**行与行之间不留间隙**：留了间隙时圆角高亮填不满所在单元格，上下会各露出一条相邻行的底色。相关约定由 `sidebar-section-toggle.test.ts` 与真实窗口的 `verify:settings-overview-row-hover` 共同固定。
 - Token Usage 展示 Main 提供的有界每日用量 projection；不通过累加可见消息重算，并区分空、缺失、未来、partial 与真实零值。
 - 共享视觉角色和圆角材质见 `ui/README.md`。

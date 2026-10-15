@@ -509,7 +509,7 @@
   height: 15px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.55;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
   overflow: visible;
@@ -866,9 +866,7 @@
     grid-template-columns: 140px minmax(0, 1fr);
   }
 
-  .add-menu-panel {
-    width: min(420px, calc(100vw - 40px));
-  }
+
 
   .runtime-picker-panel {
     width: min(620px, calc(100vw - 40px));

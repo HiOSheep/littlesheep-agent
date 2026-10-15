@@ -30,11 +30,11 @@ describe('ProjectRebindingService', () => {
       const workspaceLayoutIndex = new WorkspaceLayoutIndex({ dataDir })
       const project = await projectIndex.ensure(fromPath)
       await sessionIndex.upsert('project-session', {
-        title: 'Project session', createdAt: 1, lastMessageAt: 2, mode: 'research',
+        title: 'Project session', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2,
         scope: 'project', projectId: project.id, workspacePath: fromPath,
       })
       await sessionIndex.upsert('standalone-session', {
-        title: 'Standalone session', createdAt: 1, lastMessageAt: 2, mode: 'research',
+        title: 'Standalone session', createdAt: 1, lastMessageAt: 2, mode: 'workspace-write', permissionVersion: 2,
         scope: 'standalone', workspacePath: fromPath,
       })
       const archivedSession = (await sessionIndex.list()).find((session) => session.id === 'project-session')!

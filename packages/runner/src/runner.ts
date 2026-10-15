@@ -1,4 +1,5 @@
 // @littlesheep/runner — runner.ts: shared agent runner used by the app and channels.
+import { takeRunMemoryCorrections } from './run-memory-corrections.js';
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import { MemoryAccessAuthorizationError } from '@littlesheep/memory-tree';
 import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, renderTaskbookSkillBody } from '@littlesheep/harness';
@@ -26,7 +27,7 @@ import type {
   DurableEffectProjection,
   DurableRunRecoveryResult,
 } from '@littlesheep/types';
-import { asSessionId, sanitizeWebEvidenceProjection, textMessage } from '@littlesheep/types';
+import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
 import { parseModelRef, type Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
@@ -193,6 +194,8 @@ export interface RunInput {
   memoryAccessGrant?: import('@littlesheep/memory-tree').MemoryAccessGrant;
   sessionId?: SessionId;
   text: string;
+  /** Model selected for this conversation; never changes the host default. */
+  model?: string;
   cwd?: string;
   signal?: AbortSignal;
   /** Per-run approve override. */
@@ -334,7 +337,6 @@ export interface AgentRunner {
 /** Build a runner. Async because the skill loader reads directories. */
 export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunner> {
   const model = opts.model ?? opts.config.agents.defaults.model;
-  const providerModel = parseModelRef(model).model;
   const conversationContinuationMode = resolveConversationContinuationMode(
     opts.conversationContinuationMode ?? process.env.LITTLESHEEP_CONVERSATION_CONTINUATION_MODE,
   );
@@ -357,6 +359,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     state,
     log: opts.log,
   });
+  const hostInfra = infra;
+  const defaultModel = model;
   // One Runner-owned kernel is shared by replay/recovery callers. Active runs
   // still serialize their own recorder appends; the durable event store is the
   // cross-process ordering boundary and recovery remains fail-closed on races.
@@ -432,7 +436,15 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     checkpointController,
     infra.runCheckpointStore,
     infra.executionLogStore,
-    model,
+    undefined,
+    async checkpoint => {
+      const saved = checkpoint.resumeState;
+      if (!saved) return [];
+      const inbound = await infra.sessionManager.findMessage(checkpoint.sessionId, saved.inboundMessageId);
+      if (!inbound || inbound.role !== 'user') return ['run checkpoint original inbound message is missing or invalid'];
+      try { hostInfra.forModel(saved.model); return []; }
+      catch { return ['checkpoint model is not available in the current host configuration']; }
+    },
   );
   const recoverCompletedConversationTurn = createConversationTurnRecovery({
     sessionManager: infra.sessionManager,
@@ -453,6 +465,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     continuation?: ContinuationInput,
     continuationEvidence: ConversationContinuationEvidence = { version: 1, resolution: 'none' },
   ): Promise<RunnerResult> {
+    const model = input.model ?? continuation?.checkpoint.resumeState?.model ?? defaultModel;
+    const infra = model === defaultModel ? hostInfra : hostInfra.forModel(model);
     const startedAt = Date.now();
     // A real Agent run may need exact model framing. Warm verified assets in
     // parallel with session/context assembly; Context Engine remains protected
@@ -460,6 +474,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     void infra.prepareTokenCounter?.().catch(() => undefined);
     const runtimeResourceStart = beginRuntimeResourceObservation();
     const runId = input.runId ?? randomUUID();
+    (state.modelsByRun ??= new Map()).set(runId, model);
     const origin = input.origin ?? continuation?.checkpoint.resumeState?.origin ?? 'cli';
     const cwd = input.cwd ?? continuation?.checkpoint.resumeState?.cwd ?? opts.config.agents.defaults.workspace;
     let activeCheckpoint: RunGitCheckpoint | undefined;
@@ -506,6 +521,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         sessionId = session.id;
       }
       state.sessionId = sessionId;
+      (state.sessionsByRun ??= new Map()).set(runId, sessionId);
       const memoryAccessContext = await infra.memoryService.createRunAccessContext({
         runId, sessionId: String(sessionId), workspace: cwd,
       }, input.memoryAccessGrant);
@@ -547,7 +563,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       infra.durableEventStore.trustExclusiveRunOwnership(String(sessionId), runId);
       const runtimeEventQueue = activeRuns.registerRun(runId, sessionId, continuation?.checkpoint.runtimeEventQueue, abortControl.registration);
       runtimeQueueRegistered = true;
+      let conversationTranscript: NonNullable<AgentResult['conversationTranscript']> = [];
       const onToolEvent = (event: ToolStreamEvent): void => {
+        conversationTranscript = reduceConversationTranscript(conversationTranscript, event);
         activeRuns.observe(runId, event);
         input.onToolEvent?.(event);
       };
@@ -933,9 +951,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               // Memory corrections committed by tools since the last finalize; reading them consumes
               // them, so the marker they feed is written exactly once and never leaks into a later run.
               readMemoryAtomCorrections: () => {
-                const records = state.memoryAtomCorrections ?? [];
-                state.memoryAtomCorrections = [];
-                return records;
+                return takeRunMemoryCorrections(state, runId);
               },
               assembleResult,
               log: opts.log,
@@ -943,6 +959,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
           },
           persist: async (finalizedRun) => {
+            finalizedRun.result.conversationTranscript = conversationTranscript;
             // FINALIZE/compaction may prepare one last model request. Close
             // that lifecycle before the audit receipt and final settlement.
             await flushModelRequestLifecycles(ctx);
@@ -1048,8 +1065,11 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           opts.log?.('error', `runner: failed to seal completed run checkpoint: ${(error as Error).message}`);
         }
       }
-      return { ...result, durableHarnessMode };
+      return { ...result, conversationTranscript, durableHarnessMode };
     } finally {
+      state.modelsByRun?.delete(runId);
+      state.sessionsByRun?.delete(runId);
+      takeRunMemoryCorrections(state, runId);
       infra.skillLoader?.unregisterDynamic?.(TASKBOOK_SKILL_NAME);
       if (durableRecorder && !durableOutcomeRecorded) {
         if (runContext) {
@@ -1123,6 +1143,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             cwd: input.cwd,
             origin: input.origin,
             permissionPolicyId: input.permissionPolicyId,
+            model: input.model,
             reasoning: input.reasoning,
             profile: input.profile,
             attachments: input.attachments,
@@ -1132,7 +1153,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     if (!checkpointController || !input.sessionId || conversationContinuationMode === 'off') {
       return executeRun(input, undefined, baseEvidence)
     }
-    const resolution = await checkpointController.resolveWaitingUserHead(input.sessionId, model)
+    const resolution = await checkpointController.resolveWaitingUserHead(input.sessionId, input.model ?? model)
     if (conversationContinuationMode === 'shadow') {
       return executeRun(input, undefined, shadowContinuationEvidence(
         baseEvidence,
@@ -1220,6 +1241,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     }
     const checkpoint = await infra.runCheckpointStore.read(checkpointId)
     if (!checkpoint) throw new Error(`run checkpoint not found: ${checkpointId}`)
+    const model = checkpoint.resumeState?.model ?? defaultModel;
     const state = checkpoint.resumeState
     if (!state) throw new Error('run checkpoint is inspect-only because it has no resume state')
     const inbound = await infra.sessionManager.findMessage(checkpoint.sessionId, state.inboundMessageId)
@@ -1319,8 +1341,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             reason: 'reused the durable disposition from the interrupted claim',
           }
         : await resolveContinuationDisposition({
-            llm: infra.llm,
-            model: providerModel,
+            llm: hostInfra.forModel(model).llm,
+            model: parseModelRef(model).model,
             checkpoint,
             request: clarificationRequest!,
             answer: answerText!,
@@ -1593,6 +1615,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     try {
       const result = await executeRun({
         sessionId: checkpoint.sessionId,
+        model: state.model,
         text: isClarification ? answerText! : messageText(inbound),
         memoryAccessGrant: options.memoryAccessGrant,
         cwd: options.cwd ?? recoveryState.cwd,
@@ -1742,6 +1765,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       requestKey: input.requestKey,
       text: input.text,
       checkpointId,
+      model: input.model,
       cwd: input.cwd,
       origin: input.origin,
       permissionPolicyId: input.permissionPolicyId,
@@ -1947,6 +1971,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       durationMs: log.durationMs,
       usage: log.usage,
       systemPromptProjection: log.systemPromptProjection,
+      conversationTranscript: log.conversationTranscript,
       resolvedRunConfig: log.resolvedRunConfig,
       capabilitySnapshot: log.capabilitySnapshot, capabilityProbe: log.capabilityProbe, capabilityPermissionEvent: log.capabilityPermissionEvent,
       modelRequests: log.modelRequests,
@@ -2019,8 +2044,21 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
   return {
     run,
-    runStream: (input: RunInput, onDelta: (delta: string) => void) =>
-      run({ ...input, onAssistantDelta: onDelta }),
+    runStream: (input: RunInput, onDelta: (delta: string) => void) => {
+      // Rich clients already consume ordered prose events; replaying them as a
+      // second preview channel duplicates progress and invents aborted previews.
+      if (input.onToolEvent) return run({ ...input, onAssistantDelta: onDelta });
+      const prose = new Map<string, string>();
+      return run({ ...input, onAssistantDelta: onDelta, onToolEvent: event => {
+        input.onToolEvent?.(event);
+        if (event.type !== 'model_text' || !event.streamRef || !event.phaseId) return;
+        const previous = prose.get(event.phaseId) ?? '';
+        if (event.streamRef.operation === 'reset') { prose.delete(event.phaseId); return; }
+        const text = event.streamRef.operation === 'append' ? previous + (event.summary ?? '') : event.summary ?? '';
+        prose.set(event.phaseId, text);
+        if (text.startsWith(previous) && text.length > previous.length) onDelta(text.slice(previous.length));
+      } });
+    },
     resumeCheckpoint,
     runCheckpoints,
     replay: (runId: string) => infra.executionLogStore.read(runId),

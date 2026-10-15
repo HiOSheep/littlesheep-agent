@@ -58,11 +58,15 @@ describe('chat scroll controller wiring', () => {
     expect(view).toContain('const offeredJumpRef = useRef({ latest: showJumpControls })')
     expect(view).toContain("data-motion={jumpMotion}")
     // A circle, centred, 16px above the input's visible top edge (the measured overlay height starts
-    // at the composer shell, so its own top padding is subtracted). DSH floats it on the opaque card
-    // surface with the panel elevation, next to the transcript rather than through it.
+    // at the composer shell, so its own top padding is subtracted). It floats the way the other
+    // floating controls do — the float/menu glass fill plus a real blur — rather than on the opaque
+    // card surface (asked for 2026-10-15).
     expect(styles).toMatch(/\.chat-jump-controls\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?bottom:\s*calc\(var\(--composer-overlay-height\) - var\(--composer-shell-inset-top\) \+ 16px\);[\s\S]*?left:\s*50%;/u)
     expect(styles).toMatch(/\.chat-jump-button\s*\{[\s\S]*?width:\s*34px;[\s\S]*?height:\s*34px;[\s\S]*?border:\s*0;[\s\S]*?border-radius:\s*var\(--radius-circle\);[\s\S]*?box-shadow:\s*var\(--chat-panel-elevation\);/u)
-    expect(styles).toMatch(/\.chat-jump-button\s*\{[\s\S]*?color:\s*var\(--jump-to-latest-arrow\);[\s\S]*?background:\s*var\(--chat-card-fill\);/u)
+    expect(styles).toMatch(/\.chat-jump-button\s*\{[\s\S]*?color:\s*var\(--jump-to-latest-arrow\);[\s\S]*?background:\s*var\(--composer-surface\);[\s\S]*?backdrop-filter:\s*blur\(18px\) saturate\(135%\);/u)
+    // Hovering changes the glass' colour and brightens the arrow instead of dropping the fill to a
+    // near-transparent tint, which used to leave the control looking transparent under the pointer.
+    expect(styles).toMatch(/\.chat-jump-button:hover,\s*\.chat-jump-button:focus-visible\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--jump-to-latest-arrow\) 26%, var\(--composer-surface\)\);[^}]*color:\s*var\(--text-strong\);/u)
     // The droplet grows out of the composer's top edge, and the hidden state is that same drop.
     expect(styles).toMatch(/\.chat-jump-controls\s*\{[\s\S]*?transform-origin:\s*50% calc\(100% \+ 16px\);/u)
     expect(styles).toMatch(/\.chat-jump-controls\[data-motion="entering"\],[\s\S]*?\.chat-jump-controls\[data-motion="exiting"\]\s*\{[^}]*opacity:\s*0;[^}]*transform:\s*translateX\(-50%\) translateY\(14px\) scale\(0\.18\);/u)
@@ -120,12 +124,14 @@ describe('chat scroll controller wiring', () => {
     expect(view).toContain("document.addEventListener('keydown', handleKeyDown)")
   })
 
-  it('lets only the reader clear the reading flags', async () => {
+  it('derives the button from geometry separately from output-following intent', async () => {
     const hook = await source('./use-chat-scroll-controller.ts')
 
     // Both flags derive from the measured position; output arriving while away only sets them.
     expect(hook).toMatch(/const nearBottom = isChatNearBottom\(geometry, CHAT_STICKY_BOTTOM_THRESHOLD\)[\s\S]*?setReadingAway\(!nearBottom\)[\s\S]*?if \(nearBottom\) setHasNewContent\(false\)/)
-    expect(hook).toMatch(/const grew = chatContentSignature\(messages\) !== observedContentRef\.current[\s\S]*?if \(shouldStickToBottom\)[\s\S]*?setHasNewContent\(false\)[\s\S]*?\} else \{[\s\S]*?if \(grew\) setHasNewContent\(true\)/)
+    expect(hook).toMatch(/const grew = chatContentSignature\(messages\) !== observedContentRef\.current[\s\S]*?if \(shouldStickToBottom\)[\s\S]*?setHasNewContent\(false\)[\s\S]*?\} else \{[\s\S]*?if \(grew && !nearBottom\) setHasNewContent\(true\)/)
+    expect(hook).toContain('if (content) observer.observe(content)')
+    expect(hook).not.toContain('setReadingAway(true)')
     expect(hook).toMatch(/const scrollToLatest = useCallback\(\(\) => \{[\s\S]*?setReadingAway\(false\)[\s\S]*?setHasNewContent\(false\)/)
   })
 

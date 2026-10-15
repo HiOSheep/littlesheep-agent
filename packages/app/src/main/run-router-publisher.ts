@@ -13,12 +13,15 @@
 // routes can arrive in the same tick, and neither may read "no router yet" as
 // "nothing to wait for".
 import type { AgentRunner } from '@littlesheep/runner'
+import { ShellRepeatAuthorizationStore } from './shell-repeat-authorization-store.js'
 import { RunRouter } from './local-app-api/run-routes.js'
 
 export class RunRouterPublisher {
   private pending: Promise<RunRouter> | undefined
   private active: RunRouter | undefined
   private generation = 0
+
+  constructor(private readonly shellRepeatAuthorizations = new ShellRepeatAuthorizationStore()) {}
 
   /** The router that serves requests, once one has been published. */
   current(): RunRouter | undefined {
@@ -34,7 +37,7 @@ export class RunRouterPublisher {
    */
   async publish(runner: AgentRunner): Promise<void> {
     const generation = ++this.generation
-    const pending = RunRouter.create(runner)
+    const pending = RunRouter.create(runner, this.shellRepeatAuthorizations)
     this.pending = pending
     const next = await pending
     if (generation === this.generation) this.active = next

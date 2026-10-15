@@ -52,7 +52,8 @@ export function currentRuntimeContextFields(ctx: RunContext): RuntimeContextFiel
   const provider = resolved?.provider ?? providerOf(ctx.model);
   const model = resolved?.model ?? modelOf(ctx.model);
   const shell = describeExecutionShell();
-  const permission = resolved?.permissionPolicyId;
+  const policy = ctx.toolContext.permissionPolicyV2;
+  const permission = policy?.preset ?? ctx.toolContext.permissionPreset ?? resolved?.permissionPolicyId;
   const network = resolved?.networkPolicy?.enabled;
   return {
     model: `${provider}/${model}`,
@@ -61,6 +62,12 @@ export function currentRuntimeContextFields(ctx: RunContext): RuntimeContextFiel
     access: [
       `permission=${permission ?? 'unknown'}`,
       `network=${network === undefined ? 'unknown' : network ? 'enabled' : 'disabled'}`,
+      ...(policy ? [
+        `workspace=${policy.workspaceRoot ?? 'unavailable'}`,
+        `native_file_writes=${policy.constraints.workspaceFileWrites}`,
+        'use read/write/edit for ordinary workspace files; read existing files before editing or overwriting',
+        'Shell, unguarded searches, documents and plugins require approval; do not substitute Shell for native file operations',
+      ] : []),
     ].join('; '),
     tools: String(resolved?.availableToolNames?.length ?? ctx.tools?.length ?? 0),
   };

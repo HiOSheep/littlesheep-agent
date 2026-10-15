@@ -8,7 +8,7 @@
 import type { FinalReplyReservation, FinalReplySettlement, Message, ReplyProvenance } from './message.js';
 import type { CompactionSummary, SessionId } from './session.js';
 import type { AgentTool, ToolContext } from './tool.js';
-import type { ToolStreamEvent } from './activity.js';
+import type { ToolStreamEvent, ConversationTranscriptEntry } from './activity.js';
 import type { MemoryPrelude } from './memory.js';
 import type { ClarificationRequest, ClarificationResponse } from './clarification.js';
 import type { ClassificationReasonCode, PersistedWorkPolicy } from './work-policy.js';
@@ -472,6 +472,7 @@ export interface AgentRun {
 
 /** Final result of a run. */
 export interface AgentResult {
+  conversationTranscript?: ConversationTranscriptEntry[];
   runId: string;
   status: RunStatus;
   reply?: string;

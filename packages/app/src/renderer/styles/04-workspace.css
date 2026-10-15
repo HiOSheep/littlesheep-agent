@@ -218,7 +218,8 @@
   border-radius: var(--radius-ui);
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.44);
   font-size: var(--composer-hover-tip-font-size);
-  font-weight: 600;
+  /* Same body-copy weight as the shared hover tip and the transcript (asked for 2026-10-15). */
+  font-weight: 400;
   line-height: 1.35;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -243,15 +244,20 @@
   place-items: center;
   width: 26px;
   height: 24px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-icon);
+  /* The tab row's own material and corner, so the control that brings the workspace back reads
+     as one more tab-row chip (asked for 2026-10-15): it used to be an opaque `--control-hover`
+     fill inside a `--border-strong` outline, which drew a frame around the control instead of
+     floating it on the canvas. The 14% text wash is the tab's own glass fill. */
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  border: 0;
+  border-radius: var(--radius-ui);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+  backdrop-filter: blur(12px) saturate(135%);
   opacity: 0;
   transform: translateX(6px);
   transition:
     color var(--motion-fast) var(--motion-ease),
     background-color var(--motion-fast) var(--motion-ease),
-    border-color var(--motion-fast) var(--motion-ease),
     opacity var(--motion-base) var(--motion-ease),
     transform var(--motion-base) var(--motion-ease);
 }
@@ -264,10 +270,14 @@
 .window-shell.workspace-panel-collapsed .workspace-panel-reopen-target.reopen-visible .workspace-panel-reopen-icon,
 .window-shell.workspace-panel-collapsed .workspace-panel-reopen-target:hover .workspace-panel-reopen-icon,
 .window-shell.workspace-panel-collapsed .workspace-panel-reopen-target:focus-visible .workspace-panel-reopen-icon {
-  background: var(--control-hover);
-  border-color: var(--border-strong);
   opacity: 1;
   transform: translateX(0);
+}
+
+/* The pointer lifts the wash; the glyph brightens with the target's own hover colour. */
+.window-shell.workspace-panel-collapsed .workspace-panel-reopen-target:hover .workspace-panel-reopen-icon,
+.window-shell.workspace-panel-collapsed .workspace-panel-reopen-target:focus-visible .workspace-panel-reopen-icon {
+  background: color-mix(in srgb, var(--text) 22%, transparent);
 }
 
 .workspace-panel-contents {
@@ -299,17 +309,14 @@
   justify-content: space-between;
   gap: 12px;
   height: var(--workspace-tab-row-height);
-  /* The add control and the window controls are painted over this row, so the tab strip has to end
-     before them: with the old 67px reserve the tabs scrolled under the + control and the label ran
-     through it (asked for 2026-10-03). Two control boxes and their gaps, measured from the close line,
-     plus one gap of daylight - less the 12px the panel contents already inset this header by. */
+  /* Reserve only the stationary window controls. The non-scrolling add button
+     follows the intrinsic tab width and reaches its right-hand limit on overflow. */
   padding-right: calc(
     var(--workspace-panel-close-line)
     + var(--workspace-tab-height) / 2
     + var(--workspace-tab-row-gap)
-    + var(--workspace-tab-height) * 2
+    + var(--workspace-tab-height)
     + var(--workspace-tab-row-gap)
-    + 4px
     - 12px
   );
   flex: 0 0 auto;
@@ -318,6 +325,7 @@
 .workspace-panel-topbar {
   display: flex;
   align-items: center;
+  gap: var(--workspace-tab-row-gap);
   height: var(--workspace-tab-row-height);
   flex: 1 1 auto;
   min-width: 0;
@@ -1845,7 +1853,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-glyph-icon path {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.35;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1864,7 +1872,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-glyph-icon.file-glyph-icon .file-glyph-fold {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1876,13 +1884,13 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-body {
   fill: color-mix(in srgb, currentColor 10%, transparent);
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--icon-stroke);
 }
 
 .workspace-tree-glyph-icon.folder-glyph-icon .folder-glyph-seam {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--icon-stroke);
 }
 
 .workspace-tree-glyph-icon.file-glyph-image {
@@ -1893,7 +1901,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
 .workspace-tree-glyph-icon.file-glyph-image .file-glyph-image-mountains {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1996,6 +2004,15 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   color: var(--text-strong);
   background: var(--control-hover);
   outline: 0;
+}
+
+/* The trail's first crumb starts at the row's own edge. The negative margin exists so an
+   ancestor's fill covers the gap beside its separator, but there is no gap to the left of the
+   first one, and the row clips: the fill's left 3px were cut and the label sat flush against
+   the clip with its rounded corner shaved off (asked for 2026-10-15). Keeping the bleed on
+   every later crumb leaves the trail's separators covered as before. */
+.workspace-preview-breadcrumbs > span:first-child > .workspace-preview-crumb {
+  margin-left: 0;
 }
 
 .workspace-preview-breadcrumbs em {
@@ -3166,7 +3183,7 @@ body.is-resizing-column .workspace-files-navigator.navigator-drag-live .workspac
   height: 11px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
   color: var(--muted);

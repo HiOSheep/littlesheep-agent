@@ -64,6 +64,25 @@ describe('native window chrome', () => {
     expect(win.webContents.send.mock.lastCall?.[0]).toBe(WINDOW_CHROME_CHANNEL)
   })
 
+  it('releases every listener after Electron destroys the window getter', () => {
+    const { win, query, appearance } = fixture()
+    const contents = win.webContents
+    win.emit('resize')
+    Object.defineProperty(win, 'webContents', { get: () => {
+      if (win.destroyed) throw new TypeError('Object has been destroyed')
+      return contents
+    } })
+    win.destroyed = true
+    expect(() => win.emit('closed')).not.toThrow()
+    expect(contents.listenerCount('did-finish-load')).toBe(0)
+    expect(win.listenerCount('resize')).toBe(0)
+    expect(ipc.removeListener).toHaveBeenCalledWith(WINDOW_CHROME_QUERY_CHANNEL, query)
+    expect(ipc.removeListener).toHaveBeenCalledWith(WINDOW_APPEARANCE_CHANNEL, appearance)
+    expect(theme.removeListener).toHaveBeenCalledWith('updated', expect.any(Function))
+    expect(() => query({ sender: contents })).not.toThrow()
+    expect(() => appearance({ sender: contents }, { isDark: false })).not.toThrow()
+  })
+
   it('rejects other senders and unregisters the query on close', () => {
     const { win, query } = fixture()
     query({ sender: {} })

@@ -820,12 +820,12 @@ describe('chat layout stability', () => {
     expect(styles).not.toContain('clip-path: circle(')
     expect(styles).not.toMatch(/\.settings-workspace\s*\{[^}]*transform:/u)
     expect(styles).toMatch(/\.presence-layer\s*\{[^}]*position:\s*fixed;[^}]*inset:\s*0;/u)
-    expect(styles).toMatch(/--settings-reveal-motion:\s*560ms;/u)
+    expect(styles).toMatch(/--settings-reveal-motion:\s*220ms;/u)
     expect(styles).toMatch(/--settings-sidebar-exit-reveal-delay:\s*80ms;/u)
     expect(styles).not.toContain('clip-path: circle(0 at var(--settings-origin-x) var(--settings-origin-y))')
     const overlaysView = await readRendererFile('./app-shell/overlays-view.tsx')
     const presence = await readRendererFile('./ui/presence.tsx')
-    expect(overlaysView).toContain('exitMs={560}')
+    expect(overlaysView).toContain('exitMs={220}')
     expect(overlaysView).toContain('enterFrames={1}')
     expect(overlaysView).toContain('keepMounted')
     expect(overlaysView).toContain('onExited={finishSettingsReturn}')
@@ -869,6 +869,12 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-row-inset:\s*4px;[^}]*--workspace-tab-row-height:\s*30px;/u)
     expect(styles).toMatch(/\.workspace-tab-row-control\s*\{[^}]*position:\s*absolute;[^}]*top:\s*var\(--workspace-tab-row-inset\);[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
     expect(styles).toMatch(/\.workspace-panel-corner-toggle\s*\{[^}]*right:\s*calc\(\s*var\(--workspace-panel-close-line\)/u)
+    // Collapsed, the panel's stationary toggle and the chat's resources control share one row:
+    // they are spaced by the tab row's own gap, not by the 12px the panel's popover reserves
+    // (asked for 2026-10-15).
+    expect(styles).toMatch(
+      /\.conversation-resources\[data-workspace-collapsed='true'\]\s*\{[^}]*right:\s*calc\(var\(--workspace-panel-close-line\) \+ var\(--workspace-tab-height\) \/ 2 \+ var\(--workspace-tab-row-gap\)\);/u,
+    )
     // The two controls are the tab's own box, and the action keeps the row-height offset so the
     // smaller boxes gain gap instead of overlapping.
     expect(styles).toMatch(/\.core-workspace\s*\{[^}]*--workspace-tab-height:\s*26px;/u)
@@ -884,17 +890,29 @@ describe('chat layout stability', () => {
     expect(dockView).toContain('useLayoutEffect')
     expect(dockView).toContain('--workspace-panel-toggle-top')
     expect(styles).not.toMatch(/\.workspace-panel-actions\s*\{[^}]*top:/u)
-    expect(styles).toMatch(/\.workspace-panel-reopen-icon\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*24px;[\s\S]*?border-radius:\s*var\(--radius-icon\);/u)
-    expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel-reopen-target\.reopen-visible \.workspace-panel-reopen-icon,[\s\S]*?border-color:\s*var\(--border-strong\);/u)
+    // The reopen chip is the tab row's own plate: frosted glass, no stroke, the tab's corner
+    // (asked for 2026-10-15). It used to be an opaque `--control-hover` fill inside a
+    // `--border-strong` outline.
+    const reopenChip = styles.slice(
+      styles.indexOf('.workspace-panel-reopen-icon {'),
+      styles.indexOf('.workspace-panel-contents {'),
+    )
+    expect(reopenChip).toContain('width: 26px;')
+    expect(reopenChip).toContain('height: 24px;')
+    expect(reopenChip).toContain('border-radius: var(--radius-ui);')
+    expect(reopenChip).toContain('background: color-mix(in srgb, var(--text) 14%, transparent);')
+    expect(reopenChip).toContain('backdrop-filter: blur(12px) saturate(135%);')
+    expect(reopenChip).toContain('border: 0;')
+    expect(reopenChip).not.toContain('border-color')
     expect(styles).toMatch(/\.workspace-panel-reopen-label\s*\{[\s\S]*?width:\s*var\(--composer-hover-tip-width\);[\s\S]*?min-height:\s*var\(--composer-hover-tip-min-height\);[\s\S]*?padding:\s*var\(--composer-hover-tip-padding-block\) var\(--composer-hover-tip-padding-inline\);[\s\S]*?background:\s*var\(--composer-hover-tip-background\);[\s\S]*?border:\s*0;[\s\S]*?box-shadow:\s*0 14px 36px rgba\(0, 0, 0, 0\.44\);[\s\S]*?font-size:\s*var\(--composer-hover-tip-font-size\);/u)
-    expect(styles).toMatch(/\.workspace-panel-reopen-label\s*\{[\s\S]*?font-weight:\s*600;[\s\S]*?white-space:\s*pre-wrap;[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?word-break:\s*break-word;/u)
+    expect(styles).toMatch(/\.workspace-panel-reopen-label\s*\{[\s\S]*?font-weight:\s*400;[\s\S]*?white-space:\s*pre-wrap;[\s\S]*?overflow-wrap:\s*anywhere;[\s\S]*?word-break:\s*break-word;/u)
     expect(panelView).not.toContain('workspace-context-line')
     expect(panelView).not.toContain("'目标工作区'")
     expect(panelView).not.toContain("'默认工作区'")
     expect(styles).not.toContain('.workspace-context-line')
     expect(styles).toMatch(/\.sidebar-toggle-btn\s*\{[\s\S]*?width:\s*26px;[\s\S]*?height:\s*24px;[\s\S]*?border-radius:\s*var\(--radius-icon\);[\s\S]*?transition:/u)
     expect(styles).toMatch(/\.sidebar-toggle-icon\s*\{[\s\S]*?width:\s*18px;[\s\S]*?height:\s*14px;[\s\S]*?shape-rendering:\s*geometricPrecision;/u)
-    expect(styles).toMatch(/\.sidebar-toggle-outline,\s*\.sidebar-toggle-divider\s*\{[\s\S]*?stroke-width:\s*1;[\s\S]*?vector-effect:\s*non-scaling-stroke;/u)
+    expect(styles).toMatch(/\.sidebar-toggle-outline,\s*\.sidebar-toggle-divider\s*\{[\s\S]*?stroke-width:\s*var\(--icon-stroke\);[\s\S]*?vector-effect:\s*non-scaling-stroke;/u)
     expect(styles).toMatch(/\.sidebar-toggle-divider\s*\{[\s\S]*?transform var\(--sidebar-collapse-motion\) var\(--motion-ease\)/u)
     expect(styles).toMatch(/\.workspace-panel-toggle-icon \.sidebar-toggle-divider\s*\{[^}]*transform:\s*translateX\(-4px\);/u)
     expect(styles).toMatch(/\.window-shell\.workspace-panel-collapsed \.workspace-panel-toggle-icon \.sidebar-toggle-divider,[\s\S]*?transform:\s*translateX\(0\);/u)
@@ -919,7 +937,7 @@ describe('chat layout stability', () => {
     // The header reserves room for the add control and the window controls that are painted over it,
     // so a long tab list ends before them instead of scrolling underneath (asked for 2026-10-03).
     expect(styles).toMatch(/\.workspace-panel-header\s*\{[^}]*height:\s*var\(--workspace-tab-row-height\);[^}]*padding-right:\s*calc\(/u)
-    expect(ruleBody(styles, '.workspace-panel-header')).toContain('--workspace-tab-height) * 2')
+    expect(ruleBody(styles, '.workspace-panel-header')).not.toContain('--workspace-tab-height) * 2')
     expect(styles).toMatch(/\.workspace-panel-topbar\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--workspace-tab-row-height\);/u)
     expect(styles).not.toMatch(/\.window-shell\.workspace-panel-(?:drag-)?fullscreen \.workspace-panel-(?:contents|header|body)/u)
     expect(styles).not.toMatch(/\.workspace-panel-contents\s*\{[^}]*transition:[^}]*padding/u)

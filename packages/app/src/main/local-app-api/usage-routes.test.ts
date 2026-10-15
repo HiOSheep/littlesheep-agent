@@ -44,7 +44,7 @@ async function fixture(): Promise<Fixture> {
     title: 'known',
     createdAt: 1,
     lastMessageAt: 1,
-    mode: 'limited',
+    mode: 'read-only',
     scope: 'standalone',
   })
   const state = { runnerReady: true }

@@ -10,6 +10,8 @@ import {
   type DevelopmentEnvironmentSnapshot,
 } from '../api/development-environments'
 import { FolderGlyphIcon, RefreshIcon, TrashIcon } from '../ui/icons'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 
 export function SettingsDevelopmentEnvironmentsPage() {
   const [snapshot, setSnapshot] = useState<DevelopmentEnvironmentSnapshot | null>(null)
@@ -17,7 +19,8 @@ export function SettingsDevelopmentEnvironmentsPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  // A success confirmation floats and clears itself; a failure stays on the page.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const aliveRef = useRef(true)
 
   useEffect(() => () => {
@@ -56,14 +59,14 @@ export function SettingsDevelopmentEnvironmentsPage() {
     if (busyId) return
     setBusyId(environment.id)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const version = versions[environment.id]?.trim() || null
       const next = await saveDevelopmentEnvironmentPreference({ environmentId: environment.id, version })
       if (!aliveRef.current) return
       setSnapshot(next)
       setVersions(snapshotVersions(next))
-      setNotice(`${environment.label} 的版本偏好已保存。`)
+      showNotice(`${environment.label} 的版本偏好已保存。`)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -75,14 +78,14 @@ export function SettingsDevelopmentEnvironmentsPage() {
     if (busyId) return
     setBusyId(`import:${environment.id}`)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const version = versions[environment.id]?.trim() || null
       const next = await importDevelopmentEnvironment({ environmentId: environment.id, version })
       if (!aliveRef.current) return
       setSnapshot(next)
       setVersions(snapshotVersions(next, environment.id, version ?? ''))
-      setNotice(`${environment.label} 已导入并完成版本校验。`)
+      showNotice(`${environment.label} 已导入并完成版本校验。`)
     } catch (cause) {
       if (aliveRef.current) setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -94,13 +97,13 @@ export function SettingsDevelopmentEnvironmentsPage() {
     if (busyId) return
     setBusyId(`remove:${environment.id}:${version}`)
     setError('')
-    setNotice('')
+    clearNotice()
     try {
       const next = await removeDevelopmentEnvironment({ environmentId: environment.id, version })
       if (!aliveRef.current) return
       setSnapshot(next)
       setVersions(snapshotVersions(next))
-      setNotice(`${environment.label} ${version} 已从 LS 工具链目录移除。`)
+      showNotice(`${environment.label} ${version} 已从 LS 工具链目录移除。`)
     } catch (cause) {
       if (aliveRef.current) setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -161,7 +164,7 @@ export function SettingsDevelopmentEnvironmentsPage() {
       ))}
 
       {!snapshot && !error && <div className="development-environments-empty">正在读取开发环境状态...</div>}
-      {notice && <div className="storage-settings-notice" role="status">{notice}</div>}
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="storage-settings-notice" data-tone="error" role="alert">{error}</div>}
     </div>
   )

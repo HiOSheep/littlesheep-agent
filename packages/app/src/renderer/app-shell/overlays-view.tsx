@@ -6,12 +6,15 @@ import {
 } from '../api'
 import { ApprovalPrompt } from '../approval/prompt'
 import { ProjectCreatorDialog } from '../sidebar/project-creator'
-import { CheckpointRecovery } from '../runtime-recovery/checkpoint-recovery'
 import { FloatingHelpTooltip } from '../ui/floating-help'
 import { FadePresence } from '../ui/presence'
 import type { OverlaysViewController } from './app-controller-projections'
 
 const SettingsWorkspace = lazy(async () => ({ default: (await import('../settings/workspace')).SettingsWorkspace }))
+
+export function prepareSettingsWorkspace(): void {
+  void import('../settings/workspace').catch(() => { /* The actual visit reports a loading failure. */ })
+}
 
 
 
@@ -19,7 +22,6 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
   const {
     runtime,
     pendingApproval,
-    checkpointRecovery,
     sidebarCollapsed,
     projectCreatorOpen,
     setProjectCreatorOpen,
@@ -49,14 +51,14 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
 <>
       <FadePresence
         show={settingsOpen}
-        exitMs={560}
+        exitMs={220}
         enterFrames={1}
-        interactiveDuringExit
+        interactiveDuringExit={false}
         keepMounted
         onExited={finishSettingsReturn}
         className="settings-presence"
       >
-        {settingsVisited.current && <Suspense fallback={<div className="settings-workspace" role="status">加载设置…</div>}><SettingsWorkspace
+        {settingsVisited.current && <Suspense fallback={null}><SettingsWorkspace
           page={settingsPage}
           runtime={runtime}
           sidebarCollapsed={sidebarCollapsed}
@@ -85,7 +87,6 @@ export function OverlaysView({ controller }: { controller: OverlaysViewControlle
         onChooseParent={selectWorkspace}
         onCreateNew={createProjectInFolder}
       />
-      <CheckpointRecovery recovery={checkpointRecovery} />
       <ApprovalPrompt prompt={pendingApproval} onResolve={settleApprovalPrompt} />
       <FloatingHelpTooltip tip={controlTip} />
 

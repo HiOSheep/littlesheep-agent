@@ -4,7 +4,7 @@
 export function ActivityGlyph({
   kind,
 }: {
-  kind: 'system' | 'reasoning' | 'step' | 'context_injection' | 'cross_session_recall' | 'context_compaction'
+  kind: 'system' | 'reasoning' | 'step' | 'pending' | 'context_injection' | 'cross_session_recall' | 'context_compaction'
 }) {
   const common = { className: 'agent-activity-svg', viewBox: '0 0 16 16' }
   if (kind === 'system') return <svg {...common}><rect x="2" y="2" width="12" height="12" rx="2" /><path d="M5 6h6M5 9h4M5 12h2" /></svg>
@@ -12,5 +12,6 @@ export function ActivityGlyph({
   if (kind === 'cross_session_recall') return <svg {...common}><path d="M3 5.5A5.5 5.5 0 1 1 2.8 10" /><path d="M3 2.5v3H6M8 5v3l2 1.2" /></svg>
   if (kind === 'context_compaction') return <svg {...common}><path d="M2.5 5h4V1M13.5 5h-4V1M2.5 11h4v4M13.5 11h-4v4" /><path d="m6.5 9.5 3-3" /></svg>
   if (kind === 'context_injection') return <svg {...common}><path d="M8 2v9M4.5 7.5 8 11l3.5-3.5M3 14h10" /></svg>
+  if (kind === 'pending') return <svg {...common}><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2 1.5" /></svg>
   return <svg {...common}><circle cx="8" cy="8" r="5.5" /><path d="m5.5 8 1.7 1.7 3.5-3.7" /></svg>
 }

@@ -1,6 +1,6 @@
 # Permission V2-S Shell 授权契约：S0 审计与实施边界
 
-**状态：S0 源码审计与 S1 Main 统一审批已完成；S3 旧权限迁移已实施。** S1 与 S3 均以用户提供的 Permission V2-S 契约为验收基准。S2 精确重复授权仍是后续独立阶段，必须先修订 P3 决策并通过单独安全门禁；P3 OS Shell 沙箱集成继续冻结。
+**状态：S0 源码审计、S1 Main 统一审批、S3 旧权限数据破坏性退役和 S2 精确命令重复授权均已实施。** S2 已单独修订 P3 决策并完成专项测试；用户于 2026-10-15 明确要求移除所有授权查看、列表和手动撤销入口，因此本文的早期“必须提供撤销入口”审计建议由更新后的 P3 决策取代。P3 OS Shell 沙箱生产集成继续冻结。
 
 ## 审计结论
 
@@ -69,7 +69,7 @@ S1 应先为每条调用生成 Main 校验的版本化描述：原始 command �
 
 证据：[builtin 局部批准条件](../../packages/tools/src/tool-execution-service.ts#L633)。
 
-此外，`exec` 当前工具说明声明相同成功调用会被当作 replay 拒绝。S2 的授权匹配与执行账本的重复副作用控制是两个独立决定：即使将来精确授权有效，也不能据此绕过账本拒绝。进入 S2 前需要核对当前账本实现、明确允许重复的固定模板与重复执行语义，并独立测试；当前文档不决定放宽 replay 规则。
+此外，`exec` 当前工具说明声明相同成功调用会被当作 replay 拒绝。S2 的授权匹配与执行账本的重复副作用控制是两个独立决定：精确授权不能据此绕过账本拒绝。当前实现已核对账本限制、限定固定模板与重复执行语义，并独立测试。
 
 源码中的四态名称为 `allow / approval / deny / unavailable`，本提案的 `ask` 应在协议设计时明确映射到 `approval`，不应无计划地新增第五种有效状态。`action: exec` 表示工具调用身份；安全 descriptor 的 `action: execute` 表示权限动作，两者也必须显式映射，不能按名称相同推断可信 builtin 身份。
 
@@ -79,7 +79,7 @@ S1 可以仅改变已知命令的呈现方式：把同一模型响应中、已�
 
 该语义仍是“每个 invocation 获得明确用户同意”，没有 Shell 自动放行，也没有 Session grant。P3 决策目前冻结 V2 Shell 自动放行和生产沙箱集成；S1 不改变该安全结论。为避免把“逐次审批”误读为“必须逐个打开弹窗”，建议在 S1 实施时仅补充决策说明：同屏确认清单不改变每个 invocation 独立批准的语义。若产品决策坚持每条命令必须独立交互，则应以 ADR 决定为准，不启用批次按钮。
 
-“本对话记住精确命令”会建立重复执行预授权，是对现有逐次 Shell 政策的例外。S2 实施前必须修订 P3 决策，并完成独立威胁模型、固定命令模板审查、Main 持有的会话/工作区绑定、次数/时限、撤销入口、失效测试和真实桌面验收。提案中的 30 分钟/20 次仅为候选参数，具体参数须在 S2 验收中确定。
+“本对话记住精确命令”会建立重复执行预授权，是对现有逐次 Shell 政策的例外。S2 需要修订 P3 决策并完成独立威胁模型、固定命令模板审查、Main 持有的会话/工作区绑定、次数/时限、失效测试和真实桌面验收。原契约要求可见撤销入口；用户后来明确要求彻底移除授权查看、列表与手动撤销入口，相关产品限制和自动失效边界已记入更新后的 P3 ADR。
 
 ## 后续安全验收表
 
@@ -95,7 +95,7 @@ S1 可以仅改变已知命令的呈现方式：把同一模型响应中、已�
 | 真实桌面 | 隔离数据根与专用工作区中的真实 Windows Electron；POSIX Shell 权限专项测试 | 审批显示完整命令、Shell、cwd/workspace、宿主用户与无 OS 沙箱风险；一次确认仅覆盖显示清单；文件工具仍走文件守卫。 |
 | 体验指标 | 固定的安全 coding 任务，分别记录调用数、用户操作数、重复审批等待时长、重新审批和拒绝数 | 先建立基线；S1 在安全门全过的前提下降低弹窗/等待，不增加已批准命令集合。诊断只记录计数、耗时、状态和必要摘要，不持久保存命令正文或环境密钥。 |
 
-目前测试已覆盖 V2 Shell 隔离不可用时不自动执行、单次审批 callback、取消等待、并发审批串行化、硬决策优先级、Renderer 对 V2 Agent Shell 只提供单次操作，以及 Main 将 V2 preset 传入审批事件。**尚未证明**固定命令批次、审批后启动描述一致性、Shell blacklist 在 Main 审批前硬拒绝、真实 Electron 批次流程、Shell 环境身份、S2 失效/撤销或体验收益；这些必须作为后续阶段验收，不能由现有单测替代。
+S0 审计时的测试覆盖 V2 Shell 隔离不可用时不自动执行、单次审批 callback、取消等待、并发审批串行化、硬决策优先级、Renderer 对 V2 Agent Shell 只提供单次操作，以及 Main 将 V2 preset 传入审批事件。当时**尚未证明**固定命令批次、审批后启动描述一致性、Shell blacklist 在 Main 审批前硬拒绝、真实 Electron 批次流程、Shell 环境身份、S2 失效或体验收益；后续 S1/S2 专项验收结果见本文末尾，不能由 S0 单测替代。
 
 相关测试入口：[permission boundary tests](../../packages/safety/src/permission-boundary.test.ts#L150)、[ToolExecutionService tests](../../packages/tools/src/tool-execution-service.test.ts#L50)、[Main approval recheck tests](../../packages/app/src/main/run-approval.test.ts#L5)、[Renderer grant tests](../../packages/app/src/renderer/approval-grants.test.ts#L10)、[Main approval route tests](../../packages/app/src/main/local-app-api/run-routes.test.ts#L226)。
 
@@ -122,14 +122,22 @@ S1 可以仅改变已知命令的呈现方式：把同一模型响应中、已�
 - 验证结果：授权和调用链 9 个 Vitest 文件、131 项测试通过；workspace TypeScript `tsc -b` 通过；`check:repo` 35 项通过、0 失败及 3 项规模/模块地图提示。Windows Electron 44.4.5 真实窗口门 21 项断言通过，覆盖完整批次展示与实际进程结果、逐次审批、权限降级、checkpoint 恢复重新审批及文件守卫；WSL Ubuntu-26.04 的真实 `/usr/bin/dash` 专项通过，清单内两项各经批准执行，修改命令未启动。真实窗口使用隔离数据根和本地 Provider。
 - S1 最终门禁：`pnpm run verify:full` 全部通过；仓库检查 35 项通过，Vitest 657 个文件通过（4,774 passed、2 skipped），workspace TypeScript、应用构建与恢复来源检查均退出码 0。恢复检查和全量测试使用临时隔离数据根。其后新增同名插件伪装回归断言，Shell/Main 4 个定向文件 91 项测试再次通过。
 - 固定命令夹具将同一组三条命令的用户审批操作从 3 次降至 1 次。该指标仅代表确定性夹具的交互次数，不代表真实用户等待时长；尚未采集固定 Coding Agent 任务的累计等待时间和真实用户基线。
-- S2 精确重复授权、固定命令模板、可见撤销入口和期限/次数机制仍未实现；需要先修订 P3 ADR。Shell 仍是当前用户身份的宿主进程，路径与文件身份检查不等同 OS 隔离。
+- S1 完成时，S2 精确重复授权和期限/次数机制尚未实现；后续实施及 P3 决策见本文末尾。Shell 仍是当前用户身份的宿主进程，路径与文件身份检查不等同 OS 隔离。
 
-### S3 旧权限迁移状态
+### S3 旧权限数据破坏性退役状态
 
-- Renderer 权限菜单现在只提供 `read-only`、`workspace-write`、`full-access`。`research`、`restricted`、旧 `full` 及无版本的旧 `full-access` 均不作为当前可选值。
-- SessionIndex 将旧会话规范化为 `read-only`，同时记录版本化 `permissionMigration` 来源；普通 run 和 checkpoint resume 在迁移确认前返回冲突。用户经 Main 会话更新接口明确选择任一 V2 preset 后，Main 清除迁移标记；选择当前只读值也可以确认安全降级。
+- Renderer 权限菜单只提供 `read-only`、`workspace-write`、`full-access`。`research`、`restricted`、旧 `full` 及无版本的旧 `full-access` 不作为当前会话格式。
+- 用户明确要求按破坏性更新处理旧权限数据。SessionIndex 只接纳 `permissionVersion: 2` 且使用当前三种预设之一的条目；其它记录从 `sessions.json` 会话索引移除，不再降权兼容、挂迁移标记或阻止用户等待确认。会话 JSONL 聊天记录不会因此删除，但旧索引条目不再通过当前会话列表访问。
 - 旧运行字段不能设定当前权限。命名会话缺少 Main 权限记录时拒绝执行。无 Main invocation grant 和审批 broker 的旧 Agent terminal command/stream 入口会拒绝执行，因此不能把 V2 `full-access` 转译为旧 `full` 自动 Shell 放行。
-- 已版本化的 V2 `full-access` 与历史无版本 `full-access` 区分存储；后者只读待确认。Shell 在三种 V2 preset 下仍由 Main 逐次审批，P3 OS 沙箱状态没有改变。
+- 当前版本化 `full-access` 继续由 Main 策略解释；不再读取历史无版本的 `full-access`。S3 验收时 Shell 在三种 V2 preset 下由 Main 逐次审批；后续仅增加 P3 ADR 明确批准的精确命令例外，P3 OS 沙箱状态没有改变。
 - S3 完整门禁：`pnpm run verify:full` 通过，仓库检查 35 项通过、3 项提示，657 个测试文件通过（4,778 passed、2 skipped），workspace TypeScript、应用构建与恢复来源检查均通过。恢复检查使用新建的隔离数据根与测试工作区。
-- S3 真实桌面验收：Windows Electron 44.4.5 的 `pnpm run verify:desktop-permission-v2` 通过 23 项断言，实际验证旧 `full` 会话只读且需用户迁移、权限选择器仅有三个 V2 preset、迁移后权限写入 Main、权限降级与 checkpoint resume 使用当前只读权限、Shell 仍逐次审批，以及文件守卫继续生效。
-- S2 尚未实现；只能针对 Main 明确审查的固定命令模板提供“本对话允许这条命令”选项。Shell 仍以当前宿主用户权限执行，S2 不构成 P3 OS 沙箱。
+- S3 早期真实桌面验收：Windows Electron 44.4.5 的 `pnpm run verify:desktop-permission-v2` 通过 23 项断言，当时覆盖旧 `full` 会话的迁移确认流程。该流程现已按用户后续决定删除。最新破坏性更新后的真实桌面验收已通过：旧权限索引记录被丢弃、不出现迁移提示；当前 V2 Shell 审批、精确命令复用、权限降级、checkpoint 恢复和原生文件守卫均重新验证。
+- S3 验收时 S2 尚未实现。S2 后续状态见下节；Shell 仍以当前宿主用户权限执行，S2 不构成 P3 OS 沙箱。
+
+### S2 精确重复授权及用户决定的管理界面修订
+
+- S2 仅为 Main 审查的固定 `pwd` 模板提供“本对话允许这条命令”选项。授权由 Main 进程内存持有，绑定当前会话、工作区对象、工作区根目录、Shell 可执行文件身份及参数、用户、完整权限快照、有效环境指纹和 timeout。原文必须严格等于 `pwd`；不接受参数、前后缀或命令组合。
+- 每个 invocation 仍先经过当前 Main 权限、硬拒绝及强制审批判断。复用需重新核对最终启动描述。授权最多存续 30 分钟或供 20 次后续匹配消费，两者先到即失效；会话/工作区/权限事实变化、Main 重建或无法证明连续性时清除。Checkpoint 与 Agent 上下文均不保存此授权。
+- 用户于 2026-10-15 明确要求移除授权查看、列表及手动撤销入口。实现已删除 Renderer 列表、Local App API 查询/删除路由和 store 列表接口；Main 仍保留进程内自动失效及首次启动失败回滚。此选择意味着用户无法在过期或范围变化前主动查看或撤销授权，属于经用户明确选择的产品限制。
+- 本轮桌面验收确认授权查询/撤销 API 返回 404、权限菜单无查看/撤销控件，Shell 精确命令第二次调用无提示且降权后重新审批；另确认旧权限索引记录被清理、无迁移提示，checkpoint 恢复使用当前权限并重新审批。Shell 仍以当前用户权限在宿主执行，没有 OS 级沙箱。性能证据目前限于一个连续真实 Electron 场景：同一工作区内连续两次 `pwd` 仅第一次触发审批；这不能代表完整 Coding Agent 任务的总体等待时间收益。
+- 最新 `pnpm run verify:full` 未通过，失败阶段为全量测试：唯一失败是当前新改动中的 `appearance-preferences.test.ts:95`，断言 `APPEARANCE_DEFAULTS.chatFontSize` 应为 `14`，实际仍为 `15`。这是该新外观改动自身的预期与实现不一致，不是 Permission V2-S 测试失败；本轮未修改外观实现。全量门禁的仓库检查和 TypeScript 前置阶段通过，但因测试失败，构建与恢复阶段未执行，不能将本轮完整门禁记为通过。

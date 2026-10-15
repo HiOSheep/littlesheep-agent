@@ -204,6 +204,23 @@ function toolMessagesThisTurn(messages) {
   return messages.slice(lastUser + 1).filter((message) => message?.role === 'tool')
 }
 function classifyResponse({ body, system, user, messages, model, requestIndex }) {
+  if (user.includes('MODEL-ISOLATION-')) return { message: { role: 'assistant', content: `MODEL-ISOLATION-DONE ${model}` }, finishReason: 'stop' }
+
+  if (user.includes('LS-CONVERSATION-TIMELINE')) {
+    const count = toolMessagesThisTurn(messages).length
+    const turns = [
+      ['timeline-write', 'write', { file_path: 'timeline.txt', content: 'before\n' }, '我先创建文件，再读取并修改它。'],
+      ['timeline-read', 'read', { file_path: 'timeline.txt' }, '文件已创建，我现在检查原文。'],
+      ['timeline-edit', 'edit', { file_path: 'timeline.txt', old_string: 'before', new_string: 'after' }, '读取完成，接下来修改内容。'],
+    ]
+    if (count < turns.length) {
+      const [id, name, input, content] = turns[count]
+      const response = toolChoice(id, name, input)
+      response.message.content = content
+      return response
+    }
+    return textChoice('文件创建、读取和修改已完成。TIMELINE-DONE')
+  }
   // Deterministic long Markdown answer for the streamed-rendering fixture. Checked before
   // every other branch so the fixture always streams text and never turns into a tool call.
   if (user.includes(LONG_MARKDOWN_MARKER)) {
@@ -327,6 +344,13 @@ function classifyResponse({ body, system, user, messages, model, requestIndex })
         ['p4-exec-batch-two', 'exec', { command: `node -e "process.stdout.write('p4-host-exec-batch-two')"` }],
       ])
       : textChoice('P4-EXEC-BATCH-DONE')
+  }
+  const repeatMarker = user.match(/P4-V2-REPEAT-(FIRST|SECOND|REVOKED|READONLY)/u)?.[1]
+  if (repeatMarker) {
+    const callIds = { FIRST: 'p4-repeat-first', SECOND: 'p4-repeat-second', REVOKED: 'p4-repeat-revoked', READONLY: 'p4-repeat-readonly' }
+    return toolMessagesThisTurn(messages).length === 0
+      ? toolChoice(callIds[repeatMarker], 'exec', { command: 'pwd' })
+      : textChoice(`P4-REPEAT-${repeatMarker}-DONE`)
   }
   const execMarker = user.match(/P4-V2-EXEC-([A-Z0-9]+)/u)?.[1]
   if (execMarker) {
@@ -542,6 +566,13 @@ async function writeStream(res, response, state) {
   })
   const choice = response.choices[0]
   const message = choice.message
+  if (message.content) {
+    for (const content of splitStreamText(message.content, state.streamChunkCharacters)) {
+      res.write(`data: ${JSON.stringify({ id: response.id, model: response.model,
+        choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`)
+      await delay(state.streamChunkDelayMs)
+    }
+  }
   if (message.tool_calls?.length) {
     for (const [index, call] of message.tool_calls.entries()) {
       const nameChunks = splitStreamText(call.function.name, state.streamChunkCharacters)
@@ -559,15 +590,6 @@ async function writeStream(res, response, state) {
         })}\n\n`)
         await delay(state.streamChunkDelayMs)
       }
-    }
-  } else if (message.content) {
-    for (const content of splitStreamText(message.content, state.streamChunkCharacters)) {
-      res.write(`data: ${JSON.stringify({
-        id: response.id,
-        model: response.model,
-        choices: [{ index: 0, delta: { content }, finish_reason: null }],
-      })}\n\n`)
-      await delay(state.streamChunkDelayMs)
     }
   }
   res.write(`data: ${JSON.stringify({

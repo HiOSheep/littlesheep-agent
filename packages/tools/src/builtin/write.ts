@@ -33,7 +33,7 @@ const WriteInput = z.object({
 
 export const writeTool: AgentTool = {
   name: 'write',
-  description: 'Write content to a file (overwrites if exists). Requires approval.',
+  description: 'Write content to a file. Native workspace writes can run automatically under workspace-write; other paths follow Runtime approval. Read an existing file completely before overwriting it.',
   inputSchema: WriteInput,
   requiresApproval: true,
   // Rewriting the same bytes is a new operation when the Runtime recorded a later successful change to the

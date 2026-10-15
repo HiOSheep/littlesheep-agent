@@ -28,7 +28,7 @@ describe('composer control row layout', () => {
     expect(composerRule).toMatch(
       /--mode-picker-compact-width:\s*calc\(\s*16px \+ 7px \+ \(2 \* var\(--composer-control-padding-inline\)\)\s*\);/u,
     )
-    expect(styles).toMatch(/:root\s*\{[\s\S]*?--chat-message-font-size:\s*15px;/u)
+    expect(styles).toMatch(/:root\s*\{[\s\S]*?--chat-message-font-size:\s*14px;/u)
     expect(styles).toMatch(/\.message\s*\{[^}]*font-size:\s*var\(--chat-message-font-size\);/u)
     expect(styles).toMatch(
       /\.model-picker-trigger\s*\{[^}]*font-size:\s*var\(--composer-control-font-size\);/u,
@@ -75,7 +75,7 @@ describe('composer control row layout', () => {
     expect(sendButtonRule).toContain('height: var(--composer-send-size);')
     expect(sendButtonRule).toContain('flex: 0 0 var(--composer-send-size);')
     expect(sendButtonRule).toContain('transition: none;')
-    expect(styles).toMatch(/\.send-round-icon\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/u)
+    expect(styles).toMatch(/\.send-round-icon\s*\{[^}]*width:\s*20px;[^}]*height:\s*20px;/u)
     expect(styles).toMatch(/\.send-round-icon\.send\s*\{[^}]*transform:\s*none;/u)
     expect(styles).not.toMatch(/\.send-round-icon\.send\s*\{[^}]*translateX\(/u)
     expect(styles).not.toMatch(/\.composer-run-actions\s*>\s*\.send-round:last-child:hover/u)

@@ -117,7 +117,9 @@ export function activityAttentionLine(
   }
 
   const verification = activityVerificationLine(activity)
-  if (verification) parts.push(verification)
+  // An unverified acceptance is a neutral fact on the turn's status trigger,
+  // not a warning by itself. Evidence failures and pending decisions stay here.
+  if (verification && (parts.length > 0 || activity.verificationHistory?.some((record) => record.verdict === 'fail' || record.verdict === 'needs_replan'))) parts.push(verification)
 
   return parts.length > 0 ? parts.join(' · ') : null
 }

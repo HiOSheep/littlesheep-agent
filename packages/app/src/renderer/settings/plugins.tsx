@@ -10,6 +10,8 @@ import {
 } from '../api'
 import { PluginIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 import { FeedbackNotice } from '../ui/feedback-notice'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import { StateView } from '../ui/state-view'
 
 
@@ -62,7 +64,8 @@ export function SettingsPluginsPage() {
   const [status, setStatus] = useState<PluginsStatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // A success confirmation floats and clears itself; a failure stays on the page.
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [expandedPluginId, setExpandedPluginId] = useState<string | null>(null)
   const [confirmLocalCode, setConfirmLocalCode] = useState(false)
@@ -130,13 +133,13 @@ export function SettingsPluginsPage() {
 
   async function handleReload(): Promise<void> {
     setBusyAction('reload')
-    setNotice(null)
+    clearNotice()
     try {
       await reloadPlugins()
       if (!mountedRef.current) return
       await loadStatus(false)
       if (!mountedRef.current) return
-      setNotice('插件已重新发现并加载')
+      showNotice('插件已重新发现并加载')
     } catch (reloadError) {
       if (mountedRef.current) setError((reloadError as Error).message)
     } finally {
@@ -146,13 +149,13 @@ export function SettingsPluginsPage() {
 
   async function handlePluginEnabled(plugin: PluginStatus, enabled: boolean): Promise<void> {
     setBusyAction(plugin.id)
-    setNotice(null)
+    clearNotice()
     try {
       await setPluginEnabled(plugin.id, enabled)
       if (!mountedRef.current) return
       await loadStatus(false)
       if (!mountedRef.current) return
-      setNotice(`${plugin.name}已${enabled ? '启用' : '停用'}`)
+      showNotice(`${plugin.name}已${enabled ? '启用' : '停用'}`)
     } catch (toggleError) {
       if (mountedRef.current) setError((toggleError as Error).message)
     } finally {
@@ -162,14 +165,14 @@ export function SettingsPluginsPage() {
 
   async function handleLocalCodeAllowed(allowed: boolean): Promise<void> {
     setBusyAction('local-code')
-    setNotice(null)
+    clearNotice()
     try {
       await setLocalPluginCodeAllowed(allowed)
       if (!mountedRef.current) return
       await loadStatus(false)
       if (!mountedRef.current) return
       setConfirmLocalCode(false)
-      setNotice(allowed ? '已允许执行本地插件代码' : '已停止执行本地插件代码')
+      showNotice(allowed ? '已允许执行本地插件代码' : '已停止执行本地插件代码')
     } catch (trustError) {
       if (mountedRef.current) setError((trustError as Error).message)
     } finally {
@@ -275,7 +278,7 @@ export function SettingsPluginsPage() {
           </span>
         )}
       </div>
-      <FeedbackNotice className="plugin-page-notice" feedback={notice ? { tone: 'success', message: notice, detail: null } : null} />
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       <FeedbackNotice className="plugin-page-error" feedback={error ? { tone: 'error', message: '插件操作未完成', detail: error } : null} busy={operationBusy} onRetry={error ? () => void loadStatus() : undefined} />
 
       {loading && (

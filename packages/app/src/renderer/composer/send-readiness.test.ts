@@ -101,9 +101,9 @@ describe('send entry wiring', () => {
     ])
 
     // The button and Enter are the same entry: neither may dispatch past the gate.
-    expect(composer).toContain('disabled={sendReadiness.blocked || (!loading && !hasPendingInput)}')
+    expect(composer).toContain('disabled={sendReadiness.blocked || (resumeAction ? Boolean(checkpointRecovery.busy) || Boolean(resumeNeedsInput) : !loading && !hasPendingInput)}')
     expect(composer).toContain('if (sendReadiness.blocked) return')
-    expect(composer).toContain('aria-label={sendReadiness.reason ?? sendTip}')
+    expect(composer).toContain('aria-label={sendReadiness.reason ?? primaryActionLabel}')
     // A disabled control never says why, so the reason has its own inline surface.
     expect(composer).toContain('<ComposerSendBlockNotice')
     expect(composer).toContain('modelReason={sendReadiness.modelReason}')

@@ -148,6 +148,56 @@ async function main() {
     if (minimum.overflowsRight) failures.push(`the flyout overflows the 800px window: ${JSON.stringify(minimum)}`)
     if (minimum.overlapsPanel) failures.push(`the flyout covers the menu at 800px: ${JSON.stringify(minimum)}`)
 
+    // The closed chip follows the label it shows. Switching to a much longer model used to
+    // leave the chip at the width recorded for the previous one, cutting the name mid-word
+    // with no ellipsis (asked for 2026-10-15): it has to grow with the label, not only shrink
+    // to it. Measured in a window that can afford the label, which is where the difference
+    // shows; a row too narrow to hold it still clamps the chip.
+    await harness.desktopAction(locator, 'resize', { width: 1600, height: 1000 })
+    await harness.waitFor(() => client.evaluate(`(() => {
+      const submenu = document.querySelector('.runtime-submenu.runtime-model-menu');
+      return submenu ? submenu.getBoundingClientRect().right <= window.innerWidth : null;
+    })()`), 20_000, 'flyout to settle before the model switch')
+    const longest = MODELS[MODELS.length - 1]
+    await client.evaluate(`(() => {
+      const option = [...document.querySelectorAll('.runtime-model-option')]
+        .find((node) => (node.textContent || '').includes(${JSON.stringify(longest)}));
+      if (!(option instanceof HTMLElement)) return false;
+      option.click();
+      return true;
+    })()`)
+    await harness.waitFor(() => client.evaluate(`(() => {
+      const trigger = document.querySelector('.runtime-picker-trigger');
+      if (!(trigger instanceof HTMLElement) || document.querySelector('.runtime-menu-shell.open')) return null;
+      return (trigger.textContent || '').includes(${JSON.stringify(longest)}) ? true : null;
+    })()`), 20_000, `the closed chip to show ${longest}`)
+    const closedChip = await client.evaluate(`(() => {
+      const picker = document.querySelector('.runtime-picker');
+      const trigger = document.querySelector('.runtime-picker-trigger');
+      const model = document.querySelector('.runtime-picker-model');
+      const group = document.querySelector('.runtime-picker-label-group');
+      const width = (node) => node ? Math.round(node.getBoundingClientRect().width) : null;
+      return {
+        label: (model?.textContent || '').trim(),
+        pickerWidth: width(picker),
+        pickerMaxWidth: getComputedStyle(picker).maxWidth,
+        pickerClosedVar: getComputedStyle(picker).getPropertyValue('--runtime-picker-closed-width').trim(),
+        labelWidth: width(group),
+        rightWidth: width(document.querySelector('.composer-right')),
+        leftWidth: width(document.querySelector('.composer-left')),
+        rowWidth: width(document.querySelector('.composer-controls')),
+        triggerClient: trigger.clientWidth,
+        triggerScroll: trigger.scrollWidth,
+        clips: trigger.scrollWidth > trigger.clientWidth + 1,
+      };
+    })()`)
+    if (closedChip.label !== longest) {
+      failures.push(`the chip did not take the longer model: ${JSON.stringify(closedChip)}`)
+    }
+    if (closedChip.clips) {
+      failures.push(`the closed chip clips its label: ${JSON.stringify(closedChip)}`)
+    }
+
     console.log(JSON.stringify({
       check: 'runtime-picker-submenu-width',
       ok: failures.length === 0,
@@ -155,6 +205,7 @@ async function main() {
       narrow: measured,
       wide,
       minimum,
+      closedChip,
       failures,
     }, null, 2))
     if (failures.length > 0) process.exitCode = 1

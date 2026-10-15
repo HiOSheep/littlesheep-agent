@@ -9,6 +9,7 @@ export interface ConversationTurnFingerprintInput {
   cwd?: string
   origin?: string
   permissionPolicyId?: string
+  model?: string
   reasoning?: string
   profile?: string
   attachments?: RunAttachment[]
@@ -49,6 +50,7 @@ export function conversationTurnInputDigest(input: ConversationTurnFingerprintIn
     cwd: input.cwd,
     origin: input.origin,
     permissionPolicyId: input.permissionPolicyId,
+    model: input.model,
     reasoning: input.reasoning,
     profile: input.profile,
     attachments,

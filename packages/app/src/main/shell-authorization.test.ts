@@ -12,9 +12,9 @@ afterEach(async () => { for (const path of roots.splice(0)) await rm(path, { rec
 
 async function host() {
   const root = await mkdtemp(join(tmpdir(), 'ls-main-shell-')); roots.push(root)
-  let mode = 'workspace-write'
+  let mode: 'workspace-write' | 'read-only' = 'workspace-write'
   const sessionIndex = { list: async () => [{ id: 's', title: 'fixture', createdAt: 0, lastMessageAt: 0,
-    mode, scope: 'standalone' as const, workspacePath: root }] }
+    mode, permissionVersion: 2 as const, scope: 'standalone' as const, workspacePath: root }] }
   const scope = await captureShellAuthorizationScope({ runId: 'r', sessionId: 's', sessionIndex, projectIndex: { list: async () => [] } })
   const broker = vi.fn(async (_request: RunApprovalRequest) => true)
   const policy = resolveRunPolicy({ permissionPreset: 'workspace-write' }, DEFAULT_CONFIG, broker,

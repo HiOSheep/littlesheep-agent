@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { ShellApprovalBatch, ToolContext } from '@littlesheep/types';
+import type { ShellApprovalBatch, ShellExecutionDescription, ToolContext } from '@littlesheep/types';
+import type { ShellApprovalResult } from './shell-authorization.js';
 import { createExecTool } from './builtin/exec.js';
 import { ToolExecutionService } from './tool-execution-service.js';
 import { attachShellInvocation, authorizeShellBatch, bindShellApprovalAuthority, shellApprovalMetrics, startAuthorizedShell } from './shell-authorization.js';
@@ -10,7 +11,11 @@ import { attachShellInvocation, authorizeShellBatch, bindShellApprovalAuthority,
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
-async function fixture(request: (batch: ShellApprovalBatch) => Promise<boolean> = async () => true) {
+async function fixture(
+  request: (batch: ShellApprovalBatch) => Promise<ShellApprovalResult> = async () => true,
+  consumeRepeatAuthorization?: (description: ShellExecutionDescription) => boolean,
+  rememberRepeatAuthorization?: (description: ShellExecutionDescription) => (() => void) | undefined,
+) {
   const root = await mkdtemp(join(tmpdir(), 'ls-shell-s1-')); roots.push(root);
   const controller = new AbortController();
   let current = 'policy:1';
@@ -21,7 +26,7 @@ async function fixture(request: (batch: ShellApprovalBatch) => Promise<boolean> 
   const ask = vi.fn(request);
   bindShellApprovalAuthority(approve, { runId: ctx.runId, sessionId: String(ctx.sessionId), workspaceRoot: root,
     workspaceId: 'workspace-a', permission: { version: 2, preset: 'workspace-write' }, signal: controller.signal,
-    current: async () => current, decide: () => decision, request: ask });
+    current: async () => current, decide: () => decision, request: ask, consumeRepeatAuthorization, rememberRepeatAuthorization });
   const tool = createExecTool({ interactive: false });
   const items = (commands: string[]) => commands.map((command, index) => ({ index, tool, input: { command, timeout_ms: 20_000 } }));
   const prepare = (commands = ['echo fixture']) => authorizeShellBatch(items(commands), ctx, 30_000);
@@ -104,6 +109,50 @@ describe('S1 exact invocation authorization', () => {
     const f = await fixture(); const batch = await f.prepare(['echo fixture', 'format C:']);
     expect(batch.grants.size).toBe(0); expect(batch.failures.size).toBe(2); expect(f.ask).not.toHaveBeenCalled();
   });
+
+  it('turns a Main repeat match into only the current one-shot grant after policy approval', async () => {
+    const consume = vi.fn((description: ShellExecutionDescription) => description.command === 'pwd')
+    const f = await fixture(async () => false, consume)
+    const batch = await f.prepare(['pwd'])
+    expect(batch.grants.size).toBe(1)
+    expect(consume).toHaveBeenCalledOnce()
+    expect(consume.mock.calls[0]![0]).toMatchObject({
+      action: 'exec', command: 'pwd', sessionId: 'session-a', runId: 'run-a', source: 'agent',
+    })
+    expect(f.ask).not.toHaveBeenCalled()
+    expect(String((await f.use(batch.grants.get(0)!, { command: 'pwd', timeout_ms: 20_000 })).command)).toBe('pwd')
+    expect(() => batch.close()).not.toThrow()
+
+    f.setDecision('deny')
+    const calls = consume.mock.calls.length
+    expect((await f.prepare(['pwd'])).grants.size).toBe(0)
+    expect(consume).toHaveBeenCalledTimes(calls)
+  });
+
+  it('does not commit a remembered choice when execution facts change after approval', async () => {
+    const remember = vi.fn(() => () => undefined)
+    const f = await fixture(async () => ({ approved: true, rememberShellCommand: true }), undefined, remember)
+    const batch = await f.prepare(['pwd'])
+    expect(batch.grants.size).toBe(1)
+    f.setCurrent('permission-downgraded-during-approval')
+    await expect(f.use(batch.grants.get(0)!, { command: 'pwd', timeout_ms: 20_000 })).rejects.toThrow()
+    expect(remember).not.toHaveBeenCalled()
+  });
+
+  it('revokes the remembered choice when the host launch fails asynchronously', async () => {
+    const revoke = vi.fn()
+    const remember = vi.fn(() => revoke)
+    const f = await fixture(async () => ({ approved: true, rememberShellCommand: true }), undefined, remember)
+    const batch = await f.prepare(['pwd'])
+    const invocation = { ...f.ctx }
+    attachShellInvocation(invocation, f.tool, batch.grants.get(0)!)
+
+    await expect(startAuthorizedShell(invocation, f.tool, { command: 'pwd', timeout_ms: 20_000 }, async () => {
+      throw new Error('host launch failed')
+    })).rejects.toThrow('host launch failed')
+    expect(remember).toHaveBeenCalledOnce()
+    expect(revoke).toHaveBeenCalledOnce()
+  })
 
   it('fails closed above the fixed 32-invocation batch limit', async () => {
     const f = await fixture();

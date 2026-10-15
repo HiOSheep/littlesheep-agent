@@ -1,3 +1,4 @@
+// Resolves the Main-owned tool policy and binds per-run Shell authorization facts.
 import { realpathSync, statSync } from 'node:fs'
 import type { Config } from '@littlesheep/config'
 import type { AgentProfileId } from '@littlesheep/prompt'
@@ -5,9 +6,11 @@ import type {
   NetworkReadPolicy,
   PermissionPolicyV2Snapshot,
   PermissionPresetId,
+  ShellExecutionDescription,
 } from '@littlesheep/types'
 import { resolveNetworkReadPolicy } from '@littlesheep/runner'
 import { WORKSPACE_FILE_GUARD_AVAILABLE, bindShellApprovalAuthority } from '@littlesheep/tools'
+import type { ShellApprovalResult } from '@littlesheep/tools'
 import type { ShellApprovalBatch } from '@littlesheep/types'
 import {
   describeToolAccess,
@@ -17,6 +20,7 @@ import {
 import type { PermissionModeId } from '../shared/permission-modes.js'
 import { isPermissionSelectionPreset, normalizePermissionSelectionId } from '../shared/permission-modes.js'
 import type { SessionIndex } from './session-index.js'
+import { isRepeatCandidate } from './shell-repeat-authorization-store.js'
 import {
   getAgentProfile,
   normalizeAgentProfileId,
@@ -33,9 +37,11 @@ export interface RunApprovalRequest {
   /** A Main-owned forced approval; full access cannot auto-confirm it. */
   requiresExplicitUserApproval?: boolean
   shellBatch?: ShellApprovalBatch
+  /** Set only from Main's fixed Shell candidate check, never from request JSON. */
+  rememberShellCommandAvailable?: boolean
 }
 
-export type RunApprovalBroker = (request: RunApprovalRequest) => Promise<boolean>
+export type RunApprovalBroker = (request: RunApprovalRequest) => Promise<ShellApprovalResult>
 
 export interface RunPolicyBoundaryOptions {
   /** Legacy logical-container root retained for legacy mode behavior. */
@@ -57,6 +63,11 @@ export interface RunPolicyBoundaryOptions {
   permissionPolicyV2?: PermissionPolicyV2Snapshot
   /** Process-local Shell authority scope, assembled by Main; never accepted from request JSON. */
   shellScope?: { runId: string; sessionId?: string; workspaceId?: string; signal?: AbortSignal; current(): Promise<string> }
+  /** Main-owned repeat state. A renderer request can never provide this callback. */
+  shellRepeatAuthorization?: {
+    consume(description: ShellExecutionDescription): boolean
+    remember?(description: ShellExecutionDescription): (() => void) | undefined
+  }
 }
 
 export interface ResolvedRunPolicy {
@@ -122,10 +133,32 @@ export function resolveRunPolicy(
         fullAccessConfirmed: permissionPolicyV2?.fullAccessConfirmed ?? boundaryOptions.fullAccessConfirmed,
       })
     },
+    consumeRepeatAuthorization: (description) => {
+      const descriptor = describeToolAccess('exec', { command: description.command, cwd: description.cwd.path }, {
+        ...boundaryOptions, cwd: boundaryOptions.cwd ?? workspaceRoot ?? process.cwd(), networkPolicy,
+        permissionPolicyV2,
+      })
+      // Main-forced approval and an approval-deny policy remain above the
+      // conversation repeat exception. The store itself accepts only its fixed
+      // reviewed command candidate and exact execution binding.
+      if (descriptor.hardDecision !== 'allow' || permissionPolicyV2?.approvalPolicy === 'deny') return false
+      return boundaryOptions.shellRepeatAuthorization?.consume(description) === true
+    },
+    rememberRepeatAuthorization: (description) => {
+      const descriptor = describeToolAccess('exec', { command: description.command, cwd: description.cwd.path }, {
+        ...boundaryOptions, cwd: boundaryOptions.cwd ?? workspaceRoot ?? process.cwd(), networkPolicy,
+        permissionPolicyV2,
+      })
+      if (descriptor.hardDecision !== 'allow' || permissionPolicyV2?.approvalPolicy === 'deny') return undefined
+      return boundaryOptions.shellRepeatAuthorization?.remember?.(description)
+    },
     request: async (shellBatch) => approvalBroker ? approvalBroker({ action: 'exec', detail: shellBatch,
       shellBatch, permissionMode: isLegacyPermissionMode(selectedPolicy) ? selectedPolicy : 'research',
       ...(isPermissionPresetId(selectedPolicy) ? { permissionPreset: selectedPolicy } : {}),
-      boundary: 'unknown', requiresExplicitUserApproval: true }) : false,
+      boundary: 'unknown', requiresExplicitUserApproval: true,
+      ...(canOfferShellRepeat(shellBatch, boundaryOptions, networkPolicy, permissionPolicyV2, workspaceRoot)
+        ? { rememberShellCommandAvailable: true } : {}),
+    }) : false,
   })
   return {
     requireApprovalForAllTools: permissionPolicy.requireApprovalForAllTools,
@@ -137,6 +170,23 @@ export function resolveRunPolicy(
       permissionPolicyV2,
     } : {}),
   }
+}
+
+function canOfferShellRepeat(
+  batch: ShellApprovalBatch,
+  boundaryOptions: RunPolicyBoundaryOptions,
+  networkPolicy: NetworkReadPolicy,
+  permissionPolicyV2: PermissionPolicyV2Snapshot | undefined,
+  workspaceRoot: string | undefined,
+): boolean {
+  const command = batch.scope === 'once' && batch.commands.length === 1 ? batch.commands[0] : undefined
+  if (!command || !permissionPolicyV2 || permissionPolicyV2.approvalPolicy === 'deny'
+    || !isRepeatCandidate(command)) return false
+  const descriptor = describeToolAccess('exec', { command: command.command, cwd: command.cwd.path }, {
+    ...boundaryOptions, cwd: boundaryOptions.cwd ?? workspaceRoot ?? process.cwd(), networkPolicy,
+    permissionPolicyV2,
+  })
+  return descriptor.hardDecision === 'allow'
 }
 
 export function createPermissionApprover(
@@ -179,7 +229,7 @@ export function createPermissionApprover(
     if (decision === 'deny' || decision === 'unavailable') return false
     if (decision === 'allow') return true
     if (!approvalBroker) return false
-    return approvalBroker({
+    const approval = await approvalBroker({
       action,
       detail,
       permissionMode: isLegacyPermissionMode(permissionMode) ? permissionMode : 'research',
@@ -189,6 +239,7 @@ export function createPermissionApprover(
         ? { requiresExplicitUserApproval: true }
         : {}),
     })
+    return approval === true || (typeof approval === 'object' && approval.approved === true)
   }
 }
 

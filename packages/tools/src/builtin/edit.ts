@@ -24,7 +24,7 @@ const EditInput = z.object({
 
 export const editTool: AgentTool = {
   name: 'edit',
-  description: 'Edit a file by replacing an exact string. Requires approval.',
+  description: 'Edit a file by replacing an exact, unique string. Read the relevant file content first. Native workspace edits can run automatically under workspace-write; other paths follow Runtime approval.',
   inputSchema: EditInput,
   requiresApproval: true,
   // Re-applying the same replacement is a new operation when the Runtime recorded a later successful change

@@ -94,10 +94,10 @@
 
 /* The reachable way back from where the reader is: one droplet for the newest message, floated above
    the composer overlay (whose height is measured at runtime) with a real gap, so it covers neither
-   the input surface nor the line being read. It grows out of the composer's edge and wears a
-   frosted glass of its own - a translucent fill over the transcript's own blur. The way back to the
-   first line is the rail and Ctrl+Home; a second circle here was one control too many (asked for
-   2026-10-03). */
+   the input surface nor the line being read. It grows out of the composer's edge and wears the
+   float/menu glass of the other floating controls - a translucent fill over a real blur of the
+   transcript behind it. The way back to the first line is the rail and Ctrl+Home; a second circle
+   here was one control too many (asked for 2026-10-03). */
 .chat-jump-controls {
   position: absolute;
   /* 16px above the input's visible top edge (asked for 2026-10-03: 3px read as attached to the
@@ -138,10 +138,13 @@
   height: 34px;
   padding: 0;
   color: var(--jump-to-latest-arrow);
-  /* DSH floats this control on the layer above the transcript: an opaque raised
-     button, not a frosted droplet, so it reads as chrome instead of as content
-     (2026-10-03). The arrow keeps its own accent colour. */
-  background: var(--chat-card-fill);
+  /* Frosted glass, not an opaque chip (asked for 2026-10-15): the droplet keeps the
+     transcript visible through it at rest, and the pointer changes the glass itself
+     instead of dropping its fill away. The old hover fill was barely there, which
+     left the whole control looking transparent under the pointer. */
+  background: var(--composer-surface);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
   border: 0;
   border-radius: var(--radius-circle);
   box-shadow: var(--chat-panel-elevation);
@@ -159,15 +162,18 @@
   pointer-events: none;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.7;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .chat-jump-button:hover,
 .chat-jump-button:focus-visible {
-  background: var(--chat-hover-fill);
-  color: var(--jump-to-latest-arrow);
+  /* The same glass, tinted with the arrow's own accent, and the arrow brightens to the
+     foreground ink: arriving with the pointer reads as a colour change instead of the
+     control dissolving into the transcript. */
+  background: color-mix(in srgb, var(--jump-to-latest-arrow) 26%, var(--composer-surface));
+  color: var(--text-strong);
 }
 
 /* New output while away is a fact the reader must be able to notice without scrolling; the arrow
@@ -598,9 +604,9 @@
 }
 
 .markdown blockquote {
-  padding-left: 12px;
+  padding-left: 0;
   color: var(--muted);
-  border-left: 3px solid var(--border-strong);
+  border-left: 0;
 }
 
 .markdown-table-wrap {
@@ -1059,7 +1065,7 @@
 .copy-icon-front {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.2;
+  stroke-width: var(--icon-stroke);
 }
 
 .copy-icon-front {
@@ -1097,7 +1103,7 @@
 .branch-icon {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.3;
+  stroke-width: var(--icon-stroke);
   stroke-linecap: round;
   stroke-linejoin: round;
 }

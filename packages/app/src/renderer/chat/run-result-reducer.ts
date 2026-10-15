@@ -1,15 +1,20 @@
 // Reduces a completed run into the active assistant turn without owning stream lifecycle state.
 import type { RunResult } from '../api'
 import { buildArtifactsFromToolCalls, buildTraceData, settleLiveReasoning, taskStepToLiveStep } from './activity-model'
-import type { ChatMessage } from './types'
+import type { ChatMessage, TranscriptEntry } from './types'
 import { projectConversationContext } from './context-projections'
 import { applyInvocationStatus, runActivityOutcome } from '../../shared/history-activity'
 import { aggregateRunUsage } from '../../shared/run-usage'
+import { replaceAssistantPreview } from './live-message-updates'
 
 export function reduceCompletedRunMessages(
   messages: ChatMessage[],
   result: RunResult,
 ): ChatMessage[] {
+  const finalText = result.status === 'ok'
+    ? result.finalReplySettlement?.status === 'settled' ? result.finalReplySettlement.reply
+      : result.finalReplySettlement === undefined ? result.reply : '' : ''
+  messages = replaceAssistantPreview(messages, finalText)
   const last = messages[messages.length - 1]
   if (last?.role !== 'assistant') return messages
 
@@ -90,8 +95,27 @@ export function reduceCompletedRunMessages(
           error: tool.error ?? (tool.ok === undefined ? '未收到工具最终结果。' : undefined),
         })),
         contextProjections: projectConversationContext(result.contextSnapshots),
+        ...(result.conversationTranscript?.length ? {
+          transcript: reconcileTranscript(currentActivity.transcript ?? [], result.conversationTranscript),
+        } : {}),
       }
       : undefined,
+  }
+  return next
+}
+
+/** Canonical prose/tool snapshots update their seats without moving thinking or failed preparations. */
+function reconcileTranscript(live: TranscriptEntry[], canonical: NonNullable<RunResult['conversationTranscript']>): TranscriptEntry[] {
+  const next = [...live]
+  for (let index = canonical.length - 1; index >= 0; index--) {
+    const entry = canonical[index]!
+    const current = next.findIndex((item) => item.id === entry.id)
+    if (current >= 0) next[current] = entry
+    else {
+      const following = next.findIndex((item) => item.id === canonical[index + 1]?.id)
+      if (following >= 0) next.splice(following, 0, entry)
+      else next.push(entry)
+    }
   }
   return next
 }

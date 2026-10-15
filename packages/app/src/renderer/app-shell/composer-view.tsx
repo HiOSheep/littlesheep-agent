@@ -39,8 +39,8 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     inputRef,
     scrollRef,
     loading,
+    checkpointRecovery,
     permissionMode,
-    permissionMigration,
     setPermissionMode,
     runtime,
     attachments,
@@ -59,7 +59,6 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     sendTip,
     stopTip,
     setControlTip,
-    applyRuntimePatch,
     applyModelPatch,
     openSettingsPage,
     refreshRuntime,
@@ -98,6 +97,17 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     availability: modelAvailability,
     executionReason: executionUnavailable,
   })
+  const pendingCheckpoint = checkpointRecovery.currentCheckpoint
+  const canResume = !loading && !!pendingCheckpoint?.resumable && pendingCheckpoint.blockers.length === 0
+  const resumeAction = canResume && (!input.trim() && attachments.length === 0 || pendingCheckpoint.waitingForInput)
+  const resumeNeedsInput = resumeAction && pendingCheckpoint?.waitingForInput && !input.trim()
+  const primaryActionLabel = resumeAction ? (resumeNeedsInput ? '补充信息后继续任务' : '继续执行任务') : sendReadiness.reason ?? sendTip
+  const submitPrimary = () => {
+    if (resumeAction && pendingCheckpoint) void checkpointRecovery.resumeSelected(pendingCheckpoint, input)
+    else void send()
+  }
+
+
   // The caret belongs in the composer on launch; a new conversation asks again.
   useComposerFocus(inputRef)
   // Running keeps a stop entry that never depends on the draft, plus a
@@ -226,15 +236,14 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             // Enter is the same send entry as the button, so it refuses for the
             // same reason instead of dispatching past a disabled control.
             event.preventDefault()
-            if (sendReadiness.blocked || permissionMigration) return
-            void send()
+            if (sendReadiness.blocked) return
+            submitPrimary()
           }}
           aria-label="消息输入"
           placeholder="输入消息，或添加文件…"
           rows={1}
         />
         <div className="composer-status" role="status">
-          {permissionMigration && <span>历史权限“{permissionMigration.from}”已暂时降为只读。请在权限菜单中确认新选择后再继续。</span>}
           <ComposerSendBlockNotice executionReason={sendReadiness.executionReason} modelReason={sendReadiness.modelReason} />
         </div>
         <div className="composer-controls">
@@ -245,7 +254,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
               onChooseWorkspace={chooseWorkspace}
               onTipChange={setControlTip}
             />
-            <ModePicker value={permissionMode} migration={permissionMigration} onChange={setPermissionMode} />
+            <ModePicker value={permissionMode} onChange={setPermissionMode} />
             {runtime && !workspaceIsWorkplace && (
               <WorkspaceChip
                 path={runtime.workspace}
@@ -268,7 +277,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                   reasoning: coerceReasoningForModelRef(runtime?.reasoning ?? 'auto', model),
                 })
               }}
-              onReasoningChange={(reasoning) => void applyRuntimePatch({ reasoning })}
+              onReasoningChange={(reasoning) => applyModelPatch({ reasoning })}
               onConfigureModel={() => openSettingsPage('api')}
               onRetryModelConfig={refreshRuntime}
             />
@@ -298,13 +307,14 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                   className="send-round"
                   onClick={() => {
                     setControlTip(null)
-                    void send()
+                    submitPrimary()
                   }}
-                  disabled={sendReadiness.blocked || Boolean(permissionMigration) || (!loading && !hasPendingInput)}
-                  aria-label={sendReadiness.reason ?? sendTip}
-                  {...runActionTipHandlers(sendReadiness.reason ?? sendTip)}
+                  disabled={sendReadiness.blocked || (resumeAction ? Boolean(checkpointRecovery.busy) || Boolean(resumeNeedsInput) : !loading && !hasPendingInput)}
+                  data-action={resumeAction ? 'resume' : 'send'}
+                  aria-label={sendReadiness.reason ?? primaryActionLabel}
+                  {...runActionTipHandlers(sendReadiness.reason ?? primaryActionLabel)}
                 >
-                  <SendRunIcon />
+                  {resumeAction ? <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none" /></svg> : <SendRunIcon />}
                 </button>
               )}
             </div>
@@ -321,6 +331,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
           {runtimeEventNotice.text}
         </div>
       )}
+      {pendingCheckpoint && checkpointRecovery.error && <div className="composer-error" role="status">{checkpointRecovery.error}</div>}
       {runtimeError && <div className="composer-error">{runtimeError}</div>}
     </section>
   )

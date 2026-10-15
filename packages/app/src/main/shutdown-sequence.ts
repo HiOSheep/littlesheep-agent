@@ -28,7 +28,8 @@ export async function runShutdownSequence(
         warn(`${step.name} cleanup exceeded ${stepTimeoutMs}ms; continuing shutdown`)
         resolve()
       }, stepTimeoutMs)
-      timeoutHandle.unref?.()
+      // Keep the deadline alive after the last server or worker has closed.
+      // A pending Promise alone does not keep Node's event loop running.
     })
 
     await Promise.race([operation, timeout])
