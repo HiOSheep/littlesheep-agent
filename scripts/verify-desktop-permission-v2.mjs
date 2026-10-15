@@ -330,6 +330,53 @@ async function main() {
 
   assert.equal(await selectedMode(), '工作区写入', 'new draft should start in workspace-write on this Windows host')
   note('new conversation starts with workspace-write')
+  // Seed one pre-V2 session only inside this acceptance data root. On reload,
+  // Main must downgrade it and keep the migration marker until the user picks
+  // one of the three current presets.
+  const legacySession = {
+    id: 'legacy-permission-migration-fixture',
+    title: 'Legacy permission migration fixture',
+    createdAt: 1,
+    lastMessageAt: 1,
+    mode: 'full',
+    scope: 'standalone',
+  }
+  await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({ sessions: [legacySession] }, null, 2)}\n`, 'utf8')
+  await client.send('Page.reload', { ignoreCache: true })
+  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.composer textarea')) || null`),
+    harness.startTimeoutMs, 'composer after loading the historical session fixture')
+  await harness.waitFor(() => evaluate(`Boolean(document.querySelector('.session-item .session-title')) || null`),
+    harness.actionTimeoutMs, 'historical session in the Renderer sidebar')
+  await readSessions(locator)
+  await clickSessionByTitle(legacySession.title, '只读')
+  const migrationNotice = await evaluate(`document.querySelector('.composer-status')?.innerText ?? ''`)
+  assert.match(migrationNotice, /历史权限“full”已暂时降为只读/u)
+  await click('.mode-picker-trigger', 'inspect public permission presets')
+  await harness.waitFor(() => evaluate(`document.querySelector('.mode-picker-panel')?.getAttribute('aria-hidden') === 'false' || null`),
+    harness.actionTimeoutMs, 'public permission preset list')
+  const publicPermissionOptions = await evaluate(`Array.from(document.querySelectorAll('.mode-option')).map(option => option.getAttribute('aria-label') || '')`)
+  assert.equal(publicPermissionOptions.length, 3)
+  assert.deepEqual(publicPermissionOptions.map((label) => label.split(':')[0]), ['只读', '工作区写入', '完全访问'])
+  assert.ok(publicPermissionOptions.every((label) => !/研究|受限/u.test(label)))
+  await click('.mode-picker-trigger', 'close permission preset list')
+  const blockedRun = await harness.fetchJson(locator, '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: legacySession.id, text: 'must not execute before migration', permissionPreset: 'read-only' }),
+  })
+  assert.equal(blockedRun.status, 409, `Main did not block the unmigrated session: ${JSON.stringify(blockedRun.body)}`)
+  note('historical full is visibly read-only, Main blocks its run, and only three current presets are exposed')
+  await chooseMode('只读')
+  await harness.waitFor(async () => {
+    const sessions = await readSessions(locator)
+    return sessions.find((session) => session.id === legacySession.id)?.permissionMigration === undefined || undefined
+  }, harness.actionTimeoutMs, 'explicit safe migration of historical permissions')
+  await harness.waitFor(() => evaluate(`!document.querySelector('.composer-status')?.innerText.includes('历史权限') || null`),
+    harness.actionTimeoutMs, 'historical permission notice to clear')
+  note('selecting the visible read-only preset explicitly migrates the session in Main')
+  await click('button.sidebar-nav-button[aria-label="新对话"]', 'new conversation after historical mode migration')
+  await harness.waitFor(async () => (await selectedMode()) === '工作区写入' || null,
+    harness.actionTimeoutMs, 'new draft after historical permission migration')
 
   await chooseMode('只读')
   assert.equal(await selectedMode(), '只读')
@@ -360,7 +407,7 @@ async function main() {
   assert.equal(await readFile(workspaceWritePath, 'utf8'), 'This file must not exist after Escape denies approval.\n')
   const secondSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    const session = sessions.find((candidate) => candidate.id !== firstSession.id)
+    const session = sessions.find((candidate) => candidate.id !== firstSession.id && candidate.id !== legacySession.id)
     return session?.id ? session : undefined
   }, harness.actionTimeoutMs, 'second session persistence')
   await waitForToolStatus(secondSession.id, 'ux07-approval-write', 'succeeded')
@@ -416,7 +463,7 @@ async function main() {
   await waitForReply('过期观察后的修改已按运行时结果处理')
   const thirdSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    return sessions.find((candidate) => candidate.id !== firstSession.id && candidate.id !== secondSession.id)
+    return sessions.find((candidate) => ![legacySession.id, firstSession.id, secondSession.id].includes(candidate.id))
   }, harness.actionTimeoutMs, 'third session persistence')
   await waitForToolStatus(thirdSession.id, 'p4-stale-read', 'succeeded')
   const staleEditInvocation = await waitForToolInvocation(
@@ -504,15 +551,16 @@ async function main() {
     const rect = dialog.getBoundingClientRect();
     return rect.width > 0 ? dialog.innerText.replace(/\\s+/gu, ' ').trim() : null;
   })()`), harness.actionTimeoutMs, 'full-access warning')
-  assert.match(fullWarning, /无需逐次询问/u)
+  assert.match(fullWarning, /内置工具可按 Main 当前权限策略访问更广范围的本地资源/u)
+  assert.match(fullWarning, /Shell 与强制审批操作仍需逐次确认/u)
   assert.match(fullWarning, /当前用户的宿主环境运行，没有 OS 级沙箱/u)
   assert.match(fullWarning, /LS 会对内置工具执行核心源码保护检查/u)
   assert.match(fullWarning, /无法保证命令或其子进程不能绕过应用层检查/u)
-  note('legacy full mode requires its red confirmation and accurately describes host Shell limits')
+  note('full-access requires its red confirmation and accurately describes host Shell limits')
   await clickByText('.full-access-warning .approval-action', '启用完全访问')
   await harness.waitFor(async () => (await selectedMode()) === '完全访问' || null,
     harness.actionTimeoutMs, 'confirmed full-access mode')
-  await waitForSessionMode(locator, thirdSession.id, 'full')
+  await waitForSessionMode(locator, thirdSession.id, 'full-access')
   await harness.waitFor(() => evaluate(`!document.querySelector('.full-access-warning') || null`),
     harness.actionTimeoutMs, 'full-access confirmation to close')
 
@@ -529,7 +577,7 @@ async function main() {
   await waitForReply('runtime-continuity-anchor-4827', 'second session completion')
   const fourthSession = await harness.waitFor(async () => {
     const sessions = await readSessions(locator)
-    return sessions.find((session) => ![firstSession.id, secondSession.id, thirdSession.id].includes(session.id))
+    return sessions.find((session) => ![legacySession.id, firstSession.id, secondSession.id, thirdSession.id].includes(session.id))
   }, harness.actionTimeoutMs, 'fourth session persistence')
   assert.ok(fourthSession?.id)
   assert.equal(fourthSession.mode, 'workspace-write')

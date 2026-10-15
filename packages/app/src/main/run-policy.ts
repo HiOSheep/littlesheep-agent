@@ -14,7 +14,7 @@ import {
   resolvePermissionDecision,
   type ContainerBoundary,
 } from '@littlesheep/safety'
-import type { PermissionModeId, PermissionSelectionId } from '../shared/permission-modes.js'
+import type { PermissionModeId } from '../shared/permission-modes.js'
 import { isPermissionSelectionPreset, normalizePermissionSelectionId } from '../shared/permission-modes.js'
 import type { SessionIndex } from './session-index.js'
 import {
@@ -86,7 +86,7 @@ export function resolveRunPolicy(
       : legacyMode
   const requestedPreset = isPermissionSelectionPreset(body.permissionPreset)
     ? body.permissionPreset
-    : body.permissionPreset === 'full-access' ? 'full-access' : undefined
+    : undefined
   const permissionPolicy = resolvePermissionModePolicy(requestedPreset ? 'research' : requestedPermissionMode)
   const requestedProfile = typeof body.profile === 'string'
     ? body.profile
@@ -140,7 +140,7 @@ export function resolveRunPolicy(
 }
 
 export function createPermissionApprover(
-  permissionMode: PermissionSelectionId | PermissionPresetId,
+  permissionMode: PermissionModeId | PermissionPresetId,
   approvalBroker?: RunApprovalBroker,
   boundaryOptions: RunPolicyBoundaryOptions = {},
 ): (
@@ -253,10 +253,10 @@ function resolveExistingDirectory(path: string | undefined): string | undefined 
   }
 }
 
-function isPermissionPresetId(value: PermissionSelectionId | PermissionPresetId): value is PermissionPresetId {
+function isPermissionPresetId(value: PermissionModeId | PermissionPresetId): value is PermissionPresetId {
   return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
 }
 
-function isLegacyPermissionMode(value: PermissionSelectionId | PermissionPresetId): value is PermissionModeId {
+function isLegacyPermissionMode(value: PermissionModeId | PermissionPresetId): value is PermissionModeId {
   return value === 'full' || value === 'research' || value === 'restricted'
 }

@@ -14,6 +14,11 @@ export interface SessionMeta {
   createdAt: number
   lastMessageAt: number
   mode: string
+  permissionVersion?: 2
+  permissionMigration?: {
+    version: 1
+    from: string
+  }
   scope: SessionScope
   projectId?: string
   workspacePath?: string

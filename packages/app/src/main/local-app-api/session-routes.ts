@@ -15,10 +15,7 @@ import {
   SESSION_TITLE_MAX_LENGTH,
 } from '../../shared/session-project-contracts.js'
 import {
-  getPermissionMode,
   isPermissionSelectionPreset,
-  normalizePermissionModeId,
-  normalizePermissionSelectionId,
 } from '../../shared/permission-modes.js'
 import type {
   ArchiveIndex,
@@ -213,18 +210,11 @@ export async function routeSessions(
       let mode = existing.mode
       if (hasMode) {
         const requestedMode = typeof body.mode === 'string' ? body.mode.trim() : ''
-        const isLegacyMode = requestedMode === 'full-access'
-          || requestedMode === 'info'
-          || requestedMode === 'physical'
-          || requestedMode === 'coding'
-        const isV2Selection = isPermissionSelectionPreset(requestedMode)
-        if (!getPermissionMode(requestedMode) && !isLegacyMode && !isV2Selection) {
-          json(res, 400, { error: 'session permission mode is invalid' })
+        if (!isPermissionSelectionPreset(requestedMode)) {
+          json(res, 400, { error: 'choose read-only, workspace-write or full-access' })
           return true
         }
-        mode = isV2Selection
-          ? normalizePermissionSelectionId(requestedMode)
-          : normalizePermissionModeId(requestedMode)
+        mode = requestedMode
       }
       // The explicit switch of where one session works. A project-bound session
       // otherwise follows its project, so this is the deliberate way to move it;
@@ -258,7 +248,10 @@ export async function routeSessions(
         }
         workspacePath = normalized
       }
-      if (title === existing.title && mode === existing.mode && workspacePath === existing.workspacePath) {
+      const permissionNeedsConfirmation = hasMode && (
+        existing.permissionVersion !== 2 || existing.permissionMigration !== undefined
+      )
+      if (title === existing.title && mode === existing.mode && !permissionNeedsConfirmation && workspacePath === existing.workspacePath) {
         json(res, 200, { session: existing })
         return true
       }
@@ -270,6 +263,7 @@ export async function routeSessions(
         await sessionIndex.upsert(sessionUpdateId, {
           ...(titleChanged ? { title } : {}),
           ...(mode !== existing.mode ? { mode } : {}),
+          ...(hasMode ? { permissionVersion: 2 as const, permissionMigration: undefined } : {}),
           ...(workspacePath !== existing.workspacePath ? { workspacePath } : {}),
         })
       } catch (error) {

@@ -3,7 +3,6 @@
 import { stat } from 'node:fs/promises'
 import type { Config } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
-import { normalizePermissionModeId } from '../../shared/permission-modes.js'
 import {
   assertTerminalOperationAllowed,
 } from './terminal-permission.js'
@@ -213,7 +212,6 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
-      const permissionMode = await resolveAgentPermissionMode(context.sessionIndex, body.sessionId)
       assertTerminalOperationAllowed({
         source: 'agent',
         command,
@@ -222,7 +220,9 @@ export class TerminalRouter {
         dataRoot: context.dataDir,
         workspaceRoot: root,
         protectedRoots: context.getRunner()?.protectedWriteRoots,
-        permissionMode,
+        // This legacy route has no Main invocation credential or approval broker.
+        // Agent Shell must use the authorized exec tool path instead.
+        permissionMode: 'restricted',
         // A Renderer boolean is not a Main-owned approval record. This route
         // has no approval broker, so research/restricted Agent commands stay blocked.
         approved: false,
@@ -267,7 +267,6 @@ export class TerminalRouter {
         json(res, 400, { error: 'command is required' })
         return true
       }
-      const permissionMode = await resolveAgentPermissionMode(context.sessionIndex, body.sessionId)
       assertTerminalOperationAllowed({
         source: 'agent',
         command,
@@ -276,7 +275,8 @@ export class TerminalRouter {
         dataRoot: context.dataDir,
         workspaceRoot: root,
         protectedRoots: context.getRunner()?.protectedWriteRoots,
-        permissionMode,
+        // Keep the stream endpoint under the same no-fallback rule.
+        permissionMode: 'restricted',
         // Keep the stream entry point under the same Main-only approval rule.
         approved: false,
       })
@@ -323,13 +323,4 @@ export class TerminalRouter {
     this.captures.stop()
     this.sessions.closeAll()
   }
-}
-
-async function resolveAgentPermissionMode(sessionIndex: SessionIndex, sessionId: unknown) {
-  const id = typeof sessionId === 'string' ? sessionId.trim() : ''
-  if (!id) return 'research' as const
-  const session = (await sessionIndex.list()).find((item) => item.id === id)
-  // Permission claims in a terminal request body are renderer input. A missing
-  // or unknown session cannot grant full access.
-  return normalizePermissionModeId(session?.mode)
 }

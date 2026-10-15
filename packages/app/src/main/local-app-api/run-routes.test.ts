@@ -292,6 +292,7 @@ describe('RunRouter tool event streaming', () => {
     ['ordinary run', {}],
     ['conversation continuation', { sessionId: 'session-continuation', requestKey: 'turn-2' }],
   ])('bounds large tool arguments for %s', async (_label, requestFields) => {
+    const continuationSessionId = _label === 'conversation continuation' ? 'session-continuation' : undefined
     const event = {
       type: 'tool_start' as const,
       callId: 'large-write',
@@ -315,7 +316,16 @@ describe('RunRouter tool event streaming', () => {
     const router = new RunRouter()
     const response = new FakeResponse()
     const sessionIndex = {
-      list: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue(continuationSessionId ? [{
+        id: continuationSessionId,
+        title: 'Continuation fixture',
+        createdAt: 1,
+        lastMessageAt: 1,
+        mode: 'workspace-write',
+        permissionVersion: 2,
+        scope: 'standalone',
+        workspacePath: workspaceDir,
+      }] : []),
       upsert: vi.fn().mockResolvedValue(undefined),
     }
     const requestBody = { text: 'write it', workspace: workspaceDir, ...requestFields }

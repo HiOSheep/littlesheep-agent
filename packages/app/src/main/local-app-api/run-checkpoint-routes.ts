@@ -273,6 +273,7 @@ async function streamCheckpointResume(
         workspaceRoot: state.cwd,
         protectedRoots: runner.protectedWriteRoots,
         cwd: state.cwd,
+        fullAccessConfirmed: resumeBody.permissionPreset === 'full-access',
       },
     )
     const restoreCheckpointResources = createCheckpointResourceResolver({
@@ -344,8 +345,8 @@ function checkpointResumeDefaults(
     // A research checkpoint might be an old research run or a V2 workspace-
     // write run, so cap it to read-only until the checkpoint can prove which.
     if (checkpointMode === 'restricted') {
-      effective.permissionMode = 'restricted'
-      delete effective.permissionPreset
+      effective.permissionPreset = 'read-only'
+      delete effective.permissionMode
     } else if (checkpointMode === 'research') {
       effective.permissionPreset = 'read-only'
       delete effective.permissionMode

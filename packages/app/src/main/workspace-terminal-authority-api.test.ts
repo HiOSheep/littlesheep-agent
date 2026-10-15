@@ -133,6 +133,24 @@ describe('workspace terminal authority API', () => {
       expect(streamedAgentCommand.status).toBe(403)
       expect(terminalProcessMocks.createWorkspaceTerminalProcess).not.toHaveBeenCalled()
 
+      await sessionIndex.upsert('full-access-session', {
+        title: 'Full access session', mode: 'full-access', permissionVersion: 2,
+        scope: 'standalone', workspacePath: workplaceDir,
+      })
+      const legacyFullAccessRoute = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalRun}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root: workplaceDir,
+          command: 'Write-Output must-use-authorized-exec-tool',
+          sessionId: 'full-access-session',
+          approved: true,
+          permissionMode: 'full',
+        }),
+      })
+      expect(legacyFullAccessRoute.status).toBe(403)
+      expect(terminalProcessMocks.createWorkspaceTerminalProcess).not.toHaveBeenCalled()
+
       // UX-29: the renderer asks for the shells this machine can run before it offers a picker.
       const shells = await fetch(`${base}${LOCAL_APP_API_ROUTES.terminalShells}`)
       expect(shells.status).toBe(200)

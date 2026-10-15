@@ -138,6 +138,7 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'scrollRef',
     'loading',
     'permissionMode',
+    'permissionMigration',
     'setPermissionMode',
     'runtime',
     'attachments',

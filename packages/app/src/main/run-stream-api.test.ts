@@ -247,6 +247,26 @@ describe('run stream Local App API', () => {
     }
   }
 
+  async function seedV2Session(
+    dataDir: string,
+    workplaceDir: string,
+    sessionId: ReturnType<typeof asSessionId>,
+    input: { scope?: 'standalone' | 'project'; projectId?: string; workspacePath?: string; mode?: 'read-only' | 'workspace-write' | 'full-access' } = {},
+  ) {
+    const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+    await sessionIndex.upsert(String(sessionId), {
+      title: 'Permission V2 fixture',
+      createdAt: 1,
+      lastMessageAt: 1,
+      mode: input.mode ?? 'workspace-write',
+      permissionVersion: 2,
+      scope: input.scope ?? 'standalone',
+      projectId: input.projectId,
+      workspacePath: input.workspacePath ?? workplaceDir,
+    })
+    return sessionIndex
+  }
+
   it('preserves the SSE start, activity, delta and result contract', async () => {
     const sessionId = asSessionId('stream-session')
     const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0], onDelta: (delta: string) => void) => {
@@ -284,7 +304,6 @@ describe('run stream Local App API', () => {
         body: JSON.stringify({
           text: '执行测试',
           requestKey: 'conversation-turn-1',
-          permissionMode: 'full',
         }),
       })
 
@@ -307,11 +326,12 @@ describe('run stream Local App API', () => {
       expect(runStream).toHaveBeenCalledWith(expect.objectContaining({
         sessionId: undefined,
         requestKey: 'conversation-turn-1',
-        permissionPolicyId: 'full',
+        permissionPolicyId: 'research',
+        permissionPreset: 'workspace-write',
         restoreCheckpointResources: expect.any(Function),
       }), expect.any(Function))
       expect(await new SessionIndex({ dataDir, workplaceDir }).list()).toEqual([
-        expect.objectContaining({ id: sessionId, scope: 'standalone', workspacePath: workplaceDir }),
+        expect.objectContaining({ id: sessionId, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone', workspacePath: workplaceDir }),
       ])
     } finally {
       await server.stop()
@@ -348,8 +368,11 @@ describe('run stream Local App API', () => {
       })
       expect(registered.status).toBe(200)
       const projectId = String(((await registered.json()) as { project: { id: string } }).project.id)
+      await seedV2Session(dataDir, workplaceDir, sessionId, {
+        scope: 'project', projectId, workspacePath: projectDir, mode: 'workspace-write',
+      })
 
-      // The first run binds the session to the project.
+      // The Main-owned session record binds this run to the project.
       const first = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -359,7 +382,6 @@ describe('run stream Local App API', () => {
           requestKey: 'project-turn-1',
           sessionScope: 'project',
           projectId,
-          permissionMode: 'full',
           workspace: projectDir,
         }),
       })
@@ -375,7 +397,6 @@ describe('run stream Local App API', () => {
           text: '继续',
           sessionId,
           requestKey: 'project-turn-2',
-          permissionMode: 'full',
           workspace: savedDefault,
         }),
       })
@@ -414,7 +435,6 @@ describe('run stream Local App API', () => {
           text: '换到这里继续',
           sessionId,
           requestKey: 'project-turn-3',
-          permissionMode: 'full',
           workspace: projectDir,
         }),
       })
@@ -459,6 +479,7 @@ describe('run stream Local App API', () => {
       durableHarnessMode: 'next',
       replayDurableFinalReply,
     })
+    await seedV2Session(dataDir, join(dataDir, 'workplace'), sessionId)
 
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
@@ -509,6 +530,7 @@ describe('run stream Local App API', () => {
         reason: 'not_settled' as const,
       })),
     })
+    await seedV2Session(dataDir, join(dataDir, 'workplace'), sessionId)
 
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
@@ -532,7 +554,7 @@ describe('run stream Local App API', () => {
     }
   })
 
-  it('uses the persisted session permission mode when the stream request omits it', async () => {
+  it('uses the persisted V2 session permission preset when the stream request omits it', async () => {
     const sessionId = asSessionId('persisted-permission-session')
     const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0]) => ({
       runId: input.runId!,
@@ -550,7 +572,8 @@ describe('run stream Local App API', () => {
       title: '权限同步回归',
       createdAt: 1,
       lastMessageAt: 1,
-      mode: 'full',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: workplaceDir,
     })
@@ -570,10 +593,11 @@ describe('run stream Local App API', () => {
       await response.text()
       expect(runStream).toHaveBeenCalledWith(expect.objectContaining({
         sessionId,
-        permissionPolicyId: 'full',
+        permissionPolicyId: 'research',
+        permissionPreset: 'workspace-write',
       }), expect.any(Function))
       expect(await sessionIndex.list()).toEqual([
-        expect.objectContaining({ id: sessionId, mode: 'full' }),
+        expect.objectContaining({ id: sessionId, mode: 'workspace-write', permissionVersion: 2 }),
       ])
     } finally {
       await server.stop()
@@ -694,12 +718,12 @@ describe('run stream Local App API', () => {
         updateRuntimeConfig: vi.fn(async () => undefined),
       })
       await server.setRunner(runner)
+      await seedV2Session(dataDir, workplaceDir, session.id)
 
       const requestBody = JSON.stringify({
         text: 'Permission is enabled. Try the original task again.',
         sessionId: session.id,
         requestKey: 'api-continuation-turn',
-        permissionMode: 'full',
       })
       const [response, retriedResponse] = await Promise.all([
         fetch(`http://127.0.0.1:${server.port}${LOCAL_APP_API_ROUTES.runStream}`, {
@@ -747,6 +771,7 @@ describe('run stream Local App API', () => {
     const fixture = await createRealContinuationFixture()
     const requestKey = 'api-multiple-head-turn'
     try {
+      await seedV2Session(fixture.dataDir, fixture.workplaceDir, fixture.session.id)
       for (const id of ['api-multiple-head-a', 'api-multiple-head-b']) {
         await fixture.runner.infra.runCheckpointStore!.write(waitingApiCheckpoint({
           id,
@@ -764,7 +789,6 @@ describe('run stream Local App API', () => {
           text: 'Continue the original PDF task.',
           sessionId: fixture.session.id,
           requestKey,
-          permissionMode: 'full',
         }),
       })
       const stream = await response.text()
@@ -793,6 +817,7 @@ describe('run stream Local App API', () => {
   it('streams a recoverable resource failure for a legacy attachment checkpoint', async () => {
     const fixture = await createRealContinuationFixture()
     const requestKey = 'api-legacy-attachment-turn'
+    await seedV2Session(fixture.dataDir, fixture.workplaceDir, fixture.session.id)
     const checkpoint = waitingApiCheckpoint({
       id: 'api-legacy-attachment-checkpoint',
       sessionId: fixture.session.id,
@@ -815,7 +840,6 @@ describe('run stream Local App API', () => {
           text: 'Try the original PDF task again.',
           sessionId: fixture.session.id,
           requestKey,
-          permissionMode: 'full',
         }),
       })
       const stream = await response.text()

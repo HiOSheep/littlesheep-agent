@@ -534,18 +534,31 @@ describe('explicit session workspace switch', () => {
     }
   })
 
-  it('persists an explicit V2 permission change only through the session mutation route', async () => {
+  it('requires an explicit V2 selection to migrate historical permissions', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-session-permission-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir: join(dataDir, 'workplace') })
-      await sessionIndex.upsert('session-v2', { title: 'V2', mode: 'research', scope: 'standalone' })
+      await sessionIndex.upsert('session-v2', { title: 'V2', mode: 'full', scope: 'standalone' })
+
+      await expect(sessionIndex.list()).resolves.toMatchObject([{
+        id: 'session-v2', mode: 'read-only', permissionMigration: { version: 1, from: 'full' },
+      }])
+
+      const rejected = await patchSession(sessionIndex, 'session-v2', { mode: 'full' })
+      expect(rejected.status).toBe(400)
+
+      const acknowledgeSafeDefault = await patchSession(sessionIndex, 'session-v2', { mode: 'read-only' })
+      expect(acknowledgeSafeDefault.status).toBe(200)
+      expect(acknowledgeSafeDefault.body).toMatchObject({ session: { mode: 'read-only', permissionVersion: 2 } })
+      expect((acknowledgeSafeDefault.body as { session: Record<string, unknown> }).session).not.toHaveProperty('permissionMigration')
 
       const response = await patchSession(sessionIndex, 'session-v2', { mode: 'workspace-write' })
 
       expect(response.status).toBe(200)
-      expect(response.body.session).toMatchObject({ id: 'session-v2', mode: 'workspace-write' })
+      expect(response.body.session).toMatchObject({ id: 'session-v2', mode: 'workspace-write', permissionVersion: 2 })
+      expect((response.body as { session: Record<string, unknown> }).session).not.toHaveProperty('permissionMigration')
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-v2', mode: 'workspace-write' }),
+        expect.objectContaining({ id: 'session-v2', mode: 'workspace-write', permissionVersion: 2 }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })

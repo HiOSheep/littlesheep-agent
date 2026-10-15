@@ -63,7 +63,9 @@ export class SessionIndex {
           title: updates.title ?? 'New session',
           createdAt: updates.createdAt ?? Date.now(),
           lastMessageAt: updates.lastMessageAt ?? Date.now(),
-          mode: updates.mode ?? 'research',
+          mode: updates.mode ?? 'workspace-write',
+          permissionVersion: updates.permissionVersion ?? 2,
+          permissionMigration: updates.permissionMigration,
           scope: updates.scope ?? 'standalone',
           projectId: updates.scope === 'project' ? updates.projectId : undefined,
           workspacePath: updates.workspacePath,
@@ -145,12 +147,29 @@ export function normalizeSessionMeta(value: unknown, workplaceDir: string): Sess
     ? 'project'
     : 'standalone'
 
+  const storedMode = item.mode
+  const storedMigration = typeof item.permissionMigration === 'object' && item.permissionMigration !== null
+    ? item.permissionMigration as Record<string, unknown>
+    : undefined
+  const pendingMigration = storedMigration?.version === 1 && typeof storedMigration.from === 'string'
+    ? { version: 1 as const, from: storedMigration.from.slice(0, 64) }
+    : undefined
+  const recognizedV2Mode = storedMode === 'read-only' || storedMode === 'workspace-write'
+    || storedMode === 'full-access' && item.permissionVersion === 2
+  const canUseV2Mode = recognizedV2Mode && !pendingMigration
+  const permissionMigration = pendingMigration ?? (!recognizedV2Mode
+    ? { version: 1 as const, from: storedMode.slice(0, 64) }
+    : undefined)
+
   return {
     id: item.id,
     title: item.title,
     createdAt: item.createdAt,
     lastMessageAt: item.lastMessageAt,
-    mode: normalizePermissionSelectionId(item.mode),
+    mode: canUseV2Mode ? normalizePermissionSelectionId(storedMode)
+      : storedMode === 'read-only' || storedMode === 'workspace-write' ? storedMode : 'read-only',
+    permissionVersion: 2,
+    ...(permissionMigration ? { permissionMigration } : {}),
     scope,
     projectId: scope === 'project' ? projectId : undefined,
     workspacePath,
@@ -166,7 +185,9 @@ function sessionsNeedMigration(raw: unknown[], normalized: SessionMeta[]): boole
     return stored.scope !== session.scope ||
       stored.projectId !== session.projectId ||
       stored.workspacePath !== session.workspacePath ||
-      stored.mode !== session.mode
+      stored.mode !== session.mode ||
+      stored.permissionVersion !== session.permissionVersion ||
+      JSON.stringify(stored.permissionMigration) !== JSON.stringify(session.permissionMigration)
   })
 }
 

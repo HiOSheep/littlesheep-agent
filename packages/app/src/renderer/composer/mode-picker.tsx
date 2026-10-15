@@ -15,9 +15,11 @@ import { useMenuFocusReturn } from './menu-focus-return'
 export function ModePicker({
   value,
   onChange,
+  migration,
 }: {
   value: PermissionSelectionId
   onChange: (value: PermissionSelectionId) => void
+  migration?: { from: string }
 }) {
   const [open, setOpen] = useState(false)
   const [confirmingFullAccess, setConfirmingFullAccess] = useState(false)
@@ -53,7 +55,7 @@ export function ModePicker({
         className="model-picker-trigger mode-picker-trigger composer-tab-control"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}`}
+        aria-label={`${selected.label}: ${selected.riskLabel}，${selected.desc}${migration ? '，历史权限待确认' : ''}`}
         onClick={() => {
           if (open) {
             closeMenu()
@@ -84,10 +86,10 @@ export function ModePicker({
                 key={item.id}
                 type="button"
                 className={`model-option option-picker-option mode-option risk-${item.risk} ${isActive ? 'active' : ''}`}
-                aria-label={`${item.label}: ${item.riskLabel}，${item.desc}`}
+                aria-label={`${item.label}: ${item.riskLabel}，${item.desc}${migration ? '，确认后迁移旧权限' : ''}`}
                 onClick={() => {
                   closeMenu()
-                  if (isActive) return
+                  if (isActive && !migration) return
                   if (requiresFullAccessConfirmation(value, item.id)) {
                     setConfirmingFullAccess(true)
                     return
@@ -110,7 +112,7 @@ export function ModePicker({
         onCancel={() => setConfirmingFullAccess(false)}
         onConfirm={() => {
           setConfirmingFullAccess(false)
-          onChange('full')
+          onChange('full-access')
         }}
       />    </div>
   )
@@ -120,7 +122,7 @@ export function requiresFullAccessConfirmation(
   current: PermissionSelectionId,
   next: PermissionSelectionId,
 ): boolean {
-  return current !== 'full' && next === 'full'
+  return current !== 'full-access' && next === 'full-access'
 }
 
 function FullAccessWarning({
@@ -155,14 +157,14 @@ function FullAccessWarning({
         >
           <div className="approval-kicker">最高权限警告</div>
           <h2>启用完全访问？</h2>
-          <p>启用后，LittleSheep 无需逐次询问即可访问容器内外及范围不明的资源。</p>
+          <p>启用后，内置工具可按 Main 当前权限策略访问更广范围的本地资源；Shell 与强制审批操作仍需逐次确认。</p>
           <ul className="full-access-warning-list">
             <li>读取、创建、修改或删除外部文件与目录</li>
             <li>Shell 命令会在当前用户的宿主环境运行，没有 OS 级沙箱；工作区范围不会限制命令</li>
             <li>命令可能访问此用户可访问的其他文件、启动本地进程或使用网络</li>
             <li>访问动态命令涉及的宿主资源</li>
           </ul>
-          <p className="approval-session-note">LS 会对内置工具执行核心源码保护检查；宿主 Shell 未经过 OS 级隔离，因此无法保证命令或其子进程不能绕过应用层检查并改写这些文件。内置硬拒绝规则仍会执行，但不构成宿主级防护。你可以随时切回研究或受限模式。</p>
+          <p className="approval-session-note">LS 会对内置工具执行核心源码保护检查；宿主 Shell 未经过 OS 级隔离，因此无法保证命令或其子进程不能绕过应用层检查并改写这些文件。内置硬拒绝规则仍会执行，但不构成宿主级防护。你可以随时切回只读或工作区写入。</p>
           <div className="approval-actions">
             <button type="button" className="approval-action" onClick={onCancel}>
               取消

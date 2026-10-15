@@ -14,14 +14,15 @@ import {
 } from './run-support.js'
 
 describe('run permission mode continuity', () => {
-  it('uses the persisted session mode when a partial run request omits it', async () => {
+  it('uses the persisted versioned preset when a partial run request omits it', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const workplaceDir = join(dataDir, 'workplace')
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
       await sessionIndex.upsert('session-1', {
         title: 'Session',
-        mode: 'full',
+        mode: 'full-access',
+        permissionVersion: 2,
         scope: 'standalone',
         workspacePath: workplaceDir,
       })
@@ -29,53 +30,56 @@ describe('run permission mode continuity', () => {
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'session-1',
         text: 'run',
-      })).resolves.toMatchObject({ permissionMode: 'full' })
+      })).resolves.toMatchObject({ permissionPreset: 'full-access' })
 
       await updateSessionIndex(sessionIndex, 'session-1', { sessionId: 'session-1' }, {
         scope: 'standalone',
       }, workplaceDir)
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-1', mode: 'full' }),
+        expect.objectContaining({ id: 'session-1', mode: 'full-access', permissionVersion: 2 }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }
   })
 
-  it('allows a run to narrow permission but requires a persisted change before elevation', async () => {
+  it('allows only narrowing a persisted preset and rejects legacy run mode values', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir })
-      await sessionIndex.upsert('session-1', { mode: 'research', scope: 'standalone' })
+      await sessionIndex.upsert('session-1', { mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' })
 
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'session-1', text: 'run', permissionMode: 'full',
-      })).resolves.toMatchObject({ permissionMode: 'research' })
+        sessionId: 'session-1', text: 'run', permissionPreset: 'full-access',
+      })).resolves.toMatchObject({ permissionPreset: 'workspace-write' })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'session-1', text: 'run', permissionMode: 'restricted',
-      })).resolves.toMatchObject({ permissionMode: 'restricted' })
+        sessionId: 'session-1', text: 'run', permissionPreset: 'read-only',
+      })).resolves.toMatchObject({ permissionPreset: 'read-only' })
+      await expect(withPersistedSessionPermissionMode(sessionIndex, {
+        sessionId: 'session-1', text: 'run', permissionMode: 'full',
+      })).rejects.toThrow('legacy permission modes are no longer accepted')
 
-      // The dedicated session mutation is the authority for an upgrade.
-      await sessionIndex.upsert('session-1', { mode: 'full' })
+      // A Main-owned session update is the authority for an upgrade.
+      await sessionIndex.upsert('session-1', { mode: 'full-access', permissionVersion: 2, permissionMigration: undefined })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'session-1', text: 'run', permissionMode: 'full',
-      })).resolves.toMatchObject({ permissionMode: 'full' })
+        sessionId: 'session-1', text: 'run', permissionPreset: 'full-access',
+      })).resolves.toMatchObject({ permissionPreset: 'full-access' })
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }
   })
 
-  it('uses the conservative default for an unknown named session but preserves new-run choices', async () => {
+  it('rejects unknown named sessions and preserves new-run preset choices', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir })
 
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'session-not-indexed', text: 'run', permissionMode: 'full',
-      })).resolves.toMatchObject({ permissionMode: 'research' })
+        sessionId: 'session-not-indexed', text: 'run', permissionPreset: 'full-access',
+      })).rejects.toThrow('session permission state is unavailable')
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        text: 'run', permissionMode: 'full',
-      })).resolves.toMatchObject({ permissionMode: 'full' })
+        text: 'run', permissionPreset: 'full-access',
+      })).resolves.toMatchObject({ permissionPreset: 'full-access' })
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }
@@ -86,12 +90,12 @@ describe('run permission mode continuity', () => {
     try {
       const workplaceDir = join(dataDir, 'workplace')
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
-      await sessionIndex.upsert('session-1', { mode: 'restricted', scope: 'standalone' })
+      await sessionIndex.upsert('session-1', { mode: 'read-only', permissionVersion: 2, scope: 'standalone' })
       await updateSessionIndex(sessionIndex, 'session-1', { mode: 'coding' }, {
         scope: 'standalone',
       }, workplaceDir)
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-1', mode: 'restricted' }),
+        expect.objectContaining({ id: 'session-1', mode: 'read-only' }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
@@ -103,12 +107,12 @@ describe('run permission mode continuity', () => {
     try {
       const workplaceDir = join(dataDir, 'workplace')
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
-      await sessionIndex.upsert('session-1', { mode: 'research', scope: 'standalone' })
-      await updateSessionIndex(sessionIndex, 'session-1', { permissionMode: 'full' }, {
+      await sessionIndex.upsert('session-1', { mode: 'read-only', permissionVersion: 2, scope: 'standalone' })
+      await updateSessionIndex(sessionIndex, 'session-1', { permissionPreset: 'full-access' }, {
         scope: 'standalone',
       }, workplaceDir)
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-1', mode: 'research' }),
+        expect.objectContaining({ id: 'session-1', mode: 'read-only' }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
@@ -120,11 +124,11 @@ describe('run permission mode continuity', () => {
     try {
       const workplaceDir = join(dataDir, 'workplace')
       const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
-      await updateSessionIndex(sessionIndex, 'session-new', { permissionMode: 'restricted' }, {
+      await updateSessionIndex(sessionIndex, 'session-new', { permissionPreset: 'full-access' }, {
         scope: 'standalone',
       }, workplaceDir)
       await expect(sessionIndex.list()).resolves.toEqual([
-        expect.objectContaining({ id: 'session-new', mode: 'restricted' }),
+        expect.objectContaining({ id: 'session-new', mode: 'full-access', permissionVersion: 2 }),
       ])
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
@@ -143,35 +147,35 @@ describe('run permission mode continuity', () => {
       })).resolves.toMatchObject({ permissionPreset: 'read-only' })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'not-indexed', text: 'unknown session', permissionPreset: 'workspace-write',
-      })).resolves.toMatchObject({ permissionMode: 'research' })
+      })).rejects.toThrow('session permission state is unavailable')
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }
   })
 
-  it('keeps legacy sessions at their stored permission and only narrows V2 sessions per run', async () => {
+  it('blocks historical sessions until explicitly migrated and narrows versioned sessions', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {
       const sessionIndex = new SessionIndex({ dataDir })
-      await sessionIndex.upsert('legacy', { mode: 'restricted', scope: 'standalone' })
-      await sessionIndex.upsert('v2-write', { mode: 'workspace-write', scope: 'standalone' })
-      await sessionIndex.upsert('v2-read', { mode: 'read-only', scope: 'standalone' })
+      await sessionIndex.upsert('legacy', { mode: 'full', scope: 'standalone' })
+      await sessionIndex.upsert('v2-write', { mode: 'workspace-write', permissionVersion: 2, scope: 'standalone' })
+      await sessionIndex.upsert('v2-read', { mode: 'read-only', permissionVersion: 2, scope: 'standalone' })
 
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'legacy', text: 'run', permissionPreset: 'workspace-write',
-      })).resolves.toMatchObject({ permissionMode: 'restricted' })
+      })).rejects.toThrow('needs an explicit permission selection')
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'v2-write', text: 'run', permissionMode: 'full',
+        sessionId: 'v2-write', text: 'run', permissionPreset: 'full-access',
       })).resolves.toMatchObject({ permissionPreset: 'workspace-write' })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'v2-write', text: 'run', permissionMode: 'research',
+        sessionId: 'v2-write', text: 'run', permissionPreset: 'read-only',
       })).resolves.toMatchObject({ permissionPreset: 'read-only' })
-      await expect(withPersistedSessionPermissionMode(sessionIndex, {
-        sessionId: 'v2-write', text: 'run', permissionMode: 'restricted',
-      })).resolves.toMatchObject({ permissionMode: 'restricted' })
       await expect(withPersistedSessionPermissionMode(sessionIndex, {
         sessionId: 'v2-read', text: 'run', permissionPreset: 'workspace-write',
       })).resolves.toMatchObject({ permissionPreset: 'read-only' })
+      await expect(updateSessionIndex(sessionIndex, 'legacy', { sessionId: 'legacy' }, {
+        scope: 'standalone',
+      }, dataDir)).rejects.toThrow('must be explicitly migrated')
     } finally {
       rmSync(dataDir, { recursive: true, force: true })
     }

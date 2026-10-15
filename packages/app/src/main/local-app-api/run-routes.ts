@@ -297,6 +297,7 @@ export class RunRouter {
                 workspaceRoot: cwd,
                 protectedRoots: runner.protectedWriteRoots,
                 cwd,
+                fullAccessConfirmed: effectiveBody.permissionPreset === 'full-access',
               },
             ),
           },
@@ -391,6 +392,7 @@ export class RunRouter {
           workspaceRoot: cwd,
           protectedRoots: runner.protectedWriteRoots,
           cwd,
+          fullAccessConfirmed: effectiveBody.permissionPreset === 'full-access',
         }),
       })
       const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'

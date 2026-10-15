@@ -2,8 +2,15 @@ import { readFile } from 'node:fs/promises'
 import { readRendererStyleSource } from '../style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 import { requiresFullAccessConfirmation } from './mode-picker'
+import { MODE_OPTIONS } from '../runtime/options'
 
 describe('mode picker layout', () => {
+  it('exposes only the three versioned permission presets', () => {
+    expect(MODE_OPTIONS.map((option) => option.id)).toEqual([
+      'read-only', 'workspace-write', 'full-access',
+    ])
+  })
+
   it('leaves the scrolling option list room for the focus ring it clips', async () => {
     const styles = await readRendererStyleSource()
 
@@ -71,10 +78,10 @@ describe('mode picker layout', () => {
   })
 
   it('requires one explicit warning before entering full access', async () => {
-    expect(requiresFullAccessConfirmation('research', 'full')).toBe(true)
-    expect(requiresFullAccessConfirmation('restricted', 'full')).toBe(true)
-    expect(requiresFullAccessConfirmation('full', 'full')).toBe(false)
-    expect(requiresFullAccessConfirmation('full', 'research')).toBe(false)
+    expect(requiresFullAccessConfirmation('read-only', 'full-access')).toBe(true)
+    expect(requiresFullAccessConfirmation('workspace-write', 'full-access')).toBe(true)
+    expect(requiresFullAccessConfirmation('full-access', 'full-access')).toBe(false)
+    expect(requiresFullAccessConfirmation('full-access', 'read-only')).toBe(false)
 
     const source = await readFile(new URL('./mode-picker.tsx', import.meta.url), 'utf8')
     expect(source).toContain('启用完全访问？')
@@ -84,7 +91,7 @@ describe('mode picker layout', () => {
     expect(source).toContain('无法保证命令或其子进程不能绕过应用层检查并改写这些文件')
     expect(source).not.toContain('LS 核心源码只读保护和危险命令硬拒绝仍然有效')
     expect(source).toContain('approval-action primary danger')
-    expect(source).toContain("onChange('full')")
+    expect(source).toContain("onChange('full-access')")
     expect(source).toContain('className="mode-option-copy"')
     expect(source).toContain('<small>{item.desc}</small>')
     expect(source).not.toContain('FloatingHelpTooltip')

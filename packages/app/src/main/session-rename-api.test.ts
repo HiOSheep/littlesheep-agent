@@ -28,7 +28,8 @@ describe('session rename Local App API', () => {
       title: 'Standalone',
       createdAt: 1,
       lastMessageAt: 10,
-      mode: 'research',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: workplaceDir,
     })
@@ -36,7 +37,8 @@ describe('session rename Local App API', () => {
       title: 'Project session',
       createdAt: 2,
       lastMessageAt: 20,
-      mode: 'research',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'project',
       projectId: 'project-1',
       workspacePath: join(dataDir, 'project-1'),
@@ -86,16 +88,17 @@ describe('session rename Local App API', () => {
       const modeResponse = await fetch(`${base}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'standalone')}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'restricted' }),
+        body: JSON.stringify({ mode: 'read-only' }),
       })
       expect(modeResponse.status).toBe(200)
-      await expect(modeResponse.json()).resolves.toMatchObject({ session: { id: 'standalone', mode: 'restricted' } })
+      await expect(modeResponse.json()).resolves.toMatchObject({ session: { id: 'standalone', mode: 'read-only', permissionVersion: 2 } })
 
       const sessions = await sessionIndex.list()
       expect(sessions.find((session) => session.id === 'standalone')).toMatchObject({
         title: '独立 对话',
         lastMessageAt: 10,
-        mode: 'restricted',
+        mode: 'read-only',
+        permissionVersion: 2,
         scope: 'standalone',
       })
       expect(sessions.find((session) => session.id === 'project-session')).toMatchObject({
@@ -144,7 +147,8 @@ describe('session rename Local App API', () => {
       title: 'Original',
       createdAt: 1,
       lastMessageAt: 1,
-      mode: 'research',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: workplaceDir,
     })
@@ -190,7 +194,7 @@ describe('session rename Local App API', () => {
       const modeRequest = fetch(`${base}${localAppApiItemPath(LOCAL_APP_API_PREFIXES.sessions, 'session-1')}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'full' }),
+        body: JSON.stringify({ mode: 'read-only' }),
       })
       await new Promise((resolve) => setTimeout(resolve, 20))
       releaseTitleUpdate()
@@ -199,15 +203,16 @@ describe('session rename Local App API', () => {
       expect(titleResponse.status).toBe(200)
       expect(modeResponse.status).toBe(200)
       await expect(titleResponse.json()).resolves.toMatchObject({
-        session: { id: 'session-1', title: 'Renamed', mode: 'research' },
+        session: { id: 'session-1', title: 'Renamed', mode: 'workspace-write' },
       })
       await expect(modeResponse.json()).resolves.toMatchObject({
-        session: { id: 'session-1', title: 'Renamed', mode: 'full' },
+        session: { id: 'session-1', title: 'Renamed', mode: 'read-only' },
       })
       await expect(sessionIndex.list()).resolves.toMatchObject([{
         id: 'session-1',
         title: 'Renamed',
-        mode: 'full',
+        mode: 'read-only',
+        permissionVersion: 2,
       }])
     } finally {
       await server.stop()

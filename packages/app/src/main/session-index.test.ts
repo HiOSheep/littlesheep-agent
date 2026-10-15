@@ -27,7 +27,9 @@ describe('SessionIndex ownership', () => {
         title: 'Legacy chat',
         createdAt: 1,
         lastMessageAt: 2,
-        mode: 'research',
+        mode: 'read-only',
+        permissionVersion: 2,
+        permissionMigration: { version: 1, from: 'research' },
         scope: 'standalone',
         workspacePath: workplace,
       }])
@@ -63,7 +65,9 @@ describe('SessionIndex ownership', () => {
         title: 'Retired project shell chat',
         createdAt: 1,
         lastMessageAt: 2,
-        mode: 'research',
+        mode: 'read-only',
+        permissionVersion: 2,
+        permissionMigration: { version: 1, from: 'research' },
         scope: 'standalone',
         workspacePath: workplace,
       }])
@@ -108,7 +112,7 @@ describe('SessionIndex ownership', () => {
     }
   })
 
-  it('normalizes legacy full-access session modes and writes the canonical id back', async () => {
+  it('downgrades ambiguous historical full-access to read-only and requires explicit migration', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ls-session-index-'))
     try {
       writeFileSync(join(dir, 'sessions.json'), JSON.stringify({
@@ -122,9 +126,16 @@ describe('SessionIndex ownership', () => {
       }))
 
       const index = new SessionIndex({ dataDir: dir })
-      await expect(index.list()).resolves.toMatchObject([{ id: 'legacy-full', mode: 'full' }])
-      const stored = JSON.parse(readFileSync(join(dir, 'sessions.json'), 'utf8')) as { sessions: Array<{ mode: string }> }
-      expect(stored.sessions[0]?.mode).toBe('full')
+      await expect(index.list()).resolves.toMatchObject([{
+        id: 'legacy-full', mode: 'read-only', permissionVersion: 2,
+        permissionMigration: { version: 1, from: 'full-access' },
+      }])
+      const stored = JSON.parse(readFileSync(join(dir, 'sessions.json'), 'utf8')) as { sessions: Array<{ mode: string; permissionMigration?: unknown }> }
+      expect(stored.sessions[0]?.mode).toBe('read-only')
+      expect(stored.sessions[0]?.permissionMigration).toEqual({ version: 1, from: 'full-access' })
+      await expect(new SessionIndex({ dataDir: dir }).list()).resolves.toMatchObject([{
+        id: 'legacy-full', mode: 'read-only', permissionMigration: { version: 1, from: 'full-access' },
+      }])
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -138,19 +149,20 @@ describe('SessionIndex ownership', () => {
         title: 'Original',
         createdAt: 1,
         lastMessageAt: 1,
-        mode: 'research',
+        mode: 'workspace-write',
+        permissionVersion: 2,
         scope: 'standalone',
       })
 
       await Promise.all([
         index.upsert('session-1', { title: 'Renamed' }),
-        index.upsert('session-1', { mode: 'full' }),
+        index.upsert('session-1', { mode: 'full-access', permissionVersion: 2, permissionMigration: undefined }),
       ])
 
       await expect(index.list()).resolves.toMatchObject([{
         id: 'session-1',
         title: 'Renamed',
-        mode: 'full',
+        mode: 'full-access',
       }])
     } finally {
       rmSync(dir, { recursive: true, force: true })

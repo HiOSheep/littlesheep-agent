@@ -175,6 +175,13 @@ async function createFixture(
     },
   } as unknown as AgentRunner
   const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+  await sessionIndex.upsert('checkpoint-session', {
+    title: 'checkpoint session',
+    mode: 'workspace-write',
+    permissionVersion: 2,
+    scope: 'standalone',
+    workspacePath: workplaceDir,
+  })
   const server = await startLocalAppApiServer({
     getRunner: () => runner,
     port: 0,
@@ -250,7 +257,8 @@ describe('run checkpoint Local App API', () => {
     const fixture = await createFixture()
     await fixture.sessionIndex.upsert('checkpoint-session', {
       title: 'checkpoint session',
-      mode: 'full',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: join(fixture.dataDir, 'workplace'),
     })
@@ -292,7 +300,6 @@ describe('run checkpoint Local App API', () => {
           reason: 'resume from test',
           // A checkpoint resumes the original policy snapshot even if a stale
           // or untrusted request body tries to replace it.
-          permissionMode: 'full',
           reasoning: 'auto',
           profile: 'general',
           requestKey: 'explicit-resume-turn',
@@ -309,6 +316,7 @@ describe('run checkpoint Local App API', () => {
       expect(resumeOptions?.runId).toEqual(expect.any(String))
       expect(resumeOptions).toMatchObject({
         permissionPolicyId: 'research',
+        permissionPreset: 'read-only',
         reasoning: 'auto',
         profile: 'general',
         requestKey: 'explicit-resume-turn',
@@ -325,7 +333,7 @@ describe('run checkpoint Local App API', () => {
     }
   })
 
-  it('inherits checkpoint policy, profile, and reasoning when resume overrides are omitted', async () => {
+  it('inherits the current V2 session permission, profile, and reasoning when resume overrides are omitted', async () => {
     const fixture = await createFixture(undefined, {
       permissionPolicyId: 'full',
       behaviorModeId: 'coding',
@@ -333,7 +341,8 @@ describe('run checkpoint Local App API', () => {
     })
     await fixture.sessionIndex.upsert('checkpoint-session', {
       title: 'checkpoint session',
-      mode: 'full',
+      mode: 'workspace-write',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: join(fixture.dataDir, 'workplace'),
     })
@@ -353,7 +362,8 @@ describe('run checkpoint Local App API', () => {
       expect(response.status).toBe(200)
       expect(await response.text()).toContain('event: result')
       expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]).toMatchObject({
-        permissionPolicyId: 'full',
+        permissionPolicyId: 'research',
+        permissionPreset: 'workspace-write',
         reasoning: 'high',
         profile: 'coding',
       })
@@ -363,11 +373,12 @@ describe('run checkpoint Local App API', () => {
     }
   })
 
-  it('caps checkpoint authority at the current persisted session mode after a downgrade', async () => {
+  it('caps checkpoint authority at the current persisted V2 session preset after a downgrade', async () => {
     const fixture = await createFixture(undefined, { permissionPolicyId: 'full' })
     await fixture.sessionIndex.upsert('checkpoint-session', {
       title: 'checkpoint session',
-      mode: 'restricted',
+      mode: 'read-only',
+      permissionVersion: 2,
       scope: 'standalone',
       workspacePath: join(fixture.dataDir, 'workplace'),
     })
@@ -379,7 +390,6 @@ describe('run checkpoint Local App API', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reason: 'resume after permission downgrade',
-          permissionMode: 'full',
           requestKey: 'downgraded-checkpoint-resume',
           continuationDirective: 'answer',
         }),
@@ -387,9 +397,12 @@ describe('run checkpoint Local App API', () => {
 
       expect(response.status).toBe(200)
       expect(await response.text()).toContain('event: result')
-      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]?.permissionPolicyId).toBe('restricted')
+      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]).toMatchObject({
+        permissionPolicyId: 'research',
+        permissionPreset: 'read-only',
+      })
       expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')?.mode)
-        .toBe('restricted')
+        .toBe('read-only')
     } finally {
       await fixture.server.stop()
       rmSync(fixture.dataDir, { recursive: true, force: true })
@@ -412,7 +425,7 @@ describe('run checkpoint Local App API', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reason: 'resume under the persisted V2 workspace permission',
-          permissionMode: 'full',
+          permissionPreset: 'full-access',
           requestKey: 'v2-checkpoint-resume',
           continuationDirective: 'answer',
         }),
@@ -459,7 +472,6 @@ describe('run checkpoint Local App API', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reason: 'resume with an ambiguous legacy checkpoint ceiling',
-          permissionMode: 'full',
           requestKey: 'ambiguous-research-checkpoint-resume',
           continuationDirective: 'answer',
         }),
@@ -477,6 +489,29 @@ describe('run checkpoint Local App API', () => {
             shellIsolation: 'unavailable',
           },
         },
+      })
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('converts a legacy restricted checkpoint ceiling to the V2 read-only preset', async () => {
+    const fixture = await createFixture(undefined, { permissionPolicyId: 'restricted' })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'resume a legacy restricted checkpoint' }),
+      })
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+      expect(fixture.resumeCheckpoint.mock.calls[0]?.[1]).toMatchObject({
+        permissionPolicyId: 'research',
+        permissionPreset: 'read-only',
       })
     } finally {
       await fixture.server.stop()
@@ -583,10 +618,18 @@ describe('run checkpoint Local App API', () => {
         reason: 'waiting for permission',
       }
       await runner.infra.runCheckpointStore!.write(checkpoint)
+      const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+      await sessionIndex.upsert(String(session.id), {
+        title: 'checkpoint continuation fixture',
+        mode: 'workspace-write',
+        permissionVersion: 2,
+        scope: 'standalone',
+        workspacePath: workplaceDir,
+      })
       server = await startLocalAppApiServer({
         getRunner: () => runner,
         port: 0,
-        sessionIndex: new SessionIndex({ dataDir, workplaceDir }),
+        sessionIndex,
         projectIndex: new ProjectIndex({ dataDir }),
         archiveIndex: new ArchiveIndex({ dataDir, workplaceDir }),
         terminalActivityIndex: new TerminalActivityIndex({ dataDir }),
@@ -608,7 +651,6 @@ describe('run checkpoint Local App API', () => {
       const requestBody = JSON.stringify({
         text: 'Permission is enabled. Continue the original task.',
         reason: 'explicit stable retry test',
-        permissionMode: 'full',
         requestKey: 'explicit-stable-turn',
         continuationDirective: 'answer',
       })
@@ -670,7 +712,8 @@ describe('run checkpoint Local App API', () => {
       expect(response.status).toBe(200)
       await expect(response.json()).resolves.toEqual({ checkpointId: 'checkpoint-1', outcome: 'abandoned' })
       expect(fixture.abandon).toHaveBeenCalledWith('checkpoint-1', 'user chose not to continue')
-      expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session')).toBeUndefined()
+      expect((await fixture.sessionIndex.list()).find((session) => session.id === 'checkpoint-session'))
+        .toMatchObject({ id: 'checkpoint-session', mode: 'workspace-write', permissionVersion: 2 })
     } finally {
       await fixture.server.stop()
       rmSync(fixture.dataDir, { recursive: true, force: true })

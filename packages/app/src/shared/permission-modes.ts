@@ -4,7 +4,7 @@ export type { ApprovalPolicyId } from '@littlesheep/types'
 
 export type PermissionModeId = 'full' | 'research' | 'restricted'
 /** Values that may be explicitly persisted for a session during the V2 transition. */
-export type PermissionSelectionId = PermissionModeId | 'read-only' | 'workspace-write'
+export type PermissionSelectionId = PermissionPresetId
 export type PermissionRisk = 'low' | 'medium' | 'critical'
 
 export interface PermissionPresetV2 {
@@ -36,11 +36,7 @@ export const PERMISSION_PRESETS_V2: readonly PermissionPresetV2[] = [
   },
 ]
 
-export const SELECTABLE_PERMISSION_PRESETS_V2 = PERMISSION_PRESETS_V2.filter(
-  (preset): preset is PermissionPresetV2 & { id: 'read-only' | 'workspace-write' } => (
-    preset.id === 'read-only' || preset.id === 'workspace-write'
-  ),
-)
+export const SELECTABLE_PERMISSION_PRESETS_V2 = PERMISSION_PRESETS_V2
 
 /** New sessions may select workspace-write only after its enforcement is active. */
 export function resolveFutureDefaultPermissionPreset(input: {
@@ -109,21 +105,16 @@ export function normalizePermissionModeId(id: string | undefined): PermissionMod
   return getPermissionMode(migrated)?.id ?? DEFAULT_PERMISSION_MODE.id
 }
 
-/**
- * Preserve the two V2 presets that can currently be explicitly selected while
- * keeping old aliases on their established legacy path. In particular,
- * `full-access` remains the historical alias for legacy `full` here; the V2
- * full-access preset needs its own confirmed, Main-owned activation path.
- */
+/** Normalize public selections conservatively; legacy modes never gain authority here. */
 export function normalizePermissionSelectionId(id: string | undefined): PermissionSelectionId {
-  if (id === 'read-only' || id === 'workspace-write') return id
-  return normalizePermissionModeId(id)
+  if (id === 'read-only' || id === 'workspace-write' || id === 'full-access') return id
+  return 'read-only'
 }
 
 export function isPermissionSelectionPreset(
   value: unknown,
-): value is Extract<PermissionSelectionId, 'read-only' | 'workspace-write'> {
-  return value === 'read-only' || value === 'workspace-write'
+): value is PermissionSelectionId {
+  return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
 }
 
 export function resolvePermissionModePolicy(id: string | undefined): PermissionModePolicy {

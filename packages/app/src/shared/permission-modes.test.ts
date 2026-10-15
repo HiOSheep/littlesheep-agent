@@ -53,11 +53,13 @@ describe('permission modes', () => {
     expect(normalizePermissionModeId('read-only')).toBe('research')
   })
 
-  it('preserves only explicitly supported V2 session selections without changing legacy migration', () => {
+  it('keeps public session selections in the V2 preset set and downgrades legacy ids', () => {
     expect(normalizePermissionSelectionId('workspace-write')).toBe('workspace-write')
     expect(normalizePermissionSelectionId('read-only')).toBe('read-only')
-    expect(normalizePermissionSelectionId('full-access')).toBe('full')
-    expect(normalizePermissionSelectionId('coding')).toBe('research')
-    expect(normalizePermissionSelectionId('unknown')).toBe('research')
+    expect(normalizePermissionSelectionId('full-access')).toBe('full-access')
+    expect(normalizePermissionSelectionId('full')).toBe('read-only')
+    expect(normalizePermissionSelectionId('research')).toBe('read-only')
+    expect(normalizePermissionSelectionId('restricted')).toBe('read-only')
+    expect(normalizePermissionSelectionId('unknown')).toBe('read-only')
   })
 })

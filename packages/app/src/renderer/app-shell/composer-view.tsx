@@ -40,6 +40,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
     scrollRef,
     loading,
     permissionMode,
+    permissionMigration,
     setPermissionMode,
     runtime,
     attachments,
@@ -225,7 +226,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
             // Enter is the same send entry as the button, so it refuses for the
             // same reason instead of dispatching past a disabled control.
             event.preventDefault()
-            if (sendReadiness.blocked) return
+            if (sendReadiness.blocked || permissionMigration) return
             void send()
           }}
           aria-label="消息输入"
@@ -233,6 +234,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
           rows={1}
         />
         <div className="composer-status" role="status">
+          {permissionMigration && <span>历史权限“{permissionMigration.from}”已暂时降为只读。请在权限菜单中确认新选择后再继续。</span>}
           <ComposerSendBlockNotice executionReason={sendReadiness.executionReason} modelReason={sendReadiness.modelReason} />
         </div>
         <div className="composer-controls">
@@ -243,7 +245,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
               onChooseWorkspace={chooseWorkspace}
               onTipChange={setControlTip}
             />
-            <ModePicker value={permissionMode} onChange={setPermissionMode} />
+            <ModePicker value={permissionMode} migration={permissionMigration} onChange={setPermissionMode} />
             {runtime && !workspaceIsWorkplace && (
               <WorkspaceChip
                 path={runtime.workspace}
@@ -298,7 +300,7 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
                     setControlTip(null)
                     void send()
                   }}
-                  disabled={sendReadiness.blocked || (!loading && !hasPendingInput)}
+                  disabled={sendReadiness.blocked || Boolean(permissionMigration) || (!loading && !hasPendingInput)}
                   aria-label={sendReadiness.reason ?? sendTip}
                   {...runActionTipHandlers(sendReadiness.reason ?? sendTip)}
                 >

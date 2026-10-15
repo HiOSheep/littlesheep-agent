@@ -4,7 +4,6 @@ import {
   type RuntimeReasoning
 } from '../../shared/model-capabilities'
 import {
-  ALL_PERMISSION_MODES,
   SELECTABLE_PERMISSION_PRESETS_V2,
   type PermissionSelectionId,
 } from '../../shared/permission-modes'
@@ -28,14 +27,8 @@ export const MODE_OPTIONS: Array<{
     label: preset.label,
     desc: preset.description,
     risk: preset.risk,
-    riskLabel: preset.id === 'workspace-write' ? '工作区授权' as const : '只读授权' as const,
-  })),
-  ...ALL_PERMISSION_MODES.map((mode) => ({
-    id: mode.id,
-    label: mode.label,
-    desc: mode.description,
-    risk: mode.risk,
-    riskLabel: mode.riskLabel,
+    riskLabel: preset.id === 'workspace-write' ? '工作区授权' as const
+      : preset.id === 'read-only' ? '只读授权' as const : '完全访问' as const,
   })),
 ]
 

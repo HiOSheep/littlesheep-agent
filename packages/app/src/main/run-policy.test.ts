@@ -6,7 +6,7 @@ import { WORKSPACE_FILE_GUARD_AVAILABLE } from '@littlesheep/tools'
 import { join } from 'node:path'
 
 describe('local app run policy', () => {
-  it('rechecks recovery reads against the current session mode and container root', async () => {
+  it('does not replay legacy or V2 session grants through startup recovery reads', async () => {
     let mode = 'research'
     const containerRoot = process.cwd()
     const identity = { sessionId: 's', runId: 'r' }
@@ -15,12 +15,12 @@ describe('local app run policy', () => {
     }] }), containerRoot)
     const inside = join(containerRoot, 'package.json')
     const outside = join(containerRoot, '..', 'outside.txt')
-    expect(await authorize(inside, identity)).toBe(true)
+    expect(await authorize(inside, identity)).toBe(false)
     expect(await authorize(outside, identity)).toBe(false)
     mode = 'restricted'
     expect(await authorize(inside, identity)).toBe(false)
     mode = 'full'
-    expect(await authorize(outside, identity)).toBe(true)
+    expect(await authorize(outside, identity)).toBe(false)
     expect(await authorize(inside, { ...identity, sessionId: 'missing' })).toBe(false)
     expect(await createRecoveryReadAuthorizer(() => null, containerRoot)(inside, identity)).toBe(false)
   })
@@ -69,6 +69,23 @@ describe('local app run policy', () => {
     await approve('exec', detail)
 
     expect(broker).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps Shell approval per invocation even under confirmed full-access', async () => {
+    const broker = vi.fn(async () => true)
+    const policy = resolveRunPolicy(
+      { permissionPreset: 'full-access' },
+      DEFAULT_CONFIG,
+      broker,
+      { fullAccessConfirmed: true, workspaceRoot: process.cwd(), cwd: process.cwd() },
+    )
+
+    await expect(policy.approve('exec', { command: 'git status --short' })).resolves.toBe(true)
+    expect(broker).toHaveBeenCalledOnce()
+    expect(broker).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'exec',
+      permissionPreset: 'full-access',
+    }))
   })
 
   it('keeps dataRoot distinct from workspaceRoot and advertises only active file constraints', async () => {
