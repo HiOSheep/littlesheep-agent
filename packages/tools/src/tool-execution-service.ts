@@ -16,7 +16,7 @@ import type {
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { inspectWorkspaceFilePath } from './workspace-file-guard.js';
 import { markNativeWorkspaceFileInvocation } from './native-workspace-file-invocation.js';
-import { attachShellInvocation } from './shell-authorization.js';
+import { attachShellInvocation, authorizedShellInvocationId } from './shell-authorization.js';
 import { prepareShellToolBatch } from './shell-tool-batch.js';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
 import {
@@ -67,6 +67,8 @@ export interface ToolExecutionLifecycleContext {
   toolSource: string;
   input: unknown;
   resources: readonly ToolResourceAccess[];
+  /** Main-minted identity of this exact Shell grant; absent for every non-Shell path. */
+  authorizedShellInvocationId?: string;
 }
 
 export interface ToolExecutionLifecycleResult {
@@ -612,6 +614,9 @@ export class ToolExecutionService {
       toolSource: registration.source,
       input,
       resources,
+      ...(invocation.shellGrant
+        ? { authorizedShellInvocationId: authorizedShellInvocationId(invocation.shellGrant) }
+        : {}),
     };
 
     let outcome: InvocationOutcome;

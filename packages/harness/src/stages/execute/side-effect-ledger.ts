@@ -44,6 +44,8 @@ export interface SideEffectDescriptor {
   reRunnable?: boolean
   /** Audit note for a granted warrant; persisted on the attempt it authorized. */
   evidenceRef?: string
+  /** Main-minted Shell authorization identity; never accepted from model input. */
+  authorizedShellInvocationId?: string
 }
 
 /**
@@ -135,6 +137,7 @@ export function describeSideEffect(
   resources: readonly ToolResourceAccess[],
   stepId: string | undefined,
   callId: string,
+  authorizedShellInvocationId?: string,
 ): SideEffectDescriptor | undefined {
   const resourceKeys = resources
     .filter((resource) => resource.mode === 'write')
@@ -163,6 +166,7 @@ export function describeSideEffect(
     effectKind,
     ...(reconciliationKey ? { reconciliationKey } : {}),
     ...(reRunnable ? { reRunnable } : {}),
+    ...(tool.name === 'exec' && authorizedShellInvocationId ? { authorizedShellInvocationId } : {}),
   }
 }
 
@@ -194,7 +198,39 @@ function effectAttempts(ctx: RunContext, baseKey: string): SideEffectCheckpoint[
 }
 
 export async function beginSideEffect(ctx: RunContext, descriptor: SideEffectDescriptor): Promise<BeginSideEffectResult> {
-  const attempts = effectAttempts(ctx, descriptor.idempotencyKey)
+  let attempts = effectAttempts(ctx, descriptor.idempotencyKey)
+  if (descriptor.toolName === 'exec' && descriptor.authorizedShellInvocationId) {
+    const sameOperation = (ctx.sideEffects ?? []).filter((effect) => (
+      effect.toolName === descriptor.toolName && effect.inputHash === descriptor.inputHash
+    ))
+    const sameCall = sameOperation.find((effect) => effect.callId === descriptor.callId)
+    if (sameCall) {
+      return sameCall.status === 'succeeded'
+        ? { kind: 'duplicate', descriptor, status: sameCall.status }
+        : { kind: 'blocked', descriptor, reason: `Shell call ${descriptor.callId} already has status ${sameCall.status}` }
+    }
+    const unresolved = sameOperation.find((effect) => effect.status === 'in_progress' || effect.status === 'unknown' || effect.status === 'planned')
+    if (unresolved) {
+      return {
+        kind: 'blocked',
+        descriptor,
+        reason: `Shell operation ${descriptor.idempotencyKey} has unresolved effect ${unresolved.idempotencyKey} (${unresolved.status})`,
+      }
+    }
+    if (sameOperation.length > 0) {
+      const invocationDigest = hashText(descriptor.authorizedShellInvocationId)
+      const invocationKey = `${descriptor.idempotencyKey}:invocation:${invocationDigest}`
+      if (sameOperation.some((effect) => effect.idempotencyKey === invocationKey)) {
+        return { kind: 'blocked', descriptor, reason: 'Shell authorization invocation identity was already used' }
+      }
+      descriptor = {
+        ...descriptor,
+        idempotencyKey: invocationKey,
+        evidenceRef: `shell-authorization:${invocationDigest}`.slice(0, 512),
+      }
+      attempts = effectAttempts(ctx, descriptor.idempotencyKey)
+    }
+  }
   if (attempts.length > 0) {
     // Once any attempt of this operation succeeded, running it again would
     // replay an applied effect: refuse, exactly as before.

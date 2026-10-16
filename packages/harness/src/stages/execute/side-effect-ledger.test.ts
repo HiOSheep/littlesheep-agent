@@ -42,6 +42,32 @@ function reRunnableProbeTool(name = 'mutate_probe'): AgentTool {
 // subject after it settled. The warrant is the ledger's own evidence (a later successful effect on one of
 // the same write resources), never the model asking twice.
 describe('repeating a call whose earlier attempt succeeded', () => {
+  it('accepts a fresh Main-authorized Shell invocation but never a call replay or unresolved operation', async () => {
+    const { ctx } = recordingCtx()
+    const shell = probeTool(undefined, 'exec')
+    const first = describeSideEffect(shell, { command: 'node check.mjs', cwd: '.' }, [], undefined, 'provider-call-1', 'main-invocation-1')!
+    expect((await beginSideEffect(ctx, first)).kind).toBe('started')
+    await finishSideEffect(ctx, first, { callId: first.callId, ok: true })
+
+    // A new Main grant makes a new operation identity. Reusing the original call ID does not.
+    const replay = describeSideEffect(shell, { command: 'node check.mjs', cwd: '.' }, [], undefined, first.callId, 'main-invocation-reissued')!
+    expect((await beginSideEffect(ctx, replay)).kind).toBe('duplicate')
+    const fresh = describeSideEffect(shell, { command: 'node check.mjs', cwd: '.' }, [], undefined, 'provider-call-2', 'main-invocation-2')!
+    const second = await beginSideEffect(ctx, fresh)
+    expect(second.kind).toBe('started')
+    if (second.kind !== 'started') throw new Error('expected the independently authorized invocation to start')
+    expect(second.descriptor.idempotencyKey).not.toBe(first.idempotencyKey)
+    await finishSideEffect(ctx, second.descriptor, { callId: second.descriptor.callId, ok: true })
+
+    const uncertain = describeSideEffect(shell, { command: 'node unknown.mjs', cwd: '.' }, [], undefined, 'provider-call-3', 'main-invocation-3')!
+    expect((await beginSideEffect(ctx, uncertain)).kind).toBe('started')
+    ctx.sideEffects!.find((effect) => effect.idempotencyKey === uncertain.idempotencyKey)!.status = 'unknown'
+    const newCall = describeSideEffect(shell, { command: 'node unknown.mjs', cwd: '.' }, [], undefined, 'provider-call-4', 'main-invocation-4')!
+    const blocked = await beginSideEffect(ctx, newCall)
+    expect(blocked.kind).toBe('blocked')
+    expect(blocked.kind === 'blocked' ? blocked.reason : '').toContain('unknown')
+  })
+
   it('grants a fresh execution identity when the run recorded a later change to the same resource', async () => {
     const { ctx, appended } = recordingCtx()
     const tool = reRunnableProbeTool()

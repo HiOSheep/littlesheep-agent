@@ -97,10 +97,11 @@ export class ShellRepeatAuthorizationStore {
   }
 }
 
-/** Only a fixed Main-reviewed command is eligible; matching is raw and parameter-free. */
+/** A repeat grant binds one exact Main-reviewed execution plan, including the raw command text. */
 export function isRepeatCandidate(description: ShellExecutionDescription): boolean {
   if (description.version !== 1 || description.action !== 'exec' || description.source !== 'agent'
-    || description.command !== 'pwd' || !Number.isSafeInteger(description.timeoutMs) || description.timeoutMs <= 0
+    || typeof description.command !== 'string' || description.command.trim().length === 0
+    || !Number.isSafeInteger(description.timeoutMs) || description.timeoutMs <= 0
     || !description.sessionId || !description.runId || !description.workspace.id
     || !description.user || !description.permission || !description.environment
     || description.cwd.path !== description.workspace.path

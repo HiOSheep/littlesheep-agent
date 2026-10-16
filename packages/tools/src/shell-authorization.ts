@@ -193,6 +193,12 @@ export function attachShellInvocation(ctx: ToolContext, tool: AgentTool, token: 
   if (!executors.has(tool) || !grants.has(token)) throw new Error('invalid Shell invocation capability');
   invocations.set(ctx, { grant: token, tool });
 }
+/** Returns the Main-minted logical identity carried by an unforgeable one-use Shell grant. */
+export function authorizedShellInvocationId(token: object | undefined): string | undefined {
+  const grant = token ? grants.get(token) : undefined;
+  return grant && !grant.closed ? grant.plan.description.invocationId : undefined;
+}
+
 export function hasShellInvocation(ctx: ToolContext, tool: AgentTool): boolean {
   return invocations.get(ctx)?.tool === tool;
 }

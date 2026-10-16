@@ -11,6 +11,9 @@ import { createMockLlm, makeCtx, makeTool, textResponse, toolCallResponse } from
 import { createRunner } from '../packages/runner/src/runner.js';
 import { createExecTool } from '../packages/tools/src/builtin/exec.js';
 import { bindShellApprovalAuthority } from '../packages/tools/src/shell-authorization.js';
+import { ToolExecutionService } from '../packages/tools/src/tool-execution-service.js';
+import { ShellRepeatAuthorizationStore } from '../packages/app/src/main/shell-repeat-authorization-store.js';
+import { createSideEffectLifecycle } from '../packages/harness/src/stages/execute/side-effect-lifecycle.js';
 import type { AgentTool, ToolContext } from '../packages/types/src/agent.js';
 
 const roots: string[] = [];
@@ -30,18 +33,19 @@ async function tempRoot(prefix: string) {
   return root;
 }
 
-function shellContext(cwd: string, tools: AgentTool[], text: string) {
+function shellContext(cwd: string, tools: AgentTool[], text: string, authorizeRequest: (count: number) => boolean = () => true) {
   const ctx = makeCtx({ tools, inbound: { role: 'user', content: [{ type: 'text', text }] } as never });
   ctx.cwd = cwd;
   ctx.toolContext.cwd = cwd;
   ctx.toolContext.workspaceRoot = cwd;
   const approve: NonNullable<ToolContext['approve']> = async () => true;
+  let approvalRequests = 0;
   bindShellApprovalAuthority(approve, {
     runId: ctx.runId, sessionId: String(ctx.sessionId), workspaceRoot: cwd, workspaceId: `s1b:${ctx.runId}`, permission: 'fixture-only',
-    current: async () => `fixture:${cwd}`, decide: () => 'allow', request: async () => true,
+    current: async () => `fixture:${cwd}`, decide: () => 'approval', request: async () => { approvalRequests += 1; return authorizeRequest(approvalRequests); },
   });
   ctx.toolContext.approve = approve;
-  return ctx;
+  return { ctx, approvalRequests: () => approvalRequests };
 }
 
 function executeScripted(ctx: ReturnType<typeof shellContext>, responses: ReturnType<typeof textResponse>[]) {
@@ -55,7 +59,7 @@ function executeScripted(ctx: ReturnType<typeof shellContext>, responses: Return
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 describe('RCD S1B Shell invocation and recovery semantics', () => {
-  it('B01: blocks same successful opaque Shell call after trusted file change and preserves evidence', async () => {
+  it('F01/B01: fresh Main approval permits the same Shell command after a trusted file change', async () => {
     const cwd = await tempRoot('ls-rcd-s1b-b01-');
     const input = join(cwd, 'input.txt');
     const script = join(cwd, 'check.mjs');
@@ -77,7 +81,7 @@ describe('RCD S1B Shell invocation and recovery semantics', () => {
       },
     };
     const exec = createExecTool({ interactive: false });
-    const ctx = shellContext(cwd, [exec, edit], 'Execute the same local observation around one fixture change.');
+    const { ctx, approvalRequests } = shellContext(cwd, [exec, edit], 'Execute the same local observation around one fixture change.');
     const result = await executeScripted(ctx, [
       toolCallResponse([{ id: 'b01-shell-1', name: 'exec', args: { command, cwd: '.' } }]),
       toolCallResponse([{ id: 'b01-edit', name: edit.name, args: { value: 'v2' } }]),
@@ -86,35 +90,131 @@ describe('RCD S1B Shell invocation and recovery semantics', () => {
     ]);
     const actualRuns = (await readFile(log, 'utf8')).trim().split(/\r?\n/u);
     const shellCalls = (ctx.toolInvocations ?? []).filter((call) => call.toolName === 'exec');
-    expect(actualRuns).toEqual(['v1']);
+    expect(actualRuns).toEqual(['v1', 'v2']);
     expect(changed).toHaveLength(1);
     expect(changed[0]?.before).not.toBe(changed[0]?.after);
     expect(shellCalls.map((call) => call.callId)).toEqual(['b01-shell-1', 'b01-shell-2']);
-    expect(shellCalls[1]?.errorKind).toBe('side_effect_replay');
+    expect(shellCalls.map((call) => call.status)).toEqual(['succeeded', 'succeeded']);
     expect(shellCalls[0]?.inputHash).toBe(shellCalls[1]?.inputHash);
     const execEffects = (ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec');
-    expect(execEffects).toHaveLength(1);
+    expect(execEffects).toHaveLength(2);
     expect(execEffects[0]).toMatchObject({ status: 'succeeded', callId: 'b01-shell-1', resourceKeys: [], effectKind: 'external' });
+    expect(execEffects[1]).toMatchObject({ status: 'succeeded', callId: 'b01-shell-2', resourceKeys: [], effectKind: 'external' });
+    expect(execEffects[1]?.idempotencyKey).not.toBe(execEffects[0]?.idempotencyKey);
     expect(execEffects[0]?.reRunnable).not.toBe(true);
+    expect(approvalRequests()).toBe(2);
     expect(result.ok).toBe(true);
   });
 
-  it('B02: blocks an identical successful opaque Shell call when state is unchanged', async () => {
+  it('B02: unchanged state can be re-executed only after a fresh one-shot approval', async () => {
     const cwd = await tempRoot('ls-rcd-s1b-b02-');
     const log = join(cwd, 'runs.log');
     await writeFile(join(cwd, 'check.mjs'), "import {appendFileSync} from 'node:fs'; appendFileSync('runs.log','ran\\n'); console.log('ok');\n", 'utf8');
     const command = 'node check.mjs';
     const exec = createExecTool({ interactive: false });
-    const ctx = shellContext(cwd, [exec], 'Execute the identical command twice.');
+    const { ctx, approvalRequests } = shellContext(cwd, [exec], 'Execute the identical command twice.');
     const result = await executeScripted(ctx, [
       toolCallResponse([{ id: 'b02-shell-1', name: 'exec', args: { command, cwd: '.' } }]),
       toolCallResponse([{ id: 'b02-shell-2', name: 'exec', args: { command, cwd: '.' } }]),
       textResponse('Second call was refused.'),
     ]);
-    expect((await readFile(log, 'utf8')).trim().split(/\r?\n/u)).toEqual(['ran']);
-    expect((ctx.toolInvocations ?? []).find((call) => call.callId === 'b02-shell-2')?.errorKind).toBe('side_effect_replay');
-    expect((ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec')).toHaveLength(1);
+    expect((await readFile(log, 'utf8')).trim().split(/\r?\n/u)).toEqual(['ran', 'ran']);
+    expect((ctx.toolInvocations ?? []).map((call) => call.callId)).toEqual(['b02-shell-1', 'b02-shell-2']);
+    expect((ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec')).toHaveLength(2);
+    expect(approvalRequests()).toBe(2);
     expect(result.ok).toBe(true);
+  });
+
+  it('F02: a one-shot Shell grant cannot authorize the next identical call', async () => {
+    const cwd = await tempRoot('ls-rcd-s1b-f02-');
+    const log = join(cwd, 'runs.log');
+    await writeFile(join(cwd, 'check.mjs'), "import {appendFileSync} from 'node:fs'; appendFileSync('runs.log','ran\\n'); console.log('ok');\n", 'utf8');
+    const command = 'node check.mjs';
+    const exec = createExecTool({ interactive: false });
+    const { ctx, approvalRequests } = shellContext(cwd, [exec], 'Run once; ask again for the identical command.', (count) => count === 1);
+    await executeScripted(ctx, [
+      toolCallResponse([{ id: 'f02-first', name: 'exec', args: { command, cwd: '.' } }]),
+      toolCallResponse([{ id: 'f02-second', name: 'exec', args: { command, cwd: '.' } }]),
+      textResponse('The second authorization was denied.'),
+    ]);
+    expect((await readFile(log, 'utf8')).trim().split(/\r?\n/u)).toEqual(['ran']);
+    expect(approvalRequests()).toBe(2);
+    expect((ctx.toolInvocations ?? []).find((call) => call.callId === 'f02-second')?.status).toBe('approval_denied');
+    expect((ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec')).toHaveLength(1);
+  });
+
+  it('F03: bounded exact-command repeat approval creates fresh effect identities within its scope', async () => {
+    const cwd = await tempRoot('ls-rcd-s1b-f03-');
+    await writeFile(join(cwd, 'check.mjs'), "import {appendFileSync} from 'node:fs'; appendFileSync('runs.log','run\\n'); console.log('bounded repeat executed');\n", 'utf8');
+    const exec = createExecTool({ interactive: false });
+    const ctx = makeCtx({ tools: [exec], inbound: { role: 'user', content: [{ type: 'text', text: 'Run the explicitly remembered exact node check.mjs command twice.' }] } as never });
+    ctx.cwd = cwd; ctx.toolContext.cwd = cwd; ctx.toolContext.workspaceRoot = cwd;
+    const repeatStore = new ShellRepeatAuthorizationStore();
+    let approvalRequests = 0;
+    const approve: NonNullable<ToolContext['approve']> = async () => true;
+    bindShellApprovalAuthority(approve, {
+      runId: ctx.runId, sessionId: String(ctx.sessionId), workspaceRoot: cwd, workspaceId: `s1b:${ctx.runId}`, permission: 'fixture-only',
+      current: async () => `fixture:${cwd}`, decide: () => 'approval',
+      request: async () => { approvalRequests += 1; return { approved: true, rememberShellCommand: true }; },
+      consumeRepeatAuthorization: (description) => repeatStore.consume(description),
+      rememberRepeatAuthorization: (description) => repeatStore.remember(description),
+    });
+    ctx.toolContext.approve = approve;
+    const command = 'node check.mjs';
+    const calls = [1, 2].map((index) => toolCallResponse([{ id: `f03-call-${index}`, name: 'exec', args: { command, cwd: '.' } }]));
+    const result = await executeScripted(ctx, [...calls, textResponse('The bounded repeat sequence completed.')]);
+    const effects = (ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec');
+    expect(result.ok).toBe(true);
+    expect(effects).toHaveLength(2);
+    expect(effects.every((effect) => effect.status === 'succeeded')).toBe(true);
+    expect(new Set(effects.map((effect) => effect.idempotencyKey)).size).toBe(2);
+    expect(approvalRequests).toBe(1);
+    expect((await readFile(join(cwd, 'runs.log'), 'utf8')).trim().split(/\r?\n/u)).toEqual(['run', 'run']);
+  });
+
+  it('F05: a new call identity cannot retry an unknown Shell effect', async () => {
+    const cwd = await tempRoot('ls-rcd-s1b-f05-');
+    const log = join(cwd, 'runs.log');
+    await writeFile(join(cwd, 'check.mjs'), "import {appendFileSync} from 'node:fs'; appendFileSync('runs.log','effect\\n'); console.log('effect applied');\n", 'utf8');
+    const { ctx } = shellContext(cwd, [], 'Run one Shell effect and retain its uncertain outcome.');
+    const exec = createExecTool({ interactive: false });
+    const execute = exec.execute!;
+    let hostInvocations = 0;
+    exec.execute = async (input, toolCtx) => {
+      hostInvocations += 1;
+      await execute(input, toolCtx);
+      throw new Error('injected lost result after actual Shell completion');
+    };
+    const service = new ToolExecutionService({ registrations: [{ tool: exec, source: 'builtin' }], toolContext: ctx.toolContext });
+    const lifecycle = createSideEffectLifecycle(ctx);
+    const input = { command: 'node check.mjs', cwd: '.' };
+    const first = await service.executeBatch([{ callId: 'f05-call-1', name: 'exec', input }], lifecycle);
+    const firstEffect = (ctx.sideEffects ?? []).find((effect) => effect.callId === 'f05-call-1');
+    expect(first.get(0)?.ok).toBe(false);
+    expect(firstEffect?.status).toBe('unknown');
+    expect((await readFile(log, 'utf8')).trim().split(/\r?\n/u)).toEqual(['effect']);
+
+    const second = await service.executeBatch([{ callId: 'f05-call-2', name: 'exec', input }], lifecycle);
+    expect(second.get(0)?.error).toContain('unresolved effect');
+    expect(hostInvocations).toBe(1);
+    expect((await readFile(log, 'utf8')).trim().split(/\r?\n/u)).toEqual(['effect']);
+    expect((ctx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec')).toHaveLength(1);
+  });
+
+  it('F06: identical no-progress Shell calls remain bounded by the existing tool repeat limit', async () => {
+    const cwd = await tempRoot('ls-rcd-s1b-f06-');
+    await writeFile(join(cwd, 'check.mjs'), "import {appendFileSync} from 'node:fs'; appendFileSync('runs.log','ran\\n'); console.log('same observation');\n", 'utf8');
+    const command = 'node check.mjs';
+    const exec = createExecTool({ interactive: false });
+    const { ctx } = shellContext(cwd, [exec], 'Repeated no-progress requests must stop within existing Runtime bounds.');
+    const repeated = Array.from({ length: 8 }, (_, index) => toolCallResponse([
+      { id: `f06-call-${index + 1}`, name: 'exec', args: { command, cwd: '.' } },
+    ]));
+    await executeScripted(ctx, [...repeated, textResponse('Stop after the Runtime bound.')]);
+    const attempts = (await readFile(join(cwd, 'runs.log'), 'utf8')).trim().split(/\r?\n/u);
+    expect(attempts.length).toBeLessThanOrEqual(3);
+    expect((ctx.loopBudget?.toolLoopIterationsUsed ?? 0)).toBeLessThanOrEqual(ctx.loopBudget?.maxToolLoopIterations ?? Number.MAX_SAFE_INTEGER);
+    expect((ctx.toolResults ?? []).length).toBeLessThan(8);
   });
 
   it('B03: recovery of a successfully settled effect preserves its identity and never executes it again', async () => {
@@ -243,7 +343,7 @@ describe('RCD S1B Shell invocation and recovery semantics', () => {
     expect((scopedCtx.sideEffects ?? []).filter((effect) => effect.toolName === 'exec')).toHaveLength(1);
 
     const abortedTool = createExecTool({ interactive: false });
-    const abortedCtx = shellContext(cwd, [abortedTool], 'The run is already cancelled.');
+    const { ctx: abortedCtx } = shellContext(cwd, [abortedTool], 'The run is already cancelled.');
     abortedCtx.signal = AbortSignal.abort();
     const cancelledCommand = "node -e \"require('node:fs').appendFileSync('effects.log','cancelled\\n')\"";
     await executeScripted(abortedCtx, [toolCallResponse([{ id: 'b05-cancelled', name: 'exec', args: { command: cancelledCommand, cwd: '.' } }]), textResponse('Cancelled before execution.')]);

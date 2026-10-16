@@ -20,6 +20,7 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
         invocation.resources,
         invocation.request.stepId,
         invocation.request.callId,
+        invocation.authorizedShellInvocationId,
       );
       effects.set(invocation.request.callId, sideEffect);
       if (!sideEffect) return;
@@ -47,9 +48,11 @@ export function createSideEffectLifecycle(ctx: RunContext): ToolExecutionLifecyc
               // The refusal names what still works. A repeated opaque command is
               // the exact case the model reaches when it wants a *fresh
               // observation* after writing something; without a next step it
-              // retries variations of the same call instead.
+              // retries variations of the same call instead. A new execution
+              // still needs a fresh Main authorization identity; this branch is
+              // only the same effect identity being replayed.
               ? `side effect already recorded as succeeded; refusing to replay ${sideEffect.idempotencyKey}. `
-                + 'The Runtime never re-runs an opaque command: for a fresh view of the workspace use the '
+                + 'A fresh Shell execution requires a new Main authorization: for a read-only view use the '
                 + 'read-only tools (`glob` lists a directory, `read` reads a file).'
               : begin.reason,
           },

@@ -35,24 +35,18 @@ function description(overrides: Partial<ShellExecutionDescription> = {}): ShellE
 }
 
 describe('Main-owned exact Shell repeat authorization', () => {
-  it('allows only the Main reviewed parameter-free candidate and matches raw command text', () => {
+  it('allows an exact Main-reviewed command and binds its raw command text', () => {
     expect(isRepeatCandidate(description())).toBe(true)
-    for (const command of [
-      'pwd ',
-      ' pwd',
-      'pwd; id',
-      'pwd\nWrite-Output injected',
-      'pwd | cat',
-      'pwd > out.txt',
-      '$(pwd)',
-      '$(Get-Location)',
-      'Get-Location',
-      'git status --short',
-    ]) {
-      expect(isRepeatCandidate(description({ command }))).toBe(false)
-    }
+    expect(isRepeatCandidate(description({ command: 'git status --short' }))).toBe(true)
+    expect(isRepeatCandidate(description({ command: ' ' }))).toBe(false)
     expect(isRepeatCandidate(description({ timeoutMs: 60_000 }))).toBe(true)
     expect(isRepeatCandidate(description({ cwd: { path: '/workspace/sub', identity: 'other' } }))).toBe(false)
+
+    const store = new ShellRepeatAuthorizationStore()
+    const exact = description({ command: 'git status --short' })
+    store.remember(exact, 100)
+    expect(store.consume(description({ command: 'git status --short', runId: 'run-2', invocationId: 'invocation-2' }), 101)).toBe(true)
+    expect(store.consume(description({ command: 'git status --short ', runId: 'run-3', invocationId: 'invocation-3' }), 102)).toBe(false)
   })
 
   it('matches across runs but binds every execution and permission fact', () => {
