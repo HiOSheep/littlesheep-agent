@@ -9,7 +9,7 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 - 普通会话和任务进入同一 execute 主循环；另一条可路由路径仅用于 Runtime 能力／状态事实回复。
 - 模型可直接回答或请求注册工具；Runtime 校验并执行请求、记录结果，再追加回同一循环。
 - `ToolContext` 接收由宿主捕获的 Permission V2 快照，包含资源根、独立审批策略和约束可用性；权限判定不是 Harness 提示词或行为 profile 的一部分。
-- TaskBook 步骤执行、DECIDE、验证模型、恢复模型和 CAPTURE 不属于当前执行路径；持久 TaskBook 仅作只读历史。
+- TaskBook 步骤执行、DECIDE、独立 VERIFY、恢复模型和 CAPTURE 不属于当前执行路径。恢复的 TaskBook 仍可由 Runtime event patch 修订，但不会启动第二个步骤执行器。
 - EXECUTE 在发布回复前结算 invocation、result、副作用与回复来源的一致性；证据完整只表示运行事实可用，不代表用户目标已验收，新的结构性结算记录为 unverified。
 - 证据缺口进入 RECOVER 的有界路径；已结算副作用不重复执行，未知副作用不自动重放。
 - RECOVER 作出有界的确定性重试、停止或升级用户决定；已结算副作用不重复执行。
@@ -21,6 +21,6 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 
 ## 代码入口与验证
 
-`stages/execute` 拥有请求循环、工具协作和回复发布前的证据结算；`stages/recover` 决定重试／停止／升级，并将历史 `verify` checkpoint 安全迁入现有恢复路径；`llm-call-contracts` 只定义活动模型请求身份与输出契约，不再注册 `verify`；`durable-kernel.ts`、`checkpoint-resume.ts` 管理事件与续跑边界。历史 `verify` stage 名、事件、模型调用合同与验证记录只用于旧数据读取，不属于活动 stage manifest。
+`stages/execute` 拥有请求循环、工具协作和回复发布前的证据结算；`stages/recover` 决定重试／停止／升级，并将历史 `verify` checkpoint 安全迁入现有恢复路径；`llm-call-contracts` 只定义活动模型请求身份与输出契约，不注册 `verify` 模板；`durable-kernel.ts`、`checkpoint-resume.ts` 管理事件与续跑边界。历史 `verify` stage 名与转移边仅用于旧 checkpoint / trace 读取。`VerificationRecord` / `verificationHistory` 仍是活动持久契约：EXECUTE 与 RECOVER 结算运行证据并写入 `fail` 或 `unverified`，不把执行证据当作用户目标验收。
 
 测试与 stage 同目录；`current-path-contract.test.ts` 防止第二执行路径或退役路由回流。缓存质量报告只描述实际记录的当前运行；版本对比必须来自不同 checkout，不能用 durable 记录模式标签制造第二条 Harness 路径。局部改动用 Harness 定向测试；权限、持久化或重启变化还需相应 Runtime 与 Electron 验收。跨包使用公开导出，不深层导入私有实现。

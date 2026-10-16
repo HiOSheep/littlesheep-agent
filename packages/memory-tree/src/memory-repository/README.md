@@ -1,6 +1,6 @@
 # Memory Repository 内部边界
 
-最后更新：2026-09-27 06:37:13
+最后更新：2026-10-16 17:04:53
 
 检索的向量边界（RS-06A，2026-09-27）：3-retrieval.ts 只在 mode === 'deep-search' 时调用 prepareVectorQuery。D1 索引、按 nodeId 展开与 xpand(query)（包括第一次）都不准备查询向量、不走向量搜索，只由 FTS、层级与关系边作答；引擎不可用时的既有降级不变。回归见 3-backend.test.ts 的 "prepares a query vector only at the deep-search boundary"（计数 embedding 引擎：写入索引的 embedding 不计入，xpand 为 0，deep-search 恰好 1）。
 受控纠正关系（RS-06B，2026-09-27）：`v3-atom-management.relateCorrection` 是唯一把关系直接记为已结算的地方——普通写入留下的关系是 `proposed`，而用户亲口纠正的 `replaces` 已经确定。它要求真实的运行时来源引用，并取两端**各自**的不同实体（图谱与 catalog 都拒绝自环，`catalog-graph` 现在按名给出这个拒绝理由），关系 id 由请求哈希而来，因此重试复用同一条而不是叠加。`v3-atom-management` 的 `supersede` 仍是唯一的替代入口，边界沿用既有 `validateAtomCorrectionBoundary` 语义。
@@ -26,4 +26,4 @@
 - `v3-migration-validation.ts`、`v3-migration-validation-state.ts`：逐节点、资源、审计、Graph、Atom Store 和 Catalog 完整性校验，以及已初始化 v3 与迁移源的一致性校验。
 - `v3-migration-commit.ts`、`v3-migration-files.ts`、`v3-migration.ts`：ownership 边界、同卷原子提交、故障恢复和防数据丢失回滚。
 
-迁移请求只由显式控制面登记，真正的迁移或回滚在下一次应用启动、任何写入者初始化之前执行。正式活动后端已经切换为 v3；v2 源、迁移 snapshot 和兼容读取只用于校验、审计及满足防数据丢失条件时的受约束回滚，不能继续接收新正式写入。
+迁移请求只由显式控制面登记，真正的迁移或回滚在下一次应用启动、任何写入者初始化之前执行。配置 schema 与 `MemoryRepository` factory 的默认后端仍为 v2；Runner 使用显式 `memory.repositoryBackend` 选择后端，v3 还要求当前数据根具有隔离实验标记或活动 v3 迁移 locator。v2 源、迁移 snapshot 与兼容读取仍用于旧数据导入、迁移校验和受约束回滚；是否切换用户数据根由迁移控制面及 locator 决定。

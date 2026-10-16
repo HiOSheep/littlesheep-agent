@@ -1,10 +1,10 @@
 # LLM Call Contract 边界
 
-最后更新：2026-09-27 17:54:14
+最后更新：2026-10-16 17:04:53
 
 本目录定义 Core Flow 每种模型调用的版本化认知契约。
 
-- `definitions.ts`：每种 purpose 的最小契约模板。当前真正发出的调用是 `execute_tool_loop`、`reply`、`capability_reply`、`ask_user`、`session_compaction`，以及明确禁止模型调用的 `finalize`；`classify`、`decide`、`decide_explicit_tool`、`execute_final_reply`、`recover`、`verify`、`evolve`、`capture` 只作为历史/兼容条目保留，让旧日志、重放投影和旧检查点仍能解析自己的 purpose——RECOVER 与 VERIFY 的模型调用已删除，确定性路由不消耗模型请求。
+- `definitions.ts`：声明各 purpose 的最小契约模板。当前实际发出的调用是 `execute_tool_loop`、`reply`、`capability_reply`、`ask_user`、`session_compaction`，以及明确禁止模型调用的 `finalize`。`verify` 没有模板，`resolveLlmCallContract(..., 'verify')` 会拒绝；历史 VERIFY stage 名只由类型与检查点读取路径识别，不构成模型调用兼容模板。RECOVER 已改为 Runtime 确定性路由，不发起模型调用；`classify`、`decide`、`decide_explicit_tool`、`execute_final_reply`、`recover`、`evolve`、`capture` 的模板仍在定义表中，但不代表当前运行路径会调用它们。
 - `session_compaction` 只生成会话摘要，不提供 durable-memory 候选或写入意图；旧 compaction 提案仅由 Session 的历史事务 decoder 与终止适配器读取。
 - `registry.ts`：把 stage 名或 purpose 归一化（`LEGACY_STAGE_PURPOSE`）并生成不可变的已解析契约（deep-freeze）；未注册工具、未知 purpose、被禁止的模型调用和输出预算越界都直接以 `LlmCallContractViolationError` 拒绝。
 

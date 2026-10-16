@@ -13,6 +13,13 @@ import {
   verifyLocalEmbeddingModel,
 } from '../../packages/embedding/dist/index.js';
 import { createRunner } from '../../packages/runner/dist/index.js';
+import { isAllowedTransition, isCurrentStageName } from '../../packages/types/dist/index.js';
+import {
+  admittedIntoContext,
+  assertCurrentTrace,
+  assertMemoryEnteredContext,
+  describeAccessRecords,
+} from './memory-v3-provider-acceptance-contract.mjs';
 
 // Real-Provider acceptance for the *current* durable-memory contract.
 //
@@ -124,7 +131,7 @@ export async function runMemoryV3ProviderAcceptance(options) {
     assert.equal(primary.status, 'ok', primary.error ?? safeReplyExcerpt(primary.reply));
     const primaryLog = await requiredLog(first, firstRunId);
     assertProviderUsage(primaryLog, options.providerId);
-    assertCurrentTrace(primaryLog);
+    assertCurrentTrace(primaryLog, { isAllowedTransition, isCurrentStageName });
     assertReplyUsesMarker(primary.reply, marker, 'primary');
 
     // The model must have used the controlled write tool, and the Runtime must have committed it.
@@ -210,7 +217,7 @@ export async function runMemoryV3ProviderAcceptance(options) {
     assert.equal(negativeAtoms.length, 0,
       `A run with no memory instruction produced durable atom(s): ${negativeAtoms.join(',')}`);
     assertProviderUsage(negativeLog, options.providerId);
-    assertCurrentTrace(negativeLog);
+    assertCurrentTrace(negativeLog, { isAllowedTransition, isCurrentStageName });
     assert(!String(negative.reply).includes(marker),
       `The negative run leaked the primary marker into its reply: ${safeReplyExcerpt(negative.reply)}`);
 
@@ -264,6 +271,7 @@ export async function runMemoryV3ProviderAcceptance(options) {
     assert.equal(recall.status, 'ok', recall.error ?? safeReplyExcerpt(recall.reply));
     const recallLog = await requiredLog(restored, recallRunId);
     assertProviderUsage(recallLog, options.providerId);
+    assertCurrentTrace(recallLog, { isAllowedTransition, isCurrentStageName });
     assertReplyUsesMarker(recall.reply, marker, 'recall');
     // Admission is the claim: durable memory from an earlier run reaches this run's Context through
     // the memory ledger and is adopted into KnownState. The cited atom may be the committed one or the
@@ -436,45 +444,6 @@ function describeToolCalls(log) {
     .join(' | ') || 'none';
 }
 
-/**
- * The memory ledger and KnownState must both admit at least one of the given atoms. Returns which
- * ones were admitted so the report carries the evidence instead of only a pass.
- */
-function assertMemoryEnteredContext(log, atomIds, phase) {
-  const admitted = admittedIntoContext(log, atomIds);
-  assert(admitted.admittedAtomIds.length > 0,
-    `The ${phase} run admitted none of [${atomIds.join(', ')}] into memory context; `
-    + `ledger=${describeAccessRecords(log.memoryAccess?.records ?? [])}; `
-    + `knownState=${describeReferences(log.memoryKnownState?.references ?? [])}`);
-  return admitted;
-}
-
-/** Which of these atoms the run's ledger and KnownState both admitted. */
-function admittedIntoContext(log, atomIds) {
-  const accessRecords = log.memoryAccess?.records ?? [];
-  const references = log.memoryKnownState?.references ?? [];
-  const admittedAtomIds = atomIds.filter((atomId) => (
-    accessRecords.some((record) => record.fragmentIds?.includes(atomId) && record.tokensUsed > 0)
-    && references.some((reference) => reference.atomId === atomId && reference.decision === 'adopted')
-  ));
-  return {
-    admittedAtomIds,
-    stages: [...new Set(accessRecords
-      .filter((record) => record.fragmentIds?.some((fragmentId) => admittedAtomIds.includes(fragmentId)))
-      .map((record) => record.action))],
-  };
-}
-
-function describeAccessRecords(records) {
-  return records
-    .map((record) => `${record.action}:${record.status}:${record.tokensUsed}:[${(record.fragmentIds ?? []).join(',')}]`)
-    .join(' | ') || 'none';
-}
-
-function describeReferences(references) {
-  return references.map((reference) => `${reference.atomId}:${reference.decision}`).join(' | ') || 'none';
-}
-
 function assertProviderUsage(log, providerId) {
   const snapshots = log.contextSnapshots ?? [];
   assert(snapshots.some((snapshot) => snapshot.provider === providerId));
@@ -495,25 +464,6 @@ function safeReplyExcerpt(reply) {
     .replace(/\s{2,}/gu, ' ')
     .trim()
     .slice(0, 240));
-}
-
-/**
- * The current Core Flow: one main loop plus its runtime-owned stages. `classify` is the activity
- * routing checkpoint, `verify` and `finalize` always run, and the retired `decide`/`evolve`/`capture`
- * stages must never appear.
- */
-function assertCurrentTrace(log) {
-  const stages = new Set((log.trace ?? []).filter((entry) => entry.ok).map((entry) => entry.name));
-  for (const stage of ['enter', 'classify', 'execute', 'verify', 'finalize']) {
-    assert(stages.has(stage), `The real Provider run did not complete ${stage}; trace=${describeTrace(log)}`);
-  }
-  for (const retired of ['decide', 'evolve', 'capture']) {
-    assert(!stages.has(retired), `The real Provider run ran the retired ${retired} stage; trace=${describeTrace(log)}`);
-  }
-}
-
-function describeTrace(log) {
-  return (log.trace ?? []).map((entry) => `${entry.name}:${entry.ok ? 'ok' : 'failed'}`).join('|') || 'none';
 }
 
 function summarizeRun(result, log) {

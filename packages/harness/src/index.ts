@@ -1,5 +1,5 @@
 // @littlesheep/harness — public API
-// The agent loop: a hard-control-flow state machine driving 10 stages.
+// The agent loop: a hard-control-flow state machine driving the current seven-stage graph.
 
 // Context assembly (called before harness.run).
 export {
