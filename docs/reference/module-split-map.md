@@ -15,7 +15,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 147 个生产文件超过 300 行，其中 25 个超过 600 行并进入受控超限清单。
+下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 166 个生产文件超过 300 行，其中 26 个超过 600 行并进入受控超限清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -94,7 +94,6 @@
 | `packages/app/src/main/attachment-cache.ts` | 557 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 500 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/app/src/shared/memory-control-contracts.ts` | 486 | 记忆文件、资源、投影、迁移和治理控制面公共契约 | 按普通文件视图与内部治理契约分组，保持 shared 无运行逻辑 | C |
-| `packages/app/src/main/local-app-api/run-routes.ts` | 595 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress、审批 broker 和收尾路由 | HTTP 精确授权的查看/撤销位于 `shell-repeat-authorization-routes.ts`；保持 run 与 checkpoint 执行边界 | C |
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 365 |
 | `packages/app/src/main/workspace-shell-discovery.ts` | 379 | 本机 Shell 探测（Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL 发行版）、可用性与配置提示、WSL 路径映射 | 保持探测与映射边界；启动参数按 Shell 分支留在 `terminal-process.ts` | C | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
@@ -283,3 +282,4 @@
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；RS-06 在此接入反自动合并守卫（+19 行）；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 650 | 同上 |
 | `packages/app/src/main/desktop-shell.ts` | C / App Main | 冷启动专项的隔离验收需要窗口状态与文档切换（启动页、失败页、最大化/还原、渲染器是否已接管），这些都必须触达私有窗口状态；先把窗口状态 codec 与验收快照保持在既有下沉模块，再把这两组辅助方法移出 | 620 | 同上 |
 | `packages/app/src/main/index.ts` | C / App Main | S2B-F 在既有 RunnerLifecycle 组合入口接入 Main-owned 恢复授权解析器，导致装配入口从 599 增至 601 行；解析器实现独立放在 `run-recovery-authorization.ts`，后续应随 RunnerLifecycle 选项对象提取一并下沉 | 610 | 同上 |
+| `packages/app/src/main/local-app-api/run-routes.ts` | C / App Main | S2B-G 修复首个 Renderer 流式 Run 的稳定 request key 与新建 Session 身份不一致，并在同一 Main 路由中绑定当前 Main Memory grant；保留路由所有权顺序，后续将 Session/授权装配移入独立的 run-bootstrap helper | 620 | 同上 |

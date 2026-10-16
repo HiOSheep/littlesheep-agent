@@ -252,7 +252,13 @@ export class RunRouter {
       // recovered, so it observes recovery before the Runner sees it. The wait is
       // on a pass that is already running, so it costs nothing once it settled.
       await this.waitForRecovery(sessionId)
-      const runId = (sessionId ? conversationTurnRunId(sessionId, requestKey) : undefined) ?? randomUUID()
+      // A first Renderer turn may already carry a stable request key even though
+      // Main has not persisted its Session yet. Reserve that Session identity
+      // before publishing the Run ID so Runner sees the same
+      // sessionId + requestKey pair that produced the streamed identity.
+      const preallocatedSessionId = !sessionId && requestKey ? asSessionId(randomUUID()) : undefined
+      const runSessionId = sessionId ?? preallocatedSessionId
+      const runId = (runSessionId ? conversationTurnRunId(runSessionId, requestKey) : undefined) ?? randomUUID()
       const existingActive = this.activeStreams.get(runId)
       if (!existingActive && this.activeStreams.size >= MAX_ACTIVE_STREAM_RUNS) {
         json(res, 429, { error: 'too many active agent runs' })
@@ -279,8 +285,15 @@ export class RunRouter {
         )
         const cwd = await prepareRunWorkspace(selectedWorkspace, effectiveBody)
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
-        const boundSession = await bindRunSessionPolicy(context.sessionIndex, effectiveBody, ownership, cwd, sessionId)
-        const runSessionId = boundSession.sessionId
+        const boundSession = await bindRunSessionPolicy(
+          context.sessionIndex,
+          effectiveBody,
+          ownership,
+          cwd,
+          sessionId,
+          preallocatedSessionId,
+        )
+        const boundRunSessionId = boundSession.sessionId
         const attachmentOptions = {
           managedCache: context.attachmentCache,
           workplaceDir: context.workplaceDir,
@@ -301,11 +314,17 @@ export class RunRouter {
         const runPromise = runner.runStream(
           {
             runId,
-            memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
-              runId, sessionId: String(runSessionId), workspace: cwd, ownership,
-              sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
+            memoryAccessGrant: await createHostMemoryAccessGrant({
+              dataDir: context.dataDir ?? context.workplaceDir,
+              runId,
+              sessionId: String(boundRunSessionId),
+              workspace: cwd,
+              ownership,
+              sessionIndex: context.sessionIndex,
+              projectIndex: context.projectIndex,
+            }),
             text: String(body.text ?? ''),
-            sessionId: runSessionId,
+            sessionId: boundRunSessionId,
             origin: 'app',
             model: resolveRunModelRef(body, context.getConfig()),
             cwd,
@@ -326,7 +345,7 @@ export class RunRouter {
                 controller.signal,
               ),
               {
-                shellScope: await captureShellAuthorizationScope({ runId, sessionId: String(runSessionId),
+                shellScope: await captureShellAuthorizationScope({ runId, sessionId: String(boundRunSessionId),
                   projectId: ownership.projectId, signal: controller.signal, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
                 containerRoot: context.dataDir ?? context.workplaceDir,
                 dataRoot: context.dataDir,

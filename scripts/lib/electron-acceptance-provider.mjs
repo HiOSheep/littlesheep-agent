@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { join } from 'node:path'
 
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const MAX_LOGGED_REQUESTS = 512
@@ -13,6 +14,7 @@ export async function startElectronAcceptanceProvider(options = {}) {
     streamChunkCharacters: Math.max(0, Math.min(10_000, Math.round(Number(options.streamChunkCharacters) || 0))),
     modelDelayMs: new Map(),
     promptDelay: null,
+    s2bGWorkspace: typeof options.s2bGWorkspace === 'string' ? options.s2bGWorkspace : undefined,
     /** Catalog answered by GET /v1/models; set per fixture through `/control`. */
     models: normalizeModelIds(options.models),
     /** Faults consumed by successive Provider requests; see `normalizeFaults`. */
@@ -112,8 +114,9 @@ export async function startElectronAcceptanceProvider(options = {}) {
       return
     }
     if (fault?.kind === 'hang') await delay(fault.ms)
-    const response = buildResponse(body, requestIndex, model)
+    const response = buildResponse(body, requestIndex, model, state)
     requestLog.responseSummary = messageText(response.choices?.[0]?.message).slice(0, 240)
+    requestLog.responseToolCallIds = response.choices?.[0]?.message?.tool_calls?.map((call) => call.id) ?? []
     if (fault?.kind === 'stream_break' && body.stream === true) {
       await writeBrokenStream(res, response, state, fault.afterChunks)
       return
@@ -170,12 +173,12 @@ export async function startElectronAcceptanceProvider(options = {}) {
   }
 }
 
-function buildResponse(body, requestIndex, model) {
+function buildResponse(body, requestIndex, model, state) {
   const messages = Array.isArray(body.messages) ? body.messages : []
   const system = messages.filter((message) => message?.role === 'system').map(messageText).join('\n')
   const latestUser = [...messages].reverse().find((message) => message?.role === 'user')
   const user = messageText(latestUser)
-  const response = classifyResponse({ body, system, user, messages, model, requestIndex })
+  const response = classifyResponse({ body, system, user, messages, model, requestIndex, state })
   return {
     id: `acceptance-${requestIndex}`,
     object: 'chat.completion',
@@ -203,8 +206,27 @@ function toolMessagesThisTurn(messages) {
   const lastUser = messages.map((message) => message?.role).lastIndexOf('user')
   return messages.slice(lastUser + 1).filter((message) => message?.role === 'tool')
 }
-function classifyResponse({ body, system, user, messages, model, requestIndex }) {
+function classifyResponse({ body, system, user, messages, model, requestIndex, state }) {
   if (user.includes('MODEL-ISOLATION-')) return { message: { role: 'assistant', content: `MODEL-ISOLATION-DONE ${model}` }, finishReason: 'stop' }
+
+  if (messages.some((message) => messageText(message).includes('LS-S2B-G-35'))) {
+    const workspace = state.s2bGWorkspace
+    if (!workspace) return textChoice('S2B-G fixture is missing its isolated workspace path.')
+    const completedSteps = messages
+      .filter((message) => message?.role === 'tool')
+      .map((message) => String(message.tool_call_id ?? message.name ?? '').match(/^s2b-g-write-(\d+)$/u)?.[1])
+      .filter((value) => value !== undefined)
+      .map(Number)
+    const completedThrough = Math.max(0, ...completedSteps)
+    if (completedThrough < 35) {
+      const step = completedThrough + 1
+      return toolChoice(`s2b-g-write-${step}`, 'write', {
+        file_path: join(workspace, `step-${String(step).padStart(2, '0')}.txt`),
+        content: `S2B-G-COMPLETED-${step}\n`,
+      })
+    }
+    return textChoice('LS-S2B-G-35-DONE: all 35 independently checked file operations are complete.')
+  }
 
   if (user.includes('LS-CONVERSATION-TIMELINE')) {
     const count = toolMessagesThisTurn(messages).length

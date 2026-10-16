@@ -117,8 +117,8 @@ export class SessionManager implements SessionManagerLike {
     const file = this.sessionFile(sessionId);
     let handle: LockHandle | null = null;
     try {
-      handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
       await mkdir(this.opts.sessionsDir, { recursive: true });
+      handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
       const lines = messages.map((m) => JSON.stringify(m)).join('\n') + '\n';
       await appendFile(file, lines, 'utf8');
     } finally {
@@ -161,9 +161,9 @@ export class SessionManager implements SessionManagerLike {
     const file = this.sessionFile(sessionId);
     let handle: LockHandle | null = null;
     try {
+      await mkdir(this.opts.sessionsDir, { recursive: true });
       handle = await acquireLock(file, this.opts.lockTimeoutMs ?? 60000);
       if (await this.findMessage(sessionId, normalizedId)) return false;
-      await mkdir(this.opts.sessionsDir, { recursive: true });
       const lines = messages.map((message) => JSON.stringify(message)).join('\n') + '\n';
       await appendFile(file, lines, 'utf8');
       return true;

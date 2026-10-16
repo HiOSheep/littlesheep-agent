@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import type { ServerResponse } from 'node:http'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
-import type { AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, type AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type ToolStreamEvent } from '@littlesheep/types'
 import { LOCAL_APP_API_PREFIXES, LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { RunRouter } from './run-routes.js'
@@ -222,6 +222,56 @@ describe('RunRouter durable recovery', () => {
 
 describe('RunRouter tool event streaming', () => {
   const workspaceDir = process.cwd()
+
+  it('binds a first streamed turn to the same Session identity used for its stable request key', async () => {
+    const requestKey = 'first-renderer-turn'
+    const runStream = vi.fn(async (input: { runId?: string; sessionId?: string }) => ({
+      runId: input.runId!,
+      sessionId: input.sessionId ?? asSessionId('missing-session'),
+      status: 'ok',
+      reply: 'done',
+      messages: [],
+      trace: [],
+      durationMs: 1,
+      durableHarnessMode: 'shadow',
+    }))
+    const runner = { runStream, durableHarnessMode: 'shadow' } as unknown as AgentRunner
+    const router = new RunRouter()
+    const response = new FakeResponse()
+    const sessionIndex = { list: vi.fn().mockResolvedValue([]), upsert: vi.fn().mockResolvedValue(undefined) }
+
+    await router.route({
+      req: Readable.from([JSON.stringify({
+        text: 'first user turn',
+        requestKey,
+        workspace: workspaceDir,
+        permissionPreset: 'workspace-write',
+      })]) as never,
+      res: response as unknown as ServerResponse,
+      url: new URL(`http://localhost${LOCAL_APP_API_ROUTES.runStream}`),
+      path: LOCAL_APP_API_ROUTES.runStream,
+      method: 'POST',
+    }, {
+      getRunner: () => runner,
+      getConfig: () => DEFAULT_CONFIG,
+      dataDir: workspaceDir,
+      workplaceDir: workspaceDir,
+      sessionIndex: sessionIndex as never,
+      projectIndex: {} as never,
+      workspaceArtifactIndex: {} as never,
+      attachmentCache: {} as never,
+    })
+
+    const input = runStream.mock.calls[0]?.[0]
+    expect(input?.sessionId).toBeTruthy()
+    expect(input?.runId).toBe(conversationTurnRunId(asSessionId(input!.sessionId!), requestKey))
+    expect(sessionIndex.upsert).toHaveBeenCalledWith(input!.sessionId, expect.objectContaining({
+      permissionVersion: 2,
+      mode: 'workspace-write',
+    }))
+    expect(response.writableEnded).toBe(true)
+    router.stop()
+  })
 
   it('forwards the Permission V2 preset into Renderer approval requests', async () => {
     const runStream = vi.fn(async (input: {

@@ -140,7 +140,26 @@ async function approvalText() {
 }
 
 async function waitForApproval(label) {
-  return harness.waitFor(async () => (await approvalText()) || undefined, harness.actionTimeoutMs, label)
+  try {
+    return await harness.waitFor(async () => (await approvalText()) || undefined, harness.actionTimeoutMs, label)
+  } catch (error) {
+    const [readiness, activeRuns, sessions] = await Promise.all([
+      harness.fetchJson(locator, '/runtime/readiness').catch(() => undefined),
+      harness.fetchJson(locator, '/application/active-runs').catch(() => undefined),
+      harness.fetchJson(locator, '/sessions').catch(() => undefined),
+    ])
+    report.approvalTimeoutEvidence = {
+      label,
+      composerError: await evaluate(`document.querySelector('.composer-error')?.textContent?.trim() ?? null`).catch(() => null),
+      latestAssistantTurn: await evaluate(`document.querySelector('.assistant-turn:last-of-type')?.innerText?.slice(-1200) ?? null`).catch(() => null),
+      userMessageCount: await evaluate(`document.querySelectorAll('.message-with-meta.user').length`).catch(() => null),
+      runtimeReadiness: readiness?.body ?? null,
+      activeRuns: activeRuns?.body ?? null,
+      sessions: sessions?.body?.sessions?.map(({ id, mode, permissionVersion, scope }) => ({ id, mode, permissionVersion, scope })) ?? null,
+      providerRequestCount: provider?.requests?.length ?? null,
+    }
+    throw error
+  }
 }
 
 async function decideApproval(label) {
@@ -523,7 +542,9 @@ async function main() {
     assert.match(prompt, /当前用户的宿主环境运行/u)
     assert.match(prompt, /没有为 Agent Shell 提供操作系统级沙箱/u)
     assert.match(prompt, /工作区边界不会限制该命令/u)
-    assert.doesNotMatch(prompt, /本对话允许/u)
+    assert.match(prompt, /该命令默认仅批准本次/u)
+    assert.match(prompt, /本对话允许这条命令/u)
+    assert.doesNotMatch(prompt, /本对话允许(?!这条命令)/u)
     note(`V2 Agent Shell ${id} requires a new single-call decision and shows host risk`)
     await decideApproval('仅本次')
     await waitForReply(`P4-EXEC-${id}-DONE`)
@@ -781,7 +802,9 @@ async function main() {
   assert.match(resumedShellPrompt, /当前为只读授权/u)
   assert.match(resumedShellPrompt, /当前用户的宿主环境运行/u)
   assert.match(resumedShellPrompt, /工作区边界不会限制该命令/u)
-  assert.doesNotMatch(resumedShellPrompt, /本对话允许/u)
+  assert.match(resumedShellPrompt, /该命令默认仅批准本次/u)
+  assert.match(resumedShellPrompt, /本对话允许这条命令/u)
+  assert.doesNotMatch(resumedShellPrompt, /本对话允许(?!这条命令)/u)
   note('startup checkpoint resume uses the downgraded session permission and still requires a fresh host Shell decision')
   await decideApproval('拒绝')
   await waitForToolStatus(fourthSession.id, 'p4-checkpoint-resume-exec', 'approval_denied')

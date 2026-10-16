@@ -124,7 +124,11 @@ function runScenario(scenario, trial, timeoutMs) {
   const started = Date.now();
   const runRoot = resolve(tmpdir(), `ls-rcd-s0b-${process.pid}-${Date.now()}-${scenario.id}-${trial}`);
   const workspace = join(runRoot, 'workspace');
-  const observationPath = join(runRoot, 'observation.json');
+  // Keep the harness result channel outside the task workspace tree. A tool or
+  // sandbox cleanup affecting the temporary workspace must not erase the
+  // observation artifact needed to distinguish a product failure from a
+  // harness failure.
+  const observationPath = `${runRoot}.observation.json`;
   let infrastructureStatus = 'executed';
   let error;
   let observation;
@@ -156,11 +160,24 @@ function runScenario(scenario, trial, timeoutMs) {
   } finally {
     try {
       const before = existsSync(runRoot) ? collectFiles(runRoot) : [];
-      rmSync(runRoot, { recursive: true, force: false, maxRetries: 2, retryDelay: 100 });
-      cleanup = { attempted: true, succeeded: !existsSync(runRoot), residuals: existsSync(runRoot) ? before : [] };
+      rmSync(runRoot, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+      rmSync(observationPath, { force: true, maxRetries: 2, retryDelay: 100 });
+      const residuals = [
+        ...(existsSync(runRoot) ? before : []),
+        ...(existsSync(observationPath) ? [`${observationPath} (observation artifact)`] : []),
+      ];
+      cleanup = { attempted: true, succeeded: !existsSync(runRoot) && !existsSync(observationPath), residuals };
       if (!cleanup.succeeded) infrastructureStatus = 'harness_error';
     } catch (cause) {
-      cleanup = { attempted: true, succeeded: false, residuals: existsSync(runRoot) ? collectFiles(runRoot) : [], error: cause instanceof Error ? cause.message : String(cause) };
+      cleanup = {
+        attempted: true,
+        succeeded: false,
+        residuals: [
+          ...(existsSync(runRoot) ? collectFiles(runRoot) : []),
+          ...(existsSync(observationPath) ? [`${observationPath} (observation artifact)`] : []),
+        ],
+        error: cause instanceof Error ? cause.message : String(cause),
+      };
       infrastructureStatus = 'harness_error';
     }
   }

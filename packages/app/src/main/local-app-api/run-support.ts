@@ -33,8 +33,9 @@ export async function bindRunSessionPolicy(
   ownership: { scope: SessionScope; projectId?: string },
   workspacePath: string,
   existingSessionId?: SessionId,
+  preallocatedSessionId?: SessionId,
 ): Promise<{ sessionId: SessionId; body: Record<string, unknown> }> {
-  const sessionId = existingSessionId ?? asSessionId(randomUUID())
+  const sessionId = existingSessionId ?? preallocatedSessionId ?? asSessionId(randomUUID())
   if (!existingSessionId) {
     const now = Date.now()
     await sessionIndex.upsert(String(sessionId), {

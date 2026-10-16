@@ -67,6 +67,19 @@ describe('SessionManager', () => {
       .toHaveLength(1);
   });
 
+  it('creates a fresh sessions directory before the first locked append', async () => {
+    const sessionsDir = join(tmpDir, 'new-data-root', 'sessions');
+    const sm = new SessionManager({ sessionsDir });
+    const sessionId = asSessionId('first-streamed-session');
+
+    await expect(sm.appendIfAbsent(sessionId, [textMessage('user', 'first turn', {
+      id: 'first-streamed-turn',
+    })], 'first-streamed-turn')).resolves.toBe(true);
+    await expect(sm.read(sessionId)).resolves.toMatchObject([
+      { role: 'user', id: 'first-streamed-turn' },
+    ]);
+  });
+
   it('pages backward from a stable message id without loading the full transcript', async () => {
     const sm = new SessionManager({ sessionsDir: tmpDir });
     const session = await sm.create();

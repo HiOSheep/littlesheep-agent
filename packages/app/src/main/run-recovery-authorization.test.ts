@@ -34,6 +34,43 @@ describe('Main-owned durable recovery authorization', () => {
     expect(await result?.approve?.('exec', { command: 'node -e "process.exit(0)"' })).toBe(false)
   })
 
+  it('rejects a checkpoint whose Run or Session identity differs from the trusted recovery request', async () => {
+    const fixture = await createFixture()
+    expect(await fixture.resolve({ ...fixture.input, runId: 'forged-run' })).toBeUndefined()
+    expect(await fixture.resolve({
+      ...fixture.input,
+      checkpoint: { ...fixture.input.checkpoint, sessionId: asSessionId('different-session') },
+    })).toBeUndefined()
+  })
+
+  it('fails closed when the current Project identity is rebound away from the checkpoint workspace', async () => {
+    const fixture = await createFixture()
+    const projectWorkspace = join(fixture.dataDir, 'project-workspace')
+    const movedWorkspace = join(fixture.dataDir, 'moved-project-workspace')
+    await mkdir(projectWorkspace)
+    await mkdir(movedWorkspace)
+    const project = await fixture.projectIndex.ensure(projectWorkspace)
+    await fixture.sessionIndex.upsert(fixture.sessionId, {
+      scope: 'project',
+      projectId: project.id,
+      workspacePath: projectWorkspace,
+    })
+    const checkpoint = {
+      ...fixture.input.checkpoint,
+      resumeState: {
+        ...fixture.input.checkpoint.resumeState,
+        cwd: projectWorkspace,
+        workspaceContext: { boundaryKind: 'project', projectId: project.id },
+      },
+    } as RunCheckpoint
+    expect(await fixture.resolve({ ...fixture.input, checkpoint })).toMatchObject({
+      permissionPolicyV2: { workspaceRoot: projectWorkspace },
+    })
+
+    await fixture.projectIndex.rebind(project.id, movedWorkspace)
+    expect(await fixture.resolve({ ...fixture.input, checkpoint })).toBeUndefined()
+  })
+
   it('fails closed when the current session policy or workspace authority is unavailable', async () => {
     const fixture = await createFixture()
     const declined = vi.fn()
