@@ -123,6 +123,21 @@ export function classifyToolFailure(ctx: RunContext, result: ToolResult): ToolFa
     // Runtime cannot say what happened, so the model must not keep probing.
     return { disposition: 'authoritative', reason: 'no_invocation_record', effectful };
   }
+  // Only the trusted ToolExecutionService record can grant this narrow retry.
+  // `validation_failed` is also used for withheld capabilities and parallel
+  // contract violations, so require its exact input-schema error kind and prove
+  // the call never acquired a side-effect ledger entry. Result text or metadata
+  // supplied by a tool/model cannot turn a policy refusal into a correction.
+  if (invocation.status === 'validation_failed') {
+    if (invocation.errorKind === 'input_validation'
+      && !invocation.validatedAt
+      && !invocation.startedAt
+      && !effectful
+      && !unsettled) {
+      return { disposition: 'correctable', reason: 'runtime_input_validation', effectful: false };
+    }
+    return { disposition: 'authoritative', reason: `status_${invocation.status}`, effectful };
+  }
   if (errorKind && REPLAY_REFUSAL_ERROR_KINDS.has(errorKind)) {
     return { disposition: 'correctable', reason: errorKind, effectful: true };
   }

@@ -1,6 +1,7 @@
 // Facade for the complete hosted tool-invocation lifecycle.
 
 import { randomUUID } from 'node:crypto';
+import { ZodError } from 'zod';
 import type {
   AgentTool,
   TaskStepSideEffect,
@@ -220,8 +221,9 @@ export class ToolExecutionService {
           retained,
           request,
           'validation_failed',
-          `tool input validation failed: ${errorMessage(error)}`,
+          'tool input validation failed; inspect the structured Schema field/type details',
           'input_validation',
+          runtimeValidationDetails(error),
         ));
         continue;
       }
@@ -720,8 +722,9 @@ export class ToolExecutionService {
     status: ToolInvocationStatus,
     error: string,
     errorKind: string,
+    additionalMeta?: Record<string, unknown>,
   ): ToolResult {
-    const result = stampToolStep({ callId: request.callId, ok: false, error, meta: { errorKind } }, request.stepId);
+    const result = stampToolStep({ callId: request.callId, ok: false, error, meta: { ...additionalMeta, errorKind } }, request.stepId);
     this.finishRecord(record, retained, status, result, errorKind);
     return result;
   }
@@ -779,6 +782,20 @@ export class ToolExecutionService {
       this.options.toolContext.log?.('warn', 'tool event observer failed', boundedError(error));
     }
   }
+}
+
+/** Safe Schema diagnostics for same-turn correction; never include received values. */
+function runtimeValidationDetails(error: unknown): Record<string, unknown> {
+  if (!(error instanceof ZodError)) return { validation: { source: 'runtime_schema', issues: [] } };
+  const issues = error.issues.slice(0, 8).map((issue) => ({
+    code: issue.code,
+    path: issue.path.slice(0, 8).map((part) => typeof part === 'number'
+      ? part
+      : typeof part === 'string' ? part.slice(0, 80) : '[field]'),
+    ...(issue.code === 'invalid_type' ? { expected: issue.expected, received: issue.received } : {}),
+    ...(issue.code === 'unrecognized_keys' ? { keys: issue.keys.slice(0, 8).map((key) => key.slice(0, 80)) } : {}),
+  }));
+  return { validation: { source: 'runtime_schema', issues } };
 }
 
 function validateParallelStepContract(

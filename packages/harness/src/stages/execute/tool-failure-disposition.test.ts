@@ -6,6 +6,10 @@
 // hard safety rejection, an unknown tool, an outcome the Runtime cannot prove —
 // must keep ending it: the model may not probe around them.
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { z } from 'zod';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import type { ChatRequest } from '@littlesheep/llm';
@@ -85,6 +89,42 @@ describe('tool failure disposition', () => {
         reason,
       });
     }
+  });
+
+  it('allows only a trusted pre-execution Schema validation record to be corrected', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [invocation('schema-call', 'validation_failed', 'input_validation')];
+    expect(classifyToolFailure(ctx, { ...failed('schema-call'), meta: { errorKind: 'input_validation' } })).toMatchObject({
+      disposition: 'correctable', reason: 'runtime_input_validation', effectful: false,
+    });
+  });
+
+  it('does not trust result metadata or tool error text to relabel a parallel-contract refusal as Schema input', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [invocation('denied-call', 'validation_failed', 'parallel_step_contract')];
+    expect(classifyToolFailure(ctx, { ...failed('denied-call'), meta: { errorKind: 'input_validation' } })).toMatchObject({
+      disposition: 'authoritative', reason: 'status_validation_failed',
+    });
+  });
+
+  it('keeps an input validation status authoritative if any side-effect record exists', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [invocation('schema-call', 'validation_failed', 'input_validation')];
+    ctx.sideEffects = [effect('schema-call', 'unknown')];
+    expect(classifyToolFailure(ctx, { ...failed('schema-call'), meta: { errorKind: 'input_validation' } })).toMatchObject({
+      disposition: 'authoritative', reason: 'status_validation_failed', effectful: true,
+    });
+  });
+
+  it('does not treat an invocation with execution lifecycle timestamps as a pre-execution schema rejection', () => {
+    const ctx = makeCtx({}) as RunContext;
+    ctx.toolInvocations = [{
+      ...invocation('schema-call', 'validation_failed', 'input_validation'),
+      startedAt: '2026-09-23T00:00:01.000Z',
+    }];
+    expect(classifyToolFailure(ctx, { ...failed('schema-call'), meta: { errorKind: 'input_validation' } })).toMatchObject({
+      disposition: 'authoritative', reason: 'status_validation_failed', effectful: false,
+    });
   });
 
   it('keeps a declared boundary error kind authoritative even when the status is failed', () => {
@@ -173,6 +213,99 @@ describe('tool failure disposition', () => {
 });
 
 describe('the main loop after a failed call', () => {
+  it.each([
+    ['wrong field name', { filePath: 'target.txt', content: 'corrected' }],
+    ['wrong field type', { path: 42, content: 'corrected' }],
+    ['missing required field', { path: 'target.txt' }],
+  ])('returns structured trusted Schema feedback and runs a corrected call after %s', async (_label, invalidInput) => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-s1a-schema-'));
+    try {
+      const target = join(root, 'target.txt');
+      let turn = 0;
+      const requests: ChatRequest[] = [];
+      const llm = createMockLlm((request) => {
+        requests.push(request);
+        turn += 1;
+        if (turn === 1) return toolCallResponse([{ id: 'invalid-schema', name: 'fixture_write', args: invalidInput as Record<string, unknown> }]);
+        if (turn === 2) return toolCallResponse([{ id: 'corrected-schema', name: 'fixture_write', args: { path: 'target.txt', content: 'corrected' } }]);
+        return textResponse('The corrected fixture file is present.');
+      });
+      const write = makeTool('fixture_write', { ok: true, output: 'written' }, {
+        inputSchema: z.object({ path: z.string(), content: z.string() }).strict(),
+      });
+      let effects = 0;
+      write.execute = async (input) => {
+        effects += 1;
+        const args = input as { path: string; content: string };
+        if (args.path !== 'target.txt') throw new Error('fixture path escaped its contract');
+        await writeFile(target, args.content, 'utf8');
+        return { callId: '', ok: true, output: 'written' };
+      };
+      const stage = createExecuteStage({ ...deps, llm });
+      const ctx = makeCtx({
+        tools: [write],
+        inbound: textMessage('user', 'Write target.txt with the requested fixture content.'),
+        toolContext: { cwd: root, workspaceRoot: root },
+      });
+
+      const result = await stage(ctx);
+
+      expect(result).toMatchObject({ ok: true, next: 'verify' });
+      expect(effects).toBe(1);
+      expect(await readFile(target, 'utf8')).toBe('corrected');
+      expect(ctx.toolInvocations?.map((record) => record.status)).toEqual(['validation_failed', 'succeeded']);
+      expect(ctx.toolInvocations?.[0]).toMatchObject({ errorKind: 'input_validation' });
+      const validationFeedback = JSON.stringify(requests[1]?.messages.filter((message) => message.role === 'tool'));
+      expect(validationFeedback).toContain('runtime_schema');
+      expect(validationFeedback).toContain('invalid_type');
+      expect(validationFeedback).not.toContain('"received":42');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('bounds repeated invalid Schema proposals without executing the tool', async () => {
+    const llm = createMockLlm(() => toolCallResponse([{ id: `invalid-${Math.random()}`, name: 'fixture_write', args: { path: 42, content: 'never written' } }]));
+    const write = makeTool('fixture_write', { ok: true, output: 'written' }, {
+      inputSchema: z.object({ path: z.string(), content: z.string() }).strict(),
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [write], inbound: textMessage('user', 'Write the fixture file.') });
+
+    await stage(ctx);
+
+    expect(write.calls).toHaveLength(0);
+    expect(ctx.toolInvocations?.filter((record) => record.errorKind === 'input_validation').length).toBeGreaterThan(0);
+    expect(llm.chat.mock.calls.length).toBeLessThanOrEqual(6);
+    expect(ctx.toolInvocations?.every((record) => record.status === 'validation_failed')).toBe(true);
+  });
+
+  it('does not dispatch the corrected call after cancellation is accepted', async () => {
+    const controller = new AbortController();
+    let turn = 0;
+    const llm = createMockLlm(() => {
+      turn += 1;
+      if (turn === 1) return toolCallResponse([{ id: 'invalid-before-cancel', name: 'fixture_write', args: { path: 42 } }]);
+      if (turn === 2) {
+        controller.abort();
+        return toolCallResponse([{ id: 'corrected-after-cancel', name: 'fixture_write', args: { path: 'target.txt', content: 'must not run' } }]);
+      }
+      return textResponse('The run was cancelled before the corrected operation started.');
+    });
+    const write = makeTool('fixture_write', { ok: true, output: 'written' }, {
+      inputSchema: z.object({ path: z.string(), content: z.string() }).strict(),
+    });
+    const stage = createExecuteStage({ ...deps, llm });
+    const ctx = makeCtx({ tools: [write], inbound: textMessage('user', 'Write target.txt after correcting its arguments.') });
+    ctx.signal = controller.signal;
+
+    await stage(ctx);
+
+    expect(write.calls).toHaveLength(0);
+    expect(ctx.toolInvocations?.map((record) => record.status)).toContain('aborted');
+    expect(ctx.toolInvocations?.some((record) => record.status === 'succeeded')).toBe(false);
+  });
+
   it('lets the model correct a missing path in the same run and still deliver', async () => {
     const requests: ChatRequest[] = [];
     let turn = 0;

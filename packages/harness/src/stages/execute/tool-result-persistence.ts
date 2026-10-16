@@ -10,6 +10,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ChatMessage } from '@littlesheep/llm';
 import type { RunContext, ToolCall, ToolResult } from '@littlesheep/types';
 import { projectToolInput } from '@littlesheep/tools';
+import { projectRuntimeValidationDetails } from './tool-validation-projection.js';
 
 /** Serialize a value for evidence without ever throwing on a hostile value. */
 export function safeStringify(value: unknown): string {
@@ -33,6 +34,7 @@ export function safeStringify(value: unknown): string {
 export function toolResultForModel(result: ToolResult): string {
   const output = result.modelOutput ?? result.output;
   const stepId = typeof result.meta?.stepId === 'string' ? result.meta.stepId : undefined;
+  const validation = projectRuntimeValidationDetails(result.meta?.validation);
   return safeStringify({
     ok: result.ok,
     // A failed call keeps its output too. For a command runner the exit code alone
@@ -41,6 +43,7 @@ export function toolResultForModel(result: ToolResult): string {
     // output as evidence. The result is already bounded by the tool and sanitizer.
     ...(typeof output === 'string' && output.length > 0 ? { output } : {}),
     ...(result.ok ? {} : { error: result.error }),
+    ...(validation ? { validation } : {}),
     ...(result.sanitized === true ? { sanitized: true } : {}),
     ...(stepId ? { stepId } : {}),
   });

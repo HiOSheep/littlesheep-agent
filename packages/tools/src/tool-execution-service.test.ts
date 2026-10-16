@@ -240,6 +240,10 @@ describe('ToolExecutionService', () => {
     ]);
 
     expect(results.get(0)?.error).toContain('validation failed');
+    expect(results.get(0)?.meta?.validation).toMatchObject({
+      source: 'runtime_schema',
+      issues: [expect.objectContaining({ code: 'invalid_type', path: ['value'] })],
+    });
     expect(approve).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(service.snapshot().records[0]?.status).toBe('validation_failed');

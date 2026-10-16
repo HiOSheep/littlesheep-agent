@@ -141,12 +141,14 @@ function fixtureShellAuthority(ctx: ReturnType<typeof harnessContext>, cwd: stri
 }
 
 async function runC02() {
+  const cwd = workspace();
+  const target = join(cwd, 'target.txt');
   const invoked: unknown[] = [];
   const proposals: Array<{ request: number; args: Record<string, unknown>; feedbackIncluded: boolean }> = [];
   let request = 0;
   const llm = createMockLlm((chatRequest) => {
     request += 1;
-    const feedbackIncluded = chatRequest.messages.some((message) => message.role === 'tool' && /valid|string|path/iu.test(JSON.stringify(message.content)));
+    const feedbackIncluded = chatRequest.messages.some((message) => message.role === 'tool' && JSON.stringify(message.content).includes('runtime_schema'));
     if (request === 1) {
       proposals.push({ request, args: { path: 17 }, feedbackIncluded });
       return toolCallResponse([{ id: 'bad-input', name: 'fixture_lookup', args: { path: 17 } }]);
@@ -155,15 +157,21 @@ async function runC02() {
       proposals.push({ request, args: { path: 'target.txt' }, feedbackIncluded });
       return toolCallResponse([{ id: 'corrected-input', name: 'fixture_lookup', args: { path: 'target.txt' } }]);
     }
-    return textResponse('I could not continue after the parameter validation error.');
+    return textResponse('The corrected fixture edit is complete.');
   });
   const tool = makeTool('fixture_lookup', { ok: true, output: 'fixture-value' }, { inputSchema: z.object({ path: z.string() }).strict() });
-  const originalExecute = tool.execute.bind(tool);
-  tool.execute = async (input, context) => { invoked.push(input); return originalExecute(input, context); };
-  const ctx = makeCtx({ tools: [tool], inbound: { role: 'user', content: [{ type: 'text', text: 'Read target.txt from the local fixture.' }] } as never });
+  tool.execute = async (input) => {
+    invoked.push(input);
+    const args = input as { path: string };
+    if (args.path !== 'target.txt') throw new Error('fixture path is outside the C02 contract');
+    await writeFile(target, 'fixture-value\n', 'utf8');
+    return { callId: '', ok: true, output: 'fixture-value' };
+  };
+  const ctx = harnessContext([tool], cwd, 'Write fixture-value into target.txt using the registered tool.');
   const result = await createExecuteStage({ llm, model: 'rcd/scripted-provider', config: DEFAULT_CONFIG, branding: DEFAULT_BRANDING })(ctx);
   const statuses = (ctx.toolInvocations ?? []).map((record) => ({ status: record.status, errorKind: record.errorKind }));
-  const corrected = invoked.length === 1 && JSON.stringify(invoked[0]) === JSON.stringify({ path: 'target.txt' });
+  const actualFile = await readFile(target, 'utf8').catch(() => '');
+  const corrected = invoked.length === 1 && JSON.stringify(invoked[0]) === JSON.stringify({ path: 'target.txt' }) && actualFile === 'fixture-value\n';
   await writeObservation('C02', {
     testLayer: 'harness_execute_stage_with_real_ToolExecutionService',
     provider: 'scripted-mock',
@@ -171,15 +179,16 @@ async function runC02() {
     toolCallCount: (ctx.toolResults ?? []).length,
     toolFailures: (ctx.toolResults ?? []).filter((item) => !item.ok).length,
     invocationStatuses: statuses,
-    toolResultErrors: (ctx.toolResults ?? []).filter((item) => !item.ok).map((item) => ({ errorKind: item.meta?.errorKind, error: item.error })),
+    toolResultErrors: (ctx.toolResults ?? []).filter((item) => !item.ok).map((item) => ({ errorKind: item.meta?.errorKind, validation: item.meta?.validation, error: item.error })),
     proposals,
     executions: invoked.length,
     sideEffects: { malformedInputExecutions: 0, correctedInputExecutions: invoked.length },
     correctedInputExecuted: corrected,
+    fixtureEffect: { path: 'target.txt', bytes: Buffer.byteLength(actualFile, 'utf8'), sha256: (await import('node:crypto')).createHash('sha256').update(actualFile).digest('hex') },
     stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
     productResult: corrected ? 'passed' : 'failed',
     oracle: 'The schema-invalid proposal has no side effect; the corrected proposal executes in the same run.',
-    evidenceRefs: ['observation://C02/invocation-statuses', 'observation://C02/execution-count'],
+    evidenceRefs: ['observation://C02/invocation-statuses', 'observation://C02/execution-count', 'fixture://C02/target.txt'],
   });
 }
 

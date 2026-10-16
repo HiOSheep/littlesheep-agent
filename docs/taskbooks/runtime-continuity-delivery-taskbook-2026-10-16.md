@@ -1,7 +1,7 @@
 # Runtime Continuity & Delivery（RCD）任务书 2026-10-16
 
 日期：2026-10-16
-状态：**S0-F 已冻结六项核心机制基线；完整 24 场景基线未完成。当前任务继续实施 S1A 工具参数错误安全纠错；S1B、S1C、S2 未开始。**
+状态：**S0-F 已冻结六项核心机制基线；完整 24 场景基线未完成。S1A 工具参数错误安全纠错已完成并通过六项核心回归；S1B、S1C、S2 未开始。**
 
 ## 1. 目标与边界
 
@@ -16,7 +16,7 @@
 | 阶段 | 目标 | 本轮状态 |
 |---|---|---|
 | S0-F | 冻结六项核心机制现有结果，不扩展其余 18 项 | 六项核心机制基线已建立；完整 24 场景基线未完成 |
-| S1A | 只允许 Runtime 确认未执行、无副作用的可信 Schema 参数错误在同一轮纠错 | 实施中 |
+| S1A | 只允许 Runtime 确认未执行、无副作用的可信 Schema 参数错误在同一轮纠错 | 已完成；C02 passed，五项核心保护回归保持原结果 |
 | S1B/S1C | 恢复身份、动态检索、停止原因观测 | 未开始 |
 | S2 | 在现有 Runner/Harness 上提供有界任务续接、任务验收状态和交付摘要 | 未开始 |
 | S3 | 使用固定场景进行同环境对照并审查安全、效果和成本 | 未开始 |
@@ -49,3 +49,14 @@
 ## 5. 后续工作
 
 S0 后续为 18 项组件探针补齐真实场景夹具、逐场景 Oracle 与 teardown，并保留已发现的产品失败；不修改生产 Runtime 来配合基线。全部 24 项按原场景语义执行、重要项目复现稳定并保存逐次账本后，才关闭 S0。没有对应授权与成本上限时，真实 Provider 一栏继续标记未运行。只有 S0 验收通过后，才启动 S1。
+
+## 6. S1A 完成记录
+
+- S0-F 冻结的 C02 原结果仍为 `failed`；修复后的运行见 [S1A 核心回归 JSON](../reference/rcd-s1a-core-regression-2026-10-16.json)，C02 为 `passed`。S0-F 账本未被覆盖。
+- `ToolExecutionService` 在可信 Zod Schema 解析失败处生成有界结构化错误（错误码、字段路径、期望/实际类型或未知字段名），不携带收到的原始字段值；Harness 将其作为模型可读反馈。
+- 主循环仅在 Runtime invocation 记录为 `validation_failed` + `input_validation`、没有 `validatedAt`/`startedAt` 且不存在任何 side-effect 账本项时允许继续。同轮模型需另行提出修正调用；新调用重新经过 Schema、授权和副作用路径。错误文本或结果元数据不能单独授予资格。
+- permission/hard-deny、parallel contract、未知/已开始但结算不明、重复调用保护、取消仍由原有权威处理约束。Runtime scope 的 `tool_not_admitted` 继续按其既有独立规则允许模型改用本轮已准入工具；它不能被误分类成 Schema 错误。
+- 测试覆盖字段名错误、类型错误、必填字段缺失的修正，重复无效输入有界停止，参数错误零副作用，错误元数据不能伪装参数错误，副作用未知仍阻断，拒绝与取消不继续。
+- S1A 不改变工具权限、Shell/Web 策略、Memory 控制或 Runner/Harness 架构；没有启动 S1B、S1C 或 S2。
+- C02 修复前/后独立 Oracle：S0-F 为 `failed`；S1A 为 `passed`。本次 C02 两次工具调用、一次校验失败、一次实际工具执行；错误参数执行数 0、修正参数写入 1 个夹具文件，SHA-256=`36fd79ba41840993345093b71e12af3b16af44e84f190ff5c806e482590ed56d`，teardown 无残留。
+- 六项回归结果：C02 `passed`；C08 `passed`；R01 `failed`；R02 `correctly_blocked`；L01 `partially_completed`；X01 `correctly_blocked`。真实 Provider/usage/cost 仍 unavailable；其余 18 场景继续 `unverified`。
