@@ -19,6 +19,7 @@
 
 ## 专项验收基线
 
+- [VRS VERIFY 去留与最终集成报告](vrs-final-integration-report-2026-10-16.md)：VERIFY Stage 移除、证据结算迁移、旧 checkpoint 兼容、main 集成提交与 VRS-F 回归结果。
 - [RCD S0 基线报告](rcd-s0-baseline-2026-10-16.md)：24 个场景目录、证据盘点与离线契约基线。
 - [RCD S0B 可执行基线](rcd-s0b-executable-baseline-2026-10-16.json)：六个代表场景的运行账本和未运行场景清单；入口见前述基线报告。
 - [RCD S0-F 核心基线](rcd-s0f-core-baseline-2026-10-16.json)：C02、C08、R01、R02、L01、X01 六项核心机制的冻结运行账本；完整 24 场景基线未完成。
