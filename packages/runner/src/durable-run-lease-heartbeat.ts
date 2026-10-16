@@ -18,6 +18,7 @@ export class DurableRunLeaseHeartbeat {
   private timer: NodeJS.Timeout | undefined;
   private lease: DurableRunLease;
   private closed = false;
+  private renewal: Promise<void> | undefined;
 
   static async acquire(options: DurableRunLeaseHeartbeatOptions): Promise<DurableRunLeaseHeartbeat> {
     const outcome = await options.store.acquire(options.sessionId, options.runId);
@@ -38,6 +39,14 @@ export class DurableRunLeaseHeartbeat {
 
   get ownerToken(): string {
     return this.lease.ownerToken!;
+  }
+
+  /** Revalidates and extends the Run lease immediately before a new effect lease is acquired or confirmed. */
+  async assertOwned(): Promise<void> {
+    if (this.closed) throw new Error('durable run lease is no longer owned');
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+    await this.renew();
   }
 
   async release(): Promise<void> {
@@ -65,23 +74,32 @@ export class DurableRunLeaseHeartbeat {
     const delayMs = Math.max(MIN_RENEW_DELAY_MS, Math.floor(remainingMs / 2));
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      return this.renew();
+      void this.renew().catch(() => undefined);
     }, delayMs);
     this.timer.unref?.();
   }
 
   private async renew(): Promise<void> {
     if (this.closed) return;
-    try {
-      this.lease = await this.options.store.renew(
-        this.options.sessionId,
-        this.options.runId,
-        this.ownerToken,
-      );
+    if (this.renewal) return this.renewal;
+    const operation = this.options.store.renew(
+      this.options.sessionId,
+      this.options.runId,
+      this.ownerToken,
+    ).then((lease) => {
+      this.lease = lease;
       this.schedule();
-    } catch (error) {
+    }).catch((error: unknown) => {
       this.abandon();
-      this.options.onOwnershipLost(error instanceof Error ? error : new Error(String(error)));
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      this.options.onOwnershipLost(normalized);
+      throw normalized;
+    });
+    this.renewal = operation;
+    try {
+      await operation;
+    } finally {
+      if (this.renewal === operation) this.renewal = undefined;
     }
   }
 }

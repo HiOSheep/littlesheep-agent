@@ -502,7 +502,10 @@ function recordPreparedRequest(
   const workingSetAware = options.skipRuntimeTail
     ? { request: resolvedRequest, candidates }
     : appendMemoryReleaseNotes(ctx, resolvedRequest, candidates);
-  const requestIndex = (ctx.modelRequests?.at(-1)?.requestIndex ?? 0) + 1;
+  const requestIndex = Math.max(
+    ctx.modelRequestIndexOffset ?? 0,
+    ctx.modelRequests?.at(-1)?.requestIndex ?? 0,
+  ) + 1;
   const requestedToolNames = workingSetAware.request.tools?.map((tool) => tool.function.name) ?? [];
   const callContract = resolveLlmCallContract(ctx, purposeOrStage, {
     allowedToolNames: requestedToolNames,

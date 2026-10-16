@@ -866,6 +866,20 @@ export interface RunCheckpoint {
   webEvidence?: WebEvidenceProjection;
   /** Optional in v1 for backward compatibility; old checkpoints are inspect-only. */
   resumeState?: RunCheckpointResumeState;
+  /** Present only after the Harness has durably flushed a safe segment boundary. */
+  safeSegmentBoundary?: {
+    version: 1;
+    kind: 'execution_segment';
+    modelContextFingerprint: string;
+    executionContextFingerprint: string;
+    executionContextComponents: {
+      identity: string;
+      tools: string;
+      configuration: string;
+      prompt: string;
+      memory: string;
+    };
+  };
   createdAt: string;
   reason: string;
 }

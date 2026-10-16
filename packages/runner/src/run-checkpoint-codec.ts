@@ -84,6 +84,9 @@ export function validateCheckpoint(value: unknown, maxFileBytes: number, maxCont
   const resumeState = value.resumeState === undefined
     ? undefined
     : validateResumeState(value.resumeState);
+  const safeSegmentBoundary = value.safeSegmentBoundary === undefined
+    ? undefined
+    : validateSafeSegmentBoundary(value.safeSegmentBoundary);
   const webEvidence = sanitizeWebEvidenceProjection(value.webEvidence);
   const checkpoint: RunCheckpoint = {
     version: RUN_CHECKPOINT_VERSION,
@@ -106,6 +109,7 @@ export function validateCheckpoint(value: unknown, maxFileBytes: number, maxCont
     loopBudget,
     ...(webEvidence ? { webEvidence } : {}),
     ...(resumeState ? { resumeState } : {}),
+    ...(safeSegmentBoundary ? { safeSegmentBoundary } : {}),
     createdAt,
     reason,
   };
@@ -114,6 +118,51 @@ export function validateCheckpoint(value: unknown, maxFileBytes: number, maxCont
     throw new RunCheckpointValidationError(`Checkpoint exceeds the ${maxFileBytes}-byte limit.`);
   }
   return checkpoint;
+}
+
+function validateSafeSegmentBoundary(value: unknown): NonNullable<RunCheckpoint['safeSegmentBoundary']> {
+  if (!isRecord(value) || value.version !== 1 || value.kind !== 'execution_segment') {
+    throw new RunCheckpointValidationError('checkpoint.safeSegmentBoundary is invalid.');
+  }
+  const modelContextFingerprint = boundedText(
+    value.modelContextFingerprint,
+    64,
+    'checkpoint.safeSegmentBoundary.modelContextFingerprint',
+  );
+  if (!/^[a-f0-9]{64}$/u.test(modelContextFingerprint)) {
+    throw new RunCheckpointValidationError('checkpoint.safeSegmentBoundary.modelContextFingerprint must be SHA-256.');
+  }
+  const executionContextFingerprint = boundedText(
+    value.executionContextFingerprint,
+    64,
+    'checkpoint.safeSegmentBoundary.executionContextFingerprint',
+  );
+  if (!/^[a-f0-9]{64}$/u.test(executionContextFingerprint)) {
+    throw new RunCheckpointValidationError('checkpoint.safeSegmentBoundary.executionContextFingerprint must be SHA-256.');
+  }
+  const componentsValue = value.executionContextComponents;
+  if (!isRecord(componentsValue)) {
+    throw new RunCheckpointValidationError('checkpoint.safeSegmentBoundary.executionContextComponents is invalid.');
+  }
+  const componentNames = ['identity', 'tools', 'configuration', 'prompt', 'memory'] as const;
+  const executionContextComponents = Object.fromEntries(componentNames.map((name) => {
+    const fingerprint = boundedText(
+      componentsValue[name],
+      64,
+      `checkpoint.safeSegmentBoundary.executionContextComponents.${name}`,
+    );
+    if (!/^[a-f0-9]{64}$/u.test(fingerprint)) {
+      throw new RunCheckpointValidationError(`checkpoint.safeSegmentBoundary.executionContextComponents.${name} must be SHA-256.`);
+    }
+    return [name, fingerprint];
+  })) as NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
+  return {
+    version: 1,
+    kind: 'execution_segment',
+    modelContextFingerprint,
+    executionContextFingerprint,
+    executionContextComponents,
+  };
 }
 
 function validateSideEffect(value: unknown, index: number): RunCheckpoint['sideEffects'][number] {

@@ -1,5 +1,6 @@
 // Owns the bounded model loop and persisted messages; ToolExecutionService
 // owns invocation validation, approval, execution, events, and evidence.
+import { createHash } from 'node:crypto';
 import {
   type ChatMessage,
   type ChatResponse,
@@ -208,7 +209,7 @@ export async function runToolLoop(
           `Runtime control: execution segment ${(ctx.loopBudget?.executionSegmentIndex ?? 1) - 1} reached its ${toolLoopIterationCeiling(ctx)}-turn limit. Continue the same user task in the next bounded segment. Run-wide model, tool, time, permission, and no-progress limits remain in force.`,
         );
         try {
-          await ctx.persistRuntimeCheckpoint?.('execution-segment-started');
+          await ctx.persistRuntimeCheckpoint?.('execution-segment-started', modelContextFingerprint(messages));
         } catch (error) {
           return {
             ok: false,
@@ -741,4 +742,8 @@ function updateInvocationRecord(
   state: { retained: boolean; truncated: boolean },
 ): void {
   upsertToolInvocationEvidence(ctx, 'execute', record, state);
+}
+
+function modelContextFingerprint(messages: readonly ChatMessage[]): string {
+  return createHash('sha256').update(JSON.stringify(messages), 'utf8').digest('hex');
 }

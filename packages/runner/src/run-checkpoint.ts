@@ -26,6 +26,7 @@ export interface BuildRunCheckpointOptions {
   stageResult: StageResult;
   reason: string;
   interrupted?: boolean;
+  safeSegmentBoundary?: RunCheckpoint['safeSegmentBoundary'];
   id?: string;
   now?: Date;
 }
@@ -117,6 +118,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       ...loopBudget,
       elapsedMs: Math.max(loopBudget.elapsedMs, elapsedMs),
     }),
+    ...(options.safeSegmentBoundary ? { safeSegmentBoundary: clone(options.safeSegmentBoundary) } : {}),
     resumeState: {
       version: 1,
       inboundMessageId: ctx.inbound.id,

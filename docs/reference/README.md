@@ -35,7 +35,7 @@
 - [RCD S2B 持续执行实施进度](rcd-s2b-progress-2026-10-16.md)：同一 Run 内有界分段、T01/T02/T05 与核心回归证据；明确同 Run 重启恢复尚未实现，S2B 未完成。
 - [RCD S2B 机器可读进度账本](rcd-s2b-progress-2026-10-16.json)：执行层级、预算、场景状态、验证结果和 S2B 阻塞项。
 - [RCD S2B 核心回归账本](rcd-s2b-core-regression-2026-10-16.json)：当前工作树下 S0-F 六项核心场景的逐项运行、Oracle、清理及指纹记录。
-- [RCD S2B-2 同一 Run 持久恢复协议审计](rcd-s2b-2-recovery-design-2026-10-16.md)：T04-A 真实进程崩溃失败证据、恢复资格、lease 与 checkpoint 风险，以及后续最小实施边界。
+- [RCD S2B-2 同一 Run 持久恢复最小实现](rcd-s2b-2-recovery-design-2026-10-16.md)：T04-A 真实进程 SIGKILL 后 35/35 恢复、lease 所有权、上下文重建、负向资格判定及仍待第三单元覆盖的故障窗口。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。

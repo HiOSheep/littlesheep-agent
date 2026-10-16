@@ -54,6 +54,18 @@ describe('DurableRunLeaseStore', () => {
       .rejects.toMatchObject({ kind: 'conflict' });
   });
 
+  it('allows only one of two concurrent Runner recovery claims', async () => {
+    const rootDir = await newRoot();
+    const first = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000 });
+    const second = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000 });
+    const outcomes = await Promise.all([
+      first.acquire('session-a', 'run-a'),
+      second.acquire('session-a', 'run-a'),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.kind === 'acquired' || outcome.kind === 'reclaimed')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.kind === 'conflict')).toHaveLength(1);
+  });
+
   it('separates live owners from expired recoverable runs and reports one wake-up', async () => {
     const rootDir = await newRoot();
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');

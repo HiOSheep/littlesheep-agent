@@ -127,8 +127,10 @@ describe('Runner execution segments', () => {
     expect(run.modelCalls).toBeLessThanOrEqual(64);
     expect(run.checkpoint?.loopBudget).toMatchObject({
       executionSegmentIndex: 2,
-      segmentIterationsUsed: 5,
-      toolLoopIterationsUsed: 35,
+      // The loop budget counts every reserved model/tool-loop turn, including
+      // non-mutating turns around the 35 effectful calls.
+      segmentIterationsUsed: 7,
+      toolLoopIterationsUsed: 37,
       toolCallsUsed: 35,
       maxToolCalls: 64,
       maxToolLoopIterationsPerRun: 60,
