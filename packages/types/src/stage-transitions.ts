@@ -9,17 +9,17 @@ export type CurrentStageName =
   | 'classify'
   | 'execute'
   | 'recover'
-  | 'verify'
   | 'reply'
   | 'ask_user'
   | 'finalize';
 
 /**
- * Stages a retired build ran and this one does not: `decide` (second executor planning), `evolve`
- * (automatic memory evolution) and `capture` (automatic settlement). Records on disk still name them, so
- * readers must recognize the names, but nothing routes here and no new decision may target them.
+ * Stages a retired build ran and this one does not: `decide` (second executor planning), `verify`
+ * (independent evidence stage), `evolve` (automatic memory evolution) and `capture` (automatic settlement).
+ * Records on disk still name them, so readers must recognize the names, but nothing routes here and no new
+ * decision may target them.
  */
-export type HistoricalStageName = 'decide' | 'evolve' | 'capture';
+export type HistoricalStageName = 'decide' | 'verify' | 'evolve' | 'capture';
 
 export type StageTransitionManifest = Readonly<Record<StageName, readonly StageTransitionTarget[]>>;
 export type CurrentStageTransitionManifest =
@@ -38,16 +38,11 @@ const targets = (...values: StageTransitionTarget[]): readonly StageTransitionTa
 export const allowedTransitions: CurrentStageTransitionManifest = Object.freeze({
   enter: targets('classify', 'exit'),
   classify: targets('execute', 'reply', 'ask_user', 'exit'),
-  // Custom lightweight EXECUTE stages may already own a verified reply and therefore use the
-  // compatibility shortcut directly to FINALIZE. `ask_user` is a real EXECUTE edge, not a compatibility
-  // one: the model can call `request_user_input` inside the main loop. Leaving it out made a legitimate
-  // question fail the whole run (measured on the 28-turn long task, turn 17: `invalid stage transition
-  // 'execute' -> 'ask_user'`).
-  execute: targets('verify', 'recover', 'ask_user', 'finalize', 'exit'),
-  recover: targets('classify', 'execute', 'verify', 'reply', 'ask_user', 'finalize', 'exit'),
-  // `execute` carries the live partial re-plan back into the one main loop.
-  verify: targets('execute', 'recover', 'ask_user', 'finalize', 'exit'),
-  reply: targets('verify', 'finalize', 'exit'),
+  // EXECUTE settles Runtime evidence before FINALIZE; `ask_user` is a real edge because the model can
+  // request missing input from inside the one tool loop.
+  execute: targets('recover', 'ask_user', 'finalize', 'exit'),
+  recover: targets('classify', 'execute', 'reply', 'ask_user', 'finalize', 'exit'),
+  reply: targets('finalize', 'exit'),
   ask_user: targets('finalize', 'exit'),
   finalize: targets('exit'),
 });
@@ -63,6 +58,7 @@ export const allowedTransitions: CurrentStageTransitionManifest = Object.freeze(
 export const historicalStageTransitions: Readonly<Record<HistoricalStageName, readonly StageTransitionTarget[]>>
   = Object.freeze({
     decide: targets('execute', 'ask_user', 'finalize', 'recover', 'exit'),
+    verify: targets('execute', 'recover', 'ask_user', 'finalize', 'exit'),
     evolve: targets('capture', 'exit'),
     capture: targets('finalize', 'exit'),
   });
@@ -73,7 +69,6 @@ export const currentStageNames: readonly CurrentStageName[] = Object.freeze([
   'classify',
   'execute',
   'recover',
-  'verify',
   'reply',
   'ask_user',
   'finalize',
@@ -81,6 +76,7 @@ export const currentStageNames: readonly CurrentStageName[] = Object.freeze([
 
 export const historicalStageNames: readonly HistoricalStageName[] = Object.freeze([
   'decide',
+  'verify',
   'evolve',
   'capture',
 ]);

@@ -17,6 +17,11 @@ import { recordFailure } from '../../failure-state.js';
 import { replaceToolResults } from '../../execution-evidence-state.js';
 import { resolveExplicitToolInstructionSet, renderExplicitToolScopeContract } from '../../explicit-tool-instruction.js';
 import { toolsForRetrievalIntent, renderRetrievalIntentContract } from '../../retrieval-intent.js';
+import {
+  assessRuntimeEvidence,
+  recordRuntimeEvidenceSettlement,
+  routeExecutionEvidenceGap,
+} from './evidence-settlement.js';
 
 export async function executeMainLoop(
   deps: ExecuteStageDeps,
@@ -94,6 +99,8 @@ export async function executeMainLoop(
   // pinned to the request that actually produced it. The runtime never authors
   // the answer and never decides on its own to wait.
   if (result.userInputRequest) {
+    const evidence = assessRuntimeEvidence(ctx, { requireReply: false, userInputRequest: true });
+    if (evidence.kind === 'gap') return routeExecutionEvidenceGap(ctx, evidence.reason);
     const userInputRequest = result.userInputRequest;
     const clarificationRequest: ClarificationRequest = {
       id: `${ctx.runId}:user-input`,
@@ -129,10 +136,14 @@ export async function executeMainLoop(
     };
   }
   if (!result.ok) {
+    const evidence = assessRuntimeEvidence(ctx, { requireReply: false });
+    if (evidence.kind === 'gap') return routeExecutionEvidenceGap(ctx, evidence.reason);
     const message = result.error ?? 'execute failed';
     recordFailure(ctx, 'execute', 'execute', message);
     return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
+  const executionEvidence = assessRuntimeEvidence(ctx, { requireReply: false });
+  if (executionEvidence.kind === 'gap') return routeExecutionEvidenceGap(ctx, executionEvidence.reason);
   try {
     // The tool loop already validated any Web citation before returning this
     // text. The bounded continuity correction belongs to purely conversational
@@ -164,9 +175,12 @@ export async function executeMainLoop(
     recordFailure(ctx, 'execute', 'execute', message);
     return { stage: 'execute', next: 'recover', ok: false, error: message };
   }
+  const settlement = assessRuntimeEvidence(ctx, { requireReply: true });
+  if (settlement.kind === 'gap') return routeExecutionEvidenceGap(ctx, settlement.reason);
+  await recordRuntimeEvidenceSettlement(ctx, settlement);
   return {
     stage: 'execute',
-    next: 'verify',
+    next: 'finalize',
     ok: true,
     meta: { iterations: result.iterations, toolCalls: result.toolResults.length },
   };

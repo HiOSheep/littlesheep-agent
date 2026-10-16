@@ -54,7 +54,7 @@ describe('core agent behavior contracts', () => {
     // Casual chat still costs exactly one model request; it now runs in the same
     // main loop as tool work, so no planning request and no TaskBook appear.
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ])
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop'])
     expect(ctx.taskBook).toBeUndefined()

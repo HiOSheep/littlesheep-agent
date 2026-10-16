@@ -42,7 +42,7 @@ describe('e2e agent loop', () => {
     expect(ctx.produced[ctx.produced.length - 1].role).toBe('assistant');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual(['execute_tool_loop']);
   });
@@ -104,7 +104,7 @@ describe('e2e agent loop', () => {
       .toBeLessThan(durableTypes.indexOf('model_request_settled'));
   });
 
-  it('problem: no rule matches → one main loop through verify/evolve/capture', async () => {
+  it('problem: no rule matches → one main loop through execution evidence settlement', async () => {
     // 'solve P vs NP' matches no rule and is not provably complex, so it runs in
     // the single main loop: the model answers directly and no routing, planning
     // or final-reply request is spent.
@@ -125,14 +125,11 @@ describe('e2e agent loop', () => {
     expect(res.next).toBe('exit');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
     const businessEvents = events.filter((event) => event.type !== 'reasoning' && event.type !== 'model_activity');
     // No TaskBook: the work never left the main loop.
-    expect(businessEvents.map((event) => event.type)).toEqual([
-      'verification_start',
-      'verification',
-    ]);
+    expect(businessEvents.map((event) => event.type)).toEqual(['verification']);
     expect(events.filter((event) => event.type === 'reasoning')).toEqual([]);
     expect(events.filter((event) => event.type === 'model_activity').map((event) => event.activityStatus))
       .toEqual(ctx.modelRequests!.flatMap(() => ['running', 'done']));
@@ -151,7 +148,7 @@ describe('e2e agent loop', () => {
       expect(context).toBeDefined();
       expect(context?.items.every((item) => contract!.inputs.allowedContextKinds.includes(item.kind))).toBe(true);
     }
-    // Neither VERIFY nor DECIDE spends a model request any more.
+    // Neither a separate VERIFY stage nor DECIDE spends a model request.
     expect(ctx.modelRequests?.some((request) => request.callContract?.purpose === 'verify')).toBe(false);
     expect(ctx.modelRequests?.some((request) => request.callContract?.purpose === 'decide')).toBe(false);
     expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
@@ -186,12 +183,12 @@ describe('e2e agent loop', () => {
     ]);
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((item) => item.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
   });
 
 
-  it('unmatched: no rule matches → the main loop answers → verify → finalize', async () => {
+  it('unmatched: no rule matches → the main loop answers → finalize', async () => {
     // 'xyzzy' matches no rule, so the main loop handles it: the model's own text
     // is published and no clarification checkpoint is created.
     const llm = createMockLlm([
@@ -204,7 +201,7 @@ describe('e2e agent loop', () => {
     expect(ctx.reply).toBe('Could you clarify what you want?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
     expect(ctx.clarificationRequest).toBeUndefined();
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([

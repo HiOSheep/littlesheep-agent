@@ -11,6 +11,7 @@ import type { ChatMessage } from '@littlesheep/llm';
 import type { RunContext, ToolCall, ToolResult } from '@littlesheep/types';
 import { projectToolInput } from '@littlesheep/tools';
 import { projectRuntimeValidationDetails } from './tool-validation-projection.js';
+import { evidenceGapFailure } from './evidence-settlement.js';
 
 /** Serialize a value for evidence without ever throwing on a hostile value. */
 export function safeStringify(value: unknown): string {
@@ -112,9 +113,11 @@ export function stampStepMeta(result: ToolResult, stepId?: string): ToolResult {
  * corrected by using an admitted tool.
  */
 export const TOOL_NOT_ADMITTED_ERROR_KIND = 'tool_not_admitted';
+export const USER_INPUT_REQUEST_SIBLING_REFUSAL_KIND = 'user_input_request_sibling_refusal';
+export const TOOL_LOOP_FINAL_REFUSAL_KIND = 'tool_loop_final_refusal';
 
-export function failureResult(callId: string, stepId: string | undefined, error?: string): ToolResult {
-  return stampStepMeta({ callId, ok: false, error }, stepId);
+export function failureResult(callId: string, stepId: string | undefined, error?: string, errorKind?: string): ToolResult {
+  return stampStepMeta({ callId, ok: false, error, ...(errorKind ? { meta: { errorKind } } : {}) }, stepId);
 }
 
 /** A refusal for a capability the Runtime withheld from this request. */
@@ -234,31 +237,23 @@ export function persistRuntimeTailMessages(
  * message (measured: frozen A2 turn boundary diff@19 of 20).
  */
 export const RUNTIME_CONTROL_MESSAGES = {
-  boundaryFailure: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise step result that preserves the failure and uncertainty for VERIFY/RECOVER.',
+  boundaryFailure: 'Runtime control: the latest tool boundary failed. Do not call another tool in this step. Return a concise result that preserves the failure and uncertainty for Runtime settlement and RECOVER.',
   effectfulFailure: 'Runtime control: the failed call may already have changed the workspace, so the Runtime will not replay it. Observe the actual state (read or list what the call was supposed to change) before deciding what to do next.',
   noProgressBound: 'Runtime control: the last rounds added no new evidence (same tool sources and targets). You can answer from the evidence already present, or say plainly what is still missing; tools are no longer available in this run.',
   iterationBudgetExhausted: 'Runtime control: this run\'s tool-loop iteration budget is spent and NO further tool call will run — calling one anyway fails the whole run instead of being refused. Stop calling tools now and answer with what is already done: what the recorded evidence shows, what was delivered, and what still remains.',
-  verifyGap: 'Runtime control: VERIFY found that the recorded evidence cannot settle this run, and this loop was re-entered so the gap can be closed. A call that was refused before it ran leaves no usable evidence; repeating it with the same arguments will be refused again. Fix the call or take the missing observation with a valid one, then report what the evidence now shows.',
+  evidenceGap: 'Runtime control: the previous execution pass ended with an evidence gap, so this bounded EXECUTE retry can close it. A call refused before it ran leaves no execution evidence; repeating it with the same arguments will be refused again. Fix the call or take the missing observation, then report what the Runtime records show.',
 } as const;
 
-/**
- * Tell the model why the loop was re-entered after a VERIFY gap.
- *
- * RECOVER sends a structural VERIFY gap back to the loop once, so the model can
- * close it; the failed call's own error is in the transcript, but nothing there
- * says the run was sent back for it. The gap closes when a later successful call
- * in the same step supersedes the refused one, so the message names that rather
- * than ordering a retry. A loop that was not re-entered emits nothing.
- */
-export function persistVerifyGapControl(
+/** Explain a bounded RECOVER re-entry to EXECUTE after an evidence gap. */
+export function persistExecutionEvidenceGapControl(
   ctx: RunContext,
   produced: RunContext['produced'],
   messages: ChatMessage[],
 ): void {
-  if (ctx.lastError?.stage !== 'verify') return;
+  if (ctx.lastError?.stage !== 'execute' || !evidenceGapFailure(ctx.lastError)) return;
   const record = ctx.verificationHistory?.at(-1);
   if (record?.verdict !== 'fail' || record.source !== 'structural') return;
-  persistRuntimeControlMessage(ctx, produced, messages, RUNTIME_CONTROL_MESSAGES.verifyGap);
+  persistRuntimeControlMessage(ctx, produced, messages, RUNTIME_CONTROL_MESSAGES.evidenceGap);
 }
 
 /** Append one Runtime control message to the live request and to the transcript. */

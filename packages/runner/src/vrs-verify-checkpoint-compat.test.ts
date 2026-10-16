@@ -340,11 +340,11 @@ describe('VRS legacy VERIFY checkpoint continuation', () => {
       })
 
       const stageNames = result.trace.map((entry) => entry.name)
-      expect(stageNames[0]).toBe('verify')
+      expect(stageNames[0]).toBe('recover')
+      expect(stageNames).not.toContain('verify')
       expect(stageNames).toContain('recover')
       expect(stageNames).toContain('execute')
-      expect(stageNames.indexOf('recover')).toBeGreaterThan(stageNames.indexOf('verify'))
-      expect(events.some((event) => event.type === 'verification_start')).toBe(true)
+      expect(events.some((event) => event.type === 'verification_start')).toBe(false)
       expect(result.toolInvocations?.some((record) => (
         record.toolName === toolName && record.status === 'repeated_call_blocked'
       ))).toBe(true)
@@ -390,11 +390,11 @@ describe('VRS legacy VERIFY checkpoint continuation', () => {
       })
       const stageNames = result.trace.map((entry) => entry.name)
 
-      expect(stageNames[0]).toBe('verify')
-      expect(stageNames.indexOf('recover')).toBeGreaterThan(stageNames.indexOf('verify'))
+      expect(stageNames[0]).toBe('recover')
+      expect(stageNames).not.toContain('verify')
       expect(stageNames.indexOf('ask_user')).toBeGreaterThan(stageNames.indexOf('recover'))
       expect(stageNames.indexOf('finalize')).toBeGreaterThan(stageNames.indexOf('ask_user'))
-      expect(events.some((event) => event.type === 'verification_start')).toBe(true)
+      expect(events.some((event) => event.type === 'verification_start')).toBe(false)
       expect(result.verificationHistory?.[0]).toEqual(history[0])
       expect(result.verificationHistory?.slice(1).some((record) => record.verdict === 'fail')).toBe(true)
       expect(result.verificationHistory?.slice(1).some((record) => record.verdict === 'pass')).toBe(false)
@@ -510,13 +510,14 @@ describe('VRS legacy VERIFY checkpoint continuation', () => {
         additionalTools: [tool],
       })
 
-      expect(result.conversationContinuation?.resumeRule).toBe('verify->decide')
-      expect(result.conversationContinuation?.resumeStage).toBe('decide')
+      expect(result.conversationContinuation?.resumeRule).toBe('verify->recover')
+      expect(result.conversationContinuation?.resumeStage).toBe('recover')
       expect(result.conversationContinuation?.permissions).toEqual({
         checkpoint: 'full',
         current: 'restricted',
       })
-      expect(result.trace[0]?.name).toBe('execute')
+      expect(result.trace[0]?.name).toBe('recover')
+      expect(result.trace.map((entry) => entry.name)).not.toContain('verify')
       expect(approve).toHaveBeenCalled()
       expect(executeEffect).not.toHaveBeenCalled()
       expect(result.toolInvocations?.some((record) => (

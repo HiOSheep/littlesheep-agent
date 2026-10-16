@@ -33,7 +33,7 @@
     "test:changed": "node scripts/run-affected-verification.mjs --tests-only",
     "test:fast": "pnpm run test:core-eval",
     "test:full": "vitest run",
-    "test:core-eval": "vitest run test/core-agent-contracts.test.ts packages/harness/src/e2e.test.ts packages/harness/src/stages/execute.test.ts packages/harness/src/stages/verify.test.ts packages/app/src/shared/history-activity.test.ts",
+    "test:core-eval": "vitest run test/core-agent-contracts.test.ts packages/harness/src/e2e.test.ts packages/harness/src/stages/execute.test.ts packages/harness/src/stages/execute/evidence-settlement.test.ts packages/harness/src/stages/execute/runtime-evidence.test.ts packages/app/src/shared/history-activity.test.ts",
     "test:watch": "vitest",
     "clean": "pnpm -r run clean && rimraf node_modules",
     "typecheck": "tsc -b tsconfig.workspace.json --pretty false",

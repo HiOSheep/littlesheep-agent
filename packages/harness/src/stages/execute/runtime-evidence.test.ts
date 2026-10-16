@@ -1,14 +1,12 @@
-// @littlesheep/harness — stages/verify/structural-evidence.test.ts
+// @littlesheep/harness — stages/execute/runtime-evidence.test.ts
 //
-// HC-03: proof that the narrow structural passes are decided from what a *real*
-// run records, not from a plan.
+// Runtime evidence settlement records execution facts without accepting the
+// user's task objective.
 //
 // Every case below drives `createDefaultHarness(...).run(ctx)` end to end: the
-// model call, the tool execution boundary, the side-effect ledger, VERIFY and
-// FINALIZE all run for real, and the assertions read the RunContext the run
-// produced. Nothing here pre-fills a `taskBook` or a `taskExecution` to obtain a
-// `pass` — the two retired shapes are used in exactly one place, the last
-// `describe`, to prove they no longer verify anything on their own.
+// model call, tool execution boundary, side-effect ledger, evidence settlement,
+// and FINALIZE all run for real. No task shape or tool pattern may write an
+// acceptance `pass`.
 //
 // Two Runtime-owned inputs are worth naming, because a test fixture cannot
 // always reproduce them:
@@ -84,8 +82,8 @@ function transcriptCall(id: string, name: string, input: Record<string, unknown>
   };
 }
 
-describe('structural pass evidence comes from the run itself', () => {
-  it('passes a run with one successful read-only call and a Provider reply', async () => {
+describe('execution evidence is settled without task acceptance', () => {
+  it('keeps a successful read-only call unverified for the user task', async () => {
     const glob = makeTool('glob', { ok: true, output: 'attachments/' });
     const llm = createMockLlm([
       toolCallResponse([{ id: 'glob-1', name: 'glob', args: { pattern: '*' } }]),
@@ -99,18 +97,19 @@ describe('structural pass evidence comes from the run itself', () => {
 
     const result = await h.run(ctx);
 
-    // The run really went through VERIFY; the pass is the last verification record.
-    expect(traceNames(result)).toEqual(['enter', 'classify', 'execute', 'verify', 'finalize']);
+    expect(traceNames(result)).toEqual(['enter', 'classify', 'execute', 'finalize']);
+    expect(traceNames(result)).not.toContain('verify');
     expect(result.next).toBe('exit');
     expect(result.ok).toBe(true);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)?.reason).toContain('这不等于用户目标已验收完成');
     expect(glob.calls).toHaveLength(1);
     // The evidence the pass reads is the run's own; nothing created a write effect.
     expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['glob']);
     expect(ctx.sideEffects ?? []).toHaveLength(0);
   });
 
-  it('passes an exact write-then-read run whose read returned the written content', async () => {
+  it('keeps an exact write-then-read run unverified for the user task', async () => {
     const write = makeTool('write', { ok: true, output: 'Wrote proof.txt' });
     const read = makeTool('read', { ok: true, output: MARKER });
     const llm = createMockLlm([
@@ -128,7 +127,8 @@ describe('structural pass evidence comes from the run itself', () => {
 
     expect(result.next).toBe('exit');
     expect(result.ok).toBe(true);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)?.reason).toContain('does not establish that the user task objective is complete');
     expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['write', 'read']);
     expect(ctx.toolInvocations?.every((invocation) => (
       invocation.status === 'succeeded'
@@ -171,11 +171,11 @@ describe('structural pass evidence comes from the run itself', () => {
     expect(ctx.history ?? []).toHaveLength(0);
     expect(ctx.toolInvocations?.map((invocation) => invocation.toolName)).toEqual(['write', 'read']);
     expect(ctx.sideEffects).toHaveLength(1);
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'pass', source: 'structural' });
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'unverified', source: 'structural' });
   });
 });
 
-describe('evidence outside the narrow shapes stays unverified', () => {
+describe('execution evidence never becomes task acceptance from tool shape', () => {
   it('does not pass two read-only calls', async () => {
     const glob = makeTool('glob', { ok: true, output: 'notes.txt' });
     const read = makeTool('read', { ok: true, output: 'hello' });

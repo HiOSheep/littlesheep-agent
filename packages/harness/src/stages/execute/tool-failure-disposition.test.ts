@@ -250,7 +250,7 @@ describe('the main loop after a failed call', () => {
 
       const result = await stage(ctx);
 
-      expect(result).toMatchObject({ ok: true, next: 'verify' });
+      expect(result).toMatchObject({ ok: true, next: 'finalize' });
       expect(effects).toBe(1);
       expect(await readFile(target, 'utf8')).toBe('corrected');
       expect(ctx.toolInvocations?.map((record) => record.status)).toEqual(['validation_failed', 'succeeded']);
@@ -325,7 +325,7 @@ describe('the main loop after a failed call', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result).toMatchObject({ ok: true, next: 'finalize' });
     // Both calls ran: the failure did not close the loop, so the model observed
     // the directory in the same run instead of asking the user to say "continue".
     expect(read.calls).toHaveLength(1);
@@ -355,11 +355,14 @@ describe('the main loop after a failed call', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
-    // The refusal is authoritative: one more answer, then the run stops. The tool
-    // never ran, because the approval boundary refused it before invocation.
+    expect(result).toMatchObject({ ok: false, next: 'recover' });
+    expect(result.error).toContain('approval_denied');
+    // The refusal is authoritative: the model's follow-up cannot turn a denied
+    // operation into a publishable completion. The tool never ran.
     expect(write.calls).toHaveLength(0);
     expect(llm.chat).toHaveBeenCalledTimes(2);
+    expect(ctx.reply).toBeUndefined();
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ verdict: 'fail', source: 'structural' });
     expect(requests[1]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'system',
@@ -384,7 +387,7 @@ describe('the main loop after a failed call', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result).toMatchObject({ ok: true, next: 'finalize' });
     expect(requests[1]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'system',
@@ -432,7 +435,7 @@ describe('the main loop after a failed call', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result).toMatchObject({ ok: true, next: 'finalize' });
     // Both results of the mixed round are preserved, in order.
     const round = (ctx.toolResults ?? []).slice(0, 2);
     expect(round.map((entry) => entry.ok)).toEqual([true, false]);

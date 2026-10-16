@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RunContext, ToolInvocationRecord } from '@littlesheep/types';
 import {
+  appendVerificationRecord,
   replaceSideEffectEvidence,
   replaceToolResults,
   upsertToolInvocationEvidence,
@@ -66,6 +67,23 @@ describe('execution evidence state boundary', () => {
     expect(ctx.toolInvocations?.[0]?.status).toBe('succeeded');
     expect(ctx.toolInvocations).not.toBe(firstRecords);
     expect(ctx.toolInvocationsTruncated).toBe(true);
+  });
+
+  it('allows settlement history writes only from EXECUTE, RECOVER, or Runner restore', () => {
+    const ctx = makeContext();
+    const record = {
+      attempt: 1,
+      verdict: 'unverified' as const,
+      reason: 'Runtime evidence is complete; task acceptance was not assessed.',
+      verifiedAt: '2026-08-10T00:00:00.000Z',
+      source: 'structural' as const,
+    };
+
+    appendVerificationRecord(ctx, 'execute', record);
+    expect(ctx.verificationHistory).toEqual([record]);
+    expect(() => writeExecutionEvidenceState(ctx, 'verify', { verificationHistory: [record] }))
+      .toThrow(/cannot be written during 'verify'/);
+    expect(ctx.verificationHistory).toEqual([record]);
   });
 
   it('detaches restored side-effect records from checkpoint input', () => {

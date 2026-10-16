@@ -18,7 +18,6 @@ import { enterStage } from './stages/enter.js';
 import { createClassifyStage } from './stages/classify.js';
 import { createExecuteStage } from './stages/execute.js';
 import { createRecoverStage } from './stages/recover.js';
-import { createVerifyStage } from './stages/verify.js';
 import { createReplyStage } from './stages/reply.js';
 import { createAskUserStage } from './stages/ask_user.js';
 import { createFinalizeStage } from './stages/finalize.js';
@@ -58,7 +57,6 @@ export function createHarnessStages(opts: DefaultHarnessOptions): Map<StageName,
     branding: opts.branding,
   }));
   stages.set('recover', createRecoverStage());
-  stages.set('verify', createVerifyStage());
   // EVOLVE and CAPTURE are gone: automatic memory evolution, automatic skill
   // creation, and the legacy per-run memory summary were all removed with the
   // lean plan. Durable memory now comes from explicit writes and from the

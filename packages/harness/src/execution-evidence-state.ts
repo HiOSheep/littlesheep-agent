@@ -3,6 +3,7 @@ import type {
   SideEffectCheckpoint,
   ToolInvocationRecord,
   ToolResult,
+  VerificationRecord,
 } from '@littlesheep/types';
 import {
   assertRunContextFieldWriteAllowed,
@@ -15,6 +16,7 @@ export interface ExecutionEvidenceStateUpdate {
   toolInvocations?: RunContext['toolInvocations'];
   toolInvocationsTruncated?: boolean;
   sideEffects?: RunContext['sideEffects'];
+  verificationHistory?: RunContext['verificationHistory'];
 }
 
 const EXECUTION_EVIDENCE_FIELDS = [
@@ -22,6 +24,7 @@ const EXECUTION_EVIDENCE_FIELDS = [
   'toolInvocations',
   'toolInvocationsTruncated',
   'sideEffects',
+  'verificationHistory',
 ] as const satisfies readonly (keyof ExecutionEvidenceStateUpdate)[];
 
 /** Validate a complete execution-evidence batch before changing RunContext. */
@@ -82,5 +85,27 @@ export function replaceSideEffectEvidence(
       ...effect,
       ...(effect.resourceKeys ? { resourceKeys: [...effect.resourceKeys] } : {}),
     })),
+  });
+}
+
+/** Append a detached Runtime settlement record through the evidence ownership boundary. */
+export function appendVerificationRecord(
+  ctx: RunContext,
+  stage: Extract<RunContextContractStage, 'execute' | 'recover' | 'runner-restore'>,
+  record: VerificationRecord,
+): void {
+  writeExecutionEvidenceState(ctx, stage, {
+    verificationHistory: [...(ctx.verificationHistory ?? []), structuredClone(record)],
+  });
+}
+
+/** Restore historical verification records without interpreting their verdicts. */
+export function replaceVerificationHistory(
+  ctx: RunContext,
+  stage: Extract<RunContextContractStage, 'runner-restore'>,
+  records: readonly VerificationRecord[],
+): void {
+  writeExecutionEvidenceState(ctx, stage, {
+    verificationHistory: structuredClone([...records]),
   });
 }

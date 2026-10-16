@@ -82,7 +82,7 @@ describe('cross-run continuation', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     const request = requests[0]!;
     const assistantToolCall = request.messages.find((message) => (
       message.role === 'assistant' && Array.isArray(message.tool_calls)

@@ -143,6 +143,8 @@ export {
   replaceToolResults,
   upsertToolInvocationEvidence,
   replaceSideEffectEvidence,
+  appendVerificationRecord,
+  replaceVerificationHistory,
   type ExecutionEvidenceStateUpdate,
 } from './execution-evidence-state.js';
 export {

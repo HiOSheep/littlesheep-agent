@@ -207,7 +207,7 @@ describe('createRunner run', () => {
     expect(replyRequest.messages.map((message) => String(message.content)).join('\n')).toContain('Memory Tree Root Index');
     const trace = result.trace as Array<{ name: string }>;
     expect(trace.map((t) => t.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
   });
 

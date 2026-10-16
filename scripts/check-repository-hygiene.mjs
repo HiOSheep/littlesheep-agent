@@ -428,7 +428,7 @@ async function checkRepositoryNavigation() {
     'packages/memory-tree/src/memory-service.ts': 343,
     'packages/context/src/engine.ts': 180,
     'packages/harness/src/stages/execute.ts': 46,
-    'packages/harness/src/stages/verify.ts': 145,
+    'packages/harness/src/stages/execute/evidence-settlement.ts': 380,
     'packages/app/src/renderer/MemoryTreeView.tsx': 206,
   }
   const growth = []

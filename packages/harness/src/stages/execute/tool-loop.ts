@@ -43,10 +43,12 @@ import {
   persistRuntimeTailMessages,
   persistToolCalls,
   persistToolResult,
-  persistVerifyGapControl,
+  persistExecutionEvidenceGapControl,
   recordDurableToolCalls,
   RUNTIME_CONTROL_MESSAGES,
   sentToolOutputs,
+  TOOL_LOOP_FINAL_REFUSAL_KIND,
+  USER_INPUT_REQUEST_SIBLING_REFUSAL_KIND,
 } from './tool-result-persistence.js';
 import { validateWebCitations, webCitationRepairContract } from '../../web-citation-validation.js';
 import type {
@@ -176,9 +178,9 @@ export async function runToolLoop(
     // and only learn from the refusal.
     persistRuntimeControlMessage(ctx, produced, messages, control.noProgressBound);
   }
-  // RECOVER re-enters this loop when VERIFY found a structural gap; the model was
+  // RECOVER re-enters this loop when Runtime settlement found an evidence gap; the model was
   // not in that stage, so it has to be told what the run was sent back for.
-  persistVerifyGapControl(ctx, produced, messages);
+  persistExecutionEvidenceGapControl(ctx, produced, messages);
 
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     const pendingUserMessages = captureRuntimeUserMessages(ctx);
@@ -414,7 +416,12 @@ export async function runToolLoop(
             messages,
             toolResults,
             converted.name,
-            failureResult(converted.id, stepId, USER_INPUT_REQUEST_SIBLING_REFUSAL),
+            failureResult(
+              converted.id,
+              stepId,
+              USER_INPUT_REQUEST_SIBLING_REFUSAL,
+              USER_INPUT_REQUEST_SIBLING_REFUSAL_KIND,
+            ),
             sentPayloads,
           );
         }
@@ -516,7 +523,7 @@ export async function runToolLoop(
         executedResults.set(
           index,
           forceFinalResponse
-            ? failureResult(request.callId, stepId, refusal)
+            ? failureResult(request.callId, stepId, refusal, TOOL_LOOP_FINAL_REFUSAL_KIND)
             : notAdmittedResult(request.callId, stepId, refusal),
         );
       }

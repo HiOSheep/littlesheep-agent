@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { textMessage, type ChatMessage, type RunContext } from '@littlesheep/types'
 import { makeCtx } from '../../tests/helpers.js'
 import {
-  persistVerifyGapControl,
+  persistExecutionEvidenceGapControl,
   RUNTIME_CONTROL_MESSAGES,
   toolResultForModel,
 } from './tool-result-persistence.js'
@@ -80,11 +80,11 @@ describe('tool result projection for the model', () => {
 describe('telling the model why the loop was re-entered', () => {
   function structuredGapContext(): RunContext {
     const ctx = makeCtx({ inbound: textMessage('user', '做一个小游戏吧') })
-    ctx.lastError = { stage: 'verify', message: 'Recorded step evidence is incomplete: tool invocation call-1 is validation_failed' }
+    ctx.lastError = { stage: 'execute', message: 'Execution evidence gap: tool invocation call-1 is validation_failed' }
     ctx.verificationHistory = [{
       verdict: 'fail',
       reason: 'tool invocation call-1 is validation_failed',
-      feedback: 'Recorded step evidence is incomplete: tool invocation call-1 is validation_failed',
+      feedback: 'Execution evidence gap: tool invocation call-1 is validation_failed',
       source: 'structural',
       attempt: 1,
       verifiedAt: '2026-09-23T18:54:26.986Z',
@@ -96,10 +96,10 @@ describe('telling the model why the loop was re-entered', () => {
     const ctx = structuredGapContext()
     const messages: ChatMessage[] = []
 
-    persistVerifyGapControl(ctx, ctx.produced, messages)
+    persistExecutionEvidenceGapControl(ctx, ctx.produced, messages)
 
     expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatchObject({ role: 'system', content: RUNTIME_CONTROL_MESSAGES.verifyGap })
+    expect(messages[0]).toMatchObject({ role: 'system', content: RUNTIME_CONTROL_MESSAGES.evidenceGap })
     // Persisted, not only live: the request the next round sends must carry it too.
     expect(ctx.produced.some((message) => message.runtimeTail === true)).toBe(true)
   })
@@ -108,21 +108,20 @@ describe('telling the model why the loop was re-entered', () => {
     const ordinary = makeCtx({ inbound: textMessage('user', 'go') })
     const messages: ChatMessage[] = []
 
-    persistVerifyGapControl(ordinary, ordinary.produced, messages)
+    persistExecutionEvidenceGapControl(ordinary, ordinary.produced, messages)
     expect(messages).toHaveLength(0)
 
-    // A VERIFY failure that is not a structural verdict (a decode failure, say)
-    // is retried at its own stage, so the loop gets no instruction either.
+    // A non-structural historical record is not the trigger for an evidence retry.
     const notStructural = structuredGapContext()
     notStructural.verificationHistory = [{ ...notStructural.verificationHistory![0]!, source: 'degraded' }]
-    persistVerifyGapControl(notStructural, notStructural.produced, messages)
+    persistExecutionEvidenceGapControl(notStructural, notStructural.produced, messages)
     expect(messages).toHaveLength(0)
 
     // The gap record alone is not enough: this loop was entered for something
     // else (a spent budget, a fresh run), so the message would be a lie.
     const wrongStage = structuredGapContext()
     wrongStage.lastError = { stage: 'execute', message: 'llm call failed: 502' }
-    persistVerifyGapControl(wrongStage, wrongStage.produced, messages)
+    persistExecutionEvidenceGapControl(wrongStage, wrongStage.produced, messages)
     expect(messages).toHaveLength(0)
   })
 })

@@ -124,7 +124,7 @@ describe('main-loop request is append-only', () => {
 
     const outcome = await stage(ctx);
 
-    expect(outcome).toMatchObject({ next: 'verify', ok: true });
+    expect(outcome).toMatchObject({ next: 'finalize', ok: true });
     expect(requests).toHaveLength(4);
     expectAppendOnly(requests);
     expect(requests[0]!.messages.filter((message) => message.role === 'system').length)
@@ -344,7 +344,7 @@ describe('main-loop request is append-only', () => {
 
     const outcome = await stage(ctx);
 
-    expect(outcome).toMatchObject({ next: 'verify', ok: true });
+    expect(outcome).toMatchObject({ next: 'finalize', ok: true });
     expect(requests).toHaveLength(2);
     expectAppendOnly(requests);
     const stageTarget = 24_000;

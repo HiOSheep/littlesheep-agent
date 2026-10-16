@@ -56,8 +56,9 @@ export interface AttentionCallFailure {
   tool: LiveToolEvent
   /**
    * A later call in the *same step* succeeded, so Runtime no longer reads this outcome as
-   * the step's result (`runtimeExecutionEvidenceGap` in `harness/stages/verify/task-state.ts`
-   * supersedes a non-succeeded invocation exactly that way). The failure is history; every
+   * the step's result (the Runtime evidence settlement in
+   * `harness/stages/execute/evidence-settlement.ts` currently preserves each invocation outcome).
+   * The failure is history; every
    * other recorded failure is unresolved and keeps the run from being read as clean.
    */
   recovered: boolean

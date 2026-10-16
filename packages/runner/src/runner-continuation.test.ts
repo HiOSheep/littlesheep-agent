@@ -1145,7 +1145,7 @@ describe('runner checkpoint continuation', () => {
       // that into a synthetic "how should I proceed?" question one round after
       // the user had already answered it.
       expect(requests).toHaveLength(2)
-      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'verify', 'finalize'])
+      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'finalize'])
       expect(result.reply).toBe('The translated PDF was created from the preserved source evidence.')
     } finally {
       executeDocumentCreate.mockRestore()
@@ -1248,7 +1248,7 @@ describe('runner checkpoint continuation', () => {
       // call, so the status alone does not separate the two outcomes: the trace,
       // the settled effect and the artifact do.
       expect(result.status, result.error).toBe('ok')
-      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'verify', 'finalize'])
+      expect(result.trace.map((entry) => entry.name)).toEqual(['recover', 'execute', 'finalize'])
       expect(result.sideEffects).toEqual([
         expect.objectContaining({ toolName: 'write', status: 'succeeded' }),
       ])

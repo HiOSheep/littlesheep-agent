@@ -7,13 +7,13 @@
 // - An unresolved or in-progress side effect ends the run with an explicit
 //   Runtime status; the operation must never be executed again automatically.
 // - A recorded permission denial stops and asks the user.
-// - A structural VERIFY gap re-enters the loop once — a verdict computed from
-//   recorded evidence cannot change by re-running VERIFY — and escalates if the
-//   gap survives that attempt.
+// - An execution evidence gap re-enters EXECUTE once to repair the missing fact,
+//   then escalates if the Runtime still cannot settle the evidence.
 // - Everything else is retried at the failed stage under the recovery cap; when
 //   the cap is exhausted the caller escalates to the user.
 import type { RunContext, StageName, TaskStepFailureKind } from '@littlesheep/types';
 import { classifyStepFailure } from '../execute/failure-policy.js';
+import { evidenceGapFailure } from '../execute/evidence-settlement.js';
 
 export type RecoveryAction = 'retry' | 'escalate' | 'abort';
 
@@ -59,15 +59,12 @@ export function decideRecovery(ctx: RunContext, recoveryAttempts: number): Recov
   if (isExhaustedBudgetFailure(lastError)) {
     return { action: 'escalate', next: 'ask_user', reasonCode: 'execution_budget_exhausted' };
   }
-  // VERIFY is a pure function of the evidence already recorded, so retrying it
-  // recomputes the same verdict. Measured on a real acceptance run: four
-  // identical structural `fail` records 174 ms apart, no new tool call in
-  // between, and a run that had already written its artifact and produced its
-  // answer ended by asking the user how to proceed. A gap is closed by acting —
-  // a later successful call in the same step supersedes the invalid one — so the
-  // first gap re-enters the loop and a second identical gap escalates instead of
-  // spinning. The bound is unchanged: one chance to close it, then the user.
-  if (isStructuralVerifyGap(ctx)) {
+  // Settlement is a pure function of the evidence already recorded, so retrying
+  // it cannot add information. A gap is closed by acting — for example, a later
+  // successful call can provide a missing observation — so the first gap
+  // re-enters the loop and a second gap escalates instead of spinning. The bound
+  // is one chance to close it, then the user.
+  if (isRuntimeEvidenceGap(ctx)) {
     return structuralGapFailures(ctx) > 1
       ? { action: 'escalate', next: 'ask_user', reasonCode: 'unrecoverable_evidence_gap' }
       : { action: 'retry', next: 'execute', reasonCode: 'structural_gap_retry' };
@@ -80,19 +77,20 @@ export function decideRecovery(ctx: RunContext, recoveryAttempts: number): Recov
 }
 
 /**
- * True when the run failed on a VERIFY verdict computed from recorded evidence.
+ * True when the run failed on a Runtime evidence gap computed from recorded facts.
  *
- * Such a verdict cannot change by re-running VERIFY. It changes when the model
- * closes the gap (the next successful call in the same step supersedes the
- * invalid one), or not at all.
+ * Such a gap cannot change by re-running settlement. It changes when execution
+ * records the missing observation, or not at all.
  */
-export function isStructuralVerifyGap(ctx: RunContext): boolean {
-  if (ctx.lastError?.stage !== 'verify') return false;
+export function isRuntimeEvidenceGap(ctx: RunContext): boolean {
+  const legacyVerifyGap = ctx.lastError?.stage === 'verify';
+  const executeEvidenceGap = ctx.lastError?.stage === 'execute' && evidenceGapFailure(ctx.lastError);
+  if (!legacyVerifyGap && !executeEvidenceGap) return false;
   const record = ctx.verificationHistory?.at(-1);
   return record?.verdict === 'fail' && record.source === 'structural';
 }
 
-/** How many structural VERIFY failures this run recorded, continuations included. */
+/** How many structural evidence gaps this run recorded, continuations included. */
 function structuralGapFailures(ctx: RunContext): number {
   return (ctx.verificationHistory ?? []).filter((record) => (
     record.verdict === 'fail' && record.source === 'structural'
@@ -167,6 +165,7 @@ export function retryStageFor(stage: StageName | undefined): StageName {
     case 'classify':
     case 'execute':
     case 'verify':
+      return 'execute';
     case 'reply':
       return stage;
     // A legacy checkpoint can still name DECIDE (or any other retired stage) as

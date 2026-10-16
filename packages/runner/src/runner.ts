@@ -42,6 +42,7 @@ import {
   writeDecisionState,
   writeFailureState,
   replaceSideEffectEvidence,
+  replaceVerificationHistory,
   writeModelObservabilityState,
   flushModelRequestLifecycles,
   DurableHarnessKernel,
@@ -2312,7 +2313,7 @@ function restoreContinuationContext(
     recoveryAttempts: 0,
   });
   ctx.maxReplanAttempts = state.maxReplanAttempts;
-  ctx.verificationHistory = structuredClone(state.verificationHistory);
+  replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
   // A paused/interrupted control snapshot must not immediately stop the new
   // continuation at its first safe boundary. The original event evidence is
   // retained in the restored queue; the new run starts in a clean state.

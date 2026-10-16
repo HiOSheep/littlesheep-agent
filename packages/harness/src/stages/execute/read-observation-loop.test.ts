@@ -77,7 +77,7 @@ describe('a fresh observation after a write', () => {
 
     const result = await stage(ctx);
 
-    expect(result, result.error).toMatchObject({ ok: true, next: 'verify' });
+    expect(result, result.error).toMatchObject({ ok: true, next: 'finalize' });
     // Both listings actually ran, and the second one observed the new entry.
     expect(glob.calls).toHaveLength(2);
     expect(write.calls).toHaveLength(1);
@@ -127,7 +127,7 @@ describe('an opaque repeated command', () => {
 
     const result = await stage(ctx);
 
-    expect(result, result.error).toMatchObject({ ok: true, next: 'verify' });
+    expect(result, result.error).toMatchObject({ ok: true, next: 'finalize' });
     // The command ran exactly once: the repeat never reached the tool.
     expect(command.calls).toHaveLength(1);
     const refusal = (ctx.toolResults ?? []).find((entry) => /refusing to replay/.test(entry.error ?? ''));

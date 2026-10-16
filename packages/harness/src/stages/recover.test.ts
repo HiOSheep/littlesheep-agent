@@ -69,7 +69,7 @@ describe('recoverStage', () => {
     // retry lands in the main loop instead of an unregistered stage.
     ['decide', 'execute'],
     ['execute', 'execute'],
-    ['verify', 'verify'],
+    ['verify', 'execute'],
     ['reply', 'reply'],
     ['plan', 'execute'],
   ] as const)('retries the stage that failed (%s → %s)', async (failedStage, expected) => {
@@ -311,7 +311,7 @@ describe('recoverStage', () => {
     expect(ctx.clarificationRequest?.blockingReason ?? '').toContain('证据');
   });
 
-  it('still retries the failing stage for a non-structural VERIFY failure', async () => {
+  it('routes a historical non-structural VERIFY failure back through EXECUTE', async () => {
     const ctx = makeCtx({
       recoveryAttempts: 0,
       maxRecoveryAttempts: 5,
@@ -321,7 +321,7 @@ describe('recoverStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res).toMatchObject({ next: 'verify', ok: true, meta: { deterministicRetry: true } });
+    expect(res).toMatchObject({ next: 'execute', ok: true, meta: { deterministicRetry: true } });
   });
 });
 

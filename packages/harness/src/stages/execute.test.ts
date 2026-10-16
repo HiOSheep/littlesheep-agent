@@ -115,12 +115,12 @@ describe('convertToolCall', () => {
 });
 
 describe('executeStage', () => {
-  it('stop → sets ctx.reply, transitions to verify', async () => {
+  it('stop → sets ctx.reply and transitions to finalize', async () => {
     const llm = createMockLlm(textResponse('all done'));
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ inbound: textMessage('user', 'do something') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('all done');
     expect(ctx.toolResults).toEqual([]);
@@ -171,7 +171,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(result).toMatchObject({ next: 'finalize', ok: true });
     expect(llm.chat).toHaveBeenCalledTimes(2);
     for (const [request] of llm.chat.mock.calls) {
       // The named tool narrows the *execution* scope only: the catalog the
@@ -224,7 +224,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result, result.error).toMatchObject({ ok: true, next: 'finalize' });
     const transcript = events.filter((event) => event.type === 'model_reasoning' || event.type === 'model_text');
     expect(transcript[0]).toMatchObject({ type: 'model_reasoning', stage: 'execute', reasoningStatus: 'running' });
     expect(transcript.some((event) => event.type === 'model_reasoning' && event.reasoningStatus === 'done')).toBe(true);
@@ -282,7 +282,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result).toMatchObject({ ok: true, next: 'finalize' });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
     expect(ctx.replyProvenance).toMatchObject({ source: 'llm', purpose: 'execute_tool_loop' });
     expect(llm.chat).toHaveBeenCalledTimes(2);
@@ -401,7 +401,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result, result.error).toMatchObject({ ok: true, next: 'finalize' });
     expect(ctx.reply).toBe(`citation-backed result [citation:${citationId}]`);
     expect(llm.chat).toHaveBeenCalledTimes(3);
     expect(onAssistantReplace).toHaveBeenCalledTimes(1);
@@ -436,7 +436,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'lookup x') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res, res.error).toMatchObject({ ok: true, next: 'finalize' });
     expect(ctx.reply).toBe('final answer');
     expect(tool.calls).toHaveLength(1);
     expect(tool.calls[0]!.input).toEqual({ q: 'x' });
@@ -589,7 +589,7 @@ describe('executeStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     expect(requests).toHaveLength(2);
     const first = requests[0]!;
     const second = requests[1]!;
@@ -620,7 +620,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ inbound: textMessage('user', 'x') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     expect(ctx.toolResults).toHaveLength(1);
     expect(ctx.toolResults![0].ok).toBe(false);
     expect(ctx.toolResults![0].error).toMatch(/unknown tool/);
@@ -639,7 +639,7 @@ describe('executeStage', () => {
       toolContext: { approve: async () => false },
     });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('recover');
     expect(tool.calls).toHaveLength(0); // never executed
     expect(ctx.toolResults![0].ok).toBe(false);
     expect(ctx.toolResults![0].error).toMatch(/denied/);
@@ -675,7 +675,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'go') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('recover');
     expect(ctx.toolResults![0].ok).toBe(false);
     expect(ctx.toolResults![0].error).toMatch(/tool boom/);
   });
@@ -704,7 +704,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [tool], inbound: textMessage('user', 'loop') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     expect(res.ok).toBe(true);
     expect(ctx.reply).toBe('bounded final answer');
     expect(tool.calls).toHaveLength(3);
@@ -747,7 +747,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(result).toMatchObject({ next: 'finalize', ok: true });
     expect(tool.calls).toHaveLength(0);
     expect(llm.chat).toHaveBeenCalledTimes(1);
     const resumedRequest = llm.chat.mock.calls[0]?.[0] as import('@littlesheep/llm').ChatRequest;
@@ -798,7 +798,7 @@ describe('executeStage', () => {
     const result = await stage(ctx);
 
     // The call is denied, nothing runs, and the run still produces its answer.
-    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(result).toMatchObject({ next: 'finalize', ok: true });
     expect(tool.calls).toHaveLength(0);
     expect(ctx.reply).toBe('answered after refusal');
    expect(ctx.toolResults?.some((entry) => entry.error?.includes('tools are unavailable'))).toBe(true);
@@ -854,7 +854,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ ok: true, next: 'verify' });
+    expect(result).toMatchObject({ ok: true, next: 'finalize' });
     expect(ctx.reply).toBe('游戏已经写好并通过自测；工具预算用完了，后续打磨需要新的一次运行。');
     // Exactly one request past the budget, and it ran no tool.
     expect(llm.chat).toHaveBeenCalledTimes(2);
@@ -909,7 +909,7 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result).toMatchObject({ next: 'verify', ok: true });
+    expect(result).toMatchObject({ next: 'finalize', ok: true });
     expect(tool.calls).toHaveLength(2);
     expect((llm.chat.mock.calls[2]?.[0] as import('@littlesheep/llm').ChatRequest).tools).toBeDefined();
     expect(ctx.loopBudget?.noProgressRounds).toBe(0);
@@ -942,7 +942,7 @@ describe('executeStage', () => {
 
     const res = await stage(ctx);
 
-    expect(res).toMatchObject({ next: 'verify', ok: true });
+    expect(res).toMatchObject({ next: 'finalize', ok: true });
     expect(ctx.reply).toBe('all writes complete');
     expect(tool.calls).toHaveLength(4);
     expect(ctx.sideEffects?.filter((effect) => effect.status === 'succeeded')).toHaveLength(4);
@@ -974,7 +974,7 @@ describe('executeStage', () => {
     const stage = createExecuteStage({ ...deps, llm });
     const ctx = makeCtx({ tools: [a, b], inbound: textMessage('user', 'go') });
     const res = await stage(ctx);
-    expect(res.next).toBe('verify');
+    expect(res.next).toBe('finalize');
     expect(a.calls).toHaveLength(1);
     expect(b.calls).toHaveLength(1);
     expect(ctx.toolResults).toHaveLength(2);

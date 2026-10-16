@@ -36,20 +36,20 @@ describe('Core Flow transition manifest', () => {
     }
   });
 
-  it('accepts the supported recovery and re-plan edges', () => {
+  it('accepts the supported recovery and direct finalization edges', () => {
     expect(inspectStageTransition('execute', 'recover')).toEqual({ ok: true, next: 'recover' });
     expect(inspectStageTransition('execute', 'finalize')).toEqual({ ok: true, next: 'finalize' });
-    // A partial re-plan re-enters the main loop: DECIDE is not registered.
-    expect(inspectStageTransition('verify', 'execute')).toEqual({ ok: true, next: 'execute' });
     expect(inspectStageTransition('recover', 'ask_user')).toEqual({ ok: true, next: 'ask_user' });
+    expect(isCurrentStageName('verify')).toBe(false);
+    expect(isHistoricalStageName('verify')).toBe(true);
   });
 
   it('rejects a retired target from a live stage and names why', () => {
     const retiredTarget = inspectStageTransition('verify', 'decide');
     expect(retiredTarget.ok).toBe(false);
     if (!retiredTarget.ok) {
-      expect(retiredTarget.violation).toMatchObject({ from: 'verify', attempted: 'decide', reason: 'not-an-edge' });
-      expect(retiredTarget.violation.allowed).not.toContain('decide');
+      expect(retiredTarget.violation).toMatchObject({ from: 'verify', attempted: 'decide', reason: 'retired-stage' });
+      expect(retiredTarget.violation.allowed).toEqual([...historicalStageTransitions.verify]);
     }
   });
 
@@ -81,6 +81,7 @@ describe('Core Flow transition manifest', () => {
     expect(graph).not.toContain('verify --> decide');
     // The retired edges still render, from their own manifest, for anybody explaining an old record.
     expect(renderHistoricalStageTransitionGraph()).toContain('decide --> execute');
+    expect(renderHistoricalStageTransitionGraph()).toContain('verify --> recover');
     expect(renderHistoricalStageTransitionGraph()).toContain('evolve --> capture');
   });
 });

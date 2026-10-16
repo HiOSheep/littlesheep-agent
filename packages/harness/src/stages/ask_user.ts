@@ -25,6 +25,7 @@ import { clearReplyState } from '../reply-state.js';
 import { renderClarificationMessage } from './clarification-message.js';
 import { updateClarificationRequest, writeDecisionState } from '../decision-state.js';
 import { recordFailure } from '../failure-state.js';
+import { evidenceGapFailure } from './execute/evidence-settlement.js';
 
 export interface AskUserStageDeps {
   llm: LlmClient;
@@ -272,7 +273,7 @@ function ensureClarificationRequest(ctx: RunContext): ClarificationRequest {
     return {
       id: `${ctx.runId}:clarification`,
       kind: 'recovery_decision',
-      sourceStage: ctx.lastError.stage === 'verify' ? 'verify'
+      sourceStage: ctx.lastError.stage === 'verify' || evidenceGapFailure(ctx.lastError) ? 'recover'
         : ctx.lastError.stage === 'execute' ? 'execute'
           : 'recover',
       createdAt: new Date().toISOString(),

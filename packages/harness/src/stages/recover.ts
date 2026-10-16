@@ -15,13 +15,38 @@ import {
 } from './recover/escalation.js';
 import { writeDecisionState } from '../decision-state.js';
 import { incrementRecoveryAttempts, recordFailure } from '../failure-state.js';
+import {
+  assessRuntimeEvidence,
+  EXECUTION_EVIDENCE_GAP_PREFIX,
+  recordRuntimeEvidenceSettlement,
+} from './execute/evidence-settlement.js';
 
 /** Factory: creates the deterministic recover stage. */
 export function createRecoverStage() {
   const consumedContinuationRetries = new WeakSet<RunContext>();
+  const settledLegacyVerifyCheckpoints = new WeakSet<RunContext>();
 
   return async function recoverStage(ctx: RunContext): Promise<StageResult> {
     const recoveryAttempts = incrementRecoveryAttempts(ctx, 'recover');
+    if (requiresLegacyVerifySettlement(ctx) && !settledLegacyVerifyCheckpoints.has(ctx)) {
+      settledLegacyVerifyCheckpoints.add(ctx);
+      const assessment = assessRuntimeEvidence(ctx, { requireReply: true });
+      await recordRuntimeEvidenceSettlement(ctx, assessment, 'recover');
+      if (assessment.kind === 'complete') {
+        return {
+          stage: 'recover',
+          next: 'finalize',
+          ok: true,
+          meta: { legacyVerifyCheckpointSettled: true, runtimeEvidenceComplete: true },
+        };
+      }
+      recordFailure(
+        ctx,
+        'recover',
+        'execute',
+        `${EXECUTION_EVIDENCE_GAP_PREFIX} ${assessment.reason}`,
+      );
+    }
     const lastError = ctx.lastError;
 
     // A bound user retry is a new runtime decision, even when the checkpoint
@@ -91,6 +116,13 @@ export function createRecoverStage() {
       meta: { action: 'escalate', attempts: recoveryAttempts, reasonCode: plan.reasonCode },
     };
   };
+}
+
+function requiresLegacyVerifySettlement(ctx: RunContext): boolean {
+  return ctx.entryStage === 'recover'
+    && ctx.conversationContinuation?.resumeStage === 'recover'
+    && ctx.conversationContinuation.resumeRule === 'verify->recover'
+    && ctx.conversationContinuation.disposition === undefined;
 }
 /**
  * Runtime-authored clarification facts. ASK_USER composes the user-visible

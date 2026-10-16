@@ -11,6 +11,7 @@
 // does not word the message — ASK_USER composes that from a real model call — it
 // only stops the model from having to guess.
 import type { RunContext } from '@littlesheep/types';
+import { evidenceGapFailure } from '../execute/evidence-settlement.js';
 
 export type RecoveryBlockingCause =
   | 'permission'
@@ -71,10 +72,10 @@ export function classifyBlockingCause(ctx: RunContext, reasonCode: string): Reco
   if (reasonCode === 'recovery_budget_exhausted') {
     // The budget ran out while retrying something; what it was retrying is the
     // cause the user needs, so the stage that failed decides it.
-    return ctx.lastError?.stage === 'verify' ? 'evidence' : 'budget';
+    return ctx.lastError?.stage === 'verify' || evidenceGapFailure(ctx.lastError) ? 'evidence' : 'budget';
   }
   if (reasonCode.endsWith('_not_found')) return 'resource';
-  if (ctx.lastError?.stage === 'verify') return 'evidence';
+  if (ctx.lastError?.stage === 'verify' || evidenceGapFailure(ctx.lastError)) return 'evidence';
   return 'execution';
 }
 

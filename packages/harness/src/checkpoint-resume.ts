@@ -3,7 +3,7 @@
 
 import type { RunContext, StageName } from '@littlesheep/types';
 
-const REPLY_FIRST_STAGES = new Set<StageName>(['ask_user', 'recover', 'verify', 'finalize']);
+const REPLY_FIRST_STAGES = new Set<StageName>(['ask_user', 'recover', 'finalize']);
 
 export function resolveCheckpointResumeStage(
   ctx: RunContext,
@@ -15,6 +15,9 @@ export function resolveCheckpointResumeStage(
   // as its entry stage. Its TaskBook is read-only history now, so the resume
   // continues in the one main loop instead of re-planning.
   if (current === 'decide') return 'execute';
+  // Old VERIFY checkpoints do not carry enough execution context to settle a
+  // reply directly. RECOVER re-enters the bounded Runtime policy instead.
+  if (current === 'verify') return 'recover';
 
   if (hasCompletedCheckpointTask(ctx)) {
     if (ctx.taskExecution && ctx.taskExecution.status !== 'done') {

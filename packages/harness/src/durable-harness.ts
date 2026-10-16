@@ -12,7 +12,7 @@ import type {
   StageName,
   StageResult,
 } from '@littlesheep/types';
-import { inspectStageTransition, stageNames } from '@littlesheep/types';
+import { inspectStageTransition, isCurrentStageName } from '@littlesheep/types';
 import { HookRunner } from './hooks/runner.js';
 import {
   createHarnessStages,
@@ -214,8 +214,8 @@ export function createDurableHarness(opts: DefaultHarnessOptions): AgentHarness 
     },
 
     registerStage(name: StageName, stage: Stage): void {
-      if (!stageNames.includes(name)) {
-        throw new Error(`registerStage: unknown stage '${name}'`);
+      if (!isCurrentStageName(name)) {
+        throw new Error(`registerStage: stage '${name}' is historical or unknown`);
       }
       stages.set(name, stage);
     },

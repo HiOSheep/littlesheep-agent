@@ -354,7 +354,7 @@ describe('repository hygiene gate', () => {
         'packages/memory-tree/src/memory-service.ts',
         'packages/context/src/engine.ts',
         'packages/harness/src/stages/execute.ts',
-        'packages/harness/src/stages/verify.ts',
+        'packages/harness/src/stages/execute/evidence-settlement.ts',
         'packages/app/src/renderer/MemoryTreeView.tsx',
       ]
       for (const path of hotspotPaths) {

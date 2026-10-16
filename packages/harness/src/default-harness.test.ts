@@ -107,24 +107,22 @@ describe('createDefaultHarness state machine', () => {
     });
     expect(ctx.reply).toBe('LS-PROVIDER-OK-20260730-1610');
     expect((result.meta?.trace as Array<{ name: string }>).map((item) => item.name)).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
     expect(llm.chat).toHaveBeenCalledTimes(1);
     expect(ctx.modelRequests).toHaveLength(1);
     expect(ctx.modelRequests?.[0]?.callContract?.purpose).toBe('execute_tool_loop');
   });
 
-  it('problem path: enter → classify → execute(tool) → verify → evolve → capture → finalize → exit', async () => {
+  it('problem path: enter → classify → execute(tool) → finalize → exit', async () => {
     const tool = makeTool('read', { ok: true, output: 'data' });
     // 'read the file' matches no routing rule, so it goes to the main loop: the
     // model proposes the tool, then answers. No routing, planning or
     // final-reply request is spent.
-    // LLM queue: execute(tool call) → execute(stop) → evolve → capture
+    // LLM queue: execute(tool call) → execute(stop)
     const llm = createMockLlm([
       toolCallResponse([{ id: 'read-1', name: 'read', args: { path: 'file.txt' } }]),
       textResponse('The file was read successfully.'),
-      textResponse('{"notes":["learned"]}'),
-      textResponse('{"insights":["captured"]}'),
     ]);
     const h = makeHarness(llm);
     const ctx = makeCtx({
@@ -137,7 +135,7 @@ describe('createDefaultHarness state machine', () => {
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
     expect(names).toEqual([
-      'enter', 'classify', 'execute', 'verify', 'finalize',
+      'enter', 'classify', 'execute', 'finalize',
     ]);
     expect(ctx.classification?.type).toBe('problem');
     expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
@@ -171,11 +169,10 @@ describe('createDefaultHarness state machine', () => {
     });
     expect(ctx.reply).toBe('共有 1 个条目：attachments/');
     expect(ctx.replyProvenance).toMatchObject({ purpose: 'execute_tool_loop' });
-    // VERIFY no longer spends a model request. This run meets the narrow
-    // read-only rule the code can check exactly: exactly one tool call, a builtin
-    // read-only tool, a successful unsanitized result, no side effect, and a
-    // Provider-authored reply — so the run is recorded as a structural pass.
-    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'pass' });
+    // Runtime evidence is complete, but a structural read does not accept the
+    // user's task goal.
+    expect(ctx.verificationHistory?.at(-1)).toMatchObject({ source: 'structural', verdict: 'unverified' });
+    expect(ctx.verificationHistory?.at(-1)?.reason).toContain('不等于用户目标已验收完成');
     expect(llm.chat).toHaveBeenCalledTimes(2);
     expect(ctx.modelRequests?.map((request) => request.callContract?.purpose)).toEqual([
       'execute_tool_loop', 'execute_tool_loop',
@@ -190,7 +187,6 @@ describe('createDefaultHarness state machine', () => {
   it('regenerates a traceable reply when an interrupted checkpoint points at ask_user', async () => {
     const llm = createMockLlm(textResponse('文件 resume-proof.txt 已核对，内容为 resume-anchor-4812。'));
     const h = makeHarness(llm);
-    h.registerStage('verify', async () => ({ stage: 'verify', next: 'finalize', ok: true }));
     const ctx = makeCtx({
       inbound: textMessage('user', '创建并核对 resume-proof.txt。'),
     });
@@ -271,7 +267,7 @@ describe('createDefaultHarness state machine', () => {
           receivedAt: '2026-07-18T11:00:00.000Z',
           payload: { text: 'Add a verification step before delivery.' },
         });
-        return { stage: 'execute', next: 'verify', ok: true };
+        return { stage: 'execute', next: 'finalize', ok: true };
       }
       return { stage: 'execute', next: 'finalize', ok: true };
     });
@@ -336,7 +332,7 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.deferredRuntimeEventIds).toEqual(['runtime-update-unconsumed']);
   });
 
-  it('unmatched path: enter → classify(loop) → execute → verify → finalize → exit', async () => {
+  it('unmatched path: enter → classify(loop) → execute → finalize → exit', async () => {
     // 'asdf qwer' matches no rule, so it goes to the main loop: the model's own
     // text is the answer and no clarification checkpoint is created.
     const llm = createMockLlm([
@@ -349,7 +345,7 @@ describe('createDefaultHarness state machine', () => {
     expect(ctx.reply).toBe('what do you mean?');
     const trace = res.meta?.trace as Array<{ name: string }>;
     const names = trace.map((t) => t.name);
-    expect(names).toEqual(['enter', 'classify', 'execute', 'verify', 'finalize']);
+    expect(names).toEqual(['enter', 'classify', 'execute', 'finalize']);
     expect(ctx.classification?.activity).toBe('execute');
     expect(ctx.classification?.reasonCode).toBe('deterministic_default_execute');
     expect(ctx.clarificationRequest).toBeUndefined();

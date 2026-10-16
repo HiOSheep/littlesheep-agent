@@ -118,7 +118,7 @@ describe('recorded call failures keep their resolution state', () => {
 
   it('marks a failure recovered when a later call in the same step succeeded', () => {
     // Runtime's own rule: a non-succeeded invocation is superseded when a later invocation in
-    // the same step succeeded (`runtimeExecutionEvidenceGap`).
+    // a later invocation in the same step succeeded (Runtime evidence settlement).
     const failures = classifyCallFailures([
       tool({ callId: 'call-a', stepId: 'step-1', ok: false, error: 'exec exited 3' }),
       tool({ callId: 'call-b', stepId: 'step-1', ok: true }),

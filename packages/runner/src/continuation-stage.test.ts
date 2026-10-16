@@ -34,7 +34,7 @@ describe('semantic checkpoint continuation stage', () => {
     ['decide', 'decide'],
     ['execute', 'recover'],
     ['recover', 'recover'],
-    ['verify', 'decide'],
+    ['verify', 'recover'],
   ] as const)('routes a %s clarification to %s instead of FINALIZE/REPLY', (source, expected) => {
     expect(resolveSemanticResumeStage(checkpoint(), source)).toBe(expected)
   })
@@ -66,5 +66,12 @@ describe('semantic checkpoint continuation stage', () => {
       verificationHistory: [],
     }
     expect(resolveSemanticResumeStage(failed)).toBe('recover')
+  })
+
+  it('routes a non-waiting historical VERIFY checkpoint through RECOVER', () => {
+    const legacy = checkpoint()
+    legacy.status = 'recoverable'
+    legacy.currentStage = 'verify'
+    expect(resolveSemanticResumeStage(legacy)).toBe('recover')
   })
 })
