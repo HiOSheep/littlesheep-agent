@@ -1,7 +1,7 @@
 # RCD S0 基线报告
 
 日期：2026-10-16（香港时间）
-结果：**24 个场景均经执行入口运行并完成清理；其中 6 个有针对原场景契约的适配器，另 18 个仅完成 Harness 组件级探针，Oracle 结果保持 `unverified`。S0B 尚未达到出门条件，不能将此报告解释为 24 场景评测已完成。**
+结果：**S0-F：六项核心机制基线已建立，完整 24 场景基线未完成。** 六项核心结果为 C02 `failed`、C08 `passed`、R01 `failed`、R02 `correctly_blocked`、L01 `partially_completed`、X01 `correctly_blocked`。其余 18 项保留 `unverified`；组件探针成功不计为场景成功。
 
 ## 基线版本与工作树
 
@@ -33,9 +33,9 @@
 
 ## S0B 可执行场景基线
 
-执行器入口：`node scripts/rcd-s0.mjs run --id=C02`、`--category=C` 或 `--all`；可选 `--trials=N`、`--timeout-ms=N` 和 `--output=<path>`。默认报告写入系统临时目录下的 `littlesheep-rcd-s0-evidence`。每个已接入场景在临时父目录内创建独立 workspace 与观察记录；无论适配器成功与否都会尝试删除临时目录，清理失败会记录残留并令 infrastructure status 为 `harness_error`。
+执行器入口：`node scripts/rcd-s0.mjs run --id=C02`、`--category=C`、`--core` 或 `--all`；可选 `--trials=N`、`--timeout-ms=N` 和 `--output=<path>`。`--core` 固定运行 C02、C08、R01、R02、L01、X01。默认报告写入系统临时目录下的 `littlesheep-rcd-s0-evidence`。每个已接入场景在临时父目录内创建独立 workspace 与观察记录；无论适配器成功与否都会尝试删除临时目录，清理失败会记录残留并令 infrastructure status 为 `harness_error`。
 
-本轮机读记录见 [S0B 可执行基线 JSON](rcd-s0b-executable-baseline-2026-10-16.json)。`--all` 运行结果为 24 `executed`、0 `blocked`、0 `harness_error`、0 `not_run`，所有临时目录清理成功。产品判定：1 `passed`（C08）、2 `failed`（C02、R01）、1 `partially_completed`（L01）、2 `correctly_blocked`（R02、X01）、18 `unverified`（C01、C03–C07、F01–F04、R03–R04、L02–L04、X02–X04）。后 18 项运行了实际 Harness 工具执行路径和独立临时文件观察，但尚未实现各自冻结任务需要的场景条件与外部验收；其结果只证明组件探针可执行，不证明该场景已评测。产品失败/未验证不会被混写为基础设施失败或成功。
+本轮完整机读记录见 [24 场景 S0B JSON](rcd-s0b-executable-baseline-2026-10-16.json)，六项核心冻结记录见 [S0-F 核心基线 JSON](rcd-s0f-core-baseline-2026-10-16.json)。六项报告结果为 1 `passed`（C08）、2 `failed`（C02、R01）、1 `partially_completed`（L01）、2 `correctly_blocked`（R02、X01）；其余 18 项为 `unverified`。C08 通过：相同 Shell 命令先失败后成功，证明在夹具中合法的再次执行成功，不证明 Runtime 一概禁止重复命令。X01 是在副作用写入后、结果结算前注入受控异常，再经 Runner 重启恢复；不是 OS 进程崩溃。剩余 18 项仅运行组件探针，未实现各自冻结任务条件和独立外部验收；探针成功不计作场景成功。
 
 执行层级分别记录在每项 `runnerHarness.executionLayer`：C02、R01、R02、L01、C08 通过 Harness execute stage；C08 使用真实内置 Shell 工具和仅限夹具 workspace 的宿主授权接缝；X01 通过真实 Runner durable run 与重启恢复。其余 18 项使用共享 Harness + ToolExecutionService 组件探针，实际写入场景专属临时文件并用独立字节/哈希观察，但没有验证其完整冻结任务。所有 Provider 均为确定性 scripted mock；R01/R02 使用 loopback HTTP 夹具，不发送公网请求。真实 Provider 与 usage/cost 保持 `not_run` / `unavailable`。报告证据只保存哈希、计数、状态和证据引用，不保存命令输出或用户内容。
 
@@ -75,6 +75,8 @@ C02、C08、R01、R02、L01、X01，以及故障/并发/权限代表 F04、X03�
 ### 未完成项与最小解决方案
 
 剩余 18 项不是环境阻断，而是本批适配器尚未达到各自契约。具体缺口及最小补齐方式已按场景列在上表；总体上需要为 C01/C03–C07 建临时 Git/编译/测试夹具，为 F01–F04 接入真实文件读写和外部修改接缝，为 R03/R04 配置本地检索及敏感信息审查夹具，为 L02–L04 使用 Runtime 无进展/取消/审批控制，以及为 X02–X04 使用真实 Runner checkpoint/暂停恢复/未知结算接缝。当前组件探针不能替代这些工作，故 S0B 维持未通过，不启动 S1。
+
+**S0-F 验收结论：六项核心机制基线已建立，完整 24 场景基线未完成。** 后续待办按对应 S1/S2 实际开发范围逐步补齐，不在 S0-F 中继续扩展其余 18 项。
 
 ## 离线基线结果
 

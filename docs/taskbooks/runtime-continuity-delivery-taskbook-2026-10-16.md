@@ -1,7 +1,7 @@
 # Runtime Continuity & Delivery（RCD）任务书 2026-10-16
 
 日期：2026-10-16
-状态：**24 项均经过执行器运行和清理，但 18 项仍是 Harness 组件探针且 Oracle 为 `unverified`；S0B 未通过；S1–S3 未开始。**
+状态：**S0-F 已冻结六项核心机制基线；完整 24 场景基线未完成。当前任务继续实施 S1A 工具参数错误安全纠错；S1B、S1C、S2 未开始。**
 
 ## 1. 目标与边界
 
@@ -15,8 +15,9 @@
 
 | 阶段 | 目标 | 本轮状态 |
 |---|---|---|
-| S0 | 盘点既有证据链，定义 24 个可独立判定任务，建立可追溯离线基线 | 24 项执行基础设施均 `executed` 且清理成功；6 项有原场景适配器，18 项仅组件探针并 `unverified`；S0B 出门条件未满足 |
-| S1 | 修复确定未执行输入错误、新执行与恢复重放身份、动态检索判定、停止原因观测 | 未开始 |
+| S0-F | 冻结六项核心机制现有结果，不扩展其余 18 项 | 六项核心机制基线已建立；完整 24 场景基线未完成 |
+| S1A | 只允许 Runtime 确认未执行、无副作用的可信 Schema 参数错误在同一轮纠错 | 实施中 |
+| S1B/S1C | 恢复身份、动态检索、停止原因观测 | 未开始 |
 | S2 | 在现有 Runner/Harness 上提供有界任务续接、任务验收状态和交付摘要 | 未开始 |
 | S3 | 使用固定场景进行同环境对照并审查安全、效果和成本 | 未开始 |
 
@@ -32,7 +33,7 @@
 | L · 长任务 | 4 | 超过 30 轮、无进展、取消、授权后继续 |
 | X · 恢复 | 4 | 未结算副作用、上下文压缩、暂停重启、未知结果核实 |
 
-每个场景都包含任务输入、合成环境、工具及权限、独立 Oracle、可接受停止行为、禁止行为和重置说明。统一入口支持按 ID、类别和全部场景选择：`node scripts/rcd-s0.mjs run --id=C02`、`--category=C`、`--all`，可用 `--trials=N` 和 `--timeout-ms=N` 控制重复次数及超时。本批 `--all` 有 24 条实际执行记录；18 项只运行 Harness 组件探针，未完成冻结任务条件，结果明确为 `unverified`，不等同于场景评测闭环。逐场景账本与复跑稳定性见 [S0B 可执行基线 JSON](../reference/rcd-s0b-executable-baseline-2026-10-16.json)。S0 尚未完全验收。
+每个场景都包含任务输入、合成环境、工具及权限、独立 Oracle、可接受停止行为、禁止行为和重置说明。统一入口支持按 ID、类别、核心集合和全部场景选择：`node scripts/rcd-s0.mjs run --id=C02`、`--category=C`、`--core`、`--all`，可用 `--trials=N` 和 `--timeout-ms=N` 控制重复次数及超时。S0-F 核心账本见 [S0-F 核心基线 JSON](../reference/rcd-s0f-core-baseline-2026-10-16.json)；24 项原始记录见 [S0B 可执行基线 JSON](../reference/rcd-s0b-executable-baseline-2026-10-16.json)。剩余 18 项保持 `unverified`，只运行组件探针，未完成场景契约。
 
 评测 infrastructure 状态与产品 Oracle 结果分开统计。Infrastructure 使用 `executed | blocked | harness_error | not_run`；产品结果使用 `passed | failed | partially_completed | correctly_blocked | unverified`。正确拒绝/预期阻断不折入普通成功率。测试层级、模拟 Provider、工具错误/调用数、授权、停止原因、副作用证据、Oracle 引用、清理结果、usage/cost 可得性均写入逐次 JSON 记录；无真实 usage 时保持 `unavailable`。
 

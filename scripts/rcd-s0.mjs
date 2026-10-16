@@ -93,6 +93,7 @@ function manifest(output) {
 }
 
 const adapters = new Set(['C01','C02','C03','C04','C05','C06','C07','C08','F01','F02','F03','F04','R01','R02','R03','R04','L01','L02','L03','L04','X01','X02','X03','X04']);
+const coreScenarioIds = new Set(['C02', 'C08', 'R01', 'R02', 'L01', 'X01']);
 const safeJson = (path) => {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
 };
@@ -187,14 +188,15 @@ function run(args) {
   const requestedId = value('id');
   const requestedCategory = value('category')?.toUpperCase();
   const all = args.includes('--all');
+  const core = args.includes('--core');
   const trialCount = Number(value('trials') ?? 1);
   const timeoutMs = Number(value('timeout-ms') ?? 120_000);
-  if (Number(Boolean(requestedId) + Boolean(requestedCategory) + Number(all)) !== 1 || !Number.isInteger(trialCount) || trialCount < 1 || trialCount > 20 || !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600_000) {
-    process.stderr.write('Usage: node scripts/rcd-s0.mjs run (--id=C02 | --category=C | --all) [--trials=1] [--timeout-ms=120000] [--output=<path>]\n');
+  if (Number(Boolean(requestedId) + Boolean(requestedCategory) + Number(all) + Number(core)) !== 1 || !Number.isInteger(trialCount) || trialCount < 1 || trialCount > 20 || !Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 600_000) {
+    process.stderr.write('Usage: node scripts/rcd-s0.mjs run (--id=C02 | --category=C | --core | --all) [--trials=1] [--timeout-ms=120000] [--output=<path>]\n');
     process.exitCode = 2;
     return;
   }
-  const selected = suite.scenarios.filter((scenario) => all || scenario.id === requestedId || scenario.category === requestedCategory);
+  const selected = suite.scenarios.filter((scenario) => all || (core && coreScenarioIds.has(scenario.id)) || scenario.id === requestedId || scenario.category === requestedCategory);
   if (requestedId && selected.length !== 1) { process.stderr.write(`Unknown scenario: ${requestedId}\n`); process.exitCode = 2; return; }
   if (requestedCategory && !selected.length) { process.stderr.write(`Unknown category: ${requestedCategory}\n`); process.exitCode = 2; return; }
   const records = [];
@@ -204,7 +206,20 @@ function run(args) {
     const signatures = items.map((record) => sha256(JSON.stringify({ oracle: record.oracle?.result, stopReason: record.stopReason, sideEffects: record.sideEffects, authorization: record.authorization, infrastructureStatus: record.infrastructureStatus, cleanup: record.cleanup?.succeeded })));
     return { scenarioId: items[0].scenarioId, trials: items.length, stable: new Set(signatures).size === 1, signatureCount: new Set(signatures).size };
   });
-  const result = { schemaVersion: 1, suiteId: suite.suiteId, runId: `rcd-s0b-${Date.now()}`, generatedAt: new Date().toISOString(), source: worktreeFingerprint(), selection: { id: requestedId ?? null, category: requestedCategory ?? null, all, trials: trialCount }, infrastructure: { executed: records.filter((record) => record.infrastructureStatus === 'executed').length, blocked: records.filter((record) => record.infrastructureStatus === 'blocked').length, harnessError: records.filter((record) => record.infrastructureStatus === 'harness_error').length, notRun: records.filter((record) => record.infrastructureStatus === 'not_run').length }, productResults: Object.fromEntries(['passed', 'failed', 'partially_completed', 'correctly_blocked', 'unverified'].map((status) => [status, records.filter((record) => record.oracle?.result === status).length])), stability, records };
+  const result = {
+    schemaVersion: 1, suiteId: suite.suiteId, runId: `rcd-s0b-${Date.now()}`, generatedAt: new Date().toISOString(), source: worktreeFingerprint(),
+    selection: { id: requestedId ?? null, category: requestedCategory ?? null, core, all, trials: trialCount },
+    freeze: core ? {
+      id: 'RCD-S0-F',
+      conclusion: 'Six core mechanism baselines established; the complete 24-scenario baseline is incomplete.',
+      coreScenarioIds: [...coreScenarioIds],
+      fullSuiteStatus: 'incomplete',
+      remainingScenarioStatus: 'unverified',
+    } : undefined,
+    infrastructure: { executed: records.filter((record) => record.infrastructureStatus === 'executed').length, blocked: records.filter((record) => record.infrastructureStatus === 'blocked').length, harnessError: records.filter((record) => record.infrastructureStatus === 'harness_error').length, notRun: records.filter((record) => record.infrastructureStatus === 'not_run').length },
+    productResults: Object.fromEntries(['passed', 'failed', 'partially_completed', 'correctly_blocked', 'unverified'].map((status) => [status, records.filter((record) => record.oracle?.result === status).length])),
+    stability, records,
+  };
   const outputPath = value('output') ? resolve(value('output')) : resolve(tmpdir(), 'littlesheep-rcd-s0-evidence', `${result.runId}.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
@@ -219,6 +234,6 @@ else if (command === 'manifest') {
   manifest(outputArg ? outputArg.slice('--output='.length) : undefined);
 } else if (command === 'run') run(args);
 else {
-  process.stderr.write('Usage: node scripts/rcd-s0.mjs validate | manifest [--output=<path>] | run (--id=<id> | --category=<category> | --all) [--trials=1] [--timeout-ms=120000] [--output=<path>]\n');
+  process.stderr.write('Usage: node scripts/rcd-s0.mjs validate | manifest [--output=<path>] | run (--id=<id> | --category=<category> | --core | --all) [--trials=1] [--timeout-ms=120000] [--output=<path>]\n');
   process.exitCode = 2;
 }
