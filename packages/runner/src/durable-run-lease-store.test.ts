@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -21,8 +21,8 @@ describe('DurableRunLeaseStore', () => {
     const rootDir = await newRoot();
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const first = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
-    const second = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
+    const first = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const second = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     const acquired = await first.acquire('session-a', 'run-a');
     expect(acquired.kind).toBe('acquired');
     expect(await second.acquire('session-a', 'run-a')).toMatchObject({ kind: 'conflict' });
@@ -42,14 +42,14 @@ describe('DurableRunLeaseStore', () => {
     const rootDir = await newRoot();
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const first = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
-    const second = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
+    const first = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const second = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     const acquired = await first.acquire('session-a', 'run-a');
     nowMs += 1_001;
-    await expect(first.renew('session-a', 'run-a', acquired.lease.ownerToken!))
-      .rejects.toMatchObject({ kind: 'expired' });
     const reclaimed = await second.acquire('session-a', 'run-a');
     expect(reclaimed).toMatchObject({ kind: 'reclaimed', lease: { attempts: 2 } });
+    await expect(first.renew('session-a', 'run-a', acquired.lease.ownerToken!))
+      .rejects.toMatchObject({ kind: 'conflict' });
     await expect(first.release('session-a', 'run-a', acquired.lease.ownerToken!))
       .rejects.toMatchObject({ kind: 'conflict' });
   });
@@ -70,7 +70,7 @@ describe('DurableRunLeaseStore', () => {
     const rootDir = await newRoot();
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const store = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
+    const store = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     await store.acquire('session-a', 'run-a');
     await expect(store.listActiveRuns()).resolves.toEqual([{ sessionId: 'session-a', runId: 'run-a' }]);
     await expect(store.listRecoverableRuns()).resolves.toEqual([]);
@@ -80,6 +80,36 @@ describe('DurableRunLeaseStore', () => {
     await expect(store.listActiveRuns()).resolves.toEqual([]);
     await expect(store.listRecoverableRuns()).resolves.toEqual([{ sessionId: 'session-a', runId: 'run-a' }]);
     await expect(store.nextLeaseExpiry()).resolves.toBeUndefined();
+  });
+
+  it('does not reclaim an expired lease while its owning process is still alive', async () => {
+    const rootDir = await newRoot();
+    let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
+    const now = () => new Date(nowMs);
+    const store = new DurableRunLeaseStore({ rootDir, leaseMs: 1_000, now });
+    const acquired = await store.acquire('session-live', 'run-live');
+    nowMs += 1_001;
+    await expect(store.acquire('session-live', 'run-live')).resolves.toMatchObject({ kind: 'conflict' });
+    await expect(store.listActiveRuns()).resolves.toEqual([{ sessionId: 'session-live', runId: 'run-live' }]);
+    await expect(store.listRecoverableRuns()).resolves.toEqual([]);
+    await expect(store.renew('session-live', 'run-live', acquired.lease.ownerToken!))
+      .resolves.toMatchObject({ status: 'active', ownerProcessId: process.pid });
+  });
+
+  it('fails closed on an expired legacy lease without verifiable process ownership', async () => {
+    const rootDir = await newRoot();
+    const store = new DurableRunLeaseStore({ rootDir });
+    await store.initialize();
+    const acquired = await store.acquire('session-legacy', 'run-legacy');
+    const names = await readdir(rootDir);
+    const leaseFile = join(rootDir, names.find(name => name.endsWith('.json'))!);
+    const existing = JSON.parse(await readFile(leaseFile, 'utf8')) as Record<string, unknown>;
+    delete existing.ownerHost;
+    delete existing.ownerProcessId;
+    existing.leaseUntil = '2020-01-01T00:00:00.000Z';
+    await writeFile(leaseFile, JSON.stringify(existing), 'utf8');
+    expect(acquired.lease.ownerToken).toBeTruthy();
+    await expect(store.acquire('session-legacy', 'run-legacy')).resolves.toMatchObject({ kind: 'conflict' });
   });
 
   it('fails closed on malformed lease storage', async () => {

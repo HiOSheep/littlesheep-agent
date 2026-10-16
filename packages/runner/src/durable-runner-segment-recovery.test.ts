@@ -1,14 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
-import type { ChatRequest, ChatResponse, LlmClient } from '@littlesheep/llm';
-import { asSessionId } from '@littlesheep/types';
+import type { ChatResponse, LlmClient } from '@littlesheep/llm';
+import { reduceDurableRunProjection } from '@littlesheep/harness';
 import { createRunner, type AgentRunner } from './runner.js';
 
 const roots: string[] = [];
@@ -58,27 +58,11 @@ describe('same-Run segment recovery after process restart', () => {
     config.agents.defaults.maxModelCallsPerRun = 64;
     config.agents.defaults.maxToolCallsPerRun = 64;
     config.agents.defaults.maxToolLoopIterationsPerRun = 60;
-    let additionalCalls = 0;
-    const resumedRequestToolResultCounts: number[] = [];
-    const chat = async (request: ChatRequest): Promise<ChatResponse> => {
-      additionalCalls += 1;
-      resumedRequestToolResultCounts.push(request.messages.filter((message) => message.role === 'tool').length);
-      return nextFixtureResponse(request, workspace);
-    };
-    const llm: LlmClient = {
-      chat,
-      chatStream: async (request, onDelta) => {
-        const response = await chat(request);
-        onDelta({ type: 'done', finishReason: response.finishReason });
-        return response;
-      },
-      embed: async () => ({ embeddings: [], model: '', usage: { promptTokens: 0 } }),
-    };
     const restarted = await createRunner({
       config,
       branding: DEFAULT_BRANDING,
       model: 'test/segment-recovery',
-      llm,
+      llm: noCallLlm(),
       approve: async () => true,
       skillsDirs: [],
     });
@@ -86,57 +70,54 @@ describe('same-Run segment recovery after process restart', () => {
     const priorLease = await restarted.infra.durableRunLeaseStore.read(sessionId!, runId!);
     await delay(Math.max(0, Date.parse(priorLease?.leaseUntil ?? '') - Date.now() + 25));
 
-    const recovered = await restarted.recoverDurableRun!(asSessionId(sessionId!), runId!);
-    expect(recovered.projection).toMatchObject({ status: 'completed', runId, finalReply: { state: 'settled' } });
+    const contenders = [spawnRecoveryContender(rootDir, 'alpha', sessionId!, runId!)];
+    try {
+      await waitForFile(join(rootDir, 'recovery-contender-barrier', 'alpha.ready'));
+      contenders.push(spawnRecoveryContender(rootDir, 'beta', sessionId!, runId!));
+      await waitForFile(join(rootDir, 'recovery-contender-barrier', 'beta.ready'));
+      await Promise.all(contenders.map(waitForContenderExit));
+    } finally {
+      for (const contender of contenders) {
+        if (contender.exitCode === null && contender.signalCode === null) contender.kill('SIGKILL');
+      }
+    }
+    const results = ['alpha', 'beta'].map((workerId) => JSON.parse(
+      readFileSync(join(rootDir, `recovery-${workerId}.json`), 'utf8'),
+    ) as RecoveryContenderResult);
+    const resumedResults = results.filter((result) => result.providerCalls > 0);
+    expect(resumedResults).toHaveLength(1);
+    expect(results.every((result) => result.status === 'completed' || result.status === 'ownership_conflict')).toBe(true);
+    expect(resumedResults[0]?.toolResultCounts).toEqual([30, 31, 32, 33, 34, 35]);
+    const recoveredProjection = reduceDurableRunProjection(
+      await restarted.infra.durableEventStore.read(sessionId!, runId!),
+    );
+    expect(recoveredProjection).toMatchObject({ status: 'completed', runId, finalReply: { state: 'settled' } });
     const resultFiles = readdirSync(workspace).filter((name) => name.endsWith('.txt')).sort();
     expect(resultFiles).toHaveLength(35);
     expect(resultFiles).toEqual(Array.from({ length: 35 }, (_, index) => `step-${String(index + 1).padStart(2, '0')}.txt`));
     for (let index = 1; index <= 35; index += 1) {
       expect(readFileSync(join(workspace, `step-${String(index).padStart(2, '0')}.txt`), 'utf8')).toBe(`completed:${index}\n`);
     }
-    expect(additionalCalls).toBeGreaterThan(0);
-    expect(resumedRequestToolResultCounts).toEqual([30, 31, 32, 33, 34, 35]);
-    expect(recovered.projection.effects).toHaveLength(35);
-    expect(new Set(recovered.projection.effects.map((effect) => effect.effectId)).size).toBe(35);
-    expect(recovered.projection.effects.every((effect) => effect.status === 'succeeded')).toBe(true);
+    expect(recoveredProjection.effects).toHaveLength(35);
+    expect(new Set(recoveredProjection.effects.map((effect) => effect.effectId)).size).toBe(35);
+    expect(recoveredProjection.effects.every((effect) => effect.status === 'succeeded')).toBe(true);
     const events = await restarted.infra.durableEventStore.read(sessionId!, runId!);
     expect(events.filter((event) => event.type === 'run_accepted')).toHaveLength(1);
     expect(events.filter((event) => event.type === 'user_input_appended')).toHaveLength(1);
-    const requestIndexes = recovered.projection.modelRequests.map((request) => request.requestIndex).filter((index) => index !== undefined);
+    const requestIndexes = recoveredProjection.modelRequests.map((request) => request.requestIndex).filter((index) => index !== undefined);
     expect(new Set(requestIndexes).size).toBe(requestIndexes.length);
     expect(Math.max(...requestIndexes)).toBeGreaterThan(30);
     const recoveredLease = await restarted.infra.durableRunLeaseStore.read(sessionId!, runId!);
-    expect(recoveredLease).toMatchObject({ status: 'released', attempts: 2 });
+    expect(recoveredLease?.status).toBe('released');
+    expect([2, 3]).toContain(recoveredLease?.attempts);
   }, 300_000);
 });
 
-function nextFixtureResponse(request: ChatRequest, workspace: string): ChatResponse {
-  const prompt = request.messages.map((message) => (
-    typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
-  )).join('\n');
-  const completed = request.messages.filter((message) => message.role === 'tool').length;
-  if (completed === 0 && prompt.includes('Choose the next LittleSheep activity')) {
-    return { content: '{"type":"problem","confidence":0.99,"reason":"segment crash fixture"}', toolCalls: [], finishReason: 'stop' };
-  }
-  if (completed < 35) {
-    const step = completed + 1;
-    return {
-      content: '',
-      toolCalls: [{
-        id: `segment-recovery-${step}`,
-        type: 'function',
-        function: {
-          name: 'write',
-          arguments: JSON.stringify({
-            file_path: join(workspace, `step-${String(step).padStart(2, '0')}.txt`),
-            content: `completed:${step}\n`,
-          }),
-        },
-      }],
-      finishReason: 'tool_calls',
-    };
-  }
-  return { content: 'All 35 recovery fixture operations completed.', toolCalls: [], finishReason: 'stop' };
+interface RecoveryContenderResult {
+  status: 'completed' | 'ownership_conflict' | 'failed';
+  providerCalls: number;
+  toolResultCounts: number[];
+  error?: string;
 }
 
 function waitForChildMarker(child: ChildProcess, expected: string): Promise<string> {
@@ -159,6 +140,68 @@ function waitForChildMarker(child: ChildProcess, expected: string): Promise<stri
   });
 }
 
+function spawnRecoveryContender(rootDir: string, workerId: string, sessionId: string, runId: string): ChildProcess {
+  return spawn(process.execPath, [
+    resolve('node_modules/vitest/vitest.mjs'),
+    'run',
+    resolve('packages/runner/src/durable-runner-segment-recovery-contender-worker.test.ts'),
+    '--pool=threads',
+    '--maxWorkers=1',
+    '--minWorkers=1',
+  ], {
+    cwd: resolve('.'),
+    env: {
+      ...process.env,
+      LS_RUNNER_SEGMENT_RECOVERY_ROOT: rootDir,
+      LS_RUNNER_SEGMENT_RECOVERY_CONTENDER: workerId,
+      LS_RUNNER_SEGMENT_RECOVERY_SESSION: sessionId,
+      LS_RUNNER_SEGMENT_RECOVERY_RUN: runId,
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+function waitForContenderExit(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolveExit, rejectExit) => {
+    let output = '';
+    const timer = setTimeout(() => finish(new Error(`recovery contender timed out: ${output}`)), 240_000);
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      child.stdout?.removeAllListeners('data');
+      child.stderr?.removeAllListeners('data');
+      child.removeAllListeners('exit');
+      error ? rejectExit(error) : resolveExit();
+    };
+    child.stdout?.on('data', (chunk: Buffer) => { output += chunk.toString('utf8'); });
+    child.stderr?.on('data', (chunk: Buffer) => { output += chunk.toString('utf8'); });
+    child.once('exit', (code) => code === 0
+      ? finish()
+      : finish(new Error(`recovery contender exited with code ${String(code)}: ${output}`)));
+  });
+}
+
+async function waitForFile(path: string): Promise<void> {
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    if (existsSync(path)) return;
+    await delay(20);
+  }
+  throw new Error(`recovery contender did not reach readiness: ${path}`);
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolveDelay) => setTimeout(resolveDelay, Math.max(0, ms)));
+}
+
+function noCallLlm(): LlmClient {
+  const response: ChatResponse = { content: 'must not execute from recovery inspection', toolCalls: [], finishReason: 'stop' };
+  return {
+    chat: async () => response,
+    chatStream: async (_request, onDelta) => {
+      onDelta({ type: 'done', finishReason: response.finishReason });
+      return response;
+    },
+    embed: async () => ({ embeddings: [], model: '', usage: { promptTokens: 0 } }),
+  };
 }

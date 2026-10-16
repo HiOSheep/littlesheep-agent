@@ -15,8 +15,8 @@ describe('DurableEffectLeaseStore', () => {
     const rootDir = await newRoot();
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const first = new DurableEffectLeaseStore({ rootDir, leaseMs: 1_000, now });
-    const second = new DurableEffectLeaseStore({ rootDir, leaseMs: 1_000, now });
+    const first = new DurableEffectLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const second = new DurableEffectLeaseStore({ rootDir, leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     const identity = { sessionId: 'session-a', runId: 'run-a', effectId: 'tool:write:sensitive-input-hash' };
     const acquired = await first.acquire(identity);
     expect(acquired.kind).toBe('acquired');

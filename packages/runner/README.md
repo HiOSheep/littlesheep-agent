@@ -12,6 +12,7 @@ P1B-2A 的 `CreateRunnerOptions.memoryOwnershipBindings` 是可信 Host/隔离�
 - ExecutionLog 保存已结算 run 证据；RunCheckpoint 保存活动 run 的可恢复状态，两者用途不同。
 - ExecutionLog 的可选 `conversationTranscript` 保存有界的正文片段和工具顺序，包含失败／中断片段的状态；旧日志可缺省。它是显示记录，不代替最终回复结算或工具证据。新会话重载时沿用这份顺序，避免把过程正文删除或重复发布成聊天气泡。
 - Run 与 tool identity 支持幂等结算。续跑前校验 durable lease；未完成或状态未知的副作用须停止并明确处理。
+- Durable Run lease 除 30 秒续租外还记录本机 hostname 和 owner PID。过期 lease 只有在同机 owner 进程确认退出后才能接管；旧格式或远端 owner 无法核实时继续阻断。该检查避免把暂停或卡住的 Runner 当作已崩溃，但不终止 Runner 已启动的外部子进程；此类副作用仍按 unknown 处理。
 - 每个新 run 都使用严格 durable 持久化与结算；执行模式选择和 per-session/origin/profile overrides 已移除。旧 `shadow` 标签只供历史记录读取、回放和用量报告。
 - FINALIZE 按唯一 settlement 身份登记并持久化权威模型回复。重启恢复只在 durable event 投影与 reply registry 都确认结算后，补齐作为历史投影的 ExecutionLog；没有有效模型回复时可报告 Runtime 状态，不能伪造 Agent 答案。
 - 会话压缩保存带 source／predecessor 校验的版本化摘要，不写 durable Memory。
@@ -24,6 +25,6 @@ Runner 负责组合，不重写协作者的契约：Harness 拥有状态转移�
 
 Main 在每次普通 run、continuation 与 checkpoint resume 时提供当前工作区事实和不可变 Permission V2 决策快照；Runner 只在运行时上下文中传递它，并将工具授权交给 Safety 与 Main 审批入口。Runner 不把新权限快照写入 checkpoint 或 execution log；旧 checkpoint 的权限上限由 Main 按历史可证明的 legacy mode 保守解析。
 
-局部 codec、恢复和结算运行 package typecheck 与 Runner 定向测试。Runner 的 settlement ack-lost 用例覆盖写入成功但确认丢失、重启修复历史投影、completed receipt 幂等与副作用不重放；`verify:app-recovery`、`verify:file-consistency-faults`、受控记忆和真实 Electron 连续性检查覆盖更广边界，按改动契约选择。单测不证明跨进程 lease 恢复。
+局部 codec、恢复和结算运行 package typecheck 与 Runner 定向测试。Runner 的 settlement ack-lost 用例覆盖写入成功但确认丢失、重启修复历史投影、completed receipt 幂等与副作用不重放；`durable-runner-segment-recovery.test.ts` 使用真实子进程 SIGKILL 和两个独立 Runner 恢复进程验证安全段竞争；`verify:app-recovery`、`verify:file-consistency-faults`、受控记忆和真实 Electron 连续性检查覆盖更广边界，按改动契约选择。受控 Runner 进程测试不等同于真实 Electron Main 授权恢复、通用 OS fencing 或子进程终止保证。
 
 每次 Run 可指定配置内的 `model`；Runner 按模型复用独立的 LLM、Harness 与 tokenizer，继续共享宿主工具执行和权限边界。未指定时采用启动默认模型，checkpoint 续跑采用其保存模型。会话状态工具通过可信调用上下文确定会话，记忆修正的派生撤销标记按 run 保存、消费和清理，不能串入其他运行。

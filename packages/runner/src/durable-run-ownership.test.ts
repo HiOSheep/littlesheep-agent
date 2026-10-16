@@ -50,8 +50,8 @@ describe('DurableRunOwnership', () => {
     roots.push(root);
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const runStore = new DurableRunLeaseStore({ rootDir: join(root, 'runs'), leaseMs: 1_000, now });
-    const effectStore = new DurableEffectLeaseStore({ rootDir: join(root, 'effects'), leaseMs: 1_000, now });
+    const runStore = new DurableRunLeaseStore({ rootDir: join(root, 'runs'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const effectStore = new DurableEffectLeaseStore({ rootDir: join(root, 'effects'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     const lost = vi.fn();
     const stale = await DurableRunOwnership.acquire({
       runStore,

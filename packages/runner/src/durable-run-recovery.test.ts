@@ -61,8 +61,8 @@ describe('createDurableRunRecovery', () => {
     roots.push(rootDir);
     let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
     const now = () => new Date(nowMs);
-    const leaseStore = new DurableRunLeaseStore({ rootDir: join(rootDir, 'runs'), leaseMs: 1_000, now });
-    const effectLeaseStore = new DurableEffectLeaseStore({ rootDir: join(rootDir, 'effects'), leaseMs: 1_000, now });
+    const leaseStore = new DurableRunLeaseStore({ rootDir: join(rootDir, 'runs'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const effectLeaseStore = new DurableEffectLeaseStore({ rootDir: join(rootDir, 'effects'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
     const identity = { sessionId: 'session-a', runId: 'run-a', effectId: 'effect-a' };
     await effectLeaseStore.acquire(identity);
     nowMs += 1_001;
