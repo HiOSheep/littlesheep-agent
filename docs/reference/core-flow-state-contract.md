@@ -58,7 +58,7 @@ Runner 的最小 coordinator 由 `packages/runner/src/runner-coordinator.ts` 约
 
 ## RunContext Ownership
 
-Ownership manifest 目前登记 46 个字段，按八组高频共享状态提供可审计的字段 owner、读阶段、写阶段和生命周期边界。它不是把已有 `RunContext` 改成代理对象，而是要求生产写入经过对应领域边界；测试夹具仍可直接构造上下文。
+Ownership manifest 目前登记 43 个字段，按八组高频共享状态提供可审计的字段 owner、读阶段、写阶段和生命周期边界。它不是把已有 `RunContext` 改成代理对象，而是要求生产写入经过对应领域边界；测试夹具仍可直接构造上下文。
 
 | 分组 | 代表字段 | owner | 主要写入阶段 | 生命周期 |
 | --- | --- | --- | --- | --- |
