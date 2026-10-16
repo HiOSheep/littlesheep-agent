@@ -17,7 +17,9 @@ import type {
   SessionRunSummary,
   ToolInvocationRecord,
   FinalReplySettlement,
+  TaskOutcome,
 } from '@littlesheep/types';
+import { unknownTaskOutcome } from '@littlesheep/types';
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 
@@ -34,6 +36,48 @@ afterEach(() => {
 });
 
 describe('ExecutionLogStore', () => {
+  it('round-trips Task Outcome and provides unknown for legacy logs without it', async () => {
+    const legacyRunId = 'legacy-task-outcome';
+    await store.write(continuationControlFailure(legacyRunId));
+    expect((await store.read(legacyRunId))?.taskOutcome).toMatchObject({
+      runId: legacyRunId,
+      status: 'unknown',
+      requirementInventory: 'unknown',
+      requirements: [],
+    });
+
+    const currentRunId = 'current-task-outcome';
+    const outcome = unknownTaskOutcome(currentRunId);
+    await store.write({ ...continuationControlFailure(currentRunId), taskOutcome: outcome });
+    expect((await store.read(currentRunId))?.taskOutcome).toEqual(outcome);
+  });
+
+  it('downgrades internally linked passed evidence when its persisted execution target is missing', async () => {
+    const runId = 'task-outcome-missing-target';
+    const refs = ['file-check:state', 'tool-result:check-1', 'file-check:passed'];
+    const outcome: TaskOutcome = {
+      version: 1,
+      runId,
+      execution: { status: 'completed' },
+      requirementInventory: 'complete',
+      requirements: [{
+        id: 'req-1', sourceMessageId: 'message-1', origin: 'user_explicit', status: 'passed', evidenceRefs: refs,
+      }],
+      evidence: [
+        { version: 1, id: refs[0]!, kind: 'file_state', status: 'informational', sourceRef: 'tool:check-1',
+          resourceRef: 'workspace:result.txt', contentHash: 'a'.repeat(64) },
+        { version: 1, id: refs[1]!, kind: 'tool_result', status: 'informational', sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt' },
+        { version: 1, id: refs[2]!, kind: 'requirement_check', status: 'pass', sourceRef: 'tool:check-1',
+          resourceRef: 'workspace:result.txt', contentHash: 'a'.repeat(64) },
+      ],
+      artifacts: [{ resourceRef: 'workspace:result.txt', action: 'observed', evidenceRefs: refs, verification: 'passed' }],
+      status: 'completed',
+      remaining: [],
+    };
+    await store.write({ ...continuationControlFailure(runId), taskOutcome: outcome });
+    expect((await store.read(runId))?.taskOutcome).toMatchObject({ status: 'unknown', requirementInventory: 'unknown' });
+  });
+
   const continuationControlFailure = (runId: string): ExecutionLogInput => ({
     runId,
     sessionId: 'session-continuation-log',
