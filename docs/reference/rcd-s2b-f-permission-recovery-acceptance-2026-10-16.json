@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "stage": "LS-RCD-S2B-F",
+  "generatedAt": "2026-10-16T11:03:23Z",
+  "status": "incomplete_blocked_on_real_electron_acceptance",
+  "branch": "codex/rcd-s2b-continuity",
+  "baseHead": "aa19632b8232d738f5aaeeca143eaa6d82c63850",
+  "acceptance": {
+    "F01_mainOwnedPermissionV2Recovery": {
+      "status": "partial",
+      "implemented": true,
+      "validatedAt": "main_resolver_unit_and_runner_integration_typecheck",
+      "details": [
+        "Runner resolves current authorization only after durable recovery ownership and safe checkpoint rechecks.",
+        "Main rebuilds V2 snapshot, workspace context, and Memory grant from current SessionIndex, ProjectIndex, and Config.",
+        "Existing execution-context fingerprint equality remains enabled.",
+        "Interactive approval broker and process-local Shell repeat grants are not restored; approval-required calls fail closed."
+      ]
+    },
+    "F02_realElectron": {
+      "status": "blocked",
+      "command": "pnpm run verify:desktop-permission-v2",
+      "reason": "Electron 44.4.5 binary installation failed at electron/install.js with fetch failed before Main window startup.",
+      "mainWindowStarted": false,
+      "positiveRecoveryAcceptance": "not_run",
+      "negativePermissionMatrix": "not_run_in_real_electron"
+    },
+    "F03_crossProcessNoProgress": {
+      "status": "passed_controlled_runner",
+      "runnerProcessKilledWith": "SIGKILL",
+      "checkpoint": {
+        "executionSegmentIndex": 2,
+        "toolLoopIterationsUsed": 30,
+        "noProgressRoundsBeforeRestart": 1
+      },
+      "workspaceFilesAfterRecovery": 28,
+      "duplicateWriteEffects": 0,
+      "noProgressBoundRetained": true,
+      "electronMainPath": false
+    },
+    "F04_providerResponseRecovery": {
+      "status": "supportBoundaryFrozen",
+      "automaticRecoverySupported": [
+        "verifiable safe segment checkpoint with fully reconstructible context and current authorization",
+        "reliably settled results whose complete context can be reconstructed",
+        "idempotent final-reply settlement recovery"
+      ],
+      "automaticRecoveryBlocked": [
+        "Provider request reach or result settlement is unknown",
+        "response received but full response/tool-call body was not durably stored",
+        "unknown external effect",
+        "historical authorization or execution context cannot be rebuilt"
+      ],
+      "responseBodyPersistenceAdded": false
+    },
+    "F05_compatibilityAndLease": {
+      "status": "conservative_existing_rules_retained",
+      "legacyCheckpointWithoutSafeBoundary": "blocked",
+      "crossHostLeaseTakeover": "blocked",
+      "legacyLeaseWithoutProcessIdentity": "blocked",
+      "pidExitProvesChildProcessesStopped": false
+    },
+    "F06_regression": {
+      "status": "partial",
+      "coreRcd": "passed_with_expected_partial_and_blocked_product_results",
+      "fullRealElectronMatrix": "blocked"
+    }
+  },
+  "rcdCoreRun": {
+    "suiteId": "LS-RCD-S0-24",
+    "runId": "rcd-s0b-1792147889827",
+    "generatedAt": "2026-10-16T10:51:29.827Z",
+    "sourceHead": "aa19632b8232d738f5aaeeca143eaa6d82c63850",
+    "sourceTreeSha256": "17ffebd75bb77f7122579e3df74ac3db958ecbddd125782dbd8dd6dbe50ba6a6",
+    "infrastructure": {
+      "executed": 6,
+      "blocked": 0,
+      "harnessError": 0,
+      "notRun": 0
+    },
+    "productResults": {
+      "passed": 3,
+      "failed": 0,
+      "partially_completed": 1,
+      "correctly_blocked": 2,
+      "unverified": 0
+    },
+    "cleanupSucceededForAll": true,
+    "usageStatus": "unavailable",
+    "publicNetworkRequests": 0,
+    "scenarios": [
+      { "id": "C02", "infrastructure": "executed", "result": "passed", "toolCalls": 2, "toolFailures": 1, "malformedInputExecutions": 0, "correctedInputExecutions": 1, "executionLayer": "harness_execute_stage_with_real_ToolExecutionService" },
+      { "id": "C08", "infrastructure": "executed", "result": "passed", "toolCalls": 3, "toolFailures": 1, "inputChanged": true, "cleanupSucceeded": true, "executionLayer": "harness_execute_stage_real_builtin_exec_with_fixture_only_host_authority" },
+      { "id": "R01", "infrastructure": "executed", "result": "passed", "toolCalls": 2, "toolFailures": 0, "executionLayer": "harness_execute_stage_builtin_web_search_local_http_adapter" },
+      { "id": "R02", "infrastructure": "executed", "result": "correctly_blocked", "toolCalls": 1, "toolFailures": 1, "executionLayer": "harness_execute_stage_builtin_web_search_with_network_disabled_policy" },
+      { "id": "L01", "infrastructure": "executed", "result": "partially_completed", "toolCalls": 31, "toolFailures": 1, "stopReason": "single_segment_iteration_budget_exhausted", "executionLayer": "harness_execute_stage_real_main_loop_with_scripted_provider_and_fixture_tool" },
+      { "id": "X01", "infrastructure": "executed", "result": "correctly_blocked", "toolCalls": 1, "settlement": "unknown", "faultType": "controlled_post_effect_pre_settlement_exception_not_os_crash", "executionLayer": "real_runner_durable_run_with_post_effect_pre_settlement_fault_injection_and_restart_recovery" }
+    ]
+  },
+  "tests": [
+    { "name": "Main recovery resolver and pre-run SessionIndex binding", "status": "passed", "files": 2, "passed": 27 },
+    { "name": "Main Permission V2 and Shell authorization", "status": "passed", "files": 6, "passed": 51 },
+    { "name": "Harness execute and provider usage reconciliation", "status": "passed", "files": 2, "passed": 54 },
+    { "name": "Runner recovery, VRS checkpoint compatibility, lease and usage", "status": "passed", "files": 10, "passed": 89 },
+    { "name": "T04-A real child process SIGKILL and safe-segment recovery", "status": "passed", "files": 1, "passed": 1, "resultFiles": 35, "duplicateEffects": 0 },
+    { "name": "T03-R cross-process no-progress continuity", "status": "passed", "files": 1, "passed": 1, "resultFiles": 28, "duplicateWrites": 0 },
+    { "name": "root TypeScript typecheck", "status": "passed", "command": "pnpm run typecheck" },
+    { "name": "App TypeScript typecheck", "status": "passed", "command": "pnpm --filter @littlesheep/app run typecheck" },
+    { "name": "Runner TypeScript typecheck", "status": "passed", "command": "pnpm --filter @littlesheep/runner run typecheck" },
+    { "name": "Runner build", "status": "passed", "command": "pnpm --filter @littlesheep/runner run build" },
+    { "name": "repository hygiene", "status": "passed_with_advisories", "passed": 35, "failed": 0, "advisories": 3, "typescriptProjects": "27/27" },
+    { "name": "RCD scenario validation", "status": "passed", "scenarioDefinitions": 24, "command": "node scripts/rcd-s0.mjs validate" },
+    { "name": "real Electron Permission V2 recovery", "status": "blocked", "command": "pnpm run verify:desktop-permission-v2", "reason": "Electron binary download failed with fetch failed; Main did not start." },
+    { "name": "git diff check", "status": "passed", "command": "git diff --check" }
+  ],
+  "knownLimitations": [
+    "S2B is not complete until real Electron Main-owned authorization recovery passes its positive and negative acceptance matrix.",
+    "No real Provider, paid account, public network, OS Shell sandbox, or cross-host recovery was tested.",
+    "Unknown Provider/effect states and unreconstructible authorization/context remain blocked.",
+    "Usage and cost are unavailable where no reliable Provider receipt exists; no values were fabricated."
+  ],
+  "git": {
+    "integrationCommit": "977915c8fa0f42251d192ca5eee217023b3e1293",
+    "push": false,
+    "mergeMain": false,
+    "reportAndLedgerCommit": "this report-and-ledger commit"
+  }
+}

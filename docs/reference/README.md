@@ -38,6 +38,8 @@
 - [RCD S2B-2 同一 Run 持久恢复最小实现](rcd-s2b-2-recovery-design-2026-10-16.md)：T04-A 真实进程 SIGKILL 后 35/35 恢复、lease 所有权、上下文重建、负向资格判定及仍待第三单元覆盖的故障窗口。
 - [RCD S2B-2 第三单元跨进程故障恢复验收](rcd-s2b-2-third-unit-recovery-acceptance-2026-10-16.md)：T04-B～E、T05-R、T08-R、T03-R 的进程级验收、阻断结果、Usage 一致性及 S2B 尚未关闭的权限与 Provider 上下文缺口。
 - [RCD S2B-2 第三单元机器账本](rcd-s2b-2-third-unit-recovery-acceptance-2026-10-16.json)：进程故障窗口、核心回归和基础设施验证的逐项结果与证据层级。
+- [RCD S2B-F 持久恢复权限集成验收](rcd-s2b-f-permission-recovery-acceptance-2026-10-16.md)：Main-owned Permission V2 恢复路径、受控无进展进程验收、恢复支持范围，以及真实 Electron 尚未通过的阶段结论。
+- [RCD S2B-F 机器可读验收账本](rcd-s2b-f-permission-recovery-acceptance-2026-10-16.json)：Main 权限、恢复边界、RCD 六项核心场景、测试状态和 Electron 阻塞记录。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。
