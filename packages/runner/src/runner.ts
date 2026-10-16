@@ -781,7 +781,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           ctx.resumedFromCheckpointId = continuation.checkpoint.id;
           clearReplyState(ctx, 'runner-restore');
         } else {
-          restoreContinuationContext(ctx, continuation.checkpoint, continuation.resumeStage);
+          restoreContinuationContext(ctx, continuation.checkpoint, continuation.resumeStage, {
+            maxToolCalls: opts.config.agents.defaults.maxToolCallsPerRun,
+            maxToolLoopIterationsPerRun: opts.config.agents.defaults.maxToolLoopIterationsPerRun,
+          });
           if (continuation.revisionFeedback) {
             writeReplanState(ctx, 'runner-restore', {
               verifyFeedback: continuation.revisionFeedback,
@@ -2265,6 +2268,7 @@ function restoreContinuationContext(
   ctx: RunContext,
   checkpoint: RunCheckpoint,
   resumeStage: StageName,
+  budgets: { maxToolCalls: number; maxToolLoopIterationsPerRun: number },
 ): void {
   const state = checkpoint.resumeState;
   if (!state) throw new Error('checkpoint has no resumable runtime state');
@@ -2295,7 +2299,12 @@ function restoreContinuationContext(
     // Task state is inherited; the run-scoped allowance is not. See
     // `continuationLoopBudget` — restoring the previous run's spend against this
     // run's ceiling is what made an explicit user retry impossible.
-    loopBudget: continuationLoopBudget(checkpoint.loopBudget, ctx.maxModelCalls ?? checkpoint.loopBudget.maxAttempts),
+    loopBudget: continuationLoopBudget(
+      checkpoint.loopBudget,
+      ctx.maxModelCalls ?? checkpoint.loopBudget.maxAttempts,
+      budgets.maxToolCalls,
+      budgets.maxToolLoopIterationsPerRun,
+    ),
   });
   replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
   writeModelObservabilityState(ctx, 'runner-restore', {

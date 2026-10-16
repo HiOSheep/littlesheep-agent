@@ -279,6 +279,10 @@ describe('continuationLoopBudget', () => {
       maxNoProgressRounds: 2,
       toolLoopIterationsUsed: 0,
       maxToolLoopIterations: MAX_TOOL_LOOP_ITERATIONS,
+      executionSegmentIndex: 1,
+      segmentIterationsUsed: 0,
+      toolCallsUsed: 0,
+      toolCallReservationKeys: [],
       costUsed: 0,
       maxCost: 10,
     });

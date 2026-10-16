@@ -743,8 +743,18 @@ export interface LoopBudgetSnapshot {
   maxElapsedMs: number;
   noProgressRounds: number;
   maxNoProgressRounds: number;
-  /** Monotonic tool-loop model turns across retry, promotion, and recovery. */ toolLoopIterationsUsed?: number;
+  /** Monotonic execute model turns across all segments in this Run. */ toolLoopIterationsUsed?: number;
   maxToolLoopIterations?: number;
+  /** Current bounded segment number and its consumed turns. */
+  executionSegmentIndex?: number;
+  segmentIterationsUsed?: number;
+  /** Hard loop-turn ceiling shared by all segments in this Run. */
+  maxToolLoopIterationsPerRun?: number;
+  /** Tool invocation reservations are monotonic across every segment in this Run. */
+  toolCallsUsed?: number;
+  maxToolCalls?: number;
+  /** Runtime request identities already charged to the Run tool-call budget. */
+  toolCallReservationKeys?: string[];
   /** Bounded evidence identities retained so recovery cannot rediscover progress. */ evidenceFingerprints?: string[];
   evidenceFingerprintSaturated?: boolean;
   costUsed?: number;

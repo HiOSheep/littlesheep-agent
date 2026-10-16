@@ -386,6 +386,24 @@ function validateLoopBudget(value: Record<string, unknown>): RunCheckpoint['loop
     ...(value.maxToolLoopIterations === undefined ? {} : {
       maxToolLoopIterations: boundedSafeInteger(value.maxToolLoopIterations, 'loopBudget.maxToolLoopIterations', 0),
     }),
+    ...(value.executionSegmentIndex === undefined ? {} : {
+      executionSegmentIndex: boundedSafeInteger(value.executionSegmentIndex, 'loopBudget.executionSegmentIndex', 0),
+    }),
+    ...(value.segmentIterationsUsed === undefined ? {} : {
+      segmentIterationsUsed: boundedSafeInteger(value.segmentIterationsUsed, 'loopBudget.segmentIterationsUsed', 0),
+    }),
+    ...(value.maxToolLoopIterationsPerRun === undefined ? {} : {
+      maxToolLoopIterationsPerRun: boundedSafeInteger(value.maxToolLoopIterationsPerRun, 'loopBudget.maxToolLoopIterationsPerRun', 0),
+    }),
+    ...(value.toolCallsUsed === undefined ? {} : {
+      toolCallsUsed: boundedSafeInteger(value.toolCallsUsed, 'loopBudget.toolCallsUsed', 0),
+    }),
+    ...(value.maxToolCalls === undefined ? {} : {
+      maxToolCalls: boundedSafeInteger(value.maxToolCalls, 'loopBudget.maxToolCalls', 0),
+    }),
+    ...(value.toolCallReservationKeys === undefined ? {} : {
+      toolCallReservationKeys: boundedStringArray(value.toolCallReservationKeys, 1_024, 'loopBudget.toolCallReservationKeys'),
+    }),
     ...(value.evidenceFingerprints === undefined ? {} : {
       evidenceFingerprints: boundedStringArray(value.evidenceFingerprints, 128, 'loopBudget.evidenceFingerprints'),
     }),

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "workstream": "RCD S2B",
+  "status": "incomplete",
+  "acceptance": {
+    "exitCriteriaMet": false,
+    "blockingItems": [
+      "T04 same-Run continuation after Runner process restart is not implemented",
+      "T08 cross-segment recovery usage de-duplication is not verified",
+      "Full S1B-F authorization/replay regression has not been rerun after the S2B changes"
+    ]
+  },
+  "base": {
+    "s2aCommit": "1593f925",
+    "vrsV2bCommit": "28667f84",
+    "vrsV2bIntegratedInS2bWorktree": true,
+    "s2bBranch": "codex/rcd-s2b-continuity"
+  },
+  "implementation": {
+    "sameRunInProcessSegments": true,
+    "runBudgetFields": [
+      "maxToolCallsPerRun",
+      "maxToolLoopIterationsPerRun"
+    ],
+    "defaultSegmentIterations": 30,
+    "defaultRunLoopIterations": 30,
+    "defaultRunToolCalls": 128,
+    "segmentCheckpointBeforeNextProviderRequest": true,
+    "sameRunRestartRecovery": false,
+    "productionRuntimeBehaviorOutsideHarness": "unchanged except bounded segment continuation"
+  },
+  "scenarios": [
+    {
+      "id": "T01",
+      "status": "passed",
+      "layer": "real Runner and Harness with scripted Provider and temporary fixture tool",
+      "runId": "s2b-t01-single-run",
+      "segmentLimit": 30,
+      "runLoopLimit": 60,
+      "modelCallLimit": 64,
+      "toolCallLimit": 64,
+      "completedOperations": 35,
+      "fixtureFiles": 35,
+      "segmentIndex": 2,
+      "segmentIterationsUsed": 5,
+      "runIterationsUsed": 35,
+      "toolCallsUsed": 35,
+      "providerUsage": "scripted fixture; no paid provider usage"
+    },
+    {
+      "id": "T02",
+      "status": "passed",
+      "layer": "real Runner and Harness with scripted Provider and temporary fixture tool",
+      "runId": "s2b-t02-single-run",
+      "segmentLimit": 30,
+      "runLoopLimit": 60,
+      "toolCallLimit": 32,
+      "completedOperations": 32,
+      "fixtureFiles": 32,
+      "segmentIndex": 2,
+      "toolCallsUsed": 32,
+      "providerUsage": "scripted fixture; no paid provider usage"
+    },
+    {
+      "id": "T03",
+      "status": "partially_verified",
+      "evidence": "Existing two-round no-progress guard tests remain; no restart-across-segment test."
+    },
+    {
+      "id": "T04",
+      "status": "blocked",
+      "reason": "Runner recovery repairs durable projections and completed settlements but does not re-enter the Harness for an unfinished same-Run checkpoint."
+    },
+    {
+      "id": "T05",
+      "status": "partially_verified",
+      "layer": "real Runner and Harness with scripted Provider and temporary fixture tool",
+      "boundaryInterrupt": "passed",
+      "completedBeforeInterrupt": 30,
+      "nextSegmentStarted": false,
+      "revokedAuthorizationCases": "not_run"
+    },
+    {
+      "id": "T08",
+      "status": "partially_verified",
+      "evidence": "Existing per-request usage/idempotency tests passed; cross-segment Runner restart usage was not tested.",
+      "unknownUsage": "unavailable"
+    }
+  ],
+  "verification": {
+    "runnerTargetedT01T02T05": "passed 3 tests",
+    "runnerSegmentsFile": "passed 3 tests",
+    "checkpointWriteFailureTargeted": "passed 1 test",
+    "runnerFullFileBeforeT05Added": "passed 81 tests",
+    "runnerT05Afterward": "passed targeted test",
+    "relatedHarnessRunnerVrsAggregate": "146 passed, 1 stale assertion failed before correction; corrected focused test passed",
+    "typecheck": "passed",
+    "repoCheck": "passed; 35 hard checks and 3 advisories",
+    "workspaceBuild": "passed",
+    "vrsLegacyVerifyAndRunCheckpointTests": "passed 15 tests",
+    "s0fCoreRegression": {
+      "runId": "rcd-s0b-1792134077677",
+      "infrastructure": { "executed": 6, "blocked": 0, "harnessError": 0, "notRun": 0 },
+      "productResults": { "passed": 3, "failed": 0, "partially_completed": 1, "correctly_blocked": 2, "unverified": 0 },
+      "scenarios": {
+        "C02": "passed",
+        "C08": "passed",
+        "R01": "passed",
+        "R02": "correctly_blocked",
+        "L01": "partially_completed",
+        "X01": "correctly_blocked"
+      },
+      "cleanup": "all successful",
+      "artifact": "docs/reference/rcd-s2b-core-regression-2026-10-16.json",
+      "workingTreeFingerprint": "77724a81ff68dd9015cf084571a6ca7e5dae62ac833ff0835181041d73db4b8c"
+    },
+    "gitDiffCheck": "passed after line-ending normalization"
+  },
+  "limitations": [
+    "No real Provider or paid account was used.",
+    "No real Electron acceptance was performed.",
+    "No real OS process-crash acceptance was performed.",
+    "T04 same-Run restart recovery is not implemented; S2B is not complete."
+  ]
+}

@@ -186,6 +186,8 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
 export function continuationLoopBudget(
   previous: LoopBudgetSnapshot,
   maxModelCalls: number,
+  maxToolCalls = previous.maxToolCalls,
+  maxToolLoopIterationsPerRun = previous.maxToolLoopIterationsPerRun,
 ): LoopBudgetSnapshot {
   return {
     attemptsUsed: 0,
@@ -196,6 +198,12 @@ export function continuationLoopBudget(
     maxNoProgressRounds: previous.maxNoProgressRounds,
     toolLoopIterationsUsed: 0,
     maxToolLoopIterations: previous.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS,
+    executionSegmentIndex: 1,
+    segmentIterationsUsed: 0,
+    ...(maxToolLoopIterationsPerRun === undefined ? {} : { maxToolLoopIterationsPerRun }),
+    toolCallsUsed: 0,
+    ...(maxToolCalls === undefined ? {} : { maxToolCalls }),
+    toolCallReservationKeys: [],
     ...(previous.costUsed === undefined && previous.maxCost === undefined
       ? {}
       : { costUsed: 0, ...(previous.maxCost === undefined ? {} : { maxCost: previous.maxCost }) }),

@@ -61,9 +61,12 @@ import { toolRoundFailurePolicy } from './tool-failure-disposition.js';
 import { admittedNamesForToolRequests } from './web-admission.js';
 import {
   decideSpentIterationBudget,
+  beginNextExecutionSegment,
   MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
   MAX_TOOL_LOOP_ITERATIONS,
   reserveToolLoopIteration,
+  reserveToolCalls,
+  toolLoopBudgetStop,
   toolLoopIterationCeiling,
 } from './iteration-budget.js';
 import {
@@ -182,7 +185,9 @@ export async function runToolLoop(
   // not in that stage, so it has to be told what the run was sent back for.
   persistExecutionEvidenceGapControl(ctx, produced, messages);
 
-  for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+  let iteration = 0;
+  for (;;) {
+    iteration += 1;
     const pendingUserMessages = captureRuntimeUserMessages(ctx);
     if (pendingUserMessages.error) {
       return { ok: false, content: '', toolResults, iterations: iteration - 1, error: pendingUserMessages.error };
@@ -193,6 +198,28 @@ export async function runToolLoop(
     ));
 
     if (!reserveToolLoopIteration(ctx)) {
+      const stop = toolLoopBudgetStop(ctx);
+      if (stop === 'segment' && canContinueInNextSegment(ctx, signal, noProgressRounds)) {
+        beginNextExecutionSegment(ctx);
+        persistRuntimeControlMessage(
+          ctx,
+          produced,
+          messages,
+          `Runtime control: execution segment ${(ctx.loopBudget?.executionSegmentIndex ?? 1) - 1} reached its ${toolLoopIterationCeiling(ctx)}-turn limit. Continue the same user task in the next bounded segment. Run-wide model, tool, time, permission, and no-progress limits remain in force.`,
+        );
+        try {
+          await ctx.persistRuntimeCheckpoint?.('execution-segment-started');
+        } catch (error) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration - 1,
+            error: `execution segment checkpoint failed: ${(error as Error).message}`,
+          };
+        }
+        continue;
+      }
       // A spent budget ends the loop, not the turn: one bounded final-answer
       // request is allowed so the model can report the work it already did.
       // Measured on a real acceptance run, the game was written to disk and the
@@ -204,9 +231,10 @@ export async function runToolLoop(
         toolResultCount: toolResults.length,
         finalAnswerAlreadyRequested: budgetFinalAnswerRequested,
         controlMessage: control.iterationBudgetExhausted,
-        // The run's own ceiling, so the failure names the budget that actually
-        // ran out — a restored checkpoint can carry a different one.
-        maxIterations: toolLoopIterationCeiling(ctx),
+        // Name the segment or Run-wide limit that actually stopped execution.
+        maxIterations: stop === 'run'
+          ? (ctx.loopBudget?.maxToolLoopIterationsPerRun ?? ctx.loopBudget?.maxToolLoopIterations ?? MAX_ITERATIONS)
+          : toolLoopIterationCeiling(ctx),
       });
       if (spent.kind === 'fail') {
         return { ok: false, content: '', toolResults, iterations: iteration - 1, error: spent.error };
@@ -482,6 +510,31 @@ export async function runToolLoop(
       const requestAdmittedNames = admittedNamesForToolRequests(ctx, tools, admittedNames, requests,
         opts.dynamicWebAdmission === true && !explicitNetworkDenied);
       const networkPolicy = ctx.toolContext.networkPolicy;
+      const budgetRequestId = modelRequestIdFor(request) ?? `${ctx.runId}:model-call:${ctx.modelCallCount ?? iteration}`;
+      const toolReservation = reserveToolCalls(ctx, budgetRequestId, requests.length);
+      if (!toolReservation.allowed) {
+        forceFinalResponse = true;
+        persistRuntimeControlMessage(
+          ctx,
+          produced,
+          messages,
+          `Runtime control: the Run-wide tool-call budget is exhausted (${ctx.loopBudget?.toolCallsUsed ?? 0}/${ctx.loopBudget?.maxToolCalls ?? 128}); no proposed tool call in this batch was executed.`,
+        );
+      } else if (toolReservation.newlyReserved > 0) {
+        try {
+          // Persist the reservation before any call in the batch can create an
+          // external effect. A crash consumes the reserved quota conservatively.
+          await ctx.persistRuntimeCheckpoint?.('tool-call-budget-reserved');
+        } catch (error) {
+          return {
+            ok: false,
+            content: '',
+            toolResults,
+            iterations: iteration,
+            error: `tool-call budget reservation checkpoint failed: ${(error as Error).message}`,
+          };
+        }
+      }
       // Only a tool the Runtime knows but withheld is refused here. A name that
       // is not registered at all still goes to the execution boundary, which
       // reports it as an unknown tool — the two failures are different facts and
@@ -574,13 +627,24 @@ export async function runToolLoop(
     };
   }
 
-  return {
-    ok: false,
-    content: '',
-    toolResults,
-    iterations: MAX_ITERATIONS,
-    error: `tool loop exceeded ${MAX_ITERATIONS} iterations`,
-  };
+}
+
+function canContinueInNextSegment(
+  ctx: RunContext,
+  signal: AbortSignal | undefined,
+  noProgressRounds: number,
+): boolean {
+  const budget = ctx.loopBudget;
+  if (!budget || signal?.aborted || ctx.runtimeControl?.state === 'paused'
+    || ctx.runtimeControl?.state === 'interrupted' || ctx.clarificationRequest) return false;
+  if (noProgressRounds >= (budget.maxNoProgressRounds ?? MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS)) return false;
+  if ((budget.toolLoopIterationsUsed ?? 0) >= (budget.maxToolLoopIterationsPerRun
+    ?? budget.maxToolLoopIterations ?? MAX_ITERATIONS)) return false;
+  if ((budget.toolCallsUsed ?? 0) >= (budget.maxToolCalls ?? 128)) return false;
+  if (ctx.maxModelCalls !== undefined
+    && ctx.maxModelCalls - (ctx.modelCallCount ?? 0) < 2) return false;
+  if ((ctx.sideEffects ?? []).some((effect) => effect.status === 'unknown' || effect.status === 'in_progress')) return false;
+  return true;
 }
 
 function captureRuntimeUserMessages(ctx: RunContext): {

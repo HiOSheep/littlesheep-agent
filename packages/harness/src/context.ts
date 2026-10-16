@@ -392,6 +392,11 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
       maxElapsedMs: 0,
       noProgressRounds: 0,
       maxNoProgressRounds: 2,
+      executionSegmentIndex: 1,
+      segmentIterationsUsed: 0,
+      toolCallsUsed: 0,
+      maxToolCalls: opts.config.agents.defaults.maxToolCallsPerRun,
+      maxToolLoopIterationsPerRun: opts.config.agents.defaults.maxToolLoopIterationsPerRun,
     },
   });
   // A summary produced before the latest correction/forget must not be injected
