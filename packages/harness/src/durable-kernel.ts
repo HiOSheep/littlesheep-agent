@@ -645,6 +645,7 @@ function applyDurableHarnessEvent(
             : {}),
           ...(providerUsage ? { providerUsage } : {}),
           ...transportTiming,
+          ...(event.payload.usageStatus === 'available' ? { usageStatus: 'available' as const } : {}),
           ...(event.payload.usageStatus === 'unavailable' ? { usageStatus: 'unavailable' as const } : {}),
           ...(event.payload.usageStatus === 'unknown' ? { usageStatus: 'unknown' as const } : {}),
         };
