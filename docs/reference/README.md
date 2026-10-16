@@ -22,6 +22,9 @@
 - [RCD S0 基线报告](rcd-s0-baseline-2026-10-16.md)：24 个场景目录、证据盘点与离线契约基线。
 - [RCD S0B 可执行基线](rcd-s0b-executable-baseline-2026-10-16.json)：六个代表场景的运行账本和未运行场景清单；入口见前述基线报告。
 - [RCD S0-F 核心基线](rcd-s0f-core-baseline-2026-10-16.json)：C02、C08、R01、R02、L01、X01 六项核心机制的冻结运行账本；完整 24 场景基线未完成。
+- [RCD S1B Shell 重执行与恢复复核](rcd-s1b-shell-replay-2026-10-16.md)：Shell 新调用与 Runner 恢复重放的 B01–B05 实测、策略限制和回归结果。
+- [RCD S1B Shell 复核机器账本](rcd-s1b-shell-replay-2026-10-16.json)：B01–B05 的执行基础设施状态、结果和证据摘要。
+- [RCD S1B 六项核心回归](rcd-s1b-core-regression-2026-10-16.json)：S1B 前后 S0-F 核心集合的回归账本。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。
