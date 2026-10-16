@@ -16,6 +16,7 @@ import type {
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { inspectWorkspaceFilePath } from './workspace-file-guard.js';
 import { markNativeWorkspaceFileInvocation } from './native-workspace-file-invocation.js';
+import { isRuntimeFileContentCheckTool } from './builtin/verify-file-content.js';
 import { attachShellInvocation, authorizedShellInvocationId } from './shell-authorization.js';
 import { prepareShellToolBatch } from './shell-tool-batch.js';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
@@ -689,9 +690,10 @@ export class ToolExecutionService {
         },
       };
       if (invocation.shellGrant) attachShellInvocation(invocationContext, registration.tool, invocation.shellGrant);
-      if (registration.source === 'builtin'
-        && (toolName === 'read' || toolName === 'write' || toolName === 'edit')) {
-        markNativeWorkspaceFileInvocation(invocationContext, toolName);
+      if ((registration.source === 'builtin'
+        && (toolName === 'read' || toolName === 'write' || toolName === 'edit'))
+        || isRuntimeFileContentCheckTool(registration.tool)) {
+        markNativeWorkspaceFileInvocation(invocationContext, toolName as 'read' | 'write' | 'edit' | 'runtime_check_file_content');
       }
       const result = await invokeWithTimeout(
         (toolSignal) => {

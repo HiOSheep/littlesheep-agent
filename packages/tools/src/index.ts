@@ -61,6 +61,12 @@ export {
 } from './tool-execution-result.js';
 
 export { readTool } from './builtin/read.js';
+export {
+  createExplicitFileContentCheckTool,
+  EXPLICIT_FILE_CHECK_TOOL_NAME,
+  type ExplicitFileContentCheckRequest,
+  type ExplicitFileContentCheckReceipt,
+} from './builtin/verify-file-content.js';
 export { writeTool } from './builtin/write.js';
 export { editTool } from './builtin/edit.js';
 export {

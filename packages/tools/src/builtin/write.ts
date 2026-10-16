@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, isAbsolute } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type {
   AgentTool,
@@ -11,6 +11,7 @@ import type {
   DurableEffectProjection,
   EffectReconcileContext,
   ReconciliationValue,
+  ToolContext,
 } from '@littlesheep/types';
 import { authorizeToolAccess } from '@littlesheep/safety';
 import {
@@ -134,7 +135,10 @@ export const writeTool: AgentTool = {
           return observationFailure(committed);
         }
         ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
-        return { output: `Wrote ${content.length} chars to ${targetPath}` };
+        return {
+          output: `Wrote ${content.length} chars to ${targetPath}`,
+          meta: { workspaceFileMutation: { resourceRef: workspaceResourceRef(ctx, targetPath), action: 'modified' } },
+        };
       }
       // A new file needs no observation: there is no version to overwrite. The
       // exclusive create flag is what makes it safe, so a racing creator loses
@@ -160,7 +164,10 @@ export const writeTool: AgentTool = {
         return { ok: false, error: 'Workspace path changed before creating the file.' };
       }
       ctx.log?.('info', `wrote ${targetPath} (${content.length} chars)`);
-      return { output: `Wrote ${content.length} chars to ${targetPath}` };
+      return {
+        output: `Wrote ${content.length} chars to ${targetPath}`,
+        meta: { workspaceFileMutation: { resourceRef: workspaceResourceRef(ctx, targetPath), action: 'created' } },
+      };
     });
     return pinned.ok ? pinned.value : {
       ok: false, error: `Workspace directory protection unavailable: ${pinned.reason}`,
@@ -171,6 +178,14 @@ export const writeTool: AgentTool = {
 
 function contentDigest(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+function workspaceResourceRef(ctx: ToolContext, targetPath: string): string | undefined {
+  const root = resolve(ctx.workspaceRoot ?? ctx.cwd);
+  const target = resolve(targetPath);
+  const path = relative(root, target);
+  if (!path || path === '.' || path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path)) return undefined;
+  return `workspace:${path.replaceAll('\\', '/').slice(0, 180)}`;
 }
 
 interface WriteReconciliationKey {
