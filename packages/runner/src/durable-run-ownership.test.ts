@@ -44,6 +44,33 @@ describe('DurableRunOwnership', () => {
     await expect(ownership.release()).rejects.toThrow('effect store unavailable');
     await expect(stores.runStore.read('session-a', 'run-a')).resolves.toMatchObject({ status: 'released' });
   });
+
+  it('blocks a stale Run owner from acquiring a new effect after another Runner takes over', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ls-durable-run-ownership-fence-'));
+    roots.push(root);
+    let nowMs = Date.parse('2026-09-10T00:00:00.000Z');
+    const now = () => new Date(nowMs);
+    const runStore = new DurableRunLeaseStore({ rootDir: join(root, 'runs'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const effectStore = new DurableEffectLeaseStore({ rootDir: join(root, 'effects'), leaseMs: 1_000, now, isOwnerProcessAlive: () => false });
+    const lost = vi.fn();
+    const stale = await DurableRunOwnership.acquire({
+      runStore,
+      effectStore,
+      sessionId: 'session-a',
+      runId: 'run-a',
+      onOwnershipLost: lost,
+    });
+
+    nowMs += 1_001;
+    const replacement = await runStore.acquire('session-a', 'run-a');
+    expect(replacement.kind).toBe('reclaimed');
+    await expect(stale.effectLeases.acquire('effect-after-takeover')).rejects.toThrow(/ownership changed/u);
+    expect(lost).toHaveBeenCalledTimes(1);
+    await expect(effectStore.read({
+      sessionId: 'session-a', runId: 'run-a', effectId: 'effect-after-takeover',
+    })).resolves.toBeNull();
+    await stale.release().catch(() => undefined);
+  });
 });
 
 async function newStores(): Promise<{ runStore: DurableRunLeaseStore; effectStore: DurableEffectLeaseStore }> {

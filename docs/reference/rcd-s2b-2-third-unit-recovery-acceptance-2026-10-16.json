@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S2B-2-THIRD-UNIT",
+  "generatedAt": "2026-10-16T17:55:45+08:00",
+  "source": {
+    "branch": "codex/rcd-s2b-continuity",
+    "baseCommit": "c717c740d916a878fa99ffd443f88219c54aa9bb",
+    "predecessorCommit": "3177624b",
+    "fingerprint": {
+      "algorithm": "sha256",
+      "scope": "UTF-8 path, NUL, file bytes, NUL for sorted source and test paths listed below; excludes this ledger and report",
+      "sha256": "2b410a0d170562d052585f896e5df99dcdb0bf3ba37b7728e12b07005ac035a3",
+      "paths": [
+        "packages/harness/src/durable-kernel.ts",
+        "packages/runner/README.md",
+        "packages/runner/src/durable-effect-lease-store.test.ts",
+        "packages/runner/src/durable-event-store.test.ts",
+        "packages/runner/src/durable-run-lease-store.test.ts",
+        "packages/runner/src/durable-run-lease-store.ts",
+        "packages/runner/src/durable-run-ownership.test.ts",
+        "packages/runner/src/durable-run-recovery.test.ts",
+        "packages/runner/src/durable-runner-final-settlement-crash-worker.test.ts",
+        "packages/runner/src/durable-runner-final-settlement-crash.test.ts",
+        "packages/runner/src/durable-runner-provider-request-crash-worker.test.ts",
+        "packages/runner/src/durable-runner-provider-request-crash.test.ts",
+        "packages/runner/src/durable-runner-segment-recovery-contender-worker.test.ts",
+        "packages/runner/src/durable-runner-segment-recovery-policy.test.ts",
+        "packages/runner/src/durable-runner-segment-recovery.test.ts"
+      ]
+    }
+  },
+  "commits": [
+    { "unit": "A", "sha": "14e0e574", "subject": "test(runner): guard cross-process run recovery ownership" },
+    { "unit": "B", "sha": "a5407166", "subject": "fix(harness): preserve usage across provider recovery" },
+    { "unit": "C", "subject": "test(rcd): record S2B-2 cross-process recovery acceptance", "contains": "this report and machine ledger" }
+  ],
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "v26.4.0",
+    "pnpm": "11.9.0",
+    "provider": "scripted fixture or controlled local HTTP",
+    "paidProvider": false,
+    "publicNetwork": false,
+    "localHttp": "127.0.0.1 only",
+    "realElectronAuthorizationRecovery": "not_run"
+  },
+  "outcome": {
+    "thirdUnit": "core_cross_process_recovery_evidence_established",
+    "s2bOverall": "not_complete",
+    "reason": "Recovery lacks a current Main-owned Permission V2 policy injection contract, and a standalone durable Provider response event does not preserve response content for continuation. Both remain fail-closed."
+  },
+  "cases": [
+    {
+      "id": "T04-A",
+      "infrastructureStatus": "executed",
+      "productResult": "passed",
+      "executionLevel": "real_runner_harness_child_process_sigkill",
+      "evidence": {
+        "runIdentityPreserved": true,
+        "completedOperations": 35,
+        "resultFiles": 35,
+        "uniqueEffects": 35,
+        "duplicateEffects": 0,
+        "originalIngressCount": 1,
+        "finalCompletionCount": 1
+      },
+      "testFiles": ["packages/runner/src/durable-runner-segment-recovery.test.ts", "packages/runner/src/durable-runner-segment-recovery-worker.test.ts"]
+    },
+    {
+      "id": "T04-B",
+      "infrastructureStatus": "executed",
+      "productResult": "passed",
+      "executionLevel": "two_real_runner_child_processes_and_shared_durable_store",
+      "evidence": {
+        "contenders": 2,
+        "providersStartedByWinner": 1,
+        "providersStartedByLoser": 0,
+        "winnerCompletedRemainingOperations": 5,
+        "finalResultFiles": 35,
+        "duplicateEffects": 0,
+        "oldOwnerTakeoverRule": "expired lease cannot be reclaimed while the recorded local owner process remains alive"
+      },
+      "testFiles": ["packages/runner/src/durable-runner-segment-recovery.test.ts", "packages/runner/src/durable-runner-segment-recovery-contender-worker.test.ts", "packages/runner/src/durable-run-lease-store.test.ts", "packages/runner/src/durable-run-lease-recovery.test.ts"]
+    },
+    {
+      "id": "T04-C",
+      "infrastructureStatus": "executed",
+      "productResult": "partially_completed",
+      "executionLevel": "controlled_loopback_http_and_real_runner_child_process_sigkill",
+      "subcases": [
+        {
+          "id": "request_not_sent",
+          "result": "correctly_blocked",
+          "httpRequests": 0,
+          "providerReach": "unknown",
+          "usage": "unknown",
+          "automaticRetry": false,
+          "reason": "test instrumentation knows the request was not sent, but the durable record cannot prove that after process loss"
+        },
+        {
+          "id": "request_sent_response_missing",
+          "result": "correctly_blocked",
+          "httpRequests": 1,
+          "providerReach": "unknown",
+          "usage": "unknown",
+          "automaticRetry": false
+        },
+        {
+          "id": "response_received_before_runtime_receipt",
+          "result": "correctly_blocked",
+          "httpRequests": 1,
+          "providerReach": "unknown",
+          "usage": "unknown",
+          "automaticRetry": false
+        },
+        {
+          "id": "response_and_usage_durable_before_continuation",
+          "result": "partially_completed",
+          "providerUsage": { "promptTokens": 20, "completionTokens": 5, "totalTokens": 25 },
+          "usageStatusPreserved": "available",
+          "duplicateReceiptCount": 0,
+          "duplicateModelRequestCount": 0,
+          "responseBodyReusableWithoutCheckpoint": false,
+          "reason": "durable event stores status and usage metadata, not the response body; recovery blocks if the checkpoint did not retain the response context"
+        }
+      ],
+      "testFiles": ["packages/runner/src/durable-runner-provider-request-crash.test.ts", "packages/runner/src/durable-runner-provider-request-crash-worker.test.ts", "packages/runner/src/durable-event-store.test.ts"]
+    },
+    {
+      "id": "T04-D",
+      "infrastructureStatus": "executed",
+      "productResult": "passed",
+      "executionLevel": "real_file_effect_process_sigkill_plus_controlled_settlement_fault_tests",
+      "evidence": {
+        "fileWriteCompletedBeforeCrash": true,
+        "effectMarkedUnknown": true,
+        "effectReplayed": false,
+        "newCallIdBypassesUnknown": false,
+        "settledEffectReplay": false,
+        "opaqueShellExactlyOnceClaim": false
+      },
+      "testFiles": ["packages/runner/src/durable-runner-effect-recovery.test.ts", "packages/runner/src/durable-runner-effect-crash-worker.test.ts", "test/rcd-s1b-shell-replay.test.ts"]
+    },
+    {
+      "id": "T04-E",
+      "infrastructureStatus": "executed",
+      "productResult": "passed",
+      "executionLevel": "real_runner_child_process_sigkill_after_durable_completion_before_caller_delivery",
+      "evidence": {
+        "finalReplySettlements": 1,
+        "runCompletedEvents": 1,
+        "recoveredReplyMatches": true,
+        "recoveryModelCalls": 0,
+        "physicalClientDeliveryExactlyOnce": "not_claimed"
+      },
+      "testFiles": ["packages/runner/src/durable-runner-final-settlement-crash.test.ts", "packages/runner/src/durable-runner-final-settlement-crash-worker.test.ts", "packages/runner/src/runner.test.ts"]
+    },
+    {
+      "id": "T05-R",
+      "infrastructureStatus": "executed",
+      "productResult": "partially_completed",
+      "evidence": {
+        "cancelledPausedInterruptedRunsAutoResumed": false,
+        "queuedRuntimeMessagesAutoConsumed": false,
+        "ingressDuplicatedAfterT04A": false,
+        "shellOneShotAndDenialRegression": "passed",
+        "networkDenyR02Regression": "passed",
+        "permissionV2SnapshotAvailableToRecovery": false,
+        "webMemoryRevocationThroughRealElectronRecovery": "not_run"
+      },
+      "testFiles": ["packages/runner/src/durable-runner-segment-recovery-policy.test.ts", "packages/runner/src/runner-continuation.test.ts", "packages/app/src/main/shell-authorization.test.ts", "packages/app/src/main/shell-repeat-authorization-execution.test.ts"]
+    },
+    {
+      "id": "T08-R",
+      "infrastructureStatus": "executed",
+      "productResult": "partially_completed",
+      "evidence": {
+        "duplicatePhysicalReceiptDeduplicated": true,
+        "availableUsageSurvivesStoreReopen": true,
+        "unknownUsageTreatedAsZero": false,
+        "realProviderUsage": "unavailable",
+        "realProviderCost": "unavailable"
+      },
+      "testFiles": ["packages/runner/src/durable-event-store.test.ts", "packages/runner/src/provider-usage-live-recording.test.ts", "packages/harness/src/durable-kernel.test.ts"]
+    },
+    {
+      "id": "T03-R",
+      "infrastructureStatus": "executed",
+      "productResult": "partially_completed",
+      "evidence": {
+        "noProgressAtLimitEligibleForAutomaticRecovery": false,
+        "harnessRestoresNoProgressLatch": true,
+        "fullRepeatedNoProgressOsRestartTest": "not_run"
+      },
+      "testFiles": ["packages/runner/src/durable-runner-segment-recovery-policy.test.ts", "packages/harness/src/stages/execute.test.ts"]
+    }
+  ],
+  "regressions": {
+    "s0fCore": [
+      { "scenarioId": "C02", "infrastructureStatus": "executed", "productResult": "passed" },
+      { "scenarioId": "C08", "infrastructureStatus": "executed", "productResult": "passed" },
+      { "scenarioId": "R01", "infrastructureStatus": "executed", "productResult": "passed" },
+      { "scenarioId": "R02", "infrastructureStatus": "executed", "productResult": "correctly_blocked" },
+      { "scenarioId": "L01", "infrastructureStatus": "executed", "productResult": "partially_completed" },
+      { "scenarioId": "X01", "infrastructureStatus": "executed", "productResult": "correctly_blocked", "faultType": "controlled_exception_injection_not_os_crash" }
+    ],
+    "s1bF": { "executed": 11, "passedTests": 82, "failedTests": 0, "B01": "correctly_blocked", "B02": "correctly_blocked", "B03": "passed", "B04": "passed", "B05": "passed", "F02_F03_F05_F06": "passed" },
+    "s1cRetrievalAndPermission": { "executed": 8, "passedTests": 107, "failedTests": 0, "publicNetwork": false },
+    "vrsAndRunner": {
+      "evidenceSettlementRecoverCheckpoint": { "executed": 5, "passedTests": 67, "failedTests": 0 },
+      "durableKernelRunnerRecoveryUsage": { "executed": 11, "passedTests": 112, "failedTests": 0 },
+      "continuationCheckpointExecute": { "executed": 3, "passedTests": 82, "failedTests": 0 }
+    }
+  },
+  "validation": [
+    { "command": "pnpm run typecheck", "status": "passed" },
+    { "command": "pnpm --filter @littlesheep/runner --filter @littlesheep/harness run build", "status": "passed" },
+    { "command": "pnpm run check:repo", "status": "passed", "passed": 35, "failed": 0, "advisories": 3 },
+    { "command": "node scripts/rcd-s0.mjs validate", "status": "passed", "scenarioCount": 24 },
+    { "command": "git diff --check", "status": "passed" }
+  ],
+  "limitations": [
+    "RecoverDurableRun does not accept or reconstruct a current Main-owned Permission V2 snapshot; real Electron authorization renewal is a release gate.",
+    "Provider response bodies are not present in model_response_received durable events; only checkpointed context can resume the response safely.",
+    "A request known by test instrumentation to be unsent is still unknown to durable recovery and remains blocked.",
+    "Runner process liveness does not terminate external child processes; their in-flight effects remain unknown until trusted reconciliation.",
+    "No real paid Provider, public network, real Electron authorization UI, or host Shell OS sandbox was exercised.",
+    "The complete T03-R repeated-no-progress behavior across a real OS restart remains unverified."
+  ],
+  "delivery": {
+    "committed": true,
+    "pushed": false,
+    "merged": false,
+    "nextPhaseStarted": false
+  }
+}

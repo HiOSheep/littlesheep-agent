@@ -157,6 +157,11 @@ export function createDurableRunRecorder(options: DurableRunAcceptedOptions): Du
   return recorder;
 }
 
+/** Initialize the recorder for a leased existing Run without replaying ingress. */
+export function createDurableRunRecorderForRecovery(options: DurableRunAcceptedOptions): DurableRunRecorder {
+  return new DurableRunRecorder(options);
+}
+
 /** Queue the redacted user-input receipt without persisting user text. */
 export function recordDurableUserInput(
   recorder: DurableRunRecorder,

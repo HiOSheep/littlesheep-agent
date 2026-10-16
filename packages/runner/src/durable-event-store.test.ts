@@ -82,6 +82,72 @@ describe('DurableEventStore', () => {
     expect((await store.read('session-a', 'run-a')).length).toBe(1);
   });
 
+  it('reuses a durable Provider response and Usage receipt after restart without creating another attempt', async () => {
+    const root = await newRoot();
+    const sessionId = 'session-provider-receipt-recovery';
+    const runId = 'run-provider-receipt-recovery';
+    const firstStore = new DurableEventStore({ rootDir: root });
+    const firstKernel = new DurableHarnessKernel({ eventStore: firstStore });
+    const append = (eventId: string, type: Parameters<DurableHarnessKernel['append']>[0]['type'], payload: Record<string, unknown>) => firstKernel.append({
+      eventId,
+      idempotencyKey: eventId,
+      sessionId,
+      runId,
+      type,
+      source: 'runtime',
+      payload,
+    } as Parameters<DurableHarnessKernel['append']>[0]);
+    await append('accepted', 'run_accepted', {});
+    await append('request-started', 'model_request_started', {
+      requestId: 'provider-request-1', provider: 'controlled-http', model: 'test/model',
+      providerReachStatus: 'reached', transportStatus: 'streaming',
+    });
+    const receipt = {
+      requestId: 'provider-request-1', attempt: 1, completed: true,
+      provider: 'controlled-http', model: 'test/model', usageStatus: 'available',
+      promptTokens: 20, completionTokens: 5, totalTokens: 25,
+      cacheStatus: 'unavailable', reconciliation: 'unavailable',
+    };
+    await append('provider-receipt-1', 'provider_usage_recorded', receipt);
+    await append('response-received', 'model_response_received', {
+      requestId: 'provider-request-1', providerReachStatus: 'reached', usageStatus: 'available',
+      promptTokens: 20, completionTokens: 5, totalTokens: 25,
+      cacheStatus: 'unavailable', reconciliation: 'unavailable',
+    });
+
+    const reopenedStore = new DurableEventStore({ rootDir: root });
+    const reopenedKernel = new DurableHarnessKernel({ eventStore: reopenedStore });
+    const storedReceipt = (await reopenedStore.read(sessionId, runId))
+      .find((event) => event.type === 'provider_usage_recorded');
+    expect(storedReceipt).toBeDefined();
+    expect((await reopenedStore.append({
+      occurredAt: storedReceipt!.occurredAt,
+      sessionId,
+      runId,
+      type: 'provider_usage_recorded',
+      source: 'runtime',
+      eventId: 'provider-receipt-1',
+      idempotencyKey: 'provider-receipt-1',
+      payload: receipt,
+    })).kind).toBe('duplicate');
+    const recovered = await reopenedKernel.recoverRun(sessionId, runId);
+    expect(recovered.actions).toContainEqual(expect.objectContaining({
+      kind: 'model_marked_received',
+      requestId: 'provider-request-1',
+      reason: 'model_response_not_settled',
+    }));
+    expect(recovered.projection.modelRequests).toMatchObject([{
+      requestId: 'provider-request-1', status: 'received', providerReachStatus: 'reached', usageStatus: 'available',
+      providerUsage: { promptTokens: 20, completionTokens: 5, totalTokens: 25 },
+    }]);
+    expect(recovered.projection.status).toBe('waiting_user');
+    expect((await reopenedKernel.recoverRun(sessionId, runId)).actions).toEqual([]);
+    const events = await reopenedStore.read(sessionId, runId);
+    expect(events.filter((event) => event.type === 'provider_usage_recorded')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'model_request_started')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'model_request_settled')).toHaveLength(1);
+  });
+
   it('ignores in-flight atomic temp files but still fails closed on unknown files', async () => {
     const root = await newRoot();
     const store = new DurableEventStore({ rootDir: root });

@@ -15,7 +15,7 @@
 
 ## 强制拆分队列
 
-下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 147 个生产文件超过 300 行，其中 25 个超过 600 行并进入受控超限清单。
+下表行数是当前工作树的物理行数（本次逐文件实测），不是历史完成值。生产 `.ts/.tsx` 文件超过 600 行必须进入本表；已登记不等于要求立即做无收益拆分。仓库卫生扫描当前报告 166 个生产文件超过 300 行，其中 26 个超过 600 行并进入受控超限清单。
 
 | 当前文件 | 当前行数 | 当前责任 | 目标边界 | 所有权 |
 | --- | ---: | --- | --- | --- |
@@ -60,7 +60,6 @@
 | 当前文件 | 当前行数 | 主要责任 | 处理方向 | 所有权 |
 | --- | ---: | --- | --- | --- |
 | `packages/app/src/main/local-app-api/run-support.ts` | 359 | 普通 run 与 checkpoint 共用的 session 权限封顶、workspace 事实解析、artifact 与资源收尾 | 保持 Local App API 共享适配边界；权限决策仍由 `run-policy.ts` 持有，若继续增长再拆 session permission resolver 与 workspace facts | C |
-| `packages/app/src/main/index.ts` | 599 | Electron 启动和组合：数据前置、UI 索引与监听、Runner 构建与就绪发布；窗口、托盘、关闭策略、活动任务聚合、Memory v3、桌面验收采样、内置浏览器宿主、启动文件模板、Runner 构建/重建/退役（`runner-lifecycle.ts`）与 run 启动恢复（`run-recovery.ts`）均已下沉 | 入口只保留装配顺序与阶段标记；已从强制拆分队列降到软上限（Runner 构建下沉后实测 593 行，启动重试的"配置阶段之前失败就重跑 bootstrap"与成功后交接窗口 +6 行），下一次改动若再吸收职责应先拆 Local App API 选项对象 | C |
 | `packages/app/src/main/run-recovery.ts` | 298 | 启动恢复的编排：活跃 run、过期租约、中断续跑与已完成 run 对账，全部在 Runner 发布之后运行；`waitIfNeeded` 只让带 sessionId 的请求等待，`isRunActive` 让恢复放过本进程正在跑的续跑 | 保持"只编排、不决策"的边界；若继续增长，把恢复的发现（lease/inbox/event 三源合并）与"哪些路径需要等待"的策略分开 | C |
 | `packages/app/src/main/runner-lifecycle.ts` | 244 | Runner 的构建队列（一次只构建一个）、发布、plugin host 交接，以及被替换 Runner 的延迟退役；重建请求先看已发布 Runner 是否已描述当前配置 | 保持"构建与退役"单一职责；若继续增长，把退役轮询（`inspectRetired`/`releaseIdleRetiredRunners`）拆出 | C |
 | `packages/runner/src/durable-inbox-cache.ts` | 299 | inbox 的内存缓存与启动分流策略：`readInboxCommands` 决定哪些记录在启动时解析、哪些只记文件名延后读取，以及缓存在什么条件下可以整份复用 | 保持"只读与缓存、不写命令"的边界（写入仍归 store）；若继续增长，把启动扫描（`scanActive` + `loadDeferred`）与缓存校验分开 | E |
@@ -95,7 +94,6 @@
 | `packages/app/src/main/attachment-cache.ts` | 557 | 附件索引、配额、清理和校验 | 分离 index、quota、cleanup、validation | C |
 | `packages/memory-tree/src/memory-repository/v3-backend.ts` | 500 | v3 后端组合、检索 facade、management adapter 和写后维护协调 | 保持组合层；若继续增长，拆出生命周期与 maintenance adapter | D |
 | `packages/app/src/shared/memory-control-contracts.ts` | 486 | 记忆文件、资源、投影、迁移和治理控制面公共契约 | 按普通文件视图与内部治理契约分组，保持 shared 无运行逻辑 | C |
-| `packages/app/src/main/local-app-api/run-routes.ts` | 595 | run 流式入口、durable inbox/run lease 启动发现与到期恢复、运行时事件 ingress、审批 broker 和收尾路由 | HTTP 精确授权的查看/撤销位于 `shell-repeat-authorization-routes.ts`；保持 run 与 checkpoint 执行边界 | C |
 | `packages/app/src/main/local-app-api/terminal-process.ts` | 365 |
 | `packages/app/src/main/workspace-shell-discovery.ts` | 379 | 本机 Shell 探测（Windows PowerShell / PowerShell 7 / Git Bash / cmd / WSL 发行版）、可用性与配置提示、WSL 路径映射 | 保持探测与映射边界；启动参数按 Shell 分支留在 `terminal-process.ts` | C | PTY、ConPTY 与 spawn fallback 的终端进程适配、关闭状态和输入错误收敛 | 保持进程适配器边界；继续将平台差异和 write-after-close 保护留在此层 | C |
 | `packages/app/src/main/provider-calibration.ts` | 318 | 运行中 Provider 的 chat、continuity、tool、abort 有界校准 | 保持纯校准编排与脱敏结果；Provider 客户端和凭证仍由 Runner/Main 负责，不继续吸收通用运行逻辑 | C |
@@ -283,3 +281,5 @@
 | `packages/session/src/manager.ts` | E / Runtime | C08C 压缩事务在前驱 CAS、候选回执与 activation 投影之间共享持久化不变量；先冻结崩溃/并发恢复特征测试，再把 compaction transaction 与 activation adapter 移出 facade | 660 | 同上 |
 | `packages/memory-tree/src/memory-repository/v3-node-store.ts` | D / Memory | HC-12 撤销屏障把 tombstone/superseded 来源复核放进索引写入路径；RS-06 在此接入反自动合并守卫（+19 行）；先冻结撤销、纠正、合并与重放特征测试，再拆 revocation query 与 write coordinator | 650 | 同上 |
 | `packages/app/src/main/desktop-shell.ts` | C / App Main | 冷启动专项的隔离验收需要窗口状态与文档切换（启动页、失败页、最大化/还原、渲染器是否已接管），这些都必须触达私有窗口状态；先把窗口状态 codec 与验收快照保持在既有下沉模块，再把这两组辅助方法移出 | 620 | 同上 |
+| `packages/app/src/main/index.ts` | C / App Main | S2B-F 在既有 RunnerLifecycle 组合入口接入 Main-owned 恢复授权解析器，导致装配入口从 599 增至 601 行；解析器实现独立放在 `run-recovery-authorization.ts`，后续应随 RunnerLifecycle 选项对象提取一并下沉 | 610 | 同上 |
+| `packages/app/src/main/local-app-api/run-routes.ts` | C / App Main | S2B-G 修复首个 Renderer 流式 Run 的稳定 request key 与新建 Session 身份不一致，并在同一 Main 路由中绑定当前 Main Memory grant；保留路由所有权顺序，后续将 Session/授权装配移入独立的 run-bootstrap helper | 620 | 同上 |

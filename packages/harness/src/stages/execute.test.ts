@@ -1195,17 +1195,12 @@ describe('executeStage', () => {
 
     const result = await stage(ctx);
 
-    expect(result.ok).toBe(true);
+    expect(result).toMatchObject({ next: 'recover', ok: false });
     expect(tool.calls).toHaveLength(0);
-    expect(ctx.toolResults?.[0]?.error).toContain('until its checkpoint is durable');
-    expect(ctx.sideEffects?.[0]?.status).toBe('failed');
-    expect(settlements).toEqual([expect.objectContaining({ status: 'failed' })]);
-    expect(ctx.toolInvocations?.[0]).toMatchObject({
-      toolName: 'mutate',
-      toolSource: 'plugin:test-mutation',
-      status: 'failed',
-      errorKind: 'checkpoint_before_effect',
-    });
+    expect(result.error).toContain('does not have exactly one invocation record');
+    expect(ctx.sideEffects ?? []).toEqual([]);
+    expect(settlements).toEqual([]);
+    expect(ctx.toolInvocations ?? []).toEqual([]);
   });
 
   it('settles a determinate tool failure as failed so the run can continue', async () => {
@@ -1427,14 +1422,14 @@ describe('executeStage', () => {
     let checkpointCalls = 0;
     ctx.persistRuntimeCheckpoint = vi.fn(async () => {
       checkpointCalls += 1;
-      if (checkpointCalls === 2) throw new Error('checkpoint store unavailable');
+      if (checkpointCalls === 3) throw new Error('checkpoint store unavailable');
       return `checkpoint-${checkpointCalls}`;
     });
 
     await stage(ctx);
 
     expect(tool.calls).toHaveLength(1);
-    expect(checkpointCalls).toBe(2);
+    expect(checkpointCalls).toBe(3);
     expect(durableEvents.filter((type) => type === 'effect_settled')).toHaveLength(1);
     expect(ctx.sideEffects?.[0]).toMatchObject({ status: 'succeeded', toolName: 'mutate' });
     expect(ctx.toolResults?.[0]).toMatchObject({

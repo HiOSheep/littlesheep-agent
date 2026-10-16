@@ -36,7 +36,17 @@ export class DurableRunOwnership {
     private readonly runLease: DurableRunLeaseHeartbeat,
     private readonly effectCoordinator: DurableEffectLeaseCoordinator,
   ) {
-    this.effectLeases = effectCoordinator;
+    this.effectLeases = {
+      acquire: async (effectId) => {
+        await this.runLease.assertOwned();
+        return this.effectCoordinator.acquire(effectId);
+      },
+      confirm: async (effectId) => {
+        await this.runLease.assertOwned();
+        return this.effectCoordinator.confirm(effectId);
+      },
+      release: (effectId) => this.effectCoordinator.release(effectId),
+    };
   }
 
   async release(): Promise<void> {

@@ -208,7 +208,10 @@ export interface RunContext {
   /** Redacted structural evidence for the authoritative conversation-turn decision. */
   conversationContinuation?: import('./conversation-continuation.js').ConversationContinuationEvidence;
   /** Persist a bounded runtime checkpoint before/after an effectful tool call. */
-  persistRuntimeCheckpoint?: (reason: string) => Promise<string | undefined>;
+  persistRuntimeCheckpoint?: (reason: string, modelContextFingerprint?: string) => Promise<string | undefined>;
+  /** Durable audit sequence offsets restored from the existing Run projection. */
+  durableTransitionAttemptOffset?: number;
+  modelRequestIndexOffset?: number;
   /** Deterministic control state applied by the Harness at a safe boundary. */
   runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
   /** Versioned run-local evidence adopted, excluded or conflicted by Memory v3. */

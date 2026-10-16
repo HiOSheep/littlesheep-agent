@@ -28,7 +28,7 @@ import type {
   DurableRunRecoveryResult,
 } from '@littlesheep/types';
 import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript } from '@littlesheep/types';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { parseModelRef, type Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
@@ -60,6 +60,7 @@ import type { RunGitCheckpoint } from '@littlesheep/snapshot';
 import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, continuationLoopBudget } from './run-checkpoint.js';
+import { stableSerialize } from './run-checkpoint-codec.js';
 import {
   buildConversationContinuationEvidence,
   continuationFailureEvidence,
@@ -96,11 +97,14 @@ import {
 import {
   DurableRunRecorder,
   createDurableRunRecorder,
+  createDurableRunRecorderForRecovery,
   recordDurableRunOutcome,
   recordDurableUserInput,
   durableTextDigest,
+  type DurableRunAcceptedOptions,
 } from './durable-run-recorder.js';
 import { DurableRunOwnership } from './durable-run-ownership.js';
+import { isEligibleSameRunSegmentRecovery, isSafeSegmentBoundary } from './durable-runner-segment-recovery-policy.js';
 import { createDurableRunRecovery } from './durable-run-recovery.js';
 import { createDurableEffectOutcomeQuery } from './durable-effect-query.js';
 import { readDurableHarnessMode } from './durable-run-mode.js';
@@ -127,6 +131,16 @@ interface ContinuationInput {
   persistInbound: boolean;
   resumeStage: StageName;
   restoreState?: boolean;
+}
+
+interface SameRunRecoveryInput {
+  ownership: DurableRunOwnership;
+  abortController: AbortController;
+  executionContextFingerprint: string;
+  executionContextComponents: NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
+  transitionAttemptOffset: number;
+  modelRequestIndexOffset: number;
+  elapsedMs: number;
 }
 
 interface ConversationTurnCallbacks {
@@ -186,7 +200,25 @@ export interface CreateRunnerOptions {
     identity: { sessionId: string; runId: string },
   ) => Promise<DurableEffectOutcomeQueryResult>;
   authorizeDurableEffectRead?: (absolutePath: string, identity: { sessionId: string; runId: string }) => Promise<boolean>;
+  /** Main-owned current authorization for restoring one safe durable segment. */
+  resolveRecoveryAuthorization?: (input: {
+    sessionId: SessionId;
+    runId: string;
+    checkpoint: RunCheckpoint;
+    signal: AbortSignal;
+    protectedWriteRoots: readonly string[];
+  }) => Promise<DurableRecoveryAuthorization | undefined>;
   log?: LogFn;
+}
+
+/** Fresh Host facts required to rebuild a same-Run execution context. */
+export interface DurableRecoveryAuthorization {
+  permissionPolicyId: PermissionPolicyId;
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId;
+  permissionPolicyV2?: import('@littlesheep/types').PermissionPolicyV2Snapshot;
+  approve?: ToolContext['approve'];
+  memoryAccessGrant?: RunInput['memoryAccessGrant'];
+  workspaceContext?: RunInput['workspaceContext'];
 }
 
 export interface RunInput {
@@ -391,6 +423,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     queryEffectOutcome: durableEffectOutcomeQuery,
   });
   const recoverDurableRun = async (sessionId: SessionId, runId: string): Promise<DurableRunRecoveryResult> => {
+    const resumed = await recoverSameRunSegment(sessionId, runId);
+    if (resumed) return resumed;
     const recovery = await recoverDurableRunProjection(sessionId, runId);
     if (recovery.projection.status !== 'completed' || recovery.projection.finalReply.state !== 'settled') {
       return recovery;
@@ -425,6 +459,153 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     }
     return recovery;
   };
+
+  async function recoverSameRunSegment(
+    sessionId: SessionId,
+    runId: string,
+  ): Promise<DurableRunRecoveryResult | undefined> {
+    const checkpointStore = infra.runCheckpointStore;
+    if (!checkpointStore) return undefined;
+    const initialCheckpoint = await checkpointStore.latestForRun(runId);
+    if (!initialCheckpoint || !isSafeSegmentBoundary(initialCheckpoint)) return undefined;
+    const initialProjection = await durableKernel.replay(String(sessionId), runId);
+    const initialEvents = await infra.durableEventStore.read(String(sessionId), runId);
+    if (!isEligibleSameRunSegmentRecovery(initialCheckpoint, initialProjection, initialEvents, sessionId, runId)) {
+      const boundaryEvent = initialEvents.some((event) => (
+        event.type === 'checkpoint_written' && event.payload.checkpointId === initialCheckpoint.id
+      ));
+      opts.log?.('warn', 'same-Run segment recovery preflight declined', {
+        projectionStatus: initialProjection.status,
+        route: initialProjection.route,
+        finalReply: initialProjection.finalReply.state,
+        pendingModels: initialProjection.pendingModelRequestIds.length,
+        pendingEffects: initialProjection.pendingEffectIds.length,
+        unknownEffects: initialProjection.unknownEffectIds.length,
+        modelStatuses: [...new Set(initialProjection.modelRequests.map((request) => request.status))],
+        effectStatuses: [...new Set(initialProjection.effects.map((effect) => effect.status))],
+        boundaryEvent,
+        checkpointState: {
+          safe: isSafeSegmentBoundary(initialCheckpoint),
+          sessionMatches: String(initialCheckpoint.sessionId) === String(sessionId),
+          runMatches: initialCheckpoint.runId === runId,
+          runtimeControl: initialCheckpoint.runtimeControl?.state ?? 'none',
+          terminalEventCount: initialEvents.filter((event) => (
+            event.type === 'run_completed' || event.type === 'run_failed' || event.type === 'run_interrupted'
+            || (event.type === 'runtime_status_settled' && event.payload.reason === 'waiting_user')
+          )).length,
+          noProgressRounds: initialCheckpoint.loopBudget.noProgressRounds,
+          maxNoProgressRounds: initialCheckpoint.loopBudget.maxNoProgressRounds,
+        },
+        acceptedEventCount: initialEvents.filter((event) => event.type === 'run_accepted').length,
+        inputEventCount: initialEvents.filter((event) => event.type === 'user_input_appended').length,
+        checkpointBudget: {
+          attemptsUsed: initialCheckpoint.loopBudget.attemptsUsed,
+          maxAttempts: initialCheckpoint.loopBudget.maxAttempts,
+          toolCallsUsed: initialCheckpoint.loopBudget.toolCallsUsed,
+          maxToolCalls: initialCheckpoint.loopBudget.maxToolCalls,
+          iterationsUsed: initialCheckpoint.loopBudget.toolLoopIterationsUsed,
+          maxIterations: initialCheckpoint.loopBudget.maxToolLoopIterations,
+          elapsedMs: initialCheckpoint.loopBudget.elapsedMs,
+          maxElapsedMs: initialCheckpoint.loopBudget.maxElapsedMs,
+        },
+      });
+      return undefined;
+    }
+
+    const abortController = new AbortController();
+    const ownership = await DurableRunOwnership.acquire({
+      runStore: infra.durableRunLeaseStore,
+      effectStore: infra.durableEffectLeaseStore,
+      sessionId: String(sessionId),
+      runId,
+      onOwnershipLost: (_kind, error) => abortController.abort(error),
+    });
+    let transferredToRun = false;
+    try {
+      // The first read is advisory. Recheck the checkpoint and event projection
+      // after exclusive ownership so concurrent recovery cannot race the decision.
+      const checkpoint = await checkpointStore.latestForRun(runId);
+      const projection = await durableKernel.replay(String(sessionId), runId);
+      const events = await infra.durableEventStore.read(String(sessionId), runId);
+      if (!checkpoint
+        || checkpoint.id !== initialCheckpoint.id
+        || !isEligibleSameRunSegmentRecovery(checkpoint, projection, events, sessionId, runId)) {
+        return undefined;
+      }
+      const resumeState = checkpoint.resumeState!;
+      const inbound = await infra.sessionManager.findMessage(sessionId, resumeState.inboundMessageId);
+      if (!inbound || inbound.role !== 'user') return undefined;
+      if (resumeState.attachmentCount > 0) return undefined;
+      if (checkpoint.loopBudget.maxAttempts !== opts.config.agents.defaults.maxModelCallsPerRun
+        || checkpoint.loopBudget.maxToolCalls !== opts.config.agents.defaults.maxToolCallsPerRun
+        || checkpoint.loopBudget.maxToolLoopIterationsPerRun
+          !== opts.config.agents.defaults.maxToolLoopIterationsPerRun) return undefined;
+
+      const inboundText = messageText(inbound);
+      const controller = abortController;
+      const recoveryAuthorization = opts.resolveRecoveryAuthorization
+        ? await opts.resolveRecoveryAuthorization({
+            sessionId,
+            runId,
+            checkpoint,
+            signal: controller.signal,
+            protectedWriteRoots,
+          })
+        : undefined;
+      if (opts.resolveRecoveryAuthorization && !recoveryAuthorization) {
+        opts.log?.('warn', 'same-Run segment recovery declined: current Main authorization is unavailable', {
+          sessionId: String(sessionId), runId,
+        });
+        return undefined;
+      }
+      const continuation: ContinuationInput = {
+        checkpoint,
+        inbound,
+        historyExcludeMessageIds: [inbound.id],
+        persistInbound: false,
+        resumeStage: 'execute',
+        restoreState: true,
+      };
+      const result = await executeRun({
+        sessionId,
+        runId,
+        text: inboundText,
+        model: resumeState.model,
+        cwd: resumeState.cwd,
+        origin: resumeState.origin,
+        permissionPolicyId: recoveryAuthorization?.permissionPolicyId ?? resumeState.permissionPolicyId,
+        permissionPreset: recoveryAuthorization?.permissionPreset,
+        permissionPolicyV2: recoveryAuthorization?.permissionPolicyV2,
+        approve: recoveryAuthorization?.approve,
+        memoryAccessGrant: recoveryAuthorization?.memoryAccessGrant,
+        reasoning: resumeState.reasoning,
+        workspaceContext: recoveryAuthorization?.workspaceContext ?? resumeState.workspaceContext,
+      }, continuation, { version: 1, resolution: 'none' }, {
+        ownership,
+        abortController: controller,
+        executionContextFingerprint: checkpoint.safeSegmentBoundary!.executionContextFingerprint,
+        executionContextComponents: checkpoint.safeSegmentBoundary!.executionContextComponents,
+        transitionAttemptOffset: projection.stageTransitions.length,
+        modelRequestIndexOffset: projection.modelRequests.reduce((maximum, request) => (
+          Math.max(maximum, request.requestIndex ?? 0)
+        ), 0),
+        elapsedMs: checkpoint.loopBudget.elapsedMs,
+      });
+      transferredToRun = true;
+      const finalProjection = await durableKernel.replay(String(sessionId), runId);
+      opts.log?.(result.status === 'ok' ? 'info' : 'warn', 'same-Run segment recovery finished', {
+        status: result.status,
+        error: result.error,
+        transitions: finalProjection.stageTransitions.map((transition) => `${transition.stage}:${transition.next}:${transition.ok}`),
+        modelRequestCount: finalProjection.modelRequests.length,
+        completedEffectCount: finalProjection.effects.filter((effect) => effect.status === 'succeeded').length,
+      });
+      return { sessionId: String(sessionId), runId, actions: [], projection: finalProjection };
+    } finally {
+      if (!transferredToRun) await ownership.release();
+    }
+  }
+
   const conversationTurns = new Map<string, CoordinatedConversationTurn>();
   const checkpointController = infra.runCheckpointStore
     ? new RunCheckpointController({
@@ -464,6 +645,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     input: RunInput,
     continuation?: ContinuationInput,
     continuationEvidence: ConversationContinuationEvidence = { version: 1, resolution: 'none' },
+    sameRunRecovery?: SameRunRecoveryInput,
   ): Promise<RunnerResult> {
     const model = input.model ?? continuation?.checkpoint.resumeState?.model ?? defaultModel;
     const infra = model === defaultModel ? hostInfra : hostInfra.forModel(model);
@@ -487,7 +669,15 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     let durableOutcomeRecorded = false;
     let runContext: RunContext | undefined;
 
-    const abortControl = createRunAbortControl({ signal: input.signal, timeoutMs: RUN_TIMEOUT_MS, origin, startedAt });
+    const remainingTimeoutMs = RUN_TIMEOUT_MS > 0 && sameRunRecovery
+      ? Math.max(1, RUN_TIMEOUT_MS - sameRunRecovery.elapsedMs)
+      : RUN_TIMEOUT_MS;
+    const abortControl = createRunAbortControl({
+      signal: sameRunRecovery?.abortController.signal ?? input.signal,
+      timeoutMs: remainingTimeoutMs,
+      origin,
+      startedAt,
+    });
     const signal = abortControl.signal;
 
     try {
@@ -539,7 +729,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       } catch (error) {
         opts.log?.('warn', 'runner: retired compaction proposal sweep degraded: ' + (error as Error).message);
       }
-      durableRecorder = createDurableRunRecorder({
+      const recorderOptions: DurableRunAcceptedOptions = {
         eventStore: infra.durableEventStore,
         inboxStore: infra.durableInboxStore,
         sessionId: String(sessionId), runId, origin, model,
@@ -548,9 +738,12 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           asSessionId(replySessionId), reservation,
         ),
         log: opts.log,
-      });
+      };
+      durableRecorder = sameRunRecovery
+        ? createDurableRunRecorderForRecovery(recorderOptions)
+        : createDurableRunRecorder(recorderOptions);
       await durableRecorder.ready;
-      durableRunOwnership = await DurableRunOwnership.acquire({
+      durableRunOwnership = sameRunRecovery?.ownership ?? await DurableRunOwnership.acquire({
         runStore: infra.durableRunLeaseStore,
         effectStore: infra.durableEffectLeaseStore,
         sessionId: String(sessionId),
@@ -582,7 +775,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             timestamp: new Date(startedAt).toISOString(),
           });
       markRun('retired-proposals-and-durable-input');
-      await recordDurableUserInput(durableRecorder, origin, runId, inbound)
+      if (!sameRunRecovery) await recordDurableUserInput(durableRecorder, origin, runId, inbound)
       markRun('durable-user-input');
 
       // 3. Build RunContext (loads history WITHOUT inbound — no duplicate).
@@ -610,6 +803,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       });
       const resolvedTools = runTools.tools;
       const toolSources = runTools.sources;
+      if (sameRunRecovery) {
+        const savedTools = continuation?.checkpoint.resumeState?.availableToolNames ?? [];
+        const currentTools = [...new Set(resolvedTools.map((tool) => tool.name))].sort();
+        if (JSON.stringify(currentTools) !== JSON.stringify([...savedTools].sort())) {
+          throw new Error('same-Run recovery blocked: current tool catalog differs from the checkpoint');
+        }
+      }
 
       const behaviorProfile = getAgentProfile(input.profile ?? opts.config.agents.defaults.profile);
       const resolvedRunConfig = resolveRunConfig({
@@ -774,13 +974,18 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         capabilitySnapshot,
         permissionEvent: capabilityPermissionEvent,
       });
-      if (continuation) {
+      if (sameRunRecovery && continuation) {
+        restoreSameRunContext(ctx, continuation.checkpoint, sameRunRecovery);
+      } else if (continuation) {
         if (continuation.restoreState === false) {
           ctx.entryStage = continuation.resumeStage;
           ctx.resumedFromCheckpointId = continuation.checkpoint.id;
           clearReplyState(ctx, 'runner-restore');
         } else {
-          restoreContinuationContext(ctx, continuation.checkpoint, continuation.resumeStage);
+          restoreContinuationContext(ctx, continuation.checkpoint, continuation.resumeStage, {
+            maxToolCalls: opts.config.agents.defaults.maxToolCallsPerRun,
+            maxToolLoopIterationsPerRun: opts.config.agents.defaults.maxToolLoopIterationsPerRun,
+          });
         }
       }
       /**
@@ -804,8 +1009,34 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       writeRuntimeState(ctx, continuation ? 'runner-restore' : 'runner-init', {
         conversationContinuation: structuredClone(continuationEvidence),
       });
-      ctx.persistRuntimeCheckpoint = async (reason) => {
+      ctx.persistRuntimeCheckpoint = async (reason, modelContextFingerprint) => {
         if (!infra.runCheckpointStore) return undefined;
+        let safeSegmentBoundary: RunCheckpoint['safeSegmentBoundary'];
+        if (reason === 'execution-segment-started') {
+          if (!modelContextFingerprint || !/^[a-f0-9]{64}$/u.test(modelContextFingerprint)) {
+            throw new Error('safe segment checkpoint requires a model-context fingerprint');
+          }
+          // Session transcript must be durable before the checkpoint can claim
+          // the next segment is recoverable. Each message has its own identity,
+          // so a crash during this flush is safely retryable.
+          const flushed = [...ctx.produced];
+          for (const message of flushed) {
+            const appended = await infra.sessionManager.appendIfAbsent(sessionId, [message], message.id);
+            if (!appended) {
+              const existing = await infra.sessionManager.findMessage(sessionId, message.id);
+              if (!existing || JSON.stringify(existing) !== JSON.stringify(message)) {
+                throw new Error(`safe segment transcript conflict for message ${message.id}`);
+              }
+            }
+          }
+          ctx.produced.splice(0, flushed.length);
+          safeSegmentBoundary = {
+            version: 1,
+            kind: 'execution_segment',
+            modelContextFingerprint,
+            ...fingerprintRunExecutionContext(ctx),
+          };
+        }
         const checkpoint = buildRunCheckpoint({
           ctx,
           stageResult: {
@@ -815,6 +1046,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             error: reason,
           },
           reason,
+          ...(safeSegmentBoundary ? { safeSegmentBoundary } : {}),
         });
         const outcome = await infra.runCheckpointStore.write(checkpoint);
         if (outcome.kind === 'conflict') throw new Error(`run checkpoint id conflict: ${outcome.checkpointId}`);
@@ -887,7 +1119,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       // 4. Persist inbound AFTER buildRunContext (so it's not in loaded history)
       //    but BEFORE harness.run (so FINALIZE's append of produced goes after
       //    inbound → correct JSONL order: [..., user, assistant]).
-      if (!continuation || continuation.persistInbound) {
+      if (!sameRunRecovery && (!continuation || continuation.persistInbound)) {
         try {
           const stableTurn = Boolean(input.requestKey?.trim()) || Boolean(continuation)
           if (stableTurn) {
@@ -909,6 +1141,16 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       }
 
       // 5. Execute the state machine and checkpoint recovery state.
+      if (sameRunRecovery?.executionContextFingerprint) {
+        const reconstructed = fingerprintRunExecutionContext(ctx);
+        if (reconstructed.executionContextFingerprint !== sameRunRecovery.executionContextFingerprint) {
+          const mismatchedComponents = (Object.keys(sameRunRecovery.executionContextComponents) as Array<
+            keyof SameRunRecoveryInput['executionContextComponents']
+          >).filter((key) => reconstructed.executionContextComponents[key]
+            !== sameRunRecovery.executionContextComponents[key]);
+          throw new Error(`same-Run recovery blocked: reconstructed execution context differs (${mismatchedComponents.join(', ')})`);
+        }
+      }
       markRun('context-assembled')
       const prepared = { ctx, sessionId, inboundText: input.text, usedContinuitySummaryId };
       let result: RunnerResult;
@@ -2251,10 +2493,139 @@ function resolvedResumeTurnInputDigest(
   })
 }
 
+function restoreSameRunContext(
+  ctx: RunContext,
+  checkpoint: RunCheckpoint,
+  recovery: SameRunRecoveryInput,
+): void {
+  const state = checkpoint.resumeState;
+  if (!state || !checkpoint.safeSegmentBoundary) throw new Error('same-Run recovery checkpoint is incomplete');
+  if (state.classification?.workPolicy !== undefined && !isSupportedPersistedWorkPolicy(state.classification.workPolicy)) {
+    throw new Error('same-Run recovery checkpoint has an unsupported work policy');
+  }
+  ctx.entryStage = 'execute';
+  ctx.resumedFromCheckpointId = checkpoint.id;
+  ctx.durableTransitionAttemptOffset = recovery.transitionAttemptOffset;
+  ctx.modelRequestIndexOffset = recovery.modelRequestIndexOffset;
+  writeRunTaskState(ctx, 'runner-restore', {
+    taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined,
+    taskBookRevision: checkpoint.taskBookRevision,
+    taskExecution: checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined,
+    plan: state.plan ? structuredClone(state.plan) : undefined,
+    appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
+  });
+  writeDecisionState(ctx, 'runner-restore', {
+    classification: state.classification ? structuredClone(state.classification) : undefined,
+    needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
+  });
+  writeRunTaskState(ctx, 'runner-restore', {
+    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest
+      ? structuredClone(state.workPolicyUpgradeRequest)
+      : undefined,
+  });
+  writeRuntimeState(ctx, 'runner-restore', {
+    deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
+    deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
+    loopBudget: structuredClone(checkpoint.loopBudget),
+  });
+  replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
+  writeModelObservabilityState(ctx, 'runner-restore', {
+    modelCallCount: checkpoint.loopBudget.attemptsUsed,
+  });
+  writeFailureState(ctx, 'runner-restore', {
+    recoveryAttempts: state.recoveryAttempts,
+  });
+  replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
+  ctx.webEvidence = sanitizeWebEvidenceProjection(checkpoint.webEvidence);
+}
+
+function fingerprintRunExecutionContext(ctx: RunContext): {
+  executionContextFingerprint: string;
+  executionContextComponents: NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
+} {
+  const components = {
+    identity: {
+      runId: ctx.runId,
+      sessionId: String(ctx.sessionId),
+      inbound: ctx.inbound,
+      cwd: ctx.cwd,
+      workspaceContext: ctx.workspaceContext,
+      model: ctx.model,
+    },
+    tools: {
+      tools: ctx.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        requiresApproval: tool.requiresApproval,
+        source: ctx.toolSources?.[tool.name],
+      })).sort((left, right) => left.name.localeCompare(right.name)),
+    },
+    configuration: {
+      resolvedRunConfig: ctx.resolvedRunConfig ? {
+        ...ctx.resolvedRunConfig,
+        resolvedAt: undefined,
+        // The checkpoint records effective policy values; whether they came
+        // from defaults or explicit per-run overrides is audit metadata only.
+        userOverrides: undefined,
+      } : undefined,
+      // Current host-owned permission and workspace facts participate in the
+      // restore match. They are hashed, never serialized as an authority token;
+      // a restart without the same current Main snapshot fails before Harness.
+      toolPermission: {
+        permissionMode: ctx.toolContext.permissionMode,
+        permissionPreset: ctx.toolContext.permissionPreset,
+        approvalPolicy: ctx.toolContext.approvalPolicy,
+        permissionPolicyV2: ctx.toolContext.permissionPolicyV2,
+        workspaceFileWrites: ctx.toolContext.workspaceFileWrites,
+        shellIsolation: ctx.toolContext.shellIsolation,
+        fullAccessConfirmed: ctx.toolContext.fullAccessConfirmed,
+        workspaceRoot: ctx.toolContext.workspaceRoot,
+        dataRoot: ctx.toolContext.dataRoot,
+        containerRoot: ctx.toolContext.containerRoot,
+        protectedWriteRoots: ctx.toolContext.protectedWriteRoots,
+      },
+    },
+    prompt: {
+      bootstrap: ctx.bootstrap,
+      profilePromptAddon: ctx.profilePromptAddon,
+      reasoningPromptAddon: ctx.reasoningPromptAddon,
+    },
+    memory: {
+      sessionSummary: ctx.sessionSummary,
+      prelude: ctx.prelude,
+      memoryRootIndex: ctx.memoryRootIndex,
+      initialMemoryContext: ctx.initialMemoryContext,
+      memoryKnownState: ctx.memoryKnownState ? {
+        ...ctx.memoryKnownState,
+        updatedAt: undefined,
+        references: ctx.memoryKnownState.references.map((reference) => ({
+          ...reference,
+          firstSeenAt: undefined,
+          updatedAt: undefined,
+        })),
+      } : undefined,
+      memoryContextWorkingSet: ctx.memoryContextWorkingSet ? {
+        ...ctx.memoryContextWorkingSet,
+        updatedAt: undefined,
+      } : undefined,
+    },
+  };
+  const executionContextComponents = Object.fromEntries(Object.entries(components).map(([key, value]) => (
+    [key, createHash('sha256').update(stableSerialize(value), 'utf8').digest('hex')]
+  ))) as NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
+  return {
+    executionContextFingerprint: createHash('sha256')
+      .update(stableSerialize(executionContextComponents), 'utf8')
+      .digest('hex'),
+    executionContextComponents,
+  };
+}
+
 function restoreContinuationContext(
   ctx: RunContext,
   checkpoint: RunCheckpoint,
   resumeStage: StageName,
+  budgets: { maxToolCalls: number; maxToolLoopIterationsPerRun: number },
 ): void {
   const state = checkpoint.resumeState;
   if (!state) throw new Error('checkpoint has no resumable runtime state');
@@ -2284,7 +2655,12 @@ function restoreContinuationContext(
     // Task state is inherited; the run-scoped allowance is not. See
     // `continuationLoopBudget` — restoring the previous run's spend against this
     // run's ceiling is what made an explicit user retry impossible.
-    loopBudget: continuationLoopBudget(checkpoint.loopBudget, ctx.maxModelCalls ?? checkpoint.loopBudget.maxAttempts),
+    loopBudget: continuationLoopBudget(
+      checkpoint.loopBudget,
+      ctx.maxModelCalls ?? checkpoint.loopBudget.maxAttempts,
+      budgets.maxToolCalls,
+      budgets.maxToolLoopIterationsPerRun,
+    ),
   });
   replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
   writeModelObservabilityState(ctx, 'runner-restore', {

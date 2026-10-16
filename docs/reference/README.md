@@ -35,6 +35,17 @@
 - [RCD S1C 核心回归账本](rcd-s1c-core-regression-2026-10-16.json)：S1C 实现后的六项核心场景执行结果。
 - [RCD S1C 机器可读总结](rcd-s1c-dynamic-web-admission-2026-10-16.json)：审计结论、R01/R02 对照、负向测试、环境限制和剩余风险。
 - [RCD S2A 持续执行与任务交付契约设计](rcd-s2a-continuous-execution-design-2026-10-16.md)：当前 Run/预算/checkpoint 生命周期审计、L01 30/35 失败证据、跨段续接契约、T01–T08 测试方案及 S2B/S2C 拆分。
+- [RCD S2B 持续执行实施进度](rcd-s2b-progress-2026-10-16.md)：同一 Run 内有界分段、T01/T02/T05 与核心回归证据；明确同 Run 重启恢复尚未实现，S2B 未完成。
+- [RCD S2B 机器可读进度账本](rcd-s2b-progress-2026-10-16.json)：执行层级、预算、场景状态、验证结果和 S2B 阻塞项。
+- [RCD S2B 核心回归账本](rcd-s2b-core-regression-2026-10-16.json)：当前工作树下 S0-F 六项核心场景的逐项运行、Oracle、清理及指纹记录。
+- [RCD S2B-2 同一 Run 持久恢复最小实现](rcd-s2b-2-recovery-design-2026-10-16.md)：T04-A 真实进程 SIGKILL 后 35/35 恢复、lease 所有权、上下文重建、负向资格判定及仍待第三单元覆盖的故障窗口。
+- [RCD S2B-2 第三单元跨进程故障恢复验收](rcd-s2b-2-third-unit-recovery-acceptance-2026-10-16.md)：T04-B～E、T05-R、T08-R、T03-R 的进程级验收、阻断结果、Usage 一致性及 S2B 尚未关闭的权限与 Provider 上下文缺口。
+- [RCD S2B-2 第三单元机器账本](rcd-s2b-2-third-unit-recovery-acceptance-2026-10-16.json)：进程故障窗口、核心回归和基础设施验证的逐项结果与证据层级。
+- [RCD S2B-F 持久恢复权限集成验收](rcd-s2b-f-permission-recovery-acceptance-2026-10-16.md)：Main-owned Permission V2 恢复路径、受控无进展进程验收、恢复支持范围，以及真实 Electron 尚未通过的阶段结论。
+- [RCD S2B-F 机器可读验收账本](rcd-s2b-f-permission-recovery-acceptance-2026-10-16.json)：Main 权限、恢复边界、RCD 六项核心场景、测试状态和 Electron 阻塞记录。
+- [RCD S2B-G Electron 验收与阶段收口](rcd-s2b-g-electron-acceptance-2026-10-16.md)：真实 Electron Main/Runner 同 Run 恢复、Permission V2 桌面验收、核心回归与冻结的恢复支持范围。
+- [RCD S2B-G 机器可读验收账本](rcd-s2b-g-electron-acceptance-2026-10-16.json)：Electron 环境、跨进程恢复证据、权限负向覆盖、RCD 核心结果、测试与发布限制。
+- [RCD S2B-G 六项核心回归账本](rcd-s2b-g-core-regression-2026-10-16.json)：C02、C08、R01、R02、L01、X01 的逐场景执行、独立 Oracle、清理与指纹记录。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。

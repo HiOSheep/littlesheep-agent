@@ -110,6 +110,10 @@ export const AgentDefaultsSchema = z.object({
   contextCompressionThresholdRatio: z.number().min(0.5).max(0.95).default(0.8),
   /** Hard provider-call ceiling for one run, including retries and compaction. */
   maxModelCallsPerRun: z.number().int().min(1).max(128).default(32),
+  /** Hard tool-invocation ceiling shared by every execution segment in one run. */
+  maxToolCallsPerRun: z.number().int().min(1).max(1024).default(128),
+  /** Hard tool-loop turn ceiling shared by every segment in one run. */
+  maxToolLoopIterationsPerRun: z.number().int().min(1).max(512).default(30),
   /** Which harness to use (default: "core-flow"). */
   harness: z.string().default('core-flow'),
 }).default({});

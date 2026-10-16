@@ -1,45 +1,34 @@
-// The main loop's iteration budget, and what a spent budget means.
-//
-// The budget is persisted on the run (`loopBudget.toolLoopIterationsUsed`), so it
-// survives recovery and checkpoint resumes: a retried stage cannot get a fresh
-// allowance. That is why a spent budget used to end the whole turn — RECOVER
-// could only escalate it, and the user got a question even when the work was on
-// disk.
-//
-// It now ends the *loop* instead of the turn: one bounded final-answer request is
-// allowed, with the tool catalog still advertised and every call refused locally
-// (the same mechanism the no-progress bound uses). The budget still bounds the
-// loop — a second attempt to cross it fails the stage as before — it just no
-// longer discards the answer the model was about to write.
-//
-// The ceiling itself moved from 20 to 30 on real-window evidence. Three separate
-// acceptance runs hit 20 while doing productive work — 19, 20 and 22 tool calls,
-// almost all successful, 10-15 settled effects, the artifact already on disk — and
-// the run then ended by asking the user how to proceed, which is the exact
-// behaviour this taskbook exists to remove. The configured provider-call ceiling
-// (`agents.defaults.maxModelCallsPerRun`, 32 by default) is the budget a user can
-// reason about and pay for; with one call per round, a 30-round loop lands just
-// inside it, so the iteration bound is now the backstop for rounds that fan out
-// into many calls instead of the limit that fires first.
+// Segment and Run-wide execution limits. A segment can roll over while its Run
+// still has explicit total loop, model-call, and tool-call allowance remaining.
 import type { RunContext } from '@littlesheep/types';
 import { writeRuntimeState } from '../../runtime-state.js';
 
 export const MAX_TOOL_LOOP_ITERATIONS = 30;
 export const MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS = 2;
 
-/** The ceiling this run actually has: its recorded one, or the Runtime constant. */
+/** The ceiling this segment actually has: its recorded one, or the Runtime constant. */
 export function toolLoopIterationCeiling(ctx: RunContext): number {
   return ctx.loopBudget?.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS;
 }
 
-/** Reserve one iteration, or report that the run's budget is spent. */
+export function toolLoopBudgetStop(ctx: RunContext): 'segment' | 'run' | undefined {
+  const budget = ctx.loopBudget;
+  if ((budget?.toolLoopIterationsUsed ?? 0) >= (budget?.maxToolLoopIterationsPerRun
+    ?? budget?.maxToolLoopIterations ?? MAX_TOOL_LOOP_ITERATIONS)) return 'run';
+  if ((budget?.segmentIterationsUsed ?? 0) >= toolLoopIterationCeiling(ctx)) return 'segment';
+  return undefined;
+}
+
+/** Reserve one model/tool-loop turn in both the current segment and its Run. */
 export function reserveToolLoopIteration(ctx: RunContext): boolean {
-  const current = ctx.loopBudget?.toolLoopIterationsUsed ?? 0;
+  if (toolLoopBudgetStop(ctx)) return false;
+  const budget = ctx.loopBudget;
+  const current = budget?.toolLoopIterationsUsed ?? 0;
+  const segmentUsed = budget?.segmentIterationsUsed ?? 0;
   const maximum = toolLoopIterationCeiling(ctx);
-  if (current >= maximum) return false;
   writeRuntimeState(ctx, 'execute', {
     loopBudget: {
-      ...(ctx.loopBudget ?? {
+      ...(budget ?? {
         attemptsUsed: ctx.modelCallCount ?? 0,
         maxAttempts: ctx.maxModelCalls ?? 0,
         elapsedMs: 0,
@@ -48,25 +37,70 @@ export function reserveToolLoopIteration(ctx: RunContext): boolean {
         maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
       }),
       toolLoopIterationsUsed: current + 1,
+      segmentIterationsUsed: segmentUsed + 1,
+      executionSegmentIndex: budget?.executionSegmentIndex ?? 1,
       maxToolLoopIterations: maximum,
     },
   });
   return true;
 }
 
+/** Start a segment without replenishing any Run-scoped budget or progress state. */
+export function beginNextExecutionSegment(ctx: RunContext): void {
+  const budget = ctx.loopBudget;
+  if (!budget) throw new Error('cannot continue execution without a Run budget snapshot');
+  if (toolLoopBudgetStop(ctx) !== 'segment') {
+    throw new Error('cannot begin a segment before the current segment reaches its limit');
+  }
+  writeRuntimeState(ctx, 'execute', {
+    loopBudget: {
+      ...budget,
+      executionSegmentIndex: (budget.executionSegmentIndex ?? 1) + 1,
+      segmentIterationsUsed: 0,
+    },
+  });
+}
+
+export type ToolCallReservation = { allowed: true; newlyReserved: number } | { allowed: false; remaining: number };
+
+/** Reserve proposed calls before execution; a repeated request identity is charged once. */
+export function reserveToolCalls(ctx: RunContext, requestId: string, callCount: number): ToolCallReservation {
+  if (!requestId || !Number.isSafeInteger(callCount) || callCount < 0) {
+    throw new Error('tool-call reservation requires a valid request identity and call count');
+  }
+  const budget = ctx.loopBudget ?? {
+    attemptsUsed: ctx.modelCallCount ?? 0,
+    maxAttempts: ctx.maxModelCalls ?? 0,
+    elapsedMs: 0,
+    maxElapsedMs: 0,
+    noProgressRounds: 0,
+    maxNoProgressRounds: MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
+    toolCallsUsed: 0,
+    maxToolCalls: 128,
+    toolCallReservationKeys: [],
+  };
+  const keys = new Set(budget.toolCallReservationKeys ?? []);
+  const newKeys = Array.from({ length: callCount }, (_, index) => `${requestId}:${index}`)
+    .filter((key) => !keys.has(key));
+  const used = budget.toolCallsUsed ?? 0;
+  const maximum = budget.maxToolCalls ?? 128;
+  if (used + newKeys.length > maximum) return { allowed: false, remaining: Math.max(0, maximum - used) };
+  for (const key of newKeys) keys.add(key);
+  writeRuntimeState(ctx, 'execute', {
+    loopBudget: {
+      ...budget,
+      toolCallsUsed: used + newKeys.length,
+      maxToolCalls: maximum,
+      toolCallReservationKeys: [...keys].slice(-maximum),
+    },
+  });
+  return { allowed: true, newlyReserved: newKeys.length };
+}
+
 export type SpentBudgetDecision =
-  /** Spend the one allowed final-answer request; `controlMessage` tells the model. */
   | { kind: 'final-answer'; controlMessage: string }
-  /** Fail the stage with the budget error, as every second attempt does. */
   | { kind: 'fail'; error: string };
 
-/**
- * What to do when the budget check fails.
- *
- * A run that produced no tool result has nothing to report, so it fails
- * immediately without spending a request — the case a resumed run hits when it
- * enters already exhausted.
- */
 export function decideSpentIterationBudget(options: {
   toolResultCount: number;
   finalAnswerAlreadyRequested: boolean;

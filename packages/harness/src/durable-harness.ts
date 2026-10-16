@@ -39,7 +39,7 @@ export function createDurableHarness(opts: DefaultHarnessOptions): AgentHarness 
       bindExactContextTokenCounter(ctx, opts.tokenCounter);
       let current: StageName | 'exit' = resolveCheckpointResumeStage(ctx, ctx.entryStage ?? 'enter');
       const trace: Array<{ name: StageName; startedAt: string; endedAt: string; ok: boolean }> = [];
-      let attempt = 0;
+      let attempt = ctx.durableTransitionAttemptOffset ?? 0;
       /** Runtime events already handed to the main loop once; see the re-entry bounds below. */
       const deliveredRuntimeEventIds = new Set<string>();
       let lastResult: StageResult = {

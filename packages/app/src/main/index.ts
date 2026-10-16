@@ -33,6 +33,7 @@ import { BOOTSTRAP_TEMPLATES } from './bootstrap-templates.js'
 import { classifyAttachment } from './attachments.js'
 import { SessionIndex } from './session-index.js'
 import { createRecoveryReadAuthorizer } from './run-policy.js'
+import { createMainRecoveryAuthorizationResolver } from './run-recovery-authorization.js'
 import { ProjectIndex } from './project-index.js'
 import { ArchiveIndex } from './archive-index.js'
 import { TerminalActivityIndex } from './terminal-activity-index.js'
@@ -119,6 +120,7 @@ const runners = new RunnerLifecycle({
     bootstrapDir: input.bootstrapDir,
     containerRoot: input.dataDir,
     authorizeDurableEffectRead: createRecoveryReadAuthorizer(() => sessionIndex, input.dataDir),
+    resolveRecoveryAuthorization: createMainRecoveryAuthorizationResolver(() => ({ dataDir: input.dataDir, workplaceDir: currentWorkplaceDir, getConfig: () => currentConfig ?? undefined, getSessionIndex: () => sessionIndex, getProjectIndex: () => projectIndex })),
     tokenizerFetch: (fetchInput, init) => net.fetch(fetchInput instanceof URL ? fetchInput.href : fetchInput, init),
   }),
   server: () => server,

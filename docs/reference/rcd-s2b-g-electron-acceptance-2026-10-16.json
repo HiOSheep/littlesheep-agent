@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "batch": "LS-RCD-S2B-G",
+  "generatedAt": "2026-10-16",
+  "decision": "A",
+  "decisionText": "S2B engineering acceptance passed for the verified safe-segment checkpoint recovery path.",
+  "source": {
+    "branch": "codex/rcd-s2b-continuity",
+    "headBeforeBatch": "d9ae23d8101fdec1f9c865bccd18644acc759bfa",
+    "vrsV2BCommit": "28667f84",
+    "vrsV2BIsAncestor": true,
+    "mergeBaseWithOriginMain": "9ef154300e2af15ea08cd0e691380d61698e31b4",
+    "workingTreeFingerprint": "94bcffdadf2890c8d5c9d24eaf618f8bf48abb782b8c60d922e8c1d6a8047da1"
+  },
+  "environment": {
+    "os": "Windows",
+    "node": "v26.4.0",
+    "electron": "44.4.5",
+    "electronPackageRange": "^44.0.0",
+    "electronArchiveSha256": "11c395820a5aaa8ebcc0686b476d0ac98a730274ebfbdc8cf5538a7c2815cb5d",
+    "electronArchiveChecksumVerified": true,
+    "tlsVerificationDisabled": false,
+    "paidProviderUsed": false,
+    "publicNetworkRequests": 0,
+    "build": "pnpm run ensure:app-build passed; Electron application build fresh"
+  },
+  "electronDownloadDiagnosis": {
+    "dependencyResolutionCorrect": true,
+    "versionMismatchFound": false,
+    "verifiedOfficialArchiveReused": true,
+    "originalNetworkProxyDnsTlsSubcause": "not conclusively recorded; no retained reproducible diagnostic",
+    "resolution": "Reused the cached version-matched official archive after SHA-256 verification and rebuilt the app."
+  },
+  "g02AutomaticRecovery": {
+    "status": "passed",
+    "executionLevel": "real Electron Main + Local App API + Runner + Harness + controlled local HTTP Provider; no Renderer interaction in this flow",
+    "faultInjection": "Paused at a persisted execution-segment-started checkpoint and killed the Electron process tree.",
+    "runId": "conversation-run-5f0a102fc97a8fb2fe041ba5fe9b20ac3dbd40903d653d5ff8160b4d9bf16e81",
+    "sessionId": "63d2a19d-6f6c-42ce-8dde-a55e5a240578",
+    "segmentBudget": 30,
+    "runLoopBudget": 60,
+    "maxModelCallsPerRun": 64,
+    "maxToolCallsPerRun": 64,
+    "preCrashCompletedEffects": 30,
+    "postRecoveryCompletedEffects": 35,
+    "uniqueEffectIds": 35,
+    "matchingIngressCount": 1,
+    "providerRequests": 36,
+    "fixtureUsage": {
+      "promptTokens": 2304,
+      "completionTokens": 576,
+      "kind": "synthetic controlled fixture usage; not billed Provider usage"
+    },
+    "finalReplySettlement": "settled",
+    "runCompletedEvents": 1,
+    "all35ExpectedFilesPresentExactlyOnce": true,
+    "runBudgetReset": false,
+    "additionalImplicitPermissionGranted": false
+  },
+  "rendererPermissionAcceptance": {
+    "status": "passed",
+    "executionLevel": "real Electron Renderer + Main + Runner",
+    "assertionsPassed": 27,
+    "localProviderRequests": 38,
+    "covered": [
+      "Permission V2 mode display and approval or denial",
+      "workspace file boundary, stale observation, and protected target checks",
+      "exact Shell approval and repeat scope",
+      "downgrade invalidates previous exact repeat grant",
+      "Renderer stop creates a checkpoint; restart uses current read-only policy and requires a fresh Shell decision"
+    ],
+    "scopeNote": "Uses the supported waiting_user checkpoint path; distinct from the automatic safe-segment recovery in g02."
+  },
+  "permissionNegativeEvidence": [
+    {
+      "case": "Run or Session identity differs from the trusted checkpoint request",
+      "result": "fail_closed",
+      "executionLevel": "Main recovery authorization unit/integration boundary"
+    },
+    {
+      "case": "Current Project workspace is rebound away from checkpoint workspace",
+      "result": "fail_closed",
+      "executionLevel": "Main recovery authorization unit/integration boundary"
+    },
+    {
+      "case": "Main Session/Project authority unavailable or current session workspace changed",
+      "result": "fail_closed",
+      "executionLevel": "Main recovery authorization test"
+    },
+    {
+      "case": "Current session permission narrowed to read-only",
+      "result": "current_read_only_policy_rebuilt",
+      "executionLevel": "Main recovery authorization test; separate real Renderer test confirms a fresh Shell approval after downgrade"
+    },
+    {
+      "case": "No interactive approval broker during recovery",
+      "result": "protected_exec_approval_denied",
+      "executionLevel": "Main recovery authorization test"
+    },
+    {
+      "case": "Paused, interrupted/cancelled, exhausted budget/no-progress, unknown or pending effect/provider request, incomplete checkpoint, duplicate ingress, or terminal run",
+      "result": "automatic_recovery_rejected",
+      "executionLevel": "Runner same-Run recovery eligibility tests"
+    },
+    {
+      "case": "Project Memory ownership is removed, rebound, or differs from current Session binding",
+      "result": "old_memory_context_revoked_or_new_access_restricted",
+      "executionLevel": "Main Memory Host tests and real Runner/MemoryService v2/v3 integration"
+    },
+    {
+      "case": "User explicitly forbids Web access",
+      "result": "zero_forbidden_requests; paired allowed fixture sends one loopback request",
+      "executionLevel": "RCD R02 Harness/Tools local HTTP policy fixture"
+    }
+  ],
+  "rcdCoreRegression": {
+    "definitionValidation": "passed",
+    "scenarioSetSha256": "7f36e4f399b3c752b6b73621c63676f2c4af39e3643cadc4b8c186d7e5d1c940",
+    "infrastructure": {
+      "executed": 6,
+      "blocked": 0,
+      "harnessError": 0,
+      "notRun": 0,
+      "cleanupFailures": 0
+    },
+    "productResultCounts": {
+      "passed": 3,
+      "failed": 0,
+      "partially_completed": 1,
+      "correctly_blocked": 2,
+      "unverified": 0
+    },
+    "scenarios": [
+      { "id": "C02", "result": "passed", "toolCalls": 2, "toolFailures": 1, "malformedInputEffects": 0, "correctedInputEffects": 1 },
+      { "id": "C08", "result": "passed", "toolCalls": 3, "toolFailures": 1, "frozenOraclePreserved": true },
+      { "id": "R01", "result": "passed", "toolCalls": 2, "loopbackRequests": 1 },
+      { "id": "R02", "result": "correctly_blocked", "toolCalls": 1, "deniedBranchRequests": 0, "allowedControlRequests": 1 },
+      { "id": "L01", "result": "partially_completed", "completed": 30, "requested": 35, "stopReason": "single_segment_iteration_budget_exhausted" },
+      { "id": "X01", "result": "correctly_blocked", "toolCalls": 1, "settlement": "unknown", "faultType": "controlled exception after effect before settlement; not an OS process crash" }
+    ],
+    "usageAndCost": "unavailable for all six RCD cases"
+  },
+  "additionalValidation": {
+    "s2bTargetedSet": { "files": 13, "passed": 99, "failed": 0 },
+    "s1bfS1cShellWebTargetedSet": { "files": 9, "passed": 116, "failed": 0 },
+    "recoveryMemoryTargetedSet": { "passed": 31, "skippedWorkerHelper": 1, "failed": 0 },
+    "typecheck": "passed",
+    "repositoryCheck": { "hardChecksPassed": 35, "failures": 0, "advisoryGroups": 3 },
+    "diffCheck": "passed"
+  },
+  "recoveryContract": {
+    "supported": [
+      "same-Run bounded segment continuation",
+      "complete safe segment checkpoint restoration",
+      "Main-owned current Permission V2 and Memory Host grant reconstruction",
+      "Run budget, ingress, side-effect identity, Usage evidence, lease ownership, and final settlement continuity"
+    ],
+    "failsClosedOrRequiresManualHandling": [
+      "unknown or unsettled Provider request",
+      "received Provider response body not durably persisted",
+      "unknown opaque external side effect",
+      "legacy checkpoint without safe-segment metadata",
+      "Session, Project, workspace, context, or current policy cannot be reconstructed consistently",
+      "interactive approval needed while the approval broker is unavailable",
+      "cancelled or paused Run, exhausted overall budget, no-progress stop, or invalid authorization",
+      "cross-host recovery",
+      "complete host Shell process isolation or exactly-once guarantees"
+    ]
+  },
+  "integration": {
+    "mergedOrPushed": false,
+    "vrsMigrationReapplied": false,
+    "recommendedOrder": [
+      "Ensure the integration target contains VRS V2B commit 28667f84.",
+      "Compare S2B commits after the common ancestor; integrate only the S2B delta when VRS is already present.",
+      "Resolve Runner/Harness conflicts by retaining EXECUTE evidence settlement as the single settlement boundary and preserving S2B lease, segment checkpoint, and Run budget continuity."
+    ]
+  },
+  "releaseLimitations": [
+    "No real paid Provider or production user-task success rate was measured.",
+    "The 35-item automatic recovery flow does not exercise Renderer interaction.",
+    "Arbitrary crash points, every platform and shutdown variant, cross-host takeover, unknown external effects, OS-level Shell isolation, and exactly-once host command behavior are not established."
+  ]
+}

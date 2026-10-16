@@ -14,6 +14,7 @@ export {
   type AgentRunner,
   type RunnerResult,
   type CreateRunnerOptions,
+  type DurableRecoveryAuthorization,
   type RunInput,
   type RunOrigin,
   type ResumeCheckpointOptions,

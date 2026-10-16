@@ -2,6 +2,7 @@
 // Inbox claims protect command materialization; these leases protect the
 // model/tool lifecycle that continues after ingress commands are completed.
 import { mkdir, readdir, readFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { acquireLock } from '@littlesheep/session';
 import {
@@ -33,6 +34,9 @@ export interface DurableRunLease {
   readonly runId: string;
   readonly status: 'active' | 'released';
   readonly ownerToken?: string;
+  /** Local process identity. Missing values in old v1 leases are not reclaimable automatically. */
+  readonly ownerHost?: string;
+  readonly ownerProcessId?: number;
   readonly createdAt: string;
   readonly acquiredAt: string;
   readonly updatedAt: string;
@@ -49,12 +53,15 @@ export interface DurableRunLeaseStoreOptions {
   rootDir: string;
   leaseMs?: number;
   now?: () => Date;
+  /** Test seam for deterministic lease expiry. Production defaults to fail-closed OS process probing. */
+  isOwnerProcessAlive?: (host: string | undefined, processId: number | undefined) => boolean;
 }
 
 export class DurableRunLeaseStore {
   private readonly rootDir: string;
   private readonly leaseMs: number;
   private readonly now: () => Date;
+  private readonly isOwnerProcessAlive: (host: string | undefined, processId: number | undefined) => boolean;
   private writeTail: Promise<void> = Promise.resolve();
   private initialized = false;
   private initializationFailure: Error | undefined;
@@ -70,6 +77,7 @@ export class DurableRunLeaseStore {
       MAX_DURABLE_RUN_LEASE_MS,
     );
     this.now = options.now ?? (() => new Date());
+    this.isOwnerProcessAlive = options.isOwnerProcessAlive ?? isLocalOwnerProcessAlive;
   }
 
   /**
@@ -129,7 +137,8 @@ export class DurableRunLeaseStore {
     return this.withWriteLock(async () => {
       const existing = await this.readOptional(identity.sessionId, identity.runId);
       const now = this.now();
-      if (existing?.status === 'active' && isLeaseActive(existing, now)) {
+      if (existing?.status === 'active'
+        && (isLeaseActive(existing, now) || this.isOwnerProcessAlive(existing.ownerHost, existing.ownerProcessId))) {
         return { kind: 'conflict', lease: cloneLease(existing) };
       }
       const timestamp = now.toISOString();
@@ -138,6 +147,8 @@ export class DurableRunLeaseStore {
         ...identity,
         status: 'active',
         ownerToken: randomId(),
+        ownerHost: hostname(),
+        ownerProcessId: process.pid,
         createdAt: existing?.createdAt ?? timestamp,
         acquiredAt: timestamp,
         updatedAt: timestamp,
@@ -159,8 +170,8 @@ export class DurableRunLeaseStore {
       const lease = await this.readRequired(identity.sessionId, identity.runId);
       const now = this.now();
       assertActiveOwner(lease, normalizedOwner);
-      if (!isLeaseActive(lease, now)) {
-        throw new DurableRunLeaseError(`run lease expired: ${identity.runId}`, 'expired');
+      if (lease.ownerHost !== hostname() || lease.ownerProcessId !== process.pid) {
+        throw new DurableRunLeaseError(`run lease process identity changed: ${identity.runId}`, 'conflict');
       }
       const updated: DurableRunLease = {
         ...lease,
@@ -184,6 +195,8 @@ export class DurableRunLeaseStore {
         ...lease,
         status: 'released',
         ownerToken: undefined,
+        ownerHost: undefined,
+        ownerProcessId: undefined,
         leaseUntil: undefined,
         updatedAt: timestamp,
         releasedAt: timestamp,
@@ -227,7 +240,9 @@ export class DurableRunLeaseStore {
       const now = this.now();
       const matches = (await this.readLeases()).filter((lease) => (
         lease.status === 'active'
-        && (availability === 'active' ? isLeaseActive(lease, now) : !isLeaseActive(lease, now))
+        && (availability === 'active'
+          ? isLeaseActive(lease, now) || this.isOwnerProcessAlive(lease.ownerHost, lease.ownerProcessId)
+          : !isLeaseActive(lease, now) && !this.isOwnerProcessAlive(lease.ownerHost, lease.ownerProcessId))
       ));
       if (matches.length > boundedLimit) {
         throw new DurableRunLeaseError(`${availability} run lease count exceeds ${boundedLimit}`, 'state');
@@ -332,12 +347,20 @@ function validateLease(
     throw new DurableRunLeaseError(`invalid run lease status: ${String(record.status)}`, 'corrupt');
   }
   const ownerToken = record.ownerToken === undefined ? undefined : normalizeIdentifier(record.ownerToken, 'ownerToken');
+  const ownerHost = record.ownerHost === undefined ? undefined : normalizeIdentifier(record.ownerHost, 'ownerHost');
+  const ownerProcessId = record.ownerProcessId;
+  if (ownerProcessId !== undefined && (!Number.isSafeInteger(ownerProcessId) || (ownerProcessId as number) < 1)) {
+    throw new DurableRunLeaseError('invalid run lease ownerProcessId', 'corrupt');
+  }
+  if ((ownerHost === undefined) !== (ownerProcessId === undefined)) {
+    throw new DurableRunLeaseError('run lease process identity must include host and process id', 'corrupt');
+  }
   const leaseUntil = record.leaseUntil === undefined ? undefined : normalizeTime(record.leaseUntil, 'leaseUntil');
   if (record.status === 'active' && (!ownerToken || !leaseUntil)) {
     throw new DurableRunLeaseError('active run lease requires ownerToken and leaseUntil', 'corrupt');
   }
-  if (record.status === 'released' && (ownerToken || leaseUntil)) {
-    throw new DurableRunLeaseError('released run lease cannot retain ownerToken or leaseUntil', 'corrupt');
+  if (record.status === 'released' && (ownerToken || leaseUntil || ownerHost || ownerProcessId !== undefined)) {
+    throw new DurableRunLeaseError('released run lease cannot retain ownership fields', 'corrupt');
   }
   if (!Number.isSafeInteger(record.attempts) || (record.attempts as number) < 1) {
     throw new DurableRunLeaseError('invalid run lease attempts', 'corrupt');
@@ -355,6 +378,8 @@ function validateLease(
     runId,
     status: record.status,
     ...(ownerToken ? { ownerToken } : {}),
+    ...(ownerHost ? { ownerHost } : {}),
+    ...(ownerProcessId === undefined ? {} : { ownerProcessId: ownerProcessId as number }),
     createdAt,
     acquiredAt,
     updatedAt,
@@ -375,6 +400,22 @@ function isLeaseActive(lease: DurableRunLease, now: Date): boolean {
   return lease.status === 'active'
     && lease.leaseUntil !== undefined
     && Date.parse(lease.leaseUntil) > now.getTime();
+}
+
+/**
+ * A TTL alone cannot prove that a paused Runner is dead. Recovery may only
+ * reclaim an expired lease after the previous local process is known to be
+ * absent. Unknown/legacy or remote owners stay blocked. A reused PID can only
+ * cause a conservative false block, never an unsafe takeover.
+ */
+function isLocalOwnerProcessAlive(host: string | undefined, processId: number | undefined): boolean {
+  if (!host || !processId || host !== hostname()) return true;
+  try {
+    process.kill(processId, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ESRCH';
+  }
 }
 
 function cloneLease(lease: DurableRunLease): DurableRunLease {
