@@ -45,6 +45,9 @@ describe('same-Run segment recovery eligibility', () => {
     ['exhausted Run-wide segment budget', (fixture: RecoveryFixture) => {
       fixture.checkpoint.loopBudget.toolLoopIterationsUsed = fixture.checkpoint.loopBudget.maxToolLoopIterationsPerRun;
     }],
+    ['exhausted no-progress budget across a restart', (fixture: RecoveryFixture) => {
+      fixture.checkpoint.loopBudget.noProgressRounds = fixture.checkpoint.loopBudget.maxNoProgressRounds;
+    }],
     ['unknown side effect', (fixture: RecoveryFixture) => {
       Object.assign(fixture.projection, { unknownEffectIds: ['effect-unknown'] });
     }],
