@@ -6,6 +6,7 @@
 - [模块拆分地图](module-split-map.md)：当前 300/600 行文件登记及受控超限项，供 check:repo 校验。
 - [Core Flow 状态契约](core-flow-state-contract.md)：唯一状态转移 manifest、RunContext 所有权与生命周期。
 - [LCDA-01 全仓历史兼容与遗留代码审计](lcda-01-legacy-compatibility-audit-2026-10-16.md)：本地 main 的遗留执行路径、持久化兼容、无效配置、清理分类与 LCDA-02 分批方案。
+- [LCDA-02B 存量兼容证据盘点与退役决策](lcda-02b-persisted-compatibility-inventory-2026-10-16.md)：持久化结构、受限只读盘点器、真实数据未检查声明与退役决策矩阵。
 - [插件开发说明](plugin-development.md)：插件贡献、权限与生命周期。
 - [自定义模型供应商](custom-model-providers.md)：Provider 配置和能力语义。
 - [即时性提示契约](transient-notice-contract.md)：确认自动消失、失败永不自动消失的口径、时间规则与真实窗口验收。
