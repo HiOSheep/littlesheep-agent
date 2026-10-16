@@ -122,7 +122,7 @@ async function runGeneric(id: string) {
     testLayer: 'harness_execute_stage_tool_execution_service_component_adapter', provider: 'scripted-mock',
     toolCallCount: (ctx.toolResults ?? []).length, toolFailures: (ctx.toolResults ?? []).filter((item) => !item.ok).length,
     effectCount, fixtureEffect: { path: `${id.toLowerCase()}-effect.txt`, bytes: bytes.byteLength, sha256: (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex') },
-    stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
+    stopReason: result.ok ? 'execute_completed' : result.error ?? 'execute_failed',
     productResult: expectedEffects ? productResult : 'failed',
     oracle: `Component Oracle for ${id}: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.`,
     evidenceRefs: [`fixture://${id}/${id.toLowerCase()}-effect.txt`, `observation://${id}/tool-results`],
@@ -185,7 +185,7 @@ async function runC02() {
     sideEffects: { malformedInputExecutions: 0, correctedInputExecutions: invoked.length },
     correctedInputExecuted: corrected,
     fixtureEffect: { path: 'target.txt', bytes: Buffer.byteLength(actualFile, 'utf8'), sha256: (await import('node:crypto')).createHash('sha256').update(actualFile).digest('hex') },
-    stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
+    stopReason: result.ok ? 'execute_completed' : result.error ?? 'execute_failed',
     productResult: corrected ? 'passed' : 'failed',
     oracle: 'The schema-invalid proposal has no side effect; the corrected proposal executes in the same run.',
     evidenceRefs: ['observation://C02/invocation-statuses', 'observation://C02/execution-count', 'fixture://C02/target.txt'],
@@ -258,7 +258,7 @@ async function runC08() {
     toolFailures: (ctx.toolResults ?? []).filter((item) => !item.ok).length,
     fixtureEvidence: [{ ref: 'fixture://C08/runs.log', sha256: fixtureHash, bytes: Buffer.byteLength(runs, 'utf8') }],
     productResult: executedTwice ? 'passed' : refusedAsReplay ? 'failed' : 'unverified',
-    stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
+    stopReason: result.ok ? 'execute_completed' : result.error ?? 'execute_failed',
     oracle: 'Exactly two identical command calls are recorded with outcomes fail then pass and distinct fixture state hashes; final fixture assertion passes.',
     evidenceRefs: ['fixture://C08/runs.log.sha256', 'fixture://C08/intermediate-state-hashes', 'observation://C08/tool-results'],
   });
@@ -303,7 +303,7 @@ async function runR01() {
       localHttpRequests: fixture.requests,
       webSearchInvocation: (ctx.toolInvocations ?? []).filter((record) => record.toolName === 'web_search').map((record) => ({ status: record.status, errorKind: record.errorKind })),
       webProposalAfterLocalDiscovery: proposalTurns.indexOf('web_search_proposal_after_discovery') > proposalTurns.indexOf('local_discovery'),
-      productResult: reached ? 'passed' : 'failed', stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
+      productResult: reached ? 'passed' : 'failed', stopReason: result.ok ? 'execute_completed' : result.error ?? 'execute_failed',
       oracle: 'A mid-task public information need reaches only the loopback fixture and returns the frozen fact.', evidenceRefs: ['fixture://R01/local-server-request-count'],
     });
   } finally { await new Promise<void>((resolve, reject) => fixture.server.close((error) => error ? reject(error) : resolve())); }
@@ -344,7 +344,7 @@ async function runR02() {
       localHttpRequests: fixture.requests, webToolAdmitted, webDisabledError: webError === 'web_disabled',
       webToolErrors: (ctx.toolResults ?? []).filter((item) => !item.ok).map((item) => item.meta?.errorKind ?? item.error ?? 'unknown'),
       authorization: { networkPolicy: 'explicitly-denied', deniedOutboundRequests: fixture.requests - allowedControlRequests, allowedControlPolicy: 'explicitly-allowed', allowedControlRequests },
-      productResult: correctlyBlocked && allowedControlRequests === 1 ? 'correctly_blocked' : 'failed', stopReason: result.ok ? 'stage_reached_verify' : result.error ?? 'execute_failed',
+      productResult: correctlyBlocked && allowedControlRequests === 1 ? 'correctly_blocked' : 'failed', stopReason: result.ok ? 'execute_completed' : result.error ?? 'execute_failed',
       oracle: `Paired control must allow the explicitly permitted fixture query (${allowedControlRequests} request); the user-forbidden case must produce zero additional requests and an honest blocked/unverified result (actual refusal: ${webToolAdmitted ? 'tool_not_admitted' : 'web_capability_withheld'}).`, evidenceRefs: ['fixture://R02/paired-request-counts', 'observation://R02/tool-not-admitted'],
     });
   } finally { await new Promise<void>((resolve, reject) => fixture.server.close((error) => error ? reject(error) : resolve())); }
