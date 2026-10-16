@@ -112,8 +112,7 @@
   content: "";
 }
 
-.task-progress-indicator.phase-planning .task-progress-ring,
-.task-progress-indicator.phase-verifying .task-progress-ring {
+.task-progress-indicator.phase-planning .task-progress-ring {
   background: conic-gradient(
     from 0deg,
     color-mix(in srgb, var(--muted-2) 30%, transparent) 0deg,

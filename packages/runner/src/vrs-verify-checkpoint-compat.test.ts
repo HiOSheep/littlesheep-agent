@@ -272,6 +272,8 @@ describe('VRS legacy VERIFY checkpoint continuation', () => {
         expect(decoded?.resumeState?.verificationHistory).toEqual(fixture.resumeState?.verificationHistory)
         expect(decoded?.resumeState?.lastError).toEqual(fixture.resumeState?.lastError)
         expect(decoded?.resumeState?.continuation).toEqual(fixture.resumeState?.continuation)
+        expect(decoded?.resumeState?.replanAttempts).toBe(fixture.resumeState?.replanAttempts)
+        expect(decoded?.resumeState?.maxReplanAttempts).toBe(fixture.resumeState?.maxReplanAttempts)
         expect(decoded).not.toHaveProperty('toolInvocations')
         expect(decoded).not.toHaveProperty('toolResults')
         expect(decoded).not.toHaveProperty('reply')

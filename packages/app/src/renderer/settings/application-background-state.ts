@@ -31,7 +31,6 @@ export const CLOSE_POLICY_OPTIONS: readonly ClosePolicyOption[] = [
 
 export function activeRunPhaseLabel(phase: RuntimeActiveRunPhase): string {
   if (phase === 'executing') return '正在执行'
-  if (phase === 'verifying') return '正在验证'
   if (phase === 'finalizing') return '正在整理结果'
   return '正在处理'
 }

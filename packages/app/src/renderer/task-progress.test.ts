@@ -21,12 +21,6 @@ describe('task progress', () => {
     })
   })
 
-  it('holds at 95 percent while VERIFY is running', () => {
-    expect(buildTaskProgress(activity({ verificationRunning: true }))).toMatchObject({
-      percent: 95, phase: 'verifying', label: '正在验证',
-    })
-  })
-
   it('enters execution when a standalone tool starts before any task step', () => {
     const snapshot = buildTaskProgress(activity({
       steps: [],
@@ -38,13 +32,13 @@ describe('task progress', () => {
   })
 
   it('reaches 100 only after the run is done', () => {
-    expect(buildTaskProgress(activity({ status: 'done', verificationRunning: false }))).toMatchObject({
+    expect(buildTaskProgress(activity({ status: 'done' }))).toMatchObject({
       percent: 100, phase: 'done', label: '任务完成',
     })
   })
 
   it('keeps paused progress visible without presenting it as failure or interruption', () => {
-    expect(buildTaskProgress(activity({ status: 'paused', verificationRunning: false }))).toMatchObject({
+    expect(buildTaskProgress(activity({ status: 'paused' }))).toMatchObject({
       percent: 45,
       phase: 'paused',
       label: '任务已暂停',

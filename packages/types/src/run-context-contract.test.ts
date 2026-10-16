@@ -8,7 +8,7 @@ import {
 
 describe('RunContext ownership contract', () => {
   it('assigns the registered high-churn groups to explicit owners', () => {
-    for (const group of ['reply', 'replan', 'decision', 'failure', 'executionEvidence', 'modelObservability', 'runtimeControl', 'memory'] as const) {
+    for (const group of ['reply', 'task', 'decision', 'failure', 'executionEvidence', 'modelObservability', 'runtimeControl', 'memory'] as const) {
       const definitions = runContextFieldsForGroup(group);
       expect(definitions.length).toBeGreaterThan(0);
       expect(definitions.every((definition) => definition.owner.length > 0)).toBe(true);
@@ -24,7 +24,7 @@ describe('RunContext ownership contract', () => {
       lifecycle: 'run-local',
     });
     expect(getRunContextFieldContract('taskBook')).toMatchObject({
-      group: 'replan',
+      group: 'task',
       owner: 'decide-taskbook-boundary',
       lifecycle: 'checkpoint-carried',
     });
@@ -50,11 +50,18 @@ describe('RunContext ownership contract', () => {
     });
   });
 
-  it('exposes explicit write checks without changing the RunContext shape', () => {
+  it('exposes explicit write checks and rejects writes from the retired VERIFY stage', () => {
     expect(canWriteRunContextField('reply', 'reply')).toBe(true);
-    expect(canWriteRunContextField('reply', 'verify')).toBe(true);
+    expect(canWriteRunContextField('reply', 'verify')).toBe(false);
     expect(canWriteRunContextField('taskBook', 'runtime-boundary')).toBe(true);
-    expect(() => assertRunContextFieldWriteAllowed('reply', 'verify')).not.toThrow();
+    expect(() => assertRunContextFieldWriteAllowed('reply', 'verify')).toThrow(/cannot be written/);
     expect(() => assertRunContextFieldWriteAllowed('reply', 'reply')).not.toThrow();
+  });
+
+  it('does not list the retired VERIFY stage as an active RunContext reader', () => {
+    const allDefinitions = runContextFieldsForGroup('reply');
+    const groups = ['task', 'decision', 'failure', 'executionEvidence', 'modelObservability', 'runtimeControl', 'memory'] as const;
+    expect([...allDefinitions, ...groups.flatMap((group) => runContextFieldsForGroup(group))]
+      .every((definition) => !definition.readStages.includes('verify'))).toBe(true);
   });
 });

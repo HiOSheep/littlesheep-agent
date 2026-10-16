@@ -8,7 +8,7 @@ export interface MemoryRunFeedbackInput {
   }>;
   activeAtomIds: string[];
   releasedAtomIds: string[];
-  /** Explicitly cited by VERIFY; mere Context presence is insufficient. */
+  /** Explicitly identified in a verification record; mere Context presence is insufficient. */
   usedAtomIds?: string[];
   /** Active adopted atoms independently matched in the final reply; routing-only evidence. */
   answerUsedAtomIds?: string[];

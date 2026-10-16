@@ -83,7 +83,7 @@ describe('ActiveRunRegistry', () => {
       origin: 'app',
       startedAt: '2026-07-29T00:59:00.000Z',
       updatedAt: '2026-07-29T01:00:01.000Z',
-      phase: 'verifying',
+      phase: 'executing',
       controlStatus: 'running',
       totalSteps: 2,
       completedSteps: 1,
@@ -93,6 +93,15 @@ describe('ActiveRunRegistry', () => {
     snapshot.activeSteps[0]!.title = 'mutated outside';
     expect(registry.list()[0]?.activeSteps[0]?.title).toBe('Verify');
     expect(observed.length).toBeGreaterThan(1);
+
+    registry.observe('run-progress', { type: 'verification', verification: {
+      attempt: 1,
+      verdict: 'unverified',
+      reason: 'Execution evidence settled; task acceptance was not judged.',
+      source: 'structural',
+      verifiedAt: '2026-07-29T01:00:02.000Z',
+    } });
+    expect(registry.list()[0]?.phase).toBe('finalizing');
 
     unsubscribe();
     const countAfterUnsubscribe = observed.length;

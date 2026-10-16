@@ -30,7 +30,7 @@ export function selectWorkPolicy(ctx: RunContext, classification: Classification
   // answer. The reason codes below are kept so a heavy request can still be
   // explained in the audit trail, but none of them buys a second executor any
   // more, and an already persisted TaskBook is read-only history.
-  if (ctx.resumedFromCheckpointId || ctx.clarificationResponse || ctx.partialReplanRequest || ctx.verifyFeedback) {
+  if (ctx.resumedFromCheckpointId || ctx.clarificationResponse) {
     return policy(sourceMessageId, 'bounded_loop', 'continuation');
   }
   if ((ctx.deferredRuntimeEvents?.length ?? 0) > 0) {

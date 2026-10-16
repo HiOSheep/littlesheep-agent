@@ -22,7 +22,6 @@ export interface HistoryActivity {
   durationMs?: number
   taskBook?: TaskBook
   verificationHistory?: VerificationRecord[]
-  verificationRunning?: boolean
   steps: Array<{
     stepId: string
     title: string

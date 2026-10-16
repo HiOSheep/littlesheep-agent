@@ -151,8 +151,6 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       appliedTaskBookPatchIds: [...(ctx.appliedTaskBookPatchIds ?? [])].slice(-128),
       deferredRuntimeEvents: clone((ctx.deferredRuntimeEvents ?? []).slice(-MAX_RESUME_EVENTS)),
       recoveryAttempts: ctx.recoveryAttempts ?? 0,
-      replanAttempts: ctx.replanAttempts ?? 0,
-      maxReplanAttempts: ctx.maxReplanAttempts ?? 2,
       verificationHistory: clone((ctx.verificationHistory ?? []).slice(-MAX_VERIFICATION_RECORDS)),
     },
     createdAt: now.toISOString(),

@@ -191,8 +191,12 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     throw new RunCheckpointValidationError('checkpoint.resumeState.deferredRuntimeEvents is missing or exceeds its limit.');
   }
   const recoveryAttempts = boundedSafeInteger(value.recoveryAttempts, 'checkpoint.resumeState.recoveryAttempts', 0);
-  const replanAttempts = boundedSafeInteger(value.replanAttempts, 'checkpoint.resumeState.replanAttempts', 0);
-  const maxReplanAttempts = boundedSafeInteger(value.maxReplanAttempts, 'checkpoint.resumeState.maxReplanAttempts', 0);
+  const replanAttempts = value.replanAttempts === undefined
+    ? undefined
+    : boundedSafeInteger(value.replanAttempts, 'checkpoint.resumeState.replanAttempts', 0);
+  const maxReplanAttempts = value.maxReplanAttempts === undefined
+    ? undefined
+    : boundedSafeInteger(value.maxReplanAttempts, 'checkpoint.resumeState.maxReplanAttempts', 0);
   if (!Array.isArray(value.verificationHistory) || value.verificationHistory.length > MAX_RESUME_VERIFICATION) {
     throw new RunCheckpointValidationError('checkpoint.resumeState.verificationHistory is missing or exceeds its limit.');
   }
@@ -219,8 +223,8 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     appliedTaskBookPatchIds,
     deferredRuntimeEvents: cloneJson(value.deferredRuntimeEvents) as RunCheckpointResumeState['deferredRuntimeEvents'],
     recoveryAttempts,
-    replanAttempts,
-    maxReplanAttempts,
+    ...(replanAttempts === undefined ? {} : { replanAttempts }),
+    ...(maxReplanAttempts === undefined ? {} : { maxReplanAttempts }),
     verificationHistory: cloneJson(value.verificationHistory) as RunCheckpointResumeState['verificationHistory'],
   };
 }

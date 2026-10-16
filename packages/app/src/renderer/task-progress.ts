@@ -5,7 +5,7 @@ export interface TaskProgressSnapshot {
   completedSteps: number
   totalSteps: number
   activeStep?: string
-  phase: 'starting' | 'executing' | 'verifying' | 'done' | 'failed' | 'aborted' | 'paused' | 'waiting_user'
+  phase: 'starting' | 'executing' | 'done' | 'failed' | 'aborted' | 'paused' | 'waiting_user'
   label: string
 }
 
@@ -20,15 +20,13 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   else if (activity.status === 'aborted') phase = 'aborted'
   else if (activity.status === 'failed') phase = 'failed'
   else if (activity.status === 'done') phase = 'done'
-  else if (activity.verificationRunning) phase = 'verifying'
   else if (running || failed || completedSteps > 0 || activity.tools.length > 0) phase = 'executing'
-  // No step, tool or verification evidence yet: the run is in its first model
+  // No step or tool evidence yet: the run is in its first model
   // request. There is no planning stage to report.
   else phase = 'starting'
 
   let percent = 0
   if (phase === 'done') percent = 100
-  else if (phase === 'verifying') percent = 95
   else if (totalSteps > 0) {
     const weighted = completedSteps + (running ? 0.5 : 0)
     percent = Math.min(90, Math.round((weighted / totalSteps) * 90))
@@ -37,17 +35,15 @@ export function buildTaskProgress(activity: HistoryActivity): TaskProgressSnapsh
   const activeStep = running?.title ?? failed?.title
   const label = phase === 'waiting_user' ? '等待用户决定' : phase === 'starting'
     ? '正在处理'
-    : phase === 'verifying'
-      ? '正在验证'
-      : phase === 'done'
-        ? '任务完成'
-        : phase === 'failed'
-          ? '任务失败'
-          : phase === 'paused'
-            ? '任务已暂停'
-            : phase === 'aborted'
-              ? '任务已停止'
-              : activeStep || '正在执行'
+    : phase === 'done'
+      ? '任务完成'
+      : phase === 'failed'
+        ? '任务失败'
+        : phase === 'paused'
+          ? '任务已暂停'
+          : phase === 'aborted'
+            ? '任务已停止'
+            : activeStep || '正在执行'
 
   return { percent, completedSteps, totalSteps, activeStep, phase, label }
 }

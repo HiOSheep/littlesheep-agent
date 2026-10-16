@@ -118,8 +118,6 @@ export class ActiveRunActivityStore {
     } else if (event.type === 'tool_end' && event.callId) {
       activity.phase = 'executing';
       activity.activeTools.delete(event.callId);
-    } else if (event.type === 'verification_start') {
-      activity.phase = 'verifying';
     } else if (event.type === 'verification' || event.type === 'final_delta') {
       activity.phase = 'finalizing';
     }

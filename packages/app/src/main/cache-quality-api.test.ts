@@ -19,7 +19,7 @@ describe('cache quality Local App API', () => {
     const report = vi.fn(async () => ({
       status: 'available' as const,
       report: {
-        version: 1 as const,
+        version: 2 as const,
         requestCount: 1,
         unreadableEntryCount: 0,
         partitions: [{ provider: 'openai', model: 'test/model', requestCount: 1 }],

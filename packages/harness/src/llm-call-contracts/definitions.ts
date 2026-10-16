@@ -40,7 +40,7 @@ const WORKFLOW_INPUTS: readonly ContextItemKind[] = [
 ];
 const NO_MEMORY: readonly LlmMemoryIntentKind[] = ['none'];
 
-export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCallContractTemplate>> = {
+export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Partial<Record<LlmCallPurpose, LlmCallContractTemplate>>> = {
   classify: template({
     purpose: 'classify', stage: 'classify', modelCall: 'optional',
     goal: (ctx) => `Choose one bounded semantic activity for the inbound request: ${inbound(ctx)}`,
@@ -55,7 +55,7 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     goal: (ctx) => `Calibrate scope and produce the smallest sufficient TaskBook for: ${goal(ctx)}`,
     allowedContextKinds: FULL_INPUTS.filter((kind) => kind !== 'tool_result'),
     requiredContextKinds: ['system_prompt', 'user_input'], history: 'recent', attachments: 'images_and_manifest',
-    allowedDecisions: ['needs_clarification', 'lightweight_plan', 'structured_taskbook', 'partial_replan'],
+    allowedDecisions: ['needs_clarification', 'lightweight_plan', 'structured_taskbook'],
     outputSchema: json('taskbook-decision.v1', 'NeedAssessment, optional ClarificationRequest and TaskBook.'),
     memoryIntents: ['read', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 2_200, maxPromptTokens: 16_000, temperature: 0,
@@ -107,18 +107,6 @@ export const LLM_CALL_CONTRACT_TEMPLATES: Readonly<Record<LlmCallPurpose, LlmCal
     allowedDecisions: ['retry', 'escalate', 'abort'], outputSchema: json('recovery-decision.v1', 'Bounded recovery action and optional revised legacy plan.'),
     memoryIntents: ['read', 'conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
     maxIterations: 0, maxAttempts: 2, maxOutputTokens: 900, maxPromptTokens: 4_096, temperature: 0,
-  }),
-  // The kernel no longer issues a verification model call: VERIFY asserts only
-  // Runtime-provable evidence. The contract stays declared so historical logs,
-  // replayed run projections and old checkpoints still resolve their purpose.
-  verify: template({
-    purpose: 'verify', stage: 'verify', modelCall: 'required',
-    goal: (ctx) => `Judge the recorded evidence against the calibrated success criteria for: ${goal(ctx)}`,
-    allowedContextKinds: WORKFLOW_INPUTS, requiredContextKinds: ['system_prompt', 'workflow_state'],
-    history: 'none', attachments: 'none', allowedDecisions: ['pass', 'needs_replan', 'fail'],
-    outputSchema: json('verification-verdict.v1', 'Verdict, reason, feedback and exact failed step ids.'),
-    memoryIntents: ['conflict', 'none'], requiresMemoryEvidence: true, toolMode: 'none', runtimeApprovalRequired: false,
-    maxIterations: 0, maxAttempts: 2, maxOutputTokens: 500, maxPromptTokens: 8_000, temperature: 0,
   }),
   evolve: template({
     purpose: 'evolve', stage: 'evolve', modelCall: 'optional',

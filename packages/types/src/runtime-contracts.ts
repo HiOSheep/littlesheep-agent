@@ -132,6 +132,7 @@ export interface ModelRequestPrefixChange {
   readonly firstChangeKey?: string;
 }
 
+/** Includes retired purposes for historical request records; only registered templates are callable. */
 export type LlmCallPurpose =
   | 'classify'
   | 'decide'
@@ -629,8 +630,8 @@ export interface RuntimeEventIngress {
   summary(runId: string): RuntimeEventQueueSummary | null;
 }
 
-/** Active-run phase before any step, tool or verification evidence exists. */
-export type RuntimeActiveRunPhase = 'starting' | 'executing' | 'verifying' | 'finalizing';
+/** Active-run phase for the single EXECUTE-to-FINALIZE run path. */
+export type RuntimeActiveRunPhase = 'starting' | 'executing' | 'finalizing';
 
 export type RuntimeActiveRunControlStatus = 'running' | 'pause_requested' | 'interrupt_requested';
 
@@ -825,8 +826,9 @@ export interface RunCheckpointResumeState {
   appliedTaskBookPatchIds: string[];
   deferredRuntimeEvents: RuntimeEventEnvelope[];
   recoveryAttempts: number;
-  replanAttempts: number;
-  maxReplanAttempts: number;
+  /** Deprecated VERIFY fields accepted from old v1 checkpoints; new writers omit them. */
+  replanAttempts?: number;
+  maxReplanAttempts?: number;
   verificationHistory: import('./task.js').VerificationRecord[];
 }
 

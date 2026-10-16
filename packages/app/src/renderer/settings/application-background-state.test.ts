@@ -37,7 +37,7 @@ describe('application background presentation state', () => {
 
   it('derives progress, status, origin, and the available primary control from runtime state', () => {
     expect(activeRunProgress(activeRun())).toEqual({ label: '2/4 步', ratio: 0.5 })
-    expect(activeRunStatusLabel(activeRun({ phase: 'verifying' }))).toBe('正在验证')
+    expect(activeRunStatusLabel(activeRun({ phase: 'finalizing' }))).toBe('正在整理结果')
     expect(activeRunOriginLabel('channel')).toBe('外部渠道')
     expect(primaryActiveRunAction(activeRun())).toBe('pause')
     expect(primaryActiveRunAction(activeRun({ controlStatus: 'pause_requested' }))).toBe('resume')

@@ -8,7 +8,7 @@ LittleSheep 已具备本地 Agent 的主要运行骨架：单一 Harness 主循�
 
 ## 当前实现
 
-- **执行与验证**：活动路由只进入常规执行主循环或 Runtime 事实回复。DECIDE、验证模型调用、恢复模型调用和 CAPTURE 不存在；旧 TaskBook 只作为历史数据读取。Runtime 根据已记录证据验证；需要人工判断的完成项标记为 unverified。
+- **执行与验证**：活动路由只进入常规执行主循环或 Runtime 事实回复。DECIDE、独立 VERIFY、验证模型调用、恢复模型调用和 CAPTURE 不存在；旧 TaskBook 与 verification record 只保留历史读取。EXECUTE 结算运行证据，证据完整不代表用户目标已验收；缺少任务级验收依据时保持 unverified。
 - **工具与权限**：ToolExecutionService 是 Agent 工具的校验、授权、执行、清洗、取消和记录边界。公开权限选择统一为 `read-only`、`workspace-write` 和 `full-access`。当前会话索引只接受带 V2 版本标记的三种权限；旧 `full`、`research`、`restricted` 和无版本记录会从 `sessions.json` 索引移除，不再显示迁移提示，聊天记录文件不因此删除。Main 在执行前重新判定路径和权限；内置工具执行应用层核心源码保护检查，但宿主 Shell 及其子进程没有 OS 隔离，可能绕过该检查，不能视为宿主级只读边界。Shell 仅有 P3 ADR 明确批准的精确命令例外；Shell 实际以当前用户权限在宿主执行，没有 OS 级沙箱。
 - **文件与数据**：覆盖既有文件需有完整读取观察，提交时按内容哈希复核；部分、截断或清洗读取不能授权覆盖。应用数据根是 LS 的逻辑容器边界，workplace 只是默认工作区；外部项目不因被选中而成为容器内资源。当前路径容器是 Main 的分类与审批闸门，不是 OS/Docker 沙箱。
 - **Context 与缓存**：请求前缀按追加式账本保持；Context Engine 拥有候选、预算、淘汰和 token 账本。已发送前缀不能被预算裁剪。长任务缓存按现行规程达标；短任务的冷启动结构成本仍可能低于红线。

@@ -36,7 +36,7 @@ import type { SessionManager } from '@littlesheep/session';
 import {
   buildRunContext,
   clearReplyState,
-  writeReplanState,
+  writeRunTaskState,
   writeRuntimeState,
   writeMemoryState,
   writeDecisionState,
@@ -127,7 +127,6 @@ interface ContinuationInput {
   persistInbound: boolean;
   resumeStage: StageName;
   restoreState?: boolean;
-  revisionFeedback?: string;
 }
 
 interface ConversationTurnCallbacks {
@@ -782,12 +781,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           clearReplyState(ctx, 'runner-restore');
         } else {
           restoreContinuationContext(ctx, continuation.checkpoint, continuation.resumeStage);
-          if (continuation.revisionFeedback) {
-            writeReplanState(ctx, 'runner-restore', {
-              verifyFeedback: continuation.revisionFeedback,
-              partialReplanRequest: undefined,
-            });
-          }
         }
       }
       /**
@@ -1659,9 +1652,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           : [state.inboundMessageId],
         persistInbound: isClarification && !existingAnswer,
         resumeStage,
-        ...(dispositionDecision?.kind === 'revise_goal'
-          ? { revisionFeedback: `The user revised the same task goal or acceptance criteria:\n${answerText}` }
-          : {}),
       }, buildConversationContinuationEvidence({
         checkpoint,
         turnId: conversationTurnMessageId(checkpoint.sessionId, options.requestKey),
@@ -2274,19 +2264,18 @@ function restoreContinuationContext(
 
   ctx.entryStage = resumeStage;
   ctx.resumedFromCheckpointId = checkpoint.id;
-  writeReplanState(ctx, 'runner-restore', {
+  writeRunTaskState(ctx, 'runner-restore', {
     taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined,
     taskBookRevision: checkpoint.taskBookRevision,
     taskExecution: checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined,
     plan: state.plan ? structuredClone(state.plan) : undefined,
     appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
-    replanAttempts: state.replanAttempts,
   });
   writeDecisionState(ctx, 'runner-restore', {
     classification: state.classification ? structuredClone(state.classification) : undefined,
     needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
   });
-  writeReplanState(ctx, 'runner-restore', {
+  writeRunTaskState(ctx, 'runner-restore', {
     workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
   });
   writeRuntimeState(ctx, 'runner-restore', {
@@ -2312,7 +2301,6 @@ function restoreContinuationContext(
     lastError: undefined,
     recoveryAttempts: 0,
   });
-  ctx.maxReplanAttempts = state.maxReplanAttempts;
   replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
   // A paused/interrupted control snapshot must not immediately stop the new
   // continuation at its first safe boundary. The original event evidence is

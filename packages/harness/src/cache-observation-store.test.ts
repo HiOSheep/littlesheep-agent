@@ -319,11 +319,11 @@ describe('CacheObservationStore', () => {
         },
         verification: {
           verificationCount: 1,
-          passCount: 1,
+          historicalPassCount: 1,
           unverifiedCount: 0,
           needsReplanCount: 0,
           failCount: 0,
-          passRate: 1,
+          historicalPassRate: 1,
         },
       },
     });

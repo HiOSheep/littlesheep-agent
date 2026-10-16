@@ -99,9 +99,7 @@ export function TaskProgressIndicator({
   const style = { '--task-progress-angle': `${progress.percent * 3.6}deg` } as CSSProperties
   const currentDetail = progress.phase === 'starting'
     ? '正在处理请求'
-    : progress.phase === 'verifying'
-      ? '正在按验收标准检查执行结果'
-      : progress.activeStep ?? '等待下一步'
+    : progress.activeStep ?? '等待下一步'
   const compactStatus = progress.totalSteps > 0
     ? `${progress.completedSteps}/${progress.totalSteps} 步`
     : '准备中'

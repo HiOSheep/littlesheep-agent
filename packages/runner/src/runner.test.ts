@@ -1280,8 +1280,8 @@ describe('createRunner run', () => {
           failureRate: 0,
         },
         verification: {
-          // Conversational turns run in the main loop now, so every completed
-          // run passes VERIFY and records an `unverified` verdict.
+          // Conversational turns use EXECUTE evidence settlement; a complete
+          // record does not assert task acceptance.
           verificationCount: 2,
         },
         releaseGate: {
@@ -1292,9 +1292,8 @@ describe('createRunner run', () => {
     if (report?.status !== 'available') throw new Error('cache quality report unexpectedly unavailable');
     expect(report.report.providerPrompt.hitRatio).toBeCloseTo(0.3);
     expect(report.report.releaseGate.reasons).toContain('real_provider_reconciliation_not_verified');
-    // Verifications are observed now that every completed run passes VERIFY, so
-    // the continuity reason must not appear; the gate stays blocked for the real
-    // provider reconciliation that this fixture cannot produce.
+    // Runtime evidence records are observed, so the continuity reason is absent;
+    // the gate stays blocked for real provider reconciliation this fixture cannot produce.
     expect(report.report.releaseGate.reasons).not.toContain('quality_continuity_not_observed');
     expect(report.report.releaseGate.reasons).not.toContain('verification_failures_present');
   });
@@ -1323,6 +1322,13 @@ describe('createRunner run', () => {
     });
     if (report?.status !== 'available') throw new Error('cache quality report unavailable for current path');
     expect(report.report.requestCount).toBeGreaterThan(0);
+    expect(report.report).toMatchObject({
+      version: 2,
+      verification: {
+        historicalPassCount: 0,
+        unverifiedCount: 1,
+      },
+    });
     expect(report.report.providerTokens.promptTokens).toBeGreaterThan(0);
     expect(report.report.releaseGate.status).toBe('blocked');
     expect(report.report.providerPrompt.hitRatio).toBe(0);

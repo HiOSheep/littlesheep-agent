@@ -135,6 +135,23 @@ describe('model transcript reduction', () => {
     expect(activity().reasoning ?? []).toEqual([])
   })
 
+  it('ignores the retired VERIFY activity event while preserving its recorded history', () => {
+    const { context, activity } = harness()
+    dispatch(context, { type: 'verification_start', visibility: 'progress' })
+    expect(activity().status).toBe('running')
+    expect(activity()).not.toHaveProperty('verificationRunning')
+
+    const record = {
+      attempt: 1,
+      verdict: 'pass' as const,
+      source: 'structural' as const,
+      reason: 'legacy record',
+      verifiedAt: '2026-10-16T00:00:00.000Z',
+    }
+    dispatch(context, { type: 'verification', verification: record, visibility: 'progress' })
+    expect(activity().verificationHistory).toEqual([record])
+  })
+
   it('HA-04-10 projects observable model work without a Harness stage', () => {
     const { context, activity } = harness()
     dispatch(context, {

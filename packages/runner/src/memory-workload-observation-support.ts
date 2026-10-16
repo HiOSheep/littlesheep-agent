@@ -11,9 +11,10 @@ export function incrementVerdict(
   target: MemoryWorkloadObservation['quality']['verificationVerdicts'],
   value: unknown,
 ): void {
-  if (value === 'pass') target.pass += 1;
+  if (value === 'pass') target.historicalPass += 1;
   else if (value === 'needs_replan') target.needsReplan += 1;
   else if (value === 'fail') target.fail += 1;
+  else if (value === 'unverified') target.unverified += 1;
   else target.other += 1;
 }
 

@@ -7,7 +7,7 @@ import type {
 } from '../../shared/run-checkpoint-contracts'
 
 export interface CheckpointRecoveryProgress {
-  phase: 'preparing' | 'restored' | 'executing' | 'verifying' | 'finalizing'
+  phase: 'preparing' | 'restored' | 'executing' | 'finalizing'
   label: string
   detail?: string
 }
@@ -49,15 +49,12 @@ export function checkpointRecoveryProgressForEvent(
       detail: bounded(event.error ?? event.name),
     }
   }
-  if (event.type === 'verification_start') {
-    return { phase: 'verifying', label: '正在验证执行结果' }
-  }
   if (event.type === 'verification') {
     return {
-      phase: 'verifying',
+      phase: 'finalizing',
       label: event.verification?.verdict === 'pass'
-        ? '验证通过'
-        : event.verification?.verdict === 'unverified' ? '未验证' : '验证结果已返回',
+        ? '旧版 VERIFY 记录通过（不代表任务验收）'
+        : event.verification?.verdict === 'unverified' ? '运行证据已结算，任务目标未验收' : '运行证据结算结果已记录',
       detail: bounded(event.verification?.reason ?? event.summary),
     }
   }
@@ -79,7 +76,7 @@ export function checkpointStageLabel(stage: string): string {
     decide: '制定任务书',
     execute: '执行任务',
     recover: '恢复处理',
-    verify: '验证结果',
+    verify: '旧版验证记录',
     evolve: '沉淀能力',
     capture: '记录现场',
     finalize: '整理交付',

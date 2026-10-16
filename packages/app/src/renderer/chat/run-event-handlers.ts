@@ -160,19 +160,10 @@ export function handleRunToolEvent(
     }))
     return
   }
-  if (evt.type === 'verification_start') {
-    updateLastAssistantActivity(context.setMessages, (activity) => ({
-      ...activity,
-      ...mergeVisibility(activity.visibility, evt.visibility),
-      verificationRunning: true,
-    }))
-    return
-  }
   if (evt.type === 'verification' && evt.verification) {
     updateLastAssistantActivity(context.setMessages, (activity) => ({
       ...activity,
       ...mergeVisibility(activity.visibility, evt.visibility),
-      verificationRunning: false,
       verificationHistory: [...(activity.verificationHistory ?? []), evt.verification!],
     }))
     return

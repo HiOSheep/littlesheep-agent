@@ -3,7 +3,7 @@ import { textMessage } from '@littlesheep/types';
 import { buildMemoryRunFeedbackInput } from './memory-feedback-evidence.js';
 
 describe('buildMemoryRunFeedbackInput', () => {
-  it('keeps VERIFY and answer-level Atom evidence in separate channels', () => {
+  it('keeps verification-record and answer-level Atom evidence in separate channels', () => {
     const ctx = {
       runId: 'run-1',
       produced: [textMessage('assistant', '')],

@@ -11,7 +11,7 @@ import {
   type RuntimeEventType,
 } from '@littlesheep/types';
 import { applyTaskBookPatch } from './taskbook-patch.js';
-import { writeReplanState } from './replan-state.js';
+import { writeRunTaskState } from './run-task-state.js';
 import { writeRuntimeState } from './runtime-state.js';
 
 export const RUNTIME_CONTROL_EVENT_TYPES = [
@@ -189,7 +189,7 @@ export function consumeRuntimeTaskEvents(ctx: RunContext): RuntimeTaskBoundaryRe
   }
 
   if (taskBookChanged && stagedTaskBook) {
-    writeReplanState(ctx, 'runtime-boundary', {
+  writeRunTaskState(ctx, 'runtime-boundary', {
       taskBook: stagedTaskBook,
       plan: stagedTaskBook.steps,
       taskBookRevision: stagedRevision,

@@ -1,5 +1,5 @@
 // @littlesheep/types - task.ts
-// Demand calibration, TaskBook planning, execution, recovery, and verification contracts.
+// Demand calibration, TaskBook execution, recovery, and historical verification contracts.
 
 import type { ToolResourceAccess } from './tool.js';
 
@@ -109,15 +109,6 @@ export interface TaskStepReplyCandidate {
   generatedAt: string;
 }
 
-/** VERIFY's bounded request to revise only failed/incomplete steps. */
-export interface PartialReplanRequest {
-  attempt: number;
-  requestedAt: string;
-  targetStepIds: string[];
-  reason: string;
-  feedback: string;
-}
-
 /** Durable request to promote one bounded execution into a TaskBook. */
 export interface WorkPolicyUpgradeRequest {
   version: 1;
@@ -145,8 +136,13 @@ export interface WorkPolicyUpgradeRequest {
   };
 }
 
-/** Durable audit record for one partial re-plan cycle. */
-export interface TaskReplanRecord extends PartialReplanRequest {
+/** Legacy execution-log record retained for historical partial re-plan cycles. */
+export interface TaskReplanRecord {
+  attempt: number;
+  requestedAt: string;
+  targetStepIds: string[];
+  reason: string;
+  feedback: string;
   preservedStepIds: string[];
   revisedStepIds?: string[];
   decidedAt?: string;
@@ -165,7 +161,7 @@ export interface TaskExecutionResult {
   replanHistory?: TaskReplanRecord[];
 }
 
-/** Structured task book installed at a runtime boundary and consumed by the main loop EXECUTE/VERIFY. */
+/** Structured task book installed at a runtime boundary and consumed by EXECUTE. */
 export interface TaskBook {
   assessment: NeedAssessment;
   goal: string;
@@ -179,13 +175,13 @@ export interface TaskBook {
   stageResults?: TaskStepResult[];
 }
 
-/** Durable VERIFY outcome linked to the task book and final reply. */
+/** Historical VERIFY outcome; current evidence settlement does not establish task acceptance. */
 export interface VerificationRecord {
   attempt: number;
   /**
-   * `pass` means Runtime evidence proved the recorded acceptance; `unverified`
-   * means every recorded fact is consistent and complete but the acceptance
-   * criteria that need human judgement were not judged by anyone.
+   * `pass` and `needs_replan` are retained for historical records. Neither
+   * proves that the user's task is complete. Current settlement writes
+   * `unverified` for complete execution evidence and `fail` for known gaps.
    */
   verdict: 'pass' | 'unverified' | 'needs_replan' | 'fail';
   reason: string;

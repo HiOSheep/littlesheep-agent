@@ -13,7 +13,7 @@ import type {
   TaskStepStatus,
 } from '@littlesheep/types';
 import { TASK_BOOK_PATCH_VERSION } from '@littlesheep/types';
-import { writeReplanState } from './replan-state.js';
+import { writeRunTaskState } from './run-task-state.js';
 
 export const MAX_TASK_BOOK_PATCH_OPERATIONS = 16 as const;
 export const MAX_TASK_BOOK_PATCH_EVENT_IDS = 32 as const;
@@ -194,7 +194,7 @@ export function applyTaskBookPatchToContext(
     appliedPatchIds: ctx.appliedTaskBookPatchIds,
   });
   if (result.kind === 'applied') {
-    writeReplanState(ctx, 'runtime-boundary', {
+    writeRunTaskState(ctx, 'runtime-boundary', {
       taskBook: result.taskBook,
       plan: result.taskBook.steps,
       taskBookRevision: result.revision,

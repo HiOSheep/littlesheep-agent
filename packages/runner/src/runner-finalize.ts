@@ -92,7 +92,6 @@ export async function finalizeRunnerPhase<TResult>(
       runId: ctx.runId,
       status,
       verification: latestVerification,
-      successfulToolCallIds,
       recordedAt,
     });
   } catch (err) {

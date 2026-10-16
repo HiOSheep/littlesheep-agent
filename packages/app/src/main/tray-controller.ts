@@ -117,7 +117,6 @@ function runLabel(run: RuntimeActiveRunSnapshot): string {
   if (run.controlStatus === 'pause_requested') return '等待暂停'
   const step = run.activeSteps[0]?.title
   if (step) return boundedText(step, 42)
-  if (run.phase === 'verifying') return '正在验证'
   if (run.phase === 'finalizing') return '正在整理结果'
   if (run.phase === 'executing') return '正在执行'
   return '正在处理'

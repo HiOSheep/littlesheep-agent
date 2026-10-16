@@ -126,16 +126,14 @@ export function activityAttentionLine(
 }
 
 /**
- * The verification verdicts that did not pass, as one line. The verdict lives on the activity
- * rather than on a transcript row: the process trigger renders it in both display modes, the
- * compact attention line repeats it beside the other facts that outlive the fold. A verdict
- * that did not pass must stay readable in both modes and must never read as a pass (UX-16).
+ * Preserve recorded verification verdicts as history on the process trigger. A legacy pass is
+ * labeled as an old record and never presented as task acceptance.
  */
 export function activityVerificationLine(
   activity: Pick<AssistantTurnActivity, 'verificationHistory'>,
 ): string | null {
-  const notPassed = (activity.verificationHistory ?? []).filter((record) => record.verdict !== 'pass')
-  if (notPassed.length === 0) return null
-  const labels = [...new Set(notPassed.map((record) => verificationVerdictLabel(record.verdict)))]
+  const records = activity.verificationHistory ?? []
+  if (records.length === 0) return null
+  const labels = [...new Set(records.map((record) => verificationVerdictLabel(record.verdict)))]
   return `验证：${labels.join('、')}`
 }

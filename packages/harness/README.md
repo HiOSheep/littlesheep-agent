@@ -15,12 +15,12 @@ Harness 是 Agent run 的确定性控制流层，拥有活动 stage manifest、�
 - RECOVER 作出有界的确定性重试、停止或升级用户决定；已结算副作用不重复执行。
 - 面向用户的最终自然语言必须来自真实 LLM 调用，并在发布前按 settlement 身份登记。
 - `model-observability` 在正文校验前按逻辑请求身份与物理 attempt 持久化 `provider_usage_recorded`；每个回执只累加一次，之后的逻辑响应结算不再重复累加。Provider 已返回用量而正文无效时，用量仍保留。
-- Hooks 可在受控策略下扩展生命周期，但不能取得状态机所有权或跳过权限、验证、证据与收尾；失败降级规则有界。
+- Hooks 可在受控策略下扩展生命周期，但不能取得状态机所有权或跳过权限、证据结算与收尾；失败降级规则有界。
 
 合法状态转移与旧检查点规范化由 `packages/types` 和 [Core Flow 状态契约](../../docs/reference/core-flow-state-contract.md)维护。
 
 ## 代码入口与验证
 
-`stages/execute` 拥有请求循环、工具协作和回复发布前的证据结算；`stages/recover` 决定重试／停止／升级，并将历史 `verify` checkpoint 安全迁入现有恢复路径；`llm-call-contracts` 定义请求身份与输出契约；`durable-kernel.ts`、`checkpoint-resume.ts` 管理事件与续跑边界。历史 `verify` stage 名、事件与验证记录只用于旧数据读取，不属于活动 stage manifest。
+`stages/execute` 拥有请求循环、工具协作和回复发布前的证据结算；`stages/recover` 决定重试／停止／升级，并将历史 `verify` checkpoint 安全迁入现有恢复路径；`llm-call-contracts` 只定义活动模型请求身份与输出契约，不再注册 `verify`；`durable-kernel.ts`、`checkpoint-resume.ts` 管理事件与续跑边界。历史 `verify` stage 名、事件、模型调用合同与验证记录只用于旧数据读取，不属于活动 stage manifest。
 
 测试与 stage 同目录；`current-path-contract.test.ts` 防止第二执行路径或退役路由回流。缓存质量报告只描述实际记录的当前运行；版本对比必须来自不同 checkout，不能用 durable 记录模式标签制造第二条 Harness 路径。局部改动用 Harness 定向测试；权限、持久化或重启变化还需相应 Runtime 与 Electron 验收。跨包使用公开导出，不深层导入私有实现。

@@ -382,6 +382,7 @@ export interface MemoryUseFeedback {
   outcome: MemoryUseOutcome;
   verified: boolean;
   evidenceRefs: string[];
+  /** Legacy persistence column; new EXECUTE-settled feedback leaves it unset. */
   verifyStageId?: string;
   reason: string;
   createdAt: string;

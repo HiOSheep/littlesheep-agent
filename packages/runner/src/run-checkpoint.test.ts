@@ -67,6 +67,8 @@ describe('buildRunCheckpoint', () => {
 
     expect(checkpoint.currentStepId).toBe('active-1');
     expect(checkpoint.activeStepIds).toEqual(['active-1', 'active-2', 'active-3', 'active-4']);
+    expect(checkpoint.resumeState).not.toHaveProperty('replanAttempts');
+    expect(checkpoint.resumeState).not.toHaveProperty('maxReplanAttempts');
   });
 
   it('omits active branches when execution has no in-progress step', () => {

@@ -47,14 +47,13 @@ export function observeMemoryWorkload(
   const status = { ok: 0, error: 0, aborted: 0, other: 0 };
   const accessStatus = { ok: 0, degraded: 0, error: 0, other: 0 };
   const knownReferences = { adopted: 0, excluded: 0, conflicted: 0, reactivated: 0 };
-  const verificationVerdicts = { pass: 0, needsReplan: 0, fail: 0, other: 0 };
+  const verificationVerdicts = { historicalPass: 0, needsReplan: 0, fail: 0, unverified: 0, other: 0 };
   const taskExecution = { done: 0, incomplete: 0, other: 0 };
   const memoryAssisted = {
     adoptedRuns: 0,
     adoptedWithoutExplicitUseRuns: 0,
-    explicitUsePassRuns: 0,
-    explicitUseNonPassRuns: 0,
-    explicitUseUnverifiedRuns: 0,
+    explicitUseWithHistoricalPassRuns: 0,
+    explicitUseWithOtherRecordRuns: 0,
     releaseRuns: 0,
     conflictRuns: 0,
   };
@@ -67,8 +66,7 @@ export function observeMemoryWorkload(
   let memoryAccessRuns = 0;
   let knownStateRuns = 0;
   let verificationRuns = 0;
-  let verifiedOutcomeRuns = 0;
-  let verifiedPassRuns = 0;
+  let historicalPassRuns = 0;
   let explicitUseRuns = 0;
   let providerUsageRuns = 0;
   let accessRecords = 0;
@@ -142,10 +140,9 @@ export function observeMemoryWorkload(
     if (conflicted.size > 0) memoryAssisted.conflictRuns += 1;
 
     if (verification.items.length > 0) verificationRuns += 1;
-    if (verification.items.some((record) => record.verdict === 'pass')) verifiedPassRuns += 1;
+    if (verification.items.some((record) => record.verdict === 'pass')) historicalPassRuns += 1;
     const latestVerification = verification.items.at(-1);
     if (latestVerification) {
-      verifiedOutcomeRuns += 1;
       incrementVerdict(verificationVerdicts, latestVerification.verdict);
     }
     const usedInRun = new Set<string>();
@@ -160,9 +157,8 @@ export function observeMemoryWorkload(
     }
     if (usedInRun.size > 0) {
       explicitUseRuns += 1;
-      if (!latestVerification) memoryAssisted.explicitUseUnverifiedRuns += 1;
-      else if (latestVerification.verdict === 'pass') memoryAssisted.explicitUsePassRuns += 1;
-      else memoryAssisted.explicitUseNonPassRuns += 1;
+      if (latestVerification?.verdict === 'pass') memoryAssisted.explicitUseWithHistoricalPassRuns += 1;
+      else memoryAssisted.explicitUseWithOtherRecordRuns += 1;
     }
     if (adopted.size > 0 && usedInRun.size === 0) memoryAssisted.adoptedWithoutExplicitUseRuns += 1;
     explicitUseReferences += usedInRun.size;
@@ -200,14 +196,14 @@ export function observeMemoryWorkload(
     knownStateRuns: nonNegativeInteger(options.minKnownStateRuns, 20),
     explicitUseRuns: nonNegativeInteger(options.minExplicitUseRuns, 10),
     providerUsageRuns: nonNegativeInteger(options.minProviderUsageRuns, 10),
-    verifiedOutcomeRuns: nonNegativeInteger(options.minVerifiedOutcomeRuns, 20),
+    verificationRecordRuns: nonNegativeInteger(options.minVerificationRecordRuns, 20),
     resourceSampleRuns: nonNegativeInteger(options.minResourceSampleRuns, 20),
   };
   const missing = [
     knownStateRuns < required.knownStateRuns ? 'known-state-runs' : '',
     explicitUseRuns < required.explicitUseRuns ? 'explicit-use-runs' : '',
     providerUsageRuns < required.providerUsageRuns ? 'provider-usage-runs' : '',
-    verifiedOutcomeRuns < required.verifiedOutcomeRuns ? 'verified-outcome-runs' : '',
+    verificationRuns < required.verificationRecordRuns ? 'verification-record-runs' : '',
     resourceSummary.sampledRuns < required.resourceSampleRuns ? 'resource-sample-runs' : '',
   ].filter(Boolean);
 
@@ -225,16 +221,15 @@ export function observeMemoryWorkload(
       memoryAccessRuns,
       knownStateRuns,
       verificationRuns,
-      verifiedOutcomeRuns,
-      verifiedPassRuns,
+      historicalPassRuns,
       explicitUseRuns,
       providerUsageRuns,
       rates: {
         memoryAccess: ratio(memoryAccessRuns, selected.length),
         knownState: ratio(knownStateRuns, selected.length),
-        explicitUseReporting: ratio(explicitUseRuns, verifiedOutcomeRuns),
+        explicitUseReporting: ratio(explicitUseRuns, verificationRuns),
         providerUsage: ratio(providerUsageRuns, selected.length),
-        verifiedOutcome: ratio(verifiedOutcomeRuns, selected.length),
+        verificationRecordCoverage: ratio(verificationRuns, selected.length),
       },
     },
     memory: {

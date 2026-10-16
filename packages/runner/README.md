@@ -15,6 +15,8 @@ P1B-2A 的 `CreateRunnerOptions.memoryOwnershipBindings` 是可信 Host/隔离�
 - 每个新 run 都使用严格 durable 持久化与结算；执行模式选择和 per-session/origin/profile overrides 已移除。旧 `shadow` 标签只供历史记录读取、回放和用量报告。
 - FINALIZE 按唯一 settlement 身份登记并持久化权威模型回复。重启恢复只在 durable event 投影与 reply registry 都确认结算后，补齐作为历史投影的 ExecutionLog；没有有效模型回复时可报告 Runtime 状态，不能伪造 Agent 答案。
 - 会话压缩保存带 source／predecessor 校验的版本化摘要，不写 durable Memory。
+- Session Summary 与 Memory Atom 的运行反馈仅用于路由学习；历史 VERIFY `pass` 和工具成功不会增加 verified usefulness，也不证明任务目标已验收。
+- Memory Workload Observation v3 把 verification record coverage、历史 `pass` 与 TaskExecution 状态分开统计，不再输出 `verifiedOutcome`。
 - 长期 Memory 变更走 `memory_write` 或 `memory_manage`，并满足授权、来源和 revision 检查。
 - 工作区、会话、checkpoint、事件日志、索引和用户配置属于活动数据根；测试使用隔离根与合成输入。
 - 新模型请求／响应／结算先写持久待更新标记，再提交事件。用量查询通过 `ProviderUsageDailyService.synchronizeCurrent` 处理这些分区，索引保存成功且 revision 未改变后才确认标记；重启或索引写入失败不丢新调用。历史回填独立运行，旧逻辑响应只作为没有物理回执时的兼容来源。

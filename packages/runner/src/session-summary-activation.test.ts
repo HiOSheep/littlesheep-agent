@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 describe('recordSessionSummaryActivation', () => {
-  it('records only a summary that materially supported a passing run', async () => {
+  it('keeps a historical structural pass at routing-only usefulness', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ls-runner-summary-activation-'));
     roots.push(root);
     const sessionManager = new SessionManager({ sessionsDir: root });
@@ -36,12 +36,11 @@ describe('recordSessionSummaryActivation', () => {
         source: 'structural',
         verifiedAt: NOW,
       },
-      successfulToolCallIds: [],
       recordedAt: NOW,
     })).toBe(true);
     expect(await sessionManager.loadCompactionActivation(session.id, summary.id)).toMatchObject({
       useful: 1,
-      verifiedUseful: 1,
+      verifiedUseful: 0,
     });
 
     expect(await recordSessionSummaryActivation({
@@ -58,7 +57,6 @@ describe('recordSessionSummaryActivation', () => {
         source: 'structural',
         verifiedAt: NOW,
       },
-      successfulToolCallIds: [],
       recordedAt: NOW,
     })).toBe(false);
     expect((await sessionManager.loadCompactionActivation(session.id, summary.id))?.useful).toBe(1);
@@ -86,7 +84,6 @@ describe('recordSessionSummaryActivation', () => {
         source: 'model',
         verifiedAt: NOW,
       },
-      successfulToolCallIds: [],
       recordedAt: NOW,
     });
 
@@ -111,7 +108,6 @@ describe('recordSessionSummaryActivation', () => {
       answerUsedSummaryId: summary.id,
       runId: 'run-answer',
       status: 'ok',
-      successfulToolCallIds: [],
       recordedAt: NOW,
     })).toBe(true);
     expect(await sessionManager.loadCompactionActivation(session.id, summary.id)).toMatchObject({
@@ -142,7 +138,6 @@ describe('recordSessionSummaryActivation', () => {
         source: 'structural',
         verifiedAt: NOW,
       },
-      successfulToolCallIds: ['call-1'],
       recordedAt: NOW,
     });
 

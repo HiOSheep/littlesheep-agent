@@ -250,7 +250,7 @@ describe('CACHE-09/10 cache quality report', () => {
     expect(report.releaseGate.reasons).toContain('provider_token_totals_incomplete');
   });
 
-  it('summarizes verification quality and blocks when it is not observed', () => {
+  it('labels legacy passes as historical and blocks when evidence continuity is not observed', () => {
     const report = buildCacheQualityReport({
       observations: [observation()],
       verifications: [
@@ -269,11 +269,11 @@ describe('CACHE-09/10 cache quality report', () => {
 
     expect(report.verification).toEqual({
       verificationCount: 2,
-      passCount: 1,
+      historicalPassCount: 1,
       unverifiedCount: 0,
       needsReplanCount: 0,
       failCount: 1,
-      passRate: 0.5,
+      historicalPassRate: 0.5,
     });
     expect(report.releaseGate.reasons).toContain('verification_failures_present');
     expect(report.releaseGate.reasons).not.toContain('quality_continuity_not_observed');

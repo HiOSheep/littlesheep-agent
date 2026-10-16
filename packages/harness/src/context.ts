@@ -314,11 +314,6 @@ export async function buildRunContext(opts: BuildRunContextOptions): Promise<Run
     taskBookRevision: 0,
     appliedTaskBookPatchIds: [],
     maxRecoveryAttempts: opts.config.agents.defaults.maxRecoveryAttempts,
-    // VERIFY bounded iteration: replan budget (default 2). When exhausted the run
-    // stops instead of replanning again; there is no separate planner stage to
-    // loop back into.
-    replanAttempts: 0,
-    maxReplanAttempts: 2,
     startedAt: opts.startedAt ?? new Date().toISOString(),
     timeZone: resolveRuntimeTimeZone(opts.config.agents.defaults.userTimezone),
     timeFormat: opts.config.agents.defaults.timeFormat,

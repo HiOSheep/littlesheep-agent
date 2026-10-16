@@ -119,7 +119,7 @@ export {
   RUNTIME_CONTROL_EVENT_TYPES,
   type RuntimeControlBoundaryResult,
 } from './runtime-control-boundary.js';
-export { writeReplanState, type ReplanStateUpdate } from './replan-state.js';
+export { writeRunTaskState, type RunTaskStateUpdate } from './run-task-state.js';
 export { clearReplyState, writeReplyState, type ReplyStateUpdate } from './reply-state.js';
 export { finalReplyFingerprint, finalReplySettlementId } from './final-reply-identity.js';
 export { settleDeferredFinalReply } from './stages/finalize.js';

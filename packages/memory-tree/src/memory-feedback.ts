@@ -7,27 +7,22 @@ import type { MemoryUseFeedback } from './v3/contracts.js';
 export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryUseFeedback[] {
   const active = new Set(input.activeAtomIds);
   const released = new Set(input.releasedAtomIds);
-  const verifyUsed = new Set(input.usedAtomIds ?? []);
+  const recordUsed = new Set(input.usedAtomIds ?? []);
   const answerUsed = new Set(input.answerUsedAtomIds ?? []);
   const verification = input.verification;
-  // `passed` only drives routing feedback: the run completed with complete
-  // recorded evidence and no failed verification. `unverified` means the
-  // acceptance criteria were not judged, which is runtime-neutral here — it is
-  // not evidence that the atom is false, and it is not proof that it is true.
-  const proven = input.status === 'ok' && verification?.verdict === 'pass';
-  const passed = input.status === 'ok'
-    && (proven || verification?.verdict === 'unverified');
+  // Historical pass and current unverified records can support routing only.
+  // Neither one establishes task acceptance or verifies a memory fact.
+  const successfulRunWithNoKnownFailure = input.status === 'ok'
+    && (verification?.verdict === 'pass' || verification?.verdict === 'unverified');
   const answerSupported = input.status === 'ok' && !verification;
-  const verified = Boolean(proven && verification
-    && (verification.source === 'structural' || input.successfulToolCallIds.length > 0));
-  const evidenceRefs = passed ? runEvidenceRefs(input) : [];
+  const evidenceRefs = successfulRunWithNoKnownFailure ? runEvidenceRefs(input) : [];
   const feedback: MemoryUseFeedback[] = [];
   const seen = new Set<string>();
 
   for (const reference of input.references) {
     if (!reference.atomId || seen.has(reference.atomId)) continue;
     seen.add(reference.atomId);
-    if (reference.decision === 'conflicted' && active.has(reference.atomId) && verifyUsed.has(reference.atomId)) {
+    if (reference.decision === 'conflicted' && active.has(reference.atomId) && recordUsed.has(reference.atomId)) {
       feedback.push(record(input, reference.atomId, 'conflict', false, [], reference.reason));
       continue;
     }
@@ -42,23 +37,21 @@ export function memoryUseFeedbackFromRun(input: MemoryRunFeedbackInput): MemoryU
       ));
       continue;
     }
-    if (passed
+    if (successfulRunWithNoKnownFailure
       && reference.decision === 'adopted'
       && active.has(reference.atomId)
-      && verifyUsed.has(reference.atomId)) {
+      && recordUsed.has(reference.atomId)) {
       feedback.push(record(
         input,
         reference.atomId,
         'useful',
-        verified,
+        false,
         evidenceRefs,
-        verified
-          ? 'VERIFY explicitly identified this active adopted atom as material to a successful run with independent positive execution evidence.'
-          : 'VERIFY explicitly identified this active adopted atom as material to the successful run; this updates routing only and does not verify the atom as fact.',
+        'A verification record identified this active adopted atom as material to a successful run; this updates routing only and does not verify the atom as fact.',
       ));
       continue;
     }
-    if ((passed || answerSupported)
+    if ((successfulRunWithNoKnownFailure || answerSupported)
       && reference.decision === 'adopted'
       && active.has(reference.atomId)
       && answerUsed.has(reference.atomId)) {
@@ -93,7 +86,8 @@ function record(
     outcome,
     verified,
     evidenceRefs,
-    verifyStageId: input.verification ? `${input.runId}:verify:${input.verification.attempt}` : undefined,
+    // The legacy `verifyStageId` remains readable; new EXECUTE settlement does
+    // not mint an identity for a retired stage.
     reason,
     createdAt: input.recordedAt,
   };

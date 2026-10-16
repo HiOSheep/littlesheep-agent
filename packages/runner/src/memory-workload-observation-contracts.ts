@@ -2,7 +2,7 @@
 
 import type { MemoryWorkloadResourceSummary } from './memory-workload-resources.js';
 
-export const MEMORY_WORKLOAD_OBSERVATION_VERSION = 2 as const;
+export const MEMORY_WORKLOAD_OBSERVATION_VERSION = 3 as const;
 
 export interface MemoryWorkloadObservationOptions {
   maxRuns?: number;
@@ -11,7 +11,7 @@ export interface MemoryWorkloadObservationOptions {
   minKnownStateRuns?: number;
   minExplicitUseRuns?: number;
   minProviderUsageRuns?: number;
-  minVerifiedOutcomeRuns?: number;
+  minVerificationRecordRuns?: number;
   minResourceSampleRuns?: number;
 }
 
@@ -29,8 +29,7 @@ export interface MemoryWorkloadObservation {
     memoryAccessRuns: number;
     knownStateRuns: number;
     verificationRuns: number;
-    verifiedOutcomeRuns: number;
-    verifiedPassRuns: number;
+    historicalPassRuns: number;
     explicitUseRuns: number;
     providerUsageRuns: number;
     rates: {
@@ -38,7 +37,7 @@ export interface MemoryWorkloadObservation {
       knownState: number | null;
       explicitUseReporting: number | null;
       providerUsage: number | null;
-      verifiedOutcome: number | null;
+      verificationRecordCoverage: number | null;
     };
   };
   memory: {
@@ -53,14 +52,13 @@ export interface MemoryWorkloadObservation {
     uniqueAtomIdsTruncated: boolean;
   };
   quality: {
-    verificationVerdicts: { pass: number; needsReplan: number; fail: number; other: number };
+    verificationVerdicts: { historicalPass: number; needsReplan: number; fail: number; unverified: number; other: number };
     taskExecution: { done: number; incomplete: number; other: number };
     memoryAssisted: {
       adoptedRuns: number;
       adoptedWithoutExplicitUseRuns: number;
-      explicitUsePassRuns: number;
-      explicitUseNonPassRuns: number;
-      explicitUseUnverifiedRuns: number;
+      explicitUseWithHistoricalPassRuns: number;
+      explicitUseWithOtherRecordRuns: number;
       releaseRuns: number;
       conflictRuns: number;
     };
@@ -85,7 +83,7 @@ export interface MemoryWorkloadObservation {
       knownStateRuns: number;
       explicitUseRuns: number;
       providerUsageRuns: number;
-      verifiedOutcomeRuns: number;
+      verificationRecordRuns: number;
       resourceSampleRuns: number;
     };
     missing: string[];

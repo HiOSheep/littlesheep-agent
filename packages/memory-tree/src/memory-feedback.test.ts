@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { memoryUseFeedbackFromRun } from './memory-feedback.js';
 
 describe('memoryUseFeedbackFromRun', () => {
-  it('separates explicit routing usefulness from independently verified usefulness', () => {
+  it('keeps historical pass evidence at routing-only usefulness', () => {
     const common = {
       runId: 'run-1',
       status: 'ok' as const,
@@ -32,7 +32,7 @@ describe('memoryUseFeedbackFromRun', () => {
         source: 'structural',
         verifiedAt: common.recordedAt,
       },
-    })[0]).toMatchObject({ atomId: 'atom-1', outcome: 'useful', verified: true });
+    })[0]).toMatchObject({ atomId: 'atom-1', outcome: 'useful', verified: false });
   });
 
   it('does not reward an atom merely because it remained visible in a successful run', () => {
@@ -56,7 +56,7 @@ describe('memoryUseFeedbackFromRun', () => {
     expect(feedback).toEqual([]);
   });
 
-  it('records answer-level continuity as routing-only usefulness without VERIFY', () => {
+  it('records answer-level continuity as routing-only usefulness without a verification record', () => {
     const [feedback] = memoryUseFeedbackFromRun({
       runId: 'run-direct-reply',
       status: 'ok',
@@ -127,7 +127,7 @@ describe('memoryUseFeedbackFromRun', () => {
     expect(feedback).toEqual([]);
   });
 
-  it('records conflict routing feedback only when VERIFY explicitly used the active atom', () => {
+  it('records conflict routing feedback only when a record explicitly names the active atom', () => {
     const [feedback] = memoryUseFeedbackFromRun({
       runId: 'run-used-conflict',
       status: 'ok',

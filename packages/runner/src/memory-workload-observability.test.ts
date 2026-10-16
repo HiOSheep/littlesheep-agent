@@ -45,20 +45,19 @@ describe('Memory v3 workload observability', () => {
       minKnownStateRuns: 1,
       minExplicitUseRuns: 1,
       minProviderUsageRuns: 1,
-      minVerifiedOutcomeRuns: 1,
+      minVerificationRecordRuns: 1,
       minResourceSampleRuns: 1,
     });
 
-    expect(report.version).toBe(2);
+    expect(report.version).toBe(3);
     expect(report.coverage).toMatchObject({
       memoryAccessRuns: 1,
       knownStateRuns: 1,
       verificationRuns: 1,
-      verifiedPassRuns: 1,
+      historicalPassRuns: 1,
       explicitUseRuns: 1,
       providerUsageRuns: 1,
-      verifiedOutcomeRuns: 1,
-      rates: { verifiedOutcome: 1 },
+      rates: { verificationRecordCoverage: 1 },
     });
     expect(report.memory).toMatchObject({
       accessRecords: 1,
@@ -69,7 +68,7 @@ describe('Memory v3 workload observability', () => {
       uniqueObservedAtomIds: 2,
     });
     expect(report.quality).toMatchObject({
-      verificationVerdicts: { pass: 1 },
+      verificationVerdicts: { historicalPass: 1 },
       taskExecution: { done: 1, incomplete: 0 },
     });
     expect(report.cost).toMatchObject({
@@ -113,7 +112,7 @@ describe('Memory v3 workload observability', () => {
         'known-state-runs',
         'explicit-use-runs',
         'provider-usage-runs',
-        'verified-outcome-runs',
+        'verification-record-runs',
         'resource-sample-runs',
       ],
     });
@@ -127,7 +126,7 @@ describe('Memory v3 workload observability', () => {
       knownState: null,
       explicitUseReporting: null,
       providerUsage: null,
-      verifiedOutcome: null,
+      verificationRecordCoverage: null,
     });
     expect(report.memory.tokensUsed.averagePerMemoryRun).toBeNull();
   });
@@ -159,6 +158,32 @@ describe('Memory v3 workload observability', () => {
     expect(report.memory.uniqueObservedAtomIds).toBe(16_384);
     expect(report.memory.uniqueAtomIdsTruncated).toBe(true);
   });
+});
+
+it('reports historical pass and unverified records as evidence coverage, not task outcomes', () => {
+  const report = observeMemoryWorkload([
+    log({
+      taskExecution: { goal: 'goal A', complexity: 'simple', status: 'done', startedAt: TIME, endedAt: TIME, steps: [] },
+      verificationHistory: [{ attempt: 1, verdict: 'pass', source: 'structural', reason: 'legacy structural record', verifiedAt: TIME }],
+    }),
+    log({
+      runId: 'run-unverified',
+      taskExecution: { goal: 'goal B', complexity: 'simple', status: 'partial', startedAt: TIME, endedAt: TIME, steps: [] },
+      verificationHistory: [{ attempt: 1, verdict: 'unverified', source: 'structural', reason: 'acceptance not judged', verifiedAt: TIME }],
+    }),
+  ], { minVerificationRecordRuns: 0 });
+
+  expect(report.coverage).toMatchObject({
+    verificationRuns: 2,
+    historicalPassRuns: 1,
+    rates: { verificationRecordCoverage: 1 },
+  });
+  expect(report.quality).toMatchObject({
+    verificationVerdicts: { historicalPass: 1, unverified: 1 },
+    taskExecution: { done: 1, incomplete: 1 },
+  });
+  expect(report.coverage).not.toHaveProperty('verifiedOutcomeRuns');
+  expect(report.quality).not.toHaveProperty('verifiedTaskOutcomeRuns');
 });
 
 const TIME = '2026-07-17T00:00:00.000Z';

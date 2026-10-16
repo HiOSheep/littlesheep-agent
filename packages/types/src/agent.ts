@@ -14,11 +14,9 @@ import type { ClarificationRequest, ClarificationResponse } from './clarificatio
 import type { ClassificationReasonCode, PersistedWorkPolicy } from './work-policy.js';
 import type {
   NeedAssessment,
-  PartialReplanRequest,
   PlanStep,
   TaskBook,
   TaskExecutionResult,
-  TaskReplanRecord,
   VerificationRecord,
   WorkPolicyUpgradeRequest,
 } from './task.js';
@@ -181,19 +179,9 @@ export interface RunContext {
   recoveryAttempts?: number;
   /** Max recovery attempts before escalation. */
   maxRecoveryAttempts: number;
-  /** Replan count (incremented when VERIFY returns needs_replan). */
-  replanAttempts?: number;
-  /** Replan upper bound; VERIFY escalates to ASK_USER when exhausted. Default 2. */
-  maxReplanAttempts?: number;
-  /** VERIFY feedback for a needs_replan; read by the main loop, which also treats it as a continuation. */
-  verifyFeedback?: string;
-  /** Step-scoped re-plan request created by VERIFY and consumed by the main loop EXECUTE. */
-  partialReplanRequest?: PartialReplanRequest;
   /** Bounded-loop request to create a TaskBook for the unfinished goal. */
   workPolicyUpgradeRequest?: WorkPolicyUpgradeRequest;
-  /** Audit trail of bounded re-plans across VERIFY → EXECUTE passes. */
-  replanHistory?: TaskReplanRecord[];
-  /** Every VERIFY decision made during this run. */
+  /** Runtime evidence settlement and old VERIFY checkpoint decisions. */
   verificationHistory?: VerificationRecord[];
   /** Structured request when this run intentionally pauses for user input. */
   clarificationRequest?: ClarificationRequest;
@@ -513,9 +501,9 @@ export interface AgentResult {
   toolInvocationsTruncated?: boolean;
   /** Bounded side-effect checkpoint ledger used by recovery and external verification. */
   sideEffects?: import('./runtime-contracts.js').SideEffectCheckpoint[];
-  /** Calibrated task contract used by EXECUTE/VERIFY. */
+  /** Calibrated task contract used by EXECUTE. */
   taskBook?: TaskBook;
-  /** Durable VERIFY decisions associated with this result. */
+  /** Runtime evidence settlement and historical VERIFY records associated with this result. */
   verificationHistory?: VerificationRecord[];
   /** Last deterministic runtime control state applied at a safe boundary. */
   runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
@@ -523,7 +511,7 @@ export interface AgentResult {
   runtimeEventQueue?: import('./runtime-contracts.js').RuntimeEventQueueSnapshot;
   /** Redacted model-proposal versus runtime-commit memory audit. */
   memoryIntentDecisions?: import('./runtime-contracts.js').MemoryIntentDecisionRecord[];
-  /** Bounded Memory v3 evidence state used across EXECUTE/VERIFY/FINALIZE. */
+  /** Bounded Memory v3 evidence state used across EXECUTE/FINALIZE. */
   memoryKnownState?: import('./memory-evidence.js').RuntimeMemoryKnownState;
   /** Local evidence assessment of continuity between memory and the final reply. */
   memoryContinuityAssessment?: import('./memory-continuity.js').MemoryContinuityAssessment;

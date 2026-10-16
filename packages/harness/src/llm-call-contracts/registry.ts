@@ -33,13 +33,12 @@ export class LlmCallContractViolationError extends Error {
   }
 }
 
-const LEGACY_STAGE_PURPOSE: Readonly<Record<StageName, LlmCallPurpose>> = {
+const LEGACY_STAGE_PURPOSE: Readonly<Partial<Record<StageName, LlmCallPurpose>>> = {
   enter: 'finalize',
   classify: 'classify',
   decide: 'decide',
   execute: 'execute_tool_loop',
   recover: 'recover',
-  verify: 'verify',
   evolve: 'evolve',
   capture: 'capture',
   reply: 'reply',
@@ -63,6 +62,9 @@ export function resolveLlmCallContract(
 ): LlmCallContract {
   const purpose = normalizeLlmCallPurpose(purposeOrStage);
   const template = LLM_CALL_CONTRACT_TEMPLATES[purpose];
+  if (!template) {
+    throw new LlmCallContractViolationError('unknown_purpose', `LLM call purpose '${purpose}' is retired or unsupported.`);
+  }
   const registeredToolNames = new Set(ctx.tools.map((tool) => tool.name));
   const requestedToolNames = [...new Set(options.allowedToolNames ?? registeredToolNames)].sort();
   const unregisteredToolNames = requestedToolNames.filter((name) => !registeredToolNames.has(name));

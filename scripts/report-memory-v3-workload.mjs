@@ -42,7 +42,7 @@ async function main() {
     minKnownStateRuns: args.minKnownStateRuns,
     minExplicitUseRuns: args.minExplicitUseRuns,
     minProviderUsageRuns: args.minProviderUsageRuns,
-    minVerifiedOutcomeRuns: args.minVerifiedOutcomeRuns,
+    minVerificationRecordRuns: args.minVerificationRecordRuns,
     minResourceSampleRuns: args.minResourceSampleRuns,
   });
   const report = {
@@ -89,7 +89,7 @@ function parseArgs(argv) {
     minKnownStateRuns: integerOption(values, 'min-known-state-runs', 20, 0, MAX_CLI_RUNS),
     minExplicitUseRuns: integerOption(values, 'min-explicit-use-runs', 10, 0, MAX_CLI_RUNS),
     minProviderUsageRuns: integerOption(values, 'min-provider-usage-runs', 10, 0, MAX_CLI_RUNS),
-    minVerifiedOutcomeRuns: integerOption(values, 'min-verified-outcome-runs', 20, 0, MAX_CLI_RUNS),
+    minVerificationRecordRuns: integerOption(values, 'min-verification-record-runs', 20, 0, MAX_CLI_RUNS),
     minResourceSampleRuns: integerOption(values, 'min-resource-sample-runs', 20, 0, MAX_CLI_RUNS),
     requireReady: flags.has('require-ready'),
   };

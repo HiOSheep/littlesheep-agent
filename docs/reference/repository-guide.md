@@ -9,7 +9,7 @@
 | 桌面窗口、Local App API、启动与 Main 资源 | `packages/app/src/main` |
 | Renderer、preload 与跨进程协议 | `packages/app/src/renderer`、`src/preload`、`src/shared` |
 | Run 生命周期、checkpoint 与持久化 | `packages/runner` |
-| 单一主循环、VERIFY、RECOVER | `packages/harness`；状态转移契约在 `packages/types` |
+| 单一主循环、运行证据结算、RECOVER | `packages/harness`；状态转移契约在 `packages/types` |
 | Context、Prompt、Session 与缓存边界 | `packages/context`、`packages/prompt`、`packages/session` |
 | 受控工具、路径授权与快照 | `packages/tools`、`packages/safety`、`packages/snapshot` |
 | Memory、Provider、插件与外部渠道 | `packages/memory-tree`、`packages/llm`、`packages/plugins`、`packages/channels` |

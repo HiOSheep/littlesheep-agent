@@ -199,7 +199,7 @@ describe('the verification line', () => {
       verificationHistory: [
         { attempt: 1, verdict: 'pass', reason: 'ok', verifiedAt: '2026-09-23T00:00:00.000Z', source: 'structural' },
       ],
-    } as Partial<AssistantTurnActivity>))).toBeNull()
+    } as Partial<AssistantTurnActivity>))).toBe('验证：旧版 VERIFY 记录通过（不代表任务验收）')
     expect(activityVerificationLine(activity({ status: 'done' } as Partial<AssistantTurnActivity>))).toBeNull()
   })
 

@@ -11,7 +11,7 @@ import {
 } from './checkpoint-recovery-state'
 
 describe('checkpoint recovery progress', () => {
-  it('advances through restore, execution, verification and finalization events', () => {
+  it('advances through restore, execution, recorded evidence and finalization events', () => {
     const planned = checkpointRecoveryProgressForEvent({
       type: 'task_book',
       summary: '恢复任务书',
@@ -26,15 +26,24 @@ describe('checkpoint recovery progress', () => {
     }, planned)
     expect(executing).toMatchObject({ phase: 'executing', label: '正在执行：继续写入' })
 
-    const verifying = checkpointRecoveryProgressForEvent({
+    const legacyStage = checkpointRecoveryProgressForEvent({
       type: 'verification_start',
     } as ToolStreamEvent, executing)
-    expect(verifying).toEqual({ phase: 'verifying', label: '正在验证执行结果' })
+    expect(legacyStage).toBe(executing)
+
+    const evidenceRecorded = checkpointRecoveryProgressForEvent({
+      type: 'verification',
+      verification: { attempt: 1, verdict: 'pass', source: 'structural', verifiedAt: '2026-10-16T00:00:00Z' },
+    } as ToolStreamEvent, legacyStage)
+    expect(evidenceRecorded).toMatchObject({
+      phase: 'finalizing',
+      label: '旧版 VERIFY 记录通过（不代表任务验收）',
+    })
 
     const finalizing = checkpointRecoveryProgressForEvent({
       type: 'final_delta',
       delta: '完成',
-    } as ToolStreamEvent, verifying)
+    } as ToolStreamEvent, evidenceRecorded)
     expect(finalizing).toEqual({ phase: 'finalizing', label: '正在整理交付结果' })
   })
 

@@ -76,7 +76,7 @@ describe('RunActivityMonitor', () => {
       run('run-shared', '2026-07-29T01:00:00.000Z', 'executing'),
     ])
     const retired = controllableSource([
-      run('run-old', '2026-07-29T00:59:00.000Z', 'verifying'),
+      run('run-old', '2026-07-29T00:59:00.000Z', 'finalizing'),
       run('run-shared', '2026-07-29T01:00:00.000Z', 'finalizing'),
     ])
     const monitor = new RunActivityMonitor()
@@ -90,7 +90,7 @@ describe('RunActivityMonitor', () => {
     ])
 
     expect(monitor.snapshot()).toMatchObject([
-      { runId: 'run-old', phase: 'verifying' },
+      { runId: 'run-old', phase: 'finalizing' },
       { runId: 'run-shared', phase: 'executing' },
     ])
     expect(current.listenerCount()).toBe(1)

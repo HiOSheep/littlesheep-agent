@@ -49,16 +49,17 @@ export interface CacheRequestOutcomeSummary {
 
 export interface CacheVerificationSummary {
   readonly verificationCount: number;
-  readonly passCount: number;
-  /** Structurally clean but not Runtime-provable: not a failure, not a pass. */
+  /** Historical VERIFY passes; this is not user-task acceptance. */
+  readonly historicalPassCount: number;
+  /** Runtime evidence was recorded; task acceptance was not judged. */
   readonly unverifiedCount: number;
   readonly needsReplanCount: number;
   readonly failCount: number;
-  readonly passRate?: number;
+  readonly historicalPassRate?: number;
 }
 
 export interface CacheQualityReport {
-  readonly version: 1;
+  readonly version: 2;
   readonly requestCount: number;
   /** Store-level entries excluded because they could not be read or authorized. */
   readonly unreadableEntryCount: number;
@@ -98,7 +99,7 @@ export function buildCacheQualityReport(input: {
   const invalidationReasons = summarizeReasons(input.observations);
 
   return Object.freeze({
-    version: 1 as const,
+    version: 2 as const,
     requestCount: input.observations.length,
     unreadableEntryCount,
     partitions: summarizePartitions(input.observations),
@@ -282,29 +283,29 @@ function summarizeVerifications(
   if (!verifications || verifications.length === 0) {
     return Object.freeze({
       verificationCount: 0,
-      passCount: 0,
+      historicalPassCount: 0,
       unverifiedCount: 0,
       needsReplanCount: 0,
       failCount: 0,
     });
   }
-  let passCount = 0;
+  let historicalPassCount = 0;
   let unverifiedCount = 0;
   let needsReplanCount = 0;
   let failCount = 0;
   for (const verification of verifications) {
-    if (verification.verdict === 'pass') passCount += 1;
+    if (verification.verdict === 'pass') historicalPassCount += 1;
     else if (verification.verdict === 'unverified') unverifiedCount += 1;
     else if (verification.verdict === 'needs_replan') needsReplanCount += 1;
     else failCount += 1;
   }
   return Object.freeze({
     verificationCount: verifications.length,
-    passCount,
+    historicalPassCount,
     unverifiedCount,
     needsReplanCount,
     failCount,
-    passRate: passCount / verifications.length,
+    historicalPassRate: historicalPassCount / verifications.length,
   });
 }
 
