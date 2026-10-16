@@ -70,6 +70,8 @@ export interface ToolLoopOptions {
    * and reported to the model as a denial, never executed.
    */
   admittedTools?: AgentTool[];
+  /** Permit request-time admission only for built-in Web tools under enabled network policy. */
+  dynamicWebAdmission?: boolean;
   /** Runtime contract text explaining why a withheld tool was refused. */
   withheldToolContract?: string;
   sanitizeOpts: ExecuteSanitizeOptions;

@@ -77,6 +77,7 @@ export {
   type CacheLedgerSummary,
 } from './cache-quality-report.js';
 export { capabilityProbeEvent } from './capability-events.js';
+export { hasExplicitNetworkDenial } from './retrieval-intent.js';
 export {
   isSupportedPersistedWorkPolicy,
   selectWorkPolicy,

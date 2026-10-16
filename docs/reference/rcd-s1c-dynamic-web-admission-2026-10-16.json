@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S1C-DYNAMIC-WEB-ADMISSION",
+  "status": "implemented_with_known_data_lineage_and_real_environment_limits",
+  "generatedAt": "2026-10-16T05:52:20.431Z",
+  "baselineType": "pre-fix deterministic Runtime baseline; not real-provider user task completion rate",
+  "source": {
+    "headBeforeS1CCommit": "4c942651ac1946259c4cc1b40c5af06619758917",
+    "workingTreeFingerprintAtCoreRun": "c312259ed31687630a6cce7ab996579e677d513a71e87b6b0c0d48c15f01b7ed",
+    "scenarioLedger": "docs/reference/rcd-s1c-core-regression-2026-10-16.json"
+  },
+  "audit": {
+    "initialRetrievalIntent": "Derived from trusted inbound user text/classification in packages/harness/src/retrieval-intent.ts.",
+    "modelVisibleCatalog": "Stable registered catalog; visibility is not execution authorization.",
+    "priorR01Failure": "main-loop supplied the frozen admittedTools set; tool-loop refused Web before ToolExecutionService when initial intent was local.",
+    "dynamicAdmission": "Per requested call only: built-in web_search/web_fetch, enabled non-disabled resolved run network policy, no explicit trusted-user offline denial, and no narrower explicit tool allowlist.",
+    "executionPath": "Ordinary ToolExecutionService -> built-in Web tool -> authorizeToolAccess -> host-owned WebRetrievalRuntime.",
+    "trustedPolicyOwner": "Runner resolves a run-scoped immutable network policy; explicit offline user instruction hard-disables it. Main permission broker and Web tools retain existing approval and data-boundary decisions.",
+    "externalContent": "Web evidence remains externalUntrusted; page/model text does not set user policy or expand other tool permissions.",
+    "notImplemented": "No new Harness loop or permission manager; no Shell, side-effect-ledger, VERIFY, or release workflow changes."
+  },
+  "acceptance": {
+    "R01": {
+      "result": "passed",
+      "requests": 1,
+      "executionLayer": "Harness Execute + ToolExecutionService + built-in web_search + loopback HTTP fixture; scripted mock model",
+      "evidence": "R01 record in rcd-s1c-core-regression-2026-10-16.json: local discovery ran before Web proposal; invocation succeeded; one loopback request; fixture fact returned."
+    },
+    "R02": {
+      "result": "correctly_blocked",
+      "deniedCaseRequests": 0,
+      "allowedControlRequests": 1,
+      "executionLayer": "Harness Execute + built-in web_search + paired loopback fixture control",
+      "evidence": "R02 record in rcd-s1c-core-regression-2026-10-16.json; denied call refused at admission with tool_not_admitted and no outbound request."
+    },
+    "R03": {
+      "result": "component_tests_passed_with_scope_limit",
+      "evidence": "Synthetic credential, local private path, and explicitly marked private file/Memory queries are blocked before WebRetrievalRuntime.search under sensitiveQueryPolicy=deny.",
+      "limitation": "Unmarked private free text paraphrased into a generic public query has no trusted taint/provenance signal and is not guaranteed detectable."
+    },
+    "R04": {
+      "result": "component_tests_passed",
+      "evidence": "strictReadApproval test observes zero provider calls before approval and one bounded call after explicit approval."
+    },
+    "R05": {
+      "result": "source_boundary_and_component_tests_passed",
+      "evidence": "Built-in results are externalUntrusted; Web/model outputs are not inputs to the trusted user-message network-denial latch. Retrieval-intent tests cover quoted hostile text as non-user intent.",
+      "limitation": "No real model prompt-injection exercise or Electron acceptance."
+    },
+    "R06": {
+      "result": "component_tests_passed",
+      "evidence": "Injected Web transport failure returns stable error and none/partial evidence without success; no auto retry."
+    },
+    "R07": {
+      "result": "component_tests_passed",
+      "evidence": "Aborted invocation signal reaches Web request and returns web_fetch_cancelled with no retry; Web Runtime parent-run cancellation tests passed."
+    },
+    "R08": {
+      "result": "passed",
+      "evidence": "Stable model catalog; dynamic execution is restricted to built-in Web; disabled policy and explicit tool scopes prevent execution."
+    }
+  },
+  "coreRegression": {
+    "infrastructure": { "executed": 6, "blocked": 0, "harness_error": 0, "not_run": 0 },
+    "products": { "passed": 3, "failed": 0, "partially_completed": 1, "correctly_blocked": 2, "unverified": 0 },
+    "r01Before": "failed",
+    "r01After": "passed",
+    "r02": "correctly_blocked",
+    "otherCore": { "C02": "passed", "C08": "passed", "L01": "partially_completed", "X01": "correctly_blocked" }
+  },
+  "tests": {
+    "s1cFocused": { "files": 5, "passed": 85, "failed": 0 },
+    "shellRecoveryAndWebRegression": { "files": 14, "passed": 117, "failed": 0 },
+    "coreScenarioRun": { "executed": 6, "blocked": 0, "harnessErrors": 0 }
+  },
+  "environment": {
+    "provider": "scripted mock model",
+    "network": "loopback-only local fixture; no public network requests",
+    "realElectron": false,
+    "paidProvider": false,
+    "usage": null,
+    "cost": null
+  },
+  "remaining": [
+    "Implement trusted data provenance or a stronger approval contract for arbitrary private free text before claiming general exfiltration prevention.",
+    "Verify in-flight policy revocation behavior in real Electron; currently run cancellation aborts active requests, while a newly appended offline instruction blocks later requests at the next safe boundary.",
+    "Run real Provider and Electron acceptance separately; no such claim is made here."
+  ],
+  "commit": { "message": "feat(rcd): admit runtime web retrieval safely", "scope": "independent S1C commit; no push" }
+}

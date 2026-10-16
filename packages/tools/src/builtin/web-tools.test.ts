@@ -114,6 +114,78 @@ describe('web_search built-in', () => {
     expect(port.search).not.toHaveBeenCalled();
   });
 
+  it('blocks controlled credential, private-file and Memory fixtures before provider egress', async () => {
+    const port = runtime();
+    const fixtures = [
+      'public docs for api_key=RCD_FAKE_SECRET_42',
+      'summarize private file C:\\Users\\Fixture\\notes.txt containing RCD_PRIVATE_FILE_CANARY',
+      'search private memory containing RCD_PRIVATE_MEMORY_CANARY',
+    ];
+    for (const query of fixtures) {
+      const result = await webSearchTool.execute(
+        { query },
+        context(port, policy({ sensitiveQueryPolicy: 'deny' })),
+      );
+      expect(result).toMatchObject({ ok: false, meta: { errorKind: 'web_sensitive_query_blocked' } });
+    }
+    expect(port.search).not.toHaveBeenCalled();
+  });
+
+  it('does not treat private prose as safely redactable', async () => {
+    const port = runtime();
+    const result = await webSearchTool.execute(
+      { query: 'find public guidance using private Memory content RCD_PRIVATE_MEMORY_CANARY' },
+      context(port, policy({ sensitiveQueryPolicy: 'redact' })),
+    );
+    expect(result).toMatchObject({ ok: false, meta: { errorKind: 'web_sensitive_query_blocked' } });
+    expect(port.search).not.toHaveBeenCalled();
+  });
+
+  it('requires and honors an explicit approval for configured Web reads', async () => {
+    const port = runtime();
+    const approve = vi.fn(async () => false);
+    const denied = await webSearchTool.execute(
+      { query: 'public API documentation' },
+      { ...context(port, policy({ strictReadApproval: true })), approve },
+    );
+    expect(denied).toMatchObject({ ok: false, meta: { errorKind: 'web_sensitive_query_blocked' } });
+    expect(port.search).not.toHaveBeenCalled();
+
+    approve.mockResolvedValueOnce(true);
+    const allowed = await webSearchTool.execute(
+      { query: 'public API documentation' },
+      { ...context(port, policy({ strictReadApproval: true })), approve },
+    );
+    expect(allowed.ok).toBe(true);
+    expect(port.search).toHaveBeenCalledTimes(1);
+    expect(approve).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a bounded failure for network errors without fabricating evidence', async () => {
+    const port = runtime({
+      search: vi.fn(async () => { throw Object.assign(new Error('fixture timeout'), { kind: 'web_fetch_timeout' }); }),
+      evidence: vi.fn(() => evidence({ completeness: 'none', citationIds: [], citationCount: 0, partial: true, errorKinds: ['web_fetch_timeout'] })),
+    });
+    const result = await webSearchTool.execute({ query: 'public API documentation' }, context(port));
+    expect(result).toMatchObject({ ok: false, meta: { errorKind: 'web_fetch_timeout' } });
+    expect(result.webEvidence).toMatchObject({ completeness: 'none', citationCount: 0 });
+  });
+
+  it('passes the Runtime cancellation signal to the request and does not retry', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const port = runtime({ search: vi.fn(async (_request, signal) => {
+      expect(signal).toBe(controller.signal);
+      throw Object.assign(new Error('cancelled fixture'), { kind: 'web_fetch_cancelled' });
+    }) });
+    const result = await webSearchTool.execute(
+      { query: 'public API documentation' },
+      { ...context(port), signal: controller.signal },
+    );
+    expect(result).toMatchObject({ ok: false, meta: { errorKind: 'web_fetch_cancelled' } });
+    expect(port.search).toHaveBeenCalledTimes(1);
+  });
+
   it('redacts sensitive values before provider egress', async () => {
     const port = runtime();
     const ctx = context(port, policy({ sensitiveQueryPolicy: 'redact' }));

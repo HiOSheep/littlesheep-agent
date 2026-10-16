@@ -56,6 +56,7 @@ import type {
 } from './contracts.js';
 import { createSideEffectLifecycle } from './side-effect-lifecycle.js';
 import { toolRoundFailurePolicy } from './tool-failure-disposition.js';
+import { admittedNamesForToolRequests } from './web-admission.js';
 import {
   decideSpentIterationBudget,
   MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS,
@@ -71,6 +72,7 @@ import {
   consumePendingRuntimeUserMessages,
   takeDeferredRuntimeUserMessages,
 } from '../../runtime-control-boundary.js';
+import { hasExplicitNetworkDenial } from '../../retrieval-intent.js';
 
 const MAX_ITERATIONS = MAX_TOOL_LOOP_ITERATIONS;
 /**
@@ -159,6 +161,9 @@ export async function runToolLoop(
   // knowledge and the memory index stays a memory index.
   const tailKinds = spliceTailMessages(messages, initialTail);
   let noProgressRounds = ctx.loopBudget?.noProgressRounds ?? 0;
+  let explicitNetworkDenied = hasExplicitNetworkDenial(ctx.inbound.content
+    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+    .map((block) => block.text).join('\n'));
   let forceFinalResponse = noProgressRounds >= MAX_CONSECUTIVE_NO_PROGRESS_ROUNDS;
   let citationRepairAttempts = 0;
   let forcedRefusals = 0;
@@ -181,6 +186,9 @@ export async function runToolLoop(
       return { ok: false, content: '', toolResults, iterations: iteration - 1, error: pendingUserMessages.error };
     }
     appendRuntimeUserMessages(ctx, messages, produced, pendingUserMessages.events, runtimeUserMessages);
+    explicitNetworkDenied ||= pendingUserMessages.events.some((event) => (
+      typeof event.payload.text === 'string' && hasExplicitNetworkDenial(event.payload.text)
+    ));
 
     if (!reserveToolLoopIteration(ctx)) {
       // A spent budget ends the loop, not the turn: one bounded final-answer
@@ -302,6 +310,9 @@ export async function runToolLoop(
         messages.push({ role: 'assistant', content: response.content });
       }
       appendRuntimeUserMessages(ctx, messages, produced, updatesAfterRequest.events, runtimeUserMessages);
+      explicitNetworkDenied ||= updatesAfterRequest.events.some((event) => (
+        typeof event.payload.text === 'string' && hasExplicitNetworkDenial(event.payload.text)
+      ));
       ctx.onAssistantReplace?.('');
       continue;
     }
@@ -461,6 +472,9 @@ export async function runToolLoop(
           parallelStep,
         };
       });
+      const requestAdmittedNames = admittedNamesForToolRequests(ctx, tools, admittedNames, requests,
+        opts.dynamicWebAdmission === true && !explicitNetworkDenied);
+      const networkPolicy = ctx.toolContext.networkPolicy;
       // Only a tool the Runtime knows but withheld is refused here. A name that
       // is not registered at all still goes to the execution boundary, which
       // reports it as an unknown tool — the two failures are different facts and
@@ -473,14 +487,14 @@ export async function runToolLoop(
       if (forceFinalResponse) forcedRefusals += 1;
       const withheld = forceFinalResponse
         ? requests
-        : requests.filter((request) => registeredNames.has(request.name) && !admittedNames.has(request.name));
+        : requests.filter((request) => registeredNames.has(request.name) && !requestAdmittedNames.has(request.name));
       const executable = requests.filter((request) => !withheld.includes(request));
       const executedResults = new Map(await executionService.executeBatch(
         executable,
         createSideEffectLifecycle(ctx),
         // The boundary re-checks the admitted set, so the model cannot reach a
         // withheld capability by naming it.
-        admittedNames,
+        requestAdmittedNames,
         maxParallelTools,
       ));
       // A withheld call is refused before it reaches the tool: nothing runs and no
@@ -493,6 +507,9 @@ export async function runToolLoop(
         const index = requests.indexOf(request);
         const refusal = forceFinalResponse
           ? 'Runtime control: tools are unavailable in this run; answer from the evidence already present.'
+          : (request.name === 'web_search' || request.name === 'web_fetch')
+              && (explicitNetworkDenied || !networkPolicy?.enabled || networkPolicy.mode === 'disabled')
+            ? 'Runtime network policy: public network retrieval is disabled; a new information need cannot grant access.'
           : withheldToolContract
             ? `Runtime scope: ${withheldToolContract}`
             : 'Runtime scope: this tool is not admitted for the current request.';

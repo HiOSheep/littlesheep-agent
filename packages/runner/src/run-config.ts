@@ -23,6 +23,8 @@ export interface ResolveRunConfigOptions {
   cwdOverridden: boolean;
   /** Registry-resolved provider state; omitted until the web package is assembled. */
   webProviderSnapshot?: WebProviderRuntimeSnapshot;
+  /** Main applies an explicit user offline instruction as a run-scoped hard network deny. */
+  networkAccessDenied?: boolean;
 }
 
 /** Resolve the complete run policy once, before any stage can call the model. */
@@ -33,7 +35,11 @@ export function resolveRunConfig(opts: ResolveRunConfigOptions): ResolvedRunConf
   const availableToolNames = unique(opts.tools.map((tool) => tool.name));
   const permissionPolicyId = opts.permissionPolicyId
     ?? (opts.requireApprovalForAllTools ? 'restricted' : 'research');
-  const networkPolicy = resolveNetworkReadPolicy(opts.config);
+  const configuredNetworkPolicy = resolveNetworkReadPolicy(opts.config);
+  const networkPolicy = opts.networkAccessDenied
+    ? deepFreeze({ ...configuredNetworkPolicy, enabled: false, mode: 'disabled' as const,
+        maxQueriesPerRun: 0, maxFetchesPerRun: 0 })
+    : configuredNetworkPolicy;
   const approvalRequiredToolNames = permissionPolicyId === 'full'
     ? []
     : unique(

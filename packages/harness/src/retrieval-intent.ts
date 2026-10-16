@@ -12,6 +12,7 @@ const EXPLICIT_WEB_PATTERN = /(?:联网|网上|网络|网页|公开来源|官方
 const FETCH_PATTERN = /(?:打开|读取|查看|总结|概括|分析).{0,24}(?:链接|网址|网页|页面)|\b(?:open|read|fetch|summari[sz]e|inspect|analy[sz]e)\b.{0,30}\b(?:url|link|page|website)\b/iu;
 const BROWSER_PATTERN = /(?:登录|验证码|点击|填写表单|上传|下载按钮|浏览器会话|已登录页面)|\b(?:log[ -]?in|sign[ -]?in|captcha|click|fill (?:the )?form|upload|browser session|authenticated page)\b/iu;
 const COMPLEX_WEB_PATTERN = /(?:比较|对比|交叉验证|多来源|多个来源|三份|3份|至少.{0,4}(?:来源|网站|页面))|\b(?:compare|cross-check|multiple sources|three sources|at least \d+ sources)\b/iu;
+const EXPLICIT_NETWORK_DENIAL_PATTERN = /(?:离线(?:运行|执行|处理)?|断网(?:运行|执行|处理)?|offline|air[- ]?gapped|\bno (?:web|internet|network)(?: access)?\b|\bwithout (?:web|internet|network) access\b|\b(?:only use|use only) local (?:materials?|files?|sources?)\b|(?:do not|don't|never|must not|mustn't|cannot|can't) (?:access|use|connect to|go on|go) (?:the )?(?:web|internet|network|online)|(?:不要|请勿|禁止|严禁|不得|不允许|不能|不要再|不要去).{0,12}(?:联网|上网|访问网络|网络连接|网络请求|网页|网络)|(?:只|仅)(?:能|可|限于)?(?:使用)?本地(?:材料|资料|内容|文件))/iu;
 
 export interface RetrievalIntentAssessment {
   readonly intent: RetrievalIntent;
@@ -36,6 +37,9 @@ const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch']);
 export function toolsForRetrievalIntent(
   ctx: Pick<RunContext, 'classification' | 'inbound' | 'tools' | 'toolSources'>,
 ): AgentTool[] {
+  if (hasExplicitNetworkDenial(inboundText(ctx))) {
+    return ctx.tools.filter((tool) => !WEB_TOOL_NAMES.has(tool.name));
+  }
   const intent = ctx.classification?.retrievalIntent ?? assessRetrievalIntent(inboundText(ctx)).intent;
   if (intent === 'web_search' || intent === 'combined_memory_web') {
     return ctx.tools.filter((tool) => (
@@ -56,12 +60,15 @@ export function toolsForRetrievalIntent(
 export function renderRetrievalIntentContract(
   ctx: Pick<RunContext, 'classification' | 'inbound'>,
 ): string {
+  if (hasExplicitNetworkDenial(inboundText(ctx))) {
+    return 'Runtime network policy: the user explicitly prohibited public network access for this run. New retrieval needs do not grant network permission.';
+  }
   const intent = ctx.classification?.retrievalIntent ?? assessRetrievalIntent(inboundText(ctx)).intent;
   switch (intent) {
     case 'local_workspace':
-      return 'Runtime retrieval intent: local_workspace. Use only local workspace evidence. Do not plan or request Web tools.';
+      return 'Runtime retrieval intent: local_workspace. Start with local workspace evidence. If a new need for public information arises, you may request the listed built-in Web tools; Runtime network policy, approval and sensitive-query checks still decide whether they execute. Never include private file contents, credentials, private paths or Memory content in a public query.';
     case 'local_memory':
-      return 'Runtime retrieval intent: local_memory. Use the existing Memory Tree flow. Do not plan or request Web tools.';
+      return 'Runtime retrieval intent: local_memory. Start with the existing Memory Tree flow. If a new need for public information arises, you may request the listed built-in Web tools; Runtime network policy, approval and sensitive-query checks still decide whether they execute. Never include raw Memory atoms, conversations, credentials, unique personal identifiers or private paths in a public query.';
     case 'web_search':
       return 'Runtime retrieval intent: web_search. Public Web evidence may be obtained only through the listed built-in web_search/web_fetch tools. Select 2-4 relevant sources for comparisons, fetch only what is necessary, and preserve Runtime citation ids.';
     case 'web_fetch':
@@ -78,6 +85,11 @@ export function renderRetrievalIntentContract(
     default:
       return 'Runtime retrieval intent: none. Web tools are not admitted for this request.';
   }
+}
+
+/** Only trusted user text is passed here; Web results and model output never set network policy. */
+export function hasExplicitNetworkDenial(text: string): boolean {
+  return EXPLICIT_NETWORK_DENIAL_PATTERN.test(text.normalize('NFKC').trim());
 }
 
 /** Classify only the user's inbound text; external page content is never an intent source. */

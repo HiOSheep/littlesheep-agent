@@ -153,6 +153,27 @@ describe('resolveRunConfig', () => {
     expect(JSON.stringify(resolved)).not.toContain('TAVILY_API_KEY');
   });
 
+  it('freezes an explicit offline instruction as a per-run hard network deny', () => {
+    const resolved = resolveRunConfig({
+      runId: 'run-explicit-offline',
+      config: {
+        ...DEFAULT_CONFIG,
+        web: { ...DEFAULT_CONFIG.web, enabled: true, defaultProvider: 'tavily' },
+      },
+      modelRef: 'deepseek/deepseek-test',
+      origin: 'app',
+      tools: [tool('read'), tool('web_search')],
+      requireApprovalForAllTools: false,
+      toolFilterApplied: false,
+      cwdOverridden: false,
+      networkAccessDenied: true,
+    });
+
+    expect(resolved.availableToolNames).toEqual(['read', 'web_search']);
+    expect(resolved.networkPolicy).toMatchObject({ enabled: false, mode: 'disabled', maxQueriesPerRun: 0, maxFetchesPerRun: 0 });
+    expect(resolved.webProvider).toMatchObject({ id: 'tavily', status: 'disabled' });
+  });
+
   it('keeps disabled and missing-provider states explicit', () => {
     const disabled = resolveNetworkReadPolicy(DEFAULT_CONFIG);
     expect(disabled).toMatchObject({ enabled: false, mode: 'disabled' });

@@ -2,7 +2,7 @@
 import { takeRunMemoryCorrections } from './run-memory-corrections.js';
 import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import { MemoryAccessAuthorizationError } from '@littlesheep/memory-tree';
-import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, renderTaskbookSkillBody } from '@littlesheep/harness';
+import { TASKBOOK_SKILL_DESCRIPTION, TASKBOOK_SKILL_NAME, hasExplicitNetworkDenial, renderTaskbookSkillBody } from '@littlesheep/harness';
 import type {
   AgentResult,
   Message,
@@ -625,6 +625,9 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         toolFilterApplied: input.toolFilter !== undefined,
         cwdOverridden: input.cwd !== undefined,
         webProviderSnapshot: selectedWebProviderSnapshot,
+        networkAccessDenied: hasExplicitNetworkDenial(inbound.content
+          .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+          .map((block) => block.text).join('\n')),
       });
       const selectedProviderStatus = resolvedRunConfig.webProvider?.status;
       const selectedProvider = resolvedRunConfig.networkPolicy?.providerId

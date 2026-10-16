@@ -66,6 +66,7 @@ export async function executeMainLoop(
     messages: baseMessages,
     tools: catalogTools,
     admittedTools,
+    dynamicWebAdmission: !explicitTools || explicitTools.some((tool) => tool.name === 'web_search' || tool.name === 'web_fetch'),
     historyChatCount,
     ...(withheldToolContract ? { withheldToolContract } : {}),
     sanitizeOpts,

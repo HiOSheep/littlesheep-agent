@@ -472,7 +472,7 @@ function describeWebAccess(
 
 export interface SensitiveWebQueryClassification {
   readonly sensitive: boolean
-  readonly categories: readonly ('credential' | 'cookie' | 'local_path')[]
+  readonly categories: readonly ('credential' | 'cookie' | 'local_path' | 'private_content')[]
 }
 
 export function classifySensitiveWebQuery(query: string): SensitiveWebQueryClassification {
@@ -482,6 +482,11 @@ export function classifySensitiveWebQuery(query: string): SensitiveWebQueryClass
   }
   if (/\b(?:cookie|set-cookie|session(?:id|_id)?)\s*[:=]\s*\S+/iu.test(query)) categories.push('cookie')
   if (/(?:^|\s)(?:[A-Za-z]:\\|\\\\|\/(?:Users|home|etc|var|tmp|opt|srv|mnt|data)\/)[^\s"']+/u.test(query)) categories.push('local_path')
+  // Catch explicit attempts to place private source material in a public query.
+  // This is a conservative phrase check, not general-purpose data lineage.
+  if (/\b(?:private|confidential|internal)\s+(?:memory|file|document|note|data|content|text)\b|\b(?:my|our)\s+(?:private\s+)?(?:memory|file|document|notes?)\s+(?:says?|contains?|states?|records?)\b|(?:私有|私人|机密|内部)(?:记忆|文件|文档|笔记|内容|资料)/iu.test(query)) {
+    categories.push('private_content')
+  }
   return { sensitive: categories.length > 0, categories }
 }
 

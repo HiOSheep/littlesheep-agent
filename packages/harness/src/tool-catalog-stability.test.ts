@@ -6,10 +6,9 @@
 // three different catalogs (Web tools removed, added, removed again), so the
 // session could never reuse a prefix across those turns.
 //
-// Per-turn restriction is therefore an execution-scope decision, not a
-// visibility one: the model sees the registered catalog, and a call to a
-// capability the Runtime withheld for this turn is refused at the boundary
-// before anything runs.
+// Per-turn policy is an execution-scope decision, not a visibility one: the
+// model sees the registered catalog, and a newly requested built-in Web call
+// can enter the ordinary execution boundary only when the resolved policy allows it.
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
@@ -105,7 +104,7 @@ describe('the tool catalog is fixed for the session', () => {
     expect(new Set(catalogs).size).toBe(1);
   });
 
-  it('refuses a withheld call at the boundary instead of executing it', async () => {
+  it('refuses a Web call when the run has no enabled network policy', async () => {
     const tools = webTools();
     const webSearch = tools.find((tool) => tool.name === 'web_search') as
       AgentTool & { calls: unknown[] };
@@ -116,7 +115,7 @@ describe('the tool catalog is fixed for the session', () => {
         ? toolCallResponse([{ id: 'c1', name: 'web_search', args: { query: 'latest news' } }])
         : textResponse('local answer only');
     });
-    // A local-workspace turn does not admit Web tools.
+    // A local-workspace turn without host network policy cannot execute Web.
     const inbound = '搜索我的项目文件里有哪些 web_search 调用';
     expect(assessRetrievalIntent(inbound).intent).toBe('local_workspace');
     const ctx = contextFor(inbound, tools);
@@ -124,13 +123,11 @@ describe('the tool catalog is fixed for the session', () => {
     const outcome = await createExecuteStage({ ...deps, llm })(ctx);
 
     expect(outcome.ok).toBe(true);
-    // The tool never ran, and the refusal came from the scope boundary rather
-    // than from a downstream policy check.
+    // New information needs do not create a network policy.
     expect(webSearch.calls).toHaveLength(0);
     const result = ctx.toolResults?.[0];
     expect(result?.ok).toBe(false);
-    expect(result?.error).toMatch(/Runtime scope/);
-    expect(result?.error).toMatch(/local_workspace|not admitted/);
+    expect(result?.error).toMatch(/network policy/iu);
   });
 
   it('lets an admitted tool through on the same local turn', async () => {
@@ -147,7 +144,7 @@ describe('the tool catalog is fixed for the session', () => {
 
     await createExecuteStage({ ...deps, llm })(ctx);
 
-    // Withholding the Web capability must not narrow the admitted set.
+    // Dynamic Web admission must not widen the Runtime's explicit tool scope.
     expect(read.calls).toHaveLength(1);
     expect(ctx.toolResults?.[0]?.ok).toBe(true);
   });
@@ -210,6 +207,86 @@ describe('the tool catalog is fixed for the session', () => {
     expect(ctx.toolResults?.[0]?.ok).toBe(false);
     // The refusal is the network policy, not the retrieval scope.
     expect(ctx.toolResults?.[0]?.error).toMatch(/network retrieval is disabled/);
+  });
+
+  it('admits a built-in Web request raised after local discovery under the same enabled network policy', async () => {
+    const tools = webTools();
+    const read = tools.find((tool) => tool.name === 'read') as AgentTool & { calls: unknown[] };
+    const webSearch = tools.find((tool) => tool.name === 'web_search') as AgentTool & { calls: unknown[] };
+    let turn = 0;
+    const requests: ChatRequest[] = [];
+    const llm = createMockLlm((request) => {
+      requests.push(request);
+      turn += 1;
+      if (turn === 1) return toolCallResponse([{ id: 'dynamic-local-read', name: 'read', args: { file_path: 'notes.md' } }]);
+      if (turn === 2) return toolCallResponse([{ id: 'dynamic-public-search', name: 'web_search', args: { query: 'official API documentation' } }]);
+      return textResponse('Local evidence and the public result are combined.');
+    });
+    const ctx = contextFor('Fix the local project integration issue.', tools);
+    ctx.toolContext.networkPolicy = {
+      version: 1, enabled: true, providerId: 'fixture', mode: 'public_anonymous', allowDomains: [], blockDomains: [],
+      strictReadApproval: false, maxResults: 5, maxQueryChars: 1_000, maxQueriesPerRun: 2, maxFetchesPerRun: 2,
+      maxConcurrentRequests: 1, searchTimeoutMs: 5_000, fetchTimeoutMs: 5_000, totalTimeoutMs: 10_000,
+      maxResponseBytes: 10_000, maxExtractedChars: 1_000, maxRedirects: 0, cacheEnabled: false,
+      cacheTtlSeconds: 0, cacheMaxBytes: 0, browserFallback: 'approval_required', sensitiveQueryPolicy: 'deny',
+    };
+
+    const result = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(read.calls).toHaveLength(1);
+    expect(webSearch.calls).toHaveLength(1);
+    expect(ctx.toolResults?.map((item) => item.ok)).toEqual([true, true]);
+    expect(requests.map(advertised)).toEqual([CATALOG, CATALOG, CATALOG]);
+    expect(ctx.runId).toBeTruthy();
+  });
+
+  it('does not dynamically admit Web when the user forbids networking, even if settings remain enabled', async () => {
+    const tools = webTools();
+    const webSearch = tools.find((tool) => tool.name === 'web_search') as AgentTool & { calls: unknown[] };
+    let turn = 0;
+    const llm = createMockLlm(() => {
+      turn += 1;
+      return turn === 1
+        ? toolCallResponse([{ id: 'offline-web-proposal', name: 'web_search', args: { query: 'public API docs' } }])
+        : textResponse('Network access was refused by the Runtime.');
+    });
+    const ctx = contextFor('Use only local materials. Do not connect to the network; fix this project.', tools);
+    ctx.toolContext.networkPolicy = {
+      version: 1, enabled: true, providerId: 'fixture', mode: 'public_anonymous', allowDomains: [], blockDomains: [],
+      strictReadApproval: false, maxResults: 5, maxQueryChars: 1_000, maxQueriesPerRun: 2, maxFetchesPerRun: 2,
+      maxConcurrentRequests: 1, searchTimeoutMs: 5_000, fetchTimeoutMs: 5_000, totalTimeoutMs: 10_000,
+      maxResponseBytes: 10_000, maxExtractedChars: 1_000, maxRedirects: 0, cacheEnabled: false,
+      cacheTtlSeconds: 0, cacheMaxBytes: 0, browserFallback: 'approval_required', sensitiveQueryPolicy: 'deny',
+    };
+
+    const result = await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(result.ok).toBe(true);
+    expect(webSearch.calls).toHaveLength(0);
+    expect(ctx.toolResults?.[0]?.error).toMatch(/network policy/iu);
+  });
+
+  it('does not dynamically admit a plugin tool that reuses a built-in Web name', async () => {
+    const tools = webTools();
+    const webSearch = tools.find((tool) => tool.name === 'web_search') as AgentTool & { calls: unknown[] };
+    const llm = createMockLlm((request) => request.messages.some((message) => message.role === 'tool')
+      ? textResponse('The non-builtin Web name was refused.')
+      : toolCallResponse([{ id: 'plugin-web-proposal', name: 'web_search', args: { query: 'public API docs' } }]));
+    const ctx = contextFor('Fix this project locally.', tools);
+    ctx.toolSources = { ...ctx.toolSources, web_search: 'plugin:untrusted' };
+    ctx.toolContext.networkPolicy = {
+      version: 1, enabled: true, providerId: 'fixture', mode: 'public_anonymous', allowDomains: [], blockDomains: [],
+      strictReadApproval: false, maxResults: 5, maxQueryChars: 1_000, maxQueriesPerRun: 2, maxFetchesPerRun: 2,
+      maxConcurrentRequests: 1, searchTimeoutMs: 5_000, fetchTimeoutMs: 5_000, totalTimeoutMs: 10_000,
+      maxResponseBytes: 10_000, maxExtractedChars: 1_000, maxRedirects: 0, cacheEnabled: false,
+      cacheTtlSeconds: 0, cacheMaxBytes: 0, browserFallback: 'approval_required', sensitiveQueryPolicy: 'deny',
+    };
+
+    await createExecuteStage({ ...deps, llm })(ctx);
+
+    expect(webSearch.calls).toHaveLength(0);
+    expect(ctx.toolResults?.[0]?.error).toMatch(/Runtime scope/);
   });
 
   it('does not mistake a withheld capability for an unknown tool', async () => {
@@ -307,7 +384,7 @@ describe('an explicit tool instruction narrows execution scope, not the catalog'
     expect(ctx.toolResults?.[0]?.error).toMatch(/explicitly named read/);
   });
 
-  it('never widens the Runtime retrieval scope for a named tool', async () => {
+  it('does not widen an explicitly narrowed tool scope to Web', async () => {
     const tools = webTools();
     const webSearch = tools.find((tool) => tool.name === 'web_search') as
       AgentTool & { calls: unknown[] };
@@ -318,15 +395,22 @@ describe('an explicit tool instruction narrows execution scope, not the catalog'
         ? toolCallResponse([{ id: 'c1', name: 'web_search', args: { query: 'notes' } }])
         : textResponse('local answer only');
     });
-    // Naming a Web tool does not turn a local-workspace turn into a Web turn.
-    const inbound = '请使用 web_search 工具搜索我的项目文件';
+    // An explicit local-only tool allowlist remains narrower than dynamic Web admission.
+    const inbound = '请只使用 read 工具查看我的项目文件';
     expect(assessRetrievalIntent(inbound).intent).toBe('local_workspace');
     const ctx = explicitContextFor(inbound, tools);
+    ctx.toolContext.networkPolicy = {
+      version: 1, enabled: true, providerId: 'fixture', mode: 'public_anonymous', allowDomains: [], blockDomains: [],
+      strictReadApproval: false, maxResults: 5, maxQueryChars: 1_000, maxQueriesPerRun: 2, maxFetchesPerRun: 2,
+      maxConcurrentRequests: 1, searchTimeoutMs: 5_000, fetchTimeoutMs: 5_000, totalTimeoutMs: 10_000,
+      maxResponseBytes: 10_000, maxExtractedChars: 1_000, maxRedirects: 0, cacheEnabled: false,
+      cacheTtlSeconds: 0, cacheMaxBytes: 0, browserFallback: 'approval_required', sensitiveQueryPolicy: 'deny',
+    };
 
     await createExecuteStage({ ...deps, llm })(ctx);
 
     expect(webSearch.calls).toHaveLength(0);
     expect(ctx.toolResults?.[0]?.ok).toBe(false);
-    expect(ctx.toolResults?.[0]?.error).toMatch(/not admitted for this request/);
+    expect(ctx.toolResults?.[0]?.error).toMatch(/explicitly named read/u);
   });
 });

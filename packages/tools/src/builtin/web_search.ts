@@ -45,6 +45,11 @@ export const webSearchTool: AgentTool = {
     if (sensitive.sensitive) {
       if (policy.sensitiveQueryPolicy === 'deny') return webFailure({ kind: 'web_sensitive_query_blocked' });
       if (policy.sensitiveQueryPolicy === 'redact') {
+        // We can redact known credential/path tokens, but cannot safely remove
+        // arbitrary private prose while preserving its meaning. Fail closed.
+        if (sensitive.categories.includes('private_content')) {
+          return webFailure({ kind: 'web_sensitive_query_blocked' });
+        }
         query = redactSensitiveWebQuery(query);
         if (!query || query.length > policy.maxQueryChars) return webFailure({ kind: 'web_sensitive_query_blocked' });
       }
