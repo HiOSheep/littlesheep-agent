@@ -1,7 +1,7 @@
 // Task composer controls, attachments, runtime selection, and sizing.
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { CloseIcon } from '../ui/icons'
-import { compactPath } from '../workspace/path-utils'
+import { lastPathSegment } from '../workspace/path-utils'
 
 
 export function WorkspaceChip({
@@ -15,7 +15,7 @@ export function WorkspaceChip({
   onReset: () => void | Promise<void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
-  const label = compactPath(path)
+  const label = lastPathSegment(path)
 
   return (
     <span

@@ -1,4 +1,3 @@
-import { SettingsSelect } from './select'
 import { SettingRow } from './setting-row'
 // Settings navigation and page composition.
 import { useEffect, useState } from 'react'
@@ -55,15 +54,15 @@ export function SettingsAgentProfilePage({
       <header className="settings-module-heading">
         <div className="settings-module-kicker">通用</div>
         <h2>Agent 行为</h2>
-        <p>这里选择系统提示词侧的行为配置；权限仍由输入栏的权限模式单独控制。</p>
+        <p>选择适合当前工作的行为方式。文件访问权限仍由输入框中的权限模式控制。</p>
       </header>
       <section className="settings-policy-section" aria-label="行为配置">
         <div className="settings-policy-heading"><strong>行为配置</strong></div>
         <div className="settings-card">
         <SettingRow field="agent.profile" title="Agent 行为" description={PROFILE_OPTIONS.find(item => item.id === profile)?.desc}>
-          <SettingsSelect label="Agent 行为配置" value={profile}
-            options={PROFILE_OPTIONS.map(item => ({ value: item.id, label: item.label, description: item.desc }))}
-            onChange={onChange} />
+          <div className="agent-profile-options" role="group" aria-label="Agent 行为配置">
+            {PROFILE_OPTIONS.map((item) => <button key={item.id} type="button" aria-pressed={profile === item.id} onClick={() => onChange(item.id)}><strong>{item.label}</strong><small>{item.desc}</small></button>)}
+          </div>
         </SettingRow>
         </div>
       </section>

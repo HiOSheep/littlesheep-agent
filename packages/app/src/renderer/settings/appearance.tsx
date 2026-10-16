@@ -65,6 +65,7 @@ export function SettingsAppearancePage() {
                   <span className="appearance-mini-sidebar"><i /><i /><i /></span>
                   <span className="appearance-mini-chat"><i /><i /><i /><i /><b /></span>
                 </span>
+                <span className="appearance-mode-label">{mode.label}</span>
               </button>)}
           </div>
         </SettingRow>
@@ -84,6 +85,12 @@ export function SettingsAppearancePage() {
           <ColorInput label="前景色" value={colors.foreground} onChange={value => changeColor('foreground', value)} />
         </SettingRow>
       </div>
+    </section>
+    <section className="appearance-live-preview" aria-label="外观即时预览">
+      <strong>效果预览</strong>
+      <p style={{ fontSize: preferences.chatFontSize }}>这是一段对话正文。字号、配色和主题会同步显示在这里。</p>
+      <pre style={{ fontSize: preferences.codeFontSize }}><code>const message = 'Hello, LittleSheep'</code></pre>
+      <div className="appearance-preview-input">输入消息，或添加文件…</div>
     </section>
     <details className="settings-advanced appearance-advanced" open>
       <summary>高级</summary>

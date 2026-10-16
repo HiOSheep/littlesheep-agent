@@ -1,5 +1,6 @@
 // Settings page for the LS-managed development environment registry.
 
+import { environmentVersionDisplay } from './environment-version-display'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getDevelopmentEnvironments,
@@ -191,7 +192,8 @@ function EnvironmentRow({
   onImport: () => void
   onRemove: (version: string) => void
 }) {
-  const status = environmentStatusLabel(environment)
+  const versionDisplay = environmentVersionDisplay(environment.currentVersion)
+  const status = versionDisplay.diagnostic ? '检测未成功' : environmentStatusLabel(environment)
   const datalistId = `development-environment-versions-${environment.id}`
   return (
     <div className="development-environment-row">
@@ -202,13 +204,18 @@ function EnvironmentRow({
         </div>
         <small>{environment.description}</small>
         <div className="development-environment-detail">
-          <span>实际：{environment.currentVersion ?? '未发现'}</span>
+          <span>实际：{versionDisplay.label}</span>
           <span>来源：{sourceLabel(environment.source)}</span>
           {environment.activeManagedVersion && <span>目录版本：{environment.activeManagedVersion}</span>}
           {environment.requestedVersion && <span>目标：{environment.requestedVersion}</span>}
-          {environment.executablePath && <code title={environment.executablePath}>{environment.executablePath}</code>}
+
         </div>
-        <p>{environment.note}</p>
+        <details className="development-environment-diagnostics">
+          <summary>位置与检测详情</summary>
+          {environment.executablePath && <code>{environment.executablePath}</code>}
+          {versionDisplay.diagnostic && <pre>{versionDisplay.diagnostic}</pre>}
+          <p>{environment.note}</p>
+        </details>
         {environment.availableVersions.length > 0 && (
           <div className="development-environment-installed" aria-label={`${environment.label}已安装版本`}>
             <span>已导入：</span>

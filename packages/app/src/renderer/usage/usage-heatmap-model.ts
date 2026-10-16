@@ -206,7 +206,7 @@ export function buildUsageHeatmapView(input: {
     effectiveMax,
     thresholds,
     legend: usageHeatLegend(thresholds),
-    totals: series.totals,
+    totals: { ...series.totals, peak: series.totals.requests > 0 ? series.totals.peak : undefined },
     providers: series.identities.providers,
     models: series.identities.models,
     filters: series.filters,

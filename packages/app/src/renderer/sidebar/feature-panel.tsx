@@ -143,7 +143,7 @@ export function SidebarFeaturePanel({
                 </button>
               ))
             ) : (
-              <div className="sidebar-feature-empty">没有找到匹配的会话</div>
+              <div className="sidebar-feature-empty">{search.trim() ? '没有找到匹配的会话' : '输入关键词搜索会话'}</div>
             )}
           </div>
         </div>

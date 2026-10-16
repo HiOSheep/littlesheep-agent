@@ -276,8 +276,7 @@
   .agent-tool-detail-section { padding: 10px 12px; column-gap: 10px; }
 }
 @container chat-pane (max-width: 480px) {
-  .composer-left .mode-picker { flex: 0 0 var(--mode-picker-compact-width); width: var(--mode-picker-compact-width); }
-  .composer-left .mode-picker-content .model-picker-current { display: none; }
+  .composer-left .mode-picker { flex: 0 0 auto; width: max-content; }
 }
 @container chat-pane (max-width: 380px) {
   .composer-left .workspace-context-chip { display: none; }

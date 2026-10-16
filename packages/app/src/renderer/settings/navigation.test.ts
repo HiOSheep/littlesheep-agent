@@ -86,7 +86,7 @@ describe('settings information architecture', () => {
     // The behaviour page keeps behaviour and permissions, not display density.
     expect(agentProfile).not.toContain('readConversationDisplayMode')
     expect(agentProfile).not.toContain('writeConversationDisplayMode')
-    expect(agentProfile).toContain('权限仍由输入栏的权限模式单独控制')
+    expect(agentProfile).toContain('文件访问权限仍由输入框中的权限模式控制')
     expect(navigation).toContain("title: '外观', desc: '主题、颜色、字号与动态效果'")
     expect(navigation).toContain("title: 'Agent 行为'")
   })

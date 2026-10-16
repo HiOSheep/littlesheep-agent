@@ -8,7 +8,7 @@ import {
   type MemoryFileOverview,
 } from './api'
 import { Markdown } from './Markdown'
-import { formatMemoryFileBytes, MemoryActivationLevels } from './memory-files-presentation'
+import { formatMemoryFileBytes, MemoryActivationLevels, MEMORY_FILE_TITLES } from './memory-files-presentation'
 import { CheckIcon, FileGlyphIcon, RefreshIcon, SearchIcon } from './ui/icons'
 
 export function MemoryTreeView() {
@@ -17,6 +17,8 @@ export function MemoryTreeView() {
   const [selectedName, setSelectedName] = useState<MemoryFileName>('SOUL.md')
   const [detail, setDetail] = useState<MemoryFileDetail | null>(null)
   const [draft, setDraft] = useState('')
+  const [preview, setPreview] = useState(false)
+  const draftsRef = useRef(new Map<MemoryFileName, string>())
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
@@ -70,7 +72,7 @@ export function MemoryTreeView() {
       .then((next) => {
         if (!mountedRef.current || controller.signal.aborted) return
         setDetail(next)
-        setDraft(next.content)
+        setDraft(draftsRef.current.get(next.name) ?? next.content)
       })
       .catch((loadError) => {
         if (!controller.signal.aborted && mountedRef.current) setError((loadError as Error).message)
@@ -85,7 +87,7 @@ export function MemoryTreeView() {
   const visibleFiles = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
     if (!needle) return files
-    return files.filter((file) => `${file.name}\n${file.description}`.toLocaleLowerCase().includes(needle))
+    return files.filter((file) => `${MEMORY_FILE_TITLES[file.name]}\n${file.name}\n${file.description}`.toLocaleLowerCase().includes(needle))
   }, [files, query])
 
   const dirty = detail?.editable === true && draft !== detail.content
@@ -98,6 +100,7 @@ export function MemoryTreeView() {
       const saved = await writeMemoryFile(detail.name, draft)
       if (!mountedRef.current) return
       setDetail((current) => current?.name === saved.name ? saved : current)
+      draftsRef.current.delete(saved.name)
       if (selectedNameRef.current === saved.name) setDraft(saved.content)
       setFiles((current) => current.map((file) => file.name === saved.name ? saved : file))
     } catch (saveError) {
@@ -117,7 +120,7 @@ export function MemoryTreeView() {
           title="刷新记忆文件"
           aria-label="刷新记忆文件"
           onClick={() => void loadFiles(true)}
-          disabled={loading}
+          disabled={loading || dirty || saving}
         >
           <RefreshIcon />
         </button>
@@ -125,6 +128,7 @@ export function MemoryTreeView() {
 
       {error && <div className="dialog-error">记忆文件操作失败：{error}</div>}
 
+      <p className="memory-files-description">维护行为规则与长期偏好；下方文件由你直接编辑，记忆活跃度单独统计。</p>
       {activation && <MemoryActivationLevels activation={activation} />}
 
       <div className="memory-files-layout">
@@ -145,14 +149,16 @@ export function MemoryTreeView() {
                 type="button"
                 className={`memory-file-row ${selectedName === file.name ? 'active' : ''}`}
                 aria-current={selectedName === file.name ? 'page' : undefined}
+                disabled={saving}
                 onClick={() => setSelectedName(file.name)}
               >
                 <FileGlyphIcon name={file.name} />
                 <span>
-                  <strong>{file.name}</strong>
+                  <strong>{MEMORY_FILE_TITLES[file.name] ?? file.name}</strong>
+                  <small>{file.name}</small>
                   <small>{file.description}</small>
                 </span>
-                <small className="memory-file-size">{formatMemoryFileBytes(file.size)}</small>
+                <small className="memory-file-size" title={file.updatedAt ? `更新于 ${file.updatedAt}` : undefined}>{formatMemoryFileBytes(file.size)}</small>
               </button>
             ))}
             {!loading && visibleFiles.length === 0 && (
@@ -169,8 +175,9 @@ export function MemoryTreeView() {
               <div className="memory-file-toolbar">
                 <span>
                   <strong>{detail.name}</strong>
-                  <small>{detail.editable ? '可编辑' : '只读'}</small>
+                  <small role="status">{detail.editable ? dirty ? '有未保存修改' : '内容已同步' : '只读'}{detail.updatedAt ? ` · ${new Date(detail.updatedAt).toLocaleString()}` : ''}</small>
                 </span>
+                {detail.editable && <button type="button" className="memory-file-save" aria-pressed={preview} onClick={() => setPreview(!preview)}>{preview ? '继续编辑' : '预览'}</button>}
                 {detail.editable && (
                   <button
                     type="button"
@@ -183,17 +190,18 @@ export function MemoryTreeView() {
                   </button>
                 )}
               </div>
-              {detail.editable ? (
+              {detail.editable && !preview ? (
                 <textarea
                   className="memory-file-editor"
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  readOnly={saving}
+                  onChange={(event) => { setDraft(event.target.value); draftsRef.current.set(detail.name, event.target.value) }}
                   spellCheck={false}
                   aria-label={`编辑 ${detail.name}`}
                 />
               ) : (
                 <div className="memory-file-preview">
-                  <Markdown text={detail.content || '（空文件）'} />
+                  <Markdown text={(detail.editable ? draft : detail.content) || '（空文件）'} />
                 </div>
               )}
             </section>

@@ -87,7 +87,7 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
   return (
     <div className="overlay" onClick={embedded ? undefined : onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-header">
+        <div className="dialog-header settings-module-heading">
           {/* One name for the feature: the navigation entry, the empty state and the
               feedback messages all say 外部渠道 (UX-12/UX-13 实机验收发现标题不一致). */}
           <h2>外部渠道</h2>
@@ -110,10 +110,10 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
                 {overall.counts && <small>{overall.counts}</small>}
               </span>
               <button className="refresh-btn" onClick={() => void loadStatus()} disabled={reloading}>
-                刷新
+                刷新状态
               </button>
               <button className="reload-btn" onClick={() => void handleReload()} disabled={reloading}>
-                {reloading ? '重新加载中...' : '重新加载'}
+                {reloading ? '重新连接中...' : '重新连接'}
               </button>
             </div>
 
@@ -168,13 +168,13 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
               <StateView
                 state="empty"
                 title="还没有配置外部渠道"
-                description="当前没有渠道可以运行。这个版本还没有渠道配置界面。"
+                description="先添加连接配置，再重新连接。当前版本通过本地配置文件添加渠道。"
                 action={(
                   <details className="feedback-detail">
-                    <summary>在哪里配置</summary>
+                    <summary>查看连接配置步骤</summary>
                     <p>
                       在应用数据目录的 <code>config.json</code> 里按 <code>channels.channels</code> 添加渠道，
-                      保存后回到本页点“重新加载”。嵌套字段的完整含义见仓库的渠道插件说明。
+                      保存后回到本页点“重新连接”。嵌套字段的完整含义见仓库的渠道插件说明。
                     </p>
                   </details>
                 )}

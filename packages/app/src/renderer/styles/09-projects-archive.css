@@ -885,3 +885,34 @@
   }
 
 }
+
+/* Compress by the chat pane, including when another workspace panel is open. */
+@container chat-pane (max-width: 820px) {
+  .composer-controls { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px; }
+  .composer-controls > .workspace-context-chip { grid-column: 1 / -1; grid-row: 1; max-width: 100%; width: fit-content; }
+  .composer-left { grid-column: 1; grid-row: 2; min-width: 0; flex: none; }
+  .composer-right { grid-column: 2; grid-row: 2; min-width: 0; max-width: 100%; margin-left: 0; }
+  .composer-left .mode-picker { flex: 0 0 auto; min-width: max-content; }
+  .composer-left .mode-picker-trigger { max-width: none; }
+  .composer-right .runtime-picker { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+  .composer-right .runtime-picker-label-group { flex: 1 1 auto; min-width: 0; }
+  .composer-right .runtime-picker-model { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .composer-right .runtime-picker-trigger { width: 100%; }
+}
+@container chat-pane (max-width: 390px) {
+  .composer-right .runtime-picker-reasoning { display: none; }
+  .composer-right { gap: 4px; }
+}
+
+@container chat-pane (max-width: 820px) {
+  .composer-controls:not(:has(> .workspace-context-chip)) > :is(.composer-left, .composer-right) { grid-row: 1; }
+}
+
+@container chat-pane (max-width: 390px) {
+  .composer-controls { grid-template-columns: minmax(0, 1fr); }
+  .composer-controls > .workspace-context-chip { grid-column: 1; }
+  .composer-left { grid-column: 1; grid-row: 2; }
+  .composer-right { grid-column: 1; grid-row: 3; width: 100%; }
+  .composer-controls:not(:has(> .workspace-context-chip)) > .composer-left { grid-row: 1; }
+  .composer-controls:not(:has(> .workspace-context-chip)) > .composer-right { grid-row: 2; }
+}

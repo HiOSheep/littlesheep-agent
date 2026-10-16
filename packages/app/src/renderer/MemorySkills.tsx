@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { listSkills, readSkill } from './api'
 import { Markdown } from './Markdown'
 import { useEscapeScope } from './ui/modal-surface'
@@ -15,6 +15,7 @@ interface MemorySkillsProps {
 }
 
 export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
+  const [query, setQuery] = useState('')
   const [state, dispatch] = useReducer(skillCatalogReducer, undefined, initialSkillCatalogState)
   const mountedRef = useRef(true)
   const listRequestRef = useRef(0)
@@ -67,7 +68,7 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
   return (
     <div className="overlay" onClick={embedded ? undefined : onClose}>
       <div className="dialog memory-skills-dialog" onClick={(e) => e.stopPropagation()}>
-        <div className="dialog-header">
+        <div className="dialog-header settings-module-heading">
           <div>
             <h2>技能</h2>
             <p className="ms-desc">本地技能会在这里集中查看。当前版本只能查看内容，不能在界面里启用、禁用或编辑技能。</p>
@@ -136,7 +137,9 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
                 // and not a failure (all three used to be one `dialog-hint` box).
                 <StateView state="empty" title="暂无技能" />
               )}
-              {skills.map((s) => (
+              <input className="skill-catalog-search" aria-label="搜索技能" placeholder="按名称或用途搜索技能" value={query} onChange={(event) => setQuery(event.target.value)} />
+              {status === 'ready' && skills.length > 0 && !skills.some((skill) => `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && <StateView state="empty" title="没有匹配的技能" description="试试其他名称或用途。" />}
+              {skills.filter((skill) => `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).map((s) => (
                 <button key={s.name} className="ms-item" type="button" onClick={() => void openSkill(s.name)}>
                   <div className="ms-item-name">{s.name}</div>
                   <div className="ms-item-desc">{s.description}</div>

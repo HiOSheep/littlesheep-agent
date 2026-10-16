@@ -65,6 +65,7 @@ export function RuntimePicker({
   /** Re-reads the Runtime configuration after a failed load. */
   onRetryModelConfig: () => void
 }) {
+  const [modelQuery, setModelQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [activeProviderId, setActiveProviderId] = useState('')
   const [activeSubmenu, setActiveSubmenu] = useState<'model' | 'provider' | null>(null)
@@ -80,6 +81,8 @@ export function RuntimePicker({
   const disabled = !runtime && availability.kind === 'loading'
   const activeProvider = providers.find((provider) => provider.id === activeProviderId) ?? providers[0]
   const activeModels = activeProvider?.models ?? []
+  const matchingModels = activeModels.filter((model) => `${model.id} ${model.name}`.toLocaleLowerCase().includes(modelQuery.trim().toLocaleLowerCase()))
+  useEffect(() => { setModelQuery('') }, [activeProviderId, open])
   const selectedEntry = selected?.provider.models.find((model) => model.id === selected.model)
   const reasoning = runtime?.reasoning ?? 'auto'
   const supportedReasoningIds = useMemo(
@@ -294,35 +297,6 @@ export function RuntimePicker({
           ))}
       </div>
       <div className="runtime-picker-panel runtime-menu-panel" role="menu" aria-label="模型和推理选择">
-        <div className="runtime-section-title">推理程度</div>
-        <div
-          className="runtime-menu-list"
-          role="group"
-          aria-label="推理强度"
-          onMouseEnter={() => scheduleRuntimeSubmenuClose(80)}
-        >
-          {visibleReasoningOptions.map((item) => {
-            const isActive = item.id === effectiveReasoning
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`runtime-menu-item runtime-reasoning-option ${isActive ? 'active' : ''}`}
-                role="menuitemradio"
-                aria-checked={isActive}
-                onClick={() => {
-                  if (!isActive) onReasoningChange(item.id)
-                  closePicker()
-                }}
-              >
-                <span>{item.label}</span>
-                <small>{item.desc}</small>
-                <span className="runtime-menu-check" aria-hidden="true">{isActive ? '✓' : ''}</span>
-              </button>
-            )
-          })}
-        </div>
-        <div className="runtime-menu-divider" />
         {providers.length === 0 ? (
           <div className="runtime-empty">
             <span>{availability.label}</span>
@@ -371,12 +345,42 @@ export function RuntimePicker({
               onFocus={() => openRuntimeSubmenu('provider')}
               onClick={() => openRuntimeSubmenu('provider')}
             >
-              <span>厂商</span>
+              <span>供应商</span>
               <small>{activeProvider?.name ?? '选择厂商'}</small>
               <span className="runtime-submenu-arrow" aria-hidden="true">&gt;</span>
             </button>
           </>
         )}
+        <div className="runtime-menu-divider" />
+        <div className="runtime-section-title">推理程度</div>
+        <div
+          className="runtime-menu-list"
+          role="group"
+          aria-label="推理强度"
+          onMouseEnter={() => scheduleRuntimeSubmenuClose(80)}
+        >
+          {visibleReasoningOptions.map((item) => {
+            const isActive = item.id === effectiveReasoning
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`runtime-menu-item runtime-reasoning-option ${isActive ? 'active' : ''}`}
+                role="menuitemradio"
+                aria-checked={isActive}
+                onClick={() => {
+                  if (!isActive) onReasoningChange(item.id)
+                  closePicker()
+                }}
+              >
+                <span>{item.label}</span>
+                <small>{item.desc}</small>
+                <span className="runtime-menu-check" aria-hidden="true">{isActive ? '✓' : ''}</span>
+              </button>
+            )
+          })}
+        </div>
+
       </div>
       <div
         className={`runtime-submenu runtime-${activeSubmenu ?? 'model'}-menu ${activeSubmenu && providers.length > 0 ? 'visible' : ''}`}
@@ -390,6 +394,8 @@ export function RuntimePicker({
         {...(!activeSubmenu || providers.length === 0 ? { inert: '' } : {})}
         onMouseEnter={cancelRuntimeSubmenuClose}
       >
+        {activeSubmenu === 'model' && <input className="runtime-model-search" type="search" aria-label="搜索模型" placeholder="搜索模型…" value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} />}
+        {activeSubmenu === 'model' && matchingModels.length === 0 && <div className="runtime-empty" role="status">没有匹配的模型</div>}
         <div className="runtime-menu-list">
           {activeSubmenu === 'provider'
             ? providers.map((provider) => (
@@ -409,7 +415,7 @@ export function RuntimePicker({
                 <small>{provider.models.length}</small>
               </button>
             ))
-            : activeModels.map((model) => {
+            : matchingModels.map((model) => {
               const ref = `${activeProvider?.id}/${model.id}`
               const isActive = ref === runtime?.model
               const displayModel = model.declared && model.name !== model.id

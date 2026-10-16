@@ -134,7 +134,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
         <dl className="usage-summary">
           <div><dt>总用量</dt><dd title={view.totals.requests > 0 ? `${view.totals.total.toLocaleString()} tok` : undefined}>{view.totals.requests > 0 ? <>{formatTokenCount(view.totals.total)} <span>tok</span></> : '无实报数据'}</dd><small>当前筛选区间</small></div>
           <div><dt>活跃天数</dt><dd>{view.totals.activeDays} <span>天</span></dd><small>有调用记录的日期</small></div>
-          <div><dt>单日峰值</dt><dd title={view.totals.peak ? `${view.totals.peak.total.toLocaleString()} tok` : undefined}>{view.totals.peak ? <>{formatTokenCount(view.totals.peak.total)} <span>tok</span></> : '无记录'}</dd><small>{view.totals.peak?.date ?? '尚无实报用量'}</small></div>
+          <div><dt>单日峰值</dt><dd title={view.totals.peak ? `${view.totals.peak.total.toLocaleString()} tok` : undefined}>{view.totals.peak ? <>{formatTokenCount(view.totals.peak.total)} <span>tok</span></> : '—'}</dd><small>{view.totals.peak?.date ?? '尚无实报用量'}</small></div>
           <div><dt>实报请求</dt><dd>{view.totals.requests.toLocaleString()} <span>次</span></dd><small>有有效用量的独立响应</small></div>
         </dl>
       )}

@@ -102,7 +102,13 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   const processCounts = turnCountsLine(activity)
   // The verdict rides on the trigger too: while the run is still going it would
   // read as a judgement on an unfinished turn.
-  const processVerification = activity.status === 'running' || activityAttentionLine(activity) ? null : activityVerificationLine(activity)
+  // An ordinary reply without tool work has no acceptance result to advertise.
+  // Keep the original records in the expanded process and all failures in the attention line.
+  const neutralUnverifiedReply = (activity.tools?.length ?? 0) === 0
+    && activity.verificationHistory?.every((record) => record.verdict === 'unverified')
+  const processVerification = activity.status === 'running' || activityAttentionLine(activity) || neutralUnverifiedReply
+    ? null
+    : activityVerificationLine(activity)
 
   return (
     <section className={`assistant-turn ${activity.status}`} data-message-key={messageKey}>

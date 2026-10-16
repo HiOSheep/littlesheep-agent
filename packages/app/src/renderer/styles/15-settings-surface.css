@@ -241,3 +241,32 @@
   .settings-value-row { gap: 12px; }
   .settings-value-control { max-width: 180px; }
 }
+
+.provider-connection-note { display: block; margin-top: 8px; color: var(--muted); }
+.browser-diagnostics { width: max-content; max-width: min(360px, 45vw); color: var(--muted); overflow-wrap: anywhere; }
+.browser-diagnostics summary { cursor: pointer; white-space: nowrap; }
+.storage-settings-row button.danger-action { color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); }
+.memory-skills-dialog > .settings-module-heading h2,
+.dialog > .settings-module-heading h2 { font-size: 26px; line-height: 1.3; }
+.skill-catalog-search { display: block; width: 100%; padding: 10px 12px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius-ui); color: var(--text); background: var(--surface); }
+.development-environment-diagnostics { color: var(--muted); margin-top: 8px; overflow-wrap: anywhere; }
+.development-environment-diagnostics summary { cursor: pointer; }
+
+.memory-files-description { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+
+.appearance-mode-option { height: auto; display: grid; gap: 7px; padding-bottom: 8px; }
+.appearance-mode-label { font-size: 12px; color: var(--text); }
+.appearance-live-preview { margin-block: 24px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); }
+.appearance-live-preview p { line-height: 1.65; }
+.appearance-live-preview pre { padding: 12px; overflow: auto; scrollbar-gutter: stable; background: var(--bg); border-radius: var(--radius-ui); }
+.appearance-preview-input { padding: 12px; background: var(--bg); border-radius: var(--radius-ui); color: var(--muted); }
+.settings-workspace-body .settings-card:has(.agent-profile-options) > .settings-value-row { grid-template-columns: 1fr; }
+.agent-profile-options { display: flex; flex-wrap: wrap; gap: 12px; padding-block: 8px; }
+.agent-profile-options button { flex: 1 1 220px; display: grid; gap: 6px; padding: 14px; text-align: left; color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-ui); background: transparent; }
+.agent-profile-options button[aria-pressed="true"] { border-color: var(--accent); background: var(--chat-active-fill); }
+.agent-profile-options small { color: var(--muted); line-height: 1.5; }
+.global-tasks-entry { position: absolute; left: 16px; bottom: 64px; z-index: 70; padding: 7px 8px; border: 0; border-radius: var(--radius-ui); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.global-tasks-entry:hover, .global-tasks-entry:focus-visible { background: var(--chat-hover-fill); color: var(--text); }
+
+.settings-value-row:has(.agent-profile-options) > .settings-value-control { justify-self: stretch; max-width: none; width: 100%; }
+.agent-profile-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); }

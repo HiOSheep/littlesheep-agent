@@ -28,3 +28,8 @@ export function formatMemoryFileBytes(bytes: number): string {
   if (bytes < 1_048_576) return `${Math.max(1, Math.round(bytes / 1_024))} KB`
   return `${(bytes / 1_048_576).toFixed(1)} MB`
 }
+
+export const MEMORY_FILE_TITLES: Record<string, string> = {
+  'AGENTS.md': '行为规则', 'SOUL.md': '人格与语气', 'USER.md': '用户偏好',
+  'PHILOSOPHY.md': '共同工作理念', 'TOOLS.md': '工具经验', 'MEMORY.md': '历史长期记忆',
+}

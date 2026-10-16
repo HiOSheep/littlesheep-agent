@@ -1,6 +1,8 @@
 // Settings for the persistent embedded-browser session.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { DangerConfirmDialog } from '../ui/danger-confirm'
 import { useTransientNotice } from '../ui/use-transient-notice'
 import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import {
@@ -11,6 +13,8 @@ import {
 } from '../api/browser'
 
 export function SettingsBrowserPage() {
+  const [confirmData, setConfirmData] = useState(false)
+  const actionPendingRef = useRef(false)
   const [status, setStatus] = useState<BrowserStorageStatus | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -31,17 +35,20 @@ export function SettingsBrowserPage() {
   }, [])
 
   async function runAction(action: 'cache' | 'data') {
-    if (busyAction) return
+    if (actionPendingRef.current) return
+    actionPendingRef.current = true
     setBusyAction(action)
     setError(null)
     clearNotice()
     try {
       const result = action === 'cache' ? await clearBrowserCache() : await clearBrowserData()
       setStatus(result.status)
+      if (action === 'data') setConfirmData(false)
       showNotice(action === 'cache' ? '网页缓存已清除。' : '网站数据、登录状态和缓存已清除。')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
+      actionPendingRef.current = false
       setBusyAction(null)
     }
   }
@@ -51,7 +58,7 @@ export function SettingsBrowserPage() {
       <header className="settings-module-heading">
         <div className="settings-module-kicker">扩展</div>
         <h2>内置浏览器</h2>
-        <p>网页在 LS 内运行。登录状态、Cookie、本地存储、IndexedDB 和缓存由持久化浏览器分区保存，不写入源码仓库。</p>
+        <p>管理内置网页的登录状态和缓存。网站登录会在重启应用后保留。</p>
       </header>
 
       <section className="storage-settings-section" aria-label="内置浏览器状态">
@@ -62,10 +69,10 @@ export function SettingsBrowserPage() {
         <div className="settings-card">
         <div className="storage-settings-row" data-settings-field="browser.partition">
           <span>
-            <strong>浏览器分区</strong>
+            <strong>登录状态</strong>
             <small>应用重启后仍使用同一站点数据空间</small>
           </span>
-          <code>{status?.partition ?? '读取中...'}</code>
+          <details className="browser-diagnostics"><summary>查看存储标识</summary><code>{status?.partition ?? '读取中...'}</code></details>
         </div>
         <div className="storage-settings-row" data-settings-field="browser.cookie-count">
           <span>
@@ -97,13 +104,17 @@ export function SettingsBrowserPage() {
             <strong>清除所有网站数据</strong>
             <small>会退出网站登录，并删除 Cookie、本地存储、IndexedDB、Service Worker 和缓存</small>
           </span>
-          <button type="button" onClick={() => void runAction('data')} disabled={!!busyAction}>
+          <button className="danger-action" type="button" onClick={() => { setError(null); setConfirmData(true) }} disabled={!!busyAction}>
             {busyAction === 'data' ? '清除中' : '清除网站数据'}
           </button>
         </div>
         </div>
       </section>
 
+      {confirmData && createPortal(<DangerConfirmDialog
+        impact={{ objectType: '内置浏览器网站数据', name: '所有内置浏览器标签共享的网站数据', removes: ['退出所有网站的登录状态', '删除 Cookie、网站本地存储和网页缓存，操作无法撤销'], preserved: ['LS 的对话、项目文件与模型配置不受影响'], inUse: '操作会影响所有已打开的内置浏览器标签。' }}
+        busy={busyAction === 'data'} error={error} onCancel={() => { if (!actionPendingRef.current) setConfirmData(false) }} onConfirm={() => void runAction('data')}
+      />, document.body)}
       <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="storage-settings-notice" data-tone="error" role="alert">{error}</div>}
     </div>

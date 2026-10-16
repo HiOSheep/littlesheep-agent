@@ -255,15 +255,15 @@ export function ComposerView({ controller }: { controller: ComposerViewControlle
               onTipChange={setControlTip}
             />
             <ModePicker value={permissionMode} onChange={setPermissionMode} />
-            {runtime && !workspaceIsWorkplace && (
+          </div>
+          {runtime && !workspaceIsWorkplace && (
               <WorkspaceChip
                 path={runtime.workspace}
                 tip={workspaceTip}
                 onReset={resetWorkspace}
                 onTipChange={setControlTip}
               />
-            )}
-          </div>
+          )}
           <div className="composer-right">
             <ContextUsageIndicator usage={contextUsage} onOpen={openContextInspector} />
             <RuntimePicker

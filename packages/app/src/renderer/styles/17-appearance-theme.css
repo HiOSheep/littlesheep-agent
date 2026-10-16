@@ -196,3 +196,9 @@
   .appearance-mode-options { gap: 10px; }
   .appearance-mode-option { flex-basis: 82px; width: 82px; height: 64px; }
 }
+
+/* Labels belong to the miniature's own light/dark surface, not the current theme. */
+.appearance-mode-option { display: grid; grid-template-rows: 62px auto; gap: 8px; height: auto; }
+.appearance-mode-preview { height: 62px; }
+.appearance-mode-option .appearance-mode-label { color: #222; font-size: 12px; }
+.appearance-mode-option:has(.preview-dark) .appearance-mode-label { color: #eee; }

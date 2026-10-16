@@ -2,6 +2,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getPluginsStatus,
+  getChannelConnectionsStatus,
+  type ChannelConnectionsStatus,
   reloadPlugins,
   setLocalPluginCodeAllowed,
   setPluginEnabled,
@@ -12,6 +14,7 @@ import { PluginIcon, RefreshIcon, SearchIcon } from '../ui/icons'
 import { FeedbackNotice } from '../ui/feedback-notice'
 import { useTransientNotice } from '../ui/use-transient-notice'
 import { TransientNoticeToast } from '../ui/transient-notice-toast'
+import { pluginConnectionLabel } from './plugin-connection-label'
 import { StateView } from '../ui/state-view'
 
 
@@ -30,9 +33,9 @@ export const PLUGIN_FILTERS: Array<{ id: PluginListFilter; label: string }> = [
 
 export const PLUGIN_STATE_LABELS: Record<PluginStatus['state'], string> = {
   disabled: '已停用',
-  inactive: '按需待命',
+  inactive: '未激活',
   activating: '正在启动',
-  active: '运行中',
+  active: '插件已加载',
   blocked: '等待信任',
   failed: '启动失败',
 }
@@ -62,6 +65,7 @@ export function SettingsPluginsPage() {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<PluginListFilter>('all')
   const [status, setStatus] = useState<PluginsStatusResponse | null>(null)
+  const [connections, setConnections] = useState<ChannelConnectionsStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // A success confirmation floats and clears itself; a failure stays on the page.
@@ -119,9 +123,10 @@ export function SettingsPluginsPage() {
     const requestId = ++requestRef.current
     if (showLoading) setLoading(true)
     try {
-      const next = await getPluginsStatus()
+      const [next, channelStatus] = await Promise.all([getPluginsStatus(), getChannelConnectionsStatus().catch(() => null)])
       if (!mountedRef.current || requestId !== requestRef.current) return
       setStatus(next)
+      setConnections(channelStatus)
       setError(null)
     } catch (loadError) {
       if (!mountedRef.current || requestId !== requestRef.current) return
@@ -292,6 +297,7 @@ export function SettingsPluginsPage() {
             const capabilityText = plugin.capabilities
               .map((capability) => PLUGIN_CAPABILITY_LABELS[capability] ?? capability)
               .join(' · ')
+            const connectionLabel = pluginConnectionLabel(plugin, connections)
             const detailId = `plugin-details-${plugin.id}`
             return (
               <article key={plugin.id} className={`plugin-list-item ${expanded ? 'expanded' : ''}`}>
@@ -311,7 +317,8 @@ export function SettingsPluginsPage() {
                       </span>
                       <span className="plugin-list-description">{plugin.description || plugin.id}</span>
                       <span className="plugin-list-meta">
-                        {plugin.source === 'builtin' ? '内置' : '本地'} · {capabilityText}
+                        {plugin.source === 'builtin' ? '内置' : '本地'} · {capabilityText} · {plugin.enabled ? '已启用' : '已停用'}
+                        {connectionLabel && ` · ${connectionLabel}`}
                       </span>
                       {plugin.error && <span className="plugin-list-error">{plugin.error}</span>}
                     </span>

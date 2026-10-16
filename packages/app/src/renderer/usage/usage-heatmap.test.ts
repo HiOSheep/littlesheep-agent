@@ -219,6 +219,13 @@ describe('usage heatmap colour scale', () => {
 })
 
 describe('usage heatmap honesty rules', () => {
+  it('does not display a synthetic peak without reported requests, but keeps a real zero peak', () => {
+    const series = { ...JULY, totals: { ...JULY.totals, requests: 0, peak: { date: '2026-07-01', total: 0 } } }
+    expect(buildUsageHeatmapView({ series, metric: 'total' }).totals.peak).toBeUndefined()
+    const reported = { ...series, totals: { ...series.totals, requests: 1 } }
+    expect(buildUsageHeatmapView({ series: reported, metric: 'total' }).totals.peak).toEqual({ date: '2026-07-01', total: 0 })
+  })
+
   it('distinguishes an absent row from a zero-valued recorded day', () => {
     const view = buildUsageHeatmapView({ series: JULY, metric: 'total' })
     // A date the response never mentioned is not in the view at all ...

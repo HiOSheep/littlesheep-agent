@@ -43,18 +43,17 @@ describe('workspace page leading row alignment', () => {
     expect(navigatorControl).toContain('height: var(--workspace-files-control-size, 25px)')
   })
 
-  it('names the workspace root by its path alone', async () => {
+  it('shows a short root name with its full path still available', async () => {
     const source = await readFile(new URL('./file-navigator.tsx', import.meta.url), 'utf8')
 
-    // The short folder name above the path, and the "当前工作区" badge beside it, repeated what the
-    // path already said (asked for 2026-10-03). The temporary root keeps its badge: that one is a
-    // state warning, not a label.
-    expect(source).toContain('<small>{usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}</small>')
+    // The temporary-root warning and exact path stay available when the visible address is shortened.
+    expect(source).toContain('title={usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}')
+    expect(source).toContain('{lastPathSegment(workspacePath) || workspacePath}')
     expect(source).toContain('{usingTemporaryRoot && (')
     expect(source).toContain('<b className="workspace-root-badge temporary">临时预览</b>')
     expect(source).not.toContain('当前工作区</b>')
     expect(source).not.toContain('{compactPath(workspacePath)}')
-    expect(source).toContain("import { isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'")
+    expect(source).toContain("import { isPathInsideOrSameClient, workspaceAncestorPaths, lastPathSegment } from './path-utils'")
   })
 
   it('uses the shared leading row on every workspace page with a first-line toolbar', async () => {

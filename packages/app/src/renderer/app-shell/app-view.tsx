@@ -87,6 +87,7 @@ export function AppView({ controller }: { controller: AppViewController }) {
             </div>
           </div>
         </div>
+        {!settingsOpen && <button type="button" className="global-tasks-entry" aria-label="查看活动任务" title="查看活动任务" onClick={() => overlays.openSettingsPage('application')}>任务</button>}
         <SettingsEntryButton
           onPrepare={prepareSettingsWorkspace}
           settingsOpen={settingsOpen}

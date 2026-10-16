@@ -142,7 +142,7 @@ export function SettingsApplicationBackgroundPage({
       <header className="settings-module-heading">
         <div className="settings-module-kicker">通用</div>
         <h2>应用与后台</h2>
-        <p>控制关闭窗口后的应用行为，并查看和管理 Runtime 当前仍在执行的真实任务。</p>
+        <p>控制关闭窗口后的应用行为，并查看和管理 当前仍在执行的任务。</p>
       </header>
 
       <section className="application-background-section" aria-labelledby="close-policy-heading">
@@ -166,7 +166,7 @@ export function SettingsApplicationBackgroundPage({
         <div className="application-background-section-heading active-runs-heading-row">
           <span>
             <strong id="active-runs-heading">活动任务</strong>
-            <small>页面打开时自动同步；这里只展示 Runtime 返回的有界状态</small>
+            <small>打开页面时自动更新任务状态</small>
           </span>
           <button
             className="application-background-refresh"

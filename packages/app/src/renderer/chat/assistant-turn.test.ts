@@ -600,6 +600,16 @@ function attentionMarkup(html: string): string | null {
 }
 
 describe('O1 keeps attention facts outside the folded process', () => {
+  it('keeps a neutral no-tool verification out of the collapsed trigger while failures remain visible', () => {
+    const record = { attempt: 1, verdict: 'unverified' as const, reason: 'No acceptance check', verifiedAt: '2026-10-15T00:00:00.000Z', source: 'structural' as const }
+    for (const mode of ['normal', 'compact'] as const) {
+      const neutral = renderTurn({ status: 'done', tools: [], verificationHistory: [record] }, mode)
+      expect(neutral).not.toContain('class="assistant-process-verification"')
+      const failed = renderTurn({ status: 'done', tools: [], verificationHistory: [{ ...record, verdict: 'fail' }] }, mode)
+      expect(attentionMarkup(failed)).toContain('验证：')
+    }
+  })
+
   const failedCall: Partial<AssistantTurnActivity> = {
     status: 'done',
     visibility: 'progress',

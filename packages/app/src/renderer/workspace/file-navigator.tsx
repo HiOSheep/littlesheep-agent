@@ -10,7 +10,7 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { SearchIcon, VSCodeIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 import { updateWorkspaceDirectoryCache, workspaceDirectoryCache, type WorkspaceDirectoryState } from './directory-cache'
-import { isPathInsideOrSameClient, workspaceAncestorPaths } from './path-utils'
+import { isPathInsideOrSameClient, workspaceAncestorPaths, lastPathSegment } from './path-utils'
 import { WORKSPACE_TREE_REFRESH_MS, useWorkspaceAutoRefresh } from './use-workspace-auto-refresh'
 import { WorkspaceNavigatorFrame } from './navigator-frame'
 import { isMissingWorkspacePathError } from './workspace-errors'
@@ -288,16 +288,14 @@ export function WorkspaceFileNavigator({
       onTipChange={onTipChange}
     >
         <div className="workspace-files-toolbar workspace-page-leading-row">
-          {/* The header names where the tree is rooted, and nothing else: the short folder name above
-              the path was a second, less precise address for the same thing (asked for 2026-10-03).
-              The temporary root keeps its badge: that one is a state warning, not a label. */}
+          {/* A short root name leaves room for actions; its exact path remains in the tooltip. */}
           <div className="workspace-files-root">
             {usingTemporaryRoot && (
               <span>
                 <b className="workspace-root-badge temporary">临时预览</b>
               </span>
             )}
-            <small>{usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}</small>
+            <small title={usingTemporaryRoot ? `来源不改变当前工作区：${defaultWorkspacePath}` : workspacePath}>{lastPathSegment(workspacePath) || workspacePath}</small>
           </div>
           <div className="workspace-files-actions">
             {usingTemporaryRoot && (

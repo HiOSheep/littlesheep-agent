@@ -106,7 +106,7 @@ export function SettingsWebPage() {
       <header className="settings-module-heading">
         <div className="settings-module-kicker">通用</div>
         <h2>网络检索</h2>
-        <p>公开资料读取与来源状态</p>
+        <p>配置搜索服务后检查连接，再开启实时资料。高级读取规则可按需调整。</p>
       </header>
 
       <section className="web-settings-section" aria-label="网络检索状态">
@@ -174,7 +174,7 @@ export function SettingsWebPage() {
         // the accessible description, the tooltip and this visible line.
         <small className="web-provider-note" id="web-provider-check-reason" role="status">{checkBlockedReason}</small>
       )}
-      <small className="web-provider-note">密钥由本机加密存储；网络开关、查询外发和网页读取仍由上方策略控制。</small>
+      <small className="web-provider-note">密钥在本机加密保存。保存后检查连接；是否联网与发送查询仍由你的授权控制。</small>
         </div>
       </section>
 
@@ -192,10 +192,10 @@ export function SettingsWebPage() {
           <SettingsSelect label="域名解析" value={web.dnsResolver} disabled={busy}
             options={WEB_DNS_RESOLVER_OPTIONS}
             onChange={value => void patch({ dnsResolver: value })} />
-          <small>{web.dnsResolver === 'cloudflare_doh' ? '域名会发送给 Cloudflare 解析；目标地址仍会经过 SSRF 检查。' : '目标地址会经过 SSRF 检查。'}</small>
+          <small>{web.dnsResolver === 'cloudflare_doh' ? '域名会发送给 Cloudflare 解析；会阻止网页读取访问本机与内网地址。' : '会阻止网页读取访问本机与内网地址。'}</small>
         </label>
         <label className="web-settings-row" data-settings-field="web.strict-read-approval">
-          <span><strong>严格读取审批</strong><small>所有 safe read 仍逐次确认</small></span>
+          <span><strong>严格读取审批</strong><small>每次读取公开网页前也需要你确认</small></span>
           <button type="button" className={`plugin-switch ${web.strictReadApproval ? 'checked' : ''}`} role="switch" aria-label="严格读取审批" aria-checked={web.strictReadApproval} disabled={busy} onClick={() => void patch({ strictReadApproval: !web.strictReadApproval })}><span /></button>
         </label>
         <label className="web-settings-field" data-settings-field="web.sensitive-query-policy">

@@ -75,7 +75,7 @@ describe('product copy claims', () => {
     const channels = await readSibling('ChannelConnections.tsx')
 
     expect(channels).toContain('还没有配置外部渠道')
-    expect(channels).toContain('这个版本还没有渠道配置界面')
+    expect(channels).toContain('当前版本通过本地配置文件添加渠道')
     // The exact key stays available, but behind a disclosure with its location.
     expect(channels).toContain('<details className="feedback-detail">')
     expect(channels).toContain('<code>channels.channels</code>')

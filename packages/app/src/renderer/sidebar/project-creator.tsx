@@ -132,7 +132,7 @@ export function ProjectCreatorDialog({
           >
             <span className="project-creator-option-icon"><ProjectIcon /></span>
             <span>
-              <strong>选择目标文件夹</strong>
+              <strong>打开已有文件夹</strong>
               <small>使用已有文件夹作为项目</small>
             </span>
           </button>

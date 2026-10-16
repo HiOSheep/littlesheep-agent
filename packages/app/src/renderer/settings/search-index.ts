@@ -408,7 +408,7 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     id: 'browser.partition',
     page: 'browser',
     section: '当前状态',
-    title: '浏览器分区',
+    title: '登录状态',
     aliases: ['分区', '站点数据空间', '持久化'],
     kind: 'field',
     valueNotIndexed: '分区名来自浏览器状态接口，打开页面前不可知。',

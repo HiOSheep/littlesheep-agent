@@ -351,6 +351,7 @@ export function SettingsModelsPage() {
           presets={unconfiguredPresets}
           onPick={(template) => openEditor(createProviderDraftFromTemplate(template))}
           onPickPreset={(provider) => openEditor(draftFromRuntimeProvider(provider))}
+          onCustom={() => openEditor(createEmptyProviderDraft())}
           onClose={() => setTemplateOpen(false)}
         />
       ) : (
@@ -363,7 +364,7 @@ export function SettingsModelsPage() {
           {configuredProviders.length === 0 && (
             <div className="provider-empty">
               <strong>还没有配置任何供应商</strong>
-              <p>点下面任一按钮选择服务并填入 API 密钥、补上模型条目；保存成功后它才会出现在输入栏的模型选择器里。</p>
+              <p>点下面的按钮选择服务并填入 API 密钥、补上模型条目；保存成功后它才会出现在输入栏的模型选择器里。</p>
               <p>保存配置只代表写入了密钥和模型声明，不代表 LS 已经验证过它真的可以调用。</p>
             </div>
           )}
@@ -383,9 +384,7 @@ export function SettingsModelsPage() {
             <button className="provider-add" type="button" onClick={() => setTemplateOpen(true)}>
               ＋ 添加供应商
             </button>
-            <button className="provider-add" type="button" onClick={() => openEditor(createEmptyProviderDraft())}>
-              ＋ 添加自定义供应商
-            </button>
+
           </div>
         </>
       )}
@@ -413,7 +412,7 @@ function ProviderCard({
   onDelete: () => void
 }) {
   const [modelsExpanded, setModelsExpanded] = useState(false)
-  const keyState = !provider.requiresKey ? '无需密钥' : provider.hasKey ? '已设置' : '未设置'
+  const keyState = !provider.requiresKey ? '无需密钥' : provider.hasKey ? '密钥已保存' : '未设置'
   const modelCount = provider.models.length
   // A provider can list dozens of models, and every chip looked the same, so the card
   // read as "some models" without saying what was configured. The count is stated in
@@ -436,6 +435,7 @@ function ProviderCard({
           </span>
         </div>
         <div className="provider-url">{provider.baseURL}</div>
+        <small className="provider-connection-note">配置已保存；不代表连接或模型调用已验证。可在编辑中获取模型，检查目录接口。</small>
         <div className="provider-meta">
           {provider.models.length === 0
             ? '尚未添加模型。没有模型的供应商不会出现在模型选择器里。'
@@ -492,11 +492,13 @@ function TemplatePicker({
   presets,
   onPick,
   onPickPreset,
+  onCustom,
   onClose,
 }: {
   presets: RuntimeProvider[]
   onPick: (template: ProviderTemplate) => void
   onPickPreset: (provider: RuntimeProvider) => void
+  onCustom: () => void
   onClose: () => void
 }) {
   return (
@@ -532,6 +534,7 @@ function TemplatePicker({
           ))}
         </div>
         <div className="dialog-footer">
+          <button className="provider-add" type="button" onClick={onCustom}>自定义接口…</button>
           <button className="close-btn" onClick={onClose}>关闭</button>
         </div>
       </div>

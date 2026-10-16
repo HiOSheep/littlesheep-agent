@@ -183,6 +183,7 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
 
       {error && <div className="archive-error">{error}</div>}
 
+      {(loading || hasItems) && <>
       <section className="archive-section" aria-label="归档项目">
         <div className="archive-section-title">
           <strong>项目</strong>
@@ -278,10 +279,8 @@ export function ArchiveManager({ onChanged }: ArchiveManagerProps) {
         </div>
       </section>
 
+      </>}
       {!loading && !hasItems && (
-        // The page-level empty area goes through the shared state view. The two
-        // section lines above stay list rows: a list that happens to be empty is
-        // content, while "nothing is archived yet" is the area's state.
         <div className="archive-empty-state">
           <StateView
             state="empty"
