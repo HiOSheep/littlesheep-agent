@@ -31,3 +31,4 @@
 - [缓存验收规程](cache-95-acceptance.md)：现行口径和正式验收命令。
 - [缓存基线目录](cache-baseline/README.md)：冻结账本及批次索引。
 - [桌面冷启动基线](cold-start-baseline/README.md)：冷启动、就绪态与窗口行为的原始验收输入。
+- [VERIFY 去留审计 V0/V1](vrs-verify-rationalization-audit-2026-10-16.md)：调用链、判定规则、兼容性决策与 V2 实施范围；仅审计，未改生产行为。
