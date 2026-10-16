@@ -76,13 +76,13 @@
      aligns its title and description on this scale, and no settings page invents a sixth size —
      the plugin and model pages used to sit 4-6px below the storage and web pages, which read as
      two different products inside one settings area. */
-  --settings-page-title-font-size: calc(28px * var(--ui-font-scale, 1));
-  --settings-page-desc-font-size: calc(14px * var(--ui-font-scale, 1));
-  --settings-group-title-font-size: calc(15px * var(--ui-font-scale, 1));
+  --settings-page-title-font-size: calc(26px * var(--ui-font-scale, 1));
+  --settings-page-desc-font-size: calc(13px * var(--ui-font-scale, 1));
+  --settings-group-title-font-size: calc(13px * var(--ui-font-scale, 1));
   --settings-row-title-font-size: calc(14px * var(--ui-font-scale, 1));
-  --settings-row-desc-font-size: calc(13px * var(--ui-font-scale, 1));
-  --settings-meta-font-size: calc(12px * var(--ui-font-scale, 1));
-  --settings-row-min-height: 68px;
+  --settings-row-desc-font-size: calc(12px * var(--ui-font-scale, 1));
+  --settings-meta-font-size: calc(11px * var(--ui-font-scale, 1));
+  --settings-row-min-height: 56px;
   /* One switch geometry for every settings page. The plugin rows, the web rows and the
      close-policy rows all render `.plugin-switch`, so its box is a token instead of three
      per-page values (32x18 base, 36x20 rows, 48x30 web). */

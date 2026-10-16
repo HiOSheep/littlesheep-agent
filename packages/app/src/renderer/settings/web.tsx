@@ -109,37 +109,6 @@ export function SettingsWebPage() {
         <p>配置搜索服务后检查连接，再开启实时资料。高级读取规则可按需调整。</p>
       </header>
 
-      <section className="web-settings-section" aria-label="网络检索状态">
-        <div className="settings-card">
-        <div className="web-settings-row" data-settings-field="web.enabled">
-          <span><strong>实时资料</strong><small>{statusLabel(web)}</small></span>
-          <button
-            type="button"
-            className={`plugin-switch ${web.enabled ? 'checked' : ''}`}
-            role="switch"
-            aria-checked={web.enabled}
-            aria-label="启用网络检索"
-            disabled={busy}
-            onClick={() => web.enabled ? void patch({ enabled: false }) : setConfirming(true)}
-          ><span /></button>
-        </div>
-        {confirming && !web.enabled && (
-          <div className="web-egress-confirmation" role="alertdialog" aria-label="确认启用网络检索">
-            <strong>启用后会发生三类外发</strong>
-            <ul>
-              <li>最小查询发送给搜索服务</li>
-              <li>公开网址发送给目标网站</li>
-              <li>有界证据发送给当前模型服务</li>
-            </ul>
-            <div>
-              <button type="button" onClick={() => setConfirming(false)}>取消</button>
-              <button type="button" className="primary" onClick={() => { setConfirming(false); void patch({ enabled: true }) }}>启用</button>
-            </div>
-          </div>
-        )}
-        </div>
-      </section>
-
       <section className="web-settings-section" aria-label="搜索服务配置">
         <div className="settings-card">
         <div className="web-settings-row">
@@ -178,6 +147,38 @@ export function SettingsWebPage() {
         </div>
       </section>
 
+      <section className="web-settings-section" aria-label="网络检索状态">
+        <div className="settings-card">
+        <div className="web-settings-row" data-settings-field="web.enabled">
+          <span><strong>实时资料</strong><small>{statusLabel(web)}</small></span>
+          <button
+            type="button"
+            className={`plugin-switch ${web.enabled ? 'checked' : ''}`}
+            role="switch"
+            aria-checked={web.enabled}
+            aria-label="启用网络检索"
+            disabled={busy}
+            onClick={() => web.enabled ? void patch({ enabled: false }) : setConfirming(true)}
+          ><span /></button>
+        </div>
+        {confirming && !web.enabled && (
+          <div className="web-egress-confirmation" role="alertdialog" aria-label="确认启用网络检索">
+            <strong>启用后会发生三类外发</strong>
+            <ul>
+              <li>最小查询发送给搜索服务</li>
+              <li>公开网址发送给目标网站</li>
+              <li>有界证据发送给当前模型服务</li>
+            </ul>
+            <div>
+              <button type="button" onClick={() => setConfirming(false)}>取消</button>
+              <button type="button" className="primary" onClick={() => { setConfirming(false); void patch({ enabled: true }) }}>启用</button>
+            </div>
+          </div>
+        )}
+        </div>
+      </section>
+
+      <details className="settings-advanced web-advanced"><summary>高级读取与缓存策略</summary>
       <section className="web-settings-section" aria-label="读取策略">
         <div className="web-settings-heading"><strong>读取策略</strong></div>
         <div className="settings-card">
@@ -223,6 +224,7 @@ export function SettingsWebPage() {
         </div>
       </section>
 
+      </details>
       <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="web-settings-notice error" role="alert">{error}</div>}
     </div>

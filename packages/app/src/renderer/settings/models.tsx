@@ -357,8 +357,9 @@ export function SettingsModelsPage() {
       ) : (
         <>
           <div className="settings-module-heading">
-            <h2>模型供应商</h2>
-            <p>这里只列出已配置的供应商。添加新的服务或补填密钥请用下面的按钮；自定义供应商使用 OpenAI 兼容接口。</p>
+            <div className="settings-heading-actions"><h2>模型供应商</h2>
+              <button className="provider-add" type="button" onClick={() => setTemplateOpen(true)}>＋ 添加供应商</button></div>
+            <p>管理接口、密钥与可选择的模型。保存配置不代表已验证连接或模型调用。</p>
           </div>
 
           {configuredProviders.length === 0 && (
@@ -380,12 +381,6 @@ export function SettingsModelsPage() {
             ))}
           </div>
 
-          <div className="provider-actions">
-            <button className="provider-add" type="button" onClick={() => setTemplateOpen(true)}>
-              ＋ 添加供应商
-            </button>
-
-          </div>
         </>
       )}
 
@@ -434,8 +429,9 @@ function ProviderCard({
             {modelCount === 0 ? '未配置模型' : `${modelCount} 个模型`}
           </span>
         </div>
+        <details className="provider-configuration-details"><summary>模型与接口详情</summary>
         <div className="provider-url">{provider.baseURL}</div>
-        <small className="provider-connection-note">配置已保存；不代表连接或模型调用已验证。可在编辑中获取模型，检查目录接口。</small>
+
         <div className="provider-meta">
           {provider.models.length === 0
             ? '尚未添加模型。没有模型的供应商不会出现在模型选择器里。'
@@ -477,11 +473,14 @@ function ProviderCard({
             )}
           </div>
         )}
+        </details>
       </div>
       <div className="provider-card-actions">
         <button type="button" className="save-btn" onClick={onEdit}>编辑</button>
         {!provider.builtin && (
-          <button type="button" className="provider-remove" onClick={onDelete}>删除</button>
+          <details className="provider-more-actions"><summary aria-label={`${provider.name}的更多操作`}>更多</summary>
+            <button type="button" className="provider-remove" onClick={onDelete}>删除供应商</button>
+          </details>
         )}
       </div>
     </div>

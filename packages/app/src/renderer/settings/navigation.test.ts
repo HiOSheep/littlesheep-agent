@@ -68,7 +68,7 @@ describe('settings page identity', () => {
     })
 
     expect(missing).toEqual([])
-    expect(workspace).toContain('isDirectModulePage(page) && <DirectModulePageContent page={page} />')
+    expect(workspace).toContain("isDirectModulePage(page) && page !== 'archive' && <DirectModulePageContent page={page} />")
   })
 })
 

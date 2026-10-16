@@ -1,0 +1,3573 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S0-24",
+  "runId": "rcd-s0b-1792117554365",
+  "generatedAt": "2026-10-16T02:25:54.365Z",
+  "source": {
+    "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+    "dirty": true,
+    "statusEntries": [
+      "M docs/reference/README.md",
+      " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+      " M docs/taskbooks/README.md",
+      " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+      " M packages/app/src/renderer/ChannelConnections.tsx",
+      " M packages/app/src/renderer/MemorySkills.tsx",
+      " M packages/app/src/renderer/MemoryTreeView.tsx",
+      " M packages/app/src/renderer/app-shell/README.md",
+      " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+      " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+      " M packages/app/src/renderer/app-shell/navigation.ts",
+      " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+      " M packages/app/src/renderer/app-shell/persistent-state.ts",
+      " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+      " M packages/app/src/renderer/settings-typography.test.ts",
+      " M packages/app/src/renderer/settings/README.md",
+      " M packages/app/src/renderer/settings/agent-profile.tsx",
+      " M packages/app/src/renderer/settings/appearance.tsx",
+      " M packages/app/src/renderer/settings/development-environments.tsx",
+      " M packages/app/src/renderer/settings/direct-module.tsx",
+      " M packages/app/src/renderer/settings/home.tsx",
+      " M packages/app/src/renderer/settings/models.tsx",
+      " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+      " M packages/app/src/renderer/settings/navigation.test.ts",
+      " M packages/app/src/renderer/settings/navigation.ts",
+      " M packages/app/src/renderer/settings/plugins.tsx",
+      " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+      " M packages/app/src/renderer/settings/search-index.ts",
+      " M packages/app/src/renderer/settings/select.tsx",
+      " M packages/app/src/renderer/settings/storage.tsx",
+      " M packages/app/src/renderer/settings/types.ts",
+      " M packages/app/src/renderer/settings/web.tsx",
+      " M packages/app/src/renderer/settings/workspace.tsx",
+      " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+      " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+      " M packages/app/src/renderer/styles/07-overlays-settings.css",
+      " M packages/app/src/renderer/styles/15-settings-surface.css",
+      " M packages/app/src/renderer/terminology.test.ts",
+      " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+      " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+      " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+      " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+      " M scripts/rcd-s0.mjs",
+      "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+      "?? test/rcd-s0-adapters.test.ts"
+    ],
+    "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+  },
+  "selection": {
+    "id": null,
+    "category": null,
+    "all": true,
+    "trials": 1
+  },
+  "infrastructure": {
+    "executed": 24,
+    "blocked": 0,
+    "harnessError": 0,
+    "notRun": 0
+  },
+  "productResults": {
+    "passed": 1,
+    "failed": 2,
+    "partially_completed": 1,
+    "correctly_blocked": 2,
+    "unverified": 18
+  },
+  "stability": [
+    {
+      "scenarioId": "C01",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C02",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C03",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C04",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C05",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C06",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C07",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "C08",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "F01",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "F02",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "F03",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "F04",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "R01",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "R02",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "R03",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "R04",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "L01",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "L02",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "L03",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "L04",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "X01",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "X02",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "X03",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    },
+    {
+      "scenarioId": "X04",
+      "trials": 1,
+      "stable": true,
+      "signatureCount": 1
+    }
+  ],
+  "records": [
+    {
+      "scenarioId": "C01",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "185d8479bf2085d443cf6841ae71186a0c684c3ffbe2e766af0ae10cfeb6cb26",
+      "runnerHarness": {
+        "adapter": "C01",
+        "model": "rcd/scripted-provider",
+        "configSha256": "b94c41df849f87e888b4da519569884479cede238dd18bcb14fc62a2211555f2",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:19:49.906Z",
+      "endedAt": "2026-10-16T02:20:05.123Z",
+      "durationMs": 15216,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C01: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C01/c01-effect.txt",
+          "observation://C01/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c01-effect.txt",
+            "bytes": 13,
+            "sha256": "44f023c6b163c0b6bcb681e96b3486175879da74b8b8812d25fd0aa1fc0d04e5"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C01: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C01/c01-effect.txt",
+            "observation://C01/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "7a649d95f411a84d6a107958e706b0b766b62f92a5c771b56c7cbb7a70e63299",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C02",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "5ef9b71fb724852a06874ca449458f0533af82f235117d31d84d2da0b5bf75e4",
+      "runnerHarness": {
+        "adapter": "C02",
+        "model": "rcd/scripted-provider",
+        "configSha256": "1035f14a249f77a7ded91d7314306c89a382931616ea015086fe161011e64798",
+        "executionLayer": "harness_execute_stage_with_real_ToolExecutionService"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:20:05.124Z",
+      "endedAt": "2026-10-16T02:20:19.815Z",
+      "durationMs": 14691,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 2,
+      "toolFailures": 2,
+      "stopReason": "stage_reached_verify",
+      "authorization": "unavailable",
+      "sideEffects": {
+        "malformedInputExecutions": 0,
+        "correctedInputExecutions": 0
+      },
+      "oracle": {
+        "result": "failed",
+        "description": "The schema-invalid proposal has no side effect; the corrected proposal executes in the same run.",
+        "evidenceRefs": [
+          "observation://C02/invocation-statuses",
+          "observation://C02/execution-count"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_with_real_ToolExecutionService",
+          "provider": "scripted-mock",
+          "requests": 3,
+          "toolCallCount": 2,
+          "toolFailures": 2,
+          "invocationStatuses": [
+            {
+              "status": "validation_failed",
+              "errorKind": "input_validation"
+            }
+          ],
+          "toolResultErrors": [
+            {
+              "errorKind": "input_validation",
+              "error": "tool input validation failed: [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"number\",\n    \"path\": [\n      \"path\"\n    ],\n    \"message\": \"Expected string, received number\"\n  }\n]"
+            },
+            {
+              "error": "Runtime control: tools are unavailable in this run; answer from the evidence already present."
+            }
+          ],
+          "proposals": [
+            {
+              "request": 1,
+              "args": {
+                "path": 17
+              },
+              "feedbackIncluded": false
+            },
+            {
+              "request": 2,
+              "args": {
+                "path": "target.txt"
+              },
+              "feedbackIncluded": true
+            }
+          ],
+          "executions": 0,
+          "sideEffects": {
+            "malformedInputExecutions": 0,
+            "correctedInputExecutions": 0
+          },
+          "correctedInputExecuted": false,
+          "stopReason": "stage_reached_verify",
+          "productResult": "failed",
+          "oracle": "The schema-invalid proposal has no side effect; the corrected proposal executes in the same run.",
+          "evidenceRefs": [
+            "observation://C02/invocation-statuses",
+            "observation://C02/execution-count"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "7b90bb261ad12f78f5aacedb806f4aa37dcd014b57dab8e30970076636f2c5b1",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C03",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "381607896a69c2371341bb7ac19de7e7e656877b858058150d44e800f62491f2",
+      "runnerHarness": {
+        "adapter": "C03",
+        "model": "rcd/scripted-provider",
+        "configSha256": "4c82d8bff546b4bec0eb714f43c27dfd3620dff6656054ab3df6102d51df8748",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:20:19.815Z",
+      "endedAt": "2026-10-16T02:20:34.607Z",
+      "durationMs": 14792,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C03/c03-effect.txt",
+          "observation://C03/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c03-effect.txt",
+            "bytes": 13,
+            "sha256": "b34b4190319e49b71a993295db4790eea89fdb32f1cc2ba069d6dfd5b8008684"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C03/c03-effect.txt",
+            "observation://C03/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "73894ab95326dfbbbd141bb4e352ad5efcec7601f8b71e42e5904f6293bc6fd1",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C04",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "64a575fcd0b8ad5e5a3c3d49e855c4bd95397a8700280bc8350cf720abff88ca",
+      "runnerHarness": {
+        "adapter": "C04",
+        "model": "rcd/scripted-provider",
+        "configSha256": "db6eb46279ffe859208457091447a9f2348671cee95d9dcbcb1305eebbba7599",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:20:34.607Z",
+      "endedAt": "2026-10-16T02:20:49.512Z",
+      "durationMs": 14905,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C04/c04-effect.txt",
+          "observation://C04/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c04-effect.txt",
+            "bytes": 13,
+            "sha256": "a13c4252742b053cb442dc7dd6020f9035db374b722dbcd1193985d1942a4bd0"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C04/c04-effect.txt",
+            "observation://C04/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "c9cbf9c14319289e2ef078549f03a4549e052000f14b1f51d1c7fc3b8ddd32d8",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C05",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "940589caff5e894ea6b0803aa9cb12b932559b51721bdc475e4de43afc38a5b8",
+      "runnerHarness": {
+        "adapter": "C05",
+        "model": "rcd/scripted-provider",
+        "configSha256": "31032166a4bd8dd34dbfed808d92e67c1f98251ba5a93937c12766107e945a0a",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:20:49.512Z",
+      "endedAt": "2026-10-16T02:21:04.030Z",
+      "durationMs": 14518,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C05: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C05/c05-effect.txt",
+          "observation://C05/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c05-effect.txt",
+            "bytes": 13,
+            "sha256": "fbaa33595986c94c38476b8fa05be06070879ead08b8e89da0d8fa13e593371d"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C05: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C05/c05-effect.txt",
+            "observation://C05/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "2b61d70c166498f7549414cabc5f52cc7e0c408a1b4d3264fab6f39c1dcc25a9",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C06",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "09a3470a882e89a0d77d280ed6d0b8168b97ed987f2237b706a31ad3dfce4586",
+      "runnerHarness": {
+        "adapter": "C06",
+        "model": "rcd/scripted-provider",
+        "configSha256": "51e5f8823ad898fe3a1ae612d69fad88942d5c9d8a7d15e61ba665fcfaa16750",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:21:04.030Z",
+      "endedAt": "2026-10-16T02:21:18.421Z",
+      "durationMs": 14391,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C06: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C06/c06-effect.txt",
+          "observation://C06/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c06-effect.txt",
+            "bytes": 13,
+            "sha256": "d374149e642854ece66496003a0639586db261f0600a72ef7f65637272998fb2"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C06: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C06/c06-effect.txt",
+            "observation://C06/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "8186cfab9ce5ea8075f91044b98e27d0512cb68d6cf5a24f5312f8c04481b079",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C07",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "4f3b2d9d7c063df1a9691c2e484563a0bcbc4fe06c5ab509d24c5e9fca890173",
+      "runnerHarness": {
+        "adapter": "C07",
+        "model": "rcd/scripted-provider",
+        "configSha256": "00e82e8de863cc292f21d77d72e28218357b02e5963625a958ebe0f456298b79",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:21:18.421Z",
+      "endedAt": "2026-10-16T02:21:33.080Z",
+      "durationMs": 14659,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for C07: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://C07/c07-effect.txt",
+          "observation://C07/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "c07-effect.txt",
+            "bytes": 13,
+            "sha256": "54f0674018eba2dc8298218b0cb123b1ced9fdce7987f2ff0e2bf58202ed3080"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for C07: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://C07/c07-effect.txt",
+            "observation://C07/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "b5c965ecab291a9cdacf2bd7852ccf56cf7e27ebf12d3bc36364ecee50656b84",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "C08",
+      "category": "C",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "10edcb18f4f51d9a0f7739ca37735b562f941e558180683b09d46c3b7a7856ed",
+      "runnerHarness": {
+        "adapter": "C08",
+        "model": "rcd/scripted-provider",
+        "configSha256": "c76d484087f6bc901c5a954f4af9ad3d1d85e74170a3c3b38141224a43c4e46d",
+        "executionLayer": "harness_execute_stage_real_builtin_exec_with_fixture_only_host_authority"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:21:33.081Z",
+      "endedAt": "2026-10-16T02:21:49.090Z",
+      "durationMs": 16009,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 3,
+      "toolFailures": 1,
+      "stopReason": "stage_reached_verify",
+      "authorization": {
+        "approvalRequests": 0,
+        "decision": "allow",
+        "scope": "temporary fixture workspace"
+      },
+      "sideEffects": {
+        "inputChanged": true,
+        "fixtureArtifactsRemovedByTeardown": true
+      },
+      "oracle": {
+        "result": "passed",
+        "description": "Exactly two identical command calls are recorded with outcomes fail then pass and distinct fixture state hashes; final fixture assertion passes.",
+        "evidenceRefs": [
+          {
+            "ref": "fixture://C08/runs.log",
+            "sha256": "a3423e3d79a4408e50f1b50d932d9bec995e0eb8c62c09f9ea6876e481cd6b47",
+            "bytes": 10
+          }
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_real_builtin_exec_with_fixture_only_host_authority",
+          "provider": "scripted-mock",
+          "commandHash": "sha256:616d590d3b05e1d9a8444fa315d4e457a63b0bee68da1e5dae536b752a298329",
+          "modelRequests": 4,
+          "shellExecutionCount": 2,
+          "shellAttempts": [
+            "v1:1",
+            "v2:0"
+          ],
+          "commandProposals": 2,
+          "shellResults": [
+            {
+              "ok": false,
+              "error": "exit code 1"
+            },
+            {
+              "ok": true
+            },
+            {
+              "ok": true
+            }
+          ],
+          "intermediateStates": [
+            {
+              "beforeSha256": "2d27fbdf4e8ca207afbfa388ca9172fbcc6c70e534af2476b3b704f87debadcf",
+              "afterSha256": "81db67b6a5702b9b68f0016f061c409bf3fb16d062fc854d1b424bb4e9c28c56"
+            }
+          ],
+          "dependencyChangedBetweenCalls": true,
+          "refusalWasReplay": false,
+          "authorization": {
+            "approvalRequests": 0,
+            "decision": "allow",
+            "scope": "temporary fixture workspace"
+          },
+          "sideEffects": {
+            "inputChanged": true,
+            "fixtureArtifactsRemovedByTeardown": true
+          },
+          "toolCallCount": 3,
+          "toolFailures": 1,
+          "fixtureEvidence": [
+            {
+              "ref": "fixture://C08/runs.log",
+              "sha256": "a3423e3d79a4408e50f1b50d932d9bec995e0eb8c62c09f9ea6876e481cd6b47",
+              "bytes": 10
+            }
+          ],
+          "productResult": "passed",
+          "stopReason": "stage_reached_verify",
+          "oracle": "Exactly two identical command calls are recorded with outcomes fail then pass and distinct fixture state hashes; final fixture assertion passes.",
+          "evidenceRefs": [
+            "fixture://C08/runs.log.sha256",
+            "fixture://C08/intermediate-state-hashes",
+            "observation://C08/tool-results"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "a92e73d4bc75c6401c4c5faa44d1ce2a76e2f5341099e7adf68ff9823ecca21b",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "F01",
+      "category": "F",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "2ab90467c9350f450404dcb2a253dc27cb631d20b23471148d28d03e084d4910",
+      "runnerHarness": {
+        "adapter": "F01",
+        "model": "rcd/scripted-provider",
+        "configSha256": "4f223fb335ab102e76365a9830dd2b4bd99903568b8a397b005afff267458abb",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:21:49.090Z",
+      "endedAt": "2026-10-16T02:22:03.525Z",
+      "durationMs": 14435,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for F01: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://F01/f01-effect.txt",
+          "observation://F01/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "f01-effect.txt",
+            "bytes": 13,
+            "sha256": "c4969eb5ff5d3fbb7d45a74eef195177391978a46a8a2046254a5b988ca0ead9"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for F01: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://F01/f01-effect.txt",
+            "observation://F01/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "396f4571c1357463fb83fc767988993ee774c06eaca2005999a3fc75eec7eaaf",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "F02",
+      "category": "F",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "b9c16a8f16c876e8a209f865c54330b17b4026bb028c6b82706e80a070d0683b",
+      "runnerHarness": {
+        "adapter": "F02",
+        "model": "rcd/scripted-provider",
+        "configSha256": "e37259e06f1a905827c46ea027599482e9ca422735d62ddb04f5a3e8c88f47c2",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:22:03.525Z",
+      "endedAt": "2026-10-16T02:22:18.793Z",
+      "durationMs": 15268,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for F02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://F02/f02-effect.txt",
+          "observation://F02/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "f02-effect.txt",
+            "bytes": 13,
+            "sha256": "ee6b53fd4bf9e37d2763f16a91a501150a3c722d95ef8c7f40da2d57f3e8afd2"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for F02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://F02/f02-effect.txt",
+            "observation://F02/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "db5cf83f4db6ecfcc677cf181559b8f515ba700615a5653863728a58657385c6",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "F03",
+      "category": "F",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "169f00935d8d9fe4f5678000cbe3b8a2604c3dc11d6179281d76ad589b691702",
+      "runnerHarness": {
+        "adapter": "F03",
+        "model": "rcd/scripted-provider",
+        "configSha256": "14bfca147c6e3b2b435259fd38736f4ba829f5352081bd38cac9314c4fd72daf",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:22:18.794Z",
+      "endedAt": "2026-10-16T02:22:33.314Z",
+      "durationMs": 14520,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for F03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://F03/f03-effect.txt",
+          "observation://F03/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "f03-effect.txt",
+            "bytes": 13,
+            "sha256": "b76c3307c135e8dd60ad76c9fb1adc22206953bd4996d686477f5a480c5b07a5"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for F03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://F03/f03-effect.txt",
+            "observation://F03/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "7a9571018c8e02124ecc032a24ced01a4352ccf306cd26385e821c0147b25c1c",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "F04",
+      "category": "F",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "29d326690eaa5173f6ab62512ed3b07ed1b35ad40efb096b241d903443b28927",
+      "runnerHarness": {
+        "adapter": "F04",
+        "model": "rcd/scripted-provider",
+        "configSha256": "f6a8d0a39983a5a5e8ebeaff640e6550b608cca6f2fef22c95094610bb9da467",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:22:33.314Z",
+      "endedAt": "2026-10-16T02:22:47.802Z",
+      "durationMs": 14488,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for F04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://F04/f04-effect.txt",
+          "observation://F04/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "f04-effect.txt",
+            "bytes": 13,
+            "sha256": "ed7fef58c0d52971fe3d0619dfd5e9b1791bdef322acf4c66b896e53c61145ab"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for F04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://F04/f04-effect.txt",
+            "observation://F04/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "528e10a3f0a896f4255f4d0a152f86b8435a3991144443ec951be84029fee9de",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "R01",
+      "category": "R",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "de0b7e28826d6d19e5493bfaa3c4aa8d5e1462e7c7cb6987fe8ffffd902a4475",
+      "runnerHarness": {
+        "adapter": "R01",
+        "model": "rcd/scripted-provider",
+        "configSha256": "3b984ee0d70d5ea61a5460d606375d7a6b49297b7c5627e2832308bf2421ef05",
+        "executionLayer": "harness_execute_stage_builtin_web_search_local_http_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:22:47.802Z",
+      "endedAt": "2026-10-16T02:23:01.987Z",
+      "durationMs": 14185,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 2,
+      "toolFailures": 1,
+      "stopReason": "stage_reached_verify",
+      "authorization": "unavailable",
+      "sideEffects": "unavailable",
+      "oracle": {
+        "result": "failed",
+        "description": "A mid-task public information need reaches only the loopback fixture and returns the frozen fact.",
+        "evidenceRefs": [
+          "fixture://R01/local-server-request-count"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_builtin_web_search_local_http_adapter",
+          "provider": "scripted-mock",
+          "modelRequests": 3,
+          "proposalTurns": [
+            "local_discovery",
+            "web_search_proposal_after_discovery"
+          ],
+          "discoveryToolExecuted": true,
+          "toolCallCount": 2,
+          "toolFailures": 1,
+          "localHttpRequests": 0,
+          "webSearchInvocation": [],
+          "webProposalAfterLocalDiscovery": true,
+          "productResult": "failed",
+          "stopReason": "stage_reached_verify",
+          "oracle": "A mid-task public information need reaches only the loopback fixture and returns the frozen fact.",
+          "evidenceRefs": [
+            "fixture://R01/local-server-request-count"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "da0a24d86b81f8f7967d8b6d5cb4f3553c9b3aceeca48d5463f67e5898a4cd29",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "R02",
+      "category": "R",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "801eaa5da119f7f03e1d2888a613921d3984310aadd07ba6cd7bb6564924386c",
+      "runnerHarness": {
+        "adapter": "R02",
+        "model": "rcd/scripted-provider",
+        "configSha256": "11b4bbf5337e0433afafa08a3c589b314397d0d25b189e41cbdb82ec13caa733",
+        "executionLayer": "harness_execute_stage_builtin_web_search_with_network_disabled_policy"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:23:01.987Z",
+      "endedAt": "2026-10-16T02:23:16.983Z",
+      "durationMs": 14996,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 1,
+      "stopReason": "stage_reached_verify",
+      "authorization": {
+        "networkPolicy": "explicitly-denied",
+        "deniedOutboundRequests": 0,
+        "allowedControlPolicy": "explicitly-allowed",
+        "allowedControlRequests": 1
+      },
+      "sideEffects": "unavailable",
+      "oracle": {
+        "result": "correctly_blocked",
+        "description": "Paired control must allow the explicitly permitted fixture query (1 request); the user-forbidden case must produce zero additional requests and an honest blocked/unverified result (actual refusal: tool_not_admitted).",
+        "evidenceRefs": [
+          "fixture://R02/paired-request-counts",
+          "observation://R02/tool-not-admitted"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_builtin_web_search_with_network_disabled_policy",
+          "provider": "scripted-mock",
+          "modelRequests": 2,
+          "toolCallCount": 1,
+          "toolFailures": 1,
+          "allowControlRequests": 1,
+          "deniedCaseRequests": 0,
+          "localHttpRequests": 1,
+          "webToolAdmitted": true,
+          "webDisabledError": false,
+          "webToolErrors": [
+            "tool_not_admitted"
+          ],
+          "authorization": {
+            "networkPolicy": "explicitly-denied",
+            "deniedOutboundRequests": 0,
+            "allowedControlPolicy": "explicitly-allowed",
+            "allowedControlRequests": 1
+          },
+          "productResult": "correctly_blocked",
+          "stopReason": "stage_reached_verify",
+          "oracle": "Paired control must allow the explicitly permitted fixture query (1 request); the user-forbidden case must produce zero additional requests and an honest blocked/unverified result (actual refusal: tool_not_admitted).",
+          "evidenceRefs": [
+            "fixture://R02/paired-request-counts",
+            "observation://R02/tool-not-admitted"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "e3f8d62f1564c6ad4d987c05fa1a7e88966ec267baaf980c0a8569dfd4f890ff",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "R03",
+      "category": "R",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "64b1943f23c9b66abcf6820bd427e92da3b77230ef18d779cae8870e31c210d1",
+      "runnerHarness": {
+        "adapter": "R03",
+        "model": "rcd/scripted-provider",
+        "configSha256": "4babc53f938207dd905a1ca2a482f5f8b05b8bc7c7924dc546c9295dd6f5d924",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:23:16.983Z",
+      "endedAt": "2026-10-16T02:23:32.497Z",
+      "durationMs": 15514,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for R03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://R03/r03-effect.txt",
+          "observation://R03/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "r03-effect.txt",
+            "bytes": 13,
+            "sha256": "8ed3f5bc9dd1f55220cdfe409baf6c41ce72ea3471c129abb9245511acf6ff11"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for R03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://R03/r03-effect.txt",
+            "observation://R03/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "c206100891bbe797ccb1acfa371aca41bce96843ab5efe72b20770eb8a84ef1a",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "R04",
+      "category": "R",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "2935244a19ebbd6e74158027563890e44b9e33919649acfcf9078ed6138f529c",
+      "runnerHarness": {
+        "adapter": "R04",
+        "model": "rcd/scripted-provider",
+        "configSha256": "17027b154d8bdf75c42a7a3392b83c3bff4878cd2cfc4c3c43ad6d2b7b2b13e3",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:23:32.497Z",
+      "endedAt": "2026-10-16T02:23:47.112Z",
+      "durationMs": 14615,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for R04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://R04/r04-effect.txt",
+          "observation://R04/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "r04-effect.txt",
+            "bytes": 13,
+            "sha256": "7e1efe5388996b73fe68a5678233106687ddc783bd64094054a8cb5cdd35ff79"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for R04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://R04/r04-effect.txt",
+            "observation://R04/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "4a67d1b4e729e10526a07c1b2d46e38f9c83ad3cc8b99a4590432aa21e186301",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "L01",
+      "category": "L",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "21fa7508a38702380005dc615b205797df52620d9b890324a108244eec186653",
+      "runnerHarness": {
+        "adapter": "L01",
+        "model": "rcd/scripted-provider",
+        "configSha256": "844b98838d705f2c6d121af3507ba75ddea47cd22f68d3172a00cf26c75dedf1",
+        "executionLayer": "harness_execute_stage_real_main_loop_with_scripted_provider_and_fixture_tool"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:23:47.112Z",
+      "endedAt": "2026-10-16T02:24:02.569Z",
+      "durationMs": 15457,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 30,
+      "toolFailures": 0,
+      "stopReason": "single_segment_iteration_budget_exhausted",
+      "authorization": "unavailable",
+      "sideEffects": "unavailable",
+      "oracle": {
+        "result": "partially_completed",
+        "description": "More than 30 turns occur across bounded segments; all declared artifacts/tests pass; total model/tool/time budgets never exceed frozen limits; one logical task is retained.",
+        "evidenceRefs": [
+          "observation://L01/operation-count",
+          "observation://L01/loop-budget"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_real_main_loop_with_scripted_provider_and_fixture_tool",
+          "provider": "scripted-mock",
+          "modelRequests": 30,
+          "requiredOperations": 35,
+          "completedOperations": 30,
+          "loopBudget": 30,
+          "completedFixtureFiles": 30,
+          "toolCallCount": 30,
+          "toolFailures": 0,
+          "stopReason": "single_segment_iteration_budget_exhausted",
+          "productResult": "partially_completed",
+          "oracle": "More than 30 turns occur across bounded segments; all declared artifacts/tests pass; total model/tool/time budgets never exceed frozen limits; one logical task is retained.",
+          "evidenceRefs": [
+            "observation://L01/operation-count",
+            "observation://L01/loop-budget"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "95c9dc36930dc7cfaaedaa9aed90a28d070f6462ee2015af91d8981359b28b0e",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "L02",
+      "category": "L",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "c20d2d2dbb4d9e455cf782d9634c032789eb42782c8150bda3b8fd04d765db6a",
+      "runnerHarness": {
+        "adapter": "L02",
+        "model": "rcd/scripted-provider",
+        "configSha256": "e4289fe7bf924ed243a454ecbae40a873d68590b7e1f3fe3cdc4d36f06dace30",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:24:02.569Z",
+      "endedAt": "2026-10-16T02:24:17.368Z",
+      "durationMs": 14799,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for L02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://L02/l02-effect.txt",
+          "observation://L02/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "l02-effect.txt",
+            "bytes": 13,
+            "sha256": "abebc550cf8dafeb11acfba0ebe08647cda43535a483612dcd51283d09cb587a"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for L02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://L02/l02-effect.txt",
+            "observation://L02/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "861de6d9fec31ba702dfb09173cdd4d65b97a2831c04058501c3f795b73a7b46",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "L03",
+      "category": "L",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "75040d34fc15591db5ebc20ce97294d669acf9e5348c605036a121e84c4bc412",
+      "runnerHarness": {
+        "adapter": "L03",
+        "model": "rcd/scripted-provider",
+        "configSha256": "62a4628c37b801faab773a7217db0cec2ea3a59dcac72a8e765983dd76f78982",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:24:17.368Z",
+      "endedAt": "2026-10-16T02:24:32.082Z",
+      "durationMs": 14714,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for L03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://L03/l03-effect.txt",
+          "observation://L03/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "l03-effect.txt",
+            "bytes": 13,
+            "sha256": "0b53964a8ce2058dad3b560661877fcd03f168fe44f8d159588afd9139f9efd7"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for L03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://L03/l03-effect.txt",
+            "observation://L03/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "bc9c73de32b1e0bf967bd09e5211efdc1623a88c420fdc6426c0733c0b829d65",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "L04",
+      "category": "L",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "1c50aa6d5e2503ce87fbfb36dc7b01a4b5bff1f9527f8c85bc71277b2e2fa658",
+      "runnerHarness": {
+        "adapter": "L04",
+        "model": "rcd/scripted-provider",
+        "configSha256": "b0a9d39263d29fca0c068f97b922beb9c79f2ec26ee45b96659d54ff573a5aae",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:24:32.082Z",
+      "endedAt": "2026-10-16T02:24:47.600Z",
+      "durationMs": 15518,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for L04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://L04/l04-effect.txt",
+          "observation://L04/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "l04-effect.txt",
+            "bytes": 13,
+            "sha256": "f4b4fc06366806bcf6643fadfda87b3403f05c63ae6984029ce6b6b164dcd705"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for L04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://L04/l04-effect.txt",
+            "observation://L04/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "eeaa8166d8774146ab2ed64cd679815edb0959974f82359744419c9f455b23a4",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "X01",
+      "category": "X",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "a67a7d7fc24a869483dc20ece92949ec77d568e5df2b72e81a1684d08d3ef8da",
+      "runnerHarness": {
+        "adapter": "X01",
+        "model": "rcd/scripted-provider",
+        "configSha256": "ecc5998b2764963b01e6b2972b7f2e08f3a643b94076570c0999cd25ac5b85d4",
+        "executionLayer": "real_runner_durable_run_with_post_effect_pre_settlement_fault_injection_and_restart_recovery"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:24:47.600Z",
+      "endedAt": "2026-10-16T02:25:09.005Z",
+      "durationMs": 21405,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": null,
+      "stopReason": "error",
+      "authorization": "unavailable",
+      "sideEffects": {
+        "toolExecutionCount": 1,
+        "settlement": "unknown"
+      },
+      "oracle": {
+        "result": "correctly_blocked",
+        "description": "The fixture write completes, then a controlled exception occurs before tool result/settlement confirmation; real Runner restart recovery keeps the settlement unknown and does not replay the effect.",
+        "evidenceRefs": [
+          {
+            "ref": "fixture://X01/effect.txt",
+            "sha256": "eebbf6457e46a7f63acdf9b97390f790ba443d60cfa44b607da7e5c40aa1cc1d",
+            "bytes": 8
+          }
+        ],
+        "observation": {
+          "testLayer": "real_runner_durable_run_with_post_effect_pre_settlement_fault_injection_and_restart_recovery",
+          "provider": "scripted-mock",
+          "toolExecutions": 1,
+          "toolCallCount": 1,
+          "sideEffectStatus": "unknown",
+          "faultInjection": {
+            "phase": "after_fixture_write_before_tool_result_return",
+            "processCrash": false,
+            "injectedException": true
+          },
+          "sideEffects": {
+            "toolExecutionCount": 1,
+            "settlement": "unknown"
+          },
+          "fixtureEvidence": [
+            {
+              "ref": "fixture://X01/effect.txt",
+              "sha256": "eebbf6457e46a7f63acdf9b97390f790ba443d60cfa44b607da7e5c40aa1cc1d",
+              "bytes": 8
+            }
+          ],
+          "recoveryActions": [],
+          "secondRecoveryActions": [],
+          "productResult": "correctly_blocked",
+          "recoveryProjection": {
+            "status": "failed",
+            "pendingEffectIds": [],
+            "unknownEffectIds": [
+              "tool:rcd_unknown_effect:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            ]
+          },
+          "stopReason": "error",
+          "oracle": "The fixture write completes, then a controlled exception occurs before tool result/settlement confirmation; real Runner restart recovery keeps the settlement unknown and does not replay the effect.",
+          "evidenceRefs": [
+            "observation://X01/side-effect-status",
+            "observation://X01/recovery-actions"
+          ]
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "ace5a8bd7d34f2db9c6403e6ea5cb2765a650d772044ac97f6c423a4b7124e89",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "X02",
+      "category": "X",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "640b7ed037e8f49132ecce24579e336f28795322c07a41a2e1544cbe0a63d0a2",
+      "runnerHarness": {
+        "adapter": "X02",
+        "model": "rcd/scripted-provider",
+        "configSha256": "cc272441a48fc036d2765a8d6f3f4c1eb42078f75bf01c383d93cb8ef9be5e9f",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:25:09.005Z",
+      "endedAt": "2026-10-16T02:25:23.856Z",
+      "durationMs": 14851,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for X02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://X02/x02-effect.txt",
+          "observation://X02/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "x02-effect.txt",
+            "bytes": 13,
+            "sha256": "c935d1e261830dd23e1d65e27136ef423436e3f7e3de978c6dc56697d2d5a5da"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for X02: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://X02/x02-effect.txt",
+            "observation://X02/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "f1d977220656c0eb9f55d774c3f9142dc154d73c3eb855279fb28bf667be20b0",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "X03",
+      "category": "X",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "c5d4a29e81a5efc2916e36ed0473b5f0c46d3fedd58e0e50bedb825feb07cfd6",
+      "runnerHarness": {
+        "adapter": "X03",
+        "model": "rcd/scripted-provider",
+        "configSha256": "8b1b15481a45cba4050d75839659ed32a31c274413e33728772d00889d362bb7",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:25:23.856Z",
+      "endedAt": "2026-10-16T02:25:39.526Z",
+      "durationMs": 15670,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for X03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://X03/x03-effect.txt",
+          "observation://X03/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "x03-effect.txt",
+            "bytes": 13,
+            "sha256": "a34db6827dfe3627549e9c60c912c9d0692ff75a70c048d6702cadcc90043f17"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for X03: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://X03/x03-effect.txt",
+            "observation://X03/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "a230374d6dc5823d59fccb76281391f055757eee4076039af44c0cb6c00a3e50",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "scenarioId": "X04",
+      "category": "X",
+      "trial": 1,
+      "source": {
+        "head": "25e56ddb600b77556fdef7fef429572f154827d6",
+        "dirty": true,
+        "statusEntries": [
+          "M docs/reference/README.md",
+          " M docs/reference/rcd-s0-baseline-2026-10-16.md",
+          " M docs/taskbooks/README.md",
+          " M docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md",
+          " M packages/app/src/renderer/ChannelConnections.tsx",
+          " M packages/app/src/renderer/MemorySkills.tsx",
+          " M packages/app/src/renderer/MemoryTreeView.tsx",
+          " M packages/app/src/renderer/app-shell/README.md",
+          " M packages/app/src/renderer/app-shell/app-controller-projections.ts",
+          " M packages/app/src/renderer/app-shell/core-workspace-view.tsx",
+          " M packages/app/src/renderer/app-shell/navigation.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.test.ts",
+          " M packages/app/src/renderer/app-shell/persistent-state.ts",
+          " M packages/app/src/renderer/app-shell/use-navigation-controller.ts",
+          " M packages/app/src/renderer/settings-typography.test.ts",
+          " M packages/app/src/renderer/settings/README.md",
+          " M packages/app/src/renderer/settings/agent-profile.tsx",
+          " M packages/app/src/renderer/settings/appearance.tsx",
+          " M packages/app/src/renderer/settings/development-environments.tsx",
+          " M packages/app/src/renderer/settings/direct-module.tsx",
+          " M packages/app/src/renderer/settings/home.tsx",
+          " M packages/app/src/renderer/settings/models.tsx",
+          " M packages/app/src/renderer/settings/navigation-architecture.test.ts",
+          " M packages/app/src/renderer/settings/navigation.test.ts",
+          " M packages/app/src/renderer/settings/navigation.ts",
+          " M packages/app/src/renderer/settings/plugins.tsx",
+          " M packages/app/src/renderer/settings/search-control-keyboard.test.ts",
+          " M packages/app/src/renderer/settings/search-index.ts",
+          " M packages/app/src/renderer/settings/select.tsx",
+          " M packages/app/src/renderer/settings/storage.tsx",
+          " M packages/app/src/renderer/settings/types.ts",
+          " M packages/app/src/renderer/settings/web.tsx",
+          " M packages/app/src/renderer/settings/workspace.tsx",
+          " M packages/app/src/renderer/sidebar/quick-nav.tsx",
+          " M packages/app/src/renderer/styles/03-shell-sidebar.css",
+          " M packages/app/src/renderer/styles/07-overlays-settings.css",
+          " M packages/app/src/renderer/styles/15-settings-surface.css",
+          " M packages/app/src/renderer/terminology.test.ts",
+          " M packages/app/src/renderer/usage/settings-usage-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap-grid.ts",
+          " M packages/app/src/renderer/usage/usage-heatmap-page.tsx",
+          " M packages/app/src/renderer/usage/usage-heatmap.test.ts",
+          " M scripts/rcd-s0.mjs",
+          "?? docs/reference/rcd-s0b-executable-baseline-2026-10-16.json",
+          "?? test/rcd-s0-adapters.test.ts"
+        ],
+        "sha256": "8909d93bfab9eeeb899a15018484478a67d81c4cc24dddf7524bd77c6eeb433b"
+      },
+      "scenarioDefinitionSha256": "fa1619c66afbdc1410a3a6210641c9d3bd66874c990dabf70555bbf71d852504",
+      "runnerHarness": {
+        "adapter": "X04",
+        "model": "rcd/scripted-provider",
+        "configSha256": "f61c8a3f05c98893cc48740a5b3d461caf70c01706efa7e1537d7440b3579a1c",
+        "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+      },
+      "provider": {
+        "type": "scripted-mock",
+        "simulated": true,
+        "externalRequests": "loopback_only"
+      },
+      "startedAt": "2026-10-16T02:25:39.526Z",
+      "endedAt": "2026-10-16T02:25:54.363Z",
+      "durationMs": 14837,
+      "exitCode": 0,
+      "timeout": false,
+      "toolCalls": 1,
+      "toolFailures": 0,
+      "stopReason": "stage_reached_verify",
+      "authorization": "fixture-only; no external authorization or network",
+      "sideEffects": {
+        "effectCount": 1,
+        "workspaceOnly": true
+      },
+      "oracle": {
+        "result": "unverified",
+        "description": "Component Oracle for X04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+        "evidenceRefs": [
+          "fixture://X04/x04-effect.txt",
+          "observation://X04/tool-results"
+        ],
+        "observation": {
+          "testLayer": "harness_execute_stage_tool_execution_service_component_adapter",
+          "provider": "scripted-mock",
+          "toolCallCount": 1,
+          "toolFailures": 0,
+          "effectCount": 1,
+          "fixtureEffect": {
+            "path": "x04-effect.txt",
+            "bytes": 13,
+            "sha256": "74dd0bef1ef785929a720031b21753d5cfbdfeca669eaa3d070ac9a3c9229068"
+          },
+          "stopReason": "stage_reached_verify",
+          "productResult": "unverified",
+          "oracle": "Component Oracle for X04: Harness must dispatch exactly one fixture tool, ToolExecutionService must record the call, and the external temporary-file check must confirm its bytes. Full scenario acceptance remains unverified at this execution layer.",
+          "evidenceRefs": [
+            "fixture://X04/x04-effect.txt",
+            "observation://X04/tool-results"
+          ],
+          "sideEffects": {
+            "effectCount": 1,
+            "workspaceOnly": true
+          },
+          "authorization": "fixture-only; no external authorization or network"
+        }
+      },
+      "infrastructureStatus": "executed",
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "usage": {
+        "status": "unavailable",
+        "promptTokens": null,
+        "completionTokens": null,
+        "cost": null
+      },
+      "outputDigests": {
+        "stdoutSha256": "737a4526592c3a9c2f85dc4b1699e003e838d7303c05e48560d03fac053f5636",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "repeatability": [
+    {
+      "scenarioId": "C02",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 3,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_with_real_ToolExecutionService"
+    },
+    {
+      "scenarioId": "C08",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 3,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_real_builtin_exec_with_fixture_only_host_authority"
+    },
+    {
+      "scenarioId": "R01",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 3,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_builtin_web_search_local_http_adapter"
+    },
+    {
+      "scenarioId": "R02",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 3,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_builtin_web_search_with_network_disabled_policy"
+    },
+    {
+      "scenarioId": "L01",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 3,
+        "correctly_blocked": 0,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_real_main_loop_with_scripted_provider_and_fixture_tool"
+    },
+    {
+      "scenarioId": "X01",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 3,
+        "unverified": 0
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "real_runner_durable_run_with_post_effect_pre_settlement_fault_injection_and_restart_recovery"
+    },
+    {
+      "scenarioId": "F04",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 3
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+    },
+    {
+      "scenarioId": "X03",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 3
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+    },
+    {
+      "scenarioId": "L04",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 3
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+    },
+    {
+      "scenarioId": "L03",
+      "trials": 3,
+      "stable": true,
+      "productResults": {
+        "passed": 0,
+        "failed": 0,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 3
+      },
+      "cleanupFailures": 0,
+      "infrastructureFailures": 0,
+      "executionLayer": "harness_execute_stage_tool_execution_service_component_adapter"
+    }
+  ]
+}

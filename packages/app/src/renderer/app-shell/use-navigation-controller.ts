@@ -180,6 +180,10 @@ export function useNavigationController({
 
   function openSettingsPage(page: SettingsPage) {
     setSidebarPanel(null)
+    if (page === 'memoryTree' || page === 'archive') {
+      pushRoute({ section: 'module', page })
+      return
+    }
     pushRoute({ section: 'settings', page })
   }
 

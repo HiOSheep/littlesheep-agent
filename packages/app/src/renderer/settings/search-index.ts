@@ -142,22 +142,22 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
   {
     id: 'appearance.interface-font-size',
     page: 'appearance',
-    section: '高级',
+    section: '文字与显示',
     title: '界面字号',
     aliases: ['界面字号', '界面字体大小', '文字大小', '字号'],
     kind: 'field',
     readValue: () => `${readAppearancePreferences().interfaceFontSize}px`,
-    reveal: 'details.appearance-advanced > summary',
+
   },
   {
     id: 'appearance.chat-font-size',
     page: 'appearance',
-    section: '高级',
+    section: '文字与显示',
     title: '聊天字号',
     aliases: ['聊天字号', '聊天正文字号', '聊天字体大小', '消息字体'],
     kind: 'field',
     readValue: () => `${readAppearancePreferences().chatFontSize}px`,
-    reveal: 'details.appearance-advanced > summary',
+
   },
   {
     id: 'appearance.theme-mode',
@@ -203,7 +203,7 @@ export const SETTINGS_FIELD_INDEX: readonly SettingsFieldDefinition[] = [
     aliases: ['面板色调', '面板颜色', '玻璃表面颜色', '浮层颜色'],
     kind: 'field',
     readValue: () => readAppearancePreferences().colors.surface,
-    reveal: 'details.appearance-advanced > summary',
+    reveal: 'details.appearance-custom-colors > summary',
   },
   {
     id: 'appearance.code-font-size',
@@ -693,7 +693,13 @@ export function revealSettingsField(id: string, doc: Document = document): Setti
   const revealed: string[] = []
   for (let parent = anchor.parentElement; parent; parent = parent.parentElement) {
     if (parent instanceof HTMLDetailsElement && !parent.open) {
+      // A search landing must focus the field immediately. Native details keeps
+      // its content skipped at the first animated frame, so bypass that motion
+      // for this deliberate reveal rather than focusing an invisible control.
+      const disclosure = parent
+      disclosure.setAttribute('data-settings-field-reveal', '')
       parent.open = true
+      doc.defaultView?.setTimeout(() => disclosure.removeAttribute('data-settings-field-reveal'), 200)
       revealed.push('details')
     }
   }

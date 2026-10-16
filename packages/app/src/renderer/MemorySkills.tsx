@@ -71,7 +71,7 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
         <div className="dialog-header settings-module-heading">
           <div>
             <h2>技能</h2>
-            <p className="ms-desc">本地技能会在这里集中查看。当前版本只能查看内容，不能在界面里启用、禁用或编辑技能。</p>
+            <p className="ms-desc">浏览本地技能与可复用的工作方法。<span className="settings-readonly-label">只读</span></p>
           </div>
           {/*
             A reload the user can actually start. Without it the "kept the list, marked it as not
@@ -88,16 +88,16 @@ export function MemorySkills({ onClose, embedded = false }: MemorySkillsProps) {
           </button>
           {!embedded && <button className="dialog-close" onClick={onClose}>×</button>}
         </div>
-        <div className="ms-content content-fade">
+        <div className="ms-content">
           {selected ? (
-            <div className="content-fade" key={selected.name}>
+            <div className="skill-detail-transition" key={selected.name}>
               <button className="ms-back" onClick={() => dispatch({ type: 'detail-close' })}>返回</button>
               <h3>{selected.name}</h3>
               <p className="ms-desc">{selected.description}</p>
               <div className="ms-body"><Markdown text={selected.body} /></div>
             </div>
           ) : (
-            <div className="content-fade" key="skill-list">
+            <div className="skill-detail-transition" key="skill-list">
               {status === 'loading' && <StateView state="loading" title="正在加载技能" />}
               {status === 'error' && (
                 // A first load that failed is this area's failure state: the shared

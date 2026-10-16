@@ -3,7 +3,7 @@
 
 export type SettingsPage = 'home' | 'application' | 'appearance' | 'agent' | 'api' | 'usage' | 'web' | 'storage' | 'browser' | 'developmentEnvironments' | 'scheduled' | 'memoryTree' | 'archive' | 'plugins' | 'skills' | 'channels'
 
-export type DirectModulePage = Extract<SettingsPage, 'memoryTree' | 'scheduled' | 'plugins'>
+export type DirectModulePage = Extract<SettingsPage, 'memoryTree' | 'scheduled' | 'plugins' | 'archive'>
 
 
 /**

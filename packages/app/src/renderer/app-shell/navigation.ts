@@ -17,7 +17,7 @@ export function routesEqual(left: AppRoute | undefined, right: AppRoute): boolea
 
 
 export function isDirectModulePage(page: SettingsPage): page is DirectModulePage {
-  return page === 'memoryTree' || page === 'scheduled' || page === 'plugins'
+  return page === 'memoryTree' || page === 'scheduled' || page === 'plugins' || page === 'archive'
 }
 
 

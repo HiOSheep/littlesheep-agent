@@ -41,6 +41,13 @@ describe('persistent application shell state', () => {
     }).sidebarPanel).toBe('search')
   })
 
+  it('restores the archive workspace and retains legacy settings links', () => {
+    for (const section of ['module', 'settings']) {
+      expect(hydratePersistedAppShellState({ version: 1, route: { section, page: 'archive' } }).route)
+        .toEqual({ section, page: 'archive' })
+    }
+  })
+
   it('fails closed for malformed or newer snapshots', () => {
     expect(hydratePersistedAppShellState({ version: 2, route: { section: 'settings', page: 'api' } }))
       .toEqual(createDefaultPersistedAppShellState())

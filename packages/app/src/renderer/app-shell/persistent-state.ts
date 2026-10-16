@@ -31,7 +31,7 @@ const SETTINGS_PAGES = new Set<SettingsPage>([
   'channels',
 ])
 
-const DIRECT_MODULE_PAGES = new Set<DirectModulePage>(['memoryTree', 'scheduled', 'plugins'])
+const DIRECT_MODULE_PAGES = new Set<DirectModulePage>(['memoryTree', 'scheduled', 'plugins', 'archive'])
 
 export interface PersistedAppShellState {
   version: 1

@@ -25,7 +25,7 @@ import {
   type ProviderUsageDailyDay,
   type ProviderUsageDailySeries,
 } from '@littlesheep/types'
-import { usageHeatmapWeeks, usageDayNumber, usageLocalDateRange, usageRangeDays, usageWeekday, usageYearWindow } from './usage-heatmap-grid'
+import { usageHeatmapWeeks, usageDayNumber, usageLocalDateRange, usageRangeDays, usageWeekday, usageYearWindow, usageRecentWindow } from './usage-heatmap-grid'
 import {
   buildUsageHeatmapView, usageDayDetail, usageHeatLevel, usageHeatLegend, usageHeatThresholds,
   usageMetricValue, usageSeriesMismatch, usageTruncationNotice, usageYearOptions,
@@ -275,7 +275,9 @@ describe('usage heatmap honesty rules', () => {
     expect(detail).not.toContain('<dl>')
     expect(detail).not.toContain('0 <span>tok')
     const page = render({ view })
-    expect(page).toContain('无实报数据')
+    expect(page).toContain('当前筛选区间没有实报用量')
+    expect(page).not.toContain('usage-summary')
+    expect(page).toContain('role="grid"') // Partial days retain their diagnostic detail.
     expect(page).not.toContain('title="0 tok"')
   })
 
@@ -422,5 +424,22 @@ describe('usage heatmap surface', () => {
     const mismatch = render({ view: null, loading: false, unavailableReason: '用量数据版本 2 不是本界面支持的 1' })
     expect(mismatch).toContain('state-view-reason')
     expect(mismatch).toContain('用量数据版本 2')
+  })
+})
+
+
+describe('recent usage date windows', () => {
+  it('keeps an inclusive week across a year boundary', () => {
+    expect(usageRecentWindow(7, new Date(2026, 0, 3, 23, 59))).toEqual({ from: '2025-12-28', to: '2026-01-03' })
+  })
+  it('uses today locally even when UTC is still on the previous date', () => {
+    expect(usageRecentWindow(7, new Date(2026, 9, 16, 0, 5))).toEqual({ from: '2026-10-10', to: '2026-10-16' })
+  })
+  it('keeps thirty calendar dates across leap day and DST', () => {
+    for (const date of ['2024-03-10T07:30:00Z', '2026-11-01T06:30:00Z']) {
+      const range = usageRecentWindow(30, new Date(date))
+      expect(usageRangeDays(range.from, range.to)).toBe(30)
+      expect(range.to).toBe(date.slice(0, 10))
+    }
   })
 })

@@ -65,6 +65,12 @@ export function usageDateFromDayNumber(dayNumber: number): string {
   return new Date(dayNumber * DAY_MS).toISOString().slice(0, 10)
 }
 
+/** Match the desktop's local calendar; UTC day arithmetic then avoids DST shifts. */
+export function usageRecentWindow(days: 7 | 30, now: Date = new Date()): { from: string; to: string } {
+  const end = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY_MS)
+  return { from: usageDateFromDayNumber(end - days + 1), to: usageDateFromDayNumber(end) }
+}
+
 /** Local calendar keys from `from` to `to` inclusive, both `YYYY-MM-DD`. */
 export function usageLocalDateRange(from: string, to: string): string[] {
   const start = usageDayNumber(from)

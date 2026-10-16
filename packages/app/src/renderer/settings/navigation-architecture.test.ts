@@ -120,17 +120,16 @@ describe('settings information architecture (S1)', () => {
     expect(new Set(listed).size).toBe(listed.length)
   })
 
-  it('renders the sidebar exactly as the four groups plus the work modules', () => {
+  it('keeps the settings sidebar focused on the four preference groups', () => {
     // Measured in the real window (1280x840, 2026-09-27): these are the group titles
     // and rows the sidebar actually shows before anything is typed.
     expect(commonSettingsNavGroups().map((group) => group.title))
-      .toEqual([...S1_EXPECTED_GROUPS.map((group) => group.title), '工作模块'])
+      .toEqual(S1_EXPECTED_GROUPS.map((group) => group.title))
     expect(commonSettingsNavGroups().flatMap((group) => group.items).map((item) => item.title)).toEqual([
       '总览', '外观', '应用与后台',
       '模型供应商', 'Agent 行为', 'Token 用量',
       '网络检索', '内置浏览器', '插件', '技能', '外部渠道',
       '存储与数据', '开发环境',
-      '归档', '记忆树',
     ])
   })
 
@@ -154,11 +153,12 @@ describe('settings information architecture (S1)', () => {
   it('keeps 归档 and 记忆树 as reachable work-module entries', () => {
     const common = commonSettingsNavGroups().flatMap((group) => group.items).map((item) => item.page)
 
-    expect(common).toContain('archive')
-    expect(common).toContain('memoryTree')
+    expect(common).not.toContain('archive')
+    expect(common).not.toContain('memoryTree')
     // They sit in their own group instead of being mixed into the configuration pages.
     const work = SETTINGS_NAV_GROUPS.find((group) => group.title === '工作模块')
     expect(work?.items.map((item) => item.page)).toEqual(['archive', 'memoryTree'])
+    expect(work?.items.every(item => item.searchOnly)).toBe(true)
   })
 
   it('reaches every common setting within two selections from the settings entry', () => {

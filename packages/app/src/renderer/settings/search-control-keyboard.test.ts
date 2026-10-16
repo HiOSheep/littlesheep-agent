@@ -46,6 +46,9 @@ describe('settings search control keyboard (S3)', () => {
   class FakeDetailsElement {
     open = false
     parentElement: FakeDetailsElement | null = null
+    readonly attributes = new Map<string, string>()
+    setAttribute(name: string, value: string): void { this.attributes.set(name, value) }
+    removeAttribute(name: string): void { this.attributes.delete(name) }
   }
 
   class FakeControl {

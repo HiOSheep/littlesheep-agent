@@ -24,8 +24,9 @@ export function SettingsDevelopmentEnvironmentsPage() {
   const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
   const aliveRef = useRef(true)
 
-  useEffect(() => () => {
-    aliveRef.current = false
+  useEffect(() => {
+    aliveRef.current = true
+    return () => { aliveRef.current = false }
   }, [])
 
   async function load(force = false) {
@@ -119,7 +120,7 @@ export function SettingsDevelopmentEnvironmentsPage() {
         <div className="development-environments-heading-row">
           <div>
             <h2>开发环境</h2>
-         <p>版本偏好保存在 LS 数据根。终端优先使用 LS 已管理的运行时，系统工具只作为明确的降级来源。</p>
+         <p>查看本机工具的实际版本与来源，展开后管理版本偏好和导入。</p>
           </div>
           <button
             className="development-environments-refresh"
@@ -133,6 +134,7 @@ export function SettingsDevelopmentEnvironmentsPage() {
         </div>
       </header>
 
+      <details className="settings-advanced development-environments-guide"><summary>工具链目录与版本规则</summary>
       <section className="development-environments-root" aria-label="开发环境目录">
         <span>LS 工具链目录</span>
         <code title={snapshot?.toolchainsRoot}>{snapshot?.toolchainsRoot ?? '读取中...'}</code>
@@ -141,6 +143,8 @@ export function SettingsDevelopmentEnvironmentsPage() {
       <div className="storage-settings-notice development-environments-notice" data-tone="neutral">
         保存版本只改变 LS 的目标偏好；要让目标版本真正生效，请先导入已下载并解压的工具链。填写 `3.12` 这类版本系列时，LS 会选择已导入的最高匹配补丁版本。导入时 LS 会复制文件、校验可执行文件和版本，系统版本只在目标版本尚未准备好时降级使用。
       </div>
+
+      </details>
 
       {groups.map((group) => (
         <section key={group.title} className="development-environment-group" aria-label={group.title}>
@@ -196,12 +200,16 @@ function EnvironmentRow({
   const status = versionDisplay.diagnostic ? '检测未成功' : environmentStatusLabel(environment)
   const datalistId = `development-environment-versions-${environment.id}`
   return (
-    <div className="development-environment-row">
+    <details className="development-environment-item">
+      <summary className="development-environment-summary">
+        <strong>{environment.label}</strong>
+        <span className="environment-current-version">{versionDisplay.label}</span>
+        <span className="environment-source">{sourceLabel(environment.source)}</span>
+        <span className={`development-environment-status ${environment.state}`}>{status}</span>
+        <span className="environment-manage">管理</span>
+      </summary>
+      <div className="development-environment-editor">
       <div className="development-environment-main">
-        <div className="development-environment-title-line">
-          <strong>{environment.label}</strong>
-          <span className={`development-environment-status ${environment.state}`}>{status}</span>
-        </div>
         <small>{environment.description}</small>
         <div className="development-environment-detail">
           <span>实际：{versionDisplay.label}</span>
@@ -280,7 +288,8 @@ function EnvironmentRow({
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </details>
   )
 }
 

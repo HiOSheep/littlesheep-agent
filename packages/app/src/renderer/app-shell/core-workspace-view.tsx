@@ -14,6 +14,8 @@ export function CoreWorkspaceView({ controller }: { controller: CoreWorkspaceVie
     updateWorkspacePanelReopenPresence,
     setWorkspacePanelReopenActive,
     directModulePage,
+    refreshProjects,
+    refreshSessions,
     sidebarPanel,
     sidebarSearch,
     visibleSessions,
@@ -34,7 +36,7 @@ export function CoreWorkspaceView({ controller }: { controller: CoreWorkspaceVie
         onPointerLeave={() => setWorkspacePanelReopenActive(false)}
       >
       {directModulePage ? (
-        <DirectModuleWorkspace page={directModulePage} />
+        <DirectModuleWorkspace page={directModulePage} onArchiveChanged={() => { void refreshProjects(); void refreshSessions() }} />
       ) : (
       <>
       <main className="chat">

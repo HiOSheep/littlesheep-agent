@@ -9,17 +9,20 @@ import {
   buildUsageHeatmapView, usageInitialYear, usageSeriesMismatch, usageYearOptions,
   type UsageMetric,
 } from './usage-heatmap-model'
-import { usageYearWindow } from './usage-heatmap-grid'
+import { usageRecentWindow, usageYearWindow } from './usage-heatmap-grid'
 import { UsageHeatmapPage } from './usage-heatmap-page'
 import { PROVIDER_USAGE_DAILY_MAX_RANGE_DAYS } from '@littlesheep/types'
 
 export function SettingsUsagePage() {
   const [year, setYear] = useState(() => usageInitialYear())
+  const [period, setPeriod] = useState<'7' | '30' | 'year'>('30')
   const [metric, setMetric] = useState<UsageMetric>('total')
   const [provider, setProvider] = useState<string | undefined>(undefined)
   const [model, setModel] = useState<string | undefined>(undefined)
 
-  const window = useMemo(() => usageYearWindow(year, PROVIDER_USAGE_DAILY_MAX_RANGE_DAYS), [year])
+  const window = useMemo(() => period === 'year'
+    ? usageYearWindow(year, PROVIDER_USAGE_DAILY_MAX_RANGE_DAYS)
+    : usageRecentWindow(period === '7' ? 7 : 30), [year, period])
   const query = useMemo(() => ({
     from: window.from,
     to: window.to,
@@ -62,6 +65,8 @@ export function SettingsUsagePage() {
       onProviderChange={setProvider}
       onModelChange={setModel}
       onRefresh={refresh}
+      period={period}
+      onPeriodChange={setPeriod}
     />
   )
 }

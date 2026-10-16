@@ -36,7 +36,7 @@ import {
   settingsSearchKeyIntent,
   type SettingsFieldHit,
 } from './search-index'
-import { CloseIcon, SearchIcon, SettingsNavArrowIcon } from '../ui/icons'
+import { CloseIcon, SearchIcon } from '../ui/icons'
 import { WindowDragRegion } from '../sidebar/global-titlebar'
 
 
@@ -331,7 +331,7 @@ export function SettingsWorkspace({
                         <span>
                           <strong>{item.title}</strong>
                         </span>
-                        <SettingsNavArrowIcon />
+
                       </button>
                     ))}
                   </div>
@@ -375,7 +375,7 @@ export function SettingsWorkspace({
             }
           }}
         />
-        <main className="settings-workspace-body">
+        <main className="settings-workspace-body" data-page={page}>
           <div key={page} className={`settings-page-transition ${pageHasChangedRef.current ? 'with-motion' : ''}`}>
             {page === 'home' && <SettingsHome runtime={runtime} onOpenPage={onOpenPage} />}
             {page === 'application' && (
@@ -401,7 +401,7 @@ export function SettingsWorkspace({
             {page === 'developmentEnvironments' && <SettingsDevelopmentEnvironmentsPage />}
             {page === 'channels' && <ChannelConnections onClose={returnHome} embedded />}
             {page === 'archive' && <ArchiveManager onChanged={onArchiveChanged} />}
-            {isDirectModulePage(page) && <DirectModulePageContent page={page} />}
+            {isDirectModulePage(page) && page !== 'archive' && <DirectModulePageContent page={page} />}
             {page === 'skills' && <MemorySkills onClose={returnHome} embedded />}
           </div>
         </main>

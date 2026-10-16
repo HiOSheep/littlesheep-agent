@@ -209,53 +209,6 @@ export function SettingsPluginsPage() {
         </button>
       </header>
 
-      <section ref={trustSectionRef} className="plugin-trust-section" aria-label="本地插件信任" data-settings-field="plugins.trust-local-code">
-        <div className="plugin-trust-summary">
-          <span className="plugin-trust-icon" aria-hidden="true"><PluginIcon /></span>
-          <span className="plugin-trust-copy">
-            <strong>本地插件代码</strong>
-            <small>{localPluginCount > 0 ? `已发现 ${localPluginCount} 个本地插件` : '当前未发现本地插件'}</small>
-          </span>
-          <button
-            className={`plugin-switch ${status?.allowLocalCode ? 'checked' : ''}`}
-            type="button"
-            role="switch"
-            aria-checked={status?.allowLocalCode ?? false}
-            aria-label="允许执行本地插件代码"
-            disabled={!status || operationBusy}
-            onClick={() => {
-              if (status?.allowLocalCode) void handleLocalCodeAllowed(false)
-              else setConfirmLocalCode(true)
-            }}
-          >
-            <span aria-hidden="true" />
-          </button>
-        </div>
-        <div
-          className={`plugin-trust-confirmation ${confirmLocalCode ? 'visible' : ''}`}
-          aria-hidden={!confirmLocalCode}
-          {...(!confirmLocalCode ? { inert: '' } : {})}
-        >
-          <div className="plugin-trust-confirmation-inner">
-            <div>
-              <strong>信任本机安装的插件代码？</strong>
-              <span>本地插件与主进程拥有同等权限，可访问本机数据和网络。只启用来源明确且已审查的插件。</span>
-            </div>
-            <div className="plugin-trust-actions">
-              <button type="button" onClick={() => setConfirmLocalCode(false)}>取消</button>
-              <button
-                className="danger"
-                type="button"
-                disabled={operationBusy}
-                onClick={() => void handleLocalCodeAllowed(true)}
-              >
-                确认信任
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <label className="settings-module-search">
         <SearchIcon />
         <input
@@ -317,12 +270,11 @@ export function SettingsPluginsPage() {
                       </span>
                       <span className="plugin-list-description">{plugin.description || plugin.id}</span>
                       <span className="plugin-list-meta">
-                        {plugin.source === 'builtin' ? '内置' : '本地'} · {capabilityText} · {plugin.enabled ? '已启用' : '已停用'}
-                        {connectionLabel && ` · ${connectionLabel}`}
+                        {plugin.source === 'builtin' ? '内置' : '本地'} · {capabilityText}
                       </span>
                       {plugin.error && <span className="plugin-list-error">{plugin.error}</span>}
                     </span>
-                    <span className={`plugin-runtime-state ${plugin.state}`}>{PLUGIN_STATE_LABELS[plugin.state]}</span>
+                    <span className={`plugin-runtime-state ${plugin.state}`}>{connectionLabel ?? PLUGIN_STATE_LABELS[plugin.state]}</span>
                     <span className="plugin-disclosure-chevron" aria-hidden="true" />
                   </button>
                   <button
@@ -343,7 +295,8 @@ export function SettingsPluginsPage() {
                   aria-hidden={!expanded}
                   {...(!expanded ? { inert: '' } : {})}
                 >
-                  <dl className="plugin-list-details-inner">
+                  <div className="plugin-list-details-clip"><dl className="plugin-list-details-inner">
+                    <div><dt>插件状态</dt><dd>{plugin.enabled ? '已启用' : '已停用'} · {PLUGIN_STATE_LABELS[plugin.state]}</dd></div>
                     <div><dt>标识</dt><dd>{plugin.id}</dd></div>
                     <div>
                       <dt>贡献</dt>
@@ -363,7 +316,7 @@ export function SettingsPluginsPage() {
                     </div>
                     {plugin.publisher && <div><dt>发布者</dt><dd>{plugin.publisher}</dd></div>}
                     {plugin.location && <div><dt>位置</dt><dd className="plugin-location">{plugin.location}</dd></div>}
-                  </dl>
+                  </dl></div>
                 </div>
               </article>
             )
@@ -375,6 +328,56 @@ export function SettingsPluginsPage() {
         // Empty, not unavailable: the status was read and the query matched nothing (V3).
         <StateView state="empty" title="没有匹配的插件" description={query.trim() || filter !== 'all' ? '调整关键词或筛选条件后再试。' : '将插件放入用户插件目录后重新加载。'} />
       )}
+
+      <details className="settings-advanced plugin-advanced"><summary>本地插件与信任</summary>
+      <section ref={trustSectionRef} className="plugin-trust-section" aria-label="本地插件信任" data-settings-field="plugins.trust-local-code">
+        <div className="plugin-trust-summary">
+          <span className="plugin-trust-icon" aria-hidden="true"><PluginIcon /></span>
+          <span className="plugin-trust-copy">
+            <strong>本地插件代码</strong>
+            <small>{localPluginCount > 0 ? `已发现 ${localPluginCount} 个本地插件` : '当前未发现本地插件'}</small>
+          </span>
+          <button
+            className={`plugin-switch ${status?.allowLocalCode ? 'checked' : ''}`}
+            type="button"
+            role="switch"
+            aria-checked={status?.allowLocalCode ?? false}
+            aria-label="允许执行本地插件代码"
+            disabled={!status || operationBusy}
+            onClick={() => {
+              if (status?.allowLocalCode) void handleLocalCodeAllowed(false)
+              else setConfirmLocalCode(true)
+            }}
+          >
+            <span aria-hidden="true" />
+          </button>
+        </div>
+        <div
+          className={`plugin-trust-confirmation ${confirmLocalCode ? 'visible' : ''}`}
+          aria-hidden={!confirmLocalCode}
+          {...(!confirmLocalCode ? { inert: '' } : {})}
+        >
+          <div className="plugin-trust-confirmation-inner">
+            <div>
+              <strong>信任本机安装的插件代码？</strong>
+              <span>本地插件与主进程拥有同等权限，可访问本机数据和网络。只启用来源明确且已审查的插件。</span>
+            </div>
+            <div className="plugin-trust-actions">
+              <button type="button" onClick={() => setConfirmLocalCode(false)}>取消</button>
+              <button
+                className="danger"
+                type="button"
+                disabled={operationBusy}
+                onClick={() => void handleLocalCodeAllowed(true)}
+              >
+                确认信任
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      </details>
 
       {status && status.diagnostics.length > 0 && (
         <section className="plugin-diagnostics" aria-label="插件发现问题">

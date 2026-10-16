@@ -68,7 +68,7 @@ describe('product copy claims', () => {
     expect(panel).not.toContain('后续会承载')
     // An unconnected surface says so instead of promising later work.
     expect(panel).toContain('侧边聊天尚未接入')
-    expect(skills).toContain('当前版本只能查看内容')
+    expect(skills).toContain('只读')
   })
 
   it('keeps advanced channel configuration out of the primary instruction', async () => {

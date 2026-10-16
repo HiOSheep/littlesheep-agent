@@ -1,5 +1,7 @@
 // Settings navigation and page composition.
 import { useEffect, useState } from 'react'
+import { useTransientNotice } from '../ui/use-transient-notice'
+import { TransientNoticeToast } from '../ui/transient-notice-toast'
 import {
   cancelDataRootOperation,
   getDataRootStatus,
@@ -16,6 +18,19 @@ export function SettingsStoragePage() {
   const [status, setStatus] = useState<DataRootStatus | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const { notice, show: showNotice, clear: clearNotice } = useTransientNotice()
+
+  async function copyDataLocation() {
+    if (!status?.currentDataDir) return
+    clearNotice()
+    setError(null)
+    try {
+      await navigator.clipboard.writeText(status.currentDataDir)
+      showNotice('数据目录路径已复制。')
+    } catch {
+      setError('未能复制路径，请选择路径文字后手动复制。')
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -93,7 +108,9 @@ export function SettingsStoragePage() {
             <strong>当前数据目录</strong>
             <small>LS 当前读取和写入的权威目录</small>
           </span>
-          <code>{status?.currentDataDir ?? '读取中...'}</code>
+          <div className="storage-location-value"><code>{status?.currentDataDir ?? '读取中...'}</code>
+            <button type="button" disabled={!status?.currentDataDir} onClick={() => void copyDataLocation()}>复制路径</button>
+          </div>
         </div>
         {status?.environmentOverride && (
           <div className="storage-settings-notice" data-tone="neutral">
@@ -196,6 +213,7 @@ export function SettingsStoragePage() {
         </section>
       )}
 
+      <TransientNoticeToast notice={notice} onDismiss={clearNotice} />
       {error && <div className="storage-settings-notice" data-tone="error" role="alert">{error}</div>}
     </div>
   )

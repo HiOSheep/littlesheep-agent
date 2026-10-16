@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useEscapeScope } from '../ui/modal-surface'
+import { isAppearanceReducedMotion } from '../app-shell/appearance-preferences'
 
 export interface SettingsOption<T extends string> {
   value: T
@@ -21,13 +22,22 @@ export function SettingsSelect<T extends string>({ label, value, options, disabl
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [exiting, setExiting] = useState(false)
   const [position, setPosition] = useState({ left: 0, top: 0, width: 260, maxHeight: 320 })
   const selected = options.find(option => option.value === value)
   const close = (restoreFocus = false) => {
+    setExiting(open && !isAppearanceReducedMotion())
     setOpen(false)
     if (restoreFocus) trigger.current?.focus({ preventScroll: true })
   }
   useEscapeScope(() => close(true), open)
+
+  useEffect(() => {
+    if (open) { setExiting(false); return }
+    if (!exiting) return
+    const timer = window.setTimeout(() => setExiting(false), 120)
+    return () => window.clearTimeout(timer)
+  }, [open, exiting])
 
   useLayoutEffect(() => {
     if (!open) return
@@ -76,6 +86,11 @@ export function SettingsSelect<T extends string>({ label, value, options, disabl
     if (event.key === 'Tab') { close(true); return }
     const buttons = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      buttons[index]?.click()
+      return
+    }
     let next: number | undefined
     if (event.key === 'ArrowDown') next = (index + 1) % buttons.length
     if (event.key === 'ArrowUp') next = (index + buttons.length - 1) % buttons.length
@@ -94,14 +109,16 @@ export function SettingsSelect<T extends string>({ label, value, options, disabl
   return <>
     <button ref={trigger} type="button" className="settings-select" aria-label={label}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
-      disabled={disabled} onClick={() => setOpen(current => !current)}
+      disabled={disabled} onClick={() => open ? close() : setOpen(true)}
       onKeyDown={event => {
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setOpen(true) }
       }}>
       <span>{selected?.label ?? value}</span>
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4" /></svg>
     </button>
-    {open && !disabled && createPortal(<div ref={menu} id={id} role="menu" aria-label={label}
+    {(open || exiting) && !disabled && createPortal(<div ref={menu} id={id} role="menu" aria-label={label}
+      data-state={open ? 'open' : 'closing'} aria-hidden={!open}
+      {...(!open ? { inert: '' } : {})}
       className="settings-select-menu" style={position} onKeyDown={onMenuKeyDown}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node) && event.relatedTarget !== trigger.current) close() }}>
       {options.map(option => <button key={option.value} type="button" role="menuitemradio"

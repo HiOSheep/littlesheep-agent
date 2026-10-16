@@ -53,8 +53,8 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
   {
     title: '工作模块',
     items: [
-      { page: 'archive', title: '归档', desc: '归档项目和对话管理' },
-      { page: 'memoryTree', title: '记忆树', desc: '长期记忆、项目分支和每日召回' },
+      { page: 'archive', title: '归档', desc: '归档项目和对话管理', searchOnly: true },
+      { page: 'memoryTree', title: '记忆树', desc: '长期记忆、项目分支和每日召回', searchOnly: true },
     ],
   },
   {
@@ -163,8 +163,8 @@ export const LEGACY_SETTINGS_PAGE_GROUPS: LegacySettingsPageMapping[] = [
   { legacyId: 'browser', resolvedPage: 'browser', group: '连接与扩展', searchOnly: false },
   { legacyId: 'developmentEnvironments', resolvedPage: 'developmentEnvironments', group: '存储与环境', searchOnly: false },
   { legacyId: 'scheduled', resolvedPage: 'scheduled', group: '未接入', searchOnly: true },
-  { legacyId: 'memoryTree', resolvedPage: 'memoryTree', group: '工作模块', searchOnly: false },
-  { legacyId: 'archive', resolvedPage: 'archive', group: '工作模块', searchOnly: false },
+  { legacyId: 'memoryTree', resolvedPage: 'memoryTree', group: '工作模块', searchOnly: true },
+  { legacyId: 'archive', resolvedPage: 'archive', group: '工作模块', searchOnly: true },
   { legacyId: 'plugins', resolvedPage: 'plugins', group: '连接与扩展', searchOnly: false },
   { legacyId: 'skills', resolvedPage: 'skills', group: '连接与扩展', searchOnly: false },
   { legacyId: 'channels', resolvedPage: 'channels', group: '连接与扩展', searchOnly: false },

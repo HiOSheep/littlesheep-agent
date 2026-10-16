@@ -85,6 +85,8 @@ export const APP_CONTROLLER_VIEW_FIELDS = {
     'deleteSessionPermanently',
   ],
   coreWorkspace: [
+    'refreshProjects',
+    'refreshSessions',
     'updateWorkspacePanelReopenPresence',
     'setWorkspacePanelReopenActive',
     'directModulePage',

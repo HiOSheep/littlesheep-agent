@@ -139,8 +139,7 @@ describe('settings body type scale', () => {
       '.storage-settings-row',
       '.web-settings-row',
       '.settings-policy-row',
-      '.development-environment-row',
-      '.plugin-list-disclosure',
+      '.development-environment-summary',
       '.settings-value-row',
     ]) {
       expect(effective(selector, 'min-height'), selector).toBe('var(--settings-row-min-height)')
@@ -240,7 +239,7 @@ describe('settings body type scale', () => {
       'web-settings-row',
       'web-provider-note',
       'development-environment-group-title',
-      'development-environment-row',
+      'development-environment-summary',
       'development-environment-status',
       'application-background-section-heading',
       'settings-value-row',

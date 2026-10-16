@@ -52,7 +52,9 @@ export function SettingsAppearancePage() {
   }
 
   return <div className="settings-module-page appearance-settings-page">
-    <header className="settings-module-heading"><h2>外观</h2></header>
+    <header className="settings-module-heading"><h2>外观</h2><p>让界面适合你的阅读习惯。修改后立即应用。</p></header>
+    <div className="appearance-layout">
+    <div className="appearance-options">
     <section className="settings-policy-section appearance-visual" aria-label="视觉风格">
       <div className="settings-policy-heading"><strong>视觉风格</strong></div>
       <div className="settings-card appearance-mode-card">
@@ -75,6 +77,8 @@ export function SettingsAppearancePage() {
           <SettingsSelect label="主题配色" value={preferences.palette}
             options={[{ value: 'neutral', label: 'LittleSheep' }, { value: 'ocean', label: '海蓝' }, { value: 'forest', label: '林绿' }, { value: 'custom', label: '自定义颜色' }]} onChange={choosePalette} />
         </SettingRow>
+        <details className="appearance-custom-colors" open={preferences.palette === 'custom' || undefined}>
+        <summary>自定义颜色</summary>
         <SettingRow field="appearance.color-accent" title="强调色">
           <ColorInput label="强调色" value={colors.accent} onChange={value => changeColor('accent', value)} />
         </SettingRow>
@@ -84,23 +88,28 @@ export function SettingsAppearancePage() {
         <SettingRow field="appearance.color-foreground" title="前景色">
           <ColorInput label="前景色" value={colors.foreground} onChange={value => changeColor('foreground', value)} />
         </SettingRow>
+        <SettingRow field="appearance.color-surface" title="面板色调" description="调整内容面板与浮层的基底颜色">
+          <ColorInput label="面板色调" value={colors.surface} onChange={value => changeColor('surface', value)} />
+        </SettingRow>
+        </details>
       </div>
     </section>
-    <section className="appearance-live-preview" aria-label="外观即时预览">
-      <strong>效果预览</strong>
-      <p style={{ fontSize: preferences.chatFontSize }}>这是一段对话正文。字号、配色和主题会同步显示在这里。</p>
-      <pre style={{ fontSize: preferences.codeFontSize }}><code>const message = 'Hello, LittleSheep'</code></pre>
-      <div className="appearance-preview-input">输入消息，或添加文件…</div>
-    </section>
-    <details className="settings-advanced appearance-advanced" open>
-      <summary>高级</summary>
+    <section className="settings-policy-section" aria-label="文字与显示">
+      <div className="settings-policy-heading"><strong>文字与显示</strong></div>
       <div className="settings-card">
         <FontSizeRow field="appearance.interface-font-size" title="界面字号" description="调整界面中的基础字号" value={preferences.interfaceFontSize} min={12} max={22} onChange={value => save({ interfaceFontSize: value })} />
         <FontSizeRow field="appearance.chat-font-size" title="聊天字号" description="调整聊天正文的基础字号" value={preferences.chatFontSize} min={12} max={22} onChange={value => save({ chatFontSize: value })} />
+        <SettingRow field="appearance.conversation-display" title="对话显示密度" description="选择已完成轮次的过程内容如何显示">
+          <SettingsSelect label="对话显示模式" value={conversationDisplay} options={[{ value: 'normal', label: '普通' }, { value: 'compact', label: '紧凑' }]}
+            onChange={mode => { const next = mode as ConversationDisplayMode; setConversationDisplay(next); writeConversationDisplayMode(next); setSavedNote('已保存并生效') }} />
+        </SettingRow>
+      </div>
+    </section>
+    <details className="settings-advanced appearance-advanced">
+      <summary>高级显示设置</summary>
+      <div className="settings-card">
         <FontSizeRow field="appearance.code-font-size" title="代码字号" description="调整聊天和差异视图中代码使用的基础字号" value={preferences.codeFontSize} min={11} max={22} onChange={value => save({ codeFontSize: value })} />
         <FontSizeRow field="appearance.terminal-font-size" title="终端字号" description="调整工作区终端的基础字号" value={preferences.terminalFontSize} min={11} max={22} onChange={value => save({ terminalFontSize: value })} />
-      </div>
-      <div className="settings-card">
         <SettingRow field="appearance.reduced-motion" title="减少动态效果" description="减少动画效果或匹配系统设置">
           <div className="appearance-segments" role="group" aria-label="减少动态效果">
             {([{ value: 'system', label: '系统' }, { value: 'on', label: '开启' }, { value: 'off', label: '关闭' }] as const).map(option =>
@@ -108,17 +117,16 @@ export function SettingsAppearancePage() {
                 onClick={() => save({ reducedMotion: option.value })}>{option.label}</button>)}
           </div>
         </SettingRow>
-        <SettingRow field="appearance.conversation-display" title="对话显示密度" description="选择已完成轮次的过程内容如何显示">
-          <SettingsSelect label="对话显示模式" value={conversationDisplay} options={[{ value: 'normal', label: '普通' }, { value: 'compact', label: '紧凑' }]}
-            onChange={mode => { const next = mode as ConversationDisplayMode; setConversationDisplay(next); writeConversationDisplayMode(next); setSavedNote('已保存并生效') }} />
-        </SettingRow>
-      </div>
-      <div className="settings-card">
-        <SettingRow field="appearance.color-surface" title="面板色调" description="调整内容面板与浮层的基底颜色">
-          <ColorInput label="面板色调" value={colors.surface} onChange={value => changeColor('surface', value)} />
-        </SettingRow>
       </div>
     </details>
+    </div>
+    <section className="appearance-live-preview" aria-label="外观即时预览">
+      <strong>效果预览</strong>
+      <p style={{ fontSize: preferences.chatFontSize }}>这是一段对话正文。字号、配色和主题会同步显示在这里。</p>
+      <pre style={{ fontSize: preferences.codeFontSize }}><code>const message = 'Hello, LittleSheep'</code></pre>
+      <div className="appearance-preview-input">输入消息，或添加文件…</div>
+    </section>
+    </div>
     <div className="appearance-footer">
       <button type="button" onClick={restoreDefaults}>恢复外观默认值</button>
       {savedNote && <span role="status">{savedNote}</span>}

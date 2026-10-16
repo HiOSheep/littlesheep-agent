@@ -104,7 +104,7 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
 
         {!loading && status && overall && (
           <>
-            <div className="channel-overall">
+            {status.configured.length > 0 && <div className="channel-overall">
               <span className={`channel-badge ${overall.kind}`} title={overall.detail}>
                 {overall.label}
                 {overall.counts && <small>{overall.counts}</small>}
@@ -115,7 +115,7 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
               <button className="reload-btn" onClick={() => void handleReload()} disabled={reloading}>
                 {reloading ? '重新连接中...' : '重新连接'}
               </button>
-            </div>
+            </div>}
 
             {status.channels.length > 0 && (
               <div className="channel-section">
@@ -176,6 +176,7 @@ export function ChannelConnections({ onClose, embedded = false }: ChannelConnect
                       在应用数据目录的 <code>config.json</code> 里按 <code>channels.channels</code> 添加渠道，
                       保存后回到本页点“重新连接”。嵌套字段的完整含义见仓库的渠道插件说明。
                     </p>
+                    <button type="button" className="reload-btn" disabled={reloading} onClick={() => void handleReload()}>{reloading ? '重新连接中...' : '已添加配置，重新连接'}</button>
                   </details>
                 )}
               />

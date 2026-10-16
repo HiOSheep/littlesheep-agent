@@ -19,6 +19,8 @@
 
 ## 专项验收基线
 
+- [RCD S0 基线报告](rcd-s0-baseline-2026-10-16.md)：24 个场景目录、证据盘点与离线契约基线。
+- [RCD S0B 可执行基线](rcd-s0b-executable-baseline-2026-10-16.json)：六个代表场景的运行账本和未运行场景清单；入口见前述基线报告。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。
 - [CMv2-P1A 记忆权限与作用域基础](cmv2-p1a-memory-access-2026-10-14.md)：访问边界审计、独立读写策略、项目身份与迁移方案、权限测试矩阵及 P1B/P1C 接入清单。

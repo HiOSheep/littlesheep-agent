@@ -31,7 +31,8 @@ interface SettingsHomeProblem {
  * 的提示故意不在这里出现：Runtime 没有把“用户需要处理”作为事实提供出来，凭偏好猜测只会变成噪音。
  */
 export function settingsHomeProblems(runtime: RuntimeState | null): SettingsHomeProblem[] {
-  const providers = runtime?.providers ?? []
+  if (!runtime) return []
+  const providers = runtime.providers
   if (!providers.some(isConfiguredProvider)) {
     return [{
       id: 'model-provider-missing',
@@ -109,6 +110,11 @@ export function SettingsHome({
             </button>
           ))}
         </div>
+      </section>
+      <section className="settings-work-links" aria-label="工作模块">
+        <strong>工作模块</strong><span>在独立工作区中管理内容</span>
+        <div><button type="button" onClick={() => onOpenPage('memoryTree')}>打开记忆树 ↗</button>
+        <button type="button" onClick={() => onOpenPage('archive')}>管理归档 ↗</button></div>
       </section>
     </div>
   )

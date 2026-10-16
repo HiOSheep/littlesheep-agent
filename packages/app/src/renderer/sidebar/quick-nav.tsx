@@ -3,7 +3,7 @@ import { type ReactNode } from 'react'
 import { SidebarPanel } from '../app-shell/types'
 import { DirectModulePage } from '../settings/types'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, FloatingHelpTip } from '../ui/floating-help'
-import { MemoryTreeNavIcon, NavComposeIcon, PluginIcon, SearchIcon } from '../ui/icons'
+import { ArchiveIcon, MemoryTreeNavIcon, NavComposeIcon, PluginIcon, SearchIcon } from '../ui/icons'
 import { transientTriggerProps } from '../ui/transient'
 
 
@@ -44,6 +44,8 @@ export function SidebarQuickNav({
         onClick={() => onOpenModulePage('memoryTree')}
         onTipChange={onTipChange}
       />
+      <SidebarNavButton label="归档" icon={<ArchiveIcon />} active={activeModule === 'archive'}
+        onClick={() => onOpenModulePage('archive')} onTipChange={onTipChange} />
       <SidebarNavButton
         label="插件"
         icon={<PluginIcon />}

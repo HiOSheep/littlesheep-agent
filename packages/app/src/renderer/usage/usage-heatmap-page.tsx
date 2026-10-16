@@ -39,11 +39,16 @@ export interface UsageHeatmapPageProps {
   onProviderChange: (provider?: string) => void
   onModelChange: (model?: string) => void
   onRefresh: () => void
+  period?: '7' | '30' | 'year'
+  onPeriodChange?: (period: '7' | '30' | 'year') => void
 }
 
 export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
   const { view, firstLoad, loading, error, unavailableReason } = props
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const hasRecordedUsage = Boolean(view && (view.totals.requests > 0 || view.totals.activeDays > 0))
+  const hasActivity = Boolean(view && [...view.days.values()].some(day => day.state === 'recorded' || day.state === 'partial' || day.state === 'recording_error'))
+  const period = props.period ?? 'year'
   const gridRef = useRef<HTMLDivElement>(null)
   const activeDate = selectedDate && view && selectedDate >= view.range.from && selectedDate <= view.range.to ? selectedDate : null
 
@@ -95,19 +100,24 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
       </header>
 
       <div className="usage-toolbar">
+        {props.onPeriodChange && <div className="appearance-segments" role="group" aria-label="统计区间">
+          {(['7', '30', 'year'] as const).map(value => <button key={value} type="button" aria-pressed={period === value} onClick={() => props.onPeriodChange?.(value)}>{value === 'year' ? '按年' : `近 ${value} 天`}</button>)}
+        </div>}
+        {period === 'year' &&
         <SettingsSelect
           label="统计年份"
           value={String(props.year)}
           options={props.years.map((year) => ({ value: String(year), label: `${year} 年` }))}
           onChange={(value) => props.onYearChange(Number(value))}
         />
+        }
         <SettingsSelect
           label="统计指标"
           value={props.metric}
           options={USAGE_METRICS.map((entry) => ({ value: entry.value, label: entry.label }))}
           onChange={(value) => props.onMetricChange(value)}
         />
-        {view && (
+        {view && (hasRecordedUsage || props.provider || props.model) && (
           <>
             <SettingsSelect
               label="供应商筛选"
@@ -130,7 +140,7 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
         </button>
       </div>
 
-      {view && (
+      {view && hasRecordedUsage && (
         <dl className="usage-summary">
           <div><dt>总用量</dt><dd title={view.totals.requests > 0 ? `${view.totals.total.toLocaleString()} tok` : undefined}>{view.totals.requests > 0 ? <>{formatTokenCount(view.totals.total)} <span>tok</span></> : '无实报数据'}</dd><small>当前筛选区间</small></div>
           <div><dt>活跃天数</dt><dd>{view.totals.activeDays} <span>天</span></dd><small>有调用记录的日期</small></div>
@@ -145,6 +155,8 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
         </p>
       )}
       {view?.truncationNotice && <p className="usage-coverage-notice" role="status">{view.truncationNotice}</p>}
+
+      {view && !hasRecordedUsage && <StateView state="empty" title="当前筛选区间没有实报用量" description="发起模型调用后，可在这里查看记录。没有记录不代表用量为零；也可以切换年份或筛选条件。" />}
 
       {!view && firstLoad && <StateView state="loading" title="正在读取用量投影" />}
       {!view && !firstLoad && error && <StateView {...offlineState(error, props.onRefresh)} />}
@@ -166,18 +178,18 @@ export function UsageHeatmapPage(props: UsageHeatmapPageProps) {
         />
       )}
 
-      {view && (
+      {view && hasActivity && (
         <>
-          <section className="usage-chart" style={{ '--usage-weeks': view.weeks.weekCount } as CSSProperties} aria-label="年度用量概览">
+          <section className="usage-chart" style={{ '--usage-weeks': view.weeks.weekCount } as CSSProperties} aria-label={period === 'year' ? '年度用量概览' : '近期用量概览'}>
           <header className="usage-chart-heading">
-            <div><h3>年度活动</h3><p>每日实报{USAGE_METRIC_LABELS[view.metric]} · 点击日期查看明细</p></div>
-            <span>{view.year} 年</span>
+            <div><h3>{period === 'year' ? '年度活动' : `近 ${period} 天活动`}</h3><p>每日实报{USAGE_METRIC_LABELS[view.metric]} · 点击日期查看明细</p></div>
+            <span>{period === 'year' ? `${view.year} 年` : `${view.range.from} — ${view.range.to}`}</span>
           </header>
           <div className="usage-heatmap-scroll">
             <div
               className="usage-heatmap"
               role="grid"
-              aria-label={`${view.year} 年${USAGE_METRIC_LABELS[view.metric]}热力图`}
+              aria-label={`${period === 'year' ? `${view.year} 年` : `近 ${period} 天`}${USAGE_METRIC_LABELS[view.metric]}热力图`}
               ref={gridRef}
             >
                 <div className="usage-heatmap-weekdays" aria-hidden="true">
