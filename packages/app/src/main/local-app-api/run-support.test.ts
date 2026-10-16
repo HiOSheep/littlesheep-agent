@@ -11,6 +11,7 @@ import {
   prepareRunWorkspace,
   resolveRunWorkspace,
   resolveRunWorkspaceContext,
+  bindRunSessionPolicy,
   updateSessionIndex,
   withPersistedSessionPermissionMode,
 } from './run-support.js'
@@ -44,6 +45,32 @@ describe('workspace preparation before permission snapshot', () => {
 })
 
 describe('run permission mode continuity', () => {
+  it('persists Main-owned policy before a first run can crash', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-first-session-'))
+    try {
+      const workplaceDir = join(dataDir, 'workplace')
+      const sessionIndex = new SessionIndex({ dataDir, workplaceDir })
+      const bound = await bindRunSessionPolicy(sessionIndex, {
+        text: 'create the first project artifact',
+        permissionPreset: 'workspace-write',
+      }, { scope: 'standalone' }, workplaceDir)
+
+      expect(bound.body.sessionId).toBe(String(bound.sessionId))
+      await expect(sessionIndex.list()).resolves.toEqual([
+        expect.objectContaining({
+          id: String(bound.sessionId),
+          title: 'create the first project artifact',
+          mode: 'workspace-write',
+          permissionVersion: 2,
+          scope: 'standalone',
+          workspacePath: workplaceDir,
+        }),
+      ])
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('uses the persisted versioned preset when a partial run request omits it', async () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'ls-run-support-'))
     try {

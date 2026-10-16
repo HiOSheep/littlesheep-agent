@@ -1,8 +1,10 @@
 // Session ownership, workspace scope and artifact helpers shared by run routes.
 
 import { isAbsolute, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { mkdir, realpath, stat } from 'node:fs/promises'
 import { getProvider, parseModelRef, type Config } from '@littlesheep/config'
+import { asSessionId, type SessionId } from '@littlesheep/types'
 import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
 import { isSessionScope, type SessionScope } from '../../shared/session-scope.js'
@@ -22,6 +24,31 @@ export interface RunResourceContext {
   sessionIndex: SessionIndex
   projectIndex: ProjectIndex
   workspaceArtifactIndex: WorkspaceArtifactIndex
+}
+
+/** Persist Main-owned policy before execution so a first-turn crash is recoverable. */
+export async function bindRunSessionPolicy(
+  sessionIndex: SessionIndex,
+  body: Record<string, unknown>,
+  ownership: { scope: SessionScope; projectId?: string },
+  workspacePath: string,
+  existingSessionId?: SessionId,
+): Promise<{ sessionId: SessionId; body: Record<string, unknown> }> {
+  const sessionId = existingSessionId ?? asSessionId(randomUUID())
+  if (!existingSessionId) {
+    const now = Date.now()
+    await sessionIndex.upsert(String(sessionId), {
+      title: String(body.text ?? '').replace(/\s+/gu, ' ').trim().slice(0, 60) || 'New session',
+      createdAt: now,
+      lastMessageAt: now,
+      mode: normalizePermissionSelectionId(typeof body.permissionPreset === 'string' ? body.permissionPreset : undefined),
+      permissionVersion: 2,
+      scope: ownership.scope,
+      projectId: ownership.projectId,
+      workspacePath,
+    })
+  }
+  return { sessionId, body: { ...body, sessionId: String(sessionId) } }
 }
 
 export function assertClientMemoryAuthorizationAbsent(body: Record<string, unknown>): void {

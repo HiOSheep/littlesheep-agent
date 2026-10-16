@@ -41,6 +41,7 @@ import {
   resolveRunModelRef,
   resolveRunSessionOwnership,
   resolveRunWorkspaceContext,
+  bindRunSessionPolicy,
   withPersistedSessionPermissionMode,
 } from './run-support.js'
 import { routeRunCheckpoints } from './run-checkpoint-routes.js'
@@ -278,6 +279,8 @@ export class RunRouter {
         )
         const cwd = await prepareRunWorkspace(selectedWorkspace, effectiveBody)
         const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
+        const boundSession = await bindRunSessionPolicy(context.sessionIndex, effectiveBody, ownership, cwd, sessionId)
+        const runSessionId = boundSession.sessionId
         const attachmentOptions = {
           managedCache: context.attachmentCache,
           workplaceDir: context.workplaceDir,
@@ -299,10 +302,10 @@ export class RunRouter {
           {
             runId,
             memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
-              runId, sessionId: sessionId ? String(sessionId) : undefined, workspace: cwd, ownership,
+              runId, sessionId: String(runSessionId), workspace: cwd, ownership,
               sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
             text: String(body.text ?? ''),
-            sessionId,
+            sessionId: runSessionId,
             origin: 'app',
             model: resolveRunModelRef(body, context.getConfig()),
             cwd,
@@ -323,7 +326,7 @@ export class RunRouter {
                 controller.signal,
               ),
               {
-                shellScope: await captureShellAuthorizationScope({ runId, sessionId: sessionId ? String(sessionId) : undefined,
+                shellScope: await captureShellAuthorizationScope({ runId, sessionId: String(runSessionId),
                   projectId: ownership.projectId, signal: controller.signal, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
                 containerRoot: context.dataDir ?? context.workplaceDir,
                 dataRoot: context.dataDir,
@@ -351,7 +354,7 @@ export class RunRouter {
           writeSse(res, 'replace', { text: '' })
         }
         if (ownsActiveRun) {
-          await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
+          await finishRunResources(context, runner, publishedResult, boundSession.body, ownership, cwd, workspaceContext)
         }
         // A large settlement can exceed the bounded SSE socket buffer even though
         // the run finished normally. Send an id and let the observer read the
@@ -392,6 +395,9 @@ export class RunRouter {
       )
       const cwd = await prepareRunWorkspace(selectedWorkspace, effectiveBody)
       const workspaceContext = resolveRunWorkspaceContext(cwd, ownership, context.workplaceDir)
+      const priorSessionId = effectiveBody.sessionId ? asSessionId(String(effectiveBody.sessionId)) : undefined
+      const boundSession = await bindRunSessionPolicy(context.sessionIndex, effectiveBody, ownership, cwd, priorSessionId)
+      const runSessionId = boundSession.sessionId
       const attachmentOptions = {
         managedCache: context.attachmentCache,
         workplaceDir: context.workplaceDir,
@@ -404,16 +410,16 @@ export class RunRouter {
       )
       const attachments = await prepareRunAttachments(attachmentRefs, attachmentOptions)
       const inspectAttachmentTool = createInspectAttachmentTool(attachments)
-      const hostRunId = body.sessionId
-        ? conversationTurnRunId(asSessionId(String(body.sessionId)), parseRequestKey(body.requestKey)) ?? randomUUID()
+      const hostRunId = priorSessionId
+        ? conversationTurnRunId(runSessionId, parseRequestKey(body.requestKey)) ?? randomUUID()
         : randomUUID()
       const result = await runner.run({
         runId: hostRunId,
         text: String(body.text ?? ''),
         memoryAccessGrant: await createHostMemoryAccessGrant({ dataDir: context.dataDir ?? context.workplaceDir,
-          runId: hostRunId, sessionId: body.sessionId ? String(body.sessionId) : undefined,
+          runId: hostRunId, sessionId: String(runSessionId),
           workspace: cwd, ownership, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
-        sessionId: body.sessionId ? asSessionId(String(body.sessionId)) : undefined,
+        sessionId: runSessionId,
         origin: 'app',
         model: resolveRunModelRef(body, context.getConfig()),
         cwd,
@@ -424,7 +430,7 @@ export class RunRouter {
         requestKey: parseRequestKey(body.requestKey),
         workspaceContext,
         ...resolveRunPolicy(effectiveBody, context.getConfig(), undefined, {
-          shellScope: await captureShellAuthorizationScope({ runId: hostRunId, sessionId: body.sessionId ? String(body.sessionId) : undefined,
+          shellScope: await captureShellAuthorizationScope({ runId: hostRunId, sessionId: String(runSessionId),
             projectId: ownership.projectId, sessionIndex: context.sessionIndex, projectIndex: context.projectIndex }),
           containerRoot: context.dataDir ?? context.workplaceDir,
           dataRoot: context.dataDir,
@@ -442,7 +448,7 @@ export class RunRouter {
         && !runner.isResultAuthoritativePrepared?.(result)
         ? await prepareAuthoritativeRunnerResult(runner, result)
         : result
-      await finishRunResources(context, runner, publishedResult, effectiveBody, ownership, cwd, workspaceContext)
+      await finishRunResources(context, runner, publishedResult, boundSession.body, ownership, cwd, workspaceContext)
       // A run the runtime recorded as failed must not answer 200: callers (the
       // UI, automation, the harness-path comparison) otherwise see a successful
       // response with no reply and cannot tell a failure from an empty turn.

@@ -201,7 +201,25 @@ export interface CreateRunnerOptions {
     identity: { sessionId: string; runId: string },
   ) => Promise<DurableEffectOutcomeQueryResult>;
   authorizeDurableEffectRead?: (absolutePath: string, identity: { sessionId: string; runId: string }) => Promise<boolean>;
+  /** Main-owned current authorization for restoring one safe durable segment. */
+  resolveRecoveryAuthorization?: (input: {
+    sessionId: SessionId;
+    runId: string;
+    checkpoint: RunCheckpoint;
+    signal: AbortSignal;
+    protectedWriteRoots: readonly string[];
+  }) => Promise<DurableRecoveryAuthorization | undefined>;
   log?: LogFn;
+}
+
+/** Fresh Host facts required to rebuild a same-Run execution context. */
+export interface DurableRecoveryAuthorization {
+  permissionPolicyId: PermissionPolicyId;
+  permissionPreset?: import('@littlesheep/types').PermissionPresetId;
+  permissionPolicyV2?: import('@littlesheep/types').PermissionPolicyV2Snapshot;
+  approve?: ToolContext['approve'];
+  memoryAccessGrant?: RunInput['memoryAccessGrant'];
+  workspaceContext?: RunInput['workspaceContext'];
 }
 
 export interface RunInput {
@@ -526,6 +544,21 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
 
       const inboundText = messageText(inbound);
       const controller = abortController;
+      const recoveryAuthorization = opts.resolveRecoveryAuthorization
+        ? await opts.resolveRecoveryAuthorization({
+            sessionId,
+            runId,
+            checkpoint,
+            signal: controller.signal,
+            protectedWriteRoots,
+          })
+        : undefined;
+      if (opts.resolveRecoveryAuthorization && !recoveryAuthorization) {
+        opts.log?.('warn', 'same-Run segment recovery declined: current Main authorization is unavailable', {
+          sessionId: String(sessionId), runId,
+        });
+        return undefined;
+      }
       const continuation: ContinuationInput = {
         checkpoint,
         inbound,
@@ -541,9 +574,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
         model: resumeState.model,
         cwd: resumeState.cwd,
         origin: resumeState.origin,
-        permissionPolicyId: resumeState.permissionPolicyId,
+        permissionPolicyId: recoveryAuthorization?.permissionPolicyId ?? resumeState.permissionPolicyId,
+        permissionPreset: recoveryAuthorization?.permissionPreset,
+        permissionPolicyV2: recoveryAuthorization?.permissionPolicyV2,
+        approve: recoveryAuthorization?.approve,
+        memoryAccessGrant: recoveryAuthorization?.memoryAccessGrant,
         reasoning: resumeState.reasoning,
-        workspaceContext: resumeState.workspaceContext,
+        workspaceContext: recoveryAuthorization?.workspaceContext ?? resumeState.workspaceContext,
       }, continuation, { version: 1, resolution: 'none' }, {
         ownership,
         abortController: controller,
