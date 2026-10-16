@@ -20,6 +20,7 @@ import type {
 } from '@littlesheep/types';
 import { isDurableRunTerminal, isTerminalAuditClosure } from './durable-kernel-guards.js';
 import { DURABLE_HARNESS_EVENT_VERSION } from '@littlesheep/types';
+import { unknownTaskOutcome } from '@littlesheep/types';
 import { DurableKernelError } from './durable-kernel-error.js';
 import { validateProviderReceipt } from './durable-provider-usage-codec.js';
 import { readVerificationRecordedPayload } from './durable-verification-codec.js';
@@ -40,6 +41,7 @@ import {
   requiredRoute,
   requiredRuntimeStatus,
   requiredString,
+  readTaskOutcomePayload,
   validateEventInput,
   validateEffectSettlementOwner,
   validateSource,
@@ -110,6 +112,7 @@ export class DurableHarnessKernel {
           (input.eventId !== undefined && event.eventId === input.eventId)
           || event.idempotencyKey === input.idempotencyKey,
         );
+        if (knownDuplicate) assertTaskOutcomeDuplicateIdentity(knownDuplicate, input);
         if (!knownDuplicate) {
           validateTransition(projection, input);
           if (input.type === 'final_reply_settled' && this.reserveFinalReply && !finalReplyReservationReserved) {
@@ -315,6 +318,24 @@ export class DurableHarnessKernel {
       return { sessionId, runId, actions, projection };
     }
 
+    // If the host died after proposing/persisting a reply but before recording
+    // Task Outcome, recover conservatively. This compatibility close never
+    // infers requirements or success from the reply text.
+    if (projection.finalReply.state === 'proposed' && !projection.taskOutcome) {
+      const eventId = `${runId}:recovery:task-outcome`;
+      const recorded = await this.appendRecoveryEvent({
+        eventId,
+        idempotencyKey: eventId,
+        sessionId,
+        runId,
+        type: 'task_outcome_settled',
+        source: 'runtime',
+        payload: { outcome: unknownTaskOutcome(runId) },
+      });
+      if (recorded) actions.push({ kind: 'task_outcome_settled', eventId });
+      projection = await this.replay(sessionId, runId);
+    }
+
     // A process can die after the transcript/registry commit but before the
     // final-reply event. Promote only when the host proves that commit.
     if (projection.finalReply.state === 'proposed') {
@@ -500,6 +521,22 @@ function emptyProjection(sessionId: string, runId: string): DurableRunProjection
   };
 }
 
+function assertTaskOutcomeDuplicateIdentity(
+  existing: DurableHarnessEvent,
+  input: DurableHarnessEventAppendInput,
+): void {
+  if (existing.type !== 'task_outcome_settled' && input.type !== 'task_outcome_settled') return;
+  if (existing.type !== input.type) {
+    throw new DurableKernelError('Task Outcome idempotency identity conflicts with another event', 'conflict');
+  }
+  if (input.type !== 'task_outcome_settled') return;
+  const previous = readTaskOutcomePayload(existing.payload, input.runId);
+  const incoming = readTaskOutcomePayload(input.payload, input.runId);
+  if (JSON.stringify(previous) !== JSON.stringify(incoming)) {
+    throw new DurableKernelError('Task Outcome idempotency identity has conflicting content', 'conflict');
+  }
+}
+
 function applyDurableHarnessEvent(
   projection: DurableRunProjection,
   event: DurableHarnessEvent,
@@ -521,6 +558,10 @@ function applyDurableHarnessEvent(
       ...verification,
       failedStepIds: [...verification.failedStepIds],
     })),
+    ...(projection.taskOutcome ? { taskOutcome: {
+      settledEventId: projection.taskOutcome.settledEventId,
+      outcome: structuredClone(projection.taskOutcome.outcome),
+    } } : {}),
     modelRequests: projection.modelRequests.map((request) => ({ ...request })),
     pendingModelRequestIds: [...projection.pendingModelRequestIds],
   };
@@ -547,6 +588,14 @@ function applyDurableHarnessEvent(
     }
     case 'provider_usage_recorded': {
       validateProviderReceipt(event.payload, next);
+      break;
+    }
+    case 'task_outcome_settled': {
+      if (next.taskOutcome) throw new DurableKernelError('Task Outcome is already settled for this Run', 'transition');
+      next.taskOutcome = {
+        outcome: readTaskOutcomePayload(event.payload, event.runId),
+        settledEventId: event.eventId,
+      };
       break;
     }
     case 'user_input_appended':
@@ -785,6 +834,13 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
     if (projection.finalReply.state !== 'proposed') throw new DurableKernelError('final reply settlement requires a proposal', 'transition');
     if (projection.pendingEffectIds.length > 0 || projection.unknownEffectIds.length > 0) throw new DurableKernelError('cannot settle reply while effects are pending or unknown', 'transition');
     if (projection.pendingModelRequestIds.length > 0) throw new DurableKernelError('cannot settle reply while model requests are pending', 'transition');
+  }
+  if (event.type === 'task_outcome_settled') {
+    if (projection.taskOutcome) throw new DurableKernelError('Task Outcome is already settled for this Run', 'transition');
+    if (projection.finalReply.state === 'settled') {
+      throw new DurableKernelError('Task Outcome must be settled before final reply publication', 'transition');
+    }
+    readTaskOutcomePayload(event.payload, event.runId);
   }
   if (event.type === 'runtime_status_settled' && (projection.finalReply.state === 'settled' || projection.finalReply.state === 'runtime_status')) {
     throw new DurableKernelError('runtime status already settled', 'transition');

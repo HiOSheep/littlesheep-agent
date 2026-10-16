@@ -33,5 +33,6 @@ export function isTerminalAuditClosure(
     const requestId = event.payload.requestId;
     return typeof requestId === 'string' && projection.pendingModelRequestIds.includes(requestId);
   }
+  if (event.type === 'task_outcome_settled') return projection.taskOutcome === undefined;
   return false;
 }

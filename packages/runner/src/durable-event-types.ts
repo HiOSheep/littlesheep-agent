@@ -8,6 +8,7 @@ const EVENT_TYPES: Record<DurableHarnessEvent['type'], true> = {
   provider_usage_recorded: true, model_request_settled: true,
   tool_call_proposed: true, effect_intent_created: true, effect_settled: true,
   verification_recorded: true, checkpoint_written: true,
+  task_outcome_settled: true,
   final_reply_proposed: true, final_reply_settled: true, runtime_status_settled: true,
   run_failed: true, run_interrupted: true, run_completed: true,
 };

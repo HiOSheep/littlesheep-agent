@@ -61,6 +61,7 @@ export async function persistRunnerPhase<TResult extends PersistableRunnerResult
       taskExecution: result.taskExecution as never,
       taskBook: result.taskBook as never,
       verificationHistory: result.verificationHistory as never,
+      taskOutcome: result.taskOutcome,
       memoryIntentDecisions: result.memoryIntentDecisions as never,
       memoryKnownState: result.memoryKnownState as never,
       memoryContinuityAssessment: result.memoryContinuityAssessment as never,

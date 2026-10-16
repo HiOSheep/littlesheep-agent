@@ -26,9 +26,11 @@ import type {
   DurableEffectOutcomeQueryResult,
   DurableEffectProjection,
   DurableRunRecoveryResult,
+  TaskOutcome,
 } from '@littlesheep/types';
-import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript } from '@littlesheep/types';
+import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript, unknownTaskOutcome } from '@littlesheep/types';
 import { createHash, randomUUID } from 'node:crypto';
+import { createExplicitFileContentCheckTool } from '@littlesheep/tools';
 import { parseModelRef, type Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
 import type { LlmClient } from '@littlesheep/llm';
@@ -107,6 +109,8 @@ import { DurableRunOwnership } from './durable-run-ownership.js';
 import { isEligibleSameRunSegmentRecovery, isSafeSegmentBoundary } from './durable-runner-segment-recovery-policy.js';
 import { createDurableRunRecovery } from './durable-run-recovery.js';
 import { createDurableEffectOutcomeQuery } from './durable-effect-query.js';
+import { parseExplicitFileContentRequirement } from './task-outcome-request.js';
+import { buildTaskOutcome, readTaskOutcomeForProjection } from './task-outcome.js';
 import { readDurableHarnessMode } from './durable-run-mode.js';
 import { terminateRetiredCompactionProposals } from './session-continuity.js';
 import {
@@ -342,6 +346,8 @@ export interface AgentRunner {
   replay(runId: string): Promise<ExecutionLog | null>;
   /** Replay only a durable final settlement; proposals are never exposed. */
   replayDurableFinalReply?(sessionId: SessionId, runId: string): Promise<DurableFinalReplyReplay>;
+  /** Read the immutable durable Task Outcome, or a conservative unknown value for legacy Runs. */
+  replayTaskOutcome?(sessionId: SessionId, runId: string): Promise<TaskOutcome>;
   isResultAuthoritativePrepared?(result: RunnerResult): boolean;
   /** Perform one conservative post-crash recovery pass without model/tool I/O. */
   recoverDurableRun?(sessionId: SessionId, runId: string): Promise<DurableRunRecoveryResult>;
@@ -774,6 +780,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             runId,
             timestamp: new Date(startedAt).toISOString(),
           });
+      const explicitFileRequirement = inbound.id
+        ? parseExplicitFileContentRequirement({
+            runId,
+            sourceMessageId: inbound.id,
+            text: messageText(inbound),
+          })
+        : undefined;
       markRun('retired-proposals-and-durable-input');
       if (!sameRunRecovery) await recordDurableUserInput(durableRecorder, origin, runId, inbound)
       markRun('durable-user-input');
@@ -793,8 +806,14 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const runRegistrations = infra.registry.list().filter(({ tool }) => (
         webToolsAvailable || (tool.name !== 'web_search' && tool.name !== 'web_fetch')
       ));
+      const taskOutcomeCheckTool = explicitFileRequirement
+        ? createExplicitFileContentCheckTool(explicitFileRequirement)
+        : undefined;
       const runTools = resolveRunTools(runRegistrations, {
-        additionalTools: input.additionalTools,
+        additionalTools: [
+          ...(input.additionalTools ?? []),
+          ...(taskOutcomeCheckTool ? [taskOutcomeCheckTool] : []),
+        ],
         filter: (tool) => (
           (webToolsAvailable || (tool.name !== 'web_search' && tool.name !== 'web_fetch'))
           && (input.toolFilter?.(tool) ?? true)
@@ -1195,6 +1214,24 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               assembleResult,
               log: opts.log,
             });
+            const taskOutcome = buildTaskOutcome({
+              runId,
+              workspaceRoot: cwd,
+              result: finalizedRun.result,
+              requirement: explicitFileRequirement,
+              unsettledProviderRequestIds: (await durableKernel.replay(String(sessionId), runId)).pendingModelRequestIds,
+            });
+            finalizedRun.result.taskOutcome = taskOutcome;
+            if (ctx.appendDurableEvent) {
+              const identity = `${runId}:task-outcome:v1`;
+              await ctx.appendDurableEvent({
+                type: 'task_outcome_settled',
+                source: 'runtime',
+                eventId: identity,
+                idempotencyKey: identity,
+                payload: { outcome: taskOutcome },
+              });
+            }
             return { ...executedRun, result: finalizedRun.result, memoryAccess: finalizedRun.memoryAccess };
           },
           persist: async (finalizedRun) => {
@@ -2303,6 +2340,16 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     isResultAuthoritativePrepared: (result: RunnerResult) => isAuthoritativePrepared(result),
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
       replayAuthoritativeDurableFinalReply(sessionId, runId),
+    replayTaskOutcome: async (sessionId: SessionId, runId: string) => {
+      const projection = await durableKernel.replay(String(sessionId), runId);
+      const projectedOutcome = readTaskOutcomeForProjection(projection, runId);
+      if (!projection.taskOutcome || projectedOutcome.execution.reasonCode === 'outcome_pending_terminal_settlement') return projectedOutcome;
+      const log = await infra.executionLogStore.read(runId);
+      if (!log?.taskOutcome || JSON.stringify(log.taskOutcome) !== JSON.stringify(projectedOutcome)) {
+        return unknownTaskOutcome(runId);
+      }
+      return log.taskOutcome;
+    },
     recoverDurableRun,
     runtimeEvents: activeRuns,
     activeRuns,

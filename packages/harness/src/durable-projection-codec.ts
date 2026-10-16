@@ -10,6 +10,7 @@ import type {
   DurableModelRequestStatus,
   DurableModelTransportStatus,
   DurableRunProjection,
+  TaskOutcome,
 } from '@littlesheep/types';
 import {
   CACHE_USAGE_SCHEMA_VERSION,
@@ -17,6 +18,7 @@ import {
   NORMALIZED_REQUEST_VERSION,
   STABLE_PREFIX_VERSION,
 } from '@littlesheep/types';
+import { parseTaskOutcome } from '@littlesheep/types';
 import { readEffectReconciliationKey } from './effect-reconciliation-key.js';
 import { DurableKernelError } from './durable-kernel-error.js';
 export { readProviderTransportTiming, readProviderUsage } from './durable-provider-usage-codec.js';
@@ -47,6 +49,7 @@ export function validateSource(event: DurableHarnessEventAppendInput | DurableHa
     effect_intent_created: ['runtime'],
     effect_settled: ['tool', 'runtime'],
     verification_recorded: ['runtime'],
+    task_outcome_settled: ['runtime'],
     checkpoint_written: ['runtime'],
     final_reply_proposed: ['model', 'runtime'],
     final_reply_settled: ['runtime'],
@@ -81,6 +84,15 @@ export function readEffectIntent(event: Pick<DurableHarnessEvent, 'payload'> & {
     intentEventId: event.eventId ?? 'pending-effect-intent',
     ...(typeof event.payload.inputHash === 'string' ? { inputHash: event.payload.inputHash } : {}),
   };
+}
+
+export function readTaskOutcomePayload(
+  payload: Record<string, unknown>,
+  runId: string,
+): TaskOutcome {
+  const outcome = parseTaskOutcome(payload.outcome, runId);
+  if (!outcome) throw new DurableKernelError('task_outcome_settled contains an invalid or unbounded outcome', 'invalid');
+  return outcome;
 }
 
 export function validateEffectSettlementOwner(
@@ -506,6 +518,10 @@ export function freezeDurableRunProjection(projection: MutableDurableRunProjecti
       ...verification,
       failedStepIds: [...verification.failedStepIds],
     })),
+    ...(projection.taskOutcome ? { taskOutcome: Object.freeze({
+      settledEventId: projection.taskOutcome.settledEventId,
+      outcome: Object.freeze(structuredClone(projection.taskOutcome.outcome)),
+    }) } : {}),
   };
 }
 
