@@ -9,6 +9,7 @@ import { DEFAULT_CONFIG } from '@littlesheep/config';
 import { DEFAULT_BRANDING } from '@littlesheep/branding';
 import type { ChatResponse, LlmClient } from '@littlesheep/llm';
 import { reduceDurableRunProjection } from '@littlesheep/harness';
+import { asSessionId } from '@littlesheep/types';
 import { createRunner, type AgentRunner } from './runner.js';
 
 const roots: string[] = [];
@@ -49,9 +50,10 @@ describe('same-Run segment recovery after process restart', () => {
     expect(identity).toBeTruthy();
     const [, sessionId, runId] = identity!;
     const workspace = join(rootDir, 'workspace');
-    const initialFiles = readdirSync(workspace).filter((name) => name.endsWith('.txt')).sort();
-    expect(initialFiles).toHaveLength(30);
-    expect(initialFiles).toEqual(Array.from({ length: 30 }, (_, index) => `step-${String(index + 1).padStart(2, '0')}.txt`));
+    const initialStepFiles = readdirSync(workspace).filter((name) => /^step-\d+\.txt$/u.test(name)).sort();
+    expect(initialStepFiles).toHaveLength(29);
+    expect(initialStepFiles).toEqual(Array.from({ length: 29 }, (_, index) => `step-${String(index + 1).padStart(2, '0')}.txt`));
+    expect(readFileSync(join(workspace, 'result.out'), 'utf8')).toBe('hello');
 
     process.env.LITTLESHEEP_DATA_DIR = rootDir;
     const config = structuredClone(DEFAULT_CONFIG);
@@ -87,23 +89,40 @@ describe('same-Run segment recovery after process restart', () => {
     const resumedResults = results.filter((result) => result.providerCalls > 0);
     expect(resumedResults).toHaveLength(1);
     expect(results.every((result) => result.status === 'completed' || result.status === 'ownership_conflict')).toBe(true);
-    expect(resumedResults[0]?.toolResultCounts).toEqual([30, 31, 32, 33, 34, 35]);
+    expect(resumedResults[0]?.toolResultCounts).toEqual([30, 31, 32, 33, 34, 35, 36]);
     const recoveredProjection = reduceDurableRunProjection(
       await restarted.infra.durableEventStore.read(sessionId!, runId!),
     );
     expect(recoveredProjection).toMatchObject({ status: 'completed', runId, finalReply: { state: 'settled' } });
     const resultFiles = readdirSync(workspace).filter((name) => name.endsWith('.txt')).sort();
-    expect(resultFiles).toHaveLength(35);
-    expect(resultFiles).toEqual(Array.from({ length: 35 }, (_, index) => `step-${String(index + 1).padStart(2, '0')}.txt`));
-    for (let index = 1; index <= 35; index += 1) {
+    expect(resultFiles).toHaveLength(34);
+    expect(resultFiles).toEqual(Array.from({ length: 34 }, (_, index) => `step-${String(index + 1).padStart(2, '0')}.txt`));
+    for (let index = 1; index <= 34; index += 1) {
       expect(readFileSync(join(workspace, `step-${String(index).padStart(2, '0')}.txt`), 'utf8')).toBe(`completed:${index}\n`);
     }
-    expect(recoveredProjection.effects).toHaveLength(35);
-    expect(new Set(recoveredProjection.effects.map((effect) => effect.effectId)).size).toBe(35);
+    expect(recoveredProjection.effects).toHaveLength(36);
+    expect(new Set(recoveredProjection.effects.map((effect) => effect.effectId)).size).toBe(36);
+    expect(recoveredProjection.effects.filter((effect) => effect.toolName === 'write')).toHaveLength(35);
+    expect(recoveredProjection.effects.filter((effect) => effect.toolName === 'runtime_check_file_content')).toHaveLength(1);
     expect(recoveredProjection.effects.every((effect) => effect.status === 'succeeded')).toBe(true);
+    expect(readFileSync(join(workspace, 'result.out'), 'utf8')).toBe('hello');
+    const taskOutcome = await restarted.replayTaskOutcome!(asSessionId(sessionId!), runId!);
+    expect(taskOutcome).toMatchObject({
+      runId,
+      status: 'completed',
+      requirementInventory: 'complete',
+      requirements: [{ sourceMessageId: expect.any(String), status: 'passed' }],
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ kind: 'file_state', contentHash: expect.stringMatching(/^[a-f0-9]{64}$/u) }),
+        expect.objectContaining({ kind: 'requirement_check', status: 'pass' }),
+        expect.objectContaining({ kind: 'settled_effect', status: 'pass' }),
+      ]),
+    });
     const events = await restarted.infra.durableEventStore.read(sessionId!, runId!);
     expect(events.filter((event) => event.type === 'run_accepted')).toHaveLength(1);
     expect(events.filter((event) => event.type === 'user_input_appended')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'task_outcome_settled')).toHaveLength(1);
+    expect((await restarted.replay(runId!))?.taskOutcome).toEqual(taskOutcome);
     const requestIndexes = recoveredProjection.modelRequests.map((request) => request.requestIndex).filter((index) => index !== undefined);
     expect(new Set(requestIndexes).size).toBe(requestIndexes.length);
     expect(Math.max(...requestIndexes)).toBeGreaterThan(30);

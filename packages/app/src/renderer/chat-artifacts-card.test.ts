@@ -106,7 +106,7 @@ describe('artifact counts from the turn itself', () => {
       { name: 'write', input: { file_path: 'C:\\ws\\game\\gomoku.html', content: 'a\nb\nc\n' } },
     ]))
 
-    expect(markup).toContain('已产出 1 个文件')
+    expect(markup).toContain('记录了 1 个文件操作')
     expect(markup).toContain('line-delta-add">+3</span>')
     expect(markup).toContain('line-delta-remove">-0</span>')
     expect(markup).toContain('aria-label="共新增 3 行，删除 0 行（部分文件写入前的行数未知）"')
@@ -129,7 +129,7 @@ describe('the chat artifacts card', () => {
         { path: 'game/index.html', additions: 5, deletions: 1 },
       ])),
     )
-    expect(markup).toContain('已产出 2 个文件')
+    expect(markup).toContain('记录了 2 个文件操作')
     expect(markup).toContain('+17')
     expect(markup).toContain('-4')
     expect(markup).toContain('game\\pong.html')

@@ -10,6 +10,7 @@ import type {
   DurableInboxEnqueueOutcome,
   DurableInboxStoreLike,
 } from '@littlesheep/types';
+import { unknownTaskOutcome } from '@littlesheep/types';
 import {
   DurableHarnessKernel,
   DurableKernelError,
@@ -142,6 +143,91 @@ function event<T extends DurableHarnessEvent['type']>(type: T, payload: Record<s
 }
 
 describe('DurableHarnessKernel', () => {
+  it('projects one immutable Task Outcome independently from VRS and rejects a second result', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    const outcome = {
+      ...unknownTaskOutcome(runId),
+      execution: { status: 'completed' as const },
+      requirementInventory: 'complete' as const,
+      evidence: [
+        { version: 1 as const, id: 'file-check:state', kind: 'file_state' as const, status: 'informational' as const,
+          sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: 'a'.repeat(64) },
+        { version: 1 as const, id: 'tool-result:check-1', kind: 'tool_result' as const, status: 'informational' as const,
+          sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt' },
+        { version: 1 as const, id: 'file-check:1', kind: 'requirement_check' as const,
+          status: 'fail' as const, sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: 'a'.repeat(64) },
+      ],
+      requirements: [{
+        id: 'req-1', sourceMessageId: 'message-1', origin: 'user_explicit' as const,
+        status: 'failed' as const, evidenceRefs: ['file-check:state', 'tool-result:check-1', 'file-check:1'], reasonCode: 'file_content_mismatch',
+      }],
+      status: 'partially_completed' as const,
+      remaining: [{ requirementId: 'req-1', reasonCode: 'file_content_mismatch', evidenceRefs: ['file-check:state', 'tool-result:check-1', 'file-check:1'] }],
+    };
+    await kernel.append(event('task_outcome_settled', { outcome }, 'runtime', 'outcome-1'));
+
+    expect((await kernel.replay(sessionId, runId)).taskOutcome).toMatchObject({
+      settledEventId: 'outcome-1', outcome: { status: 'partially_completed', requirements: [{ status: 'failed' }] },
+    });
+    await expect(kernel.append(event('task_outcome_settled', { outcome }, 'runtime', 'outcome-1')))
+      .resolves.toMatchObject({ kind: 'duplicate' });
+    await expect(kernel.append(event('task_outcome_settled', {
+      outcome: unknownTaskOutcome(runId),
+    }, 'runtime', 'outcome-1'))).rejects.toThrow(/idempotency identity has conflicting content/u);
+    await expect(kernel.append(event('task_outcome_settled', { outcome: unknownTaskOutcome(runId) }, 'runtime', 'outcome-2')))
+      .rejects.toThrow(/already settled/u);
+  });
+
+  it('recovery records conservative unknown Task Outcome before settling a pending final reply', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('final_reply_proposed', {
+      settlementId: 'settlement-1',
+      reply: 'fixture reply',
+      replyFingerprint: 'fingerprint-1',
+      modelRequestId: 'model-1',
+    }, 'runtime', 'reply-proposed'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      finalReplyPersisted: async () => true,
+      finalReplyRegistrySettled: async () => true,
+    });
+    const types = store.events.map((item) => item.type);
+    expect(types.indexOf('task_outcome_settled')).toBeLessThan(types.indexOf('final_reply_settled'));
+    expect(types.indexOf('final_reply_settled')).toBeLessThan(types.indexOf('run_completed'));
+    expect(recovered.projection.taskOutcome?.outcome).toMatchObject({ status: 'unknown', requirementInventory: 'unknown' });
+    expect(recovered.projection.status).toBe('completed');
+    expect((await kernel.recoverRun(sessionId, runId)).actions).toEqual([]);
+  });
+
+  it('preserves an already-settled Task Outcome across the outcome-to-final-reply crash window', async () => {
+    const store = new MemoryEventStore();
+    const kernel = new DurableHarnessKernel({ eventStore: store });
+    await kernel.append(event('run_accepted', {}, 'runtime', 'accept'));
+    await kernel.append(event('final_reply_proposed', {
+      settlementId: 'settlement-1',
+      reply: 'fixture reply',
+      replyFingerprint: 'fingerprint-1',
+      modelRequestId: 'model-1',
+    }, 'model', 'reply-proposed'));
+    const outcome = unknownTaskOutcome(runId);
+    await kernel.append(event('task_outcome_settled', { outcome }, 'runtime', 'outcome-1'));
+
+    const recovered = await kernel.recoverRun(sessionId, runId, {
+      finalReplyPersisted: async () => true,
+      finalReplyRegistrySettled: async () => true,
+    });
+
+    expect(store.events.filter((item) => item.type === 'task_outcome_settled')).toHaveLength(1);
+    expect(recovered.projection.taskOutcome?.outcome).toEqual(outcome);
+    expect(recovered.projection.status).toBe('completed');
+    expect(store.events.filter((item) => item.type === 'final_reply_settled')).toHaveLength(1);
+    expect(store.events.filter((item) => item.type === 'run_completed')).toHaveLength(1);
+  });
+
   it('projects redacted verification outcomes', async () => {
     const store = new MemoryEventStore();
     const kernel = new DurableHarnessKernel({ eventStore: store });
@@ -503,7 +589,9 @@ describe('DurableHarnessKernel', () => {
       },
     });
     expect(persistedReservations).toEqual(['settlement-1']);
-    expect(recovered.actions.map((action) => action.kind)).toEqual(['final_reply_settled', 'run_completed']);
+    expect(recovered.actions.map((action) => action.kind)).toEqual([
+      'task_outcome_settled', 'final_reply_settled', 'run_completed',
+    ]);
     expect(recovered.projection.status).toBe('completed');
     expect(recovered.projection.finalReply.state).toBe('settled');
     expect(replayDurableFinalReply(recovered.projection)).toMatchObject({

@@ -58,7 +58,7 @@ if (root) {
   };
   await runner.run({
     runId: 's2b-t04a-process-restart',
-    text: 'Complete all 35 independently verifiable fixture operations.',
+    text: '创建 result.out，内容必须为 hello。',
     cwd: workspace,
   });
 }
@@ -71,8 +71,19 @@ function nextFixtureResponse(request: ChatRequest, workspace: string): ChatRespo
   if (completed === 0 && prompt.includes('Choose the next LittleSheep activity')) {
     return textResponse('{"type":"problem","confidence":0.99,"reason":"segment crash fixture"}');
   }
-  if (completed < 35) {
-    const step = completed + 1;
+  if (completed === 0) {
+    return {
+      content: '',
+      toolCalls: [{
+        id: 'segment-recovery-create-outcome-target',
+        type: 'function',
+        function: { name: 'write', arguments: JSON.stringify({ file_path: 'result.out', content: 'hello' }) },
+      }],
+      finishReason: 'tool_calls',
+    };
+  }
+  if (completed <= 34) {
+    const step = completed;
     return {
       content: '',
       toolCalls: [{
@@ -85,6 +96,17 @@ function nextFixtureResponse(request: ChatRequest, workspace: string): ChatRespo
             content: `completed:${step}\n`,
           }),
         },
+      }],
+      finishReason: 'tool_calls',
+    };
+  }
+  if (completed === 35) {
+    return {
+      content: '',
+      toolCalls: [{
+        id: 'segment-recovery-outcome-check',
+        type: 'function',
+        function: { name: 'runtime_check_file_content', arguments: '{}' },
       }],
       finishReason: 'tool_calls',
     };

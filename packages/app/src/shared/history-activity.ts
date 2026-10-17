@@ -1,6 +1,6 @@
 // Shared history projection owns the stable Runtime-to-Renderer activity shape.
 import type { ExecutionLog, ToolCallRecord } from '@littlesheep/runner'
-import type { Message, RunUsage, TaskBook, ToolInvocationRecord, VerificationRecord, WebEvidenceProjection } from '@littlesheep/types'
+import type { Message, RunUsage, TaskBook, TaskOutcome, ToolInvocationRecord, VerificationRecord, WebEvidenceProjection } from '@littlesheep/types'
 import { aggregateRunUsage } from './run-usage'
 import { projectRunCacheObservations, type CacheCallObservation } from './cache-call-observations'
 
@@ -21,6 +21,8 @@ export interface HistoryActivity {
   endedAt?: number
   durationMs?: number
   taskBook?: TaskBook
+  /** Authoritative Runtime projection; absent legacy values remain unknown. */
+  taskOutcome?: TaskOutcome
   verificationHistory?: VerificationRecord[]
   steps: Array<{
     stepId: string
@@ -239,6 +241,7 @@ export function executionLogToHistoryActivity(log: ExecutionLog): HistoryActivit
     endedAt,
     durationMs: log.durationMs,
     taskBook: log.taskBook,
+    taskOutcome: log.taskOutcome,
     verificationHistory: log.verificationHistory,
     steps: historySteps(log),
     tools,

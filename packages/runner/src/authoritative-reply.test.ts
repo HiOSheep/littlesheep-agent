@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { asSessionId, type DurableFinalReplyReplay } from '@littlesheep/types'
+import { asSessionId, unknownTaskOutcome, type DurableFinalReplyReplay, type TaskOutcome } from '@littlesheep/types'
 import type { AgentRunner, RunnerResult } from './runner.js'
 import {
   prepareAuthoritativeExecutionLog,
@@ -26,8 +26,23 @@ function result(overrides: Partial<RunnerResult> = {}): RunnerResult {
   }
 }
 
-function nextRunner(replay: AgentRunner['replayDurableFinalReply']): AgentRunner {
-  return { durableHarnessMode: 'next', replayDurableFinalReply: replay } as AgentRunner
+function nextRunner(
+  replay: AgentRunner['replayDurableFinalReply'],
+  taskOutcome?: AgentRunner['replayTaskOutcome'],
+): AgentRunner {
+  return { durableHarnessMode: 'next', replayDurableFinalReply: replay, replayTaskOutcome: taskOutcome } as AgentRunner
+}
+
+function completedTaskOutcome(): TaskOutcome {
+  return {
+    ...unknownTaskOutcome('run-1'),
+    execution: { status: 'completed' },
+    requirementInventory: 'complete',
+    requirements: [{ id: 'req-1', sourceMessageId: 'user-1', origin: 'user_explicit', status: 'passed', evidenceRefs: ['check-1'] }],
+    evidence: [{ version: 1, id: 'check-1', kind: 'requirement_check', status: 'pass', sourceRef: 'tool:check-1' }],
+    status: 'completed',
+    remaining: [],
+  }
 }
 
 function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
@@ -72,6 +87,19 @@ describe('prepareAuthoritativeRunnerResult', () => {
       settlementId: 'settlement-1',
       status: 'settled',
     })
+  })
+
+  it('attaches only the durable Task Outcome projection to the published result', async () => {
+    const outcome = completedTaskOutcome()
+    const prepared = await prepareAuthoritativeRunnerResult(nextRunner(
+      vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+        kind: 'settled', sessionId: 'session-1', runId: 'run-1', cursor: 9,
+        settlementId: 'settlement-1', reply: 'durable final reply', replyFingerprint: 'fingerprint', modelRequestId: 'model-request-1',
+      })),
+      vi.fn(async () => outcome),
+    ), result())
+
+    expect(prepared.taskOutcome).toEqual(outcome)
   })
 
   it('keeps the Runtime failure detail when the durable terminal state proves no settlement', async () => {
@@ -187,6 +215,7 @@ describe('prepareAuthoritativeRunnerResult', () => {
   })
 
   it('applies the durable boundary to execution-log replay', async () => {
+    const outcome = completedTaskOutcome()
     const prepared = await prepareAuthoritativeExecutionLog(nextRunner(vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
       kind: 'settled',
       sessionId: 'session-1',
@@ -196,9 +225,10 @@ describe('prepareAuthoritativeRunnerResult', () => {
       reply: 'durable diagnostic reply',
       replyFingerprint: 'fingerprint',
       modelRequestId: 'model-request-1',
-    }))), executionLog())
+    })), vi.fn(async () => outcome)), executionLog())
 
     expect(prepared.reply).toBe('durable diagnostic reply')
+    expect(prepared.taskOutcome).toEqual(outcome)
     expect(prepared.finalReplySettlement).toMatchObject({ status: 'settled' })
     expect(prepared.runtimeStatus).toBeUndefined()
   })

@@ -21,6 +21,8 @@ import { DisclosurePanel } from './disclosure-panel'
 import { MessageMeta } from './message-meta'
 import { openMessageContextMenu } from './message-context-menu'
 import { WebSources } from './web-sources'
+import { TaskOutcomeCard } from './task-outcome-card'
+import { shouldShowTaskOutcome } from './task-outcome-presentation'
 import type {
   AssistantTurnActivity,
   ChatMessage,
@@ -77,7 +79,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             <TraceCard trace={message.trace} toolCalls={message.toolCalls} durationMs={message.durationMs} onOpenFile={onOpenFile} />
           )}
           {message.artifacts && message.artifacts.length > 0 && (
-            <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
+            <MessageFileStrip files={message.artifacts} label="文件操作记录" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
           )}
           {message.webEvidence && <WebSources evidence={message.webEvidence} />}
         </div>
@@ -93,6 +95,7 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   }
 
   const responseVisible = Boolean(message.text.trim() || activity.error || message.artifacts?.length)
+    || shouldShowTaskOutcome(activity)
     || (activity.status === 'running' && !activity.transcript?.some((entry) => entry.kind === 'text'))
   const processOpen = processOpenOverride ?? false
   const processTranscript = transcriptWithoutAnswer(activity.transcript ?? [], message.text)
@@ -165,8 +168,9 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
             {activity.error && (
               <span className="run-status-error">{activity.error}</span>
             )}
+            <TaskOutcomeCard activity={activity} onOpenFile={onOpenFile} />
             {message.artifacts && message.artifacts.length > 0 && (
-              <MessageFileStrip files={message.artifacts} label="产出成果" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
+              <MessageFileStrip files={message.artifacts} label="文件操作记录" workspaceRoot={workspaceRoot} toolCalls={message.activity?.tools} onOpenFile={onOpenFile} onOpenReview={onOpenReview} />
             )}
             {message.webEvidence && <WebSources evidence={message.webEvidence} />}
           </div>

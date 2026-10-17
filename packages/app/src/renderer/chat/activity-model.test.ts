@@ -50,7 +50,7 @@ describe('assistant activity progressive disclosure', () => {
 describe('artifact rows identify a file, not a spelling', () => {
   it('counts one file once when a turn writes it under two spellings', () => {
     // Measured in a real window (2026-09-29): a turn that wrote `o3-out/notes.txt` and then
-    // `O3-OUT/NOTES.TXT` rendered "已产出 2 个文件" with two rows for one file on this platform.
+    // `O3-OUT/NOTES.TXT` used to render as a second file row for the same platform path identity.
     const artifacts = buildArtifactsFromToolCalls([
       { name: 'write', input: { file_path: 'o3-out/notes.txt' }, ok: true },
       { name: 'write', input: { file_path: 'O3-OUT/NOTES.TXT' }, ok: true },

@@ -81,6 +81,7 @@ export function reduceCompletedRunMessages(
           endedAt,
         ),
         taskBook: result.taskBook ?? currentActivity.taskBook,
+        taskOutcome: result.taskOutcome,
         verificationHistory: result.verificationHistory ?? currentActivity.verificationHistory,
         error: outcome.error ?? (result.status === 'ok'
             ? undefined

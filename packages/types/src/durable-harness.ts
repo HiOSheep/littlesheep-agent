@@ -5,6 +5,7 @@
 import type { CacheObservation } from './cache-observability.js';
 import type { ProviderLocalTokenCalibration } from './token-ledger.js';
 import type { ReconciliationValue } from './reconciliation-key.js';
+import type { TaskOutcome } from './task-outcome.js';
 
 export const DURABLE_HARNESS_EVENT_VERSION = 1 as const;
 export const DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -26,6 +27,7 @@ export type DurableHarnessEventType =
   | 'effect_intent_created'
   | 'effect_settled'
   | 'verification_recorded'
+  | 'task_outcome_settled'
   | 'checkpoint_written'
   | 'final_reply_proposed'
   | 'final_reply_settled'
@@ -306,7 +308,7 @@ export type DurableRecoveryReason =
 
 export interface DurableRecoveryAction {
   readonly kind: 'model_marked_missing' | 'model_marked_received' | 'effect_marked_unknown' | 'effect_settled'
-    | 'final_reply_settled' | 'runtime_status_settled' | 'run_completed';
+    | 'task_outcome_settled' | 'final_reply_settled' | 'runtime_status_settled' | 'run_completed';
   readonly eventId: string;
   readonly requestId?: string;
   readonly effectId?: string;
@@ -366,6 +368,11 @@ export interface DurableVerificationProjection {
   readonly failedStepIds: readonly string[];
 }
 
+export interface DurableTaskOutcomeProjection {
+  readonly outcome: TaskOutcome;
+  readonly settledEventId: string;
+}
+
 export interface DurableRunProjection {
   readonly version: 1;
   readonly sessionId: string;
@@ -381,6 +388,8 @@ export interface DurableRunProjection {
   readonly capabilityProbe?: DurableCapabilityProbeProjection;
   readonly stageTransitions: readonly DurableStageTransitionProjection[];
   readonly verifications: readonly DurableVerificationProjection[];
+  /** Absent for legacy Runs until a new Runtime settlement has been recorded. */
+  readonly taskOutcome?: DurableTaskOutcomeProjection;
   readonly modelRequests: readonly DurableModelRequestProjection[];
   readonly pendingModelRequestIds: readonly string[];
   readonly effects: readonly DurableEffectProjection[];

@@ -1,0 +1,101 @@
+import React, { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TaskEvidenceReference, TaskEvidenceStatus, TaskOutcome } from '@littlesheep/types'
+import type { AssistantTurnActivity } from './types'
+import { TaskOutcomeCard } from './task-outcome-card'
+
+const digest = 'a'.repeat(64)
+
+beforeEach(() => vi.stubGlobal('React', React))
+afterAll(() => vi.unstubAllGlobals())
+
+function outcome(status: 'passed' | 'failed' | 'unverified' | 'blocked' = 'passed'): TaskOutcome {
+  const requirementStatus = status === 'passed' ? 'passed' : status
+  const checkStatus: TaskEvidenceStatus = status === 'passed' ? 'pass' : status === 'failed' ? 'fail' : 'partial'
+  const evidence: TaskEvidenceReference[] = status === 'blocked' ? [] : [
+    { version: 1 as const, id: 'file-state-1', kind: 'file_state' as const, status: 'informational' as const,
+      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest },
+    { version: 1 as const, id: 'effect-1', kind: 'settled_effect' as const, status: 'pass' as const,
+      sourceRef: 'effect-1', resourceRef: 'workspace:result.txt', effectRef: 'effect-1' },
+    { version: 1 as const, id: 'tool-result-1', kind: 'tool_result' as const, status: 'informational' as const,
+      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt' },
+    { version: 1 as const, id: 'check-1', kind: 'requirement_check' as const, status: checkStatus,
+      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest },
+  ]
+  const evidenceRefs = evidence.map((item) => item.id)
+  return {
+    version: 1,
+    runId: 'run-1',
+    execution: { status: status === 'blocked' ? 'blocked' : 'completed' },
+    requirementInventory: 'complete',
+    requirements: [{ id: 'req-1', sourceMessageId: 'user-message-1', origin: 'user_explicit',
+      status: requirementStatus, evidenceRefs, ...(status === 'failed' ? { reasonCode: 'file_content_mismatch' } : {}) }],
+    evidence,
+    artifacts: status === 'blocked' ? [] : [{ resourceRef: 'workspace:result.txt', action: 'created',
+      effectRef: 'effect-1', evidenceRefs, verification: requirementStatus }],
+    status: status === 'passed' ? 'completed' : status === 'blocked' ? 'blocked' : 'partially_completed',
+    remaining: status === 'passed' ? [] : [{ requirementId: 'req-1', reasonCode: status === 'failed' ? 'file_content_mismatch'
+      : status === 'blocked' ? 'unknown_effect' : 'no_independent_check', evidenceRefs }],
+  }
+}
+
+function activity(overrides: Partial<AssistantTurnActivity> = {}): AssistantTurnActivity {
+  return { status: 'done', instruction: 'Create result.txt, content must be hello', startedAt: 1, steps: [], tools: [], ...overrides }
+}
+
+function render(next: Partial<AssistantTurnActivity>): string {
+  return renderToStaticMarkup(createElement(TaskOutcomeCard, { activity: activity(next), onOpenFile: () => undefined }))
+}
+
+describe('Task Outcome card', () => {
+  it('shows a failed content check without turning a successful write into task success', () => {
+    const html = render({ taskOutcome: outcome('failed') })
+    expect(html).toContain('检查未通过')
+    expect(html).toContain('文件内容与要求不一致')
+    expect(html).toContain('本次创建')
+    expect(html).toContain('检查时文件版本 aaaaaaaaaaaa')
+    expect(html).not.toContain('已按明确的验收条件通过')
+    expect(html).not.toContain(digest)
+  })
+
+  it('shows independently checked success and links only the safe workspace-relative resource', () => {
+    const html = render({ taskOutcome: outcome('passed') })
+    expect(html).toContain('已验证通过')
+    expect(html).toContain('已按明确的验收条件通过')
+    expect(html).toContain('检查时文件版本 aaaaaaaaaaaa')
+    expect(html).toContain('>result.txt</button>')
+  })
+
+  it('keeps unverified and blocked requirements distinct from passed checks', () => {
+    const unverified = render({ taskOutcome: outcome('unverified') })
+    expect(unverified).toContain('尚未验证')
+    expect(unverified).toContain('没有独立内容检查')
+
+    const blocked = render({ taskOutcome: outcome('blocked') })
+    expect(blocked).toContain('检查受阻')
+    expect(blocked).toContain('副作用结果不确定，需要核实')
+    expect(blocked).not.toContain('已验证通过')
+  })
+
+  it('shows a missing record for legacy file writes and stays silent for ordinary chat', () => {
+    const missing = render({ tools: [{ callId: 'write-1', name: 'write', ok: true }] })
+    expect(missing).toContain('缺少验收记录')
+    expect(missing).toContain('文件写入操作成功不代表')
+    expect(render({ taskOutcome: undefined })).toBe('')
+  })
+
+  it('does not render unsafe resource paths or expose untrusted output details', () => {
+    const badPath = outcome('passed')
+    badPath.artifacts[0]!.resourceRef = 'workspace:../../private/key.txt'
+    const html = render({ taskOutcome: badPath })
+    expect(html).toContain('受限资源')
+    expect(html).not.toContain('private/key.txt')
+    expect(html).not.toContain('secret-content')
+  })
+
+  it('does not render a success card before the run reaches a terminal state', () => {
+    const html = render({ status: 'running', taskOutcome: outcome('passed') })
+    expect(html).toBe('')
+  })
+})

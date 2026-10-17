@@ -47,11 +47,13 @@ import type {
   WebEvidenceProjection,
   FinalReplySettlement,
   ConversationTranscriptEntry,
+  TaskOutcome,
 } from '@littlesheep/types';
-import { sanitizeWebEvidenceProjection } from '@littlesheep/types';
+import { parseTaskOutcome, sanitizeWebEvidenceProjection, unknownTaskOutcome } from '@littlesheep/types';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { acquireLock } from '@littlesheep/session';
 import type { RuntimeResourceObservation } from './runtime-resource-observation.js';
+import { hasResolvableTaskOutcomeEvidence } from './task-outcome-evidence.js';
 
 /** A single tool call + its result, paired by id. */
 export interface ToolCallRecord {
@@ -88,6 +90,8 @@ export interface ExecutionLog {
   taskExecution?: TaskExecutionResult;
   taskBook?: TaskBook;
   verificationHistory?: VerificationRecord[];
+  /** Optional for legacy records; absence reads as unknown/unverified. */
+  taskOutcome?: TaskOutcome;
   memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   memoryKnownState?: RuntimeMemoryKnownState;
   memoryContinuityAssessment?: MemoryContinuityAssessment;
@@ -143,6 +147,8 @@ export interface ExecutionLogInput {
   taskExecution?: TaskExecutionResult;
   taskBook?: TaskBook;
   verificationHistory?: VerificationRecord[];
+  /** Optional for legacy records; absence reads as unknown/unverified. */
+  taskOutcome?: TaskOutcome;
   memoryIntentDecisions?: MemoryIntentDecisionRecord[];
   memoryKnownState?: RuntimeMemoryKnownState;
   memoryContinuityAssessment?: MemoryContinuityAssessment;
@@ -241,6 +247,7 @@ export class ExecutionLogStore {
       taskExecution: input.taskExecution,
       taskBook: input.taskBook ? { ...input.taskBook, stageResults: undefined } : undefined,
       verificationHistory: input.verificationHistory,
+      taskOutcome: input.taskOutcome,
       memoryIntentDecisions: input.memoryIntentDecisions,
       memoryKnownState: input.memoryKnownState,
       memoryContinuityAssessment: input.memoryContinuityAssessment,
@@ -369,6 +376,10 @@ export class ExecutionLogStore {
     try {
       const raw = await readFile(file, 'utf8');
       const log = JSON.parse(raw) as ExecutionLog;
+      const taskOutcome = parseTaskOutcome(log.taskOutcome, runId);
+      log.taskOutcome = taskOutcome && hasResolvableTaskOutcomeEvidence(log, taskOutcome)
+        ? taskOutcome
+        : unknownTaskOutcome(runId);
       this.contextInspection.observe(log);
       return log;
     } catch {

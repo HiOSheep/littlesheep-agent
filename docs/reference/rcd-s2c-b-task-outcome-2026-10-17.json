@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 1,
+  "phase": "RCD-S2C-B",
+  "title": "Task Outcome minimum trusted evidence and persistence",
+  "generatedDate": "2026-10-17",
+  "baseline": {
+    "branch": "main",
+    "head": "d2c5b3d2193549057fe9e3511f66f3b2d510f0b0"
+  },
+  "implementation": {
+    "branch": "codex/rcd-s2c-b",
+    "worktreeIsolated": true,
+    "taskOutcomeContract": 1,
+    "durableEvent": "task_outcome_settled",
+    "requirementExtraction": "one exact explicit root-level file-content request only",
+    "checker": "runtime_check_file_content",
+    "checkerExecutionLayer": "Runner -> Harness -> ToolExecutionService -> workspace file guard -> real file bytes",
+    "checkerProvider": "controlled scripted mock; no public network requests",
+    "maxCheckedFileBytes": 1048576,
+    "maxExpectedContentBytes": 16384,
+    "maxEvidenceReferences": 64,
+    "maxRequirements": 32,
+    "maxArtifacts": 32,
+    "rawFileContentsPersistedInTaskOutcome": false,
+    "rawUserMessageDuplicatedInDurableOutcomeEvent": false,
+    "rendererOutcomeUi": false,
+    "secondVerificationStage": false
+  },
+  "acceptance": {
+    "B-T01": {
+      "status": "passed",
+      "executionStatus": "completed",
+      "writeEffect": "succeeded",
+      "requirementStatus": "failed",
+      "taskOutcomeStatus": "partially_completed",
+      "evidence": ["real-file-read", "file-content-sha256", "settled-write-effect"]
+    },
+    "B-T02": {
+      "status": "passed",
+      "requirementStatus": "passed",
+      "taskOutcomeStatus": "completed",
+      "evidence": ["real-file-read", "file-content-sha256", "settled-write-effect"]
+    },
+    "B-T03": {
+      "status": "passed",
+      "requirementStatus": "unverified",
+      "taskOutcomeStatus": "partially_completed",
+      "evidence": []
+    },
+    "B-T04": {
+      "status": "passed",
+      "requirementInventory": "unknown",
+      "taskOutcomeStatus": "unknown",
+      "note": "Unsupported or extended text is not promoted to a complete requirement inventory."
+    },
+    "B-T05": {
+      "status": "passed",
+      "unknownEffectRequirementStatus": "blocked",
+      "unsettledProviderRequirementStatus": "blocked"
+    },
+    "B-T06": {
+      "status": "passed",
+      "stableEvidenceIdentity": "covered",
+      "executionLogTargetValidation": "covered",
+      "crossProcessRecovery": {
+        "status": "passed",
+        "fault": "real Runner child process SIGKILL at the 30-item segment checkpoint",
+        "sameRunId": true,
+        "completedWrites": 35,
+        "uniqueWriteEffects": 35,
+        "checkerEffects": 1,
+        "ingressEvents": 1,
+        "taskOutcomeEvents": 1,
+        "recoveredOutcome": "completed/passed",
+        "executionLogReplayMatches": true
+      }
+    },
+    "B-T07": {
+      "status": "component-level-passed",
+      "coverage": [
+        "conservative-unknown-on-missing-outcome-before-final-reply-settlement",
+        "preserve-existing-outcome-across-outcome-to-final-reply-window",
+        "duplicate-same-content-is-idempotent",
+        "same-identity-different-content-is-conflict",
+        "second-logical-outcome-is-rejected"
+      ],
+      "realProcessMultiStoreFaultInjection": "not-run"
+    },
+    "B-T08": {
+      "status": "passed",
+      "legacyMissingOutcome": "unknown",
+      "unresolvableEvidenceTarget": "downgraded-to-unknown"
+    }
+  },
+  "taskOutcomeRules": {
+    "passedRequires": [
+      "trusted run-scoped checker invocation",
+      "actual file state and digest",
+      "successful ToolResult",
+      "successful settled write Effect from the same Run for a create request",
+      "no later settled write changing the checked resource",
+      "no unknown or pending Effect",
+      "no unsettled Provider request"
+    ],
+    "completedRequires": [
+      "execution completed",
+      "complete explicit requirement inventory",
+      "all requirements passed",
+      "no remaining work or safety block"
+    ],
+    "legacyRead": "unknown/unverified; never infer passed from prior execution success"
+  },
+  "durableSettlement": {
+    "normalOrder": [
+      "final_reply_proposed",
+      "task_outcome_settled",
+      "execution_log_written",
+      "final_reply_settled",
+      "run_completed"
+    ],
+    "oneOutcomePerRun": true,
+    "conflictingContentUnderSameIdentity": "rejected",
+    "recoveryWhenReplyProposedButOutcomeMissing": "persist-conservative-unknown-before-reply-settlement",
+    "crossStoreTransaction": false,
+    "readRequiresTerminalRunAndMatchingExecutionLog": true,
+    "missingOrInvalidEvidenceTarget": "unknown"
+  },
+  "rcdCoreRegression": {
+    "suiteId": "LS-RCD-S0-24",
+    "scenarioDefinitionCount": 24,
+    "suiteSha256": "7f36e4f399b3c752b6b73621c63676f2c4af39e3643cadc4b8c186d7e5d1c940",
+    "runGeneratedAtUtc": "2026-10-16T16:34:55.973Z",
+    "sourceHead": "d2c5b3d2193549057fe9e3511f66f3b2d510f0b0",
+    "sourceWorktreeSha256": "37ac75d0d61b0e3f148970229f6c0f0c95302f49cb1c717636216077d4f24428",
+    "infrastructure": {
+      "executed": 6,
+      "blocked": 0,
+      "harnessError": 0,
+      "notRun": 0
+    },
+    "productResults": {
+      "passed": 3,
+      "failed": 0,
+      "partially_completed": 1,
+      "correctly_blocked": 2,
+      "unverified": 0
+    },
+    "scenarios": [
+      {
+        "id": "C02",
+        "result": "passed",
+        "executionLayer": "harness_execute_stage_with_real_ToolExecutionService",
+        "stopReason": "execute_completed",
+        "malformedInputExecutions": 0,
+        "correctedInputExecutions": 1,
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      },
+      {
+        "id": "C08",
+        "result": "passed",
+        "executionLayer": "harness_execute_stage_real_builtin_exec_with_fixture_only_host_authority",
+        "stopReason": "execute_completed",
+        "inputChanged": true,
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      },
+      {
+        "id": "R01",
+        "result": "passed",
+        "executionLayer": "harness_execute_stage_builtin_web_search_local_http_adapter",
+        "stopReason": "execute_completed",
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      },
+      {
+        "id": "R02",
+        "result": "correctly_blocked",
+        "executionLayer": "harness_execute_stage_builtin_web_search_with_network_disabled_policy",
+        "stopReason": "execute_completed",
+        "evidence": "paired allowed/forbidden request counts; forbidden path admits no web tool/request",
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      },
+      {
+        "id": "L01",
+        "result": "partially_completed",
+        "executionLayer": "harness_execute_stage_real_main_loop_with_scripted_provider_and_fixture_tool",
+        "stopReason": "single_segment_iteration_budget_exhausted",
+        "completedOperations": 30,
+        "targetOperations": 35,
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      },
+      {
+        "id": "X01",
+        "result": "correctly_blocked",
+        "executionLayer": "real_runner_durable_run_with_post_effect_pre_settlement_fault_injection_and_restart_recovery",
+        "stopReason": "error",
+        "toolExecutionCount": 1,
+        "effectSettlement": "unknown",
+        "faultType": "controlled-injection; not an OS process crash",
+        "cleanupSucceeded": true,
+        "usage": "unavailable"
+      }
+    ],
+    "historicalBaselineOverwritten": false
+  },
+  "validation": [
+    {
+      "command": "pnpm exec vitest run <7 S2C-B targeted test files>",
+      "status": "passed",
+      "testFiles": 7,
+      "tests": 77
+    },
+    {
+      "command": "pnpm exec vitest run packages/runner/src/durable-runner-segment-recovery.test.ts",
+      "status": "passed",
+      "testFiles": 1,
+      "tests": 1,
+      "scenario": "Outcome evidence survives same-Run SIGKILL recovery from the segment checkpoint"
+    },
+    {
+      "command": "pnpm exec vitest run <Runner, S1A/S1B-F/S1C, VRS and S2B protection regression files>",
+      "status": "passed",
+      "testFiles": 18,
+      "tests": 297,
+      "includes": [
+        "35-item same-Run segment execution",
+        "real Runner process recovery",
+        "Provider and Effect unknown windows",
+        "budget and no-progress limits",
+        "cancellation and authorization",
+        "legacy VRS VERIFY checkpoint compatibility"
+      ]
+    },
+    {
+      "command": "pnpm run typecheck",
+      "status": "passed"
+    },
+    {
+      "command": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner --package=@littlesheep/harness --package=@littlesheep/tools --package=@littlesheep/types",
+      "status": "passed",
+      "closurePackages": 20,
+      "inputDigest": "262ee92504662459f160d0aac1b486da48f11cb8a687d3c6cc53bae3f8248817",
+      "artifactDigest": "9305a80fb3ea8d5f7c4562483e4fd833f7288bdef4d62d82a7a7411c388195ef"
+    },
+    {
+      "command": "pnpm run check:repo",
+      "status": "passed",
+      "passed": 35,
+      "advisory": 3,
+      "failed": 0
+    },
+    {
+      "command": "node scripts/rcd-s0.mjs validate",
+      "status": "passed",
+      "scenarioDefinitions": 24
+    },
+    {
+      "command": "node scripts/rcd-s0.mjs run --core --timeout-ms=120000",
+      "status": "passed",
+      "scenariosExecuted": 6,
+      "cleanupSucceeded": 6
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "usageAndCost": {
+    "controlledProviderUsage": "unavailable",
+    "cost": "unavailable",
+    "fabricatedUsageOrCost": false
+  },
+  "limitations": [
+    "No general natural-language requirement extractor.",
+    "No general-purpose file, command, build or project acceptance engine.",
+    "No Renderer Task Outcome UI; this is S2C-C scope.",
+    "B-T07 remains a Durable Kernel component-level fault-window test; process-level crash injection across multiple persistence stores remains future work.",
+    "No real paid Provider or Renderer interaction acceptance.",
+    "The supported file requirement is one exact root-level filename and content match."
+  ],
+  "commits": [
+    {
+      "shortHash": "50e8616f",
+      "message": "feat(rcd): add task outcome evidence checker"
+    },
+    {
+      "shortHash": "3d4f8e9f",
+      "message": "feat(rcd): persist task outcomes in durable runs"
+    },
+    {
+      "message": "test(rcd): verify task outcome settlement and compatibility",
+      "containsThisLedger": true,
+      "fullHash": null
+    }
+  ],
+  "remotePush": false
+}

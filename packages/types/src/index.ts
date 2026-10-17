@@ -19,6 +19,7 @@ export * from './memory-access-policy.js';
 export * from './memory-evidence.js';
 export * from './memory-continuity.js';
 export * from './task.js';
+export * from './task-outcome.js';
 export * from './activity.js';
 export * from './conversation-transcript.js';
 export * from './work-policy.js';

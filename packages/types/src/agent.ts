@@ -508,6 +508,8 @@ export interface AgentResult {
   taskBook?: TaskBook;
   /** Runtime evidence settlement and historical VERIFY records associated with this result. */
   verificationHistory?: VerificationRecord[];
+  /** Task Outcome is independent from execution status and VRS verification. */
+  taskOutcome?: import('./task-outcome.js').TaskOutcome;
   /** Last deterministic runtime control state applied at a safe boundary. */
   runtimeControl?: import('./runtime-contracts.js').RuntimeControlSnapshot;
   /** Bounded event queue snapshot captured before active-run cleanup. */

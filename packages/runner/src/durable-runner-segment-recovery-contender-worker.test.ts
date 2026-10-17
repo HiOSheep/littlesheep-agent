@@ -87,8 +87,19 @@ function fixtureResponse(request: ChatRequest, workspace: string): ChatResponse 
   if (completed === 0 && prompt.includes('Choose the next LittleSheep activity')) {
     return { content: '{"type":"problem","confidence":0.99,"reason":"segment recovery fixture"}', toolCalls: [], finishReason: 'stop' };
   }
-  if (completed < 35) {
-    const step = completed + 1;
+  if (completed === 0) {
+    return {
+      content: '',
+      toolCalls: [{
+        id: 'segment-recovery-create-outcome-target',
+        type: 'function',
+        function: { name: 'write', arguments: JSON.stringify({ file_path: 'result.out', content: 'hello' }) },
+      }],
+      finishReason: 'tool_calls',
+    };
+  }
+  if (completed <= 34) {
+    const step = completed;
     return {
       content: '',
       toolCalls: [{
@@ -101,6 +112,17 @@ function fixtureResponse(request: ChatRequest, workspace: string): ChatResponse 
             content: `completed:${step}\n`,
           }),
         },
+      }],
+      finishReason: 'tool_calls',
+    };
+  }
+  if (completed === 35) {
+    return {
+      content: '',
+      toolCalls: [{
+        id: 'segment-recovery-outcome-check',
+        type: 'function',
+        function: { name: 'runtime_check_file_content', arguments: '{}' },
       }],
       finishReason: 'tool_calls',
     };

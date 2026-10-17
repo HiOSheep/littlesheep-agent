@@ -86,6 +86,7 @@
                 "verify:desktop-file-consistency": "pnpm run ensure:app-build && node scripts/verify-desktop-file-consistency.mjs",
     "verify:desktop-permission-v2": "pnpm run ensure:app-build && node scripts/verify-desktop-permission-v2.mjs",
     "verify:conversation-timeline": "pnpm run ensure:app-build && node scripts/verify-conversation-timeline.mjs",
+    "verify:task-outcome-renderer": "pnpm run ensure:app-build && node scripts/verify-task-outcome-renderer.mjs",
     "verify:file-consistency-faults": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner --package=@littlesheep/tools && node scripts/verify-file-consistency-faults.mjs",
             "verify:legacy-data-root-upgrade": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner --package=@littlesheep/session --package=@littlesheep/memory-tree && node scripts/verify-legacy-data-root-upgrade.mjs",
             "verify:ledger-reexecution-live": "pnpm run ensure:workspace-build -- --package=@littlesheep/runner --package=@littlesheep/tools --package=@littlesheep/harness && node scripts/verify-ledger-reexecution-live.mjs",

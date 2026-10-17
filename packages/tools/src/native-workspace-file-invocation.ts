@@ -1,4 +1,4 @@
-type NativeWorkspaceFileToolName = 'read' | 'write' | 'edit'
+type NativeWorkspaceFileToolName = 'read' | 'write' | 'edit' | 'runtime_check_file_content'
 
 const nativeWorkspaceInvocations = new WeakMap<object, NativeWorkspaceFileToolName>()
 

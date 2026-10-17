@@ -47,6 +47,10 @@
 - [RCD S2B-G 机器可读验收账本](rcd-s2b-g-electron-acceptance-2026-10-16.json)：Electron 环境、跨进程恢复证据、权限负向覆盖、RCD 核心结果、测试与发布限制。
 - [RCD S2B-G 六项核心回归账本](rcd-s2b-g-core-regression-2026-10-16.json)：C02、C08、R01、R02、L01、X01 的逐场景执行、独立 Oracle、清理与指纹记录。
 - [RCD S2C-A 主线集成与 Task Outcome 契约设计](rcd-s2c-a-outcome-contract-2026-10-16.md)：S2B 与 VRS main 集成关系、主线验证结果、现有证据来源审计及 S2C-B/C 最小接口设计。
+- [RCD S2C-B Task Outcome 可信证据与持久化](rcd-s2c-b-task-outcome-2026-10-17.md)：窄范围文件内容要求的真实检查、逐项证据关联、Durable Outcome 结算和兼容回归结果。
+- [RCD S2C-B 机器可读验收账本](rcd-s2c-b-task-outcome-2026-10-17.json)：S2C-B 用例结果、RCD 六项核心回归、验证命令与保留限制。
+- [RCD S2C-C Task Outcome 可信成果展示与交付](rcd-s2c-c-task-outcome-renderer-2026-10-17.md)：Renderer 对 Durable Task Outcome 的直播与历史消费、真实 Electron 验收、核心回归及 UI/Provider 限制。
+- [RCD S2C-C 机器可读验收账本](rcd-s2c-c-task-outcome-renderer-2026-10-17.json)：三类文件验收展示、RCD 六项核心回归、构建、测试和执行层级记录。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。

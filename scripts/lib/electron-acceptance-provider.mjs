@@ -207,6 +207,25 @@ function toolMessagesThisTurn(messages) {
   return messages.slice(lastUser + 1).filter((message) => message?.role === 'tool')
 }
 function classifyResponse({ body, system, user, messages, model, requestIndex, state }) {
+  // S2C-C Renderer acceptance: exercise the normal Runtime file writer and its run-scoped,
+  // read-only content checker. These exact request forms are deliberately narrow so this fixture
+  // cannot turn arbitrary test prompts into a claimed requirement.
+  const taskOutcomeRequest = /^Create (s2cc-(?:passed|failed|unchecked)\.txt), content must be hello\.?$/u.exec(user.trim())
+  if (taskOutcomeRequest) {
+    const filePath = taskOutcomeRequest[1]
+    const toolMessages = toolMessagesThisTurn(messages)
+    if (toolMessages.length === 0) {
+      return toolChoice(`task-outcome-write-${filePath}`, 'write', {
+        file_path: filePath,
+        content: filePath.includes('failed') ? 'goodbye' : 'hello',
+      })
+    }
+    if (!filePath.includes('unchecked') && toolMessages.length === 1) {
+      return toolChoice(`task-outcome-check-${filePath}`, 'runtime_check_file_content', {})
+    }
+    return textChoice(`Task Outcome fixture finished for ${filePath}.`)
+  }
+
   if (user.includes('MODEL-ISOLATION-')) return { message: { role: 'assistant', content: `MODEL-ISOLATION-DONE ${model}` }, finishReason: 'stop' }
 
   if (messages.some((message) => messageText(message).includes('LS-S2B-G-35'))) {

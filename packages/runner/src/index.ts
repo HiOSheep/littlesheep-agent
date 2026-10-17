@@ -53,6 +53,9 @@ export {
   type ContinuationDispositionKind,
 } from './continuation-disposition.js';
 
+export { parseExplicitFileContentRequirement, type ExplicitFileContentRequirement } from './task-outcome-request.js';
+export { buildTaskOutcome, readTaskOutcomeForProjection } from './task-outcome.js';
+
 export {
   buildInfrastructure,
   resolveLlm,

@@ -3,8 +3,10 @@ import type {
   FinalReplySettlement,
   Message,
   RuntimeFinalStatus,
+  SessionId,
+  TaskOutcome,
 } from '@littlesheep/types'
-import { asSessionId } from '@littlesheep/types'
+import { asSessionId, unknownTaskOutcome } from '@littlesheep/types'
 import type { AgentRunner, RunnerResult } from './runner.js'
 import type { ExecutionLog } from './execution-log.js'
 import { runtimeUserSentence } from './runtime-messages.js'
@@ -50,6 +52,7 @@ export async function prepareAuthoritativeRunnerResult(
   }
 
   if (durable.kind === 'settled') {
+    const taskOutcome = await replayAuthoritativeTaskOutcome(runner, result.sessionId, result.runId)
     const settlement: FinalReplySettlement = {
       version: 1,
       settlementId: durable.settlementId,
@@ -66,6 +69,7 @@ export async function prepareAuthoritativeRunnerResult(
         ? result.replyProvenance
         : undefined,
       finalReplySettlement: settlement,
+      taskOutcome,
       runtimeStatus: undefined,
       error: undefined,
       messages: settleFinalizeMessages(result.messages, settlement),
@@ -73,7 +77,8 @@ export async function prepareAuthoritativeRunnerResult(
   }
 
   if (durable.kind === 'runtime_status') {
-    return runtimeStatusResult(result, durable.status, durable.reason)
+    return runtimeStatusResult(result, durable.status, durable.reason,
+      undefined, await replayAuthoritativeTaskOutcome(runner, result.sessionId, result.runId))
   }
 
   return runtimeStatusResult(
@@ -81,6 +86,7 @@ export async function prepareAuthoritativeRunnerResult(
     durable.status === 'interrupted' ? 'interrupted' : 'failed',
     `durable_final_reply_${durable.reason}`,
     runtimeFailureDetail(result),
+    await replayAuthoritativeTaskOutcome(runner, result.sessionId, result.runId),
   )
 }
 
@@ -92,7 +98,7 @@ export async function prepareAuthoritativeRunnerResult(
  * reported by the replay itself rather than assumed publishable.
  */
 export async function prepareAuthoritativeExecutionLog(
-  runner: Pick<AgentRunner, 'replayDurableFinalReply'>,
+  runner: Pick<AgentRunner, 'replayDurableFinalReply' | 'replayTaskOutcome'>,
   log: ExecutionLog,
 ): Promise<AuthoritativeExecutionLog> {
   log = { ...log, durableHarnessMode: 'next' }
@@ -110,6 +116,7 @@ export async function prepareAuthoritativeExecutionLog(
   }
 
   if (durable.kind === 'settled') {
+    const taskOutcome = await replayAuthoritativeTaskOutcome(runner, asSessionId(log.sessionId), log.runId)
     const settlement: FinalReplySettlement = {
       version: 1,
       settlementId: durable.settlementId,
@@ -126,13 +133,15 @@ export async function prepareAuthoritativeExecutionLog(
         ? log.replyProvenance
         : undefined,
       finalReplySettlement: settlement,
+      taskOutcome,
       runtimeStatus: undefined,
       error: undefined,
     }
   }
 
   if (durable.kind === 'runtime_status') {
-    return runtimeExecutionLogResult(log, durable.status, durable.reason)
+    return runtimeExecutionLogResult(log, durable.status, durable.reason,
+      undefined, await replayAuthoritativeTaskOutcome(runner, asSessionId(log.sessionId), log.runId))
   }
 
   return runtimeExecutionLogResult(
@@ -140,7 +149,22 @@ export async function prepareAuthoritativeExecutionLog(
     durable.status === 'interrupted' ? 'interrupted' : 'failed',
     `durable_final_reply_${durable.reason}`,
     runtimeFailureDetail(log),
+    await replayAuthoritativeTaskOutcome(runner, asSessionId(log.sessionId), log.runId),
   )
+}
+
+async function replayAuthoritativeTaskOutcome(
+  runner: Pick<AgentRunner, 'replayTaskOutcome'>,
+  sessionId: SessionId,
+  runId: string,
+): Promise<TaskOutcome> {
+  if (!runner.replayTaskOutcome) return unknownTaskOutcome(runId)
+  try {
+    const outcome = await runner.replayTaskOutcome(sessionId, runId)
+    return outcome.runId === runId ? outcome : unknownTaskOutcome(runId)
+  } catch {
+    return unknownTaskOutcome(runId)
+  }
 }
 
 export type AuthoritativeExecutionLog = ExecutionLog & {
@@ -152,6 +176,7 @@ function runtimeStatusResult(
   status: RuntimeFinalStatus['status'],
   reason?: string,
   detail?: string,
+  taskOutcome: TaskOutcome = unknownTaskOutcome(result.runId),
 ): RunnerResult {
   const runtimeStatus = buildRuntimeStatus(status, reason)
   return {
@@ -160,6 +185,7 @@ function runtimeStatusResult(
     reply: '',
     replyProvenance: undefined,
     finalReplySettlement: undefined,
+    taskOutcome,
     runtimeStatus,
     error: detail ? boundedFailureMessage(detail) : runtimeStatusMessage(runtimeStatus),
     messages: hideUnsettledFinalizeMessages(result.messages),
@@ -172,6 +198,7 @@ function runtimeExecutionLogResult(
   status: RuntimeFinalStatus['status'],
   reason?: string,
   detail?: string,
+  taskOutcome: TaskOutcome = unknownTaskOutcome(log.runId),
 ): AuthoritativeExecutionLog {
   const runtimeStatus = buildRuntimeStatus(status, reason)
   return {
@@ -180,6 +207,7 @@ function runtimeExecutionLogResult(
     reply: '',
     replyProvenance: undefined,
     finalReplySettlement: undefined,
+    taskOutcome,
     runtimeStatus,
     error: detail ? boundedFailureMessage(detail) : runtimeStatusMessage(runtimeStatus),
     webEvidence: undefined,
