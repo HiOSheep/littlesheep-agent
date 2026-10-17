@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AssistantTurnMessage } from '../chat/assistant-turn'
 import { MessageMeta } from '../chat/message-meta'
+import { openMessageContextMenu } from '../chat/message-context-menu'
 import { useChatScrollController } from '../chat/use-chat-scroll-controller'
 import { TurnRail } from '../chat/turn-rail'
 import { ConversationResources } from '../chat/conversation-resources'
@@ -199,7 +200,8 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                 retryPending={loading}
               />
             ) : (
-              <div key={m.id ?? i} data-message-key={m.id ?? `message-${i}`} className={`message-with-meta ${m.role}`}>
+              <div key={m.id ?? i} data-message-key={m.id ?? `message-${i}`} className={`message-with-meta ${m.role}`}
+                onContextMenu={(event) => openMessageContextMenu(event, m.text, m.role === 'assistant' && m.id ? () => void branchConversationFromMessage(m.id as string) : undefined)}>
                 {m.role === 'user' && m.attachments && <MessageImageStrip files={m.attachments} />}
                 <div className={`message ${m.role}`}>
                   {m.text ? <Markdown text={m.text} /> : m.role === 'assistant' ? <span className="loading" role="status">正在处理…</span> : null}

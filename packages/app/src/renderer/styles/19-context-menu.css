@@ -1,5 +1,6 @@
 .app-context-menu {
   position: fixed;
+  box-sizing: border-box;
   z-index: 10000;
   width: 254px;
   max-width: calc(100vw - 16px);
@@ -8,12 +9,12 @@
   scrollbar-gutter: stable;
   overflow-x: hidden;
   padding: 7px;
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: 18px;
   background: var(--bg-elevated);
   color: var(--text);
   box-shadow: var(--floating-panel-shadow);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
 }
 .app-context-menu button {
   display: flex;
@@ -34,9 +35,11 @@
   background: var(--control-hover);
   outline: none;
 }
-.app-context-menu button:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.app-context-menu button:focus-visible { box-shadow: none; }
 .app-context-menu button:disabled { opacity: .4; cursor: default; }
-.app-context-menu kbd { color: var(--text-muted); font: inherit; font-size: 11px; }
+.app-context-menu button.danger { color: var(--danger); }
+.app-context-menu button.danger:hover, .app-context-menu button.danger:focus-visible { background: var(--danger-soft); }
+.app-context-menu kbd { color: var(--muted); font: inherit; font-size: .85em; white-space: nowrap; }
 .app-context-menu-divider { height: 1px; margin: 5px 8px; background: var(--border); }
 .app-context-menu-error {
   position: fixed;
@@ -46,7 +49,7 @@
   z-index: 10001;
   max-width: calc(100vw - 32px);
   padding: 12px 16px;
-  border: 1px solid var(--feedback-danger-border);
+  border: 0;
   border-radius: var(--radius-card);
   background: var(--bg-elevated);
   color: var(--text);

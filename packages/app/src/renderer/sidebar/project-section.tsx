@@ -35,7 +35,10 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { ArchiveIcon, CheckIcon, ComposeIcon, MoreIcon, PinIcon, ProjectIcon, SortIcon, TrashIcon } from '../ui/icons'
 import { OverflowingLabel } from '../ui/overflowing-label'
 import { isSamePath, lastPathSegment } from '../workspace/path-utils'
-import { SidebarActionMenu } from './action-menu'
+import { SidebarActionMenu, sidebarContextActions, type SidebarMenuItem } from './action-menu'
+import { openContextMenuFromEvent } from '../ui/context-menu'
+import { useDangerConfirmation } from '../ui/danger-confirm'
+import { projectDeletionImpact } from '../deletion-impact'
 import { useSidebarListDrag } from './list-drag'
 import { SessionRow } from './session-row'
 import { ProjectSortMode } from './types'
@@ -356,6 +359,7 @@ function SidebarProjectGroup({
   const tip = `项目工作区\n${project.path}`
   const lastActiveAt = Date.parse(project.lastActiveAt)
   const newSessionTip = '在项目下新建对话'
+  const { requestDeletion, confirmation } = useDangerConfirmation()
   const sessionsById = useMemo(
     () => new Map(sessions.map((session) => [session.id, session])),
     [sessions],
@@ -383,16 +387,35 @@ function SidebarProjectGroup({
     ...unpinnedDrag.orderedIds,
   ].map((id) => sessionsById.get(id)).filter((session): session is SessionMeta => Boolean(session))
 
+  const menuItems: SidebarMenuItem[] = [
+    { label: '新建对话', icon: <ComposeIcon />, onSelect: onCreateConversation },
+    { label: pinned ? '取消置顶项目' : '置顶项目', icon: <PinIcon active={pinned} />, onSelect: onToggleProjectPin },
+    { label: '重新定位项目', icon: <ProjectIcon />, onSelect: onRebindProject },
+    { label: '归档项目', icon: <ArchiveIcon />, onSelect: onArchiveProject },
+    { label: '删除项目', icon: <TrashIcon />, tone: 'danger', onSelect: () => requestDeletion(projectDeletionImpact(project, sessions.length), onDeleteProject) },
+  ]
+
   return (
     <div
       ref={projectItemRef}
       className={`project-group ${expanded ? 'expanded' : 'collapsed'} ${dragging ? 'is-dragging' : ''}`}
     >
+      {confirmation}
       <div
         className={`session-item project-item ${active ? 'active' : ''} ${expanded ? 'expanded' : ''}`}
+        data-context-menu=""
         aria-grabbed={dragging || undefined}
         onPointerDown={onProjectPointerDown}
         onClickCapture={onProjectClickCapture}
+        onContextMenu={(event) => {
+          onTipChange(null)
+          const trigger = event.currentTarget.querySelector<HTMLElement>('.project-row-trigger')
+          trigger?.focus({ preventScroll: true })
+          openContextMenuFromEvent(event, [
+            ...sidebarContextActions(menuItems),
+            { id: 'copy-path', label: '复制项目路径', dividerBefore: true, run: () => navigator.clipboard.writeText(project.path) },
+          ])
+        }}
       >
         <button
           className="project-row-trigger"
@@ -440,29 +463,7 @@ function SidebarProjectGroup({
           <SidebarActionMenu
             label="项目菜单"
             onTipChange={onTipChange}
-            items={[
-              {
-                label: pinned ? '取消置顶项目' : '置顶项目',
-                icon: <PinIcon active={pinned} />,
-                onSelect: onToggleProjectPin,
-              },
-              {
-                label: '重新定位项目',
-                icon: <ProjectIcon />,
-                onSelect: onRebindProject,
-              },
-              {
-                label: '归档项目',
-                icon: <ArchiveIcon />,
-                onSelect: onArchiveProject,
-              },
-              {
-                label: '删除项目',
-                icon: <TrashIcon />,
-                tone: 'danger',
-                onSelect: onDeleteProject,
-              },
-            ]}
+            items={menuItems}
           >
             <MoreIcon />
           </SidebarActionMenu>

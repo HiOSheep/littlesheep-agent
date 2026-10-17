@@ -231,7 +231,8 @@
      A new glass surface has to enter that table and the material-role gate
      (`ui-material-roles.test.ts`); glasses are never stacked inside one visual
      layer. */
-  --sidebar-glass-fill: color-mix(in srgb, var(--surface) 36%, transparent);
+  /* A denser charcoal fill keeps the native backdrop from washing the sidebar grey. */
+  --sidebar-glass-fill: color-mix(in srgb, var(--surface) 72%, transparent);
   /* Neutral glass follows the reference charcoal palette without coloured gradients. */
   --sidebar-tint-top: rgba(255, 255, 255, 0.02);
   --sidebar-tint-bottom: rgba(255, 255, 255, 0.01);
@@ -1541,6 +1542,7 @@ body.is-window-resizing .window-shell *::after {
 .sidebar-menu-item:focus-visible {
   color: var(--text-strong);
   background-color: var(--sidebar-interaction-hover);
+  outline: none;
 }
 
 .sidebar-menu-item.danger:hover,

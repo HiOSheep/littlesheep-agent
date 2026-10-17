@@ -72,6 +72,7 @@ export function WorkspaceTabStripWithCloseRefusal({
     const next = workspaceFileCloseRefusal(tab, result)
     // Closing some other tab must not silently take away this tab's discard path.
     setRefusal((current) => next ?? (current?.tab === tab ? null : current))
+    return result === 'closed'
   }
 
   function discardRefusedDraft() {

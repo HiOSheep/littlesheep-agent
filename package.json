@@ -143,6 +143,7 @@
     "verify:window-layout": "pnpm run ensure:app-build && node scripts/verify-window-layout.mjs",
     "verify:settings-navigation-terminology": "pnpm run ensure:app-build && node scripts/verify-settings-navigation-terminology.mjs",
     "verify:shared-ui-roles": "pnpm run ensure:app-build && node scripts/verify-shared-ui-roles.mjs",
+    "verify:context-menus": "pnpm run ensure:app-build && node scripts/verify-context-menus.mjs",
     "verify:channel-entry-states": "pnpm run ensure:app-build && node scripts/verify-channel-entry-states.mjs",
     "verify:conversation-workspace-scenarios": "pnpm run ensure:app-build && node scripts/verify-conversation-workspace-scenarios.mjs",
     "verify:transcript-state-visibility": "pnpm run ensure:app-build && node scripts/verify-transcript-state-visibility.mjs",

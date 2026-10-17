@@ -19,6 +19,7 @@ import { AgentToolRow } from './agent-tool-row'
 import { ActivityAttentionRow } from './attention-row'
 import { DisclosurePanel } from './disclosure-panel'
 import { MessageMeta } from './message-meta'
+import { openMessageContextMenu } from './message-context-menu'
 import { WebSources } from './web-sources'
 import type {
   AssistantTurnActivity,
@@ -68,7 +69,8 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
   const activity = message.activity
   if (!activity) {
     return (
-      <div className="message-with-meta assistant" data-message-key={messageKey}>
+      <div className="message-with-meta assistant" data-message-key={messageKey}
+        onContextMenu={(event) => openMessageContextMenu(event, message.text, message.id && onBranch ? () => onBranch(message.id as string) : undefined)}>
         <div className="message assistant">
           {message.text ? <Markdown text={message.text} /> : <span className="loading">思考中...</span>}
           {(message.trace || message.toolCalls) && (
@@ -152,7 +154,8 @@ export const AssistantTurnMessage = memo(function AssistantTurnMessage({
         : <AssistantActivityFlow activity={activity} now={now} onOpenFile={onOpenFile} />}
       <div className="assistant-approval-seat" />
       {responseVisible && (
-        <div className="message-with-meta assistant">
+        <div className="message-with-meta assistant"
+          onContextMenu={(event) => openMessageContextMenu(event, message.text, activity.status === 'done' && message.id && onBranch ? () => onBranch(message.id as string) : undefined)}>
           <div
             className="message assistant assistant-final assistant-response-stream"
             data-stream-state={activity.status === 'running' ? 'streaming' : 'settled'}

@@ -18,7 +18,10 @@ import { formatRelativeSessionTime } from '../app-shell/list-motion'
 import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement } from '../ui/floating-help'
 import { ArchiveIcon, MoreIcon, PinIcon, RenameIcon, TrashIcon } from '../ui/icons'
 import { OverflowingLabel } from '../ui/overflowing-label'
-import { SidebarActionMenu } from './action-menu'
+import { SidebarActionMenu, sidebarContextActions, type SidebarMenuItem } from './action-menu'
+import { openContextMenuFromEvent } from '../ui/context-menu'
+import { useDangerConfirmation } from '../ui/danger-confirm'
+import { sessionDeletionImpact } from '../deletion-impact'
 import { SIDEBAR_LIST_PUSH_DURATION_MS } from './list-drag'
 
 /** The sidebar list's own easing, shared with the push pass so a pin reads as one movement. */
@@ -70,6 +73,7 @@ export function SessionRow({
   const rowRef = useRef<HTMLDivElement | null>(null)
   const previousRectRef = useRef<DOMRect | null>(null)
   const previousPinnedRef = useRef(pinned)
+  const { requestDeletion, confirmation } = useDangerConfirmation()
 
   // Pinning and unpinning move a row between the pinned group and the dated one, which makes it a
   // new id in each group's list pass: the shared reorder animation covers the neighbours that slide
@@ -143,7 +147,14 @@ export function SessionRow({
     }
   }
 
-  return (
+  const menuItems: SidebarMenuItem[] = [
+    { label: pinLabel, icon: <PinIcon active={pinned} />, onSelect: onTogglePin },
+    { label: '重命名', icon: <RenameIcon />, onSelect: beginRename },
+    { label: '归档对话', icon: <ArchiveIcon />, onSelect: onArchive },
+    { label: '删除对话', icon: <TrashIcon />, tone: 'danger', onSelect: () => requestDeletion(sessionDeletionImpact(session), onDelete) },
+  ]
+
+  return (<>
     <div
       ref={(node) => {
         rowRef.current = node
@@ -154,8 +165,14 @@ export function SessionRow({
       tabIndex={renaming ? -1 : 0}
       aria-current={active ? 'page' : undefined}
       aria-grabbed={dragging || undefined}
+      data-context-menu={renaming ? undefined : ''}
       onPointerDown={onDragPointerDown}
       onClickCapture={onDragClickCapture}
+      onContextMenu={(event) => {
+        if (renaming) return
+        onTipChange(null)
+        openContextMenuFromEvent(event, sidebarContextActions(menuItems))
+      }}
       onClick={() => {
         if (!renaming) onOpen()
       }}
@@ -238,24 +255,7 @@ export function SessionRow({
             <SidebarActionMenu
               label={menuLabel}
               onTipChange={onTipChange}
-              items={[
-                {
-                  label: '重命名',
-                  icon: <RenameIcon />,
-                  onSelect: beginRename,
-                },
-                {
-                  label: '归档对话',
-                  icon: <ArchiveIcon />,
-                  onSelect: onArchive,
-                },
-                {
-                  label: '删除对话',
-                  icon: <TrashIcon />,
-                  tone: 'danger',
-                  onSelect: onDelete,
-                },
-              ]}
+              items={menuItems}
             >
               <MoreIcon />
             </SidebarActionMenu>
@@ -263,5 +263,6 @@ export function SessionRow({
         </>
       )}
     </div>
-  )
+    {confirmation}
+  </>)
 }

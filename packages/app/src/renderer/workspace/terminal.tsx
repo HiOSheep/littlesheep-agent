@@ -15,6 +15,7 @@ import {
   resizeWorkspaceTerminalSession,
 } from '../api'
 import { FloatingHelpTip } from '../ui/floating-help'
+import { openContextMenuFromEvent } from '../ui/context-menu'
 import { createTerminalFitScheduler } from './terminal-fit'
 import {
   COLUMN_RESIZE_END_EVENT,
@@ -292,11 +293,13 @@ export function WorkspaceTerminal({
   useEffect(() => {
     const terminal = terminalRef.current
     if (!terminal) return
-    terminal.options.disableStdin = !terminalInputEnabledRef.current
-      || !active
-      || sessions.activeTab?.status !== 'ready'
-    if (active && terminalInputEnabledRef.current) terminal.focus()
-  }, [active, sessions.activeTab?.status])
+    // Reconcile the optimistic output callback with the authoritative tab state.
+    // A starting-state effect can run after the first output callback; consuming
+    // that stale input flag here left a ready shell's paste action disabled.
+    const ready = sessions.activeTab?.status === 'ready'
+    setTerminalInputEnabled(ready)
+    if (active && ready && !document.querySelector('.app-context-menu')) terminal.focus()
+  }, [active, sessions.activeTab?.id, sessions.activeTab?.status])
 
   useEffect(() => {
     if (!active) return
@@ -371,15 +374,31 @@ export function WorkspaceTerminal({
   }
 
   function setTerminalInputEnabled(enabled: boolean) {
+    const wasEnabled = terminalInputEnabledRef.current
     terminalInputEnabledRef.current = enabled
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.disableStdin = !enabled || !activeRef.current
-    if (enabled && activeRef.current) terminal.focus()
+    if (enabled && !wasEnabled && activeRef.current && !document.querySelector('.app-context-menu')) terminal.focus()
   }
 
   return (
-    <div className="workspace-terminal">
+    <div className="workspace-terminal" data-terminal-status={sessions.activeTab?.status ?? 'starting'} data-context-menu="" onContextMenuCapture={(event) => {
+      const terminal = terminalRef.current
+      if (!terminal || !activeRef.current) return
+      const selection = terminal.getSelection()
+      const owner = terminalSessionRef.current
+      const current = () => terminalRef.current === terminal && terminalSessionRef.current === owner && activeRef.current
+      terminal.focus()
+      openContextMenuFromEvent(event, [
+        { id: 'copy', label: '复制选中文字', enabled: Boolean(selection), run: () => navigator.clipboard.writeText(selection) },
+        { id: 'paste', label: '粘贴', enabled: terminalInputEnabledRef.current, run: async () => {
+          const text = await navigator.clipboard.readText()
+          if (current() && terminalInputEnabledRef.current) { terminal.focus(); terminal.paste(text) }
+        } },
+        { id: 'select-all', label: '全选', dividerBefore: true, run: () => { if (current()) terminal.selectAll() } },
+      ])
+    }}>
       <div className="workspace-terminal-shell" ref={hostRef} aria-label="终端输入与输出" />
     </div>
   )

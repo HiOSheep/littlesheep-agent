@@ -9,10 +9,43 @@
 // The in-flight state is published as `aria-busy` and the failure carries the
 // shared failure mark next to its sentence: the disabled buttons alone would only
 // say "you cannot press this", not "a delete is already running" or "it failed".
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { DeletionImpact } from '../deletion-impact'
 import { useModalSurface } from './modal-surface'
 import { FailureIcon } from './state-icons'
+
+/** Shared by object menus so every permanent-delete entry uses the same confirmation. */
+export function useDangerConfirmation() {
+  const [pending, setPending] = useState<{ impact: DeletionImpact; run: () => void | Promise<void> } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const busyRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false } }, [])
+  const requestDeletion = (impact: DeletionImpact, run: () => void | Promise<void>) => {
+    if (busyRef.current) return
+    setError(null)
+    setPending({ impact, run })
+  }
+  const confirm = async () => {
+    if (!pending || busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    try {
+      await pending.run()
+      if (mountedRef.current) setPending(null)
+    } catch (reason) {
+      if (mountedRef.current) setError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      busyRef.current = false
+      if (mountedRef.current) setBusy(false)
+    }
+  }
+  const confirmation = pending && createPortal(<DangerConfirmDialog impact={pending.impact} busy={busy} error={error}
+    onCancel={() => { if (!busyRef.current) setPending(null) }} onConfirm={() => void confirm()} />, document.body)
+  return { requestDeletion, confirmation }
+}
 
 export function DangerConfirmDialog({
   impact,

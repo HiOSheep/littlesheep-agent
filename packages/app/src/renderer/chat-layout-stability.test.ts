@@ -286,7 +286,7 @@ describe('chat layout stability', () => {
     expect(styles).toMatch(/\.window-titlebar\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.chat\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.messages\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
-    expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 36%, transparent\);/u)
+    expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 72%, transparent\);/u)
     expect(styles).toMatch(/\.workspace-preview-code\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
     expect(styles).toMatch(/\.workspace-review-diff\s*\{[\s\S]*?background:\s*var\(--workspace-code-surface\);/u)
   })
@@ -539,7 +539,7 @@ describe('chat layout stability', () => {
     const desktopShell = await readRendererFile('../main/desktop-shell.ts')
     expect(styles).toMatch(/--bg:\s*#191919;/u)
     expect(styles).toMatch(/--workspace-code-surface:\s*var\(--bg\);/u)
-    expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 36%, transparent\);/u)
+    expect(styles).toMatch(/--sidebar-glass-fill:\s*color-mix\(in srgb, var\(--surface\) 72%, transparent\);/u)
     expect(styles).not.toContain('sidebar-wash-dithered')
     expect(styles).toMatch(/--floating-panel-inner-radius:\s*calc\(\s*var\(--radius-floating-panel\) - var\(--floating-panel-border-width\)\s*\);/u)
     for (const selector of ['.sidebar-surface']) {

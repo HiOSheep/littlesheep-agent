@@ -23,6 +23,22 @@ export interface DeletionImpact {
   inUse: string | null
 }
 
+export function sessionDeletionImpact(session: { title: string }): DeletionImpact {
+  return {
+    objectType: '对话', name: session.title,
+    removes: ['删除这条对话及其保存在本地的消息记录和会话摘要', '删除后无法恢复'],
+    preserved: ['不会删除工作区里的文件'], inUse: null,
+  }
+}
+
+export function projectDeletionImpact(project: { name?: string; path: string }, sessionCount: number): DeletionImpact {
+  return {
+    objectType: '项目', name: project.name?.trim() || lastPathSegment(project.path),
+    removes: ['删除这条项目记录', `同时删除项目下 ${sessionCount} 个对话及其保存在本地的消息记录，删除后无法恢复`],
+    preserved: ['不会删除磁盘上的项目文件夹及其中的文件和代码'], inUse: null,
+  }
+}
+
 export function archivedProjectDeletionImpact(
   project: { name?: string; path: string },
   archivedSessionCount: number,

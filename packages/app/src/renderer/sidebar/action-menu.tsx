@@ -5,6 +5,7 @@ import { clampNumber } from '../app-shell/navigation'
 import { buildFloatingHelpTip, buildFloatingHelpTipFromElement, FloatingHelpTip } from '../ui/floating-help'
 import { useDismissOnOutside } from '../ui/presence'
 import { SIDEBAR_MENU_EVENT, transientTriggerProps } from '../ui/transient'
+import type { ContextAction } from '../ui/context-menu'
 
 
 export interface SidebarMenuItem {
@@ -12,6 +13,10 @@ export interface SidebarMenuItem {
   icon: ReactNode
   tone?: 'danger'
   onSelect: () => void | Promise<void>
+}
+
+export function sidebarContextActions(items: SidebarMenuItem[]): ContextAction[] {
+  return items.map((item) => ({ id: item.label, label: item.label, tone: item.tone, dividerBefore: item.tone === 'danger', run: item.onSelect }))
 }
 
 

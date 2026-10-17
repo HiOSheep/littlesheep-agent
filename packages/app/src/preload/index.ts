@@ -9,7 +9,7 @@
 // queryable and subscribable so a missed notification can always be repaired.
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_OPEN_CHANNEL, isContextMenuAction, isNativeContextMenu, type NativeContextMenu, type ContextMenuAction } from '../shared/context-menu-contracts'
+import { CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_OPEN_CHANNEL, CONTEXT_MENU_DISMISS_CHANNEL, isContextMenuAction, isNativeContextMenu, type NativeContextMenu, type ContextMenuAction } from '../shared/context-menu-contracts'
 import { isWindowChromeState, WINDOW_CHROME_CHANNEL, WINDOW_CHROME_QUERY_CHANNEL, type WindowChromeState } from '../shared/window-chrome-contracts'
 import { WINDOW_APPEARANCE_CHANNEL } from '../shared/window-appearance-contracts'
 import {
@@ -120,6 +120,10 @@ contextBridge.exposeInMainWorld('littlesheep', {
   contextMenuAction: (requestId: string, action: ContextMenuAction) => {
     if (typeof requestId !== 'string' || requestId.length > 128 || !isContextMenuAction(action)) return
     ipcRenderer.send(CONTEXT_MENU_ACTION_CHANNEL, requestId, action)
+  },
+  dismissContextMenu: (requestId: string) => {
+    if (typeof requestId !== 'string' || requestId.length > 128) return
+    ipcRenderer.send(CONTEXT_MENU_DISMISS_CHANNEL, requestId)
   },
   onWindowChrome: (listener: (state: WindowChromeState) => void) => {
     chromeListeners.add(listener)

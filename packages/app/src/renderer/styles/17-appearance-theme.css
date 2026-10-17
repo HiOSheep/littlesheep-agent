@@ -41,9 +41,7 @@
   --feedback-danger-text: #8c1821;
   --feedback-danger-border: rgba(180, 35, 45, 0.35);
   --danger-control-text: #75131b;
-  /* The dark recipe is 36% surface; 78% made the fill opaque enough that the blur behind it
-     showed nothing. Light surfaces need a little more fill than dark ones to keep text contrast,
-     but not that much (audited 2026-10-02). */
+  /* Light glass keeps its own fill so the denser dark sidebar does not flatten this theme. */
   --sidebar-glass-fill: color-mix(in srgb, var(--surface) 42%, transparent);
   --sidebar-tint-top: rgba(89, 145, 215, 0.045);
   --sidebar-tint-bottom: rgba(215, 132, 89, 0.045);
@@ -147,7 +145,7 @@
 .appearance-mini-chat i:nth-child(2n) { width: 82%; justify-self: end; background: #4176e6; }
 .appearance-mini-chat b { height: 9px; margin-top: 3px; border: 1px solid #ddd; border-radius: 3px; }
 .preview-dark { background: #141414; border-color: #454545; }
-.preview-dark .appearance-mini-sidebar { background: #343434; }
+.preview-dark .appearance-mini-sidebar { background: #242424; }
 .preview-dark .appearance-mini-chat i:nth-child(odd) { background: #777; }
 .preview-dark .appearance-mini-chat b { border-color: #454545; }
 .preview-system { background: linear-gradient(90deg, #fff 50%, #141414 50%); }

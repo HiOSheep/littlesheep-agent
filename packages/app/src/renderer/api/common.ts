@@ -17,6 +17,7 @@ declare global {
     littlesheep: {
       onContextMenu?: (listener: (menu: NativeContextMenu) => void) => () => void
       contextMenuAction?: (requestId: string, action: ContextMenuAction) => void
+      dismissContextMenu?: (requestId: string) => void
       onWindowChrome?: (listener: (state: WindowChromeState) => void) => () => void
       setWindowAppearance?: (isDark: boolean) => void
       /** Legacy fixed base URL. Kept for tests and for preloads that predate readiness. */

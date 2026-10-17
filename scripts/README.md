@@ -23,6 +23,8 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 
 产品窗口验收应使用隔离数据根、确定性夹具，并将日志、截图和临时报告写到系统临时产物目录；不得读取用户会话或密钥。报告只证明其实际执行的断言。
 
+`pnpm run verify:context-menus` 检查真实右键触发、原生编辑、会话／项目／消息／文件／标签菜单、键盘导航、重命名焦点和弹窗层级；报告与截图写入临时目录，`--out=<绝对路径>` 可指定输出。复制粘贴验收前物化备份系统剪贴板，结束时恢复，不读取个人应用数据。
+
 `node scripts/verify-appearance-settings.mjs` 验证外观设置的真实点击、颜色对比拒绝、字号与减少动态效果保存、刷新恢复、深浅模式及窄窗口可用性，截图保存到系统临时目录。
 
 `pnpm run verify:desktop-permission-v2` 通过真实 Renderer 和本地确定性 Provider 检查权限预设、对话持久化、审批／拒绝、文件边界、Shell 单次审批与降权恢复。检查点场景由 Runner 生成真实中断现场，再使用仍受支持的旧版 `waiting_user` 形态验证 Renderer 恢复；它不改变 durable 恢复机制。该门不验证 OS 级 Shell 沙箱。

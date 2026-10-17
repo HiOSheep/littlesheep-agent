@@ -1,6 +1,7 @@
 // Native edit capabilities are issued for one real context-menu invocation.
 export const CONTEXT_MENU_OPEN_CHANNEL = 'littlesheep:context-menu-open'
 export const CONTEXT_MENU_ACTION_CHANNEL = 'littlesheep:context-menu-action'
+export const CONTEXT_MENU_DISMISS_CHANNEL = 'littlesheep:context-menu-dismiss'
 export const CONTEXT_MENU_ACTIONS = ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll', 'copyLink', 'openLink', 'copyImage'] as const
 export type ContextMenuAction = typeof CONTEXT_MENU_ACTIONS[number]
 export interface ContextMenuItem {

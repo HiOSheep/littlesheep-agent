@@ -11,6 +11,7 @@ import { FloatingHelpTip, buildFloatingHelpTip, buildFloatingHelpTipFromElement 
 import { CloseMiniIcon, FileGlyphIcon, WorkspaceFeatureIcon } from '../ui/icons'
 import { OverflowingLabel } from '../ui/overflowing-label'
 import { transientTriggerProps } from '../ui/transient'
+import { openContextMenuFromEvent, type ContextAction } from '../ui/context-menu'
 import {
   isWorkspacePanelTab,
   parseWorkspaceFileTabId,
@@ -74,7 +75,7 @@ export function WorkspaceTabStrip({
   workspaceEntries: WorkspaceEntry[]
   onTabChange: (tab: WorkspacePanelTabId) => void
   onTabsReorder: (tabs: WorkspacePanelTabId[]) => void
-  onCloseTab: (tab: WorkspacePanelTabId) => void | Promise<void>
+  onCloseTab: (tab: WorkspacePanelTabId) => boolean | void | Promise<boolean | void>
   onTipChange: (tip: FloatingHelpTip | null) => void
 }) {
   const browserEntry = (tabId: WorkspaceBrowserTabId): DisplayedWorkspaceEntry => {
@@ -365,10 +366,32 @@ export function WorkspaceTabStrip({
             // Which kind of tab this is, so acceptance can drive the browser tab without
             // guessing from its label (a browser tab is labelled by its page/host).
             data-workspace-tab-kind={entry.kind}
+            data-context-menu=""
             tabIndex={0}
             aria-selected={active}
             aria-grabbed={dragging || undefined}
             onPointerDown={(event) => beginTabDrag(event, entry.id)}
+            onContextMenu={(event) => {
+              onTipChange(null)
+              const closeTabs = async (tabs: WorkspacePanelTabId[]) => {
+                for (const tab of tabs) {
+                  // A refused save or failed close keeps its draft and stops the batch.
+                  if (await onCloseTab(tab) === false) break
+                }
+              }
+              const otherTabs = visibleTabIds.filter((tab) => tab !== entry.id)
+              const rightTabs = visibleTabIds.slice(visibleTabIds.indexOf(entry.id) + 1)
+              const items: ContextAction[] = [
+                { id: 'close', label: '关闭标签', run: async () => { await onCloseTab(entry.id) } },
+                { id: 'close-others', label: '关闭其他标签', enabled: otherTabs.length > 0, run: () => closeTabs(otherTabs) },
+                { id: 'close-right', label: '关闭右侧标签', enabled: rightTabs.length > 0, run: () => closeTabs(rightTabs) },
+                { id: 'close-all', label: '关闭全部标签', run: () => closeTabs(visibleTabIds) },
+              ]
+              if (entry.kind === 'file') items.push({ id: 'copy-path', label: '复制完整路径', dividerBefore: true, run: () => navigator.clipboard.writeText(parseWorkspaceFileTabId(entry.id)!.path) })
+              const browser = entry.kind === 'browser' ? browserTabs.find((tab) => tab.id === entry.id) : undefined
+              if (browser?.url) items.push({ id: 'copy-url', label: '复制网页地址', dividerBefore: true, run: () => navigator.clipboard.writeText(browser.url) })
+              openContextMenuFromEvent(event, items)
+            }}
             onClick={() => {
               if (suppressClickRef.current) {
                 suppressClickRef.current = false

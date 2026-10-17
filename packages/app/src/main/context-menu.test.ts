@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ContextMenuParams, WebContents, BrowserWindow } from 'electron'
-import { CONTEXT_MENU_ACTION_CHANNEL } from '../shared/context-menu-contracts.js'
+import { CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_DISMISS_CHANNEL } from '../shared/context-menu-contracts.js'
 const { ipc, clipboard, nativeMenu } = vi.hoisted(() => ({
   ipc: { on: vi.fn(), removeListener: vi.fn() }, clipboard: { writeText: vi.fn() },
   nativeMenu: { buildFromTemplate: vi.fn(() => ({ popup: vi.fn() })) },
@@ -21,9 +21,11 @@ function fixture() {
   })
   installContextMenu(contents as unknown as WebContents, {} as BrowserWindow)
   const handler = ipc.on.mock.calls.find(([channel]) => channel === CONTEXT_MENU_ACTION_CHANNEL)![1]
+  const dismissHandler = ipc.on.mock.calls.find(([channel]) => channel === CONTEXT_MENU_DISMISS_CHANNEL)![1]
   const action = (requestId: string, id: string, event = { sender: contents, senderFrame: contents.mainFrame }) => handler(event, requestId, id)
   const open = (value = params()) => { contents.emit('context-menu', {}, value); return contents.send.mock.lastCall?.[1].requestId as string }
-  return { contents, open, action }
+  const dismiss = (requestId: string, event = { sender: contents, senderFrame: contents.mainFrame }) => dismissHandler(event, requestId)
+  return { contents, open, action, dismiss }
 }
 describe('desktop context menus', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -57,6 +59,12 @@ describe('desktop context menus', () => {
     expect(clipboard.writeText).toHaveBeenCalledWith('selected message text')
     expect(contents.copy).not.toHaveBeenCalled()
   })
+  it('preserves whitespace-only selections instead of replacing them with an object menu', () => {
+    const { open, action } = fixture()
+    const id = open(params({ isEditable: false, selectionText: '  \n\t' }))
+    action(id, 'copy')
+    expect(clipboard.writeText).toHaveBeenCalledWith('  \n\t')
+  })
   it('invalidates capabilities on navigation and cleans up its IPC listener', () => {
     const { contents, open, action } = fixture()
     const id = open(); contents.emit('did-navigate'); action(id, 'cut')
@@ -68,5 +76,21 @@ describe('desktop context menus', () => {
     const time = vi.spyOn(Date, 'now').mockReturnValue(100)
     const id = open(); time.mockReturnValue(61_000); action(id, 'cut'); time.mockRestore()
     expect(contents.cut).not.toHaveBeenCalled()
+  })
+  it('revokes a dismissed menu without letting stale or foreign dismissals cancel a newer menu', () => {
+    const { contents, open, action, dismiss } = fixture()
+    const previous = open()
+    const current = open()
+    dismiss(previous)
+    dismiss(current, { sender: {} as typeof contents, senderFrame: contents.mainFrame })
+    dismiss(current, { sender: contents, senderFrame: {} })
+    action(current, 'paste')
+    expect(contents.paste).toHaveBeenCalledTimes(1)
+    const cancelled = open()
+    dismiss(cancelled)
+    action(cancelled, 'cut')
+    expect(contents.cut).not.toHaveBeenCalled()
+    contents.emit('destroyed')
+    expect(ipc.removeListener).toHaveBeenCalledWith(CONTEXT_MENU_DISMISS_CHANNEL, expect.any(Function))
   })
 })

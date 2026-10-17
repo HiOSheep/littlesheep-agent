@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { clipboard, ipcMain, Menu } from 'electron'
 import { BROWSER_OPEN_NEW_TAB_CHANNEL } from '../shared/browser-control-contracts.js'
 import {
-  CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_OPEN_CHANNEL,
+  CONTEXT_MENU_ACTION_CHANNEL, CONTEXT_MENU_OPEN_CHANNEL, CONTEXT_MENU_DISMISS_CHANNEL,
   type ContextMenuAction, type ContextMenuItem,
 } from '../shared/context-menu-contracts.js'
 
@@ -18,7 +18,7 @@ export function contextMenuItems(params: Electron.ContextMenuParams): ContextMen
       { id: 'paste', label: '粘贴', enabled: flags.canPaste, shortcut: 'Ctrl+V' },
       { id: 'selectAll', label: '全选', enabled: flags.canSelectAll, shortcut: 'Ctrl+A', dividerBefore: true },
     )
-  } else if (params.selectionText.trim()) {
+  } else if (params.selectionText.length > 0) {
     items.push({ id: 'copy', label: '复制选中文字', enabled: flags.canCopy, shortcut: 'Ctrl+C' })
   }
   if (/^https?:\/\//iu.test(params.linkURL)) {
@@ -71,6 +71,14 @@ export function installContextMenu(contents: Electron.WebContents, win: Electron
     execute(item.id, current.params)
   }
   ipcMain.on(CONTEXT_MENU_ACTION_CHANNEL, actionHandler)
-  contents.once('destroyed', () => ipcMain.removeListener(CONTEXT_MENU_ACTION_CHANNEL, actionHandler))
+  const dismissHandler = (event: Electron.IpcMainEvent, requestId: unknown) => {
+    if (event.sender !== contents || event.senderFrame !== contents.mainFrame) return
+    if (pending?.requestId === requestId) pending = undefined
+  }
+  ipcMain.on(CONTEXT_MENU_DISMISS_CHANNEL, dismissHandler)
+  contents.once('destroyed', () => {
+    ipcMain.removeListener(CONTEXT_MENU_ACTION_CHANNEL, actionHandler)
+    ipcMain.removeListener(CONTEXT_MENU_DISMISS_CHANNEL, dismissHandler)
+  })
   contents.on('did-navigate', () => { pending = undefined })
 }

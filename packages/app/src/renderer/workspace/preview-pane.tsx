@@ -9,7 +9,7 @@ import {
 import { Markdown } from '../Markdown'
 import type { FloatingHelpTip } from '../ui/floating-help'
 import { FileGlyphIcon } from '../ui/icons'
-import { openContextMenu } from '../ui/context-menu'
+import { openContextMenuFromEvent, usesNativeContextMenu } from '../ui/context-menu'
 import {
   workspaceSessionKey,
   type WorkspaceFileDraftState,
@@ -298,10 +298,8 @@ export function WorkspacePreviewPane({
 
   return (
     <div className="workspace-preview-pane" onContextMenu={(event) => {
-      if (event.defaultPrevented || !selectedPath || window.getSelection()?.toString().trim()) return
-      if ((event.target as Element).closest('input, textarea, [contenteditable="true"], .monaco-editor, a[href]')) return
-      event.preventDefault()
-      openContextMenu(event.clientX, event.clientY, [
+      if (!selectedPath || usesNativeContextMenu(event)) return
+      openContextMenuFromEvent(event, [
         { id: 'open-with', label: '按所选方式打开', run: openWith.openWithCurrent },
         { id: 'reveal', label: '显示文件位置', run: openWith.reveal },
         { id: 'copy-path', label: '复制完整路径', dividerBefore: true, run: () => navigator.clipboard.writeText(selectedPath) },

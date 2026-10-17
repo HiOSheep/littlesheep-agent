@@ -21,7 +21,7 @@ This area owns reusable visual roles, focus primitives, icons, notices, state vi
 - Monaco 使用 8px 原生配置，Monaco／xterm 的 DOM 滑块通过同一颜色及圆角令牌适配；Git 对比保留唯一同步轨道并复用全局样式。嵌入浏览器中的第三方网页及 PDF／Office 自带阅读器的内部滚动条由对应内容引擎拥有，LS 只统一外层容器，不注入页面样式。
 - 审查覆盖聊天、输入菜单／模型／权限选择、附件、对话目录／记录、侧栏／搜索、设置／直接页面／用量、记忆文件、恢复／批准／错误／工具详情、文件树／预览、Git Review、终端、右键菜单、外观色盘与表格横向滚动。验收需实际窗口确认轨道边界、长列表末项／横向末端可达和键盘焦点，源码断言只验证契约。
 
-`ContextMenuSurface` 为应用窗口提供统一右键菜单：18px 外圆角、11px 选项圆角，沿用菜单背景、边框、阴影与主题色；窗口边缘自动翻转定位，方向键／Home／End 导航，Escape／Tab 退出，点击外部、滚动和失焦关闭。原生输入、选中文字、链接和图片动作来自 Main 的能力投影；文件树与预览通过 `openContextMenu` 提供已有领域操作。执行前恢复原焦点，失败明确显示，不用 DOM 编辑替代原生撤销或剪贴板。
+`ContextMenuSurface` 为应用窗口提供统一右键菜单：18px 外圆角、11px 选项圆角，菜单与选项均无边框，沿用菜单背景、阴影与主题色，悬停和键盘焦点以背景高亮表示；窗口边缘自动翻转定位，方向键／Home／End 导航，Escape／Tab 退出，点击外部、外层滚动和失焦关闭；菜单内部滚动保留菜单。Escape 遵循共享层级，只关闭最上层。原生输入、选中文字、链接和图片动作来自 Main 的能力投影；会话、项目、消息、工作区标签、终端、文件树与预览通过 `openContextMenuFromEvent` 提供已有领域操作，文字选区、链接、媒体和编辑器优先使用各自菜单。右键不隐式激活会话或标签，删除仍走确认，批量关闭遇到拒绝保存或失败即停止。执行前恢复原焦点，输入框进入自己的右键菜单不触发失焦提交；关闭菜单同时撤销 Main 的待用能力。失败明确显示，不用 DOM 编辑替代原生撤销或剪贴板。
 
 Glass identifies a floating surface. Long reading surfaces, code and dense settings remain on stable opaque surfaces. Keep the established rounded visual language; use one blur layer per visual surface and shared tokens for fill, border, shadow and radius. The conversation area (2026-10-03) combines DeepSeek-Harness's measured reading column, hairline separation, tinted reader bubble and flat detail panels with a translucent frosted composer overlay. The transcript scrolls behind this input surface and clips at its bottom edge. Its tokens (`--chat-*`, defined in `styles/03-shell-sidebar.css` and refined per theme in `styles/17-appearance-theme.css`) derive from the existing surface/text roles, so the custom palette keeps working.
 

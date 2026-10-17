@@ -2,7 +2,7 @@
 import type { CSSProperties } from 'react'
 import type { WorkspaceEntry } from '../api'
 import { openWorkspacePathInVSCode, revealWorkspacePath } from '../api/workspace-files'
-import { openContextMenu } from '../ui/context-menu'
+import { openContextMenuFromEvent } from '../ui/context-menu'
 import { FileGlyphIcon, FolderGlyphIcon, TreeChevronIcon } from '../ui/icons'
 import { type WorkspaceDirectoryState } from './directory-cache'
 
@@ -32,11 +32,9 @@ export function WorkspaceTreeRows({
       const selected = entry.path === selectedPath
       const loading = loadingDirs.has(entry.path)
       return <div key={entry.path} className={`workspace-tree-entry ${directoryEntry && open ? 'expanded' : ''}`} style={{ '--workspace-tree-depth': depth } as CSSProperties}>
-        <button className={`workspace-tree-row ${directoryEntry ? 'directory' : 'file'} ${selected ? 'selected' : ''}`} type="button" role="treeitem" aria-expanded={directoryEntry ? open : undefined} aria-selected={!directoryEntry ? selected : undefined} style={{ '--workspace-tree-depth': depth } as CSSProperties} onClick={() => directoryEntry ? onToggleDirectory(entry) : onOpenFile(entry)}
+        <button className={`workspace-tree-row ${directoryEntry ? 'directory' : 'file'} ${selected ? 'selected' : ''}`} type="button" role="treeitem" data-context-menu="" aria-expanded={directoryEntry ? open : undefined} aria-selected={!directoryEntry ? selected : undefined} style={{ '--workspace-tree-depth': depth } as CSSProperties} onClick={() => directoryEntry ? onToggleDirectory(entry) : onOpenFile(entry)}
           onContextMenu={(event) => {
-            event.preventDefault()
-            event.currentTarget.focus({ preventScroll: true })
-            openContextMenu(event.clientX, event.clientY, [
+            openContextMenuFromEvent(event, [
               { id: 'open', label: directoryEntry ? (open ? '收起文件夹' : '展开文件夹') : '在应用内预览', run: () => directoryEntry ? onToggleDirectory(entry) : onOpenFile(entry) },
               { id: 'vscode', label: '在 Visual Studio Code 中打开', run: () => openWorkspacePathInVSCode(workspaceRoot, entry.path) },
               { id: 'reveal', label: '显示文件位置', run: () => revealWorkspacePath(workspaceRoot, entry.path) },
