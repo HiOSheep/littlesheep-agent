@@ -1,43 +1,48 @@
-# RCD S3B — Real Provider Evaluation Protocol
+# RCD S3B 真实模型评测协议
 
-This evaluator is an overlay on the frozen product commit `d5015136ca9cf9583423361263b5bacba257a385`. Runtime, Harness, Tools, permission policy, prompts, and task oracles are not changed by S3B.
+本评测器是冻结产品提交 `d5015136ca9cf9583423361263b5bacba257a385` 上的评测覆盖层。S3B 不修改产品 Runtime、Harness、Tools、权限策略、Prompt 或任务 Oracle。
 
-## Evidence tiers
+## 证据层级
 
-- **A — controlled Provider:** deterministic scripted responses or injected local fake HTTP responses. This measures Runtime and evaluator wiring only; it is not model task-completion quality.
-- **B — real model:** an explicitly configured Provider sends live requests and independently evaluates isolated synthetic task outputs. This is the only tier that can measure model-selected actions.
-- **C — product comparison:** out of scope for S3B.
+- **A：受控 Provider。** 使用确定性脚本响应或本地假 HTTP 响应，只测 Runtime 与评测器链路，不代表模型自主完成任务的质量。
+- **B：真实模型。** 使用明确配置的 Provider 发出真实请求，并由独立 Oracle 检查隔离的合成任务产物。这是唯一能够测量模型自主决策的层级。
+- **C：产品对照。** 不属于 S3B 范围。
 
-S3A's four controlled adapters and their original oracles remain frozen. Additional task adapters are maintained as a separate S3B extension. The original twelve task definitions and all historical baseline ledgers remain unchanged.
+S3A 原有四个受控适配器及其 Oracle 保持不变。新增任务适配器作为独立的 S3B 扩展维护，原始 12 项任务定义及历史基线账本均未修改。
 
-## Provider profile and privacy
+## Provider 配置与隐私
 
-`node scripts/s3b-eval.mjs --preflight` reads the following process environment without sending a request: `S3B_PROVIDER_ID`, `S3B_MODEL`, `S3B_API_PROTOCOL`, `S3B_BASE_URL`, `S3B_API_KEY`, `S3B_MAX_PHYSICAL_REQUESTS`, `S3B_MAX_OUTPUT_TOKENS`, `S3B_MAX_COST_USD`, and `S3B_PROVIDER_BILLING_CAP_CONFIRMED=true`. The supported wire protocols are the existing LLM package's OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages adapters. External endpoints must use HTTPS; plain HTTP is accepted only for loopback fixtures.
+`node scripts/s3b-eval.mjs --preflight` 只读取以下环境变量，不发送请求：`S3B_PROVIDER_ID`、`S3B_MODEL`、`S3B_API_PROTOCOL`、`S3B_BASE_URL`、`S3B_API_KEY`、`S3B_MAX_PHYSICAL_REQUESTS`、`S3B_MAX_OUTPUT_TOKENS`、`S3B_MAX_COST_USD`、`S3B_PROVIDER_BILLING_CAP_CONFIRMED=true`、`S3B_TIMEOUT_SECONDS`（默认 120）和 `S3B_MAX_ATTEMPTS`（默认 1）。支持现有 LLM 包使用的 OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages 协议。外部端点必须使用 HTTPS；普通 HTTP 只允许用于本机回环测试服务。
 
-Preflight prints only the endpoint origin and sanitized model settings. It never prints a key, Authorization header, request body, prompt, or full endpoint path. Temperature and output-token limits are observed on actual requests. The current Harness request contract does not expose `top_p` or `seed`, so these are recorded as unsupported/unset rather than inferred.
+预检仅显示端点源和脱敏后的模型设置，不显示密钥、授权头、请求正文、Prompt 或完整端点路径。真实请求记录实际使用的 temperature 和输出 token 上限。当前 Harness 请求契约不提供 `top_p` 或 `seed`，因此将它们记录为不支持或未设置，不推测其实际值。
 
-Live calls also require the explicit run acknowledgement `S3B_REAL_PROVIDER_AUTHORIZED=I_AUTHORIZE_THIS_EVALUATION_RUN`, an explicit positive request and cost budget, and confirmation that a provider-side billing cap is configured. This software guard supplements but does not replace direct user authorization in the active task. The local runner enforces physical HTTP request count and maximum output tokens; it cannot independently enforce a USD charge limit. Provider billing usage/cost remains `unavailable` unless the Provider returns an authoritative billing receipt.
+真实调用还要求环境变量 `S3B_REAL_PROVIDER_AUTHORIZED=I_AUTHORIZE_THIS_EVALUATION_RUN`、明确的正数请求预算和费用上限，以及已配置 Provider 侧费用限制的确认。软件检查只是附加防护，不能代替当前任务中的用户直接授权。本地执行器限制物理 HTTP 请求数和最大输出 token，但不能独立保证美元费用上限。除非 Provider 返回权威费用回执，usage/cost 继续记为 `unavailable`。
 
-## Measurement contract
+## 测量约定
 
-- Physical Provider requests are counted at the injected fetch boundary, including retries; requests blocked before dispatch are recorded separately.
-- Logical model requests count `chat` and `chatStream` calls.
-- Tool proposals count tool calls returned by the Provider.
-- Tool executions and denied calls come from Runner `toolInvocations`; proposal count is never substituted for execution count.
-- Settled Effects come from Runner's side-effect evidence. Unknown Effects remain separate and cannot count as successful task outcomes.
-- Provider Usage comes only from `onProviderResponse` receipts (and actual embedding usage if used). Missing receipts remain unavailable/partial.
-- Agent Web requests are recorded independently from Provider HTTP calls. Offline/loopback task policies are verified separately.
-- Approval counts come from the trusted approval callback invocation count. If the execution path does not expose the count, it is `unavailable`.
-- Each record includes one independent Oracle result, a failure attribution with evidence, a sanitized Provider profile, environment/config fingerprints, and cleanup status.
+- 物理 Provider 请求在注入的 `fetch` 边界计数，包括重试；发送前被拦截的请求另行计数。
+- 逻辑模型请求统计 `chat` 与 `chatStream` 调用。
+- 工具提议次数来自 Provider 返回的工具调用；实际执行和拒绝次数来自 Runner `toolInvocations`。不能用提议数替代执行数。
+- 已结算 Effect 来自 Runner 副作用证据。Unknown Effect 单独记录，不能作为任务成功证据。
+- Provider usage 只来自 `onProviderResponse` 回执；缺失回执时记为 unavailable 或 partial。
+- Agent Web 请求与 Provider HTTP 请求分别记录，并分别检查离线/回环网络策略。
+- 审批数来自可信审批回调的实际调用次数；执行路径未提供计数时记为 unavailable。
+- 每项运行记录独立 Oracle 结果、失败归因和证据、脱敏 Provider 配置、环境/配置指纹及清理状态。
 
-No full prompt, response body, API credential, private user data, or unrestricted tool output belongs in the report. Task workspaces contain synthetic fixtures only. The app's host Shell remains outside an OS sandbox, so these trials do not claim host process containment.
+报告不得保存完整 Prompt、响应正文、API 凭据、私人用户数据或未受限的工具输出。任务目录只使用合成夹具。宿主 Shell 尚未处于 OS 沙箱之中，本评测不宣称能够隔离宿主进程。
 
-## Commands
+## 执行命令
 
-- `node scripts/s3b-eval.mjs --preflight` — sanitized configuration readiness; no network.
-- `node scripts/s3b-eval.mjs --verify-provider-metering` — local fake HTTP checks; no external network.
-- Controlled task and real task commands are added in the S3B-2 evaluator commit after the task adapters are ready.
+- `node scripts/s3b-eval.mjs --preflight`：检查脱敏配置，不联网。
+- `node scripts/s3b-eval.mjs --suite`：校验未修改的 12 项任务集、哈希和 8 个可执行适配器。
+- `node scripts/s3b-eval.mjs --verify-provider-metering`：使用本地假 HTTP 响应校验计量，不访问公网。
+- `node scripts/s3b-eval.mjs --run-controlled [--task=<ID>] [--output=<绝对路径>]`：运行全部 8 个受控适配器或指定单项；默认账本为 `docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json`。
+- `node scripts/s3b-eval.mjs --run-real --task=<CODE-01|FILE-02|DELIV-01|MULTI-01> --trial=<N> --authorize-live --max-cost-usd=<USD> [--output=<绝对路径>]`：受保护的真实 Provider 试跑入口。还需要上述环境配置及 `S3B_REAL_PROVIDER_AUTHORIZED=I_AUTHORIZE_THIS_EVALUATION_RUN`；这些程序参数本身不构成用户授权。
 
-## Current live-run status
+真实模型试跑使用原 S3A 任务文本、夹具种子与外部 Oracle，不预置工具调用序列。四个新增受控适配器不纳入真实试跑：RETR-01 仅访问本机回环服务；LONG-01 是确定性连续执行控制；LONG-02 调用真实子进程恢复测试；DELIV-02 暴露当前任务措辞未被严格要求解析器识别的问题。
 
-No real Provider request is made during S3B-1 or S3B-2 without direct user authorization and an explicit budget. Until that authorization is supplied, the live result must remain `real_provider_pending`; controlled trials are reported separately.
+任务的 `network: denied` 限制作用于 Agent 工具；真实模型试跑禁用 `web_search` 与 `web_fetch`。Provider API 是单独授权并计量的评测基础设施网络流量，因此该试跑并非完全离线。通用 Runner 适配器不会伪造 Main 持有的命令级 Shell 授权；`exec:...` 范围没有可信宿主路径提供时会标记为不可用，不能改为宽泛 Shell 授权。
+
+## 当前状态
+
+没有用户直接授权和明确预算时，不发送任何真实 Provider 请求。授权到达前，真实模型试跑状态保持 `real_provider_pending`，受控运行单独报告。

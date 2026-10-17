@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "extensionId": "LS-RCD-S3B-ADAPTERS-8",
+  "baseSuite": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+  "baseSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+  "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "note": "The S3A twelve task definitions and four original controlled adapters are unchanged. This S3B overlay adds four executable adapters and live Provider eligibility for only the original four tasks.",
+  "tasks": [
+    { "id": "CODE-01", "source": "S3A", "controlledAdapter": "test/s3a-task-adapters.test.ts", "layer": "Runner/Harness/Tools + controlled Provider + independent Node import Oracle", "realProviderTrialEligible": true },
+    { "id": "FILE-02", "source": "S3A", "controlledAdapter": "test/s3a-task-adapters.test.ts", "layer": "Runner/Harness/Tools + controlled Provider + disk/JSON/file-set Oracle", "realProviderTrialEligible": true },
+    { "id": "DELIV-01", "source": "S3A", "controlledAdapter": "test/s3a-task-adapters.test.ts", "layer": "Runner/Harness/ToolExecutionService + controlled Provider + ToolInvocation and disk Oracle", "realProviderTrialEligible": true },
+    { "id": "MULTI-01", "source": "S3A", "controlledAdapter": "test/s3a-task-adapters.test.ts", "layer": "Runner/Harness/Tools + controlled Provider + disk and Task Outcome Oracle", "realProviderTrialEligible": true },
+    { "id": "RETR-01", "source": "S3A", "controlledAdapter": "test/s3b-task-adapters.test.ts", "layer": "Runner/Harness/Tools + built-in web_search + test-owned loopback HTTP fixture + independent disk Oracle", "realProviderTrialEligible": false, "security": "Web provider performs one HTTP request to 127.0.0.1; no public Web access; fetching result URLs is disabled." },
+    { "id": "LONG-01", "source": "S3A", "controlledAdapter": "test/s3b-task-adapters.test.ts", "layer": "Runner/Harness/Tools + controlled Provider + external 35-item set/hash Oracle", "realProviderTrialEligible": false, "executionKind": "deterministic Runtime continuity control, not open-ended model task quality", "runBudget": { "modelCalls": 64, "toolCalls": 64, "segmentLoopCeiling": 30, "totalLoopIterations": 60 } },
+    { "id": "LONG-02", "source": "S3A", "controlledAdapter": "test/s3b-task-adapters.test.ts wraps packages/runner/src/durable-runner-segment-recovery.test.ts", "layer": "real Runner child-process SIGKILL at safe checkpoint + new Runner recovery + independent file/effect/lease assertions", "realProviderTrialEligible": false, "executionKind": "deterministic recovery control, not open-ended model task quality" },
+    { "id": "DELIV-02", "source": "S3A", "controlledAdapter": "test/s3b-task-adapters.test.ts", "layer": "Runner/Harness/Tools + controlled Provider + independent file and unsupported-claim Oracle; current strict parser leaves the request inventory unknown and no Runtime checker is attached", "realProviderTrialEligible": false, "executionKind": "deliberate wrong artifact exposes unsupported requirement wording and verifies the evaluator does not count it as completed" }
+  ],
+  "realProviderEligibleTasks": ["CODE-01", "FILE-02", "DELIV-01", "MULTI-01"],
+  "realProviderTrialStatus": "real_provider_pending"
+}

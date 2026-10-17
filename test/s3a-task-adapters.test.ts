@@ -43,7 +43,12 @@ function text(content = 'The requested fixture task has ended.'): ChatResponse {
 
 function scriptedLlm(next: (request: ChatRequest, call: number) => ChatResponse) {
   let calls = 0;
-  const chat = async (request: ChatRequest) => next(request, ++calls);
+  let toolProposals = 0;
+  const chat = async (request: ChatRequest) => {
+    const response = next(request, ++calls);
+    toolProposals += response.toolCalls.length;
+    return response;
+  };
   const llm: LlmClient = {
     chat,
     chatStream: async (request: ChatRequest, onDelta: (chunk: StreamChunk) => void) => {
@@ -54,7 +59,7 @@ function scriptedLlm(next: (request: ChatRequest, call: number) => ChatResponse)
     },
     embed: async () => ({ embeddings: [], model: 'scripted-unavailable', usage: { promptTokens: 0 } }),
   };
-  return { llm, requestCount: () => calls };
+  return { llm, requestCount: () => calls, proposalCount: () => toolProposals };
 }
 
 function queuedLlm(responses: ChatResponse[]) {
@@ -128,8 +133,10 @@ describe('S3A controlled Runner/Harness task adapters', () => {
       const oraclePassed = oracleValue === 'ready' && actualBytes.toString('utf8').includes('return "ready"');
       await report(id, {
         executionLayer: 'Runner/Harness/Tools with scripted Provider; no production source changes', provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' },
-        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(),
+        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCallProposals: model.proposalCount(),
         toolCalls: run.toolInvocations?.length ?? null, toolExecutions: run.toolInvocations?.filter((call) => call.status === 'succeeded').length ?? null,
+        deniedToolCalls: run.toolInvocations?.filter((call) => call.status === 'denied' || call.status === 'blocked').length ?? null,
+        settledEffects: run.sideEffects?.filter((effect) => effect.status === 'succeeded').length ?? null,
         oracle: { status: oraclePassed ? 'passed' : 'failed', taskResult: oraclePassed ? 'passed' : 'failed', method: 'Separate Node process imports the resulting fixture module and checks its return value; adapter also checks exact bytes', result: oracleValue, evidence: [{ path: 'src/label.mjs', sha256: sha256(actualBytes), bytes: actualBytes.byteLength }] },
         userInterventions: { approvals: 0, continuePrompts: 0 }, usage: { status: 'unavailable', inputTokens: null, outputTokens: null, cost: null },
         elapsedMs: Math.round(performance.now() - env.started), startedAt: env.startedAt, endedAt: new Date().toISOString(), infrastructureStatus: 'executed',
@@ -155,7 +162,10 @@ describe('S3A controlled Runner/Harness task adapters', () => {
       const oraclePassed = JSON.stringify(parsed) === JSON.stringify(expected) && JSON.stringify(files) === JSON.stringify(['inventory-summary.json', 'inventory.csv']);
       await report(id, {
         executionLayer: 'Runner/Harness/Tools with scripted Provider; real isolated file read/write', provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' },
-        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCalls: run.toolInvocations?.length ?? null,
+        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCallProposals: model.proposalCount(), toolCalls: run.toolInvocations?.length ?? null,
+        toolExecutions: run.toolInvocations?.filter((call) => call.status === 'succeeded').length ?? null,
+        deniedToolCalls: run.toolInvocations?.filter((call) => call.status === 'denied' || call.status === 'blocked').length ?? null,
+        settledEffects: run.sideEffects?.filter((effect) => effect.status === 'succeeded').length ?? null,
         oracle: { status: oraclePassed ? 'passed' : 'failed', taskResult: oraclePassed ? 'passed' : 'failed', method: 'Independent JSON parse, exact normalized value and workspace file-set comparison', expected, actual: parsed, files, evidence: [{ path: 'inventory-summary.json', sha256: sha256(bytes), bytes: bytes.byteLength }] },
         userInterventions: { approvals: 0, continuePrompts: 0 }, usage: { status: 'unavailable', inputTokens: null, outputTokens: null, cost: null },
         elapsedMs: Math.round(performance.now() - env.started), startedAt: env.startedAt, endedAt: new Date().toISOString(), infrastructureStatus: 'executed',
@@ -195,7 +205,10 @@ describe('S3A controlled Runner/Harness task adapters', () => {
       const oraclePassed = validationFailure && actualExecutions === 1 && bytes.toString('utf8') === 'verified-output';
       await report(id, {
         executionLayer: 'Runner/Harness/ToolExecutionService with scripted Provider and fixture-only additional Tool', provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' },
-        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCalls: calls.length, actualToolExecutions: actualExecutions,
+        runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCallProposals: model.proposalCount(), toolCalls: calls.length, actualToolExecutions: actualExecutions,
+        toolExecutions: calls.filter((call) => call.status === 'succeeded').length,
+        deniedToolCalls: calls.filter((call) => call.status === 'denied' || call.status === 'blocked').length,
+        settledEffects: run.sideEffects?.filter((effect) => effect.status === 'succeeded').length ?? null,
         validationFeedbackObservedByProvider: calls.some((call) => call.status === 'validation_failed' && call.errorKind === 'input_validation') && model.requestCount() >= 2,
         invocationEvidence: calls.map((call) => ({ toolName: call.toolName, status: call.status, errorKind: call.errorKind })),
         oracle: { status: oraclePassed ? 'passed' : 'failed', taskResult: oraclePassed ? 'passed' : 'failed', method: 'Independent read-back plus invocation ledger verifies invalid proposal had zero effects and corrected proposal had one effect', validationFailureRecorded: validationFailure, actualExecutions, contentMatches: bytes.toString('utf8') === 'verified-output', evidence: [{ path: 'result.txt', sha256: sha256(bytes), bytes: bytes.byteLength }] },
@@ -223,7 +236,10 @@ describe('S3A controlled Runner/Harness task adapters', () => {
       && outcome.status === 'partially_completed';
     await report(id, {
       executionLayer: 'Runner/Harness/Tools with scripted Provider; real writes and run-scoped file-content checkers', provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' },
-      runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCalls: run.toolInvocations?.length ?? null,
+      runId: run.runId, runtimeStatus: run.status, runtimeFinalStatus: run.runtimeStatus ?? null, modelRequests: model.requestCount(), toolCallProposals: model.proposalCount(), toolCalls: run.toolInvocations?.length ?? null,
+      toolExecutions: run.toolInvocations?.filter((call) => call.status === 'succeeded').length ?? null,
+      deniedToolCalls: run.toolInvocations?.filter((call) => call.status === 'denied' || call.status === 'blocked').length ?? null,
+      settledEffects: run.sideEffects?.filter((effect) => effect.status === 'succeeded').length ?? null,
       oracle: { status: oraclePassed ? 'passed' : 'failed', taskResult: oraclePassed ? 'partially_completed' : 'failed', method: 'Independent file read-back plus persisted requirement statuses; oracle confirms partial delivery instead of overall success', taskOutcomeStatus: outcome?.status ?? 'unknown', requirementStatuses: outcome?.requirements?.map((requirement) => requirement.status) ?? [], requirementInventory: outcome?.requirementInventory ?? 'unknown', invocationEvidence: run.toolInvocations?.map((call) => ({ toolName: call.toolName, status: call.status, errorKind: call.errorKind })) ?? [], evidence: [
         { path: 'a.txt', sha256: sha256(a), bytes: a.byteLength }, { path: 'b.txt', sha256: sha256(b), bytes: b.byteLength },
       ] },

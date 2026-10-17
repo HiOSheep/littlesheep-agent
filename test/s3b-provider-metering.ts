@@ -24,6 +24,7 @@ export interface S3bMeterSnapshot {
     requestedMaxOutputTokens: number | null;
     stream: boolean;
   }>;
+  responseModelIds: string[];
   physicalResponses: Array<{ attempt: number; status: number | null; endpointOrigin: string | null }>;
   budgetExhausted: boolean;
 }
@@ -58,25 +59,31 @@ export function createS3bMeasuredProvider(input: {
   let outputReceiptCount = 0;
   let cachedReceiptCount = 0;
   const observedParameters: S3bMeterSnapshot['observedParameters'] = [];
+  const responseModelIds: string[] = [];
   const physicalResponses: S3bMeterSnapshot['physicalResponses'] = [];
   let budgetExhausted = false;
 
   const fetchImpl = input.fetchImpl ?? globalThis.fetch;
   const guardedFetch: typeof fetch = async (resource, init) => {
+    let endpointOrigin: string;
+    try {
+      const rawUrl = resource instanceof Request ? resource.url : String(resource);
+      endpointOrigin = new URL(rawUrl, credentials.baseURL).origin;
+    } catch {
+      blockedPhysicalRequests += 1;
+      throw new Error('S3B rejected a malformed Provider endpoint before network dispatch.');
+    }
     if (physicalProviderRequests >= provider.physicalRequestBudget!) {
       blockedPhysicalRequests += 1;
       budgetExhausted = true;
       throw new Error('S3B physical Provider request budget exhausted before network dispatch.');
     }
     physicalProviderRequests += 1;
-    let endpointOrigin: string | null = null;
-    try {
-      const rawUrl = resource instanceof Request ? resource.url : String(resource);
-      endpointOrigin = new URL(rawUrl).origin;
-    } catch { /* Do not retain a malformed or secret-bearing URL. */ }
     let response: Response;
     try {
-      response = await fetchImpl(resource, init);
+      // Redirects can create unmetered requests and move an authenticated request to
+      // a different host. Keep the accounting and credential boundary at one origin.
+      response = await fetchImpl(resource, { ...init, redirect: 'error' });
     } catch (error) {
       physicalResponses.push({ attempt: physicalProviderRequests, status: null, endpointOrigin });
       throw error;
@@ -132,11 +139,13 @@ export function createS3bMeasuredProvider(input: {
     async chat(request: ChatRequest): Promise<ChatResponse> {
       const response = await base.chat(prepareRequest(request));
       toolCallProposals += response.toolCalls.length;
+      if (response.model) responseModelIds.push(response.model.slice(0, 160));
       return response;
     },
     async chatStream(request: ChatRequest, onDelta: (chunk: StreamChunk) => void): Promise<ChatResponse> {
       const response = await base.chatStream(prepareRequest(request), onDelta);
       toolCallProposals += response.toolCalls.length;
+      if (response.model) responseModelIds.push(response.model.slice(0, 160));
       return response;
     },
     async embed(request: EmbedRequest): Promise<EmbedResponse> {
@@ -173,6 +182,7 @@ export function createS3bMeasuredProvider(input: {
           responseCount: providerResponseReceipts,
         },
         observedParameters: [...observedParameters],
+        responseModelIds: [...responseModelIds],
         physicalResponses: [...physicalResponses],
         budgetExhausted,
       };

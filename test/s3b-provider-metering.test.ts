@@ -58,6 +58,7 @@ describe('S3B real Provider configuration and metering', () => {
       usage: { status: 'available', inputTokens: 17, outputTokens: 4, cachedInputTokens: 3, responseCount: 1 },
       observedParameters: [{ model: 'fixture-model-v1', temperature: 0.2, maxOutputTokens: 256, requestedMaxOutputTokens: 1000 }],
       physicalResponses: [{ attempt: 1, status: 200, endpointOrigin: 'https://provider.fixture' }],
+      responseModelIds: [],
     });
   });
 
@@ -73,6 +74,27 @@ describe('S3B real Provider configuration and metering', () => {
     await expect(measured.client.chat(request)).rejects.toThrow('physical Provider request budget exhausted');
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(measured.snapshot()).toMatchObject({ physicalProviderRequests: 1, blockedPhysicalRequests: 1, budgetExhausted: true });
+  });
+
+  it('disables redirects so one metered request cannot fan out to another endpoint', async () => {
+    const profile = resolveS3bProviderProfile(liveFixtureEnv);
+    const fetch = vi.fn(async (_resource: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.redirect).toBe('error');
+      return Response.redirect('https://redirect.fixture/collect', 302);
+    });
+    const measured = createS3bMeasuredProvider({ profile, fetchImpl: fetch as typeof globalThis.fetch });
+
+    await expect(measured.client.chat({
+      model: 'fixture-model-v1',
+      messages: [{ role: 'user', content: 'synthetic request only' }],
+    })).rejects.toBeTruthy();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(measured.snapshot()).toMatchObject({
+      physicalProviderRequests: 1,
+      blockedPhysicalRequests: 0,
+      physicalResponses: [{ attempt: 1, status: 302, endpointOrigin: 'https://provider.fixture' }],
+    });
   });
 
   it('keeps incomplete usage unavailable and requires explicit limits for live use', () => {
