@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://littlesheep.local/schemas/rcd-s3b-evaluation-record-v1.json",
+  "title": "LS RCD S3B Evaluation Record",
+  "type": "object",
+  "required": ["schemaVersion", "recordId", "taskId", "trial", "evidenceTier", "source", "provider", "execution", "oracle", "failureAttribution", "cleanup"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "trial": { "type": "integer", "minimum": 1 },
+    "evidenceTier": { "enum": ["A_runtime_deterministic", "B_real_model"] },
+    "source": {
+      "type": "object",
+      "required": ["productHead", "frozenProductHead", "productTreeFingerprint", "evaluatorFingerprint", "workingTreeFingerprint", "productSourceDirty"],
+      "properties": {
+        "productHead": { "type": "string" },
+        "frozenProductHead": { "const": "d5015136ca9cf9583423361263b5bacba257a385" },
+        "productTreeFingerprint": { "type": "string" },
+        "evaluatorFingerprint": { "type": "string" },
+        "workingTreeFingerprint": { "type": "string" },
+        "productSourceDirty": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "provider": {
+      "type": "object",
+      "required": ["kind", "simulated", "id", "model", "apiProtocol", "endpointOrigin", "modelVersion", "parameters", "limits"],
+      "properties": {
+        "kind": { "enum": ["scripted", "real"] },
+        "simulated": { "type": "boolean" },
+        "id": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "apiProtocol": { "type": ["string", "null"] },
+        "endpointOrigin": { "type": ["string", "null"] },
+        "modelVersion": { "type": ["string", "null"] },
+        "parameters": { "type": "object", "additionalProperties": true },
+        "limits": { "type": "object", "additionalProperties": true },
+        "credential": { "not": {} }
+      },
+      "additionalProperties": true
+    },
+    "execution": {
+      "type": "object",
+      "required": ["infrastructureStatus", "runtimeStatus", "startedAt", "endedAt", "durationMs", "logicalModelRequests", "physicalProviderRequests", "toolCallProposals", "toolExecutions", "deniedToolCalls", "settledEffects", "usage", "cost", "network", "approvals"],
+      "properties": {
+        "infrastructureStatus": { "enum": ["executed", "blocked", "harness_error", "not_run"] },
+        "runtimeStatus": { "type": ["string", "null"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "logicalModelRequests": { "type": ["integer", "null"], "minimum": 0 },
+        "physicalProviderRequests": { "type": ["integer", "null"], "minimum": 0 },
+        "toolCallProposals": { "type": ["integer", "null"], "minimum": 0 },
+        "toolExecutions": { "type": ["integer", "null"], "minimum": 0 },
+        "deniedToolCalls": { "type": ["integer", "null"], "minimum": 0 },
+        "settledEffects": { "type": ["integer", "null"], "minimum": 0 },
+        "segments": { "type": ["integer", "null"], "minimum": 0 },
+        "usage": { "$ref": "#/$defs/usage" },
+        "cost": { "$ref": "#/$defs/measuredValue" },
+        "network": { "type": "object", "required": ["providerHttpRequests", "agentWebRequests"], "properties": { "providerHttpRequests": { "type": ["integer", "null"], "minimum": 0 }, "agentWebRequests": { "type": ["integer", "null"], "minimum": 0 }, "forbiddenRequests": { "type": ["integer", "null"], "minimum": 0 } }, "additionalProperties": true },
+        "approvals": { "type": "object", "required": ["count", "source"], "properties": { "count": { "type": ["integer", "null"], "minimum": 0 }, "source": { "type": ["string", "null"] } }, "additionalProperties": true },
+        "outputDigests": { "type": "object", "additionalProperties": { "type": ["string", "null"] } }
+      },
+      "additionalProperties": true
+    },
+    "oracle": { "type": "object", "required": ["result", "method", "evidenceRefs"], "properties": { "result": { "enum": ["passed", "failed", "partially_completed", "correctly_blocked", "unverified"] }, "method": { "type": "string" }, "evidenceRefs": { "type": "array", "items": { "type": "string" } }, "falseCompletionClaim": { "type": ["boolean", "null"] } }, "additionalProperties": true },
+    "failureAttribution": { "anyOf": [{ "$ref": "#/$defs/failureAttribution" }, { "type": "null" }] },
+    "cleanup": { "type": "object", "required": ["attempted", "succeeded", "residuals"], "properties": { "attempted": { "type": "boolean" }, "succeeded": { "type": "boolean" }, "residuals": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": true }
+  },
+  "$defs": {
+    "measuredValue": { "type": "object", "required": ["status"], "properties": { "status": { "enum": ["available", "unavailable", "not_applicable"] }, "value": { "type": ["number", "string", "null"] }, "source": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] } }, "additionalProperties": false },
+    "usage": { "type": "object", "required": ["status", "inputTokens", "outputTokens", "cachedInputTokens", "source"], "properties": { "status": { "enum": ["available", "partial", "unavailable"] }, "inputTokens": { "type": ["integer", "null"], "minimum": 0 }, "outputTokens": { "type": ["integer", "null"], "minimum": 0 }, "cachedInputTokens": { "type": ["integer", "null"], "minimum": 0 }, "source": { "type": ["string", "null"] } }, "additionalProperties": true },
+    "failureAttribution": { "type": "object", "required": ["primary", "secondary", "evidenceRefs", "confidence"], "properties": { "primary": { "enum": ["model_understanding_or_decision", "tool_discovery_or_selection", "tool_parameter_or_schema", "tool_execution", "permission_or_safety", "network_or_external_service", "budget_or_no_progress", "context_or_memory", "recovery_or_settlement", "artifact_wrong_or_missing", "insufficient_verification", "evaluation_infrastructure", "unknown"] }, "secondary": { "type": "array", "items": { "type": "string" } }, "evidenceRefs": { "type": "array", "items": { "type": "string" } }, "confidence": { "enum": ["high", "medium", "low"] } }, "additionalProperties": false }
+  },
+  "additionalProperties": true
+}
