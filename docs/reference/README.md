@@ -21,6 +21,13 @@
 
 ## 专项验收基线
 
+- [RCD S3A 真实任务评测协议](rcd-s3a-evaluation-protocol-2026-10-17.md)：A/B/C 证据分层、可复现要求、指标口径与失败分类。
+- [RCD S3A 首批 12 项任务](rcd-s3a-task-suite-2026-10-17.json)：固定原始输入、种子状态、权限、外部 Oracle 和清理契约。
+- [RCD S3A 评测指标 Schema](rcd-s3a-metrics-schema-2026-10-17.json)：机器账本字段、不可用用量和失败分类结构。
+- [RCD S3A 24 项场景审计](rcd-s3a-scenario-audit-2026-10-17.json)：场景适配层级、Oracle 范围及未验证项清单。
+- [RCD S3A 干净提交六项核心复跑](rcd-s3a-clean-core-baseline-2026-10-17.json)：在无未提交改动的 `d5015136` worktree 上执行的 C02、C08、R01、R02、L01、X01 账本。
+- [RCD S3A 受控试跑基线](rcd-s3a-baseline-2026-10-17.md)：冻结源码版本、四项受控 Runner/Harness 任务试跑、结果与边界。
+- [RCD S3A 受控试跑机器账本](rcd-s3a-baseline-2026-10-17.json)：四项新增任务运行记录及独立 Oracle 结果。
 - [VRS VERIFY 去留与最终集成报告](vrs-final-integration-report-2026-10-16.md)：VERIFY Stage 移除、证据结算迁移、旧 checkpoint 兼容、main 集成提交与 VRS-F 回归结果。
 - [RCD S0 基线报告](rcd-s0-baseline-2026-10-16.md)：24 个场景目录、证据盘点与离线契约基线。
 - [RCD S0B 可执行基线](rcd-s0b-executable-baseline-2026-10-16.json)：六个代表场景的运行账本和未运行场景清单；入口见前述基线报告。
@@ -66,3 +73,11 @@
 - [缓存验收规程](cache-95-acceptance.md)：现行口径和正式验收命令。
 - [缓存基线目录](cache-baseline/README.md)：冻结账本及批次索引。
 - [桌面冷启动基线](cold-start-baseline/README.md)：冷启动、就绪态与窗口行为的原始验收输入。
+- [RCD S3A 真实任务评测基线](rcd-s3a-baseline-2026-10-17.md)：冻结产品版本、24 项 RCD 审计、12 项任务集、受控试跑、真实 Electron 复核及指标边界。
+- [RCD S3A 机器可读试跑账本](rcd-s3a-baseline-2026-10-17.json)：四项受控 Runner/Harness 任务的执行、Oracle、资源使用与清理记录。
+- [RCD S3A RCD 场景审计](rcd-s3a-scenario-audit-2026-10-17.json)：逐项记录 24 个场景的执行层级、Oracle、模拟 Provider 与未验证状态。
+- [RCD S3A 干净提交核心复跑](rcd-s3a-clean-core-baseline-2026-10-17.json)：冻结提交 d5015136 上六项核心结果。
+- [RCD S3A Electron 桌面复核](rcd-s3a-desktop-acceptance-2026-10-17.json)：Electron 44.4.5 下 S2C-E 检查和历史回放证据。
+- [RCD S3A 12 项任务集](rcd-s3a-task-suite-2026-10-17.json)：首批任务输入、初始状态、授权、Oracle、安全和清理约定。
+- [RCD S3A 指标 Schema](rcd-s3a-metrics-schema-2026-10-17.json)：任务结果、执行、用量、干预、安全和失败分类结构。
+- [RCD S3A 评测协议](rcd-s3a-evaluation-protocol-2026-10-17.md)：A/B/C 证据层级、冻结与复现、测量口径和安全边界。

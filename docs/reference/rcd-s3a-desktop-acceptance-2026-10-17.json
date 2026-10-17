@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "checkId": "S3A-S2C-E-clean-commit-renderer-recheck",
+  "status": "passed",
+  "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "productTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+  "environment": {
+    "os": "Windows 10.0.26200 x64",
+    "node": "v26.4.0",
+    "pnpm": "11.9.0",
+    "electron": "44.4.5"
+  },
+  "build": {
+    "command": "pnpm run verify:task-outcome-renderer",
+    "appBuildStatus": "built",
+    "inputDigest": "089acef3bf5bf146fe296f275efef465559b6a666e1d2160b71d47c8d13153de",
+    "outputDigest": "5759e62764fbe54a3da69f4374c0aa1674f2b93ef557151b16a7b62abdf6e3c2"
+  },
+  "executionLevel": "real Electron Renderer + Main/Runner + local controlled HTTP Provider + real workspace Tools",
+  "provider": { "type": "deterministic-local-http-fixture", "simulated": true, "publicNetwork": false, "paid": false },
+  "electronInstall": {
+    "initialFetchAttempt": "failed with fetch failed while the isolated worktree lacked electron.exe",
+    "resolution": "Reused the exact-version cached Electron archive after SHA-256 matched the version-pinned package checksums.json; extracted only into ignored node_modules in the isolated worktree.",
+    "archiveVersion": "44.4.5-win32-x64",
+    "archiveSha256": "11c395820a5aaa8ebcc0686b476d0ac98a730274ebfbdc8cf5538a7c2815cb5d",
+    "packageChecksumMatch": true,
+    "binaryVersionCommand": "v44.4.5",
+    "tlsValidationDisabled": false
+  },
+  "cases": [
+    { "case": "correct_file_content", "oracle": "passed", "runtimeRequirement": "passed", "effect": "write and file-content-check succeeded" },
+    { "case": "wrong_file_content", "oracle": "failed", "runtimeRequirement": "failed", "executionStatus": "completed", "effect": "write and file-content-check succeeded" },
+    { "case": "no_independent_check", "oracle": "unverified", "runtimeRequirement": "unverified", "effect": "write succeeded; no checker call" },
+    { "case": "two_requirements_partial", "oracle": ["passed", "failed"], "runtimeRequirements": ["passed", "failed"], "taskOutcome": "partially_completed", "effects": "two writes and two file-content checks succeeded" }
+  ],
+  "checks": [
+    "real Main/Runner wrote actual temporary workspace files through Tools",
+    "the independently checked wrong file is shown as failed while execution remained successful",
+    "the correct file shows passed only after the Runtime content checker ran",
+    "expanded check evidence shows the bounded workspace-relative file reference without its absolute path",
+    "a successful write without an independent check remains unverified",
+    "two explicit requirements from one user message retain independent passed/failed evidence and render as partial completion",
+    "ordinary chat remains readable without an empty Task Outcome card",
+    "Renderer reload reuses one durable Task Outcome card per Run without duplicate cards"
+  ],
+  "artifactEvidence": {
+    "temporaryReportSha256": "9950484144f9f265861174c1332b861ba076f555e699dc5cd5b049923afd9807",
+    "screenshotSha256": "9b3f4e4eedd80d67691cfb0ee114ed5c15944d323acfffae6be8ca146064b9c0",
+    "reportFilesRemainOutsideRepository": true
+  },
+  "limits": [
+    "The Provider was a deterministic local fixture, not a real Provider quality test.",
+    "Renderer interactions used CDP DOM events; native mouse and assistive-technology interaction were not tested.",
+    "The check covers the narrow explicit root-level text requirement contract only."
+  ],
+  "workspaceSideEffect": "The app-build hook refreshed the Desktop shortcut to the isolated worktree. It was then refreshed from the main worktree, and its verified target is D:\\Repositories\\littlesheep\\scripts\\launch-littlesheep.vbs."
+}

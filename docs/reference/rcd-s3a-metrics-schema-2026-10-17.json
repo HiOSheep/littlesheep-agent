@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://littlesheep.local/schemas/rcd-s3a-evaluation-record-v1.json",
+  "title": "LS RCD S3A Evaluation Record",
+  "type": "object",
+  "required": ["schemaVersion", "recordId", "taskId", "evidenceTier", "source", "environment", "execution", "oracle", "cleanup"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "recordId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "minLength": 1 },
+    "scenarioId": { "type": ["string", "null"] },
+    "evidenceTier": { "enum": ["A_runtime_deterministic", "B_real_model", "C_agent_comparison"] },
+    "source": {
+      "type": "object",
+      "required": ["productHead", "productTreeFingerprint", "evaluatorFingerprint", "dirty"],
+      "properties": {
+        "productHead": { "type": "string" },
+        "productTreeFingerprint": { "type": "string" },
+        "evaluatorFingerprint": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "dirtyPaths": { "type": "array", "items": { "type": "string" } },
+        "baselineQualification": { "enum": ["frozen_commit_clean", "product_commit_with_evaluator_overlay", "non_frozen_product_source"] }
+      },
+      "additionalProperties": true
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "arch", "node", "pnpm", "electron", "lockfileSha256", "taskDefinitionSha256", "configSha256"],
+      "properties": {
+        "os": { "type": "string" },
+        "arch": { "type": "string" },
+        "node": { "type": "string" },
+        "pnpm": { "type": "string" },
+        "electron": { "type": ["string", "null"] },
+        "lockfileSha256": { "type": "string" },
+        "taskDefinitionSha256": { "type": "string" },
+        "configSha256": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "execution": {
+      "type": "object",
+      "required": ["infrastructureStatus", "runtimeStatus", "provider", "startedAt", "endedAt", "durationMs", "modelRequests", "toolCalls", "toolExecutions"],
+      "properties": {
+        "infrastructureStatus": { "enum": ["executed", "blocked", "harness_error", "not_run"] },
+        "runtimeStatus": { "type": ["string", "null"] },
+        "stopReason": { "type": ["string", "null"] },
+        "executionLayer": { "type": "string" },
+        "provider": { "type": "object", "required": ["type", "simulated"], "properties": { "type": { "type": "string" }, "simulated": { "type": "boolean" }, "model": { "type": ["string", "null"] } }, "additionalProperties": true },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "firstUsefulEffectMs": { "type": ["number", "null"], "minimum": 0 },
+        "modelRequests": { "type": ["integer", "null"], "minimum": 0 },
+        "toolCalls": { "type": ["integer", "null"], "minimum": 0 },
+        "toolExecutions": { "type": ["integer", "null"], "minimum": 0 },
+        "continuationSegments": { "type": ["integer", "null"], "minimum": 0 },
+        "contextCompactions": { "type": ["integer", "null"], "minimum": 0 },
+        "userInterventions": { "type": "object", "properties": { "approvals": { "type": ["integer", "null"] }, "avoidablePauses": { "type": ["integer", "null"] }, "continueMessages": { "type": ["integer", "null"] }, "manualRecovery": { "type": ["integer", "null"] } }, "additionalProperties": true },
+        "providerUsage": { "$ref": "#/$defs/providerUsage" },
+        "cost": { "$ref": "#/$defs/measuredValue" },
+        "safety": { "type": "object", "properties": { "duplicateEffects": { "type": ["integer", "null"] }, "unknownEffects": { "type": ["integer", "null"] }, "unauthorizedToolAttempts": { "type": ["integer", "null"] }, "forbiddenNetworkRequests": { "type": ["integer", "null"] }, "recoveryAnomalies": { "type": ["integer", "null"] }, "falseCompletionClaims": { "type": ["integer", "null"] } }, "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
+    "oracle": {
+      "type": "object",
+      "required": ["result", "method", "evidenceRefs"],
+      "properties": {
+        "result": { "enum": ["passed", "failed", "partially_completed", "correctly_blocked", "unverified"] },
+        "evaluationCheck": { "enum": ["passed", "failed", "unverified"] },
+        "method": { "type": "string" },
+        "requirements": { "type": "array", "items": { "type": "object", "required": ["requirementId", "result"], "properties": { "requirementId": { "type": "string" }, "result": { "enum": ["passed", "failed", "unverified", "blocked"] }, "evidenceRefs": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": true } },
+        "unverifiedRequirementCount": { "type": ["integer", "null"], "minimum": 0 },
+        "falseCompletionClaim": { "type": ["boolean", "null"] },
+        "failureClassification": { "anyOf": [{ "$ref": "#/$defs/failureClassification" }, { "type": "null" }] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "cleanup": { "type": "object", "required": ["attempted", "succeeded", "residuals"], "properties": { "attempted": { "type": "boolean" }, "succeeded": { "type": "boolean" }, "residuals": { "type": "array", "items": { "type": "string" } } }, "additionalProperties": true }
+  },
+  "$defs": {
+    "measuredValue": {
+      "type": "object",
+      "required": ["status"],
+      "properties": { "status": { "enum": ["available", "unavailable", "not_applicable"] }, "value": { "type": ["number", "string", "null"] }, "source": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] } },
+      "additionalProperties": false
+    },
+    "providerUsage": {
+      "type": "object",
+      "required": ["status", "inputTokens", "outputTokens", "cachedInputTokens"],
+      "properties": { "status": { "enum": ["available", "unavailable", "not_applicable"] }, "inputTokens": { "type": ["integer", "null"], "minimum": 0 }, "outputTokens": { "type": ["integer", "null"], "minimum": 0 }, "cachedInputTokens": { "type": ["integer", "null"], "minimum": 0 }, "source": { "type": ["string", "null"] }, "reason": { "type": ["string", "null"] } },
+      "additionalProperties": false
+    },
+    "failureClassification": {
+      "type": "object",
+      "properties": {
+        "primary": { "enum": ["model_understanding_or_reasoning", "missing_tool_capability", "tool_parameter_or_execution_failure", "permission_or_safety_block", "network_or_external_environment", "budget_or_no_progress", "context_or_memory", "recovery_or_settlement", "artifact_wrong_or_missing", "insufficient_verification_evidence", "evaluation_infrastructure"] },
+        "secondary": { "type": "array", "items": { "enum": ["model_understanding_or_reasoning", "missing_tool_capability", "tool_parameter_or_execution_failure", "permission_or_safety_block", "network_or_external_environment", "budget_or_no_progress", "context_or_memory", "recovery_or_settlement", "artifact_wrong_or_missing", "insufficient_verification_evidence", "evaluation_infrastructure"] } },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
