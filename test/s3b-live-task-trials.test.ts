@@ -132,11 +132,18 @@ async function reportMetrics(input: {
       limits: {
         physicalRequestBudget: Number(process.env.S3B_MAX_PHYSICAL_REQUESTS),
         outputTokenLimit: Number(process.env.S3B_MAX_OUTPUT_TOKENS),
-        userApprovedMaxCostUsd: Number(process.env.S3B_MAX_COST_USD),
+        userApprovedMaxCostUsd: process.env.S3B_MAX_COST_USD ? Number(process.env.S3B_MAX_COST_USD) : null,
+        userApprovedMaxCostCny: process.env.S3B_MAX_COST_CNY ? Number(process.env.S3B_MAX_COST_CNY) : null,
+        costBudgetCurrency: process.env.S3B_MAX_COST_CNY ? 'CNY' : 'USD',
+        costBudgetScope: process.env.S3B_MAX_COST_CNY
+          ? 'shared_provider_account_prepaid_balance_for_authorized_batch'
+          : 'provider_account_cap_for_authorized_batch',
         providerBillingCapConfirmed: process.env.S3B_PROVIDER_BILLING_CAP_CONFIRMED === 'true',
+        providerBillingCapBasis: process.env.S3B_PROVIDER_BILLING_CAP_BASIS ?? null,
         timeoutSeconds: Number(process.env.S3B_TIMEOUT_SECONDS ?? '120'),
         maxAttempts: Number(process.env.S3B_MAX_ATTEMPTS ?? '1'),
       },
+      httpResponses: meter.physicalResponses,
     },
     logicalModelRequests: meter.logicalModelRequests,
     logicalEmbeddingRequests: meter.logicalEmbeddingRequests,

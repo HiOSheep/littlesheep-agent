@@ -19,6 +19,12 @@ function positiveUsd(value) {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 100 ? parsed : null;
 }
 
+function positiveCny(value) {
+  if (!/^\d+(?:\.\d{1,2})?$/u.test(value ?? '')) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 1_000_000 ? parsed : null;
+}
+
 function endpointFacts(raw) {
   try {
     const url = new URL(raw);
@@ -45,6 +51,12 @@ export function resolveS3bProviderProfile(env = process.env) {
   const physicalRequestBudget = positiveInteger(env.S3B_MAX_PHYSICAL_REQUESTS, MAX_PHYSICAL_REQUESTS);
   const outputTokenLimit = positiveInteger(env.S3B_MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS);
   const maxCostUsd = positiveUsd(env.S3B_MAX_COST_USD);
+  const maxCostCny = positiveCny(env.S3B_MAX_COST_CNY);
+  const hasUsdBudget = Boolean(env.S3B_MAX_COST_USD?.trim());
+  const hasCnyBudget = Boolean(env.S3B_MAX_COST_CNY?.trim());
+  const costBudgetCurrency = hasUsdBudget && !hasCnyBudget ? 'USD' : hasCnyBudget && !hasUsdBudget ? 'CNY' : null;
+  const costBudgetAmount = costBudgetCurrency === 'USD' ? maxCostUsd : costBudgetCurrency === 'CNY' ? maxCostCny : null;
+  const billingCapBasis = env.S3B_PROVIDER_BILLING_CAP_BASIS?.trim() || null;
   const timeoutSeconds = positiveInteger(env.S3B_TIMEOUT_SECONDS ?? '120', 600);
   const maxAttempts = positiveInteger(env.S3B_MAX_ATTEMPTS ?? '1', 3);
   const missing = [];
@@ -56,8 +68,11 @@ export function resolveS3bProviderProfile(env = process.env) {
   if (!apiKey) missing.push('S3B_API_KEY');
   if (physicalRequestBudget === null) missing.push(`S3B_MAX_PHYSICAL_REQUESTS (integer 1..${MAX_PHYSICAL_REQUESTS})`);
   if (outputTokenLimit === null) missing.push(`S3B_MAX_OUTPUT_TOKENS (integer 1..${MAX_OUTPUT_TOKENS})`);
-  if (maxCostUsd === null) missing.push('S3B_MAX_COST_USD (explicit positive USD ceiling required)');
+  if (costBudgetCurrency === null) missing.push('exactly one of S3B_MAX_COST_USD or S3B_MAX_COST_CNY (explicit positive cost ceiling required)');
+  if (costBudgetCurrency === 'USD' && maxCostUsd === null) missing.push('S3B_MAX_COST_USD (positive USD ceiling up to 100 required)');
+  if (costBudgetCurrency === 'CNY' && maxCostCny === null) missing.push('S3B_MAX_COST_CNY (positive CNY ceiling up to 1000000 required)');
   if (env.S3B_PROVIDER_BILLING_CAP_CONFIRMED !== 'true') missing.push('S3B_PROVIDER_BILLING_CAP_CONFIRMED=true (provider-side billing limit must be configured)');
+  if (env.S3B_PROVIDER_BILLING_CAP_CONFIRMED === 'true' && !billingCapBasis) missing.push('S3B_PROVIDER_BILLING_CAP_BASIS (describe the verified provider-side cap)');
   if (timeoutSeconds === null) missing.push('S3B_TIMEOUT_SECONDS (integer 1..600)');
   if (maxAttempts === null) missing.push('S3B_MAX_ATTEMPTS (integer 1..3)');
 
@@ -76,7 +91,11 @@ export function resolveS3bProviderProfile(env = process.env) {
       physicalRequestBudget,
       outputTokenLimit,
       maxCostUsd,
+      maxCostCny,
+      costBudgetCurrency,
+      costBudgetAmount,
       providerBillingCapConfirmed: env.S3B_PROVIDER_BILLING_CAP_CONFIRMED === 'true',
+      billingCapBasis,
       temperature: null,
       topP: null,
       seed: null,

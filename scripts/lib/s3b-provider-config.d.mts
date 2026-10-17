@@ -12,7 +12,11 @@ export interface S3bProviderProfile {
     physicalRequestBudget: number | null;
     outputTokenLimit: number | null;
     maxCostUsd: number | null;
+    maxCostCny: number | null;
+    costBudgetCurrency: 'USD' | 'CNY' | null;
+    costBudgetAmount: number | null;
     providerBillingCapConfirmed: boolean;
+    billingCapBasis: string | null;
     temperature: number | null;
     topP: number | null;
     seed: number | null;

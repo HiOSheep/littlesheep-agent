@@ -19,13 +19,23 @@ export interface S3bMeterSnapshot {
   };
   observedParameters: Array<{
     model: string;
+    requestedModelRef: string;
     temperature: number | null;
+    reasoningEffort: string | null;
+    thinking: string | null;
     maxOutputTokens: number;
     requestedMaxOutputTokens: number | null;
     stream: boolean;
   }>;
   responseModelIds: string[];
-  physicalResponses: Array<{ attempt: number; status: number | null; endpointOrigin: string | null }>;
+  physicalResponses: Array<{
+    attempt: number;
+    status: number | null;
+    endpointOrigin: string | null;
+    errorCode?: string | null;
+    errorType?: string | null;
+    errorParam?: string | null;
+  }>;
   budgetExhausted: boolean;
 }
 
@@ -88,7 +98,26 @@ export function createS3bMeasuredProvider(input: {
       physicalResponses.push({ attempt: physicalProviderRequests, status: null, endpointOrigin });
       throw error;
     }
-    physicalResponses.push({ attempt: physicalProviderRequests, status: response.status, endpointOrigin });
+    let providerError: Record<string, unknown> | null = null;
+    if (!response.ok) {
+      try {
+        const body = await response.clone().json() as { error?: unknown };
+        if (body.error && typeof body.error === 'object' && !Array.isArray(body.error)) {
+          providerError = body.error as Record<string, unknown>;
+        }
+      } catch { /* Status remains the authoritative bounded failure evidence. */ }
+    }
+    const safeErrorFact = (value: unknown) => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,80}$/u.test(value) ? value : null;
+    physicalResponses.push({
+      attempt: physicalProviderRequests,
+      status: response.status,
+      endpointOrigin,
+      ...(providerError ? {
+        errorCode: safeErrorFact(providerError.code),
+        errorType: safeErrorFact(providerError.type),
+        errorParam: safeErrorFact(providerError.param),
+      } : {}),
+    });
     return response;
   };
 
@@ -119,17 +148,25 @@ export function createS3bMeasuredProvider(input: {
 
   const prepareRequest = (request: ChatRequest): ChatRequest => {
     logicalModelRequests += 1;
+    const providerModelPrefix = `${credentials.providerId}/`;
+    const providerModel = request.model.startsWith(providerModelPrefix)
+      ? request.model.slice(providerModelPrefix.length)
+      : request.model;
     const requestedMaxOutputTokens = request.max_tokens ?? null;
     const max_tokens = Math.min(request.max_tokens ?? provider.outputTokenLimit!, provider.outputTokenLimit!);
     observedParameters.push({
-      model: request.model,
+      model: providerModel,
+      requestedModelRef: request.model,
       temperature: request.temperature ?? null,
+      reasoningEffort: request.reasoning_effort ?? null,
+      thinking: request.thinking?.type ?? null,
       maxOutputTokens: max_tokens,
       requestedMaxOutputTokens,
       stream: request.stream === true,
     });
     return {
       ...request,
+      model: providerModel,
       max_tokens,
       onProviderResponse: receipt => recordReceipt(receipt, request.onProviderResponse),
     };

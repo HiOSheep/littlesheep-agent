@@ -84,5 +84,7 @@
 - [RCD S3B 真实 Provider 评测协议](rcd-s3b-provider-evaluation-2026-10-17.md)：真实 Provider 的授权闸门、计量入口、四项 live 资格与受控任务层级。
 - [RCD S3B 任务适配器扩展](rcd-s3b-adapter-extension-2026-10-17.json)：保留 12 项 S3A 任务定义并将可执行受控适配器扩展到八项。
 - [RCD S3B 受控任务账本](rcd-s3b-controlled-baseline-2026-10-17.json)：八项受控 Runner/Harness 运行与独立 Oracle 结果。
-- [RCD S3B 真实模型账本](rcd-s3b-real-baseline-2026-10-17.json)：真实 Provider 状态；没有用户授权与费用预算时保留 `real_provider_pending`。
+- [RCD S3B 初始真实 Provider 预检账本](rcd-s3b-real-baseline-2026-10-17.json)：授权前预检快照，保留当时的 `real_provider_pending` 状态。
 - [RCD S3B 评测报告](rcd-s3b-evaluation-report-2026-10-17.md)：提交、受控结果、失败归因和未完成的真实模型验收。
+- [RCD S3B-R DeepSeek 真实模型报告](rcd-s3b-real-deepseek-report-2026-10-17.md)：冻结产品基线下四项真实模型任务的独立 Oracle 结果、资源计量和适用限制。
+- [RCD S3B-R DeepSeek 批次机器账本](rcd-s3b-real-deepseek-batch-2026-10-17.json)：逐次 Runner/Harness 运行、评测器指纹、Provider Usage、Oracle 及清理记录。

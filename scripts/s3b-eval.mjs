@@ -123,7 +123,8 @@ function commandArguments(args) {
     output: args.find(arg => arg.startsWith('--output='))?.slice('--output='.length),
     task: args.find(arg => arg.startsWith('--task='))?.slice('--task='.length),
     trial: args.find(arg => arg.startsWith('--trial='))?.slice('--trial='.length),
-    maxCost: args.find(arg => arg.startsWith('--max-cost-usd='))?.slice('--max-cost-usd='.length),
+    maxCostUsd: args.find(arg => arg.startsWith('--max-cost-usd='))?.slice('--max-cost-usd='.length),
+    maxCostCny: args.find(arg => arg.startsWith('--max-cost-cny='))?.slice('--max-cost-cny='.length),
   };
 }
 
@@ -135,6 +136,7 @@ function printUsage() {
     '  node scripts/s3b-eval.mjs --verify-provider-metering',
     '  node scripts/s3b-eval.mjs --run-controlled [--task=<ID>] [--output=<path>]',
     '  node scripts/s3b-eval.mjs --run-real --task=<CODE-01|FILE-02|DELIV-01|MULTI-01> --trial=<N> --authorize-live --max-cost-usd=<USD>',
+    '  node scripts/s3b-eval.mjs --run-real --task=<CODE-01|FILE-02|DELIV-01|MULTI-01> --trial=<N> --authorize-live --max-cost-cny=<CNY>',
   ].join('\n') + '\n');
 }
 
@@ -159,11 +161,17 @@ function checkLiveAuthorization(profile, args) {
   if (!profile.ready || !profile.credentials) throw new Error(`Real Provider profile is incomplete: ${profile.missing.join('; ')}`);
   const budget = commandArguments(args);
   const trial = Number(budget.trial);
-  const maxCost = Number(budget.maxCost);
+  const hasUsdBudget = budget.maxCostUsd !== undefined;
+  const hasCnyBudget = budget.maxCostCny !== undefined;
+  if (hasUsdBudget === hasCnyBudget) throw new Error('Specify exactly one of --max-cost-usd or --max-cost-cny.');
+  const costBudgetCurrency = hasUsdBudget ? 'USD' : 'CNY';
+  const maxCost = Number(hasUsdBudget ? budget.maxCostUsd : budget.maxCostCny);
   if (!Number.isSafeInteger(trial) || trial < 1 || trial > 3) throw new Error('--trial must be an integer from 1 to 3.');
-  if (!Number.isFinite(maxCost) || maxCost !== profile.provider.maxCostUsd) throw new Error('--max-cost-usd must exactly match S3B_MAX_COST_USD.');
+  if (costBudgetCurrency !== profile.provider.costBudgetCurrency || !Number.isFinite(maxCost) || maxCost !== profile.provider.costBudgetAmount) {
+    throw new Error(`--max-cost-${costBudgetCurrency.toLowerCase()} must exactly match the configured S3B cost budget.`);
+  }
   if (args.includes('--run-real') && !liveEligible.has(budget.task)) throw new Error('Real Provider trials are limited to the original four S3A tasks.');
-  return { task: budget.task, trial, maxCost };
+  return { task: budget.task, trial, maxCost, costBudgetCurrency };
 }
 
 function observationStatus(record) {
@@ -191,7 +199,7 @@ function classifyFailure({ infrastructureStatus, oracle, observation }) {
   return null;
 }
 
-function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task, observation, infrastructureStatus, childOutput, startedAt, durationMs, error, cleanup, providerFallback }) {
+function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task, observation, infrastructureStatus, childOutput, startedAt, durationMs, error, childSignal, childExitCode, childSpawnErrorCode, cleanup, providerFallback }) {
   const runtime = observationStatus({ observation });
   const oracle = runtime.oracle ?? { result: 'unverified', evaluationCheck: 'unverified', method: 'Oracle did not report an outcome', evidence: [] };
   const taskResult = oracle.taskResult ?? oracle.result ?? 'unverified';
@@ -203,6 +211,10 @@ function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task,
   const finalInfrastructureStatus = !cleanup.succeeded || !sourceStable ? 'harness_error' : infrastructureStatus;
   const evidenceRefs = (oracle.evidence ?? []).map(item => typeof item === 'string' ? item : `fixture://${item.path ?? item.ref ?? 'evidence'}`);
   const runtimeSegmentCount = runtime.segmentsObserved ?? runtime.continuationSegments ?? null;
+  const providerLimits = provider?.limits ?? {};
+  const liveCostArgument = providerLimits.costBudgetCurrency === 'CNY'
+    ? `--max-cost-cny=${providerLimits.userApprovedMaxCostCny}`
+    : `--max-cost-usd=${providerLimits.userApprovedMaxCostUsd}`;
   return {
     schemaVersion: 1,
     recordId: `s3b-${Date.now()}-${taskId.toLowerCase()}-${trial}`,
@@ -235,7 +247,9 @@ function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task,
         outputTokenLimit: realProvider ? provider?.limits?.outputTokenLimit ?? null : null,
         timeoutMs: realProvider ? provider?.timeoutSeconds ?? 120 : 120_000,
       })),
-      evaluatorCommand: realProvider ? `node scripts/s3b-eval.mjs --run-real --task=${taskId} --trial=${trial}` : `node scripts/s3b-eval.mjs --run-controlled --task=${taskId}`,
+      evaluatorCommand: realProvider
+        ? `node scripts/s3b-eval.mjs --run-real --task=${taskId} --trial=${trial} --authorize-live ${liveCostArgument}`
+        : `node scripts/s3b-eval.mjs --run-controlled --task=${taskId}`,
     },
     provider: {
       kind: realProvider ? 'real' : 'scripted',
@@ -285,6 +299,11 @@ function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task,
       invocationEvidence: runtime.invocationEvidence ?? [],
       effectEvidence: runtime.effectEvidence ?? [],
       modelResponseModels: provider?.modelVersion ?? null,
+      providerHttpResponses: provider?.httpResponses ?? [],
+      runtimeFailure: runtime.runtimeException ?? null,
+      childSignal: childSignal ?? null,
+      childExitCode: childExitCode ?? null,
+      childSpawnErrorCode: childSpawnErrorCode ?? null,
       outputDigests: { childOutputSha256: sha256(childOutput ?? ''), taskObservationSha256: sha256(JSON.stringify(runtime)) },
       error,
     },
@@ -318,9 +337,9 @@ function executeTask({ taskId, trial = 1, tier, outputPath }) {
   if (!resolve(taskRoot).startsWith(`${baseTemp}${sep}`)) throw new Error('Evaluation temp path escaped the system temp directory.');
   mkdirSync(taskRoot, { recursive: true });
   const isS3aAdapter = s3aAdapters.has(taskId);
-  const testPath = isS3aAdapter
-    ? 'test/s3a-task-adapters.test.ts'
-    : tier === 'B_real_model' ? 'test/s3b-live-task-trials.test.ts' : 'test/s3b-task-adapters.test.ts';
+  const testPath = tier === 'B_real_model'
+    ? 'test/s3b-live-task-trials.test.ts'
+    : isS3aAdapter ? 'test/s3a-task-adapters.test.ts' : 'test/s3b-task-adapters.test.ts';
   const testTitle = tier === 'B_real_model' ? `S3B real ${taskId}` : `${isS3aAdapter ? 'S3A' : 'S3B'} ${taskId}`;
   const env = {
     ...process.env,
@@ -357,7 +376,8 @@ function executeTask({ taskId, trial = 1, tier, outputPath }) {
   const error = child.error ? child.error.code ?? child.error.name : child.status === 0 ? null : `child_exit_${String(child.status)}`;
   const record = normalizeRecord({
     taskId, trial, tier, sourceBefore, sourceAfter, task, observation: observation?.observation ?? {},
-    infrastructureStatus, childOutput, startedAt, durationMs: Date.now() - started, error, cleanup,
+    infrastructureStatus, childOutput, startedAt, durationMs: Date.now() - started, error,
+    childSignal: child.signal, childExitCode: child.status, childSpawnErrorCode: child.error?.code ?? null, cleanup,
     providerFallback: tier === 'B_real_model'
       ? { id: process.env.S3B_PROVIDER_ID ?? null, model: process.env.S3B_MODEL ?? null, apiProtocol: process.env.S3B_API_PROTOCOL ?? null, endpointOrigin: null }
       : { id: 'scripted', model: null, apiProtocol: null, endpointOrigin: null },

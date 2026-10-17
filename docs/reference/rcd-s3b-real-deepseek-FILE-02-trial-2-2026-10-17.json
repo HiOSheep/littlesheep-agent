@@ -1,0 +1,345 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S3B-REAL-TASKS-12",
+  "generatedAt": "2026-10-17T10:35:45.309Z",
+  "productStatus": "live_trials_authorized_and_executed",
+  "evidenceTier": "B_real_model",
+  "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "selection": {
+    "mode": "--run-real",
+    "taskIds": [
+      "FILE-02"
+    ],
+    "trial": 2
+  },
+  "counts": {
+    "taskDefinitions": 12,
+    "executableAdapters": 8,
+    "executed": 1,
+    "blocked": 0,
+    "harnessError": 0,
+    "notRun": 11,
+    "taskResults": {
+      "passed": 0,
+      "failed": 1,
+      "partially_completed": 0,
+      "correctly_blocked": 0,
+      "unverified": 0
+    },
+    "infrastructureStatus": {
+      "executed": 1,
+      "blocked": 0,
+      "harness_error": 0,
+      "not_run": 0
+    },
+    "logicalModelRequests": 4,
+    "physicalProviderRequests": 4,
+    "toolCallProposals": 3,
+    "toolExecutions": 3,
+    "unavailableUsageTrials": 0,
+    "unavailableCostTrials": 1,
+    "cleanupFailures": 0,
+    "failureAttributions": {
+      "artifact_wrong_or_missing": 1
+    }
+  },
+  "suiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+  "adapterExtensionSha256": "8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8",
+  "metricsSchemaSha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65",
+  "records": [
+    {
+      "schemaVersion": 1,
+      "recordId": "s3b-1792233344936-file-02-2",
+      "taskId": "FILE-02",
+      "trial": 2,
+      "evidenceTier": "B_real_model",
+      "source": {
+        "productHead": "edf35ef7cbe38aca901976623310ce5de6207bac",
+        "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "evaluatorFingerprint": "924484012edae34fcf151ddfad629400430ebbe05a13d8c523d2c612b31a282b",
+        "workingTreeFingerprint": "2a09d5f960b10f21dd0c045247ea2b2b992d1475074a91bed46395f45dd161de",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/rcd-s3b-provider-evaluation-2026-10-17.md",
+          "scripts/lib/s3b-provider-config.d.mts",
+          "scripts/lib/s3b-provider-config.mjs",
+          "scripts/s3b-eval.mjs",
+          "test/s3b-live-task-trials.test.ts",
+          "test/s3b-provider-metering.test.ts",
+          "test/s3b-provider-metering.ts",
+          "docs/reference/rcd-s3b-real-deepseek-CODE-01-dispatch-diagnostic-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-1-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-2-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-dispatch-diagnostic-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-1-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-MULTI-01-trial-1-2026-10-17.json"
+        ],
+        "productSourceDirty": false,
+        "unclassifiedDirtyPaths": [],
+        "unclassifiedCommittedPaths": [],
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "18118479273ab151c90b89093d08aaf725252de9b6b86cee729b313508cd6842",
+        "configSha256": "dad270f023bd71b325d76270a070179ff32dfb158a481bf79668ce713f4c4d0e",
+        "evaluatorCommand": "node scripts/s3b-eval.mjs --run-real --task=FILE-02 --trial=2"
+      },
+      "provider": {
+        "kind": "real",
+        "simulated": false,
+        "id": "deepseek",
+        "model": "deepseek-flash",
+        "apiProtocol": "openai-chat-completions",
+        "endpointOrigin": "https://api.deepseek.com",
+        "modelVersion": [
+          "deepseek-flash"
+        ],
+        "parameters": {
+          "observed": [
+            {
+              "model": "deepseek-flash",
+              "requestedModelRef": "deepseek/deepseek-flash",
+              "temperature": null,
+              "reasoningEffort": null,
+              "thinking": "enabled",
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek-flash",
+              "requestedModelRef": "deepseek/deepseek-flash",
+              "temperature": null,
+              "reasoningEffort": null,
+              "thinking": "enabled",
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek-flash",
+              "requestedModelRef": "deepseek/deepseek-flash",
+              "temperature": null,
+              "reasoningEffort": null,
+              "thinking": "enabled",
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek-flash",
+              "requestedModelRef": "deepseek/deepseek-flash",
+              "temperature": null,
+              "reasoningEffort": null,
+              "thinking": "enabled",
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            }
+          ],
+          "topP": null,
+          "seed": null,
+          "unsupported": [
+            "top_p",
+            "seed"
+          ]
+        },
+        "limits": {
+          "physicalRequestBudget": 8,
+          "outputTokenLimit": 2048,
+          "userApprovedMaxCostUsd": null,
+          "userApprovedMaxCostCny": 12.1,
+          "costBudgetCurrency": "CNY",
+          "costBudgetScope": "shared_provider_account_prepaid_balance_for_authorized_batch",
+          "providerBillingCapConfirmed": true,
+          "providerBillingCapBasis": "prepaid_balance_exhaustion_verified_2026-10-17",
+          "timeoutSeconds": 120,
+          "maxAttempts": 1
+        },
+        "physicalUsageSource": "LlmClient onProviderResponse physical Provider receipts"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "runId": "304ac4bf-026c-47da-a4ba-e764e2f2454d",
+        "executionLayer": "Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence",
+        "startedAt": "2026-10-17T10:35:34.155Z",
+        "endedAt": "2026-10-17T10:35:43.957Z",
+        "durationMs": 9800,
+        "logicalModelRequests": 4,
+        "logicalEmbeddingRequests": 0,
+        "physicalProviderRequests": 4,
+        "blockedPhysicalRequests": 0,
+        "toolCallProposals": 3,
+        "toolExecutions": 3,
+        "deniedToolCalls": 0,
+        "failedToolCalls": 0,
+        "settledEffects": 1,
+        "unknownEffects": 0,
+        "segments": null,
+        "contextCompactions": null,
+        "usage": {
+          "status": "available",
+          "inputTokens": 11852,
+          "outputTokens": 708,
+          "cachedInputTokens": 8832,
+          "source": "LlmClient onProviderResponse physical Provider receipts",
+          "reason": null,
+          "responseCount": 4
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "source": null,
+          "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens"
+        },
+        "network": {
+          "providerHttpRequests": 4,
+          "agentWebRequests": 0,
+          "forbiddenRequests": 0,
+          "providerHttpFailures": 0,
+          "agentPolicy": "Web tools disabled; task network rules apply to Agent tools. The separately authorized Provider API transport is measured as evaluation infrastructure traffic."
+        },
+        "approvals": {
+          "count": 0,
+          "source": "trusted Runner approve callback invocation count"
+        },
+        "invocationEvidence": [
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          }
+        ],
+        "effectEvidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded",
+            "idempotencyKey": "tool:write:d905b99d62129610e63dd2d77adbb43bade82eb0638254f33a34c3a0a108153f"
+          }
+        ],
+        "modelResponseModels": [
+          "deepseek-flash"
+        ],
+        "providerHttpResponses": [
+          {
+            "attempt": 1,
+            "status": 200,
+            "endpointOrigin": "https://api.deepseek.com"
+          },
+          {
+            "attempt": 2,
+            "status": 200,
+            "endpointOrigin": "https://api.deepseek.com"
+          },
+          {
+            "attempt": 3,
+            "status": 200,
+            "endpointOrigin": "https://api.deepseek.com"
+          },
+          {
+            "attempt": 4,
+            "status": 200,
+            "endpointOrigin": "https://api.deepseek.com"
+          }
+        ],
+        "runtimeFailure": null,
+        "childSignal": null,
+        "childExitCode": 0,
+        "childSpawnErrorCode": null,
+        "outputDigests": {
+          "childOutputSha256": "b78ab490b7a8e5b96aafa9724158feff43090312a7ca08b1fb60513b729c8b40",
+          "taskObservationSha256": "8ba6a3cd98cbc0e614cff3519ce601c91b691275e0f0021dbf70be2eae6d7a61"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent disk read, JSON parse, exact value and file-set check",
+        "evidenceRefs": [
+          "fixture://inventory-summary.json"
+        ],
+        "falseCompletionClaim": null,
+        "details": {
+          "status": "failed",
+          "taskResult": "failed",
+          "evaluationCheck": "failed",
+          "method": "Independent disk read, JSON parse, exact value and file-set check",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total_quantity": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ],
+          "evidence": [
+            {
+              "path": "inventory-summary.json",
+              "sha256": "5485876851623ab60783b25e41b4bc9e805057a5a492469b9baec50669f3f488",
+              "bytes": 135
+            }
+          ]
+        }
+      },
+      "failureAttribution": {
+        "primary": "artifact_wrong_or_missing",
+        "secondary": [],
+        "evidenceRefs": [
+          "fixture://inventory-summary.json"
+        ],
+        "confidence": "high"
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    }
+  ],
+  "notes": [
+    "Only the original four S3A tasks are eligible for live trials.",
+    "Task result comes from the frozen independent Oracle; Provider final text is not a success signal.",
+    "This trial count is not a population-level success estimate."
+  ]
+}
