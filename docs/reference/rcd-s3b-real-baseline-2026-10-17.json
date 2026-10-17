@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S3B-REAL-TASKS-12",
+  "generatedAt": "2026-10-17T07:03:13Z",
+  "productStatus": "real_provider_pending",
+  "evidenceTier": "B_real_model",
+  "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "source": {
+    "s3aCommit": "114eaefe7922296bf7109a767c21f5238ae62988",
+    "s3bMeteringCommit": "6694c3110732a804179204b312fdcbf95596f7a2",
+    "s3bAdapterCommit": "38167d3346244b6d665d5368b2bff1d73566a74f",
+    "s3bMetricAggregationCommit": "003d29d184cdd776c94fa533f7b6fafcf950738e",
+    "s3bIdentityReportingCommit": "fd3868746e4090363a2d01ea577e7846d5d9fd2c",
+    "branch": "codex/s3b-real-model-evaluation",
+    "evaluatorFingerprint": "615c18224970a31699ede535381346119a62574ff5573675a5e58c6738405fc9",
+    "workingTreeFingerprintForControlledTrials": "b9c538a7a170cedc6102ae0fa65b78bb9b1441a931b0d60b319ed63b586acada",
+    "productSourceDirty": false
+  },
+  "environment": {
+    "os": "win32",
+    "arch": "x64",
+    "node": "v26.4.0",
+    "pnpm": "11.9.0",
+    "electron": "^44.0.0",
+    "electronBinaryAvailable": false,
+    "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b"
+  },
+  "selection": {
+    "mode": "--run-real",
+    "eligibleTaskIds": ["CODE-01", "FILE-02", "DELIV-01", "MULTI-01"],
+    "plannedTrialsPerTask": 3,
+    "plannedTrials": 12,
+    "taskIds": [],
+    "trial": null
+  },
+  "counts": {
+    "plannedTrials": 12,
+    "attemptedTrials": 0,
+    "executed": 0,
+    "blocked": 0,
+    "harnessError": 0,
+    "notRunTrials": 12,
+    "eligibleTasksNotRun": 4,
+    "physicalProviderRequests": 0,
+    "taskResults": {
+      "passed": 0,
+      "failed": 0,
+      "partially_completed": 0,
+      "correctly_blocked": 0,
+      "unverified": 0
+    },
+    "usage": "unavailable",
+    "cost": "unavailable"
+  },
+  "providerPreflight": {
+    "state": "real_provider_pending",
+    "configurationReady": false,
+    "directUserAuthorization": false,
+    "liveRunAcknowledgementPresent": false,
+    "providerSideBillingCapConfirmed": false,
+    "missing": [
+      "S3B_PROVIDER_ID",
+      "S3B_MODEL",
+      "S3B_API_PROTOCOL",
+      "S3B_BASE_URL",
+      "S3B_API_KEY",
+      "S3B_MAX_PHYSICAL_REQUESTS",
+      "S3B_MAX_OUTPUT_TOKENS",
+      "S3B_MAX_COST_USD",
+      "S3B_PROVIDER_BILLING_CAP_CONFIRMED=true"
+    ],
+    "credentialsRecorded": false
+  },
+  "records": [],
+  "pendingTasks": [
+    { "taskId": "CODE-01", "status": "not_run", "reason": "No direct authorization, Provider profile, or explicit budgets." },
+    { "taskId": "FILE-02", "status": "not_run", "reason": "No direct authorization, Provider profile, or explicit budgets." },
+    { "taskId": "DELIV-01", "status": "not_run", "reason": "No direct authorization, Provider profile, or explicit budgets." },
+    { "taskId": "MULTI-01", "status": "not_run", "reason": "No direct authorization, Provider profile, or explicit budgets." }
+  ],
+  "notes": [
+    "No real Provider request was made; the default live-run guard rejected execution because direct authorization and a matching acknowledgement were absent.",
+    "The four live adapters are prepared but have not been validated against a real Provider.",
+    "Local request-count and output-token caps do not enforce USD spend; a Provider-side billing cap and direct user cost ceiling are required.",
+    "This ledger is a pending-state snapshot, not a real-model task result. Save future live trials to separate per-task/per-trial output paths to preserve every record."
+  ]
+}

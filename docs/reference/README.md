@@ -81,3 +81,8 @@
 - [RCD S3A 12 项任务集](rcd-s3a-task-suite-2026-10-17.json)：首批任务输入、初始状态、授权、Oracle、安全和清理约定。
 - [RCD S3A 指标 Schema](rcd-s3a-metrics-schema-2026-10-17.json)：任务结果、执行、用量、干预、安全和失败分类结构。
 - [RCD S3A 评测协议](rcd-s3a-evaluation-protocol-2026-10-17.md)：A/B/C 证据层级、冻结与复现、测量口径和安全边界。
+- [RCD S3B 真实 Provider 评测协议](rcd-s3b-provider-evaluation-2026-10-17.md)：真实 Provider 的授权闸门、计量入口、四项 live 资格与受控任务层级。
+- [RCD S3B 任务适配器扩展](rcd-s3b-adapter-extension-2026-10-17.json)：保留 12 项 S3A 任务定义并将可执行受控适配器扩展到八项。
+- [RCD S3B 受控任务账本](rcd-s3b-controlled-baseline-2026-10-17.json)：八项受控 Runner/Harness 运行与独立 Oracle 结果。
+- [RCD S3B 真实模型账本](rcd-s3b-real-baseline-2026-10-17.json)：真实 Provider 状态；没有用户授权与费用预算时保留 `real_provider_pending`。
+- [RCD S3B 评测报告](rcd-s3b-evaluation-report-2026-10-17.md)：提交、受控结果、失败归因和未完成的真实模型验收。
