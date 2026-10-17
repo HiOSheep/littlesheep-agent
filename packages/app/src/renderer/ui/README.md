@@ -2,6 +2,8 @@
 
 This area owns reusable visual roles, focus primitives, icons, notices, state views and interaction tokens. Domain components should consume these primitives instead of creating another local style system.
 
+The current renderer contract and its intentional material/density exceptions are recorded in [Design Language V1](./design-language-v1.md).
+
 `FileGlyphIcon` / `FolderGlyphIcon` 统一供文件树、审查树、文件标签、附件和记忆文件入口使用。文件格式使用本地 SVG 标志，保留格式的识别形状和颜色；文件夹与未知文件使用轻量轮廓，16px 图标不再依赖字体渲染微型缩写。素材来源、固定版本和许可见 [图标素材说明](file-glyph-assets/README.md)，归类与共享图标契约由 `icons.test.ts`、`icon-actions.test.ts` 和 `workspace-glyph-legibility.test.ts` 验证。
 
 `VoidRing` 是品牌动效的共享入口，实时绘制：`mark.png` 作为贴图交给一个片元着色器（`void-ring-renderer.ts`），黑色球体保持不动，只重新点亮外圈日冕——呼吸外扩、缓慢漂移的光丝、颜色始终取自母图本身。状态由 `void-ring-motion.ts` 的纯函数模型逐帧推进：待机是不规则的呼吸并偶尔“张望”；加载是一颗带拖尾的彗星沿边缘奔跑；思考是沿边缘蠕动的细丝与脉动。状态切换在约 0.3 秒内交叉过渡，不硬切。模型第一帧的所有运动量为 0，画面与 `mark.png` 完全一致，所以静态图换成实时画布不会闪（2026-10-03 反馈）。所有图标共用一个隐藏的 WebGL 画布和一个 requestAnimationFrame，避免浏览器 WebGL 上下文数量上限；`static` 状态在回到原图后停止绘制。`voidRingStateForActivity` 只把真实活动投影为待机、加载、思考或静态。系统减少动态效果、页面隐藏、离开视口或 WebGL 不可用时只显示透明的 `mark.png`。`main.tsx` 启动时调用 `warmVoidRingMotion()` 预先编译着色器并上传贴图。

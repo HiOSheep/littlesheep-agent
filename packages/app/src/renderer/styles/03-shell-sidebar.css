@@ -121,6 +121,9 @@
   --shadow: 0 18px 46px rgba(0, 0, 0, 0.38);
   --shadow-menu: 0 22px 54px rgba(0, 0, 0, 0.44);
   --radius-ui: 10px;
+  /* Dense diagnostic controls and rows keep their 5px corner without making
+     that compact surface radius an unlabelled exception. */
+  --radius-diagnostic: 5px;
   --radius-floating-panel: 14px;
   --radius-composer: 14px;
   /* The composer and the popovers that hang off it (`.composer`, its `::before` material, the add

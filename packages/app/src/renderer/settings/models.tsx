@@ -476,7 +476,7 @@ function ProviderCard({
         </details>
       </div>
       <div className="provider-card-actions">
-        <button type="button" className="save-btn" onClick={onEdit}>编辑</button>
+        <button type="button" className="close-btn" onClick={onEdit}>编辑</button>
         {!provider.builtin && (
           <details className="provider-more-actions"><summary aria-label={`${provider.name}的更多操作`}>更多</summary>
             <button type="button" className="provider-remove" onClick={onDelete}>删除供应商</button>

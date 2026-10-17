@@ -424,12 +424,27 @@ export class CdpClient {
       if (message.error) pending.reject(new Error(message.error.message))
       else pending.resolve(message.result)
     })
+    const rejectPending = (error) => {
+      for (const pending of this.pending.values()) pending.reject(error)
+      this.pending.clear()
+    }
+    this.socket.addEventListener('close', () => rejectPending(new Error('CDP connection closed')))
+    this.socket.addEventListener('error', () => rejectPending(new Error('CDP connection failed')))
   }
 
   async send(method, params = {}) {
     await this.opened
     const id = this.nextId++
-    const response = new Promise((resolvePromise, reject) => this.pending.set(id, { resolve: resolvePromise, reject }))
+    const response = new Promise((resolvePromise, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id)
+        reject(new Error(`CDP request timed out: ${method}`))
+      }, 15_000)
+      this.pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolvePromise(value) },
+        reject: (error) => { clearTimeout(timer); reject(error) },
+      })
+    })
     this.socket.send(JSON.stringify({ id, method, params }))
     return response
   }

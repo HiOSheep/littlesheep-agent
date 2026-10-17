@@ -19,6 +19,8 @@ import { createElectronHarness, delay, repoRoot } from './lib/electron-cdp-harne
 const harness = createElectronHarness({ startTimeoutMs: 90_000, actionTimeoutMs: 30_000 })
 const WINDOW_SIZE = { width: 1280, height: 860 }
 const root = await mkdtemp(join(tmpdir(), 'littlesheep-permission-v2-'))
+const visualOutOption = process.argv.slice(2).find((argument) => argument.startsWith('--visual-out='))
+const visualEvidenceDir = visualOutOption ? resolve(visualOutOption.slice('--visual-out='.length)) : undefined
 const dataDir = join(root, 'data')
 const workplaceDir = join(dataDir, 'workplace')
 const chromiumDir = join(root, 'chromium')
@@ -160,6 +162,181 @@ async function waitForApproval(label) {
     }
     throw error
   }
+}
+
+async function pressTab() {
+  const event = { key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 }
+  await client.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...event })
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', ...event })
+  await delay(100)
+}
+
+async function movePointerTo(selector) {
+  const point = await evaluate(`(() => {
+    const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => {
+      const rect = item.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`)
+  if (!point) return false
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y })
+  await delay(150)
+  return true
+}
+
+async function captureApprovalControl(label, selector) {
+  const snapshot = await evaluate(`(() => {
+    const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => {
+      const rect = item.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && !item.closest('[inert]');
+    });
+    if (!node) return { found: false, selector: ${JSON.stringify(selector)} };
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const surface = node.closest('.approval-prompt');
+    const surfaceStyle = surface instanceof HTMLElement ? getComputedStyle(surface) : null;
+    const properties = ['height', 'min-height', 'padding-top', 'padding-right', 'padding-bottom',
+      'padding-left', 'font-family', 'font-size', 'font-weight', 'line-height', 'color',
+      'background-color', 'border-top-color', 'border-top-width', 'border-top-left-radius',
+      'box-shadow', 'opacity', 'cursor', 'outline-width', 'outline-style', 'outline-color'];
+    return {
+      found: true, selector: ${JSON.stringify(selector)},
+      theme: document.documentElement.getAttribute('data-ls-theme') || 'dark',
+      text: (node.textContent || '').replace(/\\s+/gu, ' ').trim(),
+      dom: node.outerHTML,
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      state: { hover: node.matches(':hover'), focusVisible: node.matches(':focus-visible'),
+        disabled: node.disabled === true, ariaBusy: node.getAttribute('aria-busy') },
+      computed: Object.fromEntries(properties.map((name) => [name, style.getPropertyValue(name)])),
+      surfaceComputed: surfaceStyle ? {
+        color: surfaceStyle.color,
+        backgroundColor: surfaceStyle.backgroundColor,
+        borderTopColor: surfaceStyle.borderTopColor,
+        borderTopLeftRadius: surfaceStyle.borderTopLeftRadius,
+      } : null,
+    };
+  })()`)
+  const shot = await client.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false })
+  const path = join(visualEvidenceDir, 'screenshots', `${label}.png`)
+  await mkdir(join(visualEvidenceDir, 'screenshots'), { recursive: true })
+  await writeFile(path, Buffer.from(shot.data, 'base64'))
+  await mkdir(join(visualEvidenceDir, 'computed'), { recursive: true })
+  await writeFile(join(visualEvidenceDir, 'computed', `${label}.json`), `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')
+  return { screenshot: path, snapshot }
+}
+
+async function reachFocusVisible(selector, maxTabs = 150) {
+  await evaluate(clientExpressionBlur())
+  for (let index = 0; index < maxTabs; index += 1) {
+    await pressTab()
+    const focused = await evaluate(`(() => {
+      const node = [...document.querySelectorAll(${JSON.stringify(selector)})].find((item) => {
+        const rect = item.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+      return Boolean(node && document.activeElement === node && node.matches(':focus-visible'));
+    })()`)
+    if (focused) return true
+  }
+  return false
+}
+
+function clientExpressionBlur() {
+  return `(() => { document.activeElement?.blur(); return true; })()`
+}
+
+function contrastRatio(foreground, background) {
+  const channels = (value) => {
+    const oklab = value.match(/oklab\(\s*([\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/u)
+    if (oklab) {
+      const [lightness, a, b] = oklab.slice(1).map(Number)
+      const lRoot = lightness + 0.3963377774 * a + 0.2158037573 * b
+      const mRoot = lightness - 0.1055613458 * a - 0.0638541728 * b
+      const sRoot = lightness - 0.0894841775 * a - 1.291485548 * b
+      const [l, m, s] = [lRoot, mRoot, sRoot].map((rootValue) => rootValue ** 3)
+      return [
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+      ].map((linear) => Math.max(0, Math.min(1, linear)))
+    }
+    const cssSrgb = value.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/u)
+    if (cssSrgb) return cssSrgb.slice(1).map(Number).map((srgb) => (
+      srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
+    ))
+    const numbers = value.match(/[\d.]+/gu)?.slice(0, 3).map(Number)
+    if (!numbers || numbers.length !== 3) return undefined
+    return numbers.map((channel) => {
+      const srgb = channel / 255
+      return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4
+    })
+  }
+  const a = channels(foreground)
+  const b = channels(background)
+  if (!a || !b) return undefined
+  const luminance = ([red, green, blue]) => 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  const values = [luminance(a), luminance(b)].sort((left, right) => right - left)
+  return (values[0] + 0.05) / (values[1] + 0.05)
+}
+
+async function capturePermissionControlStates(prefix, selector, themes, fontToken, fontWeight) {
+  const states = {}
+  for (const theme of themes) {
+    await evaluate(`document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+    await evaluate(`(() => {
+      document.activeElement?.blur();
+      const surface = [...document.querySelectorAll(${JSON.stringify(selector)})][0]?.closest('.approval-prompt');
+      if (surface instanceof HTMLElement && surface.hasAttribute('tabindex')) surface.focus({ preventScroll: true });
+      return true;
+    })()`)
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 })
+    await delay(150)
+    const expectedFont = await evaluate(`(() => {
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position:fixed;left:-10000px;visibility:hidden;font-size:var(${fontToken})';
+      document.body.append(probe);
+      const size = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return size;
+    })()`)
+    states[`${theme}-normal`] = await captureApprovalControl(`${prefix}-${theme}-normal`, selector)
+    const normal = states[`${theme}-normal`].snapshot
+    if (!normal.found || normal.state.hover || normal.state.focusVisible || normal.state.disabled
+      || normal.computed.height !== '34px' || normal.computed['font-size'] !== expectedFont
+      || normal.computed['font-weight'] !== String(fontWeight)) {
+      throw new Error(`${prefix} did not reach a neutral normal state in ${theme}: ${JSON.stringify(normal)}`)
+    }
+
+    if (!await movePointerTo(selector)) throw new Error(`${prefix} was not reachable for hover in ${theme}`)
+    states[`${theme}-hover`] = await captureApprovalControl(`${prefix}-${theme}-hover`, selector)
+    const hover = states[`${theme}-hover`].snapshot
+    if (!hover.found || !hover.state.hover || hover.state.focusVisible) {
+      throw new Error(`${prefix} did not reach hover in ${theme}: ${JSON.stringify(hover)}`)
+    }
+    if (hover.computed['font-size'] !== expectedFont || hover.computed['font-weight'] !== String(fontWeight)) {
+      throw new Error(`${prefix} changed its type role on hover in ${theme}: ${JSON.stringify(hover)}`)
+    }
+
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 })
+    const focused = await reachFocusVisible(selector)
+    await delay(200)
+    states[`${theme}-focus-visible`] = await captureApprovalControl(`${prefix}-${theme}-focus-visible`, selector)
+    const focus = states[`${theme}-focus-visible`].snapshot
+    const focusHasVisibleDelta = focus.computed?.['background-color'] !== normal.computed?.['background-color']
+      || focus.computed?.['border-top-color'] !== normal.computed?.['border-top-color']
+      || (focus.computed?.['outline-style'] !== 'none' && (Number.parseFloat(focus.computed?.['outline-width']) || 0) > 0)
+      || focus.computed?.['box-shadow'] !== normal.computed?.['box-shadow']
+    if (!focused || !focus.found || !focus.state.focusVisible
+      || !focusHasVisibleDelta || focus.computed['font-size'] !== expectedFont
+      || focus.computed['font-weight'] !== String(fontWeight)) {
+      throw new Error(`${prefix} did not reach keyboard focus-visible in ${theme}: ${JSON.stringify(focus)}`)
+    }
+    states[`${theme}-font-role`] = { expected: expectedFont, token: fontToken, fontWeight }
+  }
+  return states
 }
 
 async function decideApproval(label) {
@@ -408,6 +585,25 @@ async function main() {
   const approvalScreenshot = await client.send('Page.captureScreenshot', { format: 'png' })
   await writeFile(join(root, 'inline-approval.png'), Buffer.from(approvalScreenshot.data, 'base64'))
   note('Agent approval stays inline without trapping focus or blocking the composer', inlineApproval)
+  if (visualEvidenceDir) {
+    const originalTheme = await evaluate(`document.documentElement.getAttribute('data-ls-theme')`)
+    const inlineStates = await capturePermissionControlStates(
+      'inline-permission-deny',
+      '.approval-prompt:not(.full-access-warning) .approval-action',
+      ['dark', 'light'],
+      '--control-font-size',
+      400,
+    )
+    await evaluate(`(() => {
+      const theme = ${JSON.stringify(originalTheme)};
+      if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
+      else document.documentElement.setAttribute('data-ls-theme', theme);
+      document.activeElement?.blur();
+      return true;
+    })()`)
+    report.permissionVisualEvidence = { inlineDeny: inlineStates }
+    note('real inline permission denial action captured in dark and light themes with computed normal, hover, and keyboard focus-visible states')
+  }
   await decideApproval('拒绝')
   await waitForReply('runtime-continuity-anchor-4827', 'post-denial recovery prompt')
   const firstSession = await harness.waitFor(async () => {
@@ -421,6 +617,81 @@ async function main() {
   assert.equal(denialRecovery.kind, 'recovery_decision')
   assert.equal(denialRecovery.sourceStage, 'recover')
   note('read-only denial preserves the target and surfaces Runtime recovery for a user decision', { sessionId: firstSession.id })
+
+  if (visualEvidenceDir) {
+    const originalTheme = await evaluate(`document.documentElement.getAttribute('data-ls-theme')`)
+    await click('.mode-picker-trigger', 'open permission mode picker for warning visual capture')
+    await harness.waitFor(() => evaluate(`document.querySelector('.mode-picker-panel')?.getAttribute('aria-hidden') === 'false' || null`),
+      harness.actionTimeoutMs, 'permission mode picker for warning visual capture')
+    const selectedFullAccess = await evaluate(`(() => {
+      const option = [...document.querySelectorAll('.mode-option')]
+        .find((element) => (element.textContent || '').trim().startsWith('完全访问'));
+      if (!(option instanceof HTMLElement)) return false;
+      option.click();
+      return true;
+    })()`)
+    assert.equal(selectedFullAccess, true, 'full-access warning fixture option was not reachable')
+    await harness.waitFor(() => evaluate(`document.querySelector('.full-access-warning')?.getAttribute('role') === 'alertdialog' || null`),
+      harness.actionTimeoutMs, 'full-access safety warning before confirmation')
+    await delay(650)
+    const fullAccessDangerStates = await capturePermissionControlStates(
+      'permission-full-access-danger',
+      '.full-access-warning .approval-action.primary.danger',
+      ['dark', 'light'],
+      '--control-font-size-strong',
+      650,
+    )
+    const fullAccessThemeChecks = {}
+    for (const theme of ['dark', 'light']) {
+      await evaluate(`document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      const tokenColors = await evaluate(`(() => {
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:fixed;left:-10000px;visibility:hidden';
+        document.body.append(probe);
+        const read = (token) => {
+          probe.style.backgroundColor = 'var(' + token + ')';
+          return getComputedStyle(probe).backgroundColor;
+        };
+        const result = { surface: read('--surface'), danger: read('--danger'), foreground: read('--bg') };
+        probe.remove();
+        return result;
+      })()`)
+      const normal = fullAccessDangerStates[`${theme}-normal`].snapshot
+      const hover = fullAccessDangerStates[`${theme}-hover`].snapshot
+      const focus = fullAccessDangerStates[`${theme}-focus-visible`].snapshot
+      const contrast = {
+        normal: contrastRatio(normal.computed.color, normal.computed['background-color']),
+        hover: contrastRatio(hover.computed.color, hover.computed['background-color']),
+        focusVisible: contrastRatio(focus.computed.color, focus.computed['background-color']),
+      }
+      fullAccessThemeChecks[theme] = { tokenColors, surface: normal.surfaceComputed, contrast }
+      assert.equal(normal.surfaceComputed.backgroundColor, tokenColors.surface,
+        `permission warning surface did not follow --surface in ${theme}`)
+      assert.equal(normal.computed.color, tokenColors.foreground,
+        `solid danger action foreground did not follow --bg in ${theme}`)
+      assert.equal(normal.computed['background-color'], tokenColors.danger,
+        `solid danger action fill did not follow --danger in ${theme}`)
+      assert.notEqual(hover.computed['background-color'], normal.computed['background-color'],
+        `solid danger hover did not change the fill in ${theme}`)
+      for (const [state, ratio] of Object.entries(contrast)) {
+        assert.ok(ratio >= 4.5, `solid danger ${state} text contrast ${ratio} was below 4.5 in ${theme}`)
+      }
+    }
+    await evaluate(`(() => {
+      const theme = ${JSON.stringify(originalTheme)};
+      if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
+      else document.documentElement.setAttribute('data-ls-theme', theme);
+      document.activeElement?.blur();
+      return true;
+    })()`)
+    report.permissionVisualEvidence.fullAccessDanger = { states: fullAccessDangerStates, checks: fullAccessThemeChecks }
+    note('real full-access warning danger action captured before confirmation in dark and light themes with computed normal, hover, and keyboard focus-visible states')
+    await clickByText('.full-access-warning .approval-action', '取消')
+    await harness.waitFor(() => evaluate(`!document.querySelector('.full-access-warning') || null`),
+      harness.actionTimeoutMs, 'cancel full-access warning without changing the permission preset')
+    assert.equal(await selectedMode(), '只读', 'visual warning capture changed the selected permission preset')
+    note('full-access warning capture is cancelled before the dangerous confirmation action')
+  }
 
   await click('button.sidebar-nav-button[aria-label="新对话"]', 'new conversation after denied run')
   await harness.waitFor(async () => (await selectedMode()) === '工作区写入' || null,
@@ -890,6 +1161,12 @@ try {
         report.safetyCleanup = 'Restored protected source bytes after a failed protection assertion.'
       }
     } catch { /* preserve the original acceptance failure */ }
+  }
+  if (visualEvidenceDir) {
+    await mkdir(visualEvidenceDir, { recursive: true }).catch(() => undefined)
+    await writeFile(join(visualEvidenceDir, 'evidence.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8').catch(() => undefined)
+    const electronLog = await readFile(logPath).catch(() => undefined)
+    if (electronLog) await writeFile(join(visualEvidenceDir, 'electron.log'), electronLog).catch(() => undefined)
   }
   if (!keepRoot) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => undefined)
   else await writeFile(join(root, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8')

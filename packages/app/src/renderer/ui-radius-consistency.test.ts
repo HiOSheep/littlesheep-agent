@@ -1,13 +1,16 @@
-import { readRendererStyleSource } from './style-source-test-utils'
+import { readRendererStyleSource, readRendererStyleSourceFiles } from './style-source-test-utils'
 import { describe, expect, it } from 'vitest'
 
 
 const styles = await readRendererStyleSource()
+const styleFiles = await readRendererStyleSourceFiles()
+const inspectorStyles = styleFiles.find((file) => file.path === './styles/22-context-inspector.css')?.source ?? ''
 
 
 describe('UI radius consistency', () => {
   it('uses the workspace corner as the shared rounded-rectangle baseline', () => {
     expect(styles).toContain('--radius-ui: 10px;')
+    expect(styles).toContain('--radius-diagnostic: 5px;')
     expect(styles).toContain('--radius-card: 18px;')
     expect(styles).toContain('--radius-message-bubble: 22px;')
     expect(styles).toContain('--radius-floating-panel: 14px;')
@@ -45,10 +48,14 @@ describe('UI radius consistency', () => {
       'var(--radius-pill)',
       'var(--radius-circle)',
       'var(--selection-radius)',
+      '999px',
       '0',
     ]))
 
     expect(styles).toContain('--radius-icon: 3px;')
+    const inspectorRadii = [...inspectorStyles.matchAll(/border-radius:\s*([^;]+);/gu)].map((match) => match[1]!.trim())
+    expect(inspectorRadii.filter((value) => value === 'var(--radius-diagnostic)')).toHaveLength(5)
+    expect(inspectorRadii.filter((value) => value === '5px')).toHaveLength(0)
   })
 
   it('keeps the enlarged send button circular', () => {

@@ -355,7 +355,14 @@
 .provider-configuration-details > summary { font-size: var(--settings-row-desc-font-size); color: var(--muted); cursor: pointer; }
 .provider-configuration-details .provider-url { margin-block: 10px; overflow-wrap: anywhere; }
 .settings-workspace-body .provider-card-actions { gap: 8px; align-self: start; }
-.settings-workspace-body .provider-card-actions .save-btn { min-height: 30px; padding: 5px 12px; background: var(--control-hover); color: var(--text); font-size: var(--settings-row-desc-font-size); border: 1px solid var(--border); border-radius: 8px; }
+/* Keep the provider-card action compact, while leaving its ordinary role states
+   (base, hover and pressed) with the shared `.close-btn` rules. */
+.settings-workspace-body .provider-card-actions .close-btn {
+  min-height: var(--control-height-row);
+  padding: 5px 12px;
+  font-size: var(--settings-row-desc-font-size);
+  border-radius: var(--settings-control-radius);
+}
 .provider-more-actions { position: relative; color: var(--muted); font-size: var(--settings-row-desc-font-size); }
 .provider-more-actions > summary { padding: 6px; cursor: pointer; }
 .provider-more-actions[open] { padding-bottom: 6px; }

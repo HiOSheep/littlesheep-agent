@@ -12,7 +12,7 @@
 }
 .context-inspector-header h1 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
 .context-inspector-refresh {
-  padding: 4px 8px; border: 1px solid var(--border); border-radius: 5px; background: transparent; color: var(--text); font-size: 11px; cursor: pointer;
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-diagnostic); background: transparent; color: var(--text); font-size: 11px; cursor: pointer;
 }
 .context-inspector-refresh { margin-left: auto; }
 .context-inspector-surface button:hover:not(:disabled) { background: var(--control-hover); }
@@ -22,14 +22,14 @@
 .context-inspector-content h2 { color: var(--muted); font-size: 11px; margin: 20px 0 10px; font-weight: 500; }
 .context-inspector-request { font-size: 11px; color: var(--muted); }
 .context-inspector-request label { display: flex; align-items: center; gap: 8px; }
-.context-inspector-request select { min-width: 0; max-width: 360px; flex: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-elevated); color: var(--text); font-size: 11px; }
+.context-inspector-request select { min-width: 0; max-width: 360px; flex: 1; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-diagnostic); background: var(--bg-elevated); color: var(--text); font-size: 11px; }
 .context-inspector-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
 .context-inspector-card { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .context-inspector-card span, .context-inspector-card small { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .context-inspector-card strong { font-size: 12px; line-height: 1.5; font-weight: 600; color: var(--text-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .context-inspector-note { color: var(--muted); font-size: 10px; line-height: 1.6; }
-.context-inspector-notice { padding: 8px 10px; border-radius: 5px; background: var(--control-hover); font-size: 11px; }
-.context-inspector-table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 5px; }
+.context-inspector-notice { padding: 8px 10px; border-radius: var(--radius-diagnostic); background: var(--control-hover); font-size: 11px; }
+.context-inspector-table-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-diagnostic); }
 .context-inspector-surface table { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; }
 .context-inspector-surface th, .context-inspector-surface td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .context-inspector-surface th { color: var(--muted); background: var(--bg-elevated); font-weight: 500; }
@@ -39,7 +39,7 @@
 .context-inspector-empty h2 { color: var(--text-strong); }
 .context-inspector-content footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--border); }
 .context-inspector-back { border: 0; padding: 4px 0; background: transparent; color: var(--text); font-size: 12px; cursor: pointer; }
-.context-inspector-timeline { border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+.context-inspector-timeline { border: 1px solid var(--border); border-radius: var(--radius-diagnostic); overflow: hidden; }
 .context-inspector-timeline-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 10px; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-size: 11px; cursor: pointer; }
 .context-inspector-timeline-row:last-child { border-bottom: 0; }
 .context-inspector-timeline-row > span { min-width: 0; overflow-wrap: anywhere; }

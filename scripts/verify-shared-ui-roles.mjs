@@ -44,6 +44,13 @@ const NOTICE_GEOMETRY = {
   'padding-right': '10px',
   'font-size': '12px',
 }
+const SETTINGS_ERROR_GEOMETRY = {
+  'padding-top': '12px',
+  'padding-bottom': '12px',
+  'padding-left': '14px',
+  'padding-right': '14px',
+  'font-size': '12px',
+}
 const CONTROL_PROPS = [
   'min-height',
   'height',
@@ -108,6 +115,61 @@ async function writePng(client, name) {
   const path = join(outRoot, 'screenshots', `${name}.png`)
   await writeFile(path, Buffer.from(shot.data, 'base64'))
   return path
+}
+
+async function captureOperationControlState(client, name, selector) {
+  const snapshot = await evaluate(client, `(() => {
+    const node = [...document.querySelectorAll(${JSON.stringify(selector)})]
+      .find((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && !candidate.closest('[inert]');
+      });
+    if (!node) return { selector: ${JSON.stringify(selector)}, found: false };
+    const style = getComputedStyle(node);
+    const rect = node.getBoundingClientRect();
+    const properties = ['height', 'min-height', 'padding-top', 'padding-right', 'padding-bottom',
+      'padding-left', 'font-family', 'font-size', 'font-weight', 'line-height', 'color',
+      'background-color', 'border-top-color', 'border-top-width', 'border-top-left-radius',
+      'box-shadow', 'opacity', 'cursor', 'outline-width', 'outline-style', 'outline-color',
+      'transition-duration'];
+    return {
+      selector: ${JSON.stringify(selector)}, found: true,
+      theme: document.documentElement.getAttribute('data-ls-theme') || 'dark',
+      text: (node.textContent || '').replace(/\\s+/gu, ' ').trim(),
+      dom: node.outerHTML.slice(0, 1200),
+      rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      state: { hover: node.matches(':hover'), focusVisible: node.matches(':focus-visible'),
+        disabled: node.disabled === true, ariaBusy: node.getAttribute('aria-busy') },
+      computed: Object.fromEntries(properties.map((name) => [name, style.getPropertyValue(name)])),
+    };
+  })()`)
+  const screenshot = await writePng(client, name)
+  return { screenshot, snapshot }
+}
+
+async function movePointerTo(client, selector) {
+  const point = await evaluate(client, `(() => {
+    const node = document.querySelector(${JSON.stringify(selector)});
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0
+      ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : null;
+  })()`)
+  if (!point) return false
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y })
+  return true
+}
+
+async function readTokenColor(client, token) {
+  return evaluate(client, `(() => {
+    const probe=document.createElement('span');
+    probe.style.cssText='position:fixed;visibility:hidden;color:var(${token})';
+    document.body.append(probe);
+    const color=getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  })()`)
 }
 
 function buildConfig(workspaceDir, providerBaseURL) {
@@ -185,6 +247,29 @@ const INSTALL_PROBE = `(() => {
 function measureExpression(samples) {
   return `(() => {
     const samples = ${JSON.stringify(samples)};
+    const opacityRulesFor = (node) => {
+      const matches = [];
+      const visit = (rules, source, condition = '') => {
+        for (const rule of rules) {
+          if (rule.styleSheet) {
+            try { visit(rule.styleSheet.cssRules, rule.styleSheet.href || source, condition); } catch { /* imported stylesheet */ }
+            continue;
+          }
+          if (rule.cssRules) {
+            visit(rule.cssRules, source, rule.conditionText || condition);
+            continue;
+          }
+          if (!rule.selectorText || !rule.style?.getPropertyValue('opacity')) continue;
+          let matched = false;
+          try { matched = node.matches(rule.selectorText); } catch { /* unsupported selector in this browser */ }
+          if (matched) matches.push({ source, selector: rule.selectorText, condition, opacity: rule.style.getPropertyValue('opacity'), important: rule.style.getPropertyPriority('opacity') === 'important' });
+        }
+      };
+      for (const sheet of document.styleSheets) {
+        try { visit(sheet.cssRules, sheet.href || '<inline>'); } catch { /* cross-origin stylesheet */ }
+      }
+      return matches;
+    };
     const isVisible = (node) => {
       if (node.closest('[inert]')) return false;
       const rect = node.getBoundingClientRect();
@@ -213,6 +298,9 @@ function measureExpression(samples) {
         width: Math.round(rect.width * 10) / 10,
         height: Math.round(rect.height * 10) / 10,
         props,
+        ...(node.disabled === true && style.opacity === '1'
+          ? { inlineStyle: node.getAttribute('style'), opacityRules: opacityRulesFor(node) }
+          : {}),
       };
     });
   })()`
@@ -234,6 +322,24 @@ async function measure(client, samples) {
   const rows = await evaluate(client, measureExpression(samples))
   const byKey = new Map(rows.map((row) => [row.key, row]))
   return { rows, get: (key) => byKey.get(key) ?? null }
+}
+
+async function setInstantMotion(client, enabled) {
+  await evaluate(client, `(() => {
+    const id = 'ls-acceptance-instant-motion';
+    let style = document.getElementById(id);
+    if (${enabled ? 'true' : 'false'}) {
+      if (!style) {
+        style = document.createElement('style');
+        style.id = id;
+        style.textContent = '* { transition: none !important; animation: none !important; }';
+        document.head.append(style);
+      }
+    } else {
+      style?.remove();
+    }
+    return true;
+  })()`)
 }
 
 async function openSettingsPage(client, label) {
@@ -314,6 +420,30 @@ async function pressTab(client) {
   await delay(120)
 }
 
+async function focusVisibleByTab(client, selector, maxSteps = 120) {
+  const prepared = await evaluate(client, `(() => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    const visible = (node) => !node.disabled && !node.closest('[inert]')
+      && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0;
+    const tabs = [...document.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+      .filter(visible);
+    const index = tabs.indexOf(target);
+    if (index <= 0) return false;
+    tabs[index - 1].focus({ preventScroll: true });
+    return true;
+  })()`)
+  if (!prepared) return false
+  for (let attempt = 0; attempt < maxSteps; attempt += 1) {
+    await pressTab(client)
+    const reached = await evaluate(client, `(() => {
+      const target = document.querySelector(${JSON.stringify(selector)});
+      return document.activeElement === target && target?.matches(':focus-visible');
+    })()`)
+    if (reached) return true
+  }
+  return false
+}
+
 /**
  * Reads the focused element twice: once while it has focus and once after
  * blurring it. Some settings controls replace the global outline with a surface
@@ -365,7 +495,7 @@ async function focusFirstEditorField(client) {
 }
 
 function numericParts(value) {
-  return String(value ?? '').match(/-?\d+(?:\.\d+)?/gu)?.map(Number) ?? []
+  return String(value ?? '').match(/-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/giu)?.map(Number) ?? []
 }
 
 function expectProps(recorder, row, expected, label) {
@@ -490,16 +620,27 @@ async function main() {
       for (const name of names) values[name] = style.getPropertyValue(name).trim();
       return values;
     })()`)
+    const scaledFonts = await evaluate(client, `(() => {
+      const root=getComputedStyle(document.documentElement);
+      const fontScale=Number.parseFloat(root.getPropertyValue('--ui-font-scale')) || 1;
+      const probe=document.createElement('span');
+      probe.style.cssText='position:fixed;left:-10000px;visibility:hidden';
+      document.body.append(probe);
+      probe.style.fontSize='var(--control-font-size)';
+      const regular=getComputedStyle(probe).fontSize;
+      probe.style.fontSize='var(--control-font-size-strong)';
+      const strong=getComputedStyle(probe).fontSize;
+      probe.remove();
+      return {fontScale,regular,strong,regularPx:Number.parseFloat(regular),strongPx:Number.parseFloat(strong)};
+    })()`)
     const expectedTokens = {
       '--feedback-danger-text': '#ffd2d2',
       '--danger-control-text': '#ffd8d8',
       '--notice-padding-block': '8px',
       '--notice-padding-inline': '10px',
       '--notice-font-size': '12px',
-      '--control-height-md': '32px',
+      '--control-height-md': '34px',
       '--control-height-sm': '26px',
-      '--control-font-size': '12px',
-      '--control-font-size-strong': '13px',
       '--control-disabled-opacity': DISABLED_OPACITY,
       '--choice-disabled-opacity': '0.58',
       '--radius-ui': '10px',
@@ -509,8 +650,13 @@ async function main() {
     const tokenMismatches = Object.entries(expectedTokens)
       .filter(([name, value]) => tokens[name] !== value)
       .map(([name, value]) => ({ name, expected: value, actual: tokens[name] }))
-    recorder.note({ step: 'role-tokens', tokens, tokenMismatches })
+    const fontRoleMatches = Math.abs(scaledFonts.regularPx - 12 * scaledFonts.fontScale) <= 0.1
+      && Math.abs(scaledFonts.strongPx - 13 * scaledFonts.fontScale) <= 0.1
+    recorder.note({ step: 'role-tokens', tokens, tokenMismatches, scaledFonts })
     recorder.check(tokenMismatches.length === 0, 'the role tokens carry the shared values', { tokenMismatches })
+    recorder.check(fontRoleMatches,
+      'the control font calc roles resolve to 12px and 13px multiplied by the active UI font scale',
+      { scaledFonts, expected: { regular: 12 * scaledFonts.fontScale, strong: 13 * scaledFonts.fontScale } })
     const nonGrey = ['--bg', '--bg-elevated', '--surface', '--surface-2', '--control', '--control-hover', '--border', '--border-strong', '--text', '--text-strong', '--muted', '--accent']
       .filter((name) => {
         const hex = String(tokens[name] ?? '').replace('#', '')
@@ -522,7 +668,134 @@ async function main() {
 
     // --- 2. the provider dialog: one danger colour, one control scale ----------
     await openSettingsPage(client, '模型供应商')
-    const openEditor = await clickVisible(client, '.provider-card .save-btn')
+    const providerCardActionSelector = '.provider-card .close-btn'
+    const providerCardOriginalTheme = await evaluate(client, "document.documentElement.getAttribute('data-ls-theme')")
+    const operationControlEvidence = {}
+    const captureProviderCardState = async (theme, state) => {
+      await delay(180)
+      const key = `provider-card-${theme}-${state}`
+      operationControlEvidence[key] = await captureOperationControlState(
+        client,
+        key,
+        providerCardActionSelector,
+      )
+    }
+    for (const theme of ['dark', 'light']) {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await evaluate(client, `(() => { document.activeElement?.blur(); return true; })()`)
+      await movePointerTo(client, '.settings-workspace')
+      await captureProviderCardState(theme, 'normal')
+      await movePointerTo(client, providerCardActionSelector)
+      await captureProviderCardState(theme, 'hover')
+      const point = await evaluate(client, `(() => {
+        const node = document.querySelector(${JSON.stringify(providerCardActionSelector)});
+        if (!node) return null;
+        const rect = node.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`)
+      if (point) {
+        await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 })
+        await captureProviderCardState(theme, 'active')
+        await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 })
+        await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 2, y: 2, button: 'left', buttons: 0, clickCount: 1 })
+      }
+      await movePointerTo(client, '.settings-workspace')
+      await evaluate(client, `(() => {
+        const selector = ${JSON.stringify(providerCardActionSelector)};
+        const target = document.querySelector(selector);
+        const tabs = [...document.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+          .filter((node) => !node.disabled && !node.closest('[inert]')
+            && node.getAttribute('aria-hidden') !== 'true'
+            && node.getBoundingClientRect().width > 0 && node.getBoundingClientRect().height > 0);
+        const index = tabs.indexOf(target);
+        if (index <= 0) return false;
+        tabs[index - 1].focus({ preventScroll: true });
+        return true;
+      })()`)
+      let keyboardFocused = false
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await pressTab(client)
+        keyboardFocused = await evaluate(client, `(() => {
+          const node = document.querySelector(${JSON.stringify(providerCardActionSelector)});
+          return document.activeElement === node && node?.matches(':focus-visible');
+        })()`)
+        if (keyboardFocused) break
+      }
+      await captureProviderCardState(theme, 'focus-visible')
+      recorder.note({ step: `provider-card-${theme}-focus-visible`, reachedByKeyboard: keyboardFocused })
+      recorder.check(keyboardFocused, `the provider card action exposes keyboard focus in ${theme} theme`,
+        operationControlEvidence[`provider-card-${theme}-focus-visible`])
+
+      const roleValues = await evaluate(client, `(() => {
+        const root = getComputedStyle(document.documentElement);
+        const settings = getComputedStyle(document.querySelector('.settings-workspace-body') || document.documentElement);
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:fixed;left:-10000px;visibility:hidden';
+        document.body.append(probe);
+        const background = (token) => {
+          probe.style.backgroundColor = 'var(' + token + ')';
+          return getComputedStyle(probe).backgroundColor;
+        };
+        probe.style.fontSize = 'var(--settings-row-desc-font-size)';
+        const result = {
+          rowHeight: root.getPropertyValue('--control-height-row').trim(),
+          settingsRadius: settings.getPropertyValue('--settings-control-radius').trim(),
+          fontSize: getComputedStyle(probe).fontSize,
+          control: background('--control'),
+          controlHover: background('--control-hover'),
+          controlActive: background('--control-active'),
+          borderStrong: background('--border-strong'),
+        };
+        probe.remove();
+        return result;
+      })()`)
+      const normal = operationControlEvidence[`provider-card-${theme}-normal`]?.snapshot
+      const hover = operationControlEvidence[`provider-card-${theme}-hover`]?.snapshot
+      const active = operationControlEvidence[`provider-card-${theme}-active`]?.snapshot
+      const focus = operationControlEvidence[`provider-card-${theme}-focus-visible`]?.snapshot
+      const normalRoleMatches = normal?.found === true
+        && normal.theme === theme
+        && /class="[^"]*close-btn/u.test(normal.dom)
+        && !/class="[^"]*save-btn/u.test(normal.dom)
+        && normal.computed.height === roleValues.rowHeight
+        && normal.computed['border-top-left-radius'] === roleValues.settingsRadius
+        && normal.computed['font-size'] === roleValues.fontSize
+        && normal.computed['background-color'] === roleValues.control
+        && normal.state.hover === false
+        && normal.state.focusVisible === false
+      const hoverRoleMatches = hover?.state.hover === true
+        && hover.state.focusVisible === false
+        && hover.computed['background-color'] === roleValues.controlHover
+        && hover.computed['border-top-color'] === roleValues.borderStrong
+      const activeRoleMatches = active?.state.hover === true
+        && active.state.focusVisible === false
+        && active.computed['background-color'] === roleValues.controlActive
+      const focusRoleMatches = focus?.state.focusVisible === true
+        && focus.computed['outline-style'] === 'solid'
+        && (Number.parseFloat(focus.computed['outline-width']) || 0) > 0
+      recorder.note({ step: `provider-card-${theme}-computed-role`, roleValues, normal, hover, active, focus })
+      recorder.check(normalRoleMatches,
+        `the provider card action uses the compact ordinary-control role in ${theme} theme`,
+        { roleValues, normal })
+      recorder.check(hoverRoleMatches,
+        `the provider card action uses the ordinary hover role in ${theme} theme`,
+        { roleValues, hover })
+      recorder.check(activeRoleMatches,
+        `the provider card action uses the ordinary pressed role in ${theme} theme`,
+        { roleValues, active })
+      recorder.check(focusRoleMatches,
+        `the provider card action has visible keyboard focus in ${theme} theme`,
+        { focus })
+    }
+    await evaluate(client, `(() => {
+      const theme = ${JSON.stringify(providerCardOriginalTheme)};
+      if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
+      else document.documentElement.setAttribute('data-ls-theme', theme);
+      document.activeElement?.blur();
+      return true;
+    })()`)
+    recorder.note({ step: 'provider-card-operation-control-states', evidence: operationControlEvidence })
+    const openEditor = await clickVisible(client, providerCardActionSelector)
     recorder.check(openEditor.clicked, 'the provider edit entry is reachable', openEditor)
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.provider-editor') ? true : null`),
@@ -538,28 +811,105 @@ async function main() {
     ])
     recorder.note({ step: 'provider-editor-controls', rows: editorControls.rows })
     expectProps(recorder, editorControls.get('save'), {
-      'min-height': '32px',
-      'font-size': '13px',
+      'min-height': '34px',
+      'font-size': scaledFonts.strong,
       'border-top-left-radius': '10px',
     }, 'the dialog submit control uses the shared height, strong type scale and radius')
     expectProps(recorder, editorControls.get('cancel'), {
-      'min-height': '32px',
-      'font-size': '12px',
+      'min-height': '34px',
+      'font-size': scaledFonts.regular,
       'border-top-left-radius': '10px',
     }, 'the dialog regular control uses the shared height, type scale and radius')
     expectProps(recorder, editorControls.get('dialog-close'), {
-      height: '30px',
+      height: '34px',
       'border-top-left-radius': '10px',
-    }, 'the dialog close control keeps its documented 30px exception and the shared radius')
+    }, 'the dialog close control resolves to the shared 34px control height and radius')
+
+    const providerEditorOriginalTheme = await evaluate(client, "document.documentElement.getAttribute('data-ls-theme')")
+    const providerEditorVisual = {}
+    // The acceptance window is parked off-screen; Chromium may freeze a theme
+    // color transition at its start frame. Stop transitions while sampling the
+    // settled role colors so the light snapshot cannot inherit the dark fill.
+    await setInstantMotion(client, true)
+    for (const theme of ['dark', 'light']) {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      for (const [key, selector] of [
+        ['save', '.provider-editor .save-btn'],
+        ['cancel', '.provider-editor .dialog-footer .close-btn'],
+        ['dialog-close', '.provider-editor .dialog-close'],
+      ]) {
+        const captureKey = `${theme}-${key}-normal`
+        providerEditorVisual[captureKey] = await captureOperationControlState(client, `provider-editor-${captureKey}`, selector)
+        screenshots[`provider-editor-${captureKey}`] = providerEditorVisual[captureKey].screenshot
+      }
+      const keyboardFocused = await focusVisibleByTab(client, '.provider-editor .save-btn')
+      const focusKey = `${theme}-save-focus-visible`
+      providerEditorVisual[focusKey] = await captureOperationControlState(
+        client,
+        `provider-editor-${focusKey}`,
+        '.provider-editor .save-btn',
+      )
+      screenshots[`provider-editor-${focusKey}`] = providerEditorVisual[focusKey].screenshot
+      const focusSnapshot = providerEditorVisual[focusKey].snapshot
+      recorder.note({ step: `provider-editor-${theme}-focus-visible`, reachedByKeyboard: keyboardFocused, snapshot: focusSnapshot })
+      recorder.check(keyboardFocused && focusSnapshot.state.focusVisible === true
+        && focusSnapshot.computed['outline-style'] === 'solid'
+        && (Number.parseFloat(focusSnapshot.computed['outline-width']) || 0) > 0,
+      `the provider submit control exposes keyboard focus in ${theme} theme`, { focusSnapshot })
+      await evaluate(client, `document.activeElement?.blur()`)
+
+      const save = providerEditorVisual[`${theme}-save-normal`]?.snapshot
+      const cancel = providerEditorVisual[`${theme}-cancel-normal`]?.snapshot
+      const close = providerEditorVisual[`${theme}-dialog-close-normal`]?.snapshot
+      const expectedBaseColor = await readTokenColor(client, '--bg')
+      const expectedAccent = await readTokenColor(client, '--accent')
+      const expectedText = await readTokenColor(client, '--text')
+      const expectedControl = await readTokenColor(client, '--control')
+      const editorNormalMatches = save?.found === true && save.theme === theme
+        && save.state.disabled === false && save.computed.height === '34px'
+        && save.computed['background-color'] === expectedAccent && save.computed.color === expectedBaseColor
+        && cancel?.found === true && cancel.state.disabled === false && cancel.computed.height === '34px'
+        && cancel.computed['background-color'] === expectedControl && cancel.computed.color === expectedText
+        && close?.found === true && close.state.disabled === false && close.computed.height === '34px'
+      recorder.note({ step: `provider-editor-${theme}-normal-role`, save, cancel, close,
+        expected: { expectedBaseColor, expectedAccent, expectedText, expectedControl } })
+      recorder.check(editorNormalMatches,
+        `provider editor primary, regular and icon actions resolve their role colors and shared 34px height in ${theme} theme`,
+        { save, cancel, close, expected: { expectedBaseColor, expectedAccent, expectedText, expectedControl } })
+    }
+    await evaluate(client, `(() => {
+      const theme = ${JSON.stringify(providerEditorOriginalTheme)};
+      if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
+      else document.documentElement.setAttribute('data-ls-theme', theme);
+      return true;
+    })()`)
+    await setInstantMotion(client, false)
+    recorder.note({ step: 'provider-editor-operation-control-states', evidence: providerEditorVisual })
 
     // validation error: the real error path of the dialog
     await setInputValue(client, '.provider-editor .settings-inline-field input', 2, 'not-a-url')
     const dialogErrorText = await waitForVisible(client, '.provider-editor .dialog-error', 10_000, 'the dialog validation error')
     const dialogError = await measure(client, [
       { key: 'dialog-error', selector: '.provider-editor .dialog-error', props: ['color', 'font-size', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'border-top-width', 'border-top-color', 'border-left-width'] },
+      { key: 'provider-field-error', selector: '.provider-editor .provider-field-error', props: ['color'] },
     ])
-    recorder.note({ step: 'dialog-error', text: dialogErrorText, row: dialogError.get('dialog-error') })
+    recorder.note({ step: 'dialog-error', text: dialogErrorText, rows: dialogError.rows })
     expectProps(recorder, dialogError.get('dialog-error'), { color: DANGER_TEXT }, 'the dialog error text uses the one danger colour')
+    expectProps(recorder, dialogError.get('provider-field-error'), { color: DANGER_TEXT }, 'the provider field error resolves to the shared danger text role after the cascade')
+    screenshots['provider-error-dark'] = await writePng(client, 'provider-error-dark')
+    const originalTheme = await evaluate(client, "document.documentElement.getAttribute('data-ls-theme') || 'dark'")
+    await evaluate(client, "document.documentElement.setAttribute('data-ls-theme','light')")
+    await delay(160)
+    const lightDangerText = await readTokenColor(client, '--feedback-danger-text')
+    const lightFieldError = await measure(client, [
+      { key: 'provider-field-error', selector: '.provider-editor .provider-field-error', props: ['color'] },
+    ])
+    recorder.note({ step: 'provider-field-error-light', expectedTokenColor: lightDangerText, row: lightFieldError.get('provider-field-error') })
+    expectProps(recorder, lightFieldError.get('provider-field-error'), { color: lightDangerText }, 'the provider field error follows the light theme danger text token')
+    screenshots['provider-error-light'] = await writePng(client, 'provider-error-light')
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme',${JSON.stringify(originalTheme)})`)
+    await delay(160)
     await setInputValue(client, '.provider-editor .settings-inline-field input', 2, provider.baseURL)
 
     // the danger control of the discard prompt
@@ -570,16 +920,36 @@ async function main() {
       { key: 'discard-danger', selector: '.provider-editor-discard .danger-btn', props: CONTROL_PROPS },
       { key: 'discard-keep', selector: '.provider-editor-discard .close-btn', props: CONTROL_PROPS },
     ])
+    const discardDangerDark = await captureOperationControlState(
+      client,
+      'provider-discard-danger-dark',
+      '.provider-editor-discard .danger-btn',
+    )
+    screenshots['provider-discard-danger-dark'] = discardDangerDark.screenshot
     recorder.note({ step: 'discard-prompt', text: discardText, rows: discard.rows })
     expectProps(recorder, discard.get('discard-danger'), {
-      'min-height': '32px',
-      'font-size': '13px',
+      'min-height': '34px',
+      'font-size': scaledFonts.strong,
       color: DANGER_CONTROL_TEXT,
     }, 'the danger control keeps its brighter tone on the shared submit scale')
     expectProps(recorder, discard.get('discard-keep'), {
-      'min-height': '32px',
-      'font-size': '12px',
+      'min-height': '34px',
+      'font-size': scaledFonts.regular,
     }, 'the danger prompt pairs the danger control with a regular control of the same height')
+    const discardDangerLight = await evaluate(client, "document.documentElement.setAttribute('data-ls-theme', 'light')").then(async () => {
+      await delay(180)
+      return captureOperationControlState(client, 'provider-discard-danger-light', '.provider-editor-discard .danger-btn')
+    })
+    screenshots['provider-discard-danger-light'] = discardDangerLight.screenshot
+    const lightDangerControlText = await readTokenColor(client, '--danger-control-text')
+    recorder.note({ step: 'provider-discard-danger-light', snapshot: discardDangerLight.snapshot, expectedTokenColor: lightDangerControlText })
+    recorder.check(discardDangerLight.snapshot.found === true
+      && discardDangerLight.snapshot.computed.color === lightDangerControlText
+      && discardDangerLight.snapshot.computed.height === '34px',
+    'the destructive control keeps the active theme danger text and 34px height in light theme',
+    { snapshot: discardDangerLight.snapshot, expectedTokenColor: lightDangerControlText })
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
+    await delay(180)
     await clickVisible(client, '.provider-editor-discard .close-btn', { contains: '继续编辑' })
     await delay(200)
 
@@ -632,6 +1002,9 @@ async function main() {
       )
     }
 
+    // Disabled controls are measured at their settled opacity. The real test window
+    // is parked off-screen, where Chromium can leave CSS transitions at frame zero.
+    await setInstantMotion(client, true)
     // disabled + waiting while the save is really in flight
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/config/providers', 1800, 'POST'); return true })()`)
     await clickVisible(client, '.provider-editor .save-btn')
@@ -656,7 +1029,15 @@ async function main() {
       { key: 'dialog-close', selector: '.provider-editor .dialog-close', props: CONTROL_PROPS },
       { key: 'status', selector: '.provider-editor-status', props: ['font-size', 'color'] },
     ])
-    screenshots['provider-saving'] = await writePng(client, 'provider-saving')
+    const providerSavingDark = await captureOperationControlState(client, 'provider-saving-dark', '.provider-editor .save-btn')
+    screenshots['provider-saving'] = providerSavingDark.screenshot
+    screenshots['provider-saving-dark'] = providerSavingDark.screenshot
+    await evaluate(client, "document.documentElement.setAttribute('data-ls-theme', 'light')")
+    await delay(180)
+    const providerSavingLight = await captureOperationControlState(client, 'provider-saving-light', '.provider-editor .save-btn')
+    screenshots['provider-saving-light'] = providerSavingLight.screenshot
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
+    recorder.note({ step: 'provider-saving-theme-states', dark: providerSavingDark.snapshot, light: providerSavingLight.snapshot })
     recorder.note({ step: 'provider-saving', rows: saving.rows })
     for (const key of ['save', 'cancel', 'dialog-close']) {
       const row = saving.get(key)
@@ -668,15 +1049,25 @@ async function main() {
     }
     const statusText = saving.get('status')?.text ?? ''
     recorder.check(statusText.length > 0, 'the saving state is stated in text, not only in colour', { statusText })
+    recorder.check(providerSavingDark.snapshot.state.disabled === true
+      && providerSavingDark.snapshot.text.includes('保存中')
+      && providerSavingDark.snapshot.computed.opacity === DISABLED_OPACITY,
+    'the dark provider saving state shows its in-flight label and shared disabled tone', providerSavingDark.snapshot)
+    recorder.check(providerSavingLight.snapshot.state.disabled === true
+      && providerSavingLight.snapshot.text.includes('保存中')
+      && providerSavingLight.snapshot.computed.opacity === DISABLED_OPACITY,
+    'the light provider saving state shows its in-flight label and shared disabled tone', providerSavingLight.snapshot)
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.provider-editor') ? null : true`),
       harness.startTimeoutMs,
       'the editor to close after the held save',
     )
+    await setInstantMotion(client, false)
 
-    // --- 3. the plugin page: notice geometry, waiting, and the error surface ---
+    // --- 3. the plugin page: waiting, transient success and persistent failure ---
     await openSettingsPage(client, '插件')
     await waitForVisible(client, '.plugin-reload-button', 15_000, 'the plugin reload control')
+    await setInstantMotion(client, true)
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/plugins/reload', 1800, 'POST'); return true })()`)
     const reloadStart = await clickVisible(client, '.plugin-reload-button')
     await delay(350)
@@ -689,21 +1080,43 @@ async function main() {
     recorder.note({ step: 'plugin-reload-waiting', clicked: reloadStart, row: pluginWaiting.get('reload') })
     expectProps(recorder, pluginWaiting.get('reload'), {
       opacity: DISABLED_OPACITY,
-      'min-height': '32px',
-      'font-size': '12px',
+      'min-height': '34px',
+      'font-size': scaledFonts.regular,
     }, 'the plugin reload control dims with the shared disabled tone on the shared regular control role')
     recorder.check(
       pluginWaiting.get('reload')?.disabled === true && (pluginWaiting.get('reload')?.text ?? '').includes('加载中'),
       'the plugin reload states the waiting result on the control',
       { row: pluginWaiting.get('reload') },
     )
-    const pluginNoticeText = await waitForVisible(client, '.plugin-page-notice', harness.startTimeoutMs, 'the plugin success notice')
+    const pluginNoticeText = await waitForVisible(client,
+      '.transient-toast[data-tone="success"] .transient-toast-notice', 10_000, 'the plugin success toast')
+    await setInstantMotion(client, false)
     const pluginNotice = await measure(client, [
-      { key: 'notice', selector: '.plugin-page-notice', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'border-left-width', 'border-left-color', 'animation-name', 'animation-duration'] },
+      { key: 'surface', selector: '.transient-toast[data-tone="success"]',
+        props: ['position', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'background-color', 'border-top-left-radius', 'box-shadow', 'backdrop-filter', 'animation-name', 'animation-duration'] },
+      { key: 'notice', selector: '.transient-toast[data-tone="success"] .transient-toast-notice',
+        props: ['color', 'font-size', 'background-color'] },
+      { key: 'dismiss', selector: '.transient-toast[data-tone="success"] .transient-toast-dismiss',
+        props: ['width', 'height', 'border-top-left-radius'] },
     ])
     screenshots['plugin-notice'] = await writePng(client, 'plugin-notice')
-    recorder.note({ step: 'plugin-notice', text: pluginNoticeText, row: pluginNotice.get('notice') })
-    expectProps(recorder, pluginNotice.get('notice'), NOTICE_GEOMETRY, 'the plugin notice uses the shared inline notice geometry (7px 9px / 11px before UX-14)')
+    const successRole = await evaluate(client, `(() => {
+      const node=document.querySelector('.transient-toast[data-tone="success"] .transient-toast-notice');
+      return {role:node?.getAttribute('role') ?? null,tone:node?.getAttribute('data-tone') ?? null,
+        text:node?.querySelector('.feedback-message')?.textContent?.trim() ?? null};
+    })()`)
+    recorder.note({ step: 'plugin-success-toast', text: pluginNoticeText, role: successRole, rows: pluginNotice.rows })
+    expectProps(recorder, pluginNotice.get('surface'), {
+      position: 'fixed',
+      'padding-top': '10px',
+      'padding-right': '12px',
+      'padding-bottom': '10px',
+      'padding-left': '14px',
+      'border-top-left-radius': '18px',
+    }, 'plugin success uses the shared non-layout-shifting glass toast surface')
+    recorder.check(successRole.role === 'status' && successRole.tone === 'success'
+      && (successRole.text ?? '').includes('插件已重新发现并加载'),
+    'plugin success toast keeps its visible text and status semantics', { successRole })
 
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/plugins/reload', 'POST'); return true })()`)
     await clickVisible(client, '.plugin-reload-button')
@@ -717,12 +1130,13 @@ async function main() {
     expectProps(recorder, pluginError.get('error'), { ...NOTICE_GEOMETRY, color: DANGER_TEXT }, 'the plugin error notice uses the shared notice geometry and danger colour')
     expectProps(recorder, pluginError.get('action'), {
       'min-height': '26px',
-      'font-size': '12px',
+      'font-size': scaledFonts.regular,
       'border-top-left-radius': '10px',
     }, 'the inline notice action uses the shared small control role')
 
     // While an operation is in flight the notice stays, and its action plus the
     // row controls answer the shared disabled tone.
+    await setInstantMotion(client, true)
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/enabled', 1800, 'POST'); return true })()`)
     const toggle = await clickVisible(client, '.plugin-list-item .plugin-switch')
     await delay(350)
@@ -746,6 +1160,7 @@ async function main() {
       harness.startTimeoutMs,
       'the plugin operation to settle',
     )
+    await setInstantMotion(client, false)
 
     // --- 4. the channels page: failure detail, waiting, retry action -----------
     await openSettingsPage(client, '外部渠道')
@@ -759,13 +1174,13 @@ async function main() {
     recorder.note({ step: 'channels-roles', failureText, rows: channels.rows })
     expectProps(recorder, channels.get('failure'), { color: DANGER_TEXT }, 'the channel failure detail uses the one danger colour')
     expectProps(recorder, channels.get('refresh'), {
-      'min-height': '32px',
-      'font-size': '12px',
+      'min-height': '34px',
+      'font-size': scaledFonts.regular,
       'border-top-left-radius': '10px',
     }, 'the refresh control uses the shared regular control role')
     expectProps(recorder, channels.get('reload'), {
-      'min-height': '32px',
-      'font-size': '13px',
+      'min-height': '34px',
+      'font-size': scaledFonts.strong,
       'border-top-left-radius': '10px',
     }, 'the reload control uses the shared submit control role')
 
@@ -781,11 +1196,12 @@ async function main() {
     expectProps(recorder, channelError.get('notice'), { color: DANGER_TEXT }, 'the channel failure notice uses the one danger colour')
     expectProps(recorder, channelError.get('action'), {
       'min-height': '26px',
-      'font-size': '12px',
+      'font-size': scaledFonts.regular,
       'border-top-left-radius': '10px',
     }, 'the channel failure offers its retry through the shared small control role')
 
     // A reload that is really in flight blocks the row instead of leaving it clickable.
+    await setInstantMotion(client, true)
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/channels/reload', 1800, 'POST'); return true })()`)
     const retry = await clickVisible(client, '.dialog .feedback-notice[data-tone="error"] .feedback-action')
     await delay(350)
@@ -808,6 +1224,7 @@ async function main() {
       harness.startTimeoutMs,
       'the channel reload to settle',
     )
+    await setInstantMotion(client, false)
 
     // --- 5. the browser storage page: real success and failure notices ---------
     await openSettingsPage(client, '内置浏览器')
@@ -818,16 +1235,36 @@ async function main() {
     recorder.note({ step: 'storage-controls', rows: storageControls.rows })
     expectProps(recorder, storageControls.get('row-button'), {
       'min-height': '30px',
-      'font-size': '12px',
-      'border-top-left-radius': '10px',
-    }, 'the storage row action uses the shared compact row role')
+      'font-size': scaledFonts.regular,
+      'border-top-left-radius': '8px',
+    }, 'the storage row action uses its compact 30px settings role and 8px settings-control radius')
     await clickVisible(client, '.storage-settings-row button', { contains: '清除缓存' })
-    const storageNoticeText = await waitForVisible(client, '.storage-settings-notice:not([data-tone])', harness.startTimeoutMs, 'the storage success notice')
+    const storageNoticeText = await waitForVisible(client,
+      '.transient-toast[data-tone="success"] .transient-toast-notice', harness.startTimeoutMs, 'the storage success toast')
     const storageNotice = await measure(client, [
-      { key: 'notice', selector: '.storage-settings-notice:not([data-tone])', props: [...Object.keys(NOTICE_GEOMETRY), 'color'] },
+      { key: 'surface', selector: '.transient-toast[data-tone="success"]',
+        props: ['position', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'background-color', 'border-top-left-radius', 'box-shadow', 'backdrop-filter'] },
+      { key: 'notice', selector: '.transient-toast[data-tone="success"] .transient-toast-notice',
+        props: ['color', 'font-size', 'background-color'] },
     ])
-    recorder.note({ step: 'storage-notice', text: storageNoticeText, row: storageNotice.get('notice') })
-    expectProps(recorder, storageNotice.get('notice'), NOTICE_GEOMETRY, 'the storage notice uses the shared inline notice geometry')
+    screenshots['storage-notice'] = await writePng(client, 'storage-notice')
+    const storageNoticeRole = await evaluate(client, `(() => {
+      const node=document.querySelector('.transient-toast[data-tone="success"] .transient-toast-notice');
+      return {role:node?.getAttribute('role') ?? null,tone:node?.getAttribute('data-tone') ?? null,
+        text:node?.querySelector('.feedback-message')?.textContent?.trim() ?? null};
+    })()`)
+    recorder.note({ step: 'storage-success-toast', text: storageNoticeText, role: storageNoticeRole, rows: storageNotice.rows })
+    expectProps(recorder, storageNotice.get('surface'), {
+      position: 'fixed',
+      'padding-top': '10px',
+      'padding-right': '12px',
+      'padding-bottom': '10px',
+      'padding-left': '14px',
+      'border-top-left-radius': '18px',
+    }, 'storage success uses the shared non-layout-shifting glass toast surface')
+    recorder.check(storageNoticeRole.role === 'status' && storageNoticeRole.tone === 'success'
+      && (storageNoticeRole.text ?? '').includes('网页缓存已清除'),
+    'storage success toast keeps its visible text and status semantics', { storageNoticeRole })
 
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/browser/clear-cache', 'POST'); return true })()`)
     await clickVisible(client, '.storage-settings-row button', { contains: '清除缓存' })
@@ -837,21 +1274,31 @@ async function main() {
     ])
     screenshots['storage-error'] = await writePng(client, 'storage-error')
     recorder.note({ step: 'storage-error', text: storageErrorText, row: storageError.get('error') })
-    expectProps(recorder, storageError.get('error'), { ...NOTICE_GEOMETRY, color: DANGER_TEXT }, 'the storage error notice uses the shared geometry and danger colour (#e8c5bd before UX-14)')
+    expectProps(recorder, storageError.get('error'), { ...SETTINGS_ERROR_GEOMETRY, color: DANGER_TEXT }, 'the storage error notice keeps its settings-page inset and uses the shared danger colour')
 
+    await setInstantMotion(client, true)
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/browser/clear-data', 1800, 'POST'); return true })()`)
     await clickVisible(client, '.storage-settings-row button', { contains: '清除网站数据' })
+    await waitForVisible(client, '.danger-confirm-dialog', harness.startTimeoutMs, 'the website-data confirmation dialog')
+    await clickVisible(client, '.danger-confirm-dialog .danger-btn', { contains: '永久删除' })
+    await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.danger-confirm-dialog[aria-busy="true"]') ? true : null`),
+      harness.startTimeoutMs,
+      'the website-data request to enter its waiting state',
+    )
     await delay(350)
     const storageBusy = await measure(client, [
       { key: 'busy', selector: '.storage-settings-row button', props: CONTROL_PROPS, index: 1 },
     ])
     recorder.note({ step: 'storage-busy', row: storageBusy.get('busy') })
+    screenshots['storage-busy'] = await writePng(client, 'storage-busy')
     recorder.check(
       storageBusy.get('busy')?.disabled === true && storageBusy.get('busy')?.props?.opacity === DISABLED_OPACITY,
       'the storage action dims with the shared disabled tone while it is working',
       { row: storageBusy.get('busy') },
     )
     await delay(2000)
+    await setInstantMotion(client, false)
 
     // --- 6. the web retrieval page: the error notice colour --------------------
     await openSettingsPage(client, '网络检索')
@@ -867,7 +1314,14 @@ async function main() {
 
     // --- 7. the archive page: loading state and error surface ------------------
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/archive', 1800, 'GET'); return true })()`)
-    await openSettingsPage(client, '归档')
+    await clickVisible(client, '.settings-sidebar-exit', { contains: '退出设置' })
+    await harness.waitFor(
+      () => evaluate(client, `document.querySelector('.settings-presence.presence-hidden') ? true : null`),
+      harness.startTimeoutMs,
+      'settings to close before opening the archive module',
+    )
+    await clickVisible(client, '.sidebar-quick-nav .sidebar-nav-button[aria-label="归档"]')
+    await waitForVisible(client, '.archive-refresh', harness.startTimeoutMs, 'the archive module')
     await delay(300)
     const archiveLoading = await measure(client, [
       { key: 'refresh', selector: '.archive-refresh', props: CONTROL_PROPS },
@@ -875,7 +1329,7 @@ async function main() {
     recorder.note({ step: 'archive-loading', row: archiveLoading.get('refresh') })
     expectProps(recorder, archiveLoading.get('refresh'), {
       opacity: DISABLED_OPACITY,
-      'min-height': '32px',
+      'min-height': '34px',
     }, 'the archive refresh control dims with the shared disabled tone on the shared regular control role')
     await waitForVisible(client, '.archive-refresh', harness.startTimeoutMs, 'the archive page to settle')
     await harness.waitFor(
@@ -902,24 +1356,34 @@ async function main() {
       { key: 'archive-error', selector: '.archive-error', props: ['transition-duration', 'animation-duration', 'animation-name'] },
     ]
     const motionBefore = await measure(client, motionSamples)
+    const previousReducedMotion = await evaluate(client, `document.documentElement.getAttribute('data-ls-reduced-motion')`)
     await client.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-reduced-motion', value: 'reduce' }],
     })
+    // An explicit app setting of "off" wins over the OS media preference. Remove
+    // that explicit override for this OS-preference sample, then restore it below.
+    await evaluate(client, `document.documentElement.removeAttribute('data-ls-reduced-motion')`)
     await delay(200)
     const motionAfter = await measure(client, motionSamples)
+    await evaluate(client, `(() => {
+      const previous = ${JSON.stringify(previousReducedMotion)};
+      if (previous === null) document.documentElement.removeAttribute('data-ls-reduced-motion');
+      else document.documentElement.setAttribute('data-ls-reduced-motion', previous);
+      return true;
+    })()`)
     await client.send('Emulation.setEmulatedMedia', { features: [] })
     const motionRows = motionAfter.rows.filter((row) => row.visible === true)
     const motionViolations = motionRows.filter((row) => {
       const durations = [row.props?.['transition-duration'], row.props?.['animation-duration']]
         .flatMap((value) => String(value ?? '').split(','))
         .map((value) => numericParts(value)[0] ?? 0)
-      return durations.some((value) => value > 0.002)
+      return durations.some((value) => value > 0.001001)
     })
-    recorder.note({ step: 'reduced-motion', before: motionBefore.rows, after: motionAfter.rows })
+    recorder.note({ step: 'reduced-motion', previousReducedMotion, before: motionBefore.rows, after: motionAfter.rows })
     recorder.check(
       motionRows.length > 0 && motionViolations.length === 0,
-      'reduced motion collapses the shared transitions and animations to the 1ms floor',
-      { motionViolations, after: motionAfter.rows },
+      'the effective reduced-motion preference caps sampled durations at 1ms or less',
+      { motionViolations, previousReducedMotion, after: motionAfter.rows },
     )
     const declaredMotion = motionBefore.rows.some((row) => (numericParts(row.props?.['transition-duration'])[0] ?? 0) > 0.05)
     recorder.check(declaredMotion, 'at least one sampled surface declares a real transition before the reduction', { before: motionBefore.rows })
@@ -932,8 +1396,8 @@ async function main() {
     ])
     recorder.note({ step: 'development-refresh', rows: otherRoles.rows })
     expectProps(recorder, otherRoles.get('development-refresh'), {
-      'min-height': '32px',
-      'font-size': '12px',
+      'min-height': '34px',
+      'font-size': scaledFonts.regular,
     }, 'the development environment refresh control uses the shared page header action role')
 
     await openSettingsPage(client, 'Agent 行为')
@@ -946,8 +1410,8 @@ async function main() {
     recorder.note({ step: 'policy-row', rows: policyRows.rows })
     expectProps(recorder, policyRows.get('policy-button'), {
       'min-height': '30px',
-      'font-size': '12px',
-      'border-top-left-radius': '10px',
+      'font-size': scaledFonts.regular,
+      'border-top-left-radius': '8px',
     }, 'the policy row action uses the shared compact row role (29px before UX-14)')
     const policyRow = policyRows.get('policy-button')
     if (policyRow?.disabled === true) {
@@ -992,11 +1456,43 @@ async function main() {
       { syntheticGeometry },
     )
 
-    screenshots['final'] = await writePng(client, 'settings-final')
+    screenshots['settings-final-dark'] = await writePng(client, 'settings-final-dark')
+    await evaluate(client, "document.documentElement.setAttribute('data-ls-theme','light')")
+    await delay(180)
+    const lightThemeSample = await evaluate(client, `(() => ({theme:document.documentElement.getAttribute('data-ls-theme'),
+      background:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
+      dangerText:getComputedStyle(document.documentElement).getPropertyValue('--feedback-danger-text').trim(),
+      surface:getComputedStyle(document.querySelector('.settings-workspace')).backgroundColor,
+      text:getComputedStyle(document.querySelector('.settings-workspace')).color}))()`)
+    recorder.note({ step: 'settings-light-theme', sample: lightThemeSample })
+    recorder.check(lightThemeSample.theme === 'light' && lightThemeSample.background !== tokens['--bg'],
+      'the settings workspace resolves the light theme surface roles', { lightThemeSample, darkBackground: tokens['--bg'] })
+    screenshots['settings-final-light'] = await writePng(client, 'settings-final-light')
   } catch (error) {
     recorder.check(false, 'the walkthrough completed without an unexpected failure', {
       error: error instanceof Error ? error.stack ?? error.message : String(error),
     })
+    try {
+      const client = handle?.client
+      if (client) {
+        const diagnostics = await evaluate(client, `(() => {
+          const selectors=['.provider-editor','.provider-field-error','.plugin-reload-button','.transient-toast',
+            '.plugin-page-error','.channel-overall','.settings-workspace'];
+          return {theme:document.documentElement.getAttribute('data-ls-theme'),
+            bodyText:document.body.innerText.slice(0,2200),
+            elements:selectors.map(selector=>{const node=document.querySelector(selector);if(!node)return {selector,found:false};
+              const style=getComputedStyle(node),rect=node.getBoundingClientRect();return {selector,found:true,
+                rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+                computed:{color:style.color,background:style.backgroundColor,radius:style.borderTopLeftRadius,
+                  height:style.height,minHeight:style.minHeight,fontSize:style.fontSize,opacity:style.opacity},
+                html:node.outerHTML.slice(0,1200)}})};
+        })()`)
+        recorder.note({ step: 'failure-diagnostic', diagnostics })
+        screenshots.failure = await writePng(client, 'failure')
+      }
+    } catch (diagnosticError) {
+      recorder.note({ step: 'failure-diagnostic-error', error: diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError) })
+    }
   } finally {
     handle?.client?.close()
     if (handle?.electron?.exitCode === null) await harness.forceTerminate(handle.electron)
@@ -1015,11 +1511,14 @@ async function main() {
     failures: recorder.failures,
     limits: [
       'The waiting and failure states are produced by holding or failing one local-app-api request in the page (an injected transport fault); the views, their markup and their styles are the real ones.',
+      'The off-screen Electron window can freeze CSS transitions at their first frame, so disabled opacity samples temporarily disable transitions and read the settled computed role value; the override is removed before the next scene.',
       'Synthetic entries in step 8 mount the real class names inside the live settings page to measure the shipped stylesheet. They are not a product walkthrough and are labelled in the observations.',
       'Animated elements are sampled on the settings pages this walkthrough visits; other pages keep their own motion declarations.',
       'Dense row, toolbar, tree and picker roles (sidebar navigation, workspace tree and browser toolbar, chat history, composer pickers) keep their own disabled opacity and are out of scope for this round; ui/README.md records them.',
     ],
   }
+  await mkdir(outRoot, { recursive: true })
+  await writeFile(join(outRoot, 'evidence.json'), JSON.stringify(evidence, null, 2), 'utf8')
   console.log(JSON.stringify(evidence, null, 2))
   if (!evidence.ok) process.exitCode = 1
 }

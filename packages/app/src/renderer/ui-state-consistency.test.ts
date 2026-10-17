@@ -30,6 +30,9 @@ describe('shared state sample', () => {
     ]) {
       expect(root, token).toContain(token)
     }
+    expect(root).toContain('--control-height-md: 34px;')
+    expect(root).toContain('--control-font-size: calc(12px * var(--ui-font-scale, 1));')
+    expect(root).toContain('--control-font-size-strong: calc(13px * var(--ui-font-scale, 1));')
   })
 
   it('uses one danger text color for every error surface', () => {
@@ -43,6 +46,7 @@ describe('shared state sample', () => {
 
     for (const selector of [
       '.dialog-error',
+      '.provider-field-error',
       '.archive-error',
       '.project-creator-error',
       ".feedback-notice[data-tone=\"error\"]",
@@ -80,32 +84,43 @@ describe('shared state sample', () => {
   })
 
   it('gives inline notices one geometry', () => {
-    for (const selector of ['.storage-settings-notice', '.plugin-page-notice', '.plugin-page-error', '.archive-error', '.project-creator-error']) {
+    for (const selector of ['.plugin-page-error', '.archive-error', '.project-creator-error']) {
       expect(declarations(selector, 'padding: var(--notice-padding-block) var(--notice-padding-inline)'), selector).toBe(true)
       expect(declarations(selector, 'font-size: var(--notice-font-size)'), selector).toBe(true)
     }
+    // The settings-page error stays a local 12px/14px inset after the later
+    // settings cascade; the base notice declaration does not describe its final value.
+    expect(declarations('.settings-workspace-body .storage-settings-notice', 'padding: 12px 14px')).toBe(true)
+    expect(declarations('.settings-workspace-body .storage-settings-notice', 'font-size: var(--settings-row-desc-font-size)')).toBe(true)
+    expect(declarations('.transient-toast', 'position: fixed')).toBe(true)
+    expect(declarations('.transient-toast', 'border-radius: var(--radius-card)')).toBe(true)
   })
 
   it('gives controls of the same role the same height and type scale', () => {
-    for (const selector of ['.toggle-btn', '.close-btn', '.refresh-btn', '.save-btn', '.reload-btn', '.danger-btn']) {
+    for (const selector of ['.toggle-btn', '.close-btn', '.refresh-btn', '.save-btn', '.reload-btn', '.danger-btn', '.approval-action']) {
       expect(declarations(selector, 'min-height: var(--control-height-md)'), selector).toBe(true)
     }
-    for (const selector of ['.toggle-btn', '.close-btn', '.refresh-btn', '.feedback-action']) {
+    for (const selector of ['.toggle-btn', '.close-btn', '.refresh-btn', '.feedback-action', '.approval-action']) {
       expect(declarations(selector, 'font-size: var(--control-font-size)'), selector).toBe(true)
     }
-    for (const selector of ['.save-btn', '.reload-btn', '.danger-btn']) {
+    for (const selector of ['.save-btn', '.reload-btn', '.danger-btn', '.approval-action.primary']) {
       expect(declarations(selector, 'font-size: var(--control-font-size-strong)'), selector).toBe(true)
     }
+    expect(declarations('.approval-action.primary', 'font-weight: 650')).toBe(true)
     expect(declarations('.feedback-action', 'min-height: var(--control-height-sm)')).toBe(true)
 
     // Compact row actions and dialog actions are documented exceptions, not drift.
     expect(declarations('.archive-action', 'height: 26px')).toBe(true)
-    expect(declarations('.approval-action', 'height: 34px')).toBe(true)
+    expect(declarations('.approval-action', 'height: var(--control-height-md)')).toBe(true)
   })
 
   it('gives each action role one height instead of a per-page value', () => {
     const root = ruleBody(/:root\s*\{([\s\S]*?)\n\}/u)
     expect(root).toContain('--control-height-row: 30px;')
+
+    expect(declarations('.settings-workspace-body .provider-card-actions .close-btn', 'min-height: var(--control-height-row)')).toBe(true)
+    expect(declarations('.settings-workspace-body .provider-card-actions .close-btn', 'border-radius: var(--settings-control-radius)')).toBe(true)
+    expect(styles).not.toMatch(/\.settings-workspace-body\s+\.provider-card-actions\s+\.save-btn\s*\{/u)
 
     // Page header actions share the regular control height...
     for (const selector of [

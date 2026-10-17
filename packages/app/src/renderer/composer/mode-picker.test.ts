@@ -73,7 +73,13 @@ describe('mode picker layout', () => {
       /\.full-access-warning \.approval-action\s*\{[^}]*border:\s*0;/u,
     )
     expect(styles).toMatch(
-      /\.full-access-warning \.approval-action\.primary\.danger\s*\{[^}]*color:\s*#2b0b0b;[^}]*background:\s*var\(--danger\);/u,
+      /\.approval-prompt\s*\{[^}]*background:\s*var\(--surface\);/u,
+    )
+    expect(styles).toMatch(
+      /\.full-access-warning \.approval-action\.primary\.danger\s*\{[^}]*color:\s*var\(--bg\);[^}]*background:\s*var\(--danger\);/u,
+    )
+    expect(styles).toMatch(
+      /\.full-access-warning \.approval-action\.primary\.danger:hover,[\s\S]*?\{[^}]*color:\s*var\(--bg\);[^}]*background:\s*color-mix\(in srgb, var\(--danger\) 82%, var\(--text\) 18%\);/u,
     )
   })
 

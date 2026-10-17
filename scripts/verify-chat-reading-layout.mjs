@@ -2,13 +2,14 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { createElectronHarness, delay } from './lib/electron-cdp-harness.mjs'
 import { LONG_MARKDOWN_MARKER, startElectronAcceptanceProvider } from './lib/electron-acceptance-provider.mjs'
 
 const harness = createElectronHarness()
 const provider = await startElectronAcceptanceProvider({ streamChunkDelayMs: 20, streamChunkCharacters: 60 })
 const root = await mkdtemp(join(tmpdir(), 'littlesheep-chat-layout-'))
+const outRoot = resolve(process.argv.find((arg) => arg.startsWith('--out='))?.slice(6) ?? join(tmpdir(), 'littlesheep-chat-reading-layout'))
 const dataDir = join(root, 'data')
 const workspace = join(dataDir, 'projects', 'long-workspace-name-for-composer-layout')
 const report = { checks: [], measurements: {}, screenshots: [] }
@@ -36,7 +37,8 @@ async function settled() {
 }
 async function screenshot(name) {
   const shot = await client.send('Page.captureScreenshot', { format: 'png' })
-  const path = join(root, `${name}.png`)
+  await mkdir(outRoot, { recursive: true })
+  const path = join(outRoot, `${name}.png`)
   await writeFile(path, Buffer.from(shot.data, 'base64'))
   report.screenshots.push(path)
 }
@@ -46,6 +48,9 @@ const geometry = `(() => {
   return {header:rect('.chat-header'),messages:rect('.messages'),composer:rect('.composer'),shell:rect('.composer-shell'),chat:rect('.chat'),hint:rect('.empty-hint'),
     controls:rect('.composer-controls'),actions:rect('.composer-run-actions'),panel:rect('.chat-turn-panel'),
     overflow:messages.scrollWidth-messages.clientWidth,documentOverflow:document.documentElement.scrollWidth-innerWidth,
+    textarea:(()=>{const r=textarea.getBoundingClientRect(),s=getComputedStyle(textarea);return {
+      height:r.height,clientHeight:textarea.clientHeight,scrollHeight:textarea.scrollHeight,overflowY:s.overflowY,
+      maxHeight:s.maxHeight,inlineHeight:textarea.style.height}})(),
     draft:textarea.value,gap:messages.scrollHeight-messages.clientHeight-messages.scrollTop,
     active:document.querySelector('.chat-turn-trigger')?.textContent};
 })()`
@@ -80,33 +85,81 @@ try {
   assert(Math.abs((empty.hint.left + empty.hint.right) / 2 - (empty.composer.left + empty.composer.right) / 2) <= 1, 'heading and input must share a centre')
   assert.equal(await evaluate("getComputedStyle(document.querySelector('.empty-copy')).display"), 'none')
   await screenshot('empty')
+  report.measurements.themes = []
+  const initialTheme = await evaluate("document.documentElement.getAttribute('data-ls-theme') || 'dark'")
+  for (const theme of ['dark', 'light']) {
+    await evaluate(`document.documentElement.setAttribute('data-ls-theme','${theme}')`)
+    await delay(120)
+    report.measurements.themes.push(await evaluate(`(() => ({theme:document.documentElement.getAttribute('data-ls-theme'),
+      background:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
+      composerSurface:getComputedStyle(document.querySelector('.composer')).backgroundColor,
+      text:getComputedStyle(document.querySelector('.composer textarea')).color}))()`))
+    await screenshot(`empty-${theme}`)
+  }
+  await evaluate(`document.documentElement.setAttribute('data-ls-theme',${JSON.stringify(initialTheme)})`)
 
   const controlsGeometry = `(() => {
     const rect = e => {const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,cx:r.left+r.width/2,cy:r.top+r.height/2}};
     const add=document.querySelector('.add-menu-trigger');
-    return {composer:rect(document.querySelector('.composer')),controls:rect(document.querySelector('.composer-controls')),
+    const composer=document.querySelector('.composer'); const style=getComputedStyle(composer);
+    const controls=document.querySelector('.composer-controls'); const controlStyle=getComputedStyle(controls);
+    return {composer:rect(composer),computed:{height:style.height,minHeight:style.minHeight,maxHeight:style.maxHeight,
+        paddingBlockStart:style.paddingBlockStart,paddingBlockEnd:style.paddingBlockEnd,gap:style.gap,
+        flexDirection:style.flexDirection},controls:rect(controls),controlsComputed:{display:controlStyle.display,
+        gap:controlStyle.gap,gridTemplateRows:controlStyle.gridTemplateRows},
       add:rect(add),glyph:rect(add.querySelector('svg')),fill:getComputedStyle(add).backgroundColor,
+      controlsChildren:[...document.querySelector('.composer-controls').children].map(e=>{const s=getComputedStyle(e);return {
+        className:e.className,text:e.innerText?.slice(0,100),...rect(e),
+        computed:{display:s.display,position:s.position,height:s.height,minHeight:s.minHeight,maxWidth:s.maxWidth,
+          flex:s.flex,flexWrap:s.flexWrap,gap:s.gap,lineHeight:s.lineHeight},html:e.outerHTML.slice(0,800)}}),
       buttons:[...document.querySelectorAll('.composer-controls button')].filter(e=>e.getBoundingClientRect().width&&e.getBoundingClientRect().height&&!e.closest('[aria-hidden="true"]')).map(rect)};
   })()`
   await client.send('Input.dispatchMouseEvent', {type:'mouseMoved',x:1,y:1})
   const originalChatStyle = await evaluate("document.querySelector('.chat').getAttribute('style')")
-  let baseComposerHeight
   report.measurements.composerWidths = []
   for (const width of [700, 560, 480, 430, 360, 320]) {
     await evaluate(`Object.assign(document.querySelector('.chat').style,{width:'${width}px',maxWidth:'${width}px',minWidth:'0'})`)
     await delay(250)
     const sample = await evaluate(controlsGeometry)
-    baseComposerHeight ??= sample.composer.height
-    assert(Math.abs(sample.composer.height-baseComposerHeight)<=1, `composer height changed at ${width}px`)
+    report.measurements.composerWidths.push({width,...sample})
+    if (width === 700 || width === 560) await screenshot(`composer-${width}`)
+    // The existing chat-pane contract deliberately becomes a 2-row control grid
+    // below 820px, tightens its row gap at 560px, then becomes a 3-row grid at
+    // 390px. Composer height therefore changes with those real rows; require the
+    // measured geometry for each breakpoint instead of a false one-height rule.
+    const expectedControlsHeight = width <= 390 ? 106 : width <= 560 ? 70 : 74
+    const expectedComposerHeight = 72 + expectedControlsHeight
+    assert.equal(sample.controls.height, expectedControlsHeight,
+      `composer control grid at ${width}px must match its ${width <= 390 ? 'three-row' : 'two-row'} responsive role`)
+    assert.equal(Math.round(sample.composer.height * 10) / 10, expectedComposerHeight,
+      `composer height at ${width}px must follow the measured responsive grid geometry`)
     assert(Math.abs(sample.add.cx-sample.glyph.cx)<=.5 && Math.abs(sample.add.cy-sample.glyph.cy)<=.5, 'add glyph is not centered')
     assert.equal(sample.fill,'rgba(0, 0, 0, 0)')
     for (const button of sample.buttons) {
       assert(button.left>=sample.composer.left-1 && button.right<=sample.composer.right+1, `control overflow at ${width}px`)
       assert(button.top>=sample.controls.top-1 && button.bottom<=sample.controls.bottom+1, `control wrapped at ${width}px`)
     }
-    report.measurements.composerWidths.push({width,...sample})
   }
+  const dark560 = report.measurements.composerWidths.find((sample) => sample.width === 560)
+  await evaluate(`Object.assign(document.querySelector('.chat').style,{width:'560px',maxWidth:'560px',minWidth:'0'})`)
+  await evaluate("document.documentElement.setAttribute('data-ls-theme','light')")
+  await delay(120)
+  const light560 = await evaluate(controlsGeometry)
+  assert.equal(light560.composer.height, dark560?.composer.height,
+    `the 560px light theme keeps the measured composer geometry: ${JSON.stringify(light560)}`)
+  assert.equal(light560.controls.height, dark560?.controls.height,
+    `the 560px light theme keeps the measured control rows: ${JSON.stringify(light560)}`)
+  report.measurements.composerThemes ??= []
+  report.measurements.composerThemes.push({ width: 560, theme: 'light', ...light560 })
+  await screenshot('composer-560-light')
+  await evaluate(`document.documentElement.setAttribute('data-ls-theme',${JSON.stringify(initialTheme)})`)
+  await evaluate(`Object.assign(document.querySelector('.chat').style,{width:'320px',maxWidth:'320px',minWidth:'0'})`)
+  await delay(120)
   await screenshot('composer-320')
+  await evaluate("document.documentElement.setAttribute('data-ls-theme','light')")
+  await delay(120)
+  await screenshot('composer-320-light')
+  await evaluate(`document.documentElement.setAttribute('data-ls-theme',${JSON.stringify(initialTheme)})`)
   await draft('宽度变化时这一段草稿应该在现有输入区域内换行并滚动，不应撑高输入框。'.repeat(4))
   const beforeResize = await evaluate(geometry)
   await evaluate("Object.assign(document.querySelector('.chat').style,{width:'700px',maxWidth:'700px'})")
@@ -115,8 +168,21 @@ try {
   await evaluate("Object.assign(document.querySelector('.chat').style,{width:'320px',maxWidth:'320px'})")
   await delay(250)
   const wrappedDraft = await evaluate(geometry)
-  assert(Math.abs(beforeResize.composer.height-wideDraft.composer.height)<=1)
-  assert(Math.abs(wrappedDraft.composer.height-wideDraft.composer.height)<=1)
+  const draftLayout = { beforeResize: Math.round(beforeResize.composer.height * 10) / 10,
+    wide: Math.round(wideDraft.composer.height * 10) / 10,
+    wrapped: Math.round(wrappedDraft.composer.height * 10) / 10,
+    wideTextarea: wideDraft.textarea, narrowTextarea: wrappedDraft.textarea,
+    textPreserved: wrappedDraft.draft === wideDraft.draft }
+  report.measurements.draftResize = draftLayout
+  assert(draftLayout.wide <= 334.4 && draftLayout.wrapped <= 334.4,
+    `responsive draft layout stays within the viewport composer cap: ${JSON.stringify(draftLayout)}`)
+  assert(draftLayout.narrowTextarea.height <= 220,
+    `the 320px textarea stays within its 220px runtime input cap: ${JSON.stringify(draftLayout.narrowTextarea)}`)
+  assert(draftLayout.narrowTextarea.scrollHeight > draftLayout.narrowTextarea.clientHeight
+    && draftLayout.narrowTextarea.overflowY === 'auto',
+  `the narrow multiline draft scrolls inside the capped textarea: ${JSON.stringify(draftLayout.narrowTextarea)}`)
+  assert.equal(draftLayout.wrapped, draftLayout.beforeResize,
+    `returning to 320px restores the same composer geometry: ${JSON.stringify(draftLayout)}`)
   assert.equal(wrappedDraft.draft,wideDraft.draft)
   await draft('')
   const addGeometry = (await evaluate(controlsGeometry)).add
@@ -128,7 +194,7 @@ try {
   assert.equal((await evaluate(controlsGeometry)).fill,'rgba(0, 0, 0, 0)')
   await evaluate(`document.querySelector('.chat').setAttribute('style',${JSON.stringify(originalChatStyle ?? '')})`)
   await delay(250)
-  record('composer remains one height from 700px to 320px, wrapped drafts scroll, and centered add circle appears only on hover')
+  record('composer follows its exact 700/560/390px grid breakpoints, caps and scrolls long drafts, and centers the add control')
 
   await evaluate(`(() => {
     window.composerMotionFrames = [];
@@ -142,13 +208,16 @@ try {
     };
     requestAnimationFrame(sample);
   })()`)
+  await provider.setDelay({ promptContains: LONG_MARKDOWN_MARKER, delayMs: 1800 })
   await submit(`请输出验收文档：${LONG_MARKDOWN_MARKER}`)
-  await wait("document.querySelector('.assistant-turn.running .assistant-process-content.open') ? true : null", 'bounded running state')
-  assert.equal(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').getAttribute('aria-expanded')"), 'true')
+  await wait("document.querySelector('.assistant-turn.running .assistant-process-label.is-running') ? true : null", 'bounded running state')
+  assert.equal(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').getAttribute('aria-expanded')"), 'false')
   assert(await evaluate("!!document.querySelector('.composer .stop:not(:disabled)')"))
-  assert(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').disabled"))
-  record('DSH live process stays open and Stop remains reachable')
+  assert.equal(await evaluate("document.querySelector('.assistant-turn.running .assistant-process-trigger').disabled"), false)
+  await screenshot('assistant-running')
+  record('running turn shows its live label with the process folded and Stop reachable')
   await settled()
+  await provider.setDelay({ promptContains: LONG_MARKDOWN_MARKER, delayMs: 0 })
   const motion = await evaluate('window.composerMotionFrames')
   const moving = motion.filter(frame => !frame.empty)
   assert(moving.length > 3, 'must sample multiple transition frames')
@@ -332,8 +401,32 @@ try {
   assert(await evaluate("document.querySelector('.assistant-turn.failed .assistant-process-trigger').disabled"))
   await screenshot('failure-visible')
   record('DSH failed process stays open with its recorded failure and retry')
-  await writeFile(join(root, 'report.json'), JSON.stringify(report, null, 2))
-  console.log(`Report: ${join(root, 'report.json')}`)
+  await writeFile(join(outRoot, 'report.json'), JSON.stringify(report, null, 2))
+  console.log(`Report: ${join(outRoot, 'report.json')}`)
+} catch (error) {
+  report.failure = { error: error instanceof Error ? error.stack ?? error.message : String(error) }
+  try {
+    report.diagnostic = await evaluate(`(() => {
+      const selectors = ['.chat','.composer','.composer-shell','.composer-controls','.composer-left','.composer-right',
+        '.runtime-picker-trigger','.send-round','.messages','.assistant-turn:last-child',
+        '.assistant-turn:last-child .assistant-process-trigger','.assistant-turn:last-child .assistant-process-content',
+        '.composer .stop'];
+      return {width:innerWidth,theme:document.documentElement.getAttribute('data-ls-theme'),
+        elements:selectors.map(selector=>{const el=document.querySelector(selector);if(!el)return {selector,found:false};
+          const rect=el.getBoundingClientRect(),style=getComputedStyle(el);return {selector,found:true,
+            text:el.innerText?.slice(0,240),rect:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+            computed:{display:style.display,position:style.position,minHeight:style.minHeight,height:style.height,
+              maxHeight:style.maxHeight,flexWrap:style.flexWrap,gap:style.gap,padding:style.padding,
+              fontSize:style.fontSize,overflow:style.overflow,color:style.color,backgroundColor:style.backgroundColor,
+              borderRadius:style.borderRadius},html:el.outerHTML.slice(0,1600)}})};
+    })()`)
+    await screenshot('failure')
+  } catch (diagnosticError) {
+    report.diagnosticFailure = diagnosticError instanceof Error ? diagnosticError.message : String(diagnosticError)
+  }
+  await mkdir(outRoot, { recursive: true })
+  await writeFile(join(outRoot, 'report.json'), JSON.stringify(report, null, 2))
+  throw error
 } finally {
   client?.close()
   if (child?.exitCode === null) await harness.forceTerminate(child)

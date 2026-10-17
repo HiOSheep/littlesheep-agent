@@ -339,7 +339,8 @@ describe('frontend font rendering baseline', () => {
 
     expect(actions).toContain('align-items: center')
     expect(action).toContain('box-sizing: border-box')
-    expect(action).toContain('height: 34px')
+    expect(action).toContain('height: var(--control-height-md)')
+    expect(action).toContain('min-height: var(--control-height-md)')
     expect(action).toContain('padding: 0 12px 4px')
     expect(action).toContain('letter-spacing: 0')
     expect(action).toContain('line-height: 18px')
