@@ -19,6 +19,8 @@ export interface TaskEvidenceReference {
   effectRef?: string;
   /** Content digest for the exact observed file version, when applicable. */
   contentHash?: string;
+  /** Trusted Runtime timestamp for the check that observed this file version. */
+  checkedAt?: string;
 }
 
 export interface TaskRequirementOutcome {
@@ -114,7 +116,8 @@ export function parseTaskOutcome(value: unknown, expectedRunId: string): TaskOut
       || !isEvidenceStatus(record.status) || !boundedText(record.sourceRef, 192)
       || (record.resourceRef !== undefined && !boundedText(record.resourceRef, 192))
       || (record.effectRef !== undefined && !shortIdentifier(record.effectRef))
-      || (record.contentHash !== undefined && !/^[a-f0-9]{64}$/u.test(String(record.contentHash)))) return undefined;
+      || (record.contentHash !== undefined && !/^[a-f0-9]{64}$/u.test(String(record.contentHash)))
+      || (record.checkedAt !== undefined && !boundedTimestamp(record.checkedAt))) return undefined;
     evidence.push({
       version: 1,
       id: record.id,
@@ -124,6 +127,7 @@ export function parseTaskOutcome(value: unknown, expectedRunId: string): TaskOut
       ...(typeof record.resourceRef === 'string' ? { resourceRef: record.resourceRef } : {}),
       ...(typeof record.effectRef === 'string' ? { effectRef: record.effectRef } : {}),
       ...(typeof record.contentHash === 'string' ? { contentHash: record.contentHash } : {}),
+      ...(typeof record.checkedAt === 'string' ? { checkedAt: record.checkedAt } : {}),
     });
   }
   const artifacts: TaskArtifactOutcome[] = [];
@@ -223,6 +227,11 @@ function shortIdentifier(value: unknown): value is string {
 }
 function boundedText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+}
+function boundedTimestamp(value: unknown): boolean {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u.test(value)
+    && Number.isFinite(Date.parse(value));
 }
 function boundedReason(value: unknown): string | undefined {
   return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,80}$/u.test(value) ? value : undefined;

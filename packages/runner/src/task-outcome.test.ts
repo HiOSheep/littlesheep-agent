@@ -27,6 +27,7 @@ function resultWithReceipt(status: 'passed' | 'failed' | 'blocked'): Pick<AgentR
       callId: 'write-call',
       status: 'succeeded',
       proposedAt: '2026-10-17T00:00:00.000Z',
+      endedAt: '2026-10-17T00:00:01.000Z',
       approval: { required: false, decision: 'not_required' },
       evidenceIds: [],
     }, {
@@ -39,6 +40,7 @@ function resultWithReceipt(status: 'passed' | 'failed' | 'blocked'): Pick<AgentR
       callId: checkCallId,
       status: 'succeeded',
       proposedAt: '2026-10-17T00:00:00.000Z',
+      endedAt: '2026-10-17T00:00:01.000Z',
       approval: { required: false, decision: 'not_required' },
       evidenceIds: [],
     }],
@@ -95,6 +97,10 @@ describe('buildTaskOutcome', () => {
     expect(outcome.status).toBe('completed');
     expect(outcome.requirements[0]?.status).toBe('passed');
     expect(outcome.evidence.map((item) => item.kind)).toEqual(['file_state', 'settled_effect', 'tool_result', 'requirement_check']);
+    expect(outcome.evidence.filter((item) => item.kind === 'file_state' || item.kind === 'requirement_check'))
+      .toHaveLength(2);
+    expect(outcome.evidence.find((item) => item.kind === 'requirement_check')?.checkedAt)
+      .toBe('2026-10-17T00:00:01.000Z');
   });
 
   it('reuses a settled write identity when pre-checkpoint result messages are absent after recovery', () => {

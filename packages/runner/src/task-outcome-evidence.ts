@@ -15,11 +15,13 @@ export function collectTrustedCheckReceipts(
   sideEffects: readonly NonNullable<AgentResult['sideEffects']>[number][],
 ): Array<ExplicitFileContentCheckReceipt & {
   callId: string;
+  checkedAt?: string;
   mutationAction?: TaskArtifactOutcome['action'];
   writeEffectRef?: string;
 }> {
   const receipts: Array<ExplicitFileContentCheckReceipt & {
     callId: string;
+    checkedAt?: string;
     mutationAction?: TaskArtifactOutcome['action'];
     writeEffectRef?: string;
   }> = [];
@@ -29,6 +31,7 @@ export function collectTrustedCheckReceipts(
     callId: string;
     order: number;
     timestamp: string;
+    checkedAt?: string;
   }> = [];
   let order = 0;
   for (const message of messages) {
@@ -41,7 +44,14 @@ export function collectTrustedCheckReceipts(
       if (callIds.has(result.callId) && result.ok) {
         const receipt = readCheckReceipt(result.meta?.taskOutcomeCheck);
         if (receipt?.requirementId === requirementId) {
-          candidates.push({ receipt, callId: result.callId, order: currentOrder, timestamp: message.timestamp });
+          const invocation = invocations.find((record) => record.callId === result.callId);
+          candidates.push({
+            receipt,
+            callId: result.callId,
+            order: currentOrder,
+            timestamp: message.timestamp,
+            ...(isTimestamp(invocation?.endedAt) ? { checkedAt: invocation.endedAt } : {}),
+          });
         }
       }
     }
@@ -91,6 +101,7 @@ export function collectTrustedCheckReceipts(
     receipts.push({
       ...candidate.receipt,
       callId: candidate.callId,
+      ...(candidate.checkedAt ? { checkedAt: candidate.checkedAt } : {}),
       ...(priorMutation ? { mutationAction: priorMutation.action } : {}),
       ...(writeEffectRef ? { writeEffectRef } : {}),
     });
@@ -128,6 +139,7 @@ function isResolvableEvidence(
   if (!callId || invocation?.toolName !== 'runtime_check_file_content'
     || invocation.toolSource !== 'run-scoped' || invocation.status !== 'succeeded'
     || call?.call.name !== 'runtime_check_file_content' || call.result.callId !== callId || !call.result.ok) return false;
+  if (evidence.checkedAt !== undefined && invocation.endedAt !== evidence.checkedAt) return false;
   if (evidence.kind === 'tool_result') return evidence.id === `tool-result:${callId}`;
   const value = call.result.meta?.taskOutcomeCheck;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -174,4 +186,10 @@ function recordWorkspaceMutation(value: unknown): { resourceRef: string; action:
 function boundReason(value: string): string {
   const normalized = value.replace(/[^A-Za-z0-9_.-]/gu, '_').slice(0, 80);
   return normalized || 'unknown_reason';
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u.test(value)
+    && Number.isFinite(Date.parse(value));
 }

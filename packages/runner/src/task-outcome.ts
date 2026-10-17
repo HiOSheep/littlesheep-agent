@@ -84,6 +84,7 @@ export function buildTaskOutcome(input: {
         sourceRef: `tool:${latest.callId}`,
         resourceRef: latest.resourceRef,
         ...(latest.contentHash ? { contentHash: latest.contentHash } : {}),
+        ...(latest.checkedAt ? { checkedAt: latest.checkedAt } : {}),
       });
       if (latest.writeEffectRef) {
         evidence.push({
@@ -113,6 +114,7 @@ export function buildTaskOutcome(input: {
         sourceRef: `tool:${latest.callId}`,
         resourceRef: latest.resourceRef,
         ...(latest.contentHash ? { contentHash: latest.contentHash } : {}),
+        ...(latest.checkedAt ? { checkedAt: latest.checkedAt } : {}),
       });
       evidenceRefs.push(latest.fileStateEvidenceId, ...(latest.writeEffectRef ? [latest.writeEffectRef] : []),
         toolResultEvidenceId, latest.evidenceId);

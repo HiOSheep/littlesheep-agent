@@ -8,6 +8,7 @@ describe('Task Outcome codec', () => {
       version: 1 as const, id: 'file-check:state', kind: 'file_state' as const,
       status: 'informational' as const, sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt',
       contentHash: 'a'.repeat(64),
+      checkedAt: '2026-10-17T12:00:00.000Z',
     };
     const toolResult = {
       version: 1 as const, id: 'tool-result:check-1', kind: 'tool_result' as const,
@@ -35,6 +36,8 @@ describe('Task Outcome codec', () => {
       remaining: [],
     };
     expect(parseTaskOutcome(outcome, 'run-1')).toEqual(outcome);
+    expect(parseTaskOutcome({ ...outcome, evidence: [{ ...fileState, checkedAt: 'not-a-date' }, toolResult, requirementCheck] }, 'run-1'))
+      .toBeUndefined();
     expect(parseTaskOutcome({ ...outcome, evidence: [fileState, toolResult] }, 'run-1')).toBeUndefined();
     expect(parseTaskOutcome({ ...outcome, requirementInventory: 'unknown' }, 'run-1')).toBeUndefined();
   });

@@ -140,7 +140,11 @@ function EvidenceList({ evidence }: { evidence: TaskEvidenceReference[] }) {
             <code>{workspaceRelativeResource(item.resourceRef)}</code>
           )}
           {item.contentHash && <code>检查时版本 SHA-256 {item.contentHash.slice(0, 12)}</code>}
+          {item.checkedAt && <time dateTime={item.checkedAt}>检查时间 {item.checkedAt}</time>}
           {safeReferenceSuffix(item.sourceRef) && <code>记录 · {safeReferenceSuffix(item.sourceRef)}</code>}
+          {item.kind === 'requirement_check' && item.contentHash && (
+            <p>结果只对应检查时的文件版本；文件之后可能变化，历史记录不会自动复核当前文件。</p>
+          )}
         </li>
       ))}
     </ul>
@@ -182,7 +186,7 @@ function artifactVerificationDetail(
 ): string {
   if (artifact.verification === 'passed' || artifact.verification === 'failed') {
     const hash = evidence.find((item) => item.kind === 'file_state')?.contentHash
-    return hash ? `检查时文件版本 ${hash.slice(0, 12)}` : '检查时点结果'
+    return hash ? `检查时文件版本 ${hash.slice(0, 12)} · 后续变化未自动复核` : '检查时点结果'
   }
   return artifact.verification === 'unverified' ? '没有独立内容检查' : '检查受到阻断'
 }

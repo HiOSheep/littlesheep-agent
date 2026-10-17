@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "phase": "S2C-D",
+  "title": "Task Outcome settlement consistency and recovery",
+  "baseline": {
+    "branch": "main",
+    "integratedHead": "1528a61317a40720c1e820038a1e25025fdc8550",
+    "rendererEvidence": "S2C-D rerun of real Electron 44.4.5 Renderer/Main/Runner verification"
+  },
+  "executionLevel": [
+    "real Runner/Harness/Tools child process",
+    "real child process SIGKILL",
+    "component level recovery inspection",
+    "real Electron Renderer/Main/Runner verification"
+  ],
+  "settlementOrder": [
+    "final_reply_proposed_and_session_transcript_proposed",
+    "task_outcome_settled",
+    "execution_log_write",
+    "session_reply_registry_settlement",
+    "final_reply_settled",
+    "execution_log_final_reply_projection",
+    "run_completed",
+    "checkpoint_completion_and_caller_return"
+  ],
+  "atomicity": {
+    "globalTransaction": false,
+    "durableEventIdentity": "stable per Run; duplicate content is idempotent and conflicting content is rejected",
+    "executionLog": "atomic single-file replace; not atomic with other stores",
+    "recoveryRule": "settle a proposed reply only after exact matching proposal is found in the trusted Session transcript",
+    "missingExecutionLog": "public Task Outcome safely degrades to unknown; no tool replay or evidence reconstruction"
+  },
+  "faultMatrix": [
+    {
+      "id": "D02-01",
+      "point": "before_outcome_construction",
+      "termination": "SIGKILL",
+      "expected": "conservative unknown; no final reply settlement or run completion",
+      "evidence": "durable proposal, Outcome event, reply event, completion event and Effect counts"
+    },
+    {
+      "id": "D02-02",
+      "point": "outcome_persisted_before_execution_log",
+      "termination": "SIGKILL",
+      "expected": "reply and Run can reconcile from exact persisted transcript; public outcome unknown without audit log",
+      "evidence": "durable outcome and event identities, missing ExecutionLog, public replay value"
+    },
+    {
+      "id": "D02-03",
+      "point": "execution_log_persisted_before_final_reply_settlement",
+      "termination": "SIGKILL",
+      "expected": "matching reply is settled once and Run completes",
+      "evidence": "ExecutionLog Task Outcome, transcript proposal, durable events and Effect counts"
+    },
+    {
+      "id": "D02-04",
+      "point": "final_reply_settled_before_run_completed",
+      "termination": "SIGKILL",
+      "expected": "recovery appends one run_completed event",
+      "evidence": "reply registry, final_reply_settled and run_completed event counts"
+    },
+    {
+      "id": "D02-05",
+      "point": "run_completed_before_caller_return",
+      "termination": "SIGKILL",
+      "expected": "read/recovery is idempotent",
+      "evidence": "stable Run ID and single Outcome/reply/completion identities"
+    },
+    {
+      "id": "D02-06",
+      "point": "recovery_reinterrupted_after_run_completed_append",
+      "termination": "SIGKILL",
+      "expected": "second recovery leaves one logical settlement of each type",
+      "evidence": "real recovery child process kill and a second recovery pass"
+    }
+  ],
+  "fileEvidence": {
+    "meaning": "exact bytes observed at checkedAt, not a claim about current file contents or existence",
+    "hash": "SHA-256",
+    "rendererCopy": "historical check is not automatically repeated after file changes",
+    "covered": [
+      "later successful same-Run write invalidates old check",
+      "external file modification after check and before Outcome event",
+      "history replay after external modification and deletion"
+    ],
+    "legacyCheckedAt": "optional; never synthesized"
+  },
+  "tests": {
+    "command": "pnpm exec vitest run packages/runner/src/durable-runner-task-outcome-crash-matrix.test.ts packages/runner/src/durable-runner-final-settlement-crash.test.ts packages/runner/src/task-outcome.test.ts packages/runner/src/task-outcome-runner.test.ts packages/types/src/task-outcome.test.ts packages/app/src/renderer/chat/task-outcome-card.test.ts",
+    "result": "passed",
+    "files": 6,
+    "tests": 27,
+    "level": "real Runner/Harness/Tools child process plus unit/renderer tests",
+    "runnerRegression": {
+      "command": "pnpm exec vitest run packages/harness/src/durable-kernel.test.ts packages/runner/src/execution-log.test.ts packages/runner/src/runner.test.ts packages/runner/src/durable-runner-segment-recovery.test.ts packages/runner/src/durable-runner-final-settlement-crash.test.ts",
+      "result": "passed",
+      "files": 5,
+      "tests": 139,
+      "level": "Runner/Harness unit and real child process segment/final settlement recovery"
+    },
+    "typecheck": "passed",
+    "repositoryCheck": "passed: 35 checks, 0 failures, 3 advisory categories",
+    "diffCheck": "passed"
+  },
+  "electronRendererVerification": {
+    "command": "pnpm run verify:task-outcome-renderer",
+    "electronVersion": "44.4.5",
+    "cases": 3,
+    "checks": 7,
+    "result": "passed",
+    "buildInputDigest": "14fb3650de78c187e64cc490f3cd8fc66870ab79530fc16b24d8cc13fadacfa2",
+    "buildOutputDigest": "463b5038b72d7c7547eae9042bc21a702b92ad691419cda314875649b2e57042"
+  },
+  "limitations": [
+    "no cross-store distributed transaction",
+    "ExecutionLog projection is not reconstructed when missing",
+    "unsettled Provider response and unknown Effect cannot become acceptance evidence",
+    "file history is point-in-time and current resource state requires a new check"
+  ],
+  "status": "accepted_with_safe_degradation"
+}

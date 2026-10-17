@@ -15,13 +15,15 @@ function outcome(status: 'passed' | 'failed' | 'unverified' | 'blocked' = 'passe
   const checkStatus: TaskEvidenceStatus = status === 'passed' ? 'pass' : status === 'failed' ? 'fail' : 'partial'
   const evidence: TaskEvidenceReference[] = status === 'blocked' ? [] : [
     { version: 1 as const, id: 'file-state-1', kind: 'file_state' as const, status: 'informational' as const,
-      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest },
+      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest,
+      checkedAt: '2026-10-17T12:00:00.000Z' },
     { version: 1 as const, id: 'effect-1', kind: 'settled_effect' as const, status: 'pass' as const,
       sourceRef: 'effect-1', resourceRef: 'workspace:result.txt', effectRef: 'effect-1' },
     { version: 1 as const, id: 'tool-result-1', kind: 'tool_result' as const, status: 'informational' as const,
       sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt' },
     { version: 1 as const, id: 'check-1', kind: 'requirement_check' as const, status: checkStatus,
-      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest },
+      sourceRef: 'tool:check-1', resourceRef: 'workspace:result.txt', contentHash: digest,
+      checkedAt: '2026-10-17T12:00:00.000Z' },
   ]
   const evidenceRefs = evidence.map((item) => item.id)
   return {
@@ -55,6 +57,8 @@ describe('Task Outcome card', () => {
     expect(html).toContain('文件内容与要求不一致')
     expect(html).toContain('本次创建')
     expect(html).toContain('检查时文件版本 aaaaaaaaaaaa')
+    expect(html).toContain('文件之后可能变化')
+    expect(html).toContain('检查时间 2026-10-17T12:00:00.000Z')
     expect(html).not.toContain('已按明确的验收条件通过')
     expect(html).not.toContain(digest)
   })
@@ -64,6 +68,7 @@ describe('Task Outcome card', () => {
     expect(html).toContain('已验证通过')
     expect(html).toContain('已按明确的验收条件通过')
     expect(html).toContain('检查时文件版本 aaaaaaaaaaaa')
+    expect(html).toContain('后续变化未自动复核')
     expect(html).toContain('>result.txt</button>')
   })
 

@@ -41,9 +41,33 @@ export function createDurableRunRecovery(options: DurableRunRecoveryOptions): (
         queryEffectOutcome: options.queryEffectOutcome
           ? (effect) => options.queryEffectOutcome!(effect, { sessionId: String(sessionId), runId })
           : undefined,
-        finalReplyPersisted: async (reservation) => (
-          await options.sessionManager.assistantReplySettlementStatus?.(sessionId, reservation.settlementId)
-        ) === 'settled',
+        finalReplyPersisted: async (reservation) => {
+          // A durable proposal is recoverable only if the matching final reply
+          // itself made it into the session transcript. The registry's
+          // "reserved" state alone is not proof: reservation happens before
+          // transcript append during normal FINALIZE.
+          const transcript = await options.sessionManager.read(sessionId);
+          return transcript.some((message) => {
+            const settlement = message.finalReplySettlement;
+            if (message.role !== 'assistant'
+              || message.stage !== 'finalize'
+              || message.runId !== runId
+              || message.sessionId !== String(sessionId)
+              || !settlement
+              || settlement.settlementId !== reservation.settlementId
+              || settlement.reply !== reservation.reply
+              || settlement.replyFingerprint !== reservation.replyFingerprint
+              || settlement.modelRequestId !== reservation.modelRequestId
+              || (settlement.status !== 'proposed' && settlement.status !== 'settled')) {
+              return false;
+            }
+            const text = message.content
+              .filter((block) => block.type === 'text')
+              .map((block) => block.text)
+              .join('');
+            return text === reservation.reply;
+          });
+        },
         finalReplyRegistrySettled: async (reservation) => {
           try {
             await options.sessionManager.settleAssistantReplySettlement?.(sessionId, reservation);
