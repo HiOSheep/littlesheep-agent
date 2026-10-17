@@ -207,6 +207,25 @@ function toolMessagesThisTurn(messages) {
   return messages.slice(lastUser + 1).filter((message) => message?.role === 'tool')
 }
 function classifyResponse({ body, system, user, messages, model, requestIndex, state }) {
+  // S2C-E T07: only this exact two-line checklist is supported by the narrow
+  // production parser. The fixture writes both files, then asks Runtime to
+  // check each one through the fixed run-scoped checker schema.
+  const multiFileRequest = /^Create (s2ce-a\.txt), content must be hello\.?\nCreate (s2ce-b\.txt), content must be world\.?$/u.exec(user.trim())
+  if (multiFileRequest) {
+    const toolMessages = toolMessagesThisTurn(messages)
+    const steps = [
+      ['write-a', 'write', { file_path: 's2ce-a.txt', content: 'hello' }],
+      ['write-b', 'write', { file_path: 's2ce-b.txt', content: 'goodbye' }],
+      ['check-a', 'runtime_check_file_content', { file_path: 's2ce-a.txt' }],
+      ['check-b', 'runtime_check_file_content', { file_path: 's2ce-b.txt' }],
+    ]
+    if (toolMessages.length < steps.length) {
+      const [id, name, input] = steps[toolMessages.length]
+      return toolChoice(`task-outcome-${id}`, name, input)
+    }
+    return textChoice('I completed both file operations.')
+  }
+
   // S2C-C Renderer acceptance: exercise the normal Runtime file writer and its run-scoped,
   // read-only content checker. These exact request forms are deliberately narrow so this fixture
   // cannot turn arbitrary test prompts into a claimed requirement.

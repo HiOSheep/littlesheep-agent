@@ -83,6 +83,37 @@ describe('Task Outcome card', () => {
     expect(blocked).not.toContain('已验证通过')
   })
 
+  it('shows passed and failed requirements together without marking the task fully complete', () => {
+    const partial = outcome('passed')
+    partial.artifacts[0]!.resourceRef = 'workspace:a.txt'
+    const failedEvidence: TaskEvidenceReference[] = [
+      { version: 1, id: 'file-state-b', kind: 'file_state', status: 'informational', sourceRef: 'tool:check-b',
+        resourceRef: 'workspace:b.txt', contentHash: 'b'.repeat(64) },
+      { version: 1, id: 'effect-b', kind: 'settled_effect', status: 'pass', sourceRef: 'effect-b',
+        resourceRef: 'workspace:b.txt', effectRef: 'effect-b' },
+      { version: 1, id: 'tool-result-b', kind: 'tool_result', status: 'informational', sourceRef: 'tool:check-b',
+        resourceRef: 'workspace:b.txt' },
+      { version: 1, id: 'check-b', kind: 'requirement_check', status: 'fail', sourceRef: 'tool:check-b',
+        resourceRef: 'workspace:b.txt', contentHash: 'b'.repeat(64) },
+    ]
+    partial.requirements[0]!.status = 'passed'
+    partial.requirements[0]!.id = 'req-a'
+    partial.requirements[1] = { id: 'req-b', sourceMessageId: 'user-message-1', origin: 'user_explicit',
+      status: 'failed', evidenceRefs: failedEvidence.map((item) => item.id), reasonCode: 'file_content_mismatch' }
+    partial.evidence.push(...failedEvidence)
+    partial.artifacts.push({ resourceRef: 'workspace:b.txt', action: 'created', effectRef: 'effect-b',
+      evidenceRefs: failedEvidence.map((item) => item.id), verification: 'failed' })
+    partial.status = 'partially_completed'
+    partial.remaining = [{ requirementId: 'req-b', reasonCode: 'file_content_mismatch', evidenceRefs: failedEvidence.map((item) => item.id) }]
+    const html = render({ taskOutcome: partial })
+    expect(html).toContain('部分要求已通过，仍有未满足项')
+    expect(html).toContain('已验证通过')
+    expect(html).toContain('检查未通过')
+    expect(html).toContain('>a.txt</button>')
+    expect(html).toContain('>b.txt</button>')
+    expect(html).not.toContain('已按明确的验收条件通过')
+  })
+
   it('shows a missing record for legacy file writes and stays silent for ordinary chat', () => {
     const missing = render({ tools: [{ callId: 'write-1', name: 'write', ok: true }] })
     expect(missing).toContain('缺少验收记录')

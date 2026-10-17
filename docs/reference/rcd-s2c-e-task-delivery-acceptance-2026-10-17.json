@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S2C-E",
+  "generatedAt": "2026-10-17",
+  "branch": "main",
+  "implementationBaseHead": "84a525ee43e60b2a776b4c72289a2b61aff837da",
+  "result": "passed_with_narrow_supported_contract",
+  "sourceAndEnvironment": {
+    "rcdCoreRunId": "rcd-s0b-1792212017828",
+    "rcdCoreSourceHead": "84a525ee43e60b2a776b4c72289a2b61aff837da",
+    "rcdCoreWorktreeFingerprint": "635d568c6377885e66f9d4e795fe5d47857537b120fd43f3a83819e6ad7d09c4",
+    "worktreeWasDirtyDuringRun": true,
+    "dirtyTreeIncluded": "S2C-E implementation plus preserved independent Renderer UI/UX work; only S2C-E paths are intended for this commit",
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "v26.4.0",
+    "pnpm": "11.9.0",
+    "electron": "44.4.5"
+  },
+  "contract": {
+    "requirementSource": "original_user_message_id",
+    "multiRequirementRecognition": "complete_inventory_only_for_two_or_three_exact_root_txt_lines",
+    "unrecognizedOrExtraText": "inventory remains unknown; no inferred requirements",
+    "checker": "trusted run-scoped file content checker; reads actual bytes; expected content and target paths are not model supplied",
+    "outcomeConstruction": "deterministic from Runtime result and valid evidence; no model review loop",
+    "evidenceTimeSemantics": "checked file version at trusted checker invocation end time"
+  },
+  "electronAcceptance": {
+    "status": "passed",
+    "executionLevel": "real Electron Renderer + Main + Runner/Harness + local controlled HTTP Provider + real temporary workspace Tools",
+    "electronVersion": "44.4.5",
+    "buildStatus": "built",
+    "buildInputDigest": "044b33bb4394e153eaa889d7b0e2b3ca1170396732e8d1d6ed782f6b2f193812",
+    "buildOutputDigest": "82e9193d2fa10ef8a39b21d90a10d11f174cb603155528f2897496cc075bc32a",
+    "rendererControl": "CDP DOM events; not physical input-device or accessibility-device acceptance",
+    "provider": "deterministic loopback fixture; not real Provider quality evaluation",
+    "reportDirectory": "%TEMP%\\ls-task-outcome-renderer-g0eajt",
+    "cases": [
+      {
+        "id": "T06-good-control",
+        "requirement": "passed",
+        "outcome": "completed",
+        "toolCalls": ["write:succeeded", "runtime_check_file_content:succeeded"],
+        "file": "s2cc-passed.txt",
+        "actualContent": "hello",
+        "renderer": "shows passed only after independent Runtime check"
+      },
+      {
+        "id": "T06",
+        "requirement": "failed",
+        "outcome": "partially_completed",
+        "toolCalls": ["write:succeeded", "runtime_check_file_content:succeeded"],
+        "file": "s2cc-failed.txt",
+        "expectedContent": "hello",
+        "actualContent": "goodbye",
+        "renderer": "shows check failure and mismatch; no completed wording"
+      },
+      {
+        "id": "T03-no-independent-check",
+        "requirement": "unverified",
+        "outcome": "partially_completed",
+        "toolCalls": ["write:succeeded"],
+        "file": "s2cc-unchecked.txt",
+        "renderer": "shows not independently checked"
+      },
+      {
+        "id": "T07",
+        "requirementInventory": "complete",
+        "requirements": [
+          { "file": "s2ce-a.txt", "expected": "hello", "actual": "hello", "status": "passed" },
+          { "file": "s2ce-b.txt", "expected": "world", "actual": "goodbye", "status": "failed" }
+        ],
+        "outcome": "partially_completed",
+        "sourceMessageId": "same original user message for both requirements",
+        "toolCalls": ["write:succeeded", "write:succeeded", "runtime_check_file_content:succeeded", "runtime_check_file_content:succeeded"],
+        "renderer": "shows both files, passed and failed requirements, and remaining work"
+      },
+      {
+        "id": "C-T08-ordinary-chat",
+        "status": "passed",
+        "evidence": "ordinary chat added no empty Task Outcome card"
+      },
+      {
+        "id": "C-T06-history-reload",
+        "status": "passed",
+        "evidence": "four task cards remained one per Run after Renderer reload; no duplicate card"
+      }
+    ],
+    "checksPassed": 8
+  },
+  "regressions": {
+    "rcdCore": {
+      "ledger": "rcd-s2c-e-core-regression-2026-10-17.json",
+      "infrastructure": { "executed": 6, "blocked": 0, "harnessError": 0, "notRun": 0, "cleanupSucceeded": 6 },
+      "productResults": { "passed": 3, "failed": 0, "partiallyCompleted": 1, "correctlyBlocked": 2, "unverified": 0 },
+      "scenarios": {
+        "C02": "passed",
+        "C08": "passed",
+        "R01": "passed",
+        "R02": "correctly_blocked",
+        "L01": "partially_completed",
+        "X01": "correctly_blocked"
+      }
+    },
+    "testRuns": [
+      { "area": "S2C types, Task Outcome, FINALIZE, ExecutionLog, crash matrix, Renderer presentation", "files": 10, "passed": 77, "status": "passed" },
+      { "area": "S2B segments, process recovery, no-progress, leases, Effects, VRS checkpoint compatibility, durable kernel", "files": 8, "passed": 52, "status": "passed" },
+      { "area": "S1A, S1B-F, S1C, Shell/Web/Main authorization and tool boundaries", "files": 17, "passed": 292, "status": "passed" },
+      { "area": "S2C-E targeted parser, checker, workspace permission, Runner/Harness/Tools, card", "files": 6, "passed": 38, "status": "passed" },
+      { "area": "S2B in-process segmented budget and interruption", "files": 1, "passed": 3, "status": "passed" }
+    ],
+    "typecheck": "passed",
+    "repositoryCheck": { "status": "passed", "passed": 35, "failed": 0, "advisoryCategories": 3 },
+    "gitDiffCheck": "passed"
+  },
+  "limits": [
+    "The file requirement recognizer is intentionally restricted; it is not a general natural-language requirement extractor.",
+    "Only two or three complete root-level .txt exact-content lines produce a complete multi-requirement inventory.",
+    "The local controlled Provider does not establish real Provider quality or task understanding.",
+    "CDP-driven Renderer checks do not constitute physical input or accessibility-device acceptance.",
+    "A passed file check is evidence about the checked version and time; later changes require a new check.",
+    "No global transaction exists across Durable Event, ExecutionLog, Session transcript, and Run checkpoint; inconsistency remains conservatively unknown per S2C-D."
+  ],
+  "reports": {
+    "human": "rcd-s2c-e-task-delivery-acceptance-2026-10-17.md",
+    "rcdCore": "rcd-s2c-e-core-regression-2026-10-17.json",
+    "electronTemporaryReport": "%TEMP%\\ls-task-outcome-renderer-g0eajt\\report.json"
+  }
+}

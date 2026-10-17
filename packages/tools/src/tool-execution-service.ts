@@ -247,7 +247,7 @@ export class ToolExecutionService {
         continue;
       }
 
-      const runtimeCheckPath = runtimeFileContentCheckPath(registration.tool);
+      const runtimeCheckPath = runtimeFileContentCheckPath(registration.tool, input);
       const accessToolName = runtimeCheckPath ? 'read' : registration.tool.name;
       const accessInput = runtimeCheckPath ? { file_path: runtimeCheckPath } : input;
       const descriptor = describeToolAccess(accessToolName, accessInput, this.options.toolContext);
@@ -411,7 +411,7 @@ export class ToolExecutionService {
     const mode = this.options.toolContext.permissionMode;
     const snapshot = this.options.toolContext.permissionPolicyV2;
     const selectedPolicy = snapshot?.preset ?? this.options.toolContext.permissionPreset ?? mode;
-    const runtimeCheckPath = runtimeFileContentCheckPath(tool);
+    const runtimeCheckPath = runtimeFileContentCheckPath(tool, input);
     const accessToolName = runtimeCheckPath ? 'read' : tool.name;
     const accessInput = runtimeCheckPath ? { file_path: runtimeCheckPath } : input;
     const isNativeWorkspaceFileTool = (registration.source === 'builtin'
@@ -700,7 +700,7 @@ export class ToolExecutionService {
       if (invocation.shellGrant) attachShellInvocation(invocationContext, registration.tool, invocation.shellGrant);
       if ((registration.source === 'builtin'
         && (toolName === 'read' || toolName === 'write' || toolName === 'edit'))
-        || runtimeFileContentCheckPath(registration.tool) !== undefined) {
+        || runtimeFileContentCheckPath(registration.tool, input) !== undefined) {
         markNativeWorkspaceFileInvocation(invocationContext, toolName as 'read' | 'write' | 'edit' | 'runtime_check_file_content');
       }
       const result = await invokeWithTimeout(

@@ -37,27 +37,27 @@ export function buildTaskOutcome(input: {
   runId: string;
   workspaceRoot?: string;
   result: Pick<AgentResult, 'status' | 'runtimeStatus' | 'sideEffects' | 'modelRequests' | 'messages' | 'toolInvocations'>;
+  requirements?: readonly ExplicitFileContentRequirement[];
   requirement?: ExplicitFileContentRequirement;
   /** Durable Kernel state, not the redacted request-attempt snapshots on AgentResult. */
   unsettledProviderRequestIds?: readonly string[];
 }): TaskOutcome {
   const execution = executionStatus(input.result.status, input.result.runtimeStatus);
+  const explicitRequirements = input.requirements ?? (input.requirement ? [input.requirement] : []);
   const checkCallIds = new Set((input.result.toolInvocations ?? [])
     .filter((record) => record.toolName === EXPLICIT_FILE_CHECK_TOOL_NAME
       && record.toolSource === 'run-scoped' && record.status === 'succeeded')
     .map((record) => record.callId));
-  const receipts = input.requirement
+  const receipts = explicitRequirements.length > 0
     ? collectTrustedCheckReceipts(
         input.result.messages,
         checkCallIds,
-        input.requirement.requirementId,
+        explicitRequirements,
         input.workspaceRoot ?? process.cwd(),
-        input.requirement.filePath,
         input.result.toolInvocations ?? [],
         input.result.sideEffects ?? [],
       )
     : [];
-  const latest = receipts.at(-1);
   const unknownEffect = input.result.sideEffects?.some((effect) => effect.status === 'unknown'
     || effect.status === 'planned' || effect.status === 'in_progress') === true;
   const unresolvedProvider = (input.unsettledProviderRequestIds?.length ?? 0) > 0;
@@ -66,9 +66,10 @@ export function buildTaskOutcome(input: {
   const requirements: TaskRequirementOutcome[] = [];
   const artifacts: TaskArtifactOutcome[] = [];
   const remaining: TaskOutcome['remaining'] = [];
-  let inventory: TaskOutcome['requirementInventory'] = input.requirement ? 'complete' : 'unknown';
+  let inventory: TaskOutcome['requirementInventory'] = explicitRequirements.length > 0 ? 'complete' : 'unknown';
 
-  if (input.requirement) {
+  for (const explicitRequirement of explicitRequirements) {
+    const latest = receipts.filter((receipt) => receipt.requirementId === explicitRequirement.requirementId).at(-1);
     const missingSettledWrite = latest?.status === 'passed' && !latest.writeEffectRef;
     const status: TaskRequirementStatus = !latest
       ? execution === 'blocked' || execution === 'cancelled' ? 'blocked' : 'unverified'
@@ -126,10 +127,10 @@ export function buildTaskOutcome(input: {
         verification: status,
       });
     }
-    requirements.push({
-      id: input.requirement.requirementId,
-      sourceMessageId: input.requirement.sourceMessageId,
-      origin: input.requirement.origin,
+    const requirementOutcome: TaskRequirementOutcome = {
+      id: explicitRequirement.requirementId,
+      sourceMessageId: explicitRequirement.sourceMessageId,
+      origin: explicitRequirement.origin,
       status,
       evidenceRefs,
       ...(status === 'blocked'
@@ -138,11 +139,11 @@ export function buildTaskOutcome(input: {
           : status === 'unverified' ? { reasonCode: execution === 'cancelled' ? 'execution_cancelled'
             : missingSettledWrite ? 'no_settled_write_effect' : 'no_independent_check' }
             : {}),
-    });
+    };
+    requirements.push(requirementOutcome);
     if (status !== 'passed') {
-      remaining.push({ requirementId: input.requirement.requirementId,
-        reasonCode: status === 'blocked' || status === 'unverified' ? requirements[0]!.reasonCode!
-          : status === 'failed' ? failedReason : 'no_independent_check',
+      remaining.push({ requirementId: explicitRequirement.requirementId,
+        reasonCode: requirementOutcome.reasonCode ?? (status === 'failed' ? failedReason : 'no_independent_check'),
         evidenceRefs });
     }
   }

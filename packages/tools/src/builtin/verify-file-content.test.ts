@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ToolContext } from '@littlesheep/types';
-import { createExplicitFileContentCheckTool } from './verify-file-content.js';
+import { createExplicitFileContentCheckTool, runtimeFileContentCheckPath } from './verify-file-content.js';
 
 let workspace = '';
 const context = (): ToolContext => ({ sessionId: 's1' as never, runId: 'r1', cwd: workspace });
@@ -65,5 +65,24 @@ describe('Runtime explicit file content checker', () => {
     expect(result.ok).toBe(true);
     expect(receipt).toMatchObject({ status: 'failed', reasonCode: 'file_missing' });
     expect(receipt.contentHash).toBeUndefined();
+  });
+
+  it('checks only one listed file at a time for a bounded multi-requirement request', async () => {
+    await writeFile(join(workspace, 'a.txt'), 'hello', 'utf8');
+    await writeFile(join(workspace, 'b.txt'), 'goodbye', 'utf8');
+    const tool = createExplicitFileContentCheckTool([
+      { runId: 'r1', requirementId: 'req-a', filePath: 'a.txt', expectedContent: 'hello' },
+      { runId: 'r1', requirementId: 'req-b', filePath: 'b.txt', expectedContent: 'world' },
+    ]);
+
+    expect(runtimeFileContentCheckPath(tool, { file_path: 'a.txt' })).toBe('a.txt');
+    expect(runtimeFileContentCheckPath(tool, { file_path: '../private.txt' })).toBeUndefined();
+    const passed = await tool.execute({ file_path: 'a.txt' }, context());
+    const failed = await tool.execute({ file_path: 'b.txt' }, context());
+    expect(passed.meta?.taskOutcomeCheck).toMatchObject({ requirementId: 'req-a', status: 'passed' });
+    expect(failed.meta?.taskOutcomeCheck).toMatchObject({ requirementId: 'req-b', status: 'failed' });
+    expect(JSON.stringify([passed.meta, failed.meta])).not.toContain('goodbye');
+    const rejected = await tool.execute({ file_path: '../private.txt' }, context());
+    expect(rejected.ok).toBe(false);
   });
 });

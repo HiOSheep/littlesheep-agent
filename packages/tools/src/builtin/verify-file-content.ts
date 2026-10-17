@@ -33,40 +33,79 @@ export interface ExplicitFileContentCheckReceipt {
   reasonCode?: 'permission_denied' | 'path_unverified' | 'file_missing' | 'not_regular_file' | 'file_too_large' | 'read_failed' | 'cancelled';
 }
 
-const runtimeFileContentCheckTools = new WeakMap<AgentTool, string>();
+interface RuntimeFileContentCheckTargets {
+  requests: readonly ExplicitFileContentCheckRequest[];
+  byPath: ReadonlyMap<string, ExplicitFileContentCheckRequest>;
+}
 
-/** Trusted fixed target for permission classification; never model supplied. */
-export function runtimeFileContentCheckPath(tool: AgentTool): string | undefined {
-  return runtimeFileContentCheckTools.get(tool);
+const runtimeFileContentCheckTools = new WeakMap<AgentTool, RuntimeFileContentCheckTargets>();
+
+/** Trusted fixed target for permission classification; never an arbitrary model path. */
+export function runtimeFileContentCheckPath(tool: AgentTool, input?: unknown): string | undefined {
+  const targets = runtimeFileContentCheckTools.get(tool);
+  if (!targets) return undefined;
+  if (targets.requests.length === 1) return targets.requests[0]!.filePath;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
+  const filePath = (input as Record<string, unknown>).file_path;
+  return typeof filePath === 'string' && targets.byPath.has(filePath) ? filePath : undefined;
 }
 
 /**
  * Create a run-scoped, read-only checker for one exact user-declared content
- * requirement. The model chooses no path or expected value; it can only ask
- * Runtime to inspect the target already extracted from the original message.
+ * requirement or a bounded list of them. For a list, the model can select only
+ * one of the fixed filenames supplied by the trusted parser; it never supplies
+ * expected content or an arbitrary path.
  */
-export function createExplicitFileContentCheckTool(request: ExplicitFileContentCheckRequest): AgentTool {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(request.filePath)
-    || request.filePath === '.' || request.filePath === '..' || request.filePath.includes('..')
-    || !request.runId.trim() || !request.requirementId.trim()) {
-    throw new Error('explicit file content check requires a bounded root-level workspace filename');
+export function createExplicitFileContentCheckTool(
+  requestInput: ExplicitFileContentCheckRequest | readonly ExplicitFileContentCheckRequest[],
+): AgentTool {
+  const requests = Array.isArray(requestInput) ? [...requestInput] : [requestInput as ExplicitFileContentCheckRequest];
+  if (requests.length < 1 || requests.length > 3) {
+    throw new Error('explicit file content check supports one to three bounded requirements');
   }
-  const expectedBytes = Buffer.from(request.expectedContent, 'utf8');
-  if (expectedBytes.length > MAX_EXPECTED_CONTENT_BYTES) {
-    throw new Error('explicit file content check exceeds the bounded expectation size');
+  const byPath = new Map<string, ExplicitFileContentCheckRequest>();
+  const seenPaths = new Set<string>();
+  const runId = requests[0]!.runId;
+  for (const request of requests) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(request.filePath)
+      || request.filePath === '.' || request.filePath === '..' || request.filePath.includes('..')
+      || !request.runId.trim() || request.runId !== runId || !request.requirementId.trim()) {
+      throw new Error('explicit file content check requires bounded root-level workspace filenames for one Run');
+    }
+    const pathKey = request.filePath.toLocaleLowerCase();
+    if (seenPaths.has(pathKey)) throw new Error('explicit file content check targets must be unique');
+    seenPaths.add(pathKey);
+    byPath.set(request.filePath, request);
+    if (Buffer.byteLength(request.expectedContent, 'utf8') > MAX_EXPECTED_CONTENT_BYTES) {
+      throw new Error('explicit file content check exceeds the bounded expectation size');
+    }
   }
+  const multiInput = z.object({
+    file_path: z.enum(requests.map((request) => request.filePath) as [string, ...string[]]),
+  }).strict();
+  const inputSchema = requests.length === 1 ? EmptyInput : multiInput;
 
   const tool: AgentTool = {
     name: EXPLICIT_FILE_CHECK_TOOL_NAME,
-    description: 'Check whether the file named in the user request currently has the exact requested content. Returns a bounded pass/fail result without showing file contents.',
-    inputSchema: EmptyInput,
+    description: requests.length === 1
+      ? 'Check whether the file named in the user request currently has the exact requested content. Returns a bounded pass/fail result without showing file contents.'
+      : `Check one explicitly requested text file against the user's exact content requirement. Choose a listed file_path; Runtime supplies the expected content and returns only a bounded pass/fail result. Allowed files: ${requests.map((request) => request.filePath).join(', ')}.`,
+    inputSchema,
     execution: {
       concurrency: 'exclusive',
-      resources: () => [{ key: `workspace:${request.filePath.replaceAll('\\', '/')}`, mode: 'read' }],
+      resources: () => requests.map((request) => ({
+        key: `workspace:${request.filePath.replaceAll('\\', '/')}`,
+        mode: 'read' as const,
+      })),
     },
     execute: withToolTiming(async (input, ctx) => {
-      const parsed = EmptyInput.safeParse(input);
+      const parsed = inputSchema.safeParse(input);
       if (!parsed.success) return { ok: false, error: 'This Runtime check does not accept model-supplied file paths or content.' };
+      const request = requests.length === 1
+        ? requests[0]!
+        : byPath.get((parsed.data as z.infer<typeof multiInput>).file_path);
+      if (!request) return { ok: false, error: 'This Runtime check only accepts a trusted listed file target.' };
+      const expectedBytes = Buffer.from(request.expectedContent, 'utf8');
       const result = await inspectExpectedFile(request, ctx, expectedBytes);
       return {
         // A blocked check is a successfully observed outcome of the checker;
@@ -81,7 +120,7 @@ export function createExplicitFileContentCheckTool(request: ExplicitFileContentC
       };
     }),
   };
-  runtimeFileContentCheckTools.set(tool, request.filePath);
+  runtimeFileContentCheckTools.set(tool, { requests, byPath });
   return tool;
 }
 

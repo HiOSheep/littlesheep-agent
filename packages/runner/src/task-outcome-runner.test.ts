@@ -143,6 +143,93 @@ describe('Task Outcome through Runner, Harness, and Tools', () => {
     });
   });
 
+  it('records a complete two-file request as independently checked partial completion', async () => {
+    const workspace = join(dataDir, 'workspace-multi');
+    mkdirSync(workspace, { recursive: true });
+    const responses: ChatResponse[] = [
+      {
+        content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'multi-write-a', type: 'function', function: {
+          name: 'write', arguments: JSON.stringify({ file_path: 'a.txt', content: 'hello' }),
+        } }],
+      },
+      {
+        content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'multi-write-b', type: 'function', function: {
+          name: 'write', arguments: JSON.stringify({ file_path: 'b.txt', content: 'goodbye' }),
+        } }],
+      },
+      {
+        content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'multi-check-a', type: 'function', function: {
+          name: 'runtime_check_file_content', arguments: JSON.stringify({ file_path: 'a.txt' }),
+        } }],
+      },
+      {
+        content: '', finishReason: 'tool_calls', toolCalls: [{ id: 'multi-check-b', type: 'function', function: {
+          name: 'runtime_check_file_content', arguments: JSON.stringify({ file_path: 'b.txt' }),
+        } }],
+      },
+      { content: '已分别检查两个文件。', toolCalls: [], finishReason: 'stop' },
+    ];
+    const llm: LlmClient = {
+      chat: async () => responses.shift() ?? { content: 'fixture exhausted', toolCalls: [], finishReason: 'stop' },
+      chatStream: async (_request, onDelta) => {
+        const response = responses.shift() ?? { content: 'fixture exhausted', toolCalls: [], finishReason: 'stop' };
+        onDelta({ type: 'done', finishReason: response.finishReason });
+        return response;
+      },
+      embed: async () => ({ embeddings: [], model: '', usage: { promptTokens: 0 } }),
+    };
+    const runner = await createRunner({
+      config: DEFAULT_CONFIG,
+      branding: DEFAULT_BRANDING,
+      model: 'test/task-outcome-multi',
+      llm,
+      skillsDirs: [],
+    });
+    runners.push(runner);
+    const request = '创建 a.txt，内容必须为 hello。\n创建 b.txt，内容必须为 world。';
+    const result = await runner.run({
+      text: request,
+      cwd: workspace,
+      origin: 'test',
+      approve: async () => true,
+      permissionPreset: 'workspace-write',
+      permissionPolicyV2: {
+        version: 2,
+        preset: 'workspace-write',
+        approvalPolicy: 'prompt',
+        workspaceRoot: workspace,
+        protectedRoots: [],
+        constraints: { workspaceFileWrites: 'available', shellIsolation: 'unavailable' },
+        fullAccessConfirmed: false,
+      },
+    });
+
+    expect(result.status).toBe('ok');
+    expect(readFileSync(join(workspace, 'a.txt'), 'utf8')).toBe('hello');
+    expect(readFileSync(join(workspace, 'b.txt'), 'utf8')).toBe('goodbye');
+    expect(result.taskOutcome).toMatchObject({
+      execution: { status: 'completed' },
+      requirementInventory: 'complete',
+      status: 'partially_completed',
+      requirements: [
+        { id: expect.any(String), sourceMessageId: expect.any(String), status: 'passed' },
+        { id: expect.any(String), sourceMessageId: expect.any(String), status: 'failed', reasonCode: 'file_content_mismatch' },
+      ],
+    });
+    const userMessage = (await runner.sessionManager.read(result.sessionId))
+      .find((message) => message.role === 'user' && message.runId === result.runId);
+    expect(userMessage).toBeDefined();
+    expect(result.taskOutcome?.requirements.map((item) => item.sourceMessageId))
+      .toEqual([userMessage!.id, userMessage!.id]);
+    expect(result.taskOutcome?.artifacts.map((artifact) => [artifact.resourceRef, artifact.verification]))
+      .toEqual([['workspace:a.txt', 'passed'], ['workspace:b.txt', 'failed']]);
+    expect(result.toolInvocations?.filter((item) => item.toolName === 'runtime_check_file_content' && item.status === 'succeeded'))
+      .toHaveLength(2);
+    expect(result.taskOutcome?.evidence.filter((item) => item.kind === 'requirement_check'))
+      .toHaveLength(2);
+    expect((await runner.replay(result.runId))?.taskOutcome).toEqual(result.taskOutcome);
+  });
+
   it('keeps a successful write unverified when no independent check ran', async () => {
     const { result, workspace } = await runFileTask('hello', false);
     expect(readFileSync(join(workspace, 'result.txt'), 'utf8')).toBe('hello');

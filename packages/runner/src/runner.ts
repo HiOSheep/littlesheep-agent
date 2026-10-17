@@ -109,7 +109,7 @@ import { DurableRunOwnership } from './durable-run-ownership.js';
 import { isEligibleSameRunSegmentRecovery, isSafeSegmentBoundary } from './durable-runner-segment-recovery-policy.js';
 import { createDurableRunRecovery } from './durable-run-recovery.js';
 import { createDurableEffectOutcomeQuery } from './durable-effect-query.js';
-import { parseExplicitFileContentRequirement } from './task-outcome-request.js';
+import { parseExplicitFileContentRequirements } from './task-outcome-request.js';
 import { buildTaskOutcome, readTaskOutcomeForProjection } from './task-outcome.js';
 import { readDurableHarnessMode } from './durable-run-mode.js';
 import { terminateRetiredCompactionProposals } from './session-continuity.js';
@@ -780,8 +780,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
             runId,
             timestamp: new Date(startedAt).toISOString(),
           });
-      const explicitFileRequirement = inbound.id
-        ? parseExplicitFileContentRequirement({
+      const explicitFileRequirements = inbound.id
+        ? parseExplicitFileContentRequirements({
             runId,
             sourceMessageId: inbound.id,
             text: messageText(inbound),
@@ -806,8 +806,8 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       const runRegistrations = infra.registry.list().filter(({ tool }) => (
         webToolsAvailable || (tool.name !== 'web_search' && tool.name !== 'web_fetch')
       ));
-      const taskOutcomeCheckTool = explicitFileRequirement
-        ? createExplicitFileContentCheckTool(explicitFileRequirement)
+      const taskOutcomeCheckTool = explicitFileRequirements?.length
+        ? createExplicitFileContentCheckTool(explicitFileRequirements)
         : undefined;
       const runTools = resolveRunTools(runRegistrations, {
         additionalTools: [
@@ -1218,7 +1218,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
               runId,
               workspaceRoot: cwd,
               result: finalizedRun.result,
-              requirement: explicitFileRequirement,
+              requirements: explicitFileRequirements,
               unsettledProviderRequestIds: (await durableKernel.replay(String(sessionId), runId)).pendingModelRequestIds,
             });
             finalizedRun.result.taskOutcome = taskOutcome;

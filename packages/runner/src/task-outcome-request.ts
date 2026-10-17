@@ -37,3 +37,36 @@ export function parseExplicitFileContentRequirement(input: {
     expectedContent,
   };
 }
+
+/**
+ * Recognize a complete two- or three-item root-level text-file checklist.
+ * Each non-empty line must be exactly one supported explicit requirement;
+ * any surrounding prose leaves the inventory unrecognized.
+ */
+export function parseExplicitFileContentRequirements(input: {
+  runId: string;
+  sourceMessageId: string;
+  text: string;
+}): ExplicitFileContentRequirement[] | undefined {
+  const text = input.text.trim();
+  if (!text) return undefined;
+  const lines = text.split(/\r?\n/u);
+  if (lines.length === 1) {
+    const single = parseExplicitFileContentRequirement({ ...input, text: lines[0]! });
+    return single ? [single] : undefined;
+  }
+  if (lines.length < 2 || lines.length > 3) return undefined;
+
+  const requirements: ExplicitFileContentRequirement[] = [];
+  const paths = new Set<string>();
+  for (const sourceLine of lines) {
+    const line = sourceLine.trim().replace(/^(?:[-*]\s+|\d+[.)]\s+)/u, '');
+    const requirement = parseExplicitFileContentRequirement({ ...input, text: line });
+    if (!requirement || !/\.txt$/iu.test(requirement.filePath)) return undefined;
+    const pathKey = requirement.filePath.toLocaleLowerCase();
+    if (paths.has(pathKey)) return undefined;
+    paths.add(pathKey);
+    requirements.push(requirement);
+  }
+  return requirements;
+}

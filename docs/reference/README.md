@@ -55,6 +55,8 @@
 - [RCD S2C-I 机器可读验收账本](rcd-s2c-i-integration-acceptance-2026-10-17.json)：最终集成 HEAD、构建摘要、执行层级及定向回归结果。
 - [RCD S2C-D Task Outcome 结算一致性](rcd-s2c-d-settlement-consistency-2026-10-17.md)：真实子进程故障矩阵、多存储结算顺序、恢复幂等与文件检查时点语义。
 - [RCD S2C-D 机器可读验收账本](rcd-s2c-d-settlement-consistency-2026-10-17.json)：故障窗口、恢复预期、证据层级、测试结果和安全降级范围。
+- [RCD S2C-E 任务成果最终验收](rcd-s2c-e-task-delivery-acceptance-2026-10-17.md)：真实 Electron 下 T06/T07、逐项文件检查、历史回放、RCD 核心与 Runner/VRS/权限回归结果。
+- [RCD S2C-E 机器可读验收账本](rcd-s2c-e-task-delivery-acceptance-2026-10-17.json)：最终桌面场景、各层测试结果、RCD 六项核心状态与适用边界。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。

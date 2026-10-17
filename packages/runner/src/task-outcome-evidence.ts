@@ -8,9 +8,8 @@ import type { ExecutionLog } from './execution-log.js';
 export function collectTrustedCheckReceipts(
   messages: readonly import('@littlesheep/types').Message[],
   callIds: ReadonlySet<string>,
-  requirementId: string,
+  requirements: readonly import('./task-outcome-request.js').ExplicitFileContentRequirement[],
   workspaceRoot: string,
-  expectedFilePath: string,
   invocations: readonly NonNullable<AgentResult['toolInvocations']>[number][],
   sideEffects: readonly NonNullable<AgentResult['sideEffects']>[number][],
 ): Array<ExplicitFileContentCheckReceipt & {
@@ -19,6 +18,7 @@ export function collectTrustedCheckReceipts(
   mutationAction?: TaskArtifactOutcome['action'];
   writeEffectRef?: string;
 }> {
+  const requirementById = new Map(requirements.map((requirement) => [requirement.requirementId, requirement]));
   const receipts: Array<ExplicitFileContentCheckReceipt & {
     callId: string;
     checkedAt?: string;
@@ -43,7 +43,7 @@ export function collectTrustedCheckReceipts(
       if (mutation) mutations.push({ ...mutation, callId: result.callId, order: currentOrder });
       if (callIds.has(result.callId) && result.ok) {
         const receipt = readCheckReceipt(result.meta?.taskOutcomeCheck);
-        if (receipt?.requirementId === requirementId) {
+        if (receipt && requirementById.has(receipt.requirementId)) {
           const invocation = invocations.find((record) => record.callId === result.callId);
           candidates.push({
             receipt,
@@ -62,19 +62,21 @@ export function collectTrustedCheckReceipts(
   const settledWriteByCall = new Map(sideEffects
     .filter((effect) => effect.toolName === 'write' && effect.status === 'succeeded' && effect.callId)
     .map((effect) => [effect.callId!, `effect:${createHash('sha256').update(effect.idempotencyKey).digest('hex').slice(0, 32)}`]));
-  const expectedResourceRef = `workspace:${expectedFilePath.replaceAll('\\', '/')}`;
-  const normalizedTarget = resolve(workspaceRoot, expectedFilePath).replace(/[\\/]+$/u, '');
-  const resourceTarget = process.platform === 'win32' ? normalizedTarget.toLocaleLowerCase() : normalizedTarget;
-  const expectedResourceKeys = new Set([`fs:${resourceTarget}`, `write:fs:${resourceTarget}`]);
-  const visibleMutationCallIds = new Set(mutations
-    .filter((mutation) => mutation.resourceRef === expectedResourceRef)
-    .map((mutation) => mutation.callId));
-  const checkpointWrites = sideEffects.filter((effect) => effect.toolName === 'write'
-    && effect.status === 'succeeded'
-    && effect.callId
-    && !visibleMutationCallIds.has(effect.callId)
-    && effect.resourceKeys?.some((key) => expectedResourceKeys.has(key)));
   for (const candidate of candidates) {
+    const requirement = requirementById.get(candidate.receipt.requirementId);
+    if (!requirement) continue;
+    const expectedResourceRef = `workspace:${requirement.filePath.replaceAll('\\', '/')}`;
+    const normalizedTarget = resolve(workspaceRoot, requirement.filePath).replace(/[\\/]+$/u, '');
+    const resourceTarget = process.platform === 'win32' ? normalizedTarget.toLocaleLowerCase() : normalizedTarget;
+    const expectedResourceKeys = new Set([`fs:${resourceTarget}`, `write:fs:${resourceTarget}`]);
+    const visibleMutationCallIds = new Set(mutations
+      .filter((mutation) => mutation.resourceRef === expectedResourceRef)
+      .map((mutation) => mutation.callId));
+    const checkpointWrites = sideEffects.filter((effect) => effect.toolName === 'write'
+      && effect.status === 'succeeded'
+      && effect.callId
+      && !visibleMutationCallIds.has(effect.callId)
+      && effect.resourceKeys?.some((key) => expectedResourceKeys.has(key)));
     const priorMutation = [...mutations].reverse().find((mutation) => mutation.order < candidate.order
       && mutation.resourceRef === candidate.receipt.resourceRef
       && successfulWrites.has(mutation.callId)
