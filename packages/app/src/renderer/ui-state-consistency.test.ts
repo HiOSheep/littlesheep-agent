@@ -83,6 +83,25 @@ describe('shared state sample', () => {
     expect(declarations('.dialog-error', 'border: 1px solid var(--feedback-danger-border)')).toBe(true)
   })
 
+  it('resolves shared feedback and provider status colors through theme roles', () => {
+    for (const [selector, declaration] of [
+      ['.feedback-notice[data-tone="info"]', 'color: var(--muted)'],
+      ['.feedback-notice[data-tone="success"]', 'color: var(--success)'],
+      ['.feedback-notice[data-tone="warning"]', 'color: var(--warning)'],
+      ['.feedback-notice[data-tone="warning"]', 'background: var(--warning-soft)'],
+      ['.feedback-notice[data-tone="warning"]', 'border-color: color-mix(in srgb, var(--warning) 28%, transparent)'],
+      ['.storage-settings-notice[data-tone=\'error\']', 'background: var(--danger-soft)'],
+      ['.storage-settings-notice[data-tone=\'error\']', 'border-left-color: var(--danger)'],
+      ['.key-badge.set', 'color: var(--success)'],
+      ['.key-badge.unset', 'color: var(--warning)'],
+      ['.danger-confirm-inuse', 'color: var(--warning)'],
+      ['.ms-feedback-text.error', 'border: 1px solid var(--feedback-danger-border)'],
+      ['.ms-feedback-text.warning', 'color: var(--warning)'],
+    ]) {
+      expect(declarations(selector, declaration), `${selector} { ${declaration} }`).toBe(true)
+    }
+  })
+
   it('gives inline notices one geometry', () => {
     for (const selector of ['.plugin-page-error', '.archive-error', '.project-creator-error']) {
       expect(declarations(selector, 'padding: var(--notice-padding-block) var(--notice-padding-inline)'), selector).toBe(true)

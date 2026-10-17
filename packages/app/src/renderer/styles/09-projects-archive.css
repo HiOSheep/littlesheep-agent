@@ -648,13 +648,13 @@
 .ms-feedback-text.error {
   color: var(--feedback-danger-text);
   background: var(--danger-soft);
-  border: 1px solid rgba(239, 104, 104, 0.28);
+  border: 1px solid var(--feedback-danger-border);
 }
 
 .ms-feedback-text.warning {
-  color: #f1d48b;
+  color: var(--warning);
   background: var(--warning-soft);
-  border: 1px solid rgba(216, 180, 92, 0.28);
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
 }
 
 .ms-feedback-action {

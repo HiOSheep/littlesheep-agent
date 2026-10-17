@@ -241,6 +241,17 @@ async function clickIndex(client, selector, index) {
   })()`)
 }
 
+async function clickProviderEdit(client, providerName) {
+  return client.evaluate(`(() => {
+    const card = [...document.querySelectorAll('.provider-card')].find((item) =>
+      item.querySelector('.provider-card-title strong')?.textContent?.trim() === ${JSON.stringify(providerName)});
+    const button = [...(card?.querySelectorAll('button') ?? [])].find((item) => item.textContent?.trim() === '编辑');
+    if (!(button instanceof HTMLElement)) return false;
+    button.click();
+    return true;
+  })()`)
+}
+
 async function setInput(client, selector, value) {
   return client.evaluate(`(() => {
     const input = document.querySelector(${JSON.stringify(selector)});
@@ -436,9 +447,10 @@ async function main() {
 
     // --- 1. provider save ------------------------------------------------------
     await openSettingsPage(client, '模型供应商')
-    const providerPage = await waitForSurface(client, (surface) => (surface.providerCards.length > 0 ? surface : undefined), 20_000, 'the provider card')
-    recorder.check(providerPage.providerCards.length === 1, 'the fixture provider is on the page', providerPage.providerCards)
-    await click(client, '.provider-card .save-btn')
+    const providerPage = await waitForSurface(client, (surface) => (surface.providerCards.some((card) => card.title?.startsWith(PROVIDER_NAME)) ? surface : undefined), 20_000, 'the fixture provider card')
+    recorder.check(providerPage.providerCards.filter((card) => card.title?.startsWith(PROVIDER_NAME)).length === 1,
+      'the targeted fixture provider is on the page exactly once', providerPage.providerCards)
+    if (!await clickProviderEdit(client, PROVIDER_NAME)) throw new Error('the fixture provider edit button was unavailable')
     await waitForSurface(client, (surface) => (surface.editor ? surface : undefined), 20_000, 'the provider editor')
     await setInput(client, '.provider-editor .settings-inline-field:nth-of-type(2) input', RENAMED_PROVIDER)
     await failPath(client, '/config/providers', 'POST')

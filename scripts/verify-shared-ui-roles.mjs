@@ -162,13 +162,18 @@ async function movePointerTo(client, selector) {
 }
 
 async function readTokenColor(client, token) {
+  return readComputedProperty(client, 'color', `var(${token})`)
+}
+
+async function readComputedProperty(client, property, value) {
   return evaluate(client, `(() => {
     const probe=document.createElement('span');
-    probe.style.cssText='position:fixed;visibility:hidden;color:var(${token})';
+    probe.style.cssText='position:fixed;visibility:hidden';
+    probe.style.setProperty(${JSON.stringify(property)}, ${JSON.stringify(value)});
     document.body.append(probe);
-    const color=getComputedStyle(probe).color;
+    const resolved=getComputedStyle(probe).getPropertyValue(${JSON.stringify(property)});
     probe.remove();
-    return color;
+    return resolved;
   })()`)
 }
 
@@ -293,6 +298,12 @@ function measureExpression(samples) {
         visibleCount: visibleMatches.length,
         visible: true,
         tag: node.tagName,
+        className: typeof node.className === 'string' ? node.className : String(node.className?.baseVal ?? ''),
+        role: node.getAttribute('role'),
+        dataTone: node.getAttribute('data-tone'),
+        ariaBusy: node.getAttribute('aria-busy'),
+        ariaInvalid: node.getAttribute('aria-invalid'),
+        ariaDescribedby: node.getAttribute('aria-describedby'),
         disabled: node.disabled === true,
         text: (node.textContent || '').replace(/\\s+/gu, ' ').trim().slice(0, 90),
         width: Math.round(rect.width * 10) / 10,
@@ -340,6 +351,17 @@ async function setInstantMotion(client, enabled) {
     }
     return true;
   })()`)
+}
+
+async function captureThemeSample(client, theme, name, samples) {
+  const hadInstantMotion = await evaluate(client, "Boolean(document.getElementById('ls-acceptance-instant-motion'))")
+  await setInstantMotion(client, true)
+  await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+  await delay(180)
+  const measured = await measure(client, samples)
+  const screenshot = await writePng(client, name)
+  if (!hadInstantMotion) await setInstantMotion(client, false)
+  return { measured, screenshot }
 }
 
 async function openSettingsPage(client, label) {
@@ -535,10 +557,26 @@ const SYNTHETIC_NEUTRAL = {
   html: '<div class="dialog-hint">空态样本</div>',
 }
 
-const SYNTHETIC_GEOMETRY = ['color', 'font-size', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left']
+/** Tone/status selectors unreachable as a safe product walkthrough in this fixture. */
+const SYNTHETIC_FEEDBACK_ROLE_SAMPLES = [
+  { key: 'feedback-info', lookup: '[data-acceptance-tone="info"]', html: '<div class="feedback-notice dialog-hint" data-acceptance-tone="info" data-tone="info" role="status">信息提示</div>' },
+  { key: 'feedback-success', lookup: '[data-acceptance-tone="success"]', html: '<div class="feedback-notice dialog-hint" data-acceptance-tone="success" data-tone="success" role="status">操作成功</div>' },
+  { key: 'feedback-warning', lookup: '[data-acceptance-tone="warning"]', html: '<div class="feedback-notice dialog-hint" data-acceptance-tone="warning" data-tone="warning" role="status">需要注意</div>' },
+  { key: 'feedback-storage-error', lookup: '.storage-settings-notice[data-acceptance-tone="error"]', html: '<div class="storage-settings-notice" data-acceptance-tone="error" data-tone="error" role="alert">存储操作失败</div>' },
+  { key: 'feedback-key-set', lookup: '.key-badge.set', html: '<span class="key-badge set">密钥已保存</span>' },
+  { key: 'feedback-key-unset', lookup: '.key-badge.unset', html: '<span class="key-badge unset">未设置</span>' },
+  { key: 'feedback-danger-inuse', lookup: '.danger-confirm-inuse', html: '<div class="danger-confirm-inuse">该项目仍被使用</div>' },
+  { key: 'feedback-memory-warning', lookup: '.ms-feedback-text.warning', html: '<div class="ms-feedback-text warning" role="status">技能部分不可用</div>' },
+  { key: 'feedback-memory-error', lookup: '.ms-feedback-text.error', html: '<div class="ms-feedback-text error" role="alert">技能读取失败</div>' },
+]
 
-function syntheticExpression() {
-  const surfaces = [SYNTHETIC_NEUTRAL, ...SYNTHETIC_SURFACES]
+const SYNTHETIC_GEOMETRY = [
+  'color', 'background-color', 'border-top-color', 'border-left-color', 'border-top-width',
+  'font-size', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+]
+
+function syntheticExpression(additionalSurfaces = []) {
+  const surfaces = [SYNTHETIC_NEUTRAL, ...SYNTHETIC_SURFACES, ...additionalSurfaces]
   return `(() => {
     const surfaces = ${JSON.stringify(surfaces)};
     const host = document.querySelector('main.settings-workspace-body') || document.body;
@@ -557,7 +595,7 @@ function syntheticExpression() {
       const style = getComputedStyle(node);
       const props = {};
       for (const name of ${JSON.stringify(SYNTHETIC_GEOMETRY)}) props[name] = style.getPropertyValue(name);
-      return { key: surface.key, found: true, props };
+      return { key: surface.key, found: true, tone: node.getAttribute('data-tone'), role: node.getAttribute('role'), props };
     });
     container.remove();
     return rows;
@@ -603,6 +641,8 @@ async function main() {
       return readiness?.body?.state === 'ready' ? readiness.body : undefined
     }, harness.startTimeoutMs, 'execution readiness')
     if (!await evaluate(client, INSTALL_PROBE)) throw new Error('the role probe could not be installed')
+    await evaluate(client, "document.documentElement.setAttribute('data-ls-theme', 'dark')")
+    await delay(180)
 
     // --- 1. the role tokens and the theme the row has to preserve --------------
     const tokens = await evaluate(client, `(() => {
@@ -669,6 +709,14 @@ async function main() {
     // --- 2. the provider dialog: one danger colour, one control scale ----------
     await openSettingsPage(client, '模型供应商')
     const providerCardActionSelector = '.provider-card .close-btn'
+    const providerStatusMarked = await evaluate(client, `(() => {
+      const card = [...document.querySelectorAll('.provider-card')].find((item) =>
+        item.querySelector('.provider-card-title strong')?.textContent?.trim() === 'Role Acceptance Provider');
+      if (!card) return false;
+      card.setAttribute('data-acceptance-feedback-card', 'true');
+      return true;
+    })()`)
+    recorder.check(providerStatusMarked, 'the fixture provider card is identified for its semantic key status sample')
     const providerCardOriginalTheme = await evaluate(client, "document.documentElement.getAttribute('data-ls-theme')")
     const operationControlEvidence = {}
     const captureProviderCardState = async (theme, state) => {
@@ -682,6 +730,21 @@ async function main() {
     }
     for (const theme of ['dark', 'light']) {
       await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      const providerStatus = await measure(client, [{
+        key: 'key-status',
+        selector: '.provider-card[data-acceptance-feedback-card="true"] .key-badge.set',
+        props: ['color', 'background-color', 'border-top-color'],
+      }])
+      const expectedProviderStatus = {
+        color: await readTokenColor(client, '--success'),
+        'background-color': await readTokenColor(client, '--success-soft'),
+        'border-top-color': await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--success) 26%, transparent)'),
+      }
+      recorder.note({ step: `provider-key-status-${theme}`, row: providerStatus.get('key-status'), expected: expectedProviderStatus })
+      expectProps(recorder, providerStatus.get('key-status'), expectedProviderStatus,
+        `the saved provider key badge follows theme success roles in ${theme} theme`)
+      screenshots[`provider-key-status-${theme}`] = await writePng(client, `provider-key-status-${theme}`)
       await evaluate(client, `(() => { document.activeElement?.blur(); return true; })()`)
       await movePointerTo(client, '.settings-workspace')
       await captureProviderCardState(theme, 'normal')
@@ -791,6 +854,7 @@ async function main() {
       const theme = ${JSON.stringify(providerCardOriginalTheme)};
       if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
       else document.documentElement.setAttribute('data-ls-theme', theme);
+      document.querySelector('[data-acceptance-feedback-card]')?.removeAttribute('data-acceptance-feedback-card');
       document.activeElement?.blur();
       return true;
     })()`)
@@ -908,6 +972,51 @@ async function main() {
     recorder.note({ step: 'provider-field-error-light', expectedTokenColor: lightDangerText, row: lightFieldError.get('provider-field-error') })
     expectProps(recorder, lightFieldError.get('provider-field-error'), { color: lightDangerText }, 'the provider field error follows the light theme danger text token')
     screenshots['provider-error-light'] = await writePng(client, 'provider-error-light')
+    const originalInlineFontScale = await evaluate(client, "document.documentElement.style.getPropertyValue('--ui-font-scale')")
+    await client.send('Emulation.setDeviceMetricsOverride', { width: 800, height: 700, deviceScaleFactor: 1, mobile: false })
+    await evaluate(client, "document.documentElement.style.setProperty('--ui-font-scale', '1.25')")
+    await delay(180)
+    const providerErrorNarrowZoom = await evaluate(client, `(() => {
+      const selectors = ['.provider-editor .dialog-error', '.provider-editor .provider-field-error',
+        '.provider-editor .dialog-footer', '.provider-editor', '.settings-workspace-body'];
+      const elements = selectors.map((selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return { selector, found: false };
+        const rect = node.getBoundingClientRect();
+        const style = getComputedStyle(node);
+        return { selector, found: true, text: (node.textContent || '').replace(/\\s+/gu, ' ').trim(),
+          rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+            width: rect.width, height: rect.height },
+          clientWidth: node.clientWidth, scrollWidth: node.scrollWidth,
+          computed: { color: style.color, fontSize: style.fontSize, lineHeight: style.lineHeight,
+            overflowWrap: style.overflowWrap, whiteSpace: style.whiteSpace } };
+      });
+      return { theme: document.documentElement.getAttribute('data-ls-theme'),
+        uiFontScale: getComputedStyle(document.documentElement).getPropertyValue('--ui-font-scale').trim(),
+        viewport: { width: window.innerWidth, height: window.innerHeight,
+          documentWidth: document.documentElement.scrollWidth },
+        elements };
+    })()`)
+    const providerErrorOverflow = providerErrorNarrowZoom.elements.filter((item) => item.found !== true
+      || item.rect.left < -1 || item.rect.right > providerErrorNarrowZoom.viewport.width + 1
+      || item.scrollWidth > item.clientWidth + 1)
+    recorder.note({ step: 'provider-error-font-scale-narrow-viewport', snapshot: providerErrorNarrowZoom,
+      note: 'Real Electron Renderer with an 800x700 CDP viewport and visual-only 1.25 font-scale override; no preference was persisted.' })
+    recorder.check(providerErrorNarrowZoom.theme === 'light' && providerErrorNarrowZoom.uiFontScale === '1.25'
+      && providerErrorNarrowZoom.viewport.width === 800
+      && providerErrorNarrowZoom.viewport.documentWidth <= 801
+      && providerErrorOverflow.length === 0,
+    'provider validation feedback remains visible without horizontal overflow at 125% text scale in an 800px Renderer viewport',
+    { snapshot: providerErrorNarrowZoom, overflow: providerErrorOverflow })
+    screenshots['provider-error-light-125pct-800px'] = await writePng(client, 'provider-error-light-125pct-800px')
+    await client.send('Emulation.clearDeviceMetricsOverride')
+    await evaluate(client, `(() => {
+      const scale = ${JSON.stringify(originalInlineFontScale)};
+      if (scale) document.documentElement.style.setProperty('--ui-font-scale', scale);
+      else document.documentElement.style.removeProperty('--ui-font-scale');
+      return true;
+    })()`)
+    await delay(180)
     await evaluate(client, `document.documentElement.setAttribute('data-ls-theme',${JSON.stringify(originalTheme)})`)
     await delay(160)
     await setInputValue(client, '.provider-editor .settings-inline-field input', 2, provider.baseURL)
@@ -1090,22 +1199,34 @@ async function main() {
     )
     const pluginNoticeText = await waitForVisible(client,
       '.transient-toast[data-tone="success"] .transient-toast-notice', 10_000, 'the plugin success toast')
-    await setInstantMotion(client, false)
-    const pluginNotice = await measure(client, [
+    const pluginNoticeThemeCaptures = {}
+    const pluginNoticeSamples = [
       { key: 'surface', selector: '.transient-toast[data-tone="success"]',
         props: ['position', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'background-color', 'border-top-left-radius', 'box-shadow', 'backdrop-filter', 'animation-name', 'animation-duration'] },
       { key: 'notice', selector: '.transient-toast[data-tone="success"] .transient-toast-notice',
         props: ['color', 'font-size', 'background-color'] },
       { key: 'dismiss', selector: '.transient-toast[data-tone="success"] .transient-toast-dismiss',
         props: ['width', 'height', 'border-top-left-radius'] },
-    ])
-    screenshots['plugin-notice'] = await writePng(client, 'plugin-notice')
+    ]
+    for (const theme of ['dark', 'light']) {
+      const capture = await captureThemeSample(client, theme, `plugin-notice-${theme}`, pluginNoticeSamples)
+      pluginNoticeThemeCaptures[theme] = capture.measured
+      screenshots[`plugin-notice-${theme}`] = capture.screenshot
+      if (theme === 'dark') screenshots['plugin-notice'] = capture.screenshot
+      const successText = await readTokenColor(client, '--success')
+      expectProps(recorder, capture.measured.get('notice'), { color: successText },
+        `the transient success notice uses the active theme success text in ${theme} theme`)
+    }
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
+    await delay(180)
+    const pluginNotice = pluginNoticeThemeCaptures.dark
     const successRole = await evaluate(client, `(() => {
       const node=document.querySelector('.transient-toast[data-tone="success"] .transient-toast-notice');
       return {role:node?.getAttribute('role') ?? null,tone:node?.getAttribute('data-tone') ?? null,
         text:node?.querySelector('.feedback-message')?.textContent?.trim() ?? null};
     })()`)
-    recorder.note({ step: 'plugin-success-toast', text: pluginNoticeText, role: successRole, rows: pluginNotice.rows })
+    recorder.note({ step: 'plugin-success-toast', text: pluginNoticeText, role: successRole,
+      themes: Object.fromEntries(Object.entries(pluginNoticeThemeCaptures).map(([theme, value]) => [theme, value.rows])) })
     expectProps(recorder, pluginNotice.get('surface'), {
       position: 'fixed',
       'padding-top': '10px',
@@ -1121,18 +1242,30 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/plugins/reload', 'POST'); return true })()`)
     await clickVisible(client, '.plugin-reload-button')
     const pluginErrorText = await waitForVisible(client, '.plugin-page-error', harness.startTimeoutMs, 'the plugin error notice')
-    const pluginError = await measure(client, [
-      { key: 'error', selector: '.plugin-page-error', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'border-left-width', 'border-left-color'] },
+    const pluginErrorSamples = [
+      { key: 'error', selector: '.plugin-page-error', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'background-color', 'border-left-width', 'border-left-color'] },
       { key: 'action', selector: '.plugin-page-error .feedback-action', props: CONTROL_PROPS },
-    ])
-    screenshots['plugin-error'] = await writePng(client, 'plugin-error')
-    recorder.note({ step: 'plugin-error', text: pluginErrorText, rows: pluginError.rows })
-    expectProps(recorder, pluginError.get('error'), { ...NOTICE_GEOMETRY, color: DANGER_TEXT }, 'the plugin error notice uses the shared notice geometry and danger colour')
-    expectProps(recorder, pluginError.get('action'), {
-      'min-height': '26px',
-      'font-size': scaledFonts.regular,
-      'border-top-left-radius': '10px',
-    }, 'the inline notice action uses the shared small control role')
+    ]
+    for (const theme of ['dark', 'light']) {
+      const capture = await captureThemeSample(client, theme, `plugin-error-${theme}`, pluginErrorSamples)
+      screenshots[`plugin-error-${theme}`] = capture.screenshot
+      if (theme === 'dark') screenshots['plugin-error'] = capture.screenshot
+      const expectedError = {
+        ...NOTICE_GEOMETRY,
+        color: await readTokenColor(client, '--feedback-danger-text'),
+        'background-color': await readTokenColor(client, '--danger-soft'),
+        'border-left-color': await readTokenColor(client, '--feedback-danger-border'),
+      }
+      recorder.note({ step: `plugin-error-${theme}`, text: pluginErrorText, row: capture.measured.get('error'), expected: expectedError })
+      expectProps(recorder, capture.measured.get('error'), expectedError,
+        `the plugin error notice resolves its danger text, fill and border in ${theme} theme`)
+      expectProps(recorder, capture.measured.get('action'), {
+        'min-height': '26px',
+        'font-size': scaledFonts.regular,
+        'border-top-left-radius': '10px',
+      }, `the plugin retry action keeps the shared small control role in ${theme} theme`)
+    }
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
 
     // While an operation is in flight the notice stays, and its action plus the
     // row controls answer the shared disabled tone.
@@ -1187,18 +1320,30 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/channels/reload', 'POST'); return true })()`)
     await clickVisible(client, '.channel-overall .reload-btn')
     const channelErrorText = await waitForVisible(client, '.dialog .feedback-notice[data-tone="error"]', harness.startTimeoutMs, 'the channel reload failure')
-    const channelError = await measure(client, [
-      { key: 'notice', selector: '.dialog .feedback-notice[data-tone="error"]', props: [...Object.keys(NOTICE_GEOMETRY), 'color'] },
+    const channelErrorSamples = [
+      { key: 'notice', selector: '.dialog .feedback-notice[data-tone="error"]', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'background-color', 'border-top-color'] },
       { key: 'action', selector: '.dialog .feedback-notice[data-tone="error"] .feedback-action', props: CONTROL_PROPS },
-    ])
-    screenshots['channel-error'] = await writePng(client, 'channel-error')
-    recorder.note({ step: 'channel-error', text: channelErrorText, rows: channelError.rows })
-    expectProps(recorder, channelError.get('notice'), { color: DANGER_TEXT }, 'the channel failure notice uses the one danger colour')
-    expectProps(recorder, channelError.get('action'), {
-      'min-height': '26px',
-      'font-size': scaledFonts.regular,
-      'border-top-left-radius': '10px',
-    }, 'the channel failure offers its retry through the shared small control role')
+    ]
+    for (const theme of ['dark', 'light']) {
+      const capture = await captureThemeSample(client, theme, `channel-error-${theme}`, channelErrorSamples)
+      screenshots[`channel-error-${theme}`] = capture.screenshot
+      if (theme === 'dark') screenshots['channel-error'] = capture.screenshot
+      const expectedNotice = {
+        color: await readTokenColor(client, '--feedback-danger-text'),
+        'background-color': await readTokenColor(client, '--danger-soft'),
+        'border-top-color': await readTokenColor(client, '--feedback-danger-border'),
+      }
+      recorder.note({ step: `channel-error-${theme}`, text: channelErrorText,
+        notice: capture.measured.get('notice'), expected: expectedNotice })
+      expectProps(recorder, capture.measured.get('notice'), expectedNotice,
+        `the channel failure notice resolves its danger text, fill and border in ${theme} theme`)
+      expectProps(recorder, capture.measured.get('action'), {
+        'min-height': '26px',
+        'font-size': scaledFonts.regular,
+        'border-top-left-radius': '10px',
+      }, `the channel retry action keeps the shared small control role in ${theme} theme`)
+    }
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
 
     // A reload that is really in flight blocks the row instead of leaving it clickable.
     await setInstantMotion(client, true)
@@ -1269,12 +1414,28 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/browser/clear-cache', 'POST'); return true })()`)
     await clickVisible(client, '.storage-settings-row button', { contains: '清除缓存' })
     const storageErrorText = await waitForVisible(client, '.storage-settings-notice[data-tone="error"]', harness.startTimeoutMs, 'the storage error notice')
-    const storageError = await measure(client, [
-      { key: 'error', selector: '.storage-settings-notice[data-tone="error"]', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'border-left-width'] },
-    ])
-    screenshots['storage-error'] = await writePng(client, 'storage-error')
-    recorder.note({ step: 'storage-error', text: storageErrorText, row: storageError.get('error') })
-    expectProps(recorder, storageError.get('error'), { ...SETTINGS_ERROR_GEOMETRY, color: DANGER_TEXT }, 'the storage error notice keeps its settings-page inset and uses the shared danger colour')
+    const storageErrorSamples = [
+      { key: 'error', selector: '.storage-settings-notice[data-tone="error"]', props: [...Object.keys(SETTINGS_ERROR_GEOMETRY), 'color', 'background-color', 'border-left-width', 'border-left-color'] },
+    ]
+    for (const theme of ['dark', 'light']) {
+      const capture = await captureThemeSample(client, theme, `storage-error-${theme}`, storageErrorSamples)
+      screenshots[`storage-error-${theme}`] = capture.screenshot
+      if (theme === 'dark') screenshots['storage-error'] = capture.screenshot
+      const expectedError = {
+        ...SETTINGS_ERROR_GEOMETRY,
+        color: await readTokenColor(client, '--feedback-danger-text'),
+        'background-color': await readTokenColor(client, '--danger-soft'),
+        // Electron's existing scaled settings surface resolves this authored 2px
+        // stripe to 1.6px; the pre-D2B capture records the same computed width.
+        'border-left-width': '1.6px',
+        'border-left-color': await readTokenColor(client, '--danger'),
+      }
+      recorder.note({ step: `storage-error-${theme}`, text: storageErrorText,
+        row: capture.measured.get('error'), expected: expectedError })
+      expectProps(recorder, capture.measured.get('error'), expectedError,
+        `the storage error keeps its settings inset and resolves danger colors in ${theme} theme`)
+    }
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
 
     await setInstantMotion(client, true)
     await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/browser/clear-data', 1800, 'POST'); return true })()`)
@@ -1341,12 +1502,25 @@ async function main() {
     await evaluate(client, `(() => { window.__lsRoleProbe.failNext('/archive', 'GET'); return true })()`)
     await clickVisible(client, '.archive-refresh')
     const archiveErrorText = await waitForVisible(client, '.archive-error', harness.startTimeoutMs, 'the archive error surface')
-    const archiveError = await measure(client, [
-      { key: 'error', selector: '.archive-error', props: [...Object.keys(NOTICE_GEOMETRY), 'color'] },
-    ])
-    screenshots['archive-error'] = await writePng(client, 'archive-error')
-    recorder.note({ step: 'archive-error', text: archiveErrorText, row: archiveError.get('error') })
-    expectProps(recorder, archiveError.get('error'), { ...NOTICE_GEOMETRY, color: DANGER_TEXT }, 'the archive error surface uses the shared notice geometry and danger colour')
+    const archiveErrorSamples = [
+      { key: 'error', selector: '.archive-error', props: [...Object.keys(NOTICE_GEOMETRY), 'color', 'background-color', 'border-top-color'] },
+    ]
+    for (const theme of ['dark', 'light']) {
+      const capture = await captureThemeSample(client, theme, `archive-error-${theme}`, archiveErrorSamples)
+      screenshots[`archive-error-${theme}`] = capture.screenshot
+      if (theme === 'dark') screenshots['archive-error'] = capture.screenshot
+      const expectedError = {
+        ...NOTICE_GEOMETRY,
+        color: await readTokenColor(client, '--feedback-danger-text'),
+        'background-color': await readTokenColor(client, '--danger-soft'),
+        'border-top-color': await readTokenColor(client, '--feedback-danger-border'),
+      }
+      recorder.note({ step: `archive-error-${theme}`, text: archiveErrorText,
+        row: capture.measured.get('error'), expected: expectedError })
+      expectProps(recorder, capture.measured.get('error'), expectedError,
+        `the archive error resolves its danger text, fill and border in ${theme} theme`)
+    }
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
 
     // --- 8. reduced motion still wins over the shared transitions --------------
     const motionSamples = [
@@ -1455,6 +1629,56 @@ async function main() {
       'the project creator error surface shares the notice geometry and danger colour',
       { syntheticGeometry },
     )
+
+    // --- 11. warning, success and domain status roles resolve in both themes --
+    const feedbackOriginalTheme = await evaluate(client, "document.documentElement.getAttribute('data-ls-theme')")
+    for (const theme of ['dark', 'light']) {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      const rows = await evaluate(client, syntheticExpression(SYNTHETIC_FEEDBACK_ROLE_SAMPLES))
+      const byKey = new Map(rows.map((row) => [row.key, row]))
+      const warning = await readTokenColor(client, '--warning')
+      const warningSoft = await readTokenColor(client, '--warning-soft')
+      const warningBorder = await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--warning) 28%, transparent)')
+      const success = await readTokenColor(client, '--success')
+      const successSoft = await readTokenColor(client, '--success-soft')
+      const successBorder = await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--success) 26%, transparent)')
+      const dangerText = await readTokenColor(client, '--feedback-danger-text')
+      const dangerSoft = await readTokenColor(client, '--danger-soft')
+      const dangerBorder = await readTokenColor(client, '--feedback-danger-border')
+      const danger = await readTokenColor(client, '--danger')
+      const expected = {
+        'feedback-info': { color: await readTokenColor(client, '--muted') },
+        'feedback-success': { color: success },
+        'feedback-warning': { color: warning, 'background-color': warningSoft, 'border-top-color': warningBorder },
+        'feedback-storage-error': { color: dangerText, 'background-color': dangerSoft, 'border-left-color': danger },
+        'feedback-key-set': { color: success, 'background-color': successSoft, 'border-top-color': successBorder },
+        'feedback-key-unset': { color: warning, 'background-color': warningSoft, 'border-top-color': warningBorder },
+        'feedback-danger-inuse': { color: warning, 'background-color': warningSoft, 'border-top-color': warningBorder },
+        'feedback-memory-warning': { color: warning, 'background-color': warningSoft, 'border-top-color': warningBorder },
+        'feedback-memory-error': { color: dangerText, 'background-color': dangerSoft, 'border-top-color': dangerBorder },
+      }
+      const mismatches = Object.entries(expected).flatMap(([key, declarations]) => {
+        const row = byKey.get(key)
+        return Object.entries(declarations).flatMap(([property, expectedValue]) => {
+          const actual = row?.props?.[property]
+          return row?.found === true && actual === expectedValue
+            ? []
+            : [{ key, property, expected: expectedValue, actual, found: row?.found === true }]
+        })
+      })
+      recorder.note({ step: `feedback-semantic-colors-${theme}`, rows, expected, mismatches,
+        note: 'Cascade-only synthetic sample; warning/confirmation/domain states are not product walkthroughs.' })
+      recorder.check(mismatches.length === 0,
+        `feedback semantic colors, fills and borders resolve through theme tokens in ${theme} theme`,
+        { mismatches, rows })
+    }
+    await evaluate(client, `(() => {
+      const theme = ${JSON.stringify(feedbackOriginalTheme)};
+      if (theme === null) document.documentElement.removeAttribute('data-ls-theme');
+      else document.documentElement.setAttribute('data-ls-theme', theme);
+      return true;
+    })()`)
 
     screenshots['settings-final-dark'] = await writePng(client, 'settings-final-dark')
     await evaluate(client, "document.documentElement.setAttribute('data-ls-theme','light')")

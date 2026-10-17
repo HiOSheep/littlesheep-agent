@@ -87,6 +87,29 @@ async function main() {
     })()`)
     await harness.waitFor(() => client.evaluate(`Boolean(document.querySelector('.provider-card'))`), 60_000, 'provider card')
 
+    // The page enters with a 160ms translateY(4px) animation. Wait for that
+    // page transition to finish before treating its top as the toast baseline;
+    // otherwise the later settled position is misattributed to toast removal.
+    report.pageTransitionAtBaseline = await harness.waitFor(() => client.evaluate(`(() => {
+      const page = document.querySelector('.settings-page-transition');
+      const card = document.querySelector('.settings-module-page');
+      if (!page || !card) return null;
+      const style = getComputedStyle(page);
+      const matrix = style.transform === 'none' ? null : new DOMMatrixReadOnly(style.transform);
+      const translateY = matrix?.m42 ?? 0;
+      const activeAnimations = page.getAnimations().filter((animation) =>
+        animation.playState === 'running' || animation.pending);
+      const result = {
+        ready: activeAnimations.length === 0 && Math.abs(translateY) < 0.1,
+        className: page.className,
+        transform: style.transform,
+        translateY,
+        activeAnimationCount: activeAnimations.length,
+        contentTop: card.getBoundingClientRect().top,
+      };
+      return result.ready ? result : null;
+    })()`), 10_000, 'the settings page transition to settle')
+
     // A fixed-position surface outside the page flow is the whole point, so its
     // computed position and its DOM parent are asserted rather than assumed.
     const before = await client.evaluate(`(() => {
