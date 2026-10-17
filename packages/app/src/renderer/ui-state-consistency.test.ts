@@ -84,7 +84,7 @@ describe('shared state sample', () => {
   })
 
   it('resolves shared feedback and provider status colors through theme roles', () => {
-    for (const [selector, declaration] of [
+    const checks: readonly [string, string][] = [
       ['.feedback-notice[data-tone="info"]', 'color: var(--muted)'],
       ['.feedback-notice[data-tone="success"]', 'color: var(--success)'],
       ['.feedback-notice[data-tone="warning"]', 'color: var(--warning)'],
@@ -97,7 +97,8 @@ describe('shared state sample', () => {
       ['.danger-confirm-inuse', 'color: var(--warning)'],
       ['.ms-feedback-text.error', 'border: 1px solid var(--feedback-danger-border)'],
       ['.ms-feedback-text.warning', 'color: var(--warning)'],
-    ]) {
+    ]
+    for (const [selector, declaration] of checks) {
       expect(declarations(selector, declaration), `${selector} { ${declaration} }`).toBe(true)
     }
   })
