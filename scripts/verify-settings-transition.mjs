@@ -10,7 +10,24 @@ await harness.assertBuildFresh()
 const root = await mkdtemp(join(tmpdir(), 'ls-settings-transition-'))
 const dataDir = join(root, 'data')
 await mkdir(join(dataDir, 'workplace'), { recursive: true })
-await writeFile(join(dataDir, 'config.json'), JSON.stringify({ version: 1, providers: [], agents: { defaults: { workspace: join(dataDir, 'workplace'), model: '', harness: 'core-flow' } } }))
+// A valid model reference is required: an empty one fails execution readiness, and the
+// resulting window-wide failure strip covers the settings rail's toolbar. The pointer exit
+// below is a real hit-tested click, so the fixture must not leave a banner over the control
+// it is measuring. No run is started here, so the provider never has to be reachable.
+await writeFile(join(dataDir, 'config.json'), JSON.stringify({
+  version: 1,
+  providers: [{
+    id: 'acceptance', name: 'Electron Acceptance', baseURL: 'http://127.0.0.1:9',
+    apiKey: 'acceptance-key', models: ['unused-model'],
+  }],
+  agents: {
+    defaults: {
+      workspace: join(dataDir, 'workplace'),
+      model: 'acceptance/unused-model',
+      harness: 'core-flow',
+    },
+  },
+}))
 const port = await harness.reservePort()
 const child = await harness.startElectron({ dataDir, chromiumDir: join(root, 'chromium'), debuggingPort: port, logPath: join(root, 'electron.log') })
 let client
@@ -18,6 +35,35 @@ const checks = []
 async function capture(name) {
   const { data } = await client.send('Page.captureScreenshot', { format: 'png' })
   await writeFile(join(root, name + '.png'), Buffer.from(data, 'base64'))
+}
+async function pressKey(key, shift = false) {
+  const code = key === ' ' ? 'Space' : key
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyDown', key, code,
+    windowsVirtualKeyCode: key === 'Enter' ? 13 : key === 'Tab' ? 9 : undefined,
+    nativeVirtualKeyCode: key === 'Enter' ? 13 : key === 'Tab' ? 9 : undefined,
+    modifiers: shift ? 8 : 0,
+    ...(key === 'Enter' ? { text: '\r', unmodifiedText: '\r' } : {}),
+  })
+  await client.send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key, code,
+    windowsVirtualKeyCode: key === 'Enter' ? 13 : key === 'Tab' ? 9 : undefined,
+    nativeVirtualKeyCode: key === 'Enter' ? 13 : key === 'Tab' ? 9 : undefined,
+    modifiers: shift ? 8 : 0,
+  })
+  await delay(150)
+}
+async function clickWithMouse(selector) {
+  const point = await client.evaluate(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)})
+    if (!(element instanceof HTMLElement)) return null
+    const rect = element.getBoundingClientRect()
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  })()`)
+  assert(point, `missing mouse target ${selector}`)
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: point.x, y: point.y })
+  await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: point.x, y: point.y, button: 'left', buttons: 1, clickCount: 1 })
+  await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: point.x, y: point.y, button: 'left', buttons: 0, clickCount: 1 })
 }
 async function measure(selector, duration = 500) {
   return client.evaluate(`(async () => {
@@ -78,17 +124,68 @@ try {
   await client.evaluate('document.querySelector(".settings-entry-btn").click()'); await delay(60)
   await client.evaluate('document.querySelector(".settings-entry-btn").click()'); await delay(320)
   assert(await client.evaluate('document.querySelector(".window-shell").classList.contains("settings-open") && document.querySelector(".settings-presence").classList.contains("presence-open") && !document.querySelector(".settings-presence").hasAttribute("inert")'))
-  await measure('.settings-sidebar-exit')
+  await client.evaluate(`document.querySelector('.settings-sidebar-exit').focus()`)
+  await pressKey('Tab')
+  await pressKey('Tab', true)
+  const keyboardExitFocus = await client.evaluate(`(() => {
+    const exit = document.querySelector('.settings-sidebar-exit')
+    return { active: document.activeElement === exit, visible: exit.matches(':focus-visible') }
+  })()`)
+  assert.deepEqual(keyboardExitFocus, { active: true, visible: true }, 'the settings exit is held by keyboard focus before Enter')
+  const focusEvents = await client.evaluate(`(() => {
+    window.__settingsReturnFocusTrace = []
+    for (const type of ['focusout', 'focusin']) {
+      document.addEventListener(type, (event) => window.__settingsReturnFocusTrace.push({
+        type,
+        target: event.target?.className || event.target?.tagName,
+        relatedTarget: event.relatedTarget?.className || event.relatedTarget?.tagName || null,
+        settingsOpen: Boolean(document.querySelector('.window-shell.settings-open')),
+        settingsHidden: document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true,
+        active: document.activeElement?.className || document.activeElement?.tagName,
+      }), true)
+    }
+    return true
+  })()`)
+  assert.equal(focusEvents, true)
+  await pressKey('Enter')
+  await harness.waitFor(() => client.evaluate(`document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true`), 10_000, 'settings exit to finish')
+  const keyboardReturnFocus = await client.evaluate(`(() => ({
+    settingsHidden: document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true,
+    settingsInert: document.querySelector('.settings-presence')?.hasAttribute('inert') === true,
+    activeIsComposer: document.activeElement === window.__settingsComposer,
+    active: document.activeElement?.className || document.activeElement?.tagName,
+    trace: window.__settingsReturnFocusTrace,
+    draft: window.__settingsComposer?.value,
+  }))()`)
+  assert.equal(keyboardReturnFocus.settingsHidden, true)
+  assert.equal(keyboardReturnFocus.settingsInert, true)
+  assert.equal(keyboardReturnFocus.activeIsComposer, true, `keyboard return should restore composer focus: ${JSON.stringify(keyboardReturnFocus)}`)
+  assert.equal(keyboardReturnFocus.draft, '设置切换后保留的草稿')
+  const focusOutToDocument = keyboardReturnFocus.trace.findIndex(event => event.type === 'focusout'
+    && event.target === 'settings-sidebar-exit' && event.active === 'BODY' && !event.settingsOpen)
+  const focusIntoComposer = keyboardReturnFocus.trace.findIndex(event => event.type === 'focusin'
+    && event.target === 'TEXTAREA' && !event.settingsOpen)
+  assert(focusOutToDocument >= 0 && focusIntoComposer > focusOutToDocument,
+    `focus must leave the inert settings control before returning to the composer: ${JSON.stringify(keyboardReturnFocus.trace)}`)
+  checks.push({ name: 'keyboard settings return restores composer focus after exit and preserves draft', keyboardExitFocus, keyboardReturnFocus })
   assert(await client.evaluate(`document.querySelector('.composer textarea')===window.__settingsComposer && window.__settingsComposer.value==='设置切换后保留的草稿'`))
   // The existing reduced-motion contract applies to both CSS and presence completion.
   await client.evaluate(`document.documentElement.dataset.lsReducedMotion='true'`)
   const reducedOpen = await measure('.settings-entry-btn', 120)
-  const reducedExit = await measure('.settings-sidebar-exit', 120)
+  await clickWithMouse('.settings-sidebar-exit')
+  await harness.waitFor(() => client.evaluate(`document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true`), 10_000, 'mouse settings exit to finish')
+  const reducedExit = await client.evaluate(`[{ ms: 0, hidden: document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true, returning: document.querySelector('.window-shell')?.classList.contains('settings-returning') }]`)
   assert(reducedExit.some(frame => frame.ms < 100 && frame.hidden && !frame.returning))
+  const mouseReturnFocus = await client.evaluate(`document.activeElement === window.__settingsComposer`)
+  assert.equal(mouseReturnFocus, false, 'the mouse return must not take focus from the user')
   await capture('settings-returned')
   checks.push({ name: 'cold and warm entry, discrete rail handoff, short return, interruption, draft preservation and reduced motion', cold, returned, warm, reducedOpen, reducedExit })
   await writeFile(join(root, 'report.json'), JSON.stringify({ status: 'passed', checks }, null, 2))
-  console.log(JSON.stringify({ status: 'passed', root, frames: checks.map(check => ({ cold: check.cold.length, exit: check.returned.length, warm: check.warm.length })) }))
+  console.log(JSON.stringify({
+    status: 'passed', root,
+    checks: checks.map(check => check.name),
+    frames: { cold: cold.length, exit: returned.length, warm: warm.length, reducedOpen: reducedOpen.length },
+  }))
 } finally {
   client?.close()
   if (child.exitCode === null) await harness.forceTerminate(child)

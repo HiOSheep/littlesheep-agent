@@ -33,7 +33,7 @@ export function shouldFocusComposerInput(target: EventTarget | null): boolean {
  * part of that command - unless a layer above the page, or another text surface,
  * owns it.
  */
-export type ComposerFocusIntent = 'launch' | 'new-session'
+export type ComposerFocusIntent = 'launch' | 'new-session' | 'settings-return'
 
 /**
  * The part of an element this decision reads, so a caller (or a test) can state
@@ -68,6 +68,10 @@ export function shouldTakeComposerFocus(request: ComposerFocusRequest): boolean 
   if (!active || active === request.target) return true
   const document = active.ownerDocument
   if (active === document?.body || active === document?.documentElement) return true
+  // Closing the settings surface makes its focused control inert, which leaves
+  // Chromium on BODY. Restore that keyboard focus only when nothing else has
+  // claimed it in the meantime.
+  if (request.intent === 'settings-return') return false
   // Nothing else in the shell holds a caret at launch, so a launch request that
   // finds one has arrived after the user's own choice and must not undo it.
   if (request.intent === 'launch') return false
@@ -89,4 +93,11 @@ export const COMPOSER_FOCUS_REQUEST_EVENT = 'littlesheep:composer-focus-request'
 export function requestComposerFocus(): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent(COMPOSER_FOCUS_REQUEST_EVENT))
+}
+
+export const COMPOSER_SETTINGS_RETURN_FOCUS_EVENT = 'littlesheep:settings-return-focus-request'
+
+export function requestComposerFocusAfterSettingsReturn(): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(COMPOSER_SETTINGS_RETURN_FOCUS_EVENT))
 }

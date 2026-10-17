@@ -13,6 +13,7 @@
 import { useCallback, useEffect, type RefObject } from 'react'
 import { modalLayers } from '../ui/modal-layer'
 import {
+  COMPOSER_SETTINGS_RETURN_FOCUS_EVENT,
   COMPOSER_FOCUS_REQUEST_EVENT,
   shouldTakeComposerFocus,
   type ComposerFocusIntent,
@@ -65,5 +66,11 @@ export function useComposerFocus(inputRef: RefObject<HTMLTextAreaElement>): void
       window.clearTimeout(timer)
       window.removeEventListener(COMPOSER_FOCUS_REQUEST_EVENT, handleFocusRequest)
     }
+  }, [focusComposer])
+
+  useEffect(() => {
+    const handleSettingsReturn = () => focusComposer('settings-return')
+    window.addEventListener(COMPOSER_SETTINGS_RETURN_FOCUS_EVENT, handleSettingsReturn)
+    return () => window.removeEventListener(COMPOSER_SETTINGS_RETURN_FOCUS_EVENT, handleSettingsReturn)
   }, [focusComposer])
 }

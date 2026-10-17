@@ -36,14 +36,23 @@ const keepRoot = process.argv.includes('--keep')
 const WINDOW = { width: 1180, height: 760 }
 const EVALUATE_TIMEOUT_MS = 15_000
 const SESSION_TITLE = '键盘验收归档对话'
-/** A conversation longer than one history page (120 messages), so "load older" is offered. */
+/** 130 seeded messages: the recent page renders first and older history stays behind "load older". */
 const CHAT_SESSION_ID = 'keyboard-chat-session'
 const CHAT_SESSION_TITLE = '键盘验收聊天会话'
+/**
+ * A second, short conversation. The Agent approval section runs here so the long conversation
+ * stays free of tool results: the acceptance provider only requests the glob tool while the
+ * conversation has no prior tool message.
+ */
+const APPROVAL_SESSION_ID = 'keyboard-approval-session'
+const APPROVAL_SESSION_TITLE = '键盘验收审批会话'
 const CHAT_SEEDED_MESSAGES = 130
 /** Upper bound on the forward walk; a full cycle is ~150 controls in this fixture. */
 const MAX_CHAT_TAB_STEPS = 260
 /** Steps allowed to find the "back to latest" control walking backwards out of the composer. */
 const MAX_JUMP_BACK_STEPS = 12
+/** Steps allowed to walk backwards from the composer into the inline Agent approval. */
+const MAX_APPROVAL_BACK_STEPS = 6
 
 function withTimeout(promise, timeoutMs, label) {
   let timer
@@ -134,10 +143,11 @@ async function seedArchive(dataDir) {
 }
 
 /**
- * A conversation longer than one history page, written in the store's own JSONL format (the same
- * format `scripts/verify-chat-history-paging.mjs` seeds). 131 messages leave one page of 120 in
- * the window, so the transcript offers the "load older" entry and is tall enough for the reader
- * to be away from the newest message — the two preconditions the keyboard walkthrough needs.
+ * A conversation longer than the first history page, written in the store's own JSONL format (the
+ * same format `scripts/verify-chat-history-paging.mjs` seeds). The renderer paints the recent page
+ * first and keeps the rest behind "load older"; 130 seeded messages guarantee that entry exists and
+ * that the rendered transcript is tall enough for the reader to be away from the newest message —
+ * the two preconditions the keyboard walkthrough needs.
  */
 async function seedChatSession(dataDir) {
   const now = Date.now()
@@ -166,13 +176,51 @@ async function seedChatSession(dataDir) {
     }))
   }
   await writeFile(join(dataDir, 'sessions', `${CHAT_SESSION_ID}.jsonl`), `${lines.join('\n')}\n`, 'utf8')
+  // A short second conversation for the Agent approval section. It is kept separate so the long
+  // conversation's provider run still proposes the real glob tool call.
+  const approvalLines = [JSON.stringify({
+    type: 'metadata',
+    metadata: {
+      title: APPROVAL_SESSION_TITLE,
+      model: '',
+      createdAt: new Date(now - 2_000).toISOString(),
+      updatedAt: new Date(now - 1_000).toISOString(),
+      messageCount: 2,
+    },
+  }), JSON.stringify({
+    id: 'keyboard-approval-message-0000',
+    role: 'user',
+    content: [{ type: 'text', text: '审批验收会话。' }],
+    timestamp: new Date(now - 2_000).toISOString(),
+    sessionId: APPROVAL_SESSION_ID,
+  }), JSON.stringify({
+    id: 'keyboard-approval-message-0001',
+    role: 'assistant',
+    content: [{ type: 'text', text: '已准备好接受键盘验收。' }],
+    timestamp: new Date(now - 1_000).toISOString(),
+    sessionId: APPROVAL_SESSION_ID,
+  })]
+  await writeFile(join(dataDir, 'sessions', `${APPROVAL_SESSION_ID}.jsonl`), `${approvalLines.join('\n')}\n`, 'utf8')
   await writeFile(join(dataDir, 'sessions.json'), `${JSON.stringify({
     sessions: [{
       id: CHAT_SESSION_ID,
       title: CHAT_SESSION_TITLE,
       createdAt: now - CHAT_SEEDED_MESSAGES * 1_000,
       lastMessageAt: now,
-      mode: 'research',
+      // The session index only lists V2 permission rows; a legacy `research` row without
+      // `permissionVersion` is silently dropped, and the seeded conversation would then be
+      // missing from the sidebar. `read-only` keeps the write tool behind a real approval,
+      // which is what the Agent-approval section of the walkthrough measures.
+      mode: 'read-only',
+      permissionVersion: 2,
+      scope: 'standalone',
+    }, {
+      id: APPROVAL_SESSION_ID,
+      title: APPROVAL_SESSION_TITLE,
+      createdAt: now - 2_000,
+      lastMessageAt: now - 1_000,
+      mode: 'read-only',
+      permissionVersion: 2,
       scope: 'standalone',
     }],
   }, null, 2)}\n`, 'utf8')
@@ -359,6 +407,81 @@ const FOCUS_STATE_EXPRESSION = `(() => {
   }
 })()`
 
+/**
+ * The page the keyboard is actually on, plus the separate facts "mounted", "visible",
+ * "able to take focus" and "owned by the active page".
+ *
+ * `document.querySelector` only answers "does this node exist": the settings workspace
+ * stays mounted (hidden and inert) after it closes, and the archive workspace replaces the
+ * chat view instead of covering it. Route classes on `.window-shell` are the authoritative
+ * active page; controls report existence, visibility and focusability separately, so a
+ * hidden node is never mistaken for an open page or a focus target.
+ */
+const PAGE_STATE_EXPRESSION = `(() => {
+  const visible = (element) => {
+    if (!(element instanceof HTMLElement)) return false
+    if (element.getAttribute('aria-hidden') === 'true') return false
+    if (element.hasAttribute('inert') || element.closest('[inert]') !== null) return false
+    if (typeof element.checkVisibility === 'function') {
+      return element.checkVisibility({ checkVisibilityCSS: true, contentVisibilityAuto: true })
+    }
+    return element.getClientRects().length > 0
+  }
+  const control = (element) => ({
+    mounted: element instanceof HTMLElement,
+    visible: visible(element),
+    focusable: element instanceof HTMLElement
+      && visible(element)
+      && !element.matches(':disabled')
+      && element.tabIndex >= 0,
+  })
+  const shell = document.querySelector('.window-shell')
+  const active = document.activeElement
+  const settingsPresence = document.querySelector('.settings-presence')
+  const settingsWorkspace = document.querySelector('.settings-workspace')
+  const archivePage = document.querySelector('.archive-page')
+  const messages = document.querySelector('.messages')
+  const dialog = document.querySelector('.danger-confirm-dialog')
+  const composer = document.querySelector('.composer textarea')
+  return {
+    route: shell?.classList.contains('settings-open') === true ? 'settings'
+      : shell?.classList.contains('direct-module-open') === true ? 'module'
+        : 'chat',
+    settings: {
+      mounted: settingsWorkspace instanceof HTMLElement,
+      visible: visible(settingsPresence) && visible(settingsWorkspace),
+      inert: settingsPresence?.hasAttribute('inert') === true,
+      exit: control(document.querySelector('[aria-label="退出设置页"]')),
+    },
+    archive: {
+      mounted: archivePage instanceof HTMLElement,
+      visible: visible(archivePage),
+      refresh: control(document.querySelector('.archive-refresh')),
+      deleteAction: control(document.querySelector('.archive-session-row .archive-action.danger')),
+    },
+    chat: {
+      mounted: messages instanceof HTMLElement,
+      visible: visible(messages),
+      composer: control(composer),
+      composerFocused: active === composer,
+    },
+    dialog: {
+      mounted: dialog instanceof HTMLElement,
+      visible: visible(dialog),
+      focusedInside: Boolean(dialog && active && dialog.contains(active)),
+    },
+    active: {
+      tag: active?.tagName ?? 'NONE',
+      className: typeof active?.className === 'string' ? active.className : '',
+      label: active?.getAttribute('aria-label') ?? active?.textContent?.trim().slice(0, 30) ?? null,
+      insideSettings: Boolean(settingsWorkspace?.contains(active)),
+      insideArchive: Boolean(archivePage?.contains(active)),
+      insideChat: Boolean(messages?.contains(active)),
+      focusVisible: active instanceof Element ? active.matches(':focus-visible') : false,
+    },
+  }
+})()`
+
 const INSTALL_APPROVAL_PROBE = `(() => {
   const probe = { responses: [] }
   window.__ux07ApprovalProbe = probe
@@ -405,6 +528,10 @@ async function main() {
     await harness.waitForDesktop(locator)
     await harness.desktopAction(locator, 'resize', WINDOW)
     client = await harness.connectRenderer(debuggingPort)
+    // The return path below asserts that a keyboard-focused control is `:focus-visible`
+    // when Enter closes it, so focus visibility must be emulated even when the acceptance
+    // window is not the operating system's foreground window.
+    await client.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await harness.waitFor(
       () => evaluate(client, `document.querySelector('.settings-entry-btn') instanceof HTMLElement || null`),
       harness.startTimeoutMs,
@@ -418,6 +545,32 @@ async function main() {
     // --- 1. open the settings layer and the archive page with the keyboard alone ---------------
     const entryFocused = await focusSelector(client, '.settings-entry-btn')
     await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-presence')?.classList.contains('presence-open') ? true : null`), harness.startTimeoutMs, 'the settings layer opened from the keyboard')
+    // --- 1a. leave the settings surface again with the keyboard ---------------------------------
+    // Leaving settings is what restores the composer caret. Check that return while the chat page
+    // is the current one: a caret restored to a hidden settings control, or to a composer that is
+    // not on the active page, would pass a node-existence check and be caught here.
+    const exitRefocused = await focusSelector(client, '[aria-label="退出设置页"]')
+    // Reach the exit the way a keyboard user does: Tab away and back, so the control is genuinely
+    // `:focus-visible` when Enter closes the surface.
+    await pressKey(client, 'Tab')
+    await pressKey(client, 'Tab', { shift: true })
+    const exitKeyboardFocus = await evaluate(client, `(() => {
+      const exit = document.querySelector('[aria-label="退出设置页"]')
+      return {
+        active: document.activeElement === exit,
+        focusVisible: exit instanceof HTMLElement && exit.matches(':focus-visible'),
+      }
+    })()`)
+    const exitFocused = exitRefocused === true && exitKeyboardFocus.active === true
+    await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-presence')?.classList.contains('presence-hidden') === true`), harness.startTimeoutMs, 'the settings layer to close on the keyboard')
+    const settingsReturn = await evaluate(client, PAGE_STATE_EXPRESSION)
+    // The archive workspace is entered from the settings home, so the keyboard path back in is
+    // the same settings entry the user just left.
+    const entryRefocused = await focusSelector(client, '.settings-entry-btn')
+    await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-presence')?.classList.contains('presence-open') ? true : null`), harness.startTimeoutMs, 'the settings layer reopened for the archive entry')
     await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-nav-item') ? true : null`), harness.startTimeoutMs, 'settings navigation')
     // The nav item that says 归档 is not the first one; focus it explicitly by index.
     const archiveNavIndex = await evaluate(client, `(() => {
@@ -434,11 +587,10 @@ async function main() {
     })()`)
     await pressKey(client, 'Enter')
     await harness.waitFor(() => evaluate(client, `document.querySelector('.archive-session-row') ? true : null`), harness.startTimeoutMs, 'the archived conversation row')
-    const openedByKeyboard = await evaluate(client, `(() => ({
-      archiveOpen: Boolean(document.querySelector('.archive-page')),
-      settingsOpen: Boolean(document.querySelector('.settings-workspace')),
-      focused: document.activeElement?.textContent?.trim().slice(0, 30) ?? null,
-    }))()`)
+    const openedByKeyboardState = await evaluate(client, PAGE_STATE_EXPRESSION)
+    // `archiveOpen` is kept as the visible-page answer the modal-only fixture already reads;
+    // the richer state separates "mounted" from "visible" from "able to take focus".
+    const openedByKeyboard = { ...openedByKeyboardState, archiveOpen: openedByKeyboardState.archive.visible }
 
     // --- 2. open the confirmation with the keyboard --------------------------------------------
     const deleteFocused = await focusSelector(client, '.archive-session-row .archive-action.danger')
@@ -446,6 +598,7 @@ async function main() {
     await harness.waitFor(() => evaluate(client, `document.querySelector('.danger-confirm-dialog') ? true : null`), harness.startTimeoutMs, 'the confirmation dialog')
     await delay(200)
     const opened = await evaluate(client, FOCUS_STATE_EXPRESSION)
+    const openedPage = await evaluate(client, PAGE_STATE_EXPRESSION)
     const dialogScreenshot = await writePng(client, 'dialog-open')
 
     // --- 3. Tab stays inside the dialog ---------------------------------------------------------
@@ -464,19 +617,41 @@ async function main() {
     await pressKey(client, 'Escape')
     await delay(250)
     const afterFirstEscape = await evaluate(client, FOCUS_STATE_EXPRESSION)
-    // A second Escape is *recorded*, not asserted: the settings layer is a persistent page-level
-    // surface, and closing it is the 退出设置 control's job (no Escape scope is registered for
-    // it). What UX-07 requires is that the first Escape removed exactly one layer.
+    const afterFirstEscapePage = await evaluate(client, PAGE_STATE_EXPRESSION)
+    // A second Escape is *recorded*, not asserted: the archive workspace has no Escape scope
+    // of its own, and the settings surface is a separate page the walkthrough already left when
+    // the archive opened. What UX-07 requires is that the first Escape removed exactly one layer.
     await pressKey(client, 'Escape')
     await delay(400)
     const afterSecondEscape = await evaluate(client, FOCUS_STATE_EXPRESSION)
-    const secondEscapeClosedSettings = afterSecondEscape.settingsOpen === false
+    const afterSecondEscapePage = await evaluate(client, PAGE_STATE_EXPRESSION)
+    // The settings workspace stays mounted after it closes, so "closed" is answered by
+    // visibility and the route, never by the node still being in the document.
+    const secondEscapeClosedSettings = afterSecondEscapePage.settings.visible === false
     const escapeScreenshot = await writePng(client, 'after-escape')
 
-    // --- 5. a real Agent approval starts on its explanation and Escape denies the write -------
-    const exitFocused = await focusSelector(client, '[aria-label="退出设置页"]')
+    // --- 4b. return to the chat page before asking the composer for anything -------------------
+    // The archive workspace replaced the chat view, so the composer was unmounted while the
+    // archive was active. Return to chat explicitly (a real keyboard activation of the short
+    // approval conversation) and report the page the keyboard is now on; never ask a control from
+    // the page that was left behind for focus.
+    const returnToChatFocused = await evaluate(client, `(() => {
+      const row = [...document.querySelectorAll('.session-item')]
+        .find((element) => element.textContent?.includes(${JSON.stringify(APPROVAL_SESSION_TITLE)}))
+      if (!(row instanceof HTMLElement)) return false
+      row.focus({ preventScroll: true })
+      return document.activeElement === row
+    })()`)
     await pressKey(client, 'Enter')
-    await harness.waitFor(() => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`), harness.startTimeoutMs, 'the composer after leaving settings')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.composer textarea') instanceof HTMLTextAreaElement || null`), harness.startTimeoutMs, 'the composer after returning to chat')
+    const chatAfterReturn = await evaluate(client, PAGE_STATE_EXPRESSION)
+
+    // --- 5. a real Agent approval is inline in its running turn; Escape denies the write ------
+    // The Agent approval is no longer a modal layer: it renders inside the running assistant turn
+    // (`role="region"`, no `aria-modal`), so the modal-layer contract stays covered by the archive
+    // dialog in sections 2-4. What this section checks is the inline contract that replaced it —
+    // it does not steal the composer caret, it is reachable with Tab in document order, and Escape
+    // from inside it still denies the write.
     await evaluate(client, INSTALL_APPROVAL_PROBE)
     const promptDrafted = await evaluate(client, `(() => {
       const textarea = document.querySelector('.composer textarea')
@@ -492,57 +667,64 @@ async function main() {
     const approvalOpened = await evaluate(client, `(() => {
       const prompt = document.querySelector('.approval-prompt')
       const active = document.activeElement
+      const turn = prompt?.closest('.assistant-turn')
       return {
         title: prompt?.querySelector('h2')?.textContent?.trim() ?? null,
-        focusOnHeading: active === prompt?.querySelector('h2'),
         action: prompt?.querySelector('.approval-kicker')?.textContent?.trim() ?? null,
+        inline: prompt?.getAttribute('role') === 'region',
+        ariaModal: prompt?.getAttribute('aria-modal') ?? null,
+        insideRunningTurn: Boolean(turn?.classList.contains('running')),
+        didNotStealFocus: active === document.querySelector('.composer textarea'),
       }
     })()`)
-    await pressKey(client, 'Enter')
-    const approvalAfterEnter = await evaluate(client, `Boolean(document.querySelector('.approval-prompt'))`)
-    const backgroundPoint = await evaluate(client, `(() => {
-      const textarea = document.querySelector('.composer textarea')
-      if (!(textarea instanceof HTMLTextAreaElement)) return null
-      const bounds = textarea.getBoundingClientRect()
-      window.__ux07BackgroundClicks = 0
-      textarea.addEventListener('click', () => { window.__ux07BackgroundClicks += 1 })
-      return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }
-    })()`)
-    if (!backgroundPoint) throw new Error('the background composer is missing')
-    await client.send('Input.dispatchMouseEvent', {
-      type: 'mousePressed', x: backgroundPoint.x, y: backgroundPoint.y, button: 'left', buttons: 1, clickCount: 1,
-    })
-    await client.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased', x: backgroundPoint.x, y: backgroundPoint.y, button: 'left', buttons: 0, clickCount: 1,
-    })
-    const backgroundClickCount = await evaluate(client, `window.__ux07BackgroundClicks`)
-    const approvalTabTrace = []
-    for (let index = 0; index < 4; index += 1) {
-      await pressKey(client, 'Tab')
-      approvalTabTrace.push(await evaluate(client, `(() => {
+    // The inline prompt sits in document order before the composer, so real Shift+Tab presses from
+    // the composer are the honest keyboard path to its actions.
+    await evaluate(client, `document.querySelector('.composer textarea').focus()`)
+    const approvalKeyboardTrace = []
+    let approvalReached = false
+    for (let step = 0; step < MAX_APPROVAL_BACK_STEPS && !approvalReached; step += 1) {
+      await pressKey(client, 'Tab', { shift: true })
+      const state = await evaluate(client, `(() => {
+        const active = document.activeElement
         const prompt = document.querySelector('.approval-prompt')
-        return Boolean(prompt && document.activeElement && prompt.contains(document.activeElement))
-      })()`))
+        return {
+          tag: active?.tagName ?? 'NONE',
+          className: typeof active?.className === 'string' ? active.className : '',
+          text: (active?.textContent ?? '').trim().slice(0, 20),
+          insidePrompt: Boolean(prompt && active && prompt.contains(active)),
+        }
+      })()`)
+      approvalKeyboardTrace.push(state)
+      approvalReached = state.insidePrompt === true
     }
+    // Escape from inside the inline prompt denies it, exactly as the modal prompt did before it
+    // moved into the turn.
     await pressKey(client, 'Escape')
-    // The first key starts the exit animation. A second key while the old DOM
-    // is still present must not trigger another approval decision.
-    await pressKey(client, 'Escape')
-    await delay(300)
-    const approvalAfterEscape = await evaluate(client, `(() => ({
-      promptOpen: Boolean(document.querySelector('.approval-prompt')),
-      focusRestored: document.activeElement === document.querySelector('.composer textarea'),
-      settingsOpen: Boolean(document.querySelector('.settings-workspace')),
-    }))()`)
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.approval-prompt') ? null : true`), harness.startTimeoutMs, 'the inline approval to close')
     await harness.waitFor(() => evaluate(client, `window.__ux07ApprovalProbe?.responses?.some((item) => item.status !== null) || null`), harness.startTimeoutMs, 'the approval response')
     const approvalResponses = await evaluate(client, `window.__ux07ApprovalProbe.responses`)
     const approvalScreenshot = await writePng(client, 'approval-denied-by-escape')
     const deniedWritePath = join(workplaceDir, 'ux07-approval-escape-probe.txt')
     const deniedWriteAbsent = await access(deniedWritePath).then(() => false, () => true)
+    const approvalRunSettled = await harness.waitFor(() => evaluate(client, `(() => {
+      const streaming = document.querySelector('.assistant-response-stream[data-stream-state="streaming"]')
+      return streaming ? null : true
+    })()`), 30_000, 'the denied run to settle').catch(() => false)
+    // A denied run must not strand the keyboard on the document body: one more real Tab has to
+    // reach a real control again.
+    await pressKey(client, 'Tab')
+    const approvalFocusAfterEscape = await evaluate(client, `(() => {
+      const active = document.activeElement
+      return {
+        tag: active?.tagName ?? 'NONE',
+        className: typeof active?.className === 'string' ? active.className : '',
+        promptOpen: Boolean(document.querySelector('.approval-prompt')),
+      }
+    })()`)
 
     // --- 6. the chat area itself, walked with real keys -----------------------------------------
-    // The denied run may still be finishing; the walkthrough reads a different conversation, so it
-    // only has to wait for the transcript to stop streaming.
+    // The denied run may still be finishing in the approval conversation; wait for its transcript
+    // to stop streaming, then open the long seeded conversation the chat-area walk reads.
     const deniedRunSettled = await harness.waitFor(() => evaluate(client, `(() => {
       const streaming = document.querySelector('.assistant-response-stream[data-stream-state="streaming"]')
       return streaming ? null : true
@@ -554,11 +736,32 @@ async function main() {
       item.click()
       return true
     })()`), harness.startTimeoutMs, 'the seeded chat session row')
-    await harness.waitFor(() => evaluate(client, `document.querySelectorAll('.messages .message').length > 100 ? true : null`), harness.startTimeoutMs, 'the seeded chat history page')
-    // Two live runs in the seeded conversation give the walk its real controls: the tool row that
-    // owns a disclosure, and the long Markdown answer that owns a code toolbar.
+    // The renderer paints the recent page first; the rest of the seeded conversation stays behind
+    // "load older". Both facts are the fixture preconditions for the walk that follows.
+    await harness.waitFor(() => evaluate(client, `(() => {
+      const rendered = document.querySelectorAll('.messages .message').length
+      const older = Boolean(document.querySelector('.history-load-older'))
+      return rendered > 0 && rendered < ${CHAT_SEEDED_MESSAGES} && older ? rendered : null
+    })()`), harness.startTimeoutMs, 'the seeded chat history page')
+    // Two live runs in the long conversation give the walk its real controls: the glob run proposes
+    // a real tool call (the read-only preset asks for approval, granted below by keyboard) and the
+    // long Markdown answer supplies the code toolbar.
     await submitComposerPrompt(client, '请使用 glob 工具列出当前工作区顶层条目')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.approval-prompt') ? true : null`), harness.startTimeoutMs, 'the workspace-scan approval prompt')
+    await evaluate(client, `document.querySelector('.composer textarea').focus()`)
+    await pressKey(client, 'Tab', { shift: true })
+    const globApprovalFocused = await evaluate(client, `(() => {
+      const active = document.activeElement
+      const prompt = document.querySelector('.approval-prompt')
+      return {
+        insidePrompt: Boolean(prompt && active && prompt.contains(active)),
+        label: (active?.textContent ?? '').trim(),
+      }
+    })()`)
+    await pressKey(client, 'Enter')
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.approval-prompt') ? null : true`), harness.startTimeoutMs, 'the scan approval to close')
     await waitForSettledTurn(client, 60_000)
+    const globApprovalResponses = await evaluate(client, `window.__ux07ApprovalProbe.responses`)
     await submitComposerPrompt(client, `请输出这份验收文档：${LONG_MARKDOWN_MARKER}`)
     await waitForSettledTurn(client, 60_000)
     await delay(600)
@@ -768,20 +971,29 @@ async function main() {
       openedByKeyboard,
       deleteFocused,
       opened,
+      openedPage,
       tabTrace,
       afterFirstEscape,
+      afterFirstEscapePage,
       afterSecondEscape,
+      afterSecondEscapePage,
       secondEscapeClosedSettings,
+      returnToChatFocused,
+      chatAfterReturn,
+      exitKeyboardFocus,
+      settingsReturn,
       exitFocused,
       promptDrafted,
       approvalOpened,
-      approvalAfterEnter,
-      backgroundClickCount,
-      approvalTabTrace,
-      approvalAfterEscape,
+      approvalKeyboardTrace,
+      approvalReached,
       approvalResponses,
       deniedWriteAbsent,
+      approvalRunSettled,
+      approvalFocusAfterEscape,
       deniedRunSettled,
+      globApprovalFocused,
+      globApprovalResponses,
       chatSessionOpened,
       chatFixture,
       jumpOfferedBeforeWalk,
@@ -828,33 +1040,68 @@ async function main() {
     expect(openedByKeyboard.archiveOpen, 'the archive page did not open from the keyboard')
     expect(deleteFocused === true, 'the delete action could not be focused')
     // 2. initial focus is the deliberate target.
-    expect(opened.dialogOpen, 'the dialog did not open from the keyboard')
-    expect(opened.activeClass?.includes('close-btn') === true,
+    expect(openedPage.dialog.visible, 'the dialog did not open from the keyboard')
+    expect(openedPage.active.className?.includes('close-btn') === true,
       `initial focus was not the cancel button: ${JSON.stringify(opened.activeLabel)}`)
     // 3. Tab never leaves the dialog.
     expect(tabTrace.every((state) => state.insideDialog),
       `Tab left the dialog: ${JSON.stringify(tabTrace.map((state) => state.activeClass))}`)
     expect(new Set(tabTrace.map((state) => state.activeClass)).size >= 2, 'Tab never reached the second action')
-    // 4. one Escape per layer, focus returned to the trigger.
-    expect(afterFirstEscape.dialogOpen === false, 'the first Escape did not close the dialog')
-    expect(afterFirstEscape.archiveOpen, 'the first Escape also closed the page behind the dialog')
-    expect(afterFirstEscape.settingsOpen, 'the first Escape closed the settings layer as well')
-    expect(afterFirstEscape.activeClass?.includes('archive-action') === true,
-      `focus did not return to the delete action: ${JSON.stringify(afterFirstEscape.activeClass)}`)
-    // 5. a real write approval is readable before any grant; Escape rejects it.
-    expect(exitFocused === true, 'the settings exit could not be focused')
+    // 4. one Escape per layer, focus returned to the trigger on the archive page.
+    expect(afterFirstEscapePage.dialog.visible === false, 'the first Escape did not close the dialog')
+    expect(afterFirstEscapePage.route === 'module' && afterFirstEscapePage.archive.visible === true,
+      'the first Escape also closed the page behind the dialog')
+    expect(afterFirstEscapePage.archive.refresh.focusable === true,
+      'the archive page did not keep its own controls focusable after the dialog closed')
+    // The settings workspace is still in the document after it closes: report it as closed and
+    // inert, not as "open" just because its nodes exist.
+    expect(afterFirstEscapePage.settings.mounted === true
+      && afterFirstEscapePage.settings.visible === false
+      && afterFirstEscapePage.settings.inert === true,
+    'the settings surface must stay mounted but be closed and inert behind the archive page')
+    expect(afterFirstEscapePage.active.insideArchive === true
+      && afterFirstEscapePage.active.className?.includes('archive-action') === true,
+    `focus did not return to the delete action: ${JSON.stringify(afterFirstEscapePage.active)}`)
+    // The archive workspace replaced the chat view; the walkthrough must not ask the unmounted
+    // composer for focus. It navigates back to chat explicitly, below.
+    expect(afterFirstEscapePage.chat.mounted === false && afterFirstEscapePage.chat.composer.mounted === false,
+      'the archive workspace did not replace the chat view, so a composer expectation would be meaningless')
+    // 4b. the settings return restores the caret on the chat page it belongs to.
+    expect(entryRefocused === true, 'the settings entry could not be focused again after leaving settings')
+    expect(exitFocused === true, 'the settings exit could not be held by keyboard focus')
+    expect(exitKeyboardFocus.focusVisible === true, 'the settings exit was not :focus-visible before Enter')
+    expect(settingsReturn.route === 'chat' && settingsReturn.settings.visible === false && settingsReturn.settings.inert === true,
+      'Enter on the settings exit did not close the settings surface')
+    expect(settingsReturn.chat.composerFocused === true && settingsReturn.chat.composer.visible === true,
+      `keyboard settings return did not restore composer focus: ${JSON.stringify(settingsReturn.active)}`)
+    // The return happened on the chat page, not on a hidden settings control or a control that the
+    // archive workspace had already unmounted.
+    expect(returnToChatFocused === true, 'the approval conversation row could not be focused to leave the archive workspace')
+    expect(chatAfterReturn.route === 'chat' && chatAfterReturn.chat.mounted === true && chatAfterReturn.chat.visible === true,
+      `leaving the archive workspace did not return to the chat page: ${JSON.stringify(chatAfterReturn.route)}`)
+    expect(chatAfterReturn.chat.composer.focusable === true, 'the composer was not focusable after leaving the archive workspace')
+    expect(chatAfterReturn.active.tag !== 'NONE' && chatAfterReturn.active.tag !== 'BODY',
+      `leaving the archive workspace dropped focus on the document: ${JSON.stringify(chatAfterReturn.active)}`)
+    expect(chatAfterReturn.active.insideArchive === false && chatAfterReturn.active.insideSettings === false,
+      'after leaving the archive workspace focus stayed on a control from the previous page')
+    // 5. the inline write approval must not steal the caret, must be Tab-reachable, and Escape
+    //    from inside it must reject the write.
     expect(promptDrafted === true, 'the approval request could not be submitted')
     expect(approvalOpened.title === '允许写入文件？', `unexpected approval title: ${approvalOpened.title}`)
     expect(approvalOpened.action === 'Agent 工具调用', 'approval did not come from an Agent tool')
-    expect(approvalOpened.focusOnHeading, 'approval initially focused an action instead of its explanation')
-    expect(approvalAfterEnter, 'Enter on the heading unexpectedly approved the operation')
-    expect(backgroundClickCount === 0, 'a pointer click reached the background composer through the approval layer')
-    expect(approvalTabTrace.every(Boolean), 'Tab escaped the approval dialog')
-    expect(approvalAfterEscape.promptOpen === false, 'Escape did not close the approval dialog')
-    expect(approvalAfterEscape.focusRestored, 'approval did not restore focus to the composer')
+    expect(approvalOpened.inline === true && approvalOpened.insideRunningTurn === true,
+      `the Agent approval was not inline in its running turn: ${JSON.stringify(approvalOpened)}`)
+    expect(approvalOpened.ariaModal === null, 'the inline approval must not claim modal semantics')
+    expect(approvalOpened.didNotStealFocus === true,
+      `the inline approval took the caret away from the composer: ${JSON.stringify(approvalOpened)}`)
+    expect(approvalReached === true,
+      `Shift+Tab from the composer never reached the inline approval: ${JSON.stringify(approvalKeyboardTrace)}`)
     expect(approvalResponses.length === 1 && approvalResponses[0]?.approved === false && approvalResponses[0]?.status < 300,
       `Escape must submit one rejection: ${JSON.stringify(approvalResponses)}`)
     expect(deniedWriteAbsent, 'the denied write still reached the filesystem')
+    expect(approvalRunSettled === true, 'the denied run did not settle after the rejection')
+    expect(approvalFocusAfterEscape.promptOpen === false && approvalFocusAfterEscape.tag !== 'BODY',
+      `the keyboard was stranded after the inline approval closed: ${JSON.stringify(approvalFocusAfterEscape)}`)
 
     // 6. the chat area is reachable and ordered for a keyboard-only reader.
     const forwardIndexWhere = (predicate) => forwardTrace.findIndex(predicate)
@@ -899,10 +1146,20 @@ async function main() {
     }
     results.chatWalk.tabbableSetShifts = tabbableSetShifts
     results.chatWalk.offListStops = offListStops
+    // 6. the long conversation's glob run asked for a workspace-scan approval, which the
+    // walkthrough granted with the keyboard; the chat area is reachable from there.
+    expect(globApprovalFocused.insidePrompt === true,
+      `Shift+Tab did not reach the workspace-scan approval: ${JSON.stringify(globApprovalFocused)}`)
+    expect(globApprovalResponses.some((entry) => entry.approved === true && entry.status < 300),
+      `the workspace-scan approval was not granted: ${JSON.stringify(globApprovalResponses)}`)
     expect(deniedRunSettled === true, 'the transcript was still streaming before the chat walkthrough')
     expect(chatSessionOpened === true, 'the seeded chat session was not listed in the sidebar')
-    expect(chatFixture.renderedMessages > 100, `the seeded chat page held ${chatFixture.renderedMessages} messages`)
-    expect(chatFixture.loadOlder === true, 'a conversation longer than one history page offered no "load older" entry')
+    // The renderer paints the recent page first and keeps the remaining history behind "load
+    // older"; the walk below is what proves the resulting transcript is long enough to read from
+    // the composer to the bottom and back.
+    expect(chatFixture.renderedMessages > 0 && chatFixture.renderedMessages < CHAT_SEEDED_MESSAGES,
+      `the seeded chat page rendered ${chatFixture.renderedMessages} of the ${CHAT_SEEDED_MESSAGES} seeded messages`)
+    expect(chatFixture.loadOlder === true, 'a conversation longer than the first history page offered no "load older" entry')
     expect(chatFixture.toolRow === true, 'the chat fixture rendered no tool activity row')
     expect(chatFixture.codeToolbarButton === true, 'the chat fixture rendered no code toolbar button')
     expect(chatFixture.metaCopy === true, 'the chat fixture rendered no message meta copy button')
@@ -1000,13 +1257,15 @@ async function main() {
     // Recorded limits. Every one of these is a known boundary of the fixture or a finding the walk
     // reported instead of asserting, not a passed check.
     results.limits = [
-      'The chat-area walkthrough runs in a seeded conversation (131 messages written straight into the session JSONL) so that one history page leaves a "load older" entry and a transcript tall enough for the reader to be away from the newest message. The seeded text is fixture data; the controls it exposes are the real renderer components. The two extra turns the walk needs (a tool row and a code block) are real runs of the acceptance provider inside that conversation.',
+      'The chat-area walkthrough runs in a seeded conversation (130 messages written straight into the session JSONL) so that the recent page is a real partial page with the "load older" entry still offered and a transcript tall enough for the reader to be away from the newest message. The seeded text is fixture data; the controls it exposes are the real renderer components. The two extra turns the walk needs (a tool row and a code block) are real runs of the acceptance provider inside that conversation.',
+      'The Agent approval section runs in a second, short seeded conversation so the long conversation stays free of prior tool results: the acceptance provider only proposes its glob tool call while the conversation has no tool message. Both conversations are V2 read-only rows in the isolated fixture.',
       'Tab is dispatched with Input.dispatchKeyEvent, so the renderer runs its own default actions. Focus order is judged against the tabbable elements that are not inert, not disabled, visible and (for scroll regions without a tabindex) overflowing, which is document order for tabindex 0 — a positive tabindex would show up as an ordering violation rather than being normalised away.',
       `The forward walk observed ${results.chatWalk.focusBlips.length} Tab press(es) that left focus on document.body instead of a control: focusing the last message scrolls the transcript to the bottom, the "back to latest" control is only offered while the reader is away from it, so it unmounted between the press and the measurement. Those presses are recorded in chatWalk.focusBlips and do not appear as stops; the control's reachability is asserted separately in section 6c, where the reader is deliberately scrolled away again and Shift+Tab from the composer lands on it.`,
       `The tabbable set changed size ${results.chatWalk.tabbableSetShifts.length} time(s) during the walk (chatWalk.tabbableSetShifts): the same "back to latest" control mounting again as the reverse walk scrolled the transcript away from the bottom. Document indexes are therefore not compared across those steps; the forward/reverse mirror is compared by a stable per-element id.`,
       `The walk reached ${results.chatWalk.offListStops.length} stop(s) the gate's own tabbable predicate did not model (chatWalk.offListStops); each one is still ordered by its document rank, so the ordered-trace check does not depend on that predicate being complete.`,
       'The composer permission-mode picker registers no Escape scope of its own: only the full-access confirmation does. That is why section 7 asserts that the *first* Escape closed exactly the confirmation (layer delta, permission mode unchanged) and records the second Escape rather than requiring it to close the picker panel.',
-      `The full-access confirmation does not hold focus when it opens (the observed activeElement was ${JSON.stringify(results.chatLayerEscape.confirmationFocus.tag)}): choosing the option closes the picker panel and makes it inert in the same React commit, so Chromium blurs the option button to the document body before the dialog's own initial focus target is focusable. The layer is still keyboard-usable — the next Tab is routed into it by the modal surface (asserted) and Escape closes it — but the layer does not return focus to the mode-picker trigger, unlike the approval prompt which restores focus to the composer.`,
+      `The full-access confirmation does not hold focus when it opens (the observed activeElement was ${JSON.stringify(results.chatLayerEscape.confirmationFocus.tag)}): choosing the option closes the picker panel and makes it inert in the same React commit, so Chromium blurs the option button to the document body before the dialog's own initial focus target is focusable. The layer is still keyboard-usable — the next Tab is routed into it by the modal surface (asserted) and Escape closes it — but the layer does not return focus to the mode-picker trigger.`,
+      'The Agent write approval is inline in its running assistant turn (role="region", no aria-modal), not a modal layer, so section 5 checks the inline contract instead: no caret theft, Tab-reachability from the composer, and Escape-to-reject. The modal-layer contract is checked against the archive danger dialog in sections 2-4, where a real modal layer exists.',
     ]
     console.log(JSON.stringify({ check: 'keyboard-modal-focus', ok: true, evidence: results }))
   } catch (error) {

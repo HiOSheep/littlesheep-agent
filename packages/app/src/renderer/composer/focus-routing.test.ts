@@ -89,8 +89,29 @@ describe('who may take the composer caret', () => {
     })).toBe(false)
   })
 
+  it('restores it after settings only when focus fell back to the document', () => {
+    expect(shouldTakeComposerFocus({
+      intent: 'settings-return',
+      activeElement: element({ documentRoot: 'body' }),
+      layerDepth: 0,
+      target: composer,
+    })).toBe(true)
+    expect(shouldTakeComposerFocus({
+      intent: 'settings-return',
+      activeElement: element(),
+      layerDepth: 0,
+      target: composer,
+    })).toBe(false)
+    expect(shouldTakeComposerFocus({
+      intent: 'settings-return',
+      activeElement: element({ textEntry: true }),
+      layerDepth: 0,
+      target: composer,
+    })).toBe(false)
+  })
+
   it('never takes it from a dialog, an approval prompt or an open popup', () => {
-    for (const intent of ['launch', 'new-session'] as const) {
+    for (const intent of ['launch', 'new-session', 'settings-return'] as const) {
       expect(shouldTakeComposerFocus({
         intent,
         activeElement: element({ documentRoot: 'body' }),

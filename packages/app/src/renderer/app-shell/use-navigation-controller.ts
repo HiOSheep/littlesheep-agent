@@ -12,6 +12,7 @@ import {
   type NavigationHistoryState,
 } from '../navigation-history'
 import { DirectModulePage, SettingsPage } from '../settings/types'
+import { requestComposerFocusAfterSettingsReturn } from '../composer/focus-routing'
 import { FloatingHelpTip } from '../ui/floating-help'
 import {
   type WorkspaceOpenRequest,
@@ -73,6 +74,8 @@ export function useNavigationController({
   const navigationRestoreSettleTimerRef = useRef<number>()
   const appHistoryRef = useRef(appHistory)
   const settingsReturnRouteRef = useRef<AppRoute>({ section: 'chat' })
+  const restoreComposerFocusAfterSettingsReturnRef = useRef(false)
+  const cancelSettingsReturnFocusOnPointerRef = useRef<(() => void) | null>(null)
   const [settingsEntryRippling, setSettingsEntryRippling] = useState(false)
   const [settingsReturning, setSettingsReturning] = useState(false)
 
@@ -240,11 +243,30 @@ export function useNavigationController({
   }
 
   function closeSettingsFromEntry() {
+    restoreComposerFocusAfterSettingsReturnRef.current = document.activeElement instanceof HTMLElement
+      && document.activeElement.matches(':focus-visible')
+    cancelSettingsReturnFocusOnPointerRef.current?.()
+    cancelSettingsReturnFocusOnPointerRef.current = null
+    if (restoreComposerFocusAfterSettingsReturnRef.current) {
+      const cancelOnPointer = () => {
+        restoreComposerFocusAfterSettingsReturnRef.current = false
+      }
+      window.addEventListener('pointerdown', cancelOnPointer, { once: true, capture: true })
+      cancelSettingsReturnFocusOnPointerRef.current = () => {
+        window.removeEventListener('pointerdown', cancelOnPointer, true)
+      }
+    }
     triggerSettingsEntryRipple()
     closeSettingsWorkspace()
   }
 
   function finishSettingsReturn() {
+    cancelSettingsReturnFocusOnPointerRef.current?.()
+    cancelSettingsReturnFocusOnPointerRef.current = null
+    if (restoreComposerFocusAfterSettingsReturnRef.current) {
+      requestComposerFocusAfterSettingsReturn()
+    }
+    restoreComposerFocusAfterSettingsReturnRef.current = false
     setSettingsReturning(false)
   }
 
@@ -264,6 +286,7 @@ export function useNavigationController({
     window.clearTimeout(settingsEntryRippleTimerRef.current)
     window.clearTimeout(navigationRestoreSettleTimerRef.current)
     window.cancelAnimationFrame(settingsEntryRippleFrameRef.current ?? 0)
+    cancelSettingsReturnFocusOnPointerRef.current?.()
   }, [])
 
   return { activeRoute, appHistoryRef, navigationRestoreTargetRef, setAppHistory, settingsEntryRippling, settingsOpen, settingsReturning, directModulePage, settingsPage, canNavigateBack, canNavigateForward, pushRoute, openSettingsFromEntry, openSettingsPage, openDirectModulePage, navigateBack, navigateForward, closeSettingsFromEntry, finishSettingsReturn }
