@@ -33,11 +33,11 @@ export interface ExplicitFileContentCheckReceipt {
   reasonCode?: 'permission_denied' | 'path_unverified' | 'file_missing' | 'not_regular_file' | 'file_too_large' | 'read_failed' | 'cancelled';
 }
 
-const runtimeFileContentCheckTools = new WeakSet<AgentTool>();
+const runtimeFileContentCheckTools = new WeakMap<AgentTool, string>();
 
-/** Internal identity check used by ToolExecutionService to apply only the native read guard. */
-export function isRuntimeFileContentCheckTool(tool: AgentTool): boolean {
-  return runtimeFileContentCheckTools.has(tool);
+/** Trusted fixed target for permission classification; never model supplied. */
+export function runtimeFileContentCheckPath(tool: AgentTool): string | undefined {
+  return runtimeFileContentCheckTools.get(tool);
 }
 
 /**
@@ -81,7 +81,7 @@ export function createExplicitFileContentCheckTool(request: ExplicitFileContentC
       };
     }),
   };
-  runtimeFileContentCheckTools.add(tool);
+  runtimeFileContentCheckTools.set(tool, request.filePath);
   return tool;
 }
 

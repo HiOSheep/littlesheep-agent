@@ -7,6 +7,7 @@ import { editTool } from './builtin/edit.js'
 import { readTool } from './builtin/read.js'
 import { writeTool } from './builtin/write.js'
 import { createInMemoryFileObservationPort } from './file-observation.js'
+import { createExplicitFileContentCheckTool } from './builtin/verify-file-content.js'
 import { WORKSPACE_FILE_GUARD_AVAILABLE } from './workspace-file-guard.js'
 import { ToolExecutionService } from './tool-execution-service.js'
 
@@ -89,6 +90,38 @@ describe('Permission V2 native file tools on the real filesystem', () => {
     const overwritten = (await invoke('write', { file_path: overwriteFile, content: 'after' }))!
     expect(overwritten.ok).toBe(true)
     await expect(readFile(overwriteFile, 'utf8')).resolves.toBe('after')
+  })
+
+  it.skipIf(!WORKSPACE_FILE_GUARD_AVAILABLE)('authorizes the Runtime-bound Task Outcome check through the native workspace read guard', async () => {
+    const workspace = await root('workspace-task-outcome-check')
+    const file = join(workspace, 'result.txt')
+    await writeFile(file, 'hello', 'utf8')
+    const approve = vi.fn(async () => false)
+    const checker = createExplicitFileContentCheckTool({
+      runId: 'workspace-file-test-run',
+      requirementId: 'requirement-1',
+      filePath: 'result.txt',
+      expectedContent: 'hello',
+    })
+    const service = new ToolExecutionService({
+      registrations: [{ tool: checker, source: 'run-scoped' }],
+      toolContext: context(workspace, { approve }),
+    })
+
+    const result = await service.executeBatch([{
+      callId: 'task-outcome-check',
+      name: checker.name,
+      input: {},
+    }])
+
+    expect(result.get(0)).toMatchObject({ ok: true, meta: { taskOutcomeCheck: { status: 'passed' } } })
+    expect(approve).not.toHaveBeenCalled()
+    expect(service.snapshot().records[0]).toMatchObject({
+      toolName: checker.name,
+      toolSource: 'run-scoped',
+      status: 'succeeded',
+      approval: { required: false, decision: 'not_required' },
+    })
   })
 
   it.skipIf(!WORKSPACE_FILE_GUARD_AVAILABLE)('allows automatic writes only through the Main tool service invocation', async () => {

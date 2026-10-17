@@ -41,7 +41,7 @@ export function MessageFileStrip({
   )
   if (files.length === 0) return null
 
-  // The turn's own产出 is one card; attachments stay the compact strip they were.
+  // The turn's file operations get one card; attachments stay the compact strip they were.
   if (label !== '附件' && onOpenReview) {
     return (
       <MessageArtifactsCard
@@ -134,7 +134,7 @@ export function MessageImageStrip({ files }: { files: AttachmentRef[] }) {
 
 export function fileActionLabel(action: WorkspaceArtifactRef['action']): string {
   if (action === 'attached') return '附件'
-  return action === 'created' ? '新建' : '修改'
+  return action === 'created' ? '写入调用成功' : '修改调用成功'
 }
 
 

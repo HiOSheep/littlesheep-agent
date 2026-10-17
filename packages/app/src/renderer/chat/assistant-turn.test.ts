@@ -6,7 +6,7 @@ import { WEB_SOURCES_VISIBLE_ROWS, WebSources, webErrorLabel, webEvidenceStateLa
 import { Markdown as MarkdownImplementation } from '../Markdown'
 import type { AssistantTurnActivity, ChatMessage } from './types'
 import { turnOutputRate, turnUsageFigures } from './turn-usage-card'
-import type { WebEvidenceProjection } from '@littlesheep/types'
+import { unknownTaskOutcome, type WebEvidenceProjection } from '@littlesheep/types'
 import { CONVERSATION_DISPLAY_MODE_KEY } from './conversation-display'
 
 // Re-stubbed per test: the O1 cases replace `window` to choose a display mode, and the Markdown
@@ -68,6 +68,22 @@ function manyCitations(): WebEvidenceProjection {
 
 
 describe('assistant activity flow', () => {
+  it('mounts the structured Task Outcome beside the final response', () => {
+    const taskOutcome = unknownTaskOutcome('run-ui')
+    taskOutcome.status = 'blocked'
+    taskOutcome.execution = { status: 'blocked', reasonCode: 'permission_denied' }
+    taskOutcome.remaining = [{ reasonCode: 'permission_denied', evidenceRefs: [] }]
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: { role: 'assistant', text: '还需要权限。', activity: activity({ status: 'failed', taskOutcome }) },
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    expect(html).toContain('任务验收')
+    expect(html).toContain('任务受到阻断')
+    expect(html.indexOf('assistant-final')).toBeLessThan(html.indexOf('task-outcome-card'))
+  })
+
   it('does not present completed argument generation as a completed file change', () => {
     const html = renderToStaticMarkup(createElement(AssistantTranscript, {
       transcript: [{ kind: 'preparing', id: 'pending-write', name: 'write', receivedCharacters: 0, status: 'done', argumentSummary: 'target.txt' }],

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ExecutionLogStore, type ExecutionLog } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
-import { asSessionId } from '@littlesheep/types'
+import { asSessionId, unknownTaskOutcome } from '@littlesheep/types'
 import { buildHistoryMessages, executionLogToHistoryActivity } from './history-activity.js'
 
 const tempDirs: string[] = []
@@ -430,5 +430,19 @@ describe('durable history activity reconstruction', () => {
     expect(history[0]?.activity?.verificationHistory?.[0]).toMatchObject({
       verdict: 'needs_replan', failedStepIds: ['step-2'],
     })
+  })
+
+  it('projects the same persisted Task Outcome into historical activity', () => {
+    const taskOutcome = unknownTaskOutcome('run-1')
+    taskOutcome.execution = { status: 'completed' }
+    taskOutcome.remaining = [{ reasonCode: 'requirements_unknown', evidenceRefs: [] }]
+    const log = executionLog({ taskOutcome })
+    const history = buildHistoryMessages([{
+      id: 'assistant-final', role: 'assistant', runId: 'run-1', stage: 'finalize',
+      timestamp: log.endedAt, content: [{ type: 'text', text: log.reply }],
+    }], new Map([['run-1', log]]))
+
+    expect(executionLogToHistoryActivity(log).taskOutcome).toEqual(taskOutcome)
+    expect(history[0]?.activity?.taskOutcome).toEqual(taskOutcome)
   })
 })

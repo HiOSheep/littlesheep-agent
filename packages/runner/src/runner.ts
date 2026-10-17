@@ -2305,6 +2305,17 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const durableHarnessModeForRun = (sessionId: string, runId: string) =>
     readDurableHarnessMode(infra.durableEventStore, sessionId, runId);
 
+  async function replayDurableTaskOutcome(sessionId: SessionId, runId: string): Promise<TaskOutcome> {
+    const projection = await durableKernel.replay(String(sessionId), runId);
+    const projectedOutcome = readTaskOutcomeForProjection(projection, runId);
+    if (!projection.taskOutcome || projectedOutcome.execution.reasonCode === 'outcome_pending_terminal_settlement') return projectedOutcome;
+    const log = await infra.executionLogStore.read(runId);
+    if (!log?.taskOutcome || JSON.stringify(log.taskOutcome) !== JSON.stringify(projectedOutcome)) {
+      return unknownTaskOutcome(runId);
+    }
+    return log.taskOutcome;
+  }
+
   async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
     const mode = result.durableHarnessMode ?? await durableHarnessModeForRun(String(result.sessionId), result.runId);
     if (mode !== 'next') return result;
@@ -2312,6 +2323,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     return markAuthoritativePrepared(await prepareAuthoritativeRunnerResult({
       durableHarnessMode: 'next',
       replayDurableFinalReply: replayAuthoritativeDurableFinalReply,
+      replayTaskOutcome: replayDurableTaskOutcome,
     } as AgentRunner, result));
   }
 
@@ -2340,16 +2352,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
     isResultAuthoritativePrepared: (result: RunnerResult) => isAuthoritativePrepared(result),
     replayDurableFinalReply: (sessionId: SessionId, runId: string) =>
       replayAuthoritativeDurableFinalReply(sessionId, runId),
-    replayTaskOutcome: async (sessionId: SessionId, runId: string) => {
-      const projection = await durableKernel.replay(String(sessionId), runId);
-      const projectedOutcome = readTaskOutcomeForProjection(projection, runId);
-      if (!projection.taskOutcome || projectedOutcome.execution.reasonCode === 'outcome_pending_terminal_settlement') return projectedOutcome;
-      const log = await infra.executionLogStore.read(runId);
-      if (!log?.taskOutcome || JSON.stringify(log.taskOutcome) !== JSON.stringify(projectedOutcome)) {
-        return unknownTaskOutcome(runId);
-      }
-      return log.taskOutcome;
-    },
+    replayTaskOutcome: replayDurableTaskOutcome,
     recoverDurableRun,
     runtimeEvents: activeRuns,
     activeRuns,

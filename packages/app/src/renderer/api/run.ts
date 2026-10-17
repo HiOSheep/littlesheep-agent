@@ -25,6 +25,7 @@ import type {
   RuntimeCapabilitySnapshot,
   RuntimeFinalStatus,
   RunUsage,
+  TaskOutcome,
 } from '@littlesheep/types'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionPresetId } from '@littlesheep/types'
@@ -38,6 +39,8 @@ import type {
 import { localApiFetch, localApiResponseError, localApiStatusError, parseSseFrame } from './common'
 
 export interface RunResult {
+  /** Read back from the Runner's durable Task Outcome projection. */
+  taskOutcome?: TaskOutcome
   conversationTranscript?: import('@littlesheep/types').ConversationTranscriptEntry[]
   runId: string
   sessionId: string

@@ -4,7 +4,7 @@ import { executionLogToHistoryActivity } from '../../shared/history-activity'
 import { buildTaskProgress } from '../task-progress'
 import type { ChatMessage } from './types'
 import type { ExecutionLog } from '@littlesheep/runner'
-import { asSessionId } from '@littlesheep/types'
+import { asSessionId, unknownTaskOutcome } from '@littlesheep/types'
 
 describe('completed assistant message metadata', () => {
   it('settles progress without moving thinking ahead of earlier prose or dropping a failed preparation', () => {
@@ -148,5 +148,27 @@ describe('completed assistant message metadata', () => {
 
     expect(messages[0]?.webEvidence).toMatchObject({ citationIds: ['web-run-source'], partial: true, cached: true })
     expect(JSON.stringify(messages[0])).not.toContain('page body')
+  })
+
+  it('carries the Runtime Task Outcome into the same live activity shape used by history', () => {
+    const taskOutcome = unknownTaskOutcome('run-outcome')
+    taskOutcome.status = 'blocked'
+    taskOutcome.execution = { status: 'blocked', reasonCode: 'permission_denied' }
+    taskOutcome.remaining = [{ reasonCode: 'permission_denied', evidenceRefs: [] }]
+    const live = reduceCompletedRunMessages(preview(), {
+      runId: 'run-outcome', sessionId: 'session-outcome', status: 'error', reply: '', durationMs: 10,
+      runtimeStatus: { version: 1, status: 'waiting_user', reason: 'permission_denied' },
+      taskOutcome,
+    })[0]!.activity!
+    const history = executionLogToHistoryActivity({
+      ...{
+        runId: 'run-outcome', sessionId: 'session-outcome', status: 'error', reply: '', durationMs: 10,
+        runtimeStatus: { version: 1, status: 'waiting_user', reason: 'permission_denied' }, taskOutcome,
+      },
+      inboundText: 'task', model: 'test', startedAt: '2026-09-11T00:00:00Z', endedAt: '2026-09-11T00:00:01Z', trace: [], toolCalls: [],
+    } as ExecutionLog)
+
+    expect(live.taskOutcome).toEqual(taskOutcome)
+    expect(history.taskOutcome).toEqual(taskOutcome)
   })
 })

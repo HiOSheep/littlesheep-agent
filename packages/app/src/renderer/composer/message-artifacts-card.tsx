@@ -1,6 +1,7 @@
-// The chat's "产出成果" card.
+// The chat's file-operation card. These paths come from successful tool calls; Task Outcome holds
+// the separate, trusted record of which resources were actually inspected.
 //
-// One card per turn instead of a grid of chips: a header that names the turn's产出 and totals its
+// One card per turn instead of a grid of chips: a header that names the turn's file operations and totals its
 // line changes, the files themselves as rows with their own counts on the right, and a footer that
 // opens the rest when there are more than a few. The counts stay neutral until the pointer is on
 // them — a wall of green and red reads as noise when a turn touched ten files.
@@ -35,12 +36,12 @@ export function MessageArtifactsCard({
   const hiddenCount = files.length - shown.length
 
   return (
-    <section className="message-artifacts-card" aria-label="产出成果">
+    <section className="message-artifacts-card" aria-label="文件操作记录">
       <header className="message-artifacts-head">
         <span className="message-artifacts-head-icon" aria-hidden="true">
           <FileGlyphIcon name={files[0]?.name} />
         </span>
-        <strong>已产出 {files.length} 个文件</strong>
+        <strong>记录了 {files.length} 个文件操作</strong>
         {totals && (
           <span className="message-artifacts-total" aria-label={totalDeltaLabel(totals)}>
             <span className="line-delta-add">+{totals.additions}</span>

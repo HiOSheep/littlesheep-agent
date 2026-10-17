@@ -17,7 +17,7 @@ export function parseExplicitFileContentRequirement(input: {
   text: string;
 }): ExplicitFileContentRequirement | undefined {
   const text = input.text.trim();
-  const match = /^(?:创建|Create)\s+([A-Za-z0-9][A-Za-z0-9._-]{0,127})[，,]\s*(?:内容必须为|content must be)\s*(?:"([^"\r\n]{0,4096})"|'([^'\r\n]{0,4096})'|([^，,。\r\n]{1,4096}?))。?$/u.exec(text);
+  const match = /^(?:创建|Create)\s+([A-Za-z0-9][A-Za-z0-9._-]{0,127})[，,]\s*(?:内容必须为|content must be)\s*(?:"([^"\r\n]{0,4096})"|'([^'\r\n]{0,4096})'|([^，,。\r\n]{1,4096}?))[。.]?$/u.exec(text);
   if (!match) return undefined;
   const filePath = match[1]!;
   if (filePath === '.' || filePath === '..' || filePath.includes('..')) return undefined;

@@ -16,7 +16,7 @@ import type {
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety';
 import { inspectWorkspaceFilePath } from './workspace-file-guard.js';
 import { markNativeWorkspaceFileInvocation } from './native-workspace-file-invocation.js';
-import { isRuntimeFileContentCheckTool } from './builtin/verify-file-content.js';
+import { runtimeFileContentCheckPath } from './builtin/verify-file-content.js';
 import { attachShellInvocation, authorizedShellInvocationId } from './shell-authorization.js';
 import { prepareShellToolBatch } from './shell-tool-batch.js';
 import { DEFAULT_SANITIZE, type SanitizeOptions } from './sanitize.js';
@@ -247,7 +247,10 @@ export class ToolExecutionService {
         continue;
       }
 
-      const descriptor = describeToolAccess(registration.tool.name, input, this.options.toolContext);
+      const runtimeCheckPath = runtimeFileContentCheckPath(registration.tool);
+      const accessToolName = runtimeCheckPath ? 'read' : registration.tool.name;
+      const accessInput = runtimeCheckPath ? { file_path: runtimeCheckPath } : input;
+      const descriptor = describeToolAccess(accessToolName, accessInput, this.options.toolContext);
       const shellGrant = shellBatch.grants.get(index);
       const shellError = shellBatch.failures.get(index);
       const shellFailure = shellError;
@@ -408,17 +411,21 @@ export class ToolExecutionService {
     const mode = this.options.toolContext.permissionMode;
     const snapshot = this.options.toolContext.permissionPolicyV2;
     const selectedPolicy = snapshot?.preset ?? this.options.toolContext.permissionPreset ?? mode;
-    const isNativeWorkspaceFileTool = registration.source === 'builtin'
-      && (tool.name === 'read' || tool.name === 'write' || tool.name === 'edit');
-    const filePath = typeof input === 'object' && input !== null && 'file_path' in input
-      && typeof (input as { file_path?: unknown }).file_path === 'string'
-      ? (input as { file_path: string }).file_path
+    const runtimeCheckPath = runtimeFileContentCheckPath(tool);
+    const accessToolName = runtimeCheckPath ? 'read' : tool.name;
+    const accessInput = runtimeCheckPath ? { file_path: runtimeCheckPath } : input;
+    const isNativeWorkspaceFileTool = (registration.source === 'builtin'
+      && (tool.name === 'read' || tool.name === 'write' || tool.name === 'edit'))
+      || runtimeCheckPath !== undefined;
+    const filePath = typeof accessInput === 'object' && accessInput !== null && 'file_path' in accessInput
+      && typeof (accessInput as { file_path?: unknown }).file_path === 'string'
+      ? (accessInput as { file_path: string }).file_path
       : undefined;
     if (snapshot && isNativeWorkspaceFileTool && filePath !== undefined) {
       const pathGuard = await inspectWorkspaceFilePath(
         filePath,
         this.options.toolContext,
-        tool.name === 'read' ? 'read' : 'write',
+        accessToolName === 'read' ? 'read' : 'write',
       );
       // An unsafe alias that purports to be inside the authorized workspace
       // cannot be approved by the displayed lexical path. Outside absolute
@@ -453,7 +460,8 @@ export class ToolExecutionService {
     // keep using this same service but remain explicitly approvable.
     const isNativeWorkspaceFileWriter = registration.source === 'builtin'
       && (tool.name === 'write' || tool.name === 'edit');
-    const isNativeWorkspaceFileReader = registration.source === 'builtin' && tool.name === 'read';
+    const isNativeWorkspaceFileReader = (registration.source === 'builtin' && tool.name === 'read')
+      || runtimeCheckPath !== undefined;
     const guardedNativeWorkspaceFileWriter = selectedPolicy === 'workspace-write'
       && isNativeWorkspaceFileWriter
       && descriptor.action === 'write'
@@ -692,7 +700,7 @@ export class ToolExecutionService {
       if (invocation.shellGrant) attachShellInvocation(invocationContext, registration.tool, invocation.shellGrant);
       if ((registration.source === 'builtin'
         && (toolName === 'read' || toolName === 'write' || toolName === 'edit'))
-        || isRuntimeFileContentCheckTool(registration.tool)) {
+        || runtimeFileContentCheckPath(registration.tool) !== undefined) {
         markNativeWorkspaceFileInvocation(invocationContext, toolName as 'read' | 'write' | 'edit' | 'runtime_check_file_content');
       }
       const result = await invokeWithTimeout(

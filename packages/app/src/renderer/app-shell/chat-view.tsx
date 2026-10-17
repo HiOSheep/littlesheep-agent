@@ -214,7 +214,7 @@ export function ChatView({ controller }: { controller: ChatViewController }) {
                     <TraceCard trace={m.trace} toolCalls={m.toolCalls} durationMs={m.durationMs} onOpenFile={openFileInWorkspace} />
                   )}
                   {m.role === 'assistant' && m.artifacts && m.artifacts.length > 0 && (
-                    <MessageFileStrip files={m.artifacts} label="产出成果" workspaceRoot={artifactsWorkspaceRoot} toolCalls={m.activity?.tools} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
+                    <MessageFileStrip files={m.artifacts} label="文件操作记录" workspaceRoot={artifactsWorkspaceRoot} toolCalls={m.activity?.tools} onOpenFile={openFileInWorkspace} onOpenReview={openReviewInWorkspace} />
                   )}
                 </div>
                 <MessageMeta
