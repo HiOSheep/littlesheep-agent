@@ -371,6 +371,9 @@ function executeTask({ taskId, trial = 1, tier, outputPath }) {
 function writeLedger(outputPath, { tier, records, selection }) {
   const results = ['passed', 'failed', 'partially_completed', 'correctly_blocked', 'unverified'];
   const infrastructure = ['executed', 'blocked', 'harness_error', 'not_run'];
+  const sumWhenComplete = key => records.every(record => Number.isSafeInteger(record.execution[key]) && record.execution[key] >= 0)
+    ? records.reduce((sum, record) => sum + record.execution[key], 0)
+    : null;
   const ledger = {
     schemaVersion: 1,
     suiteId: 'LS-RCD-S3B-REAL-TASKS-12',
@@ -388,10 +391,10 @@ function writeLedger(outputPath, { tier, records, selection }) {
       notRun: 12 - new Set(records.map(record => record.taskId)).size,
       taskResults: Object.fromEntries(results.map(result => [result, records.filter(record => record.oracle.result === result).length])),
       infrastructureStatus: Object.fromEntries(infrastructure.map(status => [status, records.filter(record => record.execution.infrastructureStatus === status).length])),
-      logicalModelRequests: records.reduce((sum, record) => sum + (record.execution.logicalModelRequests ?? 0), 0),
+      logicalModelRequests: sumWhenComplete('logicalModelRequests'),
       physicalProviderRequests: records.every(record => record.execution.physicalProviderRequests !== null) ? records.reduce((sum, record) => sum + record.execution.physicalProviderRequests, 0) : null,
-      toolCallProposals: records.every(record => record.execution.toolCallProposals !== null) ? records.reduce((sum, record) => sum + record.execution.toolCallProposals, 0) : null,
-      toolExecutions: records.every(record => record.execution.toolExecutions !== null) ? records.reduce((sum, record) => sum + record.execution.toolExecutions, 0) : null,
+      toolCallProposals: sumWhenComplete('toolCallProposals'),
+      toolExecutions: sumWhenComplete('toolExecutions'),
       unavailableUsageTrials: records.filter(record => record.execution.usage.status === 'unavailable').length,
       unavailableCostTrials: records.filter(record => record.execution.cost.status === 'unavailable').length,
       cleanupFailures: records.filter(record => !record.cleanup.succeeded).length,
