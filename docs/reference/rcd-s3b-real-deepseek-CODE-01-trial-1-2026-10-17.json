@@ -1,0 +1,264 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S3B-REAL-TASKS-12",
+  "generatedAt": "2026-10-17T10:28:23.798Z",
+  "productStatus": "live_trials_authorized_and_executed",
+  "evidenceTier": "B_real_model",
+  "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "selection": {
+    "mode": "--run-real",
+    "taskIds": [
+      "CODE-01"
+    ],
+    "trial": 1
+  },
+  "counts": {
+    "taskDefinitions": 12,
+    "executableAdapters": 8,
+    "executed": 1,
+    "blocked": 0,
+    "harnessError": 0,
+    "notRun": 11,
+    "taskResults": {
+      "passed": 0,
+      "failed": 1,
+      "partially_completed": 0,
+      "correctly_blocked": 0,
+      "unverified": 0
+    },
+    "infrastructureStatus": {
+      "executed": 1,
+      "blocked": 0,
+      "harness_error": 0,
+      "not_run": 0
+    },
+    "logicalModelRequests": 5,
+    "physicalProviderRequests": 8,
+    "toolCallProposals": 0,
+    "toolExecutions": 0,
+    "unavailableUsageTrials": 1,
+    "unavailableCostTrials": 1,
+    "cleanupFailures": 0,
+    "failureAttributions": {
+      "network_or_external_service": 1
+    }
+  },
+  "suiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+  "adapterExtensionSha256": "8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8",
+  "metricsSchemaSha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65",
+  "records": [
+    {
+      "schemaVersion": 1,
+      "recordId": "s3b-1792232903415-code-01-1",
+      "taskId": "CODE-01",
+      "trial": 1,
+      "evidenceTier": "B_real_model",
+      "source": {
+        "productHead": "edf35ef7cbe38aca901976623310ce5de6207bac",
+        "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "evaluatorFingerprint": "768c0fa1769d431d758484d87353d0afe7f310d1c6a2f70850382a929757aac7",
+        "workingTreeFingerprint": "94bed4e53763549a6ae03e791de3d2c0d8c698cf4cd9fbe3dfeb0cb20f1d006f",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/rcd-s3b-provider-evaluation-2026-10-17.md",
+          "scripts/lib/s3b-provider-config.d.mts",
+          "scripts/lib/s3b-provider-config.mjs",
+          "scripts/s3b-eval.mjs",
+          "test/s3b-live-task-trials.test.ts",
+          "test/s3b-provider-metering.test.ts",
+          "docs/reference/rcd-s3b-real-deepseek-CODE-01-dispatch-diagnostic-2026-10-17.json",
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-dispatch-diagnostic-2026-10-17.json"
+        ],
+        "productSourceDirty": false,
+        "unclassifiedDirtyPaths": [],
+        "unclassifiedCommittedPaths": [],
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "aa37a8aa5753bcef4e3813f34cd92638e3fdf3959ceead8934f7a4fd15803b8c",
+        "configSha256": "9f62ace1bd28a0a3e990bb71f62cd80ed6c5a6381e34784fc6e6973914ba6caa",
+        "evaluatorCommand": "node scripts/s3b-eval.mjs --run-real --task=CODE-01 --trial=1"
+      },
+      "provider": {
+        "kind": "real",
+        "simulated": false,
+        "id": "deepseek",
+        "model": "deepseek-flash",
+        "apiProtocol": "openai-chat-completions",
+        "endpointOrigin": "https://api.deepseek.com",
+        "modelVersion": null,
+        "parameters": {
+          "observed": [
+            {
+              "model": "deepseek/deepseek-flash",
+              "temperature": null,
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek/deepseek-flash",
+              "temperature": null,
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek/deepseek-flash",
+              "temperature": null,
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek/deepseek-flash",
+              "temperature": null,
+              "maxOutputTokens": 2048,
+              "requestedMaxOutputTokens": null,
+              "stream": false
+            },
+            {
+              "model": "deepseek/deepseek-flash",
+              "temperature": null,
+              "maxOutputTokens": 320,
+              "requestedMaxOutputTokens": 320,
+              "stream": false
+            }
+          ],
+          "topP": null,
+          "seed": null,
+          "unsupported": [
+            "top_p",
+            "seed"
+          ]
+        },
+        "limits": {
+          "physicalRequestBudget": 8,
+          "outputTokenLimit": 2048,
+          "userApprovedMaxCostUsd": null,
+          "userApprovedMaxCostCny": 12.1,
+          "costBudgetCurrency": "CNY",
+          "costBudgetScope": "shared_provider_account_prepaid_balance_for_authorized_batch",
+          "providerBillingCapConfirmed": true,
+          "providerBillingCapBasis": "prepaid_balance_exhaustion_verified_2026-10-17",
+          "timeoutSeconds": 120,
+          "maxAttempts": 1
+        },
+        "physicalUsageSource": null
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "error",
+        "runtimeFinalStatus": {
+          "version": 1,
+          "status": "failed",
+          "reason": "run_failed_before_publication"
+        },
+        "runId": "ab0573bc-7634-4b85-b0a2-3d6c9a17bc63",
+        "executionLayer": "Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence",
+        "startedAt": "2026-10-17T10:28:19.741Z",
+        "endedAt": "2026-10-17T10:28:22.690Z",
+        "durationMs": 2949,
+        "logicalModelRequests": 5,
+        "logicalEmbeddingRequests": 0,
+        "physicalProviderRequests": 8,
+        "blockedPhysicalRequests": 1,
+        "toolCallProposals": 0,
+        "toolExecutions": 0,
+        "deniedToolCalls": 0,
+        "failedToolCalls": 0,
+        "settledEffects": 0,
+        "unknownEffects": 0,
+        "segments": null,
+        "contextCompactions": null,
+        "usage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": null,
+          "responseCount": 0
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "source": null,
+          "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens"
+        },
+        "network": {
+          "providerHttpRequests": 8,
+          "agentWebRequests": 0,
+          "forbiddenRequests": 0,
+          "providerHttpFailures": 8,
+          "agentPolicy": "Web tools disabled; task network rules apply to Agent tools. The separately authorized Provider API transport is measured as evaluation infrastructure traffic."
+        },
+        "approvals": {
+          "count": 0,
+          "source": "trusted Runner approve callback invocation count"
+        },
+        "invocationEvidence": [],
+        "effectEvidence": [],
+        "modelResponseModels": null,
+        "childSignal": null,
+        "childExitCode": 0,
+        "childSpawnErrorCode": null,
+        "outputDigests": {
+          "childOutputSha256": "21830db83170a22aec12c75661c03f34e50e917aedbbe069ab55df711d1473a0",
+          "taskObservationSha256": "636ed58e3a0af0571a961786c0c081006d1d04f174c81d3b0858b49758baceb5"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent Node process imports the resulting synthetic module and checks taskLabel() plus file bytes",
+        "evidenceRefs": [
+          "fixture://src/label.mjs"
+        ],
+        "falseCompletionClaim": null,
+        "details": {
+          "status": "failed",
+          "taskResult": "failed",
+          "evaluationCheck": "failed",
+          "method": "Independent Node process imports the resulting synthetic module and checks taskLabel() plus file bytes",
+          "expected": "ready",
+          "actual": "old",
+          "evidence": [
+            {
+              "path": "src/label.mjs",
+              "sha256": "0fb101e118c0a4b64abe3ddddf5f1fc5d855ee59596c9c75b9e32e2a56c559f9",
+              "bytes": 45
+            }
+          ]
+        }
+      },
+      "failureAttribution": {
+        "primary": "network_or_external_service",
+        "secondary": [],
+        "evidenceRefs": [
+          "fixture://src/label.mjs"
+        ],
+        "confidence": "high"
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    }
+  ],
+  "notes": [
+    "Only the original four S3A tasks are eligible for live trials.",
+    "Task result comes from the frozen independent Oracle; Provider final text is not a success signal.",
+    "This trial count is not a population-level success estimate."
+  ]
+}

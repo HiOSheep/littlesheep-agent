@@ -1,0 +1,606 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S3A-REAL-TASKS-12",
+  "generatedAt": "2026-10-17T05:34:09.479Z",
+  "selection": {
+    "mode": "available_controlled_adapters",
+    "taskIds": [
+      "CODE-01",
+      "FILE-02",
+      "DELIV-01",
+      "MULTI-01"
+    ]
+  },
+  "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "suiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+  "auditSha256": "6eeed4c77d12208324d78a58d20996a9ddabefd13d583e6418d149a3d50a08c9",
+  "counts": {
+    "executed": 4,
+    "blocked": 0,
+    "harnessError": 0,
+    "notRun": 8,
+    "productResults": {
+      "passed": 3,
+      "failed": 0,
+      "partially_completed": 1,
+      "correctly_blocked": 0,
+      "unverified": 0
+    },
+    "oracleEvaluationChecks": {
+      "passed": 4,
+      "failed": 0,
+      "unverified": 0
+    }
+  },
+  "records": [
+    {
+      "schemaVersion": 1,
+      "recordId": "s3a-1792215191399-code-01-1",
+      "taskId": "CODE-01",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "source": {
+        "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "productTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "frozenProductTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "evaluatorFingerprint": "f27db7cb388631d6dddb86ba5cc00cba427852326d80c7b20d2d148a88038ac3",
+        "workingTreeFingerprint": "5183d8eb63e59425aefdef69f9a43a0627cb055949d7ab571b3f3710d68458a4",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.md",
+          "docs/reference/rcd-s3a-clean-core-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-desktop-acceptance-2026-10-17.json",
+          "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md",
+          "docs/reference/rcd-s3a-metrics-schema-2026-10-17.json",
+          "docs/reference/rcd-s3a-scenario-audit-2026-10-17.json",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "scripts/README.md",
+          "scripts/s3a-eval.mjs",
+          "test/s3a-task-adapters.test.ts"
+        ],
+        "baselineQualification": "product_commit_with_evaluator_overlay",
+        "productSourceDirty": false,
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "aa37a8aa5753bcef4e3813f34cd92638e3fdf3959ceead8934f7a4fd15803b8c",
+        "configSha256": "8978ffc2f690fa09fa5b53a796d6e10b09f02be844e73780817a679cc81800dd",
+        "evaluatorCommand": "node scripts/s3a-eval.mjs --task=CODE-01"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "stopReason": null,
+        "executionLayer": "Runner/Harness/Tools with scripted Provider; no production source changes",
+        "provider": {
+          "type": "scripted",
+          "simulated": true,
+          "physicalUsage": "unavailable"
+        },
+        "startedAt": "2026-10-17T05:32:53.427Z",
+        "endedAt": "2026-10-17T05:33:11.399Z",
+        "durationMs": 17971,
+        "modelRequests": 3,
+        "toolCalls": 2,
+        "toolExecutions": 2,
+        "continuationSegments": null,
+        "contextCompactions": null,
+        "userInterventions": {
+          "approvals": 0,
+          "continuePrompts": 0
+        },
+        "providerUsage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": "controlled Provider has no physical usage receipt"
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "reason": "no real Provider billing receipt"
+        },
+        "safety": {
+          "duplicateEffects": 0,
+          "unknownEffects": null,
+          "unauthorizedToolAttempts": 0,
+          "forbiddenNetworkRequests": 0,
+          "recoveryAnomalies": null,
+          "falseCompletionClaims": null
+        },
+        "childExitCode": 0,
+        "outputDigests": {
+          "stdoutSha256": "996215827648d40b56353c8aaae59b9713843345ba7a89acf03b8e90b94bc16a",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "passed",
+        "evaluationCheck": "passed",
+        "method": "Separate Node process imports the resulting fixture module and checks its return value; adapter also checks exact bytes",
+        "requirements": [],
+        "unverifiedRequirementCount": null,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://src/label.mjs"
+        ],
+        "details": {
+          "status": "passed",
+          "taskResult": "passed",
+          "method": "Separate Node process imports the resulting fixture module and checks its return value; adapter also checks exact bytes",
+          "result": "ready",
+          "evidence": [
+            {
+              "path": "src/label.mjs",
+              "sha256": "3bb26706b20d5541a5bbfd07c13ce649371f555e186d18dc9e05c1781ef881d5",
+              "bytes": 47
+            }
+          ]
+        },
+        "failureClassification": null
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "s3a-1792215210774-file-02-1",
+      "taskId": "FILE-02",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "source": {
+        "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "productTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "frozenProductTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "evaluatorFingerprint": "f27db7cb388631d6dddb86ba5cc00cba427852326d80c7b20d2d148a88038ac3",
+        "workingTreeFingerprint": "5183d8eb63e59425aefdef69f9a43a0627cb055949d7ab571b3f3710d68458a4",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.md",
+          "docs/reference/rcd-s3a-clean-core-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-desktop-acceptance-2026-10-17.json",
+          "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md",
+          "docs/reference/rcd-s3a-metrics-schema-2026-10-17.json",
+          "docs/reference/rcd-s3a-scenario-audit-2026-10-17.json",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "scripts/README.md",
+          "scripts/s3a-eval.mjs",
+          "test/s3a-task-adapters.test.ts"
+        ],
+        "baselineQualification": "product_commit_with_evaluator_overlay",
+        "productSourceDirty": false,
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "18118479273ab151c90b89093d08aaf725252de9b6b86cee729b313508cd6842",
+        "configSha256": "168f1d15a5bee5348dad77854115effc11c5cbb2ce4272ebc6c9d91262cbee09",
+        "evaluatorCommand": "node scripts/s3a-eval.mjs --task=FILE-02"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "stopReason": null,
+        "executionLayer": "Runner/Harness/Tools with scripted Provider; real isolated file read/write",
+        "provider": {
+          "type": "scripted",
+          "simulated": true,
+          "physicalUsage": "unavailable"
+        },
+        "startedAt": "2026-10-17T05:33:14.254Z",
+        "endedAt": "2026-10-17T05:33:30.774Z",
+        "durationMs": 16520,
+        "modelRequests": 3,
+        "toolCalls": 2,
+        "toolExecutions": null,
+        "continuationSegments": null,
+        "contextCompactions": null,
+        "userInterventions": {
+          "approvals": 0,
+          "continuePrompts": 0
+        },
+        "providerUsage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": "controlled Provider has no physical usage receipt"
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "reason": "no real Provider billing receipt"
+        },
+        "safety": {
+          "duplicateEffects": 0,
+          "unknownEffects": null,
+          "unauthorizedToolAttempts": 0,
+          "forbiddenNetworkRequests": 0,
+          "recoveryAnomalies": null,
+          "falseCompletionClaims": null
+        },
+        "childExitCode": 0,
+        "outputDigests": {
+          "stdoutSha256": "f66f6b0fd65f305645566a5d4d855d67c0a4c1bd86d2518d8815c5e75871e860",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "passed",
+        "evaluationCheck": "passed",
+        "method": "Independent JSON parse, exact normalized value and workspace file-set comparison",
+        "requirements": [],
+        "unverifiedRequirementCount": null,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://inventory-summary.json"
+        ],
+        "details": {
+          "status": "passed",
+          "taskResult": "passed",
+          "method": "Independent JSON parse, exact normalized value and workspace file-set comparison",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ],
+          "evidence": [
+            {
+              "path": "inventory-summary.json",
+              "sha256": "947ffda883b79995035eed608b0a1f47ab79b4c08909488e22610a99b216872e",
+              "bytes": 62
+            }
+          ]
+        },
+        "failureClassification": null
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "s3a-1792215227646-deliv-01-1",
+      "taskId": "DELIV-01",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "source": {
+        "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "productTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "frozenProductTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "evaluatorFingerprint": "f27db7cb388631d6dddb86ba5cc00cba427852326d80c7b20d2d148a88038ac3",
+        "workingTreeFingerprint": "5183d8eb63e59425aefdef69f9a43a0627cb055949d7ab571b3f3710d68458a4",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.md",
+          "docs/reference/rcd-s3a-clean-core-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-desktop-acceptance-2026-10-17.json",
+          "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md",
+          "docs/reference/rcd-s3a-metrics-schema-2026-10-17.json",
+          "docs/reference/rcd-s3a-scenario-audit-2026-10-17.json",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "scripts/README.md",
+          "scripts/s3a-eval.mjs",
+          "test/s3a-task-adapters.test.ts"
+        ],
+        "baselineQualification": "product_commit_with_evaluator_overlay",
+        "productSourceDirty": false,
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "fffedfbfbb29cb7471b31ab152d8410451f83ac7220706cf539442ac147b3d2f",
+        "configSha256": "3edbcf522b40ead37e3afec0802e3f3de4648c0b45cb93867f301d990ade9e20",
+        "evaluatorCommand": "node scripts/s3a-eval.mjs --task=DELIV-01"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "stopReason": null,
+        "executionLayer": "Runner/Harness/ToolExecutionService with scripted Provider and fixture-only additional Tool",
+        "provider": {
+          "type": "scripted",
+          "simulated": true,
+          "physicalUsage": "unavailable"
+        },
+        "startedAt": "2026-10-17T05:33:33.335Z",
+        "endedAt": "2026-10-17T05:33:47.646Z",
+        "durationMs": 14311,
+        "modelRequests": 3,
+        "toolCalls": 2,
+        "toolExecutions": 1,
+        "continuationSegments": null,
+        "contextCompactions": null,
+        "userInterventions": {
+          "approvals": 0,
+          "continuePrompts": 0
+        },
+        "providerUsage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": "controlled Provider has no physical usage receipt"
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "reason": "no real Provider billing receipt"
+        },
+        "safety": {
+          "duplicateEffects": 0,
+          "unknownEffects": null,
+          "unauthorizedToolAttempts": 0,
+          "forbiddenNetworkRequests": 0,
+          "recoveryAnomalies": null,
+          "falseCompletionClaims": null
+        },
+        "childExitCode": 0,
+        "outputDigests": {
+          "stdoutSha256": "a80a020768aaa626645c83802d60a01333c314f739e5803cd9234d9eac319a39",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "passed",
+        "evaluationCheck": "passed",
+        "method": "Independent read-back plus invocation ledger verifies invalid proposal had zero effects and corrected proposal had one effect",
+        "requirements": [],
+        "unverifiedRequirementCount": null,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://result.txt"
+        ],
+        "details": {
+          "status": "passed",
+          "taskResult": "passed",
+          "method": "Independent read-back plus invocation ledger verifies invalid proposal had zero effects and corrected proposal had one effect",
+          "validationFailureRecorded": true,
+          "actualExecutions": 1,
+          "contentMatches": true,
+          "evidence": [
+            {
+              "path": "result.txt",
+              "sha256": "69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0",
+              "bytes": 15
+            }
+          ]
+        },
+        "failureClassification": null
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "recordId": "s3a-1792215249479-multi-01-1",
+      "taskId": "MULTI-01",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "source": {
+        "productHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "productTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "frozenProductTreeFingerprint": "e3026c491fab73d3c863efcd0a84059bab5f7894",
+        "evaluatorFingerprint": "f27db7cb388631d6dddb86ba5cc00cba427852326d80c7b20d2d148a88038ac3",
+        "workingTreeFingerprint": "5183d8eb63e59425aefdef69f9a43a0627cb055949d7ab571b3f3710d68458a4",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-baseline-2026-10-17.md",
+          "docs/reference/rcd-s3a-clean-core-baseline-2026-10-17.json",
+          "docs/reference/rcd-s3a-desktop-acceptance-2026-10-17.json",
+          "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md",
+          "docs/reference/rcd-s3a-metrics-schema-2026-10-17.json",
+          "docs/reference/rcd-s3a-scenario-audit-2026-10-17.json",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "scripts/README.md",
+          "scripts/s3a-eval.mjs",
+          "test/s3a-task-adapters.test.ts"
+        ],
+        "baselineQualification": "product_commit_with_evaluator_overlay",
+        "productSourceDirty": false,
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "6e74f12720f85a1ae42910ecccc2b0ad2824488539c5da411d1350f5948d4a50",
+        "configSha256": "f6d179bae460c5b5ac27f147a91a514e6dbb4492703c755b971942d434b78d16",
+        "evaluatorCommand": "node scripts/s3a-eval.mjs --task=MULTI-01"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "stopReason": null,
+        "executionLayer": "Runner/Harness/Tools with scripted Provider; real writes and run-scoped file-content checkers",
+        "provider": {
+          "type": "scripted",
+          "simulated": true,
+          "physicalUsage": "unavailable"
+        },
+        "startedAt": "2026-10-17T05:33:50.684Z",
+        "endedAt": "2026-10-17T05:34:09.479Z",
+        "durationMs": 18795,
+        "modelRequests": 5,
+        "toolCalls": 4,
+        "toolExecutions": null,
+        "continuationSegments": null,
+        "contextCompactions": null,
+        "userInterventions": {
+          "approvals": 0,
+          "continuePrompts": 0
+        },
+        "providerUsage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": "controlled Provider has no physical usage receipt"
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "reason": "no real Provider billing receipt"
+        },
+        "safety": {
+          "duplicateEffects": 0,
+          "unknownEffects": null,
+          "unauthorizedToolAttempts": 0,
+          "forbiddenNetworkRequests": 0,
+          "recoveryAnomalies": null,
+          "falseCompletionClaims": null
+        },
+        "childExitCode": 0,
+        "outputDigests": {
+          "stdoutSha256": "a17432389d69233b8bf266c215ad1ea714feffd3e97c2de6f6805003888c8fa4",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "partially_completed",
+        "evaluationCheck": "passed",
+        "method": "Independent file read-back plus persisted requirement statuses; oracle confirms partial delivery instead of overall success",
+        "requirements": [],
+        "unverifiedRequirementCount": null,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://a.txt",
+          "fixture://b.txt"
+        ],
+        "details": {
+          "status": "passed",
+          "taskResult": "partially_completed",
+          "method": "Independent file read-back plus persisted requirement statuses; oracle confirms partial delivery instead of overall success",
+          "taskOutcomeStatus": "partially_completed",
+          "requirementStatuses": [
+            "passed",
+            "failed"
+          ],
+          "requirementInventory": "complete",
+          "invocationEvidence": [
+            {
+              "toolName": "write",
+              "status": "succeeded"
+            },
+            {
+              "toolName": "write",
+              "status": "succeeded"
+            },
+            {
+              "toolName": "runtime_check_file_content",
+              "status": "succeeded"
+            },
+            {
+              "toolName": "runtime_check_file_content",
+              "status": "succeeded"
+            }
+          ],
+          "evidence": [
+            {
+              "path": "a.txt",
+              "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+              "bytes": 5
+            },
+            {
+              "path": "b.txt",
+              "sha256": "82e35a63ceba37e9646434c5dd412ea577147f1e4a41ccde1614253187e3dbf9",
+              "bytes": 7
+            }
+          ]
+        },
+        "failureClassification": null
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    }
+  ],
+  "notes": [
+    "These controlled Provider trials measure deterministic Runner/Harness/Tools paths, not real-model task completion quality.",
+    "Provider physical usage and cost are unavailable; scripted request counts are not token billing data.",
+    "The evaluator files are an overlay on the frozen product commit; their separate fingerprint is recorded."
+  ]
+}

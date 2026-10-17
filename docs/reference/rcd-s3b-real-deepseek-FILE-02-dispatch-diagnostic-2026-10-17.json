@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "LS-RCD-S3B-REAL-TASKS-12",
+  "generatedAt": "2026-10-17T10:26:15.888Z",
+  "productStatus": "live_trials_authorized_and_executed",
+  "evidenceTier": "B_real_model",
+  "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+  "selection": {
+    "mode": "--run-real",
+    "taskIds": [
+      "FILE-02"
+    ],
+    "trial": 1
+  },
+  "counts": {
+    "taskDefinitions": 12,
+    "executableAdapters": 8,
+    "executed": 0,
+    "blocked": 0,
+    "harnessError": 1,
+    "notRun": 11,
+    "taskResults": {
+      "passed": 0,
+      "failed": 0,
+      "partially_completed": 0,
+      "correctly_blocked": 0,
+      "unverified": 1
+    },
+    "infrastructureStatus": {
+      "executed": 0,
+      "blocked": 0,
+      "harness_error": 1,
+      "not_run": 0
+    },
+    "logicalModelRequests": null,
+    "physicalProviderRequests": null,
+    "toolCallProposals": null,
+    "toolExecutions": null,
+    "unavailableUsageTrials": 1,
+    "unavailableCostTrials": 1,
+    "cleanupFailures": 0,
+    "failureAttributions": {
+      "evaluation_infrastructure": 1
+    }
+  },
+  "suiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+  "adapterExtensionSha256": "8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8",
+  "metricsSchemaSha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65",
+  "records": [
+    {
+      "schemaVersion": 1,
+      "recordId": "s3b-1792232775504-file-02-1",
+      "taskId": "FILE-02",
+      "trial": 1,
+      "evidenceTier": "B_real_model",
+      "source": {
+        "productHead": "edf35ef7cbe38aca901976623310ce5de6207bac",
+        "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+        "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+        "evaluatorFingerprint": "52c5061765e08e540245ef8e15db042f6e2b8404a96f0f211798ceef85fef88a",
+        "workingTreeFingerprint": "a6f6f5d7f168577843e9a7a99aaab89166a23a65515975ee678fc886b5aabb25",
+        "dirty": true,
+        "dirtyPaths": [
+          "docs/reference/rcd-s3b-provider-evaluation-2026-10-17.md",
+          "scripts/lib/s3b-provider-config.d.mts",
+          "scripts/lib/s3b-provider-config.mjs",
+          "scripts/s3b-eval.mjs",
+          "test/s3b-live-task-trials.test.ts",
+          "test/s3b-provider-metering.test.ts",
+          "docs/reference/rcd-s3b-real-deepseek-CODE-01-2026-10-17.json"
+        ],
+        "productSourceDirty": false,
+        "unclassifiedDirtyPaths": [],
+        "unclassifiedCommittedPaths": [],
+        "fingerprintStableDuringTrial": true
+      },
+      "environment": {
+        "os": "win32",
+        "arch": "x64",
+        "node": "v26.4.0",
+        "pnpm": "11.9.0",
+        "electron": "^44.0.0",
+        "electronBinaryAvailable": false,
+        "lockfileSha256": "da61e379b2ec7d84811c9d913b33e40c201dac2e4ff130e3207f98a61efb7e9b",
+        "taskDefinitionSha256": "18118479273ab151c90b89093d08aaf725252de9b6b86cee729b313508cd6842",
+        "configSha256": "c7e1bf5536d0f0da6328a118c8df0f7dcd7a8e9741b5b32918604a8733c3e301",
+        "evaluatorCommand": "node scripts/s3b-eval.mjs --run-real --task=FILE-02 --trial=1"
+      },
+      "provider": {
+        "kind": "real",
+        "simulated": false,
+        "id": "deepseek",
+        "model": "deepseek-flash",
+        "apiProtocol": "openai-chat-completions",
+        "endpointOrigin": null,
+        "modelVersion": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        },
+        "limits": null,
+        "physicalUsageSource": null
+      },
+      "execution": {
+        "infrastructureStatus": "harness_error",
+        "runtimeStatus": null,
+        "runtimeFinalStatus": null,
+        "runId": null,
+        "executionLayer": "not recorded",
+        "startedAt": "2026-10-17T10:26:06.273Z",
+        "endedAt": "2026-10-17T10:26:15.887Z",
+        "durationMs": 9230,
+        "logicalModelRequests": null,
+        "logicalEmbeddingRequests": 0,
+        "physicalProviderRequests": null,
+        "blockedPhysicalRequests": 0,
+        "toolCallProposals": null,
+        "toolExecutions": null,
+        "deniedToolCalls": null,
+        "failedToolCalls": null,
+        "settledEffects": null,
+        "unknownEffects": null,
+        "segments": null,
+        "contextCompactions": null,
+        "usage": {
+          "status": "unavailable",
+          "inputTokens": null,
+          "outputTokens": null,
+          "cachedInputTokens": null,
+          "source": null,
+          "reason": "no physical Provider usage receipt",
+          "responseCount": null
+        },
+        "cost": {
+          "status": "unavailable",
+          "value": null,
+          "source": null,
+          "reason": "No authoritative Provider billing receipt; token prices were not inferred"
+        },
+        "network": {
+          "providerHttpRequests": null,
+          "agentWebRequests": null,
+          "forbiddenRequests": null
+        },
+        "approvals": {
+          "count": null,
+          "source": null
+        },
+        "invocationEvidence": [],
+        "effectEvidence": [],
+        "modelResponseModels": null,
+        "childSignal": null,
+        "childSpawnErrorCode": null,
+        "outputDigests": {
+          "childOutputSha256": "3805d6022a9bc3f9b044810ec535605f3ea07a329c003ab672cd56f1b7cea4ec",
+          "taskObservationSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "error": null
+      },
+      "oracle": {
+        "result": "unverified",
+        "evaluationCheck": "unverified",
+        "method": "Oracle did not report an outcome",
+        "evidenceRefs": [],
+        "falseCompletionClaim": null,
+        "details": {
+          "result": "unverified",
+          "evaluationCheck": "unverified",
+          "method": "Oracle did not report an outcome",
+          "evidence": []
+        }
+      },
+      "failureAttribution": {
+        "primary": "evaluation_infrastructure",
+        "secondary": [],
+        "evidenceRefs": [],
+        "confidence": "high"
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      }
+    }
+  ],
+  "notes": [
+    "Only the original four S3A tasks are eligible for live trials.",
+    "Task result comes from the frozen independent Oracle; Provider final text is not a success signal.",
+    "This trial count is not a population-level success estimate."
+  ]
+}

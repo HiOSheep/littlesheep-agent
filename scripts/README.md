@@ -4,6 +4,10 @@
 
 `package.json` 是可运行命令的唯一清单。本页说明入口如何选择，以及少数不能从命令名看出的验证边界。
 
+`node scripts/s3a-eval.mjs --suite` 校验固定的 12 项 S3A 任务定义；`--audit` 输出 RCD 24 项定义的适配器/Oracle 层级审计；`--task=<ID>` 运行单项受控 Runner/Harness 任务，`--run` 运行本批有适配器的任务。结果分开记录评测基础设施状态与外部 Oracle 判定。当前 A 层使用 scripted Provider，不代表真实模型任务完成率，也没有真实 Provider 用量或费用。
+
+`node scripts/s3b-eval.mjs --preflight` 脱敏检查真实 Provider 配置且不发请求；`--verify-provider-metering` 使用本地假 HTTP 响应校验物理请求、逻辑调用、工具提议和 Usage 计数；`--suite` 校验 S3A 原任务集及八项适配器；`--run-controlled [--task=<ID>]` 运行受控 Runner/Harness 任务；`--run-real --task=<ID> --trial=<N> --authorize-live --max-cost-usd=<USD>` 只有在用户直接授权、Provider 凭据、独立请求/输出限制与已配置 Provider 侧费用上限都满足后才可发出真实请求。没有直接授权时状态必须保留 `real_provider_pending`。受控任务账本与真实 Provider 账本分开写入，真实费用和 Provider Usage 缺失时保留 `unavailable`。
+
 ## 常用入口
 
 - `pnpm check:repo`：仓库卫生、文档导航、生成物、依赖方向与 TypeScript 项目引用检查。
