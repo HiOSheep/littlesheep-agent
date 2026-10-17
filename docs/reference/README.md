@@ -51,6 +51,8 @@
 - [RCD S2C-B 机器可读验收账本](rcd-s2c-b-task-outcome-2026-10-17.json)：S2C-B 用例结果、RCD 六项核心回归、验证命令与保留限制。
 - [RCD S2C-C Task Outcome 可信成果展示与交付](rcd-s2c-c-task-outcome-renderer-2026-10-17.md)：Renderer 对 Durable Task Outcome 的直播与历史消费、真实 Electron 验收、核心回归及 UI/Provider 限制。
 - [RCD S2C-C 机器可读验收账本](rcd-s2c-c-task-outcome-renderer-2026-10-17.json)：三类文件验收展示、RCD 六项核心回归、构建、测试和执行层级记录。
+- [RCD S2C-I 主线集成验收](rcd-s2c-i-integration-acceptance-2026-10-17.md)：S2C-B/C 与独立 Renderer 修改的 Git 集成关系、主线真实 Electron 和 RCD 回归证据。
+- [RCD S2C-I 机器可读验收账本](rcd-s2c-i-integration-acceptance-2026-10-17.json)：最终集成 HEAD、构建摘要、执行层级及定向回归结果。
 - [RCD S1A 核心回归](rcd-s1a-core-regression-2026-10-16.json)：参数纠错修复后的六项核心回归账本；C02 已从 failed 变为 passed。
 - [CMv2-P0A 上下文链路审计](cmv2-p0a-context-audit-2026-10-13.md)：请求组装、圆环口径、隔离 Token 基线、Context Trace 与 P0B 最小方案。
 - [CMv2-P0B Context Inspector 实施](cmv2-p0b-context-inspector-2026-10-13.md)：只读页面、脱敏内存接口、导航状态保留与真实 Electron 截图／验收。
