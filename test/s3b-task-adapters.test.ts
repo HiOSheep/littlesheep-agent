@@ -340,12 +340,12 @@ describe('S3B controlled Runner/Harness task adapters', () => {
       const residuals = (await readdir(isolatedTemp)).filter(entry => entry.startsWith('ls-s2b-segment-restart-'));
       await report(id, {
         executionLayer: 'Nested real Runner child-process restart test; controlled Provider; child is SIGKILLed at a safe persisted Segment boundary, then a new Runner recovers the same Run',
-        provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' }, runId: 's2b-t04a-process-restart',
+        provider: { type: 'scripted', simulated: true, physicalUsage: 'unavailable' }, runId: null,
         runtimeStatus: passed ? 'completed' : child.status === null ? 'unknown' : 'error',
         // The nested integration test asserts these counts but does not export
         // per-invocation records to this adapter, so aggregate counters stay unavailable.
         modelRequests: null, toolCallProposals: null, toolExecutions: null, deniedToolCalls: null, settledEffects: null,
-        process: { childExitCode: child.status, killedBySigkill: true, testOutputSha256: sha256(output), rawOutputRetained: false },
+        process: { recoveryFixtureId: 's2b-t04a-process-restart', childExitCode: child.status, killedBySigkill: true, testOutputSha256: sha256(output), rawOutputRetained: false },
         oracle: { status: passed ? 'passed' : 'failed', taskResult: passed ? 'passed' : 'failed', method: 'Existing production Runner recovery integration test performs SIGKILL, creates a new Runner, verifies same Run ID, 35 unique write effects, 36 settled effects, final outcome and released lease', evidence: ['packages/runner/src/durable-runner-segment-recovery.test.ts::same-Run segment recovery after process restart'], outputMatchedIndependentTestPass: statusLine },
         usage: { status: 'unavailable', inputTokens: null, outputTokens: null, cachedInputTokens: null, source: null },
         cost: { status: 'unavailable', value: null, source: null, reason: 'controlled Provider' },
