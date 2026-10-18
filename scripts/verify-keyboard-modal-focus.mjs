@@ -16,7 +16,7 @@
 // layer where exactly one layer may close.
 //
 // Usage:
-//   node scripts/verify-keyboard-modal-focus.mjs [--out=<dir>] [--keep]
+//   node scripts/verify-keyboard-modal-focus.mjs [--out=<dir>] [--keep] [--modal-only]
 
 import { access, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -36,6 +36,7 @@ const keepRoot = process.argv.includes('--keep')
 const WINDOW = { width: 1180, height: 760 }
 const EVALUATE_TIMEOUT_MS = 15_000
 const SESSION_TITLE = '键盘验收归档对话'
+const modalOnly = process.argv.includes('--modal-only')
 /** 130 seeded messages: the recent page renders first and older history stays behind "load older". */
 const CHAT_SESSION_ID = 'keyboard-chat-session'
 const CHAT_SESSION_TITLE = '键盘验收聊天会话'
@@ -124,7 +125,8 @@ async function seedArchive(dataDir) {
     title: SESSION_TITLE,
     createdAt: now - 60_000,
     lastMessageAt: now - 30_000,
-    mode: 'research',
+    mode: 'workspace-write',
+    permissionVersion: 2,
     scope: 'standalone',
     archivedAt: now,
   }
@@ -571,16 +573,12 @@ async function main() {
     const entryRefocused = await focusSelector(client, '.settings-entry-btn')
     await pressKey(client, 'Enter')
     await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-presence')?.classList.contains('presence-open') ? true : null`), harness.startTimeoutMs, 'the settings layer reopened for the archive entry')
-    await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-nav-item') ? true : null`), harness.startTimeoutMs, 'settings navigation')
-    // The nav item that says 归档 is not the first one; focus it explicitly by index.
-    const archiveNavIndex = await evaluate(client, `(() => {
-      const items = [...document.querySelectorAll('.settings-nav-item')]
-      return items.findIndex((item) => item.textContent?.includes('归档'))
-    })()`)
-    if (archiveNavIndex < 0) throw new Error('the archive navigation item is missing')
-    const navFocused = await evaluate(client, `(() => {
-      const items = [...document.querySelectorAll('.settings-nav-item')]
-      const target = items[${archiveNavIndex}]
+    await harness.waitFor(() => evaluate(client, `document.querySelector('.settings-work-links button') ? true : null`), harness.startTimeoutMs, 'settings work links')
+    // Archive moved out of the settings navigation. The settings home still has a supported
+    // keyboard entry to the archive workspace, so use that real route instead of a stale nav item.
+    const archiveEntryFocused = await evaluate(client, `(() => {
+      const target = [...document.querySelectorAll('.settings-work-links button')]
+        .find((item) => item.textContent?.includes('管理归档'))
       if (!(target instanceof HTMLElement)) return false
       target.focus({ preventScroll: true })
       return document.activeElement === target
@@ -629,6 +627,33 @@ async function main() {
     // visibility and the route, never by the node still being in the document.
     const secondEscapeClosedSettings = afterSecondEscapePage.settings.visible === false
     const escapeScreenshot = await writePng(client, 'after-escape')
+
+    if (modalOnly) {
+      const checks = {
+        settingsEntryFocused: entryFocused === true,
+        archiveEntryFocused: archiveEntryFocused === true,
+        archiveOpenedFromKeyboard: openedByKeyboard.archiveOpen === true,
+        archiveAndSettingsRemainOpenBehindDialog: opened.dialogOpen === true && opened.archiveOpen === true && opened.settingsOpen === true,
+        initialFocusIsCancel: opened.activeClass?.includes('close-btn') === true,
+        tabStayedInsideDialog: tabTrace.every((state) => state.insideDialog),
+        tabReachedMultipleControls: new Set(tabTrace.map((state) => state.activeClass)).size >= 2,
+        escapeClosedOnlyDialogAndRestoredTriggerFocus: afterFirstEscape.dialogOpen === false
+          && afterFirstEscape.archiveOpen === true
+          && afterFirstEscape.settingsOpen === true
+          && afterFirstEscape.activeClass?.includes('archive-action') === true,
+      }
+      const failures = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name)
+      if (failures.length > 0) throw new Error(`keyboard modal-only acceptance failed: ${JSON.stringify({ checks, failures })}`)
+      console.log(JSON.stringify({
+        check: 'keyboard-modal-focus-dialog',
+        ok: true,
+        isolatedFixture: true,
+        deletionConfirmed: false,
+        checks,
+        evidence: { opened, tabTrace, afterFirstEscape, afterSecondEscape, screenshots: { dialogScreenshot, tabScreenshot, escapeScreenshot } },
+      }))
+      return
+    }
 
     // --- 4b. return to the chat page before asking the composer for anything -------------------
     // The archive workspace replaced the chat view, so the composer was unmounted while the
@@ -967,7 +992,7 @@ async function main() {
 
     const results = {
       entryFocused,
-      navFocused,
+      archiveEntryFocused,
       openedByKeyboard,
       deleteFocused,
       opened,
@@ -1036,7 +1061,7 @@ async function main() {
     const expect = (condition, message) => { if (!condition) failures.push(message) }
     // 1. the whole path was opened with keys, not clicks.
     expect(entryFocused === true, 'the settings entry could not be focused')
-    expect(navFocused === true, 'the archive navigation item could not be focused')
+    expect(archiveEntryFocused === true, 'the settings home archive entry could not be focused')
     expect(openedByKeyboard.archiveOpen, 'the archive page did not open from the keyboard')
     expect(deleteFocused === true, 'the delete action could not be focused')
     // 2. initial focus is the deliberate target.

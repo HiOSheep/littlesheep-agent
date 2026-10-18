@@ -614,7 +614,22 @@ async function main() {
   const screenshots = {}
   let handle
   try {
-    await Promise.all([mkdir(workspaceDir, { recursive: true }), mkdir(chromiumDir, { recursive: true })])
+    const feedbackSkillDir = join(dataDir, 'skills', 'd3-feedback-fixture')
+    await Promise.all([
+      mkdir(workspaceDir, { recursive: true }),
+      mkdir(chromiumDir, { recursive: true }),
+      mkdir(feedbackSkillDir, { recursive: true }),
+    ])
+    await writeFile(join(feedbackSkillDir, 'SKILL.md'), [
+      '---',
+      'name: d3-feedback-fixture',
+      'description: Isolated read-only skill used to verify feedback states.',
+      '---',
+      '# D3 feedback fixture',
+      '',
+      'This temporary skill exists only in the Electron acceptance data directory.',
+      '',
+    ].join('\n'), 'utf8')
     await writeFile(join(dataDir, 'config.json'), `${JSON.stringify(buildConfig(workspaceDir, provider.baseURL), null, 2)}\n`, 'utf8')
 
     const debuggingPort = await harness.reservePort()
@@ -1438,27 +1453,75 @@ async function main() {
     await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
 
     await setInstantMotion(client, true)
-    await evaluate(client, `(() => { window.__lsRoleProbe.holdNext('/browser/clear-data', 1800, 'POST'); return true })()`)
     await clickVisible(client, '.storage-settings-row button', { contains: '清除网站数据' })
     await waitForVisible(client, '.danger-confirm-dialog', harness.startTimeoutMs, 'the website-data confirmation dialog')
-    await clickVisible(client, '.danger-confirm-dialog .danger-btn', { contains: '永久删除' })
+    for (const theme of ['dark', 'light']) {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      const sample = await evaluate(client, `(() => {
+        const dialog = document.querySelector('.danger-confirm-dialog');
+        const warning = dialog?.querySelector('.danger-confirm-inuse');
+        if (!dialog || !warning) return { found: false };
+        const overlay = dialog.parentElement;
+        const warningStyle = getComputedStyle(warning);
+        const overlayStyle = getComputedStyle(overlay);
+        const rect = overlay.getBoundingClientRect();
+        return {
+          found: true,
+          theme: document.documentElement.getAttribute('data-ls-theme'),
+          role: dialog.getAttribute('role'),
+          ariaModal: dialog.getAttribute('aria-modal'),
+          warningText: warning.textContent?.trim() || '',
+          warning: { color: warningStyle.color, backgroundColor: warningStyle.backgroundColor,
+            borderTopColor: warningStyle.borderTopColor },
+          overlay: { position: overlayStyle.position, backgroundColor: overlayStyle.backgroundColor,
+            width: rect.width, height: rect.height, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight },
+        };
+      })()`)
+      const expectedWarning = {
+        color: await readTokenColor(client, '--warning'),
+        backgroundColor: await readTokenColor(client, '--warning-soft'),
+        borderTopColor: await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--warning) 28%, transparent)'),
+      }
+      const matches = sample.found === true
+        && sample.theme === theme
+        && sample.role === 'alertdialog'
+        && sample.ariaModal === 'true'
+        && sample.warningText.includes('操作会影响所有已打开的内置浏览器标签')
+        && Object.entries(expectedWarning).every(([property, value]) => sample.warning[property] === value)
+        && sample.overlay.position === 'fixed'
+        && Math.abs(sample.overlay.width - sample.overlay.viewportWidth) <= 1
+        && Math.abs(sample.overlay.height - sample.overlay.viewportHeight) <= 1
+      recorder.note({ step: `storage-clear-data-confirm-${theme}`, sample, expectedWarning,
+        note: 'real confirmation UI captured before cancellation; no clear-data request is sent.' })
+      recorder.check(matches,
+        `the live browser-data alertdialog and in-use warning follow modal and warning roles in ${theme} theme`,
+        { sample, expectedWarning })
+      screenshots[`storage-data-confirm-${theme}`] = await writePng(client, `storage-data-confirm-${theme}`)
+    }
+    const storageClearCancel = await clickVisible(client, '.danger-confirm-dialog .close-btn', { contains: '取消' })
     await harness.waitFor(
-      () => evaluate(client, `document.querySelector('.danger-confirm-dialog[aria-busy="true"]') ? true : null`),
+      () => evaluate(client, 'document.querySelector(".danger-confirm-dialog") ? null : true'),
       harness.startTimeoutMs,
-      'the website-data request to enter its waiting state',
+      'the website-data confirmation to close after cancel',
     )
-    await delay(350)
-    const storageBusy = await measure(client, [
-      { key: 'busy', selector: '.storage-settings-row button', props: CONTROL_PROPS, index: 1 },
-    ])
-    recorder.note({ step: 'storage-busy', row: storageBusy.get('busy') })
-    screenshots['storage-busy'] = await writePng(client, 'storage-busy')
-    recorder.check(
-      storageBusy.get('busy')?.disabled === true && storageBusy.get('busy')?.props?.opacity === DISABLED_OPACITY,
-      'the storage action dims with the shared disabled tone while it is working',
-      { row: storageBusy.get('busy') },
-    )
-    await delay(2000)
+    const clearDataAfterCancel = await evaluate(client, `(() => {
+      const action = [...document.querySelectorAll('.storage-settings-row button')]
+        .find((button) => button.textContent?.includes('清除网站数据'));
+      return {
+        dialogOpen: Boolean(document.querySelector('.danger-confirm-dialog')),
+        cancelLabel: ${JSON.stringify(storageClearCancel.label ?? '')},
+        actionAvailable: action instanceof HTMLButtonElement && !action.disabled,
+        interceptedRequests: window.__lsRoleProbe.hits['hold:/browser/clear-data']
+          || window.__lsRoleProbe.hits['fail:/browser/clear-data'] || 0,
+      };
+    })()`)
+    recorder.note({ step: 'storage-clear-data-intentionally-excluded', result: clearDataAfterCancel,
+      status: 'intentionally excluded', reason: 'D3 does not confirm destructive browser site-data deletion; the isolated dialog is opened and cancelled only.' })
+    recorder.check(storageClearCancel.clicked && !clearDataAfterCancel.dialogOpen
+      && clearDataAfterCancel.actionAvailable && clearDataAfterCancel.interceptedRequests === 0,
+    'the browser-data dialog is cancelled without dispatching the destructive request', clearDataAfterCancel)
+    await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(originalTheme)})`)
     await setInstantMotion(client, false)
 
     // --- 6. the web retrieval page: the error notice colour --------------------
@@ -1680,6 +1743,221 @@ async function main() {
       return true;
     })()`)
 
+    // --- 12. live dangerous-deletion warning; cancel before confirmation ------
+    await openSettingsPage(client, '模型供应商')
+    await clickVisible(client, '.provider-card .provider-more-actions summary')
+    const deleteEntry = await clickVisible(client, '.provider-card .provider-remove', { contains: '删除供应商' })
+    recorder.check(deleteEntry.clicked, 'the selected provider deletion prompt is reachable from its real card', deleteEntry)
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".danger-confirm-dialog .danger-confirm-inuse") ? true : null'),
+      harness.startTimeoutMs,
+      'the provider in-use warning before deletion confirmation',
+    )
+    await setInstantMotion(client, true)
+    for (const theme of ['dark', 'light']) {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      const warning = await evaluate(client, `(() => {
+        const node = document.querySelector('.danger-confirm-dialog .danger-confirm-inuse');
+        const dialog = document.querySelector('.danger-confirm-dialog');
+        if (!node || !dialog) return { found: false };
+        const overlay = dialog.parentElement;
+        const style = getComputedStyle(node);
+        const overlayStyle = getComputedStyle(overlay);
+        const overlayRect = overlay.getBoundingClientRect();
+        const dialogRect = dialog.getBoundingClientRect();
+        return {
+          found: true,
+          theme: document.documentElement.getAttribute('data-ls-theme'),
+          text: node.textContent?.trim() || '',
+          dialogLabel: dialog.getAttribute('aria-label'),
+          computed: {
+            color: style.color,
+            backgroundColor: style.backgroundColor,
+            borderTopColor: style.borderTopColor,
+            borderTopWidth: style.borderTopWidth,
+            borderTopLeftRadius: style.borderTopLeftRadius,
+            fontSize: style.fontSize,
+          },
+          overlay: {
+            position: overlayStyle.position,
+            backgroundColor: overlayStyle.backgroundColor,
+            backdropFilter: overlayStyle.backdropFilter,
+            rect: { x: overlayRect.x, y: overlayRect.y, width: overlayRect.width, height: overlayRect.height },
+          },
+          dialogRect: { x: dialogRect.x, y: dialogRect.y, width: dialogRect.width, height: dialogRect.height },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          providerStillPresent: [...document.querySelectorAll('.provider-card .provider-card-title strong')]
+            .some((item) => item.textContent?.trim() === '角色验收草稿'),
+          cardTitle: document.querySelector('.provider-card .provider-card-title strong')?.textContent?.trim() ?? null,
+        };
+      })()`)
+      const expectedWarning = {
+        color: await readTokenColor(client, '--warning'),
+        backgroundColor: await readTokenColor(client, '--warning-soft'),
+        borderTopColor: await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--warning) 28%, transparent)'),
+        borderTopLeftRadius: await readComputedProperty(client, 'border-top-left-radius', 'var(--radius-ui)'),
+      }
+      const warningMatches = warning.found === true
+        && warning.theme === theme
+        && warning.text.includes('当前选择的模型')
+        && Object.entries(expectedWarning).every(([property, value]) => warning.computed[property] === value)
+        && warning.overlay?.position === 'fixed'
+        && Math.abs(warning.overlay?.rect.x ?? Number.POSITIVE_INFINITY) <= 1
+        && Math.abs(warning.overlay?.rect.y ?? Number.POSITIVE_INFINITY) <= 1
+        && Math.abs((warning.overlay?.rect.width ?? 0) - warning.viewport.width) <= 1
+        && Math.abs((warning.overlay?.rect.height ?? 0) - warning.viewport.height) <= 1
+        && warning.overlay?.backgroundColor === 'rgba(0, 0, 0, 0.45)'
+        && warning.overlay?.backdropFilter === 'blur(8px)'
+        && warning.dialogRect?.width <= 460
+        && Math.abs((warning.dialogRect?.x ?? 0) + (warning.dialogRect?.width ?? 0) / 2 - warning.viewport.width / 2) <= 1
+        && Math.abs((warning.dialogRect?.y ?? 0) + (warning.dialogRect?.height ?? 0) / 2 - warning.viewport.height / 2) <= 1
+      recorder.note({ step: `live-provider-delete-warning-${theme}`, warning, expected: expectedWarning,
+        note: 'real DangerConfirmDialog from the isolated selected-provider fixture; the cancel action is used and deletion is never confirmed.' })
+      recorder.check(warningMatches,
+        `the live provider warning uses warning roles inside a centered, viewport-blocking modal in ${theme} theme`,
+        { warning, expected: expectedWarning })
+      recorder.check(warning.providerStillPresent === true,
+        `the provider remains configured while its destructive confirmation is only being inspected in ${theme} theme`, warning)
+      screenshots[`provider-delete-warning-${theme}`] = await writePng(client, `provider-delete-warning-${theme}`)
+    }
+    const cancelledDelete = await clickVisible(client, '.danger-confirm-dialog .close-btn', { contains: '取消' })
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".danger-confirm-dialog") ? null : true'),
+      harness.startTimeoutMs,
+      'the provider deletion confirmation to close after cancel',
+    )
+    const deleteAfterCancel = await evaluate(client, `(() => ({
+      dialogOpen: Boolean(document.querySelector('.danger-confirm-dialog')),
+      providerStillPresent: [...document.querySelectorAll('.provider-card .provider-card-title strong')]
+        .some((item) => item.textContent?.trim() === '角色验收草稿'),
+      providerTitle: document.querySelector('.provider-card .provider-card-title strong')?.textContent?.trim() ?? null,
+      cancellationLabel: ${JSON.stringify(cancelledDelete.label ?? '')},
+    }))()`)
+    recorder.note({ step: 'provider-delete-warning-cancelled', clicked: cancelledDelete, result: deleteAfterCancel,
+      deletionConfirmed: false })
+    recorder.check(cancelledDelete.clicked && !deleteAfterCancel.dialogOpen && deleteAfterCancel.providerStillPresent,
+      'the dangerous confirmation closes through Cancel and leaves the fixture provider intact', deleteAfterCancel)
+    await setInstantMotion(client, false)
+
+    // --- 13. real StateView failure and MemorySkills stale-warning paths ------
+    await evaluate(client, "window.__lsRoleProbe.failNext('/skills', 'GET'); true")
+    await openSettingsPage(client, '技能')
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".memory-skills-dialog .state-view[data-state=failure]") ? true : null'),
+      harness.startTimeoutMs,
+      'the MemorySkills initial StateView failure state',
+    )
+    const captureFeedback = async (theme, key, selector) => {
+      await evaluate(client, `document.documentElement.setAttribute('data-ls-theme', ${JSON.stringify(theme)})`)
+      await delay(180)
+      const snapshot = await evaluate(client, `(() => {
+        const node = document.querySelector(${JSON.stringify(selector)});
+        if (!node) return { found: false, selector: ${JSON.stringify(selector)} };
+        const style = getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        const icon = node.querySelector('.state-view-icon');
+        const description = node.querySelector('p');
+        const iconStyle = icon ? getComputedStyle(icon) : null;
+        const descriptionStyle = description ? getComputedStyle(description) : null;
+        return {
+          found: true,
+          selector: ${JSON.stringify(selector)},
+          theme: document.documentElement.getAttribute('data-ls-theme'),
+          state: node.getAttribute('data-state'),
+          role: node.getAttribute('role'),
+          ariaBusy: node.getAttribute('aria-busy'),
+          ariaDisabled: node.getAttribute('aria-disabled'),
+          text: (node.textContent || '').replace(/\\s+/gu, ' ').trim(),
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          computed: { color: style.color, backgroundColor: style.backgroundColor,
+            borderTopColor: style.borderTopColor, borderTopLeftRadius: style.borderTopLeftRadius },
+          icon: iconStyle ? { color: iconStyle.color, backgroundColor: iconStyle.backgroundColor,
+            borderTopColor: iconStyle.borderTopColor, borderTopLeftRadius: iconStyle.borderTopLeftRadius } : null,
+          descriptionColor: descriptionStyle?.color ?? null,
+          retryVisible: [...node.querySelectorAll('button')].some((button) => {
+            const buttonRect = button.getBoundingClientRect();
+            return buttonRect.width > 0 && buttonRect.height > 0 && !button.disabled;
+          }),
+          markup: node.outerHTML.slice(0, 1800),
+        };
+      })()`)
+      const screenshot = await writePng(client, key)
+      screenshots[key] = screenshot
+      return snapshot
+    }
+    for (const theme of ['dark', 'light']) {
+      const snapshot = await captureFeedback(theme, `memory-skills-stateview-failure-${theme}`,
+        '.memory-skills-dialog .state-view[data-state="failure"]')
+      const expectedDanger = {
+        color: await readTokenColor(client, '--feedback-danger-text'),
+        backgroundColor: await readTokenColor(client, '--danger-soft'),
+        borderTopColor: await readTokenColor(client, '--feedback-danger-border'),
+      }
+      const failureMatches = snapshot.found === true
+        && snapshot.state === 'failure'
+        && snapshot.role === 'alert'
+        && snapshot.ariaBusy === null
+        && snapshot.text.includes('技能列表加载失败')
+        && snapshot.retryVisible
+        && snapshot.icon?.color === expectedDanger.color
+        && snapshot.icon?.backgroundColor === expectedDanger.backgroundColor
+        && snapshot.icon?.borderTopColor === expectedDanger.borderTopColor
+        && snapshot.descriptionColor === expectedDanger.color
+      recorder.note({ step: `memory-skills-stateview-failure-${theme}`, snapshot, expectedDanger,
+        note: 'real shared StateView failure rendered by an injected GET /skills transport failure in an isolated Electron data directory.' })
+      recorder.check(failureMatches,
+        `StateView failure retains alert semantics, retry action and computed danger roles in ${theme} theme`,
+        { snapshot, expectedDanger })
+    }
+    const failureRetry = await clickVisible(client, '.memory-skills-dialog .state-view[data-state=failure] button', { contains: '重试' })
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".memory-skills-dialog .ms-item") ? true : null'),
+      harness.startTimeoutMs,
+      'the fixture skill after StateView retry',
+    )
+    recorder.check(failureRetry.clicked,
+      'StateView retry recovers the read-only seeded skill list after the one-shot fault',
+      failureRetry)
+
+    await evaluate(client, "window.__lsRoleProbe.failNext('/skills', 'GET'); true")
+    await clickVisible(client, '.memory-skills-dialog .ms-feedback-action', { contains: '刷新' })
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".memory-skills-dialog .ms-feedback-text.warning[role=status]") ? true : null'),
+      harness.startTimeoutMs,
+      'the MemorySkills stale-list warning after refresh failure',
+    )
+    for (const theme of ['dark', 'light']) {
+      const snapshot = await captureFeedback(theme, `memory-skills-stale-warning-${theme}`,
+        '.memory-skills-dialog .ms-feedback-text.warning[role="status"]')
+      const expectedWarning = {
+        color: await readTokenColor(client, '--warning'),
+        backgroundColor: await readTokenColor(client, '--warning-soft'),
+        borderTopColor: await readComputedProperty(client, 'border-top-color', 'color-mix(in srgb, var(--warning) 28%, transparent)'),
+      }
+      const warningMatches = snapshot.found === true
+        && snapshot.role === 'status'
+        && snapshot.text.includes('未能刷新技能列表')
+        && snapshot.computed.color === expectedWarning.color
+        && snapshot.computed.backgroundColor === expectedWarning.backgroundColor
+        && snapshot.computed.borderTopColor === expectedWarning.borderTopColor
+        && await evaluate(client, 'Boolean(document.querySelector(".memory-skills-dialog .ms-item"))')
+      recorder.note({ step: `memory-skills-stale-warning-${theme}`, snapshot, expectedWarning,
+        note: 'real MemorySkills stale state after successful list load followed by an injected one-shot GET /skills transport failure.' })
+      recorder.check(warningMatches,
+        `MemorySkills warning uses the warning role and keeps the previously loaded list in ${theme} theme`,
+        { snapshot, expectedWarning })
+    }
+    const recoverSkills = await clickVisible(client, '.memory-skills-dialog .ms-feedback-action', { contains: '重新加载' })
+    await harness.waitFor(
+      () => evaluate(client, 'document.querySelector(".memory-skills-dialog .ms-feedback-text.warning") ? null : true'),
+      harness.startTimeoutMs,
+      'MemorySkills list recovery after the warning sample',
+    )
+    recorder.check(recoverSkills.clicked,
+      'MemorySkills warning can be cleared through its existing read-only reload action',
+      recoverSkills)
+
     screenshots['settings-final-dark'] = await writePng(client, 'settings-final-dark')
     await evaluate(client, "document.documentElement.setAttribute('data-ls-theme','light')")
     await delay(180)
@@ -1701,7 +1979,8 @@ async function main() {
       if (client) {
         const diagnostics = await evaluate(client, `(() => {
           const selectors=['.provider-editor','.provider-field-error','.plugin-reload-button','.transient-toast',
-            '.plugin-page-error','.channel-overall','.settings-workspace'];
+            '.plugin-page-error','.channel-overall','.danger-confirm-dialog','.danger-confirm-inuse',
+            '.state-view','.ms-feedback-text','.settings-workspace'];
           return {theme:document.documentElement.getAttribute('data-ls-theme'),
             bodyText:document.body.innerText.slice(0,2200),
             elements:selectors.map(selector=>{const node=document.querySelector(selector);if(!node)return {selector,found:false};
@@ -1733,10 +2012,18 @@ async function main() {
     checks: recorder.count(),
     observations: recorder.observations,
     failures: recorder.failures,
+    intentionallyExcluded: [
+      {
+        scenario: 'Browser site-data deletion result and in-flight state',
+        status: 'intentionally excluded',
+        reason: 'D3 visual acceptance opens and cancels the real alertdialog without confirming deletion. Earlier D2B evidence is retained separately and was produced in an isolated temporary Electron/Chromium profile.',
+      },
+    ],
     limits: [
       'The waiting and failure states are produced by holding or failing one local-app-api request in the page (an injected transport fault); the views, their markup and their styles are the real ones.',
       'The off-screen Electron window can freeze CSS transitions at their first frame, so disabled opacity samples temporarily disable transitions and read the settled computed role value; the override is removed before the next scene.',
       'Synthetic entries in step 8 mount the real class names inside the live settings page to measure the shipped stylesheet. They are not a product walkthrough and are labelled in the observations.',
+      'The browser site-data confirmation is only opened and cancelled; its destructive effect and resulting busy state are not inferred from this D3 run.',
       'Animated elements are sampled on the settings pages this walkthrough visits; other pages keep their own motion declarations.',
       'Dense row, toolbar, tree and picker roles (sidebar navigation, workspace tree and browser toolbar, chat history, composer pickers) keep their own disabled opacity and are out of scope for this round; ui/README.md records them.',
     ],

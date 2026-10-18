@@ -73,7 +73,7 @@ export function DangerConfirmDialog({
   })
 
   return (
-    <div className="overlay" onClick={busy ? undefined : onCancel}>
+    <div className="overlay danger-confirm-overlay" onClick={busy ? undefined : onCancel}>
       <div
         ref={dialogRef}
         className="dialog danger-confirm-dialog"

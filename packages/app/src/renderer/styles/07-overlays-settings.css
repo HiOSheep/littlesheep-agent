@@ -2649,6 +2649,30 @@ body.is-resizing-column .settings-sidebar-resizer {
   transition: none;
 }
 
+/* Settings embeds some editors as page content, but an irreversible-delete
+   alertdialog remains a true modal layer, matching its focus trap and aria-modal. */
+.settings-workspace .overlay.danger-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.settings-workspace .dialog.danger-confirm-dialog {
+  width: min(92vw, 460px);
+  min-width: min(420px, 92vw);
+  min-height: 0;
+  max-width: 92vw;
+  max-height: 82vh;
+  margin: 0;
+  padding: 24px;
+}
+
 .settings-workspace .dialog-header {
   margin-bottom: 18px;
 }
