@@ -1,0 +1,1995 @@
+{
+  "schemaVersion": "rcd-s3b-p01-audit-ledger/1",
+  "generatedAt": "2026-10-18T14:57:05+08:00",
+  "generatedAtNote": "账本文件名沿用证据批次日期 2026-10-17；generatedAt 记录本次只读审计的实际生成时间。",
+  "worktree": "isolated git worktree (not a shared checkout)",
+  "branch": "codex/s3b-p-reliability-closure",
+  "baselineCommit": "7a29444afa98f1e249fc29e330d6ae81355aab74",
+  "scope": "P01 实际轨迹审计：对 4 项真实 DeepSeek 任务的有效试跑、2 次错误模型 ID 的真实请求尝试、2 次零模型请求的分派诊断，以及 1 条 DELIV-02 受控基线记录做逐字段取证。只读，不修改任何既有账本、Oracle 或历史报告。",
+  "readOnlyEvidence": true,
+  "networkUsed": false,
+  "realProviderCallsMade": 0,
+  "kindEnum": [
+    "valid",
+    "invalid_model_id",
+    "dispatch_diagnostic",
+    "controlled_baseline"
+  ],
+  "kindEnumNote": "任务书列举的 kind 取值为 valid|invalid_model_id|dispatch_diagnostic。为不丢失任务书点名的 DELIV-02 受控记录证据，新增 controlled_baseline 取值并在 aggregates 中与三类真实运行完全分离。",
+  "evidenceLevelDefinitions": {
+    "strong": "存在该次运行的独立原始账本，且执行计数（逻辑/物理请求、工具提议、工具执行、Effect）非空，Oracle 给出确定结果，Usage 有 Provider 物理回执；轨迹可由账本字段直接重建。",
+    "partial": "存在该次运行的独立原始账本，但关键轨迹字段缺失或不可用（如 Usage 回执缺失、逐请求 HTTP 状态未记录、invocation/effect 证据为空），轨迹只能部分重建。",
+    "insufficient": "仅有诊断级或汇总级记录，模型请求计数、工具提议、工具执行与 Effect 均未记录，无法据以重建调用过程；不得据汇总编造调用序列。"
+  },
+  "frozenReferences": {
+    "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+    "evaluationBranchHead": "edf35ef7cbe38aca901976623310ce5de6207bac",
+    "taskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+    "adapterExtensionSha256": "8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8",
+    "metricsSchemaSha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65",
+    "suiteId": "LS-RCD-S3B-REAL-TASKS-12",
+    "source": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json:productBaseline,suiteId",
+    "provider": {
+      "id": "deepseek",
+      "model": "deepseek-flash",
+      "protocol": "openai-chat-completions",
+      "endpointOrigin": "https://api.deepseek.com",
+      "source": "records[*].provider / provider.id,provider.model,provider.protocol,provider.endpointOrigin"
+    },
+    "runLimits": {
+      "maxPhysicalRequestsPerTrial": 8,
+      "maxOutputTokens": 2048,
+      "timeoutSeconds": 120,
+      "maxAttempts": 1,
+      "temperature": "provider default (not sent)",
+      "thinking": "enabled",
+      "topP": "not set by Harness",
+      "seed": "not set by Harness",
+      "source": "provider.actualRunConfiguration / records[*].provider.parameters"
+    },
+    "budget": {
+      "currency": "CNY",
+      "amount": 12.1,
+      "scope": "shared_provider_account_prepaid_balance_for_authorized_batch",
+      "providerBillingReceipt": "unavailable",
+      "source": "provider.budget / records[*].provider.limits.userApprovedMaxCostCny"
+    }
+  },
+  "perAttempt": [
+    {
+      "attemptId": "s3b-1792232903415-code-01-1",
+      "taskId": "CODE-01",
+      "trial": 1,
+      "kind": "invalid_model_id",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-1-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "768c0fa1769d431d758484d87353d0afe7f310d1c6a2f70850382a929757aac7",
+      "workingTreeFingerprint": "94bed4e53763549a6ae03e791de3d2c0d8c698cf4cd9fbe3dfeb0cb20f1d006f",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物（docs/reference 账本、scripts/lib/s3b-provider-config.*、scripts/s3b-eval.mjs、test/s3b-*.test.ts）；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "In src/label.mjs, change taskLabel() so it returns the exact string \"ready\".",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[0].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt（docs/reference/rcd-s3b-provider-evaluation-2026-10-17.md 第 17、32 行）。",
+        "equivalentEvidence": [
+          "tasks[0].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=CODE-01 --trial=1",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek/deepseek-flash",
+        "observedRequestModels": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[0].internalModelRef / attempts[0].providerModelIdSent / records[0].provider.parameters.observed[*].model"
+      },
+      "providerResponseModelIds": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "records[0].execution.modelResponseModels 为 null；8 个物理请求全部失败，未取得任何成功响应模型标识。",
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": 0,
+        "evidence": [],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 0,
+        "evidence": [],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 0,
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent Node process imports the resulting synthetic module and checks taskLabel() plus file bytes",
+        "expected": "ready",
+        "actual": "old",
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://src/label.mjs"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "src/label.mjs",
+            "sha256": "0fb101e118c0a4b64abe3ddddf5f1fc5d855ee59596c9c75b9e32e2a56c559f9",
+            "bytes": 45
+          }
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.method / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "responseCount": 0,
+        "reason": "无 Provider 物理 Usage 回执（8 个请求全部失败）。",
+        "source": "records[0].execution.usage"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[0].cost"
+      },
+      "physicalRequests": {
+        "recorded": 8,
+        "logicalModelRequests": 5,
+        "blockedPhysicalRequests": 1,
+        "failedRequests": 8,
+        "perRequestHttpStatuses": {
+          "status": "unavailable",
+          "value": null,
+          "reason": "该账本未记录 records[0].execution.providerHttpResponses（与 records[1] 不同），只有汇总 providerHttpFailures=8。"
+        },
+        "runtimeStatus": "error",
+        "runtimeFinalStatus": "run_failed_before_publication",
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[0].physicalProviderRequests"
+      },
+      "failureAttribution": {
+        "primary": "network_or_external_service",
+        "confidence": "high",
+        "source": "records[0].failureAttribution"
+      },
+      "durationMs": 2949,
+      "excludedFromValidSuccessRate": true,
+      "billableInPrinciple": true,
+      "evidenceLevel": "partial",
+      "evidenceLevelRationale": "原始账本存在且物理请求计数为 8，但 Usage 不可用、无成功响应模型标识、逐请求 HTTP 状态未记录，轨迹只能部分重建。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[0].source",
+            "records[0].environment",
+            "records[0].provider.parameters.observed",
+            "records[0].execution",
+            "records[0].oracle",
+            "records[0].failureAttribution",
+            "records[0].cleanup",
+            "attempts[0]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-1-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[0].userInput",
+            "tasks[0].allowedTools",
+            "tasks[0].oracle"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792232997707-file-02-1",
+      "taskId": "FILE-02",
+      "trial": 1,
+      "kind": "invalid_model_id",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-1-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "670917da7e311e689cc5254aadd17efe4a81a9c2c851f44504de744e1f60e5fd",
+      "workingTreeFingerprint": "ba8f67e2e42a5c686edd7918f827d86fa32e665cc846cab6ca21228a44c85adb",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[4].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[4].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=FILE-02 --trial=1",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek/deepseek-flash",
+        "observedRequestModels": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[1].internalModelRef / attempts[1].providerModelIdSent / records[0].provider.parameters.observed[*].model"
+      },
+      "providerResponseModelIds": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "records[0].execution.modelResponseModels 为 null；8 个物理请求全部返回 HTTP 400，未取得成功响应模型标识。",
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": 0,
+        "evidence": [],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 0,
+        "evidence": [],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 0,
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent disk read, JSON parse, exact value and file-set check",
+        "expected": {
+          "total": 5,
+          "items": [
+            {
+              "sku": "A",
+              "qty": 2
+            },
+            {
+              "sku": "B",
+              "qty": 3
+            }
+          ]
+        },
+        "actual": null,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://inventory-summary.json"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "inventory-summary.json",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          }
+        ],
+        "files": [
+          "inventory.csv"
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "responseCount": 0,
+        "reason": "无 Provider 物理 Usage 回执（8 个请求全部返回 HTTP 400）。",
+        "source": "records[0].execution.usage"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[1].cost"
+      },
+      "physicalRequests": {
+        "recorded": 8,
+        "logicalModelRequests": 5,
+        "blockedPhysicalRequests": 1,
+        "failedRequests": 8,
+        "perRequestHttpStatuses": {
+          "status": "available",
+          "value": [
+            400,
+            400,
+            400,
+            400,
+            400,
+            400,
+            400,
+            400
+          ],
+          "source": "records[0].execution.providerHttpResponses（attempt 1..8，endpointOrigin https://api.deepseek.com）"
+        },
+        "runtimeStatus": "error",
+        "runtimeFinalStatus": "run_failed_before_publication",
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[1].physicalProviderRequests"
+      },
+      "failureAttribution": {
+        "primary": "network_or_external_service",
+        "confidence": "high",
+        "source": "records[0].failureAttribution"
+      },
+      "durationMs": 2729,
+      "excludedFromValidSuccessRate": true,
+      "billableInPrinciple": true,
+      "evidenceLevel": "partial",
+      "evidenceLevelRationale": "原始账本存在、8 个 HTTP 400 逐请求状态可查，但 Usage 不可用、无成功响应模型标识、无工具与 Effect 证据，轨迹只能部分重建。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[1].source",
+            "records[1].provider.parameters.observed",
+            "records[1].execution.providerHttpResponses",
+            "records[1].oracle",
+            "records[1].failureAttribution",
+            "attempts[1]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-1-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[4].userInput",
+            "tasks[4].allowedTools",
+            "tasks[4].oracle"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792233309391-code-01-2",
+      "taskId": "CODE-01",
+      "trial": 2,
+      "kind": "valid",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-2-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "924484012edae34fcf151ddfad629400430ebbe05a13d8c523d2c612b31a282b",
+      "workingTreeFingerprint": "2a09d5f960b10f21dd0c045247ea2b2b992d1475074a91bed46395f45dd161de",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物（含前序 trial 账本与 test/s3b-provider-metering.ts）；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "In src/label.mjs, change taskLabel() so it returns the exact string \"ready\".",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[0].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[0].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=CODE-01 --trial=2",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek-flash",
+        "observedRequestModels": [
+          "deepseek-flash",
+          "deepseek-flash",
+          "deepseek-flash",
+          "deepseek-flash"
+        ],
+        "observedRequestedModelRefs": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[4].internalModelRef / attempts[4].providerModelIdSent / records[0].provider.parameters.observed[*].model 与 .requestedModelRef"
+      },
+      "providerResponseModelIds": {
+        "status": "available",
+        "value": [
+          "deepseek-flash"
+        ],
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": 3,
+        "evidence": [
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 3,
+        "evidence": [
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 1,
+        "evidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded",
+            "idempotencyKey": "tool:write:05350d9b3f21cc8e651b366fb20128ff85c1640ce713923c7e4bc2011abe2160"
+          }
+        ],
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "passed",
+        "evaluationCheck": "passed",
+        "method": "Independent Node process imports the resulting synthetic module and checks taskLabel() plus file bytes",
+        "expected": "ready",
+        "actual": "ready",
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://src/label.mjs"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "src/label.mjs",
+            "sha256": "3bb26706b20d5541a5bbfd07c13ce649371f555e186d18dc9e05c1781ef881d5",
+            "bytes": 47
+          }
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "available",
+        "inputTokens": 11780,
+        "outputTokens": 471,
+        "cachedInputTokens": 8704,
+        "responseCount": 4,
+        "source": "records[0].execution.usage / LlmClient onProviderResponse physical Provider receipts"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[4].cost"
+      },
+      "physicalRequests": {
+        "recorded": 4,
+        "logicalModelRequests": 4,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": 0,
+        "perRequestHttpStatuses": {
+          "status": "available",
+          "value": [
+            200,
+            200,
+            200,
+            200
+          ],
+          "source": "records[0].execution.providerHttpResponses"
+        },
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[4].physicalProviderRequests"
+      },
+      "failureAttribution": null,
+      "approvalCallbackInvocations": 0,
+      "durationMs": 9631,
+      "excludedFromValidSuccessRate": false,
+      "evidenceLevel": "strong",
+      "evidenceLevelRationale": "独立原始账本齐备：4 次逻辑/物理请求、3 次工具提议、3 次工具执行、1 个已结算 Effect、可用 Usage 回执、确定 Oracle 结果与产物哈希。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[4].source",
+            "records[4].provider.parameters.observed",
+            "records[4].execution",
+            "records[4].oracle",
+            "records[4].cleanup",
+            "attempts[4]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-CODE-01-trial-2-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[0].userInput",
+            "tasks[0].oracle",
+            "tasks[0].successConditions"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792233344936-file-02-2",
+      "taskId": "FILE-02",
+      "trial": 2,
+      "kind": "valid",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "924484012edae34fcf151ddfad629400430ebbe05a13d8c523d2c612b31a282b",
+      "workingTreeFingerprint": "2a09d5f960b10f21dd0c045247ea2b2b992d1475074a91bed46395f45dd161de",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[4].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[4].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=FILE-02 --trial=2",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek-flash",
+        "observedRequestModels": [
+          "deepseek-flash",
+          "deepseek-flash",
+          "deepseek-flash",
+          "deepseek-flash"
+        ],
+        "observedRequestedModelRefs": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[5].internalModelRef / attempts[5].providerModelIdSent / records[0].provider.parameters.observed[*].model 与 .requestedModelRef"
+      },
+      "providerResponseModelIds": {
+        "status": "available",
+        "value": [
+          "deepseek-flash"
+        ],
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": 3,
+        "evidence": [
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 3,
+        "evidence": [
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "read",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 1,
+        "evidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded",
+            "idempotencyKey": "tool:write:d905b99d62129610e63dd2d77adbb43bade82eb0638254f33a34c3a0a108153f"
+          }
+        ],
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent disk read, JSON parse, exact value and file-set check",
+        "expected": {
+          "total": 5,
+          "items": [
+            {
+              "sku": "A",
+              "qty": 2
+            },
+            {
+              "sku": "B",
+              "qty": 3
+            }
+          ]
+        },
+        "actual": {
+          "total_quantity": 5,
+          "items": [
+            {
+              "sku": "A",
+              "qty": 2
+            },
+            {
+              "sku": "B",
+              "qty": 3
+            }
+          ]
+        },
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://inventory-summary.json"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "inventory-summary.json",
+            "sha256": "5485876851623ab60783b25e41b4bc9e805057a5a492469b9baec50669f3f488",
+            "bytes": 135
+          }
+        ],
+        "files": [
+          "inventory-summary.json",
+          "inventory.csv"
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "available",
+        "inputTokens": 11852,
+        "outputTokens": 708,
+        "cachedInputTokens": 8832,
+        "responseCount": 4,
+        "source": "records[0].execution.usage / LlmClient onProviderResponse physical Provider receipts"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[5].cost"
+      },
+      "physicalRequests": {
+        "recorded": 4,
+        "logicalModelRequests": 4,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": 0,
+        "perRequestHttpStatuses": {
+          "status": "available",
+          "value": [
+            200,
+            200,
+            200,
+            200
+          ],
+          "source": "records[0].execution.providerHttpResponses"
+        },
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[5].physicalProviderRequests"
+      },
+      "failureAttribution": {
+        "primary": "artifact_wrong_or_missing",
+        "confidence": "high",
+        "source": "records[0].failureAttribution"
+      },
+      "approvalCallbackInvocations": 0,
+      "durationMs": 9800,
+      "excludedFromValidSuccessRate": false,
+      "evidenceLevel": "strong",
+      "evidenceLevelRationale": "独立原始账本齐备：4 次逻辑/物理请求、3 次工具提议、3 次工具执行、1 个已结算 Effect、可用 Usage 回执、确定 Oracle 失败结果（字段名 total_quantity vs total）与产物哈希。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[5].source",
+            "records[5].provider.parameters.observed",
+            "records[5].execution",
+            "records[5].oracle",
+            "records[5].failureAttribution",
+            "records[5].cleanup",
+            "attempts[5]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[4].userInput",
+            "tasks[4].oracle",
+            "tasks[4].successConditions"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792233185174-deliv-01-1",
+      "taskId": "DELIV-01",
+      "trial": 1,
+      "kind": "valid",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "bae9c5cf20c4b98e64b59d4fab0b114dec0fcab324580eda746d80659c4d9779",
+      "workingTreeFingerprint": "d629257497c307fbd1069ea91967eebbb9eb9a5381210b00a32bc85df4b809f2",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[9].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[9].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=DELIV-01 --trial=1",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek-flash",
+        "observedRequestModels": [
+          "deepseek-flash",
+          "deepseek-flash"
+        ],
+        "observedRequestedModelRefs": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[2].internalModelRef / attempts[2].providerModelIdSent / records[0].provider.parameters.observed[*].model 与 .requestedModelRef"
+      },
+      "providerResponseModelIds": {
+        "status": "available",
+        "value": [
+          "deepseek-flash"
+        ],
+        "source": "records[0].execution.modelResponseModels / records[0].provider.modelVersion"
+      },
+      "toolCallProposals": {
+        "count": 1,
+        "evidence": [
+          {
+            "toolName": "fixture_write_exact",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 1,
+        "evidence": [
+          {
+            "toolName": "fixture_write_exact",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 1,
+        "evidence": [
+          {
+            "toolName": "fixture_write_exact",
+            "status": "succeeded",
+            "idempotencyKey": "tool:fixture_write_exact:7ea624b1c5dcdf684e10773c4ecdb694a2a6b6662eda6cc02468b9ad4ccae7e5"
+          }
+        ],
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "failed",
+        "method": "Independent file read plus ToolInvocationRecord confirms schema feedback before one successful fixture write",
+        "validationFailure": false,
+        "fixtureExecutions": 1,
+        "contentMatches": true,
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://result.txt"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "result.txt",
+            "sha256": "69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0",
+            "bytes": 15
+          }
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "available",
+        "inputTokens": 5218,
+        "outputTokens": 193,
+        "cachedInputTokens": 2432,
+        "responseCount": 2,
+        "source": "records[0].execution.usage / LlmClient onProviderResponse physical Provider receipts"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[2].cost"
+      },
+      "physicalRequests": {
+        "recorded": 2,
+        "logicalModelRequests": 2,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": 0,
+        "perRequestHttpStatuses": {
+          "status": "available",
+          "value": [
+            200,
+            200
+          ],
+          "source": "records[0].execution.providerHttpResponses"
+        },
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[2].physicalProviderRequests"
+      },
+      "failureAttribution": {
+        "primary": "artifact_wrong_or_missing",
+        "confidence": "high",
+        "source": "records[0].failureAttribution",
+        "auditNote": "该归因与同一账本 records[0].oracle.details 冲突：contentMatches=true、validationFailure=false、产物 sha256 69188ece…（15 字节）已记录。归因标签本身被判定为错误，详见 discrepancies[1]。"
+      },
+      "approvalCallbackInvocations": 1,
+      "approvalCallbackSource": "trusted Runner approve callback invocation count（测试适配器自动返回允许，不是人工审批）",
+      "durationMs": 4430,
+      "excludedFromValidSuccessRate": false,
+      "evidenceLevel": "strong",
+      "evidenceLevelRationale": "独立原始账本齐备：2 次逻辑/物理请求、1 次工具提议、1 次工具执行、1 个已结算 Effect、可用 Usage 回执、确定 Oracle 失败结果与产物哈希。轨迹可完整重建；失败原因属任务条件（未出现参数校验失败再修正）而非产物缺失。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[2].source",
+            "records[2].provider.parameters.observed",
+            "records[2].execution",
+            "records[2].oracle",
+            "records[2].failureAttribution",
+            "records[2].cleanup",
+            "attempts[2]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[9].userInput",
+            "tasks[9].oracle",
+            "tasks[9].successConditions"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792233220768-multi-01-1",
+      "taskId": "MULTI-01",
+      "trial": 1,
+      "kind": "valid",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-MULTI-01-trial-1-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "bae9c5cf20c4b98e64b59d4fab0b114dec0fcab324580eda746d80659c4d9779",
+      "workingTreeFingerprint": "d629257497c307fbd1069ea91967eebbb9eb9a5381210b00a32bc85df4b809f2",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "创建 a.txt，内容必须为 hello。\n创建 b.txt，内容必须为 world。",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[11].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[11].userInput（冻结任务文本，含换行）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=MULTI-01 --trial=1",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with the existing LlmClient wire adapter and real Provider; no scripted model tool sequence"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek-flash",
+        "observedRequestModels": [
+          "deepseek-flash",
+          "deepseek-flash",
+          "deepseek-flash"
+        ],
+        "observedRequestedModelRefs": [
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash",
+          "deepseek/deepseek-flash"
+        ],
+        "source": "attempts[3].internalModelRef / attempts[3].providerModelIdSent / records[0].provider.parameters.observed[*].model 与 .requestedModelRef"
+      },
+      "providerResponseModelIds": {
+        "status": "available",
+        "value": [
+          "deepseek-flash"
+        ],
+        "source": "records[0].execution.modelResponseModels / records[0].provider.modelVersion"
+      },
+      "toolCallProposals": {
+        "count": 4,
+        "evidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 4,
+        "evidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded"
+          }
+        ],
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 4,
+        "evidence": [
+          {
+            "toolName": "write",
+            "status": "succeeded",
+            "idempotencyKey": "tool:write:a6614e6cbd4607c1da43b29c20ce9d73d46f70532091968eea81ae37e1c20c38"
+          },
+          {
+            "toolName": "write",
+            "status": "succeeded",
+            "idempotencyKey": "tool:write:dc4e777227c8f3855f19141e0dc0a347fa8d6b3bd4a643aa911feb9db4564f32"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded",
+            "idempotencyKey": "tool:runtime_check_file_content:66cc3068c0351eef38b5cf692e376e8d8854eab8e00f9bb17062934da69b7828"
+          },
+          {
+            "toolName": "runtime_check_file_content",
+            "status": "succeeded",
+            "idempotencyKey": "tool:runtime_check_file_content:d49eb58903056cbc93ac33536cf1039bd1577b8eb63d0437ef7632de24225ccf"
+          }
+        ],
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": 0,
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "passed",
+        "evaluationCheck": "passed",
+        "method": "Independent disk reads plus persisted Task Outcome requirement checks; model summary is ignored",
+        "taskOutcomeStatus": "completed",
+        "requirementInventory": "complete",
+        "requirementStatuses": [
+          "passed",
+          "passed"
+        ],
+        "falseCompletionClaim": null,
+        "evidenceRefs": [
+          "fixture://a.txt",
+          "fixture://b.txt"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "a.txt",
+            "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            "bytes": 5
+          },
+          {
+            "path": "b.txt",
+            "sha256": "486ea46224d1bb4fb680f34f7c9ad96a8f24ec88be73ea8e5a6c65260e9cb8a7",
+            "bytes": 5
+          }
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "available",
+        "inputTokens": 9243,
+        "outputTokens": 422,
+        "cachedInputTokens": 6272,
+        "responseCount": 3,
+        "source": "records[0].execution.usage / LlmClient onProviderResponse physical Provider receipts"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens",
+        "source": "records[0].execution.cost / attempts[3].cost"
+      },
+      "physicalRequests": {
+        "recorded": 3,
+        "logicalModelRequests": 3,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": 0,
+        "perRequestHttpStatuses": {
+          "status": "available",
+          "value": [
+            200,
+            200,
+            200
+          ],
+          "source": "records[0].execution.providerHttpResponses"
+        },
+        "runtimeStatus": "ok",
+        "runtimeFinalStatus": null,
+        "source": "records[0].execution.physicalProviderRequests / network.providerHttpFailures / attempts[3].physicalProviderRequests"
+      },
+      "failureAttribution": null,
+      "approvalCallbackInvocations": 0,
+      "durationMs": 8970,
+      "excludedFromValidSuccessRate": false,
+      "evidenceLevel": "strong",
+      "evidenceLevelRationale": "独立原始账本齐备：3 次逻辑/物理请求、4 次工具提议、4 次工具执行、4 个已结算 Effect、可用 Usage 回执、确定 Oracle 通过结果与两个产物哈希。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "records[3].source",
+            "records[3].provider.parameters.observed",
+            "records[3].execution",
+            "records[3].oracle",
+            "records[3].cleanup",
+            "attempts[3]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-MULTI-01-trial-1-2026-10-17.json",
+          "fields": [
+            "records[0].execution",
+            "records[0].oracle",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[11].userInput",
+            "tasks[11].oracle",
+            "tasks[11].successConditions"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792232625970-code-01-1-dispatch",
+      "taskId": "CODE-01",
+      "trial": 1,
+      "kind": "dispatch_diagnostic",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-CODE-01-dispatch-diagnostic-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "cfb1acfea70bebbb869822a52a83577b4505755d4a6c7573a33b15172f8064aa",
+      "workingTreeFingerprint": "56f6ed7146b076f02995a89a2511a17c2013024fe44e1bd37b81d56cba53658a",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物（6 条）；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "In src/label.mjs, change taskLabel() so it returns the exact string \"ready\".",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[0].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "该次运行未选中任何 live test，未向模型发送任何内容，因此不存在实际 Prompt。",
+        "equivalentEvidence": [
+          "tasks[0].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=CODE-01 --trial=1",
+          "records[0].execution.executionLayer = not recorded"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "unavailable",
+        "wireModelIdSent": "unavailable",
+        "observedRequestModels": [],
+        "reason": "未选中 live test，未构造任何 Provider 请求；账本 records[0].provider.parameters 只含 temperature/topP/seed，无 model 字段。",
+        "source": "records[0].provider.parameters"
+      },
+      "providerResponseModelIds": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "无任何 Provider 响应。",
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": null,
+        "evidence": [],
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.toolCallProposals 为 null（非 0）。",
+        "source": "records[0].execution.toolCallProposals"
+      },
+      "toolExecutions": {
+        "count": null,
+        "evidence": [],
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.toolExecutions 为 null（非 0）。",
+        "source": "records[0].execution.toolExecutions"
+      },
+      "settledEffects": {
+        "count": null,
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.settledEffects 为 null（非 0）。",
+        "source": "records[0].execution.settledEffects"
+      },
+      "unknownEffects": {
+        "count": null,
+        "status": "unavailable",
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "unverified",
+        "evaluationCheck": "unverified",
+        "method": "Oracle did not report an outcome",
+        "falseCompletionClaim": null,
+        "evidenceRefs": [],
+        "source": "records[0].oracle"
+      },
+      "usage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "responseCount": null,
+        "reason": "no physical Provider usage receipt",
+        "source": "records[0].execution.usage"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "No authoritative Provider billing receipt; token prices were not inferred",
+        "source": "records[0].execution.cost / counts.unavailableCostTrials=1"
+      },
+      "physicalRequests": {
+        "recorded": null,
+        "logicalModelRequests": null,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": null,
+        "status": "unavailable",
+        "reason": "分派缺陷导致未选中 live test，账本把模型请求计数留为 null 而不是 0；不得把 null 当作 0 或据汇总编造调用过程。",
+        "source": "records[0].execution.physicalProviderRequests / counts.logicalModelRequests=null / counts.physicalProviderRequests=null"
+      },
+      "infrastructureStatus": "harness_error",
+      "failureAttribution": {
+        "primary": "evaluation_infrastructure",
+        "confidence": "high",
+        "source": "records[0].failureAttribution / counts.failureAttributions.evaluation_infrastructure=1"
+      },
+      "durationMs": 10010,
+      "excludedFromValidSuccessRate": true,
+      "billableInPrinciple": false,
+      "evidenceLevel": "insufficient",
+      "evidenceLevelRationale": "仅有分派诊断级记录：模型请求、工具提议、工具执行、Effect 计数均为 null，无 invocation/effect 证据，Oracle unverified。无法重建任何调用过程。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-CODE-01-dispatch-diagnostic-2026-10-17.json",
+          "fields": [
+            "records[0].source",
+            "records[0].execution",
+            "records[0].oracle",
+            "records[0].failureAttribution",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "dispatchDiagnostics[0]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[0].userInput"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792232775504-file-02-1-dispatch",
+      "taskId": "FILE-02",
+      "trial": 1,
+      "kind": "dispatch_diagnostic",
+      "ledgerPath": "docs/reference/rcd-s3b-real-deepseek-FILE-02-dispatch-diagnostic-2026-10-17.json",
+      "productSha": "edf35ef7cbe38aca901976623310ce5de6207bac",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "e984f7cd1255356c46700d3fe00f06c95c8d706a",
+      "evaluatorFingerprint": "52c5061765e08e540245ef8e15db042f6e2b8404a96f0f211798ceef85fef88a",
+      "workingTreeFingerprint": "a6f6f5d7f168577843e9a7a99aaab89166a23a65515975ee678fc886b5aabb25",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "全部 dirtyPaths 均为评测产物（含 CODE-01 早期账本 rcd-s3b-real-deepseek-CODE-01-2026-10-17.json）；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "userTaskText": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[4].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "该次运行未选中任何 live test，未向模型发送任何内容，因此不存在实际 Prompt。",
+        "equivalentEvidence": [
+          "tasks[4].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand = node scripts/s3b-eval.mjs --run-real --task=FILE-02 --trial=1",
+          "records[0].execution.executionLayer = not recorded"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": "unavailable",
+        "wireModelIdSent": "unavailable",
+        "observedRequestModels": [],
+        "reason": "未选中 live test，未构造任何 Provider 请求；账本 records[0].provider.parameters 只含 temperature/topP/seed，无 model 字段。",
+        "source": "records[0].provider.parameters"
+      },
+      "providerResponseModelIds": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "无任何 Provider 响应。",
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": null,
+        "evidence": [],
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.toolCallProposals 为 null（非 0）。",
+        "source": "records[0].execution.toolCallProposals"
+      },
+      "toolExecutions": {
+        "count": null,
+        "evidence": [],
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.toolExecutions 为 null（非 0）。",
+        "source": "records[0].execution.toolExecutions"
+      },
+      "settledEffects": {
+        "count": null,
+        "status": "unavailable",
+        "reason": "账本记录 records[0].execution.settledEffects 为 null（非 0）。",
+        "source": "records[0].execution.settledEffects"
+      },
+      "unknownEffects": {
+        "count": null,
+        "status": "unavailable",
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "unverified",
+        "evaluationCheck": "unverified",
+        "method": "Oracle did not report an outcome",
+        "falseCompletionClaim": null,
+        "evidenceRefs": [],
+        "source": "records[0].oracle"
+      },
+      "usage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "responseCount": null,
+        "reason": "no physical Provider usage receipt",
+        "source": "records[0].execution.usage"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "No authoritative Provider billing receipt; token prices were not inferred",
+        "source": "records[0].execution.cost / counts.unavailableCostTrials=1"
+      },
+      "physicalRequests": {
+        "recorded": null,
+        "logicalModelRequests": null,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": null,
+        "status": "unavailable",
+        "reason": "分派缺陷导致未选中 live test，账本把模型请求计数留为 null 而不是 0；不得把 null 当作 0 或据汇总编造调用过程。",
+        "source": "records[0].execution.physicalProviderRequests / counts.logicalModelRequests=null / counts.physicalProviderRequests=null"
+      },
+      "infrastructureStatus": "harness_error",
+      "failureAttribution": {
+        "primary": "evaluation_infrastructure",
+        "confidence": "high",
+        "source": "records[0].failureAttribution / counts.failureAttributions.evaluation_infrastructure=1"
+      },
+      "durationMs": 9230,
+      "excludedFromValidSuccessRate": true,
+      "billableInPrinciple": false,
+      "evidenceLevel": "insufficient",
+      "evidenceLevelRationale": "仅有分派诊断级记录：模型请求、工具提议、工具执行、Effect 计数均为 null，无 invocation/effect 证据，Oracle unverified。无法重建任何调用过程。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-FILE-02-dispatch-diagnostic-2026-10-17.json",
+          "fields": [
+            "records[0].source",
+            "records[0].execution",
+            "records[0].oracle",
+            "records[0].failureAttribution",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json",
+          "fields": [
+            "dispatchDiagnostics[1]"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[4].userInput"
+          ]
+        }
+      ]
+    },
+    {
+      "attemptId": "s3b-1792220493421-deliv-02-1",
+      "taskId": "DELIV-02",
+      "trial": 1,
+      "kind": "controlled_baseline",
+      "ledgerPath": "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json",
+      "productSha": "fd3868746e4090363a2d01ea577e7846d5d9fd2c",
+      "frozenProductHead": "d5015136ca9cf9583423361263b5bacba257a385",
+      "productTreeFingerprint": "7ae9fef5b9d88dd6ec5c4358f8253226e3a15ade",
+      "evaluatorFingerprint": "615c18224970a31699ede535381346119a62574ff5573675a5e58c6738405fc9",
+      "workingTreeFingerprint": "b9c538a7a170cedc6102ae0fa65b78bb9b1441a931b0d60b319ed63b586acada",
+      "productSourceDirty": false,
+      "dirtyFlag": true,
+      "dirtyPathsClassification": "dirtyPaths 仅 3 条 docs/reference 文档；unclassifiedDirtyPaths 与 unclassifiedCommittedPaths 均为空。",
+      "evidenceTier": "A_runtime_deterministic",
+      "providerKind": "scripted",
+      "providerSimulated": true,
+      "userTaskText": "Create result.txt containing exactly hello and independently check the file contents before you say it is complete.",
+      "userTaskTextSource": "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[10].userInput（冻结 S3A 任务集）",
+      "promptAvailability": {
+        "status": "unavailable",
+        "reason": "脚本 Provider 账本不保存实际传入模型的消息序列或 Prompt 文本；评测协议明确不在报告中保存完整 Prompt。",
+        "equivalentEvidence": [
+          "tasks[10].userInput（冻结任务文本）",
+          "records[0].environment.evaluatorCommand 未记录；selection.mode = --run-controlled",
+          "records[0].execution.executionLayer = Runner/Harness/Tools with scripted Provider"
+        ]
+      },
+      "requestedModelId": {
+        "internalModelRef": null,
+        "wireModelIdSent": null,
+        "observedRequestModels": [],
+        "status": "unavailable",
+        "reason": "受控脚本 Provider：records[0].provider.id / provider.model 均为 null，未使用真实模型 ID。",
+        "source": "records[0].provider"
+      },
+      "providerResponseModelIds": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "脚本 Provider 无线上响应模型标识。",
+        "source": "records[0].execution.modelResponseModels"
+      },
+      "toolCallProposals": {
+        "count": 1,
+        "evidence": [],
+        "note": "execution.toolCallProposals=1，但 execution.invocationEvidence 为空数组，无逐调用证据。",
+        "source": "records[0].execution.toolCallProposals / records[0].execution.invocationEvidence"
+      },
+      "toolExecutions": {
+        "count": 1,
+        "evidence": [],
+        "note": "execution.toolExecutions=1，但 execution.invocationEvidence 为空数组，无逐调用证据。",
+        "source": "records[0].execution.toolExecutions / records[0].execution.invocationEvidence"
+      },
+      "settledEffects": {
+        "count": 1,
+        "evidence": [],
+        "note": "execution.settledEffects=1，但 execution.effectEvidence 为空数组，无 Effect 逐项证据。",
+        "source": "records[0].execution.settledEffects / records[0].execution.effectEvidence"
+      },
+      "unknownEffects": {
+        "count": null,
+        "status": "unavailable",
+        "reason": "records[0].execution.unknownEffects 为 null。",
+        "source": "records[0].execution.unknownEffects"
+      },
+      "oracle": {
+        "result": "failed",
+        "evaluationCheck": "passed",
+        "method": "Independent disk read compares actual bytes with the user request; invocation records confirm whether the production checker was available; the final reply is checked for an unsupported completion claim",
+        "expected": "hello",
+        "actual": "goodbye",
+        "requirementStatus": "unverified",
+        "taskOutcomeStatus": "unknown",
+        "checkerInvoked": false,
+        "falseCompletionClaim": true,
+        "evidenceRefs": [
+          "fixture://result.txt"
+        ],
+        "artifactEvidence": [
+          {
+            "path": "result.txt",
+            "sha256": "82e35a63ceba37e9646434c5dd412ea577147f1e4a41ccde1614253187e3dbf9",
+            "bytes": 7
+          }
+        ],
+        "source": "records[0].oracle.result / records[0].oracle.details"
+      },
+      "usage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "responseCount": null,
+        "reason": "受控脚本 Provider 无物理 Usage 回执。",
+        "source": "records[0].execution.usage"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "controlled Provider",
+        "source": "records[0].execution.cost"
+      },
+      "physicalRequests": {
+        "recorded": 0,
+        "logicalModelRequests": 2,
+        "blockedPhysicalRequests": 0,
+        "failedRequests": 0,
+        "status": "available",
+        "note": "受控脚本 Provider：network.providerHttpRequests=0，物理 Provider 请求为 0（设计如此，不代表真实运行）。",
+        "source": "records[0].execution.physicalProviderRequests / records[0].execution.network.providerHttpRequests"
+      },
+      "failureAttribution": {
+        "primary": "insufficient_verification",
+        "secondary": [
+          "strict_requirement_parser_did_not_recognize_task_text"
+        ],
+        "confidence": "high",
+        "source": "records[0].failureAttribution / records[0].oracle.details.failureAttribution"
+      },
+      "approvals": {
+        "status": "unavailable",
+        "reason": "no approval request was required by this fixture path",
+        "source": "records[0].execution.approvals"
+      },
+      "durationMs": 4528,
+      "excludedFromValidSuccessRate": true,
+      "billableInPrinciple": false,
+      "evidenceLevel": "partial",
+      "evidenceLevelRationale": "受控原始账本存在且有确定 Oracle 结果与 falseCompletionClaim=true，但 invocationEvidence/effectEvidence 为空、无逐调用证据、无 Usage，且 Provider 为脚本而非真实模型，轨迹只能部分重建。",
+      "evidenceRefs": [
+        {
+          "file": "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json",
+          "fields": [
+            "records[7].source",
+            "records[7].provider",
+            "records[7].execution",
+            "records[7].oracle",
+            "records[7].failureAttribution",
+            "counts"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "fields": [
+            "tasks[10].userInput",
+            "tasks[10].adapter.status"
+          ]
+        },
+        {
+          "file": "docs/reference/rcd-s3b-evaluation-report-2026-10-17.md",
+          "fields": [
+            "受控 Provider 运行结果表 DELIV-02 行",
+            "第 36 行 DELIV-02 归因说明"
+          ]
+        }
+      ]
+    }
+  ],
+  "aggregates": {
+    "validRuns": {
+      "definition": "修正模型 ID 后的 4 次有效 Runner/Harness 真实 Provider 试跑：CODE-01 trial 2、FILE-02 trial 2、DELIV-01 trial 1、MULTI-01 trial 1。",
+      "attemptCount": 4,
+      "taskTrials": [
+        "CODE-01/2",
+        "FILE-02/2",
+        "DELIV-01/1",
+        "MULTI-01/1"
+      ],
+      "oracleResults": {
+        "passed": 2,
+        "failed": 2,
+        "partially_completed": 0,
+        "correctly_blocked": 0,
+        "unverified": 0
+      },
+      "passRate": {
+        "value": 0.5,
+        "claimable": false,
+        "reason": "样本仅 4 项任务、每项 1 次修正后试跑，不是总体成功率估计；来源 counts.validProviderModelIdPassRateNotClaimed=true。"
+      },
+      "runtimeExecutionStatus": {
+        "ok": 4,
+        "error": 0,
+        "cancelled": 0,
+        "blocked": 0
+      },
+      "logicalModelRequests": 13,
+      "physicalProviderRequests": 13,
+      "toolCallProposals": 11,
+      "toolExecutions": 11,
+      "settledEffects": 7,
+      "unknownEffects": 0,
+      "deniedToolCalls": 0,
+      "failedToolCalls": 0,
+      "usage": {
+        "status": "available",
+        "inputTokens": 38093,
+        "outputTokens": 1794,
+        "cachedInputTokens": 26240,
+        "source": "Provider physical response usage receipts"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "No authoritative billing receipt; cost was not inferred from tokens or balance changes"
+      },
+      "providerHttpFailures": 0,
+      "agentWebRequests": 0,
+      "forbiddenRequests": 0,
+      "cleanupFailures": 0,
+      "totalDurationMs": 32831,
+      "approvalCallbackInvocations": 1,
+      "approvalCallbackNote": "唯一 1 次审批回调来自自动返回允许的测试适配器（DELIV-01），不是 Electron Main 人工审批。",
+      "humanInterventions": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "No interactive user message/approval UI is connected to this test adapter."
+      },
+      "firstEffectiveArtifactLatencyMs": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "The Runner/Harness adapter records total duration but not first artifact timestamp."
+      },
+      "falseCompletionClaims": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "The Runner result exposed no final reply string to the live task observation adapter."
+      },
+      "agentFinalReplyText": {
+        "status": "unavailable",
+        "value": null,
+        "reason": "6 次真实 Runner/Harness 账本均未记录 Agent 最终回复文本；records[*].oracle.falseCompletionClaim 全为 null。"
+      },
+      "aggregateSource": "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json:counts.validProviderModelId*，并与 perAttempt[2..5] 逐项求和一致"
+    },
+    "invalidModelIdAttempts": {
+      "definition": "模型引用仍含 provider 前缀 deepseek/deepseek-flash 的 2 次真实请求尝试：CODE-01 trial 1、FILE-02 trial 1。",
+      "attemptCount": 2,
+      "taskTrials": [
+        "CODE-01/1",
+        "FILE-02/1"
+      ],
+      "logicalModelRequests": 10,
+      "physicalProviderRequests": 16,
+      "physicalRequestsPerAttempt": 8,
+      "blockedPhysicalRequests": 2,
+      "providerHttpFailures": 16,
+      "recordedHttpStatuses": {
+        "availableCount": 8,
+        "status": 400,
+        "attempts": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "scope": "仅 FILE-02 trial 1 记录了逐请求状态（records[1].execution.providerHttpResponses）；CODE-01 trial 1 只有汇总 providerHttpFailures=8。"
+      },
+      "toolCallProposals": 0,
+      "toolExecutions": 0,
+      "settledEffects": 0,
+      "unknownEffects": 0,
+      "usage": {
+        "status": "unavailable",
+        "value": null,
+        "responseCount": 0,
+        "reason": "两次尝试均无成功 Provider 响应，无 Usage 回执。"
+      },
+      "cost": {
+        "status": "unavailable",
+        "value": null,
+        "billableInPrinciple": true,
+        "reason": "Provider 未返回权威账单回执；不得假定这 16 个真实请求无费用，也不得据 token 反推金额。"
+      },
+      "oracleResults": {
+        "failed": 2
+      },
+      "excludedFromValidSuccessRate": true,
+      "exclusionBasis": "counts.invalidProviderModelReferenceAttempts=2、notes[1]；两次尝试的 Oracle 失败不进入修正后模型任务结果计数。",
+      "requestedVsWireModelId": {
+        "authoritativeSource": "attempts[0].providerModelIdSent / attempts[0].internalModelRef / attempts[1].providerModelIdSent / attempts[1].internalModelRef",
+        "internalModelRef": "deepseek/deepseek-flash",
+        "wireModelIdSent": "deepseek/deepseek-flash",
+        "validRunsWireModelIdSent": "deepseek-flash",
+        "conclusion": "两次失败尝试把内部引用原样发到线上（provider 前缀未剥离）；4 次有效运行已剥离为裸模型 ID deepseek-flash。records[*].provider.parameters.observed[*].model 与 attempts[] 一致。"
+      }
+    },
+    "dispatchDiagnostics": {
+      "definition": "评测器分派缺陷导致的 2 次 harness_error 诊断：未选中任何 live test。",
+      "attemptCount": 2,
+      "taskTrials": [
+        "CODE-01/1",
+        "FILE-02/1"
+      ],
+      "modelRequestsRecorded": null,
+      "physicalProviderRequests": null,
+      "toolCallProposals": null,
+      "toolExecutions": null,
+      "oracleResults": {
+        "unverified": 2
+      },
+      "failureAttribution": "evaluation_infrastructure",
+      "note": "这两条记录未选中 live test，账本把模型请求计数留为 null 而不是 0；它们是零模型请求诊断，与两次各 8 个物理请求的 invalid_model_id 尝试是不同类别，三者必须分开统计。",
+      "source": "dispatchDiagnostics[0..1] / records[0].execution.* / counts"
+    },
+    "controlledBaselineReferences": {
+      "definition": "任务书点名的 DELIV-02 受控基线记录，属 A 层确定性运行，与 B 层真实模型运行完全分离。",
+      "attemptCount": 1,
+      "taskTrials": [
+        "DELIV-02/1"
+      ],
+      "evidenceTier": "A_runtime_deterministic",
+      "providerKind": "scripted",
+      "physicalProviderRequests": 0,
+      "falseCompletionClaim": true,
+      "note": "受控基线账本共 8 条记录；本审计仅逐字段展开任务书点名的 DELIV-02 记录，其余 7 条不在 P01 真实轨迹审计范围内。"
+    },
+    "allRecordedActualPhysicalProviderRequests": 29,
+    "allRecordedActualPhysicalProviderRequestsBreakdown": {
+      "validRuns": 13,
+      "invalidModelIdAttempts": 16,
+      "dispatchDiagnostics": 0,
+      "source": "counts.allRecordedActualPhysicalProviderRequests=29 = counts.validProviderModelIdPhysicalProviderRequests=13 + 16"
+    },
+    "validSuccessRateNotClaimed": true,
+    "crossCheckWithBatchCounts": {
+      "counts.validProviderModelIdPhysicalProviderRequests": 13,
+      "counts.validProviderModelIdLogicalModelRequests": 13,
+      "counts.validProviderModelIdToolCallProposals": 11,
+      "counts.validProviderModelIdToolExecutions": 11,
+      "counts.validProviderModelIdSettledEffects": 7,
+      "counts.validProviderModelIdUsage": {
+        "inputTokens": 38093,
+        "outputTokens": 1794,
+        "cachedInputTokens": 26240
+      },
+      "counts.validProviderModelIdTotalDurationMs": 32831,
+      "counts.validProviderModelIdCost.status": "unavailable",
+      "counts.validProviderModelIdAgentWebRequests": 0,
+      "counts.validProviderModelIdForbiddenWebRequests": 0,
+      "counts.cleanupFailures": 0,
+      "counts.validProviderModelIdTaskResults": {
+        "passed": 2,
+        "failed": 2
+      },
+      "match": true
+    }
+  },
+  "evidenceGaps": [
+    {
+      "id": "gap-agent-final-reply",
+      "title": "Agent 最终回复文本不可得（全部真实运行）",
+      "scope": "validRuns 4 次 + invalidModelIdAttempts 2 次",
+      "status": "evidence_insufficient",
+      "reason": "The Runner result exposed no final reply string to the live task observation adapter.",
+      "fieldPaths": [
+        "counts.validProviderModelIdFalseCompletionClaims.status=unavailable",
+        "records[*].oracle.falseCompletionClaim=null",
+        "records[*].execution 无 finalReply/finalText 字段"
+      ],
+      "impact": "无法对真实运行判定虚假完成声明，也无法核对模型自述与 Oracle 结果是否一致；只能保留为 unavailable，不得据汇总编造。",
+      "contrast": "受控 DELIV-02 记录因脚本 Provider 路径不同而取得 falseCompletionClaim=true（records[7].oracle.falseCompletionClaim）。"
+    },
+    {
+      "id": "gap-first-artifact-latency",
+      "title": "首个有效产物时间不可得",
+      "scope": "validRuns 4 次",
+      "status": "evidence_insufficient",
+      "reason": "The Runner/Harness adapter records total duration but not first artifact timestamp.",
+      "fieldPaths": [
+        "counts.validProviderModelIdFirstEffectiveArtifactLatencyMs.status=unavailable",
+        "records[*].execution.durationMs（仅总时长）"
+      ],
+      "impact": "只能报告总时长 32831 ms，不能报告首产物延迟。"
+    },
+    {
+      "id": "gap-human-interventions",
+      "title": "人工干预次数不可得",
+      "scope": "validRuns 4 次",
+      "status": "evidence_insufficient",
+      "reason": "No interactive user message/approval UI is connected to this test adapter.",
+      "fieldPaths": [
+        "counts.validProviderModelIdHumanInterventions.status=unavailable",
+        "records[*].execution.approvals.source=trusted Runner approve callback invocation count"
+      ],
+      "impact": "唯一可得的 approvals.count=1（DELIV-01）来自测试适配器自动允许，不是人工审批，不能当作 human intervention 计数。"
+    },
+    {
+      "id": "gap-prompt-text",
+      "title": "实际传入模型的 Prompt 文本未记录",
+      "scope": "全部 9 条 perAttempt",
+      "status": "evidence_insufficient",
+      "reason": "账本不保存请求正文；评测协议明确不在报告中保存完整 Prompt（docs/reference/rcd-s3b-provider-evaluation-2026-10-17.md 第 17、32 行）。",
+      "fieldPaths": [
+        "perAttempt[*].promptAvailability.status=unavailable",
+        "records[*].environment.evaluatorCommand（仅命令）",
+        "records[*].execution.executionLayer"
+      ],
+      "impact": "只能以冻结任务集 userInput + evaluatorCommand + executionLayer 作为等价证据；不得推测实际消息序列或系统提示词内容。"
+    },
+    {
+      "id": "gap-code01-trial1-http-statuses",
+      "title": "CODE-01 trial 1 未记录逐请求 HTTP 状态",
+      "scope": "invalidModelIdAttempts 中的 CODE-01 trial 1",
+      "status": "evidence_insufficient",
+      "reason": "records[0].execution 缺少 providerHttpResponses 数组，只有汇总 providerHttpFailures=8。",
+      "fieldPaths": [
+        "records[0].execution.network.providerHttpFailures=8",
+        "records[0].execution.providerHttpResponses（不存在）",
+        "对比 records[1].execution.providerHttpResponses（8 条 HTTP 400）"
+      ],
+      "impact": "该次 8 个失败请求的状态码无法逐条核实；只能确认失败计数为 8。"
+    },
+    {
+      "id": "gap-billing-receipt",
+      "title": "无权威账单回执，成本全程 unavailable",
+      "scope": "全部 9 条 perAttempt",
+      "status": "evidence_insufficient",
+      "reason": "Provider returned no authoritative billing receipt; no cost was inferred from tokens.",
+      "fieldPaths": [
+        "records[*].execution.cost.status=unavailable",
+        "counts.validProviderModelIdCost.status=unavailable",
+        "provider.budget.providerBillingReceipt=unavailable"
+      ],
+      "impact": "29 个已记录物理请求（13 有效 + 16 失败尝试）的真实费用未知；16 个失败请求不得假定无费用。"
+    },
+    {
+      "id": "gap-controlled-deliv02-invocation-evidence",
+      "title": "DELIV-02 受控记录缺逐调用证据",
+      "scope": "controlledBaselineReferences",
+      "status": "evidence_insufficient",
+      "reason": "records[7].execution.invocationEvidence 与 effectEvidence 均为空数组，但 toolExecutions=1、settledEffects=1。",
+      "fieldPaths": [
+        "records[7].execution.invocationEvidence=[]",
+        "records[7].execution.effectEvidence=[]",
+        "records[7].execution.toolExecutions=1"
+      ],
+      "impact": "受控记录只能给出计数，无法逐项核对被执行的工具与 Effect。"
+    }
+  ],
+  "discrepancies": [
+    {
+      "id": "disc-dirty-metadata",
+      "title": "顶层 productSourceDirty 与逐记录 productSourceDirty 语义冲突",
+      "status": "confirmed_by_field_paths",
+      "observations": [
+        "docs/reference/rcd-s3b-real-deepseek-batch-2026-10-17.json:productBaseline.productSourceDirty = true",
+        "records[i].source.productSourceDirty = false（6/6 记录，i=0..5）",
+        "records[i].source.dirty = true 且 dirtyPaths 非空（6/6 记录）",
+        "records[i].source.unclassifiedDirtyPaths = [] 且 unclassifiedCommittedPaths = []（6/6 记录）",
+        "records[i].source.fingerprintStableDuringTrial = true（6/6 记录）"
+      ],
+      "auditConclusion": "逐记录产品源码纯度有支持：所有 dirtyPaths 都可归类为评测产物（docs/reference 账本、scripts/lib/s3b-provider-config.*、scripts/s3b-eval.mjs、test/s3b-*.test.ts），且无未分类脏路径。顶层布尔字段复用了同名 productSourceDirty 却表达不同含义，不得读作“产品源码被修改”。",
+      "recommendation": "未来新增字段或改名以区分“工作树存在脏文件（含评测产物）”与“产品源码被修改”，例如 evaluationArtifactsDirty / productSourceDirty。",
+      "action": "本次审计不修改既有账本；仅记录并建议。",
+      "reportReference": "docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md 第 52 行称“所有运行均报告 productSourceDirty: false”，与逐记录字段一致，但与顶层布尔字段不一致。"
+    },
+    {
+      "id": "disc-deliv01-failure-attribution",
+      "title": "DELIV-01 失败归因标签与同账本 Oracle 证据冲突",
+      "status": "confirmed_by_field_paths",
+      "observations": [
+        "records[2].failureAttribution = { primary: \"artifact_wrong_or_missing\", secondary: [], confidence: \"high\" }",
+        "records[2].oracle.details.contentMatches = true",
+        "records[2].oracle.details.validationFailure = false",
+        "records[2].oracle.details.fixtureExecutions = 1",
+        "records[2].oracle.details.evidence[0] = { path: \"result.txt\", sha256: \"69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0\", bytes: 15 }",
+        "records[2].oracle.result = failed，method = Independent file read plus ToolInvocationRecord confirms schema feedback before one successful fixture write"
+      ],
+      "auditConclusion": "该次尝试的产物存在、内容匹配且哈希已记录，失败原因是任务条件未满足（未出现“参数校验失败后再修正”的证据），而不是产物错误或缺失。records[2].failureAttribution.primary = artifact_wrong_or_missing 对本次尝试在事实上不成立，属评测器归因标签缺陷。",
+      "recommendation": "评测器应把“产物内容匹配但任务条件未满足”映射到独立归因类别（例如 task_condition_not_met），而不是 artifact_wrong_or_missing。",
+      "action": "本次审计不修改历史账本；修复由 task-3 负责。",
+      "reportReference": "docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md 第 39 行已正确区分“工具副作用成功”与“任务条件未满足”。"
+    },
+    {
+      "id": "disc-multi01-success-conditions",
+      "title": "MULTI-01 冻结 successConditions 与真实运行 Oracle 结果语义不一致",
+      "status": "observed_not_resolved",
+      "observations": [
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[11].successConditions = [\"a.txt is hello and passes its check.\", \"b.txt is deliberately goodbye and fails its check.\", \"Overall task outcome is partial, and no model summary upgrades b.txt.\"]",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[11].userInput 要求 b.txt 内容为 world",
+        "records[3].oracle.result = passed，details.requirementStatuses = [\"passed\",\"passed\"]，details.taskOutcomeStatus = completed",
+        "records[3].oracle.method = Independent disk reads plus persisted Task Outcome requirement checks; model summary is ignored"
+      ],
+      "auditConclusion": "冻结 successConditions 描述的是受控/脚本场景（预置 b.txt 为 goodbye 的部分失败），而真实模型运行的 Oracle 采用另一套方法并报告两项要求均 passed。任务文本与 successConditions 对 b.txt 的期望不一致，属任务集语义问题，需产品/评测负责人澄清。",
+      "action": "不修改冻结任务集与 Oracle；记录待澄清。"
+    },
+    {
+      "id": "disc-deliv02-adapter-status",
+      "title": "DELIV-02 在冻结任务集中标记 not_run，但存在受控运行记录",
+      "status": "observed_not_resolved",
+      "observations": [
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:tasks[10].adapter = { status: \"not_run\", layer: null, providerSimulated: null }",
+        "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json:records[7].recordId = s3b-1792220493421-deliv-02-1，infrastructureStatus=executed"
+      ],
+      "auditConclusion": "冻结任务集（S3A 时期）的 adapter.status 早于 S3B 受控适配器实现，属历史快照；该记录是 A 层脚本 Provider，不改变“DELIV-02 无真实模型试跑”的事实。",
+      "action": "仅记录，不修改冻结任务集。"
+    },
+    {
+      "id": "disc-task-brief-attribution-of-8-request-runs",
+      "title": "任务书把 8 请求失败尝试与分派诊断混写，需纠正",
+      "status": "corrected",
+      "observations": [
+        "分派诊断账本 records[0].execution.physicalProviderRequests = null，counts.physicalProviderRequests = null，且 records[0].execution.executionLayer = \"not recorded\"",
+        "两次各 8 个物理请求的失败尝试是 records[0]（CODE-01 trial 1）与 records[1]（FILE-02 trial 1），见 attempts[0].physicalProviderRequests=8 与 attempts[1].physicalProviderRequests=8",
+        "8 条 HTTP 400 记录位于 records[1].execution.providerHttpResponses"
+      ],
+      "auditConclusion": "三类必须分开：4 次有效尝试 / 2 次各 8 物理请求的 invalid_model_id 尝试（合计 16，真实且在原则上可计费，不计入有效成功率）/ 2 次零模型请求的 dispatch_diagnostic。任务书括号中把 8 个 HTTP 400 归到 CODE-01 dispatch diagnostic 属笔误。",
+      "action": "本审计按账本字段纠正表述，不修改任何账本。"
+    },
+    {
+      "id": "disc-evaluator-fingerprint-variance",
+      "title": "评测器指纹在运行间不一致",
+      "status": "observed_not_resolved",
+      "observations": [
+        "productBaseline.evaluationFingerprints 列出 4 个值：768c0fa1…、670917da…、bae9c5cf…、924484012…",
+        "productBaseline.workingTreeFingerprints 列出 4 个值：94bed4e5…、ba8f67e2…、d6292574…、2a09d5f9…",
+        "productBaseline.evaluationSourceFingerprintsVaryAcrossAttempts = true",
+        "dispatchDiagnostics 另有 2 个未列入上述数组的指纹：cfb1acfe…（CODE-01）、52c50617…（FILE-02）",
+        "对应工作树指纹 56f6ed71…、a6f6f5d7… 同样未列入"
+      ],
+      "auditConclusion": "不存在单一字节级评测器版本；行为对照只能以任务结果与产品基线为准。顶层指纹数组只覆盖 6 条 records，不覆盖 2 条 dispatchDiagnostics，属范围说明而非缺陷。",
+      "action": "仅记录。"
+    },
+    {
+      "id": "disc-approval-not-human",
+      "title": "approvals.count=1 不是人工审批",
+      "status": "observed_not_resolved",
+      "observations": [
+        "records[2].execution.approvals = { count: 1, source: \"trusted Runner approve callback invocation count\" }",
+        "counts.validProviderModelIdHumanInterventions.status = unavailable",
+        "notes[3] 说明该回调不是交互式 Electron Main 审批 UI"
+      ],
+      "auditConclusion": "1 次回调来自测试适配器自动返回允许，不能作为人工干预或桌面审批验收证据。",
+      "action": "仅记录。"
+    }
+  ],
+  "limitations": [
+    "只读审计：未修改任何既有账本、Oracle、任务集或历史报告；未联网；未调用真实 DeepSeek API。",
+    "全部结论基于已冻结账本的字段值，不包含对产品运行时的重新执行或复现。",
+    "样本为 4 项任务各 1 次修正后试跑，不能作为模型成功率估计。",
+    "无 Electron Main/Renderer 验收；审批回调来自测试适配器。",
+    "未取得 Agent 最终回复、首产物延迟与人工干预次数，相关指标保持 unavailable。"
+  ]
+}
