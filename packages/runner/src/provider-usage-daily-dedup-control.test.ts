@@ -168,10 +168,33 @@ async function copyLog(
       type: event.type,
       source: event.source,
       occurredAt: event.occurredAt,
-      payload,
+      payload: rebindPayloadIdentity(payload, source, target),
     });
     expect(outcome.kind).toBe('appended');
   }
+}
+
+/**
+ * Rebinds the identity a copied payload carries inside itself.
+ *
+ * The durable reducer refuses a `task_outcome_settled` whose persisted outcome
+ * does not name the Run carrying it, so a copy that rewrites only the outer
+ * event identity describes a different Run than its own log and is rejected.
+ * A real copied/forked log re-issues those payload identities; this helper has
+ * to do the same or the control measures the fail-closed reducer instead of the
+ * dedup guard it exists to falsify.
+ */
+function rebindPayloadIdentity(
+  payload: Record<string, unknown>,
+  source: { readonly sessionId: string; readonly runId: string },
+  target: { readonly sessionId: string; readonly runId: string },
+): Record<string, unknown> {
+  const serialized = JSON.stringify(payload);
+  if (!serialized.includes(source.sessionId) && !serialized.includes(source.runId)) return payload;
+  const rebound = serialized
+    .split(source.sessionId).join(target.sessionId)
+    .split(source.runId).join(target.runId);
+  return JSON.parse(rebound) as Record<string, unknown>;
 }
 
 function serviceFor(): ProviderUsageDailyService {

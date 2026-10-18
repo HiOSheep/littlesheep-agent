@@ -19,16 +19,16 @@ describe('run Memory KnownState', () => {
     const raw: ChatRequest = {
       model: 'test',
       messages: [
-        { role: 'system', content: 'verify policy' },
-        { role: 'user', content: 'verify evidence' },
+        { role: 'system', content: 'evolve policy' },
+        { role: 'user', content: 'evolve evidence' },
       ],
       max_tokens: 100,
     };
     const prepared = prepareModelRequest(
       ctx,
-      'verify',
+      'evolve',
       raw,
-      buildRunRequestCandidates(ctx, 'verify', raw.messages, { history: [], primaryUserKind: 'workflow_state' }),
+      buildRunRequestCandidates(ctx, 'evolve', raw.messages, { history: [], primaryUserKind: 'workflow_state' }),
     );
 
     const system = knownStateBlock(prepared);
@@ -44,7 +44,7 @@ describe('run Memory KnownState', () => {
     expect(system).not.toContain('activation=');
     expect(system).not.toContain('reactivated=');
     expect(system).not.toContain('revision:');
-    expect(ctx.memoryKnownState?.references[0]?.stages).toEqual(expect.arrayContaining(['execute', 'verify']));
+    expect(ctx.memoryKnownState?.references[0]?.stages).toEqual(expect.arrayContaining(['execute', 'evolve']));
     expect(ctx.contextSnapshots?.[0]?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'memory_fragment', source: expect.objectContaining({ kind: 'memory' }) }),
     ]));
@@ -79,7 +79,7 @@ describe('run Memory KnownState', () => {
           role: 'system',
           content: 'Stable policy\n<!-- LITTLESHEEP_CACHE_BOUNDARY -->\nrun=one',
         },
-        { role: 'user', content: 'verify evidence' },
+        { role: 'user', content: 'evolve evidence' },
       ],
       max_tokens: 100,
     };
@@ -87,9 +87,9 @@ describe('run Memory KnownState', () => {
     const baselineCtx = makeCtx();
     prepareModelRequest(
       baselineCtx,
-      'verify',
+      'evolve',
       raw,
-      buildRunRequestCandidates(baselineCtx, 'verify', raw.messages, {
+      buildRunRequestCandidates(baselineCtx, 'evolve', raw.messages, {
         history: [],
         primaryUserKind: 'workflow_state',
       }),
@@ -100,9 +100,9 @@ describe('run Memory KnownState', () => {
     ingestMemoryKnownState(ctx, knownState(ctx.runId), 'execute');
     const prepared = prepareModelRequest(
       ctx,
-      'verify',
+      'evolve',
       raw,
-      buildRunRequestCandidates(ctx, 'verify', raw.messages, {
+      buildRunRequestCandidates(ctx, 'evolve', raw.messages, {
         history: [],
         primaryUserKind: 'workflow_state',
       }),

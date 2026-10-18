@@ -284,11 +284,35 @@ async function copyRunLog(
       type: event.type,
       source: event.source,
       occurredAt: event.occurredAt,
-      payload: event.payload,
+      payload: rebindPayloadIdentity(event.payload, source, target),
     });
     expect(outcome.kind).toBe('appended');
   }
   return events.length;
+}
+
+/**
+ * Rebinds the identity a payload carries inside itself.
+ *
+ * The durable reducer validates identity-bound payloads against the event it
+ * arrives on — `task_outcome_settled` fails closed unless the persisted outcome
+ * names the Run that carries it — so a verbatim copy that only rewrote the
+ * outer event identity would describe a different Run than its own log and be
+ * rejected as unreadable. A real copy re-issues those payload identities; the
+ * copy helper has to do the same, otherwise the fixture stops measuring the
+ * dedup guard and starts measuring the fail-closed reducer.
+ */
+function rebindPayloadIdentity(
+  payload: Record<string, unknown>,
+  source: { readonly sessionId: string; readonly runId: string },
+  target: { readonly sessionId: string; readonly runId: string },
+): Record<string, unknown> {
+  const serialized = JSON.stringify(payload);
+  if (!serialized.includes(source.sessionId) && !serialized.includes(source.runId)) return payload;
+  const rebound = serialized
+    .split(source.sessionId).join(target.sessionId)
+    .split(source.runId).join(target.runId);
+  return JSON.parse(rebound) as Record<string, unknown>;
 }
 
 async function reappend(store: DurableEventStore, event: DurableHarnessEvent): Promise<string> {

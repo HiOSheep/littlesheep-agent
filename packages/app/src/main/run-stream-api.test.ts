@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG } from '@littlesheep/config'
-import { createRunner, type AgentRunner, type CreateRunnerOptions } from '@littlesheep/runner'
+import { conversationTurnRunId, createRunner, type AgentRunner, type CreateRunnerOptions } from '@littlesheep/runner'
 import { DEFAULT_BRANDING } from '@littlesheep/branding'
 import {
   asSessionId,
@@ -268,7 +268,6 @@ describe('run stream Local App API', () => {
   }
 
   it('preserves the SSE start, activity, delta and result contract', async () => {
-    const sessionId = asSessionId('stream-session')
     const runStream = vi.fn(async (input: Parameters<AgentRunner['runStream']>[0], onDelta: (delta: string) => void) => {
       input.onToolEvent?.({
         type: 'reasoning',
@@ -286,7 +285,9 @@ describe('run stream Local App API', () => {
       input.onAssistantReplace?.('done!')
       return {
         runId: input.runId!,
-        sessionId,
+        // A real Runner answers with the Session it was bound to; the route
+        // publishes that same identity back to the Renderer.
+        sessionId: input.sessionId!,
         status: 'ok' as const,
         reply: '完成',
         messages: [],
@@ -294,7 +295,7 @@ describe('run stream Local App API', () => {
         durationMs: 4,
       }
     })
-    const runtimeEvents = makeRuntimeEvents(sessionId)
+    const runtimeEvents = makeRuntimeEvents(asSessionId('stream-session'))
     const { dataDir, workplaceDir, server } = await createFixture(runStream, runtimeEvents)
 
     try {
@@ -323,15 +324,28 @@ describe('run stream Local App API', () => {
       expect(body).toContain('event: result')
       expect(body).toMatch(/event: start\ndata: \{"ok":true,"runId":"[^"]+"\}/)
       expect(runStream).toHaveBeenCalledOnce()
-      expect(runStream).toHaveBeenCalledWith(expect.objectContaining({
-        sessionId: undefined,
+      // A first turn carries its request key before Main has persisted a
+      // Session, so Main reserves that Session identity before publishing the
+      // Run ID: Runner sees the same sessionId + requestKey pair that produced
+      // the streamed identity, not an unbound first turn.
+      const runnerInput = runStream.mock.calls[0]![0]
+      expect(runnerInput).toMatchObject({
         requestKey: 'conversation-turn-1',
         permissionPolicyId: 'research',
         permissionPreset: 'workspace-write',
         restoreCheckpointResources: expect.any(Function),
-      }), expect.any(Function))
+      })
+      expect(typeof runnerInput.sessionId).toBe('string')
+      expect(runStream.mock.calls[0]![1]).toBeTypeOf('function')
+      const boundSessionId = String(runnerInput.sessionId)
+      expect(boundSessionId).not.toBe('')
+      const streamedRunId = conversationTurnRunId(asSessionId(boundSessionId), 'conversation-turn-1')
+      expect(streamedRunId).toBeDefined()
+      expect(body).toMatch(new RegExp(`event: start\\ndata: \\{"ok":true,"runId":"${streamedRunId}"\\}`))
+      // The reserved identity is the one that was persisted, with the same
+      // ownership and permission state; a fresh conversation is standalone.
       expect(await new SessionIndex({ dataDir, workplaceDir }).list()).toEqual([
-        expect.objectContaining({ id: sessionId, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone', workspacePath: workplaceDir }),
+        expect.objectContaining({ id: boundSessionId, mode: 'workspace-write', permissionVersion: 2, scope: 'standalone', workspacePath: workplaceDir }),
       ])
     } finally {
       await server.stop()
