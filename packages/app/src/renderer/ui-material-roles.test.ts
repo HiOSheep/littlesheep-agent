@@ -86,8 +86,14 @@ const MATERIAL_ROLES: Record<string, { selectors: string[]; recipes: string[] }>
   },
   // Scrims dim the page behind a modal surface. They are not a material: no
   // content sits on them, so they keep their own small blur and their own fill.
+  // The settings canvas normally disables its page overlay, but a real
+  // DangerConfirmDialog remains a modal scrim and restores that same recipe.
   scrim: {
-    selectors: ['.overlay', '.project-creator-scrim'],
+    selectors: [
+      '.overlay',
+      '.project-creator-scrim',
+      '.settings-workspace .overlay.danger-confirm-overlay',
+    ],
     recipes: ['blur(8px)', 'blur(5px)'],
   },
 }

@@ -93,3 +93,19 @@ D3 修改只涉及设置页危险确认框样式、键盘弹窗验收夹具、�
 当前有充分证据证明共享操作、反馈语义、主题映射、诊断密度和大部分代表性页面符合 V1；设置页危险确认框是本批唯一证实并修复的整体视觉缺陷。除聊天第二轮独立阻断、键盘全流程未执行、危险清除动作被安全排除外，没有证据支持启动广泛局部 D2C，更没有依据启动大型 UI/UX V2。
 
 后续新增 Renderer UI 应直接遵循 `design-language-v1.md`：复用已有全局与语义 token；按真实消费者选择普通/主要/危险及紧凑操作角色；保留明确诊断/聊天/Composer/侧栏/设置密度差异；保证主题、键盘焦点、ARIA 与模态层一致；状态同时用文字/形状表达；在真实 Electron 中验证最终计算样式。不得只凭源码 token 出现就宣称视觉通过，也不得用跳过/放宽断言掩盖未验证状态。
+
+## 2026-10-18 干净提交复验
+
+复验从独立干净工作树的提交 `91f9cbffe59630e1e78ffe958fe1a02ab74daabc` 开始；Electron 44.4.5 的 App 由该提交源码新构建，构建指纹状态为 `built`。此后未改产品样式或组件，只补齐材质角色登记与本说明。
+
+| 验证 | 结果 |
+| --- | --- |
+| 完整键盘走查 | **passed**；125 个可达停点，设置返回 composer、inline approval、回到最新及完全访问层检查通过；危险操作未确认。 |
+| 设置↔聊天转场 | **passed**；草稿保留、键盘焦点返回、动画中断及 reduced-motion 检查通过。 |
+| 模态焦点专项 | **passed**；8/8 检查，Escape 只关闭最上层并恢复触发器焦点。 |
+| 共享 UI 角色 Electron | **passed**；98 项、0 失败；危险确认框深浅主题与取消路径通过；网站数据清除请求数为 0。 |
+| TypeScript / 仓库检查 | **passed**；全工作区 TypeScript exit 0；仓库检查 35 项通过、3 条 advisory、0 失败。 |
+| 材质角色登记 | 全量测试先发现 D3 modal scrim selector 未登记；补入 `scrim` 角色和 UI 角色说明后，`ui-material-roles.test.ts` **7/7 passed**。 |
+| `verify:full` | **failed at tests**；689 个测试文件中 677 passed、7 failed、5 skipped；4,981 个测试中 4,943 passed、7 failed、31 skipped。全量门禁因此未执行后续 typecheck、build、recovery 阶段。失败包含与本批无关的 run-stream API 断言和 Provider usage 去重期望；全量门禁不记为通过。 |
+
+材质角色修正只更新测试登记和说明，不改变 D3 的产品样式。全量测试记录由 `C:\Users\28971\AppData\Local\Temp\littlesheep-run-artifacts\verification-reports\latest.json` 保存；Electron 共享角色证据位于 `C:\Users\28971\AppData\Local\Temp\littlesheep-shared-ui-roles\evidence.json`。全量门禁失败不影响上述独立 Electron、TypeScript、仓库及 D3 定向断言的实际结果，但应作为当前主线更广回归风险披露。

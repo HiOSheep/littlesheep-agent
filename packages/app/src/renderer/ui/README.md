@@ -32,7 +32,7 @@ Glass identifies a floating surface. Long reading surfaces, code and dense setti
 | Floating panel | Sidebar and workspace surfaces that sit above the application canvas. |
 | Composer and menu | Frosted input overlay, floating task strip, the reach-latest droplet above the composer, transcript navigation, pickers, conversation resources and action menus. |
 | Workspace tab | A lighter glass layer for the active tab above the chat column and the chip that reopens a collapsed workspace. |
-| Scrim | Darkens the background behind a modal; it is not a content surface. |
+| Scrim | Darkens the background behind a modal; it is not a content surface. Settings page overlays stay transparent, except the `DangerConfirmDialog` modal, which restores the shared scrim recipe. |
 | Stable surface | Messages, conversation panels, code, settings canvas, lists and other dense reading areas. |
 
 The visual source lives in Renderer styles. The material-role test inventories backdrop-filter declarations so a new blur surface must have an explicit role.
