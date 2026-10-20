@@ -3,6 +3,7 @@
 ## 代码与边界
 
 - [仓库指南](repository-guide.md)：源码定位、package 职责和最少仓库规则。
+- [CI 门禁](ci-gates.md)：GitHub Actions 快速／完整两层门禁、Windows 主机与工具链、合成数据根引导、CI 配置正负路径校验及明确未覆盖能力。
 - [模块拆分地图](module-split-map.md)：当前 300/600 行文件登记及受控超限项，供 check:repo 校验。
 - [Core Flow 状态契约](core-flow-state-contract.md)：唯一状态转移 manifest、RunContext 所有权与生命周期。
 - [LCDA-01 全仓历史兼容与遗留代码审计](lcda-01-legacy-compatibility-audit-2026-10-16.md)：本地 main 的遗留执行路径、持久化兼容、无效配置、清理分类与 LCDA-02 分批方案。

@@ -26,6 +26,7 @@
     "ensure:workspace-build": "node scripts/ensure-workspace-artifacts.mjs",
     "assert:workspace-build": "node scripts/ensure-workspace-artifacts.mjs --assert",
     "check:repo": "node scripts/check-repository-hygiene.mjs && node scripts/sync-typescript-projects.mjs --check",
+    "verify:ci-config": "node scripts/verify-ci-workflows.mjs",
     "check:cache-acceptance": "node scripts/check-cache-acceptance.mjs",
     "sync:tsconfig": "node scripts/sync-typescript-projects.mjs",
     "start": "node packages/cli/dist/bin.js",
@@ -34,6 +35,7 @@
     "test:fast": "pnpm run test:core-eval",
     "test:full": "vitest run",
     "test:core-eval": "vitest run test/core-agent-contracts.test.ts packages/harness/src/e2e.test.ts packages/harness/src/stages/execute.test.ts packages/harness/src/stages/execute/evidence-settlement.test.ts packages/harness/src/stages/execute/runtime-evidence.test.ts packages/app/src/shared/history-activity.test.ts",
+    "test:ci-recovery": "vitest run packages/app/src/main/run-checkpoint-api.test.ts packages/app/src/main/run-recovery-authorization.test.ts packages/app/src/renderer/runtime-recovery/checkpoint-recovery-request.test.ts packages/app/src/renderer/runtime-recovery/checkpoint-recovery-state.test.ts packages/runner/src/durable-effect-lease-coordinator.test.ts packages/runner/src/durable-effect-lease-crash-worker.test.ts packages/runner/src/durable-effect-lease-recovery.test.ts packages/runner/src/durable-effect-lease-store.test.ts packages/runner/src/durable-effect-query.test.ts packages/runner/src/durable-event-store-concurrency.test.ts packages/runner/src/durable-event-store-crash-worker.test.ts packages/runner/src/durable-event-store.test.ts packages/runner/src/durable-harness-infrastructure.test.ts packages/runner/src/durable-inbox-crash-worker.test.ts packages/runner/src/durable-inbox-recovery.test.ts packages/runner/src/durable-inbox-store.test.ts packages/runner/src/durable-run-lease-crash-worker.test.ts packages/runner/src/durable-run-lease-heartbeat.test.ts packages/runner/src/durable-run-lease-recovery.test.ts packages/runner/src/durable-run-lease-store.test.ts packages/runner/src/durable-run-mode.test.ts packages/runner/src/durable-run-ownership.test.ts packages/runner/src/durable-run-recorder.test.ts packages/runner/src/durable-run-recovery.test.ts packages/runner/src/durable-runner-effect-crash-worker.test.ts packages/runner/src/durable-runner-effect-recovery.test.ts packages/runner/src/durable-runner-final-settlement-crash-worker.test.ts packages/runner/src/durable-runner-final-settlement-crash.test.ts packages/runner/src/durable-runner-no-progress-recovery-worker.test.ts packages/runner/src/durable-runner-no-progress-recovery.test.ts packages/runner/src/durable-runner-provider-request-crash-worker.test.ts packages/runner/src/durable-runner-provider-request-crash.test.ts packages/runner/src/durable-runner-segment-recovery-contender-worker.test.ts packages/runner/src/durable-runner-segment-recovery-policy.test.ts packages/runner/src/durable-runner-segment-recovery-worker.test.ts packages/runner/src/durable-runner-segment-recovery.test.ts packages/runner/src/durable-runner-task-outcome-crash-matrix.test.ts packages/runner/src/durable-runner-task-outcome-crash-worker.test.ts packages/runner/src/run-checkpoint-controller.test.ts packages/runner/src/run-checkpoint-disposition-store.test.ts packages/runner/src/run-checkpoint-store.test.ts packages/runner/src/run-checkpoint.test.ts packages/runner/src/session-restart-continuity.test.ts packages/runner/src/task-outcome-request.test.ts packages/runner/src/task-outcome-runner.test.ts packages/runner/src/task-outcome.test.ts packages/runner/src/vrs-verify-checkpoint-compat.test.ts",
     "test:watch": "vitest",
     "clean": "pnpm -r run clean && rimraf node_modules",
     "typecheck": "tsc -b tsconfig.workspace.json --pretty false",
@@ -165,6 +167,7 @@
     "rimraf": "^5.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0",
+    "yaml": "^2.9.1",
     "zod": "^3.23.0"
   }
 }

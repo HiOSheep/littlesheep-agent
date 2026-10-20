@@ -13,6 +13,8 @@
 ## 常用入口
 
 - `pnpm check:repo`：仓库卫生、文档导航、生成物、依赖方向与 TypeScript 项目引用检查。
+- `pnpm run verify:ci-config`：解析 `.github/workflows/` 并校验 CI 硬门策略（冻结锁文件、门禁不可跳过、无真实 Provider／GUI 声明、报告保留与合成数据根引导）。规则见 `docs/reference/ci-gates.md`；`scripts/verify-ci-workflows.test.mjs` 用临时变异副本证明每条违规都会被拒绝。
+- `node scripts/ci/prepare-ci-data-root.mjs --root=<临时目录> --json`：为 CI 或本地复现创建隔离合成数据根，输出 `LITTLESHEEP_DATA_DIR`／`LITTLESHEEP_DATA_LOCATOR`／`LITTLESHEEP_RUN_ARTIFACTS_DIR` 路径；拒绝写入仓库、拒绝覆盖无自身标记的目录。它只证明干净合成根上的恢复源审计通过，不是真实用户数据恢复证据。
 - `pnpm verify:task -- --files=<path>`：按改动路径选择局部测试与类型检查。
 - `pnpm verify:changed`、`pnpm verify:core`、`pnpm verify:full`：本地变更、核心和全量验证编排；各自覆盖面以 `package.json` 和执行摘要为准。
 - `pnpm run ensure:app-build` / `pnpm run assert:app-build`：分别准备或只检查 Electron 构建新鲜度。真实窗口门通常先准备构建；基线检查工具通常要求构建已新鲜。
@@ -60,6 +62,7 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 `node scripts/measure-session-history.mjs` 使用隔离的 240 条富文本历史与显示的 Electron，测量首次打开、缓存切换到绘制的时间，并检查更早内容分页后消息无重复、当前内容保留。数据与报告写入系统临时目录；耗时取决于本机和夹具，不代表所有用户对话。
 
 - `check-repository-hygiene.mjs` 与相邻测试拥有仓库导航和结构门禁。
+- `verify-ci-workflows.mjs` 与 `lib/ci-workflow-policy.mjs` 拥有 `.github/workflows/` 的 CI 硬门策略；`ci/` 只放 CI 引导（合成数据根），不是产品运行时入口。
 - `verify-*.mjs` / `measure-*.mjs` 拥有各自行为与测量的断言；实际输出记录在测试报告，不复制进本索引。
 - `scripts/lib/` 放多个门共享的隔离 Electron、Provider、产物路径和原生命中探针。
 - 自治实验脚本只服务对应活动任务书，不是产品发布门；预算、样本与结果保存在仓库外。

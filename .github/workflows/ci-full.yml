@@ -1,0 +1,108 @@
+# Full CI gate: every push to main and manual dispatch.
+#
+# This is the expensive half of the two-layer CI contract. It runs the complete
+# vitest suite, typecheck, the desktop build, and the data-root recovery audit
+# through `pnpm run verify:full`, plus an explicit Runner/VRS/S2B/S2C recovery
+# regression (`pnpm run test:ci-recovery`) and the fresh-build assertion. The
+# verification report is uploaded even when a gate fails.
+#
+# Clean-runner problem: `verify:full` includes `verify:app-recovery`, which fails
+# when the resolved user data root does not exist. A fresh GitHub runner has no
+# LittleSheep data root, so the workflow bootstraps an ISOLATED, SYNTHETIC root
+# in the runner temp area before the recovery gates run.
+#
+# Honest scope: that synthetic root proves the recovery audit accepts a clean,
+# well-formed data root. It is NOT real user-data recovery evidence, and it is
+# not a substitute for the Electron acceptance runs that need a real display.
+#
+# Policy: docs/reference/ci-gates.md. Enforced by `pnpm run verify:ci-config`.
+name: CI Full Gate
+
+on:
+  push:
+    branches: [main]
+  # Keep the gate manually triggerable for a re-run without a new push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A full run is the evidence trail for a main push: never cancel it mid-flight,
+# so even a failed run stays inspectable (and its report can be uploaded).
+concurrency:
+  group: ci-full-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  full-gate:
+    name: Full gate (windows-latest)
+    runs-on: windows-latest
+    # Full vitest + typecheck + desktop build + recovery audit; generous but
+    # still bounded so a hang cannot hold a runner indefinitely.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: '~\AppData\Local\electron\Cache'
+          key: electron-cache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-cache-${{ runner.os }}-
+
+      - name: Install pnpm (matches package.json packageManager)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Set up Node.js 26.4.0 (locally verified toolchain)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate CI workflow policy
+        run: pnpm run verify:ci-config
+
+      # Exports LITTLESHEEP_DATA_DIR, LITTLESHEEP_DATA_LOCATOR and
+      # LITTLESHEEP_RUN_ARTIFACTS_DIR through GITHUB_ENV. The script refuses to
+      # write inside the checkout or over an unmarked existing directory.
+      - name: Bootstrap isolated synthetic data root
+        run: node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
+
+      - name: Recovery source audit (clean synthetic data root)
+        run: pnpm run verify:app-recovery
+
+      - name: Runner/VRS/S2B/S2C recovery regression
+        run: pnpm run test:ci-recovery
+
+      - name: Full verification gate
+        run: pnpm run verify:full
+
+      - name: Assert desktop build is fresh
+        run: pnpm run assert:app-build
+
+      # The verification report lives in the runner temp area through
+      # LITTLESHEEP_RUN_ARTIFACTS_DIR. Upload always: a failed gate is exactly
+      # when the report matters, and a missing report is itself a failure.
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}/verification-reports
+          if-no-files-found: error
+          retention-days: 14

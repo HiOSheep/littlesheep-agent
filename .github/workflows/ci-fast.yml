@@ -1,0 +1,89 @@
+# Fast CI gate: every pull request and every push to main.
+#
+# This is the cheap, always-on half of the two-layer CI contract. It proves the
+# locked dependency graph installs, the code typechecks, repository hygiene and
+# the core cross-module regression suite pass, and — importantly — that this
+# workflow file itself still satisfies the CI policy. Weakening the gates in
+# either workflow therefore fails here, in the same run.
+#
+# The full gate (ci-full.yml) adds the complete vitest suite, the desktop build,
+# the recovery suites, and the verification report artifact.
+#
+# Policy: docs/reference/ci-gates.md. Enforced by `pnpm run verify:ci-config`
+# (scripts/lib/ci-workflow-policy.mjs). Do not add `continue-on-error`, `if:`
+# on gate steps, real-provider commands, or GUI/Electron claims here.
+name: CI Fast Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege: a gate only reads the checkout. No secrets are used, so no
+# provider credentials can leak into logs.
+permissions:
+  contents: read
+
+# Supersede an outdated run when the same branch/PR is pushed again.
+concurrency:
+  group: ci-fast-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Windows-first project: both gates run on windows-latest. pwsh is the default
+# GitHub Actions shell on Windows and appends the native command's exit code,
+# so each step below is exactly one command and cannot mask a failure.
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  fast-gate:
+    name: Fast gate (windows-latest)
+    runs-on: windows-latest
+    # A hung install/test must fail the gate instead of holding a runner.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The gate never pushes; keep the token out of the git config.
+          persist-credentials: false
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          # Electron's postinstall downloads a large platform binary. The cache
+          # is keyed on the lockfile so an Electron upgrade naturally misses.
+          path: '~\AppData\Local\electron\Cache'
+          key: electron-cache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-cache-${{ runner.os }}-
+
+      - name: Install pnpm (matches package.json packageManager)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+          # Only the explicit frozen-lockfile step may install dependencies.
+          run_install: false
+
+      - name: Set up Node.js 26.4.0 (locally verified toolchain)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.4.0'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate CI workflow policy
+        run: pnpm run verify:ci-config
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Repository hygiene and documentation navigation
+        run: pnpm run check:repo
+
+      - name: Core cross-module regression
+        run: pnpm run test:core-eval
