@@ -89,3 +89,12 @@
 - [RCD S3B 评测报告](rcd-s3b-evaluation-report-2026-10-17.md)：提交、受控结果、失败归因和未完成的真实模型验收。
 - [RCD S3B-R DeepSeek 真实模型报告](rcd-s3b-real-deepseek-report-2026-10-17.md)：冻结产品基线下四项真实模型任务的独立 Oracle 结果、资源计量和适用限制。
 - [RCD S3B-R DeepSeek 批次机器账本](rcd-s3b-real-deepseek-batch-2026-10-17.json)：逐次 Runner/Harness 运行、评测器指纹、Provider Usage、Oracle 及清理记录。
+- [RCD S3B-P01 实际轨迹审计](rcd-s3b-p01-trajectory-audit-2026-10-17.md)：首批四项真实任务的逐字段轨迹复核、证据充分性分级、证据缺口与已确认的字段级缺陷；未修改历史证据。
+- [RCD S3B-P01 审计机器账本](rcd-s3b-p01-audit-ledger-2026-10-17.json)：9 条尝试（有效 4 / 错误模型 ID 2 / 分派诊断 2 / 受控 1）的请求、工具、Effect、Usage、Oracle 与证据分级。
+- [RCD S3B-P02/P03 失败归因复盘](rcd-s3b-p02-p03-failure-attribution-2026-10-17.md)：FILE-02 字段契约五问与 DELIV-01 双维度复盘、证据等级、未来独立改进版本与 S1A 专项场景设计。
+- [RCD S3B-P02/P03 归因机器账本](rcd-s3b-p02-p03-attribution-ledger-2026-10-17.json)：逐任务归因、契约缺陷与改进建议；历史 Oracle 结果保持不变。
+- [RCD S3B-P04 真实 Provider 评测器防护强化](rcd-s3b-p04-provider-guard-hardening-2026-10-17.md)：模型映射、预检与任务入口一致性、确定性配置错误停止、不可重放状态、请求预算、Usage 与凭据脱敏的离线正负向测试。
+- [RCD S3B-P05 DELIV-02 产品缺陷评审](rcd-s3b-p05-deliv-02-product-review-2026-10-17.md)：完成声明与可信验收的界面区分评审、缺陷分级与最小修复建议；未修改生产代码。
+- [RCD S3B-P06 第二轮真实模型试验协议](rcd-s3b-p06-round2-protocol-2026-10-17.md)：重复试验、独立 workspace、机制与目标分离、预算、模型版本、Oracle 独立验收与授权闸门；未执行任何真实请求。
+- [RCD S3B-P 独立验证账本](rcd-s3b-p-verification-2026-10-17.json)：P04 的对抗性检查、回归门退出码、范围合规与验证发现（含发现与复核后的处置状态）。
+- [RCD S3B-P 复盘与可靠性收口报告](rcd-s3b-p-reliability-report-2026-10-17.md)：首批真实模型评测的可信结论与负面事实、归因与证据等级、评测层修复、下一轮阻塞项与优先级建议。

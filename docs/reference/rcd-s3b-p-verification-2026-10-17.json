@@ -1,0 +1,656 @@
+{
+  "reportId": "rcd-s3b-p-verification-2026-10-17",
+  "task": "task-6 — independent verification of task-3 (P04 provider guard hardening) + batch regression gates",
+  "verifiedAt": "2026-10-18T15:47:47+08:00",
+  "verifier": "verifier (independent; adversarial, no source or existing document modified)",
+  "worktree": "isolated git worktree (not a shared checkout)",
+  "branch": "codex/s3b-p-reliability-closure",
+  "baselineSha": "7a29444afa98f1e249fc29e330d6ae81355aab74",
+  "verifiedHeadSha": "7a29444afa98f1e249fc29e330d6ae81355aab74",
+  "verifiedWorkingTreeDirty": true,
+  "revisionUnderVerification": {
+    "task3Revision": 6,
+    "task3Status": "completed",
+    "owner": "provider-hardener",
+    "note": "Pass 2. The Lead reopened task-3 (revision 4) to fix the two findings raised in pass 1; the owner landed both fixes and completed at revision 6. All findings from pass 1 are retained below with their original evidence and an explicit status."
+  },
+  "networkPolicy": "No external network and no real Provider API call was made in either round. All Provider probes used injected fetchImpl or in-process fetch instrumentation against loopback/invalid endpoints.",
+  "verificationRounds": [
+    {
+      "round": 1,
+      "at": "2026-10-18T15:12:00+08:00 — 2026-10-18T15:30:22+08:00",
+      "subject": "task-3 revision 4 (pre-fix)",
+      "adversarialChecks": { "total": 48, "pass": 46, "fail": 2, "notRun": 0, "probeCases": 82 },
+      "failedChecks": ["A-model-slash-wireid-reachability", "D-concurrent-replay-bypass"],
+      "gates": { "green": 8, "red": 1, "redGate": "pnpm run check:repo (exit 1)" },
+      "findingsRaised": ["F1 (medium)", "F2 (low)", "F3 (low)", "F4 (info)", "F5 (info)"]
+    },
+    {
+      "round": 2,
+      "at": "2026-10-18T15:35:00+08:00 — 2026-10-18T15:47:47+08:00",
+      "subject": "task-3 revision 6 (post-fix) plus Lead-owned documentation/integration fixes",
+      "adversarialChecks": { "total": 49, "pass": 49, "fail": 0, "notRun": 0, "probeCases": 83 },
+      "failedChecks": [],
+      "gates": { "green": 10, "red": 0 },
+      "findingsResolved": ["F1", "F2", "F3", "F5"],
+      "findingsOpen": ["F4 (informational only)"]
+    }
+  ],
+  "changedFiles": [
+    { "path": "scripts/lib/s3b-provider-config.mjs", "status": "modified", "linesAdded": 249, "linesRemoved": 6, "owner": "task-3", "leadOwned": false, "inTask3WriteScope": true },
+    { "path": "scripts/lib/s3b-provider-config.d.mts", "status": "modified", "linesAdded": 69, "linesRemoved": 0, "owner": "task-3", "leadOwned": false, "inTask3WriteScope": true },
+    { "path": "scripts/s3b-eval.mjs", "status": "modified", "linesAdded": 34, "linesRemoved": 30, "owner": "task-3", "leadOwned": false, "inTask3WriteScope": true, "note": "Byte-identical between round 1 and round 2 (same numstat and mtime 15:01:32); the evaluator entry was not part of the pass-2 fix." },
+    { "path": "test/s3b-provider-metering.ts", "status": "modified", "linesAdded": 162, "linesRemoved": 34, "owner": "task-3", "leadOwned": false, "inTask3WriteScope": true },
+    { "path": "test/s3b-provider-metering.test.ts", "status": "modified", "linesAdded": 622, "linesRemoved": 1, "owner": "task-3", "leadOwned": false, "inTask3WriteScope": true },
+    { "path": "docs/reference/rcd-s3b-p04-provider-guard-hardening-2026-10-17.md", "status": "added_untracked", "owner": "task-3 (authored) + Lead (local-path removal)", "leadOwned": false, "inTask3WriteScope": true },
+    { "path": "scripts/README.md", "status": "modified", "linesAdded": 3, "linesRemoved": 1, "owner": "lead", "leadOwned": true, "inTask3WriteScope": false, "note": "Lead-owned integration fix documenting the new --preflight exit-code semantics and the guard rules. On the evaluator-artifact allowlist, so it does not set productSourceDirty, but it is a fingerprintFiles entry and therefore changes evaluatorFingerprint. Explicitly NOT a task-3 scope violation." },
+    { "path": "docs/reference/README.md", "status": "modified", "linesAdded": 7, "linesRemoved": 0, "owner": "lead", "leadOwned": true, "inTask3WriteScope": false, "note": "Lead-owned index links for the new P01/P02-P03/P04/P05/P06 documents; resolves the pass-1 docs-index hygiene failure." },
+    { "path": "docs/reference/rcd-s3b-p01-audit-ledger-2026-10-17.json", "status": "added_untracked", "owner": "trajectory-auditor (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p01-trajectory-audit-2026-10-17.md", "status": "added_untracked", "owner": "trajectory-auditor (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p02-p03-attribution-ledger-2026-10-17.json", "status": "added_untracked", "owner": "failure-attributor (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p02-p03-failure-attribution-2026-10-17.md", "status": "added_untracked", "owner": "failure-attributor (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p05-deliv-02-product-review-2026-10-17.md", "status": "added_untracked", "owner": "product-reviewer (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p06-round2-protocol-2026-10-17.md", "status": "added_untracked", "owner": "protocol-designer (other owner, expected)", "leadOwned": false, "inTask3WriteScope": false },
+    { "path": "docs/reference/rcd-s3b-p-verification-2026-10-17.json", "status": "added_untracked", "owner": "verifier (this report)", "leadOwned": false, "inTask3WriteScope": false }
+  ],
+  "scopeCompliance": {
+    "inScope": true,
+    "outOfScopePaths": [],
+    "task3WriteScopeViolations": [],
+    "productionPackagesModified": [],
+    "trackedDocsReferenceFilesModifiedByTask3": [],
+    "deletedOrWeakenedTestAssertions": [],
+    "leadOwnedChanges": ["scripts/README.md", "docs/reference/README.md", "docs/reference/rcd-s3b-p0*.md (local-path removal inside the untracked batch reports)"],
+    "nonTask3ChangesObservedDuringVerification": ["scripts/README.md", "docs/reference/README.md"],
+    "evidence": {
+      "packagesDiffCommand": "git diff --name-only -- packages/",
+      "packagesDiffOutput": "(empty)",
+      "fingerprintFilesUntouchedCommand": "git diff --name-only -- scripts/s3a-eval.mjs docs/reference/rcd-s3b-metrics-schema-2026-10-17.json",
+      "fingerprintFilesUntouchedOutput": "(empty)",
+      "trackedDocsModifiedByLead": "docs/reference/README.md (7 insertions, Lead-owned index links)",
+      "testAssertionCounts": {
+        "file": "test/s3b-provider-metering.test.ts",
+        "expectCallsBaseline": 26,
+        "expectCallsRound1": 148,
+        "expectCallsRound2": 168,
+        "deletedLinesInFile": 1,
+        "onlyDeletedLine": "import { resolveS3bProviderProfile } from '../scripts/lib/s3b-provider-config.mjs';",
+        "vitestReportedTestsRound1": 33,
+        "vitestReportedTestsRound2": 36,
+        "note": "The single deleted line in the test file is the replaced import statement in both rounds. No assertion, test title or expectation was removed; the pass-2 fix added three more tests (interleaving x2, slash-id pinning x1) and 20 more expect() calls."
+      },
+      "metricsSchemaSha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65"
+    }
+  },
+  "adversarialChecks": [
+    {
+      "id": "A-model-provider-mismatch",
+      "requirement": "Model mapping must reject an internal ref whose provider segment disagrees with the configured providerId.",
+      "attempt": "resolveProviderWireModel('other-provider/fixture-model-v1', 'fixture-provider', 'fixture-model-v1')",
+      "expected": "status=rejected, wireModelId=null",
+      "observed": "status=rejected; reason='internal model ref provider segment \"other-provider\" does not match the configured provider \"fixture-provider\"'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-prefix-residue",
+      "requirement": "A wire model id must not keep the providerId/ prefix residue.",
+      "attempt": "resolveProviderWireModel('fixture-provider/fixture-provider/fixture-model-v1', 'fixture-provider', 'fixture-model-v1')",
+      "expected": "status=rejected",
+      "observed": "status=rejected; reason='internal model ref keeps the provider prefix in the wire model id'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-nested-path",
+      "requirement": "A resolved wire id must not keep a nested path after the provider segment.",
+      "attempt": "resolveProviderWireModel('fixture-provider/vendor/model-v1', 'fixture-provider', 'vendor/model-v1')",
+      "expected": "status=rejected",
+      "observed": "status=rejected; reason='internal model ref keeps a nested path after the provider segment'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-empty-segment",
+      "requirement": "An empty model segment must be rejected, not silently passed through.",
+      "attempt": "resolveProviderWireModel('fixture-provider/', 'fixture-provider', 'fixture-model-v1')",
+      "expected": "status=rejected",
+      "observed": "status=rejected; reason='internal model ref has no model segment after the provider prefix'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-whitespace",
+      "requirement": "A model id containing whitespace must be rejected.",
+      "attempt": "resolveProviderWireModel('fixture-provider/model with space', 'fixture-provider', 'model with space')",
+      "expected": "status=rejected",
+      "observed": "status=rejected; reason='configured model is invalid: model id must not contain whitespace'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-overlong",
+      "requirement": "A model id longer than 200 characters must be rejected.",
+      "attempt": "resolveProviderWireModel('fixture-provider/<201 a characters>', 'fixture-provider', '<201 a characters>')",
+      "expected": "status=rejected",
+      "observed": "status=rejected; reason='configured model is invalid: model id must be at most 200 characters'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-slash-and-url",
+      "requirement": "A leading slash and an embedded URL scheme in the ref must be rejected.",
+      "attempt": "resolveProviderWireModel('/fixture-model-v1', ...) and resolveProviderWireModel('fixture-provider/https://evil.example/model', ...)",
+      "expected": "both status=rejected",
+      "observed": "first rejected ('provider segment \"\" does not match'); second rejected ('internal model ref must not contain whitespace or a URL')",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-resolve-happy-path",
+      "requirement": "The canonical provider/model ref and a bare matching wire id must each resolve to exactly one wire model id.",
+      "attempt": "resolveProviderWireModel('fixture-provider/fixture-model-v1','fixture-provider','fixture-model-v1') and resolveProviderWireModel('fixture-model-v1','fixture-provider','fixture-model-v1')",
+      "expected": "both status=resolved with wireModelId='fixture-model-v1'",
+      "observed": "both resolved, wireModelId='fixture-model-v1', reason=null",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "A-model-slash-wireid-reachability",
+      "requirement": "Adversarial: a slash-bearing wire model id must be rejected in every ref form, and that fail-closed rule must be documented accurately and pinned by a test (the Lead explicitly decided the rejection is intentional and must not be loosened).",
+      "attempt": "S3B_MODEL='meta-llama/Llama-3' resolved through (a) the default ref 'fixture-provider/meta-llama/Llama-3', (b) the bare ref 'meta-llama/Llama-3', (c) the double-prefixed ref; plus resolveS3bProviderProfile with that S3B_MODEL; plus reading the modelIdFacts doc comment and grepping for the named pinning test",
+      "expected": "all three ref forms rejected; profile ready=false; comment states the actual slash-free rule and marks it intentional; pinning test present",
+      "observed": "(a) rejected 'keeps a nested path after the provider segment'; (b) rejected 'provider segment \"meta-llama\" does not match'; (c) rejected 'keeps the provider prefix'. profile ready=false, state='configuration_error'. Comment now reads 'NOTE (actual rule, verified): an interior slash passes THIS check but cannot survive resolveProviderWireModel ... S3B therefore supports only wire model ids WITHOUT a slash today. That fail-closed rejection is intentional ... See the pinning test pins that a wire model id containing an interior slash is rejected as ambiguous.' Pinning test present; both FINDING-1 interleaving regression tests present.",
+      "result": "pass",
+      "previousResult": "fail",
+      "history": "Round 1 failed this check because the source comment claimed 'a single interior slash stays legal because vendor/model wire ids are a real convention' while no configuration path could actually resolve such an id (finding F2). The Lead rejected loosening the mapping; the pass-2 fix corrected the comment to the actual rule, marked the rejection intentional, and added the pinning test. Behaviour is unchanged and remains fail-closed; the check now passes against the corrected contract.",
+      "evidence": "Checks RE-F2a / RE-F2b / RE-F2c (round 2)"
+    },
+    {
+      "id": "A-profile-blank-model",
+      "requirement": "A blank S3B_MODEL must not pass preflight.",
+      "attempt": "resolveS3bProviderProfile({...valid fixture env, S3B_MODEL: '   '})",
+      "expected": "ready=false, state='configuration_error'",
+      "observed": "ready=false, state='configuration_error'",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "B-endpoint-legality",
+      "requirement": "Endpoint legality: HTTP only for loopback, no userinfo, no unsupported protocol, malformed URL rejected, loopback HTTP still allowed.",
+      "attempt": "12 S3B_BASE_URL values with an otherwise fully valid fixture env: http://example.com/v1; https://user:pass@provider.fixture/v1; ftp://provider.fixture/v1; http://127.0.0.1:8080/v1; http://localhost:8080/v1; http://[::1]:8080/v1; http://127.0.0.1.evil.com/v1; 'not a url'; https://provider.fixture/v1; http://0.0.0.0/v1; https://provider.fixture@evil.com/v1; HTTP://127.0.0.1:8080/v1",
+      "expected": "example.com, both userinfo forms, ftp, loopback-lookalike, malformed and 0.0.0.0 rejected; 127.0.0.1, localhost, [::1], https and uppercase-HTTP-loopback accepted",
+      "observed": "rejected: example.com ('HTTPS required'), user:pass (endpointHasUserinfo=true, endpointOrigin=null), ftp, 127.0.0.1.evil.com, 'not a url' (endpointKind='invalid'), 0.0.0.0, provider.fixture@evil.com (endpointHasUserinfo=true). accepted: 127.0.0.1 (loopback), localhost (loopback), [::1] (loopback), https (kind 'https'), HTTP://127.0.0.1:8080 (normalized to loopback). 12/12 matched expectation.",
+      "result": "pass",
+      "evidence": "In-process import of scripts/lib/s3b-provider-config.mjs (rounds 1 and 2)"
+    },
+    {
+      "id": "B-preflight-clean-offline",
+      "requirement": "--preflight with no S3B_* configuration must exit 1 with state=configuration_error and must not touch the network.",
+      "attempt": "in-process node run with all S3B_* removed, argv=['--preflight'], globalThis.fetch instrumented with a call counter",
+      "expected": "exitCode=1, state='configuration_error', deterministicConfigurationError=true, liveCallsMade=false, fetchCalls=0",
+      "observed": "exitCode=1; state='configuration_error'; realProviderStatus='real_provider_pending'; liveCallsMade=false; deterministicConfigurationError=true; provider.ready=false; 9 missing entries; fetchCalls=0; no ledger written",
+      "result": "pass",
+      "evidence": "Intended new behaviour, deliberately verified rather than treated as a failure. Reproduced in round 1 and round 2; also via the real CLI: PREFLIGHT_EXIT=1 in both rounds."
+    },
+    {
+      "id": "B-preflight-valid-offline",
+      "requirement": "--preflight with a complete valid configuration must exit 0 and still make no request.",
+      "attempt": "same harness with the full fixture env",
+      "expected": "exitCode=0, state='ready_for_user_authorization', fetchCalls=0",
+      "observed": "exitCode=0; state='ready_for_user_authorization'; liveCallsMade=false; deterministicConfigurationError=false; provider.ready=true; fetchCalls=0",
+      "result": "pass",
+      "evidence": "In-process s3b-eval.mjs import with instrumented globalThis.fetch (rounds 1 and 2)"
+    },
+    {
+      "id": "B-preflight-mapping-mismatch",
+      "requirement": "Preflight must treat an unresolvable internal model ref as a deterministic configuration error.",
+      "attempt": "valid fixture env + S3B_MODEL_REF='other-provider/fixture-model-v1', --preflight",
+      "expected": "exitCode=1, state='configuration_error', modelMapping.status='rejected'",
+      "observed": "exitCode=1; state='configuration_error'; provider.ready=false; modelMapping.status='rejected' (provider segment mismatch); fetchCalls=0",
+      "result": "pass",
+      "evidence": "Verified in round 1 (in-process s3b-eval.mjs import with instrumented fetch). Not re-executed in round 2; scripts/s3b-eval.mjs is byte-identical between rounds (numstat 34/30, mtime 15:01:32), and the round-2 CLI --preflight run confirms the same state machine."
+    },
+    {
+      "id": "B-runreal-config-error-consistency",
+      "requirement": "When --preflight would report a deterministic configuration error, --run-real must refuse before any network send, retry or budget increment.",
+      "attempt": "valid fixture env with S3B_API_KEY removed, S3B_REAL_PROVIDER_AUTHORIZED set, argv ['--run-real','--task=CODE-01','--trial=1','--authorize-live','--max-cost-usd=1.25','--output=<temp>']",
+      "expected": "exitCode=1 with the refusal message, fetchCalls=0, child spawns=0, no ledger written",
+      "observed": "exitCode=1; stderr='S3B deterministic configuration error; refusing before any Provider request: S3B_API_KEY'; fetchCalls=0; spawnCalls=0; ledgerWritten=false",
+      "result": "pass",
+      "evidence": "In-process s3b-eval.mjs import; globalThis.fetch and child_process.spawnSync instrumented (both counters validated by the control below). --output pointed at a temp path so no tracked ledger could be written. Rounds 1 and 2."
+    },
+    {
+      "id": "B-runreal-mapping-error-consistency",
+      "requirement": "The same wire-model mapping that --preflight validates must also stop --run-real before any Provider request.",
+      "attempt": "valid fixture env + S3B_MODEL_REF='other-provider/fixture-model-v1' + acknowledgement + --authorize-live + --run-real",
+      "expected": "exitCode=1 with the S3B_MODEL_REF deterministic error, fetchCalls=0, spawnCalls=0",
+      "observed": "exitCode=1; stderr='S3B deterministic configuration error; refusing before any Provider request: S3B_MODEL_REF (internal model ref must resolve unambiguously ... provider segment \"other-provider\" does not match ...)'; fetchCalls=0; spawnCalls=0; ledgerWritten=false",
+      "result": "pass",
+      "evidence": "In-process s3b-eval.mjs import with instrumented fetch and spawnSync. Rounds 1 and 2."
+    },
+    {
+      "id": "B-runreal-missing-acknowledgement",
+      "requirement": "Direct user authorization must remain an independent first gate, separate from configuration validity.",
+      "attempt": "valid fixture env without S3B_REAL_PROVIDER_AUTHORIZED, argv --run-real ... --authorize-live",
+      "expected": "exitCode=1 with the unchanged acknowledgement message, no Provider request",
+      "observed": "exitCode=1; stderr='Missing S3B_REAL_PROVIDER_AUTHORIZED acknowledgement.'; fetchCalls=0; ledgerWritten=false",
+      "result": "pass",
+      "evidence": "Verified in round 1 (in-process s3b-eval.mjs import with instrumented fetch). Not re-executed in round 2; scripts/s3b-eval.mjs is byte-identical between rounds."
+    },
+    {
+      "id": "B-runreal-budget-argument-mismatch",
+      "requirement": "The live entry must still reject a --max-cost argument that does not exactly match the configured budget.",
+      "attempt": "valid fixture env + acknowledgement + --authorize-live --max-cost-usd=9.99 while S3B_MAX_COST_USD=1.25",
+      "expected": "exitCode=1 with the budget mismatch message, no Provider request",
+      "observed": "exitCode=1; stderr='--max-cost-usd must exactly match the configured S3B cost budget.'; fetchCalls=0; spawnCalls=0; ledgerWritten=false",
+      "result": "pass",
+      "evidence": "Verified in round 1 (in-process s3b-eval.mjs import with instrumented fetch and spawnSync). Not re-executed in round 2; scripts/s3b-eval.mjs is byte-identical between rounds."
+    },
+    {
+      "id": "B-instrumentation-controls",
+      "requirement": "The no-network and no-child-spawn conclusions are only meaningful if the instrumentation itself is proven to fire.",
+      "attempt": "control: globalThis.fetch('http://127.0.0.1:1/verify-control') and child_process.spawnSync(process.execPath, ['-e','0']) under the same instrumentation",
+      "expected": "fetchCalls=1 and spawnCalls=1",
+      "observed": "fetchCalls=1; spawnCalls=1 (both rounds)",
+      "result": "pass",
+      "evidence": "Both counters are proven live, so fetchCalls=0 / spawnCalls=0 in the refusal scenarios is real negative evidence. net.Socket.prototype.connect instrumentation did NOT register the control fetch, so socket counting is reported as unreliable and is not used as evidence."
+    },
+    {
+      "id": "D-nonretryable-statuses-pinned-policy",
+      "requirement": "A local mock Provider returning 400/401/403/404/422 must produce exactly one physical request under the pinned transport retry policy.",
+      "attempt": "for each status in {400,401,403,404,422}: profile with S3B_MAX_ATTEMPTS=3, mock fetchImpl returning that status, NO retry override",
+      "expected": "fetch called 1x, physicalProviderRequests=1, nonRetryableResponses=1, call rejected",
+      "observed": "400/401/403/404/422 each: fetchCalls=1, physical=1, nonRetryable=1, suppressed=0, retryPolicyStatuses=[429,500,502,503,504], call rejected. 5/5.",
+      "result": "pass",
+      "previousResult": "pass (round 1 used the widened-override variant; round 2 adds the authoritative no-override path)",
+      "evidence": "Checks RE-D400/RE-D401/RE-D403/RE-D404/RE-D422 (round 2); createS3bMeasuredProvider imported from test/s3b-provider-metering.ts via a node resolve hook aliasing @littlesheep/llm to packages/llm/dist"
+    },
+    {
+      "id": "D-nonretryable-statuses-widened-policy",
+      "requirement": "A deterministic 4xx must still produce exactly one physical request even when a hostile retry policy is widened to replay it.",
+      "attempt": "for each status in {400,404,422}: retryOverrides={retryableStatuses:[status]}, S3B_MAX_ATTEMPTS=3",
+      "expected": "fetch called 1x, suppressedNonRetryableReplays=1",
+      "observed": "400: fetch=1, suppressed=1, retryPolicy=[400]. 404: fetch=1, suppressed=1. 422: fetch=1, suppressed=1.",
+      "result": "pass",
+      "evidence": "Checks RE-D2-400/RE-D2-404/RE-D2-422 (round 2)"
+    },
+    {
+      "id": "D-retry-control-500",
+      "requirement": "Control: the count-1 results above are only meaningful if a genuinely retryable status is still retried.",
+      "attempt": "HTTP 500 with S3B_MAX_ATTEMPTS=3 and no override",
+      "expected": "fetch called 3x",
+      "observed": "fetchCalls=3, physical=3, statuses [500,500,500]",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "D-poison-scope",
+      "requirement": "The deterministic-status poison must be scoped to one logical call so a single 400 does not brick later calls.",
+      "attempt": "call 1 -> 400 (widened policy, maxAttempts=2), then call 2 -> 200",
+      "expected": "call 1 rejected, call 2 resolves, 2 physical requests total",
+      "observed": "call 1 rejected; call 2 content='ok'; fetchCalls=2; physical=2",
+      "result": "pass",
+      "evidence": "Round 1 (per-call poison) and round 2 (AsyncLocalStorage per-call poison)"
+    },
+    {
+      "id": "D-concurrent-replay-bypass",
+      "requirement": "Adversarial: a deterministic 400 must never be replayed, even when a second logical call interleaves with the first call's retry backoff window.",
+      "attempt": "RE-F1a reproduces the round-1 failing probe exactly: budget=8, maxAttempts=2, retryOverrides={retryableStatuses:[400]}, call A receives HTTP 400 (replay scheduled after the ~500 ms backoff), call B starts 120 ms later and returns 200. RE-F1b is a deterministic variant in which B is awaited from inside A's first fetchImpl invocation. RE-F1c overlaps three calls. RE-F1d bounds the same scenario with budget=1.",
+      "expected": "total fetchImpl invocations = 2 for RE-F1a/RE-F1b (A's first attempt + B); A rejected; suppressedNonRetryableReplays=1",
+      "observed": "RE-F1a: aOutcome='A_rejected:S3B suppressed a Provider request replay after a non-retryable response.', bOutcome='B_resolved', fetchImplInvocations=2, statuses [400,200], suppressed=1. RE-F1b: A rejected, B resolved, invocations=2, statuses [200,400], suppressed=1. RE-F1c: outcomes [A_rejected,B_resolved,C_resolved], invocations=3, suppressed=1. RE-F1d: invocations=1, physical=1, blocked=1, budgetExhausted=true.",
+      "result": "pass",
+      "previousResult": "fail",
+      "history": "Round 1 failed this check with fetchCalls=3, statuses [400,200,200], suppressedNonRetryableReplays=0 and aOutcome='A_resolved' (finding F1): the poison was a single transport-global field cleared by any new logical call. The pass-2 fix pins retryableStatuses per logical call at createLlmClient and moves the poison into an AsyncLocalStorage store owned by each logical call (test/s3b-provider-metering.ts:126-152, 284-311). The exact original reproduction now behaves correctly.",
+      "evidence": "Checks RE-F1a / RE-F1b / RE-F1c / RE-F1d (round 2)"
+    },
+    {
+      "id": "E-budget-failed-attempt",
+      "requirement": "A failed physical attempt must still consume a budget slot, and the next attempt must be blocked before dispatch.",
+      "attempt": "S3B_MAX_PHYSICAL_REQUESTS=1; attempt 1 fetchImpl throws TypeError('fetch failed'); attempt 2 is a second logical call",
+      "expected": "after attempt 1: physical=1, blocked=0; after attempt 2: physical stays 1, blocked=1, budgetExhausted=true",
+      "observed": "after first: physical=1, blocked=0, physicalResponses=[{attempt:1,status:null,endpointOrigin:'https://provider.fixture'}]; after second: physical=1, blocked=1, budgetExhausted=true; fetchCalls=1",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "E-budget-retried-attempts",
+      "requirement": "Every retried physical attempt, including failures, must be metered and must never exceed the configured budget.",
+      "attempt": "S3B_MAX_PHYSICAL_REQUESTS=3, S3B_MAX_ATTEMPTS=2, both attempts HTTP 500",
+      "expected": "physical=2 <= budget 3, blocked=0",
+      "observed": "fetchCalls=2; physical=2; blocked=0; budgetExhausted=false; both attempts recorded with status 500",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "E-budget-adversarial-4xx",
+      "requirement": "Adversarial: a deterministic 4xx plus a widened retry policy must not push the physical request count past the configured budget.",
+      "attempt": "S3B_MAX_PHYSICAL_REQUESTS=1, S3B_MAX_ATTEMPTS=3, HTTP 400 with a widened policy, then a second logical call",
+      "expected": "physical stays 1, blocked=1, budgetExhausted=true",
+      "observed": "fetchCalls=1; physical=1; blocked=1; budgetExhausted=true",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2 (round 2 uses retryOverrides={retryableStatuses:[400]})"
+    },
+    {
+      "id": "F-usage-missing",
+      "requirement": "A successful response with no usage must report status=unavailable with null token fields.",
+      "attempt": "HTTP 200 body without a usage field",
+      "expected": "usage.status='unavailable'; input/output/cached tokens null; responsesWithoutUsage=1",
+      "observed": "content='ok'; usage={status:'unavailable',inputTokens:null,outputTokens:null,cachedInputTokens:null,responseCount:1}; responsesWithoutUsage=1; providerResponseReceipts=1",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "F-usage-partial-no-fabrication",
+      "requirement": "Adversarial: a partial usage receipt must not fabricate the missing token counts.",
+      "attempt": "HTTP 200 with usage={completion_tokens:7} only",
+      "expected": "usage.status='unavailable'; tokens null",
+      "observed": "usage={status:'unavailable',inputTokens:null,outputTokens:null,cachedInputTokens:null}; responsesWithoutUsage=1",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "F-usage-complete-control",
+      "requirement": "Control: a complete usage receipt still reports available with the real numbers.",
+      "attempt": "HTTP 200 with usage={prompt_tokens:11, completion_tokens:3, prompt_tokens_details:{cached_tokens:2}}",
+      "expected": "usage.status='available' with 11/3/2",
+      "observed": "usage={status:'available',inputTokens:11,outputTokens:3,cachedInputTokens:2,responseCount:1}",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "G-sanitize-text",
+      "requirement": "No snapshot, error message or ledger text may contain the API key, an Authorization header value or a Bearer token.",
+      "attempt": "16 sanitizeS3bText inputs: 'Authorization: Bearer <secret>'; 'Authorization:Bearer <secret>'; '{\"Authorization\":\"Bearer <secret>\"}'; \"authorization = 'Bearer <secret>'\"; 'api-key: <secret>'; 'x-api-key: <secret>'; 'X-Api-Key: <secret>'; 'x-goog-api-key: <secret>'; 'proxy-authorization: Basic <secret>'; 'access_token=<secret>'; 'refresh_token: <secret>'; 'x-auth-token: <secret>'; 'Bearer <secret>'; 'bearer <secret>'; JSON error body echoing <secret>; 'key=<secret>'",
+      "expected": "no occurrence of the secret in any output; [redacted] in all credential-labelled forms",
+      "observed": "16/16 outputs contain no occurrence of the secret; credential-labelled forms emit [redacted] (e.g. 'Authorization: Bearer [redacted]', 'x-goog-api-key: [redacted]', 'Bearer [redacted]')",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; secret 'sk-live-0123456789abcdef'"
+    },
+    {
+      "id": "G-sanitize-metachar-secret",
+      "requirement": "A secret containing regex metacharacters must still be removed literally.",
+      "attempt": "sanitizeS3bText('Authorization: Bearer sk-a+b(c)[d]{e}^$|.\\\\*?', '<same secret>')",
+      "expected": "no occurrence of the secret",
+      "observed": "output 'Authorization: Bearer [redacted]'; secret absent",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; replaceAll performs a literal replacement"
+    },
+    {
+      "id": "G-prefix-leak-baseline",
+      "requirement": "Confirm the pre-fix redaction regex really leaked the key, so the change addresses a real defect rather than a cosmetic one.",
+      "attempt": "apply the baseline regex /(authorization|api[-_]?key|token)(\\s*[:=]\\s*)[^\\s,;]+/ to 'Authorization: Bearer <secret>'",
+      "expected": "the secret survives in the pre-fix output (leak reproduced)",
+      "observed": "pre-fix output 'Authorization: [redacted] sk-live-0123456789abcdef' — the key survives because [^\\s,;]+ stops at the space after 'Bearer'",
+      "result": "pass",
+      "evidence": "Round 1; the baseline regex is reproduced verbatim from the p04 doc's problem statement"
+    },
+    {
+      "id": "G-metering-error-echo",
+      "requirement": "A Provider echoing the key in an error body must not leak it into the thrown error, the snapshot or the structured error facts.",
+      "attempt": "HTTP 401 body {error:{code:<secret>,type:'invalid_api_key',param:<secret>,message:'Authorization: Bearer <secret> was rejected'}} with S3B_API_KEY=<secret>",
+      "expected": "no occurrence of the secret in the error message or the snapshot; errorCode/errorParam null; the key was genuinely sent on the wire",
+      "observed": "error.message='Authorization: Bearer [redacted] was rejected'; messageHasSecret=false; snapshotHasSecret=false; error.status=401; physicalResponses[0]={status:401,errorCode:null,errorType:'invalid_api_key',errorParam:null}; keyWasSent=true",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; keyWasSent=true proves the redaction assertions are meaningful"
+    },
+    {
+      "id": "G-metering-model-echo",
+      "requirement": "Adversarial: a Provider echoing the key in the response model field must not leak it into responseModelIds.",
+      "attempt": "HTTP 200 body with model='Bearer <secret>'",
+      "expected": "no occurrence of the secret anywhere in the snapshot",
+      "observed": "responseModelIds=['Bearer [redacted]']; snapshotHasSecret=false",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "H-deliv01-no-misattribution",
+      "requirement": "The DELIV-01 shape (oracle failed + contentMatches true) must no longer produce a high-confidence artifact_wrong_or_missing.",
+      "attempt": "classifyFailure({infrastructureStatus:'executed', oracle:{result:'failed', taskResult:'failed', evidence:[{path:'result.txt',sha256:'...'}], details:{status:'failed',evaluationCheck:'failed',validationFailure:false,fixtureExecutions:1,contentMatches:true}}, observation:{}})",
+      "expected": "primary='unknown', confidence='low', secondary includes oracle_failed_on_unmet_task_precondition",
+      "observed": "primary='unknown'; confidence='low'; secondary=['oracle_failed_on_unmet_task_precondition','artifact_content_matched']; evidenceRefs=['fixture://result.txt']; reason='oracle failed on an unmet process precondition; the independently read artifact matched'",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "H-no-artifact-evidence",
+      "requirement": "A failed Oracle with no artifact-wrongness evidence must be unknown/low with an explicit machine-readable code.",
+      "attempt": "classifyFailure({infrastructureStatus:'executed', oracle:{result:'failed', evidence:['result.txt']}, observation:{}})",
+      "expected": "primary='unknown', confidence='low', secondary=['oracle_failed_without_artifact_wrongness_evidence']",
+      "observed": "primary='unknown'; confidence='low'; secondary=['oracle_failed_without_artifact_wrongness_evidence']",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "H-genuinely-wrong-control",
+      "requirement": "Control: a genuinely wrong artifact must still be attributed artifact_wrong_or_missing.",
+      "attempt": "classifyFailure({... oracle.details={contentMatches:false, validationFailure:true}})",
+      "expected": "primary='artifact_wrong_or_missing', confidence='high'",
+      "observed": "primary='artifact_wrong_or_missing'; confidence='high'; secondary=[]; reason=null",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; the change weakens only the unsupported claim, not the supported one"
+    },
+    {
+      "id": "H-declared-attribution-control",
+      "requirement": "Control: an Oracle-declared failureAttribution still wins over the heuristic.",
+      "attempt": "oracle.failureAttribution={primary:'insufficient_verification', secondary:['strict_requirement_parser_did_not_recognize_task_text'], confidence:'high'} with details.contentMatches=true",
+      "expected": "primary='insufficient_verification', confidence='high'",
+      "observed": "primary='insufficient_verification'; confidence='high'; secondary preserved",
+      "result": "pass",
+      "evidence": "Round 1"
+    },
+    {
+      "id": "H-observation-precedence-control",
+      "requirement": "Control: the observation precedence order and the null case are preserved.",
+      "attempt": "infrastructureStatus='blocked'; provider physicalResponses [{status:500}]; deniedToolCalls=2; unknownEffects=1; failedToolCalls=1; oracle.result='unverified'",
+      "expected": "evaluation_infrastructure / network_or_external_service / permission_or_safety / recovery_or_settlement / tool_parameter_or_schema / null",
+      "observed": "evaluation_infrastructure (high); network_or_external_service (high); permission_or_safety (high); recovery_or_settlement (high); tool_parameter_or_schema (medium); null",
+      "result": "pass",
+      "evidence": "Round 1"
+    },
+    {
+      "id": "H-contradictory-details",
+      "requirement": "Adversarial: contradictory details (artifactPresent:false together with contentMatches:true) must not assert artifact wrongness.",
+      "attempt": "classifyFailure({... oracle:{result:'failed', details:{artifactPresent:false, contentMatches:true}}})",
+      "expected": "primary='unknown'",
+      "observed": "primary='unknown'; confidence='low'; secondary=['oracle_failed_on_unmet_task_precondition','artifact_content_matched']",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; the positive 'matched' evidence is evaluated before the negative signals"
+    },
+    {
+      "id": "H-malformed-details-fail-safe",
+      "requirement": "Adversarial: malformed or string-typed details must fail safe to unknown/low instead of crashing or asserting wrongness.",
+      "attempt": "details as an array; details as a string 'contentMatches:true'; details as {contentMatches:'true'}",
+      "expected": "all three -> primary='unknown', confidence='low'",
+      "observed": "all three -> primary='unknown', confidence='low', secondary=['oracle_failed_without_artifact_wrongness_evidence']; no exception thrown",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "H-fixture-executions-zero-control",
+      "requirement": "Control: fixtureExecutions=0 remains positive evidence of a missing artifact.",
+      "attempt": "classifyFailure({... oracle:{result:'failed', details:{fixtureExecutions:0}}})",
+      "expected": "primary='artifact_wrong_or_missing'",
+      "observed": "primary='artifact_wrong_or_missing'; confidence='high'",
+      "result": "pass",
+      "evidence": "Round 1"
+    },
+    {
+      "id": "H-schema-projection-compatibility",
+      "requirement": "The ledger projection must satisfy the frozen metrics schema: failureAttribution is additionalProperties:false, so the human-readable reason must not be placed inside it.",
+      "attempt": "validate the exact normalizeRecord projection {primary:'unknown',secondary:[...],evidenceRefs:[...],confidence:'low'} against docs/reference/rcd-s3b-metrics-schema-2026-10-17.json $defs/failureAttribution; validate the rejected alternative that adds a 'reason' key; check the root schema for the failureAttributionReason placement",
+      "expected": "projection valid; 'reason' inside rejected; root allows extra properties; 'unknown' and 'low' in the enums; secondary items unconstrained strings",
+      "observed": "projectionErrors=[]; withReasonErrors=['$: additional property reason not allowed']; rootAdditionalProperties=true; failureAttributionAdditionalProperties=false; primary enum includes 'unknown'; confidence enum includes 'low'; secondary items type=string with no enum; failureAttribution allows null; 'failureAttributionReason' not in root required",
+      "result": "pass",
+      "evidence": "Round 1; schema read from the frozen file (sha256 dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65, unchanged in round 2) with a draft-2020-12 subset validator"
+    },
+    {
+      "id": "S-status-sets-pinned",
+      "requirement": "The non-retryable and retryable status sets must be exactly as specified and frozen, not inherited from the product default.",
+      "attempt": "read NON_RETRYABLE_PROVIDER_STATUSES and RETRYABLE_PROVIDER_STATUSES and probe isNonRetryableProviderStatus on each",
+      "expected": "[400,401,403,404,422] and [429,500,502,503,504], both frozen",
+      "observed": "non=[400,401,403,404,422]; retry=[429,500,502,503,504]; Object.isFrozen=true for both; isNonRetryableProviderStatus true for all five; the metered transport hands the pinned set to createLlmClient (snapshot.retryPolicyStatuses reflects it)",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "S-scope-packages-untouched",
+      "requirement": "No production packages/** file may be modified by task-3.",
+      "attempt": "git diff --name-only -- packages/ and full git status --porcelain --untracked-files=all",
+      "expected": "no packages/** path in either output",
+      "observed": "git diff --name-only -- packages/ is empty; the untracked list contains only docs/reference/*.md and *.json; no packages/** path appears",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2; no production Runtime/Harness/Tools/Prompt file was touched"
+    },
+    {
+      "id": "S-scope-tracked-docs-unmodified-by-task3",
+      "requirement": "No existing file under docs/reference may be modified by task-3.",
+      "attempt": "git diff --name-only -- docs/ plus attribution of each modified path",
+      "expected": "no task-3 modification of a tracked docs/reference file",
+      "observed": "docs/reference/README.md is modified, attributed to the Lead (7 index-link insertions, leadOwned: true, out of task-3 scope). No other tracked docs/reference file is modified; every other docs/reference change in this batch is a new untracked file.",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "S-scope-no-assertion-removed",
+      "requirement": "No existing test or security assertion may be deleted or weakened.",
+      "attempt": "git diff -U0 -- test/ (deleted-line listing), git diff --numstat, and expect() counts baseline vs working tree",
+      "expected": "no deleted assertion lines; assertion count increases only",
+      "observed": "the only deleted line in test/s3b-provider-metering.test.ts is the replaced import statement (622 added / 1 removed in round 2); expect() 26 -> 148 (round 1) -> 168 (round 2); vitest reports 33 tests (round 1) then 36 (round 2), up from 8. Deletions in test/s3b-provider-metering.ts are implementation refactors only, with no assertion lines.",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2"
+    },
+    {
+      "id": "S-scope-fingerprint-inputs-untouched-by-task3",
+      "requirement": "The frozen fingerprint inputs that task-3 was not allowed to touch must be unmodified.",
+      "attempt": "git diff --name-only -- scripts/s3a-eval.mjs docs/reference/rcd-s3b-metrics-schema-2026-10-17.json",
+      "expected": "empty",
+      "observed": "(empty) — both unmodified; metrics schema sha256 remains dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65",
+      "result": "pass",
+      "evidence": "Rounds 1 and 2. scripts/README.md is a separate, Lead-owned case (see finding F5)."
+    }
+  ],
+  "gates": [
+    {
+      "command": "pnpm exec vitest run test/s3a-task-adapters.test.ts test/s3b-task-adapters.test.ts test/s3b-live-task-trials.test.ts test/s3b-provider-metering.test.ts",
+      "exitCode": 0,
+      "summary": "Round 2 (final): Test Files 4 passed (4); Tests 48 passed (48); Duration 10.61s. Per file: s3b-provider-metering.test.ts 36 tests (33 in round 1), s3a-task-adapters.test.ts 4, s3b-task-adapters.test.ts 4, s3b-live-task-trials.test.ts 4. No failures, no skips reported."
+    },
+    {
+      "command": "node scripts/s3b-eval.mjs --suite",
+      "exitCode": 0,
+      "summary": "suiteId='LS-RCD-S3A-REAL-TASKS-12'; taskDefinitions=12; adapterCount=8; s3aTaskSuiteSha256=b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec; extensionSha256=8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8. Identical to round 1 and to the p04 doc's recorded hashes."
+    },
+    {
+      "command": "node scripts/s3b-eval.mjs --preflight  (with all S3B_* variables removed)",
+      "exitCode": 1,
+      "summary": "INTENDED new behavior, deliberately verified rather than treated as a failure. state='configuration_error'; realProviderStatus='real_provider_pending'; liveCallsMade=false; deterministicConfigurationError=true; authorizationPending=true; provider.ready=false; 9 missing entries. No network call: the in-process instrumented run recorded fetchCalls=0. Identical in rounds 1 and 2."
+    },
+    {
+      "command": "node scripts/s3b-eval.mjs --verify-provider-metering",
+      "exitCode": 0,
+      "summary": "Round 2: externalNetwork=false; inner vitest exitCode=0; Test Files 1 passed (1); Tests 36 passed (36) (33 in round 1); outputSha256=4efbb4c1c48ee469b71157188228783df6b4de3931ab4ae02e7159cf96b29642. The digest varies per run because it covers vitest's timing text (see F4)."
+    },
+    {
+      "command": "pnpm exec vitest run packages/types/src/task-outcome.test.ts packages/runner/src/task-outcome.test.ts packages/runner/src/task-outcome-runner.test.ts packages/runner/src/task-outcome-request.test.ts packages/runner/src/run-failure-result.test.ts packages/tools/src/tool-execution-service.test.ts packages/tools/src/tool-execution-scheduler.test.ts packages/tools/src/workspace-file-guard.test.ts packages/harness/src/stages/execute/evidence-settlement.test.ts packages/harness/src/stages/execute/runtime-evidence.test.ts",
+      "exitCode": 0,
+      "summary": "Round 2: Runner/Tools/Outcome regression (self-located: task-outcome in types/runner, run-failure-result, tool execution service/scheduler, workspace file guard, evidence settlement, runtime evidence). Test Files 10 passed (10); Tests 84 passed (84); Duration 43.29s. Round 1 also 84/84 exit 0."
+    },
+    {
+      "command": "pnpm run typecheck",
+      "exitCode": 0,
+      "summary": "tsc -b tsconfig.workspace.json --pretty false — no diagnostics emitted. Green in rounds 1 and 2."
+    },
+    {
+      "command": "pnpm run check:repo",
+      "exitCode": 0,
+      "summary": "Round 2 (final): 'Repository hygiene: ok (35 passed, 3 advisory, 0 failed)'. Round 1 was exit 1 with 2 failures caused by the batch's untracked p0x markdown (machine path/account name and missing docs/reference index links); the Lead removed the machine path from all five files and added the index links to docs/reference/README.md, resolving both. The 3 advisories are pre-existing non-blocking notices (taskbook budget, split-map counts, hotspot growth)."
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "summary": "No whitespace errors, conflict markers or trailing-whitespace additions in the tracked diff. Green in rounds 1 and 2."
+    },
+    {
+      "command": "node --check scripts/s3b-eval.mjs",
+      "exitCode": 0,
+      "summary": "No syntax errors, no output. Green in rounds 1 and 2."
+    },
+    {
+      "command": "node --check scripts/lib/s3b-provider-config.mjs",
+      "exitCode": 0,
+      "summary": "No syntax errors, no output. Green in rounds 1 and 2."
+    }
+  ],
+  "notRun": [
+    {
+      "item": "End-to-end ledger emission via `node scripts/s3b-eval.mjs --run-controlled` / `--run-real`",
+      "reason": "Both modes write to tracked files (docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json and docs/reference/rcd-s3b-real-baseline-2026-10-17.json), which is outside the verifier's single-file write scope, and --run-real additionally requires live Provider authorization, which this task forbids. The normalizeRecord failureAttribution projection was verified directly against the frozen schema (check H-schema-projection-compatibility), and the CLI refusal path was verified in-process with --output redirected to a temp path (checks B-runreal-*)."
+    },
+    {
+      "item": "Real external Provider / network acceptance",
+      "reason": "Explicitly forbidden by the task ('禁止联网与真实 API 调用'). All Provider behaviour was exercised through injected fetchImpl or in-process fetch instrumentation."
+    },
+    {
+      "item": "`pnpm run verify:core` and `pnpm run verify:full`",
+      "reason": "Not requested by the task-6 checklist. The requested regression scope (task Outcome + tool validation/execution) was covered by the 10-file / 84-test suite above. Not claiming a broader gate that was not run."
+    },
+    {
+      "item": "Socket-level no-network proof (net.Socket.prototype.connect / tls.connect counting)",
+      "reason": "Attempted and found ineffective: the control fetch to http://127.0.0.1:1 incremented the fetch counter but not the socket counter, so socket counting cannot serve as negative evidence. The no-network conclusions rest on the validated fetch counter plus liveCallsMade=false and the validated spawnSync counter."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "medium",
+      "id": "F1",
+      "status": "resolved",
+      "description": "The deterministic-4xx replay suppression was defeated by any logical call that interleaved with another call's retry backoff window, so a 400/404/422 could be replayed and the logical call could even succeed on the replay.",
+      "evidence": "Round 1 (task-3 revision 4), check D-concurrent-replay-bypass: budget=8, maxAttempts=2, widened retry policy for 400; call A received 400 (replay scheduled after the ~500 ms backoff), call B started 120 ms later and returned 200; observed fetchCalls=3, physicalResponses statuses [400,200,200], suppressedNonRetryableReplays=0, aOutcome='A_resolved'. Root cause was that prepareRequest cleared a single transport-global poisonedCallId on every logical call.",
+      "resolution": "Round 2 (task-3 revision 6): the transport now pins retryableStatuses per logical call at createLlmClient and scopes the poison in an AsyncLocalStorage store owned by each logical call (test/s3b-provider-metering.ts:126-152 and 284-311). The exact original reproduction now yields fetchImplInvocations=2, statuses [400,200], suppressedNonRetryableReplays=1, aOutcome='A_rejected:S3B suppressed a Provider request replay after a non-retryable response.'; a deterministic variant, a three-call overlap and a budget=1 bound also pass (RE-F1a..RE-F1d). Two interleaving regression tests were added.",
+      "reVerificationEvidence": ["RE-F1a", "RE-F1b", "RE-F1c", "RE-F1d", "RE-D400", "RE-D2-400"]
+    },
+    {
+      "severity": "low",
+      "id": "F2",
+      "status": "resolved",
+      "description": "resolveProviderWireModel made the documented 'a single interior slash stays legal because vendor/model wire ids are a real convention' case unreachable: no S3B_MODEL / S3B_MODEL_REF combination could configure a wire model id containing '/'.",
+      "evidence": "Round 1 (task-3 revision 4), check A-model-slash-wireid-reachability: with S3B_MODEL='meta-llama/Llama-3' the default ref was rejected as a nested path, the bare ref as a provider-segment mismatch and the double-prefixed form as prefix residue; resolveS3bProviderProfile returned ready=false, state='configuration_error'. The comment at scripts/lib/s3b-provider-config.mjs:86-92 contradicted the behaviour.",
+      "resolution": "Round 2 (task-3 revision 6): the Lead decided the fail-closed rejection is intentional and must not be loosened; the owner corrected the comment to state the actual slash-free rule, marked the rejection intentional and named the pinning test (scripts/lib/s3b-provider-config.mjs:86-100), and added 'pins that a wire model id containing an interior slash is rejected as ambiguous'. Behaviour is unchanged and still fails closed; the check now passes against the corrected contract (RE-F2a/RE-F2b/RE-F2c).",
+      "reVerificationEvidence": ["RE-F2a", "RE-F2b", "RE-F2c"]
+    },
+    {
+      "severity": "low",
+      "id": "F3",
+      "status": "resolved",
+      "description": "`pnpm run check:repo` failed (exit 1) on this batch's untracked markdown, including task-3's own p04 report, so the batch could not pass repository hygiene.",
+      "evidence": "Round 1 gate `pnpm run check:repo` exit 1: '公开文档和脚本不含本机路径或账号' listed all five p0x markdown files as containing a machine-local user path and account name (task-3's file at docs/reference/rcd-s3b-p04-provider-guard-hardening-2026-10-17.md line 4); '正式文档可从所属分类索引定位' listed the same five files as unindexed.",
+      "resolution": "Round 2: the Lead removed the machine path from all five p0x markdown files (p04 header now reads '工作树：仓库独立工作树') and added index links for all six new documents to docs/reference/README.md. `pnpm run check:repo` now exits 0 with 35 passed / 0 failed. The verifier's JSON report is not scanned by either rule (the hygiene checker scans tracked text files plus docs markdown only), so this report does not add a failure.",
+      "reVerificationEvidence": ["gate pnpm run check:repo exit 0 (round 2)"]
+    },
+    {
+      "severity": "info",
+      "id": "F4",
+      "status": "unresolved",
+      "description": "The p04 doc's recorded --verify-provider-metering outputSha256 is not reproducible, because the digest covers vitest's per-run timing text.",
+      "evidence": "Doc records f7dc9bc6a1b2043e0108c52da411cdcb55563fe72cf1e4699c9334b739529e84; round 1 measured b722d49296a75b807037a0de7a023fa124b8270e9d000cd24a50cd9aeec0a55f; round 2 measured 4efbb4c1c48ee469b71157188228783df6b4de3931ab4ae02e7159cf96b29642. Exit code 0 and all tests passing in every run, so there is no behavioural discrepancy.",
+      "resolution": "Not a defect in the implementation and out of the verifier's write scope. Informational: recommend the p04 doc either drops the digest or states explicitly that it is a per-run value, so a future reader does not treat it as a reproducibility assertion."
+    },
+    {
+      "severity": "info",
+      "id": "F5",
+      "status": "resolved",
+      "description": "scripts/README.md was modified during verification (mtime 2026-10-18T15:17:00+08:00), outside task-3's declared write scope.",
+      "evidence": "git diff -- scripts/README.md adds the new --preflight exit-code/state=configuration_error semantics and a paragraph on unambiguous model-ref resolution and the pinned replayable status sets.",
+      "resolution": "Round 2: the Lead confirmed this is a Lead-owned integration fix (leadOwned: true), not a task-3 scope violation. It is on the evaluator-artifact allowlist so it does not set productSourceDirty, but it is a fingerprintFiles entry and therefore changes the recorded evaluatorFingerprint. Recorded as such in changedFiles and scopeCompliance.leadOwnedChanges."
+    }
+  ],
+  "methodLimitations": [
+    "createS3bMeasuredProvider was imported from test/s3b-provider-metering.ts in a plain node process via a node:module resolve hook aliasing @littlesheep/llm to the built packages/llm/dist (the worktree has no node_modules/@littlesheep link and vitest normally aliases to packages/llm/src). packages/llm is untouched by task-3, so the built artifact is equivalent for this verification.",
+    "No scratch file was created inside the repository; all probe code was fed to node through stdin, and --output paths for the --run-real probes pointed at the system temp directory. The only file written by the verifier is this report.",
+    "Socket-level connect instrumentation was attempted but did not register even the control fetch, so no-network evidence is based on the validated globalThis.fetch counter, liveCallsMade=false, and the validated child_process.spawnSync counter.",
+    "Three checks (B-preflight-mapping-mismatch, B-runreal-missing-acknowledgement, B-runreal-budget-argument-mismatch) were executed in round 1 and not re-executed in round 2; the file implementing them, scripts/s3b-eval.mjs, is byte-identical between the rounds (numstat 34/30, mtime 15:01:32) and was not part of the pass-2 fix. Their round-1 results are reported as pass with that provenance rather than as a fresh round-2 observation."
+  ],
+  "verdict": "pass",
+  "verdictDetail": "Final verdict after two rounds. Round 1 (task-3 revision 4) found 2 adversarial failures and 1 red gate; the Lead reopened task-3 and the owner landed both fixes, so round 2 (task-3 revision 6) is fully green: 49 of 49 grouped adversarial checks (83 individual probe cases) pass and 10 of 10 gates exit as expected. The eight P04 protections are implemented and independently reproduced: model-mapping rejection (including the intentional fail-closed slash rule, now documented and pinned), preflight/live-entry consistency with refusal proven before any fetch or child spawn, endpoint legality across 12 URL forms, single-physical-request behaviour for 400/401/403/404/422 under both the pinned and a hostile widened retry policy, request budgeting of failed and blocked attempts, usage-missing unavailability without fabricated numbers, credential redaction across text/snapshots/errors/response model fields, and DELIV-01 attribution correction plus frozen-schema compatibility. F1 (medium) and F2 (low) are resolved and were re-verified with the exact original reproductions; F3 is resolved (check:repo now exits 0 after the Lead's doc fixes); F5 is resolved as a Lead-owned attribution; only F4 remains open and it is informational (a per-run digest recorded as if reproducible). Scope compliance is clean: no packages/** file modified, no task-3 modification of a tracked docs/reference file, no test or security assertion deleted or weakened (the only deleted test line in both rounds is a replaced import; expect() grew 26 -> 168). No external network and no real Provider API call was made."
+}

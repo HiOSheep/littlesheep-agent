@@ -6,7 +6,9 @@
 
 `node scripts/s3a-eval.mjs --suite` 校验固定的 12 项 S3A 任务定义；`--audit` 输出 RCD 24 项定义的适配器/Oracle 层级审计；`--task=<ID>` 运行单项受控 Runner/Harness 任务，`--run` 运行本批有适配器的任务。结果分开记录评测基础设施状态与外部 Oracle 判定。当前 A 层使用 scripted Provider，不代表真实模型任务完成率，也没有真实 Provider 用量或费用。
 
-`node scripts/s3b-eval.mjs --preflight` 脱敏检查真实 Provider 配置且不发请求；`--verify-provider-metering` 使用本地假 HTTP 响应校验物理请求、逻辑调用、工具提议和 Usage 计数；`--suite` 校验 S3A 原任务集及八项适配器；`--run-controlled [--task=<ID>]` 运行受控 Runner/Harness 任务；`--run-real --task=<ID> --trial=<N> --authorize-live --max-cost-usd=<USD>` 只有在用户直接授权、Provider 凭据、独立请求/输出限制与已配置 Provider 侧费用上限都满足后才可发出真实请求。没有直接授权时状态必须保留 `real_provider_pending`。受控任务账本与真实 Provider 账本分开写入，真实费用和 Provider Usage 缺失时保留 `unavailable`。
+`node scripts/s3b-eval.mjs --preflight` 脱敏检查真实 Provider 配置且不发请求；确定性配置错误（缺字段、模型 ID 或端点非法、内部模型引用无法唯一解析、预算非法）以退出码 1 和 `state=configuration_error` 结束，机器可读输出另以 `realProviderStatus=real_provider_pending` 保留"待授权"语义。`--verify-provider-metering` 使用本地假 HTTP 响应校验物理请求、逻辑调用、工具提议和 Usage 计数；`--suite` 校验 S3A 原任务集及八项适配器；`--run-controlled [--task=<ID>]` 运行受控 Runner/Harness 任务；`--run-real --task=<ID> --trial=<N> --authorize-live --max-cost-usd=<USD>` 只有在用户直接授权、Provider 凭据、独立请求/输出限制与已配置 Provider 侧费用上限都满足后才可发出真实请求。没有直接授权时状态必须保留 `real_provider_pending`。受控任务账本与真实 Provider 账本分开写入，真实费用和 Provider Usage 缺失时保留 `unavailable`。
+
+真实试跑的模型引用必须唯一解析：内部引用 `provider/model` 的 provider 段与 model 段必须与配置一致，解析结果不得残留 `provider/` 前缀；任何歧义都是确定性配置错误，在发出任何请求、重试或预算递增之前终止。计量层固定不可重放状态集合 `[400,401,403,404,422]`（认证、模型不存在、参数错误），仅 `[429,500,502,503,504]` 可重放，所有物理尝试（含失败与超时）在发送前计入请求预算。加固范围仅限评测覆盖层，不修改产品 Runtime、Harness、Tools 或 Prompt。
 
 ## 常用入口
 

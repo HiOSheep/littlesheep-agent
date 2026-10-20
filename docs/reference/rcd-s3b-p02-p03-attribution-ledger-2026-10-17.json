@@ -1,0 +1,613 @@
+{
+  "schemaVersion": 1,
+  "ledgerId": "rcd-s3b-p02-p03-attribution-2026-10-17",
+  "generatedAt": "2026-10-18T06:58:03.219Z",
+  "title": "S3B P02/P03 failure attribution ledger: FILE-02 field contract and DELIV-01 dual-dimension review",
+  "scope": "read_only_attribution_over_frozen_s3a_s3b_evidence",
+  "worktree": "isolated git worktree (not a shared checkout)",
+  "branch": "codex/s3b-p-reliability-closure",
+  "baseline": "7a29444afa98f1e249fc29e330d6ae81355aab74",
+  "unchangedHistory": true,
+  "historyPreservation": {
+    "frozenArtifactsModified": [],
+    "originalOracleResultsPreserved": [
+      { "taskId": "FILE-02", "trial": 2, "originalOracleResult": "failed" },
+      { "taskId": "DELIV-01", "trial": 1, "originalOracleResult": "failed" }
+    ],
+    "note": "No frozen Oracle, task suite, historical ledger or report was modified. This ledger adds attribution only."
+  },
+  "independentReDerivations": [
+    {
+      "id": "RD-01",
+      "claim": "FILE-02 trial 2 artifact differs from the Oracle expected object only by the top-level key name; key ordering was already compliant",
+      "method": "Enumerated 79 candidate serializations of the parsed actual value and computed SHA-256 offline; compared against the recorded artifact hash",
+      "result": "Unique match at 135 bytes: JSON.stringify({total_quantity:5,items:[{sku:'A',qty:2},{sku:'B',qty:3}]},null,2) + '\\n'",
+      "recomputedSha256": "5485876851623ab60783b25e41b4bc9e805057a5a492469b9baec50669f3f488",
+      "matchesRecordedSha256": true,
+      "evidenceRefs": [
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:299-311",
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:319-320"
+      ]
+    },
+    {
+      "id": "RD-02",
+      "claim": "DELIV-01 trial 1 result.txt is exactly the 15-byte string verified-output with no trailing newline",
+      "method": "Offline SHA-256 of the literal candidate bytes; compared against the recorded artifact hash",
+      "recomputedSha256": "69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0",
+      "matchesRecordedSha256": true,
+      "evidenceRefs": [
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:244-250",
+        "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json -> records[taskId=DELIV-01].oracle.details.evidence[0]"
+      ]
+    },
+    {
+      "id": "RD-03",
+      "claim": "The controlled FILE-02 artifact is byte-identical to the scripted Provider content, so the controlled pass is constructive",
+      "method": "Offline SHA-256 of JSON.stringify({total:5,items:[{sku:'A',qty:2},{sku:'B',qty:3}]}) + '\\n' compared against the controlled ledger artifact hash",
+      "recomputedSha256": "947ffda883b79995035eed608b0a1f47ab79b4c08909488e22610a99b216872e",
+      "matchesRecordedSha256": true,
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:152",
+        "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json -> records[taskId=FILE-02].oracle.details.evidence[0]",
+        "docs/reference/rcd-s3a-baseline-2026-10-17.json -> records[taskId=FILE-02].oracle"
+      ]
+    },
+    {
+      "id": "RD-04",
+      "claim": "The live adapter injects no field-name or JSON-schema constraint into the model context for FILE-02",
+      "method": "Source re-derivation of the live trial entry point, task-suite parsing type, seeding, tool filter and the write tool input schema",
+      "result": "Run text is task.userInput verbatim; readTaskSuite() only exposes id/userInput/seed/allowedTools; write input schema is {file_path:string, content:string}",
+      "evidenceRefs": [
+        "test/s3b-live-task-trials.test.ts:60-63",
+        "test/s3b-live-task-trials.test.ts:192",
+        "test/s3b-live-task-trials.test.ts:229",
+        "test/s3b-live-task-trials.test.ts:234",
+        "packages/tools/src/builtin/write.ts:30-33"
+      ]
+    },
+    {
+      "id": "RD-05",
+      "claim": "The FILE-02 exact-comparison Oracle is duplicated in the live trial path, not only in the controlled adapter",
+      "method": "Source re-derivation of both oracle expressions",
+      "result": "Both use JSON.stringify(parsed) === JSON.stringify(expected) plus an exact file-set comparison",
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:161-162",
+        "test/s3b-live-task-trials.test.ts:253-254"
+      ]
+    },
+    {
+      "id": "RD-06",
+      "claim": "The DELIV-01 oraclePassed expression requires a validation-failure event, so a correct first proposal cannot pass",
+      "method": "Source re-derivation of the frozen oracle expressions in both paths",
+      "result": "oraclePassed = validationFailure && actualExecutions === 1 && bytes === 'verified-output'; real trial recorded validationFailure=false",
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:204-205",
+        "test/s3b-live-task-trials.test.ts:260-261",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241"
+      ]
+    },
+    {
+      "id": "RD-07",
+      "claim": "The evaluator failure classifier has no contract-defect category and falls back to artifact_wrong_or_missing at high confidence",
+      "method": "Source re-derivation of classifyFailure()",
+      "result": "Fallback branch: oracle failed with non-empty evidenceRefs -> primary artifact_wrong_or_missing, confidence high",
+      "evidenceRefs": [
+        "scripts/s3b-eval.mjs:181-198",
+        "scripts/s3b-eval.mjs:198",
+        "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:54"
+      ]
+    }
+  ],
+  "correctionsToLeadFacts": [
+    {
+      "id": "C-01",
+      "leadFact": "FILE-02 trial 2 wrote total_quantity: 5 with correct SKU order and quantities; the mismatch is in field name and key order",
+      "correction": "Key order was NOT mismatched. The top-level order (total-like field first, items second) and the inner key order (sku then qty) already matched the Oracle expected object. The only difference is the top-level key name total_quantity vs total.",
+      "severity": "precision",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:286-311",
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:319-320",
+        "independentReDerivations[RD-01]"
+      ]
+    },
+    {
+      "id": "C-02",
+      "leadFact": "The FILE-02 Oracle implementation lives in test/s3a-task-adapters.test.ts around lines 147-170",
+      "correction": "Correct for the controlled adapter, but incomplete. The live-provider trial path test/s3b-live-task-trials.test.ts:247-255 contains a duplicate of the same JSON.stringify exact comparison, so the contract defect exists in both the controlled and the live path. Both must be fixed together.",
+      "severity": "completeness",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:161-162",
+        "test/s3b-live-task-trials.test.ts:253-254"
+      ]
+    },
+    {
+      "id": "C-03",
+      "leadFact": "Historical ledger failureAttribution for FILE-02 and DELIV-01 is artifact_wrong_or_missing",
+      "correction": "The recorded value is not a finding about the model; it is the classifyFailure() fallback for any failed oracle with non-empty evidenceRefs. For DELIV-01 it directly contradicts contentMatches: true inside the same record. The enum lacks a contract-defect category.",
+      "severity": "root_cause_clarification",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "scripts/s3b-eval.mjs:198",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241-243",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:253-259"
+      ]
+    },
+    {
+      "id": "C-04",
+      "leadFact": "FILE-02 failure can be described from the report prose",
+      "correction": "Report prose must not be used as Oracle semantics. docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md:39 frames FILE-02 as a real artifact failure, although the artifact data (total value, items, sort order, inner key names) satisfies every declared success condition.",
+      "severity": "methodology",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md:31",
+        "docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md:39",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79"
+      ]
+    }
+  ],
+  "perTask": [
+    {
+      "taskId": "FILE-02",
+      "trial": 2,
+      "category": "file_creation_and_batch_processing",
+      "originalOracleResult": "failed",
+      "originalOracleResultPreserved": true,
+      "taskGoalCorrectness": {
+        "verdict": "data_correct_contract_unmet",
+        "detail": "The delivered JSON satisfies every declared successCondition (JSON parses, total value 5, items exactly A:2 and B:3 sorted by sku, no unrelated file) but fails the Oracle's undocumented exact-key-name requirement.",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:299-315"
+        ]
+      },
+      "recoveryMechanismEvaluation": {
+        "verdict": "not_applicable",
+        "detail": "FILE-02 contains no parameter-correction requirement; the run had zero validation failures and zero denied or failed tool calls.",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:185-186",
+          "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:217-230"
+        ]
+      },
+      "primaryAttribution": {
+        "category": "task_or_oracle_contract_defect",
+        "statement": "The Oracle enforces an exact top-level key name (total) and exact JSON.stringify equality that the user input and successConditions never state, and that the model context never reveals. The failure is caused first by an unstated acceptance contract, not by the model.",
+        "causallyEarliestFailurePoint": "oracle_acceptance_contract",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+          "test/s3a-task-adapters.test.ts:161-162",
+          "test/s3b-live-task-trials.test.ts:253-254",
+          "test/s3b-live-task-trials.test.ts:229"
+        ]
+      },
+      "secondaryAttributions": [
+        {
+          "category": "model_decision_deviation",
+          "statement": "The model chose the top-level key name total_quantity, a literal reading of the prompt phrase 'total quantity', instead of the evaluator's internal total. This is a contributing factor, not the causal origin: no key name could reliably match an undisclosed convention, and the choice is consistent with the user text.",
+          "isPrimaryCause": false,
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:300",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:76"
+          ]
+        },
+        {
+          "category": "verification_evidence_insufficient",
+          "statement": "No mechanism ties the Oracle acceptance set to successConditions, so the over-strict requirement survived unnoticed in both the controlled and live adapters.",
+          "isPrimaryCause": false,
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:54",
+            "test/s3a-task-adapters.test.ts:162",
+            "test/s3b-live-task-trials.test.ts:254"
+          ]
+        },
+        {
+          "category": "evaluator_misattribution",
+          "statement": "The historical record attributes the failure to artifact_wrong_or_missing at high confidence, a category that cannot express a contract defect.",
+          "isPrimaryCause": false,
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "scripts/s3b-eval.mjs:198",
+            "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:325-332"
+          ]
+        }
+      ],
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:76",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+        "test/s3a-task-adapters.test.ts:152",
+        "test/s3a-task-adapters.test.ts:161-162",
+        "test/s3b-live-task-trials.test.ts:60-63",
+        "test/s3b-live-task-trials.test.ts:229",
+        "test/s3b-live-task-trials.test.ts:234",
+        "test/s3b-live-task-trials.test.ts:253-254",
+        "packages/tools/src/builtin/write.ts:30-33",
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:286-322",
+        "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json -> records[taskId=FILE-02].oracle",
+        "docs/reference/rcd-s3a-baseline-2026-10-17.json -> records[taskId=FILE-02].oracle"
+      ],
+      "contractDefect": {
+        "present": true,
+        "kind": "oracle_stricter_than_declared_success_conditions",
+        "declaredContract": [
+          "JSON parses.",
+          "Total equals 5.",
+          "Items are exactly A:2 and B:3 in sorted order.",
+          "No unrelated output file is created."
+        ],
+        "oracleContract": "JSON.stringify(parsed) === JSON.stringify({total:5,items:[{sku:'A',qty:2},{sku:'B',qty:3}]})",
+        "overConstrains": [
+          "top-level key name total",
+          "top-level key order",
+          "item object key names and key order",
+          "exact JSON.stringify equivalence instead of semantic comparison"
+        ],
+        "undocumentedInUserInput": true,
+        "undocumentedInSuccessConditions": true,
+        "undocumentedInModelContext": true,
+        "duplicatedInLiveAdapter": true,
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+          "test/s3a-task-adapters.test.ts:161-162",
+          "test/s3b-live-task-trials.test.ts:253-254"
+        ]
+      },
+      "questions": [
+        {
+          "id": "Q1",
+          "question": "Did the original user explicitly specify the total field?",
+          "answer": "No. The user input only specifies the output filename, the total value 5, sku-sorted items and preserved quantities. The phrase 'total quantity' describes a value, not a field name.",
+          "conclusion": "not_specified",
+          "evidenceLevel": "high",
+          "evidenceRefs": ["docs/reference/rcd-s3a-task-suite-2026-10-17.json:75"]
+        },
+        {
+          "id": "Q2",
+          "question": "Did the model's actual context include that field constraint?",
+          "answer": "No. The live adapter passes task.userInput verbatim, only seeds inventory.csv, and restricts tools to read/write. The task-suite parser does not even read successConditions or the oracle. The write tool schema is {file_path, content} with no JSON structure constraint.",
+          "conclusion": "no_constraint_injected",
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "test/s3b-live-task-trials.test.ts:60-63",
+            "test/s3b-live-task-trials.test.ts:192",
+            "test/s3b-live-task-trials.test.ts:229",
+            "test/s3b-live-task-trials.test.ts:234",
+            "packages/tools/src/builtin/write.ts:30-33"
+          ]
+        },
+        {
+          "id": "Q3",
+          "question": "Is there ambiguity between the tool/task contract and the Oracle?",
+          "answer": "Yes. The write tool accepts any string content with no schema constraint and the successConditions are semantic, while the Oracle enforces exact key names and JSON.stringify equality. The two acceptance levels are mutually inconsistent and the stricter one is invisible to the model.",
+          "conclusion": "structural_ambiguity",
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "packages/tools/src/builtin/write.ts:30-33",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+            "test/s3a-task-adapters.test.ts:162"
+          ]
+        },
+        {
+          "id": "Q4",
+          "question": "Does the Oracle correctly reflect the original task?",
+          "answer": "No. The Oracle is strictly stronger than successConditions: it fixes the top-level key name, the top-level key order and the inner key order, none of which appear in the user input or the success conditions.",
+          "conclusion": "oracle_over_constrained",
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+            "test/s3a-task-adapters.test.ts:161-162"
+          ]
+        },
+        {
+          "id": "Q5",
+          "question": "Did the model violate an output schema despite already holding correct data?",
+          "answer": "The data was correct (total value 5, items exactly A:2 and B:3 sorted by sku, no extra file) and only the top-level key name differed. There was no model-visible schema to violate; the 'schema' was defined after the fact by the Oracle.",
+          "conclusion": "contract_defined_post_hoc",
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:299-315",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+            "test/s3a-task-adapters.test.ts:161"
+          ]
+        }
+      ]
+    },
+    {
+      "taskId": "DELIV-01",
+      "trial": 1,
+      "category": "correction_and_reliable_delivery",
+      "originalOracleResult": "failed",
+      "originalOracleResultPreserved": true,
+      "taskGoalCorrectness": {
+        "verdict": "correct",
+        "detail": "result.txt contains exactly verified-output (15 bytes); the offline recomputed SHA-256 equals the recorded artifact hash, contentMatches is true, fixtureExecutions is 1 and settledEffects is 1. In the artifact-delivery dimension the trial succeeded.",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241-250",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:190-202",
+          "independentReDerivations[RD-02]"
+        ]
+      },
+      "recoveryMechanismEvaluation": {
+        "verdict": "not_exercised",
+        "detail": "validationFailure is false and invocationEvidence contains only one succeeded call, so no parameter-error path ever ran and no structured validation feedback was ever returned. There was nothing the model could have recovered from. This is NOT a model recovery-capability failure; the model proposed valid parameters on the first attempt.",
+        "mustNotBeFramedAsModelFailure": true,
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:190-195",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:156",
+          "test/s3a-task-adapters.test.ts:204-205",
+          "test/s3b-live-task-trials.test.ts:260-261"
+        ]
+      },
+      "primaryAttribution": {
+        "category": "task_or_oracle_contract_defect",
+        "statement": "The frozen success conditions require an error event ('An invalid proposal is rejected before execution' and 'The Provider receives structured validation feedback') and the Oracle ANDs that event with artifact correctness, so a model that delivers the correct artifact on the first proposal is structurally guaranteed to fail. The coupling of a mechanism-exercise requirement with a task-success requirement is the primary cause.",
+        "causallyEarliestFailurePoint": "oracle_acceptance_contract",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:145",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:149",
+          "test/s3a-task-adapters.test.ts:204-205",
+          "test/s3b-live-task-trials.test.ts:260-261",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241-243"
+        ]
+      },
+      "secondaryAttributions": [
+        {
+          "category": "evaluator_misattribution",
+          "statement": "The same record asserts failureAttribution = {primary: artifact_wrong_or_missing, confidence: high} while contentMatches is true in the same block. Root cause is the classifyFailure() fallback. Recorded as a distinct evaluator defect; fixed separately under task-3.",
+          "isPrimaryCause": false,
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:253-259",
+            "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:243",
+            "scripts/s3b-eval.mjs:198"
+          ]
+        },
+        {
+          "category": "verification_evidence_insufficient",
+          "statement": "The success conditions mix an infrastructure/mechanism fact with a product-result fact, contrary to the protocol principle that infrastructure status and product result are orthogonal.",
+          "isPrimaryCause": false,
+          "evidenceLevel": "high",
+          "evidenceRefs": [
+            "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:52",
+            "docs/reference/rcd-s3a-task-suite-2026-10-17.json:149"
+          ]
+        }
+      ],
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:145",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:149",
+        "test/s3a-task-adapters.test.ts:183",
+        "test/s3a-task-adapters.test.ts:204-205",
+        "test/s3b-live-task-trials.test.ts:215",
+        "test/s3b-live-task-trials.test.ts:260-261",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:190-202",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:228-259",
+        "docs/reference/rcd-s3b-controlled-baseline-2026-10-17.json -> records[taskId=DELIV-01].oracle"
+      ],
+      "contractDefect": {
+        "present": true,
+        "kind": "mechanism_exercise_coupled_into_task_success",
+        "declaredContract": [
+          "An invalid proposal is rejected before execution.",
+          "The Provider receives structured validation feedback.",
+          "A corrected proposal executes once and the independently read file matches."
+        ],
+        "oracleContract": "oraclePassed = validationFailure && actualExecutions === 1 && bytes === 'verified-output'",
+        "overConstrains": [
+          "requires an error event to have occurred before success is possible",
+          "couples recovery-mechanism evidence with artifact-delivery evidence in a single boolean"
+        ],
+        "undocumentedInUserInput": false,
+        "undocumentedInSuccessConditions": false,
+        "undocumentedInModelContext": false,
+        "duplicatedInLiveAdapter": true,
+        "consequence": "A correct first proposal makes validationFailure false, so a fully correct delivery is recorded as failed.",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:145",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:149",
+          "test/s3a-task-adapters.test.ts:204-205",
+          "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241-243"
+        ]
+      }
+    }
+  ],
+  "evaluatorDefects": [
+    {
+      "id": "ED-01",
+      "kind": "misattribution_fallback",
+      "severity": "medium",
+      "statement": "classifyFailure() maps any failed oracle with non-empty evidenceRefs to artifact_wrong_or_missing at high confidence, so contract-defect failures are recorded as artifact failures.",
+      "contradictionEvidence": "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json records contentMatches: true (line 243) and failureAttribution.primary: artifact_wrong_or_missing (lines 253-259) in the same record.",
+      "affectedRecords": ["FILE-02 trial 2", "DELIV-01 trial 1"],
+      "fixOwner": "task-3",
+      "fixScope": "not_modified_by_this_task",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "scripts/s3b-eval.mjs:181-198",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:241-243",
+        "docs/reference/rcd-s3b-real-deepseek-DELIV-01-trial-1-2026-10-17.json:253-259",
+        "docs/reference/rcd-s3b-real-deepseek-FILE-02-trial-2-2026-10-17.json:325-332"
+      ]
+    },
+    {
+      "id": "ED-02",
+      "kind": "missing_contract_conformance_check",
+      "severity": "medium",
+      "statement": "No test asserts that the Oracle acceptance set is implied by successConditions, which allowed an over-strict JSON.stringify comparison to persist in both the controlled and live adapters.",
+      "affectedRecords": ["FILE-02"],
+      "fixOwner": "proposed_improvement",
+      "fixScope": "not_modified_by_this_task",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:161-162",
+        "test/s3b-live-task-trials.test.ts:253-254",
+        "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:54"
+      ]
+    },
+    {
+      "id": "ED-03",
+      "kind": "report_prose_overreach",
+      "severity": "low",
+      "statement": "The live-trial report describes FILE-02 as a real artifact failure although the artifact satisfies every declared success condition.",
+      "affectedRecords": ["FILE-02"],
+      "fixOwner": "not_assigned",
+      "fixScope": "not_modified_by_this_task",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md:39",
+        "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79"
+      ]
+    }
+  ],
+  "proposedImprovements": [
+    {
+      "id": "IMP-FILE02-V2",
+      "target": "FILE-02",
+      "kind": "future_independent_version",
+      "landsInHistory": false,
+      "taskTextV2": "Read inventory.csv and create inventory-summary.json. The file must be a JSON object with a top-level field named exactly `total` whose numeric value is the total quantity, and a top-level field named exactly `items` whose value is an array of objects with exactly the fields `sku` and `qty`, sorted ascending by `sku`, preserving each quantity. Do not create any other file.",
+      "semanticOracleCriteria": [
+        "Read inventory-summary.json from disk independently and JSON.parse must succeed.",
+        "The semantic total field must be numeric and strictly equal to 5.",
+        "items must be an array of objects semantically equal to the sequence [{sku:'A',qty:2},{sku:'B',qty:3}], compared key-by-key without JSON.stringify, with array order ascending by sku.",
+        "The workspace file set must be exactly {inventory-summary.json, inventory.csv}.",
+        "The Oracle must declare its acceptance set explicitly and map each entry to a successCondition."
+      ],
+      "mandatoryChanges": [
+        "Remove JSON.stringify object comparison in test/s3a-task-adapters.test.ts:162 and test/s3b-live-task-trials.test.ts:254.",
+        "Add a contract-conformance test asserting the Oracle acceptance set is implied by successConditions."
+      ],
+      "designOptions": [
+        {
+          "id": "A",
+          "name": "specify field names explicitly in the task text",
+          "cost": [
+            "changes the task from natural-language understanding to explicit schema compliance",
+            "requires a new task version identifier instead of editing the frozen definition",
+            "still requires updating both Oracle implementations"
+          ],
+          "historicalComparability": "not_comparable: task definition hash changes, so results must be recorded as a different task version and never backfilled"
+        },
+        {
+          "id": "B",
+          "name": "Oracle accepts semantically equivalent field names and key order",
+          "cost": [
+            "Oracle becomes more permissive and no longer catches key names a downstream consumer might require",
+            "requires an explicit, auditable alias or semantic rule to avoid a new opaque acceptance set",
+            "still requires a new Oracle version and removal of JSON.stringify"
+          ],
+          "historicalComparability": "prompt-level comparable with FILE-02 (same user text) but pass rate not comparable because the Oracle version changes; must be recorded under a new version tag"
+        }
+      ],
+      "recommendation": {
+        "designOption": "B",
+        "rationale": "The defect is an undisclosed key-name requirement that the user never stated. Design B removes the unguessable requirement while preserving the original prompt, so the understanding dimension remains comparable. Design A should be used only when a real downstream consumer requires exact names, and then as a separate explicitly-labelled instruction-following task (for example FILE-03) rather than as a rewrite of FILE-02.",
+        "evidenceLevel": "high",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:75",
+          "docs/reference/rcd-s3a-task-suite-2026-10-17.json:79",
+          "test/s3a-task-adapters.test.ts:161-162"
+        ]
+      }
+    },
+    {
+      "id": "IMP-S1A-PARAM-01",
+      "target": "DELIV-01 / S1A parameter correction",
+      "kind": "independent_dedicated_scenario",
+      "landsInHistory": false,
+      "scenarioId": "S1A-PARAM-01",
+      "objective": "Verify the S1A parameter-correction mechanism deterministically without requiring the model to err first, and without gating user-task success on an error event.",
+      "injection": [
+        "Fixture tool fixture_write_exact with inputSchema z.object({path:z.string(), content:z.string()}).strict(), reusing the existing definition at test/s3a-task-adapters.test.ts:183 and test/s3b-live-task-trials.test.ts:215.",
+        "Evaluator-side driver submits a schema-invalid proposal {filepath:'result.txt', content:'verified-output'} (missing required path, unknown key filepath) through the real ToolExecutionService, producing a genuine validation_failed plus input_validation record.",
+        "The driver then submits the corrected proposal {path:'result.txt', content:'verified-output'} to exercise the correction path.",
+        "Optional tier B: run a real model on the same task text; if it proposes a valid call directly, recoveryMechanismEvaluation is not_exercised and this does not affect task success."
+      ],
+      "criteria": [
+        "Invalid proposal has zero side effects: first invocation is validation_failed with errorKind input_validation, no validatedAt or startedAt, malformedInputExecutions === 0 and actualExecutions === 0 at that point.",
+        "Provider receives structured feedback: the next request's tool message contains source 'runtime_schema' with bounded issues (code, path, expected, received, keys) and never the received raw values.",
+        "Corrected proposal executes exactly once: actualExecutions === 1 and settledEffects === 1 with no duplicate effect.",
+        "Independent read-back: result.txt bytes equal verified-output with sha256 69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0."
+      ],
+      "ledgerIsolation": [
+        "New scenario id S1A-PARAM-01 with its own ledger file; not merged into the S3B four-task success rate.",
+        "DELIV-01 historical record unchanged: oracle.result stays failed and recoveryMechanismEvaluation stays not_exercised.",
+        "Frozen C02 results unchanged: S0-F failed and the S1A core regression passed remain as recorded.",
+        "The scenario reports taskGoalCorrectness and recoveryMechanismEvaluation separately; the mechanism dimension is never a precondition for task success."
+      ],
+      "existingPrecedent": {
+        "scenarioId": "C02",
+        "note": "C02 already validates the S1A mechanism in isolation; the new scenario reuses that mechanism and adds the explicit dual-dimension split plus the deterministic evaluator-side injection.",
+        "evidenceRefs": [
+          "docs/reference/rcd-s3a-scenario-audit-2026-10-17.json -> scenarios[id=C02]",
+          "docs/reference/rcd-s1a-core-regression-2026-10-16.json -> records[scenarioId=C02]",
+          "docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md:55-61"
+        ]
+      },
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "test/s3a-task-adapters.test.ts:183",
+        "test/s3a-task-adapters.test.ts:204-205",
+        "test/s3b-live-task-trials.test.ts:215",
+        "packages/tools/src/tool-execution-service.ts:802-813",
+        "packages/harness/src/stages/execute/tool-validation-projection.ts:1-24",
+        "packages/harness/src/stages/execute/tool-failure-disposition.test.ts:259"
+      ]
+    },
+    {
+      "id": "IMP-ORACLE-CONFORMANCE",
+      "target": "evaluation harness",
+      "kind": "verification_gate",
+      "landsInHistory": false,
+      "change": "Add a test that derives the Oracle acceptance set from successConditions and fails when the Oracle accepts strictly less than the declared conditions (for example when an exact string comparison is used where a semantic comparison is declared).",
+      "appliesTo": ["FILE-02", "DELIV-01"],
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:54",
+        "test/s3a-task-adapters.test.ts:162",
+        "test/s3b-live-task-trials.test.ts:254"
+      ]
+    },
+    {
+      "id": "IMP-FAILURE-ENUM",
+      "target": "scripts/s3b-eval.mjs classifyFailure()",
+      "kind": "classification_capability",
+      "landsInHistory": false,
+      "change": "Add a contract-defect category and require declared attribution evidence before defaulting to artifact_wrong_or_missing at high confidence.",
+      "fixOwner": "task-3",
+      "evidenceLevel": "high",
+      "evidenceRefs": [
+        "scripts/s3b-eval.mjs:181-198",
+        "scripts/s3b-eval.mjs:198"
+      ]
+    }
+  ],
+  "unchangedHistoryConfirmation": {
+    "frozenOracleResultsPreserved": true,
+    "taskSuiteUnmodified": true,
+    "historicalLedgersUnmodified": true,
+    "historicalReportsUnmodified": true,
+    "filesAddedByThisTask": [
+      "docs/reference/rcd-s3b-p02-p03-failure-attribution-2026-10-17.md",
+      "docs/reference/rcd-s3b-p02-p03-attribution-ledger-2026-10-17.json"
+    ],
+    "networkUsed": false,
+    "realApiCallsMade": false
+  }
+}

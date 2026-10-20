@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hasS3bLiveRunAcknowledgement, resolveS3bProviderProfile } from './lib/s3b-provider-config.mjs';
+import { classifyFailure, hasS3bLiveRunAcknowledgement, resolveS3bProviderProfile, sanitizeS3bText } from './lib/s3b-provider-config.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const frozenHead = 'd5015136ca9cf9583423361263b5bacba257a385';
@@ -113,9 +113,9 @@ function validateSuites() {
 }
 
 function sanitizeOutput(output, secret) {
-  let safe = String(output ?? '');
-  if (secret) safe = safe.replaceAll(secret, '[redacted]');
-  return safe.replace(/(authorization|api[-_]?key|token)(\s*[:=]\s*)[^\s,;]+/giu, '$1$2[redacted]');
+  // Shared with the metered Provider boundary so one redaction rule covers the
+  // evaluator's stdout/stderr and any Provider-controlled error text.
+  return sanitizeS3bText(output, secret);
 }
 
 function commandArguments(args) {
@@ -158,7 +158,12 @@ function runMeteringTest() {
 function checkLiveAuthorization(profile, args) {
   if (!hasS3bLiveRunAcknowledgement(process.env)) throw new Error('Missing S3B_REAL_PROVIDER_AUTHORIZED acknowledgement.');
   if (!args.includes('--authorize-live')) throw new Error('Missing --authorize-live guard. This is a software guard and does not replace direct user authorization.');
-  if (!profile.ready || !profile.credentials) throw new Error(`Real Provider profile is incomplete: ${profile.missing.join('; ')}`);
+  // Same profile resolution and same wire-model mapping as `--preflight`: a
+  // deterministic configuration error stops the task entry before any Provider
+  // request, retry or budget increment.
+  if (profile.state === 'configuration_error' || !profile.ready || !profile.credentials || profile.provider.modelMapping.status !== 'resolved') {
+    throw new Error(`S3B deterministic configuration error; refusing before any Provider request: ${(profile.configurationErrors ?? profile.missing).join('; ')}`);
+  }
   const budget = commandArguments(args);
   const trial = Number(budget.trial);
   const hasUsdBudget = budget.maxCostUsd !== undefined;
@@ -178,26 +183,11 @@ function observationStatus(record) {
   return record?.observation ?? {};
 }
 
-function classifyFailure({ infrastructureStatus, oracle, observation }) {
-  const evidenceRefs = (oracle?.evidence ?? []).map(item => typeof item === 'string' ? item : `fixture://${item.path ?? item.ref ?? 'evidence'}`);
-  if (infrastructureStatus !== 'executed') return { primary: 'evaluation_infrastructure', secondary: [], evidenceRefs, confidence: 'high' };
-  const declared = oracle?.failureAttribution;
-  const validPrimary = new Set([
-    'model_understanding_or_decision', 'tool_discovery_or_selection', 'tool_parameter_or_schema', 'tool_execution',
-    'permission_or_safety', 'network_or_external_service', 'budget_or_no_progress', 'context_or_memory',
-    'recovery_or_settlement', 'artifact_wrong_or_missing', 'insufficient_verification', 'evaluation_infrastructure', 'unknown',
-  ]);
-  if (declared && validPrimary.has(declared.primary) && Array.isArray(declared.secondary)) {
-    return { primary: declared.primary, secondary: declared.secondary, evidenceRefs, confidence: declared.confidence ?? 'medium' };
-  }
-  const responseFailures = observation.provider?.physicalResponses?.filter(response => response.status === null || response.status >= 400).length ?? observation.network?.providerHttpFailures ?? 0;
-  if (responseFailures > 0) return { primary: 'network_or_external_service', secondary: [], evidenceRefs, confidence: 'high' };
-  if ((observation.deniedToolCalls ?? 0) > 0) return { primary: 'permission_or_safety', secondary: [], evidenceRefs, confidence: 'high' };
-  if ((observation.unknownEffects ?? 0) > 0) return { primary: 'recovery_or_settlement', secondary: [], evidenceRefs, confidence: 'high' };
-  if ((observation.failedToolCalls ?? 0) > 0) return { primary: 'tool_parameter_or_schema', secondary: [], evidenceRefs, confidence: 'medium' };
-  if (oracle?.result === 'failed' || oracle?.taskResult === 'failed') return { primary: 'artifact_wrong_or_missing', secondary: [], evidenceRefs, confidence: evidenceRefs.length ? 'high' : 'low' };
-  return null;
-}
+// Failure attribution lives in ./lib/s3b-provider-config.mjs so the ledger
+// classifier is unit-testable without executing this CLI entry point, and so the
+// "failed Oracle + matching artifact" case can no longer assert an artifact
+// failure its own details contradict.
+
 
 function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task, observation, infrastructureStatus, childOutput, startedAt, durationMs, error, childSignal, childExitCode, childSpawnErrorCode, cleanup, providerFallback }) {
   const runtime = observationStatus({ observation });
@@ -215,6 +205,7 @@ function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task,
   const liveCostArgument = providerLimits.costBudgetCurrency === 'CNY'
     ? `--max-cost-cny=${providerLimits.userApprovedMaxCostCny}`
     : `--max-cost-usd=${providerLimits.userApprovedMaxCostUsd}`;
+  const attribution = classifyFailure({ infrastructureStatus: finalInfrastructureStatus, oracle: { ...oracle, result: taskResult }, observation: runtime });
   return {
     schemaVersion: 1,
     recordId: `s3b-${Date.now()}-${taskId.toLowerCase()}-${trial}`,
@@ -315,7 +306,16 @@ function normalizeRecord({ taskId, trial, tier, sourceBefore, sourceAfter, task,
       falseCompletionClaim: oracle.falseCompletionClaim ?? null,
       details: oracle,
     },
-    failureAttribution: classifyFailure({ infrastructureStatus: finalInfrastructureStatus, oracle: { ...oracle, result: taskResult }, observation: runtime }),
+    failureAttribution: attribution ? {
+      // The frozen S3B metrics schema keeps this object at
+      // `additionalProperties: false`, so the explanatory reason is recorded at
+      // the record root (which allows additional properties) instead of inside it.
+      primary: attribution.primary,
+      secondary: attribution.secondary,
+      evidenceRefs: attribution.evidenceRefs,
+      confidence: attribution.confidence,
+    } : null,
+    failureAttributionReason: attribution?.reason ?? null,
     cleanup,
   };
 }
@@ -441,14 +441,18 @@ function main(args) {
   const providerProfile = resolveS3bProviderProfile(process.env);
 
   if (mode === '--preflight') {
-    const { provider, ready, missing } = providerProfile;
+    const { provider, ready, missing, configurationErrors, state, deterministicFailure, authorizationPending } = providerProfile;
     process.stdout.write(`${JSON.stringify({
-      state: ready ? 'ready_for_user_authorization' : 'real_provider_pending',
-      provider: { ready, missing, ...provider },
+      state: ready ? 'ready_for_user_authorization' : 'configuration_error',
+      realProviderStatus: 'real_provider_pending',
+      provider: { ready, missing, configurationErrors, state, deterministicFailure, ...provider },
       liveRunAcknowledgementPresent: hasS3bLiveRunAcknowledgement(process.env),
+      authorizationPending,
+      deterministicConfigurationError: deterministicFailure,
       liveCallsMade: false,
-      note: 'Preflight makes no Provider request. Direct user authorization remains required; software and environment flags are guards only.',
+      note: 'Preflight makes no Provider request. Deterministic configuration errors exit non-zero before any network path; direct user authorization remains a separate gate.',
     }, null, 2)}\n`);
+    if (!ready) process.exitCode = 1;
     return;
   }
   if (mode === '--suite') {
