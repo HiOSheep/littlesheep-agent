@@ -124,5 +124,5 @@ pnpm run assert:app-build
 
 - 任一硬门失败即整次运行失败；没有 automatic retry，也不把失败降级为告警。
 - 若 `verify:app-recovery` 在合成数据根上失败，表示引导脚本或恢复源审计出现回归，不表示用户数据损坏；报告 artifact 会保留当次输出。
-- 完整门禁中的全量 `vitest run` 会继承合成数据根环境变量（`verify:full` 在同一进程环境内执行各个阶段）。本批已按 CI 顺序在本地执行合成数据根引导、恢复审计、`test:ci-recovery` 与 `verify:full`；首次 GitHub 运行仍需复核 runner 镜像、action 解析与缓存路径差异，若出现与数据根相关的失败，应先核对这个隔离假设，而不是放宽门禁。
+- 完整门禁中的全量 `vitest run` 会继承合成数据根环境变量（`verify:full` 在同一进程环境内执行各个阶段）。本批已按 CI 顺序在本地执行合成数据根引导、恢复审计、`test:ci-recovery` 与 `verify:full`；该次 `verify:full` 的全量测试阶段被宿主机外部负载阻断（WSL 单次命令约 139 s，超过验收脚本 120 s 等待上限；两个 30 s 上限的 Runner 分段用例在 3 worker 下超时，另有 worker 异常退出）。失败用例单独复跑均通过（WSL 验收除外，其受宿主机时延限制），本批未改任何 `packages/` 源码或相关测试。首次 GitHub 运行仍需复核 runner 镜像、action 解析与缓存路径差异，若出现与数据根相关的失败，应先核对这个隔离假设，而不是放宽门禁。
 - 两份工作流尚未在 GitHub 上实际执行过：当前仓库没有推送授权，首次运行仍可能暴露 action 版本解析、runner 镜像差异或缓存路径等环境问题。在首次真实运行之前，本页与本地验证只证明配置在本地可解析、可复现，不证明 GitHub 托管的执行结果。
