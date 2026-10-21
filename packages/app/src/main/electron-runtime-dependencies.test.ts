@@ -22,7 +22,11 @@ describe('Electron main-process runtime dependencies', () => {
     // onnxruntime-node 1.30.0) and sharp, so neither needs an override.
     expect(packageJson.dependencies?.['@huggingface/transformers']).toBe('4.3.0')
     expect(packageJson.dependencies?.dompurify).toBe('3.4.13')
-    expect(rootPackageJson.engines?.node).toBe('>=20.9.0')
+    // The package floor is a functional requirement, not a preference:
+    // memory-tree imports the unflagged node:sqlite module, which only Node
+    // >=22.13.0 provides. Keep this pinned so an accidental lowering is caught
+    // here as well as by the CI policy check.
+    expect(rootPackageJson.engines?.node).toBe('>=22.13.0')
     // Remaining security floors, not preferences: mammoth's declared
     // @xmldom/xmldom range kept resolving a vulnerable build from a stale
     // lockfile. Raising it is a dependency round with its own runtime
