@@ -1,0 +1,281 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://littlesheep.local/schemas/rcd-r4b-evaluation-record-v2.json",
+  "title": "LS RCD R4-B Evaluation Contract V2 (record + ledger)",
+  "description": "Versioned three-dimension evaluation contract. The JSON Schema describes shape and enums; scripts/lib/r4b/contract.mjs enforces the cross-field invariants listed in x-runtime-invariants. Missing evidence can never become a pass.",
+  "contractVersion": "2.0.0",
+  "schemaVersion": 2,
+  "x-runtime-invariants": [
+    "goal.passed and contract.passed require non-empty evidenceRefs, no rejectionReasons and no missingFields",
+    "goal.failed and contract.failed require a rejectionReason",
+    "goal.unverified and contract.unverified require a missingField reason",
+    "contract.passed/failed require constraintVisible=true and a non-empty constraintRef",
+    "mechanism.not_exercised requires triggered=false; passed/failed/blocked require triggered=true",
+    "mechanism.passed requires no duplicate successful effects",
+    "cleanup.succeeded=false forces execution.infrastructureStatus=harness_error and forbids passed dimensions",
+    "a record must not carry an aggregate verdict across dimensions",
+    "legacyOracle is display-only: legacyMapped must be false",
+    "recordId must be v2:<batchId>:<taskId>:trial:<1..5> and match taskId/trial",
+    "physical requests must not exceed the recorded budget",
+    "usage unavailable must be null, never zero",
+    "cleanup.succeeded=false forbids passed goal/contract/mechanism",
+    "a ledger mixes exactly one evidenceTier"
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "gitSha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "dimension": {
+      "type": "object",
+      "required": ["status", "evidenceRefs", "rejectionReasons", "missingFields"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "not_applicable", "unverified"] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "rejectionReasons": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "missingFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": true
+    },
+    "mechanismDimension": {
+      "type": "object",
+      "required": ["status", "triggered", "evidenceRefs", "rejectionReasons", "missingFields"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "not_exercised", "blocked", "unverified"] },
+        "triggered": { "type": "boolean" },
+        "blockReason": { "type": ["string", "null"] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "rejectionReasons": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "missingFields": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": true
+    },
+    "record": {
+      "type": "object",
+      "required": [
+        "schemaVersion", "contractVersion", "recordId", "batchId", "taskId", "taskVersion", "trial",
+        "evidenceTier", "product", "evaluator", "modelConfig", "userGoal", "dimensions", "legacyOracle",
+        "providerUsage", "execution", "credibility", "cleanup"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "contractVersion": { "const": "2.0.0" },
+        "recordId": { "type": "string", "pattern": "^v2:[a-z0-9][a-z0-9-]*:[A-Z0-9]+(?:-[A-Z0-9]+)*:trial:[1-5]$" },
+        "batchId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,40}$" },
+        "taskId": { "type": "string", "pattern": "^[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "taskVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "trial": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "evidenceTier": { "enum": ["A_runtime_deterministic", "B_real_model"] },
+        "ancestry": {
+          "type": ["object", "null"],
+          "required": ["taskId", "relation"],
+          "properties": {
+            "taskId": { "type": "string" },
+            "relation": { "enum": ["goal_only", "contract_extension", "recovery_mechanism", "same_goal"] },
+            "frozenTaskSuiteSha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "product": {
+          "type": "object",
+          "required": ["sha", "treeFingerprint", "dirty", "sourceDirty", "dirtyPaths"],
+          "properties": {
+            "sha": { "$ref": "#/$defs/gitSha" },
+            "treeFingerprint": { "type": "string", "minLength": 7 },
+            "dirty": { "type": "boolean" },
+            "sourceDirty": { "type": "boolean" },
+            "dirtyPaths": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "evaluator": {
+          "type": "object",
+          "required": ["fingerprint", "contractSha256", "taskSuiteSha256"],
+          "properties": {
+            "fingerprint": { "$ref": "#/$defs/sha256" },
+            "contractSha256": { "$ref": "#/$defs/sha256" },
+            "taskSuiteSha256": { "$ref": "#/$defs/sha256" },
+            "command": { "type": "string", "minLength": 1 }
+          }
+        },
+        "modelConfig": {
+          "type": "object",
+          "required": ["providerId", "simulated", "wireModelId"],
+          "properties": {
+            "providerId": { "type": "string", "minLength": 1 },
+            "simulated": { "type": "boolean" },
+            "wireModelId": { "type": ["string", "null"] },
+            "apiProtocol": { "type": ["string", "null"] },
+            "parameters": { "type": "object" }
+          }
+        },
+        "userGoal": {
+          "type": "object",
+          "required": ["textSha256", "text", "constraintVersion"],
+          "properties": {
+            "textSha256": { "$ref": "#/$defs/sha256" },
+            "text": { "type": "string", "minLength": 1 },
+            "constraintVersion": { "type": "string", "minLength": 1 }
+          }
+        },
+        "dimensions": {
+          "type": "object",
+          "required": ["goal", "contract", "mechanism"],
+          "properties": {
+            "goal": { "$ref": "#/$defs/dimension" },
+            "contract": { "$ref": "#/$defs/dimension" },
+            "mechanism": { "$ref": "#/$defs/mechanismDimension" }
+          },
+          "additionalProperties": false
+        },
+        "legacyOracle": {
+          "type": ["object", "null"],
+          "required": ["result", "oracleVersion", "legacyMapped"],
+          "properties": {
+            "result": { "type": "string" },
+            "oracleVersion": { "type": "string" },
+            "sourceRecordId": { "type": ["string", "null"] },
+            "legacyMapped": { "const": false }
+          }
+        },
+        "providerUsage": {
+          "type": "object",
+          "required": ["status", "inputTokens", "outputTokens", "reason"],
+          "properties": {
+            "status": { "enum": ["available", "partial", "unavailable"] },
+            "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+            "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+            "cachedInputTokens": { "type": ["integer", "null"], "minimum": 0 },
+            "source": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"] }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "required": ["infrastructureStatus", "startedAt", "endedAt", "durationMs", "requests", "tokens", "tooling", "effects"],
+          "properties": {
+            "infrastructureStatus": { "enum": ["executed", "blocked", "harness_error", "not_run"] },
+            "startedAt": { "$ref": "#/$defs/timestamp" },
+            "endedAt": { "$ref": "#/$defs/timestamp" },
+            "durationMs": { "type": "number", "minimum": 0 },
+            "requests": {
+              "type": "object",
+              "required": ["logical", "physical", "retries", "blocked", "budget"],
+              "properties": {
+                "logical": { "type": "integer", "minimum": 0 },
+                "physical": { "type": "integer", "minimum": 0 },
+                "retries": { "type": "integer", "minimum": 0 },
+                "blocked": { "type": "integer", "minimum": 0 },
+                "budget": { "type": "integer", "minimum": 0 }
+              }
+            },
+            "tokens": {
+              "type": "object",
+              "required": ["requestedMax", "effectiveMax", "observedInput", "observedOutput"],
+              "properties": {
+                "requestedMax": { "type": ["integer", "null"], "minimum": 0 },
+                "effectiveMax": { "type": ["integer", "null"], "minimum": 0 },
+                "observedInput": { "type": ["integer", "null"], "minimum": 0 },
+                "observedOutput": { "type": ["integer", "null"], "minimum": 0 }
+              }
+            },
+            "tooling": {
+              "type": "object",
+              "required": ["proposals", "executed", "denied", "failed"],
+              "properties": {
+                "proposals": { "type": ["integer", "null"], "minimum": 0 },
+                "executed": { "type": ["integer", "null"], "minimum": 0 },
+                "denied": { "type": ["integer", "null"], "minimum": 0 },
+                "failed": { "type": ["integer", "null"], "minimum": 0 }
+              }
+            },
+            "effects": {
+              "type": "object",
+              "required": ["settled", "duplicateSuccessful", "unknown"],
+              "properties": {
+                "settled": { "type": ["integer", "null"], "minimum": 0 },
+                "duplicateSuccessful": { "type": "integer", "minimum": 0 },
+                "unknown": { "type": ["integer", "null"], "minimum": 0 }
+              }
+            }
+          }
+        },
+        "safety": {
+          "type": "object",
+          "required": ["networkPolicy", "agentNetworkRequests", "forbiddenRequests", "credentialsRedacted"],
+          "properties": {
+            "networkPolicy": { "enum": ["denied", "loopback_only", "provider_only"] },
+            "agentNetworkRequests": { "type": ["integer", "null"], "minimum": 0 },
+            "forbiddenRequests": { "type": ["integer", "null"], "minimum": 0 },
+            "credentialsRedacted": { "const": true }
+          }
+        },
+        "credibility": {
+          "type": "object",
+          "required": ["level", "missingFields"],
+          "properties": {
+            "level": { "enum": ["direct_evidence", "partial_evidence", "insufficient"] },
+            "missingFields": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "cleanup": {
+          "type": "object",
+          "required": ["attempted", "succeeded", "residuals"],
+          "properties": {
+            "attempted": { "type": "boolean" },
+            "succeeded": { "type": "boolean" },
+            "residuals": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "metric": {
+      "type": "object",
+      "required": ["denominatorId", "n", "passed", "failed", "excluded", "populationClaim"],
+      "properties": {
+        "denominatorId": { "type": "string", "minLength": 1 },
+        "n": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "populationClaim": { "const": false }
+      }
+    },
+    "ledger": {
+      "type": "object",
+      "required": ["schemaVersion", "contractVersion", "suiteId", "batchId", "generatedAt", "evidenceTier", "records", "metrics", "legacy"],
+      "properties": {
+        "schemaVersion": { "const": 2 },
+        "contractVersion": { "const": "2.0.0" },
+        "suiteId": { "type": "string" },
+        "batchId": { "type": "string" },
+        "generatedAt": { "$ref": "#/$defs/timestamp" },
+        "evidenceTier": { "enum": ["A_runtime_deterministic", "B_real_model"] },
+        "records": { "type": "array", "items": { "$ref": "#/$defs/record" } },
+        "metrics": {
+          "type": "object",
+          "required": ["goal", "contract", "mechanism", "perTask"],
+          "properties": {
+            "goal": { "$ref": "#/$defs/metric" },
+            "contract": { "$ref": "#/$defs/metric" },
+            "mechanism": { "$ref": "#/$defs/metric" },
+            "perTask": { "type": "object", "additionalProperties": { "type": "object" } }
+          }
+        },
+        "legacy": {
+          "type": "object",
+          "required": ["records", "mappedToDimensions", "denominatorId"],
+          "properties": {
+            "records": { "type": "array", "items": { "type": "object" } },
+            "mappedToDimensions": { "const": false },
+            "denominatorId": { "type": "string", "minLength": 1 },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/record" },
+    { "$ref": "#/$defs/ledger" }
+  ]
+}

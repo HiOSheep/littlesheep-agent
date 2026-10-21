@@ -22,6 +22,8 @@
 
 ## 专项验收基线
 
+- [RCD R4-B 评测契约 V2 设计](rcd-r4b-v2-contract-design-2026-10-21.md)：Goal / Contract / Mechanism 三维度结算、版本与指纹、四项独立任务、Trial 1–5 身份隔离、预算与报告口径；离线设计报告，未执行真实 Provider。
+- [RCD R4-B 评测契约 V2 Schema](rcd-r4b-v2-contract-schema-2026-10-21.json)：V2 记录/账本的 JSON Schema、状态枚举与运行时不变式清单。
 - [RCD S3A 真实任务评测协议](rcd-s3a-evaluation-protocol-2026-10-17.md)：A/B/C 证据分层、可复现要求、指标口径与失败分类。
 - [RCD S3A 首批 12 项任务](rcd-s3a-task-suite-2026-10-17.json)：固定原始输入、种子状态、权限、外部 Oracle 和清理契约。
 - [RCD S3A 评测指标 Schema](rcd-s3a-metrics-schema-2026-10-17.json)：机器账本字段、不可用用量和失败分类结构。
