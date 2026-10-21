@@ -57,7 +57,7 @@ describe('bounded untracked file scanning', () => {
     })
   })
 
-  it('opens the canonical file after validation', async () => {
+  it('counts a replaced alias as the regular file it now is', async () => {
     const root = await temporaryDirectory('ls-untracked-canonical-')
     await writeFile(join(root, 'target.txt'), 'one\ntwo\n', 'utf8')
     const link = join(root, 'alias.txt')
@@ -67,10 +67,34 @@ describe('bounded untracked file scanning', () => {
       if ((error as NodeJS.ErrnoException).code === 'EPERM') return
       throw error
     }
-    const swap = unlink(link).then(() => writeFile(link, 'outside replacement\n', 'utf8'))
+
+    // Replace the alias before scanning: the scanner must count the regular
+    // file that is actually on disk and must never follow the former symlink.
+    // The previous version raced the replacement against the scan and asserted
+    // one of two legitimate outcomes, which made it fail on faster hosts.
+    await unlink(link)
+    await writeFile(link, 'replacement\n', 'utf8')
 
     const result = await countUntrackedFiles(root, ['alias.txt'])
-    await swap
+    expect(result.counts.get('alias.txt')).toMatchObject({
+      additions: 1,
+      binary: false,
+      countAvailable: true,
+    })
+  })
+
+  it('rejects a stable symlink alias even when it points inside the repository', async () => {
+    const root = await temporaryDirectory('ls-untracked-inside-alias-')
+    await writeFile(join(root, 'target.txt'), 'one\ntwo\n', 'utf8')
+    const link = join(root, 'alias.txt')
+    try {
+      await symlink(join(root, 'target.txt'), link, 'file')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return
+      throw error
+    }
+
+    const result = await countUntrackedFiles(root, ['alias.txt'])
     expect(result.counts.get('alias.txt')?.countAvailable).toBe(false)
   })
 

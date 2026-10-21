@@ -689,8 +689,16 @@ function findCleanRunnerBuildStep(entries) {
   return entries.find((entry) => {
     const run = typeof entry.step.run === 'string' ? entry.step.run : ''
     if (!normalizeRun(run).startsWith('pnpm run ensure:workspace-build')) return false
-    return CLEAN_RUNNER_BUILD_PACKAGES.every((name) => run.includes(`--package=${name}`))
+    return run.includes('--workspace')
+      || CLEAN_RUNNER_BUILD_PACKAGES.every((name) => run.includes(`--package=${name}`))
   }) ?? null
+}
+
+function findPdfFontStep(entries) {
+  return entries.find((entry) => (
+    typeof entry.step.run === 'string'
+    && normalizeRun(entry.step.run) === 'node scripts/ci/install-pdf-font.mjs'
+  )) ?? null
 }
 
 function checkRequiredSteps(result, file, workflow) {
@@ -724,8 +732,8 @@ function checkRequiredSteps(result, file, workflow) {
         'clean-runner-build',
         `${file} steps`,
         'Full gate must build the workspace artifacts a clean checkout lacks: '
-          + '`pnpm run ensure:workspace-build -- --package=@littlesheep/documents '
-          + '--package=@littlesheep/embedding --package=@littlesheep/web`.',
+          + '`pnpm run ensure:workspace-build -- --workspace` (or the three '
+          + 'package targets).',
       ))
     } else {
       for (const command of ['pnpm run test:ci-recovery', 'pnpm run verify:full']) {
@@ -758,6 +766,15 @@ function checkRequiredSteps(result, file, workflow) {
           ))
         }
       }
+    }
+    if (!findPdfFontStep(entries)) {
+      result.violations.push(violation(
+        'pdf-font',
+        `${file} steps`,
+        'Full gate must install the pinned Noto Sans SC font for the PDF document '
+          + 'suites: `node scripts/ci/install-pdf-font.mjs`. The hosted image has no '
+          + 'CJK font and the PDF assertions then fail on mojibake.',
+      ))
     }
   }
 }
@@ -975,6 +992,7 @@ async function checkCoverageDocument(result, repoRoot) {
     ['ensure:workspace-build', 'must document the clean-runner workspace build prerequisite'],
     ['.gitattributes', 'must document the LF checkout contract that hosted runs depend on'],
     ['RUNNER~1', 'must document the hosted 8.3 temp-alias normalization'],
+    ['NotoSansSC', 'must document the pinned CJK font the PDF suites require'],
   ]
   for (const [phrase, reason] of requiredPhrases) {
     if (!doc.includes(phrase)) {

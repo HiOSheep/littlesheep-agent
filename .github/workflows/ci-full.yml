@@ -85,6 +85,23 @@ jobs:
       - name: Use canonical long temp path for workspace tests
         run: Add-Content -Path $env:GITHUB_ENV -Value "TMP=$env:RUNNER_TEMP","TEMP=$env:RUNNER_TEMP"
 
+      # Repository fixture tests create local Git repositories and commits. The
+      # hosted runner has no global author identity, so `git commit` failed in
+      # the submodule baseline test. This is test fixture setup, not product
+      # configuration.
+      - name: Configure Git fixture identity (author name)
+        run: git config --global user.name "LittleSheep CI"
+
+      - name: Configure Git fixture identity (author email)
+        run: git config --global user.email "ci@littlesheep.invalid"
+
+      # The document suites assert real Chinese PDF text. The hosted image ships
+      # Latin fonts only, so resolvePdfFont fell back to a Latin font and the
+      # extracted text was mojibake. The installer verifies a pinned sha256 and
+      # writes the first candidate font (NotoSansSC-VF.ttf) into %WINDIR%\Fonts.
+      - name: Install pinned Noto Sans SC font for PDF tests
+        run: node scripts/ci/install-pdf-font.mjs
+
       # Exports LITTLESHEEP_DATA_DIR, LITTLESHEEP_DATA_LOCATOR and
       # LITTLESHEEP_RUN_ARTIFACTS_DIR through GITHUB_ENV, creates
       # run-artifacts/logs, writes run-artifacts/ci-run-metadata.json, and fails
@@ -104,14 +121,14 @@ jobs:
       - name: Validate CI workflow policy
         run: pnpm run verify:ci-config
 
-      # A clean runner has no workspace dist/ artifacts. Several Runner suites
-      # import @littlesheep/documents, @littlesheep/embedding and @littlesheep/web
-      # through their package exports (dist), so the recovery suite and the full
-      # gate need those artifacts before any test runs. Local checkouts usually
-      # already have them from earlier builds; the first hosted run exposed that
-      # assumption. The step builds the dependency closure of the three packages.
+      # A clean runner has no workspace dist/ artifacts: package exports resolve
+      # to dist/, scripts spawn node entry points that import dist/ directly, and
+      # the Electron app build reads the same artifacts. Local checkouts usually
+      # already have them from earlier builds; hosted runs must build every
+      # library package first. `--workspace` covers all packages except
+      # @littlesheep/app, whose electron-vite build belongs to `build:app`.
       - name: Ensure workspace build artifacts (clean-runner prerequisite)
-        run: pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
+        run: pnpm run ensure:workspace-build -- --workspace
 
       - name: Recovery source audit (clean synthetic data root)
         run: pnpm run verify:app-recovery

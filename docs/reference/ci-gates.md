@@ -9,7 +9,7 @@
 | 文件 | 触发 | 执行的硬门 | 超时 |
 |---|---|---|---|
 | `ci-fast.yml` | `pull_request`；push 到 `main` | `pnpm install --frozen-lockfile`、`verify:ci-config`、`typecheck`、`check:repo`、`test:core-eval` | 30 分钟 |
-| `ci-full.yml` | push 到 `main`；`workflow_dispatch` | `verify:ci-config`、合成数据根引导（先于安装）、`pnpm install --frozen-lockfile`、`ensure:workspace-build`（干净 runner 构建前置）、`verify:app-recovery`、`test:ci-recovery`、`verify:full`、`assert:app-build`，最后上传运行产物 | 90 分钟 |
+| `ci-full.yml` | push 到 `main`；`workflow_dispatch` | `verify:ci-config`、合成数据根引导（先于安装）、`pnpm install --frozen-lockfile`、干净 runner 前置（规范长临时路径、Git 测试身份、固定的 PDF 中文字体、`ensure:workspace-build -- --workspace`）、`verify:app-recovery`、`test:ci-recovery`、`verify:full`、`assert:app-build`，最后上传运行产物 | 90 分钟 |
 
 两层都在 `windows-latest` 上运行，都使用 `permissions: contents: read`、显式 `concurrency`、`defaults.run.shell: pwsh` 和作业级 `timeout-minutes`。完整门禁上传整个 `LITTLESHEEP_RUN_ARTIFACTS_DIR`：`ci-run-metadata.json`（运行与工具链元数据）、`logs/`（完整门禁日志）、`verification-reports/`（结构化阶段报告）；上传使用 `if: always()`、保留 14 天、`if-no-files-found: error`，因此产物缺失本身也会让运行失败。
 
@@ -53,13 +53,21 @@ node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
 
 ## 干净 runner 的构建前置
 
-干净 checkout 只有源码，没有 workspace 的 `dist/` 构建产物。多个 Runner 套件通过包导出（`dist`）解析 `@littlesheep/documents`、`@littlesheep/embedding` 与 `@littlesheep/web`；本地检出通常已有这些产物，托管 runner 没有，首次托管运行因此让恢复套件整体解析失败。完整门禁在 `verify:app-recovery` / `test:ci-recovery` / `verify:full` 之前显式执行：
+干净 checkout 只有源码，没有 workspace 的 `dist/` 构建产物。包导出（`dist`）、脚本用 `node` 直接启动的入口和 Electron app 构建都读取这些产物；本地检出通常已有它们，托管 runner 没有。完整门禁在 `verify:app-recovery` / `test:ci-recovery` / `verify:full` 之前显式执行：
 
 ```pwsh
-pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
+pnpm run ensure:workspace-build -- --workspace
 ```
 
-该命令按 workspace 依赖闭包构建缺失产物，并校验产物指纹；策略校验要求这一步存在且必须早于依赖它的门禁，删除或后置都会让 `verify:ci-config` 失败。快速门禁不需要额外步骤：它先运行 `typecheck`，其 `tsc -b` 在干净检出的 `test:core-eval` 之前同样生成所需产物。
+`--workspace` 构建除 `@littlesheep/app` 外的全部 workspace 包（app 的 electron-vite 构建属于后面的 `build:app`）；命令按依赖闭包构建缺失产物并校验产物指纹。策略校验要求这一步存在且必须早于依赖它的门禁，删除或后置都会让 `verify:ci-config` 失败。快速门禁不需要额外步骤：它先运行 `typecheck`，其 `tsc -b` 在干净检出的 `test:core-eval` 之前同样生成所需产物。
+
+## 干净 runner 的其它测试前置
+
+除构建产物外，托管 runner 还缺三类测试环境，工作流在测试前显式准备：
+
+- **Git 夹具身份：** 仓库夹具测试会在临时目录创建本地仓库并提交；托管 runner 没有全局 `user.name` / `user.email`，`git commit` 会因 `Author identity unknown` 失败。工作流用 `git config --global` 设置仅用于测试夹具的身份，不影响产品配置。
+- **PDF 中文字体：** 文档套件断言真实中文 PDF 文本，而托管镜像只有拉丁字体，`packages/documents/src/write-pdf.ts` 的字体候选会回退到拉丁字体并产生乱码。`node scripts/ci/install-pdf-font.mjs` 下载固定提交的 Noto Sans SC（`NotoSansSC-VF.ttf`，sha256 校验）写入 `%WINDIR%\Fonts`；下载失败或摘要不符会以明确错误失败，不会让后续 PDF 断言给出误导性失败。本地网络无法访问该地址时可用 `--source-file=<已下载文件>` 验证摘要与安装路径。
+- **规范长临时路径：** 见“主机与工具链”的 8.3 短名说明。
 
 ## 恢复回归套件
 
@@ -87,7 +95,7 @@ pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@l
 - artifact 缺少 `if: always()`、`retention-days: 14`、`if-no-files-found: error`，或上传路径不再是 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 根目录（必须包含元数据与日志）。
 - pnpm 版本与 `packageManager` 不一致、Node 版本不是本地验证过的 `26.4.0`、`package.json` 的 `engines.node` 下限排除了固定 Node、`test:ci-recovery` 缺失必需用例。
 - 缺失合成数据根引导、引导排在依赖安装之后，或依赖它的门禁排在引导之前。
-- 缺少干净 runner 的 `ensure:workspace-build` 前置构建，或把它排在 `test:ci-recovery` / `verify:full` 之后。
+- 缺少干净 runner 的 `ensure:workspace-build -- --workspace` 前置构建，或把它排在 `test:ci-recovery` / `verify:full` 之后；缺少固定的 PDF 中文字体安装步骤。
 - 引导脚本不再写 `ci-run-metadata.json`，或去掉小于 2048 MiB 空闲空间时的明确失败。
 - 额外新增、未经策略评审的工作流文件。
 
@@ -140,9 +148,12 @@ $env:LITTLESHEEP_DATA_DIR = $summary.dataDir
 $env:LITTLESHEEP_DATA_LOCATOR = $summary.locatorPath
 $env:LITTLESHEEP_RUN_ARTIFACTS_DIR = $summary.runArtifactsDir
 
+git config --global user.name "LittleSheep CI"
+git config --global user.email "ci@littlesheep.invalid"
+node scripts/ci/install-pdf-font.mjs   # 本地已有中文字体时可跳过
 pnpm install --frozen-lockfile 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\install.log"
 pnpm run verify:ci-config
-pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
+pnpm run ensure:workspace-build -- --workspace
 pnpm run verify:app-recovery
 pnpm run test:ci-recovery 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\test-ci-recovery.log"
 pnpm run verify:full 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\verify-full.log"
@@ -153,11 +164,12 @@ pnpm run assert:app-build
 
 ## 首次托管运行记录（2026-10-21）
 
-推送 `17406201` 后两份工作流均触发；artifact 上传路径本身已验证可用。三轮托管运行逐步暴露并修复了三个干净 runner 假设：
+推送 `17406201` 后两份工作流均触发；artifact 上传路径本身已验证可用。四轮托管运行逐步暴露并修复了干净 runner 的假设：
 
 - 第 1 轮 Fast Gate run `39581176328`：`checkout` → `install` → `verify:ci-config` → `typecheck` 均成功，`check:repo` 失败。宿主 checkout 以 CRLF 落盘，`sync-typescript-projects.mjs --check` 的逐字节比较把全部生成的 tsconfig 判为 stale。修复：根 `.gitattributes` 强制 LF 检出，检查本身也对 CRLF 容错。
 - 第 1 轮 Full Gate run `39581176136`：引导、安装、策略校验与恢复源审计均成功，`test:ci-recovery` 失败。干净 runner 没有 workspace `dist/`，多个 Runner 套件通过包导出解析 `@littlesheep/documents` / `@littlesheep/embedding` / `@littlesheep/web` 失败；同时一个读取源码文本的断言（`checkpoint-recovery-state.test.ts` 检查 `\n`）受 CRLF 影响。修复：门禁前置 `ensure:workspace-build`，并由 `.gitattributes` 的 LF 检出约定统一检出行尾。该次 artifact `ci-full-artifacts-39581176136-1` 已成功上传，包含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 224701 MiB）与已执行步骤的日志；`verify-full.log` 因 `verify:full` 被跳过而按预期不存在。
 - 第 2 轮（`e8b395a7`）Fast Gate run `39583419739` **通过**（15/15 步骤）；Full Gate run `39583419740` 的恢复套件出现 `hard_denied` 与文件 ENOENT。宿主 `%TEMP%` 是 8.3 短名（形如 `…\RUNNER~1\…`），workspace 文件守卫把短名 root 判为「被替换或重定向」。修复：测试前把 `TMP`/`TEMP` 规范化为长路径 `$env:RUNNER_TEMP`（仅环境规范化）。本地以 8.3 别名作 root 复现了守卫的拒绝行为，长路径 root 则通过。
+- 第 3 轮（`6ee57240`）Fast Gate run `39585798612` **通过**；Full Gate run `39585798896` 的干净 runner 前置与恢复套件成功（恢复套件 196 秒），`verify:full` 失败于四类环境假设：PDF 中文断言因托管镜像无 CJK 字体而乱码；`scripts/*` 用例直接 `import` / `node` 启动的 `packages/*/dist`（branding、config、harness、llm、web、types 等）未构建；Git 夹具缺全局身份导致 `git commit` 失败；`workspace-git-untracked` 的竞态用例在更快的宿主上观察到替换后的普通文件而失败。修复：`--workspace` 构建全部库包、固定 sha256 的 Noto Sans SC 字体安装脚本、Git 夹具身份步骤；把竞态用例改为确定性断言（稳定符号链接仍被拒绝，替换后的普通文件按普通文件计数），安全不变量没有弱化。
 - 后续重跑结果记录在批次交付报告；**全部硬门通过前，CI 不标记为已通过**。
 
 ## 失败语义与已知风险
@@ -172,7 +184,7 @@ pnpm run assert:app-build
 
 首次真实 GitHub 运行后逐项确认；未全部满足前，不得把 CI 标记为已通过：
 
-1. 两份工作流都实际触发，并在运行日志中执行了每个必需步骤（不能只看 `verify:ci-config` 通过）；Full Gate 的 `ensure:workspace-build` 前置构建必须实际执行。
+1. 两份工作流都实际触发，并在运行日志中执行了每个必需步骤（不能只看 `verify:ci-config` 通过）；Full Gate 的四个干净 runner 前置（规范长临时路径、Git 夹具身份、固定 PDF 字体、`ensure:workspace-build -- --workspace`）必须实际执行。
 2. 上传的 `ci-full-artifacts-*` 中存在 `ci-run-metadata.json`；核对其中的 Node（应为 `26.4.0`）、pnpm（`11.9.0`）、Electron 版本与 runner OS。
 3. `logs/install.log`、`logs/test-ci-recovery.log`、`logs/verify-full.log` 均存在且非空；`verification-reports/latest.json` 的阶段状态与门禁结论一致。
 4. 失败状态真实：既有失败或刻意失败时，步骤与作业为 failure，artifact 仍被上传，且没有 `continue-on-error` 或条件跳过的痕迹。

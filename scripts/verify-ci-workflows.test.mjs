@@ -280,7 +280,7 @@ describe('CI workflow policy: negative path', () => {
         await mutateText(root, '.github/workflows/ci-full.yml', (text) => addStepAfter(
           removeStep(text, 'Ensure workspace build artifacts (clean-runner prerequisite)'),
           'run: pnpm run assert:app-build',
-          ['      - name: Late workspace build', '        run: pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web'],
+          ['      - name: Late workspace build', '        run: pnpm run ensure:workspace-build -- --workspace'],
         ))
       },
     },
@@ -290,6 +290,14 @@ describe('CI workflow policy: negative path', () => {
       async mutate(root) {
         await mutateText(root, '.github/workflows/ci-full.yml', (text) =>
           removeStep(text, 'Use canonical long temp path for workspace tests'))
+      },
+    },
+    {
+      name: 'rejects a removed pinned PDF font installer',
+      code: 'pdf-font',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) =>
+          removeStep(text, 'Install pinned Noto Sans SC font for PDF tests'))
       },
     },
     {
