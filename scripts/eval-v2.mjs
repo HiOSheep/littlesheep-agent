@@ -16,7 +16,11 @@ import {
 import { loadTaskSuite } from './lib/r4b/tasks.mjs';
 import { DEFAULT_BATCH_ID, createTrial } from './lib/r4b/trials.mjs';
 import { buildRecord } from './lib/r4b/record.mjs';
-import { RECORDS_DIR, writeRecordAtomic } from './lib/r4b/ledger.mjs';
+import { LEDGER_PATH, RECORDS_DIR, REPORT_PATH, writeLedgerAtomic, writeRecordAtomic } from './lib/r4b/ledger.mjs';
+import {
+  buildBatchLedger, readLedgerRecords, readLegacyDisplayRows, renderReport, writeReportFile,
+} from './lib/r4b/report.mjs';
+import { computeMetrics } from './lib/r4b/metrics.mjs';
 
 const root = REPO_ROOT;
 
@@ -25,6 +29,8 @@ function usage() {
     'Usage:',
     '  node scripts/eval-v2.mjs --suite',
     '  node scripts/eval-v2.mjs --run-controlled --task=<ID> [--variant=canonical|wrong-field] [--fault-mode=inject|none|no-recovery|duplicate] [--trial=<1..5>] [--batch=<id>] [--records-dir=<dir>]',
+    '  node scripts/eval-v2.mjs --regenerate-ledger [--batch=<id>] [--records-dir=<dir>] [--ledger-path=<path>]',
+    '  node scripts/eval-v2.mjs --report [--regenerate-ledger] [--force-report] [--records-dir=<dir>] [--ledger-path=<path>] [--report-path=<path>]',
     '  node scripts/eval-v2.mjs --verify',
   ].join('\n') + '\n');
 }
@@ -68,6 +74,7 @@ function runV2Tests() {
     'scripts/lib/r4b/tasks.test.mjs',
     'scripts/lib/r4b/oracles.test.mjs',
     'test/v2-trial-budget.test.ts',
+    'test/v2-ledger-report.test.ts',
     'scripts/lib/r4b/e2e.test.mjs',
   ];
   const result = spawnSync(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', ...testFiles], {
@@ -190,9 +197,79 @@ function executeControlled(selection, values) {
   if (record.execution.infrastructureStatus !== 'executed' || cleanup.succeeded !== true) process.exitCode = 1;
 }
 
+function resolvePath(values, flag, fallback) {
+  return resolve(root, values.get(flag) ?? fallback);
+}
+
+function collectRecords(values) {
+  const loaded = loadTaskSuite();
+  const recordsDir = resolvePath(values, '--records-dir', RECORDS_DIR);
+  const records = readLedgerRecords({ repoRoot: root, recordsDir, tasks: loaded.tasks });
+  return { loaded, records, recordsDir };
+}
+
+function buildLedgerFor(values, { allowRegenerate, write = true }) {
+  const { loaded, records } = collectRecords(values);
+  if (records.length === 0) throw new Error('No V2 records found; run --run-controlled first');
+  const batchId = values.get('--batch') ?? records[0].batchId;
+  const legacy = readLegacyDisplayRows();
+  const ledger = buildBatchLedger({ records, batchId, legacy });
+  const ledgerPath = resolvePath(values, '--ledger-path', LEDGER_PATH);
+  let written = null;
+  if (write) {
+    written = writeLedgerAtomic({
+      path: ledgerPath,
+      ledger,
+      options: { tasks: loaded.tasks, computeMetrics },
+      allowRegenerate,
+    });
+  }
+  return { ledger, legacy, written, ledgerPath };
+}
+
+function regenerateLedger(values) {
+  const { ledger, legacy, written } = buildLedgerFor(values, { allowRegenerate: true });
+  process.stdout.write(`${JSON.stringify({
+    ledgerPath: written.path,
+    batchId: ledger.batchId,
+    records: ledger.records.length,
+    metrics: {
+      goal: { n: ledger.metrics.goal.n, passed: ledger.metrics.goal.passed, failed: ledger.metrics.goal.failed },
+      contract: { n: ledger.metrics.contract.n, passed: ledger.metrics.contract.passed, failed: ledger.metrics.contract.failed },
+      mechanism: { n: ledger.metrics.mechanism.n, passed: ledger.metrics.mechanism.passed, failed: ledger.metrics.mechanism.failed },
+    },
+    legacyDenominator: ledger.legacy.denominatorId,
+    legacyRows: legacy.controlledRows.length + legacy.attempts.length,
+    legacyInvalidModelPhysicalRequests: legacy.invalidModelPhysicalRequests,
+  }, null, 2)}\n`);
+}
+
+function reportCommand(values, flags) {
+  const ledgerPath = resolvePath(values, '--ledger-path', LEDGER_PATH);
+  const ledgerExists = existsSync(ledgerPath);
+  const allowRegenerate = flags.has('--regenerate-ledger');
+  const { ledger, legacy } = buildLedgerFor(values, { allowRegenerate, write: !ledgerExists || allowRegenerate });
+  const content = renderReport({ ledger, legacy });
+  const reportPath = resolvePath(values, '--report-path', REPORT_PATH);
+  const written = writeReportFile({ path: reportPath, content, force: flags.has('--force-report') });
+  process.stdout.write(`${JSON.stringify({
+    ledgerPath,
+    reportPath: written,
+    batchId: ledger.batchId,
+    records: ledger.records.length,
+    metrics: {
+      goal: { n: ledger.metrics.goal.n, passed: ledger.metrics.goal.passed, failed: ledger.metrics.goal.failed },
+      contract: { n: ledger.metrics.contract.n, passed: ledger.metrics.contract.passed, failed: ledger.metrics.contract.failed },
+      mechanism: { n: ledger.metrics.mechanism.n, passed: ledger.metrics.mechanism.passed, failed: ledger.metrics.mechanism.failed },
+    },
+    legacyInvalidModelPhysicalRequests: legacy.invalidModelPhysicalRequests,
+  }, null, 2)}\n`);
+}
+
 function main(argv) {
   const { flags, values } = argsOf(argv);
-  const modes = ['--suite', '--run-controlled', '--verify'].filter((flag) => flags.has(flag));
+  const modes = ['--suite', '--run-controlled', '--verify', '--report'].filter((flag) => flags.has(flag));
+  if (flags.has('--regenerate-ledger') && !flags.has('--report')) modes.push('--regenerate-ledger');
   if (modes.length !== 1) {
     usage();
     process.exitCode = 2;
@@ -205,6 +282,14 @@ function main(argv) {
   if (modes[0] === '--verify') {
     if (!existsSync(join(root, 'scripts/lib/r4b/contract.test.mjs'))) throw new Error('V2 test files are missing');
     runV2Tests();
+    return;
+  }
+  if (modes[0] === '--regenerate-ledger') {
+    regenerateLedger(values);
+    return;
+  }
+  if (modes[0] === '--report') {
+    reportCommand(values, flags);
     return;
   }
   executeControlled(selectControlledRun(values), values);

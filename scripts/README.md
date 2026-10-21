@@ -10,6 +10,8 @@
 
 真实试跑的模型引用必须唯一解析：内部引用 `provider/model` 的 provider 段与 model 段必须与配置一致，解析结果不得残留 `provider/` 前缀；任何歧义都是确定性配置错误，在发出任何请求、重试或预算递增之前终止。计量层固定不可重放状态集合 `[400,401,403,404,422]`（认证、模型不存在、参数错误），仅 `[429,500,502,503,504]` 可重放，所有物理尝试（含失败与超时）在发送前计入请求预算。加固范围仅限评测覆盖层，不修改产品 Runtime、Harness、Tools 或 Prompt。
 
+`node scripts/eval-v2.mjs` 是 R4-B 的三维度评测入口。`--suite` 校验四项 V2 任务与冻结 ancestry；`--run-controlled --task=<ID> [--trial=1..5]` 用真实 Runner/Harness/Tools 与 scripted Provider 执行任务并写入不可变记录，已存在的记录默认拒绝覆盖；`--regenerate-ledger` 从不可变记录重建批次账本（默认拒绝覆盖既有账本）；`--report` 生成三维度与历史结果分离的报告；`--verify` 运行契约、任务、Oracle、trial/预算与受控端到端测试（`pnpm run test:v2`）。该入口不读取 `S3B_*` 真实 Provider 凭据，不发出网络模型请求，受控结果不能与真实模型样本混算。记录与报告中的 Goal/Contract/Mechanism 分别结算，`not_exercised`/`unverified` 不计入已触发机制分母。
+
 ## 常用入口
 
 - `pnpm check:repo`：仓库卫生、文档导航、生成物、依赖方向与 TypeScript 项目引用检查。

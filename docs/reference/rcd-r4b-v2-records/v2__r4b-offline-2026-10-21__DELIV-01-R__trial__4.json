@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 2,
+  "contractVersion": "2.0.0",
+  "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:4",
+  "batchId": "r4b-offline-2026-10-21",
+  "taskId": "DELIV-01-R",
+  "taskVersion": "2.0.0",
+  "trial": 4,
+  "evidenceTier": "A_runtime_deterministic",
+  "ancestry": {
+    "taskId": "DELIV-01",
+    "relation": "recovery_mechanism",
+    "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+  },
+  "product": {
+    "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+    "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+    "dirty": true,
+    "sourceDirty": false,
+    "dirtyPaths": [
+      "docs/reference/README.md",
+      "scripts/README.md",
+      "scripts/eval-v2.mjs",
+      "scripts/lib/r4b/contract.mjs",
+      "scripts/lib/r4b/contract.test.mjs",
+      "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__2.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__3.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+      "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+      "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+      "scripts/lib/r4b/report.d.mts",
+      "scripts/lib/r4b/report.mjs",
+      "test/v2-ledger-report.test.ts"
+    ]
+  },
+  "evaluator": {
+    "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+    "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+    "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+    "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=4 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+  },
+  "modelConfig": {
+    "providerId": "scripted",
+    "simulated": true,
+    "wireModelId": null,
+    "apiProtocol": null,
+    "parameters": {
+      "temperature": null,
+      "topP": null,
+      "seed": null
+    }
+  },
+  "userGoal": {
+    "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+    "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+    "constraintVersion": "2.0.0"
+  },
+  "dimensions": {
+    "goal": {
+      "status": "passed",
+      "evidenceRefs": [
+        "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "expected": {
+        "file": "result.txt",
+        "content": "verified-output",
+        "successfulExecutions": 1
+      },
+      "successfulExecutions": 1,
+      "duplicateSuccessfulEffects": 0,
+      "files": [
+        "result.txt"
+      ]
+    },
+    "contract": {
+      "status": "not_applicable",
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    },
+    "mechanism": {
+      "status": "passed",
+      "evidenceRefs": [
+        "invocation://write-invalid:validation_failed:input_validation",
+        "invocation://write-corrected:succeeded"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "triggered": true,
+      "validationFailures": 1,
+      "recovered": true,
+      "successfulExecutions": 1,
+      "duplicateSuccessfulEffects": 0,
+      "invocations": [
+        {
+          "toolName": "fixture_write_exact",
+          "status": "validation_failed",
+          "errorKind": "input_validation",
+          "callId": "write-invalid"
+        },
+        {
+          "toolName": "fixture_write_exact",
+          "status": "succeeded",
+          "callId": "write-corrected"
+        }
+      ]
+    }
+  },
+  "legacyOracle": null,
+  "providerUsage": {
+    "status": "unavailable",
+    "inputTokens": null,
+    "outputTokens": null,
+    "cachedInputTokens": null,
+    "source": null,
+    "reason": "scripted provider has no authoritative billing or usage receipt"
+  },
+  "execution": {
+    "infrastructureStatus": "executed",
+    "startedAt": "2026-10-21T16:47:24.944Z",
+    "endedAt": "2026-10-21T16:47:27.258Z",
+    "durationMs": 2314,
+    "requests": {
+      "logical": 3,
+      "physical": 0,
+      "retries": 0,
+      "blocked": 0,
+      "budget": 0
+    },
+    "tokens": {
+      "requestedMax": null,
+      "effectiveMax": null,
+      "observedInput": null,
+      "observedOutput": null
+    },
+    "tooling": {
+      "proposals": 2,
+      "executed": 1,
+      "denied": 0,
+      "failed": 1
+    },
+    "effects": {
+      "settled": 1,
+      "duplicateSuccessful": 0,
+      "unknown": 0
+    }
+  },
+  "safety": {
+    "networkPolicy": "denied",
+    "agentNetworkRequests": null,
+    "forbiddenRequests": 0,
+    "credentialsRedacted": true
+  },
+  "credibility": {
+    "level": "direct_evidence",
+    "missingFields": []
+  },
+  "cleanup": {
+    "attempted": true,
+    "succeeded": true,
+    "residuals": []
+  },
+  "batchVariant": null,
+  "faultMode": "inject",
+  "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+  "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+  "oracleDetails": {
+    "goal": {
+      "status": "passed",
+      "evidenceRefs": [
+        "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "expected": {
+        "file": "result.txt",
+        "content": "verified-output",
+        "successfulExecutions": 1
+      },
+      "successfulExecutions": 1,
+      "duplicateSuccessfulEffects": 0,
+      "files": [
+        "result.txt"
+      ]
+    },
+    "contract": {
+      "status": "not_applicable",
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    },
+    "mechanism": {
+      "status": "passed",
+      "evidenceRefs": [
+        "invocation://write-invalid:validation_failed:input_validation",
+        "invocation://write-corrected:succeeded"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "triggered": true,
+      "validationFailures": 1,
+      "recovered": true,
+      "successfulExecutions": 1,
+      "duplicateSuccessfulEffects": 0,
+      "invocations": [
+        {
+          "toolName": "fixture_write_exact",
+          "status": "validation_failed",
+          "errorKind": "input_validation",
+          "callId": "write-invalid"
+        },
+        {
+          "toolName": "fixture_write_exact",
+          "status": "succeeded",
+          "callId": "write-corrected"
+        }
+      ]
+    }
+  }
+}

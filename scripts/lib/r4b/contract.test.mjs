@@ -283,6 +283,24 @@ describe('V2 contract: evaluator fingerprint and frozen baselines', () => {
     expect(state.treeFingerprint).toMatch(/^[0-9a-f]{64}$/u);
     expect(Array.isArray(state.dirtyPaths)).toBe(true);
   });
+
+  it('keeps the first character of the first dirty porcelain path', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const repo = await mkdtemp(join(tmpdir(), 'ls-v2-gitstate-'));
+    tempRoots.push(repo);
+    const run = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    run('init');
+    run('config', 'user.name', 'R4B Test');
+    run('config', 'user.email', 'r4b@example.invalid');
+    await writeFile(join(repo, 'a.txt'), 'one\n', 'utf8');
+    run('add', 'a.txt');
+    run('commit', '-m', 'initial');
+    await writeFile(join(repo, 'a.txt'), 'two\n', 'utf8');
+    const state = gitProductState({ repoRoot: repo });
+    expect(state.dirtyPaths).toEqual(['a.txt']);
+    expect(state.sourceDirty).toBe(true);
+    expect(state.sourceDirtyPaths).toEqual(['a.txt']);
+  });
 });
 
 describe('V2 contract: legacy history is read-only and never mapped', () => {

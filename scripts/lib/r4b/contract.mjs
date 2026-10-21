@@ -145,9 +145,13 @@ export function computeEvaluatorFingerprint({ repoRoot = REPO_ROOT, files = EVAL
 }
 
 export function gitProductState({ repoRoot = REPO_ROOT } = {}) {
+  // Only trailing newlines are stripped: `git status --porcelain` lines begin
+  // with a significant status column, and trimming the whole output would eat
+  // the leading space of the first ` M path` line (dropping the path's first
+  // character and falsely marking product source as dirty).
   const git = (...args) => execFileSync('git', args, {
     cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  }).replace(/\r?\n+$/u, '');
   const head = git('rev-parse', 'HEAD');
   const tree = git('rev-parse', 'HEAD^{tree}');
   const statusText = git('status', '--porcelain=v1', '--untracked-files=all');

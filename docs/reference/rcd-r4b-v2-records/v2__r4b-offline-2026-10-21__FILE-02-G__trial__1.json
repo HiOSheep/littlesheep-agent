@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 2,
+  "contractVersion": "2.0.0",
+  "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:1",
+  "batchId": "r4b-offline-2026-10-21",
+  "taskId": "FILE-02-G",
+  "taskVersion": "2.0.0",
+  "trial": 1,
+  "evidenceTier": "A_runtime_deterministic",
+  "ancestry": {
+    "taskId": "FILE-02",
+    "relation": "goal_only",
+    "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+  },
+  "product": {
+    "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+    "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+    "dirty": true,
+    "sourceDirty": false,
+    "dirtyPaths": [
+      "docs/reference/README.md",
+      "scripts/README.md",
+      "scripts/eval-v2.mjs",
+      "scripts/lib/r4b/contract.mjs",
+      "scripts/lib/r4b/contract.test.mjs",
+      "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+      "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+      "scripts/lib/r4b/report.d.mts",
+      "scripts/lib/r4b/report.mjs",
+      "test/v2-ledger-report.test.ts"
+    ]
+  },
+  "evaluator": {
+    "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+    "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+    "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+    "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=1 --batch=r4b-offline-2026-10-21"
+  },
+  "modelConfig": {
+    "providerId": "scripted",
+    "simulated": true,
+    "wireModelId": null,
+    "apiProtocol": null,
+    "parameters": {
+      "temperature": null,
+      "topP": null,
+      "seed": null
+    }
+  },
+  "userGoal": {
+    "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+    "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+    "constraintVersion": "2.0.0"
+  },
+  "dimensions": {
+    "goal": {
+      "status": "passed",
+      "evidenceRefs": [
+        "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+        "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "expected": {
+        "total": 5,
+        "items": [
+          {
+            "sku": "A",
+            "qty": 2
+          },
+          {
+            "sku": "B",
+            "qty": 3
+          }
+        ]
+      },
+      "actual": {
+        "total": 5,
+        "items": [
+          {
+            "sku": "A",
+            "qty": 2
+          },
+          {
+            "sku": "B",
+            "qty": 3
+          }
+        ]
+      },
+      "files": [
+        "inventory-summary.json",
+        "inventory.csv"
+      ]
+    },
+    "contract": {
+      "status": "not_applicable",
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    },
+    "mechanism": {
+      "status": "not_exercised",
+      "triggered": false,
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    }
+  },
+  "legacyOracle": null,
+  "providerUsage": {
+    "status": "unavailable",
+    "inputTokens": null,
+    "outputTokens": null,
+    "cachedInputTokens": null,
+    "source": null,
+    "reason": "scripted provider has no authoritative billing or usage receipt"
+  },
+  "execution": {
+    "infrastructureStatus": "executed",
+    "startedAt": "2026-10-21T16:43:17.271Z",
+    "endedAt": "2026-10-21T16:43:21.460Z",
+    "durationMs": 4188,
+    "requests": {
+      "logical": 3,
+      "physical": 0,
+      "retries": 0,
+      "blocked": 0,
+      "budget": 0
+    },
+    "tokens": {
+      "requestedMax": null,
+      "effectiveMax": null,
+      "observedInput": null,
+      "observedOutput": null
+    },
+    "tooling": {
+      "proposals": 2,
+      "executed": 2,
+      "denied": 0,
+      "failed": 0
+    },
+    "effects": {
+      "settled": 1,
+      "duplicateSuccessful": 0,
+      "unknown": 0
+    }
+  },
+  "safety": {
+    "networkPolicy": "denied",
+    "agentNetworkRequests": null,
+    "forbiddenRequests": 0,
+    "credentialsRedacted": true
+  },
+  "credibility": {
+    "level": "direct_evidence",
+    "missingFields": []
+  },
+  "cleanup": {
+    "attempted": true,
+    "succeeded": true,
+    "residuals": []
+  },
+  "batchVariant": null,
+  "faultMode": null,
+  "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+  "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+  "oracleDetails": {
+    "goal": {
+      "status": "passed",
+      "evidenceRefs": [
+        "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+        "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+      ],
+      "rejectionReasons": [],
+      "missingFields": [],
+      "expected": {
+        "total": 5,
+        "items": [
+          {
+            "sku": "A",
+            "qty": 2
+          },
+          {
+            "sku": "B",
+            "qty": 3
+          }
+        ]
+      },
+      "actual": {
+        "total": 5,
+        "items": [
+          {
+            "sku": "A",
+            "qty": 2
+          },
+          {
+            "sku": "B",
+            "qty": 3
+          }
+        ]
+      },
+      "files": [
+        "inventory-summary.json",
+        "inventory.csv"
+      ]
+    },
+    "contract": {
+      "status": "not_applicable",
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    },
+    "mechanism": {
+      "status": "not_exercised",
+      "triggered": false,
+      "evidenceRefs": [],
+      "rejectionReasons": [],
+      "missingFields": []
+    }
+  }
+}

@@ -1,0 +1,5090 @@
+{
+  "schemaVersion": 2,
+  "contractVersion": "2.0.0",
+  "suiteId": "LS-RCD-R4B-V2",
+  "batchId": "r4b-offline-2026-10-21",
+  "generatedAt": "2026-10-21T16:47:40.754Z",
+  "evidenceTier": "A_runtime_deterministic",
+  "records": [
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-G:trial:1",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-G",
+      "taskVersion": "2.0.0",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-G --trial=1 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:45:42.255Z",
+        "endedAt": "2026-10-21T16:45:44.453Z",
+        "durationMs": 2197,
+        "requests": {
+          "logical": 2,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 1,
+          "executed": 1,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "994606cc732c4fc44e3afccf9e068fe39d09f0a4699d3a17e212dd817ccc52e4",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-G:trial:2",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-G",
+      "taskVersion": "2.0.0",
+      "trial": 2,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-G --trial=2 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:45:53.794Z",
+        "endedAt": "2026-10-21T16:45:56.017Z",
+        "durationMs": 2223,
+        "requests": {
+          "logical": 2,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 1,
+          "executed": 1,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "994606cc732c4fc44e3afccf9e068fe39d09f0a4699d3a17e212dd817ccc52e4",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-G:trial:3",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-G",
+      "taskVersion": "2.0.0",
+      "trial": 3,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-G --trial=3 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:46:05.442Z",
+        "endedAt": "2026-10-21T16:46:09.320Z",
+        "durationMs": 3877,
+        "requests": {
+          "logical": 2,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 1,
+          "executed": 1,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "994606cc732c4fc44e3afccf9e068fe39d09f0a4699d3a17e212dd817ccc52e4",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-G:trial:4",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-G",
+      "taskVersion": "2.0.0",
+      "trial": 4,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-G --trial=4 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:46:19.416Z",
+        "endedAt": "2026-10-21T16:46:21.990Z",
+        "durationMs": 2573,
+        "requests": {
+          "logical": 2,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 1,
+          "executed": 1,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "994606cc732c4fc44e3afccf9e068fe39d09f0a4699d3a17e212dd817ccc52e4",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-G:trial:5",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-G",
+      "taskVersion": "2.0.0",
+      "trial": 5,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-G --trial=5 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:46:32.153Z",
+        "endedAt": "2026-10-21T16:46:34.429Z",
+        "durationMs": 2275,
+        "requests": {
+          "logical": 2,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 1,
+          "executed": 1,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "994606cc732c4fc44e3afccf9e068fe39d09f0a4699d3a17e212dd817ccc52e4",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:1",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-R",
+      "taskVersion": "2.0.0",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=1 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:46:43.786Z",
+        "endedAt": "2026-10-21T16:46:46.030Z",
+        "durationMs": 2243,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 1,
+          "denied": 0,
+          "failed": 1
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": "inject",
+      "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:2",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-R",
+      "taskVersion": "2.0.0",
+      "trial": 2,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=2 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:46:57.391Z",
+        "endedAt": "2026-10-21T16:47:00.041Z",
+        "durationMs": 2649,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 1,
+          "denied": 0,
+          "failed": 1
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": "inject",
+      "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__2.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:3",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-R",
+      "taskVersion": "2.0.0",
+      "trial": 3,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=3 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:47:10.320Z",
+        "endedAt": "2026-10-21T16:47:12.808Z",
+        "durationMs": 2488,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 1,
+          "denied": 0,
+          "failed": 1
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": "inject",
+      "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__3.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:4",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-R",
+      "taskVersion": "2.0.0",
+      "trial": 4,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=4 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:47:24.944Z",
+        "endedAt": "2026-10-21T16:47:27.258Z",
+        "durationMs": 2314,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 1,
+          "denied": 0,
+          "failed": 1
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": "inject",
+      "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__4.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:DELIV-01-R:trial:5",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "DELIV-01-R",
+      "taskVersion": "2.0.0",
+      "trial": 5,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=DELIV-01-R --trial=5 --batch=r4b-offline-2026-10-21 --fault-mode=inject"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+        "textSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:47:37.362Z",
+        "endedAt": "2026-10-21T16:47:39.823Z",
+        "durationMs": 2459,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 1,
+          "denied": 0,
+          "failed": 1
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": "inject",
+      "taskDefinitionSha256": "2f98dac7b22625d7fe74db88e2221b3a123eca0d5de3274334a9fc52ac77a7d8",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://result.txt#sha256=69188ece3b5874fdca30429af10e9c357002ac68e48883f29d825d51501664b0"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "file": "result.txt",
+            "content": "verified-output",
+            "successfulExecutions": 1
+          },
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "files": [
+            "result.txt"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "passed",
+          "evidenceRefs": [
+            "invocation://write-invalid:validation_failed:input_validation",
+            "invocation://write-corrected:succeeded"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "triggered": true,
+          "validationFailures": 1,
+          "recovered": true,
+          "successfulExecutions": 1,
+          "duplicateSuccessfulEffects": 0,
+          "invocations": [
+            {
+              "toolName": "fixture_write_exact",
+              "status": "validation_failed",
+              "errorKind": "input_validation",
+              "callId": "write-invalid"
+            },
+            {
+              "toolName": "fixture_write_exact",
+              "status": "succeeded",
+              "callId": "write-corrected"
+            }
+          ]
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__DELIV-01-R__trial__5.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:1",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-G",
+      "taskVersion": "2.0.0",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=1 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+        "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:43:17.271Z",
+        "endedAt": "2026-10-21T16:43:21.460Z",
+        "durationMs": 4188,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:2",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-G",
+      "taskVersion": "2.0.0",
+      "trial": 2,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=2 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+        "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:43:33.065Z",
+        "endedAt": "2026-10-21T16:43:37.519Z",
+        "durationMs": 4453,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:3",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-G",
+      "taskVersion": "2.0.0",
+      "trial": 3,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=3 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+        "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:43:47.626Z",
+        "endedAt": "2026-10-21T16:43:52.454Z",
+        "durationMs": 4828,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:4",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-G",
+      "taskVersion": "2.0.0",
+      "trial": 4,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=4 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+        "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:44:04.106Z",
+        "endedAt": "2026-10-21T16:44:08.575Z",
+        "durationMs": 4467,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-G:trial:5",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-G",
+      "taskVersion": "2.0.0",
+      "trial": 5,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-G --trial=5 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+        "textSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:44:18.890Z",
+        "endedAt": "2026-10-21T16:44:23.485Z",
+        "durationMs": 4594,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "b22f5084ca725052fb083df48d52f4926176097e209abb8b8da39b6d69551cc0",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "not_applicable",
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-S:trial:1",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-S",
+      "taskVersion": "2.0.0",
+      "trial": 1,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-S --trial=1 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+        "textSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:44:33.288Z",
+        "endedAt": "2026-10-21T16:44:37.601Z",
+        "durationMs": 4313,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "a6c1a130c19eaf32b02837bf62ed46b71c160c4542684325baf4d1cbca0675a5",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-S:trial:2",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-S",
+      "taskVersion": "2.0.0",
+      "trial": 2,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-S --trial=2 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+        "textSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:44:46.894Z",
+        "endedAt": "2026-10-21T16:44:51.224Z",
+        "durationMs": 4329,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "a6c1a130c19eaf32b02837bf62ed46b71c160c4542684325baf4d1cbca0675a5",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-S:trial:3",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-S",
+      "taskVersion": "2.0.0",
+      "trial": 3,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-S --trial=3 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+        "textSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:45:00.443Z",
+        "endedAt": "2026-10-21T16:45:04.806Z",
+        "durationMs": 4362,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "a6c1a130c19eaf32b02837bf62ed46b71c160c4542684325baf4d1cbca0675a5",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-S:trial:4",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-S",
+      "taskVersion": "2.0.0",
+      "trial": 4,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-S --trial=4 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+        "textSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:45:14.520Z",
+        "endedAt": "2026-10-21T16:45:19.177Z",
+        "durationMs": 4656,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "a6c1a130c19eaf32b02837bf62ed46b71c160c4542684325baf4d1cbca0675a5",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json"
+    },
+    {
+      "schemaVersion": 2,
+      "contractVersion": "2.0.0",
+      "recordId": "v2:r4b-offline-2026-10-21:FILE-02-S:trial:5",
+      "batchId": "r4b-offline-2026-10-21",
+      "taskId": "FILE-02-S",
+      "taskVersion": "2.0.0",
+      "trial": 5,
+      "evidenceTier": "A_runtime_deterministic",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "product": {
+        "sha": "71fcb594221f7c100485179a66d4b39058d66047",
+        "treeFingerprint": "16beec65635051d2c24c88bbd5e4f7780de2a1e97fa711985d53e0866d9e0847",
+        "dirty": true,
+        "sourceDirty": false,
+        "dirtyPaths": [
+          "docs/reference/README.md",
+          "scripts/README.md",
+          "scripts/eval-v2.mjs",
+          "scripts/lib/r4b/contract.mjs",
+          "scripts/lib/r4b/contract.test.mjs",
+          "docs/reference/rcd-r4b-v2-ledger-2026-10-21.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__4.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-G__trial__5.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__1.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__2.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__3.json",
+          "docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__4.json",
+          "docs/reference/rcd-r4b-v2-report-2026-10-21.md",
+          "scripts/lib/r4b/report.d.mts",
+          "scripts/lib/r4b/report.mjs",
+          "test/v2-ledger-report.test.ts"
+        ]
+      },
+      "evaluator": {
+        "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+        "contractSha256": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+        "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+        "command": "node scripts/eval-v2.mjs --run-controlled --task=FILE-02-S --trial=5 --batch=r4b-offline-2026-10-21"
+      },
+      "modelConfig": {
+        "providerId": "scripted",
+        "simulated": true,
+        "wireModelId": null,
+        "apiProtocol": null,
+        "parameters": {
+          "temperature": null,
+          "topP": null,
+          "seed": null
+        }
+      },
+      "userGoal": {
+        "text": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+        "textSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "constraintVersion": "2.0.0"
+      },
+      "dimensions": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "legacyOracle": null,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      },
+      "execution": {
+        "infrastructureStatus": "executed",
+        "startedAt": "2026-10-21T16:45:28.436Z",
+        "endedAt": "2026-10-21T16:45:32.866Z",
+        "durationMs": 4428,
+        "requests": {
+          "logical": 3,
+          "physical": 0,
+          "retries": 0,
+          "blocked": 0,
+          "budget": 0
+        },
+        "tokens": {
+          "requestedMax": null,
+          "effectiveMax": null,
+          "observedInput": null,
+          "observedOutput": null
+        },
+        "tooling": {
+          "proposals": 2,
+          "executed": 2,
+          "denied": 0,
+          "failed": 0
+        },
+        "effects": {
+          "settled": 1,
+          "duplicateSuccessful": 0,
+          "unknown": 0
+        }
+      },
+      "safety": {
+        "networkPolicy": "denied",
+        "agentNetworkRequests": null,
+        "forbiddenRequests": 0,
+        "credentialsRedacted": true
+      },
+      "credibility": {
+        "level": "direct_evidence",
+        "missingFields": []
+      },
+      "cleanup": {
+        "attempted": true,
+        "succeeded": true,
+        "residuals": []
+      },
+      "batchVariant": null,
+      "faultMode": null,
+      "taskDefinitionSha256": "a6c1a130c19eaf32b02837bf62ed46b71c160c4542684325baf4d1cbca0675a5",
+      "suiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "oracleDetails": {
+        "goal": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory.csv#sha256=b659f4f9aa5d678b77f96c0de402a18230e7fd35c0e64575ff53a35d01be33ce",
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          },
+          "files": [
+            "inventory-summary.json",
+            "inventory.csv"
+          ]
+        },
+        "contract": {
+          "status": "passed",
+          "evidenceRefs": [
+            "workspace://inventory-summary.json#sha256=f75a4789388817c96111fe9b2e38e6bdf07534dd000d3d69b55e039e7ff84984"
+          ],
+          "rejectionReasons": [],
+          "missingFields": [],
+          "constraintVisible": true,
+          "constraintRef": "#/contracts/file02s",
+          "contractVersion": "2.0.0",
+          "expected": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ],
+            "additionalTopLevelFields": false
+          },
+          "actual": {
+            "total": 5,
+            "items": [
+              {
+                "sku": "A",
+                "qty": 2
+              },
+              {
+                "sku": "B",
+                "qty": 3
+              }
+            ]
+          }
+        },
+        "mechanism": {
+          "status": "not_exercised",
+          "triggered": false,
+          "evidenceRefs": [],
+          "rejectionReasons": [],
+          "missingFields": []
+        }
+      },
+      "recordPath": "D:/Repositories/littlesheep/docs/reference/rcd-r4b-v2-records/v2__r4b-offline-2026-10-21__FILE-02-S__trial__5.json"
+    }
+  ],
+  "metrics": {
+    "goal": {
+      "denominatorId": "A_runtime_deterministic:goal",
+      "n": 20,
+      "passed": 20,
+      "failed": 0,
+      "excluded": {},
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "contract": {
+      "denominatorId": "A_runtime_deterministic:contract",
+      "n": 5,
+      "passed": 5,
+      "failed": 0,
+      "excluded": {
+        "not_applicable": 15
+      },
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "mechanism": {
+      "denominatorId": "A_runtime_deterministic:mechanism",
+      "n": 5,
+      "passed": 5,
+      "failed": 0,
+      "excluded": {
+        "not_exercised": 15
+      },
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "perTask": {
+      "DELIV-01-G": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:DELIV-01-G",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:DELIV-01-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:DELIV-01-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "DELIV-01-R": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:DELIV-01-R",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:DELIV-01-R",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:DELIV-01-R",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "FILE-02-G": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:FILE-02-G",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:FILE-02-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:FILE-02-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "FILE-02-S": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:FILE-02-S",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:FILE-02-S",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:FILE-02-S",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      }
+    }
+  },
+  "legacy": {
+    "records": [
+      {
+        "recordId": "s3b-1792220278085-code-01-1",
+        "taskId": "CODE-01",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 3,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220295614-file-02-1",
+        "taskId": "FILE-02",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 3,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220311409-deliv-01-1",
+        "taskId": "DELIV-01",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 3,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220331899-multi-01-1",
+        "taskId": "MULTI-01",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "partially_completed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 5,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220352661-retr-01-1",
+        "taskId": "RETR-01",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 16,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220385268-long-01-1",
+        "taskId": "LONG-01",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 38,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220475990-long-02-1",
+        "taskId": "LONG-02",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": null,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": "s3b-1792220493421-deliv-02-1",
+        "taskId": "DELIV-02",
+        "trial": 1,
+        "evidenceTier": "A_runtime_deterministic",
+        "oracleResult": "failed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 2,
+        "physicalProviderRequests": 0,
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "CODE-01",
+        "trial": 1,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "failed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 5,
+        "physicalProviderRequests": 8,
+        "invalidModelId": true,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "FILE-02",
+        "trial": 1,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "failed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 5,
+        "physicalProviderRequests": 8,
+        "invalidModelId": true,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "DELIV-01",
+        "trial": 1,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "failed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 2,
+        "physicalProviderRequests": 2,
+        "invalidModelId": false,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "MULTI-01",
+        "trial": 1,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 3,
+        "physicalProviderRequests": 3,
+        "invalidModelId": false,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "CODE-01",
+        "trial": 2,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "passed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 4,
+        "physicalProviderRequests": 4,
+        "invalidModelId": false,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      },
+      {
+        "recordId": null,
+        "taskId": "FILE-02",
+        "trial": 2,
+        "evidenceTier": "B_real_model",
+        "oracleResult": "failed",
+        "oracleVersion": "legacy-s3b-v1",
+        "logicalModelRequests": 4,
+        "physicalProviderRequests": 4,
+        "invalidModelId": false,
+        "infrastructureStatus": "executed",
+        "displayOnly": true,
+        "mappedToDimensions": false
+      }
+    ],
+    "mappedToDimensions": false,
+    "denominatorId": "legacy-frozen-s3b",
+    "note": "Display-only legacy results. Never mapped to V2 goal/contract/mechanism and never added to V2 denominators."
+  }
+}
