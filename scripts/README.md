@@ -13,7 +13,8 @@
 ## 常用入口
 
 - `pnpm check:repo`：仓库卫生、文档导航、生成物、依赖方向与 TypeScript 项目引用检查。
-- `pnpm run verify:ci-config`：解析 `.github/workflows/` 并校验 CI 硬门策略（冻结锁文件、门禁不可跳过、无真实 Provider／GUI 声明、报告保留与合成数据根引导）。规则见 `docs/reference/ci-gates.md`；`scripts/verify-ci-workflows.test.mjs` 用临时变异副本证明每条违规都会被拒绝。
+- `pnpm run verify:ci-config`：解析 `.github/workflows/` 并校验 CI 硬门策略（冻结锁文件、门禁不可跳过、无真实 Provider／GUI／平台专项声明、报告保留与合成数据根引导）。规则见 `docs/reference/ci-gates.md`；`scripts/verify-ci-workflows.test.mjs` 用临时变异副本证明每条违规都会被拒绝。
+- `pnpm run verify:wsl-terminal`：WSL 终端平台专项验收（真实 WSL 发行版 + ConPTY）。先以 45 秒上限探测宿主 WSL，再运行 opt-in 的 `workspace-terminal-wsl-acceptance.test.ts`；退出码 0 通过、1 验收失败、2 环境阻断（不是通过）。通用 `verify:full` 将该用例记为 opt-in 跳过，专用入口是唯一实际执行它的地方。入口脚本为 `scripts/verify-wsl-terminal-acceptance.mjs`。
 - `node scripts/ci/prepare-ci-data-root.mjs --root=<临时目录> --json`：为 CI 或本地复现创建隔离合成数据根，输出 `LITTLESHEEP_DATA_DIR`／`LITTLESHEEP_DATA_LOCATOR`／`LITTLESHEEP_RUN_ARTIFACTS_DIR` 路径；拒绝写入仓库、拒绝覆盖无自身标记的目录。它只证明干净合成根上的恢复源审计通过，不是真实用户数据恢复证据。
 - `pnpm verify:task -- --files=<path>`：按改动路径选择局部测试与类型检查。
 - `pnpm verify:changed`、`pnpm verify:core`、`pnpm verify:full`：本地变更、核心和全量验证编排；各自覆盖面以 `package.json` 和执行摘要为准。

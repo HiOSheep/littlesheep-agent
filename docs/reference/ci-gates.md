@@ -90,6 +90,9 @@ pnpm exec vitest run scripts/verify-ci-workflows.test.mjs
 <!-- ci-gates:electron-gui-not-covered -->
 Electron GUI 交互验收（窗口行为、点击／拖拽／键盘、截图、CDP 合成输入、原生命中测试）需要真实显示器和桌面会话，CI 不运行这些验收，也不用单元测试或源码断言替代它们。相关 `verify:electron-*`、`verify:desktop-*`、`verify:window-*` 等命令必须由具备显示环境的专项验收执行；CI 工作流中出现这些命令会被策略校验拒绝。
 
+<!-- ci-gates:platform-exclusions -->
+WSL 终端平台验收（`packages/app/src/main/local-app-api/workspace-terminal-wsl-acceptance.test.ts`，真实 WSL 发行版加 ConPTY 中继）不在通用全量门禁中运行：它依赖真实且响应正常的 WSL 主机，通用 `verify:full` 把它记为明确的 opt-in 跳过，该跳过不计作覆盖。专用入口为 `pnpm run verify:wsl-terminal`：退出码 0 表示通过，1 表示验收失败，2 表示环境阻断（无 WSL 或 WSL 命令超过 45 秒探测上限）；环境阻断只记录为阻断，不报告为通过。CI 工作流中出现该命令会被策略校验拒绝；路径映射与 Shell 发现语义仍由常规单元测试覆盖。Linux/WSL 专用入口 `node scripts/verify-posix-shell-authorization.mjs` 同样不属于 CI 覆盖。
+
 其它明确不在 CI 覆盖范围内：
 
 - 真实 Provider 模型任务、真实费用与 Usage：需要用户直接授权和 Provider 凭据，不属于 CI。

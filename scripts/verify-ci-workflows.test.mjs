@@ -276,6 +276,25 @@ describe('CI workflow policy: negative path', () => {
       },
     },
     {
+      name: 'rejects a host-specific WSL platform acceptance in CI',
+      code: 'platform-acceptance-not-covered',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => addStepAfter(
+          text,
+          'run: pnpm run assert:app-build',
+          ['      - name: WSL terminal acceptance', '        run: pnpm run verify:wsl-terminal'],
+        ))
+      },
+    },
+    {
+      name: 'rejects a coverage document that drops the platform exclusion marker',
+      code: 'platform-exclusions-doc',
+      async mutate(root) {
+        await mutateText(root, 'docs/reference/ci-gates.md', (text) =>
+          text.replace('<!-- ci-gates:platform-exclusions -->', '<!-- platform exclusions covered -->'))
+      },
+    },
+    {
       name: 'rejects an extra unreviewed workflow file',
       code: 'unexpected-workflow',
       async mutate(root) {

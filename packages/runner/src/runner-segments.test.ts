@@ -117,8 +117,22 @@ async function runFixture(options: RunFixtureOptions) {
   };
 }
 
+/**
+ * Each case drives 32–35 real tool-loop turns through the full Runner (one
+ * SQLite write plus a shadow-Git checkpoint per settled effect). Measured cost
+ * on the development host is 22–26 s per case, and the same class of case was
+ * observed at the 30 s suite default under disk pressure, leaving no headroom:
+ * a slow disk or a loaded host turns normal work into a red gate. This is a
+ * finite bound at roughly 3.5x the measured normal cost, not a blanket timeout
+ * increase; the fixture remains the same real end-to-end run.
+ */
+const SEGMENT_TEST_TIMEOUT_MS = 90_000;
+
+const segmentTest = (name: string, body: () => Promise<void>) =>
+  it(name, body, SEGMENT_TEST_TIMEOUT_MS);
+
 describe('Runner execution segments', () => {
-  it('continues 35 operations across the 30-turn segment limit in one Run', async () => {
+  segmentTest('continues 35 operations across the 30-turn segment limit in one Run', async () => {
     const run = await runFixture({ runId: 's2b-t01-single-run', maxToolCalls: 64 });
     expect(run.result).toMatchObject({ status: 'ok', runId: 's2b-t01-single-run' });
     expect(run.completed).toBe(35);
@@ -137,7 +151,7 @@ describe('Runner execution segments', () => {
     });
   });
 
-  it('does not replenish the Run tool budget when a new segment starts', async () => {
+  segmentTest('does not replenish the Run tool budget when a new segment starts', async () => {
     const run = await runFixture({ runId: 's2b-t02-single-run', maxToolCalls: 32 });
     expect(run.result.runId).toBe('s2b-t02-single-run');
     expect(run.completed).toBe(32);
@@ -149,7 +163,7 @@ describe('Runner execution segments', () => {
     });
   });
 
-  it('honors an interruption at the segment boundary before another Provider call', async () => {
+  segmentTest('honors an interruption at the segment boundary before another Provider call', async () => {
     const run = await runFixture({
       runId: 's2b-t05-interrupt-at-boundary',
       maxToolCalls: 64,

@@ -40,6 +40,12 @@ export const ARTIFACT_RETENTION_DAYS = 14
 /** Stable marker the coverage document must keep. */
 export const GUI_NOT_COVERED_MARKER = '<!-- ci-gates:electron-gui-not-covered -->'
 
+/**
+ * Marker for host-specific platform acceptances that cannot be reproduced on a
+ * hosted Windows runner (real WSL terminal/ConPTY, real POSIX shell).
+ */
+export const PLATFORM_EXCLUSIONS_MARKER = '<!-- ci-gates:platform-exclusions -->'
+
 /** Environment variables the synthetic data-root bootstrap exports. */
 export const DATA_ROOT_ENV_KEYS = Object.freeze([
   'LITTLESHEEP_DATA_DIR',
@@ -148,6 +154,16 @@ const GUI_VERIFICATION_PATTERN = new RegExp(
   String.raw`measure:desktop)`,
   'iu',
 )
+
+/**
+ * Host-specific platform acceptances. They need a real WSL distribution or a
+ * real POSIX shell and therefore cannot be reproduced on `windows-latest`; a
+ * hosted runner would either fail for an environment reason or silently pass
+ * an early-return branch while claiming coverage. They keep an explicit,
+ * observable local entry (`pnpm run verify:wsl-terminal`) and must never be
+ * wired into CI as if they were portable coverage.
+ */
+const PLATFORM_ACCEPTANCE_PATTERN = /\bverify:wsl-terminal\b/iu
 
 /** Commands that would need provider credentials, paid usage, or explicit live authorization. */
 const LIVE_PROVIDER_PATTERN = new RegExp(
@@ -361,6 +377,13 @@ function checkSecretsAndLiveProviders(result, file, workflow) {
         'gui-not-covered',
         `${file} ${path}`,
         `GUI/Electron interaction verification needs a real display and must not run in CI: ${value.trim()}`,
+      ))
+    }
+    if (PLATFORM_ACCEPTANCE_PATTERN.test(value)) {
+      result.violations.push(violation(
+        'platform-acceptance-not-covered',
+        `${file} ${path}`,
+        `Host-specific platform acceptance needs a real WSL/POSIX host and must not run in CI: ${value.trim()}`,
       ))
     }
   })
@@ -748,8 +771,17 @@ async function checkCoverageDocument(result, repoRoot) {
       `Coverage document must keep the explicit marker ${GUI_NOT_COVERED_MARKER}.`,
     ))
   }
+  if (!doc.includes(PLATFORM_EXCLUSIONS_MARKER)) {
+    result.violations.push(violation(
+      'platform-exclusions-doc',
+      DOC_PATH,
+      `Coverage document must keep the explicit marker ${PLATFORM_EXCLUSIONS_MARKER}.`,
+    ))
+  }
   const requiredPhrases = [
     ['真实显示器', 'must state that Electron GUI interaction tests need a real display'],
+    ['verify:wsl-terminal', 'must name the dedicated WSL platform acceptance entry'],
+    ['WSL', 'must record the WSL platform acceptance as a host-only exclusion'],
     ['ci-fast.yml', 'must name the fast workflow'],
     ['ci-full.yml', 'must name the full workflow'],
     ['windows-latest', 'must state the CI host'],

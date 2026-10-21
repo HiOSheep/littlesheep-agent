@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createTaskPlan, parseArgs, runTaskVerification } from './run-task-verification.mjs';
@@ -7,6 +7,9 @@ import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs'
 const repoRoot = process.cwd();
 
 async function withReportDirectory(callback) {
+  // A caller-provided LITTLESHEEP_RUN_ARTIFACTS_DIR may not exist yet; create it
+  // before mkdtemp so a fresh runner cannot turn this test into an ENOENT.
+  await mkdir(runArtifactsRoot, { recursive: true });
   const directory = await mkdtemp(runArtifact('task-test-'));
   try { return await callback(directory); } finally { await rm(directory, { recursive: true, force: true }); }
 }

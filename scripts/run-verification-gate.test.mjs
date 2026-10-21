@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -7,11 +7,15 @@ import {
   runVerificationGate,
   summarizeGateReport,
 } from './run-verification-gate.mjs';
-import { runArtifact } from './lib/run-artifacts.mjs';
+import { runArtifact, runArtifactsRoot } from './lib/run-artifacts.mjs';
 
 const repoRoot = process.cwd();
 
 async function withReportDirectory(callback) {
+  // LITTLESHEEP_RUN_ARTIFACTS_DIR may point at a directory that does not exist
+  // yet (a fresh CI runner, or a caller-provided path). create the parent first
+  // so this test exercises the gate rather than failing on mkdtemp ENOENT.
+  await mkdir(runArtifactsRoot, { recursive: true });
   const directory = await mkdtemp(runArtifact('gate-test-'));
   try {
     return await callback(directory);

@@ -8,12 +8,22 @@
 // Both outcomes are therefore asserted, so this file is honest wherever it runs: a session that
 // starts must be a real Bash in the mapped workspace, and a session that cannot start must
 // report why instead of hanging or looking alive.
+//
+// Platform scope: this is an acceptance of the host's WSL/ConPTY stack, not a portable unit
+// test. A Windows host without a WSL distribution fails the generic suite for an environment
+// reason, and a host whose WSL daemon is present but stalled can wait past the internal
+// deadline without an error or an exit. The generic `verify:full` gate therefore records this
+// file as an explicit opt-in skip and does not treat that skip as coverage. The dedicated
+// entry `pnpm run verify:wsl-terminal` sets LITTLESHEEP_WSL_TERMINAL_ACCEPTANCE=1, preflights
+// the host, and reports a pass (0), an acceptance failure (1) or an environment block (2).
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { WorkspaceTerminalSessionManager } from './terminal-session'
 import { discoverWorkspaceShells, windowsPathToWslPath, type WorkspaceShellProfile } from '../workspace-shell-discovery'
+
+const WSL_TERMINAL_ACCEPTANCE = process.env.LITTLESHEEP_WSL_TERMINAL_ACCEPTANCE === '1'
 
 const cleanup: string[] = []
 const managers: WorkspaceTerminalSessionManager[] = []
@@ -33,7 +43,9 @@ function plain(value: string): string {
     .replace(/\r/gu, '\n')
 }
 
-describe('workspace terminal WSL acceptance', () => {
+describe.skipIf(!WSL_TERMINAL_ACCEPTANCE)(
+  'workspace terminal WSL acceptance (opt-in: pnpm run verify:wsl-terminal)',
+  () => {
   it('either runs a real Bash in the mapped workspace, or reports why it cannot', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ls-terminal-wsl-'))
     cleanup.push(root)
@@ -126,4 +138,5 @@ describe('workspace terminal WSL acceptance', () => {
     expect(mapped).toMatch(/^\/mnt\/[a-z]\//u)
     expect(mapped).not.toContain('\\')
   })
-})
+  },
+)
