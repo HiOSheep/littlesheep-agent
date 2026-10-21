@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 2,
+  "contractVersion": "2.0.0",
+  "suiteId": "LS-RCD-R4B-V2",
+  "generatedAt": "2026-10-21",
+  "evidenceTier": "A_runtime_deterministic",
+  "frozenAncestry": {
+    "s3aTaskSuite": {
+      "path": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+      "sha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec",
+      "note": "R4-B reads this file only to prove the frozen ancestry hash; it never rewrites it."
+    }
+  },
+  "contracts": {
+    "file02s": {
+      "ref": "#/contracts/file02s",
+      "version": "2.0.0",
+      "visibleText": "The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["total", "items"],
+        "properties": {
+          "total": { "type": "number", "const": 5 },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sku", "qty"],
+              "properties": {
+                "sku": { "type": "string" },
+                "qty": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tasks": [
+    {
+      "id": "FILE-02-G",
+      "version": "2.0.0",
+      "title": "FILE-02 goal correctness (goal-only V2 settlement)",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "goal_only",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "userInput": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity.",
+      "seed": { "inventory.csv": "sku,qty\nB,3\nA,2\n" },
+      "allowedTools": ["read", "write"],
+      "permissionPreset": "workspace-write",
+      "dimensions": { "goal": true, "contract": false, "mechanism": false },
+      "goalRules": {
+        "outputFile": "inventory-summary.json",
+        "acceptedTotalKeys": ["total", "totalQuantity", "total_quantity"],
+        "expectedTotal": 5,
+        "itemsKey": "items",
+        "expectedItems": [
+          { "sku": "A", "qty": 2 },
+          { "sku": "B", "qty": 3 }
+        ],
+        "sortBy": "sku",
+        "requiredWorkspaceFiles": ["inventory.csv", "inventory-summary.json"],
+        "forbiddenExtraFiles": true
+      },
+      "contract": null,
+      "faultFixture": null,
+      "oracle": {
+        "module": "scripts/lib/r4b/oracles.mjs",
+        "goal": "evaluateFile02Goal",
+        "contract": null,
+        "mechanism": null
+      }
+    },
+    {
+      "id": "FILE-02-S",
+      "version": "2.0.0",
+      "title": "FILE-02 explicit schema adherence (goal and contract settled separately)",
+      "ancestry": {
+        "taskId": "FILE-02",
+        "relation": "contract_extension",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "userInput": "Read inventory.csv and create inventory-summary.json with total quantity 5 and items sorted by sku, preserving each quantity. The JSON object must use the exact field name \"total\" for the total quantity, and an \"items\" array of objects with \"sku\" (string) and \"qty\" (number), sorted by sku. No other top-level fields are allowed.",
+      "seed": { "inventory.csv": "sku,qty\nB,3\nA,2\n" },
+      "allowedTools": ["read", "write"],
+      "permissionPreset": "workspace-write",
+      "dimensions": { "goal": true, "contract": true, "mechanism": false },
+      "goalRules": {
+        "outputFile": "inventory-summary.json",
+        "acceptedTotalKeys": ["total", "totalQuantity", "total_quantity"],
+        "expectedTotal": 5,
+        "itemsKey": "items",
+        "expectedItems": [
+          { "sku": "A", "qty": 2 },
+          { "sku": "B", "qty": 3 }
+        ],
+        "sortBy": "sku",
+        "requiredWorkspaceFiles": ["inventory.csv", "inventory-summary.json"],
+        "forbiddenExtraFiles": true
+      },
+      "contract": {
+        "ref": "#/contracts/file02s",
+        "version": "2.0.0"
+      },
+      "faultFixture": null,
+      "oracle": {
+        "module": "scripts/lib/r4b/oracles.mjs",
+        "goal": "evaluateFile02Goal",
+        "contract": "evaluateFile02Contract",
+        "mechanism": null
+      }
+    },
+    {
+      "id": "DELIV-01-G",
+      "version": "2.0.0",
+      "title": "DELIV-01 delivery correctness (goal-only, first-call success allowed)",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "same_goal",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "userInput": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+      "seed": {},
+      "allowedTools": ["fixture_write_exact"],
+      "permissionPreset": "workspace-write",
+      "dimensions": { "goal": true, "contract": false, "mechanism": false },
+      "goalRules": {
+        "outputFile": "result.txt",
+        "expectedContent": "verified-output",
+        "requiredTool": "fixture_write_exact",
+        "requiredSuccessfulExecutions": 1,
+        "duplicateSuccessfulEffectsAllowed": false,
+        "forbiddenExtraFiles": true
+      },
+      "contract": null,
+      "faultFixture": null,
+      "oracle": {
+        "module": "scripts/lib/r4b/oracles.mjs",
+        "goal": "evaluateDeliv01Goal",
+        "contract": null,
+        "mechanism": null
+      }
+    },
+    {
+      "id": "DELIV-01-R",
+      "version": "2.0.0",
+      "title": "DELIV-01 parameter-error recovery (goal and mechanism settled separately)",
+      "ancestry": {
+        "taskId": "DELIV-01",
+        "relation": "recovery_mechanism",
+        "frozenTaskSuiteSha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+      },
+      "userInput": "Use the fixture writer to create result.txt containing exactly verified-output. Correct any parameter validation error before stopping.",
+      "seed": {},
+      "allowedTools": ["fixture_write_exact"],
+      "permissionPreset": "workspace-write",
+      "dimensions": { "goal": true, "contract": false, "mechanism": true },
+      "goalRules": {
+        "outputFile": "result.txt",
+        "expectedContent": "verified-output",
+        "requiredTool": "fixture_write_exact",
+        "requiredSuccessfulExecutions": 1,
+        "duplicateSuccessfulEffectsAllowed": false,
+        "forbiddenExtraFiles": true
+      },
+      "contract": null,
+      "faultFixture": {
+        "tool": "fixture_write_exact",
+        "kind": "evaluator_driven_schema_invalid_first_proposal",
+        "invalidArguments": { "filepath": "result.txt", "content": "verified-output" },
+        "expectedValidationStatus": "validation_failed",
+        "expectedErrorKind": "input_validation",
+        "recoveryArgumentNames": ["path", "content"],
+        "maxInjectedFailures": 1,
+        "note": "The controlled provider driver proposes one schema-invalid argument object; the real ToolExecutionService returns structured validation feedback. Correct parameter names are not disclosed in the task text."
+      },
+      "oracle": {
+        "module": "scripts/lib/r4b/oracles.mjs",
+        "goal": "evaluateDeliv01Goal",
+        "contract": null,
+        "mechanism": "evaluateDeliv01Mechanism"
+      }
+    }
+  ]
+}
