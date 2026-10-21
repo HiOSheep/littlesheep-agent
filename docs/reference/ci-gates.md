@@ -170,13 +170,15 @@ pnpm run assert:app-build
 - 第 1 轮 Full Gate run `39581176136`：引导、安装、策略校验与恢复源审计均成功，`test:ci-recovery` 失败。干净 runner 没有 workspace `dist/`，多个 Runner 套件通过包导出解析 `@littlesheep/documents` / `@littlesheep/embedding` / `@littlesheep/web` 失败；同时一个读取源码文本的断言（`checkpoint-recovery-state.test.ts` 检查 `\n`）受 CRLF 影响。修复：门禁前置 `ensure:workspace-build`，并由 `.gitattributes` 的 LF 检出约定统一检出行尾。该次 artifact `ci-full-artifacts-39581176136-1` 已成功上传，包含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 224701 MiB）与已执行步骤的日志；`verify-full.log` 因 `verify:full` 被跳过而按预期不存在。
 - 第 2 轮（`e8b395a7`）Fast Gate run `39583419739` **通过**（15/15 步骤）；Full Gate run `39583419740` 的恢复套件出现 `hard_denied` 与文件 ENOENT。宿主 `%TEMP%` 是 8.3 短名（形如 `…\RUNNER~1\…`），workspace 文件守卫把短名 root 判为「被替换或重定向」。修复：测试前把 `TMP`/`TEMP` 规范化为长路径 `$env:RUNNER_TEMP`（仅环境规范化）。本地以 8.3 别名作 root 复现了守卫的拒绝行为，长路径 root 则通过。
 - 第 3 轮（`6ee57240`）Fast Gate run `39585798612` **通过**；Full Gate run `39585798896` 的干净 runner 前置与恢复套件成功（恢复套件 196 秒），`verify:full` 失败于四类环境假设：PDF 中文断言因托管镜像无 CJK 字体而乱码；`scripts/*` 用例直接 `import` / `node` 启动的 `packages/*/dist`（branding、config、harness、llm、web、types 等）未构建；Git 夹具缺全局身份导致 `git commit` 失败；`workspace-git-untracked` 的竞态用例在更快的宿主上观察到替换后的普通文件而失败。修复：`--workspace` 构建全部库包、固定 sha256 的 Noto Sans SC 字体安装脚本、Git 夹具身份步骤；把竞态用例改为确定性断言（稳定符号链接仍被拒绝，替换后的普通文件按普通文件计数），安全不变量没有弱化。
-- 后续重跑结果记录在批次交付报告；**全部硬门通过前，CI 不标记为已通过**。
+- 第 4 轮（`9fde862c`）两份工作流**全部通过**：Fast Gate run `39590829744` 15/15 步骤成功、耗时 1.7 分钟（`[ci-config] ok`、hygiene 35 passed / 3 advisory / 0 failed、TS 项目引用 27 包、核心回归 6 个文件）；Full Gate run `39590829756` 23/23 步骤成功、耗时 16.1 分钟，恢复套件 47 文件（41 passed / 6 skipped）187 秒，`verify:full` 665.5 秒且 `[gate] full passed`、5 个阶段全部实执行（check:repo 3.7 秒、tests 578.5 秒、typecheck 17.2 秒、build 65.6 秒、recovery 0.6 秒），692 个测试文件 / 5058 个用例（5024 passed / 34 skipped / 0 failed）。artifact `ci-full-artifacts-39590829756-1`（57,301 字节）含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 149,043 MiB）、三份完整日志与结构化报告；未观察到测试超时或 teardown 异常（仅有组件 SSR `useLayoutEffect` 警告与 Fast Gate 上空 Electron 缓存路径提示）。
+- **当前结论：** GitHub 托管 Windows runner 上的 Fast Gate 与 Full Gate 均已实际通过，`verify:full` 为实执行而非条件跳过；Electron GUI、WSL 终端与真实 Provider 仍按“明确未覆盖的能力”记录，本文档不因托管通过而扩大覆盖声明。
 
 ## 失败语义与已知风险
 
 - 任一硬门失败即整次运行失败；没有 automatic retry，也不把失败降级为告警。
 - 若 `verify:app-recovery` 在合成数据根上失败，表示引导脚本或恢复源审计出现回归，不表示用户数据损坏；运行产物会保留当次输出。
 - 在 `77af687d` 上，一次干净的本地 `verify:full` 已通过：691 个测试文件 / 5042 个用例（683 个文件通过、5007 passed、35 skipped、0 failed），门禁耗时 818 秒；`check:repo`、全量测试、typecheck、`build:app` 与 `verify:app-recovery` 均实际执行。此前阻塞已归因：外部磁盘耗尽（ENOSPC）、WSL 宿主机延迟（137–144 秒，超过 120 秒等待上限）与 22–26 秒分段夹具的 30 秒默认超时。WSL 终端验收已改为 opt-in 平台入口，分段夹具超时已按边界调整。
+- 托管侧已在 `9fde862c` 上通过（Fast 1.7 分钟、Full 16.1 分钟；`[gate] full passed`，verify:full 5 阶段全部实执行）；托管通过不改变 Electron GUI、WSL 与真实 Provider 的未覆盖结论。
 - **产品残余风险（8.3 别名）：** workspace 文件守卫要求 workspace root 的词法路径与 `realpath(root)` 完全一致，因此当用户的实际 workspace 通过 8.3 短名（形如 `…\RUNNER~1\…`）表示时，自动写入会被保守地硬拒绝。托管门禁通过规范化临时路径规避，但产品层是否接受「同一目录的别名」需要单独的安全评审（属于 L3 边界变更，不在本批修改）。
 - 首次托管运行已于 2026-10-21 执行（见“首次托管运行记录”）：两份工作流都真实触发，artifact 上传与工具链元数据符合预期；失败原因均为干净 runner 假设（CRLF 检出、缺少 workspace 构建产物），已做最小修复，重跑结果以交付报告为准。在重跑全部通过之前，CI 不标记为已通过。
 
