@@ -656,6 +656,27 @@ function checkToolchain(result, file, workflow, toolchain) {
   }
 }
 
+/**
+ * A clean hosted runner has no workspace dist/ artifacts. The full gate's
+ * recovery suite and full vitest run resolve these three packages through their
+ * package exports (dist), so the workflow must build their dependency closure
+ * before either gate runs. Local checkouts usually have the artifacts from
+ * earlier builds; that assumption broke the first R4-A-H hosted run.
+ */
+const CLEAN_RUNNER_BUILD_PACKAGES = Object.freeze([
+  '@littlesheep/documents',
+  '@littlesheep/embedding',
+  '@littlesheep/web',
+])
+
+function findCleanRunnerBuildStep(entries) {
+  return entries.find((entry) => {
+    const run = typeof entry.step.run === 'string' ? entry.step.run : ''
+    if (!normalizeRun(run).startsWith('pnpm run ensure:workspace-build')) return false
+    return CLEAN_RUNNER_BUILD_PACKAGES.every((name) => run.includes(`--package=${name}`))
+  }) ?? null
+}
+
 function checkRequiredSteps(result, file, workflow) {
   const entries = collectSteps(workflow)
   const capturedCommands = (REQUIRED_CAPTURED_STEPS[file] ?? []).map(normalizeRun)
@@ -678,6 +699,29 @@ function checkRequiredSteps(result, file, workflow) {
           + '`2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\<name>.log"` '
           + 'so the artifact carries the complete log instead of the 4000-character stage excerpt.',
       ))
+    }
+  }
+  if (file === 'ci-full.yml') {
+    const build = findCleanRunnerBuildStep(entries)
+    if (!build) {
+      result.violations.push(violation(
+        'clean-runner-build',
+        `${file} steps`,
+        'Full gate must build the workspace artifacts a clean checkout lacks: '
+          + '`pnpm run ensure:workspace-build -- --package=@littlesheep/documents '
+          + '--package=@littlesheep/embedding --package=@littlesheep/web`.',
+      ))
+    } else {
+      for (const command of ['pnpm run test:ci-recovery', 'pnpm run verify:full']) {
+        const dependent = findGateStep(entries, normalizeRun(command))
+        if (dependent && (dependent.jobId !== build.jobId || entries.indexOf(dependent) < entries.indexOf(build))) {
+          result.violations.push(violation(
+            'clean-runner-order',
+            `${file} steps`,
+            `\`${command}\` must run after the clean-runner workspace build step.`,
+          ))
+        }
+      }
     }
   }
 }
@@ -892,6 +936,8 @@ async function checkCoverageDocument(result, repoRoot) {
     ['Tee-Object', 'must document the captured full gate log'],
     ['4000', 'must document the verification-report truncation limit'],
     ['首次托管运行检查清单', 'must keep the first hosted-run checklist'],
+    ['ensure:workspace-build', 'must document the clean-runner workspace build prerequisite'],
+    ['.gitattributes', 'must document the LF checkout contract that hosted runs depend on'],
   ]
   for (const [phrase, reason] of requiredPhrases) {
     if (!doc.includes(phrase)) {

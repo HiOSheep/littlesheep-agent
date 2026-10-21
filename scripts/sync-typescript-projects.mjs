@@ -26,8 +26,16 @@ if (customBuildProjects.length > 0) {
   process.exit(1);
 }
 
+// Compare and write canonical LF content. A checkout may materialize CRLF on a
+// Windows host (core.autocrlf) even though the repository stores LF; that is a
+// property of the host, not a stale generated file. `.gitattributes` keeps the
+// checkout LF, and this normalization keeps the check itself host-independent.
+function normalizeEol(text) {
+  return String(text).replace(/\r\n/gu, '\n');
+}
+
 async function syncJson(path, transform) {
-  const current = await readFile(path, 'utf8');
+  const current = normalizeEol(await readFile(path, 'utf8'));
   const parsed = JSON.parse(current);
   const next = `${JSON.stringify(transform(parsed), null, 2)}\n`;
   if (current === next) return;
@@ -62,7 +70,7 @@ const solution = {
 
 let currentSolution = '';
 try {
-  currentSolution = await readFile(solutionPath, 'utf8');
+  currentSolution = normalizeEol(await readFile(solutionPath, 'utf8'));
 } catch {
   // Created below.
 }

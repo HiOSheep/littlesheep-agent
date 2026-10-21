@@ -95,6 +95,15 @@ jobs:
       - name: Validate CI workflow policy
         run: pnpm run verify:ci-config
 
+      # A clean runner has no workspace dist/ artifacts. Several Runner suites
+      # import @littlesheep/documents, @littlesheep/embedding and @littlesheep/web
+      # through their package exports (dist), so the recovery suite and the full
+      # gate need those artifacts before any test runs. Local checkouts usually
+      # already have them from earlier builds; the first hosted run exposed that
+      # assumption. The step builds the dependency closure of the three packages.
+      - name: Ensure workspace build artifacts (clean-runner prerequisite)
+        run: pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
+
       - name: Recovery source audit (clean synthetic data root)
         run: pnpm run verify:app-recovery
 

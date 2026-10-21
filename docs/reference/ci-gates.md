@@ -9,7 +9,7 @@
 | 文件 | 触发 | 执行的硬门 | 超时 |
 |---|---|---|---|
 | `ci-fast.yml` | `pull_request`；push 到 `main` | `pnpm install --frozen-lockfile`、`verify:ci-config`、`typecheck`、`check:repo`、`test:core-eval` | 30 分钟 |
-| `ci-full.yml` | push 到 `main`；`workflow_dispatch` | `verify:ci-config`、合成数据根引导（先于安装）、`pnpm install --frozen-lockfile`、`verify:app-recovery`、`test:ci-recovery`、`verify:full`、`assert:app-build`，最后上传运行产物 | 90 分钟 |
+| `ci-full.yml` | push 到 `main`；`workflow_dispatch` | `verify:ci-config`、合成数据根引导（先于安装）、`pnpm install --frozen-lockfile`、`ensure:workspace-build`（干净 runner 构建前置）、`verify:app-recovery`、`test:ci-recovery`、`verify:full`、`assert:app-build`，最后上传运行产物 | 90 分钟 |
 
 两层都在 `windows-latest` 上运行，都使用 `permissions: contents: read`、显式 `concurrency`、`defaults.run.shell: pwsh` 和作业级 `timeout-minutes`。完整门禁上传整个 `LITTLESHEEP_RUN_ARTIFACTS_DIR`：`ci-run-metadata.json`（运行与工具链元数据）、`logs/`（完整门禁日志）、`verification-reports/`（结构化阶段报告）；上传使用 `if: always()`、保留 14 天、`if-no-files-found: error`，因此产物缺失本身也会让运行失败。
 
@@ -24,6 +24,8 @@
 **pnpm 固定为 `11.9.0`。** 与 `package.json` 的 `packageManager: "pnpm@11.9.0"` 完全一致；`verify:ci-config` 强制两者相等，并强制 `pnpm/action-setup` 的 `run_install: false`，保证唯一的安装入口是冻结锁文件那一步。
 
 依赖缓存只缓存 pnpm store（`actions/setup-node` 的 `cache: pnpm`，以 `pnpm-lock.yaml` 为 key）和 Electron 下载缓存（`~\AppData\Local\electron\Cache`）。Electron 缓存的命中文件会由 `@electron/get` 按 Electron 包内 `checksums.json` 校验，不匹配时重新下载；pnpm store 由锁文件 integrity 约束。缓存不作为正确性证据：命中与否都执行同样的安装与门禁。
+
+**检出行尾固定为 LF。** 仓库根的 `.gitattributes` 声明 `* text=auto eol=lf`，让托管 runner 与本地检出得到相同字节。生成型 tsconfig 的逐字节检查、以及读取源码文本并断言 `\n` 的测试都依赖这一点；Windows runner 默认的 autocrlf 曾让首次托管运行的 `check:repo` 与一个恢复测试失败。Git attributes 优先于 `core.autocrlf`，因此该约定对所有平台生效。
 
 ## 干净 runner 的合成数据根
 
@@ -46,6 +48,16 @@ node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
 安全约束：脚本拒绝在仓库工作树内创建目录，拒绝覆盖没有自身标记文件的既有目录，也拒绝指向真实数据根（`~/.littlesheep` 或 locator）。因此误配 `LITTLESHEEP_CI_DATA_ROOT` 会明确报错，而不是删除用户数据。
 
 **这条路径证明什么：** 恢复源审计可以在一份干净、结构合法的合成数据根上通过。**它不是真实用户数据恢复证据，也不是 Electron 恢复验收的替代品。** 真实恢复证据来自专项 Electron／故障注入验收，CI 不声称覆盖。
+
+## 干净 runner 的构建前置
+
+干净 checkout 只有源码，没有 workspace 的 `dist/` 构建产物。多个 Runner 套件通过包导出（`dist`）解析 `@littlesheep/documents`、`@littlesheep/embedding` 与 `@littlesheep/web`；本地检出通常已有这些产物，托管 runner 没有，首次托管运行因此让恢复套件整体解析失败。完整门禁在 `verify:app-recovery` / `test:ci-recovery` / `verify:full` 之前显式执行：
+
+```pwsh
+pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
+```
+
+该命令按 workspace 依赖闭包构建缺失产物，并校验产物指纹；策略校验要求这一步存在且必须早于依赖它的门禁，删除或后置都会让 `verify:ci-config` 失败。快速门禁不需要额外步骤：它先运行 `typecheck`，其 `tsc -b` 在干净检出的 `test:core-eval` 之前同样生成所需产物。
 
 ## 恢复回归套件
 
@@ -73,6 +85,7 @@ node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
 - artifact 缺少 `if: always()`、`retention-days: 14`、`if-no-files-found: error`，或上传路径不再是 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 根目录（必须包含元数据与日志）。
 - pnpm 版本与 `packageManager` 不一致、Node 版本不是本地验证过的 `26.4.0`、`package.json` 的 `engines.node` 下限排除了固定 Node、`test:ci-recovery` 缺失必需用例。
 - 缺失合成数据根引导、引导排在依赖安装之后，或依赖它的门禁排在引导之前。
+- 缺少干净 runner 的 `ensure:workspace-build` 前置构建，或把它排在 `test:ci-recovery` / `verify:full` 之后。
 - 引导脚本不再写 `ci-run-metadata.json`，或去掉小于 2048 MiB 空闲空间时的明确失败。
 - 额外新增、未经策略评审的工作流文件。
 
@@ -127,6 +140,7 @@ $env:LITTLESHEEP_RUN_ARTIFACTS_DIR = $summary.runArtifactsDir
 
 pnpm install --frozen-lockfile 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\install.log"
 pnpm run verify:ci-config
+pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web
 pnpm run verify:app-recovery
 pnpm run test:ci-recovery 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\test-ci-recovery.log"
 pnpm run verify:full 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\verify-full.log"
@@ -135,18 +149,27 @@ pnpm run assert:app-build
 
 开发机上不设置上述环境变量时，`verify:app-recovery` 仍然使用真实数据根，这是本地日常验证路径；CI 只使用合成数据根。本地抓取日志前必须先运行引导脚本，否则 `LITTLESHEEP_RUN_ARTIFACTS_DIR` 与 `logs/` 不存在。
 
+## 首次托管运行记录（2026-10-21）
+
+推送 `17406201` 后两份工作流均触发，并各自暴露出一个干净 runner 假设错误；artifact 上传路径本身已验证可用：
+
+- Fast Gate run `39581176328`：`checkout` → `install` → `verify:ci-config` → `typecheck` 均成功，`check:repo` 失败。宿主 checkout 以 CRLF 落盘，`sync-typescript-projects.mjs --check` 的逐字节比较把全部生成的 tsconfig 判为 stale。修复：根 `.gitattributes` 强制 LF 检出，检查本身也对 CRLF 容错。
+- Full Gate run `39581176136`：引导、安装、策略校验与恢复源审计均成功，`test:ci-recovery` 失败。干净 runner 没有 workspace `dist/`，多个 Runner 套件通过包导出解析 `@littlesheep/documents` / `@littlesheep/embedding` / `@littlesheep/web` 失败；同时一个读取源码文本的断言（`checkpoint-recovery-state.test.ts` 检查 `\n`）受 CRLF 影响。修复：门禁前置 `ensure:workspace-build`，并由 `.gitattributes` 的 LF 检出约定统一检出行尾。
+- 该次 Full Gate 的 artifact `ci-full-artifacts-39581176136-1` 已成功上传，包含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 224701 MiB）与已执行步骤的日志；`verify-full.log` 因 `verify:full` 被跳过而按预期不存在。
+- 修复后的重跑结果记录在批次交付报告；**重跑通过前，CI 不标记为已通过**。
+
 ## 失败语义与已知风险
 
 - 任一硬门失败即整次运行失败；没有 automatic retry，也不把失败降级为告警。
 - 若 `verify:app-recovery` 在合成数据根上失败，表示引导脚本或恢复源审计出现回归，不表示用户数据损坏；运行产物会保留当次输出。
 - 在 `77af687d` 上，一次干净的本地 `verify:full` 已通过：691 个测试文件 / 5042 个用例（683 个文件通过、5007 passed、35 skipped、0 failed），门禁耗时 818 秒；`check:repo`、全量测试、typecheck、`build:app` 与 `verify:app-recovery` 均实际执行。此前阻塞已归因：外部磁盘耗尽（ENOSPC）、WSL 宿主机延迟（137–144 秒，超过 120 秒等待上限）与 22–26 秒分段夹具的 30 秒默认超时。WSL 终端验收已改为 opt-in 平台入口，分段夹具超时已按边界调整。
-- 两份工作流尚未在 GitHub 上实际执行过：当前仓库没有推送授权，首次运行仍可能暴露 action 版本解析、runner 镜像差异或缓存路径等环境问题。在首次真实运行之前，本页与本地验证只证明配置在本地可解析、可复现，不证明 GitHub 托管的执行结果。
+- 首次托管运行已于 2026-10-21 执行（见“首次托管运行记录”）：两份工作流都真实触发，artifact 上传与工具链元数据符合预期；失败原因均为干净 runner 假设（CRLF 检出、缺少 workspace 构建产物），已做最小修复，重跑结果以交付报告为准。在重跑全部通过之前，CI 不标记为已通过。
 
 ## 首次托管运行检查清单
 
 首次真实 GitHub 运行后逐项确认；未全部满足前，不得把 CI 标记为已通过：
 
-1. 两份工作流都实际触发，并在运行日志中执行了每个必需步骤（不能只看 `verify:ci-config` 通过）。
+1. 两份工作流都实际触发，并在运行日志中执行了每个必需步骤（不能只看 `verify:ci-config` 通过）；Full Gate 的 `ensure:workspace-build` 前置构建必须实际执行。
 2. 上传的 `ci-full-artifacts-*` 中存在 `ci-run-metadata.json`；核对其中的 Node（应为 `26.4.0`）、pnpm（`11.9.0`）、Electron 版本与 runner OS。
 3. `logs/install.log`、`logs/test-ci-recovery.log`、`logs/verify-full.log` 均存在且非空；`verification-reports/latest.json` 的阶段状态与门禁结论一致。
 4. 失败状态真实：既有失败或刻意失败时，步骤与作业为 failure，artifact 仍被上传，且没有 `continue-on-error` 或条件跳过的痕迹。

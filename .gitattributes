@@ -1,0 +1,10 @@
+# Keep checkout line endings identical on every host.
+#
+# The generated TypeScript project files (scripts/sync-typescript-projects.mjs)
+# and several tests that read source text compare exact content. On a Windows
+# hosted runner with the default `core.autocrlf` behaviour, the first R4-A-H run
+# checked these files out with CRLF: check:repo reported every generated tsconfig
+# as stale, and a source-reading assertion in checkpoint-recovery-state.test.ts
+# failed. Git attributes take precedence over core.autocrlf, so forcing LF here
+# makes hosted and local checkouts byte-identical for text files.
+* text=auto eol=lf

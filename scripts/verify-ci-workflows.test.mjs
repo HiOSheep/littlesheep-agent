@@ -266,6 +266,25 @@ describe('CI workflow policy: negative path', () => {
       },
     },
     {
+      name: 'rejects a removed clean-runner workspace build',
+      code: 'clean-runner-build',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) =>
+          removeStep(text, 'Ensure workspace build artifacts (clean-runner prerequisite)'))
+      },
+    },
+    {
+      name: 'rejects a workspace build scheduled after the gates that need it',
+      code: 'clean-runner-order',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => addStepAfter(
+          removeStep(text, 'Ensure workspace build artifacts (clean-runner prerequisite)'),
+          'run: pnpm run assert:app-build',
+          ['      - name: Late workspace build', '        run: pnpm run ensure:workspace-build -- --package=@littlesheep/documents --package=@littlesheep/embedding --package=@littlesheep/web'],
+        ))
+      },
+    },
+    {
       name: 'rejects secrets-derived provider credentials',
       code: 'no-secrets',
       async mutate(root) {
