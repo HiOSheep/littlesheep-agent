@@ -285,6 +285,14 @@ describe('CI workflow policy: negative path', () => {
       },
     },
     {
+      name: 'rejects a removed canonical host temp-path step',
+      code: 'host-temp-path',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) =>
+          removeStep(text, 'Use canonical long temp path for workspace tests'))
+      },
+    },
+    {
       name: 'rejects secrets-derived provider credentials',
       code: 'no-secrets',
       async mutate(root) {

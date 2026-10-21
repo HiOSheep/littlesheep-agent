@@ -141,6 +141,22 @@ const DATA_ROOT_DEPENDENT_STEPS = Object.freeze([
 ])
 
 /**
+ * Hosted Windows runners expose %TEMP% through an 8.3 alias (a path such as
+ * `...\RUNNER~1\...`). The workspace file guard rejects a root whose
+ * lexical path differs from realpath(root) as "replaced or redirected", which
+ * hard-denied writes in the first hosted full gate. The full workflow must
+ * normalize TMP/TEMP to the canonical long RUNNER_TEMP path before tests.
+ */
+const HOST_TEMP_COMMAND_PATTERN = /Add-Content\s+-Path\s+\$env:GITHUB_ENV\s+-Value\s+"TMP=\$env:RUNNER_TEMP"/iu
+
+function findHostTempStep(entries) {
+  return entries.find((entry) => {
+    const run = typeof entry.step.run === 'string' ? entry.step.run : ''
+    return HOST_TEMP_COMMAND_PATTERN.test(run) && run.includes('TEMP=$env:RUNNER_TEMP')
+  }) ?? null
+}
+
+/**
  * Long gate steps whose full console output must be captured into the run
  * artifact. `scripts/run-verification-gate.mjs` truncates each stage's stored
  * stdout/stderr to 4000 characters, so the uploaded report alone cannot explain
@@ -723,6 +739,26 @@ function checkRequiredSteps(result, file, workflow) {
         }
       }
     }
+    const hostTemp = findHostTempStep(entries)
+    if (!hostTemp) {
+      result.violations.push(violation(
+        'host-temp-path',
+        `${file} steps`,
+        'Full gate must normalize TMP/TEMP to the canonical long RUNNER_TEMP path before tests; '
+          + 'the hosted 8.3 temp alias makes the workspace file guard reject the workspace root.',
+      ))
+    } else {
+      for (const command of ['pnpm run test:ci-recovery', 'pnpm run verify:full']) {
+        const dependent = findGateStep(entries, normalizeRun(command))
+        if (dependent && (dependent.jobId !== hostTemp.jobId || entries.indexOf(dependent) < entries.indexOf(hostTemp))) {
+          result.violations.push(violation(
+            'host-temp-order',
+            `${file} steps`,
+            `\`${command}\` must run after the canonical TMP/TEMP step.`,
+          ))
+        }
+      }
+    }
   }
 }
 
@@ -938,6 +974,7 @@ async function checkCoverageDocument(result, repoRoot) {
     ['首次托管运行检查清单', 'must keep the first hosted-run checklist'],
     ['ensure:workspace-build', 'must document the clean-runner workspace build prerequisite'],
     ['.gitattributes', 'must document the LF checkout contract that hosted runs depend on'],
+    ['RUNNER~1', 'must document the hosted 8.3 temp-alias normalization'],
   ]
   for (const [phrase, reason] of requiredPhrases) {
     if (!doc.includes(phrase)) {

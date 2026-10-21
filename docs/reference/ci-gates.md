@@ -27,6 +27,8 @@
 
 **检出行尾固定为 LF。** 仓库根的 `.gitattributes` 声明 `* text=auto eol=lf`，让托管 runner 与本地检出得到相同字节。生成型 tsconfig 的逐字节检查、以及读取源码文本并断言 `\n` 的测试都依赖这一点；Windows runner 默认的 autocrlf 曾让首次托管运行的 `check:repo` 与一个恢复测试失败。Git attributes 优先于 `core.autocrlf`，因此该约定对所有平台生效。
 
+**托管临时路径使用规范长路径。** Windows 托管 runner 的 `%TEMP%` 通过 8.3 短名暴露（形如 `…\RUNNER~1\…`）。测试从 `os.tmpdir()` 派生 workspace，而 workspace 文件守卫把「词法 root ≠ realpath(root)」视为 root 被替换或重定向并硬拒绝写入；这曾让第三次托管运行的恢复套件出现 `hard_denied` 与文件 ENOENT。完整门禁在 tests 之前把 `TMP`/`TEMP` 指向规范长路径 `$env:RUNNER_TEMP`；这只是环境规范化，不跳过任何测试或断言。产品层是否接受同一目录的 8.3 别名属于单独的安全评审事项（见“失败语义与已知风险”）。
+
 ## 干净 runner 的合成数据根
 
 `verify:full` 包含 `verify:app-recovery`，而 `scripts/verify-app-recovery-sources.mjs` 在数据根不存在时会失败。干净的 GitHub runner 没有 LittleSheep 用户数据根，所以完整门禁在 `actions/setup-node` 之后、依赖安装之前先执行：
@@ -151,18 +153,19 @@ pnpm run assert:app-build
 
 ## 首次托管运行记录（2026-10-21）
 
-推送 `17406201` 后两份工作流均触发，并各自暴露出一个干净 runner 假设错误；artifact 上传路径本身已验证可用：
+推送 `17406201` 后两份工作流均触发；artifact 上传路径本身已验证可用。三轮托管运行逐步暴露并修复了三个干净 runner 假设：
 
-- Fast Gate run `39581176328`：`checkout` → `install` → `verify:ci-config` → `typecheck` 均成功，`check:repo` 失败。宿主 checkout 以 CRLF 落盘，`sync-typescript-projects.mjs --check` 的逐字节比较把全部生成的 tsconfig 判为 stale。修复：根 `.gitattributes` 强制 LF 检出，检查本身也对 CRLF 容错。
-- Full Gate run `39581176136`：引导、安装、策略校验与恢复源审计均成功，`test:ci-recovery` 失败。干净 runner 没有 workspace `dist/`，多个 Runner 套件通过包导出解析 `@littlesheep/documents` / `@littlesheep/embedding` / `@littlesheep/web` 失败；同时一个读取源码文本的断言（`checkpoint-recovery-state.test.ts` 检查 `\n`）受 CRLF 影响。修复：门禁前置 `ensure:workspace-build`，并由 `.gitattributes` 的 LF 检出约定统一检出行尾。
-- 该次 Full Gate 的 artifact `ci-full-artifacts-39581176136-1` 已成功上传，包含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 224701 MiB）与已执行步骤的日志；`verify-full.log` 因 `verify:full` 被跳过而按预期不存在。
-- 修复后的重跑结果记录在批次交付报告；**重跑通过前，CI 不标记为已通过**。
+- 第 1 轮 Fast Gate run `39581176328`：`checkout` → `install` → `verify:ci-config` → `typecheck` 均成功，`check:repo` 失败。宿主 checkout 以 CRLF 落盘，`sync-typescript-projects.mjs --check` 的逐字节比较把全部生成的 tsconfig 判为 stale。修复：根 `.gitattributes` 强制 LF 检出，检查本身也对 CRLF 容错。
+- 第 1 轮 Full Gate run `39581176136`：引导、安装、策略校验与恢复源审计均成功，`test:ci-recovery` 失败。干净 runner 没有 workspace `dist/`，多个 Runner 套件通过包导出解析 `@littlesheep/documents` / `@littlesheep/embedding` / `@littlesheep/web` 失败；同时一个读取源码文本的断言（`checkpoint-recovery-state.test.ts` 检查 `\n`）受 CRLF 影响。修复：门禁前置 `ensure:workspace-build`，并由 `.gitattributes` 的 LF 检出约定统一检出行尾。该次 artifact `ci-full-artifacts-39581176136-1` 已成功上传，包含 `ci-run-metadata.json`（Node v26.4.0、pnpm 11.9.0、Electron 44.4.5、runner OS win32 10.0.26100、起始磁盘 224701 MiB）与已执行步骤的日志；`verify-full.log` 因 `verify:full` 被跳过而按预期不存在。
+- 第 2 轮（`e8b395a7`）Fast Gate run `39583419739` **通过**（15/15 步骤）；Full Gate run `39583419740` 的恢复套件出现 `hard_denied` 与文件 ENOENT。宿主 `%TEMP%` 是 8.3 短名（形如 `…\RUNNER~1\…`），workspace 文件守卫把短名 root 判为「被替换或重定向」。修复：测试前把 `TMP`/`TEMP` 规范化为长路径 `$env:RUNNER_TEMP`（仅环境规范化）。本地以 8.3 别名作 root 复现了守卫的拒绝行为，长路径 root 则通过。
+- 后续重跑结果记录在批次交付报告；**全部硬门通过前，CI 不标记为已通过**。
 
 ## 失败语义与已知风险
 
 - 任一硬门失败即整次运行失败；没有 automatic retry，也不把失败降级为告警。
 - 若 `verify:app-recovery` 在合成数据根上失败，表示引导脚本或恢复源审计出现回归，不表示用户数据损坏；运行产物会保留当次输出。
 - 在 `77af687d` 上，一次干净的本地 `verify:full` 已通过：691 个测试文件 / 5042 个用例（683 个文件通过、5007 passed、35 skipped、0 failed），门禁耗时 818 秒；`check:repo`、全量测试、typecheck、`build:app` 与 `verify:app-recovery` 均实际执行。此前阻塞已归因：外部磁盘耗尽（ENOSPC）、WSL 宿主机延迟（137–144 秒，超过 120 秒等待上限）与 22–26 秒分段夹具的 30 秒默认超时。WSL 终端验收已改为 opt-in 平台入口，分段夹具超时已按边界调整。
+- **产品残余风险（8.3 别名）：** workspace 文件守卫要求 workspace root 的词法路径与 `realpath(root)` 完全一致，因此当用户的实际 workspace 通过 8.3 短名（形如 `…\RUNNER~1\…`）表示时，自动写入会被保守地硬拒绝。托管门禁通过规范化临时路径规避，但产品层是否接受「同一目录的别名」需要单独的安全评审（属于 L3 边界变更，不在本批修改）。
 - 首次托管运行已于 2026-10-21 执行（见“首次托管运行记录”）：两份工作流都真实触发，artifact 上传与工具链元数据符合预期；失败原因均为干净 runner 假设（CRLF 检出、缺少 workspace 构建产物），已做最小修复，重跑结果以交付报告为准。在重跑全部通过之前，CI 不标记为已通过。
 
 ## 首次托管运行检查清单

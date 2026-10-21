@@ -76,6 +76,15 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      # Windows hosted runners expose %TEMP% through an 8.3 short name
+      # (C:\Users\RUNNER~1\...). Tests derive their workspaces from os.tmpdir(),
+      # and the workspace file guard rejects a root whose lexical path differs
+      # from realpath(root) as "replaced or redirected" - so writes are hard
+      # denied. Point TMP/TEMP at RUNNER_TEMP (a canonical long path) for the
+      # rest of the job; only the CI environment changes, no test is skipped.
+      - name: Use canonical long temp path for workspace tests
+        run: Add-Content -Path $env:GITHUB_ENV -Value "TMP=$env:RUNNER_TEMP","TEMP=$env:RUNNER_TEMP"
+
       # Exports LITTLESHEEP_DATA_DIR, LITTLESHEEP_DATA_LOCATOR and
       # LITTLESHEEP_RUN_ARTIFACTS_DIR through GITHUB_ENV, creates
       # run-artifacts/logs, writes run-artifacts/ci-run-metadata.json, and fails
