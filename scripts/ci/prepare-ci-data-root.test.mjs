@@ -43,8 +43,25 @@ describe('synthetic CI data root bootstrap', () => {
     const summary = JSON.parse(prepared.stdout)
     expect(summary.synthetic).toBe(true)
     expect(summary.remark).toContain('not real user-data recovery evidence')
+    expect(summary.minFreeMib).toBe(2048)
     expect(existsSync(summary.env.LITTLESHEEP_DATA_DIR)).toBe(true)
     expect(existsSync(summary.env.LITTLESHEEP_RUN_ARTIFACTS_DIR)).toBe(true)
+    expect(existsSync(summary.logsDir)).toBe(true)
+    expect(existsSync(summary.metadataPath)).toBe(true)
+
+    const metadata = JSON.parse(await readFile(summary.metadataPath, 'utf8'))
+    expect(metadata.schemaVersion).toBe(1)
+    expect(metadata.synthetic).toBe(true)
+    expect(metadata.generatedBy).toBe('scripts/ci/prepare-ci-data-root.mjs')
+    expect(metadata.toolchain.node).toBe(process.version)
+    expect(metadata.toolchain.pnpm).toMatch(/^\d+\.\d+\.\d+$/u)
+    // Read from the lockfile: the bootstrap runs before dependency installation.
+    expect(metadata.toolchain.electron).toMatch(/^\d+\.\d+\.\d+$/u)
+    expect(metadata.paths.dataDir).toBe(summary.dataDir)
+    expect(metadata.paths.runArtifactsDir).toBe(summary.runArtifactsDir)
+    expect(metadata.paths.logsDir).toBe(summary.logsDir)
+    expect(metadata.freeDiskAtStart.freeMiB).toBeGreaterThan(0)
+    expect(metadata.freeDiskAtStart.minFreeMib).toBe(2048)
 
     const audit = spawnSync(process.execPath, [auditPath], {
       cwd: repoRoot,
@@ -57,6 +74,51 @@ describe('synthetic CI data root bootstrap', () => {
     })
     expect(audit.status, audit.stdout + audit.stderr).toBe(0)
     expect(audit.stdout).toContain('LittleSheep recovery sources: ok')
+  })
+
+  it('records the GitHub run context in the run metadata', async () => {
+    const root = await makeRoot()
+    const prepared = run([`--root=${root}`, '--json'], {
+      GITHUB_REPOSITORY: 'owner/repo',
+      GITHUB_WORKFLOW: 'CI Full Gate',
+      GITHUB_JOB: 'full-gate',
+      GITHUB_SHA: '0123456789abcdef',
+      GITHUB_RUN_ID: '42',
+      GITHUB_RUN_ATTEMPT: '2',
+      GITHUB_EVENT_NAME: 'push',
+      RUNNER_NAME: 'runner-x',
+    })
+    expect(prepared.status, prepared.stderr).toBe(0)
+    const summary = JSON.parse(prepared.stdout)
+    const metadata = JSON.parse(await readFile(summary.metadataPath, 'utf8'))
+    expect(metadata.run).toMatchObject({
+      repository: 'owner/repo',
+      workflow: 'CI Full Gate',
+      job: 'full-gate',
+      sha: '0123456789abcdef',
+      runId: '42',
+      runAttempt: '2',
+      eventName: 'push',
+    })
+    expect(metadata.runner.name).toBe('runner-x')
+  })
+
+  it('refuses to run when the artifact drive is below the free-space floor', async () => {
+    const root = await makeRoot()
+    const prepared = run([`--root=${root}`, '--min-free-mib=1000000000', '--json'])
+    expect(prepared.status).toBe(1)
+    expect(prepared.stderr).toContain('Insufficient free disk space')
+    // The disk check runs before anything is created or replaced.
+    expect(existsSync(root)).toBe(false)
+  })
+
+  it('rejects a non-positive free-space floor instead of skipping the check', async () => {
+    const root = await makeRoot()
+    for (const value of ['0', '-1', 'not-a-number']) {
+      const prepared = run([`--root=${root}`, `--min-free-mib=${value}`])
+      expect(prepared.status).toBe(1)
+      expect(prepared.stderr).toContain('--min-free-mib must be a positive integer')
+    }
   })
 
   it('exports the LITTLESHEEP_* environment through a GitHub env file', async () => {

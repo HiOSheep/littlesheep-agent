@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CI bootstrap for the LittleSheep data root.
+// CI bootstrap for the LittleSheep data root and run-artifact directory.
 //
 // `pnpm run verify:full` includes `pnpm run verify:app-recovery`, and
 // `scripts/verify-app-recovery-sources.mjs` fails when the resolved user data
@@ -13,7 +13,18 @@
 //
 //   LITTLESHEEP_DATA_DIR           synthetic data root (`config.json`, indexes)
 //   LITTLESHEEP_DATA_LOCATOR       locator pointing at the synthetic data root
-//   LITTLESHEEP_RUN_ARTIFACTS_DIR  report directory uploaded as a CI artifact
+//   LITTLESHEEP_RUN_ARTIFACTS_DIR  upload directory: logs, run metadata, reports
+//
+// It also creates `run-artifacts/logs/` and writes
+// `run-artifacts/ci-run-metadata.json`, so a run that fails before any gate can
+// still upload a non-empty artifact that identifies the runner and toolchain.
+// CI runs this step before dependency installation for exactly that reason.
+//
+// Disk headroom is checked before anything is created or replaced: a hosted
+// runner with a nearly full artifact drive should fail with a clear message
+// instead of producing a burst of unrelated ENOSPC errors (the R4-A full-gate
+// block was external disk exhaustion, seen as git "unable to write loose object
+// file" and import-repo ENOSPC).
 //
 // What this proves is narrow and must stay described that way: the recovery
 // audit runs cleanly against a freshly created, well-formed synthetic root. It
@@ -28,14 +39,23 @@
 // personal data.
 
 import { existsSync } from 'node:fs'
-import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { appendFile, mkdir, readFile, rm, statfs, writeFile } from 'node:fs/promises'
+import { arch, homedir, release, tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** Marker written into the synthetic root; only a marked directory may be replaced. */
 export const MARKER_FILE = '.littlesheep-ci-data-root.json'
 export const MARKER_SCHEMA_VERSION = 1
+
+/** Minimum free space required on the artifact drive before the bootstrap runs. */
+export const DEFAULT_MIN_FREE_MIB = 2048
+
+/** Directory under the run-artifacts root that holds captured gate logs. */
+export const LOGS_DIRNAME = 'logs'
+
+/** Machine-readable record of the run that produced the artifact upload. */
+export const METADATA_FILE = 'ci-run-metadata.json'
 
 /** Environment variables written through `--github-env` for the rest of the job. */
 export const CI_ENV_KEYS = Object.freeze([
@@ -52,14 +72,15 @@ const defaultRoot = join(
 
 function usage() {
   return [
-    'Create an isolated synthetic LittleSheep data root for CI.',
+    'Create an isolated synthetic LittleSheep data root and run-artifact directory for CI.',
     '',
     'Usage:',
-    '  node scripts/ci/prepare-ci-data-root.mjs [--root=<dir>] [--github-env=<file>] [--github-output=<file>] [--json]',
+    '  node scripts/ci/prepare-ci-data-root.mjs [--root=<dir>] [--min-free-mib=<n>] [--github-env=<file>] [--github-output=<file>] [--json]',
     '',
     'Options:',
     '  --root=<dir>          Target directory (default: $RUNNER_TEMP/littlesheep-ci-data-root).',
     '                        Must be outside the repository and must not be a real data root.',
+    '  --min-free-mib=<n>    Required free space on the artifact drive (default: 2048).',
     '  --github-env=<file>   Append LITTLESHEEP_* assignments to a GitHub Actions env file.',
     '  --github-output=<file> Append data-dir/data-locator/run-artifacts-dir to a GitHub Actions output file.',
     '  --json                Print the machine-readable summary as the last stdout line.',
@@ -73,6 +94,7 @@ function usage() {
 export function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     root: defaultRoot,
+    minFreeMib: DEFAULT_MIN_FREE_MIB,
     githubEnv: null,
     githubOutput: null,
     json: false,
@@ -90,6 +112,8 @@ export function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === '--json') options.json = true
     else if (arg === '--root') options.root = value()
     else if (arg.startsWith('--root=')) options.root = arg.slice('--root='.length)
+    else if (arg === '--min-free-mib') options.minFreeMib = Number.parseInt(value(), 10)
+    else if (arg.startsWith('--min-free-mib=')) options.minFreeMib = Number.parseInt(arg.slice('--min-free-mib='.length), 10)
     else if (arg === '--github-env') options.githubEnv = value()
     else if (arg.startsWith('--github-env=')) options.githubEnv = arg.slice('--github-env='.length)
     else if (arg === '--github-output') options.githubOutput = value()
@@ -98,6 +122,9 @@ export function parseArgs(argv = process.argv.slice(2)) {
   }
   if (typeof options.root !== 'string' || options.root.trim() === '') {
     throw new Error('--root must not be empty.')
+  }
+  if (!Number.isInteger(options.minFreeMib) || options.minFreeMib <= 0) {
+    throw new Error('--min-free-mib must be a positive integer.')
   }
   return options
 }
@@ -156,8 +183,117 @@ async function assertReplaceable(root) {
   }
 }
 
-export async function prepareCiDataRoot(root) {
+/** Nearest existing ancestor, so free space can be read before the root exists. */
+function existingAncestor(path) {
+  let current = resolve(path)
+  while (!existsSync(current)) {
+    const parent = dirname(current)
+    if (parent === current) return current
+    current = parent
+  }
+  return current
+}
+
+/**
+ * Fail closed when the artifact drive is too full. `statfs` is available on the
+ * supported Windows/Node toolchain; an unreadable value is an error, never a
+ * silent skip.
+ */
+export async function checkFreeDisk(targetPath, minFreeMib = DEFAULT_MIN_FREE_MIB) {
+  const volume = existingAncestor(targetPath)
+  let stats
+  try {
+    stats = await statfs(volume)
+  } catch (error) {
+    throw new Error(`Cannot determine free disk space for ${volume}: ${error.message}`)
+  }
+  const blockSize = Number(stats.bsize)
+  const availableBlocks = Number(stats.bavail)
+  const freeBytes = blockSize * availableBlocks
+  const freeMiB = Math.floor(freeBytes / (1024 * 1024))
+  const checkedAt = new Date().toISOString()
+  if (!Number.isFinite(freeBytes) || freeBytes <= 0) {
+    throw new Error(`Cannot determine free disk space for ${volume}: statfs returned unusable values.`)
+  }
+  if (freeMiB < minFreeMib) {
+    throw new Error(
+      `Insufficient free disk space on ${volume}: ${freeMiB} MiB available, `
+        + `below the required ${minFreeMib} MiB. Free the artifact drive before rerunning the gate.`,
+    )
+  }
+  return { volume, freeBytes, freeMiB, minFreeMib, checkedAt }
+}
+
+async function readPnpmVersion() {
+  try {
+    const manifest = JSON.parse(await readFile(join(repoRoot, 'package.json'), 'utf8'))
+    const match = /^pnpm@(\d+\.\d+\.\d+)$/u.exec(String(manifest?.packageManager ?? ''))
+    return match?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Electron's resolved version comes from the lockfile rather than the installed
+ * package: the bootstrap runs before dependency installation, and the lockfile
+ * pin is exactly what the frozen install will produce.
+ */
+async function readLockedElectronVersion() {
+  try {
+    const lockfile = await readFile(join(repoRoot, 'pnpm-lock.yaml'), 'utf8')
+    const match = /^\s{2}electron@(\d+\.\d+\.\d+):/mu.exec(lockfile)
+    return match?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
+function runMetadata({ absoluteRoot, dataDir, workspaceDir, workplaceDir, locatorPath, runArtifactsDir, logsDir, freeDisk, pnpmVersion, electronVersion }) {
+  const environment = process.env
+  return {
+    schemaVersion: 1,
+    synthetic: true,
+    createdAt: new Date().toISOString(),
+    generatedBy: 'scripts/ci/prepare-ci-data-root.mjs',
+    run: {
+      repository: environment.GITHUB_REPOSITORY || null,
+      workflow: environment.GITHUB_WORKFLOW || null,
+      job: environment.GITHUB_JOB || null,
+      sha: environment.GITHUB_SHA || null,
+      runId: environment.GITHUB_RUN_ID || null,
+      runAttempt: environment.GITHUB_RUN_ATTEMPT || null,
+      eventName: environment.GITHUB_EVENT_NAME || null,
+    },
+    runner: {
+      os: `${process.platform} ${release()}`,
+      arch: arch(),
+      name: environment.RUNNER_NAME || null,
+      temp: environment.RUNNER_TEMP || null,
+    },
+    toolchain: {
+      node: process.version,
+      pnpm: pnpmVersion,
+      electron: electronVersion,
+    },
+    paths: {
+      root: absoluteRoot,
+      dataDir,
+      workspaceDir,
+      workplaceDir,
+      locatorPath,
+      runArtifactsDir,
+      logsDir,
+    },
+    freeDiskAtStart: freeDisk,
+  }
+}
+
+export async function prepareCiDataRoot(root, { minFreeMib = DEFAULT_MIN_FREE_MIB } = {}) {
   const absoluteRoot = assertSafeRoot(root)
+  // Fail before deleting or writing anything: a low-disk runner otherwise
+  // surfaces as a cascade of unrelated ENOSPC failures later in the gate.
+  const freeDisk = await checkFreeDisk(absoluteRoot, minFreeMib)
   await assertReplaceable(absoluteRoot)
   await rm(absoluteRoot, { recursive: true, force: true })
 
@@ -166,6 +302,8 @@ export async function prepareCiDataRoot(root) {
   const workplaceDir = join(dataDir, 'workplace')
   const locatorPath = join(absoluteRoot, 'location.json')
   const runArtifactsDir = join(absoluteRoot, 'run-artifacts')
+  const logsDir = join(runArtifactsDir, LOGS_DIRNAME)
+  const metadataPath = join(runArtifactsDir, METADATA_FILE)
 
   const directories = [
     dataDir,
@@ -178,6 +316,7 @@ export async function prepareCiDataRoot(root) {
     join(dataDir, 'run-checkpoint-dispositions'),
     join(dataDir, 'workspace', 'resource-indexes'),
     runArtifactsDir,
+    logsDir,
   ]
   for (const directory of directories) await mkdir(directory, { recursive: true })
 
@@ -226,6 +365,21 @@ export async function prepareCiDataRoot(root) {
     `${JSON.stringify({ version: 1, activeDataDir: dataDir }, null, 2)}\n`,
     'utf8',
   )
+
+  const metadata = runMetadata({
+    absoluteRoot,
+    dataDir,
+    workspaceDir,
+    workplaceDir,
+    locatorPath,
+    runArtifactsDir,
+    logsDir,
+    freeDisk,
+    pnpmVersion: await readPnpmVersion(),
+    electronVersion: await readLockedElectronVersion(),
+  })
+  await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8')
+
   await writeFile(
     join(absoluteRoot, MARKER_FILE),
     `${JSON.stringify({
@@ -246,6 +400,10 @@ export async function prepareCiDataRoot(root) {
     workplaceDir,
     locatorPath,
     runArtifactsDir,
+    logsDir,
+    metadataPath,
+    minFreeMib,
+    freeDiskAtStart: freeDisk,
     env: {
       LITTLESHEEP_DATA_DIR: dataDir,
       LITTLESHEEP_DATA_LOCATOR: locatorPath,
@@ -266,7 +424,7 @@ async function main(argv = process.argv.slice(2)) {
     console.log(usage())
     return
   }
-  const summary = await prepareCiDataRoot(options.root)
+  const summary = await prepareCiDataRoot(options.root, { minFreeMib: options.minFreeMib })
   if (options.githubEnv) {
     await writeGithubFile(
       options.githubEnv,
@@ -288,6 +446,9 @@ async function main(argv = process.argv.slice(2)) {
   console.log(`[ci-data-root] data root: ${summary.dataDir}`)
   console.log(`[ci-data-root] workspace: ${summary.workspaceDir}`)
   console.log(`[ci-data-root] run artifacts: ${summary.runArtifactsDir}`)
+  console.log(`[ci-data-root] logs: ${summary.logsDir}`)
+  console.log(`[ci-data-root] metadata: ${summary.metadataPath}`)
+  console.log(`[ci-data-root] free disk at start: ${summary.freeDiskAtStart.freeMiB} MiB (required ${summary.minFreeMib} MiB)`)
   if (options.githubEnv) {
     console.log(`[ci-data-root] exported ${CI_ENV_KEYS.join(', ')} via ${options.githubEnv}`)
   }

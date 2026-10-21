@@ -62,7 +62,7 @@
 
 唯一已知识别缺口是 `khroma@2.1.0`：其 manifest 缺 `license` 字段，工具报 `Unknown`，已从包内 `license` 文件核验为 MIT（由 `@littlesheep/app → mermaid@11.17.2` 引入）。该核验只澄清当前依赖的许可证文本，最终发行包仍须包含所需 notices 并由发布责任人核对。`@littlesheep/web` 本身没有引入第三方 HTTP 客户端或 HTML 抽取依赖（边界与复核条件见[网络检索安全合并验收](web-retrieval-security-acceptance-2026-08-29.md)）。
 
-兼容约束：根清单最低 Node 版本为 `>=20.9.0`，与 `sharp@0.35.x` 的真实 engine 要求一致（0.35.4 同样声明 `>=20.9.0`）；Electron 打包继续包含 `onnxruntime-node`、`sharp` 与 `@huggingface/transformers`。任何原生依赖变更都必须重跑本节的离线向量与 Electron 推理两项。
+兼容约束：根清单最低 Node 版本为 `>=22.13.0`。约束来自产品代码直接导入的 `node:sqlite`（该模块自 Node v22.13.0/v23.4.0 起不再需要 `--experimental-sqlite`；Node 20 与 22.0–22.12 无法运行 memory-tree catalog），`sharp@0.35.4` 自身声明的 `>=20.9.0` 已被该下限覆盖。CI 固定 Node `26.4.0`；Electron 44.4.5 的内置 Node 24.21 同样满足。Electron 打包继续包含 `onnxruntime-node`、`sharp` 与 `@huggingface/transformers`。任何原生依赖变更都必须重跑本节的离线向量与 Electron 推理两项。
 
 ## 本轮未覆盖的部分
 

@@ -59,6 +59,15 @@ async function mutatePackageScript(root, scriptName, transform) {
   await writeFile(path, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
 }
 
+async function mutatePackageManifest(root, mutate) {
+  const path = join(root, 'package.json')
+  const document = JSON.parse(await readFile(path, 'utf8'))
+  const before = JSON.stringify(document)
+  mutate(document)
+  if (JSON.stringify(document) === before) throw new Error('Mutation did not change package.json.')
+  await writeFile(path, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
+}
+
 function addStepAfter(workflowText, afterLine, stepLines) {
   const lines = workflowText.split(/\r?\n/u)
   const index = lines.findIndex((line) => line.includes(afterLine))
@@ -292,6 +301,70 @@ describe('CI workflow policy: negative path', () => {
       async mutate(root) {
         await mutateText(root, 'docs/reference/ci-gates.md', (text) =>
           text.replace('<!-- ci-gates:platform-exclusions -->', '<!-- platform exclusions covered -->'))
+      },
+    },
+    {
+      name: 'rejects a package manifest whose Node floor excludes the pinned CI Node',
+      code: 'node-engines',
+      async mutate(root) {
+        await mutatePackageManifest(root, (document) => {
+          document.engines = { ...document.engines, node: '>=27.0.0' }
+        })
+      },
+    },
+    {
+      name: 'rejects a dropped capture for a required long gate step',
+      code: 'log-capture',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => text.replace(
+          'pnpm install --frozen-lockfile 2>&1 | Tee-Object -FilePath '
+            + '"$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\install.log"',
+          'pnpm install --frozen-lockfile',
+        ))
+      },
+    },
+    {
+      name: 'rejects a log capture written outside the run-artifacts directory',
+      code: 'log-capture',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => text.replace(
+          '"$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\verify-full.log"',
+          '"$env:GITHUB_WORKSPACE\\verify-full.log"',
+        ))
+      },
+    },
+    {
+      name: 'rejects a gate command redirected to null instead of captured',
+      code: 'log-capture',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => text.replace(
+          'pnpm run verify:full 2>&1 | Tee-Object -FilePath '
+            + '"$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\verify-full.log"',
+          'pnpm run verify:full | Out-Null',
+        ))
+      },
+    },
+    {
+      name: 'rejects an artifact upload that excludes logs and metadata',
+      code: 'artifact-path',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => text.replace(
+          'path: ${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}',
+          'path: ${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}/verification-reports',
+        ))
+      },
+    },
+    {
+      name: 'rejects the synthetic data-root bootstrap moved after install',
+      code: 'data-root-order',
+      async mutate(root) {
+        await mutateText(root, '.github/workflows/ci-full.yml', (text) => {
+          const withoutBootstrap = removeStep(text, 'Bootstrap isolated synthetic data root')
+          return addStepAfter(withoutBootstrap, 'install.log"', [
+            '      - name: Bootstrap isolated synthetic data root',
+            '        run: node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV',
+          ])
+        })
       },
     },
     {

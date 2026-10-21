@@ -29,8 +29,10 @@ export const WORKFLOW_FILES = Object.freeze(['ci-fast.yml', 'ci-full.yml'])
 
 /**
  * Node.js pin for both jobs. This is the toolchain version verified locally
- * (Node 26.4.0); package.json engines allow >=20.9.0, so it is supported but
- * other majors are not exercised by this repository's local evidence.
+ * (Node 26.4.0). package.json declares engines `>=22.13.0` because production
+ * code imports the unflagged `node:sqlite` module (unflagged from Node
+ * v22.13.0); other Node majors are not exercised by this repository's local
+ * evidence.
  */
 export const REQUIRED_NODE_VERSION = '26.4.0'
 
@@ -139,6 +141,32 @@ const DATA_ROOT_DEPENDENT_STEPS = Object.freeze([
 ])
 
 /**
+ * Long gate steps whose full console output must be captured into the run
+ * artifact. `scripts/run-verification-gate.mjs` truncates each stage's stored
+ * stdout/stderr to 4000 characters, so the uploaded report alone cannot explain
+ * a failure; the captured log is the complete record.
+ *
+ * Capture is one allowlisted pwsh pipeline. The step still fails on a gate
+ * failure because GitHub appends `exit $LASTEXITCODE` to pwsh scripts, which
+ * carries the native `pnpm` exit code through the pipeline (verified locally;
+ * a Tee write failure is silent, so logs are diagnostics, never evidence).
+ */
+const REQUIRED_CAPTURED_STEPS = Object.freeze({
+  'ci-full.yml': Object.freeze([
+    'pnpm install --frozen-lockfile',
+    'pnpm run test:ci-recovery',
+    'pnpm run verify:full',
+  ]),
+})
+
+/**
+ * The only additional shell construct allowed on a gate step: merge stderr into
+ * stdout and tee it into the run-artifacts logs directory. Any other pipeline
+ * can swallow or redirect failure output and is rejected.
+ */
+const CAPTURE_PATTERN = /^(?<command>.+?) 2>&1 \| Tee-Object -FilePath "\$env:LITTLESHEEP_RUN_ARTIFACTS_DIR[\\/]logs[\\/](?<logName>[a-z0-9._-]+\.log)"$/iu
+
+/**
  * Electron/GUI interaction verifications. They need a real display and a
  * desktop session, so CI must never claim to run them. The coverage document
  * records this; the validator enforces it from both sides.
@@ -190,6 +218,29 @@ function normalizeRun(value) {
   return String(value ?? '').trim().replace(/\s+/gu, ' ').toLowerCase()
 }
 
+/**
+ * Recognize the one allowlisted capture form and return the gate command it
+ * wraps. Anything else that contains a pipe is rejected by checkJobs.
+ */
+function parseCapturedRun(run) {
+  const trimmed = String(run ?? '').trim()
+  if (!trimmed.includes('|')) return null
+  const match = CAPTURE_PATTERN.exec(trimmed)
+  if (!match?.groups?.command) return null
+  return {
+    command: normalizeRun(match.groups.command),
+    logName: match.groups.logName ?? null,
+  }
+}
+
+/** The gate command a step runs, with the allowlisted capture wrapper removed. */
+function gateCommandOf(entry) {
+  const run = typeof entry?.step?.run === 'string' ? entry.step.run : null
+  if (run === null) return null
+  const captured = parseCapturedRun(run)
+  return captured ? captured.command : normalizeRun(run)
+}
+
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null
 }
@@ -223,8 +274,9 @@ function compareVersions(left, right) {
 
 /**
  * The `engines.node` syntax in package.json is a single range in this
- * repository (`>=20.9.0`). Parse that shape and refuse anything the policy
- * cannot judge instead of guessing.
+ * repository (`>=22.13.0`; the lowest Node line where `node:sqlite` works
+ * without `--experimental-sqlite`). Parse that shape and refuse anything the
+ * policy cannot judge instead of guessing.
  */
 function parseEngineMinimum(range) {
   const match = /^>=\s*(\d+\.\d+\.\d+)$/u.exec(String(range ?? '').trim())
@@ -479,10 +531,22 @@ function checkJobs(result, file, workflow) {
         result.violations.push(violation(
           'single-command-step',
           `${stepLocation}.run`,
-          'Gate steps must be one command per step: no multi-line scripts, `;`, `&&`, or `||`.',
+          'Gate steps must be one command per step: no multi-line scripts, `;`, `&&`, or `||`. '
+            + 'Only the allowlisted `2>&1 | Tee-Object` log capture may follow the command.',
         ))
       }
-      if (/\bpnpm install\b/u.test(run) && normalizeRun(run) !== 'pnpm install --frozen-lockfile') {
+      const captured = parseCapturedRun(run)
+      if (run.includes('|') && !captured) {
+        result.violations.push(violation(
+          'log-capture',
+          `${stepLocation}.run`,
+          'The only pipeline allowed on a gate step is the log capture '
+            + '`2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\<name>.log"`; '
+            + 'other pipelines can hide failures or write logs outside the uploaded artifact.',
+        ))
+      }
+      const command = captured ? captured.command : normalizeRun(run)
+      if (/\bpnpm install\b/u.test(command) && command !== 'pnpm install --frozen-lockfile') {
         result.violations.push(violation(
           'install-frozen-lockfile',
           `${stepLocation}.run`,
@@ -493,8 +557,18 @@ function checkJobs(result, file, workflow) {
   }
 }
 
-function findStep(entries, normalizedCommand) {
-  return entries.find((entry) => normalizeRun(entry.step.run) === normalizedCommand) ?? null
+/** Find a gate command either bare or wrapped in the allowlisted capture form. */
+function findGateStep(entries, normalizedCommand) {
+  return entries.find((entry) => gateCommandOf(entry) === normalizedCommand) ?? null
+}
+
+/** Find a gate command that is not wrapped in the capture form. */
+function findPlainStep(entries, normalizedCommand) {
+  return entries.find((entry) => {
+    if (typeof entry.step.run !== 'string') return false
+    if (parseCapturedRun(entry.step.run)) return false
+    return normalizeRun(entry.step.run) === normalizedCommand
+  }) ?? null
 }
 
 function findActionStep(entries, pattern) {
@@ -564,7 +638,7 @@ function checkToolchain(result, file, workflow, toolchain) {
     result.violations.push(violation('electron-cache', `${file} steps`, 'Electron cache step needs an explicit key.'))
   }
 
-  const install = findStep(entries, 'pnpm install --frozen-lockfile')
+  const install = findGateStep(entries, 'pnpm install --frozen-lockfile')
   if (!install) {
     result.violations.push(violation(
       'install-frozen-lockfile',
@@ -584,13 +658,25 @@ function checkToolchain(result, file, workflow, toolchain) {
 
 function checkRequiredSteps(result, file, workflow) {
   const entries = collectSteps(workflow)
+  const capturedCommands = (REQUIRED_CAPTURED_STEPS[file] ?? []).map(normalizeRun)
   for (const command of REQUIRED_RUN_STEPS[file]) {
-    const found = findStep(entries, normalizeRun(command))
+    const normalized = normalizeRun(command)
+    const found = findGateStep(entries, normalized)
     if (!found) {
       result.violations.push(violation(
         'required-step',
         `${file} steps`,
         `Missing hard-gate step: \`${command}\`.`,
+      ))
+      continue
+    }
+    if (capturedCommands.includes(normalized) && !parseCapturedRun(found.step.run ?? '')) {
+      result.violations.push(violation(
+        'log-capture',
+        `${file} jobs.${found.jobId}.steps[${found.index}].run`,
+        `\`${command}\` must capture its full output with `
+          + '`2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\\logs\\<name>.log"` '
+          + 'so the artifact carries the complete log instead of the 4000-character stage excerpt.',
       ))
     }
   }
@@ -599,7 +685,7 @@ function checkRequiredSteps(result, file, workflow) {
 function checkDataRootBootstrap(result, file, workflow) {
   if (file !== 'ci-full.yml') return
   const entries = collectSteps(workflow)
-  const bootstrap = findStep(entries, normalizeRun(DATA_ROOT_BOOTSTRAP_COMMAND))
+  const bootstrap = findPlainStep(entries, normalizeRun(DATA_ROOT_BOOTSTRAP_COMMAND))
   if (!bootstrap) {
     result.violations.push(violation(
       'data-root-bootstrap',
@@ -608,8 +694,20 @@ function checkDataRootBootstrap(result, file, workflow) {
     ))
     return
   }
+  // The bootstrap exports LITTLESHEEP_RUN_ARTIFACTS_DIR, so it has to run
+  // before the install step captures its log and before the gates that need
+  // the synthetic data root.
+  const install = findGateStep(entries, 'pnpm install --frozen-lockfile')
+  if (install && entries.indexOf(bootstrap) > entries.indexOf(install)) {
+    result.violations.push(violation(
+      'data-root-order',
+      `${file} steps`,
+      'Synthetic data-root bootstrap must run before dependency installation so '
+        + '`LITTLESHEEP_RUN_ARTIFACTS_DIR` exists for the captured install log.',
+    ))
+  }
   for (const command of DATA_ROOT_DEPENDENT_STEPS) {
-    const dependent = findStep(entries, normalizeRun(command))
+    const dependent = findGateStep(entries, normalizeRun(command))
     if (!dependent) continue
     if (dependent.jobId !== bootstrap.jobId || entries.indexOf(dependent) < entries.indexOf(bootstrap)) {
       result.violations.push(violation(
@@ -641,12 +739,14 @@ function checkArtifactUpload(result, file, workflow) {
   if (typeof step.with?.name !== 'string' || step.with.name.trim() === '') {
     result.violations.push(violation('artifact-upload', `${location}.with.name`, 'Artifact upload needs a name.'))
   }
-  const path = String(step.with?.path ?? '')
-  if (!path.includes('LITTLESHEEP_RUN_ARTIFACTS_DIR')) {
+  const path = String(step.with?.path ?? '').trim()
+  if (path !== '${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}') {
     result.violations.push(violation(
       'artifact-path',
       `${location}.with.path`,
-      'Report upload must point at the run-artifacts directory exported by the bootstrap.',
+      'Artifact upload must cover the whole `LITTLESHEEP_RUN_ARTIFACTS_DIR` root '
+        + '(run metadata, captured logs and verification reports); '
+        + `got ${path || '(missing)'}.`,
     ))
   }
   if (step.with?.['retention-days'] !== ARTIFACT_RETENTION_DAYS) {
@@ -660,7 +760,7 @@ function checkArtifactUpload(result, file, workflow) {
     result.violations.push(violation(
       'artifact-missing-report',
       `${location}.with.if-no-files-found`,
-      'A missing verification report must be a failure (`if-no-files-found: error`).',
+      'A missing run-artifact directory must be a failure (`if-no-files-found: error`).',
     ))
   }
 }
@@ -788,6 +888,10 @@ async function checkCoverageDocument(result, repoRoot) {
     ['Linux', 'must record Linux/macOS CI as an explicit follow-up'],
     ['LITTLESHEEP_DATA_DIR', 'must document the synthetic data-root environment'],
     ['不是真实用户数据恢复证据', 'must state that the synthetic root is not real user-data recovery evidence'],
+    ['ci-run-metadata.json', 'must document the uploaded run metadata'],
+    ['Tee-Object', 'must document the captured full gate log'],
+    ['4000', 'must document the verification-report truncation limit'],
+    ['首次托管运行检查清单', 'must keep the first hosted-run checklist'],
   ]
   for (const [phrase, reason] of requiredPhrases) {
     if (!doc.includes(phrase)) {
@@ -815,6 +919,20 @@ async function checkCoverageDocument(result, repoRoot) {
         `Bootstrap script must export ${key}.`,
       ))
     }
+  }
+  if (!bootstrapScript.includes('ci-run-metadata.json')) {
+    result.violations.push(violation(
+      'data-root-bootstrap',
+      BOOTSTRAP_SCRIPT_PATH,
+      'Bootstrap script must write `ci-run-metadata.json` so early failures still upload run context.',
+    ))
+  }
+  if (!bootstrapScript.includes('Insufficient free disk space')) {
+    result.violations.push(violation(
+      'data-root-bootstrap',
+      BOOTSTRAP_SCRIPT_PATH,
+      'Bootstrap script must fail with a clear reason when the artifact drive is below the free-space floor.',
+    ))
   }
 }
 

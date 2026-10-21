@@ -20,7 +20,7 @@ LS 提供持久化 Agent Runtime、长期记忆、桌面工作区、文件与 Gi
 
 ## 快速开始
 
-需要 Node.js 20.9+ 和 pnpm 11.9.0。Windows 开发流程：
+需要 Node.js 22.13+（`node:sqlite` 无需实验开关的最低版本）和 pnpm 11.9.0。Windows 开发流程：
 
 ```powershell
 pnpm install

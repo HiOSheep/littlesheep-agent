@@ -3,13 +3,18 @@
 # This is the expensive half of the two-layer CI contract. It runs the complete
 # vitest suite, typecheck, the desktop build, and the data-root recovery audit
 # through `pnpm run verify:full`, plus an explicit Runner/VRS/S2B/S2C recovery
-# regression (`pnpm run test:ci-recovery`) and the fresh-build assertion. The
-# verification report is uploaded even when a gate fails.
+# regression (`pnpm run test:ci-recovery`) and the fresh-build assertion. Run
+# artifacts (run metadata, captured full logs, verification report) are uploaded
+# even when a gate fails.
 #
 # Clean-runner problem: `verify:full` includes `verify:app-recovery`, which fails
 # when the resolved user data root does not exist. A fresh GitHub runner has no
 # LittleSheep data root, so the workflow bootstraps an ISOLATED, SYNTHETIC root
-# in the runner temp area before the recovery gates run.
+# in the runner temp area before any gate runs. The bootstrap also exports
+# LITTLESHEEP_RUN_ARTIFACTS_DIR and writes run metadata, which is why it runs
+# before dependency installation: the install log and every later gate can then
+# be captured into the uploaded artifact, and a failure before the first gate
+# still produces a non-empty artifact.
 #
 # Honest scope: that synthetic root proves the recovery audit accepts a clean,
 # well-formed data root. It is NOT real user-data recovery evidence, and it is
@@ -28,7 +33,7 @@ permissions:
   contents: read
 
 # A full run is the evidence trail for a main push: never cancel it mid-flight,
-# so even a failed run stays inspectable (and its report can be uploaded).
+# so even a failed run stays inspectable (and its artifacts can be uploaded).
 concurrency:
   group: ci-full-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -71,38 +76,46 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
+      # Exports LITTLESHEEP_DATA_DIR, LITTLESHEEP_DATA_LOCATOR and
+      # LITTLESHEEP_RUN_ARTIFACTS_DIR through GITHUB_ENV, creates
+      # run-artifacts/logs, writes run-artifacts/ci-run-metadata.json, and fails
+      # with a clear reason below 2 GiB free. The script refuses to write inside
+      # the checkout or over an unmarked existing directory.
+      - name: Bootstrap isolated synthetic data root
+        run: node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
+
+      # The long steps (install, recovery suite, full gate) capture their full
+      # console output into the uploaded artifact: the verification report only
+      # keeps a 4000-character excerpt per stage. The pwsh wrapper still exits
+      # with the native command's exit code, so a gate failure fails this step
+      # despite the pipe.
       - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+        run: 'pnpm install --frozen-lockfile 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\install.log"'
 
       - name: Validate CI workflow policy
         run: pnpm run verify:ci-config
-
-      # Exports LITTLESHEEP_DATA_DIR, LITTLESHEEP_DATA_LOCATOR and
-      # LITTLESHEEP_RUN_ARTIFACTS_DIR through GITHUB_ENV. The script refuses to
-      # write inside the checkout or over an unmarked existing directory.
-      - name: Bootstrap isolated synthetic data root
-        run: node scripts/ci/prepare-ci-data-root.mjs --github-env $env:GITHUB_ENV
 
       - name: Recovery source audit (clean synthetic data root)
         run: pnpm run verify:app-recovery
 
       - name: Runner/VRS/S2B/S2C recovery regression
-        run: pnpm run test:ci-recovery
+        run: 'pnpm run test:ci-recovery 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\test-ci-recovery.log"'
 
       - name: Full verification gate
-        run: pnpm run verify:full
+        run: 'pnpm run verify:full 2>&1 | Tee-Object -FilePath "$env:LITTLESHEEP_RUN_ARTIFACTS_DIR\logs\verify-full.log"'
 
       - name: Assert desktop build is fresh
         run: pnpm run assert:app-build
 
-      # The verification report lives in the runner temp area through
-      # LITTLESHEEP_RUN_ARTIFACTS_DIR. Upload always: a failed gate is exactly
-      # when the report matters, and a missing report is itself a failure.
-      - name: Upload verification report
+      # Upload the whole run-artifacts root: ci-run-metadata.json (toolchain and
+      # runner context), logs/ (complete gate output) and verification-reports/
+      # (structured stage report). Upload always: a failed gate is exactly when
+      # the diagnostic record matters. Missing evidence is itself a failure.
+      - name: Upload run artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: verification-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}/verification-reports
+          name: ci-full-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.LITTLESHEEP_RUN_ARTIFACTS_DIR }}
           if-no-files-found: error
           retention-days: 14

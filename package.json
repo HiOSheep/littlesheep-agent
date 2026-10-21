@@ -5,7 +5,7 @@
   "description": "LittleSheep 是一个具备持久化执行、长期记忆与本地工作区的桌面 Agent。",
   "type": "module",
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.13.0"
   },
   "packageManager": "pnpm@11.9.0",
   "bin": {
