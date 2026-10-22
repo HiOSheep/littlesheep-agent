@@ -1,0 +1,1203 @@
+{
+  "version": 1,
+  "ok": true,
+  "kind": "r4d0-offline-rehearsal",
+  "protocolVersion": "1.0.0",
+  "batchId": "r4d0-offline-rehearsal-2026-10-22",
+  "generatedAt": "2026-10-22T07:15:58.736Z",
+  "evidenceTier": "A_runtime_deterministic",
+  "realEvidenceTier": "B_real_model",
+  "realProviderCalled": false,
+  "preflightOk": true,
+  "baseline": {
+    "productSha": "7606f12440a7c6afee53f2982c5d2512e03a781b",
+    "evaluatorFingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+    "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1"
+  },
+  "counts": {
+    "planned": 20,
+    "executed": 20,
+    "capabilityPass": 20,
+    "capabilityFailure": 0,
+    "capabilityUnresolved": 0,
+    "infrastructureFailure": 0
+  },
+  "trials": [
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:1",
+      "taskId": "FILE-02-G",
+      "trial": 1,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__1.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4460,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:2",
+      "taskId": "FILE-02-G",
+      "trial": 2,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__2.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4485,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:3",
+      "taskId": "FILE-02-G",
+      "trial": 3,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__3.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4519,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:4",
+      "taskId": "FILE-02-G",
+      "trial": 4,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__4.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4537,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:5",
+      "taskId": "FILE-02-G",
+      "trial": 5,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__5.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4513,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:1",
+      "taskId": "FILE-02-S",
+      "trial": 1,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__1.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "passed",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4556,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:2",
+      "taskId": "FILE-02-S",
+      "trial": 2,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__2.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "passed",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4529,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:3",
+      "taskId": "FILE-02-S",
+      "trial": 3,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__3.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "passed",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4532,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:4",
+      "taskId": "FILE-02-S",
+      "trial": 4,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__4.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "passed",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 4484,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:5",
+      "taskId": "FILE-02-S",
+      "trial": 5,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__5.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "passed",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 2,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 5024,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:1",
+      "taskId": "DELIV-01-G",
+      "trial": 1,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__1.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 2,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 1,
+        "executed": 1,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2639,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:2",
+      "taskId": "DELIV-01-G",
+      "trial": 2,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__2.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 2,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 1,
+        "executed": 1,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2676,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:3",
+      "taskId": "DELIV-01-G",
+      "trial": 3,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__3.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 2,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 1,
+        "executed": 1,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2628,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:4",
+      "taskId": "DELIV-01-G",
+      "trial": 4,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__4.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 2,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 1,
+        "executed": 1,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2600,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:5",
+      "taskId": "DELIV-01-G",
+      "trial": 5,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__5.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "not_exercised"
+      },
+      "requests": {
+        "logical": 2,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 1,
+        "executed": 1,
+        "denied": 0,
+        "failed": 0
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2609,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:1",
+      "taskId": "DELIV-01-R",
+      "trial": 1,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__1.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "passed"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 1,
+        "denied": 0,
+        "failed": 1
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2752,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:2",
+      "taskId": "DELIV-01-R",
+      "trial": 2,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__2.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "passed"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 1,
+        "denied": 0,
+        "failed": 1
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2762,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:3",
+      "taskId": "DELIV-01-R",
+      "trial": 3,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__3.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "passed"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 1,
+        "denied": 0,
+        "failed": 1
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2728,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:4",
+      "taskId": "DELIV-01-R",
+      "trial": 4,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__4.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "passed"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 1,
+        "denied": 0,
+        "failed": 1
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2677,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    },
+    {
+      "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:5",
+      "taskId": "DELIV-01-R",
+      "trial": 5,
+      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__5.json",
+      "classification": "capability_pass",
+      "dimensions": {
+        "goal": "passed",
+        "contract": "not_applicable",
+        "mechanism": "passed"
+      },
+      "requests": {
+        "logical": 3,
+        "physical": 0,
+        "retries": 0,
+        "blocked": 0,
+        "budget": 0
+      },
+      "tokens": {
+        "requestedMax": null,
+        "effectiveMax": null,
+        "observedInput": null,
+        "observedOutput": null
+      },
+      "tooling": {
+        "proposals": 2,
+        "executed": 1,
+        "denied": 0,
+        "failed": 1
+      },
+      "effects": {
+        "settled": 1,
+        "duplicateSuccessful": 0,
+        "unknown": 0
+      },
+      "durationMs": 2759,
+      "cleanup": true,
+      "providerUsage": {
+        "status": "unavailable",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedInputTokens": null,
+        "source": null,
+        "reason": "scripted provider has no authoritative billing or usage receipt"
+      }
+    }
+  ],
+  "metrics": {
+    "goal": {
+      "denominatorId": "A_runtime_deterministic:goal",
+      "n": 20,
+      "passed": 20,
+      "failed": 0,
+      "excluded": {},
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "contract": {
+      "denominatorId": "A_runtime_deterministic:contract",
+      "n": 5,
+      "passed": 5,
+      "failed": 0,
+      "excluded": {
+        "not_applicable": 15
+      },
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "mechanism": {
+      "denominatorId": "A_runtime_deterministic:mechanism",
+      "n": 5,
+      "passed": 5,
+      "failed": 0,
+      "excluded": {
+        "not_exercised": 15
+      },
+      "populationClaim": false,
+      "evidenceTier": "A_runtime_deterministic"
+    },
+    "perTask": {
+      "FILE-02-G": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:FILE-02-G",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:FILE-02-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:FILE-02-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "FILE-02-S": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:FILE-02-S",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:FILE-02-S",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:FILE-02-S",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "DELIV-01-G": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:DELIV-01-G",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:DELIV-01-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:DELIV-01-G",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_exercised": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      },
+      "DELIV-01-R": {
+        "goal": {
+          "denominatorId": "A_runtime_deterministic:goal:DELIV-01-R",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "contract": {
+          "denominatorId": "A_runtime_deterministic:contract:DELIV-01-R",
+          "n": 0,
+          "passed": 0,
+          "failed": 0,
+          "excluded": {
+            "not_applicable": 5
+          },
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        },
+        "mechanism": {
+          "denominatorId": "A_runtime_deterministic:mechanism:DELIV-01-R",
+          "n": 5,
+          "passed": 5,
+          "failed": 0,
+          "excluded": {},
+          "populationClaim": false,
+          "evidenceTier": "A_runtime_deterministic"
+        }
+      }
+    }
+  },
+  "budget": {
+    "totals": {
+      "logicalTotal": 55,
+      "physicalTotal": 0,
+      "observedOutputTokens": 0
+    },
+    "checks": [
+      {
+        "id": "per-trial-request-budget",
+        "ok": true,
+        "detail": "every executed trial stayed inside its per-trial caps"
+      },
+      {
+        "id": "batch-request-budget",
+        "ok": true,
+        "detail": "logical=55, physical=0, observedOutputTokens=0"
+      },
+      {
+        "id": "usage-unavailable-preserved",
+        "ok": true,
+        "detail": "scripted Provider reports no Provider usage/cost; records keep unavailable"
+      }
+    ],
+    "caps": {
+      "perTrialPhysical": 8,
+      "batchPhysical": 160,
+      "perRequestOutputTokens": 2048,
+      "batchOutputTokens": 40960
+    }
+  },
+  "isolation": {
+    "checks": [
+      {
+        "id": "unique-record-identities",
+        "ok": true,
+        "detail": "20/20 unique record ids"
+      },
+      {
+        "id": "unique-record-paths",
+        "ok": true,
+        "detail": "20/20 distinct record files"
+      },
+      {
+        "id": "trial-cleanup",
+        "ok": true,
+        "detail": "0 cleanup failures"
+      },
+      {
+        "id": "one-trial-per-identity",
+        "ok": true,
+        "detail": "4 tasks x trials 1-5, no duplicate (batch, task, trial)"
+      }
+    ]
+  },
+  "drills": [
+    {
+      "id": "capability-contract-failure-detected",
+      "ok": true,
+      "detail": "wrong-field variant: Goal passed / Contract failed, detected as a capability failure without changing the task prompt"
+    },
+    {
+      "id": "capability-mechanism-failure-detected",
+      "ok": true,
+      "detail": "no-recovery fault: Goal and Mechanism independently failed while the exception stayed localized"
+    },
+    {
+      "id": "infrastructure-failure-classified-not-capability",
+      "ok": true,
+      "detail": "invalid task/adapter failure exits non-zero; it is recorded as infrastructure failure and never enters capability denominators"
+    },
+    {
+      "id": "duplicate-run-refused",
+      "ok": true,
+      "detail": "repeating an existing (batch, task, trial) identity is refused instead of overwriting history"
+    },
+    {
+      "id": "budget-stop-without-raising-budget",
+      "ok": true,
+      "detail": "simulated per-trial/batch overage stops the batch; no code path increases the budget to finish N=5"
+    },
+    {
+      "id": "authorization-gate-closed",
+      "ok": true,
+      "detail": "protocol freeze reports no real authorization; rehearsal evidence tier remains A"
+    }
+  ],
+  "failures": [],
+  "limits": [
+    "controlled scripted Provider only; no real model capability is measured",
+    "scripted Provider performs no HTTP request, so physical request accounting is exercised by the R4-B metering tests and the synthetic budget drill, not by this batch",
+    "no real Provider usage or cost is available; records keep unavailable",
+    "first-artifact latency is not recorded by the current adapter and stays unavailable"
+  ]
+}
