@@ -24,6 +24,8 @@
 
 - [RCD R4-C 交付一致性审计与 DELIV-02 复现](rcd-r4c-delivery-consistency-audit-2026-10-22.md)：Runner→Task Outcome→Main API/SSE→Renderer→历史回放审计、真实 Electron 复现证据、展示契约与修复边界。
 - [RCD R4-C 交付一致性最终报告](rcd-r4c-delivery-consistency-report-2026-10-22.md)：展示契约实现、实际修改范围、DELIV-02 正负对照与刷新/重启/会话切换证据、回归结果与未覆盖项。
+- [RCD R4-D0 真实模型试验协议](rcd-r4d0-trial-protocol-2026-10-22.md)：S3B-R/R4-B/R4-C 契约分离、4×5 试验矩阵、trial 隔离、Provider 预检、预算/停止条件、指标与真实试验授权清单。
+- [RCD R4-D0 冻结预检工件](rcd-r4d0-preflight-2026-10-22.json)：协议版本、产品/评测器/任务/Oracle 指纹、20 项离线 Provider 预检与授权状态。
 - [RCD R4-B 评测契约 V2 设计](rcd-r4b-v2-contract-design-2026-10-21.md)：Goal / Contract / Mechanism 三维度结算、版本与指纹、四项独立任务、Trial 1–5 身份隔离、预算与报告口径；离线设计报告，未执行真实 Provider。
 - [RCD R4-B 评测契约 V2 Schema](rcd-r4b-v2-contract-schema-2026-10-21.json)：V2 记录/账本的 JSON Schema、状态枚举与运行时不变式清单。
 - [RCD R4-B 评测契约 V2 任务集](rcd-r4b-v2-task-suite-2026-10-21.json)：FILE-02-G/S 与 DELIV-01-G/R 四项独立任务、冻结 ancestry、可见契约文本与确定性 Oracle 约定。
