@@ -1,0 +1,582 @@
+{
+  "version": 1,
+  "kind": "r4d0-protocol-freeze",
+  "protocolVersion": "1.0.0",
+  "generatedAt": "2026-10-22T07:01:27.763Z",
+  "realProviderCalled": false,
+  "realProviderAuthorized": false,
+  "baseline": {
+    "r4bBaselineSha": "c12fb52e031d70c29f5781a4ea843ba474b2df6a",
+    "r4cBaselineSha": "4ebc1e6792cc1ed19b720c49adabcb9dd7abb83e",
+    "localMainNotSyncedToGitHub": true,
+    "hostedCiEvidenceAvailable": false
+  },
+  "protocol": {
+    "protocolVersion": "1.0.0",
+    "generatedAt": "2026-10-22T07:01:27.592Z",
+    "status": "frozen-for-authorization",
+    "mayCallRealProvider": false,
+    "suiteId": "LS-RCD-R4B-V2",
+    "evidenceTierForRealTrials": "B_real_model",
+    "product": {
+      "sha": "021b05b14055477886bd14d63612107a8c87b473",
+      "treeFingerprint": "5e016fc254b6e09e00d45c1a8801260107e4746ec23055c43309644b27fe5844",
+      "dirty": false,
+      "sourceDirty": false,
+      "dirtyPaths": [],
+      "sourceDirtyPaths": []
+    },
+    "evaluator": {
+      "fingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
+      "files": [
+        "docs/reference/rcd-r4b-v2-contract-schema-2026-10-21.json",
+        "docs/reference/rcd-r4b-v2-task-suite-2026-10-21.json",
+        "scripts/lib/r4b/contract.mjs",
+        "scripts/lib/r4b/tasks.mjs",
+        "scripts/lib/r4b/oracles.mjs",
+        "scripts/lib/r4b/ledger.mjs",
+        "scripts/lib/r4b/metrics.mjs",
+        "scripts/eval-v2.mjs"
+      ]
+    },
+    "hashes": {
+      "taskSuite": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1",
+      "contractSchema": "8210548d6a742a715e1ce686fc367c55421d51e2daa6d2a37024cb8c6a32246c",
+      "taskModule": "4ad58e6f2de196b93618b83a45104661fda786747cd9bb71aea9061d10d9bfb3",
+      "oracleModule": "4b03bb3ecd003e82bd44d3a0f1173d0399f70e628b5858c04ddb2a8dd3f82a6e",
+      "evalV2": "0ba2e993f49b7884345d395975700ecb0ae6ef93750c35945af62fdffe5a7736",
+      "v2Adapter": "56c2aa8eb8110e3712efb815f6f279d1e18674fbff00ac5e0f6ee04ac32aaeb7",
+      "providerConfig": "551283b2207ed271441514d66be1364632ca280e446de2397fff1eb9df17e6c5",
+      "frozen": {
+        "s3aTaskSuite": {
+          "path": "docs/reference/rcd-s3a-task-suite-2026-10-17.json",
+          "sha256": "b210e505c89a8c795fbae62693295cd2527a50d04c355e6e9c43dd7e54a629ec"
+        },
+        "s3bMetricsSchema": {
+          "path": "docs/reference/rcd-s3b-metrics-schema-2026-10-17.json",
+          "sha256": "dac05d0595a34f66ed46c8f7620cfa6a2b1ad923f1782629f88324bc4c994b65"
+        },
+        "s3bAdapterExtension": {
+          "path": "docs/reference/rcd-s3b-adapter-extension-2026-10-17.json",
+          "sha256": "8172bacd72be40ac49de357467da5c4c214e23256b6ca686e9bb87af1b8b66e8"
+        },
+        "s3aEvaluationProtocol": {
+          "path": "docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md",
+          "sha256": "c84dd79f7394065de43c967a0cdd36640a54d2c66bfc32ed29c0bcd13f6a259c"
+        },
+        "rcdS0fCoreBaseline": {
+          "path": "docs/reference/rcd-s0f-core-baseline-2026-10-16.json",
+          "sha256": "05a4ac6203ead92af49b441fb1c3b3cde23cb24d0d4a10bdc627517276d60084"
+        }
+      }
+    },
+    "tasks": [
+      {
+        "id": "FILE-02-G",
+        "version": "2.0.0",
+        "definitionSha256": "c397d18f3a6232a1ef1153e1059d1b6130f72e53b33cadffc4efdd4e3752c31d",
+        "userInputSha256": "e064c5e3847d894ca1d809e20e7cc9f602f8706fc96ddfbae810a9835a4e84b8",
+        "seedSha256": "41453791fce497a7c2c2f56921b43be73cc909bfb94c1e996eda1798a2fcf16e",
+        "permissionPreset": "workspace-write",
+        "allowedTools": [
+          "read",
+          "write"
+        ],
+        "dimensions": {
+          "goal": true,
+          "contract": false,
+          "mechanism": false
+        }
+      },
+      {
+        "id": "FILE-02-S",
+        "version": "2.0.0",
+        "definitionSha256": "c3b662f403084dcadc02165ff459fdd8aae3ce12613f2b74b5d1fdc6e5d28a3a",
+        "userInputSha256": "9865d4b7db642a35244821a08f833fd877f7ed16d2f017d58460917cfbc17828",
+        "seedSha256": "41453791fce497a7c2c2f56921b43be73cc909bfb94c1e996eda1798a2fcf16e",
+        "permissionPreset": "workspace-write",
+        "allowedTools": [
+          "read",
+          "write"
+        ],
+        "dimensions": {
+          "goal": true,
+          "contract": true,
+          "mechanism": false
+        }
+      },
+      {
+        "id": "DELIV-01-G",
+        "version": "2.0.0",
+        "definitionSha256": "7023fa968cbe7e5bc42aadfb6ed7c9823bf1cd3e406451eb1f4e9fd938d8b734",
+        "userInputSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "seedSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "permissionPreset": "workspace-write",
+        "allowedTools": [
+          "fixture_write_exact"
+        ],
+        "dimensions": {
+          "goal": true,
+          "contract": false,
+          "mechanism": false
+        }
+      },
+      {
+        "id": "DELIV-01-R",
+        "version": "2.0.0",
+        "definitionSha256": "dd90057294f26df5861a72cd28e166241075f98e8dea8c27e85f394d9ff7b47f",
+        "userInputSha256": "6633f5aacc78e4f7076f5dbf18fb5ca2b3b7383a0430e590975e6ba32d9701fe",
+        "seedSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "permissionPreset": "workspace-write",
+        "allowedTools": [
+          "fixture_write_exact"
+        ],
+        "dimensions": {
+          "goal": true,
+          "contract": false,
+          "mechanism": true
+        }
+      }
+    ],
+    "plan": [
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-G",
+        "trial": 1,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:1"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-G",
+        "trial": 2,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:2"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-G",
+        "trial": 3,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:3"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-G",
+        "trial": 4,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:4"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-G",
+        "trial": 5,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:5"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-S",
+        "trial": 1,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:1"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-S",
+        "trial": 2,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:2"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-S",
+        "trial": 3,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:3"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-S",
+        "trial": 4,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:4"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "FILE-02-S",
+        "trial": 5,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:5"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-G",
+        "trial": 1,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:1"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-G",
+        "trial": 2,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:2"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-G",
+        "trial": 3,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:3"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-G",
+        "trial": 4,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:4"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-G",
+        "trial": 5,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:5"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-R",
+        "trial": 1,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:1"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-R",
+        "trial": 2,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:2"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-R",
+        "trial": 3,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:3"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-R",
+        "trial": 4,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:4"
+      },
+      {
+        "batchId": "r4d0-offline-rehearsal-2026-10-22",
+        "taskId": "DELIV-01-R",
+        "trial": 5,
+        "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:5"
+      }
+    ],
+    "plannedTrials": 20,
+    "budgets": {
+      "maxPhysicalRequestsPerTrial": 8,
+      "maxBatchPhysicalRequests": 160,
+      "maxOutputTokensPerRequest": 2048,
+      "maxBatchOutputTokens": 40960,
+      "maxAttempts": 2,
+      "maxCostUsd": 5,
+      "maxCostCny": null,
+      "providerBillingCapConfirmed": false
+    },
+    "stopCodes": [
+      "CONFIG_INVALID",
+      "MODEL_MAPPING_INVALID",
+      "AUTH_FAILED",
+      "MODEL_NOT_FOUND",
+      "DETERMINISTIC_4XX",
+      "BUDGET_REQUESTS_EXHAUSTED",
+      "BUDGET_TOKENS_EXHAUSTED",
+      "BUDGET_COST_UNCONFIRMED",
+      "DUPLICATE_TRIAL_IDENTITY",
+      "LEDGER_WRITE_FAILED",
+      "PROVIDER_TRANSIENT_EXHAUSTED",
+      "AUTHORIZATION_CHANGED",
+      "USAGE_UNAVAILABLE",
+      "SAFETY_NETWORK_DENIED"
+    ],
+    "metrics": {
+      "goal": {
+        "denominator": [
+          "passed",
+          "failed"
+        ],
+        "excluded": [
+          "not_applicable",
+          "unverified"
+        ],
+        "populationClaim": false
+      },
+      "contract": {
+        "denominator": [
+          "passed",
+          "failed"
+        ],
+        "excluded": [
+          "not_applicable",
+          "unverified"
+        ],
+        "populationClaim": false
+      },
+      "mechanism": {
+        "denominator": [
+          "passed",
+          "failed"
+        ],
+        "excluded": [
+          "not_exercised",
+          "blocked",
+          "unverified"
+        ],
+        "populationClaim": false
+      }
+    },
+    "providerPolicy": {
+      "protocols": [
+        "openai-chat-completions",
+        "openai-responses",
+        "anthropic-messages"
+      ],
+      "nonRetryableStatuses": [
+        400,
+        401,
+        403,
+        404,
+        422
+      ],
+      "retryableStatuses": [
+        429,
+        500,
+        502,
+        503,
+        504
+      ],
+      "usageWhenMissing": "unavailable",
+      "costCapRequiresProviderSideConfirmation": true,
+      "localRequestAndTokenLimitsAreNotCostCaps": true,
+      "credentials": "redacted; never persisted in records or logs",
+      "network": "denied for controlled evaluation; real trials require explicit authorization"
+    },
+    "separation": {
+      "s3bHistoricalRealTrials": "LS-RCD-S3B historical four-task real trials; different oracle/contract, display-only, never combined with V2 rates",
+      "r4bV2Tasks": "FILE-02-G/S and DELIV-01-G/R with goal/contract/mechanism dimensions",
+      "r4cDeliveryRegression": "DELIV-02 false-completion presentation regression in real Electron; not a model task score"
+    },
+    "authorization": {
+      "realProviderAuthorized": false,
+      "requiredUserApproval": [
+        "provider",
+        "wire model",
+        "batch/trial scope",
+        "physical request budget",
+        "output token budget",
+        "provider-side cost cap",
+        "currency amount"
+      ]
+    }
+  },
+  "preflight": {
+    "ok": true,
+    "checkedAt": "2026-10-22T07:01:27.763Z",
+    "networkUsed": false,
+    "liveAuthorizationArmed": false,
+    "fakeCredentialUsed": "offline fixture only; not a real key",
+    "checks": [
+      {
+        "id": "ready-config",
+        "ok": true,
+        "detail": "synthetic offline config resolves without contacting a Provider"
+      },
+      {
+        "id": "model-mapping",
+        "ok": true,
+        "detail": "internal deepseek/deepseek-chat maps to wire id deepseek-chat"
+      },
+      {
+        "id": "tool-call-protocol",
+        "ok": true,
+        "detail": "supported protocols: openai-chat-completions, openai-responses, anthropic-messages"
+      },
+      {
+        "id": "request-budget",
+        "ok": true,
+        "detail": "explicit per-trial physical request ceiling present"
+      },
+      {
+        "id": "output-token-budget",
+        "ok": true,
+        "detail": "explicit per-request output token ceiling present"
+      },
+      {
+        "id": "cost-budget-currency",
+        "ok": true,
+        "detail": "exactly one explicit cost ceiling and currency present"
+      },
+      {
+        "id": "billing-cap-declared",
+        "ok": true,
+        "detail": "provider-side billing cap must be declared with a basis; a local request/token limit is not a cost cap"
+      },
+      {
+        "id": "authorization-still-pending",
+        "ok": true,
+        "detail": "offline preflight never enables the live-run authorization gate"
+      },
+      {
+        "id": "missing-cost-budget-blocked",
+        "ok": true,
+        "detail": "missing cost ceiling is a deterministic configuration error before any request"
+      },
+      {
+        "id": "ambiguous-cost-currency-blocked",
+        "ok": true,
+        "detail": "both USD and CNY ceilings are rejected as ambiguous"
+      },
+      {
+        "id": "unconfirmed-billing-cap-blocked",
+        "ok": true,
+        "detail": "provider-side billing cap must be explicitly confirmed"
+      },
+      {
+        "id": "live-gate-recognized-but-not-armed",
+        "ok": true,
+        "detail": "the explicit authorization token is recognized; this preflight does not set it"
+      },
+      {
+        "id": "ambiguous-model-refs-rejected",
+        "ok": true,
+        "detail": "wrong-provider: internal model ref provider segment \"other\" does not match the configured provider \"deepseek\" | nested-model-path: internal model ref keeps a nested path after the provider segment | residual-prefix: internal model ref keeps the provider prefix in the wire model id | model-mismatch: internal model ref model segment \"other-model\" does not match the configured model \"deepseek-chat\""
+      },
+      {
+        "id": "deterministic-4xx-stop-list",
+        "ok": true,
+        "detail": "non-retryable: 400,401,403,404,422"
+      },
+      {
+        "id": "retryable-status-list",
+        "ok": true,
+        "detail": "retryable: 429,500,502,503,504"
+      },
+      {
+        "id": "credential-redaction",
+        "ok": true,
+        "detail": "configured key and authorization forms are redacted"
+      },
+      {
+        "id": "usage-policy",
+        "ok": true,
+        "detail": "missing usage/cost stays unavailable; never inferred from tokens"
+      },
+      {
+        "id": "provider-side-cost-cap-unverified",
+        "ok": true,
+        "detail": "this offline preflight cannot verify the provider console cap; Go/No-Go keeps it as an explicit user authorization item"
+      },
+      {
+        "id": "model-config-complete",
+        "ok": true,
+        "detail": "frozen model config template is complete"
+      },
+      {
+        "id": "no-credentials-in-output",
+        "ok": true,
+        "detail": "provider projection contains no credential material"
+      }
+    ],
+    "providerProjection": {
+      "id": "deepseek",
+      "model": "deepseek-chat",
+      "internalModelRef": "deepseek/deepseek-chat",
+      "wireModelId": "deepseek-chat",
+      "modelMapping": {
+        "status": "resolved",
+        "internalModelRef": "deepseek/deepseek-chat",
+        "providerId": "deepseek",
+        "configuredModel": "deepseek-chat",
+        "wireModelId": "deepseek-chat",
+        "reason": null
+      },
+      "apiProtocol": "openai-chat-completions",
+      "supportedProtocols": [
+        "openai-chat-completions",
+        "openai-responses",
+        "anthropic-messages"
+      ],
+      "endpointOrigin": "https://api.deepseek.com",
+      "endpointKind": "https",
+      "endpointHasUserinfo": false,
+      "timeoutSeconds": 120,
+      "maxAttempts": 2,
+      "physicalRequestBudget": 8,
+      "outputTokenLimit": 2048,
+      "maxCostUsd": 5,
+      "maxCostCny": null,
+      "costBudgetCurrency": "USD",
+      "costBudgetAmount": 5,
+      "providerBillingCapConfirmed": true,
+      "billingCapBasis": "user-reported provider console hard limit (offline; not verified by this preflight)",
+      "nonRetryableStatuses": [
+        400,
+        401,
+        403,
+        404,
+        422
+      ],
+      "retryableStatuses": [
+        429,
+        500,
+        502,
+        503,
+        504
+      ],
+      "temperature": null,
+      "topP": null,
+      "seed": null,
+      "unsupportedParameters": [
+        "top_p",
+        "seed"
+      ],
+      "usageSource": "Provider response receipt when supplied; otherwise unavailable",
+      "costSource": "Provider billing receipt only; otherwise unavailable"
+    },
+    "modelConfig": {
+      "providerId": "deepseek",
+      "internalModelRef": "deepseek/deepseek-chat",
+      "wireModelId": "deepseek-chat",
+      "apiProtocol": "openai-chat-completions",
+      "baseURL": "https://api.deepseek.com",
+      "supportsToolCalls": true,
+      "temperature": 0,
+      "maxOutputTokens": 2048,
+      "timeoutSeconds": 120,
+      "maxAttempts": 2
+    },
+    "costCap": {
+      "providerSideVerified": false,
+      "required": true,
+      "note": "local request/token limits are not a real USD/CNY hard cap; user must confirm the provider-side billing limit and amount before any paid run"
+    }
+  },
+  "separation": {
+    "s3bHistoricalRealTrials": "LS-RCD-S3B historical four-task real trials; different oracle/contract, display-only, never combined with V2 rates",
+    "r4bV2Tasks": "FILE-02-G/S and DELIV-01-G/R with goal/contract/mechanism dimensions",
+    "r4cDeliveryRegression": "DELIV-02 false-completion presentation regression in real Electron; not a model task score"
+  },
+  "authorization": {
+    "realProviderAuthorized": false,
+    "requiredUserApproval": [
+      "provider",
+      "wire model",
+      "batch/trial scope",
+      "physical request budget",
+      "output token budget",
+      "provider-side cost cap",
+      "currency amount"
+    ],
+    "checklist": [
+      "user names the exact Provider and wire model id",
+      "user approves the 4 tasks x 5 trials scope (20 planned real trials)",
+      "user approves a physical request ceiling and output token ceiling",
+      "user confirms the provider-side billing hard cap, currency and amount",
+      "real-model adapter for V2 tasks is implemented and dry-run validated",
+      "hosted CI evidence for the R4-B/C local commits is obtained or explicitly waived"
+    ]
+  },
+  "decision": {
+    "technicalReadiness": "offline-rehearsal-only",
+    "paidTrialsAuthorized": false,
+    "note": "R4-D0 freezes preparation only; no paid trial may start without the explicit user authorization above."
+  }
+}
