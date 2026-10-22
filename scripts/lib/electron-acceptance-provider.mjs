@@ -4,6 +4,15 @@ import { join } from 'node:path'
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024
 const MAX_LOGGED_REQUESTS = 512
 
+/**
+ * R4-C DELIV-02 fixture: the exact user request and the model's final completion
+ * claim. The fixture writes the wrong bytes and never asks Runtime for an
+ * independent check, so the authoritative Task Outcome stays unknown while the
+ * final reply claims completion.
+ */
+export const DELIV_02_PROMPT = 'Create result.txt containing exactly hello and independently check the file contents before you say it is complete.'
+export const DELIV_02_COMPLETION_CLAIM = 'Created result.txt with exactly hello and checked the file. The task is complete.'
+
 export async function startElectronAcceptanceProvider(options = {}) {
   const requests = []
   /** Path the stub serves its OpenAI-compatible surface under, `''` included. */
@@ -224,6 +233,18 @@ function classifyResponse({ body, system, user, messages, model, requestIndex, s
       return toolChoice(`task-outcome-${id}`, name, input)
     }
     return textChoice('I completed both file operations.')
+  }
+
+  // R4-C DELIV-02: a wrong file write followed by a confident completion claim,
+  // with no independent Runtime check. The prompt deliberately has surrounding
+  // prose, so the narrow production parser leaves the requirement inventory
+  // unknown and the authoritative outcome cannot become completed.
+  if (user.trim() === DELIV_02_PROMPT) {
+    const toolMessages = toolMessagesThisTurn(messages)
+    if (toolMessages.length === 0) {
+      return toolChoice('deliv-02-write', 'write', { file_path: 'result.txt', content: 'goodbye' })
+    }
+    return textChoice(DELIV_02_COMPLETION_CLAIM)
   }
 
   // S2C-C Renderer acceptance: exercise the normal Runtime file writer and its run-scoped,
