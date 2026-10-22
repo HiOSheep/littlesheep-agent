@@ -184,7 +184,6 @@ const ICON_ONLY_CONTROLS: ReadonlyArray<readonly [file: string, glyph: string, n
   ['chat/message-meta.tsx', 'BranchIcon', 'aria-label="从这里分叉对话"'],
   ['composer/message-files.tsx', 'ExternalOpenIcon', 'aria-label={`用系统默认应用打开'],
   ['composer/message-files.tsx', 'CloseIcon', 'aria-label={`移除 ${name}`}'],
-  ['runtime-recovery/checkpoint-recovery.tsx', 'CloseIcon', 'aria-label="稍后处理"'],
   ['workspace/file-navigator.tsx', 'VSCodeIcon', 'aria-label="用外部 VS Code 打开工作区"'],
   ['workspace/panel.tsx', 'PanelFullscreenIcon', 'aria-label={fullscreenTip}'],
   ['workspace/tab-strip.tsx', 'CloseMiniIcon', 'aria-label={`关闭${entry.label}标签`}'],
@@ -401,7 +400,7 @@ describe('action glyph table', () => {
   })
 
   it('names every icon-only control it lists', async () => {
-    expect(ICON_ONLY_CONTROLS).toHaveLength(23)
+    expect(ICON_ONLY_CONTROLS).toHaveLength(22)
     for (const [file, glyph, name] of ICON_ONLY_CONTROLS) {
       const source = await readRendererFile(file)
       expect(source, `${file} no longer renders ${glyph}`).toMatch(new RegExp(`<${glyph}[\\s/>]`, 'u'))

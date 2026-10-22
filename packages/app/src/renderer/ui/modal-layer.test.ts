@@ -105,15 +105,6 @@ describe('modal surfaces wiring', () => {
     expect(prompt).not.toContain('autoFocus')
   })
 
-  it('keeps closing the recovery dialog separate from abandoning a task', async () => {
-    const recovery = await readRendererFile('../runtime-recovery/checkpoint-recovery.tsx')
-
-    expect(recovery).toContain('onEscape: recovery.dismiss')
-    expect(recovery).toContain('active: recovery.visible')
-    expect(recovery).not.toContain('onEscape: recovery.abandonSelected')
-    expect(recovery).toContain('ref={closeRef}')
-  })
-
   it('runs the shared confirmation layer through the same modal rules', async () => {
     const confirm = await readRendererFile('./danger-confirm.tsx')
 

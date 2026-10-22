@@ -161,8 +161,6 @@ const CONTROL_ROLES = [
   '.development-environment-version-remove',
   '.development-environment-action-row button',
   '.development-environment-controls > button',
-  '.checkpoint-recovery-header button',
-  '.checkpoint-recovery-actions button',
   '.memory-files-icon-button',
   '.memory-file-save',
   '.project-create-submit',

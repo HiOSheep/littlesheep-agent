@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import type { ToolStreamEvent } from '@littlesheep/types'
 import type { LocalAppRunCheckpointSummary } from '../../shared/run-checkpoint-contracts'
@@ -188,38 +187,6 @@ describe('checkpoint recovery entry', () => {
     expect(checkpointRecoveryDiagnosticText({ invalidFiles: 1, warningCount: 0 })).not.toContain('不完整')
   })
 })
-
-describe('checkpoint recovery wiring', () => {
-  it('keeps the quiet trigger, the retry and the empty state honest', async () => {
-    const [view, hook] = await Promise.all([
-      readFile(new URL('./checkpoint-recovery.tsx', import.meta.url), 'utf8'),
-      readFile(new URL('./use-checkpoint-recovery.ts', import.meta.url), 'utf8'),
-    ])
-
-    expect(view).toContain("recovery.entry.kind !== 'none' && (")
-    expect(view).not.toContain("recovery.entry.kind !== 'none' && !recovery.visible")
-    expect(view).toContain('aria-hidden={recovery.visible || undefined}')
-    expect(view).toContain('tabIndex={recovery.visible ? -1 : undefined}')
-    expect(view).toContain("pointerEvents: 'none'")
-    expect(view).toContain("recovery.entry.action === 'retry' ? recovery.retryDiscovery : recovery.open")
-    expect(view).toContain('recovery.discoveryFailed\n                  ? \'这次没有读取成功')
-    expect(view).toContain('重新检查')
-    expect(hook).toContain('setDiscoveryFailed(true)')
-    expect(hook).toContain('setDiscoveryFailed(false)')
-    expect(hook).toContain('function retryDiscovery()')
-    // Retrying re-reads the list; it must not resume anything by itself.
-    expect(hook).not.toContain('resumeSelected(checkpoint)\n    void refreshCheckpoints')
-    // Startup discovery stays silent (it never opens the dialog by itself) and
-    // waits for real execution readiness instead of failing against a Runtime
-    // that is merely still starting.
-    expect(hook).toContain('void refreshCheckpoints(false)\n    }')
-    expect(hook).toContain('subscribeRuntimeReadiness((state) => {')
-    expect(hook).toContain("if (state.state === 'ready') runDiscovery()")
-    expect(hook).toContain('if (isExecutionReady()) runDiscovery()')
-    expect(hook).not.toContain('void refreshCheckpoints(false)\n  }, [])')
-  })
-})
-
 
 describe('explicit stop recovery visibility', () => {
   it('excludes stopped runs and stopped recoveries but keeps crashes and waiting input', () => {

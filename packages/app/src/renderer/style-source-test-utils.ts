@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises'
 
 export const RENDERER_STYLE_SOURCE_PATHS = [
   './styles/00-reset.css',
-  './styles/01-checkpoint-recovery.css',
   './styles/02-memory-files.css',
   './styles/03-shell-sidebar.css',
   './styles/04-workspace.css',

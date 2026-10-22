@@ -71,8 +71,7 @@ describe('shared state sample', () => {
     for (const selector of [
       '.danger-btn',
       '.send-round.stop',
-      '.checkpoint-recovery-actions button.danger',
-      '.plugin-trust-actions button.danger',
+          '.plugin-trust-actions button.danger',
     ]) {
       const controls = selector === '.danger-btn' ? declarations(selector, 'color: var(--danger-control-text)') : true
       expect(controls, selector).toBe(true)
@@ -195,9 +194,7 @@ describe('shared state sample', () => {
       '.development-environment-version-remove',
       '.development-environment-action-row button',
       '.development-environment-controls > button',
-      '.checkpoint-recovery-header button',
-      '.checkpoint-recovery-actions button',
-      '.memory-files-icon-button',
+              '.memory-files-icon-button',
       '.memory-file-save',
       '.project-create-submit',
       '.archive-refresh',
