@@ -2543,20 +2543,14 @@ function resolvedResumeTurnInputDigest(
   })
 }
 
-function restoreSameRunContext(
+function restoreSharedCheckpointState(
   ctx: RunContext,
   checkpoint: RunCheckpoint,
-  recovery: SameRunRecoveryInput,
+  state: NonNullable<RunCheckpoint['resumeState']>,
 ): void {
-  const state = checkpoint.resumeState;
-  if (!state || !checkpoint.safeSegmentBoundary) throw new Error('same-Run recovery checkpoint is incomplete');
   if (state.classification?.workPolicy !== undefined && !isSupportedPersistedWorkPolicy(state.classification.workPolicy)) {
-    throw new Error('same-Run recovery checkpoint has an unsupported work policy');
+    throw new Error('checkpoint has an unsupported work policy');
   }
-  ctx.entryStage = 'execute';
-  ctx.resumedFromCheckpointId = checkpoint.id;
-  ctx.durableTransitionAttemptOffset = recovery.transitionAttemptOffset;
-  ctx.modelRequestIndexOffset = recovery.modelRequestIndexOffset;
   writeRunTaskState(ctx, 'runner-restore', {
     taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined,
     taskBookRevision: checkpoint.taskBookRevision,
@@ -2569,24 +2563,38 @@ function restoreSameRunContext(
     needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
   });
   writeRunTaskState(ctx, 'runner-restore', {
-    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest
-      ? structuredClone(state.workPolicyUpgradeRequest)
-      : undefined,
+    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
   });
   writeRuntimeState(ctx, 'runner-restore', {
     deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
     deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
-    loopBudget: structuredClone(checkpoint.loopBudget),
   });
   replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
+  replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
+  ctx.webEvidence = sanitizeWebEvidenceProjection(checkpoint.webEvidence);
+}
+
+function restoreSameRunContext(
+  ctx: RunContext,
+  checkpoint: RunCheckpoint,
+  recovery: SameRunRecoveryInput,
+): void {
+  const state = checkpoint.resumeState;
+  if (!state || !checkpoint.safeSegmentBoundary) throw new Error('same-Run recovery checkpoint is incomplete');
+  ctx.entryStage = 'execute';
+  ctx.resumedFromCheckpointId = checkpoint.id;
+  ctx.durableTransitionAttemptOffset = recovery.transitionAttemptOffset;
+  ctx.modelRequestIndexOffset = recovery.modelRequestIndexOffset;
+  restoreSharedCheckpointState(ctx, checkpoint, state);
+  writeRuntimeState(ctx, 'runner-restore', {
+    loopBudget: structuredClone(checkpoint.loopBudget),
+  });
   writeModelObservabilityState(ctx, 'runner-restore', {
     modelCallCount: checkpoint.loopBudget.attemptsUsed,
   });
   writeFailureState(ctx, 'runner-restore', {
     recoveryAttempts: state.recoveryAttempts,
   });
-  replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
-  ctx.webEvidence = sanitizeWebEvidenceProjection(checkpoint.webEvidence);
 }
 
 function fingerprintRunExecutionContext(ctx: RunContext): {
@@ -2679,29 +2687,10 @@ function restoreContinuationContext(
 ): void {
   const state = checkpoint.resumeState;
   if (!state) throw new Error('checkpoint has no resumable runtime state');
-  if (state.classification?.workPolicy !== undefined && !isSupportedPersistedWorkPolicy(state.classification.workPolicy)) {
-    throw new Error('checkpoint uses an unsupported work policy version or shape');
-  }
-
   ctx.entryStage = resumeStage;
   ctx.resumedFromCheckpointId = checkpoint.id;
-  writeRunTaskState(ctx, 'runner-restore', {
-    taskBook: checkpoint.taskBook ? structuredClone(checkpoint.taskBook) : undefined,
-    taskBookRevision: checkpoint.taskBookRevision,
-    taskExecution: checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined,
-    plan: state.plan ? structuredClone(state.plan) : undefined,
-    appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
-  });
-  writeDecisionState(ctx, 'runner-restore', {
-    classification: state.classification ? structuredClone(state.classification) : undefined,
-    needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
-  });
-  writeRunTaskState(ctx, 'runner-restore', {
-    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
-  });
+  restoreSharedCheckpointState(ctx, checkpoint, state);
   writeRuntimeState(ctx, 'runner-restore', {
-    deferredRuntimeEventIds: [...checkpoint.pendingEventIds],
-    deferredRuntimeEvents: structuredClone(state.deferredRuntimeEvents),
     // Task state is inherited; the run-scoped allowance is not. See
     // `continuationLoopBudget` — restoring the previous run's spend against this
     // run's ceiling is what made an explicit user retry impossible.
@@ -2712,7 +2701,6 @@ function restoreContinuationContext(
       budgets.maxToolLoopIterationsPerRun,
     ),
   });
-  replaceSideEffectEvidence(ctx, 'runner-restore', checkpoint.sideEffects);
   writeModelObservabilityState(ctx, 'runner-restore', {
     modelCallCount: 0,
   });
@@ -2727,12 +2715,10 @@ function restoreContinuationContext(
     lastError: undefined,
     recoveryAttempts: 0,
   });
-  replaceVerificationHistory(ctx, 'runner-restore', state.verificationHistory);
   // A paused/interrupted control snapshot must not immediately stop the new
   // continuation at its first safe boundary. The original event evidence is
   // retained in the restored queue; the new run starts in a clean state.
   writeRuntimeState(ctx, 'runner-restore', { runtimeControl: undefined });
-  ctx.webEvidence = sanitizeWebEvidenceProjection(checkpoint.webEvidence);
   clearReplyState(ctx, 'runner-restore');
 }
 
