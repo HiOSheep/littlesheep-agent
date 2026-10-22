@@ -395,23 +395,6 @@ export async function finishSideEffect(
   }
 }
 
-export async function markSideEffectUnknown(ctx: RunContext, descriptor: SideEffectDescriptor, error: string): Promise<void> {
-  replaceSideEffectStatus(ctx, descriptor, 'unknown', error)
-  await ctx.appendDurableEvent?.({
-    type: 'effect_settled',
-    source: 'runtime',
-    eventId: `${ctx.runId}:effect:${descriptor.idempotencyKey}:unknown`,
-    idempotencyKey: `${ctx.runId}:effect:${descriptor.idempotencyKey}:unknown`,
-    payload: {
-      effectId: descriptor.idempotencyKey,
-      status: 'unknown',
-      errorHash: hashText(error),
-      errorLength: error.length,
-    },
-  });
-  await releaseEffectLease(ctx, descriptor);
-}
-
 async function releaseEffectLease(ctx: RunContext, descriptor: SideEffectDescriptor): Promise<void> {
   try {
     await ctx.effectLeases?.release(descriptor.idempotencyKey);
