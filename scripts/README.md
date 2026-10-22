@@ -14,6 +14,8 @@
 
 `node scripts/verify-deliv-02-false-completion-renderer.mjs`（`pnpm run verify:deliv-02-claim-consistency`）是 R4-C 的交付一致性验收：用真实 Electron + 受控本地 Provider 运行 DELIV-02 错误文件＋完成声明、独立检查通过、无独立检查、部分要求、权限拒绝与工具执行失败六种情形，断言 Renderer 把模型声明与权威 Task Outcome 分开显示，并验证刷新、Electron 重启与会话切换后回复和状态仍一致。`scripts/verify-task-outcome-renderer.mjs` 继续覆盖既有 passed/failed/unverified/partial 与历史回放。两者都不调用真实 Provider。
 
+脚本的机器可读输出统一使用 `scripts/lib/result-envelope.mjs` 的 `{schemaVersion, kind, status, exitCode, data}` 信封；`readResultEnvelope` 校验版本与 kind，避免再新增 `{ok}/{check}/{report}` 等互不兼容的形状。
+
 `node scripts/rehearse-r4d0.mjs --freeze` 生成 R4-D0 冻结协议与离线 Provider 预检工件；`--rehearse` 用本地 scripted Provider 执行 4 任务 × Trial 1–5 的离线批次演练，验证 trial 隔离、预算/停止、失败分类与重复运行拒绝。两个模式都不联网、不授权真实请求；真实付费试验仍需用户单独批准模型、范围、预算与 Provider 侧费用上限。
 
 ## 常用入口

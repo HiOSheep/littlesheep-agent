@@ -16,6 +16,7 @@ import {
   classifyAttempt, evaluateTrialBudget, validateTrialPlan,
 } from './lib/r4d0/protocol.mjs';
 import { runOfflinePreflight } from './lib/r4d0/preflight.mjs';
+import { createResultEnvelope } from './lib/result-envelope.mjs';
 import { computeMetrics } from './lib/r4b/metrics.mjs';
 import { REPO_ROOT } from './lib/r4b/contract.mjs';
 
