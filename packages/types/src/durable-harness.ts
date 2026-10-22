@@ -6,6 +6,7 @@ import type { CacheObservation } from './cache-observability.js';
 import type { ProviderLocalTokenCalibration } from './token-ledger.js';
 import type { ReconciliationValue } from './reconciliation-key.js';
 import type { TaskOutcome } from './task-outcome.js';
+import type { SideEffectStatus } from './runtime-contracts.js';
 
 export const DURABLE_HARNESS_EVENT_VERSION = 1 as const;
 export const DURABLE_HARNESS_EVENT_MAX_PAYLOAD_BYTES = 64 * 1024;
@@ -140,7 +141,7 @@ export interface DurableInboxStoreLike {
 
 export type DurableRunStatus = 'accepted' | 'running' | 'waiting_user' | 'completed' | 'failed' | 'interrupted';
 export type DurableFinalReplyState = 'none' | 'proposed' | 'settled' | 'runtime_status';
-export type DurableEffectStatus = 'planned' | 'in_progress' | 'succeeded' | 'failed' | 'cancelled' | 'unknown';
+export type DurableEffectStatus = SideEffectStatus;
 export type DurableEffectOutcomeQueryResult =
   | { readonly known: true; readonly status: Extract<DurableEffectStatus, 'succeeded' | 'failed' | 'unknown'>; readonly evidenceRef?: string }
   | { readonly known: false; readonly reason?: string };

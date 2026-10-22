@@ -3,6 +3,7 @@
 import type { StageName } from './agent.js';
 import type { PlanStep, TaskBook, TaskExecutionResult } from './task.js';
 import type { SessionId } from './session.js';
+import type { TaskEvidenceStatus } from './task-outcome.js';
 import type { ContextSafetyEstimate, LocalTokenLedger, ProviderTokenLedger } from './token-ledger.js';
 import type { CacheObservation, ContextReuseEvent } from './cache-observability.js';
 import type { NetworkReadPolicy, WebEvidenceProjection, WebProviderRuntimeSnapshot } from './web-retrieval.js';
@@ -342,7 +343,7 @@ export interface ExecutionEvidence {
   sessionId: SessionId;
   stepId?: string;
   kind: ExecutionEvidenceKind;
-  status: 'pass' | 'fail' | 'partial' | 'informational';
+  status: TaskEvidenceStatus;
   sourceRef: string;
   summary: string;
   createdAt: string;

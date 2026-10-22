@@ -3,21 +3,12 @@
 import type {
   DataRootStatus,
   ProviderDraft,
-  ProviderInfo,
   RuntimePatch,
   RuntimeState,
 } from '../../shared/runtime-api-contracts'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes'
 import { localApiFetch, localApiResponseError, localApiStatusError } from './common'
 
-export async function getProviders(): Promise<ProviderInfo[]> {
-  const res = await localApiFetch(LOCAL_APP_API_ROUTES.configProviders)
-  if (!res.ok) throw localApiStatusError(res.status)
-  const data = await res.json() as { providers: ProviderInfo[] }
-  return data.providers
-}
-
-/** Create or update one provider (settings page). Returns the new runtime state. */
 export async function saveProvider(provider: ProviderDraft): Promise<RuntimeState> {
   const res = await localApiFetch(LOCAL_APP_API_ROUTES.configProviders, {
     method: 'POST',

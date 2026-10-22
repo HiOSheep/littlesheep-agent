@@ -3,7 +3,6 @@
 import type {
   MemoryFilesPayload,
   MemoryFileDetail,
-  MemoryFileOverview,
   MemoryFileName,
 } from '../../shared/memory-control-contracts'
 import {
@@ -35,10 +34,6 @@ export async function readSkill(name: string): Promise<SkillDetail> {
   const res = await localApiFetch(localAppApiItemPath(LOCAL_APP_API_PREFIXES.skills, name))
   if (!res.ok) throw localApiStatusError(res.status)
   return res.json() as Promise<SkillDetail>
-}
-
-export async function listMemoryFiles(): Promise<MemoryFileOverview[]> {
-  return (await getMemoryFilesPayload()).files
 }
 
 export async function getMemoryFilesPayload(): Promise<MemoryFilesPayload> {

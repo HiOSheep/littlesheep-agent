@@ -207,6 +207,3 @@ export async function getSessionMessagePage(
   return res.json() as Promise<SessionMessagePage>
 }
 
-export async function getSessionMessages(id: string): Promise<HistoryMessageRecord[]> {
-  return (await getSessionMessagePage(id)).messages
-}

@@ -3,6 +3,7 @@
 
 import type { AtomicCacheMetadata } from './cache.js';
 import type { FinalReplyReservation, Message } from './message.js';
+import type { RunStatus } from './agent.js';
 
 /** Branded session id (string). */
 export type SessionId = string & { readonly __brand: 'SessionId' };
@@ -22,7 +23,7 @@ export interface SessionRunToolTiming {
 export interface SessionRunSummary {
   version: 1;
   runId: string;
-  status: 'queued' | 'running' | 'ok' | 'error' | 'timeout' | 'aborted';
+  status: RunStatus;
   startedAt: string;
   endedAt: string;
   durationMs: number;
