@@ -8,7 +8,7 @@
 
 - 计划试验：20（4 任务 × Trial 1–5）；实际执行：20。
 - 通过 / 能力失败 / 未解决 / 基础设施失败：20 / 0 / 0 / 0。
-- 产品 SHA：`7606f12440a7c6afee53f2982c5d2512e03a781b`；评测器指纹：`56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4`。
+- 产品 SHA：`7eabdab36ac435148320fa7e55306f9d8025e318`；评测器指纹：`56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4`。
 
 ## 三维度指标（仅受控演练）
 
@@ -24,26 +24,26 @@ N=20 属初步故障发现样本；`populationClaim=false`，不得据此声称�
 
 | 记录 | 任务 | trial | 分类 | Goal | Contract | Mechanism | 逻辑/物理请求 | 工具执行 | 已结算 Effect | 耗时 ms |
 |---|---|---:|---|---|---|---|---:|---:|---:|---:|
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:1 | FILE-02-G | 1 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 4460 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:2 | FILE-02-G | 2 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 4485 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:3 | FILE-02-G | 3 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 4519 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:4 | FILE-02-G | 4 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 4537 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:5 | FILE-02-G | 5 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 4513 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:1 | FILE-02-S | 1 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 4556 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:2 | FILE-02-S | 2 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 4529 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:3 | FILE-02-S | 3 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 4532 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:4 | FILE-02-S | 4 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 4484 |
-| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:5 | FILE-02-S | 5 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5024 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:1 | DELIV-01-G | 1 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2639 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:2 | DELIV-01-G | 2 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2676 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:3 | DELIV-01-G | 3 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2628 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:4 | DELIV-01-G | 4 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2600 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:5 | DELIV-01-G | 5 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2609 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:1 | DELIV-01-R | 1 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2752 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:2 | DELIV-01-R | 2 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2762 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:3 | DELIV-01-R | 3 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2728 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:4 | DELIV-01-R | 4 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2677 |
-| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:5 | DELIV-01-R | 5 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2759 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:1 | FILE-02-G | 1 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 5278 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:2 | FILE-02-G | 2 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 5115 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:3 | FILE-02-G | 3 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 5258 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:4 | FILE-02-G | 4 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 5065 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:5 | FILE-02-G | 5 | capability_pass | passed | not_applicable | not_exercised | 3/0 | 2 | 1 | 5071 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:1 | FILE-02-S | 1 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5049 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:2 | FILE-02-S | 2 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5046 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:3 | FILE-02-S | 3 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5145 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:4 | FILE-02-S | 4 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5205 |
+| v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:5 | FILE-02-S | 5 | capability_pass | passed | passed | not_exercised | 3/0 | 2 | 1 | 5228 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:1 | DELIV-01-G | 1 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2527 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:2 | DELIV-01-G | 2 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2593 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:3 | DELIV-01-G | 3 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2625 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:4 | DELIV-01-G | 4 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2552 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:5 | DELIV-01-G | 5 | capability_pass | passed | not_applicable | not_exercised | 2/0 | 1 | 1 | 2623 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:1 | DELIV-01-R | 1 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2656 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:2 | DELIV-01-R | 2 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2747 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:3 | DELIV-01-R | 3 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 3059 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:4 | DELIV-01-R | 4 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2662 |
+| v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:5 | DELIV-01-R | 5 | capability_pass | passed | not_applicable | passed | 3/0 | 1 | 1 | 2702 |
 
 ## 隔离、预算与停止条件
 

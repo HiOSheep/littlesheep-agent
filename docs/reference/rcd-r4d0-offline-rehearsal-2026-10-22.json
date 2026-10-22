@@ -4,13 +4,13 @@
   "kind": "r4d0-offline-rehearsal",
   "protocolVersion": "1.0.0",
   "batchId": "r4d0-offline-rehearsal-2026-10-22",
-  "generatedAt": "2026-10-22T07:15:58.736Z",
+  "generatedAt": "2026-10-22T08:11:03.883Z",
   "evidenceTier": "A_runtime_deterministic",
   "realEvidenceTier": "B_real_model",
   "realProviderCalled": false,
   "preflightOk": true,
   "baseline": {
-    "productSha": "7606f12440a7c6afee53f2982c5d2512e03a781b",
+    "productSha": "7eabdab36ac435148320fa7e55306f9d8025e318",
     "evaluatorFingerprint": "56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4",
     "taskSuiteSha256": "dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1"
   },
@@ -27,7 +27,6 @@
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:1",
       "taskId": "FILE-02-G",
       "trial": 1,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__1.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -58,7 +57,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4460,
+      "durationMs": 5278,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -67,13 +66,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__1.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:2",
       "taskId": "FILE-02-G",
       "trial": 2,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__2.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -104,7 +103,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4485,
+      "durationMs": 5115,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -113,13 +112,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__2.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:3",
       "taskId": "FILE-02-G",
       "trial": 3,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__3.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -150,7 +149,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4519,
+      "durationMs": 5258,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -159,13 +158,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__3.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:4",
       "taskId": "FILE-02-G",
       "trial": 4,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__4.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -196,7 +195,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4537,
+      "durationMs": 5065,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -205,13 +204,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__4.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-G:trial:5",
       "taskId": "FILE-02-G",
       "trial": 5,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__5.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -242,7 +241,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4513,
+      "durationMs": 5071,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -251,13 +250,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-G__trial__5.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:1",
       "taskId": "FILE-02-S",
       "trial": 1,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__1.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -288,7 +287,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4556,
+      "durationMs": 5049,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -297,13 +296,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__1.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:2",
       "taskId": "FILE-02-S",
       "trial": 2,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__2.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -334,7 +333,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4529,
+      "durationMs": 5046,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -343,13 +342,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__2.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:3",
       "taskId": "FILE-02-S",
       "trial": 3,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__3.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -380,7 +379,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4532,
+      "durationMs": 5145,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -389,13 +388,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__3.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:4",
       "taskId": "FILE-02-S",
       "trial": 4,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__4.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -426,7 +425,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 4484,
+      "durationMs": 5205,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -435,13 +434,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__4.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:FILE-02-S:trial:5",
       "taskId": "FILE-02-S",
       "trial": 5,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__5.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -472,7 +471,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 5024,
+      "durationMs": 5228,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -481,13 +480,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__FILE-02-S__trial__5.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:1",
       "taskId": "DELIV-01-G",
       "trial": 1,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__1.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -518,7 +517,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2639,
+      "durationMs": 2527,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -527,13 +526,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__1.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:2",
       "taskId": "DELIV-01-G",
       "trial": 2,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__2.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -564,7 +563,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2676,
+      "durationMs": 2593,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -573,13 +572,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__2.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:3",
       "taskId": "DELIV-01-G",
       "trial": 3,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__3.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -610,7 +609,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2628,
+      "durationMs": 2625,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -619,13 +618,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__3.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:4",
       "taskId": "DELIV-01-G",
       "trial": 4,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__4.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -656,7 +655,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2600,
+      "durationMs": 2552,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -665,13 +664,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__4.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-G:trial:5",
       "taskId": "DELIV-01-G",
       "trial": 5,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__5.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -702,7 +701,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2609,
+      "durationMs": 2623,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -711,13 +710,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-G__trial__5.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:1",
       "taskId": "DELIV-01-R",
       "trial": 1,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__1.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -748,7 +747,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2752,
+      "durationMs": 2656,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -757,13 +756,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__1.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:2",
       "taskId": "DELIV-01-R",
       "trial": 2,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__2.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -794,7 +793,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2762,
+      "durationMs": 2747,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -803,13 +802,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__2.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:3",
       "taskId": "DELIV-01-R",
       "trial": 3,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__3.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -840,7 +839,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2728,
+      "durationMs": 3059,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -849,13 +848,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__3.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:4",
       "taskId": "DELIV-01-R",
       "trial": 4,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__4.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -886,7 +885,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2677,
+      "durationMs": 2662,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -895,13 +894,13 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__4.json"
     },
     {
       "recordId": "v2:r4d0-offline-rehearsal-2026-10-22:DELIV-01-R:trial:5",
       "taskId": "DELIV-01-R",
       "trial": 5,
-      "recordPath": "C:\\Users\\28971\\AppData\\Local\\Temp\\ls-r4d0-rehearsal-ySxvzZ\\records\\v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__5.json",
       "classification": "capability_pass",
       "dimensions": {
         "goal": "passed",
@@ -932,7 +931,7 @@
         "duplicateSuccessful": 0,
         "unknown": 0
       },
-      "durationMs": 2759,
+      "durationMs": 2702,
       "cleanup": true,
       "providerUsage": {
         "status": "unavailable",
@@ -941,7 +940,8 @@
         "cachedInputTokens": null,
         "source": null,
         "reason": "scripted provider has no authoritative billing or usage receipt"
-      }
+      },
+      "recordFile": "v2__r4d0-offline-rehearsal-2026-10-22__DELIV-01-R__trial__5.json"
     }
   ],
   "metrics": {

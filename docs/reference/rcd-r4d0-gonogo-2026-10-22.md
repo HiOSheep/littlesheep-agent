@@ -12,7 +12,7 @@
 |---|---|
 | R4-C 基线 | `4ebc1e67` |
 | 协议冻结工件 | `rcd-r4d0-preflight-2026-10-22.json`（协议 `1.0.0`，20 项离线预检全通过） |
-| 离线演练基线 | `7606f124`（工作树干净；演练记录 `product.dirty=false`、`sourceDirty=false`） |
+| 离线演练基线 | `7eabdab3`（工作树干净；演练记录 `product.dirty=false`、`sourceDirty=false`） |
 | 评测器指纹 | `56d97aae41769b99441c96a0cf1b9582bfd20526503ce5621cf824071d5748c4` |
 | V2 任务集 sha256 | `dc124fce7cb6d9a05955e90f9e9e832e12cee1ee31d64b8a89f54cc2317306f1` |
 | V2 Oracle sha256 | `4b03bb3ecd003e82bd44d3a0f1173d0399f70e628b5858c04ddb2a8dd3f82a6e` |
