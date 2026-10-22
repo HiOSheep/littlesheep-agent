@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   R4D0_BATCH_ID, R4D0_PROTOCOL_VERSION, REAL_EVIDENCE_TIER, buildProtocolFrozen, buildTrialPlan,
   classifyAttempt, evaluateTrialBudget, validateTrialPlan,
@@ -251,7 +251,8 @@ async function rehearse() {
       capabilityUnresolved: trials.filter((trial) => trial.classification === 'capability_unresolved').length,
       infrastructureFailure: failures.length,
     },
-    trials,
+    // Keep machine-specific absolute paths out of the public evidence artifact.
+    trials: trials.map(({ recordPath, ...rest }) => ({ ...rest, recordFile: basename(recordPath) })),
     metrics,
     budget: { totals: { logicalTotal, physicalTotal, observedOutputTokens }, checks: budgetChecks, caps: { perTrialPhysical: 8, batchPhysical: 160, perRequestOutputTokens: 2048, batchOutputTokens: 40960 } },
     isolation: { checks: isolationChecks },
