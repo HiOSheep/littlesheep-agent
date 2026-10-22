@@ -1,11 +1,14 @@
 import type { TaskEvidenceReference, TaskOutcome } from '@littlesheep/types'
 import type { AssistantTurnActivity } from './types'
 import {
+  acceptanceTone,
   executionStatusLabel,
   hasSuccessfulFileMutation,
+  isAcceptanceUnverified,
   reasonLabel,
   requirementBadge,
   shouldShowTaskOutcome,
+  taskOutcomeAcceptanceState,
   taskOutcomeStatusLabel,
   workspaceRelativeResource,
 } from './task-outcome-presentation'
@@ -22,11 +25,12 @@ export function TaskOutcomeCard({
   if (!outcome || (outcome.execution.reasonCode === 'legacy_outcome_unavailable'
     && outcome.requirements.length === 0 && outcome.artifacts.length === 0 && outcome.evidence.length === 0)) {
     return (
-      <section className="task-outcome-card is-unknown" aria-label="任务验收结果">
+      <section className="task-outcome-card is-unknown is-unresolved" aria-label="任务验收结果" role="status">
         <div className="task-outcome-heading">
           <strong>任务验收</strong>
-          <span className="task-outcome-badge muted">缺少验收记录</span>
+          <span className="task-outcome-badge unverified">缺少验收记录</span>
         </div>
+        <p className="task-outcome-claim-note">模型最终回复里的完成声明属于 Agent 声明，不构成验收通过；本卡片只依据 Runtime 记录。</p>
         <p>文件写入操作成功不代表内容已通过检查；当前没有可回溯的独立检查结果。</p>
       </section>
     )
@@ -36,15 +40,28 @@ export function TaskOutcomeCard({
     ? '验收清单已识别'
     : outcome.requirementInventory === 'partial' ? '验收清单不完整' : '验收清单无法确认'
   const evidenceById = new Map(outcome.evidence.map((item) => [item.id, item]))
-  const completed = activity.status === 'done' && outcome.status === 'completed'
+  const acceptanceState = taskOutcomeAcceptanceState(outcome, activity.status)
+  const acceptanceUnverified = isAcceptanceUnverified(outcome)
+  const completed = acceptanceState === 'completed'
   return (
-    <section className={`task-outcome-card${completed ? ' is-completed' : ' is-unresolved'}`} aria-label="任务验收结果">
+    <section
+      className={`task-outcome-card${completed ? ' is-completed' : ' is-unresolved'}${acceptanceUnverified ? ' is-unverified' : ''}`}
+      data-acceptance={acceptanceState}
+      aria-label="任务验收结果"
+      role="status"
+    >
       <div className="task-outcome-heading">
         <strong>任务验收</strong>
-        <span className={`task-outcome-badge ${completed ? 'good' : 'muted'}`}>
+        <span className={`task-outcome-badge ${acceptanceTone(acceptanceState)}`}>
           {taskOutcomeStatusLabel(outcome, activity.status)}
         </span>
       </div>
+      <p className="task-outcome-claim-note">模型最终回复里的完成声明属于 Agent 声明，不构成验收通过；本卡片只依据 Runtime 记录。</p>
+      {acceptanceUnverified && (
+        <p className="task-outcome-claim-note">
+          本 Run 缺少可确认的独立检查证据；验证范围仅限 Runtime 已记录的要求。
+        </p>
+      )}
       <div className="task-outcome-meta">
         <span>执行：{executionStatusLabel(outcome.execution.status)}</span>
         <span>{inventoryLabel}</span>

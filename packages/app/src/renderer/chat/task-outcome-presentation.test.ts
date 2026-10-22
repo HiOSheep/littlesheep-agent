@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { unknownTaskOutcome } from '@littlesheep/types'
 import type { AssistantTurnActivity } from './types'
-import { hasSuccessfulFileMutation, shouldShowTaskOutcome, taskOutcomeStatusLabel, workspaceRelativeResource } from './task-outcome-presentation'
+import {
+  acceptanceTone,
+  hasSuccessfulFileMutation,
+  isAcceptanceUnverified,
+  shouldShowTaskOutcome,
+  taskOutcomeAcceptanceState,
+  taskOutcomeStatusLabel,
+  workspaceRelativeResource,
+} from './task-outcome-presentation'
 
 function activity(overrides: Partial<AssistantTurnActivity> = {}): AssistantTurnActivity {
   return { status: 'done', instruction: 'task', startedAt: 1, steps: [], tools: [], ...overrides }
@@ -18,6 +26,18 @@ describe('Task Outcome UI projection', () => {
     })
     expect(hasSuccessfulFileMutation(fileWrite)).toBe(true)
     expect(shouldShowTaskOutcome(fileWrite)).toBe(true)
+  })
+
+  it('keeps an unknown acceptance visible once the turn recorded tool work, but never calls it verified', () => {
+    const recorded = activity({
+      taskOutcome: unknownTaskOutcome('run-1'),
+      tools: [{ callId: 'read-1', name: 'read', ok: true }],
+    })
+    expect(shouldShowTaskOutcome(recorded)).toBe(true)
+    expect(isAcceptanceUnverified(recorded.taskOutcome!)).toBe(true)
+    expect(taskOutcomeAcceptanceState(recorded.taskOutcome!, 'done')).toBe('unverified')
+    expect(acceptanceTone('unverified')).toBe('unverified')
+    expect(taskOutcomeStatusLabel(recorded.taskOutcome!, 'done')).toContain('未验收')
   })
 
   it('does not show an interim or pending-settlement Outcome as terminal', () => {

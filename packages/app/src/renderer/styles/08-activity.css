@@ -865,6 +865,34 @@ button.agent-flow-row.no-details,
   background: var(--control-hover);
 }
 
+/* An unresolved acceptance is a fact the user must see, not muted metadata. */
+.task-outcome-badge.unverified {
+  color: var(--warning, var(--muted));
+  background: color-mix(in srgb, var(--warning, #ca8) 12%, transparent);
+}
+
+.task-outcome-card[data-acceptance='unverified'] {
+  border-left: 2px solid var(--warning, var(--muted));
+}
+
+.task-outcome-card[data-acceptance='failed'] {
+  border-left: 2px solid var(--feedback-danger-text);
+}
+
+.task-outcome-card[data-acceptance='blocked'] {
+  border-left: 2px solid var(--warning, var(--muted));
+}
+
+.task-outcome-card.is-completed {
+  border-left: 2px solid var(--success, var(--border));
+}
+
+.task-outcome-claim-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .task-outcome-file {
   min-width: 0;
   padding: 0;

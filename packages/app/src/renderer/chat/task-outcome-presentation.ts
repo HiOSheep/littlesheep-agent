@@ -1,12 +1,13 @@
 import type { TaskOutcome, TaskRequirementStatus } from '@littlesheep/types'
 import type { AssistantTurnActivity } from './types'
 
-export type TaskOutcomeBadge = { label: string; tone: 'good' | 'danger' | 'muted' | 'blocked' }
+export type TaskOutcomeTone = 'good' | 'danger' | 'muted' | 'blocked' | 'unverified'
+export type TaskOutcomeBadge = { label: string; tone: TaskOutcomeTone }
 
 const requirementBadges: Record<TaskRequirementStatus, TaskOutcomeBadge> = {
   passed: { label: '已验证通过', tone: 'good' },
   failed: { label: '检查未通过', tone: 'danger' },
-  unverified: { label: '尚未验证', tone: 'muted' },
+  unverified: { label: '尚未验证', tone: 'unverified' },
   blocked: { label: '检查受阻', tone: 'blocked' },
 }
 
@@ -56,7 +57,39 @@ export function taskOutcomeStatusLabel(outcome: TaskOutcome, activityStatus: Ass
         : '仍有要求未满足或未验证'
     case 'blocked': return '任务受到阻断'
     case 'cancelled': return '任务已取消，保留取消前可确认的成果'
-    default: return '无法确认目标是否全部满足'
+    default: return '未验收：缺少可确认的验收证据'
+  }
+}
+
+export type TaskOutcomeAcceptanceState = 'completed' | 'failed' | 'blocked' | 'unverified'
+
+/**
+ * Overall acceptance can be verified only when Runtime recognized the whole
+ * requirement inventory and settled it as completed. A partial or unknown
+ * inventory is never promoted by the model's wording.
+ */
+export function isAcceptanceUnverified(outcome: TaskOutcome): boolean {
+  return outcome.status === 'unknown' || outcome.requirementInventory !== 'complete'
+}
+
+/** Card-level state, derived only from the authoritative Task Outcome and turn status. */
+export function taskOutcomeAcceptanceState(
+  outcome: TaskOutcome,
+  activityStatus: AssistantTurnActivity['status'],
+): TaskOutcomeAcceptanceState {
+  if (activityStatus !== 'done' && outcome.status === 'completed') return 'unverified'
+  if (outcome.requirements.some((requirement) => requirement.status === 'failed')) return 'failed'
+  if (outcome.status === 'blocked') return 'blocked'
+  if (outcome.status === 'completed' && outcome.requirementInventory === 'complete') return 'completed'
+  return 'unverified'
+}
+
+export function acceptanceTone(state: TaskOutcomeAcceptanceState): TaskOutcomeTone {
+  switch (state) {
+    case 'completed': return 'good'
+    case 'failed': return 'danger'
+    case 'blocked': return 'blocked'
+    default: return 'unverified'
   }
 }
 
@@ -87,6 +120,10 @@ export function shouldShowTaskOutcome(activity: AssistantTurnActivity): boolean 
   const actionableRemaining = outcome.remaining.some((item) => item.reasonCode !== 'requirements_unknown'
     && item.reasonCode !== 'legacy_outcome_unavailable')
   if (actionableRemaining) return true
-  if (outcome.status === 'unknown') return hasSuccessfulFileMutation(activity)
+  // A settled unknown outcome with recorded tool work needs an explicit
+  // "未验收" card even when the model wrote nothing: otherwise its confident
+  // prose reply is the only thing the user sees. Ordinary chat without tools
+  // stays lightweight.
+  if (outcome.status === 'unknown') return hasSuccessfulFileMutation(activity) || (activity.tools?.length ?? 0) > 0
   return true
 }

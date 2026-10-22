@@ -84,6 +84,32 @@ describe('assistant activity flow', () => {
     expect(html.indexOf('assistant-final')).toBeLessThan(html.indexOf('task-outcome-card'))
   })
 
+  it('keeps a confident completion claim separate from an unverified acceptance', () => {
+    const claim = 'Created result.txt with exactly hello and checked the file. The task is complete.'
+    const taskOutcome = unknownTaskOutcome('run-deliv-02')
+    taskOutcome.execution = { status: 'completed' }
+    taskOutcome.remaining = [{ reasonCode: 'requirements_unknown', evidenceRefs: [] }]
+    const html = renderToStaticMarkup(createElement(AssistantTurnMessage, {
+      message: {
+        role: 'assistant',
+        text: claim,
+        activity: activity({ status: 'done', taskOutcome, tools: [{ callId: 'write-1', name: 'write', ok: true }] }),
+      },
+      now: 1_500,
+      onOpenFile: () => undefined,
+    }))
+
+    // The model's words stay readable and verbatim, but they never become the
+    // acceptance result: the authoritative card below says it is unverified.
+    expect(html).toContain(claim)
+    expect(html).toContain('未验收')
+    expect(html).toContain('不构成验收通过')
+    expect(html).toContain('role="status"')
+    expect(html).not.toContain('已验证通过')
+    expect(html).not.toContain('已按明确的验收条件通过')
+    expect(html.indexOf(claim)).toBeLessThan(html.indexOf('task-outcome-card'))
+  })
+
   it('does not present completed argument generation as a completed file change', () => {
     const html = renderToStaticMarkup(createElement(AssistantTranscript, {
       transcript: [{ kind: 'preparing', id: 'pending-write', name: 'write', receivedCharacters: 0, status: 'done', argumentSummary: 'target.txt' }],

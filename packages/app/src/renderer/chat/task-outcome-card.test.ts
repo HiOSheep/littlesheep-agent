@@ -2,6 +2,7 @@ import React, { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TaskEvidenceReference, TaskEvidenceStatus, TaskOutcome } from '@littlesheep/types'
+import { unknownTaskOutcome } from '@littlesheep/types'
 import type { AssistantTurnActivity } from './types'
 import { TaskOutcomeCard } from './task-outcome-card'
 
@@ -83,6 +84,34 @@ describe('Task Outcome card', () => {
     expect(blocked).not.toContain('已验证通过')
   })
 
+  it('shows the DELIV-02 unknown shape as an explicit unverified acceptance, never as a pass', () => {
+    const taskOutcome = unknownTaskOutcome('run-deliv-02')
+    taskOutcome.execution = { status: 'completed' }
+    taskOutcome.remaining = [{ reasonCode: 'requirements_unknown', evidenceRefs: [] }]
+    const html = render({ taskOutcome, tools: [{ callId: 'write-1', name: 'write', ok: true }] })
+
+    expect(html).toContain('未验收')
+    expect(html).toContain('role="status"')
+    expect(html).toContain('data-acceptance="unverified"')
+    expect(html).toContain('is-unverified')
+    expect(html).toContain('task-outcome-badge unverified')
+    expect(html).toContain('模型最终回复')
+    expect(html).toContain('不构成验收通过')
+    expect(html).toContain('验证范围仅限')
+    expect(html).toContain('执行：执行已结束')
+    expect(html).toContain('验收清单无法确认')
+    expect(html).toContain('无法确认完整的要求清单')
+    expect(html).not.toContain('已验证通过')
+    expect(html).not.toContain('已按明确的验收条件通过')
+  })
+
+  it('renders a confirmed failed requirement as a danger-level fact', () => {
+    const html = render({ taskOutcome: outcome('failed') })
+    expect(html).toContain('task-outcome-badge danger')
+    expect(html).toContain('data-acceptance="failed"')
+    expect(html).not.toContain('已按明确的验收条件通过')
+  })
+
   it('shows passed and failed requirements together without marking the task fully complete', () => {
     const partial = outcome('passed')
     partial.artifacts[0]!.resourceRef = 'workspace:a.txt'
@@ -118,6 +147,8 @@ describe('Task Outcome card', () => {
     const missing = render({ tools: [{ callId: 'write-1', name: 'write', ok: true }] })
     expect(missing).toContain('缺少验收记录')
     expect(missing).toContain('文件写入操作成功不代表')
+    expect(missing).toContain('不构成验收通过')
+    expect(missing).toContain('role="status"')
     expect(render({ taskOutcome: undefined })).toBe('')
   })
 
