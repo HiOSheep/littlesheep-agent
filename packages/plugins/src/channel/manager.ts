@@ -12,7 +12,7 @@
 // Cascade delete flow (remove):
 //   plugin.stop() → sessionStore.findByChannel() → sessionManager.delete(each) → sessionStore.unbindChannel()
 
-import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
+import { formatWebEvidenceSources, publishableReply, type SessionId } from '@littlesheep/types';
 import { prepareAuthoritativeRunnerResult, type AgentRunner, type LogFn } from '@littlesheep/runner';
 import type { ChannelConfig } from '@littlesheep/config';
 import { ChannelSessionStore } from './session-binding.js';
@@ -344,11 +344,7 @@ export class DefaultChannelManager {
         : result;
       return {
         reply: appendWebSources(
-          publishedResult.finalReplySettlement?.status === 'settled'
-            ? publishedResult.finalReplySettlement.reply
-            : publishedResult.finalReplySettlement
-              ? ''
-              : publishedResult.reply ?? '',
+          publishableReply(publishedResult),
           formatWebEvidenceSources(publishedResult.webEvidence),
         ),
         ok: publishedResult.status === 'ok',

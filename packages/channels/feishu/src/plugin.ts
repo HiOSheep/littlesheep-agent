@@ -28,6 +28,7 @@
 //   - All API calls use HTTPS
 
 import { createHash, createDecipheriv } from 'node:crypto';
+import { publishableReply } from '@littlesheep/types';
 import { abortableDelay, type ChannelPlugin, type ChannelPluginFactory, type ChannelContext } from '@littlesheep/plugins';
 import { FeishuOptionsSchema, type FeishuOptions } from './options-schema.js';
 
@@ -515,9 +516,7 @@ export class FeishuChannelPlugin implements ChannelPlugin {
       const result = await this._ctx!.runAgent(inbound, sessionId);
 
       const replyText = result.ok
-        ? result.finalReplySettlement
-          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
-          : result.reply
+        ? publishableReply(result)
         : `⚠️ Error: ${result.error ?? 'processing failed'}`;
 
       if (replyText && replyText.length > 0) {

@@ -1,4 +1,5 @@
 // Reduces a completed run into the active assistant turn without owning stream lifecycle state.
+import { publishableReply } from '@littlesheep/types'
 import type { RunResult } from '../api'
 import { buildArtifactsFromToolCalls, buildTraceData, settleLiveReasoning, taskStepToLiveStep } from './activity-model'
 import type { ChatMessage, TranscriptEntry } from './types'
@@ -48,11 +49,7 @@ export function reduceCompletedRunMessages(
   for (const record of result.toolInvocations ?? []) {
     tools.set(record.callId, applyInvocationStatus(tools.get(record.callId), record, endedAt))
   }
-  const settledReply = result.finalReplySettlement?.status === 'settled'
-    ? result.finalReplySettlement.reply
-    : result.finalReplySettlement === undefined
-      ? result.reply
-      : ''
+  const settledReply = publishableReply(result)
   const next = [...messages]
   next[next.length - 1] = {
     ...last,

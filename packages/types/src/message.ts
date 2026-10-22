@@ -44,6 +44,24 @@ export interface FinalReplySettlement {
   status: 'proposed' | 'settled' | 'runtime_status';
 }
 
+/**
+ * The only reply text that may be published for a finished run.
+ *
+ * A provisional settlement (`proposed`/`runtime_status`) must never leak as the
+ * answer; without any settlement the legacy `reply` stays authoritative. This
+ * is the single rule channels, CLI, renderer and history projections share.
+ */
+export interface PublishableReplySource {
+  reply?: string;
+  finalReplySettlement?: Pick<FinalReplySettlement, 'status' | 'reply'>;
+}
+
+export function publishableReply(source: PublishableReplySource): string {
+  const settlement = source.finalReplySettlement;
+  if (!settlement) return source.reply ?? '';
+  return settlement.status === 'settled' ? settlement.reply : '';
+}
+
 /** Data used to reserve/commit one candidate in the session reply registry. */
 export interface FinalReplyReservation {
   version: 1;

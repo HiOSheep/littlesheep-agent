@@ -17,6 +17,7 @@
 //   - All API calls use HTTPS
 //   - Long polling respects abort signal (clean shutdown)
 
+import { publishableReply } from '@littlesheep/types';
 import { abortableDelay, type ChannelPlugin, type ChannelPluginFactory, type ChannelContext } from '@littlesheep/plugins';
 import { TelegramOptionsSchema, type TelegramOptions } from './options-schema.js';
 
@@ -263,9 +264,7 @@ export class TelegramChannelPlugin implements ChannelPlugin {
 
       // Send reply.
       const replyText = result.ok
-        ? result.finalReplySettlement
-          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
-          : result.reply
+        ? publishableReply(result)
         : `⚠️ Error: ${result.error ?? 'processing failed'}`;
 
       if (replyText && replyText.length > 0) {

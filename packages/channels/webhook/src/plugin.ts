@@ -20,6 +20,7 @@
 //
 //   GET {path}  → health check: 200 { "ok": true, "service": "webhook-channel" }
 
+import { publishableReply } from '@littlesheep/types';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ChannelPlugin, ChannelPluginFactory, ChannelContext } from '@littlesheep/plugins';
@@ -241,9 +242,7 @@ export class WebhookChannelPlugin implements ChannelPlugin {
 
       this.sendJson(res, 200, {
         ok: result.ok,
-        reply: result.ok && result.finalReplySettlement
-          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
-          : result.reply,
+        reply: result.ok ? publishableReply(result) : result.reply,
         finalReplySettlement: result.finalReplySettlement,
         sessionId,
         error: result.error,

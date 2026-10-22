@@ -40,6 +40,7 @@ import {
   type ChannelContext,
   type InboundChannelMessage,
 } from '@littlesheep/plugins';
+import { publishableReply } from '@littlesheep/types';
 import { QqbotOptionsSchema, type QqbotOptions } from './options-schema.js';
 
 // ── Secret names ────────────────────────────────────────────────────────
@@ -618,9 +619,7 @@ export class QqbotChannelPlugin implements ChannelPlugin {
       const result = await this._ctx!.runAgent(inbound, sessionId);
 
       const replyText = result.ok
-        ? result.finalReplySettlement
-          ? result.finalReplySettlement.status === 'settled' ? result.finalReplySettlement.reply : ''
-          : result.reply
+        ? publishableReply(result)
         : `⚠️ Error: ${result.error ?? 'processing failed'}`;
 
       if (replyText && replyText.length > 0) {

@@ -6,7 +6,7 @@
 import { createInterface } from 'node:readline';
 import { prepareAuthoritativeRunnerResult, type AgentRunner, type RunnerResult } from '@littlesheep/runner';
 import type { BrandingConfig } from '@littlesheep/branding';
-import { formatWebEvidenceSources, type SessionId } from '@littlesheep/types';
+import { formatWebEvidenceSources, publishableReply, type SessionId } from '@littlesheep/types';
 
 export interface ReplOptions {
   runner: AgentRunner;
@@ -77,11 +77,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         : result;
       if (!publishedResult) throw new Error('runner returned no result')
       sessionId = publishedResult.sessionId;
-      const reply = publishedResult.finalReplySettlement?.status === 'settled'
-        ? publishedResult.finalReplySettlement.reply
-        : publishedResult.finalReplySettlement
-          ? ''
-          : publishedResult.reply;
+      const reply = publishableReply(publishedResult);
       out.write(`${reply || '(no reply)'}\n`);
       const sources = formatWebEvidenceSources(publishedResult.webEvidence);
       if (sources) out.write(`${sources}\n`);

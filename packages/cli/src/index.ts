@@ -11,7 +11,7 @@ import {
 } from '@littlesheep/config';
 import { loadBranding, dataSubdirs } from '@littlesheep/branding';
 import { createRunner, prepareAuthoritativeRunnerResult, resolveLlm } from '@littlesheep/runner';
-import { asSessionId, formatWebEvidenceSources } from '@littlesheep/types';
+import { asSessionId, formatWebEvidenceSources, publishableReply } from '@littlesheep/types';
 import { parseArgs, USAGE, VERSION } from './args.js';
 import { startRepl } from './repl.js';
 import { parseMemoryRollbackFlags, runMemoryRollback } from './commands/memory.js';
@@ -154,11 +154,7 @@ export async function runCli(argv: string[]): Promise<void> {
       ? await prepareAuthoritativeRunnerResult(runner, result)
       : result;
     if (!publishedResult) throw new Error('runner returned no result')
-    const reply = publishedResult.finalReplySettlement?.status === 'settled'
-      ? publishedResult.finalReplySettlement.reply
-      : publishedResult.finalReplySettlement
-        ? ''
-        : publishedResult.reply;
+    const reply = publishableReply(publishedResult);
     process.stdout.write(`${reply || '(no reply)'}\n`);
     const sources = formatWebEvidenceSources(publishedResult.webEvidence);
     if (sources) process.stdout.write(`${sources}\n`);
