@@ -3,6 +3,7 @@
 
 import { ConfigSchema, type Config, type ModelProvider } from './schema.js';
 import { mergeProviderModelEntries, resolveProviderModelIds } from './provider-models.js';
+import { parseModelRefParts } from './model-ref.js';
 
 export const PROVIDER_PRESETS: ModelProvider[] = [
   {
@@ -62,7 +63,9 @@ export function selectDefaultModelForAvailableProvider(
   config: Config,
   hasApiKey: (provider: ModelProvider) => boolean,
 ): string {
-  const [currentProviderId, currentModel] = config.agents.defaults.model.split('/');
+  const currentRef = parseModelRefParts(config.agents.defaults.model)
+  const currentProviderId = currentRef.provider ?? ''
+  const currentModel = currentRef.model ?? undefined;
   const currentProvider = config.providers.find((p) => p.id === currentProviderId);
   if (currentProvider && hasApiKey(currentProvider)) {
     const modelIds = resolveProviderModelIds(currentProvider);

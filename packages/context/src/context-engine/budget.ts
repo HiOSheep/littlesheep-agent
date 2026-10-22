@@ -1,4 +1,5 @@
 import type { ModelContextWindowCapability } from '@littlesheep/config';
+import { parseModelRefParts } from '@littlesheep/types';
 import type { PrepareContextRequestInput } from './contracts.js';
 import {
   DEFAULT_COMPRESSION_THRESHOLD_RATIO,
@@ -84,13 +85,11 @@ export function shouldRecommendCompression(
 }
 
 function providerFromModelRef(model: string): string {
-  const slash = model.indexOf('/');
-  return slash > 0 ? model.slice(0, slash) : 'unknown';
+  return parseModelRefParts(model).provider ?? 'unknown';
 }
 
 function modelFromRef(model: string): string {
-  const slash = model.indexOf('/');
-  return slash > 0 ? model.slice(slash + 1) : model;
+  return parseModelRefParts(model).model ?? model;
 }
 
 function clampCompressionRatio(value: number): number {

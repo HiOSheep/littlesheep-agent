@@ -1,5 +1,5 @@
 import type { Config } from '@littlesheep/config';
-import type { AgentTool } from '@littlesheep/types';
+import { parseModelRefParts, type AgentTool } from '@littlesheep/types';
 import type {
   NetworkReadPolicy,
   PermissionPolicyId,
@@ -29,9 +29,9 @@ export interface ResolveRunConfigOptions {
 
 /** Resolve the complete run policy once, before any stage can call the model. */
 export function resolveRunConfig(opts: ResolveRunConfigOptions): ResolvedRunConfig {
-  const slash = opts.modelRef.indexOf('/');
-  const provider = slash > 0 ? opts.modelRef.slice(0, slash) : 'unknown';
-  const model = slash > 0 ? opts.modelRef.slice(slash + 1) : opts.modelRef;
+  const modelRef = parseModelRefParts(opts.modelRef);
+  const provider = modelRef.provider ?? 'unknown';
+  const model = modelRef.model ?? opts.modelRef;
   const availableToolNames = unique(opts.tools.map((tool) => tool.name));
   const permissionPolicyId = opts.permissionPolicyId
     ?? (opts.requireApprovalForAllTools ? 'restricted' : 'research');

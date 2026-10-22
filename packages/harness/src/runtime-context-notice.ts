@@ -24,7 +24,7 @@
 // - Bounded. At most six lines: one header plus five field lines. Paths are
 //   rendered in full — a truncation that produces a plausible but wrong path is
 //   worse than a longer line.
-import type { RunContext } from '@littlesheep/types';
+import { parseModelRefParts, type RunContext } from '@littlesheep/types';
 import { randomUUID } from 'node:crypto';
 import { describeExecutionShell } from '@littlesheep/tools';
 
@@ -201,11 +201,9 @@ function renderNotice(current: RuntimeContextFields, changed: readonly string[])
 }
 
 function providerOf(modelRef: string): string {
-  const slash = modelRef.indexOf('/');
-  return slash > 0 ? modelRef.slice(0, slash) : 'unknown';
+  return parseModelRefParts(modelRef).provider ?? 'unknown';
 }
 
 function modelOf(modelRef: string): string {
-  const slash = modelRef.indexOf('/');
-  return slash > 0 ? modelRef.slice(slash + 1) : modelRef;
+  return parseModelRefParts(modelRef).model ?? modelRef;
 }

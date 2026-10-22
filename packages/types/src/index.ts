@@ -2,6 +2,7 @@
 // Implemented in Phase 1. This is the foundation package with no internal deps.
 
 export * from './message.js';
+export * from './model-ref.js';
 export * from './clarification.js';
 export * from './cache.js';
 export * from './cache-observability.js';

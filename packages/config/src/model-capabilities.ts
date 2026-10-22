@@ -6,6 +6,7 @@
 // separately (configured-models.ts) and never overwrites these facts.
 
 import { resolveConfiguredModelCapability } from './configured-models.js';
+import { parseModelRefParts } from './model-ref.js';
 
 export const RUNTIME_REASONINGS = ['auto', 'low', 'medium', 'high', 'ultra'] as const;
 
@@ -385,9 +386,8 @@ function unavailableTokenizer(modelRef: string): UnavailableModelTokenizerCapabi
 }
 
 function splitModelRef(ref: string): { providerId: string; model: string } {
-  const idx = ref.indexOf('/');
-  if (idx < 0) return { providerId: '', model: ref };
-  return { providerId: ref.slice(0, idx), model: ref.slice(idx + 1) };
+  const parsed = parseModelRefParts(ref);
+  return { providerId: parsed.provider ?? '', model: parsed.model ?? ref };
 }
 
 function normalizeProvider(provider: string): string {

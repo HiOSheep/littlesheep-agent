@@ -74,9 +74,4 @@ export function getProvider(config: Config, providerId: string): Config['provide
   return config.providers.find((p) => p.id === providerId);
 }
 
-/** Parse a model ref "provider/model" into parts. */
-export function parseModelRef(ref: string): { provider: string; model: string } {
-  const idx = ref.indexOf('/');
-  if (idx < 0) throw new Error(`config: invalid model ref "${ref}" (expected "provider/model")`);
-  return { provider: ref.slice(0, idx), model: ref.slice(idx + 1) };
-}
+export { parseModelRef } from './model-ref.js';

@@ -11,6 +11,7 @@ import {
 import { REASONING_OPTIONS } from '../runtime/options'
 import { useDismissOnOutside } from '../ui/presence'
 import { COMPOSER_MENU_EVENT, transientTriggerProps } from '../ui/transient'
+import { parseModelRefParts } from '@littlesheep/types'
 import { RuntimeProvider } from './context-usage-indicator'
 import { useMenuFocusReturn } from './menu-focus-return'
 import type { RuntimeAvailability } from './runtime-availability'
@@ -486,9 +487,8 @@ export function RuntimePicker({
 
 
 export function splitModelRef(ref: string): { providerId: string; model: string } {
-  const idx = ref.indexOf('/')
-  if (idx < 0) return { providerId: '', model: ref }
-  return { providerId: ref.slice(0, idx), model: ref.slice(idx + 1) }
+  const parsed = parseModelRefParts(ref)
+  return { providerId: parsed.provider ?? '', model: parsed.model ?? ref }
 }
 
 export function formatRuntimeModelLabel(
