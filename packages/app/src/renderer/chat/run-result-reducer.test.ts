@@ -30,8 +30,8 @@ describe('completed assistant message metadata', () => {
   it('reconciles missing stream completion events by step and call identity', () => {
     const result = {
       runId: 'r', sessionId: 's', status: 'ok' as const, reply: 'final', durationMs: 100,
-      taskExecution: { goal: 'task', complexity: 'simple', status: 'done', startedAt: '2026-09-11T00:00:00Z',
-        steps: [{ stepId: 'step-1', description: 'step', status: 'done', startedAt: '2026-09-11T00:00:00Z', toolCallIds: ['call-1'] }] },
+      taskExecution: { goal: 'task', complexity: 'simple' as const, status: 'done' as const, startedAt: '2026-09-11T00:00:00Z',
+        steps: [{ stepId: 'step-1', description: 'step', status: 'done' as const, startedAt: '2026-09-11T00:00:00Z', toolCallIds: ['call-1'], toolResults: [] }] },
       toolInvocations: [{ version: 1 as const, id: 'inv-1', callId: 'call-1', runId: 'r', sessionId: asSessionId('s'),
         toolName: 'read', toolSource: 'builtin', status: 'succeeded' as const, proposedAt: '2026-09-11T00:00:00Z',
         approval: { required: false, decision: 'not_required' as const }, evidenceIds: [], outputSummary: 'verified output' }],

@@ -10,23 +10,10 @@ import {
   localAppApiItemPath,
 } from '../../shared/local-app-api-routes'
 import type {
-  ContextSnapshot,
-  ConversationContinuationEvidence,
-  FinalReplySettlement,
-  ModelRequestSnapshot,
-  ReplyProvenance,
-  RuntimeControlSnapshot,
   RuntimeEventIngressOutcome,
-  TaskBook,
   ToolStreamEvent,
-  ToolInvocationRecord,
-  VerificationRecord,
-  WebEvidenceProjection,
-  RuntimeCapabilitySnapshot,
-  RuntimeFinalStatus,
-  RunUsage,
-  TaskOutcome,
 } from '@littlesheep/types'
+import type { RunnerResult } from '@littlesheep/runner'
 import type { AgentProfileId } from '@littlesheep/prompt'
 import type { PermissionPresetId } from '@littlesheep/types'
 import { isPermissionSelectionPreset, type PermissionModeId, type PermissionSelectionId } from '../../shared/permission-modes'
@@ -38,93 +25,19 @@ import type {
 } from '../../shared/runtime-event-contracts'
 import { localApiFetch, localApiResponseError, localApiStatusError, parseSseFrame } from './common'
 
-export interface RunResult {
-  /** Read back from the Runner's durable Task Outcome projection. */
-  taskOutcome?: TaskOutcome
-  conversationTranscript?: import('@littlesheep/types').ConversationTranscriptEntry[]
-  runId: string
+/**
+ * The renderer's view of a RunnerResult. Derived from the authoritative
+ * contract instead of re-declaring every field, so new AgentResult fields
+ * remain visible; only the HTTP-visible narrowing is declared here.
+ */
+export type RunResult = Omit<RunnerResult, 'status' | 'reply' | 'sessionId' | 'messages' | 'trace'> & {
   sessionId: string
   status: 'ok' | 'error' | 'aborted'
   reply: string
-  replyProvenance?: ReplyProvenance
-  /** Only a settled value is authoritative; streamed deltas are previews. */
-  finalReplySettlement?: FinalReplySettlement
-  runtimeStatus?: RuntimeFinalStatus
-  error?: string
-  durationMs: number
-  usage?: RunUsage
-  systemPromptProjection?: string
-  contextSnapshots?: ContextSnapshot[]
-  modelRequests?: ModelRequestSnapshot[]
-  trace?: { name: string; ok: boolean }[]
-  messages?: { role: string; content: unknown[] }[]
-  toolInvocations?: ToolInvocationRecord[]
-  taskBook?: TaskBook
-  verificationHistory?: VerificationRecord[]
-  runtimeControl?: RuntimeControlSnapshot
-  conversationContinuation?: ConversationContinuationEvidence
-  runCheckpointId?: string
-  webEvidence?: WebEvidenceProjection
-  capabilitySnapshot?: RuntimeCapabilitySnapshot
-  capabilityProbe?: import('@littlesheep/types').RuntimeCapabilityProbe
-  capabilityPermissionEvent?: import('@littlesheep/types').RuntimePermissionEvent
-  taskExecution?: {
-    goal: string
-    complexity: string
-    status: string
-    startedAt: string
-    endedAt?: string
-    summary?: string
-    steps: Array<{
-      stepId: string
-      title?: string
-      description: string
-      status: string
-      startedAt: string
-      endedAt?: string
-      output?: string
-      error?: string
-      failureKind?: 'tool_error' | 'permission_denied' | 'not_found' | 'model_error' | 'verification_gap' | 'aborted' | 'unknown'
-      attempt?: number
-      toolCallIds: string[]
-    }>
-    replanHistory?: Array<{
-      attempt: number
-      requestedAt: string
-      targetStepIds: string[]
-      reason: string
-      feedback: string
-      preservedStepIds: string[]
-      revisedStepIds?: string[]
-      decidedAt?: string
-      resumedAt?: string
-    }>
-  }
-  clarificationRequest?: {
-    id: string
-    kind: 'missing_information' | 'ambiguous_request' | 'recovery_decision'
-    sourceStage: 'classify' | 'decide' | 'execute' | 'recover' | 'verify'
-    createdAt: string
-    originalRequest: string
-    blockingReason: string
-    missingInfo?: string[]
-    questions: Array<{
-      id: string
-      field: string
-      prompt: string
-      required: boolean
-      options?: string[]
-      defaultValue?: string
-    }>
-    prompt?: string
-  }
-  clarificationResponse?: {
-    requestId: string
-    answer: string
-    answeredAt: string
-  }
+  /** Optional at the HTTP boundary; the Runner always sends them on success. */
+  messages?: RunnerResult['messages']
+  trace?: RunnerResult['trace']
 }
-
 export async function runAgent(
   text: string,
   sessionId?: string,
