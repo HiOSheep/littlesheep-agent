@@ -12,6 +12,11 @@ const MAX_LOGGED_REQUESTS = 512
  */
 export const DELIV_02_PROMPT = 'Create result.txt containing exactly hello and independently check the file contents before you say it is complete.'
 export const DELIV_02_COMPLETION_CLAIM = 'Created result.txt with exactly hello and checked the file. The task is complete.'
+export const DELIV_02_DENIED_PROMPT = 'Create deliv-02-denied.txt, content must be hello.'
+export const DELIV_02_TOOL_ERROR_PROMPT = 'Create deliv-02-error.txt, content must be hello.'
+/** Plain conversation prompts used to prove that ordinary chat gains no card. */
+export const ORDINARY_CHAT_PROMPT = 'Hi, can you explain what a checkpoint is?'
+export const SECOND_SESSION_PROMPT = 'What is a checkpoint?'
 
 export async function startElectronAcceptanceProvider(options = {}) {
   const requests = []
@@ -245,6 +250,31 @@ function classifyResponse({ body, system, user, messages, model, requestIndex, s
       return toolChoice('deliv-02-write', 'write', { file_path: 'result.txt', content: 'goodbye' })
     }
     return textChoice(DELIV_02_COMPLETION_CLAIM)
+  }
+
+  // R4-C positive/negative controls: a denied out-of-workspace write and a
+  // tool-execution failure. Neither may ever be presented as verified success.
+  if (user.trim() === DELIV_02_DENIED_PROMPT) {
+    const toolMessages = toolMessagesThisTurn(messages)
+    if (toolMessages.length === 0) {
+      return toolChoice('deliv-02-denied-write', 'write', { file_path: '../deliv-02-outside.txt', content: 'hello' })
+    }
+    return textChoice('The file was created successfully. The task is complete.')
+  }
+  if (user.trim() === DELIV_02_TOOL_ERROR_PROMPT) {
+    const toolMessages = toolMessagesThisTurn(messages)
+    if (toolMessages.length === 0) {
+      return toolChoice('deliv-02-error-write', 'write', { file_path: 'deliv-02-error.txt' })
+    }
+    return textChoice('The file was created successfully. The task is complete.')
+  }
+
+  // Plain replies without tools: ordinary conversation must stay lightweight.
+  if (user.trim() === ORDINARY_CHAT_PROMPT) {
+    return textChoice('A checkpoint is a durable record the Runtime can resume from.')
+  }
+  if (user.trim() === SECOND_SESSION_PROMPT) {
+    return textChoice('A checkpoint stores progress so a later run can resume safely.')
   }
 
   // S2C-C Renderer acceptance: exercise the normal Runtime file writer and its run-scoped,

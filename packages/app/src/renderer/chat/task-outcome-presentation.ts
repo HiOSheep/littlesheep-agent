@@ -64,12 +64,14 @@ export function taskOutcomeStatusLabel(outcome: TaskOutcome, activityStatus: Ass
 export type TaskOutcomeAcceptanceState = 'completed' | 'failed' | 'blocked' | 'unverified'
 
 /**
- * Overall acceptance can be verified only when Runtime recognized the whole
- * requirement inventory and settled it as completed. A partial or unknown
- * inventory is never promoted by the model's wording.
+ * Overall acceptance is unverified whenever Runtime did not settle it as
+ * completed and no requirement was explicitly failed (an explicit failure is
+ * shown as danger, not blurred into "unverified"). The model's wording never
+ * changes this value.
  */
 export function isAcceptanceUnverified(outcome: TaskOutcome): boolean {
-  return outcome.status === 'unknown' || outcome.requirementInventory !== 'complete'
+  if (outcome.status === 'completed') return false
+  return !outcome.requirements.some((requirement) => requirement.status === 'failed')
 }
 
 /** Card-level state, derived only from the authoritative Task Outcome and turn status. */

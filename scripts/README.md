@@ -12,6 +12,8 @@
 
 `node scripts/eval-v2.mjs` 是 R4-B 的三维度评测入口。`--suite` 校验四项 V2 任务与冻结 ancestry；`--run-controlled --task=<ID> [--trial=1..5]` 用真实 Runner/Harness/Tools 与 scripted Provider 执行任务并写入不可变记录，已存在的记录默认拒绝覆盖；`--regenerate-ledger` 从不可变记录重建批次账本（默认拒绝覆盖既有账本）；`--report` 生成三维度与历史结果分离的报告；`--verify` 运行契约、任务、Oracle、trial/预算与受控端到端测试（`pnpm run test:v2`）。该入口不读取 `S3B_*` 真实 Provider 凭据，不发出网络模型请求，受控结果不能与真实模型样本混算。记录与报告中的 Goal/Contract/Mechanism 分别结算，`not_exercised`/`unverified` 不计入已触发机制分母。
 
+`node scripts/verify-deliv-02-false-completion-renderer.mjs`（`pnpm run verify:deliv-02-claim-consistency`）是 R4-C 的交付一致性验收：用真实 Electron + 受控本地 Provider 运行 DELIV-02 错误文件＋完成声明、独立检查通过、无独立检查、部分要求、权限拒绝与工具执行失败六种情形，断言 Renderer 把模型声明与权威 Task Outcome 分开显示，并验证刷新、Electron 重启与会话切换后回复和状态仍一致。`scripts/verify-task-outcome-renderer.mjs` 继续覆盖既有 passed/failed/unverified/partial 与历史回放。两者都不调用真实 Provider。
+
 ## 常用入口
 
 - `pnpm check:repo`：仓库卫生、文档导航、生成物、依赖方向与 TypeScript 项目引用检查。
