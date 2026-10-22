@@ -84,22 +84,32 @@ export function retryAfterHintMs(err: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+function retryableHintOf(err: unknown): boolean | undefined {
+  if (!err || typeof err !== 'object' || !('retryable' in err)) return undefined;
+  const value = (err as { retryable?: unknown }).retryable;
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 /** Classify a failure so callers can decide whether a replay is safe. */
 export function classifyFailure(err: unknown, opts: RetryOptions = DEFAULT_RETRY): RetryFailureClass {
   if (isAbortError(err)) return 'cancelled';
   const status = statusOf(err);
+  // An explicit `retryable` flag on the error is the transport's own verdict and
+  // wins over the generic status heuristic. Without this, a client configured
+  // with an empty retryableStatuses set could still replay a status it built as
+  // non-retryable.
+  const hinted = retryableHintOf(err);
   if (status !== undefined) {
-    if (status === 429) return 'rate_limited';
     if (status === 401 || status === 403) return 'auth';
-    if (opts.retryableStatuses.includes(status) || status === 408) return 'transient';
+    if (hinted === false) return status >= 400 && status < 500 ? 'request' : 'unknown';
+    if (status === 429) return 'rate_limited';
+    if (hinted === true || opts.retryableStatuses.includes(status)) return 'transient';
     if (status >= 400 && status < 500) return 'request';
     return 'unknown';
   }
   // Network errors (fetch failed) are retryable.
   if (err instanceof TypeError) return 'transient';
-  if (err && typeof err === 'object' && 'retryable' in err) {
-    return (err as { retryable: boolean }).retryable ? 'transient' : 'unknown';
-  }
+  if (hinted !== undefined) return hinted ? 'transient' : 'unknown';
   return 'unknown';
 }
 

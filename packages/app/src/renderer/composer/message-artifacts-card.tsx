@@ -13,7 +13,7 @@ import { useState } from 'react'
 import type { WorkspaceArtifactRef } from '../workspace/types'
 import { FileGlyphIcon } from '../ui/icons'
 import { compactPath } from '../workspace/path-utils'
-import { fileActionLabel } from './message-files'
+import { fileActionLabel } from './message-file-labels'
 import { lineDeltaFor, type ArtifactLineDelta } from './use-artifact-deltas'
 
 /** How many rows the card shows before its footer has to be used. */

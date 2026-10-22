@@ -11,6 +11,7 @@ import { FadePresence } from '../ui/presence'
 import { attachmentExtLabel, attachmentFileUrl, compactPath, formatFileSize, inferAttachmentKind, lastPathSegment } from '../workspace/path-utils'
 import { WorkspaceArtifactRef } from '../workspace/types'
 import { MessageArtifactsCard } from './message-artifacts-card'
+import { fileActionLabel } from './message-file-labels'
 import { mergeArtifactDeltas, toolCallDeltas, useArtifactDeltas, type ArtifactToolCall } from './use-artifact-deltas'
 
 
@@ -130,11 +131,6 @@ export function MessageImageStrip({ files }: { files: AttachmentRef[] }) {
         name={preview.name ?? lastPathSegment(preview.path)} open onClose={() => setPreview(null)} />}
     </>
   )
-}
-
-export function fileActionLabel(action: WorkspaceArtifactRef['action']): string {
-  if (action === 'attached') return '附件'
-  return action === 'created' ? '写入调用成功' : '修改调用成功'
 }
 
 

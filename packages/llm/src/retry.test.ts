@@ -95,7 +95,10 @@ describe('retry classification', () => {
   it('replays rate limits and transient transport/provider failures', () => {
     expect(classifyFailure(new LlmError(429, 'slow down', true))).toBe('rate_limited');
     expect(classifyFailure(new LlmError(503, 'unavailable', true))).toBe('transient');
-    expect(classifyFailure(new LlmError(408, 'timeout', false))).toBe('transient');
+    expect(classifyFailure(new LlmError(408, 'timeout', false))).toBe('request');
+    expect(classifyFailure(new LlmError(429, 'slow down', false))).toBe('request');
+    expect(classifyFailure(new LlmError(408, 'timeout', true))).toBe('transient');
+    expect(classifyFailure(new LlmError(409, 'conflict', false), { ...DEFAULT_RETRY, retryableStatuses: [409] })).toBe('request');
     expect(classifyFailure(new TypeError('fetch failed'))).toBe('transient');
     expect(isRetryable(new TypeError('fetch failed'))).toBe(true);
     expect(isRetryable({ retryable: true })).toBe(true);
