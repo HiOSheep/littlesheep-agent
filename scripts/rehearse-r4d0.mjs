@@ -36,7 +36,7 @@ function runEval(trial, { recordsDir, variant = 'canonical', faultMode } = {}) {
   ];
   const child = spawnSync(process.execPath, command, { cwd: REPO_ROOT, encoding: 'utf8', timeout: 240_000 });
   let summary = null;
-  try { summary = JSON.parse(child.stdout.trim().split(/\r?\n/u).at(-1) ?? '') } catch { summary = null; }
+  try { summary = JSON.parse(child.stdout.trim()) } catch { summary = null; }
   return { exitCode: child.status, stdout: child.stdout, stderr: child.stderr, summary, command: `node ${command.join(' ')}` };
 }
 
@@ -153,7 +153,8 @@ async function rehearse() {
   for (const trial of plan) {
     const run = runEval(trial, { recordsDir });
     if (run.exitCode !== 0 || !run.summary?.recordPath) {
-      failures.push({ trial, exitCode: run.exitCode, stderr: run.stderr.slice(-800) });
+      failures.push({ trial, exitCode: run.exitCode, stderr: run.stderr.slice(-800), stdoutTail: run.stdout.slice(-1200) });
+      process.stderr.write(`rehearsal: trial failed ${trial.taskId} t${trial.trial} exit=${run.exitCode} stderr=${run.stderr.slice(-400)}\n`);
       break; // D0-4: an infrastructure/ledger failure stops later trials.
     }
     const record = JSON.parse(await readFile(run.summary.recordPath, 'utf8'));
@@ -167,6 +168,9 @@ async function rehearse() {
     });
   }
 
+  if (trials.length === 0 || failures.length > 0) {
+    throw new Error(`rehearsal matrix stopped after ${trials.length}/${plan.length} trials: ${JSON.stringify(failures)}`);
+  }
   const records = trials.map((trial) => JSON.parse(readFileSync(trial.recordPath, 'utf8')));
   const metrics = computeMetrics(records);
   const uniqueRecordIds = new Set(trials.map((trial) => trial.recordId)).size;
