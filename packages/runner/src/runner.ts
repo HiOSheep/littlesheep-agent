@@ -26,6 +26,7 @@ import type {
   DurableEffectOutcomeQueryResult,
   DurableEffectProjection,
   DurableRunRecoveryResult,
+  DurableRunProjection,
   TaskOutcome,
 } from '@littlesheep/types';
 import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript, unknownTaskOutcome } from '@littlesheep/types';
@@ -51,6 +52,7 @@ import {
   settleDeferredFinalReply,
   settleRuntimeFailureEvent,
   isSupportedPersistedWorkPolicy,
+  replayDurableFinalReply,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
@@ -2281,11 +2283,19 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       && disposition.answerMessageId === conversationTurnMessageId(input.sessionId, input.requestKey)
   }
 
+  function authoritativeFinalReplyFromProjection(projection: DurableRunProjection): DurableFinalReplyReplay {
+    const durable = replayDurableFinalReply(projection);
+    if (durable.kind !== 'settled') return durable;
+    return durable;
+  }
+
   async function replayAuthoritativeDurableFinalReply(
     sessionId: SessionId,
     runId: string,
   ): Promise<DurableFinalReplyReplay> {
-    const durable = await durableKernel.replayFinalReply(String(sessionId), runId);
+    const durable = authoritativeFinalReplyFromProjection(
+      await durableKernel.replay(String(sessionId), runId),
+    );
     if (durable.kind !== 'settled') return durable;
     const registryStatus = await infra.sessionManager.assistantReplySettlementStatus?.(
       sessionId,
@@ -2305,8 +2315,10 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   const durableHarnessModeForRun = (sessionId: string, runId: string) =>
     readDurableHarnessMode(infra.durableEventStore, sessionId, runId);
 
-  async function replayDurableTaskOutcome(sessionId: SessionId, runId: string): Promise<TaskOutcome> {
-    const projection = await durableKernel.replay(String(sessionId), runId);
+  async function taskOutcomeFromProjection(
+    runId: string,
+    projection: DurableRunProjection,
+  ): Promise<TaskOutcome> {
     const projectedOutcome = readTaskOutcomeForProjection(projection, runId);
     if (!projection.taskOutcome || projectedOutcome.execution.reasonCode === 'outcome_pending_terminal_settlement') return projectedOutcome;
     const log = await infra.executionLogStore.read(runId);
@@ -2314,6 +2326,13 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
       return unknownTaskOutcome(runId);
     }
     return log.taskOutcome;
+  }
+
+  async function replayDurableTaskOutcome(sessionId: SessionId, runId: string): Promise<TaskOutcome> {
+    return taskOutcomeFromProjection(
+      runId,
+      await durableKernel.replay(String(sessionId), runId),
+    );
   }
 
   async function prepareInternalAuthoritativeResult(result: RunnerResult): Promise<RunnerResult> {
