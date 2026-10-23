@@ -1,6 +1,7 @@
 // Central path, network, safe-read, and hard-deny authorization descriptor.
 import { existsSync, lstatSync, realpathSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { isPermissionPresetId } from '@littlesheep/types'
 import type {
   ApprovalPolicyId,
   NetworkReadPolicy,
@@ -209,7 +210,7 @@ export function resolvePermissionDecision(
   // A hard approval is a Main-owned requirement. No permission preset may
   // convert it into automatic execution.
   if (descriptor.hardDecision === 'approval') return 'approval'
-  if (isPermissionPreset(mode)) return resolvePresetDecision(mode, descriptor, options)
+  if (isPermissionPresetId(mode)) return resolvePresetDecision(mode, descriptor, options)
   if (mode === 'full') return 'allow'
   const isSafeRead = descriptor.safeReadClass === 'local_memory'
     || descriptor.safeReadClass === 'local_session'
@@ -267,9 +268,6 @@ function resolvePresetDecision(
   return 'allow'
 }
 
-function isPermissionPreset(value: PermissionPolicySelection): value is PermissionPresetId {
-  return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
-}
 
 /**
  * Authorize a direct tool invocation. The Harness calls the same policy first,

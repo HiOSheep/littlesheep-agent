@@ -15,6 +15,7 @@ import type { ShellApprovalBatch } from '@littlesheep/types'
 import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety'
 import type { RunApprovalRequest } from '../shared/approval-contract.js'
 export type { RunApprovalRequest } from '../shared/approval-contract.js'
+import { isPermissionPolicyId, isPermissionPresetId } from '@littlesheep/types'
 import type { PermissionModeId } from '../shared/permission-modes.js'
 import { isPermissionSelectionPreset, normalizePermissionSelectionId } from '../shared/permission-modes.js'
 import type { SessionIndex } from './session-index.js'
@@ -137,7 +138,7 @@ export function resolveRunPolicy(
       return boundaryOptions.shellRepeatAuthorization?.remember?.(description)
     },
     request: async (shellBatch) => approvalBroker ? approvalBroker({ action: 'exec', detail: shellBatch,
-      shellBatch, permissionMode: isLegacyPermissionMode(selectedPolicy) ? selectedPolicy : 'research',
+      shellBatch, permissionMode: isPermissionPolicyId(selectedPolicy) ? selectedPolicy : 'research',
       ...(isPermissionPresetId(selectedPolicy) ? { permissionPreset: selectedPolicy } : {}),
       boundary: 'unknown', requiresExplicitUserApproval: true,
       ...(canOfferShellRepeat(shellBatch, boundaryOptions, networkPolicy, permissionPolicyV2, workspaceRoot)
@@ -216,7 +217,7 @@ export function createPermissionApprover(
     const approval = await approvalBroker({
       action,
       detail,
-      permissionMode: isLegacyPermissionMode(permissionMode) ? permissionMode : 'research',
+      permissionMode: isPermissionPolicyId(permissionMode) ? permissionMode : 'research',
       ...(isPermissionPresetId(permissionMode) ? { permissionPreset: permissionMode } : {}),
       boundary: descriptor.boundary,
       ...(approvalOptions?.requiresExplicitUserApproval === true || descriptor.hardDecision === 'approval'
@@ -288,10 +289,3 @@ function resolveExistingDirectory(path: string | undefined): string | undefined 
   }
 }
 
-function isPermissionPresetId(value: PermissionModeId | PermissionPresetId): value is PermissionPresetId {
-  return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
-}
-
-function isLegacyPermissionMode(value: PermissionModeId | PermissionPresetId): value is PermissionModeId {
-  return value === 'full' || value === 'research' || value === 'restricted'
-}

@@ -7,7 +7,7 @@
 
 | 指标 | 结果 |
 |---|---|
-| 架构提交 | 10 个（`d486a959..2d23ea6f`） |
+| 架构提交 | 11 个（`d486a959..HEAD`） |
 | 文件变化 | 49 files changed，+615 / -650 |
 | 修复的真实缺陷 | 3 个（渠道策略未执行、checkpoint 权限降级、发布门不一致） |
 | 统一/删除的重复实现 | no-op 策略、惰性 history 启发式、缓存重复归一化、失败事件、恢复批写、publication gate、审批契约、stream 事件契约 |
@@ -28,6 +28,7 @@
 | 8 | `63235ebe` | `ToolStreamEvent` 穷尽 Record + `isToolStreamEventName` | renderer 手写 17 个事件名，新增 variant 会静默丢事件 |
 | 9 | `ad6bde7d` | 审批请求字段收敛到 `shared/approval-contract.ts` | 同一线协议在 Main/API/Renderer 声明三次，boundary 可选性不一致 |
 | 10 | `2d23ea6f` | publication 的 final-reply 与 task outcome 共用一次 durable projection | 同一不可变事件流被 replay 两次 |
+| 11 | 风险修复批次 | 权限谓词收敛到 `@littlesheep/types`；CacheObservation prune 改为每 16 次写入摊销；删除 renderer 无消费者 `runAgent` 包装 | 5 处权限 guard 真值表重复；每次缓存写全目录扫描；renderer 非流式客户端无导入者 |
 
 ## 3. 删除/替换依据
 
@@ -58,10 +59,10 @@
 
 ## 5. 残余风险与后续项
 
-1. **CacheObservation 双持久化**：execution log + 独立 file store；`put` 触发全目录 prune，`latest`/`report` 扫描全部文件。需要先在真实数据根测 store 大小/每请求 IO，再决定增量索引或从 durable projection 派生。
-2. **Durable projection 仍有多处 replay**：本轮把 publication 的 2 次降为 1 次；finalize 的 unsettled request 查询、outcome 记录仍会 replay。继续收敛需要把 projection 贯穿 run 尾部，并用 crash matrix 证明不会读到旧投影。
-3. **`POST /run` 非流式路径**：仓库内仅 readiness 测试引用，renderer 客户端 `runAgent` 无导入者；但可能被外部自动化使用，删除前需确认。
-4. **权限/审批谓词仍有重复**：`isPermissionPreset`/legacy guards 在 shared、safety、run-policy、run-support、runtime-routes 多处；统一需要先做全 6 个 id 的 golden decision matrix。
+1. **CacheObservation 双持久化仍在**：execution log 与独立 file store 各存一份；本轮把每次写入触发的全目录 prune 改为每 16 次写入摊销，`latest`/`report` 仍会扫描全部文件。彻底合并或改增量索引仍需真实数据根 IO 测量。
+2. **Durable projection 仍有多处 replay**：publication 已从 2 次降为 1 次；finalize 的 unsettled request 查询、outcome 记录仍会 replay。继续收敛需要把 projection 贯穿 run 尾部，并用 crash matrix 证明不会读到旧投影。
+3. **`POST /run` 非流式路径**：renderer 无消费者的 `runAgent` 客户端已删除；服务端路由保留，可能被外部自动化使用，删除前需确认外部依赖。
+4. **权限谓词已收敛**：`isPermissionPresetId` / `isPermissionPolicyId` / `isLegacyPermissionModeId` 现在只在 `@littlesheep/types` 定义，safety/shared/Main 全部复用；审批/权限决策矩阵测试仍应作为后续安全回归补充。
 5. **`waiting_user`/`shadow` 兼容路径**：读取侧保留以兼容旧 checkpoint/记录，写入侧已无 shadow；是否退役需要产品与数据保留决定。
 6. **本机完整门禁的 worker 抖动**未根治；托管 CI 是最终环境证据。
 

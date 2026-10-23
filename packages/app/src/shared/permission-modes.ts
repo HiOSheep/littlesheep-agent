@@ -1,3 +1,4 @@
+import { isPermissionPresetId } from '@littlesheep/types'
 import type { PermissionConstraintAvailability, PermissionPresetId } from '@littlesheep/types'
 
 export type { ApprovalPolicyId } from '@littlesheep/types'
@@ -114,7 +115,7 @@ export function normalizePermissionSelectionId(id: string | undefined): Permissi
 export function isPermissionSelectionPreset(
   value: unknown,
 ): value is PermissionSelectionId {
-  return value === 'read-only' || value === 'workspace-write' || value === 'full-access'
+  return isPermissionPresetId(value)
 }
 
 export function resolvePermissionModePolicy(id: string | undefined): PermissionModePolicy {

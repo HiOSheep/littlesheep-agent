@@ -40,28 +40,6 @@ export type RunResult = Omit<RunnerResult, 'status' | 'reply' | 'sessionId' | 'm
   messages?: RunnerResult['messages']
   trace?: RunnerResult['trace']
 }
-export async function runAgent(
-  text: string,
-  sessionId?: string,
-  permissionMode?: PermissionSelectionId,
-  profile?: AgentProfileId,
-): Promise<RunResult> {
-  const res = await localApiFetch(LOCAL_APP_API_ROUTES.run, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text,
-      sessionId,
-      ...(isPermissionSelectionPreset(permissionMode)
-        ? { permissionPreset: permissionMode }
-        : { permissionMode }),
-      profile,
-    }),
-  })
-  if (!res.ok) throw localApiStatusError(res.status)
-  return res.json() as Promise<RunResult>
-}
-
 export interface RunStreamHandlers {
   signal?: AbortSignal
   onStart?: (event: RunStreamStart) => void

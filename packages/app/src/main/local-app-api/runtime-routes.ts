@@ -3,6 +3,7 @@
 import type { Config } from '@littlesheep/config'
 import { ConfigSchema, parseModelRef, resolveApiKey, resolveProviderModelIds } from '@littlesheep/config'
 import type { AgentRunner } from '@littlesheep/runner'
+import { isPermissionPolicyId } from '@littlesheep/types'
 import type { RuntimeWebProviderCheck } from '../../shared/runtime-api-contracts.js'
 import { LOCAL_APP_API_ROUTES } from '../../shared/local-app-api-routes.js'
 import { routeModelProviders } from './provider-routes.js'
@@ -409,9 +410,6 @@ function isReasoning(value: string): value is RuntimeReasoning {
   return isRuntimeReasoning(value)
 }
 
-function isPermissionPolicyId(value: string | undefined): value is 'full' | 'research' | 'restricted' {
-  return value === 'full' || value === 'research' || value === 'restricted'
-}
 
 function parseEpochMs(value: string | null): number | undefined {
   if (!value) return undefined

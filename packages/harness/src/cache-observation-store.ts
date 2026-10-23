@@ -23,6 +23,9 @@ const ENTRY_VERSION = 1 as const;
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_ENTRY_BYTES = 256 * 1024;
 const MAX_ENTRIES = 4_096;
+// Full-directory prune is O(entries); amortize it instead of scanning on every
+// request. Capacity can overshoot by at most this many entries before trimming.
+const PRUNE_EVERY_WRITES = 16;
 
 export interface CacheObservationStoreOptions {
   rootDir: string;
@@ -65,6 +68,7 @@ export class CacheObservationStore {
   private readonly maxAgeMs: number;
   private readonly now: () => number;
   private writeTail: Promise<void> = Promise.resolve();
+  private writesSincePrune = 0;
 
   constructor(options: CacheObservationStoreOptions) {
     this.rootDir = resolve(options.rootDir);
@@ -138,7 +142,11 @@ export class CacheObservationStore {
     return this.enqueueWrite(async () => {
       await mkdir(this.rootDir, { recursive: true });
       await atomicWrite(this.entryPath(scope.partitionDigest, entryFingerprint), serialized);
-      await this.prune();
+      this.writesSincePrune += 1;
+      if (this.writesSincePrune >= PRUNE_EVERY_WRITES) {
+        this.writesSincePrune = 0;
+        await this.prune();
+      }
     });
   }
 

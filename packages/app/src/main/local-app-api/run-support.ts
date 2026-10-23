@@ -4,7 +4,7 @@ import { isAbsolute, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { mkdir, realpath, stat } from 'node:fs/promises'
 import { getProvider, parseModelRef, type Config } from '@littlesheep/config'
-import { asSessionId, type SessionId } from '@littlesheep/types'
+import { asSessionId, isLegacyPermissionModeId, type SessionId } from '@littlesheep/types'
 import type { AgentRunner, RunnerResult, RunInput } from '@littlesheep/runner'
 import type { Message } from '@littlesheep/types'
 import { isSessionScope, type SessionScope } from '../../shared/session-scope.js'
@@ -72,7 +72,7 @@ export async function withPersistedSessionPermissionMode(
   const existing = sessionId
     ? (await sessionIndex.list()).find((session) => session.id === sessionId)
     : undefined
-  if (body.permissionMode !== undefined || isLegacyPermissionMode(body.mode)
+  if (body.permissionMode !== undefined || isLegacyPermissionModeId(body.mode)
     || isPermissionSelectionPreset(body.mode)) {
     throw new HttpError(400, 'legacy permission modes are no longer accepted; choose a current permission preset')
   }
@@ -150,10 +150,6 @@ function explicitPermissionSelection(body: Record<string, unknown>): PermissionS
   return undefined
 }
 
-function isLegacyPermissionMode(value: unknown): boolean {
-  return value === 'full' || value === 'research' || value === 'restricted'
-    || value === 'info' || value === 'physical'
-}
 
 export async function resolveRunSessionOwnership(
   sessionIndex: SessionIndex,
