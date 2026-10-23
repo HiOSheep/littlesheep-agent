@@ -3,7 +3,7 @@
 //
 // Uses a mock ChannelPlugin and a mock AgentRunner (no real LLM/session files).
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -763,6 +763,79 @@ describe('DefaultChannelManager', () => {
     });
   });
 });
+
+
+  describe('conversation policy enforcement', () => {
+    it('ignores group messages when groupPolicy is disabled', async () => {
+      const { manager, mock } = makeManager();
+      const runSpy = vi.spyOn(mock.runner, 'run');
+      const { factory, instances } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+      await manager.start(makeRuntimeConfig({ groupPolicy: { type: 'disabled' } }));
+
+      const reply = await instances[0]!.simulateInbound({
+        text: 'group hello',
+        externalConversationId: 'group-1',
+        externalUserId: 'user-1',
+        isGroup: true,
+      });
+
+      expect(reply).toBe('');
+      expect(runSpy).not.toHaveBeenCalled();
+    });
+
+    it('enforces the DM allowlist and still runs allowed users', async () => {
+      const { manager, mock } = makeManager();
+      const runSpy = vi.spyOn(mock.runner, 'run');
+      const { factory, instances } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+      await manager.start(makeRuntimeConfig({ dmPolicy: { type: 'allowlist', allowedIds: ['user-1'] } }));
+
+      const denied = await instances[0]!.simulateInbound({
+        text: 'who are you',
+        externalConversationId: 'dm-1',
+        externalUserId: 'user-2',
+        isGroup: false,
+      });
+      expect(denied).toBe('');
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const allowed = await instances[0]!.simulateInbound({
+        text: 'hello',
+        externalConversationId: 'dm-1',
+        externalUserId: 'user-1',
+        isGroup: false,
+      });
+      expect(allowed).not.toBe('');
+      expect(runSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('pairs a DM user once when the pairing secret is presented', async () => {
+      const { manager, mock } = makeManager();
+      const runSpy = vi.spyOn(mock.runner, 'run');
+      const { factory, instances } = makeMockPluginFactory();
+      manager.registerType('mock', factory);
+      await manager.start(makeRuntimeConfig({ dmPolicy: { type: 'pairing', secret: 'let-me-in' } }));
+
+      const paired = await instances[0]!.simulateInbound({
+        text: 'let-me-in',
+        externalConversationId: 'dm-2',
+        externalUserId: 'user-3',
+        isGroup: false,
+      });
+      expect(paired).toBe('');
+      expect(runSpy).not.toHaveBeenCalled();
+
+      const allowed = await instances[0]!.simulateInbound({
+        text: 'hello after pairing',
+        externalConversationId: 'dm-2',
+        externalUserId: 'user-3',
+        isGroup: false,
+      });
+      expect(allowed).not.toBe('');
+      expect(runSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 
 describe('buildRuntimeConfig', () => {
   it('converts a ChannelConfig + secrets into ChannelRuntimeConfig', () => {

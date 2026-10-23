@@ -24,13 +24,15 @@ import type {
   ChannelId,
   InboundChannelMessage,
 } from './types.js';
-import { PairingState } from './policy.js';
+import { evaluatePolicy, PairingState } from './policy.js';
 
 /** A running channel instance: plugin + its abort controller. */
 interface RunningChannel {
   plugin: ChannelPlugin;
   abortController: AbortController;
   channelId: ChannelId;
+  /** Runtime config captured at start, used to enforce conversation policy. */
+  config: ChannelRuntimeConfig;
 }
 
 /** Options for DefaultChannelManager. */
@@ -184,7 +186,7 @@ export class DefaultChannelManager {
     const pluginDur = (performance.now() - pluginT0).toFixed(1);
 
     // Track it.
-    this.running.set(channelId, { plugin, abortController, channelId });
+    this.running.set(channelId, { plugin, abortController, channelId, config });
     this.log(
       'info',
       `channel: started "${channelId}" (${config.type}, display="${plugin.displayName}") (${pluginDur}ms)`,
@@ -329,8 +331,27 @@ export class DefaultChannelManager {
     channelId: ChannelId,
     message: InboundChannelMessage,
     sessionId: SessionId,
-  ): Promise<{ reply: string; ok: boolean; error?: string; finalReplySettlement?: import('@littlesheep/types').FinalReplySettlement }> {
+  ): Promise<{ reply: string; ok: boolean; error?: string; finalReplySettlement?: import('@littlesheep/types').FinalReplySettlement; denied?: boolean }> {
     try {
+      const config = this.running.get(channelId)?.config
+      if (config) {
+        const policy = message.isGroup ? config.groupPolicy : config.dmPolicy
+        const paired = this.pairingState.getPairedIds(channelId)
+        const offeredSecret = policy.type === 'pairing' ? message.text.trim() : undefined
+        if (policy.type === 'pairing' && !paired.has(message.externalUserId) && offeredSecret === policy.secret) {
+          this.pairingState.pair(channelId, message.externalUserId)
+          this.log('info', `channel: paired external user ${message.externalUserId} on "${channelId}"`)
+          return { reply: '', ok: true, denied: true }
+        }
+        const decision = evaluatePolicy(policy, message.externalUserId, offeredSecret, paired)
+        if (!decision.allowed) {
+          this.log(
+            'info',
+            `channel: ignored ${message.isGroup ? 'group' : 'direct'} message from ${message.externalUserId} on "${channelId}": ${decision.reason}`,
+          )
+          return { reply: '', ok: true, denied: true }
+        }
+      }
       const result = await this.runner.run({
         sessionId,
         text: message.text,

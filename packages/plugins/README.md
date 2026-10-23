@@ -11,6 +11,7 @@
 - `PluginHost.listChannels()` **只返回正在运行的渠道实例**：它读渠道管理器的运行表，`stop()` 把条目移出该表，启动失败的渠道只出现在 `channelFailures()` 里。因此 `/channels/status` 的 `channels` 里不会出现"已加载但已停止"的条目——这是设置页"按运行项计数、不把配置存在当健康"的前提，契约用例见 `src/channel/manager.test.ts` 的 `list` 分组。
 - 当前稳定贡献为 channel、tool 和声明式 skill（skill 以 `contributes.skills` 声明的目录交给 Skills 加载器）；未定义完整宿主契约的能力不能只靠 manifest 枚举宣称支持。
 - 插件工具仍由统一 Tool Execution Service 执行，插件不因此获得任何权限豁免；禁止绕过 Runner 工具执行、用户信任开关、错误隔离或 owner-scoped 清理。
+- 渠道会话策略在 ChannelManager.runAgent 入口强制执行：按 isGroup 选择 dmPolicy/groupPolicy，disabled/llowlist 拒绝的用户不会触发 Runner；pairing 在首次提交正确 secret 后按渠道记忆，拒绝时静默忽略并记录原因。配置不再只是展示字段。
 
 ## 依赖与数据
 
