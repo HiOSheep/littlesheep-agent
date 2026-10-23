@@ -14,7 +14,6 @@ import {
   TOOL_INVOCATION_RECORD_VERSION,
   EXECUTION_EVIDENCE_VERSION,
   asSessionId,
-  getDisplayablePromptTokens,
   type AttachmentManifest,
   type ContextSafetyEstimate,
   type ContextSnapshot,
@@ -83,22 +82,6 @@ describe('runtime continuity v1 contracts', () => {
     expect(snapshot.providerUsage?.source).toBe('provider');
     expect(snapshot.providerUsage?.cachedPromptTokens).toBe(200);
     expect(snapshot.providerUsage?.reasoningTokens).toBe(80);
-    expect(getDisplayablePromptTokens(local)).toBe(1200);
-    expect(getDisplayablePromptTokens(provider)).toBe(1224);
-  });
-
-  it('does not expose an unavailable local count as a real token value', () => {
-    const unavailable: LocalTokenLedger = {
-      version: CONTEXT_SNAPSHOT_VERSION,
-      source: 'local',
-      accuracy: 'unavailable',
-      provider: 'unknown',
-      model: 'unknown-model',
-      reason: 'No matching tokenizer is registered.',
-      countedAt: '2026-07-13T00:00:00.000Z',
-    };
-
-    expect(getDisplayablePromptTokens(unavailable)).toBeUndefined();
   });
 
   it('keeps conservative safety estimates outside the displayable token ledger', () => {

@@ -6,15 +6,9 @@
 // outcome are all reusable — and that reuse is a real local cache event the
 // Runtime can report instead of guessing.
 import { createHash } from 'node:crypto';
-import type { ContextSafetyEstimate } from '@littlesheep/types';
+import type { ContextReuseEvent, ContextSafetyEstimate } from '@littlesheep/types';
+export type { ContextReuseEvent } from '@littlesheep/types';
 import type { ContextMessageCandidate, PrepareContextRequestInput } from './contracts.js';
-
-export interface ContextReuseEvent {
-  readonly status: 'hit' | 'miss';
-  readonly reuseKey: string;
-  readonly reusedItems: number;
-  readonly rebuiltItems: number;
-}
 
 export interface ContextReuseEntry {
   readonly key: string;

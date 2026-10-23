@@ -146,20 +146,6 @@ export function runtimeSection(opts: {
   return `# Runtime\n\n${lines.join('\n')}`;
 }
 
-/** Project Context section — injected bootstrap files. */
-export function projectContextSection(bootstrap: Record<string, string>): string {
-  const files = Object.entries(bootstrap)
-    .filter(([, content]) => content && content.trim().length > 0)
-    .map(([name, content]) => `## ${name}\n\n${content}`)
-    .join('\n\n---\n\n');
-  if (!files) return '';
-  return `# Project Context
-
-The following workspace files are injected for this run:
-
-${files}`;
-}
-
 /** Legacy prelude renderer. New runtimes use memoryTreeSection instead. */
 export function preludeSection(prelude: { content: string; daysIncluded: number }): string {
   if (!prelude.content || prelude.content.trim().length === 0) return '';

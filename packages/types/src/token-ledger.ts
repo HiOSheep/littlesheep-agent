@@ -79,12 +79,3 @@ export interface ProviderTokenLedger {
   localCalibration?: ProviderLocalTokenCalibration;
   reportedAt: string;
 }
-
-export type TokenLedger = LocalTokenLedger | ProviderTokenLedger;
-
-/** Returns a prompt-token value only when its source is explicitly trustworthy. */
-export function getDisplayablePromptTokens(ledger: TokenLedger | undefined): number | undefined {
-  if (!ledger) return undefined;
-  if (ledger.source === 'provider') return ledger.promptTokens;
-  return ledger.accuracy === 'exact' ? ledger.promptTokens : undefined;
-}

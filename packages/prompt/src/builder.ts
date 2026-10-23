@@ -419,14 +419,6 @@ export interface RuntimeFacts {
   runtime?: PromptInput['runtime'];
 }
 
-export async function assembleSystemPrompt(
-  resolved: ResolvedPromptConfig,
-  facts: RuntimeFacts,
-  mode?: PromptMode
-): Promise<string> {
-  return (await assembleSystemPromptBundle(resolved, facts, mode)).text;
-}
-
 export async function assembleSystemPromptBundle(
   resolved: ResolvedPromptConfig,
   facts: RuntimeFacts,

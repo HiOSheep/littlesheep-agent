@@ -403,15 +403,15 @@ export interface ContextItem {
   sensitive: boolean;
   createdAt: string;
   contentType: 'text' | 'json' | 'image_ref' | 'file_ref';
-  contentRef?: string;
   contentHash?: string;
   characterCount?: number;
 }
 
 export interface ContextSnapshotItem extends ContextItem {
   disposition: 'included' | 'omitted';
-  omissionReason?: 'budget' | 'duplicate' | 'irrelevant' | 'unsafe' | 'unavailable';
+  /** Local token count for this included/omitted item, when counted. */
   promptTokens?: number;
+  omissionReason?: 'budget' | 'duplicate' | 'irrelevant' | 'unsafe' | 'unavailable';
 }
 
 export interface KnownContextBudget {

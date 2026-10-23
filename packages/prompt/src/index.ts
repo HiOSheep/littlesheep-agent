@@ -2,10 +2,7 @@
 
 export { CACHE_BOUNDARY_MARKER } from './cache-boundary.js';
 export {
-  formatElapsedMilliseconds,
-  formatRuntimeClock,
   resolveRuntimeTimeZone,
-  type RuntimeClockValue,
   type RuntimeTimeFormat,
 } from './runtime-time.js';
 export {
@@ -29,7 +26,6 @@ export {
   workspaceSection,
   dateTimeSection,
   runtimeSection,
-  projectContextSection,
   preludeSection,
   sessionSummarySection,
   outputDirectivesSection,
@@ -38,7 +34,6 @@ export {
   buildSystemPrompt,
   buildSystemPromptBundle,
   resolvePromptConfig,
-  assembleSystemPrompt,
   assembleSystemPromptBundle,
   truncateBootstrap,
   applyBootstrapLimits,

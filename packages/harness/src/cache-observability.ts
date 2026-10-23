@@ -232,7 +232,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     ...(promptComponents ? { promptComponents } : {}),
     invalidationReasons,
     ...(invalidationReasons[0] ? { primaryInvalidationReason: invalidationReasons[0] } : {}),
-    providerPrompt: pendingProviderCache(),
+    providerPrompt: unavailableProviderCache('provider_usage_pending'),
     lsContext: contextReuseLedger(input.contextReuse),
     memoryEmbedding: memoryReuseLedger(input.memoryReuse),
   });
@@ -524,15 +524,6 @@ function compareToolSpecs(left: ToolSpec, right: ToolSpec): number {
       },
     }),
   );
-}
-
-function pendingProviderCache(): CacheLedgerObservation {
-  return {
-    kind: 'provider_prompt',
-    status: 'unavailable',
-    reason: 'provider_usage_pending',
-    requestCount: 1,
-  };
 }
 
 function unavailableProviderCache(reason: string): CacheLedgerObservation {
