@@ -66,7 +66,7 @@ DELIV-02 原文（1.2 第 368 行）含 `containing exactly` 与额外从句 `an
 - 第 154–165 行：`allRequirementsPassed` 为 false；第 163 行 `else if (inventory === 'unknown') status = 'unknown'`。
 - 第 168 行：`if (inventory === 'unknown') remaining.push({ reasonCode: 'requirements_unknown', evidenceRefs: [] })`。
 
-即：**inventory=unknown 的直接原因是严格解析器未识别任务措辞**，而不是 Runtime 判定错误。Runtime 在此保守返回 `unknown`，符合 S2C-B 既定契约（`docs/reference/rcd-s2c-b-task-outcome-2026-10-17.md` 第 16、32 行；`docs/reference/rcd-s2c-c-task-outcome-renderer-2026-10-17.md` 第 20、97 行）。
+即：**inventory=unknown 的直接原因是严格解析器未识别任务措辞**，而不是 Runtime 判定错误。Runtime 在此保守返回 `unknown`，符合 S2C-B 既定契约（`docs/reference/rcd-s2c-b-task-outcome-2026-10-17.md` 第 16、32 行；`rcd-s2c-c-task-outcome-renderer`（已随历史文档清理移除，git 历史可查））。
 
 ### 1.4 契约：`unknown` / `unverified` 如何表示
 
@@ -205,7 +205,7 @@ DELIV-02 原文（1.2 第 368 行）含 `containing exactly` 与额外从句 `an
 
 外部 Oracle 的归因与此一致：主因 `insufficient_verification`，次因 `strict_requirement_parser_did_not_recognize_task_text`（受控记录 `failureAttribution`；`docs/reference/rcd-s3b-evaluation-report-2026-10-17.md` 第 36 行；第 71 行已把该风险归入"后续产品修复评审，不在 S3B 中修改生产 Runtime"）。
 
-**本评审只针对下游呈现层。** 通用要求抽取属独立工作项（`rcd-s2c-b-task-outcome-2026-10-17.md` 第 77 行；`rcd-s2c-c-task-outcome-renderer-2026-10-17.md` 第 97 行已明确"尚未覆盖完整的自然语言要求识别；inventory 不完整时必须继续保守显示"）。
+**本评审只针对下游呈现层。** 通用要求抽取属独立工作项（`rcd-s2c-b-task-outcome-2026-10-17.md` 第 77 行；`rcd-s2c-c-task-outcome-renderer`（已随历史文档清理移除）已明确"尚未覆盖完整的自然语言要求识别；inventory 不完整时必须继续保守显示"）。
 
 ## 5. 最小产品修复方案（本批不实施）
 
@@ -255,7 +255,7 @@ DELIV-02 原文（1.2 第 368 行）含 `containing exactly` 与额外从句 `an
 
 **优点**：能从根因上让 DELIV-02 措辞被识别。
 
-**缺点**：成本与风险远高于本缺陷的用户可见部分；`rcd-s2c-b-task-outcome-2026-10-17.md:77` 与 `rcd-s2c-c-task-outcome-renderer-2026-10-17.md:97` 已把通用抽取列为独立边界；且它并不能替代"界面必须把未验收说清楚"这一要求——即使解析器覆盖更广，仍会有无法识别与无法验证的 Run。
+**缺点**：成本与风险远高于本缺陷的用户可见部分；`rcd-s2c-b-task-outcome-2026-10-17.md:77`（S2C-C 呈现层报告已随历史文档清理移除） 已把通用抽取列为独立边界；且它并不能替代"界面必须把未验收说清楚"这一要求——即使解析器覆盖更广，仍会有无法识别与无法验证的 Run。
 
 ### 推荐：候选 A，并吸收候选 B 的一小部分
 

@@ -81,3 +81,7 @@ Provider、Memory、文件一致性、Electron、桌面启动和工作区专项�
 机器检查 `docs/README.md` 的四类入口及分层导航。package README 由各 package 自己维护；普通私有源码、测试、样式和时间戳变化不触发 README 更新。
 
 `verify-conversation-timeline.mjs` 使用隔离 Electron 和本地 Provider 验证工具前后文字保留、原生文件操作、历史重载及短详情不会误显跳到底部按钮。`verify-conversation-model-isolation.mjs` 验证会话切换、重载后的模型与草稿隔离，并检查实际 HTTP 模型请求和应用默认值。恢复播放按钮与权限降级续跑由 `verify-desktop-permission-v2.mjs` 覆盖。
+
+## 手工诊断与一次性验收脚本
+
+下列脚本没有 package.json/CI/文档硬引用，属于人工诊断或一次性验收工具；它们不进入门禁，运行前需自行指定输出，且不得把结果当作常规回归通过证据：`capture-model-provider-editor`、`measure-desktop-large-root-startup`、`measure-workspace-availability`、`prepare-electron-conversation-continuity-e2e`、`probe-focus-ownership`、`probe-game-artifacts`、`verify-electron-dompurify-security`、`verify-electron-transformers-runtime`、`verify-iconography`、`verify-panel-collapse-release`、`verify-settings-cards`、`verify-workspace-add-position`。

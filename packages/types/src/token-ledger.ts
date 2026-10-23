@@ -47,6 +47,11 @@ export interface ProviderLocalTokenCalibration {
   status: 'exact_match' | 'within_tolerance' | 'drift';
 }
 
+/**
+ * Persisted/aggregate Provider usage. The LLM package's ChatResponse.usage is the
+ * wire receipt (same token fields, no runtime identity); Runtime adds provider/model,
+ * request id, calibration and timestamps exactly once via providerUsageTokenFields.
+ */
 export interface ProviderTokenLedger {
   version: 1;
   source: 'provider';

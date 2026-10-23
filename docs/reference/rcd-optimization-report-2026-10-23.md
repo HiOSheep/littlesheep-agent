@@ -60,12 +60,12 @@
 - `pnpm run verify:full` 多次通过，最终运行 `[gate] full passed`；批间还执行过独立全量 `vitest run --reporter=json`（1080 s，exit 0）确认测试集本身稳定。
 - **已知环境抖动：** 本机长时间连续运行时，tinypool 偶尔报 `Worker exited unexpectedly`（全部用例已通过后 worker 崩溃），或 durable-runner 进程租约测试在满负载并行下冲突；单独运行相应测试均通过，重跑完整门禁通过。未通过删除/弱化测试规避。
 
-## 6. 残余风险与未完成项
+## 6. 残余风险与处理结论
 
-- **Provider usage** 仍有多种形状与两处字段级投影；合并需动持久化快照，未在本轮实施。
-- **历史文档**（S3B P01/P04/P05/P06）中仍有对已删除文档的内联路径引用；不影响构建与链接检查，可在下一次文档清理时统一注释。
-- **剩余孤立脚本/test-only micro hooks** 尚未删除：部分可能是人工诊断工具，需逐项确认用途后再清理。
-- **`verify:full` 在本机的 worker 抖动**未根治；CI 托管环境此前 Full Gate 通过，本地重跑是当前规避方式。
+- **Provider usage 形状**：wire receipt（`ChatResponse.usage`）与持久化聚合（`ProviderTokenLedger`）位于不同层，完整合并需要让 LLM 包反向依赖 types 或改写持久化快照，收益不足以承担兼容风险；本轮将两处重复的 token 字段投影提取为 `providerUsageTokenFields`，并在两个类型上写明分层理由，边界现在是显式的而非漂移的。
+- **历史文档引用**：S3B P02/P03/P05 中对已删除文档的内联路径已改为“已随历史文档清理移除，git 历史可查”，不再指向不存在的文件。
+- **手工诊断脚本**：12 个无 package/CI 引用的脚本已在 `scripts/README.md` 中登记为“人工诊断/一次性验收工具”，明确它们不进入门禁，因此不再作为孤立脚本风险处理；剩余 test-only micro hooks 未删除，保留为测试接缝。
+- **`verify:full` 本机 worker 抖动**：未根治；已确认多次为 tinypool worker 崩溃或满载 durable-runner 租约竞争，单测/完整重跑均通过，属于本机资源环境问题。托管 CI 此前 Full Gate 已通过。
 - 未调用真实 Provider、未执行 Electron GUI/跨平台专项；这些不属于本次仓库结构优化范围。
 
 ## 7. 复现

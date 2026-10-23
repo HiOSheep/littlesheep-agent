@@ -101,6 +101,12 @@ export interface ChatResponse {
   finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter';
   /** Provider reasoning, retained for tool-call continuation but not shown as final reply text. */
   reasoningContent?: string;
+  /**
+   * Provider wire receipt before Runtime identity/timing aggregation is added.
+   * Kept as a structural shape because @littlesheep/llm is below @littlesheep/types;
+   * the persisted aggregate is ProviderTokenLedger (types/src/token-ledger.ts).
+   * Do not fork either shape: add fields to the wire receipt and project them once.
+   */
   usage?: {
     promptTokens: number;
     completionTokens: number;

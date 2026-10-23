@@ -241,7 +241,7 @@ Oracle 用 `&&` 把三者串成一个布尔值（`:205`）。后果是：**模�
 - DELIV-01 历史记录**不动**：`oracle.result` 保持 `failed`，`recoveryMechanismEvaluation` 保持 `not_exercised`。
 - `C02` 在 S0-F 的 `failed` 与 S1A 回归中的 `passed` 均保持原值，不被新场景覆盖。
 - 新场景区分两个维度并**分别记账**：`taskGoalCorrectness`（产物维度）与 `recoveryMechanismEvaluation`（机制维度）；机制维度取值为 `exercised_and_recovered` / `exercised_and_failed` / `not_exercised`，**永不**作为任务成功的前置条件。
-- 本场景不改变工具权限、Shell/Web 策略、Memory 控制或 Runner/Harness 架构（与 S1A 边界一致，见 `docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md:60`）。
+- 本场景不改变工具权限、Shell/Web 策略、Memory 控制或 Runner/Harness 架构（与 S1A 边界一致，见 `runtime-continuity-delivery taskbook`（已随历史文档清理移除，git 历史可查））。
 
 ---
 
@@ -263,7 +263,7 @@ Oracle 用 `&&` 把三者串成一个布尔值（`:205`）。后果是：**模�
 | 受控/S3A 构造性通过 | `rcd-s3b-controlled-baseline-2026-10-17.json → records[taskId=FILE-02].oracle`、`records[taskId=DELIV-01].oracle`；`rcd-s3a-baseline-2026-10-17.json → records[taskId=FILE-02|DELIV-01].oracle` |
 | 失败分类兜底 | `scripts/s3b-eval.mjs:181-198`（兜底 `:198`） |
 | 协议：结果与基础设施正交 / 失败枚举 | `docs/reference/rcd-s3a-evaluation-protocol-2026-10-17.md:52`、`:54` |
-| S1A 机制与 C02 边界 | `docs/taskbooks/runtime-continuity-delivery-taskbook-2026-10-16.md:19`、`:55-61`；`rcd-s1a-core-regression-2026-10-16.json → records[scenarioId=C02]`；`rcd-s3a-scenario-audit-2026-10-17.json → scenarios[id=C02]` |
+| S1A 机制与 C02 边界 | `runtime-continuity-delivery taskbook`（已随历史文档清理移除，git 历史可查）；`rcd-s1a-core-regression-2026-10-16.json → records[scenarioId=C02]`；`rcd-s3a-scenario-audit-2026-10-17.json → scenarios[id=C02]` |
 | 报告散文（不作为依据） | `docs/reference/rcd-s3b-real-deepseek-report-2026-10-17.md:31-32`、`:39` |
 
 ---

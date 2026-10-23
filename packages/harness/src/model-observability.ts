@@ -327,6 +327,42 @@ export function modelRequestIdFor(request: ChatRequest): string | undefined {
   return requestModelIds.get(request);
 }
 
+interface ProviderUsageTokenFields {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedPromptTokens?: number;
+  uncachedPromptTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+}
+
+function providerUsageTokenFields(
+  usage: NonNullable<ChatResponse['usage']>,
+  reportedUsage: ChatResponse['usage'] | undefined,
+): ProviderUsageTokenFields;
+function providerUsageTokenFields(
+  usage: NonNullable<ChatResponse['usage']>,
+  reportedUsage: ChatResponse['usage'] | undefined,
+  options: { compact: true },
+): Partial<ProviderUsageTokenFields>;
+function providerUsageTokenFields(
+  usage: NonNullable<ChatResponse['usage']>,
+  reportedUsage: ChatResponse['usage'] | undefined,
+  options?: { compact: true },
+): ProviderUsageTokenFields | Partial<ProviderUsageTokenFields> {
+  const fields: ProviderUsageTokenFields = {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
+    ...(usage.cachedPromptTokens === undefined ? {} : { cachedPromptTokens: usage.cachedPromptTokens }),
+    ...(usage.uncachedPromptTokens === undefined ? {} : { uncachedPromptTokens: usage.uncachedPromptTokens }),
+    ...(reportedUsage?.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: reportedUsage.cacheWriteTokens }),
+    ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+  };
+  if (!options?.compact) return fields;
+  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as Partial<ProviderUsageTokenFields>;
+}
 export function recordProviderUsage(
   ctx: RunContext,
   request: ChatRequest,
@@ -379,13 +415,7 @@ export function recordProviderUsage(
       source: 'provider' as const,
       provider: current.provider,
       model: current.model,
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
-      cachedPromptTokens: usage.cachedPromptTokens,
-      uncachedPromptTokens: usage.uncachedPromptTokens,
-      cacheWriteTokens: reportedUsage?.cacheWriteTokens,
-      reasoningTokens: usage.reasoningTokens,
+      ...providerUsageTokenFields(usage, reportedUsage),
       durationMs: providerDurationMs,
       ...transportProjection,
       requestId: requestSnapshot.id,
@@ -396,13 +426,7 @@ export function recordProviderUsage(
   queueModelResponseReceived(ctx, request, requestSnapshot, {
     usageStatus: 'available',
     cacheStatus: cacheUsage.ledger.status,
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    totalTokens: usage.totalTokens ?? usage.promptTokens + usage.completionTokens,
-    ...(usage.cachedPromptTokens === undefined ? {} : { cachedPromptTokens: usage.cachedPromptTokens }),
-    ...(usage.uncachedPromptTokens === undefined ? {} : { uncachedPromptTokens: usage.uncachedPromptTokens }),
-    ...(reportedUsage?.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: reportedUsage.cacheWriteTokens }),
-    ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+    ...providerUsageTokenFields(usage, reportedUsage, { compact: true }),
     ...(providerDurationMs === undefined ? {} : { durationMs: providerDurationMs }),
     ...transportProjection,
     reconciliation: localCalibration?.status === 'drift'
