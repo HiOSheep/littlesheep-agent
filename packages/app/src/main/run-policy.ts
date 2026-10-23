@@ -12,11 +12,9 @@ import { resolveNetworkReadPolicy } from '@littlesheep/runner'
 import { WORKSPACE_FILE_GUARD_AVAILABLE, bindShellApprovalAuthority } from '@littlesheep/tools'
 import type { ShellApprovalResult } from '@littlesheep/tools'
 import type { ShellApprovalBatch } from '@littlesheep/types'
-import {
-  describeToolAccess,
-  resolvePermissionDecision,
-  type ContainerBoundary,
-} from '@littlesheep/safety'
+import { describeToolAccess, resolvePermissionDecision } from '@littlesheep/safety'
+import type { RunApprovalRequest } from '../shared/approval-contract.js'
+export type { RunApprovalRequest } from '../shared/approval-contract.js'
 import type { PermissionModeId } from '../shared/permission-modes.js'
 import { isPermissionSelectionPreset, normalizePermissionSelectionId } from '../shared/permission-modes.js'
 import type { SessionIndex } from './session-index.js'
@@ -26,20 +24,6 @@ import {
   normalizeAgentProfileId,
   resolvePermissionModePolicy,
 } from './modes.js'
-
-export interface RunApprovalRequest {
-  action: string
-  detail?: unknown
-  permissionMode: PermissionModeId
-  permissionPreset?: PermissionPresetId
-  /** Boundary calculated by Main before the renderer sees the request. */
-  boundary: ContainerBoundary
-  /** A Main-owned forced approval; full access cannot auto-confirm it. */
-  requiresExplicitUserApproval?: boolean
-  shellBatch?: ShellApprovalBatch
-  /** Set only from Main's fixed Shell candidate check, never from request JSON. */
-  rememberShellCommandAvailable?: boolean
-}
 
 export type RunApprovalBroker = (request: RunApprovalRequest) => Promise<ShellApprovalResult>
 

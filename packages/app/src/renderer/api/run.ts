@@ -5,6 +5,8 @@ import type { ApprovalReply } from '../approval-grants'
 import type { SessionScope } from '../../shared/session-scope'
 import type { AttachmentRef } from '../../shared/attachment-contracts'
 import { isToolStreamEventName } from '../../shared/run-stream-events'
+import type { ApprovalRequest } from '../../shared/approval-contract'
+export type { ApprovalRequest } from '../../shared/approval-contract'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -16,8 +18,7 @@ import type {
 } from '@littlesheep/types'
 import type { RunnerResult } from '@littlesheep/runner'
 import type { AgentProfileId } from '@littlesheep/prompt'
-import type { PermissionPresetId } from '@littlesheep/types'
-import { isPermissionSelectionPreset, type PermissionModeId, type PermissionSelectionId } from '../../shared/permission-modes'
+import { isPermissionSelectionPreset, type PermissionSelectionId } from '../../shared/permission-modes'
 import type {
   LocalAppRuntimeControlEventResponse,
   LocalAppRuntimeControlEventType,
@@ -83,22 +84,6 @@ export class RunStreamServerError extends Error {
     this.name = 'RunStreamServerError'
     this.runId = runId
   }
-}
-
-export interface ApprovalRequest {
-  shellBatch?: import('@littlesheep/types').ShellApprovalBatch
-  id: string
-  action: string
-  detail?: unknown
-  permissionMode: PermissionModeId
-  permissionPreset?: PermissionPresetId
-  /** Main requires an explicit decision even when the session is full-access. */
-  requiresExplicitUserApproval?: boolean
-  /** Main-computed eligibility for the single exact-command repeat option. */
-  rememberShellCommandAvailable?: boolean
-  /** Boundary calculated by the Main process for Agent requests. */
-  boundary?: 'inside' | 'outside' | 'unknown'
-  source?: 'agent' | 'workspace'
 }
 
 export interface RunOptions {

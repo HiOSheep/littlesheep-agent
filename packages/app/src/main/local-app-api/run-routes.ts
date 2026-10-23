@@ -28,7 +28,8 @@ import type { ManagedAttachmentCache } from '../attachment-cache.js'
 import { ensureManagedAttachmentRefs } from '../attachment-materialization.js'
 import type { ProjectIndex } from '../project-index.js'
 import { DeferredRunRecovery } from '../run-recovery.js'
-import { resolveRunPolicy, type RunApprovalBroker, type RunApprovalRequest } from '../run-policy.js'
+import { resolveRunPolicy, type RunApprovalBroker } from '../run-policy.js'
+import type { RunApprovalRequest } from '../../shared/approval-contract.js'
 import type { ShellApprovalResult } from '@littlesheep/tools'
 import type { SessionIndex } from '../session-index.js'
 import type { WorkspaceArtifactIndex } from '../workspace-artifact-index.js'
@@ -68,10 +69,7 @@ interface ActiveStreamRun {
   runner: AgentRunner
 }
 
-interface ApprovalRequestPayload extends RunApprovalRequest {
-  id: string
-  source: 'agent'
-}
+type ApprovalRequestPayload = RunApprovalRequest & { id: string; source: 'agent' }
 
 export interface RunRouteContext {
   /** Undefined until the composition root publishes the Runner; fail closed. */
