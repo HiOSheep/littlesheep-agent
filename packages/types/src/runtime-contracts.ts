@@ -815,6 +815,8 @@ export interface RunCheckpointResumeState {
   model: string;
   origin: RunConfigOrigin;
   permissionPolicyId: PermissionPolicyId;
+  /** V2 access preset captured with the checkpoint; absent on legacy checkpoints. */
+  permissionPreset?: PermissionPresetId;
   reasoning: ReasoningLevel;
   behaviorModeId: string;
   availableToolNames: string[];

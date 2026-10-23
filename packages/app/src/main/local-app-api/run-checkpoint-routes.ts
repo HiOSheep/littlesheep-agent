@@ -18,6 +18,7 @@ import type {
 } from '../../shared/run-checkpoint-contracts.js'
 import {
   isPermissionSelectionPreset,
+  capPermissionPreset,
   normalizePermissionModeId,
 } from '../../shared/permission-modes.js'
 import { createCheckpointResourceResolver } from '../attachments.js'
@@ -347,14 +348,16 @@ function checkpointResumeDefaults(
   // session mode lets a later downgrade revoke authority from that snapshot.
   const rank = { restricted: 0, research: 1, full: 2 } as const
   const checkpointMode = normalizePermissionModeId(state.permissionPolicyId)
+  const checkpointPreset = state.permissionPreset
   if (isPermissionSelectionPreset(body.permissionPreset)) {
-    // The existing durable checkpoint format only records the legacy mode.
-    // A research checkpoint might be an old research run or a V2 workspace-
-    // write run, so cap it to read-only until the checkpoint can prove which.
-    if (checkpointMode === 'restricted') {
-      effective.permissionPreset = 'read-only'
+    if (isPermissionSelectionPreset(checkpointPreset)) {
+      // New checkpoints record the V2 preset: keep the stricter of the captured
+      // preset and the current session preset, so a resume cannot upgrade.
+      effective.permissionPreset = capPermissionPreset(checkpointPreset, body.permissionPreset)
       delete effective.permissionMode
-    } else if (checkpointMode === 'research') {
+    } else if (checkpointMode === 'restricted' || checkpointMode === 'research') {
+      // Legacy checkpoint without a V2 preset: research could be either an old
+      // research run or a V2 workspace-write run, so prove it cannot be the latter.
       effective.permissionPreset = 'read-only'
       delete effective.permissionMode
     } else {

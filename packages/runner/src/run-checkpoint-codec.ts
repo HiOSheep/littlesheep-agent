@@ -208,6 +208,13 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
   if (permissionPolicyId !== 'full' && permissionPolicyId !== 'research' && permissionPolicyId !== 'restricted') {
     throw new RunCheckpointValidationError('checkpoint.resumeState.permissionPolicyId is invalid.');
   }
+  const permissionPreset = value.permissionPreset;
+  if (permissionPreset !== undefined
+    && permissionPreset !== 'read-only'
+    && permissionPreset !== 'workspace-write'
+    && permissionPreset !== 'full-access') {
+    throw new RunCheckpointValidationError('checkpoint.resumeState.permissionPreset is invalid.');
+  }
   const reasoning = value.reasoning;
   if (reasoning !== 'auto' && reasoning !== 'low' && reasoning !== 'medium' && reasoning !== 'high' && reasoning !== 'ultra') {
     throw new RunCheckpointValidationError('checkpoint.resumeState.reasoning is invalid.');
@@ -257,6 +264,7 @@ function validateResumeState(value: unknown): RunCheckpointResumeState {
     model: boundedText(value.model, 512, 'checkpoint.resumeState.model'),
     origin,
     permissionPolicyId,
+    ...(permissionPreset === undefined ? {} : { permissionPreset }),
     reasoning,
     behaviorModeId: boundedText(value.behaviorModeId, MAX_ID_LENGTH, 'checkpoint.resumeState.behaviorModeId'),
     availableToolNames,

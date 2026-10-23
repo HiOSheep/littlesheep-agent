@@ -765,6 +765,61 @@ describe('run checkpoint Local App API', () => {
       rmSync(fixture.dataDir, { recursive: true, force: true })
     }
   })
+
+  it('restores the V2 permission preset recorded by a new checkpoint', async () => {
+    const fixture = await createFixture(undefined, { permissionPreset: 'workspace-write' })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'workspace-write',
+      permissionVersion: 2,
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'restore preset', requestKey: 'preset-resume-turn' }),
+      })
+      expect(response.status).toBe(200)
+      await response.text()
+      const options = fixture.resumeCheckpoint.mock.calls[0]?.[1]
+      expect(options?.permissionPreset).toBe('workspace-write')
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not let a checkpoint upgrade a later downgraded session preset', async () => {
+    const fixture = await createFixture(undefined, { permissionPreset: 'workspace-write' })
+    await fixture.sessionIndex.upsert('checkpoint-session', {
+      title: 'checkpoint session',
+      mode: 'read-only',
+      permissionVersion: 2,
+      scope: 'standalone',
+      workspacePath: join(fixture.dataDir, 'workplace'),
+    })
+    const base = `http://127.0.0.1:${fixture.server.port}`
+    const itemPath = localAppApiItemPath(LOCAL_APP_API_PREFIXES.runCheckpoints, 'checkpoint-1')
+    try {
+      const response = await fetch(`${base}${itemPath}/resume/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'downgraded', requestKey: 'downgraded-resume-turn' }),
+      })
+      expect(response.status).toBe(200)
+      await response.text()
+      const options = fixture.resumeCheckpoint.mock.calls[0]?.[1]
+      expect(options?.permissionPreset).toBe('read-only')
+    } finally {
+      await fixture.server.stop()
+      rmSync(fixture.dataDir, { recursive: true, force: true })
+    }
+  })
+
 })
 
 async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 2_000): Promise<void> {

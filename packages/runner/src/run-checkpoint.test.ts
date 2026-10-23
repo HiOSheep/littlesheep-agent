@@ -9,6 +9,7 @@ import {
 import { MAX_MODEL_REQUEST_SNAPSHOTS_PER_RUN } from '@littlesheep/context';
 import { MAX_TOOL_LOOP_ITERATIONS } from '@littlesheep/harness';
 import { buildRunCheckpoint, continuationLoopBudget } from './run-checkpoint.js';
+import { validateCheckpoint } from './run-checkpoint-codec.js';
 
 function contextWithSteps(steps: TaskStepResult[]): RunContext {
   const sessionId = asSessionId('session-checkpoint');
@@ -48,7 +49,24 @@ function step(stepId: string, status: TaskStepResult['status']): TaskStepResult 
 }
 
 describe('buildRunCheckpoint', () => {
-  it('captures all bounded active parallel branches while retaining the legacy current step', () => {
+  it('persists the V2 permission preset across checkpoint validation', () => {
+    const ctx = contextWithSteps([step('done', 'done')]);
+    ctx.toolContext = { ...ctx.toolContext, permissionPreset: 'workspace-write' };
+    const checkpoint = buildRunCheckpoint({
+      ctx,
+      stageResult: { stage: 'execute', next: 'exit', ok: false },
+      reason: 'permission preset checkpoint',
+      now: new Date('2026-07-29T10:00:01.000Z'),
+    });
+
+    expect(checkpoint.resumeState?.permissionPreset).toBe('workspace-write');
+    const validated = validateCheckpoint(
+      JSON.parse(JSON.stringify(checkpoint)) as unknown,
+      1_000_000,
+      64,
+    );
+    expect(validated.resumeState?.permissionPreset).toBe('workspace-write');
+  });  it('captures all bounded active parallel branches while retaining the legacy current step', () => {
     const ctx = contextWithSteps([
       step('done', 'done'),
       step('active-1', 'in_progress'),

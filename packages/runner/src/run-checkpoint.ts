@@ -127,6 +127,7 @@ export function buildRunCheckpoint(options: BuildRunCheckpointOptions): RunCheck
       model: ctx.model,
       origin: ctx.resolvedRunConfig?.origin ?? 'cli',
       permissionPolicyId: ctx.resolvedRunConfig?.permissionPolicyId ?? 'restricted',
+      ...(ctx.toolContext.permissionPreset ? { permissionPreset: ctx.toolContext.permissionPreset } : {}),
       reasoning: ctx.resolvedRunConfig?.reasoning ?? 'auto',
       behaviorModeId: ctx.resolvedRunConfig?.behaviorModeId ?? 'general',
       availableToolNames: [...new Set(ctx.tools.map((tool) => tool.name))].slice(0, 256),

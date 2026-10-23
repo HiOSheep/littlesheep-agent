@@ -133,3 +133,16 @@ function migrateLegacyModeId(id: string | undefined): string | undefined {
   if (id === 'coding') return 'research'
   return id
 }
+
+/** Total order used when a checkpoint and the current session both cap authority. */
+export function permissionPresetRank(preset: PermissionSelectionId): number {
+  return preset === 'full-access' ? 2 : preset === 'workspace-write' ? 1 : 0
+}
+
+/** Never raise authority: the resume keeps the stricter of the two presets. */
+export function capPermissionPreset(
+  persisted: PermissionSelectionId,
+  current: PermissionSelectionId,
+): PermissionSelectionId {
+  return permissionPresetRank(persisted) <= permissionPresetRank(current) ? persisted : current
+}
