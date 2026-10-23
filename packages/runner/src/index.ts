@@ -25,6 +25,7 @@ export {
 export {
   prepareAuthoritativeExecutionLog,
   prepareAuthoritativeRunnerResult,
+  publishRunnerResult,
   type AuthoritativeExecutionLog,
 } from './authoritative-reply.js';
 

@@ -13,7 +13,7 @@
 //   plugin.stop() → sessionStore.findByChannel() → sessionManager.delete(each) → sessionStore.unbindChannel()
 
 import { formatWebEvidenceSources, publishableReply, type SessionId } from '@littlesheep/types';
-import { prepareAuthoritativeRunnerResult, type AgentRunner, type LogFn } from '@littlesheep/runner';
+import { publishRunnerResult, type AgentRunner, type LogFn } from '@littlesheep/runner';
 import type { ChannelConfig } from '@littlesheep/config';
 import { ChannelSessionStore } from './session-binding.js';
 import type {
@@ -360,9 +360,7 @@ export class DefaultChannelManager {
         externalConversationId: message.externalConversationId,
         requestKey: message.requestKey,
       });
-      const publishedResult = (result.durableHarnessMode ?? this.runner.durableHarnessMode) === 'next'
-        ? await prepareAuthoritativeRunnerResult(this.runner, result)
-        : result;
+      const publishedResult = await publishRunnerResult(this.runner, result);
       return {
         reply: appendWebSources(
           publishableReply(publishedResult),

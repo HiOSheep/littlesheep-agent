@@ -11,7 +11,7 @@ vi.mock('@littlesheep/runner');
 
 // Import AFTER vi.mock so the mock takes effect.
 import { runCli } from './index.js';
-import { createRunner, resolveLlm } from '@littlesheep/runner';
+import { createRunner, publishRunnerResult, resolveLlm } from '@littlesheep/runner';
 import { asSessionId } from '@littlesheep/types';
 import type { RunnerResult } from '@littlesheep/runner';
 
@@ -47,6 +47,7 @@ beforeEach(() => {
   vi.mocked(createRunner).mockReset();
   vi.mocked(resolveLlm).mockReset();
   vi.mocked(resolveLlm).mockReturnValue({ llm: {} as never, modelName: 'gpt-4o' });
+  vi.mocked(publishRunnerResult).mockImplementation(async (_runner, result) => result);
   vi.mocked(createRunner).mockResolvedValue({
     run: mockRun,
     runStream: mockRun,

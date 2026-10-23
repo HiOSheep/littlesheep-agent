@@ -4,7 +4,7 @@
 // Approvals are routed through rl.question on the same interface.
 
 import { createInterface } from 'node:readline';
-import { prepareAuthoritativeRunnerResult, type AgentRunner, type RunnerResult } from '@littlesheep/runner';
+import { publishRunnerResult, type AgentRunner, type RunnerResult } from '@littlesheep/runner';
 import type { BrandingConfig } from '@littlesheep/branding';
 import { formatWebEvidenceSources, publishableReply, type SessionId } from '@littlesheep/types';
 
@@ -72,9 +72,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         approve,
         origin: 'cli',
       });
-      const publishedResult = (result.durableHarnessMode ?? opts.runner.durableHarnessMode) === 'next'
-        ? await prepareAuthoritativeRunnerResult(opts.runner, result)
-        : result;
+      const publishedResult = await publishRunnerResult(opts.runner, result);
       if (!publishedResult) throw new Error('runner returned no result')
       sessionId = publishedResult.sessionId;
       const reply = publishableReply(publishedResult);

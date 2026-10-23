@@ -4,6 +4,7 @@ import type { AgentRunner, RunnerResult } from './runner.js'
 import {
   prepareAuthoritativeExecutionLog,
   prepareAuthoritativeRunnerResult,
+  publishRunnerResult,
 } from './authoritative-reply.js'
 import type { ExecutionLog } from './execution-log.js'
 
@@ -62,6 +63,45 @@ function executionLog(overrides: Partial<ExecutionLog> = {}): ExecutionLog {
     ...overrides,
   }
 }
+
+describe('publishRunnerResult', () => {
+  it('applies the next-mode gate once and never re-replays a published result', async () => {
+    const replay = vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'settled',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 1,
+      settlementId: 'settlement-1',
+      reply: 'durable settled reply',
+      replyFingerprint: 'fp-1',
+      modelRequestId: 'model-1',
+    }));
+    const runner = nextRunner(replay);
+    const raw = result();
+
+    const published = await publishRunnerResult(runner, raw);
+    expect(published.reply).toBe('durable settled reply');
+    expect(replay).toHaveBeenCalledTimes(1);
+
+    const second = await publishRunnerResult(runner, published);
+    expect(second).toBe(published);
+    expect(replay).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a legacy result unchanged without replaying durable settlement', async () => {
+    const replay = vi.fn(async (): Promise<DurableFinalReplyReplay> => ({
+      kind: 'unavailable',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      cursor: 0,
+      status: 'completed',
+      reason: 'not_settled',
+    }));
+    const legacy = result({ durableHarnessMode: 'shadow' });
+    expect(await publishRunnerResult(nextRunner(replay), legacy)).toBe(legacy);
+    expect(replay).not.toHaveBeenCalled();
+  });
+});
 
 describe('prepareAuthoritativeRunnerResult', () => {
   it('uses the settled durable reply instead of a temporary result reply', async () => {

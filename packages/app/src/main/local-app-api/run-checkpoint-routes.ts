@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
-import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, publishRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import type { ShellExecutionDescription } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -315,9 +315,7 @@ async function streamCheckpointResume(
       onToolEvent: (event) => writeToolEventSse(res, event),
     })
     if (result.runId !== runId) throw new Error('runner returned an unexpected resumed run id')
-    const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
-      ? await prepareAuthoritativeRunnerResult(runner, result)
-      : result
+    const publishedResult = await publishRunnerResult(runner, result)
     if (publishedResult.runtimeStatus) {
       writeSse(res, 'replace', { text: '' })
     }

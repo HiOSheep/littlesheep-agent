@@ -31,6 +31,21 @@ export function isAuthoritativePrepared(result: unknown): boolean {
 
 /**
  * Resolve the only result that may be published by a caller outside Runner.
+ * This is the single gate: adapters must not re-implement the durable-mode
+ * check, and an already-published result is never replayed twice.
+ */
+export async function publishRunnerResult(
+  runner: AgentRunner,
+  result: RunnerResult,
+): Promise<RunnerResult> {
+  if (isAuthoritativePrepared(result)) return result;
+  const mode = result.durableHarnessMode ?? runner.durableHarnessMode;
+  if (mode !== 'next') return result;
+  return markAuthoritativePrepared(await prepareAuthoritativeRunnerResult(runner, result));
+}
+
+/**
+ * Resolve the only result that may be published by a caller outside Runner.
  * There is one driver, and it makes the durable final-reply projection
  * authoritative: proposals, execution-log replies and stream reconstruction are
  * never published when replay cannot prove a settled reply.

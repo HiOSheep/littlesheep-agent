@@ -10,7 +10,7 @@ import {
   registerConfiguredModelCapabilities,
 } from '@littlesheep/config';
 import { loadBranding, dataSubdirs } from '@littlesheep/branding';
-import { createRunner, prepareAuthoritativeRunnerResult, resolveLlm } from '@littlesheep/runner';
+import { createRunner, publishRunnerResult, resolveLlm } from '@littlesheep/runner';
 import { asSessionId, formatWebEvidenceSources, publishableReply } from '@littlesheep/types';
 import { parseArgs, USAGE, VERSION } from './args.js';
 import { startRepl } from './repl.js';
@@ -150,9 +150,7 @@ export async function runCli(argv: string[]): Promise<void> {
       text: args.text,
       origin: 'cli',
     });
-    const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
-      ? await prepareAuthoritativeRunnerResult(runner, result)
-      : result;
+    const publishedResult = await publishRunnerResult(runner, result);
     if (!publishedResult) throw new Error('runner returned no result')
     const reply = publishableReply(publishedResult);
     process.stdout.write(`${reply || '(no reply)'}\n`);

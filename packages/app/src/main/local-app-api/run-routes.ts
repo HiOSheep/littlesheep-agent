@@ -5,7 +5,7 @@ import { captureShellAuthorizationScope } from '../shell-authorization-scope.js'
 import { ShellRepeatAuthorizationStore } from '../shell-repeat-authorization-store.js'
 import { createHostMemoryAccessGrant } from '../memory-access-host.js'
 import type { Config } from '@littlesheep/config'
-import { conversationTurnRunId, prepareAuthoritativeRunnerResult, type AgentRunner } from '@littlesheep/runner'
+import { conversationTurnRunId, publishRunnerResult, type AgentRunner } from '@littlesheep/runner'
 import { asSessionId, type RuntimeEventIngressOutcome } from '@littlesheep/types'
 import {
   LOCAL_APP_API_PREFIXES,
@@ -364,9 +364,7 @@ export class RunRouter {
         )
         const result = await runPromise
         if (result.runId !== runId) throw new Error(`runner returned an unexpected run id: ${result.runId}`)
-        const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
-          ? await prepareAuthoritativeRunnerResult(runner, result)
-          : result
+        const publishedResult = await publishRunnerResult(runner, result)
         if (publishedResult.runtimeStatus) {
           // Remove a provisional stream when the durable publication gate
           // cannot prove a settled final reply.
@@ -463,10 +461,7 @@ export class RunRouter {
           },
         }),
       })
-      const publishedResult = (result.durableHarnessMode ?? runner.durableHarnessMode) === 'next'
-        && !runner.isResultAuthoritativePrepared?.(result)
-        ? await prepareAuthoritativeRunnerResult(runner, result)
-        : result
+      const publishedResult = await publishRunnerResult(runner, result)
       await finishRunResources(context, runner, publishedResult, boundSession.body, ownership, cwd, workspaceContext)
       // A run the runtime recorded as failed must not answer 200: callers (the
       // UI, automation, the harness-path comparison) otherwise see a successful
