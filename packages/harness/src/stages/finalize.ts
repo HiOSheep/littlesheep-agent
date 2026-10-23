@@ -11,6 +11,7 @@ import { writeMemoryState } from '../memory-state.js';
 import { flushModelRequestLifecycles } from '../model-observability.js';
 import { finalReplyFingerprint, finalReplySettlementId } from '../final-reply-identity.js';
 import { writeReplyState } from '../reply-state.js';
+import { settleRuntimeFailureEvent } from '../failure-state.js';
 
 export interface FinalizeStageDeps {
   sessionManager: SessionManager;
@@ -181,7 +182,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       await deps.sessionManager.append(ctx.sessionId, ctx.produced);
     } catch (err) {
       ctx.toolContext.log?.('error', `finalize: persist failed: ${(err as Error).message}`);
-      await settleRuntimeFailure(ctx, 'session_persist_failed');
+      await settleRuntimeFailureEvent(ctx, 'session_persist_failed');
       return runtimeFailure(ctx, `finalize could not persist the assistant reply: ${(err as Error).message}`);
     }
     if (ctx.deferFinalReplySettlement) {
@@ -226,7 +227,7 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       });
     } catch (error) {
       ctx.toolContext.log?.('error', `finalize: durable reply settlement failed: ${(error as Error).message}`);
-      await settleRuntimeFailure(ctx, 'final_reply_settlement_failed');
+      await settleRuntimeFailureEvent(ctx, 'final_reply_settlement_failed');
       return runtimeFailure(ctx, 'finalize could not durably settle the final reply.');
     }
 
@@ -240,20 +241,6 @@ export function createFinalizeStage(deps: FinalizeStageDeps) {
       },
     };
   };
-}
-
-async function settleRuntimeFailure(ctx: RunContext, reason: string): Promise<void> {
-  try {
-    await ctx.appendDurableEvent?.({
-      type: 'runtime_status_settled',
-      source: 'runtime',
-      eventId: `${ctx.runId}:runtime-failure:${reason}`,
-      idempotencyKey: `${ctx.runId}:runtime-failure:${reason}`,
-      payload: { status: 'failed', reason },
-    });
-  } catch {
-    // The caller already returns a failure; keep the original cause visible.
-  }
 }
 
 function runtimeFailure(ctx: RunContext, error: string): StageResult {

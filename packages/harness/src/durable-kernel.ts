@@ -929,12 +929,6 @@ function validateTransition(projection: DurableRunProjection, event: DurableHarn
       readCacheObservation(event.payload.cacheObservation, requestId);
     }
   }
-  if (event.type === 'effect_settled') {
-    const effectId = requiredString(event.payload.effectId, 'effect_settled.effectId');
-    const effect = projection.effects.find((candidate) => candidate.effectId === effectId);
-    if (!effect) throw new DurableKernelError(`effect settlement has no intent: ${effectId}`, 'transition');
-    if (effect.settlementEventId) throw new DurableKernelError(`effect already settled: ${effectId}`, 'transition');
-  }
   if (event.type === 'final_reply_settled') {
     const reply = requiredString(event.payload.reply, 'final_reply_settled.reply');
     const fingerprint = requiredString(event.payload.replyFingerprint, 'final_reply_settled.replyFingerprint');

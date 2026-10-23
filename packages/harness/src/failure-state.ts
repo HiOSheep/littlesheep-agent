@@ -55,3 +55,25 @@ export function incrementRecoveryAttempts(
   writeFailureState(ctx, stage, { recoveryAttempts: attempts });
   return attempts;
 }
+
+/**
+ * Persist the Runtime-owned failure status once. FINALIZE and the Runner used
+ * to carry byte-identical copies of this event identity and payload.
+ */
+export async function settleRuntimeFailureEvent(
+  ctx: RunContext,
+  reason: string,
+  log?: (level: 'error', message: string) => void,
+): Promise<void> {
+  try {
+    await ctx.appendDurableEvent?.({
+      type: 'runtime_status_settled',
+      source: 'runtime',
+      eventId: `${ctx.runId}:runtime-failure:${reason}`,
+      idempotencyKey: `${ctx.runId}:runtime-failure:${reason}`,
+      payload: { status: 'failed', reason },
+    });
+  } catch (error) {
+    log?.('error', `runner: failed to persist Runtime failure status: ${(error as Error).message}`);
+  }
+}

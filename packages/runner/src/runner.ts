@@ -50,6 +50,7 @@ import {
   DurableHarnessKernel,
   collectConversationSourceRecords,
   settleDeferredFinalReply,
+  settleRuntimeFailureEvent,
   isSupportedPersistedWorkPolicy,
 } from '@littlesheep/harness';
 import { buildInfrastructure, type Infrastructure, type RunnerState, type LogFn } from './infra.js';
@@ -81,7 +82,7 @@ import { finalizeRunnerPhase } from './runner-finalize.js';
 import type { SessionCompactionOperationRecord } from './session-compaction-scheduler.js';
 import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
 import { isAuthoritativePrepared, markAuthoritativePrepared, prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
-import { clearUnpublishedNextResult, runtimeFailureResult, settleRuntimeFailureEvent } from './run-failure-result.js';
+import { clearUnpublishedNextResult, runtimeFailureResult } from './run-failure-result.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { ContinuationControlError, createConversationTurnRecovery } from './conversation-turn-recovery.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
@@ -1301,8 +1302,7 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
           }
         }
       }
-      if (true
-        && result.status !== 'ok'
+      if (result.status !== 'ok'
         && result.finalReplySettlement?.status !== 'settled') {
         const projection = durableRecorder
           ? await durableRecorder.kernel.replay(String(sessionId), runId).catch(() => undefined)
@@ -2557,13 +2557,11 @@ function restoreSharedCheckpointState(
     taskExecution: checkpoint.taskExecution ? structuredClone(checkpoint.taskExecution) : undefined,
     plan: state.plan ? structuredClone(state.plan) : undefined,
     appliedTaskBookPatchIds: [...state.appliedTaskBookPatchIds],
+    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
   });
   writeDecisionState(ctx, 'runner-restore', {
     classification: state.classification ? structuredClone(state.classification) : undefined,
     needAssessment: state.needAssessment ? structuredClone(state.needAssessment) : undefined,
-  });
-  writeRunTaskState(ctx, 'runner-restore', {
-    workPolicyUpgradeRequest: state.workPolicyUpgradeRequest ? structuredClone(state.workPolicyUpgradeRequest) : undefined,
   });
   writeRuntimeState(ctx, 'runner-restore', {
     deferredRuntimeEventIds: [...checkpoint.pendingEventIds],

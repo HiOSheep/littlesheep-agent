@@ -133,6 +133,7 @@ export {
 } from './decision-state.js';
 export {
   writeFailureState,
+  settleRuntimeFailureEvent,
   recordFailure,
   clearFailure,
   incrementRecoveryAttempts,
