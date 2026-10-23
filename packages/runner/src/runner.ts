@@ -29,7 +29,7 @@ import type {
   TaskOutcome,
 } from '@littlesheep/types';
 import { asSessionId, sanitizeWebEvidenceProjection, textMessage, reduceConversationTranscript, unknownTaskOutcome } from '@littlesheep/types';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createExplicitFileContentCheckTool } from '@littlesheep/tools';
 import { parseModelRef, type Config } from '@littlesheep/config';
 import type { BrandingConfig } from '@littlesheep/branding';
@@ -48,12 +48,11 @@ import {
   writeModelObservabilityState,
   flushModelRequestLifecycles,
   DurableHarnessKernel,
-  collectConversationSourceRecords,
   settleDeferredFinalReply,
   settleRuntimeFailureEvent,
   isSupportedPersistedWorkPolicy,
 } from '@littlesheep/harness';
-import { buildInfrastructure, type Infrastructure, type RunnerState, type LogFn } from './infra.js';
+import { buildInfrastructure, type RunnerState, type LogFn } from './infra.js';
 import type { ExecutionLog } from './execution-log.js';
 import type { MemoryAccessLedger } from '@littlesheep/memory-tree';
 import { getAgentProfile, normalizeAgentProfileId, type AgentProfileId } from '@littlesheep/prompt';
@@ -63,7 +62,6 @@ import type { RunGitCheckpoint } from '@littlesheep/snapshot';
 import { beginRuntimeResourceObservation, completeRuntimeResourceObservation } from './runtime-resource-observation.js';
 import { ActiveRunRegistry } from './active-run-registry.js';
 import { buildRunCheckpoint, continuationLoopBudget } from './run-checkpoint.js';
-import { stableSerialize } from './run-checkpoint-codec.js';
 import {
   buildConversationContinuationEvidence,
   continuationFailureEvidence,
@@ -83,6 +81,8 @@ import type { SessionCompactionOperationRecord } from './session-compaction-sche
 import { persistRunnerPhase, RunnerPersistenceError } from './runner-persist.js';
 import { isAuthoritativePrepared, markAuthoritativePrepared, prepareAuthoritativeRunnerResult } from './authoritative-reply.js';
 import { clearUnpublishedNextResult, runtimeFailureResult } from './run-failure-result.js';
+import { promoteExecutionLogSettlement, settleFinalReplyArtifacts, settledReplyResult } from './run-publication.js';
+import { fingerprintRunExecutionContext } from './run-execution-fingerprint.js';
 import { resolveSemanticResumeStage } from './continuation-stage.js';
 import { ContinuationControlError, createConversationTurnRecovery } from './conversation-turn-recovery.js';
 import { WebRetrievalRuntime } from '@littlesheep/web';
@@ -2387,71 +2387,6 @@ export async function createRunner(opts: CreateRunnerOptions): Promise<AgentRunn
   };
   }
 
-
-
-
-
-function settledReplyResult(result: RunnerResult, ctx: RunContext): RunnerResult {
-    const settlement = ctx.finalReplySettlement;
-    if (!settlement || settlement.status !== 'settled') {
-      throw new Error('durable harness settled without a final reply projection');
-    }
-    return {
-      ...result,
-      status: 'ok',
-      reply: settlement.reply,
-      finalReplySettlement: settlement,
-      runtimeStatus: undefined,
-      error: undefined,
-      messages: result.messages.map((message) => (
-        message.role === 'assistant' && message.stage === 'finalize'
-          ? { ...message, finalReplySettlement: settlement }
-          : message
-      )),
-    };
-}
-
-/**
- * Repair the secondary projections after the authoritative final-reply
- * settlement. Neither repair is allowed to downgrade an already settled
- * user-visible reply; startup recovery can retry either projection later.
- */
-async function settleFinalReplyArtifacts(
-  ctx: RunContext,
-  infra: Infrastructure,
-  log?: LogFn,
-): Promise<void> {
-  const settlement = ctx.finalReplySettlement;
-  if (!settlement || settlement.status !== 'settled') return;
-
-  try {
-    await promoteExecutionLogSettlement(infra.executionLogStore, { runId: ctx.runId, finalReplySettlement: settlement }, log);
-  } catch (error) {
-    log?.('error', 'runner: settled execution-log repair guard failed: ' + (error as Error).message);
-  }
-
-  try {
-    await infra.memoryService.captureConversationSources(collectConversationSourceRecords(ctx));
-  } catch (error) {
-    log?.('warn', 'runner: settled assistant conversation source capture degraded: ' + (error as Error).message);
-  }
-}
-
-async function promoteExecutionLogSettlement(
-  executionLogStore: Infrastructure['executionLogStore'],
-  result: Pick<RunnerResult, 'runId' | 'finalReplySettlement'>,
-  log?: LogFn,
-): Promise<void> {
-  const settlement = result.finalReplySettlement;
-  if (!settlement || settlement.status !== 'settled') return;
-  try {
-    await executionLogStore.settleFinalReply(result.runId, settlement);
-  } catch (error) {
-    log?.('error', 'runner: failed to promote settled final reply in execution log: ' + (error as Error).message);
-  }
-}
-
-
   async function observeConversationTurn(
   entry: CoordinatedConversationTurn,
   callbacks: ConversationTurnCallbacks,
@@ -2593,88 +2528,6 @@ function restoreSameRunContext(
   writeFailureState(ctx, 'runner-restore', {
     recoveryAttempts: state.recoveryAttempts,
   });
-}
-
-function fingerprintRunExecutionContext(ctx: RunContext): {
-  executionContextFingerprint: string;
-  executionContextComponents: NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
-} {
-  const components = {
-    identity: {
-      runId: ctx.runId,
-      sessionId: String(ctx.sessionId),
-      inbound: ctx.inbound,
-      cwd: ctx.cwd,
-      workspaceContext: ctx.workspaceContext,
-      model: ctx.model,
-    },
-    tools: {
-      tools: ctx.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        requiresApproval: tool.requiresApproval,
-        source: ctx.toolSources?.[tool.name],
-      })).sort((left, right) => left.name.localeCompare(right.name)),
-    },
-    configuration: {
-      resolvedRunConfig: ctx.resolvedRunConfig ? {
-        ...ctx.resolvedRunConfig,
-        resolvedAt: undefined,
-        // The checkpoint records effective policy values; whether they came
-        // from defaults or explicit per-run overrides is audit metadata only.
-        userOverrides: undefined,
-      } : undefined,
-      // Current host-owned permission and workspace facts participate in the
-      // restore match. They are hashed, never serialized as an authority token;
-      // a restart without the same current Main snapshot fails before Harness.
-      toolPermission: {
-        permissionMode: ctx.toolContext.permissionMode,
-        permissionPreset: ctx.toolContext.permissionPreset,
-        approvalPolicy: ctx.toolContext.approvalPolicy,
-        permissionPolicyV2: ctx.toolContext.permissionPolicyV2,
-        workspaceFileWrites: ctx.toolContext.workspaceFileWrites,
-        shellIsolation: ctx.toolContext.shellIsolation,
-        fullAccessConfirmed: ctx.toolContext.fullAccessConfirmed,
-        workspaceRoot: ctx.toolContext.workspaceRoot,
-        dataRoot: ctx.toolContext.dataRoot,
-        containerRoot: ctx.toolContext.containerRoot,
-        protectedWriteRoots: ctx.toolContext.protectedWriteRoots,
-      },
-    },
-    prompt: {
-      bootstrap: ctx.bootstrap,
-      profilePromptAddon: ctx.profilePromptAddon,
-      reasoningPromptAddon: ctx.reasoningPromptAddon,
-    },
-    memory: {
-      sessionSummary: ctx.sessionSummary,
-      prelude: ctx.prelude,
-      memoryRootIndex: ctx.memoryRootIndex,
-      initialMemoryContext: ctx.initialMemoryContext,
-      memoryKnownState: ctx.memoryKnownState ? {
-        ...ctx.memoryKnownState,
-        updatedAt: undefined,
-        references: ctx.memoryKnownState.references.map((reference) => ({
-          ...reference,
-          firstSeenAt: undefined,
-          updatedAt: undefined,
-        })),
-      } : undefined,
-      memoryContextWorkingSet: ctx.memoryContextWorkingSet ? {
-        ...ctx.memoryContextWorkingSet,
-        updatedAt: undefined,
-      } : undefined,
-    },
-  };
-  const executionContextComponents = Object.fromEntries(Object.entries(components).map(([key, value]) => (
-    [key, createHash('sha256').update(stableSerialize(value), 'utf8').digest('hex')]
-  ))) as NonNullable<RunCheckpoint['safeSegmentBoundary']>['executionContextComponents'];
-  return {
-    executionContextFingerprint: createHash('sha256')
-      .update(stableSerialize(executionContextComponents), 'utf8')
-      .digest('hex'),
-    executionContextComponents,
-  };
 }
 
 function restoreContinuationContext(
