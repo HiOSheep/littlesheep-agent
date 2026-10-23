@@ -4,6 +4,7 @@ import type { RuntimeReasoning } from '../../shared/model-capabilities'
 import type { ApprovalReply } from '../approval-grants'
 import type { SessionScope } from '../../shared/session-scope'
 import type { AttachmentRef } from '../../shared/attachment-contracts'
+import { isToolStreamEventName } from '../../shared/run-stream-events'
 import {
   LOCAL_APP_API_PREFIXES,
   LOCAL_APP_API_ROUTES,
@@ -201,25 +202,7 @@ export async function consumeRunStream(
           output: d.output,
           error: d.error,
         })
-      } else if (
-        event.name === 'task_book'
-        || event.name === 'reasoning'
-        || event.name === 'step_start'
-        || event.name === 'step_done'
-        || event.name === 'step_failed'
-        || event.name === 'step_skipped'
-        || event.name === 'verification_start'
-        || event.name === 'verification'
-        || event.name === 'final_delta'
-        || event.name === 'model_reasoning'
-        || event.name === 'model_activity'
-        || event.name === 'runtime_activity'
-        || event.name === 'model_text'
-        || event.name === 'tool_preparing'
-        || event.name === 'system_prompt'
-        || event.name === 'capability_snapshot'
-        || event.name === 'capability_probe'
-      ) {
+      } else if (isToolStreamEventName(event.name)) {
         handlers.onToolEvent?.(event.data as ToolStreamEvent)
       } else if (event.name === 'approval_request') {
         const d = event.data as ApprovalRequest
