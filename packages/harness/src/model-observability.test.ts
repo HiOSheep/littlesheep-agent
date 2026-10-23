@@ -314,42 +314,6 @@ describe('recordModelRequest', () => {
     });
   });
 
-  it('does not let a direct-output compatibility call override the run reasoning policy', () => {
-    const ctx = makeCtx();
-    ctx.resolvedRunConfig = {
-      version: 1,
-      runId: ctx.runId,
-      resolvedAt: '2026-07-13T00:00:00.000Z',
-      origin: 'test',
-      behaviorModeId: 'general',
-      permissionPolicyId: 'research',
-      workflowStrategyId: 'core-flow',
-      contextStrategyId: 'context-v1',
-      memoryStrategyId: 'index-first-v1',
-      toolSelectionStrategyId: 'registered-tools-v1',
-      outputContractId: 'user-reply-v1',
-      provider: 'deepseek',
-      model: 'deepseek-v4-flash',
-      reasoning: 'ultra',
-      parameters: {},
-      availableToolNames: [],
-      approvalRequiredToolNames: [],
-      userOverrides: {},
-      projectOverrides: {},
-    };
-    const direct = preferDirectModelOutput(ctx, {
-      ...request(2, 0),
-      model: 'deepseek-v4-flash',
-      max_tokens: 500,
-    });
-
-    const prepared = prepareModelRequest(ctx, 'decide', direct);
-
-    expect(prepared.reasoning_effort).toBe('max');
-    expect(prepared.thinking).toEqual({ type: 'enabled', clear_thinking: undefined });
-    expect(ctx.modelRequests?.[0]).toMatchObject({ reasoningEffort: 'max', thinkingMode: 'enabled' });
-  });
-
   it('fails closed for forbidden tools, forbidden calls, and oversized outputs', () => {
     const ctx = makeCtx({ tools: registeredTools(1) });
 

@@ -163,8 +163,12 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
   const adapter = input.adapter ?? 'llm-chat';
   const scope = buildScopePartition(input, key);
   const scopeToken = scope.partitionDigest ?? 'unavailable';
-  const normalized = normalizeRequest(input.request);
-  const parts = splitRequestForCache(input.request);
+  // Normalize messages and tools once: splitRequestForCache and the stable
+  // payload previously re-ran normalizeMessage over the whole transcript.
+  const normalizedMessages = input.request.messages.map(normalizeMessage);
+  const normalizedTools = normalizeTools(input.request.tools, true);
+  const normalized = normalizeRequest(input.request, normalizedMessages, normalizedTools);
+  const parts = splitRequestForCache(input.request, normalizedMessages);
   const stablePayload = {
     version: STABLE_PREFIX_VERSION,
     boundary: CACHE_BOUNDARY_MARKER,
@@ -175,7 +179,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     // Tool registration can arrive in a different order after a restart or
     // concurrent discovery. Canonicalize it before hashing so order alone
     // cannot invalidate the Provider's stable prefix.
-    tools: normalizeTools(input.request.tools, true),
+    tools: normalizedTools,
   };
   const dynamicPayload = {
     version: DYNAMIC_SUFFIX_VERSION,
@@ -194,18 +198,19 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     model: componentFingerprint(key, scopeToken, 'model', input.model),
     requestKind: componentFingerprint(key, scopeToken, 'request-kind', input.requestKind),
     systemPrompt: componentFingerprint(key, scopeToken, 'system-prompt', parts.stableMessages),
-    toolSchema: componentFingerprint(key, scopeToken, 'tool-schema', normalizeTools(input.request.tools, true)),
+    toolSchema: componentFingerprint(key, scopeToken, 'tool-schema', normalizedTools),
     scope: scope.partitionDigest ?? 'unavailable',
   });
   const promptComponents = fingerprintPromptComponents(key, scopeToken, input.promptComponents);
+  const keySource = keySourceOf(key);
+  const stablePrefix = fingerprint(key, scopeToken, 'stable-prefix', stableSerialized, keySource, parts.stableMessages.length);
   const invalidationReasons = resolveInvalidationReasons(
     input,
     scope,
     components,
     promptComponents,
-    fingerprint(key, scopeToken, 'stable-prefix', stableSerialized, keySourceOf(key), parts.stableMessages.length),
+    stablePrefix,
   );
-  const keySource = keySourceOf(key);
   return Object.freeze({
     version: CACHE_OBSERVATION_VERSION,
     usageSchemaVersion: CACHE_USAGE_SCHEMA_VERSION,
@@ -220,7 +225,7 @@ export function buildCacheObservation(input: CacheObservationInput): CacheObserv
     dynamicSuffixVersion: DYNAMIC_SUFFIX_VERSION,
     normalizedRequestVersion: NORMALIZED_REQUEST_VERSION,
     boundaryMarker: CACHE_BOUNDARY_MARKER,
-    stablePrefix: fingerprint(key, scopeToken, 'stable-prefix', stableSerialized, keySource, parts.stableMessages.length),
+    stablePrefix,
     dynamicSuffix: fingerprint(key, scopeToken, 'dynamic-suffix', dynamicSerialized, keySource, parts.dynamicMessages.length),
     normalizedRequest: fingerprint(key, scopeToken, 'normalized-request', normalizedSerialized, keySource, input.request.messages.length + (input.request.tools?.length ?? 0)),
     components,
@@ -459,7 +464,11 @@ function buildScopePartition(
   });
 }
 
-function normalizeRequest(request: ChatRequest): {
+function normalizeRequest(
+  request: ChatRequest,
+  normalizedMessages: unknown[],
+  normalizedTools: unknown[],
+): {
   full: Record<string, unknown>;
   requestParameters: Record<string, unknown>;
 } {
@@ -470,8 +479,8 @@ function normalizeRequest(request: ChatRequest): {
   delete requestParameters.tools;
   const full = {
     ...providerRequest,
-    messages: request.messages.map(normalizeMessage),
-    tools: normalizeTools(request.tools, true),
+    messages: normalizedMessages,
+    tools: normalizedTools,
   };
   return { full, requestParameters };
 }

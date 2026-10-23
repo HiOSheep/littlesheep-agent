@@ -39,7 +39,10 @@ export function normalizeMessage(message: ChatMessage): Record<string, unknown> 
   };
 }
 
-export function splitRequestForCache(request: ChatRequest): {
+export function splitRequestForCache(
+  request: ChatRequest,
+  normalizedMessages?: readonly unknown[],
+): {
   stableMessages: unknown[];
   dynamicMessages: unknown[];
 } {
@@ -61,7 +64,7 @@ export function splitRequestForCache(request: ChatRequest): {
   // nearly every request, which hid real invalidations.
   let seenConversationContent = false;
   request.messages.forEach((message, index) => {
-    const normalized = normalizeMessage(message);
+    const normalized = normalizedMessages?.[index] ?? normalizeMessage(message);
     // Stable entries carry a position relative to the stable set, not their
     // absolute index in the request: the absolute index grows with the
     // conversation, so embedding it made the "stable" prefix change identity

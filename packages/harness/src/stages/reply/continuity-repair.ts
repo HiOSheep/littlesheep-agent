@@ -21,7 +21,6 @@ import type { RunContext, UserFacingReplyPurpose } from '@littlesheep/types';
 import type { ChatMessage, ChatRequest, LlmClient } from '@littlesheep/llm';
 import { buildRunRequestCandidates } from '../../context-candidates.js';
 import {
-  preferDirectModelOutput,
   prepareModelRequest,
   callModelChat,
 } from '../../model-observability.js';
@@ -89,7 +88,7 @@ export async function repairDiscontinuousReply(
   const request = prepareModelRequest(
     ctx,
     shape.purpose,
-    preferDirectModelOutput(ctx, rawRequest, { force: true }),
+    rawRequest,
     buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
       history: visibleHistory,
       primaryUserKind: 'user_input',

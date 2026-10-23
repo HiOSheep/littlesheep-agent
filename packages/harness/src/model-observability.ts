@@ -53,7 +53,6 @@ export {
   MAX_SNAPSHOT_MESSAGES,
   MAX_SNAPSHOT_TOOLS,
 };
-export { preferDirectModelOutput } from './model-request-policy.js';
 const defaultContextEngine = new ContextEngine();
 const contextEngines = new WeakMap<RunContext, ContextEngine>();
 const requestContextSnapshotIds = new WeakMap<ChatRequest, string>();

@@ -20,7 +20,6 @@ import {
 import { modelHistoryMessages } from '../model-history.js';
 import { appendSystemPromptBundleAddons, buildUserFacingVoiceAddon } from '../profile-prompt.js';
 import {
-  preferDirectModelOutput,
   prepareModelRequest,
   callModelChat,
   callModelChatStream,
@@ -127,7 +126,7 @@ export function createReplyStage(deps: ReplyStageDeps) {
       const req = prepareModelRequest(
         ctx,
         replyPurpose,
-        preferDirectModelOutput(ctx, rawRequest, { force: true }),
+        rawRequest,
         buildRunRequestCandidates(ctx, 'reply', rawRequest.messages, {
           history,
           // system + history + inserted attachments + this turn's user message.
@@ -197,14 +196,14 @@ export function createReplyStage(deps: ReplyStageDeps) {
         const retryRequest = prepareModelRequest(
           ctx,
           replyPurpose,
-          preferDirectModelOutput(ctx, {
+          {
             model: deps.model,
             messages: retryMessages,
             temperature: isCapabilityReply ? 0.3 : 0.7,
             max_tokens: isCapabilityReply ? 500 : 1_200,
             signal: ctx.signal,
             stream: false,
-          } satisfies ChatRequest, { force: true }),
+          } satisfies ChatRequest,
           buildRunRequestCandidates(ctx, 'reply', retryMessages, {
             history,
             systemSegments: systemPrompt.stableSegments ?? systemPrompt.segments,

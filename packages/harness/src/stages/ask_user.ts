@@ -14,7 +14,6 @@ import { filterAuthoritativeUserFacingMessages } from '@littlesheep/types';
 import type { ChatRequest, LlmClient } from '@littlesheep/llm';
 import { buildRunRequestCandidates } from '../context-candidates.js';
 import {
-  preferDirectModelOutput,
   prepareModelRequest,
   callModelChat,
 } from '../model-observability.js';
@@ -197,9 +196,7 @@ async function composeClarificationMessage(
     const prepared = prepareModelRequest(
       ctx,
       'ask_user',
-      // Clarification copy is a bounded wording task, not another reasoning
-      // phase. Keep it direct even when the run itself uses high reasoning.
-      preferDirectModelOutput(ctx, rawRequest, { force: true }),
+      rawRequest,
       buildRunRequestCandidates(ctx, 'ask_user', rawRequest.messages, {
         history: [],
         primaryUserKind: 'workflow_state',
